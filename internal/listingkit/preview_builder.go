@@ -63,39 +63,17 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 	preview.RevisionHistoryMeta = buildRevisionHistoryMeta(task.Result)
 	preview.RevisionHistory = buildRevisionHistoryPreviewItems(task.Result.RevisionHistory)
 
-	if shouldBuildPreviewPlatform(selectedPlatform, "amazon") {
-		if task.Result.Amazon != nil {
-			preview.Amazon = buildAmazonPreviewPayload(task.Result.Amazon, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "amazon"))
-		} else if isSelectedPreviewPlatform(selectedPlatform, "amazon") {
-			return nil, ErrPreviewPlatformUnavailable
-		}
+	if err := buildAmazonPreviewSection(task, preview, selectedPlatform); err != nil {
+		return nil, err
 	}
-
-	if shouldBuildPreviewPlatform(selectedPlatform, "shein") {
-		if task.Result.Shein != nil {
-			preview.Shein = buildSheinPreviewPayload(task.Result.Shein, task.Result.PodExecution, task.Result.CanonicalProduct, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "shein"))
-			preview.NeedsReview = preview.NeedsReview || preview.Shein.NeedsReview
-		} else if isSelectedPreviewPlatform(selectedPlatform, "shein") {
-			return nil, ErrPreviewPlatformUnavailable
-		}
+	if err := buildSheinPreviewSection(task, preview, selectedPlatform); err != nil {
+		return nil, err
 	}
-
-	if shouldBuildPreviewPlatform(selectedPlatform, "temu") {
-		if task.Result.Temu != nil {
-			preview.Temu = buildTemuPreviewPayload(task.Result.Temu, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "temu"))
-			preview.NeedsReview = preview.NeedsReview || preview.Temu.NeedsReview
-		} else if isSelectedPreviewPlatform(selectedPlatform, "temu") {
-			return nil, ErrPreviewPlatformUnavailable
-		}
+	if err := buildTemuPreviewSection(task, preview, selectedPlatform); err != nil {
+		return nil, err
 	}
-
-	if shouldBuildPreviewPlatform(selectedPlatform, "walmart") {
-		if task.Result.Walmart != nil {
-			preview.Walmart = buildWalmartPreviewPayload(task.Result.Walmart, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "walmart"))
-			preview.NeedsReview = preview.NeedsReview || preview.Walmart.NeedsReview
-		} else if isSelectedPreviewPlatform(selectedPlatform, "walmart") {
-			return nil, ErrPreviewPlatformUnavailable
-		}
+	if err := buildWalmartPreviewSection(task, preview, selectedPlatform); err != nil {
+		return nil, err
 	}
 
 	return preview, nil
