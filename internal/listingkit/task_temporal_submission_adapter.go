@@ -23,6 +23,8 @@ type taskTemporalSubmissionAdapterConfig struct {
 	uploadSheinSubmitImages              func(context.Context, *Task, *SheinPackage, *sheinproduct.Product) error
 	resolveSubmitSettings                func(context.Context, *Task) SheinSettings
 	buildSheinSubmitProductAPI           func(context.Context, *Task) (sheinproduct.ProductAPI, error)
+	preValidateSheinSubmitProduct        func(*SheinPackage, *sheinproduct.Product) error
+	executeSheinSubmitRemote             func(sheinproduct.ProductAPI, string, *sheinproduct.Product) (*sheinpub.SubmissionResponse, error)
 	retrySheinSensitiveWordSubmit        func(context.Context, string, *SheinPackage, string, string, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, error) (*sheinpub.SubmissionResponse, error, bool)
 	persistSuccessfulSheinSubmission     func(context.Context, string, *Task, string) error
 	recordSheinSubmissionFailureForState func(context.Context, string, *ListingKitResult, *SheinPackage, string, string, string, error) error
@@ -42,6 +44,8 @@ type taskTemporalSubmissionAdapter struct {
 	uploadSheinSubmitImages              func(context.Context, *Task, *SheinPackage, *sheinproduct.Product) error
 	resolveSubmitSettings                func(context.Context, *Task) SheinSettings
 	buildSheinSubmitProductAPI           func(context.Context, *Task) (sheinproduct.ProductAPI, error)
+	preValidateSheinSubmitProduct        func(*SheinPackage, *sheinproduct.Product) error
+	executeSheinSubmitRemote             func(sheinproduct.ProductAPI, string, *sheinproduct.Product) (*sheinpub.SubmissionResponse, error)
 	retrySheinSensitiveWordSubmit        func(context.Context, string, *SheinPackage, string, string, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, error) (*sheinpub.SubmissionResponse, error, bool)
 	persistSuccessfulSheinSubmission     func(context.Context, string, *Task, string) error
 	recordSheinSubmissionFailureForState func(context.Context, string, *ListingKitResult, *SheinPackage, string, string, string, error) error
@@ -62,6 +66,8 @@ func newTaskTemporalSubmissionAdapter(config taskTemporalSubmissionAdapterConfig
 		uploadSheinSubmitImages:              config.uploadSheinSubmitImages,
 		resolveSubmitSettings:                config.resolveSubmitSettings,
 		buildSheinSubmitProductAPI:           config.buildSheinSubmitProductAPI,
+		preValidateSheinSubmitProduct:        config.preValidateSheinSubmitProduct,
+		executeSheinSubmitRemote:             config.executeSheinSubmitRemote,
 		retrySheinSensitiveWordSubmit:        config.retrySheinSensitiveWordSubmit,
 		persistSuccessfulSheinSubmission:     config.persistSuccessfulSheinSubmission,
 		recordSheinSubmissionFailureForState: config.recordSheinSubmissionFailureForState,
@@ -187,7 +193,7 @@ func (s *taskTemporalSubmissionAdapter) PreValidateSheinPublish(ctx context.Cont
 	if err := s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhasePreValidate); err != nil {
 		return err
 	}
-	return preValidateSheinSubmitProduct(pkg, in.Product)
+	return s.preValidateSheinSubmitProduct(pkg, in.Product)
 }
 
 func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {
@@ -214,7 +220,7 @@ func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Con
 		return nil, err
 	}
 
-	response, responseErr := executeSheinSubmitRemote(productAPI, in.Action, in.Product)
+	response, responseErr := s.executeSheinSubmitRemote(productAPI, in.Action, in.Product)
 	if responseErr == nil {
 		responseErr = listingsubmission.BuildResponseError(in.Action, response)
 	}

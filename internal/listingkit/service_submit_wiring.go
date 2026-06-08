@@ -58,6 +58,8 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 		uploadSheinSubmitImages:              s.uploadSheinSubmitImages,
 		resolveSubmitSettings:                resolver.resolveSubmitSettings,
 		buildSheinSubmitProductAPI:           s.buildSheinSubmitProductAPI,
+		preValidateSheinSubmitProduct:        s.preValidateSheinSubmitProduct,
+		executeSheinSubmitRemote:             s.executeSheinSubmitRemote,
 		retrySheinSensitiveWordSubmit:        s.retrySheinSensitiveWordSubmit,
 		persistSuccessfulSheinSubmission:     s.persistSuccessfulSheinSubmission,
 		recordSheinSubmissionFailureForState: s.recordSheinSubmissionFailureForState,

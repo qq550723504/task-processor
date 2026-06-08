@@ -280,12 +280,12 @@ func (s *service) uploadSheinSubmitImages(ctx context.Context, task *Task, pkg *
 	return s.taskSubmissionExecutionOrDefault().uploadSheinSubmitImages(ctx, task, pkg, submitProduct)
 }
 
-func preValidateSheinSubmitProduct(pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
-	return defaultTaskSubmissionExecutionService.preValidateSheinSubmitProduct(pkg, submitProduct)
+func (s *service) preValidateSheinSubmitProduct(pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
+	return s.taskSubmissionExecutionOrDefault().preValidateSheinSubmitProduct(pkg, submitProduct)
 }
 
-func executeSheinSubmitRemote(productAPI sheinproduct.ProductAPI, action string, submitProduct *sheinproduct.Product) (*sheinpub.SubmissionResponse, error) {
-	return defaultTaskSubmissionExecutionService.executeSheinSubmitRemote(productAPI, action, submitProduct)
+func (s *service) executeSheinSubmitRemote(productAPI sheinproduct.ProductAPI, action string, submitProduct *sheinproduct.Product) (*sheinpub.SubmissionResponse, error) {
+	return s.taskSubmissionExecutionOrDefault().executeSheinSubmitRemote(productAPI, action, submitProduct)
 }
 
 func isSupportedSubmitAction(action string) bool {

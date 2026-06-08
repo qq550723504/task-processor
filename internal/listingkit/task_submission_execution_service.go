@@ -47,8 +47,6 @@ func newTaskSubmissionExecutionService(config taskSubmissionExecutionServiceConf
 	}
 }
 
-var defaultTaskSubmissionExecutionService = newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{})
-
 func (s *taskSubmissionExecutionService) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req *SubmitTaskRequest, action string) {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	normalizeSheinStudioSubmitSupplierSKUs(task, pkg, normalizedSubmitIdempotencyKey(req))
