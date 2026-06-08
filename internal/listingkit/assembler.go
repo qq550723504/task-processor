@@ -88,6 +88,11 @@ func buildSheinPublishRequestForTask(task *Task, req *GenerateRequest) *sheinpub
 	if task != nil {
 		ctxIdentity = openaiclient.Identity{TenantID: task.TenantID, UserID: task.UserID}
 	}
+	// 使用 task 的 TenantID 构建 context,避免使用 context.Background()
+	ctx := context.Background()
+	if ctxIdentity.TenantID != "" {
+		ctx = WithTenantID(ctx, ctxIdentity.TenantID)
+	}
 	return &sheinpub.BuildRequest{
 		Country:            req.Country,
 		Language:           req.Language,
@@ -95,7 +100,7 @@ func buildSheinPublishRequestForTask(task *Task, req *GenerateRequest) *sheinpub
 		BrandHint:          req.BrandHint,
 		TargetCategoryHint: req.TargetCategoryHint,
 		SheinStoreID:       req.SheinStoreID,
-		Context:            openaiclient.WithIdentity(WithTenantID(context.Background(), ctxIdentity.TenantID), ctxIdentity),
+		Context:            openaiclient.WithIdentity(ctx, ctxIdentity),
 	}
 }
 
