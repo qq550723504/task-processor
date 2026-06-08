@@ -7,8 +7,9 @@ This directory contains architecture and refactoring plans for the Task Processo
 Project-wide restructuring should follow:
 
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md)
+- [project-wide-execution-plan.md](./project-wide-execution-plan.md)
 
-Use this document as the default refactoring authority when making broad package, boundary, runtime assembly, marketplace, infrastructure, or ListingKit modularization decisions.
+Use the refactoring plan as the default architecture authority, and use the execution plan as the default implementation sequence for broad package, boundary, runtime assembly, marketplace, infrastructure, or ListingKit modularization decisions.
 
 Older local plans are still useful for historical context and detailed task breakdowns, but they should not override the project-wide plan unless a newer ADR or refactoring document explicitly says so.
 
@@ -49,6 +50,7 @@ The current active direction is:
 ## Current refactoring documents
 
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
+- [project-wide-execution-plan.md](./project-wide-execution-plan.md) - concrete phase-by-phase execution plan with PR slices, acceptance criteria, tests, and stop conditions.
 - [dependency-baseline.md](./dependency-baseline.md) - baseline worksheet for dependency scans and legacy exception tracking.
 - [listingkit-refactoring-plan.md](./listingkit-refactoring-plan.md) - detailed ListingKit root-directory reduction plan.
 - [studio-migration-plan.md](./studio-migration-plan.md) - Studio migration planning.
