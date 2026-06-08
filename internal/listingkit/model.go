@@ -17,7 +17,7 @@ var ErrChildTaskNotRetryable = errors.New("child task is not retryable")
 var ErrChildTaskRetryConflict = errors.New("child task retry conflict")
 var ErrUnsupportedSubmitPlatform = errors.New("unsupported submit platform")
 var ErrSubmitBlocked = errors.New("submit blocked by readiness")
-var ErrSubmitInProgress = errors.New("submit already in progress")
+// ErrSubmitInProgress moved to core package, re-exported via submit_aliases.go for backward compatibility
 var ErrInvalidSheinResolutionCacheKind = errors.New("invalid shein resolution cache kind")
 var ErrInvalidSheinCategorySearchQuery = errors.New("invalid shein category search query")
 
