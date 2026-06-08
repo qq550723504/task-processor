@@ -3,7 +3,7 @@ package listingkit
 import (
 	"context"
 
-	listingsubmission "task-processor/internal/listingkit/submission"
+	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -55,7 +55,7 @@ func (s *service) completeSheinDirectRemoteSubmit(ctx context.Context, taskID st
 	}
 	response, responseErr := s.executeSheinSubmitRemote(productAPI, opts.action, submitProduct)
 	if responseErr == nil {
-		responseErr = listingsubmission.BuildResponseError(opts.action, response)
+		responseErr = submission.BuildResponseError(opts.action, response)
 	}
 	if retryResponse, retryErr, retried := s.retrySheinSensitiveWordSubmit(ctx, taskID, pkg, opts.action, opts.requestID, productAPI, submitProduct, response, responseErr); retried {
 		response = retryResponse

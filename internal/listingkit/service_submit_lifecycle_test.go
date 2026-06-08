@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	listingsubmission "task-processor/internal/listingkit/submission"
+	"task-processor/internal/listingkit/core"
+	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -1208,8 +1209,8 @@ func TestSubmitTaskBlocksDifferentIdempotencyKeyWhileSubmitInFlight(t *testing.T
 
 	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "different-123"})
 
-	if !errors.Is(err, ErrSubmitInProgress) {
-		t.Fatalf("submit err = %v, want ErrSubmitInProgress", err)
+	if !errors.Is(err, core.ErrSubmitInProgress) {
+		t.Fatalf("submit err = %v, want core.ErrSubmitInProgress", err)
 	}
 	if publishCalls != 0 {
 		t.Fatalf("publish calls = %d, want 0", publishCalls)
@@ -1298,7 +1299,7 @@ func TestSubmitTaskTemporalReplayReturnsCurrentPreviewWithoutRestartingWorkflow(
 		Success: true,
 		SPUName: "SPU-123",
 	}, nil, now)
-	appendSheinSubmissionEvent(task.Result.Shein, listingsubmission.BuildEvent(task.ID, "publish", record, record.Result, nil, record.StartedAt))
+	appendSheinSubmissionEvent(task.Result.Shein, submission.BuildEvent(task.ID, "publish", record, record.Result, nil, record.StartedAt))
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -1412,7 +1413,7 @@ func TestSubmitTaskMapsTemporalRepeatedPublishToSubmitInProgress(t *testing.T) {
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	workflowClient := &stubSheinPublishWorkflowClient{startErr: ErrSubmitInProgress}
+	workflowClient := &stubSheinPublishWorkflowClient{startErr: core.ErrSubmitInProgress}
 	svc, err := NewService(newTestServiceConfig(
 		repo,
 		withTestSheinPublishWorkflow(workflowClient, true),
@@ -1423,8 +1424,8 @@ func TestSubmitTaskMapsTemporalRepeatedPublishToSubmitInProgress(t *testing.T) {
 
 	_, err = svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "publish", IdempotencyKey: "repeat-123"})
 
-	if !errors.Is(err, ErrSubmitInProgress) {
-		t.Fatalf("submit err = %v, want ErrSubmitInProgress", err)
+	if !errors.Is(err, core.ErrSubmitInProgress) {
+		t.Fatalf("submit err = %v, want core.ErrSubmitInProgress", err)
 	}
 	if workflowClient.startCalls != 1 {
 		t.Fatalf("workflow start calls = %d, want 1", workflowClient.startCalls)
@@ -1462,8 +1463,8 @@ func TestSubmitTaskBlocksDifferentTemporalRequestWhileWorkflowStartPending(t *te
 		IdempotencyKey: "temporal-pending-b",
 	})
 
-	if !errors.Is(err, ErrSubmitInProgress) {
-		t.Fatalf("submit err = %v, want ErrSubmitInProgress", err)
+	if !errors.Is(err, core.ErrSubmitInProgress) {
+		t.Fatalf("submit err = %v, want core.ErrSubmitInProgress", err)
 	}
 	if workflowClient.startCalls != 1 {
 		t.Fatalf("workflow start calls = %d, want 1 while first start is pending", workflowClient.startCalls)
@@ -1838,8 +1839,8 @@ func TestSubmitTaskBlocksConcurrentDifferentRequestAcrossServiceInstances(t *tes
 	case <-time.After(time.Second):
 		t.Fatal("second submit did not return")
 	}
-	if !errors.Is(conflict, ErrSubmitInProgress) {
-		t.Fatalf("second submit err = %v, want ErrSubmitInProgress", conflict)
+	if !errors.Is(conflict, core.ErrSubmitInProgress) {
+		t.Fatalf("second submit err = %v, want core.ErrSubmitInProgress", conflict)
 	}
 	close(releasePublish)
 	if err := <-errs; err != nil {

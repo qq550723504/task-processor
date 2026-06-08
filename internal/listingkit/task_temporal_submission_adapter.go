@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	listingsubmission "task-processor/internal/listingkit/submission"
+	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -222,7 +222,7 @@ func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Con
 
 	response, responseErr := s.executeSheinSubmitRemote(productAPI, in.Action, in.Product)
 	if responseErr == nil {
-		responseErr = listingsubmission.BuildResponseError(in.Action, response)
+		responseErr = submission.BuildResponseError(in.Action, response)
 	}
 	if retryResponse, retryErr, retried := s.retrySheinSensitiveWordSubmit(ctx, in.TaskID, pkg, in.Action, in.RequestID, productAPI, in.Product, response, responseErr); retried {
 		response = retryResponse
@@ -263,7 +263,7 @@ func (s *taskTemporalSubmissionAdapter) PersistSheinPublishSuccess(ctx context.C
 
 	startedAt := sheinSubmitStartedAt(pkg, in.Action, in.RequestID, time.Now())
 	record := completeSheinSubmitAttempt(pkg, in.Action, in.RequestID, in.Response, nil, time.Now())
-	appendSheinSubmissionEvent(pkg, listingsubmission.BuildEvent(in.TaskID, in.Action, record, in.Response, nil, startedAt))
+	appendSheinSubmissionEvent(pkg, submission.BuildEvent(in.TaskID, in.Action, record, in.Response, nil, startedAt))
 	if s.rememberSheinSubmitted != nil {
 		s.rememberSheinSubmitted(task, in.Action)
 	}
@@ -319,7 +319,7 @@ func (s *taskTemporalSubmissionAdapter) RefreshSheinPublishRemoteStatus(ctx cont
 	response := submissionResponseForRecord(pkg, in.Action)
 	if remoteErr != nil {
 		record = failSheinSubmitAttempt(pkg, in.Action, in.RequestID, sheinpub.SubmissionPhaseConfirmRemote, remoteErr, time.Now())
-		appendSheinSubmissionEvent(pkg, listingsubmission.BuildEvent(in.TaskID, in.Action, record, response, remoteErr, record.StartedAt))
+		appendSheinSubmissionEvent(pkg, submission.BuildEvent(in.TaskID, in.Action, record, response, remoteErr, record.StartedAt))
 		task.Result.UpdatedAt = time.Now()
 		if err := s.saveTaskResult(ctx, in.TaskID, task.Result); err != nil {
 			return nil, err
@@ -329,7 +329,7 @@ func (s *taskTemporalSubmissionAdapter) RefreshSheinPublishRemoteStatus(ctx cont
 
 	response = confirmedSubmissionResponse(response, in.Action)
 	record = completeSheinSubmitAttempt(pkg, in.Action, in.RequestID, response, nil, time.Now())
-	appendSheinSubmissionEvent(pkg, listingsubmission.BuildEvent(in.TaskID, in.Action, record, record.Result, nil, record.StartedAt))
+	appendSheinSubmissionEvent(pkg, submission.BuildEvent(in.TaskID, in.Action, record, record.Result, nil, record.StartedAt))
 	if s.rememberSheinSubmitted != nil {
 		s.rememberSheinSubmitted(task, in.Action)
 	}

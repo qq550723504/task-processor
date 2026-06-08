@@ -2,13 +2,14 @@ package listingkit
 
 import (
 	"context"
+
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"task-processor/internal/listingkit/submission"
 	"time"
 
-	listingsubmission "task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -51,14 +52,14 @@ func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.Product
 	if action == "publish" {
 		if onWay, onWayErr := lookupSheinOnWayDocument(otherAPI, spuName); onWayErr == nil && onWay != nil {
 			detail := fmt.Sprintf("SHEIN on-way document confirmed for spu_name=%s document_sn=%s", onWay.SpuName, onWay.DocumentSn)
-			parts := listingsubmission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, detail, nil)
+			parts := submission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, detail, nil)
 			return newSheinRemoteConfirmation(parts), nil
 		}
 	}
 	item, recordErr := lookupSheinRemoteRecord(productAPI, lookupCodes, spuName)
 	if recordErr == nil && item != nil {
 		remoteStatus, detail, remoteErr := classifySheinRemoteRecord(action, item, defaultConfirmed)
-		parts := listingsubmission.BuildConfirmRemotePartsForRecord(taskID, action, remoteStatus, requestID, startedAt, detail, remoteErr, item)
+		parts := submission.BuildConfirmRemotePartsForRecord(taskID, action, remoteStatus, requestID, startedAt, detail, remoteErr, item)
 		return newSheinRemoteConfirmation(parts), remoteErr
 	}
 	if action == "publish" {
@@ -66,21 +67,21 @@ func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.Product
 			inventoryExists, inventoryErr := lookupSheinRemoteInventory(productAPI, spuName)
 			if inventoryErr == nil && inventoryExists {
 				detail := fmt.Sprintf("SHEIN remote inventory confirmed for spu_name=%s", spuName)
-				parts := listingsubmission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, detail, nil)
+				parts := submission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, detail, nil)
 				return newSheinRemoteConfirmation(parts), nil
 			}
 		}
 	}
 	if recordErr != nil {
-		parts := listingsubmission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
+		parts := submission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
 		parts.Message = recordErr.Error()
 		return newSheinRemoteConfirmation(parts), nil
 	}
 	if defaultConfirmed {
-		parts := listingsubmission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, fallbackMessage, nil)
+		parts := submission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, fallbackMessage, nil)
 		return newSheinRemoteConfirmation(parts), nil
 	}
-	parts := listingsubmission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
+	parts := submission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
 	parts.Message = "record not found"
 	return newSheinRemoteConfirmation(parts), nil
 }

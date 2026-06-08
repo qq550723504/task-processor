@@ -3,7 +3,7 @@ package listingkit
 import (
 	"strings"
 
-	listingsubmission "task-processor/internal/listingkit/submission"
+	"task-processor/internal/listingkit/submission"
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -439,9 +439,9 @@ func sheinHasAnySKU(pkg *SheinPackage) bool {
 
 func sheinSourceFactsReady(pkg *SheinPackage) (bool, string) {
 	if pkg == nil {
-		return listingsubmission.SourceFactsReady(nil)
+		return submission.SourceFactsReady(nil)
 	}
-	return listingsubmission.SourceFactsReady(pkg.Metadata)
+	return submission.SourceFactsReady(pkg.Metadata)
 }
 
 func sheinFinalImagesReady(pkg *SheinPackage) (bool, string) {

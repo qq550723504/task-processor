@@ -13,6 +13,8 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
+	"task-processor/internal/listingkit/submission"
 )
 
 type stubSubmitService struct {
@@ -114,7 +116,7 @@ func TestSubmitTaskReturnsConflictWhenSubmitInProgress(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubSubmitService{err: listingkit.ErrSubmitInProgress}
+	svc := &stubSubmitService{err: core.ErrSubmitInProgress}
 	h, err := NewHandler(svc)
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
@@ -138,7 +140,7 @@ func TestSubmitTaskConflictIncludesCurrentPhaseAndLease(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	leaseExpiresAt := time.Date(2026, 5, 7, 11, 0, 0, 0, time.UTC)
-	svc := &stubSubmitService{err: &listingkit.SubmitInProgressError{
+	svc := &stubSubmitService{err: &submission.SubmitInProgressError{
 		Platform:       "shein",
 		Action:         "publish",
 		Phase:          "submit_remote",

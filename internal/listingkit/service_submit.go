@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
-	listingsubmission "task-processor/internal/listingkit/submission"
+	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
-const sheinSubmitInFlightTTL = listingsubmission.InFlightTTL
+const sheinSubmitInFlightTTL = submission.InFlightTTL
 
 var (
 	errSheinSubmitReplayExisting = errors.New("shein submit replay existing")
@@ -97,7 +97,7 @@ func (s *service) taskSubmissionOrDefault() *taskSubmissionService {
 		return s.taskSubmission
 	}
 	if s.sheinSubmitLocks == nil {
-		s.sheinSubmitLocks = listingsubmission.NewSubmitLockManager()
+		s.sheinSubmitLocks = submission.NewSubmitLockManager()
 	}
 	s.taskSubmission = newTaskSubmissionService(buildTaskSubmissionServiceConfig(s))
 	return s.taskSubmission
@@ -193,7 +193,7 @@ func derivedSheinSubmitRequestID(taskID, action string, requestedAt time.Time) s
 }
 
 func shouldReplayStartedTemporalSubmit(err error, requestID string) bool {
-	var inProgress *SubmitInProgressError
+	var inProgress *submission.SubmitInProgressError
 	return errors.As(err, &inProgress) &&
 		inProgress != nil &&
 		strings.TrimSpace(inProgress.RequestID) != "" &&

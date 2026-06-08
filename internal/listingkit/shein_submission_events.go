@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	listingsubmission "task-processor/internal/listingkit/submission"
+	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -54,5 +54,5 @@ func sheinSubmissionStoreResolutionFromSnapshot(snapshot *SheinStoreResolutionSn
 }
 
 func appendSheinSubmissionEvent(pkg *sheinpub.Package, event sheinpub.SubmissionEvent) {
-	listingsubmission.AppendEvent(pkg, event)
+	submission.AppendEvent(pkg, event)
 }

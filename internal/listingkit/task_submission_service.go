@@ -6,7 +6,8 @@ import (
 	"time"
 
 	apperrors "task-processor/internal/core/errors"
-	listingsubmission "task-processor/internal/listingkit/submission"
+	"task-processor/internal/listingkit/core"
+	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -190,15 +191,15 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 			currentAction = action
 		}
 		if currentAction != action {
-			return apperrors.Wrap(ErrSubmitInProgress, apperrors.ErrCodeTaskProcessing, "shein submission changed during refresh")
+			return apperrors.Wrap(core.ErrSubmitInProgress, apperrors.ErrCodeTaskProcessing, "shein submission changed during refresh")
 		}
 		currentRecord := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
 		if currentRecord == nil || strings.TrimSpace(currentRecord.RequestID) != requestID {
-			return apperrors.Wrap(ErrSubmitInProgress, apperrors.ErrCodeTaskProcessing, "shein submission changed during refresh")
+			return apperrors.Wrap(core.ErrSubmitInProgress, apperrors.ErrCodeTaskProcessing, "shein submission changed during refresh")
 		}
-		appendSheinSubmissionEvent(pkg, listingsubmission.BuildRefreshConfirmRemoteRunningEvent(taskID, action, requestID, startedAt))
+		appendSheinSubmissionEvent(pkg, submission.BuildRefreshConfirmRemoteRunningEvent(taskID, action, requestID, startedAt))
 		if confirmation.event != nil {
-			listingsubmission.ApplyConfirmRemoteParts(pkg, action, requestID, listingsubmission.ConfirmRemoteParts{
+			submission.ApplyConfirmRemoteParts(pkg, action, requestID, submission.ConfirmRemoteParts{
 				RemoteStatus: confirmation.remoteStatus,
 				Record:       confirmation.record,
 				CheckedAt:    confirmation.checkedAt,

@@ -15,11 +15,9 @@ var ErrChildTaskRetryInvalidRequest = errors.New("child task retry invalid reque
 var ErrChildTaskNotFound = errors.New("child task not found")
 var ErrChildTaskNotRetryable = errors.New("child task is not retryable")
 var ErrChildTaskRetryConflict = errors.New("child task retry conflict")
-var ErrUnsupportedSubmitPlatform = errors.New("unsupported submit platform")
-var ErrSubmitBlocked = errors.New("submit blocked by readiness")
+
+// Submit-related errors
 var ErrSubmitInProgress = errors.New("submit already in progress")
-var ErrInvalidSheinResolutionCacheKind = errors.New("invalid shein resolution cache kind")
-var ErrInvalidSheinCategorySearchQuery = errors.New("invalid shein category search query")
 
 type TaskStatus string
 
