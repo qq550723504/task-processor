@@ -1,8 +1,9 @@
-package listingkit
+package core
 
 import "strings"
 
-func appendUniqueImageURLs(existing []string, additions ...string) []string {
+// AppendUniqueImageURLs appends unique image URLs to a slice, avoiding duplicates.
+func AppendUniqueImageURLs(existing []string, additions ...string) []string {
 	result := append([]string(nil), existing...)
 	seen := map[string]struct{}{}
 	for _, imageURL := range result {

@@ -1,7 +1,9 @@
 package listingkit
 
 import (
-	"strings"
+	
+	"task-processor/internal/listingkit/core"
+"strings"
 
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -14,15 +16,15 @@ func applySheinSizeReferenceImages(pkg *sheinpub.Package, imageURLs []string) {
 		return
 	}
 	if pkg.Images != nil {
-		pkg.Images.Gallery = appendUniqueImageURLs(pkg.Images.Gallery, refs...)
+		pkg.Images.Gallery = core.AppendUniqueImageURLs(pkg.Images.Gallery, refs...)
 	}
 	if pkg.DraftPayload != nil {
 		if pkg.DraftPayload.ImageInfo != nil {
-			pkg.DraftPayload.ImageInfo.Gallery = appendUniqueImageURLs(pkg.DraftPayload.ImageInfo.Gallery, refs...)
+			pkg.DraftPayload.ImageInfo.Gallery = core.AppendUniqueImageURLs(pkg.DraftPayload.ImageInfo.Gallery, refs...)
 		}
 		for skcIndex := range pkg.DraftPayload.SKCList {
 			if pkg.DraftPayload.SKCList[skcIndex].ImageInfo != nil {
-				pkg.DraftPayload.SKCList[skcIndex].ImageInfo.Gallery = appendUniqueImageURLs(pkg.DraftPayload.SKCList[skcIndex].ImageInfo.Gallery, refs...)
+				pkg.DraftPayload.SKCList[skcIndex].ImageInfo.Gallery = core.AppendUniqueImageURLs(pkg.DraftPayload.SKCList[skcIndex].ImageInfo.Gallery, refs...)
 			}
 		}
 	}

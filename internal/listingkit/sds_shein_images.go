@@ -1,7 +1,9 @@
 package listingkit
 
 import (
-	"strings"
+	
+	"task-processor/internal/listingkit/core"
+"strings"
 
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -425,8 +427,8 @@ func mergeImageSet(existing *common.ImageSet, next *common.ImageSet) *common.Ima
 			SourceImages: append([]string(nil), next.SourceImages...),
 		}
 	}
-	existing.Gallery = appendUniqueImageURLs(existing.Gallery, next.MainImage)
-	existing.Gallery = appendUniqueImageURLs(existing.Gallery, next.Gallery...)
+	existing.Gallery = core.AppendUniqueImageURLs(existing.Gallery, next.MainImage)
+	existing.Gallery = core.AppendUniqueImageURLs(existing.Gallery, next.Gallery...)
 	return existing
 }
 

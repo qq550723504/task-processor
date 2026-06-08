@@ -1,7 +1,9 @@
 package listingkit
 
 import (
-	"strings"
+	
+	"task-processor/internal/listingkit/core"
+"strings"
 
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -40,7 +42,7 @@ func appendAIProductImagesToShein(pkg *sheinpub.Package, imageURLs []string, sou
 		return
 	}
 	pkg.Images.SourceImages = uniqueNonEmptyStrings(append(pkg.Images.SourceImages, sourceImages...))
-	pkg.Images.Gallery = appendUniqueImageURLs(pkg.Images.Gallery, imageURLs...)
+	pkg.Images.Gallery = core.AppendUniqueImageURLs(pkg.Images.Gallery, imageURLs...)
 	if pkg.DraftPayload != nil {
 		pkg.DraftPayload.ImageInfo = sheinpub.BuildImageDraft(pkg.Images)
 		for skcIndex := range pkg.DraftPayload.SKCList {
@@ -49,7 +51,7 @@ func appendAIProductImagesToShein(pkg *sheinpub.Package, imageURLs []string, sou
 				skcImages = pkg.Images
 			} else {
 				skcImages.SourceImages = uniqueNonEmptyStrings(append(skcImages.SourceImages, sourceImages...))
-				skcImages.Gallery = appendUniqueImageURLs(skcImages.Gallery, imageURLs...)
+				skcImages.Gallery = core.AppendUniqueImageURLs(skcImages.Gallery, imageURLs...)
 			}
 			pkg.DraftPayload.SKCList[skcIndex].ImageInfo = sheinpub.BuildImageDraft(skcImages)
 		}

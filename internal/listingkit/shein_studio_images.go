@@ -1,6 +1,9 @@
 package listingkit
 
-import sheinpub "task-processor/internal/publishing/shein"
+import (
+	"task-processor/internal/listingkit/core"
+	sheinpub "task-processor/internal/publishing/shein"
+)
 
 func applySheinStudioAIImagesToShein(pkg *sheinpub.Package, req *GenerateRequest, sdsSummary *SDSSyncSummary) {
 	if pkg == nil || req == nil || req.Options == nil || req.Options.SheinStudio == nil {
@@ -20,7 +23,7 @@ func applySheinStudioAIImagesToShein(pkg *sheinpub.Package, req *GenerateRequest
 		}
 		return
 	}
-	productImages = appendUniqueImageURLs(productImages, sizeReferenceImages...)
+	productImages = core.AppendUniqueImageURLs(productImages, sizeReferenceImages...)
 	if resolveSheinImageStrategy(req) == sheinImageStrategyHybrid {
 		appendAIProductImagesToShein(pkg, productImages, sourceImages)
 		applyVariantProductImagesToShein(pkg, variantImages, sourceImages)
