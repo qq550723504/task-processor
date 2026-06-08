@@ -3,6 +3,8 @@ package database
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -112,11 +114,29 @@ func NewDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 
 	maxConn := cfg.MaxConnections
 	if maxConn <= 0 {
-		maxConn = 10
+		// 从环境变量读取，默认10
+		if envMax := os.Getenv("DATABASE_MAX_CONNECTIONS"); envMax != "" {
+			if parsed, err := strconv.Atoi(envMax); err == nil && parsed > 0 {
+				maxConn = parsed
+			} else {
+				maxConn = 10
+			}
+		} else {
+			maxConn = 10
+		}
 	}
 	maxIdle := cfg.MaxIdleConnections
 	if maxIdle <= 0 {
-		maxIdle = 5
+		// 从环境变量读取，默认5
+		if envMaxIdle := os.Getenv("DATABASE_MAX_IDLE_CONNECTIONS"); envMaxIdle != "" {
+			if parsed, err := strconv.Atoi(envMaxIdle); err == nil && parsed > 0 {
+				maxIdle = parsed
+			} else {
+				maxIdle = 5
+			}
+		} else {
+			maxIdle = 5
+		}
 	}
 	lifetime := cfg.ConnectionMaxLifetime
 	if lifetime <= 0 {

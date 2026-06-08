@@ -44,6 +44,10 @@ spec:
               value: "8081"
             - name: TASK_PROCESSOR_RABBITMQ_NODE_METRICS_PORT
               value: "8082"
+            - name: DATABASE_MAX_CONNECTIONS
+              value: "3"
+            - name: DATABASE_MAX_IDLE_CONNECTIONS
+              value: "2"
           envFrom:
             - secretRef:
                 name: shein-listing-secret
