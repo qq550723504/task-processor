@@ -24,6 +24,24 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	}
 
 	buildReq := buildSheinPublishRequestForTask(task, task.Request)
+
+	// 检查是否需要重新进行类目解析(用于手动刷新且没有有效 category_id 的场景)
+	needReResolveCategory := false
+	if req.Shein.CategoryResolution != nil {
+		source := strings.TrimSpace(*req.Shein.CategoryResolution.Source)
+		categoryID := req.Shein.CategoryResolution.CategoryID
+		if source == "manual_refresh" && (categoryID == nil || *categoryID <= 0) {
+			needReResolveCategory = true
+		}
+	}
+
+	// 如果需要重新解析类目,先调用类目解析器
+	if needReResolveCategory && s.sheinCategoryResolver != nil {
+		task.Result.Shein.CategoryResolution = s.sheinCategoryResolver.Resolve(buildReq, task.Result.CanonicalProduct, task.Result.Shein)
+		sheinpub.ApplyCategoryResolution(task.Result.Shein, task.Result.Shein.CategoryResolution)
+	}
+
+	// 设置目标类目提示(优先使用解析后的 category_id)
 	if task.Result.Shein.CategoryID > 0 {
 		buildReq.TargetCategoryHint = strconv.Itoa(task.Result.Shein.CategoryID)
 	}

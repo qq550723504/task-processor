@@ -199,7 +199,7 @@ export function useSheinWorkspaceActions({
       pendingTitle: "正在刷新类目模板",
       pendingMessage: "正在重新拉取当前类目模板…",
       successTitle: "类目模板已触发刷新",
-      successMessage: "已触发类目模板刷新，稍后会用最新类目继续刷新属性映射。",
+      successMessage: "已触发类目模板刷新,稍后会用最新类目继续刷新属性映射。",
       affectedAreas: ["类目", "普通属性", "销售属性"],
     });
   };

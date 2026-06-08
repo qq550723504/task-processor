@@ -31,6 +31,7 @@ export function SheinCategoryReviewCard({
   onApplySuggestedCategory,
   onConfirmCurrentCategory,
   onApplyManualCategory,
+  onRefreshCategory,
 }: {
   applyErrorMessage?: string | null;
   statusMessage?: string | null;
@@ -41,6 +42,7 @@ export function SheinCategoryReviewCard({
   onApplySuggestedCategory?: (() => void) | null;
   onConfirmCurrentCategory?: (() => void) | null;
   onApplyManualCategory?: ((candidate: SheinManualCategoryCandidate) => Promise<void> | void) | null;
+  onRefreshCategory?: (() => void) | null;
 }) {
   const model = buildSheinCategoryReviewModel(editorContext);
   const [manualQuery, setManualQuery] = useState("");
@@ -131,6 +133,20 @@ export function SheinCategoryReviewCard({
                 : "当前 SHEIN 类目已确认，后续只需要继续处理普通属性或提交检查。"}
           </p>
         </div>
+
+        {/* AI重选分类按钮 */}
+        {onRefreshCategory && model.isReviewNeeded ? (
+          <div className="mt-3">
+            <Button
+              className="h-9 w-full sm:w-auto"
+              disabled={isApplying}
+              onClick={() => onRefreshCategory()}
+              variant="secondary"
+            >
+              {isApplying ? "AI重选中..." : "AI重选分类"}
+            </Button>
+          </div>
+        ) : null}
 
         <dl className="grid gap-3">
           <SuggestionRow

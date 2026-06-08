@@ -210,6 +210,7 @@ export function buildSheinAdvancedReviewDetailsProps({
       isApplying,
       onApplySuggestedCategory: sheinActions.handleApplySuggestedSheinCategory,
       onConfirmCurrentCategory: sheinActions.handleConfirmCurrentSheinCategory,
+      onRefreshCategory: sheinActions.handleRefreshSheinCategory,
       onApplyManualCategory: sheinActions.handleApplyManualSheinCategory,
     },
     attributeReviewProps: {

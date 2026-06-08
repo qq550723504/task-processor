@@ -80,7 +80,9 @@ export function buildRefreshCurrentSheinCategoryRevision(
 ): ApplyRevisionRequest | null {
   const current = sheinPreview?.editor_context?.category?.current;
 
-  if (!current?.category_id) {
+  // 即使没有 category_id,也允许触发重新解析(用于类目解析失败的场景)
+  // 如果连 current 对象都没有,才返回 null
+  if (!current) {
     return null;
   }
 
@@ -90,13 +92,14 @@ export function buildRefreshCurrentSheinCategoryRevision(
     reason: "Refresh SHEIN category",
     shein: {
       category_resolution: {
-        category_id: current.category_id,
+        // 如果有 category_id 就带上,没有就让后端重新解析
+        category_id: current.category_id || undefined,
         category_id_list: current.category_id_list,
         product_type_id: current.product_type_id,
         top_category_id: current.top_category_id,
         matched_path: current.category_path,
         source: "manual_refresh",
-        status: "resolved",
+        status: current.category_id ? "resolved" : "pending",
       },
       sale_attribute_resolution: {
         recommend_category_review: false,

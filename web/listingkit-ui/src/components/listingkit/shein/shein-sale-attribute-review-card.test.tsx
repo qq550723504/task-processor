@@ -343,7 +343,7 @@ describe("SheinSaleAttributeReviewCard", () => {
       screen.getAllByRole("button", { name: "重新生成属性" }),
     ).toHaveLength(1);
     expect(
-      screen.getByRole("button", { name: "展开手工修正" }),
+      screen.getByText("手工修正规格"),
     ).toBeInTheDocument();
   });
 
@@ -698,7 +698,7 @@ describe("SheinSaleAttributeReviewCard", () => {
       screen.getByText("第 2 步：其他规格字段（必填） · 来源 Size"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "展开手工修正" }),
+      screen.getByText("手工修正规格"),
     ).toBeInTheDocument();
   });
 
