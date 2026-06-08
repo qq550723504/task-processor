@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
@@ -85,14 +87,33 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (ama
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("database config is nil")
 	}
+	
+	start := time.Now()
+	logger.Infof("[amazonlisting] starting database connection...")
+	
 	db, err := database.NewSharedDatabaseFromConfig(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
 	}
-	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
+	logger.Infof("database connected: %s:%d/%s (took %v)", cfg.Host, cfg.Port, cfg.Database, time.Since(start))
 
-	if err := db.AutoMigrate(&amazonlisting.Task{}); err != nil {
-		return nil, nil, fmt.Errorf("amazonlisting auto-migrate failed: %w", err)
+	start = time.Now()
+	logger.Infof("[amazonlisting] starting AutoMigrate for Task table...")
+	
+	// 可以通过环境变量禁用 AutoMigrate 以加快启动速度
+	// 设置 TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE=false 来跳过
+	autoMigrate := true
+	if envVal := os.Getenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE"); envVal != "" {
+		autoMigrate = envVal != "false" && envVal != "0"
+	}
+	
+	if autoMigrate {
+		if err := db.AutoMigrate(&amazonlisting.Task{}); err != nil {
+			return nil, nil, fmt.Errorf("amazonlisting auto-migrate failed: %w", err)
+		}
+		logger.Infof("[amazonlisting] AutoMigrate completed (took %v)", time.Since(start))
+	} else {
+		logger.Infof("[amazonlisting] AutoMigrate skipped (disabled by environment variable)")
 	}
 
 	repo := amazonlistingstore.NewTaskRepository(db)

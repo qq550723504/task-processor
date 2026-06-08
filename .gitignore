@@ -41,6 +41,9 @@ Thumbs.db
 .env.local
 .env.*.local
 
+# Token cache files (security)
+scripts/.token-cache.txt
+
 # Build output
 /bin/
 /build/
