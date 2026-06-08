@@ -1,12 +1,12 @@
-package listingkit
+package submission
 
 import (
 	"sync"
 	"time"
 )
 
-// submitLockManager 管理提交锁,防止同一资源并发提交
-type submitLockManager struct {
+// SubmitLockManager 管理提交锁,防止同一资源并发提交
+type SubmitLockManager struct {
 	locks sync.Map // key: string, value: *entry
 }
 
@@ -18,12 +18,14 @@ type entry struct {
 // cleanupThreshold 锁多久未使用后可以被清理
 const cleanupThreshold = 10 * time.Minute
 
-func newSubmitLockManager() *submitLockManager {
-	return &submitLockManager{}
+// NewSubmitLockManager 创建新的提交锁管理器
+func NewSubmitLockManager() *SubmitLockManager {
+	return &SubmitLockManager{}
 }
 
 // lock 获取指定 key 的锁,返回解锁函数
-func (m *submitLockManager) lock(key string) func() {
+// Lock 获取锁,返回解锁函数
+func (m *SubmitLockManager) Lock(key string) func() {
 	if m == nil {
 		return func() {}
 	}
@@ -47,7 +49,7 @@ func (m *submitLockManager) lock(key string) func() {
 }
 
 // maybeCleanup 尝试清理长时间未使用的锁
-func (m *submitLockManager) maybeCleanup(key string, e *entry) {
+func (m *SubmitLockManager) maybeCleanup(key string, e *entry) {
 	// 如果超过阈值未使用,尝试删除
 	if time.Since(e.lastUsed) > cleanupThreshold {
 		// 双重检查: 再次确认 lastUsed
@@ -58,7 +60,8 @@ func (m *submitLockManager) maybeCleanup(key string, e *entry) {
 }
 
 // Cleanup 主动清理所有过期的锁(可选,可以定期调用)
-func (m *submitLockManager) Cleanup() {
+// Cleanup 主动清理未使用的锁
+func (m *SubmitLockManager) Cleanup() {
 	now := time.Now()
 	m.locks.Range(func(key, value interface{}) bool {
 		e := value.(*entry)

@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
+	"task-processor/internal/listingkit/submission"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
@@ -78,7 +79,7 @@ type service struct {
 	storeProfileRepo               StoreProfileRepository
 	routingSettingsRepo            StoreRoutingSettingsRepository
 	requestDefaults                generateRequestDefaults
-	sheinSubmitLocks               *submitLockManager
+	sheinSubmitLocks               *submission.SubmitLockManager
 	sheinSettingsMu                sync.RWMutex
 	sheinSettings                  SheinSettings
 }
@@ -205,7 +206,7 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 		requestDefaults: generateRequestDefaults{
 			sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
 		},
-		sheinSubmitLocks: newSubmitLockManager(),
+		sheinSubmitLocks: submission.NewSubmitLockManager(),
 		sheinSettings:    defaultSettings,
 	}
 }

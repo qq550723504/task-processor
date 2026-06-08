@@ -4,7 +4,7 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 	return taskSubmissionServiceConfig{
 		repo: s.repo,
 		lockSubmit: func(key string) func() {
-			return s.sheinSubmitLocks.lock(key)
+			return s.sheinSubmitLocks.Lock(key)
 		},
 		resolveDefaultSheinSubmitAction: s.resolveDefaultSheinSubmitAction,
 		acquireSheinSubmitTask:          s.acquireSheinSubmitTask,

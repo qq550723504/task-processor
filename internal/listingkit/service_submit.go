@@ -97,7 +97,7 @@ func (s *service) taskSubmissionOrDefault() *taskSubmissionService {
 		return s.taskSubmission
 	}
 	if s.sheinSubmitLocks == nil {
-		s.sheinSubmitLocks = newSubmitLockManager()
+		s.sheinSubmitLocks = listingsubmission.NewSubmitLockManager()
 	}
 	s.taskSubmission = newTaskSubmissionService(buildTaskSubmissionServiceConfig(s))
 	return s.taskSubmission
