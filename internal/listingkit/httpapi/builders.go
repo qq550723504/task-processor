@@ -71,7 +71,15 @@ func repositorySchemaKey(cfg *config.DatabaseConfig) string {
 	return fmt.Sprintf("%s:%d:%s:%s", cfg.Host, cfg.Port, cfg.User, cfg.Database)
 }
 
+// listingKitRepositorySchemaBootstrapper is the default bootstrapper for schema migrations.
+// It can be overridden in tests for isolation.
 var listingKitRepositorySchemaBootstrapper = newRepositorySchemaBootstrapper()
+
+// SetRepositorySchemaBootstrapper allows tests to override the global bootstrapper.
+// This should only be used in test code.
+func SetRepositorySchemaBootstrapper(b *repositorySchemaBootstrapper) {
+	listingKitRepositorySchemaBootstrapper = b
+}
 
 func ensureListingKitRepositorySchema(cfg *config.DatabaseConfig, db *gorm.DB) error {
 	if !shouldAutoMigrateListingKitRuntime() {
