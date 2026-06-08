@@ -17,12 +17,13 @@ Older local plans are still useful for historical context and detailed task brea
 Use these files before starting broad package moves:
 
 - [../architecture/project-boundaries.md](../architecture/project-boundaries.md) - allowed ownership, forbidden import directions, placement rules, and review checklist.
+- [dependency-baseline.md](./dependency-baseline.md) - worksheet for capturing the current dependency and package-shape baseline before broad moves.
 - [../../scripts/analyze-project-deps.ps1](../../scripts/analyze-project-deps.ps1) - advisory dependency analysis script for package file counts, largest files, ListingKit import pressure, and likely boundary violations.
 
 Recommended first command from the repository root:
 
 ```powershell
-./scripts/analyze-project-deps.ps1
+./scripts/analyze-project-deps.ps1 | Tee-Object -FilePath docs/refactoring/dependency-baseline-output.txt
 ```
 
 To make the script fail when it detects advisory boundary violations:
@@ -31,7 +32,7 @@ To make the script fail when it detects advisory boundary violations:
 ./scripts/analyze-project-deps.ps1 -FailOnViolation
 ```
 
-The script is advisory at first. Known legacy exceptions should be documented before promoting it to CI enforcement.
+The script is advisory at first. Known legacy exceptions should be documented in `dependency-baseline.md` before promoting it to CI enforcement.
 
 ## Current active direction
 
@@ -48,6 +49,7 @@ The current active direction is:
 ## Current refactoring documents
 
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
+- [dependency-baseline.md](./dependency-baseline.md) - baseline worksheet for dependency scans and legacy exception tracking.
 - [listingkit-refactoring-plan.md](./listingkit-refactoring-plan.md) - detailed ListingKit root-directory reduction plan.
 - [studio-migration-plan.md](./studio-migration-plan.md) - Studio migration planning.
 - [architecture-improvement-plan.md](./architecture-improvement-plan.md) - earlier architecture quality improvement notes.
