@@ -40,5 +40,5 @@ if ($Format -ne "table") {
 }
 
 # 执行 Go 程序
-$scriptPath = Join-Path $PSScriptRoot "..\cmd\db-query\main.go"
+$scriptPath = Join-Path $PSScriptRoot "..\tools\db-query\main.go"
 go run $scriptPath @cmdArgs
