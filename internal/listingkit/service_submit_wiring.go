@@ -1,10 +1,44 @@
 package listingkit
 
+import "context"
+
+func buildTaskRequeueServiceConfig(s *service) taskRequeueServiceConfig {
+	return taskRequeueServiceConfig{
+		repo: s.repo,
+		taskSubmitter: func() TaskSubmitter {
+			return s.taskSubmitter
+		},
+	}
+}
+
+func buildTaskRecoveryServiceConfig(s *service) taskRecoveryServiceConfig {
+	return taskRecoveryServiceConfig{
+		repo: s.repo,
+		taskSubmitter: func() TaskSubmitter {
+			return s.taskSubmitter
+		},
+	}
+}
+
+func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecoveryServiceConfig {
+	return taskSubmissionRecoveryServiceConfig{
+		repo:                       s.repo,
+		buildTaskPreview:           s.buildTaskPreview,
+		buildSheinSubmitProductAPI: s.buildSheinSubmitProductAPI,
+		buildSheinSubmitOtherAPI:   s.buildSheinSubmitOtherAPI,
+		rememberSheinSubmitted:     s.rememberSheinSubmittedResolution,
+		persistSuccessfulSubmission: func(ctx context.Context, taskID string, task *Task, action string) error {
+			return s.persistSuccessfulSheinSubmission(ctx, taskID, task, action)
+		},
+		resolveRemoteStatusCallback: s.resolveSheinSubmitRemoteStatus,
+	}
+}
+
 func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 	return taskSubmissionServiceConfig{
 		repo: s.repo,
 		lockSubmit: func(key string) func() {
-			return s.sheinSubmitLocks.Lock(key)
+			return s.submission.sheinSubmitLocks.Lock(key)
 		},
 		resolveDefaultSheinSubmitAction: s.resolveDefaultSheinSubmitAction,
 		acquireSheinSubmitTask:          s.acquireSheinSubmitTask,

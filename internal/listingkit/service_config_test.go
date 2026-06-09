@@ -79,7 +79,7 @@ func TestNewServiceWithConfigInitializesSubmitLockManager(t *testing.T) {
 	if svc == nil {
 		t.Fatal("expected service instance")
 	}
-	if svc.sheinSubmitLocks == nil {
+	if svc.submission.sheinSubmitLocks == nil {
 		t.Fatal("expected shein submit locks to be initialized")
 	}
 }

@@ -20,7 +20,7 @@ Rules:
 Before continuing code-level refactoring, run:
 
 ```powershell
-./scripts/analyze-project-deps.ps1 | Tee-Object -FilePath docs/refactoring/dependency-baseline-output.txt
+./scripts/analyze-project-deps.ps1 6>&1 | Tee-Object -FilePath docs/refactoring/dependency-baseline-output.txt
 go test ./internal/listingkit/... -count=1
 go test ./internal/app/httpapi/... -count=1
 go test ./... -count=1

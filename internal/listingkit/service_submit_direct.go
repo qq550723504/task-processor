@@ -13,11 +13,11 @@ func (s *service) submitSheinTaskDirect(ctx context.Context, taskID string, task
 }
 
 func (s *service) taskDirectSubmissionOrDefault() *taskDirectSubmissionService {
-	if s.taskDirectSubmission != nil {
-		return s.taskDirectSubmission
+	if s.submission.taskDirectSubmission != nil {
+		return s.submission.taskDirectSubmission
 	}
-	s.taskDirectSubmission = newTaskDirectSubmissionService(buildTaskDirectSubmissionServiceConfig(s))
-	return s.taskDirectSubmission
+	s.submission.taskDirectSubmission = newTaskDirectSubmissionService(buildTaskDirectSubmissionServiceConfig(s))
+	return s.submission.taskDirectSubmission
 }
 
 func (s *service) prepareSheinDirectSubmitProduct(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions) (*sheinproduct.Product, error) {

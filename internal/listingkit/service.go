@@ -33,12 +33,7 @@ type service struct {
 	taskStudioMedia                *taskStudioMediaService
 	settingsAdmin                  *settingsAdminService
 	sheinAdmin                     *sheinAdminService
-	taskSubmission                 *taskSubmissionService
-	taskSubmissionRecovery         *taskSubmissionRecoveryService
-	taskSubmissionExecution        *taskSubmissionExecutionService
-	taskSubmissionState            *taskSubmissionStateService
-	taskDirectSubmission           *taskDirectSubmissionService
-	taskTemporalSubmissionAdapter  *taskTemporalSubmissionAdapter
+	submission                     submissionCollaborators
 	studioSessionRepo              StudioSessionRepository
 	studioBatchRepo                StudioBatchRepository
 	studioBatchRunRepo             StudioBatchRunRepository
@@ -79,7 +74,6 @@ type service struct {
 	storeProfileRepo               StoreProfileRepository
 	routingSettingsRepo            StoreRoutingSettingsRepository
 	requestDefaults                generateRequestDefaults
-	sheinSubmitLocks               *submission.SubmitLockManager
 	sheinSettingsMu                sync.RWMutex
 	sheinSettings                  SheinSettings
 }
@@ -206,8 +200,10 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 		requestDefaults: generateRequestDefaults{
 			sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
 		},
-		sheinSubmitLocks: submission.NewSubmitLockManager(),
-		sheinSettings:    defaultSettings,
+		submission: submissionCollaborators{
+			sheinSubmitLocks: submission.NewSubmitLockManager(),
+		},
+		sheinSettings: defaultSettings,
 	}
 }
 

@@ -51,11 +51,11 @@ func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*Li
 }
 
 func (s *service) taskTemporalSubmissionAdapterOrDefault() *taskTemporalSubmissionAdapter {
-	if s.taskTemporalSubmissionAdapter != nil {
-		return s.taskTemporalSubmissionAdapter
+	if s.submission.taskTemporalSubmissionAdapter != nil {
+		return s.submission.taskTemporalSubmissionAdapter
 	}
-	s.taskTemporalSubmissionAdapter = newTaskTemporalSubmissionAdapter(buildTaskTemporalSubmissionAdapterConfig(s))
-	return s.taskTemporalSubmissionAdapter
+	s.submission.taskTemporalSubmissionAdapter = newTaskTemporalSubmissionAdapter(buildTaskTemporalSubmissionAdapterConfig(s))
+	return s.submission.taskTemporalSubmissionAdapter
 }
 
 func (s *service) loadSheinPublishTask(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {

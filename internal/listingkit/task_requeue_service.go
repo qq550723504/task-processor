@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingkit/submission"
 )
 
 const taskRequeueMaxWait = 5 * time.Second
@@ -107,27 +107,7 @@ func submitTaskWithRetry(submitter TaskSubmitter, taskID string, maxWait time.Du
 	if submitter == nil {
 		return ErrTaskRequeueUnavailable
 	}
-	deadline := time.Now().Add(maxWait)
-	delay := listingKitAsyncEnqueueRetryDelay
-	for {
-		err := submitter.Submit(taskID)
-		if err == nil {
-			return nil
-		}
-		if !errors.Is(err, worker.ErrQueueFull) {
-			return err
-		}
-		if time.Now().After(deadline) {
-			return err
-		}
-		time.Sleep(delay)
-		if delay < listingKitAsyncEnqueueRetryMaxDelay {
-			delay *= 2
-			if delay > listingKitAsyncEnqueueRetryMaxDelay {
-				delay = listingKitAsyncEnqueueRetryMaxDelay
-			}
-		}
-	}
+	return submission.RetryEnqueueSubmit(taskID, maxWait, submitter.Submit)
 }
 
 func (s *taskRequeueService) currentSubmitter() TaskSubmitter {
@@ -145,10 +125,9 @@ func (s *service) taskRequeueOrDefault() *taskRequeueService {
 	if s == nil {
 		return nil
 	}
-	return newTaskRequeueService(taskRequeueServiceConfig{
-		repo: s.repo,
-		taskSubmitter: func() TaskSubmitter {
-			return s.taskSubmitter
-		},
-	})
+	if s.submission.taskRequeue != nil {
+		return s.submission.taskRequeue
+	}
+	s.submission.taskRequeue = newTaskRequeueService(buildTaskRequeueServiceConfig(s))
+	return s.submission.taskRequeue
 }

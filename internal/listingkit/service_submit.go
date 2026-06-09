@@ -93,33 +93,33 @@ func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool 
 }
 
 func (s *service) taskSubmissionOrDefault() *taskSubmissionService {
-	if s.taskSubmission != nil {
-		return s.taskSubmission
+	if s.submission.taskSubmission != nil {
+		return s.submission.taskSubmission
 	}
-	if s.sheinSubmitLocks == nil {
-		s.sheinSubmitLocks = submission.NewSubmitLockManager()
+	if s.submission.sheinSubmitLocks == nil {
+		s.submission.sheinSubmitLocks = submission.NewSubmitLockManager()
 	}
-	s.taskSubmission = newTaskSubmissionService(buildTaskSubmissionServiceConfig(s))
-	return s.taskSubmission
+	s.submission.taskSubmission = newTaskSubmissionService(buildTaskSubmissionServiceConfig(s))
+	return s.submission.taskSubmission
 }
 
 func (s *service) taskSubmissionExecutionOrDefault() *taskSubmissionExecutionService {
-	if s.taskSubmissionExecution != nil {
-		return s.taskSubmissionExecution
+	if s.submission.taskSubmissionExecution != nil {
+		return s.submission.taskSubmissionExecution
 	}
-	s.taskSubmissionExecution = newTaskSubmissionExecutionService(buildTaskSubmissionExecutionServiceConfig(s))
-	return s.taskSubmissionExecution
+	s.submission.taskSubmissionExecution = newTaskSubmissionExecutionService(buildTaskSubmissionExecutionServiceConfig(s))
+	return s.submission.taskSubmissionExecution
 }
 
 func (s *service) taskSubmissionStateOrDefault() *taskSubmissionStateService {
-	if s.taskSubmissionState != nil {
-		return s.taskSubmissionState
+	if s.submission.taskSubmissionState != nil {
+		return s.submission.taskSubmissionState
 	}
-	s.taskSubmissionState = newTaskSubmissionStateService(taskSubmissionStateServiceConfig{
+	s.submission.taskSubmissionState = newTaskSubmissionStateService(taskSubmissionStateServiceConfig{
 		repo:                   s.repo,
 		rememberSheinSubmitted: s.rememberSheinSubmittedResolution,
 	})
-	return s.taskSubmissionState
+	return s.submission.taskSubmissionState
 }
 
 func (s *service) persistSuccessfulSheinSubmission(ctx context.Context, taskID string, task *Task, action string) error {

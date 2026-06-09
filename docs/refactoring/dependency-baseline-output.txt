@@ -1,0 +1,108 @@
+=== Task Processor Dependency Analysis ===
+Repository: D:\code\task-processor
+
+Go files under internal/ excluding tests: 1968
+Root internal/listingkit Go files excluding tests: 304
+
+=== Package File Counts ===
+internal/listingkit                                    304
+internal/publishing/shein                              79
+internal/listingadmin                                  67
+internal/productimage                                  59
+internal/listingkit/api                                48
+internal/core/config                                   42
+internal/workspace/shein                               36
+internal/productenrich                                 33
+internal/temu/product                                  31
+internal/infra/clients/management                      28
+internal/crawler/amazon/extractor                      27
+internal/amazonlisting                                 24
+internal/temu/sku                                      24
+internal/temu/property                                 24
+internal/temu/sync                                     24
+internal/app/consumer                                  23
+internal/temu/image                                    22
+internal/crawler/amazon/browser                        22
+internal/shein/product/attribute/sale                  22
+internal/app/httpapi                                   21
+internal/crawler/amazon                                20
+internal/listingkit/httpapi                            20
+internal/app/task                                      18
+internal/crawler/alibaba1688                           17
+internal/infra/clients/management/api                  16
+internal/amazon/api                                    16
+internal/amazon/pipeline                               16
+internal/app/runner                                    16
+internal/shein/api/product                             15
+internal/crawler/alibaba1688/extractor                 15
+
+=== Largest Go Files ===
+internal/sheinlogin/automation.go                                               2048
+internal/infra/clients/management/local_data_provider.go                        1138
+internal/listingkit/studio_batch_repository.go                                  1031
+internal/listingkit/httpapi/builders.go                                         949
+internal/listingkit/task_studio_batch_service.go                                946
+internal/sdslogin/automation.go                                                 856
+internal/listingkit/submit_freshness_shein.go                                   826
+internal/sheinlogin/service.go                                                  778
+internal/crawler/amazon/browser/zipcode_input_handler.go                        730
+internal/listingkit/studio_batch_generation.go                                  677
+internal/listingkit/store/task_repo.go                                          664
+internal/listingsubscription/service.go                                         660
+internal/core/config/config.go                                                  642
+internal/listingkit/shein_submit_readiness.go                                   628
+internal/app/consumer/rabbitmq_service.go                                       628
+internal/sds/design/service.go                                                  610
+internal/listingkit/shein_submit_sku_normalization.go                           574
+internal/app/consumer/auto_shard_coordinator.go                                 568
+internal/sds/client/auth_bootstrap.go                                           558
+internal/workspace/shein/repair.go                                              557
+internal/listingkit/shein_submit_payload.go                                     548
+internal/listingkit/store/shein_sync_repo.go                                    537
+internal/sds/design/rendered_images.go                                          530
+internal/listingsubscription/gorm_repository.go                                 522
+internal/listingkit/service_revision_manual_sale_attributes.go                  517
+internal/listingkit/generation_conditional_state.go                             513
+internal/listingkit/httpapi/bootstrap.go                                        510
+internal/workspace/shein/inspection.go                                          506
+internal/listingkit/generation_review_session_sections.go                       505
+internal/app/consumer/task_handler.go                                           500
+
+=== Boundary Violation Scan ===
+Found 5 potential boundary violation(s):
+- internal/productimage/handler.go imports github.com/gin-gonic/gin
+  Reason: domain/product/marketplace packages must not depend on Gin
+- internal/productimage/api/handler.go imports github.com/gin-gonic/gin
+  Reason: domain/product/marketplace packages must not depend on Gin
+- internal/publishing/shein/generation_topic_runtime.go imports task-processor/internal/listingkit/tenantctx
+  Reason: publishing packages must not depend on listingkit facade
+- internal/shein/pipeline/task.go imports task-processor/internal/listingkit
+  Reason: marketplace packages must not depend on listingkit facade
+- internal/shein/submitprep/sensitive_words.go imports task-processor/internal/listingkit/tenantctx
+  Reason: marketplace packages must not depend on listingkit facade
+
+=== ListingKit Import Pressure ===
+Packages importing internal/listingkit*: 19
+- internal/app/httpapi
+- internal/app/runtime
+- internal/listingkit/api
+- internal/listingkit/core
+- internal/listingkit/httpapi
+- internal/listingkit/reviewstore
+- internal/listingkit/service
+- internal/listingkit/service/studio
+- internal/listingkit/sheinsync
+- internal/listingkit/store
+- internal/listingkit/studiostore
+- internal/listingkit/submission
+- internal/listingkit/temporal
+- internal/prompt
+- internal/promptmgmt
+- internal/promptmgmt/api
+- internal/publishing/shein
+- internal/shein/pipeline
+- internal/shein/submitprep
+
+=== Suggested Next Step ===
+Use this output to create docs/refactoring/dependency-baseline.md before broad package moves.
+Known legacy violations should be documented before this script is promoted to CI enforcement.

@@ -29,11 +29,13 @@ func (s *service) initializeSubmitCollaborators() {
 	if s == nil {
 		return
 	}
-	s.taskSubmissionRecovery = s.taskSubmissionRecoveryOrDefault()
-	s.taskSubmission = s.taskSubmissionOrDefault()
-	s.taskSubmissionExecution = s.taskSubmissionExecutionOrDefault()
-	s.taskSubmissionState = s.taskSubmissionStateOrDefault()
-	s.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
+	s.submission.taskRecovery = s.taskRecoveryOrDefault()
+	s.submission.taskRequeue = s.taskRequeueOrDefault()
+	s.submission.taskSubmissionRecovery = s.taskSubmissionRecoveryOrDefault()
+	s.submission.taskSubmission = s.taskSubmissionOrDefault()
+	s.submission.taskSubmissionExecution = s.taskSubmissionExecutionOrDefault()
+	s.submission.taskSubmissionState = s.taskSubmissionStateOrDefault()
+	s.submission.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
 }
 
 func (s *service) initializeAdminCollaborators() {
@@ -48,5 +50,5 @@ func (s *service) initializeTemporalCollaborators() {
 	if s == nil {
 		return
 	}
-	s.taskTemporalSubmissionAdapter = s.taskTemporalSubmissionAdapterOrDefault()
+	s.submission.taskTemporalSubmissionAdapter = s.taskTemporalSubmissionAdapterOrDefault()
 }

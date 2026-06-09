@@ -39,22 +39,28 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.sheinAdmin == nil {
 		t.Fatal("expected sheinAdmin to be initialized")
 	}
-	if impl.taskSubmission == nil {
+	if impl.submission.taskSubmission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
 	}
-	if impl.taskSubmissionRecovery == nil {
+	if impl.submission.taskRecovery == nil {
+		t.Fatal("expected taskRecovery to be initialized")
+	}
+	if impl.submission.taskRequeue == nil {
+		t.Fatal("expected taskRequeue to be initialized")
+	}
+	if impl.submission.taskSubmissionRecovery == nil {
 		t.Fatal("expected taskSubmissionRecovery to be initialized")
 	}
-	if impl.taskSubmissionExecution == nil {
+	if impl.submission.taskSubmissionExecution == nil {
 		t.Fatal("expected taskSubmissionExecution to be initialized")
 	}
-	if impl.taskSubmissionState == nil {
+	if impl.submission.taskSubmissionState == nil {
 		t.Fatal("expected taskSubmissionState to be initialized")
 	}
-	if impl.taskDirectSubmission == nil {
+	if impl.submission.taskDirectSubmission == nil {
 		t.Fatal("expected taskDirectSubmission to be initialized")
 	}
-	if impl.taskTemporalSubmissionAdapter == nil {
+	if impl.submission.taskTemporalSubmissionAdapter == nil {
 		t.Fatal("expected taskTemporalSubmissionAdapter to be initialized")
 	}
 }
@@ -90,24 +96,30 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	}
 
 	svc.initializeSubmitCollaborators()
-	if svc.taskSubmission == nil {
+	if svc.submission.taskRecovery == nil {
+		t.Fatal("expected taskRecovery to be initialized")
+	}
+	if svc.submission.taskRequeue == nil {
+		t.Fatal("expected taskRequeue to be initialized")
+	}
+	if svc.submission.taskSubmission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
 	}
-	if svc.taskSubmissionRecovery == nil {
+	if svc.submission.taskSubmissionRecovery == nil {
 		t.Fatal("expected taskSubmissionRecovery to be initialized")
 	}
-	if svc.taskSubmissionExecution == nil {
+	if svc.submission.taskSubmissionExecution == nil {
 		t.Fatal("expected taskSubmissionExecution to be initialized")
 	}
-	if svc.taskSubmissionState == nil {
+	if svc.submission.taskSubmissionState == nil {
 		t.Fatal("expected taskSubmissionState to be initialized")
 	}
-	if svc.taskDirectSubmission == nil {
+	if svc.submission.taskDirectSubmission == nil {
 		t.Fatal("expected taskDirectSubmission to be initialized")
 	}
 
 	svc.initializeTemporalCollaborators()
-	if svc.taskTemporalSubmissionAdapter == nil {
+	if svc.submission.taskTemporalSubmissionAdapter == nil {
 		t.Fatal("expected taskTemporalSubmissionAdapter to be initialized")
 	}
 }
@@ -196,6 +208,36 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		builderCalls []string
 		inlineConfig []string
 	}{
+		{
+			name: "task recovery service",
+			file: "task_recovery_service.go",
+			builderCalls: []string{
+				"buildTaskRecoveryServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newTaskRecoveryService(taskRecoveryServiceConfig{",
+			},
+		},
+		{
+			name: "task requeue service",
+			file: "task_requeue_service.go",
+			builderCalls: []string{
+				"buildTaskRequeueServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newTaskRequeueService(taskRequeueServiceConfig{",
+			},
+		},
+		{
+			name: "submission recovery service",
+			file: "service_submit_recovery.go",
+			builderCalls: []string{
+				"buildTaskSubmissionRecoveryServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{",
+			},
+		},
 		{
 			name: "submit services",
 			file: "service_submit.go",

@@ -19,29 +19,55 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 	if task == nil {
 		return nil, ErrTaskNotFound
 	}
-	selectedPlatform = normalizePreviewPlatform(selectedPlatform)
-	if selectedPlatform != "" && len(normalizePlatforms([]string{selectedPlatform})) == 0 {
-		return nil, ErrUnsupportedPreviewPlatform
+	selectedPlatform, err := validateSelectedPreviewPlatform(selectedPlatform)
+	if err != nil {
+		return nil, err
 	}
 
 	preview := buildBaseListingKitPreview(task, selectedPlatform)
-	if task.Result == nil {
-		preview.Overview = &ListingKitPreviewHeader{
-			StatusMessage: previewStatusMessage(task.Status),
-		}
+	if shouldBuildPendingPreview(task) {
+		preview.Overview = buildPendingPreviewHeader(task)
 		return preview, nil
 	}
-	ensureTaskPodExecution(task)
 
+	ensureTaskPodExecution(task)
 	attachListingKitPreviewResult(preview, task.Result, selectedPlatform)
 
-	for _, builder := range previewPlatformBuilders() {
-		if err := builder.build(task, preview, selectedPlatform); err != nil {
-			return nil, err
-		}
+	if err := buildPreviewPlatformSections(task, preview, selectedPlatform); err != nil {
+		return nil, err
 	}
 
 	return preview, nil
+}
+
+func validateSelectedPreviewPlatform(selectedPlatform string) (string, error) {
+	selectedPlatform = normalizePreviewPlatform(selectedPlatform)
+	if selectedPlatform != "" && len(normalizePlatforms([]string{selectedPlatform})) == 0 {
+		return "", ErrUnsupportedPreviewPlatform
+	}
+	return selectedPlatform, nil
+}
+
+func shouldBuildPendingPreview(task *Task) bool {
+	return task == nil || task.Result == nil
+}
+
+func buildPendingPreviewHeader(task *Task) *ListingKitPreviewHeader {
+	if task == nil {
+		return nil
+	}
+	return &ListingKitPreviewHeader{
+		StatusMessage: previewStatusMessage(task.Status),
+	}
+}
+
+func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {
+	for _, builder := range previewPlatformBuilders() {
+		if err := builder.build(task, preview, selectedPlatform); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func previewStatusFromReviewNotes(reviewNotes []string) string {

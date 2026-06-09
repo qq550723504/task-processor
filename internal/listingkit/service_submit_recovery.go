@@ -142,21 +142,11 @@ func logSheinBatchCheckOnWayResponse(expectedSPUName string, resp *sheinother.Ba
 }
 
 func (s *service) taskSubmissionRecoveryOrDefault() *taskSubmissionRecoveryService {
-	if s.taskSubmissionRecovery != nil {
-		return s.taskSubmissionRecovery
+	if s.submission.taskSubmissionRecovery != nil {
+		return s.submission.taskSubmissionRecovery
 	}
-	s.taskSubmissionRecovery = newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
-		repo:                       s.repo,
-		buildTaskPreview:           s.buildTaskPreview,
-		buildSheinSubmitProductAPI: s.buildSheinSubmitProductAPI,
-		buildSheinSubmitOtherAPI:   s.buildSheinSubmitOtherAPI,
-		rememberSheinSubmitted:     s.rememberSheinSubmittedResolution,
-		persistSuccessfulSubmission: func(ctx context.Context, taskID string, task *Task, action string) error {
-			return s.persistSuccessfulSheinSubmission(ctx, taskID, task, action)
-		},
-		resolveRemoteStatusCallback: s.resolveSheinSubmitRemoteStatus,
-	})
-	return s.taskSubmissionRecovery
+	s.submission.taskSubmissionRecovery = newTaskSubmissionRecoveryService(buildTaskSubmissionRecoveryServiceConfig(s))
+	return s.submission.taskSubmissionRecovery
 }
 
 func classifySheinRemoteRecord(action string, item *sheinproduct.RecordItem, publishAccepted bool) (string, string, error) {

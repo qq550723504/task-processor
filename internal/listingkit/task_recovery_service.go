@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"task-processor/internal/listingkit/submission"
 )
 
 type taskRecoveryServiceConfig struct {
@@ -211,17 +213,7 @@ func (s *taskRecoveryService) buildReblockedTask(previous *RetryableBlock, class
 }
 
 func boundedRecoveryRetryDelay(attempt int) time.Duration {
-	if attempt <= 1 {
-		return listingKitAsyncEnqueueRetryDelay
-	}
-	delay := listingKitAsyncEnqueueRetryDelay
-	for i := 1; i < attempt; i++ {
-		delay *= 2
-		if delay >= listingKitAsyncEnqueueRetryMaxDelay {
-			return listingKitAsyncEnqueueRetryMaxDelay
-		}
-	}
-	return delay
+	return submission.BoundedEnqueueRetryDelay(attempt)
 }
 
 func cloneTimePointer(value time.Time) *time.Time {
@@ -308,10 +300,9 @@ func (s *service) taskRecoveryOrDefault() *taskRecoveryService {
 	if s == nil {
 		return nil
 	}
-	return newTaskRecoveryService(taskRecoveryServiceConfig{
-		repo: s.repo,
-		taskSubmitter: func() TaskSubmitter {
-			return s.taskSubmitter
-		},
-	})
+	if s.submission.taskRecovery != nil {
+		return s.submission.taskRecovery
+	}
+	s.submission.taskRecovery = newTaskRecoveryService(buildTaskRecoveryServiceConfig(s))
+	return s.submission.taskRecovery
 }

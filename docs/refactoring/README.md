@@ -24,7 +24,7 @@ Use these files before starting broad package moves:
 Recommended first command from the repository root:
 
 ```powershell
-./scripts/analyze-project-deps.ps1 | Tee-Object -FilePath docs/refactoring/dependency-baseline-output.txt
+./scripts/analyze-project-deps.ps1 6>&1 | Tee-Object -FilePath docs/refactoring/dependency-baseline-output.txt
 ```
 
 To make the script fail when it detects advisory boundary violations:

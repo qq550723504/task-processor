@@ -39,13 +39,17 @@ function Get-ImportsFromFile($File) {
     return $imports | Sort-Object -Unique
 }
 
-function Get-PackageName($File) {
-    $relative = $File.FullName.Substring($repoRoot.Path.Length).TrimStart('\', '/')
-    $dir = Split-Path $relative -Parent
-    if ([string]::IsNullOrWhiteSpace($dir)) {
-        return "."
-    }
-    return $dir.Replace('\', '/')
+ function Get-PackageName($File) {
+     $relative = $File.FullName.Substring($repoRoot.Path.Length).TrimStart('\', '/')
+     $dir = Split-Path $relative -Parent
+     if ([string]::IsNullOrWhiteSpace($dir)) {
+         return "."
+     }
+     return $dir.Replace('\', '/')
+ }
+
+function Get-RepoRelativePath($File) {
+    return ($File.FullName.Substring($repoRoot.Path.Length).TrimStart('\', '/') -replace '\\', '/')
 }
 
 $goFiles = Get-GoFiles "internal"
@@ -77,13 +81,13 @@ $packageCounts.GetEnumerator() |
 Write-Host ""
 
 Write-Host "=== Largest Go Files ===" -ForegroundColor Cyan
-$goFiles |
-    ForEach-Object {
-        [PSCustomObject]@{
-            Path = $_.FullName.Substring($repoRoot.Path.Length).TrimStart('\', '/') -replace '\\', '/'
-            Lines = (Get-Content $_.FullName | Measure-Object -Line).Lines
-        }
-    } |
+ $goFiles |
+     ForEach-Object {
+         [PSCustomObject]@{
+            Path = Get-RepoRelativePath $_
+             Lines = (Get-Content $_.FullName | Measure-Object -Line).Lines
+         }
+     } |
     Sort-Object -Property Lines -Descending |
     Select-Object -First 30 |
     ForEach-Object {
@@ -116,13 +120,13 @@ foreach ($file in $goFiles) {
     $imports = Get-ImportsFromFile $file
     foreach ($import in $imports) {
         foreach ($rule in $forbiddenRules) {
-            if ($fromPkg -match $rule.From -and $import -match $rule.Import) {
-                $violations.Add([PSCustomObject]@{
-                    File = $file.FullName.Substring($repoRoot.Path.Length).TrimStart('\', '/') -replace '\\', '/'
-                    Package = $fromPkg
-                    Import = $import
-                    Reason = $rule.Reason
-                })
+             if ($fromPkg -match $rule.From -and $import -match $rule.Import) {
+                 $violations.Add([PSCustomObject]@{
+                    File = Get-RepoRelativePath $file
+                     Package = $fromPkg
+                     Import = $import
+                     Reason = $rule.Reason
+                 })
             }
         }
     }
