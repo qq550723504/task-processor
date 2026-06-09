@@ -455,12 +455,24 @@ func (s *taskSubmissionRecoveryService) finalizeRecoveredSheinSubmission(ctx con
 	if task == nil {
 		return nil, ErrTaskResultUnavailable
 	}
+	s.rememberRecoveredSheinSubmission(task, action)
+	if err := s.persistRecoveredSheinSubmission(ctx, task, action); err != nil {
+		return nil, err
+	}
+	return s.buildRecoveredSheinPreview(ctx, task)
+}
+
+func (s *taskSubmissionRecoveryService) rememberRecoveredSheinSubmission(task *Task, action string) {
 	if s.rememberSheinSubmitted != nil {
 		s.rememberSheinSubmitted(task, action)
 	}
-	if err := s.persistSuccessfulSubmission(ctx, task.ID, task, action); err != nil {
-		return nil, err
-	}
+}
+
+func (s *taskSubmissionRecoveryService) persistRecoveredSheinSubmission(ctx context.Context, task *Task, action string) error {
+	return s.persistSuccessfulSubmission(ctx, task.ID, task, action)
+}
+
+func (s *taskSubmissionRecoveryService) buildRecoveredSheinPreview(ctx context.Context, task *Task) (*ListingKitPreview, error) {
 	return s.buildTaskPreview(ctx, task, "shein")
 }
 
