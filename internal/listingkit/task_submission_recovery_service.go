@@ -285,23 +285,17 @@ func buildRecoveredSheinRemoteState(report *sheinpub.SubmissionReport, action st
 		return nil
 	}
 	record := sheinSubmissionRecordForAction(report, action)
+	response := recordResult(record)
+	if response == nil {
+		response = report.LastResult
+	}
 	return &sheinRecoveredRemoteState{
 		report:    report,
 		record:    record,
 		requestID: report.CurrentRequestID,
 		now:       time.Now(),
-		response:  resolveRecoveredSheinRemoteResponse(report, record),
+		response:  response,
 	}
-}
-
-func resolveRecoveredSheinRemoteResponse(report *sheinpub.SubmissionReport, record *sheinpub.SubmissionRecord) *sheinpub.SubmissionResponse {
-	if response := recordResult(record); response != nil {
-		return response
-	}
-	if report != nil {
-		return report.LastResult
-	}
-	return nil
 }
 
 func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(ctx context.Context, task *Task, pkg *SheinPackage, action string, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
