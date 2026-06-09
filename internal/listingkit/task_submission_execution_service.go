@@ -97,19 +97,7 @@ func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.C
 	if attrs := sheinpub.BuildProductAttributes(pkg); sheinProductAttributesReadyForSubmit(attrs) {
 		submitProduct.ProductAttributeList = attrs
 	}
-	var translateAPI sheintranslateapi.TranslateAPI
-	if sheinpub.SubmitProductNeedsTranslation(submitProduct) || sheinpub.SubmitProductNeedsTargetLanguages(submitProduct, task.Request.Country) {
-		if s.sheinTranslateAPIBuilder != nil {
-			var fallback string
-			storeID, resolveErr := s.resolveSheinStoreID(runtimeCtx, task)
-			if resolveErr == nil && storeID > 0 {
-				translateAPI, fallback = s.sheinTranslateAPIBuilder.BuildTranslateAPI(runtimeCtx, storeID)
-			}
-			if translateAPI == nil && strings.TrimSpace(fallback) != "" {
-				translateAPI = nil
-			}
-		}
-	}
+	translateAPI := s.buildSheinSubmitTranslateAPI(runtimeCtx, task, submitProduct)
 	if err := sheinpub.PrepareSubmitProductContent(runtimeCtx, submitProduct, task.Request.Country, s.sheinContentOptimizer, translateAPI); err != nil {
 		return nil, err
 	}
@@ -140,6 +128,32 @@ func (s *taskSubmissionExecutionService) buildSheinSubmitProductAPIForStore(ctx 
 		return nil, fmt.Errorf("shein submit unavailable: %s", fallback)
 	}
 	return productAPI, nil
+}
+
+func (s *taskSubmissionExecutionService) buildSheinSubmitTranslateAPI(ctx context.Context, task *Task, submitProduct *sheinproduct.Product) sheintranslateapi.TranslateAPI {
+	if !s.sheinSubmitTranslationNeeded(task, submitProduct) || s.sheinTranslateAPIBuilder == nil {
+		return nil
+	}
+	storeID, err := s.resolveSheinStoreID(ctx, task)
+	if err != nil || storeID <= 0 {
+		return nil
+	}
+	translateAPI, fallback := s.sheinTranslateAPIBuilder.BuildTranslateAPI(ctx, storeID)
+	if translateAPI == nil && strings.TrimSpace(fallback) != "" {
+		return nil
+	}
+	return translateAPI
+}
+
+func (s *taskSubmissionExecutionService) sheinSubmitTranslationNeeded(task *Task, submitProduct *sheinproduct.Product) bool {
+	if submitProduct == nil {
+		return false
+	}
+	region := ""
+	if task != nil && task.Request != nil {
+		region = task.Request.Country
+	}
+	return sheinpub.SubmitProductNeedsTranslation(submitProduct) || sheinpub.SubmitProductNeedsTargetLanguages(submitProduct, region)
 }
 
 func (s *taskSubmissionExecutionService) uploadSheinSubmitImages(ctx context.Context, task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product) error {

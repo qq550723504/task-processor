@@ -148,6 +148,77 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIReturnsStoreRes
 	}
 }
 
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitTranslateAPISkipsBuilderWhenNotNeeded(t *testing.T) {
+	t.Parallel()
+
+	var lastStoreID int64
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinTranslateAPIBuilder: stubSheinTranslateAPIBuilder{
+			api:         &stubSheinTranslateAPI{},
+			lastStoreID: &lastStoreID,
+		},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 903, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{Country: "US"},
+	}
+	product := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{
+			{Language: "en", Name: "English Title"},
+			{Language: "es", Name: "Spanish Title"},
+		},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{
+			{Language: "en", Name: "English Description"},
+			{Language: "es", Name: "Spanish Description"},
+		},
+	}
+
+	translateAPI := exec.buildSheinSubmitTranslateAPI(context.Background(), task, product)
+	if translateAPI != nil {
+		t.Fatalf("translateAPI = %+v, want nil", translateAPI)
+	}
+	if lastStoreID != 0 {
+		t.Fatalf("builder store id = %d, want 0 because builder should not be called", lastStoreID)
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitTranslateAPIUsesResolvedStoreIDWhenNeeded(t *testing.T) {
+	t.Parallel()
+
+	var lastStoreID int64
+	expectedAPI := &stubSheinTranslateAPI{}
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinTranslateAPIBuilder: stubSheinTranslateAPIBuilder{
+			api:         expectedAPI,
+			lastStoreID: &lastStoreID,
+		},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 903, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{Country: "US"},
+	}
+	product := &sheinproduct.Product{}
+
+	translateAPI := exec.buildSheinSubmitTranslateAPI(context.Background(), task, product)
+	if translateAPI == nil {
+		t.Fatal("translateAPI = nil, want assigned api")
+	}
+	if translateAPI != expectedAPI {
+		t.Fatalf("translateAPI = %+v, want %+v", translateAPI, expectedAPI)
+	}
+	if lastStoreID != 903 {
+		t.Fatalf("builder store id = %d, want 903", lastStoreID)
+	}
+}
+
 func TestTaskSubmissionExecutionServiceExecuteSheinSubmitRemoteRoutesByAction(t *testing.T) {
 	t.Parallel()
 
