@@ -122,38 +122,6 @@ func (s *service) taskSubmissionStateOrDefault() *taskSubmissionStateService {
 	return s.submission.taskSubmissionState
 }
 
-func (s *service) persistSuccessfulSheinSubmission(ctx context.Context, taskID string, task *Task, action string) error {
-	return s.taskSubmissionStateOrDefault().persistSuccessfulSheinSubmission(ctx, taskID, task, action)
-}
-
-func (s *service) persistSheinDirectSubmitPhase(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, phase string) error {
-	return s.taskSubmissionStateOrDefault().persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, phase)
-}
-
-func (s *service) persistSheinSubmitPhase(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestID, phase string) error {
-	return s.taskSubmissionStateOrDefault().persistSheinSubmitPhase(ctx, taskID, result, pkg, action, requestID, phase)
-}
-
-func (s *service) persistSuccessfulSheinDirectResponse(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, supplierCode string, response *sheinpub.SubmissionResponse) error {
-	return s.taskSubmissionStateOrDefault().persistSuccessfulSheinDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response)
-}
-
-func (s *service) finishSheinDirectSubmitAttempt(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, response *sheinpub.SubmissionResponse, responseErr error) error {
-	return s.taskSubmissionStateOrDefault().finishSheinDirectSubmitAttempt(ctx, taskID, task, pkg, opts, response, responseErr)
-}
-
-func (s *service) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {
-	return s.taskSubmissionStateOrDefault().recordSheinSubmissionFailure(ctx, taskID, result, pkg, action, submitErr)
-}
-
-func (s *service) recordSheinSubmissionFailureForState(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestedID, phase string, submitErr error) error {
-	return s.taskSubmissionStateOrDefault().recordSheinSubmissionFailureForState(ctx, taskID, result, pkg, action, requestedID, phase, submitErr)
-}
-
-func (s *service) failSheinDirectSubmit(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, action string, submitErr error) error {
-	return s.taskSubmissionStateOrDefault().failSheinDirectSubmit(ctx, taskID, task, pkg, action, submitErr)
-}
-
 func sheinProductAttributesReadyForSubmit(attrs []sheinproduct.ProductAttribute) bool {
 	if len(attrs) == 0 {
 		return false

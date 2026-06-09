@@ -35,7 +35,7 @@ func (s *service) handleSheinWorkflowStartFailure(ctx context.Context, taskID st
 			pkg = task.Result.Shein
 		}
 	}
-	failErr := s.recordSheinSubmissionFailureForState(
+	failErr := s.taskSubmissionStateOrDefault().recordSheinSubmissionFailureForState(
 		ctx,
 		taskID,
 		result,

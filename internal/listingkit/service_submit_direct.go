@@ -23,7 +23,7 @@ func (s *service) taskDirectSubmissionOrDefault() *taskDirectSubmissionService {
 func (s *service) prepareSheinDirectSubmitProduct(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions) (*sheinproduct.Product, error) {
 	submitProduct, err := s.prepareSheinSubmitProduct(ctx, task, pkg, opts.action)
 	if err != nil {
-		return nil, s.failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
+		return nil, s.taskSubmissionStateOrDefault().failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
 	dumpSheinSubmitPayloadForDebug(taskID, opts.action, opts.requestID, "prepared", submitProduct)
 	setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
@@ -40,11 +40,11 @@ func (s *service) uploadPendingSheinDirectSubmitImages(ctx context.Context, task
 	if sheinProductPendingImageUploadCount(submitProduct) <= 0 {
 		return nil
 	}
-	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseUploadImages); err != nil {
+	if err := s.taskSubmissionStateOrDefault().persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseUploadImages); err != nil {
 		return err
 	}
 	if err := s.uploadSheinSubmitImages(ctx, task, pkg, submitProduct); err != nil {
-		return s.failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
+		return s.taskSubmissionStateOrDefault().failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
 	prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(ctx, task))
 	dumpSheinSubmitPayloadForDebug(taskID, opts.action, opts.requestID, "uploaded", submitProduct)
@@ -52,11 +52,11 @@ func (s *service) uploadPendingSheinDirectSubmitImages(ctx context.Context, task
 }
 
 func (s *service) preValidateSheinDirectSubmitProduct(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) error {
-	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePreValidate); err != nil {
+	if err := s.taskSubmissionStateOrDefault().persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePreValidate); err != nil {
 		return err
 	}
 	if err := s.preValidateSheinSubmitProduct(pkg, submitProduct); err != nil {
-		return s.failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
+		return s.taskSubmissionStateOrDefault().failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
 	return nil
 }
@@ -65,16 +65,16 @@ func (s *service) completeSheinDirectRemoteSubmit(ctx context.Context, taskID st
 	supplierCode := sheinSubmitSupplierCode(submitProduct, pkg)
 	setSheinSubmitSupplierCode(pkg, opts.action, opts.requestID, supplierCode)
 	setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
-	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
+	if err := s.taskSubmissionStateOrDefault().persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
 		return err
 	}
 	response, responseErr := s.executeSheinDirectRemoteSubmitAttempt(ctx, taskID, pkg, productAPI, submitProduct, opts)
 	if responseErr == nil {
-		if err := s.persistSuccessfulSheinDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response); err != nil {
+		if err := s.taskSubmissionStateOrDefault().persistSuccessfulSheinDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response); err != nil {
 			return err
 		}
 	}
-	return s.finishSheinDirectSubmitAttempt(ctx, taskID, task, pkg, opts, response, responseErr)
+	return s.taskSubmissionStateOrDefault().finishSheinDirectSubmitAttempt(ctx, taskID, task, pkg, opts, response, responseErr)
 }
 
 func (s *service) executeSheinDirectRemoteSubmitAttempt(ctx context.Context, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) (*sheinpub.SubmissionResponse, error) {
