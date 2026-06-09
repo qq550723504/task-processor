@@ -337,17 +337,13 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(
 	if err != nil {
 		return nil, err
 	}
-	event, remoteErr := s.resolveRecoveredSheinRemoteConfirmation(ctx, task, pkg, productAPI, action, state)
+	appendRecoveredSheinRemoteConfirmationPhase(pkg, task.ID, action, state)
+	event, remoteErr := s.refreshRecoveredSheinRemoteStatus(ctx, task, pkg, productAPI, action, state)
 	appendRecoveredSheinRemoteConfirmationEvent(pkg, event)
 	if remoteErr != nil {
 		return nil, s.persistSheinRecoveredRemoteFailure(ctx, task, pkg, action, state, remoteErr)
 	}
 	return s.completeSheinRecoveredRemoteSuccess(ctx, task, pkg, action, state)
-}
-
-func (s *taskSubmissionRecoveryService) resolveRecoveredSheinRemoteConfirmation(ctx context.Context, task *Task, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action string, state *sheinRecoveredRemoteState) (*sheinpub.SubmissionEvent, error) {
-	appendRecoveredSheinRemoteConfirmationPhase(pkg, task.ID, action, state)
-	return s.refreshRecoveredSheinRemoteStatus(ctx, task, pkg, productAPI, action, state)
 }
 
 func (s *taskSubmissionRecoveryService) buildRecoveredSheinRemoteProductAPI(ctx context.Context, task *Task, state *sheinRecoveredRemoteState) (sheinproduct.ProductAPI, error) {
