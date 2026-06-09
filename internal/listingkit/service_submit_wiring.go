@@ -20,10 +20,11 @@ func buildTaskRecoveryServiceConfig(s *service) taskRecoveryServiceConfig {
 
 func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecoveryServiceConfig {
 	state := s.taskSubmissionStateOrDefault()
+	execution := s.taskSubmissionExecutionOrDefault()
 	return taskSubmissionRecoveryServiceConfig{
 		repo:                        s.repo,
 		buildTaskPreview:            s.buildTaskPreview,
-		buildSheinSubmitProductAPI:  s.buildSheinSubmitProductAPI,
+		buildSheinSubmitProductAPI:  execution.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:    s.buildSheinSubmitOtherAPI,
 		rememberSheinSubmitted:      s.rememberSheinSubmittedResolution,
 		persistSuccessfulSubmission: state.persistSuccessfulSheinSubmission,
@@ -32,6 +33,7 @@ func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecovery
 }
 
 func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
+	execution := s.taskSubmissionExecutionOrDefault()
 	return taskSubmissionServiceConfig{
 		repo: s.repo,
 		lockSubmit: func(key string) func() {
@@ -43,7 +45,7 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 		submitSheinTaskWithWorkflow:     s.submitSheinTaskWithWorkflow,
 		submitSheinTaskDirect:           s.submitSheinTaskDirect,
 		buildTaskPreview:                s.buildTaskPreview,
-		buildSheinSubmitProductAPI:      s.buildSheinSubmitProductAPI,
+		buildSheinSubmitProductAPI:      execution.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:        s.buildSheinSubmitOtherAPI,
 		mutateTaskResult:                s.mutateTaskResult,
 		resolveRemoteStatus:             s.resolveSheinSubmitRemoteStatus,
@@ -52,11 +54,12 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 
 func buildTaskDirectSubmissionServiceConfig(s *service) taskDirectSubmissionServiceConfig {
 	state := s.taskSubmissionStateOrDefault()
+	execution := s.taskSubmissionExecutionOrDefault()
 	return taskDirectSubmissionServiceConfig{
-		normalizeSheinSubmitPackage:     s.normalizeSheinSubmitPackage,
+		normalizeSheinSubmitPackage:     execution.normalizeSheinSubmitPackage,
 		validateSheinPublishFreshness:   s.validateSheinPublishFreshness,
 		failSheinDirectSubmit:           state.failSheinDirectSubmit,
-		buildSheinSubmitProductAPI:      s.buildSheinSubmitProductAPI,
+		buildSheinSubmitProductAPI:      execution.buildSheinSubmitProductAPI,
 		persistSheinDirectSubmitPhase:   state.persistSheinDirectSubmitPhase,
 		prepareSheinDirectSubmitProduct: s.prepareSheinDirectSubmitProduct,
 		completeSheinDirectRemoteSubmit: s.completeSheinDirectRemoteSubmit,
@@ -80,19 +83,20 @@ func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecuti
 func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {
 	resolver := buildSubmitRuntimeContextResolver(s)
 	state := s.taskSubmissionStateOrDefault()
+	execution := s.taskSubmissionExecutionOrDefault()
 	return taskTemporalSubmissionAdapterConfig{
 		beginSheinSubmitLease:                s.beginSheinSubmitLease,
 		loadSheinPublishTask:                 s.loadSheinPublishTask,
-		normalizeSheinSubmitPackage:          s.normalizeSheinSubmitPackage,
+		normalizeSheinSubmitPackage:          execution.normalizeSheinSubmitPackage,
 		validateSheinPublishFreshness:        s.validateSheinPublishFreshness,
 		saveTaskResult:                       s.repo.SaveTaskResult,
 		persistSheinSubmitPhase:              state.persistSheinSubmitPhase,
-		prepareSheinSubmitProduct:            s.prepareSheinSubmitProduct,
-		uploadSheinSubmitImages:              s.uploadSheinSubmitImages,
+		prepareSheinSubmitProduct:            execution.prepareSheinSubmitProduct,
+		uploadSheinSubmitImages:              execution.uploadSheinSubmitImages,
 		resolveSubmitSettings:                resolver.resolveSubmitSettings,
-		buildSheinSubmitProductAPI:           s.buildSheinSubmitProductAPI,
-		preValidateSheinSubmitProduct:        s.preValidateSheinSubmitProduct,
-		executeSheinSubmitRemote:             s.executeSheinSubmitRemote,
+		buildSheinSubmitProductAPI:           execution.buildSheinSubmitProductAPI,
+		preValidateSheinSubmitProduct:        execution.preValidateSheinSubmitProduct,
+		executeSheinSubmitRemote:             execution.executeSheinSubmitRemote,
 		retrySheinSensitiveWordSubmit:        s.retrySheinSensitiveWordSubmit,
 		persistSuccessfulSheinSubmission:     state.persistSuccessfulSheinSubmission,
 		recordSheinSubmissionFailureForState: state.recordSheinSubmissionFailureForState,
