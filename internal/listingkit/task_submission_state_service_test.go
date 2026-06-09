@@ -174,3 +174,75 @@ func TestTaskSubmissionStateServiceFinishSheinDirectSubmitAttemptReturnsSubmitEr
 		t.Fatalf("completion event = %+v, want failed persist_result event", saved.Result.Shein.SubmissionEvents[0])
 	}
 }
+
+func TestTaskSubmissionStateServiceRecordSheinSubmissionFailureForStatePersistsResolvedFailureEvent(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-time.Minute)
+	beginSheinSubmitAttempt(task.Result.Shein, "publish", "req-failure", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	state := newTaskSubmissionStateService(taskSubmissionStateServiceConfig{
+		repo: repo,
+	})
+	submitErr := errors.New("remote rejected")
+
+	err := state.recordSheinSubmissionFailureForState(
+		context.Background(),
+		task.ID,
+		task.Result,
+		task.Result.Shein,
+		"publish",
+		"",
+		"",
+		submitErr,
+	)
+	if err != nil {
+		t.Fatalf("recordSheinSubmissionFailureForState() error = %v", err)
+	}
+
+	saved, getErr := repo.GetTask(context.Background(), task.ID)
+	if getErr != nil {
+		t.Fatalf("get task: %v", getErr)
+	}
+	if saved.Result.Shein.Submission.LastStatus != sheinpub.SubmissionStatusFailed {
+		t.Fatalf("last status = %q, want failed", saved.Result.Shein.Submission.LastStatus)
+	}
+	record := sheinSubmissionRecordForAction(saved.Result.Shein.Submission, "publish")
+	if record == nil {
+		t.Fatal("publish record = nil, want failed record")
+	}
+	if record.RequestID != "req-failure" {
+		t.Fatalf("request id = %q, want req-failure", record.RequestID)
+	}
+	if record.Phase != sheinpub.SubmissionPhaseSubmitRemote {
+		t.Fatalf("phase = %q, want %q", record.Phase, sheinpub.SubmissionPhaseSubmitRemote)
+	}
+	if record.Error == "" || record.Error != submitErr.Error() {
+		t.Fatalf("record error = %q, want %q", record.Error, submitErr.Error())
+	}
+	if len(saved.Result.Shein.SubmissionEvents) == 0 {
+		t.Fatal("expected failure event to be appended")
+	}
+	if saved.Result.Shein.SubmissionEvents[0].Phase != sheinpub.SubmissionPhaseSubmitRemote || saved.Result.Shein.SubmissionEvents[0].Status != sheinpub.SubmissionStatusFailed {
+		t.Fatalf("failure event = %+v, want failed submit_remote event", saved.Result.Shein.SubmissionEvents[0])
+	}
+}
+
+func TestTaskSubmissionStateServiceFailSheinDirectSubmitReturnsOriginalErrorWhenTaskMissing(t *testing.T) {
+	t.Parallel()
+
+	state := newTaskSubmissionStateService(taskSubmissionStateServiceConfig{
+		repo: &stubSubmitRepo{},
+	})
+	submitErr := errors.New("missing task")
+
+	err := state.failSheinDirectSubmit(context.Background(), "task-missing", nil, nil, "publish", submitErr)
+	if !errors.Is(err, submitErr) {
+		t.Fatalf("failSheinDirectSubmit() err = %v, want %v", err, submitErr)
+	}
+}
