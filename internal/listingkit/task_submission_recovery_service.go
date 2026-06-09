@@ -333,7 +333,10 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(
 	if task == nil || pkg == nil || state == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	productAPI, err := s.buildRecoveredSheinRemoteProductAPI(ctx, task, state)
+	if state.record == nil || strings.TrimSpace(state.record.SupplierCode) == "" {
+		return nil, fmt.Errorf("%w: stale SHEIN submit has no supplier code", core.ErrSubmitInProgress)
+	}
+	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
 	if err != nil {
 		return nil, err
 	}
@@ -344,13 +347,6 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(
 		return nil, s.persistSheinRecoveredRemoteFailure(ctx, task, pkg, action, state, remoteErr)
 	}
 	return s.completeSheinRecoveredRemoteSuccess(ctx, task, pkg, action, state)
-}
-
-func (s *taskSubmissionRecoveryService) buildRecoveredSheinRemoteProductAPI(ctx context.Context, task *Task, state *sheinRecoveredRemoteState) (sheinproduct.ProductAPI, error) {
-	if state == nil || state.record == nil || strings.TrimSpace(state.record.SupplierCode) == "" {
-		return nil, fmt.Errorf("%w: stale SHEIN submit has no supplier code", core.ErrSubmitInProgress)
-	}
-	return s.buildSheinSubmitProductAPI(ctx, task)
 }
 
 func appendRecoveredSheinRemoteConfirmationPhase(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState) {
