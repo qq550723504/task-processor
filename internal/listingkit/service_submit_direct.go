@@ -21,7 +21,7 @@ func (s *service) taskDirectSubmissionOrDefault() *taskDirectSubmissionService {
 }
 
 func (s *service) prepareSheinDirectSubmitProduct(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions) (*sheinproduct.Product, error) {
-	submitProduct, err := s.prepareSheinSubmitProduct(ctx, task, pkg, opts.action)
+	submitProduct, err := s.taskSubmissionExecutionOrDefault().prepareSheinSubmitProduct(ctx, task, pkg, opts.action)
 	if err != nil {
 		return nil, s.taskSubmissionStateOrDefault().failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
@@ -43,7 +43,7 @@ func (s *service) uploadPendingSheinDirectSubmitImages(ctx context.Context, task
 	if err := s.taskSubmissionStateOrDefault().persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseUploadImages); err != nil {
 		return err
 	}
-	if err := s.uploadSheinSubmitImages(ctx, task, pkg, submitProduct); err != nil {
+	if err := s.taskSubmissionExecutionOrDefault().uploadSheinSubmitImages(ctx, task, pkg, submitProduct); err != nil {
 		return s.taskSubmissionStateOrDefault().failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
 	prepareSheinProductForSubmit(submitProduct, s.resolveSheinSubmitSettings(ctx, task))
@@ -55,7 +55,7 @@ func (s *service) preValidateSheinDirectSubmitProduct(ctx context.Context, taskI
 	if err := s.taskSubmissionStateOrDefault().persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePreValidate); err != nil {
 		return err
 	}
-	if err := s.preValidateSheinSubmitProduct(pkg, submitProduct); err != nil {
+	if err := s.taskSubmissionExecutionOrDefault().preValidateSheinSubmitProduct(pkg, submitProduct); err != nil {
 		return s.taskSubmissionStateOrDefault().failSheinDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
 	return nil
