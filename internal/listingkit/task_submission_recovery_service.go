@@ -376,13 +376,6 @@ func (s *taskSubmissionRecoveryService) buildRecoveredSheinRemoteProductAPI(ctx 
 	return s.buildSheinSubmitProductAPI(ctx, task)
 }
 
-func (s *taskSubmissionRecoveryService) advanceRecoveredSheinRemoteConfirmation(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState) {
-	if pkg == nil || state == nil {
-		return
-	}
-	appendSheinSubmissionEvent(pkg, submission.AdvancePhaseAndBuildEvent(pkg, taskID, action, state.requestID, sheinpub.SubmissionPhaseConfirmRemote, state.now, sheinSubmitInFlightTTL))
-}
-
 func appendRecoveredSheinRemoteConfirmationPhase(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState) {
 	sAdvance := submission.AdvancePhaseAndBuildEvent(pkg, taskID, action, state.requestID, sheinpub.SubmissionPhaseConfirmRemote, state.now, sheinSubmitInFlightTTL)
 	appendSheinSubmissionEvent(pkg, sAdvance)
