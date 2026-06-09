@@ -78,7 +78,7 @@ func (s *service) completeSheinDirectRemoteSubmit(ctx context.Context, taskID st
 }
 
 func (s *service) executeSheinDirectRemoteSubmitAttempt(ctx context.Context, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) (*sheinpub.SubmissionResponse, error) {
-	response, responseErr := s.executeSheinSubmitRemote(productAPI, opts.action, submitProduct)
+	response, responseErr := s.taskSubmissionExecutionOrDefault().executeSheinSubmitRemote(productAPI, opts.action, submitProduct)
 	if responseErr == nil {
 		responseErr = submission.BuildResponseError(opts.action, response)
 	}
