@@ -60,19 +60,26 @@ func (s *taskSubmissionRecoveryService) beginSheinSubmitLease(ctx context.Contex
 		if err != nil {
 			return err
 		}
-		if shouldReplayExistingSheinSubmitLease(pkg, action, requestID) {
-			return errSheinSubmitReplayExisting
-		}
-		if shouldRecoverSheinSubmitLeaseWithSupplierCode(pkg, action, requestID, startedAt) {
-			appendSheinSubmissionEvent(pkg, buildRecoverRemoteLeaseEvent(taskID, action, pkg.SubmissionState.CurrentPhase, requestID, startedAt))
-			return errSheinSubmitRecoverRemote
-		}
-		if err := validateActiveSheinSubmitLease(pkg, action, requestID, startedAt); err != nil {
+		if err := s.prepareSheinSubmitLease(task, pkg, taskID, action, requestID, startedAt); err != nil {
 			return err
 		}
-		beginNewSheinSubmitLease(task, pkg, taskID, action, requestID, startedAt)
 		return nil
 	})
+}
+
+func (s *taskSubmissionRecoveryService) prepareSheinSubmitLease(task *Task, pkg *SheinPackage, taskID, action, requestID string, startedAt time.Time) error {
+	if shouldReplayExistingSheinSubmitLease(pkg, action, requestID) {
+		return errSheinSubmitReplayExisting
+	}
+	if shouldRecoverSheinSubmitLeaseWithSupplierCode(pkg, action, requestID, startedAt) {
+		appendSheinSubmissionEvent(pkg, buildRecoverRemoteLeaseEvent(taskID, action, pkg.SubmissionState.CurrentPhase, requestID, startedAt))
+		return errSheinSubmitRecoverRemote
+	}
+	if err := validateActiveSheinSubmitLease(pkg, action, requestID, startedAt); err != nil {
+		return err
+	}
+	beginNewSheinSubmitLease(task, pkg, taskID, action, requestID, startedAt)
+	return nil
 }
 
 func loadSheinSubmitLeasePackage(task *Task) (*SheinPackage, error) {

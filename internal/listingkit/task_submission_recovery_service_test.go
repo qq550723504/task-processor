@@ -107,6 +107,47 @@ func TestTaskSubmissionRecoveryServiceBeginSheinSubmitLeaseReturnsSubmitInProgre
 	}
 }
 
+func TestTaskSubmissionRecoveryServiceBeginSheinSubmitLeaseStartsNewLease(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-time.Minute)
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		repo: repo,
+	})
+
+	got, err := recovery.beginSheinSubmitLease(context.Background(), task.ID, "publish", "new-lease-123", startedAt)
+	if err != nil {
+		t.Fatalf("beginSheinSubmitLease() err = %v", err)
+	}
+	if got == nil || got.ID != task.ID {
+		t.Fatalf("task = %+v, want original task", got)
+	}
+	if got.Result == nil || got.Result.Shein == nil || got.Result.Shein.Submission == nil {
+		t.Fatalf("submission = %+v, want initialized lease state", got.Result)
+	}
+	if got.Result.Shein.Submission.CurrentAction != "publish" {
+		t.Fatalf("current action = %q, want publish", got.Result.Shein.Submission.CurrentAction)
+	}
+	if got.Result.Shein.Submission.CurrentRequestID != "new-lease-123" {
+		t.Fatalf("current request id = %q, want new-lease-123", got.Result.Shein.Submission.CurrentRequestID)
+	}
+	if got.Result.Shein.Submission.CurrentPhase != sheinpub.SubmissionPhaseValidate {
+		t.Fatalf("current phase = %q, want %q", got.Result.Shein.Submission.CurrentPhase, sheinpub.SubmissionPhaseValidate)
+	}
+	if len(got.Result.Shein.SubmissionEvents) == 0 {
+		t.Fatal("expected lease-start event to be appended")
+	}
+	if got.Result.Shein.SubmissionEvents[0].Status != sheinpub.SubmissionStatusRunning || got.Result.Shein.SubmissionEvents[0].Phase != sheinpub.SubmissionPhaseValidate {
+		t.Fatalf("lease event = %+v, want running validate event", got.Result.Shein.SubmissionEvents[0])
+	}
+}
+
 func TestTaskSubmissionRecoveryServiceRefreshSheinSubmitRemoteStatusHandlesMissingSupplierCode(t *testing.T) {
 	t.Parallel()
 
