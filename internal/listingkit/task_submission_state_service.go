@@ -58,24 +58,32 @@ func (s *taskSubmissionStateService) persistSuccessfulSheinDirectResponse(ctx co
 	if task == nil || task.Result == nil {
 		return nil
 	}
-	setSheinSubmitRemoteResponse(pkg, opts.action, opts.requestID, supplierCode, response)
-	task.Result.UpdatedAt = time.Now()
-	if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
+	if err := s.saveSuccessfulSheinDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response); err != nil {
 		return err
 	}
 	return s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePersistResult)
 }
 
+func (s *taskSubmissionStateService) saveSuccessfulSheinDirectResponse(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, supplierCode string, response *sheinpub.SubmissionResponse) error {
+	setSheinSubmitRemoteResponse(pkg, opts.action, opts.requestID, supplierCode, response)
+	task.Result.UpdatedAt = time.Now()
+	return s.repo.SaveTaskResult(ctx, taskID, task.Result)
+}
+
 func (s *taskSubmissionStateService) finishSheinDirectSubmitAttempt(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, response *sheinpub.SubmissionResponse, responseErr error) error {
+	s.completeSheinDirectSubmitState(task, pkg, taskID, opts, response, responseErr)
+	if err := s.persistSuccessfulSheinSubmission(ctx, taskID, task, opts.action); err != nil {
+		return err
+	}
+	return responseErr
+}
+
+func (s *taskSubmissionStateService) completeSheinDirectSubmitState(task *Task, pkg *SheinPackage, taskID string, opts sheinDirectSubmitOptions, response *sheinpub.SubmissionResponse, responseErr error) {
 	_, event := listingsubmission.CompleteAttemptAndBuildEvent(pkg, taskID, opts.action, opts.requestID, response, responseErr, opts.startedAt, time.Now())
 	appendSheinSubmissionEvent(pkg, event)
 	if responseErr == nil && s.rememberSheinSubmitted != nil {
 		s.rememberSheinSubmitted(task, opts.action)
 	}
-	if err := s.persistSuccessfulSheinSubmission(ctx, taskID, task, opts.action); err != nil {
-		return err
-	}
-	return responseErr
 }
 
 func (s *taskSubmissionStateService) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {
