@@ -58,7 +58,10 @@ func (s *taskDirectSubmissionService) submitSheinTaskDirect(ctx context.Context,
 	if err != nil {
 		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
+	return s.executeDirectSubmitProductFlow(ctx, taskID, task, pkg, productAPI, opts)
+}
 
+func (s *taskDirectSubmissionService) executeDirectSubmitProductFlow(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, opts sheinDirectSubmitOptions) (*ListingKitPreview, error) {
 	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePrepareProduct); err != nil {
 		return nil, err
 	}

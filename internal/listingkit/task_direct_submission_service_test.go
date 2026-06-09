@@ -270,3 +270,132 @@ func TestTaskDirectSubmissionServiceSubmitSheinTaskDirectAllowsPrimaryOnlyMultiS
 		t.Fatal("expected failSheinDirectSubmit to be called for downstream api error")
 	}
 }
+
+func TestTaskDirectSubmissionServiceSubmitSheinTaskDirectCompletesExecutionFlow(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	now := time.Now()
+	opts := sheinDirectSubmitOptions{
+		action:    "publish",
+		requestID: "req-success",
+		startedAt: now,
+	}
+	productAPI := &stubSheinProductAPI{}
+	submitProduct := &sheinproduct.Product{SupplierCode: "SKU-1"}
+	expectedPreview := &ListingKitPreview{TaskID: task.ID}
+	var calls []string
+
+	direct := newTaskDirectSubmissionService(taskDirectSubmissionServiceConfig{
+		normalizeSheinSubmitPackage: func(gotTask *Task, gotPkg *SheinPackage, gotReq *SubmitTaskRequest, gotAction string) {
+			calls = append(calls, "normalize")
+			if gotTask != task {
+				t.Fatalf("normalize task = %+v, want original task", gotTask)
+			}
+			if gotPkg != task.Result.Shein {
+				t.Fatalf("normalize pkg = %+v, want task shein package", gotPkg)
+			}
+			if gotReq == nil || gotReq.Action != "publish" {
+				t.Fatalf("normalize req = %+v, want publish request", gotReq)
+			}
+			if gotAction != "publish" {
+				t.Fatalf("normalize action = %q, want publish", gotAction)
+			}
+		},
+		buildSheinSubmitProductAPI: func(_ context.Context, gotTask *Task) (sheinproduct.ProductAPI, error) {
+			calls = append(calls, "build_api")
+			if gotTask != task {
+				t.Fatalf("build api task = %+v, want original task", gotTask)
+			}
+			return productAPI, nil
+		},
+		persistSheinDirectSubmitPhase: func(_ context.Context, gotTaskID string, gotTask *Task, gotPkg *SheinPackage, gotOpts sheinDirectSubmitOptions, phase string) error {
+			calls = append(calls, "persist_phase")
+			if gotTaskID != task.ID {
+				t.Fatalf("persist taskID = %q, want %q", gotTaskID, task.ID)
+			}
+			if gotTask != task {
+				t.Fatalf("persist task = %+v, want original task", gotTask)
+			}
+			if gotPkg != task.Result.Shein {
+				t.Fatalf("persist pkg = %+v, want task shein package", gotPkg)
+			}
+			if gotOpts.action != opts.action || gotOpts.requestID != opts.requestID {
+				t.Fatalf("persist opts = %+v, want %+v", gotOpts, opts)
+			}
+			if phase != sheinpub.SubmissionPhasePrepareProduct {
+				t.Fatalf("persist phase = %q, want %q", phase, sheinpub.SubmissionPhasePrepareProduct)
+			}
+			return nil
+		},
+		prepareSheinDirectSubmitProduct: func(_ context.Context, gotTaskID string, gotTask *Task, gotPkg *SheinPackage, gotOpts sheinDirectSubmitOptions) (*sheinproduct.Product, error) {
+			calls = append(calls, "prepare_product")
+			if gotTaskID != task.ID {
+				t.Fatalf("prepare taskID = %q, want %q", gotTaskID, task.ID)
+			}
+			if gotTask != task {
+				t.Fatalf("prepare task = %+v, want original task", gotTask)
+			}
+			if gotPkg != task.Result.Shein {
+				t.Fatalf("prepare pkg = %+v, want task shein package", gotPkg)
+			}
+			if gotOpts.action != opts.action || gotOpts.requestID != opts.requestID {
+				t.Fatalf("prepare opts = %+v, want %+v", gotOpts, opts)
+			}
+			return submitProduct, nil
+		},
+		completeSheinDirectRemoteSubmit: func(_ context.Context, gotTaskID string, gotTask *Task, gotPkg *SheinPackage, gotAPI sheinproduct.ProductAPI, gotProduct *sheinproduct.Product, gotOpts sheinDirectSubmitOptions) error {
+			calls = append(calls, "complete_remote")
+			if gotTaskID != task.ID {
+				t.Fatalf("complete taskID = %q, want %q", gotTaskID, task.ID)
+			}
+			if gotTask != task {
+				t.Fatalf("complete task = %+v, want original task", gotTask)
+			}
+			if gotPkg != task.Result.Shein {
+				t.Fatalf("complete pkg = %+v, want task shein package", gotPkg)
+			}
+			if gotAPI != productAPI {
+				t.Fatalf("complete api = %+v, want %+v", gotAPI, productAPI)
+			}
+			if gotProduct != submitProduct {
+				t.Fatalf("complete product = %+v, want %+v", gotProduct, submitProduct)
+			}
+			if gotOpts.action != opts.action || gotOpts.requestID != opts.requestID {
+				t.Fatalf("complete opts = %+v, want %+v", gotOpts, opts)
+			}
+			return nil
+		},
+		buildTaskPreview: func(_ context.Context, gotTask *Task, platform string) (*ListingKitPreview, error) {
+			calls = append(calls, "build_preview")
+			if gotTask != task {
+				t.Fatalf("preview task = %+v, want original task", gotTask)
+			}
+			if platform != "shein" {
+				t.Fatalf("platform = %q, want shein", platform)
+			}
+			return expectedPreview, nil
+		},
+	})
+
+	preview, err := direct.submitSheinTaskDirect(context.Background(), task.ID, task, &SubmitTaskRequest{
+		Platform: "shein",
+		Action:   "publish",
+	}, opts)
+	if err != nil {
+		t.Fatalf("submitSheinTaskDirect() err = %v", err)
+	}
+	if preview != expectedPreview {
+		t.Fatalf("preview = %+v, want %+v", preview, expectedPreview)
+	}
+
+	wantCalls := []string{"normalize", "build_api", "persist_phase", "prepare_product", "complete_remote", "build_preview"}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %+v, want %+v", calls, wantCalls)
+	}
+	for i := range wantCalls {
+		if calls[i] != wantCalls[i] {
+			t.Fatalf("calls[%d] = %q, want %q; full calls = %+v", i, calls[i], wantCalls[i], calls)
+		}
+	}
+}
