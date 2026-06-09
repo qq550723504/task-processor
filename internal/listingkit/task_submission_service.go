@@ -448,27 +448,6 @@ func (s *taskSubmissionService) buildSheinSubmissionRefreshState(ctx context.Con
 	return newSubmissionRefreshState(task, request.action, request.requestID, startedAt, productAPI, otherAPI, request.remoteInputs)
 }
 
-func submissionRefreshSelectionAction(selection *sheinSubmissionRefreshSelection) string {
-	if selection == nil {
-		return ""
-	}
-	return selection.action
-}
-
-func submissionRefreshSelectionRecord(selection *sheinSubmissionRefreshSelection) *sheinpub.SubmissionRecord {
-	if selection == nil {
-		return nil
-	}
-	return selection.record
-}
-
-func submissionRefreshSelectionSupplierCode(selection *sheinSubmissionRefreshSelection) string {
-	if selection == nil {
-		return ""
-	}
-	return selection.supplierCode
-}
-
 func buildSubmissionRefreshRequestID(record *sheinpub.SubmissionRecord) string {
 	if record == nil {
 		return ""
@@ -477,11 +456,18 @@ func buildSubmissionRefreshRequestID(record *sheinpub.SubmissionRecord) string {
 }
 
 func buildSubmissionRefreshRequest(pkg *SheinPackage, selection *sheinSubmissionRefreshSelection) sheinSubmissionRefreshRequest {
-	action := submissionRefreshSelectionAction(selection)
+	action := ""
+	record := (*sheinpub.SubmissionRecord)(nil)
+	supplierCode := ""
+	if selection != nil {
+		action = selection.action
+		record = selection.record
+		supplierCode = selection.supplierCode
+	}
 	return sheinSubmissionRefreshRequest{
 		action:       action,
-		requestID:    buildSubmissionRefreshRequestID(submissionRefreshSelectionRecord(selection)),
-		remoteInputs: buildSubmissionRefreshRemoteInputs(pkg, action, submissionRefreshSelectionSupplierCode(selection)),
+		requestID:    buildSubmissionRefreshRequestID(record),
+		remoteInputs: buildSubmissionRefreshRemoteInputs(pkg, action, supplierCode),
 	}
 }
 
