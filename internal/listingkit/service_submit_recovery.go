@@ -33,18 +33,6 @@ func (s *service) RefreshSubmissionStatus(ctx context.Context, taskID string) (*
 	return s.taskSubmissionOrDefault().RefreshSubmissionStatus(ctx, taskID)
 }
 
-func (s *service) refreshSheinSubmitRemoteStatus(ctx context.Context, task *Task, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID, supplierCode string, startedAt time.Time) (*sheinpub.SubmissionEvent, error) {
-	return s.taskSubmissionRecoveryOrDefault().refreshSheinSubmitRemoteStatus(ctx, task, taskID, pkg, productAPI, action, requestID, supplierCode, startedAt)
-}
-
-func (s *service) clearSheinSubmitLease(ctx context.Context, taskID, action, requestID string) error {
-	return s.taskSubmissionRecoveryOrDefault().clearSheinSubmitLease(ctx, taskID, action, requestID)
-}
-
-func (s *service) clearSheinSubmitLeaseAfterStartFailure(ctx context.Context, taskID, action, requestID string, startErr error) error {
-	return s.taskSubmissionRecoveryOrDefault().clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, action, requestID, startErr)
-}
-
 func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
 	if defaultConfirmed {
 		fallbackMessage = "SHEIN accepted publish request; remote confirmation pending"

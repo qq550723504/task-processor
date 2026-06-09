@@ -45,7 +45,7 @@ func (s *service) handleSheinWorkflowStartFailure(ctx context.Context, taskID st
 		sheinpub.SubmissionPhaseValidate,
 		startErr,
 	)
-	clearErr := s.clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, opts.action, opts.requestID, startErr)
+	clearErr := s.taskSubmissionRecoveryOrDefault().clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, opts.action, opts.requestID, startErr)
 	if failErr != nil {
 		if clearErr != nil {
 			return errors.Join(failErr, clearErr)

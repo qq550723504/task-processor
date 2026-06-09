@@ -84,8 +84,9 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 	resolver := buildSubmitRuntimeContextResolver(s)
 	state := s.taskSubmissionStateOrDefault()
 	execution := s.taskSubmissionExecutionOrDefault()
+	recovery := s.taskSubmissionRecoveryOrDefault()
 	return taskTemporalSubmissionAdapterConfig{
-		beginSheinSubmitLease:                s.beginSheinSubmitLease,
+		beginSheinSubmitLease:                recovery.beginSheinSubmitLease,
 		loadSheinPublishTask:                 s.loadSheinPublishTask,
 		normalizeSheinSubmitPackage:          execution.normalizeSheinSubmitPackage,
 		validateSheinPublishFreshness:        s.validateSheinPublishFreshness,
@@ -100,7 +101,7 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 		retrySheinSensitiveWordSubmit:        s.retrySheinSensitiveWordSubmit,
 		persistSuccessfulSheinSubmission:     state.persistSuccessfulSheinSubmission,
 		recordSheinSubmissionFailureForState: state.recordSheinSubmissionFailureForState,
-		refreshSheinSubmitRemoteStatus:       s.refreshSheinSubmitRemoteStatus,
+		refreshSheinSubmitRemoteStatus:       recovery.refreshSheinSubmitRemoteStatus,
 		rememberSheinSubmitted:               s.rememberSheinSubmittedResolution,
 		getTaskPreview:                       s.GetTaskPreview,
 	}
