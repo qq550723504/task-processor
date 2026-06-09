@@ -58,16 +58,12 @@ func (s *taskSubmissionStateService) persistSuccessfulSheinDirectResponse(ctx co
 	if task == nil || task.Result == nil {
 		return nil
 	}
-	if err := s.saveSuccessfulSheinDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response); err != nil {
+	setSheinSubmitRemoteResponse(pkg, opts.action, opts.requestID, supplierCode, response)
+	task.Result.UpdatedAt = time.Now()
+	if err := s.repo.SaveTaskResult(ctx, taskID, task.Result); err != nil {
 		return err
 	}
 	return s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePersistResult)
-}
-
-func (s *taskSubmissionStateService) saveSuccessfulSheinDirectResponse(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, supplierCode string, response *sheinpub.SubmissionResponse) error {
-	setSheinSubmitRemoteResponse(pkg, opts.action, opts.requestID, supplierCode, response)
-	task.Result.UpdatedAt = time.Now()
-	return s.repo.SaveTaskResult(ctx, taskID, task.Result)
 }
 
 func (s *taskSubmissionStateService) finishSheinDirectSubmitAttempt(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, response *sheinpub.SubmissionResponse, responseErr error) error {
