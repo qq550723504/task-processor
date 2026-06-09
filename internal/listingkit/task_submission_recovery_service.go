@@ -331,25 +331,15 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(
 	if err != nil {
 		return nil, err
 	}
-	appendRecoveredSheinRemoteConfirmationPhase(pkg, task.ID, action, state)
+	appendSheinSubmissionEvent(pkg, submission.AdvancePhaseAndBuildEvent(pkg, task.ID, action, state.requestID, sheinpub.SubmissionPhaseConfirmRemote, state.now, sheinSubmitInFlightTTL))
 	event, remoteErr := s.refreshRecoveredSheinRemoteStatus(ctx, task, pkg, productAPI, action, state)
-	appendRecoveredSheinRemoteConfirmationEvent(pkg, event)
+	if pkg != nil && event != nil {
+		appendSheinSubmissionEvent(pkg, *event)
+	}
 	if remoteErr != nil {
 		return nil, s.persistSheinRecoveredRemoteFailure(ctx, task, pkg, action, state, remoteErr)
 	}
 	return s.completeSheinRecoveredRemoteSuccess(ctx, task, pkg, action, state)
-}
-
-func appendRecoveredSheinRemoteConfirmationPhase(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState) {
-	sAdvance := submission.AdvancePhaseAndBuildEvent(pkg, taskID, action, state.requestID, sheinpub.SubmissionPhaseConfirmRemote, state.now, sheinSubmitInFlightTTL)
-	appendSheinSubmissionEvent(pkg, sAdvance)
-}
-
-func appendRecoveredSheinRemoteConfirmationEvent(pkg *SheinPackage, event *sheinpub.SubmissionEvent) {
-	if pkg == nil || event == nil {
-		return
-	}
-	appendSheinSubmissionEvent(pkg, *event)
 }
 
 func (s *taskSubmissionRecoveryService) refreshRecoveredSheinRemoteStatus(ctx context.Context, task *Task, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action string, state *sheinRecoveredRemoteState) (*sheinpub.SubmissionEvent, error) {
