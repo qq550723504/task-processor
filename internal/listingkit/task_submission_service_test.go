@@ -329,6 +329,61 @@ func TestNewSubmissionRefreshStateMapsInputs(t *testing.T) {
 	}
 }
 
+func TestBuildSubmissionRefreshConfirmationRequestMapsRefreshState(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Now()
+	productAPI := stubSheinProductAPI{}
+	otherAPI := stubSheinOtherAPI{}
+	request, err := buildSubmissionRefreshConfirmationRequest("task-123", &sheinSubmissionRefreshState{
+		action:           "publish",
+		requestID:        "refresh-123",
+		startedAt:        startedAt,
+		lookupCodes:      []string{"SKC-1", "SKU-1"},
+		defaultConfirmed: true,
+		fallbackMessage:  "",
+		productAPI:       productAPI,
+		otherAPI:         otherAPI,
+		spuName:          "SPU-PUBLISH",
+	})
+	if err != nil {
+		t.Fatalf("buildSubmissionRefreshConfirmationRequest() error = %v", err)
+	}
+	if request == nil {
+		t.Fatal("request = nil")
+	}
+	if request.taskID != "task-123" {
+		t.Fatalf("taskID = %q, want task-123", request.taskID)
+	}
+	if request.action != "publish" {
+		t.Fatalf("action = %q, want publish", request.action)
+	}
+	if request.requestID != "refresh-123" {
+		t.Fatalf("requestID = %q, want refresh-123", request.requestID)
+	}
+	if len(request.lookupCodes) != 2 {
+		t.Fatalf("lookupCodes = %+v, want 2 entries", request.lookupCodes)
+	}
+	if !request.defaultConfirmed {
+		t.Fatal("defaultConfirmed = false, want true")
+	}
+	if request.fallbackMessage != "" {
+		t.Fatalf("fallbackMessage = %q, want empty", request.fallbackMessage)
+	}
+	if request.spuName != "SPU-PUBLISH" {
+		t.Fatalf("spuName = %q, want SPU-PUBLISH", request.spuName)
+	}
+	if request.productAPI == nil {
+		t.Fatal("productAPI = nil, want assigned api")
+	}
+	if request.otherAPI == nil {
+		t.Fatal("otherAPI = nil, want assigned api")
+	}
+	if !request.startedAt.Equal(startedAt) {
+		t.Fatalf("startedAt = %v, want %v", request.startedAt, startedAt)
+	}
+}
+
 func TestLoadSubmissionRefreshSelectionMapsFields(t *testing.T) {
 	t.Parallel()
 
@@ -672,6 +727,68 @@ func TestTaskSubmissionServiceLoadSheinSubmissionRefreshStateWrapsProductAPIErro
 	}
 	if !apperrors.IsCode(err, apperrors.ErrCodePlatformError) {
 		t.Fatalf("error code = %q, want %q", apperrors.GetCode(err), apperrors.ErrCodePlatformError)
+	}
+}
+
+func TestTaskSubmissionServiceResolveSubmissionRefreshConfirmationPassesRequestFields(t *testing.T) {
+	t.Parallel()
+
+	productAPI := stubSheinProductAPI{}
+	otherAPI := stubSheinOtherAPI{}
+	startedAt := time.Now()
+	expected := &sheinRemoteConfirmation{message: "resolved"}
+	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
+		resolveRemoteStatus: func(gotProductAPI sheinproduct.ProductAPI, gotOtherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, gotStartedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
+			if gotProductAPI == nil {
+				t.Fatal("productAPI = nil, want assigned api")
+			}
+			if gotOtherAPI == nil {
+				t.Fatal("otherAPI = nil, want assigned api")
+			}
+			if action != "publish" {
+				t.Fatalf("action = %q, want publish", action)
+			}
+			if requestID != "refresh-123" {
+				t.Fatalf("requestID = %q, want refresh-123", requestID)
+			}
+			if len(lookupCodes) != 2 {
+				t.Fatalf("lookupCodes = %+v, want 2 entries", lookupCodes)
+			}
+			if spuName != "SPU-PUBLISH" {
+				t.Fatalf("spuName = %q, want SPU-PUBLISH", spuName)
+			}
+			if !defaultConfirmed {
+				t.Fatal("defaultConfirmed = false, want true")
+			}
+			if fallbackMessage != "SHEIN accepted publish request; remote record not yet visible" {
+				t.Fatalf("fallbackMessage = %q, want publish fallback", fallbackMessage)
+			}
+			if !gotStartedAt.Equal(startedAt) {
+				t.Fatalf("startedAt = %v, want %v", gotStartedAt, startedAt)
+			}
+			if taskID != "task-123" {
+				t.Fatalf("taskID = %q, want task-123", taskID)
+			}
+			return expected, nil
+		},
+	})
+
+	confirmation, err := submitter.resolveSubmissionRefreshConfirmation("task-123", &sheinSubmissionRefreshState{
+		action:           "publish",
+		requestID:        "refresh-123",
+		startedAt:        startedAt,
+		lookupCodes:      []string{"SKC-1", "SKU-1"},
+		defaultConfirmed: true,
+		fallbackMessage:  "",
+		productAPI:       productAPI,
+		otherAPI:         otherAPI,
+		spuName:          "SPU-PUBLISH",
+	})
+	if err != nil {
+		t.Fatalf("resolveSubmissionRefreshConfirmation() error = %v", err)
+	}
+	if confirmation != expected {
+		t.Fatalf("confirmation = %+v, want %+v", confirmation, expected)
 	}
 }
 

@@ -71,6 +71,19 @@ type sheinSubmissionRefreshRequest struct {
 	remoteInputs sheinSubmissionRefreshRemoteInputs
 }
 
+type sheinSubmissionRefreshConfirmationRequest struct {
+	productAPI       sheinproduct.ProductAPI
+	otherAPI         sheinother.OtherAPI
+	action           string
+	requestID        string
+	lookupCodes      []string
+	spuName          string
+	defaultConfirmed bool
+	fallbackMessage  string
+	startedAt        time.Time
+	taskID           string
+}
+
 type sheinSubmissionRefreshSelection struct {
 	action       string
 	record       *sheinpub.SubmissionRecord
@@ -233,21 +246,11 @@ func (s *taskSubmissionService) RefreshSubmissionStatus(ctx context.Context, tas
 }
 
 func (s *taskSubmissionService) resolveSubmissionRefreshConfirmation(taskID string, refreshState *sheinSubmissionRefreshState) (*sheinRemoteConfirmation, error) {
-	if refreshState == nil {
-		return nil, apperrors.New(apperrors.ErrCodeSystem, "submission refresh state is not available")
+	request, err := buildSubmissionRefreshConfirmationRequest(taskID, refreshState)
+	if err != nil {
+		return nil, err
 	}
-	return s.resolveSheinSubmitRemoteStatus(
-		refreshState.productAPI,
-		refreshState.otherAPI,
-		refreshState.action,
-		refreshState.requestID,
-		refreshState.lookupCodes,
-		refreshState.spuName,
-		refreshState.defaultConfirmed,
-		refreshState.fallbackMessage,
-		refreshState.startedAt,
-		taskID,
-	)
+	return s.resolveSubmissionRefreshRemoteConfirmation(request)
 }
 
 func (s *taskSubmissionService) finishSubmissionRefresh(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation, remoteErr error) (*ListingKitPreview, error) {
@@ -290,6 +293,42 @@ func (s *taskSubmissionService) completeSubmissionRefresh(ctx context.Context, t
 		return nil, remoteErr
 	}
 	return s.buildTaskPreview(ctx, task, "shein")
+}
+
+func buildSubmissionRefreshConfirmationRequest(taskID string, refreshState *sheinSubmissionRefreshState) (*sheinSubmissionRefreshConfirmationRequest, error) {
+	if refreshState == nil {
+		return nil, apperrors.New(apperrors.ErrCodeSystem, "submission refresh state is not available")
+	}
+	return &sheinSubmissionRefreshConfirmationRequest{
+		productAPI:       refreshState.productAPI,
+		otherAPI:         refreshState.otherAPI,
+		action:           refreshState.action,
+		requestID:        refreshState.requestID,
+		lookupCodes:      refreshState.lookupCodes,
+		spuName:          refreshState.spuName,
+		defaultConfirmed: refreshState.defaultConfirmed,
+		fallbackMessage:  refreshState.fallbackMessage,
+		startedAt:        refreshState.startedAt,
+		taskID:           taskID,
+	}, nil
+}
+
+func (s *taskSubmissionService) resolveSubmissionRefreshRemoteConfirmation(request *sheinSubmissionRefreshConfirmationRequest) (*sheinRemoteConfirmation, error) {
+	if request == nil {
+		return nil, apperrors.New(apperrors.ErrCodeSystem, "submission refresh confirmation request is not available")
+	}
+	return s.resolveSheinSubmitRemoteStatus(
+		request.productAPI,
+		request.otherAPI,
+		request.action,
+		request.requestID,
+		request.lookupCodes,
+		request.spuName,
+		request.defaultConfirmed,
+		request.fallbackMessage,
+		request.startedAt,
+		request.taskID,
+	)
 }
 
 func (s *taskSubmissionService) loadSubmissionRefreshInputs(ctx context.Context, taskID string, task *Task, pkg *SheinPackage) (*sheinSubmissionRefreshSelection, sheinproduct.ProductAPI, error) {
