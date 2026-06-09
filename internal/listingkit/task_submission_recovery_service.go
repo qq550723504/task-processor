@@ -187,15 +187,16 @@ func (s *taskSubmissionRecoveryService) mutateTaskResult(ctx context.Context, ta
 }
 
 func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {
-	pkg, recoveredState, err := s.loadRecoveredRemoteState(task, action)
+	pkg, report, err := loadRecoveredSheinSubmissionReport(task)
 	if err != nil {
 		return nil, err
 	}
+	recoveredState := buildRecoveredSheinRemoteState(report, action)
 	return s.executeRecoveredSheinSubmitRoute(ctx, task, pkg, action, recoveredState)
 }
 
 func (s *taskSubmissionRecoveryService) executeRecoveredSheinSubmitRoute(ctx context.Context, task *Task, pkg *SheinPackage, action string, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
-	if s.shouldRecoverSheinSubmitLocally(action, state.response) {
+	if sheinSubmissionResponseAccepted(state.response) || (action == "save_draft" && submission.SaveDraftSucceeded(action, state.response)) {
 		return s.recoverSheinSubmitLocally(ctx, task, pkg, action, state)
 	}
 	return s.recoverSheinSubmitViaRemoteConfirmation(ctx, task, pkg, action, state)
@@ -263,18 +264,6 @@ func (s *taskSubmissionRecoveryService) buildSheinSubmitOtherAPIForRecovery(ctx 
 	}
 	otherAPI, _ := s.buildSheinSubmitOtherAPI(ctx, task)
 	return otherAPI
-}
-
-func (s *taskSubmissionRecoveryService) loadRecoveredRemoteState(task *Task, action string) (*SheinPackage, *sheinRecoveredRemoteState, error) {
-	pkg, report, err := loadRecoveredSheinSubmissionReport(task)
-	if err != nil {
-		return nil, nil, err
-	}
-	return pkg, buildRecoveredSheinRemoteState(report, action), nil
-}
-
-func (s *taskSubmissionRecoveryService) shouldRecoverSheinSubmitLocally(action string, response *sheinpub.SubmissionResponse) bool {
-	return sheinSubmissionResponseAccepted(response) || (action == "save_draft" && submission.SaveDraftSucceeded(action, response))
 }
 
 func (s *taskSubmissionRecoveryService) recoverSheinSubmitLocally(ctx context.Context, task *Task, pkg *SheinPackage, action string, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
