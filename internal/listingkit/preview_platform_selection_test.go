@@ -54,6 +54,21 @@ func TestIsSelectedPreviewPlatform(t *testing.T) {
 	}
 }
 
+func TestPreviewPlatformBuilders(t *testing.T) {
+	t.Parallel()
+
+	builders := previewPlatformBuilders()
+	want := []string{"amazon", "shein", "temu", "walmart"}
+	if len(builders) != len(want) {
+		t.Fatalf("previewPlatformBuilders() length = %d, want %d", len(builders), len(want))
+	}
+	for i, builder := range builders {
+		if got := builder.platform(); got != want[i] {
+			t.Fatalf("previewPlatformBuilders()[%d].platform() = %q, want %q", i, got, want[i])
+		}
+	}
+}
+
 func TestBuildListingKitPreviewReturnsUnavailableForMissingSelectedPlatformPayload(t *testing.T) {
 	t.Parallel()
 
