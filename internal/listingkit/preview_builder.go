@@ -24,6 +24,27 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 		return nil, ErrUnsupportedPreviewPlatform
 	}
 
+	preview := buildBaseListingKitPreview(task, selectedPlatform)
+	if task.Result == nil {
+		preview.Overview = &ListingKitPreviewHeader{
+			StatusMessage: previewStatusMessage(task.Status),
+		}
+		return preview, nil
+	}
+	ensureTaskPodExecution(task)
+
+	attachListingKitPreviewResult(preview, task.Result, selectedPlatform)
+
+	for _, builder := range previewPlatformBuilders() {
+		if err := builder.build(task, preview, selectedPlatform); err != nil {
+			return nil, err
+		}
+	}
+
+	return preview, nil
+}
+
+func buildBaseListingKitPreview(task *Task, selectedPlatform string) *ListingKitPreview {
 	preview := &ListingKitPreview{
 		TaskID:           task.ID,
 		Status:           task.Status,
@@ -35,41 +56,28 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 		completedAt := task.UpdatedAt
 		preview.CompletedAt = &completedAt
 	}
+	return preview
+}
 
-	if task.Result == nil {
-		preview.Overview = &ListingKitPreviewHeader{
-			StatusMessage: previewStatusMessage(task.Status),
-		}
-		return preview, nil
-	}
-	ensureTaskPodExecution(task)
-
-	preview.Overview = buildPreviewHeader(task.Result, selectedPlatform)
-	preview.NeedsReview = task.Result.Summary != nil && task.Result.Summary.NeedsReview
-	preview.Catalog = task.Result.CatalogProduct
-	preview.Assets = task.Result.AssetBundle
-	preview.AssetInventory = task.Result.AssetInventorySummary
-	preview.AssetRenderPreviews = append([]AssetRenderPreview(nil), task.Result.AssetRenderPreviews...)
-	preview.PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil), task.Result.PlatformAssetRenderPreviews...)
+func attachListingKitPreviewResult(preview *ListingKitPreview, result *ListingKitResult, selectedPlatform string) {
+	preview.Overview = buildPreviewHeader(result, selectedPlatform)
+	preview.NeedsReview = result.Summary != nil && result.Summary.NeedsReview
+	preview.Catalog = result.CatalogProduct
+	preview.Assets = result.AssetBundle
+	preview.AssetInventory = result.AssetInventorySummary
+	preview.AssetRenderPreviews = append([]AssetRenderPreview(nil), result.AssetRenderPreviews...)
+	preview.PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil), result.PlatformAssetRenderPreviews...)
 	if len(preview.AssetRenderPreviews) == 0 {
-		preview.AssetRenderPreviews = buildAssetRenderPreviews(task.Result.AssetBundle)
+		preview.AssetRenderPreviews = buildAssetRenderPreviews(result.AssetBundle)
 	}
 	if len(preview.PlatformAssetRenderPreviews) == 0 {
-		preview.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(task.Result)
+		preview.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(result)
 	}
 	preview.PlatformAssetRenderPreviews = filterPlatformAssetRenderPreviews(preview.PlatformAssetRenderPreviews, selectedPlatform)
-	preview.AssetGenerationQueue = task.Result.AssetGenerationQueue
-	preview.AssetGenerationOverview = task.Result.AssetGenerationOverview
-	preview.RevisionHistoryMeta = buildRevisionHistoryMeta(task.Result)
-	preview.RevisionHistory = buildRevisionHistoryPreviewItems(task.Result.RevisionHistory)
-
-	for _, builder := range previewPlatformBuilders() {
-		if err := builder.build(task, preview, selectedPlatform); err != nil {
-			return nil, err
-		}
-	}
-
-	return preview, nil
+	preview.AssetGenerationQueue = result.AssetGenerationQueue
+	preview.AssetGenerationOverview = result.AssetGenerationOverview
+	preview.RevisionHistoryMeta = buildRevisionHistoryMeta(result)
+	preview.RevisionHistory = buildRevisionHistoryPreviewItems(result.RevisionHistory)
 }
 
 func previewStatusFromReviewNotes(reviewNotes []string) string {
