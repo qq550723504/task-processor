@@ -311,6 +311,61 @@ func TestLoadSubmissionRefreshSelectionMapsFields(t *testing.T) {
 	}
 }
 
+func TestLoadSubmissionRefreshSelectionFallsBackToPublishWhenLastActionMissing(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	now := time.Now()
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		Publish: &sheinpub.SubmissionRecord{
+			Action:       "publish",
+			RequestID:    "refresh-123",
+			SupplierCode: "SKC-1",
+			StartedAt:    now,
+		},
+	}
+
+	selection, err := loadSubmissionRefreshSelection(task.Result.Shein)
+	if err != nil {
+		t.Fatalf("loadSubmissionRefreshSelection() error = %v", err)
+	}
+	if selection == nil {
+		t.Fatal("selection = nil")
+	}
+	if selection.action != "publish" {
+		t.Fatalf("action = %q, want publish", selection.action)
+	}
+	if selection.record == nil || selection.record.RequestID != "refresh-123" {
+		t.Fatalf("record = %+v, want request id refresh-123", selection.record)
+	}
+}
+
+func TestLoadSubmissionRefreshSelectionFallsBackToPackageSupplierCode(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	now := time.Now()
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		LastAction: "publish",
+		Publish: &sheinpub.SubmissionRecord{
+			Action:    "publish",
+			RequestID: "refresh-123",
+			StartedAt: now,
+		},
+	}
+
+	selection, err := loadSubmissionRefreshSelection(task.Result.Shein)
+	if err != nil {
+		t.Fatalf("loadSubmissionRefreshSelection() error = %v", err)
+	}
+	if selection == nil {
+		t.Fatal("selection = nil")
+	}
+	if selection.supplierCode != "SKC-1" {
+		t.Fatalf("supplierCode = %q, want SKC-1", selection.supplierCode)
+	}
+}
+
 func TestLoadSubmissionRefreshTaskPackageRejectsMissingSubmissionState(t *testing.T) {
 	t.Parallel()
 

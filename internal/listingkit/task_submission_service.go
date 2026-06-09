@@ -303,12 +303,16 @@ func resolveSubmissionRefreshAction(report *sheinpub.SubmissionReport) string {
 	return ""
 }
 
-func resolveSubmissionRefreshRecord(pkg *SheinPackage, action string) (*sheinpub.SubmissionRecord, error) {
+func loadSubmissionRefreshReport(pkg *SheinPackage) (*sheinpub.SubmissionReport, error) {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.SubmissionState == nil {
 		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
 	}
-	record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
+	return pkg.SubmissionState, nil
+}
+
+func resolveSubmissionRefreshRecord(report *sheinpub.SubmissionReport, action string) (*sheinpub.SubmissionRecord, error) {
+	record := sheinSubmissionRecordForAction(report, action)
 	if record == nil {
 		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission record is not available")
 	}
@@ -330,12 +334,12 @@ func resolveSubmissionRefreshSupplierCode(record *sheinpub.SubmissionRecord, pkg
 }
 
 func loadSubmissionRefreshSelection(pkg *SheinPackage) (*sheinSubmissionRefreshSelection, error) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.SubmissionState == nil {
-		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
+	report, err := loadSubmissionRefreshReport(pkg)
+	if err != nil {
+		return nil, err
 	}
-	action := resolveSubmissionRefreshAction(pkg.SubmissionState)
-	record, err := resolveSubmissionRefreshRecord(pkg, action)
+	action := resolveSubmissionRefreshAction(report)
+	record, err := resolveSubmissionRefreshRecord(report, action)
 	if err != nil {
 		return nil, err
 	}
