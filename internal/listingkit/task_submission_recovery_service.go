@@ -376,24 +376,16 @@ func (s *taskSubmissionRecoveryService) persistSheinRecoveredRemoteFailure(ctx c
 	if task == nil || pkg == nil || state == nil {
 		return remoteErr
 	}
-	s.appendRecoveredSheinRemoteFailureEvent(pkg, task.ID, action, state, remoteErr)
-	if err := s.saveRecoveredSheinRemoteFailure(ctx, task); err != nil {
+	_, failureEvent := submission.FailAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, sheinpub.SubmissionPhaseConfirmRemote, remoteErr, time.Now())
+	appendSheinSubmissionEvent(pkg, failureEvent)
+	if task.Result == nil {
+		return remoteErr
+	}
+	task.Result.UpdatedAt = time.Now()
+	if err := s.repo.SaveTaskResult(ctx, task.ID, task.Result); err != nil {
 		return err
 	}
 	return remoteErr
-}
-
-func (s *taskSubmissionRecoveryService) appendRecoveredSheinRemoteFailureEvent(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState, remoteErr error) {
-	_, failureEvent := submission.FailAttemptAndBuildEvent(pkg, taskID, action, state.requestID, sheinpub.SubmissionPhaseConfirmRemote, remoteErr, time.Now())
-	appendSheinSubmissionEvent(pkg, failureEvent)
-}
-
-func (s *taskSubmissionRecoveryService) saveRecoveredSheinRemoteFailure(ctx context.Context, task *Task) error {
-	if task == nil || task.Result == nil {
-		return nil
-	}
-	task.Result.UpdatedAt = time.Now()
-	return s.repo.SaveTaskResult(ctx, task.ID, task.Result)
 }
 
 func (s *taskSubmissionRecoveryService) completeSheinRecoveredRemoteSuccess(ctx context.Context, task *Task, pkg *SheinPackage, action string, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
