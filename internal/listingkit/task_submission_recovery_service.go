@@ -203,10 +203,10 @@ func (s *taskSubmissionRecoveryService) executeRecoveredSheinSubmitRoute(ctx con
 
 func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx context.Context, task *Task, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID, supplierCode string, startedAt time.Time) (*sheinpub.SubmissionEvent, error) {
 	inputs := buildSheinRemoteRefreshState(pkg, action, supplierCode)
-	if shouldSkipSheinRemoteRefreshLookup(inputs.lookupCodes) {
+	if len(inputs.lookupCodes) == 0 {
 		return applyMissingSupplierCodeRemoteConfirmation(pkg, taskID, action, requestID, startedAt, inputs.defaultConfirmed), nil
 	}
-	confirmation, err := s.resolveSheinRemoteRefreshConfirmation(ctx, task, pkg, productAPI, action, requestID, startedAt, taskID, inputs)
+	confirmation, err := s.resolveSheinRemoteRefreshConfirmation(ctx, task, productAPI, action, requestID, startedAt, taskID, inputs)
 	applySheinRemoteRefreshConfirmation(pkg, action, requestID, confirmation)
 	return confirmation.event, err
 }
@@ -232,11 +232,7 @@ func buildSheinRemoteRefreshState(pkg *SheinPackage, action, supplierCode string
 	}
 }
 
-func shouldSkipSheinRemoteRefreshLookup(lookupCodes []string) bool {
-	return len(lookupCodes) == 0
-}
-
-func (s *taskSubmissionRecoveryService) resolveSheinRemoteRefreshConfirmation(ctx context.Context, task *Task, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID string, startedAt time.Time, taskID string, inputs sheinRemoteRefreshState) (*sheinRemoteConfirmation, error) {
+func (s *taskSubmissionRecoveryService) resolveSheinRemoteRefreshConfirmation(ctx context.Context, task *Task, productAPI sheinproduct.ProductAPI, action, requestID string, startedAt time.Time, taskID string, inputs sheinRemoteRefreshState) (*sheinRemoteConfirmation, error) {
 	otherAPI := s.buildSheinSubmitOtherAPIForRecovery(ctx, task)
 	return s.resolveRemoteStatus(productAPI, otherAPI, action, requestID, inputs.lookupCodes, inputs.spuName, inputs.defaultConfirmed, inputs.fallbackMessage, startedAt, taskID)
 }
