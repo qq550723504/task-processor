@@ -65,6 +65,12 @@ type sheinSubmissionRefreshRemoteInputs struct {
 	fallbackMessage  string
 }
 
+type sheinSubmissionRefreshRequest struct {
+	action       string
+	requestID    string
+	remoteInputs sheinSubmissionRefreshRemoteInputs
+}
+
 type sheinSubmissionRefreshSelection struct {
 	action       string
 	record       *sheinpub.SubmissionRecord
@@ -364,11 +370,9 @@ func (s *taskSubmissionService) buildSheinSubmitOtherAPIForRefresh(ctx context.C
 
 func (s *taskSubmissionService) buildSheinSubmissionRefreshState(ctx context.Context, task *Task, pkg *SheinPackage, selection *sheinSubmissionRefreshSelection, productAPI sheinproduct.ProductAPI) *sheinSubmissionRefreshState {
 	startedAt := time.Now()
-	action := submissionRefreshSelectionAction(selection)
-	requestID := buildSubmissionRefreshRequestID(submissionRefreshSelectionRecord(selection))
-	remoteInputs := buildSubmissionRefreshRemoteInputs(pkg, action, submissionRefreshSelectionSupplierCode(selection))
+	request := buildSubmissionRefreshRequest(pkg, selection)
 	otherAPI := s.buildSheinSubmitOtherAPIForRefresh(ctx, task)
-	return newSubmissionRefreshState(task, action, requestID, startedAt, productAPI, otherAPI, remoteInputs)
+	return newSubmissionRefreshState(task, request.action, request.requestID, startedAt, productAPI, otherAPI, request.remoteInputs)
 }
 
 func submissionRefreshSelectionAction(selection *sheinSubmissionRefreshSelection) string {
@@ -397,6 +401,15 @@ func buildSubmissionRefreshRequestID(record *sheinpub.SubmissionRecord) string {
 		return ""
 	}
 	return strings.TrimSpace(record.RequestID)
+}
+
+func buildSubmissionRefreshRequest(pkg *SheinPackage, selection *sheinSubmissionRefreshSelection) sheinSubmissionRefreshRequest {
+	action := submissionRefreshSelectionAction(selection)
+	return sheinSubmissionRefreshRequest{
+		action:       action,
+		requestID:    buildSubmissionRefreshRequestID(submissionRefreshSelectionRecord(selection)),
+		remoteInputs: buildSubmissionRefreshRemoteInputs(pkg, action, submissionRefreshSelectionSupplierCode(selection)),
+	}
 }
 
 func newSubmissionRefreshState(task *Task, action, requestID string, startedAt time.Time, productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, remoteInputs sheinSubmissionRefreshRemoteInputs) *sheinSubmissionRefreshState {

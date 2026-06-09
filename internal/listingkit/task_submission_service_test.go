@@ -232,6 +232,55 @@ func TestBuildSubmissionRefreshRequestIDTrimsRecordValue(t *testing.T) {
 	}
 }
 
+func TestBuildSubmissionRefreshRequestMapsSelectionAndRemoteInputs(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	now := time.Now().Add(-time.Hour)
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		LastAction: "publish",
+		LastResult: &sheinpub.SubmissionResponse{
+			Success: true,
+			SPUName: "SPU-PUBLISH",
+		},
+		Publish: &sheinpub.SubmissionRecord{
+			Action:       "publish",
+			RequestID:    "  refresh-123  ",
+			SupplierCode: "SKC-1",
+			StartedAt:    now,
+			Result: &sheinpub.SubmissionResponse{
+				Success: true,
+				SPUName: "SPU-PUBLISH",
+			},
+		},
+	}
+
+	request := buildSubmissionRefreshRequest(task.Result.Shein, &sheinSubmissionRefreshSelection{
+		action:       "publish",
+		record:       task.Result.Shein.Submission.Publish,
+		supplierCode: "SKC-1",
+	})
+
+	if request.action != "publish" {
+		t.Fatalf("action = %q, want publish", request.action)
+	}
+	if request.requestID != "refresh-123" {
+		t.Fatalf("requestID = %q, want refresh-123", request.requestID)
+	}
+	if len(request.remoteInputs.lookupCodes) == 0 {
+		t.Fatal("lookupCodes = empty, want collected codes")
+	}
+	if !request.remoteInputs.defaultConfirmed {
+		t.Fatal("defaultConfirmed = false, want true")
+	}
+	if request.remoteInputs.spuName != "SPU-PUBLISH" {
+		t.Fatalf("spuName = %q, want SPU-PUBLISH", request.remoteInputs.spuName)
+	}
+	if request.remoteInputs.fallbackMessage != "" {
+		t.Fatalf("fallbackMessage = %q, want empty", request.remoteInputs.fallbackMessage)
+	}
+}
+
 func TestNewSubmissionRefreshStateMapsInputs(t *testing.T) {
 	t.Parallel()
 
