@@ -52,6 +52,7 @@ The current active direction is:
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
 - [project-wide-execution-plan.md](./project-wide-execution-plan.md) - concrete phase-by-phase execution plan with PR slices, acceptance criteria, tests, and stop conditions.
 - [dependency-baseline.md](./dependency-baseline.md) - baseline worksheet for dependency scans and legacy exception tracking.
+- [preview-subpackage-feasibility.md](./preview-subpackage-feasibility.md) - current decision note explaining why preview stays inside `package listingkit` before a real subpackage extraction.
 - [listingkit-refactoring-plan.md](./listingkit-refactoring-plan.md) - detailed ListingKit root-directory reduction plan.
 - [studio-migration-plan.md](./studio-migration-plan.md) - Studio migration planning.
 - [architecture-improvement-plan.md](./architecture-improvement-plan.md) - earlier architecture quality improvement notes.
