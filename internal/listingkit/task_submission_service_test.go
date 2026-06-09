@@ -1038,6 +1038,21 @@ func TestValidateSubmissionRefreshMutationRejectsMissingTaskResult(t *testing.T)
 	}
 }
 
+func TestValidateSubmissionRefreshActionRejectsMissingSubmissionState(t *testing.T) {
+	t.Parallel()
+
+	err := validateSubmissionRefreshAction(&SheinPackage{}, "publish")
+	if err == nil {
+		t.Fatal("err = nil, want validation error")
+	}
+	if !errors.Is(err, ErrSubmitBlocked) {
+		t.Fatalf("error = %v, want ErrSubmitBlocked", err)
+	}
+	if !apperrors.IsCode(err, apperrors.ErrCodeValidation) {
+		t.Fatalf("error code = %q, want %q", apperrors.GetCode(err), apperrors.ErrCodeValidation)
+	}
+}
+
 func TestValidateSubmissionRefreshMutationRejectsActionChange(t *testing.T) {
 	t.Parallel()
 

@@ -591,20 +591,21 @@ func loadSubmissionRefreshMutationPackage(task *Task) (*SheinPackage, error) {
 
 func loadSubmissionRefreshTaskPackage(task *Task) (*SheinPackage, error) {
 	if task == nil || task.Result == nil {
-		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
+		return nil, buildSubmissionRefreshUnavailableError()
 	}
-	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
-	if pkg == nil || pkg.SubmissionState == nil {
-		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
+	pkg, err := loadSubmissionRefreshPackageState(task.Result.Shein)
+	if err != nil {
+		return nil, err
 	}
 	return pkg, nil
 }
 
 func validateSubmissionRefreshAction(pkg *SheinPackage, action string) error {
-	if pkg == nil || pkg.SubmissionState == nil {
-		return apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
+	report, err := loadSubmissionRefreshPackageReport(pkg)
+	if err != nil {
+		return err
 	}
-	currentAction := resolveSubmissionRefreshAction(pkg.SubmissionState)
+	currentAction := resolveSubmissionRefreshAction(report)
 	if currentAction == "" {
 		currentAction = action
 	}
@@ -615,14 +616,35 @@ func validateSubmissionRefreshAction(pkg *SheinPackage, action string) error {
 }
 
 func validateSubmissionRefreshRequest(pkg *SheinPackage, action, requestID string) error {
-	if pkg == nil || pkg.SubmissionState == nil {
-		return apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
+	report, err := loadSubmissionRefreshPackageReport(pkg)
+	if err != nil {
+		return err
 	}
-	currentRecord := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
+	currentRecord := sheinSubmissionRecordForAction(report, action)
 	if currentRecord == nil || strings.TrimSpace(currentRecord.RequestID) != requestID {
 		return buildSubmissionRefreshChangedError()
 	}
 	return nil
+}
+
+func loadSubmissionRefreshPackageState(pkg *SheinPackage) (*SheinPackage, error) {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SubmissionState == nil {
+		return nil, buildSubmissionRefreshUnavailableError()
+	}
+	return pkg, nil
+}
+
+func loadSubmissionRefreshPackageReport(pkg *SheinPackage) (*sheinpub.SubmissionReport, error) {
+	pkg, err := loadSubmissionRefreshPackageState(pkg)
+	if err != nil {
+		return nil, err
+	}
+	return pkg.SubmissionState, nil
+}
+
+func buildSubmissionRefreshUnavailableError() error {
+	return apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
 }
 
 func buildSubmissionRefreshChangedError() error {
