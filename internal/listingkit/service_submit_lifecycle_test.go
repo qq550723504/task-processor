@@ -266,7 +266,7 @@ func TestNormalizeSheinSubmitPackageRepairsResolvedSaleAttributes(t *testing.T) 
 	}
 	host := svc.(*service)
 
-	host.normalizeSheinSubmitPackage(task, task.Result.Shein, &SubmitTaskRequest{Platform: "shein", Action: "publish"}, "publish")
+	host.taskSubmissionExecutionOrDefault().normalizeSheinSubmitPackage(task, task.Result.Shein, &SubmitTaskRequest{Platform: "shein", Action: "publish"}, "publish")
 
 	if task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute == nil || task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute.AttributeID <= 0 {
 		t.Fatalf("request draft skc sale attribute = %+v, want repaired resolved value", task.Result.Shein.RequestDraft.SKCList[0].SaleAttribute)

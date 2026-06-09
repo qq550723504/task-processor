@@ -168,10 +168,6 @@ func shouldReplayStartedTemporalSubmit(err error, requestID string) bool {
 		inProgress.RequestID == strings.TrimSpace(requestID)
 }
 
-func (s *service) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req *SubmitTaskRequest, action string) {
-	s.taskSubmissionExecutionOrDefault().normalizeSheinSubmitPackage(task, pkg, req, action)
-}
-
 func repairSheinSubmitSaleAttributes(pkg *SheinPackage) {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if !sheinSubmitSaleAttributesNeedRepair(pkg) {
@@ -218,10 +214,6 @@ func sheinSubmitSaleAttributesNeedRepair(pkg *SheinPackage) bool {
 	return false
 }
 
-func (s *service) buildSheinSubmitProductAPI(ctx context.Context, task *Task) (sheinproduct.ProductAPI, error) {
-	return s.taskSubmissionExecutionOrDefault().buildSheinSubmitProductAPI(ctx, task)
-}
-
 func (s *service) buildSheinSubmitOtherAPI(ctx context.Context, task *Task) (sheinother.OtherAPI, error) {
 	resolver := buildSubmitRuntimeContextResolver(s)
 	apiClient, storeID, err := resolver.newAPIClient(ctx, task)
@@ -238,22 +230,6 @@ func (s *service) buildSheinSubmitOtherAPI(ctx context.Context, task *Task) (she
 	}
 	baseAPI := NewSheinRuntimeBaseAPIClient(apiClient, storeID)
 	return sheinother.NewClient(baseAPI), nil
-}
-
-func (s *service) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg *SheinPackage, action string) (*sheinproduct.Product, error) {
-	return s.taskSubmissionExecutionOrDefault().prepareSheinSubmitProduct(ctx, task, pkg, action)
-}
-
-func (s *service) uploadSheinSubmitImages(ctx context.Context, task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
-	return s.taskSubmissionExecutionOrDefault().uploadSheinSubmitImages(ctx, task, pkg, submitProduct)
-}
-
-func (s *service) preValidateSheinSubmitProduct(pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
-	return s.taskSubmissionExecutionOrDefault().preValidateSheinSubmitProduct(pkg, submitProduct)
-}
-
-func (s *service) executeSheinSubmitRemote(productAPI sheinproduct.ProductAPI, action string, submitProduct *sheinproduct.Product) (*sheinpub.SubmissionResponse, error) {
-	return s.taskSubmissionExecutionOrDefault().executeSheinSubmitRemote(productAPI, action, submitProduct)
 }
 
 func isSupportedSubmitAction(action string) bool {
