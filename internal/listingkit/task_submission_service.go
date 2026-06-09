@@ -433,18 +433,13 @@ func loadSubmissionRefreshSelection(pkg *SheinPackage) (*sheinSubmissionRefreshS
 	}, nil
 }
 
-func (s *taskSubmissionService) buildSheinSubmitOtherAPIForRefresh(ctx context.Context, task *Task) sheinother.OtherAPI {
-	if s.buildSheinSubmitOtherAPI == nil {
-		return nil
-	}
-	otherAPI, _ := s.buildSheinSubmitOtherAPI(ctx, task)
-	return otherAPI
-}
-
 func (s *taskSubmissionService) buildSheinSubmissionRefreshState(ctx context.Context, task *Task, pkg *SheinPackage, selection *sheinSubmissionRefreshSelection, productAPI sheinproduct.ProductAPI) *sheinSubmissionRefreshState {
 	startedAt := time.Now()
 	request := buildSubmissionRefreshRequest(pkg, selection)
-	otherAPI := s.buildSheinSubmitOtherAPIForRefresh(ctx, task)
+	var otherAPI sheinother.OtherAPI
+	if s.buildSheinSubmitOtherAPI != nil {
+		otherAPI, _ = s.buildSheinSubmitOtherAPI(ctx, task)
+	}
 	return newSubmissionRefreshState(task, request.action, request.requestID, startedAt, productAPI, otherAPI, request.remoteInputs)
 }
 
