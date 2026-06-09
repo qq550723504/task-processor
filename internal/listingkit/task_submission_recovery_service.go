@@ -465,25 +465,27 @@ func (s *taskSubmissionRecoveryService) finalizeRecoveredSheinSubmission(ctx con
 }
 
 func (s *taskSubmissionRecoveryService) clearSheinSubmitLease(ctx context.Context, taskID, action, requestID string) error {
-	_, err := s.mutateTaskResult(ctx, taskID, func(task *Task) error {
-		pkg := loadSheinSubmitLeaseState(task)
-		if pkg == nil {
-			return nil
-		}
+	return s.mutateSheinSubmitLease(ctx, taskID, func(task *Task, pkg *SheinPackage) {
 		clearSheinSubmitLeaseState(task, pkg, action, requestID)
-		return nil
 	})
-	return err
 }
 
 func (s *taskSubmissionRecoveryService) clearSheinSubmitLeaseAfterStartFailure(ctx context.Context, taskID, action, requestID string, startErr error) error {
+	return s.mutateSheinSubmitLease(ctx, taskID, func(task *Task, pkg *SheinPackage) {
+		markSheinSubmitStartFailure(pkg, taskID, action, requestID, startErr)
+		clearSheinSubmitLeaseState(task, pkg, action, requestID)
+	})
+}
+
+func (s *taskSubmissionRecoveryService) mutateSheinSubmitLease(ctx context.Context, taskID string, mutate func(*Task, *SheinPackage)) error {
 	_, err := s.mutateTaskResult(ctx, taskID, func(task *Task) error {
 		pkg := loadSheinSubmitLeaseState(task)
 		if pkg == nil {
 			return nil
 		}
-		markSheinSubmitStartFailure(pkg, taskID, action, requestID, startErr)
-		clearSheinSubmitLeaseState(task, pkg, action, requestID)
+		if mutate != nil {
+			mutate(task, pkg)
+		}
 		return nil
 	})
 	return err

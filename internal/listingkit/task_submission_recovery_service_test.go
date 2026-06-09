@@ -328,6 +328,37 @@ func TestTaskSubmissionRecoveryServiceClearSheinSubmitLeaseAfterStartFailureMark
 	}
 }
 
+func TestTaskSubmissionRecoveryServiceClearSheinSubmitLeaseClearsInFlightState(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-time.Minute)
+	beginSheinSubmitAttempt(task.Result.Shein, "publish", "clear-lease-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		repo: repo,
+	})
+
+	if err := recovery.clearSheinSubmitLease(context.Background(), task.ID, "publish", "clear-lease-123"); err != nil {
+		t.Fatalf("clearSheinSubmitLease() err = %v", err)
+	}
+
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if saved.Result.Shein.Submission.CurrentAction != "" || saved.Result.Shein.Submission.CurrentPhase != "" || saved.Result.Shein.Submission.CurrentRequestID != "" {
+		t.Fatalf("submission current state = %+v, want cleared lease", saved.Result.Shein.Submission)
+	}
+	if saved.Result.Shein.Submission.Publish == nil || saved.Result.Shein.Submission.Publish.Status != sheinpub.SubmissionStatusRunning {
+		t.Fatalf("publish record = %+v, want unchanged running record", saved.Result.Shein.Submission.Publish)
+	}
+}
+
 func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitLocallyFinalizesRecoveredSubmission(t *testing.T) {
 	t.Parallel()
 
