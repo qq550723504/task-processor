@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
@@ -45,6 +46,105 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIUsesResolvedSto
 	}
 	if identity.UserID != task.UserID {
 		t.Fatalf("builder context user id = %q, want %q", identity.UserID, task.UserID)
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIRequiresBuilder(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{})
+
+	api, err := exec.buildSheinSubmitProductAPI(context.Background(), &Task{})
+	if err == nil {
+		t.Fatal("err = nil, want configuration error")
+	}
+	if api != nil {
+		t.Fatalf("api = %+v, want nil", api)
+	}
+	if err.Error() != "shein product api builder is not configured" {
+		t.Fatalf("error = %q, want builder configuration error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIRejectsMissingStoreID(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinProductAPIBuilder: stubSheinProductAPIBuilder{api: &stubSheinProductAPI{}},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 0, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{},
+	}
+
+	api, err := exec.buildSheinSubmitProductAPI(context.Background(), task)
+	if err == nil {
+		t.Fatal("err = nil, want missing store id error")
+	}
+	if api != nil {
+		t.Fatalf("api = %+v, want nil", api)
+	}
+	if err.Error() != "shein store id is unavailable for submit" {
+		t.Fatalf("error = %q, want missing store id error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIRejectsBuilderFallback(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinProductAPIBuilder: stubSheinProductAPIBuilder{msg: "login required"},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 903, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{SheinStoreID: 903},
+	}
+
+	api, err := exec.buildSheinSubmitProductAPI(context.Background(), task)
+	if err == nil {
+		t.Fatal("err = nil, want builder fallback error")
+	}
+	if api != nil {
+		t.Fatalf("api = %+v, want nil", api)
+	}
+	if err.Error() != "shein submit unavailable: login required" {
+		t.Fatalf("error = %q, want builder fallback error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIReturnsStoreResolutionError(t *testing.T) {
+	t.Parallel()
+
+	resolveErr := errors.New("store resolver failed")
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinProductAPIBuilder: stubSheinProductAPIBuilder{api: &stubSheinProductAPI{}},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 0, resolveErr
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{},
+	}
+
+	api, err := exec.buildSheinSubmitProductAPI(context.Background(), task)
+	if err == nil {
+		t.Fatal("err = nil, want missing store id error")
+	}
+	if api != nil {
+		t.Fatalf("api = %+v, want nil", api)
+	}
+	if err.Error() != "shein store id is unavailable for submit" {
+		t.Fatalf("error = %q, want missing store id error", err.Error())
 	}
 }
 

@@ -77,19 +77,11 @@ func (s *taskSubmissionExecutionService) buildSheinSubmitProductAPI(ctx context.
 	if s.sheinProductAPIBuilder == nil {
 		return nil, fmt.Errorf("shein product api builder is not configured")
 	}
-	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
+	runtimeCtx, storeID, err := s.resolveSheinSubmitRuntime(ctx, task)
 	if err != nil {
 		return nil, err
 	}
-	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
-	if err != nil || storeID <= 0 {
-		return nil, fmt.Errorf("shein store id is unavailable for submit")
-	}
-	productAPI, fallback := s.sheinProductAPIBuilder.BuildProductAPI(runtimeCtx, storeID)
-	if productAPI == nil {
-		return nil, fmt.Errorf("shein submit unavailable: %s", fallback)
-	}
-	return productAPI, nil
+	return s.buildSheinSubmitProductAPIForStore(runtimeCtx, storeID)
 }
 
 func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg *SheinPackage, action string) (*sheinproduct.Product, error) {
@@ -128,6 +120,26 @@ func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.C
 		}
 	}
 	return submitProduct, nil
+}
+
+func (s *taskSubmissionExecutionService) resolveSheinSubmitRuntime(ctx context.Context, task *Task) (context.Context, int64, error) {
+	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
+	if err != nil {
+		return nil, 0, err
+	}
+	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
+	if err != nil || storeID <= 0 {
+		return nil, 0, fmt.Errorf("shein store id is unavailable for submit")
+	}
+	return runtimeCtx, storeID, nil
+}
+
+func (s *taskSubmissionExecutionService) buildSheinSubmitProductAPIForStore(ctx context.Context, storeID int64) (sheinproduct.ProductAPI, error) {
+	productAPI, fallback := s.sheinProductAPIBuilder.BuildProductAPI(ctx, storeID)
+	if productAPI == nil {
+		return nil, fmt.Errorf("shein submit unavailable: %s", fallback)
+	}
+	return productAPI, nil
 }
 
 func (s *taskSubmissionExecutionService) uploadSheinSubmitImages(ctx context.Context, task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
