@@ -57,18 +57,7 @@ func (s *taskSubmissionExecutionService) normalizeSheinSubmitPackage(task *Task,
 	} else {
 		applySheinPricingReview(pkg, pkg.Pricing)
 	}
-	if req != nil && req.ConfirmedFinal {
-		if pkg.FinalSubmissionDraft == nil {
-			pkg.FinalSubmissionDraft = &sheinpub.FinalDraft{}
-		}
-		now := time.Now()
-		pkg.FinalSubmissionDraft.Confirmed = true
-		pkg.FinalSubmissionDraft.ConfirmedAt = &now
-		pkg.FinalSubmissionDraft.UpdatedAt = &now
-		if pkg.FinalSubmissionDraft.SubmitMode == "" {
-			pkg.FinalSubmissionDraft.SubmitMode = action
-		}
-	}
+	applyConfirmedFinalSubmissionDraft(pkg, req, action)
 	repairSheinSubmitSaleAttributes(pkg)
 	applySheinFinalImageDraft(pkg)
 	applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)
@@ -83,6 +72,22 @@ func (s *taskSubmissionExecutionService) buildSheinSubmitProductAPI(ctx context.
 		return nil, err
 	}
 	return s.buildSheinSubmitProductAPIForStore(runtimeCtx, storeID)
+}
+
+func applyConfirmedFinalSubmissionDraft(pkg *SheinPackage, req *SubmitTaskRequest, action string) {
+	if pkg == nil || req == nil || !req.ConfirmedFinal {
+		return
+	}
+	if pkg.FinalSubmissionDraft == nil {
+		pkg.FinalSubmissionDraft = &sheinpub.FinalDraft{}
+	}
+	now := time.Now()
+	pkg.FinalSubmissionDraft.Confirmed = true
+	pkg.FinalSubmissionDraft.ConfirmedAt = &now
+	pkg.FinalSubmissionDraft.UpdatedAt = &now
+	if pkg.FinalSubmissionDraft.SubmitMode == "" {
+		pkg.FinalSubmissionDraft.SubmitMode = action
+	}
 }
 
 func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg *SheinPackage, action string) (*sheinproduct.Product, error) {

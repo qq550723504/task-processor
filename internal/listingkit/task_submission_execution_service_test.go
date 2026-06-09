@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -278,6 +279,36 @@ func TestTaskSubmissionExecutionServiceUploadSheinSubmitImagesRejectsBuilderFall
 	}
 	if err.Error() != "shein image upload unavailable: login required" {
 		t.Fatalf("error = %q, want builder fallback error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageMarksConfirmedFinalDraft(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		currentSheinPricingRule: func() sheinpub.PricingRule { return sheinpub.PricingRule{} },
+	})
+	task := makeReadySheinTask()
+	pkg := task.Result.Shein
+
+	exec.normalizeSheinSubmitPackage(task, pkg, &SubmitTaskRequest{
+		ConfirmedFinal: true,
+	}, "publish")
+
+	if pkg.FinalSubmissionDraft == nil {
+		t.Fatal("FinalSubmissionDraft = nil, want initialized")
+	}
+	if !pkg.FinalSubmissionDraft.Confirmed {
+		t.Fatal("Confirmed = false, want true")
+	}
+	if pkg.FinalSubmissionDraft.ConfirmedAt == nil {
+		t.Fatal("ConfirmedAt = nil, want timestamp")
+	}
+	if pkg.FinalSubmissionDraft.UpdatedAt == nil {
+		t.Fatal("UpdatedAt = nil, want timestamp")
+	}
+	if pkg.FinalSubmissionDraft.SubmitMode != "publish" {
+		t.Fatalf("SubmitMode = %q, want publish", pkg.FinalSubmissionDraft.SubmitMode)
 	}
 }
 
