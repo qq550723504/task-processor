@@ -891,6 +891,117 @@ func TestApplySubmissionRefreshConfirmationWithoutEventSetsRemoteRecordOnly(t *t
 	}
 }
 
+func TestBuildSubmissionRefreshMutationRequestMapsStateAndConfirmation(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Now().Add(-time.Minute)
+	confirmation := &sheinRemoteConfirmation{
+		remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+		message:      "confirmed remotely",
+	}
+	request, err := buildSubmissionRefreshMutationRequest("task-123", &sheinSubmissionRefreshState{
+		action:    "publish",
+		requestID: "refresh-123",
+		startedAt: startedAt,
+	}, confirmation)
+	if err != nil {
+		t.Fatalf("buildSubmissionRefreshMutationRequest() error = %v", err)
+	}
+	if request == nil {
+		t.Fatal("request = nil")
+	}
+	if request.taskID != "task-123" {
+		t.Fatalf("taskID = %q, want task-123", request.taskID)
+	}
+	if request.action != "publish" {
+		t.Fatalf("action = %q, want publish", request.action)
+	}
+	if request.requestID != "refresh-123" {
+		t.Fatalf("requestID = %q, want refresh-123", request.requestID)
+	}
+	if !request.startedAt.Equal(startedAt) {
+		t.Fatalf("startedAt = %v, want %v", request.startedAt, startedAt)
+	}
+	if request.confirmation != confirmation {
+		t.Fatalf("confirmation = %+v, want %+v", request.confirmation, confirmation)
+	}
+}
+
+func TestApplySubmissionRefreshMutationAppendsRunningEventBeforeConfirmation(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-time.Minute)
+	beforeUpdatedAt := task.Result.UpdatedAt
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		LastAction: "publish",
+		Publish: &sheinpub.SubmissionRecord{
+			Action:       "publish",
+			RequestID:    "refresh-123",
+			SupplierCode: "SKC-1",
+			StartedAt:    startedAt,
+		},
+	}
+	confirmation := &sheinRemoteConfirmation{
+		remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+		record: &sheinproduct.RecordItem{
+			RecordID:     "record-123",
+			SupplierCode: "SKC-1",
+			State:        4,
+			AuditState:   5,
+		},
+		checkedAt: startedAt.Add(time.Minute),
+		message:   "confirmed remotely",
+		event: &sheinpub.SubmissionEvent{
+			TaskID:         task.ID,
+			Action:         "publish",
+			Phase:          sheinpub.SubmissionPhaseConfirmRemote,
+			Status:         sheinpub.SubmissionRemoteStatusConfirmed,
+			RequestID:      "refresh-123",
+			StartedAt:      startedAt,
+			RemoteRecordID: "record-123",
+			Detail:         "confirmed remotely",
+		},
+	}
+
+	request, err := buildSubmissionRefreshMutationRequest(task.ID, &sheinSubmissionRefreshState{
+		action:    "publish",
+		requestID: "refresh-123",
+		startedAt: startedAt,
+	}, confirmation)
+	if err != nil {
+		t.Fatalf("buildSubmissionRefreshMutationRequest() error = %v", err)
+	}
+
+	err = applySubmissionRefreshMutation(task, request)
+	if err != nil {
+		t.Fatalf("applySubmissionRefreshMutation() error = %v", err)
+	}
+
+	record := sheinSubmissionRecordForAction(task.Result.Shein.SubmissionState, "publish")
+	if record == nil {
+		t.Fatal("expected publish record")
+	}
+	if record.RemoteRecordID != "record-123" {
+		t.Fatalf("remote record id = %q, want record-123", record.RemoteRecordID)
+	}
+	if !task.Result.UpdatedAt.After(beforeUpdatedAt) {
+		t.Fatalf("updatedAt = %v, want after %v", task.Result.UpdatedAt, beforeUpdatedAt)
+	}
+	if got := len(task.Result.Shein.SubmissionEvents); got != 2 {
+		t.Fatalf("submission events = %d, want running + confirmed events", got)
+	}
+	if task.Result.Shein.SubmissionEvents[0].Phase != sheinpub.SubmissionPhaseConfirmRemote || task.Result.Shein.SubmissionEvents[0].Status != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("confirm event = %+v, want confirm_remote/confirmed", task.Result.Shein.SubmissionEvents[0])
+	}
+	if task.Result.Shein.SubmissionEvents[1].Phase != sheinpub.SubmissionPhaseConfirmRemote || task.Result.Shein.SubmissionEvents[1].Status != sheinpub.SubmissionStatusRunning {
+		t.Fatalf("running event = %+v, want confirm_remote/running", task.Result.Shein.SubmissionEvents[1])
+	}
+	if task.Result.Shein.SubmissionEvents[0].RemoteRecordID != "record-123" {
+		t.Fatalf("confirmation event remote record id = %q, want record-123", task.Result.Shein.SubmissionEvents[0].RemoteRecordID)
+	}
+}
+
 func TestValidateSubmissionRefreshMutationRejectsActionChange(t *testing.T) {
 	t.Parallel()
 

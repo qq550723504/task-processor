@@ -84,6 +84,14 @@ type sheinSubmissionRefreshConfirmationRequest struct {
 	taskID           string
 }
 
+type sheinSubmissionRefreshMutationRequest struct {
+	taskID       string
+	action       string
+	requestID    string
+	startedAt    time.Time
+	confirmation *sheinRemoteConfirmation
+}
+
 type sheinSubmissionRefreshSelection struct {
 	action       string
 	record       *sheinpub.SubmissionRecord
@@ -498,40 +506,54 @@ func buildSubmissionRefreshRemoteInputs(pkg *SheinPackage, action, supplierCode 
 }
 
 func (s *taskSubmissionService) persistSheinSubmissionRefreshResult(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation) (*Task, error) {
-	if refreshState == nil {
-		return nil, apperrors.New(apperrors.ErrCodeSystem, "submission refresh state is not available")
+	request, err := buildSubmissionRefreshMutationRequest(taskID, refreshState, confirmation)
+	if err != nil {
+		return nil, err
 	}
 	return s.mutateTaskResult(ctx, taskID, func(task *Task) error {
-		return applySubmissionRefreshMutation(task, taskID, refreshState, confirmation)
+		return applySubmissionRefreshMutation(task, request)
 	})
 }
 
-func applySubmissionRefreshMutation(task *Task, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation) error {
+func buildSubmissionRefreshMutationRequest(taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation) (*sheinSubmissionRefreshMutationRequest, error) {
 	if refreshState == nil {
-		return apperrors.New(apperrors.ErrCodeSystem, "submission refresh state is not available")
+		return nil, apperrors.New(apperrors.ErrCodeSystem, "submission refresh state is not available")
 	}
-	pkg, err := validateSubmissionRefreshMutation(task, refreshState.action, refreshState.requestID)
+	return &sheinSubmissionRefreshMutationRequest{
+		taskID:       taskID,
+		action:       refreshState.action,
+		requestID:    refreshState.requestID,
+		startedAt:    refreshState.startedAt,
+		confirmation: confirmation,
+	}, nil
+}
+
+func applySubmissionRefreshMutation(task *Task, request *sheinSubmissionRefreshMutationRequest) error {
+	if request == nil {
+		return apperrors.New(apperrors.ErrCodeSystem, "submission refresh mutation request is not available")
+	}
+	pkg, err := validateSubmissionRefreshMutation(task, request.action, request.requestID)
 	if err != nil {
 		return err
 	}
-	appendSubmissionRefreshMutationEvents(pkg, taskID, refreshState, confirmation)
+	appendSubmissionRefreshMutationEvents(pkg, request)
 	task.Result.UpdatedAt = time.Now()
 	return nil
 }
 
-func appendSubmissionRefreshMutationEvents(pkg *SheinPackage, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation) {
-	if pkg == nil || refreshState == nil {
+func appendSubmissionRefreshMutationEvents(pkg *SheinPackage, request *sheinSubmissionRefreshMutationRequest) {
+	if pkg == nil || request == nil {
 		return
 	}
-	appendSubmissionRefreshRunningEvent(pkg, taskID, refreshState)
-	applySubmissionRefreshConfirmation(pkg, refreshState.action, refreshState.requestID, confirmation)
+	appendSubmissionRefreshRunningEvent(pkg, request)
+	applySubmissionRefreshConfirmation(pkg, request.action, request.requestID, request.confirmation)
 }
 
-func appendSubmissionRefreshRunningEvent(pkg *SheinPackage, taskID string, refreshState *sheinSubmissionRefreshState) {
-	if pkg == nil || refreshState == nil {
+func appendSubmissionRefreshRunningEvent(pkg *SheinPackage, request *sheinSubmissionRefreshMutationRequest) {
+	if pkg == nil || request == nil {
 		return
 	}
-	appendSheinSubmissionEvent(pkg, submission.BuildRefreshConfirmRemoteRunningEvent(taskID, refreshState.action, refreshState.requestID, refreshState.startedAt))
+	appendSheinSubmissionEvent(pkg, submission.BuildRefreshConfirmRemoteRunningEvent(request.taskID, request.action, request.requestID, request.startedAt))
 }
 
 func validateSubmissionRefreshMutation(task *Task, action, requestID string) (*SheinPackage, error) {
