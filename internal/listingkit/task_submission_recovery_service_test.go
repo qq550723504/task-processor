@@ -538,3 +538,54 @@ func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitViaRemoteConfirmationFin
 		t.Fatalf("confirm phase event = %+v, want running confirm_remote event", task.Result.Shein.SubmissionEvents[2])
 	}
 }
+
+func TestTaskSubmissionRecoveryServicePersistSheinRecoveredRemoteFailurePersistsFailureEvent(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-4 * time.Minute)
+	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-remote-fail-123", sheinpub.SubmissionPhaseConfirmRemote, startedAt)
+	response := &sheinpub.SubmissionResponse{
+		Code:    "0",
+		Message: "success",
+		Success: true,
+		SPUName: "SPU-fail",
+	}
+	setSheinSubmitRemoteResponse(task.Result.Shein, "publish", "recover-remote-fail-123", "SUP-fail", response)
+	task.Result.Shein.Submission.Publish.SupplierCode = "SUP-fail"
+	state := buildRecoveredSheinRemoteState(task.Result.Shein.Submission, "publish")
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		repo: repo,
+	})
+	remoteErr := errors.New("remote confirmation failed")
+
+	err := recovery.persistSheinRecoveredRemoteFailure(context.Background(), task, task.Result.Shein, "publish", state, remoteErr)
+	if !errors.Is(err, remoteErr) {
+		t.Fatalf("persistSheinRecoveredRemoteFailure() err = %v, want %v", err, remoteErr)
+	}
+
+	saved, getErr := repo.GetTask(context.Background(), task.ID)
+	if getErr != nil {
+		t.Fatalf("get task: %v", getErr)
+	}
+	if saved.Result.Shein.Submission.LastStatus != sheinpub.SubmissionStatusFailed {
+		t.Fatalf("last status = %q, want failed", saved.Result.Shein.Submission.LastStatus)
+	}
+	if saved.Result.Shein.Submission.CurrentAction != "" || saved.Result.Shein.Submission.CurrentPhase != "" || saved.Result.Shein.Submission.CurrentRequestID != "" {
+		t.Fatalf("submission current state = %+v, want cleared in-flight fields", saved.Result.Shein.Submission)
+	}
+	if len(saved.Result.Shein.SubmissionEvents) == 0 {
+		t.Fatal("expected failure event to be appended")
+	}
+	if saved.Result.Shein.SubmissionEvents[0].Status != sheinpub.SubmissionStatusFailed || saved.Result.Shein.SubmissionEvents[0].Phase != sheinpub.SubmissionPhaseConfirmRemote {
+		t.Fatalf("failure event = %+v, want failed confirm_remote event", saved.Result.Shein.SubmissionEvents[0])
+	}
+	if saved.Result.Shein.SubmissionEvents[0].ErrorMessage != remoteErr.Error() {
+		t.Fatalf("failure event error = %q, want %q", saved.Result.Shein.SubmissionEvents[0].ErrorMessage, remoteErr.Error())
+	}
+}
