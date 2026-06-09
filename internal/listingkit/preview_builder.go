@@ -44,42 +44,6 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 	return preview, nil
 }
 
-func buildBaseListingKitPreview(task *Task, selectedPlatform string) *ListingKitPreview {
-	preview := &ListingKitPreview{
-		TaskID:           task.ID,
-		Status:           task.Status,
-		SelectedPlatform: selectedPlatform,
-		Platforms:        previewPlatforms(task),
-		CreatedAt:        task.CreatedAt,
-	}
-	if task.Status == TaskStatusCompleted || task.Status == TaskStatusNeedsReview || task.Status == TaskStatusFailed {
-		completedAt := task.UpdatedAt
-		preview.CompletedAt = &completedAt
-	}
-	return preview
-}
-
-func attachListingKitPreviewResult(preview *ListingKitPreview, result *ListingKitResult, selectedPlatform string) {
-	preview.Overview = buildPreviewHeader(result, selectedPlatform)
-	preview.NeedsReview = result.Summary != nil && result.Summary.NeedsReview
-	preview.Catalog = result.CatalogProduct
-	preview.Assets = result.AssetBundle
-	preview.AssetInventory = result.AssetInventorySummary
-	preview.AssetRenderPreviews = append([]AssetRenderPreview(nil), result.AssetRenderPreviews...)
-	preview.PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil), result.PlatformAssetRenderPreviews...)
-	if len(preview.AssetRenderPreviews) == 0 {
-		preview.AssetRenderPreviews = buildAssetRenderPreviews(result.AssetBundle)
-	}
-	if len(preview.PlatformAssetRenderPreviews) == 0 {
-		preview.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(result)
-	}
-	preview.PlatformAssetRenderPreviews = filterPlatformAssetRenderPreviews(preview.PlatformAssetRenderPreviews, selectedPlatform)
-	preview.AssetGenerationQueue = result.AssetGenerationQueue
-	preview.AssetGenerationOverview = result.AssetGenerationOverview
-	preview.RevisionHistoryMeta = buildRevisionHistoryMeta(result)
-	preview.RevisionHistory = buildRevisionHistoryPreviewItems(result.RevisionHistory)
-}
-
 func previewStatusFromReviewNotes(reviewNotes []string) string {
 	if len(reviewNotes) > 0 {
 		return "needs_review"
