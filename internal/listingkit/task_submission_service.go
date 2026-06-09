@@ -532,15 +532,8 @@ func appendSubmissionRefreshMutationEvents(pkg *SheinPackage, request *sheinSubm
 	if pkg == nil || request == nil {
 		return
 	}
-	appendSubmissionRefreshRunningEvent(pkg, request)
-	applySubmissionRefreshConfirmation(pkg, request.action, request.requestID, request.confirmation)
-}
-
-func appendSubmissionRefreshRunningEvent(pkg *SheinPackage, request *sheinSubmissionRefreshMutationRequest) {
-	if pkg == nil || request == nil {
-		return
-	}
 	appendSheinSubmissionEvent(pkg, submission.BuildRefreshConfirmRemoteRunningEvent(request.taskID, request.action, request.requestID, request.startedAt))
+	applySubmissionRefreshConfirmation(pkg, request.action, request.requestID, request.confirmation)
 }
 
 func validateSubmissionRefreshMutation(task *Task, action, requestID string) (*SheinPackage, error) {
