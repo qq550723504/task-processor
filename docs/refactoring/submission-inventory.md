@@ -13,7 +13,7 @@ It is intentionally descriptive first:
 - which files already hold reusable submission mechanics,
 - which files still mix orchestration with SHEIN-specific rules.
 
-Observed in the local workspace on 2026-06-09.
+Observed against the repository state on 2026-06-09 after the preview refactoring first wave.
 
 ## 2. Current Submission Shape
 
@@ -28,6 +28,7 @@ This means the direction is clearer than before, but not finished:
 
 - generic mechanics like locks, retry delay, events, and transition helpers already have a home in `submission/`,
 - service field sprawl is reduced by `submissionCollaborators`,
+- `submissionCollaborators` now includes task recovery, task requeue, submission orchestration, recovery, execution, state, direct submit, Temporal adapter, and submit locks,
 - root `listingkit` still owns most high-level submit orchestration and most SHEIN submission rules,
 - Temporal submission logic is separated by collaborator but still depends heavily on root-side helpers and models.
 
@@ -78,14 +79,14 @@ Current role:
 - `taskSubmissionExecutionService`: build/prepare/upload/pre-validate/remote-submit execution steps,
 - `taskSubmissionStateService`: persist phases, success, and failure state,
 - `taskTemporalSubmissionAdapter`: workflow-facing adapter for publish activities,
-- `taskRecoveryService`: blocked-retryable recovery flow,
+- `taskRecoveryService`: blocked-retryable recovery flow; it owns recover-and-submit semantics and is not just a repository helper,
 - `taskRequeueService`: pending-task requeue flow.
 
 Assessment:
 
 - this is the primary current consolidation seam,
 - these files are the best place for additional root-level slimming before any deeper package move,
-- `taskRecoveryService` and `taskRequeueService` are adjacent to submission concerns but still separate from the SHEIN publish path.
+- `taskRecoveryService` and `taskRequeueService` are now part of the submission collaborator cluster, but their semantics are broader than the SHEIN publish path.
 
 ### C. Runtime context and settings resolution
 
@@ -208,7 +209,17 @@ Assessment:
 - still rely on the root adapter and root models,
 - should not be the first place to move business rules until the adapter seam gets narrower.
 
-## 4. Facade vs. Rule Ownership
+## 4. Latest Code Validation Notes
+
+Latest code inspection confirms:
+
+- `service` now stores a single `submission submissionCollaborators` field rather than separate direct fields for each submission service.
+- `submissionCollaborators` includes `taskRecovery`, `taskRequeue`, `taskSubmission`, `taskSubmissionRecovery`, `taskSubmissionExecution`, `taskSubmissionState`, `taskDirectSubmission`, `taskTemporalSubmissionAdapter`, and `sheinSubmitLocks`.
+- `taskRecoveryService` depends on `Repository`, `TaskSubmitter`, and time only. It is submission-adjacent and owns recover-and-submit behavior for blocked retryable tasks.
+- `Repository.BulkRecoverBlockedTasks(...)` is explicitly documented as persistence-only; `TaskRecoveryService` owns authoritative recovery semantics.
+- `taskSubmissionService`, `taskDirectSubmissionService`, `taskSubmissionRecoveryService`, `taskSubmissionExecutionService`, `taskSubmissionStateService`, and `taskTemporalSubmissionAdapter` still depend on root models and SHEIN-specific packages, so they should not be moved into `internal/listingkit/submission` yet.
+
+## 5. Facade vs. Rule Ownership
 
 ### Mostly facade or assembly
 
@@ -242,15 +253,15 @@ These are the main “mixed” files where orchestration and SHEIN-specific conc
 
 These should not be treated as generic submission internals just because they are part of the submit flow.
 
-## 5. Boundary Observations
+## 6. Boundary Observations
 
-1. `submissionCollaborators` is now the right root-side consolidation seam for submit, recovery, direct submit, temporal adapter, state, and requeue.
-2. `taskRecoveryService` is submission-adjacent but not yet grouped under `submissionCollaborators`; it still hangs off the task-lifecycle side of the root service shape.
-3. `taskRequeueService` is now grouped with submission collaborators, which makes requeue/retry/recovery easier to reason about as one cluster.
+1. `submissionCollaborators` is now the right root-side consolidation seam for submit, recovery, direct submit, temporal adapter, state, requeue, and submit locks.
+2. `taskRecoveryService` is submission-adjacent and now belongs in the same collaborator cluster, but it should not move to generic `submission/` because it still owns task-level recover-and-submit semantics over root task/repository models.
+3. `taskRequeueService` is grouped with submission collaborators, which makes requeue/retry/recovery easier to reason about as one cluster.
 4. The `submission/` package is viable for shared mechanics, but not yet for most orchestrators because those orchestrators still depend on root `listingkit` models, repository interfaces, and SHEIN package structures.
 5. The biggest structural risk is not service wiring anymore; it is the remaining mix of generic orchestration and SHEIN-specific rules inside the collaborator services.
 
-## 6. Recommended Migration Order
+## 7. Recommended Migration Order
 
 Recommended next slices after this inventory:
 
@@ -264,13 +275,14 @@ Recommended next slices after this inventory:
    - direct/temporal execution paths.
 4. Delay true package extraction for SHEIN-heavy helpers until there is a safe marketplace-owned target or a narrower shared model seam.
 
-## 7. Concrete Candidate Files For Near-Term Refactors
+## 8. Concrete Candidate Files For Near-Term Refactors
 
 Low-risk next candidates:
 
 - `internal/listingkit/task_recovery_service.go`
-  - align accessor/wiring style with other submission collaborators,
-  - consider whether recovery should join the same collaborator grouping.
+  - keep in the submission collaborator cluster,
+  - do not move to generic `submission/`,
+  - consider extracting durability/restore helper functions only if they are model-light.
 - `internal/listingkit/task_submission_service.go`
   - continue reducing central branching and inline remote-refresh result mutation.
 - `internal/listingkit/task_submission_recovery_service.go`
@@ -286,7 +298,7 @@ Avoid as an early package-move target:
 
 These are still tightly coupled to root models and SHEIN-specific behavior.
 
-## 8. Success Criterion For Phase 3.1
+## 9. Success Criterion For Phase 3.1
 
 This inventory is complete when:
 
