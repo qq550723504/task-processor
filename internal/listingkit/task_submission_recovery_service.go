@@ -348,26 +348,17 @@ func (s *taskSubmissionRecoveryService) completeSheinRecoveredRemoteSuccess(ctx 
 		return nil, ErrTaskResultUnavailable
 	}
 	if state.record != nil {
-		record, completionEvent := submission.CompleteAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, resolveRecoveredSheinSubmissionResponse(state), nil, state.record.StartedAt, time.Now())
+		response := state.record.Result
+		if response == nil && state.report != nil {
+			response = state.report.LastResult
+		}
+		record, completionEvent := submission.CompleteAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, response, nil, state.record.StartedAt, time.Now())
 		if record != nil && record.Result == nil {
 			record.Status = sheinpub.SubmissionStatusSuccess
 		}
 		appendSheinSubmissionEvent(pkg, completionEvent)
 	}
 	return s.finalizeRecoveredSheinSubmission(ctx, task, action)
-}
-
-func resolveRecoveredSheinSubmissionResponse(state *sheinRecoveredRemoteState) *sheinpub.SubmissionResponse {
-	if state == nil {
-		return nil
-	}
-	if state.record != nil && state.record.Result != nil {
-		return state.record.Result
-	}
-	if state.report != nil {
-		return state.report.LastResult
-	}
-	return nil
 }
 
 func (s *taskSubmissionRecoveryService) finalizeRecoveredSheinSubmission(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {
