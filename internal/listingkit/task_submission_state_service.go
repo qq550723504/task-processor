@@ -67,19 +67,15 @@ func (s *taskSubmissionStateService) persistSuccessfulSheinDirectResponse(ctx co
 }
 
 func (s *taskSubmissionStateService) finishSheinDirectSubmitAttempt(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, response *sheinpub.SubmissionResponse, responseErr error) error {
-	s.completeSheinDirectSubmitState(task, pkg, taskID, opts, response, responseErr)
-	if err := s.persistSuccessfulSheinSubmission(ctx, taskID, task, opts.action); err != nil {
-		return err
-	}
-	return responseErr
-}
-
-func (s *taskSubmissionStateService) completeSheinDirectSubmitState(task *Task, pkg *SheinPackage, taskID string, opts sheinDirectSubmitOptions, response *sheinpub.SubmissionResponse, responseErr error) {
 	_, event := listingsubmission.CompleteAttemptAndBuildEvent(pkg, taskID, opts.action, opts.requestID, response, responseErr, opts.startedAt, time.Now())
 	appendSheinSubmissionEvent(pkg, event)
 	if responseErr == nil && s.rememberSheinSubmitted != nil {
 		s.rememberSheinSubmitted(task, opts.action)
 	}
+	if err := s.persistSuccessfulSheinSubmission(ctx, taskID, task, opts.action); err != nil {
+		return err
+	}
+	return responseErr
 }
 
 func (s *taskSubmissionStateService) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {
