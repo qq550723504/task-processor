@@ -68,6 +68,16 @@ func (s *service) completeSheinDirectRemoteSubmit(ctx context.Context, taskID st
 	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
 		return err
 	}
+	response, responseErr := s.executeSheinDirectRemoteSubmitAttempt(ctx, taskID, pkg, productAPI, submitProduct, opts)
+	if responseErr == nil {
+		if err := s.persistSuccessfulSheinDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response); err != nil {
+			return err
+		}
+	}
+	return s.finishSheinDirectSubmitAttempt(ctx, taskID, task, pkg, opts, response, responseErr)
+}
+
+func (s *service) executeSheinDirectRemoteSubmitAttempt(ctx context.Context, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) (*sheinpub.SubmissionResponse, error) {
 	response, responseErr := s.executeSheinSubmitRemote(productAPI, opts.action, submitProduct)
 	if responseErr == nil {
 		responseErr = submission.BuildResponseError(opts.action, response)
@@ -77,10 +87,5 @@ func (s *service) completeSheinDirectRemoteSubmit(ctx context.Context, taskID st
 		responseErr = retryErr
 		setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
 	}
-	if responseErr == nil {
-		if err := s.persistSuccessfulSheinDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response); err != nil {
-			return err
-		}
-	}
-	return s.finishSheinDirectSubmitAttempt(ctx, taskID, task, pkg, opts, response, responseErr)
+	return response, responseErr
 }
