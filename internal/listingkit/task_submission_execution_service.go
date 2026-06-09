@@ -9,6 +9,7 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinimage "task-processor/internal/shein/api/image"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheintranslateapi "task-processor/internal/shein/api/translate"
 
@@ -160,17 +161,13 @@ func (s *taskSubmissionExecutionService) uploadSheinSubmitImages(ctx context.Con
 	if s.sheinImageAPIBuilder == nil {
 		return fmt.Errorf("shein image upload api builder is not configured")
 	}
-	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
+	runtimeCtx, storeID, err := s.resolveSheinImageUploadRuntime(ctx, task)
 	if err != nil {
 		return err
 	}
-	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
-	if err != nil || storeID <= 0 {
-		return fmt.Errorf("shein store id is unavailable for image upload")
-	}
-	imageAPI, fallback := s.sheinImageAPIBuilder.BuildImageAPI(runtimeCtx, storeID)
-	if imageAPI == nil {
-		return fmt.Errorf("shein image upload unavailable: %s", fallback)
+	imageAPI, err := s.buildSheinImageUploadAPI(runtimeCtx, storeID)
+	if err != nil {
+		return err
 	}
 	_, uploadCache, err := uploadSheinProductImages(submitProduct, imageAPI, sheinImageUploadCache(pkg))
 	if err != nil {
@@ -186,6 +183,26 @@ func (s *taskSubmissionExecutionService) uploadSheinSubmitImages(ctx context.Con
 		pkg.FinalSubmissionDraft.UpdatedAt = &now
 	}
 	return nil
+}
+
+func (s *taskSubmissionExecutionService) resolveSheinImageUploadRuntime(ctx context.Context, task *Task) (context.Context, int64, error) {
+	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
+	if err != nil {
+		return nil, 0, err
+	}
+	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
+	if err != nil || storeID <= 0 {
+		return nil, 0, fmt.Errorf("shein store id is unavailable for image upload")
+	}
+	return runtimeCtx, storeID, nil
+}
+
+func (s *taskSubmissionExecutionService) buildSheinImageUploadAPI(ctx context.Context, storeID int64) (sheinimage.ImageAPI, error) {
+	imageAPI, fallback := s.sheinImageAPIBuilder.BuildImageAPI(ctx, storeID)
+	if imageAPI == nil {
+		return nil, fmt.Errorf("shein image upload unavailable: %s", fallback)
+	}
+	return imageAPI, nil
 }
 
 func (s *taskSubmissionExecutionService) preValidateSheinSubmitProduct(pkg *SheinPackage, submitProduct *sheinproduct.Product) error {

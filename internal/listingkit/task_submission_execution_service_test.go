@@ -219,6 +219,68 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitTranslateAPIUsesResolvedS
 	}
 }
 
+func TestTaskSubmissionExecutionServiceUploadSheinSubmitImagesRequiresBuilder(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{})
+
+	err := exec.uploadSheinSubmitImages(context.Background(), &Task{}, &SheinPackage{}, &sheinproduct.Product{})
+	if err == nil {
+		t.Fatal("err = nil, want configuration error")
+	}
+	if err.Error() != "shein image upload api builder is not configured" {
+		t.Fatalf("error = %q, want builder configuration error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceUploadSheinSubmitImagesRejectsMissingStoreID(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 0, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{},
+	}
+
+	err := exec.uploadSheinSubmitImages(context.Background(), task, &SheinPackage{}, &sheinproduct.Product{})
+	if err == nil {
+		t.Fatal("err = nil, want missing store id error")
+	}
+	if err.Error() != "shein store id is unavailable for image upload" {
+		t.Fatalf("error = %q, want missing store id error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceUploadSheinSubmitImagesRejectsBuilderFallback(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinImageAPIBuilder: stubSheinImageAPIBuilder{msg: "login required"},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 903, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{SheinStoreID: 903},
+	}
+
+	err := exec.uploadSheinSubmitImages(context.Background(), task, &SheinPackage{}, &sheinproduct.Product{})
+	if err == nil {
+		t.Fatal("err = nil, want builder fallback error")
+	}
+	if err.Error() != "shein image upload unavailable: login required" {
+		t.Fatalf("error = %q, want builder fallback error", err.Error())
+	}
+}
+
 func TestTaskSubmissionExecutionServiceExecuteSheinSubmitRemoteRoutesByAction(t *testing.T) {
 	t.Parallel()
 
