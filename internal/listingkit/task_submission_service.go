@@ -255,10 +255,7 @@ func (s *taskSubmissionService) finishSubmissionRefresh(ctx context.Context, tas
 	if err != nil {
 		return nil, err
 	}
-	if remoteErr != nil {
-		return nil, remoteErr
-	}
-	return s.buildTaskPreview(ctx, task, "shein")
+	return s.completeSubmissionRefresh(ctx, task, remoteErr)
 }
 
 func (s *taskSubmissionService) loadSheinSubmissionRefreshState(ctx context.Context, taskID string) (*sheinSubmissionRefreshState, error) {
@@ -286,6 +283,13 @@ func (s *taskSubmissionService) loadSheinSubmissionRefreshTask(ctx context.Conte
 		return task, nil, err
 	}
 	return task, pkg, nil
+}
+
+func (s *taskSubmissionService) completeSubmissionRefresh(ctx context.Context, task *Task, remoteErr error) (*ListingKitPreview, error) {
+	if remoteErr != nil {
+		return nil, remoteErr
+	}
+	return s.buildTaskPreview(ctx, task, "shein")
 }
 
 func (s *taskSubmissionService) loadSubmissionRefreshInputs(ctx context.Context, taskID string, task *Task, pkg *SheinPackage) (*sheinSubmissionRefreshSelection, sheinproduct.ProductAPI, error) {

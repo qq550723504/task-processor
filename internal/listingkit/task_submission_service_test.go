@@ -512,6 +512,65 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshReturnsRemoteErrorAfterPers
 	}
 }
 
+func TestTaskSubmissionServiceFinishSubmissionRefreshBuildsPreviewOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	var mutateCalls int
+	var previewCalls int
+	task := makeReadySheinTask()
+	now := time.Now().Add(-time.Hour)
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		LastAction: "publish",
+		Publish: &sheinpub.SubmissionRecord{
+			Action:       "publish",
+			RequestID:    "refresh-123",
+			SupplierCode: "SKC-1",
+			StartedAt:    now,
+		},
+	}
+	expectedPreview := &ListingKitPreview{TaskID: task.ID}
+	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
+		mutateTaskResult: func(_ context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
+			mutateCalls++
+			if taskID != task.ID {
+				t.Fatalf("taskID = %q, want %q", taskID, task.ID)
+			}
+			if err := mutate(task); err != nil {
+				t.Fatalf("mutate(task) error = %v", err)
+			}
+			return task, nil
+		},
+		buildTaskPreview: func(_ context.Context, previewTask *Task, platform string) (*ListingKitPreview, error) {
+			previewCalls++
+			if previewTask != task {
+				t.Fatalf("preview task = %+v, want original task", previewTask)
+			}
+			if platform != "shein" {
+				t.Fatalf("platform = %q, want shein", platform)
+			}
+			return expectedPreview, nil
+		},
+	})
+
+	preview, err := submitter.finishSubmissionRefresh(context.Background(), task.ID, &sheinSubmissionRefreshState{
+		action:    "publish",
+		requestID: "refresh-123",
+		startedAt: now,
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("finishSubmissionRefresh() error = %v", err)
+	}
+	if preview != expectedPreview {
+		t.Fatalf("preview = %+v, want %+v", preview, expectedPreview)
+	}
+	if mutateCalls != 1 {
+		t.Fatalf("mutate calls = %d, want 1", mutateCalls)
+	}
+	if previewCalls != 1 {
+		t.Fatalf("preview calls = %d, want 1", previewCalls)
+	}
+}
+
 func TestTaskSubmissionServiceLoadSheinSubmissionRefreshStateMapsLoadedTask(t *testing.T) {
 	t.Parallel()
 
