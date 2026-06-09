@@ -63,17 +63,10 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 	preview.RevisionHistoryMeta = buildRevisionHistoryMeta(task.Result)
 	preview.RevisionHistory = buildRevisionHistoryPreviewItems(task.Result.RevisionHistory)
 
-	if err := buildAmazonPreviewSection(task, preview, selectedPlatform); err != nil {
-		return nil, err
-	}
-	if err := buildSheinPreviewSection(task, preview, selectedPlatform); err != nil {
-		return nil, err
-	}
-	if err := buildTemuPreviewSection(task, preview, selectedPlatform); err != nil {
-		return nil, err
-	}
-	if err := buildWalmartPreviewSection(task, preview, selectedPlatform); err != nil {
-		return nil, err
+	for _, builder := range previewPlatformBuilders() {
+		if err := builder.build(task, preview, selectedPlatform); err != nil {
+			return nil, err
+		}
 	}
 
 	return preview, nil
