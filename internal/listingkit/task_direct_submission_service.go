@@ -54,11 +54,19 @@ func (s *taskDirectSubmissionService) submitSheinTaskDirect(ctx context.Context,
 		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
 
+	productAPI, err := s.loadDirectSubmitProductAPI(ctx, taskID, task, pkg, opts)
+	if err != nil {
+		return nil, err
+	}
+	return s.executeDirectSubmitProductFlow(ctx, taskID, task, pkg, productAPI, opts)
+}
+
+func (s *taskDirectSubmissionService) loadDirectSubmitProductAPI(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions) (sheinproduct.ProductAPI, error) {
 	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
 	if err != nil {
 		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
-	return s.executeDirectSubmitProductFlow(ctx, taskID, task, pkg, productAPI, opts)
+	return productAPI, nil
 }
 
 func (s *taskDirectSubmissionService) executeDirectSubmitProductFlow(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, opts sheinDirectSubmitOptions) (*ListingKitPreview, error) {
