@@ -274,8 +274,12 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitLocally(ctx context.Co
 	if task == nil || pkg == nil || state == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	appendRecoveredSheinLocalCompletionEvents(pkg, task.ID, action, state)
+	s.completeRecoveredSheinLocalState(pkg, task.ID, action, state)
 	return s.finalizeRecoveredSheinSubmission(ctx, task, action)
+}
+
+func (s *taskSubmissionRecoveryService) completeRecoveredSheinLocalState(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState) {
+	appendRecoveredSheinLocalCompletionEvents(pkg, taskID, action, state)
 }
 
 func loadRecoveredSheinSubmissionReport(task *Task) (*SheinPackage, *sheinpub.SubmissionReport, error) {
@@ -341,13 +345,17 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(
 	if err != nil {
 		return nil, err
 	}
-	appendRecoveredSheinRemoteConfirmationPhase(pkg, task.ID, action, state)
-	event, remoteErr := s.refreshRecoveredSheinRemoteStatus(ctx, task, pkg, productAPI, action, state)
+	event, remoteErr := s.resolveRecoveredSheinRemoteConfirmation(ctx, task, pkg, productAPI, action, state)
 	appendRecoveredSheinRemoteConfirmationEvent(pkg, event)
 	if remoteErr != nil {
 		return nil, s.persistSheinRecoveredRemoteFailure(ctx, task, pkg, action, state, remoteErr)
 	}
 	return s.completeSheinRecoveredRemoteSuccess(ctx, task, pkg, action, state)
+}
+
+func (s *taskSubmissionRecoveryService) resolveRecoveredSheinRemoteConfirmation(ctx context.Context, task *Task, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action string, state *sheinRecoveredRemoteState) (*sheinpub.SubmissionEvent, error) {
+	appendRecoveredSheinRemoteConfirmationPhase(pkg, task.ID, action, state)
+	return s.refreshRecoveredSheinRemoteStatus(ctx, task, pkg, productAPI, action, state)
 }
 
 func (s *taskSubmissionRecoveryService) buildRecoveredSheinRemoteProductAPI(ctx context.Context, task *Task, state *sheinRecoveredRemoteState) (sheinproduct.ProductAPI, error) {

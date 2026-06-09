@@ -327,3 +327,214 @@ func TestTaskSubmissionRecoveryServiceClearSheinSubmitLeaseAfterStartFailureMark
 		t.Fatalf("submission current state = %+v, want cleared lease", saved.Result.Shein.Submission)
 	}
 }
+
+func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitLocallyFinalizesRecoveredSubmission(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-2 * time.Minute)
+	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-local-123", sheinpub.SubmissionPhasePersistResult, startedAt)
+	response := &sheinpub.SubmissionResponse{
+		Code:    "0",
+		Message: "success",
+		Success: true,
+		SPUName: "SPU-local",
+	}
+	setSheinSubmitRemoteResponse(task.Result.Shein, "publish", "recover-local-123", "SUP-local", response)
+	state := buildRecoveredSheinRemoteState(task.Result.Shein.Submission, "publish")
+	expectedPreview := &ListingKitPreview{TaskID: task.ID}
+	var calls []string
+
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		rememberSheinSubmitted: func(gotTask *Task, action string) {
+			calls = append(calls, "remember")
+			if gotTask != task {
+				t.Fatalf("remember task = %+v, want original task", gotTask)
+			}
+			if action != "publish" {
+				t.Fatalf("remember action = %q, want publish", action)
+			}
+		},
+		persistSuccessfulSubmission: func(_ context.Context, taskID string, gotTask *Task, action string) error {
+			calls = append(calls, "persist")
+			if taskID != task.ID {
+				t.Fatalf("persist taskID = %q, want %q", taskID, task.ID)
+			}
+			if gotTask != task {
+				t.Fatalf("persist task = %+v, want original task", gotTask)
+			}
+			if action != "publish" {
+				t.Fatalf("persist action = %q, want publish", action)
+			}
+			if gotTask.Result.Shein.Submission.LastStatus != sheinpub.SubmissionStatusSuccess {
+				t.Fatalf("persist submission = %+v, want success state", gotTask.Result.Shein.Submission)
+			}
+			return nil
+		},
+		buildTaskPreview: func(_ context.Context, gotTask *Task, platform string) (*ListingKitPreview, error) {
+			calls = append(calls, "preview")
+			if gotTask != task {
+				t.Fatalf("preview task = %+v, want original task", gotTask)
+			}
+			if platform != "shein" {
+				t.Fatalf("platform = %q, want shein", platform)
+			}
+			return expectedPreview, nil
+		},
+	})
+
+	preview, err := recovery.recoverSheinSubmitLocally(context.Background(), task, task.Result.Shein, "publish", state)
+	if err != nil {
+		t.Fatalf("recoverSheinSubmitLocally() err = %v", err)
+	}
+	if preview != expectedPreview {
+		t.Fatalf("preview = %+v, want %+v", preview, expectedPreview)
+	}
+	wantCalls := []string{"remember", "persist", "preview"}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %+v, want %+v", calls, wantCalls)
+	}
+	for i := range wantCalls {
+		if calls[i] != wantCalls[i] {
+			t.Fatalf("calls[%d] = %q, want %q; full calls = %+v", i, calls[i], wantCalls[i], calls)
+		}
+	}
+	if task.Result.Shein.Submission.CurrentAction != "" || task.Result.Shein.Submission.CurrentPhase != "" || task.Result.Shein.Submission.CurrentRequestID != "" {
+		t.Fatalf("submission current state = %+v, want cleared in-flight fields", task.Result.Shein.Submission)
+	}
+	if len(task.Result.Shein.SubmissionEvents) < 2 {
+		t.Fatalf("submission events = %+v, want local persist and completion events", task.Result.Shein.SubmissionEvents)
+	}
+	if task.Result.Shein.SubmissionEvents[0].Status != sheinpub.SubmissionStatusSuccess || task.Result.Shein.SubmissionEvents[0].Phase != sheinpub.SubmissionPhasePersistResult {
+		t.Fatalf("completion event = %+v, want successful persist_result completion", task.Result.Shein.SubmissionEvents[0])
+	}
+	if task.Result.Shein.SubmissionEvents[1].Status != sheinpub.SubmissionStatusRunning || task.Result.Shein.SubmissionEvents[1].Phase != sheinpub.SubmissionPhasePersistResult {
+		t.Fatalf("persist event = %+v, want running persist_result event", task.Result.Shein.SubmissionEvents[1])
+	}
+}
+
+func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitViaRemoteConfirmationFinalizesOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-3 * time.Minute)
+	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-remote-ok-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	response := &sheinpub.SubmissionResponse{
+		Code:    "0",
+		Message: "success",
+		Success: true,
+		SPUName: "SPU-remote",
+	}
+	setSheinSubmitRemoteResponse(task.Result.Shein, "publish", "recover-remote-ok-123", "SUP-remote", response)
+	task.Result.Shein.Submission.Publish.SupplierCode = "SUP-remote"
+	state := buildRecoveredSheinRemoteState(task.Result.Shein.Submission, "publish")
+	expectedPreview := &ListingKitPreview{TaskID: task.ID}
+	productAPI := stubSheinProductAPI{}
+	checkedAt := time.Now()
+	var calls []string
+
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		buildSheinSubmitProductAPI: func(_ context.Context, gotTask *Task) (sheinproduct.ProductAPI, error) {
+			calls = append(calls, "build_api")
+			if gotTask != task {
+				t.Fatalf("build api task = %+v, want original task", gotTask)
+			}
+			return productAPI, nil
+		},
+		resolveRemoteStatusCallback: func(gotProductAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, gotStartedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
+			calls = append(calls, "resolve_remote")
+			if gotProductAPI == nil {
+				t.Fatal("product api = nil, want built api")
+			}
+			if otherAPI != nil {
+				t.Fatalf("other api = %+v, want nil", otherAPI)
+			}
+			if action != "publish" || requestID != "recover-remote-ok-123" {
+				t.Fatalf("resolve args = %q/%q, want publish/recover-remote-ok-123", action, requestID)
+			}
+			if len(lookupCodes) == 0 || lookupCodes[0] != "SUP-remote" {
+				t.Fatalf("lookup codes = %+v, want supplier code first", lookupCodes)
+			}
+			if spuName != "SPU-remote" {
+				t.Fatalf("spu name = %q, want SPU-remote", spuName)
+			}
+			if !defaultConfirmed {
+				t.Fatal("defaultConfirmed = false, want true")
+			}
+			if gotStartedAt.IsZero() || taskID != task.ID {
+				t.Fatalf("resolve start/task = %v/%q, want non-zero/%q", gotStartedAt, taskID, task.ID)
+			}
+			event := submission.BuildConfirmRemoteEvent(task.ID, "publish", sheinpub.SubmissionRemoteStatusConfirmed, "recover-remote-ok-123", gotStartedAt, "remote confirmed", nil)
+			return &sheinRemoteConfirmation{
+				remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+				record: &sheinproduct.RecordItem{
+					RecordID:     "record-remote-ok",
+					SupplierCode: "SUP-remote",
+					State:        6,
+					AuditState:   7,
+				},
+				checkedAt: checkedAt,
+				message:   "remote confirmed",
+				event:     &event,
+			}, nil
+		},
+		rememberSheinSubmitted: func(gotTask *Task, action string) {
+			calls = append(calls, "remember")
+			if gotTask != task || action != "publish" {
+				t.Fatalf("remember args = %+v/%q, want original task/publish", gotTask, action)
+			}
+		},
+		persistSuccessfulSubmission: func(_ context.Context, taskID string, gotTask *Task, action string) error {
+			calls = append(calls, "persist")
+			if taskID != task.ID || gotTask != task || action != "publish" {
+				t.Fatalf("persist args = %q/%+v/%q, want %q/original/publish", taskID, gotTask, action, task.ID)
+			}
+			return nil
+		},
+		buildTaskPreview: func(_ context.Context, gotTask *Task, platform string) (*ListingKitPreview, error) {
+			calls = append(calls, "preview")
+			if gotTask != task || platform != "shein" {
+				t.Fatalf("preview args = %+v/%q, want original task/shein", gotTask, platform)
+			}
+			return expectedPreview, nil
+		},
+	})
+
+	preview, err := recovery.recoverSheinSubmitViaRemoteConfirmation(context.Background(), task, task.Result.Shein, "publish", state)
+	if err != nil {
+		t.Fatalf("recoverSheinSubmitViaRemoteConfirmation() err = %v", err)
+	}
+	if preview != expectedPreview {
+		t.Fatalf("preview = %+v, want %+v", preview, expectedPreview)
+	}
+	wantCalls := []string{"build_api", "resolve_remote", "remember", "persist", "preview"}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %+v, want %+v", calls, wantCalls)
+	}
+	for i := range wantCalls {
+		if calls[i] != wantCalls[i] {
+			t.Fatalf("calls[%d] = %q, want %q; full calls = %+v", i, calls[i], wantCalls[i], calls)
+		}
+	}
+	if task.Result.Shein.Submission.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", task.Result.Shein.Submission.RemoteStatus)
+	}
+	if task.Result.Shein.Submission.CurrentAction != "" || task.Result.Shein.Submission.CurrentPhase != "" || task.Result.Shein.Submission.CurrentRequestID != "" {
+		t.Fatalf("submission current state = %+v, want cleared in-flight fields", task.Result.Shein.Submission)
+	}
+	if task.Result.Shein.Submission.Publish == nil || task.Result.Shein.Submission.Publish.RemoteRecordID != "record-remote-ok" {
+		t.Fatalf("publish record = %+v, want remote record id record-remote-ok", task.Result.Shein.Submission.Publish)
+	}
+	if len(task.Result.Shein.SubmissionEvents) < 3 {
+		t.Fatalf("submission events = %+v, want completion, confirm, and running confirm events", task.Result.Shein.SubmissionEvents)
+	}
+	if task.Result.Shein.SubmissionEvents[0].Status != sheinpub.SubmissionStatusSuccess {
+		t.Fatalf("completion event = %+v, want success status", task.Result.Shein.SubmissionEvents[0])
+	}
+	if task.Result.Shein.SubmissionEvents[1].Status != sheinpub.SubmissionRemoteStatusConfirmed || task.Result.Shein.SubmissionEvents[1].Phase != sheinpub.SubmissionPhaseConfirmRemote {
+		t.Fatalf("confirm event = %+v, want confirmed confirm_remote event", task.Result.Shein.SubmissionEvents[1])
+	}
+	if task.Result.Shein.SubmissionEvents[2].Status != sheinpub.SubmissionStatusRunning || task.Result.Shein.SubmissionEvents[2].Phase != sheinpub.SubmissionPhaseConfirmRemote {
+		t.Fatalf("confirm phase event = %+v, want running confirm_remote event", task.Result.Shein.SubmissionEvents[2])
+	}
+}
