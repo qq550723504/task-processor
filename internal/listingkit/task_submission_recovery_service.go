@@ -235,13 +235,7 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitLocally(ctx context.Co
 	appendSheinSubmissionEvent(pkg, submission.BuildPhaseEvent(task.ID, action, sheinpub.SubmissionPhasePersistResult, sheinpub.SubmissionStatusRunning, state.requestID, state.now, "恢复本地提交完成状态", nil))
 	_, completionEvent := submission.CompleteAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, state.response, nil, state.record.StartedAt, time.Now())
 	appendSheinSubmissionEvent(pkg, completionEvent)
-	if s.rememberSheinSubmitted != nil {
-		s.rememberSheinSubmitted(task, action)
-	}
-	if err := s.persistSuccessfulSubmission(ctx, task.ID, task, action); err != nil {
-		return nil, err
-	}
-	return s.buildTaskPreview(ctx, task, "shein")
+	return s.finalizeRecoveredSheinSubmission(ctx, task, action)
 }
 
 func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(ctx context.Context, task *Task, pkg *SheinPackage, action string, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
@@ -283,15 +277,32 @@ func (s *taskSubmissionRecoveryService) completeSheinRecoveredRemoteSuccess(ctx 
 	if task == nil || pkg == nil || state == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	response := state.record.Result
-	if response == nil && state.report.LastResult != nil {
-		response = state.report.LastResult
-	}
+	response := resolveRecoveredSheinSubmissionResponse(state)
 	record, completionEvent := submission.CompleteAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, response, nil, state.record.StartedAt, time.Now())
 	if record.Result == nil {
 		record.Status = sheinpub.SubmissionStatusSuccess
 	}
 	appendSheinSubmissionEvent(pkg, completionEvent)
+	return s.finalizeRecoveredSheinSubmission(ctx, task, action)
+}
+
+func resolveRecoveredSheinSubmissionResponse(state *sheinRecoveredRemoteState) *sheinpub.SubmissionResponse {
+	if state == nil {
+		return nil
+	}
+	if state.record != nil && state.record.Result != nil {
+		return state.record.Result
+	}
+	if state.report != nil {
+		return state.report.LastResult
+	}
+	return nil
+}
+
+func (s *taskSubmissionRecoveryService) finalizeRecoveredSheinSubmission(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {
+	if task == nil {
+		return nil, ErrTaskResultUnavailable
+	}
 	if s.rememberSheinSubmitted != nil {
 		s.rememberSheinSubmitted(task, action)
 	}

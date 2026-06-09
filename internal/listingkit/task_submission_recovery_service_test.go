@@ -84,6 +84,35 @@ func TestTaskSubmissionRecoveryServiceRefreshSheinSubmitRemoteStatusHandlesMissi
 	}
 	requestID := "refresh-no-supplier-123"
 	startedAt := time.Now().Add(-time.Minute)
+	pkg.SubmissionState = &sheinpub.SubmissionReport{
+		LastAction: "publish",
+		LastStatus: sheinpub.SubmissionStatusSuccess,
+		LastResult: &sheinpub.SubmissionResponse{
+			Code:    "0",
+			Message: "success",
+			Success: true,
+			SPUName: "SPU-123",
+		},
+		Publish: &sheinpub.SubmissionRecord{
+			Action:    "publish",
+			RequestID: requestID,
+			Status:    sheinpub.SubmissionStatusSuccess,
+			StartedAt: startedAt,
+			Result: &sheinpub.SubmissionResponse{
+				Code:    "0",
+				Message: "success",
+				Success: true,
+				SPUName: "SPU-123",
+			},
+		},
+	}
+	pkg.PreviewPayload.SupplierCode = ""
+	for i := range pkg.PreviewPayload.SKCList {
+		pkg.PreviewPayload.SKCList[i].SupplierCode = nil
+		for j := range pkg.PreviewPayload.SKCList[i].SKUS {
+			pkg.PreviewPayload.SKCList[i].SKUS[j].SupplierSKU = ""
+		}
+	}
 
 	event, err := recovery.refreshSheinSubmitRemoteStatus(
 		context.Background(),
