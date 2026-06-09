@@ -207,7 +207,11 @@ func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx conte
 	if len(inputs.lookupCodes) == 0 {
 		return applyMissingSupplierCodeRemoteConfirmation(pkg, taskID, action, requestID, startedAt, inputs.defaultConfirmed), nil
 	}
-	confirmation, err := s.resolveSheinRemoteRefreshConfirmation(ctx, task, productAPI, action, requestID, startedAt, taskID, inputs)
+	var otherAPI sheinother.OtherAPI
+	if s.buildSheinSubmitOtherAPI != nil && task != nil {
+		otherAPI, _ = s.buildSheinSubmitOtherAPI(ctx, task)
+	}
+	confirmation, err := s.resolveRemoteStatus(productAPI, otherAPI, action, requestID, inputs.lookupCodes, inputs.spuName, inputs.defaultConfirmed, inputs.fallbackMessage, startedAt, taskID)
 	applySheinRemoteRefreshConfirmation(pkg, action, requestID, confirmation)
 	return confirmation.event, err
 }
@@ -233,11 +237,6 @@ func buildSheinRemoteRefreshState(pkg *SheinPackage, action, supplierCode string
 	}
 }
 
-func (s *taskSubmissionRecoveryService) resolveSheinRemoteRefreshConfirmation(ctx context.Context, task *Task, productAPI sheinproduct.ProductAPI, action, requestID string, startedAt time.Time, taskID string, inputs sheinRemoteRefreshState) (*sheinRemoteConfirmation, error) {
-	otherAPI := s.buildSheinSubmitOtherAPIForRecovery(ctx, task)
-	return s.resolveRemoteStatus(productAPI, otherAPI, action, requestID, inputs.lookupCodes, inputs.spuName, inputs.defaultConfirmed, inputs.fallbackMessage, startedAt, taskID)
-}
-
 func applySheinRemoteRefreshConfirmation(pkg *SheinPackage, action, requestID string, confirmation *sheinRemoteConfirmation) {
 	if pkg == nil || confirmation == nil {
 		return
@@ -256,14 +255,6 @@ func applyMissingSupplierCodeRemoteConfirmation(pkg *SheinPackage, taskID, actio
 	setSheinSubmitRemoteRecord(pkg, action, requestID, remoteStatus, nil, now, detail)
 	event := submission.BuildConfirmRemoteEvent(taskID, action, remoteStatus, requestID, startedAt, detail, nil)
 	return &event
-}
-
-func (s *taskSubmissionRecoveryService) buildSheinSubmitOtherAPIForRecovery(ctx context.Context, task *Task) sheinother.OtherAPI {
-	if s.buildSheinSubmitOtherAPI == nil || task == nil {
-		return nil
-	}
-	otherAPI, _ := s.buildSheinSubmitOtherAPI(ctx, task)
-	return otherAPI
 }
 
 func (s *taskSubmissionRecoveryService) recoverSheinSubmitLocally(ctx context.Context, task *Task, pkg *SheinPackage, action string, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
