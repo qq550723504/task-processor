@@ -10,7 +10,7 @@
 # the final image several gigabytes larger. Keep this file only for manual
 # experiments that explicitly need preinstalled browser binaries.
 
-FROM golang:1.25-alpine AS installer-builder
+FROM golang:1.26-alpine AS installer-builder
 
 WORKDIR /src
 
