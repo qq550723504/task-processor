@@ -392,7 +392,13 @@ func (s *taskSubmissionRecoveryService) completeSheinRecoveredRemoteSuccess(ctx 
 	if task == nil || pkg == nil || state == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	appendRecoveredSheinRemoteSuccessEvent(pkg, task.ID, action, state)
+	if state.record != nil {
+		record, completionEvent := submission.CompleteAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, resolveRecoveredSheinSubmissionResponse(state), nil, state.record.StartedAt, time.Now())
+		if record != nil && record.Result == nil {
+			record.Status = sheinpub.SubmissionStatusSuccess
+		}
+		appendSheinSubmissionEvent(pkg, completionEvent)
+	}
 	return s.finalizeRecoveredSheinSubmission(ctx, task, action)
 }
 
@@ -407,21 +413,6 @@ func resolveRecoveredSheinSubmissionResponse(state *sheinRecoveredRemoteState) *
 		return state.report.LastResult
 	}
 	return nil
-}
-
-func appendRecoveredSheinRemoteSuccessEvent(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState) {
-	if pkg == nil || state == nil || state.record == nil {
-		return
-	}
-	record, completionEvent := buildRecoveredSheinRemoteSuccessEvent(pkg, taskID, action, state)
-	if record != nil && record.Result == nil {
-		record.Status = sheinpub.SubmissionStatusSuccess
-	}
-	appendSheinSubmissionEvent(pkg, completionEvent)
-}
-
-func buildRecoveredSheinRemoteSuccessEvent(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState) (*sheinpub.SubmissionRecord, sheinpub.SubmissionEvent) {
-	return submission.CompleteAttemptAndBuildEvent(pkg, taskID, action, state.requestID, resolveRecoveredSheinSubmissionResponse(state), nil, state.record.StartedAt, time.Now())
 }
 
 func (s *taskSubmissionRecoveryService) finalizeRecoveredSheinSubmission(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {
