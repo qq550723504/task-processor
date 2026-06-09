@@ -87,17 +87,13 @@ func (s *taskSubmissionStateService) recordSheinSubmissionFailure(ctx context.Co
 }
 
 func (s *taskSubmissionStateService) recordSheinSubmissionFailureForState(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestedID, phase string, submitErr error) error {
-	s.appendSheinSubmissionFailureEvent(pkg, taskID, action, requestedID, phase, submitErr)
+	_, event := listingsubmission.FailAttemptAndBuildEvent(pkg, taskID, action, requestedID, phase, submitErr, time.Now())
+	appendSheinSubmissionEvent(pkg, event)
 	if result == nil {
 		return nil
 	}
 	result.UpdatedAt = time.Now()
 	return s.repo.SaveTaskResult(ctx, taskID, result)
-}
-
-func (s *taskSubmissionStateService) appendSheinSubmissionFailureEvent(pkg *SheinPackage, taskID, action, requestedID, phase string, submitErr error) {
-	_, event := listingsubmission.FailAttemptAndBuildEvent(pkg, taskID, action, requestedID, phase, submitErr, time.Now())
-	appendSheinSubmissionEvent(pkg, event)
 }
 
 func (s *taskSubmissionStateService) failSheinDirectSubmit(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, action string, submitErr error) error {
