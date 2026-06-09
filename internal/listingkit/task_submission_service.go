@@ -266,13 +266,9 @@ func (s *taskSubmissionService) loadSheinSubmissionRefreshState(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	selection, err := loadSubmissionRefreshSelection(pkg)
+	selection, productAPI, err := s.loadSubmissionRefreshInputs(ctx, taskID, task, pkg)
 	if err != nil {
 		return nil, err
-	}
-	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
-	if err != nil {
-		return nil, apperrors.Wrapf(err, apperrors.ErrCodePlatformError, "failed to build shein product API for task %s", taskID)
 	}
 	return s.buildSheinSubmissionRefreshState(ctx, task, pkg, selection, productAPI), nil
 }
@@ -290,6 +286,26 @@ func (s *taskSubmissionService) loadSheinSubmissionRefreshTask(ctx context.Conte
 		return task, nil, err
 	}
 	return task, pkg, nil
+}
+
+func (s *taskSubmissionService) loadSubmissionRefreshInputs(ctx context.Context, taskID string, task *Task, pkg *SheinPackage) (*sheinSubmissionRefreshSelection, sheinproduct.ProductAPI, error) {
+	selection, err := loadSubmissionRefreshSelection(pkg)
+	if err != nil {
+		return nil, nil, err
+	}
+	productAPI, err := s.buildSubmissionRefreshProductAPI(ctx, task, taskID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return selection, productAPI, nil
+}
+
+func (s *taskSubmissionService) buildSubmissionRefreshProductAPI(ctx context.Context, task *Task, taskID string) (sheinproduct.ProductAPI, error) {
+	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
+	if err != nil {
+		return nil, apperrors.Wrapf(err, apperrors.ErrCodePlatformError, "failed to build shein product API for task %s", taskID)
+	}
+	return productAPI, nil
 }
 
 func resolveSubmissionRefreshAction(report *sheinpub.SubmissionReport) string {

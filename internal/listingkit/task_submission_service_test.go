@@ -6,8 +6,10 @@ import (
 	"testing"
 	"time"
 
+	apperrors "task-processor/internal/core/errors"
 	"task-processor/internal/listingkit/core"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -507,6 +509,110 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshReturnsRemoteErrorAfterPers
 	}
 	if previewCalls != 0 {
 		t.Fatalf("preview calls = %d, want 0", previewCalls)
+	}
+}
+
+func TestTaskSubmissionServiceLoadSheinSubmissionRefreshStateMapsLoadedTask(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	now := time.Now().Add(-time.Hour)
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		LastAction: "publish",
+		LastResult: &sheinpub.SubmissionResponse{
+			Success: true,
+			SPUName: "SPU-PUBLISH",
+		},
+		Publish: &sheinpub.SubmissionRecord{
+			Action:       "publish",
+			RequestID:    "refresh-123",
+			SupplierCode: "SKC-1",
+			StartedAt:    now,
+			Result: &sheinpub.SubmissionResponse{
+				Success: true,
+				SPUName: "SPU-PUBLISH",
+			},
+		},
+	}
+	productAPI := stubSheinProductAPI{}
+	otherAPI := stubSheinOtherAPI{}
+	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
+		repo: &stubSubmitRepo{task: task},
+		buildSheinSubmitProductAPI: func(context.Context, *Task) (sheinproduct.ProductAPI, error) {
+			return productAPI, nil
+		},
+		buildSheinSubmitOtherAPI: func(context.Context, *Task) (sheinother.OtherAPI, error) {
+			return otherAPI, nil
+		},
+	})
+
+	state, err := submitter.loadSheinSubmissionRefreshState(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("loadSheinSubmissionRefreshState() error = %v", err)
+	}
+	if state == nil {
+		t.Fatal("state = nil")
+	}
+	if state.task == nil || state.task.ID != task.ID {
+		t.Fatalf("task = %+v, want task %q", state.task, task.ID)
+	}
+	if state.action != "publish" {
+		t.Fatalf("action = %q, want publish", state.action)
+	}
+	if state.requestID != "refresh-123" {
+		t.Fatalf("requestID = %q, want refresh-123", state.requestID)
+	}
+	if len(state.lookupCodes) == 0 {
+		t.Fatal("lookupCodes = empty, want collected codes")
+	}
+	if !state.defaultConfirmed {
+		t.Fatal("defaultConfirmed = false, want true")
+	}
+	if state.spuName != "SPU-PUBLISH" {
+		t.Fatalf("spuName = %q, want SPU-PUBLISH", state.spuName)
+	}
+	if state.productAPI == nil {
+		t.Fatal("productAPI = nil, want assigned api")
+	}
+	if state.otherAPI == nil {
+		t.Fatal("otherAPI = nil, want assigned api")
+	}
+}
+
+func TestTaskSubmissionServiceLoadSheinSubmissionRefreshStateWrapsProductAPIError(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	now := time.Now().Add(-time.Hour)
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		LastAction: "publish",
+		Publish: &sheinpub.SubmissionRecord{
+			Action:       "publish",
+			RequestID:    "refresh-123",
+			SupplierCode: "SKC-1",
+			StartedAt:    now,
+		},
+	}
+	buildErr := errors.New("product api unavailable")
+	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
+		repo: &stubSubmitRepo{task: task},
+		buildSheinSubmitProductAPI: func(context.Context, *Task) (sheinproduct.ProductAPI, error) {
+			return nil, buildErr
+		},
+	})
+
+	state, err := submitter.loadSheinSubmissionRefreshState(context.Background(), task.ID)
+	if err == nil {
+		t.Fatal("err = nil, want wrapped platform error")
+	}
+	if state != nil {
+		t.Fatalf("state = %+v, want nil", state)
+	}
+	if !errors.Is(err, buildErr) {
+		t.Fatalf("error = %v, want wrapped build error", err)
+	}
+	if !apperrors.IsCode(err, apperrors.ErrCodePlatformError) {
+		t.Fatalf("error code = %q, want %q", apperrors.GetCode(err), apperrors.ErrCodePlatformError)
 	}
 }
 
