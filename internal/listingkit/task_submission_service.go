@@ -92,6 +92,12 @@ type sheinSubmissionRefreshMutationRequest struct {
 	confirmation *sheinRemoteConfirmation
 }
 
+type sheinSubmissionRefreshValidationRequest struct {
+	task      *Task
+	action    string
+	requestID string
+}
+
 type sheinSubmissionRefreshSelection struct {
 	action       string
 	record       *sheinpub.SubmissionRecord
@@ -557,17 +563,26 @@ func appendSubmissionRefreshRunningEvent(pkg *SheinPackage, request *sheinSubmis
 }
 
 func validateSubmissionRefreshMutation(task *Task, action, requestID string) (*SheinPackage, error) {
-	pkg, err := loadSubmissionRefreshMutationPackage(task)
+	request := buildSubmissionRefreshValidationRequest(task, action, requestID)
+	pkg, err := loadSubmissionRefreshMutationPackage(request.task)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateSubmissionRefreshAction(pkg, action); err != nil {
+	if err := validateSubmissionRefreshAction(pkg, request.action); err != nil {
 		return nil, err
 	}
-	if err := validateSubmissionRefreshRequest(pkg, action, requestID); err != nil {
+	if err := validateSubmissionRefreshRequest(pkg, request.action, request.requestID); err != nil {
 		return nil, err
 	}
 	return pkg, nil
+}
+
+func buildSubmissionRefreshValidationRequest(task *Task, action, requestID string) *sheinSubmissionRefreshValidationRequest {
+	return &sheinSubmissionRefreshValidationRequest{
+		task:      task,
+		action:    action,
+		requestID: requestID,
+	}
 }
 
 func loadSubmissionRefreshMutationPackage(task *Task) (*SheinPackage, error) {

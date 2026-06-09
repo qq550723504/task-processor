@@ -927,6 +927,25 @@ func TestBuildSubmissionRefreshMutationRequestMapsStateAndConfirmation(t *testin
 	}
 }
 
+func TestBuildSubmissionRefreshValidationRequestMapsFields(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	request := buildSubmissionRefreshValidationRequest(task, "publish", "refresh-123")
+	if request == nil {
+		t.Fatal("request = nil")
+	}
+	if request.task != task {
+		t.Fatalf("task = %+v, want original task", request.task)
+	}
+	if request.action != "publish" {
+		t.Fatalf("action = %q, want publish", request.action)
+	}
+	if request.requestID != "refresh-123" {
+		t.Fatalf("requestID = %q, want refresh-123", request.requestID)
+	}
+}
+
 func TestApplySubmissionRefreshMutationAppendsRunningEventBeforeConfirmation(t *testing.T) {
 	t.Parallel()
 
@@ -999,6 +1018,23 @@ func TestApplySubmissionRefreshMutationAppendsRunningEventBeforeConfirmation(t *
 	}
 	if task.Result.Shein.SubmissionEvents[0].RemoteRecordID != "record-123" {
 		t.Fatalf("confirmation event remote record id = %q, want record-123", task.Result.Shein.SubmissionEvents[0].RemoteRecordID)
+	}
+}
+
+func TestValidateSubmissionRefreshMutationRejectsMissingTaskResult(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{ID: "task-no-result"}
+
+	_, err := validateSubmissionRefreshMutation(task, "publish", "refresh-123")
+	if err == nil {
+		t.Fatal("err = nil, want validation error")
+	}
+	if !errors.Is(err, ErrSubmitBlocked) {
+		t.Fatalf("error = %v, want ErrSubmitBlocked", err)
+	}
+	if !apperrors.IsCode(err, apperrors.ErrCodeValidation) {
+		t.Fatalf("error code = %q, want %q", apperrors.GetCode(err), apperrors.ErrCodeValidation)
 	}
 }
 
