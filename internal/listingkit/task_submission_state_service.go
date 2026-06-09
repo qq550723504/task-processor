@@ -108,12 +108,8 @@ func (s *taskSubmissionStateService) failSheinDirectSubmit(ctx context.Context, 
 	if task == nil {
 		return submitErr
 	}
-	if saveErr := s.persistFailedSheinDirectSubmit(ctx, taskID, task, pkg, action, submitErr); saveErr != nil {
+	if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, submitErr); saveErr != nil {
 		return saveErr
 	}
 	return submitErr
-}
-
-func (s *taskSubmissionStateService) persistFailedSheinDirectSubmit(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, action string, submitErr error) error {
-	return s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, submitErr)
 }
