@@ -1,7 +1,5 @@
 package listingkit
 
-import "context"
-
 func buildTaskRequeueServiceConfig(s *service) taskRequeueServiceConfig {
 	return taskRequeueServiceConfig{
 		repo: s.repo,
@@ -27,9 +25,7 @@ func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecovery
 		buildSheinSubmitProductAPI: s.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:   s.buildSheinSubmitOtherAPI,
 		rememberSheinSubmitted:     s.rememberSheinSubmittedResolution,
-		persistSuccessfulSubmission: func(ctx context.Context, taskID string, task *Task, action string) error {
-			return s.persistSuccessfulSheinSubmission(ctx, taskID, task, action)
-		},
+		persistSuccessfulSubmission: s.persistSuccessfulSheinSubmission,
 		resolveRemoteStatusCallback: s.resolveSheinSubmitRemoteStatus,
 	}
 }
