@@ -281,12 +281,8 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitLocally(ctx context.Co
 	if task == nil || pkg == nil || state == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	s.completeRecoveredSheinLocalState(pkg, task.ID, action, state)
+	appendRecoveredSheinLocalCompletionEvents(pkg, task.ID, action, state)
 	return s.finalizeRecoveredSheinSubmission(ctx, task, action)
-}
-
-func (s *taskSubmissionRecoveryService) completeRecoveredSheinLocalState(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState) {
-	appendRecoveredSheinLocalCompletionEvents(pkg, taskID, action, state)
 }
 
 func loadRecoveredSheinSubmissionReport(task *Task) (*SheinPackage, *sheinpub.SubmissionReport, error) {
@@ -455,24 +451,12 @@ func (s *taskSubmissionRecoveryService) finalizeRecoveredSheinSubmission(ctx con
 	if task == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	s.rememberRecoveredSheinSubmission(task, action)
-	if err := s.persistRecoveredSheinSubmission(ctx, task, action); err != nil {
-		return nil, err
-	}
-	return s.buildRecoveredSheinPreview(ctx, task)
-}
-
-func (s *taskSubmissionRecoveryService) rememberRecoveredSheinSubmission(task *Task, action string) {
 	if s.rememberSheinSubmitted != nil {
 		s.rememberSheinSubmitted(task, action)
 	}
-}
-
-func (s *taskSubmissionRecoveryService) persistRecoveredSheinSubmission(ctx context.Context, task *Task, action string) error {
-	return s.persistSuccessfulSubmission(ctx, task.ID, task, action)
-}
-
-func (s *taskSubmissionRecoveryService) buildRecoveredSheinPreview(ctx context.Context, task *Task) (*ListingKitPreview, error) {
+	if err := s.persistSuccessfulSubmission(ctx, task.ID, task, action); err != nil {
+		return nil, err
+	}
 	return s.buildTaskPreview(ctx, task, "shein")
 }
 
