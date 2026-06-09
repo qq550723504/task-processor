@@ -191,10 +191,14 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	if s.shouldRecoverSheinSubmitLocally(action, recoveredState.response) {
-		return s.recoverSheinSubmitLocally(ctx, task, pkg, action, recoveredState)
+	return s.executeRecoveredSheinSubmitRoute(ctx, task, pkg, action, recoveredState)
+}
+
+func (s *taskSubmissionRecoveryService) executeRecoveredSheinSubmitRoute(ctx context.Context, task *Task, pkg *SheinPackage, action string, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
+	if s.shouldRecoverSheinSubmitLocally(action, state.response) {
+		return s.recoverSheinSubmitLocally(ctx, task, pkg, action, state)
 	}
-	return s.recoverSheinSubmitViaRemoteConfirmation(ctx, task, pkg, action, recoveredState)
+	return s.recoverSheinSubmitViaRemoteConfirmation(ctx, task, pkg, action, state)
 }
 
 func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx context.Context, task *Task, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, action, requestID, supplierCode string, startedAt time.Time) (*sheinpub.SubmissionEvent, error) {

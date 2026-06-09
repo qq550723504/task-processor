@@ -661,3 +661,146 @@ func TestTaskSubmissionRecoveryServicePersistSheinRecoveredRemoteFailurePersists
 		t.Fatalf("failure event error = %q, want %q", saved.Result.Shein.SubmissionEvents[0].ErrorMessage, remoteErr.Error())
 	}
 }
+
+func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitRemoteUsesLocalRecoveryForAcceptedResponse(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-2 * time.Minute)
+	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-route-local-123", sheinpub.SubmissionPhasePersistResult, startedAt)
+	response := &sheinpub.SubmissionResponse{
+		Code:    "0",
+		Message: "success",
+		Success: true,
+		SPUName: "SPU-route-local",
+	}
+	setSheinSubmitRemoteResponse(task.Result.Shein, "publish", "recover-route-local-123", "SUP-route-local", response)
+	expectedPreview := &ListingKitPreview{TaskID: task.ID}
+	var calls []string
+
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		rememberSheinSubmitted: func(gotTask *Task, action string) {
+			calls = append(calls, "remember")
+			if gotTask != task || action != "publish" {
+				t.Fatalf("remember args = %+v/%q, want original task/publish", gotTask, action)
+			}
+		},
+		persistSuccessfulSubmission: func(_ context.Context, taskID string, gotTask *Task, action string) error {
+			calls = append(calls, "persist")
+			if taskID != task.ID || gotTask != task || action != "publish" {
+				t.Fatalf("persist args = %q/%+v/%q, want %q/original/publish", taskID, gotTask, action, task.ID)
+			}
+			return nil
+		},
+		buildTaskPreview: func(_ context.Context, gotTask *Task, platform string) (*ListingKitPreview, error) {
+			calls = append(calls, "preview")
+			if gotTask != task || platform != "shein" {
+				t.Fatalf("preview args = %+v/%q, want original task/shein", gotTask, platform)
+			}
+			return expectedPreview, nil
+		},
+		buildSheinSubmitProductAPI: func(_ context.Context, _ *Task) (sheinproduct.ProductAPI, error) {
+			t.Fatal("buildSheinSubmitProductAPI should not be called for local recovery route")
+			return nil, nil
+		},
+	})
+
+	preview, err := recovery.recoverSheinSubmitRemote(context.Background(), task, "publish")
+	if err != nil {
+		t.Fatalf("recoverSheinSubmitRemote() err = %v", err)
+	}
+	if preview != expectedPreview {
+		t.Fatalf("preview = %+v, want %+v", preview, expectedPreview)
+	}
+	wantCalls := []string{"remember", "persist", "preview"}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %+v, want %+v", calls, wantCalls)
+	}
+	for i := range wantCalls {
+		if calls[i] != wantCalls[i] {
+			t.Fatalf("calls[%d] = %q, want %q; full calls = %+v", i, calls[i], wantCalls[i], calls)
+		}
+	}
+}
+
+func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitRemoteUsesRemoteConfirmationForUnknownResponse(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-3 * time.Minute)
+	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-route-remote-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	response := &sheinpub.SubmissionResponse{
+		Code:    "0",
+		Message: "accepted",
+		Success: false,
+		SPUName: "SPU-route-remote",
+	}
+	setSheinSubmitRemoteResponse(task.Result.Shein, "publish", "recover-route-remote-123", "SUP-route-remote", response)
+	task.Result.Shein.Submission.Publish.SupplierCode = "SUP-route-remote"
+	expectedPreview := &ListingKitPreview{TaskID: task.ID}
+	var calls []string
+
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		buildSheinSubmitProductAPI: func(_ context.Context, gotTask *Task) (sheinproduct.ProductAPI, error) {
+			calls = append(calls, "build_api")
+			if gotTask != task {
+				t.Fatalf("build api task = %+v, want original task", gotTask)
+			}
+			return stubSheinProductAPI{}, nil
+		},
+		resolveRemoteStatusCallback: func(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, gotStartedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
+			calls = append(calls, "resolve_remote")
+			if action != "publish" || requestID != "recover-route-remote-123" {
+				t.Fatalf("resolve args = %q/%q, want publish/recover-route-remote-123", action, requestID)
+			}
+			event := submission.BuildConfirmRemoteEvent(task.ID, "publish", sheinpub.SubmissionRemoteStatusConfirmed, requestID, gotStartedAt, "remote confirmed", nil)
+			return &sheinRemoteConfirmation{
+				remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+				record: &sheinproduct.RecordItem{
+					RecordID:     "record-route-remote",
+					SupplierCode: "SUP-route-remote",
+				},
+				checkedAt: time.Now(),
+				message:   "remote confirmed",
+				event:     &event,
+			}, nil
+		},
+		rememberSheinSubmitted: func(gotTask *Task, action string) {
+			calls = append(calls, "remember")
+			if gotTask != task || action != "publish" {
+				t.Fatalf("remember args = %+v/%q, want original task/publish", gotTask, action)
+			}
+		},
+		persistSuccessfulSubmission: func(_ context.Context, taskID string, gotTask *Task, action string) error {
+			calls = append(calls, "persist")
+			if taskID != task.ID || gotTask != task || action != "publish" {
+				t.Fatalf("persist args = %q/%+v/%q, want %q/original/publish", taskID, gotTask, action, task.ID)
+			}
+			return nil
+		},
+		buildTaskPreview: func(_ context.Context, gotTask *Task, platform string) (*ListingKitPreview, error) {
+			calls = append(calls, "preview")
+			if gotTask != task || platform != "shein" {
+				t.Fatalf("preview args = %+v/%q, want original task/shein", gotTask, platform)
+			}
+			return expectedPreview, nil
+		},
+	})
+
+	preview, err := recovery.recoverSheinSubmitRemote(context.Background(), task, "publish")
+	if err != nil {
+		t.Fatalf("recoverSheinSubmitRemote() err = %v", err)
+	}
+	if preview != expectedPreview {
+		t.Fatalf("preview = %+v, want %+v", preview, expectedPreview)
+	}
+	wantCalls := []string{"build_api", "resolve_remote", "remember", "persist", "preview"}
+	if len(calls) != len(wantCalls) {
+		t.Fatalf("calls = %+v, want %+v", calls, wantCalls)
+	}
+	for i := range wantCalls {
+		if calls[i] != wantCalls[i] {
+			t.Fatalf("calls[%d] = %q, want %q; full calls = %+v", i, calls[i], wantCalls[i], calls)
+		}
+	}
+}
