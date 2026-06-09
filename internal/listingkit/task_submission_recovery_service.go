@@ -261,7 +261,11 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitLocally(ctx context.Co
 	if task == nil || pkg == nil || state == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	appendRecoveredSheinLocalCompletionEvents(pkg, task.ID, action, state)
+	appendSheinSubmissionEvent(pkg, submission.BuildPhaseEvent(task.ID, action, sheinpub.SubmissionPhasePersistResult, sheinpub.SubmissionStatusRunning, state.requestID, state.now, "恢复本地提交完成状态", nil))
+	if state.record != nil {
+		_, completionEvent := submission.CompleteAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, state.response, nil, state.record.StartedAt, time.Now())
+		appendSheinSubmissionEvent(pkg, completionEvent)
+	}
 	return s.finalizeRecoveredSheinSubmission(ctx, task, action)
 }
 
@@ -298,26 +302,6 @@ func resolveRecoveredSheinRemoteResponse(report *sheinpub.SubmissionReport, reco
 		return report.LastResult
 	}
 	return nil
-}
-
-func appendRecoveredSheinLocalCompletionEvents(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState) {
-	if pkg == nil || state == nil {
-		return
-	}
-	appendSheinSubmissionEvent(pkg, buildRecoveredSheinLocalPersistEvent(taskID, action, state))
-	appendRecoveredSheinLocalCompletionEvent(pkg, taskID, action, state)
-}
-
-func buildRecoveredSheinLocalPersistEvent(taskID, action string, state *sheinRecoveredRemoteState) sheinpub.SubmissionEvent {
-	return submission.BuildPhaseEvent(taskID, action, sheinpub.SubmissionPhasePersistResult, sheinpub.SubmissionStatusRunning, state.requestID, state.now, "恢复本地提交完成状态", nil)
-}
-
-func appendRecoveredSheinLocalCompletionEvent(pkg *SheinPackage, taskID, action string, state *sheinRecoveredRemoteState) {
-	if pkg == nil || state == nil || state.record == nil {
-		return
-	}
-	_, completionEvent := submission.CompleteAttemptAndBuildEvent(pkg, taskID, action, state.requestID, state.response, nil, state.record.StartedAt, time.Now())
-	appendSheinSubmissionEvent(pkg, completionEvent)
 }
 
 func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(ctx context.Context, task *Task, pkg *SheinPackage, action string, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
