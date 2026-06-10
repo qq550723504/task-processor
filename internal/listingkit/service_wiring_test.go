@@ -1142,9 +1142,55 @@ func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 	for _, needle := range []string{
 		"func (s *service) buildSheinAttributeAPI(ctx context.Context, task *Task) (sheinpub.AttributeAPI, error) {",
 		"func (s *service) buildSheinCategoryAPI(ctx context.Context, task *Task) (sheincategory.CategoryAPI, error) {",
+	} {
+		if !strings.Contains(categoryContent, needle) {
+			t.Fatalf("service_shein_categories.go should keep %q", needle)
+		}
+	}
+}
+
+func TestSheinStoreSelectionFacadeFileOwnsRootHelpers(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_shein_store_selection.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_store_selection.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) resolveSheinStoreID(ctx context.Context, task *Task) (int64, error) {",
+		"return buildSubmitRuntimeContextResolver(s).resolveStoreID(ctx, task)",
+		"func (s *service) resolveSheinStoreProfile(ctx context.Context, task *Task) (*ListingKitStoreProfile, error) {",
+		"return buildSubmitRuntimeContextResolver(s).resolveStoreProfile(ctx, task)",
+		"func (s *service) resolveSheinStoreSelection(ctx context.Context, task *Task) (*sheinStoreSelection, error) {",
+		"return buildSubmitRuntimeContextResolver(s).resolveStoreSelection(ctx, task)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_shein_store_selection.go should contain %q", needle)
+		}
+	}
+
+	categorySrc, err := os.ReadFile("service_shein_categories.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_categories.go) error = %v", err)
+	}
+	categoryContent := string(categorySrc)
+
+	for _, needle := range []string{
 		"func (s *service) resolveSheinStoreID(ctx context.Context, task *Task) (int64, error) {",
 		"func (s *service) resolveSheinStoreProfile(ctx context.Context, task *Task) (*ListingKitStoreProfile, error) {",
 		"func (s *service) resolveSheinStoreSelection(ctx context.Context, task *Task) (*sheinStoreSelection, error) {",
+	} {
+		if strings.Contains(categoryContent, needle) {
+			t.Fatalf("service_shein_categories.go should not contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"type sheinStoreSelection struct {",
+		"func selectionFromSnapshot(snapshot *SheinStoreResolutionSnapshot) *sheinStoreSelection {",
+		"func matchStoreProfileForTask(",
 	} {
 		if !strings.Contains(categoryContent, needle) {
 			t.Fatalf("service_shein_categories.go should keep %q", needle)

@@ -62,14 +62,6 @@ func (s *service) buildSheinCategoryAPI(ctx context.Context, task *Task) (sheinc
 	return sheincategory.NewClient(baseAPI), nil
 }
 
-func (s *service) resolveSheinStoreID(ctx context.Context, task *Task) (int64, error) {
-	return buildSubmitRuntimeContextResolver(s).resolveStoreID(ctx, task)
-}
-
-func (s *service) resolveSheinStoreProfile(ctx context.Context, task *Task) (*ListingKitStoreProfile, error) {
-	return buildSubmitRuntimeContextResolver(s).resolveStoreProfile(ctx, task)
-}
-
 type sheinStoreSelection struct {
 	Profile          *ListingKitStoreProfile
 	Strategy         string
@@ -77,10 +69,6 @@ type sheinStoreSelection struct {
 	MatchedRuleKinds []string
 	ManualOverride   bool
 	Fallback         bool
-}
-
-func (s *service) resolveSheinStoreSelection(ctx context.Context, task *Task) (*sheinStoreSelection, error) {
-	return buildSubmitRuntimeContextResolver(s).resolveStoreSelection(ctx, task)
 }
 
 func sheinStoreResolutionSnapshotFromTask(task *Task) *SheinStoreResolutionSnapshot {
