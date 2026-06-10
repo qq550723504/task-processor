@@ -42,8 +42,8 @@ func TestSubmitStoreContextFileKeepsRemoteClientBootstrapOutOfSettingsHydration(
 func TestSheinStoreClientFileKeepsSettingsHydrationOutOfRemoteLookup(t *testing.T) {
 	t.Parallel()
 
-	storeInfoSource := readExactMethodSource(t, "service_submit_context_resolver.go", "func (s *service) resolveSheinStoreInfo(")
-	apiClientSource := readExactMethodSource(t, "service_submit_context_resolver.go", "func (s *service) newSheinAPIClient(")
+	storeInfoSource := readExactMethodSource(t, "service_submit_context_facade.go", "func (s *service) resolveSheinStoreInfo(")
+	apiClientSource := readExactMethodSource(t, "service_submit_context_facade.go", "func (s *service) newSheinAPIClient(")
 
 	for _, needle := range []string{
 		"applySubmitSettingsProfile(",
@@ -52,17 +52,17 @@ func TestSheinStoreClientFileKeepsSettingsHydrationOutOfRemoteLookup(t *testing.
 		"currentSheinSubmitSettings(",
 	} {
 		if strings.Contains(storeInfoSource, needle) {
-			t.Fatalf("resolveSheinStoreInfo should not contain %q", needle)
+			t.Fatalf("service_submit_context_facade.go resolveSheinStoreInfo should not contain %q", needle)
 		}
 		if strings.Contains(apiClientSource, needle) {
-			t.Fatalf("newSheinAPIClient should not contain %q", needle)
+			t.Fatalf("service_submit_context_facade.go newSheinAPIClient should not contain %q", needle)
 		}
 	}
 	if !strings.Contains(storeInfoSource, "buildSubmitRuntimeContextResolver(s).resolveStoreInfo(ctx, task)") {
-		t.Fatal("resolveSheinStoreInfo should delegate remote store lookup through the resolver seam")
+		t.Fatal("service_submit_context_facade.go resolveSheinStoreInfo should delegate remote store lookup through the resolver seam")
 	}
 	if !strings.Contains(apiClientSource, "buildSubmitRuntimeContextResolver(s).newAPIClient(ctx, task)") {
-		t.Fatal("newSheinAPIClient should delegate client bootstrap through the resolver seam")
+		t.Fatal("service_submit_context_facade.go newSheinAPIClient should delegate client bootstrap through the resolver seam")
 	}
 }
 

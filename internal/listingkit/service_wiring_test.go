@@ -508,7 +508,7 @@ func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 		},
 		{
 			name: "shein store client",
-			file: "service_submit_context_resolver.go",
+			file: "service_submit_context_facade.go",
 			needles: []string{
 				"buildSubmitRuntimeContextResolver(s).resolveStoreInfo(ctx, task)",
 			},
@@ -1264,6 +1264,58 @@ func TestSubmitStoreContextFacadeFileOwnsRootHelpers(t *testing.T) {
 
 	if !strings.Contains(helperContent, "func pickSheinWarehouseCode(warehouses *sheinwarehouse.WarehouseResponse, site string) string {") {
 		t.Fatalf("service_submit_store_context.go should keep %q", "func pickSheinWarehouseCode(warehouses *sheinwarehouse.WarehouseResponse, site string) string {")
+	}
+}
+
+func TestSubmitContextFacadeFileOwnsRootHelpers(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_submit_context_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_context_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) resolveSheinStoreInfo(ctx context.Context, task *Task) (*SheinStoreInfo, error) {",
+		"return buildSubmitRuntimeContextResolver(s).resolveStoreInfo(ctx, task)",
+		"func (s *service) newSheinAPIClient(ctx context.Context, task *Task) (*sheinclient.APIClient, int64, error) {",
+		"return buildSubmitRuntimeContextResolver(s).newAPIClient(ctx, task)",
+		"func (s *service) buildSheinSubmitOtherAPI(ctx context.Context, task *Task) (sheinother.OtherAPI, error) {",
+		"resolver := buildSubmitRuntimeContextResolver(s)",
+		"baseAPI := NewSheinRuntimeBaseAPIClient(apiClient, storeID)",
+		"return sheinother.NewClient(baseAPI), nil",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_submit_context_facade.go should contain %q", needle)
+		}
+	}
+
+	helperSrc, err := os.ReadFile("service_submit_context_resolver.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_context_resolver.go) error = %v", err)
+	}
+	helperContent := string(helperSrc)
+
+	for _, needle := range []string{
+		"func (s *service) resolveSheinStoreInfo(ctx context.Context, task *Task) (*SheinStoreInfo, error) {",
+		"func (s *service) newSheinAPIClient(ctx context.Context, task *Task) (*sheinclient.APIClient, int64, error) {",
+		"func (s *service) buildSheinSubmitOtherAPI(ctx context.Context, task *Task) (sheinother.OtherAPI, error) {",
+	} {
+		if strings.Contains(helperContent, needle) {
+			t.Fatalf("service_submit_context_resolver.go should not contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"func buildSubmitRuntimeContextResolver(s *service) *submitRuntimeContextResolver {",
+		"func (r *submitRuntimeContextResolver) resolveSubmitSettings(ctx context.Context, task *Task) SheinSettings {",
+		"func (r *submitRuntimeContextResolver) resolveStoreInfo(ctx context.Context, task *Task) (*SheinStoreInfo, error) {",
+		"func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*SheinRuntimeAPIClient, int64, error) {",
+	} {
+		if !strings.Contains(helperContent, needle) {
+			t.Fatalf("service_submit_context_resolver.go should keep %q", needle)
+		}
 	}
 }
 
