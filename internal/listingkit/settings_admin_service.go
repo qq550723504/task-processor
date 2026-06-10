@@ -38,14 +38,6 @@ func newSettingsAdminService(config settingsAdminServiceConfig) *settingsAdminSe
 	}
 }
 
-func (s *service) settingsAdminOrDefault() *settingsAdminService {
-	if s.settingsAdmin != nil {
-		return s.settingsAdmin
-	}
-	s.settingsAdmin = newSettingsAdminService(buildSettingsAdminServiceConfig(s))
-	return s.settingsAdmin
-}
-
 func (s *settingsAdminService) ListSheinStoreProfiles(ctx context.Context) ([]ListingKitStoreProfile, error) {
 	tenantID, ok := tenantIDInt64FromContext(ctx)
 	if !ok {

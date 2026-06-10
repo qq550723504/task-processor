@@ -49,14 +49,6 @@ func newSheinAdminService(config sheinAdminServiceConfig) *sheinAdminService {
 	}
 }
 
-func (s *service) sheinAdminOrDefault() *sheinAdminService {
-	if s.sheinAdmin != nil {
-		return s.sheinAdmin
-	}
-	s.sheinAdmin = newSheinAdminService(buildSheinAdminServiceConfig(s))
-	return s.sheinAdmin
-}
-
 func (s *sheinAdminService) PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {
 	task, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {

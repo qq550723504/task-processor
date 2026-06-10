@@ -18,6 +18,7 @@ internal/listingkit/service_types.go                      // service struct / de
 internal/listingkit/service_config.go                     // NewService / factory wiring
 internal/listingkit/service_defaults.go                   // config defaults / default builders
 internal/listingkit/service_collaborators.go              // collaborator initialization groups
+internal/listingkit/service_admin_collaborators.go       // admin collaborator accessors
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 internal/listingkit/service_task_wiring.go               // task/generation/revision collaborator config builders
 internal/listingkit/service_studio_wiring.go             // studio collaborator config builders
@@ -91,6 +92,13 @@ Submission initialization is now grouped as:
 2. submission state and execution collaborators,
 3. SHEIN submission orchestrators, including refresh/status handling,
 4. Temporal adapter initialization in its own step.
+
+### `service_admin_collaborators.go`
+
+Owns admin collaborator accessors:
+
+- settings admin,
+- SHEIN admin.
 
 ### `service_task_wiring.go`
 

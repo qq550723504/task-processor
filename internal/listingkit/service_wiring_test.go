@@ -182,20 +182,32 @@ func TestAdminCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 	cases := []struct {
 		name         string
 		file         string
-		builderCall  string
-		inlineConfig string
+		builderCalls []string
+		inlineConfig []string
 	}{
 		{
-			name:         "settings admin",
-			file:         "settings_admin_service.go",
-			builderCall:  "buildSettingsAdminServiceConfig(s)",
-			inlineConfig: "newSettingsAdminService(settingsAdminServiceConfig{",
+			name: "admin collaborators",
+			file: "service_admin_collaborators.go",
+			builderCalls: []string{
+				"buildSettingsAdminServiceConfig(s)",
+				"buildSheinAdminServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newSettingsAdminService(settingsAdminServiceConfig{",
+				"newSheinAdminService(sheinAdminServiceConfig{",
+			},
 		},
 		{
-			name:         "shein admin",
+			name:         "settings admin service",
+			file:         "settings_admin_service.go",
+			builderCalls: nil,
+			inlineConfig: nil,
+		},
+		{
+			name:         "shein admin service",
 			file:         "shein_admin_service.go",
-			builderCall:  "buildSheinAdminServiceConfig(s)",
-			inlineConfig: "newSheinAdminService(sheinAdminServiceConfig{",
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 	}
 
@@ -210,11 +222,15 @@ func TestAdminCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			}
 			content := string(src)
 
-			if !strings.Contains(content, tc.builderCall) {
-				t.Fatalf("%s should contain %q", tc.file, tc.builderCall)
+			for _, builderCall := range tc.builderCalls {
+				if !strings.Contains(content, builderCall) {
+					t.Fatalf("%s should contain %q", tc.file, builderCall)
+				}
 			}
-			if strings.Contains(content, tc.inlineConfig) {
-				t.Fatalf("%s should not contain %q", tc.file, tc.inlineConfig)
+			for _, inlineConfig := range tc.inlineConfig {
+				if strings.Contains(content, inlineConfig) {
+					t.Fatalf("%s should not contain %q", tc.file, inlineConfig)
+				}
 			}
 		})
 	}
