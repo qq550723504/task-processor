@@ -743,3 +743,51 @@ func TestStudioBatchFacadeFileOwnsRootDelegates(t *testing.T) {
 		}
 	}
 }
+
+func TestStudioSessionFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_studio_session.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_studio_session.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error) {",
+		"return s.taskStudioBatchDraftOrDefault().ListStudioSessionGallery(ctx, limit)",
+		"func (s *service) ListStudioBatches(ctx context.Context, limit int) (*StudioBatchListResponse, error) {",
+		"return s.taskStudioBatchDraftOrDefault().ListStudioBatches(ctx, limit)",
+		"func (s *service) GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchDraftDetail, error) {",
+		"return s.taskStudioBatchDraftOrDefault().GetStudioBatch(ctx, batchID)",
+		"func (s *service) UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*StudioBatchDraftDetail, error) {",
+		"return s.taskStudioBatchDraftOrDefault().UpsertStudioBatch(ctx, req)",
+		"func (s *service) DeleteStudioBatch(ctx context.Context, batchID string) error {",
+		"return s.taskStudioBatchDraftOrDefault().DeleteStudioBatch(ctx, batchID)",
+		"func (s *service) SyncStudioDesignAsyncJob(ctx context.Context, sessionID string, jobStatus StudioAsyncJobStatus, jobID string, errMessage string) error {",
+		"return s.taskStudioSessionOrDefault().SyncStudioDesignAsyncJob(ctx, sessionID, jobStatus, jobID, errMessage)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_studio_session.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("studio_session_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(studio_session_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"func (s *service) ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error) {",
+		"func (s *service) ListStudioBatches(ctx context.Context, limit int) (*StudioBatchListResponse, error) {",
+		"func (s *service) GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchDraftDetail, error) {",
+		"func (s *service) UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*StudioBatchDraftDetail, error) {",
+		"func (s *service) DeleteStudioBatch(ctx context.Context, batchID string) error {",
+		"func (s *service) SyncStudioDesignAsyncJob(ctx context.Context, sessionID string, jobStatus StudioAsyncJobStatus, jobID string, errMessage string) error {",
+	} {
+		if strings.Contains(serviceContent, needle) {
+			t.Fatalf("studio_session_service.go should not contain %q", needle)
+		}
+	}
+}
