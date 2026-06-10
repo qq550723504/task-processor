@@ -987,12 +987,12 @@ func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 	}
 }
 
-func TestStoreProfileFacadeFileOwnsRootDelegates(t *testing.T) {
+func TestStoreProfileEntrypointsFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_store_settings_facade.go")
+	facadeSrc, err := os.ReadFile("service_shein_store_settings_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_store_settings_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_store_settings_entrypoints.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1009,7 +1009,7 @@ func TestStoreProfileFacadeFileOwnsRootDelegates(t *testing.T) {
 		"return s.settingsAdminOrDefault().UpdateSheinStoreRoutingSettings(ctx, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_store_settings_facade.go should contain %q", needle)
+			t.Fatalf("service_shein_store_settings_entrypoints.go should contain %q", needle)
 		}
 	}
 
