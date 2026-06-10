@@ -30,7 +30,7 @@ internal/listingkit/service_shein_final_draft_update_entrypoint.go // SHEIN fina
 internal/listingkit/service_shein_data_image_regeneration.go // SHEIN data image regeneration logic
 internal/listingkit/service_shein_pricing_preview_entrypoint.go // SHEIN pricing preview entrypoint
 internal/listingkit/service_shein_resolution_cache_clear_entrypoint.go // SHEIN resolution cache clear entrypoint
-internal/listingkit/service_shein_submission_event_listing_facade.go // SHEIN submission event listing facade delegate
+internal/listingkit/service_shein_submission_event_listing_entrypoint.go // SHEIN submission event listing entrypoint
 internal/listingkit/service_shein_store_selection_resolvers.go // SHEIN store selection helpers
 internal/listingkit/service_shein_settings_facade.go // SHEIN settings facade delegates
 internal/listingkit/service_shein_store_settings_facade.go // SHEIN store settings facade delegates
@@ -221,7 +221,7 @@ Owns root SHEIN resolution cache facade delegate:
 
 - SHEIN resolution cache clear entrypoint.
 
-### `service_shein_submission_event_listing_facade.go`
+### `service_shein_submission_event_listing_entrypoint.go`
 
 Owns root SHEIN submission event listing facade delegate:
 
