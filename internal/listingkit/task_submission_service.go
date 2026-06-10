@@ -6,7 +6,6 @@ import (
 	"time"
 
 	apperrors "task-processor/internal/core/errors"
-	"task-processor/internal/listingkit/submission"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 
@@ -181,5 +180,3 @@ func (s *taskSubmissionService) acquireSubmitTask(ctx context.Context, taskID, a
 	}
 	return s.acquireSheinSubmitTask(ctx, taskID, action, requestID, startedAt)
 }
-
-const sheinSubmitInFlightTTL = submission.InFlightTTL

@@ -34,6 +34,8 @@ func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecovery
 
 func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 	execution := s.taskSubmissionExecutionOrDefault()
+	direct := s.taskDirectSubmissionOrDefault()
+	recovery := s.taskSubmissionRecoveryOrDefault()
 	return taskSubmissionServiceConfig{
 		repo: s.repo,
 		lockSubmit: func(key string) func() {
@@ -43,11 +45,11 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 		acquireSheinSubmitTask:          s.acquireSheinSubmitTask,
 		shouldStartSheinPublishWorkflow: s.shouldStartSheinPublishWorkflow,
 		submitSheinTaskWithWorkflow:     s.submitSheinTaskWithWorkflow,
-		submitSheinTaskDirect:           s.submitSheinTaskDirect,
+		submitSheinTaskDirect:           direct.submitSheinTaskDirect,
 		buildTaskPreview:                s.buildTaskPreview,
 		buildSheinSubmitProductAPI:      execution.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:        s.buildSheinSubmitOtherAPI,
-		mutateTaskResult:                s.mutateTaskResult,
+		mutateTaskResult:                recovery.mutateTaskResult,
 		resolveRemoteStatus:             s.resolveSheinSubmitRemoteStatus,
 	}
 }
