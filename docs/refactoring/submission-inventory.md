@@ -13,7 +13,7 @@ It is intentionally descriptive first:
 - which files already hold reusable submission mechanics,
 - which files still mix orchestration with SHEIN-specific rules.
 
-Observed against the repository state on 2026-06-09 after the preview refactoring first wave and the submission execution/direct-submit/recovery/Temporal-adapter/task-recovery file-group splits.
+Observed against the repository state on 2026-06-09 after the preview refactoring first wave and the submission execution/direct-submit/recovery/Temporal-adapter/task-recovery/requeue file-group splits.
 
 ## 2. Current Submission Shape
 
@@ -87,6 +87,7 @@ These files contain the main internal submission-oriented service objects:
 - `internal/listingkit/task_recovery_durability.go`
 - `internal/listingkit/task_recovery_backfill.go`
 - `internal/listingkit/task_requeue_service.go`
+- `internal/listingkit/task_requeue_helpers.go`
 
 Current role:
 
@@ -110,14 +111,15 @@ Current role:
 - `taskRecoveryService`: blocked-retryable recovery flow, recover-now, sweep, submit recovered task, and service facade,
 - `taskRecoveryDurability`: submit-failure durability restoration, reblock construction, bounded retry delay, and time cloning helpers,
 - `taskRecoveryBackfill`: historical failed-task retryable-block backfill,
-- `taskRequeueService`: pending-task requeue flow.
+- `taskRequeueService`: pending-task requeue flow and service facade,
+- `taskRequeueHelpers`: request task-id normalization and retry enqueue helper.
 
 Assessment:
 
 - this is the primary current consolidation seam,
 - these files are the best place for additional root-level slimming before any deeper package move,
 - `taskRecoveryService` and `taskRequeueService` are now part of the submission collaborator cluster, but their semantics are broader than the SHEIN publish path,
-- execution, direct-submit, submission-recovery, Temporal adapter, and task-recovery responsibilities are now separated by file group, but still live in root `package listingkit` because they depend on root models and SHEIN-specific helpers.
+- execution, direct-submit, submission-recovery, Temporal adapter, task-recovery, and requeue responsibilities are now separated by file group, but still live in root `package listingkit` because they depend on root models and SHEIN-specific helpers.
 
 ### C. Runtime context and settings resolution
 
@@ -255,6 +257,7 @@ Latest code inspection confirms:
 - `taskSubmissionRecovery*` is now split into recovered-route/finalization, lease management, and remote confirmation file groups.
 - `taskTemporalSubmission*` is now split into lifecycle/readiness, payload activities, and persistence/remote-refresh activities.
 - `taskRecovery*` is now split into recovery flow, durability/reblock helpers, and historical backfill.
+- `taskRequeue*` is now split into requeue flow/facade and helper functions.
 
 ## 5. Facade vs. Rule Ownership
 
@@ -282,8 +285,9 @@ These should stay thin and delegate.
 - `task_submission_execution_*.go`
 - `task_temporal_submission_*.go`
 - `task_recovery_*.go`
+- `task_requeue_*.go`
 
-These are the main “mixed” files where orchestration and SHEIN-specific or task-recovery concerns still meet, even though several of them are now narrower file groups.
+These are the main “mixed” files where orchestration and SHEIN-specific or task-recovery/requeue concerns still meet, even though several of them are now narrower file groups.
 
 ### Predominantly SHEIN business rules
 
@@ -325,8 +329,8 @@ Low-risk next candidates:
   - keep config builders readable,
   - avoid adding large inline closures,
   - move repeated loader/building behavior into named helpers.
-- `internal/listingkit/task_requeue_service.go`
-  - review whether pending-task requeue needs the same small file grouping as task recovery.
+- `internal/listingkit/submission/*.go`
+  - only consider model-light helper extraction when root orchestrators no longer need root models.
 
 Avoid as an early package-move target:
 
@@ -344,3 +348,5 @@ This inventory is complete when:
 - facade versus business-rule ownership is explicit,
 - the current `submission/` package role is distinguished from root `listingkit` orchestrators,
 - later refactoring slices can cite this document instead of re-inventing the map.
+
+Current status: Phase 3.1 has met this success criterion at the file-group and inventory level. Future work should use this inventory before attempting package moves.
