@@ -712,9 +712,9 @@ func TestStudioBatchRunCoordinatorFileOwnsRunStarter(t *testing.T) {
 func TestStudioBatchRunFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_studio_batch_run_facade.go")
+	facadeSrc, err := os.ReadFile("service_studio_batch_run_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_studio_batch_run_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_studio_batch_run_entrypoints.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -729,7 +729,7 @@ func TestStudioBatchRunFacadeFileOwnsRootDelegates(t *testing.T) {
 		"return s.taskStudioBatchRunOrDefault().CancelStudioBatchRun(ctx, runID)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_studio_batch_run_facade.go should contain %q", needle)
+			t.Fatalf("service_studio_batch_run_entrypoints.go should contain %q", needle)
 		}
 	}
 

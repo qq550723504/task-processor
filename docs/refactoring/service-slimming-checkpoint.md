@@ -50,7 +50,7 @@ internal/listingkit/service_studio_batch_draft_session_facade.go // studio batch
 internal/listingkit/service_studio_media_generation_entrypoints.go // studio media generation entrypoints
 internal/listingkit/service_studio_media_generation_helpers.go // studio media helper delegates
 internal/listingkit/service_studio_batch_facade.go       // studio batch facade delegates
-internal/listingkit/service_studio_batch_run_facade.go   // studio batch run facade delegates
+internal/listingkit/service_studio_batch_run_entrypoints.go // studio batch run entrypoints
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 internal/listingkit/service_task_wiring.go               // task/generation/revision collaborator config builders
 internal/listingkit/service_studio_wiring.go             // studio collaborator config builders
@@ -379,9 +379,9 @@ Owns root studio batch facade delegates:
 - batch retry / approve actions,
 - batch task creation preparation and execution.
 
-### `service_studio_batch_run_facade.go`
+### `service_studio_batch_run_entrypoints.go`
 
-Owns root studio batch run facade delegates:
+Owns root studio batch run entrypoints:
 
 - create batch run,
 - fetch batch run,
