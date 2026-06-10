@@ -560,7 +560,7 @@ func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 		},
 		{
 			name: "shein store client",
-			file: "service_submit_runtime_context_helpers.go",
+			file: "service_submit_remote_context_helpers.go",
 			needles: []string{
 				"buildSubmitRuntimeContextResolver(s).resolveStoreInfo(ctx, task)",
 			},
@@ -1649,9 +1649,9 @@ func TestSubmitSettingsContextHelpersFileOwnsRootHelpers(t *testing.T) {
 func TestSubmitContextHelpersFileOwnsRootHelpers(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_runtime_context_helpers.go")
+	facadeSrc, err := os.ReadFile("service_submit_remote_context_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_runtime_context_helpers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_remote_context_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1666,7 +1666,7 @@ func TestSubmitContextHelpersFileOwnsRootHelpers(t *testing.T) {
 		"return sheinother.NewClient(baseAPI), nil",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_runtime_context_helpers.go should contain %q", needle)
+			t.Fatalf("service_submit_remote_context_helpers.go should contain %q", needle)
 		}
 	}
 
