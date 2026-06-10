@@ -50,6 +50,16 @@ func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*Li
 	return s.taskTemporalSubmissionAdapterOrDefault().BuildSheinTaskPreview(ctx, taskID)
 }
 
+func buildTaskPreviewFromTask(ctx context.Context, task *Task, platform string, getTaskPreview func(context.Context, string, string) (*ListingKitPreview, error)) (*ListingKitPreview, error) {
+	if task == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	if getTaskPreview != nil {
+		return getTaskPreview(ctx, task.ID, platform)
+	}
+	return nil, ErrTaskResultUnavailable
+}
+
 func (s *service) taskTemporalSubmissionAdapterOrDefault() *taskTemporalSubmissionAdapter {
 	if s.submission.taskTemporalSubmissionAdapter != nil {
 		return s.submission.taskTemporalSubmissionAdapter

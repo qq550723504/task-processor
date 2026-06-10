@@ -1,5 +1,7 @@
 package listingkit
 
+import "context"
+
 func buildTaskRequeueServiceConfig(s *service) taskRequeueServiceConfig {
 	return taskRequeueServiceConfig{
 		repo: s.repo,
@@ -89,6 +91,9 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 	execution := s.taskSubmissionExecutionOrDefault()
 	recovery := s.taskSubmissionRecoveryOrDefault()
 	return taskTemporalSubmissionAdapterConfig{
+		startSheinPublishWorkflow: func(ctx context.Context, in SheinPublishWorkflowStartInput) error {
+			return s.sheinPublishWorkflowClient.StartSheinPublish(ctx, in)
+		},
 		beginSheinSubmitLease:                recovery.beginSheinSubmitLease,
 		loadSheinPublishTask:                 s.loadSheinPublishTask,
 		normalizeSheinSubmitPackage:          execution.normalizeSheinSubmitPackage,
@@ -105,6 +110,7 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 		persistSuccessfulSheinSubmission:     state.persistSuccessfulSheinSubmission,
 		recordSheinSubmissionFailureForState: state.recordSheinSubmissionFailureForState,
 		refreshSheinSubmitRemoteStatus:       recovery.refreshSheinSubmitRemoteStatus,
+		handleWorkflowStartFailure:           recovery.handleSheinWorkflowStartFailure,
 		rememberSheinSubmitted:               s.rememberSheinSubmittedResolution,
 		getTaskPreview:                       s.GetTaskPreview,
 	}
