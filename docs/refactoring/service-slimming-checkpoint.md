@@ -22,15 +22,15 @@ internal/listingkit/service_admin_collaborators.go       // admin collaborator a
 internal/listingkit/service_ai_client_settings_facade.go // AI client settings facade delegates
 internal/listingkit/service_child_task_retry_logic.go    // child task retry logic
 internal/listingkit/service_shein_category_search_facade.go // SHEIN category search facade delegates
-internal/listingkit/service_shein_category_client_helpers.go // SHEIN category/attribute API facade helpers
-internal/listingkit/service_shein_cookie_preview_helpers.go // SHEIN cookie preview facade helper
+internal/listingkit/service_shein_category_client_helpers.go // SHEIN category/attribute API helpers
+internal/listingkit/service_shein_cookie_preview_helpers.go // SHEIN cookie preview helper
 internal/listingkit/service_shein_cookie_note.go         // SHEIN cookie availability note helper
 internal/listingkit/service_shein_final_draft_facade.go  // SHEIN final draft facade delegate
 internal/listingkit/service_shein_image_regeneration.go // SHEIN data image regeneration logic
 internal/listingkit/service_shein_pricing_facade.go      // SHEIN pricing preview facade delegate
 internal/listingkit/service_shein_resolution_cache_facade.go // SHEIN resolution cache facade delegate
 internal/listingkit/service_shein_submission_events_facade.go // SHEIN submission event facade delegate
-internal/listingkit/service_shein_store_selection_helpers.go // SHEIN store selection facade helpers
+internal/listingkit/service_shein_store_selection_helpers.go // SHEIN store selection helpers
 internal/listingkit/service_shein_settings_facade.go     // SHEIN settings facade delegates
 internal/listingkit/service_store_profile_facade.go      // store profile / routing facade delegates
 internal/listingkit/service_process_entry.go             // process entry logic
@@ -42,7 +42,7 @@ internal/listingkit/service_task_lifecycle_facade.go     // task lifecycle facad
 internal/listingkit/service_task_sds_baseline_facade.go  // task SDS baseline facade delegates
 internal/listingkit/service_task_preview.go              // task preview logic
 internal/listingkit/service_task_preview_builder.go      // task preview builder helper
-internal/listingkit/service_task_export.go               // task export facade logic
+internal/listingkit/service_task_export.go               // task export logic
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
 internal/listingkit/service_studio_session_facade.go     // studio session facade delegates
 internal/listingkit/service_studio_media_facade.go       // studio media root facade delegates
@@ -58,11 +58,11 @@ internal/listingkit/service_submit_contracts.go           // shared submit optio
 internal/listingkit/service_submit_collaborators.go       // submit collaborator accessors
 internal/listingkit/service_submit_routing.go             // thin submit/recovery/refresh routing delegates
 internal/listingkit/service_submit_workflow.go            // workflow-specific submit gating / launch helpers
-internal/listingkit/service_submit_workflow_helpers.go    // workflow submit facade helpers
+internal/listingkit/service_submit_workflow_helpers.go    // workflow submit helpers
 internal/listingkit/service_submit_temporal_facade.go     // Temporal submit facade delegates
 internal/listingkit/service_submit_default_action_helpers.go // default SHEIN submit action resolver helper
-internal/listingkit/service_submit_context_helpers.go     // submit runtime context facade helpers
-internal/listingkit/service_submit_store_context_helpers.go // submit store-context facade helpers
+internal/listingkit/service_submit_context_helpers.go     // submit runtime context helpers
+internal/listingkit/service_submit_store_context_helpers.go // submit store-context helpers
 internal/listingkit/service_submit_wiring.go              // submit collaborator config builders
 internal/listingkit/service_upload.go                     // uploaded image logic
 ```
@@ -170,14 +170,14 @@ Owns root SHEIN category search facade delegates:
 
 ### `service_shein_category_client_helpers.go`
 
-Owns root SHEIN category/attribute API facade helpers:
+Owns root SHEIN category/attribute API helpers:
 
 - category API builder,
 - attribute API builder.
 
 ### `service_shein_cookie_preview_helpers.go`
 
-Owns root SHEIN cookie preview facade helper:
+Owns root SHEIN cookie preview helper:
 
 - preview rebuild / blocker decoration entrypoint.
 
@@ -219,7 +219,7 @@ Owns root SHEIN submission event facade delegate:
 
 ### `service_shein_store_selection_helpers.go`
 
-Owns root SHEIN store selection facade helpers:
+Owns root SHEIN store selection helpers:
 
 - store id/profile/selection resolver entrypoints.
 
@@ -392,7 +392,7 @@ The root submit surface is now split so the facade file stays intentionally thin
 - `service_submit_collaborators.go`: submit/recovery/direct/Temporal/state/execution/refresh collaborator accessors,
 - `service_submit_routing.go`: thin submit/recovery/requeue/refresh routing delegates that bridge facade calls to collaborators,
 - `service_submit_workflow.go`: SHEIN publish workflow gating and launch helpers,
-- `service_submit_workflow_helpers.go`: root-facing SHEIN workflow submit/gating delegates,
+- `service_submit_workflow_helpers.go`: root-facing SHEIN workflow submit/gating helpers,
 - `service_submit_temporal_facade.go`: root-facing Temporal SHEIN submit and preview delegates,
 - `service_submit_default_action_helpers.go`: root-facing default SHEIN submit-action resolver,
 - `service_submit_context_helpers.go`: root-facing store info, API client, and other-api submit helpers,

@@ -1484,7 +1484,7 @@ func TestSheinCookieNoteFileOwnsCookieAvailabilityResolver(t *testing.T) {
 	}
 }
 
-func TestSubmitStoreContextFacadeFileOwnsRootHelpers(t *testing.T) {
+func TestSubmitStoreContextHelpersFileOwnsRootHelpers(t *testing.T) {
 	t.Parallel()
 
 	facadeSrc, err := os.ReadFile("service_submit_store_context_helpers.go")
