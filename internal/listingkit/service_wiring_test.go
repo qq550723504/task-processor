@@ -42,6 +42,9 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.submission.taskSubmission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
 	}
+	if impl.submission.taskSubmissionRefresh == nil {
+		t.Fatal("expected taskSubmissionRefresh to be initialized")
+	}
 	if impl.submission.taskRecovery == nil {
 		t.Fatal("expected taskRecovery to be initialized")
 	}
@@ -105,6 +108,9 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	if svc.submission.taskSubmission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
 	}
+	if svc.submission.taskSubmissionRefresh == nil {
+		t.Fatal("expected taskSubmissionRefresh to be initialized")
+	}
 	if svc.submission.taskSubmissionRecovery == nil {
 		t.Fatal("expected taskSubmissionRecovery to be initialized")
 	}
@@ -146,11 +152,26 @@ func TestServiceRootFileDoesNotOwnCollaboratorGroupInitializationBodies(t *testi
 	}
 
 	for _, needle := range []string{
-		"func NewService(config *ServiceConfig) (Service, error) {",
-		"func newServiceWithConfig(config *ServiceConfig) *service {",
+		"func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {",
+		"func (s *service) ConfigureSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service.go should keep %q", needle)
+		}
+	}
+
+	configSrc, err := os.ReadFile("service_config.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_config.go) error = %v", err)
+	}
+	configContent := string(configSrc)
+
+	for _, needle := range []string{
+		"func NewService(config *ServiceConfig) (Service, error) {",
+		"func newServiceWithConfig(config *ServiceConfig) *service {",
+	} {
+		if !strings.Contains(configContent, needle) {
+			t.Fatalf("service_config.go should keep %q", needle)
 		}
 	}
 }
@@ -243,10 +264,12 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			file: "service_submit.go",
 			builderCalls: []string{
 				"buildTaskSubmissionServiceConfig(s)",
+				"buildTaskSubmissionRefreshServiceConfig(s)",
 				"buildTaskSubmissionExecutionServiceConfig(s)",
 			},
 			inlineConfig: []string{
 				"newTaskSubmissionService(taskSubmissionServiceConfig{",
+				"newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{",
 				"newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{",
 			},
 		},

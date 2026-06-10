@@ -19,11 +19,13 @@ func TestServiceRootFileKeepsCollaboratorWiringOutOfServiceRoot(t *testing.T) {
 		"newSettingsAdminService(",
 		"newSheinAdminService(",
 		"newTaskSubmissionService(",
+		"newTaskSubmissionRefreshService(",
 		"newTaskSubmissionExecutionService(",
 		"newTaskTemporalSubmissionAdapter(",
 		"buildSettingsAdminServiceConfig(",
 		"buildSheinAdminServiceConfig(",
 		"buildTaskSubmissionServiceConfig(",
+		"buildTaskSubmissionRefreshServiceConfig(",
 		"buildTaskSubmissionExecutionServiceConfig(",
 		"buildTaskTemporalSubmissionAdapterConfig(",
 	} {
@@ -33,12 +35,27 @@ func TestServiceRootFileKeepsCollaboratorWiringOutOfServiceRoot(t *testing.T) {
 	}
 
 	for _, needle := range []string{
-		"func NewService(config *ServiceConfig) (Service, error) {",
-		"func newServiceWithConfig(config *ServiceConfig) *service {",
-		"func (config *ServiceConfig) applyDefaults() {",
+		"func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {",
+		"func (s *service) ConfigureSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {",
+		"func (s *service) currentSheinSubmitSettings() SheinSettings {",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service.go should keep %q", needle)
+		}
+	}
+
+	configSrc, err := os.ReadFile("service_config.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_config.go) error = %v", err)
+	}
+	configContent := string(configSrc)
+
+	for _, needle := range []string{
+		"func NewService(config *ServiceConfig) (Service, error) {",
+		"func newServiceWithConfig(config *ServiceConfig) *service {",
+	} {
+		if !strings.Contains(configContent, needle) {
+			t.Fatalf("service_config.go should keep %q", needle)
 		}
 	}
 }
@@ -61,6 +78,7 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 			file: "service_submit_wiring.go",
 			needles: []string{
 				"func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {",
+				"func buildTaskSubmissionRefreshServiceConfig(s *service) taskSubmissionRefreshServiceConfig {",
 				"func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecutionServiceConfig {",
 				"func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {",
 			},

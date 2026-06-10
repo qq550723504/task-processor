@@ -40,6 +40,7 @@ func (s *service) initializeSubmitCollaborators() {
 	s.submission.taskSubmissionExecution = s.taskSubmissionExecutionOrDefault()
 
 	// SHEIN submission orchestrators.
+	s.submission.taskSubmissionRefresh = s.taskSubmissionRefreshOrDefault()
 	s.submission.taskSubmissionRecovery = s.taskSubmissionRecoveryOrDefault()
 	s.submission.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
 	s.submission.taskSubmission = s.taskSubmissionOrDefault()
