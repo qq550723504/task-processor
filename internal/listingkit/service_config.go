@@ -3,7 +3,6 @@ package listingkit
 import (
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"task-processor/internal/amazonlisting"
@@ -12,131 +11,12 @@ import (
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/listingkit/submission"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
-	sdsusecase "task-processor/internal/sds/usecase"
 	"task-processor/internal/sdslogin"
 )
-
-type service struct {
-	repo                           Repository
-	taskLifecycle                  *taskLifecycleService
-	taskGeneration                 *taskGenerationService
-	taskRevision                   *taskRevisionService
-	taskStudioSession              *taskStudioSessionService
-	taskStudioBatchDraft           *taskStudioBatchDraftService
-	taskStudioBatch                *taskStudioBatchService
-	taskStudioBatchRun             *taskStudioBatchRunService
-	taskStudioMedia                *taskStudioMediaService
-	settingsAdmin                  *settingsAdminService
-	sheinAdmin                     *sheinAdminService
-	submission                     submissionCollaborators
-	studioSessionRepo              StudioSessionRepository
-	studioBatchRepo                StudioBatchRepository
-	studioBatchRunRepo             StudioBatchRunRepository
-	productSvc                     ProductService
-	imageSvc                       ImageService
-	sdsSyncSvc                     sdsusecase.Service
-	sdsLoginStatusProvider         SDSLoginStatusProvider
-	sdsBaselineRemoteProvider      SDSBaselineRemoteProvider
-	uploadStore                    ImageUploadStore
-	uploadedImageRepo              UploadedImageRepository
-	assembler                      Assembler
-	sheinCategoryResolver          sheinpub.CategoryResolver
-	sheinResolutionCacheStore      sheinpub.ResolutionCacheStore
-	sheinStoreCatalog              SheinStoreCatalog
-	sheinAPIClientFactory          SheinAPIClientFactory
-	sheinAttributeResolver         sheinpub.AttributeResolver
-	sheinSaleAttributeResolver     sheinpub.SaleAttributeResolver
-	sheinPricingPolicy             sheinpub.PricingPolicy
-	sheinProductAPIBuilder         sheinpub.ProductAPIBuilder
-	sheinImageAPIBuilder           sheinpub.ImageAPIBuilder
-	sheinTranslateAPIBuilder       sheinpub.TranslateAPIBuilder
-	sheinContentOptimizer          openaiclient.ChatCompleter
-	studioPromptDiversifier        openaiclient.ChatCompleter
-	studioImageGenerator           openaiclient.ImageGenerator
-	aiCredentialStore              AIClientCredentialStore
-	assetRepo                      assetrepo.Repository
-	reviewRepo                     reviewstore.Repository
-	assetRecipeResolver            assetrecipe.Resolver
-	assetBundleBuilder             assetbundle.Builder
-	assetGenerator                 assetgeneration.Service
-	taskSubmitter                  TaskSubmitter
-	sheinPublishWorkflowClient     SheinPublishWorkflowClient
-	sheinPublishWorkflowEnabled    bool
-	standardProductWorkflowClient  StandardProductWorkflowClient
-	standardProductWorkflowEnabled bool
-	platformAdaptWorkflowClient    PlatformAdaptWorkflowClient
-	platformAdaptWorkflowEnabled   bool
-	storeProfileRepo               StoreProfileRepository
-	routingSettingsRepo            StoreRoutingSettingsRepository
-	requestDefaults                generateRequestDefaults
-	sheinSettingsMu                sync.RWMutex
-	sheinSettings                  SheinSettings
-}
-
-type ServiceCoreDependencies struct {
-	Repository                     Repository
-	StudioSessionRepository        StudioSessionRepository
-	StudioBatchRepository          StudioBatchRepository
-	StudioBatchRunRepository       StudioBatchRunRepository
-	ProductService                 ProductService
-	ImageService                   ImageService
-	SDSSyncService                 sdsusecase.Service
-	SDSLoginStatusProvider         SDSLoginStatusProvider
-	SDSBaselineRemoteProvider      SDSBaselineRemoteProvider
-	ImageUploadStore               ImageUploadStore
-	UploadedImageRepository        UploadedImageRepository
-	StoreProfileRepository         StoreProfileRepository
-	StoreRoutingSettingsRepository StoreRoutingSettingsRepository
-	TaskSubmitter                  TaskSubmitter
-	AIClientCredentialStore        AIClientCredentialStore
-}
-
-type ServiceAssetDependencies struct {
-	Assembler              Assembler
-	AssetRepository        assetrepo.Repository
-	ReviewRepository       reviewstore.Repository
-	AssetRecipeResolver    assetrecipe.Resolver
-	AssetBundleBuilder     assetbundle.Builder
-	AssetGenerationService assetgeneration.Service
-}
-
-type ServiceSheinDependencies struct {
-	SheinDefaultStoreID        int64
-	SheinStoreCatalog          SheinStoreCatalog
-	SheinAPIClientFactory      SheinAPIClientFactory
-	SheinCategoryResolver      sheinpub.CategoryResolver
-	SheinResolutionCacheStore  sheinpub.ResolutionCacheStore
-	SheinAttributeResolver     sheinpub.AttributeResolver
-	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
-	SheinPricingPolicy         sheinpub.PricingPolicy
-	SheinProductAPIBuilder     sheinpub.ProductAPIBuilder
-	SheinImageAPIBuilder       sheinpub.ImageAPIBuilder
-	SheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
-	SheinContentOptimizer      openaiclient.ChatCompleter
-	StudioPromptDiversifier    openaiclient.ChatCompleter
-	StudioImageGenerator       openaiclient.ImageGenerator
-}
-
-type ServiceWorkflowDependencies struct {
-	SheinPublishWorkflowClient     SheinPublishWorkflowClient
-	SheinPublishWorkflowEnabled    bool
-	StandardProductWorkflowClient  StandardProductWorkflowClient
-	StandardProductWorkflowEnabled bool
-	PlatformAdaptWorkflowClient    PlatformAdaptWorkflowClient
-	PlatformAdaptWorkflowEnabled   bool
-}
-
-type ServiceConfig struct {
-	Core     ServiceCoreDependencies
-	Assets   ServiceAssetDependencies
-	Shein    ServiceSheinDependencies
-	Workflow ServiceWorkflowDependencies
-}
 
 func NewService(config *ServiceConfig) (Service, error) {
 	if config == nil {
