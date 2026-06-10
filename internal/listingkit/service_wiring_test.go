@@ -656,9 +656,9 @@ func TestStudioBatchRunCoordinatorFileOwnsRunStarter(t *testing.T) {
 func TestStudioBatchRunFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_studio_batch_run.go")
+	facadeSrc, err := os.ReadFile("service_studio_batch_run_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_studio_batch_run.go) error = %v", err)
+		t.Fatalf("ReadFile(service_studio_batch_run_facade.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -673,8 +673,14 @@ func TestStudioBatchRunFacadeFileOwnsRootDelegates(t *testing.T) {
 		"return s.taskStudioBatchRunOrDefault().CancelStudioBatchRun(ctx, runID)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_studio_batch_run.go should contain %q", needle)
+			t.Fatalf("service_studio_batch_run_facade.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_studio_batch_run.go"); err == nil {
+		t.Fatal("service_studio_batch_run.go should be removed after facade file rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_studio_batch_run.go) unexpected error = %v", err)
 	}
 
 	serviceSrc, err := os.ReadFile("studio_batch_run_service.go")
