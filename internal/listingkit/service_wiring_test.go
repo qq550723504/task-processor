@@ -1103,6 +1103,40 @@ func TestTaskPreviewFacadeFileOwnsRootDelegate(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) buildTaskPreview(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {",
+		"s.decorateSheinCookieAvailabilityPreview(ctx, task, preview)",
+	} {
+		if strings.Contains(previewContent, needle) {
+			t.Fatalf("service_preview.go should not contain %q after preview builder split", needle)
+		}
+	}
+}
+
+func TestTaskPreviewBuilderFileOwnsPreviewBuilderHelper(t *testing.T) {
+	t.Parallel()
+
+	builderSrc, err := os.ReadFile("service_task_preview_builder.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task_preview_builder.go) error = %v", err)
+	}
+	builderContent := string(builderSrc)
+
+	for _, needle := range []string{
+		"func (s *service) buildTaskPreview(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {",
+		"preview, err := buildListingKitPreview(task, platform)",
+		"s.decorateSheinCookieAvailabilityPreview(ctx, task, preview)",
+	} {
+		if !strings.Contains(builderContent, needle) {
+			t.Fatalf("service_task_preview_builder.go should contain %q", needle)
+		}
+	}
+
+	previewSrc, err := os.ReadFile("service_preview.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_preview.go) error = %v", err)
+	}
+	previewContent := string(previewSrc)
+
+	for _, needle := range []string{
 		"func (s *service) decorateSheinStoreResolutionPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {",
 	} {
 		if !strings.Contains(previewContent, needle) {

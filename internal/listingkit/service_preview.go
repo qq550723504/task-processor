@@ -6,15 +6,6 @@ import (
 	"time"
 )
 
-func (s *service) buildTaskPreview(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {
-	preview, err := buildListingKitPreview(task, platform)
-	if err != nil {
-		return nil, err
-	}
-	s.decorateSheinCookieAvailabilityPreview(ctx, task, preview)
-	return preview, nil
-}
-
 func (s *service) decorateSheinStoreResolutionPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {
 	if s == nil || task == nil || preview == nil || preview.Shein == nil {
 		return
