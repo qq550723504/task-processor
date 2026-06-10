@@ -1,8 +1,6 @@
 package listingkit
 
-import (
-	"context"
-)
+import "context"
 
 func (s *service) GetSheinSettings(ctx context.Context) (*SheinSettings, error) {
 	return s.settingsAdminOrDefault().GetSheinSettings(ctx)
