@@ -268,6 +268,14 @@ Owns root task generation facade delegates:
 - review queue / session delegates,
 - generation retry and navigation dispatch delegates.
 
+### `service_generation_helpers.go`
+
+Owns shared generation helpers:
+
+- temporal platform selection bridge,
+- generation retry task selection/planning helpers,
+- generation task/review listing helpers.
+
 ### `service_task_revision_facade.go`
 
 Owns root task revision facade delegates:

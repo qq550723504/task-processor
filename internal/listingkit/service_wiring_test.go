@@ -268,7 +268,7 @@ func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		},
 		{
 			name:         "generation service",
-			file:         "service_generation.go",
+			file:         "service_generation_helpers.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -2118,9 +2118,9 @@ func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 		t.Fatalf("ReadFile(service_task_generation.go) unexpected error = %v", err)
 	}
 
-	serviceSrc, err := os.ReadFile("service_generation.go")
+	serviceSrc, err := os.ReadFile("service_generation_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_generation.go) error = %v", err)
+		t.Fatalf("ReadFile(service_generation_helpers.go) error = %v", err)
 	}
 	serviceContent := string(serviceSrc)
 
@@ -2135,8 +2135,25 @@ func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error) {",
 	} {
 		if strings.Contains(serviceContent, needle) {
-			t.Fatalf("service_generation.go should not contain %q", needle)
+			t.Fatalf("service_generation_helpers.go should not contain %q", needle)
 		}
+	}
+
+	for _, needle := range []string{
+		"func resolveLayerTemporalPlatform(req *ExecuteGenerationActionRequest) string {",
+		"func selectGenerationTasksForRetry(existing []assetgeneration.Task, result *ListingKitResult, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {",
+		"func (s *service) buildRetryGenerationTaskSelection(ctx context.Context, task *Task, inventory *asset.Inventory, existing []assetgeneration.Task, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {",
+		"func retrySelectionFilter(req *RetryGenerationTasksRequest) listinggeneration.RetrySelectionFilter {",
+	} {
+		if !strings.Contains(serviceContent, needle) {
+			t.Fatalf("service_generation_helpers.go should contain %q", needle)
+		}
+	}
+
+	if _, err := os.ReadFile("service_generation.go"); err == nil {
+		t.Fatal("service_generation.go should be removed after generation helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_generation.go) unexpected error = %v", err)
 	}
 }
 
