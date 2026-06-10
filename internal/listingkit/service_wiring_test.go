@@ -1622,6 +1622,46 @@ func TestSheinPricingFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
+func TestSheinImageRegenerationFacadeFileOwnsRootDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_shein_image_regeneration_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_image_regeneration_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) RegenerateSheinDataImage(ctx context.Context, taskID string, req *RegenerateSheinDataImageRequest) (*RegenerateSheinDataImageResponse, error) {",
+		"productReq, role := buildSheinDataImageRegenerationRequest(task, req)",
+		"replaced := replaceSheinDataImageURL(task, oldURL, newURL)",
+		"return &RegenerateSheinDataImageResponse{",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_shein_image_regeneration_facade.go should contain %q", needle)
+		}
+	}
+
+	regenSrc, err := os.ReadFile("shein_image_regeneration.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_image_regeneration.go) error = %v", err)
+	}
+	regenContent := string(regenSrc)
+
+	if strings.Contains(regenContent, "func (s *service) RegenerateSheinDataImage(ctx context.Context, taskID string, req *RegenerateSheinDataImageRequest) (*RegenerateSheinDataImageResponse, error) {") {
+		t.Fatalf("shein_image_regeneration.go should not contain %q", "func (s *service) RegenerateSheinDataImage(ctx context.Context, taskID string, req *RegenerateSheinDataImageRequest) (*RegenerateSheinDataImageResponse, error) {")
+	}
+
+	for _, needle := range []string{
+		"func buildSheinDataImageRegenerationRequest(task *Task, req *RegenerateSheinDataImageRequest) (*StudioProductImageRequest, studioProductImageRole) {",
+		"func replaceSheinDataImageURL(task *Task, oldURL string, newURL string) int {",
+	} {
+		if !strings.Contains(regenContent, needle) {
+			t.Fatalf("shein_image_regeneration.go should keep %q", needle)
+		}
+	}
+}
+
 func TestChildTaskRetryFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
