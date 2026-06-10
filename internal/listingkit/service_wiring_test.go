@@ -516,6 +516,33 @@ func TestSubmitFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
+func TestSubmitLeaseHelperFileOwnsSharedTTLAndSentinelErrors(t *testing.T) {
+	t.Parallel()
+
+	helperSrc, err := os.ReadFile("service_submit_lease_helper.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_lease_helper.go) error = %v", err)
+	}
+	helperContent := string(helperSrc)
+
+	for _, needle := range []string{
+		"const sheinSubmitInFlightTTL = submission.InFlightTTL",
+		"errSheinSubmitReplayExisting = errors.New(\"shein submit replay existing\")",
+		"errSheinSubmitRecoverRemote  = errors.New(\"shein submit recover remote\")",
+		"errSheinSubmitMissingPackage = errors.New(\"shein submit missing package\")",
+	} {
+		if !strings.Contains(helperContent, needle) {
+			t.Fatalf("service_submit_lease_helper.go should contain %q", needle)
+		}
+	}
+
+	if _, err := os.ReadFile("service_submit_primitives.go"); err == nil {
+		t.Fatal("service_submit_primitives.go should be removed after submit lease helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_primitives.go) unexpected error = %v", err)
+	}
+}
+
 func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 	t.Parallel()
 
