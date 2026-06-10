@@ -1070,6 +1070,47 @@ func TestSubmitTemporalFacadeFileOwnsRootDelegates(t *testing.T) {
 	}
 }
 
+func TestTaskPreviewFacadeFileOwnsRootDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_task_preview.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task_preview.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {",
+		"task, err := s.repo.GetTask(ctx, taskID)",
+		"preview, err := s.buildTaskPreview(ctx, task, platform)",
+		"s.decorateSheinStoreResolutionPreview(ctx, task, preview)",
+		"return preview, nil",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_task_preview.go should contain %q", needle)
+		}
+	}
+
+	previewSrc, err := os.ReadFile("service_preview.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_preview.go) error = %v", err)
+	}
+	previewContent := string(previewSrc)
+
+	if strings.Contains(previewContent, "func (s *service) GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {") {
+		t.Fatalf("service_preview.go should not contain %q", "func (s *service) GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {")
+	}
+
+	for _, needle := range []string{
+		"func (s *service) buildTaskPreview(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {",
+		"func (s *service) decorateSheinStoreResolutionPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {",
+	} {
+		if !strings.Contains(previewContent, needle) {
+			t.Fatalf("service_preview.go should keep %q", needle)
+		}
+	}
+}
+
 func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
