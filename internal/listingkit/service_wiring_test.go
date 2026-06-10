@@ -888,9 +888,9 @@ func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 		}
 	}
 
-	mediaSrc, err := os.ReadFile("service_studio_media_helpers.go")
+	mediaSrc, err := os.ReadFile("service_studio_media_generation_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_studio_media_helpers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_studio_media_generation_helpers.go) error = %v", err)
 	}
 	mediaContent := string(mediaSrc)
 
@@ -899,7 +899,7 @@ func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {",
 	} {
 		if strings.Contains(mediaContent, needle) {
-			t.Fatalf("service_studio_media_helpers.go should not contain %q", needle)
+			t.Fatalf("service_studio_media_generation_helpers.go should not contain %q", needle)
 		}
 	}
 
@@ -922,8 +922,14 @@ func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 		"return s.taskStudioMediaOrDefault().tryGenerateStudioProductImage(ctx, inputImages, promptText)",
 	} {
 		if !strings.Contains(mediaContent, needle) {
-			t.Fatalf("service_studio_media_helpers.go should contain %q", needle)
+			t.Fatalf("service_studio_media_generation_helpers.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_studio_media_helpers.go"); err == nil {
+		t.Fatal("service_studio_media_helpers.go should be removed after studio media generation helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_studio_media_helpers.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_studio_media.go"); err == nil {

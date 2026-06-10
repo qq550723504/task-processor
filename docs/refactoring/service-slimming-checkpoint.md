@@ -47,7 +47,7 @@ internal/listingkit/service_task_export.go               // task export logic
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
 internal/listingkit/service_studio_session_facade.go     // studio session facade delegates
 internal/listingkit/service_studio_media_facade.go       // studio media root facade delegates
-internal/listingkit/service_studio_media_helpers.go      // studio media helper delegates
+internal/listingkit/service_studio_media_generation_helpers.go // studio media helper delegates
 internal/listingkit/service_studio_batch_facade.go       // studio batch facade delegates
 internal/listingkit/service_studio_batch_run_facade.go   // studio batch run facade delegates
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
@@ -363,7 +363,7 @@ Owns root studio media facade delegates:
 - studio design generation entrypoints,
 - studio product image generation entrypoints.
 
-### `service_studio_media_helpers.go`
+### `service_studio_media_generation_helpers.go`
 
 Owns studio media helper delegates:
 
