@@ -44,7 +44,7 @@ internal/listingkit/service_task_lifecycle_facade.go     // task lifecycle facad
 internal/listingkit/service_task_sds_baseline_facade.go  // task SDS baseline facade delegates
 internal/listingkit/service_task_preview.go              // task preview logic
 internal/listingkit/service_task_preview_payload_helper.go // task preview helper
-internal/listingkit/service_task_export.go               // task export logic
+internal/listingkit/service_task_export_logic.go         // task export logic
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
 internal/listingkit/service_studio_session_facade.go     // studio session facade delegates
 internal/listingkit/service_studio_media_facade.go       // studio media root facade delegates
@@ -331,7 +331,7 @@ Owns SHEIN store resolution preview helper:
 - store-resolution preview decoration,
 - store-resolution summary/snapshot helper values.
 
-### `service_task_export.go`
+### `service_task_export_logic.go`
 
 Owns task export logic:
 

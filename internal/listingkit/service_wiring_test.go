@@ -262,7 +262,7 @@ func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		},
 		{
 			name:         "task service",
-			file:         "service_task_export.go",
+			file:         "service_task_export_logic.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -2299,9 +2299,9 @@ func TestTaskRevisionFacadeFileOwnsRootDelegates(t *testing.T) {
 		t.Fatalf("ReadFile(service_task_revision.go) unexpected error = %v", err)
 	}
 
-	serviceSrc, err := os.ReadFile("service_task_export.go")
+	serviceSrc, err := os.ReadFile("service_task_export_logic.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_task_export.go) error = %v", err)
+		t.Fatalf("ReadFile(service_task_export_logic.go) error = %v", err)
 	}
 	serviceContent := string(serviceSrc)
 
@@ -2312,7 +2312,7 @@ func TestTaskRevisionFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error) {",
 	} {
 		if strings.Contains(serviceContent, needle) {
-			t.Fatalf("service_task_export.go should not contain %q", needle)
+			t.Fatalf("service_task_export_logic.go should not contain %q", needle)
 		}
 	}
 }
@@ -2353,9 +2353,9 @@ func TestTaskLifecycleFacadeFileOwnsRootDelegates(t *testing.T) {
 		t.Fatalf("ReadFile(service_task_lifecycle.go) unexpected error = %v", err)
 	}
 
-	serviceSrc, err := os.ReadFile("service_task_export.go")
+	serviceSrc, err := os.ReadFile("service_task_export_logic.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_task_export.go) error = %v", err)
+		t.Fatalf("ReadFile(service_task_export_logic.go) error = %v", err)
 	}
 	serviceContent := string(serviceSrc)
 
@@ -2369,7 +2369,7 @@ func TestTaskLifecycleFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {",
 	} {
 		if strings.Contains(serviceContent, needle) {
-			t.Fatalf("service_task_export.go should not contain %q", needle)
+			t.Fatalf("service_task_export_logic.go should not contain %q", needle)
 		}
 	}
 
@@ -2377,7 +2377,7 @@ func TestTaskLifecycleFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error) {",
 	} {
 		if !strings.Contains(serviceContent, needle) {
-			t.Fatalf("service_task_export.go should keep %q", needle)
+			t.Fatalf("service_task_export_logic.go should keep %q", needle)
 		}
 	}
 }
@@ -2406,21 +2406,21 @@ func TestTaskSDSBaselineFacadeFileOwnsWarmDelegate(t *testing.T) {
 		t.Fatalf("ReadFile(service_task_sds_baseline.go) unexpected error = %v", err)
 	}
 
-	serviceSrc, err := os.ReadFile("service_task_export.go")
+	serviceSrc, err := os.ReadFile("service_task_export_logic.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_task_export.go) error = %v", err)
+		t.Fatalf("ReadFile(service_task_export_logic.go) error = %v", err)
 	}
 	serviceContent := string(serviceSrc)
 
 	if strings.Contains(serviceContent, "func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {") {
-		t.Fatalf("service_task_export.go should not contain %q", "func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {")
+		t.Fatalf("service_task_export_logic.go should not contain %q", "func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {")
 	}
 
 	for _, needle := range []string{
 		"func (s *service) GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error) {",
 	} {
 		if !strings.Contains(serviceContent, needle) {
-			t.Fatalf("service_task_export.go should keep %q", needle)
+			t.Fatalf("service_task_export_logic.go should keep %q", needle)
 		}
 	}
 }
