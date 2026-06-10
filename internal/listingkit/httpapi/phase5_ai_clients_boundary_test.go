@@ -15,6 +15,9 @@ func TestAIClientsFileStaysFocusedOnClientBuilderAndResolverAssembly(t *testing.
 	content := string(src)
 
 	require.NotContains(t, content, "type listingKitRoutedImageClient struct {")
+	require.NotContains(t, content, "func buildListingKitClientFallback(cfg *config.Config, clientName string) *openaiclient.ClientConfig {")
+	require.NotContains(t, content, "func sanitizeListingKitClientFallback(cfg *openaiclient.ClientConfig) *openaiclient.ClientConfig {")
+	require.NotContains(t, content, "func normalizeListingKitClientName(name string) string {")
 	require.NotContains(t, content, "func normalizeListingKitImageSelector(selector string) string {")
 	require.NotContains(t, content, "func enforceListingKitImageClientTimeout(clientName string, cfg *openaiclient.ClientConfig) *openaiclient.ClientConfig {")
 
@@ -32,4 +35,16 @@ func TestAIClientImageRoutingHelpersFileOwnsRoutedImageLogic(t *testing.T) {
 	require.Contains(t, content, "type listingKitRoutedImageClient struct {")
 	require.Contains(t, content, "func normalizeListingKitImageSelector(selector string) string {")
 	require.Contains(t, content, "func enforceListingKitImageClientTimeout(clientName string, cfg *openaiclient.ClientConfig) *openaiclient.ClientConfig {")
+}
+
+func TestAIClientFallbackHelpersFileOwnsFallbackSanitizingAndNaming(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("ai_client_fallback_helpers.go")
+	require.NoError(t, err)
+	content := string(src)
+
+	require.Contains(t, content, "func buildListingKitClientFallback(cfg *config.Config, clientName string) *openaiclient.ClientConfig {")
+	require.Contains(t, content, "func sanitizeListingKitClientFallback(cfg *openaiclient.ClientConfig) *openaiclient.ClientConfig {")
+	require.Contains(t, content, "func normalizeListingKitClientName(name string) string {")
 }

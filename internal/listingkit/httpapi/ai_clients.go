@@ -92,36 +92,6 @@ func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.
 	}
 }
 
-func buildListingKitClientFallback(cfg *config.Config, clientName string) *openaiclient.ClientConfig {
-	if cfg == nil {
-		return nil
-	}
-	base := cfg.OpenAI.ToClientConfig()
-	if named, ok := cfg.OpenAI.ToClientConfigs()[normalizeListingKitClientName(clientName)]; ok && named != nil {
-		base = named
-	}
-	return sanitizeListingKitClientFallback(base)
-}
-
-func sanitizeListingKitClientFallback(cfg *openaiclient.ClientConfig) *openaiclient.ClientConfig {
-	if cfg == nil {
-		return nil
-	}
-	cloned := *cfg
-	cloned.APIKey = ""
-	cloned.BaseURL = ""
-	cloned.Model = ""
-	return &cloned
-}
-
-func normalizeListingKitClientName(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "default"
-	}
-	return name
-}
-
 func errListingKitAIClientNotConfigured(clientName string) error {
 	return fmt.Errorf("listingkit ai client %q is not configured for current tenant/user", normalizeListingKitClientName(clientName))
 }
