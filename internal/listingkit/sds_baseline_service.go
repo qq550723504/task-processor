@@ -26,16 +26,6 @@ func newSDSBaselineService(config sdsBaselineServiceConfig) *sdsBaselineService 
 	}
 }
 
-func buildSDSBaselineService(s *service) *sdsBaselineService {
-	if s == nil {
-		return newSDSBaselineService(sdsBaselineServiceConfig{})
-	}
-	return newSDSBaselineService(sdsBaselineServiceConfig{
-		repo:                   s.repo,
-		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
-	})
-}
-
 func (b *sdsBaselineService) GetCachedBaseline(ctx context.Context, task *Task) (*canonical.Product, bool, error) {
 	if b == nil || task == nil || task.Request == nil || task.Request.Options == nil {
 		return nil, false, nil

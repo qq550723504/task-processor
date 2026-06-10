@@ -25,8 +25,5 @@ func (s *service) taskLifecycleOrDefault() *taskLifecycleService {
 }
 
 func (s *service) sdsBaselineOrDefault() *sdsBaselineService {
-	if s == nil {
-		return buildSDSBaselineService(nil)
-	}
-	return buildSDSBaselineService(s)
+	return newSDSBaselineService(buildSDSBaselineServiceConfig(s))
 }

@@ -127,7 +127,8 @@ Owns explicit config builders for non-submit task collaborators:
 
 - task generation,
 - task revision,
-- task lifecycle.
+- task lifecycle,
+- SDS baseline.
 
 This keeps accessor files thin while leaving task-specific wiring visible in one place.
 

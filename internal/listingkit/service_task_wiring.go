@@ -58,3 +58,13 @@ func buildTaskLifecycleServiceConfig(s *service) taskLifecycleServiceConfig {
 		},
 	}
 }
+
+func buildSDSBaselineServiceConfig(s *service) sdsBaselineServiceConfig {
+	if s == nil {
+		return sdsBaselineServiceConfig{}
+	}
+	return sdsBaselineServiceConfig{
+		repo:                   s.repo,
+		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
+	}
+}

@@ -252,7 +252,7 @@ func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 				"buildTaskGenerationServiceConfig(s)",
 				"buildTaskRevisionServiceConfig(s)",
 				"buildTaskLifecycleServiceConfig(s)",
-				"buildSDSBaselineService(s)",
+				"buildSDSBaselineServiceConfig(s)",
 			},
 			inlineConfig: []string{
 				"newTaskGenerationService(taskGenerationServiceConfig{",
