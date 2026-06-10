@@ -1877,9 +1877,9 @@ func TestTaskLayersFacadeFileOwnsRootDelegates(t *testing.T) {
 func TestUploadedImageFileOwnsRootLogic(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_upload.go")
+	facadeSrc, err := os.ReadFile("service_upload_logic.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_upload.go) error = %v", err)
+		t.Fatalf("ReadFile(service_upload_logic.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1890,7 +1890,7 @@ func TestUploadedImageFileOwnsRootLogic(t *testing.T) {
 		"return &DeletedUploadedImage{Key: stored.Key, Size: stored.Size}, nil",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_upload.go should contain %q", needle)
+			t.Fatalf("service_upload_logic.go should contain %q", needle)
 		}
 	}
 
