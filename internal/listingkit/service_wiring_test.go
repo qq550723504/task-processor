@@ -2385,9 +2385,9 @@ func TestTaskLifecycleFacadeFileOwnsRootDelegates(t *testing.T) {
 func TestTaskSDSBaselineFacadeFileOwnsWarmDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_sds_baseline_warm_facade.go")
+	facadeSrc, err := os.ReadFile("service_sds_baseline_warmup_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_sds_baseline_warm_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_sds_baseline_warmup_facade.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -2396,7 +2396,7 @@ func TestTaskSDSBaselineFacadeFileOwnsWarmDelegate(t *testing.T) {
 		"return s.warmSDSBaseline(ctx, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_sds_baseline_warm_facade.go should contain %q", needle)
+			t.Fatalf("service_sds_baseline_warmup_facade.go should contain %q", needle)
 		}
 	}
 
