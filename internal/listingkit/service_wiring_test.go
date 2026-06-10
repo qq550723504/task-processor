@@ -1849,9 +1849,9 @@ func TestTaskLayersFacadeFileOwnsRootDelegates(t *testing.T) {
 		}
 	}
 
-	layersSrc, err := os.ReadFile("service_layers.go")
+	layersSrc, err := os.ReadFile("service_task_layer_processing_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_layers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_task_layer_processing_helpers.go) error = %v", err)
 	}
 	layersContent := string(layersSrc)
 
@@ -1860,7 +1860,7 @@ func TestTaskLayersFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error) {",
 	} {
 		if strings.Contains(layersContent, needle) {
-			t.Fatalf("service_layers.go should not contain %q", needle)
+			t.Fatalf("service_task_layer_processing_helpers.go should not contain %q", needle)
 		}
 	}
 
@@ -1869,7 +1869,7 @@ func TestTaskLayersFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) persistProcessedTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {",
 	} {
 		if !strings.Contains(layersContent, needle) {
-			t.Fatalf("service_layers.go should keep %q", needle)
+			t.Fatalf("service_task_layer_processing_helpers.go should keep %q", needle)
 		}
 	}
 }
