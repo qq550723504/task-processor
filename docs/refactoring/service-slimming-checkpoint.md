@@ -39,7 +39,7 @@ internal/listingkit/service_task_collaborators.go        // task collaborator ac
 internal/listingkit/service_task_generation.go           // task generation facade delegates
 internal/listingkit/service_task_revision.go             // task revision facade delegates
 internal/listingkit/service_task_lifecycle.go            // task lifecycle facade delegates
-internal/listingkit/service_task_sds_baseline.go         // task SDS baseline facade delegates
+internal/listingkit/service_task_sds_baseline_facade.go  // task SDS baseline facade delegates
 internal/listingkit/service_task_preview.go              // task preview facade logic
 internal/listingkit/service_task_preview_builder.go      // task preview builder helper
 internal/listingkit/service_task_export.go               // task export facade logic
@@ -268,7 +268,7 @@ Owns root task lifecycle facade delegates:
 - task list and SDS baseline readiness delegates,
 - internal inline/enqueue lifecycle helpers used by studio/task flows.
 
-### `service_task_sds_baseline.go`
+### `service_task_sds_baseline_facade.go`
 
 Owns root task SDS baseline facade delegates:
 
