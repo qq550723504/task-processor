@@ -635,12 +635,10 @@ func TestSubmitWorkflowFileOwnsWorkflowGatingHelpers(t *testing.T) {
 		t.Fatalf("service_submit_workflow_helpers.go should contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
 	}
 
-	legacySrc, err := os.ReadFile("service_submit_workflow.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_submit_workflow.go) error = %v", err)
-	}
-	if strings.Contains(string(legacySrc), "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {") {
-		t.Fatalf("service_submit_workflow.go should not contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
+	if _, err := os.ReadFile("service_submit_workflow.go"); err == nil {
+		t.Fatal("service_submit_workflow.go should be removed after workflow helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_workflow.go) unexpected error = %v", err)
 	}
 
 	routingSrc, err := os.ReadFile("service_submit_routing.go")
@@ -1966,19 +1964,10 @@ func TestSubmitWorkflowHelpersFileOwnsRootHelpers(t *testing.T) {
 		}
 	}
 
-	workflowSrc, err := os.ReadFile("service_submit_workflow.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_submit_workflow.go) error = %v", err)
-	}
-	workflowContent := string(workflowSrc)
-
-	for _, needle := range []string{
-		"func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string, task *Task, req *SubmitTaskRequest, opts sheinWorkflowSubmitOptions) (*ListingKitPreview, error) {",
-		"func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {",
-	} {
-		if strings.Contains(workflowContent, needle) {
-			t.Fatalf("service_submit_workflow.go should not contain %q", needle)
-		}
+	if _, err := os.ReadFile("service_submit_workflow.go"); err == nil {
+		t.Fatal("service_submit_workflow.go should be removed after workflow helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_workflow.go) unexpected error = %v", err)
 	}
 }
 
