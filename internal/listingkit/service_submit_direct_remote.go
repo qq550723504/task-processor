@@ -9,19 +9,20 @@ import (
 )
 
 func (s *service) completeSheinDirectRemoteSubmit(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) error {
+	state := s.taskSubmissionStateOrDefault()
 	supplierCode := sheinSubmitSupplierCode(submitProduct, pkg)
 	setSheinSubmitSupplierCode(pkg, opts.action, opts.requestID, supplierCode)
 	setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
-	if err := s.taskSubmissionStateOrDefault().persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
+	if err := state.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
 		return err
 	}
 	response, responseErr := s.executeSheinDirectRemoteSubmitAttempt(ctx, taskID, pkg, productAPI, submitProduct, opts)
 	if responseErr == nil {
-		if err := s.taskSubmissionStateOrDefault().persistSuccessfulSheinDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response); err != nil {
+		if err := state.persistSuccessfulSheinDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response); err != nil {
 			return err
 		}
 	}
-	return s.taskSubmissionStateOrDefault().finishSheinDirectSubmitAttempt(ctx, taskID, task, pkg, opts, response, responseErr)
+	return state.finishSheinDirectSubmitAttempt(ctx, taskID, task, pkg, opts, response, responseErr)
 }
 
 func (s *service) executeSheinDirectRemoteSubmitAttempt(ctx context.Context, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) (*sheinpub.SubmissionResponse, error) {
