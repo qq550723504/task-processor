@@ -1225,9 +1225,9 @@ func TestSubmitTemporalFacadeFileOwnsRootDelegates(t *testing.T) {
 func TestTaskPreviewFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_task_preview.go")
+	facadeSrc, err := os.ReadFile("service_task_preview_logic.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_task_preview.go) error = %v", err)
+		t.Fatalf("ReadFile(service_task_preview_logic.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1239,7 +1239,7 @@ func TestTaskPreviewFileOwnsRootDelegate(t *testing.T) {
 		"return preview, nil",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_task_preview.go should contain %q", needle)
+			t.Fatalf("service_task_preview_logic.go should contain %q", needle)
 		}
 	}
 
