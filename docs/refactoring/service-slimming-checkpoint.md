@@ -402,6 +402,7 @@ The root submit surface is now split so the facade file stays intentionally thin
 - `service_submit_workflow_helpers.go`: root-facing SHEIN workflow submit/gating helpers,
 - `service_submit_temporal_facade.go`: root-facing Temporal SHEIN submit and preview delegates,
 - `service_submit_default_action_helpers.go`: root-facing default SHEIN submit-action resolver,
+- `service_submit_action_preference_helper.go`: shared preferred submit-action normalization helper,
 - `service_submit_identity_helper.go`: shared submit task identity context helper,
 - `service_submit_context_helpers.go`: root-facing store info, API client, and other-api submit helpers,
 - `service_submit_store_context_helpers.go`: root-facing submit settings and warehouse context helpers,
