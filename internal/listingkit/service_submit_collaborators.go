@@ -2,6 +2,28 @@ package listingkit
 
 import "task-processor/internal/listingkit/submission"
 
+func (s *service) taskRecoveryOrDefault() *taskRecoveryService {
+	if s == nil {
+		return nil
+	}
+	if s.submission.taskRecovery != nil {
+		return s.submission.taskRecovery
+	}
+	s.submission.taskRecovery = newTaskRecoveryService(buildTaskRecoveryServiceConfig(s))
+	return s.submission.taskRecovery
+}
+
+func (s *service) taskRequeueOrDefault() *taskRequeueService {
+	if s == nil {
+		return nil
+	}
+	if s.submission.taskRequeue != nil {
+		return s.submission.taskRequeue
+	}
+	s.submission.taskRequeue = newTaskRequeueService(buildTaskRequeueServiceConfig(s))
+	return s.submission.taskRequeue
+}
+
 func (s *service) taskSubmissionOrDefault() *taskSubmissionService {
 	if s.submission.taskSubmission != nil {
 		return s.submission.taskSubmission

@@ -163,14 +163,3 @@ func (s *service) RunRecoverySweep(ctx context.Context, now time.Time, limit int
 func (s *service) BulkRecoverTasks(ctx context.Context, query *RecoverBlockedTasksQuery) (int64, error) {
 	return s.taskRecoveryOrDefault().BulkRecoverTasks(ctx, query)
 }
-
-func (s *service) taskRecoveryOrDefault() *taskRecoveryService {
-	if s == nil {
-		return nil
-	}
-	if s.submission.taskRecovery != nil {
-		return s.submission.taskRecovery
-	}
-	s.submission.taskRecovery = newTaskRecoveryService(buildTaskRecoveryServiceConfig(s))
-	return s.submission.taskRecovery
-}

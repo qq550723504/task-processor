@@ -90,14 +90,3 @@ func (s *taskRequeueService) currentSubmitter() TaskSubmitter {
 func (s *service) RequeuePendingTasks(ctx context.Context, req *RequeuePendingTasksRequest) (*RequeuePendingTasksResult, error) {
 	return s.taskRequeueOrDefault().RequeuePendingTasks(ctx, req)
 }
-
-func (s *service) taskRequeueOrDefault() *taskRequeueService {
-	if s == nil {
-		return nil
-	}
-	if s.submission.taskRequeue != nil {
-		return s.submission.taskRequeue
-	}
-	s.submission.taskRequeue = newTaskRequeueService(buildTaskRequeueServiceConfig(s))
-	return s.submission.taskRequeue
-}

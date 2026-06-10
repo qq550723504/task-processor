@@ -419,22 +419,14 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		{
 			name: "task recovery service",
 			file: "task_recovery_service.go",
-			builderCalls: []string{
-				"buildTaskRecoveryServiceConfig(s)",
-			},
-			inlineConfig: []string{
-				"newTaskRecoveryService(taskRecoveryServiceConfig{",
-			},
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 		{
 			name: "task requeue service",
 			file: "task_requeue_service.go",
-			builderCalls: []string{
-				"buildTaskRequeueServiceConfig(s)",
-			},
-			inlineConfig: []string{
-				"newTaskRequeueService(taskRequeueServiceConfig{",
-			},
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 		{
 			name: "submit facade",
@@ -446,6 +438,8 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			name: "submit collaborators",
 			file: "service_submit_collaborators.go",
 			builderCalls: []string{
+				"buildTaskRecoveryServiceConfig(s)",
+				"buildTaskRequeueServiceConfig(s)",
 				"buildTaskSubmissionServiceConfig(s)",
 				"buildTaskSubmissionRefreshServiceConfig(s)",
 				"buildTaskSubmissionExecutionServiceConfig(s)",
