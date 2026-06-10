@@ -28,6 +28,7 @@ internal/listingkit/service_shein_cookie_note.go         // SHEIN cookie availab
 internal/listingkit/service_shein_final_draft_facade.go  // SHEIN final draft facade delegate
 internal/listingkit/service_shein_image_regeneration_facade.go // SHEIN data image regeneration facade delegate
 internal/listingkit/service_shein_pricing_facade.go      // SHEIN pricing preview facade delegate
+internal/listingkit/service_shein_resolution_cache_facade.go // SHEIN resolution cache facade delegate
 internal/listingkit/service_shein_submission_events_facade.go // SHEIN submission event facade delegate
 internal/listingkit/service_shein_store_selection.go     // SHEIN store selection facade helpers
 internal/listingkit/service_shein_settings.go            // SHEIN settings facade delegates
@@ -202,6 +203,12 @@ Owns root SHEIN data image regeneration facade delegate:
 Owns root SHEIN pricing preview facade delegate:
 
 - SHEIN pricing preview entrypoint.
+
+### `service_shein_resolution_cache_facade.go`
+
+Owns root SHEIN resolution cache facade delegate:
+
+- SHEIN resolution cache clear entrypoint.
 
 ### `service_shein_submission_events_facade.go`
 

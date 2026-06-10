@@ -1,7 +1,6 @@
 package listingkit
 
 import (
-	"context"
 	"strings"
 
 	sheinpub "task-processor/internal/publishing/shein"
@@ -42,8 +41,4 @@ func (s *service) rememberSheinSaleAttributeResolution(task *Task) {
 	if cache, ok := s.sheinSaleAttributeResolver.(sheinpub.SaleAttributeResolutionCache); ok {
 		cache.RememberSaleAttributeResolution(buildSheinPublishRequest(task.Request), task.Result.CanonicalProduct, task.Result.Shein, task.Result.Shein.SaleAttributeResolution)
 	}
-}
-
-func (s *service) ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error) {
-	return s.sheinAdminOrDefault().ClearSheinResolutionCache(ctx, taskID, kind)
 }

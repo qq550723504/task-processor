@@ -1733,6 +1733,46 @@ func TestSheinFinalDraftFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
+func TestSheinResolutionCacheFacadeFileOwnsRootDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_shein_resolution_cache_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_resolution_cache_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error) {",
+		"return s.sheinAdminOrDefault().ClearSheinResolutionCache(ctx, taskID, kind)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_shein_resolution_cache_facade.go should contain %q", needle)
+		}
+	}
+
+	cacheSrc, err := os.ReadFile("shein_resolution_cache.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_resolution_cache.go) error = %v", err)
+	}
+	cacheContent := string(cacheSrc)
+
+	if strings.Contains(cacheContent, "func (s *service) ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error) {") {
+		t.Fatalf("shein_resolution_cache.go should not contain %q", "func (s *service) ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error) {")
+	}
+
+	for _, needle := range []string{
+		"func (s *service) rememberSheinSubmittedResolution(task *Task, action string) {",
+		"func (s *service) rememberSheinCategoryResolution(task *Task) {",
+		"func (s *service) rememberSheinAttributeResolution(task *Task) {",
+		"func (s *service) rememberSheinSaleAttributeResolution(task *Task) {",
+	} {
+		if !strings.Contains(cacheContent, needle) {
+			t.Fatalf("shein_resolution_cache.go should keep %q", needle)
+		}
+	}
+}
+
 func TestChildTaskRetryFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
