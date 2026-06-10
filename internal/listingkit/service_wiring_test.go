@@ -1700,6 +1700,39 @@ func TestSheinSubmissionEventsFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
+func TestSheinFinalDraftFacadeFileOwnsRootDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_shein_final_draft_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_final_draft_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error) {",
+		"return s.sheinAdminOrDefault().UpdateSheinFinalDraft(ctx, taskID, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_shein_final_draft_facade.go should contain %q", needle)
+		}
+	}
+
+	draftSrc, err := os.ReadFile("shein_final_draft.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_final_draft.go) error = %v", err)
+	}
+	draftContent := string(draftSrc)
+
+	if strings.Contains(draftContent, "func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error) {") {
+		t.Fatalf("shein_final_draft.go should not contain %q", "func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error) {")
+	}
+
+	if !strings.Contains(draftContent, "func applySheinFinalImageDraft(pkg *sheinpub.Package) {") {
+		t.Fatalf("shein_final_draft.go should keep %q", "func applySheinFinalImageDraft(pkg *sheinpub.Package) {")
+	}
+}
+
 func TestChildTaskRetryFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 

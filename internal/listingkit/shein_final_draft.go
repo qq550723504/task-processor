@@ -1,16 +1,11 @@
 package listingkit
 
 import (
-	"context"
 	"strings"
 
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
-
-func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error) {
-	return s.sheinAdminOrDefault().UpdateSheinFinalDraft(ctx, taskID, req)
-}
 
 func applySheinFinalImageDraft(pkg *sheinpub.Package) {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
