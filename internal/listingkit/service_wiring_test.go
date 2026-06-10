@@ -1006,6 +1006,70 @@ func TestSheinSettingsFacadeFileOwnsRootDelegates(t *testing.T) {
 	}
 }
 
+func TestSubmitTemporalFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_submit_temporal.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_temporal.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) BeginSheinPublishAttempt(ctx context.Context, in SheinPublishAttemptInput) error {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().BeginSheinPublishAttempt(ctx, in)",
+		"func (s *service) ValidateSheinPublishReadiness(ctx context.Context, in SheinPublishAttemptInput) error {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().ValidateSheinPublishReadiness(ctx, in)",
+		"func (s *service) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().PrepareSheinPublishPayload(ctx, in)",
+		"func (s *service) UploadSheinPublishImages(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinPreparedSubmitPayload, error) {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().UploadSheinPublishImages(ctx, in)",
+		"func (s *service) PreValidateSheinPublish(ctx context.Context, in *SheinPreparedSubmitPayload) error {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().PreValidateSheinPublish(ctx, in)",
+		"func (s *service) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().SubmitSheinPublishRemote(ctx, in)",
+		"func (s *service) PersistSheinPublishSuccess(ctx context.Context, in SheinPersistSubmitSuccessInput) error {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().PersistSheinPublishSuccess(ctx, in)",
+		"func (s *service) PersistSheinPublishFailure(ctx context.Context, in SheinPersistSubmitFailureInput) error {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().PersistSheinPublishFailure(ctx, in)",
+		"func (s *service) RefreshSheinPublishRemoteStatus(ctx context.Context, in SheinRefreshRemoteStatusInput) (*SheinRefreshRemoteStatusResult, error) {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().RefreshSheinPublishRemoteStatus(ctx, in)",
+		"func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error) {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().BuildSheinTaskPreview(ctx, taskID)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_submit_temporal.go should contain %q", needle)
+		}
+	}
+
+	adapterSrc, err := os.ReadFile("service_submit_temporal_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_temporal_adapter.go) error = %v", err)
+	}
+	adapterContent := string(adapterSrc)
+
+	for _, needle := range []string{
+		"func (s *service) BeginSheinPublishAttempt(ctx context.Context, in SheinPublishAttemptInput) error {",
+		"func (s *service) ValidateSheinPublishReadiness(ctx context.Context, in SheinPublishAttemptInput) error {",
+		"func (s *service) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {",
+		"func (s *service) UploadSheinPublishImages(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinPreparedSubmitPayload, error) {",
+		"func (s *service) PreValidateSheinPublish(ctx context.Context, in *SheinPreparedSubmitPayload) error {",
+		"func (s *service) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {",
+		"func (s *service) PersistSheinPublishSuccess(ctx context.Context, in SheinPersistSubmitSuccessInput) error {",
+		"func (s *service) PersistSheinPublishFailure(ctx context.Context, in SheinPersistSubmitFailureInput) error {",
+		"func (s *service) RefreshSheinPublishRemoteStatus(ctx context.Context, in SheinRefreshRemoteStatusInput) (*SheinRefreshRemoteStatusResult, error) {",
+		"func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error) {",
+	} {
+		if strings.Contains(adapterContent, needle) {
+			t.Fatalf("service_submit_temporal_adapter.go should not contain %q", needle)
+		}
+	}
+
+	if !strings.Contains(adapterContent, "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {") {
+		t.Fatalf("service_submit_temporal_adapter.go should keep %q", "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {")
+	}
+}
+
 func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
