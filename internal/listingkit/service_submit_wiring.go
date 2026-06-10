@@ -50,7 +50,7 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 		buildSheinSubmitProductAPI:      execution.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:        s.buildSheinSubmitOtherAPI,
 		mutateTaskResult:                recovery.mutateTaskResult,
-		resolveRemoteStatus:             s.resolveSheinSubmitRemoteStatus,
+		resolveRemoteStatus:             recovery.resolveSheinSubmitRemoteStatus,
 	}
 }
 
