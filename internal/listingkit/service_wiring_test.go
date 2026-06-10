@@ -1484,14 +1484,14 @@ func TestSubmitDefaultActionHelpersFileOwnsRootDelegate(t *testing.T) {
 		t.Fatalf("ReadFile(service_submit_default_action_helpers.go) unexpected error = %v", err)
 	}
 
-	helperSrc, err := os.ReadFile("service_submit_action_preference_helper.go")
+	helperSrc, err := os.ReadFile("service_submit_action_normalization_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_action_preference_helper.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_action_normalization_helper.go) error = %v", err)
 	}
 	helperContent := string(helperSrc)
 
 	if strings.Contains(helperContent, "func (s *service) resolveDefaultSheinSubmitAction(ctx context.Context, taskID string) (string, error) {") {
-		t.Fatalf("service_submit_action_preference_helper.go should not contain %q", "func (s *service) resolveDefaultSheinSubmitAction(ctx context.Context, taskID string) (string, error) {")
+		t.Fatalf("service_submit_action_normalization_helper.go should not contain %q", "func (s *service) resolveDefaultSheinSubmitAction(ctx context.Context, taskID string) (string, error) {")
 	}
 
 	for _, needle := range []string{
@@ -1499,12 +1499,12 @@ func TestSubmitDefaultActionHelpersFileOwnsRootDelegate(t *testing.T) {
 		"func normalizePreferredSheinSubmitAction(action string) string {",
 	} {
 		if !strings.Contains(helperContent, needle) {
-			t.Fatalf("service_submit_action_preference_helper.go should keep %q", needle)
+			t.Fatalf("service_submit_action_normalization_helper.go should keep %q", needle)
 		}
 	}
 
 	if _, err := os.ReadFile("service_submit_default_action.go"); err == nil {
-		t.Fatal("service_submit_default_action.go should be removed after submit action preference helper rename")
+		t.Fatal("service_submit_default_action.go should be removed after submit action normalization helper rename")
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("ReadFile(service_submit_default_action.go) unexpected error = %v", err)
 	}
