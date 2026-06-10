@@ -1330,12 +1330,12 @@ func TestSheinCategoryClientFacadeFileOwnsRootHelpers(t *testing.T) {
 	}
 }
 
-func TestSheinStoreSelectionFacadeFileOwnsRootHelpers(t *testing.T) {
+func TestSheinStoreSelectionHelpersFileOwnsRootHelpers(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_store_selection.go")
+	facadeSrc, err := os.ReadFile("service_shein_store_selection_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_store_selection.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_store_selection_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1348,7 +1348,7 @@ func TestSheinStoreSelectionFacadeFileOwnsRootHelpers(t *testing.T) {
 		"return buildSubmitRuntimeContextResolver(s).resolveStoreSelection(ctx, task)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_store_selection.go should contain %q", needle)
+			t.Fatalf("service_shein_store_selection_helpers.go should contain %q", needle)
 		}
 	}
 
