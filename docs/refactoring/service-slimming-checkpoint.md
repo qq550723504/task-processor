@@ -19,6 +19,12 @@ internal/listingkit/service_config.go                     // NewService / factor
 internal/listingkit/service_defaults.go                   // config defaults / default builders
 internal/listingkit/service_collaborators.go              // collaborator initialization groups
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
+internal/listingkit/service_submit.go                     // submit facade entrypoint
+internal/listingkit/service_submit_primitives.go          // shared submit TTL / sentinel errors
+internal/listingkit/service_submit_contracts.go           // shared submit option structs / normalization helpers
+internal/listingkit/service_submit_collaborators.go       // submit collaborator accessors
+internal/listingkit/service_submit_routing.go             // thin submit routing delegates
+internal/listingkit/service_submit_wiring.go              // submit collaborator config builders
 ```
 
 ## 3. Responsibility Map
@@ -96,8 +102,19 @@ Fields are grouped by responsibility:
 - workflow-facing adapter,
 - shared submit coordination primitives.
 
-`service_submit_wiring.go` is now kept focused on collaborator config builders, while
-Temporal task-loading helpers live alongside the adapter accessors in
+### Submit facade files
+
+The root submit surface is now split so the facade file stays intentionally thin:
+
+- `service_submit.go`: public `SubmitTask(...)` facade entrypoint only,
+- `service_submit_primitives.go`: shared in-flight TTL and sentinel errors,
+- `service_submit_contracts.go`: shared submit option structs, target normalization, and Temporal replay detection helpers,
+- `service_submit_collaborators.go`: submit/state/execution/refresh collaborator accessors,
+- `service_submit_routing.go`: thin submit-routing delegates that bridge facade calls to collaborators,
+- `service_submit_wiring.go`: collaborator config builders only.
+
+`service_submit_wiring.go` stays focused on config builder seams, while Temporal
+task-loading helpers live alongside the adapter accessors in
 `service_submit_temporal_adapter.go`.
 
 ## 4. Boundary Decision
