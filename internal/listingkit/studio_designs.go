@@ -42,14 +42,6 @@ func (s *service) generateStudioDesignImageWithoutReferences(ctx context.Context
 	return s.taskStudioMediaOrDefault().generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
 }
 
-func (s *service) taskStudioMediaOrDefault() *taskStudioMediaService {
-	if s.taskStudioMedia != nil {
-		return s.taskStudioMedia
-	}
-	s.taskStudioMedia = newTaskStudioMediaService(buildTaskStudioMediaServiceConfig(s))
-	return s.taskStudioMedia
-}
-
 func buildStudioDesignPrompt(req *StudioDesignRequest) string {
 	return buildStudioDesignPromptWithTheme(req, strings.TrimSpace(req.Prompt))
 }

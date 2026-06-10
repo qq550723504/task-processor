@@ -105,11 +105,3 @@ func (s *service) CreateStudioBatchTasks(ctx context.Context, batchID string, re
 func (s *service) PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
 	return s.taskStudioBatchOrDefault().PrepareCreateStudioBatchTasks(ctx, batchID, req)
 }
-
-func (s *service) taskStudioBatchOrDefault() *taskStudioBatchService {
-	if s.taskStudioBatch != nil {
-		return s.taskStudioBatch
-	}
-	s.taskStudioBatch = newTaskStudioBatchService(buildTaskStudioBatchServiceConfig(s))
-	return s.taskStudioBatch
-}

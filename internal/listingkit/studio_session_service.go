@@ -48,22 +48,6 @@ func (s *service) SyncStudioDesignAsyncJob(ctx context.Context, sessionID string
 	return s.taskStudioSessionOrDefault().SyncStudioDesignAsyncJob(ctx, sessionID, jobStatus, jobID, errMessage)
 }
 
-func (s *service) taskStudioSessionOrDefault() *taskStudioSessionService {
-	if s.taskStudioSession != nil {
-		return s.taskStudioSession
-	}
-	s.taskStudioSession = newTaskStudioSessionService(buildTaskStudioSessionServiceConfig(s))
-	return s.taskStudioSession
-}
-
-func (s *service) taskStudioBatchDraftOrDefault() *taskStudioBatchDraftService {
-	if s.taskStudioBatchDraft != nil {
-		return s.taskStudioBatchDraft
-	}
-	s.taskStudioBatchDraft = newTaskStudioBatchDraftService(buildTaskStudioBatchDraftServiceConfig(s))
-	return s.taskStudioBatchDraft
-}
-
 func buildStudioSelectionKey(selection *SheinStudioSelection) string {
 	if selection == nil {
 		return ""

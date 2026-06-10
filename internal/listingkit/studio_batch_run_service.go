@@ -32,14 +32,6 @@ func (s *service) CancelStudioBatchRun(ctx context.Context, runID string) error 
 	return s.taskStudioBatchRunOrDefault().CancelStudioBatchRun(ctx, runID)
 }
 
-func (s *service) taskStudioBatchRunOrDefault() *taskStudioBatchRunService {
-	if s.taskStudioBatchRun != nil {
-		return s.taskStudioBatchRun
-	}
-	s.taskStudioBatchRun = newTaskStudioBatchRunService(buildTaskStudioBatchRunServiceConfig(s))
-	return s.taskStudioBatchRun
-}
-
 func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {
 	coordinator := s.buildStudioBatchRunCoordinator()
 	if coordinator == nil {

@@ -313,36 +313,40 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		inlineConfig []string
 	}{
 		{
-			name: "studio session",
-			file: "studio_session_service.go",
+			name: "studio collaborators",
+			file: "service_studio_collaborators.go",
 			builderCalls: []string{
 				"buildTaskStudioSessionServiceConfig(s)",
 				"buildTaskStudioBatchDraftServiceConfig(s)",
+				"buildTaskStudioMediaServiceConfig(s)",
+				"buildTaskStudioBatchServiceConfig(s)",
+				"buildTaskStudioBatchRunServiceConfig(s)",
 			},
 			inlineConfig: []string{
 				"newTaskStudioSessionService(taskStudioSessionServiceConfig{",
 				"newTaskStudioBatchDraftService(taskStudioBatchDraftServiceConfig{",
+				"newTaskStudioMediaService(taskStudioMediaServiceConfig{",
+				"newTaskStudioBatchService(taskStudioBatchServiceConfig{",
+				"newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{",
 			},
+		},
+		{
+			name:         "studio session service",
+			file:         "studio_session_service.go",
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 		{
 			name: "studio media",
 			file: "studio_designs.go",
-			builderCalls: []string{
-				"buildTaskStudioMediaServiceConfig(s)",
-			},
-			inlineConfig: []string{
-				"newTaskStudioMediaService(taskStudioMediaServiceConfig{",
-			},
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 		{
 			name: "studio batch",
 			file: "studio_batch_service.go",
-			builderCalls: []string{
-				"buildTaskStudioBatchServiceConfig(s)",
-			},
-			inlineConfig: []string{
-				"newTaskStudioBatchService(taskStudioBatchServiceConfig{",
-			},
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 		{
 			name: "studio wiring",
@@ -357,12 +361,8 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		{
 			name: "studio batch run",
 			file: "studio_batch_run_service.go",
-			builderCalls: []string{
-				"buildTaskStudioBatchRunServiceConfig(s)",
-			},
-			inlineConfig: []string{
-				"newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{",
-			},
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 		{
 			name: "studio batch run coordinator",

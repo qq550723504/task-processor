@@ -19,6 +19,7 @@ internal/listingkit/service_config.go                     // NewService / factor
 internal/listingkit/service_defaults.go                   // config defaults / default builders
 internal/listingkit/service_collaborators.go              // collaborator initialization groups
 internal/listingkit/service_admin_collaborators.go       // admin collaborator accessors
+internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 internal/listingkit/service_task_wiring.go               // task/generation/revision collaborator config builders
 internal/listingkit/service_studio_wiring.go             // studio collaborator config builders
@@ -99,6 +100,16 @@ Owns admin collaborator accessors:
 
 - settings admin,
 - SHEIN admin.
+
+### `service_studio_collaborators.go`
+
+Owns studio collaborator accessors:
+
+- studio session,
+- studio batch draft,
+- studio media,
+- studio batch,
+- studio batch run.
 
 ### `service_task_wiring.go`
 
