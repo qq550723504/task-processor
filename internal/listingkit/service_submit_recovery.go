@@ -17,16 +17,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func (s *service) beginSheinSubmitLease(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, error) {
-	return s.taskSubmissionRecoveryOrDefault().beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
-}
-
 func (s *service) mutateTaskResult(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
 	return s.taskSubmissionRecoveryOrDefault().mutateTaskResult(ctx, taskID, mutate)
-}
-
-func (s *service) recoverSheinSubmitRemote(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {
-	return s.taskSubmissionRecoveryOrDefault().recoverSheinSubmitRemote(ctx, task, action)
 }
 
 func (s *service) RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error) {

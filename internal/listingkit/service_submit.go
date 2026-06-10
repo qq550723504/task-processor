@@ -66,13 +66,13 @@ func normalizeSubmitTargetWithDefault(req *SubmitTaskRequest, defaultAction stri
 }
 
 func (s *service) acquireSheinSubmitTask(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
-	task, err := s.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
+	task, err := s.taskSubmissionRecoveryOrDefault().beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
 	if errors.Is(err, errSheinSubmitReplayExisting) {
 		preview, previewErr := s.buildTaskPreview(ctx, task, "shein")
 		return nil, preview, previewErr
 	}
 	if errors.Is(err, errSheinSubmitRecoverRemote) {
-		preview, previewErr := s.recoverSheinSubmitRemote(ctx, task, action)
+		preview, previewErr := s.taskSubmissionRecoveryOrDefault().recoverSheinSubmitRemote(ctx, task, action)
 		return nil, preview, previewErr
 	}
 	if errors.Is(err, errSheinSubmitMissingPackage) {
