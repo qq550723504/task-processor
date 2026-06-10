@@ -430,7 +430,7 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		},
 		{
 			name:         "submit facade",
-			file:         "service_submit.go",
+			file:         "service_submit_facade.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -488,6 +488,31 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSubmitFacadeFileOwnsRootDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_submit_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error) {",
+		"return s.taskSubmissionOrDefault().SubmitTask(ctx, taskID, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_submit_facade.go should contain %q", needle)
+		}
+	}
+
+	if _, err := os.ReadFile("service_submit.go"); err == nil {
+		t.Fatal("service_submit.go should be removed after facade file rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit.go) unexpected error = %v", err)
 	}
 }
 
