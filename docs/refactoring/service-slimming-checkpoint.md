@@ -64,7 +64,7 @@ internal/listingkit/service_submit_default_action_helpers.go // default SHEIN su
 internal/listingkit/service_submit_context_helpers.go     // submit runtime context facade helpers
 internal/listingkit/service_submit_store_context_helpers.go // submit store-context facade helpers
 internal/listingkit/service_submit_wiring.go              // submit collaborator config builders
-internal/listingkit/service_upload_facade.go              // uploaded image facade delegates
+internal/listingkit/service_upload.go                     // uploaded image logic
 ```
 
 ## 3. Responsibility Map
@@ -403,9 +403,9 @@ The root submit surface is now split so the facade file stays intentionally thin
 task-loading helpers live alongside the Temporal facade methods in
 `service_submit_temporal_adapter.go`.
 
-### `service_upload_facade.go`
+### `service_upload.go`
 
-Owns root uploaded image facade delegates:
+Owns root uploaded image logic:
 
 - uploaded image save,
 - uploaded image read,

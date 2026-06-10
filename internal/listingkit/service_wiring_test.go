@@ -1655,12 +1655,12 @@ func TestTaskLayersFacadeFileOwnsRootDelegates(t *testing.T) {
 	}
 }
 
-func TestUploadedImageFacadeFileOwnsRootDelegates(t *testing.T) {
+func TestUploadedImageFileOwnsRootLogic(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_upload_facade.go")
+	facadeSrc, err := os.ReadFile("service_upload.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_upload_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_upload.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1671,8 +1671,14 @@ func TestUploadedImageFacadeFileOwnsRootDelegates(t *testing.T) {
 		"return &DeletedUploadedImage{Key: stored.Key, Size: stored.Size}, nil",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_upload_facade.go should contain %q", needle)
+			t.Fatalf("service_upload.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_upload_facade.go"); err == nil {
+		t.Fatal("service_upload_facade.go should be removed after upload logic rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_upload_facade.go) unexpected error = %v", err)
 	}
 
 	uploadSrc, err := os.ReadFile("upload_service.go")
