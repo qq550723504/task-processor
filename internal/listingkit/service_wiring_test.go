@@ -1214,9 +1214,9 @@ func TestTaskPreviewBuilderFileOwnsPreviewBuilderHelper(t *testing.T) {
 func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_category_search.go")
+	facadeSrc, err := os.ReadFile("service_shein_category_search_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_category_search.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_category_search_facade.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1225,8 +1225,14 @@ func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.sheinAdminOrDefault().SearchSheinCategories(ctx, taskID, query)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_category_search.go should contain %q", needle)
+			t.Fatalf("service_shein_category_search_facade.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_category_search.go"); err == nil {
+		t.Fatal("service_shein_category_search.go should be removed after facade file rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_category_search.go) unexpected error = %v", err)
 	}
 
 	categorySrc, err := os.ReadFile("service_shein_categories.go")
