@@ -26,7 +26,7 @@ internal/listingkit/service_shein_category_api_helpers.go   // SHEIN category/at
 internal/listingkit/service_shein_category_store_selection_support.go // SHEIN category/store-selection support
 internal/listingkit/service_shein_cookie_preview_helper.go  // SHEIN cookie preview helper
 internal/listingkit/service_shein_cookie_availability_note_helper.go // SHEIN cookie availability note helper
-internal/listingkit/service_shein_final_draft_facade.go  // SHEIN final draft facade delegate
+internal/listingkit/service_shein_final_draft_update_facade.go // SHEIN final draft facade delegate
 internal/listingkit/service_shein_data_image_regeneration.go // SHEIN data image regeneration logic
 internal/listingkit/service_shein_price_preview_facade.go // SHEIN pricing preview facade delegate
 internal/listingkit/service_shein_resolution_cache_clear_facade.go // SHEIN resolution cache facade delegate
@@ -197,7 +197,7 @@ Owns SHEIN cookie availability note helper:
 
 - cookie availability note resolution for preview/recompute surfaces.
 
-### `service_shein_final_draft_facade.go`
+### `service_shein_final_draft_update_facade.go`
 
 Owns root SHEIN final draft facade delegate:
 

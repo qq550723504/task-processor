@@ -2041,9 +2041,9 @@ func TestSheinSubmissionEventsFacadeFileOwnsRootDelegate(t *testing.T) {
 func TestSheinFinalDraftFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_final_draft_facade.go")
+	facadeSrc, err := os.ReadFile("service_shein_final_draft_update_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_final_draft_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_final_draft_update_facade.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -2052,7 +2052,7 @@ func TestSheinFinalDraftFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.sheinAdminOrDefault().UpdateSheinFinalDraft(ctx, taskID, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_final_draft_facade.go should contain %q", needle)
+			t.Fatalf("service_shein_final_draft_update_facade.go should contain %q", needle)
 		}
 	}
 
