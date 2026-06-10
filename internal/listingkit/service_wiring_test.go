@@ -460,7 +460,7 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		},
 		{
 			name:         "temporal submission facade",
-			file:         "service_submit_temporal_adapter.go",
+			file:         "service_submit_temporal_loader_helper.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -1170,9 +1170,9 @@ func TestSubmitTemporalFacadeFileOwnsRootDelegates(t *testing.T) {
 		t.Fatalf("ReadFile(service_submit_temporal.go) unexpected error = %v", err)
 	}
 
-	adapterSrc, err := os.ReadFile("service_submit_temporal_adapter.go")
+	adapterSrc, err := os.ReadFile("service_submit_temporal_loader_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_temporal_adapter.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_temporal_loader_helper.go) error = %v", err)
 	}
 	adapterContent := string(adapterSrc)
 
@@ -1189,12 +1189,18 @@ func TestSubmitTemporalFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error) {",
 	} {
 		if strings.Contains(adapterContent, needle) {
-			t.Fatalf("service_submit_temporal_adapter.go should not contain %q", needle)
+			t.Fatalf("service_submit_temporal_loader_helper.go should not contain %q", needle)
 		}
 	}
 
 	if !strings.Contains(adapterContent, "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {") {
-		t.Fatalf("service_submit_temporal_adapter.go should keep %q", "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {")
+		t.Fatalf("service_submit_temporal_loader_helper.go should keep %q", "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {")
+	}
+
+	if _, err := os.ReadFile("service_submit_temporal_adapter.go"); err == nil {
+		t.Fatal("service_submit_temporal_adapter.go should be removed after temporal loader helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_temporal_adapter.go) unexpected error = %v", err)
 	}
 }
 
