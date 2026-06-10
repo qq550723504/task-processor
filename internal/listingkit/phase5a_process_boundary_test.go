@@ -9,9 +9,9 @@ import (
 func TestServiceProcessFilesKeepTerminalizationInsideProcessFlowSeam(t *testing.T) {
 	t.Parallel()
 
-	serviceProcessFacadeSrc, err := os.ReadFile("service_process_facade.go")
+	serviceProcessFacadeSrc, err := os.ReadFile("service_process_entry.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_process_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_process_entry.go) error = %v", err)
 	}
 	serviceProcessFacadeContent := string(serviceProcessFacadeSrc)
 
@@ -19,7 +19,7 @@ func TestServiceProcessFilesKeepTerminalizationInsideProcessFlowSeam(t *testing.
 		"return buildListingKitProcessFlow(s).run(ctx, task, log)",
 	} {
 		if !strings.Contains(serviceProcessFacadeContent, needle) {
-			t.Fatalf("service_process_facade.go should contain %q", needle)
+			t.Fatalf("service_process_entry.go should contain %q", needle)
 		}
 	}
 

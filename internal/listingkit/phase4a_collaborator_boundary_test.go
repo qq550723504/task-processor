@@ -107,9 +107,9 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 func TestServiceProcessFileUsesExplicitFlowSeam(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_process_facade.go")
+	facadeSrc, err := os.ReadFile("service_process_entry.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_process_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_process_entry.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -117,7 +117,7 @@ func TestServiceProcessFileUsesExplicitFlowSeam(t *testing.T) {
 		"return buildListingKitProcessFlow(s).run(ctx, task, log)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_process_facade.go should contain %q", needle)
+			t.Fatalf("service_process_entry.go should contain %q", needle)
 		}
 	}
 

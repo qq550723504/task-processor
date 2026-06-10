@@ -33,7 +33,7 @@ internal/listingkit/service_shein_submission_events_facade.go // SHEIN submissio
 internal/listingkit/service_shein_store_selection_helpers.go // SHEIN store selection facade helpers
 internal/listingkit/service_shein_settings_facade.go     // SHEIN settings facade delegates
 internal/listingkit/service_store_profile_facade.go      // store profile / routing facade delegates
-internal/listingkit/service_process_facade.go            // process facade delegate
+internal/listingkit/service_process_entry.go             // process entry logic
 internal/listingkit/service_task_layers_facade.go        // task layer facade delegates
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_task_generation_facade.go    // task generation facade delegates
@@ -223,9 +223,9 @@ Owns root SHEIN store selection facade helpers:
 
 - store id/profile/selection resolver entrypoints.
 
-### `service_process_facade.go`
+### `service_process_entry.go`
 
-Owns root process facade delegate:
+Owns root process entry logic:
 
 - listing kit process entrypoint.
 

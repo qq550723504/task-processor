@@ -1576,12 +1576,12 @@ func TestSubmitContextHelpersFileOwnsRootHelpers(t *testing.T) {
 	}
 }
 
-func TestProcessFacadeFileOwnsRootDelegate(t *testing.T) {
+func TestProcessEntryFileOwnsRootEntry(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_process_facade.go")
+	facadeSrc, err := os.ReadFile("service_process_entry.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_process_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_process_entry.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1591,8 +1591,14 @@ func TestProcessFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return buildListingKitProcessFlow(s).run(ctx, task, log)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_process_facade.go should contain %q", needle)
+			t.Fatalf("service_process_entry.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_process_facade.go"); err == nil {
+		t.Fatal("service_process_facade.go should be removed after process entry rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_process_facade.go) unexpected error = %v", err)
 	}
 
 	processSrc, err := os.ReadFile("service_process.go")
