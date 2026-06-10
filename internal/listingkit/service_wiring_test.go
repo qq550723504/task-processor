@@ -1503,6 +1503,51 @@ func TestProcessFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
+func TestTaskLayersFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_task_layers_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task_layers_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string) (*StandardProductSnapshot, error) {",
+		"ctx, task, err := s.loadTaskExecutionContext(ctx, taskID)",
+		"func (s *service) ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error) {",
+		"if err := s.persistProcessedTaskResult(ctx, task.ID, result); err != nil {",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_task_layers_facade.go should contain %q", needle)
+		}
+	}
+
+	layersSrc, err := os.ReadFile("service_layers.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_layers.go) error = %v", err)
+	}
+	layersContent := string(layersSrc)
+
+	for _, needle := range []string{
+		"func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string) (*StandardProductSnapshot, error) {",
+		"func (s *service) ProcessPlatformAdaptationLayer(ctx context.Context, taskID string, platform string) (*ListingKitResult, error) {",
+	} {
+		if strings.Contains(layersContent, needle) {
+			t.Fatalf("service_layers.go should not contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"func (s *service) loadTaskExecutionContext(ctx context.Context, taskID string) (context.Context, *Task, error) {",
+		"func (s *service) persistProcessedTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {",
+	} {
+		if !strings.Contains(layersContent, needle) {
+			t.Fatalf("service_layers.go should keep %q", needle)
+		}
+	}
+}
+
 func TestChildTaskRetryFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 

@@ -29,6 +29,7 @@ internal/listingkit/service_shein_store_selection.go     // SHEIN store selectio
 internal/listingkit/service_shein_settings.go            // SHEIN settings facade delegates
 internal/listingkit/service_store_profile.go             // store profile / routing facade delegates
 internal/listingkit/service_process_facade.go            // process facade delegate
+internal/listingkit/service_task_layers_facade.go        // task layer facade delegates
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_task_generation.go           // task generation facade delegates
 internal/listingkit/service_task_revision.go             // task revision facade delegates
@@ -190,6 +191,13 @@ Owns root SHEIN store selection facade helpers:
 Owns root process facade delegate:
 
 - listing kit process entrypoint.
+
+### `service_task_layers_facade.go`
+
+Owns root task layer facade delegates:
+
+- standard product layer entrypoint,
+- platform adaptation layer entrypoint.
 
 ### `service_task_collaborators.go`
 
