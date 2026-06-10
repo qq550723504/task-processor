@@ -448,7 +448,7 @@ The root submit surface is now split so the facade file stays intentionally thin
 `service_submit_wiring.go` stays focused on config builder seams, while workflow
 launch/gating entry helpers live in `service_submit_workflow_entry_helpers.go` and
 Temporal task-loading helpers live alongside the Temporal adapter in
-`service_submit_temporal_loader_helper.go`.
+`service_submit_temporal_task_loader_helper.go`.
 
 ### `service_upload.go`
 
