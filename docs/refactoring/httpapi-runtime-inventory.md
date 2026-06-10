@@ -50,8 +50,9 @@ Current app-layer read:
 | `runtime_support.go` | `adapter construction` | Feature-owned runtime support contract that gathers repository/hook bundles and optional SDS collaborators. |
 | `runtime_support_repositories.go` | `adapter construction` | Owns ListingKit runtime support repository bundle construction. |
 | `runtime_support_hooks.go` | `adapter construction` | Owns ListingKit runtime support hook bundle construction. |
-| `runtime_support_shein.go` | `adapter construction` | Builds SHEIN runtime adapters and runtime bridge factories; shaping helpers have been extracted so the main file can stay constructor-oriented. |
+| `runtime_support_shein.go` | `adapter construction` | Builds SHEIN runtime resolver/bridge builders while delegating factory/provider details to narrower helper files. |
 | `runtime_support_shein_adapter_helpers.go` | `adapter construction` | Owns SHEIN runtime adapter-local tenant lookup, cookie payload normalization, and store-config mapping helpers. |
+| `runtime_support_shein_factories.go` | `adapter construction` | Owns SHEIN runtime API client factories and bound cookie-provider helpers used by the runtime support layer. |
 | `shein_sync_runtime.go` | `adapter construction` | Builds SHEIN sync services and composes the narrower strategy/bridge helpers. |
 | `shein_sync_runtime_bridge_helpers.go` | `adapter construction` | Owns SHEIN sync runtime bridge shaping helpers, including tenant parsing and promotion bridge factory construction. |
 | `shein_sync_runtime_strategy_helpers.go` | `adapter construction` | Owns management strategy-provider construction for the SHEIN sync runtime path. |
