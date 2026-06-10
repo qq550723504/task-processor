@@ -1546,9 +1546,9 @@ func TestSheinCookiePreviewHelpersFileOwnsRootHelper(t *testing.T) {
 func TestSheinCookieNoteHelperFileOwnsCookieAvailabilityResolver(t *testing.T) {
 	t.Parallel()
 
-	noteSrc, err := os.ReadFile("service_shein_cookie_note_helper.go")
+	noteSrc, err := os.ReadFile("service_shein_cookie_availability_note_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_cookie_note_helper.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_cookie_availability_note_helper.go) error = %v", err)
 	}
 	noteContent := string(noteSrc)
 
@@ -1559,8 +1559,14 @@ func TestSheinCookieNoteHelperFileOwnsCookieAvailabilityResolver(t *testing.T) {
 		"return \"SHEIN 店铺 cookie 不可用，在线类目、属性和销售属性解析受阻：刷新后仍未获取到有效 cookie\"",
 	} {
 		if !strings.Contains(noteContent, needle) {
-			t.Fatalf("service_shein_cookie_note_helper.go should contain %q", needle)
+			t.Fatalf("service_shein_cookie_availability_note_helper.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_cookie_note_helper.go"); err == nil {
+		t.Fatal("service_shein_cookie_note_helper.go should be removed after cookie availability note helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_cookie_note_helper.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_shein_cookie_note.go"); err == nil {
