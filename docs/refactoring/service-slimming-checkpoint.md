@@ -22,6 +22,7 @@ internal/listingkit/service_admin_collaborators.go       // admin collaborator a
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_task_generation.go           // task generation facade delegates
 internal/listingkit/service_task_revision.go             // task revision facade delegates
+internal/listingkit/service_task_lifecycle.go            // task lifecycle facade delegates
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
 internal/listingkit/service_studio_session.go            // studio session facade delegates
 internal/listingkit/service_studio_media.go              // studio media facade delegates
@@ -132,6 +133,14 @@ Owns root task revision facade delegates:
 
 - revision history listing and detail,
 - revision apply and validation delegates.
+
+### `service_task_lifecycle.go`
+
+Owns root task lifecycle facade delegates:
+
+- task creation and result lookup,
+- task list and SDS baseline readiness delegates,
+- internal inline/enqueue lifecycle helpers used by studio/task flows.
 
 ### `service_studio_collaborators.go`
 

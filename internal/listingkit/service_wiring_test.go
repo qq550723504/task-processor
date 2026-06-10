@@ -966,3 +966,63 @@ func TestTaskRevisionFacadeFileOwnsRootDelegates(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskLifecycleFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_task_lifecycle.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task_lifecycle.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error) {",
+		"return s.taskLifecycleOrDefault().CreateGenerateTask(ctx, req)",
+		"func (s *service) enqueueOrRunStudioTask(ctx context.Context, task *Task) (*Task, error) {",
+		"return s.taskLifecycleOrDefault().enqueueOrRunStudioTask(ctx, task)",
+		"func (s *service) runTaskInline(ctx context.Context, task *Task) (*Task, error) {",
+		"return s.taskLifecycleOrDefault().runTaskInline(ctx, task)",
+		"func (s *service) enqueueTask(ctx context.Context, task *Task) error {",
+		"return s.taskLifecycleOrDefault().enqueueTask(ctx, task)",
+		"func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error) {",
+		"return s.taskLifecycleOrDefault().GetTaskResult(ctx, taskID)",
+		"func (s *service) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error) {",
+		"return s.taskLifecycleOrDefault().ListTasks(ctx, query)",
+		"func (s *service) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {",
+		"return s.taskLifecycleOrDefault().GetSDSBaselineReadiness(ctx, query)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_task_lifecycle.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("service_task.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error) {",
+		"func (s *service) enqueueOrRunStudioTask(ctx context.Context, task *Task) (*Task, error) {",
+		"func (s *service) runTaskInline(ctx context.Context, task *Task) (*Task, error) {",
+		"func (s *service) enqueueTask(ctx context.Context, task *Task) error {",
+		"func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error) {",
+		"func (s *service) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error) {",
+		"func (s *service) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {",
+	} {
+		if strings.Contains(serviceContent, needle) {
+			t.Fatalf("service_task.go should not contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"func (s *service) GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error) {",
+		"func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {",
+	} {
+		if !strings.Contains(serviceContent, needle) {
+			t.Fatalf("service_task.go should keep %q", needle)
+		}
+	}
+}
