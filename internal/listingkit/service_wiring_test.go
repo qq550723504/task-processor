@@ -1662,6 +1662,44 @@ func TestSheinImageRegenerationFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
+func TestSheinSubmissionEventsFacadeFileOwnsRootDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_shein_submission_events_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_submission_events_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error) {",
+		"return s.sheinAdminOrDefault().GetSubmissionEvents(ctx, taskID)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_shein_submission_events_facade.go should contain %q", needle)
+		}
+	}
+
+	eventsSrc, err := os.ReadFile("shein_submission_events.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_submission_events.go) error = %v", err)
+	}
+	eventsContent := string(eventsSrc)
+
+	if strings.Contains(eventsContent, "func (s *service) GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error) {") {
+		t.Fatalf("shein_submission_events.go should not contain %q", "func (s *service) GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error) {")
+	}
+
+	for _, needle := range []string{
+		"func sheinSubmissionEventsWithStoreResolution(events []sheinpub.SubmissionEvent, task *Task) []sheinpub.SubmissionEvent {",
+		"func sheinSubmissionStoreResolutionFromSnapshot(snapshot *SheinStoreResolutionSnapshot) *sheinpub.SubmissionStoreResolution {",
+	} {
+		if !strings.Contains(eventsContent, needle) {
+			t.Fatalf("shein_submission_events.go should keep %q", needle)
+		}
+	}
+}
+
 func TestChildTaskRetryFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
