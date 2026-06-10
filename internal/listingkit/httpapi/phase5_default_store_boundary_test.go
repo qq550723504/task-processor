@@ -10,7 +10,7 @@ import (
 func TestRuntimeSupportUsesListingKitOwnedDefaultStoreResolver(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("runtime_support.go")
+	src, err := os.ReadFile("runtime_support_hooks.go")
 	require.NoError(t, err)
 	require.Contains(t, string(src), "DefaultSheinStoreIDResolver: listingkit.ResolveDefaultSheinStoreID,")
 }

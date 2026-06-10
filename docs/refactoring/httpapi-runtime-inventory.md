@@ -47,7 +47,9 @@ Current app-layer read:
 | `temporal_runtime.go` | `assembly-only` | Temporal runtime build wrapper around feature-owned assembly. |
 | `http_module.go` | `assembly-only` | HTTP module construction and validation. |
 | `routes.go` | `assembly-only` | Route registration and route table ownership; should stay thin. |
-| `runtime_support.go` | `adapter construction` | Feature-owned runtime support contract that gathers repositories, hooks, and optional SDS collaborators. |
+| `runtime_support.go` | `adapter construction` | Feature-owned runtime support contract that gathers repository/hook bundles and optional SDS collaborators. |
+| `runtime_support_repositories.go` | `adapter construction` | Owns ListingKit runtime support repository bundle construction. |
+| `runtime_support_hooks.go` | `adapter construction` | Owns ListingKit runtime support hook bundle construction. |
 | `runtime_support_shein.go` | `adapter construction` | Builds SHEIN runtime adapters and runtime bridge factories; shaping helpers have been extracted so the main file can stay constructor-oriented. |
 | `runtime_support_shein_adapter_helpers.go` | `adapter construction` | Owns SHEIN runtime adapter-local tenant lookup, cookie payload normalization, and store-config mapping helpers. |
 | `shein_sync_runtime.go` | `adapter construction` | Builds SHEIN sync services and composes the narrower strategy/bridge helpers. |
@@ -83,6 +85,10 @@ Why it stands out:
 - it still owns strict client resolution and cache wiring,
 - routed image-client logic has been narrowed into its own helper file,
 - if more request-shaping or model-selection rules land there, they should stay in helper homes rather than re-grow the main builder file.
+
+### Additional note
+
+`runtime_support.go` has now been narrowed to the runtime support contract itself; repository and hook bundle construction live in dedicated helper files so the top-level support file stays easier to read and review.
 
 ## Current Boundary Conclusion
 
