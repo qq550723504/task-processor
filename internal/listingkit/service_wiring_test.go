@@ -803,9 +803,9 @@ func TestStudioSessionFacadeFileOwnsRootDelegates(t *testing.T) {
 func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_studio_media.go")
+	facadeSrc, err := os.ReadFile("service_studio_media_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_studio_media.go) error = %v", err)
+		t.Fatalf("ReadFile(service_studio_media_facade.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -814,6 +814,28 @@ func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 		"return s.taskStudioMediaOrDefault().GenerateStudioDesigns(ctx, req)",
 		"func (s *service) GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {",
 		"return s.taskStudioMediaOrDefault().GenerateStudioProductImages(ctx, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_studio_media_facade.go should contain %q", needle)
+		}
+	}
+
+	mediaSrc, err := os.ReadFile("service_studio_media.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_studio_media.go) error = %v", err)
+	}
+	mediaContent := string(mediaSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error) {",
+		"func (s *service) GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {",
+	} {
+		if strings.Contains(mediaContent, needle) {
+			t.Fatalf("service_studio_media.go should not contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
 		"func (s *service) sanitizeStudioImageInputURLs(ctx context.Context, inputURLs []string) ([]string, error) {",
 		"return s.taskStudioMediaOrDefault().sanitizeStudioImageInputURLs(ctx, inputURLs)",
 		"func (s *service) generateStudioDesignSiblingThemes(ctx context.Context, req *StudioDesignRequest, count int) ([]string, error) {",
@@ -831,7 +853,7 @@ func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) tryGenerateStudioProductImage(ctx context.Context, inputImages []string, promptText string) (*openaiclient.ImageResponse, error) {",
 		"return s.taskStudioMediaOrDefault().tryGenerateStudioProductImage(ctx, inputImages, promptText)",
 	} {
-		if !strings.Contains(facadeContent, needle) {
+		if !strings.Contains(mediaContent, needle) {
 			t.Fatalf("service_studio_media.go should contain %q", needle)
 		}
 	}

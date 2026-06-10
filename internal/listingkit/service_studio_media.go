@@ -6,10 +6,6 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
-func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error) {
-	return s.taskStudioMediaOrDefault().GenerateStudioDesigns(ctx, req)
-}
-
 func (s *service) generateStudioDesignSiblingThemes(ctx context.Context, req *StudioDesignRequest, count int) ([]string, error) {
 	return s.taskStudioMediaOrDefault().generateStudioDesignSiblingThemes(ctx, req, count)
 }
@@ -28,10 +24,6 @@ func (s *service) generateStudioDesignImageWithoutReferences(ctx context.Context
 
 func (s *service) persistGeneratedStudioImage(ctx context.Context, response *openaiclient.ImageResponse, filename string) (string, string, error) {
 	return s.taskStudioMediaOrDefault().persistGeneratedStudioImage(ctx, response, filename)
-}
-
-func (s *service) GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
-	return s.taskStudioMediaOrDefault().GenerateStudioProductImages(ctx, req)
 }
 
 func (s *service) generateOneStudioProductImage(ctx context.Context, req *StudioProductImageRequest, sourceURL string, basePrompt string) (string, error) {
