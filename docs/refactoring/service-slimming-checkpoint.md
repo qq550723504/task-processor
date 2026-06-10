@@ -301,6 +301,13 @@ Owns task preview helper:
 
 - preview payload construction and cookie decoration bridge.
 
+### `service_shein_store_resolution_preview_helper.go`
+
+Owns SHEIN store resolution preview helper:
+
+- store-resolution preview decoration,
+- store-resolution summary/snapshot helper values.
+
 ### `service_task_export.go`
 
 Owns task export logic:

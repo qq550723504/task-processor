@@ -1231,14 +1231,14 @@ func TestTaskPreviewFileOwnsRootDelegate(t *testing.T) {
 		t.Fatalf("ReadFile(service_task_preview_facade.go) unexpected error = %v", err)
 	}
 
-	previewSrc, err := os.ReadFile("service_preview.go")
+	previewSrc, err := os.ReadFile("service_shein_store_resolution_preview_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_preview.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_store_resolution_preview_helper.go) error = %v", err)
 	}
 	previewContent := string(previewSrc)
 
 	if strings.Contains(previewContent, "func (s *service) GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {") {
-		t.Fatalf("service_preview.go should not contain %q", "func (s *service) GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {")
+		t.Fatalf("service_shein_store_resolution_preview_helper.go should not contain %q", "func (s *service) GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {")
 	}
 
 	for _, needle := range []string{
@@ -1246,8 +1246,14 @@ func TestTaskPreviewFileOwnsRootDelegate(t *testing.T) {
 		"s.decorateSheinCookieAvailabilityPreview(ctx, task, preview)",
 	} {
 		if strings.Contains(previewContent, needle) {
-			t.Fatalf("service_preview.go should not contain %q after preview builder split", needle)
+			t.Fatalf("service_shein_store_resolution_preview_helper.go should not contain %q after preview builder split", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_preview.go"); err == nil {
+		t.Fatal("service_preview.go should be removed after shein store resolution preview helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_preview.go) unexpected error = %v", err)
 	}
 }
 
@@ -1276,9 +1282,9 @@ func TestTaskPreviewHelperFileOwnsPreviewBuilderHelper(t *testing.T) {
 		t.Fatalf("ReadFile(service_task_preview_builder.go) unexpected error = %v", err)
 	}
 
-	previewSrc, err := os.ReadFile("service_preview.go")
+	previewSrc, err := os.ReadFile("service_shein_store_resolution_preview_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_preview.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_store_resolution_preview_helper.go) error = %v", err)
 	}
 	previewContent := string(previewSrc)
 
@@ -1286,7 +1292,7 @@ func TestTaskPreviewHelperFileOwnsPreviewBuilderHelper(t *testing.T) {
 		"func (s *service) decorateSheinStoreResolutionPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {",
 	} {
 		if !strings.Contains(previewContent, needle) {
-			t.Fatalf("service_preview.go should keep %q", needle)
+			t.Fatalf("service_shein_store_resolution_preview_helper.go should keep %q", needle)
 		}
 	}
 }
