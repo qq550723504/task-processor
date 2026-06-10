@@ -49,7 +49,7 @@ internal/listingkit/service_studio_collaborators.go      // studio collaborator 
 internal/listingkit/service_studio_batch_draft_session_facade.go // studio batch draft/session facade delegates
 internal/listingkit/service_studio_media_generation_entrypoints.go // studio media generation entrypoints
 internal/listingkit/service_studio_media_generation_helpers.go // studio media helper delegates
-internal/listingkit/service_studio_batch_facade.go       // studio batch facade delegates
+internal/listingkit/service_studio_batch_entrypoints.go  // studio batch entrypoints
 internal/listingkit/service_studio_batch_run_entrypoints.go // studio batch run entrypoints
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 internal/listingkit/service_task_wiring.go               // task/generation/revision collaborator config builders
@@ -370,9 +370,9 @@ Owns studio media helper delegates:
 
 - shared media input/output helper delegates.
 
-### `service_studio_batch_facade.go`
+### `service_studio_batch_entrypoints.go`
 
-Owns root studio batch facade delegates:
+Owns root studio batch entrypoints:
 
 - batch detail,
 - batch generation lifecycle,
