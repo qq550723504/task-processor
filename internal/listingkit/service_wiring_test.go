@@ -1111,6 +1111,47 @@ func TestTaskPreviewFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
+func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_shein_category_search.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_category_search.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {",
+		"return s.sheinAdminOrDefault().SearchSheinCategories(ctx, taskID, query)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_shein_category_search.go should contain %q", needle)
+		}
+	}
+
+	categorySrc, err := os.ReadFile("service_shein_categories.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_categories.go) error = %v", err)
+	}
+	categoryContent := string(categorySrc)
+
+	if strings.Contains(categoryContent, "func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {") {
+		t.Fatalf("service_shein_categories.go should not contain %q", "func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {")
+	}
+
+	for _, needle := range []string{
+		"func (s *service) buildSheinAttributeAPI(ctx context.Context, task *Task) (sheinpub.AttributeAPI, error) {",
+		"func (s *service) buildSheinCategoryAPI(ctx context.Context, task *Task) (sheincategory.CategoryAPI, error) {",
+		"func (s *service) resolveSheinStoreID(ctx context.Context, task *Task) (int64, error) {",
+		"func (s *service) resolveSheinStoreProfile(ctx context.Context, task *Task) (*ListingKitStoreProfile, error) {",
+		"func (s *service) resolveSheinStoreSelection(ctx context.Context, task *Task) (*sheinStoreSelection, error) {",
+	} {
+		if !strings.Contains(categoryContent, needle) {
+			t.Fatalf("service_shein_categories.go should keep %q", needle)
+		}
+	}
+}
+
 func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 

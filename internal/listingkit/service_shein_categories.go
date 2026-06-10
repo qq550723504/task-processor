@@ -14,10 +14,6 @@ import (
 
 const maxSheinCategorySearchResults = 20
 
-func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {
-	return s.sheinAdminOrDefault().SearchSheinCategories(ctx, taskID, query)
-}
-
 func (s *service) buildSheinAttributeAPI(ctx context.Context, task *Task) (sheinpub.AttributeAPI, error) {
 	apiClient, storeID, err := s.newSheinAPIClient(ctx, task)
 	if err != nil {
