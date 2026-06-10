@@ -19,11 +19,3 @@ func (s *service) RefreshSubmissionStatus(ctx context.Context, taskID string) (*
 func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
 	return s.taskSubmissionRecoveryOrDefault().resolveSheinSubmitRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
 }
-
-func (s *service) taskSubmissionRecoveryOrDefault() *taskSubmissionRecoveryService {
-	if s.submission.taskSubmissionRecovery != nil {
-		return s.submission.taskSubmissionRecovery
-	}
-	s.submission.taskSubmissionRecovery = newTaskSubmissionRecoveryService(buildTaskSubmissionRecoveryServiceConfig(s))
-	return s.submission.taskSubmissionRecovery
-}

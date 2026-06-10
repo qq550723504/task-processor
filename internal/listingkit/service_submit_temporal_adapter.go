@@ -47,14 +47,6 @@ func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*Li
 	return s.taskTemporalSubmissionAdapterOrDefault().BuildSheinTaskPreview(ctx, taskID)
 }
 
-func (s *service) taskTemporalSubmissionAdapterOrDefault() *taskTemporalSubmissionAdapter {
-	if s.submission.taskTemporalSubmissionAdapter != nil {
-		return s.submission.taskTemporalSubmissionAdapter
-	}
-	s.submission.taskTemporalSubmissionAdapter = newTaskTemporalSubmissionAdapter(buildTaskTemporalSubmissionAdapterConfig(s))
-	return s.submission.taskTemporalSubmissionAdapter
-}
-
 func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {
 	task, err := s.repo.GetTask(ctx, taskID)
 	if err != nil {

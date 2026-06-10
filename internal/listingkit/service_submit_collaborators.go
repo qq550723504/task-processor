@@ -36,3 +36,27 @@ func (s *service) taskSubmissionStateOrDefault() *taskSubmissionStateService {
 	s.submission.taskSubmissionState = newTaskSubmissionStateService(buildTaskSubmissionStateServiceConfig(s))
 	return s.submission.taskSubmissionState
 }
+
+func (s *service) taskSubmissionRecoveryOrDefault() *taskSubmissionRecoveryService {
+	if s.submission.taskSubmissionRecovery != nil {
+		return s.submission.taskSubmissionRecovery
+	}
+	s.submission.taskSubmissionRecovery = newTaskSubmissionRecoveryService(buildTaskSubmissionRecoveryServiceConfig(s))
+	return s.submission.taskSubmissionRecovery
+}
+
+func (s *service) taskDirectSubmissionOrDefault() *taskDirectSubmissionService {
+	if s.submission.taskDirectSubmission != nil {
+		return s.submission.taskDirectSubmission
+	}
+	s.submission.taskDirectSubmission = newTaskDirectSubmissionService(buildTaskDirectSubmissionServiceConfig(s))
+	return s.submission.taskDirectSubmission
+}
+
+func (s *service) taskTemporalSubmissionAdapterOrDefault() *taskTemporalSubmissionAdapter {
+	if s.submission.taskTemporalSubmissionAdapter != nil {
+		return s.submission.taskTemporalSubmissionAdapter
+	}
+	s.submission.taskTemporalSubmissionAdapter = newTaskTemporalSubmissionAdapter(buildTaskTemporalSubmissionAdapterConfig(s))
+	return s.submission.taskTemporalSubmissionAdapter
+}

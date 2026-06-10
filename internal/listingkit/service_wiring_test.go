@@ -250,14 +250,10 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			},
 		},
 		{
-			name: "submission recovery service",
+			name: "submission recovery facade",
 			file: "service_submit_recovery.go",
-			builderCalls: []string{
-				"buildTaskSubmissionRecoveryServiceConfig(s)",
-			},
-			inlineConfig: []string{
-				"newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{",
-			},
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 		{
 			name: "submit facade",
@@ -273,33 +269,25 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 				"buildTaskSubmissionRefreshServiceConfig(s)",
 				"buildTaskSubmissionExecutionServiceConfig(s)",
 				"buildTaskSubmissionStateServiceConfig(s)",
+				"buildTaskSubmissionRecoveryServiceConfig(s)",
+				"buildTaskDirectSubmissionServiceConfig(s)",
+				"buildTaskTemporalSubmissionAdapterConfig(s)",
 			},
 			inlineConfig: []string{
 				"newTaskSubmissionService(taskSubmissionServiceConfig{",
 				"newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{",
 				"newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{",
 				"newTaskSubmissionStateService(taskSubmissionStateServiceConfig{",
-			},
-		},
-		{
-			name: "direct submit service",
-			file: "service_submit_direct.go",
-			builderCalls: []string{
-				"buildTaskDirectSubmissionServiceConfig(s)",
-			},
-			inlineConfig: []string{
+				"newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{",
 				"newTaskDirectSubmissionService(taskDirectSubmissionServiceConfig{",
-			},
-		},
-		{
-			name: "temporal submission adapter",
-			file: "service_submit_temporal_adapter.go",
-			builderCalls: []string{
-				"buildTaskTemporalSubmissionAdapterConfig(s)",
-			},
-			inlineConfig: []string{
 				"newTaskTemporalSubmissionAdapter(taskTemporalSubmissionAdapterConfig{",
 			},
+		},
+		{
+			name: "temporal submission facade",
+			file: "service_submit_temporal_adapter.go",
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 	}
 
