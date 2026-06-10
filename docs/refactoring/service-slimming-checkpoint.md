@@ -19,7 +19,7 @@ internal/listingkit/service_config.go                     // NewService / factor
 internal/listingkit/service_defaults.go                   // config defaults / default builders
 internal/listingkit/service_collaborators.go              // collaborator initialization groups
 internal/listingkit/service_admin_collaborators.go       // admin collaborator accessors
-internal/listingkit/service_ai_client_settings.go        // AI client settings facade delegates
+internal/listingkit/service_ai_client_settings_facade.go // AI client settings facade delegates
 internal/listingkit/service_child_task_retry_facade.go   // child task retry facade delegate
 internal/listingkit/service_shein_category_search.go     // SHEIN category search facade delegates
 internal/listingkit/service_shein_category_client.go     // SHEIN category/attribute API facade helpers
@@ -150,7 +150,7 @@ Owns root store profile facade delegates:
 - store profile list / upsert / delete,
 - store routing settings fetch / update.
 
-### `service_ai_client_settings.go`
+### `service_ai_client_settings_facade.go`
 
 Owns root AI client settings facade delegates:
 

@@ -1,8 +1,6 @@
 package listingkit
 
-import (
-	"context"
-)
+import "context"
 
 func (s *service) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*AIClientSettings, error) {
 	return s.settingsAdminOrDefault().GetAIClientSettings(ctx, scope, clientName)

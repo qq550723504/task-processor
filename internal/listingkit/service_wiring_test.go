@@ -965,9 +965,9 @@ func TestStoreProfileFacadeFileOwnsRootDelegates(t *testing.T) {
 func TestAIClientSettingsFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_ai_client_settings.go")
+	facadeSrc, err := os.ReadFile("service_ai_client_settings_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_ai_client_settings.go) error = %v", err)
+		t.Fatalf("ReadFile(service_ai_client_settings_facade.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -978,8 +978,14 @@ func TestAIClientSettingsFacadeFileOwnsRootDelegates(t *testing.T) {
 		"return s.settingsAdminOrDefault().UpdateAIClientSettings(ctx, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_ai_client_settings.go should contain %q", needle)
+			t.Fatalf("service_ai_client_settings_facade.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_ai_client_settings.go"); err == nil {
+		t.Fatal("service_ai_client_settings.go should be removed after facade file rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_ai_client_settings.go) unexpected error = %v", err)
 	}
 
 	helperSrc, err := os.ReadFile("ai_client_settings.go")
