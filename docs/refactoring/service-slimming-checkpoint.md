@@ -37,7 +37,7 @@ internal/listingkit/service_process_facade.go            // process facade deleg
 internal/listingkit/service_task_layers_facade.go        // task layer facade delegates
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_task_generation.go           // task generation facade delegates
-internal/listingkit/service_task_revision.go             // task revision facade delegates
+internal/listingkit/service_task_revision_facade.go      // task revision facade delegates
 internal/listingkit/service_task_lifecycle.go            // task lifecycle facade delegates
 internal/listingkit/service_task_sds_baseline_facade.go  // task SDS baseline facade delegates
 internal/listingkit/service_task_preview.go              // task preview facade logic
@@ -253,7 +253,7 @@ Owns root task generation facade delegates:
 - review queue / session delegates,
 - generation retry and navigation dispatch delegates.
 
-### `service_task_revision.go`
+### `service_task_revision_facade.go`
 
 Owns root task revision facade delegates:
 
