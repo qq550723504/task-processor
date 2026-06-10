@@ -1419,12 +1419,12 @@ func TestSubmitDefaultActionFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
-func TestSheinCookiePreviewFacadeFileOwnsRootHelper(t *testing.T) {
+func TestSheinCookiePreviewHelpersFileOwnsRootHelper(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_cookie_preview_facade.go")
+	facadeSrc, err := os.ReadFile("service_shein_cookie_preview_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_cookie_preview_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_cookie_preview_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1435,7 +1435,7 @@ func TestSheinCookiePreviewFacadeFileOwnsRootHelper(t *testing.T) {
 		"preview.NeedsReview = preview.NeedsReview || rebuilt.NeedsReview",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_cookie_preview_facade.go should contain %q", needle)
+			t.Fatalf("service_shein_cookie_preview_helpers.go should contain %q", needle)
 		}
 	}
 
