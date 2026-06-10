@@ -1382,9 +1382,9 @@ func TestSheinCategoryClientHelpersFileOwnsRootHelpers(t *testing.T) {
 func TestSheinStoreSelectionHelpersFileOwnsRootHelpers(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_store_selection_helpers.go")
+	facadeSrc, err := os.ReadFile("service_shein_store_selection_resolvers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_store_selection_helpers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_store_selection_resolvers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1397,8 +1397,14 @@ func TestSheinStoreSelectionHelpersFileOwnsRootHelpers(t *testing.T) {
 		"return buildSubmitRuntimeContextResolver(s).resolveStoreSelection(ctx, task)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_store_selection_helpers.go should contain %q", needle)
+			t.Fatalf("service_shein_store_selection_resolvers.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_store_selection_helpers.go"); err == nil {
+		t.Fatal("service_shein_store_selection_helpers.go should be removed after store selection resolver rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_store_selection_helpers.go) unexpected error = %v", err)
 	}
 
 	categorySrc, err := os.ReadFile("service_shein_categories.go")
