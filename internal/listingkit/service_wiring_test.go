@@ -430,7 +430,7 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		},
 		{
 			name:         "submit facade",
-			file:         "service_submit_facade.go",
+			file:         "service_submit_entrypoint.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -494,9 +494,9 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 func TestSubmitFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_facade.go")
+	facadeSrc, err := os.ReadFile("service_submit_entrypoint.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_entrypoint.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -505,7 +505,7 @@ func TestSubmitFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.taskSubmissionOrDefault().SubmitTask(ctx, taskID, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_facade.go should contain %q", needle)
+			t.Fatalf("service_submit_entrypoint.go should contain %q", needle)
 		}
 	}
 

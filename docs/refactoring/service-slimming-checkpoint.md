@@ -54,7 +54,7 @@ internal/listingkit/service_studio_batch_run_facade.go   // studio batch run fac
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 internal/listingkit/service_task_wiring.go               // task/generation/revision collaborator config builders
 internal/listingkit/service_studio_wiring.go             // studio collaborator config builders
-internal/listingkit/service_submit_facade.go              // submit facade entrypoint
+internal/listingkit/service_submit_entrypoint.go          // submit facade entrypoint
 internal/listingkit/service_submit_lease_helper.go        // shared submit lease helper
 internal/listingkit/service_submit_contracts.go           // shared submit option structs / normalization helpers
 internal/listingkit/service_submit_collaborators.go       // submit collaborator accessors
@@ -431,7 +431,7 @@ Fields are grouped by responsibility:
 
 The root submit surface is now split so the facade file stays intentionally thin:
 
-- `service_submit_facade.go`: public `SubmitTask(...)` facade entrypoint only,
+- `service_submit_entrypoint.go`: public `SubmitTask(...)` facade entrypoint only,
 - `service_submit_lease_helper.go`: shared in-flight TTL and submit-lease sentinel errors,
 - `service_submit_contracts.go`: shared submit option structs, target normalization, and Temporal replay detection helpers,
 - `service_submit_collaborators.go`: submit/recovery/direct/Temporal/state/execution/refresh collaborator accessors,
