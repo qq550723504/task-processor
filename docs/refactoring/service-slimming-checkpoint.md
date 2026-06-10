@@ -21,6 +21,7 @@ internal/listingkit/service_collaborators.go              // collaborator initia
 internal/listingkit/service_admin_collaborators.go       // admin collaborator accessors
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
+internal/listingkit/service_studio_batch_run.go          // studio batch run facade delegates
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 internal/listingkit/service_task_wiring.go               // task/generation/revision collaborator config builders
 internal/listingkit/service_studio_wiring.go             // studio collaborator config builders
@@ -121,6 +122,15 @@ Owns studio collaborator accessors:
 - studio media,
 - studio batch,
 - studio batch run.
+
+### `service_studio_batch_run.go`
+
+Owns root studio batch run facade delegates:
+
+- create batch run,
+- fetch batch run,
+- list batch run items,
+- cancel batch run.
 
 ### `service_task_wiring.go`
 

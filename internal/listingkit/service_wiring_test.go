@@ -644,3 +644,45 @@ func TestStudioBatchRunCoordinatorFileOwnsRunStarter(t *testing.T) {
 		t.Fatalf("studio_batch_run_service.go should not contain %q", "func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {")
 	}
 }
+
+func TestStudioBatchRunFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_studio_batch_run.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_studio_batch_run.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) CreateStudioBatchRun(ctx context.Context, req *CreateStudioBatchRunRequest) (*StudioBatchRunRecord, []StudioBatchRunItemRecord, error) {",
+		"return s.taskStudioBatchRunOrDefault().CreateStudioBatchRun(ctx, req)",
+		"func (s *service) GetStudioBatchRun(ctx context.Context, runID string) (*StudioBatchRunRecord, error) {",
+		"return s.taskStudioBatchRunOrDefault().GetStudioBatchRun(ctx, runID)",
+		"func (s *service) ListStudioBatchRunItems(ctx context.Context, runID string) ([]StudioBatchRunItemRecord, error) {",
+		"return s.taskStudioBatchRunOrDefault().ListStudioBatchRunItems(ctx, runID)",
+		"func (s *service) CancelStudioBatchRun(ctx context.Context, runID string) error {",
+		"return s.taskStudioBatchRunOrDefault().CancelStudioBatchRun(ctx, runID)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_studio_batch_run.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("studio_batch_run_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(studio_batch_run_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"func (s *service) CreateStudioBatchRun(ctx context.Context, req *CreateStudioBatchRunRequest) (*StudioBatchRunRecord, []StudioBatchRunItemRecord, error) {",
+		"func (s *service) GetStudioBatchRun(ctx context.Context, runID string) (*StudioBatchRunRecord, error) {",
+		"func (s *service) ListStudioBatchRunItems(ctx context.Context, runID string) ([]StudioBatchRunItemRecord, error) {",
+		"func (s *service) CancelStudioBatchRun(ctx context.Context, runID string) error {",
+	} {
+		if strings.Contains(serviceContent, needle) {
+			t.Fatalf("studio_batch_run_service.go should not contain %q", needle)
+		}
+	}
+}
