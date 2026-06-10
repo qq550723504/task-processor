@@ -540,3 +540,59 @@ func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 		})
 	}
 }
+
+func TestSubmitRoutingFileOwnsRootSubmitDelegates(t *testing.T) {
+	t.Parallel()
+
+	routingSrc, err := os.ReadFile("service_submit_routing.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_routing.go) error = %v", err)
+	}
+	routingContent := string(routingSrc)
+
+	for _, needle := range []string{
+		"func (s *service) RecoverTaskNow(ctx context.Context, taskID string) (*Task, error) {",
+		"return s.taskRecoveryOrDefault().RecoverTaskNow(ctx, taskID)",
+		"func (s *service) RunRecoverySweep(ctx context.Context, now time.Time, limit int) (int64, error) {",
+		"return s.taskRecoveryOrDefault().RunRecoverySweep(ctx, now, limit)",
+		"func (s *service) BulkRecoverTasks(ctx context.Context, query *RecoverBlockedTasksQuery) (int64, error) {",
+		"return s.taskRecoveryOrDefault().BulkRecoverTasks(ctx, query)",
+		"func (s *service) RequeuePendingTasks(ctx context.Context, req *RequeuePendingTasksRequest) (*RequeuePendingTasksResult, error) {",
+		"return s.taskRequeueOrDefault().RequeuePendingTasks(ctx, req)",
+	} {
+		if !strings.Contains(routingContent, needle) {
+			t.Fatalf("service_submit_routing.go should contain %q", needle)
+		}
+	}
+
+	for _, tc := range []struct {
+		file    string
+		needles []string
+	}{
+		{
+			file: "task_recovery_service.go",
+			needles: []string{
+				"func (s *service) RecoverTaskNow(ctx context.Context, taskID string) (*Task, error) {",
+				"func (s *service) RunRecoverySweep(ctx context.Context, now time.Time, limit int) (int64, error) {",
+				"func (s *service) BulkRecoverTasks(ctx context.Context, query *RecoverBlockedTasksQuery) (int64, error) {",
+			},
+		},
+		{
+			file: "task_requeue_service.go",
+			needles: []string{
+				"func (s *service) RequeuePendingTasks(ctx context.Context, req *RequeuePendingTasksRequest) (*RequeuePendingTasksResult, error) {",
+			},
+		},
+	} {
+		src, err := os.ReadFile(tc.file)
+		if err != nil {
+			t.Fatalf("ReadFile(%s) error = %v", tc.file, err)
+		}
+		content := string(src)
+		for _, needle := range tc.needles {
+			if strings.Contains(content, needle) {
+				t.Fatalf("%s should not contain %q", tc.file, needle)
+			}
+		}
+	}
+}

@@ -86,7 +86,3 @@ func (s *taskRequeueService) currentSubmitter() TaskSubmitter {
 	}
 	return s.taskSubmitter()
 }
-
-func (s *service) RequeuePendingTasks(ctx context.Context, req *RequeuePendingTasksRequest) (*RequeuePendingTasksResult, error) {
-	return s.taskRequeueOrDefault().RequeuePendingTasks(ctx, req)
-}
