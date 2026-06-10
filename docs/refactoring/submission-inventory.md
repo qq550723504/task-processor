@@ -13,7 +13,7 @@ It is intentionally descriptive first:
 - which files already hold reusable submission mechanics,
 - which files still mix orchestration with SHEIN-specific rules.
 
-Observed against the repository state on 2026-06-09 after the preview refactoring first wave and the submission execution/direct-submit file-group splits.
+Observed against the repository state on 2026-06-09 after the preview refactoring first wave and the submission execution/direct-submit/recovery file-group splits.
 
 ## 2. Current Submission Shape
 
@@ -72,6 +72,8 @@ These files contain the main internal submission-oriented service objects:
 - `internal/listingkit/task_submission_refresh_mutation.go`
 - `internal/listingkit/task_direct_submission_service.go`
 - `internal/listingkit/task_submission_recovery_service.go`
+- `internal/listingkit/task_submission_recovery_lease.go`
+- `internal/listingkit/task_submission_recovery_remote.go`
 - `internal/listingkit/task_submission_execution_service.go`
 - `internal/listingkit/task_submission_execution_product.go`
 - `internal/listingkit/task_submission_execution_images.go`
@@ -89,7 +91,9 @@ Current role:
 - `taskDirectSubmissionService`: direct SHEIN submit path orchestration,
 - `serviceSubmitDirectPrepare`: direct submit product preparation, image upload phase, and pre-validation bridge,
 - `serviceSubmitDirectRemote`: direct remote submit, response persistence, sensitive-word retry bridge, and finish semantics,
-- `taskSubmissionRecoveryService`: submit lease, stale-submit recovery, remote confirmation recovery,
+- `taskSubmissionRecoveryService`: recovered submit routing, local-vs-remote recovery decision, recovered success/failure persistence, and finalization,
+- `taskSubmissionRecoveryLease`: begin/clear submit lease, in-flight state validation, replay detection, and start-failure marking,
+- `taskSubmissionRecoveryRemote`: remote refresh, remote confirmation state, missing supplier-code fallback, and remote status callback bridge,
 - `taskSubmissionExecutionService`: execution collaborator shell, Product API construction, and submit runtime resolution,
 - `taskSubmissionExecutionProduct`: submit-product preparation, translation API selection, and pre-validation,
 - `taskSubmissionExecutionImages`: submit image upload runtime/API construction and upload-cache persistence,
@@ -105,7 +109,7 @@ Assessment:
 - this is the primary current consolidation seam,
 - these files are the best place for additional root-level slimming before any deeper package move,
 - `taskRecoveryService` and `taskRequeueService` are now part of the submission collaborator cluster, but their semantics are broader than the SHEIN publish path,
-- execution and direct-submit responsibilities are now separated by file group, but still live in root `package listingkit` because they depend on root models and SHEIN-specific helpers.
+- execution, direct-submit, and submission-recovery responsibilities are now separated by file group, but still live in root `package listingkit` because they depend on root models and SHEIN-specific helpers.
 
 ### C. Runtime context and settings resolution
 
@@ -236,10 +240,11 @@ Latest code inspection confirms:
 - `submissionCollaborators` includes `taskRecovery`, `taskRequeue`, `taskSubmission`, `taskSubmissionRecovery`, `taskSubmissionExecution`, `taskSubmissionState`, `taskDirectSubmission`, `taskTemporalSubmissionAdapter`, and `sheinSubmitLocks`.
 - `taskRecoveryService` depends on `Repository`, `TaskSubmitter`, and time only. It is submission-adjacent and owns recover-and-submit behavior for blocked retryable tasks.
 - `Repository.BulkRecoverBlockedTasks(...)` is explicitly documented as persistence-only; `TaskRecoveryService` owns authoritative recovery semantics.
-- `taskSubmissionService`, `taskDirectSubmissionService`, `taskSubmissionRecoveryService`, `taskSubmissionExecution*`, `taskSubmissionStateService`, and `taskTemporalSubmissionAdapter` still depend on root models and SHEIN-specific packages, so they should not be moved into `internal/listingkit/submission` yet.
+- `taskSubmissionService`, `taskDirectSubmissionService`, `taskSubmissionRecovery*`, `taskSubmissionExecution*`, `taskSubmissionStateService`, and `taskTemporalSubmissionAdapter` still depend on root models and SHEIN-specific packages, so they should not be moved into `internal/listingkit/submission` yet.
 - `taskSubmissionExecutionService` is now a thin shell for constructor/runtime/Product API wiring, while product preparation, image upload, normalization, and remote submit are split into dedicated execution files.
 - `taskSubmissionRefresh*` is now split into main flow, selection/request building, and mutation/validation file groups.
 - `serviceSubmitDirect*` is now split into facade/accessor, direct product preparation, and direct remote submit file groups.
+- `taskSubmissionRecovery*` is now split into recovered-route/finalization, lease management, and remote confirmation file groups.
 
 ## 5. Facade vs. Rule Ownership
 
@@ -263,7 +268,7 @@ These should stay thin and delegate.
 - `task_direct_submission_service.go`
 - `service_submit_direct_prepare.go`
 - `service_submit_direct_remote.go`
-- `task_submission_recovery_service.go`
+- `task_submission_recovery_*.go`
 - `task_submission_execution_*.go`
 - `task_temporal_submission_adapter.go`
 
@@ -305,8 +310,6 @@ Recommended next slices after this inventory:
 
 Low-risk next candidates:
 
-- `internal/listingkit/task_submission_recovery_service.go`
-  - identify helper groups that can be isolated without moving marketplace rules.
 - `internal/listingkit/task_temporal_submission_adapter.go`
   - do not move package yet, but consider file-group splitting if the adapter remains dense.
 - `internal/listingkit/task_recovery_service.go`
