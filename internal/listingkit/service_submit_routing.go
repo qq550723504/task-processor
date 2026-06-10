@@ -39,11 +39,3 @@ func (s *service) RequeuePendingTasks(ctx context.Context, req *RequeuePendingTa
 func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
 	return s.taskSubmissionRecoveryOrDefault().resolveSheinSubmitRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
 }
-
-func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {
-	return s != nil &&
-		s.sheinPublishWorkflowEnabled &&
-		s.sheinPublishWorkflowClient != nil &&
-		platform == "shein" &&
-		action == "publish"
-}

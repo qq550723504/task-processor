@@ -596,3 +596,27 @@ func TestSubmitRoutingFileOwnsRootSubmitDelegates(t *testing.T) {
 		}
 	}
 }
+
+func TestSubmitWorkflowFileOwnsWorkflowGatingHelpers(t *testing.T) {
+	t.Parallel()
+
+	workflowSrc, err := os.ReadFile("service_submit_workflow.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_workflow.go) error = %v", err)
+	}
+	workflowContent := string(workflowSrc)
+
+	if !strings.Contains(workflowContent, "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {") {
+		t.Fatalf("service_submit_workflow.go should contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
+	}
+
+	routingSrc, err := os.ReadFile("service_submit_routing.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_routing.go) error = %v", err)
+	}
+	routingContent := string(routingSrc)
+
+	if strings.Contains(routingContent, "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {") {
+		t.Fatalf("service_submit_routing.go should not contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
+	}
+}
