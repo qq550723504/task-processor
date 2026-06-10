@@ -1,8 +1,8 @@
-package httpapi
+package listingkit
 
 import "testing"
 
-func TestResolveListingKitDefaultSheinStoreID(t *testing.T) {
+func TestResolveDefaultSheinStoreID(t *testing.T) {
 	t.Parallel()
 
 	if got := ResolveDefaultSheinStoreID([]int64{869}); got != 869 {

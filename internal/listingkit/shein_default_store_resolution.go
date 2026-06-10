@@ -1,4 +1,4 @@
-package httpapi
+package listingkit
 
 func ResolveDefaultSheinStoreID(storeIDs []int64) int64 {
 	if len(storeIDs) != 1 {

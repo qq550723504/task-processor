@@ -52,25 +52,11 @@ Current app-layer read:
 | `runtime_support_shein_adapter_helpers.go` | `adapter construction` | Owns SHEIN runtime adapter-local tenant lookup, cookie payload normalization, and store-config mapping helpers. |
 | `shein_sync_runtime.go` | `adapter construction` | Builds SHEIN sync services and promotion-bridge runtime factories; still assembly-heavy, but worth watching if more tenant/store branching lands here. |
 | `ai_clients.go` | `adapter construction` | Builds routed OpenAI chat/image clients and runtime client resolution caches. |
-| `defaults.go` | `suspicious mixed responsibility` | Tiny default-store heuristic that may eventually belong closer to ListingKit settings/domain policy instead of HTTP runtime support. |
 | `zitadel_auth.go` | `adapter construction` | Runtime auth/authz middleware construction; transport/runtime concern, not ListingKit business logic. |
 
 ## Follow-Up Candidates
 
 ### Highest-signal candidate
-
-`internal/listingkit/httpapi/defaults.go`
-
-Why it stands out:
-
-- the `ResolveDefaultSheinStoreID(...)` heuristic is tiny,
-- but it is still a domain-facing default decision living in an HTTP runtime package.
-
-Suggested next slice:
-
-- decide whether the default-store heuristic should move to `internal/listingkit` or stay as an explicitly runtime-owned compatibility rule.
-
-### Secondary candidate
 
 `internal/listingkit/httpapi/shein_sync_runtime.go`
 
@@ -89,5 +75,6 @@ Suggested next slice:
 At this checkpoint:
 
 - `internal/app/httpapi` is mostly in the right place and should not be widened,
+- the default SHEIN store heuristic should be feature-owned in `internal/listingkit`, not `httpapi`-owned,
 - the most meaningful remaining cleanup is inside feature-owned runtime adapter helpers under `internal/listingkit/httpapi`,
 - the next safe refactor should target suspicious shaping helpers, not reopen the already-stable app-layer assembly split.
