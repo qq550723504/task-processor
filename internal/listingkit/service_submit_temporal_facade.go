@@ -1,8 +1,6 @@
 package listingkit
 
-import (
-	"context"
-)
+import "context"
 
 func (s *service) BeginSheinPublishAttempt(ctx context.Context, in SheinPublishAttemptInput) error {
 	return s.taskTemporalSubmissionAdapterOrDefault().BeginSheinPublishAttempt(ctx, in)
