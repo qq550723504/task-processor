@@ -1495,6 +1495,47 @@ func TestProcessFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
+func TestChildTaskRetryFacadeFileOwnsRootDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_child_task_retry_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_child_task_retry_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) RetryTaskChildTask(ctx context.Context, taskID string, req *RetryChildTaskRequest) (*TaskResult, error) {",
+		"taskID = strings.TrimSpace(taskID)",
+		"switch kind {",
+		"return s.persistRetriedChildTaskResult(ctx, task, result, kind, nil)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_child_task_retry_facade.go should contain %q", needle)
+		}
+	}
+
+	retrySrc, err := os.ReadFile("service_child_task_retry.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_child_task_retry.go) error = %v", err)
+	}
+	retryContent := string(retrySrc)
+
+	if strings.Contains(retryContent, "func (s *service) RetryTaskChildTask(ctx context.Context, taskID string, req *RetryChildTaskRequest) (*TaskResult, error) {") {
+		t.Fatalf("service_child_task_retry.go should not contain %q", "func (s *service) RetryTaskChildTask(ctx context.Context, taskID string, req *RetryChildTaskRequest) (*TaskResult, error) {")
+	}
+
+	for _, needle := range []string{
+		"func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) error {",
+		"func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) error {",
+		"func (s *service) persistRetriedChildTaskResult(ctx context.Context, task *Task, result *ListingKitResult, kind string, retryErr error) (*TaskResult, error) {",
+	} {
+		if !strings.Contains(retryContent, needle) {
+			t.Fatalf("service_child_task_retry.go should keep %q", needle)
+		}
+	}
+}
+
 func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 

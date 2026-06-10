@@ -20,6 +20,7 @@ internal/listingkit/service_defaults.go                   // config defaults / d
 internal/listingkit/service_collaborators.go              // collaborator initialization groups
 internal/listingkit/service_admin_collaborators.go       // admin collaborator accessors
 internal/listingkit/service_ai_client_settings.go        // AI client settings facade delegates
+internal/listingkit/service_child_task_retry_facade.go   // child task retry facade delegate
 internal/listingkit/service_shein_category_search.go     // SHEIN category search facade delegates
 internal/listingkit/service_shein_category_client.go     // SHEIN category/attribute API facade helpers
 internal/listingkit/service_shein_cookie_preview_facade.go // SHEIN cookie preview facade helper
@@ -126,6 +127,12 @@ Owns admin collaborator accessors:
 
 - settings admin,
 - SHEIN admin.
+
+### `service_child_task_retry_facade.go`
+
+Owns root child-task retry facade delegate:
+
+- child-task retry entrypoint.
 
 ### `service_store_profile.go`
 
