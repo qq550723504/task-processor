@@ -1345,14 +1345,14 @@ func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 		t.Fatalf("ReadFile(service_shein_category_search.go) unexpected error = %v", err)
 	}
 
-	categorySrc, err := os.ReadFile("service_shein_categories.go")
+	categorySrc, err := os.ReadFile("service_shein_category_store_selection_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_categories.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_category_store_selection_support.go) error = %v", err)
 	}
 	categoryContent := string(categorySrc)
 
 	if strings.Contains(categoryContent, "func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {") {
-		t.Fatalf("service_shein_categories.go should not contain %q", "func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {")
+		t.Fatalf("service_shein_category_store_selection_support.go should not contain %q", "func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {")
 	}
 
 	for _, needle := range []string{
@@ -1360,7 +1360,7 @@ func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 		"func (s *service) buildSheinCategoryAPI(ctx context.Context, task *Task) (sheincategory.CategoryAPI, error) {",
 	} {
 		if strings.Contains(categoryContent, needle) {
-			t.Fatalf("service_shein_categories.go should not contain %q after facade split", needle)
+			t.Fatalf("service_shein_category_store_selection_support.go should not contain %q after facade split", needle)
 		}
 	}
 
@@ -1370,7 +1370,7 @@ func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 		"func sheinCategoryMatchScore(path []string, normalizedQuery string, tokens []string) (int, bool) {",
 	} {
 		if !strings.Contains(categoryContent, needle) {
-			t.Fatalf("service_shein_categories.go should keep %q", needle)
+			t.Fatalf("service_shein_category_store_selection_support.go should keep %q", needle)
 		}
 	}
 }
@@ -1431,9 +1431,9 @@ func TestSheinStoreSelectionHelpersFileOwnsRootHelpers(t *testing.T) {
 		t.Fatalf("ReadFile(service_shein_store_selection_helpers.go) unexpected error = %v", err)
 	}
 
-	categorySrc, err := os.ReadFile("service_shein_categories.go")
+	categorySrc, err := os.ReadFile("service_shein_category_store_selection_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_categories.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_category_store_selection_support.go) error = %v", err)
 	}
 	categoryContent := string(categorySrc)
 
@@ -1443,7 +1443,7 @@ func TestSheinStoreSelectionHelpersFileOwnsRootHelpers(t *testing.T) {
 		"func (s *service) resolveSheinStoreSelection(ctx context.Context, task *Task) (*sheinStoreSelection, error) {",
 	} {
 		if strings.Contains(categoryContent, needle) {
-			t.Fatalf("service_shein_categories.go should not contain %q", needle)
+			t.Fatalf("service_shein_category_store_selection_support.go should not contain %q", needle)
 		}
 	}
 
@@ -1453,7 +1453,7 @@ func TestSheinStoreSelectionHelpersFileOwnsRootHelpers(t *testing.T) {
 		"func matchStoreProfileForTask(",
 	} {
 		if !strings.Contains(categoryContent, needle) {
-			t.Fatalf("service_shein_categories.go should keep %q", needle)
+			t.Fatalf("service_shein_category_store_selection_support.go should keep %q", needle)
 		}
 	}
 }
