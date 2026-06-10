@@ -2074,9 +2074,9 @@ func TestSheinFinalDraftFacadeFileOwnsRootDelegate(t *testing.T) {
 func TestSheinResolutionCacheFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_resolution_cache_facade.go")
+	facadeSrc, err := os.ReadFile("service_shein_resolution_cache_clear_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_resolution_cache_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_resolution_cache_clear_facade.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -2085,7 +2085,7 @@ func TestSheinResolutionCacheFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.sheinAdminOrDefault().ClearSheinResolutionCache(ctx, taskID, kind)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_resolution_cache_facade.go should contain %q", needle)
+			t.Fatalf("service_shein_resolution_cache_clear_facade.go should contain %q", needle)
 		}
 	}
 
