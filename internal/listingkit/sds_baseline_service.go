@@ -178,6 +178,7 @@ func (b *sdsBaselineService) reconcileCachedSDSLoginBaselineReadiness(
 		return
 	}
 	if readiness.ReasonCode != SDSBaselineReasonCodeLoginMissingCredentials &&
+		readiness.ReasonCode != SDSBaselineReasonCodeLoginInProgress &&
 		!isSDSBaselineCredentialBootstrapReadinessFailure(readiness) {
 		return
 	}
@@ -185,7 +186,7 @@ func (b *sdsBaselineService) reconcileCachedSDSLoginBaselineReadiness(
 		return
 	}
 	status, err := b.sdsLoginStatusProvider.Status(ctx)
-	if err != nil || status == nil || !status.HasAccessToken {
+	if err != nil || status == nil || status.LoginInProgress || !status.HasAccessToken {
 		return
 	}
 	readiness.ValidationStatus = SDSBaselineValidationStatusReady

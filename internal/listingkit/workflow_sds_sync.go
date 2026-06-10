@@ -3,6 +3,8 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 	listingworkflow "task-processor/internal/listingkit/workflow"
 	"task-processor/internal/productimage"
 	sdsusecase "task-processor/internal/sds/usecase"
+	sdsworkflow "task-processor/internal/sds/workflow"
 )
 
 const sdsDesignSyncTimeout = listingworkflow.SDSDesignSyncTimeout
@@ -137,6 +140,54 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 		"prototype_group_id": options.PrototypeGroupID,
 	}).Info("starting remote SDS design sync")
 
+	if syncResult, handled, err := s.syncSDSDesignFromUploadedImagePath(ctx, task, imageURL, sdsusecase.SyncInput{
+		VariantID:        options.VariantID,
+		ParentProductID:  options.ParentProductID,
+		PrototypeGroupID: options.PrototypeGroupID,
+		DesignType:       options.DesignType,
+		LayerID:          options.LayerID,
+		FitLevel:         options.FitLevel,
+		ResizeMode:       options.ResizeMode,
+		BlankDesignURL:   options.BlankDesignURL,
+	}); handled {
+		if err != nil {
+			result.SDSDesignResult = &SDSSyncSummary{
+				VariantID: options.VariantID,
+				Status:    "failed",
+				Error:     err.Error(),
+			}
+			markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
+			appendWarning(result, "sds template render failed: "+err.Error())
+			finishSDSStageWithError(stage, recorder, "sds_template_render_failed", "SDS template render failed", err)
+			log.WithError(err).Error("remote SDS design sync failed")
+			ensureResultPodExecution(result, task.Request)
+			return
+		}
+		result.SDSDesignResult = buildSDSSyncSummary(options, syncResult.DesignResult)
+		if needsLocalSDSMockupFallback(result.SDSDesignResult, options) {
+			appendWarning(result, "SDS render returned fewer images than expected; local fallback disabled")
+			recorder.AddIssue(WorkflowIssueSeverityWarning, "sds_design_sync", "sds_render_incomplete", "SDS render returned fewer images than expected", "local fallback disabled")
+		}
+		if sdsRenderedLooksBlank(ctx, result.SDSDesignResult, options) {
+			result.SDSDesignResult.Status = "failed"
+			result.SDSDesignResult.Error = "SDS render returned blank template"
+			result.SDSDesignResult.MockupImageURLs = nil
+			appendWarning(result, "SDS render returned blank template; official SDS render needs investigation")
+			stage.Degrade("sds_render_blank", "SDS render returned blank template", "official SDS render needs investigation")
+			ensureResultPodExecution(result, task.Request)
+			return
+		}
+		markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
+		stage.Complete()
+		ensureResultPodExecution(result, task.Request)
+		log.WithFields(logrus.Fields{
+			"status":        result.SDSDesignResult.Status,
+			"mockup_count":  len(result.SDSDesignResult.MockupImageURLs),
+			"variant_count": len(result.SDSDesignResult.VariantResults),
+		}).Info("remote SDS design sync completed")
+		return
+	}
+
 	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
 	defer cancel()
 
@@ -194,6 +245,67 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 	}).Info("remote SDS design sync completed")
 }
 
+func (s *service) syncSDSDesignFromUploadedImagePath(ctx context.Context, task *Task, imageURL string, syncInput sdsusecase.SyncInput) (*sdsworkflow.SyncResult, bool, error) {
+	key, ok := uploadedListingKitImageKeyFromURL(imageURL)
+	if !ok {
+		return nil, false, nil
+	}
+	return s.syncSDSDesignFromUploadedImageKey(ctx, task, key, syncInput, sdsDesignSyncTimeout)
+}
+
+func (s *service) syncSDSDesignFromUploadedImageKey(ctx context.Context, task *Task, key string, syncInput sdsusecase.SyncInput, timeout time.Duration) (*sdsworkflow.SyncResult, bool, error) {
+	if s.uploadStore == nil {
+		return nil, true, fmt.Errorf("uploaded image store is not configured")
+	}
+	stored, err := s.uploadStore.Open(ctx, key)
+	if err != nil {
+		return nil, true, err
+	}
+	data := stored.Data
+	if len(data) == 0 {
+		data, err = os.ReadFile(stored.Path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, true, ErrUploadedImageNotFound
+			}
+			return nil, true, fmt.Errorf("read uploaded image: %w", err)
+		}
+	}
+	tempDir := os.TempDir()
+	fileName := strings.TrimSpace(stored.Filename)
+	if fileName == "" {
+		fileName = studioSDSMaterialFileName(task)
+	}
+	tempPattern := "listingkit-sds-*-" + filepath.Base(fileName)
+	tempFile, err := os.CreateTemp(tempDir, tempPattern)
+	if err != nil {
+		return nil, true, fmt.Errorf("create temp uploaded image: %w", err)
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+	if _, err := tempFile.Write(data); err != nil {
+		_ = tempFile.Close()
+		return nil, true, fmt.Errorf("write temp uploaded image: %w", err)
+	}
+	if err := tempFile.Close(); err != nil {
+		return nil, true, fmt.Errorf("close temp uploaded image: %w", err)
+	}
+	syncCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	syncResult, err := s.sdsSyncSvc.SyncFromLocalFile(syncCtx, sdsusecase.LocalFileInput{
+		Sync: syncInput,
+		File: sdsworkflow.FileSource{
+			Path:        tempPath,
+			FileName:    filepath.Base(fileName),
+			ContentType: strings.TrimSpace(stored.ContentType),
+		},
+	})
+	if err != nil {
+		return nil, true, err
+	}
+	return syncResult, true, nil
+}
+
 func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Task, result *ListingKitResult, imageURL string, recorder *workflowRecorder) {
 	options := task.Request.Options.SDS
 	result = normalizeListingKitResultSemanticFields(result)
@@ -213,24 +325,33 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 	for _, variant := range representatives {
 		stage := recorder.Start("sds_design_sync", "")
 		stage.SetTaskID(strings.TrimSpace(variant.VariantSKU))
-		syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeoutForVariantCount(1))
-		syncResult, err := s.sdsSyncSvc.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
-			Sync: sdsusecase.SyncInput{
-				VariantID:        firstNonZeroInt64(variant.VariantID, options.VariantID),
-				ParentProductID:  options.ParentProductID,
-				PrototypeGroupID: firstNonZeroInt64(variant.PrototypeGroupID, options.PrototypeGroupID),
-				DesignType:       options.DesignType,
-				LayerID:          firstNonEmptyString(variant.LayerID, options.LayerID),
-				FitLevel:         options.FitLevel,
-				ResizeMode:       options.ResizeMode,
-				BlankDesignURL:   firstNonEmptyString(variant.BlankDesignURL, options.BlankDesignURL),
-			},
-			Image: sdsusecase.ImageSource{
-				URL:      imageURL,
-				FileName: studioSDSMaterialFileName(task),
-			},
-		})
-		cancel()
+		syncInput := sdsusecase.SyncInput{
+			VariantID:        firstNonZeroInt64(variant.VariantID, options.VariantID),
+			ParentProductID:  options.ParentProductID,
+			PrototypeGroupID: firstNonZeroInt64(variant.PrototypeGroupID, options.PrototypeGroupID),
+			DesignType:       options.DesignType,
+			LayerID:          firstNonEmptyString(variant.LayerID, options.LayerID),
+			FitLevel:         options.FitLevel,
+			ResizeMode:       options.ResizeMode,
+			BlankDesignURL:   firstNonEmptyString(variant.BlankDesignURL, options.BlankDesignURL),
+		}
+		syncResult, err := func() (*sdsworkflow.SyncResult, error) {
+			if key, ok := uploadedListingKitImageKeyFromURL(imageURL); ok {
+				result, handled, err := s.syncSDSDesignFromUploadedImageKey(ctx, task, key, syncInput, sdsDesignSyncTimeoutForVariantCount(1))
+				if handled {
+					return result, err
+				}
+			}
+			syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeoutForVariantCount(1))
+			defer cancel()
+			return s.sdsSyncSvc.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
+				Sync: syncInput,
+				Image: sdsusecase.ImageSource{
+					URL:      imageURL,
+					FileName: studioSDSMaterialFileName(task),
+				},
+			})
+		}()
 		if err != nil {
 			finishSDSStageWithError(stage, recorder, "sds_variant_render_failed", "SDS variant render failed", err)
 			summaries = append(summaries, SDSSyncSummary{
@@ -349,6 +470,26 @@ func firstNonZeroInt64(values ...int64) int64 {
 		}
 	}
 	return 0
+}
+
+func uploadedListingKitImageKeyFromURL(rawURL string) (string, bool) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return "", false
+	}
+	const prefix = "/api/v1/listing-kits/uploads/files/"
+	if strings.HasPrefix(trimmed, prefix) {
+		return strings.TrimPrefix(trimmed, prefix), true
+	}
+	const localhostPrefix = "http://localhost:3000/api/v1/listing-kits/uploads/files/"
+	if strings.HasPrefix(trimmed, localhostPrefix) {
+		return strings.TrimPrefix(trimmed, localhostPrefix), true
+	}
+	const localhostSecurePrefix = "https://localhost:3000/api/v1/listing-kits/uploads/files/"
+	if strings.HasPrefix(trimmed, localhostSecurePrefix) {
+		return strings.TrimPrefix(trimmed, localhostSecurePrefix), true
+	}
+	return "", false
 }
 
 func studioSDSMaterialFileName(task *Task) string {

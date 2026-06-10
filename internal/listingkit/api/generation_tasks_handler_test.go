@@ -33,6 +33,8 @@ type stubGenerationTaskService struct {
 	upsertedStoreProfile    *listingkit.ListingKitStoreProfile
 	storeRoutingSettings    *listingkit.ListingKitStoreRoutingSettings
 	baselineReadiness       *listingkit.SDSBaselineReadiness
+	createdTask             *listingkit.Task
+	createReq               *listingkit.GenerateRequest
 	err                     error
 	lastTask                string
 	uploadedImageKey        string
@@ -61,6 +63,10 @@ type stubGenerationTaskService struct {
 }
 
 func (s *stubGenerationTaskService) CreateGenerateTask(ctx context.Context, req *listingkit.GenerateRequest) (*listingkit.Task, error) {
+	s.createReq = req
+	if s.createdTask != nil || s.err != nil {
+		return s.createdTask, s.err
+	}
 	return nil, errors.New("not implemented")
 }
 func (s *stubGenerationTaskService) ListTasks(ctx context.Context, query *listingkit.TaskListQuery) (*listingkit.TaskListPage, error) {
@@ -218,6 +224,42 @@ func TestGetTaskGenerationTasksReturnsPage(t *testing.T) {
 	}
 	if body.Summary == nil || body.Summary.TotalTasks != 1 {
 		t.Fatalf("body = %+v, want total_tasks=1", body)
+	}
+}
+
+func TestGenerateListingKitAbsolutizesUploadedImageURLs(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubGenerationTaskService{
+		createdTask: &listingkit.Task{
+			ID:       "task-abs-url",
+			TenantID: listingkit.DefaultTenantID,
+			Status:   listingkit.TaskStatusPending,
+		},
+	}
+	h, err := NewHandler(svc, WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/generate", h.GenerateListingKit)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/generate", strings.NewReader(`{"image_urls":["/api/v1/listing-kits/uploads/files/20260610/demo.png"],"text":"demo","platforms":["shein"]}`))
+	req.Host = "localhost:3000"
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", resp.Code, resp.Body.String())
+	}
+	if svc.createReq == nil {
+		t.Fatal("expected create request to be captured")
+	}
+	if got := svc.createReq.ImageURLs; len(got) != 1 || got[0] != "http://localhost:3000/api/v1/listing-kits/uploads/files/20260610/demo.png" {
+		t.Fatalf("image_urls = %#v, want absolutized uploaded image URL", got)
 	}
 }
 

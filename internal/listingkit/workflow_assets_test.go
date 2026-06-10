@@ -144,12 +144,16 @@ type stubWorkflowSDSSyncService struct {
 	result           *sdsadapter.SyncResult
 	remoteResult     *sdsworkflow.SyncResult
 	remoteResults    []*sdsworkflow.SyncResult
+	localFileResult  *sdsworkflow.SyncResult
 	err              error
 	remoteErr        error
+	localFileErr     error
 	lastInput        sdsusecase.ImageResultInput
 	lastRemoteInput  sdsusecase.RemoteImageInput
 	lastRemoteInputs []sdsusecase.RemoteImageInput
+	lastLocalFile    sdsusecase.LocalFileInput
 	remoteCalls      int
+	localFileCalls   int
 }
 
 func (s *stubWorkflowImageService) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
@@ -191,6 +195,14 @@ func (s *stubWorkflowSDSSyncService) SyncFromRemoteImage(ctx context.Context, in
 }
 
 func (s *stubWorkflowSDSSyncService) SyncFromLocalFile(ctx context.Context, input sdsusecase.LocalFileInput) (*sdsworkflow.SyncResult, error) {
+	s.localFileCalls++
+	s.lastLocalFile = input
+	if s.localFileErr != nil {
+		return nil, s.localFileErr
+	}
+	if s.localFileResult != nil {
+		return s.localFileResult, nil
+	}
 	return nil, fmt.Errorf("not implemented")
 }
 
@@ -2445,6 +2457,152 @@ func TestSyncSDSDesignVariantsSubmitsEachRepresentativeVariantAsPrimary(t *testi
 	}
 	if len(result.SDSSync.VariantResults) != 2 {
 		t.Fatalf("variant results = %+v, want 2", result.SDSSync.VariantResults)
+	}
+}
+
+func TestSyncSDSDesignFromRemoteUsesLocalFileForUploadedImagePath(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewLocalImageUploadStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalImageUploadStore() error = %v", err)
+	}
+	saved, err := store.Save(context.Background(), &ImageUploadInput{
+		Filename:    "design.png",
+		ContentType: "image/png",
+		Data:        []byte{0x89, 0x50, 0x4E, 0x47},
+	})
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	sdsSvc := &stubWorkflowSDSSyncService{
+		remoteErr: fmt.Errorf("remote sync should not be called for uploaded image paths"),
+		localFileResult: &sdsworkflow.SyncResult{
+			DesignResult: &sdsdesign.PrepareSyncDesignResult{
+				Page: &sdsdesign.DesignProductPage{
+					Product: sdsdesign.DesignProduct{ID: 53064},
+				},
+				Request: &sdsdesign.SyncDesignRequest{
+					PrototypeGroupID: 9663,
+					Prototypes: []sdsdesign.SyncDesignPrototype{
+						{Layers: []sdsdesign.SyncDesignLayer{{LayerID: "436328327568490496"}}},
+					},
+				},
+				RenderedImageURLs: []string{"https://cdn.sdspod.com/out/53064-main.jpg"},
+			},
+		},
+	}
+
+	svc := &service{
+		sdsSyncSvc:  sdsSvc,
+		uploadStore: store,
+	}
+	task := &Task{
+		ID: "listingkit-task-uploaded-remote-sds",
+		Request: &GenerateRequest{
+			ImageURLs: []string{buildUploadedImagePath(saved.Key)},
+			Options: &GenerateOptions{
+				SDS: &SDSSyncOptions{
+					VariantID:        53064,
+					ParentProductID:  53063,
+					PrototypeGroupID: 9663,
+					LayerID:          "436328327568490496",
+				},
+			},
+		},
+	}
+	result := &ListingKitResult{}
+
+	svc.syncSDSDesignFromRemote(context.Background(), task, result, newWorkflowRecorder(result))
+
+	if sdsSvc.remoteCalls != 0 {
+		t.Fatalf("remote calls = %d, want 0 when uploaded image path is resolved locally", sdsSvc.remoteCalls)
+	}
+	if sdsSvc.localFileCalls != 1 {
+		t.Fatalf("local file calls = %d, want 1 when uploaded image path is resolved locally", sdsSvc.localFileCalls)
+	}
+	if result.SDSSync == nil || result.SDSSync.Status != "completed" {
+		t.Fatalf("sds sync = %+v, want completed local-file SDS sync", result.SDSSync)
+	}
+	if !hasChildTaskStatus(result.ChildTasks, "sds_design_sync", string(TaskStatusCompleted)) {
+		t.Fatalf("child tasks = %+v, want completed sds_design_sync", result.ChildTasks)
+	}
+}
+
+func TestSyncSDSDesignVariantsFromRemoteUsesLocalFileForUploadedImagePath(t *testing.T) {
+	t.Parallel()
+
+	store, err := NewLocalImageUploadStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalImageUploadStore() error = %v", err)
+	}
+	saved, err := store.Save(context.Background(), &ImageUploadInput{
+		Filename:    "design.png",
+		ContentType: "image/png",
+		Data:        []byte{0x89, 0x50, 0x4E, 0x47},
+	})
+	if err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	sdsSvc := &stubWorkflowSDSSyncService{
+		remoteErr: fmt.Errorf("remote sync should not be called for uploaded image paths"),
+		localFileResult: &sdsworkflow.SyncResult{
+			DesignResult: &sdsdesign.PrepareSyncDesignResult{
+				Page: &sdsdesign.DesignProductPage{
+					Product: sdsdesign.DesignProduct{ID: 53064},
+				},
+				Request: &sdsdesign.SyncDesignRequest{
+					PrototypeGroupID: 9663,
+					Prototypes: []sdsdesign.SyncDesignPrototype{
+						{Layers: []sdsdesign.SyncDesignLayer{{LayerID: "436328327568490496"}}},
+					},
+				},
+				RenderedImageURLsByProduct: map[int64][]string{
+					53064: []string{"https://cdn.sdspod.com/out/53064-main.jpg"},
+				},
+				RenderedImageURLs: []string{"https://cdn.sdspod.com/out/53064-main.jpg"},
+			},
+		},
+	}
+
+	svc := &service{
+		sdsSyncSvc:  sdsSvc,
+		uploadStore: store,
+	}
+	task := &Task{
+		ID: "listingkit-task-uploaded-variant-sds",
+		Request: &GenerateRequest{
+			ImageURLs: []string{buildUploadedImagePath(saved.Key)},
+			Options: &GenerateOptions{
+				SDS: &SDSSyncOptions{
+					VariantID:        53064,
+					ParentProductID:  53063,
+					PrototypeGroupID: 9663,
+					LayerID:          "436328327568490496",
+					Variants: []SDSSyncVariantOption{
+						{VariantID: 53064, VariantSKU: "JJ0529207001", Color: "white", LayerID: "436328327568490496", PrototypeGroupID: 9663},
+					},
+				},
+			},
+		},
+	}
+	result := &ListingKitResult{}
+
+	svc.syncSDSDesignVariantsFromRemote(context.Background(), task, result, task.Request.ImageURLs[0], newWorkflowRecorder(result))
+
+	if sdsSvc.remoteCalls != 0 {
+		t.Fatalf("remote calls = %d, want 0 when uploaded image path is resolved locally", sdsSvc.remoteCalls)
+	}
+	if sdsSvc.localFileCalls != 1 {
+		t.Fatalf("local file calls = %d, want 1 when uploaded image path is resolved locally", sdsSvc.localFileCalls)
+	}
+	if result.SDSSync == nil || result.SDSSync.Status != "completed" {
+		t.Fatalf("sds sync = %+v, want completed local-file SDS sync", result.SDSSync)
+	}
+	if len(result.SDSSync.VariantResults) != 1 {
+		t.Fatalf("variant results = %+v, want 1", result.SDSSync.VariantResults)
 	}
 }
 

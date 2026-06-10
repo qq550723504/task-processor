@@ -270,6 +270,62 @@ func TestGetSDSBaselineReadinessClearsCachedLoginCredentialBlockWhenAccessTokenE
 	}
 }
 
+func TestGetSDSBaselineReadinessClearsCachedLoginInProgressBlockWhenLoginHasCompleted(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	cacheRepo, ok := repo.(SDSBaselineCacheRepository)
+	if !ok {
+		t.Fatal("mem task repository does not expose SDS baseline cache repository")
+	}
+	query := &SDSBaselineReadinessQuery{
+		ParentProductID:    9001,
+		PrototypeGroupID:   7001,
+		VariantID:          101,
+		SelectedVariantIDs: []int64{101},
+	}
+	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+		Title: "Baseline Product",
+	})
+	if err != nil {
+		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+	}
+	ctx := WithTenantID(context.Background(), DefaultTenantID)
+	if err := cacheRepo.SaveSDSBaselineCache(ctx, &SDSBaselineCacheEntry{
+		BaselineKey:          SDSBaselineKeyFromOptions(DefaultTenantID, query.BaselineOptions()),
+		Status:               SDSBaselineStatusBaselineCached,
+		Version:              1,
+		CanonicalProductBase: payload,
+		ValidationStatus:     SDSBaselineValidationStatusBlocked,
+		ValidationReasonCode: SDSBaselineReasonCodeLoginInProgress,
+		ValidationReason:     "SDS login is still in progress.",
+	}); err != nil {
+		t.Fatalf("SaveSDSBaselineCache: %v", err)
+	}
+
+	svc := &service{
+		repo: repo,
+		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+			status: &sdslogin.Status{
+				HasAccessToken: true,
+			},
+		},
+	}
+	readiness, err := svc.GetSDSBaselineReadiness(ctx, query)
+	if err != nil {
+		t.Fatalf("GetSDSBaselineReadiness() error = %v", err)
+	}
+	if readiness == nil {
+		t.Fatal("expected readiness payload")
+	}
+	if readiness.Status != SDSBaselineStatusReady || readiness.ValidationStatus != SDSBaselineValidationStatusReady {
+		t.Fatalf("readiness = %+v, want ready/ready after clearing stale login-in-progress block", readiness)
+	}
+	if readiness.ReasonCode != "" || readiness.Reason != "" {
+		t.Fatalf("readiness = %+v, want cleared reason fields", readiness)
+	}
+}
+
 func TestGetSDSBaselineReadinessClearsCachedDesignSurfaceCredentialFailureWhenAccessTokenExists(t *testing.T) {
 	t.Parallel()
 

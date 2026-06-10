@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -72,9 +73,40 @@ func normalizeGenerateRequest(req *GenerateRequest) {
 		req.Options.ProcessImages = true
 	}
 	req.Platforms = normalizePlatforms(req.Platforms)
+	req.ImageURLs = normalizeGenerateRequestImageURLs(req.ImageURLs)
 	if len(req.Platforms) == 0 {
 		req.Platforms = []string{"amazon", "shein", "temu", "walmart"}
 	}
+}
+
+func normalizeGenerateRequestImageURLs(urls []string) []string {
+	if len(urls) == 0 {
+		return nil
+	}
+	normalized := make([]string, 0, len(urls))
+	for _, rawURL := range urls {
+		trimmed := strings.TrimSpace(rawURL)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "/api/v1/listing-kits/uploads/files/") {
+			trimmed = absolutizeListingKitUploadedImageURL(trimmed)
+		}
+		normalized = append(normalized, trimmed)
+	}
+	return normalized
+}
+
+func absolutizeListingKitUploadedImageURL(rawURL string) string {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return ""
+	}
+	parsed, err := url.Parse(trimmed)
+	if err == nil && parsed.IsAbs() {
+		return trimmed
+	}
+	return "http://localhost:3000" + trimmed
 }
 
 func normalizePlatforms(platforms []string) []string {
