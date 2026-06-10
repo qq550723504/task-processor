@@ -38,7 +38,7 @@ internal/listingkit/service_process_entry.go             // process entry logic
 internal/listingkit/service_process_review_helper.go     // process review helper
 internal/listingkit/service_task_layers_facade.go        // task layer facade delegates
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
-internal/listingkit/service_task_generation_facade.go    // task generation facade delegates
+internal/listingkit/service_task_generation_logic.go     // task generation logic delegates
 internal/listingkit/service_task_revision_facade.go      // task revision facade delegates
 internal/listingkit/service_task_lifecycle_logic.go      // task lifecycle logic delegates
 internal/listingkit/service_sds_baseline_warm_facade.go // SDS baseline facade delegates
@@ -275,9 +275,9 @@ Owns task collaborator accessors:
 - task lifecycle,
 - SDS baseline helper access.
 
-### `service_task_generation_facade.go`
+### `service_task_generation_logic.go`
 
-Owns root task generation facade delegates:
+Owns root task generation logic delegates:
 
 - generation task listing and actions,
 - review queue / session delegates,
