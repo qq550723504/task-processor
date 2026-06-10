@@ -220,6 +220,64 @@ func TestAdminCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 	}
 }
 
+func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		file         string
+		builderCalls []string
+		inlineConfig []string
+	}{
+		{
+			name: "task generation",
+			file: "service_generation.go",
+			builderCalls: []string{
+				"buildTaskGenerationServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newTaskGenerationService(taskGenerationServiceConfig{",
+			},
+		},
+		{
+			name: "task revision",
+			file: "service_task.go",
+			builderCalls: []string{
+				"buildTaskRevisionServiceConfig(s)",
+				"buildTaskLifecycleServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newTaskRevisionService(taskRevisionServiceConfig{",
+				"newTaskLifecycleService(taskLifecycleServiceConfig{",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			src, err := os.ReadFile(tc.file)
+			if err != nil {
+				t.Fatalf("ReadFile(%s) error = %v", tc.file, err)
+			}
+			content := string(src)
+
+			for _, builderCall := range tc.builderCalls {
+				if !strings.Contains(content, builderCall) {
+					t.Fatalf("%s should contain %q", tc.file, builderCall)
+				}
+			}
+			for _, inlineConfig := range tc.inlineConfig {
+				if strings.Contains(content, inlineConfig) {
+					t.Fatalf("%s should not contain %q", tc.file, inlineConfig)
+				}
+			}
+		})
+	}
+}
+
 func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 	t.Parallel()
 

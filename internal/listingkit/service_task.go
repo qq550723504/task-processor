@@ -83,17 +83,7 @@ func (s *service) taskRevisionOrDefault() *taskRevisionService {
 	if s.taskRevision != nil {
 		return s.taskRevision
 	}
-	s.taskRevision = newTaskRevisionService(taskRevisionServiceConfig{
-		repo: s.repo,
-		resolveManualSheinSaleAttributeValueIDs: func(ctx context.Context, task *Task, req *ApplyRevisionRequest) error {
-			return s.resolveManualSheinSaleAttributeValueIDs(ctx, task, req)
-		},
-		mutateTaskResult: s.mutateTaskResult,
-		refreshSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) {
-			s.refreshSheinDerivedState(task, req)
-		},
-		buildTaskPreview: s.buildTaskPreview,
-	})
+	s.taskRevision = newTaskRevisionService(buildTaskRevisionServiceConfig(s))
 	return s.taskRevision
 }
 
@@ -101,25 +91,6 @@ func (s *service) taskLifecycleOrDefault() *taskLifecycleService {
 	if s.taskLifecycle != nil {
 		return s.taskLifecycle
 	}
-	s.taskLifecycle = newTaskLifecycleService(taskLifecycleServiceConfig{
-		repo:                   s.repo,
-		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
-		requestDefaults: func() generateRequestDefaults {
-			return s.requestDefaults
-		},
-		taskSubmitter: func() TaskSubmitter {
-			return s.taskSubmitter
-		},
-		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
-			return s.standardProductWorkflowClient, s.standardProductWorkflowEnabled
-		},
-		processListingKit: s.ProcessListingKit,
-		resolveStoreSelection: func(ctx context.Context, task *Task) (*sheinStoreSelection, error) {
-			return s.resolveSheinStoreSelection(ctx, task)
-		},
-		buildResultPayload: func(ctx context.Context, task *Task) (*ListingKitResult, error) {
-			return s.buildTaskResultPayload(ctx, task)
-		},
-	})
+	s.taskLifecycle = newTaskLifecycleService(buildTaskLifecycleServiceConfig(s))
 	return s.taskLifecycle
 }
