@@ -526,7 +526,7 @@ func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 	}{
 		{
 			name: "submit store context",
-			file: "service_submit_store_context_facade.go",
+			file: "service_submit_store_context_helpers.go",
 			needles: []string{
 				"buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)",
 			},
@@ -1487,9 +1487,9 @@ func TestSheinCookieNoteFileOwnsCookieAvailabilityResolver(t *testing.T) {
 func TestSubmitStoreContextFacadeFileOwnsRootHelpers(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_store_context_facade.go")
+	facadeSrc, err := os.ReadFile("service_submit_store_context_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_store_context_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_store_context_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1500,7 +1500,7 @@ func TestSubmitStoreContextFacadeFileOwnsRootHelpers(t *testing.T) {
 		"return buildSubmitRuntimeContextResolver(s).resolveWarehouseCode(ctx, task, site)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_store_context_facade.go should contain %q", needle)
+			t.Fatalf("service_submit_store_context_helpers.go should contain %q", needle)
 		}
 	}
 
