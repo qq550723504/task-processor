@@ -1735,12 +1735,12 @@ func TestSheinPricingFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
-func TestSheinImageRegenerationFacadeFileOwnsRootDelegate(t *testing.T) {
+func TestSheinImageRegenerationFileOwnsRootLogic(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_image_regeneration_facade.go")
+	facadeSrc, err := os.ReadFile("service_shein_image_regeneration.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_image_regeneration_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_image_regeneration.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1751,8 +1751,14 @@ func TestSheinImageRegenerationFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return &RegenerateSheinDataImageResponse{",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_image_regeneration_facade.go should contain %q", needle)
+			t.Fatalf("service_shein_image_regeneration.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_image_regeneration_facade.go"); err == nil {
+		t.Fatal("service_shein_image_regeneration_facade.go should be removed after SHEIN image regeneration logic rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_image_regeneration_facade.go) unexpected error = %v", err)
 	}
 
 	regenSrc, err := os.ReadFile("shein_image_regeneration.go")
