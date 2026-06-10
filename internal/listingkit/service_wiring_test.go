@@ -1701,9 +1701,9 @@ func TestSubmitContextHelpersFileOwnsRootHelpers(t *testing.T) {
 func TestSubmitIdentityHelperFileOwnsTaskIdentityContextHelper(t *testing.T) {
 	t.Parallel()
 
-	helperSrc, err := os.ReadFile("service_submit_identity_helper.go")
+	helperSrc, err := os.ReadFile("service_submit_task_identity_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_identity_helper.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_task_identity_helper.go) error = %v", err)
 	}
 	helperContent := string(helperSrc)
 
@@ -1714,8 +1714,14 @@ func TestSubmitIdentityHelperFileOwnsTaskIdentityContextHelper(t *testing.T) {
 		"return openaiclient.WithIdentity(ctx, identity), nil",
 	} {
 		if !strings.Contains(helperContent, needle) {
-			t.Fatalf("service_submit_identity_helper.go should contain %q", needle)
+			t.Fatalf("service_submit_task_identity_helper.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_submit_identity_helper.go"); err == nil {
+		t.Fatal("service_submit_identity_helper.go should be removed after submit task identity helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_identity_helper.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_submit_runtime_context.go"); err == nil {
