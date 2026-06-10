@@ -1143,8 +1143,40 @@ func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 		"func (s *service) buildSheinAttributeAPI(ctx context.Context, task *Task) (sheinpub.AttributeAPI, error) {",
 		"func (s *service) buildSheinCategoryAPI(ctx context.Context, task *Task) (sheincategory.CategoryAPI, error) {",
 	} {
+		if strings.Contains(categoryContent, needle) {
+			t.Fatalf("service_shein_categories.go should not contain %q after facade split", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"type sheinCategorySearchMatch struct {",
+		"func searchSheinCategoryCandidates(nodes []sheincategory.CategoryTreeNode, query string) []SheinCategorySearchCandidate {",
+		"func sheinCategoryMatchScore(path []string, normalizedQuery string, tokens []string) (int, bool) {",
+	} {
 		if !strings.Contains(categoryContent, needle) {
 			t.Fatalf("service_shein_categories.go should keep %q", needle)
+		}
+	}
+}
+
+func TestSheinCategoryClientFacadeFileOwnsRootHelpers(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_shein_category_client.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_category_client.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) buildSheinAttributeAPI(ctx context.Context, task *Task) (sheinpub.AttributeAPI, error) {",
+		"baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)",
+		"return sheinattribute.NewClient(baseAPI), nil",
+		"func (s *service) buildSheinCategoryAPI(ctx context.Context, task *Task) (sheincategory.CategoryAPI, error) {",
+		"return sheincategory.NewClient(baseAPI), nil",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_shein_category_client.go should contain %q", needle)
 		}
 	}
 }
