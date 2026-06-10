@@ -268,7 +268,7 @@ func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		},
 		{
 			name:         "generation service",
-			file:         "service_generation_helpers.go",
+			file:         "service_task_generation_support_helpers.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -2230,9 +2230,9 @@ func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 		t.Fatalf("ReadFile(service_task_generation.go) unexpected error = %v", err)
 	}
 
-	serviceSrc, err := os.ReadFile("service_generation_helpers.go")
+	serviceSrc, err := os.ReadFile("service_task_generation_support_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_generation_helpers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_task_generation_support_helpers.go) error = %v", err)
 	}
 	serviceContent := string(serviceSrc)
 
@@ -2247,7 +2247,7 @@ func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error) {",
 	} {
 		if strings.Contains(serviceContent, needle) {
-			t.Fatalf("service_generation_helpers.go should not contain %q", needle)
+			t.Fatalf("service_task_generation_support_helpers.go should not contain %q", needle)
 		}
 	}
 
@@ -2258,7 +2258,7 @@ func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 		"func retrySelectionFilter(req *RetryGenerationTasksRequest) listinggeneration.RetrySelectionFilter {",
 	} {
 		if !strings.Contains(serviceContent, needle) {
-			t.Fatalf("service_generation_helpers.go should contain %q", needle)
+			t.Fatalf("service_task_generation_support_helpers.go should contain %q", needle)
 		}
 	}
 

@@ -282,7 +282,7 @@ Owns root task generation facade delegates:
 - review queue / session delegates,
 - generation retry and navigation dispatch delegates.
 
-### `service_generation_helpers.go`
+### `service_task_generation_support_helpers.go`
 
 Owns shared generation helpers:
 

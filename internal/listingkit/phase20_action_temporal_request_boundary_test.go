@@ -248,8 +248,8 @@ func TestTaskGenerationLayerTemporalRequestBoundary(t *testing.T) {
 	t.Run("service_generation_actions_keeps_only_seam_alias", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "service_generation_helpers.go", "resolveLayerTemporalPlatform")
-		callNames := readNamedFunctionCallNames(t, "service_generation_helpers.go", "resolveLayerTemporalPlatform")
+		source := readNamedFunctionSource(t, "service_task_generation_support_helpers.go", "resolveLayerTemporalPlatform")
+		callNames := readNamedFunctionCallNames(t, "service_task_generation_support_helpers.go", "resolveLayerTemporalPlatform")
 
 		assertSourceContainsAll(t, source, []string{
 			"resolveTemporalRequestPlatform(req)",
