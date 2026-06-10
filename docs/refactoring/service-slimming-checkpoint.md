@@ -58,7 +58,7 @@ internal/listingkit/service_submit_lease_helper.go        // shared submit lease
 internal/listingkit/service_submit_contracts.go           // shared submit option structs / normalization helpers
 internal/listingkit/service_submit_collaborators.go       // submit collaborator accessors
 internal/listingkit/service_submit_routing.go             // thin submit/recovery/refresh routing delegates
-internal/listingkit/service_submit_workflow_helpers.go    // workflow submit helpers
+internal/listingkit/service_submit_workflow_entry_helpers.go // workflow submit helpers
 internal/listingkit/service_submit_temporal_facade.go     // Temporal submit facade delegates
 internal/listingkit/service_submit_default_action_helper.go  // default SHEIN submit action resolver helper
 internal/listingkit/service_submit_identity_helper.go     // submit identity helper
@@ -435,7 +435,7 @@ The root submit surface is now split so the facade file stays intentionally thin
 - `service_submit_contracts.go`: shared submit option structs, target normalization, and Temporal replay detection helpers,
 - `service_submit_collaborators.go`: submit/recovery/direct/Temporal/state/execution/refresh collaborator accessors,
 - `service_submit_routing.go`: thin submit/recovery/requeue/refresh routing delegates that bridge facade calls to collaborators,
-- `service_submit_workflow_helpers.go`: root-facing SHEIN workflow submit/gating helpers,
+- `service_submit_workflow_entry_helpers.go`: root-facing SHEIN workflow submit/gating helpers,
 - `service_submit_temporal_facade.go`: root-facing Temporal SHEIN submit and preview delegates,
 - `service_submit_default_action_helper.go`: root-facing default SHEIN submit-action resolver,
 - `service_submit_action_preference_helper.go`: shared preferred submit-action normalization helper,
@@ -446,7 +446,7 @@ The root submit surface is now split so the facade file stays intentionally thin
 - `service_submit_wiring.go`: collaborator config builders only.
 
 `service_submit_wiring.go` stays focused on config builder seams, while workflow
-launch/gating entry helpers live in `service_submit_workflow_helpers.go` and
+launch/gating entry helpers live in `service_submit_workflow_entry_helpers.go` and
 Temporal task-loading helpers live alongside the Temporal adapter in
 `service_submit_temporal_loader_helper.go`.
 

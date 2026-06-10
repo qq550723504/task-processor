@@ -652,14 +652,20 @@ func TestSubmitRoutingFileOwnsRootSubmitDelegates(t *testing.T) {
 func TestSubmitWorkflowFileOwnsWorkflowGatingHelpers(t *testing.T) {
 	t.Parallel()
 
-	workflowSrc, err := os.ReadFile("service_submit_workflow_helpers.go")
+	workflowSrc, err := os.ReadFile("service_submit_workflow_entry_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_workflow_helpers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_workflow_entry_helpers.go) error = %v", err)
 	}
 	workflowContent := string(workflowSrc)
 
 	if !strings.Contains(workflowContent, "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {") {
-		t.Fatalf("service_submit_workflow_helpers.go should contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
+		t.Fatalf("service_submit_workflow_entry_helpers.go should contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
+	}
+
+	if _, err := os.ReadFile("service_submit_workflow_helpers.go"); err == nil {
+		t.Fatal("service_submit_workflow_helpers.go should be removed after workflow entry helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_workflow_helpers.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_submit_workflow.go"); err == nil {
@@ -2131,9 +2137,9 @@ func TestChildTaskRetryLogicFileOwnsRootEntry(t *testing.T) {
 func TestSubmitWorkflowHelpersFileOwnsRootHelpers(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_workflow_helpers.go")
+	facadeSrc, err := os.ReadFile("service_submit_workflow_entry_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_workflow_helpers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_workflow_entry_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -2145,7 +2151,7 @@ func TestSubmitWorkflowHelpersFileOwnsRootHelpers(t *testing.T) {
 		"action == \"publish\"",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_workflow_helpers.go should contain %q", needle)
+			t.Fatalf("service_submit_workflow_entry_helpers.go should contain %q", needle)
 		}
 	}
 
