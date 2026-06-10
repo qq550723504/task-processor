@@ -1548,6 +1548,47 @@ func TestTaskLayersFacadeFileOwnsRootDelegates(t *testing.T) {
 	}
 }
 
+func TestUploadedImageFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_upload_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_upload_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error) {",
+		"func (s *service) GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error) {",
+		"func (s *service) DeleteUploadedImage(ctx context.Context, key string) (*DeletedUploadedImage, error) {",
+		"return &DeletedUploadedImage{Key: stored.Key, Size: stored.Size}, nil",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_upload_facade.go should contain %q", needle)
+		}
+	}
+
+	uploadSrc, err := os.ReadFile("upload_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(upload_service.go) error = %v", err)
+	}
+	uploadContent := string(uploadSrc)
+
+	for _, needle := range []string{
+		"func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error) {",
+		"func (s *service) GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error) {",
+		"func (s *service) DeleteUploadedImage(ctx context.Context, key string) (*DeletedUploadedImage, error) {",
+	} {
+		if strings.Contains(uploadContent, needle) {
+			t.Fatalf("upload_service.go should not contain %q", needle)
+		}
+	}
+
+	if !strings.Contains(uploadContent, "func buildUploadedImagePath(key string) string {") {
+		t.Fatalf("upload_service.go should keep %q", "func buildUploadedImagePath(key string) string {")
+	}
+}
+
 func TestChildTaskRetryFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
