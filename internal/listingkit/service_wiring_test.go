@@ -1569,6 +1569,33 @@ func TestSubmitContextHelpersFileOwnsRootHelpers(t *testing.T) {
 	}
 }
 
+func TestSubmitIdentityHelperFileOwnsTaskIdentityContextHelper(t *testing.T) {
+	t.Parallel()
+
+	helperSrc, err := os.ReadFile("service_submit_identity_helper.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_identity_helper.go) error = %v", err)
+	}
+	helperContent := string(helperSrc)
+
+	for _, needle := range []string{
+		"func withSheinSubmitTaskIdentity(ctx context.Context, task *Task) (context.Context, error) {",
+		"identity := openaiclient.IdentityFromContext(ctx)",
+		"ctx = WithTenantID(ctx, tenantID)",
+		"return openaiclient.WithIdentity(ctx, identity), nil",
+	} {
+		if !strings.Contains(helperContent, needle) {
+			t.Fatalf("service_submit_identity_helper.go should contain %q", needle)
+		}
+	}
+
+	if _, err := os.ReadFile("service_submit_runtime_context.go"); err == nil {
+		t.Fatal("service_submit_runtime_context.go should be removed after submit identity helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_runtime_context.go) unexpected error = %v", err)
+	}
+}
+
 func TestProcessEntryFileOwnsRootEntry(t *testing.T) {
 	t.Parallel()
 

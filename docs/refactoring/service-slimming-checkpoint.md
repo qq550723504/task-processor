@@ -61,6 +61,7 @@ internal/listingkit/service_submit_routing.go             // thin submit/recover
 internal/listingkit/service_submit_workflow_helpers.go    // workflow submit helpers
 internal/listingkit/service_submit_temporal_facade.go     // Temporal submit facade delegates
 internal/listingkit/service_submit_default_action_helpers.go // default SHEIN submit action resolver helper
+internal/listingkit/service_submit_identity_helper.go     // submit identity helper
 internal/listingkit/service_submit_context_helpers.go     // submit runtime context helpers
 internal/listingkit/service_submit_store_context_helpers.go // submit store-context helpers
 internal/listingkit/service_submit_warehouse_helper.go    // submit warehouse helper
@@ -401,6 +402,7 @@ The root submit surface is now split so the facade file stays intentionally thin
 - `service_submit_workflow_helpers.go`: root-facing SHEIN workflow submit/gating helpers,
 - `service_submit_temporal_facade.go`: root-facing Temporal SHEIN submit and preview delegates,
 - `service_submit_default_action_helpers.go`: root-facing default SHEIN submit-action resolver,
+- `service_submit_identity_helper.go`: shared submit task identity context helper,
 - `service_submit_context_helpers.go`: root-facing store info, API client, and other-api submit helpers,
 - `service_submit_store_context_helpers.go`: root-facing submit settings and warehouse context helpers,
 - `service_submit_warehouse_helper.go`: shared warehouse-code selection helper,
