@@ -24,6 +24,7 @@ internal/listingkit/service_task_generation.go           // task generation faca
 internal/listingkit/service_task_revision.go             // task revision facade delegates
 internal/listingkit/service_task_lifecycle.go            // task lifecycle facade delegates
 internal/listingkit/service_task_sds_baseline.go         // task SDS baseline facade delegates
+internal/listingkit/service_task_export.go               // task export facade logic
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
 internal/listingkit/service_studio_session.go            // studio session facade delegates
 internal/listingkit/service_studio_media.go              // studio media facade delegates
@@ -148,6 +149,14 @@ Owns root task lifecycle facade delegates:
 Owns root task SDS baseline facade delegates:
 
 - SDS baseline warmup delegate.
+
+### `service_task_export.go`
+
+Owns task export logic:
+
+- export assembly,
+- asset generation projection attachment,
+- asset render preview fallback population.
 
 ### `service_studio_collaborators.go`
 
