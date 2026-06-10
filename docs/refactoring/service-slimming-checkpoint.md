@@ -47,7 +47,7 @@ internal/listingkit/service_studio_collaborators.go      // studio collaborator 
 internal/listingkit/service_studio_session_facade.go     // studio session facade delegates
 internal/listingkit/service_studio_media_facade.go       // studio media root facade delegates
 internal/listingkit/service_studio_media.go              // studio media helper delegates
-internal/listingkit/service_studio_batch.go              // studio batch facade delegates
+internal/listingkit/service_studio_batch_facade.go       // studio batch facade delegates
 internal/listingkit/service_studio_batch_run_facade.go   // studio batch run facade delegates
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 internal/listingkit/service_task_wiring.go               // task/generation/revision collaborator config builders
@@ -325,7 +325,7 @@ Owns studio media helper delegates:
 
 - shared media input/output helper delegates.
 
-### `service_studio_batch.go`
+### `service_studio_batch_facade.go`
 
 Owns root studio batch facade delegates:
 
