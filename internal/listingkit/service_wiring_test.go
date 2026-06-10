@@ -553,7 +553,7 @@ func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 	}{
 		{
 			name: "submit store context",
-			file: "service_submit_store_context_helpers.go",
+			file: "service_submit_settings_context_helpers.go",
 			needles: []string{
 				"buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)",
 			},
@@ -1522,12 +1522,12 @@ func TestSheinCookieNoteHelperFileOwnsCookieAvailabilityResolver(t *testing.T) {
 	}
 }
 
-func TestSubmitStoreContextHelpersFileOwnsRootHelpers(t *testing.T) {
+func TestSubmitSettingsContextHelpersFileOwnsRootHelpers(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_store_context_helpers.go")
+	facadeSrc, err := os.ReadFile("service_submit_settings_context_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_store_context_helpers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_settings_context_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1538,8 +1538,14 @@ func TestSubmitStoreContextHelpersFileOwnsRootHelpers(t *testing.T) {
 		"return buildSubmitRuntimeContextResolver(s).resolveWarehouseCode(ctx, task, site)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_store_context_helpers.go should contain %q", needle)
+			t.Fatalf("service_submit_settings_context_helpers.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_submit_store_context_helpers.go"); err == nil {
+		t.Fatal("service_submit_store_context_helpers.go should be removed after submit settings context helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_store_context_helpers.go) unexpected error = %v", err)
 	}
 
 	helperSrc, err := os.ReadFile("service_submit_warehouse_helper.go")

@@ -9,14 +9,19 @@ import (
 func TestSubmitStoreContextFileKeepsRemoteClientBootstrapOutOfSettingsHydration(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_store_context_helpers.go")
+	facadeSrc, err := os.ReadFile("service_submit_settings_context_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_store_context_helpers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_settings_context_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
 	if !strings.Contains(facadeContent, "buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)") {
-		t.Fatal("service_submit_store_context_helpers.go should delegate submit settings resolution through the resolver seam")
+		t.Fatal("service_submit_settings_context_helpers.go should delegate submit settings resolution through the resolver seam")
+	}
+	if _, err := os.ReadFile("service_submit_store_context_helpers.go"); err == nil {
+		t.Fatal("service_submit_store_context_helpers.go should be removed after submit settings context helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_store_context_helpers.go) unexpected error = %v", err)
 	}
 
 	src, err := os.ReadFile("service_submit_warehouse_helper.go")
