@@ -101,6 +101,13 @@ func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecuti
 	}
 }
 
+func buildTaskSubmissionStateServiceConfig(s *service) taskSubmissionStateServiceConfig {
+	return taskSubmissionStateServiceConfig{
+		repo:                   s.repo,
+		rememberSheinSubmitted: s.rememberSheinSubmittedResolution,
+	}
+}
+
 func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {
 	resolver := buildSubmitRuntimeContextResolver(s)
 	state := s.taskSubmissionStateOrDefault()

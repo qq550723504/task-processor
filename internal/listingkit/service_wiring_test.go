@@ -272,11 +272,13 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 				"buildTaskSubmissionServiceConfig(s)",
 				"buildTaskSubmissionRefreshServiceConfig(s)",
 				"buildTaskSubmissionExecutionServiceConfig(s)",
+				"buildTaskSubmissionStateServiceConfig(s)",
 			},
 			inlineConfig: []string{
 				"newTaskSubmissionService(taskSubmissionServiceConfig{",
 				"newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{",
 				"newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{",
+				"newTaskSubmissionStateService(taskSubmissionStateServiceConfig{",
 			},
 		},
 		{

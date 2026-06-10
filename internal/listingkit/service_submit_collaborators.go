@@ -33,9 +33,6 @@ func (s *service) taskSubmissionStateOrDefault() *taskSubmissionStateService {
 	if s.submission.taskSubmissionState != nil {
 		return s.submission.taskSubmissionState
 	}
-	s.submission.taskSubmissionState = newTaskSubmissionStateService(taskSubmissionStateServiceConfig{
-		repo:                   s.repo,
-		rememberSheinSubmitted: s.rememberSheinSubmittedResolution,
-	})
+	s.submission.taskSubmissionState = newTaskSubmissionStateService(buildTaskSubmissionStateServiceConfig(s))
 	return s.submission.taskSubmissionState
 }
