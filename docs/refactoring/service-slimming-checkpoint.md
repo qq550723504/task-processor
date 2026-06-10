@@ -81,7 +81,7 @@ Submission initialization is now grouped as:
 
 1. task-level retry/recovery collaborators,
 2. submission state and execution collaborators,
-3. SHEIN submission orchestrators,
+3. SHEIN submission orchestrators, including refresh/status handling,
 4. Temporal adapter initialization in its own step.
 
 ### `service_submission_collaborators.go`
@@ -92,9 +92,13 @@ Fields are grouped by responsibility:
 
 - task-level retry/recovery,
 - submission state and execution,
-- SHEIN submission orchestrators,
+- SHEIN submission orchestrators, including the dedicated refresh collaborator,
 - workflow-facing adapter,
 - shared submit coordination primitives.
+
+`service_submit_wiring.go` is now kept focused on collaborator config builders, while
+Temporal task-loading helpers live alongside the adapter accessors in
+`service_submit_temporal_adapter.go`.
 
 ## 4. Boundary Decision
 
