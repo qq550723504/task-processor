@@ -1588,18 +1588,24 @@ func TestProcessEntryFileOwnsRootEntry(t *testing.T) {
 		t.Fatalf("ReadFile(service_process_facade.go) unexpected error = %v", err)
 	}
 
-	processSrc, err := os.ReadFile("service_process.go")
+	processSrc, err := os.ReadFile("service_process_review.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_process.go) error = %v", err)
+		t.Fatalf("ReadFile(service_process_review.go) error = %v", err)
 	}
 	processContent := string(processSrc)
 
 	if strings.Contains(processContent, "func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error) {") {
-		t.Fatalf("service_process.go should not contain %q", "func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error) {")
+		t.Fatalf("service_process_review.go should not contain %q", "func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error) {")
 	}
 
 	if !strings.Contains(processContent, "func taskNeedsReviewReason(result *ListingKitResult) string {") {
-		t.Fatalf("service_process.go should keep %q", "func taskNeedsReviewReason(result *ListingKitResult) string {")
+		t.Fatalf("service_process_review.go should keep %q", "func taskNeedsReviewReason(result *ListingKitResult) string {")
+	}
+
+	if _, err := os.ReadFile("service_process.go"); err == nil {
+		t.Fatal("service_process.go should be removed after process review helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_process.go) unexpected error = %v", err)
 	}
 }
 
