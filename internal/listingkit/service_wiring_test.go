@@ -1957,9 +1957,9 @@ func TestSheinPricingFacadeFileOwnsRootDelegate(t *testing.T) {
 func TestSheinImageRegenerationFileOwnsRootLogic(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_data_image_regeneration.go")
+	facadeSrc, err := os.ReadFile("service_shein_data_image_regeneration_logic.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_data_image_regeneration.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_data_image_regeneration_logic.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1970,7 +1970,7 @@ func TestSheinImageRegenerationFileOwnsRootLogic(t *testing.T) {
 		"return &RegenerateSheinDataImageResponse{",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_data_image_regeneration.go should contain %q", needle)
+			t.Fatalf("service_shein_data_image_regeneration_logic.go should contain %q", needle)
 		}
 	}
 
