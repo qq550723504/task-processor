@@ -1379,12 +1379,12 @@ func TestSheinStoreSelectionHelpersFileOwnsRootHelpers(t *testing.T) {
 	}
 }
 
-func TestSubmitDefaultActionFacadeFileOwnsRootDelegate(t *testing.T) {
+func TestSubmitDefaultActionHelpersFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_default_action_facade.go")
+	facadeSrc, err := os.ReadFile("service_submit_default_action_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_default_action_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_default_action_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1395,7 +1395,7 @@ func TestSubmitDefaultActionFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return \"publish\", nil",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_default_action_facade.go should contain %q", needle)
+			t.Fatalf("service_submit_default_action_helpers.go should contain %q", needle)
 		}
 	}
 
