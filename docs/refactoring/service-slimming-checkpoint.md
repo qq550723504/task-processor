@@ -22,6 +22,7 @@ internal/listingkit/service_admin_collaborators.go       // admin collaborator a
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
 internal/listingkit/service_studio_session.go            // studio session facade delegates
+internal/listingkit/service_studio_media.go              // studio media facade delegates
 internal/listingkit/service_studio_batch.go              // studio batch facade delegates
 internal/listingkit/service_studio_batch_run.go          // studio batch run facade delegates
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
@@ -132,6 +133,14 @@ Owns root studio session facade delegates:
 - session gallery and batch listing,
 - batch draft fetch / upsert / delete,
 - async job status synchronization.
+
+### `service_studio_media.go`
+
+Owns root studio media facade delegates:
+
+- studio design generation entrypoints,
+- studio product image generation entrypoints,
+- shared media input/output helper delegates.
 
 ### `service_studio_batch.go`
 

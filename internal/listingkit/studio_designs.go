@@ -22,26 +22,6 @@ const (
 	studioVariationStrong = "strong"
 )
 
-func (s *service) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error) {
-	return s.taskStudioMediaOrDefault().GenerateStudioDesigns(ctx, req)
-}
-
-func (s *service) generateStudioDesignSiblingThemes(ctx context.Context, req *StudioDesignRequest, count int) ([]string, error) {
-	return s.taskStudioMediaOrDefault().generateStudioDesignSiblingThemes(ctx, req, count)
-}
-
-func (s *service) generateStudioDesignImage(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
-	return s.taskStudioMediaOrDefault().generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
-}
-
-func (s *service) editStudioDesignImageWithReferences(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
-	return s.taskStudioMediaOrDefault().editStudioDesignImageWithReferences(ctx, model, promptText, size, referenceURLs)
-}
-
-func (s *service) generateStudioDesignImageWithoutReferences(ctx context.Context, model string, promptText string, size string) (*openaiclient.ImageResponse, error) {
-	return s.taskStudioMediaOrDefault().generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
-}
-
 func buildStudioDesignPrompt(req *StudioDesignRequest) string {
 	return buildStudioDesignPromptWithTheme(req, strings.TrimSpace(req.Prompt))
 }
@@ -233,10 +213,6 @@ func compactStudioGenerationError(err error) string {
 		return string(runes[:120]) + "..."
 	}
 	return message
-}
-
-func (s *service) persistGeneratedStudioImage(ctx context.Context, response *openaiclient.ImageResponse, filename string) (string, string, error) {
-	return s.taskStudioMediaOrDefault().persistGeneratedStudioImage(ctx, response, filename)
 }
 
 func decodeGeneratedImageData(ctx context.Context, image openaiclient.ImageData) ([]byte, string, error) {

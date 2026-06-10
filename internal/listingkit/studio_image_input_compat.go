@@ -18,10 +18,6 @@ import (
 	"strings"
 )
 
-func (s *service) sanitizeStudioImageInputURLs(ctx context.Context, inputURLs []string) ([]string, error) {
-	return s.taskStudioMediaOrDefault().sanitizeStudioImageInputURLs(ctx, inputURLs)
-}
-
 func downloadAndConvertStudioInputImage(ctx context.Context, imageURL string, index int) ([]byte, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
 	if err != nil {

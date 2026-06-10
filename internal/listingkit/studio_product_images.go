@@ -1,11 +1,8 @@
 package listingkit
 
 import (
-	"context"
 	"fmt"
 	"strings"
-
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/prompt"
 )
 
@@ -30,10 +27,6 @@ var defaultStudioProductImageRoles = []studioProductImageRole{
 	{Key: "character_scene", Label: "Character scene image", Goal: "Optional human-use scene. Use a real person only when the actual SDS product is naturally worn, held, used, or demonstrated by a person. If not applicable, create a normal product scene without a person.", Composition: "Natural expression and normal posture when a person is used. Product remains clear and central. Optional simple 2 to 3 lines of text plus minimal icon; text/icon must not cover product or person; no clutter, no watermark, no brand, no logo."},
 }
 
-func (s *service) GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
-	return s.taskStudioMediaOrDefault().GenerateStudioProductImages(ctx, req)
-}
-
 func nonNilErrors(errs []error) []error {
 	result := make([]error, 0, len(errs))
 	for _, err := range errs {
@@ -52,14 +45,6 @@ func studioProductImageConcurrencyLimit(imageCount int) int {
 		return 1
 	}
 	return imageCount
-}
-
-func (s *service) generateOneStudioProductImage(ctx context.Context, req *StudioProductImageRequest, sourceURL string, basePrompt string) (string, error) {
-	return s.taskStudioMediaOrDefault().generateOneStudioProductImage(ctx, req, sourceURL, basePrompt)
-}
-
-func (s *service) tryGenerateStudioProductImage(ctx context.Context, inputImages []string, promptText string) (*openaiclient.ImageResponse, error) {
-	return s.taskStudioMediaOrDefault().tryGenerateStudioProductImage(ctx, inputImages, promptText)
 }
 
 func buildStudioProductImagePrompt(req *StudioProductImageRequest, role studioProductImageRole, imageIndex int, imageTotal int) string {
