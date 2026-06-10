@@ -2084,9 +2084,9 @@ func TestSheinResolutionCacheFacadeFileOwnsRootDelegate(t *testing.T) {
 func TestChildTaskRetryLogicFileOwnsRootEntry(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_child_task_retry_logic.go")
+	facadeSrc, err := os.ReadFile("service_child_task_retry_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_child_task_retry_logic.go) error = %v", err)
+		t.Fatalf("ReadFile(service_child_task_retry_facade.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -2097,14 +2097,14 @@ func TestChildTaskRetryLogicFileOwnsRootEntry(t *testing.T) {
 		"return s.persistRetriedChildTaskResult(ctx, task, result, kind, nil)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_child_task_retry_logic.go should contain %q", needle)
+			t.Fatalf("service_child_task_retry_facade.go should contain %q", needle)
 		}
 	}
 
-	if _, err := os.ReadFile("service_child_task_retry_facade.go"); err == nil {
-		t.Fatal("service_child_task_retry_facade.go should be removed after child-task retry logic rename")
+	if _, err := os.ReadFile("service_child_task_retry_logic.go"); err == nil {
+		t.Fatal("service_child_task_retry_logic.go should be removed after child-task retry facade rename")
 	} else if !os.IsNotExist(err) {
-		t.Fatalf("ReadFile(service_child_task_retry_facade.go) unexpected error = %v", err)
+		t.Fatalf("ReadFile(service_child_task_retry_logic.go) unexpected error = %v", err)
 	}
 
 	retrySrc, err := os.ReadFile("service_child_task_retry_helpers.go")
