@@ -121,9 +121,9 @@ func TestServiceProcessFileUsesExplicitFlowSeam(t *testing.T) {
 		}
 	}
 
-	src, err := os.ReadFile("service_process_review.go")
+	src, err := os.ReadFile("service_process_review_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_process_review.go) error = %v", err)
+		t.Fatalf("ReadFile(service_process_review_helper.go) error = %v", err)
 	}
 	content := string(src)
 
@@ -131,11 +131,11 @@ func TestServiceProcessFileUsesExplicitFlowSeam(t *testing.T) {
 		"func taskNeedsReviewReason(result *ListingKitResult) string {",
 	} {
 		if !strings.Contains(content, needle) {
-			t.Fatalf("service_process_review.go should contain %q", needle)
+			t.Fatalf("service_process_review_helper.go should contain %q", needle)
 		}
 	}
 	if strings.Contains(content, "return buildListingKitProcessFlow(s).run(ctx, task, log)") {
-		t.Fatalf("service_process_review.go should not contain %q after facade split", "return buildListingKitProcessFlow(s).run(ctx, task, log)")
+		t.Fatalf("service_process_review_helper.go should not contain %q after facade split", "return buildListingKitProcessFlow(s).run(ctx, task, log)")
 	}
 
 	for _, needle := range []string{
@@ -147,13 +147,13 @@ func TestServiceProcessFileUsesExplicitFlowSeam(t *testing.T) {
 		"applyProcessTerminalResult(",
 	} {
 		if strings.Contains(content, needle) {
-			t.Fatalf("service_process_review.go should not contain %q", needle)
+			t.Fatalf("service_process_review_helper.go should not contain %q", needle)
 		}
 	}
 
-	if _, err := os.ReadFile("service_process.go"); err == nil {
-		t.Fatal("service_process.go should be removed after process review helper rename")
+	if _, err := os.ReadFile("service_process_review.go"); err == nil {
+		t.Fatal("service_process_review.go should be removed after process review helper rename")
 	} else if !os.IsNotExist(err) {
-		t.Fatalf("ReadFile(service_process.go) unexpected error = %v", err)
+		t.Fatalf("ReadFile(service_process_review.go) unexpected error = %v", err)
 	}
 }
