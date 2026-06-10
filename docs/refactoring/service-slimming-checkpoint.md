@@ -32,7 +32,7 @@ internal/listingkit/service_shein_price_preview_facade.go // SHEIN pricing previ
 internal/listingkit/service_shein_resolution_cache_clear_facade.go // SHEIN resolution cache facade delegate
 internal/listingkit/service_shein_submission_events_facade.go // SHEIN submission event facade delegate
 internal/listingkit/service_shein_store_selection_resolvers.go // SHEIN store selection helpers
-internal/listingkit/service_shein_settings_admin_facade.go // SHEIN settings facade delegates
+internal/listingkit/service_shein_settings_facade.go // SHEIN settings facade delegates
 internal/listingkit/service_store_profile_routing_facade.go // store profile / routing facade delegates
 internal/listingkit/service_process_entry.go             // process entry logic
 internal/listingkit/service_process_review_helper.go     // process review helper
@@ -166,7 +166,7 @@ Owns root AI client settings facade delegates:
 
 - AI client settings fetch / update.
 
-### `service_shein_settings_admin_facade.go`
+### `service_shein_settings_facade.go`
 
 Owns root SHEIN settings facade delegates:
 
