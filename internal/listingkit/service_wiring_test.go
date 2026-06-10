@@ -1192,6 +1192,41 @@ func TestSubmitDefaultActionFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
+func TestSheinCookiePreviewFacadeFileOwnsRootHelper(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_shein_cookie_preview_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_cookie_preview_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {",
+		"note := s.resolveSheinCookieAvailabilityNote(ctx, task)",
+		"rebuilt := buildSheinPreviewPayload(",
+		"preview.NeedsReview = preview.NeedsReview || rebuilt.NeedsReview",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_shein_cookie_preview_facade.go should contain %q", needle)
+		}
+	}
+
+	helperSrc, err := os.ReadFile("service_shein_cookie_preview.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_cookie_preview.go) error = %v", err)
+	}
+	helperContent := string(helperSrc)
+
+	if strings.Contains(helperContent, "func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {") {
+		t.Fatalf("service_shein_cookie_preview.go should not contain %q", "func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {")
+	}
+
+	if !strings.Contains(helperContent, "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {") {
+		t.Fatalf("service_shein_cookie_preview.go should keep %q", "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {")
+	}
+}
+
 func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
