@@ -250,12 +250,6 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			},
 		},
 		{
-			name: "submission recovery facade",
-			file: "service_submit_recovery.go",
-			builderCalls: nil,
-			inlineConfig: nil,
-		},
-		{
 			name: "submit facade",
 			file: "service_submit.go",
 			builderCalls: nil,
