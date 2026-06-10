@@ -9,7 +9,6 @@ import (
 
 	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -205,24 +204,6 @@ func sheinSubmitSaleAttributesNeedRepair(pkg *SheinPackage) bool {
 		}
 	}
 	return false
-}
-
-func (s *service) buildSheinSubmitOtherAPI(ctx context.Context, task *Task) (sheinother.OtherAPI, error) {
-	resolver := buildSubmitRuntimeContextResolver(s)
-	apiClient, storeID, err := resolver.newAPIClient(ctx, task)
-	if err != nil {
-		return nil, err
-	}
-	if !apiClient.HasCookies() {
-		if err := apiClient.ForceRefreshCookies(); err != nil {
-			return nil, fmt.Errorf("shein other api auth unavailable: %w", err)
-		}
-	}
-	if !apiClient.HasCookies() {
-		return nil, fmt.Errorf("shein other api auth unavailable")
-	}
-	baseAPI := NewSheinRuntimeBaseAPIClient(apiClient, storeID)
-	return sheinother.NewClient(baseAPI), nil
 }
 
 func isSupportedSubmitAction(action string) bool {
