@@ -1,8 +1,6 @@
 package listingkit
 
-import (
-	"context"
-)
+import "context"
 
 func (s *service) ListSheinStoreProfiles(ctx context.Context) ([]ListingKitStoreProfile, error) {
 	return s.settingsAdminOrDefault().ListSheinStoreProfiles(ctx)
