@@ -251,6 +251,15 @@ func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 				"newTaskLifecycleService(taskLifecycleServiceConfig{",
 			},
 		},
+		{
+			name: "sds baseline",
+			file: "sds_baseline_service.go",
+			builderCalls: []string{
+				"buildSDSBaselineService(s)",
+				"newSDSBaselineService(",
+			},
+			inlineConfig: nil,
+		},
 	}
 
 	for _, tc := range cases {

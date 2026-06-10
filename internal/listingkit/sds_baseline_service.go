@@ -14,14 +14,33 @@ type sdsBaselineService struct {
 	sdsLoginStatusProvider SDSLoginStatusProvider
 }
 
+type sdsBaselineServiceConfig struct {
+	repo                   Repository
+	sdsLoginStatusProvider SDSLoginStatusProvider
+}
+
 func (s *service) sdsBaselineOrDefault() *sdsBaselineService {
 	if s == nil {
-		return &sdsBaselineService{}
+		return buildSDSBaselineService(nil)
 	}
+	return buildSDSBaselineService(s)
+}
+
+func newSDSBaselineService(config sdsBaselineServiceConfig) *sdsBaselineService {
 	return &sdsBaselineService{
+		repo:                   config.repo,
+		sdsLoginStatusProvider: config.sdsLoginStatusProvider,
+	}
+}
+
+func buildSDSBaselineService(s *service) *sdsBaselineService {
+	if s == nil {
+		return newSDSBaselineService(sdsBaselineServiceConfig{})
+	}
+	return newSDSBaselineService(sdsBaselineServiceConfig{
 		repo:                   s.repo,
 		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
-	}
+	})
 }
 
 func (b *sdsBaselineService) GetCachedBaseline(ctx context.Context, task *Task) (*canonical.Product, bool, error) {
