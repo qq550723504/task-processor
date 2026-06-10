@@ -9,6 +9,16 @@ import (
 func TestSubmitStoreContextFileKeepsRemoteClientBootstrapOutOfSettingsHydration(t *testing.T) {
 	t.Parallel()
 
+	facadeSrc, err := os.ReadFile("service_submit_store_context_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_store_context_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	if !strings.Contains(facadeContent, "buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)") {
+		t.Fatal("service_submit_store_context_facade.go should delegate submit settings resolution through the resolver seam")
+	}
+
 	src, err := os.ReadFile("service_submit_store_context.go")
 	if err != nil {
 		t.Fatalf("ReadFile(service_submit_store_context.go) error = %v", err)
@@ -24,8 +34,8 @@ func TestSubmitStoreContextFileKeepsRemoteClientBootstrapOutOfSettingsHydration(
 			t.Fatalf("service_submit_store_context.go should not contain %q", needle)
 		}
 	}
-	if !strings.Contains(content, "buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)") {
-		t.Fatal("service_submit_store_context.go should delegate submit settings resolution through the resolver seam")
+	if strings.Contains(content, "buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)") {
+		t.Fatal("service_submit_store_context.go should not keep submit settings delegation after facade split")
 	}
 }
 

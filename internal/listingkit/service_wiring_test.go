@@ -501,7 +501,7 @@ func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 	}{
 		{
 			name: "submit store context",
-			file: "service_submit_store_context.go",
+			file: "service_submit_store_context_facade.go",
 			needles: []string{
 				"buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)",
 			},
@@ -1224,6 +1224,46 @@ func TestSheinCookiePreviewFacadeFileOwnsRootHelper(t *testing.T) {
 
 	if !strings.Contains(helperContent, "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {") {
 		t.Fatalf("service_shein_cookie_preview.go should keep %q", "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {")
+	}
+}
+
+func TestSubmitStoreContextFacadeFileOwnsRootHelpers(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_submit_store_context_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_store_context_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) resolveSheinSubmitSettings(ctx context.Context, task *Task) SheinSettings {",
+		"return buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)",
+		"func (s *service) resolveSheinWarehouseCode(ctx context.Context, task *Task, site string) string {",
+		"return buildSubmitRuntimeContextResolver(s).resolveWarehouseCode(ctx, task, site)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_submit_store_context_facade.go should contain %q", needle)
+		}
+	}
+
+	helperSrc, err := os.ReadFile("service_submit_store_context.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_store_context.go) error = %v", err)
+	}
+	helperContent := string(helperSrc)
+
+	for _, needle := range []string{
+		"func (s *service) resolveSheinSubmitSettings(ctx context.Context, task *Task) SheinSettings {",
+		"func (s *service) resolveSheinWarehouseCode(ctx context.Context, task *Task, site string) string {",
+	} {
+		if strings.Contains(helperContent, needle) {
+			t.Fatalf("service_submit_store_context.go should not contain %q", needle)
+		}
+	}
+
+	if !strings.Contains(helperContent, "func pickSheinWarehouseCode(warehouses *sheinwarehouse.WarehouseResponse, site string) string {") {
+		t.Fatalf("service_submit_store_context.go should keep %q", "func pickSheinWarehouseCode(warehouses *sheinwarehouse.WarehouseResponse, site string) string {")
 	}
 }
 

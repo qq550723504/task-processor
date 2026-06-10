@@ -1,19 +1,10 @@
 package listingkit
 
 import (
-	"context"
 	"strings"
 
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 )
-
-func (s *service) resolveSheinSubmitSettings(ctx context.Context, task *Task) SheinSettings {
-	return buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)
-}
-
-func (s *service) resolveSheinWarehouseCode(ctx context.Context, task *Task, site string) string {
-	return buildSubmitRuntimeContextResolver(s).resolveWarehouseCode(ctx, task, site)
-}
 
 func pickSheinWarehouseCode(warehouses *sheinwarehouse.WarehouseResponse, site string) string {
 	if warehouses == nil || len(warehouses.Data) == 0 {
