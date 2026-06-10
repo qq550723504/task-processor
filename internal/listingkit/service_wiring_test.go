@@ -914,6 +914,52 @@ func TestStoreProfileFacadeFileOwnsRootDelegates(t *testing.T) {
 	}
 }
 
+func TestAIClientSettingsFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_ai_client_settings.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_ai_client_settings.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*AIClientSettings, error) {",
+		"return s.settingsAdminOrDefault().GetAIClientSettings(ctx, scope, clientName)",
+		"func (s *service) UpdateAIClientSettings(ctx context.Context, req *AIClientSettings) (*AIClientSettings, error) {",
+		"return s.settingsAdminOrDefault().UpdateAIClientSettings(ctx, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_ai_client_settings.go should contain %q", needle)
+		}
+	}
+
+	helperSrc, err := os.ReadFile("ai_client_settings.go")
+	if err != nil {
+		t.Fatalf("ReadFile(ai_client_settings.go) error = %v", err)
+	}
+	helperContent := string(helperSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*AIClientSettings, error) {",
+		"func (s *service) UpdateAIClientSettings(ctx context.Context, req *AIClientSettings) (*AIClientSettings, error) {",
+	} {
+		if strings.Contains(helperContent, needle) {
+			t.Fatalf("ai_client_settings.go should not contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"func aiSettingsUserID(identity openaiclient.Identity, scope string) string {",
+		"func normalizeAISettingsScope(scope string, userID string) string {",
+		"func normalizeAIClientName(name string) string {",
+	} {
+		if !strings.Contains(helperContent, needle) {
+			t.Fatalf("ai_client_settings.go should keep %q", needle)
+		}
+	}
+}
+
 func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
