@@ -27,6 +27,8 @@ func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string
 }
 
 func (s *service) handleSheinWorkflowStartFailure(ctx context.Context, taskID string, task *Task, opts sheinWorkflowSubmitOptions, startErr error) error {
+	state := s.taskSubmissionStateOrDefault()
+	recovery := s.taskSubmissionRecoveryOrDefault()
 	var result *ListingKitResult
 	var pkg *SheinPackage
 	if task != nil {
@@ -35,7 +37,7 @@ func (s *service) handleSheinWorkflowStartFailure(ctx context.Context, taskID st
 			pkg = task.Result.Shein
 		}
 	}
-	failErr := s.taskSubmissionStateOrDefault().recordSheinSubmissionFailureForState(
+	failErr := state.recordSheinSubmissionFailureForState(
 		ctx,
 		taskID,
 		result,
@@ -45,7 +47,7 @@ func (s *service) handleSheinWorkflowStartFailure(ctx context.Context, taskID st
 		sheinpub.SubmissionPhaseValidate,
 		startErr,
 	)
-	clearErr := s.taskSubmissionRecoveryOrDefault().clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, opts.action, opts.requestID, startErr)
+	clearErr := recovery.clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, opts.action, opts.requestID, startErr)
 	if failErr != nil {
 		if clearErr != nil {
 			return errors.Join(failErr, clearErr)
