@@ -1,5 +1,18 @@
 package listingkit
 
+import "task-processor/internal/listingkit/submission"
+
+func (s *service) taskSubmissionOrDefault() *taskSubmissionService {
+	if s.submission.taskSubmission != nil {
+		return s.submission.taskSubmission
+	}
+	if s.submission.sheinSubmitLocks == nil {
+		s.submission.sheinSubmitLocks = submission.NewSubmitLockManager()
+	}
+	s.submission.taskSubmission = newTaskSubmissionService(buildTaskSubmissionServiceConfig(s))
+	return s.submission.taskSubmission
+}
+
 func (s *service) taskSubmissionRefreshOrDefault() *taskSubmissionRefreshService {
 	if s.submission.taskSubmissionRefresh != nil {
 		return s.submission.taskSubmissionRefresh

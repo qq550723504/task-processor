@@ -262,21 +262,19 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		{
 			name: "submit facade",
 			file: "service_submit.go",
-			builderCalls: []string{
-				"buildTaskSubmissionServiceConfig(s)",
-			},
-			inlineConfig: []string{
-				"newTaskSubmissionService(taskSubmissionServiceConfig{",
-			},
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 		{
 			name: "submit collaborators",
 			file: "service_submit_collaborators.go",
 			builderCalls: []string{
+				"buildTaskSubmissionServiceConfig(s)",
 				"buildTaskSubmissionRefreshServiceConfig(s)",
 				"buildTaskSubmissionExecutionServiceConfig(s)",
 			},
 			inlineConfig: []string{
+				"newTaskSubmissionService(taskSubmissionServiceConfig{",
 				"newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{",
 				"newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{",
 			},
