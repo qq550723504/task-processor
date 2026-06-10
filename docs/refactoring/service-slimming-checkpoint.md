@@ -244,6 +244,13 @@ Owns process review helper:
 
 - process review reason derivation.
 
+### `service_process_persistence_helper.go`
+
+Owns process persistence helper:
+
+- process terminal status derivation,
+- process success/failure persistence.
+
 ### `service_task_layers_facade.go`
 
 Owns root task layer facade delegates:

@@ -67,6 +67,28 @@ func TestServiceProcessFilesKeepTerminalizationInsideProcessFlowSeam(t *testing.
 			t.Fatalf("service_process_flow.go should contain %q", needle)
 		}
 	}
+
+	persistSrc, err := os.ReadFile("service_process_persistence_helper.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_process_persistence_helper.go) error = %v", err)
+	}
+	persistContent := string(persistSrc)
+	for _, needle := range []string{
+		"func deriveProcessTerminalStatus(result *ListingKitResult) TaskStatus {",
+		"func applyProcessTerminalResult(result *ListingKitResult, status TaskStatus) *ListingKitResult {",
+		"func (s *service) persistProcessFailure(ctx context.Context, taskID string, result *ListingKitResult, err error) error {",
+		"func (s *service) persistProcessSuccess(ctx context.Context, taskID string, result *ListingKitResult) error {",
+	} {
+		if !strings.Contains(persistContent, needle) {
+			t.Fatalf("service_process_persistence_helper.go should contain %q", needle)
+		}
+	}
+
+	if _, err := os.ReadFile("service_process_outcome.go"); err == nil {
+		t.Fatal("service_process_outcome.go should be removed after process persistence helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_process_outcome.go) unexpected error = %v", err)
+	}
 }
 
 func TestProcessorFilesKeepSkipAndRetryDecisionsInsideStateHelper(t *testing.T) {
