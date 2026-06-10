@@ -44,7 +44,7 @@ internal/listingkit/service_task_preview.go              // task preview facade 
 internal/listingkit/service_task_preview_builder.go      // task preview builder helper
 internal/listingkit/service_task_export.go               // task export facade logic
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
-internal/listingkit/service_studio_session.go            // studio session facade delegates
+internal/listingkit/service_studio_session_facade.go     // studio session facade delegates
 internal/listingkit/service_studio_media_facade.go       // studio media root facade delegates
 internal/listingkit/service_studio_media.go              // studio media helper delegates
 internal/listingkit/service_studio_batch.go              // studio batch facade delegates
@@ -304,7 +304,7 @@ Owns studio collaborator accessors:
 - studio batch,
 - studio batch run.
 
-### `service_studio_session.go`
+### `service_studio_session_facade.go`
 
 Owns root studio session facade delegates:
 
