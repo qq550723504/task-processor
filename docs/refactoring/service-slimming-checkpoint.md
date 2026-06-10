@@ -39,7 +39,7 @@ internal/listingkit/service_process_review_helper.go     // process review helpe
 internal/listingkit/service_task_layers_logic.go         // task layer processing logic
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_task_generation_logic.go     // task generation logic delegates
-internal/listingkit/service_task_revision_facade.go      // task revision facade delegates
+internal/listingkit/service_task_revision_entrypoints.go // task revision entrypoints
 internal/listingkit/service_task_lifecycle_logic.go      // task lifecycle logic delegates
 internal/listingkit/service_sds_baseline_warmup_entrypoint.go // SDS baseline warmup entrypoint
 internal/listingkit/service_task_preview_logic.go        // task preview logic
@@ -291,9 +291,9 @@ Owns shared generation helpers:
 - generation retry task selection/planning helpers,
 - generation task/review listing helpers.
 
-### `service_task_revision_facade.go`
+### `service_task_revision_entrypoints.go`
 
-Owns root task revision facade delegates:
+Owns root task revision entrypoints:
 
 - revision history listing and detail,
 - revision apply and validation delegates.
