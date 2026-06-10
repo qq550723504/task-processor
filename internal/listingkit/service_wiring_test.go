@@ -870,3 +870,57 @@ func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_task_generation.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task_generation.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error) {",
+		"return s.taskGenerationOrDefault().GetTaskGenerationTasks(ctx, taskID, query)",
+		"func (s *service) ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (*GenerationActionExecutionResult, error) {",
+		"return s.taskGenerationOrDefault().ExecuteTaskGenerationAction(ctx, taskID, req)",
+		"func (s *service) GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error) {",
+		"return s.taskGenerationOrDefault().GetTaskGenerationQueue(ctx, taskID, query)",
+		"func (s *service) GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewPreviewResponse, error) {",
+		"return s.taskGenerationOrDefault().GetTaskGenerationReviewPreview(ctx, taskID, query)",
+		"func (s *service) GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewSessionResponse, error) {",
+		"return s.taskGenerationOrDefault().GetTaskGenerationReviewSession(ctx, taskID, query)",
+		"func (s *service) DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *GenerationReviewNavigationDispatchRequest) (*GenerationReviewNavigationDispatchResponse, error) {",
+		"return s.taskGenerationOrDefault().DispatchTaskGenerationNavigation(ctx, taskID, req)",
+		"func (s *service) executeGenerationNavigationDispatchPlan(ctx context.Context, taskID string, target *GenerationReviewNavigationTarget, responseMode string) (*GenerationNavigationDispatchExecution, error) {",
+		"return s.taskGenerationOrDefault().executeGenerationNavigationDispatchPlan(ctx, taskID, target, responseMode)",
+		"func (s *service) RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error) {",
+		"return s.taskGenerationOrDefault().RetryTaskGenerationTasks(ctx, taskID, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_task_generation.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("service_generation.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_generation.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error) {",
+		"func (s *service) ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *ExecuteGenerationActionRequest) (*GenerationActionExecutionResult, error) {",
+		"func (s *service) GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error) {",
+		"func (s *service) GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewPreviewResponse, error) {",
+		"func (s *service) GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationReviewSessionResponse, error) {",
+		"func (s *service) DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *GenerationReviewNavigationDispatchRequest) (*GenerationReviewNavigationDispatchResponse, error) {",
+		"func (s *service) executeGenerationNavigationDispatchPlan(ctx context.Context, taskID string, target *GenerationReviewNavigationTarget, responseMode string) (*GenerationNavigationDispatchExecution, error) {",
+		"func (s *service) RetryTaskGenerationTasks(ctx context.Context, taskID string, req *RetryGenerationTasksRequest) (*GenerationTaskPage, error) {",
+	} {
+		if strings.Contains(serviceContent, needle) {
+			t.Fatalf("service_generation.go should not contain %q", needle)
+		}
+	}
+}
