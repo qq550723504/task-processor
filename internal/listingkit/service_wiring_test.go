@@ -625,14 +625,14 @@ func TestSubmitRoutingFileOwnsRootSubmitDelegates(t *testing.T) {
 func TestSubmitWorkflowFileOwnsWorkflowGatingHelpers(t *testing.T) {
 	t.Parallel()
 
-	workflowSrc, err := os.ReadFile("service_submit_workflow_facade.go")
+	workflowSrc, err := os.ReadFile("service_submit_workflow_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_workflow_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_workflow_helpers.go) error = %v", err)
 	}
 	workflowContent := string(workflowSrc)
 
 	if !strings.Contains(workflowContent, "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {") {
-		t.Fatalf("service_submit_workflow_facade.go should contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
+		t.Fatalf("service_submit_workflow_helpers.go should contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
 	}
 
 	legacySrc, err := os.ReadFile("service_submit_workflow.go")
@@ -1921,12 +1921,12 @@ func TestChildTaskRetryFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
-func TestSubmitWorkflowFacadeFileOwnsRootHelpers(t *testing.T) {
+func TestSubmitWorkflowHelpersFileOwnsRootHelpers(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_workflow_facade.go")
+	facadeSrc, err := os.ReadFile("service_submit_workflow_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_workflow_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_workflow_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1938,7 +1938,7 @@ func TestSubmitWorkflowFacadeFileOwnsRootHelpers(t *testing.T) {
 		"action == \"publish\"",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_workflow_facade.go should contain %q", needle)
+			t.Fatalf("service_submit_workflow_helpers.go should contain %q", needle)
 		}
 	}
 

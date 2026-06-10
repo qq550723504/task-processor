@@ -58,7 +58,7 @@ internal/listingkit/service_submit_contracts.go           // shared submit optio
 internal/listingkit/service_submit_collaborators.go       // submit collaborator accessors
 internal/listingkit/service_submit_routing.go             // thin submit/recovery/refresh routing delegates
 internal/listingkit/service_submit_workflow.go            // workflow-specific submit gating / launch helpers
-internal/listingkit/service_submit_workflow_facade.go     // workflow submit facade helpers
+internal/listingkit/service_submit_workflow_helpers.go    // workflow submit facade helpers
 internal/listingkit/service_submit_temporal_facade.go     // Temporal submit facade delegates
 internal/listingkit/service_submit_default_action_facade.go // default SHEIN submit action resolver facade
 internal/listingkit/service_submit_context_helpers.go     // submit runtime context facade helpers
@@ -392,7 +392,7 @@ The root submit surface is now split so the facade file stays intentionally thin
 - `service_submit_collaborators.go`: submit/recovery/direct/Temporal/state/execution/refresh collaborator accessors,
 - `service_submit_routing.go`: thin submit/recovery/requeue/refresh routing delegates that bridge facade calls to collaborators,
 - `service_submit_workflow.go`: SHEIN publish workflow gating and launch helpers,
-- `service_submit_workflow_facade.go`: root-facing SHEIN workflow submit/gating delegates,
+- `service_submit_workflow_helpers.go`: root-facing SHEIN workflow submit/gating delegates,
 - `service_submit_temporal_facade.go`: root-facing Temporal SHEIN submit and preview delegates,
 - `service_submit_default_action_facade.go`: root-facing default SHEIN submit-action resolver,
 - `service_submit_context_helpers.go`: root-facing store info, API client, and other-api submit helpers,
