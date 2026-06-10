@@ -1437,17 +1437,10 @@ func TestSheinCookiePreviewHelpersFileOwnsRootHelper(t *testing.T) {
 		}
 	}
 
-	helperSrc, err := os.ReadFile("service_shein_cookie_preview.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_shein_cookie_preview.go) error = %v", err)
-	}
-	helperContent := string(helperSrc)
-
-	if strings.Contains(helperContent, "func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {") {
-		t.Fatalf("service_shein_cookie_preview.go should not contain %q", "func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {")
-	}
-	if strings.Contains(helperContent, "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {") {
-		t.Fatalf("service_shein_cookie_preview.go should not contain %q", "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {")
+	if _, err := os.ReadFile("service_shein_cookie_preview.go"); err == nil {
+		t.Fatal("service_shein_cookie_preview.go should be removed after cookie preview helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_cookie_preview.go) unexpected error = %v", err)
 	}
 }
 
@@ -1471,14 +1464,10 @@ func TestSheinCookieNoteFileOwnsCookieAvailabilityResolver(t *testing.T) {
 		}
 	}
 
-	previewSrc, err := os.ReadFile("service_shein_cookie_preview.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_shein_cookie_preview.go) error = %v", err)
-	}
-	previewContent := string(previewSrc)
-
-	if strings.Contains(previewContent, "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {") {
-		t.Fatalf("service_shein_cookie_preview.go should not contain %q", "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {")
+	if _, err := os.ReadFile("service_shein_cookie_preview.go"); err == nil {
+		t.Fatal("service_shein_cookie_preview.go should be removed after cookie preview helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_cookie_preview.go) unexpected error = %v", err)
 	}
 }
 
