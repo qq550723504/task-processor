@@ -32,7 +32,7 @@ internal/listingkit/service_shein_pricing_preview_entrypoint.go // SHEIN pricing
 internal/listingkit/service_shein_resolution_cache_clear_entrypoint.go // SHEIN resolution cache clear entrypoint
 internal/listingkit/service_shein_submission_event_listing_entrypoint.go // SHEIN submission event listing entrypoint
 internal/listingkit/service_shein_store_selection_resolvers.go // SHEIN store selection helpers
-internal/listingkit/service_shein_settings_facade.go // SHEIN settings facade delegates
+internal/listingkit/service_shein_settings_entrypoints.go // SHEIN settings entrypoints
 internal/listingkit/service_shein_store_settings_facade.go // SHEIN store settings facade delegates
 internal/listingkit/service_process_entry.go             // process entry logic
 internal/listingkit/service_process_review_helper.go     // process review helper
@@ -166,9 +166,9 @@ Owns root AI client settings entrypoints:
 
 - AI client settings fetch / update.
 
-### `service_shein_settings_facade.go`
+### `service_shein_settings_entrypoints.go`
 
-Owns root SHEIN settings facade delegates:
+Owns root SHEIN settings entrypoints:
 
 - SHEIN settings fetch / update.
 
