@@ -2019,14 +2019,14 @@ func TestChildTaskRetryLogicFileOwnsRootEntry(t *testing.T) {
 		t.Fatalf("ReadFile(service_child_task_retry_facade.go) unexpected error = %v", err)
 	}
 
-	retrySrc, err := os.ReadFile("service_child_task_retry.go")
+	retrySrc, err := os.ReadFile("service_child_task_retry_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_child_task_retry.go) error = %v", err)
+		t.Fatalf("ReadFile(service_child_task_retry_helpers.go) error = %v", err)
 	}
 	retryContent := string(retrySrc)
 
 	if strings.Contains(retryContent, "func (s *service) RetryTaskChildTask(ctx context.Context, taskID string, req *RetryChildTaskRequest) (*TaskResult, error) {") {
-		t.Fatalf("service_child_task_retry.go should not contain %q", "func (s *service) RetryTaskChildTask(ctx context.Context, taskID string, req *RetryChildTaskRequest) (*TaskResult, error) {")
+		t.Fatalf("service_child_task_retry_helpers.go should not contain %q", "func (s *service) RetryTaskChildTask(ctx context.Context, taskID string, req *RetryChildTaskRequest) (*TaskResult, error) {")
 	}
 
 	for _, needle := range []string{
@@ -2035,8 +2035,14 @@ func TestChildTaskRetryLogicFileOwnsRootEntry(t *testing.T) {
 		"func (s *service) persistRetriedChildTaskResult(ctx context.Context, task *Task, result *ListingKitResult, kind string, retryErr error) (*TaskResult, error) {",
 	} {
 		if !strings.Contains(retryContent, needle) {
-			t.Fatalf("service_child_task_retry.go should keep %q", needle)
+			t.Fatalf("service_child_task_retry_helpers.go should keep %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_child_task_retry.go"); err == nil {
+		t.Fatal("service_child_task_retry.go should be removed after child-task retry helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_child_task_retry.go) unexpected error = %v", err)
 	}
 }
 

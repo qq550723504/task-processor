@@ -145,6 +145,13 @@ Owns root child-task retry logic:
 
 - child-task retry entrypoint.
 
+### `service_child_task_retry_helpers.go`
+
+Owns shared child-task retry helpers:
+
+- retry execution helpers,
+- retry persistence/state helpers.
+
 ### `service_store_profile_facade.go`
 
 Owns root store profile facade delegates:
