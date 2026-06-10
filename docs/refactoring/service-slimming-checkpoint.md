@@ -13,10 +13,12 @@ This checkpoint records the first service-object slimming wave. It does not intr
 The root service construction surface is now split into these files:
 
 ```text
-internal/listingkit/service.go           // runtime setters / workflow client config / request normalization
-internal/listingkit/service_types.go     // service struct / dependency config types
-internal/listingkit/service_config.go    // NewService / factory wiring
-internal/listingkit/service_defaults.go  // config defaults / default builders
+internal/listingkit/service.go                            // runtime setters / workflow client config / request normalization
+internal/listingkit/service_types.go                      // service struct / dependency config types
+internal/listingkit/service_config.go                     // NewService / factory wiring
+internal/listingkit/service_defaults.go                   // config defaults / default builders
+internal/listingkit/service_collaborators.go              // collaborator initialization groups
+internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 ```
 
 ## 3. Responsibility Map
@@ -66,6 +68,34 @@ Owns default configuration and default dependency builders:
 - `amazonDraftBuilder`,
 - default asset recipe/bundle/generation builders.
 
+### `service_collaborators.go`
+
+Owns root collaborator initialization ordering:
+
+- task collaborators,
+- admin collaborators,
+- submission collaborators,
+- Temporal collaborators.
+
+Submission initialization is now grouped as:
+
+1. task-level retry/recovery collaborators,
+2. submission state and execution collaborators,
+3. SHEIN submission orchestrators,
+4. Temporal adapter initialization in its own step.
+
+### `service_submission_collaborators.go`
+
+Owns the submission collaborator container.
+
+Fields are grouped by responsibility:
+
+- task-level retry/recovery,
+- submission state and execution,
+- SHEIN submission orchestrators,
+- workflow-facing adapter,
+- shared submit coordination primitives.
+
 ## 4. Boundary Decision
 
 This checkpoint keeps everything in root `package listingkit`.
@@ -75,6 +105,7 @@ Reasons:
 - `service` still coordinates many root models and collaborators,
 - `NewService(...)` is a public construction boundary,
 - default builders still bridge root ListingKit interfaces with marketplace and asset dependencies,
+- collaborator accessors still depend on root service fields and package-private service types,
 - moving these to a subpackage now would create more import pressure than value.
 
 ## 5. Behavior Compatibility
@@ -85,7 +116,8 @@ The split is intended to be behavior-preserving:
 - no `NewService(...)` signature changes,
 - no dependency default changes,
 - no workflow client configuration changes,
-- no request normalization changes.
+- no request normalization changes,
+- no collaborator construction semantics changes.
 
 ## 6. Suggested Local Validation
 
@@ -107,8 +139,8 @@ go test ./... -count=1
 
 Recommended next low-risk slices:
 
-1. Review `service_types.go` for possible internal grouping comments or nested dependency buckets without changing fields.
-2. Review `initializeCollaborators(...)` and collaborator accessor files to see whether constructor wiring can become more explicit.
+1. Review `service_types.go` for possible internal grouping comments or dependency buckets without changing fields.
+2. Review service accessor files to ensure each accessor remains thin and delegates to concept-specific config builders.
 3. Keep `service_config.go` focused on factory wiring; avoid adding new default-building logic there.
 4. Continue moving default construction helpers to concept-specific files only when the move is behavior-preserving.
 
