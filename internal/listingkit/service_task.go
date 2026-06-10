@@ -30,7 +30,3 @@ func (s *service) GetTaskExport(ctx context.Context, taskID string, platform str
 	export.AssetGenerationOverview = projection.Overview
 	return export, nil
 }
-
-func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {
-	return s.warmSDSBaseline(ctx, req)
-}

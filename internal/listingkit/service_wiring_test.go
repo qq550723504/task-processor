@@ -1019,7 +1019,43 @@ func TestTaskLifecycleFacadeFileOwnsRootDelegates(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error) {",
+	} {
+		if !strings.Contains(serviceContent, needle) {
+			t.Fatalf("service_task.go should keep %q", needle)
+		}
+	}
+}
+
+func TestTaskSDSBaselineFacadeFileOwnsWarmDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_task_sds_baseline.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task_sds_baseline.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
 		"func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {",
+		"return s.warmSDSBaseline(ctx, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_task_sds_baseline.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("service_task.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	if strings.Contains(serviceContent, "func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {") {
+		t.Fatalf("service_task.go should not contain %q", "func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {")
+	}
+
+	for _, needle := range []string{
+		"func (s *service) GetTaskExport(ctx context.Context, taskID string, platform string) (*ListingKitExport, error) {",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("service_task.go should keep %q", needle)
