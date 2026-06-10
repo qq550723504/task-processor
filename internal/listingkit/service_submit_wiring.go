@@ -115,21 +115,8 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 		startSheinPublishWorkflow: func(ctx context.Context, in SheinPublishWorkflowStartInput) error {
 			return s.sheinPublishWorkflowClient.StartSheinPublish(ctx, in)
 		},
-		beginSheinSubmitLease: recovery.beginSheinSubmitLease,
-		loadSheinPublishTask: func(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {
-			task, err := s.repo.GetTask(ctx, taskID)
-			if err != nil {
-				return nil, nil, err
-			}
-			if task.Result == nil {
-				return nil, nil, ErrTaskResultUnavailable
-			}
-			pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
-			if pkg == nil || pkg.PreviewPayload == nil {
-				return nil, nil, fmt.Errorf("%w: shein preview payload is not available", ErrSubmitBlocked)
-			}
-			return task, pkg, nil
-		},
+		beginSheinSubmitLease:                recovery.beginSheinSubmitLease,
+		loadSheinPublishTask:                 s.loadSheinPublishTaskForTemporal,
 		normalizeSheinSubmitPackage:          execution.normalizeSheinSubmitPackage,
 		validateSheinPublishFreshness:        s.validateSheinPublishFreshness,
 		saveTaskResult:                       s.repo.SaveTaskResult,
@@ -148,4 +135,19 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 		rememberSheinSubmitted:               s.rememberSheinSubmittedResolution,
 		getTaskPreview:                       s.GetTaskPreview,
 	}
+}
+
+func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {
+	task, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if task.Result == nil {
+		return nil, nil, ErrTaskResultUnavailable
+	}
+	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+	if pkg == nil || pkg.PreviewPayload == nil {
+		return nil, nil, fmt.Errorf("%w: shein preview payload is not available", ErrSubmitBlocked)
+	}
+	return task, pkg, nil
 }
