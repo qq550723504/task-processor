@@ -38,7 +38,7 @@ internal/listingkit/service_task_layers_facade.go        // task layer facade de
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_task_generation.go           // task generation facade delegates
 internal/listingkit/service_task_revision_facade.go      // task revision facade delegates
-internal/listingkit/service_task_lifecycle.go            // task lifecycle facade delegates
+internal/listingkit/service_task_lifecycle_facade.go     // task lifecycle facade delegates
 internal/listingkit/service_task_sds_baseline_facade.go  // task SDS baseline facade delegates
 internal/listingkit/service_task_preview.go              // task preview facade logic
 internal/listingkit/service_task_preview_builder.go      // task preview builder helper
@@ -260,7 +260,7 @@ Owns root task revision facade delegates:
 - revision history listing and detail,
 - revision apply and validation delegates.
 
-### `service_task_lifecycle.go`
+### `service_task_lifecycle_facade.go`
 
 Owns root task lifecycle facade delegates:
 
