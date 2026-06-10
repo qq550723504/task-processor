@@ -1608,9 +1608,9 @@ func TestSubmitSettingsContextHelpersFileOwnsRootHelpers(t *testing.T) {
 		t.Fatalf("ReadFile(service_submit_store_context_helpers.go) unexpected error = %v", err)
 	}
 
-	helperSrc, err := os.ReadFile("service_submit_warehouse_helper.go")
+	helperSrc, err := os.ReadFile("service_submit_warehouse_code_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_warehouse_helper.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_warehouse_code_helper.go) error = %v", err)
 	}
 	helperContent := string(helperSrc)
 
@@ -1619,12 +1619,18 @@ func TestSubmitSettingsContextHelpersFileOwnsRootHelpers(t *testing.T) {
 		"func (s *service) resolveSheinWarehouseCode(ctx context.Context, task *Task, site string) string {",
 	} {
 		if strings.Contains(helperContent, needle) {
-			t.Fatalf("service_submit_warehouse_helper.go should not contain %q", needle)
+			t.Fatalf("service_submit_warehouse_code_helper.go should not contain %q", needle)
 		}
 	}
 
 	if !strings.Contains(helperContent, "func pickSheinWarehouseCode(warehouses *sheinwarehouse.WarehouseResponse, site string) string {") {
-		t.Fatalf("service_submit_warehouse_helper.go should keep %q", "func pickSheinWarehouseCode(warehouses *sheinwarehouse.WarehouseResponse, site string) string {")
+		t.Fatalf("service_submit_warehouse_code_helper.go should keep %q", "func pickSheinWarehouseCode(warehouses *sheinwarehouse.WarehouseResponse, site string) string {")
+	}
+
+	if _, err := os.ReadFile("service_submit_warehouse_helper.go"); err == nil {
+		t.Fatal("service_submit_warehouse_helper.go should be removed after warehouse code helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_warehouse_helper.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_submit_store_context.go"); err == nil {
