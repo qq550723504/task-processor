@@ -23,7 +23,7 @@ internal/listingkit/service_ai_client_settings_facade.go // AI client settings f
 internal/listingkit/service_child_task_retry_logic.go    // child task retry logic
 internal/listingkit/service_shein_category_search_facade.go // SHEIN category search facade delegates
 internal/listingkit/service_shein_category_client_helpers.go // SHEIN category/attribute API helpers
-internal/listingkit/service_shein_cookie_preview_helpers.go // SHEIN cookie preview helper
+internal/listingkit/service_shein_cookie_preview_helper.go  // SHEIN cookie preview helper
 internal/listingkit/service_shein_cookie_note_helper.go  // SHEIN cookie availability note helper
 internal/listingkit/service_shein_final_draft_facade.go  // SHEIN final draft facade delegate
 internal/listingkit/service_shein_image_regeneration.go // SHEIN data image regeneration logic
@@ -177,7 +177,7 @@ Owns root SHEIN category/attribute API helpers:
 - category API builder,
 - attribute API builder.
 
-### `service_shein_cookie_preview_helpers.go`
+### `service_shein_cookie_preview_helper.go`
 
 Owns root SHEIN cookie preview helper:
 
