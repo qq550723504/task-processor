@@ -25,7 +25,7 @@ func categoryResolverCacheKey(req *BuildRequest, canonical *canonical.Product, p
 		"version":              3,
 		"store_id":             sheinStoreID(req),
 		"target_category_hint": normalizeText(targetCategoryHint(req)),
-		"category_path":        normalizedSourceCategoryPath(canonical, pkg),
+		"category_path":        normalizedCategoryCachePath(canonical, pkg),
 		"product_identity":     stableProductIdentity(canonical, pkg),
 	}
 	return hashCachePayload(payload)
@@ -118,6 +118,29 @@ func normalizedSourceCategoryPath(canonical *canonical.Product, pkg *Package) []
 	} else {
 		path = resolveCategoryPath(canonical, pkg)
 	}
+	result := make([]string, 0, len(path))
+	for _, item := range path {
+		item = normalizeText(item)
+		if item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func normalizedCategoryCachePath(canonical *canonical.Product, pkg *Package) []string {
+	if canonical != nil && len(canonical.CategoryPath) > 0 {
+		return normalizedCategoryPathItems(canonical.CategoryPath)
+	}
+	if pkg != nil && pkg.Metadata != nil {
+		if raw := strings.TrimSpace(pkg.Metadata["source_category_path"]); raw != "" {
+			return normalizedCategoryPathItems(strings.Split(raw, ">"))
+		}
+	}
+	return nil
+}
+
+func normalizedCategoryPathItems(path []string) []string {
 	result := make([]string, 0, len(path))
 	for _, item := range path {
 		item = normalizeText(item)

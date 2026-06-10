@@ -147,6 +147,45 @@ func TestCategoryResolverCacheKeyUsesStableSDSIdentifiers(t *testing.T) {
 	}
 }
 
+func TestCategoryResolverCacheKeyIgnoresResolvedSheinCategoryPathWhenSourcePathMissing(t *testing.T) {
+	req := &BuildRequest{SheinStoreID: 42}
+	canonical := &canonical.Product{
+		Title: "护照保护套",
+		Variants: []canonical.Variant{
+			{
+				SKU: "JJ0529207001-B8E25941",
+				Attributes: map[string]canonical.Attribute{
+					"source_sds_sku": {Value: "JJ0529207001"},
+				},
+			},
+		},
+	}
+	before := &Package{
+		SpuName: "护照保护套",
+		ProductAttributes: []common.Attribute{
+			{Name: "source_sds_sku", Value: "JJ0529207001"},
+		},
+	}
+	after := &Package{
+		SpuName:       "护照保护套",
+		CategoryPath:  []string{"箱包", "旅行箱包&配件用品", "旅行配件&用品", "护照夹"},
+		CategoryName:  "护照夹",
+		ProductNameEn: "Classic Academy Travel Passport Holder",
+		ProductAttributes: []common.Attribute{
+			{Name: "source_sds_sku", Value: "JJ0529207001"},
+		},
+	}
+
+	beforeKey := categoryResolverCacheKey(req, canonical, before)
+	afterKey := categoryResolverCacheKey(req, canonical, after)
+	if beforeKey == "" || afterKey == "" {
+		t.Fatalf("cache keys should not be empty: before=%q after=%q", beforeKey, afterKey)
+	}
+	if beforeKey != afterKey {
+		t.Fatalf("category cache key drifted after resolved SHEIN category path was applied: before=%s after=%s", beforeKey, afterKey)
+	}
+}
+
 func TestCachedAttributeResolverSkipsZeroHitResolution(t *testing.T) {
 	inner := &countingAttributeResolver{
 		out: &AttributeResolution{

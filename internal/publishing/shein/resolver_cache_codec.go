@@ -133,9 +133,13 @@ func normalizedResolutionSource(source string, fallback string) string {
 }
 
 func buildResolutionCacheSourceIdentity(kind string, canonical *canonical.Product, pkg *Package) string {
+	categoryPath := normalizedSourceCategoryPath(canonical, pkg)
+	if strings.TrimSpace(kind) == ResolutionCacheKindCategory {
+		categoryPath = normalizedCategoryCachePath(canonical, pkg)
+	}
 	payload := map[string]any{
 		"kind":              kind,
-		"category_path":     normalizedSourceCategoryPath(canonical, pkg),
+		"category_path":     categoryPath,
 		"product_identity":  stableProductIdentity(canonical, pkg),
 		"category_id":       categoryID(pkg),
 		"category_id_list":  nil,
