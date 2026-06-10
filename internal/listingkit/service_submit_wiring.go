@@ -28,6 +28,7 @@ func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecovery
 		buildSheinSubmitOtherAPI:    s.buildSheinSubmitOtherAPI,
 		rememberSheinSubmitted:      s.rememberSheinSubmittedResolution,
 		persistSuccessfulSubmission: state.persistSuccessfulSheinSubmission,
+		recordSubmissionFailure:     state.recordSheinSubmissionFailureForState,
 		resolveRemoteStatusCallback: s.resolveSheinSubmitRemoteStatus,
 	}
 }

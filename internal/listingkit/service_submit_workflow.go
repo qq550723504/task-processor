@@ -2,10 +2,7 @@ package listingkit
 
 import (
 	"context"
-	"errors"
 	"strings"
-
-	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string, task *Task, req *SubmitTaskRequest, opts sheinWorkflowSubmitOptions) (*ListingKitPreview, error) {
@@ -23,39 +20,5 @@ func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string
 	if shouldReplayStartedTemporalSubmit(err, opts.requestID) {
 		return s.buildTaskPreview(ctx, task, "shein")
 	}
-	return nil, s.handleSheinWorkflowStartFailure(ctx, taskID, task, opts, err)
-}
-
-func (s *service) handleSheinWorkflowStartFailure(ctx context.Context, taskID string, task *Task, opts sheinWorkflowSubmitOptions, startErr error) error {
-	state := s.taskSubmissionStateOrDefault()
-	recovery := s.taskSubmissionRecoveryOrDefault()
-	var result *ListingKitResult
-	var pkg *SheinPackage
-	if task != nil {
-		result = task.Result
-		if task.Result != nil {
-			pkg = task.Result.Shein
-		}
-	}
-	failErr := state.recordSheinSubmissionFailureForState(
-		ctx,
-		taskID,
-		result,
-		pkg,
-		opts.action,
-		opts.requestID,
-		sheinpub.SubmissionPhaseValidate,
-		startErr,
-	)
-	clearErr := recovery.clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, opts.action, opts.requestID, startErr)
-	if failErr != nil {
-		if clearErr != nil {
-			return errors.Join(failErr, clearErr)
-		}
-		return failErr
-	}
-	if clearErr != nil {
-		return clearErr
-	}
-	return startErr
+	return nil, s.taskSubmissionRecoveryOrDefault().handleSheinWorkflowStartFailure(ctx, taskID, task, opts, err)
 }

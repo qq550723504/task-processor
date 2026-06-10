@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ type taskSubmissionRecoveryServiceConfig struct {
 	buildSheinSubmitOtherAPI    func(context.Context, *Task) (sheinother.OtherAPI, error)
 	rememberSheinSubmitted      func(*Task, string)
 	persistSuccessfulSubmission func(context.Context, string, *Task, string) error
+	recordSubmissionFailure     func(context.Context, string, *ListingKitResult, *SheinPackage, string, string, string, error) error
 	resolveRemoteStatusCallback func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
 }
 
@@ -30,6 +32,7 @@ type taskSubmissionRecoveryService struct {
 	buildSheinSubmitOtherAPI    func(context.Context, *Task) (sheinother.OtherAPI, error)
 	rememberSheinSubmitted      func(*Task, string)
 	persistSuccessfulSubmission func(context.Context, string, *Task, string) error
+	recordSubmissionFailure     func(context.Context, string, *ListingKitResult, *SheinPackage, string, string, string, error) error
 	resolveRemoteStatusCallback func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
 }
 
@@ -49,6 +52,7 @@ func newTaskSubmissionRecoveryService(config taskSubmissionRecoveryServiceConfig
 		buildSheinSubmitOtherAPI:    config.buildSheinSubmitOtherAPI,
 		rememberSheinSubmitted:      config.rememberSheinSubmitted,
 		persistSuccessfulSubmission: config.persistSuccessfulSubmission,
+		recordSubmissionFailure:     config.recordSubmissionFailure,
 		resolveRemoteStatusCallback: config.resolveRemoteStatusCallback,
 	}
 }
@@ -72,6 +76,41 @@ func (s *taskSubmissionRecoveryService) mutateTaskResult(ctx context.Context, ta
 		}
 	}
 	return task, nil
+}
+
+func (s *taskSubmissionRecoveryService) handleSheinWorkflowStartFailure(ctx context.Context, taskID string, task *Task, opts sheinWorkflowSubmitOptions, startErr error) error {
+	var result *ListingKitResult
+	var pkg *SheinPackage
+	if task != nil {
+		result = task.Result
+		if task.Result != nil {
+			pkg = task.Result.Shein
+		}
+	}
+	failErr := startErr
+	if s.recordSubmissionFailure != nil {
+		failErr = s.recordSubmissionFailure(
+			ctx,
+			taskID,
+			result,
+			pkg,
+			opts.action,
+			opts.requestID,
+			sheinpub.SubmissionPhaseValidate,
+			startErr,
+		)
+	}
+	clearErr := s.clearSheinSubmitLeaseAfterStartFailure(ctx, taskID, opts.action, opts.requestID, startErr)
+	if failErr != nil && !errors.Is(failErr, startErr) {
+		if clearErr != nil {
+			return errors.Join(failErr, clearErr)
+		}
+		return failErr
+	}
+	if clearErr != nil {
+		return clearErr
+	}
+	return startErr
 }
 
 func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {

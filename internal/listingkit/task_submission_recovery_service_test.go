@@ -369,6 +369,73 @@ func TestTaskSubmissionRecoveryServiceClearSheinSubmitLeaseAfterStartFailureMark
 	}
 }
 
+func TestTaskSubmissionRecoveryServiceHandleSheinWorkflowStartFailureReturnsOriginalErrorAfterPersistAndClear(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-time.Minute)
+	beginSheinSubmitAttempt(task.Result.Shein, "publish", "workflow-start-fail-123", sheinpub.SubmissionPhaseValidate, startedAt)
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	var failureCalls int
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		repo: repo,
+		recordSubmissionFailure: func(_ context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestID, phase string, submitErr error) error {
+			failureCalls++
+			if taskID != task.ID {
+				t.Fatalf("taskID = %q, want %q", taskID, task.ID)
+			}
+			if result != task.Result {
+				t.Fatalf("result = %+v, want original task result", result)
+			}
+			if pkg != task.Result.Shein {
+				t.Fatalf("pkg = %+v, want original shein package", pkg)
+			}
+			if action != "publish" || requestID != "workflow-start-fail-123" {
+				t.Fatalf("action/requestID = %q/%q, want publish/workflow-start-fail-123", action, requestID)
+			}
+			if phase != sheinpub.SubmissionPhaseValidate {
+				t.Fatalf("phase = %q, want %q", phase, sheinpub.SubmissionPhaseValidate)
+			}
+			if submitErr == nil || submitErr.Error() != "workflow start failed" {
+				t.Fatalf("submitErr = %v, want workflow start failed", submitErr)
+			}
+			return nil
+		},
+	})
+
+	startErr := errors.New("workflow start failed")
+	err := recovery.handleSheinWorkflowStartFailure(context.Background(), task.ID, task, sheinWorkflowSubmitOptions{
+		action:    "publish",
+		requestID: "workflow-start-fail-123",
+		startedAt: startedAt,
+	}, startErr)
+	if !errors.Is(err, startErr) {
+		t.Fatalf("handleSheinWorkflowStartFailure() err = %v, want %v", err, startErr)
+	}
+	if failureCalls != 1 {
+		t.Fatalf("record submission failure calls = %d, want 1", failureCalls)
+	}
+
+	saved, getErr := repo.GetTask(context.Background(), task.ID)
+	if getErr != nil {
+		t.Fatalf("get task: %v", getErr)
+	}
+	record := saved.Result.Shein.Submission.Publish
+	if record == nil {
+		t.Fatal("publish record = nil, want failed attempt")
+	}
+	if record.Status != sheinpub.SubmissionStatusFailed {
+		t.Fatalf("publish status = %q, want failed", record.Status)
+	}
+	if saved.Result.Shein.Submission.CurrentAction != "" || saved.Result.Shein.Submission.CurrentPhase != "" || saved.Result.Shein.Submission.CurrentRequestID != "" {
+		t.Fatalf("submission current state = %+v, want cleared lease", saved.Result.Shein.Submission)
+	}
+}
+
 func TestTaskSubmissionRecoveryServiceClearSheinSubmitLeaseClearsInFlightState(t *testing.T) {
 	t.Parallel()
 
