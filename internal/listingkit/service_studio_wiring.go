@@ -60,3 +60,17 @@ func buildTaskStudioBatchRunServiceConfig(s *service) taskStudioBatchRunServiceC
 		startRun:          startRun,
 	}
 }
+
+func buildStudioBatchRunCoordinatorConfig(s *service) studioBatchRunCoordinatorConfig {
+	return studioBatchRunCoordinatorConfig{
+		repo:     s.studioBatchRunRepo,
+		executor: s.buildStudioBatchRunExecutor(),
+	}
+}
+
+func buildTaskStudioBatchRunExecutorConfig(s *service) taskStudioBatchRunExecutorConfig {
+	return taskStudioBatchRunExecutorConfig{
+		repo:       s.studioBatchRunRepo,
+		executeOne: s.executeStudioBatchRunItem,
+	}
+}

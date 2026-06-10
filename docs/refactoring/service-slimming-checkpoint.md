@@ -114,6 +114,7 @@ Owns explicit config builders for studio collaborators:
 
 Studio batch generation wiring is also routed through this file so nested studio
 collaborator construction stays visible without re-expanding accessor files.
+Studio batch run coordinator/executor config also flows through this seam.
 
 ### `service_submission_collaborators.go`
 

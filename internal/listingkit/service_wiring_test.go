@@ -348,6 +348,18 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 				"newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{",
 			},
 		},
+		{
+			name: "studio batch run coordinator",
+			file: "studio_batch_run_coordinator.go",
+			builderCalls: []string{
+				"buildStudioBatchRunCoordinatorConfig(s)",
+				"buildTaskStudioBatchRunExecutorConfig(s)",
+			},
+			inlineConfig: []string{
+				"newStudioBatchRunCoordinator(studioBatchRunCoordinatorConfig{",
+				"newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{",
+			},
+		},
 	}
 
 	for _, tc := range cases {
