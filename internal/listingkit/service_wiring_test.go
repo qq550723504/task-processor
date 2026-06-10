@@ -600,14 +600,22 @@ func TestSubmitRoutingFileOwnsRootSubmitDelegates(t *testing.T) {
 func TestSubmitWorkflowFileOwnsWorkflowGatingHelpers(t *testing.T) {
 	t.Parallel()
 
-	workflowSrc, err := os.ReadFile("service_submit_workflow.go")
+	workflowSrc, err := os.ReadFile("service_submit_workflow_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_workflow.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_workflow_facade.go) error = %v", err)
 	}
 	workflowContent := string(workflowSrc)
 
 	if !strings.Contains(workflowContent, "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {") {
-		t.Fatalf("service_submit_workflow.go should contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
+		t.Fatalf("service_submit_workflow_facade.go should contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
+	}
+
+	legacySrc, err := os.ReadFile("service_submit_workflow.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_workflow.go) error = %v", err)
+	}
+	if strings.Contains(string(legacySrc), "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {") {
+		t.Fatalf("service_submit_workflow.go should not contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
 	}
 
 	routingSrc, err := os.ReadFile("service_submit_routing.go")
@@ -1532,6 +1540,43 @@ func TestChildTaskRetryFacadeFileOwnsRootDelegate(t *testing.T) {
 	} {
 		if !strings.Contains(retryContent, needle) {
 			t.Fatalf("service_child_task_retry.go should keep %q", needle)
+		}
+	}
+}
+
+func TestSubmitWorkflowFacadeFileOwnsRootHelpers(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_submit_workflow_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_workflow_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string, task *Task, req *SubmitTaskRequest, opts sheinWorkflowSubmitOptions) (*ListingKitPreview, error) {",
+		"return s.taskTemporalSubmissionAdapterOrDefault().startSheinPublishWorkflowAttempt(ctx, taskID, task, req, opts)",
+		"func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {",
+		"s.sheinPublishWorkflowEnabled &&",
+		"action == \"publish\"",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_submit_workflow_facade.go should contain %q", needle)
+		}
+	}
+
+	workflowSrc, err := os.ReadFile("service_submit_workflow.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_workflow.go) error = %v", err)
+	}
+	workflowContent := string(workflowSrc)
+
+	for _, needle := range []string{
+		"func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string, task *Task, req *SubmitTaskRequest, opts sheinWorkflowSubmitOptions) (*ListingKitPreview, error) {",
+		"func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {",
+	} {
+		if strings.Contains(workflowContent, needle) {
+			t.Fatalf("service_submit_workflow.go should not contain %q", needle)
 		}
 	}
 }
