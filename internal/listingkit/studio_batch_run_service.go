@@ -2,7 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
 )
 
 type CreateStudioBatchRunRequest struct {
@@ -30,12 +29,4 @@ func (s *service) ListStudioBatchRunItems(ctx context.Context, runID string) ([]
 
 func (s *service) CancelStudioBatchRun(ctx context.Context, runID string) error {
 	return s.taskStudioBatchRunOrDefault().CancelStudioBatchRun(ctx, runID)
-}
-
-func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {
-	coordinator := s.buildStudioBatchRunCoordinator()
-	if coordinator == nil {
-		return fmt.Errorf("studio batch run executor is not configured")
-	}
-	return coordinator.StartRun(ctx, runID)
 }

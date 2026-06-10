@@ -620,3 +620,27 @@ func TestSubmitWorkflowFileOwnsWorkflowGatingHelpers(t *testing.T) {
 		t.Fatalf("service_submit_routing.go should not contain %q", "func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {")
 	}
 }
+
+func TestStudioBatchRunCoordinatorFileOwnsRunStarter(t *testing.T) {
+	t.Parallel()
+
+	coordinatorSrc, err := os.ReadFile("studio_batch_run_coordinator.go")
+	if err != nil {
+		t.Fatalf("ReadFile(studio_batch_run_coordinator.go) error = %v", err)
+	}
+	coordinatorContent := string(coordinatorSrc)
+
+	if !strings.Contains(coordinatorContent, "func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {") {
+		t.Fatalf("studio_batch_run_coordinator.go should contain %q", "func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {")
+	}
+
+	serviceSrc, err := os.ReadFile("studio_batch_run_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(studio_batch_run_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	if strings.Contains(serviceContent, "func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {") {
+		t.Fatalf("studio_batch_run_service.go should not contain %q", "func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {")
+	}
+}

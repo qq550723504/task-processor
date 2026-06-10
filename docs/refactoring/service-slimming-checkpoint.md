@@ -146,6 +146,8 @@ Owns explicit config builders for studio collaborators:
 Studio batch generation wiring is also routed through this file so nested studio
 collaborator construction stays visible without re-expanding accessor files.
 Studio batch run coordinator/executor config also flows through this seam.
+Coordinator-owned batch run start/recovery helpers live alongside the
+coordinator in `studio_batch_run_coordinator.go`.
 
 ### `service_submission_collaborators.go`
 
