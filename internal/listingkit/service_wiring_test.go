@@ -1589,6 +1589,39 @@ func TestUploadedImageFacadeFileOwnsRootDelegates(t *testing.T) {
 	}
 }
 
+func TestSheinPricingFacadeFileOwnsRootDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_shein_pricing_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_pricing_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {",
+		"return s.sheinAdminOrDefault().PreviewSheinPrice(ctx, taskID, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_shein_pricing_facade.go should contain %q", needle)
+		}
+	}
+
+	pricingSrc, err := os.ReadFile("shein_pricing.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_pricing.go) error = %v", err)
+	}
+	pricingContent := string(pricingSrc)
+
+	if strings.Contains(pricingContent, "func (s *service) PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {") {
+		t.Fatalf("shein_pricing.go should not contain %q", "func (s *service) PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {")
+	}
+
+	if !strings.Contains(pricingContent, "func (s *service) currentSheinPricingRule() sheinpub.PricingRule {") {
+		t.Fatalf("shein_pricing.go should keep %q", "func (s *service) currentSheinPricingRule() sheinpub.PricingRule {")
+	}
+}
+
 func TestChildTaskRetryFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
