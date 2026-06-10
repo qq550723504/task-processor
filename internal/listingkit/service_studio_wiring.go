@@ -23,6 +23,15 @@ func buildTaskStudioMediaServiceConfig(s *service) taskStudioMediaServiceConfig 
 	}
 }
 
+func buildStudioBatchGenerationServiceConfig(s *service) studioBatchGenerationServiceConfig {
+	return studioBatchGenerationServiceConfig{
+		repo: s.studioBatchRepo,
+		execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+			return ExecuteStudioDesignBatch(ctx, s, input)
+		},
+	}
+}
+
 func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig {
 	if s == nil {
 		return taskStudioBatchServiceConfig{}
@@ -34,12 +43,7 @@ func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig 
 	return taskStudioBatchServiceConfig{
 		repo:              s.studioBatchRepo,
 		studioSessionRepo: s.studioSessionRepo,
-		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
-			repo: s.studioBatchRepo,
-			execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
-				return ExecuteStudioDesignBatch(ctx, s, input)
-			},
-		}),
+		generator:         newStudioBatchGenerationService(buildStudioBatchGenerationServiceConfig(s)),
 		createGenerateTask: s.CreateGenerateTask,
 		getTask:            getTask,
 	}

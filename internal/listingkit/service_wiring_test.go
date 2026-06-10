@@ -320,6 +320,16 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			},
 		},
 		{
+			name: "studio wiring",
+			file: "service_studio_wiring.go",
+			builderCalls: []string{
+				"buildStudioBatchGenerationServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newStudioBatchGenerationService(studioBatchGenerationServiceConfig{",
+			},
+		},
+		{
 			name: "studio batch run",
 			file: "studio_batch_run_service.go",
 			builderCalls: []string{

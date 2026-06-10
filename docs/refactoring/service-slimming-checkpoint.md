@@ -112,6 +112,9 @@ Owns explicit config builders for studio collaborators:
 - studio batch,
 - studio batch run.
 
+Studio batch generation wiring is also routed through this file so nested studio
+collaborator construction stays visible without re-expanding accessor files.
+
 ### `service_submission_collaborators.go`
 
 Owns the submission collaborator container.
