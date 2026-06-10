@@ -877,9 +877,9 @@ func TestStudioSessionFacadeFileOwnsRootDelegates(t *testing.T) {
 func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_studio_media_generation_facade.go")
+	facadeSrc, err := os.ReadFile("service_studio_media_generation_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_studio_media_generation_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_studio_media_generation_entrypoints.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -890,7 +890,7 @@ func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 		"return s.taskStudioMediaOrDefault().GenerateStudioProductImages(ctx, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_studio_media_generation_facade.go should contain %q", needle)
+			t.Fatalf("service_studio_media_generation_entrypoints.go should contain %q", needle)
 		}
 	}
 
