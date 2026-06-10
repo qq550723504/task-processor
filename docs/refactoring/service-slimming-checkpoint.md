@@ -36,7 +36,7 @@ internal/listingkit/service_store_profile_facade.go      // store profile / rout
 internal/listingkit/service_process_facade.go            // process facade delegate
 internal/listingkit/service_task_layers_facade.go        // task layer facade delegates
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
-internal/listingkit/service_task_generation.go           // task generation facade delegates
+internal/listingkit/service_task_generation_facade.go    // task generation facade delegates
 internal/listingkit/service_task_revision_facade.go      // task revision facade delegates
 internal/listingkit/service_task_lifecycle_facade.go     // task lifecycle facade delegates
 internal/listingkit/service_task_sds_baseline_facade.go  // task SDS baseline facade delegates
@@ -245,7 +245,7 @@ Owns task collaborator accessors:
 - task lifecycle,
 - SDS baseline helper access.
 
-### `service_task_generation.go`
+### `service_task_generation_facade.go`
 
 Owns root task generation facade delegates:
 
