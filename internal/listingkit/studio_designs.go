@@ -46,12 +46,7 @@ func (s *service) taskStudioMediaOrDefault() *taskStudioMediaService {
 	if s.taskStudioMedia != nil {
 		return s.taskStudioMedia
 	}
-	s.taskStudioMedia = newTaskStudioMediaService(taskStudioMediaServiceConfig{
-		imageGenerator:        s.studioImageGenerator,
-		promptDiversifier:     s.studioPromptDiversifier,
-		uploadStoreConfigured: s.uploadStore != nil,
-		uploadImages:          s.UploadImages,
-	})
+	s.taskStudioMedia = newTaskStudioMediaService(buildTaskStudioMediaServiceConfig(s))
 	return s.taskStudioMedia
 }
 

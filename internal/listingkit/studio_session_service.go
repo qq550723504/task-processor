@@ -52,9 +52,7 @@ func (s *service) taskStudioSessionOrDefault() *taskStudioSessionService {
 	if s.taskStudioSession != nil {
 		return s.taskStudioSession
 	}
-	s.taskStudioSession = newTaskStudioSessionService(taskStudioSessionServiceConfig{
-		repo: s.studioSessionRepo,
-	})
+	s.taskStudioSession = newTaskStudioSessionService(buildTaskStudioSessionServiceConfig(s))
 	return s.taskStudioSession
 }
 
@@ -62,9 +60,7 @@ func (s *service) taskStudioBatchDraftOrDefault() *taskStudioBatchDraftService {
 	if s.taskStudioBatchDraft != nil {
 		return s.taskStudioBatchDraft
 	}
-	s.taskStudioBatchDraft = newTaskStudioBatchDraftService(taskStudioBatchDraftServiceConfig{
-		repo: s.studioSessionRepo,
-	})
+	s.taskStudioBatchDraft = newTaskStudioBatchDraftService(buildTaskStudioBatchDraftServiceConfig(s))
 	return s.taskStudioBatchDraft
 }
 

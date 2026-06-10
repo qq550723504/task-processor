@@ -36,15 +36,7 @@ func (s *service) taskStudioBatchRunOrDefault() *taskStudioBatchRunService {
 	if s.taskStudioBatchRun != nil {
 		return s.taskStudioBatchRun
 	}
-	var startRun func(ctx context.Context, runID string) error
-	if s.buildStudioBatchRunCoordinator() != nil {
-		startRun = s.startStudioBatchRun
-	}
-	s.taskStudioBatchRun = newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{
-		repo:              s.studioBatchRunRepo,
-		studioSessionRepo: s.studioSessionRepo,
-		startRun:          startRun,
-	})
+	s.taskStudioBatchRun = newTaskStudioBatchRunService(buildTaskStudioBatchRunServiceConfig(s))
 	return s.taskStudioBatchRun
 }
 

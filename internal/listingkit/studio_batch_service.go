@@ -113,25 +113,3 @@ func (s *service) taskStudioBatchOrDefault() *taskStudioBatchService {
 	s.taskStudioBatch = newTaskStudioBatchService(buildTaskStudioBatchServiceConfig(s))
 	return s.taskStudioBatch
 }
-
-func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig {
-	if s == nil {
-		return taskStudioBatchServiceConfig{}
-	}
-	var getTask func(context.Context, string) (*Task, error)
-	if s.repo != nil {
-		getTask = s.repo.GetTask
-	}
-	return taskStudioBatchServiceConfig{
-		repo:              s.studioBatchRepo,
-		studioSessionRepo: s.studioSessionRepo,
-		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
-			repo: s.studioBatchRepo,
-			execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
-				return ExecuteStudioDesignBatch(ctx, s, input)
-			},
-		}),
-		createGenerateTask: s.CreateGenerateTask,
-		getTask:            getTask,
-	}
-}

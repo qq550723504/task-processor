@@ -278,6 +278,84 @@ func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 	}
 }
 
+func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		file         string
+		builderCalls []string
+		inlineConfig []string
+	}{
+		{
+			name: "studio session",
+			file: "studio_session_service.go",
+			builderCalls: []string{
+				"buildTaskStudioSessionServiceConfig(s)",
+				"buildTaskStudioBatchDraftServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newTaskStudioSessionService(taskStudioSessionServiceConfig{",
+				"newTaskStudioBatchDraftService(taskStudioBatchDraftServiceConfig{",
+			},
+		},
+		{
+			name: "studio media",
+			file: "studio_designs.go",
+			builderCalls: []string{
+				"buildTaskStudioMediaServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newTaskStudioMediaService(taskStudioMediaServiceConfig{",
+			},
+		},
+		{
+			name: "studio batch",
+			file: "studio_batch_service.go",
+			builderCalls: []string{
+				"buildTaskStudioBatchServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newTaskStudioBatchService(taskStudioBatchServiceConfig{",
+			},
+		},
+		{
+			name: "studio batch run",
+			file: "studio_batch_run_service.go",
+			builderCalls: []string{
+				"buildTaskStudioBatchRunServiceConfig(s)",
+			},
+			inlineConfig: []string{
+				"newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			src, err := os.ReadFile(tc.file)
+			if err != nil {
+				t.Fatalf("ReadFile(%s) error = %v", tc.file, err)
+			}
+			content := string(src)
+
+			for _, builderCall := range tc.builderCalls {
+				if !strings.Contains(content, builderCall) {
+					t.Fatalf("%s should contain %q", tc.file, builderCall)
+				}
+			}
+			for _, inlineConfig := range tc.inlineConfig {
+				if strings.Contains(content, inlineConfig) {
+					t.Fatalf("%s should not contain %q", tc.file, inlineConfig)
+				}
+			}
+		})
+	}
+}
+
 func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 	t.Parallel()
 

@@ -20,6 +20,7 @@ internal/listingkit/service_defaults.go                   // config defaults / d
 internal/listingkit/service_collaborators.go              // collaborator initialization groups
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 internal/listingkit/service_task_wiring.go               // task/generation/revision collaborator config builders
+internal/listingkit/service_studio_wiring.go             // studio collaborator config builders
 internal/listingkit/service_submit.go                     // submit facade entrypoint
 internal/listingkit/service_submit_primitives.go          // shared submit TTL / sentinel errors
 internal/listingkit/service_submit_contracts.go           // shared submit option structs / normalization helpers
@@ -100,6 +101,16 @@ Owns explicit config builders for non-submit task collaborators:
 - task lifecycle.
 
 This keeps accessor files thin while leaving task-specific wiring visible in one place.
+
+### `service_studio_wiring.go`
+
+Owns explicit config builders for studio collaborators:
+
+- studio session,
+- studio batch draft,
+- studio media,
+- studio batch,
+- studio batch run.
 
 ### `service_submission_collaborators.go`
 
