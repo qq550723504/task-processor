@@ -1924,9 +1924,9 @@ func TestUploadedImageFileOwnsRootLogic(t *testing.T) {
 func TestSheinPricingFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_pricing_facade.go")
+	facadeSrc, err := os.ReadFile("service_shein_price_preview_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_pricing_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_price_preview_facade.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1935,7 +1935,7 @@ func TestSheinPricingFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.sheinAdminOrDefault().PreviewSheinPrice(ctx, taskID, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_pricing_facade.go should contain %q", needle)
+			t.Fatalf("service_shein_price_preview_facade.go should contain %q", needle)
 		}
 	}
 
