@@ -47,7 +47,7 @@ internal/listingkit/service_task_preview_payload_helper.go // task preview helpe
 internal/listingkit/service_task_export_logic.go         // task export logic
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
 internal/listingkit/service_studio_session_facade.go     // studio session facade delegates
-internal/listingkit/service_studio_media_facade.go       // studio media root facade delegates
+internal/listingkit/service_studio_media_generation_facade.go // studio media generation facade delegates
 internal/listingkit/service_studio_media_generation_helpers.go // studio media helper delegates
 internal/listingkit/service_studio_batch_facade.go       // studio batch facade delegates
 internal/listingkit/service_studio_batch_run_facade.go   // studio batch run facade delegates
@@ -357,9 +357,9 @@ Owns root studio session facade delegates:
 - batch draft fetch / upsert / delete,
 - async job status synchronization.
 
-### `service_studio_media_facade.go`
+### `service_studio_media_generation_facade.go`
 
-Owns root studio media facade delegates:
+Owns root studio media generation facade delegates:
 
 - studio design generation entrypoints,
 - studio product image generation entrypoints.
