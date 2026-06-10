@@ -1251,12 +1251,12 @@ func TestTaskPreviewFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
-func TestTaskPreviewBuilderFileOwnsPreviewBuilderHelper(t *testing.T) {
+func TestTaskPreviewHelperFileOwnsPreviewBuilderHelper(t *testing.T) {
 	t.Parallel()
 
-	builderSrc, err := os.ReadFile("service_task_preview_builder.go")
+	builderSrc, err := os.ReadFile("service_task_preview_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_task_preview_builder.go) error = %v", err)
+		t.Fatalf("ReadFile(service_task_preview_helper.go) error = %v", err)
 	}
 	builderContent := string(builderSrc)
 
@@ -1266,8 +1266,14 @@ func TestTaskPreviewBuilderFileOwnsPreviewBuilderHelper(t *testing.T) {
 		"s.decorateSheinCookieAvailabilityPreview(ctx, task, preview)",
 	} {
 		if !strings.Contains(builderContent, needle) {
-			t.Fatalf("service_task_preview_builder.go should contain %q", needle)
+			t.Fatalf("service_task_preview_helper.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_task_preview_builder.go"); err == nil {
+		t.Fatal("service_task_preview_builder.go should be removed after preview helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_task_preview_builder.go) unexpected error = %v", err)
 	}
 
 	previewSrc, err := os.ReadFile("service_preview.go")

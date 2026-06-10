@@ -42,7 +42,7 @@ internal/listingkit/service_task_revision_facade.go      // task revision facade
 internal/listingkit/service_task_lifecycle_facade.go     // task lifecycle facade delegates
 internal/listingkit/service_task_sds_baseline_facade.go  // task SDS baseline facade delegates
 internal/listingkit/service_task_preview.go              // task preview logic
-internal/listingkit/service_task_preview_builder.go      // task preview builder helper
+internal/listingkit/service_task_preview_helper.go       // task preview helper
 internal/listingkit/service_task_export.go               // task export logic
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
 internal/listingkit/service_studio_session_facade.go     // studio session facade delegates
@@ -288,9 +288,9 @@ Owns task preview logic:
 
 - task preview fetch and projection assembly.
 
-### `service_task_preview_builder.go`
+### `service_task_preview_helper.go`
 
-Owns task preview builder helper:
+Owns task preview helper:
 
 - preview payload construction and cookie decoration bridge.
 
