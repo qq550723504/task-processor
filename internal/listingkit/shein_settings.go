@@ -8,14 +8,6 @@ import (
 	"task-processor/internal/tenantbridge"
 )
 
-func (s *service) GetSheinSettings(ctx context.Context) (*SheinSettings, error) {
-	return s.settingsAdminOrDefault().GetSheinSettings(ctx)
-}
-
-func (s *service) UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error) {
-	return s.settingsAdminOrDefault().UpdateSheinSettings(ctx, req)
-}
-
 func (s *service) listSheinStoreOptions(ctx context.Context) []SheinStoreOption {
 	if s == nil || s.sheinStoreCatalog == nil {
 		return nil

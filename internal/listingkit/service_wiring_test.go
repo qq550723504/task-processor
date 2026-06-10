@@ -960,6 +960,52 @@ func TestAIClientSettingsFacadeFileOwnsRootDelegates(t *testing.T) {
 	}
 }
 
+func TestSheinSettingsFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_shein_settings.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_settings.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetSheinSettings(ctx context.Context) (*SheinSettings, error) {",
+		"return s.settingsAdminOrDefault().GetSheinSettings(ctx)",
+		"func (s *service) UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error) {",
+		"return s.settingsAdminOrDefault().UpdateSheinSettings(ctx, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_shein_settings.go should contain %q", needle)
+		}
+	}
+
+	helperSrc, err := os.ReadFile("shein_settings.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_settings.go) error = %v", err)
+	}
+	helperContent := string(helperSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetSheinSettings(ctx context.Context) (*SheinSettings, error) {",
+		"func (s *service) UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error) {",
+	} {
+		if strings.Contains(helperContent, needle) {
+			t.Fatalf("shein_settings.go should not contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"func (s *service) listSheinStoreOptions(ctx context.Context) []SheinStoreOption {",
+		"func tenantIDInt64FromContext(ctx context.Context) (int64, bool) {",
+		"func tenantIDInt64FromTask(task *Task) int64 {",
+	} {
+		if !strings.Contains(helperContent, needle) {
+			t.Fatalf("shein_settings.go should keep %q", needle)
+		}
+	}
+}
+
 func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
