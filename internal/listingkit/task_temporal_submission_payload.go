@@ -9,7 +9,7 @@ import (
 )
 
 func (s *taskTemporalSubmissionAdapter) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {
-	task, pkg, err := s.loadSheinPublishTask(ctx, in.TaskID)
+	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (s *taskTemporalSubmissionAdapter) UploadSheinPublishImages(ctx context.Con
 		return in, nil
 	}
 
-	task, pkg, err := s.loadSheinPublishTask(ctx, in.TaskID)
+	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (s *taskTemporalSubmissionAdapter) PreValidateSheinPublish(ctx context.Cont
 	if in == nil || in.Product == nil {
 		return fmt.Errorf("shein publish payload is required")
 	}
-	task, pkg, err := s.loadSheinPublishTask(ctx, in.TaskID)
+	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Con
 	if in == nil || in.Product == nil {
 		return nil, fmt.Errorf("shein publish payload is required")
 	}
-	task, pkg, err := s.loadSheinPublishTask(ctx, in.TaskID)
+	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {
 		return nil, err
 	}

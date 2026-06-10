@@ -11,7 +11,7 @@ import (
 )
 
 func (s *taskTemporalSubmissionAdapter) PersistSheinPublishSuccess(ctx context.Context, in SheinPersistSubmitSuccessInput) error {
-	task, pkg, err := s.loadSheinPublishTask(ctx, in.TaskID)
+	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {
 		return err
 	}
@@ -37,7 +37,7 @@ func (s *taskTemporalSubmissionAdapter) PersistSheinPublishSuccess(ctx context.C
 }
 
 func (s *taskTemporalSubmissionAdapter) PersistSheinPublishFailure(ctx context.Context, in SheinPersistSubmitFailureInput) error {
-	task, pkg, err := s.loadSheinPublishTask(ctx, in.TaskID)
+	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func (s *taskTemporalSubmissionAdapter) PersistSheinPublishFailure(ctx context.C
 }
 
 func (s *taskTemporalSubmissionAdapter) RefreshSheinPublishRemoteStatus(ctx context.Context, in SheinRefreshRemoteStatusInput) (*SheinRefreshRemoteStatusResult, error) {
-	task, pkg, err := s.loadSheinPublishTask(ctx, in.TaskID)
+	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {
 		return nil, err
 	}
