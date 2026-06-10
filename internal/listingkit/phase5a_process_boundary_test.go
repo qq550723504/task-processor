@@ -52,9 +52,9 @@ func TestServiceProcessFilesKeepTerminalizationInsideProcessFlowSeam(t *testing.
 		t.Fatalf("ReadFile(service_process_review.go) unexpected error = %v", err)
 	}
 
-	flowSrc, err := os.ReadFile("service_process_flow.go")
+	flowSrc, err := os.ReadFile("service_process_runner_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_process_flow.go) error = %v", err)
+		t.Fatalf("ReadFile(service_process_runner_helper.go) error = %v", err)
 	}
 	flowContent := string(flowSrc)
 	for _, needle := range []string{
@@ -64,8 +64,14 @@ func TestServiceProcessFilesKeepTerminalizationInsideProcessFlowSeam(t *testing.
 		"f.service.persistProcessSuccess(",
 	} {
 		if !strings.Contains(flowContent, needle) {
-			t.Fatalf("service_process_flow.go should contain %q", needle)
+			t.Fatalf("service_process_runner_helper.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_process_flow.go"); err == nil {
+		t.Fatal("service_process_flow.go should be removed after process runner helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_process_flow.go) unexpected error = %v", err)
 	}
 
 	persistSrc, err := os.ReadFile("service_process_persistence_helper.go")

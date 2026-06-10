@@ -1738,6 +1738,29 @@ func TestProcessEntryFileOwnsRootEntry(t *testing.T) {
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("ReadFile(service_process_outcome.go) unexpected error = %v", err)
 	}
+
+	runnerSrc, err := os.ReadFile("service_process_runner_helper.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_process_runner_helper.go) error = %v", err)
+	}
+	runnerContent := string(runnerSrc)
+
+	for _, needle := range []string{
+		"func buildListingKitProcessFlow(s *service) *listingKitProcessFlow {",
+		"func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus.Entry) (*ListingKitResult, error) {",
+		"func (f *listingKitProcessFlow) claimTask(ctx context.Context, task *Task) error {",
+		"func processWarningCount(result *ListingKitResult) int {",
+	} {
+		if !strings.Contains(runnerContent, needle) {
+			t.Fatalf("service_process_runner_helper.go should contain %q", needle)
+		}
+	}
+
+	if _, err := os.ReadFile("service_process_flow.go"); err == nil {
+		t.Fatal("service_process_flow.go should be removed after process runner helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_process_flow.go) unexpected error = %v", err)
+	}
 }
 
 func TestTaskLayersFacadeFileOwnsRootDelegates(t *testing.T) {

@@ -251,6 +251,13 @@ Owns process persistence helper:
 - process terminal status derivation,
 - process success/failure persistence.
 
+### `service_process_runner_helper.go`
+
+Owns process runner helper:
+
+- process flow object construction,
+- claim/run warning-count helpers.
+
 ### `service_task_layers_facade.go`
 
 Owns root task layer facade delegates:
