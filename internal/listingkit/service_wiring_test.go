@@ -1143,9 +1143,9 @@ func TestSheinSettingsFacadeFileOwnsRootDelegates(t *testing.T) {
 func TestSubmitTemporalFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_temporal_facade.go")
+	facadeSrc, err := os.ReadFile("service_shein_publish_temporal_facade.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_temporal_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_publish_temporal_facade.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1172,7 +1172,7 @@ func TestSubmitTemporalFacadeFileOwnsRootDelegates(t *testing.T) {
 		"return s.taskTemporalSubmissionAdapterOrDefault().BuildSheinTaskPreview(ctx, taskID)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_temporal_facade.go should contain %q", needle)
+			t.Fatalf("service_shein_publish_temporal_facade.go should contain %q", needle)
 		}
 	}
 
