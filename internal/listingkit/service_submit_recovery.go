@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"task-processor/internal/listingkit/submission"
 	"time"
 
 	sheinpub "task-processor/internal/publishing/shein"
@@ -26,44 +25,7 @@ func (s *service) RefreshSubmissionStatus(ctx context.Context, taskID string) (*
 }
 
 func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
-	if defaultConfirmed {
-		fallbackMessage = "SHEIN accepted publish request; remote confirmation pending"
-	}
-	if action == "publish" {
-		if onWay, onWayErr := lookupSheinOnWayDocument(otherAPI, spuName); onWayErr == nil && onWay != nil {
-			detail := fmt.Sprintf("SHEIN on-way document confirmed for spu_name=%s document_sn=%s", onWay.SpuName, onWay.DocumentSn)
-			parts := submission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, detail, nil)
-			return newSheinRemoteConfirmation(parts), nil
-		}
-	}
-	item, recordErr := lookupSheinRemoteRecord(productAPI, lookupCodes, spuName)
-	if recordErr == nil && item != nil {
-		remoteStatus, detail, remoteErr := classifySheinRemoteRecord(action, item, defaultConfirmed)
-		parts := submission.BuildConfirmRemotePartsForRecord(taskID, action, remoteStatus, requestID, startedAt, detail, remoteErr, item)
-		return newSheinRemoteConfirmation(parts), remoteErr
-	}
-	if action == "publish" {
-		if spuName != "" {
-			inventoryExists, inventoryErr := lookupSheinRemoteInventory(productAPI, spuName)
-			if inventoryErr == nil && inventoryExists {
-				detail := fmt.Sprintf("SHEIN remote inventory confirmed for spu_name=%s", spuName)
-				parts := submission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, detail, nil)
-				return newSheinRemoteConfirmation(parts), nil
-			}
-		}
-	}
-	if recordErr != nil {
-		parts := submission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
-		parts.Message = recordErr.Error()
-		return newSheinRemoteConfirmation(parts), nil
-	}
-	if defaultConfirmed {
-		parts := submission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusConfirmed, requestID, startedAt, fallbackMessage, nil)
-		return newSheinRemoteConfirmation(parts), nil
-	}
-	parts := submission.BuildConfirmRemoteParts(taskID, action, sheinpub.SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
-	parts.Message = "record not found"
-	return newSheinRemoteConfirmation(parts), nil
+	return s.taskSubmissionRecoveryOrDefault().resolveSheinSubmitRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
 }
 
 type sheinOnWayDocument struct {
