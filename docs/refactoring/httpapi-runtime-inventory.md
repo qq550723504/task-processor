@@ -53,7 +53,8 @@ Current app-layer read:
 | `shein_sync_runtime.go` | `adapter construction` | Builds SHEIN sync services and composes the narrower strategy/bridge helpers. |
 | `shein_sync_runtime_bridge_helpers.go` | `adapter construction` | Owns SHEIN sync runtime bridge shaping helpers, including tenant parsing and promotion bridge factory construction. |
 | `shein_sync_runtime_strategy_helpers.go` | `adapter construction` | Owns management strategy-provider construction for the SHEIN sync runtime path. |
-| `ai_clients.go` | `adapter construction` | Builds routed OpenAI chat/image clients and runtime client resolution caches. |
+| `ai_clients.go` | `adapter construction` | Builds strict OpenAI chat/image clients and runtime client resolution caches. |
+| `ai_client_image_routing.go` | `adapter construction` | Owns ListingKit image-client routing, selector normalization, and image timeout clamping helpers. |
 | `zitadel_auth.go` | `adapter construction` | Runtime auth/authz middleware construction; transport/runtime concern, not ListingKit business logic. |
 
 ## Follow-Up Candidates
@@ -72,6 +73,16 @@ Why it stands out:
 Suggested next slice:
 
 - keep service construction in place, and continue extracting any new tenant/bridge shaping helpers instead of letting them drift back into the main assembly file.
+
+### Secondary candidate
+
+`internal/listingkit/httpapi/ai_clients.go`
+
+Why it stands out:
+
+- it still owns strict client resolution and cache wiring,
+- routed image-client logic has been narrowed into its own helper file,
+- if more request-shaping or model-selection rules land there, they should stay in helper homes rather than re-grow the main builder file.
 
 ## Current Boundary Conclusion
 
