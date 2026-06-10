@@ -686,3 +686,60 @@ func TestStudioBatchRunFacadeFileOwnsRootDelegates(t *testing.T) {
 		}
 	}
 }
+
+func TestStudioBatchFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_studio_batch.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_studio_batch.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error) {",
+		"return s.taskStudioBatchOrDefault().GetStudioBatchDetail(ctx, batchID)",
+		"func (s *service) StartStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {",
+		"return s.taskStudioBatchOrDefault().StartStudioBatchGeneration(ctx, batchID)",
+		"func (s *service) PrepareStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {",
+		"return s.taskStudioBatchOrDefault().PrepareStudioBatchGeneration(ctx, batchID)",
+		"func (s *service) ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {",
+		"return s.taskStudioBatchOrDefault().ResumeStudioBatchGeneration(ctx, batchID)",
+		"func (s *service) PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {",
+		"return s.taskStudioBatchOrDefault().PrepareRetryStudioBatchItems(ctx, batchID, req)",
+		"func (s *service) RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {",
+		"return s.taskStudioBatchOrDefault().RetryStudioBatchItems(ctx, batchID, req)",
+		"func (s *service) ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error) {",
+		"return s.taskStudioBatchOrDefault().ApproveStudioBatchDesigns(ctx, batchID, req)",
+		"func (s *service) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {",
+		"return s.taskStudioBatchOrDefault().CreateStudioBatchTasks(ctx, batchID, req)",
+		"func (s *service) PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {",
+		"return s.taskStudioBatchOrDefault().PrepareCreateStudioBatchTasks(ctx, batchID, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_studio_batch.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("studio_batch_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(studio_batch_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error) {",
+		"func (s *service) StartStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {",
+		"func (s *service) PrepareStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {",
+		"func (s *service) ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {",
+		"func (s *service) PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {",
+		"func (s *service) RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {",
+		"func (s *service) ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error) {",
+		"func (s *service) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {",
+		"func (s *service) PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {",
+	} {
+		if strings.Contains(serviceContent, needle) {
+			t.Fatalf("studio_batch_service.go should not contain %q", needle)
+		}
+	}
+}
