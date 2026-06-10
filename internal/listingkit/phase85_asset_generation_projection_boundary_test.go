@@ -32,8 +32,8 @@ func TestAssetGenerationProjectionBoundary(t *testing.T) {
 	t.Run("preview_and_export_decorators_delegate_asset_generation_bundle_to_shared_seam", func(t *testing.T) {
 		t.Parallel()
 
-		previewSource := readNamedFunctionSource(t, "service_task_preview.go", "GetTaskPreview")
-		previewCalls := readNamedFunctionCallNames(t, "service_task_preview.go", "GetTaskPreview")
+		previewSource := readNamedFunctionSource(t, "service_task_preview_facade.go", "GetTaskPreview")
+		previewCalls := readNamedFunctionCallNames(t, "service_task_preview_facade.go", "GetTaskPreview")
 		exportSource := readNamedFunctionSource(t, "service_task_export.go", "GetTaskExport")
 		exportCalls := readNamedFunctionCallNames(t, "service_task_export.go", "GetTaskExport")
 

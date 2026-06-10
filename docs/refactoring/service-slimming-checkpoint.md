@@ -40,7 +40,7 @@ internal/listingkit/service_task_generation_facade.go    // task generation faca
 internal/listingkit/service_task_revision_facade.go      // task revision facade delegates
 internal/listingkit/service_task_lifecycle_facade.go     // task lifecycle facade delegates
 internal/listingkit/service_task_sds_baseline_facade.go  // task SDS baseline facade delegates
-internal/listingkit/service_task_preview.go              // task preview facade logic
+internal/listingkit/service_task_preview_facade.go       // task preview facade logic
 internal/listingkit/service_task_preview_builder.go      // task preview builder helper
 internal/listingkit/service_task_export.go               // task export facade logic
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
@@ -274,7 +274,7 @@ Owns root task SDS baseline facade delegates:
 
 - SDS baseline warmup delegate.
 
-### `service_task_preview.go`
+### `service_task_preview_facade.go`
 
 Owns task preview facade logic:
 
