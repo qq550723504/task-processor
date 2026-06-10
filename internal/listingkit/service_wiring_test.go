@@ -1419,9 +1419,9 @@ func TestSheinStoreSelectionHelpersFileOwnsRootHelpers(t *testing.T) {
 func TestSubmitDefaultActionHelpersFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_default_action_helpers.go")
+	facadeSrc, err := os.ReadFile("service_submit_default_action_helper.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_default_action_helpers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_default_action_helper.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1432,8 +1432,14 @@ func TestSubmitDefaultActionHelpersFileOwnsRootDelegate(t *testing.T) {
 		"return \"publish\", nil",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_default_action_helpers.go should contain %q", needle)
+			t.Fatalf("service_submit_default_action_helper.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_submit_default_action_helpers.go"); err == nil {
+		t.Fatal("service_submit_default_action_helpers.go should be removed after submit default action helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_default_action_helpers.go) unexpected error = %v", err)
 	}
 
 	helperSrc, err := os.ReadFile("service_submit_action_preference_helper.go")
