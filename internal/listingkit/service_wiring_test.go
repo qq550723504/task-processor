@@ -1354,9 +1354,9 @@ func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 func TestSheinCategoryClientHelpersFileOwnsRootHelpers(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_category_client_helpers.go")
+	facadeSrc, err := os.ReadFile("service_shein_category_api_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_category_client_helpers.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_category_api_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1368,8 +1368,14 @@ func TestSheinCategoryClientHelpersFileOwnsRootHelpers(t *testing.T) {
 		"return sheincategory.NewClient(baseAPI), nil",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_category_client_helpers.go should contain %q", needle)
+			t.Fatalf("service_shein_category_api_helpers.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_category_client_helpers.go"); err == nil {
+		t.Fatal("service_shein_category_client_helpers.go should be removed after category api helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_category_client_helpers.go) unexpected error = %v", err)
 	}
 }
 
