@@ -48,7 +48,8 @@ Current app-layer read:
 | `http_module.go` | `assembly-only` | HTTP module construction and validation. |
 | `routes.go` | `assembly-only` | Route registration and route table ownership; should stay thin. |
 | `runtime_support.go` | `adapter construction` | Feature-owned runtime support contract that gathers repositories, hooks, and optional SDS collaborators. |
-| `runtime_support_shein.go` | `suspicious mixed responsibility` | Builds SHEIN runtime adapters, but also owns cookie payload normalization, tenant extraction, and store-config mapping helpers. |
+| `runtime_support_shein.go` | `adapter construction` | Builds SHEIN runtime adapters and runtime bridge factories; shaping helpers have been extracted so the main file can stay constructor-oriented. |
+| `runtime_support_shein_adapter_helpers.go` | `adapter construction` | Owns SHEIN runtime adapter-local tenant lookup, cookie payload normalization, and store-config mapping helpers. |
 | `shein_sync_runtime.go` | `adapter construction` | Builds SHEIN sync services and promotion-bridge runtime factories; still assembly-heavy, but worth watching if more tenant/store branching lands here. |
 | `ai_clients.go` | `adapter construction` | Builds routed OpenAI chat/image clients and runtime client resolution caches. |
 | `defaults.go` | `suspicious mixed responsibility` | Tiny default-store heuristic that may eventually belong closer to ListingKit settings/domain policy instead of HTTP runtime support. |
@@ -57,23 +58,6 @@ Current app-layer read:
 ## Follow-Up Candidates
 
 ### Highest-signal candidate
-
-`internal/listingkit/httpapi/runtime_support_shein.go`
-
-Why it stands out:
-
-- it is no longer only composing collaborators,
-- it also owns data-shaping helpers like `normalizeSheinCookiePayload(...)`,
-- it maps runtime store representations across package boundaries,
-- it resolves tenant/store context inside runtime support helpers.
-
-Suggested next slice:
-
-1. extract cookie payload normalization into a narrower SHEIN runtime adapter helper,
-2. extract store-config mapping helpers into a dedicated adapter-support file or package,
-3. leave `runtime_support_shein.go` as a thin constructor/bridge builder.
-
-### Secondary candidate
 
 `internal/listingkit/httpapi/defaults.go`
 
@@ -85,6 +69,20 @@ Why it stands out:
 Suggested next slice:
 
 - decide whether the default-store heuristic should move to `internal/listingkit` or stay as an explicitly runtime-owned compatibility rule.
+
+### Secondary candidate
+
+`internal/listingkit/httpapi/shein_sync_runtime.go`
+
+Why it stands out:
+
+- it is still mostly adapter assembly,
+- but it also owns tenant parsing and some local bridge/runtime shaping,
+- if more branching lands there, it could become the next mixed runtime hotspot.
+
+Suggested next slice:
+
+- keep service construction in place, but extract tenant/bridge shaping helpers if the file grows further.
 
 ## Current Boundary Conclusion
 
