@@ -27,6 +27,7 @@ internal/listingkit/service_shein_cookie_note.go         // SHEIN cookie availab
 internal/listingkit/service_shein_store_selection.go     // SHEIN store selection facade helpers
 internal/listingkit/service_shein_settings.go            // SHEIN settings facade delegates
 internal/listingkit/service_store_profile.go             // store profile / routing facade delegates
+internal/listingkit/service_process_facade.go            // process facade delegate
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_task_generation.go           // task generation facade delegates
 internal/listingkit/service_task_revision.go             // task revision facade delegates
@@ -175,6 +176,12 @@ Owns SHEIN cookie availability note helper:
 Owns root SHEIN store selection facade helpers:
 
 - store id/profile/selection resolver entrypoints.
+
+### `service_process_facade.go`
+
+Owns root process facade delegate:
+
+- listing kit process entrypoint.
 
 ### `service_task_collaborators.go`
 

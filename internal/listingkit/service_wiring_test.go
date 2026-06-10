@@ -1461,6 +1461,40 @@ func TestSubmitContextFacadeFileOwnsRootHelpers(t *testing.T) {
 	}
 }
 
+func TestProcessFacadeFileOwnsRootDelegate(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_process_facade.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_process_facade.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error) {",
+		"if task == nil {",
+		"return buildListingKitProcessFlow(s).run(ctx, task, log)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_process_facade.go should contain %q", needle)
+		}
+	}
+
+	processSrc, err := os.ReadFile("service_process.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_process.go) error = %v", err)
+	}
+	processContent := string(processSrc)
+
+	if strings.Contains(processContent, "func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error) {") {
+		t.Fatalf("service_process.go should not contain %q", "func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error) {")
+	}
+
+	if !strings.Contains(processContent, "func taskNeedsReviewReason(result *ListingKitResult) string {") {
+		t.Fatalf("service_process.go should keep %q", "func taskNeedsReviewReason(result *ListingKitResult) string {")
+	}
+}
+
 func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
