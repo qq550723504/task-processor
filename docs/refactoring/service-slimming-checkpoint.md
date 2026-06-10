@@ -1,0 +1,120 @@
+# ListingKit Service Slimming Checkpoint
+
+> Status: Phase 4 first checkpoint. This note records behavior-preserving file-group splits around the root `internal/listingkit` service object.
+
+## 1. Purpose
+
+Phase 4 reduces the root ListingKit `service` object from an all-in-one dependency and constructor sink into clearer file groups.
+
+This checkpoint records the first service-object slimming wave. It does not introduce a new package, change the public `Service` interface, change `NewService(...)` behavior, or move business rules.
+
+## 2. Current File Groups
+
+The root service construction surface is now split into these files:
+
+```text
+internal/listingkit/service.go           // runtime setters / workflow client config / request normalization
+internal/listingkit/service_types.go     // service struct / dependency config types
+internal/listingkit/service_config.go    // NewService / factory wiring
+internal/listingkit/service_defaults.go  // config defaults / default builders
+```
+
+## 3. Responsibility Map
+
+### `service.go`
+
+Owns runtime-facing service helpers that are not constructor definitions:
+
+- `SetTaskSubmitter(...)`
+- workflow client configuration methods,
+- package-level workflow client configuration helpers,
+- `currentSheinSubmitSettings(...)`,
+- `normalizeGenerateRequest(...)`,
+- `normalizePlatforms(...)`.
+
+### `service_types.go`
+
+Owns root service and config type definitions:
+
+- `service`,
+- `ServiceCoreDependencies`,
+- `ServiceAssetDependencies`,
+- `ServiceSheinDependencies`,
+- `ServiceWorkflowDependencies`,
+- `ServiceConfig`.
+
+### `service_config.go`
+
+Owns factory behavior only:
+
+- `NewService(...)`,
+- `newServiceWithConfig(...)`.
+
+This keeps constructor wiring visible without mixing it with default resolver/builder construction.
+
+### `service_defaults.go`
+
+Owns default configuration and default dependency builders:
+
+- `ServiceConfig.applyDefaults(...)`,
+- `ensureSheinResolvers(...)`,
+- `ensureAssembler(...)`,
+- `ensureAssetDependencies(...)`,
+- `ensureCoreRepositories(...)`,
+- `ensureSheinDefaults(...)`,
+- `defaultSheinSettings(...)`,
+- `amazonDraftBuilder`,
+- default asset recipe/bundle/generation builders.
+
+## 4. Boundary Decision
+
+This checkpoint keeps everything in root `package listingkit`.
+
+Reasons:
+
+- `service` still coordinates many root models and collaborators,
+- `NewService(...)` is a public construction boundary,
+- default builders still bridge root ListingKit interfaces with marketplace and asset dependencies,
+- moving these to a subpackage now would create more import pressure than value.
+
+## 5. Behavior Compatibility
+
+The split is intended to be behavior-preserving:
+
+- no public API changes,
+- no `NewService(...)` signature changes,
+- no dependency default changes,
+- no workflow client configuration changes,
+- no request normalization changes.
+
+## 6. Suggested Local Validation
+
+From the repository root:
+
+```powershell
+go test ./internal/listingkit/... -run "Service|Config|Generate|Default" -count=1
+go test ./internal/listingkit/... -run "Submission|Submit|Recovery|Requeue|Temporal|Publish" -count=1
+```
+
+Run broader tests before merging a larger Phase 4 branch:
+
+```powershell
+go test ./internal/listingkit/... -count=1
+go test ./... -count=1
+```
+
+## 7. Next Phase 4 Candidates
+
+Recommended next low-risk slices:
+
+1. Review `service_types.go` for possible internal grouping comments or nested dependency buckets without changing fields.
+2. Review `initializeCollaborators(...)` and collaborator accessor files to see whether constructor wiring can become more explicit.
+3. Keep `service_config.go` focused on factory wiring; avoid adding new default-building logic there.
+4. Continue moving default construction helpers to concept-specific files only when the move is behavior-preserving.
+
+Avoid for now:
+
+- moving `service` into a subpackage,
+- changing `ServiceConfig`,
+- collapsing constructor dependencies into new public DTOs,
+- changing workflow client configuration semantics.
