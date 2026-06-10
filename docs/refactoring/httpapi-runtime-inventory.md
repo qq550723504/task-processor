@@ -50,8 +50,9 @@ Current app-layer read:
 | `runtime_support.go` | `adapter construction` | Feature-owned runtime support contract that gathers repositories, hooks, and optional SDS collaborators. |
 | `runtime_support_shein.go` | `adapter construction` | Builds SHEIN runtime adapters and runtime bridge factories; shaping helpers have been extracted so the main file can stay constructor-oriented. |
 | `runtime_support_shein_adapter_helpers.go` | `adapter construction` | Owns SHEIN runtime adapter-local tenant lookup, cookie payload normalization, and store-config mapping helpers. |
-| `shein_sync_runtime.go` | `adapter construction` | Builds SHEIN sync services and management strategy-provider assembly; bridge shaping has been extracted to a helper file. |
+| `shein_sync_runtime.go` | `adapter construction` | Builds SHEIN sync services and composes the narrower strategy/bridge helpers. |
 | `shein_sync_runtime_bridge_helpers.go` | `adapter construction` | Owns SHEIN sync runtime bridge shaping helpers, including tenant parsing and promotion bridge factory construction. |
+| `shein_sync_runtime_strategy_helpers.go` | `adapter construction` | Owns management strategy-provider construction for the SHEIN sync runtime path. |
 | `ai_clients.go` | `adapter construction` | Builds routed OpenAI chat/image clients and runtime client resolution caches. |
 | `zitadel_auth.go` | `adapter construction` | Runtime auth/authz middleware construction; transport/runtime concern, not ListingKit business logic. |
 
@@ -65,6 +66,7 @@ Why it stands out:
 
 - it is still mostly adapter assembly,
 - the remaining bridge shaping has already been narrowed into a dedicated helper file,
+- management strategy-provider construction has also been split into its own helper file,
 - if more branching lands there, it could become the next mixed runtime hotspot.
 
 Suggested next slice:
