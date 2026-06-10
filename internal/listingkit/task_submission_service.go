@@ -6,8 +6,6 @@ import (
 	"time"
 
 	apperrors "task-processor/internal/core/errors"
-	sheinother "task-processor/internal/shein/api/other"
-	sheinproduct "task-processor/internal/shein/api/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,11 +18,6 @@ type taskSubmissionServiceConfig struct {
 	shouldStartSheinPublishWorkflow func(platform, action string) bool
 	submitSheinTaskWithWorkflow     func(context.Context, string, *Task, *SubmitTaskRequest, sheinWorkflowSubmitOptions) (*ListingKitPreview, error)
 	submitSheinTaskDirect           func(context.Context, string, *Task, *SubmitTaskRequest, sheinDirectSubmitOptions) (*ListingKitPreview, error)
-	buildTaskPreview                func(context.Context, *Task, string) (*ListingKitPreview, error)
-	buildSheinSubmitProductAPI      func(context.Context, *Task) (sheinproduct.ProductAPI, error)
-	buildSheinSubmitOtherAPI        func(context.Context, *Task) (sheinother.OtherAPI, error)
-	mutateTaskResult                func(context.Context, string, TaskResultMutation) (*Task, error)
-	resolveRemoteStatus             func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
 }
 
 type taskSubmissionService struct {
@@ -35,11 +28,6 @@ type taskSubmissionService struct {
 	shouldStartSheinPublishWorkflow func(platform, action string) bool
 	submitSheinTaskWithWorkflow     func(context.Context, string, *Task, *SubmitTaskRequest, sheinWorkflowSubmitOptions) (*ListingKitPreview, error)
 	submitSheinTaskDirect           func(context.Context, string, *Task, *SubmitTaskRequest, sheinDirectSubmitOptions) (*ListingKitPreview, error)
-	buildTaskPreview                func(context.Context, *Task, string) (*ListingKitPreview, error)
-	buildSheinSubmitProductAPI      func(context.Context, *Task) (sheinproduct.ProductAPI, error)
-	buildSheinSubmitOtherAPI        func(context.Context, *Task) (sheinother.OtherAPI, error)
-	mutateTaskResult                func(context.Context, string, TaskResultMutation) (*Task, error)
-	resolveRemoteStatus             func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
 }
 
 type sheinSubmissionAttemptState struct {
@@ -60,11 +48,6 @@ func newTaskSubmissionService(config taskSubmissionServiceConfig) *taskSubmissio
 		shouldStartSheinPublishWorkflow: config.shouldStartSheinPublishWorkflow,
 		submitSheinTaskWithWorkflow:     config.submitSheinTaskWithWorkflow,
 		submitSheinTaskDirect:           config.submitSheinTaskDirect,
-		buildTaskPreview:                config.buildTaskPreview,
-		buildSheinSubmitProductAPI:      config.buildSheinSubmitProductAPI,
-		buildSheinSubmitOtherAPI:        config.buildSheinSubmitOtherAPI,
-		mutateTaskResult:                config.mutateTaskResult,
-		resolveRemoteStatus:             config.resolveRemoteStatus,
 	}
 }
 

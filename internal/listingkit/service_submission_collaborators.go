@@ -6,6 +6,7 @@ type submissionCollaborators struct {
 	taskRecovery                  *taskRecoveryService
 	taskRequeue                   *taskRequeueService
 	taskSubmission                *taskSubmissionService
+	taskSubmissionRefresh         *taskSubmissionRefreshService
 	taskSubmissionRecovery        *taskSubmissionRecoveryService
 	taskSubmissionExecution       *taskSubmissionExecutionService
 	taskSubmissionState           *taskSubmissionStateService

@@ -25,7 +25,7 @@ type sheinSubmissionRefreshValidationRequest struct {
 	requestID string
 }
 
-func (s *taskSubmissionService) persistSheinSubmissionRefreshResult(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation) (*Task, error) {
+func (s *taskSubmissionRefreshService) persistSheinSubmissionRefreshResult(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation) (*Task, error) {
 	request, err := buildSubmissionRefreshMutationRequest(taskID, refreshState, confirmation)
 	if err != nil {
 		return nil, err

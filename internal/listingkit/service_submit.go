@@ -88,6 +88,14 @@ func (s *service) taskSubmissionOrDefault() *taskSubmissionService {
 	return s.submission.taskSubmission
 }
 
+func (s *service) taskSubmissionRefreshOrDefault() *taskSubmissionRefreshService {
+	if s.submission.taskSubmissionRefresh != nil {
+		return s.submission.taskSubmissionRefresh
+	}
+	s.submission.taskSubmissionRefresh = newTaskSubmissionRefreshService(buildTaskSubmissionRefreshServiceConfig(s))
+	return s.submission.taskSubmissionRefresh
+}
+
 func (s *service) taskSubmissionExecutionOrDefault() *taskSubmissionExecutionService {
 	if s.submission.taskSubmissionExecution != nil {
 		return s.submission.taskSubmissionExecution

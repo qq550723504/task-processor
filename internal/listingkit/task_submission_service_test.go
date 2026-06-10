@@ -528,7 +528,7 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshReturnsRemoteErrorAfterPers
 			StartedAt:    now,
 		},
 	}
-	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
+	submitter := newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{
 		mutateTaskResult: func(_ context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
 			mutateCalls++
 			if taskID != task.ID {
@@ -584,7 +584,7 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshBuildsPreviewOnSuccess(t *t
 		},
 	}
 	expectedPreview := &ListingKitPreview{TaskID: task.ID}
-	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
+	submitter := newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{
 		mutateTaskResult: func(_ context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
 			mutateCalls++
 			if taskID != task.ID {
@@ -650,7 +650,7 @@ func TestTaskSubmissionServiceLoadSheinSubmissionRefreshStateMapsLoadedTask(t *t
 	}
 	productAPI := stubSheinProductAPI{}
 	otherAPI := stubSheinOtherAPI{}
-	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
+	submitter := newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{
 		repo: &stubSubmitRepo{task: task},
 		buildSheinSubmitProductAPI: func(context.Context, *Task) (sheinproduct.ProductAPI, error) {
 			return productAPI, nil
@@ -708,7 +708,7 @@ func TestTaskSubmissionServiceLoadSheinSubmissionRefreshStateWrapsProductAPIErro
 		},
 	}
 	buildErr := errors.New("product api unavailable")
-	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
+	submitter := newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{
 		repo: &stubSubmitRepo{task: task},
 		buildSheinSubmitProductAPI: func(context.Context, *Task) (sheinproduct.ProductAPI, error) {
 			return nil, buildErr
@@ -737,7 +737,7 @@ func TestTaskSubmissionServiceResolveSubmissionRefreshConfirmationPassesRequestF
 	otherAPI := stubSheinOtherAPI{}
 	startedAt := time.Now()
 	expected := &sheinRemoteConfirmation{message: "resolved"}
-	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
+	submitter := newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{
 		resolveRemoteStatus: func(gotProductAPI sheinproduct.ProductAPI, gotOtherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, gotStartedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
 			if gotProductAPI == nil {
 				t.Fatal("productAPI = nil, want assigned api")

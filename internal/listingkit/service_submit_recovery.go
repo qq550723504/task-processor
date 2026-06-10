@@ -21,7 +21,7 @@ func (s *service) mutateTaskResult(ctx context.Context, taskID string, mutate Ta
 }
 
 func (s *service) RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error) {
-	return s.taskSubmissionOrDefault().RefreshSubmissionStatus(ctx, taskID)
+	return s.taskSubmissionRefreshOrDefault().RefreshSubmissionStatus(ctx, taskID)
 }
 
 func (s *service) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {

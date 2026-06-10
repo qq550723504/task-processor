@@ -30,7 +30,7 @@ type sheinSubmissionRefreshSelection struct {
 	supplierCode string
 }
 
-func (s *taskSubmissionService) loadSubmissionRefreshInputs(ctx context.Context, taskID string, task *Task, pkg *SheinPackage) (*sheinSubmissionRefreshSelection, sheinproduct.ProductAPI, error) {
+func (s *taskSubmissionRefreshService) loadSubmissionRefreshInputs(ctx context.Context, taskID string, task *Task, pkg *SheinPackage) (*sheinSubmissionRefreshSelection, sheinproduct.ProductAPI, error) {
 	selection, err := loadSubmissionRefreshSelection(pkg)
 	if err != nil {
 		return nil, nil, err
@@ -42,7 +42,7 @@ func (s *taskSubmissionService) loadSubmissionRefreshInputs(ctx context.Context,
 	return selection, productAPI, nil
 }
 
-func (s *taskSubmissionService) buildSubmissionRefreshProductAPI(ctx context.Context, task *Task, taskID string) (sheinproduct.ProductAPI, error) {
+func (s *taskSubmissionRefreshService) buildSubmissionRefreshProductAPI(ctx context.Context, task *Task, taskID string) (sheinproduct.ProductAPI, error) {
 	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
 	if err != nil {
 		return nil, apperrors.Wrapf(err, apperrors.ErrCodePlatformError, "failed to build shein product API for task %s", taskID)
@@ -118,7 +118,7 @@ func loadSubmissionRefreshSelection(pkg *SheinPackage) (*sheinSubmissionRefreshS
 	}, nil
 }
 
-func (s *taskSubmissionService) buildSheinSubmissionRefreshState(ctx context.Context, task *Task, pkg *SheinPackage, selection *sheinSubmissionRefreshSelection, productAPI sheinproduct.ProductAPI) *sheinSubmissionRefreshState {
+func (s *taskSubmissionRefreshService) buildSheinSubmissionRefreshState(ctx context.Context, task *Task, pkg *SheinPackage, selection *sheinSubmissionRefreshSelection, productAPI sheinproduct.ProductAPI) *sheinSubmissionRefreshState {
 	startedAt := time.Now()
 	request := buildSubmissionRefreshRequest(pkg, selection)
 	var otherAPI sheinother.OtherAPI
