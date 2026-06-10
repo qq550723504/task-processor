@@ -255,11 +255,3 @@ func (s *service) listGenerationReviews(ctx context.Context, taskID string) ([]G
 	}
 	return out, nil
 }
-
-func (s *service) taskGenerationOrDefault() *taskGenerationService {
-	if s.taskGeneration != nil {
-		return s.taskGeneration
-	}
-	s.taskGeneration = newTaskGenerationService(buildTaskGenerationServiceConfig(s))
-	return s.taskGeneration
-}

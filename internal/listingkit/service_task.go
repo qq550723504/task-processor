@@ -78,19 +78,3 @@ func (s *service) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselin
 func (s *service) WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error) {
 	return s.warmSDSBaseline(ctx, req)
 }
-
-func (s *service) taskRevisionOrDefault() *taskRevisionService {
-	if s.taskRevision != nil {
-		return s.taskRevision
-	}
-	s.taskRevision = newTaskRevisionService(buildTaskRevisionServiceConfig(s))
-	return s.taskRevision
-}
-
-func (s *service) taskLifecycleOrDefault() *taskLifecycleService {
-	if s.taskLifecycle != nil {
-		return s.taskLifecycle
-	}
-	s.taskLifecycle = newTaskLifecycleService(buildTaskLifecycleServiceConfig(s))
-	return s.taskLifecycle
-}

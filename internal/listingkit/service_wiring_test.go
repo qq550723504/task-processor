@@ -246,32 +246,36 @@ func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		inlineConfig []string
 	}{
 		{
-			name: "task generation",
-			file: "service_generation.go",
+			name: "task collaborators",
+			file: "service_task_collaborators.go",
 			builderCalls: []string{
 				"buildTaskGenerationServiceConfig(s)",
+				"buildTaskRevisionServiceConfig(s)",
+				"buildTaskLifecycleServiceConfig(s)",
+				"buildSDSBaselineService(s)",
 			},
 			inlineConfig: []string{
 				"newTaskGenerationService(taskGenerationServiceConfig{",
-			},
-		},
-		{
-			name: "task revision",
-			file: "service_task.go",
-			builderCalls: []string{
-				"buildTaskRevisionServiceConfig(s)",
-				"buildTaskLifecycleServiceConfig(s)",
-			},
-			inlineConfig: []string{
 				"newTaskRevisionService(taskRevisionServiceConfig{",
 				"newTaskLifecycleService(taskLifecycleServiceConfig{",
 			},
 		},
 		{
-			name: "sds baseline",
+			name: "task service",
+			file: "service_task.go",
+			builderCalls: nil,
+			inlineConfig: nil,
+		},
+		{
+			name: "generation service",
+			file: "service_generation.go",
+			builderCalls: nil,
+			inlineConfig: nil,
+		},
+		{
+			name: "sds baseline service",
 			file: "sds_baseline_service.go",
 			builderCalls: []string{
-				"buildSDSBaselineService(s)",
 				"newSDSBaselineService(",
 			},
 			inlineConfig: nil,

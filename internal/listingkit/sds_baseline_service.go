@@ -19,13 +19,6 @@ type sdsBaselineServiceConfig struct {
 	sdsLoginStatusProvider SDSLoginStatusProvider
 }
 
-func (s *service) sdsBaselineOrDefault() *sdsBaselineService {
-	if s == nil {
-		return buildSDSBaselineService(nil)
-	}
-	return buildSDSBaselineService(s)
-}
-
 func newSDSBaselineService(config sdsBaselineServiceConfig) *sdsBaselineService {
 	return &sdsBaselineService{
 		repo:                   config.repo,
