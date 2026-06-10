@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 
+	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -13,8 +14,14 @@ type taskDirectSubmissionServiceConfig struct {
 	failSheinDirectSubmit           func(context.Context, string, *Task, *SheinPackage, string, error) error
 	buildSheinSubmitProductAPI      func(context.Context, *Task) (sheinproduct.ProductAPI, error)
 	persistSheinDirectSubmitPhase   func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions, string) error
-	prepareSheinDirectSubmitProduct func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions) (*sheinproduct.Product, error)
-	completeSheinDirectRemoteSubmit func(context.Context, string, *Task, *SheinPackage, sheinproduct.ProductAPI, *sheinproduct.Product, sheinDirectSubmitOptions) error
+	prepareSheinSubmitProduct       func(context.Context, *Task, *SheinPackage, string) (*sheinproduct.Product, error)
+	uploadSheinSubmitImages         func(context.Context, *Task, *SheinPackage, *sheinproduct.Product) error
+	resolveSubmitSettings           func(context.Context, *Task) SheinSettings
+	preValidateSheinSubmitProduct   func(*SheinPackage, *sheinproduct.Product) error
+	executeSheinSubmitRemote        func(sheinproduct.ProductAPI, string, *sheinproduct.Product) (*sheinpub.SubmissionResponse, error)
+	retrySheinSensitiveWordSubmit   func(context.Context, string, *SheinPackage, string, string, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, error) (*sheinpub.SubmissionResponse, error, bool)
+	persistSuccessfulDirectResponse func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions, string, *sheinpub.SubmissionResponse) error
+	finishSheinDirectSubmitAttempt  func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions, *sheinpub.SubmissionResponse, error) error
 	buildTaskPreview                func(context.Context, *Task, string) (*ListingKitPreview, error)
 }
 
@@ -24,8 +31,14 @@ type taskDirectSubmissionService struct {
 	failSheinDirectSubmit           func(context.Context, string, *Task, *SheinPackage, string, error) error
 	buildSheinSubmitProductAPI      func(context.Context, *Task) (sheinproduct.ProductAPI, error)
 	persistSheinDirectSubmitPhase   func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions, string) error
-	prepareSheinDirectSubmitProduct func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions) (*sheinproduct.Product, error)
-	completeSheinDirectRemoteSubmit func(context.Context, string, *Task, *SheinPackage, sheinproduct.ProductAPI, *sheinproduct.Product, sheinDirectSubmitOptions) error
+	prepareSheinSubmitProduct       func(context.Context, *Task, *SheinPackage, string) (*sheinproduct.Product, error)
+	uploadSheinSubmitImages         func(context.Context, *Task, *SheinPackage, *sheinproduct.Product) error
+	resolveSubmitSettings           func(context.Context, *Task) SheinSettings
+	preValidateSheinSubmitProduct   func(*SheinPackage, *sheinproduct.Product) error
+	executeSheinSubmitRemote        func(sheinproduct.ProductAPI, string, *sheinproduct.Product) (*sheinpub.SubmissionResponse, error)
+	retrySheinSensitiveWordSubmit   func(context.Context, string, *SheinPackage, string, string, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, error) (*sheinpub.SubmissionResponse, error, bool)
+	persistSuccessfulDirectResponse func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions, string, *sheinpub.SubmissionResponse) error
+	finishSheinDirectSubmitAttempt  func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions, *sheinpub.SubmissionResponse, error) error
 	buildTaskPreview                func(context.Context, *Task, string) (*ListingKitPreview, error)
 }
 
@@ -36,8 +49,14 @@ func newTaskDirectSubmissionService(config taskDirectSubmissionServiceConfig) *t
 		failSheinDirectSubmit:           config.failSheinDirectSubmit,
 		buildSheinSubmitProductAPI:      config.buildSheinSubmitProductAPI,
 		persistSheinDirectSubmitPhase:   config.persistSheinDirectSubmitPhase,
-		prepareSheinDirectSubmitProduct: config.prepareSheinDirectSubmitProduct,
-		completeSheinDirectRemoteSubmit: config.completeSheinDirectRemoteSubmit,
+		prepareSheinSubmitProduct:       config.prepareSheinSubmitProduct,
+		uploadSheinSubmitImages:         config.uploadSheinSubmitImages,
+		resolveSubmitSettings:           config.resolveSubmitSettings,
+		preValidateSheinSubmitProduct:   config.preValidateSheinSubmitProduct,
+		executeSheinSubmitRemote:        config.executeSheinSubmitRemote,
+		retrySheinSensitiveWordSubmit:   config.retrySheinSensitiveWordSubmit,
+		persistSuccessfulDirectResponse: config.persistSuccessfulDirectResponse,
+		finishSheinDirectSubmitAttempt:  config.finishSheinDirectSubmitAttempt,
 		buildTaskPreview:                config.buildTaskPreview,
 	}
 }
@@ -73,11 +92,11 @@ func (s *taskDirectSubmissionService) executeDirectSubmitProductFlow(ctx context
 	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePrepareProduct); err != nil {
 		return nil, err
 	}
-	submitProduct, err := s.prepareSheinDirectSubmitProduct(ctx, taskID, task, pkg, opts)
+	submitProduct, err := s.prepareDirectSubmitProduct(ctx, taskID, task, pkg, opts)
 	if err != nil {
 		return nil, err
 	}
-	responseErr := s.completeSheinDirectRemoteSubmit(ctx, taskID, task, pkg, productAPI, submitProduct, opts)
+	responseErr := s.completeDirectRemoteSubmit(ctx, taskID, task, pkg, productAPI, submitProduct, opts)
 	if responseErr != nil {
 		return nil, responseErr
 	}
@@ -89,4 +108,74 @@ func (s *taskDirectSubmissionService) failDirectSubmit(ctx context.Context, task
 		return submitErr
 	}
 	return s.failSheinDirectSubmit(ctx, taskID, task, pkg, action, submitErr)
+}
+
+func (s *taskDirectSubmissionService) prepareDirectSubmitProduct(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions) (*sheinproduct.Product, error) {
+	submitProduct, err := s.prepareSheinSubmitProduct(ctx, task, pkg, opts.action)
+	if err != nil {
+		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
+	}
+	dumpSheinSubmitPayloadForDebug(taskID, opts.action, opts.requestID, "prepared", submitProduct)
+	setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
+	if err := s.uploadPendingDirectSubmitImages(ctx, taskID, task, pkg, submitProduct, opts); err != nil {
+		return nil, err
+	}
+	if err := s.preValidateDirectSubmitProduct(ctx, taskID, task, pkg, submitProduct, opts); err != nil {
+		return nil, err
+	}
+	return submitProduct, nil
+}
+
+func (s *taskDirectSubmissionService) uploadPendingDirectSubmitImages(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) error {
+	if sheinProductPendingImageUploadCount(submitProduct) <= 0 {
+		return nil
+	}
+	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseUploadImages); err != nil {
+		return err
+	}
+	if err := s.uploadSheinSubmitImages(ctx, task, pkg, submitProduct); err != nil {
+		return s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
+	}
+	prepareSheinProductForSubmit(submitProduct, s.resolveSubmitSettings(ctx, task))
+	dumpSheinSubmitPayloadForDebug(taskID, opts.action, opts.requestID, "uploaded", submitProduct)
+	return nil
+}
+
+func (s *taskDirectSubmissionService) preValidateDirectSubmitProduct(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) error {
+	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhasePreValidate); err != nil {
+		return err
+	}
+	if err := s.preValidateSheinSubmitProduct(pkg, submitProduct); err != nil {
+		return s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
+	}
+	return nil
+}
+
+func (s *taskDirectSubmissionService) completeDirectRemoteSubmit(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) error {
+	supplierCode := sheinSubmitSupplierCode(submitProduct, pkg)
+	setSheinSubmitSupplierCode(pkg, opts.action, opts.requestID, supplierCode)
+	setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
+	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
+		return err
+	}
+	response, responseErr := s.executeDirectRemoteSubmitAttempt(ctx, taskID, pkg, productAPI, submitProduct, opts)
+	if responseErr == nil {
+		if err := s.persistSuccessfulDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response); err != nil {
+			return err
+		}
+	}
+	return s.finishSheinDirectSubmitAttempt(ctx, taskID, task, pkg, opts, response, responseErr)
+}
+
+func (s *taskDirectSubmissionService) executeDirectRemoteSubmitAttempt(ctx context.Context, taskID string, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) (*sheinpub.SubmissionResponse, error) {
+	response, responseErr := s.executeSheinSubmitRemote(productAPI, opts.action, submitProduct)
+	if responseErr == nil {
+		responseErr = submission.BuildResponseError(opts.action, response)
+	}
+	if retryResponse, retryErr, retried := s.retrySheinSensitiveWordSubmit(ctx, taskID, pkg, opts.action, opts.requestID, productAPI, submitProduct, response, responseErr); retried {
+		response = retryResponse
+		responseErr = retryErr
+		setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
+	}
+	return response, responseErr
 }

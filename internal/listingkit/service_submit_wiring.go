@@ -71,8 +71,14 @@ func buildTaskDirectSubmissionServiceConfig(s *service) taskDirectSubmissionServ
 		failSheinDirectSubmit:           state.failSheinDirectSubmit,
 		buildSheinSubmitProductAPI:      execution.buildSheinSubmitProductAPI,
 		persistSheinDirectSubmitPhase:   state.persistSheinDirectSubmitPhase,
-		prepareSheinDirectSubmitProduct: s.prepareSheinDirectSubmitProduct,
-		completeSheinDirectRemoteSubmit: s.completeSheinDirectRemoteSubmit,
+		prepareSheinSubmitProduct:       execution.prepareSheinSubmitProduct,
+		uploadSheinSubmitImages:         execution.uploadSheinSubmitImages,
+		resolveSubmitSettings:           buildSubmitRuntimeContextResolver(s).resolveSubmitSettings,
+		preValidateSheinSubmitProduct:   execution.preValidateSheinSubmitProduct,
+		executeSheinSubmitRemote:        execution.executeSheinSubmitRemote,
+		retrySheinSensitiveWordSubmit:   s.retrySheinSensitiveWordSubmit,
+		persistSuccessfulDirectResponse: state.persistSuccessfulSheinDirectResponse,
+		finishSheinDirectSubmitAttempt:  state.finishSheinDirectSubmitAttempt,
 		buildTaskPreview:                s.buildTaskPreview,
 	}
 }
