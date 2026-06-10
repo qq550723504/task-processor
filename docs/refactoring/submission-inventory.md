@@ -13,7 +13,7 @@ It is intentionally descriptive first:
 - which files already hold reusable submission mechanics,
 - which files still mix orchestration with SHEIN-specific rules.
 
-Observed against the repository state on 2026-06-09 after the preview refactoring first wave and the submission execution file-group split.
+Observed against the repository state on 2026-06-09 after the preview refactoring first wave and the submission execution/direct-submit file-group splits.
 
 ## 2. Current Submission Shape
 
@@ -41,6 +41,8 @@ These files mainly expose `service` methods, lazy collaborator accessors, or col
 - `internal/listingkit/service_submission_collaborators.go`
 - `internal/listingkit/service_submit.go`
 - `internal/listingkit/service_submit_direct.go`
+- `internal/listingkit/service_submit_direct_prepare.go`
+- `internal/listingkit/service_submit_direct_remote.go`
 - `internal/listingkit/service_submit_recovery.go`
 - `internal/listingkit/service_submit_temporal_adapter.go`
 - `internal/listingkit/service_submit_wiring.go`
@@ -50,13 +52,15 @@ Current role:
 
 - keep `Service` interface compatibility,
 - group submission collaborators behind `s.submission.*`,
-- translate service-owned dependencies into collaborator configs.
+- translate service-owned dependencies into collaborator configs,
+- keep direct submit facade/accessor separate from direct submit preparation and remote-submit details.
 
 Assessment:
 
 - mostly facade or wiring,
 - good candidates to stay thin,
-- should avoid accumulating more business logic.
+- should avoid accumulating more business logic,
+- direct submit helper files are still root `service` methods because they bridge multiple collaborators and root models.
 
 ### B. Root collaborator services
 
@@ -82,7 +86,9 @@ Current role:
 
 - `taskSubmissionService`: entry orchestration for submit attempts,
 - `taskSubmissionRefresh*`: refresh/status remote confirmation, selection/request building, mutation, validation, and confirmation application,
-- `taskDirectSubmissionService`: direct SHEIN submit path,
+- `taskDirectSubmissionService`: direct SHEIN submit path orchestration,
+- `serviceSubmitDirectPrepare`: direct submit product preparation, image upload phase, and pre-validation bridge,
+- `serviceSubmitDirectRemote`: direct remote submit, response persistence, sensitive-word retry bridge, and finish semantics,
 - `taskSubmissionRecoveryService`: submit lease, stale-submit recovery, remote confirmation recovery,
 - `taskSubmissionExecutionService`: execution collaborator shell, Product API construction, and submit runtime resolution,
 - `taskSubmissionExecutionProduct`: submit-product preparation, translation API selection, and pre-validation,
@@ -99,7 +105,7 @@ Assessment:
 - this is the primary current consolidation seam,
 - these files are the best place for additional root-level slimming before any deeper package move,
 - `taskRecoveryService` and `taskRequeueService` are now part of the submission collaborator cluster, but their semantics are broader than the SHEIN publish path,
-- execution responsibilities are now separated by file group, but still live in root `package listingkit` because they depend on root models and SHEIN-specific helpers.
+- execution and direct-submit responsibilities are now separated by file group, but still live in root `package listingkit` because they depend on root models and SHEIN-specific helpers.
 
 ### C. Runtime context and settings resolution
 
@@ -233,6 +239,7 @@ Latest code inspection confirms:
 - `taskSubmissionService`, `taskDirectSubmissionService`, `taskSubmissionRecoveryService`, `taskSubmissionExecution*`, `taskSubmissionStateService`, and `taskTemporalSubmissionAdapter` still depend on root models and SHEIN-specific packages, so they should not be moved into `internal/listingkit/submission` yet.
 - `taskSubmissionExecutionService` is now a thin shell for constructor/runtime/Product API wiring, while product preparation, image upload, normalization, and remote submit are split into dedicated execution files.
 - `taskSubmissionRefresh*` is now split into main flow, selection/request building, and mutation/validation file groups.
+- `serviceSubmitDirect*` is now split into facade/accessor, direct product preparation, and direct remote submit file groups.
 
 ## 5. Facade vs. Rule Ownership
 
@@ -254,6 +261,8 @@ These should stay thin and delegate.
 - `task_submission_service.go`
 - `task_submission_refresh_*.go`
 - `task_direct_submission_service.go`
+- `service_submit_direct_prepare.go`
+- `service_submit_direct_remote.go`
 - `task_submission_recovery_service.go`
 - `task_submission_execution_*.go`
 - `task_temporal_submission_adapter.go`
@@ -298,8 +307,6 @@ Low-risk next candidates:
 
 - `internal/listingkit/task_submission_recovery_service.go`
   - identify helper groups that can be isolated without moving marketplace rules.
-- `internal/listingkit/task_direct_submission_service.go`
-  - evaluate whether prepare/remote/finish helpers should be split the same way execution was split.
 - `internal/listingkit/task_temporal_submission_adapter.go`
   - do not move package yet, but consider file-group splitting if the adapter remains dense.
 - `internal/listingkit/task_recovery_service.go`
