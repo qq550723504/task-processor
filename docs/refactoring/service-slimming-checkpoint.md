@@ -28,7 +28,7 @@ internal/listingkit/service_shein_cookie_preview_helper.go  // SHEIN cookie prev
 internal/listingkit/service_shein_cookie_availability_note_helper.go // SHEIN cookie availability note helper
 internal/listingkit/service_shein_final_draft_update_entrypoint.go // SHEIN final draft update entrypoint
 internal/listingkit/service_shein_data_image_regeneration.go // SHEIN data image regeneration logic
-internal/listingkit/service_shein_pricing_preview_facade.go // SHEIN pricing preview facade delegate
+internal/listingkit/service_shein_pricing_preview_entrypoint.go // SHEIN pricing preview entrypoint
 internal/listingkit/service_shein_resolution_cache_clear_entrypoint.go // SHEIN resolution cache clear entrypoint
 internal/listingkit/service_shein_submission_event_listing_facade.go // SHEIN submission event listing facade delegate
 internal/listingkit/service_shein_store_selection_resolvers.go // SHEIN store selection helpers
@@ -209,7 +209,7 @@ Owns root SHEIN data image regeneration logic:
 
 - SHEIN data image regeneration entrypoint.
 
-### `service_shein_pricing_preview_facade.go`
+### `service_shein_pricing_preview_entrypoint.go`
 
 Owns root SHEIN pricing preview facade delegate:
 
