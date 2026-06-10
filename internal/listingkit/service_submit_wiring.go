@@ -50,7 +50,7 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 			return s.submission.sheinSubmitLocks.Lock(key)
 		},
 		resolveDefaultSheinSubmitAction: s.resolveDefaultSheinSubmitAction,
-		acquireSheinSubmitTask:          s.acquireSheinSubmitTask,
+		acquireSheinSubmitTask:          recovery.acquireSheinSubmitTask,
 		shouldStartSheinPublishWorkflow: s.shouldStartSheinPublishWorkflow,
 		submitSheinTaskWithWorkflow:     s.submitSheinTaskWithWorkflow,
 		submitSheinTaskDirect:           direct.submitSheinTaskDirect,

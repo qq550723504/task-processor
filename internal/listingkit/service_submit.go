@@ -66,23 +66,7 @@ func normalizeSubmitTargetWithDefault(req *SubmitTaskRequest, defaultAction stri
 }
 
 func (s *service) acquireSheinSubmitTask(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
-	recovery := s.taskSubmissionRecoveryOrDefault()
-	task, err := recovery.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
-	if errors.Is(err, errSheinSubmitReplayExisting) {
-		preview, previewErr := s.buildTaskPreview(ctx, task, "shein")
-		return nil, preview, previewErr
-	}
-	if errors.Is(err, errSheinSubmitRecoverRemote) {
-		preview, previewErr := recovery.recoverSheinSubmitRemote(ctx, task, action)
-		return nil, preview, previewErr
-	}
-	if errors.Is(err, errSheinSubmitMissingPackage) {
-		return nil, nil, fmt.Errorf("%w: shein preview payload is not available", ErrSubmitBlocked)
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	return task, nil, nil
+	return s.taskSubmissionRecoveryOrDefault().acquireSheinSubmitTask(ctx, taskID, action, requestID, startedAt)
 }
 
 func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {

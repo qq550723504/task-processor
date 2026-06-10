@@ -148,6 +148,121 @@ func TestTaskSubmissionRecoveryServiceBeginSheinSubmitLeaseStartsNewLease(t *tes
 	}
 }
 
+func TestTaskSubmissionRecoveryServiceAcquireSheinSubmitTaskBuildsReplayPreview(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	now := time.Now().Add(-time.Minute)
+	record := completeSheinSubmitAttempt(task.Result.Shein, "publish", "replay-preview-123", &sheinpub.SubmissionResponse{
+		Code:    "0",
+		Message: "success",
+		Success: true,
+		SPUName: "SPU-123",
+	}, nil, now)
+	appendSheinSubmissionEvent(task.Result.Shein, submission.BuildEvent(task.ID, "publish", record, record.Result, nil, record.StartedAt))
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	expectedPreview := &ListingKitPreview{TaskID: task.ID}
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		repo: repo,
+		buildTaskPreview: func(_ context.Context, gotTask *Task, platform string) (*ListingKitPreview, error) {
+			if gotTask == nil || gotTask.ID != task.ID {
+				t.Fatalf("preview task = %+v, want original task", gotTask)
+			}
+			if platform != "shein" {
+				t.Fatalf("platform = %q, want shein", platform)
+			}
+			return expectedPreview, nil
+		},
+	})
+
+	gotTask, preview, err := recovery.acquireSheinSubmitTask(context.Background(), task.ID, "publish", "replay-preview-123", time.Now())
+	if err != nil {
+		t.Fatalf("acquireSheinSubmitTask() err = %v", err)
+	}
+	if gotTask != nil {
+		t.Fatalf("task = %+v, want nil when replay preview is returned", gotTask)
+	}
+	if preview != expectedPreview {
+		t.Fatalf("preview = %+v, want %+v", preview, expectedPreview)
+	}
+}
+
+func TestTaskSubmissionRecoveryServiceAcquireSheinSubmitTaskRecoversRemotePreview(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	startedAt := time.Now().Add(-3 * time.Minute)
+	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-preview-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	response := &sheinpub.SubmissionResponse{
+		Code:    "0",
+		Message: "accepted",
+		Success: false,
+		SPUName: "SPU-recover",
+	}
+	setSheinSubmitRemoteResponse(task.Result.Shein, "publish", "recover-preview-123", "SUP-recover", response)
+	task.Result.Shein.Submission.Publish.SupplierCode = "SUP-recover"
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	expectedPreview := &ListingKitPreview{TaskID: task.ID}
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		repo: repo,
+		buildSheinSubmitProductAPI: func(_ context.Context, gotTask *Task) (sheinproduct.ProductAPI, error) {
+			if gotTask == nil || gotTask.ID != task.ID {
+				t.Fatalf("build api task = %+v, want original task", gotTask)
+			}
+			return stubSheinProductAPI{}, nil
+		},
+		resolveRemoteStatusCallback: func(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, gotStartedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
+			event := submission.BuildConfirmRemoteEvent(task.ID, "publish", sheinpub.SubmissionRemoteStatusConfirmed, requestID, gotStartedAt, "remote confirmed", nil)
+			return &sheinRemoteConfirmation{
+				remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+				record: &sheinproduct.RecordItem{
+					RecordID:     "record-recover-preview",
+					SupplierCode: "SUP-recover",
+				},
+				checkedAt: time.Now(),
+				message:   "remote confirmed",
+				event:     &event,
+			}, nil
+		},
+		rememberSheinSubmitted: func(gotTask *Task, action string) {
+			if gotTask == nil || gotTask.ID != task.ID || action != "publish" {
+				t.Fatalf("remember args = %+v/%q, want task %q/publish", gotTask, action, task.ID)
+			}
+		},
+		persistSuccessfulSubmission: func(_ context.Context, taskID string, gotTask *Task, action string) error {
+			if taskID != task.ID || gotTask == nil || gotTask.ID != task.ID || action != "publish" {
+				t.Fatalf("persist args = %q/%+v/%q, want task %q/publish", taskID, gotTask, action, task.ID)
+			}
+			return nil
+		},
+		buildTaskPreview: func(_ context.Context, gotTask *Task, platform string) (*ListingKitPreview, error) {
+			if gotTask == nil || gotTask.ID != task.ID || platform != "shein" {
+				t.Fatalf("preview args = %+v/%q, want task %q/shein", gotTask, platform, task.ID)
+			}
+			return expectedPreview, nil
+		},
+	})
+
+	gotTask, preview, err := recovery.acquireSheinSubmitTask(context.Background(), task.ID, "publish", "recover-preview-123", time.Now())
+	if err != nil {
+		t.Fatalf("acquireSheinSubmitTask() err = %v", err)
+	}
+	if gotTask != nil {
+		t.Fatalf("task = %+v, want nil when recovery preview is returned", gotTask)
+	}
+	if preview != expectedPreview {
+		t.Fatalf("preview = %+v, want %+v", preview, expectedPreview)
+	}
+}
+
 func TestTaskSubmissionRecoveryServiceRefreshSheinSubmitRemoteStatusHandlesMissingSupplierCode(t *testing.T) {
 	t.Parallel()
 

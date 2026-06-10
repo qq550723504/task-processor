@@ -57,6 +57,25 @@ func newTaskSubmissionRecoveryService(config taskSubmissionRecoveryServiceConfig
 	}
 }
 
+func (s *taskSubmissionRecoveryService) acquireSheinSubmitTask(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
+	task, err := s.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
+	if errors.Is(err, errSheinSubmitReplayExisting) {
+		preview, previewErr := s.buildTaskPreview(ctx, task, "shein")
+		return nil, preview, previewErr
+	}
+	if errors.Is(err, errSheinSubmitRecoverRemote) {
+		preview, previewErr := s.recoverSheinSubmitRemote(ctx, task, action)
+		return nil, preview, previewErr
+	}
+	if errors.Is(err, errSheinSubmitMissingPackage) {
+		return nil, nil, fmt.Errorf("%w: shein preview payload is not available", ErrSubmitBlocked)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	return task, nil, nil
+}
+
 func (s *taskSubmissionRecoveryService) mutateTaskResult(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
 	if txRepo, ok := s.repo.(TaskResultTransactionRepository); ok {
 		return txRepo.MutateTaskResult(ctx, taskID, mutate)
