@@ -261,14 +261,14 @@ func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			},
 		},
 		{
-			name: "task service",
-			file: "service_task_export.go",
+			name:         "task service",
+			file:         "service_task_export.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
 		{
-			name: "generation service",
-			file: "service_generation.go",
+			name:         "generation service",
+			file:         "service_generation.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -341,14 +341,14 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			inlineConfig: nil,
 		},
 		{
-			name: "studio media",
-			file: "studio_designs.go",
+			name:         "studio media",
+			file:         "studio_designs.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
 		{
-			name: "studio batch",
-			file: "studio_batch_service.go",
+			name:         "studio batch",
+			file:         "studio_batch_service.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -363,8 +363,8 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			},
 		},
 		{
-			name: "studio batch run",
-			file: "studio_batch_run_service.go",
+			name:         "studio batch run",
+			file:         "studio_batch_run_service.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -417,20 +417,20 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		inlineConfig []string
 	}{
 		{
-			name: "task recovery service",
-			file: "task_recovery_service.go",
+			name:         "task recovery service",
+			file:         "task_recovery_service.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
 		{
-			name: "task requeue service",
-			file: "task_requeue_service.go",
+			name:         "task requeue service",
+			file:         "task_requeue_service.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
 		{
-			name: "submit facade",
-			file: "service_submit.go",
+			name:         "submit facade",
+			file:         "service_submit.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -459,8 +459,8 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			},
 		},
 		{
-			name: "temporal submission facade",
-			file: "service_submit_temporal_adapter.go",
+			name:         "temporal submission facade",
+			file:         "service_submit_temporal_adapter.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -866,6 +866,49 @@ func TestStudioMediaFacadeFileOwnsRootDelegates(t *testing.T) {
 		for _, needle := range tc.needles {
 			if strings.Contains(content, needle) {
 				t.Fatalf("%s should not contain %q", tc.file, needle)
+			}
+		}
+	}
+}
+
+func TestStoreProfileFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_store_profile.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_store_profile.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) ListSheinStoreProfiles(ctx context.Context) ([]ListingKitStoreProfile, error) {",
+		"return s.settingsAdminOrDefault().ListSheinStoreProfiles(ctx)",
+		"func (s *service) UpsertSheinStoreProfile(ctx context.Context, req *ListingKitStoreProfile) (*ListingKitStoreProfile, error) {",
+		"return s.settingsAdminOrDefault().UpsertSheinStoreProfile(ctx, req)",
+		"func (s *service) DeleteSheinStoreProfile(ctx context.Context, id int64) error {",
+		"return s.settingsAdminOrDefault().DeleteSheinStoreProfile(ctx, id)",
+		"func (s *service) GetSheinStoreRoutingSettings(ctx context.Context) (*ListingKitStoreRoutingSettings, error) {",
+		"return s.settingsAdminOrDefault().GetSheinStoreRoutingSettings(ctx)",
+		"func (s *service) UpdateSheinStoreRoutingSettings(ctx context.Context, req *ListingKitStoreRoutingSettings) (*ListingKitStoreRoutingSettings, error) {",
+		"return s.settingsAdminOrDefault().UpdateSheinStoreRoutingSettings(ctx, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_store_profile.go should contain %q", needle)
+		}
+	}
+
+	legacySrc, err := os.ReadFile("store_profile_service.go")
+	if err == nil {
+		legacyContent := string(legacySrc)
+		for _, needle := range []string{
+			"func (s *service) ListSheinStoreProfiles(ctx context.Context) ([]ListingKitStoreProfile, error) {",
+			"func (s *service) UpsertSheinStoreProfile(ctx context.Context, req *ListingKitStoreProfile) (*ListingKitStoreProfile, error) {",
+			"func (s *service) DeleteSheinStoreProfile(ctx context.Context, id int64) error {",
+			"func (s *service) GetSheinStoreRoutingSettings(ctx context.Context) (*ListingKitStoreRoutingSettings, error) {",
+			"func (s *service) UpdateSheinStoreRoutingSettings(ctx context.Context, req *ListingKitStoreRoutingSettings) (*ListingKitStoreRoutingSettings, error) {",
+		} {
+			if strings.Contains(legacyContent, needle) {
+				t.Fatalf("store_profile_service.go should not contain %q", needle)
 			}
 		}
 	}

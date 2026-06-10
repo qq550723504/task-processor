@@ -19,6 +19,7 @@ internal/listingkit/service_config.go                     // NewService / factor
 internal/listingkit/service_defaults.go                   // config defaults / default builders
 internal/listingkit/service_collaborators.go              // collaborator initialization groups
 internal/listingkit/service_admin_collaborators.go       // admin collaborator accessors
+internal/listingkit/service_store_profile.go             // store profile / routing facade delegates
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_task_generation.go           // task generation facade delegates
 internal/listingkit/service_task_revision.go             // task revision facade delegates
@@ -111,6 +112,13 @@ Owns admin collaborator accessors:
 
 - settings admin,
 - SHEIN admin.
+
+### `service_store_profile.go`
+
+Owns root store profile facade delegates:
+
+- store profile list / upsert / delete,
+- store routing settings fetch / update.
 
 ### `service_task_collaborators.go`
 
