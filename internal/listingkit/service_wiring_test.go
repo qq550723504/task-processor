@@ -1832,9 +1832,9 @@ func TestProcessEntryFileOwnsRootEntry(t *testing.T) {
 func TestTaskLayersFacadeFileOwnsRootDelegates(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_task_layers_facade.go")
+	facadeSrc, err := os.ReadFile("service_task_layers_logic.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_task_layers_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_task_layers_logic.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1845,7 +1845,7 @@ func TestTaskLayersFacadeFileOwnsRootDelegates(t *testing.T) {
 		"if err := s.persistProcessedTaskResult(ctx, task.ID, result); err != nil {",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_task_layers_facade.go should contain %q", needle)
+			t.Fatalf("service_task_layers_logic.go should contain %q", needle)
 		}
 	}
 
