@@ -23,6 +23,7 @@ internal/listingkit/service_ai_client_settings.go        // AI client settings f
 internal/listingkit/service_shein_category_search.go     // SHEIN category search facade delegates
 internal/listingkit/service_shein_category_client.go     // SHEIN category/attribute API facade helpers
 internal/listingkit/service_shein_cookie_preview_facade.go // SHEIN cookie preview facade helper
+internal/listingkit/service_shein_cookie_note.go         // SHEIN cookie availability note helper
 internal/listingkit/service_shein_store_selection.go     // SHEIN store selection facade helpers
 internal/listingkit/service_shein_settings.go            // SHEIN settings facade delegates
 internal/listingkit/service_store_profile.go             // store profile / routing facade delegates
@@ -161,6 +162,12 @@ Owns root SHEIN category/attribute API facade helpers:
 Owns root SHEIN cookie preview facade helper:
 
 - preview rebuild / blocker decoration entrypoint.
+
+### `service_shein_cookie_note.go`
+
+Owns SHEIN cookie availability note helper:
+
+- cookie availability note resolution for preview/recompute surfaces.
 
 ### `service_shein_store_selection.go`
 

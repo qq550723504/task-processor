@@ -1299,9 +1299,39 @@ func TestSheinCookiePreviewFacadeFileOwnsRootHelper(t *testing.T) {
 	if strings.Contains(helperContent, "func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {") {
 		t.Fatalf("service_shein_cookie_preview.go should not contain %q", "func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {")
 	}
+	if strings.Contains(helperContent, "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {") {
+		t.Fatalf("service_shein_cookie_preview.go should not contain %q", "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {")
+	}
+}
 
-	if !strings.Contains(helperContent, "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {") {
-		t.Fatalf("service_shein_cookie_preview.go should keep %q", "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {")
+func TestSheinCookieNoteFileOwnsCookieAvailabilityResolver(t *testing.T) {
+	t.Parallel()
+
+	noteSrc, err := os.ReadFile("service_shein_cookie_note.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_cookie_note.go) error = %v", err)
+	}
+	noteContent := string(noteSrc)
+
+	for _, needle := range []string{
+		"func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {",
+		"apiClient, _, err := s.newSheinAPIClient(ctx, task)",
+		"return fmt.Sprintf(\"SHEIN 店铺 cookie 不可用，在线类目、属性和销售属性解析受阻：%v\", err)",
+		"return \"SHEIN 店铺 cookie 不可用，在线类目、属性和销售属性解析受阻：刷新后仍未获取到有效 cookie\"",
+	} {
+		if !strings.Contains(noteContent, needle) {
+			t.Fatalf("service_shein_cookie_note.go should contain %q", needle)
+		}
+	}
+
+	previewSrc, err := os.ReadFile("service_shein_cookie_preview.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_cookie_preview.go) error = %v", err)
+	}
+	previewContent := string(previewSrc)
+
+	if strings.Contains(previewContent, "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {") {
+		t.Fatalf("service_shein_cookie_preview.go should not contain %q", "func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *Task) string {")
 	}
 }
 
