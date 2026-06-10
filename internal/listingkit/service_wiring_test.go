@@ -1324,9 +1324,9 @@ func TestTaskPreviewHelperFileOwnsPreviewBuilderHelper(t *testing.T) {
 func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_category_search_facade.go")
+	facadeSrc, err := os.ReadFile("service_shein_category_search_entrypoint.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_category_search_facade.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_category_search_entrypoint.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1335,7 +1335,7 @@ func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.sheinAdminOrDefault().SearchSheinCategories(ctx, taskID, query)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_category_search_facade.go should contain %q", needle)
+			t.Fatalf("service_shein_category_search_entrypoint.go should contain %q", needle)
 		}
 	}
 

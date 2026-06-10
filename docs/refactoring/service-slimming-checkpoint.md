@@ -21,7 +21,7 @@ internal/listingkit/service_collaborators.go              // collaborator initia
 internal/listingkit/service_admin_collaborators.go       // admin collaborator accessors
 internal/listingkit/service_ai_client_settings_facade.go // AI client settings facade delegates
 internal/listingkit/service_child_task_retry_logic.go    // child task retry logic
-internal/listingkit/service_shein_category_search_facade.go // SHEIN category search facade delegates
+internal/listingkit/service_shein_category_search_entrypoint.go // SHEIN category search entrypoint
 internal/listingkit/service_shein_category_api_helpers.go   // SHEIN category/attribute API helpers
 internal/listingkit/service_shein_category_store_selection_support.go // SHEIN category/store-selection support
 internal/listingkit/service_shein_cookie_preview_helper.go  // SHEIN cookie preview helper
@@ -172,7 +172,7 @@ Owns root SHEIN settings facade delegates:
 
 - SHEIN settings fetch / update.
 
-### `service_shein_category_search_facade.go`
+### `service_shein_category_search_entrypoint.go`
 
 Owns root SHEIN category search facade delegates:
 
