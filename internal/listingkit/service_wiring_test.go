@@ -1676,9 +1676,9 @@ func TestSubmitContextHelpersFileOwnsRootHelpers(t *testing.T) {
 		t.Fatalf("ReadFile(service_submit_context_helpers.go) unexpected error = %v", err)
 	}
 
-	helperSrc, err := os.ReadFile("service_submit_context_resolver.go")
+	helperSrc, err := os.ReadFile("service_submit_runtime_context_resolver.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_context_resolver.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_runtime_context_resolver.go) error = %v", err)
 	}
 	helperContent := string(helperSrc)
 
@@ -1688,7 +1688,7 @@ func TestSubmitContextHelpersFileOwnsRootHelpers(t *testing.T) {
 		"func (s *service) buildSheinSubmitOtherAPI(ctx context.Context, task *Task) (sheinother.OtherAPI, error) {",
 	} {
 		if strings.Contains(helperContent, needle) {
-			t.Fatalf("service_submit_context_resolver.go should not contain %q", needle)
+			t.Fatalf("service_submit_runtime_context_resolver.go should not contain %q", needle)
 		}
 	}
 
@@ -1699,7 +1699,7 @@ func TestSubmitContextHelpersFileOwnsRootHelpers(t *testing.T) {
 		"func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*SheinRuntimeAPIClient, int64, error) {",
 	} {
 		if !strings.Contains(helperContent, needle) {
-			t.Fatalf("service_submit_context_resolver.go should keep %q", needle)
+			t.Fatalf("service_submit_runtime_context_resolver.go should keep %q", needle)
 		}
 	}
 }

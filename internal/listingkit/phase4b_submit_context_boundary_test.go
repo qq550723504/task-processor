@@ -84,9 +84,9 @@ func TestSheinStoreClientFileKeepsSettingsHydrationOutOfRemoteLookup(t *testing.
 func TestSubmitContextResolverFileOwnsCrossCuttingSubmitRuntimeResolution(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("service_submit_context_resolver.go")
+	src, err := os.ReadFile("service_submit_runtime_context_resolver.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_context_resolver.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_runtime_context_resolver.go) error = %v", err)
 	}
 	content := string(src)
 
@@ -97,7 +97,7 @@ func TestSubmitContextResolverFileOwnsCrossCuttingSubmitRuntimeResolution(t *tes
 		"func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*SheinRuntimeAPIClient, int64, error) {",
 	} {
 		if !strings.Contains(content, needle) {
-			t.Fatalf("service_submit_context_resolver.go should contain %q", needle)
+			t.Fatalf("service_submit_runtime_context_resolver.go should contain %q", needle)
 		}
 	}
 }
