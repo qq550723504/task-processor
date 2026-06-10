@@ -21,6 +21,7 @@ internal/listingkit/service_collaborators.go              // collaborator initia
 internal/listingkit/service_admin_collaborators.go       // admin collaborator accessors
 internal/listingkit/service_task_collaborators.go        // task collaborator accessors
 internal/listingkit/service_task_generation.go           // task generation facade delegates
+internal/listingkit/service_task_revision.go             // task revision facade delegates
 internal/listingkit/service_studio_collaborators.go      // studio collaborator accessors
 internal/listingkit/service_studio_session.go            // studio session facade delegates
 internal/listingkit/service_studio_media.go              // studio media facade delegates
@@ -124,6 +125,13 @@ Owns root task generation facade delegates:
 - generation task listing and actions,
 - review queue / session delegates,
 - generation retry and navigation dispatch delegates.
+
+### `service_task_revision.go`
+
+Owns root task revision facade delegates:
+
+- revision history listing and detail,
+- revision apply and validation delegates.
 
 ### `service_studio_collaborators.go`
 

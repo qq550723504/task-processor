@@ -924,3 +924,45 @@ func TestTaskGenerationFacadeFileOwnsRootDelegates(t *testing.T) {
 		}
 	}
 }
+
+func TestTaskRevisionFacadeFileOwnsRootDelegates(t *testing.T) {
+	t.Parallel()
+
+	facadeSrc, err := os.ReadFile("service_task_revision.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task_revision.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error) {",
+		"return s.taskRevisionOrDefault().GetTaskRevisionHistory(ctx, taskID, query)",
+		"func (s *service) GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error) {",
+		"return s.taskRevisionOrDefault().GetTaskRevisionHistoryDetail(ctx, taskID, revisionID, query)",
+		"func (s *service) ApplyTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*ListingKitPreview, error) {",
+		"return s.taskRevisionOrDefault().ApplyTaskRevision(ctx, taskID, req)",
+		"func (s *service) ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error) {",
+		"return s.taskRevisionOrDefault().ValidateTaskRevision(ctx, taskID, req)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_task_revision.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("service_task.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"func (s *service) GetTaskRevisionHistory(ctx context.Context, taskID string, query *RevisionHistoryQuery) (*ListingKitRevisionHistoryPage, error) {",
+		"func (s *service) GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error) {",
+		"func (s *service) ApplyTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*ListingKitPreview, error) {",
+		"func (s *service) ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error) {",
+	} {
+		if strings.Contains(serviceContent, needle) {
+			t.Fatalf("service_task.go should not contain %q", needle)
+		}
+	}
+}
