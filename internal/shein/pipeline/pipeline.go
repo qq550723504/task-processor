@@ -17,6 +17,7 @@ import (
 	"task-processor/internal/shein/store"
 	"task-processor/internal/shein/translate"
 	"task-processor/internal/shein/validation"
+	saleattributebridge "task-processor/internal/sheinbridge/saleattribute"
 )
 
 // Pipeline 任务处理管道
@@ -133,6 +134,10 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	pipeline.AddHandler(attribute.NewFillAttributeHandler())
 	// AI生成销售规格
 	pipeline.AddHandler(sale.NewSaleAttributeHandler(aiClient))
+	pipeline.AddHandler(saleattributebridge.NewRuntimeSaleAttributeHandler(
+		sheinManagedRuntimeFactory{processor: processor},
+		aiClient,
+	))
 	// 验证修复销售属性
 	pipeline.AddHandler(attribute.NewValidateRepairSaleAttributeHandler())
 	// 构建SKC列表
