@@ -137,6 +137,7 @@ func TestSubmitTaskPreservesDraftPriceWhenPricingReviewMissing(t *testing.T) {
 				},
 			},
 		}),
+		withDefaultTestSheinImageAPI(),
 	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -191,6 +192,7 @@ func TestSubmitTaskNormalizesLegacyCNYDraftCurrencyToUSD(t *testing.T) {
 				},
 			},
 		}),
+		withDefaultTestSheinImageAPI(),
 	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
@@ -317,7 +319,13 @@ func TestSubmitTaskUsesFinalDraftManualOverrideWhenReadyPricingExists(t *testing
 	}
 	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
 		Confirmed:            true,
+		MainImageURL:         "https://oss.shuomiai.com/listingkit/pricing-main.png",
+		FinalImageOrder:      []string{"https://oss.shuomiai.com/listingkit/pricing-main.png"},
 		ManualPriceOverrides: map[string]float64{currentSKU: 99.99},
+	}
+	task.Result.Shein.RequestDraft.ImageInfo = &SheinImageDraft{
+		MainImage: "https://oss.shuomiai.com/listingkit/pricing-main.png",
+		Gallery:   []string{"https://oss.shuomiai.com/listingkit/pricing-main.png"},
 	}
 	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].CostPrice = "91.80"
 	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice = "91.80"
@@ -326,6 +334,8 @@ func TestSubmitTaskUsesFinalDraftManualOverrideWhenReadyPricingExists(t *testing
 		BasePrice: "91.80",
 		Currency:  "USD",
 	}}
+	task.Result.Shein.PreviewProduct.ImageInfo = sheinImageInfo([]string{"https://oss.shuomiai.com/listingkit/pricing-main.png"})
+	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = *sheinImageInfo([]string{"https://oss.shuomiai.com/listingkit/pricing-main.png"})
 	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].PriceInfoList = []sheinproduct.PriceInfo{{
 		SubSite:   "US",
 		BasePrice: 91.8,
@@ -354,6 +364,7 @@ func TestSubmitTaskUsesFinalDraftManualOverrideWhenReadyPricingExists(t *testing
 				},
 			},
 		}),
+		withDefaultTestSheinImageAPI(),
 	))
 	if err != nil {
 		t.Fatalf("new service: %v", err)
