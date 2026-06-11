@@ -19,86 +19,55 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 	if task == nil {
 		return nil, ErrTaskNotFound
 	}
-	selectedPlatform = normalizePreviewPlatform(selectedPlatform)
-	if selectedPlatform != "" && len(normalizePlatforms([]string{selectedPlatform})) == 0 {
-		return nil, ErrUnsupportedPreviewPlatform
+	selectedPlatform, err := validateSelectedPreviewPlatform(selectedPlatform)
+	if err != nil {
+		return nil, err
 	}
 
-	preview := &ListingKitPreview{
-		TaskID:           task.ID,
-		Status:           task.Status,
-		SelectedPlatform: selectedPlatform,
-		Platforms:        previewPlatforms(task),
-		CreatedAt:        task.CreatedAt,
-	}
-	if task.Status == TaskStatusCompleted || task.Status == TaskStatusNeedsReview || task.Status == TaskStatusFailed {
-		completedAt := task.UpdatedAt
-		preview.CompletedAt = &completedAt
-	}
-
-	if task.Result == nil {
-		preview.Overview = &ListingKitPreviewHeader{
-			StatusMessage: previewStatusMessage(task.Status),
-		}
+	preview := buildBaseListingKitPreview(task, selectedPlatform)
+	if shouldBuildPendingPreview(task) {
+		preview.Overview = buildPendingPreviewHeader(task)
 		return preview, nil
 	}
+
 	ensureTaskPodExecution(task)
+	attachListingKitPreviewResult(preview, task.Result, selectedPlatform)
 
-	preview.Overview = buildPreviewHeader(task.Result, selectedPlatform)
-	preview.NeedsReview = task.Result.Summary != nil && task.Result.Summary.NeedsReview
-	preview.Catalog = task.Result.CatalogProduct
-	preview.Assets = task.Result.AssetBundle
-	preview.AssetInventory = task.Result.AssetInventorySummary
-	preview.AssetRenderPreviews = append([]AssetRenderPreview(nil), task.Result.AssetRenderPreviews...)
-	preview.PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil), task.Result.PlatformAssetRenderPreviews...)
-	if len(preview.AssetRenderPreviews) == 0 {
-		preview.AssetRenderPreviews = buildAssetRenderPreviews(task.Result.AssetBundle)
-	}
-	if len(preview.PlatformAssetRenderPreviews) == 0 {
-		preview.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(task.Result)
-	}
-	preview.PlatformAssetRenderPreviews = filterPlatformAssetRenderPreviews(preview.PlatformAssetRenderPreviews, selectedPlatform)
-	preview.AssetGenerationQueue = task.Result.AssetGenerationQueue
-	preview.AssetGenerationOverview = task.Result.AssetGenerationOverview
-	preview.RevisionHistoryMeta = buildRevisionHistoryMeta(task.Result)
-	preview.RevisionHistory = buildRevisionHistoryPreviewItems(task.Result.RevisionHistory)
-
-	if selectedPlatform == "" || selectedPlatform == "amazon" {
-		if task.Result.Amazon != nil {
-			preview.Amazon = buildAmazonPreviewPayload(task.Result.Amazon, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "amazon"))
-		} else if selectedPlatform == "amazon" {
-			return nil, ErrPreviewPlatformUnavailable
-		}
-	}
-
-	if selectedPlatform == "" || selectedPlatform == "shein" {
-		if task.Result.Shein != nil {
-			preview.Shein = buildSheinPreviewPayload(task.Result.Shein, task.Result.PodExecution, task.Result.CanonicalProduct, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "shein"))
-			preview.NeedsReview = preview.NeedsReview || preview.Shein.NeedsReview
-		} else if selectedPlatform == "shein" {
-			return nil, ErrPreviewPlatformUnavailable
-		}
-	}
-
-	if selectedPlatform == "" || selectedPlatform == "temu" {
-		if task.Result.Temu != nil {
-			preview.Temu = buildTemuPreviewPayload(task.Result.Temu, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "temu"))
-			preview.NeedsReview = preview.NeedsReview || preview.Temu.NeedsReview
-		} else if selectedPlatform == "temu" {
-			return nil, ErrPreviewPlatformUnavailable
-		}
-	}
-
-	if selectedPlatform == "" || selectedPlatform == "walmart" {
-		if task.Result.Walmart != nil {
-			preview.Walmart = buildWalmartPreviewPayload(task.Result.Walmart, task.Result.AssetBundle, platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, "walmart"))
-			preview.NeedsReview = preview.NeedsReview || preview.Walmart.NeedsReview
-		} else if selectedPlatform == "walmart" {
-			return nil, ErrPreviewPlatformUnavailable
-		}
+	if err := buildPreviewPlatformSections(task, preview, selectedPlatform); err != nil {
+		return nil, err
 	}
 
 	return preview, nil
+}
+
+func validateSelectedPreviewPlatform(selectedPlatform string) (string, error) {
+	selectedPlatform = normalizePreviewPlatform(selectedPlatform)
+	if selectedPlatform != "" && len(normalizePlatforms([]string{selectedPlatform})) == 0 {
+		return "", ErrUnsupportedPreviewPlatform
+	}
+	return selectedPlatform, nil
+}
+
+func shouldBuildPendingPreview(task *Task) bool {
+	return task == nil || task.Result == nil
+}
+
+func buildPendingPreviewHeader(task *Task) *ListingKitPreviewHeader {
+	if task == nil {
+		return nil
+	}
+	return &ListingKitPreviewHeader{
+		StatusMessage: previewStatusMessage(task.Status),
+	}
+}
+
+func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {
+	for _, builder := range previewPlatformBuilders() {
+		if err := builder.build(task, preview, selectedPlatform); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func previewStatusFromReviewNotes(reviewNotes []string) string {
@@ -127,23 +96,10 @@ func normalizePreviewPlatform(platform string) string {
 	return strings.ToLower(strings.TrimSpace(platform))
 }
 
-func buildPreviewHeader(result *ListingKitResult, selectedPlatform string) *ListingKitPreviewHeader {
-	if result == nil {
-		return nil
-	}
+func shouldBuildPreviewPlatform(selectedPlatform, platform string) bool {
+	return selectedPlatform == "" || isSelectedPreviewPlatform(selectedPlatform, platform)
+}
 
-	header := &ListingKitPreviewHeader{
-		Country:       result.Country,
-		Language:      result.Language,
-		StatusMessage: "预览结果已生成",
-	}
-	if result.Summary != nil {
-		header.SourceType = result.Summary.SourceType
-		header.ImageCount = result.Summary.ImageCount
-		header.VariantCount = result.Summary.VariantCount
-		header.Warnings = append([]string(nil), result.Summary.Warnings...)
-	}
-	header.ReviewReasons = reviewReasonsFromResult(result)
-	header.PlatformCards = buildPlatformPreviewCards(result, selectedPlatform)
-	return header
+func isSelectedPreviewPlatform(selectedPlatform, platform string) bool {
+	return selectedPlatform == platform
 }

@@ -137,6 +137,38 @@ func TestPrepareSheinProductForSubmitNormalizesSPUImagesForPublish(t *testing.T)
 	}
 }
 
+func TestPrepareSheinProductForSubmitPopulatesSKCSiteDetailImages(t *testing.T) {
+	t.Parallel()
+
+	product := &sheinproduct.Product{
+		SKCList: []sheinproduct.SKC{{
+			ImageInfo: sheinproduct.ImageInfo{
+				ImageInfoList: []sheinproduct.ImageDetail{
+					{ImageType: 1, ImageSort: 1, ImageURL: "https://img.example.com/skc-main.jpg"},
+					{ImageType: 2, ImageSort: 2, ImageURL: "https://img.example.com/detail-1.jpg"},
+					{ImageType: 2, ImageSort: 3, ImageURL: "https://img.example.com/detail-2.jpg"},
+				},
+			},
+		}},
+	}
+
+	prepareSheinProductForNewSubmit(product)
+
+	got := product.SKCList[0].SiteDetailImageInfoList
+	if len(got) != 1 {
+		t.Fatalf("site_detail_image_info_list = %+v, want one populated detail image group", got)
+	}
+	if len(got[0].ImageInfoList) < 2 {
+		t.Fatalf("detail images = %+v, want at least two images", got[0].ImageInfoList)
+	}
+	if got[0].ImageInfoList[0].ImageURL != "https://img.example.com/detail-1.jpg" {
+		t.Fatalf("first detail image = %+v, want first gallery image", got[0].ImageInfoList[0])
+	}
+	if got[0].ImageInfoList[1].ImageURL != "https://img.example.com/detail-2.jpg" {
+		t.Fatalf("second detail image = %+v, want second gallery image", got[0].ImageInfoList[1])
+	}
+}
+
 func TestPrepareSheinProductForSubmitNormalizesExtraAndSupplierCode(t *testing.T) {
 	t.Parallel()
 
@@ -196,7 +228,7 @@ func TestPrepareSheinProductForNewSubmitSerializesPageStyleEmptyCollections(t *t
 	}
 	jsonText := string(data)
 	for _, want := range []string{
-		`"site_detail_image_info_list":[]`,
+		`"site_detail_image_info_list":[{"site_abbr_list":[],"image_group_code":null,"image_info_list":[{"image_sort":1,"image_url":"https://img.example.com/skc-gallery.jpg"`,
 		`"site_spec_image_info_list":[]`,
 		`"skc_scope_attribute_list":[]`,
 		`"competing_cost_price_images":[]`,

@@ -14,13 +14,15 @@ type sdsBaselineService struct {
 	sdsLoginStatusProvider SDSLoginStatusProvider
 }
 
-func (s *service) sdsBaselineOrDefault() *sdsBaselineService {
-	if s == nil {
-		return &sdsBaselineService{}
-	}
+type sdsBaselineServiceConfig struct {
+	repo                   Repository
+	sdsLoginStatusProvider SDSLoginStatusProvider
+}
+
+func newSDSBaselineService(config sdsBaselineServiceConfig) *sdsBaselineService {
 	return &sdsBaselineService{
-		repo:                   s.repo,
-		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
+		repo:                   config.repo,
+		sdsLoginStatusProvider: config.sdsLoginStatusProvider,
 	}
 }
 
@@ -176,6 +178,7 @@ func (b *sdsBaselineService) reconcileCachedSDSLoginBaselineReadiness(
 		return
 	}
 	if readiness.ReasonCode != SDSBaselineReasonCodeLoginMissingCredentials &&
+		readiness.ReasonCode != SDSBaselineReasonCodeLoginInProgress &&
 		!isSDSBaselineCredentialBootstrapReadinessFailure(readiness) {
 		return
 	}
@@ -183,7 +186,7 @@ func (b *sdsBaselineService) reconcileCachedSDSLoginBaselineReadiness(
 		return
 	}
 	status, err := b.sdsLoginStatusProvider.Status(ctx)
-	if err != nil || status == nil || !status.HasAccessToken {
+	if err != nil || status == nil || status.LoginInProgress || !status.HasAccessToken {
 		return
 	}
 	readiness.ValidationStatus = SDSBaselineValidationStatusReady

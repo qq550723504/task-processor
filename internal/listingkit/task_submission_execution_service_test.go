@@ -2,9 +2,11 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -45,6 +47,268 @@ func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIUsesResolvedSto
 	}
 	if identity.UserID != task.UserID {
 		t.Fatalf("builder context user id = %q, want %q", identity.UserID, task.UserID)
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIRequiresBuilder(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{})
+
+	api, err := exec.buildSheinSubmitProductAPI(context.Background(), &Task{})
+	if err == nil {
+		t.Fatal("err = nil, want configuration error")
+	}
+	if api != nil {
+		t.Fatalf("api = %+v, want nil", api)
+	}
+	if err.Error() != "shein product api builder is not configured" {
+		t.Fatalf("error = %q, want builder configuration error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIRejectsMissingStoreID(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinProductAPIBuilder: stubSheinProductAPIBuilder{api: &stubSheinProductAPI{}},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 0, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{},
+	}
+
+	api, err := exec.buildSheinSubmitProductAPI(context.Background(), task)
+	if err == nil {
+		t.Fatal("err = nil, want missing store id error")
+	}
+	if api != nil {
+		t.Fatalf("api = %+v, want nil", api)
+	}
+	if err.Error() != "shein store id is unavailable for submit" {
+		t.Fatalf("error = %q, want missing store id error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIRejectsBuilderFallback(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinProductAPIBuilder: stubSheinProductAPIBuilder{msg: "login required"},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 903, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{SheinStoreID: 903},
+	}
+
+	api, err := exec.buildSheinSubmitProductAPI(context.Background(), task)
+	if err == nil {
+		t.Fatal("err = nil, want builder fallback error")
+	}
+	if api != nil {
+		t.Fatalf("api = %+v, want nil", api)
+	}
+	if err.Error() != "shein submit unavailable: login required" {
+		t.Fatalf("error = %q, want builder fallback error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitProductAPIReturnsStoreResolutionError(t *testing.T) {
+	t.Parallel()
+
+	resolveErr := errors.New("store resolver failed")
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinProductAPIBuilder: stubSheinProductAPIBuilder{api: &stubSheinProductAPI{}},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 0, resolveErr
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{},
+	}
+
+	api, err := exec.buildSheinSubmitProductAPI(context.Background(), task)
+	if err == nil {
+		t.Fatal("err = nil, want missing store id error")
+	}
+	if api != nil {
+		t.Fatalf("api = %+v, want nil", api)
+	}
+	if err.Error() != "shein store id is unavailable for submit" {
+		t.Fatalf("error = %q, want missing store id error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitTranslateAPISkipsBuilderWhenNotNeeded(t *testing.T) {
+	t.Parallel()
+
+	var lastStoreID int64
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinTranslateAPIBuilder: stubSheinTranslateAPIBuilder{
+			api:         &stubSheinTranslateAPI{},
+			lastStoreID: &lastStoreID,
+		},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 903, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{Country: "US"},
+	}
+	product := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{
+			{Language: "en", Name: "English Title"},
+			{Language: "es", Name: "Spanish Title"},
+		},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{
+			{Language: "en", Name: "English Description"},
+			{Language: "es", Name: "Spanish Description"},
+		},
+	}
+
+	translateAPI := exec.buildSheinSubmitTranslateAPI(context.Background(), task, product)
+	if translateAPI != nil {
+		t.Fatalf("translateAPI = %+v, want nil", translateAPI)
+	}
+	if lastStoreID != 0 {
+		t.Fatalf("builder store id = %d, want 0 because builder should not be called", lastStoreID)
+	}
+}
+
+func TestTaskSubmissionExecutionServiceBuildSheinSubmitTranslateAPIUsesResolvedStoreIDWhenNeeded(t *testing.T) {
+	t.Parallel()
+
+	var lastStoreID int64
+	expectedAPI := &stubSheinTranslateAPI{}
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinTranslateAPIBuilder: stubSheinTranslateAPIBuilder{
+			api:         expectedAPI,
+			lastStoreID: &lastStoreID,
+		},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 903, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{Country: "US"},
+	}
+	product := &sheinproduct.Product{}
+
+	translateAPI := exec.buildSheinSubmitTranslateAPI(context.Background(), task, product)
+	if translateAPI == nil {
+		t.Fatal("translateAPI = nil, want assigned api")
+	}
+	if translateAPI != expectedAPI {
+		t.Fatalf("translateAPI = %+v, want %+v", translateAPI, expectedAPI)
+	}
+	if lastStoreID != 903 {
+		t.Fatalf("builder store id = %d, want 903", lastStoreID)
+	}
+}
+
+func TestTaskSubmissionExecutionServiceUploadSheinSubmitImagesRequiresBuilder(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{})
+
+	err := exec.uploadSheinSubmitImages(context.Background(), &Task{}, &SheinPackage{}, &sheinproduct.Product{})
+	if err == nil {
+		t.Fatal("err = nil, want configuration error")
+	}
+	if err.Error() != "shein image upload api builder is not configured" {
+		t.Fatalf("error = %q, want builder configuration error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceUploadSheinSubmitImagesRejectsMissingStoreID(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinImageAPIBuilder: stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 0, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{},
+	}
+
+	err := exec.uploadSheinSubmitImages(context.Background(), task, &SheinPackage{}, &sheinproduct.Product{})
+	if err == nil {
+		t.Fatal("err = nil, want missing store id error")
+	}
+	if err.Error() != "shein store id is unavailable for image upload" {
+		t.Fatalf("error = %q, want missing store id error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceUploadSheinSubmitImagesRejectsBuilderFallback(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		sheinImageAPIBuilder: stubSheinImageAPIBuilder{msg: "login required"},
+		resolveSheinStoreID: func(_ context.Context, _ *Task) (int64, error) {
+			return 903, nil
+		},
+	})
+	task := &Task{
+		TenantID: "373211199677923496",
+		UserID:   "user-submit",
+		Request:  &GenerateRequest{SheinStoreID: 903},
+	}
+
+	err := exec.uploadSheinSubmitImages(context.Background(), task, &SheinPackage{}, &sheinproduct.Product{})
+	if err == nil {
+		t.Fatal("err = nil, want builder fallback error")
+	}
+	if err.Error() != "shein image upload unavailable: login required" {
+		t.Fatalf("error = %q, want builder fallback error", err.Error())
+	}
+}
+
+func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageMarksConfirmedFinalDraft(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		currentSheinPricingRule: func() sheinpub.PricingRule { return sheinpub.PricingRule{} },
+	})
+	task := makeReadySheinTask()
+	pkg := task.Result.Shein
+
+	exec.normalizeSheinSubmitPackage(task, pkg, &SubmitTaskRequest{
+		ConfirmedFinal: true,
+	}, "publish")
+
+	if pkg.FinalSubmissionDraft == nil {
+		t.Fatal("FinalSubmissionDraft = nil, want initialized")
+	}
+	if !pkg.FinalSubmissionDraft.Confirmed {
+		t.Fatal("Confirmed = false, want true")
+	}
+	if pkg.FinalSubmissionDraft.ConfirmedAt == nil {
+		t.Fatal("ConfirmedAt = nil, want timestamp")
+	}
+	if pkg.FinalSubmissionDraft.UpdatedAt == nil {
+		t.Fatal("UpdatedAt = nil, want timestamp")
+	}
+	if pkg.FinalSubmissionDraft.SubmitMode != "publish" {
+		t.Fatalf("SubmitMode = %q, want publish", pkg.FinalSubmissionDraft.SubmitMode)
 	}
 }
 

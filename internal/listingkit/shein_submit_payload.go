@@ -456,7 +456,11 @@ func normalizeSheinSubmitSKUImageDetail(image sheinproduct.ImageDetail) sheinpro
 }
 
 func normalizeSheinSubmitSKCImages(skc *sheinproduct.SKC) {
-	if skc == nil || len(skc.ImageInfo.ImageInfoList) == 0 {
+	if skc == nil {
+		return
+	}
+	if len(skc.ImageInfo.ImageInfoList) == 0 {
+		skc.SiteDetailImageInfoList = []sheinproduct.SiteDetailImageInfo{}
 		return
 	}
 	skc.ImageInfo.ImageInfoList = normalizeSheinSubmitGalleryImages(skc.ImageInfo.ImageInfoList, true)
@@ -464,6 +468,55 @@ func normalizeSheinSubmitSKCImages(skc *sheinproduct.SKC) {
 		empty := []any{}
 		skc.ImageInfo.OriginalImageInfoList = &empty
 	}
+	skc.SiteDetailImageInfoList = buildSheinSubmitSiteDetailImageInfoList(skc.ImageInfo.ImageInfoList)
+}
+
+func buildSheinSubmitSiteDetailImageInfoList(images []sheinproduct.ImageDetail) []sheinproduct.SiteDetailImageInfo {
+	detailImages := sheinSubmitDetailImages(images)
+	if len(detailImages) == 0 {
+		return []sheinproduct.SiteDetailImageInfo{}
+	}
+	return []sheinproduct.SiteDetailImageInfo{{
+		SiteAbbrList:  []string{},
+		ImageInfoList: detailImages,
+	}}
+}
+
+func sheinSubmitDetailImages(images []sheinproduct.ImageDetail) []sheinproduct.DetailImage {
+	primary := make([]sheinproduct.DetailImage, 0, len(images))
+	fallback := make([]sheinproduct.DetailImage, 0, len(images))
+	seen := map[string]bool{}
+	for _, image := range images {
+		url := strings.TrimSpace(image.ImageURL)
+		if url == "" || seen[url] {
+			continue
+		}
+		seen[url] = true
+		detail := sheinproduct.DetailImage{
+			ImageURL:    url,
+			ImageItemID: image.ImageItemID,
+		}
+		if image.ImageType == 2 && !image.SizeImgFlag {
+			primary = append(primary, detail)
+			continue
+		}
+		if image.ImageType == 1 || image.ImageType == 5 || image.ImageType == 6 {
+			fallback = append(fallback, detail)
+		}
+	}
+	detailImages := primary
+	if len(detailImages) < 2 {
+		for _, image := range fallback {
+			if len(detailImages) >= 2 {
+				break
+			}
+			detailImages = append(detailImages, image)
+		}
+	}
+	for index := range detailImages {
+		detailImages[index].ImageSort = index + 1
+	}
+	return detailImages
 }
 
 func normalizeSheinSubmitGalleryImages(images []sheinproduct.ImageDetail, includeColorBlock bool) []sheinproduct.ImageDetail {

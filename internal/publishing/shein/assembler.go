@@ -83,6 +83,7 @@ func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *
 			"country":         req.Country,
 			"language":        req.Language,
 			"category_name":   categoryName,
+			"source_category_path": strings.Join(product.CategoryPath, " > "),
 		},
 	}
 	NormalizePackageSemanticFields(pkg)

@@ -32,10 +32,10 @@ func TestAssetGenerationProjectionBoundary(t *testing.T) {
 	t.Run("preview_and_export_decorators_delegate_asset_generation_bundle_to_shared_seam", func(t *testing.T) {
 		t.Parallel()
 
-		previewSource := readNamedFunctionSource(t, "service_preview.go", "GetTaskPreview")
-		previewCalls := readNamedFunctionCallNames(t, "service_preview.go", "GetTaskPreview")
-		exportSource := readNamedFunctionSource(t, "service_task.go", "GetTaskExport")
-		exportCalls := readNamedFunctionCallNames(t, "service_task.go", "GetTaskExport")
+		previewSource := readNamedFunctionSource(t, "service_task_preview_logic.go", "GetTaskPreview")
+		previewCalls := readNamedFunctionCallNames(t, "service_task_preview_logic.go", "GetTaskPreview")
+		exportSource := readNamedFunctionSource(t, "service_task_export_logic.go", "GetTaskExport")
+		exportCalls := readNamedFunctionCallNames(t, "service_task_export_logic.go", "GetTaskExport")
 
 		assertSourceContainsAll(t, previewSource, []string{
 			"projection := buildAssetGenerationProjection(task.Result, tasks)",

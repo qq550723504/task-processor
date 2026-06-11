@@ -19,11 +19,13 @@ func TestServiceRootFileKeepsCollaboratorWiringOutOfServiceRoot(t *testing.T) {
 		"newSettingsAdminService(",
 		"newSheinAdminService(",
 		"newTaskSubmissionService(",
+		"newTaskSubmissionRefreshService(",
 		"newTaskSubmissionExecutionService(",
 		"newTaskTemporalSubmissionAdapter(",
 		"buildSettingsAdminServiceConfig(",
 		"buildSheinAdminServiceConfig(",
 		"buildTaskSubmissionServiceConfig(",
+		"buildTaskSubmissionRefreshServiceConfig(",
 		"buildTaskSubmissionExecutionServiceConfig(",
 		"buildTaskTemporalSubmissionAdapterConfig(",
 	} {
@@ -33,12 +35,27 @@ func TestServiceRootFileKeepsCollaboratorWiringOutOfServiceRoot(t *testing.T) {
 	}
 
 	for _, needle := range []string{
-		"func NewService(config *ServiceConfig) (Service, error) {",
-		"func newServiceWithConfig(config *ServiceConfig) *service {",
-		"func (config *ServiceConfig) applyDefaults() {",
+		"func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {",
+		"func (s *service) ConfigureSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {",
+		"func (s *service) currentSheinSubmitSettings() SheinSettings {",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service.go should keep %q", needle)
+		}
+	}
+
+	configSrc, err := os.ReadFile("service_config.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_config.go) error = %v", err)
+	}
+	configContent := string(configSrc)
+
+	for _, needle := range []string{
+		"func NewService(config *ServiceConfig) (Service, error) {",
+		"func newServiceWithConfig(config *ServiceConfig) *service {",
+	} {
+		if !strings.Contains(configContent, needle) {
+			t.Fatalf("service_config.go should keep %q", needle)
 		}
 	}
 }
@@ -61,6 +78,7 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 			file: "service_submit_wiring.go",
 			needles: []string{
 				"func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {",
+				"func buildTaskSubmissionRefreshServiceConfig(s *service) taskSubmissionRefreshServiceConfig {",
 				"func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecutionServiceConfig {",
 				"func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {",
 			},
@@ -89,19 +107,35 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 func TestServiceProcessFileUsesExplicitFlowSeam(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("service_process.go")
+	facadeSrc, err := os.ReadFile("service_process_entry.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_process.go) error = %v", err)
+		t.Fatalf("ReadFile(service_process_entry.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	for _, needle := range []string{
+		"return buildListingKitProcessFlow(s).run(ctx, task, log)",
+	} {
+		if !strings.Contains(facadeContent, needle) {
+			t.Fatalf("service_process_entry.go should contain %q", needle)
+		}
+	}
+
+	src, err := os.ReadFile("service_process_review_helper.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_process_review_helper.go) error = %v", err)
 	}
 	content := string(src)
 
 	for _, needle := range []string{
-		"return buildListingKitProcessFlow(s).run(ctx, task, log)",
 		"func taskNeedsReviewReason(result *ListingKitResult) string {",
 	} {
 		if !strings.Contains(content, needle) {
-			t.Fatalf("service_process.go should contain %q", needle)
+			t.Fatalf("service_process_review_helper.go should contain %q", needle)
 		}
+	}
+	if strings.Contains(content, "return buildListingKitProcessFlow(s).run(ctx, task, log)") {
+		t.Fatalf("service_process_review_helper.go should not contain %q after facade split", "return buildListingKitProcessFlow(s).run(ctx, task, log)")
 	}
 
 	for _, needle := range []string{
@@ -113,7 +147,13 @@ func TestServiceProcessFileUsesExplicitFlowSeam(t *testing.T) {
 		"applyProcessTerminalResult(",
 	} {
 		if strings.Contains(content, needle) {
-			t.Fatalf("service_process.go should not contain %q", needle)
+			t.Fatalf("service_process_review_helper.go should not contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_process_review.go"); err == nil {
+		t.Fatal("service_process_review.go should be removed after process review helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_process_review.go) unexpected error = %v", err)
 	}
 }

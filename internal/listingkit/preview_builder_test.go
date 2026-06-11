@@ -377,6 +377,24 @@ func TestBuildListingKitPreviewRejectsUnsupportedPlatform(t *testing.T) {
 	}
 }
 
+func TestBuildListingKitPreviewReturnsPendingHeaderWhenResultMissing(t *testing.T) {
+	t.Parallel()
+
+	preview, err := buildListingKitPreview(&Task{
+		ID:     "task-preview-pending",
+		Status: TaskStatusProcessing,
+	}, "")
+	if err != nil {
+		t.Fatalf("build preview: %v", err)
+	}
+	if preview == nil || preview.Overview == nil {
+		t.Fatalf("preview = %+v, want overview header", preview)
+	}
+	if preview.Overview.StatusMessage != "任务处理中，预览结果尚未准备完成" {
+		t.Fatalf("status message = %q", preview.Overview.StatusMessage)
+	}
+}
+
 func TestBuildListingKitPreviewIncludesRevisionHistoryMeta(t *testing.T) {
 	t.Parallel()
 

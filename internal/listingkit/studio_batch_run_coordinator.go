@@ -88,15 +88,22 @@ func (s *service) initializeStudioBatchRunRecovery() {
 	}()
 }
 
+func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {
+	coordinator := s.buildStudioBatchRunCoordinator()
+	if coordinator == nil {
+		return fmt.Errorf("studio batch run executor is not configured")
+	}
+	return coordinator.StartRun(ctx, runID)
+}
+
 func (s *service) buildStudioBatchRunCoordinator() *studioBatchRunCoordinator {
 	executor := s.buildStudioBatchRunExecutor()
 	if executor == nil {
 		return nil
 	}
-	return newStudioBatchRunCoordinator(studioBatchRunCoordinatorConfig{
-		repo:     s.studioBatchRunRepo,
-		executor: executor,
-	})
+	config := buildStudioBatchRunCoordinatorConfig(s)
+	config.executor = executor
+	return newStudioBatchRunCoordinator(config)
 }
 
 func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {
@@ -106,10 +113,7 @@ func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {
 	if s.studioImageGenerator == nil || s.uploadStore == nil {
 		return nil
 	}
-	return newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
-		repo:       s.studioBatchRunRepo,
-		executeOne: s.executeStudioBatchRunItem,
-	})
+	return newTaskStudioBatchRunExecutor(buildTaskStudioBatchRunExecutorConfig(s))
 }
 
 func studioBatchRunLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {

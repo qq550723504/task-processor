@@ -49,6 +49,11 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 		SourceIdentity: sheinPricingSourceIdentity(task.Result.Shein),
 		ResolutionJSON: mustMarshalSheinPricingReview(review),
 	})
+	logPricingCacheEvent("store", req, task.Result.Shein, review.Cache, logrus.Fields{
+		"cache_kind":         sheinpub.ResolutionCacheKindPricing,
+		"product_identities": strings.Join(sheinPricingProductIdentity(task.Result.Shein), ","),
+		"sku_facts":          strings.Join(sortedSheinPricingSKUFacts(task.Result.Shein), ","),
+	})
 }
 
 func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Package) *sheinpub.PricingReview {
@@ -428,6 +433,7 @@ func pricingCacheHitSource(entry *sheinpub.SheinResolutionCacheEntry) string {
 }
 
 func logPricingCacheEvent(event string, req *sheinpub.BuildRequest, pkg *sheinpub.Package, info *sheinpub.ResolutionCacheInfo, fields logrus.Fields) {
+	// TODO(debug): Remove this verbose cache-key diagnostics log after repeated publish cache verification is complete.
 	log := logrus.WithFields(logrus.Fields{
 		"component": "listingkit/pricing_cache",
 		"event":     event,
@@ -437,6 +443,18 @@ func logPricingCacheEvent(event string, req *sheinpub.BuildRequest, pkg *sheinpu
 				return 0
 			}
 			return pkg.CategoryID
+		}(),
+		"product_identities": func() string {
+			if pkg == nil {
+				return ""
+			}
+			return strings.Join(sheinPricingProductIdentity(pkg), ",")
+		}(),
+		"sku_facts": func() string {
+			if pkg == nil {
+				return ""
+			}
+			return strings.Join(sortedSheinPricingSKUFacts(pkg), ",")
 		}(),
 	})
 	for key, value := range fields {

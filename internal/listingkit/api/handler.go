@@ -282,6 +282,7 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	req.ImageURLs = absolutizeUploadedImageURLs(c, req.ImageURLs)
 	req.TenantID = requestTenantID(c, req.TenantID)
 	if req.UserID == "" {
 		req.UserID = requestUserID(c)

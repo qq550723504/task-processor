@@ -42,6 +42,25 @@ func TestNormalizeGenerateRequestDefaults(t *testing.T) {
 	}
 }
 
+func TestNormalizeGenerateRequestAbsolutizesUploadedImageURLs(t *testing.T) {
+	t.Parallel()
+
+	req := &GenerateRequest{
+		Text:      "demo",
+		ImageURLs: []string{"/api/v1/listing-kits/uploads/files/20260610/demo.png", " https://example.com/keep.png "},
+		Platforms: []string{"shein"},
+	}
+
+	normalizeGenerateRequest(req)
+
+	if got, want := req.ImageURLs[0], "http://localhost:3000/api/v1/listing-kits/uploads/files/20260610/demo.png"; got != want {
+		t.Fatalf("first image url = %q, want %q", got, want)
+	}
+	if got, want := req.ImageURLs[1], "https://example.com/keep.png"; got != want {
+		t.Fatalf("second image url = %q, want %q", got, want)
+	}
+}
+
 func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t *testing.T) {
 	t.Parallel()
 

@@ -57,6 +57,122 @@ func TestApplySheinFinalImageDraftRepairsExistingPreviewSKCMainImage(t *testing.
 	}
 }
 
+func TestApplySheinFinalImageDraftBackfillsSKCGalleryFromFinalOrder(t *testing.T) {
+	t.Parallel()
+
+	mainImage := "https://cdn.example.com/main.jpg"
+	galleryOne := "https://cdn.example.com/gallery-1.jpg"
+	galleryTwo := "https://cdn.example.com/gallery-2.jpg"
+	skcMain := "https://cdn.example.com/skc-main.jpg"
+
+	pkg := &sheinpub.Package{
+		RequestDraft: &sheinpub.RequestDraft{
+			ImageInfo: &sheinpub.ImageDraft{
+				MainImage: mainImage,
+				Gallery:   []string{mainImage, galleryOne, galleryTwo},
+			},
+			SKCList: []sheinpub.SKCRequestDraft{{
+				SupplierCode: "WHITE",
+				ImageInfo: &sheinpub.ImageDraft{
+					MainImage: skcMain,
+				},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{
+			ImageInfo: sheinImageInfo([]string{mainImage, galleryOne, galleryTwo}),
+			SKCList: []sheinproduct.SKC{{
+				SupplierCode: testStringPtr("WHITE"),
+				ImageInfo: sheinproduct.ImageInfo{
+					ImageInfoList: []sheinproduct.ImageDetail{
+						{ImageType: 1, ImageSort: 1, ImageURL: skcMain},
+					},
+				},
+			}},
+		},
+		FinalDraft: &sheinpub.FinalDraft{
+			MainImageURL:    mainImage,
+			FinalImageOrder: []string{mainImage, galleryOne, galleryTwo, skcMain},
+		},
+	}
+
+	applySheinFinalImageDraft(pkg)
+
+	draftImages := pkg.DraftPayload.SKCList[0].ImageInfo
+	if draftImages == nil {
+		t.Fatal("skc draft image info = nil, want backfilled gallery")
+	}
+	if len(draftImages.Gallery) < 2 {
+		t.Fatalf("skc draft gallery = %+v, want at least two detail images from final order", draftImages.Gallery)
+	}
+
+	got := pkg.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList
+	if len(got) < 3 {
+		t.Fatalf("preview skc image count = %d, want main plus backfilled gallery images", len(got))
+	}
+	if got[0].ImageURL != skcMain || got[0].ImageType != 1 {
+		t.Fatalf("preview skc main image = %+v, want original skc main restored first", got[0])
+	}
+}
+
+func TestApplySheinFinalImageDraftBackfillsSKCGalleryWhenOnlyMainExists(t *testing.T) {
+	t.Parallel()
+
+	topMain := "https://cdn.example.com/top-main.jpg"
+	detailOne := "https://cdn.example.com/detail-1.jpg"
+	detailTwo := "https://cdn.example.com/detail-2.jpg"
+	skcMain := "https://cdn.example.com/skc-main.jpg"
+
+	pkg := &sheinpub.Package{
+		RequestDraft: &sheinpub.RequestDraft{
+			ImageInfo: &sheinpub.ImageDraft{
+				MainImage: topMain,
+				Gallery:   []string{topMain, detailOne, detailTwo},
+			},
+			SKCList: []sheinpub.SKCRequestDraft{{
+				SupplierCode: "WHITE",
+				ImageInfo: &sheinpub.ImageDraft{
+					MainImage: skcMain,
+				},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{
+			ImageInfo: sheinImageInfo([]string{topMain, detailOne, detailTwo}),
+			SKCList: []sheinproduct.SKC{{
+				SupplierCode: testStringPtr("WHITE"),
+				ImageInfo: sheinproduct.ImageInfo{
+					ImageInfoList: []sheinproduct.ImageDetail{
+						{ImageType: 1, ImageSort: 1, ImageURL: skcMain},
+					},
+				},
+			}},
+		},
+		FinalDraft: &sheinpub.FinalDraft{
+			Confirmed: true,
+		},
+	}
+
+	applySheinFinalImageDraft(pkg)
+
+	draftImages := pkg.DraftPayload.SKCList[0].ImageInfo
+	if draftImages == nil {
+		t.Fatal("skc draft image info = nil, want backfilled gallery")
+	}
+	if len(draftImages.Gallery) < 2 {
+		t.Fatalf("skc draft gallery = %+v, want at least two detail images from top-level final images", draftImages.Gallery)
+	}
+	if draftImages.Gallery[0] != detailOne || draftImages.Gallery[1] != detailTwo {
+		t.Fatalf("skc draft gallery = %+v, want detail images preserved in order", draftImages.Gallery)
+	}
+
+	got := pkg.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList
+	if len(got) < 3 {
+		t.Fatalf("preview skc image count = %d, want main plus backfilled detail images", len(got))
+	}
+	if got[0].ImageURL != skcMain || got[0].ImageType != 1 {
+		t.Fatalf("preview skc main image = %+v, want original skc main restored first", got[0])
+	}
+}
+
 func TestApplySheinVariantImageCoverageGuardMarksBlockedWithoutClearingImages(t *testing.T) {
 	t.Parallel()
 

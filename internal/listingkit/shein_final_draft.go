@@ -1,16 +1,11 @@
 package listingkit
 
 import (
-	"context"
 	"strings"
 
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
-
-func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error) {
-	return s.sheinAdminOrDefault().UpdateSheinFinalDraft(ctx, taskID, req)
-}
 
 func applySheinFinalImageDraft(pkg *sheinpub.Package) {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
@@ -64,9 +59,6 @@ func ensureSheinFinalDraftSKCImages(pkg *sheinpub.Package, main string, order []
 	fallback := sheinFinalDraftFallbackImages(pkg, main, deleted)
 	for index := range pkg.DraftPayload.SKCList {
 		skcDraft := &pkg.DraftPayload.SKCList[index]
-		if sheinImageDraftHasImages(skcDraft.ImageInfo) {
-			continue
-		}
 		mainImage := firstNonEmpty(
 			sheinPackageSKCMainImage(pkg, index, skcDraft.SupplierCode),
 			sheinRequestSKCMainImage(skcDraft),
@@ -79,14 +71,33 @@ func ensureSheinFinalDraftSKCImages(pkg *sheinpub.Package, main string, order []
 		if skcDraft.ImageInfo == nil {
 			skcDraft.ImageInfo = &sheinpub.ImageDraft{}
 		}
-		skcDraft.ImageInfo.MainImage = mainImage
-		skcDraft.ImageInfo.Gallery = sheinGalleryWithoutMain(orderSheinImages(nil, fallback, deleted), mainImage)
+		if strings.TrimSpace(skcDraft.ImageInfo.MainImage) == "" {
+			skcDraft.ImageInfo.MainImage = mainImage
+		}
+		galleryFallback := fallback
+		if topMain := strings.TrimSpace(main); topMain != "" {
+			filtered := make([]string, 0, len(fallback))
+			for _, image := range fallback {
+				if strings.TrimSpace(image) == topMain {
+					continue
+				}
+				filtered = append(filtered, image)
+			}
+			galleryFallback = filtered
+		}
+		mergedGallery := sheinGalleryWithoutMain(
+			orderSheinImages(skcDraft.ImageInfo.Gallery, galleryFallback, deleted),
+			firstNonEmpty(skcDraft.ImageInfo.MainImage, mainImage),
+		)
+		if len(skcDraft.ImageInfo.Gallery) == 0 || len(mergedGallery) > len(skcDraft.ImageInfo.Gallery) {
+			skcDraft.ImageInfo.Gallery = mergedGallery
+		}
 		if pkg.DraftPayload.ImageInfo != nil && strings.TrimSpace(skcDraft.ImageInfo.WhiteBg) == "" {
 			skcDraft.ImageInfo.WhiteBg = strings.TrimSpace(pkg.DraftPayload.ImageInfo.WhiteBg)
 		}
 		for skuIndex := range skcDraft.SKUList {
 			if strings.TrimSpace(skcDraft.SKUList[skuIndex].MainImage) == "" {
-				skcDraft.SKUList[skuIndex].MainImage = mainImage
+				skcDraft.SKUList[skuIndex].MainImage = firstNonEmpty(skcDraft.ImageInfo.MainImage, mainImage)
 			}
 		}
 	}

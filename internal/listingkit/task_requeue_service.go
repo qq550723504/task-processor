@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
-
-	"task-processor/internal/infra/worker"
 )
 
 const taskRequeueMaxWait = 5 * time.Second
@@ -83,72 +80,9 @@ func (s *taskRequeueService) RequeuePendingTasks(ctx context.Context, req *Reque
 	return result, nil
 }
 
-func normalizeRequeueTaskIDs(req *RequeuePendingTasksRequest) []string {
-	if req == nil {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(req.TaskIDs))
-	taskIDs := make([]string, 0, len(req.TaskIDs))
-	for _, taskID := range req.TaskIDs {
-		taskID = strings.TrimSpace(taskID)
-		if taskID == "" {
-			continue
-		}
-		if _, ok := seen[taskID]; ok {
-			continue
-		}
-		seen[taskID] = struct{}{}
-		taskIDs = append(taskIDs, taskID)
-	}
-	return taskIDs
-}
-
-func submitTaskWithRetry(submitter TaskSubmitter, taskID string, maxWait time.Duration) error {
-	if submitter == nil {
-		return ErrTaskRequeueUnavailable
-	}
-	deadline := time.Now().Add(maxWait)
-	delay := listingKitAsyncEnqueueRetryDelay
-	for {
-		err := submitter.Submit(taskID)
-		if err == nil {
-			return nil
-		}
-		if !errors.Is(err, worker.ErrQueueFull) {
-			return err
-		}
-		if time.Now().After(deadline) {
-			return err
-		}
-		time.Sleep(delay)
-		if delay < listingKitAsyncEnqueueRetryMaxDelay {
-			delay *= 2
-			if delay > listingKitAsyncEnqueueRetryMaxDelay {
-				delay = listingKitAsyncEnqueueRetryMaxDelay
-			}
-		}
-	}
-}
-
 func (s *taskRequeueService) currentSubmitter() TaskSubmitter {
 	if s == nil || s.taskSubmitter == nil {
 		return nil
 	}
 	return s.taskSubmitter()
-}
-
-func (s *service) RequeuePendingTasks(ctx context.Context, req *RequeuePendingTasksRequest) (*RequeuePendingTasksResult, error) {
-	return s.taskRequeueOrDefault().RequeuePendingTasks(ctx, req)
-}
-
-func (s *service) taskRequeueOrDefault() *taskRequeueService {
-	if s == nil {
-		return nil
-	}
-	return newTaskRequeueService(taskRequeueServiceConfig{
-		repo: s.repo,
-		taskSubmitter: func() TaskSubmitter {
-			return s.taskSubmitter
-		},
-	})
 }

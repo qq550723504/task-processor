@@ -72,17 +72,18 @@ func (r *cachedCategoryResolver) Resolve(req *BuildRequest, canonical *canonical
 	if key != "" {
 		if cached, ok := r.cache.Load(key); ok {
 			if resolution, ok := cached.(*CategoryResolution); ok {
-				logResolutionCacheHit("category", "memory_cache", req, pkg, key, resolution.Cache, nil)
+				logResolutionCacheHit("category", "memory_cache", req, canonical, pkg, key, resolution.Cache, nil)
 				return cloneCategoryResolutionWithCacheNote(resolution)
 			}
 		}
 		if entry := r.loadPersistentCache(ResolutionCacheKindCategory, req, key); entry != nil {
 			if resolution := decodeCategoryCacheEntry(entry); resolution != nil {
 				r.cache.Store(key, cloneCategoryResolution(resolution))
-				logResolutionCacheHit("category", cacheEntrySource(entry), req, pkg, key, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount})
+				logResolutionCacheHit("category", cacheEntrySource(entry), req, canonical, pkg, key, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount})
 				return resolution
 			}
 		}
+		logResolutionCacheEvent("miss", "category", req, canonical, pkg, key, nil)
 	}
 	resolution := r.inner.Resolve(req, canonical, pkg)
 	return resolution
@@ -104,6 +105,7 @@ func (r *cachedCategoryResolver) RememberCategoryResolution(req *BuildRequest, c
 		r.cache.Store(aliasKey, cloneCategoryResolution(resolution))
 		r.savePersistentCache(ResolutionCacheKindCategory, req, canonical, pkg, aliasKey, resolution, true)
 	}
+	logResolutionCacheEvent("store", "category", req, canonical, pkg, key, resolution.Cache)
 }
 
 func (r *cachedCategoryResolver) ClearCategoryResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error {
@@ -122,14 +124,14 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 	if key != "" {
 		if cached, ok := r.cache.Load(key); ok {
 			if resolution, ok := cached.(*AttributeResolution); ok {
-				logResolutionCacheHit("attribute", "memory_cache", req, pkg, key, resolution.Cache, nil)
+				logResolutionCacheHit("attribute", "memory_cache", req, canonical, pkg, key, resolution.Cache, nil)
 				return cloneAttributeResolutionWithCacheNote(resolution)
 			}
 		}
 		if entry := r.loadPersistentCache(ResolutionCacheKindAttribute, req, key); entry != nil {
 			if resolution := decodeAttributeCacheEntry(entry); resolution != nil {
 				r.cache.Store(key, cloneAttributeResolution(resolution))
-				logResolutionCacheHit("attribute", cacheEntrySource(entry), req, pkg, key, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount})
+				logResolutionCacheHit("attribute", cacheEntrySource(entry), req, canonical, pkg, key, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount})
 				return resolution
 			}
 		}
@@ -172,7 +174,7 @@ func (r *cachedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *cano
 					cacheRejectedReason = reason
 					r.cache.Delete(key)
 				} else {
-					logResolutionCacheHit("sale_attribute", "memory_cache", req, pkg, key, resolution.Cache, nil)
+					logResolutionCacheHit("sale_attribute", "memory_cache", req, canonical, pkg, key, resolution.Cache, nil)
 					return cloneSaleAttributeResolutionWithCacheNote(resolution)
 				}
 			}
@@ -184,7 +186,7 @@ func (r *cachedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *cano
 					_ = r.clearCache(ResolutionCacheKindSaleAttribute, req, key)
 				} else {
 					r.cache.Store(key, cloneSaleAttributeResolution(resolution))
-					logResolutionCacheHit("sale_attribute", cacheEntrySource(entry), req, pkg, key, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount})
+					logResolutionCacheHit("sale_attribute", cacheEntrySource(entry), req, canonical, pkg, key, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount})
 					return resolution
 				}
 			}
@@ -405,6 +407,7 @@ func logResolutionCacheHit(
 	kind string,
 	source string,
 	req *BuildRequest,
+	canonical *canonical.Product,
 	pkg *Package,
 	key string,
 	info *ResolutionCacheInfo,
@@ -417,6 +420,8 @@ func logResolutionCacheHit(
 		"store_id":     sheinStoreID(req),
 		"category_id":  categoryID(pkg),
 		"cache_key":    key,
+		"product_identities": strings.Join(stableProductIdentity(canonical, pkg), ","),
+		"source_category_path": strings.Join(normalizedCategoryCachePath(canonical, pkg), " > "),
 	})
 	if info != nil {
 		log = log.WithField("short_key", info.ShortKey)
@@ -425,4 +430,34 @@ func logResolutionCacheHit(
 		log = log.WithField(field, value)
 	}
 	log.Info("resolved SHEIN cache hit")
+}
+
+func logResolutionCacheEvent(
+	event string,
+	kind string,
+	req *BuildRequest,
+	canonical *canonical.Product,
+	pkg *Package,
+	key string,
+	info *ResolutionCacheInfo,
+) {
+	// TODO(debug): Remove this verbose cache-key diagnostics log after repeated publish cache verification is complete.
+	log := sheinLogger("shein/cache").WithFields(logrus.Fields{
+		"event":                event,
+		"cache_kind":           kind,
+		"store_id":             sheinStoreID(req),
+		"category_id":          categoryID(pkg),
+		"cache_key":            key,
+		"short_key":            shortResolutionCacheKey(key),
+		"product_identities":   strings.Join(stableProductIdentity(canonical, pkg), ","),
+		"source_category_path": strings.Join(normalizedCategoryCachePath(canonical, pkg), " > "),
+	})
+	if info != nil {
+		log = log.WithFields(logrus.Fields{
+			"cache_source": info.Source,
+			"hit_source":   info.HitSource,
+			"manual":       info.Manual,
+		})
+	}
+	log.Info("processed SHEIN resolution cache")
 }

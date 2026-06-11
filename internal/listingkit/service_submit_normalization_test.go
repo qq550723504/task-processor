@@ -803,6 +803,12 @@ func TestSubmitTaskNormalizesSheinPublishOnlyFields(t *testing.T) {
 	if submitted.SKCList[0].SiteDetailImageInfoList == nil {
 		t.Fatal("site_detail_image_info_list = nil, want empty array to match shein-listing direct publish payload")
 	}
+	if len(submitted.SKCList[0].SiteDetailImageInfoList) == 0 {
+		t.Fatalf("site_detail_image_info_list = %+v, want detail images populated for SHEIN publish payload", submitted.SKCList[0].SiteDetailImageInfoList)
+	}
+	if len(submitted.SKCList[0].SiteDetailImageInfoList[0].ImageInfoList) < 2 {
+		t.Fatalf("detail image count = %d, want at least 2 for SHEIN publish payload", len(submitted.SKCList[0].SiteDetailImageInfoList[0].ImageInfoList))
+	}
 	if submitted.SKCList[0].SiteSpecImageInfoList == nil {
 		t.Fatal("site_spec_image_info_list = nil, want empty array to match shein-listing direct publish payload")
 	}

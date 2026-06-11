@@ -11,11 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"task-processor/internal/infra/worker"
-)
-
-const (
-	listingKitAsyncEnqueueRetryDelay    = 250 * time.Millisecond
-	listingKitAsyncEnqueueRetryMaxDelay = 5 * time.Second
+	"task-processor/internal/listingkit/submission"
 )
 
 type taskLifecycleServiceConfig struct {
@@ -345,17 +341,12 @@ func (s *taskLifecycleService) scheduleAsyncEnqueueRetry(ctx context.Context, ta
 	}
 
 	go func() {
-		delay := listingKitAsyncEnqueueRetryDelay
+		delay := submission.EnqueueRetryDelay
 		for {
 			time.Sleep(delay)
 			if err := submitter.Submit(taskID); err != nil {
 				if errors.Is(err, worker.ErrQueueFull) {
-					if delay < listingKitAsyncEnqueueRetryMaxDelay {
-						delay *= 2
-						if delay > listingKitAsyncEnqueueRetryMaxDelay {
-							delay = listingKitAsyncEnqueueRetryMaxDelay
-						}
-					}
+					delay = submission.NextEnqueueRetryDelay(delay)
 					continue
 				}
 				_ = s.persistEnqueueFailure(ctx, taskID, fmt.Sprintf("failed to submit task: %v", err), err)

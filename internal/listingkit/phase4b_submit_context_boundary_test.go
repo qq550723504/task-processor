@@ -9,9 +9,24 @@ import (
 func TestSubmitStoreContextFileKeepsRemoteClientBootstrapOutOfSettingsHydration(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("service_submit_store_context.go")
+	facadeSrc, err := os.ReadFile("service_submit_settings_resolution_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_store_context.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_settings_resolution_helpers.go) error = %v", err)
+	}
+	facadeContent := string(facadeSrc)
+
+	if !strings.Contains(facadeContent, "buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)") {
+		t.Fatal("service_submit_settings_resolution_helpers.go should delegate submit settings resolution through the resolver seam")
+	}
+	if _, err := os.ReadFile("service_submit_store_context_helpers.go"); err == nil {
+		t.Fatal("service_submit_store_context_helpers.go should be removed after submit settings context helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_store_context_helpers.go) unexpected error = %v", err)
+	}
+
+	src, err := os.ReadFile("service_submit_warehouse_selection_helper.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_warehouse_selection_helper.go) error = %v", err)
 	}
 	content := string(src)
 
@@ -21,19 +36,29 @@ func TestSubmitStoreContextFileKeepsRemoteClientBootstrapOutOfSettingsHydration(
 		"GetWarehouses(",
 	} {
 		if strings.Contains(content, needle) {
-			t.Fatalf("service_submit_store_context.go should not contain %q", needle)
+			t.Fatalf("service_submit_warehouse_selection_helper.go should not contain %q", needle)
 		}
 	}
-	if !strings.Contains(content, "buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)") {
-		t.Fatal("service_submit_store_context.go should delegate submit settings resolution through the resolver seam")
+	if strings.Contains(content, "buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)") {
+		t.Fatal("service_submit_warehouse_selection_helper.go should not keep submit settings delegation after facade split")
+	}
+	if _, err := os.ReadFile("service_submit_warehouse_helper.go"); err == nil {
+		t.Fatal("service_submit_warehouse_helper.go should be removed after warehouse code helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_warehouse_helper.go) unexpected error = %v", err)
+	}
+	if _, err := os.ReadFile("service_submit_store_context.go"); err == nil {
+		t.Fatal("service_submit_store_context.go should be removed after warehouse helper rename")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_store_context.go) unexpected error = %v", err)
 	}
 }
 
 func TestSheinStoreClientFileKeepsSettingsHydrationOutOfRemoteLookup(t *testing.T) {
 	t.Parallel()
 
-	storeInfoSource := readExactMethodSource(t, "service_submit_context_resolver.go", "func (s *service) resolveSheinStoreInfo(")
-	apiClientSource := readExactMethodSource(t, "service_submit_context_resolver.go", "func (s *service) newSheinAPIClient(")
+	storeInfoSource := readExactMethodSource(t, "service_submit_remote_context_helpers.go", "func (s *service) resolveSheinStoreInfo(")
+	apiClientSource := readExactMethodSource(t, "service_submit_remote_context_helpers.go", "func (s *service) newSheinAPIClient(")
 
 	for _, needle := range []string{
 		"applySubmitSettingsProfile(",
@@ -42,26 +67,26 @@ func TestSheinStoreClientFileKeepsSettingsHydrationOutOfRemoteLookup(t *testing.
 		"currentSheinSubmitSettings(",
 	} {
 		if strings.Contains(storeInfoSource, needle) {
-			t.Fatalf("resolveSheinStoreInfo should not contain %q", needle)
+			t.Fatalf("service_submit_remote_context_helpers.go resolveSheinStoreInfo should not contain %q", needle)
 		}
 		if strings.Contains(apiClientSource, needle) {
-			t.Fatalf("newSheinAPIClient should not contain %q", needle)
+			t.Fatalf("service_submit_remote_context_helpers.go newSheinAPIClient should not contain %q", needle)
 		}
 	}
 	if !strings.Contains(storeInfoSource, "buildSubmitRuntimeContextResolver(s).resolveStoreInfo(ctx, task)") {
-		t.Fatal("resolveSheinStoreInfo should delegate remote store lookup through the resolver seam")
+		t.Fatal("service_submit_remote_context_helpers.go resolveSheinStoreInfo should delegate remote store lookup through the resolver seam")
 	}
 	if !strings.Contains(apiClientSource, "buildSubmitRuntimeContextResolver(s).newAPIClient(ctx, task)") {
-		t.Fatal("newSheinAPIClient should delegate client bootstrap through the resolver seam")
+		t.Fatal("service_submit_remote_context_helpers.go newSheinAPIClient should delegate client bootstrap through the resolver seam")
 	}
 }
 
 func TestSubmitContextResolverFileOwnsCrossCuttingSubmitRuntimeResolution(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("service_submit_context_resolver.go")
+	src, err := os.ReadFile("service_submit_runtime_context_resolver.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_context_resolver.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_runtime_context_resolver.go) error = %v", err)
 	}
 	content := string(src)
 
@@ -72,7 +97,7 @@ func TestSubmitContextResolverFileOwnsCrossCuttingSubmitRuntimeResolution(t *tes
 		"func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*SheinRuntimeAPIClient, int64, error) {",
 	} {
 		if !strings.Contains(content, needle) {
-			t.Fatalf("service_submit_context_resolver.go should contain %q", needle)
+			t.Fatalf("service_submit_runtime_context_resolver.go should contain %q", needle)
 		}
 	}
 }

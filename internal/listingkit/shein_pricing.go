@@ -1,7 +1,6 @@
 package listingkit
 
 import (
-	"context"
 	"math"
 	"strconv"
 	"strings"
@@ -10,10 +9,6 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
-
-func (s *service) PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {
-	return s.sheinAdminOrDefault().PreviewSheinPrice(ctx, taskID, req)
-}
 
 func (s *service) currentSheinPricingRule() sheinpub.PricingRule {
 	s.sheinSettingsMu.RLock()

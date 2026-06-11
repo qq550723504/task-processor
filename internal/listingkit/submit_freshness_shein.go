@@ -148,7 +148,7 @@ func (s *service) validateSheinOnlineAuthPreflight(ctx context.Context, task *Ta
 	if s == nil || task == nil {
 		return nil
 	}
-	_, err := s.buildSheinSubmitProductAPI(ctx, task)
+	_, err := s.taskSubmissionExecutionOrDefault().buildSheinSubmitProductAPI(ctx, task)
 	return err
 }
 

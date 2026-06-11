@@ -18,7 +18,7 @@ func (s *service) retrySheinSensitiveWordSubmit(ctx context.Context, taskID stri
 	}
 
 	appendSheinSubmissionEvent(pkg, listingsubmission.BuildPhaseEvent(taskID, action, sheinpub.SubmissionPhaseSubmitRemote, sheinpub.SubmissionStatusRunning, requestID, time.Now(), "检测到敏感词，已自动清理并重试提交", nil))
-	retryResponse, retryErr := s.executeSheinSubmitRemote(productAPI, action, submitProduct)
+	retryResponse, retryErr := s.taskSubmissionExecutionOrDefault().executeSheinSubmitRemote(productAPI, action, submitProduct)
 	if retryErr == nil {
 		retryErr = listingsubmission.BuildResponseError(action, retryResponse)
 	}

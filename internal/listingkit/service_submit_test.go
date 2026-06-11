@@ -725,7 +725,7 @@ func TestBuildSheinSubmitProductAPIUsesResolvedProfileStoreID(t *testing.T) {
 		TenantID: "505",
 		Request:  &GenerateRequest{},
 	}
-	api, err := svc.buildSheinSubmitProductAPI(ctx, task)
+	api, err := svc.taskSubmissionExecutionOrDefault().buildSheinSubmitProductAPI(ctx, task)
 	if err != nil {
 		t.Fatalf("buildSheinSubmitProductAPI error = %v", err)
 	}
@@ -753,7 +753,7 @@ func TestBuildSheinSubmitProductAPIInjectsTaskTenantIntoBuilderContext(t *testin
 		Request:  &GenerateRequest{SheinStoreID: 870},
 	}
 
-	api, err := svc.buildSheinSubmitProductAPI(context.Background(), task)
+	api, err := svc.taskSubmissionExecutionOrDefault().buildSheinSubmitProductAPI(context.Background(), task)
 	if err != nil {
 		t.Fatalf("buildSheinSubmitProductAPI error = %v", err)
 	}
@@ -792,7 +792,7 @@ func TestUploadSheinSubmitImagesInjectsTaskTenantIntoBuilderContext(t *testing.T
 		},
 	}
 
-	if err := svc.uploadSheinSubmitImages(context.Background(), task, &SheinPackage{}, product); err != nil {
+	if err := svc.taskSubmissionExecutionOrDefault().uploadSheinSubmitImages(context.Background(), task, &SheinPackage{}, product); err != nil {
 		t.Fatalf("uploadSheinSubmitImages error = %v", err)
 	}
 	identity := openaiclient.IdentityFromContext(builderCtx)

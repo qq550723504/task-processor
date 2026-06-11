@@ -29,11 +29,21 @@ func (s *service) initializeSubmitCollaborators() {
 	if s == nil {
 		return
 	}
-	s.taskSubmissionRecovery = s.taskSubmissionRecoveryOrDefault()
-	s.taskSubmission = s.taskSubmissionOrDefault()
-	s.taskSubmissionExecution = s.taskSubmissionExecutionOrDefault()
-	s.taskSubmissionState = s.taskSubmissionStateOrDefault()
-	s.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
+
+	// Task-level retry/recovery collaborators.
+	s.submission.taskRecovery = s.taskRecoveryOrDefault()
+	s.submission.taskRequeue = s.taskRequeueOrDefault()
+
+	// Submission state and execution collaborators are initialized before
+	// orchestrators that depend on them through config builders.
+	s.submission.taskSubmissionState = s.taskSubmissionStateOrDefault()
+	s.submission.taskSubmissionExecution = s.taskSubmissionExecutionOrDefault()
+
+	// SHEIN submission orchestrators.
+	s.submission.taskSubmissionRefresh = s.taskSubmissionRefreshOrDefault()
+	s.submission.taskSubmissionRecovery = s.taskSubmissionRecoveryOrDefault()
+	s.submission.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
+	s.submission.taskSubmission = s.taskSubmissionOrDefault()
 }
 
 func (s *service) initializeAdminCollaborators() {
@@ -48,5 +58,5 @@ func (s *service) initializeTemporalCollaborators() {
 	if s == nil {
 		return
 	}
-	s.taskTemporalSubmissionAdapter = s.taskTemporalSubmissionAdapterOrDefault()
+	s.submission.taskTemporalSubmissionAdapter = s.taskTemporalSubmissionAdapterOrDefault()
 }

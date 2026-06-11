@@ -1,20 +1,77 @@
-# ListingKit 重构文档
+# Refactoring Documentation
 
-本目录包含 ListingKit 项目的重构计划和执行记录。
+This directory contains architecture and refactoring plans for the Task Processor / ListingKit codebase.
 
-## 当前进行中的重构
+## Source of truth
 
-- [architecture-improvement-plan.md](./architecture-improvement-plan.md) - 架构质量改进计划
+Project-wide restructuring should follow:
 
-## 重构原则
+- [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md)
+- [project-wide-execution-plan.md](./project-wide-execution-plan.md)
 
-1. **向后兼容**: 所有改动必须保持 API 和行为兼容
-2. **小步快跑**: 每个任务独立可测试,频繁提交
-3. **测试先行**: 修改前先确保测试覆盖,重构后验证测试通过
-4. **渐进式**: 避免大规模一次性重写,采用逐步替换策略
+Use the refactoring plan as the default architecture authority, and use the execution plan as the default implementation sequence for broad package, boundary, runtime assembly, marketplace, infrastructure, or ListingKit modularization decisions.
 
-## 风险管控
+Older local plans are still useful for historical context and detailed task breakdowns, but they should not override the project-wide plan unless a newer ADR or refactoring document explicitly says so.
 
-- 每次重构前备份关键配置
-- 保留回滚方案
-- 重要改动需要 code review
+## Boundary rules and enforcement
+
+Use these files before starting broad package moves:
+
+- [../architecture/project-boundaries.md](../architecture/project-boundaries.md) - allowed ownership, forbidden import directions, placement rules, and review checklist.
+- [dependency-baseline.md](./dependency-baseline.md) - worksheet for capturing the current dependency and package-shape baseline before broad moves.
+- [../../scripts/analyze-project-deps.ps1](../../scripts/analyze-project-deps.ps1) - advisory dependency analysis script for package file counts, largest files, ListingKit import pressure, and likely boundary violations.
+
+Recommended first command from the repository root:
+
+```powershell
+./scripts/analyze-project-deps.ps1 6>&1 | Tee-Object -FilePath docs/refactoring/dependency-baseline-output.txt
+```
+
+To make the script fail when it detects advisory boundary violations:
+
+```powershell
+./scripts/analyze-project-deps.ps1 -FailOnViolation
+```
+
+The script is advisory at first. Known legacy exceptions should be documented in `dependency-baseline.md` before promoting it to CI enforcement.
+
+## Current active direction
+
+The current active direction is:
+
+1. Keep the project as a modular monolith first; do not split microservices before package boundaries are stable.
+2. Keep `app` packages focused on runtime assembly and route / worker registration.
+3. Reduce `internal/listingkit` into orchestration, compatibility facade, task flow, preview/export aggregation, revision/history, and API shell responsibilities.
+4. Keep marketplace-specific rules in marketplace-specific packages.
+5. Keep product facts and reusable visual assets outside ListingKit.
+6. Hide infrastructure and external clients behind small interfaces.
+7. Prefer small, testable migrations over broad rewrites.
+
+## Current refactoring documents
+
+- [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
+- [project-wide-execution-plan.md](./project-wide-execution-plan.md) - concrete phase-by-phase execution plan with PR slices, acceptance criteria, tests, and stop conditions.
+- [dependency-baseline.md](./dependency-baseline.md) - baseline worksheet for dependency scans and legacy exception tracking.
+- [preview-subpackage-feasibility.md](./preview-subpackage-feasibility.md) - current decision note explaining why preview stays inside `package listingkit` before a real subpackage extraction.
+- [submission-inventory.md](./submission-inventory.md) - Phase 3.1 submission consolidation inventory and file-group split checkpoint.
+- [service-slimming-checkpoint.md](./service-slimming-checkpoint.md) - Phase 4 first checkpoint for root service object file-group slimming.
+- [listingkit-refactoring-plan.md](./listingkit-refactoring-plan.md) - detailed ListingKit root-directory reduction plan.
+- [studio-migration-plan.md](./studio-migration-plan.md) - Studio migration planning.
+- [architecture-improvement-plan.md](./architecture-improvement-plan.md) - earlier architecture quality improvement notes.
+
+## Refactoring principles
+
+1. **Backward compatibility**: preserve API and behavior compatibility unless a migration explicitly changes them.
+2. **Small steps**: each refactoring task should be independently reviewable and testable.
+3. **Test first**: capture or run relevant tests before and after each migration.
+4. **Incremental migration**: avoid one-shot rewrites and package renames.
+5. **Boundary ownership**: new business rules should be placed in the package that owns the business concept.
+6. **No silent authority drift**: if the project-wide plan is superseded, add a new ADR or refactoring document and link it here.
+
+## Risk control
+
+- Establish a test and dependency baseline before large moves.
+- Keep behavior-preserving moves separate from feature changes.
+- Record known import-boundary exceptions instead of normalizing accidental dependencies.
+- Keep rollback simple by limiting each PR to one bounded capability.
+- Require code review for boundary changes, package moves, or new cross-module dependencies.

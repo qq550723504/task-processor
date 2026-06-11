@@ -21,7 +21,7 @@ func shortResolutionCacheKey(key string) string {
 }
 
 func categoryResolverCacheKey(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
-	categoryPath := normalizedSourceCategoryPath(canonical, pkg)
+	categoryPath := normalizedCategoryCachePath(canonical, pkg)
 	return categoryResolverCacheKeyForPath(req, categoryResolverIdentity(canonical, pkg, categoryPath), categoryPath)
 }
 
@@ -150,6 +150,29 @@ func normalizedSourceCategoryPath(canonical *canonical.Product, pkg *Package) []
 	} else {
 		path = resolveCategoryPath(canonical, pkg)
 	}
+	result := make([]string, 0, len(path))
+	for _, item := range path {
+		item = normalizeText(item)
+		if item != "" {
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func normalizedCategoryCachePath(canonical *canonical.Product, pkg *Package) []string {
+	if canonical != nil && len(canonical.CategoryPath) > 0 {
+		return normalizedCategoryPathItems(canonical.CategoryPath)
+	}
+	if pkg != nil && pkg.Metadata != nil {
+		if raw := strings.TrimSpace(pkg.Metadata["source_category_path"]); raw != "" {
+			return normalizedCategoryPathItems(strings.Split(raw, ">"))
+		}
+	}
+	return nil
+}
+
+func normalizedCategoryPathItems(path []string) []string {
 	result := make([]string, 0, len(path))
 	for _, item := range path {
 		item = normalizeText(item)

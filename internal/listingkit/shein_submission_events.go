@@ -1,16 +1,11 @@
 package listingkit
 
 import (
-	"context"
 	"time"
 
 	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 )
-
-func (s *service) GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error) {
-	return s.sheinAdminOrDefault().GetSubmissionEvents(ctx, taskID)
-}
 
 func sheinSubmissionEventsWithStoreResolution(events []sheinpub.SubmissionEvent, task *Task) []sheinpub.SubmissionEvent {
 	if len(events) == 0 {
