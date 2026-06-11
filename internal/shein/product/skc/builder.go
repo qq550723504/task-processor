@@ -36,29 +36,43 @@ func (b *SKCBuilder) BuildSKCListWithSpecAdaptation(input *SKCBuildInput, ctx *s
 	logger.GetGlobalLogger("shein/product").Info("start SKC build flow")
 
 	config := strategyHandler.GetDynamicAttributePriorityConfig(input.AttributeTemplates)
-	strategy := strategyHandler.DetermineAttributeStrategy(input.SaleAttributeOutput.Result, config, input.AttributeTemplates)
+	saleSpecData := input.SaleAttributeOutput.Result
+	strategy, adaptedSaleSpec, strategySource, err := BuildStrategyFromSelection(ctx, &saleSpecData, input.AttributeTemplates)
+	if err != nil {
+		strategy = strategyHandler.DetermineAttributeStrategy(input.SaleAttributeOutput.Result, config, input.AttributeTemplates)
+		strategySource = "legacy"
+	} else {
+		saleSpecData = adaptedSaleSpec
+	}
 	logger.GetGlobalLogger("shein/product").Infof(
-		"SKC strategy selected from sale attribute priority: primary=%d secondary=%d type=%s",
+		"SKC strategy selected: source=%s primary=%d secondary=%d type=%s",
+		strategySource,
 		strategy.PrimaryAttribute.AttrID,
 		strategy.SecondaryAttribute.AttrID,
 		strategy.StrategyType,
 	)
 
 	validator := NewSKCValidationUtils()
-	if err := validator.ValidateAttributeStrategy(input.Validation, strategy); err != nil {
+	validationInput := *input.Validation
+	variantBuildInput := *input.VariantBuild
+	if strategySource == "selection" {
+		validationInput.StrategyData = saleSpecData
+		variantBuildInput.SaleAttributeData = saleSpecData
+	}
+	if err := validator.ValidateAttributeStrategy(&validationInput, strategy); err != nil {
 		logger.GetGlobalLogger("shein/product").Warnf("strategy validation warning: %v", err)
 	}
 
 	processor := NewSKCVariantProcessor(b.imageProcessor, b.attributeMapper, b.skuBuilder, input.Runtime, b.openaiClient)
 	if input.SaleAttributeOutput.VariantCount == 1 {
-		skcList, relations, err := processor.BuildSingleVariantSKC(input.VariantBuild, ctx, strategy)
+		skcList, relations, err := processor.BuildSingleVariantSKC(&variantBuildInput, ctx, strategy)
 		if err != nil {
 			return nil, err
 		}
 		return newSKCBuildOutput(skcList, relations), nil
 	}
 
-	skcList, relations, err := processor.BuildMultiVariantSKCList(input.VariantBuild, ctx, strategy, b.variantMatcher)
+	skcList, relations, err := processor.BuildMultiVariantSKCList(&variantBuildInput, ctx, strategy, b.variantMatcher)
 	if err != nil {
 		return nil, err
 	}
