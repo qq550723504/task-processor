@@ -112,6 +112,126 @@ func TestCachedCategoryResolverCanRememberManualResolutionForSourceCategory(t *t
 	}
 }
 
+func TestCachedCategoryResolverCanReuseRememberedResolutionForStudioUnresolvedAlias(t *testing.T) {
+	store := newResolutionCacheTestStore(t)
+	inner := &countingCategoryResolver{
+		out: &CategoryResolution{Status: "resolved", Source: "inner", CategoryID: 9999},
+	}
+	writer := NewCachedCategoryResolver(inner, store).(CategoryResolutionCache)
+	req := &BuildRequest{SheinStoreID: 42}
+	resolvedCanonical := &canonical.Product{
+		Title:        "啤酒盖铁板（包邮仅限美国直发）",
+		CategoryPath: []string{"美国本地直发", "生活用品", "铁板画"},
+		Attributes: map[string]canonical.Attribute{
+			"product_sku": {Value: "MG8014062"},
+			"variant_sku": {Value: "MG8014062001"},
+		},
+		Variants: []canonical.Variant{{
+			SKU: "MG8014062001-BBF9B007",
+			Attributes: map[string]canonical.Attribute{
+				"source_sds_sku": {Value: "MG8014062001"},
+			},
+		}},
+	}
+	resolvedPkg := &Package{
+		SpuName:      "啤酒盖铁板（包邮仅限美国直发）",
+		CategoryPath: []string{"家居&生活", "家居装饰", "装饰挂饰和风铃", "装饰挂饰"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+		},
+	}
+	writer.RememberCategoryResolution(req, resolvedCanonical, resolvedPkg, &CategoryResolution{
+		Status:         "resolved",
+		Source:         "manual",
+		CategoryID:     2486,
+		CategoryIDList: []int{7, 2486},
+		MatchedPath:    []string{"家居&生活", "家居装饰", "装饰挂饰和风铃", "装饰挂饰"},
+	})
+
+	readerInner := &countingCategoryResolver{
+		out: &CategoryResolution{Status: "resolved", Source: "inner", CategoryID: 9999},
+	}
+	reader := NewCachedCategoryResolver(readerInner, store)
+	unresolvedCanonical := &canonical.Product{
+		Title: "啤酒盖铁板（包邮仅限美国直发）",
+		Attributes: map[string]canonical.Attribute{
+			"product_sku": {Value: "MG8014062"},
+			"variant_sku": {Value: "MG8014062001"},
+		},
+		Variants: []canonical.Variant{{
+			SKU: "MG8014062001-BBF9B007",
+			Attributes: map[string]canonical.Attribute{
+				"source_sds_sku": {Value: "MG8014062001"},
+			},
+		}},
+	}
+	unresolvedPkg := &Package{
+		SpuName: "啤酒盖铁板（包邮仅限美国直发）",
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+		},
+	}
+	aliasKey := categoryResolverUnresolvedAliasKey(req, resolvedCanonical, resolvedPkg)
+	unresolvedKey := categoryResolverCacheKey(req, unresolvedCanonical, unresolvedPkg)
+	if aliasKey == "" || unresolvedKey == "" {
+		t.Fatalf("alias/unresolved keys should not be empty: alias=%q unresolved=%q", aliasKey, unresolvedKey)
+	}
+	if aliasKey != unresolvedKey {
+		t.Fatalf("alias key mismatch: alias=%s unresolved=%s", aliasKey, unresolvedKey)
+	}
+
+	got := reader.Resolve(req, unresolvedCanonical, unresolvedPkg)
+	if readerInner.calls != 0 {
+		t.Fatalf("inner calls = %d, want 0", readerInner.calls)
+	}
+	if got == nil || got.CategoryID != 2486 {
+		t.Fatalf("category resolution = %+v, want remembered category 2486", got)
+	}
+	if got.Cache == nil || got.Cache.Source != "manual_cache" {
+		t.Fatalf("category cache metadata = %+v, want manual cache hit", got.Cache)
+	}
+}
+
+func TestCachedCategoryResolverDoesNotCreateUnresolvedAliasWithoutStableIdentifiers(t *testing.T) {
+	store := newResolutionCacheTestStore(t)
+	inner := &countingCategoryResolver{
+		out: &CategoryResolution{Status: "resolved", Source: "inner", CategoryID: 9999},
+	}
+	writer := NewCachedCategoryResolver(inner, store).(CategoryResolutionCache)
+	req := &BuildRequest{SheinStoreID: 42}
+	resolvedCanonical := &canonical.Product{
+		Title:        "Generic Wall Decor",
+		CategoryPath: []string{"Home", "Decor"},
+	}
+	resolvedPkg := &Package{
+		SpuName:      "Generic Wall Decor",
+		CategoryPath: []string{"家居&生活", "家居装饰"},
+	}
+	writer.RememberCategoryResolution(req, resolvedCanonical, resolvedPkg, &CategoryResolution{
+		Status:      "resolved",
+		Source:      "manual",
+		CategoryID:  2486,
+		MatchedPath: []string{"家居&生活", "家居装饰"},
+	})
+
+	readerInner := &countingCategoryResolver{
+		out: &CategoryResolution{Status: "resolved", Source: "inner", CategoryID: 9999},
+	}
+	reader := NewCachedCategoryResolver(readerInner, store)
+	unresolvedCanonical := &canonical.Product{Title: "Generic Wall Decor"}
+	unresolvedPkg := &Package{SpuName: "Generic Wall Decor"}
+
+	got := reader.Resolve(req, unresolvedCanonical, unresolvedPkg)
+	if readerInner.calls != 1 {
+		t.Fatalf("inner calls = %d, want 1", readerInner.calls)
+	}
+	if got == nil || got.CategoryID != 9999 {
+		t.Fatalf("category resolution = %+v, want live resolver result", got)
+	}
+}
+
 func TestCategoryResolverCacheKeyUsesStableSDSIdentifiers(t *testing.T) {
 	req := &BuildRequest{SheinStoreID: 42}
 	canonical := &canonical.Product{

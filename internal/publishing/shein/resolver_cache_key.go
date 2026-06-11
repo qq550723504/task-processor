@@ -21,14 +21,46 @@ func shortResolutionCacheKey(key string) string {
 }
 
 func categoryResolverCacheKey(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
+	categoryPath := normalizedSourceCategoryPath(canonical, pkg)
+	return categoryResolverCacheKeyForPath(req, categoryResolverIdentity(canonical, pkg, categoryPath), categoryPath)
+}
+
+func categoryResolverCacheKeyForPath(req *BuildRequest, identity []string, categoryPath []string) string {
+	normalizedPath := append([]string(nil), categoryPath...)
+	if len(normalizedPath) == 0 {
+		normalizedPath = []string{}
+	}
 	payload := map[string]any{
 		"version":              3,
 		"store_id":             sheinStoreID(req),
 		"target_category_hint": normalizeText(targetCategoryHint(req)),
-		"category_path":        normalizedSourceCategoryPath(canonical, pkg),
-		"product_identity":     stableProductIdentity(canonical, pkg),
+		"category_path":        normalizedPath,
+		"product_identity":     identity,
 	}
 	return hashCachePayload(payload)
+}
+
+func categoryResolverUnresolvedAliasKey(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
+	if !canUseCategoryResolverUnresolvedAlias(canonical, pkg) {
+		return ""
+	}
+	return categoryResolverCacheKeyForPath(req, categoryResolverIdentity(canonical, pkg, nil), nil)
+}
+
+func canUseCategoryResolverUnresolvedAlias(canonical *canonical.Product, pkg *Package) bool {
+	return len(stableCanonicalSDSIdentifiers(canonical)) > 0 || len(stablePackageIdentifiers(pkg)) > 0
+}
+
+func categoryResolverIdentity(canonical *canonical.Product, pkg *Package, categoryPath []string) []string {
+	if len(categoryPath) == 0 {
+		if identifiers := stableCanonicalSDSIdentifiers(canonical); len(identifiers) > 0 {
+			return identifiers
+		}
+		if identifiers := stablePackageIdentifiers(pkg); len(identifiers) > 0 {
+			return identifiers
+		}
+	}
+	return stableProductIdentity(canonical, pkg)
 }
 
 func targetCategoryHint(req *BuildRequest) string {

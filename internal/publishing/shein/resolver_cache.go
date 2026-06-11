@@ -99,6 +99,11 @@ func (r *cachedCategoryResolver) RememberCategoryResolution(req *BuildRequest, c
 	attachResolutionCacheInfoToCategory(resolution, "manual_cache", key, true, ResolutionCacheHitSourcePublishRemembered, "stored")
 	r.cache.Store(key, cloneCategoryResolution(resolution))
 	r.savePersistentCache(ResolutionCacheKindCategory, req, canonical, pkg, key, resolution, true)
+	aliasKey := categoryResolverUnresolvedAliasKey(req, canonical, pkg)
+	if aliasKey != "" && aliasKey != key {
+		r.cache.Store(aliasKey, cloneCategoryResolution(resolution))
+		r.savePersistentCache(ResolutionCacheKindCategory, req, canonical, pkg, aliasKey, resolution, true)
+	}
 }
 
 func (r *cachedCategoryResolver) ClearCategoryResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error {
