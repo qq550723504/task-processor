@@ -411,7 +411,34 @@ func sheinStudioPricingSKUAlias(value string) string {
 		}
 		filtered = append(filtered, part)
 	}
-	return strings.Join(filtered, "-")
+	alias := strings.Join(filtered, "-")
+	if prefix, ok := trimSheinStudioPricingStyleLikeSuffix(alias); ok {
+		return prefix
+	}
+	return alias
+}
+
+func trimSheinStudioPricingStyleLikeSuffix(value string) (string, bool) {
+	index := strings.LastIndex(value, "-")
+	if index <= 0 {
+		return "", false
+	}
+	suffix := strings.TrimSpace(value[index+1:])
+	if len(suffix) != 8 {
+		return "", false
+	}
+	for _, r := range suffix {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		default:
+			return "", false
+		}
+	}
+	prefix := strings.TrimSpace(value[:index])
+	if prefix == "" || !strings.ContainsAny(prefix, "0123456789") {
+		return "", false
+	}
+	return prefix, true
 }
 
 func looksLikeStudioSubmitRequestToken(token string) bool {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { SheinCustomerIssueSummary } from "@/components/listingkit/shein/shein-customer-issue-summary";
 import {
@@ -70,13 +70,39 @@ export function SheinFinalReviewPanel({
   onSubmit,
 }: Props) {
   const pricing = shein?.pricing;
+  const initialOverrides = initialPriceOverrides(pricing);
   const [priceOverrides, setPriceOverrides] = useState<Record<string, string>>(
-    () => initialPriceOverrides(pricing),
+    () => initialOverrides,
   );
+  const lastSyncedOverridesRef = useRef<Record<string, string>>(initialOverrides);
   const manualOverrides = useMemo(
     () => manualPriceOverridesFromStrings(priceOverrides),
     [priceOverrides],
   );
+  const pricingSyncKey = useMemo(
+    () =>
+      JSON.stringify(
+        (pricing?.sku_prices ?? []).map((sku) => ({
+          supplier_sku: sku.supplier_sku ?? "",
+          final_price: sku.final_price ?? null,
+          updated_at: pricing?.updated_at ?? null,
+        })),
+      ),
+    [pricing?.sku_prices, pricing?.updated_at],
+  );
+
+  useEffect(() => {
+    const nextOverrides = initialPriceOverrides(pricing);
+    setPriceOverrides((current) => {
+      const lastSynced = lastSyncedOverridesRef.current;
+      if (JSON.stringify(current) !== JSON.stringify(lastSynced)) {
+        return current;
+      }
+      lastSyncedOverridesRef.current = nextOverrides;
+      return nextOverrides;
+    });
+  }, [pricing, pricingSyncKey]);
+
   const sheinSubmission = getSheinSubmissionState(shein);
   const customerIssues = useMemo(() => buildSheinCustomerIssues(shein), [shein]);
   const model = useMemo(

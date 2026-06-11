@@ -312,6 +312,65 @@ func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageMarksConfirmed
 	}
 }
 
+func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageRebuildsPricingFromFinalDraftOverrides(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{
+		currentSheinPricingRule: func() sheinpub.PricingRule {
+			return sheinpub.PricingRule{
+				SourceCurrency: "CNY",
+				TargetCurrency: "USD",
+			}
+		},
+	})
+	task := makeReadySheinTask()
+	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+	currentSKU := pkg.RequestDraft.SKCList[0].SKUList[0].SupplierSKU
+	pkg.RequestDraft.SKCList[0].SKUList[0].CostPrice = "91.80"
+	pkg.RequestDraft.SKCList[0].SKUList[0].BasePrice = "91.80"
+	pkg.RequestDraft.SKCList[0].SKUList[0].SitePriceList = []sheinpub.SitePrice{{
+		SubSite:   "US",
+		BasePrice: "91.80",
+		Currency:  "USD",
+	}}
+	pkg.PreviewPayload.SKCList[0].SKUS[0].PriceInfoList = []sheinproduct.PriceInfo{{
+		SubSite:   "US",
+		BasePrice: 91.8,
+		Currency:  "USD",
+	}}
+	pkg.PreviewPayload.SKCList[0].SKUS[0].CostInfo = &sheinproduct.CostInfo{
+		CostPrice: "91.80",
+		Currency:  "USD",
+	}
+	pkg.Pricing = &sheinpub.PricingReview{
+		Ready: true,
+		SKUPrices: []sheinpub.SKUPriceReview{{
+			SupplierSKU: currentSKU,
+			CostCNY:     91.8,
+			FinalPrice:  91.8,
+			Currency:    "USD",
+		}},
+	}
+	pkg.FinalSubmissionDraft = &sheinpub.FinalDraft{
+		Confirmed:            true,
+		ManualPriceOverrides: map[string]float64{currentSKU: 99.99},
+	}
+
+	exec.normalizeSheinSubmitPackage(task, pkg, &SubmitTaskRequest{
+		ConfirmedFinal: true,
+	}, "publish")
+
+	if got := pkg.Pricing.SKUPrices[0].FinalPrice; got != 99.99 {
+		t.Fatalf("pricing final price = %v, want 99.99", got)
+	}
+	if got := pkg.RequestDraft.SKCList[0].SKUList[0].BasePrice; got != "99.99" {
+		t.Fatalf("draft base price = %q, want 99.99", got)
+	}
+	if got := pkg.PreviewPayload.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice; got != 99.99 {
+		t.Fatalf("preview base price = %v, want 99.99", got)
+	}
+}
+
 func TestTaskSubmissionExecutionServiceExecuteSheinSubmitRemoteRoutesByAction(t *testing.T) {
 	t.Parallel()
 

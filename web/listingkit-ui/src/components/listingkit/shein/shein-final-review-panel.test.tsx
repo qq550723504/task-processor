@@ -5,6 +5,122 @@ import { describe, expect, it, vi } from "vitest";
 import { SheinFinalReviewPanel } from "@/components/listingkit/shein/shein-final-review-panel";
 
 describe("SheinFinalReviewPanel", () => {
+  it("refreshes final price inputs when pricing review updates before user edits", () => {
+    const { rerender } = render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          pricing: {
+            updated_at: "2026-06-11T10:00:00Z",
+            sku_prices: [
+              {
+                supplier_sku: "SKU-1",
+                cost_cny: 91,
+                calculated_price: 19.99,
+                final_price: 19.99,
+                currency: "USD",
+              },
+            ],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByDisplayValue("19.99")).toBeInTheDocument();
+
+    rerender(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          pricing: {
+            updated_at: "2026-06-11T10:05:00Z",
+            sku_prices: [
+              {
+                supplier_sku: "SKU-1",
+                cost_cny: 91,
+                calculated_price: 21.99,
+                final_price: 21.99,
+                currency: "USD",
+              },
+            ],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByDisplayValue("21.99")).toBeInTheDocument();
+  });
+
+  it("does not overwrite edited final price inputs when pricing review updates", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          pricing: {
+            updated_at: "2026-06-11T10:00:00Z",
+            sku_prices: [
+              {
+                supplier_sku: "SKU-1",
+                cost_cny: 91,
+                calculated_price: 19.99,
+                final_price: 19.99,
+                currency: "USD",
+              },
+            ],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+      />,
+    );
+
+    const input = screen.getByDisplayValue("19.99");
+    await user.clear(input);
+    await user.type(input, "25.55");
+
+    rerender(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          pricing: {
+            updated_at: "2026-06-11T10:05:00Z",
+            sku_prices: [
+              {
+                supplier_sku: "SKU-1",
+                cost_cny: 91,
+                calculated_price: 21.99,
+                final_price: 21.99,
+                currency: "USD",
+              },
+            ],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByDisplayValue("25.55")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("21.99")).not.toBeInTheDocument();
+  });
+
   it("shows blocked summary and repair actions", async () => {
     const user = userEvent.setup();
     const onSelectBlockingItem = vi.fn();

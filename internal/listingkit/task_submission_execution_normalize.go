@@ -9,8 +9,12 @@ import (
 func (s *taskSubmissionExecutionService) normalizeSheinSubmitPackage(task *Task, pkg *SheinPackage, req *SubmitTaskRequest, action string) {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	normalizeSheinStudioSubmitSupplierSKUs(task, pkg, normalizedSubmitIdempotencyKey(req))
-	if pkg.Pricing == nil || !pkg.Pricing.Ready {
-		review := buildSheinDraftBackedPricingReview(pkg, s.currentSheinPricingRule(), nil)
+	var manualOverrides map[string]float64
+	if pkg.FinalSubmissionDraft != nil {
+		manualOverrides = pkg.FinalSubmissionDraft.ManualPriceOverrides
+	}
+	if pkg.Pricing == nil || !pkg.Pricing.Ready || len(manualOverrides) > 0 {
+		review := buildSheinDraftBackedPricingReview(pkg, s.currentSheinPricingRule(), manualOverrides)
 		applySheinPricingReview(pkg, review)
 	} else {
 		applySheinPricingReview(pkg, pkg.Pricing)

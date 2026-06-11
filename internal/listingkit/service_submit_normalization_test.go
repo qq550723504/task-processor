@@ -537,6 +537,52 @@ func TestNormalizeSheinStudioSubmitSupplierSKUsReconcilesStaleTaskAndRequestPric
 	}
 }
 
+func TestReconcileSheinStudioPricingReferencesTrimsTrailingStyleLikeSuffix(t *testing.T) {
+	t.Parallel()
+
+	currentSKU := "MG8014062001-V124111-T1F612BB6-R8F9FD-FD66CF18"
+	staleSKU := "MG8014062001-V124111-TCDDC2B00-R9B015-CD5F4FBB"
+	pkg := &sheinpub.Package{
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{{
+				SKUList: []sheinpub.SKUDraft{{
+					SupplierSKU: currentSKU,
+				}},
+			}},
+		},
+		FinalDraft: &sheinpub.FinalDraft{
+			ManualPriceOverrides: map[string]float64{staleSKU: 53},
+		},
+		Pricing: &sheinpub.PricingReview{
+			Ready:           true,
+			ManualOverrides: map[string]float64{staleSKU: 53},
+			SKUPrices: []sheinpub.SKUPriceReview{{
+				SupplierSKU: staleSKU,
+				FinalPrice:  53,
+				Currency:    "USD",
+				Manual:      true,
+			}},
+		},
+	}
+
+	changed := reconcileSheinStudioPricingReferences(pkg)
+	if !changed {
+		t.Fatal("expected trailing style-like suffix reconciliation to change pricing references")
+	}
+	if got := pkg.Pricing.SKUPrices[0].SupplierSKU; got != currentSKU {
+		t.Fatalf("pricing supplier sku = %q, want %q", got, currentSKU)
+	}
+	if got := pkg.Pricing.ManualOverrides[currentSKU]; got != 53 {
+		t.Fatalf("pricing manual overrides = %#v, want current sku price 53", pkg.Pricing.ManualOverrides)
+	}
+	if got := pkg.FinalDraft.ManualPriceOverrides[currentSKU]; got != 53 {
+		t.Fatalf("final draft manual overrides = %#v, want current sku price 53", pkg.FinalDraft.ManualPriceOverrides)
+	}
+	if _, exists := pkg.FinalDraft.ManualPriceOverrides[staleSKU]; exists {
+		t.Fatalf("final draft manual overrides still contains stale sku %q", staleSKU)
+	}
+}
+
 func TestSubmitTaskMarksSaveDraftCodeZeroAsSuccess(t *testing.T) {
 	t.Parallel()
 
