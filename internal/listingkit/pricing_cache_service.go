@@ -33,7 +33,7 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 	if req == nil || task.Result.Shein == nil || review == nil || !review.Ready {
 		return
 	}
-	key := sheinPricingCacheKey(req, task.Result.Shein)
+	key := sheinPricingCacheKey(req, task.Result.Shein, s.currentSheinPricingRule())
 	if key == "" {
 		return
 	}
@@ -55,7 +55,7 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 	logPricingCacheEvent("store", req, task.Result.Shein, review.Cache, logrus.Fields{
 		"cache_kind":         sheinpub.ResolutionCacheKindPricing,
 		"product_identities": strings.Join(sheinPricingProductIdentity(task.Result.Shein), ","),
-		"sku_facts":          strings.Join(sortedSheinPricingSKUFacts(task.Result.Shein), ","),
+		"sku_facts":          strings.Join(sortedSheinPricingSKUFacts(task.Result.Shein, s.currentSheinPricingRule()), ","),
 	})
 }
 
@@ -74,7 +74,7 @@ func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Pack
 		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "no_resolution_cache_store"})
 		return nil
 	}
-	key := sheinPricingCacheKey(buildReq, pkg)
+	key := sheinPricingCacheKey(buildReq, pkg, s.currentSheinPricingRule())
 	if key == "" {
 		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "empty_cache_key"})
 		return nil
@@ -124,7 +124,7 @@ func (s *service) clearSheinPricingCache(req *sheinpub.BuildRequest, pkg *sheinp
 	if s == nil || s.sheinResolutionCacheStore == nil {
 		return nil
 	}
-	key := sheinPricingCacheKey(req, pkg)
+	key := sheinPricingCacheKey(req, pkg, s.currentSheinPricingRule())
 	if key == "" {
 		return nil
 	}
@@ -159,7 +159,7 @@ func sheinPricingReviewApplicable(pkg *sheinpub.Package, review *sheinpub.Pricin
 	if pkg == nil || pkg.DraftPayload == nil || review == nil || !review.Ready || len(review.SKUPrices) == 0 {
 		return false
 	}
-	current := sheinPricingSKUFacts(pkg)
+	current := sheinPricingSKUFacts(pkg, sheinpub.PricingRule{})
 	if len(current) == 0 || len(current) != len(review.SKUPrices) {
 		return false
 	}
@@ -173,7 +173,7 @@ func sheinPricingReviewApplicable(pkg *sheinpub.Package, review *sheinpub.Pricin
 	return true
 }
 
-func sheinPricingCacheKey(req *sheinpub.BuildRequest, pkg *sheinpub.Package) string {
+func sheinPricingCacheKey(req *sheinpub.BuildRequest, pkg *sheinpub.Package, rule sheinpub.PricingRule) string {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.DraftPayload == nil {
 		return ""
@@ -185,7 +185,7 @@ func sheinPricingCacheKey(req *sheinpub.BuildRequest, pkg *sheinpub.Package) str
 		"category_id_list": append([]int(nil), pkg.CategoryIDList...),
 		"category_path":    normalizedTextList(pkg.CategoryPath),
 		"product_identity": sheinPricingProductIdentity(pkg),
-		"sku_facts":        sortedSheinPricingSKUFacts(pkg),
+		"sku_facts":        sortedSheinPricingSKUFacts(pkg, rule),
 	}
 	data, err := json.Marshal(payload)
 	if err != nil || len(data) == 0 {
@@ -208,8 +208,8 @@ func sheinPricingSourceIdentity(pkg *sheinpub.Package) string {
 	return string(data)
 }
 
-func sortedSheinPricingSKUFacts(pkg *sheinpub.Package) []string {
-	facts := sheinPricingSKUFacts(pkg)
+func sortedSheinPricingSKUFacts(pkg *sheinpub.Package, rule sheinpub.PricingRule) []string {
+	facts := sheinPricingSKUFacts(pkg, rule)
 	if len(facts) == 0 {
 		return nil
 	}
@@ -222,7 +222,7 @@ func sortedSheinPricingSKUFacts(pkg *sheinpub.Package) []string {
 }
 
 func sortedSheinPricingSKUAliases(pkg *sheinpub.Package) []string {
-	facts := sheinPricingSKUFacts(pkg)
+	facts := sheinPricingSKUFacts(pkg, sheinpub.PricingRule{})
 	if len(facts) == 0 {
 		return nil
 	}
@@ -239,7 +239,7 @@ type sheinPricingSKUFact struct {
 	Currency  string
 }
 
-func sheinPricingSKUFacts(pkg *sheinpub.Package) map[string]sheinPricingSKUFact {
+func sheinPricingSKUFacts(pkg *sheinpub.Package, rule sheinpub.PricingRule) map[string]sheinPricingSKUFact {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.DraftPayload == nil {
 		return nil
@@ -253,7 +253,7 @@ func sheinPricingSKUFacts(pkg *sheinpub.Package) map[string]sheinPricingSKUFact 
 			}
 			result[alias] = sheinPricingSKUFact{
 				CostPrice: formatMoney(parseMoney(sku.CostPrice)),
-				Currency:  strings.ToUpper(strings.TrimSpace(existingSheinDraftCurrency(sku, ""))),
+				Currency:  normalizeSheinReviewCurrency(existingSheinDraftCurrency(sku, ""), rule),
 			}
 		}
 	}
@@ -492,7 +492,7 @@ func logPricingCacheEvent(event string, req *sheinpub.BuildRequest, pkg *sheinpu
 			if pkg == nil {
 				return ""
 			}
-			return strings.Join(sortedSheinPricingSKUFacts(pkg), ",")
+			return strings.Join(sortedSheinPricingSKUFacts(pkg, sheinpub.PricingRule{}), ",")
 		}(),
 	})
 	for key, value := range fields {

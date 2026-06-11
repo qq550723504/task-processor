@@ -550,8 +550,8 @@ func TestSheinPricingCacheKeyUsesStableSDSIdentifiers(t *testing.T) {
 		},
 	}
 
-	firstKey := sheinPricingCacheKey(req, first)
-	secondKey := sheinPricingCacheKey(req, second)
+	firstKey := sheinPricingCacheKey(req, first, sheinpub.PricingRule{})
+	secondKey := sheinPricingCacheKey(req, second, sheinpub.PricingRule{})
 	if firstKey == "" || secondKey == "" {
 		t.Fatalf("pricing cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
 	}
@@ -605,12 +605,78 @@ func TestSheinPricingCacheKeyIgnoresDecoratedSubmitSupplierSKUsForSDS(t *testing
 		},
 	}
 
-	firstKey := sheinPricingCacheKey(req, first)
-	secondKey := sheinPricingCacheKey(req, second)
+	firstKey := sheinPricingCacheKey(req, first, sheinpub.PricingRule{})
+	secondKey := sheinPricingCacheKey(req, second, sheinpub.PricingRule{})
 	if firstKey == "" || secondKey == "" {
 		t.Fatalf("pricing cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
 	}
 	if firstKey != secondKey {
 		t.Fatalf("pricing cache key drifted across decorated submit SKUs: first=%s second=%s", firstKey, secondKey)
+	}
+}
+
+func TestSheinPricingCacheKeyNormalizesLegacyCNYDraftCurrency(t *testing.T) {
+	t.Parallel()
+
+	req := &sheinpub.BuildRequest{SheinStoreID: 869}
+	rule := sheinpub.PricingRule{SourceCurrency: "CNY", TargetCurrency: "USD"}
+	first := &sheinpub.Package{
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		CategoryPath:   []string{"家居&生活", "家居装饰", "装饰挂饰和风铃", "装饰挂饰"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{{
+				SupplierCode: "MG8014062001-E22DF523",
+				SKUList: []sheinpub.SKUDraft{{
+					SupplierSKU: "MG8014062001-E22DF523",
+					Attributes:  map[string]string{"source_sds_sku": "MG8014062001"},
+					CostPrice:   "91.80",
+					Currency:    "CNY",
+					SitePriceList: []sheinpub.SitePrice{{
+						SubSite:   "US",
+						BasePrice: "91.80",
+						Currency:  "CNY",
+					}},
+				}},
+			}},
+		},
+	}
+	second := &sheinpub.Package{
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		CategoryPath:   []string{"家居&生活", "家居装饰", "装饰挂饰和风铃", "装饰挂饰"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8014062"},
+			{Name: "variant_sku", Value: "MG8014062001"},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{{
+				SupplierCode: "MG8014062001-E22DF523",
+				SKUList: []sheinpub.SKUDraft{{
+					SupplierSKU: "MG8014062001-E22DF523",
+					Attributes:  map[string]string{"source_sds_sku": "MG8014062001"},
+					CostPrice:   "91.80",
+					Currency:    "USD",
+					SitePriceList: []sheinpub.SitePrice{{
+						SubSite:   "US",
+						BasePrice: "91.80",
+						Currency:  "USD",
+					}},
+				}},
+			}},
+		},
+	}
+
+	firstKey := sheinPricingCacheKey(req, first, rule)
+	secondKey := sheinPricingCacheKey(req, second, rule)
+	if firstKey == "" || secondKey == "" {
+		t.Fatalf("pricing cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
+	}
+	if firstKey != secondKey {
+		t.Fatalf("pricing cache key drifted across legacy CNY draft currency: first=%s second=%s", firstKey, secondKey)
 	}
 }

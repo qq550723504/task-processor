@@ -153,7 +153,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`ListingKit SHEIN 价格缓存排查工具
+	fmt.Print(`ListingKit SHEIN 价格缓存排查工具
 
 用法:
   go run ./listingkit-pricing-cache-inspector -- <task-id> [task-id...]
@@ -190,7 +190,7 @@ func inspectTask(db *gorm.DB, taskID string) error {
 	fmt.Printf("=== %s ===\n", taskID)
 	fmt.Printf("status=%s created_at=%s updated_at=%s\n", row.Status, row.CreatedAt, row.UpdatedAt)
 	if result.Shein == nil {
-		fmt.Println("missing shein result\n")
+		fmt.Print("missing shein result\n\n")
 		return nil
 	}
 
@@ -198,9 +198,9 @@ func inspectTask(db *gorm.DB, taskID string) error {
 	fmt.Printf("store_id=%d category_id=%d category_path=%v\n", req.SheinStoreID, pkg.CategoryID, pkg.CategoryPath)
 	fmt.Printf("pricing_cache=%s\n", mustJSON(pkg.Pricing))
 	fmt.Printf("stable_product_identity=%v\n", stablePricingProductIdentity(pkg))
-	fmt.Printf("sku_facts=%v\n", sortedPricingSKUFacts(pkg))
+	fmt.Printf("sku_facts=%v\n", sortedPricingSKUFacts(pkg, pricingRule{}))
 	printDraftSKUs(pkg)
-	fmt.Printf("computed_pricing_key=%s\n", pricingCacheKey(req.SheinStoreID, pkg))
+	fmt.Printf("computed_pricing_key=%s\n", pricingCacheKey(req.SheinStoreID, pkg, pricingRule{}))
 	printSubmissionTimeline(pkg)
 
 	cacheKey := ""
@@ -286,7 +286,12 @@ func printDraftSKUs(pkg *sheinPackage) {
 	}
 }
 
-func pricingCacheKey(storeID int64, pkg *sheinPackage) string {
+type pricingRule struct {
+	SourceCurrency string
+	TargetCurrency string
+}
+
+func pricingCacheKey(storeID int64, pkg *sheinPackage, rule pricingRule) string {
 	if pkg == nil || pkg.DraftPayload == nil {
 		return ""
 	}
@@ -297,7 +302,7 @@ func pricingCacheKey(storeID int64, pkg *sheinPackage) string {
 		"category_id_list": append([]int(nil), pkg.CategoryIDList...),
 		"category_path":    normalizedTextList(pkg.CategoryPath),
 		"product_identity": stablePricingProductIdentity(pkg),
-		"sku_facts":        sortedPricingSKUFacts(pkg),
+		"sku_facts":        sortedPricingSKUFacts(pkg, rule),
 	}
 	data, err := json.Marshal(payload)
 	if err != nil || len(data) == 0 {
@@ -396,8 +401,8 @@ func normalizeStableIdentity(values []string) []string {
 	return result
 }
 
-func sortedPricingSKUFacts(pkg *sheinPackage) []string {
-	facts := pricingSKUFacts(pkg)
+func sortedPricingSKUFacts(pkg *sheinPackage, rule pricingRule) []string {
+	facts := pricingSKUFacts(pkg, rule)
 	if len(facts) == 0 {
 		return nil
 	}
@@ -414,7 +419,7 @@ type pricingSKUFact struct {
 	Currency  string
 }
 
-func pricingSKUFacts(pkg *sheinPackage) map[string]pricingSKUFact {
+func pricingSKUFacts(pkg *sheinPackage, rule pricingRule) map[string]pricingSKUFact {
 	if pkg == nil || pkg.DraftPayload == nil {
 		return nil
 	}
@@ -427,7 +432,7 @@ func pricingSKUFacts(pkg *sheinPackage) map[string]pricingSKUFact {
 			}
 			result[alias] = pricingSKUFact{
 				CostPrice: formatMoney(parseMoney(sku.CostPrice)),
-				Currency:  strings.ToUpper(strings.TrimSpace(existingDraftCurrency(sku))),
+				Currency:  normalizeReviewCurrency(existingDraftCurrency(sku), rule),
 			}
 		}
 	}
@@ -531,6 +536,22 @@ func existingDraftCurrency(sku skuDraft) string {
 		}
 	}
 	return ""
+}
+
+func normalizeReviewCurrency(currency string, rule pricingRule) string {
+	sourceCurrency := strings.ToUpper(strings.TrimSpace(rule.SourceCurrency))
+	if sourceCurrency == "" {
+		sourceCurrency = "CNY"
+	}
+	targetCurrency := strings.ToUpper(strings.TrimSpace(rule.TargetCurrency))
+	if targetCurrency == "" {
+		targetCurrency = "USD"
+	}
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if currency == "" || currency == sourceCurrency {
+		return targetCurrency
+	}
+	return currency
 }
 
 func normalizedTextList(values []string) []string {
