@@ -272,6 +272,42 @@ func TestBuildSDSVariantSyncSummariesPrefersSensitiveWordFailureReason(t *testin
 	}
 }
 
+func TestMergeSDSVariantSyncSummariesPrefersAuthFailureReason(t *testing.T) {
+	merged := mergeSDSVariantSyncSummaries(&SDSSyncOptions{VariantID: 101}, []SDSSyncSummary{
+		{
+			VariantID:    101,
+			VariantColor: "white",
+			Status:       "failed",
+			Error:        "sds POST /ps/design/add_and_design auth required with status 400: 用户未登录",
+		},
+	})
+
+	if merged.Status != "failed" {
+		t.Fatalf("status = %q", merged.Status)
+	}
+	if merged.Error != sdsAuthRequiredMessage {
+		t.Fatalf("error = %q", merged.Error)
+	}
+}
+
+func TestMergeSDSVariantSyncSummariesKeepsVariantFailureReason(t *testing.T) {
+	merged := mergeSDSVariantSyncSummaries(&SDSSyncOptions{VariantID: 101}, []SDSSyncSummary{
+		{
+			VariantID:    101,
+			VariantColor: "white",
+			Status:       "failed",
+			Error:        "SDS template render returned empty result",
+		},
+	})
+
+	if merged.Status != "failed" {
+		t.Fatalf("status = %q", merged.Status)
+	}
+	if merged.Error != "SDS render failed for selected color variants: white" {
+		t.Fatalf("error = %q", merged.Error)
+	}
+}
+
 func TestApplySDSTemplateImagesToSheinReplacesFlatDesignImages(t *testing.T) {
 	pkg := &sheinpub.Package{
 		Images: sheinImageSet("https://cdn.example.com/flat-design.png"),

@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"strings"
 
 	"github.com/sirupsen/logrus"
 
@@ -27,6 +28,27 @@ func (s *service) runPlatformAdaptation(
 		"component": "listingkit/platform_adaptation",
 		"task_id":   task.ID,
 	})
+
+	if shouldSkipPlatformAdaptationAfterBlockedRemoteSDS(task, snapshot) {
+		log.WithField("pod_status", func() string {
+			if snapshot == nil || snapshot.PodExecution == nil {
+				return ""
+			}
+			return snapshot.PodExecution.Status
+		}()).Warn("skipping platform adaptation because required remote SDS render failed")
+		final := initResult(task)
+		applyStandardProductSnapshot(final, snapshot)
+		final = normalizeListingKitResultSemanticFields(final)
+		final.Summary = ensureGenerationSummary(final.Summary)
+		if final.PodExecution != nil && strings.TrimSpace(final.PodExecution.FailureReason) != "" {
+			reason := strings.TrimSpace(final.PodExecution.FailureReason)
+			final.Summary.Warnings = uniqueStrings(append(final.Summary.Warnings, reason))
+			final.ReviewReasons = uniqueStrings(append(final.ReviewReasons, reason))
+		}
+		final.Summary.NeedsReview = true
+		newWorkflowRecorder(final).FinalizeSummary()
+		return final
+	}
 
 	var canonicalProduct *canonical.Product
 	var imageAssets *productimage.ImageProcessResult
@@ -63,4 +85,11 @@ func (s *service) runPlatformAdaptation(
 		}(),
 	}).Info("listing kit platform adaptation finished")
 	return final
+}
+
+func shouldSkipPlatformAdaptationAfterBlockedRemoteSDS(task *Task, snapshot *StandardProductSnapshot) bool {
+	if task == nil || !shouldRunRemoteSDSDesignSync(task.Request) || snapshot == nil {
+		return false
+	}
+	return podSubmissionBlocked(snapshot.PodExecution)
 }

@@ -526,6 +526,21 @@ func knownEnvBindings() map[string]envBinding {
 		"platforms.sds.loginService.cloakBrowserPath": {
 			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_CLOAKBROWSER_PATH",
 		},
+		"platforms.sds.authRedis.host": {
+			Primary: "TASK_PROCESSOR_SDS_AUTH_REDIS_HOST",
+		},
+		"platforms.sds.authRedis.port": {
+			Primary: "TASK_PROCESSOR_SDS_AUTH_REDIS_PORT",
+		},
+		"platforms.sds.authRedis.password": {
+			Primary: "TASK_PROCESSOR_SDS_AUTH_REDIS_PASSWORD",
+		},
+		"platforms.sds.authRedis.db": {
+			Primary: "TASK_PROCESSOR_SDS_AUTH_REDIS_DB",
+		},
+		"platforms.sds.authRedis.pool_size": {
+			Primary: "TASK_PROCESSOR_SDS_AUTH_REDIS_POOL_SIZE",
+		},
 		"platforms.sds.authBootstrap.staticAccessToken": {
 			Primary: "TASK_PROCESSOR_SDS_ACCESS_TOKEN",
 		},

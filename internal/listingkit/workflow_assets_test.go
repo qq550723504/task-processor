@@ -2523,6 +2523,107 @@ func TestRunWorkflowKeepsMainFlowWhenSDSSyncFails(t *testing.T) {
 	}
 }
 
+func TestRunWorkflowSkipsPlatformAdaptationWhenRequiredRemoteSDSFails(t *testing.T) {
+	t.Parallel()
+
+	sdsSvc := &stubWorkflowSDSSyncService{
+		err: fmt.Errorf("remote sds failed"),
+	}
+	svc := &service{
+		sdsSyncSvc: sdsSvc,
+		assembler:  NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+	}
+
+	task := &Task{
+		ID: "listingkit-task-remote-sds-blocked",
+		Request: &GenerateRequest{
+			ImageURLs:    []string{"https://example.com/source-remote-sds.jpg"},
+			Text:         "beer cap metal sign",
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 869,
+			Options: &GenerateOptions{
+				ProcessImages: false,
+				SheinStudio: &SheinStudioOptions{
+					RenderSizeImagesWithSDS: true,
+				},
+				SDS: &SDSSyncOptions{
+					VariantID:        124111,
+					ParentProductID:  124110,
+					PrototypeGroupID: 18203,
+					ProductName:      "Beer Cap Metal Sign",
+					Variants: []SDSSyncVariantOption{
+						{VariantID: 124111, VariantSKU: "MG8014062001", Color: "white"},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := svc.runWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if sdsSvc.remoteCalls != 1 {
+		t.Fatalf("remote calls = %d, want 1", sdsSvc.remoteCalls)
+	}
+	if result.SDSSync == nil || result.SDSSync.Status != "failed" {
+		t.Fatalf("sds sync = %+v, want failed", result.SDSSync)
+	}
+	if result.PodExecution == nil || result.PodExecution.Status != podStatusFailedBlocking {
+		t.Fatalf("pod execution = %+v, want failed_blocking", result.PodExecution)
+	}
+	if result.Summary == nil || !result.Summary.NeedsReview {
+		t.Fatalf("summary = %+v, want needs_review", result.Summary)
+	}
+	if result.Shein != nil {
+		t.Fatalf("shein package = %+v, want platform adaptation to be skipped", result.Shein)
+	}
+	if result.CanonicalProduct == nil {
+		t.Fatal("canonical product = nil, want preserved standard snapshot")
+	}
+}
+
+func TestSyncSDSDesignVariantsFromRemoteSurfacesAuthFailureReason(t *testing.T) {
+	sdsSvc := &stubWorkflowSDSSyncService{
+		remoteErr: &sdsclient.AuthRequiredError{
+			Op:         "POST /ps/design/add_and_design",
+			StatusCode: 400,
+			Message:    "用户未登录",
+		},
+	}
+	svc := &service{sdsSyncSvc: sdsSvc}
+	task := &Task{
+		ID: "listingkit-task-variants-auth",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://cdn.example.com/style.png"},
+			Options: &GenerateOptions{
+				SDS: &SDSSyncOptions{
+					ParentProductID:  100,
+					PrototypeGroupID: 15506,
+					Variants: []SDSSyncVariantOption{
+						{VariantID: 101, VariantSKU: "SKU-101", Color: "White", LayerID: "layer-101"},
+					},
+				},
+			},
+		},
+	}
+	result := &ListingKitResult{}
+
+	svc.syncSDSDesignVariantsFromRemote(context.Background(), task, result, task.Request.ImageURLs[0], newWorkflowRecorder(result))
+
+	if result.SDSSync == nil {
+		t.Fatal("sds sync = nil")
+	}
+	if result.SDSSync.Error != sdsAuthRequiredMessage {
+		t.Fatalf("sds sync error = %q", result.SDSSync.Error)
+	}
+	if !hasWorkflowIssue(result.WorkflowIssues, "sds_design_sync", WorkflowIssueSeverityBlocking, sdsAuthRequiredIssueCode) {
+		t.Fatalf("workflow issues = %+v, want SDS auth blocking issue", result.WorkflowIssues)
+	}
+}
+
 func TestRunWorkflowMarksSDSAuthRequiredAsBlockingIssue(t *testing.T) {
 	t.Parallel()
 

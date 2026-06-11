@@ -162,6 +162,22 @@ func TestNewViper_BindsSDSLoginServiceEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "C:/cloak/chrome.exe", v.GetString("platforms.sds.loginService.cloakBrowserPath"))
 }
 
+func TestNewViper_BindsSDSAuthRedisEnvironmentVariables(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_SDS_AUTH_REDIS_HOST", "sds-redis.example")
+	t.Setenv("TASK_PROCESSOR_SDS_AUTH_REDIS_PORT", "6381")
+	t.Setenv("TASK_PROCESSOR_SDS_AUTH_REDIS_PASSWORD", "sds-pass")
+	t.Setenv("TASK_PROCESSOR_SDS_AUTH_REDIS_DB", "9")
+	t.Setenv("TASK_PROCESSOR_SDS_AUTH_REDIS_POOL_SIZE", "16")
+
+	v := newViper()
+
+	assert.Equal(t, "sds-redis.example", v.GetString("platforms.sds.authRedis.host"))
+	assert.Equal(t, 6381, v.GetInt("platforms.sds.authRedis.port"))
+	assert.Equal(t, "sds-pass", v.GetString("platforms.sds.authRedis.password"))
+	assert.Equal(t, 9, v.GetInt("platforms.sds.authRedis.db"))
+	assert.Equal(t, 16, v.GetInt("platforms.sds.authRedis.pool_size"))
+}
+
 func TestNewViper_BindsSDSAuthBootstrapEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_SDS_ACCESS_TOKEN", "access-token")
 	t.Setenv("TASK_PROCESSOR_SDS_OUT_ACCESS_TOKEN", "out-token")
@@ -471,6 +487,9 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "listingkit_admin,platform_admin")
 	t.Setenv("LISTINGKIT_PLATFORM_ADMIN_USERS", "user-b,user-c")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED", "1")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED", "1")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "1")
 
 	cfg, err := LoadConfigFromFile(configPath)
 	require.NoError(t, err)
@@ -479,7 +498,7 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 	assert.Equal(t, []string{"user-b", "user-c"}, cfg.ListingKit.PlatformAdminUsers)
 	assert.Equal(t, []string{"platform_admin"}, cfg.ListingKit.PlatformAdminRoles)
 	assert.True(t, cfg.ListingKit.OwnerScopeRequired)
-	assert.True(t, cfg.ListingKit.Zitadel.AuthRequired)
+	assert.False(t, cfg.ListingKit.Zitadel.AuthRequired)
 	assert.True(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
 	assert.Equal(t, "https://issuer.file.example", cfg.ListingKit.Zitadel.IssuerURL)
 	assert.Equal(t, "file-client", cfg.ListingKit.Zitadel.ClientID)

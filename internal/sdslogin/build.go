@@ -11,10 +11,7 @@ func BuildHandler(cfg *config.Config) (*BuildResult, error) {
 	if cfg == nil {
 		return nil, nil
 	}
-	redisCfg := config.RedisConfig{}
-	if cfg.Redis != nil {
-		redisCfg = *cfg.Redis
-	}
+	redisCfg := cfg.EffectiveSDSAuthRedis()
 	svc, err := NewService(cfg.Platforms.SDS.LoginService, redisCfg, cfg.Browser)
 	if err != nil {
 		return nil, err

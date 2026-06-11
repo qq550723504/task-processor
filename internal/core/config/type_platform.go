@@ -21,6 +21,17 @@ func (c *Config) EffectiveSheinCookieRedis() RedisConfig {
 	return cookieRedis
 }
 
+func (c *Config) EffectiveSDSAuthRedis() RedisConfig {
+	if c == nil {
+		return RedisConfig{}
+	}
+	authRedis := c.Platforms.SDS.AuthRedis
+	if strings.TrimSpace(authRedis.Host) == "" && c.Redis != nil {
+		authRedis = *c.Redis
+	}
+	return authRedis
+}
+
 // PlatformConfig 单个平台的完整配置
 type PlatformConfig struct {
 	Enabled              bool                 `yaml:"enabled"`                                  // 是否启用该平台处理器（上架任务处理）
@@ -48,6 +59,7 @@ type PlatformConfigPaths struct {
 
 type SDSPlatformConfig struct {
 	LoginService  SDSLoginServiceConfig  `mapstructure:"loginService" yaml:"loginService"`   // SDS 统一登录服务配置
+	AuthRedis     RedisConfig            `mapstructure:"authRedis" yaml:"authRedis"`         // SDS 登录态共享 Redis 配置
 	AuthBootstrap SDSAuthBootstrapConfig `mapstructure:"authBootstrap" yaml:"authBootstrap"` // SDS 静态认证引导配置
 }
 

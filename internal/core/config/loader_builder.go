@@ -16,9 +16,9 @@ func BuildConfig(v *viper.Viper) *Config {
 	listingKitAllowedRoles := getStringSlice(v, "listingkit.zitadel.allowedRoles")
 	listingKitAuthorizationRequired :=
 		len(listingKitAllowedTenantIDs) > 0 ||
-		len(listingKitAllowedUserIDs) > 0 ||
-		len(listingKitAllowedUsernames) > 0 ||
-		len(listingKitAllowedRoles) > 0
+			len(listingKitAllowedUserIDs) > 0 ||
+			len(listingKitAllowedUsernames) > 0 ||
+			len(listingKitAllowedRoles) > 0
 
 	cfg := &Config{
 		Processor: ProcessorConfig{
@@ -58,7 +58,14 @@ func BuildConfig(v *viper.Viper) *Config {
 			Temu:  BuildPlatformConfig(v, "platforms.temu"),
 			Shein: BuildPlatformConfig(v, "platforms.shein"),
 			SDS: SDSPlatformConfig{
-				LoginService:  BuildLoginServiceConfig(v, "platforms.sds.loginService"),
+				LoginService: BuildLoginServiceConfig(v, "platforms.sds.loginService"),
+				AuthRedis: RedisConfig{
+					Host:     v.GetString("platforms.sds.authRedis.host"),
+					Port:     v.GetInt("platforms.sds.authRedis.port"),
+					Password: v.GetString("platforms.sds.authRedis.password"),
+					DB:       v.GetInt("platforms.sds.authRedis.db"),
+					PoolSize: v.GetInt("platforms.sds.authRedis.pool_size"),
+				},
 				AuthBootstrap: BuildSDSAuthBootstrapConfig(v, "platforms.sds.authBootstrap"),
 			},
 			Alibaba1688: Alibaba1688Config{

@@ -312,9 +312,13 @@ func mergeSDSVariantSyncSummaries(options *SDSSyncOptions, summaries []SDSSyncSu
 		merged.VariantID = options.VariantID
 	}
 	var failedColors []string
+	var authFailureDetail string
 	var primary *SDSSyncSummary
 	for _, summary := range summaries {
 		if summary.Status == "failed" || len(summary.MockupImageURLs) == 0 {
+			if authFailureDetail == "" && isSDSAuthRequiredError(fmt.Errorf("%s", strings.TrimSpace(summary.Error))) {
+				authFailureDetail = strings.TrimSpace(summary.Error)
+			}
 			label := strings.TrimSpace(summary.VariantColor)
 			if label == "" {
 				label = strings.TrimSpace(summary.VariantSKU)
@@ -333,6 +337,12 @@ func mergeSDSVariantSyncSummaries(options *SDSSyncOptions, summaries []SDSSyncSu
 	if primary != nil {
 		*merged = *primary
 		merged.VariantResults = append([]SDSSyncSummary(nil), summaries...)
+	}
+	if authFailureDetail != "" {
+		merged.Status = "failed"
+		merged.Error = sdsAuthRequiredMessage
+		merged.MockupImageURLs = nil
+		return merged
 	}
 	if len(failedColors) > 0 {
 		merged.Status = "failed"
