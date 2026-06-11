@@ -36,25 +36,53 @@ export function ResolutionCacheRow({
 }) {
   const hitSourceLabel = cacheHitSourceLabel(item?.hit_source, item?.status);
   const showHitCount = item?.status === "hit" && typeof item?.hit_count === "number";
+  const metadata = item
+    ? [
+        cacheStatusLabel(item.status),
+        hitSourceLabel,
+        showHitCount ? `命中 ${item.hit_count ?? 0} 次` : null,
+        `更新时间 ${cacheUpdatedLabel(item.updated_at)}`,
+        item.manual ? "人工确认" : null,
+      ].filter(Boolean)
+    : [];
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white/80 p-3">
+    <div className="rounded-2xl border border-zinc-200 bg-white/80 p-4">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <p className="text-sm font-semibold text-zinc-950">{title}</p>
-          <p className="text-xs leading-5 text-zinc-600">
-            {item
-              ? `解析来源：${cacheSourceLabel(item.source)} · ${item.short_key ?? "无 key"}`
-              : "暂无缓存信息"}
-          </p>
-          {item ? (
-            <p className="text-[11px] leading-5 text-zinc-500">
-              {cacheStatusLabel(item.status)}
-              {hitSourceLabel ? ` · ${hitSourceLabel}` : ""}
-              {showHitCount ? ` · 命中 ${item.hit_count ?? 0} 次` : ""}
-              {" · "}
-              {cacheUpdatedLabel(item.updated_at)}
-              {item.manual ? " · 人工确认" : ""}
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-zinc-950">{title}</p>
+            <p className="text-xs leading-5 text-zinc-600">
+              {item
+                ? `解析来源：${cacheSourceLabel(item.source)} · ${item.short_key ?? "无 key"}`
+                : "暂无缓存信息"}
+            </p>
+          </div>
+          {metadata.length ? (
+            <div className="flex flex-wrap gap-2">
+              {metadata.map((entry) => (
+                <span
+                  className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] leading-4 text-zinc-600"
+                  key={`${title}-${entry}`}
+                >
+                  {entry}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {item?.display_value ? (
+            <div className="rounded-xl border border-zinc-200/80 bg-zinc-50/80 px-3 py-2">
+              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
+                缓存摘要
+              </p>
+              <p className="mt-1 break-words text-xs leading-5 text-zinc-700">
+                {item.display_value}
+              </p>
+            </div>
+          ) : null}
+          {!item?.display_value && item ? (
+            <p className="text-xs leading-5 text-zinc-500">
+              当前缓存没有可展示的摘要值。
             </p>
           ) : null}
         </div>

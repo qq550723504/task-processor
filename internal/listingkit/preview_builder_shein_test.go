@@ -14,19 +14,37 @@ func TestBuildSheinResolutionCacheSummary(t *testing.T) {
 	now := time.Now()
 	pkg := &SheinPackage{
 		CategoryResolution: &SheinCategoryResolution{
+			MatchedPath: []string{"Home", "Decor", "Wall Art"},
 			Cache: &sheinpub.ResolutionCacheInfo{
 				CacheKey:  "cat-key",
 				UpdatedAt: &now,
 			},
 		},
 		AttributeResolution: &SheinAttributeResolution{
+			ResolvedCount:   2,
+			UnresolvedCount: 1,
+			ResolvedAttributes: []sheinpub.ResolvedAttribute{
+				{Name: "Material", Value: "Metal"},
+				{Name: "Style", Value: "Vintage"},
+			},
 			Cache: &sheinpub.ResolutionCacheInfo{
 				CacheKey: "attr-key",
 			},
 		},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			SelectionSummary: []string{"主属性：尺寸", "未选择第二属性"},
+			Cache: &sheinpub.ResolutionCacheInfo{
+				CacheKey: "sale-key",
+			},
+		},
 		Pricing: &sheinpub.PricingReview{
+			UpdatedAt: &now,
 			Cache: &sheinpub.ResolutionCacheInfo{
 				CacheKey: "pricing-key",
+			},
+			SKUPrices: []sheinpub.SKUPriceReview{
+				{FinalPrice: 19.99, Currency: "USD"},
+				{FinalPrice: 27.99, Currency: "USD"},
 			},
 		},
 	}
@@ -38,14 +56,29 @@ func TestBuildSheinResolutionCacheSummary(t *testing.T) {
 	if summary.Category == nil || summary.Category.CacheKey != "cat-key" {
 		t.Fatalf("category summary = %+v", summary.Category)
 	}
+	if summary.Category.DisplayValue != "Home > Decor > Wall Art" {
+		t.Fatalf("category display value = %q", summary.Category.DisplayValue)
+	}
 	if summary.Attributes == nil || summary.Attributes.CacheKey != "attr-key" {
 		t.Fatalf("attribute summary = %+v", summary.Attributes)
 	}
-	if summary.SaleAttributes != nil {
-		t.Fatalf("sale summary = %+v, want nil", summary.SaleAttributes)
+	if summary.Attributes.DisplayValue == "" {
+		t.Fatalf("attribute display value = empty, want summary")
+	}
+	if summary.SaleAttributes == nil || summary.SaleAttributes.CacheKey != "sale-key" {
+		t.Fatalf("sale summary = %+v", summary.SaleAttributes)
+	}
+	if summary.SaleAttributes.DisplayValue != "主属性：尺寸；未选择第二属性" {
+		t.Fatalf("sale display value = %q", summary.SaleAttributes.DisplayValue)
 	}
 	if summary.Pricing == nil || summary.Pricing.CacheKey != "pricing-key" {
 		t.Fatalf("pricing summary = %+v", summary.Pricing)
+	}
+	if summary.Pricing.UpdatedAt == nil || !summary.Pricing.UpdatedAt.Equal(now) {
+		t.Fatalf("pricing updated_at = %+v, want %v", summary.Pricing.UpdatedAt, now)
+	}
+	if summary.Pricing.DisplayValue != "2 SKU；USD 19.99 - 27.99" {
+		t.Fatalf("pricing display value = %q", summary.Pricing.DisplayValue)
 	}
 }
 

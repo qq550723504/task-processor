@@ -146,6 +146,7 @@ export type SheinResolutionCacheInfo = {
   short_key?: string;
   hit_count?: number;
   updated_at?: string;
+  display_value?: string;
   manual?: boolean;
   clearable?: boolean;
 };

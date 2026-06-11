@@ -37,7 +37,8 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 	if key == "" {
 		return
 	}
-	attachPricingCacheInfo(review, "manual_cache", key, true, sheinpub.ResolutionCacheHitSourcePublishRemembered, "stored", 0, nil)
+	now := time.Now()
+	attachPricingCacheInfo(review, "manual_cache", key, true, sheinpub.ResolutionCacheHitSourcePublishRemembered, "stored", 0, &now)
 	task.Result.Shein.Pricing = review
 	_ = s.sheinResolutionCacheStore.SaveResolutionCache(context.Background(), &sheinpub.SheinResolutionCacheEntry{
 		StoreID:        sheinPricingStoreID(req),
@@ -48,6 +49,8 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 		Manual:         true,
 		SourceIdentity: sheinPricingSourceIdentity(task.Result.Shein),
 		ResolutionJSON: mustMarshalSheinPricingReview(review),
+		UpdatedAt:      now,
+		CreatedAt:      now,
 	})
 	logPricingCacheEvent("store", req, task.Result.Shein, review.Cache, logrus.Fields{
 		"cache_kind":         sheinpub.ResolutionCacheKindPricing,
@@ -58,20 +61,55 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 
 func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Package) *sheinpub.PricingReview {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if s == nil || s.sheinResolutionCacheStore == nil || pkg == nil {
+	buildReq := buildSheinPublishRequest(req)
+	if s == nil {
+		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "service_nil"})
 		return nil
 	}
-	buildReq := buildSheinPublishRequest(req)
+	if pkg == nil {
+		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "package_nil"})
+		return nil
+	}
+	if s.sheinResolutionCacheStore == nil {
+		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "no_resolution_cache_store"})
+		return nil
+	}
 	key := sheinPricingCacheKey(buildReq, pkg)
 	if key == "" {
+		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "empty_cache_key"})
 		return nil
 	}
 	entry, err := s.sheinResolutionCacheStore.GetResolutionCache(context.Background(), sheinpub.ResolutionCacheKindPricing, sheinPricingStoreID(buildReq), key)
-	if err != nil || entry == nil {
+	if err != nil {
+		logPricingCacheEvent("error", buildReq, pkg, &sheinpub.ResolutionCacheInfo{
+			CacheKey:  key,
+			ShortKey:  sheinPricingShortKey(key),
+			Clearable: key != "",
+		}, logrus.Fields{
+			"reason": "store_error",
+			"error":  err.Error(),
+		})
+		return nil
+	}
+	if entry == nil {
+		logPricingCacheEvent("miss", buildReq, pkg, &sheinpub.ResolutionCacheInfo{
+			CacheKey:  key,
+			ShortKey:  sheinPricingShortKey(key),
+			Clearable: key != "",
+		}, logrus.Fields{"reason": "no_entry"})
 		return nil
 	}
 	review := decodeSheinPricingCacheEntry(entry)
 	if !sheinPricingReviewApplicable(pkg, review) {
+		logPricingCacheEvent("miss", buildReq, pkg, &sheinpub.ResolutionCacheInfo{
+			Source:    cacheEntrySourceLabel(entry),
+			HitSource: pricingCacheHitSource(entry),
+			CacheKey:  entry.CacheKey,
+			ShortKey:  sheinPricingShortKey(entry.CacheKey),
+			HitCount:  entry.HitCount,
+			Manual:    entry.Manual,
+			Clearable: entry.CacheKey != "",
+		}, logrus.Fields{"reason": "not_applicable"})
 		return nil
 	}
 	attachPricingCacheInfo(review, cacheEntrySourceLabel(entry), entry.CacheKey, entry.Manual, pricingCacheHitSource(entry), "hit", entry.HitCount, &entry.UpdatedAt)

@@ -295,6 +295,81 @@ func TestPreviewSheinPriceApplyToTaskUsesMutation(t *testing.T) {
 	}
 }
 
+func TestSubmitTaskUsesFinalDraftManualOverrideWhenReadyPricingExists(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	currentSKU := task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SupplierSKU
+	task.Result.Shein.Pricing = &sheinpub.PricingReview{
+		RuleSnapshot: &sheinpub.PricingRule{
+			SourceCurrency: "CNY",
+			TargetCurrency: "USD",
+		},
+		Ready: true,
+		SKUPrices: []sheinpub.SKUPriceReview{{
+			SupplierSKU: currentSKU,
+			CostCNY:     91.8,
+			FinalPrice:  91.8,
+			Currency:    "USD",
+		}},
+		ManualOverrides: map[string]float64{currentSKU: 99.99},
+	}
+	task.Result.Shein.FinalDraft = &sheinpub.FinalDraft{
+		Confirmed:            true,
+		ManualPriceOverrides: map[string]float64{currentSKU: 99.99},
+	}
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].CostPrice = "91.80"
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice = "91.80"
+	task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SitePriceList = []sheinpub.SitePrice{{
+		SubSite:   "US",
+		BasePrice: "91.80",
+		Currency:  "USD",
+	}}
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].PriceInfoList = []sheinproduct.PriceInfo{{
+		SubSite:   "US",
+		BasePrice: 91.8,
+		Currency:  "USD",
+	}}
+	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].CostInfo = &sheinproduct.CostInfo{
+		CostPrice: "91.80",
+		Currency:  "USD",
+	}
+
+	var submitted *sheinproduct.Product
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestSheinProductAPIBuilder(stubSheinProductAPIBuilder{
+			api: stubSheinProductAPI{
+				saveHook: func(product *sheinproduct.Product) {
+					submitted = product
+				},
+				saveResponse: &sheinproduct.SheinResponse{
+					Code: "0",
+					Msg:  "OK",
+				},
+			},
+		}),
+	))
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.SubmitTask(context.Background(), task.ID, &SubmitTaskRequest{Platform: "shein", Action: "save_draft", ConfirmedFinal: true}); err != nil {
+		t.Fatalf("submit task: %v", err)
+	}
+	if submitted == nil {
+		t.Fatal("expected save draft payload to be captured")
+	}
+	if got := submitted.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice; got != 99.99 {
+		t.Fatalf("submitted base price = %v, want 99.99 from final draft manual override", got)
+	}
+}
+
 func TestApplyDefaultSheinPricingUsesPublishedPriceCache(t *testing.T) {
 	t.Parallel()
 
@@ -358,6 +433,71 @@ func TestApplyDefaultSheinPricingUsesPublishedPriceCache(t *testing.T) {
 	}
 	if got := fresh.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice; got != 27.99 {
 		t.Fatalf("preview base price = %v, want cached 27.99", got)
+	}
+}
+
+func TestApplyDefaultSheinPricingSkipsExistingReadyPricing(t *testing.T) {
+	t.Parallel()
+
+	pkg := makeReadySheinTask().Result.Shein
+	pkg.Pricing = &sheinpub.PricingReview{
+		Ready: true,
+		SKUPrices: []sheinpub.SKUPriceReview{{
+			SupplierSKU: "SKU-1",
+			FinalPrice:  33.33,
+			Currency:    "USD",
+		}},
+	}
+
+	if reason := sheinPricingCacheSkipReason(pkg); reason != "existing_ready_pricing" {
+		t.Fatalf("skip reason = %q, want existing_ready_pricing", reason)
+	}
+}
+
+func TestLoadSheinPricingCacheRejectsNonApplicableCache(t *testing.T) {
+	t.Parallel()
+
+	store := &submitResolutionCacheStore{}
+	task := makeReadySheinTask()
+	task.Result.Shein.Pricing = &sheinpub.PricingReview{
+		RuleSnapshot: &sheinpub.PricingRule{
+			SourceCurrency:   "CNY",
+			TargetCurrency:   "USD",
+			ExchangeRate:     7.2,
+			MarkupMultiplier: 2,
+			MinimumPrice:     9.99,
+			RoundTo:          0.01,
+		},
+		SKUPrices: []sheinpub.SKUPriceReview{{
+			SupplierSKU:     "SKU-1",
+			SupplierCode:    "SKC-1",
+			CostCNY:         10,
+			CalculatedPrice: 19.99,
+			FinalPrice:      27.99,
+			Currency:        "USD",
+			Manual:          true,
+		}},
+		Ready: true,
+	}
+	svc, err := NewService(newTestServiceConfig(
+		&stubSubmitRepo{},
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinResolutionCacheStore = store
+		}),
+	))
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	svc.(*service).rememberSheinSubmittedPricing(task, "publish")
+
+	fresh := makeReadySheinTask()
+	fresh.Result.Shein.Pricing = nil
+	fresh.Result.Shein.RequestDraft.SKCList[0].SKUList[0].CostPrice = "88.80"
+	fresh.Result.Shein.RequestDraft.SKCList[0].SKUList[0].BasePrice = "19.99"
+
+	cached := svc.(*service).loadSheinPricingCache(fresh.Request, fresh.Result.Shein)
+	if cached != nil {
+		t.Fatalf("cached review = %+v, want nil for non-applicable cache", cached)
 	}
 }
 

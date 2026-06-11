@@ -981,4 +981,10 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 	if preview.ResolutionCache.Pricing.HitSource != sheinpub.ResolutionCacheHitSourcePersistentManualCache {
 		t.Fatalf("preview pricing hit source = %q, want %q", preview.ResolutionCache.Pricing.HitSource, sheinpub.ResolutionCacheHitSourcePersistentManualCache)
 	}
+	if preview.ResolutionCache.Pricing.UpdatedAt == nil {
+		t.Fatalf("preview pricing updated_at = nil, want cache timestamp")
+	}
+	if preview.ResolutionCache.Pricing.DisplayValue == "" {
+		t.Fatalf("preview pricing display_value = empty, want summary")
+	}
 }
