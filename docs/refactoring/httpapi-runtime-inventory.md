@@ -59,7 +59,8 @@ Current app-layer read:
 | `ai_clients.go` | `adapter construction` | Builds strict OpenAI chat/image clients and runtime client resolution caches. |
 | `ai_client_fallback_helpers.go` | `adapter construction` | Owns ListingKit AI client fallback shaping, fallback sanitizing, and client-name normalization helpers. |
 | `ai_client_image_routing.go` | `adapter construction` | Owns ListingKit image-client routing, selector normalization, and image timeout clamping helpers. |
-| `zitadel_auth.go` | `adapter construction` | Runtime auth/authz middleware construction; transport/runtime concern, not ListingKit business logic. |
+| `zitadel_auth.go` | `adapter construction` | Runtime auth/authz middleware construction and route-level authorization wiring. |
+| `zitadel_auth_parsing_helpers.go` | `adapter construction` | Owns ZITADEL role parsing, allowlist/set normalization, and shared identity value helpers. |
 
 ## Follow-Up Candidates
 
