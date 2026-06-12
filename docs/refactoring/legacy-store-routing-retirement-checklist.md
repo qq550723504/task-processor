@@ -19,6 +19,7 @@ Retire legacy SHEIN store routing settings safely, without breaking:
 - `httpapi` and `service` wiring now label this dependency as `legacy`.
 - Legacy store routing service entrypoints now behave as a compatibility shell and return synthesized `manual` defaults instead of persisted state.
 - Main ListingKit service construction no longer injects legacy routing repositories into the active service path.
+- Legacy routing repository builders, persistence implementations, and persistence-only tests have been removed.
 
 ## Remaining Compatibility Surfaces
 
@@ -49,36 +50,7 @@ Retirement decision needed:
 - remove the methods from the public service contract, or
 - keep them behind a narrower compatibility-only interface.
 
-### 3. Repository and persistence layer
-
-These still persist legacy routing settings:
-
-- `internal/listingkit/store_routing_legacy.go`
-- `internal/listingkit/store_routing_legacy_repository.go`
-- `internal/listingkit/httpapi/builders.go`
-- `internal/listingkit/httpapi/runtime_support_repositories.go`
-
-Retirement decision needed:
-
-- remove persistence and default to synthesized manual settings, or
-- keep repository support until external callers are confirmed gone.
-
-### 4. Service constructor / DI
-
-Main service construction no longer injects the legacy repository into the active service path.
-
-Residual cleanup still exists in bootstrap/repository helper surfaces:
-
-- `internal/listingkit/httpapi/builders.go`
-- `internal/listingkit/store_routing_legacy.go`
-- `internal/listingkit/store_routing_legacy_repository.go`
-
-Retirement decision needed:
-
-- delete the remaining builder/persistence seam entirely, or
-- keep it as an isolated compatibility-only repository path until the HTTP route is removed.
-
-### 5. Tests and stubs
+### 3. Tests and stubs
 
 These still assert or stub legacy routing behavior:
 
@@ -99,8 +71,7 @@ Retirement decision needed:
 1. Confirm whether any non-frontend caller still uses `/api/v1/listing-kits/store-routing`.
 2. If no caller remains, convert the handler/service methods into a compatibility shell or remove them.
 3. Remove legacy routing methods from service interfaces and route handler interfaces.
-4. Remove the remaining isolated builder/persistence seam for legacy routing repositories.
-5. Remove persistence types/repositories and associated tests.
+4. Remove the remaining compatibility route/interface shell once external callers are gone.
 
 ## Safe First Cut
 
@@ -108,6 +79,6 @@ If we want a low-risk next implementation slice, prefer this order:
 
 1. Keep the route path.
 2. Make handler/service return synthesized manual defaults instead of persisted settings.
-3. Delete repository wiring and persistence only after tests are updated.
+3. Remove the compatibility route and interface once it is safe to break the public contract.
 
 That keeps the external API stable while collapsing internal maintenance cost.

@@ -255,13 +255,6 @@ func BuildListingKitStoreProfileRepository(cfg *config.Config, logger *logrus.Lo
 	})
 }
 
-func BuildListingKitStoreRoutingSettingsRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error) {
-	return buildRepositoryWithFallback(cfg, logger, newDBListingKitStoreRoutingSettingsRepository, func(logger *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error) {
-		logger.Warn("database not configured, using in-memory listingkit legacy store routing settings repository")
-		return nil, nil, nil
-	})
-}
-
 func BuildListingAdminStoreStatisticsRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error) {
 	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminStoreStatisticsRepository, func(logger *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error) {
 		logger.Warn("database not configured, ListingKit store statistics admin API disabled")
@@ -612,23 +605,6 @@ func newDBListingKitStoreProfileRepository(cfg *config.DatabaseConfig, logger *l
 		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	repo := listingkit.NewGormStoreProfileRepository(db)
-	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
-	return repo, closer, nil
-}
-
-func newDBListingKitStoreRoutingSettingsRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, func() error, error) {
-	if cfg == nil {
-		return nil, nil, fmt.Errorf("database config is nil")
-	}
-	db, err := database.NewSharedDatabaseFromConfig(cfg)
-	if err != nil {
-		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
-	}
-	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if err := ensureListingKitRepositorySchema(cfg, db); err != nil {
-		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
-	}
-	repo := listingkit.NewGormStoreRoutingSettingsRepository(db)
 	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
 	return repo, closer, nil
 }

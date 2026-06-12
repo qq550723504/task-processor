@@ -70,8 +70,7 @@ internal/listingkit/service_submit_settings_resolution_helpers.go // submit sett
 internal/listingkit/service_submit_warehouse_selection_helper.go // submit warehouse helper
 internal/listingkit/service_submit_wiring.go              // submit collaborator config builders
 internal/listingkit/settings_admin_store_routing_legacy_service.go // legacy store-routing admin service methods
-internal/listingkit/store_routing_legacy.go              // legacy store-routing types / in-memory repository
-internal/listingkit/store_routing_legacy_repository.go   // legacy store-routing gorm repository
+internal/listingkit/store_routing_legacy.go              // legacy store-routing compatibility response types/defaults
 internal/listingkit/service_upload_logic.go               // uploaded image logic
 ```
 

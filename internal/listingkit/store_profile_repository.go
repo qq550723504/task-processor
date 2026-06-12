@@ -42,7 +42,7 @@ func NewGormStoreProfileRepository(db *gorm.DB) StoreProfileRepository {
 }
 
 func AutoMigrateStoreProfileRepository(db *gorm.DB) error {
-	return db.AutoMigrate(&listingKitStoreProfileRecord{}, &listingKitStoreRoutingSettingsRecord{})
+	return db.AutoMigrate(&listingKitStoreProfileRecord{})
 }
 
 func (r *gormStoreProfileRepository) ListByTenant(ctx context.Context, tenantID int64) ([]ListingKitStoreProfile, error) {
