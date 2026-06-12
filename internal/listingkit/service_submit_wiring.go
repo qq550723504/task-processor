@@ -19,11 +19,12 @@ func buildTaskRecoveryServiceConfig(s *service) taskRecoveryServiceConfig {
 }
 
 func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecoveryServiceConfig {
+	preview := buildTaskPreviewAccessWiring(s)
 	repository := buildTaskSubmissionRepositoryWiring(s)
 	bindings := buildTaskSubmissionBindings(s, nil)
 	return taskSubmissionRecoveryServiceConfig{
 		repo:                        repository.repo,
-		buildTaskPreview:            s.buildTaskPreview,
+		buildTaskPreview:            preview.buildTaskPreview,
 		buildSheinSubmitProductAPI:  bindings.execution.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:    s.buildSheinSubmitOtherAPI,
 		rememberSheinSubmitted:      s.rememberSheinSubmittedResolution,
@@ -48,12 +49,13 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 }
 
 func buildTaskSubmissionRefreshServiceConfig(s *service) taskSubmissionRefreshServiceConfig {
+	preview := buildTaskPreviewAccessWiring(s)
 	repository := buildTaskSubmissionRepositoryWiring(s)
 	wiring := buildTaskSubmissionOrchestratorWiring(s, nil)
 	return taskSubmissionRefreshServiceConfig{
 		repo:                       repository.repo,
 		lockSubmit:                 wiring.lockSubmit,
-		buildTaskPreview:           s.buildTaskPreview,
+		buildTaskPreview:           preview.buildTaskPreview,
 		buildSheinSubmitProductAPI: wiring.bindings.execution.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:   s.buildSheinSubmitOtherAPI,
 		mutateTaskResult:           wiring.recovery.mutateTaskResult,
@@ -62,6 +64,7 @@ func buildTaskSubmissionRefreshServiceConfig(s *service) taskSubmissionRefreshSe
 }
 
 func buildTaskDirectSubmissionServiceConfig(s *service) taskDirectSubmissionServiceConfig {
+	preview := buildTaskPreviewAccessWiring(s)
 	bindings := buildTaskSubmissionBindings(s, buildSubmitRuntimeContextResolver(s))
 	return taskDirectSubmissionServiceConfig{
 		normalizeSheinSubmitPackage:     bindings.execution.normalizeSheinSubmitPackage,
@@ -77,7 +80,7 @@ func buildTaskDirectSubmissionServiceConfig(s *service) taskDirectSubmissionServ
 		retrySheinSensitiveWordSubmit:   s.retrySheinSensitiveWordSubmit,
 		persistSuccessfulDirectResponse: bindings.state.persistSuccessfulSheinDirectResponse,
 		finishSheinDirectSubmitAttempt:  bindings.state.finishSheinDirectSubmitAttempt,
-		buildTaskPreview:                s.buildTaskPreview,
+		buildTaskPreview:                preview.buildTaskPreview,
 	}
 }
 
@@ -103,6 +106,7 @@ func buildTaskSubmissionStateServiceConfig(s *service) taskSubmissionStateServic
 }
 
 func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {
+	preview := buildTaskPreviewAccessWiring(s)
 	repository := buildTaskSubmissionRepositoryWiring(s)
 	resolver := buildSubmitRuntimeContextResolver(s)
 	wiring := buildTaskSubmissionOrchestratorWiring(s, resolver)
@@ -129,6 +133,6 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 		refreshSheinSubmitRemoteStatus:       wiring.recovery.refreshSheinSubmitRemoteStatus,
 		handleWorkflowStartFailure:           wiring.recovery.handleSheinWorkflowStartFailure,
 		rememberSheinSubmitted:               s.rememberSheinSubmittedResolution,
-		getTaskPreview:                       s.GetTaskPreview,
+		getTaskPreview:                       preview.getTaskPreview,
 	}
 }

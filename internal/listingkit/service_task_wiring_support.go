@@ -11,6 +11,11 @@ type taskPreviewExportReadWiring struct {
 	listAssetGenerationTasks func(context.Context, string) ([]assetgeneration.Task, error)
 }
 
+type taskPreviewAccessWiring struct {
+	getTaskPreview   func(context.Context, string, string) (*ListingKitPreview, error)
+	buildTaskPreview func(context.Context, *Task, string) (*ListingKitPreview, error)
+}
+
 type taskRepositoryWiring struct {
 	repo Repository
 }
@@ -28,6 +33,17 @@ func buildTaskPreviewExportReadWiring(s *service) taskPreviewExportReadWiring {
 		repo: repository.repo,
 		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
 			return s.listAssetGenerationTasks(ctx, taskID)
+		},
+	}
+}
+
+func buildTaskPreviewAccessWiring(s *service) taskPreviewAccessWiring {
+	return taskPreviewAccessWiring{
+		getTaskPreview: func(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {
+			return s.GetTaskPreview(ctx, taskID, platform)
+		},
+		buildTaskPreview: func(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {
+			return s.buildTaskPreview(ctx, task, platform)
 		},
 	}
 }

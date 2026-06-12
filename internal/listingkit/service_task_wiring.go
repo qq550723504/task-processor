@@ -26,6 +26,7 @@ func buildTaskGenerationServiceConfig(s *service) taskGenerationServiceConfig {
 }
 
 func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
+	preview := buildTaskPreviewAccessWiring(s)
 	repository := buildTaskRepositoryWiring(s)
 	return taskRevisionServiceConfig{
 		repo: repository.repo,
@@ -36,9 +37,7 @@ func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
 		refreshSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) {
 			s.refreshSheinDerivedState(task, req)
 		},
-		buildTaskPreview: func(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {
-			return s.buildTaskPreview(ctx, task, platform)
-		},
+		buildTaskPreview: preview.buildTaskPreview,
 	}
 }
 
