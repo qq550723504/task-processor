@@ -52,27 +52,30 @@ func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig 
 }
 
 func buildTaskStudioBatchRunServiceConfig(s *service) taskStudioBatchRunServiceConfig {
+	wiring := buildTaskStudioBatchRunRepoWiring(s)
 	var startRun func(ctx context.Context, runID string) error
 	if s.buildStudioBatchRunCoordinator() != nil {
 		startRun = s.startStudioBatchRun
 	}
 	return taskStudioBatchRunServiceConfig{
-		repo:              s.studioBatchRunRepo,
-		studioSessionRepo: s.studioSessionRepo,
+		repo:              wiring.repo,
+		studioSessionRepo: wiring.studioSessionRepo,
 		startRun:          startRun,
 	}
 }
 
 func buildStudioBatchRunCoordinatorConfig(s *service) studioBatchRunCoordinatorConfig {
+	wiring := buildTaskStudioBatchRunRepoWiring(s)
 	return studioBatchRunCoordinatorConfig{
-		repo:     s.studioBatchRunRepo,
+		repo:     wiring.repo,
 		executor: s.buildStudioBatchRunExecutor(),
 	}
 }
 
 func buildTaskStudioBatchRunExecutorConfig(s *service) taskStudioBatchRunExecutorConfig {
+	wiring := buildTaskStudioBatchRunRepoWiring(s)
 	return taskStudioBatchRunExecutorConfig{
-		repo:       s.studioBatchRunRepo,
+		repo:       wiring.repo,
 		executeOne: s.executeStudioBatchRunItem,
 	}
 }
