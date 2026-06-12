@@ -33,6 +33,9 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.taskStudioSession == nil {
 		t.Fatal("expected taskStudioSession to be initialized")
 	}
+	if impl.studioBatchGeneration == nil {
+		t.Fatal("expected studioBatchGeneration to be initialized")
+	}
 	if impl.taskStudioMedia == nil {
 		t.Fatal("expected taskStudioMedia to be initialized")
 	}
@@ -91,6 +94,9 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	}
 	if svc.taskStudioSession == nil {
 		t.Fatal("expected taskStudioSession to be initialized")
+	}
+	if svc.studioBatchGeneration == nil {
+		t.Fatal("expected studioBatchGeneration to be initialized")
 	}
 	if svc.taskStudioMedia == nil {
 		t.Fatal("expected taskStudioMedia to be initialized")
@@ -329,6 +335,7 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 				"buildTaskStudioSessionServiceConfig(s)",
 				"buildTaskStudioBatchDraftServiceConfig(s)",
 				"buildTaskStudioMediaServiceConfig(s)",
+				"buildStudioBatchGenerationServiceConfig(s)",
 				"buildTaskStudioBatchServiceConfig(s)",
 				"buildTaskStudioBatchRunServiceConfig(s)",
 			},
@@ -336,6 +343,7 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 				"newTaskStudioSessionService(taskStudioSessionServiceConfig{",
 				"newTaskStudioBatchDraftService(taskStudioBatchDraftServiceConfig{",
 				"newTaskStudioMediaService(taskStudioMediaServiceConfig{",
+				"newStudioBatchGenerationService(studioBatchGenerationServiceConfig{",
 				"newTaskStudioBatchService(taskStudioBatchServiceConfig{",
 				"newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{",
 			},
@@ -359,14 +367,10 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			inlineConfig: nil,
 		},
 		{
-			name: "studio wiring",
-			file: "service_studio_wiring.go",
-			builderCalls: []string{
-				"buildStudioBatchGenerationServiceConfig(s)",
-			},
-			inlineConfig: []string{
-				"newStudioBatchGenerationService(studioBatchGenerationServiceConfig{",
-			},
+			name:         "studio wiring",
+			file:         "service_studio_wiring.go",
+			builderCalls: nil,
+			inlineConfig: nil,
 		},
 		{
 			name:         "studio batch run",

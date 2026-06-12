@@ -41,9 +41,9 @@ func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig 
 		getTask = s.repo.GetTask
 	}
 	return taskStudioBatchServiceConfig{
-		repo:              s.studioBatchRepo,
-		studioSessionRepo: s.studioSessionRepo,
-		generator:         newStudioBatchGenerationService(buildStudioBatchGenerationServiceConfig(s)),
+		repo:               s.studioBatchRepo,
+		studioSessionRepo:  s.studioSessionRepo,
+		generator:          s.studioBatchGenerationOrDefault(),
 		createGenerateTask: s.CreateGenerateTask,
 		getTask:            getTask,
 	}

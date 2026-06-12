@@ -21,6 +21,7 @@ type service struct {
 	sdsBaseline                    *sdsBaselineService
 	taskStudioSession              *taskStudioSessionService
 	taskStudioBatchDraft           *taskStudioBatchDraftService
+	studioBatchGeneration          *studioBatchGenerationService
 	taskStudioBatch                *taskStudioBatchService
 	taskStudioBatchRun             *taskStudioBatchRunService
 	taskStudioMedia                *taskStudioMediaService

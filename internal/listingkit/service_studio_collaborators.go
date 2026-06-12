@@ -24,6 +24,14 @@ func (s *service) taskStudioMediaOrDefault() *taskStudioMediaService {
 	return s.taskStudioMedia
 }
 
+func (s *service) studioBatchGenerationOrDefault() *studioBatchGenerationService {
+	if s.studioBatchGeneration != nil {
+		return s.studioBatchGeneration
+	}
+	s.studioBatchGeneration = newStudioBatchGenerationService(buildStudioBatchGenerationServiceConfig(s))
+	return s.studioBatchGeneration
+}
+
 func (s *service) taskStudioBatchOrDefault() *taskStudioBatchService {
 	if s.taskStudioBatch != nil {
 		return s.taskStudioBatch
