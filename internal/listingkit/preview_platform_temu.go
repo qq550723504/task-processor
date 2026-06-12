@@ -19,13 +19,14 @@ func buildTemuPreviewPayload(pkg *TemuPackage, assetBundle *asset.Bundle, render
 		return nil
 	}
 	base := buildReviewablePlatformPreviewBase(pkg.ReviewNotes, pkg.ImageBundle, assetBundle, renderPreviews)
+	payloadBase := buildReviewablePlatformPreviewPayloadBase(pkg.GoodsName, base)
 	return &TemuPreviewPayload{
-		Headline:       pkg.GoodsName,
-		NeedsReview:    base.needsReview,
-		ReviewNotes:    base.reviewNotes,
-		ImageBundle:    base.imageBundle,
-		RenderPreviews: base.renderPreviews,
-		ScenePresets:   base.scenePresets,
+		Headline:       payloadBase.headline,
+		NeedsReview:    payloadBase.needsReview,
+		ReviewNotes:    payloadBase.reviewNotes,
+		ImageBundle:    payloadBase.imageBundle,
+		RenderPreviews: payloadBase.renderPreviews,
+		ScenePresets:   payloadBase.scenePresets,
 		Package:        pkg,
 	}
 }
