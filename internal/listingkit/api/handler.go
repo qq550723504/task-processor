@@ -220,6 +220,12 @@ func WithTaskRequeueService(service listingkit.TaskRequeueService) HandlerOption
 	})
 }
 
+func WithGenerationTaskService(service listingkit.GenerationTaskService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.generationTaskService = service
+	})
+}
+
 func WithStudioMediaService(service listingkit.StudioMediaService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.studioMediaService = service

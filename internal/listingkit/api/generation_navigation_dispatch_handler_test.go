@@ -12,6 +12,15 @@ import (
 	"task-processor/internal/listingkit"
 )
 
+func newGenerationNavigationTestHandler(t *testing.T, svc listingkit.GenerationTaskService) *handler {
+	t.Helper()
+	h, err := NewHandler(&stubHandlerCoreService{}, WithGenerationTaskService(svc))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+	return h
+}
+
 func TestDispatchTaskGenerationNavigationBindsTarget(t *testing.T) {
 	t.Parallel()
 
@@ -28,10 +37,7 @@ func TestDispatchTaskGenerationNavigationBindsTarget(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(svc)
-	if err != nil {
-		t.Fatalf("new handler: %v", err)
-	}
+	h := newGenerationNavigationTestHandler(t, svc)
 
 	router := gin.New()
 	router.POST("/api/v1/listing-kits/tasks/:task_id/generation-navigation/dispatch", h.DispatchTaskGenerationNavigation)
@@ -87,10 +93,7 @@ func TestDispatchTaskGenerationNavigationAppliesIfNoneMatchToTargetAndWritesETag
 			},
 		},
 	}
-	h, err := NewHandler(svc)
-	if err != nil {
-		t.Fatalf("new handler: %v", err)
-	}
+	h := newGenerationNavigationTestHandler(t, svc)
 
 	router := gin.New()
 	router.POST("/api/v1/listing-kits/tasks/:task_id/generation-navigation/dispatch", h.DispatchTaskGenerationNavigation)
@@ -129,10 +132,7 @@ func TestDispatchTaskGenerationNavigationUsesTargetConditionalBaselineBeforeHead
 			DispatchKind: "preview",
 		},
 	}
-	h, err := NewHandler(svc)
-	if err != nil {
-		t.Fatalf("new handler: %v", err)
-	}
+	h := newGenerationNavigationTestHandler(t, svc)
 
 	router := gin.New()
 	router.POST("/api/v1/listing-kits/tasks/:task_id/generation-navigation/dispatch", h.DispatchTaskGenerationNavigation)
