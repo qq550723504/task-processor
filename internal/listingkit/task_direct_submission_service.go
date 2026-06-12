@@ -63,12 +63,8 @@ func newTaskDirectSubmissionService(config taskDirectSubmissionServiceConfig) *t
 
 func (s *taskDirectSubmissionService) submitSheinTaskDirect(ctx context.Context, taskID string, task *Task, req *SubmitTaskRequest, opts sheinDirectSubmitOptions) (*ListingKitPreview, error) {
 	pkg := task.Result.Shein
-	if s.normalizeSheinSubmitPackage != nil {
-		s.normalizeSheinSubmitPackage(task, pkg, req, opts.action)
-	}
-
-	ensureTaskPodExecution(task)
-	readiness := buildSheinSubmitReadinessWithPodForAction(pkg, task.Result.PodExecution, opts.action)
+	prepared := prepareSheinSubmitReadinessForAction(task, pkg, req, opts.action, s.normalizeSheinSubmitPackage)
+	readiness := prepared.readiness
 	if err := validateSheinSubmitReadinessGates(ctx, task, pkg, opts.action, readiness, s.validateSheinPublishFreshness); err != nil {
 		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}

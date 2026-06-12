@@ -142,23 +142,14 @@ func (s *taskTemporalSubmissionAdapter) ValidateSheinPublishReadiness(ctx contex
 		return err
 	}
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	finalWasConfirmed := pkg.FinalSubmissionDraft != nil && pkg.FinalSubmissionDraft.Confirmed
-	s.normalizeSheinSubmitPackage(task, pkg, sheinSubmitRequestFromActivity(in), in.Action)
-	if in.ConfirmedFinal && !finalWasConfirmed {
+	prepared := prepareSheinSubmitReadinessForAction(task, pkg, sheinSubmitRequestFromActivity(in), in.Action, s.normalizeSheinSubmitPackage)
+	if prepared.stateChanged {
 		task.Result.UpdatedAt = time.Now()
 		if err := s.saveTaskResult(ctx, in.TaskID, task.Result); err != nil {
 			return err
 		}
 	}
-
-	changed := ensureTaskPodExecution(task)
-	if changed {
-		task.Result.UpdatedAt = time.Now()
-		if err := s.saveTaskResult(ctx, in.TaskID, task.Result); err != nil {
-			return err
-		}
-	}
-	readiness := buildSheinSubmitReadinessWithPodForAction(pkg, task.Result.PodExecution, in.Action)
+	readiness := prepared.readiness
 	if err := validateSheinSubmitReadinessGates(ctx, task, pkg, in.Action, readiness, s.validateSheinPublishFreshness); err != nil {
 		return err
 	}
