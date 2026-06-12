@@ -3,14 +3,16 @@ package listingkit
 import "context"
 
 func buildTaskStudioSessionServiceConfig(s *service) taskStudioSessionServiceConfig {
+	wiring := buildTaskStudioSessionRepoWiring(s)
 	return taskStudioSessionServiceConfig{
-		repo: s.studioSessionRepo,
+		repo: wiring.repo,
 	}
 }
 
 func buildTaskStudioBatchDraftServiceConfig(s *service) taskStudioBatchDraftServiceConfig {
+	wiring := buildTaskStudioSessionRepoWiring(s)
 	return taskStudioBatchDraftServiceConfig{
-		repo: s.studioSessionRepo,
+		repo: wiring.repo,
 	}
 }
 
