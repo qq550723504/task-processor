@@ -1451,6 +1451,39 @@ func TestPreviewPlatformSelectionLivesOutsidePreviewBuilderRoot(t *testing.T) {
 	}
 }
 
+func TestSheinResolutionCachePreviewHelpersLiveOutsideMainSheinPreviewBuilder(t *testing.T) {
+	t.Parallel()
+
+	mainSrc, err := os.ReadFile("preview_builder_shein.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein.go) error = %v", err)
+	}
+	mainContent := string(mainSrc)
+	for _, needle := range []string{
+		"func buildSheinResolutionCacheSummary(pkg *sheinpub.Package) *SheinResolutionCacheSummary {",
+		"func enrichCategoryResolutionCacheInfo(info *sheinpub.ResolutionCacheInfo, resolution *sheinpub.CategoryResolution) {",
+	} {
+		if strings.Contains(mainContent, needle) {
+			t.Fatalf("preview_builder_shein.go should not contain %q", needle)
+		}
+	}
+
+	cacheSrc, err := os.ReadFile("preview_builder_shein_resolution_cache.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_resolution_cache.go) error = %v", err)
+	}
+	cacheContent := string(cacheSrc)
+	for _, needle := range []string{
+		"func buildSheinResolutionCacheSummary(pkg *sheinpub.Package) *SheinResolutionCacheSummary {",
+		"func enrichCategoryResolutionCacheInfo(info *sheinpub.ResolutionCacheInfo, resolution *sheinpub.CategoryResolution) {",
+		"func enrichPricingResolutionCacheInfo(info *sheinpub.ResolutionCacheInfo, review *sheinpub.PricingReview) {",
+	} {
+		if !strings.Contains(cacheContent, needle) {
+			t.Fatalf("preview_builder_shein_resolution_cache.go should contain %q", needle)
+		}
+	}
+}
+
 func TestSheinSettingsEntrypointsFileOwnsCategorySearchDelegate(t *testing.T) {
 	t.Parallel()
 
