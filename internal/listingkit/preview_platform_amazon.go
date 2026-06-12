@@ -4,7 +4,7 @@ import "task-processor/internal/asset"
 
 func buildAmazonPreviewSection(task *Task, preview *ListingKitPreview, selectedPlatform string) error {
 	const platform = "amazon"
-	return buildPreviewPlatformSection(selectedPlatform, platform, task.Result.Amazon != nil, func() {
+	return applyPreviewPlatformSection(selectedPlatform, platform, task.Result.Amazon != nil, func() {
 		preview.Amazon = buildAmazonPreviewPayload(
 			task.Result.Amazon,
 			task.Result.AssetBundle,

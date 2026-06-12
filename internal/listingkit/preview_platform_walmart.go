@@ -4,13 +4,13 @@ import "task-processor/internal/asset"
 
 func buildWalmartPreviewSection(task *Task, preview *ListingKitPreview, selectedPlatform string) error {
 	const platform = "walmart"
-	return buildPreviewPlatformSection(selectedPlatform, platform, task.Result.Walmart != nil, func() {
+	return applyReviewablePreviewPlatformSection(selectedPlatform, platform, task.Result.Walmart != nil, preview, func() bool {
 		preview.Walmart = buildWalmartPreviewPayload(
 			task.Result.Walmart,
 			task.Result.AssetBundle,
 			platformAssetRenderPreviewsByPlatform(preview.PlatformAssetRenderPreviews, platform),
 		)
-		preview.NeedsReview = preview.NeedsReview || preview.Walmart.NeedsReview
+		return preview.Walmart != nil && preview.Walmart.NeedsReview
 	})
 }
 
