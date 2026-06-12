@@ -7,10 +7,10 @@ import (
 func buildTaskGenerationServiceConfig(s *service) taskGenerationServiceConfig {
 	return taskGenerationServiceConfig{
 		repo:                              s.repo,
-		assetRepo:                         s.assetRepo,
-		assetRecipeResolver:               s.assetRecipeResolver,
-		assetBundleBuilder:                s.assetBundleBuilder,
-		assetGenerator:                    s.assetGenerator,
+		assetRepo:                         resolveWorkflowAssetRepository(s),
+		assetRecipeResolver:               resolveWorkflowAssetRecipeResolver(s),
+		assetBundleBuilder:                resolveWorkflowAssetBundleBuilder(s),
+		assetGenerator:                    resolveWorkflowAssetGenerationService(s),
 		listAssetGenerationTasks:          s.listAssetGenerationTasks,
 		listGenerationReviews:             s.listGenerationReviews,
 		buildRetryGenerationTaskSelection: s.buildRetryGenerationTaskSelection,
