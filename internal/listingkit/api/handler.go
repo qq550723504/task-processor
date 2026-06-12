@@ -35,7 +35,7 @@ type handler struct {
 	initErr                    error
 	adminHandlers
 	subscriptionDependencies
-	settingsService *settingsService
+	settingsService settingsNamespaceService
 }
 
 type storeAdminHandlers struct {
@@ -258,10 +258,7 @@ func WithStoreAdminService(service storeAdminHandlerService) HandlerOption {
 
 func WithSettingsHandlerService(service settingsHandlerService) HandlerOption {
 	return withHandlerState(func(h *handler) {
-		if service == nil {
-			return
-		}
-		h.settingsService = newSettingsService(service)
+		h.attachSettingsService(service)
 	})
 }
 
@@ -307,7 +304,7 @@ func (h *handler) attachOptionalServices(service any) {
 		h.storeAdminService = adminService
 	}
 	if settingsService, ok := any(service).(settingsHandlerService); ok && h.settingsService == nil {
-		h.settingsService = newSettingsService(settingsService)
+		h.attachSettingsService(settingsService)
 	}
 	if retryService, ok := service.(childTaskRetryService); ok {
 		h.childTaskRetryService = retryService
@@ -330,6 +327,13 @@ func (h *handler) attachOptionalServices(service any) {
 	if deleteService, ok := service.(uploadedImageDeleteService); ok {
 		h.uploadedImageDeleteService = deleteService
 	}
+}
+
+func (h *handler) attachSettingsService(service settingsHandlerService) {
+	if service == nil {
+		return
+	}
+	h.settingsService = newSettingsService(service)
 }
 
 func (h *handler) applyOptions(opts []HandlerOption) {

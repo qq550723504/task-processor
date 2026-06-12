@@ -46,6 +46,13 @@ type settingsService struct {
 	service settingsHandlerService
 }
 
+type settingsNamespaceService interface {
+	Get(ctx context.Context, namespace string, query settingsNamespaceQuery) (any, error)
+	ListSchemas() []settingsNamespaceSchema
+	GetSchema(namespace string) (*settingsNamespaceSchema, error)
+	Update(ctx context.Context, namespace string, query settingsNamespaceQuery, payload []byte) (any, error)
+}
+
 type settingsHandlerService interface {
 	GetSheinSettings(ctx context.Context) (*listingkit.SheinSettings, error)
 	UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error)
