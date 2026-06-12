@@ -29,6 +29,7 @@ type service struct {
 	studioBatchRunCoordinator      *studioBatchRunCoordinator
 	taskStudioBatchRun             *taskStudioBatchRunService
 	taskStudioMedia                *taskStudioMediaService
+	studio                         studioCollaborators
 	settingsAdmin                  *settingsAdminService
 	sheinAdmin                     *sheinAdminService
 	admin                          adminCollaborators
