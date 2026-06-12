@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type handler struct {
@@ -24,7 +25,7 @@ type handler struct {
 	studioBatchRunService      studioBatchRunHandlerService
 	studioSessionService       studioSessionAsyncJobService
 	uploadedImageDeleteService uploadedImageDeleteService
-	storeAdminService          listingkit.StoreAdminService
+	storeAdminService          storeAdminHandlerService
 	storeRepository            listingadmin.StoreRepository
 	sheinSyncService           listingkit.SheinSyncService
 	sheinCandidateService      listingkit.SheinCandidateService
@@ -80,7 +81,14 @@ type HandlerService interface {
 }
 
 type storeAdminHandlerService interface {
-	listingkit.StoreAdminService
+	ListSheinStoreProfiles(ctx context.Context) ([]listingkit.ListingKitStoreProfile, error)
+	UpsertSheinStoreProfile(ctx context.Context, req *listingkit.ListingKitStoreProfile) (*listingkit.ListingKitStoreProfile, error)
+	DeleteSheinStoreProfile(ctx context.Context, id int64) error
+	PreviewSheinPrice(ctx context.Context, taskID string, req *listingkit.SheinPricePreviewRequest) (*sheinpub.PricingReview, error)
+	SearchSheinCategories(ctx context.Context, taskID string, query string) (*listingkit.SheinCategorySearchResult, error)
+	UpdateSheinFinalDraft(ctx context.Context, taskID string, req *listingkit.SheinFinalDraftUpdateRequest) (*listingkit.ListingKitPreview, error)
+	GetSubmissionEvents(ctx context.Context, taskID string) (*listingkit.SheinSubmissionEventPage, error)
+	ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*listingkit.SheinResolutionCacheClearResult, error)
 }
 
 type childTaskRetryService interface {
@@ -194,7 +202,7 @@ func WithStudioBatchRunService(service studioBatchRunHandlerService) HandlerOpti
 	})
 }
 
-func WithStoreAdminService(service listingkit.StoreAdminService) HandlerOption {
+func WithStoreAdminService(service storeAdminHandlerService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.storeAdminService = service
 	})
@@ -241,6 +249,9 @@ func (h *handler) attachOptionalServices(service HandlerService) {
 	if adminService, ok := any(service).(storeAdminHandlerService); ok {
 		h.storeAdminService = adminService
 	}
+	if settingsService, ok := any(service).(settingsHandlerService); ok && h.settingsService == nil {
+		h.settingsService = newSettingsService(settingsService)
+	}
 	if retryService, ok := service.(childTaskRetryService); ok {
 		h.childTaskRetryService = retryService
 	}
@@ -273,9 +284,6 @@ func (h *handler) applyOptions(opts []HandlerOption) {
 }
 
 func (h *handler) finalize() error {
-	if h.settingsService == nil && h.storeAdminService != nil {
-		h.settingsService = newSettingsService(h.storeAdminService)
-	}
 	if h.initErr != nil {
 		return h.initErr
 	}
