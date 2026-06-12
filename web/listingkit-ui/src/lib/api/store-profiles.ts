@@ -28,13 +28,6 @@ const pricingSchema = z
   })
   .passthrough();
 
-const matchRuleSchema = z
-  .object({
-    kind: z.string().optional(),
-    values: z.array(z.string()).optional(),
-  })
-  .passthrough();
-
 const storeProfileSchema = z
   .object({
     id: z.number().optional(),
@@ -42,13 +35,11 @@ const storeProfileSchema = z
     store_id: z.number(),
     enabled: z.boolean().optional(),
     priority: z.number().optional(),
-    is_fallback: z.boolean().optional(),
     site: z.string().optional(),
     warehouse_code: z.string().optional(),
     default_stock: z.number().optional(),
     default_submit_mode: z.enum(["publish", "save_draft"]).optional(),
     pricing: pricingSchema.optional(),
-    match_rules: z.array(matchRuleSchema).optional(),
     updated_at: z.string().optional(),
     store: storeOptionSchema.optional(),
   })
