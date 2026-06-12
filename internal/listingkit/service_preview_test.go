@@ -59,7 +59,7 @@ func TestGetTaskPreviewIncludesSheinStoreResolution(t *testing.T) {
 	svc := &service{
 		repo:                repo,
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
+		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "505", UserID: "user-e"})
 
@@ -174,7 +174,7 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 			}, previewTestCookieProvider{}),
 		},
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
+		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{
 		TenantID: "373211199677923496",

@@ -72,8 +72,8 @@ func (config *ServiceConfig) ensureCoreRepositories() {
 	if config.Core.StoreProfileRepository == nil {
 		config.Core.StoreProfileRepository = newInMemoryStoreProfileRepository()
 	}
-	if config.Core.StoreRoutingSettingsRepository == nil {
-		config.Core.StoreRoutingSettingsRepository = newInMemoryStoreRoutingSettingsRepository()
+	if config.Core.LegacyStoreRoutingSettingsRepository == nil {
+		config.Core.LegacyStoreRoutingSettingsRepository = newInMemoryStoreRoutingSettingsRepository()
 	}
 }
 

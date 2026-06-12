@@ -412,7 +412,7 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 	svc := &service{
 		repo:                repo,
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
+		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 		taskSubmitter:       noopTaskSubmitter{},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "606", UserID: "user-f"})
@@ -479,7 +479,7 @@ func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRu
 	svc := &service{
 		repo:                repo,
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
+		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 		taskSubmitter:       noopTaskSubmitter{},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "445", UserID: "user-routing"})

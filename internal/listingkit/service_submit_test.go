@@ -708,7 +708,7 @@ func TestBuildSheinSubmitProductAPIUsesExplicitStoreID(t *testing.T) {
 	builder := stubSheinProductAPIBuilder{api: &stubSheinProductAPI{}, lastStoreID: &lastStoreID}
 	svc := &service{
 		storeProfileRepo:       newInMemoryStoreProfileRepository(),
-		routingSettingsRepo:    newInMemoryStoreRoutingSettingsRepository(),
+		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 		sheinProductAPIBuilder: builder,
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "505", UserID: "user-e"})

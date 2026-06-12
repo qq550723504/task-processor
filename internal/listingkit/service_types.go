@@ -64,7 +64,7 @@ type service struct {
 	platformAdaptWorkflowClient    PlatformAdaptWorkflowClient
 	platformAdaptWorkflowEnabled   bool
 	storeProfileRepo               StoreProfileRepository
-	routingSettingsRepo            StoreRoutingSettingsRepository
+	legacyStoreRoutingSettingsRepo StoreRoutingSettingsRepository
 	requestDefaults                generateRequestDefaults
 	sheinSettingsMu                sync.RWMutex
 	sheinSettings                  SheinSettings
@@ -83,7 +83,7 @@ type ServiceCoreDependencies struct {
 	ImageUploadStore               ImageUploadStore
 	UploadedImageRepository        UploadedImageRepository
 	StoreProfileRepository         StoreProfileRepository
-	StoreRoutingSettingsRepository StoreRoutingSettingsRepository
+	LegacyStoreRoutingSettingsRepository StoreRoutingSettingsRepository
 	TaskSubmitter                  TaskSubmitter
 	AIClientCredentialStore        AIClientCredentialStore
 }

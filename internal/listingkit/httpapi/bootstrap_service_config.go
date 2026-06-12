@@ -36,7 +36,7 @@ func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listi
 		ImageUploadStore:               in.submit.assets.imageUploadStore,
 		UploadedImageRepository:        in.repositories.uploadedImageRepository,
 		StoreProfileRepository:         in.repositories.storeProfileRepository,
-		StoreRoutingSettingsRepository: in.repositories.legacyStoreRoutingSettingsRepository,
+		LegacyStoreRoutingSettingsRepository: in.repositories.legacyStoreRoutingSettingsRepository,
 		AIClientCredentialStore:        in.input.AICredentialStore,
 	}
 }
