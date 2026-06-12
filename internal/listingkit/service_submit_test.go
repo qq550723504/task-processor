@@ -701,7 +701,7 @@ func makeReadySheinTask() *Task {
 	}
 }
 
-func TestBuildSheinSubmitProductAPIUsesResolvedProfileStoreID(t *testing.T) {
+func TestBuildSheinSubmitProductAPIUsesExplicitStoreID(t *testing.T) {
 	t.Parallel()
 
 	var lastStoreID int64
@@ -723,7 +723,9 @@ func TestBuildSheinSubmitProductAPIUsesResolvedProfileStoreID(t *testing.T) {
 
 	task := &Task{
 		TenantID: "505",
-		Request:  &GenerateRequest{},
+		Request: &GenerateRequest{
+			SheinStoreID: 903,
+		},
 	}
 	api, err := svc.taskSubmissionExecutionOrDefault().buildSheinSubmitProductAPI(ctx, task)
 	if err != nil {

@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 )
@@ -102,15 +101,10 @@ func (r *submitRuntimeContextResolver) resolveStoreID(ctx context.Context, task 
 	if task != nil && task.Request != nil && task.Request.SheinStoreID > 0 {
 		return task.Request.SheinStoreID, nil
 	}
-	if selection, err := r.resolveStoreSelection(ctx, task); err == nil && selection != nil && selection.Profile != nil && selection.Profile.StoreID > 0 {
-		return selection.Profile.StoreID, nil
+	if snapshot := sheinStoreResolutionSnapshotFromTask(task); snapshot != nil && snapshot.StoreID > 0 {
+		return snapshot.StoreID, nil
 	}
-	if r == nil || r.service == nil {
-		return 0, nil
-	}
-	r.service.sheinSettingsMu.RLock()
-	defer r.service.sheinSettingsMu.RUnlock()
-	return r.service.sheinSettings.DefaultStoreID, nil
+	return 0, fmt.Errorf("shein store id is unavailable")
 }
 
 func (r *submitRuntimeContextResolver) resolveStoreProfile(ctx context.Context, task *Task) (*ListingKitStoreProfile, error) {
@@ -128,97 +122,41 @@ func (r *submitRuntimeContextResolver) resolveStoreSelection(ctx context.Context
 	if snapshot := sheinStoreResolutionSnapshotFromTask(task); snapshot != nil && snapshot.StoreID > 0 {
 		return selectionFromSnapshot(snapshot), nil
 	}
-	if r == nil || r.service == nil || r.service.storeProfileRepo == nil {
-		return nil, fmt.Errorf("store profile repository is not configured")
+	if task == nil || task.Request == nil || task.Request.SheinStoreID <= 0 {
+		return nil, fmt.Errorf("shein store id is unavailable")
 	}
+
+	selection := &sheinStoreSelection{
+		Profile: &ListingKitStoreProfile{
+			StoreID: task.Request.SheinStoreID,
+			Enabled: true,
+		},
+		Strategy:       "manual",
+		Reason:         "任务显式指定了 SHEIN 店铺。",
+		ManualOverride: true,
+	}
+	if r == nil || r.service == nil || r.service.storeProfileRepo == nil {
+		return selection, nil
+	}
+
 	tenantID, ok := tenantIDInt64FromContext(ctx)
 	if !ok {
 		tenantID = tenantIDInt64FromTask(task)
 	}
 	if tenantID <= 0 {
-		return nil, fmt.Errorf("tenant id is unavailable")
+		return selection, nil
 	}
+
 	items, err := r.service.storeProfileRepo.ListByTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
-	if len(items) == 0 {
-		return nil, fmt.Errorf("store profile is unavailable")
-	}
-	enabled := make([]ListingKitStoreProfile, 0, len(items))
 	for idx := range items {
-		if items[idx].Enabled {
-			enabled = append(enabled, items[idx])
+		if !items[idx].Enabled || items[idx].StoreID != task.Request.SheinStoreID {
+			continue
 		}
+		selection.Profile = cloneStoreProfile(&items[idx])
+		return selection, nil
 	}
-	if len(enabled) == 0 {
-		return nil, fmt.Errorf("store profile is unavailable")
-	}
-	if task != nil && task.Request != nil && task.Request.SheinStoreID > 0 {
-		for idx := range enabled {
-			if enabled[idx].StoreID == task.Request.SheinStoreID {
-				return &sheinStoreSelection{
-					Profile:        cloneStoreProfile(&enabled[idx]),
-					Strategy:       "manual",
-					Reason:         "任务显式指定了 SHEIN 店铺。",
-					ManualOverride: true,
-				}, nil
-			}
-		}
-	}
-	settings, err := r.service.routingSettingsRepo.GetByTenant(ctx, tenantID)
-	var fallback *ListingKitStoreProfile
-	for idx := range enabled {
-		if enabled[idx].IsFallback && fallback == nil {
-			fallback = cloneStoreProfile(&enabled[idx])
-		}
-	}
-	if err == nil && settings != nil && settings.FallbackStoreID > 0 {
-		for idx := range enabled {
-			if enabled[idx].StoreID == settings.FallbackStoreID {
-				fallback = cloneStoreProfile(&enabled[idx])
-				break
-			}
-		}
-	}
-	if settings != nil && settings.SelectionStrategy != "manual" {
-		if matched := matchStoreProfileForTask(enabled, task, settings.SelectionStrategy); matched != nil {
-			return &sheinStoreSelection{
-				Profile:          cloneStoreProfile(matched.profile),
-				Strategy:         settings.SelectionStrategy,
-				Reason:           routeSelectionReason(settings.SelectionStrategy, matched.kinds),
-				MatchedRuleKinds: append([]string(nil), matched.kinds...),
-			}, nil
-		}
-		if settings.AllowFallback && fallback != nil {
-			return &sheinStoreSelection{
-				Profile:  cloneStoreProfile(fallback),
-				Strategy: settings.SelectionStrategy,
-				Reason:   "没有命中路由规则，已回退到 fallback 店铺。",
-				Fallback: true,
-			}, nil
-		}
-	}
-	if settings != nil && settings.AllowFallback && settings.FallbackStoreID > 0 && fallback != nil {
-		return &sheinStoreSelection{
-			Profile:  cloneStoreProfile(fallback),
-			Strategy: firstNonEmpty(strings.TrimSpace(settings.SelectionStrategy), "manual"),
-			Reason:   "当前使用配置的 fallback 店铺作为兜底。",
-			Fallback: true,
-		}, nil
-	}
-	if len(enabled) > 0 {
-		strategy := "priority"
-		reason := "当前未显式指定店铺，使用已启用店铺里的最高优先级项。"
-		if settings != nil && settings.SelectionStrategy == "manual" {
-			strategy = "manual"
-			reason = "当前未显式指定店铺，按优先级选择默认店铺。"
-		}
-		return &sheinStoreSelection{
-			Profile:  cloneStoreProfile(&enabled[0]),
-			Strategy: strategy,
-			Reason:   reason,
-		}, nil
-	}
-	return nil, fmt.Errorf("store profile is unavailable")
+	return selection, nil
 }

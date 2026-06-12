@@ -68,7 +68,9 @@ func TestResolveSheinSubmitSettingsUsesStoreProfileFields(t *testing.T) {
 
 	settings := svc.resolveSheinSubmitSettings(ctx, &Task{
 		TenantID: "404",
-		Request:  &GenerateRequest{},
+		Request: &GenerateRequest{
+			SheinStoreID: 902,
+		},
 	})
 	if settings.DefaultStoreID != 902 {
 		t.Fatalf("default store id = %d, want 902", settings.DefaultStoreID)

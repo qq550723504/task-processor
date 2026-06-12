@@ -431,6 +431,72 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
 	}
+
+	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{
+		Text:         "snapshot demo",
+		Platforms:    []string{"shein"},
+		Country:      "GB",
+		SheinStoreID: 903,
+	})
+	if err != nil {
+		t.Fatalf("CreateGenerateTask error = %v", err)
+	}
+	if task.SheinStoreResolutionSnapshot == nil {
+		t.Fatal("expected shein store resolution snapshot")
+	}
+	if task.SheinStoreResolutionSnapshot.StoreID != 903 {
+		t.Fatalf("snapshot store id = %d, want 903", task.SheinStoreResolutionSnapshot.StoreID)
+	}
+	if task.SheinStoreResolutionSnapshot.Site != "GB" || task.SheinStoreResolutionSnapshot.WarehouseCode != "WH-GB-1" {
+		t.Fatalf("snapshot store context = %+v, want persisted profile fields", task.SheinStoreResolutionSnapshot)
+	}
+	if task.SheinStoreResolutionSnapshot.Strategy != "manual" {
+		t.Fatalf("snapshot strategy = %q, want manual", task.SheinStoreResolutionSnapshot.Strategy)
+	}
+	if len(task.SheinStoreResolutionSnapshot.MatchedRuleKinds) != 0 {
+		t.Fatalf("snapshot matched rules = %+v, want empty", task.SheinStoreResolutionSnapshot.MatchedRuleKinds)
+	}
+	if task.SheinStoreResolutionSnapshot.MatchedProfileID != profile.ID {
+		t.Fatalf("snapshot matched profile id = %d, want %d", task.SheinStoreResolutionSnapshot.MatchedProfileID, profile.ID)
+	}
+	if task.SheinStoreResolutionSnapshot.ResolvedAt.IsZero() {
+		t.Fatalf("snapshot resolved at = %v, want non-zero time", task.SheinStoreResolutionSnapshot.ResolvedAt)
+	}
+
+	stored, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask error = %v", err)
+	}
+	if stored.SheinStoreResolutionSnapshot == nil || stored.SheinStoreResolutionSnapshot.StoreID != 903 {
+		t.Fatalf("stored snapshot = %+v, want persisted snapshot", stored.SheinStoreResolutionSnapshot)
+	}
+}
+
+func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRules(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	svc := &service{
+		repo:                repo,
+		storeProfileRepo:    newInMemoryStoreProfileRepository(),
+		routingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
+		taskSubmitter:       noopTaskSubmitter{},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "445", UserID: "user-routing"})
+
+	if _, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
+		StoreID:       903,
+		Enabled:       true,
+		Priority:      10,
+		Site:          "GB",
+		WarehouseCode: "WH-GB-1",
+		DefaultStock:  66,
+		MatchRules: []ListingKitStoreMatchRule{
+			{Kind: "country", Values: []string{"GB"}},
+		},
+	}); err != nil {
+		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
+	}
 	if _, err := svc.UpdateSheinStoreRoutingSettings(ctx, &ListingKitStoreRoutingSettings{
 		SelectionStrategy: "country",
 		AllowFallback:     true,
@@ -446,34 +512,8 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateGenerateTask error = %v", err)
 	}
-	if task.SheinStoreResolutionSnapshot == nil {
-		t.Fatal("expected shein store resolution snapshot")
-	}
-	if task.SheinStoreResolutionSnapshot.StoreID != 903 {
-		t.Fatalf("snapshot store id = %d, want 903", task.SheinStoreResolutionSnapshot.StoreID)
-	}
-	if task.SheinStoreResolutionSnapshot.Site != "GB" || task.SheinStoreResolutionSnapshot.WarehouseCode != "WH-GB-1" {
-		t.Fatalf("snapshot store context = %+v, want persisted profile fields", task.SheinStoreResolutionSnapshot)
-	}
-	if task.SheinStoreResolutionSnapshot.Strategy != "country" {
-		t.Fatalf("snapshot strategy = %q, want country", task.SheinStoreResolutionSnapshot.Strategy)
-	}
-	if len(task.SheinStoreResolutionSnapshot.MatchedRuleKinds) != 1 || task.SheinStoreResolutionSnapshot.MatchedRuleKinds[0] != "country" {
-		t.Fatalf("snapshot matched rules = %+v, want [country]", task.SheinStoreResolutionSnapshot.MatchedRuleKinds)
-	}
-	if task.SheinStoreResolutionSnapshot.MatchedProfileID != profile.ID {
-		t.Fatalf("snapshot matched profile id = %d, want %d", task.SheinStoreResolutionSnapshot.MatchedProfileID, profile.ID)
-	}
-	if task.SheinStoreResolutionSnapshot.ResolvedAt.IsZero() {
-		t.Fatalf("snapshot resolved at = %v, want non-zero time", task.SheinStoreResolutionSnapshot.ResolvedAt)
-	}
-
-	stored, err := repo.GetTask(ctx, task.ID)
-	if err != nil {
-		t.Fatalf("GetTask error = %v", err)
-	}
-	if stored.SheinStoreResolutionSnapshot == nil || stored.SheinStoreResolutionSnapshot.StoreID != 903 {
-		t.Fatalf("stored snapshot = %+v, want persisted snapshot", stored.SheinStoreResolutionSnapshot)
+	if task.SheinStoreResolutionSnapshot != nil {
+		t.Fatalf("snapshot = %+v, want nil without explicit shein_store_id", task.SheinStoreResolutionSnapshot)
 	}
 }
 
@@ -679,7 +719,7 @@ func (r *stubTaskListRepo) MarkCompleted(context.Context, string, *ListingKitRes
 func (r *stubTaskListRepo) MarkNeedsReview(context.Context, string, *ListingKitResult, string) error {
 	return nil
 }
-func (r *stubTaskListRepo) MarkFailed(context.Context, string, string) error  { return nil }
+func (r *stubTaskListRepo) MarkFailed(context.Context, string, string) error { return nil }
 func (r *stubTaskListRepo) MarkBlockedRetryable(context.Context, string, *RetryableBlock, string) error {
 	return nil
 }

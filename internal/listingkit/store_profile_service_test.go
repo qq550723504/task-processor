@@ -97,7 +97,7 @@ func TestStoreProfileServiceUpdatesRoutingSettings(t *testing.T) {
 	}
 }
 
-func TestResolveSheinStoreIDUsesProfilePriorityAndFallback(t *testing.T) {
+func TestResolveSheinStoreIDUsesExplicitRequestStore(t *testing.T) {
 	t.Parallel()
 
 	svc := &service{
@@ -107,26 +107,19 @@ func TestResolveSheinStoreIDUsesProfilePriorityAndFallback(t *testing.T) {
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "303", UserID: "user-c"})
 
 	_, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
-		StoreID:    900,
-		Enabled:    true,
-		Priority:   20,
-		IsFallback: true,
-	})
-	if err != nil {
-		t.Fatalf("fallback profile upsert error = %v", err)
-	}
-	_, err = svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
 		StoreID:  901,
 		Enabled:  true,
 		Priority: 5,
 	})
 	if err != nil {
-		t.Fatalf("priority profile upsert error = %v", err)
+		t.Fatalf("profile upsert error = %v", err)
 	}
 
 	storeID, err := svc.resolveSheinStoreID(ctx, &Task{
 		TenantID: "303",
-		Request:  &GenerateRequest{},
+		Request: &GenerateRequest{
+			SheinStoreID: 901,
+		},
 	})
 	if err != nil {
 		t.Fatalf("resolveSheinStoreID error = %v", err)
@@ -134,21 +127,9 @@ func TestResolveSheinStoreIDUsesProfilePriorityAndFallback(t *testing.T) {
 	if storeID != 901 {
 		t.Fatalf("resolved store id = %d, want 901", storeID)
 	}
-
-	settings, err := svc.UpdateSheinStoreRoutingSettings(ctx, &ListingKitStoreRoutingSettings{
-		SelectionStrategy: "priority",
-		FallbackStoreID:   900,
-		AllowFallback:     true,
-	})
-	if err != nil {
-		t.Fatalf("UpdateSheinStoreRoutingSettings error = %v", err)
-	}
-	if settings.FallbackStoreID != 900 {
-		t.Fatalf("fallback store id = %d, want 900", settings.FallbackStoreID)
-	}
 }
 
-func TestResolveSheinStoreIDUsesMatchRulesBeforeFallback(t *testing.T) {
+func TestResolveSheinStoreIDUsesSnapshotWhenRequestStoreMissing(t *testing.T) {
 	t.Parallel()
 
 	svc := &service{
@@ -158,38 +139,25 @@ func TestResolveSheinStoreIDUsesMatchRulesBeforeFallback(t *testing.T) {
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "404", UserID: "user-d"})
 
 	_, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
-		StoreID:    910,
-		Enabled:    true,
-		Priority:   50,
-		IsFallback: true,
-	})
-	if err != nil {
-		t.Fatalf("fallback profile upsert error = %v", err)
-	}
-	_, err = svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
+		ID:       77,
 		StoreID:  911,
 		Enabled:  true,
 		Priority: 10,
-		MatchRules: []ListingKitStoreMatchRule{
-			{Kind: "country", Values: []string{"US"}},
-		},
+		Site:     "US",
 	})
 	if err != nil {
-		t.Fatalf("country profile upsert error = %v", err)
-	}
-	_, err = svc.UpdateSheinStoreRoutingSettings(ctx, &ListingKitStoreRoutingSettings{
-		SelectionStrategy: "country",
-		FallbackStoreID:   910,
-		AllowFallback:     true,
-	})
-	if err != nil {
-		t.Fatalf("UpdateSheinStoreRoutingSettings error = %v", err)
+		t.Fatalf("profile upsert error = %v", err)
 	}
 
 	storeID, err := svc.resolveSheinStoreID(ctx, &Task{
 		TenantID: "404",
-		Request: &GenerateRequest{
-			Country: "US",
+		Request:  &GenerateRequest{},
+		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+			StoreID:          911,
+			Site:             "US",
+			Strategy:         "manual",
+			Reason:           "任务显式指定了 SHEIN 店铺。",
+			MatchedProfileID: 77,
 		},
 	})
 	if err != nil {
@@ -197,19 +165,6 @@ func TestResolveSheinStoreIDUsesMatchRulesBeforeFallback(t *testing.T) {
 	}
 	if storeID != 911 {
 		t.Fatalf("resolved store id = %d, want 911", storeID)
-	}
-
-	fallbackStoreID, err := svc.resolveSheinStoreID(ctx, &Task{
-		TenantID: "404",
-		Request: &GenerateRequest{
-			Country: "CA",
-		},
-	})
-	if err != nil {
-		t.Fatalf("resolveSheinStoreID fallback error = %v", err)
-	}
-	if fallbackStoreID != 910 {
-		t.Fatalf("fallback resolved store id = %d, want 910", fallbackStoreID)
 	}
 }
 
