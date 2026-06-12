@@ -48,12 +48,13 @@ func buildSettingsAdminWiring(s *service) settingsAdminWiring {
 
 func buildSheinAdminWiring(s *service) sheinAdminWiring {
 	repository := buildServiceRepositoryWiring(s)
+	preview := buildTaskPreviewAccessWiring(s)
 	return sheinAdminWiring{
 		repo:                  repository.repo,
 		mutateTaskResult:      s.mutateTaskResult,
 		currentPricingRule:    s.currentSheinPricingRule,
 		newSheinAPIClient:     s.newSheinAPIClient,
-		buildTaskPreview:      s.buildTaskPreview,
+		buildTaskPreview:      preview.buildTaskPreview,
 		categoryResolver:      resolveSheinCategoryResolver(s),
 		attributeResolver:     resolveSheinAttributeResolver(s),
 		saleAttributeResolver: resolveSheinSaleAttributeResolver(s),
