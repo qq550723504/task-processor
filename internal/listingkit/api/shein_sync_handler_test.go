@@ -162,7 +162,7 @@ func TestTriggerSheinStoreSyncReturnsAcceptedJobPayload(t *testing.T) {
 		},
 	}
 	h, err := NewHandler(
-		&stubGenerationTaskService{},
+		&stubHandlerCoreService{},
 		WithSheinSyncServices(syncSvc, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
 	)
 	if err != nil {
@@ -211,7 +211,7 @@ func TestTriggerSheinStoreSyncRejectsNonNumericTenantID(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	h, err := NewHandler(
-		&stubGenerationTaskService{},
+		&stubHandlerCoreService{},
 		WithSheinSyncServices(&stubSheinSyncHandlerService{}, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
 	)
 	if err != nil {
@@ -310,7 +310,7 @@ func TestListSheinEnrollmentDashboardReturnsAggregatedStats(t *testing.T) {
 	}
 
 	h, err := NewHandler(
-		&stubGenerationTaskService{},
+		&stubHandlerCoreService{},
 		WithStoreRepository(storeRepo),
 		WithSheinSyncRepository(syncRepo),
 		WithSheinSyncServices(&stubSheinSyncHandlerService{}, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
@@ -380,7 +380,7 @@ func TestListSheinEnrollmentDashboardUsesLegacyTenantMapping(t *testing.T) {
 	}
 	syncRepo := store.NewMemSheinSyncRepository()
 	h, err := NewHandler(
-		&stubGenerationTaskService{},
+		&stubHandlerCoreService{},
 		WithStoreRepository(storeRepo),
 		WithSheinSyncRepository(syncRepo),
 		WithSheinSyncServices(&stubSheinSyncHandlerService{}, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
@@ -442,7 +442,7 @@ func TestListSheinEnrollmentDashboardPreservesStoreOrder(t *testing.T) {
 	}
 	syncRepo := store.NewMemSheinSyncRepository()
 	h, err := NewHandler(
-		&stubGenerationTaskService{},
+		&stubHandlerCoreService{},
 		WithStoreRepository(storeRepo),
 		WithSheinSyncRepository(syncRepo),
 		WithSheinSyncServices(&stubSheinSyncHandlerService{}, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
@@ -509,7 +509,7 @@ func TestListSheinActivityEnrollmentRunsReturnsStoreRuns(t *testing.T) {
 	}
 
 	h, err := NewHandler(
-		&stubGenerationTaskService{},
+		&stubHandlerCoreService{},
 		WithSheinSyncRepository(syncRepo),
 		WithSheinSyncServices(&stubSheinSyncHandlerService{}, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
 	)

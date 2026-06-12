@@ -220,6 +220,12 @@ func WithTaskRequeueService(service listingkit.TaskRequeueService) HandlerOption
 	})
 }
 
+func WithChildTaskRetryService(service childTaskRetryService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.childTaskRetryService = service
+	})
+}
+
 func WithStoreAdminService(service storeAdminHandlerService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.storeAdminService = service

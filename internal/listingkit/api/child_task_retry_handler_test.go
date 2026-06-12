@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,12 +13,23 @@ import (
 	"task-processor/internal/listingkit"
 )
 
+type stubChildTaskRetryService struct {
+	result *listingkit.TaskResult
+	req    *listingkit.RetryChildTaskRequest
+	err    error
+}
+
+func (s *stubChildTaskRetryService) RetryTaskChildTask(_ context.Context, _ string, req *listingkit.RetryChildTaskRequest) (*listingkit.TaskResult, error) {
+	s.req = req
+	return s.result, s.err
+}
+
 func TestRetryTaskChildTaskReturnsBadRequestForEmptyKind(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{}
-	h, err := NewHandler(svc)
+	svc := &stubChildTaskRetryService{}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithChildTaskRetryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -39,8 +51,8 @@ func TestRetryTaskChildTaskReturnsConflictWhenRetryBlocked(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{err: listingkit.ErrChildTaskRetryConflict}
-	h, err := NewHandler(svc)
+	svc := &stubChildTaskRetryService{err: listingkit.ErrChildTaskRetryConflict}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithChildTaskRetryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -62,8 +74,8 @@ func TestRetryTaskChildTaskReturnsTaskResultPayload(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
-		childRetryResult: &listingkit.TaskResult{
+	svc := &stubChildTaskRetryService{
+		result: &listingkit.TaskResult{
 			TaskIdentityFields: listingkit.TaskIdentityFields{TaskID: "task-1"},
 			TaskResultLifecycleFields: listingkit.TaskResultLifecycleFields{
 				Status: listingkit.TaskStatusCompleted,
@@ -74,7 +86,7 @@ func TestRetryTaskChildTaskReturnsTaskResultPayload(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithChildTaskRetryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -103,8 +115,8 @@ func TestRetryTaskChildTaskBindsKind(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{}
-	h, err := NewHandler(svc)
+	svc := &stubChildTaskRetryService{}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithChildTaskRetryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -120,7 +132,7 @@ func TestRetryTaskChildTaskBindsKind(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.Code)
 	}
-	if svc.childRetryReq == nil || svc.childRetryReq.Kind != "sds_catalog_product" {
-		t.Fatalf("child retry req = %+v, want kind bound", svc.childRetryReq)
+	if svc.req == nil || svc.req.Kind != "sds_catalog_product" {
+		t.Fatalf("child retry req = %+v, want kind bound", svc.req)
 	}
 }

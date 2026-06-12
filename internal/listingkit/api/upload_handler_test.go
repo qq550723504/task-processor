@@ -101,8 +101,7 @@ func TestUploadListingKitImagesReturnsBadRequestWithoutFiles(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{}
-	h, err := NewHandler(svc, WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

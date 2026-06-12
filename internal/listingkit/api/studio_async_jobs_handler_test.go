@@ -200,7 +200,7 @@ func TestStudioAsyncJobRejectsUnknownPath(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	h, err := NewHandler(&stubGenerationTaskService{})
+	h, err := NewHandler(&stubHandlerCoreService{})
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestStudioAsyncJobReturnsNotFoundForMissingJob(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	h, err := NewHandler(&stubGenerationTaskService{})
+	h, err := NewHandler(&stubHandlerCoreService{})
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
