@@ -1220,9 +1220,9 @@ func TestSubmitTemporalEntrypointsFileOwnsRootDelegates(t *testing.T) {
 		t.Fatalf("ReadFile(service_submit_temporal.go) unexpected error = %v", err)
 	}
 
-	adapterSrc, err := os.ReadFile("service_submit_temporal_task_loader_helper.go")
+	adapterSrc, err := os.ReadFile("task_temporal_submission_adapter.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_temporal_task_loader_helper.go) error = %v", err)
+		t.Fatalf("ReadFile(task_temporal_submission_adapter.go) error = %v", err)
 	}
 	adapterContent := string(adapterSrc)
 
@@ -1239,12 +1239,18 @@ func TestSubmitTemporalEntrypointsFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error) {",
 	} {
 		if strings.Contains(adapterContent, needle) {
-			t.Fatalf("service_submit_temporal_task_loader_helper.go should not contain %q", needle)
+			t.Fatalf("task_temporal_submission_adapter.go should not contain %q", needle)
 		}
 	}
 
 	if !strings.Contains(adapterContent, "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {") {
-		t.Fatalf("service_submit_temporal_task_loader_helper.go should keep %q", "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {")
+		t.Fatalf("task_temporal_submission_adapter.go should keep %q", "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {")
+	}
+
+	if _, err := os.ReadFile("service_submit_temporal_task_loader_helper.go"); err == nil {
+		t.Fatal("service_submit_temporal_task_loader_helper.go should be removed after temporal task loader merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_temporal_task_loader_helper.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_submit_temporal_loader_helper.go"); err == nil {
