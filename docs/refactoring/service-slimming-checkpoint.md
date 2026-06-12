@@ -516,6 +516,7 @@ Recommended next low-risk slices:
 2. Review service accessor files to ensure each accessor remains thin and delegates to concept-specific config builders.
 3. Keep `service_config.go` focused on factory wiring; avoid adding new default-building logic there.
 4. Continue moving default construction helpers to concept-specific files only when the move is behavior-preserving.
+5. Use [legacy-store-routing-retirement-checklist.md](/D:/code/task-processor/docs/refactoring/legacy-store-routing-retirement-checklist.md) before removing `/store-routing` compatibility surfaces.
 
 Avoid for now:
 
