@@ -21,6 +21,7 @@ type service struct {
 	taskPreview                    *taskPreviewService
 	taskExport                     *taskExportService
 	sdsBaseline                    *sdsBaselineService
+	task                           taskCollaborators
 	taskStudioSession              *taskStudioSessionService
 	taskStudioBatchDraft           *taskStudioBatchDraftService
 	studioBatchGeneration          *studioBatchGenerationService
