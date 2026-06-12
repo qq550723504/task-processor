@@ -106,13 +106,12 @@ func (s *taskDirectSubmissionService) failDirectSubmit(ctx context.Context, task
 }
 
 func (s *taskDirectSubmissionService) prepareDirectSubmitProduct(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions) (*sheinproduct.Product, error) {
-	submitProduct, err := s.prepareSheinSubmitProduct(ctx, task, pkg, opts.action)
+	preparedPayload, err := prepareSheinSubmitPayloadProduct(ctx, taskID, opts.action, opts.requestID, task, pkg, s.prepareSheinSubmitProduct)
 	if err != nil {
 		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
-	dumpSheinSubmitPayloadForDebug(taskID, opts.action, opts.requestID, "prepared", submitProduct)
-	preparedPayload := newSheinPreparedSubmitPayload(taskID, opts.action, opts.requestID, submitProduct)
 	setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, preparedPayload.Snapshot)
+	submitProduct := preparedPayload.Product
 	if err := s.uploadPendingDirectSubmitImages(ctx, taskID, task, pkg, submitProduct, opts); err != nil {
 		return nil, err
 	}
@@ -132,8 +131,12 @@ func (s *taskDirectSubmissionService) uploadPendingDirectSubmitImages(ctx contex
 	if err := s.uploadSheinSubmitImages(ctx, task, pkg, submitProduct); err != nil {
 		return s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
-	prepareSheinProductForSubmit(submitProduct, s.resolveSubmitSettings(ctx, task))
-	dumpSheinSubmitPayloadForDebug(taskID, opts.action, opts.requestID, "uploaded", submitProduct)
+	finalizeSheinUploadedSubmitPayload(ctx, taskID, opts.action, opts.requestID, task, &SheinPreparedSubmitPayload{
+		TaskID:    taskID,
+		Action:    opts.action,
+		RequestID: opts.requestID,
+		Product:   submitProduct,
+	}, s.resolveSubmitSettings)
 	return nil
 }
 

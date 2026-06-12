@@ -16,12 +16,10 @@ func (s *taskTemporalSubmissionAdapter) PrepareSheinPublishPayload(ctx context.C
 		return nil, err
 	}
 
-	submitProduct, err := s.prepareSheinSubmitProduct(ctx, task, pkg, in.Action)
+	preparedPayload, err := prepareSheinSubmitPayloadProduct(ctx, in.TaskID, in.Action, in.RequestID, task, pkg, s.prepareSheinSubmitProduct)
 	if err != nil {
 		return nil, err
 	}
-	dumpSheinSubmitPayloadForDebug(in.TaskID, in.Action, in.RequestID, "prepared", submitProduct)
-	preparedPayload := newSheinPreparedSubmitPayload(in.TaskID, in.Action, in.RequestID, submitProduct)
 	if err := s.persistSheinSubmitSnapshot(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, preparedPayload.Snapshot); err != nil {
 		return nil, err
 	}
@@ -46,10 +44,7 @@ func (s *taskTemporalSubmissionAdapter) UploadSheinPublishImages(ctx context.Con
 	if err := s.uploadSheinSubmitImages(ctx, task, pkg, in.Product); err != nil {
 		return nil, err
 	}
-	prepareSheinProductForSubmit(in.Product, s.resolveSubmitSettings(ctx, task))
-	dumpSheinSubmitPayloadForDebug(in.TaskID, in.Action, in.RequestID, "uploaded", in.Product)
-
-	out := refreshSheinPreparedSubmitPayloadSnapshot(in)
+	out := finalizeSheinUploadedSubmitPayload(ctx, in.TaskID, in.Action, in.RequestID, task, in, s.resolveSubmitSettings)
 	if err := s.persistSheinSubmitSnapshot(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, out.Snapshot); err != nil {
 		return nil, err
 	}
