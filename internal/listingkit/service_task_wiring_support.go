@@ -15,12 +15,26 @@ type taskRepositoryWiring struct {
 	repo Repository
 }
 
-func buildTaskRepositoryWiring(s *service) taskRepositoryWiring {
+type serviceRepositoryWiring struct {
+	repo    Repository
+	getTask func(context.Context, string) (*Task, error)
+}
+
+func buildServiceRepositoryWiring(s *service) serviceRepositoryWiring {
 	if s == nil {
-		return taskRepositoryWiring{}
+		return serviceRepositoryWiring{}
 	}
+	wiring := serviceRepositoryWiring{repo: s.repo}
+	if s.repo != nil {
+		wiring.getTask = s.repo.GetTask
+	}
+	return wiring
+}
+
+func buildTaskRepositoryWiring(s *service) taskRepositoryWiring {
+	wiring := buildServiceRepositoryWiring(s)
 	return taskRepositoryWiring{
-		repo: s.repo,
+		repo: wiring.repo,
 	}
 }
 

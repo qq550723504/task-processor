@@ -52,16 +52,13 @@ func buildTaskStudioBatchServiceWiring(s *service) taskStudioBatchServiceWiring 
 	if s == nil {
 		return taskStudioBatchServiceWiring{}
 	}
-	var getTask func(context.Context, string) (*Task, error)
-	if s.repo != nil {
-		getTask = s.repo.GetTask
-	}
+	repository := buildServiceRepositoryWiring(s)
 	return taskStudioBatchServiceWiring{
 		repo:               resolveStudioBatchRepo(s),
 		studioSessionRepo:  resolveStudioSessionRepo(s),
 		generator:          s.studioBatchGenerationOrDefault(),
 		createGenerateTask: s.CreateGenerateTask,
-		getTask:            getTask,
+		getTask:            repository.getTask,
 	}
 }
 
