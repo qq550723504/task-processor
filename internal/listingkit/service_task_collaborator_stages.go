@@ -36,5 +36,6 @@ func (s *service) initializeTaskStudioBatchCollaborators() {
 	s.studio.batchGeneration = s.studioBatchGenerationOrDefault()
 	s.studio.batch = s.taskStudioBatchOrDefault()
 	s.studio.batchRun = s.taskStudioBatchRunOrDefault()
+	s.initializeStudioBatchRunSupportCollaborators()
 	s.initializeStudioBatchRunRecovery()
 }

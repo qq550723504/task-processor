@@ -77,7 +77,10 @@ func (c *studioBatchRunCoordinator) StartRun(ctx context.Context, runID string) 
 }
 
 func (s *service) initializeStudioBatchRunRecovery() {
-	coordinator := s.buildStudioBatchRunCoordinator()
+	coordinator := s.studio.runCoordinator
+	if coordinator == nil {
+		coordinator = s.buildStudioBatchRunCoordinator()
+	}
 	if coordinator == nil {
 		return
 	}
@@ -89,11 +92,22 @@ func (s *service) initializeStudioBatchRunRecovery() {
 }
 
 func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {
-	coordinator := s.buildStudioBatchRunCoordinator()
+	coordinator := s.studio.runCoordinator
+	if coordinator == nil {
+		coordinator = s.buildStudioBatchRunCoordinator()
+	}
 	if coordinator == nil {
 		return fmt.Errorf("studio batch run executor is not configured")
 	}
 	return coordinator.StartRun(ctx, runID)
+}
+
+func (s *service) initializeStudioBatchRunSupportCollaborators() {
+	if s == nil {
+		return
+	}
+	s.studio.runExecutor = s.buildStudioBatchRunExecutor()
+	s.studio.runCoordinator = s.buildStudioBatchRunCoordinator()
 }
 
 func (s *service) buildStudioBatchRunCoordinator() *studioBatchRunCoordinator {

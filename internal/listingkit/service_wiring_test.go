@@ -66,6 +66,12 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.studio.media == nil {
 		t.Fatal("expected studio group media to be initialized")
 	}
+	if impl.studioBatchRunExecutor != nil && impl.studio.runExecutor == nil {
+		t.Fatal("expected studio group runExecutor to mirror initialized root executor")
+	}
+	if impl.studioBatchRunCoordinator != nil && impl.studio.runCoordinator == nil {
+		t.Fatal("expected studio group runCoordinator to mirror initialized root coordinator")
+	}
 	if impl.settingsAdmin == nil {
 		t.Fatal("expected settingsAdmin to be initialized")
 	}
@@ -160,6 +166,12 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	}
 	if svc.studio.media == nil {
 		t.Fatal("expected studio group media to be initialized")
+	}
+	if svc.studioBatchRunExecutor != nil && svc.studio.runExecutor == nil {
+		t.Fatal("expected studio group runExecutor to mirror initialized root executor")
+	}
+	if svc.studioBatchRunCoordinator != nil && svc.studio.runCoordinator == nil {
+		t.Fatal("expected studio group runCoordinator to mirror initialized root coordinator")
 	}
 
 	svc.initializeAdminCollaborators()
