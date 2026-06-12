@@ -5,8 +5,9 @@ import (
 )
 
 func buildTaskGenerationServiceConfig(s *service) taskGenerationServiceConfig {
+	repository := buildTaskRepositoryWiring(s)
 	return taskGenerationServiceConfig{
-		repo:                              s.repo,
+		repo:                              repository.repo,
 		assetRepo:                         resolveWorkflowAssetRepository(s),
 		assetRecipeResolver:               resolveWorkflowAssetRecipeResolver(s),
 		assetBundleBuilder:                resolveWorkflowAssetBundleBuilder(s),
@@ -25,8 +26,9 @@ func buildTaskGenerationServiceConfig(s *service) taskGenerationServiceConfig {
 }
 
 func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
+	repository := buildTaskRepositoryWiring(s)
 	return taskRevisionServiceConfig{
-		repo: s.repo,
+		repo: repository.repo,
 		resolveManualSheinSaleAttributeValueIDs: func(ctx context.Context, task *Task, req *ApplyRevisionRequest) error {
 			return s.resolveManualSheinSaleAttributeValueIDs(ctx, task, req)
 		},
@@ -63,8 +65,9 @@ func buildTaskExportServiceConfig(s *service) taskExportServiceConfig {
 }
 
 func buildTaskLifecycleServiceConfig(s *service) taskLifecycleServiceConfig {
+	repository := buildTaskRepositoryWiring(s)
 	return taskLifecycleServiceConfig{
-		repo:                        s.repo,
+		repo:                        repository.repo,
 		sdsBaselineReadinessService: s.sdsBaselineOrDefault(),
 		requestDefaults: func() generateRequestDefaults {
 			return resolveTaskRequestDefaults(s)
@@ -89,8 +92,9 @@ func buildSDSBaselineServiceConfig(s *service) sdsBaselineServiceConfig {
 	if s == nil {
 		return sdsBaselineServiceConfig{}
 	}
+	repository := buildTaskRepositoryWiring(s)
 	return sdsBaselineServiceConfig{
-		repo:                   s.repo,
+		repo:                   repository.repo,
 		sdsLoginStatusProvider: resolveSDSLoginStatusProvider(s),
 	}
 }

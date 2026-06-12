@@ -11,9 +11,23 @@ type taskPreviewExportReadWiring struct {
 	listAssetGenerationTasks func(context.Context, string) ([]assetgeneration.Task, error)
 }
 
-func buildTaskPreviewExportReadWiring(s *service) taskPreviewExportReadWiring {
-	return taskPreviewExportReadWiring{
+type taskRepositoryWiring struct {
+	repo Repository
+}
+
+func buildTaskRepositoryWiring(s *service) taskRepositoryWiring {
+	if s == nil {
+		return taskRepositoryWiring{}
+	}
+	return taskRepositoryWiring{
 		repo: s.repo,
+	}
+}
+
+func buildTaskPreviewExportReadWiring(s *service) taskPreviewExportReadWiring {
+	repository := buildTaskRepositoryWiring(s)
+	return taskPreviewExportReadWiring{
+		repo: repository.repo,
 		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
 			return s.listAssetGenerationTasks(ctx, taskID)
 		},
