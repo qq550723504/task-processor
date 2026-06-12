@@ -257,7 +257,7 @@ func BuildListingKitStoreProfileRepository(cfg *config.Config, logger *logrus.Lo
 
 func BuildListingKitStoreRoutingSettingsRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error) {
 	return buildRepositoryWithFallback(cfg, logger, newDBListingKitStoreRoutingSettingsRepository, func(logger *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error) {
-		logger.Warn("database not configured, using in-memory listingkit store routing repository")
+		logger.Warn("database not configured, using in-memory listingkit legacy store routing settings repository")
 		return nil, nil, nil
 	})
 }

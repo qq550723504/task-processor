@@ -178,7 +178,7 @@ func (r *gormStoreRoutingSettingsRepository) GetByTenant(ctx context.Context, te
 
 func (r *gormStoreRoutingSettingsRepository) Upsert(ctx context.Context, settings *ListingKitStoreRoutingSettings) (*ListingKitStoreRoutingSettings, error) {
 	if settings == nil {
-		return nil, fmt.Errorf("store routing settings are required")
+		return nil, fmt.Errorf("legacy store routing settings are required")
 	}
 	row := newListingKitStoreRoutingSettingsRecord(*settings)
 	now := time.Now().UTC()

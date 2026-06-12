@@ -159,7 +159,7 @@ Owns shared child-task retry helpers:
 Owns root SHEIN store settings entrypoints:
 
 - store profile list / upsert / delete,
-- store routing settings fetch / update.
+- legacy store routing settings fetch / update.
 
 ### `service_ai_client_settings_entrypoints.go`
 

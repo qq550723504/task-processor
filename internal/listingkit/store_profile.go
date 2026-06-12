@@ -150,7 +150,7 @@ func (r *inMemoryStoreRoutingSettingsRepository) GetByTenant(_ context.Context, 
 
 func (r *inMemoryStoreRoutingSettingsRepository) Upsert(_ context.Context, settings *ListingKitStoreRoutingSettings) (*ListingKitStoreRoutingSettings, error) {
 	if settings == nil {
-		return nil, fmt.Errorf("store routing settings are required")
+		return nil, fmt.Errorf("legacy store routing settings are required")
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

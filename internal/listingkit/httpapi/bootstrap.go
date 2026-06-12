@@ -227,7 +227,7 @@ func (b CoreRepositoryBuilders) Validate() error {
 	case b.StoreProfile == nil:
 		return fmt.Errorf("core repository builder store profile is required")
 	case b.StoreRoutingSettings == nil:
-		return fmt.Errorf("core repository builder store routing settings is required")
+		return fmt.Errorf("core repository builder legacy store routing settings is required")
 	case b.SheinResolutionCache == nil:
 		return fmt.Errorf("core repository builder shein resolution cache is required")
 	default:

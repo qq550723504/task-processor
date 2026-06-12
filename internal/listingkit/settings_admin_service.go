@@ -100,7 +100,7 @@ func (s *settingsAdminService) UpdateSheinStoreRoutingSettings(ctx context.Conte
 		return nil, fmt.Errorf("tenant id is required")
 	}
 	if req == nil {
-		return nil, fmt.Errorf("store routing settings are required")
+		return nil, fmt.Errorf("legacy store routing settings are required")
 	}
 	settings := *req
 	settings.TenantID = tenantID
