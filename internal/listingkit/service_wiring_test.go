@@ -491,12 +491,12 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 	}
 }
 
-func TestSubmitFacadeFileOwnsRootDelegate(t *testing.T) {
+func TestSubmitRoutingFileOwnsRootSubmitEntryDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_entrypoint.go")
+	facadeSrc, err := os.ReadFile("service_submit_routing.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_entrypoint.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_routing.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -505,8 +505,14 @@ func TestSubmitFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.taskSubmissionOrDefault().SubmitTask(ctx, taskID, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_entrypoint.go should contain %q", needle)
+			t.Fatalf("service_submit_routing.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_submit_entrypoint.go"); err == nil {
+		t.Fatal("service_submit_entrypoint.go should be removed after submit routing merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_entrypoint.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_submit.go"); err == nil {
@@ -603,6 +609,8 @@ func TestSubmitRoutingFileOwnsRootSubmitDelegates(t *testing.T) {
 	routingContent := string(routingSrc)
 
 	for _, needle := range []string{
+		"func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error) {",
+		"return s.taskSubmissionOrDefault().SubmitTask(ctx, taskID, req)",
 		"func (s *service) RecoverTaskNow(ctx context.Context, taskID string) (*Task, error) {",
 		"return s.taskRecoveryOrDefault().RecoverTaskNow(ctx, taskID)",
 		"func (s *service) RunRecoverySweep(ctx context.Context, now time.Time, limit int) (int64, error) {",

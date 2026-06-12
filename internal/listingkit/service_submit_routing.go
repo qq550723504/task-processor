@@ -8,6 +8,10 @@ import (
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
+func (s *service) SubmitTask(ctx context.Context, taskID string, req *SubmitTaskRequest) (*ListingKitPreview, error) {
+	return s.taskSubmissionOrDefault().SubmitTask(ctx, taskID, req)
+}
+
 func (s *service) acquireSheinSubmitTask(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
 	return s.taskSubmissionRecoveryOrDefault().acquireSheinSubmitTask(ctx, taskID, action, requestID, startedAt)
 }
