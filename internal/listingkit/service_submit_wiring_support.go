@@ -1,6 +1,8 @@
 package listingkit
 
 import (
+	"context"
+
 	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -11,14 +13,33 @@ type taskSubmissionOrchestratorWiring struct {
 	bindings   taskSubmissionBindings
 }
 
+type taskSubmissionRepositoryWiring struct {
+	repo           Repository
+	saveTaskResult func(context.Context, string, *ListingKitResult) error
+}
+
 type taskSubmitterWiring struct {
 	repo          Repository
 	taskSubmitter func() TaskSubmitter
 }
 
-func buildTaskSubmitterWiring(s *service) taskSubmitterWiring {
-	return taskSubmitterWiring{
+func buildTaskSubmissionRepositoryWiring(s *service) taskSubmissionRepositoryWiring {
+	if s == nil {
+		return taskSubmissionRepositoryWiring{}
+	}
+	wiring := taskSubmissionRepositoryWiring{
 		repo: s.repo,
+	}
+	if s.repo != nil {
+		wiring.saveTaskResult = s.repo.SaveTaskResult
+	}
+	return wiring
+}
+
+func buildTaskSubmitterWiring(s *service) taskSubmitterWiring {
+	repository := buildTaskSubmissionRepositoryWiring(s)
+	return taskSubmitterWiring{
+		repo: repository.repo,
 		taskSubmitter: func() TaskSubmitter {
 			return resolveTaskSubmitter(s)
 		},

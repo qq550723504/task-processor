@@ -19,9 +19,10 @@ func buildTaskRecoveryServiceConfig(s *service) taskRecoveryServiceConfig {
 }
 
 func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecoveryServiceConfig {
+	repository := buildTaskSubmissionRepositoryWiring(s)
 	bindings := buildTaskSubmissionBindings(s, nil)
 	return taskSubmissionRecoveryServiceConfig{
-		repo:                        s.repo,
+		repo:                        repository.repo,
 		buildTaskPreview:            s.buildTaskPreview,
 		buildSheinSubmitProductAPI:  bindings.execution.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:    s.buildSheinSubmitOtherAPI,
@@ -33,10 +34,11 @@ func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecovery
 }
 
 func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
+	repository := buildTaskSubmissionRepositoryWiring(s)
 	direct := s.taskDirectSubmissionOrDefault()
 	recovery := s.taskSubmissionRecoveryOrDefault()
 	return taskSubmissionServiceConfig{
-		repo:                            s.repo,
+		repo:                            repository.repo,
 		lockSubmit:                      buildTaskSubmissionLockSubmit(s),
 		resolveDefaultSheinSubmitAction: s.resolveDefaultSheinSubmitAction,
 		acquireSheinSubmitTask:          recovery.acquireSheinSubmitTask,
@@ -47,9 +49,10 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 }
 
 func buildTaskSubmissionRefreshServiceConfig(s *service) taskSubmissionRefreshServiceConfig {
+	repository := buildTaskSubmissionRepositoryWiring(s)
 	wiring := buildTaskSubmissionOrchestratorWiring(s, nil)
 	return taskSubmissionRefreshServiceConfig{
-		repo:                       s.repo,
+		repo:                       repository.repo,
 		lockSubmit:                 wiring.lockSubmit,
 		buildTaskPreview:           s.buildTaskPreview,
 		buildSheinSubmitProductAPI: wiring.bindings.execution.buildSheinSubmitProductAPI,
@@ -93,13 +96,15 @@ func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecuti
 }
 
 func buildTaskSubmissionStateServiceConfig(s *service) taskSubmissionStateServiceConfig {
+	repository := buildTaskSubmissionRepositoryWiring(s)
 	return taskSubmissionStateServiceConfig{
-		repo:                   s.repo,
+		repo:                   repository.repo,
 		rememberSheinSubmitted: s.rememberSheinSubmittedResolution,
 	}
 }
 
 func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {
+	repository := buildTaskSubmissionRepositoryWiring(s)
 	resolver := buildSubmitRuntimeContextResolver(s)
 	wiring := buildTaskSubmissionOrchestratorWiring(s, resolver)
 	return taskTemporalSubmissionAdapterConfig{
@@ -111,7 +116,7 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 		loadSheinPublishTask:                 s.loadSheinPublishTaskForTemporal,
 		normalizeSheinSubmitPackage:          wiring.bindings.execution.normalizeSheinSubmitPackage,
 		validateSheinPublishFreshness:        s.validateSheinPublishFreshness,
-		saveTaskResult:                       s.repo.SaveTaskResult,
+		saveTaskResult:                       repository.saveTaskResult,
 		persistSheinSubmitPhase:              wiring.bindings.state.persistSheinSubmitPhase,
 		prepareSheinSubmitProduct:            wiring.bindings.execution.prepareSheinSubmitProduct,
 		uploadSheinSubmitImages:              wiring.bindings.execution.uploadSheinSubmitImages,
