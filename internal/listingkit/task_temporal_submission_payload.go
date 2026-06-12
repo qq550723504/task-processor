@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -108,18 +107,22 @@ func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Con
 		return nil, err
 	}
 
-	response, responseErr := s.executeSheinSubmitRemote(productAPI, in.Action, in.Product)
-	if responseErr == nil {
-		responseErr = submission.BuildResponseError(in.Action, response)
+	attempt := executeSheinSubmitRemoteAttempt(
+		ctx,
+		in.TaskID,
+		pkg,
+		in.Action,
+		in.RequestID,
+		productAPI,
+		in.Product,
+		s.executeSheinSubmitRemote,
+		s.retrySheinSensitiveWordSubmit,
+	)
+	if attempt.snapshot != nil {
+		snapshot = attempt.snapshot
 	}
-	if retryResponse, retryErr, retried := s.retrySheinSensitiveWordSubmit(ctx, in.TaskID, pkg, in.Action, in.RequestID, productAPI, in.Product, response, responseErr); retried {
-		response = retryResponse
-		responseErr = retryErr
-		snapshot = sheinpub.BuildSubmitSnapshot(in.Product)
-		setSheinSubmitSnapshot(pkg, in.Action, in.RequestID, snapshot)
-	}
-	if responseErr != nil {
-		return nil, newSubmitRemoteActivityError(responseErr, supplierCode, response, snapshot)
+	if attempt.err != nil {
+		return nil, newSubmitRemoteActivityError(attempt.err, supplierCode, attempt.response, snapshot)
 	}
 
 	return &SheinRemoteSubmitResult{
@@ -127,7 +130,7 @@ func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Con
 		Action:       in.Action,
 		RequestID:    in.RequestID,
 		SupplierCode: supplierCode,
-		Response:     response,
+		Response:     attempt.response,
 		Snapshot:     snapshot,
 	}, nil
 }
