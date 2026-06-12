@@ -33,20 +33,9 @@ func (s *service) initializeSubmitCollaborators() {
 		return
 	}
 
-	// Task-level retry/recovery collaborators.
-	s.submission.taskRecovery = s.taskRecoveryOrDefault()
-	s.submission.taskRequeue = s.taskRequeueOrDefault()
-
-	// Submission state and execution collaborators are initialized before
-	// orchestrators that depend on them through config builders.
-	s.submission.taskSubmissionState = s.taskSubmissionStateOrDefault()
-	s.submission.taskSubmissionExecution = s.taskSubmissionExecutionOrDefault()
-
-	// SHEIN submission orchestrators.
-	s.submission.taskSubmissionRefresh = s.taskSubmissionRefreshOrDefault()
-	s.submission.taskSubmissionRecovery = s.taskSubmissionRecoveryOrDefault()
-	s.submission.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
-	s.submission.taskSubmission = s.taskSubmissionOrDefault()
+	s.initializeSubmitTaskRecoveryCollaborators()
+	s.initializeSubmitStateCollaborators()
+	s.initializeSubmitOrchestratorCollaborators()
 }
 
 func (s *service) initializeAdminCollaborators() {
