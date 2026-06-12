@@ -56,52 +56,7 @@ func buildSheinStoreResolutionSummary(selection *sheinStoreSelection, task *Task
 }
 
 func sheinStoreResolutionSummaryFromSnapshot(snapshot *SheinStoreResolutionSnapshot) *SheinStoreResolutionSummary {
-	if snapshot == nil || snapshot.StoreID <= 0 {
-		return nil
-	}
-	var resolvedAt string
-	if !snapshot.ResolvedAt.IsZero() {
-		resolvedAt = snapshot.ResolvedAt.UTC().Format(time.RFC3339)
-	}
-	return buildSheinStoreResolutionSummaryValue(
-		snapshot.StoreID,
-		snapshot.Site,
-		snapshot.Strategy,
-		snapshot.Reason,
-		snapshot.MatchedRuleKinds,
-		snapshot.MatchedProfileID,
-		snapshot.ManualOverride,
-		snapshot.Fallback,
-		resolvedAt,
-	)
-}
-
-func sheinStoreResolutionSummaryFromTask(task *Task) *SheinStoreResolutionSummary {
-	return sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task))
-}
-
-func buildSheinStoreResolutionSummaryValue(
-	storeID int64,
-	site string,
-	strategy string,
-	reason string,
-	matchedRuleKinds []string,
-	matchedProfileID int64,
-	manualOverride bool,
-	fallback bool,
-	resolvedAt string,
-) *SheinStoreResolutionSummary {
-	return &SheinStoreResolutionSummary{
-		StoreID:          storeID,
-		Site:             site,
-		Strategy:         strategy,
-		Reason:           reason,
-		MatchedRuleKinds: append([]string(nil), matchedRuleKinds...),
-		MatchedProfileID: matchedProfileID,
-		ManualOverride:   manualOverride,
-		Fallback:         fallback,
-		ResolvedAt:       resolvedAt,
-	}
+	return sheinStoreResolutionSummaryFromSnapshotValue(snapshot)
 }
 
 func sheinStoreResolutionSnapshotFromSelection(selection *sheinStoreSelection, task *Task, preview *ListingKitPreview) *SheinStoreResolutionSnapshot {
