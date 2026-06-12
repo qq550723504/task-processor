@@ -96,14 +96,16 @@ func (s *service) buildRetryGenerationTaskSelection(ctx context.Context, task *T
 }
 
 func (s *service) planMissingRetryGenerationTasks(ctx context.Context, task *Task, inventory *asset.Inventory, existing []assetgeneration.Task, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
-	if s == nil || task == nil || task.Result == nil || s.assetGenerator == nil || s.assetRecipeResolver == nil {
+	assetGenerator := resolveWorkflowAssetGenerationService(s)
+	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(s)
+	if s == nil || task == nil || task.Result == nil || assetGenerator == nil || assetRecipeResolver == nil {
 		return nil, nil
 	}
-	recipesByPlatform := resolveRecipesForPlatforms(s.assetRecipeResolver, task.Request.Platforms, task.Result.CanonicalProduct)
+	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, task.Result.CanonicalProduct)
 	if len(recipesByPlatform) == 0 {
 		return nil, nil
 	}
-	planned, err := s.assetGenerator.Plan(ctx, assetgeneration.Request{
+	planned, err := assetGenerator.Plan(ctx, assetgeneration.Request{
 		TaskID:    task.ID,
 		Product:   effectiveCatalogProduct(task.Result),
 		Inventory: inventory,
@@ -181,10 +183,11 @@ func retryQueueItem(queueIndex map[generationQueueKey]GenerationWorkQueueItem, t
 }
 
 func (s *service) listAssetGenerationTasks(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
-	if s.assetRepo == nil {
+	assetRepo := resolveWorkflowAssetRepository(s)
+	if assetRepo == nil {
 		return nil, nil
 	}
-	tasks, err := s.assetRepo.ListGenerationTasks(ctx, taskID)
+	tasks, err := assetRepo.ListGenerationTasks(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}

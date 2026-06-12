@@ -40,7 +40,8 @@ func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result
 	result.Summary = ensureGenerationSummary(result.Summary)
 	result.Summary.NeedsReview = false
 	snapshot := buildStandardProductSnapshot(result)
-	recipesByPlatform := resolveRecipesForPlatforms(s.assetRecipeResolver, task.Request.Platforms, canonicalProduct)
+	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(s)
+	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, canonicalProduct)
 	final := s.runPlatformAdaptation(ctx, task, snapshot, recipesByPlatform, nil, nil, nil, shouldGenerateAssets(task.Request), sdsOptions)
 	*result = *final
 	return nil
@@ -76,7 +77,8 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 	result.Summary = ensureGenerationSummary(result.Summary)
 	result.Summary.NeedsReview = false
 	snapshot := buildStandardProductSnapshot(result)
-	recipesByPlatform := resolveRecipesForPlatforms(s.assetRecipeResolver, task.Request.Platforms, snapshot.CanonicalProduct)
+	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(s)
+	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, snapshot.CanonicalProduct)
 	final := s.runPlatformAdaptation(ctx, task, snapshot, recipesByPlatform, nil, nil, nil, shouldGenerateAssets(task.Request), sdsOptions)
 	*result = *final
 	return nil

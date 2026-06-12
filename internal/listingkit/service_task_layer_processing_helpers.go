@@ -58,9 +58,10 @@ func standardSnapshotFromTask(task *Task) (*StandardProductSnapshot, error) {
 }
 
 func (s *service) loadPlatformAdaptationAssets(ctx context.Context, task *Task, snapshot *StandardProductSnapshot) (*assetpkg.Inventory, []assetgeneration.Task) {
+	assetRepo := resolveWorkflowAssetRepository(s)
 	var inventory *assetpkg.Inventory
-	if s.assetRepo != nil {
-		saved, err := s.assetRepo.GetInventory(ctx, assetpkg.InventoryRef{TaskID: task.ID})
+	if assetRepo != nil {
+		saved, err := assetRepo.GetInventory(ctx, assetpkg.InventoryRef{TaskID: task.ID})
 		if err == nil {
 			inventory = saved
 		} else if !errors.Is(err, assetrepo.ErrInventoryNotFound) {
@@ -71,8 +72,8 @@ func (s *service) loadPlatformAdaptationAssets(ctx context.Context, task *Task, 
 		inventory = assetpkg.BuildInventory(task.ID, snapshot.AssetBundle)
 	}
 	var persistedGenerationTasks []assetgeneration.Task
-	if s.assetRepo != nil {
-		if savedTasks, err := s.assetRepo.ListGenerationTasks(ctx, task.ID); err == nil {
+	if assetRepo != nil {
+		if savedTasks, err := assetRepo.ListGenerationTasks(ctx, task.ID); err == nil {
 			persistedGenerationTasks = cloneGenerationTasks(savedTasks)
 		}
 	}
