@@ -13,6 +13,12 @@ Use the refactoring plan as the default architecture authority, and use the exec
 
 Older local plans are still useful for historical context and detailed task breakdowns, but they should not override the project-wide plan unless a newer ADR or refactoring document explicitly says so.
 
+For the currently approved destination shape and migration map, also use:
+
+- [../architecture/project-target-architecture.md](../architecture/project-target-architecture.md)
+- [project-migration-roadmap.md](./project-migration-roadmap.md)
+- [module-target-mapping.md](./module-target-mapping.md)
+
 ## Boundary rules and enforcement
 
 Use these files before starting broad package moves:
@@ -51,6 +57,9 @@ The current active direction is:
 
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
 - [project-wide-execution-plan.md](./project-wide-execution-plan.md) - concrete phase-by-phase execution plan with PR slices, acceptance criteria, tests, and stop conditions.
+- [project-migration-roadmap.md](./project-migration-roadmap.md) - staged migration sequence from the current layout to the approved target architecture.
+- [module-target-mapping.md](./module-target-mapping.md) - working map from current package areas to target domains.
+- [listing-preview-migration-map.md](./listing-preview-migration-map.md) - first detailed migration inventory for moving preview ownership out of legacy ListingKit.
 - [dependency-baseline.md](./dependency-baseline.md) - baseline worksheet for dependency scans and legacy exception tracking.
 - [preview-subpackage-feasibility.md](./preview-subpackage-feasibility.md) - current decision note explaining why preview stays inside `package listingkit` before a real subpackage extraction.
 - [submission-inventory.md](./submission-inventory.md) - Phase 3.1 submission consolidation inventory and file-group split checkpoint.

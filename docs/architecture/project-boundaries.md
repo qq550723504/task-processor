@@ -4,6 +4,7 @@ This document defines the default package and dependency boundaries for the Task
 
 It complements the project-wide refactoring authority:
 
+- [`project-target-architecture.md`](./project-target-architecture.md)
 - [`docs/refactoring/project-wide-refactoring-plan.md`](../refactoring/project-wide-refactoring-plan.md)
 
 When implementing broad refactoring, use these rules unless a newer ADR or refactoring document explicitly supersedes them.
