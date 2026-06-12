@@ -1,5 +1,7 @@
 package listingkit
 
+import previewdomain "task-processor/internal/listing/preview"
+
 func previewPlatforms(task *Task) []string {
 	if task == nil {
 		return nil
@@ -47,28 +49,14 @@ func buildPendingPreviewHeader(task *Task) *ListingKitPreviewHeader {
 		return nil
 	}
 	return &ListingKitPreviewHeader{
-		StatusMessage: previewStatusMessage(task.Status),
+		StatusMessage: previewdomain.StatusMessage(string(task.Status)),
 	}
 }
 
 func previewStatusFromReviewNotes(reviewNotes []string) string {
-	if len(reviewNotes) > 0 {
-		return "needs_review"
-	}
-	return "ready"
+	return previewdomain.StatusFromReviewReasons(reviewNotes)
 }
 
 func previewStatusMessage(status TaskStatus) string {
-	switch status {
-	case TaskStatusPending:
-		return "任务已创建，预览结果尚未生成"
-	case TaskStatusProcessing:
-		return "任务处理中，预览结果尚未准备完成"
-	case TaskStatusNeedsReview:
-		return "任务已完成，等待人工审核"
-	case TaskStatusFailed:
-		return "任务执行失败，暂无预览结果"
-	default:
-		return ""
-	}
+	return previewdomain.StatusMessage(string(status))
 }
