@@ -24,6 +24,14 @@ func (s *service) taskPreviewOrDefault() *taskPreviewService {
 	return s.taskPreview
 }
 
+func (s *service) taskExportOrDefault() *taskExportService {
+	if s.taskExport != nil {
+		return s.taskExport
+	}
+	s.taskExport = newTaskExportService(buildTaskExportServiceConfig(s))
+	return s.taskExport
+}
+
 func (s *service) taskLifecycleOrDefault() *taskLifecycleService {
 	if s.taskLifecycle != nil {
 		return s.taskLifecycle

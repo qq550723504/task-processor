@@ -18,6 +18,7 @@ func (s *service) initializeTaskCollaborators() {
 	s.taskGeneration = s.taskGenerationOrDefault()
 	s.taskRevision = s.taskRevisionOrDefault()
 	s.taskPreview = s.taskPreviewOrDefault()
+	s.taskExport = s.taskExportOrDefault()
 	s.sdsBaseline = s.sdsBaselineOrDefault()
 	s.taskStudioSession = s.taskStudioSessionOrDefault()
 	s.taskStudioBatchDraft = s.taskStudioBatchDraftOrDefault()

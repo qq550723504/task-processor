@@ -57,6 +57,15 @@ func buildTaskPreviewServiceConfig(s *service) taskPreviewServiceConfig {
 	}
 }
 
+func buildTaskExportServiceConfig(s *service) taskExportServiceConfig {
+	return taskExportServiceConfig{
+		repo: s.repo,
+		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
+			return s.listAssetGenerationTasks(ctx, taskID)
+		},
+	}
+}
+
 func buildTaskLifecycleServiceConfig(s *service) taskLifecycleServiceConfig {
 	return taskLifecycleServiceConfig{
 		repo:                        s.repo,

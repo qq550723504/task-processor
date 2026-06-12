@@ -34,8 +34,8 @@ func TestAssetGenerationProjectionBoundary(t *testing.T) {
 
 		previewSource := readNamedFunctionSource(t, "task_preview_service.go", "GetTaskPreview")
 		previewCalls := readNamedFunctionCallNames(t, "task_preview_service.go", "GetTaskPreview")
-		exportSource := readNamedFunctionSource(t, "service_task_export_logic.go", "GetTaskExport")
-		exportCalls := readNamedFunctionCallNames(t, "service_task_export_logic.go", "GetTaskExport")
+		exportSource := readNamedFunctionSource(t, "task_export_service.go", "GetTaskExport")
+		exportCalls := readNamedFunctionCallNames(t, "task_export_service.go", "GetTaskExport")
 
 		assertSourceContainsAll(t, previewSource, []string{
 			"projection := buildAssetGenerationProjection(task.Result, tasks)",
