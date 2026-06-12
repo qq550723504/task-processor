@@ -23,7 +23,8 @@ internal/listingkit/service_ai_client_settings_entrypoints.go // AI client setti
 internal/listingkit/service_child_task_retry_logic.go    // child task retry logic
 internal/listingkit/service_shein_category_search_entrypoint.go // SHEIN category search entrypoint
 internal/listingkit/service_shein_category_api_helpers.go   // SHEIN category/attribute API helpers
-internal/listingkit/service_shein_category_store_selection_support.go // SHEIN category/store-selection support
+internal/listingkit/service_shein_category_search_support.go // SHEIN category search support
+internal/listingkit/service_shein_store_resolution_support.go // SHEIN store-resolution support
 internal/listingkit/service_shein_cookie_preview_helper.go  // SHEIN cookie preview helper
 internal/listingkit/service_shein_cookie_availability_note_helper.go // SHEIN cookie availability note helper
 internal/listingkit/service_shein_final_draft_update_entrypoint.go // SHEIN final draft update entrypoint
