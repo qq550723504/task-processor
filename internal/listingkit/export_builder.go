@@ -33,20 +33,14 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 		return export, nil
 	}
 
-	export.CatalogProduct = task.Result.CatalogProduct
-	export.AssetBundle = task.Result.AssetBundle
-	export.AssetInventorySummary = task.Result.AssetInventorySummary
-	export.AssetRenderPreviews = append([]AssetRenderPreview(nil), task.Result.AssetRenderPreviews...)
-	export.PlatformAssetRenderPreviews = append([]PlatformAssetRenderPreviews(nil), task.Result.PlatformAssetRenderPreviews...)
-	if len(export.AssetRenderPreviews) == 0 {
-		export.AssetRenderPreviews = buildAssetRenderPreviews(task.Result.AssetBundle)
-	}
-	if len(export.PlatformAssetRenderPreviews) == 0 {
-		export.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(task.Result)
-	}
-	export.PlatformAssetRenderPreviews = filterPlatformAssetRenderPreviews(export.PlatformAssetRenderPreviews, selectedPlatform)
-	export.AssetGenerationQueue = task.Result.AssetGenerationQueue
-	export.AssetGenerationOverview = task.Result.AssetGenerationOverview
+	attachment := buildListingKitResultAttachment(task.Result, selectedPlatform)
+	export.CatalogProduct = attachment.CatalogProduct
+	export.AssetBundle = attachment.AssetBundle
+	export.AssetInventorySummary = attachment.AssetInventorySummary
+	export.AssetRenderPreviews = attachment.AssetRenderPreviews
+	export.PlatformAssetRenderPreviews = attachment.PlatformAssetRenderPreviews
+	export.AssetGenerationQueue = attachment.AssetGenerationQueue
+	export.AssetGenerationOverview = attachment.AssetGenerationOverview
 	export.Overview = buildListingKitExportMeta(task.Result, selectedPlatform)
 
 	if selectedPlatform == "" || selectedPlatform == "amazon" {
