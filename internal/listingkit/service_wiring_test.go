@@ -1451,12 +1451,12 @@ func TestSheinStoreSelectionHelpersFileOwnsRootHelpers(t *testing.T) {
 	}
 }
 
-func TestSubmitDefaultActionHelpersFileOwnsRootDelegate(t *testing.T) {
+func TestSubmitSettingsHelpersFileOwnsDefaultActionResolver(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_submit_default_action_resolver_helper.go")
+	facadeSrc, err := os.ReadFile("service_submit_settings_resolution_helpers.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_default_action_resolver_helper.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_settings_resolution_helpers.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1467,8 +1467,14 @@ func TestSubmitDefaultActionHelpersFileOwnsRootDelegate(t *testing.T) {
 		"return \"publish\", nil",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_submit_default_action_resolver_helper.go should contain %q", needle)
+			t.Fatalf("service_submit_settings_resolution_helpers.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_submit_default_action_resolver_helper.go"); err == nil {
+		t.Fatal("service_submit_default_action_resolver_helper.go should be removed after submit default action resolver merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_default_action_resolver_helper.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_submit_default_action_helpers.go"); err == nil {
@@ -1589,6 +1595,8 @@ func TestSubmitSettingsContextHelpersFileOwnsRootHelpers(t *testing.T) {
 		"return buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)",
 		"func (s *service) resolveSheinWarehouseCode(ctx context.Context, task *Task, site string) string {",
 		"return buildSubmitRuntimeContextResolver(s).resolveWarehouseCode(ctx, task, site)",
+		"func (s *service) resolveDefaultSheinSubmitAction(ctx context.Context, taskID string) (string, error) {",
+		"if action := sheinPreferredSubmitAction(task, buildSubmitRuntimeContextResolver(s).resolveSubmitSettings(ctx, task)); action != \"\" {",
 	} {
 		if !strings.Contains(facadeContent, needle) {
 			t.Fatalf("service_submit_settings_resolution_helpers.go should contain %q", needle)
