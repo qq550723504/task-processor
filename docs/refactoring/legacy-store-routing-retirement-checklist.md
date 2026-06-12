@@ -30,7 +30,6 @@ Retire legacy SHEIN store routing settings safely, without breaking:
 Legacy routing fields may still appear in historical task / preview snapshots created before the refactor:
 
 - historical snapshot payloads in stored tasks
-- compatibility-oriented domain types that have not yet been renamed for archival clarity
 
 Follow-up decision if desired:
 

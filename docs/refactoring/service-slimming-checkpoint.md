@@ -68,7 +68,6 @@ internal/listingkit/service_submit_remote_context_helpers.go // submit remote co
 internal/listingkit/service_submit_settings_resolution_helpers.go // submit settings context helpers
 internal/listingkit/service_submit_warehouse_selection_helper.go // submit warehouse helper
 internal/listingkit/service_submit_wiring.go              // submit collaborator config builders
-internal/listingkit/store_routing_legacy.go              // legacy store-routing compatibility response types/defaults
 internal/listingkit/service_upload_logic.go               // uploaded image logic
 ```
 
