@@ -69,10 +69,17 @@ type subscriptionDependencies struct {
 	platformAdminRoles  []string
 }
 
-type HandlerService interface {
+type handlerCoreService interface {
 	listingkit.TaskLifecycleService
 	listingkit.GenerationTaskService
 	listingkit.StudioMediaService
+}
+
+type HandlerService interface {
+	handlerCoreService
+}
+
+type storeAdminHandlerService interface {
 	listingkit.StoreAdminService
 }
 
@@ -187,6 +194,21 @@ func WithStudioBatchRunService(service studioBatchRunHandlerService) HandlerOpti
 	})
 }
 
+func WithStoreAdminService(service listingkit.StoreAdminService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.storeAdminService = service
+	})
+}
+
+func WithSettingsHandlerService(service settingsHandlerService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		if service == nil {
+			return
+		}
+		h.settingsService = newSettingsService(service)
+	})
+}
+
 func WithSheinSyncServices(
 	syncService listingkit.SheinSyncService,
 	candidateService listingkit.SheinCandidateService,
@@ -211,12 +233,14 @@ func newHandlerWithDefaults(service HandlerService, studioAsyncJobs *studioAsync
 		generationTaskService: service,
 		studioMediaService:    service,
 		studioBatchRunService: nil,
-		storeAdminService:     service,
 		studioAsyncJobs:       studioAsyncJobs,
 	}
 }
 
 func (h *handler) attachOptionalServices(service HandlerService) {
+	if adminService, ok := any(service).(storeAdminHandlerService); ok {
+		h.storeAdminService = adminService
+	}
 	if retryService, ok := service.(childTaskRetryService); ok {
 		h.childTaskRetryService = retryService
 	}
@@ -249,7 +273,9 @@ func (h *handler) applyOptions(opts []HandlerOption) {
 }
 
 func (h *handler) finalize() error {
-	h.settingsService = newSettingsService(h.storeAdminService)
+	if h.settingsService == nil && h.storeAdminService != nil {
+		h.settingsService = newSettingsService(h.storeAdminService)
+	}
 	if h.initErr != nil {
 		return h.initErr
 	}

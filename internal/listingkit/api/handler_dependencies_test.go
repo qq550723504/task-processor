@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"testing"
 
+	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
 )
 
@@ -49,5 +51,66 @@ func TestWithDependenciesConfiguresSubscriptionState(t *testing.T) {
 	}
 	if h.platformAdminRoles[0] != "platform-role" {
 		t.Fatalf("platform admin roles should be copied, got %#v", h.platformAdminRoles)
+	}
+}
+
+type stubSettingsHandlerService struct {
+	gotAIQuery settingsNamespaceQuery
+	aiResult   *listingkit.AIClientSettings
+}
+
+func (s *stubSettingsHandlerService) GetSheinSettings(context.Context) (*listingkit.SheinSettings, error) {
+	return nil, nil
+}
+
+func (s *stubSettingsHandlerService) UpdateSheinSettings(context.Context, *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
+	return nil, nil
+}
+
+func (s *stubSettingsHandlerService) GetAIClientSettings(_ context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
+	s.gotAIQuery = settingsNamespaceQuery{Scope: scope, ClientName: clientName}
+	if s.aiResult != nil {
+		return s.aiResult, nil
+	}
+	return &listingkit.AIClientSettings{Scope: scope, ClientName: clientName}, nil
+}
+
+func (s *stubSettingsHandlerService) UpdateAIClientSettings(context.Context, *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
+	return nil, nil
+}
+
+func TestWithSettingsHandlerServiceOverridesDefaultSettingsService(t *testing.T) {
+	t.Parallel()
+
+	settingsStub := &stubSettingsHandlerService{
+		aiResult: &listingkit.AIClientSettings{
+			Scope:      "user",
+			ClientName: "override",
+			Model:      "gpt-test",
+		},
+	}
+
+	h, err := NewHandler(&stubGenerationTaskService{}, WithSettingsHandlerService(settingsStub))
+	if err != nil {
+		t.Fatalf("create handler: %v", err)
+	}
+
+	got, err := h.settingsService.Get(context.Background(), "ai", settingsNamespaceQuery{
+		Scope:      "user",
+		ClientName: "override",
+	})
+	if err != nil {
+		t.Fatalf("settingsService.Get returned error: %v", err)
+	}
+
+	if settingsStub.gotAIQuery.Scope != "user" || settingsStub.gotAIQuery.ClientName != "override" {
+		t.Fatalf("settings query = %+v", settingsStub.gotAIQuery)
+	}
+	aiSettings, ok := got.(*listingkit.AIClientSettings)
+	if !ok {
+		t.Fatalf("settings type = %T, want *listingkit.AIClientSettings", got)
+	}
+	if aiSettings.Model != "gpt-test" {
+		t.Fatalf("ai settings = %+v", aiSettings)
 	}
 }
