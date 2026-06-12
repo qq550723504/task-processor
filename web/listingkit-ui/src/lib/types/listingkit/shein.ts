@@ -663,15 +663,6 @@ export type ListingKitStoreProfile = {
   store?: ListingKitStoreProfileStoreOption;
 };
 
-export type ListingKitStoreRoutingSettings = {
-  tenant_id?: number;
-  selection_strategy?: "manual" | "priority" | "country" | string;
-  fallback_store_id?: number;
-  allow_manual_override?: boolean;
-  allow_fallback?: boolean;
-  updated_at?: string;
-};
-
 export type ListingKitSettingsScopeDefinition = {
   id: string;
   label: string;
