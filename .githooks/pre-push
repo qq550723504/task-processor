@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+test_script="$repo_root/scripts/test-fast.ps1"
+test_script_win="$test_script"
+
+if [ ! -f "$test_script" ]; then
+  echo "pre-push: missing test script: $test_script" >&2
+  exit 1
+fi
+
+if command -v cygpath >/dev/null 2>&1; then
+  test_script_win="$(cygpath -w "$test_script")"
+fi
+
+echo "pre-push: running ListingKit fast test suite before push..."
+
+if command -v pwsh.exe >/dev/null 2>&1; then
+  exec pwsh.exe -NoProfile -ExecutionPolicy Bypass -File "$test_script_win"
+fi
+
+if command -v powershell.exe >/dev/null 2>&1; then
+  exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$test_script_win"
+fi
+
+echo "pre-push: neither pwsh nor powershell is available" >&2
+exit 1
