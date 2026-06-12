@@ -605,7 +605,6 @@ export type SheinSubmissionEvent = {
 export type SheinSettings = {
   default_store_id?: number;
   enabled_store_ids?: number[];
-  fallback_store_id?: number;
   available_stores?: Array<{
     id: number;
     store_id?: string;
@@ -633,11 +632,6 @@ export type AIClientSettings = {
   resolved_scope?: "tenant" | "user" | string;
 };
 
-export type ListingKitStoreMatchRule = {
-  kind?: string;
-  values?: string[];
-};
-
 export type ListingKitStoreProfileStoreOption = {
   id: number;
   store_id?: string;
@@ -652,13 +646,11 @@ export type ListingKitStoreProfile = {
   store_id: number;
   enabled?: boolean;
   priority?: number;
-  is_fallback?: boolean;
   site?: string;
   warehouse_code?: string;
   default_stock?: number;
   default_submit_mode?: "publish" | "save_draft";
   pricing?: SheinPricingRule;
-  match_rules?: ListingKitStoreMatchRule[];
   updated_at?: string;
   store?: ListingKitStoreProfileStoreOption;
 };
