@@ -1415,6 +1415,42 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 	}
 }
 
+func TestPreviewPlatformSelectionLivesOutsidePreviewBuilderRoot(t *testing.T) {
+	t.Parallel()
+
+	builderSrc, err := os.ReadFile("preview_builder.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder.go) error = %v", err)
+	}
+	builderContent := string(builderSrc)
+	for _, needle := range []string{
+		"func validateSelectedPreviewPlatform(selectedPlatform string) (string, error) {",
+		"func normalizePreviewPlatform(platform string) string {",
+		"func shouldBuildPreviewPlatform(selectedPlatform, platform string) bool {",
+		"func isSelectedPreviewPlatform(selectedPlatform, platform string) bool {",
+	} {
+		if strings.Contains(builderContent, needle) {
+			t.Fatalf("preview_builder.go should not contain %q", needle)
+		}
+	}
+
+	selectionSrc, err := os.ReadFile("preview_platform_selection.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_platform_selection.go) error = %v", err)
+	}
+	selectionContent := string(selectionSrc)
+	for _, needle := range []string{
+		"func validateSelectedPreviewPlatform(selectedPlatform string) (string, error) {",
+		"func normalizePreviewPlatform(platform string) string {",
+		"func shouldBuildPreviewPlatform(selectedPlatform, platform string) bool {",
+		"func isSelectedPreviewPlatform(selectedPlatform, platform string) bool {",
+	} {
+		if !strings.Contains(selectionContent, needle) {
+			t.Fatalf("preview_platform_selection.go should contain %q", needle)
+		}
+	}
+}
+
 func TestSheinSettingsEntrypointsFileOwnsCategorySearchDelegate(t *testing.T) {
 	t.Parallel()
 

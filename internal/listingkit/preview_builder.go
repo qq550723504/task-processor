@@ -1,7 +1,5 @@
 package listingkit
 
-import "strings"
-
 func previewPlatforms(task *Task) []string {
 	if task == nil {
 		return nil
@@ -40,14 +38,6 @@ func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPre
 	return preview, nil
 }
 
-func validateSelectedPreviewPlatform(selectedPlatform string) (string, error) {
-	selectedPlatform = normalizePreviewPlatform(selectedPlatform)
-	if selectedPlatform != "" && len(normalizePlatforms([]string{selectedPlatform})) == 0 {
-		return "", ErrUnsupportedPreviewPlatform
-	}
-	return selectedPlatform, nil
-}
-
 func shouldBuildPendingPreview(task *Task) bool {
 	return task == nil || task.Result == nil
 }
@@ -81,16 +71,4 @@ func previewStatusMessage(status TaskStatus) string {
 	default:
 		return ""
 	}
-}
-
-func normalizePreviewPlatform(platform string) string {
-	return strings.ToLower(strings.TrimSpace(platform))
-}
-
-func shouldBuildPreviewPlatform(selectedPlatform, platform string) bool {
-	return selectedPlatform == "" || isSelectedPreviewPlatform(selectedPlatform, platform)
-}
-
-func isSelectedPreviewPlatform(selectedPlatform, platform string) bool {
-	return selectedPlatform == platform
 }
