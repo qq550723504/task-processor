@@ -31,6 +31,7 @@ type service struct {
 	taskStudioMedia                *taskStudioMediaService
 	settingsAdmin                  *settingsAdminService
 	sheinAdmin                     *sheinAdminService
+	admin                          adminCollaborators
 	submission                     submissionCollaborators
 	studioSessionRepo              StudioSessionRepository
 	studioBatchRepo                StudioBatchRepository
