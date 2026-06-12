@@ -3,50 +3,31 @@ package listingkit
 import "strings"
 
 func normalizeReviewReasons(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-
-	reasons := make([]string, 0, len(values))
-	seen := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, exists := seen[value]; exists {
-			continue
-		}
-		seen[value] = struct{}{}
-		reasons = append(reasons, value)
-	}
-	if len(reasons) == 0 {
-		return nil
-	}
-	return reasons
+	return uniqueStrings(values)
 }
 
 func reviewReasonsFromResult(result *ListingKitResult) []string {
 	if result == nil {
 		return nil
 	}
-	if reasons := workflowIssueMessagesBySeverity(result, WorkflowIssueSeverityReview, WorkflowIssueSeverityBlocking); len(reasons) > 0 {
-		return reasons
+	sources := reviewReasonSources{
+		WorkflowReasons: workflowIssueMessagesBySeverity(
+			result,
+			WorkflowIssueSeverityReview,
+			WorkflowIssueSeverityBlocking,
+		),
+		ResultReasons:   result.ReviewReasons,
+		PlatformReasons: reviewReasonsFromPlatformPackages(result),
 	}
-	if reasons := normalizeReviewReasons(result.ReviewReasons); len(reasons) > 0 {
-		return reasons
+	if result.Summary != nil {
+		sources.SummaryNeedsReview = result.Summary.NeedsReview
+		sources.SummaryWarnings = result.Summary.Warnings
 	}
-	if result.Summary != nil && result.Summary.NeedsReview {
-		if reasons := normalizeReviewReasons(result.Summary.Warnings); len(reasons) > 0 {
-			return reasons
-		}
+	if result.PodExecution != nil {
+		sources.PodBlocked = result.PodExecution.Status == podStatusFailedBlocking
+		sources.PodFailureReason = result.PodExecution.FailureReason
 	}
-	if result.PodExecution != nil && result.PodExecution.Status == podStatusFailedBlocking {
-		if reasons := normalizeReviewReasons([]string{result.PodExecution.FailureReason}); len(reasons) > 0 {
-			return reasons
-		}
-	}
-	return reviewReasonsFromPlatformPackages(result)
+	return resolveReviewReasons(sources)
 }
 
 func reviewReasonsFromTask(task *Task) []string {
