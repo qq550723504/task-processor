@@ -39,6 +39,13 @@ type studioAsyncJobStore struct {
 	repo listingkit.StudioAsyncJobRepository
 }
 
+type studioAsyncJobStoreService interface {
+	create(ctx context.Context, path string) (studioAsyncJob, error)
+	get(ctx context.Context, id string) (studioAsyncJob, bool)
+	succeed(ctx context.Context, id string, result any)
+	fail(ctx context.Context, id string, err error, status int)
+}
+
 func newStudioAsyncJobStore(repo listingkit.StudioAsyncJobRepository) (*studioAsyncJobStore, error) {
 	if repo == nil {
 		repo = listingkit.NewMemStudioAsyncJobRepository()

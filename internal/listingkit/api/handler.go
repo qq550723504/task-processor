@@ -31,7 +31,7 @@ type handler struct {
 	sheinCandidateService      listingkit.SheinCandidateService
 	sheinEnrollmentService     listingkit.SheinEnrollmentService
 	sheinSyncRepository        listingkit.SheinSyncRepository
-	studioAsyncJobs            *studioAsyncJobStore
+	studioAsyncJobs            studioAsyncJobStoreService
 	initErr                    error
 	adminHandlers
 	subscriptionDependencies
@@ -280,7 +280,7 @@ func WithSheinSyncRepository(repo listingkit.SheinSyncRepository) HandlerOption 
 	})
 }
 
-func newHandlerWithDefaults(studioAsyncJobs *studioAsyncJobStore) *handler {
+func newHandlerWithDefaults(studioAsyncJobs studioAsyncJobStoreService) *handler {
 	return &handler{
 		studioBatchRunService: nil,
 		studioAsyncJobs:       studioAsyncJobs,
