@@ -11,11 +11,11 @@ func sheinSubmissionEventsWithStoreResolution(events []sheinpub.SubmissionEvent,
 	if len(events) == 0 {
 		return nil
 	}
-	snapshot := sheinStoreResolutionSnapshotFromTask(task)
-	if snapshot == nil || snapshot.StoreID <= 0 {
+	storeResolution := sheinSubmissionStoreResolutionFromTask(task)
+	if storeResolution == nil {
 		return append([]sheinpub.SubmissionEvent(nil), events...)
 	}
-	return attachSheinSubmissionEventStoreResolution(events, sheinSubmissionStoreResolutionFromSnapshot(snapshot))
+	return attachSheinSubmissionEventStoreResolution(events, storeResolution)
 }
 
 func sheinSubmissionStoreResolutionFromSnapshot(snapshot *SheinStoreResolutionSnapshot) *sheinpub.SubmissionStoreResolution {
@@ -38,6 +38,10 @@ func sheinSubmissionStoreResolutionFromSnapshot(snapshot *SheinStoreResolutionSn
 		Fallback:         snapshot.Fallback,
 		ResolvedAt:       resolvedAt,
 	}
+}
+
+func sheinSubmissionStoreResolutionFromTask(task *Task) *sheinpub.SubmissionStoreResolution {
+	return sheinSubmissionStoreResolutionFromSnapshot(sheinStoreResolutionSnapshotFromTask(task))
 }
 
 func appendSheinSubmissionEvent(pkg *sheinpub.Package, event sheinpub.SubmissionEvent) {

@@ -76,6 +76,10 @@ func sheinStoreResolutionSummaryFromSnapshot(snapshot *SheinStoreResolutionSnaps
 	)
 }
 
+func sheinStoreResolutionSummaryFromTask(task *Task) *SheinStoreResolutionSummary {
+	return sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task))
+}
+
 func buildSheinStoreResolutionSummaryValue(
 	storeID int64,
 	site string,

@@ -165,7 +165,7 @@ func (s *taskRevisionService) GetTaskRevisionHistory(ctx context.Context, taskID
 	}
 	return attachRevisionHistoryStoreResolution(
 		page,
-		sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task)),
+		sheinStoreResolutionSummaryFromTask(task),
 	), nil
 }
 
@@ -183,7 +183,7 @@ func (s *taskRevisionService) GetTaskRevisionHistoryDetail(ctx context.Context, 
 	}
 	return attachRevisionHistoryDetailStoreResolution(
 		detail,
-		sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task)),
+		sheinStoreResolutionSummaryFromTask(task),
 	), nil
 }
 
