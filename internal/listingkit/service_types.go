@@ -39,6 +39,7 @@ type service struct {
 	adminDeps                      adminDependencies
 	submission                     submissionCollaborators
 	submissionDeps                 submissionDependencies
+	workflowDeps                   workflowDependencies
 	studioSessionRepo              StudioSessionRepository
 	studioBatchRepo                StudioBatchRepository
 	studioBatchRunRepo             StudioBatchRunRepository

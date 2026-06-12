@@ -55,7 +55,7 @@ func (p *platformAssetDispatchPhase) preAttachBundles(
 	if !enableAssetGeneration {
 		return
 	}
-	attachPlatformImageBundles(final, inventory, recipesByPlatform, generationPlan, p.service.assetBundleBuilder)
+	attachPlatformImageBundles(final, inventory, recipesByPlatform, generationPlan, resolveWorkflowAssetBundleBuilder(p.service))
 }
 
 func (p *platformAssetDispatchPhase) dispatchAndApply(
@@ -68,11 +68,13 @@ func (p *platformAssetDispatchPhase) dispatchAndApply(
 	pendingTasks []assetgeneration.Task,
 	enableAssetGeneration bool,
 ) (*ListingKitResult, *asset.Inventory, []assetgeneration.Task, int) {
-	if !enableAssetGeneration || p.service.assetGenerator == nil || len(pendingTasks) == 0 {
+	assetGenerator := resolveWorkflowAssetGenerationService(p.service)
+	assetBundleBuilder := resolveWorkflowAssetBundleBuilder(p.service)
+	if !enableAssetGeneration || assetGenerator == nil || len(pendingTasks) == 0 {
 		return final, inventory, persistedGenerationTasks, 0
 	}
 	deferredStage := newWorkflowRecorder(final).Start("asset_generation_platform", "")
-	dispatchResult, dispatchErr := p.service.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
+	dispatchResult, dispatchErr := assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
 		TaskID:    task.ID,
 		Product:   final.CatalogProduct,
 		Inventory: inventory,
@@ -90,7 +92,7 @@ func (p *platformAssetDispatchPhase) dispatchAndApply(
 			recipesByPlatform,
 			persistedGenerationTasks,
 			dispatchResult,
-			p.service.assetBundleBuilder,
+			assetBundleBuilder,
 		)
 		final = mutation.final
 		inventory = mutation.inventory

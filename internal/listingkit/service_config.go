@@ -104,6 +104,15 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 			sheinPublishWorkflowClient:  config.Workflow.SheinPublishWorkflowClient,
 			sheinPublishWorkflowEnabled: config.Workflow.SheinPublishWorkflowEnabled,
 		},
+		workflowDeps: workflowDependencies{
+			productService:         config.Core.ProductService,
+			imageService:           config.Core.ImageService,
+			assetRepository:        config.Assets.AssetRepository,
+			assetRecipeResolver:    config.Assets.AssetRecipeResolver,
+			assetBundleBuilder:     config.Assets.AssetBundleBuilder,
+			assetGenerationService: config.Assets.AssetGenerationService,
+			sheinContentOptimizer:  config.Shein.SheinContentOptimizer,
+		},
 		sheinSettings: defaultSettings,
 	}
 }

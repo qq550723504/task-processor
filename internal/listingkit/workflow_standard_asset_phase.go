@@ -26,15 +26,18 @@ func (p *standardWorkflowAssetPhase) run(
 	enableAssetGeneration bool,
 ) (*asset.Inventory, map[string][]assetrecipe.AssetRecipe, *assetgeneration.Result, []assetgeneration.Task) {
 	inventory := asset.BuildInventory(task.ID, result.AssetBundle)
-	recipesByPlatform := resolveRecipesForPlatforms(p.service.assetRecipeResolver, task.Request.Platforms, canonicalProduct)
+	assetRepo := resolveWorkflowAssetRepository(p.service)
+	assetGenerator := resolveWorkflowAssetGenerationService(p.service)
+	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(p.service)
+	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, canonicalProduct)
 	baseRecipes := baselineGenerationRecipes()
 	var generationPlan *assetgeneration.Result
 	var persistedGenerationTasks []assetgeneration.Task
 
 	if inventory != nil {
 		inventoryStage := recorder.Start("asset_inventory", "")
-		if p.service.assetRepo != nil {
-			if err := p.service.assetRepo.SaveInventory(ctx, inventory); err != nil {
+		if assetRepo != nil {
+			if err := assetRepo.SaveInventory(ctx, inventory); err != nil {
 				appendWarning(result, "asset inventory persistence failed: "+err.Error())
 				inventoryStage.Degrade("asset_inventory_persistence_failed", "Asset inventory persistence failed", err.Error())
 			} else {
@@ -43,9 +46,9 @@ func (p *standardWorkflowAssetPhase) run(
 		} else {
 			inventoryStage.Skip()
 		}
-		if enableAssetGeneration && p.service.assetGenerator != nil && len(baseRecipes) > 0 {
+		if enableAssetGeneration && assetGenerator != nil && len(baseRecipes) > 0 {
 			stage := recorder.Start("asset_generation_baseline", "")
-			execution, execErr := p.service.assetGenerator.Execute(ctx, assetgeneration.Request{
+			execution, execErr := assetGenerator.Execute(ctx, assetgeneration.Request{
 				TaskID:    task.ID,
 				Product:   result.CatalogProduct,
 				Inventory: inventory,
@@ -60,15 +63,15 @@ func (p *standardWorkflowAssetPhase) run(
 				inventory.Records = append(inventory.Records, execution.Assets...)
 				inventory.Summary = rebuildInventorySummary(inventory)
 				result.AssetBundle = rebuildBundleWithGeneratedAssets(result.AssetBundle, execution.Assets)
-				if p.service.assetRepo != nil {
-					_ = p.service.assetRepo.SaveInventory(ctx, inventory)
+				if assetRepo != nil {
+					_ = assetRepo.SaveInventory(ctx, inventory)
 				}
 			}
 		}
-		if enableAssetGeneration && p.service.assetGenerator != nil && p.service.assetRecipeResolver != nil {
+		if enableAssetGeneration && assetGenerator != nil && assetRecipeResolver != nil {
 			stage := recorder.Start("asset_generation_platform", "")
 			var planErr error
-			generationPlan, planErr = p.service.assetGenerator.Plan(ctx, assetgeneration.Request{
+			generationPlan, planErr = assetGenerator.Plan(ctx, assetgeneration.Request{
 				TaskID:    task.ID,
 				Product:   result.CatalogProduct,
 				Inventory: inventory,
@@ -78,7 +81,7 @@ func (p *standardWorkflowAssetPhase) run(
 				stage.Degrade("asset_generation_platform_plan_failed", "Platform asset generation planning failed", planErr.Error())
 			}
 			if generationPlan != nil && len(generationPlan.Tasks) > 0 {
-				dispatchResult, dispatchErr := p.service.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
+				dispatchResult, dispatchErr := assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
 					TaskID:    task.ID,
 					Product:   result.CatalogProduct,
 					Inventory: inventory,
@@ -94,8 +97,8 @@ func (p *standardWorkflowAssetPhase) run(
 						inventory.Records = append(inventory.Records, dispatchResult.Assets...)
 						inventory.Summary = rebuildInventorySummary(inventory)
 						result.AssetBundle = rebuildBundleWithGeneratedAssets(result.AssetBundle, dispatchResult.Assets)
-						if p.service.assetRepo != nil {
-							_ = p.service.assetRepo.SaveInventory(ctx, inventory)
+						if assetRepo != nil {
+							_ = assetRepo.SaveInventory(ctx, inventory)
 						}
 					}
 				}

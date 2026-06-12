@@ -56,7 +56,8 @@ func (p *standardWorkflowCanonicalPhase) run(
 	}
 
 	stage := recorder.Start("product_enrich", "")
-	productTask, err := p.service.productSvc.CreateGenerateTask(productenrich.WithInlineTaskExecution(ctx), toProductGenerateRequest(task))
+	productSvc := resolveWorkflowProductService(p.service)
+	productTask, err := productSvc.CreateGenerateTask(productenrich.WithInlineTaskExecution(ctx), toProductGenerateRequest(task))
 	if err != nil {
 		markChildTask(result, "product_enrich", "", string(TaskStatusFailed), err.Error())
 		stage.Fail("product_task_creation_failed", "Product enrichment task creation failed", err.Error())
@@ -66,7 +67,7 @@ func (p *standardWorkflowCanonicalPhase) run(
 	stage.SetTaskID(productTask.ID)
 	markChildTask(result, "product_enrich", productTask.ID, string(productenrich.TaskStatusPending), "")
 
-	productJSON, err := p.service.productSvc.ProcessProduct(ctx, productTask)
+	productJSON, err := productSvc.ProcessProduct(ctx, productTask)
 	if err != nil {
 		markChildTask(result, "product_enrich", productTask.ID, string(TaskStatusFailed), err.Error())
 		if !shouldUseStudioProductFallback(task) {

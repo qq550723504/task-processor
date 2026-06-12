@@ -28,9 +28,10 @@ func (p *standardWorkflowMediaPhase) run(
 	log *logrus.Entry,
 ) (*productimage.ImageProcessResult, *SDSSyncOptions) {
 	var imageResult *productimage.ImageProcessResult
-	if shouldProcessImages(task.Request) && p.service.imageSvc != nil {
+	imageSvc := resolveWorkflowImageService(p.service)
+	if shouldProcessImages(task.Request) && imageSvc != nil {
 		stage := recorder.Start("product_image", "")
-		imageTask, imageErr := p.service.imageSvc.CreateProcessTask(productimage.WithInlineTaskExecution(ctx), toImageProcessRequest(task))
+		imageTask, imageErr := imageSvc.CreateProcessTask(productimage.WithInlineTaskExecution(ctx), toImageProcessRequest(task))
 		if imageErr != nil {
 			markChildTask(result, "product_image", "", string(TaskStatusFailed), imageErr.Error())
 			appendWarning(result, "image processing skipped: "+imageErr.Error())
@@ -38,7 +39,7 @@ func (p *standardWorkflowMediaPhase) run(
 		} else {
 			stage.SetTaskID(imageTask.ID)
 			markChildTask(result, "product_image", imageTask.ID, string(productimage.TaskStatusPending), "")
-			imageResult, imageErr = p.service.imageSvc.ProcessImages(ctx, imageTask)
+			imageResult, imageErr = imageSvc.ProcessImages(ctx, imageTask)
 			if imageErr != nil {
 				markChildTask(result, "product_image", imageTask.ID, string(TaskStatusFailed), imageErr.Error())
 				appendWarning(result, "image processing failed: "+imageErr.Error())
