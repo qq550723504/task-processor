@@ -58,7 +58,7 @@ func (s *service) runPlatformAdaptation(
 	}
 
 	log.Info("starting listing kit platform adaptation")
-	final := s.assembler.Assemble(task, canonicalProduct, imageAssets)
+	final := resolveAssembler(s).Assemble(task, canonicalProduct, imageAssets)
 	if final == nil {
 		final = initResult(task)
 	}

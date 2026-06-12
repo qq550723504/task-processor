@@ -122,6 +122,13 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 			saleAttributeResolver: config.Shein.SheinSaleAttributeResolver,
 			pricingPolicy:         config.Shein.SheinPricingPolicy,
 		},
+		supportDeps: supportDependencies{
+			sdsSyncService:            config.Core.SDSSyncService,
+			sdsBaselineRemoteProvider: config.Core.SDSBaselineRemoteProvider,
+			uploadedImageRepository:   config.Core.UploadedImageRepository,
+			assembler:                 config.Assets.Assembler,
+			reviewRepository:          config.Assets.ReviewRepository,
+		},
 		sheinSettings: defaultSettings,
 	}
 }

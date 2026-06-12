@@ -192,10 +192,11 @@ func (s *service) listAssetGenerationTasks(ctx context.Context, taskID string) (
 }
 
 func (s *service) listGenerationReviews(ctx context.Context, taskID string) ([]GenerationReviewRecord, error) {
-	if s.reviewRepo == nil {
+	reviewRepo := resolveReviewRepository(s)
+	if reviewRepo == nil {
 		return nil, nil
 	}
-	records, err := s.reviewRepo.ListReviews(ctx, taskID)
+	records, err := reviewRepo.ListReviews(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}

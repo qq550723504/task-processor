@@ -24,7 +24,8 @@ func sdsDesignSyncTimeoutForVariantCount(targetCount int) time.Duration {
 }
 
 func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *ListingKitResult, imageResult *productimage.ImageProcessResult, recorder *workflowRecorder) {
-	if s.sdsSyncSvc == nil || !shouldSyncSDS(task.Request) || imageResult == nil {
+	syncService := resolveSDSSyncService(s)
+	if syncService == nil || !shouldSyncSDS(task.Request) || imageResult == nil {
 		return
 	}
 	result = normalizeListingKitResultSemanticFields(result)
@@ -42,7 +43,7 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
 	defer cancel()
 
-	syncResult, err := s.sdsSyncSvc.SyncFromImageResult(syncCtx, sdsusecase.ImageResultInput{
+	syncResult, err := syncService.SyncFromImageResult(syncCtx, sdsusecase.ImageResultInput{
 		Sync: sdsusecase.SyncInput{
 			VariantID:        options.VariantID,
 			ParentProductID:  options.ParentProductID,
@@ -92,7 +93,8 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 }
 
 func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) {
-	if s.sdsSyncSvc == nil || task == nil || task.Request == nil || !shouldRunRemoteSDSDesignSync(task.Request) {
+	syncService := resolveSDSSyncService(s)
+	if syncService == nil || task == nil || task.Request == nil || !shouldRunRemoteSDSDesignSync(task.Request) {
 		return
 	}
 	result = normalizeListingKitResultSemanticFields(result)
@@ -191,7 +193,7 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
 	defer cancel()
 
-	syncResult, err := s.sdsSyncSvc.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
+	syncResult, err := syncService.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
 		Sync: sdsusecase.SyncInput{
 			VariantID:        options.VariantID,
 			ParentProductID:  options.ParentProductID,
@@ -254,6 +256,10 @@ func (s *service) syncSDSDesignFromUploadedImagePath(ctx context.Context, task *
 }
 
 func (s *service) syncSDSDesignFromUploadedImageKey(ctx context.Context, task *Task, key string, syncInput sdsusecase.SyncInput, timeout time.Duration) (*sdsworkflow.SyncResult, bool, error) {
+	syncService := resolveSDSSyncService(s)
+	if syncService == nil {
+		return nil, true, fmt.Errorf("sds sync service is not configured")
+	}
 	if s.uploadStore == nil {
 		return nil, true, fmt.Errorf("uploaded image store is not configured")
 	}
@@ -292,7 +298,7 @@ func (s *service) syncSDSDesignFromUploadedImageKey(ctx context.Context, task *T
 	}
 	syncCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	syncResult, err := s.sdsSyncSvc.SyncFromLocalFile(syncCtx, sdsusecase.LocalFileInput{
+	syncResult, err := syncService.SyncFromLocalFile(syncCtx, sdsusecase.LocalFileInput{
 		Sync: syncInput,
 		File: sdsworkflow.FileSource{
 			Path:        tempPath,
@@ -307,6 +313,10 @@ func (s *service) syncSDSDesignFromUploadedImageKey(ctx context.Context, task *T
 }
 
 func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Task, result *ListingKitResult, imageURL string, recorder *workflowRecorder) {
+	syncService := resolveSDSSyncService(s)
+	if syncService == nil {
+		return
+	}
 	options := task.Request.Options.SDS
 	result = normalizeListingKitResultSemanticFields(result)
 	defer normalizeListingKitResultSemanticFields(result)
@@ -344,7 +354,7 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 			}
 			syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeoutForVariantCount(1))
 			defer cancel()
-			return s.sdsSyncSvc.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
+			return syncService.SyncFromRemoteImage(syncCtx, sdsusecase.RemoteImageInput{
 				Sync: syncInput,
 				Image: sdsusecase.ImageSource{
 					URL:      imageURL,

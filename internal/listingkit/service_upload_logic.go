@@ -18,13 +18,14 @@ func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*
 	response := &UploadImagesResponse{
 		ImageURLs: make([]string, 0, len(req.Files)),
 	}
+	uploadedImageRepo := resolveUploadedImageRepository(s)
 	for _, file := range req.Files {
 		stored, err := s.uploadStore.Save(ctx, &file)
 		if err != nil {
 			return nil, fmt.Errorf("save uploaded image: %w", err)
 		}
-		if s.uploadedImageRepo != nil {
-			_ = s.uploadedImageRepo.SaveUploadedImage(ctx, &UploadedImageRecord{
+		if uploadedImageRepo != nil {
+			_ = uploadedImageRepo.SaveUploadedImage(ctx, &UploadedImageRecord{
 				Key:          stored.Key,
 				Filename:     stored.Filename,
 				PublicURL:    stored.PublicURL,
@@ -76,8 +77,9 @@ func (s *service) DeleteUploadedImage(ctx context.Context, key string) (*Deleted
 		return nil, ErrUploadedImageNotFound
 	}
 	var stored *StoredUploadedImage
-	if s.uploadedImageRepo != nil {
-		record, err := s.uploadedImageRepo.GetUploadedImage(ctx, key)
+	uploadedImageRepo := resolveUploadedImageRepository(s)
+	if uploadedImageRepo != nil {
+		record, err := uploadedImageRepo.GetUploadedImage(ctx, key)
 		if err != nil {
 			return nil, err
 		}
@@ -92,8 +94,8 @@ func (s *service) DeleteUploadedImage(ctx context.Context, key string) (*Deleted
 	if err := s.uploadStore.Delete(ctx, stored.Key); err != nil {
 		return nil, err
 	}
-	if s.uploadedImageRepo != nil {
-		if _, err := s.uploadedImageRepo.MarkUploadedImageDeleted(ctx, stored.Key); err != nil {
+	if uploadedImageRepo != nil {
+		if _, err := uploadedImageRepo.MarkUploadedImageDeleted(ctx, stored.Key); err != nil {
 			return nil, err
 		}
 	}

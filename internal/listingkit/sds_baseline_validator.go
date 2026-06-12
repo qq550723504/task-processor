@@ -73,7 +73,7 @@ func (s *service) validateSDSBaseline(ctx context.Context, options *SDSSyncOptio
 			Reason:     "SDS login state is missing access token.",
 		}
 	}
-	if s.sdsBaselineRemoteProvider != nil {
+	if resolveSDSBaselineRemoteProvider(s) != nil {
 		if result := s.validateSDSBaselineRemote(ctx, options); result.Status != SDSBaselineValidationStatusReady {
 			return result
 		}
@@ -163,10 +163,11 @@ func (s *service) persistSDSBaselineValidation(ctx context.Context, task *Task) 
 }
 
 func (s *service) validateSDSBaselineRemote(ctx context.Context, options *SDSSyncOptions) sdsBaselineValidationResult {
-	if s == nil || s.sdsBaselineRemoteProvider == nil || options == nil {
+	remoteProvider := resolveSDSBaselineRemoteProvider(s)
+	if s == nil || remoteProvider == nil || options == nil {
 		return sdsBaselineValidationResult{Status: SDSBaselineValidationStatusUnknown}
 	}
-	detail, err := s.sdsBaselineRemoteProvider.GetProductDetail(ctx, options.ParentProductID)
+	detail, err := remoteProvider.GetProductDetail(ctx, options.ParentProductID)
 	if err != nil {
 		return sdsBaselineValidationResult{
 			Status:     SDSBaselineValidationStatusFailed,
@@ -181,7 +182,7 @@ func (s *service) validateSDSBaselineRemote(ctx context.Context, options *SDSSyn
 			Reason:     "SDS product detail is unavailable.",
 		}
 	}
-	page, err := s.sdsBaselineRemoteProvider.GetDesignProduct(ctx, options.VariantID)
+	page, err := remoteProvider.GetDesignProduct(ctx, options.VariantID)
 	if err != nil {
 		if isSDSBaselineCredentialBootstrapError(err) {
 			return sdsBaselineValidationResult{
@@ -223,7 +224,7 @@ func (s *service) validateSDSBaselineRemote(ctx context.Context, options *SDSSyn
 		}
 	}
 	if options.ParentProductID > 0 {
-		groups, groupErr := s.sdsBaselineRemoteProvider.GetPrototypeGroups(ctx, options.ParentProductID)
+		groups, groupErr := remoteProvider.GetPrototypeGroups(ctx, options.ParentProductID)
 		if groupErr != nil {
 			return sdsBaselineValidationResult{
 				Status:     SDSBaselineValidationStatusFailed,

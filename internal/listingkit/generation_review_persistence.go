@@ -10,7 +10,8 @@ import (
 )
 
 func (s *service) persistGenerationReviewDecision(ctx context.Context, taskID string, actionKey string, session *GenerationReviewSession, target *AssetGenerationActionTarget) (*GenerationReviewRecord, error) {
-	if s.reviewRepo == nil || !isPersistedGenerationReviewAction(actionKey) {
+	reviewRepo := resolveReviewRepository(s)
+	if reviewRepo == nil || !isPersistedGenerationReviewAction(actionKey) {
 		return nil, nil
 	}
 	record := buildGenerationReviewRecord(taskID, actionKey, session, target)
@@ -31,7 +32,7 @@ func (s *service) persistGenerationReviewDecision(ctx context.Context, taskID st
 	if record == nil {
 		return nil, nil
 	}
-	if err := s.reviewRepo.SaveReview(ctx, &reviewstore.ReviewRecord{
+	if err := reviewRepo.SaveReview(ctx, &reviewstore.ReviewRecord{
 		TaskID:          record.TaskID,
 		Platform:        record.Platform,
 		Slot:            record.Slot,
