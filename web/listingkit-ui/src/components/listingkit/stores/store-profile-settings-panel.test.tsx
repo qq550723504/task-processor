@@ -47,7 +47,6 @@ describe("StoreProfileSettingsPanel", () => {
           priority: 10,
           site: "US",
           warehouse_code: "WH-US-1",
-          match_rules: [{ kind: "country", values: ["US", "CA"] }],
           store: { id: 869, name: "US 主店", store_id: "SHEIN-US-869", region: "US" },
         },
       ],
@@ -107,8 +106,8 @@ describe("StoreProfileSettingsPanel", () => {
     expect(await screen.findByText("我的店铺配置")).toBeInTheDocument();
     expect(screen.getByText("US 主店")).toBeInTheDocument();
     expect(screen.getByText("WH-US-1")).toBeInTheDocument();
-    expect(screen.getByText("国家: US, CA")).toBeInTheDocument();
     expect(screen.getByText("已启用")).toBeInTheDocument();
+    expect(screen.queryByText("匹配规则")).not.toBeInTheDocument();
   });
 
   it("creates a new tenant store profile from tenant-available stores", async () => {
@@ -117,7 +116,6 @@ describe("StoreProfileSettingsPanel", () => {
     await screen.findByText("我的店铺配置");
     await screen.findByRole("option", { name: "US 备用店 (SHEIN-US-870 / US)" });
     expect(screen.getByRole("option", { name: "UK" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("国家规则")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("combobox", { name: "SHEIN 店铺" }), {
       target: { value: "870" },
@@ -132,13 +130,6 @@ describe("StoreProfileSettingsPanel", () => {
     warehouseCA.selected = true;
     warehouseUS.selected = true;
     fireEvent.change(warehouseSelect);
-    fireEvent.click(screen.getByText("高级设置"));
-    fireEvent.change(screen.getByLabelText("国家规则"), {
-      target: { value: "CA, US" },
-    });
-    fireEvent.change(screen.getByLabelText("类目规则"), {
-      target: { value: "shoes, jewelry" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "新增配置" }));
 
     await waitFor(() => {
@@ -147,10 +138,6 @@ describe("StoreProfileSettingsPanel", () => {
           store_id: 870,
           site: "CA",
           warehouse_code: "WH-CA-1,WH-US-1",
-          match_rules: [
-            { kind: "country", values: ["CA", "US"] },
-            { kind: "category", values: ["shoes", "jewelry"] },
-          ],
         }),
       );
     });

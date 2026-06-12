@@ -36,9 +36,6 @@ type StoreProfileForm = {
   store_id: string;
   enabled: boolean;
   priority: string;
-  is_fallback: boolean;
-  country_rules: string;
-  category_rules: string;
   site: string;
   warehouse_codes: string[];
   default_stock: string;
@@ -62,9 +59,6 @@ const DEFAULT_FORM: StoreProfileForm = {
   store_id: "",
   enabled: true,
   priority: "100",
-  is_fallback: false,
-  country_rules: "",
-  category_rules: "",
   site: "US",
   warehouse_codes: [],
   default_stock: "100",
@@ -81,7 +75,6 @@ export function StoreProfileSettingsPanel() {
   const upsert = useUpsertStoreProfile();
   const remove = useDeleteStoreProfile();
   const [draft, setDraft] = useState<StoreProfileForm>(DEFAULT_FORM);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [error, setError] = useState("");
 
   const storeOptionsQuery = useQuery({
@@ -149,9 +142,6 @@ export function StoreProfileSettingsPanel() {
       store_id: String(profile.store_id),
       enabled: profile.enabled ?? true,
       priority: String(profile.priority ?? 100),
-      is_fallback: profile.is_fallback ?? false,
-      country_rules: formatMatchRuleValues(profile, "country"),
-      category_rules: formatMatchRuleValues(profile, "category"),
       site: profile.site ?? "US",
       warehouse_codes: parseWarehouseCodes(profile.warehouse_code),
       default_stock: String(profile.default_stock ?? 100),
@@ -175,8 +165,6 @@ export function StoreProfileSettingsPanel() {
         store_id: Number(draft.store_id),
         enabled: draft.enabled,
         priority: Number(draft.priority) || 0,
-        is_fallback: draft.is_fallback,
-        match_rules: buildMatchRules(draft),
         site: draft.site.trim().toUpperCase(),
         warehouse_code: normalizeWarehouseCodes(draft.warehouse_codes).join(","),
         default_stock: Number(draft.default_stock) || 0,
@@ -261,7 +249,6 @@ export function StoreProfileSettingsPanel() {
               <TableRow>
                 <TableHead className="px-4 py-3">店铺</TableHead>
                 <TableHead className="px-4 py-3">站点 / 仓库</TableHead>
-                <TableHead className="px-4 py-3">匹配规则</TableHead>
                 <TableHead className="px-4 py-3">优先级</TableHead>
                 <TableHead className="px-4 py-3">状态</TableHead>
                 <TableHead className="px-4 py-3 text-right">操作</TableHead>
@@ -270,13 +257,13 @@ export function StoreProfileSettingsPanel() {
             <TableBody className="divide-y divide-zinc-100">
               {profiles.isLoading ? (
                 <TableRow>
-                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={6}>
+                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={5}>
                     加载中...
                   </TableCell>
                 </TableRow>
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={6}>
+                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={5}>
                     当前还没有店铺发布配置
                   </TableCell>
                 </TableRow>
@@ -298,13 +285,9 @@ export function StoreProfileSettingsPanel() {
                         {formatWarehouseCodeSummary(item.warehouse_code)}
                       </div>
                     </TableCell>
-                    <TableCell className="px-4 py-3 text-zinc-700">
-                      <div className="text-xs text-zinc-600">{summarizeMatchRules(item)}</div>
-                    </TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">{item.priority ?? "-"}</TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">
                       <div>{item.enabled === false ? "已禁用" : "已启用"}</div>
-                      {item.is_fallback ? <div className="text-xs text-zinc-500">fallback</div> : null}
                     </TableCell>
                     <TableCell className="px-4 py-3 text-right">
                       <Button
@@ -423,36 +406,6 @@ export function StoreProfileSettingsPanel() {
                   ? `仓库列表读取失败：${warehouseOptionsQuery.error.message}`
                   : "支持多选；当前发布链路会优先使用你选择的第一个仓库编码。"}
         </p>
-        <div className="mb-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-          <button
-            type="button"
-            className="text-sm font-medium text-zinc-700"
-            onClick={() => setAdvancedOpen((current) => !current)}
-          >
-            高级设置
-          </button>
-          {advancedOpen ? (
-            <>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <TextField
-                  label="国家规则"
-                  value={draft.country_rules}
-                  onChange={(country_rules) => setDraft((current) => ({ ...current, country_rules }))}
-                  placeholder="US, CA, GB"
-                />
-                <TextField
-                  label="类目规则"
-                  value={draft.category_rules}
-                  onChange={(category_rules) => setDraft((current) => ({ ...current, category_rules }))}
-                  placeholder="shoes, jewelry"
-                />
-              </div>
-              <p className="-mt-1 text-xs leading-5 text-zinc-500">
-                `国家规则` 会匹配任务里的 `country`；`类目规则` 会匹配类目 hint 或 SDS 类目路径。多个值用逗号分隔。
-              </p>
-            </>
-          ) : null}
-        </div>
         <div className="grid grid-cols-2 gap-3">
           <TextField
             label="优先级"
@@ -528,13 +481,6 @@ export function StoreProfileSettingsPanel() {
               onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
             />
             启用这个店铺配置
-          </Label>
-          <Label className="flex items-center gap-2 text-sm text-zinc-700">
-            <Checkbox
-              checked={draft.is_fallback}
-              onChange={(event) => setDraft((current) => ({ ...current, is_fallback: event.target.checked }))}
-            />
-            作为 fallback 店铺
           </Label>
         </div>
 
@@ -628,38 +574,6 @@ function formatWarehouseOptionLabel(item: SheinLoginWarehouse) {
     return `${code} / ${countries}`;
   }
   return code;
-}
-
-function formatMatchRuleValues(profile: ListingKitStoreProfile, kind: string) {
-  const match = profile.match_rules?.find((item) => item.kind === kind);
-  return match?.values?.join(", ") ?? "";
-}
-
-function buildMatchRules(form: StoreProfileForm) {
-  const items = [
-    { kind: "country", values: splitRuleInput(form.country_rules) },
-    { kind: "category", values: splitRuleInput(form.category_rules) },
-  ];
-  return items.filter((item) => item.values.length > 0);
-}
-
-function splitRuleInput(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function summarizeMatchRules(profile: ListingKitStoreProfile) {
-  const parts: string[] = [];
-  for (const rule of profile.match_rules ?? []) {
-    if (!rule.kind || !rule.values?.length) {
-      continue;
-    }
-    const label = rule.kind === "country" ? "国家" : rule.kind === "category" ? "类目" : rule.kind;
-    parts.push(`${label}: ${rule.values.join(", ")}`);
-  }
-  return parts.length > 0 ? parts.join(" · ") : "未配置";
 }
 
 function Field({
