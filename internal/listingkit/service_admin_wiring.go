@@ -1,21 +1,13 @@
 package listingkit
 
 func buildSettingsAdminServiceConfig(s *service) settingsAdminServiceConfig {
+	wiring := buildSettingsAdminWiring(s)
 	return settingsAdminServiceConfig{
-		storeProfileRepo:     s.storeProfileRepo,
-		aiCredentialStore:    s.aiCredentialStore,
-		currentSheinSettings: s.currentSheinSubmitSettings,
-		mutateSheinSettings: func(mutate func(*SheinSettings)) SheinSettings {
-			s.sheinSettingsMu.Lock()
-			defer s.sheinSettingsMu.Unlock()
-			settings := s.sheinSettings
-			if mutate != nil {
-				mutate(&settings)
-			}
-			s.sheinSettings = settings
-			return settings
-		},
-		listStoreOptions: s.listSheinStoreOptions,
+		storeProfileRepo:     wiring.storeProfileRepo,
+		aiCredentialStore:    wiring.aiCredentialStore,
+		currentSheinSettings: wiring.currentSheinSettings,
+		mutateSheinSettings:  wiring.mutateSheinSettings,
+		listStoreOptions:     wiring.listStoreOptions,
 	}
 }
 
