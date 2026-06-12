@@ -115,3 +115,18 @@ func buildSupportDependencies(config *ServiceConfig) supportDependencies {
 		reviewRepository:          config.Assets.ReviewRepository,
 	}
 }
+
+func applyServiceDependencyGroups(svc *service, config *ServiceConfig) {
+	if svc == nil {
+		return
+	}
+	svc.requestDefaults = buildGenerateRequestDefaults(config)
+	svc.taskDeps = buildTaskDependencies(config)
+	svc.studioDeps = buildStudioDependencies(config)
+	svc.submission = buildSubmissionCollaborators()
+	svc.adminDeps = buildAdminDependencies(config)
+	svc.submissionDeps = buildSubmissionDependencies(config)
+	svc.workflowDeps = buildWorkflowDependencies(config)
+	svc.sheinRuntimeDeps = buildSheinRuntimeDependencies(config)
+	svc.supportDeps = buildSupportDependencies(config)
+}
