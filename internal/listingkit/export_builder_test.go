@@ -306,3 +306,12 @@ func TestBuildListingKitExportReturnsBundleByDefault(t *testing.T) {
 		t.Fatalf("file name = %q, want bundle suffix", export.FileName)
 	}
 }
+
+func TestBuildListingKitExportRejectsUnsupportedPlatform(t *testing.T) {
+	t.Parallel()
+
+	_, err := buildListingKitExport(&Task{ID: "task-export-invalid"}, " ebay ")
+	if err != ErrUnsupportedPreviewPlatform {
+		t.Fatalf("error = %v, want %v", err, ErrUnsupportedPreviewPlatform)
+	}
+}

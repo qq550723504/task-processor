@@ -2,9 +2,9 @@ package listingkit
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
+	previewdomain "task-processor/internal/listing/preview"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -13,8 +13,9 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 		return nil, ErrTaskNotFound
 	}
 
-	selectedPlatform = strings.ToLower(strings.TrimSpace(selectedPlatform))
-	if selectedPlatform != "" && len(normalizePlatforms([]string{selectedPlatform})) == 0 {
+	var ok bool
+	selectedPlatform, ok = previewdomain.ValidateSelectedPlatform(selectedPlatform)
+	if !ok {
 		return nil, ErrUnsupportedPreviewPlatform
 	}
 
