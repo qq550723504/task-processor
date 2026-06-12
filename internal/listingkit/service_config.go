@@ -67,6 +67,17 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 		requestDefaults: generateRequestDefaults{
 			sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
 		},
+		taskDeps: taskDependencies{
+			sdsLoginStatusProvider: config.Core.SDSLoginStatusProvider,
+			taskSubmitter:          config.Core.TaskSubmitter,
+			requestDefaults: generateRequestDefaults{
+				sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
+			},
+			standardWorkflowClient:       config.Workflow.StandardProductWorkflowClient,
+			standardWorkflowEnabled:      config.Workflow.StandardProductWorkflowEnabled,
+			platformAdaptWorkflowClient:  config.Workflow.PlatformAdaptWorkflowClient,
+			platformAdaptWorkflowEnabled: config.Workflow.PlatformAdaptWorkflowEnabled,
+		},
 		studioDeps: studioDependencies{
 			sessionRepo:       config.Core.StudioSessionRepository,
 			batchRepo:         config.Core.StudioBatchRepository,

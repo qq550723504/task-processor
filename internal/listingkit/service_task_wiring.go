@@ -16,10 +16,10 @@ func buildTaskGenerationServiceConfig(s *service) taskGenerationServiceConfig {
 		buildRetryGenerationTaskSelection: s.buildRetryGenerationTaskSelection,
 		persistGenerationReviewDecision:   s.persistGenerationReviewDecision,
 		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
-			return s.standardProductWorkflowClient, s.standardProductWorkflowEnabled
+			return resolveStandardWorkflowClient(s)
 		},
 		platformAdaptWorkflow: func() (PlatformAdaptWorkflowClient, bool) {
-			return s.platformAdaptWorkflowClient, s.platformAdaptWorkflowEnabled
+			return resolvePlatformAdaptWorkflowClient(s)
 		},
 	}
 }
@@ -67,13 +67,13 @@ func buildTaskLifecycleServiceConfig(s *service) taskLifecycleServiceConfig {
 		repo:                        s.repo,
 		sdsBaselineReadinessService: s.sdsBaselineOrDefault(),
 		requestDefaults: func() generateRequestDefaults {
-			return s.requestDefaults
+			return resolveTaskRequestDefaults(s)
 		},
 		taskSubmitter: func() TaskSubmitter {
-			return s.taskSubmitter
+			return resolveTaskSubmitter(s)
 		},
 		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
-			return s.standardProductWorkflowClient, s.standardProductWorkflowEnabled
+			return resolveStandardWorkflowClient(s)
 		},
 		processListingKit: s.ProcessListingKit,
 		resolveStoreSelection: func(ctx context.Context, task *Task) (*sheinStoreSelection, error) {
@@ -91,6 +91,6 @@ func buildSDSBaselineServiceConfig(s *service) sdsBaselineServiceConfig {
 	}
 	return sdsBaselineServiceConfig{
 		repo:                   s.repo,
-		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
+		sdsLoginStatusProvider: resolveSDSLoginStatusProvider(s),
 	}
 }

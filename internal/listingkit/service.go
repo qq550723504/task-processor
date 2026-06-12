@@ -8,6 +8,7 @@ import (
 
 func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {
 	s.taskSubmitter = submitter
+	s.taskDeps.taskSubmitter = submitter
 }
 
 func (s *service) ConfigureSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {
@@ -24,8 +25,11 @@ func ConfigureSheinPublishWorkflowClient(svc WorkflowClientConfigurer, client Sh
 }
 
 func (s *service) ConfigureStandardProductWorkflowClient(client StandardProductWorkflowClient, enabled bool) {
+	enabled = enabled && client != nil
 	s.standardProductWorkflowClient = client
-	s.standardProductWorkflowEnabled = enabled && client != nil
+	s.standardProductWorkflowEnabled = enabled
+	s.taskDeps.standardWorkflowClient = client
+	s.taskDeps.standardWorkflowEnabled = enabled
 }
 
 func ConfigureStandardProductWorkflowClient(svc WorkflowClientConfigurer, client StandardProductWorkflowClient, enabled bool) error {
@@ -37,8 +41,11 @@ func ConfigureStandardProductWorkflowClient(svc WorkflowClientConfigurer, client
 }
 
 func (s *service) ConfigurePlatformAdaptWorkflowClient(client PlatformAdaptWorkflowClient, enabled bool) {
+	enabled = enabled && client != nil
 	s.platformAdaptWorkflowClient = client
-	s.platformAdaptWorkflowEnabled = enabled && client != nil
+	s.platformAdaptWorkflowEnabled = enabled
+	s.taskDeps.platformAdaptWorkflowClient = client
+	s.taskDeps.platformAdaptWorkflowEnabled = enabled
 }
 
 func ConfigurePlatformAdaptWorkflowClient(svc WorkflowClientConfigurer, client PlatformAdaptWorkflowClient, enabled bool) error {

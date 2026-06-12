@@ -30,8 +30,8 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 	if err := s.repo.SaveTaskResult(ctx, task.ID, state.result); err != nil {
 		return nil, err
 	}
-	if s.platformAdaptWorkflowEnabled && s.platformAdaptWorkflowClient != nil {
-		if err := s.platformAdaptWorkflowClient.StartPlatformAdaptation(ctx, PlatformAdaptWorkflowStartInput{
+	if client, enabled := resolvePlatformAdaptWorkflowClient(s); enabled && client != nil {
+		if err := client.StartPlatformAdaptation(ctx, PlatformAdaptWorkflowStartInput{
 			TaskID:      strings.TrimSpace(task.ID),
 			Platform:    "all",
 			RequestedAt: time.Now().UTC(),

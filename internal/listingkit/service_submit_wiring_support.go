@@ -15,7 +15,7 @@ func buildTaskSubmitterWiring(s *service) taskSubmitterWiring {
 	return taskSubmitterWiring{
 		repo: s.repo,
 		taskSubmitter: func() TaskSubmitter {
-			return s.taskSubmitter
+			return resolveTaskSubmitter(s)
 		},
 	}
 }
