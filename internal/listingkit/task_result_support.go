@@ -75,26 +75,19 @@ func buildTaskResult(task *Task, resultPayload *ListingKitResult) *TaskResult {
 	if task == nil {
 		return nil
 	}
-	reviewReasons, effectiveError := buildTaskResultReviewState(task, resultPayload)
+	projection := buildTaskResultProjection(task, resultPayload)
 	result := &TaskResult{
 		TaskIdentityFields: TaskIdentityFields{
 			TaskID:   task.ID,
 			TenantID: task.TenantID,
 		},
-		TaskResultLifecycleFields: TaskResultLifecycleFields{
-			Status:    task.Status,
-			Error:     effectiveError,
-			CreatedAt: task.CreatedAt,
-		},
-		Result:         resultPayload,
-		ReviewReasons:  reviewReasons,
-		RetryableBlock: cloneRetryableBlock(task.RetryableBlock),
+		TaskResultLifecycleFields: projection.Lifecycle,
+		Result:                    resultPayload,
+		ReviewReasons:             projection.ReviewReasons,
+		RetryableBlock:            projection.RetryableBlock,
 	}
 	if resultPayload != nil && resultPayload.Shein != nil {
 		applySheinSubmissionStatusFields(&result.SheinSubmissionStatusFields, resultPayload.Shein)
-	}
-	if taskStatusIsTerminal(task.Status) {
-		result.CompletedAt = &task.UpdatedAt
 	}
 	return result
 }
