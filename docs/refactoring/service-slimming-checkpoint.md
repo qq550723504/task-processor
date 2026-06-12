@@ -32,6 +32,7 @@ internal/listingkit/service_shein_data_image_regeneration_logic.go // SHEIN data
 internal/listingkit/service_shein_pricing_preview_entrypoint.go // SHEIN pricing preview entrypoint
 internal/listingkit/service_shein_resolution_cache_clear_entrypoint.go // SHEIN resolution cache clear entrypoint
 internal/listingkit/service_shein_submission_event_listing_entrypoint.go // SHEIN submission event listing entrypoint
+internal/listingkit/service_shein_store_routing_legacy_entrypoints.go // legacy SHEIN store-routing settings entrypoints
 internal/listingkit/service_shein_store_selection_resolvers.go // SHEIN store selection helpers
 internal/listingkit/service_shein_settings_entrypoints.go // SHEIN settings entrypoints
 internal/listingkit/service_shein_store_settings_entrypoints.go // SHEIN store settings entrypoints
@@ -158,7 +159,12 @@ Owns shared child-task retry helpers:
 
 Owns root SHEIN store settings entrypoints:
 
-- store profile list / upsert / delete,
+- store profile list / upsert / delete.
+
+### `service_shein_store_routing_legacy_entrypoints.go`
+
+Owns root legacy SHEIN store-routing settings entrypoints:
+
 - legacy store routing settings fetch / update.
 
 ### `service_ai_client_settings_entrypoints.go`
