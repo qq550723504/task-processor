@@ -2,7 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
 
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -22,24 +21,16 @@ func (s *taskTemporalSubmissionAdapter) PrepareSheinPublishPayload(ctx context.C
 		return nil, err
 	}
 	dumpSheinSubmitPayloadForDebug(in.TaskID, in.Action, in.RequestID, "prepared", submitProduct)
-	snapshot := sheinpub.BuildSubmitSnapshot(submitProduct)
-	if err := s.persistSheinSubmitSnapshot(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, snapshot); err != nil {
+	preparedPayload := newSheinPreparedSubmitPayload(in.TaskID, in.Action, in.RequestID, submitProduct)
+	if err := s.persistSheinSubmitSnapshot(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, preparedPayload.Snapshot); err != nil {
 		return nil, err
 	}
-
-	return &SheinPreparedSubmitPayload{
-		TaskID:           in.TaskID,
-		Action:           in.Action,
-		RequestID:        in.RequestID,
-		Product:          submitProduct,
-		NeedsImageUpload: sheinProductPendingImageUploadCount(submitProduct) > 0,
-		Snapshot:         snapshot,
-	}, nil
+	return preparedPayload, nil
 }
 
 func (s *taskTemporalSubmissionAdapter) UploadSheinPublishImages(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinPreparedSubmitPayload, error) {
-	if in == nil || in.Product == nil {
-		return nil, fmt.Errorf("shein publish payload is required")
+	if err := requireSheinPreparedSubmitPayload(in); err != nil {
+		return nil, err
 	}
 	if !in.NeedsImageUpload {
 		return in, nil
@@ -58,20 +49,16 @@ func (s *taskTemporalSubmissionAdapter) UploadSheinPublishImages(ctx context.Con
 	prepareSheinProductForSubmit(in.Product, s.resolveSubmitSettings(ctx, task))
 	dumpSheinSubmitPayloadForDebug(in.TaskID, in.Action, in.RequestID, "uploaded", in.Product)
 
-	snapshot := sheinpub.BuildSubmitSnapshot(in.Product)
-	if err := s.persistSheinSubmitSnapshot(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, snapshot); err != nil {
+	out := refreshSheinPreparedSubmitPayloadSnapshot(in)
+	if err := s.persistSheinSubmitSnapshot(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, out.Snapshot); err != nil {
 		return nil, err
 	}
-
-	out := *in
-	out.NeedsImageUpload = false
-	out.Snapshot = snapshot
-	return &out, nil
+	return out, nil
 }
 
 func (s *taskTemporalSubmissionAdapter) PreValidateSheinPublish(ctx context.Context, in *SheinPreparedSubmitPayload) error {
-	if in == nil || in.Product == nil {
-		return fmt.Errorf("shein publish payload is required")
+	if err := requireSheinPreparedSubmitPayload(in); err != nil {
+		return err
 	}
 	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {
@@ -84,8 +71,8 @@ func (s *taskTemporalSubmissionAdapter) PreValidateSheinPublish(ctx context.Cont
 }
 
 func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {
-	if in == nil || in.Product == nil {
-		return nil, fmt.Errorf("shein publish payload is required")
+	if err := requireSheinPreparedSubmitPayload(in); err != nil {
+		return nil, err
 	}
 	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {

@@ -111,7 +111,8 @@ func (s *taskDirectSubmissionService) prepareDirectSubmitProduct(ctx context.Con
 		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.action, err)
 	}
 	dumpSheinSubmitPayloadForDebug(taskID, opts.action, opts.requestID, "prepared", submitProduct)
-	setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
+	preparedPayload := newSheinPreparedSubmitPayload(taskID, opts.action, opts.requestID, submitProduct)
+	setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, preparedPayload.Snapshot)
 	if err := s.uploadPendingDirectSubmitImages(ctx, taskID, task, pkg, submitProduct, opts); err != nil {
 		return nil, err
 	}
