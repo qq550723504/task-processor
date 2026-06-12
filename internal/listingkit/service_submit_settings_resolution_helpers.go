@@ -12,6 +12,18 @@ func (s *service) resolveSheinWarehouseCode(ctx context.Context, task *Task, sit
 	return buildSubmitRuntimeContextResolver(s).resolveWarehouseCode(ctx, task, site)
 }
 
+func (s *service) resolveSheinStoreID(ctx context.Context, task *Task) (int64, error) {
+	return buildSubmitRuntimeContextResolver(s).resolveStoreID(ctx, task)
+}
+
+func (s *service) resolveSheinStoreProfile(ctx context.Context, task *Task) (*ListingKitStoreProfile, error) {
+	return buildSubmitRuntimeContextResolver(s).resolveStoreProfile(ctx, task)
+}
+
+func (s *service) resolveSheinStoreSelection(ctx context.Context, task *Task) (*sheinStoreSelection, error) {
+	return buildSubmitRuntimeContextResolver(s).resolveStoreSelection(ctx, task)
+}
+
 func (s *service) resolveDefaultSheinSubmitAction(ctx context.Context, taskID string) (string, error) {
 	if s == nil || s.repo == nil {
 		return "publish", nil
