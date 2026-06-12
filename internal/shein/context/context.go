@@ -53,25 +53,26 @@ type RuntimeState struct {
 }
 
 type ProductState struct {
-	SupplierInfo       *other.SupplierOperateInfo
-	SpuLimitCount      *other.SpuLimitCountInfo
-	ShelfQuotaInfo     *other.ShelfQuotaInfo
-	AmazonProduct      *model.Product
-	Variants           *[]model.Product
-	UnFilteredVariants *[]model.Product
-	VariantFilterMap   map[string]*VariantFilterInfo
-	AsinSkuMap         map[string]string
-	SupplierSkuMap     map[string]string
-	ProductData        *product.Product
-	FilterRule         *managementapi.FilterRuleRespDTO
-	ProfitRule         *managementapi.ProfitRuleRespDTO
-	Warehouses         *warehouse.WarehouseResponse
-	SiteList           []product.SiteInfo
-	CategoryTree       *sheincategory.CategoryTreeResponse
-	AttributeTemplates *sheinattribute.AttributeTemplateInfo
-	BuildAttributeData *BuildAttributeInfo
-	GenerateAttribute  *AttributeData
-	SaleSpecResult     *ResultSaleAttribute
+	SupplierInfo           *other.SupplierOperateInfo
+	SpuLimitCount          *other.SpuLimitCountInfo
+	ShelfQuotaInfo         *other.ShelfQuotaInfo
+	AmazonProduct          *model.Product
+	Variants               *[]model.Product
+	UnFilteredVariants     *[]model.Product
+	VariantFilterMap       map[string]*VariantFilterInfo
+	AsinSkuMap             map[string]string
+	SupplierSkuMap         map[string]string
+	ProductData            *product.Product
+	FilterRule             *managementapi.FilterRuleRespDTO
+	ProfitRule             *managementapi.ProfitRuleRespDTO
+	Warehouses             *warehouse.WarehouseResponse
+	SiteList               []product.SiteInfo
+	CategoryTree           *sheincategory.CategoryTreeResponse
+	AttributeTemplates     *sheinattribute.AttributeTemplateInfo
+	BuildAttributeData     *BuildAttributeInfo
+	GenerateAttribute      *AttributeData
+	SaleSpecResult         *ResultSaleAttribute
+	SaleAttributeSelection *SaleAttributeSelectionState
 }
 
 type APIClients struct {
@@ -182,6 +183,10 @@ func (ctx *TaskContext) SetBuildAttributeData(buildAttributeData *BuildAttribute
 
 func (ctx *TaskContext) SetSaleSpecResult(saleSpecResult *ResultSaleAttribute) {
 	ctx.SaleSpecResult = saleSpecResult
+}
+
+func (ctx *TaskContext) SetSaleAttributeSelection(selection *SaleAttributeSelectionState) {
+	ctx.SaleAttributeSelection = selection
 }
 
 func (ctx *TaskContext) SetSheinResponse(response *product.SheinResponse) {
