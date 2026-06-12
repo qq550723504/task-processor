@@ -18,28 +18,16 @@ func previewPlatforms(task *Task) []string {
 }
 
 func buildListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPreview, error) {
-	if task == nil {
-		return nil, ErrTaskNotFound
-	}
-	selectedPlatform, err := validateSelectedPreviewPlatform(selectedPlatform)
+	preview, selectedPlatform, err := initializeListingKitPreview(task, selectedPlatform)
 	if err != nil {
 		return nil, err
 	}
 
-	preview := buildBaseListingKitPreview(task, selectedPlatform)
 	if shouldBuildPendingPreview(task) {
-		preview.Overview = buildPendingPreviewHeader(task)
-		return preview, nil
+		return populatePendingListingKitPreview(task, preview), nil
 	}
 
-	ensureTaskPodExecution(task)
-	attachListingKitPreviewResult(preview, task.Result, selectedPlatform)
-
-	if err := buildPreviewPlatformSections(task, preview, selectedPlatform); err != nil {
-		return nil, err
-	}
-
-	return preview, nil
+	return preview, populateListingKitPreviewResult(task, preview, selectedPlatform)
 }
 
 func shouldBuildPendingPreview(task *Task) bool {
