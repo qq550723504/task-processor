@@ -163,13 +163,10 @@ func (s *taskRevisionService) GetTaskRevisionHistory(ctx context.Context, taskID
 	if err != nil {
 		return nil, err
 	}
-	storeResolution := sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task))
-	if page != nil && storeResolution != nil {
-		for idx := range page.Items {
-			page.Items[idx].StoreResolution = storeResolution
-		}
-	}
-	return page, nil
+	return attachRevisionHistoryStoreResolution(
+		page,
+		sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task)),
+	), nil
 }
 
 func (s *taskRevisionService) GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *RevisionHistoryDetailQuery) (*ListingKitRevisionHistoryDetail, error) {
@@ -184,10 +181,10 @@ func (s *taskRevisionService) GetTaskRevisionHistoryDetail(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	if detail != nil && detail.Record != nil {
-		detail.Record.StoreResolution = sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task))
-	}
-	return detail, nil
+	return attachRevisionHistoryDetailStoreResolution(
+		detail,
+		sheinStoreResolutionSummaryFromSnapshot(sheinStoreResolutionSnapshotFromTask(task)),
+	), nil
 }
 
 func (s *taskRevisionService) ValidateTaskRevision(ctx context.Context, taskID string, req *ApplyRevisionRequest) (*RevisionValidationResult, error) {
