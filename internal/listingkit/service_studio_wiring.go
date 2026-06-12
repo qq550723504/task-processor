@@ -35,19 +35,13 @@ func buildStudioBatchGenerationServiceConfig(s *service) studioBatchGenerationSe
 }
 
 func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig {
-	if s == nil {
-		return taskStudioBatchServiceConfig{}
-	}
-	var getTask func(context.Context, string) (*Task, error)
-	if s.repo != nil {
-		getTask = s.repo.GetTask
-	}
+	wiring := buildTaskStudioBatchServiceWiring(s)
 	return taskStudioBatchServiceConfig{
-		repo:               s.studioBatchRepo,
-		studioSessionRepo:  s.studioSessionRepo,
-		generator:          s.studioBatchGenerationOrDefault(),
-		createGenerateTask: s.CreateGenerateTask,
-		getTask:            getTask,
+		repo:               wiring.repo,
+		studioSessionRepo:  wiring.studioSessionRepo,
+		generator:          wiring.generator,
+		createGenerateTask: wiring.createGenerateTask,
+		getTask:            wiring.getTask,
 	}
 }
 
