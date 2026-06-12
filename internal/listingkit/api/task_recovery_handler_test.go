@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
-	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type stubTaskRecoveryHandlerService struct {
@@ -25,150 +24,6 @@ type stubTaskRecoveryHandlerService struct {
 	lastRecoveredTaskID string
 	lastRecoverQuery    *listingkit.RecoverBlockedTasksQuery
 	lastRequeueRequest  *listingkit.RequeuePendingTasksRequest
-}
-
-func (s *stubTaskRecoveryHandlerService) CreateGenerateTask(context.Context, *listingkit.GenerateRequest) (*listingkit.Task, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) ListTasks(context.Context, *listingkit.TaskListQuery) (*listingkit.TaskListPage, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetSDSBaselineReadiness(context.Context, *listingkit.SDSBaselineReadinessQuery) (*listingkit.SDSBaselineReadiness, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetTaskResult(context.Context, string) (*listingkit.TaskResult, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetTaskPreview(context.Context, string, string) (*listingkit.ListingKitPreview, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetTaskGenerationTasks(context.Context, string, *listingkit.GenerationTaskQuery) (*listingkit.GenerationTaskPage, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetTaskGenerationQueue(context.Context, string, *listingkit.GenerationQueueQuery) (*listingkit.GenerationQueuePage, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetTaskGenerationReviewSession(context.Context, string, *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewSessionResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetTaskGenerationReviewPreview(context.Context, string, *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewPreviewResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) DispatchTaskGenerationNavigation(context.Context, string, *listingkit.GenerationReviewNavigationDispatchRequest) (*listingkit.GenerationReviewNavigationDispatchResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) RetryTaskGenerationTasks(context.Context, string, *listingkit.RetryGenerationTasksRequest) (*listingkit.GenerationTaskPage, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) ExecuteTaskGenerationAction(context.Context, string, *listingkit.ExecuteGenerationActionRequest) (*listingkit.GenerationActionExecutionResult, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetTaskRevisionHistory(context.Context, string, *listingkit.RevisionHistoryQuery) (*listingkit.ListingKitRevisionHistoryPage, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetTaskRevisionHistoryDetail(context.Context, string, string, *listingkit.RevisionHistoryDetailQuery) (*listingkit.ListingKitRevisionHistoryDetail, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetTaskExport(context.Context, string, string) (*listingkit.ListingKitExport, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) ApplyTaskRevision(context.Context, string, *listingkit.ApplyRevisionRequest) (*listingkit.ListingKitPreview, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) ValidateTaskRevision(context.Context, string, *listingkit.ApplyRevisionRequest) (*listingkit.RevisionValidationResult, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) SubmitTask(context.Context, string, *listingkit.SubmitTaskRequest) (*listingkit.ListingKitPreview, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) RefreshSubmissionStatus(context.Context, string) (*listingkit.ListingKitPreview, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) UploadImages(context.Context, *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetUploadedImage(context.Context, string) (*listingkit.UploadedImageFile, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) ListSheinStoreProfiles(context.Context) ([]listingkit.ListingKitStoreProfile, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) UpsertSheinStoreProfile(context.Context, *listingkit.ListingKitStoreProfile) (*listingkit.ListingKitStoreProfile, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) DeleteSheinStoreProfile(context.Context, int64) error {
-	return errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetSheinSettings(context.Context) (*listingkit.SheinSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) UpdateSheinSettings(context.Context, *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetAIClientSettings(context.Context, string, string) (*listingkit.AIClientSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) UpdateAIClientSettings(context.Context, *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GenerateStudioDesigns(context.Context, *listingkit.StudioDesignRequest) (*listingkit.StudioDesignResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GenerateStudioProductImages(context.Context, *listingkit.StudioProductImageRequest) (*listingkit.StudioProductImageResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) RegenerateSheinDataImage(context.Context, string, *listingkit.RegenerateSheinDataImageRequest) (*listingkit.RegenerateSheinDataImageResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) PreviewSheinPrice(context.Context, string, *listingkit.SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) SearchSheinCategories(context.Context, string, string) (*listingkit.SheinCategorySearchResult, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) UpdateSheinFinalDraft(context.Context, string, *listingkit.SheinFinalDraftUpdateRequest) (*listingkit.ListingKitPreview, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) GetSubmissionEvents(context.Context, string) (*listingkit.SheinSubmissionEventPage, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) ClearSheinResolutionCache(context.Context, string, string) (*listingkit.SheinResolutionCacheClearResult, error) {
-	return nil, errors.New("not implemented")
 }
 
 func (s *stubTaskRecoveryHandlerService) RecoverTaskNow(_ context.Context, taskID string) (*listingkit.Task, error) {
@@ -185,6 +40,11 @@ func (s *stubTaskRecoveryHandlerService) BulkRecoverTasks(_ context.Context, que
 	return s.recoveredCount, s.err
 }
 
+func (s *stubTaskRecoveryHandlerService) RequeuePendingTasks(_ context.Context, req *listingkit.RequeuePendingTasksRequest) (*listingkit.RequeuePendingTasksResult, error) {
+	s.lastRequeueRequest = req
+	return s.requeueResult, s.err
+}
+
 func TestRecoverTaskNowHandlerBindsTaskIDAndReturnsTask(t *testing.T) {
 	t.Parallel()
 
@@ -196,7 +56,7 @@ func TestRecoverTaskNowHandlerBindsTaskIDAndReturnsTask(t *testing.T) {
 			Status:   listingkit.TaskStatusPending,
 		},
 	}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRecoveryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -233,7 +93,7 @@ func TestBulkRecoverTasksHandlerBindsQueryAndReturnsCount(t *testing.T) {
 	dueBefore := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
 	recoverAt := time.Date(2026, 6, 6, 13, 30, 0, 0, time.UTC)
 	svc := &stubTaskRecoveryHandlerService{recoveredCount: 4}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRecoveryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -282,7 +142,7 @@ func TestRecoverTaskNowHandlerReturnsNotFoundForMissingTask(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubTaskRecoveryHandlerService{err: listingkit.ErrTaskNotFound}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRecoveryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -304,7 +164,7 @@ func TestBulkRecoverTasksHandlerReturnsBadRequestForInvalidQuery(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubTaskRecoveryHandlerService{}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRecoveryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

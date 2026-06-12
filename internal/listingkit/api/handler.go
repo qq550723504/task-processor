@@ -202,6 +202,18 @@ func WithStudioBatchRunService(service studioBatchRunHandlerService) HandlerOpti
 	})
 }
 
+func WithTaskRecoveryService(service listingkit.TaskRecoveryService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.taskRecoveryService = service
+	})
+}
+
+func WithTaskRequeueService(service listingkit.TaskRequeueService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.taskRequeueService = service
+	})
+}
+
 func WithStoreAdminService(service storeAdminHandlerService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.storeAdminService = service

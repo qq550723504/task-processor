@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -25,7 +24,7 @@ func TestRequeuePendingTasksHandlerBindsBodyAndReturnsResult(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRequeueService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -59,7 +58,7 @@ func TestRequeuePendingTasksHandlerRejectsInvalidRequest(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubTaskRecoveryHandlerService{}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRequeueService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -75,9 +74,4 @@ func TestRequeuePendingTasksHandlerRejectsInvalidRequest(t *testing.T) {
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", resp.Code)
 	}
-}
-
-func (s *stubTaskRecoveryHandlerService) RequeuePendingTasks(_ context.Context, req *listingkit.RequeuePendingTasksRequest) (*listingkit.RequeuePendingTasksResult, error) {
-	s.lastRequeueRequest = req
-	return s.requeueResult, s.err
 }
