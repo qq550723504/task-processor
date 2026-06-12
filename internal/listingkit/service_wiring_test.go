@@ -21,32 +21,62 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.taskLifecycle == nil {
 		t.Fatal("expected taskLifecycle to be initialized")
 	}
+	if impl.task.lifecycle == nil {
+		t.Fatal("expected task group lifecycle to be initialized")
+	}
 	if impl.taskGeneration == nil {
 		t.Fatal("expected taskGeneration to be initialized")
+	}
+	if impl.task.generation == nil {
+		t.Fatal("expected task group generation to be initialized")
 	}
 	if impl.taskRevision == nil {
 		t.Fatal("expected taskRevision to be initialized")
 	}
+	if impl.task.revision == nil {
+		t.Fatal("expected task group revision to be initialized")
+	}
 	if impl.taskPreview == nil {
 		t.Fatal("expected taskPreview to be initialized")
+	}
+	if impl.task.preview == nil {
+		t.Fatal("expected task group preview to be initialized")
 	}
 	if impl.sdsBaseline == nil {
 		t.Fatal("expected sdsBaseline to be initialized")
 	}
+	if impl.task.sdsBaseline == nil {
+		t.Fatal("expected task group sdsBaseline to be initialized")
+	}
 	if impl.taskStudioSession == nil {
 		t.Fatal("expected taskStudioSession to be initialized")
+	}
+	if impl.studio.session == nil {
+		t.Fatal("expected studio group session to be initialized")
 	}
 	if impl.studioBatchGeneration == nil {
 		t.Fatal("expected studioBatchGeneration to be initialized")
 	}
+	if impl.studio.batchGeneration == nil {
+		t.Fatal("expected studio group batchGeneration to be initialized")
+	}
 	if impl.taskStudioMedia == nil {
 		t.Fatal("expected taskStudioMedia to be initialized")
+	}
+	if impl.studio.media == nil {
+		t.Fatal("expected studio group media to be initialized")
 	}
 	if impl.settingsAdmin == nil {
 		t.Fatal("expected settingsAdmin to be initialized")
 	}
+	if impl.admin.settings == nil {
+		t.Fatal("expected admin group settings to be initialized")
+	}
 	if impl.sheinAdmin == nil {
 		t.Fatal("expected sheinAdmin to be initialized")
+	}
+	if impl.admin.shein == nil {
+		t.Fatal("expected admin group shein to be initialized")
 	}
 	if impl.submission.taskSubmission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
@@ -86,34 +116,64 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	if svc.taskLifecycle == nil {
 		t.Fatal("expected taskLifecycle to be initialized")
 	}
+	if svc.task.lifecycle == nil {
+		t.Fatal("expected task group lifecycle to be initialized")
+	}
 	if svc.taskGeneration == nil {
 		t.Fatal("expected taskGeneration to be initialized")
+	}
+	if svc.task.generation == nil {
+		t.Fatal("expected task group generation to be initialized")
 	}
 	if svc.taskRevision == nil {
 		t.Fatal("expected taskRevision to be initialized")
 	}
+	if svc.task.revision == nil {
+		t.Fatal("expected task group revision to be initialized")
+	}
 	if svc.taskPreview == nil {
 		t.Fatal("expected taskPreview to be initialized")
+	}
+	if svc.task.preview == nil {
+		t.Fatal("expected task group preview to be initialized")
 	}
 	if svc.sdsBaseline == nil {
 		t.Fatal("expected sdsBaseline to be initialized")
 	}
+	if svc.task.sdsBaseline == nil {
+		t.Fatal("expected task group sdsBaseline to be initialized")
+	}
 	if svc.taskStudioSession == nil {
 		t.Fatal("expected taskStudioSession to be initialized")
+	}
+	if svc.studio.session == nil {
+		t.Fatal("expected studio group session to be initialized")
 	}
 	if svc.studioBatchGeneration == nil {
 		t.Fatal("expected studioBatchGeneration to be initialized")
 	}
+	if svc.studio.batchGeneration == nil {
+		t.Fatal("expected studio group batchGeneration to be initialized")
+	}
 	if svc.taskStudioMedia == nil {
 		t.Fatal("expected taskStudioMedia to be initialized")
+	}
+	if svc.studio.media == nil {
+		t.Fatal("expected studio group media to be initialized")
 	}
 
 	svc.initializeAdminCollaborators()
 	if svc.settingsAdmin == nil {
 		t.Fatal("expected settingsAdmin to be initialized")
 	}
+	if svc.admin.settings == nil {
+		t.Fatal("expected admin group settings to be initialized")
+	}
 	if svc.sheinAdmin == nil {
 		t.Fatal("expected sheinAdmin to be initialized")
+	}
+	if svc.admin.shein == nil {
+		t.Fatal("expected admin group shein to be initialized")
 	}
 
 	svc.initializeSubmitCollaborators()
