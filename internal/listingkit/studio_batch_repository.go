@@ -319,12 +319,7 @@ func (r *MemStudioBatchRepository) UpdateStudioBatch(ctx context.Context, batch 
 		return gorm.ErrRecordNotFound
 	}
 	row := *batch
-	if row.TenantID == "" {
-		row.TenantID = existing.TenantID
-	}
-	if row.UserID == "" {
-		row.UserID = existing.UserID
-	}
+	applyStudioBatchDefaultScope(existing.TenantID, existing.UserID, &row.TenantID, &row.UserID)
 	r.batches[row.ID] = row
 	return nil
 }
@@ -341,20 +336,8 @@ func (r *MemStudioBatchRepository) UpdateStudioBatchItem(ctx context.Context, it
 		return gorm.ErrRecordNotFound
 	}
 	row := *item
-	if row.BatchID == "" {
-		row.BatchID = existing.BatchID
-	} else if row.BatchID != existing.BatchID {
-		return ErrStudioBatchOwnershipConflict
-	}
-	if row.TenantID == "" {
-		row.TenantID = existing.TenantID
-	} else if row.TenantID != existing.TenantID {
-		return ErrStudioBatchOwnershipConflict
-	}
-	if row.UserID == "" {
-		row.UserID = existing.UserID
-	} else if row.UserID != existing.UserID {
-		return ErrStudioBatchOwnershipConflict
+	if err := resolveStudioBatchItemOwnership(existing, &row); err != nil {
+		return err
 	}
 	r.items[row.ID] = row
 	return nil
@@ -372,25 +355,8 @@ func (r *MemStudioBatchRepository) UpdateStudioGenerationAttempt(ctx context.Con
 		return gorm.ErrRecordNotFound
 	}
 	row := *attempt
-	if row.BatchID == "" {
-		row.BatchID = existing.BatchID
-	} else if row.BatchID != existing.BatchID {
-		return ErrStudioBatchOwnershipConflict
-	}
-	if row.ItemID == "" {
-		row.ItemID = existing.ItemID
-	} else if row.ItemID != existing.ItemID {
-		return ErrStudioBatchOwnershipConflict
-	}
-	if row.TenantID == "" {
-		row.TenantID = existing.TenantID
-	} else if row.TenantID != existing.TenantID {
-		return ErrStudioBatchOwnershipConflict
-	}
-	if row.UserID == "" {
-		row.UserID = existing.UserID
-	} else if row.UserID != existing.UserID {
-		return ErrStudioBatchOwnershipConflict
+	if err := resolveStudioGenerationAttemptOwnership(existing, &row); err != nil {
+		return err
 	}
 	r.attempts[row.ID] = row
 	return nil
@@ -408,30 +374,8 @@ func (r *MemStudioBatchRepository) UpdateStudioMaterializedDesign(ctx context.Co
 		return gorm.ErrRecordNotFound
 	}
 	row := *design
-	if row.BatchID == "" {
-		row.BatchID = existing.BatchID
-	} else if row.BatchID != existing.BatchID {
-		return ErrStudioBatchOwnershipConflict
-	}
-	if row.ItemID == "" {
-		row.ItemID = existing.ItemID
-	} else if row.ItemID != existing.ItemID {
-		return ErrStudioBatchOwnershipConflict
-	}
-	if row.SourceAttemptID == "" {
-		row.SourceAttemptID = existing.SourceAttemptID
-	} else if row.SourceAttemptID != existing.SourceAttemptID {
-		return ErrStudioBatchOwnershipConflict
-	}
-	if row.TenantID == "" {
-		row.TenantID = existing.TenantID
-	} else if row.TenantID != existing.TenantID {
-		return ErrStudioBatchOwnershipConflict
-	}
-	if row.UserID == "" {
-		row.UserID = existing.UserID
-	} else if row.UserID != existing.UserID {
-		return ErrStudioBatchOwnershipConflict
+	if err := resolveStudioMaterializedDesignOwnership(existing, &row); err != nil {
+		return err
 	}
 	if row.ReviewStatus == "" {
 		row.ReviewStatus = existing.ReviewStatus
