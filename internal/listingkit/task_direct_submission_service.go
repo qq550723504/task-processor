@@ -147,15 +147,13 @@ func (s *taskDirectSubmissionService) preValidateDirectSubmitProduct(ctx context
 }
 
 func (s *taskDirectSubmissionService) completeDirectRemoteSubmit(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, opts sheinDirectSubmitOptions) error {
-	supplierCode := sheinSubmitSupplierCode(submitProduct, pkg)
-	setSheinSubmitSupplierCode(pkg, opts.action, opts.requestID, supplierCode)
-	setSheinSubmitSnapshot(pkg, opts.action, opts.requestID, sheinpub.BuildSubmitSnapshot(submitProduct))
+	remoteState := prepareSheinRemoteSubmitState(pkg, opts.action, opts.requestID, submitProduct, nil)
 	if err := s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, opts, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
 		return err
 	}
 	response, responseErr := s.executeDirectRemoteSubmitAttempt(ctx, taskID, pkg, productAPI, submitProduct, opts)
 	if responseErr == nil {
-		if err := s.persistSuccessfulDirectResponse(ctx, taskID, task, pkg, opts, supplierCode, response); err != nil {
+		if err := s.persistSuccessfulDirectResponse(ctx, taskID, task, pkg, opts, remoteState.supplierCode, response); err != nil {
 			return err
 		}
 	}

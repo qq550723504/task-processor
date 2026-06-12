@@ -96,13 +96,8 @@ func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Con
 		return nil, err
 	}
 
-	supplierCode := sheinSubmitSupplierCode(in.Product, pkg)
-	snapshot := in.Snapshot
-	if snapshot == nil {
-		snapshot = sheinpub.BuildSubmitSnapshot(in.Product)
-	}
-	setSheinSubmitSupplierCode(pkg, in.Action, in.RequestID, supplierCode)
-	setSheinSubmitSnapshot(pkg, in.Action, in.RequestID, snapshot)
+	remoteState := prepareSheinRemoteSubmitState(pkg, in.Action, in.RequestID, in.Product, in.Snapshot)
+	snapshot := remoteState.snapshot
 	if err := s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
 		return nil, err
 	}
@@ -122,14 +117,14 @@ func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Con
 		snapshot = attempt.snapshot
 	}
 	if attempt.err != nil {
-		return nil, newSubmitRemoteActivityError(attempt.err, supplierCode, attempt.response, snapshot)
+		return nil, newSubmitRemoteActivityError(attempt.err, remoteState.supplierCode, attempt.response, snapshot)
 	}
 
 	return &SheinRemoteSubmitResult{
 		TaskID:       in.TaskID,
 		Action:       in.Action,
 		RequestID:    in.RequestID,
-		SupplierCode: supplierCode,
+		SupplierCode: remoteState.supplierCode,
 		Response:     attempt.response,
 		Snapshot:     snapshot,
 	}, nil
