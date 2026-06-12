@@ -3,20 +3,18 @@ package listingkit
 import "context"
 
 func buildTaskRequeueServiceConfig(s *service) taskRequeueServiceConfig {
+	wiring := buildTaskSubmitterWiring(s)
 	return taskRequeueServiceConfig{
-		repo: s.repo,
-		taskSubmitter: func() TaskSubmitter {
-			return s.taskSubmitter
-		},
+		repo:          wiring.repo,
+		taskSubmitter: wiring.taskSubmitter,
 	}
 }
 
 func buildTaskRecoveryServiceConfig(s *service) taskRecoveryServiceConfig {
+	wiring := buildTaskSubmitterWiring(s)
 	return taskRecoveryServiceConfig{
-		repo: s.repo,
-		taskSubmitter: func() TaskSubmitter {
-			return s.taskSubmitter
-		},
+		repo:          wiring.repo,
+		taskSubmitter: wiring.taskSubmitter,
 	}
 }
 

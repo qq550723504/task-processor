@@ -6,6 +6,20 @@ type taskSubmissionOrchestratorWiring struct {
 	bindings   taskSubmissionBindings
 }
 
+type taskSubmitterWiring struct {
+	repo          Repository
+	taskSubmitter func() TaskSubmitter
+}
+
+func buildTaskSubmitterWiring(s *service) taskSubmitterWiring {
+	return taskSubmitterWiring{
+		repo: s.repo,
+		taskSubmitter: func() TaskSubmitter {
+			return s.taskSubmitter
+		},
+	}
+}
+
 func buildTaskSubmissionLockSubmit(s *service) func(string) func() {
 	return func(key string) func() {
 		return s.submission.sheinSubmitLocks.Lock(key)
