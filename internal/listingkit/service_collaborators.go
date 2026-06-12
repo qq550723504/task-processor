@@ -32,8 +32,8 @@ func (s *service) initializeAdminCollaborators() {
 	if s == nil {
 		return
 	}
-	s.settingsAdmin = s.settingsAdminOrDefault()
-	s.sheinAdmin = s.sheinAdminOrDefault()
+	s.initializeSettingsAdminCollaborators()
+	s.initializeSheinAdminCollaborators()
 }
 
 func (s *service) initializeTemporalCollaborators() {
