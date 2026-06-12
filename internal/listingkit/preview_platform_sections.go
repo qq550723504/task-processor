@@ -1,19 +1,19 @@
 package listingkit
 
+import previewdomain "task-processor/internal/listing/preview"
+
 func buildPreviewPlatformSection(selectedPlatform, platform string, available bool, build func()) error {
-	if !shouldBuildPreviewPlatform(selectedPlatform, platform) {
-		return nil
+	err := previewdomain.BuildPlatformSection(selectedPlatform, platform, available, build)
+	if err == previewdomain.ErrPlatformUnavailable {
+		return ErrPreviewPlatformUnavailable
 	}
-	if !available {
-		return previewPlatformUnavailableError(selectedPlatform, platform)
-	}
-	build()
-	return nil
+	return err
 }
 
 func previewPlatformUnavailableError(selectedPlatform, platform string) error {
-	if isSelectedPreviewPlatform(selectedPlatform, platform) {
+	err := previewdomain.PlatformUnavailableError(selectedPlatform, platform)
+	if err == previewdomain.ErrPlatformUnavailable {
 		return ErrPreviewPlatformUnavailable
 	}
-	return nil
+	return err
 }
