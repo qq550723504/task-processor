@@ -3,20 +3,19 @@ package listingkit
 import previewdomain "task-processor/internal/listing/preview"
 
 func buildPreviewHeader(result *ListingKitResult, selectedPlatform string) *ListingKitPreviewHeader {
-	if result == nil {
+	overview := buildListingKitOverviewData(result, selectedPlatform)
+	if overview == nil {
 		return nil
 	}
 
 	headerInput := previewdomain.HeaderInput{
-		Country:       result.Country,
-		Language:      result.Language,
+		Country:       overview.Country,
+		Language:      overview.Language,
 		StatusMessage: "预览结果已生成",
-	}
-	if result.Summary != nil {
-		headerInput.SourceType = result.Summary.SourceType
-		headerInput.ImageCount = result.Summary.ImageCount
-		headerInput.VariantCount = result.Summary.VariantCount
-		headerInput.Warnings = result.Summary.Warnings
+		SourceType:    overview.SourceType,
+		ImageCount:    overview.ImageCount,
+		VariantCount:  overview.VariantCount,
+		Warnings:      overview.Warnings,
 	}
 	baseHeader := previewdomain.BuildHeader(headerInput)
 	header := &ListingKitPreviewHeader{
@@ -28,7 +27,7 @@ func buildPreviewHeader(result *ListingKitResult, selectedPlatform string) *List
 		StatusMessage: baseHeader.StatusMessage,
 		Warnings:      append([]string(nil), baseHeader.Warnings...),
 	}
-	header.ReviewReasons = reviewReasonsFromResult(result)
-	header.PlatformCards = buildPlatformPreviewCards(result, selectedPlatform)
+	header.ReviewReasons = append([]string(nil), overview.ReviewReasons...)
+	header.PlatformCards = append([]ListingKitPlatformCard(nil), overview.PlatformCards...)
 	return header
 }

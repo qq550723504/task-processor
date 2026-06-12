@@ -110,21 +110,20 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 }
 
 func buildListingKitExportMeta(result *ListingKitResult, selectedPlatform string) *ListingKitExportMeta {
-	if result == nil {
+	overview := buildListingKitOverviewData(result, selectedPlatform)
+	if overview == nil {
 		return nil
 	}
 	meta := &ListingKitExportMeta{
-		Country:  result.Country,
-		Language: result.Language,
+		Country:       overview.Country,
+		Language:      overview.Language,
+		SourceType:    overview.SourceType,
+		ImageCount:    overview.ImageCount,
+		VariantCount:  overview.VariantCount,
+		Warnings:      append([]string(nil), overview.Warnings...),
+		ReviewReasons: append([]string(nil), overview.ReviewReasons...),
+		PlatformCards: append([]ListingKitPlatformCard(nil), overview.PlatformCards...),
 	}
-	if result.Summary != nil {
-		meta.SourceType = result.Summary.SourceType
-		meta.ImageCount = result.Summary.ImageCount
-		meta.VariantCount = result.Summary.VariantCount
-		meta.Warnings = append([]string(nil), result.Summary.Warnings...)
-	}
-	meta.ReviewReasons = reviewReasonsFromResult(result)
-	meta.PlatformCards = buildPlatformPreviewCards(result, selectedPlatform)
 	return meta
 }
 

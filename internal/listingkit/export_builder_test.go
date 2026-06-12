@@ -315,3 +315,30 @@ func TestBuildListingKitExportRejectsUnsupportedPlatform(t *testing.T) {
 		t.Fatalf("error = %v, want %v", err, ErrUnsupportedPreviewPlatform)
 	}
 }
+
+func TestBuildListingKitExportMetaCopiesOverviewFields(t *testing.T) {
+	t.Parallel()
+
+	meta := buildListingKitExportMeta(&ListingKitResult{
+		Country:  "US",
+		Language: "en_US",
+		Summary: &GenerationSummary{
+			SourceType:   "text",
+			ImageCount:   2,
+			VariantCount: 3,
+			Warnings:     []string{"warn"},
+		},
+	}, "")
+	if meta == nil {
+		t.Fatal("expected export meta")
+	}
+	if meta.Country != "US" || meta.Language != "en_US" {
+		t.Fatalf("meta locale fields = %+v", meta)
+	}
+	if meta.SourceType != "text" || meta.ImageCount != 2 || meta.VariantCount != 3 {
+		t.Fatalf("meta summary fields = %+v", meta)
+	}
+	if len(meta.Warnings) != 1 || meta.Warnings[0] != "warn" {
+		t.Fatalf("meta warnings = %#v, want [warn]", meta.Warnings)
+	}
+}
