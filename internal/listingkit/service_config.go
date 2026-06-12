@@ -1,23 +1,10 @@
 package listingkit
 
-import (
-	"fmt"
-)
-
 func NewService(config *ServiceConfig) (Service, error) {
-	if config == nil {
-		return nil, fmt.Errorf("config cannot be nil")
+	if err := validateServiceConfig(config); err != nil {
+		return nil, err
 	}
-	if config.Core.Repository == nil {
-		return nil, fmt.Errorf("repository cannot be nil")
-	}
-	if config.Core.ProductService == nil {
-		return nil, fmt.Errorf("product service cannot be nil")
-	}
-	config.applyDefaults()
-	svc := newServiceWithConfig(config)
-	svc.initializeCollaborators()
-	return svc, nil
+	return buildService(prepareServiceConfig(config)), nil
 }
 
 func newServiceWithConfig(config *ServiceConfig) *service {
