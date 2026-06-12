@@ -27,6 +27,9 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.taskRevision == nil {
 		t.Fatal("expected taskRevision to be initialized")
 	}
+	if impl.sdsBaseline == nil {
+		t.Fatal("expected sdsBaseline to be initialized")
+	}
 	if impl.taskStudioSession == nil {
 		t.Fatal("expected taskStudioSession to be initialized")
 	}
@@ -82,6 +85,9 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	}
 	if svc.taskRevision == nil {
 		t.Fatal("expected taskRevision to be initialized")
+	}
+	if svc.sdsBaseline == nil {
+		t.Fatal("expected sdsBaseline to be initialized")
 	}
 	if svc.taskStudioSession == nil {
 		t.Fatal("expected taskStudioSession to be initialized")
