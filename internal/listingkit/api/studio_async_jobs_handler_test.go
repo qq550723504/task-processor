@@ -224,7 +224,7 @@ func TestStudioAsyncJobRequiresStudioSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create subscription service: %v", err)
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

@@ -18,6 +18,7 @@ type stubRevisionService struct {
 	applyPreview *listingkit.ListingKitPreview
 	applyErr     error
 }
+
 func (s *stubRevisionService) ApplyTaskRevision(_ context.Context, taskID string, req *listingkit.ApplyRevisionRequest) (*listingkit.ListingKitPreview, error) {
 	return s.applyPreview, s.applyErr
 }
@@ -35,7 +36,7 @@ func TestApplyTaskRevisionReturnsFieldErrors(t *testing.T) {
 			}},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -205,7 +206,7 @@ func TestApplyTaskRevisionReturnsAppliedChanges(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -306,7 +307,7 @@ func TestApplyTaskRevisionReturnsNotFoundForMissingRestoreRevision(t *testing.T)
 	svc := &stubRevisionService{
 		applyErr: listingkit.ErrRevisionHistoryRecordNotFound,
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

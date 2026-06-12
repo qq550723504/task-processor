@@ -62,7 +62,7 @@ func TestGetTaskRevisionHistoryReturnsPage(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestGetTaskRevisionHistoryReturnsBadRequestForInvalidCursor(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubHistoryService{err: listingkit.ErrInvalidRevisionHistoryCursor}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestGetTaskRevisionHistoryReturnsBadRequestForInvalidActionType(t *testing.
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubHistoryService{err: listingkit.ErrInvalidRevisionHistoryActionType}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

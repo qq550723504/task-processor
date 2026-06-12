@@ -71,7 +71,7 @@ func TestCreateStudioBatchRunReturnsAcceptedRunPayload(t *testing.T) {
 			{ID: "run-1:2", RunID: "run-1", BatchID: "batch-2", Position: 2, Status: listingkit.StudioBatchRunItemStatusPending},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithStudioBatchRunService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestGetStudioBatchRunReturnsRunPayload(t *testing.T) {
 			TotalBatches: 3,
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithStudioBatchRunService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestListStudioBatchRunItemsReturnsItemsPayload(t *testing.T) {
 			{ID: "run-5:2", RunID: "run-5", BatchID: "batch-2", Position: 2, Status: listingkit.StudioBatchRunItemStatusPending},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithStudioBatchRunService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestCancelStudioBatchRunReturnsAccepted(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubStudioBatchRunService{}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithStudioBatchRunService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestCreateStudioBatchRunReturnsNotImplementedWithoutService(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	h, err := NewHandler(&stubGenerationTaskService{})
+	h, err := NewHandler(&stubHandlerCoreService{})
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestCreateStudioBatchRunReturnsBadRequestForInvalidJSON(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	h, err := NewHandler(&stubGenerationTaskService{}, WithStudioBatchRunService(&stubStudioBatchRunService{}))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(&stubStudioBatchRunService{}))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -266,7 +266,7 @@ func TestCreateStudioBatchRunClassifiesValidationNotFoundAndInternalErrors(t *te
 
 			gin.SetMode(gin.TestMode)
 			svc := &stubStudioBatchRunService{createErr: tc.serviceErr}
-			h, err := NewHandler(&stubGenerationTaskService{}, WithStudioBatchRunService(svc))
+			h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(svc))
 			if err != nil {
 				t.Fatalf("new handler: %v", err)
 			}
@@ -305,7 +305,7 @@ func TestGetStudioBatchRunReturnsNotFoundAndInternalErrors(t *testing.T) {
 
 			gin.SetMode(gin.TestMode)
 			svc := &stubStudioBatchRunService{getErr: tc.serviceErr}
-			h, err := NewHandler(&stubGenerationTaskService{}, WithStudioBatchRunService(svc))
+			h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(svc))
 			if err != nil {
 				t.Fatalf("new handler: %v", err)
 			}
@@ -343,7 +343,7 @@ func TestListStudioBatchRunItemsReturnsNotFoundAndInternalErrors(t *testing.T) {
 
 			gin.SetMode(gin.TestMode)
 			svc := &stubStudioBatchRunService{listItemsErr: tc.serviceErr}
-			h, err := NewHandler(&stubGenerationTaskService{}, WithStudioBatchRunService(svc))
+			h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(svc))
 			if err != nil {
 				t.Fatalf("new handler: %v", err)
 			}
@@ -381,7 +381,7 @@ func TestCancelStudioBatchRunReturnsNotFoundAndInternalErrors(t *testing.T) {
 
 			gin.SetMode(gin.TestMode)
 			svc := &stubStudioBatchRunService{cancelErr: tc.serviceErr}
-			h, err := NewHandler(&stubGenerationTaskService{}, WithStudioBatchRunService(svc))
+			h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(svc))
 			if err != nil {
 				t.Fatalf("new handler: %v", err)
 			}

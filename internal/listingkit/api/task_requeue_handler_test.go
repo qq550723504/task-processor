@@ -24,7 +24,7 @@ func TestRequeuePendingTasksHandlerBindsBodyAndReturnsResult(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRequeueService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskRequeueService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestRequeuePendingTasksHandlerRejectsInvalidRequest(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubTaskRecoveryHandlerService{}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRequeueService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskRequeueService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

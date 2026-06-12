@@ -22,6 +22,7 @@ type stubSubmitService struct {
 	err     error
 	lastReq *listingkit.SubmitTaskRequest
 }
+
 func (s *stubSubmitService) SubmitTask(_ context.Context, taskID string, req *listingkit.SubmitTaskRequest) (*listingkit.ListingKitPreview, error) {
 	s.lastReq = req
 	return s.preview, s.err
@@ -35,7 +36,7 @@ func TestSubmitTaskReturnsBadRequestWhenBlocked(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubSubmitService{err: listingkit.ErrSubmitBlocked}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -58,7 +59,7 @@ func TestSubmitTaskReturnsConflictWhenSubmitInProgress(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubSubmitService{err: core.ErrSubmitInProgress}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -88,7 +89,7 @@ func TestSubmitTaskConflictIncludesCurrentPhaseAndLease(t *testing.T) {
 		RequestID:      "request-123",
 		LeaseExpiresAt: &leaseExpiresAt,
 	}}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -131,7 +132,7 @@ func TestSubmitTaskReturnsPreviewPayload(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -161,7 +162,7 @@ func TestSubmitTaskMapsIdempotencyKeyHeader(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubSubmitService{preview: &listingkit.ListingKitPreview{TaskID: "task-1"}}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -200,7 +201,7 @@ func TestRefreshSubmissionStatusReturnsPreviewPayload(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

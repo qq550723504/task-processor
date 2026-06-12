@@ -68,7 +68,7 @@ func TestGetSDSBaselineReadinessReturnsBadRequestForInvalidSelectedVariantIDs(t 
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	h, err := NewHandler(&stubGenerationTaskService{}, WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}

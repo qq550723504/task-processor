@@ -101,7 +101,7 @@ func TestPlatformSubscriptionListReturnsResolvedTenantDisplayName(t *testing.T) 
 	service.SetTenantDisplayNameResolver(subscriptionDisplayNameResolver{
 		"org-target": "目标租户",
 	})
-	h, err := NewHandler(&stubGenerationTaskService{}, WithSubscriptionService(service))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSubscriptionService(service))
 	if err != nil {
 		t.Fatalf("create handler: %v", err)
 	}
@@ -351,7 +351,7 @@ func platformSubscriptionTestRouterWithOptions(t *testing.T, opts ...HandlerOpti
 	}
 	baseOpts := []HandlerOption{WithSubscriptionService(service)}
 	baseOpts = append(baseOpts, opts...)
-	h, err := NewHandler(&stubGenerationTaskService{}, baseOpts...)
+	h, err := NewHandler(&stubHandlerCoreService{}, baseOpts...)
 	if err != nil {
 		t.Fatalf("create handler: %v", err)
 	}

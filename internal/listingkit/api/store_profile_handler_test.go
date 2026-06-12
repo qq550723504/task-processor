@@ -16,10 +16,10 @@ import (
 )
 
 type stubStoreProfileAdminService struct {
-	profiles       []listingkit.ListingKitStoreProfile
-	upserted       *listingkit.ListingKitStoreProfile
-	upsertReq      *listingkit.ListingKitStoreProfile
-	err            error
+	profiles  []listingkit.ListingKitStoreProfile
+	upserted  *listingkit.ListingKitStoreProfile
+	upsertReq *listingkit.ListingKitStoreProfile
+	err       error
 }
 
 func (s *stubStoreProfileAdminService) ListSheinStoreProfiles(context.Context) ([]listingkit.ListingKitStoreProfile, error) {
@@ -83,7 +83,7 @@ func TestListSheinStoreProfilesReturnsProfiles(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithStoreAdminService(adminSvc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStoreAdminService(adminSvc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestUpsertSheinStoreProfileBindsRequest(t *testing.T) {
 			DefaultSubmitMode: "save_draft",
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithStoreAdminService(adminSvc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStoreAdminService(adminSvc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
@@ -162,4 +162,3 @@ func TestUpsertSheinStoreProfileBindsRequest(t *testing.T) {
 		t.Fatalf("request = %+v, want bound store profile request", adminSvc.upsertReq)
 	}
 }
-

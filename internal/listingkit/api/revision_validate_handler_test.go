@@ -18,6 +18,7 @@ type stubRevisionValidateService struct {
 	result *listingkit.RevisionValidationResult
 	err    error
 }
+
 func (s *stubRevisionValidateService) ValidateTaskRevision(_ context.Context, taskID string, req *listingkit.ApplyRevisionRequest) (*listingkit.RevisionValidationResult, error) {
 	return s.result, s.err
 }
@@ -38,7 +39,7 @@ func TestValidateTaskRevisionReturnsValidationPayload(t *testing.T) {
 			}},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestValidateTaskRevisionReturnsNotFoundForMissingRestoreRevision(t *testing
 	svc := &stubRevisionValidateService{
 		err: listingkit.ErrRevisionHistoryRecordNotFound,
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

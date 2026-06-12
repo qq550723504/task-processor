@@ -20,7 +20,7 @@ func TestWithDependenciesConfiguresSubscriptionState(t *testing.T) {
 	users := []string{"platform-user"}
 	roles := []string{"platform-role"}
 
-	h, err := NewHandler(&stubGenerationTaskService{}, WithDependencies(HandlerDependencies{
+	h, err := NewHandler(&stubHandlerCoreService{}, WithDependencies(HandlerDependencies{
 		Subscription: SubscriptionDependencies{
 			Service:            service,
 			PlatformAdminUsers: users,
@@ -90,7 +90,7 @@ func TestWithSettingsHandlerServiceOverridesDefaultSettingsService(t *testing.T)
 		},
 	}
 
-	h, err := NewHandler(&stubGenerationTaskService{}, WithSettingsHandlerService(settingsStub))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSettingsHandlerService(settingsStub))
 	if err != nil {
 		t.Fatalf("create handler: %v", err)
 	}

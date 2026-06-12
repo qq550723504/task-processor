@@ -56,7 +56,7 @@ func TestRecoverTaskNowHandlerBindsTaskIDAndReturnsTask(t *testing.T) {
 			Status:   listingkit.TaskStatusPending,
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRecoveryService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskRecoveryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestBulkRecoverTasksHandlerBindsQueryAndReturnsCount(t *testing.T) {
 	dueBefore := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
 	recoverAt := time.Date(2026, 6, 6, 13, 30, 0, 0, time.UTC)
 	svc := &stubTaskRecoveryHandlerService{recoveredCount: 4}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRecoveryService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskRecoveryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestRecoverTaskNowHandlerReturnsNotFoundForMissingTask(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubTaskRecoveryHandlerService{err: listingkit.ErrTaskNotFound}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRecoveryService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskRecoveryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestBulkRecoverTasksHandlerReturnsBadRequestForInvalidQuery(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubTaskRecoveryHandlerService{}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskRecoveryService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskRecoveryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

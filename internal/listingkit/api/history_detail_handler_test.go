@@ -19,6 +19,7 @@ type stubHistoryDetailService struct {
 	lastTaskID     string
 	lastRevisionID string
 }
+
 func (s *stubHistoryDetailService) GetTaskRevisionHistoryDetail(_ context.Context, taskID string, revisionID string, query *listingkit.RevisionHistoryDetailQuery) (*listingkit.ListingKitRevisionHistoryDetail, error) {
 	s.lastTaskID = taskID
 	s.lastRevisionID = revisionID
@@ -113,7 +114,7 @@ func TestGetTaskRevisionHistoryDetailReturnsRecord(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -178,7 +179,7 @@ func TestGetTaskRevisionHistoryDetailReturnsNotFound(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubHistoryDetailService{err: listingkit.ErrRevisionHistoryRecordNotFound}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -200,7 +201,7 @@ func TestGetTaskRevisionHistoryDetailReturnsNotFoundForMissingCompareTarget(t *t
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubHistoryDetailService{err: listingkit.ErrRevisionHistoryCompareTargetNotFound}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -242,7 +243,7 @@ func TestGetTaskRevisionHistoryDetailReturnsComparePreviewForCurrent(t *testing.
 			},
 		},
 	}
-	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

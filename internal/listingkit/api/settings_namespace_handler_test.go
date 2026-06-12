@@ -66,7 +66,7 @@ func TestUpdateAISettingsDoesNotRequireStudioSubscription(t *testing.T) {
 		},
 	}
 
-	h, err := NewHandler(&stubGenerationTaskService{}, WithSettingsHandlerService(svc))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSettingsHandlerService(svc))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
