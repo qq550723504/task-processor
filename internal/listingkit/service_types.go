@@ -40,6 +40,7 @@ type service struct {
 	submission                     submissionCollaborators
 	submissionDeps                 submissionDependencies
 	workflowDeps                   workflowDependencies
+	sheinRuntimeDeps               sheinRuntimeDependencies
 	studioSessionRepo              StudioSessionRepository
 	studioBatchRepo                StudioBatchRepository
 	studioBatchRunRepo             StudioBatchRunRepository

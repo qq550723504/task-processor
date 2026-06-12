@@ -113,6 +113,15 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 			assetGenerationService: config.Assets.AssetGenerationService,
 			sheinContentOptimizer:  config.Shein.SheinContentOptimizer,
 		},
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			resolutionCacheStore:  config.Shein.SheinResolutionCacheStore,
+			storeCatalog:          config.Shein.SheinStoreCatalog,
+			apiClientFactory:      config.Shein.SheinAPIClientFactory,
+			categoryResolver:      config.Shein.SheinCategoryResolver,
+			attributeResolver:     config.Shein.SheinAttributeResolver,
+			saleAttributeResolver: config.Shein.SheinSaleAttributeResolver,
+			pricingPolicy:         config.Shein.SheinPricingPolicy,
+		},
 		sheinSettings: defaultSettings,
 	}
 }

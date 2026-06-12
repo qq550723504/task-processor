@@ -17,7 +17,8 @@ import (
 )
 
 func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
-	if s == nil || s.sheinResolutionCacheStore == nil || task == nil || task.Result == nil || task.Result.Shein == nil || strings.TrimSpace(action) != "publish" {
+	cacheStore := resolveSheinResolutionCacheStore(s)
+	if s == nil || cacheStore == nil || task == nil || task.Result == nil || task.Result.Shein == nil || strings.TrimSpace(action) != "publish" {
 		return
 	}
 	task.Result.Shein = sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
@@ -40,7 +41,7 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 	now := time.Now()
 	attachPricingCacheInfo(review, "manual_cache", key, true, sheinpub.ResolutionCacheHitSourcePublishRemembered, "stored", 0, &now)
 	task.Result.Shein.Pricing = review
-	_ = s.sheinResolutionCacheStore.SaveResolutionCache(context.Background(), &sheinpub.SheinResolutionCacheEntry{
+	_ = cacheStore.SaveResolutionCache(context.Background(), &sheinpub.SheinResolutionCacheEntry{
 		StoreID:        sheinPricingStoreID(req),
 		CacheKind:      sheinpub.ResolutionCacheKindPricing,
 		CacheKey:       key,
@@ -70,7 +71,8 @@ func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Pack
 		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "package_nil"})
 		return nil
 	}
-	if s.sheinResolutionCacheStore == nil {
+	cacheStore := resolveSheinResolutionCacheStore(s)
+	if cacheStore == nil {
 		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "no_resolution_cache_store"})
 		return nil
 	}
@@ -79,7 +81,7 @@ func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Pack
 		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "empty_cache_key"})
 		return nil
 	}
-	entry, err := s.sheinResolutionCacheStore.GetResolutionCache(context.Background(), sheinpub.ResolutionCacheKindPricing, sheinPricingStoreID(buildReq), key)
+	entry, err := cacheStore.GetResolutionCache(context.Background(), sheinpub.ResolutionCacheKindPricing, sheinPricingStoreID(buildReq), key)
 	if err != nil {
 		logPricingCacheEvent("error", buildReq, pkg, &sheinpub.ResolutionCacheInfo{
 			CacheKey:  key,
@@ -121,7 +123,8 @@ func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Pack
 }
 
 func (s *service) clearSheinPricingCache(req *sheinpub.BuildRequest, pkg *sheinpub.Package) error {
-	if s == nil || s.sheinResolutionCacheStore == nil {
+	cacheStore := resolveSheinResolutionCacheStore(s)
+	if s == nil || cacheStore == nil {
 		return nil
 	}
 	key := sheinPricingCacheKey(req, pkg, s.currentSheinPricingRule())
@@ -131,7 +134,7 @@ func (s *service) clearSheinPricingCache(req *sheinpub.BuildRequest, pkg *sheinp
 	if pkg != nil && pkg.Pricing != nil {
 		pkg.Pricing.Cache = nil
 	}
-	return s.sheinResolutionCacheStore.DeleteResolutionCache(context.Background(), sheinpub.ResolutionCacheKindPricing, sheinPricingStoreID(req), key)
+	return cacheStore.DeleteResolutionCache(context.Background(), sheinpub.ResolutionCacheKindPricing, sheinPricingStoreID(req), key)
 }
 
 func normalizePublishedSheinPricingReview(pkg *sheinpub.Package) *sheinpub.PricingReview {

@@ -20,7 +20,7 @@ func (s *service) rememberSheinCategoryResolution(task *Task) {
 	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil {
 		return
 	}
-	if cache, ok := s.sheinCategoryResolver.(sheinpub.CategoryResolutionCache); ok {
+	if cache, ok := resolveSheinCategoryResolver(s).(sheinpub.CategoryResolutionCache); ok {
 		cache.RememberCategoryResolution(buildSheinPublishRequest(task.Request), task.Result.CanonicalProduct, task.Result.Shein, task.Result.Shein.CategoryResolution)
 	}
 }
@@ -29,7 +29,7 @@ func (s *service) rememberSheinAttributeResolution(task *Task) {
 	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil {
 		return
 	}
-	if cache, ok := s.sheinAttributeResolver.(sheinpub.AttributeResolutionCache); ok {
+	if cache, ok := resolveSheinAttributeResolver(s).(sheinpub.AttributeResolutionCache); ok {
 		cache.RememberAttributeResolution(buildSheinPublishRequest(task.Request), task.Result.CanonicalProduct, task.Result.Shein, task.Result.Shein.AttributeResolution)
 	}
 }
@@ -38,7 +38,7 @@ func (s *service) rememberSheinSaleAttributeResolution(task *Task) {
 	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil {
 		return
 	}
-	if cache, ok := s.sheinSaleAttributeResolver.(sheinpub.SaleAttributeResolutionCache); ok {
+	if cache, ok := resolveSheinSaleAttributeResolver(s).(sheinpub.SaleAttributeResolutionCache); ok {
 		cache.RememberSaleAttributeResolution(buildSheinPublishRequest(task.Request), task.Result.CanonicalProduct, task.Result.Shein, task.Result.Shein.SaleAttributeResolution)
 	}
 }

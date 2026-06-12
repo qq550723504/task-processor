@@ -76,8 +76,8 @@ func (s *service) canRunSheinTemplateFreshnessChecks(task *Task, currentCanonica
 	return s != nil &&
 		task != nil &&
 		currentCanonical != nil &&
-		s.sheinStoreCatalog != nil &&
-		s.sheinAPIClientFactory != nil
+		resolveSheinStoreCatalog(s) != nil &&
+		resolveSheinAPIClientFactory(s) != nil
 }
 
 func buildSheinSubmitFreshnessReadiness(pkg *SheinPackage, checks []sheinworkspace.ReadinessCheckSpec) *SheinSubmitReadiness {

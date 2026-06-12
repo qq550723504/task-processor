@@ -9,14 +9,15 @@ import (
 )
 
 func (s *service) listSheinStoreOptions(ctx context.Context) []SheinStoreOption {
-	if s == nil || s.sheinStoreCatalog == nil {
+	storeCatalog := resolveSheinStoreCatalog(s)
+	if s == nil || storeCatalog == nil {
 		return nil
 	}
 	tenantID, ok := tenantIDInt64FromContext(ctx)
 	if !ok {
 		return nil
 	}
-	options, err := s.sheinStoreCatalog.ListStoreOptions(ctx, tenantID)
+	options, err := storeCatalog.ListStoreOptions(ctx, tenantID)
 	if err != nil || len(options) == 0 {
 		return nil
 	}

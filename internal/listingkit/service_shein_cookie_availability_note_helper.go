@@ -9,7 +9,7 @@ func (s *service) resolveSheinCookieAvailabilityNote(ctx context.Context, task *
 	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil {
 		return ""
 	}
-	if s.sheinStoreCatalog == nil || s.sheinAPIClientFactory == nil {
+	if resolveSheinStoreCatalog(s) == nil || resolveSheinAPIClientFactory(s) == nil {
 		return ""
 	}
 

@@ -36,8 +36,12 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	}
 
 	// 如果需要重新解析类目,先调用类目解析器
-	if needReResolveCategory && s.sheinCategoryResolver != nil {
-		task.Result.Shein.CategoryResolution = s.sheinCategoryResolver.Resolve(buildReq, task.Result.CanonicalProduct, task.Result.Shein)
+	categoryResolver := resolveSheinCategoryResolver(s)
+	attributeResolver := resolveSheinAttributeResolver(s)
+	saleAttributeResolver := resolveSheinSaleAttributeResolver(s)
+	pricingPolicy := resolveSheinPricingPolicy(s)
+	if needReResolveCategory && categoryResolver != nil {
+		task.Result.Shein.CategoryResolution = categoryResolver.Resolve(buildReq, task.Result.CanonicalProduct, task.Result.Shein)
 		sheinpub.ApplyCategoryResolution(task.Result.Shein, task.Result.Shein.CategoryResolution)
 	}
 
@@ -54,10 +58,10 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		task.Result.CanonicalProduct,
 		task.Result.ImageAssets,
 		task.Result.Shein,
-		s.sheinCategoryResolver,
-		s.sheinAttributeResolver,
-		s.sheinSaleAttributeResolver,
-		s.sheinPricingPolicy,
+		categoryResolver,
+		attributeResolver,
+		saleAttributeResolver,
+		pricingPolicy,
 	)
 	cookieNote := strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(buildReq.Context, task))
 	if cookieNote == "" {
@@ -80,14 +84,15 @@ func (s *service) refreshSheinAttributeDerivedState(task *Task, buildReq *sheinp
 	if s == nil || task == nil || task.Result == nil || task.Result.Shein == nil || task.Result.CanonicalProduct == nil {
 		return
 	}
+	attributeResolver := resolveSheinAttributeResolver(s)
 	pkg := task.Result.Shein
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	pkg.ProductAttributes = common.BuildAttributes(task.Result.CanonicalProduct.Attributes)
 	if pkg.DraftPayload == nil {
 		pkg.DraftPayload = &sheinpub.RequestDraft{}
 	}
-	if s.sheinAttributeResolver != nil {
-		pkg.AttributeResolution = s.sheinAttributeResolver.Resolve(buildReq, task.Result.CanonicalProduct, pkg)
+	if attributeResolver != nil {
+		pkg.AttributeResolution = attributeResolver.Resolve(buildReq, task.Result.CanonicalProduct, pkg)
 		sheinpub.ApplyAttributeResolution(pkg, pkg.AttributeResolution)
 	}
 	cookieNote := strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(buildReq.Context, task))

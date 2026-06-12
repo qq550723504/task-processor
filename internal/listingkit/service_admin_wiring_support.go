@@ -53,9 +53,9 @@ func buildSheinAdminWiring(s *service) sheinAdminWiring {
 		currentPricingRule:    s.currentSheinPricingRule,
 		newSheinAPIClient:     s.newSheinAPIClient,
 		buildTaskPreview:      s.buildTaskPreview,
-		categoryResolver:      s.sheinCategoryResolver,
-		attributeResolver:     s.sheinAttributeResolver,
-		saleAttributeResolver: s.sheinSaleAttributeResolver,
+		categoryResolver:      resolveSheinCategoryResolver(s),
+		attributeResolver:     resolveSheinAttributeResolver(s),
+		saleAttributeResolver: resolveSheinSaleAttributeResolver(s),
 		clearPricingCache:     s.clearSheinPricingCache,
 	}
 }
