@@ -67,7 +67,7 @@ func buildServiceInputFixture() BuildServiceInput {
 				StoreProfile: func(*config.Config, *logrus.Logger) (listingkit.StoreProfileRepository, []func() error, error) {
 					return nil, nil, nil
 				},
-				StoreRoutingSettings: func(*config.Config, *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error) {
+				LegacyStoreRoutingSettings: func(*config.Config, *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error) {
 					return nil, nil, nil
 				},
 				SheinResolutionCache: func(*config.Config, *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error) {

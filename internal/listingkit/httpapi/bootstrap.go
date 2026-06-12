@@ -174,7 +174,7 @@ type CoreRepositoryBuilders struct {
 	StudioSession        func(*config.Config, *logrus.Logger) (listingkit.StudioSessionRepository, []func() error, error)
 	UploadedImage        func(*config.Config, *logrus.Logger) (listingkit.UploadedImageRepository, []func() error, error)
 	StoreProfile         func(*config.Config, *logrus.Logger) (listingkit.StoreProfileRepository, []func() error, error)
-	StoreRoutingSettings func(*config.Config, *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error)
+	LegacyStoreRoutingSettings func(*config.Config, *logrus.Logger) (listingkit.StoreRoutingSettingsRepository, []func() error, error)
 	SheinResolutionCache func(*config.Config, *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error)
 }
 
@@ -226,7 +226,7 @@ func (b CoreRepositoryBuilders) Validate() error {
 		return fmt.Errorf("core repository builder uploaded image is required")
 	case b.StoreProfile == nil:
 		return fmt.Errorf("core repository builder store profile is required")
-	case b.StoreRoutingSettings == nil:
+	case b.LegacyStoreRoutingSettings == nil:
 		return fmt.Errorf("core repository builder legacy store routing settings is required")
 	case b.SheinResolutionCache == nil:
 		return fmt.Errorf("core repository builder shein resolution cache is required")
