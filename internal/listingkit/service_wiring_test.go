@@ -1522,6 +1522,42 @@ func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testin
 	}
 }
 
+func TestSheinFinalReviewSKUHelpersLiveOutsideMainFinalReviewBuilder(t *testing.T) {
+	t.Parallel()
+
+	skuHelpersSrc, err := os.ReadFile("preview_builder_shein_final_review_skus.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_final_review_skus.go) error = %v", err)
+	}
+	skuHelpersContent := string(skuHelpersSrc)
+
+	for _, needle := range []string{
+		"func buildSheinFinalReviewSKUs(draft *sheinpub.RequestDraft) []SheinFinalReviewSKU {",
+		"func buildSheinFinalReviewSKU(supplierCode string, sku SheinSKUDraft) SheinFinalReviewSKU {",
+		"func normalizeSheinFinalReviewAttributeName(name string) string {",
+	} {
+		if !strings.Contains(skuHelpersContent, needle) {
+			t.Fatalf("preview_builder_shein_final_review_skus.go should contain %q", needle)
+		}
+	}
+
+	finalReviewSrc, err := os.ReadFile("preview_builder_shein_final_review.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_final_review.go) error = %v", err)
+	}
+	finalReviewContent := string(finalReviewSrc)
+
+	for _, needle := range []string{
+		"func buildSheinFinalReviewSKUs(draft *sheinpub.RequestDraft) []SheinFinalReviewSKU {",
+		"func buildSheinFinalReviewSKU(supplierCode string, sku SheinSKUDraft) SheinFinalReviewSKU {",
+		"func normalizeSheinFinalReviewAttributeName(name string) string {",
+	} {
+		if strings.Contains(finalReviewContent, needle) {
+			t.Fatalf("preview_builder_shein_final_review.go should not contain %q", needle)
+		}
+	}
+}
+
 func TestSheinImageUploadPreviewHelpersLiveOutsideSubmitImageRuntime(t *testing.T) {
 	t.Parallel()
 
