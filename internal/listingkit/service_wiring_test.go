@@ -1556,6 +1556,40 @@ func TestSheinPreviewReviewSummaryHelperLivesOutsideMainSheinPreviewBuilder(t *t
 	}
 }
 
+func TestSheinPreviewWorkspaceOverviewHelperLivesOutsideMainSheinPreviewBuilder(t *testing.T) {
+	t.Parallel()
+
+	mainSrc, err := os.ReadFile("preview_builder_shein.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein.go) error = %v", err)
+	}
+	mainContent := string(mainSrc)
+	for _, needle := range []string{
+		"func buildSheinPreviewWorkspaceOverview(statusOverview *sheinworkspace.StatusOverview, submitState *sheinworkspace.SubmitStateInput, repairCenter *SheinRepairCenter) *sheinworkspace.WorkspaceOverview {",
+		"repairState := sheinworkspace.BuildRepairStateInput(repairCenter)",
+		"sheinworkspace.BuildWorkspaceOverview(statusOverview, submitState, repairState)",
+	} {
+		if strings.Contains(mainContent, needle) {
+			t.Fatalf("preview_builder_shein.go should not contain %q", needle)
+		}
+	}
+
+	overviewSrc, err := os.ReadFile("preview_builder_shein_workspace_overview.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_workspace_overview.go) error = %v", err)
+	}
+	overviewContent := string(overviewSrc)
+	for _, needle := range []string{
+		"func buildSheinPreviewWorkspaceOverview(statusOverview *sheinworkspace.StatusOverview, submitState *sheinworkspace.SubmitStateInput, repairCenter *SheinRepairCenter) *sheinworkspace.WorkspaceOverview {",
+		"repairState := sheinworkspace.BuildRepairStateInput(repairCenter)",
+		"return sheinworkspace.BuildWorkspaceOverview(statusOverview, submitState, repairState)",
+	} {
+		if !strings.Contains(overviewContent, needle) {
+			t.Fatalf("preview_builder_shein_workspace_overview.go should contain %q", needle)
+		}
+	}
+}
+
 func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testing.T) {
 	t.Parallel()
 

@@ -3,7 +3,6 @@ package listingkit
 import (
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog/canonical"
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -18,7 +17,6 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, pod *PodExecutionSummary, c
 	checklist := projection.Checklist
 	repairCenter := buildSheinRepairCenter(readiness, checklist)
 	submitState := projection.SubmitState
-	repairState := sheinworkspace.BuildRepairStateInput(repairCenter)
 	statusOverview := projection.StatusOverview
 	return normalizeSheinPreviewPayloadSemanticFields(buildSheinPreviewPayloadBody(sheinPreviewPayloadBodyInput{
 		pkg:               pkg,
@@ -31,6 +29,6 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, pod *PodExecutionSummary, c
 		checklist:         checklist,
 		repairCenter:      repairCenter,
 		statusOverview:    statusOverview,
-		workspaceOverview: sheinworkspace.BuildWorkspaceOverview(statusOverview, submitState, repairState),
+		workspaceOverview: buildSheinPreviewWorkspaceOverview(statusOverview, submitState, repairCenter),
 	}))
 }
