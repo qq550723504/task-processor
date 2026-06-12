@@ -126,12 +126,16 @@ type StudioMediaService interface {
 	RegenerateSheinDataImage(ctx context.Context, taskID string, req *RegenerateSheinDataImageRequest) (*RegenerateSheinDataImageResponse, error)
 }
 
+type LegacyStoreRoutingSettingsAdminService interface {
+	GetSheinStoreRoutingSettings(ctx context.Context) (*ListingKitStoreRoutingSettings, error)
+	UpdateSheinStoreRoutingSettings(ctx context.Context, req *ListingKitStoreRoutingSettings) (*ListingKitStoreRoutingSettings, error)
+}
+
 type StoreAdminService interface {
 	ListSheinStoreProfiles(ctx context.Context) ([]ListingKitStoreProfile, error)
 	UpsertSheinStoreProfile(ctx context.Context, req *ListingKitStoreProfile) (*ListingKitStoreProfile, error)
 	DeleteSheinStoreProfile(ctx context.Context, id int64) error
-	GetSheinStoreRoutingSettings(ctx context.Context) (*ListingKitStoreRoutingSettings, error)
-	UpdateSheinStoreRoutingSettings(ctx context.Context, req *ListingKitStoreRoutingSettings) (*ListingKitStoreRoutingSettings, error)
+	LegacyStoreRoutingSettingsAdminService
 	GetSheinSettings(ctx context.Context) (*SheinSettings, error)
 	UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error)
 	GetAIClientSettings(ctx context.Context, scope string, clientName string) (*AIClientSettings, error)
