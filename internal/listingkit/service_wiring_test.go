@@ -430,7 +430,7 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		},
 		{
 			name:         "submit facade",
-			file:         "service_submit_entrypoint.go",
+			file:         "service_submit_routing.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
@@ -460,7 +460,7 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		},
 		{
 			name:         "temporal submission facade",
-			file:         "service_submit_temporal_task_loader_helper.go",
+			file:         "task_temporal_submission_adapter.go",
 			builderCalls: nil,
 			inlineConfig: nil,
 		},
