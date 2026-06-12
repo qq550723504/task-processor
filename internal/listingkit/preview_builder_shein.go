@@ -12,8 +12,7 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, pod *PodExecutionSummary, c
 		return nil
 	}
 	sheinpub.NormalizePackageSemanticFields(pkg)
-	needsReview := len(pkg.ReviewNotes) > 0
-	summary := uniqueStrings(append([]string(nil), pkg.ReviewNotes...))
+	needsReview, summary := buildSheinPreviewReviewSummary(pkg)
 	projection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)
 	readiness := projection.Readiness
 	checklist := projection.Checklist
@@ -21,10 +20,6 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, pod *PodExecutionSummary, c
 	submitState := projection.SubmitState
 	repairState := sheinworkspace.BuildRepairStateInput(repairCenter)
 	statusOverview := projection.StatusOverview
-	if pkg.Inspection != nil {
-		needsReview = needsReview || pkg.Inspection.NeedsReview
-		summary = uniqueStrings(append(summary, pkg.Inspection.Summary...))
-	}
 	return normalizeSheinPreviewPayloadSemanticFields(buildSheinPreviewPayloadBody(sheinPreviewPayloadBodyInput{
 		pkg:               pkg,
 		canonical:         canonical,

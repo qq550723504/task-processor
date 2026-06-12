@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -156,5 +157,24 @@ func TestBuildSheinSourceProductSummary(t *testing.T) {
 	}
 	if summary.Attributes["brand"] != "Acme" {
 		t.Fatalf("attributes = %+v", summary.Attributes)
+	}
+}
+
+func TestBuildSheinPreviewReviewSummary(t *testing.T) {
+	t.Parallel()
+
+	needsReview, summary := buildSheinPreviewReviewSummary(&SheinPackage{
+		ReviewNotes: []string{"缺少类目", "缺少类目"},
+		Inspection: &sheinpub.Inspection{
+			NeedsReview: true,
+			Summary:     []string{"图片待确认", "缺少类目"},
+		},
+	})
+	if !needsReview {
+		t.Fatal("needsReview = false, want true")
+	}
+	want := []string{"缺少类目", "图片待确认"}
+	if !slices.Equal(summary, want) {
+		t.Fatalf("summary = %#v, want %#v", summary, want)
 	}
 }

@@ -1521,6 +1521,41 @@ func TestSheinPreviewPayloadAssemblerLivesOutsideMainSheinPreviewBuilder(t *test
 	}
 }
 
+func TestSheinPreviewReviewSummaryHelperLivesOutsideMainSheinPreviewBuilder(t *testing.T) {
+	t.Parallel()
+
+	mainSrc, err := os.ReadFile("preview_builder_shein.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein.go) error = %v", err)
+	}
+	mainContent := string(mainSrc)
+	for _, needle := range []string{
+		"func buildSheinPreviewReviewSummary(pkg *sheinpub.Package) (bool, []string) {",
+		"needsReview := len(pkg.ReviewNotes) > 0",
+		"summary := uniqueStrings(append([]string(nil), pkg.ReviewNotes...))",
+	} {
+		if strings.Contains(mainContent, needle) {
+			t.Fatalf("preview_builder_shein.go should not contain %q", needle)
+		}
+	}
+
+	reviewSummarySrc, err := os.ReadFile("preview_builder_shein_review_summary.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_review_summary.go) error = %v", err)
+	}
+	reviewSummaryContent := string(reviewSummarySrc)
+	for _, needle := range []string{
+		"func buildSheinPreviewReviewSummary(pkg *sheinpub.Package) (bool, []string) {",
+		"needsReview := len(pkg.ReviewNotes) > 0",
+		"summary := uniqueStrings(append([]string(nil), pkg.ReviewNotes...))",
+		"needsReview = needsReview || pkg.Inspection.NeedsReview",
+	} {
+		if !strings.Contains(reviewSummaryContent, needle) {
+			t.Fatalf("preview_builder_shein_review_summary.go should contain %q", needle)
+		}
+	}
+}
+
 func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testing.T) {
 	t.Parallel()
 
