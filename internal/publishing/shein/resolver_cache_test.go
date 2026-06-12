@@ -306,6 +306,61 @@ func TestCategoryResolverCacheKeyIgnoresResolvedSheinCategoryPathWhenSourcePathM
 	}
 }
 
+func TestCategoryResolverCacheKeyMatchesLegacyParentAndVariantSDSIdentity(t *testing.T) {
+	req := &BuildRequest{SheinStoreID: 42}
+	legacyCanonical := &canonical.Product{
+		Title:        "40oz大容量汽车杯（包邮仅限美国直发）",
+		CategoryPath: []string{"美国本地直发", "杯具用品", "汽车杯"},
+		Attributes: map[string]canonical.Attribute{
+			"product_sku": {Value: "MG8009019"},
+			"variant_sku": {Value: "MG8009019002"},
+		},
+		Variants: []canonical.Variant{{
+			SKU: "MG8009019002-LEGACY",
+			Attributes: map[string]canonical.Attribute{
+				"source_sds_sku": {Value: "MG8009019002"},
+			},
+		}},
+	}
+	legacyPkg := &Package{
+		SpuName:      "40oz大容量汽车杯（包邮仅限美国直发）",
+		CategoryPath: []string{"美国本地直发", "杯具用品", "汽车杯"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8009019"},
+			{Name: "variant_sku", Value: "MG8009019002"},
+		},
+	}
+
+	currentCanonical := &canonical.Product{
+		Title: "40oz大容量汽车杯（包邮仅限美国直发）",
+		Attributes: map[string]canonical.Attribute{
+			"variant_sku": {Value: "MG8009019002"},
+		},
+		Variants: []canonical.Variant{{
+			SKU: "MG8009019002-NEW",
+			Attributes: map[string]canonical.Attribute{
+				"source_sds_sku": {Value: "MG8009019002"},
+			},
+		}},
+	}
+	currentPkg := &Package{
+		SpuName: "40oz大容量汽车杯（包邮仅限美国直发）",
+		ProductAttributes: []common.Attribute{
+			{Name: "variant_sku", Value: "MG8009019002"},
+			{Name: "source_sds_sku", Value: "MG8009019002"},
+		},
+	}
+
+	legacyAliasKey := categoryResolverUnresolvedAliasKey(req, legacyCanonical, legacyPkg)
+	currentKey := categoryResolverCacheKey(req, currentCanonical, currentPkg)
+	if legacyAliasKey == "" || currentKey == "" {
+		t.Fatalf("cache keys should not be empty: legacy=%q current=%q", legacyAliasKey, currentKey)
+	}
+	if legacyAliasKey != currentKey {
+		t.Fatalf("category cache key drifted between legacy parent/variant identity and current variant-only identity: legacy=%s current=%s", legacyAliasKey, currentKey)
+	}
+}
+
 func TestCachedAttributeResolverSkipsZeroHitResolution(t *testing.T) {
 	inner := &countingAttributeResolver{
 		out: &AttributeResolution{
@@ -582,6 +637,43 @@ func TestAttributeResolverCacheKeyIgnoresDecoratedSubmitSupplierSKUsForSDS(t *te
 	}
 	if firstKey != secondKey {
 		t.Fatalf("attribute cache key drifted across decorated submit SKUs: first=%s second=%s", firstKey, secondKey)
+	}
+}
+
+func TestAttributeResolverCacheKeyMatchesLegacyParentAndVariantSDSIdentity(t *testing.T) {
+	req := &BuildRequest{SheinStoreID: 42}
+	legacyPkg := &Package{
+		CategoryID:     3221,
+		CategoryIDList: []int{2030, 1946, 3213, 3221},
+		CategoryPath:   []string{"美国本地直发", "杯具用品", "汽车杯"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8009019"},
+			{Name: "sku", Value: "MG8009019"},
+			{Name: "variant_sku", Value: "MG8009019002"},
+			{Name: "material", Value: "304不锈钢"},
+			{Name: "product_model", Value: "MG8009019002"},
+		},
+	}
+	currentPkg := &Package{
+		CategoryID:     3221,
+		CategoryIDList: []int{2030, 1946, 3213, 3221},
+		CategoryPath:   []string{"美国本地直发", "杯具用品", "汽车杯"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8009019"},
+			{Name: "sku", Value: "MG8009019"},
+			{Name: "variant_sku", Value: "MG8009019002"},
+			{Name: "material", Value: "304不锈钢"},
+			{Name: "product_model", Value: "MG8009019002"},
+		},
+	}
+
+	legacyKey := attributeResolverCacheKey(req, nil, legacyPkg)
+	currentKey := attributeResolverCacheKey(req, nil, currentPkg)
+	if legacyKey == "" || currentKey == "" {
+		t.Fatalf("cache keys should not be empty: legacy=%q current=%q", legacyKey, currentKey)
+	}
+	if legacyKey != currentKey {
+		t.Fatalf("attribute cache key drifted between legacy parent/variant identity and current variant-only identity: legacy=%s current=%s", legacyKey, currentKey)
 	}
 }
 

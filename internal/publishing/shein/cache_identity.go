@@ -61,7 +61,7 @@ func stableCanonicalSDSIdentifiers(canonical *canonical.Product) []string {
 			}
 		}
 	}
-	identifiers := normalizeStableIdentity(values)
+	identifiers := normalizeStableSDSIdentity(values)
 	if len(identifiers) > 0 {
 		return identifiers
 	}
@@ -88,7 +88,7 @@ func stablePackageIdentifiers(pkg *Package) []string {
 		lookupAttributeValueInList(pkg.ProductAttributes, "source_sds_sku"),
 		lookupAttributeValueInList(pkg.ProductAttributes, "sku"),
 	)
-	identifiers := normalizeStableIdentity(primary)
+	identifiers := normalizeStableSDSIdentity(primary)
 	if len(identifiers) > 0 {
 		return identifiers
 	}
@@ -110,7 +110,7 @@ func stablePackageIdentifiers(pkg *Package) []string {
 			}
 		}
 	}
-	identifiers = normalizeStableIdentity(secondary)
+	identifiers = normalizeStableSDSIdentity(secondary)
 	if len(identifiers) > 0 {
 		return identifiers
 	}
@@ -170,6 +170,45 @@ func normalizeStableIdentity(values []string) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+func normalizeStableSDSIdentity(values []string) []string {
+	expanded := make([]string, 0, len(values)*2)
+	for _, value := range values {
+		expanded = append(expanded, value)
+		if family := deriveStableSDSFamilyIdentifier(value); family != "" {
+			expanded = append(expanded, family)
+		}
+	}
+	return normalizeStableIdentity(expanded)
+}
+
+func deriveStableSDSFamilyIdentifier(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) < 10 || strings.ContainsAny(value, "-_/ ") {
+		return ""
+	}
+	hasLetter := false
+	for _, ch := range value {
+		switch {
+		case ch >= 'A' && ch <= 'Z':
+			hasLetter = true
+		case ch >= 'a' && ch <= 'z':
+			hasLetter = true
+		case ch >= '0' && ch <= '9':
+		default:
+			return ""
+		}
+	}
+	if !hasLetter {
+		return ""
+	}
+	for _, ch := range value[len(value)-3:] {
+		if ch < '0' || ch > '9' {
+			return ""
+		}
+	}
+	return value[:len(value)-3]
 }
 
 func StablePricingPackageIdentity(pkg *Package) []string {
