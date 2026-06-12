@@ -6,6 +6,11 @@ import (
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 )
 
+const (
+	RevisionActionTypeEdit    = "edit"
+	RevisionActionTypeRestore = "restore"
+)
+
 type RevisionDiffPreview = sheinworkspace.RevisionDiffPreview
 type RevisionFieldChange = sheinworkspace.RevisionFieldChange
 
@@ -74,4 +79,18 @@ type WalmartRevisionInput struct {
 	KeyFeatures      []string          `json:"key_features,omitempty"`
 	Images           *PlatformImageSet `json:"images,omitempty"`
 	ReviewNotes      []string          `json:"review_notes,omitempty"`
+}
+
+func revisionRestoreSourceID(req *ApplyRevisionRequest) string {
+	if req == nil {
+		return ""
+	}
+	return req.RestoreFromRevisionID
+}
+
+func revisionActionType(req *ApplyRevisionRequest) string {
+	if revisionRestoreSourceID(req) != "" {
+		return RevisionActionTypeRestore
+	}
+	return RevisionActionTypeEdit
 }
