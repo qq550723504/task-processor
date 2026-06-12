@@ -1499,7 +1499,6 @@ func TestSubmitSettingsHelpersFileOwnsStoreSelectionResolvers(t *testing.T) {
 	for _, needle := range []string{
 		"type sheinStoreSelection struct {",
 		"func selectionFromSnapshot(snapshot *SheinStoreResolutionSnapshot) *sheinStoreSelection {",
-		"func matchStoreProfileForTask(",
 	} {
 		if !strings.Contains(categoryContent, needle) {
 			t.Fatalf("service_shein_category_store_selection_support.go should keep %q", needle)
