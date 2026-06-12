@@ -12,15 +12,16 @@ func buildSettingsAdminServiceConfig(s *service) settingsAdminServiceConfig {
 }
 
 func buildSheinAdminServiceConfig(s *service) sheinAdminServiceConfig {
+	wiring := buildSheinAdminWiring(s)
 	return sheinAdminServiceConfig{
-		repo:                  s.repo,
-		mutateTaskResult:      s.mutateTaskResult,
-		currentPricingRule:    s.currentSheinPricingRule,
-		newSheinAPIClient:     s.newSheinAPIClient,
-		buildTaskPreview:      s.buildTaskPreview,
-		categoryResolver:      s.sheinCategoryResolver,
-		attributeResolver:     s.sheinAttributeResolver,
-		saleAttributeResolver: s.sheinSaleAttributeResolver,
-		clearPricingCache:     s.clearSheinPricingCache,
+		repo:                  wiring.repo,
+		mutateTaskResult:      wiring.mutateTaskResult,
+		currentPricingRule:    wiring.currentPricingRule,
+		newSheinAPIClient:     wiring.newSheinAPIClient,
+		buildTaskPreview:      wiring.buildTaskPreview,
+		categoryResolver:      wiring.categoryResolver,
+		attributeResolver:     wiring.attributeResolver,
+		saleAttributeResolver: wiring.saleAttributeResolver,
+		clearPricingCache:     wiring.clearPricingCache,
 	}
 }
