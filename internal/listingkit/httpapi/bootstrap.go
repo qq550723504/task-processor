@@ -72,7 +72,9 @@ type TemporalWorkerService interface {
 }
 
 type moduleService interface {
-	listingkitapi.HandlerService
+	listingkit.TaskLifecycleService
+	listingkit.GenerationTaskService
+	listingkit.StudioMediaService
 	listingkit.InternalListingKitService
 	listingkit.TaskSubmitterConfigurer
 	listingkit.StudioSessionHandlerService
@@ -515,6 +517,9 @@ func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleServ
 
 func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOption {
 	return []listingkitapi.HandlerOption{
+		listingkitapi.WithTaskLifecycleService(runtime.service),
+		listingkitapi.WithGenerationTaskService(runtime.service),
+		listingkitapi.WithStudioMediaService(runtime.service),
 		listingkitapi.WithDependencies(runtime.handlerDependencies),
 		listingkitapi.WithSheinSyncRepository(runtime.sheinSyncRepository),
 		listingkitapi.WithSheinSyncServices(runtime.sheinSyncService, runtime.sheinCandidateService, runtime.sheinEnrollmentService),

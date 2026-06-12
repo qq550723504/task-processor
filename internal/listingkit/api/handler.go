@@ -283,17 +283,26 @@ func WithSheinSyncRepository(repo listingkit.SheinSyncRepository) HandlerOption 
 	})
 }
 
-func newHandlerWithDefaults(service HandlerService, studioAsyncJobs *studioAsyncJobStore) *handler {
+func newHandlerWithDefaults(studioAsyncJobs *studioAsyncJobStore) *handler {
 	return &handler{
-		taskLifecycleService:  service,
-		generationTaskService: service,
-		studioMediaService:    service,
 		studioBatchRunService: nil,
 		studioAsyncJobs:       studioAsyncJobs,
 	}
 }
 
-func (h *handler) attachOptionalServices(service HandlerService) {
+func (h *handler) attachCoreServices(service handlerCoreService) {
+	if service == nil {
+		return
+	}
+	h.taskLifecycleService = service
+	h.generationTaskService = service
+	h.studioMediaService = service
+}
+
+func (h *handler) attachOptionalServices(service any) {
+	if service == nil {
+		return
+	}
 	if adminService, ok := any(service).(storeAdminHandlerService); ok {
 		h.storeAdminService = adminService
 	}
@@ -335,18 +344,25 @@ func (h *handler) finalize() error {
 	if h.initErr != nil {
 		return h.initErr
 	}
+	if h.taskLifecycleService == nil {
+		return errors.New("task lifecycle service is not configured")
+	}
+	if h.generationTaskService == nil {
+		return errors.New("generation task service is not configured")
+	}
+	if h.studioMediaService == nil {
+		return errors.New("studio media service is not configured")
+	}
 	return nil
 }
 
 func NewHandler(service HandlerService, opts ...HandlerOption) (*handler, error) {
-	if service == nil {
-		return nil, errors.New("service cannot be nil")
-	}
 	studioAsyncJobs, err := newStudioAsyncJobStore(nil)
 	if err != nil {
 		return nil, err
 	}
-	h := newHandlerWithDefaults(service, studioAsyncJobs)
+	h := newHandlerWithDefaults(studioAsyncJobs)
+	h.attachCoreServices(service)
 	h.attachOptionalServices(service)
 	h.applyOptions(opts)
 	if err := h.finalize(); err != nil {

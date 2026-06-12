@@ -1,5 +1,7 @@
 package httpapi
 
-import listingkitapi "task-processor/internal/listingkit/api"
+import "task-processor/internal/listingkit"
 
-var _ listingkitapi.HandlerService = (moduleService)(nil)
+var _ listingkit.TaskLifecycleService = (moduleService)(nil)
+var _ listingkit.GenerationTaskService = (moduleService)(nil)
+var _ listingkit.StudioMediaService = (moduleService)(nil)

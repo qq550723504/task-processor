@@ -150,7 +150,7 @@ func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers 
 		return nil, err
 	}
 	startTaskRecoverySweep(input, bundle, closers)
-	handler, err := listingkitapi.NewHandler(bundle.runtime.service, buildHandlerOptions(bundle.runtime)...)
+	handler, err := listingkitapi.NewHandler(nil, buildHandlerOptions(bundle.runtime)...)
 	if err != nil {
 		return nil, fmt.Errorf("create listing kit handler: %w", err)
 	}
