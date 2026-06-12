@@ -17,11 +17,14 @@ import (
 )
 
 func (config *ServiceConfig) applyDefaults() {
-	config.ensureSheinResolvers()
-	config.ensureAssembler()
-	config.ensureAssetDependencies()
-	config.ensureCoreRepositories()
-	config.ensureSheinDefaults()
+	runServiceConfigInitializers(
+		config,
+		(*ServiceConfig).ensureSheinResolvers,
+		(*ServiceConfig).ensureAssembler,
+		(*ServiceConfig).ensureAssetDependencies,
+		(*ServiceConfig).ensureCoreRepositories,
+		(*ServiceConfig).ensureSheinDefaults,
+	)
 }
 
 func (config *ServiceConfig) ensureSheinResolvers() {
