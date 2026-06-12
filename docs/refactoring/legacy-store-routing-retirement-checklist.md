@@ -17,6 +17,7 @@ Retire legacy SHEIN store routing settings safely, without breaking:
 - Frontend no longer exposes store routing UI or task-create auto-routing behavior.
 - Legacy routing code paths are isolated into dedicated `*_legacy*` files.
 - `httpapi` and `service` wiring now label this dependency as `legacy`.
+- Legacy store routing service entrypoints now behave as a compatibility shell and return synthesized `manual` defaults instead of persisted state.
 
 ## Remaining Compatibility Surfaces
 

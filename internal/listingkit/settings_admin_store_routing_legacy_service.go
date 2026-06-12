@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 func (s *settingsAdminService) GetSheinStoreRoutingSettings(ctx context.Context) (*ListingKitStoreRoutingSettings, error) {
@@ -10,7 +11,8 @@ func (s *settingsAdminService) GetSheinStoreRoutingSettings(ctx context.Context)
 	if !ok {
 		return nil, fmt.Errorf("tenant id is required")
 	}
-	return s.routingSettingsRepo.GetByTenant(ctx, tenantID)
+	settings := defaultStoreRoutingSettings(tenantID)
+	return &settings, nil
 }
 
 func (s *settingsAdminService) UpdateSheinStoreRoutingSettings(ctx context.Context, req *ListingKitStoreRoutingSettings) (*ListingKitStoreRoutingSettings, error) {
@@ -21,8 +23,8 @@ func (s *settingsAdminService) UpdateSheinStoreRoutingSettings(ctx context.Conte
 	if req == nil {
 		return nil, fmt.Errorf("legacy store routing settings are required")
 	}
-	settings := *req
-	settings.TenantID = tenantID
-	settings = normalizeStoreRoutingSettings(settings)
-	return s.routingSettingsRepo.Upsert(ctx, &settings)
+	settings := defaultStoreRoutingSettings(tenantID)
+	now := time.Now()
+	settings.UpdatedAt = &now
+	return &settings, nil
 }

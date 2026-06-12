@@ -63,7 +63,7 @@ func TestStoreProfileServiceUpsertListAndDelete(t *testing.T) {
 	}
 }
 
-func TestStoreProfileServiceUpdatesRoutingSettings(t *testing.T) {
+func TestStoreProfileServiceReturnsLegacyRoutingCompatibilityDefaults(t *testing.T) {
 	t.Parallel()
 
 	svc := &service{
@@ -84,16 +84,19 @@ func TestStoreProfileServiceUpdatesRoutingSettings(t *testing.T) {
 	if saved.TenantID != 202 {
 		t.Fatalf("tenant id = %d, want 202", saved.TenantID)
 	}
-	if saved.SelectionStrategy != "priority" {
-		t.Fatalf("selection strategy = %q, want priority", saved.SelectionStrategy)
+	if saved.SelectionStrategy != "manual" {
+		t.Fatalf("selection strategy = %q, want manual compatibility default", saved.SelectionStrategy)
+	}
+	if saved.FallbackStoreID != 0 || !saved.AllowFallback || !saved.AllowManualOverride {
+		t.Fatalf("saved settings = %+v, want synthesized manual defaults", saved)
 	}
 
 	current, err := svc.GetSheinStoreRoutingSettings(ctx)
 	if err != nil {
 		t.Fatalf("GetSheinStoreRoutingSettings error = %v", err)
 	}
-	if current.FallbackStoreID != 870 || !current.AllowFallback || !current.AllowManualOverride {
-		t.Fatalf("routing settings = %+v, want persisted routing settings", current)
+	if current.SelectionStrategy != "manual" || current.FallbackStoreID != 0 || !current.AllowFallback || !current.AllowManualOverride {
+		t.Fatalf("routing settings = %+v, want compatibility defaults", current)
 	}
 }
 
