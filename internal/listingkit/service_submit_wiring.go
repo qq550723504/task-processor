@@ -82,10 +82,10 @@ func buildTaskDirectSubmissionServiceConfig(s *service) taskDirectSubmissionServ
 func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecutionServiceConfig {
 	resolver := buildSubmitRuntimeContextResolver(s)
 	return taskSubmissionExecutionServiceConfig{
-		sheinProductAPIBuilder:   s.sheinProductAPIBuilder,
-		sheinImageAPIBuilder:     s.sheinImageAPIBuilder,
-		sheinTranslateAPIBuilder: s.sheinTranslateAPIBuilder,
-		sheinContentOptimizer:    s.sheinContentOptimizer,
+		sheinProductAPIBuilder:   resolveSubmissionProductAPIBuilder(s),
+		sheinImageAPIBuilder:     resolveSubmissionImageAPIBuilder(s),
+		sheinTranslateAPIBuilder: resolveSubmissionTranslateAPIBuilder(s),
+		sheinContentOptimizer:    resolveSubmissionContentOptimizer(s),
 		currentSheinPricingRule:  s.currentSheinPricingRule,
 		resolveSheinStoreID:      resolver.resolveStoreID,
 		resolveSubmitSettings:    resolver.resolveSubmitSettings,
@@ -104,7 +104,8 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 	wiring := buildTaskSubmissionOrchestratorWiring(s, resolver)
 	return taskTemporalSubmissionAdapterConfig{
 		startSheinPublishWorkflow: func(ctx context.Context, in SheinPublishWorkflowStartInput) error {
-			return s.sheinPublishWorkflowClient.StartSheinPublish(ctx, in)
+			client, _ := resolveSubmissionWorkflowClient(s)
+			return client.StartSheinPublish(ctx, in)
 		},
 		beginSheinSubmitLease:                wiring.recovery.beginSheinSubmitLease,
 		loadSheinPublishTask:                 s.loadSheinPublishTaskForTemporal,

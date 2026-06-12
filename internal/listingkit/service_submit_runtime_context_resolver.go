@@ -34,7 +34,7 @@ func (r *submitRuntimeContextResolver) resolveSubmitSettings(ctx context.Context
 }
 
 func (r *submitRuntimeContextResolver) resolveWarehouseCode(ctx context.Context, task *Task, site string) string {
-	if r == nil || r.service == nil || r.service.sheinStoreCatalog == nil || r.service.sheinAPIClientFactory == nil || task == nil {
+	if r == nil || r.service == nil || resolveSubmissionStoreCatalog(r.service) == nil || resolveSubmissionAPIClientFactory(r.service) == nil || task == nil {
 		return ""
 	}
 	apiClient, storeID, err := r.newAPIClient(ctx, task)
@@ -59,7 +59,7 @@ func (r *submitRuntimeContextResolver) resolveWarehouseCode(ctx context.Context,
 }
 
 func (r *submitRuntimeContextResolver) resolveStoreInfo(ctx context.Context, task *Task) (*SheinStoreInfo, error) {
-	if r == nil || r.service == nil || r.service.sheinStoreCatalog == nil {
+	if r == nil || r.service == nil || resolveSubmissionStoreCatalog(r.service) == nil {
 		return nil, fmt.Errorf("shein store catalog is unavailable")
 	}
 	storeID, err := r.resolveStoreID(ctx, task)
@@ -73,7 +73,7 @@ func (r *submitRuntimeContextResolver) resolveStoreInfo(ctx context.Context, tas
 	if tenantID <= 0 {
 		return nil, fmt.Errorf("shein store tenant is unavailable")
 	}
-	storeInfo, err := r.service.sheinStoreCatalog.GetStoreInfo(ctx, tenantID, storeID)
+	storeInfo, err := resolveSubmissionStoreCatalog(r.service).GetStoreInfo(ctx, tenantID, storeID)
 	if err != nil {
 		return nil, fmt.Errorf("load shein store info: %w", err)
 	}
@@ -87,14 +87,14 @@ func (r *submitRuntimeContextResolver) resolveStoreInfo(ctx context.Context, tas
 }
 
 func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*SheinRuntimeAPIClient, int64, error) {
-	if r == nil || r.service == nil || r.service.sheinAPIClientFactory == nil {
+	if r == nil || r.service == nil || resolveSubmissionAPIClientFactory(r.service) == nil {
 		return nil, 0, fmt.Errorf("shein api client factory is unavailable")
 	}
 	storeInfo, err := r.resolveStoreInfo(ctx, task)
 	if err != nil {
 		return nil, 0, err
 	}
-	return r.service.sheinAPIClientFactory.NewSheinAPIClient(storeInfo.ID, storeInfo), storeInfo.ID, nil
+	return resolveSubmissionAPIClientFactory(r.service).NewSheinAPIClient(storeInfo.ID, storeInfo), storeInfo.ID, nil
 }
 
 func (r *submitRuntimeContextResolver) resolveStoreID(ctx context.Context, task *Task) (int64, error) {
@@ -135,7 +135,7 @@ func (r *submitRuntimeContextResolver) resolveStoreSelection(ctx context.Context
 		Reason:         "任务显式指定了 SHEIN 店铺。",
 		ManualOverride: true,
 	}
-	if r == nil || r.service == nil || r.service.storeProfileRepo == nil {
+	if r == nil || r.service == nil || resolveSubmissionStoreProfileRepo(r.service) == nil {
 		return selection, nil
 	}
 
@@ -147,7 +147,7 @@ func (r *submitRuntimeContextResolver) resolveStoreSelection(ctx context.Context
 		return selection, nil
 	}
 
-	items, err := r.service.storeProfileRepo.ListByTenant(ctx, tenantID)
+	items, err := resolveSubmissionStoreProfileRepo(r.service).ListByTenant(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}

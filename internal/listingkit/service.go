@@ -12,8 +12,11 @@ func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {
 }
 
 func (s *service) ConfigureSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {
+	enabled = enabled && client != nil
 	s.sheinPublishWorkflowClient = client
-	s.sheinPublishWorkflowEnabled = enabled && client != nil
+	s.sheinPublishWorkflowEnabled = enabled
+	s.submissionDeps.sheinPublishWorkflowClient = client
+	s.submissionDeps.sheinPublishWorkflowEnabled = enabled
 }
 
 func ConfigureSheinPublishWorkflowClient(svc WorkflowClientConfigurer, client SheinPublishWorkflowClient, enabled bool) error {

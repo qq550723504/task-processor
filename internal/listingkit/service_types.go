@@ -38,6 +38,7 @@ type service struct {
 	admin                          adminCollaborators
 	adminDeps                      adminDependencies
 	submission                     submissionCollaborators
+	submissionDeps                 submissionDependencies
 	studioSessionRepo              StudioSessionRepository
 	studioBatchRepo                StudioBatchRepository
 	studioBatchRunRepo             StudioBatchRunRepository

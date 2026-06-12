@@ -93,6 +93,17 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 			storeProfileRepo:  config.Core.StoreProfileRepository,
 			aiCredentialStore: config.Core.AIClientCredentialStore,
 		},
+		submissionDeps: submissionDependencies{
+			storeProfileRepo:            config.Core.StoreProfileRepository,
+			sheinStoreCatalog:           config.Shein.SheinStoreCatalog,
+			sheinAPIClientFactory:       config.Shein.SheinAPIClientFactory,
+			sheinProductAPIBuilder:      config.Shein.SheinProductAPIBuilder,
+			sheinImageAPIBuilder:        config.Shein.SheinImageAPIBuilder,
+			sheinTranslateAPIBuilder:    config.Shein.SheinTranslateAPIBuilder,
+			sheinContentOptimizer:       config.Shein.SheinContentOptimizer,
+			sheinPublishWorkflowClient:  config.Workflow.SheinPublishWorkflowClient,
+			sheinPublishWorkflowEnabled: config.Workflow.SheinPublishWorkflowEnabled,
+		},
 		sheinSettings: defaultSettings,
 	}
 }

@@ -9,9 +9,10 @@ func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string
 }
 
 func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {
+	client, enabled := resolveSubmissionWorkflowClient(s)
 	return s != nil &&
-		s.sheinPublishWorkflowEnabled &&
-		s.sheinPublishWorkflowClient != nil &&
+		enabled &&
+		client != nil &&
 		platform == "shein" &&
 		action == "publish"
 }
