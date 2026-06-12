@@ -220,6 +220,24 @@ func WithTaskRequeueService(service listingkit.TaskRequeueService) HandlerOption
 	})
 }
 
+func WithStudioMediaService(service listingkit.StudioMediaService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.studioMediaService = service
+	})
+}
+
+func WithStudioSessionAsyncJobService(service studioSessionAsyncJobService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.studioSessionService = service
+	})
+}
+
+func WithUploadedImageDeleteService(service uploadedImageDeleteService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.uploadedImageDeleteService = service
+	})
+}
+
 func WithChildTaskRetryService(service childTaskRetryService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.childTaskRetryService = service

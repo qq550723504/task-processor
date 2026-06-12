@@ -19,7 +19,7 @@ func TestStudioAsyncJobStartsAndReturnsSucceededDesignJob(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
+	svc := &stubStudioMediaHandlerService{
 		studioDesigns: &listingkit.StudioDesignResponse{
 			Prompt: "retro cherries",
 			Images: []listingkit.StudioGeneratedImage{{
@@ -29,7 +29,7 @@ func TestStudioAsyncJobStartsAndReturnsSucceededDesignJob(t *testing.T) {
 		},
 	}
 	subscriptionService := activeStudioSubscriptionService(t)
-	h, err := NewHandler(svc, WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithStudioSessionAsyncJobService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestStudioAsyncJobStartsAndReturnsSucceededDesignJob(t *testing.T) {
 
 func TestStartStudioAsyncJobUsesSharedStudioBatchExecution(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
+	svc := &stubStudioMediaHandlerService{
 		studioDesigns: &listingkit.StudioDesignResponse{
 			Prompt: "inline service should not run",
 			Images: []listingkit.StudioGeneratedImage{{
@@ -109,7 +109,7 @@ func TestStartStudioAsyncJobUsesSharedStudioBatchExecution(t *testing.T) {
 			}},
 		},
 	}
-	h, err := NewHandler(svc, WithSubscriptionService(activeStudioSubscriptionService(t)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithStudioSessionAsyncJobService(svc), WithSubscriptionService(activeStudioSubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestStartStudioAsyncJobUsesSharedStudioBatchExecution(t *testing.T) {
 	originalExecute := executeStudioDesignBatch
 	executeStudioDesignBatch = func(ctx context.Context, service listingkit.StudioMediaService, input listingkit.StudioBatchGenerateExecutionInput) (*listingkit.StudioBatchGenerateExecutionOutput, error) {
 		if service != svc {
-			t.Fatalf("service = %T, want stubGenerationTaskService", service)
+			t.Fatalf("service = %T, want stubStudioMediaHandlerService", service)
 		}
 		if input.Request == nil || input.Request.Prompt != "retro cherries" {
 			t.Fatalf("input request = %+v, want bound prompt", input.Request)
@@ -266,7 +266,7 @@ func TestStudioAsyncJobSyncsSessionWhenDesignJobStarts(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
+	svc := &stubStudioMediaHandlerService{
 		studioDesigns: &listingkit.StudioDesignResponse{
 			Prompt: "retro cherries",
 			Images: []listingkit.StudioGeneratedImage{{
@@ -275,7 +275,7 @@ func TestStudioAsyncJobSyncsSessionWhenDesignJobStarts(t *testing.T) {
 			}},
 		},
 	}
-	h, err := NewHandler(svc, WithSubscriptionService(activeStudioSubscriptionService(t)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithStudioSessionAsyncJobService(svc), WithSubscriptionService(activeStudioSubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestStudioAsyncJobPropagatesTraceContextToDesignExecution(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
+	svc := &stubStudioMediaHandlerService{
 		studioDesigns: &listingkit.StudioDesignResponse{
 			Prompt: "retro cherries",
 			Images: []listingkit.StudioGeneratedImage{{
@@ -318,7 +318,7 @@ func TestStudioAsyncJobPropagatesTraceContextToDesignExecution(t *testing.T) {
 			}},
 		},
 	}
-	h, err := NewHandler(svc, WithSubscriptionService(activeStudioSubscriptionService(t)))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithStudioSessionAsyncJobService(svc), WithSubscriptionService(activeStudioSubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}

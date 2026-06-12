@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"mime/multipart"
@@ -20,7 +19,7 @@ func TestUploadListingKitImagesReturnsImageURLs(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
+	svc := &stubStudioMediaHandlerService{
 		uploadResponse: &listingkit.UploadImagesResponse{
 			ImageURLs: []string{
 				"http://localhost:8080/api/v1/listing-kits/uploads/files/a.jpg",
@@ -29,7 +28,7 @@ func TestUploadListingKitImagesReturnsImageURLs(t *testing.T) {
 		},
 	}
 	subscriptionService := activeOSSStorageSubscriptionService(t, nil)
-	h, err := NewHandler(svc, WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -129,13 +128,13 @@ func TestUploadListingKitImagesReturnsQuotaExceededWhenStorageLimitIsExceeded(t 
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
+	svc := &stubStudioMediaHandlerService{
 		uploadResponse: &listingkit.UploadImagesResponse{
 			ImageURLs: []string{"/api/v1/listing-kits/uploads/files/large.jpg"},
 		},
 	}
 	subscriptionService := activeOSSStorageSubscriptionService(t, map[string]int{"storage_bytes": 3})
-	h, err := NewHandler(svc, WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -190,13 +189,13 @@ func TestUploadListingKitImagesAllowsStudioBackedStorageFallback(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
+	svc := &stubStudioMediaHandlerService{
 		uploadResponse: &listingkit.UploadImagesResponse{
 			ImageURLs: []string{"/api/v1/listing-kits/uploads/files/style.jpg"},
 		},
 	}
 	subscriptionService := activeStudioOnlySubscriptionService(t)
-	h, err := NewHandler(svc, WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -231,9 +230,9 @@ func TestUploadListingKitImagesDoesNotRecordStorageUsageWhenUploadFails(t *testi
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{err: errors.New("store unavailable")}
+	svc := &stubStudioMediaHandlerService{err: errors.New("store unavailable")}
 	subscriptionService := activeOSSStorageSubscriptionService(t, map[string]int{"storage_bytes": 1024})
-	h, err := NewHandler(svc, WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -281,7 +280,7 @@ func TestDeleteUploadedListingKitImageDecrementsStorageUsage(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
+	svc := &stubStudioMediaHandlerService{
 		deletedUploadedImage: &listingkit.DeletedUploadedImage{
 			Key:  "20260515/a.jpg",
 			Size: 3,
@@ -294,7 +293,7 @@ func TestDeleteUploadedListingKitImageDecrementsStorageUsage(t *testing.T) {
 	if _, err := subscriptionService.RecordUsage(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleOSSStorage, "uploaded_bytes", 3); err != nil {
 		t.Fatalf("seed uploaded usage: %v", err)
 	}
-	h, err := NewHandler(svc, WithSubscriptionService(subscriptionService))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -334,8 +333,8 @@ func TestDeleteUploadedListingKitImageReturnsNotFound(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{err: listingkit.ErrUploadedImageNotFound}
-	h, err := NewHandler(svc, WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)))
+	svc := &stubStudioMediaHandlerService{err: listingkit.ErrUploadedImageNotFound}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -356,14 +355,14 @@ func TestGetUploadedListingKitImageReturnsFile(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
+	svc := &stubStudioMediaHandlerService{
 		uploadedImageFile: &listingkit.UploadedImageFile{
 			Filename:    "shirt.jpg",
 			ContentType: "image/jpeg",
 			Data:        []byte{0xFF, 0xD8, 0xFF},
 		},
 	}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -390,10 +389,10 @@ func TestGetUploadedListingKitImageReturnsNotFound(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubGenerationTaskService{
+	svc := &stubStudioMediaHandlerService{
 		err: listingkit.ErrUploadedImageNotFound,
 	}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -408,32 +407,6 @@ func TestGetUploadedListingKitImageReturnsNotFound(t *testing.T) {
 	if resp.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", resp.Code)
 	}
-}
-
-var _ HandlerService = (*stubGenerationTaskService)(nil)
-
-func (s *stubGenerationTaskService) UploadImages(ctx context.Context, req *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error) {
-	s.uploadImagesReq = req
-	if s.uploadResponse != nil || s.err != nil {
-		return s.uploadResponse, s.err
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubGenerationTaskService) GetUploadedImage(ctx context.Context, key string) (*listingkit.UploadedImageFile, error) {
-	s.uploadedImageKey = key
-	if s.uploadedImageFile != nil || s.err != nil {
-		return s.uploadedImageFile, s.err
-	}
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubGenerationTaskService) DeleteUploadedImage(ctx context.Context, key string) (*listingkit.DeletedUploadedImage, error) {
-	s.deletedUploadedImageKey = key
-	if s.deletedUploadedImage != nil || s.err != nil {
-		return s.deletedUploadedImage, s.err
-	}
-	return nil, errors.New("not implemented")
 }
 
 func activeOSSStorageSubscriptionService(t *testing.T, limits map[string]int) *listingsubscription.Service {

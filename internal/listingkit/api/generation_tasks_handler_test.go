@@ -17,42 +17,25 @@ import (
 )
 
 type stubGenerationTaskService struct {
-	page                    *listingkit.GenerationTaskPage
-	queue                   *listingkit.GenerationQueuePage
-	action                  *listingkit.GenerationActionExecutionResult
-	navigation              *listingkit.GenerationReviewNavigationDispatchResponse
-	reviewSession           *listingkit.GenerationReviewSessionResponse
-	reviewPreview           *listingkit.GenerationReviewPreviewResponse
-	uploadResponse          *listingkit.UploadImagesResponse
-	uploadedImageFile       *listingkit.UploadedImageFile
-	deletedUploadedImage    *listingkit.DeletedUploadedImage
-	studioDesigns           *listingkit.StudioDesignResponse
-	studioProductImages     *listingkit.StudioProductImageResponse
-	baselineReadiness       *listingkit.SDSBaselineReadiness
-	createdTask             *listingkit.Task
-	createReq               *listingkit.GenerateRequest
-	err                     error
-	lastTask                string
-	uploadedImageKey        string
-	deletedUploadedImageKey string
-	query                   *listingkit.GenerationTaskQuery
-	queueQuery              *listingkit.GenerationQueueQuery
-	retryReq                *listingkit.RetryGenerationTasksRequest
-	childRetryReq           *listingkit.RetryChildTaskRequest
-	childRetryResult        *listingkit.TaskResult
-	actionReq               *listingkit.ExecuteGenerationActionRequest
-	navigationReq           *listingkit.GenerationReviewNavigationDispatchRequest
-	reviewSessionQuery      *listingkit.GenerationQueueQuery
-	reviewPreviewQuery      *listingkit.GenerationQueueQuery
-	uploadImagesReq         *listingkit.UploadImagesRequest
-	studioDesignCtx         context.Context
-	studioDesignReq         *listingkit.StudioDesignRequest
-	studioProductImageCtx   context.Context
-	studioProductImageReq   *listingkit.StudioProductImageRequest
-	baselineReadinessQuery  *listingkit.SDSBaselineReadinessQuery
-	updatedStudioSessionCtx context.Context
-	updatedStudioSessionID  string
-	updatedStudioSessionReq *listingkit.UpdateStudioSessionRequest
+	page               *listingkit.GenerationTaskPage
+	queue              *listingkit.GenerationQueuePage
+	action             *listingkit.GenerationActionExecutionResult
+	navigation         *listingkit.GenerationReviewNavigationDispatchResponse
+	reviewSession      *listingkit.GenerationReviewSessionResponse
+	reviewPreview      *listingkit.GenerationReviewPreviewResponse
+	createdTask        *listingkit.Task
+	createReq          *listingkit.GenerateRequest
+	err                error
+	lastTask           string
+	query              *listingkit.GenerationTaskQuery
+	queueQuery         *listingkit.GenerationQueueQuery
+	retryReq           *listingkit.RetryGenerationTasksRequest
+	childRetryReq      *listingkit.RetryChildTaskRequest
+	childRetryResult   *listingkit.TaskResult
+	actionReq          *listingkit.ExecuteGenerationActionRequest
+	navigationReq      *listingkit.GenerationReviewNavigationDispatchRequest
+	reviewSessionQuery *listingkit.GenerationQueueQuery
+	reviewPreviewQuery *listingkit.GenerationQueueQuery
 }
 
 func (s *stubGenerationTaskService) CreateGenerateTask(ctx context.Context, req *listingkit.GenerateRequest) (*listingkit.Task, error) {
@@ -71,8 +54,7 @@ func (s *stubGenerationTaskService) GetTaskResult(ctx context.Context, taskID st
 }
 
 func (s *stubGenerationTaskService) GetSDSBaselineReadiness(ctx context.Context, query *listingkit.SDSBaselineReadinessQuery) (*listingkit.SDSBaselineReadiness, error) {
-	s.baselineReadinessQuery = query
-	return s.baselineReadiness, s.err
+	return nil, errors.New("not implemented")
 }
 
 func (s *stubGenerationTaskService) GetTaskPreview(ctx context.Context, taskID string, platform string) (*listingkit.ListingKitPreview, error) {
@@ -155,24 +137,12 @@ func (s *stubGenerationTaskService) RefreshSubmissionStatus(ctx context.Context,
 	return nil, errors.New("not implemented")
 }
 
-func (s *stubGenerationTaskService) SyncStudioDesignAsyncJob(ctx context.Context, sessionID string, jobStatus listingkit.StudioAsyncJobStatus, jobID string, errMessage string) error {
-	s.updatedStudioSessionCtx = ctx
-	s.updatedStudioSessionID = sessionID
-	sessionStatus := listingkit.SheinStudioSessionStatusGenerating
-	switch jobStatus {
-	case listingkit.StudioAsyncJobStatusSucceeded:
-		sessionStatus = listingkit.SheinStudioSessionStatusGenerated
-	case listingkit.StudioAsyncJobStatusFailed:
-		sessionStatus = listingkit.SheinStudioSessionStatusFailed
-	}
-	trimmedJobID := strings.TrimSpace(jobID)
-	trimmedErr := strings.TrimSpace(errMessage)
-	s.updatedStudioSessionReq = &listingkit.UpdateStudioSessionRequest{
-		Status:          &sessionStatus,
-		GenerationJobID: &trimmedJobID,
-		GenerationError: &trimmedErr,
-	}
-	return s.err
+func (s *stubGenerationTaskService) UploadImages(context.Context, *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubGenerationTaskService) GetUploadedImage(context.Context, string) (*listingkit.UploadedImageFile, error) {
+	return nil, errors.New("not implemented")
 }
 
 func TestGetTaskGenerationTasksReturnsPage(t *testing.T) {
