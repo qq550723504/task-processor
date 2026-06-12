@@ -11,9 +11,9 @@ func buildListingKitReadProjection(result *ListingKitResult, selectedPlatform st
 		return nil
 	}
 
-	return &listingKitReadProjection{
-		NeedsReview: result.Summary != nil && result.Summary.NeedsReview,
-		Overview:    buildListingKitOverviewData(result, selectedPlatform),
-		Attachment:  buildListingKitResultAttachment(result, selectedPlatform),
-	}
+	return assembleListingKitReadProjection(
+		calculateListingKitNeedsReview(result),
+		buildListingKitOverviewData(result, selectedPlatform),
+		buildListingKitResultAttachment(result, selectedPlatform),
+	)
 }
