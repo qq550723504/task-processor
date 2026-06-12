@@ -1044,12 +1044,12 @@ func TestStoreProfileEntrypointsFileOwnsRootDelegates(t *testing.T) {
 	}
 }
 
-func TestAIClientSettingsEntrypointsFileOwnsRootDelegates(t *testing.T) {
+func TestSheinSettingsEntrypointsFileOwnsAIClientSettingsDelegates(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_ai_client_settings_entrypoints.go")
+	facadeSrc, err := os.ReadFile("service_shein_settings_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_ai_client_settings_entrypoints.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_settings_entrypoints.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1060,8 +1060,14 @@ func TestAIClientSettingsEntrypointsFileOwnsRootDelegates(t *testing.T) {
 		"return s.settingsAdminOrDefault().UpdateAIClientSettings(ctx, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_ai_client_settings_entrypoints.go should contain %q", needle)
+			t.Fatalf("service_shein_settings_entrypoints.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_ai_client_settings_entrypoints.go"); err == nil {
+		t.Fatal("service_ai_client_settings_entrypoints.go should be removed after admin entrypoint merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_ai_client_settings_entrypoints.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_ai_client_settings.go"); err == nil {
@@ -2045,12 +2051,12 @@ func TestSheinImageRegenerationFileOwnsRootLogic(t *testing.T) {
 	}
 }
 
-func TestSheinSubmissionEventsFacadeFileOwnsRootDelegate(t *testing.T) {
+func TestSheinSettingsEntrypointsFileOwnsSubmissionEventsDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_submission_event_listing_entrypoint.go")
+	facadeSrc, err := os.ReadFile("service_shein_settings_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_submission_event_listing_entrypoint.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_settings_entrypoints.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -2059,8 +2065,14 @@ func TestSheinSubmissionEventsFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.sheinAdminOrDefault().GetSubmissionEvents(ctx, taskID)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_submission_event_listing_entrypoint.go should contain %q", needle)
+			t.Fatalf("service_shein_settings_entrypoints.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_submission_event_listing_entrypoint.go"); err == nil {
+		t.Fatal("service_shein_submission_event_listing_entrypoint.go should be removed after shein admin entrypoint merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_submission_event_listing_entrypoint.go) unexpected error = %v", err)
 	}
 
 	eventsSrc, err := os.ReadFile("shein_submission_events.go")
@@ -2083,12 +2095,12 @@ func TestSheinSubmissionEventsFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
-func TestSheinFinalDraftFacadeFileOwnsRootDelegate(t *testing.T) {
+func TestSheinSettingsEntrypointsFileOwnsFinalDraftDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_final_draft_update_entrypoint.go")
+	facadeSrc, err := os.ReadFile("service_shein_settings_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_final_draft_update_entrypoint.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_settings_entrypoints.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -2097,8 +2109,14 @@ func TestSheinFinalDraftFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.sheinAdminOrDefault().UpdateSheinFinalDraft(ctx, taskID, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_final_draft_update_entrypoint.go should contain %q", needle)
+			t.Fatalf("service_shein_settings_entrypoints.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_final_draft_update_entrypoint.go"); err == nil {
+		t.Fatal("service_shein_final_draft_update_entrypoint.go should be removed after shein admin entrypoint merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_final_draft_update_entrypoint.go) unexpected error = %v", err)
 	}
 
 	draftSrc, err := os.ReadFile("shein_final_draft.go")
