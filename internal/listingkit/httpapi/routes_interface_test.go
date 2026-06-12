@@ -11,13 +11,16 @@ func (settingsOnlyRouteHandler) UpdateSettingsNamespace(c *gin.Context)      {}
 func (settingsOnlyRouteHandler) ListSheinStoreProfiles(c *gin.Context)       {}
 func (settingsOnlyRouteHandler) UpsertSheinStoreProfile(c *gin.Context)      {}
 func (settingsOnlyRouteHandler) DeleteSheinStoreProfile(c *gin.Context)      {}
-func (settingsOnlyRouteHandler) GetSheinStoreRoutingSettings(c *gin.Context) {}
-func (settingsOnlyRouteHandler) UpdateSheinStoreRoutingSettings(c *gin.Context) {
-}
 func (settingsOnlyRouteHandler) GetSheinSettings(c *gin.Context)       {}
 func (settingsOnlyRouteHandler) UpdateSheinSettings(c *gin.Context)    {}
 func (settingsOnlyRouteHandler) GetAIClientSettings(c *gin.Context)    {}
 func (settingsOnlyRouteHandler) UpdateAIClientSettings(c *gin.Context) {}
+
+type legacyStoreRoutingOnlyRouteHandler struct{}
+
+func (legacyStoreRoutingOnlyRouteHandler) GetSheinStoreRoutingSettings(c *gin.Context) {}
+func (legacyStoreRoutingOnlyRouteHandler) UpdateSheinStoreRoutingSettings(c *gin.Context) {
+}
 
 type taskOnlyRouteHandler struct{}
 
@@ -110,6 +113,7 @@ func (studioGenerationOnlyRouteHandler) StartStudioAsyncJob(c *gin.Context)     
 func (studioGenerationOnlyRouteHandler) GetStudioAsyncJob(c *gin.Context)           {}
 
 var _ SettingsRouteHandler = settingsOnlyRouteHandler{}
+var _ LegacyStoreRoutingSettingsRouteHandler = legacyStoreRoutingOnlyRouteHandler{}
 var _ TaskRouteHandler = taskOnlyRouteHandler{}
 var _ SubscriptionRouteHandler = subscriptionOnlyRouteHandler{}
 var _ PlatformAdminRouteHandler = platformAdminSubscriptionRouteHandler{}
