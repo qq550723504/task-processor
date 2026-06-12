@@ -2,8 +2,6 @@ package listingkit
 
 import (
 	"fmt"
-
-	"task-processor/internal/listingkit/submission"
 )
 
 func NewService(config *ServiceConfig) (Service, error) {
@@ -64,71 +62,15 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 		platformAdaptWorkflowClient:    config.Workflow.PlatformAdaptWorkflowClient,
 		platformAdaptWorkflowEnabled:   config.Workflow.PlatformAdaptWorkflowEnabled,
 		storeProfileRepo:               config.Core.StoreProfileRepository,
-		requestDefaults: generateRequestDefaults{
-			sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
-		},
-		taskDeps: taskDependencies{
-			sdsLoginStatusProvider: config.Core.SDSLoginStatusProvider,
-			taskSubmitter:          config.Core.TaskSubmitter,
-			requestDefaults: generateRequestDefaults{
-				sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
-			},
-			standardWorkflowClient:       config.Workflow.StandardProductWorkflowClient,
-			standardWorkflowEnabled:      config.Workflow.StandardProductWorkflowEnabled,
-			platformAdaptWorkflowClient:  config.Workflow.PlatformAdaptWorkflowClient,
-			platformAdaptWorkflowEnabled: config.Workflow.PlatformAdaptWorkflowEnabled,
-		},
-		studioDeps: studioDependencies{
-			sessionRepo:       config.Core.StudioSessionRepository,
-			batchRepo:         config.Core.StudioBatchRepository,
-			batchRunRepo:      config.Core.StudioBatchRunRepository,
-			promptDiversifier: config.Shein.StudioPromptDiversifier,
-			imageGenerator:    config.Shein.StudioImageGenerator,
-			uploadStore:       config.Core.ImageUploadStore,
-		},
-		submission: submissionCollaborators{
-			sheinSubmitLocks: submission.NewSubmitLockManager(),
-		},
-		adminDeps: adminDependencies{
-			storeProfileRepo:  config.Core.StoreProfileRepository,
-			aiCredentialStore: config.Core.AIClientCredentialStore,
-		},
-		submissionDeps: submissionDependencies{
-			storeProfileRepo:            config.Core.StoreProfileRepository,
-			sheinStoreCatalog:           config.Shein.SheinStoreCatalog,
-			sheinAPIClientFactory:       config.Shein.SheinAPIClientFactory,
-			sheinProductAPIBuilder:      config.Shein.SheinProductAPIBuilder,
-			sheinImageAPIBuilder:        config.Shein.SheinImageAPIBuilder,
-			sheinTranslateAPIBuilder:    config.Shein.SheinTranslateAPIBuilder,
-			sheinContentOptimizer:       config.Shein.SheinContentOptimizer,
-			sheinPublishWorkflowClient:  config.Workflow.SheinPublishWorkflowClient,
-			sheinPublishWorkflowEnabled: config.Workflow.SheinPublishWorkflowEnabled,
-		},
-		workflowDeps: workflowDependencies{
-			productService:         config.Core.ProductService,
-			imageService:           config.Core.ImageService,
-			assetRepository:        config.Assets.AssetRepository,
-			assetRecipeResolver:    config.Assets.AssetRecipeResolver,
-			assetBundleBuilder:     config.Assets.AssetBundleBuilder,
-			assetGenerationService: config.Assets.AssetGenerationService,
-			sheinContentOptimizer:  config.Shein.SheinContentOptimizer,
-		},
-		sheinRuntimeDeps: sheinRuntimeDependencies{
-			resolutionCacheStore:  config.Shein.SheinResolutionCacheStore,
-			storeCatalog:          config.Shein.SheinStoreCatalog,
-			apiClientFactory:      config.Shein.SheinAPIClientFactory,
-			categoryResolver:      config.Shein.SheinCategoryResolver,
-			attributeResolver:     config.Shein.SheinAttributeResolver,
-			saleAttributeResolver: config.Shein.SheinSaleAttributeResolver,
-			pricingPolicy:         config.Shein.SheinPricingPolicy,
-		},
-		supportDeps: supportDependencies{
-			sdsSyncService:            config.Core.SDSSyncService,
-			sdsBaselineRemoteProvider: config.Core.SDSBaselineRemoteProvider,
-			uploadedImageRepository:   config.Core.UploadedImageRepository,
-			assembler:                 config.Assets.Assembler,
-			reviewRepository:          config.Assets.ReviewRepository,
-		},
-		sheinSettings: defaultSettings,
+		requestDefaults:                buildGenerateRequestDefaults(config),
+		taskDeps:                       buildTaskDependencies(config),
+		studioDeps:                     buildStudioDependencies(config),
+		submission:                     buildSubmissionCollaborators(),
+		adminDeps:                      buildAdminDependencies(config),
+		submissionDeps:                 buildSubmissionDependencies(config),
+		workflowDeps:                   buildWorkflowDependencies(config),
+		sheinRuntimeDeps:               buildSheinRuntimeDependencies(config),
+		supportDeps:                    buildSupportDependencies(config),
+		sheinSettings:                  defaultSettings,
 	}
 }
