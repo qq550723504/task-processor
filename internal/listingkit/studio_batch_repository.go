@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"errors"
-	"slices"
 	"sync"
 	"time"
 
@@ -449,42 +448,23 @@ func (r *MemStudioBatchRepository) buildDetailGraphLocked(ctx context.Context, b
 		}
 		items = append(items, item)
 	}
-	sortStudioBatchItems(items)
-
-	itemIDs := make(map[string]struct{}, len(items))
-	for _, item := range items {
-		itemIDs[item.ID] = struct{}{}
-	}
-
-	attemptsByItem := map[string][]StudioGenerationAttemptRecord{}
+	attempts := make([]StudioGenerationAttemptRecord, 0)
 	for _, attempt := range r.attempts {
-		if _, ok := itemIDs[attempt.ItemID]; !ok || !matchesStudioBatchScope(ctx, attempt.TenantID, attempt.UserID) {
+		if !matchesStudioBatchScope(ctx, attempt.TenantID, attempt.UserID) {
 			continue
 		}
-		attemptsByItem[attempt.ItemID] = append(attemptsByItem[attempt.ItemID], attempt)
-	}
-	for itemID := range attemptsByItem {
-		sortStudioGenerationAttempts(attemptsByItem[itemID])
+		attempts = append(attempts, attempt)
 	}
 
-	designsByItem := map[string][]StudioMaterializedDesignRecord{}
+	designs := make([]StudioMaterializedDesignRecord, 0)
 	for _, design := range r.designs {
-		if _, ok := itemIDs[design.ItemID]; !ok || !matchesStudioBatchScope(ctx, design.TenantID, design.UserID) {
+		if !matchesStudioBatchScope(ctx, design.TenantID, design.UserID) {
 			continue
 		}
-		designsByItem[design.ItemID] = append(designsByItem[design.ItemID], design)
-	}
-	for itemID := range designsByItem {
-		sortStudioMaterializedDesigns(designsByItem[itemID])
+		designs = append(designs, design)
 	}
 
-	clonedBatch := batch
-	return &StudioBatchDetailGraph{
-		Batch:          &clonedBatch,
-		Items:          items,
-		AttemptsByItem: attemptsByItem,
-		DesignsByItem:  designsByItem,
-	}
+	return buildStudioBatchDetailGraph(&batch, items, attempts, designs)
 }
 
 type GormStudioBatchRepository struct {
@@ -704,38 +684,25 @@ func (r *GormStudioBatchRepository) GetStudioBatchDetail(ctx context.Context, ba
 		itemIDs = append(itemIDs, item.ID)
 	}
 
-	attemptsByItem := map[string][]StudioGenerationAttemptRecord{}
-	designsByItem := map[string][]StudioMaterializedDesignRecord{}
+	attempts := make([]StudioGenerationAttemptRecord, 0)
+	designs := make([]StudioMaterializedDesignRecord, 0)
 	if len(itemIDs) > 0 {
-		var attempts []StudioGenerationAttemptRecord
 		if err := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
 			Where("item_id IN ?", itemIDs).
 			Order("attempt_no ASC, id ASC").
 			Find(&attempts).Error; err != nil {
 			return nil, err
 		}
-		for _, attempt := range attempts {
-			attemptsByItem[attempt.ItemID] = append(attemptsByItem[attempt.ItemID], attempt)
-		}
 
-		var designs []StudioMaterializedDesignRecord
 		if err := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
 			Where("item_id IN ?", itemIDs).
 			Order("sort_order ASC, created_at ASC, id ASC").
 			Find(&designs).Error; err != nil {
 			return nil, err
 		}
-		for _, design := range designs {
-			designsByItem[design.ItemID] = append(designsByItem[design.ItemID], design)
-		}
 	}
 
-	return &StudioBatchDetailGraph{
-		Batch:          batch,
-		Items:          items,
-		AttemptsByItem: attemptsByItem,
-		DesignsByItem:  designsByItem,
-	}, nil
+	return buildStudioBatchDetailGraph(batch, items, attempts, designs), nil
 }
 
 func (r *GormStudioBatchRepository) ListStudioMaterializedDesignsByIDs(ctx context.Context, batchID string, designIDs []string) ([]StudioMaterializedDesignRecord, error) {
@@ -1077,64 +1044,4 @@ func matchesStudioBatchScope(ctx context.Context, tenantID string, userID string
 	}
 	requestUserID := RequestUserIDFromContext(ctx)
 	return requestUserID == "" || requestUserID == userID
-}
-
-func sortStudioBatchItems(items []StudioBatchItemRecord) {
-	slices.SortStableFunc(items, func(a, b StudioBatchItemRecord) int {
-		if a.CreatedAt.Before(b.CreatedAt) {
-			return -1
-		}
-		if a.CreatedAt.After(b.CreatedAt) {
-			return 1
-		}
-		if a.ID < b.ID {
-			return -1
-		}
-		if a.ID > b.ID {
-			return 1
-		}
-		return 0
-	})
-}
-
-func sortStudioGenerationAttempts(attempts []StudioGenerationAttemptRecord) {
-	slices.SortStableFunc(attempts, func(a, b StudioGenerationAttemptRecord) int {
-		if a.AttemptNo < b.AttemptNo {
-			return -1
-		}
-		if a.AttemptNo > b.AttemptNo {
-			return 1
-		}
-		if a.ID < b.ID {
-			return -1
-		}
-		if a.ID > b.ID {
-			return 1
-		}
-		return 0
-	})
-}
-
-func sortStudioMaterializedDesigns(designs []StudioMaterializedDesignRecord) {
-	slices.SortStableFunc(designs, func(a, b StudioMaterializedDesignRecord) int {
-		if a.SortOrder < b.SortOrder {
-			return -1
-		}
-		if a.SortOrder > b.SortOrder {
-			return 1
-		}
-		if a.CreatedAt.Before(b.CreatedAt) {
-			return -1
-		}
-		if a.CreatedAt.After(b.CreatedAt) {
-			return 1
-		}
-		if a.ID < b.ID {
-			return -1
-		}
-		if a.ID > b.ID {
-			return 1
-		}
-		return 0
-	})
 }
