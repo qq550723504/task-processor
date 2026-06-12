@@ -1110,10 +1110,34 @@ func TestSheinSettingsEntrypointsFileOwnsRootDelegates(t *testing.T) {
 		"return s.settingsAdminOrDefault().GetSheinSettings(ctx)",
 		"func (s *service) UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error) {",
 		"return s.settingsAdminOrDefault().UpdateSheinSettings(ctx, req)",
+		"func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {",
+		"return s.sheinAdminOrDefault().SearchSheinCategories(ctx, taskID, query)",
+		"func (s *service) PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {",
+		"return s.sheinAdminOrDefault().PreviewSheinPrice(ctx, taskID, req)",
+		"func (s *service) ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error) {",
+		"return s.sheinAdminOrDefault().ClearSheinResolutionCache(ctx, taskID, kind)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
 			t.Fatalf("service_shein_settings_entrypoints.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_category_search_entrypoint.go"); err == nil {
+		t.Fatal("service_shein_category_search_entrypoint.go should be removed after shein admin entrypoint merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_category_search_entrypoint.go) unexpected error = %v", err)
+	}
+
+	if _, err := os.ReadFile("service_shein_pricing_preview_entrypoint.go"); err == nil {
+		t.Fatal("service_shein_pricing_preview_entrypoint.go should be removed after shein admin entrypoint merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_pricing_preview_entrypoint.go) unexpected error = %v", err)
+	}
+
+	if _, err := os.ReadFile("service_shein_resolution_cache_clear_entrypoint.go"); err == nil {
+		t.Fatal("service_shein_resolution_cache_clear_entrypoint.go should be removed after shein admin entrypoint merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_resolution_cache_clear_entrypoint.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_shein_settings.go"); err == nil {
@@ -1322,12 +1346,12 @@ func TestTaskPreviewLogicFileOwnsPreviewBuilderHelper(t *testing.T) {
 	}
 }
 
-func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
+func TestSheinSettingsEntrypointsFileOwnsCategorySearchDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_category_search_entrypoint.go")
+	facadeSrc, err := os.ReadFile("service_shein_settings_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_category_search_entrypoint.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_settings_entrypoints.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1336,8 +1360,14 @@ func TestSheinCategorySearchFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.sheinAdminOrDefault().SearchSheinCategories(ctx, taskID, query)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_category_search_entrypoint.go should contain %q", needle)
+			t.Fatalf("service_shein_settings_entrypoints.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_category_search_entrypoint.go"); err == nil {
+		t.Fatal("service_shein_category_search_entrypoint.go should be removed after shein admin entrypoint merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_category_search_entrypoint.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_shein_category_search.go"); err == nil {
@@ -1930,12 +1960,12 @@ func TestUploadedImageFileOwnsRootLogic(t *testing.T) {
 	}
 }
 
-func TestSheinPricingFacadeFileOwnsRootDelegate(t *testing.T) {
+func TestSheinSettingsEntrypointsFileOwnsPricingDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_pricing_preview_entrypoint.go")
+	facadeSrc, err := os.ReadFile("service_shein_settings_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_pricing_preview_entrypoint.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_settings_entrypoints.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1944,8 +1974,14 @@ func TestSheinPricingFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.sheinAdminOrDefault().PreviewSheinPrice(ctx, taskID, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_pricing_preview_entrypoint.go should contain %q", needle)
+			t.Fatalf("service_shein_settings_entrypoints.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_pricing_preview_entrypoint.go"); err == nil {
+		t.Fatal("service_shein_pricing_preview_entrypoint.go should be removed after shein admin entrypoint merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_pricing_preview_entrypoint.go) unexpected error = %v", err)
 	}
 
 	pricingSrc, err := os.ReadFile("shein_pricing.go")
@@ -2080,12 +2116,12 @@ func TestSheinFinalDraftFacadeFileOwnsRootDelegate(t *testing.T) {
 	}
 }
 
-func TestSheinResolutionCacheFacadeFileOwnsRootDelegate(t *testing.T) {
+func TestSheinSettingsEntrypointsFileOwnsResolutionCacheDelegate(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_resolution_cache_clear_entrypoint.go")
+	facadeSrc, err := os.ReadFile("service_shein_settings_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_resolution_cache_clear_entrypoint.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_settings_entrypoints.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -2094,8 +2130,14 @@ func TestSheinResolutionCacheFacadeFileOwnsRootDelegate(t *testing.T) {
 		"return s.sheinAdminOrDefault().ClearSheinResolutionCache(ctx, taskID, kind)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_resolution_cache_clear_entrypoint.go should contain %q", needle)
+			t.Fatalf("service_shein_settings_entrypoints.go should contain %q", needle)
 		}
+	}
+
+	if _, err := os.ReadFile("service_shein_resolution_cache_clear_entrypoint.go"); err == nil {
+		t.Fatal("service_shein_resolution_cache_clear_entrypoint.go should be removed after shein admin entrypoint merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_resolution_cache_clear_entrypoint.go) unexpected error = %v", err)
 	}
 
 	cacheSrc, err := os.ReadFile("shein_resolution_cache.go")
