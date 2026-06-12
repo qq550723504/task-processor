@@ -78,6 +78,10 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 		submission: submissionCollaborators{
 			sheinSubmitLocks: submission.NewSubmitLockManager(),
 		},
+		adminDeps: adminDependencies{
+			storeProfileRepo:  config.Core.StoreProfileRepository,
+			aiCredentialStore: config.Core.AIClientCredentialStore,
+		},
 		sheinSettings: defaultSettings,
 	}
 }

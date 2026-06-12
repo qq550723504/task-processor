@@ -35,6 +35,7 @@ type service struct {
 	settingsAdmin                  *settingsAdminService
 	sheinAdmin                     *sheinAdminService
 	admin                          adminCollaborators
+	adminDeps                      adminDependencies
 	submission                     submissionCollaborators
 	studioSessionRepo              StudioSessionRepository
 	studioBatchRepo                StudioBatchRepository

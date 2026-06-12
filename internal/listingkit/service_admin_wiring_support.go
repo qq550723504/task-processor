@@ -29,8 +29,8 @@ type sheinAdminWiring struct {
 
 func buildSettingsAdminWiring(s *service) settingsAdminWiring {
 	return settingsAdminWiring{
-		storeProfileRepo:     s.storeProfileRepo,
-		aiCredentialStore:    s.aiCredentialStore,
+		storeProfileRepo:     resolveAdminStoreProfileRepo(s),
+		aiCredentialStore:    resolveAdminAICredentialStore(s),
 		currentSheinSettings: s.currentSheinSubmitSettings,
 		mutateSheinSettings: func(mutate func(*SheinSettings)) SheinSettings {
 			s.sheinSettingsMu.Lock()
@@ -58,4 +58,28 @@ func buildSheinAdminWiring(s *service) sheinAdminWiring {
 		saleAttributeResolver: s.sheinSaleAttributeResolver,
 		clearPricingCache:     s.clearSheinPricingCache,
 	}
+}
+
+func resolveAdminStoreProfileRepo(s *service) StoreProfileRepository {
+	if s == nil {
+		return nil
+	}
+	if s.adminDeps.storeProfileRepo != nil {
+		s.storeProfileRepo = s.adminDeps.storeProfileRepo
+		return s.adminDeps.storeProfileRepo
+	}
+	s.adminDeps.storeProfileRepo = s.storeProfileRepo
+	return s.storeProfileRepo
+}
+
+func resolveAdminAICredentialStore(s *service) AIClientCredentialStore {
+	if s == nil {
+		return nil
+	}
+	if s.adminDeps.aiCredentialStore != nil {
+		s.aiCredentialStore = s.adminDeps.aiCredentialStore
+		return s.adminDeps.aiCredentialStore
+	}
+	s.adminDeps.aiCredentialStore = s.aiCredentialStore
+	return s.aiCredentialStore
 }
