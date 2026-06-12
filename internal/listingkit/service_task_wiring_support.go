@@ -11,6 +11,11 @@ type taskPreviewExportReadWiring struct {
 	listAssetGenerationTasks func(context.Context, string) ([]assetgeneration.Task, error)
 }
 
+type taskPreviewDecorationWiring struct {
+	decorateSheinCookieAvailabilityPreview func(context.Context, *Task, *ListingKitPreview)
+	decorateSheinStoreResolutionPreview    func(context.Context, *Task, *ListingKitPreview)
+}
+
 type taskPreviewAccessWiring struct {
 	getTaskPreview   func(context.Context, string, string) (*ListingKitPreview, error)
 	buildTaskPreview func(context.Context, *Task, string) (*ListingKitPreview, error)
@@ -33,6 +38,17 @@ func buildTaskPreviewExportReadWiring(s *service) taskPreviewExportReadWiring {
 		repo: repository.repo,
 		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
 			return s.listAssetGenerationTasks(ctx, taskID)
+		},
+	}
+}
+
+func buildTaskPreviewDecorationWiring(s *service) taskPreviewDecorationWiring {
+	return taskPreviewDecorationWiring{
+		decorateSheinCookieAvailabilityPreview: func(ctx context.Context, task *Task, preview *ListingKitPreview) {
+			s.decorateSheinCookieAvailabilityPreview(ctx, task, preview)
+		},
+		decorateSheinStoreResolutionPreview: func(ctx context.Context, task *Task, preview *ListingKitPreview) {
+			s.decorateSheinStoreResolutionPreview(ctx, task, preview)
 		},
 	}
 }
