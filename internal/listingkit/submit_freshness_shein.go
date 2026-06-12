@@ -3,8 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
 
 	"task-processor/internal/catalog/canonical"
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
@@ -27,115 +25,41 @@ func (s *service) validateSheinPublishFreshness(ctx context.Context, task *Task,
 	}
 
 	checks := make([]sheinworkspace.ReadinessCheckSpec, 0, 4)
-	addCheck := func(key, label string, ok bool, message string, fieldPaths []string, suggestedAction string) {
-		checks = append(checks, sheinworkspace.ReadinessCheckSpec{
-			Key:             key,
-			Label:           label,
-			OK:              ok,
-			Message:         message,
-			FieldPaths:      append([]string(nil), fieldPaths...),
-			SuggestedAction: suggestedAction,
-		})
-	}
+	addCheck := func(check sheinworkspace.ReadinessCheckSpec) { checks = append(checks, check) }
 
 	if err := s.validateSheinOnlineAuthPreflight(ctx, task); err != nil {
-		addCheck(
-			sheinFreshnessAuthKey,
-			"SHEIN 在线登录态",
-			false,
-			"SHEIN 提交店铺当前不可用，请先刷新登录态后再提交："+strings.TrimSpace(err.Error()),
-			[]string{"shein.store_resolution", "shein.review_notes"},
-			"重新登录 SHEIN 店铺",
-		)
+		addCheck(buildSheinFreshnessAuthFailureCheck(err))
 		return buildSheinSubmitFreshnessReadiness(pkg, checks), nil
 	}
-	addCheck(
-		sheinFreshnessAuthKey,
-		"SHEIN 在线登录态",
-		true,
-		"SHEIN 提交店铺当前可用",
-		[]string{"shein.store_resolution"},
-		"重新登录 SHEIN 店铺",
-	)
+	addCheck(buildSheinFreshnessAuthSuccessCheck())
 
 	currentCanonical := sheinFreshnessCanonicalProduct(task)
 	if !s.canRunSheinTemplateFreshnessChecks(task, currentCanonical) {
 		return buildSheinSubmitFreshnessReadiness(pkg, checks), nil
 	}
 
-	req := buildSheinPublishRequestForTask(task, task.Request)
-	if req == nil {
+	state, preflightCheck := s.prepareSheinFreshnessValidationContext(ctx, task, pkg)
+	if preflightCheck != nil {
+		addCheck(*preflightCheck)
 		return buildSheinSubmitFreshnessReadiness(pkg, checks), nil
 	}
-	if storeID, err := s.resolveSheinStoreID(ctx, task); err == nil && storeID > 0 {
-		req.SheinStoreID = storeID
-	}
-
-	freshPkg, err := cloneSheinPackageForFreshness(pkg)
-	if err != nil {
-		addCheck(
-			sheinFreshnessCategoryKey,
-			"类目模板新鲜度",
-			false,
-			"SHEIN 在线模板预检失败，当前无法构建 freshness 校验上下文",
-			[]string{"shein.category_id", "shein.category_id_list", "shein.product_type_id"},
-			"刷新类目模板",
-		)
+	if state == nil || state.request == nil {
 		return buildSheinSubmitFreshnessReadiness(pkg, checks), nil
 	}
 
-	categoryInfo, categoryInfoErr := s.loadSheinCategoryInfoForFreshness(req.Context, task, pkg.CategoryID)
-	categoryReady, categoryMessage := evaluateSheinCategoryFreshness(pkg, categoryInfo)
-	if categoryInfoErr != nil {
-		categoryReady = false
-		categoryMessage = "当前类目模板在线校验失败，需重新刷新类目结果后再提交：" + strings.TrimSpace(categoryInfoErr.Error())
-	}
-	addCheck(
-		sheinFreshnessCategoryKey,
-		"类目模板新鲜度",
-		categoryReady,
-		categoryMessage,
-		[]string{"shein.category_id", "shein.category_id_list", "shein.product_type_id"},
-		"刷新类目模板",
-	)
+	categoryCheck, categoryReady := s.validateSheinFreshnessCategory(state.request.Context, task, pkg, state)
+	addCheck(categoryCheck)
 	if !categoryReady {
 		return buildSheinSubmitFreshnessReadiness(pkg, checks), nil
 	}
 
-	attributeTemplates, attributeTemplateErr := s.loadSheinAttributeTemplatesForFreshness(req.Context, task, freshPkg.CategoryID)
-	attributeReady, attributeMessage := evaluateSheinAttributeFreshness(pkg, attributeTemplates)
-	if attributeTemplateErr != nil {
-		attributeReady = false
-		attributeMessage = "当前普通属性模板在线校验失败，需重新刷新属性模板后再提交：" + strings.TrimSpace(attributeTemplateErr.Error())
-	}
-	addCheck(
-		sheinFreshnessAttributeKey,
-		"普通属性模板新鲜度",
-		attributeReady,
-		attributeMessage,
-		[]string{"shein.resolved_attributes", "shein.attribute_resolution"},
-		"刷新属性模板",
-	)
+	addCheck(s.validateSheinFreshnessAttributes(state.request.Context, task, pkg, state))
 
-	var saleAPI sheinpub.AttributeAPI
-	if attributeTemplateErr == nil {
-		saleAPI, _ = s.buildSheinAttributeAPI(req.Context, task)
+	saleCheck, err := s.validateSheinFreshnessSaleAttributes(state.request.Context, task, pkg, state)
+	if err != nil {
+		return nil, err
 	}
-	saleReady, saleMessage, saleChanged := evaluateSheinSaleAttributeFreshnessWithCustomValidation(pkg, attributeTemplates, saleAPI)
-	if saleChanged && task.Result != nil && s.repo != nil {
-		task.Result.UpdatedAt = time.Now()
-		if err := s.repo.SaveTaskResult(ctx, task.ID, task.Result); err != nil {
-			return nil, err
-		}
-	}
-	addCheck(
-		sheinFreshnessSaleAttributeKey,
-		"销售属性模板新鲜度",
-		saleReady,
-		saleMessage,
-		[]string{"shein.sale_attribute_resolution", "shein.request_draft.skc_list"},
-		"刷新销售属性",
-	)
+	addCheck(saleCheck)
 
 	return buildSheinSubmitFreshnessReadiness(pkg, checks), nil
 }
