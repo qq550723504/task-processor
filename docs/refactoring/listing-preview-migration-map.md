@@ -120,6 +120,8 @@ These tests should stay where compatibility boundaries are being enforced:
 
 The first safe real extraction wave for `internal/listing/preview` should be:
 
+0. establish package-owned shell models that do not depend on legacy ListingKit package ownership
+   - `internal/listing/preview/model.go`
 1. shared preview models and helpers
    - `preview_model.go`
    - `preview_errors.go`
