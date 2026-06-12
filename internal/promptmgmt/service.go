@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"task-processor/internal/listingkit/tenantctx"
 	"task-processor/internal/prompt"
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 )
 
 var (
@@ -86,7 +86,7 @@ func (s *service) SetTenantTemplateStatus(ctx context.Context, tenantID string, 
 	if s.store == nil {
 		return nil, ErrServiceUnavailable
 	}
-	tenantID = tenantctx.NormalizeTenantID(tenantID)
+	tenantID = sharedtenantctx.NormalizeTenantID(tenantID)
 	key = strings.TrimSpace(key)
 	if err := s.store.SetEnabled(ctx, tenantID, key, enabled); err != nil {
 		if errors.Is(err, prompt.ErrTenantPromptNotFound) {
@@ -103,7 +103,7 @@ func (s *service) SetTenantTemplateStatus(ctx context.Context, tenantID string, 
 
 func toStoreTemplate(input UpsertTemplateInput) prompt.TenantPromptTemplate {
 	return prompt.TenantPromptTemplate{
-		TenantID: tenantctx.NormalizeTenantID(input.TenantID),
+		TenantID: sharedtenantctx.NormalizeTenantID(input.TenantID),
 		Key:      strings.TrimSpace(input.Key),
 		Content:  strings.TrimSpace(input.Content),
 		Version:  strings.TrimSpace(input.Version),

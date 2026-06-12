@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"task-processor/internal/listingkit/tenantctx"
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -151,7 +151,7 @@ func TestRegistry_RenderTenantFromContextUsesDatabasePromptBeforeFilePrompt(t *t
 			"tmpl.key": "file {{.Name}}",
 		},
 	}
-	ctx := tenantctx.WithTenantID(context.Background(), "tenant-a")
+	ctx := sharedtenantctx.WithTenantID(context.Background(), "tenant-a")
 
 	got, err := r.RenderTenantFromContext(ctx, "tmpl.key", map[string]any{"Name": "Alice"})
 
@@ -168,7 +168,7 @@ func TestRegistry_RenderTenantFromContextDoesNotFallBackWhenDatabasePromptMissin
 			"tmpl.key": "file {{.Name}}",
 		},
 	}
-	ctx := tenantctx.WithTenantID(context.Background(), "tenant-a")
+	ctx := sharedtenantctx.WithTenantID(context.Background(), "tenant-a")
 
 	got, err := r.RenderTenantFromContext(ctx, "tmpl.key", map[string]any{"Name": "Alice"})
 

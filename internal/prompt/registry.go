@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"task-processor/internal/core/logger"
-	"task-processor/internal/listingkit/tenantctx"
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -148,7 +148,7 @@ func (r *registryImpl) Render(key string, vars map[string]any, fallback string) 
 }
 
 func (r *registryImpl) GetTenant(tenantID string, key string) (string, error) {
-	normalizedTenantID := tenantctx.NormalizeTenantID(tenantID)
+	normalizedTenantID := sharedtenantctx.NormalizeTenantID(tenantID)
 	r.mu.RLock()
 	tenantPrompts := r.tenantCache[normalizedTenantID]
 	value, ok := tenantPrompts[key]
@@ -162,19 +162,19 @@ func (r *registryImpl) GetTenant(tenantID string, key string) (string, error) {
 func (r *registryImpl) RenderTenant(tenantID string, key string, vars map[string]any) (string, error) {
 	tmpl, err := r.GetTenant(tenantID, key)
 	if err != nil {
-		r.log.WithError(err).WithFields(logrus.Fields{"tenant_id": tenantctx.NormalizeTenantID(tenantID), "key": key}).Error("租户 Prompt key 未配置")
+		r.log.WithError(err).WithFields(logrus.Fields{"tenant_id": sharedtenantctx.NormalizeTenantID(tenantID), "key": key}).Error("租户 Prompt key 未配置")
 		return "", err
 	}
 	result, err := r.renderer.Render(tmpl, vars)
 	if err != nil {
-		r.log.WithError(err).WithFields(logrus.Fields{"tenant_id": tenantctx.NormalizeTenantID(tenantID), "key": key}).Error("租户 Prompt 模板渲染失败")
+		r.log.WithError(err).WithFields(logrus.Fields{"tenant_id": sharedtenantctx.NormalizeTenantID(tenantID), "key": key}).Error("租户 Prompt 模板渲染失败")
 		return "", err
 	}
 	return result, nil
 }
 
 func (r *registryImpl) GetTenantFromContext(ctx context.Context, key string) (string, error) {
-	tenantID := tenantctx.TenantIDFromContext(ctx)
+	tenantID := sharedtenantctx.TenantIDFromContext(ctx)
 	r.mu.RLock()
 	store := r.store
 	r.mu.RUnlock()
@@ -191,12 +191,12 @@ func (r *registryImpl) GetTenantFromContext(ctx context.Context, key string) (st
 func (r *registryImpl) RenderTenantFromContext(ctx context.Context, key string, vars map[string]any) (string, error) {
 	tmpl, err := r.GetTenantFromContext(ctx, key)
 	if err != nil {
-		r.log.WithError(err).WithFields(logrus.Fields{"tenant_id": tenantctx.TenantIDFromContext(ctx), "key": key}).Error("租户 Prompt key 未配置")
+		r.log.WithError(err).WithFields(logrus.Fields{"tenant_id": sharedtenantctx.TenantIDFromContext(ctx), "key": key}).Error("租户 Prompt key 未配置")
 		return "", err
 	}
 	result, err := r.renderer.Render(tmpl, vars)
 	if err != nil {
-		r.log.WithError(err).WithFields(logrus.Fields{"tenant_id": tenantctx.TenantIDFromContext(ctx), "key": key}).Error("租户 Prompt 模板渲染失败")
+		r.log.WithError(err).WithFields(logrus.Fields{"tenant_id": sharedtenantctx.TenantIDFromContext(ctx), "key": key}).Error("租户 Prompt 模板渲染失败")
 		return "", err
 	}
 	return result, nil
@@ -240,7 +240,7 @@ func parseTenantPromptKey(key string) (string, string, bool) {
 		if ch != '.' {
 			continue
 		}
-		tenantID := tenantctx.NormalizeTenantID(rest[:idx])
+		tenantID := sharedtenantctx.NormalizeTenantID(rest[:idx])
 		promptKey := rest[idx+1:]
 		if promptKey == "" {
 			return "", "", false
@@ -261,7 +261,7 @@ func GetTenantFromContext(ctx context.Context, key string) (string, error) {
 	}); ok {
 		return registry.GetTenantFromContext(ctx, key)
 	}
-	return GlobalRegistry.GetTenant(tenantctx.TenantIDFromContext(ctx), key)
+	return GlobalRegistry.GetTenant(sharedtenantctx.TenantIDFromContext(ctx), key)
 }
 
 func RenderTenantFromContext(ctx context.Context, key string, vars map[string]any) (string, error) {
@@ -273,7 +273,7 @@ func RenderTenantFromContext(ctx context.Context, key string, vars map[string]an
 	}); ok {
 		return registry.RenderTenantFromContext(ctx, key, vars)
 	}
-	return GlobalRegistry.RenderTenant(tenantctx.TenantIDFromContext(ctx), key, vars)
+	return GlobalRegistry.RenderTenant(sharedtenantctx.TenantIDFromContext(ctx), key, vars)
 }
 
 func GetTenantFromContextWithGlobalFallback(ctx context.Context, key string) (string, error) {

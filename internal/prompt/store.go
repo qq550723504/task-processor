@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/listingkit/tenantctx"
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 
 	"gorm.io/gorm"
 )
@@ -48,7 +48,7 @@ func (s *GormTenantPromptStore) GetEnabled(ctx context.Context, tenantID string,
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("tenant prompt store database is nil")
 	}
-	tenantID = tenantctx.NormalizeTenantID(tenantID)
+	tenantID = sharedtenantctx.NormalizeTenantID(tenantID)
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return nil, ErrTenantPromptNotFound
@@ -70,7 +70,7 @@ func (s *GormTenantPromptStore) ListTenant(ctx context.Context, tenantID string)
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("tenant prompt store database is nil")
 	}
-	tenantID = tenantctx.NormalizeTenantID(tenantID)
+	tenantID = sharedtenantctx.NormalizeTenantID(tenantID)
 	var templates []TenantPromptTemplate
 	if err := s.db.WithContext(ctx).
 		Where("tenant_id = ?", tenantID).
@@ -85,7 +85,7 @@ func (s *GormTenantPromptStore) SetEnabled(ctx context.Context, tenantID string,
 	if s == nil || s.db == nil {
 		return fmt.Errorf("tenant prompt store database is nil")
 	}
-	tenantID = tenantctx.NormalizeTenantID(tenantID)
+	tenantID = sharedtenantctx.NormalizeTenantID(tenantID)
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return fmt.Errorf("prompt key is required")
@@ -107,7 +107,7 @@ func (s *GormTenantPromptStore) Upsert(ctx context.Context, tmpl TenantPromptTem
 	if s == nil || s.db == nil {
 		return fmt.Errorf("tenant prompt store database is nil")
 	}
-	tmpl.TenantID = tenantctx.NormalizeTenantID(tmpl.TenantID)
+	tmpl.TenantID = sharedtenantctx.NormalizeTenantID(tmpl.TenantID)
 	tmpl.Key = strings.TrimSpace(tmpl.Key)
 	tmpl.Content = strings.TrimSpace(tmpl.Content)
 	tmpl.Version = strings.TrimSpace(tmpl.Version)
