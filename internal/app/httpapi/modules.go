@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/infra/worker"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
-	productimage "task-processor/internal/productimage"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	sdsbootstrap "task-processor/internal/sds/httpbootstrap"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	sheinclient "task-processor/internal/shein/client"
@@ -94,7 +94,7 @@ func buildSDSLoginModuleResult(deps *runtimeDeps) (*sdsloginbootstrap.BuildResul
 	return result, nil, nil
 }
 
-func BuildHandlers(logger *logrus.Logger, options Options) (productenrich.ProductHandler, productimage.Handler, []worker.WorkerPool, []func() error, error) {
+func BuildHandlers(logger *logrus.Logger, options Options) (productenrich.ProductHandler, productimagehttpapi.RouteHandler, []worker.WorkerPool, []func() error, error) {
 	bootstrap, err := buildBootstrap(logger, options)
 	if err != nil {
 		return nil, nil, nil, nil, err

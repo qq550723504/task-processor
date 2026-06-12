@@ -10,10 +10,10 @@ import (
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	"task-processor/internal/productimage"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
-func registerRoutes(r *gin.Engine, productHandler productenrich.ProductHandler, imageHandler productimage.Handler) {
+func registerRoutes(r *gin.Engine, productHandler productenrich.ProductHandler, imageHandler productimagehttpapi.RouteHandler) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -23,7 +23,7 @@ func registerRoutes(r *gin.Engine, productHandler productenrich.ProductHandler, 
 	}
 }
 
-func buildHandlers(logger *logrus.Logger) (productenrich.ProductHandler, productimage.Handler, []worker.WorkerPool, []func() error, error) {
+func buildHandlers(logger *logrus.Logger) (productenrich.ProductHandler, productimagehttpapi.RouteHandler, []worker.WorkerPool, []func() error, error) {
 	return httpapi.BuildHandlers(logger, httpapi.Options{
 		ConfigPath: *configPath,
 		Port:       *port,

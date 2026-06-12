@@ -17,7 +17,7 @@ import (
 	productapi "task-processor/internal/productenrich/api"
 	productpipeline "task-processor/internal/productenrich/pipeline"
 	"task-processor/internal/productimage"
-	productimageapi "task-processor/internal/productimage/api"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	productimagestore "task-processor/internal/productimage/store"
 )
 
@@ -385,7 +385,7 @@ func buildTestRouter(t *testing.T) *gin.Engine {
 	}
 	imageSvc.SetTaskSubmitter(submitter)
 
-	imageHandler, err := productimageapi.NewImageHandler(imageSvc)
+	imageHandler, err := productimagehttpapi.NewHandler(imageSvc)
 	if err != nil {
 		t.Fatalf("NewImageHandler: %v", err)
 	}

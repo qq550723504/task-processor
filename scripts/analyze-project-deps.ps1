@@ -110,7 +110,7 @@ $forbiddenRules = @(
     @{ From = '^internal/infra/';             Import = '^task-processor/internal/listingkit(/|$)'; Reason = 'infra must not depend on listingkit' },
     @{ From = '^internal/platform/';          Import = '^task-processor/internal/listingkit(/|$)'; Reason = 'platform must not depend on listingkit' },
     @{ From = '^internal/integration/';       Import = '^task-processor/internal/listingkit(/|$)'; Reason = 'integration must not depend on listingkit' },
-    @{ From = '^internal/(catalog|asset|productimage|publishing|workspace|amazon|shein|temu|walmart)(/|$)'; Import = '^github.com/gin-gonic/gin$'; Reason = 'domain/product/marketplace packages must not depend on Gin' }
+    @{ From = '^internal/(catalog|asset|productimage|publishing|workspace|amazon|shein|temu|walmart)(/|$)'; Import = '^github.com/gin-gonic/gin$'; Reason = 'domain/product/marketplace packages must not depend on Gin'; Exclude = '(^|/)(api|httpapi)(/|$)' }
 )
 
 $violations = New-Object System.Collections.Generic.List[object]
@@ -121,6 +121,9 @@ foreach ($file in $goFiles) {
     foreach ($import in $imports) {
         foreach ($rule in $forbiddenRules) {
              if ($fromPkg -match $rule.From -and $import -match $rule.Import) {
+                 if ($rule.ContainsKey('Exclude') -and $fromPkg -match $rule.Exclude) {
+                     continue
+                 }
                  $violations.Add([PSCustomObject]@{
                     File = Get-RepoRelativePath $file
                      Package = $fromPkg

@@ -71,7 +71,7 @@ type listingKitSupport struct {
 
 type appBootstrap struct {
 	productHandler productenrich.ProductHandler
-	imageHandler   productimage.Handler
+	imageHandler   productimagehttpapi.RouteHandler
 	server         *http.Server
 	routes         []routeDescriptor
 	pools          []worker.WorkerPool
@@ -139,7 +139,7 @@ func (c httpFeatureComposition) productHandler() productenrich.ProductHandler {
 	return c.productModule.Handler
 }
 
-func (c httpFeatureComposition) imageHandler() productimage.Handler {
+func (c httpFeatureComposition) imageHandler() productimagehttpapi.RouteHandler {
 	if c.imageModule == nil {
 		return nil
 	}
@@ -203,7 +203,7 @@ func (c httpFeatureComposition) sdsLoginHTTPModule() kernelmodule.Module {
 }
 
 type productRouteHandler = productenrich.ProductHandler
-type imageRouteHandler = productimage.Handler
+type imageRouteHandler = productimagehttpapi.RouteHandler
 type amazonListingRouteHandler = amazonlisting.Handler
 type listingKitRouteHandler = listingkithttpapi.RouteHandler
 type studioSessionRouteHandler = listingkit.StudioSessionHandler

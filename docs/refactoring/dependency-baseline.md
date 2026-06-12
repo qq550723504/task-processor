@@ -142,6 +142,15 @@ Found 5 potential boundary violation(s):
   Reason: marketplace packages must not depend on listingkit facade
 ```
 
+Current status after follow-up refactors on 2026-06-12:
+
+- `internal/publishing/shein/generation_topic_runtime.go` no longer depends on `internal/listingkit/tenantctx`
+- `internal/shein/submitprep/sensitive_words.go` no longer depends on `internal/listingkit/tenantctx`
+- `internal/shein/pipeline/task.go` no longer depends on `internal/listingkit`
+- `internal/productimage/handler.go` no longer depends on Gin
+- `internal/productimage/api/handler.go` was folded into `internal/productimage/httpapi/handler.go`
+- The dependency script now excludes `api` and `httpapi` adapter packages from the Gin prohibition rule to avoid transport-layer false positives
+
 ## 7. ListingKit Import Pressure Snapshot
 
 ```text
@@ -200,7 +209,7 @@ Use this section for violations or package shapes that should be fixed before mo
 
 Use this section when the script flags something that is not actually a boundary issue.
 
-- `internal/productimage/handler.go` and `internal/productimage/api/handler.go` may be boundary-rule false positives if those packages are intentionally API adapter layers rather than pure domain/product layers. Clarify whether they should remain subject to the “no Gin in domain/product/marketplace packages” rule or be reclassified as transport packages.
+- Resolved on 2026-06-12 by moving the Gin handler implementation under `internal/productimage/httpapi` and excluding `api` / `httpapi` transport packages from the Gin prohibition rule.
 
 ## 11. Baseline Refresh Policy
 

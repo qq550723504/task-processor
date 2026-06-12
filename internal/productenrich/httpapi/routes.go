@@ -5,10 +5,10 @@ import (
 
 	"task-processor/internal/httproute"
 	"task-processor/internal/productenrich"
-	"task-processor/internal/productimage"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
-func AppendProductRouteDescriptors(routes []httproute.Descriptor, productHandler productenrich.ProductHandler, imageHandler productimage.Handler) []httproute.Descriptor {
+func AppendProductRouteDescriptors(routes []httproute.Descriptor, productHandler productenrich.ProductHandler, imageHandler productimagehttpapi.RouteHandler) []httproute.Descriptor {
 	routes = appendProductHandlerRoutes(routes, productHandler)
 	routes = appendImageHandlerRoutes(routes, imageHandler)
 	return routes
@@ -24,7 +24,7 @@ func appendProductHandlerRoutes(routes []httproute.Descriptor, handler producten
 	)
 }
 
-func appendImageHandlerRoutes(routes []httproute.Descriptor, handler productimage.Handler) []httproute.Descriptor {
+func appendImageHandlerRoutes(routes []httproute.Descriptor, handler productimagehttpapi.RouteHandler) []httproute.Descriptor {
 	if handler == nil {
 		return routes
 	}

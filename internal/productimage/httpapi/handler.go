@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 import (
 	"errors"
@@ -12,11 +12,17 @@ import (
 	productimage "task-processor/internal/productimage"
 )
 
+type RouteHandler interface {
+	ProcessImages(c *gin.Context)
+	GetTaskResult(c *gin.Context)
+	ReviewTask(c *gin.Context)
+}
+
 type imageHandler struct {
 	service productimage.HandlerService
 }
 
-func NewImageHandler(service productimage.HandlerService) (productimage.Handler, error) {
+func NewHandler(service productimage.HandlerService) (RouteHandler, error) {
 	if service == nil {
 		return nil, fmt.Errorf("image service cannot be nil")
 	}

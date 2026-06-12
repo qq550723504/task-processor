@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 import (
 	"bytes"
@@ -41,7 +41,7 @@ func (m *mockImageHandlerSvc) ReviewTask(_ context.Context, _ string, _ *product
 }
 
 func newTestRouter(svc productimage.HandlerService) *gin.Engine {
-	h, _ := NewImageHandler(svc)
+	h, _ := NewHandler(svc)
 	r := gin.New()
 	r.POST("/images/process", h.ProcessImages)
 	r.GET("/images/tasks/:task_id", h.GetTaskResult)
@@ -49,8 +49,8 @@ func newTestRouter(svc productimage.HandlerService) *gin.Engine {
 	return r
 }
 
-func TestNewImageHandler_NilService_ReturnsError(t *testing.T) {
-	_, err := NewImageHandler(nil)
+func TestNewHandler_NilService_ReturnsError(t *testing.T) {
+	_, err := NewHandler(nil)
 	if err == nil {
 		t.Fatal("expected error for nil service")
 	}

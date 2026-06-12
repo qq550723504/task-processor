@@ -17,13 +17,12 @@ import (
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
-	productimageapi "task-processor/internal/productimage/api"
 	productimagepipeline "task-processor/internal/productimage/pipeline"
 	productimagestore "task-processor/internal/productimage/store"
 )
 
 type Module struct {
-	Handler               productimage.Handler
+	Handler               RouteHandler
 	Pool                  worker.WorkerPool
 	Service               productimage.Service
 	Closers               []func() error
@@ -127,7 +126,7 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 	imageSvc.SetTaskSubmitter(imageSubmitter)
 	imageProcessor.SetTaskSubmitter(imageSubmitter)
 
-	imageHandler, err := productimageapi.NewImageHandler(imageSvc)
+	imageHandler, err := NewHandler(imageSvc)
 	if err != nil {
 		return nil, fmt.Errorf("create image handler: %w", err)
 	}

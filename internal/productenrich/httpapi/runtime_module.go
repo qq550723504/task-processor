@@ -3,7 +3,6 @@ package httpapi
 import (
 	"task-processor/internal/core/config"
 	module "task-processor/internal/kernel/module"
-	"task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
@@ -37,7 +36,7 @@ func (m runtimeModule) Register(reg *module.Registry) error {
 		return nil
 	}
 
-	var imageHandler productimage.Handler
+	var imageHandler productimagehttpapi.RouteHandler
 	if m.imageModule != nil {
 		imageHandler = m.imageModule.Handler
 	}

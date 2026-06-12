@@ -4,7 +4,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/kernel/module"
 	"task-processor/internal/productenrich"
-	"task-processor/internal/productimage"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 const httpModuleName = "product"
@@ -13,7 +13,7 @@ type httpModule struct {
 	register func(reg *module.Registry) error
 }
 
-func NewHTTPModule(productHandler productenrich.ProductHandler, imageHandler productimage.Handler) module.Module {
+func NewHTTPModule(productHandler productenrich.ProductHandler, imageHandler productimagehttpapi.RouteHandler) module.Module {
 	return httpModule{
 		register: func(reg *module.Registry) error {
 			reg.AddRoutes(AppendProductRouteDescriptors(nil, productHandler, imageHandler)...)
