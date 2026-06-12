@@ -19,12 +19,12 @@ func (b previewPlatformBuilderFunc) build(task *Task, preview *ListingKitPreview
 }
 
 func previewPlatformBuilders() []previewPlatformBuilder {
-	return []previewPlatformBuilder{
-		previewPlatformBuilderFunc{name: "amazon", fn: buildAmazonPreviewSection},
-		previewPlatformBuilderFunc{name: "shein", fn: buildSheinPreviewSection},
-		previewPlatformBuilderFunc{name: "temu", fn: buildTemuPreviewSection},
-		previewPlatformBuilderFunc{name: "walmart", fn: buildWalmartPreviewSection},
+	registrations := previewPlatformRegistrations()
+	builders := make([]previewPlatformBuilder, 0, len(registrations))
+	for _, registration := range registrations {
+		builders = append(builders, previewPlatformBuilderFunc{name: registration.name, fn: registration.build})
 	}
+	return builders
 }
 
 func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {
