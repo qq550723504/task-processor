@@ -23,6 +23,8 @@ type service struct {
 	taskStudioBatchDraft           *taskStudioBatchDraftService
 	studioBatchGeneration          *studioBatchGenerationService
 	taskStudioBatch                *taskStudioBatchService
+	studioBatchRunExecutor         *taskStudioBatchRunExecutor
+	studioBatchRunCoordinator      *studioBatchRunCoordinator
 	taskStudioBatchRun             *taskStudioBatchRunService
 	taskStudioMedia                *taskStudioMediaService
 	settingsAdmin                  *settingsAdminService

@@ -97,23 +97,37 @@ func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {
 }
 
 func (s *service) buildStudioBatchRunCoordinator() *studioBatchRunCoordinator {
+	if s == nil {
+		return nil
+	}
+	if s.studioBatchRunCoordinator != nil {
+		return s.studioBatchRunCoordinator
+	}
 	executor := s.buildStudioBatchRunExecutor()
 	if executor == nil {
 		return nil
 	}
 	config := buildStudioBatchRunCoordinatorConfig(s)
 	config.executor = executor
-	return newStudioBatchRunCoordinator(config)
+	s.studioBatchRunCoordinator = newStudioBatchRunCoordinator(config)
+	return s.studioBatchRunCoordinator
 }
 
 func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {
-	if s == nil || s.studioBatchRunRepo == nil || s.studioSessionRepo == nil {
+	if s == nil {
+		return nil
+	}
+	if s.studioBatchRunExecutor != nil {
+		return s.studioBatchRunExecutor
+	}
+	if s.studioBatchRunRepo == nil || s.studioSessionRepo == nil {
 		return nil
 	}
 	if s.studioImageGenerator == nil || s.uploadStore == nil {
 		return nil
 	}
-	return newTaskStudioBatchRunExecutor(buildTaskStudioBatchRunExecutorConfig(s))
+	s.studioBatchRunExecutor = newTaskStudioBatchRunExecutor(buildTaskStudioBatchRunExecutorConfig(s))
+	return s.studioBatchRunExecutor
 }
 
 func studioBatchRunLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {
