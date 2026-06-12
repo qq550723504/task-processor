@@ -7,7 +7,6 @@ func (s *service) initializeCollaborators() {
 	s.initializeTaskCollaborators()
 	s.initializeAdminCollaborators()
 	s.initializeSubmitCollaborators()
-	s.initializeTemporalCollaborators()
 }
 
 func (s *service) initializeTaskCollaborators() {
@@ -26,6 +25,7 @@ func (s *service) initializeSubmitCollaborators() {
 	s.initializeSubmitTaskRecoveryCollaborators()
 	s.initializeSubmitStateCollaborators()
 	s.initializeSubmitOrchestratorCollaborators()
+	s.initializeSubmitWorkflowCollaborators()
 }
 
 func (s *service) initializeAdminCollaborators() {
@@ -34,11 +34,4 @@ func (s *service) initializeAdminCollaborators() {
 	}
 	s.initializeSettingsAdminCollaborators()
 	s.initializeSheinAdminCollaborators()
-}
-
-func (s *service) initializeTemporalCollaborators() {
-	if s == nil {
-		return
-	}
-	s.submission.taskTemporalSubmissionAdapter = s.taskTemporalSubmissionAdapterOrDefault()
 }

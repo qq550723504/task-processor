@@ -25,3 +25,10 @@ func (s *service) initializeSubmitOrchestratorCollaborators() {
 	s.submission.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
 	s.submission.taskSubmission = s.taskSubmissionOrDefault()
 }
+
+func (s *service) initializeSubmitWorkflowCollaborators() {
+	if s == nil {
+		return
+	}
+	s.submission.taskTemporalSubmissionAdapter = s.taskTemporalSubmissionAdapterOrDefault()
+}

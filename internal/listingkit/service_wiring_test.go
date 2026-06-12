@@ -214,7 +214,7 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 		t.Fatal("expected taskDirectSubmission to be initialized")
 	}
 
-	svc.initializeTemporalCollaborators()
+	svc.initializeSubmitWorkflowCollaborators()
 	if svc.submission.taskTemporalSubmissionAdapter == nil {
 		t.Fatal("expected taskTemporalSubmissionAdapter to be initialized")
 	}
@@ -234,7 +234,6 @@ func TestServiceRootFileDoesNotOwnCollaboratorGroupInitializationBodies(t *testi
 		"func (s *service) initializeTaskCollaborators() {",
 		"func (s *service) initializeAdminCollaborators() {",
 		"func (s *service) initializeSubmitCollaborators() {",
-		"func (s *service) initializeTemporalCollaborators() {",
 	} {
 		if strings.Contains(content, needle) {
 			t.Fatalf("service.go should not contain %q", needle)
