@@ -7,9 +7,9 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/core/metrics"
 	managementAPI "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/listingkit"
 	"task-processor/internal/model"
 	"task-processor/internal/processor"
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 	shein "task-processor/internal/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
@@ -83,7 +83,7 @@ func injectTaskTenantContext(ctx context.Context, task *model.Task) context.Cont
 	if task == nil || task.TenantID == 0 {
 		return ctx
 	}
-	return listingkit.WithTenantID(ctx, fmt.Sprintf("%d", task.TenantID))
+	return sharedtenantctx.WithTenantID(ctx, fmt.Sprintf("%d", task.TenantID))
 }
 
 func (h *TaskHandler) rollbackReservedDailyQuota(taskCtx *sheincontext.TaskContext) {
