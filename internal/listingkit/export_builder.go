@@ -33,15 +33,15 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 		return export, nil
 	}
 
-	attachment := buildListingKitResultAttachment(task.Result, selectedPlatform)
-	export.CatalogProduct = attachment.CatalogProduct
-	export.AssetBundle = attachment.AssetBundle
-	export.AssetInventorySummary = attachment.AssetInventorySummary
-	export.AssetRenderPreviews = attachment.AssetRenderPreviews
-	export.PlatformAssetRenderPreviews = attachment.PlatformAssetRenderPreviews
-	export.AssetGenerationQueue = attachment.AssetGenerationQueue
-	export.AssetGenerationOverview = attachment.AssetGenerationOverview
-	export.Overview = buildListingKitExportMeta(task.Result, selectedPlatform)
+	projection := buildListingKitReadProjection(task.Result, selectedPlatform)
+	export.CatalogProduct = projection.Attachment.CatalogProduct
+	export.AssetBundle = projection.Attachment.AssetBundle
+	export.AssetInventorySummary = projection.Attachment.AssetInventorySummary
+	export.AssetRenderPreviews = projection.Attachment.AssetRenderPreviews
+	export.PlatformAssetRenderPreviews = projection.Attachment.PlatformAssetRenderPreviews
+	export.AssetGenerationQueue = projection.Attachment.AssetGenerationQueue
+	export.AssetGenerationOverview = projection.Attachment.AssetGenerationOverview
+	export.Overview = buildListingKitExportMetaFromOverview(projection.Overview)
 
 	if selectedPlatform == "" || selectedPlatform == "amazon" {
 		if task.Result.Amazon != nil {
@@ -104,7 +104,14 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 }
 
 func buildListingKitExportMeta(result *ListingKitResult, selectedPlatform string) *ListingKitExportMeta {
-	overview := buildListingKitOverviewData(result, selectedPlatform)
+	projection := buildListingKitReadProjection(result, selectedPlatform)
+	if projection == nil {
+		return nil
+	}
+	return buildListingKitExportMetaFromOverview(projection.Overview)
+}
+
+func buildListingKitExportMetaFromOverview(overview *listingKitOverviewData) *ListingKitExportMeta {
 	if overview == nil {
 		return nil
 	}
