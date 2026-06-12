@@ -11,32 +11,33 @@ func AdaptLegacyPreviewShell(legacy *legacylistingkit.ListingKitPreview) *previe
 	if legacy == nil {
 		return nil
 	}
-	return &previewdomain.Preview{
+	adapted := previewdomain.BuildShell(previewdomain.ShellInput{
 		TaskID:           legacy.TaskID,
 		Status:           string(legacy.Status),
 		SelectedPlatform: legacy.SelectedPlatform,
-		Platforms:        append([]string(nil), legacy.Platforms...),
-		NeedsReview:      legacy.NeedsReview,
+		Platforms:        legacy.Platforms,
 		CreatedAt:        legacy.CreatedAt,
 		CompletedAt:      legacy.CompletedAt,
-		Overview:         adaptLegacyPreviewHeader(legacy.Overview),
-	}
+	})
+	adapted.NeedsReview = legacy.NeedsReview
+	adapted.Overview = adaptLegacyPreviewHeader(legacy.Overview)
+	return adapted
 }
 
 func adaptLegacyPreviewHeader(legacy *legacylistingkit.ListingKitPreviewHeader) *previewdomain.Header {
 	if legacy == nil {
 		return nil
 	}
-	header := &previewdomain.Header{
+	header := previewdomain.BuildHeader(previewdomain.HeaderInput{
 		Country:       legacy.Country,
 		Language:      legacy.Language,
 		SourceType:    legacy.SourceType,
 		ImageCount:    legacy.ImageCount,
 		VariantCount:  legacy.VariantCount,
 		StatusMessage: legacy.StatusMessage,
-		Warnings:      append([]string(nil), legacy.Warnings...),
-		ReviewReasons: append([]string(nil), legacy.ReviewReasons...),
-	}
+		Warnings:      legacy.Warnings,
+	})
+	header.ReviewReasons = append([]string(nil), legacy.ReviewReasons...)
 	if len(legacy.PlatformCards) > 0 {
 		header.PlatformCards = make([]previewdomain.PlatformCard, 0, len(legacy.PlatformCards))
 		for _, card := range legacy.PlatformCards {
