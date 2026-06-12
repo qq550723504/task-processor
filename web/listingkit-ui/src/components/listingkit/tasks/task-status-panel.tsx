@@ -41,29 +41,6 @@ function formatTaskDate(value?: string) {
   }).format(date);
 }
 
-function routeStrategyLabel(strategy?: string) {
-  switch (strategy) {
-    case "priority":
-      return "按优先级";
-    case "country":
-      return "按国家匹配";
-    case "manual":
-    default:
-      return "手工优先";
-  }
-}
-
-function ruleLabel(kind?: string) {
-  switch (kind) {
-    case "country":
-      return "国家规则";
-    case "category":
-      return "类目规则";
-    default:
-      return kind;
-  }
-}
-
 function blockedRetryableReason(task?: ListingKitTaskResult | null) {
   return task?.retryable_block?.reason_message || primaryTaskError(task as ListingKitTaskResult);
 }
@@ -248,25 +225,11 @@ export function TaskStatusPanel({
                   SHEIN 店铺 {storeResolution.store_id}
                   {storeResolution.site ? ` · ${storeResolution.site}` : ""}
                 </p>
-                {storeResolution.reason ? (
+              {storeResolution.reason ? (
                   <p className="text-sm leading-6 text-muted-foreground">{storeResolution.reason}</p>
                 ) : null}
               </div>
-              {storeResolution.strategy ? (
-                <span className="inline-flex rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                  {routeStrategyLabel(storeResolution.strategy)}
-                </span>
-              ) : null}
             </div>
-            {storeResolution.matched_rule_kinds?.length ? (
-              <p className="mt-2 text-xs text-muted-foreground">
-                命中规则：
-                {storeResolution.matched_rule_kinds
-                  .map(ruleLabel)
-                  .filter(Boolean)
-                  .join(" / ")}
-              </p>
-            ) : null}
             {storeResolution.matched_profile_id || storeResolution.resolved_at ? (
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 {storeResolution.matched_profile_id ? (

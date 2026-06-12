@@ -90,18 +90,6 @@ function TimelineEventCard({ event, index }: { event: SheinSubmissionEvent; inde
             {event.store_resolution.matched_profile_id ? (
               <p>Profile #{event.store_resolution.matched_profile_id}</p>
             ) : null}
-            {event.store_resolution.strategy ? (
-              <p>路由策略：{sheinStoreStrategyLabel(event.store_resolution.strategy)}</p>
-            ) : null}
-            {event.store_resolution.matched_rule_kinds?.length ? (
-              <p>
-                命中规则：
-                {event.store_resolution.matched_rule_kinds
-                  .map(sheinStoreRuleLabel)
-                  .filter(Boolean)
-                  .join(" / ")}
-              </p>
-            ) : null}
             {event.store_resolution.reason ? (
               <p>{event.store_resolution.reason}</p>
             ) : null}
@@ -144,30 +132,6 @@ function TimelineEventCard({ event, index }: { event: SheinSubmissionEvent; inde
       ) : null}
     </article>
   );
-}
-
-function sheinStoreStrategyLabel(strategy?: string) {
-  switch (strategy) {
-    case "priority":
-      return "按优先级";
-    case "country":
-      return "按国家匹配";
-    case "manual":
-      return "手工优先";
-    default:
-      return strategy ?? "";
-  }
-}
-
-function sheinStoreRuleLabel(kind?: string) {
-  switch (kind) {
-    case "country":
-      return "国家规则";
-    case "category":
-      return "类目规则";
-    default:
-      return kind ?? "";
-  }
 }
 
 export function SheinSubmissionTimeline({

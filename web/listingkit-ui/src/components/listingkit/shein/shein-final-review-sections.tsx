@@ -305,21 +305,11 @@ export function StoreResolutionCard({
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          {resolution.strategy ? (
-            <Badge className="rounded-full px-2 py-1 text-[10px]" variant="neutral">
-              {storeResolutionStrategyLabel(resolution.strategy)}
-            </Badge>
-          ) : null}
           {resolution.manual_override ? (
             <Badge className="rounded-full px-2 py-1 text-[10px]" variant="success">
               手工指定
             </Badge>
-          ) : null}
-          {resolution.fallback ? (
-            <Badge className="rounded-full px-2 py-1 text-[10px]" variant="warning">
-              fallback
-            </Badge>
-          ) : null}
+            ) : null}
         </div>
       </div>
       {resolution.matched_profile_id || resolution.resolved_at ? (
@@ -331,12 +321,6 @@ export function StoreResolutionCard({
             <span>固化时间：{formatStoreResolutionTime(resolution.resolved_at)}</span>
           ) : null}
         </div>
-      ) : null}
-      {resolution.matched_rule_kinds?.length ? (
-        <p className="mt-3 text-xs leading-5 text-zinc-500">
-          命中规则：
-          {resolution.matched_rule_kinds.map(storeResolutionRuleLabel).join(" / ")}
-        </p>
       ) : null}
     </div>
   );
@@ -422,25 +406,3 @@ export function SkuPricingTable({
   );
 }
 
-function storeResolutionStrategyLabel(strategy?: string) {
-  switch (strategy) {
-    case "priority":
-      return "按优先级";
-    case "country":
-      return "按国家匹配";
-    case "manual":
-    default:
-      return "手工优先";
-  }
-}
-
-function storeResolutionRuleLabel(kind?: string) {
-  switch (kind) {
-    case "country":
-      return "国家规则";
-    case "category":
-      return "类目规则";
-    default:
-      return kind || "未知规则";
-  }
-}

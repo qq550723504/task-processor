@@ -211,8 +211,6 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByText("店铺解析")).toBeInTheDocument();
     expect(screen.getByText("SHEIN 店铺 903 · GB")).toBeInTheDocument();
     expect(screen.getByText("根据任务国家信息命中了对应店铺。")).toBeInTheDocument();
-    expect(screen.getByText("命中规则：国家规则")).toBeInTheDocument();
-    expect(screen.getByText("按国家匹配")).toBeInTheDocument();
     expect(screen.getByText("Profile #17")).toBeInTheDocument();
     expect(screen.getByText(/固化时间：/)).toBeInTheDocument();
   });

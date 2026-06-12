@@ -49,30 +49,6 @@ function isRefreshRevision(record?: ListingKitRevisionRecord) {
   );
 }
 
-function storeStrategyLabel(strategy?: string) {
-  switch (strategy) {
-    case "priority":
-      return "按优先级";
-    case "country":
-      return "按国家匹配";
-    case "manual":
-      return "手工优先";
-    default:
-      return strategy || "";
-  }
-}
-
-function storeRuleLabel(kind?: string) {
-  switch (kind) {
-    case "country":
-      return "国家规则";
-    case "category":
-      return "类目规则";
-    default:
-      return kind || "";
-  }
-}
-
 function StoreResolutionAudit({
   record,
 }: {
@@ -98,19 +74,9 @@ function StoreResolutionAudit({
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
-          {resolution.strategy ? (
-            <Badge className="rounded-full px-2 py-1 text-[10px]" variant="neutral">
-              {storeStrategyLabel(resolution.strategy)}
-            </Badge>
-          ) : null}
           {resolution.manual_override ? (
             <Badge className="rounded-full px-2 py-1 text-[10px]" variant="success">
               手工指定
-            </Badge>
-          ) : null}
-          {resolution.fallback ? (
-            <Badge className="rounded-full px-2 py-1 text-[10px]" variant="warning">
-              fallback
             </Badge>
           ) : null}
         </div>
@@ -123,12 +89,6 @@ function StoreResolutionAudit({
           <span>固化时间：{formatRevisionTime(resolution.resolved_at)}</span>
         ) : null}
       </div>
-      {resolution.matched_rule_kinds?.length ? (
-        <p className="mt-2 text-xs text-muted-foreground">
-          命中规则：
-          {resolution.matched_rule_kinds.map(storeRuleLabel).filter(Boolean).join(" / ")}
-        </p>
-      ) : null}
     </div>
   );
 }

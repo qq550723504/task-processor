@@ -212,7 +212,6 @@ describe("TaskListPage", () => {
     expect(screen.getByText("任务 ID")).toBeInTheDocument();
     expect(screen.getByText("10856aa8-7e11-4257-ac11-dd095ed1593d")).toBeInTheDocument();
     expect(screen.getByText("SHEIN 店铺 903 · GB")).toBeInTheDocument();
-    expect(screen.getByText(/路由 按国家匹配/)).toBeInTheDocument();
     expect(screen.getByText(/Profile #17/)).toBeInTheDocument();
     expect(screen.getByText(/固化/)).toBeInTheDocument();
     expect(screen.getByText("SHEIN 店铺 903 · GB").getAttribute("title") ?? "").toContain(

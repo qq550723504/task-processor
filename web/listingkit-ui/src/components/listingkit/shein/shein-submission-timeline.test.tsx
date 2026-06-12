@@ -88,8 +88,7 @@ describe("SheinSubmissionTimeline", () => {
     expect(screen.getByText("高级日志（1）")).toBeInTheDocument();
     expect(screen.getByText("查看本次提交店铺快照")).toBeInTheDocument();
     expect(screen.getByText("Profile #17")).toBeInTheDocument();
-    expect(screen.getByText("路由策略：按国家匹配")).toBeInTheDocument();
-    expect(screen.getByText("命中规则：国家规则")).toBeInTheDocument();
+    expect(screen.getByText("根据任务国家信息命中了对应店铺。")).toBeInTheDocument();
   });
 
   it("shows a refresh status action when available", () => {
