@@ -67,6 +67,14 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 		requestDefaults: generateRequestDefaults{
 			sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
 		},
+		studioDeps: studioDependencies{
+			sessionRepo:       config.Core.StudioSessionRepository,
+			batchRepo:         config.Core.StudioBatchRepository,
+			batchRunRepo:      config.Core.StudioBatchRunRepository,
+			promptDiversifier: config.Shein.StudioPromptDiversifier,
+			imageGenerator:    config.Shein.StudioImageGenerator,
+			uploadStore:       config.Core.ImageUploadStore,
+		},
 		submission: submissionCollaborators{
 			sheinSubmitLocks: submission.NewSubmitLockManager(),
 		},

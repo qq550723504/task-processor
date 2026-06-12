@@ -146,10 +146,10 @@ func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {
 		s.studio.runExecutor = s.studioBatchRunExecutor
 		return s.studioBatchRunExecutor
 	}
-	if s.studioBatchRunRepo == nil || s.studioSessionRepo == nil {
+	if resolveStudioBatchRunRepo(s) == nil || resolveStudioSessionRepo(s) == nil {
 		return nil
 	}
-	if s.studioImageGenerator == nil || s.uploadStore == nil {
+	if resolveStudioImageGenerator(s) == nil || resolveStudioUploadStore(s) == nil {
 		return nil
 	}
 	executor := newTaskStudioBatchRunExecutor(buildTaskStudioBatchRunExecutorConfig(s))

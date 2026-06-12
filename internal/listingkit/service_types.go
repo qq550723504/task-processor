@@ -31,6 +31,7 @@ type service struct {
 	taskStudioBatchRun             *taskStudioBatchRunService
 	taskStudioMedia                *taskStudioMediaService
 	studio                         studioCollaborators
+	studioDeps                     studioDependencies
 	settingsAdmin                  *settingsAdminService
 	sheinAdmin                     *sheinAdminService
 	admin                          adminCollaborators
