@@ -177,38 +177,17 @@ func (s *taskStudioBatchService) PrepareRetryStudioBatchItems(ctx context.Contex
 	if req != nil {
 		itemIDs = normalizeStudioBatchItemIDs(req.ItemIDs)
 	}
-	if len(itemIDs) == 0 {
-		return nil, NewStudioBatchActionValidationError("item_ids is required")
-	}
 
 	if err := s.syncStudioBatchRetryExecutionConfigFromDraft(ctx, normalizedBatchID); err != nil {
 		return nil, err
 	}
 
-	itemsByID := make(map[string]StudioBatchItemRecord, len(detail.Items))
-	for _, item := range detail.Items {
-		itemsByID[item.ID] = item
+	itemsToRetry, err := selectStudioBatchRetryItems(detail, itemIDs)
+	if err != nil {
+		return nil, err
 	}
-	itemsToRetry := make([]StudioBatchItemRecord, 0, len(itemIDs))
-	for _, itemID := range itemIDs {
-		item, ok := itemsByID[itemID]
-		if !ok {
-			return nil, NewStudioBatchActionValidationError(fmt.Sprintf("unknown item_id: %s", itemID))
-		}
-		if !isStudioBatchItemRetryable(item.Status) {
-			return nil, NewStudioBatchActionValidationError(fmt.Sprintf("item %s is not retryable from status %s", itemID, item.Status))
-		}
-		itemsToRetry = append(itemsToRetry, item)
-	}
-
-	now := s.currentTime().UTC()
-	for _, item := range itemsToRetry {
-		item.Status = StudioBatchItemStatusPending
-		item.LastError = ""
-		item.UpdatedAt = now
-		if err := s.repo.UpdateStudioBatchItem(ctx, &item); err != nil {
-			return nil, err
-		}
+	if err := s.resetStudioBatchRetryItems(ctx, itemsToRetry); err != nil {
+		return nil, err
 	}
 
 	return s.GetStudioBatchDetail(ctx, normalizedBatchID)
@@ -506,53 +485,4 @@ func (s *taskStudioBatchService) loadStudioBatchTaskSession(ctx context.Context,
 		return nil, ErrStudioSessionNotFound
 	}
 	return session, nil
-}
-
-func normalizeStudioBatchDesignIDs(ids []string) []string {
-	if len(ids) == 0 {
-		return nil
-	}
-	result := make([]string, 0, len(ids))
-	seen := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		normalized := strings.TrimSpace(id)
-		if normalized == "" {
-			continue
-		}
-		if _, ok := seen[normalized]; ok {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		result = append(result, normalized)
-	}
-	return result
-}
-
-func normalizeStudioBatchItemIDs(ids []string) []string {
-	if len(ids) == 0 {
-		return nil
-	}
-	result := make([]string, 0, len(ids))
-	seen := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		normalized := strings.TrimSpace(id)
-		if normalized == "" {
-			continue
-		}
-		if _, ok := seen[normalized]; ok {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		result = append(result, normalized)
-	}
-	return result
-}
-
-func isStudioBatchItemRetryable(status StudioBatchItemStatus) bool {
-	switch status {
-	case StudioBatchItemStatusReviewReady, StudioBatchItemStatusFailed:
-		return true
-	default:
-		return false
-	}
 }
