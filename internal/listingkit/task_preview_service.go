@@ -45,17 +45,10 @@ func (s *taskPreviewService) GetTaskPreview(ctx context.Context, taskID string, 
 	projection := buildAssetGenerationProjection(task.Result, tasks)
 	preview.AssetGenerationSummary = projection.Summary
 	preview.AssetGenerationTasks = projection.Tasks
-	if len(preview.AssetRenderPreviews) == 0 && task.Result != nil {
-		preview.AssetRenderPreviews = buildAssetRenderPreviews(task.Result.AssetBundle)
-	}
-	if len(preview.PlatformAssetRenderPreviews) == 0 && task.Result != nil {
-		preview.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(task.Result)
-	}
 	preview.AssetGenerationQueue = projection.Queue
 	preview.AssetGenerationOverview = projection.Overview
-	if s.decorateSheinStoreResolutionPreview != nil {
-		s.decorateSheinStoreResolutionPreview(ctx, task, preview)
-	}
+	backfillTaskPreviewRenderPreviews(preview, task.Result)
+	s.decorateTaskPreview(ctx, task, preview)
 	return preview, nil
 }
 
