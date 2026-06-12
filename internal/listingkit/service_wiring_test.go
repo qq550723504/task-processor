@@ -1372,6 +1372,33 @@ func TestTaskPreviewLogicFileOwnsPreviewBuilderHelper(t *testing.T) {
 	}
 }
 
+func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing.T) {
+	t.Parallel()
+
+	builderSrc, err := os.ReadFile("preview_builder.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder.go) error = %v", err)
+	}
+	builderContent := string(builderSrc)
+	if strings.Contains(builderContent, "func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {") {
+		t.Fatalf("preview_builder.go should not contain %q", "func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {")
+	}
+
+	platformsSrc, err := os.ReadFile("preview_builder_platforms.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_platforms.go) error = %v", err)
+	}
+	platformsContent := string(platformsSrc)
+	for _, needle := range []string{
+		"func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {",
+		"for _, builder := range previewPlatformBuilders() {",
+	} {
+		if !strings.Contains(platformsContent, needle) {
+			t.Fatalf("preview_builder_platforms.go should contain %q", needle)
+		}
+	}
+}
+
 func TestSheinSettingsEntrypointsFileOwnsCategorySearchDelegate(t *testing.T) {
 	t.Parallel()
 

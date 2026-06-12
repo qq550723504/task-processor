@@ -61,15 +61,6 @@ func buildPendingPreviewHeader(task *Task) *ListingKitPreviewHeader {
 	}
 }
 
-func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {
-	for _, builder := range previewPlatformBuilders() {
-		if err := builder.build(task, preview, selectedPlatform); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func previewStatusFromReviewNotes(reviewNotes []string) string {
 	if len(reviewNotes) > 0 {
 		return "needs_review"
