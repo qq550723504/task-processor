@@ -89,3 +89,27 @@ func (s *service) taskStudioBatchRunOrDefault() *taskStudioBatchRunService {
 	s.taskStudioBatchRun = service
 	return service
 }
+
+func (s *service) studioBatchRunExecutorOrDefault() *taskStudioBatchRunExecutor {
+	if s.studio.runExecutor != nil {
+		s.studioBatchRunExecutor = s.studio.runExecutor
+		return s.studio.runExecutor
+	}
+	if s.studioBatchRunExecutor != nil {
+		s.studio.runExecutor = s.studioBatchRunExecutor
+		return s.studioBatchRunExecutor
+	}
+	return nil
+}
+
+func (s *service) studioBatchRunCoordinatorOrDefault() *studioBatchRunCoordinator {
+	if s.studio.runCoordinator != nil {
+		s.studioBatchRunCoordinator = s.studio.runCoordinator
+		return s.studio.runCoordinator
+	}
+	if s.studioBatchRunCoordinator != nil {
+		s.studio.runCoordinator = s.studioBatchRunCoordinator
+		return s.studioBatchRunCoordinator
+	}
+	return nil
+}

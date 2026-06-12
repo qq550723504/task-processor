@@ -77,7 +77,7 @@ func (c *studioBatchRunCoordinator) StartRun(ctx context.Context, runID string) 
 }
 
 func (s *service) initializeStudioBatchRunRecovery() {
-	coordinator := s.studio.runCoordinator
+	coordinator := s.studioBatchRunCoordinatorOrDefault()
 	if coordinator == nil {
 		coordinator = s.buildStudioBatchRunCoordinator()
 	}
@@ -92,7 +92,7 @@ func (s *service) initializeStudioBatchRunRecovery() {
 }
 
 func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {
-	coordinator := s.studio.runCoordinator
+	coordinator := s.studioBatchRunCoordinatorOrDefault()
 	if coordinator == nil {
 		coordinator = s.buildStudioBatchRunCoordinator()
 	}
@@ -106,21 +106,22 @@ func (s *service) initializeStudioBatchRunSupportCollaborators() {
 	if s == nil {
 		return
 	}
-	s.studio.runExecutor = s.buildStudioBatchRunExecutor()
-	s.studio.runCoordinator = s.buildStudioBatchRunCoordinator()
+	s.studio.runExecutor = s.studioBatchRunExecutorOrDefault()
+	if s.studio.runExecutor == nil {
+		s.studio.runExecutor = s.buildStudioBatchRunExecutor()
+	}
+	s.studio.runCoordinator = s.studioBatchRunCoordinatorOrDefault()
+	if s.studio.runCoordinator == nil {
+		s.studio.runCoordinator = s.buildStudioBatchRunCoordinator()
+	}
 }
 
 func (s *service) buildStudioBatchRunCoordinator() *studioBatchRunCoordinator {
 	if s == nil {
 		return nil
 	}
-	if s.studio.runCoordinator != nil {
-		s.studioBatchRunCoordinator = s.studio.runCoordinator
-		return s.studio.runCoordinator
-	}
-	if s.studioBatchRunCoordinator != nil {
-		s.studio.runCoordinator = s.studioBatchRunCoordinator
-		return s.studioBatchRunCoordinator
+	if coordinator := s.studioBatchRunCoordinatorOrDefault(); coordinator != nil {
+		return coordinator
 	}
 	executor := s.buildStudioBatchRunExecutor()
 	if executor == nil {
@@ -138,13 +139,8 @@ func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {
 	if s == nil {
 		return nil
 	}
-	if s.studio.runExecutor != nil {
-		s.studioBatchRunExecutor = s.studio.runExecutor
-		return s.studio.runExecutor
-	}
-	if s.studioBatchRunExecutor != nil {
-		s.studio.runExecutor = s.studioBatchRunExecutor
-		return s.studioBatchRunExecutor
+	if executor := s.studioBatchRunExecutorOrDefault(); executor != nil {
+		return executor
 	}
 	if resolveStudioBatchRunRepo(s) == nil || resolveStudioSessionRepo(s) == nil {
 		return nil
