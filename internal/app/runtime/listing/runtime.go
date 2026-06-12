@@ -10,6 +10,8 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/pkg/appenv"
 	"task-processor/internal/platformbase"
+
+	"github.com/sirupsen/logrus"
 )
 
 func Run(ctx context.Context, opts Options) error {
@@ -29,6 +31,9 @@ func Run(ctx context.Context, opts Options) error {
 	cfg, err := config.LoadConfigWithFallback(configPath, logger)
 	if err != nil {
 		return fmt.Errorf("load config failed: %w", err)
+	}
+	if err := applyLoggingConfigFromConfig(logger, cfg); err != nil {
+		return fmt.Errorf("apply logging config failed: %w", err)
 	}
 	if cfg.RabbitMQ == nil || !cfg.RabbitMQ.Enabled {
 		return fmt.Errorf("RabbitMQ is not enabled")
@@ -66,4 +71,17 @@ func Run(ctx context.Context, opts Options) error {
 
 	serviceManager.Wait()
 	return nil
+}
+
+func applyLoggingConfigFromConfig(log *logrus.Logger, cfg *config.Config) error {
+	if cfg == nil {
+		return nil
+	}
+
+	return appenv.ApplyLoggingConfig(log, appenv.LoggingConfig{
+		Level:        cfg.Logging.Level,
+		Format:       cfg.Logging.Format,
+		File:         cfg.Logging.File,
+		SplitByLevel: cfg.Logging.SplitByLevel,
+	})
 }
