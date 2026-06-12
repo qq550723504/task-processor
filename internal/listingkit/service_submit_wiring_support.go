@@ -13,6 +13,12 @@ type taskSubmissionOrchestratorWiring struct {
 	bindings   taskSubmissionBindings
 }
 
+type taskSubmissionServiceWiring struct {
+	lockSubmit func(string) func()
+	recovery   *taskSubmissionRecoveryService
+	direct     *taskDirectSubmissionService
+}
+
 type taskSubmissionRepositoryWiring struct {
 	repo           Repository
 	saveTaskResult func(context.Context, string, *ListingKitResult) error
@@ -57,6 +63,14 @@ func buildTaskSubmissionOrchestratorWiring(s *service, resolver *submitRuntimeCo
 		lockSubmit: buildTaskSubmissionLockSubmit(s),
 		recovery:   s.taskSubmissionRecoveryOrDefault(),
 		bindings:   buildTaskSubmissionBindings(s, resolver),
+	}
+}
+
+func buildTaskSubmissionServiceWiring(s *service) taskSubmissionServiceWiring {
+	return taskSubmissionServiceWiring{
+		lockSubmit: buildTaskSubmissionLockSubmit(s),
+		recovery:   s.taskSubmissionRecoveryOrDefault(),
+		direct:     s.taskDirectSubmissionOrDefault(),
 	}
 }
 

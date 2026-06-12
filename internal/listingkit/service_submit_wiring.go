@@ -35,16 +35,15 @@ func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecovery
 
 func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 	repository := buildTaskSubmissionRepositoryWiring(s)
-	direct := s.taskDirectSubmissionOrDefault()
-	recovery := s.taskSubmissionRecoveryOrDefault()
+	wiring := buildTaskSubmissionServiceWiring(s)
 	return taskSubmissionServiceConfig{
 		repo:                            repository.repo,
-		lockSubmit:                      buildTaskSubmissionLockSubmit(s),
+		lockSubmit:                      wiring.lockSubmit,
 		resolveDefaultSheinSubmitAction: s.resolveDefaultSheinSubmitAction,
-		acquireSheinSubmitTask:          recovery.acquireSheinSubmitTask,
+		acquireSheinSubmitTask:          wiring.recovery.acquireSheinSubmitTask,
 		shouldStartSheinPublishWorkflow: s.shouldStartSheinPublishWorkflow,
 		submitSheinTaskWithWorkflow:     s.submitSheinTaskWithWorkflow,
-		submitSheinTaskDirect:           direct.submitSheinTaskDirect,
+		submitSheinTaskDirect:           wiring.direct.submitSheinTaskDirect,
 	}
 }
 
