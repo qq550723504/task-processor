@@ -38,10 +38,8 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 	direct := s.taskDirectSubmissionOrDefault()
 	recovery := s.taskSubmissionRecoveryOrDefault()
 	return taskSubmissionServiceConfig{
-		repo: s.repo,
-		lockSubmit: func(key string) func() {
-			return s.submission.sheinSubmitLocks.Lock(key)
-		},
+		repo:                            s.repo,
+		lockSubmit:                      buildTaskSubmissionLockSubmit(s),
 		resolveDefaultSheinSubmitAction: s.resolveDefaultSheinSubmitAction,
 		acquireSheinSubmitTask:          recovery.acquireSheinSubmitTask,
 		shouldStartSheinPublishWorkflow: s.shouldStartSheinPublishWorkflow,
@@ -51,18 +49,15 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 }
 
 func buildTaskSubmissionRefreshServiceConfig(s *service) taskSubmissionRefreshServiceConfig {
-	bindings := buildTaskSubmissionBindings(s, nil)
-	recovery := s.taskSubmissionRecoveryOrDefault()
+	wiring := buildTaskSubmissionOrchestratorWiring(s, nil)
 	return taskSubmissionRefreshServiceConfig{
-		repo: s.repo,
-		lockSubmit: func(key string) func() {
-			return s.submission.sheinSubmitLocks.Lock(key)
-		},
+		repo:                       s.repo,
+		lockSubmit:                 wiring.lockSubmit,
 		buildTaskPreview:           s.buildTaskPreview,
-		buildSheinSubmitProductAPI: bindings.execution.buildSheinSubmitProductAPI,
+		buildSheinSubmitProductAPI: wiring.bindings.execution.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:   s.buildSheinSubmitOtherAPI,
-		mutateTaskResult:           recovery.mutateTaskResult,
-		resolveRemoteStatus:        recovery.resolveSheinSubmitRemoteStatus,
+		mutateTaskResult:           wiring.recovery.mutateTaskResult,
+		resolveRemoteStatus:        wiring.recovery.resolveSheinSubmitRemoteStatus,
 	}
 }
 
@@ -108,29 +103,28 @@ func buildTaskSubmissionStateServiceConfig(s *service) taskSubmissionStateServic
 
 func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {
 	resolver := buildSubmitRuntimeContextResolver(s)
-	bindings := buildTaskSubmissionBindings(s, resolver)
-	recovery := s.taskSubmissionRecoveryOrDefault()
+	wiring := buildTaskSubmissionOrchestratorWiring(s, resolver)
 	return taskTemporalSubmissionAdapterConfig{
 		startSheinPublishWorkflow: func(ctx context.Context, in SheinPublishWorkflowStartInput) error {
 			return s.sheinPublishWorkflowClient.StartSheinPublish(ctx, in)
 		},
-		beginSheinSubmitLease:                recovery.beginSheinSubmitLease,
+		beginSheinSubmitLease:                wiring.recovery.beginSheinSubmitLease,
 		loadSheinPublishTask:                 s.loadSheinPublishTaskForTemporal,
-		normalizeSheinSubmitPackage:          bindings.execution.normalizeSheinSubmitPackage,
+		normalizeSheinSubmitPackage:          wiring.bindings.execution.normalizeSheinSubmitPackage,
 		validateSheinPublishFreshness:        s.validateSheinPublishFreshness,
 		saveTaskResult:                       s.repo.SaveTaskResult,
-		persistSheinSubmitPhase:              bindings.state.persistSheinSubmitPhase,
-		prepareSheinSubmitProduct:            bindings.execution.prepareSheinSubmitProduct,
-		uploadSheinSubmitImages:              bindings.execution.uploadSheinSubmitImages,
-		resolveSubmitSettings:                bindings.resolver.resolveSubmitSettings,
-		buildSheinSubmitProductAPI:           bindings.execution.buildSheinSubmitProductAPI,
-		preValidateSheinSubmitProduct:        bindings.execution.preValidateSheinSubmitProduct,
-		executeSheinSubmitRemote:             bindings.execution.executeSheinSubmitRemote,
+		persistSheinSubmitPhase:              wiring.bindings.state.persistSheinSubmitPhase,
+		prepareSheinSubmitProduct:            wiring.bindings.execution.prepareSheinSubmitProduct,
+		uploadSheinSubmitImages:              wiring.bindings.execution.uploadSheinSubmitImages,
+		resolveSubmitSettings:                wiring.bindings.resolver.resolveSubmitSettings,
+		buildSheinSubmitProductAPI:           wiring.bindings.execution.buildSheinSubmitProductAPI,
+		preValidateSheinSubmitProduct:        wiring.bindings.execution.preValidateSheinSubmitProduct,
+		executeSheinSubmitRemote:             wiring.bindings.execution.executeSheinSubmitRemote,
 		retrySheinSensitiveWordSubmit:        s.retrySheinSensitiveWordSubmit,
-		persistSuccessfulSheinSubmission:     bindings.state.persistSuccessfulSheinSubmission,
-		recordSheinSubmissionFailureForState: bindings.state.recordSheinSubmissionFailureForState,
-		refreshSheinSubmitRemoteStatus:       recovery.refreshSheinSubmitRemoteStatus,
-		handleWorkflowStartFailure:           recovery.handleSheinWorkflowStartFailure,
+		persistSuccessfulSheinSubmission:     wiring.bindings.state.persistSuccessfulSheinSubmission,
+		recordSheinSubmissionFailureForState: wiring.bindings.state.recordSheinSubmissionFailureForState,
+		refreshSheinSubmitRemoteStatus:       wiring.recovery.refreshSheinSubmitRemoteStatus,
+		handleWorkflowStartFailure:           wiring.recovery.handleSheinWorkflowStartFailure,
 		rememberSheinSubmitted:               s.rememberSheinSubmittedResolution,
 		getTaskPreview:                       s.GetTaskPreview,
 	}
