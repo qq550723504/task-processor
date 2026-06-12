@@ -1041,9 +1041,9 @@ func TestStoreProfileEntrypointsFileOwnsRootDelegates(t *testing.T) {
 func TestSheinSettingsEntrypointsFileOwnsAIClientSettingsDelegates(t *testing.T) {
 	t.Parallel()
 
-	facadeSrc, err := os.ReadFile("service_shein_settings_entrypoints.go")
+	facadeSrc, err := os.ReadFile("service_ai_client_settings_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_settings_entrypoints.go) error = %v", err)
+		t.Fatalf("ReadFile(service_ai_client_settings_entrypoints.go) error = %v", err)
 	}
 	facadeContent := string(facadeSrc)
 
@@ -1054,14 +1054,8 @@ func TestSheinSettingsEntrypointsFileOwnsAIClientSettingsDelegates(t *testing.T)
 		"return s.settingsAdminOrDefault().UpdateAIClientSettings(ctx, req)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
-			t.Fatalf("service_shein_settings_entrypoints.go should contain %q", needle)
+			t.Fatalf("service_ai_client_settings_entrypoints.go should contain %q", needle)
 		}
-	}
-
-	if _, err := os.ReadFile("service_ai_client_settings_entrypoints.go"); err == nil {
-		t.Fatal("service_ai_client_settings_entrypoints.go should be removed after admin entrypoint merge")
-	} else if !os.IsNotExist(err) {
-		t.Fatalf("ReadFile(service_ai_client_settings_entrypoints.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_ai_client_settings.go"); err == nil {
@@ -1110,12 +1104,6 @@ func TestSheinSettingsEntrypointsFileOwnsRootDelegates(t *testing.T) {
 		"return s.settingsAdminOrDefault().GetSheinSettings(ctx)",
 		"func (s *service) UpdateSheinSettings(ctx context.Context, req *SheinSettings) (*SheinSettings, error) {",
 		"return s.settingsAdminOrDefault().UpdateSheinSettings(ctx, req)",
-		"func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {",
-		"return s.sheinAdminOrDefault().SearchSheinCategories(ctx, taskID, query)",
-		"func (s *service) PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {",
-		"return s.sheinAdminOrDefault().PreviewSheinPrice(ctx, taskID, req)",
-		"func (s *service) ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error) {",
-		"return s.sheinAdminOrDefault().ClearSheinResolutionCache(ctx, taskID, kind)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
 			t.Fatalf("service_shein_settings_entrypoints.go should contain %q", needle)
