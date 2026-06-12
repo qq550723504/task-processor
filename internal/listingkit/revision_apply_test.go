@@ -677,6 +677,17 @@ func TestApplyListingKitRevisionRejectsMissingPayload(t *testing.T) {
 	}
 }
 
+func TestApplyListingKitRevisionRejectsUnsupportedPlatform(t *testing.T) {
+	t.Parallel()
+
+	err := applyListingKitRevision(&ListingKitResult{}, &ApplyRevisionRequest{
+		Platform: " ebay ",
+	})
+	if err != ErrUnsupportedPreviewPlatform {
+		t.Fatalf("error = %v, want %v", err, ErrUnsupportedPreviewPlatform)
+	}
+}
+
 func TestApplyListingKitRevisionReturnsFieldValidationErrors(t *testing.T) {
 	t.Parallel()
 

@@ -3,6 +3,8 @@ package listingkit
 import (
 	"strings"
 	"time"
+
+	previewdomain "task-processor/internal/listing/preview"
 )
 
 func applyListingKitRevision(result *ListingKitResult, req *ApplyRevisionRequest) error {
@@ -16,8 +18,8 @@ func applyListingKitRevision(result *ListingKitResult, req *ApplyRevisionRequest
 		return err
 	}
 
-	platform := strings.ToLower(strings.TrimSpace(req.Platform))
-	if len(normalizePlatforms([]string{platform})) == 0 {
+	platform, ok := previewdomain.ValidateSelectedPlatform(req.Platform)
+	if !ok {
 		return ErrUnsupportedPreviewPlatform
 	}
 
