@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 )
 
 func deriveProcessTerminalStatus(result *ListingKitResult) TaskStatus {
@@ -64,8 +63,5 @@ func (s *service) persistProcessSuccess(ctx context.Context, taskID string, resu
 
 func taskNeedsReviewReason(result *ListingKitResult) string {
 	warnings := reviewReasonsFromResult(result)
-	if len(warnings) == 0 {
-		return "listing kit requires review"
-	}
-	return strings.Join(warnings, "; ")
+	return summarizeReviewReasons(warnings, "listing kit requires review")
 }

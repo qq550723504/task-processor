@@ -75,16 +75,7 @@ func buildTaskResult(task *Task, resultPayload *ListingKitResult) *TaskResult {
 	if task == nil {
 		return nil
 	}
-	reviewReasons := reviewReasonsFromTask(task)
-	if resultPayload != nil {
-		if reasons := reviewReasonsFromResult(resultPayload); len(reasons) > 0 {
-			reviewReasons = reasons
-		}
-	}
-	effectiveError := task.Error
-	if task.Status == TaskStatusNeedsReview && len(reviewReasons) > 0 {
-		effectiveError = strings.Join(reviewReasons, "; ")
-	}
+	reviewReasons, effectiveError := buildTaskResultReviewState(task, resultPayload)
 	result := &TaskResult{
 		TaskIdentityFields: TaskIdentityFields{
 			TaskID:   task.ID,
