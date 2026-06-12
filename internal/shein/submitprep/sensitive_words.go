@@ -9,7 +9,7 @@ import (
 	"unicode"
 
 	"task-processor/internal/listingadmin"
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheincontent "task-processor/internal/shein/content"
 	sheinctx "task-processor/internal/shein/context"

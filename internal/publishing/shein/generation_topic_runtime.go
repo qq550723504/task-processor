@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"task-processor/internal/listingadmin"
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 	generationtopics "task-processor/internal/shein/generationtopics"
 )
 

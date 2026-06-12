@@ -2,47 +2,28 @@ package tenantctx
 
 import (
 	"context"
-	"strings"
+
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 )
 
-const DefaultTenantID = "default"
-
-type contextKey struct{}
+const DefaultTenantID = sharedtenantctx.DefaultTenantID
 
 func NormalizeTenantID(tenantID string) string {
-	if trimmed := strings.TrimSpace(tenantID); trimmed != "" {
-		return trimmed
-	}
-	return DefaultTenantID
+	return sharedtenantctx.NormalizeTenantID(tenantID)
 }
 
 func WithTenantID(ctx context.Context, tenantID string) context.Context {
-	return context.WithValue(ctx, contextKey{}, NormalizeTenantID(tenantID))
+	return sharedtenantctx.WithTenantID(ctx, tenantID)
 }
 
 func TenantIDFromContext(ctx context.Context) string {
-	if tenantID, ok := TenantScopeFromContext(ctx); ok {
-		return tenantID
-	}
-	return DefaultTenantID
+	return sharedtenantctx.TenantIDFromContext(ctx)
 }
 
 func TenantScopeFromContext(ctx context.Context) (string, bool) {
-	if ctx == nil {
-		return "", false
-	}
-	value, ok := ctx.Value(contextKey{}).(string)
-	if !ok {
-		return "", false
-	}
-	return NormalizeTenantID(value), true
+	return sharedtenantctx.TenantScopeFromContext(ctx)
 }
 
 func MatchesTenant(recordTenantID, tenantID string) bool {
-	normalized := NormalizeTenantID(tenantID)
-	record := strings.TrimSpace(recordTenantID)
-	if normalized == DefaultTenantID {
-		return record == "" || record == DefaultTenantID
-	}
-	return record == normalized
+	return sharedtenantctx.MatchesTenant(recordTenantID, tenantID)
 }
