@@ -36,7 +36,6 @@ type builtRepositories struct {
 	studioSessionRepository           listingkit.StudioSessionRepository
 	uploadedImageRepository           listingkit.UploadedImageRepository
 	storeProfileRepository            listingkit.StoreProfileRepository
-	legacyStoreRoutingSettingsRepository listingkit.StoreRoutingSettingsRepository
 	resolutionCacheStore              sheinpub.ResolutionCacheStore
 }
 
@@ -66,7 +65,6 @@ type builtLateCoreRepositories struct {
 	studioSessionRepository        listingkit.StudioSessionRepository
 	uploadedImageRepository        listingkit.UploadedImageRepository
 	storeProfileRepository         listingkit.StoreProfileRepository
-	legacyStoreRoutingSettingsRepository listingkit.StoreRoutingSettingsRepository
 	resolutionCacheStore           sheinpub.ResolutionCacheStore
 }
 
@@ -76,7 +74,6 @@ type lateCoreRepositoryDependencies struct {
 	studioSessionRepository        listingkit.StudioSessionRepository
 	uploadedImageRepository        listingkit.UploadedImageRepository
 	storeProfileRepository         listingkit.StoreProfileRepository
-	legacyStoreRoutingSettingsRepository listingkit.StoreRoutingSettingsRepository
 	resolutionCacheStore           sheinpub.ResolutionCacheStore
 }
 
@@ -192,7 +189,6 @@ func buildLateCoreRepositories(input BuildServiceInput, closers *closerStack) (*
 		studioSessionRepository:        dependencies.studioSessionRepository,
 		uploadedImageRepository:        dependencies.uploadedImageRepository,
 		storeProfileRepository:         dependencies.storeProfileRepository,
-		legacyStoreRoutingSettingsRepository: dependencies.legacyStoreRoutingSettingsRepository,
 		resolutionCacheStore:           dependencies.resolutionCacheStore,
 	}, nil
 }
@@ -232,10 +228,6 @@ func buildLateCoreRepositoryDependencies(input BuildServiceInput, closers *close
 	if err != nil {
 		return nil, err
 	}
-	legacyStoreRoutingSettingsRepository, err := buildNamedWithClosers("core.legacy_store_routing_settings", repoBuilders.LegacyStoreRoutingSettings, input.Config, input.Logger, closers)
-	if err != nil {
-		return nil, err
-	}
 	resolutionCacheStore, err := buildNamedWithClosers("core.shein_resolution_cache", repoBuilders.SheinResolutionCache, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
@@ -247,7 +239,6 @@ func buildLateCoreRepositoryDependencies(input BuildServiceInput, closers *close
 		studioSessionRepository:        studioSessionRepository,
 		uploadedImageRepository:        uploadedImageRepository,
 		storeProfileRepository:         storeProfileRepository,
-		legacyStoreRoutingSettingsRepository: legacyStoreRoutingSettingsRepository,
 		resolutionCacheStore:           resolutionCacheStore,
 	}, nil
 }
@@ -380,7 +371,6 @@ func applyLateCoreRepositories(repos *builtRepositories, lateCore *builtLateCore
 	repos.studioSessionRepository = lateCore.studioSessionRepository
 	repos.uploadedImageRepository = lateCore.uploadedImageRepository
 	repos.storeProfileRepository = lateCore.storeProfileRepository
-	repos.legacyStoreRoutingSettingsRepository = lateCore.legacyStoreRoutingSettingsRepository
 	repos.resolutionCacheStore = lateCore.resolutionCacheStore
 }
 

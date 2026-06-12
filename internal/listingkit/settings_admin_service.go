@@ -11,7 +11,6 @@ import (
 
 type settingsAdminServiceConfig struct {
 	storeProfileRepo     StoreProfileRepository
-	routingSettingsRepo  StoreRoutingSettingsRepository
 	aiCredentialStore    AIClientCredentialStore
 	currentSheinSettings func() SheinSettings
 	mutateSheinSettings  func(func(*SheinSettings)) SheinSettings
@@ -20,7 +19,6 @@ type settingsAdminServiceConfig struct {
 
 type settingsAdminService struct {
 	storeProfileRepo     StoreProfileRepository
-	routingSettingsRepo  StoreRoutingSettingsRepository
 	aiCredentialStore    AIClientCredentialStore
 	currentSheinSettings func() SheinSettings
 	mutateSheinSettings  func(func(*SheinSettings)) SheinSettings
@@ -30,7 +28,6 @@ type settingsAdminService struct {
 func newSettingsAdminService(config settingsAdminServiceConfig) *settingsAdminService {
 	return &settingsAdminService{
 		storeProfileRepo:     config.storeProfileRepo,
-		routingSettingsRepo:  config.routingSettingsRepo,
 		aiCredentialStore:    config.aiCredentialStore,
 		currentSheinSettings: config.currentSheinSettings,
 		mutateSheinSettings:  config.mutateSheinSettings,

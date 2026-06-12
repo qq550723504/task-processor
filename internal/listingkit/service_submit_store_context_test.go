@@ -43,7 +43,6 @@ func TestResolveSheinSubmitSettingsUsesStoreProfileFields(t *testing.T) {
 
 	svc := &service{
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 		sheinSettings: SheinSettings{
 			DefaultStoreID:    700,
 			Site:              "US",
@@ -93,7 +92,6 @@ func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *tes
 
 	svc := &service{
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 		sheinSettings: SheinSettings{
 			DefaultStoreID:    700,
 			Site:              "US",

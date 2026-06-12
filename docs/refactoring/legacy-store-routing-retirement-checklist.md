@@ -18,6 +18,7 @@ Retire legacy SHEIN store routing settings safely, without breaking:
 - Legacy routing code paths are isolated into dedicated `*_legacy*` files.
 - `httpapi` and `service` wiring now label this dependency as `legacy`.
 - Legacy store routing service entrypoints now behave as a compatibility shell and return synthesized `manual` defaults instead of persisted state.
+- Main ListingKit service construction no longer injects legacy routing repositories into the active service path.
 
 ## Remaining Compatibility Surfaces
 
@@ -64,20 +65,18 @@ Retirement decision needed:
 
 ### 4. Service constructor / DI
 
-These still inject the legacy dependency:
+Main service construction no longer injects the legacy repository into the active service path.
 
-- `internal/listingkit/service_types.go`
-- `internal/listingkit/service_config.go`
-- `internal/listingkit/service_defaults.go`
-- `internal/listingkit/service_admin_wiring.go`
-- `internal/listingkit/httpapi/bootstrap.go`
-- `internal/listingkit/httpapi/bootstrap_repositories.go`
-- `internal/listingkit/httpapi/bootstrap_service_config.go`
+Residual cleanup still exists in bootstrap/repository helper surfaces:
+
+- `internal/listingkit/httpapi/builders.go`
+- `internal/listingkit/store_routing_legacy.go`
+- `internal/listingkit/store_routing_legacy_repository.go`
 
 Retirement decision needed:
 
-- drop the dependency from `ServiceCoreDependencies`, or
-- keep it until the HTTP/service compatibility layer is removed.
+- delete the remaining builder/persistence seam entirely, or
+- keep it as an isolated compatibility-only repository path until the HTTP route is removed.
 
 ### 5. Tests and stubs
 
@@ -100,7 +99,7 @@ Retirement decision needed:
 1. Confirm whether any non-frontend caller still uses `/api/v1/listing-kits/store-routing`.
 2. If no caller remains, convert the handler/service methods into a compatibility shell or remove them.
 3. Remove legacy routing methods from service interfaces and route handler interfaces.
-4. Remove constructor and bootstrap wiring for legacy routing repositories.
+4. Remove the remaining isolated builder/persistence seam for legacy routing repositories.
 5. Remove persistence types/repositories and associated tests.
 
 ## Safe First Cut

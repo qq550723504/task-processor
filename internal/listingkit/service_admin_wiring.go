@@ -3,7 +3,6 @@ package listingkit
 func buildSettingsAdminServiceConfig(s *service) settingsAdminServiceConfig {
 	return settingsAdminServiceConfig{
 		storeProfileRepo:     s.storeProfileRepo,
-		routingSettingsRepo:  s.legacyStoreRoutingSettingsRepo,
 		aiCredentialStore:    s.aiCredentialStore,
 		currentSheinSettings: s.currentSheinSubmitSettings,
 		mutateSheinSettings: func(mutate func(*SheinSettings)) SheinSettings {

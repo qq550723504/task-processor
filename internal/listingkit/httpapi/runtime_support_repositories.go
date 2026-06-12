@@ -14,7 +14,6 @@ func buildRuntimeSupportRepositories() BuildServiceRepositories {
 			StudioSession:        BuildListingKitStudioSessionRepository,
 			UploadedImage:        BuildListingKitUploadedImageRepository,
 			StoreProfile:         BuildListingKitStoreProfileRepository,
-			LegacyStoreRoutingSettings: BuildListingKitStoreRoutingSettingsRepository,
 			SheinResolutionCache: BuildSheinResolutionCacheStore,
 		},
 		Admin: AdminRepositoryBuilders{

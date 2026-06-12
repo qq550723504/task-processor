@@ -13,7 +13,6 @@ func TestStoreProfileServiceUpsertListAndDelete(t *testing.T) {
 
 	svc := &service{
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "101", UserID: "user-a"})
 
@@ -68,7 +67,6 @@ func TestStoreProfileServiceReturnsLegacyRoutingCompatibilityDefaults(t *testing
 
 	svc := &service{
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "202", UserID: "user-b"})
 
@@ -105,7 +103,6 @@ func TestResolveSheinStoreIDUsesExplicitRequestStore(t *testing.T) {
 
 	svc := &service{
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "303", UserID: "user-c"})
 
@@ -137,7 +134,6 @@ func TestResolveSheinStoreIDUsesSnapshotWhenRequestStoreMissing(t *testing.T) {
 
 	svc := &service{
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "404", UserID: "user-d"})
 
@@ -179,7 +175,6 @@ func TestStoreProfileServiceResolvesLegacyTenantIDFromMappedZitadelTenant(t *tes
 
 	svc := &service{
 		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		legacyStoreRoutingSettingsRepo: newInMemoryStoreRoutingSettingsRepository(),
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "373211199677923496", UserID: "user-z"})
 

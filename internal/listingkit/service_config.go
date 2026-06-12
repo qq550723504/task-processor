@@ -64,7 +64,6 @@ func newServiceWithConfig(config *ServiceConfig) *service {
 		platformAdaptWorkflowClient:    config.Workflow.PlatformAdaptWorkflowClient,
 		platformAdaptWorkflowEnabled:   config.Workflow.PlatformAdaptWorkflowEnabled,
 		storeProfileRepo:               config.Core.StoreProfileRepository,
-		legacyStoreRoutingSettingsRepo: config.Core.LegacyStoreRoutingSettingsRepository,
 		requestDefaults: generateRequestDefaults{
 			sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
 		},
