@@ -1484,6 +1484,43 @@ func TestSheinResolutionCachePreviewHelpersLiveOutsideMainSheinPreviewBuilder(t 
 	}
 }
 
+func TestSheinPreviewPayloadAssemblerLivesOutsideMainSheinPreviewBuilder(t *testing.T) {
+	t.Parallel()
+
+	mainSrc, err := os.ReadFile("preview_builder_shein.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein.go) error = %v", err)
+	}
+	mainContent := string(mainSrc)
+	for _, needle := range []string{
+		"type sheinPreviewPayloadBodyInput struct {",
+		"func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPreviewPayload {",
+		"Headline:          firstNonEmpty(pkg.SpuName, pkg.ProductNameEn),",
+		"ResolutionCache:   buildSheinResolutionCacheSummary(pkg),",
+	} {
+		if strings.Contains(mainContent, needle) {
+			t.Fatalf("preview_builder_shein.go should not contain %q", needle)
+		}
+	}
+
+	payloadSrc, err := os.ReadFile("preview_builder_shein_payload.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_payload.go) error = %v", err)
+	}
+	payloadContent := string(payloadSrc)
+	for _, needle := range []string{
+		"type sheinPreviewPayloadBodyInput struct {",
+		"func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPreviewPayload {",
+		"Headline:          firstNonEmpty(pkg.SpuName, pkg.ProductNameEn),",
+		"ResolutionCache:   buildSheinResolutionCacheSummary(pkg),",
+		"FinalReview:       buildSheinFinalReviewPayload(pkg, input.canonical, input.readiness),",
+	} {
+		if !strings.Contains(payloadContent, needle) {
+			t.Fatalf("preview_builder_shein_payload.go should contain %q", needle)
+		}
+	}
+}
+
 func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testing.T) {
 	t.Parallel()
 
