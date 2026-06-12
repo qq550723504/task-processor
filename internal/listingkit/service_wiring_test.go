@@ -1030,28 +1030,10 @@ func TestStoreProfileEntrypointsFileOwnsRootDelegates(t *testing.T) {
 			"func (s *service) ListSheinStoreProfiles(ctx context.Context) ([]ListingKitStoreProfile, error) {",
 			"func (s *service) UpsertSheinStoreProfile(ctx context.Context, req *ListingKitStoreProfile) (*ListingKitStoreProfile, error) {",
 			"func (s *service) DeleteSheinStoreProfile(ctx context.Context, id int64) error {",
-			"func (s *service) GetSheinStoreRoutingSettings(ctx context.Context) (*ListingKitStoreRoutingSettings, error) {",
-			"func (s *service) UpdateSheinStoreRoutingSettings(ctx context.Context, req *ListingKitStoreRoutingSettings) (*ListingKitStoreRoutingSettings, error) {",
 		} {
 			if strings.Contains(legacyContent, needle) {
 				t.Fatalf("store_profile_service.go should not contain %q", needle)
 			}
-		}
-	}
-
-	legacyRoutingSrc, err := os.ReadFile("service_shein_store_routing_legacy_entrypoints.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_shein_store_routing_legacy_entrypoints.go) error = %v", err)
-	}
-	legacyRoutingContent := string(legacyRoutingSrc)
-	for _, needle := range []string{
-			"func (s *service) GetSheinStoreRoutingSettings(ctx context.Context) (*ListingKitStoreRoutingSettings, error) {",
-			"return s.settingsAdminOrDefault().GetSheinStoreRoutingSettings(ctx)",
-			"func (s *service) UpdateSheinStoreRoutingSettings(ctx context.Context, req *ListingKitStoreRoutingSettings) (*ListingKitStoreRoutingSettings, error) {",
-			"return s.settingsAdminOrDefault().UpdateSheinStoreRoutingSettings(ctx, req)",
-		} {
-		if !strings.Contains(legacyRoutingContent, needle) {
-			t.Fatalf("service_shein_store_routing_legacy_entrypoints.go should contain %q", needle)
 		}
 	}
 }

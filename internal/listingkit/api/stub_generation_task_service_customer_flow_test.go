@@ -34,27 +34,6 @@ func (s *stubGenerationTaskService) DeleteSheinStoreProfile(ctx context.Context,
 	return s.err
 }
 
-func (s *stubGenerationTaskService) GetSheinStoreRoutingSettings(ctx context.Context) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	if s.err != nil {
-		return nil, s.err
-	}
-	if s.storeRoutingSettings != nil {
-		return s.storeRoutingSettings, nil
-	}
-	return &listingkit.ListingKitStoreRoutingSettings{}, nil
-}
-
-func (s *stubGenerationTaskService) UpdateSheinStoreRoutingSettings(ctx context.Context, req *listingkit.ListingKitStoreRoutingSettings) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	if s.err != nil {
-		return nil, s.err
-	}
-	s.updateStoreRoutingReq = req
-	if s.storeRoutingSettings != nil {
-		return s.storeRoutingSettings, nil
-	}
-	return req, nil
-}
-
 func (s *stubGenerationTaskService) UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
 	return nil, errors.New("not implemented")
 }
@@ -115,14 +94,6 @@ func (s *stubHistoryDetailService) DeleteSheinStoreProfile(ctx context.Context, 
 	return errors.New("not implemented")
 }
 
-func (s *stubHistoryDetailService) GetSheinStoreRoutingSettings(ctx context.Context) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryDetailService) UpdateSheinStoreRoutingSettings(ctx context.Context, req *listingkit.ListingKitStoreRoutingSettings) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
 func (s *stubHistoryDetailService) UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
 	return nil, errors.New("not implemented")
 }
@@ -165,14 +136,6 @@ func (s *stubHistoryService) UpsertSheinStoreProfile(ctx context.Context, req *l
 
 func (s *stubHistoryService) DeleteSheinStoreProfile(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetSheinStoreRoutingSettings(ctx context.Context) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) UpdateSheinStoreRoutingSettings(ctx context.Context, req *listingkit.ListingKitStoreRoutingSettings) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
 }
 
 func (s *stubHistoryService) UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
@@ -219,14 +182,6 @@ func (s *stubRevisionService) DeleteSheinStoreProfile(ctx context.Context, id in
 	return errors.New("not implemented")
 }
 
-func (s *stubRevisionService) GetSheinStoreRoutingSettings(ctx context.Context) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubRevisionService) UpdateSheinStoreRoutingSettings(ctx context.Context, req *listingkit.ListingKitStoreRoutingSettings) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
 func (s *stubRevisionService) UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
 	return nil, errors.New("not implemented")
 }
@@ -271,14 +226,6 @@ func (s *stubRevisionValidateService) DeleteSheinStoreProfile(ctx context.Contex
 	return errors.New("not implemented")
 }
 
-func (s *stubRevisionValidateService) GetSheinStoreRoutingSettings(ctx context.Context) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubRevisionValidateService) UpdateSheinStoreRoutingSettings(ctx context.Context, req *listingkit.ListingKitStoreRoutingSettings) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
 func (s *stubRevisionValidateService) UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
 	return nil, errors.New("not implemented")
 }
@@ -321,14 +268,6 @@ func (s *stubSubmitService) UpsertSheinStoreProfile(ctx context.Context, req *li
 
 func (s *stubSubmitService) DeleteSheinStoreProfile(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
-}
-
-func (s *stubSubmitService) GetSheinStoreRoutingSettings(ctx context.Context) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubSubmitService) UpdateSheinStoreRoutingSettings(ctx context.Context, req *listingkit.ListingKitStoreRoutingSettings) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
 }
 
 func (s *stubSubmitService) UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {

@@ -16,12 +16,6 @@ func (settingsOnlyRouteHandler) UpdateSheinSettings(c *gin.Context)    {}
 func (settingsOnlyRouteHandler) GetAIClientSettings(c *gin.Context)    {}
 func (settingsOnlyRouteHandler) UpdateAIClientSettings(c *gin.Context) {}
 
-type legacyStoreRoutingOnlyRouteHandler struct{}
-
-func (legacyStoreRoutingOnlyRouteHandler) GetSheinStoreRoutingSettings(c *gin.Context) {}
-func (legacyStoreRoutingOnlyRouteHandler) UpdateSheinStoreRoutingSettings(c *gin.Context) {
-}
-
 type taskOnlyRouteHandler struct{}
 
 func (taskOnlyRouteHandler) GenerateListingKit(c *gin.Context)               {}
@@ -113,7 +107,6 @@ func (studioGenerationOnlyRouteHandler) StartStudioAsyncJob(c *gin.Context)     
 func (studioGenerationOnlyRouteHandler) GetStudioAsyncJob(c *gin.Context)           {}
 
 var _ SettingsRouteHandler = settingsOnlyRouteHandler{}
-var _ LegacyStoreRoutingSettingsRouteHandler = legacyStoreRoutingOnlyRouteHandler{}
 var _ TaskRouteHandler = taskOnlyRouteHandler{}
 var _ SubscriptionRouteHandler = subscriptionOnlyRouteHandler{}
 var _ PlatformAdminRouteHandler = platformAdminSubscriptionRouteHandler{}

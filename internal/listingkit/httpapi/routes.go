@@ -63,11 +63,6 @@ type SettingsStoreRouteHandler interface {
 	UpdateAIClientSettings(c *gin.Context)
 }
 
-type LegacyStoreRoutingSettingsRouteHandler interface {
-	GetSheinStoreRoutingSettings(c *gin.Context)
-	UpdateSheinStoreRoutingSettings(c *gin.Context)
-}
-
 type SettingsRouteHandler interface {
 	ListSettingsNamespaces(c *gin.Context)
 	GetSettingsNamespaceSchema(c *gin.Context)
@@ -216,7 +211,6 @@ type sheinSyncRouteHandler interface {
 type RouteHandler interface {
 	TaskRouteHandler
 	SettingsRouteHandler
-	LegacyStoreRoutingSettingsRouteHandler
 	StoreRouteHandler
 	SubscriptionRouteHandler
 	PlatformAdminRouteHandler
@@ -234,7 +228,6 @@ func AppendRouteDescriptors(routes []httproute.Descriptor, handler RouteHandler)
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/generate", Module: "listing-kit", Handler: handler.GenerateListingKit},
 	)
 	routes = appendSettingsRouteDescriptors(routes, handler)
-	routes = appendLegacyStoreRoutingRouteDescriptors(routes, handler)
 	routes = appendStoreRouteDescriptors(routes, handler)
 	routes = appendSubscriptionRouteDescriptors(routes, handler)
 	routes = appendPlatformAdminRouteDescriptors(routes, handler)
@@ -275,13 +268,6 @@ func appendSettingsRouteDescriptors(routes []httproute.Descriptor, handler Setti
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/shein/settings", Module: "listing-kit", Handler: handler.UpdateSheinSettings},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/ai-clients/settings", Module: "listing-kit", Handler: handler.GetAIClientSettings},
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/ai-clients/settings", Module: "listing-kit", Handler: handler.UpdateAIClientSettings},
-	)
-}
-
-func appendLegacyStoreRoutingRouteDescriptors(routes []httproute.Descriptor, handler LegacyStoreRoutingSettingsRouteHandler) []httproute.Descriptor {
-	return append(routes,
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/store-routing", Module: "listing-kit", Handler: handler.GetSheinStoreRoutingSettings},
-		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/store-routing", Module: "listing-kit", Handler: handler.UpdateSheinStoreRoutingSettings},
 	)
 }
 

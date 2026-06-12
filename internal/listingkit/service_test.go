@@ -495,13 +495,6 @@ func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRu
 	}); err != nil {
 		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
 	}
-	if _, err := svc.UpdateSheinStoreRoutingSettings(ctx, &ListingKitStoreRoutingSettings{
-		SelectionStrategy: "country",
-		AllowFallback:     true,
-	}); err != nil {
-		t.Fatalf("UpdateSheinStoreRoutingSettings error = %v", err)
-	}
-
 	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{
 		Text:      "snapshot demo",
 		Platforms: []string{"shein"},

@@ -31,7 +31,6 @@ type stubGenerationTaskService struct {
 	aiSettings              *listingkit.AIClientSettings
 	storeProfiles           []listingkit.ListingKitStoreProfile
 	upsertedStoreProfile    *listingkit.ListingKitStoreProfile
-	storeRoutingSettings    *listingkit.ListingKitStoreRoutingSettings
 	baselineReadiness       *listingkit.SDSBaselineReadiness
 	createdTask             *listingkit.Task
 	createReq               *listingkit.GenerateRequest
@@ -55,7 +54,6 @@ type stubGenerationTaskService struct {
 	studioProductImageReq   *listingkit.StudioProductImageRequest
 	aiSettingsReq           *listingkit.AIClientSettings
 	upsertStoreProfileReq   *listingkit.ListingKitStoreProfile
-	updateStoreRoutingReq   *listingkit.ListingKitStoreRoutingSettings
 	baselineReadinessQuery  *listingkit.SDSBaselineReadinessQuery
 	updatedStudioSessionCtx context.Context
 	updatedStudioSessionID  string

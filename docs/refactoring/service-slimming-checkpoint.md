@@ -32,7 +32,6 @@ internal/listingkit/service_shein_data_image_regeneration_logic.go // SHEIN data
 internal/listingkit/service_shein_pricing_preview_entrypoint.go // SHEIN pricing preview entrypoint
 internal/listingkit/service_shein_resolution_cache_clear_entrypoint.go // SHEIN resolution cache clear entrypoint
 internal/listingkit/service_shein_submission_event_listing_entrypoint.go // SHEIN submission event listing entrypoint
-internal/listingkit/service_shein_store_routing_legacy_entrypoints.go // legacy SHEIN store-routing settings entrypoints
 internal/listingkit/service_shein_store_selection_resolvers.go // SHEIN store selection helpers
 internal/listingkit/service_shein_settings_entrypoints.go // SHEIN settings entrypoints
 internal/listingkit/service_shein_store_settings_entrypoints.go // SHEIN store settings entrypoints
@@ -69,7 +68,6 @@ internal/listingkit/service_submit_remote_context_helpers.go // submit remote co
 internal/listingkit/service_submit_settings_resolution_helpers.go // submit settings context helpers
 internal/listingkit/service_submit_warehouse_selection_helper.go // submit warehouse helper
 internal/listingkit/service_submit_wiring.go              // submit collaborator config builders
-internal/listingkit/settings_admin_store_routing_legacy_service.go // legacy store-routing admin service methods
 internal/listingkit/store_routing_legacy.go              // legacy store-routing compatibility response types/defaults
 internal/listingkit/service_upload_logic.go               // uploaded image logic
 ```
@@ -162,12 +160,6 @@ Owns shared child-task retry helpers:
 Owns root SHEIN store settings entrypoints:
 
 - store profile list / upsert / delete.
-
-### `service_shein_store_routing_legacy_entrypoints.go`
-
-Owns root legacy SHEIN store-routing settings entrypoints:
-
-- legacy store routing settings fetch / update.
 
 ### `service_ai_client_settings_entrypoints.go`
 

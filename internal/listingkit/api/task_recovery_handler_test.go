@@ -123,14 +123,6 @@ func (s *stubTaskRecoveryHandlerService) DeleteSheinStoreProfile(context.Context
 	return errors.New("not implemented")
 }
 
-func (s *stubTaskRecoveryHandlerService) GetSheinStoreRoutingSettings(context.Context) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubTaskRecoveryHandlerService) UpdateSheinStoreRoutingSettings(context.Context, *listingkit.ListingKitStoreRoutingSettings) (*listingkit.ListingKitStoreRoutingSettings, error) {
-	return nil, errors.New("not implemented")
-}
-
 func (s *stubTaskRecoveryHandlerService) GetSheinSettings(context.Context) (*listingkit.SheinSettings, error) {
 	return nil, errors.New("not implemented")
 }

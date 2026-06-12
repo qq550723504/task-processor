@@ -62,42 +62,6 @@ func TestStoreProfileServiceUpsertListAndDelete(t *testing.T) {
 	}
 }
 
-func TestStoreProfileServiceReturnsLegacyRoutingCompatibilityDefaults(t *testing.T) {
-	t.Parallel()
-
-	svc := &service{
-		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-	}
-	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "202", UserID: "user-b"})
-
-	saved, err := svc.UpdateSheinStoreRoutingSettings(ctx, &ListingKitStoreRoutingSettings{
-		SelectionStrategy:   "priority",
-		FallbackStoreID:     870,
-		AllowManualOverride: true,
-		AllowFallback:       true,
-	})
-	if err != nil {
-		t.Fatalf("UpdateSheinStoreRoutingSettings error = %v", err)
-	}
-	if saved.TenantID != 202 {
-		t.Fatalf("tenant id = %d, want 202", saved.TenantID)
-	}
-	if saved.SelectionStrategy != "manual" {
-		t.Fatalf("selection strategy = %q, want manual compatibility default", saved.SelectionStrategy)
-	}
-	if saved.FallbackStoreID != 0 || !saved.AllowFallback || !saved.AllowManualOverride {
-		t.Fatalf("saved settings = %+v, want synthesized manual defaults", saved)
-	}
-
-	current, err := svc.GetSheinStoreRoutingSettings(ctx)
-	if err != nil {
-		t.Fatalf("GetSheinStoreRoutingSettings error = %v", err)
-	}
-	if current.SelectionStrategy != "manual" || current.FallbackStoreID != 0 || !current.AllowFallback || !current.AllowManualOverride {
-		t.Fatalf("routing settings = %+v, want compatibility defaults", current)
-	}
-}
-
 func TestResolveSheinStoreIDUsesExplicitRequestStore(t *testing.T) {
 	t.Parallel()
 

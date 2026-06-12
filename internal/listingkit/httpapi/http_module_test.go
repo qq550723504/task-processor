@@ -160,8 +160,6 @@ func (stubRouteHandler) UpdateSettingsNamespace(*gin.Context)                   
 func (stubRouteHandler) ListSheinStoreProfiles(*gin.Context)                      {}
 func (stubRouteHandler) UpsertSheinStoreProfile(*gin.Context)                     {}
 func (stubRouteHandler) DeleteSheinStoreProfile(*gin.Context)                     {}
-func (stubRouteHandler) GetSheinStoreRoutingSettings(*gin.Context)                {}
-func (stubRouteHandler) UpdateSheinStoreRoutingSettings(*gin.Context)             {}
 func (stubRouteHandler) GetSheinSettings(*gin.Context)                            {}
 func (stubRouteHandler) UpdateSheinSettings(*gin.Context)                         {}
 func (stubRouteHandler) GetAIClientSettings(*gin.Context)                         {}
