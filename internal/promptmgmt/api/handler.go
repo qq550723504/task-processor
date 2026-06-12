@@ -8,8 +8,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/listingkit"
 	"task-processor/internal/promptmgmt"
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 )
 
 type Handler struct {
@@ -120,7 +120,7 @@ func (h *Handler) SetPromptTemplateStatus(c *gin.Context) {
 }
 
 func requestContext(c *gin.Context, candidates ...string) context.Context {
-	return listingkit.WithTenantID(c.Request.Context(), requestTenantID(c, candidates...))
+	return sharedtenantctx.WithTenantID(c.Request.Context(), requestTenantID(c, candidates...))
 }
 
 func requestTenantID(c *gin.Context, candidates ...string) string {
@@ -137,5 +137,5 @@ func requestTenantID(c *gin.Context, candidates ...string) string {
 	if value := strings.TrimSpace(c.Query("tenant_id")); value != "" {
 		return value
 	}
-	return listingkit.DefaultTenantID
+	return sharedtenantctx.DefaultTenantID
 }
