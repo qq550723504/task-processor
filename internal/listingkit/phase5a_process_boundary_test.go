@@ -23,27 +23,10 @@ func TestServiceProcessFilesKeepTerminalizationInsideProcessFlowSeam(t *testing.
 		}
 	}
 
-	serviceProcessSrc, err := os.ReadFile("service_process_review_helper.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_process_review_helper.go) error = %v", err)
-	}
-	serviceProcessContent := string(serviceProcessSrc)
-
-	if strings.Contains(serviceProcessContent, "return buildListingKitProcessFlow(s).run(ctx, task, log)") {
-		t.Fatalf("service_process_review_helper.go should not contain %q after facade split", "return buildListingKitProcessFlow(s).run(ctx, task, log)")
-	}
-
-	for _, needle := range []string{
-		"s.repo.MarkProcessing(",
-		"s.repo.MarkCompleted(",
-		"s.repo.MarkNeedsReview(",
-		"s.repo.MarkFailed(",
-		"s.persistProcessFailure(",
-		"s.persistProcessSuccess(",
-	} {
-		if strings.Contains(serviceProcessContent, needle) {
-			t.Fatalf("service_process_review_helper.go should not contain %q", needle)
-		}
+	if _, err := os.ReadFile("service_process_review_helper.go"); err == nil {
+		t.Fatal("service_process_review_helper.go should be removed after process persistence merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_process_review_helper.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_process_review.go"); err == nil {
@@ -84,6 +67,7 @@ func TestServiceProcessFilesKeepTerminalizationInsideProcessFlowSeam(t *testing.
 		"func applyProcessTerminalResult(result *ListingKitResult, status TaskStatus) *ListingKitResult {",
 		"func (s *service) persistProcessFailure(ctx context.Context, taskID string, result *ListingKitResult, err error) error {",
 		"func (s *service) persistProcessSuccess(ctx context.Context, taskID string, result *ListingKitResult) error {",
+		"func taskNeedsReviewReason(result *ListingKitResult) string {",
 	} {
 		if !strings.Contains(persistContent, needle) {
 			t.Fatalf("service_process_persistence_helper.go should contain %q", needle)

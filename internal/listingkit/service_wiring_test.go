@@ -1807,18 +1807,11 @@ func TestProcessEntryFileOwnsRootEntry(t *testing.T) {
 		t.Fatalf("ReadFile(service_process_facade.go) unexpected error = %v", err)
 	}
 
-	processSrc, err := os.ReadFile("service_process_review_helper.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_process_review_helper.go) error = %v", err)
-	}
-	processContent := string(processSrc)
-
-	if strings.Contains(processContent, "func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error) {") {
-		t.Fatalf("service_process_review_helper.go should not contain %q", "func (s *service) ProcessListingKit(ctx context.Context, task *Task) (*ListingKitResult, error) {")
-	}
-
-	if !strings.Contains(processContent, "func taskNeedsReviewReason(result *ListingKitResult) string {") {
-		t.Fatalf("service_process_review_helper.go should keep %q", "func taskNeedsReviewReason(result *ListingKitResult) string {")
+	_, err = os.ReadFile("service_process_review_helper.go")
+	if err == nil {
+		t.Fatal("service_process_review_helper.go should be removed after process persistence merge")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_process_review_helper.go) unexpected error = %v", err)
 	}
 
 	if _, err := os.ReadFile("service_process_review.go"); err == nil {
@@ -1838,6 +1831,7 @@ func TestProcessEntryFileOwnsRootEntry(t *testing.T) {
 		"func applyProcessTerminalResult(result *ListingKitResult, status TaskStatus) *ListingKitResult {",
 		"func (s *service) persistProcessFailure(ctx context.Context, taskID string, result *ListingKitResult, err error) error {",
 		"func (s *service) persistProcessSuccess(ctx context.Context, taskID string, result *ListingKitResult) error {",
+		"func taskNeedsReviewReason(result *ListingKitResult) string {",
 	} {
 		if !strings.Contains(persistContent, needle) {
 			t.Fatalf("service_process_persistence_helper.go should contain %q", needle)

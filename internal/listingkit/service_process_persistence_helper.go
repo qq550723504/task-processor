@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 func deriveProcessTerminalStatus(result *ListingKitResult) TaskStatus {
@@ -59,4 +60,12 @@ func (s *service) persistProcessSuccess(ctx context.Context, taskID string, resu
 		result = applyProcessTerminalResult(result, TaskStatusCompleted)
 		return s.repo.MarkCompleted(ctx, taskID, result)
 	}
+}
+
+func taskNeedsReviewReason(result *ListingKitResult) string {
+	warnings := reviewReasonsFromResult(result)
+	if len(warnings) == 0 {
+		return "listing kit requires review"
+	}
+	return strings.Join(warnings, "; ")
 }
