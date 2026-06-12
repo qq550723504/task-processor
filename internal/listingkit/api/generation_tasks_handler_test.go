@@ -28,9 +28,6 @@ type stubGenerationTaskService struct {
 	deletedUploadedImage    *listingkit.DeletedUploadedImage
 	studioDesigns           *listingkit.StudioDesignResponse
 	studioProductImages     *listingkit.StudioProductImageResponse
-	aiSettings              *listingkit.AIClientSettings
-	storeProfiles           []listingkit.ListingKitStoreProfile
-	upsertedStoreProfile    *listingkit.ListingKitStoreProfile
 	baselineReadiness       *listingkit.SDSBaselineReadiness
 	createdTask             *listingkit.Task
 	createReq               *listingkit.GenerateRequest
@@ -52,8 +49,6 @@ type stubGenerationTaskService struct {
 	studioDesignReq         *listingkit.StudioDesignRequest
 	studioProductImageCtx   context.Context
 	studioProductImageReq   *listingkit.StudioProductImageRequest
-	aiSettingsReq           *listingkit.AIClientSettings
-	upsertStoreProfileReq   *listingkit.ListingKitStoreProfile
 	baselineReadinessQuery  *listingkit.SDSBaselineReadinessQuery
 	updatedStudioSessionCtx context.Context
 	updatedStudioSessionID  string
@@ -153,6 +148,10 @@ func (s *stubGenerationTaskService) ValidateTaskRevision(ctx context.Context, ta
 }
 
 func (s *stubGenerationTaskService) SubmitTask(ctx context.Context, taskID string, req *listingkit.SubmitTaskRequest) (*listingkit.ListingKitPreview, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubGenerationTaskService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
 	return nil, errors.New("not implemented")
 }
 

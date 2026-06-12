@@ -102,6 +102,10 @@ func (s *stubHistoryService) SubmitTask(ctx context.Context, taskID string, req 
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubHistoryService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
+	return nil, errors.New("not implemented")
+}
+
 func TestGetTaskRevisionHistoryReturnsPage(t *testing.T) {
 	t.Parallel()
 

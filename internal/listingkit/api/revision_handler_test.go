@@ -98,6 +98,10 @@ func (s *stubRevisionService) SubmitTask(ctx context.Context, taskID string, req
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubRevisionService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
+	return nil, errors.New("not implemented")
+}
+
 func TestApplyTaskRevisionReturnsFieldErrors(t *testing.T) {
 	t.Parallel()
 

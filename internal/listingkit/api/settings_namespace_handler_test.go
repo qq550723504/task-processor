@@ -2,7 +2,9 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,10 +14,48 @@ import (
 	"task-processor/internal/listingkit"
 )
 
+type stubSettingsNamespaceService struct {
+	aiSettings    *listingkit.AIClientSettings
+	aiSettingsReq *listingkit.AIClientSettings
+	err           error
+}
+
+func (s *stubSettingsNamespaceService) GetSheinSettings(context.Context) (*listingkit.SheinSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubSettingsNamespaceService) UpdateSheinSettings(context.Context, *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubSettingsNamespaceService) GetAIClientSettings(_ context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.aiSettings != nil {
+		return s.aiSettings, nil
+	}
+	return &listingkit.AIClientSettings{
+		Scope:      scope,
+		ClientName: clientName,
+	}, nil
+}
+
+func (s *stubSettingsNamespaceService) UpdateAIClientSettings(_ context.Context, req *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.aiSettingsReq = req
+	if s.aiSettings != nil {
+		return s.aiSettings, nil
+	}
+	return req, nil
+}
+
 func TestUpdateAISettingsDoesNotRequireStudioSubscription(t *testing.T) {
 	t.Helper()
 
-	svc := &stubGenerationTaskService{
+	svc := &stubSettingsNamespaceService{
 		aiSettings: &listingkit.AIClientSettings{
 			Scope:      "tenant",
 			ClientName: "default",
@@ -26,7 +66,7 @@ func TestUpdateAISettingsDoesNotRequireStudioSubscription(t *testing.T) {
 		},
 	}
 
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithSettingsHandlerService(svc))
 	if err != nil {
 		t.Fatalf("NewHandler returned error: %v", err)
 	}
