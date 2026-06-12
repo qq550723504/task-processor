@@ -1,6 +1,10 @@
 package listingkit
 
-import "context"
+import (
+	"context"
+
+	openaiclient "task-processor/internal/infra/clients/openai"
+)
 
 type taskStudioSessionRepoWiring struct {
 	repo StudioSessionRepository
@@ -12,6 +16,18 @@ type taskStudioBatchServiceWiring struct {
 	generator          *studioBatchGenerationService
 	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
 	getTask            func(context.Context, string) (*Task, error)
+}
+
+type taskStudioMediaWiring struct {
+	imageGenerator        openaiclient.ImageGenerator
+	promptDiversifier     openaiclient.ChatCompleter
+	uploadStoreConfigured bool
+	uploadImages          func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+}
+
+type studioBatchGenerationWiring struct {
+	repo    StudioBatchRepository
+	execute func(context.Context, StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error)
 }
 
 type taskStudioBatchRunRepoWiring struct {
@@ -46,5 +62,23 @@ func buildTaskStudioBatchServiceWiring(s *service) taskStudioBatchServiceWiring 
 		generator:          s.studioBatchGenerationOrDefault(),
 		createGenerateTask: s.CreateGenerateTask,
 		getTask:            getTask,
+	}
+}
+
+func buildTaskStudioMediaWiring(s *service) taskStudioMediaWiring {
+	return taskStudioMediaWiring{
+		imageGenerator:        s.studioImageGenerator,
+		promptDiversifier:     s.studioPromptDiversifier,
+		uploadStoreConfigured: s.uploadStore != nil,
+		uploadImages:          s.UploadImages,
+	}
+}
+
+func buildStudioBatchGenerationWiring(s *service) studioBatchGenerationWiring {
+	return studioBatchGenerationWiring{
+		repo: s.studioBatchRepo,
+		execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+			return ExecuteStudioDesignBatch(ctx, s, input)
+		},
 	}
 }

@@ -17,20 +17,20 @@ func buildTaskStudioBatchDraftServiceConfig(s *service) taskStudioBatchDraftServ
 }
 
 func buildTaskStudioMediaServiceConfig(s *service) taskStudioMediaServiceConfig {
+	wiring := buildTaskStudioMediaWiring(s)
 	return taskStudioMediaServiceConfig{
-		imageGenerator:        s.studioImageGenerator,
-		promptDiversifier:     s.studioPromptDiversifier,
-		uploadStoreConfigured: s.uploadStore != nil,
-		uploadImages:          s.UploadImages,
+		imageGenerator:        wiring.imageGenerator,
+		promptDiversifier:     wiring.promptDiversifier,
+		uploadStoreConfigured: wiring.uploadStoreConfigured,
+		uploadImages:          wiring.uploadImages,
 	}
 }
 
 func buildStudioBatchGenerationServiceConfig(s *service) studioBatchGenerationServiceConfig {
+	wiring := buildStudioBatchGenerationWiring(s)
 	return studioBatchGenerationServiceConfig{
-		repo: s.studioBatchRepo,
-		execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
-			return ExecuteStudioDesignBatch(ctx, s, input)
-		},
+		repo:    wiring.repo,
+		execute: wiring.execute,
 	}
 }
 
