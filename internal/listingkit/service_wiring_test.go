@@ -1522,6 +1522,44 @@ func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testin
 	}
 }
 
+func TestSheinImageUploadPreviewHelpersLiveOutsideSubmitImageRuntime(t *testing.T) {
+	t.Parallel()
+
+	previewHelpersSrc, err := os.ReadFile("preview_builder_shein_image_upload.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_image_upload.go) error = %v", err)
+	}
+	previewHelpersContent := string(previewHelpersSrc)
+
+	for _, needle := range []string{
+		"func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPreflight {",
+		"func collectSheinProductImageURLs(product *sheinproduct.Product) []string {",
+		"func appendSheinImageInfoURLs(urls []string, info *sheinproduct.ImageInfo) []string {",
+		"func buildSheinImageUploadPreflightSummary(report *SheinImageUploadPreflight) []string {",
+	} {
+		if !strings.Contains(previewHelpersContent, needle) {
+			t.Fatalf("preview_builder_shein_image_upload.go should contain %q", needle)
+		}
+	}
+
+	submitImagesSrc, err := os.ReadFile("shein_submit_images.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_submit_images.go) error = %v", err)
+	}
+	submitImagesContent := string(submitImagesSrc)
+
+	for _, needle := range []string{
+		"func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPreflight {",
+		"func collectSheinProductImageURLs(product *sheinproduct.Product) []string {",
+		"func appendSheinImageInfoURLs(urls []string, info *sheinproduct.ImageInfo) []string {",
+		"func buildSheinImageUploadPreflightSummary(report *SheinImageUploadPreflight) []string {",
+	} {
+		if strings.Contains(submitImagesContent, needle) {
+			t.Fatalf("shein_submit_images.go should not contain %q", needle)
+		}
+	}
+}
+
 func TestSheinSettingsEntrypointsFileOwnsCategorySearchDelegate(t *testing.T) {
 	t.Parallel()
 
