@@ -7,4 +7,6 @@ type studioCollaborators struct {
 	batchGeneration *studioBatchGenerationService
 	batch           *taskStudioBatchService
 	batchRun        *taskStudioBatchRunService
+	runExecutor     *taskStudioBatchRunExecutor
+	runCoordinator  *studioBatchRunCoordinator
 }

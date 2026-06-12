@@ -100,7 +100,12 @@ func (s *service) buildStudioBatchRunCoordinator() *studioBatchRunCoordinator {
 	if s == nil {
 		return nil
 	}
+	if s.studio.runCoordinator != nil {
+		s.studioBatchRunCoordinator = s.studio.runCoordinator
+		return s.studio.runCoordinator
+	}
 	if s.studioBatchRunCoordinator != nil {
+		s.studio.runCoordinator = s.studioBatchRunCoordinator
 		return s.studioBatchRunCoordinator
 	}
 	executor := s.buildStudioBatchRunExecutor()
@@ -109,15 +114,22 @@ func (s *service) buildStudioBatchRunCoordinator() *studioBatchRunCoordinator {
 	}
 	config := buildStudioBatchRunCoordinatorConfig(s)
 	config.executor = executor
-	s.studioBatchRunCoordinator = newStudioBatchRunCoordinator(config)
-	return s.studioBatchRunCoordinator
+	coordinator := newStudioBatchRunCoordinator(config)
+	s.studio.runCoordinator = coordinator
+	s.studioBatchRunCoordinator = coordinator
+	return coordinator
 }
 
 func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {
 	if s == nil {
 		return nil
 	}
+	if s.studio.runExecutor != nil {
+		s.studioBatchRunExecutor = s.studio.runExecutor
+		return s.studio.runExecutor
+	}
 	if s.studioBatchRunExecutor != nil {
+		s.studio.runExecutor = s.studioBatchRunExecutor
 		return s.studioBatchRunExecutor
 	}
 	if s.studioBatchRunRepo == nil || s.studioSessionRepo == nil {
@@ -126,8 +138,10 @@ func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {
 	if s.studioImageGenerator == nil || s.uploadStore == nil {
 		return nil
 	}
-	s.studioBatchRunExecutor = newTaskStudioBatchRunExecutor(buildTaskStudioBatchRunExecutorConfig(s))
-	return s.studioBatchRunExecutor
+	executor := newTaskStudioBatchRunExecutor(buildTaskStudioBatchRunExecutorConfig(s))
+	s.studio.runExecutor = executor
+	s.studioBatchRunExecutor = executor
+	return executor
 }
 
 func studioBatchRunLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {
