@@ -27,6 +27,9 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.taskRevision == nil {
 		t.Fatal("expected taskRevision to be initialized")
 	}
+	if impl.taskPreview == nil {
+		t.Fatal("expected taskPreview to be initialized")
+	}
 	if impl.sdsBaseline == nil {
 		t.Fatal("expected sdsBaseline to be initialized")
 	}
@@ -88,6 +91,9 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	}
 	if svc.taskRevision == nil {
 		t.Fatal("expected taskRevision to be initialized")
+	}
+	if svc.taskPreview == nil {
+		t.Fatal("expected taskPreview to be initialized")
 	}
 	if svc.sdsBaseline == nil {
 		t.Fatal("expected sdsBaseline to be initialized")
@@ -263,12 +269,14 @@ func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			builderCalls: []string{
 				"buildTaskGenerationServiceConfig(s)",
 				"buildTaskRevisionServiceConfig(s)",
+				"buildTaskPreviewServiceConfig(s)",
 				"buildTaskLifecycleServiceConfig(s)",
 				"buildSDSBaselineServiceConfig(s)",
 			},
 			inlineConfig: []string{
 				"newTaskGenerationService(taskGenerationServiceConfig{",
 				"newTaskRevisionService(taskRevisionServiceConfig{",
+				"newTaskPreviewService(taskPreviewServiceConfig{",
 				"newTaskLifecycleService(taskLifecycleServiceConfig{",
 			},
 		},
@@ -1269,16 +1277,30 @@ func TestTaskPreviewFileOwnsRootDelegate(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {",
-		"task, err := s.repo.GetTask(ctx, taskID)",
-		"preview, err := s.buildTaskPreview(ctx, task, platform)",
+		"return s.taskPreviewOrDefault().GetTaskPreview(ctx, taskID, platform)",
 		"func (s *service) buildTaskPreview(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {",
-		"preview, err := buildListingKitPreview(task, platform)",
-		"s.decorateSheinCookieAvailabilityPreview(ctx, task, preview)",
-		"s.decorateSheinStoreResolutionPreview(ctx, task, preview)",
-		"return preview, nil",
+		"return s.taskPreviewOrDefault().buildTaskPreview(ctx, task, platform)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
 			t.Fatalf("service_task_preview_logic.go should contain %q", needle)
+		}
+	}
+
+	previewServiceSrc, err := os.ReadFile("task_preview_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_preview_service.go) error = %v", err)
+	}
+	previewServiceContent := string(previewServiceSrc)
+	for _, needle := range []string{
+		"type taskPreviewServiceConfig struct {",
+		"func newTaskPreviewService(config taskPreviewServiceConfig) *taskPreviewService {",
+		"func (s *taskPreviewService) GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {",
+		"task, err := s.repo.GetTask(ctx, taskID)",
+		"func (s *taskPreviewService) buildTaskPreview(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {",
+		"preview, err := buildListingKitPreview(task, platform)",
+	} {
+		if !strings.Contains(previewServiceContent, needle) {
+			t.Fatalf("task_preview_service.go should contain %q", needle)
 		}
 	}
 

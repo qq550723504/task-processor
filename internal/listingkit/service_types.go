@@ -18,6 +18,7 @@ type service struct {
 	taskLifecycle                  *taskLifecycleService
 	taskGeneration                 *taskGenerationService
 	taskRevision                   *taskRevisionService
+	taskPreview                    *taskPreviewService
 	sdsBaseline                    *sdsBaselineService
 	taskStudioSession              *taskStudioSessionService
 	taskStudioBatchDraft           *taskStudioBatchDraftService

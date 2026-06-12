@@ -1,6 +1,10 @@
 package listingkit
 
-import "context"
+import (
+	"context"
+
+	assetgeneration "task-processor/internal/asset/generation"
+)
 
 func buildTaskGenerationServiceConfig(s *service) taskGenerationServiceConfig {
 	return taskGenerationServiceConfig{
@@ -32,7 +36,24 @@ func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
 		refreshSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) {
 			s.refreshSheinDerivedState(task, req)
 		},
-		buildTaskPreview: s.buildTaskPreview,
+		buildTaskPreview: func(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {
+			return s.buildTaskPreview(ctx, task, platform)
+		},
+	}
+}
+
+func buildTaskPreviewServiceConfig(s *service) taskPreviewServiceConfig {
+	return taskPreviewServiceConfig{
+		repo: s.repo,
+		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
+			return s.listAssetGenerationTasks(ctx, taskID)
+		},
+		decorateSheinCookieAvailabilityPreview: func(ctx context.Context, task *Task, preview *ListingKitPreview) {
+			s.decorateSheinCookieAvailabilityPreview(ctx, task, preview)
+		},
+		decorateSheinStoreResolutionPreview: func(ctx context.Context, task *Task, preview *ListingKitPreview) {
+			s.decorateSheinStoreResolutionPreview(ctx, task, preview)
+		},
 	}
 }
 

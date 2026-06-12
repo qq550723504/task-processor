@@ -16,6 +16,14 @@ func (s *service) taskRevisionOrDefault() *taskRevisionService {
 	return s.taskRevision
 }
 
+func (s *service) taskPreviewOrDefault() *taskPreviewService {
+	if s.taskPreview != nil {
+		return s.taskPreview
+	}
+	s.taskPreview = newTaskPreviewService(buildTaskPreviewServiceConfig(s))
+	return s.taskPreview
+}
+
 func (s *service) taskLifecycleOrDefault() *taskLifecycleService {
 	if s.taskLifecycle != nil {
 		return s.taskLifecycle
