@@ -26,6 +26,9 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 	if pkg == nil {
 		return nil
 	}
+	visualBase := buildPlatformVisualPreviewPayloadBase(
+		buildPlatformVisualPreviewBase(pkg.ImageBundle, input.assetBundle, input.renderPreviews),
+	)
 	return &SheinPreviewPayload{
 		Headline:          firstNonEmpty(pkg.SpuName, pkg.ProductNameEn),
 		BrandName:         pkg.BrandName,
@@ -44,9 +47,9 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 		StatusOverview:    input.statusOverview,
 		WorkspaceOverview: input.workspaceOverview,
 		EditorContext:     buildSheinEditorContext(pkg),
-		ImageBundle:       pkg.ImageBundle,
-		RenderPreviews:    input.renderPreviews,
-		ScenePresets:      buildPlatformScenePresetSummaries(pkg.ImageBundle, input.assetBundle),
+		ImageBundle:       visualBase.imageBundle,
+		RenderPreviews:    visualBase.renderPreviews,
+		ScenePresets:      visualBase.scenePresets,
 		DraftPayload:      pkg.DraftPayload,
 		PreviewPayload:    pkg.PreviewPayload,
 		SubmissionState:   pkg.SubmissionState,

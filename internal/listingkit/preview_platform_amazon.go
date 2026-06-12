@@ -18,13 +18,14 @@ func buildAmazonPreviewPayload(pkg *AmazonPackage, assetBundle *asset.Bundle, re
 		return nil
 	}
 	base := buildPlatformVisualPreviewBase(pkg.ImageBundle, assetBundle, renderPreviews)
+	payloadBase := buildPlatformVisualPreviewPayloadBase(base)
 	return &AmazonPreviewPayload{
 		Title:          pkg.Draft.Title,
 		Brand:          pkg.Draft.Brand,
 		ProductType:    pkg.Draft.ProductType,
-		ImageBundle:    base.imageBundle,
-		RenderPreviews: base.renderPreviews,
-		ScenePresets:   base.scenePresets,
+		ImageBundle:    payloadBase.imageBundle,
+		RenderPreviews: payloadBase.renderPreviews,
+		ScenePresets:   payloadBase.scenePresets,
 		Draft:          pkg.Draft,
 	}
 }
