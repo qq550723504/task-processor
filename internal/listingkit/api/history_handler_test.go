@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,95 +14,17 @@ import (
 )
 
 type stubHistoryService struct {
+	stubTaskLifecycleHandlerService
 	page      *listingkit.ListingKitRevisionHistoryPage
 	err       error
 	lastTask  string
 	lastQuery *listingkit.RevisionHistoryQuery
 }
 
-func (s *stubHistoryService) CreateGenerateTask(ctx context.Context, req *listingkit.GenerateRequest) (*listingkit.Task, error) {
-	return nil, errors.New("not implemented")
-}
-func (s *stubHistoryService) ListTasks(ctx context.Context, query *listingkit.TaskListQuery) (*listingkit.TaskListPage, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) UploadImages(ctx context.Context, req *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetUploadedImage(ctx context.Context, key string) (*listingkit.UploadedImageFile, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetTaskResult(ctx context.Context, taskID string) (*listingkit.TaskResult, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetSDSBaselineReadiness(ctx context.Context, query *listingkit.SDSBaselineReadinessQuery) (*listingkit.SDSBaselineReadiness, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetTaskPreview(ctx context.Context, taskID string, platform string) (*listingkit.ListingKitPreview, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetTaskGenerationTasks(ctx context.Context, taskID string, query *listingkit.GenerationTaskQuery) (*listingkit.GenerationTaskPage, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetTaskGenerationQueue(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationQueuePage, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetTaskGenerationReviewSession(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewSessionResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetTaskGenerationReviewPreview(ctx context.Context, taskID string, query *listingkit.GenerationQueueQuery) (*listingkit.GenerationReviewPreviewResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) DispatchTaskGenerationNavigation(ctx context.Context, taskID string, req *listingkit.GenerationReviewNavigationDispatchRequest) (*listingkit.GenerationReviewNavigationDispatchResponse, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) RetryTaskGenerationTasks(ctx context.Context, taskID string, req *listingkit.RetryGenerationTasksRequest) (*listingkit.GenerationTaskPage, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) ExecuteTaskGenerationAction(ctx context.Context, taskID string, req *listingkit.ExecuteGenerationActionRequest) (*listingkit.GenerationActionExecutionResult, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetTaskRevisionHistory(ctx context.Context, taskID string, query *listingkit.RevisionHistoryQuery) (*listingkit.ListingKitRevisionHistoryPage, error) {
+func (s *stubHistoryService) GetTaskRevisionHistory(_ context.Context, taskID string, query *listingkit.RevisionHistoryQuery) (*listingkit.ListingKitRevisionHistoryPage, error) {
 	s.lastTask = taskID
 	s.lastQuery = query
 	return s.page, s.err
-}
-
-func (s *stubHistoryService) GetTaskRevisionHistoryDetail(ctx context.Context, taskID string, revisionID string, query *listingkit.RevisionHistoryDetailQuery) (*listingkit.ListingKitRevisionHistoryDetail, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) GetTaskExport(ctx context.Context, taskID string, platform string) (*listingkit.ListingKitExport, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) ApplyTaskRevision(ctx context.Context, taskID string, req *listingkit.ApplyRevisionRequest) (*listingkit.ListingKitPreview, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) ValidateTaskRevision(ctx context.Context, taskID string, req *listingkit.ApplyRevisionRequest) (*listingkit.RevisionValidationResult, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) SubmitTask(ctx context.Context, taskID string, req *listingkit.SubmitTaskRequest) (*listingkit.ListingKitPreview, error) {
-	return nil, errors.New("not implemented")
-}
-
-func (s *stubHistoryService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*listingkit.ListingKitPreview, error) {
-	return nil, errors.New("not implemented")
 }
 
 func TestGetTaskRevisionHistoryReturnsPage(t *testing.T) {
@@ -141,7 +62,7 @@ func TestGetTaskRevisionHistoryReturnsPage(t *testing.T) {
 			},
 		},
 	}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -182,7 +103,7 @@ func TestGetTaskRevisionHistoryReturnsBadRequestForInvalidCursor(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubHistoryService{err: listingkit.ErrInvalidRevisionHistoryCursor}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
@@ -204,7 +125,7 @@ func TestGetTaskRevisionHistoryReturnsBadRequestForInvalidActionType(t *testing.
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubHistoryService{err: listingkit.ErrInvalidRevisionHistoryActionType}
-	h, err := NewHandler(svc)
+	h, err := NewHandler(&stubGenerationTaskService{}, WithTaskLifecycleService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
