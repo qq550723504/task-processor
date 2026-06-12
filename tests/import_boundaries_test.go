@@ -29,6 +29,8 @@ func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	allowedImports := map[string]map[string]struct{}{
 		`"task-processor/internal/shein/client"`: {
 			filepath.Clean(filepath.Join(root, "service_shein_categories.go")):        {},
+			filepath.Clean(filepath.Join(root, "service_shein_category_api_helpers.go")): {},
+			filepath.Clean(filepath.Join(root, "service_submit_remote_context_helpers.go")): {},
 			filepath.Clean(filepath.Join(root, "service_submit_store_context.go")):    {},
 			filepath.Clean(filepath.Join(root, "shein_runtime.go")):                   {},
 			filepath.Clean(filepath.Join(root, "service_preview_test.go")):            {},
@@ -72,6 +74,7 @@ func TestListingKitAmazonListingImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "model_result.go")):   {},
 		filepath.Clean(filepath.Join(root, "preview_model.go")):  {},
 		filepath.Clean(filepath.Join(root, "service.go")):        {},
+		filepath.Clean(filepath.Join(root, "service_defaults.go")): {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
@@ -180,6 +183,7 @@ func TestListingKitRootSheinHelpersStayAllowlisted(t *testing.T) {
 		"shein_build_validation.go":             {},
 		"shein_admin_service.go":                {},
 		"shein_color_block_image.go":            {},
+		"shein_default_store_resolution.go":     {},
 		"shein_final_draft.go":                  {},
 		"shein_image_regeneration.go":           {},
 		"shein_image_regeneration_model.go":     {},
@@ -240,16 +244,31 @@ func TestListingKitRootServiceSubmitFilesStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowed := map[string]struct{}{
 		"service_submit.go":                     {},
+		"service_submit_action_normalization_helper.go": {},
+		"service_submit_collaborators.go":       {},
+		"service_submit_contracts.go":           {},
 		"service_submit_context_resolver.go":    {},
 		"service_submit_default_action.go":      {},
+		"service_submit_default_action_resolver_helper.go": {},
 		"service_submit_direct.go":              {},
+		"service_submit_entrypoint.go":          {},
+		"service_submit_lease_helper.go":        {},
+		"service_submit_remote_context_helpers.go": {},
+		"service_submit_routing.go":             {},
 		"service_submit_runtime_context.go":     {},
+		"service_submit_runtime_context_resolver.go": {},
 		"service_submit_settings_resolution.go": {},
+		"service_submit_settings_resolution_helpers.go": {},
+		"service_submit_shared.go":              {},
 		"service_submit_store_context.go":       {},
+		"service_submit_task_identity_helper.go": {},
 		"service_submit_recovery.go":            {},
 		"service_submit_temporal_adapter.go":    {},
+		"service_submit_temporal_task_loader_helper.go": {},
+		"service_submit_warehouse_selection_helper.go": {},
 		"service_submit_wiring.go":              {},
 		"service_submit_workflow.go":            {},
+		"service_submit_workflow_entry_helpers.go": {},
 	}
 
 	entries, err := os.ReadDir(root)
@@ -274,8 +293,17 @@ func TestListingKitRootTaskSubmissionFilesStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowed := map[string]struct{}{
 		"task_submission_service.go":           {},
+		"task_submission_execution_images.go":  {},
+		"task_submission_execution_normalize.go": {},
+		"task_submission_execution_product.go": {},
+		"task_submission_execution_remote.go":  {},
 		"task_submission_execution_service.go": {},
+		"task_submission_recovery_lease.go":    {},
+		"task_submission_recovery_remote.go":   {},
 		"task_submission_recovery_service.go":  {},
+		"task_submission_refresh_mutation.go":  {},
+		"task_submission_refresh_selection.go": {},
+		"task_submission_refresh_service.go":   {},
 		"task_submission_state_service.go":     {},
 	}
 
