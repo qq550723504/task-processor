@@ -19,7 +19,6 @@ export const listingKitKeys = {
   tasks: (query: ListingKitTaskListQuery) =>
     ["listingkit", "tasks", query] as const,
   storeProfiles: () => ["listingkit", "store-profiles"] as const,
-  storeRouting: () => ["listingkit", "store-routing"] as const,
   sheinEnrollmentDashboard: (query: { activity_type?: string }) =>
     [
       "listingkit",

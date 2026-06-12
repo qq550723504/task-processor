@@ -4,7 +4,6 @@ import { apiRequest } from "@/lib/api/client";
 import { parseApiResponseShape } from "@/lib/api/response-schema";
 import type {
   ListingKitStoreProfile,
-  ListingKitStoreRoutingSettings,
 } from "@/lib/types/listingkit";
 
 const storeOptionSchema = z
@@ -61,17 +60,6 @@ const storeProfileListSchema = z
   })
   .passthrough();
 
-const routingSchema = z
-  .object({
-    tenant_id: z.number().optional(),
-    selection_strategy: z.string().optional(),
-    fallback_store_id: z.number().optional(),
-    allow_manual_override: z.boolean().optional(),
-    allow_fallback: z.boolean().optional(),
-    updated_at: z.string().optional(),
-  })
-  .passthrough();
-
 export function parseStoreProfilesResponse(
   payload: unknown,
 ): ListingKitStoreProfile[] {
@@ -80,16 +68,6 @@ export function parseStoreProfilesResponse(
     storeProfileListSchema,
     "ListingKit API returned an unexpected store profile response",
   ).items;
-}
-
-export function parseStoreRoutingResponse(
-  payload: unknown,
-): ListingKitStoreRoutingSettings {
-  return parseApiResponseShape(
-    payload,
-    routingSchema,
-    "ListingKit API returned an unexpected store routing response",
-  );
 }
 
 export async function getStoreProfiles(): Promise<ListingKitStoreProfile[]> {
@@ -127,19 +105,4 @@ export async function updateStoreProfile(
 
 export async function deleteStoreProfile(id: number): Promise<void> {
   await apiRequest(`/store-profiles/${id}`, { method: "DELETE" });
-}
-
-export async function getStoreRouting(): Promise<ListingKitStoreRoutingSettings> {
-  const payload = await apiRequest<unknown>("/store-routing");
-  return parseStoreRoutingResponse(payload);
-}
-
-export async function updateStoreRouting(
-  input: ListingKitStoreRoutingSettings,
-): Promise<ListingKitStoreRoutingSettings> {
-  const payload = await apiRequest<unknown>("/store-routing", {
-    method: "PUT",
-    body: input,
-  });
-  return parseStoreRoutingResponse(payload);
 }

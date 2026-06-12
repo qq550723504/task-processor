@@ -31,7 +31,6 @@ export function useUpsertStoreProfile() {
       input.id ? updateStoreProfile(input) : createStoreProfile(input),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: listingKitKeys.storeProfiles() });
-      await client.invalidateQueries({ queryKey: listingKitKeys.storeRouting() });
     },
   });
 }
@@ -42,7 +41,6 @@ export function useDeleteStoreProfile() {
     mutationFn: (id: number) => deleteStoreProfile(id),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: listingKitKeys.storeProfiles() });
-      await client.invalidateQueries({ queryKey: listingKitKeys.storeRouting() });
     },
   });
 }

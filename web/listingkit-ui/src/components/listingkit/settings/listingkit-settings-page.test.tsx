@@ -12,10 +12,6 @@ vi.mock("@/components/listingkit/settings/ai-client-settings-card", () => ({
   AIClientSettingsCard: () => <div>AI card</div>,
 }));
 
-vi.mock("@/components/listingkit/settings/store-routing-settings-card", () => ({
-  StoreRoutingSettingsCard: () => <div>Store routing card</div>,
-}));
-
 vi.mock("@/lib/api/listingkit-settings", () => ({
   listListingKitSettingsNamespaces: vi.fn().mockResolvedValue({
     items: [
@@ -37,10 +33,8 @@ describe("ListingKitSettingsPage", () => {
     expect(screen.getByText("ListingKit 设置")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "会话" })).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "AI 模型" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "店铺路由" })).toBeInTheDocument();
     expect(screen.getByTestId("settings-section-session")).toBeInTheDocument();
     expect(screen.getByTestId("settings-section-ai")).toBeInTheDocument();
-    expect(screen.getByTestId("settings-section-store-routing")).toBeInTheDocument();
     expect(screen.getByText("租户级和用户级模型配置。")).toBeInTheDocument();
     expect(screen.getByText("租户")).toBeInTheDocument();
     expect(screen.getByText("用户")).toBeInTheDocument();

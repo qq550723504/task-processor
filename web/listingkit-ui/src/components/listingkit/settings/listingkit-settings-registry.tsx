@@ -3,7 +3,6 @@
 import { useMemo } from "react";
 
 import { AIClientSettingsCard } from "@/components/listingkit/settings/ai-client-settings-card";
-import { StoreRoutingSettingsCard } from "@/components/listingkit/settings/store-routing-settings-card";
 import {
   ListingKitSettingsSectionDefinition,
 } from "@/components/listingkit/settings/listingkit-settings-shell";
@@ -14,7 +13,6 @@ import type { ListingKitSettingsNamespaceSchema } from "@/lib/types/listingkit";
 const staticSectionSummary: Record<string, string> = {
   session: "当前 ZITADEL 登录态和角色。",
   ai: "租户和用户级模型 endpoint、key 与模型。",
-  "store-routing": "多店铺默认选店策略和 fallback 配置。",
 };
 
 function namespaceBadges(schema?: ListingKitSettingsNamespaceSchema) {
@@ -51,12 +49,6 @@ export function useListingKitSettingsSections() {
       summary: resolveSummary("ai", byNamespace.get("ai")),
       badges: namespaceBadges(byNamespace.get("ai")),
       render: () => <AIClientSettingsCard />,
-    },
-    {
-      id: "store-routing",
-      label: "店铺路由",
-      summary: resolveSummary("store-routing"),
-      render: () => <StoreRoutingSettingsCard />,
     },
   ];
 

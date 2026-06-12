@@ -44,9 +44,6 @@ describe("TaskCreateForm", () => {
       anyLoggedInStore: false,
       enabledProfiles: [],
       profiles: { isError: false },
-      routing: { isError: false, data: { selection_strategy: "manual" } },
-      recommendedStoreId: "",
-      recommendedReason: "",
       selectedStoreLoginStatus: null,
     });
     window.sessionStorage.clear();
@@ -225,7 +222,7 @@ describe("TaskCreateForm", () => {
     });
   });
 
-  it("auto-selects the recommended SHEIN store when routing provides one", async () => {
+  it("does not auto-select a SHEIN store and lets the user choose explicitly", async () => {
     useSheinStoreSelector.mockReturnValue({
       anyLoggedInStore: false,
       enabledProfiles: [
@@ -234,15 +231,10 @@ describe("TaskCreateForm", () => {
           store_id: 870,
           enabled: true,
           site: "US",
-          is_fallback: true,
-          match_rules: [{ kind: "country" }],
           store: { name: "US 主店", store_id: "SHEIN-US-870", region: "US" },
         },
       ],
       profiles: { isError: false },
-      routing: { isError: false, data: { selection_strategy: "priority", fallback_store_id: 870 } },
-      recommendedStoreId: "870",
-      recommendedReason: "当前会优先使用 fallback 店铺作为推荐值。",
       selectedStoreLoginStatus: null,
     });
     mutateAsync.mockResolvedValue({
@@ -259,12 +251,17 @@ describe("TaskCreateForm", () => {
     fireEvent.click(screen.getByLabelText("SHEIN"));
 
     await waitFor(() => {
-      expect(screen.getByRole("combobox", { name: "SHEIN 店铺" })).toHaveValue("870");
+      expect(screen.getByRole("combobox", { name: "SHEIN 店铺" })).toHaveValue("");
     });
-    expect(screen.getByText("当前默认策略：按优先级。当前会优先使用 fallback 店铺作为推荐值。")).toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: "US 主店 (US / US / 国家规则 + fallback)" }),
+      screen.getByText("这里选中的 SHEIN 店铺就是后续使用的店铺；如果不选，任务仍可创建，但后续在线解析和提交可能受阻。"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "US 主店 (US / US)" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "SHEIN 店铺" }), {
+      target: { value: "870" },
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "创建任务" }));
 
@@ -332,9 +329,6 @@ describe("TaskCreateForm", () => {
         },
       ],
       profiles: { isError: false },
-      routing: { isError: false, data: { selection_strategy: "manual" } },
-      recommendedStoreId: "870",
-      recommendedReason: "",
       selectedStoreLoginStatus: {
         account: { store_id: 870, tenant_id: 1 },
         has_cookie: false,
@@ -371,9 +365,6 @@ describe("TaskCreateForm", () => {
         },
       ],
       profiles: { isError: false },
-      routing: { isError: false, data: { selection_strategy: "manual" } },
-      recommendedStoreId: "",
-      recommendedReason: "",
       selectedStoreLoginStatus: null,
     });
 

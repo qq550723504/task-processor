@@ -67,9 +67,6 @@ export function TaskSheinStoreField({
     anyLoggedInStore,
     enabledProfiles,
     profiles,
-    recommendedReason,
-    recommendedStoreId,
-    routing,
     selectedStoreLoginStatus,
   } = useSheinStoreSelector(selectedStoreId);
   const sheinSelected = selectedPlatforms?.includes("shein");
@@ -94,11 +91,10 @@ export function TaskSheinStoreField({
       <Select
         aria-label="SHEIN 店铺"
         className="rounded-xl px-4 py-3"
-        defaultValue={recommendedStoreId}
         {...register("sheinStoreId")}
       >
         <option value="">
-          {enabledProfiles.length > 0 ? "按默认路由自动选择" : "当前没有已启用店铺配置"}
+          {enabledProfiles.length > 0 ? "请选择店铺" : "当前没有已启用店铺配置"}
         </option>
         {enabledProfiles.map((item) => (
           <option key={item.id ?? item.store_id} value={String(item.store_id)}>
@@ -107,17 +103,10 @@ export function TaskSheinStoreField({
         ))}
       </Select>
       <p className="text-sm leading-6 text-muted-foreground">
-        不选时交给后端路由自动选店；只在需要固定到某个店铺时手工指定。
+        这里选中的 SHEIN 店铺就是后续使用的店铺；如果不选，任务仍可创建，但后续在线解析和提交可能受阻。
       </p>
-      {routing.data?.selection_strategy ? (
-        <p className="text-sm leading-6 text-muted-foreground">
-          当前默认策略：
-          {routeStrategyLabel(routing.data.selection_strategy)}
-          {recommendedReason ? `。${recommendedReason}` : ""}
-        </p>
-      ) : null}
       {profiles.isError ? (
-        <p className="text-sm text-rose-600">店铺配置读取失败，当前只能依赖后端默认路由。</p>
+        <p className="text-sm text-rose-600">店铺配置读取失败，当前无法在这里明确选择店铺。</p>
       ) : null}
       {selectedStoreUnavailable ? (
         <Alert className="border-amber-200 bg-amber-50/80">
@@ -143,55 +132,16 @@ function formatStoreProfileOption(item: {
   store_id: number;
   store?: { name?: string; store_id?: string; region?: string };
   site?: string;
-  priority?: number;
-  is_fallback?: boolean;
-  match_rules?: Array<{ kind?: string }>;
 }) {
   const primary =
     item.store?.name?.trim() || item.store?.store_id?.trim() || `店铺 ${item.store_id}`;
   const meta = [
     item.store?.region?.trim(),
     item.site?.trim(),
-    item.priority?.toString(),
-    summarizeRuleKinds(item),
   ]
     .filter(Boolean)
     .join(" / ");
   return meta ? `${primary} (${meta})` : primary;
-}
-
-function summarizeRuleKinds(item: {
-  is_fallback?: boolean;
-  match_rules?: Array<{ kind?: string }>;
-}) {
-  const labels: string[] = (item.match_rules ?? [])
-    .map((rule) => {
-      switch (rule.kind) {
-        case "country":
-          return "国家规则";
-        case "category":
-          return "类目规则";
-        default:
-          return "";
-      }
-    })
-    .filter(Boolean);
-  if (item.is_fallback) {
-    labels.push("fallback");
-  }
-  return labels.join(" + ");
-}
-
-function routeStrategyLabel(strategy: string) {
-  switch (strategy) {
-    case "priority":
-      return "按优先级";
-    case "country":
-      return "按国家匹配";
-    case "manual":
-    default:
-      return "手工优先";
-  }
 }
 
 export function TaskAdvancedSettingsToggle({
