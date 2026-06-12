@@ -24,14 +24,7 @@ func withRevisionHistoryRecordID(record ListingKitRevisionRecord, index int) Lis
 }
 
 func buildRevisionHistoryPreviewItems(records []ListingKitRevisionRecord) []ListingKitRevisionRecord {
-	if len(records) == 0 {
-		return nil
-	}
-	items := make([]ListingKitRevisionRecord, 0, len(records))
-	for i, record := range records {
-		items = append(items, withRevisionHistoryRecordID(record, i))
-	}
-	return items
+	return buildRevisionHistoryRecords(records)
 }
 
 func withRevisionTimelineSummary(record ListingKitRevisionRecord) ListingKitRevisionRecord {

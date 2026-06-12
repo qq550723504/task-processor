@@ -56,10 +56,10 @@ func buildRevisionHistoryPage(result *ListingKitResult, query *RevisionHistoryQu
 	}
 
 	items := make([]ListingKitRevisionRecord, 0, normalized.Limit)
-	records := result.RevisionHistory
+	records := buildRevisionHistoryRecords(result.RevisionHistory)
 	hasMore := false
 	for i := len(records) - 1; i >= 0; i-- {
-		record := withRevisionHistoryRecordID(records[i], i)
+		record := records[i]
 		if normalized.ActionType != "" && record.ActionType != normalized.ActionType {
 			continue
 		}
@@ -109,8 +109,7 @@ func buildRevisionHistoryCounts(records []ListingKitRevisionRecord) *ListingKitR
 		return &ListingKitRevisionHistoryCounts{}
 	}
 	counts := &ListingKitRevisionHistoryCounts{}
-	for i, record := range records {
-		hydrated := withRevisionHistoryRecordID(record, i)
+	for _, hydrated := range buildRevisionHistoryRecords(records) {
 		counts.All++
 		switch hydrated.ActionType {
 		case RevisionActionTypeRestore:

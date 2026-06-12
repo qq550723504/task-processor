@@ -20,9 +20,9 @@ func buildRevisionHistoryDetail(result *ListingKitResult, revisionID string, que
 		return nil, ErrTaskResultUnavailable
 	}
 	normalized := normalizeRevisionHistoryDetailQuery(query)
+	records := buildRevisionHistoryRecords(result.RevisionHistory)
 
-	for i, record := range result.RevisionHistory {
-		recordWithID := withRevisionHistoryRecordID(record, i)
+	for i, recordWithID := range records {
 		if recordWithID.RevisionID != revisionID {
 			continue
 		}
@@ -47,8 +47,8 @@ func buildRevisionHistoryDetail(result *ListingKitResult, revisionID string, que
 			result.TaskID,
 			&recordWithID,
 			buildRevisionHistoryNavigation(
-				buildAdjacentRevisionID(result.RevisionHistory, i-1),
-				buildAdjacentRevisionID(result.RevisionHistory, i+1),
+				buildAdjacentRevisionID(records, i-1),
+				buildAdjacentRevisionID(records, i+1),
 			),
 			buildRevisionHistoryDetailRestorePayload(
 				&recordWithID,
@@ -140,11 +140,4 @@ func restoreDetailSafetyValue(detail *revisionHistoryRestoreDetailData) *Revisio
 		return nil
 	}
 	return detail.Safety
-}
-
-func buildAdjacentRevisionID(records []ListingKitRevisionRecord, index int) string {
-	if index < 0 || index >= len(records) {
-		return ""
-	}
-	return withRevisionHistoryRecordID(records[index], index).RevisionID
 }
