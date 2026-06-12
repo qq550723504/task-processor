@@ -1484,6 +1484,44 @@ func TestSheinResolutionCachePreviewHelpersLiveOutsideMainSheinPreviewBuilder(t 
 	}
 }
 
+func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testing.T) {
+	t.Parallel()
+
+	imageHelpersSrc, err := os.ReadFile("preview_builder_shein_final_review_images.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_final_review_images.go) error = %v", err)
+	}
+	imageHelpersContent := string(imageHelpersSrc)
+
+	for _, needle := range []string{
+		"func buildSheinFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *sheinpub.FinalDraft, product *sheinproduct.Product) []SheinFinalReviewImage {",
+		"func resolveSheinFinalReviewImageRole(url, role string, main bool, finalDraft *sheinpub.FinalDraft, sizeMapURLs map[string]struct{}) (string, bool) {",
+		"func isSheinFinalReviewSwatchRole(role string) bool {",
+		"func mergeSheinFinalReviewImage(existing *SheinFinalReviewImage, role string, main bool) {",
+	} {
+		if !strings.Contains(imageHelpersContent, needle) {
+			t.Fatalf("preview_builder_shein_final_review_images.go should contain %q", needle)
+		}
+	}
+
+	finalReviewSrc, err := os.ReadFile("preview_builder_shein_final_review.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_final_review.go) error = %v", err)
+	}
+	finalReviewContent := string(finalReviewSrc)
+
+	for _, needle := range []string{
+		"func buildSheinFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *sheinpub.FinalDraft, product *sheinproduct.Product) []SheinFinalReviewImage {",
+		"func resolveSheinFinalReviewImageRole(url, role string, main bool, finalDraft *sheinpub.FinalDraft, sizeMapURLs map[string]struct{}) (string, bool) {",
+		"func isSheinFinalReviewSwatchRole(role string) bool {",
+		"func mergeSheinFinalReviewImage(existing *SheinFinalReviewImage, role string, main bool) {",
+	} {
+		if strings.Contains(finalReviewContent, needle) {
+			t.Fatalf("preview_builder_shein_final_review.go should not contain %q", needle)
+		}
+	}
+}
+
 func TestSheinSettingsEntrypointsFileOwnsCategorySearchDelegate(t *testing.T) {
 	t.Parallel()
 
