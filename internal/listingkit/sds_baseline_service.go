@@ -14,6 +14,10 @@ type sdsBaselineService struct {
 	sdsLoginStatusProvider SDSLoginStatusProvider
 }
 
+type sdsBaselineReadinessService interface {
+	GetReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error)
+}
+
 type sdsBaselineServiceConfig struct {
 	repo                   Repository
 	sdsLoginStatusProvider SDSLoginStatusProvider

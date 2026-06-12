@@ -6,6 +6,17 @@ import (
 	"time"
 )
 
+type stubTaskLifecycleBaselineReadinessService struct {
+	readiness *SDSBaselineReadiness
+	query     *SDSBaselineReadinessQuery
+	err       error
+}
+
+func (s *stubTaskLifecycleBaselineReadinessService) GetReadiness(_ context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {
+	s.query = query
+	return s.readiness, s.err
+}
+
 func TestTaskLifecycleServiceListTasks(t *testing.T) {
 	t.Parallel()
 
@@ -72,5 +83,57 @@ func TestTaskLifecycleServiceListTasksIncludesSummaryWhenRequested(t *testing.T)
 	}
 	if page.Summary.StatusCounts[string(TaskStatusCompleted)] != 2 {
 		t.Fatalf("page summary = %+v, want completed count for both tasks", page.Summary)
+	}
+}
+
+func TestTaskLifecycleServiceGetSDSBaselineReadinessUsesConfiguredService(t *testing.T) {
+	t.Parallel()
+
+	baselineSvc := &stubTaskLifecycleBaselineReadinessService{
+		readiness: &SDSBaselineReadiness{
+			BaselineKey: "baseline-key",
+			Status:      SDSBaselineStatusReady,
+		},
+	}
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo:                        NewInMemoryRepositoryForTest(),
+		sdsBaselineReadinessService: baselineSvc,
+	})
+	query := &SDSBaselineReadinessQuery{
+		TenantID:           "tenant-a",
+		ParentProductID:    9001,
+		PrototypeGroupID:   7001,
+		VariantID:          101,
+		SelectedVariantIDs: []int64{101, 102},
+	}
+
+	readiness, err := lifecycle.GetSDSBaselineReadiness(context.Background(), query)
+	if err != nil {
+		t.Fatalf("GetSDSBaselineReadiness() error = %v", err)
+	}
+	if readiness == nil || readiness.Status != SDSBaselineStatusReady {
+		t.Fatalf("readiness = %+v, want ready status", readiness)
+	}
+	if baselineSvc.query == nil || baselineSvc.query.TenantID != "tenant-a" {
+		t.Fatalf("query = %+v, want forwarded query", baselineSvc.query)
+	}
+}
+
+func TestTaskLifecycleServiceGetSDSBaselineReadinessReturnsConfigurationErrorWhenMissingService(t *testing.T) {
+	t.Parallel()
+
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo: NewInMemoryRepositoryForTest(),
+	})
+
+	_, err := lifecycle.GetSDSBaselineReadiness(context.Background(), &SDSBaselineReadinessQuery{
+		TenantID:           "tenant-a",
+		ParentProductID:    9001,
+		PrototypeGroupID:   7001,
+		VariantID:          101,
+		SelectedVariantIDs: []int64{101},
+	})
+	if err == nil || err.Error() != "sds baseline readiness service is not configured" {
+		t.Fatalf("GetSDSBaselineReadiness() error = %v, want configuration error", err)
 	}
 }

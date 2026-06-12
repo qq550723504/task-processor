@@ -15,37 +15,37 @@ import (
 )
 
 type taskLifecycleServiceConfig struct {
-	repo                   Repository
-	sdsLoginStatusProvider SDSLoginStatusProvider
-	requestDefaults        func() generateRequestDefaults
-	taskSubmitter          func() TaskSubmitter
-	standardWorkflow       func() (StandardProductWorkflowClient, bool)
-	processListingKit      func(context.Context, *Task) (*ListingKitResult, error)
-	resolveStoreSelection  func(context.Context, *Task) (*sheinStoreSelection, error)
-	buildResultPayload     func(context.Context, *Task) (*ListingKitResult, error)
+	repo                        Repository
+	sdsBaselineReadinessService sdsBaselineReadinessService
+	requestDefaults             func() generateRequestDefaults
+	taskSubmitter               func() TaskSubmitter
+	standardWorkflow            func() (StandardProductWorkflowClient, bool)
+	processListingKit           func(context.Context, *Task) (*ListingKitResult, error)
+	resolveStoreSelection       func(context.Context, *Task) (*sheinStoreSelection, error)
+	buildResultPayload          func(context.Context, *Task) (*ListingKitResult, error)
 }
 
 type taskLifecycleService struct {
-	repo                   Repository
-	sdsLoginStatusProvider SDSLoginStatusProvider
-	requestDefaults        func() generateRequestDefaults
-	taskSubmitter          func() TaskSubmitter
-	standardWorkflow       func() (StandardProductWorkflowClient, bool)
-	processListingKit      func(context.Context, *Task) (*ListingKitResult, error)
-	resolveStoreSelection  func(context.Context, *Task) (*sheinStoreSelection, error)
-	buildResultPayload     func(context.Context, *Task) (*ListingKitResult, error)
+	repo                        Repository
+	sdsBaselineReadinessService sdsBaselineReadinessService
+	requestDefaults             func() generateRequestDefaults
+	taskSubmitter               func() TaskSubmitter
+	standardWorkflow            func() (StandardProductWorkflowClient, bool)
+	processListingKit           func(context.Context, *Task) (*ListingKitResult, error)
+	resolveStoreSelection       func(context.Context, *Task) (*sheinStoreSelection, error)
+	buildResultPayload          func(context.Context, *Task) (*ListingKitResult, error)
 }
 
 func newTaskLifecycleService(config taskLifecycleServiceConfig) *taskLifecycleService {
 	return &taskLifecycleService{
-		repo:                   config.repo,
-		sdsLoginStatusProvider: config.sdsLoginStatusProvider,
-		requestDefaults:        config.requestDefaults,
-		taskSubmitter:          config.taskSubmitter,
-		standardWorkflow:       config.standardWorkflow,
-		processListingKit:      config.processListingKit,
-		resolveStoreSelection:  config.resolveStoreSelection,
-		buildResultPayload:     config.buildResultPayload,
+		repo:                        config.repo,
+		sdsBaselineReadinessService: config.sdsBaselineReadinessService,
+		requestDefaults:             config.requestDefaults,
+		taskSubmitter:               config.taskSubmitter,
+		standardWorkflow:            config.standardWorkflow,
+		processListingKit:           config.processListingKit,
+		resolveStoreSelection:       config.resolveStoreSelection,
+		buildResultPayload:          config.buildResultPayload,
 	}
 }
 
@@ -82,10 +82,10 @@ func (s *taskLifecycleService) GetSDSBaselineReadiness(ctx context.Context, quer
 	if query.TenantID != "" {
 		ctx = WithTenantID(ctx, query.TenantID)
 	}
-	return (&sdsBaselineService{
-		repo:                   s.repo,
-		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
-	}).GetReadiness(ctx, query)
+	if s.sdsBaselineReadinessService == nil {
+		return nil, fmt.Errorf("sds baseline readiness service is not configured")
+	}
+	return s.sdsBaselineReadinessService.GetReadiness(ctx, query)
 }
 
 func (s *taskLifecycleService) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskListPage, error) {

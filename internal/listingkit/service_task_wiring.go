@@ -38,8 +38,8 @@ func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
 
 func buildTaskLifecycleServiceConfig(s *service) taskLifecycleServiceConfig {
 	return taskLifecycleServiceConfig{
-		repo:                   s.repo,
-		sdsLoginStatusProvider: s.sdsLoginStatusProvider,
+		repo:                        s.repo,
+		sdsBaselineReadinessService: s.sdsBaselineOrDefault(),
 		requestDefaults: func() generateRequestDefaults {
 			return s.requestDefaults
 		},
