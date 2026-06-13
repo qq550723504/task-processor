@@ -5,6 +5,29 @@ import "testing"
 func TestConfigureWorkflowClientsSyncRootAndDependencyGroups(t *testing.T) {
 	t.Parallel()
 
+	t.Run("task submitter mirrors root and task deps", func(t *testing.T) {
+		t.Parallel()
+
+		svc := &service{}
+		submitter := noopTaskSubmitter{}
+
+		svc.SetTaskSubmitter(submitter)
+		if svc.taskSubmitter != submitter {
+			t.Fatalf("root task submitter = %v, want assigned submitter", svc.taskSubmitter)
+		}
+		if svc.taskDeps.taskSubmitter != submitter {
+			t.Fatalf("task deps submitter = %v, want assigned submitter", svc.taskDeps.taskSubmitter)
+		}
+
+		svc.SetTaskSubmitter(nil)
+		if svc.taskSubmitter != nil {
+			t.Fatalf("root task submitter = %v, want nil", svc.taskSubmitter)
+		}
+		if svc.taskDeps.taskSubmitter != nil {
+			t.Fatalf("task deps submitter = %v, want nil", svc.taskDeps.taskSubmitter)
+		}
+	})
+
 	t.Run("shein publish workflow mirrors enabled state", func(t *testing.T) {
 		t.Parallel()
 
