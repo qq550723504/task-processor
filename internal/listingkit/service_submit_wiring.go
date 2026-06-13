@@ -19,17 +19,15 @@ func buildTaskRecoveryServiceConfig(s *service) taskRecoveryServiceConfig {
 }
 
 func buildTaskSubmissionRecoveryServiceConfig(s *service) taskSubmissionRecoveryServiceConfig {
-	preview := buildTaskPreviewAccessWiring(s)
-	repository := buildTaskSubmissionRepositoryWiring(s)
-	bindings := buildTaskSubmissionBindings(s, nil)
+	assembly := buildTaskSubmissionAssembly(s)
 	return taskSubmissionRecoveryServiceConfig{
-		repo:                        repository.repo,
-		buildTaskPreview:            preview.buildTaskPreview,
-		buildSheinSubmitProductAPI:  bindings.execution.buildSheinSubmitProductAPI,
+		repo:                        assembly.repository.repo,
+		buildTaskPreview:            assembly.preview.buildTaskPreview,
+		buildSheinSubmitProductAPI:  assembly.bindings.execution.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:    s.buildSheinSubmitOtherAPI,
 		rememberSheinSubmitted:      s.rememberSheinSubmittedResolution,
-		persistSuccessfulSubmission: bindings.state.persistSuccessfulSheinSubmission,
-		recordSubmissionFailure:     bindings.state.recordSheinSubmissionFailureForState,
+		persistSuccessfulSubmission: assembly.bindings.state.persistSuccessfulSheinSubmission,
+		recordSubmissionFailure:     assembly.bindings.state.recordSheinSubmissionFailureForState,
 		resolveRemoteStatusCallback: s.resolveSheinSubmitRemoteStatus,
 	}
 }
@@ -49,13 +47,12 @@ func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {
 }
 
 func buildTaskSubmissionRefreshServiceConfig(s *service) taskSubmissionRefreshServiceConfig {
-	preview := buildTaskPreviewAccessWiring(s)
-	repository := buildTaskSubmissionRepositoryWiring(s)
-	wiring := buildTaskSubmissionOrchestratorWiring(s, nil)
+	assembly := buildTaskSubmissionAssembly(s)
+	wiring := buildTaskSubmissionOrchestratorWiring(s, assembly.resolver)
 	return taskSubmissionRefreshServiceConfig{
-		repo:                       repository.repo,
+		repo:                       assembly.repository.repo,
 		lockSubmit:                 wiring.lockSubmit,
-		buildTaskPreview:           preview.buildTaskPreview,
+		buildTaskPreview:           assembly.preview.buildTaskPreview,
 		buildSheinSubmitProductAPI: wiring.bindings.execution.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:   s.buildSheinSubmitOtherAPI,
 		mutateTaskResult:           wiring.recovery.mutateTaskResult,
@@ -64,23 +61,22 @@ func buildTaskSubmissionRefreshServiceConfig(s *service) taskSubmissionRefreshSe
 }
 
 func buildTaskDirectSubmissionServiceConfig(s *service) taskDirectSubmissionServiceConfig {
-	preview := buildTaskPreviewAccessWiring(s)
-	bindings := buildTaskSubmissionBindings(s, buildSubmitRuntimeContextResolver(s))
+	assembly := buildTaskSubmissionAssembly(s)
 	return taskDirectSubmissionServiceConfig{
-		normalizeSheinSubmitPackage:     bindings.execution.normalizeSheinSubmitPackage,
+		normalizeSheinSubmitPackage:     assembly.bindings.execution.normalizeSheinSubmitPackage,
 		validateSheinPublishFreshness:   s.validateSheinPublishFreshness,
-		failSheinDirectSubmit:           bindings.state.failSheinDirectSubmit,
-		buildSheinSubmitProductAPI:      bindings.execution.buildSheinSubmitProductAPI,
-		persistSheinDirectSubmitPhase:   bindings.state.persistSheinDirectSubmitPhase,
-		prepareSheinSubmitProduct:       bindings.execution.prepareSheinSubmitProduct,
-		uploadSheinSubmitImages:         bindings.execution.uploadSheinSubmitImages,
-		resolveSubmitSettings:           bindings.resolver.resolveSubmitSettings,
-		preValidateSheinSubmitProduct:   bindings.execution.preValidateSheinSubmitProduct,
-		executeSheinSubmitRemote:        bindings.execution.executeSheinSubmitRemote,
+		failSheinDirectSubmit:           assembly.bindings.state.failSheinDirectSubmit,
+		buildSheinSubmitProductAPI:      assembly.bindings.execution.buildSheinSubmitProductAPI,
+		persistSheinDirectSubmitPhase:   assembly.bindings.state.persistSheinDirectSubmitPhase,
+		prepareSheinSubmitProduct:       assembly.bindings.execution.prepareSheinSubmitProduct,
+		uploadSheinSubmitImages:         assembly.bindings.execution.uploadSheinSubmitImages,
+		resolveSubmitSettings:           assembly.bindings.resolver.resolveSubmitSettings,
+		preValidateSheinSubmitProduct:   assembly.bindings.execution.preValidateSheinSubmitProduct,
+		executeSheinSubmitRemote:        assembly.bindings.execution.executeSheinSubmitRemote,
 		retrySheinSensitiveWordSubmit:   s.retrySheinSensitiveWordSubmit,
-		persistSuccessfulDirectResponse: bindings.state.persistSuccessfulSheinDirectResponse,
-		finishSheinDirectSubmitAttempt:  bindings.state.finishSheinDirectSubmitAttempt,
-		buildTaskPreview:                preview.buildTaskPreview,
+		persistSuccessfulDirectResponse: assembly.bindings.state.persistSuccessfulSheinDirectResponse,
+		finishSheinDirectSubmitAttempt:  assembly.bindings.state.finishSheinDirectSubmitAttempt,
+		buildTaskPreview:                assembly.preview.buildTaskPreview,
 	}
 }
 
@@ -106,10 +102,8 @@ func buildTaskSubmissionStateServiceConfig(s *service) taskSubmissionStateServic
 }
 
 func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {
-	preview := buildTaskPreviewAccessWiring(s)
-	repository := buildTaskSubmissionRepositoryWiring(s)
-	resolver := buildSubmitRuntimeContextResolver(s)
-	wiring := buildTaskSubmissionOrchestratorWiring(s, resolver)
+	assembly := buildTaskSubmissionAssembly(s)
+	wiring := buildTaskSubmissionOrchestratorWiring(s, assembly.resolver)
 	return taskTemporalSubmissionAdapterConfig{
 		startSheinPublishWorkflow: func(ctx context.Context, in SheinPublishWorkflowStartInput) error {
 			client, _ := resolveSubmissionWorkflowClient(s)
@@ -119,7 +113,7 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 		loadSheinPublishTask:                 s.loadSheinPublishTaskForTemporal,
 		normalizeSheinSubmitPackage:          wiring.bindings.execution.normalizeSheinSubmitPackage,
 		validateSheinPublishFreshness:        s.validateSheinPublishFreshness,
-		saveTaskResult:                       repository.saveTaskResult,
+		saveTaskResult:                       assembly.repository.saveTaskResult,
 		persistSheinSubmitPhase:              wiring.bindings.state.persistSheinSubmitPhase,
 		prepareSheinSubmitProduct:            wiring.bindings.execution.prepareSheinSubmitProduct,
 		uploadSheinSubmitImages:              wiring.bindings.execution.uploadSheinSubmitImages,
@@ -133,6 +127,6 @@ func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmission
 		refreshSheinSubmitRemoteStatus:       wiring.recovery.refreshSheinSubmitRemoteStatus,
 		handleWorkflowStartFailure:           wiring.recovery.handleSheinWorkflowStartFailure,
 		rememberSheinSubmitted:               s.rememberSheinSubmittedResolution,
-		getTaskPreview:                       preview.getTaskPreview,
+		getTaskPreview:                       assembly.preview.getTaskPreview,
 	}
 }

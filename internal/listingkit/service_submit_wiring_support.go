@@ -19,6 +19,13 @@ type taskSubmissionServiceWiring struct {
 	direct     *taskDirectSubmissionService
 }
 
+type taskSubmissionAssembly struct {
+	preview    taskPreviewAccessWiring
+	repository taskSubmissionRepositoryWiring
+	resolver   *submitRuntimeContextResolver
+	bindings   taskSubmissionBindings
+}
+
 type taskSubmissionRepositoryWiring struct {
 	repo           Repository
 	saveTaskResult func(context.Context, string, *ListingKitResult) error
@@ -62,6 +69,23 @@ func buildTaskSubmissionOrchestratorWiring(s *service, resolver *submitRuntimeCo
 	return taskSubmissionOrchestratorWiring{
 		lockSubmit: buildTaskSubmissionLockSubmit(s),
 		recovery:   s.taskSubmissionRecoveryOrDefault(),
+		bindings:   buildTaskSubmissionBindings(s, resolver),
+	}
+}
+
+func buildTaskSubmissionAssembly(s *service) taskSubmissionAssembly {
+	resolver := buildSubmitRuntimeContextResolver(s)
+	return buildTaskSubmissionAssemblyWithResolver(s, resolver)
+}
+
+func buildTaskSubmissionAssemblyWithResolver(s *service, resolver *submitRuntimeContextResolver) taskSubmissionAssembly {
+	if resolver == nil {
+		resolver = buildSubmitRuntimeContextResolver(s)
+	}
+	return taskSubmissionAssembly{
+		preview:    buildTaskPreviewAccessWiring(s),
+		repository: buildTaskSubmissionRepositoryWiring(s),
+		resolver:   resolver,
 		bindings:   buildTaskSubmissionBindings(s, resolver),
 	}
 }
