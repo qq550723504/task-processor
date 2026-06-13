@@ -6,6 +6,7 @@ the project migrates away from the legacy `internal/listingkit` facade.
 Current stable ownership:
 
 - preview shell construction
+- platform-neutral preview attachment fields (`catalog`, `assets`, `asset_inventory`)
 - preview header construction
 - preview status mapping
 - selected-platform normalization and validation

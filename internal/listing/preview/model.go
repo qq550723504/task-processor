@@ -12,6 +12,7 @@ type Preview struct {
 	SelectedPlatform    string               `json:"selected_platform,omitempty"`
 	Platforms           []string             `json:"platforms,omitempty"`
 	NeedsReview         bool                 `json:"needs_review"`
+	Attachment          *Attachment          `json:"attachment,omitempty"`
 	CreatedAt           time.Time            `json:"created_at"`
 	CompletedAt         *time.Time           `json:"completed_at,omitempty"`
 	Overview            *Header              `json:"overview,omitempty"`

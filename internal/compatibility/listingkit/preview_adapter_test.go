@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/asset"
+	"task-processor/internal/catalog"
 	legacylistingkit "task-processor/internal/listingkit"
 )
 
@@ -18,6 +20,9 @@ func TestAdaptLegacyPreviewShell(t *testing.T) {
 		SelectedPlatform: "shein",
 		Platforms:        []string{"shein", "amazon"},
 		NeedsReview:      true,
+		Catalog:          &catalog.Product{Title: "Wireless Earbuds"},
+		Assets:           &asset.Bundle{Assets: []asset.Asset{{ID: "asset-1"}}},
+		AssetInventory:   &asset.InventorySummary{TotalRecords: 3},
 		CreatedAt:        createdAt,
 		CompletedAt:      &completedAt,
 		RevisionHistoryMeta: &legacylistingkit.ListingKitRevisionHistoryMeta{
@@ -63,6 +68,15 @@ func TestAdaptLegacyPreviewShell(t *testing.T) {
 	}
 	if adapted.RevisionHistoryMeta == nil || adapted.RevisionHistoryMeta.TotalRecords != 8 {
 		t.Fatalf("adapted revision history meta = %+v", adapted.RevisionHistoryMeta)
+	}
+	if adapted.Attachment == nil || adapted.Attachment.CatalogProduct == nil || adapted.Attachment.CatalogProduct.Title != "Wireless Earbuds" {
+		t.Fatalf("adapted attachment = %+v", adapted.Attachment)
+	}
+	if adapted.Attachment.AssetBundle == nil || len(adapted.Attachment.AssetBundle.Assets) != 1 {
+		t.Fatalf("adapted assets = %+v", adapted.Attachment)
+	}
+	if adapted.Attachment.AssetInventorySummary == nil || adapted.Attachment.AssetInventorySummary.TotalRecords != 3 {
+		t.Fatalf("adapted asset inventory = %+v", adapted.Attachment)
 	}
 	if len(adapted.Overview.PlatformCards) != 1 {
 		t.Fatalf("platform cards = %+v", adapted.Overview.PlatformCards)

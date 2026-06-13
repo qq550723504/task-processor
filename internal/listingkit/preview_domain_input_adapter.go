@@ -2,6 +2,17 @@ package listingkit
 
 import previewdomain "task-processor/internal/listing/preview"
 
+func buildPreviewDomainAttachmentInput(result *ListingKitResult) *previewdomain.AttachmentInput {
+	if result == nil {
+		return nil
+	}
+	return &previewdomain.AttachmentInput{
+		CatalogProduct:        result.CatalogProduct,
+		AssetBundle:           result.AssetBundle,
+		AssetInventorySummary: result.AssetInventorySummary,
+	}
+}
+
 func buildPreviewDomainHeaderInput(overview *listingKitOverviewData) *previewdomain.HeaderInput {
 	if overview == nil {
 		return nil

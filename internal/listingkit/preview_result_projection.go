@@ -36,9 +36,9 @@ func buildListingKitPreviewProjection(result *ListingKitResult, selectedPlatform
 	return listingKitPreviewProjection{
 		overview:            legacyBase.Overview,
 		needsReview:         legacyBase.NeedsReview,
-		catalog:             readProjection.Attachment.CatalogProduct,
-		assets:              readProjection.Attachment.AssetBundle,
-		assetInventory:      readProjection.Attachment.AssetInventorySummary,
+		catalog:             legacyBase.Catalog,
+		assets:              legacyBase.Assets,
+		assetInventory:      legacyBase.AssetInventory,
 		assetRenderPreviews: readProjection.Attachment.AssetRenderPreviews,
 		platformPreviews:    readProjection.Attachment.PlatformAssetRenderPreviews,
 		generationQueue:     readProjection.Attachment.AssetGenerationQueue,
@@ -56,6 +56,7 @@ func buildListingKitPreviewDomainProjection(result *ListingKitResult, selectedPl
 
 	return previewdomain.BuildProjection(previewdomain.ProjectionInput{
 		NeedsReview:         readProjection.NeedsReview,
+		Attachment:          buildPreviewDomainAttachmentInput(result),
 		Overview:            buildPreviewDomainHeaderInput(readProjection.Overview),
 		RevisionHistoryMeta: buildPreviewDomainRevisionHistoryMetaInput(result),
 	})

@@ -1,6 +1,10 @@
 package listingkit
 
-import previewdomain "task-processor/internal/listing/preview"
+import (
+	"task-processor/internal/asset"
+	"task-processor/internal/catalog"
+	previewdomain "task-processor/internal/listing/preview"
+)
 
 func adaptPreviewDomainShell(base *previewdomain.Preview) *ListingKitPreview {
 	if base == nil {
@@ -12,6 +16,9 @@ func adaptPreviewDomainShell(base *previewdomain.Preview) *ListingKitPreview {
 		SelectedPlatform:    base.SelectedPlatform,
 		Platforms:           append([]string(nil), base.Platforms...),
 		NeedsReview:         base.NeedsReview,
+		Catalog:             adaptPreviewDomainCatalog(base.Attachment),
+		Assets:              adaptPreviewDomainAssets(base.Attachment),
+		AssetInventory:      adaptPreviewDomainAssetInventory(base.Attachment),
 		CreatedAt:           base.CreatedAt,
 		CompletedAt:         base.CompletedAt,
 		Overview:            adaptPreviewDomainHeader(base.Overview),
@@ -51,6 +58,27 @@ func adaptPreviewDomainHeader(base *previewdomain.Header) *ListingKitPreviewHead
 		}
 	}
 	return header
+}
+
+func adaptPreviewDomainCatalog(base *previewdomain.Attachment) *catalog.Product {
+	if base == nil {
+		return nil
+	}
+	return base.CatalogProduct
+}
+
+func adaptPreviewDomainAssets(base *previewdomain.Attachment) *asset.Bundle {
+	if base == nil {
+		return nil
+	}
+	return base.AssetBundle
+}
+
+func adaptPreviewDomainAssetInventory(base *previewdomain.Attachment) *asset.InventorySummary {
+	if base == nil {
+		return nil
+	}
+	return base.AssetInventorySummary
 }
 
 func adaptPreviewDomainRevisionHistoryMeta(base *previewdomain.RevisionHistoryMeta) *ListingKitRevisionHistoryMeta {

@@ -21,9 +21,21 @@ func AdaptLegacyPreviewShell(legacy *legacylistingkit.ListingKitPreview) *previe
 			CompletedAt:      legacy.CompletedAt,
 		},
 		NeedsReview:         legacy.NeedsReview,
+		Attachment:          adaptLegacyPreviewAttachmentInput(legacy),
 		Overview:            adaptLegacyPreviewHeaderInput(legacy.Overview),
 		RevisionHistoryMeta: adaptLegacyRevisionHistoryMetaInput(legacy.RevisionHistoryMeta),
 	})
+}
+
+func adaptLegacyPreviewAttachmentInput(legacy *legacylistingkit.ListingKitPreview) *previewdomain.AttachmentInput {
+	if legacy == nil {
+		return nil
+	}
+	return &previewdomain.AttachmentInput{
+		CatalogProduct:        legacy.Catalog,
+		AssetBundle:           legacy.Assets,
+		AssetInventorySummary: legacy.AssetInventory,
+	}
 }
 
 func adaptLegacyPreviewHeaderInput(legacy *legacylistingkit.ListingKitPreviewHeader) *previewdomain.HeaderInput {

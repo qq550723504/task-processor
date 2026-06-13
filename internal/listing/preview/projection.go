@@ -5,6 +5,7 @@ package preview
 type ProjectionInput struct {
 	Shell               ShellInput
 	NeedsReview         bool
+	Attachment          *AttachmentInput
 	Overview            *HeaderInput
 	RevisionHistoryMeta *RevisionHistoryMetaInput
 }
@@ -15,6 +16,9 @@ func BuildProjection(input ProjectionInput) *Preview {
 		return nil
 	}
 	preview.NeedsReview = input.NeedsReview
+	if input.Attachment != nil {
+		preview.Attachment = BuildAttachment(*input.Attachment)
+	}
 	if input.Overview != nil {
 		preview.Overview = BuildHeader(*input.Overview)
 	}

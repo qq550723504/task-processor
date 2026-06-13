@@ -4,6 +4,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"task-processor/internal/catalog"
 )
 
 func TestBuildProjection(t *testing.T) {
@@ -21,6 +23,9 @@ func TestBuildProjection(t *testing.T) {
 			CompletedAt:      &completedAt,
 		},
 		NeedsReview: true,
+		Attachment: &AttachmentInput{
+			CatalogProduct: &catalog.Product{Title: "Wireless Earbuds"},
+		},
 		Overview: &HeaderInput{
 			Country:       "US",
 			StatusMessage: "ready",
@@ -42,6 +47,12 @@ func TestBuildProjection(t *testing.T) {
 	}
 	if projection.Overview == nil || !slices.Equal(projection.Overview.ReviewReasons, []string{"needs-manual-check"}) {
 		t.Fatalf("overview = %+v", projection.Overview)
+	}
+	if projection.Attachment == nil {
+		t.Fatal("attachment = nil")
+	}
+	if projection.Attachment.CatalogProduct == nil || projection.Attachment.CatalogProduct.Title != "Wireless Earbuds" {
+		t.Fatalf("attachment = %+v", projection.Attachment)
 	}
 	if projection.RevisionHistoryMeta == nil || projection.RevisionHistoryMeta.TotalRecords != 5 {
 		t.Fatalf("revision history meta = %+v", projection.RevisionHistoryMeta)
