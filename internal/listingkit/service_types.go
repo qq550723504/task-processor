@@ -80,7 +80,6 @@ type service struct {
 	platformAdaptWorkflowClient    PlatformAdaptWorkflowClient
 	platformAdaptWorkflowEnabled   bool
 	storeProfileRepo               StoreProfileRepository
-	requestDefaults                generateRequestDefaults
 	sheinSettingsMu                sync.RWMutex
 	sheinSettings                  SheinSettings
 }

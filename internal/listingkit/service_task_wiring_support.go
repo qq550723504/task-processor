@@ -80,12 +80,7 @@ func resolveTaskRequestDefaults(s *service) generateRequestDefaults {
 	if s == nil {
 		return generateRequestDefaults{}
 	}
-	if s.taskDeps.requestDefaults != (generateRequestDefaults{}) {
-		s.requestDefaults = s.taskDeps.requestDefaults
-		return s.taskDeps.requestDefaults
-	}
-	s.taskDeps.requestDefaults = s.requestDefaults
-	return s.requestDefaults
+	return s.taskDeps.requestDefaults
 }
 
 func resolveSDSLoginStatusProvider(s *service) SDSLoginStatusProvider {

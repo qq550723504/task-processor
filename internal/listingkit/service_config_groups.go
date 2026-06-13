@@ -120,7 +120,6 @@ func applyServiceDependencyGroups(svc *service, config *ServiceConfig) {
 	if svc == nil {
 		return
 	}
-	svc.requestDefaults = buildGenerateRequestDefaults(config)
 	svc.taskDeps = buildTaskDependencies(config)
 	svc.studioDeps = buildStudioDependencies(config)
 	svc.submission = buildSubmissionCollaborators()
