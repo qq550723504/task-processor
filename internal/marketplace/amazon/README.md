@@ -19,3 +19,10 @@ Near-term migration candidates:
 
 - `internal/amazonlisting` platform-specific publishing logic
 - Amazon-target behavior currently mixed into `internal/amazon`
+
+Subpackage landing zones:
+
+- `publishing/`: payload building, export shaping, submission rules
+- `workspace/`: workbench, review, editing, autofix flows
+- `model/`: Amazon-target DTOs and internal models
+- `api/`: Amazon marketplace API-facing contracts and adapter seams
