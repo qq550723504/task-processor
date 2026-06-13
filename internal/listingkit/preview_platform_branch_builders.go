@@ -1,27 +1,19 @@
 package listingkit
 
 func buildAmazonPreviewPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *AmazonPreviewPayload {
-	if result == nil || result.Amazon == nil {
+	input, ok := buildAmazonPreviewPayloadInputFromResult(result, platformPreviews)
+	if !ok {
 		return nil
 	}
-	return buildAmazonPreviewPayload(
-		result.Amazon,
-		result.AssetBundle,
-		platformAssetRenderPreviewsByPlatform(platformPreviews, "amazon"),
-	)
+	return buildAmazonPreviewPayloadFromInput(input)
 }
 
 func buildSheinPreviewPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *SheinPreviewPayload {
-	if result == nil || result.Shein == nil {
+	input, ok := buildSheinPreviewPayloadInputFromResult(result, platformPreviews)
+	if !ok {
 		return nil
 	}
-	return buildSheinPreviewPayload(
-		result.Shein,
-		result.PodExecution,
-		result.CanonicalProduct,
-		result.AssetBundle,
-		platformAssetRenderPreviewsByPlatform(platformPreviews, "shein"),
-	)
+	return buildSheinPreviewPayloadFromInput(input)
 }
 
 func buildTemuPreviewPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *TemuPreviewPayload {

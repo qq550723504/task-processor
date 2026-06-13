@@ -10,10 +10,10 @@ func buildAmazonPreviewSection(result *ListingKitResult, preview *ListingKitPrev
 }
 
 func buildAmazonPreviewPayload(pkg *AmazonPackage, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *AmazonPreviewPayload {
-	if pkg == nil || pkg.Draft == nil {
+	if pkg == nil {
 		return nil
 	}
-	return buildAmazonPreviewPayloadBody(amazonPreviewPayloadInput{
+	return buildAmazonPreviewPayloadFromInput(amazonPreviewPayloadInput{
 		draft:      pkg.Draft,
 		visualBase: buildPlatformVisualPreviewPayloadInput(pkg.ImageBundle, assetBundle, renderPreviews),
 	})

@@ -6,7 +6,13 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
-func buildSheinPreviewPayload(pkg *sheinpub.Package, pod *PodExecutionSummary, canonical *canonical.Product, assetBundle *asset.Bundle, renderPreviews *PlatformAssetRenderPreviews) *SheinPreviewPayload {
+func buildSheinPreviewPayload(
+	pkg *sheinpub.Package,
+	pod *PodExecutionSummary,
+	canonical *canonical.Product,
+	assetBundle *asset.Bundle,
+	renderPreviews *PlatformAssetRenderPreviews,
+) *SheinPreviewPayload {
 	if pkg == nil {
 		return nil
 	}
@@ -18,10 +24,10 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, pod *PodExecutionSummary, c
 	repairCenter := buildSheinRepairCenter(readiness, checklist)
 	submitState := projection.SubmitState
 	statusOverview := projection.StatusOverview
-	return normalizeSheinPreviewPayloadSemanticFields(buildSheinPreviewPayloadBody(sheinPreviewPayloadBodyInput{
+	return buildSheinPreviewPayloadFromInput(sheinPreviewPayloadInput{
 		pkg:               pkg,
 		canonical:         canonical,
-		assetBundle:       assetBundle,
+		visualAssetBundle: assetBundle,
 		renderPreviews:    renderPreviews,
 		needsReview:       needsReview,
 		summary:           summary,
@@ -30,5 +36,5 @@ func buildSheinPreviewPayload(pkg *sheinpub.Package, pod *PodExecutionSummary, c
 		repairCenter:      repairCenter,
 		statusOverview:    statusOverview,
 		workspaceOverview: buildSheinPreviewWorkspaceOverview(statusOverview, submitState, repairCenter),
-	}))
+	})
 }
