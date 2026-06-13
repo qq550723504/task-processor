@@ -1,12 +1,5 @@
 package listingkit
 
-import amazonlisting "task-processor/internal/amazonlisting"
-
-type amazonPreviewPayloadInput struct {
-	draft      *amazonlisting.AmazonListingDraft
-	visualBase platformVisualPreviewPayloadBase
-}
-
 func buildAmazonPreviewPayloadBody(input amazonPreviewPayloadInput) *AmazonPreviewPayload {
 	if input.draft == nil {
 		return nil

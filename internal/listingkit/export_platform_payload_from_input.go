@@ -1,13 +1,6 @@
 package listingkit
 
-import amazonlisting "task-processor/internal/amazonlisting"
-
-type amazonExportPayloadInput struct {
-	draft      *amazonlisting.AmazonListingDraft
-	visualBase platformVisualExportBase
-}
-
-func buildAmazonExportPayload(input amazonExportPayloadInput) *AmazonExportPayload {
+func buildAmazonExportPayloadFromInput(input amazonExportPayloadInput) *AmazonExportPayload {
 	if input.draft == nil {
 		return nil
 	}
@@ -19,11 +12,7 @@ func buildAmazonExportPayload(input amazonExportPayloadInput) *AmazonExportPaylo
 	}
 }
 
-type reviewableExportPayloadInput struct {
-	visualBase platformVisualExportBase
-}
-
-func buildTemuExportPayload(input reviewableExportPayloadInput, pkg *TemuPackage) *TemuExportPayload {
+func buildTemuExportPayloadFromInput(input reviewableExportPayloadInput, pkg *TemuPackage) *TemuExportPayload {
 	if pkg == nil {
 		return nil
 	}
@@ -35,7 +24,7 @@ func buildTemuExportPayload(input reviewableExportPayloadInput, pkg *TemuPackage
 	}
 }
 
-func buildWalmartExportPayload(input reviewableExportPayloadInput, pkg *WalmartPackage) *WalmartExportPayload {
+func buildWalmartExportPayloadFromInput(input reviewableExportPayloadInput, pkg *WalmartPackage) *WalmartExportPayload {
 	if pkg == nil {
 		return nil
 	}

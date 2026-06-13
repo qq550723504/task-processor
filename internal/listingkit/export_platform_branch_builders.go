@@ -5,7 +5,7 @@ func buildAmazonExportPayloadFromResult(result *ListingKitResult, platformPrevie
 	if !ok {
 		return nil
 	}
-	return buildAmazonExportPayload(input)
+	return buildAmazonExportPayloadFromInput(input)
 }
 
 func buildSheinExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *SheinExportPayload {
@@ -21,7 +21,7 @@ func buildTemuExportPayloadFromResult(result *ListingKitResult, platformPreviews
 	if !ok {
 		return nil
 	}
-	return buildTemuExportPayload(input, pkg)
+	return buildTemuExportPayloadFromInput(input, pkg)
 }
 
 func buildWalmartExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *WalmartExportPayload {
@@ -29,5 +29,5 @@ func buildWalmartExportPayloadFromResult(result *ListingKitResult, platformPrevi
 	if !ok {
 		return nil
 	}
-	return buildWalmartExportPayload(input, pkg)
+	return buildWalmartExportPayloadFromInput(input, pkg)
 }

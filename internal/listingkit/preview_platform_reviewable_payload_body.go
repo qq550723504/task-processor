@@ -1,9 +1,5 @@
 package listingkit
 
-type reviewablePlatformPreviewPayloadInput struct {
-	base reviewablePlatformPreviewPayloadBase
-}
-
 func buildTemuPreviewPayloadBody(input reviewablePlatformPreviewPayloadInput, pkg *TemuPackage) *TemuPreviewPayload {
 	if pkg == nil {
 		return nil
