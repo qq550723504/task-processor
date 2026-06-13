@@ -17,9 +17,8 @@ func buildAmazonPreviewPayload(pkg *AmazonPackage, assetBundle *asset.Bundle, re
 	if pkg == nil || pkg.Draft == nil {
 		return nil
 	}
-	base := buildPlatformVisualPreviewBase(pkg.ImageBundle, assetBundle, renderPreviews)
 	return buildAmazonPreviewPayloadBody(amazonPreviewPayloadInput{
 		draft:      pkg.Draft,
-		visualBase: buildPlatformVisualPreviewPayloadBase(base),
+		visualBase: buildPlatformVisualPreviewPayloadInput(pkg.ImageBundle, assetBundle, renderPreviews),
 	})
 }

@@ -18,8 +18,14 @@ func buildWalmartPreviewPayload(pkg *WalmartPackage, assetBundle *asset.Bundle, 
 	if pkg == nil {
 		return nil
 	}
-	base := buildReviewablePlatformPreviewBase(pkg.ReviewNotes, pkg.ImageBundle, assetBundle, renderPreviews)
-	return buildWalmartPreviewPayloadBody(reviewablePlatformPreviewPayloadInput{
-		base: buildReviewablePlatformPreviewPayloadBase(pkg.ProductName, base),
-	}, pkg)
+	return buildWalmartPreviewPayloadBody(
+		buildReviewablePlatformPreviewPayloadInput(
+			pkg.ProductName,
+			pkg.ReviewNotes,
+			pkg.ImageBundle,
+			assetBundle,
+			renderPreviews,
+		),
+		pkg,
+	)
 }

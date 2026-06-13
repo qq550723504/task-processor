@@ -18,8 +18,14 @@ func buildTemuPreviewPayload(pkg *TemuPackage, assetBundle *asset.Bundle, render
 	if pkg == nil {
 		return nil
 	}
-	base := buildReviewablePlatformPreviewBase(pkg.ReviewNotes, pkg.ImageBundle, assetBundle, renderPreviews)
-	return buildTemuPreviewPayloadBody(reviewablePlatformPreviewPayloadInput{
-		base: buildReviewablePlatformPreviewPayloadBase(pkg.GoodsName, base),
-	}, pkg)
+	return buildTemuPreviewPayloadBody(
+		buildReviewablePlatformPreviewPayloadInput(
+			pkg.GoodsName,
+			pkg.ReviewNotes,
+			pkg.ImageBundle,
+			assetBundle,
+			renderPreviews,
+		),
+		pkg,
+	)
 }
