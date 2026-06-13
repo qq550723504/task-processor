@@ -28,7 +28,7 @@ func (s *service) RegenerateSheinDataImage(ctx context.Context, taskID string, r
 	if task.Result == nil || task.Result.Shein == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	if s.studioImageGenerator == nil {
+	if resolveStudioImageGenerator(s) == nil {
 		return nil, fmt.Errorf("studio image generator is not configured")
 	}
 
