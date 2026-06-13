@@ -5,7 +5,6 @@ import (
 	"time"
 
 	previewdomain "task-processor/internal/listing/preview"
-	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExport, error) {
@@ -53,18 +52,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 	if selectedPlatform == "" || selectedPlatform == "shein" {
 		if task.Result.Shein != nil {
-			sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
-			visualBase := buildPlatformVisualExportBase("shein", task.Result.Shein.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews)
-			export.Shein = &SheinExportPayload{
-				Inspection:     task.Result.Shein.Inspection,
-				ImageBundle:    visualBase.imageBundle,
-				RenderPreviews: visualBase.renderPreviews,
-				ScenePresets:   visualBase.scenePresets,
-				DraftPayload:   task.Result.Shein.DraftPayload,
-				PreviewPayload: task.Result.Shein.PreviewPayload,
-				ReviewNotes:    append([]string(nil), task.Result.Shein.ReviewNotes...),
-			}
-			normalizeSheinExportPayloadSemanticFields(export.Shein)
+			export.Shein = buildSheinExportPayloadFromResult(task.Result, export.PlatformAssetRenderPreviews)
 		} else if selectedPlatform == "shein" {
 			return nil, ErrPreviewPlatformUnavailable
 		}

@@ -1,5 +1,7 @@
 package listingkit
 
+import sheinpub "task-processor/internal/publishing/shein"
+
 func buildAmazonExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *AmazonExportPayload {
 	if result == nil || result.Amazon == nil {
 		return nil
@@ -7,6 +9,23 @@ func buildAmazonExportPayloadFromResult(result *ListingKitResult, platformPrevie
 	return buildAmazonExportPayload(amazonExportPayloadInput{
 		draft:      result.Amazon.Draft,
 		visualBase: buildPlatformVisualExportPayloadInput("amazon", result.Amazon.ImageBundle, result.AssetBundle, platformPreviews),
+	})
+}
+
+func buildSheinExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *SheinExportPayload {
+	if result == nil || result.Shein == nil {
+		return nil
+	}
+	sheinpub.NormalizePackageSemanticFields(result.Shein)
+	visualBase := buildPlatformVisualExportBase("shein", result.Shein.ImageBundle, result.AssetBundle, platformPreviews)
+	return normalizeSheinExportPayloadSemanticFields(&SheinExportPayload{
+		Inspection:     result.Shein.Inspection,
+		ImageBundle:    visualBase.imageBundle,
+		RenderPreviews: visualBase.renderPreviews,
+		ScenePresets:   visualBase.scenePresets,
+		DraftPayload:   result.Shein.DraftPayload,
+		PreviewPayload: result.Shein.PreviewPayload,
+		ReviewNotes:    append([]string(nil), result.Shein.ReviewNotes...),
 	})
 }
 
