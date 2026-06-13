@@ -8,6 +8,8 @@ type HeaderInput struct {
 	VariantCount  int
 	StatusMessage string
 	Warnings      []string
+	ReviewReasons []string
+	PlatformCards []PlatformCard
 }
 
 func BuildHeader(input HeaderInput) *Header {
@@ -19,5 +21,7 @@ func BuildHeader(input HeaderInput) *Header {
 		VariantCount:  input.VariantCount,
 		StatusMessage: input.StatusMessage,
 		Warnings:      append([]string(nil), input.Warnings...),
+		ReviewReasons: append([]string(nil), input.ReviewReasons...),
+		PlatformCards: append([]PlatformCard(nil), input.PlatformCards...),
 	}
 }

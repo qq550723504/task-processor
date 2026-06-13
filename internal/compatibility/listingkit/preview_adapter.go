@@ -11,24 +11,25 @@ func AdaptLegacyPreviewShell(legacy *legacylistingkit.ListingKitPreview) *previe
 	if legacy == nil {
 		return nil
 	}
-	adapted := previewdomain.BuildShell(previewdomain.ShellInput{
-		TaskID:           legacy.TaskID,
-		Status:           string(legacy.Status),
-		SelectedPlatform: legacy.SelectedPlatform,
-		Platforms:        legacy.Platforms,
-		CreatedAt:        legacy.CreatedAt,
-		CompletedAt:      legacy.CompletedAt,
+	return previewdomain.BuildProjection(previewdomain.ProjectionInput{
+		Shell: previewdomain.ShellInput{
+			TaskID:           legacy.TaskID,
+			Status:           string(legacy.Status),
+			SelectedPlatform: legacy.SelectedPlatform,
+			Platforms:        legacy.Platforms,
+			CreatedAt:        legacy.CreatedAt,
+			CompletedAt:      legacy.CompletedAt,
+		},
+		NeedsReview: legacy.NeedsReview,
+		Overview:    adaptLegacyPreviewHeaderInput(legacy.Overview),
 	})
-	adapted.NeedsReview = legacy.NeedsReview
-	adapted.Overview = adaptLegacyPreviewHeader(legacy.Overview)
-	return adapted
 }
 
-func adaptLegacyPreviewHeader(legacy *legacylistingkit.ListingKitPreviewHeader) *previewdomain.Header {
+func adaptLegacyPreviewHeaderInput(legacy *legacylistingkit.ListingKitPreviewHeader) *previewdomain.HeaderInput {
 	if legacy == nil {
 		return nil
 	}
-	header := previewdomain.BuildHeader(previewdomain.HeaderInput{
+	input := &previewdomain.HeaderInput{
 		Country:       legacy.Country,
 		Language:      legacy.Language,
 		SourceType:    legacy.SourceType,
@@ -36,12 +37,12 @@ func adaptLegacyPreviewHeader(legacy *legacylistingkit.ListingKitPreviewHeader) 
 		VariantCount:  legacy.VariantCount,
 		StatusMessage: legacy.StatusMessage,
 		Warnings:      legacy.Warnings,
-	})
-	header.ReviewReasons = append([]string(nil), legacy.ReviewReasons...)
+		ReviewReasons: legacy.ReviewReasons,
+	}
 	if len(legacy.PlatformCards) > 0 {
-		header.PlatformCards = make([]previewdomain.PlatformCard, 0, len(legacy.PlatformCards))
+		input.PlatformCards = make([]previewdomain.PlatformCard, 0, len(legacy.PlatformCards))
 		for _, card := range legacy.PlatformCards {
-			header.PlatformCards = append(header.PlatformCards, previewdomain.PlatformCard{
+			input.PlatformCards = append(input.PlatformCards, previewdomain.PlatformCard{
 				Platform:              card.Platform,
 				Status:                card.Status,
 				Summary:               card.Summary,
@@ -56,5 +57,5 @@ func adaptLegacyPreviewHeader(legacy *legacylistingkit.ListingKitPreviewHeader) 
 			})
 		}
 	}
-	return header
+	return input
 }

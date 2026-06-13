@@ -15,6 +15,7 @@ func initializePreviewHeader(overview *listingKitOverviewData) *ListingKitPrevie
 		ImageCount:    overview.ImageCount,
 		VariantCount:  overview.VariantCount,
 		Warnings:      overview.Warnings,
+		ReviewReasons: overview.ReviewReasons,
 	}
 	baseHeader := previewdomain.BuildHeader(headerInput)
 	return &ListingKitPreviewHeader{
@@ -25,6 +26,7 @@ func initializePreviewHeader(overview *listingKitOverviewData) *ListingKitPrevie
 		VariantCount:  baseHeader.VariantCount,
 		StatusMessage: baseHeader.StatusMessage,
 		Warnings:      append([]string(nil), baseHeader.Warnings...),
+		ReviewReasons: append([]string(nil), baseHeader.ReviewReasons...),
 	}
 }
 
@@ -32,7 +34,6 @@ func decoratePreviewHeader(overview *listingKitOverviewData, header *ListingKitP
 	if overview == nil || header == nil {
 		return header
 	}
-	header.ReviewReasons = append([]string(nil), overview.ReviewReasons...)
 	header.PlatformCards = append([]ListingKitPlatformCard(nil), overview.PlatformCards...)
 	return header
 }
