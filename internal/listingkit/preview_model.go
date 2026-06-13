@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	"task-processor/internal/catalog"
+	previewdomain "task-processor/internal/listing/preview"
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -42,13 +43,7 @@ type ListingKitPreview struct {
 	Walmart                     *WalmartPreviewPayload         `json:"walmart,omitempty"`
 }
 
-type ListingKitRevisionHistoryMeta struct {
-	TotalRecords    int  `json:"total_records"`
-	ReturnedRecords int  `json:"returned_records"`
-	HasMore         bool `json:"has_more"`
-	IsTruncated     bool `json:"is_truncated"`
-	MaxRecords      int  `json:"max_records"`
-}
+type ListingKitRevisionHistoryMeta = previewdomain.RevisionHistoryMeta
 
 type RevisionRestoreResult struct {
 	Applied        bool                    `json:"applied"`
