@@ -7,17 +7,7 @@ func initializePreviewHeader(overview *listingKitOverviewData) *ListingKitPrevie
 		return nil
 	}
 
-	headerInput := previewdomain.HeaderInput{
-		Country:       overview.Country,
-		Language:      overview.Language,
-		StatusMessage: "预览结果已生成",
-		SourceType:    overview.SourceType,
-		ImageCount:    overview.ImageCount,
-		VariantCount:  overview.VariantCount,
-		Warnings:      overview.Warnings,
-		ReviewReasons: overview.ReviewReasons,
-	}
-	baseHeader := previewdomain.BuildHeader(headerInput)
+	baseHeader := previewdomain.BuildHeader(*buildPreviewDomainHeaderInput(overview))
 	return &ListingKitPreviewHeader{
 		Country:       baseHeader.Country,
 		Language:      baseHeader.Language,
