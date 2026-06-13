@@ -45,11 +45,12 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 	if selectedPlatform == "" || selectedPlatform == "amazon" {
 		if task.Result.Amazon != nil {
+			visualBase := buildPlatformVisualExportBase("amazon", task.Result.Amazon.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews)
 			export.Amazon = &AmazonExportPayload{
 				Draft:          task.Result.Amazon.Draft,
-				ImageBundle:    task.Result.Amazon.ImageBundle,
-				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "amazon"),
-				ScenePresets:   buildPlatformScenePresetSummaries(task.Result.Amazon.ImageBundle, task.Result.AssetBundle),
+				ImageBundle:    visualBase.imageBundle,
+				RenderPreviews: visualBase.renderPreviews,
+				ScenePresets:   visualBase.scenePresets,
 			}
 		} else if selectedPlatform == "amazon" {
 			return nil, ErrPreviewPlatformUnavailable
@@ -59,11 +60,12 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 	if selectedPlatform == "" || selectedPlatform == "shein" {
 		if task.Result.Shein != nil {
 			sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+			visualBase := buildPlatformVisualExportBase("shein", task.Result.Shein.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews)
 			export.Shein = &SheinExportPayload{
 				Inspection:     task.Result.Shein.Inspection,
-				ImageBundle:    task.Result.Shein.ImageBundle,
-				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "shein"),
-				ScenePresets:   buildPlatformScenePresetSummaries(task.Result.Shein.ImageBundle, task.Result.AssetBundle),
+				ImageBundle:    visualBase.imageBundle,
+				RenderPreviews: visualBase.renderPreviews,
+				ScenePresets:   visualBase.scenePresets,
 				DraftPayload:   task.Result.Shein.DraftPayload,
 				PreviewPayload: task.Result.Shein.PreviewPayload,
 				ReviewNotes:    append([]string(nil), task.Result.Shein.ReviewNotes...),
@@ -76,10 +78,11 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 	if selectedPlatform == "" || selectedPlatform == "temu" {
 		if task.Result.Temu != nil {
+			visualBase := buildPlatformVisualExportBase("temu", task.Result.Temu.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews)
 			export.Temu = &TemuExportPayload{
-				ImageBundle:    task.Result.Temu.ImageBundle,
-				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "temu"),
-				ScenePresets:   buildPlatformScenePresetSummaries(task.Result.Temu.ImageBundle, task.Result.AssetBundle),
+				ImageBundle:    visualBase.imageBundle,
+				RenderPreviews: visualBase.renderPreviews,
+				ScenePresets:   visualBase.scenePresets,
 				Package:        task.Result.Temu,
 			}
 		} else if selectedPlatform == "temu" {
@@ -89,10 +92,11 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 	if selectedPlatform == "" || selectedPlatform == "walmart" {
 		if task.Result.Walmart != nil {
+			visualBase := buildPlatformVisualExportBase("walmart", task.Result.Walmart.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews)
 			export.Walmart = &WalmartExportPayload{
-				ImageBundle:    task.Result.Walmart.ImageBundle,
-				RenderPreviews: platformAssetRenderPreviewsByPlatform(export.PlatformAssetRenderPreviews, "walmart"),
-				ScenePresets:   buildPlatformScenePresetSummaries(task.Result.Walmart.ImageBundle, task.Result.AssetBundle),
+				ImageBundle:    visualBase.imageBundle,
+				RenderPreviews: visualBase.renderPreviews,
+				ScenePresets:   visualBase.scenePresets,
 				Package:        task.Result.Walmart,
 			}
 		} else if selectedPlatform == "walmart" {
