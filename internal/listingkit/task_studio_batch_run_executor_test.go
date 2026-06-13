@@ -178,11 +178,8 @@ func TestStudioBatchRunExecutorTreatsGenerationErrorClearFailureAsSuccessAfterDe
 			},
 		},
 	}
-	svc := &service{
-		studioSessionRepo: sessionRepo,
-		studioBatchRepo:   repo,
-	}
-	svc.taskStudioBatch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
+	svc := &service{mirrors: serviceDependencyMirrors{studioSessionRepo: sessionRepo, studioBatchRepo: repo}}
+	svc.studio.batch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
 		repo:              repo,
 		studioSessionRepo: sessionRepo,
 		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
@@ -239,11 +236,8 @@ func TestExecuteStudioBatchRunItemResumesExistingGraphWithoutWipingMaterializedD
 			},
 		},
 	}
-	svc := &service{
-		studioSessionRepo: sessionRepo,
-		studioBatchRepo:   repo,
-	}
-	svc.taskStudioBatch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
+	svc := &service{mirrors: serviceDependencyMirrors{studioSessionRepo: sessionRepo, studioBatchRepo: repo}}
+	svc.studio.batch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
 		repo:              repo,
 		studioSessionRepo: sessionRepo,
 		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{

@@ -15,9 +15,11 @@ func TestGenerationActionDeltaTokenMatchesSubsequentReviewReads(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetrepo.NewMemRepository(),
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			assetRepo:  assetrepo.NewMemRepository(),
+			reviewRepo: reviewstore.NewMemRepository(),
+		},
 	}
 
 	task := newConditionalContractTestTask("task-generation-conditional-contract-1")
@@ -112,9 +114,11 @@ func TestDispatchTaskGenerationNavigationReusesActionDeltaTokenForConditionalRea
 
 	repo := &stubGenerationRepo{}
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetrepo.NewMemRepository(),
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			assetRepo:  assetrepo.NewMemRepository(),
+			reviewRepo: reviewstore.NewMemRepository(),
+		},
 	}
 
 	task := newConditionalContractTestTask("task-generation-conditional-contract-2")
@@ -204,9 +208,11 @@ func TestGenerationQueueExposesUnifiedConditionalMetadata(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetrepo.NewMemRepository(),
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			assetRepo:  assetrepo.NewMemRepository(),
+			reviewRepo: reviewstore.NewMemRepository(),
+		},
 	}
 
 	task := newConditionalContractTestTask("task-generation-conditional-contract-3")

@@ -12,18 +12,18 @@ func TestSettingsAdminServiceGetSheinSettingsAttachesAvailableStores(t *testing.
 	t.Parallel()
 
 	svc := &service{
-		sheinStoreCatalog: &stubSheinStoreCatalog{
-			options: []SheinStoreOption{
-				{ID: 870, Name: "primary"},
-				{ID: 871, Name: "backup"},
-			},
-		},
+
 		sheinSettings: SheinSettings{
 			DefaultStoreID:    870,
 			Site:              "US",
 			WarehouseCode:     "WH-US-1",
 			DefaultSubmitMode: "publish",
-		},
+		}, mirrors: serviceDependencyMirrors{sheinStoreCatalog: &stubSheinStoreCatalog{
+			options: []SheinStoreOption{
+				{ID: 870, Name: "primary"},
+				{ID: 871, Name: "backup"},
+			},
+		}},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "227", UserID: "user-settings"})
 

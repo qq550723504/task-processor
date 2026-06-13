@@ -106,13 +106,11 @@ func (s *service) initializeStudioBatchRunSupportCollaborators() {
 	if s == nil {
 		return
 	}
-	s.studio.runExecutor = s.studioBatchRunExecutorOrDefault()
-	if s.studio.runExecutor == nil {
-		s.studio.runExecutor = s.buildStudioBatchRunExecutor()
+	if s.studioBatchRunExecutorOrDefault() == nil {
+		s.buildStudioBatchRunExecutor()
 	}
-	s.studio.runCoordinator = s.studioBatchRunCoordinatorOrDefault()
-	if s.studio.runCoordinator == nil {
-		s.studio.runCoordinator = s.buildStudioBatchRunCoordinator()
+	if s.studioBatchRunCoordinatorOrDefault() == nil {
+		s.buildStudioBatchRunCoordinator()
 	}
 }
 
@@ -120,38 +118,30 @@ func (s *service) buildStudioBatchRunCoordinator() *studioBatchRunCoordinator {
 	if s == nil {
 		return nil
 	}
-	if coordinator := s.studioBatchRunCoordinatorOrDefault(); coordinator != nil {
-		return coordinator
-	}
-	executor := s.buildStudioBatchRunExecutor()
-	if executor == nil {
-		return nil
-	}
-	config := buildStudioBatchRunCoordinatorConfig(s)
-	config.executor = executor
-	coordinator := newStudioBatchRunCoordinator(config)
-	s.studio.runCoordinator = coordinator
-	s.studioBatchRunCoordinator = coordinator
-	return coordinator
+	return syncGroupedCollaborator(&s.studio.runCoordinator, &s.collabMirrors.studioBatchRunCoordinator, func() *studioBatchRunCoordinator {
+		executor := s.buildStudioBatchRunExecutor()
+		if executor == nil {
+			return nil
+		}
+		config := buildStudioBatchRunCoordinatorConfig(s)
+		config.executor = executor
+		return newStudioBatchRunCoordinator(config)
+	})
 }
 
 func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {
 	if s == nil {
 		return nil
 	}
-	if executor := s.studioBatchRunExecutorOrDefault(); executor != nil {
-		return executor
-	}
-	if resolveStudioBatchRunRepo(s) == nil || resolveStudioSessionRepo(s) == nil {
-		return nil
-	}
-	if resolveStudioImageGenerator(s) == nil || resolveStudioUploadStore(s) == nil {
-		return nil
-	}
-	executor := newTaskStudioBatchRunExecutor(buildTaskStudioBatchRunExecutorConfig(s))
-	s.studio.runExecutor = executor
-	s.studioBatchRunExecutor = executor
-	return executor
+	return syncGroupedCollaborator(&s.studio.runExecutor, &s.collabMirrors.studioBatchRunExecutor, func() *taskStudioBatchRunExecutor {
+		if resolveStudioBatchRunRepo(s) == nil || resolveStudioSessionRepo(s) == nil {
+			return nil
+		}
+		if resolveStudioImageGenerator(s) == nil || resolveStudioUploadStore(s) == nil {
+			return nil
+		}
+		return newTaskStudioBatchRunExecutor(buildTaskStudioBatchRunExecutorConfig(s))
+	})
 }
 
 func studioBatchRunLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {

@@ -42,7 +42,7 @@ func TestResolveSheinSubmitSettingsUsesStoreProfileFields(t *testing.T) {
 	t.Parallel()
 
 	svc := &service{
-		storeProfileRepo:    newInMemoryStoreProfileRepository(),
+		mirrors: serviceDependencyMirrors{storeProfileRepo: newInMemoryStoreProfileRepository()},
 		sheinSettings: SheinSettings{
 			DefaultStoreID:    700,
 			Site:              "US",
@@ -91,7 +91,7 @@ func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *tes
 	t.Parallel()
 
 	svc := &service{
-		storeProfileRepo:    newInMemoryStoreProfileRepository(),
+		mirrors: serviceDependencyMirrors{storeProfileRepo: newInMemoryStoreProfileRepository()},
 		sheinSettings: SheinSettings{
 			DefaultStoreID:    700,
 			Site:              "US",

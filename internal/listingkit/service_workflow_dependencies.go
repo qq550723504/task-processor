@@ -22,82 +22,47 @@ func resolveWorkflowProductService(s *service) ProductService {
 	if s == nil {
 		return nil
 	}
-	if s.workflowDeps.productService != nil {
-		s.productSvc = s.workflowDeps.productService
-		return s.workflowDeps.productService
-	}
-	s.workflowDeps.productService = s.productSvc
-	return s.productSvc
+	return syncGroupedDependency(&s.workflowDeps.productService, &s.mirrors.productSvc)
 }
 
 func resolveWorkflowImageService(s *service) ImageService {
 	if s == nil {
 		return nil
 	}
-	if s.workflowDeps.imageService != nil {
-		s.imageSvc = s.workflowDeps.imageService
-		return s.workflowDeps.imageService
-	}
-	s.workflowDeps.imageService = s.imageSvc
-	return s.imageSvc
+	return syncGroupedDependency(&s.workflowDeps.imageService, &s.mirrors.imageSvc)
 }
 
 func resolveWorkflowAssetRepository(s *service) assetrepo.Repository {
 	if s == nil {
 		return nil
 	}
-	if s.workflowDeps.assetRepository != nil {
-		s.assetRepo = s.workflowDeps.assetRepository
-		return s.workflowDeps.assetRepository
-	}
-	s.workflowDeps.assetRepository = s.assetRepo
-	return s.assetRepo
+	return syncGroupedDependency(&s.workflowDeps.assetRepository, &s.mirrors.assetRepo)
 }
 
 func resolveWorkflowAssetRecipeResolver(s *service) assetrecipe.Resolver {
 	if s == nil {
 		return nil
 	}
-	if s.workflowDeps.assetRecipeResolver != nil {
-		s.assetRecipeResolver = s.workflowDeps.assetRecipeResolver
-		return s.workflowDeps.assetRecipeResolver
-	}
-	s.workflowDeps.assetRecipeResolver = s.assetRecipeResolver
-	return s.assetRecipeResolver
+	return syncGroupedDependency(&s.workflowDeps.assetRecipeResolver, &s.mirrors.assetRecipeResolver)
 }
 
 func resolveWorkflowAssetBundleBuilder(s *service) assetbundle.Builder {
 	if s == nil {
 		return nil
 	}
-	if s.workflowDeps.assetBundleBuilder != nil {
-		s.assetBundleBuilder = s.workflowDeps.assetBundleBuilder
-		return s.workflowDeps.assetBundleBuilder
-	}
-	s.workflowDeps.assetBundleBuilder = s.assetBundleBuilder
-	return s.assetBundleBuilder
+	return syncGroupedDependency(&s.workflowDeps.assetBundleBuilder, &s.mirrors.assetBundleBuilder)
 }
 
 func resolveWorkflowAssetGenerationService(s *service) assetgeneration.Service {
 	if s == nil {
 		return nil
 	}
-	if s.workflowDeps.assetGenerationService != nil {
-		s.assetGenerator = s.workflowDeps.assetGenerationService
-		return s.workflowDeps.assetGenerationService
-	}
-	s.workflowDeps.assetGenerationService = s.assetGenerator
-	return s.assetGenerator
+	return syncGroupedDependency(&s.workflowDeps.assetGenerationService, &s.mirrors.assetGenerator)
 }
 
 func resolveWorkflowSheinContentOptimizer(s *service) openaiclient.ChatCompleter {
 	if s == nil {
 		return nil
 	}
-	if s.workflowDeps.sheinContentOptimizer != nil {
-		s.sheinContentOptimizer = s.workflowDeps.sheinContentOptimizer
-		return s.workflowDeps.sheinContentOptimizer
-	}
-	s.workflowDeps.sheinContentOptimizer = s.sheinContentOptimizer
-	return s.sheinContentOptimizer
+	return syncGroupedDependency(&s.workflowDeps.sheinContentOptimizer, &s.mirrors.sheinContentOptimizer)
 }

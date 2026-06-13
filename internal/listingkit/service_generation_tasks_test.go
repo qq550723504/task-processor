@@ -19,11 +19,7 @@ func TestGetTaskPreviewIncludesGenerationTasks(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator:      assetgeneration.NewService(assetgeneration.Config{}),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
 	}
 
 	task := &Task{
@@ -74,8 +70,7 @@ func TestGetTaskGenerationTasksAppliesQueryFiltersAndRebuildsSummary(t *testing.
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:      repo,
-		assetRepo: assetRepository,
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
 	}
 
 	task := &Task{
@@ -122,8 +117,7 @@ func TestGetTaskGenerationTasksAppliesPaginationAndSorting(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:      repo,
-		assetRepo: assetRepository,
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
 	}
 
 	task := &Task{

@@ -484,9 +484,11 @@ func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *tes
 	repo := &stubGenerationRepo{}
 	client := &stubStandardProductWorkflowClient{}
 	svc := &service{
-		repo:                           repo,
-		standardProductWorkflowClient:  client,
-		standardProductWorkflowEnabled: true,
+		repo: repo,
+		runtime: serviceRuntimeState{
+			standardProductWorkflowClient:  client,
+			standardProductWorkflowEnabled: true,
+		},
 	}
 
 	task := &Task{
@@ -539,9 +541,11 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflow(t *testi
 	repo := &stubGenerationRepo{}
 	client := &stubPlatformAdaptWorkflowClient{}
 	svc := &service{
-		repo:                         repo,
-		platformAdaptWorkflowClient:  client,
-		platformAdaptWorkflowEnabled: true,
+		repo: repo,
+		runtime: serviceRuntimeState{
+			platformAdaptWorkflowClient:  client,
+			platformAdaptWorkflowEnabled: true,
+		},
 	}
 
 	task := &Task{
@@ -597,9 +601,11 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflowUsesParse
 	repo := &stubGenerationRepo{}
 	client := &stubPlatformAdaptWorkflowClient{}
 	svc := &service{
-		repo:                         repo,
-		platformAdaptWorkflowClient:  client,
-		platformAdaptWorkflowEnabled: true,
+		repo: repo,
+		runtime: serviceRuntimeState{
+			platformAdaptWorkflowClient:  client,
+			platformAdaptWorkflowEnabled: true,
+		},
 	}
 
 	task := &Task{
@@ -1099,11 +1105,7 @@ func TestExecuteTaskGenerationActionRunsRetryableTarget(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator:      assetgeneration.NewService(assetgeneration.Config{}),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
 	}
 
 	task := &Task{
@@ -1197,9 +1199,7 @@ func TestExecuteTaskGenerationActionRunsQueueOnlyTarget(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetRepository,
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
 	}
 
 	task := &Task{
@@ -1319,9 +1319,7 @@ func TestExecuteTaskGenerationActionSupportsPatchOnlyResponseMode(t *testing.T) 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetRepository,
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
 	}
 
 	task := &Task{
@@ -1396,9 +1394,7 @@ func TestGetTaskGenerationReviewSessionReturnsNotModifiedWhenDeltaMatches(t *tes
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetRepository,
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
 	}
 
 	task := &Task{
@@ -1464,9 +1460,7 @@ func TestGetTaskGenerationReviewPreviewReturnsNotModifiedWhenDeltaMatches(t *tes
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetRepository,
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
 	}
 
 	task := &Task{
@@ -1532,9 +1526,7 @@ func TestGetTaskGenerationReviewSessionSupportsPatchOnlyNavigationRead(t *testin
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetRepository,
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
 	}
 
 	task := &Task{
@@ -1614,11 +1606,7 @@ func TestExecuteTaskGenerationActionBuildsRetryReviewSessionFromExecutedQueue(t 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator:      assetgeneration.NewService(assetgeneration.Config{}),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
 	}
 
 	task := &Task{
@@ -1795,9 +1783,7 @@ func TestExecuteTaskGenerationActionAppliesSectionReviewOutcome(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetRepository,
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
 	}
 
 	task := &Task{

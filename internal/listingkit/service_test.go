@@ -381,13 +381,15 @@ func TestCreateGenerateTaskRunsInlineWithoutSubmitter(t *testing.T) {
 	}
 	repo := NewInMemoryRepositoryForTest()
 	svc := &service{
-		repo:                repo,
-		productSvc:          productSvc,
-		imageSvc:            imageSvc,
-		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		assetRecipeResolver: newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
-		assetGenerator:      newDefaultAssetGenerationService(),
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			productSvc:          productSvc,
+			imageSvc:            imageSvc,
+			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+			assetRecipeResolver: newDefaultAssetRecipeResolver(),
+			assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+			assetGenerator:      newDefaultAssetGenerationService(),
+		},
 	}
 
 	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
@@ -410,9 +412,13 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 
 	repo := NewInMemoryRepositoryForTest()
 	svc := &service{
-		repo:                repo,
-		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		taskSubmitter:       noopTaskSubmitter{},
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			storeProfileRepo: newInMemoryStoreProfileRepository(),
+		},
+		runtime: serviceRuntimeState{
+			taskSubmitter: noopTaskSubmitter{},
+		},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "606", UserID: "user-f"})
 
@@ -476,9 +482,13 @@ func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRu
 
 	repo := NewInMemoryRepositoryForTest()
 	svc := &service{
-		repo:                repo,
-		storeProfileRepo:    newInMemoryStoreProfileRepository(),
-		taskSubmitter:       noopTaskSubmitter{},
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			storeProfileRepo: newInMemoryStoreProfileRepository(),
+		},
+		runtime: serviceRuntimeState{
+			taskSubmitter: noopTaskSubmitter{},
+		},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "445", UserID: "user-routing"})
 
@@ -514,10 +524,12 @@ func TestCreateGenerateTaskStartsStandardProductTemporalWhenEnabled(t *testing.T
 	repo := NewInMemoryRepositoryForTest()
 	standardClient := &stubStandardProductWorkflowClient{}
 	svc := &service{
-		repo:                           repo,
-		taskSubmitter:                  noopTaskSubmitter{},
-		standardProductWorkflowClient:  standardClient,
-		standardProductWorkflowEnabled: true,
+		repo: repo,
+		runtime: serviceRuntimeState{
+			taskSubmitter:                  noopTaskSubmitter{},
+			standardProductWorkflowClient:  standardClient,
+			standardProductWorkflowEnabled: true,
+		},
 	}
 
 	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
@@ -547,8 +559,10 @@ func TestCreateGenerateTaskRetriesQueueFullAsynchronously(t *testing.T) {
 		calls:   make(chan int, 2),
 	}
 	svc := &service{
-		repo:          repo,
-		taskSubmitter: submitter,
+		repo: repo,
+		runtime: serviceRuntimeState{
+			taskSubmitter: submitter,
+		},
 	}
 
 	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
@@ -595,8 +609,10 @@ func TestCreateGenerateTaskKeepsTaskPendingWhileQueueRemainsFull(t *testing.T) {
 		calls:   make(chan int, 8),
 	}
 	svc := &service{
-		repo:          repo,
-		taskSubmitter: submitter,
+		repo: repo,
+		runtime: serviceRuntimeState{
+			taskSubmitter: submitter,
+		},
 	}
 
 	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{

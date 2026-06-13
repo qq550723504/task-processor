@@ -23,7 +23,7 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 			},
 		},
 	}
-	svc := &service{aiCredentialStore: store}
+	svc := &service{mirrors: serviceDependencyMirrors{aiCredentialStore: store}}
 	ctx := openaiclient.WithTenantID(context.Background(), "tenant-a")
 
 	_, err := svc.UpdateAIClientSettings(ctx, &AIClientSettings{
@@ -108,7 +108,7 @@ func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 			},
 		},
 	}
-	svc := &service{aiCredentialStore: store}
+	svc := &service{mirrors: serviceDependencyMirrors{aiCredentialStore: store}}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{
 		TenantID: "tenant-a",
 		UserID:   "user-a",
@@ -150,7 +150,7 @@ func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 
 func TestUpdateAIClientSettingsIgnoresRequestedTimeout(t *testing.T) {
 	store := &fakeAIClientCredentialStore{}
-	svc := &service{aiCredentialStore: store}
+	svc := &service{mirrors: serviceDependencyMirrors{aiCredentialStore: store}}
 	ctx := openaiclient.WithTenantID(context.Background(), "tenant-a")
 
 	_, err := svc.UpdateAIClientSettings(ctx, &AIClientSettings{
@@ -188,7 +188,7 @@ func TestGetAIClientSettingsDoesNotExposeStoredTimeout(t *testing.T) {
 			},
 		},
 	}
-	svc := &service{aiCredentialStore: store}
+	svc := &service{mirrors: serviceDependencyMirrors{aiCredentialStore: store}}
 	ctx := openaiclient.WithTenantID(context.Background(), "tenant-a")
 
 	settings, err := svc.GetAIClientSettings(ctx, "tenant", "image_gpt_image_2")

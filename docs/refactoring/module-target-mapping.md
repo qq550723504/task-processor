@@ -88,6 +88,12 @@ Rules:
 - `product/sourcing` owns normalization and handoff
 - marketplace publishing packages do not own crawler extraction logic
 
+Immediate write-path rule:
+
+- if the work is about fetching, browser control, anti-bot adaptation, or raw page extraction, prefer `internal/integration/crawler/{amazon,a1688}`
+- if the work is about converting raw source output into reusable product facts, assets, or enrichment-ready models, prefer `internal/product/sourcing`
+- if the work is about using sourced facts inside listing generation or publishing, prefer the owning `listing` or `marketplace` package rather than pushing that logic back into crawler adapters
+
 ## 4. Explicit `listingkit` Guidance
 
 The current `internal/listingkit` area should be split conceptually into:
@@ -97,7 +103,28 @@ The current `internal/listingkit` area should be split conceptually into:
 
 Do not keep adding new business ownership to legacy mixed files just because the old path is already imported.
 
-## 5. Migration Usage Notes
+Immediate write-path rule:
+
+- use `internal/listingkit` only for bounded compatibility, orchestration, or extraction-prep work that does not yet have a fully extracted owner
+- if the real owner already exists under `internal/listing`, `internal/marketplace`, `internal/product`, `internal/integration`, or `internal/compatibility/listingkit`, new code should land there first
+- treat broad root files under `internal/listingkit` as shrink targets, not as preferred extension points
+
+## 5. Immediate Landing Zones
+
+Use this table when the target architecture exists but the legacy package is still present.
+
+| New work type | Preferred landing zone now | Avoid defaulting to |
+| --- | --- | --- |
+| Amazon source crawler adapter work | `internal/integration/crawler/amazon` | `internal/crawler/amazon`, mixed `internal/amazon` packages |
+| 1688 source crawler adapter work | `internal/integration/crawler/a1688` | `internal/crawler/alibaba1688` |
+| Source normalization and handoff | `internal/product/sourcing` | `internal/crawler/*`, `internal/listingkit` |
+| Listing compatibility bridge | `internal/compatibility/listingkit` | new root-level `internal/listingkit` mixed files |
+| Marketplace publishing rules | `internal/marketplace/<platform>/publishing` | `internal/listingkit`, generic `internal/publishing` if rule is platform-specific |
+| Marketplace workspace/editor rules | `internal/marketplace/<platform>/workspace` | `internal/listingkit`, generic `internal/workspace` if rule is platform-specific |
+| Runtime assembly and route/worker wiring | `internal/app/httpapi`, `internal/app/runtime`, `internal/app/worker` | business packages with embedded bootstrap logic |
+| External API adapter work | `internal/integration/<system>` | `internal/listingkit`, `internal/product`, or generic infra packages |
+
+## 6. Migration Usage Notes
 
 Use this mapping as follows:
 

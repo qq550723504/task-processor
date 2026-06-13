@@ -21,10 +21,10 @@ func (p *platformAssetDispatchPersistPhase) run(
 	persistedGenerationTasks []assetgeneration.Task,
 ) []assetgeneration.Task {
 	decorateListingKitResultGeneration(final, persistedGenerationTasks)
-	if p == nil || p.service == nil || p.service.assetRepo == nil || len(persistedGenerationTasks) == 0 {
+	if p == nil || p.service == nil || p.service.mirrors.assetRepo == nil || len(persistedGenerationTasks) == 0 {
 		return persistedGenerationTasks
 	}
-	if err := p.service.assetRepo.SaveGenerationTasks(ctx, task.ID, persistedGenerationTasks); err != nil {
+	if err := p.service.mirrors.assetRepo.SaveGenerationTasks(ctx, task.ID, persistedGenerationTasks); err != nil {
 		appendWarning(final, "asset generation task persistence failed: "+err.Error())
 		newWorkflowRecorder(final).AddIssue(
 			WorkflowIssueSeverityWarning,

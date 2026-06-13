@@ -62,6 +62,15 @@ Acceptance criteria:
 - new work has an approved landing zone
 - the project stops drifting further into legacy generic packages
 
+Current read:
+
+- `internal/marketplace/{shein,amazon,temu,walmart}` already exists and is the approved landing zone for new marketplace-specific rules
+- `internal/integration/crawler/{amazon,a1688}` already exists and is the approved landing zone for new crawler-adapter work
+- `internal/product/sourcing` already exists and is the approved landing zone for normalized source-to-product handoff logic
+- `internal/compatibility/listingkit` already exists and is the approved landing zone for explicit ListingKit compatibility shims
+
+This means Stage 1 is no longer about inventing the directory vocabulary. It is now about enforcing that new code prefers these target homes instead of re-expanding legacy roots.
+
 ### Stage 2: Reduce `internal/listingkit` into domain-ready file groups
 
 Goal:
@@ -176,6 +185,13 @@ Acceptance criteria:
 - product facts are no longer hidden behind listing-only flows
 - new source integrations do not distort marketplace or listing package ownership
 
+Near-term sourcing split rule:
+
+1. `internal/crawler/amazon` and `internal/crawler/alibaba1688` should shrink toward source-specific extraction and browser/runtime adapter concerns only.
+2. `internal/integration/crawler/amazon` and `internal/integration/crawler/a1688` should become the steady-state home for new crawler-adapter code.
+3. `internal/product/sourcing` should become the steady-state home for normalization, enrichment handoff, and source-result contracts.
+4. Marketplace publishing packages must not absorb crawler extraction ownership just because a source is commonly used by one marketplace flow.
+
 ### Stage 6: Clean up runtime assembly and external adapters
 
 Goal:
@@ -218,9 +234,20 @@ The next project-level work queue should be:
 
 1. keep the architecture and roadmap docs current
 2. continue shrinking `internal/listingkit` preview, submission, revision, and studio hotspots
-3. document and then normalize SHEIN ownership
-4. define `product/sourcing` inputs and outputs
-5. inventory Amazon and 1688 crawler outputs and consumers
+3. keep `internal/listingkit/httpapi` moving toward pure assembly and runtime-adapter composition
+4. document and then normalize SHEIN ownership
+5. define `product/sourcing` inputs and outputs
+6. inventory Amazon and 1688 crawler outputs and consumers
+
+Recommended landing-zone rules for new work right now:
+
+- new Amazon source crawling code goes to `internal/integration/crawler/amazon`
+- new 1688 source crawling code goes to `internal/integration/crawler/a1688`
+- new source normalization or product handoff code goes to `internal/product/sourcing`
+- new marketplace-specific publishing or workspace behavior goes to `internal/marketplace/<platform>/*`
+- new listing-task orchestration goes to `internal/listing/*` when available, otherwise stays in narrowly grouped `internal/listingkit` files pending extraction
+- new compatibility-only bridges go to `internal/compatibility/listingkit`
+- legacy roots such as `internal/crawler`, `internal/amazon`, `internal/amazonlisting`, and broad mixed `internal/listingkit` files should be treated as shrink-only unless a behavior-preserving bridge absolutely requires touching them
 
 ## 5. What Not To Do
 

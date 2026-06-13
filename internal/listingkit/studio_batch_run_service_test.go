@@ -127,7 +127,9 @@ func TestStudioBatchRunServiceGetAndListProxyToRepository(t *testing.T) {
 	run, wantItems := mustCreateStudioBatchRunForTest(t, repo, ctx, "run-1", []string{"batch-1", "batch-2"})
 
 	svc := &service{
-		taskStudioBatchRun: &taskStudioBatchRunService{repo: repo},
+		collabMirrors: serviceCollaboratorMirrors{
+			taskStudioBatchRun: &taskStudioBatchRunService{repo: repo},
+		},
 	}
 
 	gotRun, err := svc.GetStudioBatchRun(ctx, "run-1")
@@ -158,7 +160,9 @@ func TestStudioBatchRunServiceCancelMarksRunAsCancelRequested(t *testing.T) {
 	run, _ := mustCreateStudioBatchRunForTest(t, repo, ctx, "run-1", []string{"batch-1"})
 
 	svc := &service{
-		taskStudioBatchRun: &taskStudioBatchRunService{repo: repo},
+		collabMirrors: serviceCollaboratorMirrors{
+			taskStudioBatchRun: &taskStudioBatchRunService{repo: repo},
+		},
 	}
 
 	if err := svc.CancelStudioBatchRun(ctx, run.ID); err != nil {

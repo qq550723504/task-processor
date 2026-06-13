@@ -48,7 +48,7 @@ func TestWorkflowPlatformAssetDispatchPhaseFileDelegatesToOrchestrationHelpers(t
 		}
 	}
 
-	if strings.Contains(content, "_ = p.service.assetRepo.SaveInventory(ctx, inventory)") {
+	if strings.Contains(content, "_ = p.service.mirrors.assetRepo.SaveInventory(ctx, inventory)") {
 		t.Fatal("workflow_platform_asset_dispatch_phase.go should hand off inventory durability instead of calling SaveInventory inline")
 	}
 }

@@ -18,71 +18,101 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if !ok {
 		t.Fatalf("service type = %T, want *service", svc)
 	}
-	if impl.taskLifecycle == nil {
-		t.Fatal("expected taskLifecycle to be initialized")
+	if impl.collabMirrors.taskLifecycle == nil {
+		t.Fatal("expected legacy taskLifecycle mirror to be initialized")
 	}
 	if impl.task.lifecycle == nil {
 		t.Fatal("expected task group lifecycle to be initialized")
 	}
-	if impl.taskGeneration == nil {
-		t.Fatal("expected taskGeneration to be initialized")
+	if impl.collabMirrors.taskLifecycle != impl.task.lifecycle {
+		t.Fatal("expected taskLifecycle mirror to match task group lifecycle")
+	}
+	if impl.collabMirrors.taskGeneration == nil {
+		t.Fatal("expected legacy taskGeneration mirror to be initialized")
 	}
 	if impl.task.generation == nil {
 		t.Fatal("expected task group generation to be initialized")
 	}
-	if impl.taskRevision == nil {
-		t.Fatal("expected taskRevision to be initialized")
+	if impl.collabMirrors.taskGeneration != impl.task.generation {
+		t.Fatal("expected taskGeneration mirror to match task group generation")
+	}
+	if impl.collabMirrors.taskRevision == nil {
+		t.Fatal("expected legacy taskRevision mirror to be initialized")
 	}
 	if impl.task.revision == nil {
 		t.Fatal("expected task group revision to be initialized")
 	}
-	if impl.taskPreview == nil {
-		t.Fatal("expected taskPreview to be initialized")
+	if impl.collabMirrors.taskRevision != impl.task.revision {
+		t.Fatal("expected taskRevision mirror to match task group revision")
+	}
+	if impl.collabMirrors.taskPreview == nil {
+		t.Fatal("expected legacy taskPreview mirror to be initialized")
 	}
 	if impl.task.preview == nil {
 		t.Fatal("expected task group preview to be initialized")
 	}
-	if impl.sdsBaseline == nil {
-		t.Fatal("expected sdsBaseline to be initialized")
+	if impl.collabMirrors.taskPreview != impl.task.preview {
+		t.Fatal("expected taskPreview mirror to match task group preview")
+	}
+	if impl.collabMirrors.sdsBaseline == nil {
+		t.Fatal("expected legacy sdsBaseline mirror to be initialized")
 	}
 	if impl.task.sdsBaseline == nil {
 		t.Fatal("expected task group sdsBaseline to be initialized")
 	}
-	if impl.taskStudioSession == nil {
-		t.Fatal("expected taskStudioSession to be initialized")
+	if impl.collabMirrors.sdsBaseline != impl.task.sdsBaseline {
+		t.Fatal("expected sdsBaseline mirror to match task group sdsBaseline")
+	}
+	if impl.collabMirrors.taskStudioSession == nil {
+		t.Fatal("expected legacy taskStudioSession mirror to be initialized")
 	}
 	if impl.studio.session == nil {
 		t.Fatal("expected studio group session to be initialized")
 	}
-	if impl.studioBatchGeneration == nil {
-		t.Fatal("expected studioBatchGeneration to be initialized")
+	if impl.collabMirrors.taskStudioSession != impl.studio.session {
+		t.Fatal("expected taskStudioSession mirror to match studio group session")
+	}
+	if impl.collabMirrors.studioBatchGeneration == nil {
+		t.Fatal("expected legacy studioBatchGeneration mirror to be initialized")
 	}
 	if impl.studio.batchGeneration == nil {
 		t.Fatal("expected studio group batchGeneration to be initialized")
 	}
-	if impl.taskStudioMedia == nil {
-		t.Fatal("expected taskStudioMedia to be initialized")
+	if impl.collabMirrors.studioBatchGeneration != impl.studio.batchGeneration {
+		t.Fatal("expected studioBatchGeneration mirror to match studio group batchGeneration")
+	}
+	if impl.collabMirrors.taskStudioMedia == nil {
+		t.Fatal("expected legacy taskStudioMedia mirror to be initialized")
 	}
 	if impl.studio.media == nil {
 		t.Fatal("expected studio group media to be initialized")
 	}
-	if impl.studioBatchRunExecutor != nil && impl.studio.runExecutor == nil {
-		t.Fatal("expected studio group runExecutor to mirror initialized root executor")
+	if impl.collabMirrors.taskStudioMedia != impl.studio.media {
+		t.Fatal("expected taskStudioMedia mirror to match studio group media")
 	}
-	if impl.studioBatchRunCoordinator != nil && impl.studio.runCoordinator == nil {
-		t.Fatal("expected studio group runCoordinator to mirror initialized root coordinator")
+	if impl.studio.runExecutor != nil && impl.collabMirrors.studioBatchRunExecutor != impl.studio.runExecutor {
+		t.Fatal("expected studioBatchRunExecutor mirror to match studio group runExecutor")
 	}
-	if impl.settingsAdmin == nil {
-		t.Fatal("expected settingsAdmin to be initialized")
+	if impl.studio.runCoordinator != nil && impl.collabMirrors.studioBatchRunCoordinator != impl.studio.runCoordinator {
+		t.Fatal("expected studioBatchRunCoordinator mirror to match studio group runCoordinator")
+	}
+	if impl.collabMirrors.settingsAdmin == nil {
+		t.Fatal("expected legacy settingsAdmin mirror to be initialized")
 	}
 	if impl.admin.settings == nil {
 		t.Fatal("expected admin group settings to be initialized")
 	}
-	if impl.sheinAdmin == nil {
-		t.Fatal("expected sheinAdmin to be initialized")
+	if impl.collabMirrors.settingsAdmin != impl.admin.settings {
+		t.Fatal("expected settingsAdmin mirror to match admin group settings")
+	}
+	if impl.collabMirrors.sheinAdmin == nil {
+		t.Fatal("expected legacy sheinAdmin mirror to be initialized")
 	}
 	if impl.admin.shein == nil {
 		t.Fatal("expected admin group shein to be initialized")
+	}
+	if impl.collabMirrors.sheinAdmin != impl.admin.shein {
+		t.Fatal("expected sheinAdmin mirror to match admin group shein")
 	}
 	if impl.submission.taskSubmission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
@@ -119,73 +149,103 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	svc := &service{repo: &stubSubmitRepo{}}
 
 	svc.initializeTaskCollaborators()
-	if svc.taskLifecycle == nil {
-		t.Fatal("expected taskLifecycle to be initialized")
+	if svc.collabMirrors.taskLifecycle == nil {
+		t.Fatal("expected legacy taskLifecycle mirror to be initialized")
 	}
 	if svc.task.lifecycle == nil {
 		t.Fatal("expected task group lifecycle to be initialized")
 	}
-	if svc.taskGeneration == nil {
-		t.Fatal("expected taskGeneration to be initialized")
+	if svc.collabMirrors.taskLifecycle != svc.task.lifecycle {
+		t.Fatal("expected taskLifecycle mirror to match task group lifecycle")
+	}
+	if svc.collabMirrors.taskGeneration == nil {
+		t.Fatal("expected legacy taskGeneration mirror to be initialized")
 	}
 	if svc.task.generation == nil {
 		t.Fatal("expected task group generation to be initialized")
 	}
-	if svc.taskRevision == nil {
-		t.Fatal("expected taskRevision to be initialized")
+	if svc.collabMirrors.taskGeneration != svc.task.generation {
+		t.Fatal("expected taskGeneration mirror to match task group generation")
+	}
+	if svc.collabMirrors.taskRevision == nil {
+		t.Fatal("expected legacy taskRevision mirror to be initialized")
 	}
 	if svc.task.revision == nil {
 		t.Fatal("expected task group revision to be initialized")
 	}
-	if svc.taskPreview == nil {
-		t.Fatal("expected taskPreview to be initialized")
+	if svc.collabMirrors.taskRevision != svc.task.revision {
+		t.Fatal("expected taskRevision mirror to match task group revision")
+	}
+	if svc.collabMirrors.taskPreview == nil {
+		t.Fatal("expected legacy taskPreview mirror to be initialized")
 	}
 	if svc.task.preview == nil {
 		t.Fatal("expected task group preview to be initialized")
 	}
-	if svc.sdsBaseline == nil {
-		t.Fatal("expected sdsBaseline to be initialized")
+	if svc.collabMirrors.taskPreview != svc.task.preview {
+		t.Fatal("expected taskPreview mirror to match task group preview")
+	}
+	if svc.collabMirrors.sdsBaseline == nil {
+		t.Fatal("expected legacy sdsBaseline mirror to be initialized")
 	}
 	if svc.task.sdsBaseline == nil {
 		t.Fatal("expected task group sdsBaseline to be initialized")
 	}
-	if svc.taskStudioSession == nil {
-		t.Fatal("expected taskStudioSession to be initialized")
+	if svc.collabMirrors.sdsBaseline != svc.task.sdsBaseline {
+		t.Fatal("expected sdsBaseline mirror to match task group sdsBaseline")
+	}
+	if svc.collabMirrors.taskStudioSession == nil {
+		t.Fatal("expected legacy taskStudioSession mirror to be initialized")
 	}
 	if svc.studio.session == nil {
 		t.Fatal("expected studio group session to be initialized")
 	}
-	if svc.studioBatchGeneration == nil {
-		t.Fatal("expected studioBatchGeneration to be initialized")
+	if svc.collabMirrors.taskStudioSession != svc.studio.session {
+		t.Fatal("expected taskStudioSession mirror to match studio group session")
+	}
+	if svc.collabMirrors.studioBatchGeneration == nil {
+		t.Fatal("expected legacy studioBatchGeneration mirror to be initialized")
 	}
 	if svc.studio.batchGeneration == nil {
 		t.Fatal("expected studio group batchGeneration to be initialized")
 	}
-	if svc.taskStudioMedia == nil {
-		t.Fatal("expected taskStudioMedia to be initialized")
+	if svc.collabMirrors.studioBatchGeneration != svc.studio.batchGeneration {
+		t.Fatal("expected studioBatchGeneration mirror to match studio group batchGeneration")
+	}
+	if svc.collabMirrors.taskStudioMedia == nil {
+		t.Fatal("expected legacy taskStudioMedia mirror to be initialized")
 	}
 	if svc.studio.media == nil {
 		t.Fatal("expected studio group media to be initialized")
 	}
-	if svc.studioBatchRunExecutor != nil && svc.studio.runExecutor == nil {
-		t.Fatal("expected studio group runExecutor to mirror initialized root executor")
+	if svc.collabMirrors.taskStudioMedia != svc.studio.media {
+		t.Fatal("expected taskStudioMedia mirror to match studio group media")
 	}
-	if svc.studioBatchRunCoordinator != nil && svc.studio.runCoordinator == nil {
-		t.Fatal("expected studio group runCoordinator to mirror initialized root coordinator")
+	if svc.studio.runExecutor != nil && svc.collabMirrors.studioBatchRunExecutor != svc.studio.runExecutor {
+		t.Fatal("expected studioBatchRunExecutor mirror to match studio group runExecutor")
+	}
+	if svc.studio.runCoordinator != nil && svc.collabMirrors.studioBatchRunCoordinator != svc.studio.runCoordinator {
+		t.Fatal("expected studioBatchRunCoordinator mirror to match studio group runCoordinator")
 	}
 
 	svc.initializeAdminCollaborators()
-	if svc.settingsAdmin == nil {
-		t.Fatal("expected settingsAdmin to be initialized")
+	if svc.collabMirrors.settingsAdmin == nil {
+		t.Fatal("expected legacy settingsAdmin mirror to be initialized")
 	}
 	if svc.admin.settings == nil {
 		t.Fatal("expected admin group settings to be initialized")
 	}
-	if svc.sheinAdmin == nil {
-		t.Fatal("expected sheinAdmin to be initialized")
+	if svc.collabMirrors.settingsAdmin != svc.admin.settings {
+		t.Fatal("expected settingsAdmin mirror to match admin group settings")
+	}
+	if svc.collabMirrors.sheinAdmin == nil {
+		t.Fatal("expected legacy sheinAdmin mirror to be initialized")
 	}
 	if svc.admin.shein == nil {
 		t.Fatal("expected admin group shein to be initialized")
+	}
+	if svc.collabMirrors.sheinAdmin != svc.admin.shein {
+		t.Fatal("expected sheinAdmin mirror to match admin group shein")
 	}
 
 	svc.initializeSubmitCollaborators()

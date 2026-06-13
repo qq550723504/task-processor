@@ -57,8 +57,10 @@ func TestGetTaskPreviewIncludesSheinStoreResolution(t *testing.T) {
 	}
 
 	svc := &service{
-		repo:                repo,
-		storeProfileRepo:    newInMemoryStoreProfileRepository(),
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			storeProfileRepo: newInMemoryStoreProfileRepository(),
+		},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "505", UserID: "user-e"})
 
@@ -154,25 +156,27 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 
 	svc := &service{
 		repo: repo,
-		sheinStoreCatalog: &stubSheinStoreCatalog{
-			storeInfo: &SheinStoreInfo{
-				ID:       870,
-				TenantID: 373211199677923496,
-				StoreID:  "870",
-				Platform: "shein",
-				LoginURL: "sso.geiwohuo.com",
+		mirrors: serviceDependencyMirrors{
+			sheinStoreCatalog: &stubSheinStoreCatalog{
+				storeInfo: &SheinStoreInfo{
+					ID:       870,
+					TenantID: 373211199677923496,
+					StoreID:  "870",
+					Platform: "shein",
+					LoginURL: "sso.geiwohuo.com",
+				},
 			},
+			sheinAPIClientFactory: stubSheinAPIClientFactory{
+				client: sheinclient.NewAPIClientWithStoreConfig(870, &sheinclient.StoreConfig{
+					ID:       870,
+					TenantID: 373211199677923496,
+					StoreID:  "870",
+					Platform: "shein",
+					LoginURL: "sso.geiwohuo.com",
+				}, previewTestCookieProvider{}),
+			},
+			storeProfileRepo: newInMemoryStoreProfileRepository(),
 		},
-		sheinAPIClientFactory: stubSheinAPIClientFactory{
-			client: sheinclient.NewAPIClientWithStoreConfig(870, &sheinclient.StoreConfig{
-				ID:       870,
-				TenantID: 373211199677923496,
-				StoreID:  "870",
-				Platform: "shein",
-				LoginURL: "sso.geiwohuo.com",
-			}, previewTestCookieProvider{}),
-		},
-		storeProfileRepo:    newInMemoryStoreProfileRepository(),
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{
 		TenantID: "373211199677923496",

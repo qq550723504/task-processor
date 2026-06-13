@@ -15,9 +15,11 @@ func TestReviewSessionResponseCarriesConditionalNavigationTargets(t *testing.T) 
 
 	repo := &stubGenerationRepo{}
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetrepo.NewMemRepository(),
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			assetRepo:  assetrepo.NewMemRepository(),
+			reviewRepo: reviewstore.NewMemRepository(),
+		},
 	}
 
 	task := newConditionalContractTestTask("task-generation-navigation-target-conditional-1")
@@ -131,9 +133,11 @@ func TestReviewPreviewResponseCarriesConditionalNavigationTargets(t *testing.T) 
 
 	repo := &stubGenerationRepo{}
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetrepo.NewMemRepository(),
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			assetRepo:  assetrepo.NewMemRepository(),
+			reviewRepo: reviewstore.NewMemRepository(),
+		},
 	}
 
 	task := newConditionalContractTestTask("task-generation-navigation-target-conditional-2")

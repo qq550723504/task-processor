@@ -35,10 +35,10 @@ Current app-layer read:
 
 | File | Classification | Notes |
 | --- | --- | --- |
-| `bootstrap.go` | `assembly-only` | Public bundle/module bootstrap entry. |
+| `bootstrap.go` | `assembly-only` | Public bundle/module bootstrap entry after store-catalog runtime mapping moved into a dedicated support helper. |
 | `bootstrap_repositories.go` | `assembly-only` | Repository bundle construction and closer management. |
 | `bootstrap_service_config.go` | `assembly-only` | ListingKit service config shaping and dependency wiring. |
-| `bootstrap_runtime.go` | `assembly-only` | Service/module runtime assembly and handler construction. |
+| `bootstrap_runtime.go` | `assembly-only` | Service/module runtime assembly and handler construction after recovery sweep and submit-prep global setup were pushed into dedicated runtime support helpers. |
 | `bootstrap_submit_module.go` | `assembly-only` | Submit module dependency shaping. |
 | `bootstrap_task_module.go` | `assembly-only` | Task module dependency shaping. |
 | `bootstrap_temporal_module.go` | `assembly-only` | Temporal worker/module registration assembly. |
@@ -48,17 +48,22 @@ Current app-layer read:
 | `http_module.go` | `assembly-only` | HTTP module construction and validation. |
 | `routes.go` | `assembly-only` | Route registration and route table ownership; should stay thin. |
 | `runtime_support.go` | `adapter construction` | Feature-owned runtime support contract that gathers repository/hook bundles and optional SDS collaborators. |
+| `runtime_support_recovery.go` | `adapter construction` | Owns runtime-only task recovery sweep loop wiring and shutdown behavior so bootstrap assembly stays focused on composition. |
 | `runtime_support_repositories.go` | `adapter construction` | Owns ListingKit runtime support repository bundle construction. |
 | `runtime_support_hooks.go` | `adapter construction` | Owns ListingKit runtime support hook bundle construction. |
+| `runtime_support_store_catalog.go` | `adapter construction` | Owns runtime-side mapping from listing-admin store records into ListingKit-facing SHEIN store catalog shapes. |
+| `runtime_support_submit_prep.go` | `adapter construction` | Owns SHEIN submit-prep global runtime configuration that still needs to happen during feature boot. |
 | `runtime_support_shein.go` | `adapter construction` | Builds SHEIN runtime resolver/bridge builders while delegating factory/provider details to narrower helper files. |
 | `runtime_support_shein_adapter_helpers.go` | `adapter construction` | Owns SHEIN runtime adapter-local tenant lookup, cookie payload normalization, and store-config mapping helpers. |
 | `runtime_support_shein_factories.go` | `adapter construction` | Owns SHEIN runtime API client factories and bound cookie-provider helpers used by the runtime support layer. |
 | `shein_sync_runtime.go` | `adapter construction` | Builds SHEIN sync services and composes the narrower strategy/bridge helpers. |
 | `shein_sync_runtime_bridge_helpers.go` | `adapter construction` | Owns SHEIN sync runtime bridge shaping helpers, including tenant parsing and promotion bridge factory construction. |
 | `shein_sync_runtime_strategy_helpers.go` | `adapter construction` | Owns management strategy-provider construction for the SHEIN sync runtime path. |
-| `ai_clients.go` | `adapter construction` | Builds strict OpenAI chat/image clients and runtime client resolution caches. |
+| `ai_clients.go` | `adapter construction` | Owns top-level ListingKit AI client builder entrypoints and routed client assembly. |
 | `ai_client_fallback_helpers.go` | `adapter construction` | Owns ListingKit AI client fallback shaping, fallback sanitizing, and client-name normalization helpers. |
 | `ai_client_image_routing.go` | `adapter construction` | Owns ListingKit image-client routing, selector normalization, and image timeout clamping helpers. |
+| `ai_client_strict_chat.go` | `adapter construction` | Owns strict chat-client wrapper behavior and resolved OpenAI chat-client cache construction. |
+| `ai_client_strict_image.go` | `adapter construction` | Owns strict image-client wrapper behavior and resolved image-client cache construction. |
 | `zitadel_auth.go` | `adapter construction` | Runtime auth/authz middleware construction and route-level authorization wiring. |
 | `zitadel_auth_parsing_helpers.go` | `adapter construction` | Owns ZITADEL role parsing, allowlist/set normalization, and shared identity value helpers. |
 
@@ -79,20 +84,20 @@ Suggested next slice:
 
 - keep service construction in place, and continue extracting any new tenant/bridge shaping helpers instead of letting them drift back into the main assembly file.
 
-### Secondary candidate
+### Additional candidate
 
 `internal/listingkit/httpapi/ai_clients.go`
 
 Why it stands out:
 
-- it still owns strict client resolution and cache wiring,
-- fallback shaping and name normalization have been narrowed into their own helper file,
-- routed image-client logic has been narrowed into its own helper file,
+- it now mostly owns builder entrypoints and routed client assembly,
+- strict chat/image client wrappers and cache resolution have been pushed into dedicated helper files,
+- fallback shaping and naming are already isolated,
 - if more request-shaping or model-selection rules land there, they should stay in helper homes rather than re-grow the main builder file.
 
 ### Additional note
 
-`runtime_support.go` has now been narrowed to the runtime support contract itself; repository and hook bundle construction live in dedicated helper files so the top-level support file stays easier to read and review.
+`runtime_support.go` has now been narrowed to the runtime support contract itself; repository, hook, submit-prep, and recovery-loop setup live in dedicated helper files so the top-level support file stays easier to read and review.
 
 ## Current Boundary Conclusion
 

@@ -84,70 +84,40 @@ func resolveStudioSessionRepo(s *service) StudioSessionRepository {
 	if s == nil {
 		return nil
 	}
-	if s.studioDeps.sessionRepo != nil {
-		s.studioSessionRepo = s.studioDeps.sessionRepo
-		return s.studioDeps.sessionRepo
-	}
-	s.studioDeps.sessionRepo = s.studioSessionRepo
-	return s.studioSessionRepo
+	return syncGroupedDependency(&s.studioDeps.sessionRepo, &s.mirrors.studioSessionRepo)
 }
 
 func resolveStudioBatchRepo(s *service) StudioBatchRepository {
 	if s == nil {
 		return nil
 	}
-	if s.studioDeps.batchRepo != nil {
-		s.studioBatchRepo = s.studioDeps.batchRepo
-		return s.studioDeps.batchRepo
-	}
-	s.studioDeps.batchRepo = s.studioBatchRepo
-	return s.studioBatchRepo
+	return syncGroupedDependency(&s.studioDeps.batchRepo, &s.mirrors.studioBatchRepo)
 }
 
 func resolveStudioBatchRunRepo(s *service) StudioBatchRunRepository {
 	if s == nil {
 		return nil
 	}
-	if s.studioDeps.batchRunRepo != nil {
-		s.studioBatchRunRepo = s.studioDeps.batchRunRepo
-		return s.studioDeps.batchRunRepo
-	}
-	s.studioDeps.batchRunRepo = s.studioBatchRunRepo
-	return s.studioBatchRunRepo
+	return syncGroupedDependency(&s.studioDeps.batchRunRepo, &s.mirrors.studioBatchRunRepo)
 }
 
 func resolveStudioPromptDiversifier(s *service) openaiclient.ChatCompleter {
 	if s == nil {
 		return nil
 	}
-	if s.studioDeps.promptDiversifier != nil {
-		s.studioPromptDiversifier = s.studioDeps.promptDiversifier
-		return s.studioDeps.promptDiversifier
-	}
-	s.studioDeps.promptDiversifier = s.studioPromptDiversifier
-	return s.studioPromptDiversifier
+	return syncGroupedDependency(&s.studioDeps.promptDiversifier, &s.mirrors.studioPromptDiversifier)
 }
 
 func resolveStudioImageGenerator(s *service) openaiclient.ImageGenerator {
 	if s == nil {
 		return nil
 	}
-	if s.studioDeps.imageGenerator != nil {
-		s.studioImageGenerator = s.studioDeps.imageGenerator
-		return s.studioDeps.imageGenerator
-	}
-	s.studioDeps.imageGenerator = s.studioImageGenerator
-	return s.studioImageGenerator
+	return syncGroupedDependency(&s.studioDeps.imageGenerator, &s.mirrors.studioImageGenerator)
 }
 
 func resolveStudioUploadStore(s *service) ImageUploadStore {
 	if s == nil {
 		return nil
 	}
-	if s.studioDeps.uploadStore != nil {
-		s.uploadStore = s.studioDeps.uploadStore
-		return s.studioDeps.uploadStore
-	}
-	s.studioDeps.uploadStore = s.uploadStore
-	return s.uploadStore
+	return syncGroupedDependency(&s.studioDeps.uploadStore, &s.mirrors.uploadStore)
 }

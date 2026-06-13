@@ -19,8 +19,8 @@ func (p *platformAssetDispatchInventoryPersistPhase) run(
 	inventory *asset.Inventory,
 	returnedAssetCount int,
 ) {
-	if p == nil || p.service == nil || p.service.assetRepo == nil || inventory == nil || returnedAssetCount == 0 {
+	if p == nil || p.service == nil || p.service.mirrors.assetRepo == nil || inventory == nil || returnedAssetCount == 0 {
 		return
 	}
-	_ = p.service.assetRepo.SaveInventory(ctx, inventory)
+	_ = p.service.mirrors.assetRepo.SaveInventory(ctx, inventory)
 }

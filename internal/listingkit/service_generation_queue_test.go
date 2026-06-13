@@ -19,8 +19,7 @@ func TestGetTaskGenerationQueueReturnsNotModifiedWhenDeltaMatches(t *testing.T) 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:      repo,
-		assetRepo: assetRepository,
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
 	}
 
 	task := &Task{
@@ -74,8 +73,7 @@ func TestGetTaskGenerationQueueBuildsEmptyQueueFinalResponseShape(t *testing.T) 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:      repo,
-		assetRepo: assetRepository,
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
 	}
 
 	updatedAt := time.Date(2026, 5, 30, 11, 0, 0, 0, time.UTC)
@@ -128,9 +126,7 @@ func TestGetTaskGenerationQueueFinalResponseRetainsReviewSummaryAndDeltaSensitiv
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetRepository,
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
 	}
 
 	updatedAt := time.Date(2026, 5, 30, 11, 5, 0, 0, time.UTC)
@@ -220,8 +216,7 @@ func TestGetTaskGenerationQueueFinalResponseIncludesQueueResourceDescriptors(t *
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:      repo,
-		assetRepo: assetRepository,
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
 	}
 
 	updatedAt := time.Date(2026, 5, 30, 11, 10, 0, 0, time.UTC)
@@ -342,9 +337,7 @@ func TestGetTaskGenerationQueueDeferredOnlyReviewSummaryChangeInvalidatesOldToke
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:       repo,
-		assetRepo:  assetRepository,
-		reviewRepo: reviewstore.NewMemRepository(),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
 	}
 
 	now := time.Date(2026, 5, 30, 12, 5, 0, 0, time.UTC)
@@ -1031,13 +1024,15 @@ func TestTaskGenerationReviewReadsPropagateSnapshotLoadErrors(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	svc := &service{
 		repo: repo,
-		taskGeneration: &taskGenerationService{
-			repo: repo,
-			listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
-				return nil, wantErr
-			},
-			listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
-				return nil, nil
+		collabMirrors: serviceCollaboratorMirrors{
+			taskGeneration: &taskGenerationService{
+				repo: repo,
+				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+					return nil, wantErr
+				},
+				listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+					return nil, nil
+				},
 			},
 		},
 	}
@@ -1527,8 +1522,7 @@ func TestGetTaskGenerationQueueAppliesFilteringSortingAndPaging(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:      repo,
-		assetRepo: assetRepository,
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
 	}
 
 	task := &Task{
@@ -1607,8 +1601,7 @@ func TestGetTaskGenerationQueueFiltersByExecutionQuality(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:      repo,
-		assetRepo: assetRepository,
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
 	}
 
 	task := &Task{
@@ -1682,8 +1675,7 @@ func TestGetTaskGenerationQueueFiltersByRenderPreviewAvailability(t *testing.T) 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:      repo,
-		assetRepo: assetRepository,
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
 	}
 
 	task := &Task{
@@ -1771,8 +1763,7 @@ func TestGetTaskGenerationQueueBuildsOperationalSummaryAndTemplateSort(t *testin
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:      repo,
-		assetRepo: assetRepository,
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
 	}
 
 	task := &Task{
@@ -1874,8 +1865,7 @@ func TestGetTaskGenerationQueueFiltersByQualityGrade(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:      repo,
-		assetRepo: assetRepository,
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
 	}
 
 	task := &Task{

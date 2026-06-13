@@ -27,14 +27,18 @@ func TestProcessStandardProductLayerStartsPlatformAdaptTemporalWhenEnabled(t *te
 		},
 	}
 	svc := &service{
-		repo:                         repo,
-		productSvc:                   productSvc,
-		assembler:                    NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		assetRecipeResolver:          newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:           newDefaultAssetBundleBuilder(),
-		assetGenerator:               newDefaultAssetGenerationService(),
-		platformAdaptWorkflowClient:  platformClient,
-		platformAdaptWorkflowEnabled: true,
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			productSvc:          productSvc,
+			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+			assetRecipeResolver: newDefaultAssetRecipeResolver(),
+			assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+			assetGenerator:      newDefaultAssetGenerationService(),
+		},
+		runtime: serviceRuntimeState{
+			platformAdaptWorkflowClient:  platformClient,
+			platformAdaptWorkflowEnabled: true,
+		},
 	}
 
 	task := &Task{

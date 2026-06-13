@@ -7,7 +7,7 @@ import (
 )
 
 func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {
-	s.taskSubmitter = submitter
+	s.runtime.taskSubmitter = submitter
 	s.taskDeps.taskSubmitter = submitter
 }
 
@@ -128,22 +128,22 @@ func normalizePlatforms(platforms []string) []string {
 }
 
 func (s *service) setSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {
-	s.sheinPublishWorkflowClient = client
-	s.sheinPublishWorkflowEnabled = enabled
+	s.runtime.sheinPublishWorkflowClient = client
+	s.runtime.sheinPublishWorkflowEnabled = enabled
 	s.submissionDeps.sheinPublishWorkflowClient = client
 	s.submissionDeps.sheinPublishWorkflowEnabled = enabled
 }
 
 func (s *service) setStandardProductWorkflowClient(client StandardProductWorkflowClient, enabled bool) {
-	s.standardProductWorkflowClient = client
-	s.standardProductWorkflowEnabled = enabled
+	s.runtime.standardProductWorkflowClient = client
+	s.runtime.standardProductWorkflowEnabled = enabled
 	s.taskDeps.standardWorkflowClient = client
 	s.taskDeps.standardWorkflowEnabled = enabled
 }
 
 func (s *service) setPlatformAdaptWorkflowClient(client PlatformAdaptWorkflowClient, enabled bool) {
-	s.platformAdaptWorkflowClient = client
-	s.platformAdaptWorkflowEnabled = enabled
+	s.runtime.platformAdaptWorkflowClient = client
+	s.runtime.platformAdaptWorkflowEnabled = enabled
 	s.taskDeps.platformAdaptWorkflowClient = client
 	s.taskDeps.platformAdaptWorkflowEnabled = enabled
 }

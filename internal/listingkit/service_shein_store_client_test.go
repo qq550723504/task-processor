@@ -53,9 +53,7 @@ func TestResolveSheinStoreInfoUsesTenantScopedStoreClient(t *testing.T) {
 		},
 	}
 
-	svc := &service{
-		sheinStoreCatalog: catalog,
-	}
+	svc := &service{mirrors: serviceDependencyMirrors{sheinStoreCatalog: catalog}}
 	task := &Task{
 		ID:       "task-store-tenant",
 		TenantID: "227",

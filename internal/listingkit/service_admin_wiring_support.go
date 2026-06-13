@@ -66,22 +66,12 @@ func resolveAdminStoreProfileRepo(s *service) StoreProfileRepository {
 	if s == nil {
 		return nil
 	}
-	if s.adminDeps.storeProfileRepo != nil {
-		s.storeProfileRepo = s.adminDeps.storeProfileRepo
-		return s.adminDeps.storeProfileRepo
-	}
-	s.adminDeps.storeProfileRepo = s.storeProfileRepo
-	return s.storeProfileRepo
+	return syncGroupedDependency(&s.adminDeps.storeProfileRepo, &s.mirrors.storeProfileRepo)
 }
 
 func resolveAdminAICredentialStore(s *service) AIClientCredentialStore {
 	if s == nil {
 		return nil
 	}
-	if s.adminDeps.aiCredentialStore != nil {
-		s.aiCredentialStore = s.adminDeps.aiCredentialStore
-		return s.adminDeps.aiCredentialStore
-	}
-	s.adminDeps.aiCredentialStore = s.aiCredentialStore
-	return s.aiCredentialStore
+	return syncGroupedDependency(&s.adminDeps.aiCredentialStore, &s.mirrors.aiCredentialStore)
 }

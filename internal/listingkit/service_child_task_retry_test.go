@@ -138,12 +138,14 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 	}
 
 	svc := &service{
-		repo:                repo,
-		sdsSyncSvc:          sdsSvc,
-		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		assetRecipeResolver: newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
-		assetGenerator:      newDefaultAssetGenerationService(),
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			sdsSyncSvc:          sdsSvc,
+			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+			assetRecipeResolver: newDefaultAssetRecipeResolver(),
+			assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+			assetGenerator:      newDefaultAssetGenerationService(),
+		},
 	}
 
 	result, err := svc.RetryTaskChildTask(context.Background(), task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"})
@@ -239,11 +241,13 @@ func TestRetryTaskChildTaskRetriesSDSCatalogProduct(t *testing.T) {
 	}
 
 	svc := &service{
-		repo:                repo,
-		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		assetRecipeResolver: newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
-		assetGenerator:      newDefaultAssetGenerationService(),
+		repo: repo,
+		mirrors: serviceDependencyMirrors{
+			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+			assetRecipeResolver: newDefaultAssetRecipeResolver(),
+			assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+			assetGenerator:      newDefaultAssetGenerationService(),
+		},
 	}
 
 	result, err := svc.RetryTaskChildTask(context.Background(), task.ID, &RetryChildTaskRequest{Kind: "sds_catalog_product"})

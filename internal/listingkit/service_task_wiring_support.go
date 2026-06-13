@@ -68,12 +68,7 @@ func resolveTaskSubmitter(s *service) TaskSubmitter {
 	if s == nil {
 		return nil
 	}
-	if s.taskDeps.taskSubmitter != nil {
-		s.taskSubmitter = s.taskDeps.taskSubmitter
-		return s.taskDeps.taskSubmitter
-	}
-	s.taskDeps.taskSubmitter = s.taskSubmitter
-	return s.taskSubmitter
+	return syncGroupedDependency(&s.taskDeps.taskSubmitter, &s.runtime.taskSubmitter)
 }
 
 func resolveTaskRequestDefaults(s *service) generateRequestDefaults {
@@ -87,38 +82,29 @@ func resolveSDSLoginStatusProvider(s *service) SDSLoginStatusProvider {
 	if s == nil {
 		return nil
 	}
-	if s.taskDeps.sdsLoginStatusProvider != nil {
-		s.sdsLoginStatusProvider = s.taskDeps.sdsLoginStatusProvider
-		return s.taskDeps.sdsLoginStatusProvider
-	}
-	s.taskDeps.sdsLoginStatusProvider = s.sdsLoginStatusProvider
-	return s.sdsLoginStatusProvider
+	return syncGroupedDependency(&s.taskDeps.sdsLoginStatusProvider, &s.mirrors.sdsLoginStatusProvider)
 }
 
 func resolveStandardWorkflowClient(s *service) (StandardProductWorkflowClient, bool) {
 	if s == nil {
 		return nil, false
 	}
-	if s.taskDeps.standardWorkflowClient != nil || s.taskDeps.standardWorkflowEnabled {
-		s.standardProductWorkflowClient = s.taskDeps.standardWorkflowClient
-		s.standardProductWorkflowEnabled = s.taskDeps.standardWorkflowEnabled
-		return s.taskDeps.standardWorkflowClient, s.taskDeps.standardWorkflowEnabled
-	}
-	s.taskDeps.standardWorkflowClient = s.standardProductWorkflowClient
-	s.taskDeps.standardWorkflowEnabled = s.standardProductWorkflowEnabled
-	return s.standardProductWorkflowClient, s.standardProductWorkflowEnabled
+	return syncGroupedOptionalDependency(
+		&s.taskDeps.standardWorkflowClient,
+		&s.taskDeps.standardWorkflowEnabled,
+		&s.runtime.standardProductWorkflowClient,
+		&s.runtime.standardProductWorkflowEnabled,
+	)
 }
 
 func resolvePlatformAdaptWorkflowClient(s *service) (PlatformAdaptWorkflowClient, bool) {
 	if s == nil {
 		return nil, false
 	}
-	if s.taskDeps.platformAdaptWorkflowClient != nil || s.taskDeps.platformAdaptWorkflowEnabled {
-		s.platformAdaptWorkflowClient = s.taskDeps.platformAdaptWorkflowClient
-		s.platformAdaptWorkflowEnabled = s.taskDeps.platformAdaptWorkflowEnabled
-		return s.taskDeps.platformAdaptWorkflowClient, s.taskDeps.platformAdaptWorkflowEnabled
-	}
-	s.taskDeps.platformAdaptWorkflowClient = s.platformAdaptWorkflowClient
-	s.taskDeps.platformAdaptWorkflowEnabled = s.platformAdaptWorkflowEnabled
-	return s.platformAdaptWorkflowClient, s.platformAdaptWorkflowEnabled
+	return syncGroupedOptionalDependency(
+		&s.taskDeps.platformAdaptWorkflowClient,
+		&s.taskDeps.platformAdaptWorkflowEnabled,
+		&s.runtime.platformAdaptWorkflowClient,
+		&s.runtime.platformAdaptWorkflowEnabled,
+	)
 }

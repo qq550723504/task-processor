@@ -32,10 +32,9 @@ func TestParseStudioDesignSiblingThemesParsesPromptObject(t *testing.T) {
 }
 
 func TestGenerateStudioDesignSiblingThemesFallsBackWhenLLMResponseInvalid(t *testing.T) {
-	svc := &service{
-		studioPromptDiversifier: &stubStudioChatCompleter{
-			generateText: "not-json",
-		},
+	svc := &service{mirrors: serviceDependencyMirrors{studioPromptDiversifier: &stubStudioChatCompleter{
+		generateText: "not-json",
+	}},
 	}
 	req := &StudioDesignRequest{
 		Prompt:             "retro dog college badge",
@@ -57,10 +56,9 @@ func TestGenerateStudioDesignSiblingThemesFallsBackWhenLLMResponseInvalid(t *tes
 }
 
 func TestGenerateStudioDesignSiblingThemesUsesLLMOutput(t *testing.T) {
-	svc := &service{
-		studioPromptDiversifier: &stubStudioChatCompleter{
-			generateText: `{"prompts":["vintage varsity crest with centered mascot","vintage varsity crest with repeating border icons"]}`,
-		},
+	svc := &service{mirrors: serviceDependencyMirrors{studioPromptDiversifier: &stubStudioChatCompleter{
+		generateText: `{"prompts":["vintage varsity crest with centered mascot","vintage varsity crest with repeating border icons"]}`,
+	}},
 	}
 	req := &StudioDesignRequest{
 		Prompt:             "vintage varsity crest mascot",
@@ -188,7 +186,7 @@ func TestGenerateStudioDesignImageFallsBackWhenMultiReferenceEditFails(t *testin
 			B64JSON: "aW1hZ2U=",
 		}}},
 	}
-	svc := &service{studioImageGenerator: generator}
+	svc := &service{mirrors: serviceDependencyMirrors{studioImageGenerator: generator}}
 
 	response, err := svc.generateStudioDesignImage(context.Background(), "test-model", "prompt", "1024x1024", []string{
 		"https://example.com/black.png",
@@ -293,12 +291,9 @@ func TestGenerateStudioDesignsAddsWarningsForPromptFallbackAndPartialSuccess(t *
 			}},
 		},
 	}
-	svc := &service{
-		studioImageGenerator: generator,
-		studioPromptDiversifier: &stubStudioChatCompleter{
-			generateText: "not-json",
-		},
-		uploadStore: &stubImageUploadStore{},
+	svc := &service{mirrors: serviceDependencyMirrors{studioImageGenerator: generator, studioPromptDiversifier: &stubStudioChatCompleter{
+		generateText: "not-json",
+	}, uploadStore: &stubImageUploadStore{}},
 	}
 
 	response, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
@@ -344,10 +339,7 @@ func TestGenerateStudioDesignsRetriesFailedVariantsSequentially(t *testing.T) {
 			}},
 		},
 	}
-	svc := &service{
-		studioImageGenerator: generator,
-		uploadStore:          &stubImageUploadStore{},
-	}
+	svc := &service{mirrors: serviceDependencyMirrors{studioImageGenerator: generator, uploadStore: &stubImageUploadStore{}}}
 
 	response, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
 		Prompt: "retro cherries",
@@ -375,10 +367,7 @@ func TestGenerateStudioDesignsCapsCountAtTen(t *testing.T) {
 			}},
 		},
 	}
-	svc := &service{
-		studioImageGenerator: generator,
-		uploadStore:          &stubImageUploadStore{},
-	}
+	svc := &service{mirrors: serviceDependencyMirrors{studioImageGenerator: generator, uploadStore: &stubImageUploadStore{}}}
 
 	response, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
 		Prompt: "retro cherries",
@@ -493,10 +482,7 @@ func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t 
 		},
 	}
 	store := &stubImageUploadStore{}
-	svc := &service{
-		studioImageGenerator: generator,
-		uploadStore:          store,
-	}
+	svc := &service{mirrors: serviceDependencyMirrors{studioImageGenerator: generator, uploadStore: store}}
 
 	_, err := svc.generateOneStudioProductImage(context.Background(), &StudioProductImageRequest{}, server.URL+"/input.png", "prompt")
 	if err != nil {

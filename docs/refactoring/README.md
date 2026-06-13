@@ -59,6 +59,7 @@ The current active direction is:
 - [project-wide-execution-plan.md](./project-wide-execution-plan.md) - concrete phase-by-phase execution plan with PR slices, acceptance criteria, tests, and stop conditions.
 - [project-migration-roadmap.md](./project-migration-roadmap.md) - staged migration sequence from the current layout to the approved target architecture.
 - [module-target-mapping.md](./module-target-mapping.md) - working map from current package areas to target domains.
+- [product-sourcing-inventory.md](./product-sourcing-inventory.md) - Amazon / 1688 source-flow inventory and first migration slices for `product/sourcing` plus crawler adapters.
 - [listing-preview-migration-map.md](./listing-preview-migration-map.md) - first detailed migration inventory for moving preview ownership out of legacy ListingKit.
 - [dependency-baseline.md](./dependency-baseline.md) - baseline worksheet for dependency scans and legacy exception tracking.
 - [preview-subpackage-feasibility.md](./preview-subpackage-feasibility.md) - current decision note explaining why preview stays inside `package listingkit` before a real subpackage extraction.

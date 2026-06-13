@@ -750,13 +750,9 @@ func TestRetryTaskGenerationTasksIncludesMatchedQueueSummary(t *testing.T) {
 		},
 	}
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator: assetgeneration.NewService(assetgeneration.Config{
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{
 			DeferredRenderer: renderer,
-		}),
+		})},
 	}
 
 	task := &Task{
@@ -884,11 +880,7 @@ func TestRetryTaskGenerationTasksFiltersByExecutionQuality(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator:      assetgeneration.NewService(assetgeneration.Config{}),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
 	}
 
 	task := &Task{
@@ -986,11 +978,7 @@ func TestRetryTaskGenerationTasksFiltersByExecutionQualityLabel(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator:      assetgeneration.NewService(assetgeneration.Config{}),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
 	}
 
 	task := &Task{
@@ -1058,11 +1046,7 @@ func TestRetryTaskGenerationTasksFiltersByQualityGradeLabel(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator:      assetgeneration.NewService(assetgeneration.Config{}),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
 	}
 
 	task := &Task{
@@ -1130,11 +1114,7 @@ func TestRetryTaskGenerationTasksFiltersByQualityGrade(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator:      assetgeneration.NewService(assetgeneration.Config{}),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
 	}
 
 	task := &Task{
@@ -1202,11 +1182,7 @@ func TestRetryTaskGenerationTasksReturnsEmptyPageWhenQueueFilterMatchesNothing(t
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator:      assetgeneration.NewService(assetgeneration.Config{}),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
 	}
 
 	task := &Task{
@@ -1293,13 +1269,9 @@ func TestRetryTaskGenerationTasksReplacesFallbackAssetAndPersistsResult(t *testi
 		},
 	}
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator: assetgeneration.NewService(assetgeneration.Config{
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{
 			DeferredRenderer: renderer,
-		}),
+		})},
 	}
 
 	task := &Task{
@@ -1420,13 +1392,9 @@ func TestRetryTaskGenerationTasksMergesReturnedTasksAndRefreshesRetriedAssets(t 
 		},
 	}
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator: assetgeneration.NewService(assetgeneration.Config{
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{
 			DeferredRenderer: renderer,
-		}),
+		})},
 	}
 
 	task := &Task{
@@ -3846,11 +3814,7 @@ func TestRetryTaskGenerationTasksCanFilterFallbackSlotsOnly(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator:      assetgeneration.NewService(assetgeneration.Config{}),
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
 	}
 
 	task := &Task{
@@ -3940,13 +3904,9 @@ func TestRetryTaskGenerationTasksPlansMissingQueueFallbackSlot(t *testing.T) {
 		},
 	}
 	svc := &service{
-		repo:                repo,
-		assetRepo:           assetRepository,
-		assetRecipeResolver: assetrecipe.NewStaticResolver(),
-		assetBundleBuilder:  assetbundle.NewBuilder(),
-		assetGenerator: assetgeneration.NewService(assetgeneration.Config{
+		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{
 			DeferredRenderer: renderer,
-		}),
+		})},
 	}
 
 	task := &Task{

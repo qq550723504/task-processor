@@ -707,8 +707,10 @@ func TestBuildSheinSubmitProductAPIUsesExplicitStoreID(t *testing.T) {
 	var lastStoreID int64
 	builder := stubSheinProductAPIBuilder{api: &stubSheinProductAPI{}, lastStoreID: &lastStoreID}
 	svc := &service{
-		storeProfileRepo:       newInMemoryStoreProfileRepository(),
-		sheinProductAPIBuilder: builder,
+		mirrors: serviceDependencyMirrors{
+			storeProfileRepo:       newInMemoryStoreProfileRepository(),
+			sheinProductAPIBuilder: builder,
+		},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "505", UserID: "user-e"})
 	_, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
@@ -743,9 +745,11 @@ func TestBuildSheinSubmitProductAPIInjectsTaskTenantIntoBuilderContext(t *testin
 
 	var builderCtx context.Context
 	svc := &service{
-		sheinProductAPIBuilder: stubSheinProductAPIBuilder{
-			api:     &stubSheinProductAPI{},
-			lastCtx: &builderCtx,
+		mirrors: serviceDependencyMirrors{
+			sheinProductAPIBuilder: stubSheinProductAPIBuilder{
+				api:     &stubSheinProductAPI{},
+				lastCtx: &builderCtx,
+			},
 		},
 	}
 	task := &Task{
@@ -775,9 +779,11 @@ func TestUploadSheinSubmitImagesInjectsTaskTenantIntoBuilderContext(t *testing.T
 
 	var builderCtx context.Context
 	svc := &service{
-		sheinImageAPIBuilder: stubSheinImageAPIBuilder{
-			api:     &stubSheinImageAPI{uploaded: map[string]string{"https://example.com/source.jpg": "https://img.shein.com/uploaded.jpg"}},
-			lastCtx: &builderCtx,
+		mirrors: serviceDependencyMirrors{
+			sheinImageAPIBuilder: stubSheinImageAPIBuilder{
+				api:     &stubSheinImageAPI{uploaded: map[string]string{"https://example.com/source.jpg": "https://img.shein.com/uploaded.jpg"}},
+				lastCtx: &builderCtx,
+			},
 		},
 	}
 	task := &Task{

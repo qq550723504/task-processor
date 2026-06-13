@@ -251,8 +251,10 @@ func TestGetSDSBaselineReadinessClearsCachedLoginCredentialBlockWhenAccessTokenE
 
 	svc := &service{
 		repo: repo,
-		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-			status: &sdslogin.Status{HasAccessToken: true},
+		mirrors: serviceDependencyMirrors{
+			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+				status: &sdslogin.Status{HasAccessToken: true},
+			},
 		},
 	}
 	readiness, err := svc.GetSDSBaselineReadiness(ctx, query)
@@ -305,9 +307,11 @@ func TestGetSDSBaselineReadinessClearsCachedLoginInProgressBlockWhenLoginHasComp
 
 	svc := &service{
 		repo: repo,
-		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-			status: &sdslogin.Status{
-				HasAccessToken: true,
+		mirrors: serviceDependencyMirrors{
+			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+				status: &sdslogin.Status{
+					HasAccessToken: true,
+				},
 			},
 		},
 	}
@@ -361,8 +365,10 @@ func TestGetSDSBaselineReadinessClearsCachedDesignSurfaceCredentialFailureWhenAc
 
 	svc := &service{
 		repo: repo,
-		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-			status: &sdslogin.Status{HasAccessToken: true},
+		mirrors: serviceDependencyMirrors{
+			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+				status: &sdslogin.Status{HasAccessToken: true},
+			},
 		},
 	}
 	readiness, err := svc.GetSDSBaselineReadiness(ctx, query)

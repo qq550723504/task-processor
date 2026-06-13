@@ -14,74 +14,29 @@ import (
 )
 
 type service struct {
-	repo                           Repository
-	taskLifecycle                  *taskLifecycleService
-	taskGeneration                 *taskGenerationService
-	taskRevision                   *taskRevisionService
-	taskPreview                    *taskPreviewService
-	taskExport                     *taskExportService
-	sdsBaseline                    *sdsBaselineService
-	task                           taskCollaborators
-	taskDeps                       taskDependencies
-	taskStudioSession              *taskStudioSessionService
-	taskStudioBatchDraft           *taskStudioBatchDraftService
-	studioBatchGeneration          *studioBatchGenerationService
-	taskStudioBatch                *taskStudioBatchService
-	studioBatchRunExecutor         *taskStudioBatchRunExecutor
-	studioBatchRunCoordinator      *studioBatchRunCoordinator
-	taskStudioBatchRun             *taskStudioBatchRunService
-	taskStudioMedia                *taskStudioMediaService
-	studio                         studioCollaborators
-	studioDeps                     studioDependencies
-	settingsAdmin                  *settingsAdminService
-	sheinAdmin                     *sheinAdminService
-	admin                          adminCollaborators
-	adminDeps                      adminDependencies
-	submission                     submissionCollaborators
-	submissionDeps                 submissionDependencies
-	workflowDeps                   workflowDependencies
-	sheinRuntimeDeps               sheinRuntimeDependencies
-	supportDeps                    supportDependencies
-	studioSessionRepo              StudioSessionRepository
-	studioBatchRepo                StudioBatchRepository
-	studioBatchRunRepo             StudioBatchRunRepository
-	productSvc                     ProductService
-	imageSvc                       ImageService
-	sdsSyncSvc                     sdsusecase.Service
-	sdsLoginStatusProvider         SDSLoginStatusProvider
-	sdsBaselineRemoteProvider      SDSBaselineRemoteProvider
-	uploadStore                    ImageUploadStore
-	uploadedImageRepo              UploadedImageRepository
-	assembler                      Assembler
-	sheinCategoryResolver          sheinpub.CategoryResolver
-	sheinResolutionCacheStore      sheinpub.ResolutionCacheStore
-	sheinStoreCatalog              SheinStoreCatalog
-	sheinAPIClientFactory          SheinAPIClientFactory
-	sheinAttributeResolver         sheinpub.AttributeResolver
-	sheinSaleAttributeResolver     sheinpub.SaleAttributeResolver
-	sheinPricingPolicy             sheinpub.PricingPolicy
-	sheinProductAPIBuilder         sheinpub.ProductAPIBuilder
-	sheinImageAPIBuilder           sheinpub.ImageAPIBuilder
-	sheinTranslateAPIBuilder       sheinpub.TranslateAPIBuilder
-	sheinContentOptimizer          openaiclient.ChatCompleter
-	studioPromptDiversifier        openaiclient.ChatCompleter
-	studioImageGenerator           openaiclient.ImageGenerator
-	aiCredentialStore              AIClientCredentialStore
-	assetRepo                      assetrepo.Repository
-	reviewRepo                     reviewstore.Repository
-	assetRecipeResolver            assetrecipe.Resolver
-	assetBundleBuilder             assetbundle.Builder
-	assetGenerator                 assetgeneration.Service
-	taskSubmitter                  TaskSubmitter
-	sheinPublishWorkflowClient     SheinPublishWorkflowClient
-	sheinPublishWorkflowEnabled    bool
-	standardProductWorkflowClient  StandardProductWorkflowClient
-	standardProductWorkflowEnabled bool
-	platformAdaptWorkflowClient    PlatformAdaptWorkflowClient
-	platformAdaptWorkflowEnabled   bool
-	storeProfileRepo               StoreProfileRepository
-	sheinSettingsMu                sync.RWMutex
-	sheinSettings                  SheinSettings
+	repo Repository
+	// Legacy collaborator mirrors retained for incremental service slimming.
+	// The grouped task/studio/admin containers below are the preferred internal shape.
+	task                      taskCollaborators
+	taskDeps                  taskDependencies
+	studio                    studioCollaborators
+	studioDeps                studioDependencies
+	admin                     adminCollaborators
+	adminDeps                 adminDependencies
+	submission                submissionCollaborators
+	submissionDeps            submissionDependencies
+	workflowDeps              workflowDependencies
+	sheinRuntimeDeps          sheinRuntimeDependencies
+	supportDeps               supportDependencies
+	collabMirrors             serviceCollaboratorMirrors
+	// Legacy dependency mirrors retained for incremental service slimming.
+	// The grouped dependency buckets above are the preferred initialization source.
+	mirrors serviceDependencyMirrors
+	// Legacy runtime mirrors retained for incremental service slimming.
+	// Runtime-configurable submit/workflow overrides live here instead of the root service surface.
+	runtime         serviceRuntimeState
+	sheinSettingsMu sync.RWMutex
+	sheinSettings   SheinSettings
 }
 
 type ServiceCoreDependencies struct {

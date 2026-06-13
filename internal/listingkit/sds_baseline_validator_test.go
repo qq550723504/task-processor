@@ -46,19 +46,21 @@ func TestWarmSDSBaselineReturnsReadyWhenCacheAndValidationPass(t *testing.T) {
 
 	svc := &service{
 		repo: NewInMemoryRepositoryForTest(),
-		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-			status: &sdslogin.Status{
-				HasAccessToken: true,
+		mirrors: serviceDependencyMirrors{
+			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+				status: &sdslogin.Status{
+					HasAccessToken: true,
+				},
 			},
-		},
-		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
-			productDetail: &sdstemplate.ProductDetail{},
-			designProduct: &sdsdesign.DesignProductPage{
-				Product:        sdsdesign.DesignProduct{ID: 101},
-				PrototypeGroup: sdsdesign.PrototypeGroup{ID: 7001},
-				Layers:         []sdsdesign.DesignLayer{{ID: "layer-1"}},
+			sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+				productDetail: &sdstemplate.ProductDetail{},
+				designProduct: &sdsdesign.DesignProductPage{
+					Product:        sdsdesign.DesignProduct{ID: 101},
+					PrototypeGroup: sdsdesign.PrototypeGroup{ID: 7001},
+					Layers:         []sdsdesign.DesignLayer{{ID: "layer-1"}},
+				},
+				prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 7001}},
 			},
-			prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 7001}},
 		},
 	}
 
@@ -96,19 +98,21 @@ func TestWarmSDSBaselineReturnsBlockedWhenRemoteSurfaceMismatches(t *testing.T) 
 
 	svc := &service{
 		repo: NewInMemoryRepositoryForTest(),
-		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-			status: &sdslogin.Status{
-				HasAccessToken: true,
+		mirrors: serviceDependencyMirrors{
+			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+				status: &sdslogin.Status{
+					HasAccessToken: true,
+				},
 			},
-		},
-		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
-			productDetail: &sdstemplate.ProductDetail{},
-			designProduct: &sdsdesign.DesignProductPage{
-				Product:        sdsdesign.DesignProduct{ID: 101},
-				PrototypeGroup: sdsdesign.PrototypeGroup{ID: 9999},
-				Layers:         []sdsdesign.DesignLayer{{ID: "other-layer"}},
+			sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+				productDetail: &sdstemplate.ProductDetail{},
+				designProduct: &sdsdesign.DesignProductPage{
+					Product:        sdsdesign.DesignProduct{ID: 101},
+					PrototypeGroup: sdsdesign.PrototypeGroup{ID: 9999},
+					Layers:         []sdsdesign.DesignLayer{{ID: "other-layer"}},
+				},
+				prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 9999}},
 			},
-			prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 9999}},
 		},
 	}
 
@@ -229,14 +233,16 @@ func TestWarmSDSBaselineTreatsRemoteDesignSurfaceCredentialBootstrapFailureAsRea
 
 	svc := &service{
 		repo: NewInMemoryRepositoryForTest(),
-		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-			status: &sdslogin.Status{
-				HasAccessToken: true,
+		mirrors: serviceDependencyMirrors{
+			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+				status: &sdslogin.Status{
+					HasAccessToken: true,
+				},
 			},
-		},
-		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
-			productDetail:    &sdstemplate.ProductDetail{},
-			designProductErr: fmt.Errorf("merchant_name, username and password are required"),
+			sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+				productDetail:    &sdstemplate.ProductDetail{},
+				designProductErr: fmt.Errorf("merchant_name, username and password are required"),
+			},
 		},
 	}
 

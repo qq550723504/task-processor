@@ -101,7 +101,7 @@ func TestServiceGetStudioBatchDetailProjectsItemizedGraph(t *testing.T) {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{studioBatchRepo: repo}
+	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
 		t.Fatalf("GetStudioBatchDetail() error = %v", err)
@@ -147,15 +147,13 @@ func TestServiceGetStudioBatchDetailIncludesDraftUpdatedAtFromSavedBatchDraft(t 
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{
-		studioBatchRepo: repo,
-		studioSessionRepo: &studioBatchGenerationSessionRepoStub{
-			session: &SheinStudioSession{
-				ID:           "batch-1",
-				SavedAsBatch: true,
-				UpdatedAt:    draftUpdatedAt,
-			},
+	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo, studioSessionRepo: &studioBatchGenerationSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:           "batch-1",
+			SavedAsBatch: true,
+			UpdatedAt:    draftUpdatedAt,
 		},
+	}},
 	}
 
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
@@ -204,7 +202,7 @@ func TestServiceGetStudioBatchDetailDerivesActiveBatchStatusFromItems(t *testing
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{studioBatchRepo: repo}
+	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
 		t.Fatalf("GetStudioBatchDetail() error = %v", err)
@@ -242,7 +240,7 @@ func TestServiceGetStudioBatchDetailPreservesTasksCreatedStatus(t *testing.T) {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{studioBatchRepo: repo}
+	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
 		t.Fatalf("GetStudioBatchDetail() error = %v", err)
@@ -259,13 +257,16 @@ func TestServiceGetStudioBatchDetailPreservesTasksCreatedStatus(t *testing.T) {
 func TestServiceTaskStudioBatchOrDefaultCachesOnService(t *testing.T) {
 	t.Parallel()
 
-	svc := &service{studioBatchRepo: NewMemStudioBatchRepository()}
+	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: NewMemStudioBatchRepository()}}
 	collaborator := svc.taskStudioBatchOrDefault()
 	if collaborator == nil {
 		t.Fatal("taskStudioBatchOrDefault() = nil, want collaborator")
 	}
-	if svc.taskStudioBatch != collaborator {
-		t.Fatal("expected collaborator to be cached on service field")
+	if svc.studio.batch != collaborator {
+		t.Fatal("expected collaborator to be cached on studio group")
+	}
+	if svc.collabMirrors.taskStudioBatch != collaborator {
+		t.Fatal("expected legacy taskStudioBatch mirror to match studio group batch collaborator")
 	}
 }
 
@@ -502,10 +503,7 @@ func TestServiceGetStudioBatchDetailReturnsDraftOnlyStateWhenSelectingBatchGraph
 		},
 	}
 
-	svc := &service{
-		studioBatchRepo:   repo,
-		studioSessionRepo: sessionRepo,
-	}
+	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo, studioSessionRepo: sessionRepo}}
 
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
@@ -554,10 +552,7 @@ func TestServiceGetStudioBatchDetailMaterializesBatchGraphFromGeneratingSessionW
 		},
 	}
 
-	svc := &service{
-		studioBatchRepo:   repo,
-		studioSessionRepo: sessionRepo,
-	}
+	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo, studioSessionRepo: sessionRepo}}
 
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
@@ -654,7 +649,7 @@ func TestServiceApproveStudioBatchDesignsUpdatesReviewStatusFromDesignIDs(t *tes
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{studioBatchRepo: repo}
+	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
 	detail, err := svc.ApproveStudioBatchDesigns(ctx, "batch-1", &ApproveStudioBatchDesignsRequest{
 		DesignIDs: []string{"design-2"},
 	})
@@ -706,7 +701,7 @@ func TestServiceApproveStudioBatchDesignsRejectsUnknownDesignIDs(t *testing.T) {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{studioBatchRepo: repo}
+	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
 	_, err := svc.ApproveStudioBatchDesigns(ctx, "batch-1", &ApproveStudioBatchDesignsRequest{
 		DesignIDs: []string{"design-2", "design-missing"},
 	})
@@ -1215,10 +1210,10 @@ func TestServiceCreateStudioBatchTasksUsesApprovedDesignOwnership(t *testing.T) 
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{studioBatchRepo: repo}
+	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
 	svc.repo = newStudioBatchTaskRepositoryStub()
-	svc.taskSubmitter = &studioBatchTaskSubmitterStub{}
-	svc.studioSessionRepo = &studioBatchTaskCreationSessionRepoStub{
+	svc.runtime.taskSubmitter = &studioBatchTaskSubmitterStub{}
+	svc.mirrors.studioSessionRepo = &studioBatchTaskCreationSessionRepoStub{
 		session: &SheinStudioSession{
 			ID:            "batch-1",
 			Prompt:        "retro cherries",
@@ -1291,50 +1286,54 @@ func TestServiceCreateStudioBatchTasksCreatesRealListingKitTasks(t *testing.T) {
 	}
 
 	svc := &service{
-		repo:            taskRepo,
-		taskSubmitter:   &studioBatchTaskSubmitterStub{},
-		studioBatchRepo: batchRepo,
-		studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
-			session: &SheinStudioSession{
-				ID:                "batch-1",
-				Prompt:            "retro cherries",
-				ImageStrategy:     "sds_official",
-				SheinStoreID:      "869",
-				SelectedSDSImages: nil,
-				Selection: SheinStudioSelectionSnapshot{
-					ProductID:              1001,
-					ParentProductID:        2002,
-					VariantID:              3003,
-					PrototypeGroupID:       4004,
-					LayerID:                "layer-1",
-					ProductName:            "Canvas Tote",
-					VariantLabel:           "Red / One Size",
-					PrintableWidth:         1200,
-					PrintableHeight:        1200,
-					TemplateImageURL:       "https://cdn.example.com/template.png",
-					MaskImageURL:           "https://cdn.example.com/mask.png",
-					BlankDesignURL:         "https://cdn.example.com/blank.png",
-					MockupImageURL:         "https://cdn.example.com/mockup.png",
-					MockupImageURLs:        []string{"https://cdn.example.com/mockup.png"},
-					SizeReferenceImageURLs: []string{"https://cdn.example.com/size.png"},
-					Variants: []SheinStudioSelectionVariant{
-						{
-							VariantID:              3003,
-							VariantSKU:             "SKU-RED",
-							Size:                   "One Size",
-							Color:                  "Red",
-							PrototypeGroupID:       4004,
-							LayerID:                "layer-1",
-							TemplateImageURL:       "https://cdn.example.com/template.png",
-							MaskImageURL:           "https://cdn.example.com/mask.png",
-							BlankDesignURL:         "https://cdn.example.com/blank.png",
-							MockupImageURL:         "https://cdn.example.com/mockup.png",
-							MockupImageURLs:        []string{"https://cdn.example.com/mockup.png"},
-							SizeReferenceImageURLs: []string{"https://cdn.example.com/size.png"},
+		repo: taskRepo,
+
+		mirrors: serviceDependencyMirrors{
+			studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
+				session: &SheinStudioSession{
+					ID:                "batch-1",
+					Prompt:            "retro cherries",
+					ImageStrategy:     "sds_official",
+					SheinStoreID:      "869",
+					SelectedSDSImages: nil,
+					Selection: SheinStudioSelectionSnapshot{
+						ProductID:              1001,
+						ParentProductID:        2002,
+						VariantID:              3003,
+						PrototypeGroupID:       4004,
+						LayerID:                "layer-1",
+						ProductName:            "Canvas Tote",
+						VariantLabel:           "Red / One Size",
+						PrintableWidth:         1200,
+						PrintableHeight:        1200,
+						TemplateImageURL:       "https://cdn.example.com/template.png",
+						MaskImageURL:           "https://cdn.example.com/mask.png",
+						BlankDesignURL:         "https://cdn.example.com/blank.png",
+						MockupImageURL:         "https://cdn.example.com/mockup.png",
+						MockupImageURLs:        []string{"https://cdn.example.com/mockup.png"},
+						SizeReferenceImageURLs: []string{"https://cdn.example.com/size.png"},
+						Variants: []SheinStudioSelectionVariant{
+							{
+								VariantID:              3003,
+								VariantSKU:             "SKU-RED",
+								Size:                   "One Size",
+								Color:                  "Red",
+								PrototypeGroupID:       4004,
+								LayerID:                "layer-1",
+								TemplateImageURL:       "https://cdn.example.com/template.png",
+								MaskImageURL:           "https://cdn.example.com/mask.png",
+								BlankDesignURL:         "https://cdn.example.com/blank.png",
+								MockupImageURL:         "https://cdn.example.com/mockup.png",
+								MockupImageURLs:        []string{"https://cdn.example.com/mockup.png"},
+								SizeReferenceImageURLs: []string{"https://cdn.example.com/size.png"},
+							},
 						},
 					},
 				},
-			},
+			}, studioBatchRepo: batchRepo,
+		},
+		runtime: serviceRuntimeState{
+			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
 
@@ -1457,19 +1456,23 @@ func TestServiceCreateStudioBatchTasksUsesItemSelectionOwnershipForGroupedProduc
 	}
 
 	svc := &service{
-		repo:            taskRepo,
-		taskSubmitter:   &studioBatchTaskSubmitterStub{},
-		studioBatchRepo: batchRepo,
-		studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
-			session: &SheinStudioSession{
-				ID:                "batch-1",
-				Prompt:            "retro cherries",
-				ImageStrategy:     "sds_official",
-				SheinStoreID:      "869",
-				GroupedImageMode:  "per_product",
-				Selection:         batch.Selection,
-				GroupedSelections: batch.GroupedSelections,
-			},
+		repo: taskRepo,
+
+		mirrors: serviceDependencyMirrors{
+			studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
+				session: &SheinStudioSession{
+					ID:                "batch-1",
+					Prompt:            "retro cherries",
+					ImageStrategy:     "sds_official",
+					SheinStoreID:      "869",
+					GroupedImageMode:  "per_product",
+					Selection:         batch.Selection,
+					GroupedSelections: batch.GroupedSelections,
+				},
+			}, studioBatchRepo: batchRepo,
+		},
+		runtime: serviceRuntimeState{
+			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
 
@@ -1541,25 +1544,29 @@ func TestServiceCreateStudioBatchTasksReturnsPartialSuccessWhenQueueIsFull(t *te
 	}
 
 	svc := &service{
-		repo:            taskRepo,
-		taskSubmitter:   &studioBatchTaskSubmitterStub{failAfter: 1},
-		studioBatchRepo: batchRepo,
-		studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
-			session: &SheinStudioSession{
-				ID:            "batch-1",
-				Prompt:        "retro cherries",
-				ImageStrategy: "sds_official",
-				Selection: SheinStudioSelectionSnapshot{
-					ProductID:        1001,
-					ParentProductID:  2002,
-					VariantID:        3003,
-					PrototypeGroupID: 4004,
-					LayerID:          "layer-1",
-					ProductName:      "Canvas Tote",
-					PrintableWidth:   1200,
-					PrintableHeight:  1200,
+		repo: taskRepo,
+
+		mirrors: serviceDependencyMirrors{
+			studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
+				session: &SheinStudioSession{
+					ID:            "batch-1",
+					Prompt:        "retro cherries",
+					ImageStrategy: "sds_official",
+					Selection: SheinStudioSelectionSnapshot{
+						ProductID:        1001,
+						ParentProductID:  2002,
+						VariantID:        3003,
+						PrototypeGroupID: 4004,
+						LayerID:          "layer-1",
+						ProductName:      "Canvas Tote",
+						PrintableWidth:   1200,
+						PrintableHeight:  1200,
+					},
 				},
-			},
+			}, studioBatchRepo: batchRepo,
+		},
+		runtime: serviceRuntimeState{
+			taskSubmitter: &studioBatchTaskSubmitterStub{failAfter: 1},
 		},
 	}
 
@@ -1630,10 +1637,14 @@ func TestServiceCreateStudioBatchTasksReusesExistingTasksForRepeatedRequests(t *
 		},
 	}
 	svc := &service{
-		repo:              taskRepo,
-		taskSubmitter:     &studioBatchTaskSubmitterStub{},
-		studioBatchRepo:   batchRepo,
-		studioSessionRepo: sessionRepo,
+		repo: taskRepo,
+
+		mirrors: serviceDependencyMirrors{
+			studioSessionRepo: sessionRepo, studioBatchRepo: batchRepo,
+		},
+		runtime: serviceRuntimeState{
+			taskSubmitter: &studioBatchTaskSubmitterStub{},
+		},
 	}
 
 	first, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
@@ -1687,25 +1698,29 @@ func TestServiceCreateStudioBatchTasksRejectsUnapprovedDesignIDs(t *testing.T) {
 	}
 
 	svc := &service{
-		repo:            newStudioBatchTaskRepositoryStub(),
-		taskSubmitter:   &studioBatchTaskSubmitterStub{},
-		studioBatchRepo: repo,
-		studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
-			session: &SheinStudioSession{
-				ID:            "batch-1",
-				Prompt:        "retro cherries",
-				ImageStrategy: "sds_official",
-				Selection: SheinStudioSelectionSnapshot{
-					ProductID:        1001,
-					ParentProductID:  2002,
-					VariantID:        3003,
-					PrototypeGroupID: 4004,
-					LayerID:          "layer-1",
-					ProductName:      "Canvas Tote",
-					PrintableWidth:   1200,
-					PrintableHeight:  1200,
+		repo: newStudioBatchTaskRepositoryStub(),
+
+		mirrors: serviceDependencyMirrors{
+			studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
+				session: &SheinStudioSession{
+					ID:            "batch-1",
+					Prompt:        "retro cherries",
+					ImageStrategy: "sds_official",
+					Selection: SheinStudioSelectionSnapshot{
+						ProductID:        1001,
+						ParentProductID:  2002,
+						VariantID:        3003,
+						PrototypeGroupID: 4004,
+						LayerID:          "layer-1",
+						ProductName:      "Canvas Tote",
+						PrintableWidth:   1200,
+						PrintableHeight:  1200,
+					},
 				},
-			},
+			}, studioBatchRepo: repo,
+		},
+		runtime: serviceRuntimeState{
+			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
 	if _, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
@@ -1842,7 +1857,7 @@ func (r *studioBatchTaskRepositoryStub) RecoverBlockedTaskNow(_ context.Context,
 func (r *studioBatchTaskRepositoryStub) BulkRecoverBlockedTasks(context.Context, *RecoverBlockedTasksQuery) (int64, error) {
 	return 0, nil
 }
-func (r *studioBatchTaskRepositoryStub) PrepareRetry(context.Context, string) error       { return nil }
+func (r *studioBatchTaskRepositoryStub) PrepareRetry(context.Context, string) error { return nil }
 func (r *studioBatchTaskRepositoryStub) IncrementRetryCount(context.Context, string) error {
 	return nil
 }

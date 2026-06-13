@@ -8,6 +8,11 @@ Phase 4 reduces the root ListingKit `service` object from an all-in-one dependen
 
 This checkpoint records the first service-object slimming wave. It does not introduce a new package, change the public `Service` interface, change `NewService(...)` behavior, or move business rules.
 
+The current internal representation direction is also clearer now:
+
+- legacy dependency mirrors should live under a dedicated `mirrors` bucket instead of remaining as flat root `service` fields;
+- legacy collaborator mirrors should live under a dedicated `collabMirrors` bucket instead of remaining as flat root `service` fields.
+
 ## 2. Current File Groups
 
 The root service construction surface is now split into these files:
@@ -482,7 +487,31 @@ The split is intended to be behavior-preserving:
 - no request normalization changes,
 - no collaborator construction semantics changes.
 
-## 6. Suggested Local Validation
+## 6. Internal Representation Follow-up
+
+The task/studio/admin collaborator groups are now the preferred internal shape.
+
+The root `service` struct still retains legacy flat collaborator fields such as
+`taskGeneration`, `taskStudioBatch`, and `settingsAdmin`, but they should now be
+treated as compatibility mirrors rather than the primary ownership boundary.
+
+Current expectation:
+
+- grouped collaborator containers (`task`, `studio`, `admin`) are the primary internal representation,
+- `...OrDefault()` accessors are the only place that should synchronize grouped fields with legacy mirrors,
+- grouped dependency buckets (`taskDeps`, `studioDeps`, `adminDeps`, `submissionDeps`, `workflowDeps`, `sheinRuntimeDeps`, `supportDeps`) should own resolver state first,
+- service construction should seed grouped dependency buckets first; legacy root dependency mirrors should hydrate lazily through resolvers,
+- legacy dependency mirrors should live under a dedicated `mirrors` bucket instead of remaining as flat root `service` fields,
+- runtime-configurable submit/workflow overrides should live in a dedicated runtime bucket instead of expanding the root service surface,
+- initialization stages should trigger accessors rather than re-assign grouped fields manually,
+- dependency resolvers should use shared synchronization helpers instead of open-coded root/group mirror logic,
+- tests should prefer asserting grouped ownership first and mirror compatibility second.
+
+This keeps the service object behavior-compatible while reducing the amount of
+duplicated root/group synchronization logic that later Phase 4 work would
+otherwise need to untangle again.
+
+## 7. Suggested Local Validation
 
 From the repository root:
 
@@ -498,15 +527,16 @@ go test ./internal/listingkit/... -count=1
 go test ./... -count=1
 ```
 
-## 7. Next Phase 4 Candidates
+## 8. Next Phase 4 Candidates
 
 Recommended next low-risk slices:
 
 1. Review `service_types.go` for possible internal grouping comments or dependency buckets without changing fields.
-2. Review service accessor files to ensure each accessor remains thin and delegates to concept-specific config builders.
-3. Keep `service_config.go` focused on factory wiring; avoid adding new default-building logic there.
-4. Continue moving default construction helpers to concept-specific files only when the move is behavior-preserving.
-5. Use [legacy-store-routing-retirement-checklist.md](/D:/code/task-processor/docs/refactoring/legacy-store-routing-retirement-checklist.md) before removing `/store-routing` compatibility surfaces.
+2. Continue shrinking direct reads/writes of legacy flat collaborator mirrors so grouped containers become the obvious ownership boundary.
+3. Review service accessor files to ensure each accessor remains thin and delegates to concept-specific config builders.
+4. Keep `service_config.go` focused on factory wiring; avoid adding new default-building logic there.
+5. Continue moving default construction helpers to concept-specific files only when the move is behavior-preserving.
+6. Use [legacy-store-routing-retirement-checklist.md](/D:/code/task-processor/docs/refactoring/legacy-store-routing-retirement-checklist.md) before removing `/store-routing` compatibility surfaces.
 
 Avoid for now:
 

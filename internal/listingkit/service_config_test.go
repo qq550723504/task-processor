@@ -83,3 +83,106 @@ func TestNewServiceWithConfigInitializesSubmitLockManager(t *testing.T) {
 		t.Fatal("expected shein submit locks to be initialized")
 	}
 }
+
+func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyMirrors(t *testing.T) {
+	t.Parallel()
+
+	sessionRepo := &studioBatchRunExecutorSessionRepoStub{}
+	syncSvc := &stubWorkflowSDSSyncService{}
+	statusProvider := stubSDSLoginStatusProvider{}
+	credentialStore := &fakeAIClientCredentialStore{}
+	submitter := noopTaskSubmitter{}
+	workflowClient := &stubStandardProductWorkflowClient{}
+
+	svc := newServiceWithConfig(newTestServiceConfig(
+		&stubSubmitRepo{},
+		withTestTaskSubmitter(submitter),
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Core.StudioSessionRepository = sessionRepo
+			cfg.Core.SDSSyncService = syncSvc
+			cfg.Core.SDSLoginStatusProvider = statusProvider
+			cfg.Core.AIClientCredentialStore = credentialStore
+			cfg.Workflow.StandardProductWorkflowClient = workflowClient
+			cfg.Workflow.StandardProductWorkflowEnabled = true
+		}),
+	))
+
+	if svc.repo == nil {
+		t.Fatal("expected repository to remain eagerly available")
+	}
+	if svc.taskDeps.taskSubmitter != submitter {
+		t.Fatalf("task deps submitter = %v, want seeded submitter", svc.taskDeps.taskSubmitter)
+	}
+	if svc.studioDeps.sessionRepo != sessionRepo {
+		t.Fatalf("studio deps session repo = %v, want seeded repo", svc.studioDeps.sessionRepo)
+	}
+	if svc.supportDeps.sdsSyncService != syncSvc {
+		t.Fatalf("support deps sync service = %v, want seeded service", svc.supportDeps.sdsSyncService)
+	}
+	if svc.taskDeps.sdsLoginStatusProvider != statusProvider {
+		t.Fatalf("task deps status provider = %v, want seeded provider", svc.taskDeps.sdsLoginStatusProvider)
+	}
+	if svc.adminDeps.aiCredentialStore != credentialStore {
+		t.Fatalf("admin deps AI credential store = %v, want seeded store", svc.adminDeps.aiCredentialStore)
+	}
+	if svc.taskDeps.standardWorkflowClient != workflowClient || !svc.taskDeps.standardWorkflowEnabled {
+		t.Fatalf("task deps standard workflow = (%v, %v), want seeded+enabled", svc.taskDeps.standardWorkflowClient, svc.taskDeps.standardWorkflowEnabled)
+	}
+
+	if svc.runtime.taskSubmitter != nil {
+		t.Fatalf("legacy taskSubmitter runtime mirror = %v, want nil before resolver sync", svc.runtime.taskSubmitter)
+	}
+	if svc.mirrors.studioSessionRepo != nil {
+		t.Fatalf("legacy studioSessionRepo mirror = %v, want nil before resolver sync", svc.mirrors.studioSessionRepo)
+	}
+	if svc.mirrors.sdsSyncSvc != nil {
+		t.Fatalf("legacy sdsSyncSvc mirror = %v, want nil before resolver sync", svc.mirrors.sdsSyncSvc)
+	}
+	if svc.mirrors.sdsLoginStatusProvider != nil {
+		t.Fatalf("legacy sdsLoginStatusProvider mirror = %v, want nil before resolver sync", svc.mirrors.sdsLoginStatusProvider)
+	}
+	if svc.mirrors.aiCredentialStore != nil {
+		t.Fatalf("legacy aiCredentialStore mirror = %v, want nil before resolver sync", svc.mirrors.aiCredentialStore)
+	}
+	if svc.runtime.standardProductWorkflowClient != nil || svc.runtime.standardProductWorkflowEnabled {
+		t.Fatalf("legacy standard workflow runtime = (%v, %v), want nil+disabled before resolver sync", svc.runtime.standardProductWorkflowClient, svc.runtime.standardProductWorkflowEnabled)
+	}
+
+	if got := resolveTaskSubmitter(svc); got != submitter {
+		t.Fatalf("resolveTaskSubmitter() = %v, want seeded submitter", got)
+	}
+	if got := resolveStudioSessionRepo(svc); got != sessionRepo {
+		t.Fatalf("resolveStudioSessionRepo() = %v, want seeded repo", got)
+	}
+	if got := resolveSDSSyncService(svc); got != syncSvc {
+		t.Fatalf("resolveSDSSyncService() = %v, want seeded service", got)
+	}
+	if got := resolveSDSLoginStatusProvider(svc); got != statusProvider {
+		t.Fatalf("resolveSDSLoginStatusProvider() = %v, want seeded provider", got)
+	}
+	if got := resolveAdminAICredentialStore(svc); got != credentialStore {
+		t.Fatalf("resolveAdminAICredentialStore() = %v, want seeded store", got)
+	}
+	if got, enabled := resolveStandardWorkflowClient(svc); got != workflowClient || !enabled {
+		t.Fatalf("resolveStandardWorkflowClient() = (%v, %v), want seeded+enabled", got, enabled)
+	}
+
+	if svc.runtime.taskSubmitter != submitter {
+		t.Fatalf("legacy taskSubmitter runtime mirror = %v, want hydrated submitter", svc.runtime.taskSubmitter)
+	}
+	if svc.mirrors.studioSessionRepo != sessionRepo {
+		t.Fatalf("legacy studioSessionRepo mirror = %v, want hydrated repo", svc.mirrors.studioSessionRepo)
+	}
+	if svc.mirrors.sdsSyncSvc != syncSvc {
+		t.Fatalf("legacy sdsSyncSvc mirror = %v, want hydrated service", svc.mirrors.sdsSyncSvc)
+	}
+	if svc.mirrors.sdsLoginStatusProvider != statusProvider {
+		t.Fatalf("legacy sdsLoginStatusProvider mirror = %v, want hydrated provider", svc.mirrors.sdsLoginStatusProvider)
+	}
+	if svc.mirrors.aiCredentialStore != credentialStore {
+		t.Fatalf("legacy aiCredentialStore mirror = %v, want hydrated store", svc.mirrors.aiCredentialStore)
+	}
+	if svc.runtime.standardProductWorkflowClient != workflowClient || !svc.runtime.standardProductWorkflowEnabled {
+		t.Fatalf("legacy standard workflow runtime = (%v, %v), want hydrated+enabled", svc.runtime.standardProductWorkflowClient, svc.runtime.standardProductWorkflowEnabled)
+	}
+}

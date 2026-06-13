@@ -274,12 +274,7 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 		},
 	}
 	svc := &service{
-		repo:                repo,
-		productSvc:          productSvc,
-		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		assetRecipeResolver: newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
-		assetGenerator:      newDefaultAssetGenerationService(),
+		repo: repo, mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
 	}
 
 	state, err := svc.runStandardProductWorkflow(context.Background(), task)
@@ -350,12 +345,7 @@ func TestRunStandardProductWorkflowUsesTaskTenantIDWhenRequestTenantMissing(t *t
 		},
 	}
 	svc := &service{
-		repo:                repo,
-		productSvc:          productSvc,
-		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		assetRecipeResolver: newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
-		assetGenerator:      newDefaultAssetGenerationService(),
+		repo: repo, mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
 	}
 
 	state, err := svc.runStandardProductWorkflow(context.Background(), task)
@@ -383,12 +373,7 @@ func TestRunStandardProductWorkflowFallsBackToStudioCanonicalWhenSDSBaselineMiss
 		},
 	}
 	svc := &service{
-		repo:                NewInMemoryRepositoryForTest(),
-		productSvc:          productSvc,
-		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		assetRecipeResolver: newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
-		assetGenerator:      newDefaultAssetGenerationService(),
+		repo: NewInMemoryRepositoryForTest(), mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
 	}
 	task := &Task{
 		ID: "task-baseline-miss",
@@ -451,12 +436,7 @@ func TestRunStandardProductWorkflowReusesCanonicalCacheBeforeProductEnrich(t *te
 		},
 	}
 	svc := &service{
-		repo:                repo,
-		productSvc:          productSvc,
-		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		assetRecipeResolver: newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
-		assetGenerator:      newDefaultAssetGenerationService(),
+		repo: repo, mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
 	}
 
 	state, err := svc.runStandardProductWorkflow(context.Background(), task)
@@ -513,13 +493,7 @@ func TestRunStandardProductWorkflowReappliesSDSMetadataWithoutDroppingProcessedA
 		},
 	}
 	svc := &service{
-		repo:                NewInMemoryRepositoryForTest(),
-		imageSvc:            imageSvc,
-		sdsSyncSvc:          sdsSvc,
-		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		assetRecipeResolver: newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
-		assetGenerator:      newDefaultAssetGenerationService(),
+		repo: NewInMemoryRepositoryForTest(), mirrors: serviceDependencyMirrors{imageSvc: imageSvc, sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
 	}
 	task := &Task{
 		ID: "task-sds-assets",
@@ -574,11 +548,7 @@ func TestRunStandardProductWorkflowContinuesWhenSDSBaselineLookupErrors(t *testi
 		repo: &stubInlineTaskRepo{
 			tasks:             map[string]*Task{},
 			sdsBaselineGetErr: fmt.Errorf("baseline repo unavailable"),
-		},
-		assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		assetRecipeResolver: newDefaultAssetRecipeResolver(),
-		assetBundleBuilder:  newDefaultAssetBundleBuilder(),
-		assetGenerator:      newDefaultAssetGenerationService(),
+		}, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
 	}
 	task := &Task{
 		ID: "task-baseline-error",
@@ -663,11 +633,7 @@ func TestRunStandardProductWorkflowIgnoresUnavailableOrMalformedSDSBaselineEntri
 			}
 
 			svc := &service{
-				repo:                repo,
-				assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-				assetRecipeResolver: newDefaultAssetRecipeResolver(),
-				assetBundleBuilder:  newDefaultAssetBundleBuilder(),
-				assetGenerator:      newDefaultAssetGenerationService(),
+				repo: repo, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
 			}
 
 			state, err := svc.runStandardProductWorkflow(context.Background(), task)

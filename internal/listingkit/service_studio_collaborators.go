@@ -1,115 +1,45 @@
 package listingkit
 
 func (s *service) taskStudioSessionOrDefault() *taskStudioSessionService {
-	if s.studio.session != nil {
-		s.taskStudioSession = s.studio.session
-		return s.studio.session
-	}
-	if s.taskStudioSession != nil {
-		s.studio.session = s.taskStudioSession
-		return s.taskStudioSession
-	}
-	service := newTaskStudioSessionService(buildTaskStudioSessionServiceConfig(s))
-	s.studio.session = service
-	s.taskStudioSession = service
-	return service
+	return syncGroupedCollaborator(&s.studio.session, &s.collabMirrors.taskStudioSession, func() *taskStudioSessionService {
+		return newTaskStudioSessionService(buildTaskStudioSessionServiceConfig(s))
+	})
 }
 
 func (s *service) taskStudioBatchDraftOrDefault() *taskStudioBatchDraftService {
-	if s.studio.batchDraft != nil {
-		s.taskStudioBatchDraft = s.studio.batchDraft
-		return s.studio.batchDraft
-	}
-	if s.taskStudioBatchDraft != nil {
-		s.studio.batchDraft = s.taskStudioBatchDraft
-		return s.taskStudioBatchDraft
-	}
-	service := newTaskStudioBatchDraftService(buildTaskStudioBatchDraftServiceConfig(s))
-	s.studio.batchDraft = service
-	s.taskStudioBatchDraft = service
-	return service
+	return syncGroupedCollaborator(&s.studio.batchDraft, &s.collabMirrors.taskStudioBatchDraft, func() *taskStudioBatchDraftService {
+		return newTaskStudioBatchDraftService(buildTaskStudioBatchDraftServiceConfig(s))
+	})
 }
 
 func (s *service) taskStudioMediaOrDefault() *taskStudioMediaService {
-	if s.studio.media != nil {
-		s.taskStudioMedia = s.studio.media
-		return s.studio.media
-	}
-	if s.taskStudioMedia != nil {
-		s.studio.media = s.taskStudioMedia
-		return s.taskStudioMedia
-	}
-	service := newTaskStudioMediaService(buildTaskStudioMediaServiceConfig(s))
-	s.studio.media = service
-	s.taskStudioMedia = service
-	return service
+	return syncGroupedCollaborator(&s.studio.media, &s.collabMirrors.taskStudioMedia, func() *taskStudioMediaService {
+		return newTaskStudioMediaService(buildTaskStudioMediaServiceConfig(s))
+	})
 }
 
 func (s *service) studioBatchGenerationOrDefault() *studioBatchGenerationService {
-	if s.studio.batchGeneration != nil {
-		s.studioBatchGeneration = s.studio.batchGeneration
-		return s.studio.batchGeneration
-	}
-	if s.studioBatchGeneration != nil {
-		s.studio.batchGeneration = s.studioBatchGeneration
-		return s.studioBatchGeneration
-	}
-	service := newStudioBatchGenerationService(buildStudioBatchGenerationServiceConfig(s))
-	s.studio.batchGeneration = service
-	s.studioBatchGeneration = service
-	return service
+	return syncGroupedCollaborator(&s.studio.batchGeneration, &s.collabMirrors.studioBatchGeneration, func() *studioBatchGenerationService {
+		return newStudioBatchGenerationService(buildStudioBatchGenerationServiceConfig(s))
+	})
 }
 
 func (s *service) taskStudioBatchOrDefault() *taskStudioBatchService {
-	if s.studio.batch != nil {
-		s.taskStudioBatch = s.studio.batch
-		return s.studio.batch
-	}
-	if s.taskStudioBatch != nil {
-		s.studio.batch = s.taskStudioBatch
-		return s.taskStudioBatch
-	}
-	service := newTaskStudioBatchService(buildTaskStudioBatchServiceConfig(s))
-	s.studio.batch = service
-	s.taskStudioBatch = service
-	return service
+	return syncGroupedCollaborator(&s.studio.batch, &s.collabMirrors.taskStudioBatch, func() *taskStudioBatchService {
+		return newTaskStudioBatchService(buildTaskStudioBatchServiceConfig(s))
+	})
 }
 
 func (s *service) taskStudioBatchRunOrDefault() *taskStudioBatchRunService {
-	if s.studio.batchRun != nil {
-		s.taskStudioBatchRun = s.studio.batchRun
-		return s.studio.batchRun
-	}
-	if s.taskStudioBatchRun != nil {
-		s.studio.batchRun = s.taskStudioBatchRun
-		return s.taskStudioBatchRun
-	}
-	service := newTaskStudioBatchRunService(buildTaskStudioBatchRunServiceConfig(s))
-	s.studio.batchRun = service
-	s.taskStudioBatchRun = service
-	return service
+	return syncGroupedCollaborator(&s.studio.batchRun, &s.collabMirrors.taskStudioBatchRun, func() *taskStudioBatchRunService {
+		return newTaskStudioBatchRunService(buildTaskStudioBatchRunServiceConfig(s))
+	})
 }
 
 func (s *service) studioBatchRunExecutorOrDefault() *taskStudioBatchRunExecutor {
-	if s.studio.runExecutor != nil {
-		s.studioBatchRunExecutor = s.studio.runExecutor
-		return s.studio.runExecutor
-	}
-	if s.studioBatchRunExecutor != nil {
-		s.studio.runExecutor = s.studioBatchRunExecutor
-		return s.studioBatchRunExecutor
-	}
-	return nil
+	return syncGroupedCollaborator(&s.studio.runExecutor, &s.collabMirrors.studioBatchRunExecutor, nil)
 }
 
 func (s *service) studioBatchRunCoordinatorOrDefault() *studioBatchRunCoordinator {
-	if s.studio.runCoordinator != nil {
-		s.studioBatchRunCoordinator = s.studio.runCoordinator
-		return s.studio.runCoordinator
-	}
-	if s.studioBatchRunCoordinator != nil {
-		s.studio.runCoordinator = s.studioBatchRunCoordinator
-		return s.studioBatchRunCoordinator
-	}
-	return nil
+	return syncGroupedCollaborator(&s.studio.runCoordinator, &s.collabMirrors.studioBatchRunCoordinator, nil)
 }
