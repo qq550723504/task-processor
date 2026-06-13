@@ -33,15 +33,15 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 		return export, nil
 	}
 
-	projection := buildListingKitReadProjection(task.Result, selectedPlatform)
-	export.CatalogProduct = projection.Attachment.CatalogProduct
-	export.AssetBundle = projection.Attachment.AssetBundle
-	export.AssetInventorySummary = projection.Attachment.AssetInventorySummary
-	export.AssetRenderPreviews = projection.Attachment.AssetRenderPreviews
-	export.PlatformAssetRenderPreviews = projection.Attachment.PlatformAssetRenderPreviews
-	export.AssetGenerationQueue = projection.Attachment.AssetGenerationQueue
-	export.AssetGenerationOverview = projection.Attachment.AssetGenerationOverview
-	export.Overview = buildListingKitExportMetaFromOverview(projection.Overview)
+	projection := buildListingKitExportProjection(task.Result, selectedPlatform)
+	export.CatalogProduct = projection.catalog
+	export.AssetBundle = projection.assetBundle
+	export.AssetInventorySummary = projection.assetInventory
+	export.AssetRenderPreviews = projection.assetRenderPreviews
+	export.PlatformAssetRenderPreviews = projection.platformPreviews
+	export.AssetGenerationQueue = projection.generationQueue
+	export.AssetGenerationOverview = projection.generationOverview
+	export.Overview = projection.overview
 
 	if selectedPlatform == "" || selectedPlatform == "amazon" {
 		if task.Result.Amazon != nil {
