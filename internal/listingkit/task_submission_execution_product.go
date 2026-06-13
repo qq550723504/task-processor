@@ -43,6 +43,10 @@ func (s *taskSubmissionExecutionService) buildSheinSubmitTranslateAPI(ctx contex
 	if err != nil || storeID <= 0 {
 		return nil
 	}
+	return s.buildSheinSubmitTranslateAPIForStore(ctx, storeID)
+}
+
+func (s *taskSubmissionExecutionService) buildSheinSubmitTranslateAPIForStore(ctx context.Context, storeID int64) sheintranslateapi.TranslateAPI {
 	translateAPI, fallback := s.sheinTranslateAPIBuilder.BuildTranslateAPI(ctx, storeID)
 	if translateAPI == nil && strings.TrimSpace(fallback) != "" {
 		return nil
