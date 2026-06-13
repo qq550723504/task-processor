@@ -23,7 +23,7 @@ func adaptPreviewDomainHeader(base *previewdomain.Header) *ListingKitPreviewHead
 	if base == nil {
 		return nil
 	}
-	return &ListingKitPreviewHeader{
+	header := &ListingKitPreviewHeader{
 		Country:       base.Country,
 		Language:      base.Language,
 		SourceType:    base.SourceType,
@@ -33,6 +33,24 @@ func adaptPreviewDomainHeader(base *previewdomain.Header) *ListingKitPreviewHead
 		Warnings:      append([]string(nil), base.Warnings...),
 		ReviewReasons: append([]string(nil), base.ReviewReasons...),
 	}
+	if len(base.PlatformCards) > 0 {
+		header.PlatformCards = make([]ListingKitPlatformCard, 0, len(base.PlatformCards))
+		for _, card := range base.PlatformCards {
+			header.PlatformCards = append(header.PlatformCards, ListingKitPlatformCard{
+				Platform:              card.Platform,
+				Status:                card.Status,
+				Summary:               card.Summary,
+				NeedsReview:           card.NeedsReview,
+				PreviewableItems:      card.PreviewableItems,
+				ApprovedSections:      card.ApprovedSections,
+				DeferredSections:      card.DeferredSections,
+				ReviewPendingSections: card.ReviewPendingSections,
+				PrimaryActionKey:      card.PrimaryActionKey,
+				PrimaryCTAKind:        card.PrimaryCTAKind,
+			})
+		}
+	}
+	return header
 }
 
 func adaptPreviewDomainRevisionHistoryMeta(base *previewdomain.RevisionHistoryMeta) *ListingKitRevisionHistoryMeta {
