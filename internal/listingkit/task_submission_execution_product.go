@@ -26,7 +26,7 @@ func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.C
 	if err := sheinpub.PrepareSubmitProductContent(runtimeCtx, submitProduct, task.Request.Country, s.sheinContentOptimizer, translateAPI); err != nil {
 		return nil, err
 	}
-	prepareSheinProductForSubmit(submitProduct, s.resolveSubmitSettings(ctx, task))
+	prepareSheinProductForSubmit(submitProduct, s.resolveSubmitSettings(runtimeCtx, task))
 	if action == "publish" {
 		if err := validateSheinProductPublishPayload(submitProduct); err != nil {
 			return nil, err
