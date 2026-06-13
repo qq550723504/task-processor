@@ -51,8 +51,7 @@ func buildListingKitExportMeta(result *ListingKitResult, selectedPlatform string
 }
 
 func buildListingKitExportMetaFromOverview(overview *listingKitOverviewData) *ListingKitExportMeta {
-	meta := initializeListingKitExportMeta(overview)
-	return decorateListingKitExportMeta(overview, meta)
+	return adaptOverviewToExportMeta(overview)
 }
 
 func buildListingKitExportFileName(taskID string, selectedPlatform string) string {
