@@ -42,39 +42,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 	export.AssetGenerationOverview = projection.generationOverview
 	export.Overview = projection.overview
 
-	if selectedPlatform == "" || selectedPlatform == "amazon" {
-		if task.Result.Amazon != nil {
-			export.Amazon = buildAmazonExportPayloadFromResult(task.Result, export.PlatformAssetRenderPreviews)
-		} else if selectedPlatform == "amazon" {
-			return nil, ErrPreviewPlatformUnavailable
-		}
-	}
-
-	if selectedPlatform == "" || selectedPlatform == "shein" {
-		if task.Result.Shein != nil {
-			export.Shein = buildSheinExportPayloadFromResult(task.Result, export.PlatformAssetRenderPreviews)
-		} else if selectedPlatform == "shein" {
-			return nil, ErrPreviewPlatformUnavailable
-		}
-	}
-
-	if selectedPlatform == "" || selectedPlatform == "temu" {
-		if task.Result.Temu != nil {
-			export.Temu = buildTemuExportPayloadFromResult(task.Result, export.PlatformAssetRenderPreviews)
-		} else if selectedPlatform == "temu" {
-			return nil, ErrPreviewPlatformUnavailable
-		}
-	}
-
-	if selectedPlatform == "" || selectedPlatform == "walmart" {
-		if task.Result.Walmart != nil {
-			export.Walmart = buildWalmartExportPayloadFromResult(task.Result, export.PlatformAssetRenderPreviews)
-		} else if selectedPlatform == "walmart" {
-			return nil, ErrPreviewPlatformUnavailable
-		}
-	}
-
-	return export, nil
+	return export, buildExportPlatformSections(task.Result, export, selectedPlatform)
 }
 
 func buildListingKitExportMeta(result *ListingKitResult, selectedPlatform string) *ListingKitExportMeta {
