@@ -1,6 +1,9 @@
 package listingkit
 
-import common "task-processor/internal/publishing/common"
+import (
+	"task-processor/internal/asset"
+	common "task-processor/internal/publishing/common"
+)
 
 type platformVisualPresentationBase struct {
 	imageBundle    *common.PublishImageBundle
@@ -18,4 +21,29 @@ func newPlatformVisualPresentationBase(
 		renderPreviews: renderPreviews,
 		scenePresets:   scenePresets,
 	}
+}
+
+func buildPlatformVisualPresentationBase(
+	imageBundle *common.PublishImageBundle,
+	assetBundle *asset.Bundle,
+	renderPreviews *PlatformAssetRenderPreviews,
+) platformVisualPresentationBase {
+	return newPlatformVisualPresentationBase(
+		imageBundle,
+		renderPreviews,
+		buildPlatformScenePresetSummaries(imageBundle, assetBundle),
+	)
+}
+
+func buildPlatformVisualPresentationBaseForPlatform(
+	platform string,
+	imageBundle *common.PublishImageBundle,
+	assetBundle *asset.Bundle,
+	platformPreviews []PlatformAssetRenderPreviews,
+) platformVisualPresentationBase {
+	return buildPlatformVisualPresentationBase(
+		imageBundle,
+		assetBundle,
+		platformAssetRenderPreviewsByPlatform(platformPreviews, platform),
+	)
 }

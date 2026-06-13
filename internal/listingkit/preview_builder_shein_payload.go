@@ -26,9 +26,7 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 	if pkg == nil {
 		return nil
 	}
-	visualBase := buildPlatformVisualPreviewPayloadBase(
-		buildPlatformVisualPreviewBase(pkg.ImageBundle, input.assetBundle, input.renderPreviews),
-	)
+	visualBase := buildPlatformVisualPresentationBase(pkg.ImageBundle, input.assetBundle, input.renderPreviews)
 	return &SheinPreviewPayload{
 		Headline:          firstNonEmpty(pkg.SpuName, pkg.ProductNameEn),
 		BrandName:         pkg.BrandName,

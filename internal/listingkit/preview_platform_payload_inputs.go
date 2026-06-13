@@ -10,9 +10,7 @@ func buildPlatformVisualPreviewPayloadInput(
 	assetBundle *asset.Bundle,
 	renderPreviews *PlatformAssetRenderPreviews,
 ) platformVisualPreviewPayloadBase {
-	return buildPlatformVisualPreviewPayloadBase(
-		buildPlatformVisualPreviewBase(imageBundle, assetBundle, renderPreviews),
-	)
+	return buildPlatformVisualPresentationBase(imageBundle, assetBundle, renderPreviews)
 }
 
 func buildReviewablePlatformPreviewPayloadInput(

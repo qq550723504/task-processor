@@ -9,7 +9,7 @@ type reviewablePlatformPreviewPayloadBase struct {
 
 func buildReviewablePlatformPreviewPayloadBase(headline string, base reviewablePlatformPreviewBase) reviewablePlatformPreviewPayloadBase {
 	return reviewablePlatformPreviewPayloadBase{
-		platformVisualPreviewPayloadBase: buildPlatformVisualPreviewPayloadBase(base.platformVisualPreviewBase),
+		platformVisualPreviewPayloadBase: base.platformVisualPresentationBase,
 		headline:                         headline,
 		needsReview:                      base.needsReview,
 		reviewNotes:                      base.reviewNotes,

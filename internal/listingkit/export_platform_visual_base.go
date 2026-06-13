@@ -13,9 +13,5 @@ func buildPlatformVisualExportBase(
 	assetBundle *asset.Bundle,
 	platformPreviews []PlatformAssetRenderPreviews,
 ) platformVisualExportBase {
-	return newPlatformVisualPresentationBase(
-		imageBundle,
-		platformAssetRenderPreviewsByPlatform(platformPreviews, platform),
-		buildPlatformScenePresetSummaries(imageBundle, assetBundle),
-	)
+	return buildPlatformVisualPresentationBaseForPlatform(platform, imageBundle, assetBundle, platformPreviews)
 }

@@ -11,7 +11,7 @@ func buildPlatformVisualExportPayloadInput(
 	assetBundle *asset.Bundle,
 	platformPreviews []PlatformAssetRenderPreviews,
 ) platformVisualExportBase {
-	return buildPlatformVisualExportBase(platform, imageBundle, assetBundle, platformPreviews)
+	return buildPlatformVisualPresentationBaseForPlatform(platform, imageBundle, assetBundle, platformPreviews)
 }
 
 func buildReviewablePlatformExportPayloadInput(
