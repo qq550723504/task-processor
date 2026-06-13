@@ -12,11 +12,7 @@ func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {
 }
 
 func (s *service) ConfigureSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {
-	enabled = enabled && client != nil
-	s.sheinPublishWorkflowClient = client
-	s.sheinPublishWorkflowEnabled = enabled
-	s.submissionDeps.sheinPublishWorkflowClient = client
-	s.submissionDeps.sheinPublishWorkflowEnabled = enabled
+	s.setSheinPublishWorkflowClient(client, enabled && client != nil)
 }
 
 func ConfigureSheinPublishWorkflowClient(svc WorkflowClientConfigurer, client SheinPublishWorkflowClient, enabled bool) error {
@@ -28,11 +24,7 @@ func ConfigureSheinPublishWorkflowClient(svc WorkflowClientConfigurer, client Sh
 }
 
 func (s *service) ConfigureStandardProductWorkflowClient(client StandardProductWorkflowClient, enabled bool) {
-	enabled = enabled && client != nil
-	s.standardProductWorkflowClient = client
-	s.standardProductWorkflowEnabled = enabled
-	s.taskDeps.standardWorkflowClient = client
-	s.taskDeps.standardWorkflowEnabled = enabled
+	s.setStandardProductWorkflowClient(client, enabled && client != nil)
 }
 
 func ConfigureStandardProductWorkflowClient(svc WorkflowClientConfigurer, client StandardProductWorkflowClient, enabled bool) error {
@@ -44,11 +36,7 @@ func ConfigureStandardProductWorkflowClient(svc WorkflowClientConfigurer, client
 }
 
 func (s *service) ConfigurePlatformAdaptWorkflowClient(client PlatformAdaptWorkflowClient, enabled bool) {
-	enabled = enabled && client != nil
-	s.platformAdaptWorkflowClient = client
-	s.platformAdaptWorkflowEnabled = enabled
-	s.taskDeps.platformAdaptWorkflowClient = client
-	s.taskDeps.platformAdaptWorkflowEnabled = enabled
+	s.setPlatformAdaptWorkflowClient(client, enabled && client != nil)
 }
 
 func ConfigurePlatformAdaptWorkflowClient(svc WorkflowClientConfigurer, client PlatformAdaptWorkflowClient, enabled bool) error {
@@ -137,4 +125,25 @@ func normalizePlatforms(platforms []string) []string {
 		}
 	}
 	return result
+}
+
+func (s *service) setSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {
+	s.sheinPublishWorkflowClient = client
+	s.sheinPublishWorkflowEnabled = enabled
+	s.submissionDeps.sheinPublishWorkflowClient = client
+	s.submissionDeps.sheinPublishWorkflowEnabled = enabled
+}
+
+func (s *service) setStandardProductWorkflowClient(client StandardProductWorkflowClient, enabled bool) {
+	s.standardProductWorkflowClient = client
+	s.standardProductWorkflowEnabled = enabled
+	s.taskDeps.standardWorkflowClient = client
+	s.taskDeps.standardWorkflowEnabled = enabled
+}
+
+func (s *service) setPlatformAdaptWorkflowClient(client PlatformAdaptWorkflowClient, enabled bool) {
+	s.platformAdaptWorkflowClient = client
+	s.platformAdaptWorkflowEnabled = enabled
+	s.taskDeps.platformAdaptWorkflowClient = client
+	s.taskDeps.platformAdaptWorkflowEnabled = enabled
 }
