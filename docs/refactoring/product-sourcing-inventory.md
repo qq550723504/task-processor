@@ -244,7 +244,7 @@ Implemented sixteenth step:
 
 - `internal/app/consumer.AmazonCrawlerCreator` now returns `runner.CrawlSource` instead of concrete `*crawler/amazon.AmazonProcessor`;
 - bootstrap still constructs the concrete Amazon processor, but consumer registry contracts now depend only on crawl capability;
-- this leaves `GetSharedAmazonProcessor` as an explicit compatibility escape hatch rather than the default shared dependency shape.
+- the unused `GetSharedAmazonProcessor` compatibility escape hatch was removed, leaving `GetSharedCrawlSource` as the shared crawler accessor.
 
 ## 6. What To Avoid
 

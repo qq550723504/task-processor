@@ -8,7 +8,6 @@ import (
 	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 
@@ -267,11 +266,6 @@ func containsPlatform(platforms []string, platform string) bool {
 		}
 	}
 	return false
-}
-
-func (r *PlatformProcessorRegistry) GetSharedAmazonProcessor() *amazon.AmazonProcessor {
-	processor, _ := r.sharedCrawlSource.(*amazon.AmazonProcessor)
-	return processor
 }
 
 func (r *PlatformProcessorRegistry) GetSharedCrawlSource() runner.CrawlSource {
