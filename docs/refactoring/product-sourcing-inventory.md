@@ -240,6 +240,12 @@ Implemented fifteenth step:
 - `internal/app/bootstrap` app service wiring no longer imports the legacy Amazon crawler package directly;
 - concrete Amazon processor construction remains inside the shared-resource factory, keeping old crawler runtime creation at a single bootstrap edge.
 
+Implemented sixteenth step:
+
+- `internal/app/consumer.AmazonCrawlerCreator` now returns `runner.CrawlSource` instead of concrete `*crawler/amazon.AmazonProcessor`;
+- bootstrap still constructs the concrete Amazon processor, but consumer registry contracts now depend only on crawl capability;
+- this leaves `GetSharedAmazonProcessor` as an explicit compatibility escape hatch rather than the default shared dependency shape.
+
 ## 6. What To Avoid
 
 Do not:

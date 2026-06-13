@@ -45,7 +45,7 @@ func BuildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies 
 
 func BuildCrawlerDependencies() consumer.CrawlerRegistryDependencies {
 	return consumer.CrawlerRegistryDependencies{
-		AmazonCrawlerCreator: func(cfg *config.Config, logger *logrus.Logger) *amazon.AmazonProcessor {
+		AmazonCrawlerCreator: func(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource {
 			return amazon.CreateProcessor(cfg, logger)
 		},
 		ProductFetcherProvider: func(cfg *config.Config, logger *logrus.Logger, crawlSource runner.CrawlSource) (*product.ProductFetcher, error) {
