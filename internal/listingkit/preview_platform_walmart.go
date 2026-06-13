@@ -2,10 +2,10 @@ package listingkit
 
 import "task-processor/internal/asset"
 
-func buildWalmartPreviewSection(task *Task, preview *ListingKitPreview, selectedPlatform string) error {
+func buildWalmartPreviewSection(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {
 	const platform = "walmart"
-	return applyReviewablePreviewPlatformSection(selectedPlatform, platform, task.Result != nil && task.Result.Walmart != nil, preview, func() bool {
-		preview.Walmart = buildWalmartPreviewPayloadFromResult(task.Result, preview.PlatformAssetRenderPreviews)
+	return applyReviewablePreviewPlatformSection(selectedPlatform, platform, result != nil && result.Walmart != nil, preview, func() bool {
+		preview.Walmart = buildWalmartPreviewPayloadFromResult(result, preview.PlatformAssetRenderPreviews)
 		return preview.Walmart != nil && preview.Walmart.NeedsReview
 	})
 }

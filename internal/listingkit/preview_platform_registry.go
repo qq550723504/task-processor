@@ -2,7 +2,7 @@ package listingkit
 
 type previewPlatformRegistration struct {
 	name  string
-	build func(task *Task, preview *ListingKitPreview, selectedPlatform string) error
+	build func(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error
 }
 
 func previewPlatformRegistrations() []previewPlatformRegistration {

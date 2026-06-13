@@ -1451,8 +1451,8 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 		t.Fatalf("ReadFile(preview_builder.go) error = %v", err)
 	}
 	builderContent := string(builderSrc)
-	if strings.Contains(builderContent, "func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {") {
-		t.Fatalf("preview_builder.go should not contain %q", "func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {")
+	if strings.Contains(builderContent, "func buildPreviewPlatformSections(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {") {
+		t.Fatalf("preview_builder.go should not contain %q", "func buildPreviewPlatformSections(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {")
 	}
 
 	platformsSrc, err := os.ReadFile("preview_builder_platforms.go")
@@ -1463,7 +1463,7 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 	for _, needle := range []string{
 		"type previewPlatformBuilder interface {",
 		"func previewPlatformBuilders() []previewPlatformBuilder {",
-		"func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {",
+		"func buildPreviewPlatformSections(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {",
 		"for _, builder := range previewPlatformBuilders() {",
 	} {
 		if !strings.Contains(platformsContent, needle) {

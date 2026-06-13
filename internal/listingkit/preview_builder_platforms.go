@@ -2,20 +2,20 @@ package listingkit
 
 type previewPlatformBuilder interface {
 	platform() string
-	build(task *Task, preview *ListingKitPreview, selectedPlatform string) error
+	build(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error
 }
 
 type previewPlatformBuilderFunc struct {
 	name string
-	fn   func(task *Task, preview *ListingKitPreview, selectedPlatform string) error
+	fn   func(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error
 }
 
 func (b previewPlatformBuilderFunc) platform() string {
 	return b.name
 }
 
-func (b previewPlatformBuilderFunc) build(task *Task, preview *ListingKitPreview, selectedPlatform string) error {
-	return b.fn(task, preview, selectedPlatform)
+func (b previewPlatformBuilderFunc) build(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {
+	return b.fn(result, preview, selectedPlatform)
 }
 
 func previewPlatformBuilders() []previewPlatformBuilder {
@@ -27,9 +27,9 @@ func previewPlatformBuilders() []previewPlatformBuilder {
 	return builders
 }
 
-func buildPreviewPlatformSections(task *Task, preview *ListingKitPreview, selectedPlatform string) error {
+func buildPreviewPlatformSections(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {
 	for _, builder := range previewPlatformBuilders() {
-		if err := builder.build(task, preview, selectedPlatform); err != nil {
+		if err := builder.build(result, preview, selectedPlatform); err != nil {
 			return err
 		}
 	}

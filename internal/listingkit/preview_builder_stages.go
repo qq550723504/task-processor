@@ -25,5 +25,5 @@ func populateListingKitPreviewResult(task *Task, preview *ListingKitPreview, sel
 	}
 	ensureTaskPodExecution(task)
 	attachListingKitPreviewResult(preview, task.Result, selectedPlatform)
-	return buildPreviewPlatformSections(task, preview, selectedPlatform)
+	return buildPreviewPlatformSections(task.Result, preview, selectedPlatform)
 }

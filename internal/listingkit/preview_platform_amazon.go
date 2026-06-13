@@ -2,10 +2,10 @@ package listingkit
 
 import "task-processor/internal/asset"
 
-func buildAmazonPreviewSection(task *Task, preview *ListingKitPreview, selectedPlatform string) error {
+func buildAmazonPreviewSection(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {
 	const platform = "amazon"
-	return applyPreviewPlatformSection(selectedPlatform, platform, task.Result != nil && task.Result.Amazon != nil, func() {
-		preview.Amazon = buildAmazonPreviewPayloadFromResult(task.Result, preview.PlatformAssetRenderPreviews)
+	return applyPreviewPlatformSection(selectedPlatform, platform, result != nil && result.Amazon != nil, func() {
+		preview.Amazon = buildAmazonPreviewPayloadFromResult(result, preview.PlatformAssetRenderPreviews)
 	})
 }
 
