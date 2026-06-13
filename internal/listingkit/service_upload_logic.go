@@ -8,7 +8,8 @@ import (
 )
 
 func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error) {
-	if s.uploadStore == nil {
+	uploadStore := resolveStudioUploadStore(s)
+	if uploadStore == nil {
 		return nil, fmt.Errorf("image upload store is not configured")
 	}
 	if req == nil || len(req.Files) == 0 {
@@ -20,7 +21,7 @@ func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*
 	}
 	uploadedImageRepo := resolveUploadedImageRepository(s)
 	for _, file := range req.Files {
-		stored, err := s.uploadStore.Save(ctx, &file)
+		stored, err := uploadStore.Save(ctx, &file)
 		if err != nil {
 			return nil, fmt.Errorf("save uploaded image: %w", err)
 		}
@@ -45,11 +46,12 @@ func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*
 }
 
 func (s *service) GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error) {
-	if s.uploadStore == nil {
+	uploadStore := resolveStudioUploadStore(s)
+	if uploadStore == nil {
 		return nil, ErrUploadedImageNotFound
 	}
 
-	stored, err := s.uploadStore.Open(ctx, key)
+	stored, err := uploadStore.Open(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +75,8 @@ func (s *service) GetUploadedImage(ctx context.Context, key string) (*UploadedIm
 }
 
 func (s *service) DeleteUploadedImage(ctx context.Context, key string) (*DeletedUploadedImage, error) {
-	if s.uploadStore == nil {
+	uploadStore := resolveStudioUploadStore(s)
+	if uploadStore == nil {
 		return nil, ErrUploadedImageNotFound
 	}
 	var stored *StoredUploadedImage
@@ -86,12 +89,12 @@ func (s *service) DeleteUploadedImage(ctx context.Context, key string) (*Deleted
 		stored = &StoredUploadedImage{Key: record.Key, Size: record.Size}
 	} else {
 		var err error
-		stored, err = s.uploadStore.Open(ctx, key)
+		stored, err = uploadStore.Open(ctx, key)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if err := s.uploadStore.Delete(ctx, stored.Key); err != nil {
+	if err := uploadStore.Delete(ctx, stored.Key); err != nil {
 		return nil, err
 	}
 	if uploadedImageRepo != nil {

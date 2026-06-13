@@ -260,10 +260,11 @@ func (s *service) syncSDSDesignFromUploadedImageKey(ctx context.Context, task *T
 	if syncService == nil {
 		return nil, true, fmt.Errorf("sds sync service is not configured")
 	}
-	if s.uploadStore == nil {
+	uploadStore := resolveStudioUploadStore(s)
+	if uploadStore == nil {
 		return nil, true, fmt.Errorf("uploaded image store is not configured")
 	}
-	stored, err := s.uploadStore.Open(ctx, key)
+	stored, err := uploadStore.Open(ctx, key)
 	if err != nil {
 		return nil, true, err
 	}
