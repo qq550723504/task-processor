@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	domainProduct "task-processor/internal/product"
+	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
 )
@@ -121,12 +122,7 @@ func (f *DistributedProductFetcher) FetchProduct(ctx context.Context, req *domai
 
 // fetchFromDistributedCrawler 从分布式爬虫获取产品数据
 func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Context, req *domainProduct.FetchRequest) (*model.Product, error) {
-	// SHEIN/TEMU 的商品实际上是 Amazon ASIN，需要用 amazon 爬虫队列
-	crawlerPlatform := req.Platform
-	switch strings.ToLower(req.Platform) {
-	case "shein", "temu":
-		crawlerPlatform = "amazon"
-	}
+	crawlerPlatform := sourcing.CrawlerPlatformForSource(req.Platform)
 
 	// 构建爬虫请求
 	crawlReq := &distributed.CrawlRequest{
@@ -136,6 +132,7 @@ func (f *DistributedProductFetcher) fetchFromDistributedCrawler(ctx context.Cont
 		Platform:  crawlerPlatform,
 		Region:    req.Region,
 		ProductID: req.ProductID,
+		Zipcode:   req.Zipcode,
 		Priority:  f.calculatePriority(req),
 	}
 
@@ -191,13 +188,7 @@ func (f *DistributedProductFetcher) calculatePriority(req *domainProduct.FetchRe
 
 // shouldUseCrawler 判断是否应该使用爬虫
 func (f *DistributedProductFetcher) shouldUseCrawler(platform string) bool {
-	platformLower := strings.ToLower(platform)
-	switch platformLower {
-	case "amazon", "shein", "temu", "1688":
-		return true
-	default:
-		return false
-	}
+	return sourcing.SupportsCrawlerSource(platform)
 }
 
 // CacheProduct 缓存产品数据到服务器
@@ -239,26 +230,14 @@ func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *doma
 	cachedProducts := make(map[string]*model.Product)
 
 	for _, asin := range variantASINs {
-		variantReq := &domainProduct.FetchRequest{
-			TenantID:   req.TenantID,
-			Platform:   req.Platform,
-			Region:     req.Region,
-			ProductID:  asin,
-			StoreID:    req.StoreID,
-			CategoryID: req.CategoryID,
-			Creator:    req.Creator,
-		}
+		variantReq := domainProduct.FetchRequestFromSource(sourcing.VariantSourceRequest(domainProduct.SourceRequestFromFetch(req), asin))
 		if product, err := f.cacheManager.GetFromCache(variantReq); err == nil && product != nil {
 			f.logger.Debugf("✅ 变体从缓存获取: ASIN=%s", asin)
 			cachedProducts[asin] = product
 			continue
 		}
 
-		crawlerPlatform := req.Platform
-		switch strings.ToLower(req.Platform) {
-		case "shein", "temu":
-			crawlerPlatform = "amazon"
-		}
+		crawlerPlatform := sourcing.CrawlerPlatformForSource(req.Platform)
 		crawlReqs = append(crawlReqs, &distributed.CrawlRequest{
 			TaskID:    crawlTaskID(asin, req.Region),
 			TenantID:  req.TenantID,
@@ -266,6 +245,7 @@ func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *doma
 			Platform:  crawlerPlatform,
 			Region:    req.Region,
 			ProductID: asin,
+			Zipcode:   variantReq.Zipcode,
 			Priority:  f.calculatePriority(variantReq),
 		})
 	}

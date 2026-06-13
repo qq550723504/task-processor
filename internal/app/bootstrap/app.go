@@ -9,7 +9,6 @@ import (
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
@@ -23,7 +22,7 @@ type appServices struct {
 	cfg              *config.Config
 	authClient       *auth.ClientCredentialsAuthClient
 	managementClient *management.ClientManager
-	amazonCrawler    *amazon.AmazonProcessor
+	amazonCrawler    runner.CrawlSource
 	rabbitmqClient   *rabbitmq.Client
 	temuProcessor    *temu.TemuProcessor
 	sheinProcessor   *pipeline.SheinProcessor

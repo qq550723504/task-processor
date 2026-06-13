@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
@@ -26,7 +27,7 @@ type SharedResourceOptions struct {
 type SharedResources struct {
 	AuthClient       *auth.ClientCredentialsAuthClient
 	ManagementClient *management.ClientManager
-	AmazonCrawler    *amazon.AmazonProcessor
+	AmazonCrawler    runner.CrawlSource
 	RabbitMQClient   *rabbitmq.Client
 }
 
@@ -144,7 +145,7 @@ func newConfiguredManagementClient(cfg *config.Config, logger *logrus.Logger) *m
 	return managementClient
 }
 
-func buildAmazonCrawler(cfg *config.Config, logger *logrus.Logger) *amazon.AmazonProcessor {
+func buildAmazonCrawler(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource {
 	return amazon.CreateProcessor(cfg, logger)
 }
 

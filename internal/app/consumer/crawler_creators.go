@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/product"
@@ -10,4 +11,4 @@ import (
 
 type AmazonCrawlerCreator func(cfg *config.Config, logger *logrus.Logger) *amazon.AmazonProcessor
 
-type ProductFetcherProvider func(cfg *config.Config, logger *logrus.Logger, crawlSource *amazon.AmazonProcessor) (*product.ProductFetcher, error)
+type ProductFetcherProvider func(cfg *config.Config, logger *logrus.Logger, crawlSource runner.CrawlSource) (*product.ProductFetcher, error)

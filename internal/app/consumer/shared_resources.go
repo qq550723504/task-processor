@@ -6,7 +6,6 @@ import (
 	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
@@ -16,7 +15,7 @@ import (
 
 type SharedResources struct {
 	ManagementClient *management.ClientManager
-	CrawlSource      *amazon.AmazonProcessor
+	CrawlSource      runner.CrawlSource
 	ProductFetcher   appfetcher.ProductFetcher
 }
 
@@ -33,7 +32,7 @@ type PlatformRuntimeContext struct {
 	Config           *config.Config
 	Logger           *logrus.Logger
 	ManagementClient *management.ClientManager
-	CrawlSource      *amazon.AmazonProcessor
+	CrawlSource      runner.CrawlSource
 	ProductFetcher   appfetcher.ProductFetcher
 	RabbitMQClient   *rabbitmq.Client
 	ServiceManager   *ServiceManager

@@ -12,6 +12,7 @@ type Task struct {
 	Region         string `json:"region"`
 	CategoryID     int64  `json:"categoryId"`
 	ProductID      string `json:"productId"` // ASIN或产品ID
+	Zipcode        string `json:"zipcode,omitempty"`
 	Status         int16  `json:"status"`
 	ErrorMessage   string `json:"errorMessage"`
 	RetryCount     int    `json:"retryCount"`

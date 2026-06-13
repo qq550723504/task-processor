@@ -69,6 +69,7 @@ func TestPublishCrawlTask_MessageFormat(t *testing.T) {
 		Platform:  "amazon",
 		Region:    "US",
 		ProductID: "B001TEST",
+		Zipcode:   "10001",
 		Priority:  5,
 	}
 
@@ -95,6 +96,10 @@ func TestPublishCrawlTask_MessageFormat(t *testing.T) {
 	replyToVal, exists := payload["reply_to"]
 	require.True(t, exists, "payload 应包含 reply_to 字段")
 	assert.NotEmpty(t, replyToVal, "reply_to 不应为空")
+
+	zipcodeVal, exists := payload["zipcode"]
+	require.True(t, exists, "payload 应包含 zipcode 字段")
+	assert.Equal(t, "10001", zipcodeVal)
 }
 
 // --- 3. extractNestedPayload 把 id 映射为 taskId 后，能正确序列化为 JSON ---

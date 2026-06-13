@@ -37,5 +37,6 @@ func NewCrawlerProcessor(
 	taskSubmitter VariantTaskSubmitter,
 	rabbitmqClient RabbitMQPublisher,
 ) *CrawlerProcessor {
-	return rootprocessor.NewCrawlerProcessor(logger, amazonProcessor, productFetcher, taskSubmitter, rabbitmqClient)
+	_ = amazonProcessor
+	return rootprocessor.NewCrawlerProcessor(logger, productFetcher, taskSubmitter, rabbitmqClient)
 }

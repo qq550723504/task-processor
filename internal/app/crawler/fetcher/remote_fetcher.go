@@ -14,6 +14,7 @@ import (
 	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	domainProduct "task-processor/internal/product"
+	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
 )
@@ -291,16 +292,30 @@ func (f *RemoteAPIProductFetcher) resolveZipcode(req *domainProduct.FetchRequest
 		return ""
 	}
 
-	if zipcode := strings.TrimSpace(req.Zipcode); zipcode != "" {
-		return zipcode
+	var zipcodes map[string]string
+	if f.amazonConfig != nil {
+		zipcodes = f.amazonConfig.Zipcodes
 	}
+	planner := sourcing.AmazonCrawlRequestPlanner{
+		ZipcodePolicy: remoteAmazonZipcodePolicy{resolver: f.domainResolver},
+		Zipcodes:      zipcodes,
+	}
+	return planner.ResolveZipcode(req.Region, req.Zipcode)
+}
 
-	region := strings.ToLower(strings.TrimSpace(req.Region))
-	if region == "" || !f.domainResolver.ShouldUseDefaultZipcode(region) {
+type remoteAmazonZipcodePolicy struct {
+	resolver *domainProduct.DomainResolver
+}
+
+func (p remoteAmazonZipcodePolicy) ShouldUseDefaultZipcode(region string) bool {
+	return p.resolver != nil && p.resolver.ShouldUseDefaultZipcode(region)
+}
+
+func (p remoteAmazonZipcodePolicy) DefaultZipcode(region string) string {
+	if p.resolver == nil {
 		return ""
 	}
-
-	return f.domainResolver.GetZipcodeByRegion(region)
+	return p.resolver.GetZipcodeByRegion(region)
 }
 
 func (f *RemoteAPIProductFetcher) pollAsyncResult(ctx context.Context, taskID string) (*model.Product, error) {
@@ -426,15 +441,7 @@ func (f *RemoteAPIProductFetcher) FetchVariants(ctx context.Context, req *domain
 
 	var variants []*model.Product
 	for _, asin := range variantASINs {
-		variantReq := &domainProduct.FetchRequest{
-			TenantID:   req.TenantID,
-			Platform:   req.Platform,
-			Region:     req.Region,
-			ProductID:  asin,
-			StoreID:    req.StoreID,
-			CategoryID: req.CategoryID,
-			Creator:    req.Creator,
-		}
+		variantReq := domainProduct.FetchRequestFromSource(sourcing.VariantSourceRequest(domainProduct.SourceRequestFromFetch(req), asin))
 		product, err := f.FetchProduct(ctx, variantReq)
 		if err != nil {
 			f.logger.WithError(err).Warnf("fetch variant via crawler api failed: %s", asin)

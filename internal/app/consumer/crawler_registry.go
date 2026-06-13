@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"task-processor/internal/app/crawler/distributed"
+	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/processor"
 
@@ -30,7 +30,7 @@ func NewCrawlerRegistry(cfg *config.Config, logger *logrus.Logger, rabbitmqClien
 	}
 }
 
-func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManager, sharedAmazonProcessor *amazon.AmazonProcessor) error {
+func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManager, sharedCrawlSource runner.CrawlSource) error {
 	r.logger.Info("Registering Amazon crawler processor...")
 	if r.amazonCrawlerCreator == nil {
 		return fmt.Errorf("amazon crawler creator not configured")
@@ -39,16 +39,16 @@ func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManage
 		return fmt.Errorf("product fetcher provider not configured")
 	}
 
-	var amazonProcessor *amazon.AmazonProcessor
-	if sharedAmazonProcessor != nil {
+	var crawlSource runner.CrawlSource
+	if sharedCrawlSource != nil {
 		r.logger.Info("Using shared Amazon processor for crawler registration")
-		amazonProcessor = sharedAmazonProcessor
+		crawlSource = sharedCrawlSource
 	} else {
 		r.logger.Info("Creating dedicated Amazon processor for crawler registration")
-		amazonProcessor = r.amazonCrawlerCreator(r.config, r.logger)
+		crawlSource = r.amazonCrawlerCreator(r.config, r.logger)
 	}
 
-	productFetcher, err := r.productFetcherProvider(r.config, r.logger, amazonProcessor)
+	productFetcher, err := r.productFetcherProvider(r.config, r.logger, crawlSource)
 	if err != nil {
 		return fmt.Errorf("create product fetcher: %w", err)
 	}
@@ -58,7 +58,6 @@ func (r *CrawlerRegistry) RegisterCrawlerProcessor(serviceManager *ServiceManage
 
 	crawlerProcessor := processor.NewCrawlerProcessor(
 		r.logger,
-		amazonProcessor,
 		productFetcher,
 		taskSubmitter,
 		rabbitmqPublisher,
@@ -81,8 +80,8 @@ func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) 
 		return fmt.Errorf("product fetcher provider not configured")
 	}
 
-	amazonProcessor := r.amazonCrawlerCreator(r.config, r.logger)
-	productFetcher, err := r.productFetcherProvider(r.config, r.logger, amazonProcessor)
+	crawlSource := r.amazonCrawlerCreator(r.config, r.logger)
+	productFetcher, err := r.productFetcherProvider(r.config, r.logger, crawlSource)
 	if err != nil {
 		return fmt.Errorf("create product fetcher: %w", err)
 	}
@@ -92,7 +91,6 @@ func (r *CrawlerRegistry) RegisterAmazonCrawler(serviceManager *ServiceManager) 
 
 	crawlerProcessor := processor.NewCrawlerProcessor(
 		r.logger,
-		amazonProcessor,
 		productFetcher,
 		taskSubmitter,
 		rabbitmqPublisher,

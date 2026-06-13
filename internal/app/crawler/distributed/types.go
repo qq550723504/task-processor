@@ -16,6 +16,7 @@ type CrawlRequest struct {
 	Platform  string `json:"platform"`
 	Region    string `json:"region"`
 	ProductID string `json:"productId"`
+	Zipcode   string `json:"zipcode,omitempty"`
 	Priority  int    `json:"priority"`
 }
 

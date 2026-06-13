@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	appfetcher "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 )
@@ -15,7 +15,7 @@ func BuildPlatformProductFetcher(
 	cfg *config.Config,
 	platform string,
 	managementClient *management.ClientManager,
-	crawlSource *amazon.AmazonProcessor,
+	crawlSource runner.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (appfetcher.ProductFetcher, error) {
 	if managementClient == nil {

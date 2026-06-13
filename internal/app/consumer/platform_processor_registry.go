@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	appfetcher "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/clients/management"
@@ -24,7 +25,7 @@ type PlatformProcessorRegistry struct {
 	config                 *config.Config
 	logger                 *logrus.Logger
 	managementClient       *management.ClientManager
-	sharedCrawlSource      *amazon.AmazonProcessor
+	sharedCrawlSource      runner.CrawlSource
 	sharedProductFetcher   appfetcher.ProductFetcher
 	rabbitmqClient         *rabbitmq.Client
 	enabledPlatforms       []string
@@ -269,10 +270,11 @@ func containsPlatform(platforms []string, platform string) bool {
 }
 
 func (r *PlatformProcessorRegistry) GetSharedAmazonProcessor() *amazon.AmazonProcessor {
-	return r.sharedCrawlSource
+	processor, _ := r.sharedCrawlSource.(*amazon.AmazonProcessor)
+	return processor
 }
 
-func (r *PlatformProcessorRegistry) GetSharedCrawlSource() *amazon.AmazonProcessor {
+func (r *PlatformProcessorRegistry) GetSharedCrawlSource() runner.CrawlSource {
 	return r.sharedCrawlSource
 }
 

@@ -1,4 +1,4 @@
-package enrich
+package sourcing
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 )
 
-func TestBuild1688ScrapedData_MapsVariantDimensionsAndVariants(t *testing.T) {
+func TestConvert1688ProductToScrapedDataMapsVariantDimensionsAndVariants(t *testing.T) {
 	product := &alibaba1688model.Product1688{
 		Title:    "Sneaker",
 		Images:   []string{"https://example.com/main.jpg"},
@@ -31,9 +31,9 @@ func TestBuild1688ScrapedData_MapsVariantDimensionsAndVariants(t *testing.T) {
 		},
 	}
 
-	scraped := build1688ScrapedData(product)
+	scraped := Convert1688ProductToScrapedData(product)
 	if scraped == nil {
-		t.Fatal("build1688ScrapedData() returned nil")
+		t.Fatal("Convert1688ProductToScrapedData() returned nil")
 	}
 	if len(scraped.VariantDimensions) != 2 {
 		t.Fatalf("len(VariantDimensions) = %d, want 2", len(scraped.VariantDimensions))

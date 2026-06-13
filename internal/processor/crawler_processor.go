@@ -8,23 +8,22 @@ import (
 	"time"
 
 	"task-processor/internal/app/task"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/timeout"
 	"task-processor/internal/product"
+	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
 )
 
 // CrawlerProcessor Amazon爬虫处理器
 type CrawlerProcessor struct {
-	amazonProcessor *amazon.AmazonProcessor
-	productFetcher  *product.ProductFetcher
-	taskSubmitter   VariantTaskSubmitter
-	rabbitmqClient  RabbitMQPublisher
-	messageAdapter  *task.MessageAdapter
-	logger          *logrus.Logger
+	productFetcher *product.ProductFetcher
+	taskSubmitter  VariantTaskSubmitter
+	rabbitmqClient RabbitMQPublisher
+	messageAdapter *task.MessageAdapter
+	logger         *logrus.Logger
 }
 
 // RabbitMQPublisher RabbitMQ 发布接口（直接发原始 body，不包装）
@@ -35,18 +34,16 @@ type RabbitMQPublisher interface {
 // NewCrawlerProcessor 创建爬虫处理器
 func NewCrawlerProcessor(
 	logger *logrus.Logger,
-	amazonProcessor *amazon.AmazonProcessor,
 	productFetcher *product.ProductFetcher,
 	taskSubmitter VariantTaskSubmitter,
 	rabbitmqClient RabbitMQPublisher,
 ) *CrawlerProcessor {
 	return &CrawlerProcessor{
-		amazonProcessor: amazonProcessor,
-		productFetcher:  productFetcher,
-		taskSubmitter:   taskSubmitter,
-		rabbitmqClient:  rabbitmqClient,
-		messageAdapter:  task.NewMessageAdapter(),
-		logger:          logger,
+		productFetcher: productFetcher,
+		taskSubmitter:  taskSubmitter,
+		rabbitmqClient: rabbitmqClient,
+		messageAdapter: task.NewMessageAdapter(),
+		logger:         logger,
 	}
 }
 
@@ -101,23 +98,9 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 	p.logger.Infof("🔍 开始爬取任务: ID=%d, ProductID=%s, ReplyTo=%s", task.ID, task.ProductID, replyTo)
 
 	startTime := time.Now()
-	platform := task.SourcePlatform
-	if platform == "" {
-		platform = task.Platform
-	}
-	if idx := strings.Index(platform, ".crawler"); idx != -1 {
-		platform = platform[:idx]
-	}
+	platform := p.crawlerPlatformFromTask(task)
 
-	fetchReq := &product.FetchRequest{
-		TenantID:   task.TenantID,
-		Platform:   platform,
-		Region:     task.Region,
-		ProductID:  task.ProductID,
-		StoreID:    task.StoreID,
-		CategoryID: task.CategoryID,
-		Creator:    "crawler-consumer",
-	}
+	fetchReq := p.fetchRequestFromTask(task, platform)
 
 	productData, err := p.productFetcher.FetchProduct(ctx, fetchReq)
 
@@ -152,6 +135,30 @@ func (p *CrawlerProcessor) GetStatus() map[string]any {
 		"name":   "Amazon爬虫处理器",
 		"status": "running",
 	}
+}
+
+func (p *CrawlerProcessor) fetchRequestFromTask(task model.Task, platform string) *product.FetchRequest {
+	return &product.FetchRequest{
+		TenantID:   task.TenantID,
+		Platform:   platform,
+		Region:     task.Region,
+		ProductID:  task.ProductID,
+		Zipcode:    task.Zipcode,
+		StoreID:    task.StoreID,
+		CategoryID: task.CategoryID,
+		Creator:    "crawler-consumer",
+	}
+}
+
+func (p *CrawlerProcessor) crawlerPlatformFromTask(task model.Task) string {
+	platform := strings.TrimSpace(task.SourcePlatform)
+	if platform == "" {
+		platform = strings.TrimSpace(task.Platform)
+	}
+	if idx := strings.Index(platform, ".crawler"); idx != -1 {
+		platform = platform[:idx]
+	}
+	return sourcing.CrawlerPlatformForSource(platform)
 }
 
 func (p *CrawlerProcessor) sendCrawlResult(replyTo string, taskID string, product *model.Product, err error, duration time.Duration) {

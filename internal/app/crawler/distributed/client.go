@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -175,6 +176,9 @@ func (c *DistributedCrawlerClient) publishCrawlTask(
 		"updateTime":     now,
 		"retryCount":     0,
 		"maxRetryCount":  3,
+	}
+	if zipcode := strings.TrimSpace(req.Zipcode); zipcode != "" {
+		payload["zipcode"] = zipcode
 	}
 
 	body, err := json.Marshal(&rabbitmq.Message{

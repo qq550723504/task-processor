@@ -9,16 +9,17 @@ import (
 	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/model"
 	"task-processor/internal/ports"
+	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
 )
 
 // ProductFetcher 产品获取器
 type ProductFetcher struct {
-	cacheManager *CacheManager
-	amazonConfig *config.AmazonConfig
-	crawlSource  ports.CrawlSource
-	logger       *logrus.Entry
+	cacheManager  *CacheManager
+	amazonConfig  *config.AmazonConfig
+	sourceFetcher sourcing.AmazonSourceFetcher
+	logger        *logrus.Entry
 }
 
 // NewProductFetcher 创建产品获取器
@@ -40,11 +41,22 @@ func NewProductFetcherWithLogger(
 	if log == nil {
 		log = corelogger.GetGlobalLogger("product.fetcher")
 	}
+	zipcodes := map[string]string(nil)
+	if amazonConfig != nil {
+		zipcodes = amazonConfig.Zipcodes
+	}
 	return &ProductFetcher{
 		cacheManager: NewCacheManager(rawJsonDataClient, log),
 		amazonConfig: amazonConfig,
-		crawlSource:  crawlSource,
-		logger:       log,
+		sourceFetcher: sourcing.AmazonSourceFetcher{
+			Planner: sourcing.AmazonCrawlRequestPlanner{
+				DomainResolver: NewDomainResolver(),
+				ZipcodePolicy:  productAmazonZipcodePolicy{},
+				Zipcodes:       zipcodes,
+			},
+			Source: crawlSource,
+		},
+		logger: log,
 	}
 }
 
@@ -57,15 +69,13 @@ func (f *ProductFetcher) FetchProduct(ctx context.Context, req *FetchRequest) (*
 		}
 	}
 
-	if f.crawlSource != nil && f.amazonConfig != nil && f.amazonConfig.Enabled {
+	if f.sourceFetcher.Configured() && f.amazonConfig != nil && f.amazonConfig.Enabled {
 		f.logger.Debugf("fetching product via crawler: %s", req.ProductID)
-		resolver := NewDomainResolver()
-		productURL := resolver.BuildAmazonProductURL(req.Region, req.ProductID)
-		zipcode := strings.TrimSpace(req.Zipcode)
-		if zipcode == "" && resolver.ShouldUseDefaultZipcode(req.Region) {
-			zipcode = resolver.GetZipcodeByRegion(req.Region)
-		}
-		return f.crawlSource.ProcessWithContext(ctx, productURL, zipcode)
+		return f.sourceFetcher.Fetch(ctx, sourcing.AmazonCrawlRequestInput{
+			Region:    req.Region,
+			ProductID: req.ProductID,
+			Zipcode:   req.Zipcode,
+		})
 	}
 
 	return nil, nil
@@ -123,15 +133,7 @@ func (f *ProductFetcher) FetchVariants(ctx context.Context, req *FetchRequest, v
 
 	variants := make([]*model.Product, 0, len(variantASINs))
 	for _, asin := range variantASINs {
-		variantReq := &FetchRequest{
-			TenantID:   req.TenantID,
-			Platform:   req.Platform,
-			Region:     req.Region,
-			ProductID:  asin,
-			StoreID:    req.StoreID,
-			CategoryID: req.CategoryID,
-			Creator:    req.Creator,
-		}
+		variantReq := FetchRequestFromSource(sourcing.VariantSourceRequest(SourceRequestFromFetch(req), asin))
 		product, err := f.FetchProduct(ctx, variantReq)
 		if err != nil {
 			f.logger.Warnf("fetch variant failed: ASIN=%s, err=%v", asin, err)
@@ -151,4 +153,14 @@ func (f *ProductFetcher) GetStats() map[string]any {
 
 func (f *ProductFetcher) shouldUseCache(req *FetchRequest) bool {
 	return req == nil || strings.TrimSpace(req.Zipcode) == ""
+}
+
+type productAmazonZipcodePolicy struct{}
+
+func (productAmazonZipcodePolicy) ShouldUseDefaultZipcode(region string) bool {
+	return NewDomainResolver().ShouldUseDefaultZipcode(region)
+}
+
+func (productAmazonZipcodePolicy) DefaultZipcode(region string) string {
+	return NewDomainResolver().GetZipcodeByRegion(region)
 }

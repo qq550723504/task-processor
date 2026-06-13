@@ -87,6 +87,7 @@ func TestDistributedCrawlerClient_SubmitCrawlTask_Success(t *testing.T) {
 		TaskID:    "42",
 		Platform:  "amazon",
 		ProductID: "B001TEST",
+		Zipcode:   "10001",
 		Priority:  5,
 	}
 
@@ -113,6 +114,7 @@ func TestDistributedCrawlerClient_SubmitCrawlTask_Success(t *testing.T) {
 	require.NoError(t, json.Unmarshal(pub.published[0].body, &msg))
 	payload := msg["payload"].(map[string]any)
 	assert.NotEmpty(t, payload["reply_to"])
+	assert.Equal(t, "10001", payload["zipcode"])
 }
 
 func TestDistributedCrawlerClient_SubmitCrawlTask_ListenerStartFail(t *testing.T) {

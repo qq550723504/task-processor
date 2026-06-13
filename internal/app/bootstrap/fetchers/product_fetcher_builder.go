@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	appfetcher "task-processor/internal/app/crawler/fetcher"
+	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/product"
 )
@@ -15,7 +15,7 @@ func BuildPlatformProductFetcher(
 	cfg *config.Config,
 	platform string,
 	rawJsonDataClient product.RawJsonDataClient,
-	crawlSource *amazon.AmazonProcessor,
+	crawlSource runner.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (appfetcher.ProductFetcher, error) {
 	factory := appfetcher.NewFetcherFactory()
@@ -34,7 +34,7 @@ func BuildPlatformProductFetcher(
 func BuildSharedProductFetcher(
 	cfg *config.Config,
 	rawJsonDataClient product.RawJsonDataClient,
-	crawlSource *amazon.AmazonProcessor,
+	crawlSource runner.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (appfetcher.ProductFetcher, error) {
 	return BuildPlatformProductFetcher(cfg, "", rawJsonDataClient, crawlSource, rabbitmqClient)

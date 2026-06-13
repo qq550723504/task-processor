@@ -7,21 +7,20 @@ import (
 	"strings"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
-	amazonpkg "task-processor/internal/crawler/amazon"
+	crawleramazon "task-processor/internal/integration/crawler/amazon"
 	"task-processor/internal/model"
 	"task-processor/internal/product"
+	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
 )
 
 // CrawlerRepository 基于 Amazon 爬虫的产品仓储实现
 type CrawlerRepository struct {
-	amazonProcessor *amazon.AmazonProcessor
-	amazonConfig    *config.AmazonConfig
-	domainResolver  DomainResolver
-	logger          *logrus.Entry
-	maxConcurrent   int
+	amazonConfig  *config.AmazonConfig
+	sourceFetcher sourcing.AmazonSourceFetcher
+	logger        *logrus.Entry
+	maxConcurrent int
 }
 
 // DomainResolver 域名解析器接口
@@ -32,17 +31,28 @@ type DomainResolver interface {
 
 // NewCrawlerRepositoryImpl 创建爬虫仓储实现
 func NewCrawlerRepositoryImpl(
-	amazonProcessor *amazon.AmazonProcessor,
+	amazonProcessor crawleramazon.Source,
 	amazonConfig *config.AmazonConfig,
 	domainResolver DomainResolver,
 	logger *logrus.Entry,
 ) product.CrawlerRepository {
+	zipcodes := map[string]string(nil)
+	if amazonConfig != nil {
+		zipcodes = amazonConfig.Zipcodes
+	}
+	amazonCrawler := crawleramazon.NewProcessor(amazonProcessor)
 	return &CrawlerRepository{
-		amazonProcessor: amazonProcessor,
-		amazonConfig:    amazonConfig,
-		domainResolver:  domainResolver,
-		logger:          logger.WithField("component", "CrawlerRepositoryImpl"),
-		maxConcurrent:   5,
+		amazonConfig: amazonConfig,
+		sourceFetcher: sourcing.AmazonSourceFetcher{
+			Planner: sourcing.AmazonCrawlRequestPlanner{
+				DomainResolver: domainResolver,
+				ZipcodePolicy:  crawleramazon.ZipcodePolicy{},
+				Zipcodes:       zipcodes,
+			},
+			Source: amazonCrawler,
+		},
+		logger:        logger.WithField("component", "CrawlerRepositoryImpl"),
+		maxConcurrent: 5,
 	}
 }
 
@@ -51,23 +61,24 @@ func (r *CrawlerRepository) ShouldUseCrawler(platform string) bool {
 	if r.amazonConfig == nil || !r.amazonConfig.Enabled {
 		return false
 	}
-	return r.amazonProcessor != nil && strings.EqualFold(platform, "amazon")
+	return r.sourceFetcher.Configured() && strings.EqualFold(platform, "amazon")
 }
 
 // FetchFromCrawler 使用爬虫获取产品数据
 func (r *CrawlerRepository) FetchFromCrawler(ctx context.Context, req *product.FetchRequest) (*model.Product, error) {
-	if r.amazonProcessor == nil {
+	if !r.sourceFetcher.Configured() {
 		return nil, fmt.Errorf("Amazon爬虫未初始化")
 	}
 
-	url, zipcode, err := r.buildCrawlURL(req)
-	if err != nil {
-		return nil, fmt.Errorf("构建爬取URL失败: %w", err)
+	input := sourcing.AmazonCrawlRequestInput{
+		Region:    req.Region,
+		ProductID: req.ProductID,
+		Zipcode:   req.Zipcode,
 	}
 
-	r.logger.Infof("开始爬取产品: URL=%s, Zipcode=%s", url, zipcode)
+	r.logger.Infof("开始爬取产品: ProductID=%s", req.ProductID)
 
-	p, err := r.amazonProcessor.Process(url, zipcode)
+	p, err := r.sourceFetcher.Fetch(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("爬取产品失败: %w", err)
 	}
@@ -82,18 +93,19 @@ func (r *CrawlerRepository) FetchVariantsBatch(ctx context.Context, req *product
 		return nil, nil
 	}
 
-	if r.amazonProcessor == nil {
+	if !r.sourceFetcher.Configured() {
 		return nil, []error{fmt.Errorf("Amazon爬虫未初始化")}
 	}
 
-	requests, err := r.buildBatchRequests(req, productIDs)
+	results, err := r.sourceFetcher.FetchBatch(ctx, sourcing.AmazonCrawlRequestInput{
+		Region:  req.Region,
+		Zipcode: req.Zipcode,
+	}, productIDs)
 	if err != nil {
 		return nil, []error{fmt.Errorf("构建批量请求失败: %w", err)}
 	}
 
-	r.logger.Infof("开始批量爬取 %d 个产品", len(requests))
-
-	results := r.amazonProcessor.ProcessBatch(requests)
+	r.logger.Infof("开始批量爬取 %d 个产品", len(productIDs))
 
 	var products []*model.Product
 	var errs []error
@@ -115,57 +127,10 @@ func (r *CrawlerRepository) FetchVariantsBatch(ctx context.Context, req *product
 
 // GetSupportedPlatforms 获取支持的平台列表
 func (r *CrawlerRepository) GetSupportedPlatforms() []string {
-	if r.amazonConfig != nil && r.amazonConfig.Enabled && r.amazonProcessor != nil {
+	if r.amazonConfig != nil && r.amazonConfig.Enabled && r.sourceFetcher.Configured() {
 		return []string{"amazon"}
 	}
 	return []string{}
-}
-
-func (r *CrawlerRepository) buildCrawlURL(req *product.FetchRequest) (string, string, error) {
-	domain := r.domainResolver.GetAmazonDomainByRegion(req.Region)
-	if domain == "" {
-		return "", "", fmt.Errorf("不支持的地区: %s", req.Region)
-	}
-	zipcode := strings.TrimSpace(req.Zipcode)
-	if zipcode == "" {
-		zipcode = r.getZipcodeForRegion(req.Region)
-	}
-	url := r.domainResolver.BuildAmazonProductURL(req.Region, req.ProductID)
-	return url, zipcode, nil
-}
-
-func (r *CrawlerRepository) buildBatchRequests(req *product.FetchRequest, productIDs []string) ([]model.ProductRequest, error) {
-	domain := r.domainResolver.GetAmazonDomainByRegion(req.Region)
-	if domain == "" {
-		return nil, fmt.Errorf("不支持的地区: %s", req.Region)
-	}
-
-	zipcode := strings.TrimSpace(req.Zipcode)
-	if zipcode == "" {
-		zipcode = r.getZipcodeForRegion(req.Region)
-	}
-	requests := make([]model.ProductRequest, 0, len(productIDs))
-
-	for _, productID := range productIDs {
-		url := r.domainResolver.BuildAmazonProductURL(req.Region, productID)
-		requests = append(requests, model.ProductRequest{
-			URL:     url,
-			Zipcode: zipcode,
-		})
-	}
-	return requests, nil
-}
-
-func (r *CrawlerRepository) getZipcodeForRegion(region string) string {
-	if !amazonpkg.NewDomainResolver().ShouldUseDefaultZipcode(region) {
-		return ""
-	}
-	if r.amazonConfig != nil && r.amazonConfig.Zipcodes != nil {
-		if zipcode, exists := r.amazonConfig.Zipcodes[strings.ToLower(region)]; exists && zipcode != "" {
-			return zipcode
-		}
-	}
-	return amazonpkg.GetDefaultZipcode(strings.ToLower(region))
 }
 
 // SetMaxConcurrent 设置最大并发数
