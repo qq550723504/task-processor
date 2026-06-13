@@ -28,23 +28,17 @@ type SheinPreviewPayload struct {
 	ImageBundle       *common.PublishImageBundle        `json:"image_bundle,omitempty"`
 	RenderPreviews    *PlatformAssetRenderPreviews      `json:"render_previews,omitempty"`
 	ScenePresets      []PlatformScenePresetSummary      `json:"scene_presets,omitempty"`
-	// Deprecated: kept only for preview JSON compatibility. New business code should use DraftPayload.
-	RequestDraft *sheinpub.RequestDraft `json:"request_draft,omitempty"`
-	// DraftPayload is the canonical SHEIN draft payload exposed to internal preview builders.
-	DraftPayload *sheinpub.RequestDraft `json:"draft_payload,omitempty"`
-	// Deprecated: kept only for preview JSON compatibility. New business code should use PreviewPayload.
-	PreviewProduct *sheinproduct.Product `json:"preview_product,omitempty"`
-	// PreviewPayload is the canonical SHEIN preview payload exposed to internal preview builders.
-	PreviewPayload *sheinproduct.Product `json:"preview_payload,omitempty"`
-	// Deprecated: kept only for preview JSON compatibility. New business code should use SubmissionState.
-	Submission *sheinpub.SubmissionReport `json:"submission,omitempty"`
-	// SubmissionState is the canonical SHEIN submission state exposed to internal preview builders.
-	SubmissionState  *sheinpub.SubmissionReport   `json:"submission_state,omitempty"`
-	Pricing          *sheinpub.PricingReview      `json:"pricing,omitempty"`
-	FinalReview      *SheinFinalReview            `json:"final_review,omitempty"`
-	StoreResolution  *SheinStoreResolutionSummary `json:"store_resolution,omitempty"`
-	SubmissionEvents []sheinpub.SubmissionEvent   `json:"submission_events,omitempty"`
-	InspectionData   *sheinpub.Inspection         `json:"inspection_data,omitempty"`
+	RequestDraft      *sheinpub.RequestDraft            `json:"request_draft,omitempty"`
+	DraftPayload      *sheinpub.RequestDraft            `json:"draft_payload,omitempty"`
+	PreviewProduct    *sheinproduct.Product             `json:"preview_product,omitempty"`
+	PreviewPayload    *sheinproduct.Product             `json:"preview_payload,omitempty"`
+	Submission        *sheinpub.SubmissionReport        `json:"submission,omitempty"`
+	SubmissionState   *sheinpub.SubmissionReport        `json:"submission_state,omitempty"`
+	Pricing           *sheinpub.PricingReview           `json:"pricing,omitempty"`
+	FinalReview       *SheinFinalReview                 `json:"final_review,omitempty"`
+	StoreResolution   *SheinStoreResolutionSummary      `json:"store_resolution,omitempty"`
+	SubmissionEvents  []sheinpub.SubmissionEvent        `json:"submission_events,omitempty"`
+	InspectionData    *sheinpub.Inspection              `json:"inspection_data,omitempty"`
 }
 
 type SheinStoreResolutionSummary struct {
