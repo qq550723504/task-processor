@@ -1,26 +1,5 @@
 package listingkit
 
-import (
-	"task-processor/internal/asset"
-	"task-processor/internal/catalog/canonical"
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
-	sheinpub "task-processor/internal/publishing/shein"
-)
-
-type sheinPreviewPayloadInput struct {
-	pkg               *sheinpub.Package
-	canonical         *canonical.Product
-	visualAssetBundle *asset.Bundle
-	renderPreviews    *PlatformAssetRenderPreviews
-	needsReview       bool
-	summary           []string
-	readiness         *SheinSubmitReadiness
-	checklist         *SheinSubmitChecklist
-	repairCenter      *SheinRepairCenter
-	statusOverview    *sheinworkspace.StatusOverview
-	workspaceOverview *sheinworkspace.WorkspaceOverview
-}
-
 func buildAmazonPreviewPayloadFromInput(input amazonPreviewPayloadInput) *AmazonPreviewPayload {
 	return buildAmazonPreviewPayloadBody(input)
 }
