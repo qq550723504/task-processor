@@ -48,3 +48,35 @@ func buildSheinPreviewPayloadInputFromResult(
 		workspaceOverview: buildSheinPreviewWorkspaceOverview(statusOverview, submitState, repairCenter),
 	}, true
 }
+
+func buildTemuPreviewPayloadInputFromResult(
+	result *ListingKitResult,
+	platformPreviews []PlatformAssetRenderPreviews,
+) (reviewablePlatformPreviewPayloadInput, *TemuPackage, bool) {
+	if result == nil || result.Temu == nil {
+		return reviewablePlatformPreviewPayloadInput{}, nil, false
+	}
+	return buildReviewablePlatformPreviewPayloadInput(
+		result.Temu.GoodsName,
+		result.Temu.ReviewNotes,
+		result.Temu.ImageBundle,
+		result.AssetBundle,
+		platformAssetRenderPreviewsByPlatform(platformPreviews, "temu"),
+	), result.Temu, true
+}
+
+func buildWalmartPreviewPayloadInputFromResult(
+	result *ListingKitResult,
+	platformPreviews []PlatformAssetRenderPreviews,
+) (reviewablePlatformPreviewPayloadInput, *WalmartPackage, bool) {
+	if result == nil || result.Walmart == nil {
+		return reviewablePlatformPreviewPayloadInput{}, nil, false
+	}
+	return buildReviewablePlatformPreviewPayloadInput(
+		result.Walmart.ProductName,
+		result.Walmart.ReviewNotes,
+		result.Walmart.ImageBundle,
+		result.AssetBundle,
+		platformAssetRenderPreviewsByPlatform(platformPreviews, "walmart"),
+	), result.Walmart, true
+}

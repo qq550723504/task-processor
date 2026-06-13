@@ -14,7 +14,7 @@ func buildWalmartPreviewPayload(pkg *WalmartPackage, assetBundle *asset.Bundle, 
 	if pkg == nil {
 		return nil
 	}
-	return buildWalmartPreviewPayloadBody(
+	return buildWalmartPreviewPayloadFromInput(
 		buildReviewablePlatformPreviewPayloadInput(
 			pkg.ProductName,
 			pkg.ReviewNotes,

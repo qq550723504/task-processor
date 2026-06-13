@@ -40,3 +40,11 @@ func buildSheinPreviewPayloadFromInput(input sheinPreviewPayloadInput) *SheinPre
 		workspaceOverview: input.workspaceOverview,
 	}))
 }
+
+func buildTemuPreviewPayloadFromInput(input reviewablePlatformPreviewPayloadInput, pkg *TemuPackage) *TemuPreviewPayload {
+	return buildTemuPreviewPayloadBody(input, pkg)
+}
+
+func buildWalmartPreviewPayloadFromInput(input reviewablePlatformPreviewPayloadInput, pkg *WalmartPackage) *WalmartPreviewPayload {
+	return buildWalmartPreviewPayloadBody(input, pkg)
+}

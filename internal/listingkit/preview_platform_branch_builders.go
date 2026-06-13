@@ -17,23 +17,17 @@ func buildSheinPreviewPayloadFromResult(result *ListingKitResult, platformPrevie
 }
 
 func buildTemuPreviewPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *TemuPreviewPayload {
-	if result == nil || result.Temu == nil {
+	input, pkg, ok := buildTemuPreviewPayloadInputFromResult(result, platformPreviews)
+	if !ok {
 		return nil
 	}
-	return buildTemuPreviewPayload(
-		result.Temu,
-		result.AssetBundle,
-		platformAssetRenderPreviewsByPlatform(platformPreviews, "temu"),
-	)
+	return buildTemuPreviewPayloadFromInput(input, pkg)
 }
 
 func buildWalmartPreviewPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *WalmartPreviewPayload {
-	if result == nil || result.Walmart == nil {
+	input, pkg, ok := buildWalmartPreviewPayloadInputFromResult(result, platformPreviews)
+	if !ok {
 		return nil
 	}
-	return buildWalmartPreviewPayload(
-		result.Walmart,
-		result.AssetBundle,
-		platformAssetRenderPreviewsByPlatform(platformPreviews, "walmart"),
-	)
+	return buildWalmartPreviewPayloadFromInput(input, pkg)
 }

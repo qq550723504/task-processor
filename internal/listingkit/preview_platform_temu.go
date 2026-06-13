@@ -14,7 +14,7 @@ func buildTemuPreviewPayload(pkg *TemuPackage, assetBundle *asset.Bundle, render
 	if pkg == nil {
 		return nil
 	}
-	return buildTemuPreviewPayloadBody(
+	return buildTemuPreviewPayloadFromInput(
 		buildReviewablePlatformPreviewPayloadInput(
 			pkg.GoodsName,
 			pkg.ReviewNotes,
