@@ -1,50 +1,33 @@
 package listingkit
 
-import sheinpub "task-processor/internal/publishing/shein"
-
 func buildAmazonExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *AmazonExportPayload {
-	if result == nil || result.Amazon == nil {
+	input, ok := buildAmazonExportPayloadInputFromResult(result, platformPreviews)
+	if !ok {
 		return nil
 	}
-	return buildAmazonExportPayload(amazonExportPayloadInput{
-		draft:      result.Amazon.Draft,
-		visualBase: buildPlatformVisualExportPayloadInput("amazon", result.Amazon.ImageBundle, result.AssetBundle, platformPreviews),
-	})
+	return buildAmazonExportPayload(input)
 }
 
 func buildSheinExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *SheinExportPayload {
-	if result == nil || result.Shein == nil {
+	payload, ok := buildSheinExportPayloadFromResultInput(result, platformPreviews)
+	if !ok {
 		return nil
 	}
-	sheinpub.NormalizePackageSemanticFields(result.Shein)
-	visualBase := buildPlatformVisualExportBase("shein", result.Shein.ImageBundle, result.AssetBundle, platformPreviews)
-	return normalizeSheinExportPayloadSemanticFields(&SheinExportPayload{
-		Inspection:     result.Shein.Inspection,
-		ImageBundle:    visualBase.imageBundle,
-		RenderPreviews: visualBase.renderPreviews,
-		ScenePresets:   visualBase.scenePresets,
-		DraftPayload:   result.Shein.DraftPayload,
-		PreviewPayload: result.Shein.PreviewPayload,
-		ReviewNotes:    append([]string(nil), result.Shein.ReviewNotes...),
-	})
+	return payload
 }
 
 func buildTemuExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *TemuExportPayload {
-	if result == nil || result.Temu == nil {
+	input, pkg, ok := buildTemuExportPayloadInputFromResult(result, platformPreviews)
+	if !ok {
 		return nil
 	}
-	return buildTemuExportPayload(
-		buildReviewablePlatformExportPayloadInput("temu", result.Temu.ImageBundle, result.AssetBundle, platformPreviews),
-		result.Temu,
-	)
+	return buildTemuExportPayload(input, pkg)
 }
 
 func buildWalmartExportPayloadFromResult(result *ListingKitResult, platformPreviews []PlatformAssetRenderPreviews) *WalmartExportPayload {
-	if result == nil || result.Walmart == nil {
+	input, pkg, ok := buildWalmartExportPayloadInputFromResult(result, platformPreviews)
+	if !ok {
 		return nil
 	}
-	return buildWalmartExportPayload(
-		buildReviewablePlatformExportPayloadInput("walmart", result.Walmart.ImageBundle, result.AssetBundle, platformPreviews),
-		result.Walmart,
-	)
+	return buildWalmartExportPayload(input, pkg)
 }
