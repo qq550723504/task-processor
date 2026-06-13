@@ -1,7 +1,5 @@
 package listingkit
 
-import sheinpub "task-processor/internal/publishing/shein"
-
 func buildAmazonPreviewPayloadInputFromResult(
 	result *ListingKitResult,
 	platformPreviews []PlatformAssetRenderPreviews,
@@ -20,23 +18,22 @@ func buildSheinPreviewPayloadInputFromResult(
 	result *ListingKitResult,
 	platformPreviews []PlatformAssetRenderPreviews,
 ) (sheinPreviewPayloadInput, bool) {
-	if result == nil || result.Shein == nil {
+	sheinContext, ok := buildSheinPlatformPayloadContext(result, platformPreviews)
+	if !ok {
 		return sheinPreviewPayloadInput{}, false
 	}
-	sheinpub.NormalizePackageSemanticFields(result.Shein)
-	context := buildPlatformPayloadResultContext(result, platformPreviews)
-	needsReview, summary := buildSheinPreviewReviewSummary(result.Shein)
-	projection := buildSheinSubmitReadinessProjectionWithPod(result.Shein, result.PodExecution)
+	needsReview, summary := buildSheinPreviewReviewSummary(sheinContext.pkg)
+	projection := buildSheinSubmitReadinessProjectionWithPod(sheinContext.pkg, result.PodExecution)
 	readiness := projection.Readiness
 	checklist := projection.Checklist
 	repairCenter := buildSheinRepairCenter(readiness, checklist)
 	submitState := projection.SubmitState
 	statusOverview := projection.StatusOverview
 	return sheinPreviewPayloadInput{
-		pkg:               result.Shein,
+		pkg:               sheinContext.pkg,
 		canonical:         result.CanonicalProduct,
-		visualAssetBundle: result.AssetBundle,
-		renderPreviews:    context.previewRenderPreviews("shein"),
+		visualAssetBundle: sheinContext.assetBundle,
+		renderPreviews:    sheinContext.renderPreview,
 		needsReview:       needsReview,
 		summary:           summary,
 		readiness:         readiness,

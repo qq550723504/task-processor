@@ -1,7 +1,5 @@
 package listingkit
 
-import sheinpub "task-processor/internal/publishing/shein"
-
 func buildAmazonExportPayloadInputFromResult(
 	result *ListingKitResult,
 	platformPreviews []PlatformAssetRenderPreviews,
@@ -20,20 +18,18 @@ func buildSheinExportPayloadFromResultInput(
 	result *ListingKitResult,
 	platformPreviews []PlatformAssetRenderPreviews,
 ) (*SheinExportPayload, bool) {
-	if result == nil || result.Shein == nil {
+	sheinContext, ok := buildSheinPlatformPayloadContext(result, platformPreviews)
+	if !ok {
 		return nil, false
 	}
-	sheinpub.NormalizePackageSemanticFields(result.Shein)
-	context := buildPlatformPayloadResultContext(result, platformPreviews)
-	visualBase := context.exportVisualBase("shein", result.Shein.ImageBundle)
 	return normalizeSheinExportPayloadSemanticFields(&SheinExportPayload{
-		Inspection:     result.Shein.Inspection,
-		ImageBundle:    visualBase.imageBundle,
-		RenderPreviews: visualBase.renderPreviews,
-		ScenePresets:   visualBase.scenePresets,
-		DraftPayload:   result.Shein.DraftPayload,
-		PreviewPayload: result.Shein.PreviewPayload,
-		ReviewNotes:    append([]string(nil), result.Shein.ReviewNotes...),
+		Inspection:     sheinContext.pkg.Inspection,
+		ImageBundle:    sheinContext.exportBase.imageBundle,
+		RenderPreviews: sheinContext.exportBase.renderPreviews,
+		ScenePresets:   sheinContext.exportBase.scenePresets,
+		DraftPayload:   sheinContext.pkg.DraftPayload,
+		PreviewPayload: sheinContext.pkg.PreviewPayload,
+		ReviewNotes:    append([]string(nil), sheinContext.pkg.ReviewNotes...),
 	}), true
 }
 
