@@ -112,20 +112,8 @@ func buildListingKitExportMeta(result *ListingKitResult, selectedPlatform string
 }
 
 func buildListingKitExportMetaFromOverview(overview *listingKitOverviewData) *ListingKitExportMeta {
-	if overview == nil {
-		return nil
-	}
-	meta := &ListingKitExportMeta{
-		Country:       overview.Country,
-		Language:      overview.Language,
-		SourceType:    overview.SourceType,
-		ImageCount:    overview.ImageCount,
-		VariantCount:  overview.VariantCount,
-		Warnings:      append([]string(nil), overview.Warnings...),
-		ReviewReasons: append([]string(nil), overview.ReviewReasons...),
-		PlatformCards: append([]ListingKitPlatformCard(nil), overview.PlatformCards...),
-	}
-	return meta
+	meta := initializeListingKitExportMeta(overview)
+	return decorateListingKitExportMeta(overview, meta)
 }
 
 func buildListingKitExportFileName(taskID string, selectedPlatform string) string {
