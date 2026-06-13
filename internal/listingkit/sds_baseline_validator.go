@@ -30,14 +30,15 @@ func (s *service) validateSDSBaseline(ctx context.Context, options *SDSSyncOptio
 	if result := validateSDSBaselineRequiredFields(options); result.Status != "" {
 		return result
 	}
-	if s == nil || s.sdsLoginStatusProvider == nil {
+	loginStatusProvider := resolveSDSLoginStatusProvider(s)
+	if s == nil || loginStatusProvider == nil {
 		return sdsBaselineValidationResult{
 			Status:     SDSBaselineValidationStatusUnknown,
 			ReasonCode: SDSBaselineReasonCodeLoginUnavailable,
 			Reason:     "SDS login validation is unavailable.",
 		}
 	}
-	status, err := s.sdsLoginStatusProvider.Status(ctx)
+	status, err := loginStatusProvider.Status(ctx)
 	if err != nil {
 		return sdsBaselineValidationResult{
 			Status:     SDSBaselineValidationStatusFailed,

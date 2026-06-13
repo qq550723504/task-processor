@@ -24,7 +24,8 @@ type localSDSMockupRenderInput struct {
 }
 
 func (s *service) renderLocalSDSMockups(ctx context.Context, input localSDSMockupRenderInput) ([]string, error) {
-	if s == nil || s.uploadStore == nil {
+	uploadStore := resolveStudioUploadStore(s)
+	if s == nil || uploadStore == nil {
 		return nil, nil
 	}
 	sourceURL := strings.TrimSpace(input.SourceURL)
@@ -49,7 +50,7 @@ func (s *service) renderLocalSDSMockups(ctx context.Context, input localSDSMocku
 		if err := png.Encode(&buf, rendered); err != nil {
 			continue
 		}
-		stored, err := s.uploadStore.Save(ctx, &ImageUploadInput{
+		stored, err := uploadStore.Save(ctx, &ImageUploadInput{
 			Filename:    fmt.Sprintf("sds-mockup-%02d.png", index+1),
 			ContentType: "image/png",
 			Data:        buf.Bytes(),
