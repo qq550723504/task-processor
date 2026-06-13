@@ -2,14 +2,14 @@ package listingkit
 
 import previewdomain "task-processor/internal/listing/preview"
 
-func buildPreviewDomainAttachmentInput(result *ListingKitResult) *previewdomain.AttachmentInput {
-	if result == nil {
+func buildPreviewDomainAttachmentInput(attachment *listingKitResultAttachment) *previewdomain.AttachmentInput {
+	if attachment == nil {
 		return nil
 	}
 	return &previewdomain.AttachmentInput{
-		CatalogProduct:        result.CatalogProduct,
-		AssetBundle:           result.AssetBundle,
-		AssetInventorySummary: result.AssetInventorySummary,
+		CatalogProduct:        attachment.CatalogProduct,
+		AssetBundle:           attachment.AssetBundle,
+		AssetInventorySummary: attachment.AssetInventorySummary,
 	}
 }
 

@@ -25,7 +25,7 @@ func buildListingKitPreviewDomainProjectionFromReadProjection(
 	}
 	return previewdomain.BuildProjection(previewdomain.ProjectionInput{
 		NeedsReview:         projection.NeedsReview,
-		Attachment:          buildPreviewDomainAttachmentInput(result),
+		Attachment:          buildPreviewDomainAttachmentInput(projection.Attachment),
 		Overview:            buildPreviewDomainHeaderInput(projection.Overview),
 		RevisionHistoryMeta: buildPreviewDomainRevisionHistoryMetaInput(result),
 	})
