@@ -46,12 +46,10 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 	if selectedPlatform == "" || selectedPlatform == "amazon" {
 		if task.Result.Amazon != nil {
 			visualBase := buildPlatformVisualExportBase("amazon", task.Result.Amazon.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews)
-			export.Amazon = &AmazonExportPayload{
-				Draft:          task.Result.Amazon.Draft,
-				ImageBundle:    visualBase.imageBundle,
-				RenderPreviews: visualBase.renderPreviews,
-				ScenePresets:   visualBase.scenePresets,
-			}
+			export.Amazon = buildAmazonExportPayload(amazonExportPayloadInput{
+				draft:      task.Result.Amazon.Draft,
+				visualBase: visualBase,
+			})
 		} else if selectedPlatform == "amazon" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
@@ -79,12 +77,9 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 	if selectedPlatform == "" || selectedPlatform == "temu" {
 		if task.Result.Temu != nil {
 			visualBase := buildPlatformVisualExportBase("temu", task.Result.Temu.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews)
-			export.Temu = &TemuExportPayload{
-				ImageBundle:    visualBase.imageBundle,
-				RenderPreviews: visualBase.renderPreviews,
-				ScenePresets:   visualBase.scenePresets,
-				Package:        task.Result.Temu,
-			}
+			export.Temu = buildTemuExportPayload(reviewableExportPayloadInput{
+				visualBase: visualBase,
+			}, task.Result.Temu)
 		} else if selectedPlatform == "temu" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
@@ -93,12 +88,9 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 	if selectedPlatform == "" || selectedPlatform == "walmart" {
 		if task.Result.Walmart != nil {
 			visualBase := buildPlatformVisualExportBase("walmart", task.Result.Walmart.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews)
-			export.Walmart = &WalmartExportPayload{
-				ImageBundle:    visualBase.imageBundle,
-				RenderPreviews: visualBase.renderPreviews,
-				ScenePresets:   visualBase.scenePresets,
-				Package:        task.Result.Walmart,
-			}
+			export.Walmart = buildWalmartExportPayload(reviewableExportPayloadInput{
+				visualBase: visualBase,
+			}, task.Result.Walmart)
 		} else if selectedPlatform == "walmart" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
