@@ -30,9 +30,7 @@ func buildListingKitPreviewProjection(result *ListingKitResult, selectedPlatform
 		return listingKitPreviewProjection{}
 	}
 	legacyBase := adaptPreviewDomainShell(base)
-	if legacyBase.Overview != nil && readProjection.Overview != nil {
-		legacyBase.Overview.PlatformCards = append([]ListingKitPlatformCard(nil), readProjection.Overview.PlatformCards...)
-	}
+	legacyBase.Overview = adaptPreviewDomainHeaderWithLegacyPlatformCards(base.Overview, readProjection.Overview)
 	return listingKitPreviewProjection{
 		overview:            legacyBase.Overview,
 		needsReview:         legacyBase.NeedsReview,

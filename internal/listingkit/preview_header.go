@@ -1,5 +1,7 @@
 package listingkit
 
+import previewdomain "task-processor/internal/listing/preview"
+
 func buildPreviewHeader(result *ListingKitResult, selectedPlatform string) *ListingKitPreviewHeader {
 	projection := buildListingKitReadProjection(result, selectedPlatform)
 	if projection == nil {
@@ -9,6 +11,11 @@ func buildPreviewHeader(result *ListingKitResult, selectedPlatform string) *List
 }
 
 func buildPreviewHeaderFromOverview(overview *listingKitOverviewData) *ListingKitPreviewHeader {
-	header := initializePreviewHeader(overview)
-	return decoratePreviewHeader(overview, header)
+	if overview == nil {
+		return nil
+	}
+	return adaptPreviewDomainHeaderWithLegacyPlatformCards(
+		previewdomain.BuildHeader(*buildPreviewDomainHeaderInput(overview)),
+		overview,
+	)
 }
