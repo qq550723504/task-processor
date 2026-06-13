@@ -90,3 +90,36 @@ func TestBuildWalmartPreviewPayloadCopiesReviewStateFromBase(t *testing.T) {
 		t.Fatalf("walmart render previews = %+v", payload.RenderPreviews)
 	}
 }
+
+func TestBuildPreviewPayloadFromResultUsesPlatformRenderPreviewSelection(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{
+		AssetBundle: &asset.Bundle{},
+		Amazon: &AmazonPackage{
+			ImageBundle: &common.PublishImageBundle{Platform: "amazon"},
+			Draft: &amazonlisting.AmazonListingDraft{
+				Title: "Desk Lamp",
+			},
+		},
+		Temu: &TemuPackage{
+			GoodsName:   "Travel Mug",
+			ReviewNotes: []string{"check color wording"},
+			ImageBundle: &common.PublishImageBundle{Platform: "temu"},
+		},
+	}
+	platformPreviews := []PlatformAssetRenderPreviews{
+		{Platform: "amazon"},
+		{Platform: "temu"},
+	}
+
+	amazonPayload := buildAmazonPreviewPayloadFromResult(result, platformPreviews)
+	if amazonPayload == nil || amazonPayload.RenderPreviews == nil || amazonPayload.RenderPreviews.Platform != "amazon" {
+		t.Fatalf("amazon payload = %+v", amazonPayload)
+	}
+
+	temuPayload := buildTemuPreviewPayloadFromResult(result, platformPreviews)
+	if temuPayload == nil || temuPayload.RenderPreviews == nil || temuPayload.RenderPreviews.Platform != "temu" {
+		t.Fatalf("temu payload = %+v", temuPayload)
+	}
+}
