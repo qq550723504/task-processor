@@ -5,11 +5,7 @@ import (
 	common "task-processor/internal/publishing/common"
 )
 
-type platformVisualExportBase struct {
-	imageBundle    *common.PublishImageBundle
-	renderPreviews *PlatformAssetRenderPreviews
-	scenePresets   []PlatformScenePresetSummary
-}
+type platformVisualExportBase = platformVisualPresentationBase
 
 func buildPlatformVisualExportBase(
 	platform string,
@@ -17,9 +13,9 @@ func buildPlatformVisualExportBase(
 	assetBundle *asset.Bundle,
 	platformPreviews []PlatformAssetRenderPreviews,
 ) platformVisualExportBase {
-	return platformVisualExportBase{
-		imageBundle:    imageBundle,
-		renderPreviews: platformAssetRenderPreviewsByPlatform(platformPreviews, platform),
-		scenePresets:   buildPlatformScenePresetSummaries(imageBundle, assetBundle),
-	}
+	return newPlatformVisualPresentationBase(
+		imageBundle,
+		platformAssetRenderPreviewsByPlatform(platformPreviews, platform),
+		buildPlatformScenePresetSummaries(imageBundle, assetBundle),
+	)
 }
