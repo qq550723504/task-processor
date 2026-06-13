@@ -45,10 +45,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 	if selectedPlatform == "" || selectedPlatform == "amazon" {
 		if task.Result.Amazon != nil {
-			export.Amazon = buildAmazonExportPayload(amazonExportPayloadInput{
-				draft:      task.Result.Amazon.Draft,
-				visualBase: buildPlatformVisualExportPayloadInput("amazon", task.Result.Amazon.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews),
-			})
+			export.Amazon = buildAmazonExportPayloadFromResult(task.Result, export.PlatformAssetRenderPreviews)
 		} else if selectedPlatform == "amazon" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
@@ -75,10 +72,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 	if selectedPlatform == "" || selectedPlatform == "temu" {
 		if task.Result.Temu != nil {
-			export.Temu = buildTemuExportPayload(
-				buildReviewablePlatformExportPayloadInput("temu", task.Result.Temu.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews),
-				task.Result.Temu,
-			)
+			export.Temu = buildTemuExportPayloadFromResult(task.Result, export.PlatformAssetRenderPreviews)
 		} else if selectedPlatform == "temu" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
@@ -86,10 +80,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 	if selectedPlatform == "" || selectedPlatform == "walmart" {
 		if task.Result.Walmart != nil {
-			export.Walmart = buildWalmartExportPayload(
-				buildReviewablePlatformExportPayloadInput("walmart", task.Result.Walmart.ImageBundle, task.Result.AssetBundle, export.PlatformAssetRenderPreviews),
-				task.Result.Walmart,
-			)
+			export.Walmart = buildWalmartExportPayloadFromResult(task.Result, export.PlatformAssetRenderPreviews)
 		} else if selectedPlatform == "walmart" {
 			return nil, ErrPreviewPlatformUnavailable
 		}
