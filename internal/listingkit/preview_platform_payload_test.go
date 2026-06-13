@@ -123,3 +123,25 @@ func TestBuildPreviewPayloadFromResultUsesPlatformRenderPreviewSelection(t *test
 		t.Fatalf("temu payload = %+v", temuPayload)
 	}
 }
+
+func TestBuildPlatformPayloadResultContextSelectsPlatformSpecificVisuals(t *testing.T) {
+	t.Parallel()
+
+	imageBundle := &common.PublishImageBundle{Platform: "amazon"}
+	context := buildPlatformPayloadResultContext(&ListingKitResult{
+		AssetBundle: &asset.Bundle{},
+	}, []PlatformAssetRenderPreviews{
+		{Platform: "amazon"},
+		{Platform: "temu"},
+	})
+
+	previewBase := context.previewVisualBase("amazon", imageBundle)
+	if previewBase.renderPreviews == nil || previewBase.renderPreviews.Platform != "amazon" {
+		t.Fatalf("preview base = %+v", previewBase)
+	}
+
+	exportBase := context.exportVisualBase("temu", imageBundle)
+	if exportBase.renderPreviews == nil || exportBase.renderPreviews.Platform != "temu" {
+		t.Fatalf("export base = %+v", exportBase)
+	}
+}

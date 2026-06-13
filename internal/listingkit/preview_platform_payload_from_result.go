@@ -9,13 +9,10 @@ func buildAmazonPreviewPayloadInputFromResult(
 	if result == nil || result.Amazon == nil {
 		return amazonPreviewPayloadInput{}, false
 	}
+	context := buildPlatformPayloadResultContext(result, platformPreviews)
 	return amazonPreviewPayloadInput{
-		draft: result.Amazon.Draft,
-		visualBase: buildPlatformVisualPreviewPayloadInput(
-			result.Amazon.ImageBundle,
-			result.AssetBundle,
-			platformAssetRenderPreviewsByPlatform(platformPreviews, "amazon"),
-		),
+		draft:      result.Amazon.Draft,
+		visualBase: context.previewVisualBase("amazon", result.Amazon.ImageBundle),
 	}, true
 }
 
@@ -27,6 +24,7 @@ func buildSheinPreviewPayloadInputFromResult(
 		return sheinPreviewPayloadInput{}, false
 	}
 	sheinpub.NormalizePackageSemanticFields(result.Shein)
+	context := buildPlatformPayloadResultContext(result, platformPreviews)
 	needsReview, summary := buildSheinPreviewReviewSummary(result.Shein)
 	projection := buildSheinSubmitReadinessProjectionWithPod(result.Shein, result.PodExecution)
 	readiness := projection.Readiness
@@ -38,7 +36,7 @@ func buildSheinPreviewPayloadInputFromResult(
 		pkg:               result.Shein,
 		canonical:         result.CanonicalProduct,
 		visualAssetBundle: result.AssetBundle,
-		renderPreviews:    platformAssetRenderPreviewsByPlatform(platformPreviews, "shein"),
+		renderPreviews:    context.previewRenderPreviews("shein"),
 		needsReview:       needsReview,
 		summary:           summary,
 		readiness:         readiness,
@@ -56,12 +54,13 @@ func buildTemuPreviewPayloadInputFromResult(
 	if result == nil || result.Temu == nil {
 		return reviewablePlatformPreviewPayloadInput{}, nil, false
 	}
+	context := buildPlatformPayloadResultContext(result, platformPreviews)
 	return buildReviewablePlatformPreviewPayloadInput(
 		result.Temu.GoodsName,
 		result.Temu.ReviewNotes,
 		result.Temu.ImageBundle,
-		result.AssetBundle,
-		platformAssetRenderPreviewsByPlatform(platformPreviews, "temu"),
+		context.assetBundle,
+		context.previewRenderPreviews("temu"),
 	), result.Temu, true
 }
 
@@ -72,11 +71,12 @@ func buildWalmartPreviewPayloadInputFromResult(
 	if result == nil || result.Walmart == nil {
 		return reviewablePlatformPreviewPayloadInput{}, nil, false
 	}
+	context := buildPlatformPayloadResultContext(result, platformPreviews)
 	return buildReviewablePlatformPreviewPayloadInput(
 		result.Walmart.ProductName,
 		result.Walmart.ReviewNotes,
 		result.Walmart.ImageBundle,
-		result.AssetBundle,
-		platformAssetRenderPreviewsByPlatform(platformPreviews, "walmart"),
+		context.assetBundle,
+		context.previewRenderPreviews("walmart"),
 	), result.Walmart, true
 }

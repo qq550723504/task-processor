@@ -9,9 +9,10 @@ func buildAmazonExportPayloadInputFromResult(
 	if result == nil || result.Amazon == nil {
 		return amazonExportPayloadInput{}, false
 	}
+	context := buildPlatformPayloadResultContext(result, platformPreviews)
 	return amazonExportPayloadInput{
 		draft:      result.Amazon.Draft,
-		visualBase: buildPlatformVisualExportPayloadInput("amazon", result.Amazon.ImageBundle, result.AssetBundle, platformPreviews),
+		visualBase: context.exportVisualBase("amazon", result.Amazon.ImageBundle),
 	}, true
 }
 
@@ -23,7 +24,8 @@ func buildSheinExportPayloadFromResultInput(
 		return nil, false
 	}
 	sheinpub.NormalizePackageSemanticFields(result.Shein)
-	visualBase := buildPlatformVisualExportPayloadInput("shein", result.Shein.ImageBundle, result.AssetBundle, platformPreviews)
+	context := buildPlatformPayloadResultContext(result, platformPreviews)
+	visualBase := context.exportVisualBase("shein", result.Shein.ImageBundle)
 	return normalizeSheinExportPayloadSemanticFields(&SheinExportPayload{
 		Inspection:     result.Shein.Inspection,
 		ImageBundle:    visualBase.imageBundle,
@@ -42,7 +44,8 @@ func buildTemuExportPayloadInputFromResult(
 	if result == nil || result.Temu == nil {
 		return reviewableExportPayloadInput{}, nil, false
 	}
-	return buildReviewablePlatformExportPayloadInput("temu", result.Temu.ImageBundle, result.AssetBundle, platformPreviews), result.Temu, true
+	context := buildPlatformPayloadResultContext(result, platformPreviews)
+	return buildReviewablePlatformExportPayloadInput("temu", result.Temu.ImageBundle, context.assetBundle, context.platformPreviews), result.Temu, true
 }
 
 func buildWalmartExportPayloadInputFromResult(
@@ -52,5 +55,6 @@ func buildWalmartExportPayloadInputFromResult(
 	if result == nil || result.Walmart == nil {
 		return reviewableExportPayloadInput{}, nil, false
 	}
-	return buildReviewablePlatformExportPayloadInput("walmart", result.Walmart.ImageBundle, result.AssetBundle, platformPreviews), result.Walmart, true
+	context := buildPlatformPayloadResultContext(result, platformPreviews)
+	return buildReviewablePlatformExportPayloadInput("walmart", result.Walmart.ImageBundle, context.assetBundle, context.platformPreviews), result.Walmart, true
 }
