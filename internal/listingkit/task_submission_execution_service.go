@@ -56,8 +56,12 @@ func (s *taskSubmissionExecutionService) resolveSheinSubmitRuntime(ctx context.C
 	return s.resolveSheinStoreRuntime(ctx, task, "submit")
 }
 
+func (s *taskSubmissionExecutionService) resolveSheinSubmitContext(ctx context.Context, task *Task) (context.Context, error) {
+	return withSheinSubmitTaskIdentity(ctx, task)
+}
+
 func (s *taskSubmissionExecutionService) resolveSheinStoreRuntime(ctx context.Context, task *Task, action string) (context.Context, int64, error) {
-	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
+	runtimeCtx, err := s.resolveSheinSubmitContext(ctx, task)
 	if err != nil {
 		return nil, 0, err
 	}

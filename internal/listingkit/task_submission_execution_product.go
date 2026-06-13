@@ -10,7 +10,7 @@ import (
 )
 
 func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.Context, task *Task, pkg *SheinPackage, action string) (*sheinproduct.Product, error) {
-	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
+	runtimeCtx, err := s.resolveSheinSubmitContext(ctx, task)
 	if err != nil {
 		return nil, err
 	}
