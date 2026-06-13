@@ -29,6 +29,6 @@ func buildListingKitExportProjection(result *ListingKitResult, selectedPlatform 
 		platformPreviews:    readProjection.Attachment.PlatformAssetRenderPreviews,
 		generationQueue:     readProjection.Attachment.AssetGenerationQueue,
 		generationOverview:  readProjection.Attachment.AssetGenerationOverview,
-		overview:            buildListingKitExportMetaFromOverview(readProjection.Overview),
+		overview:            buildListingKitExportMetaFromReadProjection(readProjection),
 	}
 }

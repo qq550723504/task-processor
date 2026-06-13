@@ -21,12 +21,12 @@ type listingKitPreviewProjection struct {
 }
 
 func buildListingKitPreviewProjection(result *ListingKitResult, selectedPlatform string) listingKitPreviewProjection {
-	base := buildListingKitPreviewDomainProjection(result, selectedPlatform)
-	if base == nil {
-		return listingKitPreviewProjection{}
-	}
 	readProjection := buildListingKitReadProjection(result, selectedPlatform)
 	if readProjection == nil {
+		return listingKitPreviewProjection{}
+	}
+	base := buildListingKitPreviewDomainProjectionFromReadProjection(result, readProjection)
+	if base == nil {
 		return listingKitPreviewProjection{}
 	}
 	legacyBase := adaptPreviewDomainShell(base)
@@ -48,14 +48,5 @@ func buildListingKitPreviewProjection(result *ListingKitResult, selectedPlatform
 
 func buildListingKitPreviewDomainProjection(result *ListingKitResult, selectedPlatform string) *previewdomain.Preview {
 	readProjection := buildListingKitReadProjection(result, selectedPlatform)
-	if readProjection == nil {
-		return nil
-	}
-
-	return previewdomain.BuildProjection(previewdomain.ProjectionInput{
-		NeedsReview:         readProjection.NeedsReview,
-		Attachment:          buildPreviewDomainAttachmentInput(result),
-		Overview:            buildPreviewDomainHeaderInput(readProjection.Overview),
-		RevisionHistoryMeta: buildPreviewDomainRevisionHistoryMetaInput(result),
-	})
+	return buildListingKitPreviewDomainProjectionFromReadProjection(result, readProjection)
 }

@@ -47,10 +47,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 
 func buildListingKitExportMeta(result *ListingKitResult, selectedPlatform string) *ListingKitExportMeta {
 	projection := buildListingKitReadProjection(result, selectedPlatform)
-	if projection == nil {
-		return nil
-	}
-	return buildListingKitExportMetaFromOverview(projection.Overview)
+	return buildListingKitExportMetaFromReadProjection(projection)
 }
 
 func buildListingKitExportMetaFromOverview(overview *listingKitOverviewData) *ListingKitExportMeta {

@@ -4,10 +4,7 @@ import previewdomain "task-processor/internal/listing/preview"
 
 func buildPreviewHeader(result *ListingKitResult, selectedPlatform string) *ListingKitPreviewHeader {
 	projection := buildListingKitReadProjection(result, selectedPlatform)
-	if projection == nil {
-		return nil
-	}
-	return buildPreviewHeaderFromOverview(projection.Overview)
+	return buildPreviewHeaderFromReadProjection(projection)
 }
 
 func buildPreviewHeaderFromOverview(overview *listingKitOverviewData) *ListingKitPreviewHeader {
