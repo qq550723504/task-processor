@@ -20,8 +20,9 @@ func AdaptLegacyPreviewShell(legacy *legacylistingkit.ListingKitPreview) *previe
 			CreatedAt:        legacy.CreatedAt,
 			CompletedAt:      legacy.CompletedAt,
 		},
-		NeedsReview: legacy.NeedsReview,
-		Overview:    adaptLegacyPreviewHeaderInput(legacy.Overview),
+		NeedsReview:         legacy.NeedsReview,
+		Overview:            adaptLegacyPreviewHeaderInput(legacy.Overview),
+		RevisionHistoryMeta: adaptLegacyRevisionHistoryMetaInput(legacy.RevisionHistoryMeta),
 	})
 }
 
@@ -58,4 +59,15 @@ func adaptLegacyPreviewHeaderInput(legacy *legacylistingkit.ListingKitPreviewHea
 		}
 	}
 	return input
+}
+
+func adaptLegacyRevisionHistoryMetaInput(legacy *legacylistingkit.ListingKitRevisionHistoryMeta) *previewdomain.RevisionHistoryMetaInput {
+	if legacy == nil {
+		return nil
+	}
+	return &previewdomain.RevisionHistoryMetaInput{
+		TotalRecords:    legacy.TotalRecords,
+		ReturnedRecords: legacy.ReturnedRecords,
+		MaxRecords:      legacy.MaxRecords,
+	}
 }

@@ -7,14 +7,15 @@ func adaptPreviewDomainShell(base *previewdomain.Preview) *ListingKitPreview {
 		return nil
 	}
 	return &ListingKitPreview{
-		TaskID:           base.TaskID,
-		Status:           TaskStatus(base.Status),
-		SelectedPlatform: base.SelectedPlatform,
-		Platforms:        append([]string(nil), base.Platforms...),
-		NeedsReview:      base.NeedsReview,
-		CreatedAt:        base.CreatedAt,
-		CompletedAt:      base.CompletedAt,
-		Overview:         adaptPreviewDomainHeader(base.Overview),
+		TaskID:              base.TaskID,
+		Status:              TaskStatus(base.Status),
+		SelectedPlatform:    base.SelectedPlatform,
+		Platforms:           append([]string(nil), base.Platforms...),
+		NeedsReview:         base.NeedsReview,
+		CreatedAt:           base.CreatedAt,
+		CompletedAt:         base.CompletedAt,
+		Overview:            adaptPreviewDomainHeader(base.Overview),
+		RevisionHistoryMeta: adaptPreviewDomainRevisionHistoryMeta(base.RevisionHistoryMeta),
 	}
 }
 
@@ -31,5 +32,18 @@ func adaptPreviewDomainHeader(base *previewdomain.Header) *ListingKitPreviewHead
 		StatusMessage: base.StatusMessage,
 		Warnings:      append([]string(nil), base.Warnings...),
 		ReviewReasons: append([]string(nil), base.ReviewReasons...),
+	}
+}
+
+func adaptPreviewDomainRevisionHistoryMeta(base *previewdomain.RevisionHistoryMeta) *ListingKitRevisionHistoryMeta {
+	if base == nil {
+		return nil
+	}
+	return &ListingKitRevisionHistoryMeta{
+		TotalRecords:    base.TotalRecords,
+		ReturnedRecords: base.ReturnedRecords,
+		HasMore:         base.HasMore,
+		IsTruncated:     base.IsTruncated,
+		MaxRecords:      base.MaxRecords,
 	}
 }

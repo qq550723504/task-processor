@@ -20,6 +20,13 @@ func TestAdaptLegacyPreviewShell(t *testing.T) {
 		NeedsReview:      true,
 		CreatedAt:        createdAt,
 		CompletedAt:      &completedAt,
+		RevisionHistoryMeta: &legacylistingkit.ListingKitRevisionHistoryMeta{
+			TotalRecords:    8,
+			ReturnedRecords: 3,
+			HasMore:         true,
+			IsTruncated:     true,
+			MaxRecords:      20,
+		},
 		Overview: &legacylistingkit.ListingKitPreviewHeader{
 			Country:       "US",
 			Language:      "en",
@@ -53,6 +60,9 @@ func TestAdaptLegacyPreviewShell(t *testing.T) {
 	}
 	if adapted.Overview == nil {
 		t.Fatal("adapted overview = nil")
+	}
+	if adapted.RevisionHistoryMeta == nil || adapted.RevisionHistoryMeta.TotalRecords != 8 {
+		t.Fatalf("adapted revision history meta = %+v", adapted.RevisionHistoryMeta)
 	}
 	if len(adapted.Overview.PlatformCards) != 1 {
 		t.Fatalf("platform cards = %+v", adapted.Overview.PlatformCards)

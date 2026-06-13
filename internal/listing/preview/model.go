@@ -7,14 +7,15 @@ import "time"
 // It intentionally starts with only generic preview-shell fields so the new
 // package can grow independently from the legacy ListingKit DTO surface.
 type Preview struct {
-	TaskID           string     `json:"task_id"`
-	Status           string     `json:"status"`
-	SelectedPlatform string     `json:"selected_platform,omitempty"`
-	Platforms        []string   `json:"platforms,omitempty"`
-	NeedsReview      bool       `json:"needs_review"`
-	CreatedAt        time.Time  `json:"created_at"`
-	CompletedAt      *time.Time `json:"completed_at,omitempty"`
-	Overview         *Header    `json:"overview,omitempty"`
+	TaskID              string               `json:"task_id"`
+	Status              string               `json:"status"`
+	SelectedPlatform    string               `json:"selected_platform,omitempty"`
+	Platforms           []string             `json:"platforms,omitempty"`
+	NeedsReview         bool                 `json:"needs_review"`
+	CreatedAt           time.Time            `json:"created_at"`
+	CompletedAt         *time.Time           `json:"completed_at,omitempty"`
+	Overview            *Header              `json:"overview,omitempty"`
+	RevisionHistoryMeta *RevisionHistoryMeta `json:"revision_history_meta,omitempty"`
 }
 
 // Header is the generic preview summary block shown above platform-specific

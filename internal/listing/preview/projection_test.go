@@ -26,6 +26,10 @@ func TestBuildProjection(t *testing.T) {
 			StatusMessage: "ready",
 			ReviewReasons: []string{"needs-manual-check"},
 		},
+		RevisionHistoryMeta: &RevisionHistoryMetaInput{
+			TotalRecords:    5,
+			ReturnedRecords: 3,
+		},
 	})
 	if projection == nil {
 		t.Fatal("projection = nil")
@@ -38,5 +42,8 @@ func TestBuildProjection(t *testing.T) {
 	}
 	if projection.Overview == nil || !slices.Equal(projection.Overview.ReviewReasons, []string{"needs-manual-check"}) {
 		t.Fatalf("overview = %+v", projection.Overview)
+	}
+	if projection.RevisionHistoryMeta == nil || projection.RevisionHistoryMeta.TotalRecords != 5 {
+		t.Fatalf("revision history meta = %+v", projection.RevisionHistoryMeta)
 	}
 }
