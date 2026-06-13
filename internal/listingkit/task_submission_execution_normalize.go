@@ -14,7 +14,7 @@ func (s *taskSubmissionExecutionService) normalizeSheinSubmitPackage(task *Task,
 		manualOverrides = pkg.FinalSubmissionDraft.ManualPriceOverrides
 	}
 	if pkg.Pricing == nil || !pkg.Pricing.Ready || len(manualOverrides) > 0 {
-		review := buildSheinDraftBackedPricingReview(pkg, s.currentSheinPricingRule(), manualOverrides)
+		review := buildSheinDraftBackedPricingReview(pkg, s.sheinPricingRule(), manualOverrides)
 		applySheinPricingReview(pkg, review)
 	} else {
 		applySheinPricingReview(pkg, pkg.Pricing)

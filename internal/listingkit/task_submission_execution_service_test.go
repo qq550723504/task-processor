@@ -312,6 +312,21 @@ func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageMarksConfirmed
 	}
 }
 
+func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageDefaultsPricingRuleWhenCallbackMissing(t *testing.T) {
+	t.Parallel()
+
+	exec := newTaskSubmissionExecutionService(taskSubmissionExecutionServiceConfig{})
+	task := makeReadySheinTask()
+	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+	pkg.Pricing = nil
+
+	exec.normalizeSheinSubmitPackage(task, pkg, &SubmitTaskRequest{}, "publish")
+
+	if pkg.Pricing == nil {
+		t.Fatal("Pricing = nil, want rebuilt pricing review")
+	}
+}
+
 func TestTaskSubmissionExecutionServiceNormalizeSheinSubmitPackageRebuildsPricingFromFinalDraftOverrides(t *testing.T) {
 	t.Parallel()
 

@@ -79,3 +79,10 @@ func (s *taskSubmissionExecutionService) buildSheinSubmitProductAPIForStore(ctx 
 	}
 	return productAPI, nil
 }
+
+func (s *taskSubmissionExecutionService) sheinPricingRule() sheinpub.PricingRule {
+	if s == nil || s.currentSheinPricingRule == nil {
+		return sheinpub.PricingRule{}
+	}
+	return s.currentSheinPricingRule()
+}
