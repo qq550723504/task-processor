@@ -53,13 +53,17 @@ func (s *taskSubmissionExecutionService) buildSheinSubmitProductAPI(ctx context.
 }
 
 func (s *taskSubmissionExecutionService) resolveSheinSubmitRuntime(ctx context.Context, task *Task) (context.Context, int64, error) {
+	return s.resolveSheinStoreRuntime(ctx, task, "submit")
+}
+
+func (s *taskSubmissionExecutionService) resolveSheinStoreRuntime(ctx context.Context, task *Task, action string) (context.Context, int64, error) {
 	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
 	if err != nil {
 		return nil, 0, err
 	}
 	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
 	if err != nil || storeID <= 0 {
-		return nil, 0, fmt.Errorf("shein store id is unavailable for submit")
+		return nil, 0, fmt.Errorf("shein store id is unavailable for %s", action)
 	}
 	return runtimeCtx, storeID, nil
 }

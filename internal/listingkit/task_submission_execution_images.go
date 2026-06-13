@@ -39,15 +39,7 @@ func (s *taskSubmissionExecutionService) uploadSheinSubmitImages(ctx context.Con
 }
 
 func (s *taskSubmissionExecutionService) resolveSheinImageUploadRuntime(ctx context.Context, task *Task) (context.Context, int64, error) {
-	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
-	if err != nil {
-		return nil, 0, err
-	}
-	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
-	if err != nil || storeID <= 0 {
-		return nil, 0, fmt.Errorf("shein store id is unavailable for image upload")
-	}
-	return runtimeCtx, storeID, nil
+	return s.resolveSheinStoreRuntime(ctx, task, "image upload")
 }
 
 func (s *taskSubmissionExecutionService) buildSheinImageUploadAPI(ctx context.Context, storeID int64) (sheinimage.ImageAPI, error) {
