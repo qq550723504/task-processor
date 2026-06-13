@@ -12,20 +12,15 @@ func buildBaseListingKitPreview(task *Task, selectedPlatform string) *ListingKit
 		value := task.UpdatedAt
 		completedAt = &value
 	}
-	base := previewdomain.BuildShell(previewdomain.ShellInput{
-		TaskID:           task.ID,
-		Status:           string(task.Status),
-		SelectedPlatform: selectedPlatform,
-		Platforms:        previewPlatforms(task),
-		CreatedAt:        task.CreatedAt,
-		CompletedAt:      completedAt,
+	base := previewdomain.BuildProjection(previewdomain.ProjectionInput{
+		Shell: previewdomain.ShellInput{
+			TaskID:           task.ID,
+			Status:           string(task.Status),
+			SelectedPlatform: selectedPlatform,
+			Platforms:        previewPlatforms(task),
+			CreatedAt:        task.CreatedAt,
+			CompletedAt:      completedAt,
+		},
 	})
-	return &ListingKitPreview{
-		TaskID:           base.TaskID,
-		Status:           TaskStatus(base.Status),
-		SelectedPlatform: base.SelectedPlatform,
-		Platforms:        append([]string(nil), base.Platforms...),
-		CreatedAt:        base.CreatedAt,
-		CompletedAt:      base.CompletedAt,
-	}
+	return adaptPreviewDomainShell(base)
 }
