@@ -77,17 +77,14 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 		return nil, fmt.Errorf("selection is required")
 	}
 
-	// Ensure DesignType has a default value for backward compatibility
-	if strings.TrimSpace(req.Selection.DesignType) == "" {
-		req.Selection.DesignType = "material"
-	}
+	req.Selection.DesignType = studiodomain.NormalizeBatchDesignType(req.Selection.DesignType)
 
 	var session *SheinStudioSession
 	var err error
 	isCreate := strings.TrimSpace(req.ID) == ""
 	normalizedReq := req
 	if isCreate {
-		normalizedReq = sanitizeStudioBatchCreateRequest(req)
+		normalizedReq = sanitizeStudioBatchCreateRequest(req, isCreate)
 	}
 	if strings.TrimSpace(req.ID) != "" {
 		session, err = s.repo.GetSession(ctx, req.ID)
@@ -140,17 +137,13 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	session.CreatedTaskIDs = buildCreatedTaskIDs(normalizedReq.CreatedTasks)
 	session.GenerationJobs = append(SheinStudioGenerationJobList(nil), normalizedReq.GenerationJobs...)
 	session.SavedAsBatch = true
-	session.BatchName = strings.TrimSpace(normalizedReq.BatchName)
-	if session.BatchName == "" {
-		switch {
-		case !isCreate && existingBatchName != "":
-			session.BatchName = existingBatchName
-		default:
-			session.BatchName, err = s.nextTenantBatchName(ctx)
-			if err != nil {
-				return nil, err
-			}
-		}
+	session.BatchName, err = s.resolveBatchName(ctx, studiodomain.BatchNameResolutionInput{
+		RequestedName: normalizedReq.BatchName,
+		ExistingName:  existingBatchName,
+		IsCreate:      isCreate,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	if isCreate {
@@ -178,8 +171,8 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	return s.loadStudioBatchDraftDetail(ctx, session)
 }
 
-func sanitizeStudioBatchCreateRequest(req *UpsertStudioBatchRequest) *UpsertStudioBatchRequest {
-	if req == nil || len(req.GenerationJobs) == 0 {
+func sanitizeStudioBatchCreateRequest(req *UpsertStudioBatchRequest, isCreate bool) *UpsertStudioBatchRequest {
+	if req == nil || !studiodomain.ShouldDropCreateGenerationJobs(isCreate, len(req.GenerationJobs)) {
 		return req
 	}
 	cloned := *req
@@ -195,12 +188,16 @@ func (s *taskStudioBatchDraftService) DeleteStudioBatch(ctx context.Context, bat
 	return adaptStudioBatchDraftError(s.runner.DeleteBatch(ctx, batchID))
 }
 
-func (s *taskStudioBatchDraftService) nextTenantBatchName(ctx context.Context) (string, error) {
+func (s *taskStudioBatchDraftService) resolveBatchName(ctx context.Context, input studiodomain.BatchNameResolutionInput) (string, error) {
+	if strings.TrimSpace(input.RequestedName) != "" || (!input.IsCreate && strings.TrimSpace(input.ExistingName) != "") {
+		return studiodomain.ResolveBatchName(input), nil
+	}
 	names, err := s.repo.ListTenantBatchNames(ctx)
 	if err != nil {
 		return "", err
 	}
-	return studiodomain.NextBatchName(names), nil
+	input.ExistingNames = names
+	return studiodomain.ResolveBatchName(input), nil
 }
 
 func (s *taskStudioBatchDraftService) loadStudioBatchDraftDetail(ctx context.Context, session *SheinStudioSession) (*StudioBatchDraftDetail, error) {
