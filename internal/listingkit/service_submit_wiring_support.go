@@ -484,14 +484,14 @@ func resolveSubmissionStoreCatalog(s *service) SheinStoreCatalog {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.submissionDeps.sheinStoreCatalog, &s.mirrors.sheinStoreCatalog)
+	return s.submissionDeps.sheinStoreCatalog
 }
 
 func resolveSubmissionAPIClientFactory(s *service) SheinAPIClientFactory {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.submissionDeps.sheinAPIClientFactory, &s.mirrors.sheinAPIClientFactory)
+	return s.submissionDeps.sheinAPIClientFactory
 }
 
 func resolveSubmissionProductAPIBuilder(s *service) sheinpub.ProductAPIBuilder {
@@ -519,7 +519,7 @@ func resolveSubmissionContentOptimizer(s *service) openaiclient.ChatCompleter {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.submissionDeps.sheinContentOptimizer, &s.mirrors.sheinContentOptimizer)
+	return s.submissionDeps.sheinContentOptimizer
 }
 
 func resolveSubmissionWorkflowClient(s *service) (SheinPublishWorkflowClient, bool) {

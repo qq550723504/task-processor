@@ -23,14 +23,14 @@ func resolveSheinStoreCatalog(s *service) SheinStoreCatalog {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.sheinRuntimeDeps.storeCatalog, &s.mirrors.sheinStoreCatalog)
+	return s.sheinRuntimeDeps.storeCatalog
 }
 
 func resolveSheinAPIClientFactory(s *service) SheinAPIClientFactory {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.sheinRuntimeDeps.apiClientFactory, &s.mirrors.sheinAPIClientFactory)
+	return s.sheinRuntimeDeps.apiClientFactory
 }
 
 func resolveSheinCategoryResolver(s *service) sheinpub.CategoryResolver {

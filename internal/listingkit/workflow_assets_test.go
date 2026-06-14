@@ -1265,7 +1265,18 @@ func TestRunWorkflowAppliesSheinPlatformFinalizationDecorations(t *testing.T) {
 	ai := &stubSheinContentAI{
 		response: `{"title":"Botanical Envelope Pillow Cover for Sofa Couch Bedroom Decor, Soft Polyester Accent Cushion Case","description":"A soft polyester envelope pillow cover designed to refresh sofas, beds, and reading corners with a botanical accent print. The overlap closure keeps the insert tucked in while making everyday styling changes easy."}`,
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), sheinContentOptimizer: ai, assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}}
+	svc := &service{
+		mirrors: serviceDependencyMirrors{
+			productSvc:          productSvc,
+			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+			assetRecipeResolver: newDefaultAssetRecipeResolver(),
+			assetBundleBuilder:  newDefaultAssetBundleBuilder(),
+			assetGenerator:      newDefaultAssetGenerationService(),
+		},
+		workflowDeps: workflowDependencies{
+			sheinContentOptimizer: ai,
+		},
+	}
 	task := &Task{
 		ID: "listingkit-task-shein-copy",
 		Request: &GenerateRequest{

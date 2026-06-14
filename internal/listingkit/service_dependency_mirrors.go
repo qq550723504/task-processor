@@ -5,7 +5,6 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
@@ -19,10 +18,6 @@ type serviceDependencyMirrors struct {
 	uploadStore               ImageUploadStore
 	uploadedImageRepo         UploadedImageRepository
 	assembler                 Assembler
-
-	sheinStoreCatalog          SheinStoreCatalog
-	sheinAPIClientFactory      SheinAPIClientFactory
-	sheinContentOptimizer      openaiclient.ChatCompleter
 
 	assetRepo           assetrepo.Repository
 	reviewRepo          reviewstore.Repository

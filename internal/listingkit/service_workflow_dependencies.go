@@ -64,5 +64,5 @@ func resolveWorkflowSheinContentOptimizer(s *service) openaiclient.ChatCompleter
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.workflowDeps.sheinContentOptimizer, &s.mirrors.sheinContentOptimizer)
+	return s.workflowDeps.sheinContentOptimizer
 }

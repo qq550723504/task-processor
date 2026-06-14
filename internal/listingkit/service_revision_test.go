@@ -937,6 +937,10 @@ func TestApplyTaskRevisionClearsStaleSheinCookieBlockersAfterOnlineRefresh(t *te
 			attributeResolver:     stubRevisionSheinAttributeResolver{},
 			saleAttributeResolver: stubRevisionSheinSaleResolver{},
 		},
+		submissionDeps: submissionDependencies{
+			sheinStoreCatalog:     &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
+			sheinAPIClientFactory: stubSheinAPIClientFactory{client: apiClient},
+		},
 	}
 
 	categoryID := 10489
@@ -1052,6 +1056,10 @@ func TestApplyTaskRevisionDecoratesPreviewWithLiveSheinCookieBlocker(t *testing.
 			apiClientFactory:      stubSheinAPIClientFactory{client: apiClient},
 			attributeResolver:     stubRevisionSheinAttributeResolver{},
 			saleAttributeResolver: stubRevisionSheinSaleResolver{},
+		},
+		submissionDeps: submissionDependencies{
+			sheinStoreCatalog:     &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
+			sheinAPIClientFactory: stubSheinAPIClientFactory{client: apiClient},
 		},
 	}
 

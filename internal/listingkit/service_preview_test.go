@@ -177,7 +177,9 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 			},
 		},
 		submissionDeps: submissionDependencies{
-			storeProfileRepo: newInMemoryStoreProfileRepository(),
+			storeProfileRepo:      newInMemoryStoreProfileRepository(),
+			sheinStoreCatalog:     &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 373211199677923496, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
+			sheinAPIClientFactory: stubSheinAPIClientFactory{client: sheinclient.NewAPIClientWithStoreConfig(870, &sheinclient.StoreConfig{ID: 870, TenantID: 373211199677923496, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}, previewTestCookieProvider{})},
 		},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{

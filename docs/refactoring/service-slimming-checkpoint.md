@@ -19,6 +19,7 @@ Recent progress in this area:
 - admin dependency resolution now reads directly from `adminDeps`; AI client settings and store-profile admin wiring no longer depend on legacy dependency mirrors.
 - submission store-profile and submit API builder resolution now reads directly from `submissionDeps`; legacy dependency mirrors no longer own submission-only store-profile or submit builder dependencies.
 - shein runtime-only resolver and pricing-cache dependencies now read directly from `sheinRuntimeDeps`; legacy dependency mirrors no longer own runtime-only resolution cache, category/attribute resolvers, or pricing policy.
+- shared shein catalog/API factory/content optimizer dependencies now resolve from their owning grouped deps (`submissionDeps`, `sheinRuntimeDeps`, `workflowDeps`) instead of flowing through legacy mirrors.
 - workflow asset dispatch persistence phases now resolve their asset repository dependency up front instead of reaching through `service.mirrors` at runtime.
 
 ## 2. Current File Groups

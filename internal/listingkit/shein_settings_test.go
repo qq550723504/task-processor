@@ -18,7 +18,7 @@ func TestSettingsAdminServiceGetSheinSettingsAttachesAvailableStores(t *testing.
 			Site:              "US",
 			WarehouseCode:     "WH-US-1",
 			DefaultSubmitMode: "publish",
-		}, mirrors: serviceDependencyMirrors{sheinStoreCatalog: &stubSheinStoreCatalog{
+		}, sheinRuntimeDeps: sheinRuntimeDependencies{storeCatalog: &stubSheinStoreCatalog{
 			options: []SheinStoreOption{
 				{ID: 870, Name: "primary"},
 				{ID: 871, Name: "backup"},

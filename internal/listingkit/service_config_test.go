@@ -286,3 +286,58 @@ func TestNewServiceWithConfigSeedsSheinRuntimeDependenciesWithoutLegacyMirrors(t
 		t.Fatalf("resolveSheinPricingPolicy() = %+v, want seeded policy %+v", got, pricingPolicy)
 	}
 }
+
+func TestNewServiceWithConfigSeedsSharedSheinDependenciesPerOwnerGroup(t *testing.T) {
+	t.Parallel()
+
+	storeCatalog := &stubSheinStoreCatalog{}
+	apiFactory := stubSheinAPIClientFactory{}
+	contentOptimizer := &stubSheinContentAI{}
+
+	svc := newServiceWithConfig(newTestServiceConfig(
+		&stubSubmitRepo{},
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinStoreCatalog = storeCatalog
+			cfg.Shein.SheinAPIClientFactory = apiFactory
+			cfg.Shein.SheinContentOptimizer = contentOptimizer
+		}),
+	))
+
+	if svc.submissionDeps.sheinStoreCatalog != storeCatalog {
+		t.Fatalf("submission deps shein store catalog = %v, want seeded catalog", svc.submissionDeps.sheinStoreCatalog)
+	}
+	if svc.submissionDeps.sheinAPIClientFactory != apiFactory {
+		t.Fatalf("submission deps shein api client factory = %v, want seeded factory", svc.submissionDeps.sheinAPIClientFactory)
+	}
+	if svc.submissionDeps.sheinContentOptimizer != contentOptimizer {
+		t.Fatalf("submission deps shein content optimizer = %v, want seeded optimizer", svc.submissionDeps.sheinContentOptimizer)
+	}
+	if svc.sheinRuntimeDeps.storeCatalog != storeCatalog {
+		t.Fatalf("shein runtime deps store catalog = %v, want seeded catalog", svc.sheinRuntimeDeps.storeCatalog)
+	}
+	if svc.sheinRuntimeDeps.apiClientFactory != apiFactory {
+		t.Fatalf("shein runtime deps api client factory = %v, want seeded factory", svc.sheinRuntimeDeps.apiClientFactory)
+	}
+	if svc.workflowDeps.sheinContentOptimizer != contentOptimizer {
+		t.Fatalf("workflow deps shein content optimizer = %v, want seeded optimizer", svc.workflowDeps.sheinContentOptimizer)
+	}
+
+	if got := resolveSubmissionStoreCatalog(svc); got != storeCatalog {
+		t.Fatalf("resolveSubmissionStoreCatalog() = %v, want seeded catalog", got)
+	}
+	if got := resolveSubmissionAPIClientFactory(svc); got != apiFactory {
+		t.Fatalf("resolveSubmissionAPIClientFactory() = %v, want seeded factory", got)
+	}
+	if got := resolveSubmissionContentOptimizer(svc); got != contentOptimizer {
+		t.Fatalf("resolveSubmissionContentOptimizer() = %v, want seeded optimizer", got)
+	}
+	if got := resolveSheinStoreCatalog(svc); got != storeCatalog {
+		t.Fatalf("resolveSheinStoreCatalog() = %v, want seeded catalog", got)
+	}
+	if got := resolveSheinAPIClientFactory(svc); got != apiFactory {
+		t.Fatalf("resolveSheinAPIClientFactory() = %v, want seeded factory", got)
+	}
+	if got := resolveWorkflowSheinContentOptimizer(svc); got != contentOptimizer {
+		t.Fatalf("resolveWorkflowSheinContentOptimizer() = %v, want seeded optimizer", got)
+	}
+}
