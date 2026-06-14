@@ -116,6 +116,18 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 			creator TEXT,
 			updater TEXT
 		)`,
+		`CREATE TABLE listing_raw_json_data (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			platform TEXT,
+			product_id TEXT,
+			region TEXT,
+			raw_json_data TEXT,
+			create_time DATETIME,
+			update_time DATETIME,
+			creator TEXT,
+			updater TEXT,
+			deleted BOOLEAN DEFAULT 0
+		)`,
 	}
 	for _, stmt := range statements {
 		if err := db.Exec(stmt).Error; err != nil {
@@ -186,6 +198,56 @@ func TestLocalDataProviderGetStoreMapsListingStoreMetadata(t *testing.T) {
 	}
 	if store.Creator != "admin" || store.CreateTime == nil || !store.CreateTime.Time.Equal(createdAt) {
 		t.Fatalf("GetStore() metadata = creator %q createTime %#v", store.Creator, store.CreateTime)
+	}
+}
+
+func TestLocalDataProviderGetRawJSONDataIgnoresDeletedRows(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	now := time.Date(2026, 6, 14, 12, 0, 0, 0, time.UTC)
+
+	rows := []map[string]any{
+		{
+			"platform":      "amazon",
+			"product_id":    "B0TEST123",
+			"region":        "us",
+			"raw_json_data": `{"source":"active"}`,
+			"create_time":   now.Add(-2 * time.Hour),
+			"update_time":   now.Add(-2 * time.Hour),
+			"creator":       "tester",
+			"updater":       "tester",
+			"deleted":       false,
+		},
+		{
+			"platform":      "amazon",
+			"product_id":    "B0TEST123",
+			"region":        "us",
+			"raw_json_data": `{"source":"deleted"}`,
+			"create_time":   now.Add(-1 * time.Hour),
+			"update_time":   now.Add(-1 * time.Hour),
+			"creator":       "tester",
+			"updater":       "tester",
+			"deleted":       true,
+		},
+	}
+	for _, row := range rows {
+		if err := provider.db.Table("listing_raw_json_data").Create(row).Error; err != nil {
+			t.Fatalf("seed listing_raw_json_data: %v", err)
+		}
+	}
+
+	got, err := provider.GetRawJSONData(&api.RawJsonDataReqDTO{
+		Platform:  "amazon",
+		ProductID: "B0TEST123",
+		Region:    "us",
+	})
+	if err != nil {
+		t.Fatalf("GetRawJSONData() error = %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetRawJSONData() returned nil")
+	}
+	if got.RawJSONData != `{"source":"active"}` {
+		t.Fatalf("GetRawJSONData() raw_json_data = %s, want active row", got.RawJSONData)
 	}
 }
 

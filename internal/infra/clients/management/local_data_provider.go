@@ -446,7 +446,7 @@ func (p *LocalDataProvider) GetRawJSONData(req *api.RawJsonDataReqDTO) (*api.Raw
 	}
 	var row api.RawJsonDataRespDTO
 	err := p.db.Table("listing_raw_json_data").
-		Where("platform = ? AND product_id = ? AND region = ?", req.Platform, req.ProductID, req.Region).
+		Where("deleted = ? AND platform = ? AND product_id = ? AND region = ?", false, req.Platform, req.ProductID, req.Region).
 		Order("id desc").Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
