@@ -38,9 +38,7 @@ func buildPendingPreviewHeader(task *Task) *ListingKitPreviewHeader {
 	if task == nil {
 		return nil
 	}
-	return adaptPreviewDomainHeader(previewdomain.BuildHeader(previewdomain.HeaderInput{
-		StatusMessage: previewdomain.StatusMessage(string(task.Status)),
-	}))
+	return adaptPreviewDomainHeader(previewdomain.PendingHeader(string(task.Status)))
 }
 
 func previewStatusFromReviewNotes(reviewNotes []string) string {

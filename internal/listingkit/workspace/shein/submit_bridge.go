@@ -1,7 +1,7 @@
 package shein
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
 
 func BuildSubmitChecklist[R any, H any](readiness *SubmitReadiness[R, H]) *SubmitChecklist[R, H] {
-	return sheinworkspace.BuildSubmitChecklist(readiness, sheinworkspace.SubmitChecklistGroupForKey)
+	return sheinmarketplace.BuildSubmitChecklist(readiness, sheinmarketplace.SubmitChecklistGroupForKey)
 }

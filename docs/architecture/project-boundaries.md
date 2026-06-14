@@ -122,8 +122,8 @@ Must not depend on:
 
 Current examples:
 
-- `internal/publishing/shein`
-- `internal/workspace/shein`
+- `internal/marketplace/shein/publishing`
+- `internal/marketplace/shein/workspace`
 - `internal/amazon`
 - `internal/shein`
 - `internal/temu`
@@ -227,8 +227,8 @@ Use this table when adding new code:
 | Product facts | `internal/catalog` |
 | Reusable asset facts | `internal/asset` |
 | Product image processing | `internal/productimage` or `internal/asset` depending on ownership |
-| SHEIN publishing rules | `internal/publishing/shein` |
-| SHEIN workspace/editor/repair rules | `internal/workspace/shein` |
+| SHEIN publishing rules | `internal/marketplace/shein/publishing` |
+| SHEIN workspace/editor/repair rules | `internal/marketplace/shein/workspace` |
 | Amazon-specific rules | `internal/amazon` now; later `internal/marketplace/amazon` |
 | TEMU-specific rules | `internal/temu` now; later `internal/marketplace/temu` |
 | OpenAI client adapter | `internal/infra/clients/openai` now; later `internal/integration/openai` |

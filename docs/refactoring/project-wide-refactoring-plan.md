@@ -18,7 +18,7 @@ The most important architecture issue is not simply directory naming. The main i
 - `internal/listingkit` is still the largest complexity center.
 - Platform-specific marketplace rules can drift back into ListingKit facade code.
 - Runtime assembly, HTTP API wiring, workflow orchestration, marketplace logic, product facts, asset logic, and external integrations are not consistently separated.
-- Some parts of the project already moved in the right direction, such as `catalog`, `asset`, `publishing/shein`, and `workspace/shein`, but the pattern is not yet applied consistently across the whole codebase.
+- Some parts of the project already moved in the right direction, such as `catalog`, `asset`, `internal/marketplace/shein/publishing`, and `internal/marketplace/shein/workspace`, but the pattern is not yet applied consistently across the whole codebase.
 
 ## 2. Target Architecture Style
 
@@ -148,8 +148,8 @@ Forbidden dependency direction:
 catalog -> listingkit
 asset -> listingkit
 marketplace/shein -> listingkit
-publishing/shein -> listingkit
-workspace/shein -> listingkit
+marketplace/shein/publishing -> listingkit
+marketplace/shein/workspace -> listingkit
 infra/openai -> listingkit
 repository -> httpapi
 domain -> gin
@@ -200,8 +200,8 @@ Recommended placement:
 
 | Change type | Preferred home |
 | --- | --- |
-| SHEIN category / attribute / sale-attribute publishing | `internal/publishing/shein` now; later `internal/marketplace/shein/publishing` |
-| SHEIN inspection / editor / repair / revision UX | `internal/workspace/shein` now; later `internal/marketplace/shein/workspace` |
+| SHEIN category / attribute / sale-attribute publishing | `internal/marketplace/shein/publishing` |
+| SHEIN inspection / editor / repair / revision UX | `internal/marketplace/shein/workspace` |
 | Amazon publishing behavior | `internal/amazon` now; later `internal/marketplace/amazon/publishing` |
 | TEMU publishing behavior | `internal/temu` now; later `internal/marketplace/temu/publishing` |
 | Walmart publishing behavior | current Walmart package now; later `internal/marketplace/walmart/publishing` |
@@ -410,8 +410,8 @@ Goal: apply the already-emerging SHEIN pattern to all marketplaces.
 
 Current SHEIN direction is good:
 
-- Publishing rules live in `publishing/shein`.
-- Workspace rules live in `workspace/shein`.
+- Publishing rules live in `internal/marketplace/shein/publishing`.
+- Workspace rules live in `internal/marketplace/shein/workspace`.
 - ListingKit keeps only facade bridges.
 
 Next steps:

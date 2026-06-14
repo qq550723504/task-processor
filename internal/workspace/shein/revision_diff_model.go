@@ -1,13 +1,6 @@
 package shein
 
-type RevisionDiffPreview struct {
-	ChangeCount int                   `json:"change_count"`
-	Changes     []RevisionFieldChange `json:"changes,omitempty"`
-}
+import sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
 
-type RevisionFieldChange struct {
-	FieldPath string `json:"field_path,omitempty"`
-	Label     string `json:"label,omitempty"`
-	Before    any    `json:"before,omitempty"`
-	After     any    `json:"after,omitempty"`
-}
+type RevisionDiffPreview = sheinmarketplace.RevisionDiffPreview
+type RevisionFieldChange = sheinmarketplace.RevisionFieldChange

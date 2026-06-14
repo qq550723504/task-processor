@@ -1,17 +1,27 @@
 package listingkit
 
+import previewdomain "task-processor/internal/listing/preview"
+
 func calculateListingKitNeedsReview(result *ListingKitResult) bool {
 	return result != nil && result.Summary != nil && result.Summary.NeedsReview
 }
 
 func assembleListingKitReadProjection(
-	needsReview bool,
-	overview *listingKitOverviewData,
-	attachment *listingKitResultAttachment,
+	previewInput previewdomain.ReadModelInput,
+	platformCards []ListingKitPlatformCard,
+	assetRenderPreviews []AssetRenderPreview,
+	platformAssetRenderPreviews []PlatformAssetRenderPreviews,
+	assetGenerationQueue *GenerationWorkQueue,
+	assetGenerationOverview *AssetGenerationOverview,
+	revisionMeta *previewdomain.RevisionHistoryMetaInput,
 ) *listingKitReadProjection {
+	previewInput.RevisionHistoryMeta = revisionMeta
 	return &listingKitReadProjection{
-		NeedsReview: needsReview,
-		Overview:    overview,
-		Attachment:  attachment,
+		PreviewInput:                previewInput,
+		PlatformCards:               platformCards,
+		AssetRenderPreviews:         assetRenderPreviews,
+		PlatformAssetRenderPreviews: platformAssetRenderPreviews,
+		AssetGenerationQueue:        assetGenerationQueue,
+		AssetGenerationOverview:     assetGenerationOverview,
 	}
 }

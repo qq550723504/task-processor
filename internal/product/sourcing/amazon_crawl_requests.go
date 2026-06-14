@@ -37,6 +37,7 @@ type AmazonCrawlRequestInput struct {
 
 // BuildRequest builds one Amazon crawler request from a product fetch request.
 func (p AmazonCrawlRequestPlanner) BuildRequest(req AmazonCrawlRequestInput) (model.ProductRequest, error) {
+	req = normalizeAmazonCrawlRequestInput(req)
 	if err := p.validateRegion(req.Region); err != nil {
 		return model.ProductRequest{}, err
 	}
@@ -48,14 +49,21 @@ func (p AmazonCrawlRequestPlanner) BuildRequest(req AmazonCrawlRequestInput) (mo
 
 // BuildBatchRequests builds Amazon crawler requests for multiple product IDs.
 func (p AmazonCrawlRequestPlanner) BuildBatchRequests(req AmazonCrawlRequestInput, productIDs []string) ([]model.ProductRequest, error) {
+	req = normalizeAmazonCrawlRequestInput(req)
 	if err := p.validateRegion(req.Region); err != nil {
 		return nil, err
 	}
 	zipcode := p.ResolveZipcode(req.Region, req.Zipcode)
 	requests := make([]model.ProductRequest, 0, len(productIDs))
 	for _, productID := range productIDs {
+		variantReq := VariantSourceRequest(SourceRequest{
+			Platform:  "amazon",
+			Region:    req.Region,
+			ProductID: req.ProductID,
+			Zipcode:   req.Zipcode,
+		}, productID)
 		requests = append(requests, model.ProductRequest{
-			URL:     p.DomainResolver.BuildAmazonProductURL(req.Region, productID),
+			URL:     p.DomainResolver.BuildAmazonProductURL(variantReq.Region, variantReq.ProductID),
 			Zipcode: zipcode,
 		})
 	}
@@ -89,4 +97,18 @@ func (p AmazonCrawlRequestPlanner) ResolveZipcode(region, explicit string) strin
 		}
 	}
 	return p.ZipcodePolicy.DefaultZipcode(strings.ToLower(region))
+}
+
+func normalizeAmazonCrawlRequestInput(req AmazonCrawlRequestInput) AmazonCrawlRequestInput {
+	normalized := NormalizeSourceRequest(SourceRequest{
+		Platform:  "amazon",
+		Region:    req.Region,
+		ProductID: req.ProductID,
+		Zipcode:   req.Zipcode,
+	})
+	return AmazonCrawlRequestInput{
+		Region:    normalized.Region,
+		ProductID: normalized.ProductID,
+		Zipcode:   normalized.Zipcode,
+	}
 }

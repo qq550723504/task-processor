@@ -5,26 +5,26 @@ import "testing"
 func TestSourceRequestFromFetchPreservesFields(t *testing.T) {
 	req := &FetchRequest{
 		TenantID:   10,
-		Platform:   "shein",
-		Region:     "uk",
-		ProductID:  "B001",
-		Zipcode:    "W1A 1AA",
+		Platform:   " SHEIN ",
+		Region:     " UK ",
+		ProductID:  " B001 ",
+		Zipcode:    " W1A 1AA ",
 		StoreID:    20,
 		CategoryID: 30,
-		Creator:    "tester",
+		Creator:    " tester ",
 	}
 
 	got := SourceRequestFromFetch(req)
-	if got.TenantID != req.TenantID || got.Platform != req.Platform || got.Region != req.Region || got.ProductID != req.ProductID || got.Zipcode != req.Zipcode || got.StoreID != req.StoreID || got.CategoryID != req.CategoryID || got.Creator != req.Creator {
-		t.Fatalf("SourceRequestFromFetch() = %+v, want fields from %+v", got, req)
+	if got.TenantID != req.TenantID || got.Platform != "shein" || got.Region != "uk" || got.ProductID != "B001" || got.Zipcode != "W1A 1AA" || got.StoreID != req.StoreID || got.CategoryID != req.CategoryID || got.Creator != "tester" {
+		t.Fatalf("SourceRequestFromFetch() = %+v, want normalized fields from %+v", got, req)
 	}
 }
 
 func TestFetchRequestFromSourcePreservesFields(t *testing.T) {
 	source := SourceRequestFromFetch(&FetchRequest{
 		TenantID:   10,
-		Platform:   "shein",
-		Region:     "uk",
+		Platform:   " SHEIN ",
+		Region:     " UK ",
 		ProductID:  "B001",
 		Zipcode:    "W1A 1AA",
 		StoreID:    20,

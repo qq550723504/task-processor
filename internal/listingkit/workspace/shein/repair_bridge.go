@@ -1,10 +1,10 @@
 package shein
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
 
-type RepairCenterSeedAction[R any, P any, S any, Q any, V any] = sheinworkspace.RepairCenterSeedAction[R, P, S, Q, V]
-type RepairValidationPreview[FieldError any] = sheinworkspace.RepairValidationPreview[FieldError]
-type RepairSessionActionInfo = sheinworkspace.RepairSessionActionInfo
+type RepairCenterSeedAction[R any, P any, S any, Q any, V any] = sheinmarketplace.RepairCenterSeedAction[R, P, S, Q, V]
+type RepairValidationPreview[FieldError any] = sheinmarketplace.RepairValidationPreview[FieldError]
+type RepairSessionActionInfo = sheinmarketplace.RepairSessionActionInfo
 
 func BuildRepairValidationPreview[FieldError any](
 	pkg *Package,
@@ -13,7 +13,7 @@ func BuildRepairValidationPreview[FieldError any](
 	valid bool,
 	fieldErrors []FieldError,
 ) *RepairValidationPreview[FieldError] {
-	return sheinworkspace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)
+	return sheinmarketplace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)
 }
 
 func BuildRepairCenter[R any, P any, S any, Q any, V any](
@@ -23,5 +23,5 @@ func BuildRepairCenter[R any, P any, S any, Q any, V any](
 	reasonSummary func(*R) string,
 	actionInfo func(RepairCenterAction[R, P, S, Q, V]) RepairSessionActionInfo,
 ) *RepairCenter[R, P, S, Q, V] {
-	return sheinworkspace.BuildRepairCenter(seeds, changeCount, isInvalid, reasonSummary, actionInfo)
+	return sheinmarketplace.BuildRepairCenter(seeds, changeCount, isInvalid, reasonSummary, actionInfo)
 }

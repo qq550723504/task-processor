@@ -50,10 +50,6 @@ func buildListingKitExportMeta(result *ListingKitResult, selectedPlatform string
 	return buildListingKitExportMetaFromReadProjection(projection)
 }
 
-func buildListingKitExportMetaFromOverview(overview *listingKitOverviewData) *ListingKitExportMeta {
-	return adaptOverviewToExportMeta(overview)
-}
-
 func buildListingKitExportFileName(taskID string, selectedPlatform string) string {
 	scope := firstNonEmpty(selectedPlatform, "bundle")
 	return fmt.Sprintf("listing-kit-%s-%s.json", taskID, scope)

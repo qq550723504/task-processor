@@ -40,8 +40,8 @@ Use it before broad refactoring so package moves follow a stable direction.
 | `internal/amazon` | mixed Amazon logic | `internal/marketplace/amazon/*` and `internal/integration/crawler/amazon` | separate listing-target behavior from source-crawler behavior |
 | `internal/amazonlisting` | Amazon listing behavior | `internal/marketplace/amazon/publishing` or `internal/listing/export` | classify by platform rule versus listing orchestration |
 | `internal/shein` | mixed SHEIN logic | `internal/marketplace/shein/*` and `internal/integration/shein` | split API client, model, publishing, and workspace |
-| `internal/publishing/shein` | SHEIN publishing rules | `internal/marketplace/shein/publishing` | strong direct migration candidate |
-| `internal/workspace/shein` | SHEIN workspace/editor/repair rules | `internal/marketplace/shein/workspace` | strong direct migration candidate |
+| `internal/publishing/shein` | legacy SHEIN publishing compatibility shell | `internal/marketplace/shein/publishing` | keep thin; new rules should land in marketplace |
+| `internal/workspace/shein` | legacy SHEIN workspace compatibility shell | `internal/marketplace/shein/workspace` | keep thin; new rules should land in marketplace |
 | `internal/sheinlogin` | SHEIN login adapters | `internal/integration/shein` | authentication adapter, not listing owner |
 | `internal/sheinloginmanaged` | managed SHEIN login integration | `internal/integration/shein` or `internal/platform/authz` | decide by whether it is external adapter or runtime auth support |
 | `internal/temu` | mixed TEMU logic | `internal/marketplace/temu/*` and `internal/integration/temu` | follow the SHEIN split pattern |
@@ -93,6 +93,13 @@ Immediate write-path rule:
 - if the work is about fetching, browser control, anti-bot adaptation, or raw page extraction, prefer `internal/integration/crawler/{amazon,a1688}`
 - if the work is about converting raw source output into reusable product facts, assets, or enrichment-ready models, prefer `internal/product/sourcing`
 - if the work is about using sourced facts inside listing generation or publishing, prefer the owning `listing` or `marketplace` package rather than pushing that logic back into crawler adapters
+
+Current checkpoint:
+
+- the next preferred refactor direction is to inspect crawler/source boundaries and extract only one small normalization or source-identity seam into `internal/product/sourcing`,
+- source identity and source request normalization now live in `internal/product/sourcing`,
+- do not move crawler execution/runtime behavior into product packages,
+- do not route sourced product normalization through root `internal/listingkit`.
 
 ## 4. Explicit `listingkit` Guidance
 

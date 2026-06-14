@@ -5,6 +5,7 @@ import (
 	"time"
 
 	apperrors "task-processor/internal/core/errors"
+	submissiondomain "task-processor/internal/listing/submission"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -53,10 +54,11 @@ type taskSubmissionRefreshService struct {
 	buildSheinSubmitOtherAPI   func(context.Context, *Task) (sheinother.OtherAPI, error)
 	mutateTaskResult           func(context.Context, string, TaskResultMutation) (*Task, error)
 	resolveRemoteStatus        func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
+	refreshRunner              *submissiondomain.StatusRefreshService[sheinSubmissionRefreshState, sheinRemoteConfirmation, ListingKitPreview]
 }
 
 func newTaskSubmissionRefreshService(config taskSubmissionRefreshServiceConfig) *taskSubmissionRefreshService {
-	return &taskSubmissionRefreshService{
+	svc := &taskSubmissionRefreshService{
 		repo:                       config.repo,
 		lockSubmit:                 config.lockSubmit,
 		buildTaskPreview:           config.buildTaskPreview,
@@ -65,22 +67,23 @@ func newTaskSubmissionRefreshService(config taskSubmissionRefreshServiceConfig) 
 		mutateTaskResult:           config.mutateTaskResult,
 		resolveRemoteStatus:        config.resolveRemoteStatus,
 	}
+	svc.refreshRunner = submissiondomain.NewStatusRefreshService(
+		submissiondomain.StatusRefreshServiceConfig[sheinSubmissionRefreshState, sheinRemoteConfirmation, ListingKitPreview]{
+			LockKeySuffix:       "refresh_submission_status",
+			LockSubmit:          svc.lockSubmit,
+			LoadState:           svc.loadSheinSubmissionRefreshState,
+			ResolveConfirmation: svc.resolveSubmissionRefreshConfirmation,
+			Finish:              svc.finishSubmissionRefresh,
+		},
+	)
+	return svc
 }
 
 func (s *taskSubmissionRefreshService) RefreshSubmissionStatus(ctx context.Context, taskID string) (*ListingKitPreview, error) {
-	if s.lockSubmit != nil {
-		unlockSubmit := s.lockSubmit(taskID + ":refresh_submission_status")
-		defer unlockSubmit()
+	if s == nil || s.refreshRunner == nil {
+		return nil, apperrors.New(apperrors.ErrCodeSystem, "submission refresh service is not configured")
 	}
-	refreshState, err := s.loadSheinSubmissionRefreshState(ctx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	confirmation, remoteErr := s.resolveSubmissionRefreshConfirmation(taskID, refreshState)
-	if remoteErr != nil && confirmation == nil {
-		return s.finishSubmissionRefresh(ctx, taskID, refreshState, nil, remoteErr)
-	}
-	return s.finishSubmissionRefresh(ctx, taskID, refreshState, confirmation, remoteErr)
+	return s.refreshRunner.RefreshStatus(ctx, taskID)
 }
 
 func (s *taskSubmissionRefreshService) resolveSubmissionRefreshConfirmation(taskID string, refreshState *sheinSubmissionRefreshState) (*sheinRemoteConfirmation, error) {

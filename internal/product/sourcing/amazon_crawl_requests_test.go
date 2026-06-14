@@ -36,9 +36,9 @@ func TestAmazonCrawlRequestPlannerBuildRequestUsesExplicitZipcode(t *testing.T) 
 	}
 
 	got, err := planner.BuildRequest(AmazonCrawlRequestInput{
-		Region:    "uk",
-		ProductID: "B001",
-		Zipcode:   "EC1A 1BB",
+		Region:    " UK ",
+		ProductID: " B001 ",
+		Zipcode:   " EC1A 1BB ",
 	})
 	if err != nil {
 		t.Fatalf("BuildRequest() error = %v", err)
@@ -58,7 +58,7 @@ func TestAmazonCrawlRequestPlannerBuildBatchRequestsUsesConfiguredDefaultZipcode
 		Zipcodes:       map[string]string{"uk": "W1A 1AA"},
 	}
 
-	got, err := planner.BuildBatchRequests(AmazonCrawlRequestInput{Region: "UK"}, []string{"B001", "B002"})
+	got, err := planner.BuildBatchRequests(AmazonCrawlRequestInput{Region: " UK "}, []string{" B001 ", "B002"})
 	if err != nil {
 		t.Fatalf("BuildBatchRequests() error = %v", err)
 	}
@@ -68,7 +68,10 @@ func TestAmazonCrawlRequestPlannerBuildBatchRequestsUsesConfiguredDefaultZipcode
 	if got[0].Zipcode != "W1A 1AA" || got[1].Zipcode != "W1A 1AA" {
 		t.Fatalf("zipcodes = %q/%q, want configured default", got[0].Zipcode, got[1].Zipcode)
 	}
-	if got[1].URL != "https://example.UK/dp/B002" {
+	if got[0].URL != "https://example.uk/dp/B001" {
+		t.Fatalf("got[0].URL = %q, want trimmed first product URL", got[0].URL)
+	}
+	if got[1].URL != "https://example.uk/dp/B002" {
 		t.Fatalf("got[1].URL = %q, want URL for second product", got[1].URL)
 	}
 }

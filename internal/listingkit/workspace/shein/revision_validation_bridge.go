@@ -1,13 +1,13 @@
 package shein
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
 
-type FieldError = sheinworkspace.FieldError
+type FieldError = sheinmarketplace.FieldError
 
 func ValidateRevisionInput(req *RevisionInput) []FieldError {
-	return sheinworkspace.ValidateRevisionInput(req)
+	return sheinmarketplace.ValidateRevisionInput(req)
 }
 
 func NewFieldError(fieldPath, code, message string) FieldError {
-	return sheinworkspace.NewFieldError(fieldPath, code, message)
+	return sheinmarketplace.NewFieldError(fieldPath, code, message)
 }

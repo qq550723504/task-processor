@@ -1,9 +1,9 @@
 package shein
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
 
 func BuildEditorRevisionSkeleton(pkg *Package) *EditorRevisionSkeleton {
-	return sheinworkspace.BuildEditorRevisionSkeleton(
+	return sheinmarketplace.BuildEditorRevisionSkeleton(
 		pkg,
 		BuildCategoryResolutionPatch(pkg),
 		BuildAttributeResolutionPatch(pkg),
@@ -13,33 +13,33 @@ func BuildEditorRevisionSkeleton(pkg *Package) *EditorRevisionSkeleton {
 }
 
 func BuildMinimalRevisionSkeleton(pkg *Package) *EditorRevisionSkeleton {
-	return sheinworkspace.BuildMinimalRevisionSkeleton(BuildEditorRevisionSkeleton(pkg))
+	return sheinmarketplace.BuildMinimalRevisionSkeleton(BuildEditorRevisionSkeleton(pkg))
 }
 
 func PruneRevisionInput(input *RevisionInput) *RevisionInput {
-	return sheinworkspace.PruneRevisionInput(input)
+	return sheinmarketplace.PruneRevisionInput(input)
 }
 
 func IsEmptyRevisionInput(input *RevisionInput) bool {
-	return sheinworkspace.IsEmptyRevisionInput(input)
+	return sheinmarketplace.IsEmptyRevisionInput(input)
 }
 
 func BuildRevisionInputFromEditorContext(ctx *EditorContext) *RevisionInput {
-	return sheinworkspace.BuildRevisionInputFromEditorContext(ctx)
+	return sheinmarketplace.BuildRevisionInputFromEditorContext(ctx)
 }
 
 func BuildRestoreDraftFromSkeleton(reason string, skeleton *EditorRevisionSkeleton) *EditorRevisionSkeleton {
-	return sheinworkspace.BuildRestoreDraftFromSkeleton(reason, skeleton)
+	return sheinmarketplace.BuildRestoreDraftFromSkeleton(reason, skeleton)
 }
 
 func CloneEditorRevisionSkeleton(src *EditorRevisionSkeleton) *EditorRevisionSkeleton {
-	return sheinworkspace.CloneEditorRevisionSkeleton(src)
+	return sheinmarketplace.CloneEditorRevisionSkeleton(src)
 }
 
 func CloneRevisionInput(src *RevisionInput) *RevisionInput {
-	return sheinworkspace.CloneRevisionInput(src)
+	return sheinmarketplace.CloneRevisionInput(src)
 }
 
-func BuildRestoreRequestSeed(draft *EditorRevisionSkeleton) *sheinworkspace.RestoreRequestSeed {
-	return sheinworkspace.BuildRestoreRequestSeed(draft)
+func BuildRestoreRequestSeed(draft *EditorRevisionSkeleton) *sheinmarketplace.RestoreRequestSeed {
+	return sheinmarketplace.BuildRestoreRequestSeed(draft)
 }

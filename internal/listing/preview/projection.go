@@ -11,7 +11,15 @@ type ProjectionInput struct {
 }
 
 func BuildProjection(input ProjectionInput) *Preview {
-	preview := BuildShell(input.Shell)
+	return buildPreviewWithReadModel(BuildShell(input.Shell), ReadModelInput{
+		NeedsReview:         input.NeedsReview,
+		Attachment:          input.Attachment,
+		Overview:            input.Overview,
+		RevisionHistoryMeta: input.RevisionHistoryMeta,
+	})
+}
+
+func buildPreviewWithReadModel(preview *Preview, input ReadModelInput) *Preview {
 	if preview == nil {
 		return nil
 	}

@@ -4,7 +4,7 @@ type serviceCollaboratorMirrors struct {
 	taskLifecycle             *taskLifecycleService
 	taskGeneration            *taskGenerationService
 	taskRevision              *taskRevisionService
-	taskPreview               *taskPreviewService
+	taskPreview               taskPreviewReader
 	taskExport                *taskExportService
 	sdsBaseline               *sdsBaselineService
 	taskStudioSession         *taskStudioSessionService

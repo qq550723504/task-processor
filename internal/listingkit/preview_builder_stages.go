@@ -1,12 +1,14 @@
 package listingkit
 
+import previewdomain "task-processor/internal/listing/preview"
+
 func initializeListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPreview, string, error) {
 	if task == nil {
 		return nil, "", ErrTaskNotFound
 	}
-	normalizedPlatform, err := validateSelectedPreviewPlatform(selectedPlatform)
-	if err != nil {
-		return nil, "", err
+	normalizedPlatform, ok := previewdomain.ValidateSelectedPlatform(selectedPlatform)
+	if !ok {
+		return nil, "", ErrUnsupportedPreviewPlatform
 	}
 	return buildBaseListingKitPreview(task, normalizedPlatform), normalizedPlatform, nil
 }
@@ -24,6 +26,6 @@ func populateListingKitPreviewResult(task *Task, preview *ListingKitPreview, sel
 		return nil
 	}
 	ensureTaskPodExecution(task)
-	attachListingKitPreviewResult(preview, task.Result, selectedPlatform)
+	attachListingKitPreviewResult(preview, task, selectedPlatform)
 	return buildPreviewPlatformSections(task.Result, preview, selectedPlatform)
 }

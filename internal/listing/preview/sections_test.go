@@ -44,3 +44,14 @@ func TestBuildPlatformSection(t *testing.T) {
 		}
 	})
 }
+
+func TestPlatformUnavailableError(t *testing.T) {
+	t.Parallel()
+
+	if err := PlatformUnavailableError("shein", "amazon"); err != nil {
+		t.Fatalf("PlatformUnavailableError(non-selected) = %v, want nil", err)
+	}
+	if err := PlatformUnavailableError("shein", "shein"); err != ErrPlatformUnavailable {
+		t.Fatalf("PlatformUnavailableError(selected) = %v, want %v", err, ErrPlatformUnavailable)
+	}
+}

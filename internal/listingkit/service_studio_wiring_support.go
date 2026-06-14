@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
@@ -16,6 +17,8 @@ type taskStudioBatchServiceWiring struct {
 	generator          *studioBatchGenerationService
 	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
 	getTask            func(context.Context, string) (*Task, error)
+	detailRunner       *listingStudioBatchDetailRunner
+	reviewRunner       *listingStudioBatchReviewRunner
 }
 
 type taskStudioMediaWiring struct {
@@ -59,6 +62,20 @@ func buildTaskStudioBatchServiceWiring(s *service) taskStudioBatchServiceWiring 
 		generator:          s.studioBatchGenerationOrDefault(),
 		createGenerateTask: s.CreateGenerateTask,
 		getTask:            repository.getTask,
+		detailRunner: newListingStudioBatchDetailService(
+			resolveStudioBatchRepo(s),
+			resolveStudioSessionRepo(s),
+			func(ctx context.Context, batchID string) error {
+				return ensureStudioBatchGenerationGraphForResume(ctx, resolveStudioBatchRepo(s), resolveStudioSessionRepo(s), time.Now, batchID)
+			},
+		),
+		reviewRunner: newListingStudioBatchReviewService(
+			resolveStudioBatchRepo(s),
+			func(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
+				return s.taskStudioBatchOrDefault().GetStudioBatchDetail(ctx, batchID)
+			},
+			time.Now,
+		),
 	}
 }
 

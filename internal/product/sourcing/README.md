@@ -18,6 +18,7 @@ Legacy sources to drain over time:
 Owns:
 
 - source-result normalization
+- source identity normalization
 - source-to-product handoff contracts
 - source platform to crawler platform mapping
 - source request inheritance for variants
@@ -29,6 +30,10 @@ Does not own:
 - crawler runtime details
 - marketplace-specific publishing rules
 - legacy ListingKit compatibility shims
+
+Boundary guard:
+
+- this package may normalize crawler outputs, but must not depend on `internal/listingkit`, marketplace packages, or runtime/platform wiring.
 
 If a change starts from Amazon or 1688 source data, a good default split is:
 

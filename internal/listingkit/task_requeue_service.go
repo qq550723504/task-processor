@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	submissiondomain "task-processor/internal/listing/submission"
 )
 
 const taskRequeueMaxWait = 5 * time.Second
@@ -17,67 +19,67 @@ type taskRequeueServiceConfig struct {
 type taskRequeueService struct {
 	repo          Repository
 	taskSubmitter func() TaskSubmitter
+	runner        *submissiondomain.RequeueService
 }
 
 func newTaskRequeueService(config taskRequeueServiceConfig) *taskRequeueService {
-	return &taskRequeueService{
+	svc := &taskRequeueService{
 		repo:          config.repo,
 		taskSubmitter: config.taskSubmitter,
 	}
+	svc.runner = submissiondomain.NewRequeueService(submissiondomain.RequeueServiceConfig{
+		LoadTask: func(ctx context.Context, taskID string) (*submissiondomain.RequeueTask, error) {
+			task, err := svc.repo.GetTask(ctx, taskID)
+			if err != nil {
+				return nil, err
+			}
+			return &submissiondomain.RequeueTask{ID: task.ID, Status: string(task.Status)}, nil
+		},
+		CurrentSubmitter: func() submissiondomain.RequeueSubmitFunc {
+			submitter := svc.currentSubmitter()
+			if submitter == nil {
+				return nil
+			}
+			return submitter.Submit
+		},
+		IsTaskNotFound: func(err error) bool {
+			return errors.Is(err, ErrTaskNotFound)
+		},
+		CanRequeue: func(task *submissiondomain.RequeueTask) (bool, string) {
+			if task == nil {
+				return false, `task status "" is not processable`
+			}
+			if TaskStatus(task.Status) != TaskStatusPending {
+				return false, fmt.Sprintf("task status %q is not processable", TaskStatus(task.Status))
+			}
+			return true, ""
+		},
+		SubmitTask: func(submit submissiondomain.RequeueSubmitFunc, taskID string) error {
+			if submit == nil {
+				return ErrTaskRequeueUnavailable
+			}
+			return submitTaskWithRetry(taskRequeueSubmitterFunc(submit), taskID, taskRequeueMaxWait)
+		},
+		ErrUnavailable:    ErrTaskRequeueUnavailable,
+		ErrInvalidRequest: ErrTaskRequeueInvalidRequest,
+	})
+	return svc
 }
 
 func (s *taskRequeueService) RequeuePendingTasks(ctx context.Context, req *RequeuePendingTasksRequest) (*RequeuePendingTasksResult, error) {
 	if s == nil || s.repo == nil {
 		return nil, fmt.Errorf("task requeue repository is not configured")
 	}
-	submitter := s.currentSubmitter()
-	if submitter == nil {
-		return nil, ErrTaskRequeueUnavailable
+	if s.runner == nil {
+		return nil, fmt.Errorf("task requeue runner is not configured")
 	}
-
-	taskIDs := normalizeRequeueTaskIDs(req)
-	if len(taskIDs) == 0 {
-		return nil, ErrTaskRequeueInvalidRequest
+	result, err := s.runner.RequeueTasks(ctx, &submissiondomain.RequeueRequest{
+		TaskIDs: normalizeRequeueTaskIDs(req),
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	result := &RequeuePendingTasksResult{
-		RequeuedTaskIDs: make([]string, 0, len(taskIDs)),
-		Skipped:         make([]TaskRequeueSkip, 0),
-		Failed:          make([]TaskRequeueFailure, 0),
-	}
-
-	for _, taskID := range taskIDs {
-		task, err := s.repo.GetTask(ctx, taskID)
-		if err != nil {
-			if errors.Is(err, ErrTaskNotFound) {
-				result.Skipped = append(result.Skipped, TaskRequeueSkip{
-					TaskID: taskID,
-					Reason: ErrTaskNotFound.Error(),
-				})
-				continue
-			}
-			return nil, err
-		}
-		if task.Status != TaskStatusPending {
-			result.Skipped = append(result.Skipped, TaskRequeueSkip{
-				TaskID: task.ID,
-				Status: task.Status,
-				Reason: fmt.Sprintf("task status %q is not processable", task.Status),
-			})
-			continue
-		}
-		if err := submitTaskWithRetry(submitter, task.ID, taskRequeueMaxWait); err != nil {
-			result.Failed = append(result.Failed, TaskRequeueFailure{
-				TaskID: task.ID,
-				Status: task.Status,
-				Error:  err.Error(),
-			})
-			continue
-		}
-		result.RequeuedTaskIDs = append(result.RequeuedTaskIDs, task.ID)
-	}
-
-	return result, nil
+	return adaptSubmissionDomainRequeueResult(result), nil
 }
 
 func (s *taskRequeueService) currentSubmitter() TaskSubmitter {

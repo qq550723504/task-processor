@@ -1,13 +1,8 @@
 package shein
 
-type HistoryRestoreDetailData[Req any, Compare any] struct {
-	RevisionPayload *Req                    `json:"revision_payload,omitempty"`
-	Context         *HistoryRestoreContext  `json:"context,omitempty"`
-	Safety          *HistoryRestoreSafety   `json:"safety,omitempty"`
-	Overview        *HistoryRestoreOverview `json:"overview,omitempty"`
-	Messages        *HistoryRestoreMessages `json:"messages,omitempty"`
-	Compare         *Compare                `json:"compare,omitempty"`
-}
+import sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
+
+type HistoryRestoreDetailData[Req any, Compare any] = sheinmarketplace.HistoryRestoreDetailData[Req, Compare]
 
 func BuildHistoryRestoreDetailData[Req any, Compare any](
 	record *HistoryRestoreRecordInput,
@@ -20,21 +15,5 @@ func BuildHistoryRestoreDetailData[Req any, Compare any](
 	compareInput *HistoryRestoreCompareInput,
 	compareValue *Compare,
 ) *HistoryRestoreDetailData[Req, Compare] {
-	if record == nil && state == nil && draft == nil && revisionPayload == nil && compareInput == nil && compareValue == nil {
-		return nil
-	}
-
-	context := BuildHistoryRestoreContext(record, executionMode, platform, reason, compareInput)
-	safety := BuildHistoryRestoreSafety(state, record, draft, compareInput)
-	overview := BuildHistoryRestoreOverview(record, safety, compareInput)
-	messages := BuildHistoryRestoreMessages(context, safety, overview)
-
-	return &HistoryRestoreDetailData[Req, Compare]{
-		RevisionPayload: revisionPayload,
-		Context:         context,
-		Safety:          safety,
-		Overview:        overview,
-		Messages:        messages,
-		Compare:         compareValue,
-	}
+	return sheinmarketplace.BuildHistoryRestoreDetailData(record, state, draft, revisionPayload, executionMode, platform, reason, compareInput, compareValue)
 }

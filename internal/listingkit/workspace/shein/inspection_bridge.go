@@ -1,35 +1,37 @@
 package shein
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import (
+	sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
+)
 
 func BuildInspection(pkg *Package) *Inspection {
-	return sheinworkspace.BuildInspection(pkg)
+	return sheinmarketplace.BuildInspection(pkg)
 }
 
 func BuildCategoryPayload(pkg *Package) *InspectionCategoryPayload {
-	return sheinworkspace.BuildCategoryPayload(pkg)
+	return sheinmarketplace.BuildCategoryPayload(pkg)
 }
 
 func BuildAttributePayload(pkg *Package) *InspectionAttributePayload {
-	return sheinworkspace.BuildAttributePayload(pkg)
+	return sheinmarketplace.BuildAttributePayload(pkg)
 }
 
 func BuildSaleAttributePayload(pkg *Package) *InspectionSaleAttributePayload {
-	return sheinworkspace.BuildSaleAttributePayload(pkg)
+	return sheinmarketplace.BuildSaleAttributePayload(pkg)
 }
 
 func FilterManualReviewNotes(notes []string) []string {
-	return sheinworkspace.FilterManualReviewNotes(notes)
+	return sheinmarketplace.FilterManualReviewNotes(notes)
 }
 
 func IsCategoryResolved(pkg *Package) bool {
-	return sheinworkspace.IsCategoryResolved(pkg)
+	return sheinmarketplace.IsCategoryResolved(pkg)
 }
 
 func IsAttributeResolved(pkg *Package) bool {
-	return sheinworkspace.IsAttributeResolved(pkg)
+	return sheinmarketplace.IsAttributeResolved(pkg)
 }
 
 func IsSaleAttributeResolved(pkg *Package) bool {
-	return sheinworkspace.IsSaleAttributeResolved(pkg)
+	return sheinmarketplace.IsSaleAttributeResolved(pkg)
 }

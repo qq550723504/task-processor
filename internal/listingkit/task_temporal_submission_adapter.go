@@ -8,6 +8,7 @@ import (
 	"time"
 
 	sdktemporal "go.temporal.io/sdk/temporal"
+	submissiondomain "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -33,6 +34,10 @@ type taskTemporalSubmissionAdapterConfig struct {
 	handleWorkflowStartFailure           func(context.Context, string, *Task, sheinWorkflowSubmitOptions, error) error
 	rememberSheinSubmitted               func(*Task, string)
 	getTaskPreview                       func(context.Context, string, string) (*ListingKitPreview, error)
+	payloadStages                        *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot]
+	remoteSubmitter                      *submissiondomain.RemoteSubmitService[*SheinPackage, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, *sheinpub.SubmitSnapshot]
+	successRunner                        *submissiondomain.SuccessPersistenceService[*Task, *SheinPackage, *sheinpub.SubmissionResponse]
+	failureRunner                        *submissiondomain.FailurePersistenceService[*ListingKitResult, *SheinPackage]
 }
 
 type taskTemporalSubmissionAdapter struct {
@@ -56,10 +61,14 @@ type taskTemporalSubmissionAdapter struct {
 	handleWorkflowStartFailure           func(context.Context, string, *Task, sheinWorkflowSubmitOptions, error) error
 	rememberSheinSubmitted               func(*Task, string)
 	getTaskPreview                       func(context.Context, string, string) (*ListingKitPreview, error)
+	payloadStages                        *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot]
+	remoteSubmitter                      *submissiondomain.RemoteSubmitService[*SheinPackage, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, *sheinpub.SubmitSnapshot]
+	successRunner                        *submissiondomain.SuccessPersistenceService[*Task, *SheinPackage, *sheinpub.SubmissionResponse]
+	failureRunner                        *submissiondomain.FailurePersistenceService[*ListingKitResult, *SheinPackage]
 }
 
 func newTaskTemporalSubmissionAdapter(config taskTemporalSubmissionAdapterConfig) *taskTemporalSubmissionAdapter {
-	return &taskTemporalSubmissionAdapter{
+	adapter := &taskTemporalSubmissionAdapter{
 		startSheinPublishWorkflow:            config.startSheinPublishWorkflow,
 		beginSheinSubmitLease:                config.beginSheinSubmitLease,
 		loadSheinPublishTask:                 config.loadSheinPublishTask,
@@ -80,7 +89,29 @@ func newTaskTemporalSubmissionAdapter(config taskTemporalSubmissionAdapterConfig
 		handleWorkflowStartFailure:           config.handleWorkflowStartFailure,
 		rememberSheinSubmitted:               config.rememberSheinSubmitted,
 		getTaskPreview:                       config.getTaskPreview,
+		payloadStages:                        config.payloadStages,
+		remoteSubmitter:                      config.remoteSubmitter,
+		successRunner:                        config.successRunner,
+		failureRunner:                        config.failureRunner,
 	}
+	if adapter.payloadStages == nil {
+		adapter.payloadStages = newSheinTemporalSubmitPayloadStages(adapter)
+	}
+	if adapter.remoteSubmitter == nil {
+		adapter.remoteSubmitter = newSheinRemoteSubmitService(adapter.executeTemporalRemoteSubmitAttempt)
+	}
+	if adapter.successRunner == nil {
+		adapter.successRunner = newSheinSubmissionSuccessPersistenceService(
+			adapter.completeTemporalSubmitAttempt,
+			adapter.persistTemporalSuccessResultAndPhase,
+			adapter.rememberSheinSubmitted,
+			adapter.persistSuccessfulSheinSubmission,
+		)
+	}
+	if adapter.failureRunner == nil {
+		adapter.failureRunner = newSheinSubmissionFailurePersistenceService(adapter.recordTemporalFailureState)
+	}
+	return adapter
 }
 
 func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {

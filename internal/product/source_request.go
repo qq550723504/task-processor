@@ -8,7 +8,7 @@ func SourceRequestFromFetch(req *FetchRequest) sourcing.SourceRequest {
 	if req == nil {
 		return sourcing.SourceRequest{}
 	}
-	return sourcing.SourceRequest{
+	return sourcing.NormalizeSourceRequest(sourcing.SourceRequest{
 		TenantID:   req.TenantID,
 		Platform:   req.Platform,
 		Region:     req.Region,
@@ -17,12 +17,13 @@ func SourceRequestFromFetch(req *FetchRequest) sourcing.SourceRequest {
 		StoreID:    req.StoreID,
 		CategoryID: req.CategoryID,
 		Creator:    req.Creator,
-	}
+	})
 }
 
 // FetchRequestFromSource converts source-scoped request data back into the
 // product fetch request shape used by product fetchers.
 func FetchRequestFromSource(req sourcing.SourceRequest) *FetchRequest {
+	req = sourcing.NormalizeSourceRequest(req)
 	return &FetchRequest{
 		TenantID:   req.TenantID,
 		Platform:   req.Platform,

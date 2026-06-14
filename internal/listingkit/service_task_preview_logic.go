@@ -7,5 +7,5 @@ func (s *service) GetTaskPreview(ctx context.Context, taskID string, platform st
 }
 
 func (s *service) buildTaskPreview(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {
-	return s.taskPreviewOrDefault().buildTaskPreview(ctx, task, platform)
+	return buildTaskPreview(ctx, task, platform, buildTaskPreviewDecorationWiring(s))
 }

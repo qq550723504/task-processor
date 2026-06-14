@@ -3,7 +3,7 @@ package listingkit
 import (
 	"testing"
 
-	sheinworkspace "task-processor/internal/workspace/shein"
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 )
 
 func TestBuildSheinStatusOverviewBlockedState(t *testing.T) {

@@ -9,22 +9,25 @@ import (
 )
 
 type taskStudioBatchRunExecutorConfig struct {
-	repo       StudioBatchRunRepository
-	executeOne func(ctx context.Context, batchID string) error
-	now        func() time.Time
+	repo             StudioBatchRunRepository
+	executeOne       func(ctx context.Context, batchID string) error
+	now              func() time.Time
+	completionRunner *listingStudioBatchRunCompletionRunner
 }
 
 type taskStudioBatchRunExecutor struct {
-	repo       StudioBatchRunRepository
-	executeOne func(ctx context.Context, batchID string) error
-	now        func() time.Time
+	repo             StudioBatchRunRepository
+	executeOne       func(ctx context.Context, batchID string) error
+	now              func() time.Time
+	completionRunner *listingStudioBatchRunCompletionRunner
 }
 
 func newTaskStudioBatchRunExecutor(config taskStudioBatchRunExecutorConfig) *taskStudioBatchRunExecutor {
 	return &taskStudioBatchRunExecutor{
-		repo:       config.repo,
-		executeOne: config.executeOne,
-		now:        config.now,
+		repo:             config.repo,
+		executeOne:       config.executeOne,
+		now:              config.now,
+		completionRunner: config.completionRunner,
 	}
 }
 
@@ -141,47 +144,19 @@ func (e *taskStudioBatchRunExecutor) Run(ctx context.Context, runID string) erro
 }
 
 func (e *taskStudioBatchRunExecutor) cancelUnfinishedItems(ctx context.Context, items []StudioBatchRunItemRecord) error {
-	for index := range items {
-		item := &items[index]
-		switch item.Status {
-		case StudioBatchRunItemStatusSucceeded, StudioBatchRunItemStatusFailed, StudioBatchRunItemStatusCancelled:
-			continue
-		}
-		finishedAt := e.currentTime()
-		item.Status = StudioBatchRunItemStatusCancelled
-		item.FinishedAt = &finishedAt
-		item.UpdatedAt = finishedAt
-		if err := e.repo.UpdateStudioBatchRunItem(ctx, item); err != nil {
-			return err
-		}
+	e.ensureCompletionRunner()
+	if e.completionRunner == nil {
+		return fmt.Errorf("studio batch run completion service is not configured")
 	}
-	return nil
+	return e.completionRunner.CancelUnfinishedItems(ctx, items)
 }
 
 func (e *taskStudioBatchRunExecutor) resolveFinalRunStatus(run *StudioBatchRunRecord, items []StudioBatchRunItemRecord) StudioBatchRunStatus {
-	if run != nil && run.CancelRequested {
-		return StudioBatchRunStatusCancelled
-	}
-
-	succeeded := 0
-	failed := 0
-	for _, item := range items {
-		switch item.Status {
-		case StudioBatchRunItemStatusSucceeded:
-			succeeded++
-		case StudioBatchRunItemStatusFailed:
-			failed++
-		}
-	}
-
-	switch {
-	case failed > 0 && succeeded > 0:
-		return StudioBatchRunStatusPartiallySucceeded
-	case failed > 0:
-		return StudioBatchRunStatusFailed
-	default:
+	e.ensureCompletionRunner()
+	if e.completionRunner == nil {
 		return StudioBatchRunStatusSucceeded
 	}
+	return e.completionRunner.ResolveFinalStatus(run != nil && run.CancelRequested, items)
 }
 
 func (e *taskStudioBatchRunExecutor) finalizeRun(ctx context.Context, run *StudioBatchRunRecord, items []StudioBatchRunItemRecord, status StudioBatchRunStatus, lastError string) error {
@@ -204,20 +179,16 @@ func (e *taskStudioBatchRunExecutor) refreshRunCounters(run *StudioBatchRunRecor
 		return
 	}
 
-	run.TotalBatches = len(items)
-	run.CompletedBatches = 0
-	run.SucceededBatches = 0
-	run.FailedBatches = 0
-	for _, item := range items {
-		switch item.Status {
-		case StudioBatchRunItemStatusSucceeded:
-			run.CompletedBatches++
-			run.SucceededBatches++
-		case StudioBatchRunItemStatusFailed, StudioBatchRunItemStatusCancelled:
-			run.CompletedBatches++
-			run.FailedBatches++
-		}
+	e.ensureCompletionRunner()
+	if e.completionRunner == nil {
+		run.TotalBatches = len(items)
+		return
 	}
+	counters := e.completionRunner.CountItems(items)
+	run.TotalBatches = counters.Total
+	run.CompletedBatches = counters.Completed
+	run.SucceededBatches = counters.Succeeded
+	run.FailedBatches = counters.Failed
 }
 
 func (e *taskStudioBatchRunExecutor) currentTime() time.Time {
@@ -225,6 +196,13 @@ func (e *taskStudioBatchRunExecutor) currentTime() time.Time {
 		return e.now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func (e *taskStudioBatchRunExecutor) ensureCompletionRunner() {
+	if e == nil || e.completionRunner != nil || e.repo == nil {
+		return
+	}
+	e.completionRunner = newListingStudioBatchRunCompletionService(e.repo, e.now)
 }
 
 func (s *service) executeStudioBatchRunItem(ctx context.Context, batchID string) error {

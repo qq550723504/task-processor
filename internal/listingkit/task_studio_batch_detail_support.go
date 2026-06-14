@@ -8,11 +8,11 @@ import (
 	"gorm.io/gorm"
 )
 
-func (s *taskStudioBatchService) resolveStudioBatchDetailWithoutGraph(ctx context.Context, batchID string) (*StudioBatchDetail, bool, error) {
-	if s.studioSessionRepo == nil {
+func resolveStudioBatchDetailWithoutGraph(ctx context.Context, studioSessionRepo studioBatchSeedSessionRepository, batchID string) (*StudioBatchDetail, bool, error) {
+	if studioSessionRepo == nil {
 		return nil, false, gorm.ErrRecordNotFound
 	}
-	session, err := s.studioSessionRepo.GetSession(ctx, batchID)
+	session, err := studioSessionRepo.GetSession(ctx, batchID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -65,11 +65,11 @@ func projectStudioBatchRecord(batch *StudioBatchRecord, items []StudioBatchItemR
 	return &cloned
 }
 
-func (s *taskStudioBatchService) loadStudioBatchDraftState(ctx context.Context, batchID string) (*time.Time, []SheinStudioCreatedTask, []SheinStudioFailedTask, error) {
-	if s.studioSessionRepo == nil {
+func loadStudioBatchDraftState(ctx context.Context, studioSessionRepo studioBatchSeedSessionRepository, batchID string) (*time.Time, []SheinStudioCreatedTask, []SheinStudioFailedTask, error) {
+	if studioSessionRepo == nil {
 		return nil, nil, nil, nil
 	}
-	session, err := s.studioSessionRepo.GetSession(ctx, batchID)
+	session, err := studioSessionRepo.GetSession(ctx, batchID)
 	switch {
 	case err == nil:
 		if session == nil || !session.SavedAsBatch {

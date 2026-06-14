@@ -1,33 +1,36 @@
 package listingkit
 
 import (
-	"task-processor/internal/asset"
-	"task-processor/internal/catalog"
+	previewdomain "task-processor/internal/listing/preview"
 )
 
 type listingKitReadProjection struct {
-	NeedsReview bool
-	Overview    *listingKitOverviewData
-	Attachment  *listingKitResultAttachment
-}
-
-type listingKitOverviewData struct {
-	Country       string
-	Language      string
-	SourceType    string
-	ImageCount    int
-	VariantCount  int
-	Warnings      []string
-	ReviewReasons []string
-	PlatformCards []ListingKitPlatformCard
-}
-
-type listingKitResultAttachment struct {
-	CatalogProduct              *catalog.Product
-	AssetBundle                 *asset.Bundle
-	AssetInventorySummary       *asset.InventorySummary
+	PreviewInput                previewdomain.ReadModelInput
+	PlatformCards               []ListingKitPlatformCard
 	AssetRenderPreviews         []AssetRenderPreview
 	PlatformAssetRenderPreviews []PlatformAssetRenderPreviews
 	AssetGenerationQueue        *GenerationWorkQueue
 	AssetGenerationOverview     *AssetGenerationOverview
+}
+
+func (projection *listingKitReadProjection) previewDomainReadModelInput() previewdomain.ReadModelInput {
+	if projection == nil {
+		return previewdomain.ReadModelInput{}
+	}
+	return projection.PreviewInput
+}
+
+func buildPreviewDomainRevisionHistoryMetaInput(result *ListingKitResult) *previewdomain.RevisionHistoryMetaInput {
+	if result == nil {
+		return nil
+	}
+	total := result.RevisionHistoryTotal
+	if total == 0 && len(result.RevisionHistory) > 0 {
+		total = len(result.RevisionHistory)
+	}
+	return &previewdomain.RevisionHistoryMetaInput{
+		TotalRecords:    total,
+		ReturnedRecords: len(result.RevisionHistory),
+		MaxRecords:      maxRevisionHistoryRecords,
+	}
 }

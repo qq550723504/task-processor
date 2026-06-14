@@ -21,14 +21,15 @@ func buildListingKitExportProjection(result *ListingKitResult, selectedPlatform 
 	if readProjection == nil {
 		return listingKitExportProjection{}
 	}
+	attachment := readProjection.PreviewInput.Attachment
 	return listingKitExportProjection{
-		catalog:             readProjection.Attachment.CatalogProduct,
-		assetBundle:         readProjection.Attachment.AssetBundle,
-		assetInventory:      readProjection.Attachment.AssetInventorySummary,
-		assetRenderPreviews: readProjection.Attachment.AssetRenderPreviews,
-		platformPreviews:    readProjection.Attachment.PlatformAssetRenderPreviews,
-		generationQueue:     readProjection.Attachment.AssetGenerationQueue,
-		generationOverview:  readProjection.Attachment.AssetGenerationOverview,
+		catalog:             attachment.CatalogProduct,
+		assetBundle:         attachment.AssetBundle,
+		assetInventory:      attachment.AssetInventorySummary,
+		assetRenderPreviews: readProjection.AssetRenderPreviews,
+		platformPreviews:    readProjection.PlatformAssetRenderPreviews,
+		generationQueue:     readProjection.AssetGenerationQueue,
+		generationOverview:  readProjection.AssetGenerationOverview,
 		overview:            buildListingKitExportMetaFromReadProjection(readProjection),
 	}
 }

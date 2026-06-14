@@ -12,7 +12,7 @@ func TestPruneSaleAttributeResolutionPatchPreservesCategoryReviewSignal(t *testi
 		CategoryReviewReason:    &reason,
 	}
 
-	pruned := pruneSaleAttributeResolutionPatch(patch)
+	pruned := PruneSaleAttributeResolutionPatch(patch)
 	if pruned == nil {
 		t.Fatal("expected pruned patch")
 	}

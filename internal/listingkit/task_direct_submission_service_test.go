@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	submissiondomain "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -440,4 +441,58 @@ func TestTaskDirectSubmissionServiceSubmitSheinTaskDirectCompletesExecutionFlow(
 		sheinpub.SubmissionPhasePreValidate,
 		sheinpub.SubmissionPhaseSubmitRemote,
 	})
+}
+
+func TestTaskDirectSubmissionServiceUsesSubmissionDomainRunner(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	var runnerCalls int
+	expectedPreview := &ListingKitPreview{TaskID: task.ID}
+	direct := newTaskDirectSubmissionService(taskDirectSubmissionServiceConfig{
+		normalizeSheinSubmitPackage: func(*Task, *SheinPackage, *SubmitTaskRequest, string) {},
+		runner: submissiondomain.NewDirectSubmitFlowService(submissiondomain.DirectSubmitFlowServiceConfig[*Task, *SheinPackage, sheinproduct.ProductAPI, *sheinproduct.Product, *ListingKitPreview]{
+			Phases: submissiondomain.DirectSubmitFlowPhases{
+				PrepareProduct: "prepare",
+				PreValidate:    "validate",
+				SubmitRemote:   "remote",
+			},
+			BuildProductAPI: func(context.Context, string, *Task, *SheinPackage, submissiondomain.DirectSubmitFlowOptions) (sheinproduct.ProductAPI, error) {
+				runnerCalls++
+				return &stubSheinProductAPI{}, nil
+			},
+			PersistPhase: func(context.Context, string, *Task, *SheinPackage, submissiondomain.DirectSubmitFlowOptions, string) error {
+				return nil
+			},
+			PrepareProduct: func(context.Context, string, *Task, *SheinPackage, submissiondomain.DirectSubmitFlowOptions) (*sheinproduct.Product, error) {
+				return &sheinproduct.Product{}, nil
+			},
+			NeedsImageUpload: func(*sheinproduct.Product) bool { return false },
+			PreValidate: func(context.Context, string, *Task, *SheinPackage, *sheinproduct.Product, submissiondomain.DirectSubmitFlowOptions) error {
+				return nil
+			},
+			SubmitRemote: func(context.Context, string, *Task, *SheinPackage, sheinproduct.ProductAPI, *sheinproduct.Product, submissiondomain.DirectSubmitFlowOptions) error {
+				return nil
+			},
+			BuildTaskPreview: func(context.Context, *Task, string) (*ListingKitPreview, error) { return expectedPreview, nil },
+		}),
+	})
+
+	preview, err := direct.submitSheinTaskDirect(context.Background(), task.ID, task, &SubmitTaskRequest{
+		Platform: "shein",
+		Action:   "publish",
+	}, sheinDirectSubmitOptions{
+		action:    "publish",
+		requestID: "req-runner",
+		startedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("submitSheinTaskDirect() err = %v", err)
+	}
+	if preview != expectedPreview {
+		t.Fatalf("preview = %+v, want %+v", preview, expectedPreview)
+	}
+	if runnerCalls != 1 {
+		t.Fatalf("runner calls = %d, want 1", runnerCalls)
+	}
 }

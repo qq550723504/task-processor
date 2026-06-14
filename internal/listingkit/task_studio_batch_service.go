@@ -2,7 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -17,17 +16,24 @@ type taskStudioBatchService struct {
 	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
 	getTask            func(context.Context, string) (*Task, error)
 	currentTime        func() time.Time
+	detailRunner       *listingStudioBatchDetailRunner
+	reviewRunner       *listingStudioBatchReviewRunner
 }
 
 func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioBatchService {
-	return &taskStudioBatchService{
+	service := &taskStudioBatchService{
 		repo:               config.repo,
 		studioSessionRepo:  config.studioSessionRepo,
 		generator:          config.generator,
 		createGenerateTask: config.createGenerateTask,
 		getTask:            config.getTask,
 		currentTime:        time.Now,
+		detailRunner:       config.detailRunner,
+		reviewRunner:       config.reviewRunner,
 	}
+	service.ensureDetailRunner()
+	service.ensureReviewRunner()
+	return service
 }
 
 func (s *taskStudioBatchService) StartStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
@@ -101,54 +107,25 @@ func (s *taskStudioBatchService) continueStudioBatchGeneration(ctx context.Conte
 }
 
 func (s *taskStudioBatchService) GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
-	if s.repo == nil {
+	s.ensureDetailRunner()
+	if s.detailRunner == nil {
 		return nil, fmt.Errorf("studio batch repository is not configured")
 	}
 	normalizedBatchID := strings.TrimSpace(batchID)
-	detail, err := s.repo.GetStudioBatchDetail(ctx, normalizedBatchID)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		fallbackDetail, syncRequired, syncErr := s.resolveStudioBatchDetailWithoutGraph(ctx, normalizedBatchID)
-		if syncErr != nil {
-			return nil, syncErr
-		}
-		if !syncRequired {
-			return fallbackDetail, nil
-		}
-		if syncErr := s.ensureStudioBatchGenerationGraphForResume(ctx, normalizedBatchID); syncErr != nil {
-			return nil, syncErr
-		}
-		detail, err = s.repo.GetStudioBatchDetail(ctx, normalizedBatchID)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	draftUpdatedAt, createdTasks, failedTasks, draftErr := s.loadStudioBatchDraftState(ctx, normalizedBatchID)
-	if draftErr != nil {
-		return nil, draftErr
-	}
-	return projectStudioBatchDetail(detail, draftUpdatedAt, createdTasks, failedTasks), nil
+	return s.detailRunner.GetDetail(ctx, normalizedBatchID)
 }
 
 func (s *taskStudioBatchService) ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error) {
-	if s.repo == nil {
+	s.ensureReviewRunner()
+	if s.reviewRunner == nil {
 		return nil, fmt.Errorf("studio batch repository is not configured")
 	}
-
 	normalizedBatchID := strings.TrimSpace(batchID)
-	if _, err := s.repo.GetStudioBatchDetail(ctx, normalizedBatchID); err != nil {
-		return nil, err
-	}
-
 	approvedIDs := normalizeStudioBatchDesignIDs(nil)
 	if req != nil {
 		approvedIDs = normalizeStudioBatchDesignIDs(req.DesignIDs)
 	}
-	if err := s.repo.ReplaceStudioMaterializedDesignReviews(ctx, normalizedBatchID, approvedIDs, s.currentTime().UTC()); err != nil {
-		return nil, err
-	}
-
-	return s.GetStudioBatchDetail(ctx, normalizedBatchID)
+	return s.reviewRunner.ApproveDesigns(ctx, normalizedBatchID, approvedIDs)
 }
 
 func (s *taskStudioBatchService) RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {
@@ -191,6 +168,20 @@ func (s *taskStudioBatchService) PrepareRetryStudioBatchItems(ctx context.Contex
 	}
 
 	return s.GetStudioBatchDetail(ctx, normalizedBatchID)
+}
+
+func (s *taskStudioBatchService) ensureDetailRunner() {
+	if s == nil || s.detailRunner != nil {
+		return
+	}
+	s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.ensureStudioBatchGenerationGraphForResume)
+}
+
+func (s *taskStudioBatchService) ensureReviewRunner() {
+	if s == nil || s.reviewRunner != nil {
+		return
+	}
+	s.reviewRunner = newListingStudioBatchReviewService(s.repo, s.GetStudioBatchDetail, s.currentTime)
 }
 
 func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {

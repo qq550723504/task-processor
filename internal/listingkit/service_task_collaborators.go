@@ -12,8 +12,8 @@ func (s *service) taskRevisionOrDefault() *taskRevisionService {
 	})
 }
 
-func (s *service) taskPreviewOrDefault() *taskPreviewService {
-	return syncGroupedCollaborator(&s.task.preview, &s.collabMirrors.taskPreview, func() *taskPreviewService {
+func (s *service) taskPreviewOrDefault() taskPreviewReader {
+	return syncGroupedCollaborator(&s.task.preview, &s.collabMirrors.taskPreview, func() taskPreviewReader {
 		return newTaskPreviewService(buildTaskPreviewServiceConfig(s))
 	})
 }

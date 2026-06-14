@@ -4,7 +4,7 @@ type taskCollaborators struct {
 	lifecycle   *taskLifecycleService
 	generation  *taskGenerationService
 	revision    *taskRevisionService
-	preview     *taskPreviewService
+	preview     taskPreviewReader
 	export      *taskExportService
 	sdsBaseline *sdsBaselineService
 }

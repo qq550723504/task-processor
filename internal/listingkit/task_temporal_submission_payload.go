@@ -3,7 +3,9 @@ package listingkit
 import (
 	"context"
 
+	submissiondomain "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 func (s *taskTemporalSubmissionAdapter) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {
@@ -12,18 +14,11 @@ func (s *taskTemporalSubmissionAdapter) PrepareSheinPublishPayload(ctx context.C
 		return nil, err
 	}
 	s.normalizeSheinSubmitPackage(task, pkg, sheinSubmitRequestFromActivity(in), in.Action)
-	if err := s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhasePrepareProduct); err != nil {
-		return nil, err
-	}
-
-	preparedPayload, err := prepareSheinSubmitPayloadProduct(ctx, in.TaskID, in.Action, in.RequestID, task, pkg, s.prepareSheinSubmitProduct)
+	preparedPayload, err := s.payloadStages.Prepare(ctx, newSubmissionPayloadStageContext(in.TaskID, task, pkg, in.Action, in.RequestID))
 	if err != nil {
 		return nil, err
 	}
-	if err := s.persistSheinSubmitSnapshot(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, preparedPayload.Snapshot); err != nil {
-		return nil, err
-	}
-	return preparedPayload, nil
+	return adaptSubmissionPreparedPayload(preparedPayload, newSubmissionPayloadStageContext(in.TaskID, task, pkg, in.Action, in.RequestID)), nil
 }
 
 func (s *taskTemporalSubmissionAdapter) UploadSheinPublishImages(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinPreparedSubmitPayload, error) {
@@ -33,36 +28,31 @@ func (s *taskTemporalSubmissionAdapter) UploadSheinPublishImages(ctx context.Con
 	if !in.NeedsImageUpload {
 		return in, nil
 	}
-
 	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhaseUploadImages); err != nil {
+	out, err := s.payloadStages.UploadImages(
+		ctx,
+		newSubmissionPayloadStageContext(in.TaskID, task, pkg, in.Action, in.RequestID),
+		adaptListingKitPreparedPayload(in),
+	)
+	if err != nil {
 		return nil, err
 	}
-	if err := s.uploadSheinSubmitImages(ctx, task, pkg, in.Product); err != nil {
-		return nil, err
-	}
-	out := finalizeSheinUploadedSubmitPayload(ctx, in.TaskID, in.Action, in.RequestID, task, in, s.resolveSubmitSettings)
-	if err := s.persistSheinSubmitSnapshot(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, out.Snapshot); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return adaptSubmissionPreparedPayload(out, newSubmissionPayloadStageContext(in.TaskID, task, pkg, in.Action, in.RequestID)), nil
 }
 
 func (s *taskTemporalSubmissionAdapter) PreValidateSheinPublish(ctx context.Context, in *SheinPreparedSubmitPayload) error {
-	if err := requireSheinPreparedSubmitPayload(in); err != nil {
-		return err
-	}
 	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
 	if err != nil {
 		return err
 	}
-	if err := s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhasePreValidate); err != nil {
-		return err
-	}
-	return s.preValidateSheinSubmitProduct(pkg, in.Product)
+	return s.payloadStages.PreValidate(
+		ctx,
+		newSubmissionPayloadStageContext(in.TaskID, task, pkg, in.Action, in.RequestID),
+		adaptListingKitPreparedPayload(in),
+	)
 }
 
 func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {
@@ -77,37 +67,29 @@ func (s *taskTemporalSubmissionAdapter) SubmitSheinPublishRemote(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-
-	remoteState := prepareSheinRemoteSubmitState(pkg, in.Action, in.RequestID, in.Product, in.Snapshot)
-	snapshot := remoteState.snapshot
 	if err := s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
 		return nil, err
 	}
 
-	attempt := executeSheinSubmitRemoteAttempt(
-		ctx,
-		in.TaskID,
-		pkg,
-		in.Action,
-		in.RequestID,
-		productAPI,
-		in.Product,
-		s.executeSheinSubmitRemote,
-		s.retrySheinSensitiveWordSubmit,
-	)
-	if attempt.snapshot != nil {
-		snapshot = attempt.snapshot
-	}
-	if attempt.err != nil {
-		return nil, newSubmitRemoteActivityError(attempt.err, remoteState.supplierCode, attempt.response, snapshot)
+	result := s.remoteSubmitter.Submit(ctx, submissiondomain.RemoteSubmitInput[*SheinPackage, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmitSnapshot]{
+		TaskID:     in.TaskID,
+		Package:    pkg,
+		Action:     in.Action,
+		RequestID:  in.RequestID,
+		ProductAPI: productAPI,
+		Product:    in.Product,
+		Snapshot:   in.Snapshot,
+	})
+	if result.Err != nil {
+		return nil, newSubmitRemoteActivityError(result.Err, result.SupplierCode, result.Response, result.Snapshot)
 	}
 
 	return &SheinRemoteSubmitResult{
 		TaskID:       in.TaskID,
 		Action:       in.Action,
 		RequestID:    in.RequestID,
-		SupplierCode: remoteState.supplierCode,
-		Response:     attempt.response,
-		Snapshot:     snapshot,
+		SupplierCode: result.SupplierCode,
+		Response:     result.Response,
+		Snapshot:     result.Snapshot,
 	}, nil
 }

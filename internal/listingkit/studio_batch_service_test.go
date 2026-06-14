@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	studiodomain "task-processor/internal/listing/studio"
+
 	"gorm.io/gorm"
 )
 
@@ -121,6 +123,60 @@ func TestServiceGetStudioBatchDetailProjectsItemizedGraph(t *testing.T) {
 	}
 	if detail.Items[0].Designs[0].ID != "design-1" || detail.Items[0].Designs[1].ID != "design-2" {
 		t.Fatalf("detail.Items[0].Designs = %+v, want sorted item-1 designs", detail.Items[0].Designs)
+	}
+}
+
+func TestTaskStudioBatchServiceUsesListingStudioDetailRunner(t *testing.T) {
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		detailRunner: studiodomain.NewBatchDetailService(studiodomain.BatchDetailServiceConfig[
+			StudioBatchDetailGraph,
+			StudioBatchDetail,
+		]{
+			LoadGraph: func(context.Context, string) (*StudioBatchDetailGraph, error) {
+				return &StudioBatchDetailGraph{
+					Batch: &StudioBatchRecord{ID: "batch-1"},
+				}, nil
+			},
+			IsGraphMissing: func(error) bool { return false },
+			ResolveWithoutGraph: func(context.Context, string) (*StudioBatchDetail, bool, error) {
+				return nil, false, nil
+			},
+			EnsureGraph: func(context.Context, string) error { return nil },
+			ProjectDetail: func(context.Context, string, *StudioBatchDetailGraph) (*StudioBatchDetail, error) {
+				return &StudioBatchDetail{Batch: &StudioBatchRecord{ID: "batch-1"}}, nil
+			},
+		}),
+	})
+
+	detail, err := svc.GetStudioBatchDetail(context.Background(), "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if detail.Batch == nil || detail.Batch.ID != "batch-1" {
+		t.Fatalf("detail.Batch = %+v, want batch-1", detail.Batch)
+	}
+}
+
+func TestTaskStudioBatchServiceUsesListingStudioReviewRunner(t *testing.T) {
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		reviewRunner: studiodomain.NewBatchDesignReviewService(studiodomain.BatchDesignReviewServiceConfig[StudioBatchDetail]{
+			EnsureBatchExists: func(context.Context, string) error { return nil },
+			ReplaceReviews:    func(context.Context, string, []string, time.Time) error { return nil },
+			LoadDetail: func(context.Context, string) (*StudioBatchDetail, error) {
+				return &StudioBatchDetail{Batch: &StudioBatchRecord{ID: "batch-1"}}, nil
+			},
+			CurrentTime: time.Now,
+		}),
+	})
+
+	detail, err := svc.ApproveStudioBatchDesigns(context.Background(), "batch-1", &ApproveStudioBatchDesignsRequest{
+		DesignIDs: []string{"design-1"},
+	})
+	if err != nil {
+		t.Fatalf("ApproveStudioBatchDesigns() error = %v", err)
+	}
+	if detail.Batch == nil || detail.Batch.ID != "batch-1" {
+		t.Fatalf("detail.Batch = %+v, want batch-1", detail.Batch)
 	}
 }
 

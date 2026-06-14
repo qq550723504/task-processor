@@ -8,6 +8,7 @@ import (
 	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	studiodomain "task-processor/internal/listing/studio"
 	"task-processor/internal/listingkit/tenantctx"
 )
 
@@ -680,6 +681,243 @@ func TestStudioSessionServiceAllowsCreatingBatchContainerWithoutPrompt(t *testin
 	}
 }
 
+func TestTaskStudioBatchDraftServiceUsesListingStudioRunner(t *testing.T) {
+	svc := newTaskStudioBatchDraftService(taskStudioBatchDraftServiceConfig{
+		runner: studiodomain.NewBatchDraftService(studiodomain.BatchDraftServiceConfig[
+			SheinStudioSession,
+			SheinStudioDesign,
+			SheinStudioSessionGalleryItem,
+			SheinStudioBatchListItem,
+		]{
+			Repo: studioBatchDraftDomainRepoStub{
+				session: &SheinStudioSession{
+					ID:           "batch-1",
+					SavedAsBatch: true,
+					BatchName:    "Batch 1",
+				},
+				designs: []SheinStudioDesign{{ID: "design-1"}},
+			},
+			IsSavedBatch: func(session *SheinStudioSession) bool { return session != nil && session.SavedAsBatch },
+			SessionID: func(session *SheinStudioSession) string {
+				if session == nil {
+					return ""
+				}
+				return session.ID
+			},
+			MapBatchListItem: mapStudioBatchListItem,
+		}),
+	})
+
+	detail, err := svc.GetStudioBatch(context.Background(), "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatch() error = %v", err)
+	}
+	if detail.Batch == nil || detail.Batch.ID != "batch-1" {
+		t.Fatalf("detail.Batch = %+v, want batch-1", detail.Batch)
+	}
+	if len(detail.Designs) != 1 || detail.Designs[0].ID != "design-1" {
+		t.Fatalf("detail.Designs = %+v, want design-1", detail.Designs)
+	}
+}
+
+func TestTaskStudioBatchDraftServiceMapsListingStudioNotFoundError(t *testing.T) {
+	svc := newTaskStudioBatchDraftService(taskStudioBatchDraftServiceConfig{
+		runner: studiodomain.NewBatchDraftService(studiodomain.BatchDraftServiceConfig[
+			SheinStudioSession,
+			SheinStudioDesign,
+			SheinStudioSessionGalleryItem,
+			SheinStudioBatchListItem,
+		]{
+			Repo:         studioBatchDraftDomainRepoStub{},
+			IsSavedBatch: func(session *SheinStudioSession) bool { return session != nil && session.SavedAsBatch },
+			SessionID: func(session *SheinStudioSession) string {
+				if session == nil {
+					return ""
+				}
+				return session.ID
+			},
+			MapBatchListItem: mapStudioBatchListItem,
+		}),
+	})
+
+	_, err := svc.GetStudioBatch(context.Background(), "missing")
+	if !errors.Is(err, ErrStudioSessionNotFound) {
+		t.Fatalf("GetStudioBatch() error = %v, want ErrStudioSessionNotFound", err)
+	}
+}
+
+func TestTaskStudioSessionServiceUsesListingStudioRunner(t *testing.T) {
+	selectionKey := buildStudioSelectionKey(testStudioSelection())
+	svc := newTaskStudioSessionService(taskStudioSessionServiceConfig{
+		runner: studiodomain.NewSessionService(studiodomain.SessionServiceConfig[
+			SheinStudioSession,
+			SheinStudioSelection,
+			SheinStudioDesign,
+		]{
+			Repo: studioSessionDomainRepoStub{
+				sessionByKey: map[string]*SheinStudioSession{
+					selectionKey: {
+						ID:           "session-1",
+						SelectionKey: selectionKey,
+					},
+				},
+				designsBySessionID: map[string][]SheinStudioDesign{
+					"session-1": {{ID: "design-1"}},
+				},
+			},
+			ValidateSelection: validateStudioSessionSelection,
+			BuildSelectionKey: buildStudioSelectionKey,
+			NewSession:        newListingStudioSessionRecord,
+			SessionID: func(session *SheinStudioSession) string {
+				if session == nil {
+					return ""
+				}
+				return session.ID
+			},
+			RequestUserID: func(context.Context) string { return "user-1" },
+			NewSessionID:  func() string { return "session-new" },
+		}),
+	})
+
+	detail, err := svc.EnsureStudioSession(context.Background(), &EnsureStudioSessionRequest{
+		Selection: testStudioSelection(),
+	})
+	if err != nil {
+		t.Fatalf("EnsureStudioSession() error = %v", err)
+	}
+	if detail.Session == nil || detail.Session.ID != "session-1" {
+		t.Fatalf("detail.Session = %+v, want session-1", detail.Session)
+	}
+	if len(detail.Designs) != 1 || detail.Designs[0].ID != "design-1" {
+		t.Fatalf("detail.Designs = %+v, want design-1", detail.Designs)
+	}
+}
+
+func TestTaskStudioSessionServiceMapsListingStudioNotFoundError(t *testing.T) {
+	svc := newTaskStudioSessionService(taskStudioSessionServiceConfig{
+		runner: studiodomain.NewSessionService(studiodomain.SessionServiceConfig[
+			SheinStudioSession,
+			SheinStudioSelection,
+			SheinStudioDesign,
+		]{
+			Repo:              studioSessionDomainRepoStub{},
+			ValidateSelection: validateStudioSessionSelection,
+			BuildSelectionKey: buildStudioSelectionKey,
+			NewSession:        newListingStudioSessionRecord,
+			SessionID: func(session *SheinStudioSession) string {
+				if session == nil {
+					return ""
+				}
+				return session.ID
+			},
+			RequestUserID: func(context.Context) string { return "user-1" },
+			NewSessionID:  func() string { return "session-new" },
+		}),
+	})
+
+	_, err := svc.GetStudioSession(context.Background(), "missing")
+	if !errors.Is(err, ErrStudioSessionNotFound) {
+		t.Fatalf("GetStudioSession() error = %v, want ErrStudioSessionNotFound", err)
+	}
+}
+
+func TestTaskStudioSessionServiceSyncUsesListingStudioRunner(t *testing.T) {
+	repo := newStudioSessionRepoStub()
+	repo.sessions["session-1"] = &SheinStudioSession{ID: "session-1"}
+	svc := newTaskStudioSessionService(taskStudioSessionServiceConfig{
+		asyncJobRunner: newListingStudioSessionAsyncJobService(repo),
+	})
+
+	err := svc.SyncStudioDesignAsyncJob(context.Background(), "session-1", StudioAsyncJobStatusSucceeded, " job-1 ", " done ")
+	if err != nil {
+		t.Fatalf("SyncStudioDesignAsyncJob() error = %v", err)
+	}
+	updated := repo.sessions["session-1"]
+	if updated.Status != SheinStudioSessionStatusGenerated {
+		t.Fatalf("updated.Status = %q, want generated", updated.Status)
+	}
+	if updated.GenerationJobID != "job-1" || updated.GenerationError != "done" {
+		t.Fatalf("updated = %+v, want trimmed async job fields", updated)
+	}
+}
+
+func TestTaskStudioSessionServiceSyncMapsListingStudioNotFoundError(t *testing.T) {
+	svc := newTaskStudioSessionService(taskStudioSessionServiceConfig{
+		asyncJobRunner: newListingStudioSessionAsyncJobService(newStudioSessionRepoStub()),
+	})
+
+	err := svc.SyncStudioDesignAsyncJob(context.Background(), "missing", StudioAsyncJobStatusRunning, "job-1", "")
+	if !errors.Is(err, ErrStudioSessionNotFound) {
+		t.Fatalf("SyncStudioDesignAsyncJob() error = %v, want ErrStudioSessionNotFound", err)
+	}
+}
+
+func TestTaskStudioSessionServiceUsesListingStudioGenerationMetadataRunner(t *testing.T) {
+	repo := newStudioSessionRepoStub()
+	repo.sessions["session-1"] = &SheinStudioSession{ID: "session-1"}
+	svc := newTaskStudioSessionService(taskStudioSessionServiceConfig{
+		repo:                     repo,
+		generationMetadataRunner: newListingStudioSessionGenerationMetadataService(repo),
+	})
+
+	status := SheinStudioSessionStatusGenerating
+	jobID := "job-primary"
+	jobs := []SheinStudioGenerationJob{
+		{JobID: "job-primary", TargetGroupKey: "primary", Status: StudioAsyncJobStatusRunning},
+		{JobID: "job-group-1", TargetGroupKey: "group-1", Status: StudioAsyncJobStatusRunning},
+	}
+	errMessage := "pending"
+	updated, err := svc.UpdateStudioSession(context.Background(), "session-1", &UpdateStudioSessionRequest{
+		Status:          &status,
+		GenerationJobID: &jobID,
+		GenerationJobs:  jobs,
+		GenerationError: &errMessage,
+	})
+	if err != nil {
+		t.Fatalf("UpdateStudioSession() error = %v", err)
+	}
+	if updated.Session == nil || updated.Session.GenerationJobID != "job-primary" {
+		t.Fatalf("updated.Session = %+v, want generation metadata", updated.Session)
+	}
+	if len(updated.Session.GenerationJobs) != 2 || updated.Session.GenerationJobs[1].TargetGroupKey != "group-1" {
+		t.Fatalf("updated.Session.GenerationJobs = %+v, want preserved grouped jobs", updated.Session.GenerationJobs)
+	}
+	if repo.listDesignsCalls != 0 {
+		t.Fatalf("list designs calls = %d, want 0 for generation metadata runner path", repo.listDesignsCalls)
+	}
+}
+
+func TestTaskStudioSessionServiceUsesListingStudioReviewTaskMetadataRunner(t *testing.T) {
+	repo := newStudioSessionRepoStub()
+	repo.sessions["session-1"] = &SheinStudioSession{ID: "session-1"}
+	svc := newTaskStudioSessionService(taskStudioSessionServiceConfig{
+		repo:                     repo,
+		reviewTaskMetadataRunner: newListingStudioSessionReviewTaskMetadataService(repo),
+	})
+
+	updated, err := svc.UpdateStudioSession(context.Background(), "session-1", &UpdateStudioSessionRequest{
+		ApprovedDesignIDs: []string{"design-1"},
+		CreatedTasks: []SheinStudioCreatedTask{
+			{ID: "task-1", DesignID: "design-1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateStudioSession() error = %v", err)
+	}
+	if updated.Session == nil || len(updated.Session.ApprovedDesignIDs) != 1 || updated.Session.ApprovedDesignIDs[0] != "design-1" {
+		t.Fatalf("updated.Session = %+v, want approved design metadata", updated.Session)
+	}
+	if len(updated.Session.CreatedTasks) != 1 || updated.Session.CreatedTasks[0].ID != "task-1" {
+		t.Fatalf("updated.Session.CreatedTasks = %+v, want created task metadata", updated.Session.CreatedTasks)
+	}
+	if len(updated.Session.CreatedTaskIDs) != 1 || updated.Session.CreatedTaskIDs[0] != "task-1" {
+		t.Fatalf("updated.Session.CreatedTaskIDs = %+v, want derived task ids", updated.Session.CreatedTaskIDs)
+	}
+	if repo.listDesignsCalls != 0 {
+		t.Fatalf("list designs calls = %d, want 0 for review/task metadata runner path", repo.listDesignsCalls)
+	}
+}
+
 func TestStudioSessionServiceRejectsStaleUpdateStudioSessionWrites(t *testing.T) {
 	svc := newLegacyStudioSessionTestService()
 	ctx := context.Background()
@@ -715,4 +953,70 @@ func TestStudioSessionServiceRejectsStaleUpdateStudioSessionWrites(t *testing.T)
 
 func ptr[T any](value T) *T {
 	return &value
+}
+
+type studioBatchDraftDomainRepoStub struct {
+	session *SheinStudioSession
+	designs []SheinStudioDesign
+}
+
+func (s studioBatchDraftDomainRepoStub) GetSession(context.Context, string) (*SheinStudioSession, error) {
+	if s.session == nil {
+		return nil, nil
+	}
+	cloned := cloneSession(s.session)
+	return cloned, nil
+}
+
+func (studioBatchDraftDomainRepoStub) DeleteSession(context.Context, string) error {
+	return nil
+}
+
+func (s studioBatchDraftDomainRepoStub) ListSessionDesigns(context.Context, string) ([]SheinStudioDesign, error) {
+	return slices.Clone(s.designs), nil
+}
+
+func (s studioBatchDraftDomainRepoStub) CountSessionDesignsBySessionIDs(context.Context, []string) (map[string]int, error) {
+	return map[string]int{"batch-1": len(s.designs)}, nil
+}
+
+func (studioBatchDraftDomainRepoStub) ListGalleryItems(context.Context, int) ([]SheinStudioSessionGalleryItem, error) {
+	return nil, nil
+}
+
+func (s studioBatchDraftDomainRepoStub) ListBatchSessions(context.Context, int) ([]SheinStudioSession, error) {
+	if s.session == nil {
+		return nil, nil
+	}
+	return []SheinStudioSession{*cloneSession(s.session)}, nil
+}
+
+type studioSessionDomainRepoStub struct {
+	sessionByKey       map[string]*SheinStudioSession
+	sessionByID        map[string]*SheinStudioSession
+	designsBySessionID map[string][]SheinStudioDesign
+}
+
+func (s studioSessionDomainRepoStub) FindLatestSessionBySelectionKey(_ context.Context, selectionKey string) (*SheinStudioSession, error) {
+	session := s.sessionByKey[selectionKey]
+	if session == nil {
+		return nil, nil
+	}
+	return cloneSession(session), nil
+}
+
+func (studioSessionDomainRepoStub) CreateSession(context.Context, *SheinStudioSession) error {
+	return nil
+}
+
+func (s studioSessionDomainRepoStub) GetSession(_ context.Context, sessionID string) (*SheinStudioSession, error) {
+	session := s.sessionByID[sessionID]
+	if session == nil {
+		return nil, nil
+	}
+	return cloneSession(session), nil
+}
+
+func (s studioSessionDomainRepoStub) ListSessionDesigns(_ context.Context, sessionID string) ([]SheinStudioDesign, error) {
+	return slices.Clone(s.designsBySessionID[sessionID]), nil
 }

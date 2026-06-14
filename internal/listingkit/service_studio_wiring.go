@@ -5,14 +5,20 @@ import "context"
 func buildTaskStudioSessionServiceConfig(s *service) taskStudioSessionServiceConfig {
 	wiring := buildTaskStudioSessionRepoWiring(s)
 	return taskStudioSessionServiceConfig{
-		repo: wiring.repo,
+		repo:                     wiring.repo,
+		runner:                   newListingStudioSessionService(wiring.repo),
+		asyncJobRunner:           newListingStudioSessionAsyncJobService(wiring.repo),
+		generationMetadataRunner: newListingStudioSessionGenerationMetadataService(wiring.repo),
+		reviewTaskMetadataRunner: newListingStudioSessionReviewTaskMetadataService(wiring.repo),
+		generalMetadataRunner:    newListingStudioSessionGeneralMetadataService(wiring.repo),
 	}
 }
 
 func buildTaskStudioBatchDraftServiceConfig(s *service) taskStudioBatchDraftServiceConfig {
 	wiring := buildTaskStudioSessionRepoWiring(s)
 	return taskStudioBatchDraftServiceConfig{
-		repo: wiring.repo,
+		repo:   wiring.repo,
+		runner: newListingStudioBatchDraftService(wiring.repo),
 	}
 }
 
@@ -42,6 +48,8 @@ func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig 
 		generator:          wiring.generator,
 		createGenerateTask: wiring.createGenerateTask,
 		getTask:            wiring.getTask,
+		detailRunner:       wiring.detailRunner,
+		reviewRunner:       wiring.reviewRunner,
 	}
 }
 
@@ -55,6 +63,7 @@ func buildTaskStudioBatchRunServiceConfig(s *service) taskStudioBatchRunServiceC
 		repo:              wiring.repo,
 		studioSessionRepo: wiring.studioSessionRepo,
 		startRun:          startRun,
+		runner:            newListingStudioBatchRunService(wiring.repo, wiring.studioSessionRepo, startRun),
 	}
 }
 
@@ -69,7 +78,8 @@ func buildStudioBatchRunCoordinatorConfig(s *service) studioBatchRunCoordinatorC
 func buildTaskStudioBatchRunExecutorConfig(s *service) taskStudioBatchRunExecutorConfig {
 	wiring := buildTaskStudioBatchRunRepoWiring(s)
 	return taskStudioBatchRunExecutorConfig{
-		repo:       wiring.repo,
-		executeOne: s.executeStudioBatchRunItem,
+		repo:             wiring.repo,
+		executeOne:       s.executeStudioBatchRunItem,
+		completionRunner: newListingStudioBatchRunCompletionService(wiring.repo, nil),
 	}
 }

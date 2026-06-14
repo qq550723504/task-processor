@@ -1,43 +1,45 @@
 package shein
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import (
+	sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
+)
 
 func BuildCategoryRecommendationMeta(pkg *Package) *EditorRecommendationMeta {
-	return sheinworkspace.BuildCategoryRecommendationMeta(pkg)
+	return sheinmarketplace.BuildCategoryRecommendationMeta(pkg)
 }
 
 func BuildAttributeRecommendationMeta(pkg *Package) *EditorRecommendationMeta {
-	return sheinworkspace.BuildAttributeRecommendationMeta(pkg)
+	return sheinmarketplace.BuildAttributeRecommendationMeta(pkg)
 }
 
 func BuildSaleRecommendationMeta(pkg *Package) *EditorRecommendationMeta {
-	return sheinworkspace.BuildSaleRecommendationMeta(pkg)
+	return sheinmarketplace.BuildSaleRecommendationMeta(pkg)
 }
 
 func BuildAttributeSuggestions(pkg *Package) []EditorAttributeSuggestion {
-	return sheinworkspace.BuildAttributeSuggestions(pkg)
+	return sheinmarketplace.BuildAttributeSuggestions(pkg)
 }
 
 func BuildSaleCandidateSuggestions(pkg *Package) []EditorSaleCandidateSuggestion {
-	return sheinworkspace.BuildSaleCandidateSuggestions(pkg)
+	return sheinmarketplace.BuildSaleCandidateSuggestions(pkg)
 }
 
 func BuildCategoryEffects() []EditorEffect {
-	return sheinworkspace.BuildCategoryEffects()
+	return sheinmarketplace.BuildCategoryEffects()
 }
 
 func BuildAttributeEffects() []EditorEffect {
-	return sheinworkspace.BuildAttributeEffects()
+	return sheinmarketplace.BuildAttributeEffects()
 }
 
 func BuildSaleAttributeEffects() []EditorEffect {
-	return sheinworkspace.BuildSaleAttributeEffects()
+	return sheinmarketplace.BuildSaleAttributeEffects()
 }
 
 func BuildEditorProgress[R any, H any](pkg *Package, checklist *SubmitChecklist[R, H]) *EditorProgress {
-	return sheinworkspace.BuildEditorProgress(pkg, sheinworkspace.ChecklistItemCount(checklist))
+	return sheinmarketplace.BuildEditorProgress(pkg, sheinmarketplace.ChecklistItemCount(checklist))
 }
 
 func BuildEditorDirtyHints(pkg *Package) *EditorDirtyHints {
-	return sheinworkspace.BuildEditorDirtyHints(pkg)
+	return sheinmarketplace.BuildEditorDirtyHints(pkg)
 }

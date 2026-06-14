@@ -42,13 +42,11 @@ func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
 }
 
 func buildTaskPreviewServiceConfig(s *service) taskPreviewServiceConfig {
-	readWiring := buildTaskPreviewExportReadWiring(s)
+	repository := buildTaskRepositoryWiring(s)
 	decorators := buildTaskPreviewDecorationWiring(s)
 	return taskPreviewServiceConfig{
-		repo:                                   readWiring.repo,
-		listAssetGenerationTasks:               readWiring.listAssetGenerationTasks,
-		decorateSheinCookieAvailabilityPreview: decorators.decorateSheinCookieAvailabilityPreview,
-		decorateSheinStoreResolutionPreview:    decorators.decorateSheinStoreResolutionPreview,
+		repo:       repository.repo,
+		decorators: decorators,
 	}
 }
 

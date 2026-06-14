@@ -136,7 +136,7 @@ Submission initialization is now grouped as:
 
 1. task-level retry/recovery collaborators,
 2. submission state and execution collaborators,
-3. SHEIN submission orchestrators, including refresh/status handling,
+3. SHEIN submission orchestrators, including refresh/status handling, the direct-submit phase runner bridge, the shared payload-stage runner bridge, the shared remote-submit runner bridge, the shared success-persistence runner bridge, and the shared failure-persistence runner bridge,
 4. Temporal adapter initialization in its own step.
 
 ### `service_admin_collaborators.go`
@@ -393,6 +393,11 @@ Owns root studio batch run entrypoints:
 - list batch run items,
 - cancel batch run.
 
+Current extraction checkpoint:
+
+- `taskStudioBatchRunService` now delegates core flow to `internal/listing/studio`
+- root `listingkit` still owns service entrypoints, collaborator wiring, and repo/session adapters for this seam
+
 ### `service_task_wiring.go`
 
 Owns explicit config builders for non-submit task collaborators:
@@ -455,6 +460,12 @@ The root submit surface is now split so the facade file stays intentionally thin
 launch/gating entry helpers live in `service_submit_workflow_entry_helpers.go` and
 Temporal task-loading helpers live alongside the Temporal adapter in
 `service_submit_temporal_task_loader_helper.go`.
+
+Submission-specific checkpoint:
+
+- refresh, requeue, immediate recovery, and batch recovery orchestrations now have generic homes under `internal/listing/submission`
+- root `service_submit_routing.go` remains a delegate-only facade
+- root submit collaborator files should prefer adapting to submission-domain runners over adding new orchestration loops inline
 
 ### `service_upload_logic.go`
 

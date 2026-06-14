@@ -1,22 +1,22 @@
 package shein
 
-import sheinworkspace "task-processor/internal/workspace/shein"
+import sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
 
-type RevisionDiffPreview = sheinworkspace.RevisionDiffPreview
-type RevisionFieldChange = sheinworkspace.RevisionFieldChange
+type RevisionDiffPreview = sheinmarketplace.RevisionDiffPreview
+type RevisionFieldChange = sheinmarketplace.RevisionFieldChange
 
 func BuildRevisionDiffPreview(pkg *Package, revision *EditorRevisionSkeleton) *RevisionDiffPreview {
-	return sheinworkspace.BuildRevisionDiffPreview(pkg, revision)
+	return sheinmarketplace.BuildRevisionDiffPreview(pkg, revision)
 }
 
 func BuildRevisionDiffPreviewFromInput(revision *EditorRevisionSkeleton) *RevisionDiffPreview {
-	return sheinworkspace.BuildRevisionDiffPreviewFromInput(revision)
+	return sheinmarketplace.BuildRevisionDiffPreviewFromInput(revision)
 }
 
 func BuildRevisionDiffBetweenRevisions(base, target *EditorRevisionSkeleton) *RevisionDiffPreview {
-	return sheinworkspace.BuildRevisionDiffBetweenRevisions(base, target)
+	return sheinmarketplace.BuildRevisionDiffBetweenRevisions(base, target)
 }
 
 func BuildAppliedChangesPreview(before, after *Package) *RevisionDiffPreview {
-	return sheinworkspace.BuildAppliedChangesPreview(before, after)
+	return sheinmarketplace.BuildAppliedChangesPreview(before, after)
 }

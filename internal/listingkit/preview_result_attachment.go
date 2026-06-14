@@ -1,10 +1,10 @@
 package listingkit
 
-func attachListingKitPreviewResult(preview *ListingKitPreview, result *ListingKitResult, selectedPlatform string) {
+func attachListingKitPreviewResult(preview *ListingKitPreview, task *Task, selectedPlatform string) {
 	if preview == nil {
 		return
 	}
-	projection := buildListingKitPreviewProjection(result, selectedPlatform)
+	projection := buildListingKitPreviewProjection(task, selectedPlatform)
 	preview.Overview = projection.overview
 	preview.NeedsReview = projection.needsReview
 	preview.Catalog = projection.catalog

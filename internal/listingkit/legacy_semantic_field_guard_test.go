@@ -104,6 +104,47 @@ func TestLegacySemanticFieldsStayInsideCompatibilityBoundaries(t *testing.T) {
 	}
 }
 
+func TestListingKitDoesNotImportLegacySheinWorkspace(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := repositoryRootFromTestFile(t)
+	forbiddenImport := "task-processor/internal/workspace/shein"
+
+	var violations []string
+	absDir := filepath.Join(repoRoot, filepath.FromSlash("internal/listingkit"))
+	err := filepath.WalkDir(absDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, spec := range file.Imports {
+			if strings.Trim(spec.Path.Value, "\"") != forbiddenImport {
+				continue
+			}
+			position := fset.Position(spec.Pos())
+			violations = append(violations, position.String()+": import legacy SHEIN workspace through internal/listingkit/workspace/shein or internal/marketplace/shein/workspace")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("scan listingkit imports: %v", err)
+	}
+	if len(violations) > 0 {
+		t.Fatalf("legacy SHEIN workspace import guard failed:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
 func importedPackageAliases(file *ast.File) map[string]bool {
 	aliases := make(map[string]bool, len(file.Imports))
 	for _, spec := range file.Imports {

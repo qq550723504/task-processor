@@ -2,8 +2,11 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	studiodomain "task-processor/internal/listing/studio"
 )
 
 func TestStudioBatchRunServiceCreateReturnsOrderedItemsFromSavedBatchIDs(t *testing.T) {
@@ -118,6 +121,49 @@ func TestStudioBatchRunServiceCreateStartsConfiguredRun(t *testing.T) {
 	}
 	if startedRunID != run.ID {
 		t.Fatalf("startedRunID = %q, want %q", startedRunID, run.ID)
+	}
+}
+
+func TestTaskStudioBatchRunServiceUsesListingStudioRunner(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	svc := newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{
+		runner: studiodomain.NewBatchRunService(studiodomain.BatchRunServiceConfig{
+			Repo: studioBatchRunDomainRepoStub{},
+			SessionRepo: studioBatchRunDomainSessionStub{
+				session: &studiodomain.BatchSeedSession{SavedAsBatch: true},
+			},
+			StartRun:      func(context.Context, string) error { return nil },
+			NewRunID:      func() string { return "run-domain-1" },
+			RequestUserID: func(context.Context) string { return "user-1" },
+		}),
+	})
+
+	run, items, err := svc.CreateStudioBatchRun(ctx, &CreateStudioBatchRunRequest{BatchIDs: []string{"batch-1"}})
+	if err != nil {
+		t.Fatalf("CreateStudioBatchRun() error = %v", err)
+	}
+	if run == nil || run.ID != "run-domain-1" || run.Mode != StudioBatchRunModeGenerate {
+		t.Fatalf("run = %+v", run)
+	}
+	if len(items) != 1 || items[0].BatchID != "batch-1" {
+		t.Fatalf("items = %+v", items)
+	}
+}
+
+func TestTaskStudioBatchRunServiceMapsListingStudioMissingBatchError(t *testing.T) {
+	svc := newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{
+		runner: studiodomain.NewBatchRunService(studiodomain.BatchRunServiceConfig{
+			Repo:          studioBatchRunDomainRepoStub{},
+			SessionRepo:   studioBatchRunDomainSessionStub{},
+			StartRun:      func(context.Context, string) error { return nil },
+			NewRunID:      func() string { return "run-domain-1" },
+			RequestUserID: func(context.Context) string { return "user-1" },
+		}),
+	})
+
+	_, _, err := svc.CreateStudioBatchRun(context.Background(), &CreateStudioBatchRunRequest{BatchIDs: []string{"batch-1"}})
+	if !errors.Is(err, ErrStudioSessionNotFound) {
+		t.Fatalf("CreateStudioBatchRun() error = %v, want ErrStudioSessionNotFound", err)
 	}
 }
 
@@ -304,4 +350,30 @@ func cloneStudioBatchRunTestSession(session *SheinStudioSession) *SheinStudioSes
 func TenantIDFromContextOrTest(ctx context.Context) string {
 	tenantID, _ := TenantScopeFromContext(ctx)
 	return tenantID
+}
+
+type studioBatchRunDomainRepoStub struct{}
+
+func (studioBatchRunDomainRepoStub) CreateBatchRun(context.Context, *studiodomain.BatchRunRecord, []studiodomain.BatchRunItemRecord) error {
+	return nil
+}
+
+func (studioBatchRunDomainRepoStub) GetBatchRun(context.Context, string) (*studiodomain.BatchRunRecord, error) {
+	return nil, nil
+}
+
+func (studioBatchRunDomainRepoStub) ListBatchRunItems(context.Context, string) ([]studiodomain.BatchRunItemRecord, error) {
+	return nil, nil
+}
+
+func (studioBatchRunDomainRepoStub) UpdateBatchRun(context.Context, *studiodomain.BatchRunRecord) error {
+	return nil
+}
+
+type studioBatchRunDomainSessionStub struct {
+	session *studiodomain.BatchSeedSession
+}
+
+func (s studioBatchRunDomainSessionStub) GetSession(context.Context, string) (*studiodomain.BatchSeedSession, error) {
+	return s.session, nil
 }

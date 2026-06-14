@@ -12,12 +12,14 @@ Current stable ownership:
 - selected-platform normalization and validation
 - supported platform selection rules
 - platform section availability checks
+- read-model projection seam for legacy preview adapters
+- task preview read orchestration seam (`GetTaskPreview` style load/build/finalize flow)
 
 Does not own yet:
 
 - ListingKit task/result projection
 - marketplace-specific preview payload builders
-- repository/service attachment logic
+- concrete repository implementations and legacy preview DTO adapters
 
 Those responsibilities still live in `internal/listingkit` until neutral preview
 projection inputs are introduced and marketplace-specific preview builders have

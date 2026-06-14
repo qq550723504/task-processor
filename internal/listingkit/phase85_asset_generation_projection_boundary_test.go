@@ -34,23 +34,35 @@ func TestAssetGenerationProjectionBoundary(t *testing.T) {
 
 		previewSource := readNamedFunctionSource(t, "task_preview_service.go", "GetTaskPreview")
 		previewCalls := readNamedFunctionCallNames(t, "task_preview_service.go", "GetTaskPreview")
+		previewFinalizeSource := readNamedFunctionSource(t, "task_preview_service_support.go", "finalizeTaskPreview")
+		previewFinalizeCalls := readNamedFunctionCallNames(t, "task_preview_service_support.go", "finalizeTaskPreview")
 		exportSource := readNamedFunctionSource(t, "task_export_service.go", "GetTaskExport")
 		exportCalls := readNamedFunctionCallNames(t, "task_export_service.go", "GetTaskExport")
 
 		assertSourceContainsAll(t, previewSource, []string{
+			"return s.reader.GetTaskPreview(ctx, taskID, platform)",
+		})
+		assertSourceExcludesAll(t, previewSource, []string{
+			"projection := buildAssetGenerationProjection(task.Result, tasks)",
+		})
+		assertFunctionCallsContainAll(t, previewCalls, []string{
+			"GetTaskPreview",
+		})
+
+		assertSourceContainsAll(t, previewFinalizeSource, []string{
 			"projection := buildAssetGenerationProjection(task.Result, tasks)",
 			"preview.AssetGenerationSummary = projection.Summary",
 			"preview.AssetGenerationTasks = projection.Tasks",
 			"preview.AssetGenerationQueue = projection.Queue",
 			"preview.AssetGenerationOverview = projection.Overview",
 		})
-		assertSourceExcludesAll(t, previewSource, []string{
+		assertSourceExcludesAll(t, previewFinalizeSource, []string{
 			"preview.AssetGenerationSummary = buildAssetGenerationSummary(tasks)",
 			"preview.AssetGenerationTasks = append([]assetgeneration.Task(nil), tasks...)",
 			"preview.AssetGenerationQueue = buildGenerationWorkQueue(withListingKitResultGeneration(task.Result, tasks))",
 			"preview.AssetGenerationOverview = buildAssetGenerationOverview(preview.AssetGenerationQueue)",
 		})
-		assertFunctionCallsContainAll(t, previewCalls, []string{
+		assertFunctionCallsContainAll(t, previewFinalizeCalls, []string{
 			"buildAssetGenerationProjection",
 		})
 

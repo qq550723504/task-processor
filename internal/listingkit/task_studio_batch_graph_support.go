@@ -46,10 +46,24 @@ func (s *taskStudioBatchService) syncStudioBatchRetryExecutionConfigFromDraft(ct
 }
 
 func (s *taskStudioBatchService) refreshStudioBatchGenerationGraph(ctx context.Context, batchID string) error {
-	if s.studioSessionRepo == nil {
+	return refreshStudioBatchGenerationGraph(ctx, s.repo, s.studioSessionRepo, s.currentTime, batchID)
+}
+
+func (s *taskStudioBatchService) ensureStudioBatchGenerationGraphForResume(ctx context.Context, batchID string) error {
+	return ensureStudioBatchGenerationGraphForResume(ctx, s.repo, s.studioSessionRepo, s.currentTime, batchID)
+}
+
+func refreshStudioBatchGenerationGraph(
+	ctx context.Context,
+	repo StudioBatchRepository,
+	studioSessionRepo studioBatchSeedSessionRepository,
+	currentTime func() time.Time,
+	batchID string,
+) error {
+	if studioSessionRepo == nil {
 		return fmt.Errorf("studio session repository is not configured")
 	}
-	session, err := s.studioSessionRepo.GetSession(ctx, batchID)
+	session, err := studioSessionRepo.GetSession(ctx, batchID)
 	if err != nil {
 		return err
 	}
@@ -57,12 +71,12 @@ func (s *taskStudioBatchService) refreshStudioBatchGenerationGraph(ctx context.C
 		return ErrStudioSessionNotFound
 	}
 
-	_, existingErr := s.repo.GetStudioBatch(ctx, batchID)
+	_, existingErr := repo.GetStudioBatch(ctx, batchID)
 	if existingErr != nil && !errors.Is(existingErr, gorm.ErrRecordNotFound) {
 		return existingErr
 	}
 
-	now := s.currentTime().UTC()
+	now := currentTime().UTC()
 	batch := buildStudioBatchRecordFromSessionDraft(session, now)
 	items := expandStudioBatchItems(batch)
 	for index := range items {
@@ -70,22 +84,28 @@ func (s *taskStudioBatchService) refreshStudioBatchGenerationGraph(ctx context.C
 		items[index].UpdatedAt = items[index].CreatedAt
 	}
 	if errors.Is(existingErr, gorm.ErrRecordNotFound) {
-		return s.repo.CreateStudioBatchGraph(ctx, batch, items, nil, nil)
+		return repo.CreateStudioBatchGraph(ctx, batch, items, nil, nil)
 	}
-	return s.repo.ReplaceStudioBatchGenerationGraph(ctx, batch, items)
+	return repo.ReplaceStudioBatchGenerationGraph(ctx, batch, items)
 }
 
-func (s *taskStudioBatchService) ensureStudioBatchGenerationGraphForResume(ctx context.Context, batchID string) error {
-	if s.repo == nil {
+func ensureStudioBatchGenerationGraphForResume(
+	ctx context.Context,
+	repo StudioBatchRepository,
+	studioSessionRepo studioBatchSeedSessionRepository,
+	currentTime func() time.Time,
+	batchID string,
+) error {
+	if repo == nil {
 		return fmt.Errorf("studio batch repository is not configured")
 	}
 
-	_, err := s.repo.GetStudioBatch(ctx, batchID)
+	_, err := repo.GetStudioBatch(ctx, batchID)
 	switch {
 	case err == nil:
 		return nil
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		return s.refreshStudioBatchGenerationGraph(ctx, batchID)
+		return refreshStudioBatchGenerationGraph(ctx, repo, studioSessionRepo, currentTime, batchID)
 	default:
 		return err
 	}

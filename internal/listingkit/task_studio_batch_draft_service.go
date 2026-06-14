@@ -11,66 +11,61 @@ import (
 )
 
 type taskStudioBatchDraftServiceConfig struct {
-	repo studioBatchDraftRepository
+	repo   studioBatchDraftRepository
+	runner *listingStudioBatchDraftRunner
 }
 
 type taskStudioBatchDraftService struct {
-	repo studioBatchDraftRepository
+	repo   studioBatchDraftRepository
+	runner *listingStudioBatchDraftRunner
 }
 
 func newTaskStudioBatchDraftService(config taskStudioBatchDraftServiceConfig) *taskStudioBatchDraftService {
-	return &taskStudioBatchDraftService{repo: config.repo}
+	service := &taskStudioBatchDraftService{
+		repo:   config.repo,
+		runner: config.runner,
+	}
+	service.ensureRunner()
+	return service
 }
 
 func (s *taskStudioBatchDraftService) ListStudioSessionGallery(ctx context.Context, limit int) (*StudioSessionGalleryResponse, error) {
-	if s.repo == nil {
+	s.ensureRunner()
+	if s.runner == nil {
 		return nil, fmt.Errorf("studio session repository is not configured")
 	}
-	items, err := s.repo.ListGalleryItems(ctx, limit)
+	result, err := s.runner.ListSessionGallery(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
 	return &StudioSessionGalleryResponse{
-		Items: items,
-		Total: len(items),
+		Items: result.Items,
+		Total: result.Total,
 	}, nil
 }
 
 func (s *taskStudioBatchDraftService) ListStudioBatches(ctx context.Context, limit int) (*StudioBatchListResponse, error) {
-	if s.repo == nil {
+	s.ensureRunner()
+	if s.runner == nil {
 		return nil, fmt.Errorf("studio session repository is not configured")
 	}
-	sessions, err := s.repo.ListBatchSessions(ctx, limit)
+	result, err := s.runner.ListBatches(ctx, limit)
 	if err != nil {
 		return nil, err
 	}
-	sessionIDs := make([]string, 0, len(sessions))
-	for _, session := range sessions {
-		sessionIDs = append(sessionIDs, session.ID)
-	}
-	designCounts, err := s.repo.CountSessionDesignsBySessionIDs(ctx, sessionIDs)
-	if err != nil {
-		return nil, err
-	}
-	items := make([]SheinStudioBatchListItem, 0, len(sessions))
-	for _, session := range sessions {
-		items = append(items, mapStudioBatchListItem(&session, designCounts[session.ID]))
-	}
-	return &StudioBatchListResponse{Items: items, Total: len(items)}, nil
+	return &StudioBatchListResponse{Items: result.Items, Total: result.Total}, nil
 }
 
 func (s *taskStudioBatchDraftService) GetStudioBatch(ctx context.Context, batchID string) (*StudioBatchDraftDetail, error) {
-	if s.repo == nil {
+	s.ensureRunner()
+	if s.runner == nil {
 		return nil, fmt.Errorf("studio session repository is not configured")
 	}
-	session, err := s.repo.GetSession(ctx, batchID)
+	result, err := s.runner.GetBatch(ctx, batchID)
 	if err != nil {
-		return nil, err
+		return nil, adaptStudioBatchDraftError(err)
 	}
-	if session == nil || !session.SavedAsBatch {
-		return nil, ErrStudioSessionNotFound
-	}
-	return s.loadStudioBatchDraftDetail(ctx, session)
+	return &StudioBatchDraftDetail{Batch: (*StudioBatchDraft)(result.Batch), Designs: result.Designs}, nil
 }
 
 func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req *UpsertStudioBatchRequest) (*StudioBatchDraftDetail, error) {
@@ -192,17 +187,11 @@ func sanitizeStudioBatchCreateRequest(req *UpsertStudioBatchRequest) *UpsertStud
 }
 
 func (s *taskStudioBatchDraftService) DeleteStudioBatch(ctx context.Context, batchID string) error {
-	if s.repo == nil {
+	s.ensureRunner()
+	if s.runner == nil {
 		return fmt.Errorf("studio session repository is not configured")
 	}
-	session, err := s.repo.GetSession(ctx, batchID)
-	if err != nil {
-		return err
-	}
-	if session == nil || !session.SavedAsBatch {
-		return nil
-	}
-	return s.repo.DeleteSession(ctx, batchID)
+	return adaptStudioBatchDraftError(s.runner.DeleteBatch(ctx, batchID))
 }
 
 func (s *taskStudioBatchDraftService) nextTenantBatchName(ctx context.Context) (string, error) {
@@ -241,4 +230,11 @@ func parseStudioBatchNumber(name string) (int, bool) {
 		return 0, false
 	}
 	return value, true
+}
+
+func (s *taskStudioBatchDraftService) ensureRunner() {
+	if s == nil || s.runner != nil || s.repo == nil {
+		return
+	}
+	s.runner = newListingStudioBatchDraftService(s.repo)
 }

@@ -1,15 +1,8 @@
 package shein
 
-type HistoryDetail[Record any, Payload any] struct {
-	TaskID         string             `json:"task_id"`
-	Record         *Record            `json:"record,omitempty"`
-	Navigation     *HistoryNavigation `json:"navigation,omitempty"`
-	RestorePayload *Payload           `json:"restore_payload,omitempty"`
-	HistoryIndex   int                `json:"history_index"`
-	TotalRecords   int                `json:"total_records"`
-	IsTruncated    bool               `json:"is_truncated"`
-	MaxRecords     int                `json:"max_records"`
-}
+import sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
+
+type HistoryDetail[Record any, Payload any] = sheinmarketplace.HistoryDetail[Record, Payload]
 
 func BuildHistoryDetail[Record any, Payload any](
 	taskID string,
@@ -21,14 +14,5 @@ func BuildHistoryDetail[Record any, Payload any](
 	isTruncated bool,
 	maxRecords int,
 ) *HistoryDetail[Record, Payload] {
-	return &HistoryDetail[Record, Payload]{
-		TaskID:         taskID,
-		Record:         record,
-		Navigation:     navigation,
-		RestorePayload: restorePayload,
-		HistoryIndex:   historyIndex,
-		TotalRecords:   totalRecords,
-		IsTruncated:    isTruncated,
-		MaxRecords:     maxRecords,
-	}
+	return sheinmarketplace.BuildHistoryDetail(taskID, record, navigation, restorePayload, historyIndex, totalRecords, isTruncated, maxRecords)
 }

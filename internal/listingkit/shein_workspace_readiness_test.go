@@ -3,9 +3,9 @@ package listingkit
 import (
 	"testing"
 
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
-	sheinworkspace "task-processor/internal/workspace/shein"
 )
 
 func TestBuildSheinSubmitReadinessBlockedWhenCoreFieldsMissing(t *testing.T) {

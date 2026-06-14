@@ -458,6 +458,38 @@ func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 	}
 }
 
+func TestTaskPreviewServiceConfigUsesPreviewSpecificWiring(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("service_task_wiring.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task_wiring.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		"func buildTaskPreviewServiceConfig(s *service) taskPreviewServiceConfig {",
+		"repository := buildTaskRepositoryWiring(s)",
+		"decorators := buildTaskPreviewDecorationWiring(s)",
+		"repo:       repository.repo",
+		"decorators: decorators",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("service_task_wiring.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"readWiring := buildTaskPreviewExportReadWiring(s)",
+		"listAssetGenerationTasks:               readWiring.listAssetGenerationTasks",
+		"repo:                                   readWiring.repo",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("service_task_wiring.go should not contain %q in buildTaskPreviewServiceConfig", needle)
+		}
+	}
+}
+
 func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 	t.Parallel()
 
@@ -554,6 +586,65 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("service_studio_wiring.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_studio_wiring.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		"runner:                   newListingStudioSessionService(wiring.repo),",
+		"asyncJobRunner:           newListingStudioSessionAsyncJobService(wiring.repo),",
+		"generationMetadataRunner: newListingStudioSessionGenerationMetadataService(wiring.repo),",
+		"reviewTaskMetadataRunner: newListingStudioSessionReviewTaskMetadataService(wiring.repo),",
+		"generalMetadataRunner:    newListingStudioSessionGeneralMetadataService(wiring.repo),",
+		"runner: newListingStudioBatchDraftService(wiring.repo),",
+		"runner:            newListingStudioBatchRunService(wiring.repo, wiring.studioSessionRepo, startRun),",
+		"detailRunner:       wiring.detailRunner,",
+		"reviewRunner:       wiring.reviewRunner,",
+		"completionRunner: newListingStudioBatchRunCompletionService(wiring.repo, nil),",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("service_studio_wiring.go should contain %q", needle)
+		}
+	}
+}
+
+func TestStudioBatchRunExecutorDelegatesCompletionRulesToStudioDomain(t *testing.T) {
+	t.Parallel()
+
+	source := readNamedFunctionSource(t, "task_studio_batch_run_executor.go", "cancelUnfinishedItems")
+	resolveSource := readNamedFunctionSource(t, "task_studio_batch_run_executor.go", "resolveFinalRunStatus")
+	counterSource := readNamedFunctionSource(t, "task_studio_batch_run_executor.go", "refreshRunCounters")
+	ensureSource := readNamedFunctionSource(t, "task_studio_batch_run_executor.go", "ensureCompletionRunner")
+
+	assertSourceContainsAll(t, source, []string{
+		"return e.completionRunner.CancelUnfinishedItems(ctx, items)",
+	})
+	assertSourceContainsAll(t, resolveSource, []string{
+		"return e.completionRunner.ResolveFinalStatus(run != nil && run.CancelRequested, items)",
+	})
+	assertSourceContainsAll(t, counterSource, []string{
+		"counters := e.completionRunner.CountItems(items)",
+		"run.TotalBatches = counters.Total",
+		"run.CompletedBatches = counters.Completed",
+		"run.SucceededBatches = counters.Succeeded",
+		"run.FailedBatches = counters.Failed",
+	})
+	assertSourceContainsAll(t, ensureSource, []string{
+		"e.completionRunner = newListingStudioBatchRunCompletionService(e.repo, e.now)",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"case StudioBatchRunItemStatusSucceeded, StudioBatchRunItemStatusFailed, StudioBatchRunItemStatusCancelled:",
+	})
+	assertSourceExcludesAll(t, resolveSource, []string{
+		"failed > 0 && succeeded > 0",
+	})
 }
 
 func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
@@ -668,6 +759,134 @@ func TestSubmitRoutingFileOwnsRootSubmitEntryDelegate(t *testing.T) {
 		t.Fatal("service_submit.go should be removed after facade file rename")
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("ReadFile(service_submit.go) unexpected error = %v", err)
+	}
+}
+
+func TestTaskSubmissionRefreshServiceUsesSubmissionDomainRunner(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("task_submission_refresh_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_refresh_service.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		`submissiondomain.NewStatusRefreshService(`,
+		`LockKeySuffix:       "refresh_submission_status",`,
+		`LoadState:           svc.loadSheinSubmissionRefreshState,`,
+		`ResolveConfirmation: svc.resolveSubmissionRefreshConfirmation,`,
+		`Finish:              svc.finishSubmissionRefresh,`,
+		`return s.refreshRunner.RefreshStatus(ctx, taskID)`,
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("task_submission_refresh_service.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		`unlockSubmit := s.lockSubmit(taskID + ":refresh_submission_status")`,
+		`confirmation, remoteErr := s.resolveSubmissionRefreshConfirmation(taskID, refreshState)`,
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("task_submission_refresh_service.go should not contain %q after submission-domain refresh runner extraction", needle)
+		}
+	}
+}
+
+func TestTaskRequeueServiceUsesSubmissionDomainRunner(t *testing.T) {
+	t.Parallel()
+
+	serviceSrc, err := os.ReadFile("task_requeue_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_requeue_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		`submissiondomain.NewRequeueService(submissiondomain.RequeueServiceConfig{`,
+		`return &submissiondomain.RequeueTask{ID: task.ID, Status: string(task.Status)}, nil`,
+		`return submitTaskWithRetry(taskRequeueSubmitterFunc(submit), taskID, taskRequeueMaxWait)`,
+		`result, err := s.runner.RequeueTasks(ctx, &submissiondomain.RequeueRequest{`,
+		`return adaptSubmissionDomainRequeueResult(result), nil`,
+	} {
+		if !strings.Contains(serviceContent, needle) {
+			t.Fatalf("task_requeue_service.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		`for _, taskID := range taskIDs {`,
+		`result.Skipped = append(result.Skipped, TaskRequeueSkip{`,
+		`result.Failed = append(result.Failed, TaskRequeueFailure{`,
+	} {
+		if strings.Contains(serviceContent, needle) {
+			t.Fatalf("task_requeue_service.go should not contain %q after submission-domain requeue runner extraction", needle)
+		}
+	}
+
+	adapterSrc, err := os.ReadFile("task_requeue_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_requeue_adapter.go) error = %v", err)
+	}
+	adapterContent := string(adapterSrc)
+	for _, needle := range []string{
+		`type taskRequeueSubmitterFunc func(taskID string) error`,
+		`func adaptSubmissionDomainRequeueResult(result *submissiondomain.RequeueResult) *RequeuePendingTasksResult {`,
+	} {
+		if !strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_requeue_adapter.go should contain %q", needle)
+		}
+	}
+}
+
+func TestTaskRecoveryServiceUsesSubmissionDomainRunner(t *testing.T) {
+	t.Parallel()
+
+	serviceSrc, err := os.ReadFile("task_recovery_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_recovery_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		`submissiondomain.NewRecoveryNowService(submissiondomain.RecoveryNowServiceConfig[Task]{`,
+		`submissiondomain.NewRecoveryBatchService(submissiondomain.RecoveryBatchServiceConfig[Task]{`,
+		`return svc.repo.RecoverBlockedTaskNow(ctx, taskID, time.Time{})`,
+		`return svc.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{`,
+		`return svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), taskID, current.RetryableBlock, svc.currentTime())`,
+		`return svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), task.ID, task.RetryableBlock, recoverAt)`,
+		`return s.recoveryNow.RecoverNow(ctx, taskID)`,
+		`return s.recoveryBatch.RecoverBatch(ctx, request)`,
+	} {
+		if !strings.Contains(serviceContent, needle) {
+			t.Fatalf("task_recovery_service.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		`taskID = strings.TrimSpace(taskID)`,
+		`current, err := s.repo.GetTask(ctx, taskID)`,
+		`return s.repo.GetTask(ctx, taskID)`,
+		`tasks, err := s.repo.ListRecoverableTasks(ctx, listQuery)`,
+		`for i := range tasks {`,
+	} {
+		if strings.Contains(serviceContent, needle) {
+			t.Fatalf("task_recovery_service.go should not contain %q after submission-domain recovery extraction", needle)
+		}
+	}
+
+	adapterSrc, err := os.ReadFile("task_recovery_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_recovery_adapter.go) error = %v", err)
+	}
+	adapterContent := string(adapterSrc)
+	for _, needle := range []string{
+		`type taskRecoverySubmitterFunc func(taskID string) error`,
+	} {
+		if !strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_recovery_adapter.go should contain %q", needle)
+		}
 	}
 }
 
@@ -1027,6 +1246,145 @@ func TestStudioSessionEntrypointsFileOwnsRootDelegates(t *testing.T) {
 	} {
 		if strings.Contains(serviceContent, needle) {
 			t.Fatalf("studio_session_service.go should not contain %q", needle)
+		}
+	}
+}
+
+func TestTaskStudioBatchDraftAdapterUsesListingStudioRunner(t *testing.T) {
+	t.Parallel()
+
+	adapterSrc, err := os.ReadFile("task_studio_batch_draft_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_draft_adapter.go) error = %v", err)
+	}
+	adapterContent := string(adapterSrc)
+
+	for _, needle := range []string{
+		"func newListingStudioBatchDraftService(repo studioBatchDraftRepository) *listingStudioBatchDraftRunner {",
+		"return studiodomain.NewBatchDraftService(studiodomain.BatchDraftServiceConfig[",
+		"Repo: studioBatchDraftRepositoryAdapter{repo: repo},",
+		"IsSavedBatch: func(session *SheinStudioSession) bool {",
+		"SessionID: func(session *SheinStudioSession) string {",
+		"MapBatchListItem: mapStudioBatchListItem,",
+	} {
+		if !strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_studio_batch_draft_adapter.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("task_studio_batch_draft_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_draft_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"service.ensureRunner()",
+		"func (s *taskStudioBatchDraftService) ensureRunner() {",
+		"s.runner = newListingStudioBatchDraftService(s.repo)",
+		"result, err := s.runner.ListSessionGallery(ctx, limit)",
+		"result, err := s.runner.ListBatches(ctx, limit)",
+		"result, err := s.runner.GetBatch(ctx, batchID)",
+		"return adaptStudioBatchDraftError(s.runner.DeleteBatch(ctx, batchID))",
+	} {
+		if !strings.Contains(serviceContent, needle) {
+			t.Fatalf("task_studio_batch_draft_service.go should contain %q", needle)
+		}
+	}
+}
+
+func TestTaskStudioSessionAdapterUsesListingStudioRunner(t *testing.T) {
+	t.Parallel()
+
+	adapterSrc, err := os.ReadFile("task_studio_session_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_session_adapter.go) error = %v", err)
+	}
+	adapterContent := string(adapterSrc)
+
+	for _, needle := range []string{
+		"func newListingStudioSessionService(repo studioSessionDraftRepository) *listingStudioSessionRunner {",
+		"return studiodomain.NewSessionService(studiodomain.SessionServiceConfig[",
+		"Repo:              studioSessionRepositoryAdapter{repo: repo},",
+		"ValidateSelection: validateStudioSessionSelection,",
+		"BuildSelectionKey: buildStudioSelectionKey,",
+		"NewSession:        newListingStudioSessionRecord,",
+		"RequestUserID: RequestUserIDFromContext,",
+		"NewSessionID:  uuid.NewString,",
+	} {
+		if !strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_studio_session_adapter.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"func newListingStudioSessionAsyncJobService(repo studioSessionDraftRepository) *listingStudioSessionAsyncJobRunner {",
+		"return studiodomain.NewSessionAsyncJobSyncService(studiodomain.SessionAsyncJobSyncServiceConfig[",
+		"Repo:               studioSessionMutationRepositoryAdapter{repo: repo},",
+		"StatusForJob:       studioSessionStatusForAsyncJob,",
+		"SetStatus:          setListingStudioSessionStatus,",
+		"SetGenerationJob:   setListingStudioSessionGenerationJobID,",
+		"SetGenerationError: setListingStudioSessionGenerationError,",
+	} {
+		if !strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_studio_session_adapter.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"func newListingStudioSessionGenerationMetadataService(repo studioSessionDraftRepository) *listingStudioSessionGenerationMetadataRunner {",
+		"return studiodomain.NewSessionGenerationMetadataService(studiodomain.SessionGenerationMetadataServiceConfig[",
+		"SetStatus:          setListingStudioSessionStatus,",
+		"SetGenerationJobID: setListingStudioSessionGenerationJobID,",
+		"SetGenerationJobs:  setListingStudioSessionGenerationJobs,",
+		"SetGenerationError: setListingStudioSessionGenerationError,",
+	} {
+		if !strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_studio_session_adapter.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"func newListingStudioSessionReviewTaskMetadataService(repo studioSessionDraftRepository) *listingStudioSessionReviewTaskMetadataRunner {",
+		"return studiodomain.NewSessionReviewTaskMetadataService(studiodomain.SessionReviewTaskMetadataServiceConfig[",
+		"SetApprovedDesignIDs: setListingStudioSessionApprovedDesignIDs,",
+		"SetCreatedTasks:      setListingStudioSessionCreatedTasks,",
+	} {
+		if !strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_studio_session_adapter.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("task_studio_session_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_session_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"service.ensureRunner()",
+		"service.ensureAsyncJobRunner()",
+		"service.ensureGenerationMetadataRunner()",
+		"service.ensureReviewTaskMetadataRunner()",
+		"func (s *taskStudioSessionService) ensureRunner() {",
+		"func (s *taskStudioSessionService) ensureAsyncJobRunner() {",
+		"func (s *taskStudioSessionService) ensureGenerationMetadataRunner() {",
+		"func (s *taskStudioSessionService) ensureReviewTaskMetadataRunner() {",
+		"s.runner = newListingStudioSessionService(s.repo)",
+		"s.asyncJobRunner = newListingStudioSessionAsyncJobService(s.repo)",
+		"s.generationMetadataRunner = newListingStudioSessionGenerationMetadataService(s.repo)",
+		"if isStudioSessionGenerationMetadataOnlyUpdate(req) {",
+		"session, err = s.generationMetadataRunner.Patch(ctx, studiodomain.SessionGenerationMetadataPatchRequest[",
+		"s.reviewTaskMetadataRunner = newListingStudioSessionReviewTaskMetadataService(s.repo)",
+		"if isStudioSessionReviewTaskMetadataOnlyUpdate(req) {",
+		"session, err = s.reviewTaskMetadataRunner.Patch(ctx, studiodomain.SessionReviewTaskMetadataPatchRequest[SheinStudioCreatedTask]{",
+		"result, err := s.runner.EnsureSession(ctx, &studiodomain.EnsureSessionRequest[SheinStudioSelection]{",
+		"result, err := s.runner.GetSession(ctx, sessionID)",
+		"return &SheinStudioSessionDetail{Session: result.Session, Designs: result.Designs}, nil",
+		"return adaptStudioSessionError(s.asyncJobRunner.SyncAsyncJob(ctx, studiodomain.SessionAsyncJobSyncRequest{",
+	} {
+		if !strings.Contains(serviceContent, needle) {
+			t.Fatalf("task_studio_session_service.go should contain %q", needle)
 		}
 	}
 }
@@ -1410,7 +1768,7 @@ func TestTaskPreviewFileOwnsRootDelegate(t *testing.T) {
 		"func (s *service) GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {",
 		"return s.taskPreviewOrDefault().GetTaskPreview(ctx, taskID, platform)",
 		"func (s *service) buildTaskPreview(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {",
-		"return s.taskPreviewOrDefault().buildTaskPreview(ctx, task, platform)",
+		"return buildTaskPreview(ctx, task, platform, buildTaskPreviewDecorationWiring(s))",
 	} {
 		if !strings.Contains(facadeContent, needle) {
 			t.Fatalf("service_task_preview_logic.go should contain %q", needle)
@@ -1423,15 +1781,87 @@ func TestTaskPreviewFileOwnsRootDelegate(t *testing.T) {
 	}
 	previewServiceContent := string(previewServiceSrc)
 	for _, needle := range []string{
+		"type taskPreviewReader interface {",
 		"type taskPreviewServiceConfig struct {",
 		"func newTaskPreviewService(config taskPreviewServiceConfig) *taskPreviewService {",
 		"func (s *taskPreviewService) GetTaskPreview(ctx context.Context, taskID string, platform string) (*ListingKitPreview, error) {",
-		"task, err := s.repo.GetTask(ctx, taskID)",
-		"func (s *taskPreviewService) buildTaskPreview(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {",
-		"preview, err := buildListingKitPreview(task, platform)",
+		"return s.reader.GetTaskPreview(ctx, taskID, platform)",
 	} {
 		if !strings.Contains(previewServiceContent, needle) {
 			t.Fatalf("task_preview_service.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"task, err := s.repo.GetTask(ctx, taskID)",
+		"type taskPreviewService struct {\n\trepo",
+		"type taskPreviewService struct {\n\treader                                 *previewdomain.TaskPreviewService[Task, ListingKitPreview]\n\tlistAssetGenerationTasks",
+		"type taskPreviewService struct {\n\treader                                 *previewdomain.TaskPreviewService[Task, ListingKitPreview]\n\tdecorateSheinCookieAvailabilityPreview",
+		"type taskPreviewService struct {\n\treader                                 *previewdomain.TaskPreviewService[Task, ListingKitPreview]\n\tdecorateSheinStoreResolutionPreview",
+		"buildTaskPreview(context.Context, *Task, string) (*ListingKitPreview, error)",
+		"func (s *taskPreviewService) buildTaskPreview(ctx context.Context, task *Task, platform string) (*ListingKitPreview, error) {",
+		"func (s *taskPreviewService) finalizeTaskPreview(ctx context.Context, task *Task, preview *ListingKitPreview) error {",
+	} {
+		if strings.Contains(previewServiceContent, needle) {
+			t.Fatalf("task_preview_service.go should not contain %q", needle)
+		}
+	}
+
+	previewSupportSrc, err := os.ReadFile("task_preview_service_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_preview_service_support.go) error = %v", err)
+	}
+	previewSupportContent := string(previewSupportSrc)
+	for _, needle := range []string{
+		"func buildTaskPreview(ctx context.Context, task *Task, platform string, decorators taskPreviewDecorationWiring) (*ListingKitPreview, error) {",
+		"preview, err := buildListingKitPreview(task, platform)",
+		"decorators.decorateSheinCookieAvailabilityPreview(ctx, task, preview)",
+		"func finalizeTaskPreview(ctx context.Context, task *Task, preview *ListingKitPreview, decorators taskPreviewDecorationWiring) error {",
+		"tasks, err := decorators.listAssetGenerationTasks(ctx, task.ID)",
+		"projection := buildAssetGenerationProjection(task.Result, tasks)",
+		"decorators.decorateSheinStoreResolutionPreview(ctx, task, preview)",
+	} {
+		if !strings.Contains(previewSupportContent, needle) {
+			t.Fatalf("task_preview_service_support.go should contain %q", needle)
+		}
+	}
+
+	taskGroupSrc, err := os.ReadFile("service_task_group.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task_group.go) error = %v", err)
+	}
+	taskGroupContent := string(taskGroupSrc)
+	for _, needle := range []string{
+		"preview     taskPreviewReader",
+	} {
+		if !strings.Contains(taskGroupContent, needle) {
+			t.Fatalf("service_task_group.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"preview     *taskPreviewService",
+	} {
+		if strings.Contains(taskGroupContent, needle) {
+			t.Fatalf("service_task_group.go should not contain %q", needle)
+		}
+	}
+
+	mirrorSrc, err := os.ReadFile("service_collaborator_mirrors.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_collaborator_mirrors.go) error = %v", err)
+	}
+	mirrorContent := string(mirrorSrc)
+	for _, needle := range []string{
+		"taskPreview               taskPreviewReader",
+	} {
+		if !strings.Contains(mirrorContent, needle) {
+			t.Fatalf("service_collaborator_mirrors.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"taskPreview               *taskPreviewService",
+	} {
+		if strings.Contains(mirrorContent, needle) {
+			t.Fatalf("service_collaborator_mirrors.go should not contain %q", needle)
 		}
 	}
 
@@ -1501,6 +1931,140 @@ func TestTaskPreviewLogicFileOwnsPreviewBuilderHelper(t *testing.T) {
 			t.Fatalf("service_shein_store_resolution_preview_support_helper.go should keep %q", needle)
 		}
 	}
+
+	wiringSupportSrc, err := os.ReadFile("service_task_wiring_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_task_wiring_support.go) error = %v", err)
+	}
+	wiringSupportContent := string(wiringSupportSrc)
+	for _, needle := range []string{
+		"type taskPreviewDecorationWiring struct {",
+		"func buildTaskPreviewDecorationWiring(s *service) taskPreviewDecorationWiring {",
+		"type taskPreviewAccessWiring struct {",
+		"func buildTaskPreviewAccessWiring(s *service) taskPreviewAccessWiring {",
+	} {
+		if strings.Contains(wiringSupportContent, needle) {
+			t.Fatalf("service_task_wiring_support.go should not contain %q after preview wiring split", needle)
+		}
+	}
+
+	previewHelperSrc, err := os.ReadFile("task_preview_service_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_preview_service_support.go) error = %v", err)
+	}
+	previewHelperContent := string(previewHelperSrc)
+	for _, needle := range []string{
+		"type taskPreviewDecorationWiring struct {",
+		"func buildTaskPreviewDecorationWiring(s *service) taskPreviewDecorationWiring {",
+		"type taskPreviewAccessWiring struct {",
+		"func buildTaskPreviewAccessWiring(s *service) taskPreviewAccessWiring {",
+		"listAssetGenerationTasks",
+		"[]assetgeneration.Task, error",
+	} {
+		if !strings.Contains(previewHelperContent, needle) {
+			t.Fatalf("task_preview_service_support.go should contain %q", needle)
+		}
+	}
+
+	baseSrc, err := os.ReadFile("preview_base.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_base.go) error = %v", err)
+	}
+	baseContent := string(baseSrc)
+	for _, needle := range []string{
+		"previewdomain.BuildTaskShell(previewdomain.TaskShellInput{",
+	} {
+		if !strings.Contains(baseContent, needle) {
+			t.Fatalf("preview_base.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"previewdomain.BuildProjection(previewdomain.ProjectionInput{",
+		"previewdomain.ShellInput{",
+	} {
+		if strings.Contains(baseContent, needle) {
+			t.Fatalf("preview_base.go should not contain %q after task-shell extraction", needle)
+		}
+	}
+
+	builderSrc, err := os.ReadFile("preview_builder.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder.go) error = %v", err)
+	}
+	builderContent := string(builderSrc)
+	for _, needle := range []string{
+		"adaptPreviewDomainHeader(previewdomain.PendingHeader(string(task.Status)))",
+	} {
+		if !strings.Contains(builderContent, needle) {
+			t.Fatalf("preview_builder.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"previewdomain.BuildHeader(previewdomain.HeaderInput{",
+		"StatusMessage: previewdomain.StatusMessage(string(task.Status))",
+	} {
+		if strings.Contains(builderContent, needle) {
+			t.Fatalf("preview_builder.go should not contain %q after pending-header extraction", needle)
+		}
+	}
+
+	projectionSrc, err := os.ReadFile("preview_result_projection.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_result_projection.go) error = %v", err)
+	}
+	projectionContent := string(projectionSrc)
+	for _, needle := range []string{
+		"previewdomain.BuildTaskReadModel(previewdomain.TaskReadModelInput{",
+		"RequestPlatforms: previewRequestPlatforms(task)",
+	} {
+		if !strings.Contains(projectionContent, needle) {
+			t.Fatalf("preview_result_projection.go should contain %q", needle)
+		}
+	}
+
+	if _, err := os.ReadFile("preview_domain_input_adapter.go"); err == nil {
+		t.Fatal("preview_domain_input_adapter.go should be removed after read-projection preview input ownership move")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(preview_domain_input_adapter.go) unexpected error = %v", err)
+	}
+
+	readProjectionSrc, err := os.ReadFile("read_projection_model.go")
+	if err != nil {
+		t.Fatalf("ReadFile(read_projection_model.go) error = %v", err)
+	}
+	readProjectionContent := string(readProjectionSrc)
+	for _, needle := range []string{
+		"PreviewInput                previewdomain.ReadModelInput",
+		"PlatformCards               []ListingKitPlatformCard",
+		"func (projection *listingKitReadProjection) previewDomainReadModelInput() previewdomain.ReadModelInput {",
+	} {
+		if !strings.Contains(readProjectionContent, needle) {
+			t.Fatalf("read_projection_model.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"previewDomainReadModelInput(result *ListingKitResult)",
+		"type listingKitOverviewData struct {",
+		"type listingKitResultAttachment struct {",
+	} {
+		if strings.Contains(readProjectionContent, needle) {
+			t.Fatalf("read_projection_model.go should not contain %q after read-projection input convergence", needle)
+		}
+	}
+
+	for _, file := range []string{
+		"read_projection_overview.go",
+		"read_projection_overview_stages.go",
+		"read_projection_attachment.go",
+		"read_projection_attachment_stages.go",
+	} {
+		if _, err := os.ReadFile(file); err == nil {
+			t.Fatalf("%s should be removed after read-projection preview-input convergence", file)
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("ReadFile(%s) unexpected error = %v", file, err)
+		}
+	}
 }
 
 func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing.T) {
@@ -1531,17 +2095,23 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 		}
 	}
 
-	sectionsSrc, err := os.ReadFile("preview_platform_sections.go")
-	if err != nil {
-		t.Fatalf("ReadFile(preview_platform_sections.go) error = %v", err)
+	if _, err := os.ReadFile("preview_platform_sections.go"); err == nil {
+		t.Fatal("preview_platform_sections.go should be removed after direct previewdomain section usage")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(preview_platform_sections.go) unexpected error = %v", err)
 	}
-	sectionsContent := string(sectionsSrc)
+
+	applySrc, err := os.ReadFile("preview_platform_apply.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_platform_apply.go) error = %v", err)
+	}
+	applyContent := string(applySrc)
 	for _, needle := range []string{
-		"type previewPlatformBuilder interface {",
-		"func previewPlatformBuilders() []previewPlatformBuilder {",
+		"previewdomain.BuildPlatformSection(",
+		"adaptPreviewPlatformSectionError(",
 	} {
-		if strings.Contains(sectionsContent, needle) {
-			t.Fatalf("preview_platform_sections.go should not contain %q", needle)
+		if !strings.Contains(applyContent, needle) {
+			t.Fatalf("preview_platform_apply.go should contain %q", needle)
 		}
 	}
 }
@@ -1565,19 +2135,23 @@ func TestPreviewPlatformSelectionLivesOutsidePreviewBuilderRoot(t *testing.T) {
 		}
 	}
 
-	selectionSrc, err := os.ReadFile("preview_platform_selection.go")
-	if err != nil {
-		t.Fatalf("ReadFile(preview_platform_selection.go) error = %v", err)
+	if _, err := os.ReadFile("preview_platform_selection.go"); err == nil {
+		t.Fatal("preview_platform_selection.go should be removed after direct previewdomain selection usage")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(preview_platform_selection.go) unexpected error = %v", err)
 	}
-	selectionContent := string(selectionSrc)
+
+	stagesSrc, err := os.ReadFile("preview_builder_stages.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_stages.go) error = %v", err)
+	}
+	stagesContent := string(stagesSrc)
 	for _, needle := range []string{
-		"func validateSelectedPreviewPlatform(selectedPlatform string) (string, error) {",
-		"func normalizePreviewPlatform(platform string) string {",
-		"func shouldBuildPreviewPlatform(selectedPlatform, platform string) bool {",
-		"func isSelectedPreviewPlatform(selectedPlatform, platform string) bool {",
+		"previewdomain.ValidateSelectedPlatform(selectedPlatform)",
+		"return nil, \"\", ErrUnsupportedPreviewPlatform",
 	} {
-		if !strings.Contains(selectionContent, needle) {
-			t.Fatalf("preview_platform_selection.go should contain %q", needle)
+		if !strings.Contains(stagesContent, needle) {
+			t.Fatalf("preview_builder_stages.go should contain %q", needle)
 		}
 	}
 }
@@ -2751,6 +3325,346 @@ func TestSubmitWorkflowHelpersFileOwnsRootHelpers(t *testing.T) {
 		t.Fatal("service_submit_workflow.go should be removed after workflow helper rename")
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("ReadFile(service_submit_workflow.go) unexpected error = %v", err)
+	}
+}
+
+func TestTaskDirectSubmissionSupportUsesSubmissionDomainRunner(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("task_direct_submission_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_direct_submission_support.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		"func newSheinDirectSubmitFlowRunner(s *taskDirectSubmissionService) *submissiondomain.DirectSubmitFlowService[*Task, *SheinPackage, sheinproduct.ProductAPI, *sheinproduct.Product, *ListingKitPreview] {",
+		"return submissiondomain.NewDirectSubmitFlowService(",
+		"func newSheinDirectSubmitPayloadStages(s *taskDirectSubmissionService) *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot] {",
+		"return submissiondomain.NewPayloadStageService(",
+		"BuildProductAPI:  s.loadDirectSubmitProductAPI,",
+		"PersistPhase:     s.persistDirectSubmitPhase,",
+		"PrepareProduct:   s.prepareDirectSubmitProduct,",
+		"UploadImages:     s.uploadPendingDirectSubmitImages,",
+		"PreValidate:      s.preValidateDirectSubmitProduct,",
+		"SubmitRemote:     s.completeDirectRemoteSubmit,",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("task_direct_submission_support.go should contain %q", needle)
+		}
+	}
+}
+
+func TestTaskTemporalSubmissionPayloadUsesSubmissionDomainRunner(t *testing.T) {
+	t.Parallel()
+
+	supportSrc, err := os.ReadFile("task_temporal_submission_payload_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_payload_support.go) error = %v", err)
+	}
+	supportContent := string(supportSrc)
+
+	for _, needle := range []string{
+		"func newSheinTemporalSubmitPayloadStages(s *taskTemporalSubmissionAdapter) *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot] {",
+		"return submissiondomain.NewPayloadStageService(",
+		"PersistPhase:           s.persistTemporalSubmitPayloadPhase,",
+		"PreparePayload:         s.prepareTemporalSubmitPayload,",
+		"PersistSnapshot:        s.persistTemporalSubmitPayloadSnapshot,",
+		"UploadImages:           s.uploadTemporalSubmitPayloadImages,",
+		"FinalizeUploaded:       s.finalizeTemporalSubmitPayload,",
+		"PreValidate:            s.preValidateTemporalSubmitPayload,",
+	} {
+		if !strings.Contains(supportContent, needle) {
+			t.Fatalf("task_temporal_submission_payload_support.go should contain %q", needle)
+		}
+	}
+
+	payloadSrc, err := os.ReadFile("task_temporal_submission_payload.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_payload.go) error = %v", err)
+	}
+	payloadContent := string(payloadSrc)
+
+	for _, needle := range []string{
+		"s.payloadStages.Prepare(",
+		"s.payloadStages.UploadImages(",
+		"s.payloadStages.PreValidate(",
+		"s.remoteSubmitter.Submit(",
+	} {
+		if !strings.Contains(payloadContent, needle) {
+			t.Fatalf("task_temporal_submission_payload.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"prepareSheinSubmitPayloadProduct(ctx, in.TaskID, in.Action, in.RequestID, task, pkg, s.prepareSheinSubmitProduct)",
+		"finalizeSheinUploadedSubmitPayload(ctx, in.TaskID, in.Action, in.RequestID, task, in, s.resolveSubmitSettings)",
+		"return s.preValidateSheinSubmitProduct(pkg, in.Product)",
+		"remoteState := prepareSheinRemoteSubmitState(pkg, in.Action, in.RequestID, in.Product, in.Snapshot)",
+		"attempt := executeSheinSubmitRemoteAttempt(",
+	} {
+		if strings.Contains(payloadContent, needle) {
+			t.Fatalf("task_temporal_submission_payload.go should not contain %q after payload-stage extraction", needle)
+		}
+	}
+}
+
+func TestTaskSubmissionRemoteSupportUsesSubmissionDomainRunner(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("task_submission_remote_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_remote_support.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		"func newSheinRemoteSubmitService(",
+		"return submissiondomain.NewRemoteSubmitService(",
+		"state := prepareSheinRemoteSubmitState(pkg, action, requestID, product, snapshot)",
+		"ExecuteAttempt: executeAttempt,",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("task_submission_remote_support.go should contain %q", needle)
+		}
+	}
+}
+
+func TestTaskSubmissionSuccessPersistenceUsesSubmissionDomainRunner(t *testing.T) {
+	t.Parallel()
+
+	supportSrc, err := os.ReadFile("task_submission_success_persistence_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_success_persistence_support.go) error = %v", err)
+	}
+	supportContent := string(supportSrc)
+
+	for _, needle := range []string{
+		"func newSheinSubmissionSuccessPersistenceService(",
+		"return submissiondomain.NewSuccessPersistenceService(",
+		"PersistResultAndPhase:       persistResultAndPhase,",
+		"CompleteAttempt:             completeAttempt,",
+		"PersistSuccessfulSubmission: persistSuccessfulSubmission,",
+	} {
+		if !strings.Contains(supportContent, needle) {
+			t.Fatalf("task_submission_success_persistence_support.go should contain %q", needle)
+		}
+	}
+
+	stateSrc, err := os.ReadFile("task_submission_state_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_state_service.go) error = %v", err)
+	}
+	stateContent := string(stateSrc)
+
+	for _, needle := range []string{
+		"service.successRunner = newSheinSubmissionSuccessPersistenceService(",
+		"s.successRunner.PersistSuccess(ctx, submissiondomain.SuccessPersistenceInput[*Task, *SheinPackage, *sheinpub.SubmissionResponse]{",
+	} {
+		if !strings.Contains(stateContent, needle) {
+			t.Fatalf("task_submission_state_service.go should contain %q", needle)
+		}
+	}
+
+	temporalSrc, err := os.ReadFile("task_temporal_submission_persistence_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_persistence_support.go) error = %v", err)
+	}
+	temporalContent := string(temporalSrc)
+
+	for _, needle := range []string{
+		"s.successRunner.PersistSuccess(ctx, submissiondomain.SuccessPersistenceInput[*Task, *SheinPackage, *sheinpub.SubmissionResponse]{",
+		"func (s *taskTemporalSubmissionAdapter) persistTemporalSuccessResultAndPhase(",
+		"func (s *taskTemporalSubmissionAdapter) completeTemporalSubmitAttempt(",
+	} {
+		if !strings.Contains(temporalContent, needle) {
+			t.Fatalf("task_temporal_submission_persistence_support.go should contain %q", needle)
+		}
+	}
+}
+
+func TestTaskSubmissionFailurePersistenceUsesSubmissionDomainRunner(t *testing.T) {
+	t.Parallel()
+
+	supportSrc, err := os.ReadFile("task_submission_failure_persistence_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_failure_persistence_support.go) error = %v", err)
+	}
+	supportContent := string(supportSrc)
+
+	for _, needle := range []string{
+		"func newSheinSubmissionFailurePersistenceService(",
+		"return submissiondomain.NewFailurePersistenceService(",
+		"RecordFailure: recordFailure,",
+	} {
+		if !strings.Contains(supportContent, needle) {
+			t.Fatalf("task_submission_failure_persistence_support.go should contain %q", needle)
+		}
+	}
+
+	stateSrc, err := os.ReadFile("task_submission_state_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_state_service.go) error = %v", err)
+	}
+	stateContent := string(stateSrc)
+
+	for _, needle := range []string{
+		"service.failureRunner = newSheinSubmissionFailurePersistenceService(service.recordFailureState)",
+		"s.failureRunner.PersistFailure(ctx, submissiondomain.FailurePersistenceInput[*ListingKitResult, *SheinPackage]{",
+		"func (s *taskSubmissionStateService) recordFailureState(",
+	} {
+		if !strings.Contains(stateContent, needle) {
+			t.Fatalf("task_submission_state_service.go should contain %q", needle)
+		}
+	}
+
+	temporalSrc, err := os.ReadFile("task_temporal_submission_persistence_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_persistence_support.go) error = %v", err)
+	}
+	temporalContent := string(temporalSrc)
+
+	for _, needle := range []string{
+		"s.failureRunner.PersistFailure(ctx, input)",
+		"func (s *taskTemporalSubmissionAdapter) recordTemporalFailureState(",
+	} {
+		if !strings.Contains(temporalContent, needle) {
+			t.Fatalf("task_temporal_submission_persistence_support.go should contain %q", needle)
+		}
+	}
+}
+
+func TestTaskStudioBatchRunAdapterUsesListingStudioRunner(t *testing.T) {
+	t.Parallel()
+
+	adapterSrc, err := os.ReadFile("task_studio_batch_run_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_run_adapter.go) error = %v", err)
+	}
+	adapterContent := string(adapterSrc)
+
+	for _, needle := range []string{
+		"func newListingStudioBatchRunService(",
+		"repo StudioBatchRunRepository,",
+		"studioSessionRepo studioBatchSeedSessionRepository,",
+		"startRun func(ctx context.Context, runID string) error,",
+		"return studiodomain.NewBatchRunService(studiodomain.BatchRunServiceConfig{",
+		"Repo:          studioBatchRunRepositoryAdapter{repo: repo},",
+		"SessionRepo:   studioBatchSeedSessionRepositoryAdapter{repo: studioSessionRepo},",
+		"StartRun:      startRun,",
+		"NewRunID:      uuid.NewString,",
+		"RequestUserID: RequestUserIDFromContext,",
+	} {
+		if !strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_studio_batch_run_adapter.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("task_studio_batch_run_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_run_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"service.ensureRunner()",
+		"func (s *taskStudioBatchRunService) ensureRunner() {",
+		"s.runner = newListingStudioBatchRunService(s.repo, s.studioSessionRepo, s.startRun)",
+		"run, items, err := s.runner.CreateBatchRun(ctx, adaptStudioBatchRunRequest(req))",
+		"return adaptStudioBatchRunRecord(run), adaptStudioBatchRunItems(items), nil",
+		"run, err := s.runner.GetBatchRun(ctx, runID)",
+		"items, err := s.runner.ListBatchRunItems(ctx, runID)",
+		"return s.runner.CancelBatchRun(ctx, runID)",
+	} {
+		if !strings.Contains(serviceContent, needle) {
+			t.Fatalf("task_studio_batch_run_service.go should contain %q", needle)
+		}
+	}
+}
+
+func TestTaskStudioBatchDetailAdapterUsesListingStudioRunner(t *testing.T) {
+	t.Parallel()
+
+	adapterSrc, err := os.ReadFile("task_studio_batch_detail_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_detail_adapter.go) error = %v", err)
+	}
+	adapterContent := string(adapterSrc)
+
+	for _, needle := range []string{
+		"func newListingStudioBatchDetailService(",
+		"repo StudioBatchRepository,",
+		"studioSessionRepo studioBatchSeedSessionRepository,",
+		"ensureGraph func(context.Context, string) error,",
+		"return studiodomain.NewBatchDetailService(studiodomain.BatchDetailServiceConfig[",
+		"ResolveWithoutGraph: func(ctx context.Context, batchID string) (*StudioBatchDetail, bool, error) {",
+		"return resolveStudioBatchDetailWithoutGraph(ctx, studioSessionRepo, batchID)",
+		"EnsureGraph: ensureGraph,",
+		"draftUpdatedAt, createdTasks, failedTasks, err := loadStudioBatchDraftState(ctx, studioSessionRepo, batchID)",
+	} {
+		if !strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_studio_batch_detail_adapter.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("task_studio_batch_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"service.ensureDetailRunner()",
+		"func (s *taskStudioBatchService) ensureDetailRunner() {",
+		"s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.ensureStudioBatchGenerationGraphForResume)",
+		"return s.detailRunner.GetDetail(ctx, normalizedBatchID)",
+	} {
+		if !strings.Contains(serviceContent, needle) {
+			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
+		}
+	}
+}
+
+func TestTaskStudioBatchReviewAdapterUsesListingStudioRunner(t *testing.T) {
+	t.Parallel()
+
+	adapterSrc, err := os.ReadFile("task_studio_batch_review_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_review_adapter.go) error = %v", err)
+	}
+	adapterContent := string(adapterSrc)
+
+	for _, needle := range []string{
+		"func newListingStudioBatchReviewService(",
+		"repo StudioBatchRepository,",
+		"loadDetail func(context.Context, string) (*StudioBatchDetail, error),",
+		"currentTime func() time.Time,",
+		"return studiodomain.NewBatchDesignReviewService(studiodomain.BatchDesignReviewServiceConfig[StudioBatchDetail]{",
+		"EnsureBatchExists: func(ctx context.Context, batchID string) error {",
+		"ReplaceReviews: func(ctx context.Context, batchID string, designIDs []string, updatedAt time.Time) error {",
+		"LoadDetail:  loadDetail,",
+		"CurrentTime: currentTime,",
+	} {
+		if !strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_studio_batch_review_adapter.go should contain %q", needle)
+		}
+	}
+
+	serviceSrc, err := os.ReadFile("task_studio_batch_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_service.go) error = %v", err)
+	}
+	serviceContent := string(serviceSrc)
+
+	for _, needle := range []string{
+		"service.ensureReviewRunner()",
+		"func (s *taskStudioBatchService) ensureReviewRunner() {",
+		"s.reviewRunner = newListingStudioBatchReviewService(s.repo, s.GetStudioBatchDetail, s.currentTime)",
+		"return s.reviewRunner.ApproveDesigns(ctx, normalizedBatchID, approvedIDs)",
+	} {
+		if !strings.Contains(serviceContent, needle) {
+			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
+		}
 	}
 }
 

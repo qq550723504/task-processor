@@ -3,88 +3,77 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
 
 	corelogger "task-processor/internal/core/logger"
+	studiodomain "task-processor/internal/listing/studio"
 )
 
 type taskStudioSessionServiceConfig struct {
-	repo studioSessionDraftRepository
+	repo                     studioSessionDraftRepository
+	runner                   *listingStudioSessionRunner
+	asyncJobRunner           *listingStudioSessionAsyncJobRunner
+	generationMetadataRunner *listingStudioSessionGenerationMetadataRunner
+	reviewTaskMetadataRunner *listingStudioSessionReviewTaskMetadataRunner
+	generalMetadataRunner    *listingStudioSessionGeneralMetadataRunner
 }
 
 type taskStudioSessionService struct {
-	repo studioSessionDraftRepository
+	repo                     studioSessionDraftRepository
+	runner                   *listingStudioSessionRunner
+	asyncJobRunner           *listingStudioSessionAsyncJobRunner
+	generationMetadataRunner *listingStudioSessionGenerationMetadataRunner
+	reviewTaskMetadataRunner *listingStudioSessionReviewTaskMetadataRunner
+	generalMetadataRunner    *listingStudioSessionGeneralMetadataRunner
 }
 
 var studioSessionLogger = corelogger.GetGlobalLogger("listingkit.studio.session")
 
 func newTaskStudioSessionService(config taskStudioSessionServiceConfig) *taskStudioSessionService {
-	return &taskStudioSessionService{repo: config.repo}
+	service := &taskStudioSessionService{
+		repo:                     config.repo,
+		runner:                   config.runner,
+		asyncJobRunner:           config.asyncJobRunner,
+		generationMetadataRunner: config.generationMetadataRunner,
+		reviewTaskMetadataRunner: config.reviewTaskMetadataRunner,
+		generalMetadataRunner:    config.generalMetadataRunner,
+	}
+	service.ensureRunner()
+	service.ensureAsyncJobRunner()
+	service.ensureGenerationMetadataRunner()
+	service.ensureReviewTaskMetadataRunner()
+	service.ensureGeneralMetadataRunner()
+	return service
 }
 
 func (s *taskStudioSessionService) EnsureStudioSession(ctx context.Context, req *EnsureStudioSessionRequest) (*SheinStudioSessionDetail, error) {
-	if s.repo == nil {
+	s.ensureRunner()
+	if s.runner == nil {
 		return nil, fmt.Errorf("studio session repository is not configured")
 	}
-	if req == nil || req.Selection == nil || req.Selection.VariantID <= 0 {
-		return nil, fmt.Errorf("selection is required")
-	}
-	userID := strings.TrimSpace(req.UserID)
-	if userID == "" {
-		userID = RequestUserIDFromContext(ctx)
-	}
-
-	selectionKey := buildStudioSelectionKey(req.Selection)
-	existing, err := s.repo.FindLatestSessionBySelectionKey(ctx, selectionKey)
+	result, err := s.runner.EnsureSession(ctx, &studiodomain.EnsureSessionRequest[SheinStudioSelection]{
+		UserID:    req.UserID,
+		Selection: req.Selection,
+	})
 	if err != nil {
-		return nil, err
+		return nil, adaptStudioSessionError(err)
 	}
-	if existing != nil {
-		return s.loadStudioSessionDetail(ctx, existing)
-	}
-
-	session := &SheinStudioSession{
-		ID:                      uuid.NewString(),
-		UserID:                  userID,
-		SelectionKey:            selectionKey,
-		Status:                  SheinStudioSessionStatusSelecting,
-		ProductID:               req.Selection.ProductID,
-		ParentProductID:         req.Selection.ParentProductID,
-		VariantID:               req.Selection.VariantID,
-		PrototypeGroupID:        req.Selection.PrototypeGroupID,
-		LayerID:                 req.Selection.LayerID,
-		PrintableWidth:          req.Selection.PrintableWidth,
-		PrintableHeight:         req.Selection.PrintableHeight,
-		SelectedVariantIDs:      append(SheinStudioInt64List(nil), req.Selection.SelectedVariantIDs...),
-		Selection:               SheinStudioSelectionSnapshot(*req.Selection),
-		RenderSizeImagesWithSDS: true,
-	}
-	if err := s.repo.CreateSession(ctx, session); err != nil {
-		return nil, err
-	}
-	return &SheinStudioSessionDetail{
-		Session: session,
-		Designs: []SheinStudioDesign{},
-	}, nil
+	return &SheinStudioSessionDetail{Session: result.Session, Designs: result.Designs}, nil
 }
 
 func (s *taskStudioSessionService) GetStudioSession(ctx context.Context, sessionID string) (*SheinStudioSessionDetail, error) {
-	if s.repo == nil {
+	s.ensureRunner()
+	if s.runner == nil {
 		return nil, fmt.Errorf("studio session repository is not configured")
 	}
-	session, err := s.repo.GetSession(ctx, sessionID)
+	result, err := s.runner.GetSession(ctx, sessionID)
 	if err != nil {
-		return nil, err
+		return nil, adaptStudioSessionError(err)
 	}
-	if session == nil {
-		return nil, ErrStudioSessionNotFound
-	}
-	return s.loadStudioSessionDetail(ctx, session)
+	return &SheinStudioSessionDetail{Session: result.Session, Designs: result.Designs}, nil
 }
 
 func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sessionID string, req *UpdateStudioSessionRequest) (*SheinStudioSessionDetail, error) {
@@ -101,83 +90,68 @@ func (s *taskStudioSessionService) UpdateStudioSession(ctx context.Context, sess
 	if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, req.ExpectedUpdatedAt); err != nil {
 		return nil, err
 	}
-
-	if req != nil {
-		if req.Status != nil {
-			session.Status = *req.Status
+	if isStudioSessionGenerationMetadataOnlyUpdate(req) {
+		s.ensureGenerationMetadataRunner()
+		if s.generationMetadataRunner == nil {
+			return nil, fmt.Errorf("studio session repository is not configured")
 		}
-		if req.Prompt != nil {
-			session.Prompt = *req.Prompt
+		session, err = s.generationMetadataRunner.Patch(ctx, studiodomain.SessionGenerationMetadataPatchRequest[
+			SheinStudioSessionStatus,
+			SheinStudioGenerationJob,
+		]{
+			SessionID:       sessionID,
+			Status:          req.Status,
+			GenerationJobID: req.GenerationJobID,
+			GenerationJobs:  req.GenerationJobs,
+			GenerationError: req.GenerationError,
+		})
+		if err != nil {
+			return nil, adaptStudioSessionError(err)
 		}
-		if req.StyleCount != nil {
-			session.StyleCount = *req.StyleCount
+		studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
+			"session_id":            session.ID,
+			"status":                session.Status,
+			"generation_job_id":     strings.TrimSpace(session.GenerationJobID),
+			"generation_jobs_count": len(session.GenerationJobs),
+			"approved_design_count": len(session.ApprovedDesignIDs),
+			"created_task_count":    len(session.CreatedTasks),
+		})).Info("studio session updated")
+		return studioSessionDetailWithoutDesigns(session), nil
+	}
+	if isStudioSessionReviewTaskMetadataOnlyUpdate(req) {
+		s.ensureReviewTaskMetadataRunner()
+		if s.reviewTaskMetadataRunner == nil {
+			return nil, fmt.Errorf("studio session repository is not configured")
 		}
-		if req.VariationIntensity != nil {
-			session.VariationIntensity = *req.VariationIntensity
+		session, err = s.reviewTaskMetadataRunner.Patch(ctx, studiodomain.SessionReviewTaskMetadataPatchRequest[SheinStudioCreatedTask]{
+			SessionID:         sessionID,
+			ApprovedDesignIDs: req.ApprovedDesignIDs,
+			CreatedTasks:      req.CreatedTasks,
+		})
+		if err != nil {
+			return nil, adaptStudioSessionError(err)
 		}
-		if req.ProductImageCount != nil {
-			session.ProductImageCount = *req.ProductImageCount
-		}
-		if req.ProductImagePrompt != nil {
-			session.ProductImagePrompt = *req.ProductImagePrompt
-		}
-		if req.ProductImagePrompts != nil {
-			session.ProductImagePrompts = append(SheinStudioProductImagePromptList(nil), req.ProductImagePrompts...)
-		}
-		if req.ArtworkModel != nil {
-			session.ArtworkModel = *req.ArtworkModel
-		}
-		if req.ImageStrategy != nil {
-			session.ImageStrategy = *req.ImageStrategy
-		}
-		if req.GroupedImageMode != nil {
-			session.GroupedImageMode = *req.GroupedImageMode
-		}
-		if req.SelectedSDSImages != nil {
-			selected := make(SheinStudioSelectedSDSImageList, 0, len(req.SelectedSDSImages))
-			for _, item := range req.SelectedSDSImages {
-				selected = append(selected, SheinStudioSelectedSDSImageRecord(item))
-			}
-			session.SelectedSDSImages = selected
-		}
-		if req.GroupedSelections != nil {
-			session.GroupedSelections = append(SheinStudioGroupedSelectionList(nil), req.GroupedSelections...)
-		}
-		if req.TransparentBackground != nil {
-			session.TransparentBackground = *req.TransparentBackground
-		}
-		if req.RenderSizeImagesWithSDS != nil {
-			session.RenderSizeImagesWithSDS = *req.RenderSizeImagesWithSDS
-		}
-		if req.SheinStoreID != nil {
-			session.SheinStoreID = *req.SheinStoreID
-		}
-		if req.GenerationJobID != nil {
-			session.GenerationJobID = *req.GenerationJobID
-		}
-		if req.GenerationJobs != nil {
-			session.GenerationJobs = append(SheinStudioGenerationJobList(nil), req.GenerationJobs...)
-		}
-		if req.GenerationError != nil {
-			session.GenerationError = *req.GenerationError
-		}
-		if req.ApprovedDesignIDs != nil {
-			session.ApprovedDesignIDs = slices.Clone(req.ApprovedDesignIDs)
-		}
-		if req.CreatedTasks != nil {
-			session.CreatedTasks = append(SheinStudioCreatedTaskList(nil), req.CreatedTasks...)
-			taskIDs := make([]string, 0, len(req.CreatedTasks))
-			for _, task := range req.CreatedTasks {
-				if id := strings.TrimSpace(task.ID); id != "" {
-					taskIDs = append(taskIDs, id)
-				}
-			}
-			session.CreatedTaskIDs = taskIDs
-		}
+		studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
+			"session_id":            session.ID,
+			"status":                session.Status,
+			"generation_job_id":     strings.TrimSpace(session.GenerationJobID),
+			"generation_jobs_count": len(session.GenerationJobs),
+			"approved_design_count": len(session.ApprovedDesignIDs),
+			"created_task_count":    len(session.CreatedTasks),
+		})).Info("studio session updated")
+		return studioSessionDetailWithoutDesigns(session), nil
 	}
 
-	if err := s.repo.UpdateSession(ctx, session); err != nil {
-		return nil, err
+	s.ensureGeneralMetadataRunner()
+	if s.generalMetadataRunner == nil {
+		return nil, fmt.Errorf("studio session repository is not configured")
+	}
+	session, err = s.generalMetadataRunner.Patch(ctx, studiodomain.SessionGeneralMetadataPatchRequest[UpdateStudioSessionRequest]{
+		SessionID: sessionID,
+		Patch:     req,
+	})
+	if err != nil {
+		return nil, adaptStudioSessionError(err)
 	}
 	studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
 		"session_id":            session.ID,
@@ -222,26 +196,16 @@ func (s *taskStudioSessionService) SyncStudioDesignAsyncJob(
 	jobID string,
 	errMessage string,
 ) error {
-	if strings.TrimSpace(sessionID) == "" {
-		return nil
+	s.ensureAsyncJobRunner()
+	if s.asyncJobRunner == nil {
+		return fmt.Errorf("studio session repository is not configured")
 	}
-
-	sessionStatus := SheinStudioSessionStatusGenerating
-	switch jobStatus {
-	case StudioAsyncJobStatusSucceeded:
-		sessionStatus = SheinStudioSessionStatusGenerated
-	case StudioAsyncJobStatusFailed:
-		sessionStatus = SheinStudioSessionStatusFailed
-	}
-
-	trimmedJobID := strings.TrimSpace(jobID)
-	trimmedErr := strings.TrimSpace(errMessage)
-	_, err := s.UpdateStudioSession(ctx, sessionID, &UpdateStudioSessionRequest{
-		Status:          &sessionStatus,
-		GenerationJobID: &trimmedJobID,
-		GenerationError: &trimmedErr,
-	})
-	return err
+	return adaptStudioSessionError(s.asyncJobRunner.SyncAsyncJob(ctx, studiodomain.SessionAsyncJobSyncRequest{
+		SessionID:    sessionID,
+		JobStatus:    string(jobStatus),
+		JobID:        jobID,
+		ErrorMessage: errMessage,
+	}))
 }
 
 func (s *taskStudioSessionService) loadStudioSessionDetail(ctx context.Context, session *SheinStudioSession) (*SheinStudioSessionDetail, error) {
@@ -260,6 +224,95 @@ func studioSessionDetailWithoutDesigns(session *SheinStudioSession) *SheinStudio
 		Session: session,
 		Designs: []SheinStudioDesign{},
 	}
+}
+
+func isStudioSessionGenerationMetadataOnlyUpdate(req *UpdateStudioSessionRequest) bool {
+	if req == nil {
+		return false
+	}
+	hasGenerationMetadata := req.Status != nil || req.GenerationJobID != nil || req.GenerationJobs != nil || req.GenerationError != nil
+	if !hasGenerationMetadata {
+		return false
+	}
+	return req.Prompt == nil &&
+		req.StyleCount == nil &&
+		req.VariationIntensity == nil &&
+		req.ProductImageCount == nil &&
+		req.ProductImagePrompt == nil &&
+		req.ProductImagePrompts == nil &&
+		req.ArtworkModel == nil &&
+		req.ImageStrategy == nil &&
+		req.GroupedImageMode == nil &&
+		req.SelectedSDSImages == nil &&
+		req.GroupedSelections == nil &&
+		req.TransparentBackground == nil &&
+		req.RenderSizeImagesWithSDS == nil &&
+		req.SheinStoreID == nil &&
+		req.ApprovedDesignIDs == nil &&
+		req.CreatedTasks == nil
+}
+
+func isStudioSessionReviewTaskMetadataOnlyUpdate(req *UpdateStudioSessionRequest) bool {
+	if req == nil {
+		return false
+	}
+	hasReviewTaskMetadata := req.ApprovedDesignIDs != nil || req.CreatedTasks != nil
+	if !hasReviewTaskMetadata {
+		return false
+	}
+	return req.Status == nil &&
+		req.Prompt == nil &&
+		req.StyleCount == nil &&
+		req.VariationIntensity == nil &&
+		req.ProductImageCount == nil &&
+		req.ProductImagePrompt == nil &&
+		req.ProductImagePrompts == nil &&
+		req.ArtworkModel == nil &&
+		req.ImageStrategy == nil &&
+		req.GroupedImageMode == nil &&
+		req.SelectedSDSImages == nil &&
+		req.GroupedSelections == nil &&
+		req.TransparentBackground == nil &&
+		req.RenderSizeImagesWithSDS == nil &&
+		req.SheinStoreID == nil &&
+		req.GenerationJobID == nil &&
+		req.GenerationJobs == nil &&
+		req.GenerationError == nil
+}
+
+func (s *taskStudioSessionService) ensureRunner() {
+	if s == nil || s.runner != nil || s.repo == nil {
+		return
+	}
+	s.runner = newListingStudioSessionService(s.repo)
+}
+
+func (s *taskStudioSessionService) ensureAsyncJobRunner() {
+	if s == nil || s.asyncJobRunner != nil || s.repo == nil {
+		return
+	}
+	s.asyncJobRunner = newListingStudioSessionAsyncJobService(s.repo)
+}
+
+func (s *taskStudioSessionService) ensureGenerationMetadataRunner() {
+	if s == nil || s.generationMetadataRunner != nil || s.repo == nil {
+		return
+	}
+	s.generationMetadataRunner = newListingStudioSessionGenerationMetadataService(s.repo)
+}
+
+func (s *taskStudioSessionService) ensureReviewTaskMetadataRunner() {
+	if s == nil || s.reviewTaskMetadataRunner != nil || s.repo == nil {
+		return
+	}
+	s.reviewTaskMetadataRunner = newListingStudioSessionReviewTaskMetadataService(s.repo)
+}
+
+func (s *taskStudioSessionService) ensureGeneralMetadataRunner() {
+	if s == nil || s.generalMetadataRunner != nil || s.repo == nil {
+		return
+	}
+	s.generalMetadataRunner = newListingStudioSessionGeneralMetadataService(s.repo)
 }
 
 func studioSessionLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {
