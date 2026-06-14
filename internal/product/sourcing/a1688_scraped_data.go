@@ -20,7 +20,12 @@ func Convert1688ProductToScrapedData(product *alibaba1688model.Product1688) *pro
 
 	specs := make(map[string]string, len(product.Specifications))
 	for _, sp := range product.Specifications {
-		specs[sp.Name] = sp.Value
+		name := strings.TrimSpace(sp.Name)
+		value := strings.TrimSpace(sp.Value)
+		if name == "" || value == "" {
+			continue
+		}
+		specs[name] = value
 	}
 
 	return &productenrich.ScrapedData{
@@ -41,12 +46,14 @@ func build1688Description(product *alibaba1688model.Product1688) string {
 	}
 	var sb strings.Builder
 	for _, d := range product.ProductDetails {
-		if d.Content != "" {
-			if sb.Len() > 0 {
-				sb.WriteString("\n")
-			}
-			sb.WriteString(d.Content)
+		content := strings.TrimSpace(d.Content)
+		if content == "" {
+			continue
 		}
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(content)
 	}
 	if sb.Len() == 0 {
 		return product.Title

@@ -57,3 +57,48 @@ func TestConvert1688ProductToScrapedDataMapsVariantDimensionsAndVariants(t *test
 		t.Fatal("expected variant price to be mapped")
 	}
 }
+
+func TestConvert1688ProductToScrapedDataCleansSpecsAndDescription(t *testing.T) {
+	product := &alibaba1688model.Product1688{
+		Title: "Fallback title",
+		Specifications: []alibaba1688model.Specification{
+			{Name: " Material ", Value: " Cotton "},
+			{Name: " Empty ", Value: " "},
+			{Name: " ", Value: "ignored"},
+		},
+		ProductDetails: []alibaba1688model.ProductDetail{
+			{Content: "  "},
+			{Content: " First line "},
+			{Content: "\nSecond line\n"},
+		},
+	}
+
+	scraped := Convert1688ProductToScrapedData(product)
+	if scraped == nil {
+		t.Fatal("Convert1688ProductToScrapedData() returned nil")
+	}
+	if got := scraped.Specs["Material"]; got != "Cotton" {
+		t.Fatalf("Specs[Material] = %q, want Cotton", got)
+	}
+	if _, ok := scraped.Specs["Empty"]; ok {
+		t.Fatalf("Specs contains empty value: %+v", scraped.Specs)
+	}
+	if got := scraped.Description; got != "First line\nSecond line" {
+		t.Fatalf("Description = %q, want trimmed joined detail lines", got)
+	}
+}
+
+func TestConvert1688ProductToScrapedDataDescriptionFallsBackToTitleForBlankDetails(t *testing.T) {
+	product := &alibaba1688model.Product1688{
+		Title:          "Fallback title",
+		ProductDetails: []alibaba1688model.ProductDetail{{Content: "  "}},
+	}
+
+	scraped := Convert1688ProductToScrapedData(product)
+	if scraped == nil {
+		t.Fatal("Convert1688ProductToScrapedData() returned nil")
+	}
+	if scraped.Description != "Fallback title" {
+		t.Fatalf("Description = %q, want title fallback", scraped.Description)
+	}
+}
