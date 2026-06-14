@@ -224,7 +224,7 @@ func ClearInFlight(report *sheinpub.SubmissionReport, action, requestID string) 
 	if report == nil {
 		return
 	}
-	if report.CurrentAction != action || report.CurrentRequestID != requestID {
+	if !listingsubmission.ShouldClearInFlight(report.CurrentAction, report.CurrentRequestID, action, requestID) {
 		return
 	}
 	report.CurrentAction = ""

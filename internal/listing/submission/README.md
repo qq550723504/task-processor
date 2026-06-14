@@ -21,6 +21,7 @@ Current stable ownership:
 - failure-state fallback policy for submission failure records
 - remote-recovery lease expiry policy
 - active attempt lease policy
+- in-flight clearing match policy
 
 Does not own yet:
 

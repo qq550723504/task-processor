@@ -118,6 +118,7 @@ Completed submission slices:
 - failure-state fallback policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN report adapters.
 - remote-recovery lease expiry policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN phase/report adapters.
 - active attempt lease policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN report adapters.
+- in-flight clearing match policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN report mutation.
 
 Completed sourcing slices:
 
