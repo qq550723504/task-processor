@@ -14,6 +14,7 @@ Current stable ownership:
 - platform section availability checks
 - read-model projection seam for legacy preview adapters
 - task preview read orchestration seam (`GetTaskPreview` style load/build/finalize flow)
+- render-preview metadata summary extraction for asset preview DTO adapters
 
 Does not own yet:
 
