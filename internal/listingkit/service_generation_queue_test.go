@@ -1024,8 +1024,8 @@ func TestTaskGenerationReviewReadsPropagateSnapshotLoadErrors(t *testing.T) {
 	repo := &stubGenerationRepo{}
 	svc := &service{
 		repo: repo,
-		collabMirrors: serviceCollaboratorMirrors{
-			taskGeneration: &taskGenerationService{
+		task: taskCollaborators{
+			generation: &taskGenerationService{
 				repo: repo,
 				listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
 					return nil, wantErr

@@ -14,21 +14,18 @@ import (
 )
 
 type service struct {
-	repo Repository
-	// Legacy collaborator mirrors retained for incremental service slimming.
-	// The grouped task/studio/admin containers below are the preferred internal shape.
-	task                      taskCollaborators
-	taskDeps                  taskDependencies
-	studio                    studioCollaborators
-	studioDeps                studioDependencies
-	admin                     adminCollaborators
-	adminDeps                 adminDependencies
-	submission                submissionCollaborators
-	submissionDeps            submissionDependencies
-	workflowDeps              workflowDependencies
-	sheinRuntimeDeps          sheinRuntimeDependencies
-	supportDeps               supportDependencies
-	collabMirrors             serviceCollaboratorMirrors
+	repo             Repository
+	task             taskCollaborators
+	taskDeps         taskDependencies
+	studio           studioCollaborators
+	studioDeps       studioDependencies
+	admin            adminCollaborators
+	adminDeps        adminDependencies
+	submission       submissionCollaborators
+	submissionDeps   submissionDependencies
+	workflowDeps     workflowDependencies
+	sheinRuntimeDeps sheinRuntimeDependencies
+	supportDeps      supportDependencies
 	// Legacy dependency mirrors retained for incremental service slimming.
 	// The grouped dependency buckets above are the preferred initialization source.
 	mirrors serviceDependencyMirrors

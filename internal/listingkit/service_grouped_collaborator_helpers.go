@@ -1,24 +1,18 @@
 package listingkit
 
-func syncGroupedCollaborator[T comparable](group *T, legacy *T, build func() T) T {
+func groupedCollaboratorOrBuild[T comparable](group *T, build func() T) T {
 	var zero T
-	if group == nil || legacy == nil {
+	if group == nil {
 		return zero
 	}
 	if *group != zero {
-		*legacy = *group
 		return *group
-	}
-	if *legacy != zero {
-		*group = *legacy
-		return *legacy
 	}
 	if build == nil {
 		return zero
 	}
 	service := build()
 	*group = service
-	*legacy = service
 	return service
 }
 

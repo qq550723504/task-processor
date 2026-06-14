@@ -11,7 +11,7 @@ This checkpoint records the first service-object slimming wave. It does not intr
 The current internal representation direction is also clearer now:
 
 - legacy dependency mirrors should live under a dedicated `mirrors` bucket instead of remaining as flat root `service` fields;
-- legacy collaborator mirrors should live under a dedicated `collabMirrors` bucket instead of remaining as flat root `service` fields.
+- task/studio/admin grouped collaborator containers should remain the single ownership boundary for collaborator instances.
 
 ## 2. Current File Groups
 
@@ -552,7 +552,7 @@ go test ./... -count=1
 Recommended next low-risk slices:
 
 1. Review `service_types.go` for possible internal grouping comments or dependency buckets without changing fields.
-2. Continue shrinking direct reads/writes of legacy flat collaborator mirrors so grouped containers become the obvious ownership boundary.
+2. Continue shrinking legacy dependency mirror reads/writes so grouped dependency containers become the obvious ownership boundary.
 3. Review service accessor files to ensure each accessor remains thin and delegates to concept-specific config builders.
 4. Keep `service_config.go` focused on factory wiring; avoid adding new default-building logic there.
 5. Continue moving default construction helpers to concept-specific files only when the move is behavior-preserving.

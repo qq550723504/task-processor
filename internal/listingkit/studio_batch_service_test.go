@@ -321,9 +321,6 @@ func TestServiceTaskStudioBatchOrDefaultCachesOnService(t *testing.T) {
 	if svc.studio.batch != collaborator {
 		t.Fatal("expected collaborator to be cached on studio group")
 	}
-	if svc.collabMirrors.taskStudioBatch != collaborator {
-		t.Fatal("expected legacy taskStudioBatch mirror to match studio group batch collaborator")
-	}
 }
 
 func TestTaskStudioBatchServiceContinueGenerationRecoversBeforeRunningPendingItems(t *testing.T) {
