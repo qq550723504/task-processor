@@ -21,6 +21,7 @@ Current extracted seams:
 - session general metadata patch orchestration,
 - batch draft default-name sequencing,
 - batch draft upsert policy: default design type, create-time generation-job sanitization, and batch-name resolution,
+- batch detail status aggregation and status-preservation policy,
 - batch-run completion rules: cancel unfinished items, count item statuses, resolve final run status.
 
 `internal/listingkit` still owns:

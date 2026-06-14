@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	studiodomain "task-processor/internal/listing/studio"
 )
 
 const (
@@ -465,38 +467,7 @@ func latestRecoverableStudioBatchAttempt(attempts []StudioGenerationAttemptRecor
 }
 
 func aggregateStudioBatchStatus(items []StudioBatchItemRecord) StudioBatchStatus {
-	if len(items) == 0 {
-		return StudioBatchStatusDraft
-	}
-
-	reviewReady := 0
-	failed := 0
-	active := 0
-	for _, item := range items {
-		switch item.Status {
-		case StudioBatchItemStatusReviewReady:
-			reviewReady++
-		case StudioBatchItemStatusFailed:
-			failed++
-		case StudioBatchItemStatusGenerating, StudioBatchItemStatusAwaitingMaterialization, StudioBatchItemStatusPending:
-			active++
-		}
-	}
-
-	switch {
-	case reviewReady == len(items):
-		return StudioBatchStatusReviewReady
-	case failed == len(items):
-		return StudioBatchStatusFailed
-	case failed > 0 && reviewReady > 0:
-		return StudioBatchStatusPartiallyFailed
-	case failed > 0 && active > 0:
-		return StudioBatchStatusPartiallyFailed
-	case reviewReady > 0 && active > 0:
-		return StudioBatchStatusPartiallyMaterialized
-	default:
-		return StudioBatchStatusGenerating
-	}
+	return studiodomain.AggregateBatchStatus(items, studioBatchItemStatus, studioBatchStatusSet())
 }
 
 func buildStudioBatchItemDesignRequest(batch *StudioBatchRecord, item StudioBatchItemRecord) *StudioDesignRequest {

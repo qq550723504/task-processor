@@ -58,9 +58,7 @@ func projectStudioBatchRecord(batch *StudioBatchRecord, items []StudioBatchItemR
 		return nil
 	}
 	cloned := *batch
-	if cloned.Status != StudioBatchStatusTasksCreated {
-		cloned.Status = aggregateStudioBatchStatus(items)
-	}
+	cloned.Status = resolveProjectedStudioBatchStatus(cloned.Status, items)
 	cloned.DraftUpdatedAt = draftUpdatedAt
 	return &cloned
 }
