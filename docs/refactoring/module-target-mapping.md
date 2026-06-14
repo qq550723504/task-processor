@@ -98,6 +98,7 @@ Current checkpoint:
 
 - the next preferred refactor direction is to inspect crawler/source boundaries and extract only one small normalization or source-identity seam into `internal/product/sourcing`,
 - source identity and source request normalization now live in `internal/product/sourcing`,
+- source result alignment should also live in `internal/product/sourcing`, while crawler adapters keep returning raw execution results,
 - do not move crawler execution/runtime behavior into product packages,
 - do not route sourced product normalization through root `internal/listingkit`.
 

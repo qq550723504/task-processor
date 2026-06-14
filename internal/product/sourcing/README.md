@@ -18,6 +18,7 @@ Legacy sources to drain over time:
 Owns:
 
 - source-result normalization
+- source-result alignment with source identities
 - source identity normalization
 - source-to-product handoff contracts
 - source platform to crawler platform mapping

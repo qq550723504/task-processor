@@ -110,9 +110,12 @@ func (r *CrawlerRepository) FetchVariantsBatch(ctx context.Context, req *product
 	var products []*model.Product
 	var errs []error
 
-	for i, result := range results {
+	for _, result := range sourcing.NormalizeAmazonBatchResults(sourcing.AmazonCrawlRequestInput{
+		Region:  req.Region,
+		Zipcode: req.Zipcode,
+	}, productIDs, results) {
 		if result.Error != nil {
-			r.logger.Warnf("产品 %s 爬取失败: %v", productIDs[i], result.Error)
+			r.logger.Warnf("产品 %s 爬取失败: %v", result.Identity.ProductID, result.Error)
 			errs = append(errs, result.Error)
 			continue
 		}
