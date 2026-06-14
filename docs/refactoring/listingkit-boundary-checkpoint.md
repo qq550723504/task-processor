@@ -120,7 +120,14 @@ Completed sourcing slices:
 
 - `SourceIdentity` and normalized `SourceRequest` fields now live in `internal/product/sourcing`, with Amazon crawl request planning consuming that normalization.
 - Amazon batch result alignment now lives in `internal/product/sourcing`, preserving source identity for each requested product ID.
+- Amazon source batch fetch now guards configured sources only when execution is required, while empty batches stay side-effect free.
 - 1688 URL/result identity normalization now lives in `internal/product/sourcing`, while crawler execution remains in `internal/integration/crawler/a1688` and legacy `internal/crawler/alibaba1688`.
+- 1688 scraped-data normalization now trims and drops empty specs/details, falls back to title when details are blank, and normalizes image lists before enrichment handoff.
+- crawler integration packages now have a boundary guard that prevents dependencies on `listingkit`, marketplace/workspace/publishing packages, or `product/sourcing`.
+
+Current sourcing stop line:
+
+- do not keep shaving individual crawler field cleanup unless it prevents real downstream identity, enrichment, or catalog pollution; prefer the next structural seam over more one-off source cleanup.
 
 ## Verification Matrix
 

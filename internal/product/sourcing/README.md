@@ -24,7 +24,9 @@ Owns:
 - source-to-product handoff contracts
 - source platform to crawler platform mapping
 - source request inheritance for variants
+- Amazon batch fetch source-configuration and empty-batch semantics
 - enrichment-ready intermediate models
+- 1688 scraped-data normalization for specs, descriptions, and image lists
 - handoff into catalog, asset, and image domains
 
 Does not own:
@@ -36,6 +38,10 @@ Does not own:
 Boundary guard:
 
 - this package may normalize crawler outputs, but must not depend on `internal/listingkit`, marketplace packages, or runtime/platform wiring.
+
+Current stop line:
+
+- do not keep shaving individual 1688 scraped fields unless the change prevents downstream identity, enrichment, or catalog pollution; crawler execution and marketplace usage remain outside this package.
 
 If a change starts from Amazon or 1688 source data, a good default split is:
 
