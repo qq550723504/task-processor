@@ -102,7 +102,7 @@ Preferred next areas:
 - `internal/listing/submission`: only continue if a seam reduces duplicate orchestration without touching Temporal determinism or platform submit semantics.
 - `internal/marketplace/shein/publishing`: keep new marketplace publishing rules out of root `listingkit`.
 - `internal/product/sourcing`: consolidate product source request/result normalization and source identity only when a new crawler/source seam appears.
-- `internal/integration/crawler/*`: keep crawler adapters focused on raw source execution.
+- `internal/integration/crawler/*`: keep crawler adapters focused on raw source execution; boundary guards prevent dependencies on `listingkit`, marketplace/workspace/publishing packages, or `product/sourcing`.
 
 Recommended next slice:
 

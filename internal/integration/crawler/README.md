@@ -20,3 +20,7 @@ Do not use this area for:
 - listing-task orchestration
 
 Normalized handoff belongs in `internal/product/sourcing`.
+
+Guardrail:
+
+- crawler integrations must not import `internal/listingkit`, marketplace/workspace/publishing packages, or `internal/product/sourcing`; source identity and normalized result alignment flow toward product sourcing from outside these adapters.
