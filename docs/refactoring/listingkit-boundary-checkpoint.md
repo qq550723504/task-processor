@@ -116,6 +116,7 @@ Completed submission slices:
 - response outcome policy for save-draft success and publish response errors now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN response adapters.
 - phase detail mapping policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN phase labels.
 - failure-state fallback policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN report adapters.
+- remote-recovery lease expiry policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN phase/report adapters.
 
 Completed sourcing slices:
 

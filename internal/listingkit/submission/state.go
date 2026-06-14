@@ -162,21 +162,22 @@ func FindActiveAttempt(pkg *sheinpub.Package, action string, now time.Time, ttl 
 }
 
 func NeedsRemoteRecovery(report *sheinpub.SubmissionReport, action string, now time.Time, ttl time.Duration) bool {
-	if report == nil || report.CurrentAction != action || report.CurrentRequestID == "" {
+	if report == nil {
 		return false
 	}
-	switch report.CurrentPhase {
-	case sheinpub.SubmissionPhaseSubmitRemote, sheinpub.SubmissionPhasePersistResult, sheinpub.SubmissionPhaseConfirmRemote:
-	default:
-		return false
-	}
-	if report.LeaseExpiresAt != nil {
-		return now.After(*report.LeaseExpiresAt)
-	}
-	if report.InFlightStartedAt == nil {
-		return true
-	}
-	return now.Sub(*report.InFlightStartedAt) > ttl
+	return listingsubmission.NeedsRemoteRecovery(listingsubmission.RecoveryLeaseState{
+		CurrentAction:     report.CurrentAction,
+		CurrentRequestID:  report.CurrentRequestID,
+		CurrentPhase:      report.CurrentPhase,
+		InFlightStartedAt: report.InFlightStartedAt,
+		LeaseExpiresAt:    report.LeaseExpiresAt,
+	}, action, now, ttl, sheinRemoteRecoveryPhases)
+}
+
+var sheinRemoteRecoveryPhases = map[string]struct{}{
+	sheinpub.SubmissionPhaseSubmitRemote:  {},
+	sheinpub.SubmissionPhasePersistResult: {},
+	sheinpub.SubmissionPhaseConfirmRemote: {},
 }
 
 func EnsureReport(pkg *sheinpub.Package) *sheinpub.SubmissionReport {

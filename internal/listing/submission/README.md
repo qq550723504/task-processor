@@ -19,6 +19,7 @@ Current stable ownership:
 - response outcome policy for save-draft success and publish response errors
 - phase detail mapping policy for submission phase events
 - failure-state fallback policy for submission failure records
+- remote-recovery lease expiry policy
 
 Does not own yet:
 
