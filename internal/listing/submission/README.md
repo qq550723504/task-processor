@@ -16,6 +16,7 @@ Current stable ownership:
 - source-facts readiness policy for 1688-derived facts
 - in-process submit lock manager
 - enqueue retry/backoff policy for queue-full submit retries
+- response outcome policy for save-draft success and publish response errors
 
 Does not own yet:
 

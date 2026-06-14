@@ -2,9 +2,9 @@ package submission
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
+	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -28,23 +28,7 @@ func BuildRecord(action string, result *sheinpub.SubmissionResponse, submitErr e
 }
 
 func BuildResponseError(action string, result *sheinpub.SubmissionResponse) error {
-	if result == nil || result.Success || SaveDraftSucceeded(action, result) {
-		return nil
-	}
-	if action != "publish" {
-		return nil
-	}
-	if len(result.ValidationNotes) > 0 {
-		return fmt.Errorf("SHEIN publish pre-validation failed: %s", strings.Join(result.ValidationNotes, "; "))
-	}
-	message := strings.TrimSpace(result.Message)
-	if message == "" {
-		message = strings.TrimSpace(result.Code)
-	}
-	if message == "" {
-		return fmt.Errorf("SHEIN publish did not complete")
-	}
-	return fmt.Errorf("SHEIN publish did not complete: %s", message)
+	return listingsubmission.BuildResponseError("SHEIN", action, responseOutcome(result))
 }
 
 func BuildEvent(taskID, action string, record *sheinpub.SubmissionRecord, response *sheinpub.SubmissionResponse, submitErr error, startedAt time.Time) sheinpub.SubmissionEvent {
@@ -146,5 +130,17 @@ func AppendEvent(pkg *sheinpub.Package, event sheinpub.SubmissionEvent) {
 	pkg.SubmissionEvents = append([]sheinpub.SubmissionEvent{event}, pkg.SubmissionEvents...)
 	if len(pkg.SubmissionEvents) > 30 {
 		pkg.SubmissionEvents = pkg.SubmissionEvents[:30]
+	}
+}
+
+func responseOutcome(result *sheinpub.SubmissionResponse) *listingsubmission.ResponseOutcome {
+	if result == nil {
+		return nil
+	}
+	return &listingsubmission.ResponseOutcome{
+		Success:         result.Success,
+		Code:            result.Code,
+		Message:         result.Message,
+		ValidationNotes: append([]string(nil), result.ValidationNotes...),
 	}
 }

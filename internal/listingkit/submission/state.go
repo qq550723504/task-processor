@@ -3,6 +3,7 @@ package submission
 import (
 	"time"
 
+	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -299,8 +300,5 @@ func SetRemoteRecord(pkg *sheinpub.Package, action, requestID, remoteStatus stri
 }
 
 func SaveDraftSucceeded(action string, result *sheinpub.SubmissionResponse) bool {
-	if action != "save_draft" || result == nil {
-		return false
-	}
-	return result.Success || result.Code == "0"
+	return listingsubmission.SaveDraftSucceeded(action, responseOutcome(result))
 }
