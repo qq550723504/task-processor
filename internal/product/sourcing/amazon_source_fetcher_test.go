@@ -90,6 +90,22 @@ func TestAmazonSourceFetcherFetchBatchRequiresSource(t *testing.T) {
 	}
 }
 
+func TestAmazonSourceFetcherFetchBatchAllowsEmptyBatchWithoutSource(t *testing.T) {
+	fetcher := AmazonSourceFetcher{
+		Planner: AmazonCrawlRequestPlanner{
+			DomainResolver: stubAmazonDomainResolver{domain: "amazon.com"},
+		},
+	}
+
+	got, err := fetcher.FetchBatch(context.Background(), AmazonCrawlRequestInput{Region: "us"}, nil)
+	if err != nil {
+		t.Fatalf("FetchBatch(empty) error = %v, want nil", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("FetchBatch(empty) results = %+v, want empty", got)
+	}
+}
+
 func TestAmazonSourceFetcherFetchBatchUsesBatchSource(t *testing.T) {
 	source := &stubAmazonSourceFetcherSource{
 		results: []model.ProductResult{{Product: &model.Product{Asin: "B001"}}},
