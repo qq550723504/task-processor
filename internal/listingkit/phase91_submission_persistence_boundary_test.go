@@ -7,7 +7,7 @@ func TestSheinSubmissionPersistenceBoundary(t *testing.T) {
 
 	temporalSource := readNamedFunctionSource(t, "service_shein_publish_temporal_entrypoints.go", "PersistSheinPublishSuccess")
 	assertSourceContainsAll(t, temporalSource, []string{
-		"return temporal.PersistSheinPublishSuccess(ctx, in)",
+		"return persistence.PersistSheinPublishSuccess(ctx, in)",
 	})
 	assertSourceExcludesAll(t, temporalSource, []string{
 		"sheinpub.ApplySubmissionPersistenceInput(",

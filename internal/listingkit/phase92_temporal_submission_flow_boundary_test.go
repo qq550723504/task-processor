@@ -7,7 +7,7 @@ func TestSheinTemporalSubmissionFlowBoundary(t *testing.T) {
 
 	payloadSource := readNamedFunctionSource(t, "service_shein_publish_temporal_entrypoints.go", "PrepareSheinPublishPayload")
 	assertSourceContainsAll(t, payloadSource, []string{
-		"return temporal.PrepareSheinPublishPayload(ctx, in)",
+		"return flow.PrepareSheinPublishPayload(ctx, in)",
 	})
 	assertSourceExcludesAll(t, payloadSource, []string{
 		"s.payloadStages.Prepare(",
@@ -16,7 +16,7 @@ func TestSheinTemporalSubmissionFlowBoundary(t *testing.T) {
 
 	submitSource := readNamedFunctionSource(t, "service_shein_publish_temporal_entrypoints.go", "SubmitSheinPublishRemote")
 	assertSourceContainsAll(t, submitSource, []string{
-		"return temporal.SubmitSheinPublishRemote(ctx, in)",
+		"return flow.SubmitSheinPublishRemote(ctx, in)",
 	})
 	assertSourceExcludesAll(t, submitSource, []string{
 		"s.remoteSubmitter.Submit(",

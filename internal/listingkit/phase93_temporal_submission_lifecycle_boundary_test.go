@@ -7,7 +7,7 @@ func TestSheinTemporalSubmissionLifecycleBoundary(t *testing.T) {
 
 	beginSource := readNamedFunctionSource(t, "service_shein_publish_temporal_entrypoints.go", "BeginSheinPublishAttempt")
 	assertSourceContainsAll(t, beginSource, []string{
-		"return temporal.BeginSheinPublishAttempt(ctx, in)",
+		"return lifecycle.BeginSheinPublishAttempt(ctx, in)",
 	})
 	assertSourceExcludesAll(t, beginSource, []string{
 		"s.beginSheinSubmitLease(",
@@ -16,7 +16,7 @@ func TestSheinTemporalSubmissionLifecycleBoundary(t *testing.T) {
 
 	validateSource := readNamedFunctionSource(t, "service_shein_publish_temporal_entrypoints.go", "ValidateSheinPublishReadiness")
 	assertSourceContainsAll(t, validateSource, []string{
-		"return temporal.ValidateSheinPublishReadiness(ctx, in)",
+		"return lifecycle.ValidateSheinPublishReadiness(ctx, in)",
 	})
 	assertSourceExcludesAll(t, validateSource, []string{
 		"prepareSheinSubmitReadinessForAction(",

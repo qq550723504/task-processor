@@ -47,7 +47,6 @@ These files mainly expose `service` methods, lazy collaborator accessors, or col
 - `internal/listingkit/service_submit_direct_remote.go`
 - `internal/listingkit/service_submit_recovery.go`
 - `internal/listingkit/service_submit_temporal_adapter.go`
-- `internal/listingkit/service_submit_wiring.go`
 - `internal/listingkit/task_requeue_service.go`
 
 Current role:
@@ -286,11 +285,11 @@ Latest code inspection confirms:
 - Temporal payload/remote-submit flow now also reuses one root-side execution state; root `internal/listingkit` Temporal flow no longer reloads task/package and rebuilds payload-stage or remote-submit input context separately across prepare/upload/prevalidate/submit-remote entrypoints.
 - Temporal readiness/payload preparation now also reuses one root-side prepared publish state; root `internal/listingkit` Temporal lifecycle and prepare-payload entrypoints no longer rebuild activity request plus submit-package normalization separately before readiness gates or payload-stage entry.
 - Temporal upload/prevalidate/submit-remote continuation now also reuses one root-side prepared-payload resume state; root `internal/listingkit` Temporal flow no longer re-validates payload shape, reloads task/package, and rebuilds payload-stage context separately across resumed prepared-payload entrypoints.
-- Temporal SHEIN service entrypoints now also reuse one root-side facade; root `internal/listingkit` no longer routes publish lifecycle, payload flow, persistence, and remote-refresh entrypoints through four separate workflow collaborators at the service boundary.
+- Temporal SHEIN service entrypoints now also delegate straight to workflow owners; root `internal/listingkit` no longer routes publish lifecycle, payload flow, persistence, and remote-refresh entrypoints through an extra aggregate Temporal facade at the service boundary.
 - Temporal SHEIN collaborator config assembly now also reuses one root-side wiring bundle; root `internal/listingkit` no longer rebuilds the same submission assembly plus orchestrator binding set separately across Temporal lifecycle/flow/persistence/refresh config builders.
-- Temporal submit facade construction now also reuses one explicit root-side config builder; root `internal/listingkit` no longer hand-assembles lifecycle, flow, persistence, and refresh collaborators directly inside the lazy facade accessor.
+- Temporal submit facade construction is now removed; root `internal/listingkit` no longer hand-assembles lifecycle, flow, persistence, and refresh collaborators inside a lazy facade accessor only to forward back into those same owners.
 - Temporal workflow collaborators now also reuse one shared root-side ensure seam plus collaborator wiring bundle; root `internal/listingkit` no longer repeats lifecycle/flow/persistence/refresh lazy-construction steps across `initializeSubmitWorkflowCollaborators()` and the Temporal accessor set.
-- Temporal workflow ensure wiring now also resolves one collaborator bundle before assignment; root `internal/listingkit` no longer hand-orders persistence/lifecycle/flow/refresh/facade construction inside that ensure seam.
+- Temporal workflow ensure wiring now also resolves one collaborator bundle before assignment; root `internal/listingkit` no longer hand-orders persistence/lifecycle/flow/refresh construction inside that ensure seam.
 - direct submit and refresh config assembly now also reuse one root-side managed-submission wiring bundle; root `internal/listingkit` no longer rebuilds the same submission assembly plus callback set across those builders, while recovery config remains the constructor stop-line because it participates in the orchestrator's own recovery dependency.
 - managed submission collaborators now also reuse one shared root-side ensure seam plus collaborator wiring bundle; root `internal/listingkit` no longer repeats recovery/direct/refresh/submission lazy-construction steps across `initializeSubmitOrchestratorCollaborators()` and the managed-submission accessor set.
 - managed submission ensure wiring now also resolves one collaborator bundle before assignment; root `internal/listingkit` no longer hand-orders recovery/direct/refresh/submission construction inside that ensure seam.
@@ -397,7 +396,7 @@ Recommended next slices after this inventory:
 
 Low-risk next candidates:
 
-- `internal/listingkit/service_submit_wiring.go`
+- `internal/listingkit/service_submit_wiring_support.go`
   - keep config builders readable,
   - avoid adding large inline closures,
   - move repeated loader/building behavior into named helpers.

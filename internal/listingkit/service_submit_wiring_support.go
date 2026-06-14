@@ -84,19 +84,11 @@ type taskTemporalSubmissionConfigWiring struct {
 	persistence *taskTemporalSubmissionPersistenceService
 }
 
-type taskTemporalSubmissionFacadeWiring struct {
-	lifecycle   *taskTemporalSubmissionLifecycleService
-	flow        *taskTemporalSubmissionFlowService
-	persistence *taskTemporalSubmissionPersistenceService
-	refresh     *taskTemporalSubmissionRefreshService
-}
-
 type taskTemporalSubmissionCollaborators struct {
 	lifecycle   *taskTemporalSubmissionLifecycleService
 	flow        *taskTemporalSubmissionFlowService
 	persistence *taskTemporalSubmissionPersistenceService
 	refresh     *taskTemporalSubmissionRefreshService
-	facade      *taskTemporalSubmissionService
 }
 
 type taskTemporalSubmissionCollaboratorWiring struct {
@@ -415,18 +407,6 @@ func buildTaskTemporalSubmissionConfigWiring(s *service) taskTemporalSubmissionC
 	}
 }
 
-func buildTaskTemporalSubmissionFacadeWiring(s *service) taskTemporalSubmissionFacadeWiring {
-	if s == nil {
-		return taskTemporalSubmissionFacadeWiring{}
-	}
-	return taskTemporalSubmissionFacadeWiring{
-		lifecycle:   s.taskTemporalSubmissionLifecycleOrDefault(),
-		flow:        s.taskTemporalSubmissionFlowOrDefault(),
-		persistence: s.taskTemporalSubmissionPersistenceOrDefault(),
-		refresh:     s.taskTemporalSubmissionRefreshOrDefault(),
-	}
-}
-
 func buildTaskTemporalSubmissionCollaboratorWiring(s *service) taskTemporalSubmissionCollaboratorWiring {
 	return taskTemporalSubmissionCollaboratorWiring{
 		service: s,
@@ -450,17 +430,6 @@ func (w taskTemporalSubmissionCollaboratorWiring) newRefresh(persistence *taskTe
 	return newTaskTemporalSubmissionRefreshService(buildTaskTemporalSubmissionRefreshServiceConfigWithWiring(w.wiring, persistence))
 }
 
-func (w taskTemporalSubmissionCollaboratorWiring) newFacade(
-	lifecycle *taskTemporalSubmissionLifecycleService,
-	flow *taskTemporalSubmissionFlowService,
-	persistence *taskTemporalSubmissionPersistenceService,
-	refresh *taskTemporalSubmissionRefreshService,
-) *taskTemporalSubmissionService {
-	return newTaskTemporalSubmissionService(
-		buildTaskTemporalSubmissionServiceConfigWithCollaborators(lifecycle, flow, persistence, refresh),
-	)
-}
-
 func (w taskTemporalSubmissionCollaboratorWiring) resolve(existing submissionCollaborators) taskTemporalSubmissionCollaborators {
 	persistence := existing.taskTemporalSubmissionPersistence
 	if persistence == nil {
@@ -478,16 +447,11 @@ func (w taskTemporalSubmissionCollaboratorWiring) resolve(existing submissionCol
 	if refresh == nil {
 		refresh = w.newRefresh(persistence)
 	}
-	facade := existing.taskTemporalSubmission
-	if facade == nil {
-		facade = w.newFacade(lifecycle, flow, persistence, refresh)
-	}
 	return taskTemporalSubmissionCollaborators{
 		lifecycle:   lifecycle,
 		flow:        flow,
 		persistence: persistence,
 		refresh:     refresh,
-		facade:      facade,
 	}
 }
 
@@ -568,4 +532,154 @@ func resolveSubmissionWorkflowClient(s *service) (SheinPublishWorkflowClient, bo
 		&s.runtime.sheinPublishWorkflowClient,
 		&s.runtime.sheinPublishWorkflowEnabled,
 	)
+}
+
+func buildTaskRequeueServiceConfigWithWiring(wiring taskSubmitterWiring) taskRequeueServiceConfig {
+	return taskRequeueServiceConfig{
+		repo:          wiring.repo,
+		taskSubmitter: wiring.taskSubmitter,
+	}
+}
+
+func buildTaskRecoveryServiceConfigWithWiring(wiring taskSubmitterWiring) taskRecoveryServiceConfig {
+	return taskRecoveryServiceConfig{
+		repo:          wiring.repo,
+		taskSubmitter: wiring.taskSubmitter,
+	}
+}
+
+func buildTaskSubmissionRecoveryServiceConfigWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionRecoveryServiceConfig {
+	return taskSubmissionRecoveryServiceConfig{
+		repo:                        assembly.repository.repo,
+		buildTaskPreview:            assembly.preview.buildTaskPreview,
+		buildSheinSubmitProductAPI:  assembly.bindings.execution.buildSheinSubmitProductAPI,
+		buildSheinSubmitOtherAPI:    s.buildSheinSubmitOtherAPI,
+		rememberSheinSubmitted:      s.rememberSheinSubmittedResolution,
+		persistSuccessfulSubmission: assembly.bindings.state.persistSuccessfulSheinSubmission,
+		recordSubmissionFailure:     assembly.bindings.state.recordSheinSubmissionFailureForState,
+		resolveRemoteStatusCallback: resolveSheinSubmitRemoteStatus,
+	}
+}
+
+func buildTaskSubmissionServiceConfigWithSupportAndCollaborators(
+	support taskSubmissionSupportWiring,
+	s *service,
+	recovery *taskSubmissionRecoveryService,
+	direct *taskDirectSubmissionService,
+) taskSubmissionServiceConfig {
+	return taskSubmissionServiceConfig{
+		repo:                            support.repo,
+		lockSubmit:                      buildTaskSubmissionLockSubmit(s),
+		resolveDefaultSheinSubmitAction: s.resolveDefaultSheinSubmitAction,
+		recovery:                        recovery,
+		shouldStartSheinPublishWorkflow: s.shouldStartSheinPublishWorkflow,
+		submitSheinTaskWithWorkflow:     s.submitSheinTaskWithWorkflow,
+		submitSheinTaskDirect:           direct.submitSheinTaskDirect,
+	}
+}
+
+func buildTaskSubmissionRefreshServiceConfigWithWiring(wiring taskManagedSubmissionWiring) taskSubmissionRefreshServiceConfig {
+	return taskSubmissionRefreshServiceConfig{
+		repo:                       wiring.assembly.repository.repo,
+		lockSubmit:                 wiring.orchestrator.lockSubmit,
+		buildTaskPreview:           wiring.assembly.preview.buildTaskPreview,
+		buildSheinSubmitProductAPI: wiring.orchestrator.bindings.execution.buildSheinSubmitProductAPI,
+		buildSheinSubmitOtherAPI:   wiring.buildSheinSubmitOtherAPI,
+		recovery:                   wiring.orchestrator.recovery,
+		resolveRemoteStatus:        resolveSheinSubmitRemoteStatus,
+	}
+}
+
+func buildTaskDirectSubmissionServiceConfigWithWiring(wiring taskManagedSubmissionWiring) taskDirectSubmissionServiceConfig {
+	return taskDirectSubmissionServiceConfig{
+		normalizeSheinSubmitPackage:     wiring.assembly.bindings.execution.normalizeSheinSubmitPackage,
+		validateSheinPublishFreshness:   wiring.validateSheinPublishFreshness,
+		failSheinDirectSubmit:           wiring.assembly.bindings.state.failSheinDirectSubmit,
+		buildSheinSubmitProductAPI:      wiring.assembly.bindings.execution.buildSheinSubmitProductAPI,
+		persistSheinDirectSubmitPhase:   wiring.assembly.bindings.state.persistSheinDirectSubmitPhase,
+		prepareSheinSubmitProduct:       wiring.assembly.bindings.execution.prepareSheinSubmitProduct,
+		uploadSheinSubmitImages:         wiring.assembly.bindings.execution.uploadSheinSubmitImages,
+		resolveSubmitSettings:           wiring.assembly.bindings.resolver.resolveSubmitSettings,
+		preValidateSheinSubmitProduct:   wiring.assembly.bindings.execution.preValidateSheinSubmitProduct,
+		executeSheinSubmitRemote:        wiring.assembly.bindings.execution.executeSheinSubmitRemote,
+		retrySheinSensitiveWordSubmit:   wiring.retrySheinSensitiveWordSubmit,
+		persistSuccessfulDirectResponse: wiring.assembly.bindings.state.persistSuccessfulSheinDirectResponse,
+		finishSheinDirectSubmitAttempt:  wiring.assembly.bindings.state.finishSheinDirectSubmitAttempt,
+		buildTaskPreview:                wiring.assembly.preview.buildTaskPreview,
+	}
+}
+
+func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {
+	return taskSubmissionExecutionServiceConfig{
+		sheinProductAPIBuilder:   wiring.sheinProductAPIBuilder,
+		sheinImageAPIBuilder:     wiring.sheinImageAPIBuilder,
+		sheinTranslateAPIBuilder: wiring.sheinTranslateAPIBuilder,
+		sheinContentOptimizer:    wiring.sheinContentOptimizer,
+		currentSheinPricingRule:  wiring.currentSheinPricingRule,
+		resolveSheinStoreID:      wiring.resolveSheinStoreID,
+		resolveSubmitSettings:    wiring.resolveSubmitSettings,
+	}
+}
+
+func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {
+	return taskSubmissionStateServiceConfig{
+		repo:                   wiring.repo,
+		rememberSheinSubmitted: wiring.rememberSheinSubmitted,
+	}
+}
+
+func buildTaskTemporalSubmissionLifecycleServiceConfigWithWiring(wiring taskTemporalSubmissionWiring) taskTemporalSubmissionLifecycleServiceConfig {
+	return taskTemporalSubmissionLifecycleServiceConfig{
+		startSheinPublishWorkflow:     wiring.startSheinPublishWorkflow,
+		beginSheinSubmitLease:         wiring.orchestrator.recovery.beginSheinSubmitLease,
+		loadSheinPublishTask:          wiring.loadSheinPublishTask,
+		normalizeSheinSubmitPackage:   wiring.orchestrator.bindings.execution.normalizeSheinSubmitPackage,
+		validateSheinPublishFreshness: wiring.validateSheinPublishFreshness,
+		saveTaskResult:                wiring.assembly.repository.saveTaskResult,
+		handleWorkflowStartFailure:    wiring.orchestrator.recovery.handleSheinWorkflowStartFailure,
+		getTaskPreview:                wiring.assembly.preview.getTaskPreview,
+	}
+}
+
+func buildTaskTemporalSubmissionFlowServiceConfigWithWiring(
+	wiring taskTemporalSubmissionWiring,
+	persistence *taskTemporalSubmissionPersistenceService,
+) taskTemporalSubmissionFlowServiceConfig {
+	return taskTemporalSubmissionFlowServiceConfig{
+		loadSheinPublishTask:          wiring.loadSheinPublishTask,
+		normalizeSheinSubmitPackage:   wiring.orchestrator.bindings.execution.normalizeSheinSubmitPackage,
+		persistSheinSubmitPhase:       wiring.orchestrator.bindings.state.persistSheinSubmitPhase,
+		prepareSheinSubmitProduct:     wiring.orchestrator.bindings.execution.prepareSheinSubmitProduct,
+		uploadSheinSubmitImages:       wiring.orchestrator.bindings.execution.uploadSheinSubmitImages,
+		resolveSubmitSettings:         wiring.orchestrator.bindings.resolver.resolveSubmitSettings,
+		buildSheinSubmitProductAPI:    wiring.orchestrator.bindings.execution.buildSheinSubmitProductAPI,
+		preValidateSheinSubmitProduct: wiring.orchestrator.bindings.execution.preValidateSheinSubmitProduct,
+		executeSheinSubmitRemote:      wiring.orchestrator.bindings.execution.executeSheinSubmitRemote,
+		retrySheinSensitiveWordSubmit: wiring.retrySheinSensitiveWordSubmit,
+		persistence:                   persistence,
+	}
+}
+
+func buildTaskTemporalSubmissionPersistenceServiceConfigWithWiring(wiring taskTemporalSubmissionWiring) taskTemporalSubmissionPersistenceServiceConfig {
+	return taskTemporalSubmissionPersistenceServiceConfig{
+		loadSheinPublishTask:                 wiring.loadSheinPublishTask,
+		saveTaskResult:                       wiring.assembly.repository.saveTaskResult,
+		persistSheinSubmitPhase:              wiring.orchestrator.bindings.state.persistSheinSubmitPhase,
+		persistSuccessfulSheinSubmission:     wiring.orchestrator.bindings.state.persistSuccessfulSheinSubmission,
+		recordSheinSubmissionFailureForState: wiring.orchestrator.bindings.state.recordSheinSubmissionFailureForState,
+		rememberSheinSubmitted:               wiring.rememberSheinSubmittedResolution,
+	}
+}
+
+func buildTaskTemporalSubmissionRefreshServiceConfigWithWiring(
+	wiring taskTemporalSubmissionWiring,
+	persistence *taskTemporalSubmissionPersistenceService,
+) taskTemporalSubmissionRefreshServiceConfig {
+	return taskTemporalSubmissionRefreshServiceConfig{
+		loadSheinPublishTask:           wiring.loadSheinPublishTask,
+		buildSheinSubmitProductAPI:     wiring.orchestrator.bindings.execution.buildSheinSubmitProductAPI,
+		persistSheinSubmitPhase:        wiring.orchestrator.bindings.state.persistSheinSubmitPhase,
+		refreshSheinSubmitRemoteStatus: wiring.orchestrator.recovery.refreshSheinSubmitRemoteStatus,
+		persistence:                    persistence,
+	}
 }

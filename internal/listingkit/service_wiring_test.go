@@ -1197,13 +1197,13 @@ func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 		},
 		{
 			name: "submit wiring",
-			file: "service_submit_wiring.go",
+			file: "service_submit_wiring_support.go",
 			needles: []string{
-				"config := buildTaskManagedSubmissionConfigWiringWithRecovery(s, recovery)",
-				"buildTaskSubmissionServiceConfigWithSupportAndCollaborators(config.support, s, recovery, direct)",
-				"buildTaskSubmissionSupportWiring(s)",
-				"buildTaskSubmissionExecutionServiceConfigWithSupport(buildTaskSubmissionSupportWiring(s))",
-				"buildTaskSubmissionStateServiceConfigWithSupport(buildTaskSubmissionSupportWiring(s))",
+				"func buildTaskSubmissionServiceConfigWithSupportAndCollaborators(",
+				"func buildTaskSubmissionRefreshServiceConfigWithWiring(wiring taskManagedSubmissionWiring) taskSubmissionRefreshServiceConfig {",
+				"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
+				"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
+				"func buildTaskTemporalSubmissionLifecycleServiceConfigWithWiring(wiring taskTemporalSubmissionWiring) taskTemporalSubmissionLifecycleServiceConfig {",
 			},
 		},
 	}
@@ -1938,25 +1938,25 @@ func TestSubmitTemporalEntrypointsFileOwnsRootDelegates(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) BeginSheinPublishAttempt(ctx context.Context, in SheinPublishAttemptInput) error {",
-		"return temporal.BeginSheinPublishAttempt(ctx, in)",
+		"return lifecycle.BeginSheinPublishAttempt(ctx, in)",
 		"func (s *service) ValidateSheinPublishReadiness(ctx context.Context, in SheinPublishAttemptInput) error {",
-		"return temporal.ValidateSheinPublishReadiness(ctx, in)",
+		"return lifecycle.ValidateSheinPublishReadiness(ctx, in)",
 		"func (s *service) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {",
-		"return temporal.PrepareSheinPublishPayload(ctx, in)",
+		"return flow.PrepareSheinPublishPayload(ctx, in)",
 		"func (s *service) UploadSheinPublishImages(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinPreparedSubmitPayload, error) {",
-		"return temporal.UploadSheinPublishImages(ctx, in)",
+		"return flow.UploadSheinPublishImages(ctx, in)",
 		"func (s *service) PreValidateSheinPublish(ctx context.Context, in *SheinPreparedSubmitPayload) error {",
-		"return temporal.PreValidateSheinPublish(ctx, in)",
+		"return flow.PreValidateSheinPublish(ctx, in)",
 		"func (s *service) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {",
-		"return temporal.SubmitSheinPublishRemote(ctx, in)",
+		"return flow.SubmitSheinPublishRemote(ctx, in)",
 		"func (s *service) PersistSheinPublishSuccess(ctx context.Context, in SheinPersistSubmitSuccessInput) error {",
-		"return temporal.PersistSheinPublishSuccess(ctx, in)",
+		"return persistence.PersistSheinPublishSuccess(ctx, in)",
 		"func (s *service) PersistSheinPublishFailure(ctx context.Context, in SheinPersistSubmitFailureInput) error {",
-		"return temporal.PersistSheinPublishFailure(ctx, in)",
+		"return persistence.PersistSheinPublishFailure(ctx, in)",
 		"func (s *service) RefreshSheinPublishRemoteStatus(ctx context.Context, in SheinRefreshRemoteStatusInput) (*SheinRefreshRemoteStatusResult, error) {",
-		"return temporal.RefreshSheinPublishRemoteStatus(ctx, in)",
+		"return refresh.RefreshSheinPublishRemoteStatus(ctx, in)",
 		"func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error) {",
-		"return temporal.BuildSheinTaskPreview(ctx, taskID)",
+		"return lifecycle.BuildSheinTaskPreview(ctx, taskID)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
 			t.Fatalf("service_shein_publish_temporal_entrypoints.go should contain %q", needle)
@@ -3631,7 +3631,7 @@ func TestSubmitWorkflowHelpersFileOwnsRootHelpers(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string, task *Task, req *SubmitTaskRequest, opts sheinWorkflowSubmitOptions) (*ListingKitPreview, error) {",
-		"return temporal.StartSheinPublishWorkflowAttempt(ctx, taskID, task, req, opts)",
+		"return lifecycle.startSheinPublishWorkflowAttempt(ctx, taskID, task, req, opts)",
 		"func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {",
 		"client, enabled := resolveSubmissionWorkflowClient(s)",
 		"enabled &&",
@@ -3707,10 +3707,10 @@ func TestTaskTemporalSubmissionPayloadUsesSubmissionDomainRunner(t *testing.T) {
 	payloadContent := string(payloadSrc)
 
 	for _, needle := range []string{
-		"return temporal.PrepareSheinPublishPayload(ctx, in)",
-		"return temporal.UploadSheinPublishImages(ctx, in)",
-		"return temporal.PreValidateSheinPublish(ctx, in)",
-		"return temporal.SubmitSheinPublishRemote(ctx, in)",
+		"return flow.PrepareSheinPublishPayload(ctx, in)",
+		"return flow.UploadSheinPublishImages(ctx, in)",
+		"return flow.PreValidateSheinPublish(ctx, in)",
+		"return flow.SubmitSheinPublishRemote(ctx, in)",
 	} {
 		if !strings.Contains(payloadContent, needle) {
 			t.Fatalf("service_shein_publish_temporal_entrypoints.go should contain %q", needle)
@@ -3858,7 +3858,7 @@ func TestTaskSubmissionSuccessPersistenceUsesSubmissionDomainRunner(t *testing.T
 	}
 	persistContent := string(persistSrc)
 	for _, needle := range []string{
-		"return temporal.PersistSheinPublishSuccess(ctx, in)",
+		"return persistence.PersistSheinPublishSuccess(ctx, in)",
 	} {
 		if !strings.Contains(persistContent, needle) {
 			t.Fatalf("service_shein_publish_temporal_entrypoints.go should contain %q", needle)
@@ -4226,27 +4226,10 @@ func TestTaskStudioBatchTaskResumeAdapterUsesListingStudioRunner(t *testing.T) {
 func TestTaskSubmissionServiceConfigsUseSharedSupportWiring(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("service_submit_wiring.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_submit_wiring.go) error = %v", err)
-	}
-	content := string(src)
-
-	for _, needle := range []string{
-		"config := buildTaskManagedSubmissionConfigWiringWithRecovery(s, recovery)",
-		"buildTaskSubmissionServiceConfigWithSupportAndCollaborators(config.support, s, recovery, direct)",
-		"repo:                            support.repo,",
-		"base := buildTaskSubmissionBaseWiring(s)",
-		"return buildTaskSubmissionRecoveryServiceConfigWithAssembly(s, base.assembly)",
-		"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
-		"sheinProductAPIBuilder:   wiring.sheinProductAPIBuilder,",
-		"resolveSubmitSettings:    wiring.resolveSubmitSettings,",
-		"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
-		"rememberSheinSubmitted: wiring.rememberSheinSubmitted,",
-	} {
-		if !strings.Contains(content, needle) {
-			t.Fatalf("service_submit_wiring.go should contain %q", needle)
-		}
+	if _, err := os.ReadFile("service_submit_wiring.go"); err == nil {
+		t.Fatal("service_submit_wiring.go should be removed after submit collaborator wiring consolidation")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_submit_wiring.go) unexpected error = %v", err)
 	}
 
 	supportSrc, err := os.ReadFile("service_submit_wiring_support.go")
@@ -4258,6 +4241,14 @@ func TestTaskSubmissionServiceConfigsUseSharedSupportWiring(t *testing.T) {
 	for _, needle := range []string{
 		"type taskSubmissionBaseWiring struct {",
 		"type taskSubmissionSupportWiring struct {",
+		"func buildTaskSubmissionRecoveryServiceConfigWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionRecoveryServiceConfig {",
+		"func buildTaskSubmissionServiceConfigWithSupportAndCollaborators(",
+		"repo:                            support.repo,",
+		"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
+		"sheinProductAPIBuilder:   wiring.sheinProductAPIBuilder,",
+		"resolveSubmitSettings:    wiring.resolveSubmitSettings,",
+		"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
+		"rememberSheinSubmitted: wiring.rememberSheinSubmitted,",
 		"func buildTaskSubmissionBaseWiring(s *service) taskSubmissionBaseWiring {",
 		"func buildTaskSubmissionBaseWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionBaseWiring {",
 		"func buildTaskSubmissionSupportWiring(s *service) taskSubmissionSupportWiring {",
@@ -4288,51 +4279,37 @@ func TestTaskTemporalSubmissionFacadeUsesExplicitConfigBuilder(t *testing.T) {
 	for _, needle := range []string{
 		"func (s *service) ensureTaskTemporalSubmissionCollaborators() {",
 		"collaborators := wiring.resolve(s.submission)",
-		"s.submission.taskTemporalSubmission = collaborators.facade",
+		"s.submission.taskTemporalSubmissionPersistence = collaborators.persistence",
+		"s.submission.taskTemporalSubmissionLifecycle = collaborators.lifecycle",
+		"s.submission.taskTemporalSubmissionFlow = collaborators.flow",
+		"s.submission.taskTemporalSubmissionRefresh = collaborators.refresh",
 	} {
 		if !strings.Contains(collaboratorContent, needle) {
 			t.Fatalf("service_submit_collaborators.go should contain %q", needle)
 		}
 	}
 
-	serviceSrc, err := os.ReadFile("task_temporal_submission_service.go")
-	if err != nil {
-		t.Fatalf("ReadFile(task_temporal_submission_service.go) error = %v", err)
-	}
-	serviceContent := string(serviceSrc)
-
-	for _, needle := range []string{
-		"type taskTemporalSubmissionServiceConfig struct {",
-		"func newTaskTemporalSubmissionService(config taskTemporalSubmissionServiceConfig) *taskTemporalSubmissionService {",
-		"lifecycle:   config.lifecycle,",
-		"flow:        config.flow,",
-		"persistence: config.persistence,",
-		"refresh:     config.refresh,",
-	} {
-		if !strings.Contains(serviceContent, needle) {
-			t.Fatalf("task_temporal_submission_service.go should contain %q", needle)
-		}
+	if _, err := os.ReadFile("task_temporal_submission_service.go"); err == nil {
+		t.Fatal("task_temporal_submission_service.go should be removed after temporal owner delegation split")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(task_temporal_submission_service.go) unexpected error = %v", err)
 	}
 
-	wiringSrc, err := os.ReadFile("service_submit_wiring.go")
+	wiringSrc, err := os.ReadFile("service_submit_wiring_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_wiring.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_wiring_support.go) error = %v", err)
 	}
 	wiringContent := string(wiringSrc)
 
 	for _, needle := range []string{
-		"func buildTaskTemporalSubmissionServiceConfig(s *service) taskTemporalSubmissionServiceConfig {",
-		"return buildTaskTemporalSubmissionServiceConfigWithCollaborators(",
-		"func buildTaskTemporalSubmissionServiceConfigWithCollaborators(",
+		"func buildTaskTemporalSubmissionConfigWiring(s *service) taskTemporalSubmissionConfigWiring {",
+		"func buildTaskTemporalSubmissionConfigWiringWithPersistence(",
 		"config := buildTaskTemporalSubmissionConfigWiring(s)",
-		"config := buildTaskTemporalSubmissionConfigWiringWithPersistence(s, persistence)",
-		"lifecycle:   lifecycle,",
-		"flow:        flow,",
-		"persistence: persistence,",
-		"refresh:     refresh,",
+		"func buildTaskTemporalSubmissionFlowServiceConfigWithWiring(",
+		"func buildTaskTemporalSubmissionRefreshServiceConfigWithWiring(",
 	} {
 		if !strings.Contains(wiringContent, needle) {
-			t.Fatalf("service_submit_wiring.go should contain %q", needle)
+			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
 		}
 	}
 }
@@ -4354,7 +4331,6 @@ func TestTaskTemporalSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"s.submission.taskTemporalSubmissionLifecycle = collaborators.lifecycle",
 		"s.submission.taskTemporalSubmissionFlow = collaborators.flow",
 		"s.submission.taskTemporalSubmissionRefresh = collaborators.refresh",
-		"s.submission.taskTemporalSubmission = collaborators.facade",
 		"s.ensureTaskTemporalSubmissionCollaborators()",
 	} {
 		if !strings.Contains(content, needle) {
@@ -4387,11 +4363,21 @@ func TestTaskTemporalSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func buildTaskTemporalSubmissionConfigWiringWithPersistence(",
 		"func (w taskTemporalSubmissionCollaboratorWiring) newFlow(persistence *taskTemporalSubmissionPersistenceService) *taskTemporalSubmissionFlowService {",
 		"func (w taskTemporalSubmissionCollaboratorWiring) newRefresh(persistence *taskTemporalSubmissionPersistenceService) *taskTemporalSubmissionRefreshService {",
-		"func (w taskTemporalSubmissionCollaboratorWiring) newFacade(",
 		"func (w taskTemporalSubmissionCollaboratorWiring) resolve(existing submissionCollaborators) taskTemporalSubmissionCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"type taskTemporalSubmissionFacadeWiring struct {",
+		"func buildTaskTemporalSubmissionFacadeWiring(s *service) taskTemporalSubmissionFacadeWiring {",
+		"func (w taskTemporalSubmissionCollaboratorWiring) newFacade(",
+		"collaborators.facade",
+	} {
+		if strings.Contains(supportContent, needle) || strings.Contains(content, needle) {
+			t.Fatalf("temporal collaborator wiring should not retain facade seam %q", needle)
 		}
 	}
 }
@@ -4454,22 +4440,13 @@ func TestTaskManagedSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		}
 	}
 
-	wiringSrc, err := os.ReadFile("service_submit_wiring.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_submit_wiring.go) error = %v", err)
-	}
-	wiringContent := string(wiringSrc)
-
 	for _, needle := range []string{
-		"func buildTaskSubmissionServiceConfigWithCollaborators(",
-		"func buildTaskSubmissionRefreshServiceConfigWithRecovery(s *service, recovery *taskSubmissionRecoveryService) taskSubmissionRefreshServiceConfig {",
-		"func buildTaskDirectSubmissionServiceConfigWithRecovery(s *service, recovery *taskSubmissionRecoveryService) taskDirectSubmissionServiceConfig {",
-		"config := buildTaskManagedSubmissionConfigWiringWithRecovery(s, recovery)",
-		"return buildTaskSubmissionRefreshServiceConfigWithWiring(config.managed)",
-		"return buildTaskDirectSubmissionServiceConfigWithWiring(config.managed)",
+		"func buildTaskSubmissionServiceConfigWithSupportAndCollaborators(",
+		"func buildTaskSubmissionRefreshServiceConfigWithWiring(wiring taskManagedSubmissionWiring) taskSubmissionRefreshServiceConfig {",
+		"func buildTaskDirectSubmissionServiceConfigWithWiring(wiring taskManagedSubmissionWiring) taskDirectSubmissionServiceConfig {",
 	} {
-		if !strings.Contains(wiringContent, needle) {
-			t.Fatalf("service_submit_wiring.go should contain %q", needle)
+		if !strings.Contains(supportContent, needle) {
+			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
 		}
 	}
 }

@@ -92,12 +92,6 @@ func (s *service) ensureTaskTemporalSubmissionCollaborators() {
 	s.submission.taskTemporalSubmissionLifecycle = collaborators.lifecycle
 	s.submission.taskTemporalSubmissionFlow = collaborators.flow
 	s.submission.taskTemporalSubmissionRefresh = collaborators.refresh
-	s.submission.taskTemporalSubmission = collaborators.facade
-}
-
-func (s *service) taskTemporalSubmissionOrDefault() *taskTemporalSubmissionService {
-	s.ensureTaskTemporalSubmissionCollaborators()
-	return s.submission.taskTemporalSubmission
 }
 
 func (s *service) taskTemporalSubmissionLifecycleOrDefault() *taskTemporalSubmissionLifecycleService {

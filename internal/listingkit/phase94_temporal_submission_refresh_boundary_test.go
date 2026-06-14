@@ -7,7 +7,7 @@ func TestSheinTemporalSubmissionRefreshBoundary(t *testing.T) {
 
 	serviceSource := readNamedFunctionSource(t, "service_shein_publish_temporal_entrypoints.go", "RefreshSheinPublishRemoteStatus")
 	assertSourceContainsAll(t, serviceSource, []string{
-		"return temporal.RefreshSheinPublishRemoteStatus(ctx, in)",
+		"return refresh.RefreshSheinPublishRemoteStatus(ctx, in)",
 	})
 	assertSourceExcludesAll(t, serviceSource, []string{
 		"s.persistSheinSubmitPhase(",
