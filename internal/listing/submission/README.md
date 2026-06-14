@@ -17,6 +17,7 @@ Current stable ownership:
 - in-process submit lock manager
 - enqueue retry/backoff policy for queue-full submit retries
 - response outcome policy for save-draft success and publish response errors
+- phase detail mapping policy for submission phase events
 
 Does not own yet:
 
