@@ -9,7 +9,7 @@ import (
 func TestConvert1688ProductToScrapedDataMapsVariantDimensionsAndVariants(t *testing.T) {
 	product := &alibaba1688model.Product1688{
 		Title:    "Sneaker",
-		Images:   []string{"https://example.com/main.jpg"},
+		Images:   []string{" https://example.com/main.jpg ", "", "https://example.com/main.jpg"},
 		MinPrice: 29.9,
 		Currency: "CNY",
 		VariationsValues: []alibaba1688model.VariationValue{
@@ -46,6 +46,9 @@ func TestConvert1688ProductToScrapedDataMapsVariantDimensionsAndVariants(t *test
 	}
 	if len(scraped.Variants) != 2 {
 		t.Fatalf("len(Variants) = %d, want 2", len(scraped.Variants))
+	}
+	if len(scraped.Images) != 1 || scraped.Images[0] != "https://example.com/main.jpg" {
+		t.Fatalf("Images = %+v, want trimmed unique main image", scraped.Images)
 	}
 	if got := scraped.Variants[0].Attributes["颜色"]; got != "红色" {
 		t.Fatalf("Variants[0].Attributes[颜色] = %q, want 红色", got)

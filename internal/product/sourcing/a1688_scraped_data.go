@@ -17,6 +17,7 @@ func Convert1688ProductToScrapedData(product *alibaba1688model.Product1688) *pro
 	if product == nil {
 		return nil
 	}
+	images := normalize1688Images(product.Images)
 
 	specs := make(map[string]string, len(product.Specifications))
 	for _, sp := range product.Specifications {
@@ -32,11 +33,11 @@ func Convert1688ProductToScrapedData(product *alibaba1688model.Product1688) *pro
 		Title:             product.Title,
 		Category:          product.Category,
 		Description:       build1688Description(product),
-		Images:            product.Images,
+		Images:            images,
 		Price:             product.MinPrice,
 		Specs:             specs,
 		VariantDimensions: build1688VariantDimensions(product.VariationsValues),
-		Variants:          build1688ScrapedVariants(product),
+		Variants:          build1688ScrapedVariants(product, images),
 	}
 }
 
@@ -98,7 +99,7 @@ func build1688VariantDimensions(values []alibaba1688model.VariationValue) []cano
 	return dimensions
 }
 
-func build1688ScrapedVariants(product *alibaba1688model.Product1688) []productenrich.ProductVariant {
+func build1688ScrapedVariants(product *alibaba1688model.Product1688, fallbackImages []string) []productenrich.ProductVariant {
 	if product == nil || len(product.Variants) == 0 {
 		return nil
 	}
@@ -108,7 +109,7 @@ func build1688ScrapedVariants(product *alibaba1688model.Product1688) []producten
 		converted := productenrich.ProductVariant{
 			Attributes: convert1688VariantAttributes(variant.Attributes),
 			Stock:      variant.Stock,
-			Images:     collect1688VariantImages(variant, product.Images),
+			Images:     collect1688VariantImages(variant, fallbackImages),
 			IsDefault:  idx == 0,
 		}
 		converted.SKU = buildScrapedVariantSKU(idx, converted.Attributes)
@@ -126,6 +127,29 @@ func build1688ScrapedVariants(product *alibaba1688model.Product1688) []producten
 		return nil
 	}
 	return variants
+}
+
+func normalize1688Images(images []string) []string {
+	if len(images) == 0 {
+		return nil
+	}
+	normalized := make([]string, 0, len(images))
+	seen := make(map[string]struct{}, len(images))
+	for _, raw := range images {
+		image := strings.TrimSpace(raw)
+		if image == "" {
+			continue
+		}
+		if _, exists := seen[image]; exists {
+			continue
+		}
+		seen[image] = struct{}{}
+		normalized = append(normalized, image)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 func convert1688VariantAttributes(attributes map[string]any) map[string]string {
