@@ -1,9 +1,9 @@
 package submission
 
 import (
-	"strings"
 	"time"
 
+	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -23,21 +23,13 @@ func CompleteAttemptAndBuildEvent(pkg *sheinpub.Package, taskID, action, request
 }
 
 func ResolveFailureState(pkg *sheinpub.Package, requestedID, phase string) (string, string) {
-	requestID := strings.TrimSpace(requestedID)
-	resolvedPhase := strings.TrimSpace(phase)
-	if resolvedPhase == "" {
-		resolvedPhase = sheinpub.SubmissionPhaseValidate
-	}
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	var currentID, currentPhase string
 	if pkg != nil && pkg.SubmissionState != nil {
-		if requestID == "" {
-			requestID = pkg.SubmissionState.CurrentRequestID
-		}
-		if resolvedPhase == sheinpub.SubmissionPhaseValidate && pkg.SubmissionState.CurrentPhase != "" {
-			resolvedPhase = pkg.SubmissionState.CurrentPhase
-		}
+		currentID = pkg.SubmissionState.CurrentRequestID
+		currentPhase = pkg.SubmissionState.CurrentPhase
 	}
-	return requestID, resolvedPhase
+	return listingsubmission.ResolveFailureState(requestedID, phase, currentID, currentPhase, sheinpub.SubmissionPhaseValidate)
 }
 
 func FailAttemptAndBuildEvent(pkg *sheinpub.Package, taskID, action, requestedID, phase string, submitErr error, finishedAt time.Time) (*sheinpub.SubmissionRecord, sheinpub.SubmissionEvent) {

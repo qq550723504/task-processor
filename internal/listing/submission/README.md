@@ -18,6 +18,7 @@ Current stable ownership:
 - enqueue retry/backoff policy for queue-full submit retries
 - response outcome policy for save-draft success and publish response errors
 - phase detail mapping policy for submission phase events
+- failure-state fallback policy for submission failure records
 
 Does not own yet:
 

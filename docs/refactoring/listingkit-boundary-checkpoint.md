@@ -115,6 +115,7 @@ Completed submission slices:
 - enqueue retry/backoff policy for queue-full submit retries now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps a compatibility wrapper.
 - response outcome policy for save-draft success and publish response errors now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN response adapters.
 - phase detail mapping policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN phase labels.
+- failure-state fallback policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN report adapters.
 
 Completed sourcing slices:
 
