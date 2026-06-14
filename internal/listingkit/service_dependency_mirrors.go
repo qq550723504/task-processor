@@ -7,7 +7,6 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
-	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
 )
 
@@ -21,13 +20,8 @@ type serviceDependencyMirrors struct {
 	uploadedImageRepo         UploadedImageRepository
 	assembler                 Assembler
 
-	sheinCategoryResolver      sheinpub.CategoryResolver
-	sheinResolutionCacheStore  sheinpub.ResolutionCacheStore
 	sheinStoreCatalog          SheinStoreCatalog
 	sheinAPIClientFactory      SheinAPIClientFactory
-	sheinAttributeResolver     sheinpub.AttributeResolver
-	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
-	sheinPricingPolicy         sheinpub.PricingPolicy
 	sheinContentOptimizer      openaiclient.ChatCompleter
 
 	assetRepo           assetrepo.Repository

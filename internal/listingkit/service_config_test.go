@@ -3,6 +3,7 @@ package listingkit
 import (
 	"testing"
 
+	"task-processor/internal/catalog/canonical"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -70,6 +71,12 @@ func withTestSheinPublishWorkflow(client SheinPublishWorkflowClient, enabled boo
 
 func withDefaultTestSheinImageAPI() testServiceConfigOption {
 	return withTestSheinImageAPIBuilder(stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}})
+}
+
+type testConfigCategoryResolver struct{}
+
+func (testConfigCategoryResolver) Resolve(req *sheinpub.BuildRequest, canonical *canonical.Product, pkg *sheinpub.Package) *sheinpub.CategoryResolution {
+	return &sheinpub.CategoryResolution{Status: "resolved"}
 }
 
 func TestNewServiceWithConfigInitializesSubmitLockManager(t *testing.T) {
@@ -217,5 +224,65 @@ func TestNewServiceWithConfigSeedsSubmissionDependenciesWithoutLegacyMirrors(t *
 	}
 	if got := resolveSubmissionTranslateAPIBuilder(svc); got != translateBuilder {
 		t.Fatalf("resolveSubmissionTranslateAPIBuilder() = %v, want seeded builder", got)
+	}
+}
+
+func TestNewServiceWithConfigSeedsSheinRuntimeDependenciesWithoutLegacyMirrors(t *testing.T) {
+	t.Parallel()
+
+	resolutionCacheStore := &submitResolutionCacheStore{}
+	categoryResolver := testConfigCategoryResolver{}
+	attributeResolver := stubRevisionSheinAttributeResolver{}
+	saleAttributeResolver := stubRevisionSheinSaleResolver{}
+	pricingPolicy := sheinpub.PricingPolicy{
+		Enabled:        true,
+		MarkupRate:     0.12,
+		FixedMarkup:    1,
+		ShippingCost:   2,
+		CommissionRate: 0.1,
+		RoundTo:        0.01,
+	}
+
+	svc := newServiceWithConfig(newTestServiceConfig(
+		&stubSubmitRepo{},
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinResolutionCacheStore = resolutionCacheStore
+			cfg.Shein.SheinCategoryResolver = categoryResolver
+			cfg.Shein.SheinAttributeResolver = attributeResolver
+			cfg.Shein.SheinSaleAttributeResolver = saleAttributeResolver
+			cfg.Shein.SheinPricingPolicy = pricingPolicy
+		}),
+	))
+
+	if svc.sheinRuntimeDeps.resolutionCacheStore != resolutionCacheStore {
+		t.Fatalf("shein runtime deps resolution cache store = %v, want seeded store", svc.sheinRuntimeDeps.resolutionCacheStore)
+	}
+	if svc.sheinRuntimeDeps.categoryResolver != categoryResolver {
+		t.Fatalf("shein runtime deps category resolver = %v, want seeded resolver", svc.sheinRuntimeDeps.categoryResolver)
+	}
+	if svc.sheinRuntimeDeps.attributeResolver != attributeResolver {
+		t.Fatalf("shein runtime deps attribute resolver = %v, want seeded resolver", svc.sheinRuntimeDeps.attributeResolver)
+	}
+	if svc.sheinRuntimeDeps.saleAttributeResolver != saleAttributeResolver {
+		t.Fatalf("shein runtime deps sale attribute resolver = %v, want seeded resolver", svc.sheinRuntimeDeps.saleAttributeResolver)
+	}
+	if svc.sheinRuntimeDeps.pricingPolicy != pricingPolicy {
+		t.Fatalf("shein runtime deps pricing policy = %+v, want seeded policy %+v", svc.sheinRuntimeDeps.pricingPolicy, pricingPolicy)
+	}
+
+	if got := resolveSheinResolutionCacheStore(svc); got != resolutionCacheStore {
+		t.Fatalf("resolveSheinResolutionCacheStore() = %v, want seeded store", got)
+	}
+	if got := resolveSheinCategoryResolver(svc); got != categoryResolver {
+		t.Fatalf("resolveSheinCategoryResolver() = %v, want seeded resolver", got)
+	}
+	if got := resolveSheinAttributeResolver(svc); got != attributeResolver {
+		t.Fatalf("resolveSheinAttributeResolver() = %v, want seeded resolver", got)
+	}
+	if got := resolveSheinSaleAttributeResolver(svc); got != saleAttributeResolver {
+		t.Fatalf("resolveSheinSaleAttributeResolver() = %v, want seeded resolver", got)
+	}
+	if got := resolveSheinPricingPolicy(svc); got != pricingPolicy {
+		t.Fatalf("resolveSheinPricingPolicy() = %+v, want seeded policy %+v", got, pricingPolicy)
 	}
 }

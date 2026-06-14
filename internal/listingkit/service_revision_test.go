@@ -430,7 +430,11 @@ func TestApplyTaskRevisionRefreshesSheinDerivedStateAfterCategoryChange(t *testi
 	}
 	_ = repo.CreateTask(context.Background(), task)
 	svc := &service{
-		repo: repo, mirrors: serviceDependencyMirrors{sheinAttributeResolver: stubRevisionSheinAttributeResolver{}, sheinSaleAttributeResolver: stubRevisionSheinSaleResolver{}},
+		repo: repo,
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			attributeResolver:     stubRevisionSheinAttributeResolver{},
+			saleAttributeResolver: stubRevisionSheinSaleResolver{},
+		},
 	}
 
 	categoryID := 3221
@@ -544,7 +548,11 @@ func TestApplyTaskRevisionKeepsManualCategoryReviewConfirmationAfterRefresh(t *t
 	}
 	_ = repo.CreateTask(context.Background(), task)
 	svc := &service{
-		repo: repo, mirrors: serviceDependencyMirrors{sheinAttributeResolver: stubRevisionSheinAttributeResolver{}, sheinSaleAttributeResolver: stubRevisionSheinSaleReviewResolver{}},
+		repo: repo,
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			attributeResolver:     stubRevisionSheinAttributeResolver{},
+			saleAttributeResolver: stubRevisionSheinSaleReviewResolver{},
+		},
 	}
 
 	preview, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
@@ -633,7 +641,11 @@ func TestApplyTaskRevisionDowngradesSaleAttributesWhenCategoryRefreshLacksValueI
 	}
 	_ = repo.CreateTask(context.Background(), task)
 	svc := &service{
-		repo: repo, mirrors: serviceDependencyMirrors{sheinAttributeResolver: stubRevisionSheinAttributeResolver{}, sheinSaleAttributeResolver: stubRevisionSheinSaleMissingValueResolver{}},
+		repo: repo,
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			attributeResolver:     stubRevisionSheinAttributeResolver{},
+			saleAttributeResolver: stubRevisionSheinSaleMissingValueResolver{},
+		},
 	}
 
 	categoryID := 2486
@@ -809,7 +821,11 @@ func TestApplyTaskRevisionRefreshUsesTaskIdentityForSheinRuntime(t *testing.T) {
 	}
 	_ = repo.CreateTask(context.Background(), task)
 	svc := &service{
-		repo: repo, mirrors: serviceDependencyMirrors{sheinAttributeResolver: stubRevisionSheinAttributeResolver{}, sheinSaleAttributeResolver: capturedResolver},
+		repo: repo,
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			attributeResolver:     stubRevisionSheinAttributeResolver{},
+			saleAttributeResolver: capturedResolver,
+		},
 	}
 
 	categoryID := 10489
@@ -914,7 +930,13 @@ func TestApplyTaskRevisionClearsStaleSheinCookieBlockersAfterOnlineRefresh(t *te
 	})
 
 	svc := &service{
-		repo: repo, mirrors: serviceDependencyMirrors{sheinStoreCatalog: &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}}, sheinAPIClientFactory: stubSheinAPIClientFactory{client: apiClient}, sheinAttributeResolver: stubRevisionSheinAttributeResolver{}, sheinSaleAttributeResolver: stubRevisionSheinSaleResolver{}},
+		repo: repo,
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			storeCatalog:          &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
+			apiClientFactory:      stubSheinAPIClientFactory{client: apiClient},
+			attributeResolver:     stubRevisionSheinAttributeResolver{},
+			saleAttributeResolver: stubRevisionSheinSaleResolver{},
+		},
 	}
 
 	categoryID := 10489
@@ -1024,7 +1046,13 @@ func TestApplyTaskRevisionDecoratesPreviewWithLiveSheinCookieBlocker(t *testing.
 	}, stubRevisionCookieProvider{})
 
 	svc := &service{
-		repo: repo, mirrors: serviceDependencyMirrors{sheinStoreCatalog: &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}}, sheinAPIClientFactory: stubSheinAPIClientFactory{client: apiClient}, sheinAttributeResolver: stubRevisionSheinAttributeResolver{}, sheinSaleAttributeResolver: stubRevisionSheinSaleResolver{}},
+		repo: repo,
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			storeCatalog:          &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
+			apiClientFactory:      stubSheinAPIClientFactory{client: apiClient},
+			attributeResolver:     stubRevisionSheinAttributeResolver{},
+			saleAttributeResolver: stubRevisionSheinSaleResolver{},
+		},
 	}
 
 	categoryID := 10489
@@ -1115,7 +1143,11 @@ func TestApplyTaskRevisionRegeneratesSheinSaleAttributesWithoutCategoryConfirmat
 	}
 	_ = repo.CreateTask(context.Background(), task)
 	svc := &service{
-		repo: repo, mirrors: serviceDependencyMirrors{sheinAttributeResolver: stubRevisionSheinAttributeResolver{}, sheinSaleAttributeResolver: stubRevisionSheinSaleMissingValueResolver{}},
+		repo: repo,
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			attributeResolver:     stubRevisionSheinAttributeResolver{},
+			saleAttributeResolver: stubRevisionSheinSaleMissingValueResolver{},
+		},
 	}
 
 	preview, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
@@ -1221,7 +1253,11 @@ func TestApplyTaskRevisionRegeneratesSheinAttributesWithoutTouchingSaleAttribute
 	}
 	_ = repo.CreateTask(context.Background(), task)
 	svc := &service{
-		repo: repo, mirrors: serviceDependencyMirrors{sheinAttributeResolver: stubRevisionSheinAttributeResolver{}, sheinSaleAttributeResolver: stubRevisionSheinSaleMissingValueResolver{}},
+		repo: repo,
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			attributeResolver:     stubRevisionSheinAttributeResolver{},
+			saleAttributeResolver: stubRevisionSheinSaleMissingValueResolver{},
+		},
 	}
 
 	preview, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{

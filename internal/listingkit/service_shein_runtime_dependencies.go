@@ -16,7 +16,7 @@ func resolveSheinResolutionCacheStore(s *service) sheinpub.ResolutionCacheStore 
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.sheinRuntimeDeps.resolutionCacheStore, &s.mirrors.sheinResolutionCacheStore)
+	return s.sheinRuntimeDeps.resolutionCacheStore
 }
 
 func resolveSheinStoreCatalog(s *service) SheinStoreCatalog {
@@ -37,28 +37,28 @@ func resolveSheinCategoryResolver(s *service) sheinpub.CategoryResolver {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.sheinRuntimeDeps.categoryResolver, &s.mirrors.sheinCategoryResolver)
+	return s.sheinRuntimeDeps.categoryResolver
 }
 
 func resolveSheinAttributeResolver(s *service) sheinpub.AttributeResolver {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.sheinRuntimeDeps.attributeResolver, &s.mirrors.sheinAttributeResolver)
+	return s.sheinRuntimeDeps.attributeResolver
 }
 
 func resolveSheinSaleAttributeResolver(s *service) sheinpub.SaleAttributeResolver {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.sheinRuntimeDeps.saleAttributeResolver, &s.mirrors.sheinSaleAttributeResolver)
+	return s.sheinRuntimeDeps.saleAttributeResolver
 }
 
 func resolveSheinPricingPolicy(s *service) sheinpub.PricingPolicy {
 	if s == nil {
 		return sheinpub.PricingPolicy{}
 	}
-	policy := syncGroupedDependency(&s.sheinRuntimeDeps.pricingPolicy, &s.mirrors.sheinPricingPolicy)
+	policy := s.sheinRuntimeDeps.pricingPolicy
 	if isZeroSheinPricingPolicy(policy) {
 		return sheinpub.PricingPolicy{}
 	}
