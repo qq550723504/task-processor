@@ -15,6 +15,7 @@ Current stable ownership:
 - read-model projection seam for legacy preview adapters
 - task preview read orchestration seam (`GetTaskPreview` style load/build/finalize flow)
 - render-preview metadata summary extraction for asset preview DTO adapters
+- platform render-preview summary aggregation over neutral slot inputs
 
 Does not own yet:
 
