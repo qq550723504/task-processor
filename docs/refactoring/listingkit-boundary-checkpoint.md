@@ -59,6 +59,7 @@ Current state:
 
 - new canonical SHEIN marketplace publishing helpers should land here,
 - pricing policy is already represented in the marketplace package,
+- legacy `internal/publishing/shein.PricingPolicy` is a compatibility alias over the marketplace pricing policy, guarded by a bridge contract test,
 - `internal/publishing/shein` remains a legacy compatibility/model package for now.
 
 Guardrail:
