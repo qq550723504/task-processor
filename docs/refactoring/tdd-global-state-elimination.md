@@ -1,5 +1,7 @@
 # TDD 驱动的全局变量消除重构
 
+> 历史说明: 本文记录的是当时的重构过程。文中涉及的 `taskTemporalSubmissionAdapter` 与 `task_temporal_submission_adapter.go` 已不再代表当前目标结构；当前 Temporal submit 方向已拆为 lifecycle / flow / persistence / refresh collaborators。保留本文是为了记录“先去掉全局状态，再逐步拆协作者”的演进过程，而不是为了指导当前包结构设计。
+
 **日期**: 2026-06-08  
 **阶段**: Phase 2 - 依赖注入优化 (部分)  
 **状态**: ✅ 完成

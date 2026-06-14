@@ -1,6 +1,8 @@
 # ListingKit Submission Inventory
 
-> Status: Phase 3.1 inventory and file-group split checkpoint for the submission consolidation track described in [project-wide-execution-plan.md](./project-wide-execution-plan.md) and [listingkit-refactoring-plan.md](./listingkit-refactoring-plan.md).
+> Status: historical Phase 3.1 inventory snapshot for the submission consolidation track described in [project-wide-execution-plan.md](./project-wide-execution-plan.md) and [listingkit-refactoring-plan.md](./listingkit-refactoring-plan.md).
+>
+> Current authority note: this document remains useful for file-group history and local terminology, but the current approved target direction for submission and Temporal structure is defined by [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md), [project-wide-execution-plan.md](./project-wide-execution-plan.md), and [listingkit-boundary-checkpoint.md](./listingkit-boundary-checkpoint.md). Where this inventory conflicts with those newer checkpoints, follow the newer checkpoints.
 
 ## 1. Purpose
 
@@ -22,13 +24,13 @@ Submission behavior currently spans four layers:
 1. root `package listingkit` facade methods on `service`,
 2. root `package listingkit` collaborator services such as `taskSubmissionService`,
 3. root `package listingkit` SHEIN-specific state, readiness, payload, and remote-diagnosis helpers,
-4. the `internal/listingkit/submission` package for reusable submission primitives.
+4. generic submission/domain helpers under `internal/listing/submission`, while `internal/listingkit/submission` is now a narrowed SHEIN-focused transition/state adapter surface rather than the main generic home.
 
 This means the direction is clearer than before, but not finished:
 
-- generic mechanics like locks, retry delay, events, and transition helpers already have a home in `submission/`,
+- generic mechanics like locks, retry delay, event shaping, confirm-remote state, refresh guards, and other model-light policies should prefer `internal/listing/submission`,
 - service field sprawl is reduced by `submissionCollaborators`,
-- `submissionCollaborators` now includes task recovery, task requeue, submission orchestration, recovery, execution, state, direct submit, Temporal adapter, and submit locks,
+- Temporal host behavior is no longer represented by a standalone adapter layer; it is split across dedicated lifecycle, flow, persistence, and refresh collaborators,
 - root `listingkit` still owns most high-level submit orchestration and most SHEIN submission rules,
 - Temporal submission logic is separated by collaborator but still depends heavily on root-side helpers and models.
 
@@ -80,9 +82,11 @@ These files contain the main internal submission-oriented service objects:
 - `internal/listingkit/task_submission_execution_normalize.go`
 - `internal/listingkit/task_submission_execution_remote.go`
 - `internal/listingkit/task_submission_state_service.go`
-- `internal/listingkit/task_temporal_submission_adapter.go`
-- `internal/listingkit/task_temporal_submission_payload.go`
-- `internal/listingkit/task_temporal_submission_persistence.go`
+- `internal/listingkit/task_temporal_submission_activity_support.go`
+- `internal/listingkit/task_temporal_submission_flow_service.go`
+- `internal/listingkit/task_temporal_submission_lifecycle_service.go`
+- `internal/listingkit/task_temporal_submission_persistence_service.go`
+- `internal/listingkit/task_temporal_submission_refresh_service.go`
 - `internal/listingkit/task_recovery_service.go`
 - `internal/listingkit/task_recovery_durability.go`
 - `internal/listingkit/task_recovery_backfill.go`
@@ -105,9 +109,10 @@ Current role:
 - `taskSubmissionExecutionNormalize`: package normalization, pricing application, final-draft confirmation, sale-attribute repair, and final image/variant guards,
 - `taskSubmissionExecutionRemote`: remote publish/save-draft call and remote response logging,
 - `taskSubmissionStateService`: persist phases, success, and failure state,
-- `taskTemporalSubmissionAdapter`: workflow-facing lifecycle/readiness adapter, preview bridge, and snapshot helper,
-- `taskTemporalSubmissionPayload`: workflow payload activities for prepare, upload, pre-validate, and remote submit,
-- `taskTemporalSubmissionPersistence`: workflow persistence activities for success, failure, and remote status refresh,
+- `taskTemporalSubmissionLifecycle`: workflow-facing lifecycle/readiness entry orchestration, preview bridge, and workflow-start helpers,
+- `taskTemporalSubmissionFlow`: prepare, upload, pre-validate, remote submit, and submit-flow orchestration,
+- `taskTemporalSubmissionPersistence`: workflow success/failure persistence and state completion support,
+- `taskTemporalSubmissionRefresh`: remote status refresh, refresh phase switching, and refresh completion handling,
 - `taskRecoveryService`: blocked-retryable recovery flow, recover-now, sweep, submit recovered task, and service facade,
 - `taskRecoveryDurability`: submit-failure durability restoration, reblock construction, bounded retry delay, and time cloning helpers,
 - `taskRecoveryBackfill`: historical failed-task retryable-block backfill,
@@ -119,7 +124,7 @@ Assessment:
 - this is the primary current consolidation seam,
 - these files are the best place for additional root-level slimming before any deeper package move,
 - `taskRecoveryService` and `taskRequeueService` are now part of the submission collaborator cluster, but their semantics are broader than the SHEIN publish path,
-- execution, direct-submit, submission-recovery, Temporal adapter, task-recovery, and requeue responsibilities are now separated by file group, but still live in root `package listingkit` because they depend on root models and SHEIN-specific helpers.
+- execution, direct-submit, submission-recovery, Temporal lifecycle/flow/persistence/refresh, task-recovery, and requeue responsibilities are now separated by file group, but still live in root `package listingkit` because they depend on root models and SHEIN-specific helpers.
 
 ### C. Runtime context and settings resolution
 
@@ -184,17 +189,17 @@ Assessment:
 
 ### E. Generic submission primitives already extracted
 
-These files already live under `internal/listingkit/submission`:
+These helpers should now prefer `internal/listing/submission` as their canonical home, while `internal/listingkit/submission` stays limited to the remaining SHEIN-focused transition/state compatibility surface:
 
-- `submission/doc.go`
-- `submission/submit_lock.go`
-- `submission/submit_errors.go`
-- `submission/state.go`
-- `submission/transitions.go`
-- `submission/events.go`
-- `submission/confirm_remote.go`
-- `submission/source_facts.go`
-- `submission/enqueue_retry.go`
+- `submission/action_record*.go`
+- `submission/attempt_*.go`
+- `submission/confirm_remote_state*.go`
+- `submission/event_*.go`
+- `submission/inflight_state*.go`
+- `submission/refresh_*.go`
+- `submission/remote_*.go`
+- `submission/result_state*.go`
+- `submission/submit_error*.go`
 
 Current role:
 
@@ -208,7 +213,7 @@ Current role:
 Assessment:
 
 - this is the cleanest current target home for shared submission mechanics,
-- recent retry extraction into `enqueue_retry.go` was aligned with this direction,
+- newer extractions should prefer `internal/listing/submission` rather than rebuilding a large generic surface under `internal/listingkit/submission`,
 - additional helpers can move here only when they do not require root `listingkit` models or create import cycles.
 
 ### F. API and runtime assembly surface
@@ -247,15 +252,16 @@ Assessment:
 Latest code inspection confirms:
 
 - `service` now stores a single `submission submissionCollaborators` field rather than separate direct fields for each submission service.
-- `submissionCollaborators` includes `taskRecovery`, `taskRequeue`, `taskSubmission`, `taskSubmissionRecovery`, `taskSubmissionExecution`, `taskSubmissionState`, `taskDirectSubmission`, `taskTemporalSubmissionAdapter`, and `sheinSubmitLocks`.
+- `submissionCollaborators` includes task recovery, task requeue, submission orchestration, recovery, execution, state, direct submit, Temporal lifecycle/flow/persistence/refresh collaborators, and submit locks.
 - `taskRecoveryService` depends on `Repository`, `TaskSubmitter`, and time only. It is submission-adjacent and owns recover-and-submit behavior for blocked retryable tasks.
 - `Repository.BulkRecoverBlockedTasks(...)` is explicitly documented as persistence-only; `TaskRecoveryService` owns authoritative recovery semantics.
-- `taskSubmissionService`, `taskDirectSubmissionService`, `taskSubmissionRecovery*`, `taskSubmissionExecution*`, `taskSubmissionStateService`, and `taskTemporalSubmission*` still depend on root models and SHEIN-specific packages, so they should not be moved into `internal/listingkit/submission` yet.
+- `taskSubmissionService`, `taskDirectSubmissionService`, `taskSubmissionRecovery*`, `taskSubmissionExecution*`, `taskSubmissionStateService`, and `taskTemporalSubmission*` still depend on root models and SHEIN-specific packages, so they should not be moved into generic `internal/listing/submission` yet.
 - `taskSubmissionExecutionService` is now a thin shell for constructor/runtime/Product API wiring, while product preparation, image upload, normalization, and remote submit are split into dedicated execution files.
 - `taskSubmissionRefresh*` is now split into main flow, selection/request building, and mutation/validation file groups.
 - `serviceSubmitDirect*` is now split into facade/accessor, direct product preparation, and direct remote submit file groups.
 - `taskSubmissionRecovery*` is now split into recovered-route/finalization, lease management, and remote confirmation file groups.
-- `taskTemporalSubmission*` is now split into lifecycle/readiness, payload activities, and persistence/remote-refresh activities.
+- `taskTemporalSubmission*` is now split into lifecycle/readiness, submit-flow, persistence, and remote-refresh activities.
+- Temporal host entrypoints now route directly from `service` to those dedicated collaborators; the old extra adapter layer no longer represents the target shape.
 - `taskRecovery*` is now split into recovery flow, durability/reblock helpers, and historical backfill.
 - `taskRequeue*` is now split into requeue flow/facade and helper functions.
 
@@ -300,10 +306,10 @@ These should not be treated as generic submission internals just because they ar
 
 ## 6. Boundary Observations
 
-1. `submissionCollaborators` is now the right root-side consolidation seam for submit, recovery, direct submit, temporal adapter, state, requeue, and submit locks.
+1. `submissionCollaborators` is now the right root-side consolidation seam for submit, recovery, direct submit, Temporal lifecycle/flow/persistence/refresh, state, requeue, and submit locks.
 2. `taskRecoveryService` is submission-adjacent and now belongs in the same collaborator cluster, but it should not move to generic `submission/` because it still owns task-level recover-and-submit semantics over root task/repository models.
 3. `taskRequeueService` is grouped with submission collaborators, which makes requeue/retry/recovery easier to reason about as one cluster.
-4. The `submission/` package is viable for shared mechanics, but not yet for most orchestrators because those orchestrators still depend on root `listingkit` models, repository interfaces, and SHEIN package structures.
+4. `internal/listing/submission` is viable for shared mechanics, but not yet for most orchestrators because those orchestrators still depend on root `listingkit` models, repository interfaces, and SHEIN package structures.
 5. The biggest structural risk is not service wiring anymore; it is the remaining mix of generic orchestration and SHEIN-specific rules inside the collaborator services.
 6. File-group splitting has reduced per-file density, but it has not changed ownership: root `listingkit` still owns compatibility/orchestration while SHEIN-specific behavior awaits a safer marketplace-owned target.
 
@@ -312,7 +318,7 @@ These should not be treated as generic submission internals just because they ar
 Recommended next slices after this inventory:
 
 1. Keep shrinking root service submission surface by grouping adjacent collaborators and accessors consistently.
-2. Prefer extracting model-light helper groups into `internal/listingkit/submission` when they depend only on generic submit mechanics.
+2. Prefer extracting model-light helper groups into `internal/listing/submission` when they depend only on generic submit mechanics.
 3. Split collaborator internals by responsibility before attempting package moves:
    - entry orchestration,
    - runtime context resolution,
@@ -329,7 +335,7 @@ Low-risk next candidates:
   - keep config builders readable,
   - avoid adding large inline closures,
   - move repeated loader/building behavior into named helpers.
-- `internal/listingkit/submission/*.go`
+- `internal/listing/submission/*.go`
   - only consider model-light helper extraction when root orchestrators no longer need root models.
 
 Avoid as an early package-move target:
@@ -346,7 +352,7 @@ This inventory is complete when:
 
 - submission-related files are grouped by concept,
 - facade versus business-rule ownership is explicit,
-- the current `submission/` package role is distinguished from root `listingkit` orchestrators,
+- the current `internal/listing/submission` role is distinguished from root `listingkit` orchestrators and the narrowed `internal/listingkit/submission` compatibility surface,
 - later refactoring slices can cite this document instead of re-inventing the map.
 
 Current status: Phase 3.1 has met this success criterion at the file-group and inventory level. Future work should use this inventory before attempting package moves.

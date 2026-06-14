@@ -1,6 +1,6 @@
 # ListingKit Refactoring Plan
 
-> Status: active only as a ListingKit-specific supplement. For architecture authority and implementation order, follow [`project-wide-refactoring-plan.md`](./project-wide-refactoring-plan.md) and [`project-wide-execution-plan.md`](./project-wide-execution-plan.md) first.
+> Status: active only as a ListingKit-specific supplement. For architecture authority and implementation order, follow [`project-wide-refactoring-plan.md`](./project-wide-refactoring-plan.md), [`project-wide-execution-plan.md`](./project-wide-execution-plan.md), and [`listingkit-boundary-checkpoint.md`](./listingkit-boundary-checkpoint.md) first.
 
 ## 1. Purpose
 
@@ -29,7 +29,7 @@ Recent boundary checkpoint:
 | Root `internal/listingkit` Go files including tests | 512 |
 | `internal/listingkit/core` | already exists |
 | `internal/listingkit/service` | already exists |
-| `internal/listingkit/submission` | already exists |
+| `internal/listingkit/submission` | already exists as a narrowed compatibility/transition surface, not the preferred home for new generic submission mechanics |
 
 Implications:
 
@@ -278,7 +278,7 @@ Recommended work slices:
 
 Candidate areas:
 
-- `internal/listingkit/submission/`
+- `internal/listing/submission/` for model-light generic mechanics, while `internal/listingkit/submission` should continue shrinking toward a SHEIN-focused compatibility surface
 - `internal/listingkit/task_requeue_service.go`
 - task submission and retry services in root `listingkit`
 - submission-related API handlers and tests

@@ -48,7 +48,7 @@ If `go test ./...` is too slow or flaky, record the failing packages and use foc
 | 0 | Baseline and guardrails | Capture current dependency and test state | Low |
 | 1 | Preview first cut | Make preview platform logic adapter-ready | Low |
 | 2 | Preview package extraction | Move preview aggregation into a bounded package/file group | Medium |
-| 3 | Submission consolidation | Gather submit/retry/recovery/state/Temporal adapter logic | Medium |
+| 3 | Submission consolidation | Gather submit/retry/recovery/state/Temporal collaborator logic behind a smaller orchestration surface | Medium |
 | 4 | Service object slimming | Reduce root ListingKit service dependency sprawl | Medium |
 | 5 | Runtime assembly cleanup | Keep app/httpapi as wiring only | Medium |
 | 6 | Marketplace boundary normalization | Prevent platform rules from drifting into ListingKit | Medium-high |
@@ -219,7 +219,7 @@ Acceptance criteria:
 
 ### Goal
 
-Collect submit, retry, recovery, execution, state, direct submit, locks, and Temporal adapter concepts.
+Collect submit, retry, recovery, execution, state, direct submit, locks, and Temporal lifecycle/flow/persistence/refresh concepts.
 
 ### PR 3.1: Inventory submission files
 
@@ -229,7 +229,7 @@ Files:
 
 Steps:
 
-1. List all `submission`, `submit`, `retry`, `recovery`, `temporal adapter`, and lock-related files.
+1. List all `submission`, `submit`, `retry`, `recovery`, Temporal lifecycle/flow/persistence/refresh, and lock-related files.
 2. Group by concept.
 3. Identify files that are pure facade versus platform-specific rules.
 
@@ -248,8 +248,11 @@ type submissionFacade struct {
     execution       *taskSubmissionExecutionService
     state           *taskSubmissionStateService
     direct          *taskDirectSubmissionService
-    temporalAdapter *taskTemporalSubmissionAdapter
-    locks           *submission.SubmitLockManager
+    temporalLifecycle   *taskTemporalSubmissionLifecycleService
+    temporalFlow        *taskTemporalSubmissionFlowService
+    temporalPersistence *taskTemporalSubmissionPersistenceService
+    temporalRefresh     *taskTemporalSubmissionRefreshService
+    locks               *submission.SubmitLockManager
 }
 ```
 
@@ -261,7 +264,7 @@ Acceptance criteria:
 
 ### PR 3.3: Move cohesive submission files
 
-Only after facade exists, move files into a subdirectory or file group.
+Only after the root-side facade/collaborator seam is stable, move only genuinely generic helpers into `internal/listing/submission` and keep marketplace-specific submission rules out of generic listing packages.
 
 Acceptance criteria:
 

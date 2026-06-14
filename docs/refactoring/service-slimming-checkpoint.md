@@ -137,7 +137,7 @@ Submission initialization is now grouped as:
 1. task-level retry/recovery collaborators,
 2. submission state and execution collaborators,
 3. SHEIN submission orchestrators, including refresh/status handling, the direct-submit phase runner bridge, the shared payload-stage runner bridge, the shared remote-submit runner bridge, the shared success-persistence runner bridge, and the shared failure-persistence runner bridge,
-4. Temporal adapter initialization in its own step.
+4. Temporal lifecycle/flow/persistence/refresh collaborator initialization in its own step.
 
 ### `service_admin_collaborators.go`
 
@@ -458,7 +458,7 @@ The root submit surface is now split so the facade file stays intentionally thin
 
 `service_submit_wiring.go` stays focused on config builder seams, while workflow
 launch/gating entry helpers live in `service_submit_workflow_entry_helpers.go` and
-Temporal task-loading helpers live alongside the Temporal adapter in
+Temporal task-loading helpers live alongside the Temporal host collaborator surface in
 `service_submit_temporal_task_loader_helper.go`.
 
 Submission-specific checkpoint:

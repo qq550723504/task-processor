@@ -336,20 +336,32 @@ Platform builders should own only platform-specific preview payloads.
 
 ### 2.2 Submission Refactor
 
-Current issue: submit, retry, recovery, execution state, direct submit, Temporal adapter, and submit locks are related but spread across the larger ListingKit service object.
+Current issue: submit, retry, recovery, execution state, direct submit, Temporal lifecycle/flow/persistence/refresh collaborators, and submit locks are related but spread across the larger ListingKit service object.
 
 Target:
 
 ```text
-internal/listingkit/submission/
-  service.go
-  state.go
-  retry.go
-  recovery.go
-  execution.go
-  direct.go
-  temporal_adapter.go
-  lock.go
+internal/listing/submission/
+  action_record.go
+  attempt_finalize.go
+  attempt_record.go
+  confirm_remote_state.go
+  event_history.go
+  inflight_state.go
+  refresh_guard.go
+  refresh_selection.go
+  remote_sync.go
+  submit_error.go
+
+internal/marketplace/shein/publishing/
+  remote_record_policy.go
+  submission_projection.go
+  submission_remote.go
+
+internal/listingkit/
+  service_submit*.go
+  task_submission_*.go
+  task_temporal_submission_*_service.go
 ```
 
 Expose a small service interface:
@@ -361,6 +373,12 @@ type Service interface {
     GetState(ctx context.Context, taskID string) (*SubmitState, error)
 }
 ```
+
+Direction note:
+
+- generic listing submission mechanics should move toward `internal/listing/submission`
+- marketplace-specific submission rules should move toward `internal/marketplace/*/publishing`
+- `internal/listingkit` should shrink into orchestration, compatibility, and API-shell responsibilities rather than becoming the long-term home of a large generic `submission` package
 
 ### 2.3 Service Object Slimming
 

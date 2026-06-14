@@ -2,7 +2,7 @@
 
 **日期**: 2026-06-08  
 **阶段**: Phase 2 - 模块拆分规划  
-**状态**: 📋 分析中
+**状态**: 历史分析记录；当前目标边界以 `project-wide-refactoring-plan.md`、`project-wide-execution-plan.md` 和 `listingkit-boundary-checkpoint.md` 为准
 
 ---
 
@@ -16,29 +16,25 @@
 
 ### 已有子模块
 
-#### 1. `submission/` - 提交就绪状态管理
-**职责**: Marketplace submission readiness, submit state transitions, submission events, status refresh
+#### 1. `submission/` - 提交域通用机制
+**当前目标职责**: generic listing submission mechanics owned by `internal/listing/submission`; SHEIN-specific transition/state composition stays in a narrowed `internal/listingkit/submission` compatibility surface until a safer owner exists
 
-**当前文件** (8个):
-- `confirm_remote.go` - 远程确认逻辑
-- `events.go` - 提交事件
-- `source_facts.go` - 源事实数据
-- `state.go` - 提交状态
-- `transitions.go` - 状态转换
+**当前方向说明**:
+- 通用锁、重试、event draft、confirm-remote state、refresh policy、attempt/action record、remote sync 等轻量机制优先归到 `internal/listing/submission`
+- `internal/listingkit/submission` 不再作为通用 submission 主归宿，而是逐步缩成 SHEIN-focused adapter/transition surface
+- Temporal 提交流程也不再以单独 adapter 为中心，而是拆成 lifecycle / flow / persistence / refresh collaborators
 
-**根目录中可能相关的文件**:
-- `submit_lock.go` ✅ 应移入 (锁管理)
-- `shein_submit_retry.go` ✅ 应移入 (重试逻辑)
-- `task_submission_service.go` ⚠️ 部分相关 (服务层,可保留)
-- `task_submission_execution_service.go` ⚠️ 部分相关 (执行层,可保留)
-- `task_submission_state_service.go` ⚠️ 部分相关 (状态服务,可保留)
-- `task_direct_submission_service.go` ⚠️ 部分相关 (直接提交,可保留)
-- `task_temporal_submission_adapter.go` ⚠️ 适配器,可保留
+**根目录中当前仍相关的文件**:
+- `task_submission_service.go` ⚠️ 服务层,可保留
+- `task_submission_execution_service.go` ⚠️ 执行层,可保留
+- `task_submission_state_service.go` ⚠️ 状态服务,可保留
+- `task_direct_submission_service.go` ⚠️ 直接提交,可保留
+- `task_temporal_submission_*_service.go` ⚠️ Temporal lifecycle/flow/persistence/refresh 协作者,可保留在根目录编排层
 - `service_submit*.go` 系列 ⚠️ 服务实现,可保留
 
 **建议**: 
-- 移动纯 submission 逻辑文件到 `submission/`
-- 保留服务层和适配器在根目录(作为 Facade)
+- 移动纯 submission 逻辑文件到 `internal/listing/submission`
+- 保留根目录服务层和编排层在 `listingkit`，但避免继续把新业务规则堆回去
 
 ---
 

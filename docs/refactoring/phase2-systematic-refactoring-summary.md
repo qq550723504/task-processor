@@ -1,5 +1,7 @@
 # 方案 B 系统性重构 - 执行总结
 
+> 历史说明: 本文是阶段性总结，描述的是当时把部分提交逻辑移动到 `submission/` 子模块的中间态。当前 submission 目标方向请以 `project-wide-refactoring-plan.md`、`project-wide-execution-plan.md` 和 `listingkit-boundary-checkpoint.md` 为准。
+
 ## 📅 执行日期
 2026-06-08
 

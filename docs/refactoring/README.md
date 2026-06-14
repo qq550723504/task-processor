@@ -8,8 +8,11 @@ Project-wide restructuring should follow:
 
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md)
 - [project-wide-execution-plan.md](./project-wide-execution-plan.md)
+- [listingkit-boundary-checkpoint.md](./listingkit-boundary-checkpoint.md) for the current approved ListingKit boundary stop-lines and submission-direction checkpoint
 
 Use the refactoring plan as the default architecture authority, and use the execution plan as the default implementation sequence for broad package, boundary, runtime assembly, marketplace, infrastructure, or ListingKit modularization decisions.
+
+For submission and Temporal-related ListingKit work, treat `listingkit-boundary-checkpoint.md` as the current checkpoint authority when older local inventories or phase notes disagree with newer package direction.
 
 Older local plans are still useful for historical context and detailed task breakdowns, but they should not override the project-wide plan unless a newer ADR or refactoring document explicitly says so.
 
@@ -52,6 +55,7 @@ The current active direction is:
 5. Keep product facts and reusable visual assets outside ListingKit.
 6. Hide infrastructure and external clients behind small interfaces.
 7. Prefer small, testable migrations over broad rewrites.
+8. For submission refactoring, prefer `internal/listing/submission` for generic mechanics, `internal/marketplace/*/publishing` for marketplace rules, and keep `internal/listingkit` as a shrinking orchestration and compatibility surface.
 
 ## Current refactoring documents
 
@@ -63,7 +67,7 @@ The current active direction is:
 - [listing-preview-migration-map.md](./listing-preview-migration-map.md) - first detailed migration inventory for moving preview ownership out of legacy ListingKit.
 - [dependency-baseline.md](./dependency-baseline.md) - baseline worksheet for dependency scans and legacy exception tracking.
 - [preview-subpackage-feasibility.md](./preview-subpackage-feasibility.md) - current decision note explaining why preview stays inside `package listingkit` before a real subpackage extraction.
-- [submission-inventory.md](./submission-inventory.md) - Phase 3.1 submission consolidation inventory and file-group split checkpoint.
+- [submission-inventory.md](./submission-inventory.md) - historical submission consolidation inventory; useful for file grouping history, but current submission target direction is governed by the boundary checkpoint plus the project-wide plan.
 - [service-slimming-checkpoint.md](./service-slimming-checkpoint.md) - Phase 4 first checkpoint for root service object file-group slimming.
 - [listingkit-refactoring-plan.md](./listingkit-refactoring-plan.md) - detailed ListingKit root-directory reduction plan.
 - [studio-migration-plan.md](./studio-migration-plan.md) - Studio migration planning.
