@@ -41,8 +41,10 @@ func TestPickSheinWarehouseCodeFallsBackToFirstWarehouse(t *testing.T) {
 func TestResolveSheinSubmitSettingsUsesStoreProfileFields(t *testing.T) {
 	t.Parallel()
 
+	storeProfileRepo := newInMemoryStoreProfileRepository()
 	svc := &service{
-		mirrors: serviceDependencyMirrors{storeProfileRepo: newInMemoryStoreProfileRepository()},
+		adminDeps: adminDependencies{storeProfileRepo: storeProfileRepo},
+		mirrors:   serviceDependencyMirrors{storeProfileRepo: storeProfileRepo},
 		sheinSettings: SheinSettings{
 			DefaultStoreID:    700,
 			Site:              "US",
@@ -90,8 +92,10 @@ func TestSheinSubmitPreferredWarehouseCodeUsesFirstCSVItem(t *testing.T) {
 func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *testing.T) {
 	t.Parallel()
 
+	storeProfileRepo := newInMemoryStoreProfileRepository()
 	svc := &service{
-		mirrors: serviceDependencyMirrors{storeProfileRepo: newInMemoryStoreProfileRepository()},
+		adminDeps: adminDependencies{storeProfileRepo: storeProfileRepo},
+		mirrors:   serviceDependencyMirrors{storeProfileRepo: storeProfileRepo},
 		sheinSettings: SheinSettings{
 			DefaultStoreID:    700,
 			Site:              "US",

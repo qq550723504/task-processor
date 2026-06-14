@@ -66,14 +66,14 @@ func resolveAdminStoreProfileRepo(s *service) StoreProfileRepository {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.adminDeps.storeProfileRepo, &s.mirrors.storeProfileRepo)
+	return s.adminDeps.storeProfileRepo
 }
 
 func resolveAdminAICredentialStore(s *service) AIClientCredentialStore {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.adminDeps.aiCredentialStore, &s.mirrors.aiCredentialStore)
+	return s.adminDeps.aiCredentialStore
 }
 
 func buildSettingsAdminServiceConfigWithWiring(wiring settingsAdminWiring) settingsAdminServiceConfig {

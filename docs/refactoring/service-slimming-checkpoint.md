@@ -16,6 +16,7 @@ The current internal representation direction is also clearer now:
 Recent progress in this area:
 
 - studio dependency resolution now reads directly from `studioDeps`; legacy dependency mirrors no longer own studio session/batch repositories or studio OpenAI hooks.
+- admin dependency resolution now reads directly from `adminDeps`; AI client settings and store-profile admin wiring no longer depend on legacy dependency mirrors.
 
 ## 2. Current File Groups
 

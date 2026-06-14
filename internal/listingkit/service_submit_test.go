@@ -706,9 +706,13 @@ func TestBuildSheinSubmitProductAPIUsesExplicitStoreID(t *testing.T) {
 
 	var lastStoreID int64
 	builder := stubSheinProductAPIBuilder{api: &stubSheinProductAPI{}, lastStoreID: &lastStoreID}
+	storeProfileRepo := newInMemoryStoreProfileRepository()
 	svc := &service{
+		adminDeps: adminDependencies{
+			storeProfileRepo: storeProfileRepo,
+		},
 		mirrors: serviceDependencyMirrors{
-			storeProfileRepo:       newInMemoryStoreProfileRepository(),
+			storeProfileRepo:       storeProfileRepo,
 			sheinProductAPIBuilder: builder,
 		},
 	}

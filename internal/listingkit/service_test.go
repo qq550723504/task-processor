@@ -411,10 +411,14 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
+	storeProfileRepo := newInMemoryStoreProfileRepository()
 	svc := &service{
 		repo: repo,
+		adminDeps: adminDependencies{
+			storeProfileRepo: storeProfileRepo,
+		},
 		mirrors: serviceDependencyMirrors{
-			storeProfileRepo: newInMemoryStoreProfileRepository(),
+			storeProfileRepo: storeProfileRepo,
 		},
 		runtime: serviceRuntimeState{
 			taskSubmitter: noopTaskSubmitter{},
@@ -481,10 +485,14 @@ func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRu
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
+	storeProfileRepo := newInMemoryStoreProfileRepository()
 	svc := &service{
 		repo: repo,
+		adminDeps: adminDependencies{
+			storeProfileRepo: storeProfileRepo,
+		},
 		mirrors: serviceDependencyMirrors{
-			storeProfileRepo: newInMemoryStoreProfileRepository(),
+			storeProfileRepo: storeProfileRepo,
 		},
 		runtime: serviceRuntimeState{
 			taskSubmitter: noopTaskSubmitter{},

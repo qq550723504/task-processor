@@ -33,7 +33,6 @@ type serviceDependencyMirrors struct {
 	sheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
 	sheinContentOptimizer      openaiclient.ChatCompleter
 
-	aiCredentialStore   AIClientCredentialStore
 	assetRepo           assetrepo.Repository
 	reviewRepo          reviewstore.Repository
 	assetRecipeResolver assetrecipe.Resolver
