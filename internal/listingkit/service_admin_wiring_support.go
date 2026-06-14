@@ -75,3 +75,27 @@ func resolveAdminAICredentialStore(s *service) AIClientCredentialStore {
 	}
 	return syncGroupedDependency(&s.adminDeps.aiCredentialStore, &s.mirrors.aiCredentialStore)
 }
+
+func buildSettingsAdminServiceConfigWithWiring(wiring settingsAdminWiring) settingsAdminServiceConfig {
+	return settingsAdminServiceConfig{
+		storeProfileRepo:     wiring.storeProfileRepo,
+		aiCredentialStore:    wiring.aiCredentialStore,
+		currentSheinSettings: wiring.currentSheinSettings,
+		mutateSheinSettings:  wiring.mutateSheinSettings,
+		listStoreOptions:     wiring.listStoreOptions,
+	}
+}
+
+func buildSheinAdminServiceConfigWithWiring(wiring sheinAdminWiring) sheinAdminServiceConfig {
+	return sheinAdminServiceConfig{
+		repo:                  wiring.repo,
+		recovery:              wiring.recovery,
+		currentPricingRule:    wiring.currentPricingRule,
+		newSheinAPIClient:     wiring.newSheinAPIClient,
+		buildTaskPreview:      wiring.buildTaskPreview,
+		categoryResolver:      wiring.categoryResolver,
+		attributeResolver:     wiring.attributeResolver,
+		saleAttributeResolver: wiring.saleAttributeResolver,
+		clearPricingCache:     wiring.clearPricingCache,
+	}
+}

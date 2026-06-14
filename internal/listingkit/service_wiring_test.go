@@ -346,6 +346,12 @@ func TestServiceRootFileDoesNotOwnCollaboratorGroupInitializationBodies(t *testi
 func TestAdminCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 	t.Parallel()
 
+	if _, err := os.ReadFile("service_admin_wiring.go"); err == nil {
+		t.Fatal("service_admin_wiring.go should be removed after admin collaborator wiring consolidation")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_admin_wiring.go) unexpected error = %v", err)
+	}
+
 	cases := []struct {
 		name         string
 		file         string
@@ -356,8 +362,8 @@ func TestAdminCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			name: "admin collaborators",
 			file: "service_admin_collaborators.go",
 			builderCalls: []string{
-				"buildSettingsAdminServiceConfig(s)",
-				"buildSheinAdminServiceConfig(s)",
+				"buildSettingsAdminServiceConfigWithWiring(buildSettingsAdminWiring(s))",
+				"buildSheinAdminServiceConfigWithWiring(buildSheinAdminWiring(s))",
 			},
 			inlineConfig: []string{
 				"newSettingsAdminService(settingsAdminServiceConfig{",

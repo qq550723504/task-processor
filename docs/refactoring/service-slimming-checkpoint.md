@@ -24,6 +24,7 @@ internal/listingkit/service_config.go                     // NewService / factor
 internal/listingkit/service_defaults.go                   // config defaults / default builders
 internal/listingkit/service_collaborators.go              // collaborator initialization groups
 internal/listingkit/service_admin_collaborators.go       // admin collaborator accessors
+internal/listingkit/service_admin_wiring_support.go      // admin collaborator wiring plus config assembly helpers
 internal/listingkit/service_ai_client_settings_entrypoints.go // AI client settings entrypoints
 internal/listingkit/service_child_task_retry_logic.go    // child task retry logic
 internal/listingkit/service_shein_category_search_entrypoint.go // SHEIN category search entrypoint
@@ -142,6 +143,13 @@ Submission initialization is now grouped as:
 ### `service_admin_collaborators.go`
 
 Owns admin collaborator accessors:
+
+- settings admin,
+- SHEIN admin.
+
+### `service_admin_wiring_support.go`
+
+Owns admin collaborator wiring plus explicit config assembly for:
 
 - settings admin,
 - SHEIN admin.

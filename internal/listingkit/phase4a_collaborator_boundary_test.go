@@ -74,10 +74,10 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 		needles []string
 	}{
 		{
-			file: "service_admin_wiring.go",
+			file: "service_admin_wiring_support.go",
 			needles: []string{
-				"func buildSettingsAdminServiceConfig(s *service) settingsAdminServiceConfig {",
-				"func buildSheinAdminServiceConfig(s *service) sheinAdminServiceConfig {",
+				"func buildSettingsAdminServiceConfigWithWiring(wiring settingsAdminWiring) settingsAdminServiceConfig {",
+				"func buildSheinAdminServiceConfigWithWiring(wiring sheinAdminWiring) sheinAdminServiceConfig {",
 			},
 		},
 		{
