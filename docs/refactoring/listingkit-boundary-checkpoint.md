@@ -87,7 +87,7 @@ Current stop lines:
 
 Good next candidates:
 
-- `internal/listing/submission`: start with a small skeleton or read-only policy seam that does not touch Temporal determinism or platform submit side effects,
+- `internal/listing/submission`: continue with small read-only policy seams that do not touch Temporal determinism or platform submit side effects,
 - `internal/marketplace/shein/publishing`: continue guard-backed migration of new SHEIN publishing rules, not legacy model relocation,
 - `internal/product/sourcing`: only add source normalization seams when crawler/runtime adapters can remain thin.
 
@@ -104,7 +104,11 @@ Preferred next areas:
 
 Recommended next slice:
 
-- evaluate a minimal `internal/listing/submission` skeleton or SHEIN marketplace publishing guard-backed rule seam before extracting more studio/preview helpers.
+- evaluate another minimal `internal/listing/submission` read-only policy seam or SHEIN marketplace publishing guard-backed rule seam before extracting more studio/preview helpers.
+
+Completed submission slices:
+
+- source-facts readiness policy for 1688-derived facts now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps a compatibility wrapper.
 
 Completed sourcing slices:
 

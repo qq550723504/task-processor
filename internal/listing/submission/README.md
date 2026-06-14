@@ -13,6 +13,7 @@ Current stable ownership:
 - generic remote-submit attempt seam (`prepare state -> execute attempt -> shape result`)
 - generic post-success persistence seam (`persist result/phase -> complete attempt -> remember -> persist success`)
 - generic failure-record persistence seam (`record failure event/state`)
+- source-facts readiness policy for 1688-derived facts
 
 Does not own yet:
 
