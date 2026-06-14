@@ -10,8 +10,6 @@ import (
 )
 
 type serviceDependencyMirrors struct {
-	productSvc                ProductService
-	imageSvc                  ImageService
 	sdsSyncSvc                sdsusecase.Service
 	sdsLoginStatusProvider    SDSLoginStatusProvider
 	sdsBaselineRemoteProvider SDSBaselineRemoteProvider

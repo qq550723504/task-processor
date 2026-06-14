@@ -380,17 +380,15 @@ func TestCreateGenerateTaskRunsInlineWithoutSubmitter(t *testing.T) {
 		},
 	}
 	repo := NewInMemoryRepositoryForTest()
-	svc := seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowServices(seedWorkflowDepsFromMirrors(&service{
 		repo: repo,
 		mirrors: serviceDependencyMirrors{
-			productSvc:          productSvc,
-			imageSvc:            imageSvc,
 			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 			assetRecipeResolver: newDefaultAssetRecipeResolver(),
 			assetBundleBuilder:  newDefaultAssetBundleBuilder(),
 			assetGenerator:      newDefaultAssetGenerationService(),
 		},
-	})
+	}), productSvc, imageSvc)
 
 	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{
 		Text:      "inline listing kit",
