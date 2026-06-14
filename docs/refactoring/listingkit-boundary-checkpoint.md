@@ -46,6 +46,7 @@ Current state:
 - `listingkit` task preview delegates through `previewdomain.TaskPreviewService`,
 - preview package owns render-preview metadata summary extraction, while `listingkit` still owns asset/platform DTO adapters,
 - preview package owns platform render-preview summary aggregation over neutral slot inputs,
+- preview package owns render-preview capability mapping and raster-preview fallback rules, while legacy generation packages keep compatibility wrappers,
 - preview domain remains independent from `listingkit` and SHEIN-specific packages.
 
 Guardrail:
