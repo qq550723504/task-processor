@@ -20,6 +20,7 @@ Current stable ownership:
 - phase detail mapping policy for submission phase events
 - failure-state fallback policy for submission failure records
 - remote-recovery lease expiry policy
+- active attempt lease policy
 
 Does not own yet:
 

@@ -5,6 +5,39 @@ import (
 	"time"
 )
 
+func TestIsActiveAttempt(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+	startedAt := now.Add(-10 * time.Minute)
+	expiredAt := now.Add(-time.Minute)
+
+	if !IsActiveAttempt(RecoveryLeaseState{
+		CurrentAction:     "publish",
+		CurrentRequestID:  "req-1",
+		CurrentPhase:      "submit_remote",
+		InFlightStartedAt: &startedAt,
+	}, "publish", now, 15*time.Minute) {
+		t.Fatal("expected active in-flight attempt")
+	}
+	if IsActiveAttempt(RecoveryLeaseState{
+		CurrentAction:     "publish",
+		CurrentRequestID:  "req-1",
+		CurrentPhase:      "submit_remote",
+		InFlightStartedAt: &startedAt,
+		LeaseExpiresAt:    &expiredAt,
+	}, "publish", now, 15*time.Minute) {
+		t.Fatal("expired lease should not be active")
+	}
+	if IsActiveAttempt(RecoveryLeaseState{
+		CurrentAction:    "publish",
+		CurrentRequestID: "req-1",
+		CurrentPhase:     "submit_remote",
+	}, "publish", now, 15*time.Minute) {
+		t.Fatal("missing start time should not be active")
+	}
+}
+
 func TestNeedsRemoteRecovery(t *testing.T) {
 	t.Parallel()
 

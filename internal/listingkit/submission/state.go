@@ -146,16 +146,13 @@ func FindActiveAttempt(pkg *sheinpub.Package, action string, now time.Time, ttl 
 		return nil
 	}
 	report := pkg.SubmissionState
-	if report.CurrentAction != action || report.CurrentRequestID == "" || report.CurrentPhase == "" || report.InFlightStartedAt == nil {
-		return nil
-	}
-	if report.LeaseExpiresAt != nil {
-		if now.After(*report.LeaseExpiresAt) {
-			return nil
-		}
-		return report
-	}
-	if now.Sub(*report.InFlightStartedAt) > ttl {
+	if !listingsubmission.IsActiveAttempt(listingsubmission.RecoveryLeaseState{
+		CurrentAction:     report.CurrentAction,
+		CurrentRequestID:  report.CurrentRequestID,
+		CurrentPhase:      report.CurrentPhase,
+		InFlightStartedAt: report.InFlightStartedAt,
+		LeaseExpiresAt:    report.LeaseExpiresAt,
+	}, action, now, ttl) {
 		return nil
 	}
 	return report
