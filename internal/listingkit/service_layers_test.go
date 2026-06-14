@@ -26,7 +26,7 @@ func TestProcessStandardProductLayerStartsPlatformAdaptTemporalWhenEnabled(t *te
 			Title: "Standard Layer Product",
 		},
 	}
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: repo,
 		mirrors: serviceDependencyMirrors{
 			productSvc:          productSvc,
@@ -39,7 +39,7 @@ func TestProcessStandardProductLayerStartsPlatformAdaptTemporalWhenEnabled(t *te
 			platformAdaptWorkflowClient:  platformClient,
 			platformAdaptWorkflowEnabled: true,
 		},
-	}
+	})
 
 	task := &Task{
 		ID:        "standard-layer-task-1",

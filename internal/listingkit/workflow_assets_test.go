@@ -269,7 +269,7 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	}
 	assetRepository := assetrepo.NewMemRepository()
 
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetRepository, assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetRepository, assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}})
 
 	task := &Task{
 		ID: "listingkit-task-1",
@@ -1146,7 +1146,7 @@ func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence
 			}},
 		},
 	}
-	phase := buildPlatformAssetDispatchPhase(&service{mirrors: serviceDependencyMirrors{assetGenerator: assetGenerator, assetRepo: assetRepository, assetBundleBuilder: newDefaultAssetBundleBuilder()}})
+	phase := buildPlatformAssetDispatchPhase(seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{assetGenerator: assetGenerator, assetRepo: assetRepository, assetBundleBuilder: newDefaultAssetBundleBuilder()}}))
 	final := &ListingKitResult{
 		Summary: &GenerationSummary{},
 		Amazon:  &AmazonPackage{},
@@ -1265,7 +1265,7 @@ func TestRunWorkflowAppliesSheinPlatformFinalizationDecorations(t *testing.T) {
 	ai := &stubSheinContentAI{
 		response: `{"title":"Botanical Envelope Pillow Cover for Sofa Couch Bedroom Decor, Soft Polyester Accent Cushion Case","description":"A soft polyester envelope pillow cover designed to refresh sofas, beds, and reading corners with a botanical accent print. The overlap closure keeps the insert tucked in while making everyday styling changes easy."}`,
 	}
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		mirrors: serviceDependencyMirrors{
 			productSvc:          productSvc,
 			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
@@ -1276,7 +1276,7 @@ func TestRunWorkflowAppliesSheinPlatformFinalizationDecorations(t *testing.T) {
 		workflowDeps: workflowDependencies{
 			sheinContentOptimizer: ai,
 		},
-	}
+	})
 	task := &Task{
 		ID: "listingkit-task-shein-copy",
 		Request: &GenerateRequest{
@@ -1350,7 +1350,7 @@ func TestRunWorkflowAppliesVariantCoverageGuardAfterSheinReview(t *testing.T) {
 			},
 		},
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{
 		AmazonBuilder: stubAmazonDraftBuilder{},
 		SheinCategoryResolver: sheinpub.NewCategoryResolver(stubSheinCategoryAPI{
 			info: &sheincategory.CategoryInfo{
@@ -1410,7 +1410,7 @@ func TestRunWorkflowAppliesVariantCoverageGuardAfterSheinReview(t *testing.T) {
 			},
 		}, nil),
 	}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
-	}
+	})
 	task := &Task{
 		ID: "listingkit-task-variant-coverage",
 		Request: &GenerateRequest{
@@ -1489,7 +1489,7 @@ func TestRunWorkflowRecordsDegradedImageStageWhenImageProcessingFails(t *testing
 		task:       &productimage.Task{ID: "image-task-fail"},
 		processErr: fmt.Errorf("renderer unavailable"),
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}})
 
 	task := &Task{
 		ID: "listingkit-task-image-fail",
@@ -1539,7 +1539,7 @@ func TestRunWorkflowUsesSDSCatalogCanonicalAndSkipsImageProcessing(t *testing.T)
 			},
 		},
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}})
 
 	task := &Task{
 		ID: "listingkit-task-sds-catalog",
@@ -1609,7 +1609,7 @@ func TestRunStandardProductWorkflowRunsRemoteSDSSyncWhenImageProcessingIsDisable
 			},
 		},
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}})
 	task := &Task{
 		ID: "task-remote-sds-sync",
 		Request: &GenerateRequest{
@@ -1654,7 +1654,7 @@ func TestRunWorkflowRecordsBlockingProductEnrichFailure(t *testing.T) {
 		task:       &productenrich.Task{ID: "product-task-blocking", Request: &productenrich.GenerateRequest{Text: "unknown product"}},
 		processErr: fmt.Errorf("llm unavailable"),
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}})
 	task := &Task{
 		ID: "listingkit-task-product-blocking",
 		Request: &GenerateRequest{
@@ -1711,7 +1711,7 @@ func TestRunWorkflowRecordsAssetGenerationDispatchFailure(t *testing.T) {
 		},
 		dispatchErr: fmt.Errorf("queue unavailable"),
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: assetGenerator}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: assetGenerator}})
 	task := &Task{
 		ID: "listingkit-task-asset-dispatch",
 		Request: &GenerateRequest{
@@ -1769,7 +1769,7 @@ func TestRunWorkflowRecordsDeferredAssetGenerationDispatchFailure(t *testing.T) 
 		},
 		dispatchErrAt: map[int]error{2: fmt.Errorf("renderer queue unavailable")},
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: assetGenerator}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: assetGenerator}})
 	task := &Task{
 		ID: "listingkit-task-deferred-asset-dispatch",
 		Request: &GenerateRequest{
@@ -2140,7 +2140,7 @@ func runWorkflowWithDeferredDispatchFixture(
 		},
 	}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetRepository, assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: assetGenerator}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetRepository, assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: assetGenerator}})
 	task := &Task{
 		ID: taskID,
 		Request: &GenerateRequest{
@@ -2182,7 +2182,7 @@ func TestRunWorkflowSkipsAssetGenerationWhenProcessImagesDisabled(t *testing.T) 
 	}
 	assetRepository := assetrepo.NewMemRepository()
 
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: nil, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetRepository, assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: nil, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetRepository, assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}})
 
 	task := &Task{
 		ID: "listingkit-task-2",
@@ -2269,7 +2269,7 @@ func TestRunWorkflowSyncsSDSDesignWhenConfigured(t *testing.T) {
 		},
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}})
 
 	task := &Task{
 		ID: "listingkit-task-sds",
@@ -2560,7 +2560,7 @@ func TestRunWorkflowKeepsMainFlowWhenSDSSyncFails(t *testing.T) {
 		err: fmt.Errorf("sync failed"),
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}})
 
 	task := &Task{
 		ID: "listingkit-task-sds-fail",
@@ -2721,7 +2721,7 @@ func TestRunWorkflowMarksSDSAuthRequiredAsBlockingIssue(t *testing.T) {
 		},
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, imageSvc: imageSvc, sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetrepo.NewMemRepository(), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()}})
 
 	task := &Task{
 		ID: "listingkit-task-sds-auth",
@@ -2804,10 +2804,10 @@ func TestRunWorkflowSkipsDeferredGenerationWhenProcessImagesDisabled(t *testing.
 	}
 	assetRepository := assetrepo.NewMemRepository()
 
-	svc := &service{mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetRepository, assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{productSvc: productSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetRepository, assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{
 		DeferredRenderer: assetgeneration.NewProductImageDeferredRenderer(&stubWorkflowSceneRenderer{}),
 	})},
-	}
+	})
 
 	task := &Task{
 		ID: "listingkit-task-3",

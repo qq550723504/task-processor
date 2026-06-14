@@ -1104,9 +1104,9 @@ func TestExecuteTaskGenerationActionRunsRetryableTarget(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
-	}
+	})
 
 	task := &Task{
 		ID:        "task-generation-action-retry-1",
@@ -1198,9 +1198,9 @@ func TestExecuteTaskGenerationActionRunsQueueOnlyTarget(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
-	}
+	})
 
 	task := &Task{
 		ID:        "task-generation-action-queue-1",
@@ -1318,9 +1318,9 @@ func TestExecuteTaskGenerationActionSupportsPatchOnlyResponseMode(t *testing.T) 
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
-	}
+	})
 
 	task := &Task{
 		ID:        "task-generation-action-patch-only-1",
@@ -1393,9 +1393,9 @@ func TestGetTaskGenerationReviewSessionReturnsNotModifiedWhenDeltaMatches(t *tes
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
-	}
+	})
 
 	task := &Task{
 		ID:        "task-generation-review-session-delta-1",
@@ -1459,9 +1459,9 @@ func TestGetTaskGenerationReviewPreviewReturnsNotModifiedWhenDeltaMatches(t *tes
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
-	}
+	})
 
 	task := &Task{
 		ID:        "task-generation-review-preview-delta-1",
@@ -1525,9 +1525,9 @@ func TestGetTaskGenerationReviewSessionSupportsPatchOnlyNavigationRead(t *testin
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
-	}
+	})
 
 	task := &Task{
 		ID:        "task-generation-review-session-patch-1",
@@ -1605,9 +1605,9 @@ func TestExecuteTaskGenerationActionBuildsRetryReviewSessionFromExecutedQueue(t 
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
-	}
+	})
 
 	task := &Task{
 		ID:        "task-generation-action-retry-review-1",
@@ -1782,9 +1782,9 @@ func TestExecuteTaskGenerationActionAppliesSectionReviewOutcome(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, reviewRepo: reviewstore.NewMemRepository()},
-	}
+	})
 
 	task := &Task{
 		ID:        "task-generation-action-section-review-1",
