@@ -477,7 +477,7 @@ func resolveSubmissionStoreProfileRepo(s *service) StoreProfileRepository {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.submissionDeps.storeProfileRepo, &s.mirrors.storeProfileRepo)
+	return s.submissionDeps.storeProfileRepo
 }
 
 func resolveSubmissionStoreCatalog(s *service) SheinStoreCatalog {
@@ -498,21 +498,21 @@ func resolveSubmissionProductAPIBuilder(s *service) sheinpub.ProductAPIBuilder {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.submissionDeps.sheinProductAPIBuilder, &s.mirrors.sheinProductAPIBuilder)
+	return s.submissionDeps.sheinProductAPIBuilder
 }
 
 func resolveSubmissionImageAPIBuilder(s *service) sheinpub.ImageAPIBuilder {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.submissionDeps.sheinImageAPIBuilder, &s.mirrors.sheinImageAPIBuilder)
+	return s.submissionDeps.sheinImageAPIBuilder
 }
 
 func resolveSubmissionTranslateAPIBuilder(s *service) sheinpub.TranslateAPIBuilder {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.submissionDeps.sheinTranslateAPIBuilder, &s.mirrors.sheinTranslateAPIBuilder)
+	return s.submissionDeps.sheinTranslateAPIBuilder
 }
 
 func resolveSubmissionContentOptimizer(s *service) openaiclient.ChatCompleter {

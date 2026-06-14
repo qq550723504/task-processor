@@ -58,7 +58,7 @@ func TestGetTaskPreviewIncludesSheinStoreResolution(t *testing.T) {
 
 	svc := &service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
+		submissionDeps: submissionDependencies{
 			storeProfileRepo: newInMemoryStoreProfileRepository(),
 		},
 	}
@@ -156,8 +156,8 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 
 	svc := &service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			sheinStoreCatalog: &stubSheinStoreCatalog{
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			storeCatalog: &stubSheinStoreCatalog{
 				storeInfo: &SheinStoreInfo{
 					ID:       870,
 					TenantID: 373211199677923496,
@@ -166,7 +166,7 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 					LoginURL: "sso.geiwohuo.com",
 				},
 			},
-			sheinAPIClientFactory: stubSheinAPIClientFactory{
+			apiClientFactory: stubSheinAPIClientFactory{
 				client: sheinclient.NewAPIClientWithStoreConfig(870, &sheinclient.StoreConfig{
 					ID:       870,
 					TenantID: 373211199677923496,
@@ -175,6 +175,8 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 					LoginURL: "sso.geiwohuo.com",
 				}, previewTestCookieProvider{}),
 			},
+		},
+		submissionDeps: submissionDependencies{
 			storeProfileRepo: newInMemoryStoreProfileRepository(),
 		},
 	}

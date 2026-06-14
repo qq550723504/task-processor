@@ -417,7 +417,7 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 		adminDeps: adminDependencies{
 			storeProfileRepo: storeProfileRepo,
 		},
-		mirrors: serviceDependencyMirrors{
+		submissionDeps: submissionDependencies{
 			storeProfileRepo: storeProfileRepo,
 		},
 		runtime: serviceRuntimeState{
@@ -491,7 +491,7 @@ func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRu
 		adminDeps: adminDependencies{
 			storeProfileRepo: storeProfileRepo,
 		},
-		mirrors: serviceDependencyMirrors{
+		submissionDeps: submissionDependencies{
 			storeProfileRepo: storeProfileRepo,
 		},
 		runtime: serviceRuntimeState{

@@ -711,7 +711,7 @@ func TestBuildSheinSubmitProductAPIUsesExplicitStoreID(t *testing.T) {
 		adminDeps: adminDependencies{
 			storeProfileRepo: storeProfileRepo,
 		},
-		mirrors: serviceDependencyMirrors{
+		submissionDeps: submissionDependencies{
 			storeProfileRepo:       storeProfileRepo,
 			sheinProductAPIBuilder: builder,
 		},
@@ -749,7 +749,7 @@ func TestBuildSheinSubmitProductAPIInjectsTaskTenantIntoBuilderContext(t *testin
 
 	var builderCtx context.Context
 	svc := &service{
-		mirrors: serviceDependencyMirrors{
+		submissionDeps: submissionDependencies{
 			sheinProductAPIBuilder: stubSheinProductAPIBuilder{
 				api:     &stubSheinProductAPI{},
 				lastCtx: &builderCtx,
@@ -783,7 +783,7 @@ func TestUploadSheinSubmitImagesInjectsTaskTenantIntoBuilderContext(t *testing.T
 
 	var builderCtx context.Context
 	svc := &service{
-		mirrors: serviceDependencyMirrors{
+		submissionDeps: submissionDependencies{
 			sheinImageAPIBuilder: stubSheinImageAPIBuilder{
 				api:     &stubSheinImageAPI{uploaded: map[string]string{"https://example.com/source.jpg": "https://img.shein.com/uploaded.jpg"}},
 				lastCtx: &builderCtx,

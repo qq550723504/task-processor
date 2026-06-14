@@ -174,3 +174,48 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyMirrors(t *testing
 		t.Fatalf("legacy standard workflow runtime = (%v, %v), want hydrated+enabled", svc.runtime.standardProductWorkflowClient, svc.runtime.standardProductWorkflowEnabled)
 	}
 }
+
+func TestNewServiceWithConfigSeedsSubmissionDependenciesWithoutLegacyMirrors(t *testing.T) {
+	t.Parallel()
+
+	storeProfileRepo := newInMemoryStoreProfileRepository()
+	productBuilder := stubSheinProductAPIBuilder{api: &stubSheinProductAPI{}}
+	imageBuilder := stubSheinImageAPIBuilder{api: &stubSheinImageAPI{}}
+	translateBuilder := stubSheinTranslateAPIBuilder{api: &stubSheinTranslateAPI{}}
+
+	svc := newServiceWithConfig(newTestServiceConfig(
+		&stubSubmitRepo{},
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Core.StoreProfileRepository = storeProfileRepo
+			cfg.Shein.SheinProductAPIBuilder = productBuilder
+			cfg.Shein.SheinImageAPIBuilder = imageBuilder
+			cfg.Shein.SheinTranslateAPIBuilder = translateBuilder
+		}),
+	))
+
+	if svc.submissionDeps.storeProfileRepo != storeProfileRepo {
+		t.Fatalf("submission deps store profile repo = %v, want seeded repo", svc.submissionDeps.storeProfileRepo)
+	}
+	if svc.submissionDeps.sheinProductAPIBuilder != productBuilder {
+		t.Fatalf("submission deps shein product api builder = %v, want seeded builder", svc.submissionDeps.sheinProductAPIBuilder)
+	}
+	if svc.submissionDeps.sheinImageAPIBuilder != imageBuilder {
+		t.Fatalf("submission deps shein image api builder = %v, want seeded builder", svc.submissionDeps.sheinImageAPIBuilder)
+	}
+	if svc.submissionDeps.sheinTranslateAPIBuilder != translateBuilder {
+		t.Fatalf("submission deps shein translate api builder = %v, want seeded builder", svc.submissionDeps.sheinTranslateAPIBuilder)
+	}
+
+	if got := resolveSubmissionStoreProfileRepo(svc); got != storeProfileRepo {
+		t.Fatalf("resolveSubmissionStoreProfileRepo() = %v, want seeded repo", got)
+	}
+	if got := resolveSubmissionProductAPIBuilder(svc); got != productBuilder {
+		t.Fatalf("resolveSubmissionProductAPIBuilder() = %v, want seeded builder", got)
+	}
+	if got := resolveSubmissionImageAPIBuilder(svc); got != imageBuilder {
+		t.Fatalf("resolveSubmissionImageAPIBuilder() = %v, want seeded builder", got)
+	}
+	if got := resolveSubmissionTranslateAPIBuilder(svc); got != translateBuilder {
+		t.Fatalf("resolveSubmissionTranslateAPIBuilder() = %v, want seeded builder", got)
+	}
+}

@@ -17,6 +17,7 @@ Recent progress in this area:
 
 - studio dependency resolution now reads directly from `studioDeps`; legacy dependency mirrors no longer own studio session/batch repositories or studio OpenAI hooks.
 - admin dependency resolution now reads directly from `adminDeps`; AI client settings and store-profile admin wiring no longer depend on legacy dependency mirrors.
+- submission store-profile and submit API builder resolution now reads directly from `submissionDeps`; legacy dependency mirrors no longer own submission-only store-profile or submit builder dependencies.
 - workflow asset dispatch persistence phases now resolve their asset repository dependency up front instead of reaching through `service.mirrors` at runtime.
 
 ## 2. Current File Groups

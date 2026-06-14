@@ -28,9 +28,6 @@ type serviceDependencyMirrors struct {
 	sheinAttributeResolver     sheinpub.AttributeResolver
 	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
 	sheinPricingPolicy         sheinpub.PricingPolicy
-	sheinProductAPIBuilder     sheinpub.ProductAPIBuilder
-	sheinImageAPIBuilder       sheinpub.ImageAPIBuilder
-	sheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
 	sheinContentOptimizer      openaiclient.ChatCompleter
 
 	assetRepo           assetrepo.Repository
@@ -38,5 +35,4 @@ type serviceDependencyMirrors struct {
 	assetRecipeResolver assetrecipe.Resolver
 	assetBundleBuilder  assetbundle.Builder
 	assetGenerator      assetgeneration.Service
-	storeProfileRepo    StoreProfileRepository
 }
