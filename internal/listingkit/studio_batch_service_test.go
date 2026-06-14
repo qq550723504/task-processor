@@ -103,7 +103,7 @@ func TestServiceGetStudioBatchDetailProjectsItemizedGraph(t *testing.T) {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
 		t.Fatalf("GetStudioBatchDetail() error = %v", err)
@@ -203,7 +203,7 @@ func TestServiceGetStudioBatchDetailIncludesDraftUpdatedAtFromSavedBatchDraft(t 
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo, studioSessionRepo: &studioBatchGenerationSessionRepoStub{
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo, sessionRepo: &studioBatchGenerationSessionRepoStub{
 		session: &SheinStudioSession{
 			ID:           "batch-1",
 			SavedAsBatch: true,
@@ -258,7 +258,7 @@ func TestServiceGetStudioBatchDetailDerivesActiveBatchStatusFromItems(t *testing
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
 		t.Fatalf("GetStudioBatchDetail() error = %v", err)
@@ -296,7 +296,7 @@ func TestServiceGetStudioBatchDetailPreservesTasksCreatedStatus(t *testing.T) {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
 		t.Fatalf("GetStudioBatchDetail() error = %v", err)
@@ -313,7 +313,7 @@ func TestServiceGetStudioBatchDetailPreservesTasksCreatedStatus(t *testing.T) {
 func TestServiceTaskStudioBatchOrDefaultCachesOnService(t *testing.T) {
 	t.Parallel()
 
-	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: NewMemStudioBatchRepository()}}
+	svc := &service{studioDeps: studioDependencies{batchRepo: NewMemStudioBatchRepository()}}
 	collaborator := svc.taskStudioBatchOrDefault()
 	if collaborator == nil {
 		t.Fatal("taskStudioBatchOrDefault() = nil, want collaborator")
@@ -556,7 +556,7 @@ func TestServiceGetStudioBatchDetailReturnsDraftOnlyStateWhenSelectingBatchGraph
 		},
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo, studioSessionRepo: sessionRepo}}
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo, sessionRepo: sessionRepo}}
 
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
@@ -605,7 +605,7 @@ func TestServiceGetStudioBatchDetailMaterializesBatchGraphFromGeneratingSessionW
 		},
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo, studioSessionRepo: sessionRepo}}
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo, sessionRepo: sessionRepo}}
 
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
@@ -702,7 +702,7 @@ func TestServiceApproveStudioBatchDesignsUpdatesReviewStatusFromDesignIDs(t *tes
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
 	detail, err := svc.ApproveStudioBatchDesigns(ctx, "batch-1", &ApproveStudioBatchDesignsRequest{
 		DesignIDs: []string{"design-2"},
 	})
@@ -754,7 +754,7 @@ func TestServiceApproveStudioBatchDesignsRejectsUnknownDesignIDs(t *testing.T) {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
 	_, err := svc.ApproveStudioBatchDesigns(ctx, "batch-1", &ApproveStudioBatchDesignsRequest{
 		DesignIDs: []string{"design-2", "design-missing"},
 	})
@@ -1263,10 +1263,10 @@ func TestServiceCreateStudioBatchTasksUsesApprovedDesignOwnership(t *testing.T) 
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{studioBatchRepo: repo}}
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
 	svc.repo = newStudioBatchTaskRepositoryStub()
 	svc.runtime.taskSubmitter = &studioBatchTaskSubmitterStub{}
-	svc.mirrors.studioSessionRepo = &studioBatchTaskCreationSessionRepoStub{
+	svc.studioDeps.sessionRepo = &studioBatchTaskCreationSessionRepoStub{
 		session: &SheinStudioSession{
 			ID:            "batch-1",
 			Prompt:        "retro cherries",
@@ -1341,8 +1341,8 @@ func TestServiceCreateStudioBatchTasksCreatesRealListingKitTasks(t *testing.T) {
 	svc := &service{
 		repo: taskRepo,
 
-		mirrors: serviceDependencyMirrors{
-			studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
+		studioDeps: studioDependencies{
+			sessionRepo: &studioBatchTaskCreationSessionRepoStub{
 				session: &SheinStudioSession{
 					ID:                "batch-1",
 					Prompt:            "retro cherries",
@@ -1383,7 +1383,7 @@ func TestServiceCreateStudioBatchTasksCreatesRealListingKitTasks(t *testing.T) {
 						},
 					},
 				},
-			}, studioBatchRepo: batchRepo,
+			}, batchRepo: batchRepo,
 		},
 		runtime: serviceRuntimeState{
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
@@ -1511,8 +1511,8 @@ func TestServiceCreateStudioBatchTasksUsesItemSelectionOwnershipForGroupedProduc
 	svc := &service{
 		repo: taskRepo,
 
-		mirrors: serviceDependencyMirrors{
-			studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
+		studioDeps: studioDependencies{
+			sessionRepo: &studioBatchTaskCreationSessionRepoStub{
 				session: &SheinStudioSession{
 					ID:                "batch-1",
 					Prompt:            "retro cherries",
@@ -1522,7 +1522,7 @@ func TestServiceCreateStudioBatchTasksUsesItemSelectionOwnershipForGroupedProduc
 					Selection:         batch.Selection,
 					GroupedSelections: batch.GroupedSelections,
 				},
-			}, studioBatchRepo: batchRepo,
+			}, batchRepo: batchRepo,
 		},
 		runtime: serviceRuntimeState{
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
@@ -1599,8 +1599,8 @@ func TestServiceCreateStudioBatchTasksReturnsPartialSuccessWhenQueueIsFull(t *te
 	svc := &service{
 		repo: taskRepo,
 
-		mirrors: serviceDependencyMirrors{
-			studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
+		studioDeps: studioDependencies{
+			sessionRepo: &studioBatchTaskCreationSessionRepoStub{
 				session: &SheinStudioSession{
 					ID:            "batch-1",
 					Prompt:        "retro cherries",
@@ -1616,7 +1616,7 @@ func TestServiceCreateStudioBatchTasksReturnsPartialSuccessWhenQueueIsFull(t *te
 						PrintableHeight:  1200,
 					},
 				},
-			}, studioBatchRepo: batchRepo,
+			}, batchRepo: batchRepo,
 		},
 		runtime: serviceRuntimeState{
 			taskSubmitter: &studioBatchTaskSubmitterStub{failAfter: 1},
@@ -1692,8 +1692,8 @@ func TestServiceCreateStudioBatchTasksReusesExistingTasksForRepeatedRequests(t *
 	svc := &service{
 		repo: taskRepo,
 
-		mirrors: serviceDependencyMirrors{
-			studioSessionRepo: sessionRepo, studioBatchRepo: batchRepo,
+		studioDeps: studioDependencies{
+			sessionRepo: sessionRepo, batchRepo: batchRepo,
 		},
 		runtime: serviceRuntimeState{
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
@@ -1753,8 +1753,8 @@ func TestServiceCreateStudioBatchTasksRejectsUnapprovedDesignIDs(t *testing.T) {
 	svc := &service{
 		repo: newStudioBatchTaskRepositoryStub(),
 
-		mirrors: serviceDependencyMirrors{
-			studioSessionRepo: &studioBatchTaskCreationSessionRepoStub{
+		studioDeps: studioDependencies{
+			sessionRepo: &studioBatchTaskCreationSessionRepoStub{
 				session: &SheinStudioSession{
 					ID:            "batch-1",
 					Prompt:        "retro cherries",
@@ -1770,7 +1770,7 @@ func TestServiceCreateStudioBatchTasksRejectsUnapprovedDesignIDs(t *testing.T) {
 						PrintableHeight:  1200,
 					},
 				},
-			}, studioBatchRepo: repo,
+			}, batchRepo: repo,
 		},
 		runtime: serviceRuntimeState{
 			taskSubmitter: &studioBatchTaskSubmitterStub{},

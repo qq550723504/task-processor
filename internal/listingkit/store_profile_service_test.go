@@ -12,7 +12,7 @@ func TestStoreProfileServiceUpsertListAndDelete(t *testing.T) {
 	t.Parallel()
 
 	svc := &service{
-		mirrors: serviceDependencyMirrors{storeProfileRepo: newInMemoryStoreProfileRepository()},
+		adminDeps: adminDependencies{storeProfileRepo: newInMemoryStoreProfileRepository()},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "101", UserID: "user-a"})
 
@@ -66,7 +66,7 @@ func TestResolveSheinStoreIDUsesExplicitRequestStore(t *testing.T) {
 	t.Parallel()
 
 	svc := &service{
-		mirrors: serviceDependencyMirrors{storeProfileRepo: newInMemoryStoreProfileRepository()},
+		adminDeps: adminDependencies{storeProfileRepo: newInMemoryStoreProfileRepository()},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "303", UserID: "user-c"})
 
@@ -97,7 +97,7 @@ func TestResolveSheinStoreIDUsesSnapshotWhenRequestStoreMissing(t *testing.T) {
 	t.Parallel()
 
 	svc := &service{
-		mirrors: serviceDependencyMirrors{storeProfileRepo: newInMemoryStoreProfileRepository()},
+		adminDeps: adminDependencies{storeProfileRepo: newInMemoryStoreProfileRepository()},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "404", UserID: "user-d"})
 
@@ -138,7 +138,7 @@ func TestStoreProfileServiceResolvesLegacyTenantIDFromMappedZitadelTenant(t *tes
 	t.Cleanup(restore)
 
 	svc := &service{
-		mirrors: serviceDependencyMirrors{storeProfileRepo: newInMemoryStoreProfileRepository()},
+		adminDeps: adminDependencies{storeProfileRepo: newInMemoryStoreProfileRepository()},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "373211199677923496", UserID: "user-z"})
 

@@ -2408,7 +2408,10 @@ func TestSyncSDSDesignFromRemoteUsesLocalFileForUploadedImagePath(t *testing.T) 
 		},
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc, uploadStore: store}}
+	svc := &service{
+		studioDeps: studioDependencies{uploadStore: store},
+		mirrors:    serviceDependencyMirrors{sdsSyncSvc: sdsSvc},
+	}
 	task := &Task{
 		ID: "listingkit-task-uploaded-remote-sds",
 		Request: &GenerateRequest{
@@ -2478,7 +2481,10 @@ func TestSyncSDSDesignVariantsFromRemoteUsesLocalFileForUploadedImagePath(t *tes
 		},
 	}
 
-	svc := &service{mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc, uploadStore: store}}
+	svc := &service{
+		studioDeps: studioDependencies{uploadStore: store},
+		mirrors:    serviceDependencyMirrors{sdsSyncSvc: sdsSvc},
+	}
 	task := &Task{
 		ID: "listingkit-task-uploaded-variant-sds",
 		Request: &GenerateRequest{

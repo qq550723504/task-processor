@@ -13,6 +13,10 @@ The current internal representation direction is also clearer now:
 - legacy dependency mirrors should live under a dedicated `mirrors` bucket instead of remaining as flat root `service` fields;
 - task/studio/admin grouped collaborator containers should remain the single ownership boundary for collaborator instances.
 
+Recent progress in this area:
+
+- studio dependency resolution now reads directly from `studioDeps`; legacy dependency mirrors no longer own studio session/batch repositories or studio OpenAI hooks.
+
 ## 2. Current File Groups
 
 The root service construction surface is now split into these files:

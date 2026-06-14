@@ -417,42 +417,42 @@ func resolveStudioSessionRepo(s *service) StudioSessionRepository {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.studioDeps.sessionRepo, &s.mirrors.studioSessionRepo)
+	return s.studioDeps.sessionRepo
 }
 
 func resolveStudioBatchRepo(s *service) StudioBatchRepository {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.studioDeps.batchRepo, &s.mirrors.studioBatchRepo)
+	return s.studioDeps.batchRepo
 }
 
 func resolveStudioBatchRunRepo(s *service) StudioBatchRunRepository {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.studioDeps.batchRunRepo, &s.mirrors.studioBatchRunRepo)
+	return s.studioDeps.batchRunRepo
 }
 
 func resolveStudioPromptDiversifier(s *service) openaiclient.ChatCompleter {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.studioDeps.promptDiversifier, &s.mirrors.studioPromptDiversifier)
+	return s.studioDeps.promptDiversifier
 }
 
 func resolveStudioImageGenerator(s *service) openaiclient.ImageGenerator {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.studioDeps.imageGenerator, &s.mirrors.studioImageGenerator)
+	return s.studioDeps.imageGenerator
 }
 
 func resolveStudioUploadStore(s *service) ImageUploadStore {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.studioDeps.uploadStore, &s.mirrors.uploadStore)
+	return s.studioDeps.uploadStore
 }
 
 func buildTaskStudioSessionServiceConfigWithWiring(config taskStudioSessionConfigWiring) taskStudioSessionServiceConfig {

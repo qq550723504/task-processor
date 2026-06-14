@@ -132,9 +132,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyMirrors(t *testing
 	if svc.runtime.taskSubmitter != nil {
 		t.Fatalf("legacy taskSubmitter runtime mirror = %v, want nil before resolver sync", svc.runtime.taskSubmitter)
 	}
-	if svc.mirrors.studioSessionRepo != nil {
-		t.Fatalf("legacy studioSessionRepo mirror = %v, want nil before resolver sync", svc.mirrors.studioSessionRepo)
-	}
 	if svc.mirrors.sdsSyncSvc != nil {
 		t.Fatalf("legacy sdsSyncSvc mirror = %v, want nil before resolver sync", svc.mirrors.sdsSyncSvc)
 	}
@@ -169,9 +166,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyMirrors(t *testing
 
 	if svc.runtime.taskSubmitter != submitter {
 		t.Fatalf("legacy taskSubmitter runtime mirror = %v, want hydrated submitter", svc.runtime.taskSubmitter)
-	}
-	if svc.mirrors.studioSessionRepo != sessionRepo {
-		t.Fatalf("legacy studioSessionRepo mirror = %v, want hydrated repo", svc.mirrors.studioSessionRepo)
 	}
 	if svc.mirrors.sdsSyncSvc != syncSvc {
 		t.Fatalf("legacy sdsSyncSvc mirror = %v, want hydrated service", svc.mirrors.sdsSyncSvc)

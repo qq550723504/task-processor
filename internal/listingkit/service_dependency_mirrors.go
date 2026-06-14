@@ -12,9 +12,6 @@ import (
 )
 
 type serviceDependencyMirrors struct {
-	studioSessionRepo         StudioSessionRepository
-	studioBatchRepo           StudioBatchRepository
-	studioBatchRunRepo        StudioBatchRunRepository
 	productSvc                ProductService
 	imageSvc                  ImageService
 	sdsSyncSvc                sdsusecase.Service
@@ -35,8 +32,6 @@ type serviceDependencyMirrors struct {
 	sheinImageAPIBuilder       sheinpub.ImageAPIBuilder
 	sheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
 	sheinContentOptimizer      openaiclient.ChatCompleter
-	studioPromptDiversifier    openaiclient.ChatCompleter
-	studioImageGenerator       openaiclient.ImageGenerator
 
 	aiCredentialStore   AIClientCredentialStore
 	assetRepo           assetrepo.Repository

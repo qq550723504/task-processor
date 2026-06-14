@@ -228,7 +228,7 @@ func cloneSession(session *SheinStudioSession) *SheinStudioSession {
 }
 
 func newStudioSessionTestService() *service {
-	return &service{mirrors: serviceDependencyMirrors{studioSessionRepo: newStudioSessionRepoStub()}}
+	return &service{studioDeps: studioDependencies{sessionRepo: newStudioSessionRepoStub()}}
 }
 
 func newLegacyStudioSessionTestService() *taskStudioSessionService {
@@ -528,7 +528,7 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	if list.Items[0].ID != detail.Batch.ID {
 		t.Fatalf("batch id = %q, want %q", list.Items[0].ID, detail.Batch.ID)
 	}
-	repo := svc.mirrors.studioSessionRepo.(*studioSessionRepoStub)
+	repo := svc.studioDeps.sessionRepo.(*studioSessionRepoStub)
 	storedSession := repo.sessions[detail.Batch.ID]
 	if storedSession == nil {
 		t.Fatalf("stored session missing for %q", detail.Batch.ID)

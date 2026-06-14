@@ -12,7 +12,7 @@ func TestUploadImagesRecordsUploadedImageMetadata(t *testing.T) {
 
 	metadataRepo := NewMemUploadedImageRepository()
 	svc := &service{
-		mirrors: serviceDependencyMirrors{
+		studioDeps: studioDependencies{
 			uploadStore: &stubMetadataImageUploadStore{
 				saveResult: &StoredUploadedImage{
 					Key:         "20260515/a.jpg",
@@ -22,6 +22,8 @@ func TestUploadImagesRecordsUploadedImageMetadata(t *testing.T) {
 					Size:        3,
 				},
 			},
+		},
+		mirrors: serviceDependencyMirrors{
 			uploadedImageRepo: metadataRepo,
 		},
 	}
@@ -59,7 +61,10 @@ func TestDeleteUploadedImageUsesMetadataAndMarksRecordDeleted(t *testing.T) {
 		t.Fatalf("SaveUploadedImage() error = %v", err)
 	}
 	store := &stubMetadataImageUploadStore{}
-	svc := &service{mirrors: serviceDependencyMirrors{uploadStore: store, uploadedImageRepo: metadataRepo}}
+	svc := &service{
+		studioDeps: studioDependencies{uploadStore: store},
+		mirrors:    serviceDependencyMirrors{uploadedImageRepo: metadataRepo},
+	}
 
 	deleted, err := svc.DeleteUploadedImage(ctx, "20260515/a.jpg")
 	if err != nil {
