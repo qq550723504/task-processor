@@ -978,7 +978,7 @@ func TestPlatformAssetDispatchPersistPhaseRunDecoratesAndPersistsGenerationTasks
 	t.Parallel()
 
 	assetRepository := newStubWorkflowAssetRepository()
-	phase := buildPlatformAssetDispatchPersistPhase(&service{mirrors: serviceDependencyMirrors{assetRepo: assetRepository}})
+	phase := buildPlatformAssetDispatchPersistPhase(&service{workflowDeps: workflowDependencies{assetRepository: assetRepository}})
 	final := &ListingKitResult{
 		Summary: &GenerationSummary{},
 		Amazon: &AmazonPackage{
@@ -1025,7 +1025,7 @@ func TestPlatformAssetDispatchPersistPhaseRunAddsWarningIssueWhenPersistenceFail
 
 	assetRepository := newStubWorkflowAssetRepository()
 	assetRepository.saveGenerationTasksErr = fmt.Errorf("write failed")
-	phase := buildPlatformAssetDispatchPersistPhase(&service{mirrors: serviceDependencyMirrors{assetRepo: assetRepository}})
+	phase := buildPlatformAssetDispatchPersistPhase(&service{workflowDeps: workflowDependencies{assetRepository: assetRepository}})
 	final := &ListingKitResult{Summary: &GenerationSummary{}}
 	tasks := []assetgeneration.Task{{
 		ID:              "persisted-task",
@@ -1051,7 +1051,7 @@ func TestPlatformAssetDispatchInventoryPersistPhaseRunPersistsReturnedAssets(t *
 	t.Parallel()
 
 	assetRepository := newStubWorkflowAssetRepository()
-	phase := buildPlatformAssetDispatchInventoryPersistPhase(&service{mirrors: serviceDependencyMirrors{assetRepo: assetRepository}})
+	phase := buildPlatformAssetDispatchInventoryPersistPhase(&service{workflowDeps: workflowDependencies{assetRepository: assetRepository}})
 	inventory := &asset.Inventory{
 		Ref: asset.InventoryRef{TaskID: "task-inventory-persist"},
 		Records: []asset.AssetRecord{{
@@ -1080,7 +1080,7 @@ func TestPlatformAssetDispatchInventoryPersistPhaseRunSkipsWhenNoReturnedAssets(
 	t.Parallel()
 
 	assetRepository := newStubWorkflowAssetRepository()
-	phase := buildPlatformAssetDispatchInventoryPersistPhase(&service{mirrors: serviceDependencyMirrors{assetRepo: assetRepository}})
+	phase := buildPlatformAssetDispatchInventoryPersistPhase(&service{workflowDeps: workflowDependencies{assetRepository: assetRepository}})
 	inventory := &asset.Inventory{
 		Ref:     asset.InventoryRef{TaskID: "task-inventory-skip"},
 		Records: []asset.AssetRecord{{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source-1.jpg"}},
@@ -1102,7 +1102,7 @@ func TestPlatformAssetDispatchInventoryPersistPhaseRunKeepsBestEffortPersistence
 
 	assetRepository := newStubWorkflowAssetRepository()
 	assetRepository.saveInventoryErr = fmt.Errorf("write failed")
-	phase := buildPlatformAssetDispatchInventoryPersistPhase(&service{mirrors: serviceDependencyMirrors{assetRepo: assetRepository}})
+	phase := buildPlatformAssetDispatchInventoryPersistPhase(&service{workflowDeps: workflowDependencies{assetRepository: assetRepository}})
 	inventory := &asset.Inventory{
 		Ref: asset.InventoryRef{TaskID: "task-inventory-best-effort"},
 		Records: []asset.AssetRecord{{

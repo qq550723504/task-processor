@@ -18,7 +18,8 @@ func TestWorkflowPlatformAssetDispatchInventoryPersistFileOwnsInventoryDurabilit
 	for _, needle := range []string{
 		"func (p *platformAssetDispatchInventoryPersistPhase) run(",
 		"returnedAssetCount int",
-		"_ = p.service.mirrors.assetRepo.SaveInventory(ctx, inventory)",
+		"assetRepository assetrepo.Repository",
+		"_ = p.assetRepository.SaveInventory(ctx, inventory)",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("workflow_platform_asset_dispatch_inventory_persist.go should contain %q", needle)

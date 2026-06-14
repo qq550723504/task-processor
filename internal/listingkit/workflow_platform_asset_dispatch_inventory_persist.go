@@ -4,14 +4,15 @@ import (
 	"context"
 
 	"task-processor/internal/asset"
+	assetrepo "task-processor/internal/asset/repository"
 )
 
 type platformAssetDispatchInventoryPersistPhase struct {
-	service *service
+	assetRepository assetrepo.Repository
 }
 
 func buildPlatformAssetDispatchInventoryPersistPhase(s *service) *platformAssetDispatchInventoryPersistPhase {
-	return &platformAssetDispatchInventoryPersistPhase{service: s}
+	return &platformAssetDispatchInventoryPersistPhase{assetRepository: resolveWorkflowAssetRepository(s)}
 }
 
 func (p *platformAssetDispatchInventoryPersistPhase) run(
@@ -19,8 +20,8 @@ func (p *platformAssetDispatchInventoryPersistPhase) run(
 	inventory *asset.Inventory,
 	returnedAssetCount int,
 ) {
-	if p == nil || p.service == nil || p.service.mirrors.assetRepo == nil || inventory == nil || returnedAssetCount == 0 {
+	if p == nil || p.assetRepository == nil || inventory == nil || returnedAssetCount == 0 {
 		return
 	}
-	_ = p.service.mirrors.assetRepo.SaveInventory(ctx, inventory)
+	_ = p.assetRepository.SaveInventory(ctx, inventory)
 }

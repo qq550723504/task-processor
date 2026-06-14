@@ -4,14 +4,15 @@ import (
 	"context"
 
 	assetgeneration "task-processor/internal/asset/generation"
+	assetrepo "task-processor/internal/asset/repository"
 )
 
 type platformAssetDispatchPersistPhase struct {
-	service *service
+	assetRepository assetrepo.Repository
 }
 
 func buildPlatformAssetDispatchPersistPhase(s *service) *platformAssetDispatchPersistPhase {
-	return &platformAssetDispatchPersistPhase{service: s}
+	return &platformAssetDispatchPersistPhase{assetRepository: resolveWorkflowAssetRepository(s)}
 }
 
 func (p *platformAssetDispatchPersistPhase) run(
@@ -21,10 +22,10 @@ func (p *platformAssetDispatchPersistPhase) run(
 	persistedGenerationTasks []assetgeneration.Task,
 ) []assetgeneration.Task {
 	decorateListingKitResultGeneration(final, persistedGenerationTasks)
-	if p == nil || p.service == nil || p.service.mirrors.assetRepo == nil || len(persistedGenerationTasks) == 0 {
+	if p == nil || p.assetRepository == nil || len(persistedGenerationTasks) == 0 {
 		return persistedGenerationTasks
 	}
-	if err := p.service.mirrors.assetRepo.SaveGenerationTasks(ctx, task.ID, persistedGenerationTasks); err != nil {
+	if err := p.assetRepository.SaveGenerationTasks(ctx, task.ID, persistedGenerationTasks); err != nil {
 		appendWarning(final, "asset generation task persistence failed: "+err.Error())
 		newWorkflowRecorder(final).AddIssue(
 			WorkflowIssueSeverityWarning,
