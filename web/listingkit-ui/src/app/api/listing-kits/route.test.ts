@@ -12,6 +12,8 @@ vi.mock("@/auth", () => ({
 import {
   PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS,
   PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS,
+  PROXY_TASK_DETAIL_UPSTREAM_TIMEOUT_MS,
+  PROXY_TASK_PREVIEW_UPSTREAM_TIMEOUT_MS,
   PROXY_REVISION_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS,
@@ -31,8 +33,14 @@ describe("resolveListingKitProxyTimeoutMs", () => {
   it("keeps the default timeout for regular listingkit requests", () => {
     expect(resolveListingKitProxyTimeoutMs("GET", ["tasks"])).toBe(15_000);
     expect(resolveListingKitProxyTimeoutMs("POST", ["generate"])).toBe(15_000);
-    expect(resolveListingKitProxyTimeoutMs("POST", ["tasks", "123", "preview"])).toBe(
-      15_000,
+  });
+
+  it("extends the timeout for task detail and preview reads", () => {
+    expect(resolveListingKitProxyTimeoutMs("GET", ["tasks", "123"])).toBe(
+      PROXY_TASK_DETAIL_UPSTREAM_TIMEOUT_MS,
+    );
+    expect(resolveListingKitProxyTimeoutMs("GET", ["tasks", "123", "preview"])).toBe(
+      PROXY_TASK_PREVIEW_UPSTREAM_TIMEOUT_MS,
     );
   });
 

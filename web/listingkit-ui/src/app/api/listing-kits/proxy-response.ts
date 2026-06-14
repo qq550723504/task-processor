@@ -1,5 +1,7 @@
 export const PROXY_UPSTREAM_TIMEOUT_MS = 15_000;
 export const PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS = 30_000;
+export const PROXY_TASK_DETAIL_UPSTREAM_TIMEOUT_MS = 60_000;
+export const PROXY_TASK_PREVIEW_UPSTREAM_TIMEOUT_MS = 60_000;
 export const PROXY_SUBMIT_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_REVISION_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS = 180_000;
@@ -23,6 +25,21 @@ export function resolveListingKitProxyTimeoutMs(
   }
   if (path[0] === "studio") {
     return PROXY_STUDIO_UPSTREAM_TIMEOUT_MS;
+  }
+  if (
+    method.toUpperCase() === "GET" &&
+    path.length === 2 &&
+    path[0] === "tasks"
+  ) {
+    return PROXY_TASK_DETAIL_UPSTREAM_TIMEOUT_MS;
+  }
+  if (
+    method.toUpperCase() === "GET" &&
+    path.length === 3 &&
+    path[0] === "tasks" &&
+    path[2] === "preview"
+  ) {
+    return PROXY_TASK_PREVIEW_UPSTREAM_TIMEOUT_MS;
   }
   if (
     method.toUpperCase() === "POST" &&
