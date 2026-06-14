@@ -70,4 +70,7 @@ type taskStudioBatchServiceConfig struct {
 	getTask            func(ctx context.Context, taskID string) (*Task, error)
 	detailRunner       *listingStudioBatchDetailRunner
 	reviewRunner       *listingStudioBatchReviewRunner
+	retryRunner        *listingStudioBatchRetryPrepareRunner
+	taskPrepareRunner  *listingStudioBatchTaskPrepareRunner
+	taskResumeRunner   *listingStudioBatchTaskResumeRunner
 }

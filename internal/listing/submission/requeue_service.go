@@ -143,6 +143,16 @@ func NormalizeRequeueTaskIDs(req *RequeueRequest) []string {
 	return taskIDs
 }
 
+func CanRequeueTaskWithStatus(task *RequeueTask, processableStatus string) (bool, string) {
+	if task == nil {
+		return false, `task status "" is not processable`
+	}
+	if task.Status != processableStatus {
+		return false, fmt.Sprintf("task status %q is not processable", task.Status)
+	}
+	return true, ""
+}
+
 func (s *RequeueService) currentSubmitterOrNil() RequeueSubmitFunc {
 	if s == nil || s.currentSubmitter == nil {
 		return nil

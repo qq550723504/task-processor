@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	listingsubmission "task-processor/internal/listing/submission"
 )
 
 type taskRecoveryTestSubmitter func(taskID string) error
@@ -415,8 +417,8 @@ func TestRecoverTaskNowReblocksRetryableSubmitFailures(t *testing.T) {
 	if stored.RetryableBlock.RetryAttempts != 3 {
 		t.Fatalf("RetryAttempts = %d, want 3", stored.RetryableBlock.RetryAttempts)
 	}
-	if !stored.RetryableBlock.NextRetryAt.Equal(now.Add(boundedRecoveryRetryDelay(3))) {
-		t.Fatalf("NextRetryAt = %v, want %v", stored.RetryableBlock.NextRetryAt, now.Add(boundedRecoveryRetryDelay(3)))
+	if !stored.RetryableBlock.NextRetryAt.Equal(now.Add(listingsubmission.BoundedEnqueueRetryDelay(3))) {
+		t.Fatalf("NextRetryAt = %v, want %v", stored.RetryableBlock.NextRetryAt, now.Add(listingsubmission.BoundedEnqueueRetryDelay(3)))
 	}
 }
 

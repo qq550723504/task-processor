@@ -2,39 +2,17 @@ package listingkit
 
 import (
 	"context"
-	"time"
 
 	apperrors "task-processor/internal/core/errors"
 	submissiondomain "task-processor/internal/listing/submission"
-	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 type sheinSubmissionRefreshState struct {
-	task             *Task
-	action           string
-	requestID        string
-	startedAt        time.Time
-	lookupCodes      []string
-	defaultConfirmed bool
-	fallbackMessage  string
-	productAPI       sheinproduct.ProductAPI
-	otherAPI         sheinother.OtherAPI
-	spuName          string
-}
-
-type sheinSubmissionRefreshConfirmationRequest struct {
-	productAPI       sheinproduct.ProductAPI
-	otherAPI         sheinother.OtherAPI
-	action           string
-	requestID        string
-	lookupCodes      []string
-	spuName          string
-	defaultConfirmed bool
-	fallbackMessage  string
-	startedAt        time.Time
-	taskID           string
+	task          *Task
+	remoteRequest *sheinRemoteStatusRequest
 }
 
 type taskSubmissionRefreshServiceConfig struct {
@@ -44,7 +22,7 @@ type taskSubmissionRefreshServiceConfig struct {
 	buildSheinSubmitProductAPI func(context.Context, *Task) (sheinproduct.ProductAPI, error)
 	buildSheinSubmitOtherAPI   func(context.Context, *Task) (sheinother.OtherAPI, error)
 	recovery                   *taskSubmissionRecoveryService
-	resolveRemoteStatus        func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
+	resolveRemoteStatus        func(*sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error)
 }
 
 type taskSubmissionRefreshService struct {
@@ -54,7 +32,7 @@ type taskSubmissionRefreshService struct {
 	buildSheinSubmitProductAPI func(context.Context, *Task) (sheinproduct.ProductAPI, error)
 	buildSheinSubmitOtherAPI   func(context.Context, *Task) (sheinother.OtherAPI, error)
 	recovery                   *taskSubmissionRecoveryService
-	resolveRemoteStatus        func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
+	resolveRemoteStatus        func(*sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error)
 	refreshRunner              *submissiondomain.StatusRefreshService[sheinSubmissionRefreshState, sheinRemoteConfirmation, ListingKitPreview]
 }
 
@@ -88,11 +66,11 @@ func (s *taskSubmissionRefreshService) RefreshSubmissionStatus(ctx context.Conte
 }
 
 func (s *taskSubmissionRefreshService) resolveSubmissionRefreshConfirmation(taskID string, refreshState *sheinSubmissionRefreshState) (*sheinRemoteConfirmation, error) {
-	request, err := buildSubmissionRefreshConfirmationRequest(taskID, refreshState)
+	request, err := buildSheinRemoteStatusRequest(taskID, refreshState)
 	if err != nil {
 		return nil, err
 	}
-	return s.resolveSubmissionRefreshRemoteConfirmation(request)
+	return s.resolveSheinSubmitRemoteStatus(request)
 }
 
 func (s *taskSubmissionRefreshService) finishSubmissionRefresh(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation, remoteErr error) (*ListingKitPreview, error) {
@@ -137,48 +115,27 @@ func (s *taskSubmissionRefreshService) completeSubmissionRefresh(ctx context.Con
 	return s.buildTaskPreview(ctx, task, "shein")
 }
 
-func buildSubmissionRefreshConfirmationRequest(taskID string, refreshState *sheinSubmissionRefreshState) (*sheinSubmissionRefreshConfirmationRequest, error) {
-	if refreshState == nil {
+func buildSheinRemoteStatusRequest(taskID string, refreshState *sheinSubmissionRefreshState) (*sheinRemoteStatusRequest, error) {
+	if refreshState == nil || refreshState.remoteRequest == nil {
 		return nil, apperrors.New(apperrors.ErrCodeSystem, "submission refresh state is not available")
 	}
-	return &sheinSubmissionRefreshConfirmationRequest{
-		productAPI:       refreshState.productAPI,
-		otherAPI:         refreshState.otherAPI,
-		action:           refreshState.action,
-		requestID:        refreshState.requestID,
-		lookupCodes:      refreshState.lookupCodes,
-		spuName:          refreshState.spuName,
-		defaultConfirmed: refreshState.defaultConfirmed,
-		fallbackMessage:  refreshState.fallbackMessage,
-		startedAt:        refreshState.startedAt,
-		taskID:           taskID,
-	}, nil
+	request, err := copySheinRemoteStatusRequest(taskID, refreshState.remoteRequest)
+	if err != nil {
+		return nil, apperrors.New(apperrors.ErrCodeSystem, err.Error())
+	}
+	return request, nil
 }
 
-func (s *taskSubmissionRefreshService) resolveSubmissionRefreshRemoteConfirmation(request *sheinSubmissionRefreshConfirmationRequest) (*sheinRemoteConfirmation, error) {
+func (s *taskSubmissionRefreshService) resolveSheinSubmitRemoteStatus(request *sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error) {
 	if request == nil {
 		return nil, apperrors.New(apperrors.ErrCodeSystem, "submission refresh confirmation request is not available")
 	}
-	return s.resolveSheinSubmitRemoteStatus(
-		request.productAPI,
-		request.otherAPI,
-		request.action,
-		request.requestID,
-		request.lookupCodes,
-		request.spuName,
-		request.defaultConfirmed,
-		request.fallbackMessage,
-		request.startedAt,
-		request.taskID,
-	)
-}
-
-func (s *taskSubmissionRefreshService) resolveSheinSubmitRemoteStatus(productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, startedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
 	if s.resolveRemoteStatus == nil {
 		return nil, apperrors.New(apperrors.ErrCodeSystem, "submit remote status resolution is not configured")
 	}
-	fallbackMessage = sheinmarketpub.BuildRemoteConfirmationPolicy(action, defaultConfirmed).RefreshFallbackMessage
-	return s.resolveRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
+	copyRequest := *request
+	copyRequest.fallbackMessage = sheinpub.ResolveSubmissionRefreshFallbackMessage(copyRequest.action, copyRequest.defaultConfirmed, copyRequest.fallbackMessage)
+	return s.resolveRemoteStatus(&copyRequest)
 }
 
 func (s *taskSubmissionRefreshService) mutateSubmissionRefreshTask(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {

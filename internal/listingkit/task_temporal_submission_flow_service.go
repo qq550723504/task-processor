@@ -74,85 +74,67 @@ func (s *taskTemporalSubmissionFlowService) loadSheinPublishTaskState(ctx contex
 }
 
 func (s *taskTemporalSubmissionFlowService) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {
-	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
+	state, err := s.loadSheinPreparedPublishState(ctx, in)
 	if err != nil {
 		return nil, err
 	}
-	s.normalizeSheinSubmitPackage(task, pkg, sheinSubmitRequestFromActivity(in), in.Action)
-	preparedPayload, err := s.payloadStages.Prepare(ctx, newSubmissionPayloadStageContext(in.TaskID, task, pkg, in.Action, in.RequestID))
+	stageContext := buildSheinTemporalSubmissionPayloadStageContext(state.execution)
+	preparedPayload, err := s.payloadStages.Prepare(ctx, stageContext)
 	if err != nil {
 		return nil, err
 	}
-	return adaptSubmissionPreparedPayload(preparedPayload, newSubmissionPayloadStageContext(in.TaskID, task, pkg, in.Action, in.RequestID)), nil
+	return adaptSubmissionPreparedPayload(preparedPayload, stageContext), nil
 }
 
 func (s *taskTemporalSubmissionFlowService) UploadSheinPublishImages(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinPreparedSubmitPayload, error) {
-	if err := requireSheinPreparedSubmitPayload(in); err != nil {
-		return nil, err
-	}
-	if !in.NeedsImageUpload {
+	if in != nil && !in.NeedsImageUpload {
 		return in, nil
 	}
-	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
+	state, err := s.loadSheinPreparedPayloadState(ctx, in)
 	if err != nil {
 		return nil, err
 	}
 	out, err := s.payloadStages.UploadImages(
 		ctx,
-		newSubmissionPayloadStageContext(in.TaskID, task, pkg, in.Action, in.RequestID),
-		adaptListingKitPreparedPayload(in),
+		state.stageContext,
+		state.payload,
 	)
 	if err != nil {
 		return nil, err
 	}
-	return adaptSubmissionPreparedPayload(out, newSubmissionPayloadStageContext(in.TaskID, task, pkg, in.Action, in.RequestID)), nil
+	return adaptSubmissionPreparedPayload(out, state.stageContext), nil
 }
 
 func (s *taskTemporalSubmissionFlowService) PreValidateSheinPublish(ctx context.Context, in *SheinPreparedSubmitPayload) error {
-	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
+	state, err := s.loadSheinPreparedPayloadState(ctx, in)
 	if err != nil {
 		return err
 	}
-	return s.payloadStages.PreValidate(
-		ctx,
-		newSubmissionPayloadStageContext(in.TaskID, task, pkg, in.Action, in.RequestID),
-		adaptListingKitPreparedPayload(in),
-	)
+	return s.payloadStages.PreValidate(ctx, state.stageContext, state.payload)
 }
 
 func (s *taskTemporalSubmissionFlowService) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {
-	if err := requireSheinPreparedSubmitPayload(in); err != nil {
-		return nil, err
-	}
-	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
+	state, err := s.loadSheinPreparedPayloadState(ctx, in)
 	if err != nil {
 		return nil, err
 	}
-	productAPI, err := s.buildSheinSubmitProductAPI(ctx, task)
+	productAPI, err := s.buildSheinSubmitProductAPI(ctx, state.execution.task)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.persistSheinSubmitPhase(ctx, in.TaskID, task.Result, pkg, in.Action, in.RequestID, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
+	if err := s.persistSheinSubmitPhase(ctx, state.execution.taskID, state.execution.task.Result, state.execution.pkg, state.execution.action, state.execution.requestID, sheinpub.SubmissionPhaseSubmitRemote); err != nil {
 		return nil, err
 	}
 
-	result := s.remoteSubmitter.Submit(ctx, submissiondomain.RemoteSubmitInput[*SheinPackage, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmitSnapshot]{
-		TaskID:     in.TaskID,
-		Package:    pkg,
-		Action:     in.Action,
-		RequestID:  in.RequestID,
-		ProductAPI: productAPI,
-		Product:    in.Product,
-		Snapshot:   in.Snapshot,
-	})
+	result := s.remoteSubmitter.Submit(ctx, buildSheinTemporalRemoteSubmitInput(state.execution, productAPI, state.payload.Product, state.payload.Snapshot))
 	if result.Err != nil {
 		return nil, newSubmitRemoteActivityError(result.Err, result.SupplierCode, result.Response, result.Snapshot)
 	}
 
 	return &SheinRemoteSubmitResult{
-		TaskID:       in.TaskID,
-		Action:       in.Action,
-		RequestID:    in.RequestID,
+		TaskID:       state.execution.taskID,
+		Action:       state.execution.action,
+		RequestID:    state.execution.requestID,
 		SupplierCode: result.SupplierCode,
 		Response:     result.Response,
 		Snapshot:     result.Snapshot,

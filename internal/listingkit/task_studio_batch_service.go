@@ -18,6 +18,9 @@ type taskStudioBatchService struct {
 	currentTime        func() time.Time
 	detailRunner       *listingStudioBatchDetailRunner
 	reviewRunner       *listingStudioBatchReviewRunner
+	retryRunner        *listingStudioBatchRetryPrepareRunner
+	taskPrepareRunner  *listingStudioBatchTaskPrepareRunner
+	taskResumeRunner   *listingStudioBatchTaskResumeRunner
 }
 
 func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioBatchService {
@@ -30,9 +33,15 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 		currentTime:        time.Now,
 		detailRunner:       config.detailRunner,
 		reviewRunner:       config.reviewRunner,
+		retryRunner:        config.retryRunner,
+		taskPrepareRunner:  config.taskPrepareRunner,
+		taskResumeRunner:   config.taskResumeRunner,
 	}
 	service.ensureDetailRunner()
 	service.ensureReviewRunner()
+	service.ensureRetryRunner()
+	service.ensureTaskPrepareRunner()
+	service.ensureTaskResumeRunner()
 	return service
 }
 
@@ -145,10 +154,6 @@ func (s *taskStudioBatchService) PrepareRetryStudioBatchItems(ctx context.Contex
 	}
 
 	normalizedBatchID := strings.TrimSpace(batchID)
-	detail, err := s.repo.GetStudioBatchDetail(ctx, normalizedBatchID)
-	if err != nil {
-		return nil, err
-	}
 
 	itemIDs := normalizeStudioBatchItemIDs(nil)
 	if req != nil {
@@ -158,16 +163,11 @@ func (s *taskStudioBatchService) PrepareRetryStudioBatchItems(ctx context.Contex
 	if err := s.syncStudioBatchRetryExecutionConfigFromDraft(ctx, normalizedBatchID); err != nil {
 		return nil, err
 	}
-
-	itemsToRetry, err := selectStudioBatchRetryItems(detail, itemIDs)
-	if err != nil {
-		return nil, err
+	s.ensureRetryRunner()
+	if s.retryRunner == nil {
+		return nil, fmt.Errorf("studio batch repository is not configured")
 	}
-	if err := s.resetStudioBatchRetryItems(ctx, itemsToRetry); err != nil {
-		return nil, err
-	}
-
-	return s.GetStudioBatchDetail(ctx, normalizedBatchID)
+	return s.retryRunner.PrepareRetryItems(ctx, normalizedBatchID, itemIDs)
 }
 
 func (s *taskStudioBatchService) ensureDetailRunner() {
@@ -182,6 +182,57 @@ func (s *taskStudioBatchService) ensureReviewRunner() {
 		return
 	}
 	s.reviewRunner = newListingStudioBatchReviewService(s.repo, s.GetStudioBatchDetail, s.currentTime)
+}
+
+func (s *taskStudioBatchService) ensureRetryRunner() {
+	if s == nil || s.retryRunner != nil {
+		return
+	}
+	s.retryRunner = newListingStudioBatchRetryPrepareService(s.repo, s.GetStudioBatchDetail, s.resetStudioBatchRetryItems)
+}
+
+func (s *taskStudioBatchService) ensureTaskPrepareRunner() {
+	if s == nil || s.taskPrepareRunner != nil {
+		return
+	}
+	var updateSession func(context.Context, *SheinStudioSession) error
+	if sessionUpdater, ok := s.studioSessionRepo.(interface {
+		UpdateSession(context.Context, *SheinStudioSession) error
+	}); ok {
+		updateSession = sessionUpdater.UpdateSession
+	}
+	var updateBatch func(context.Context, *StudioBatchRecord) error
+	if s.repo != nil {
+		updateBatch = s.repo.UpdateStudioBatch
+	}
+	s.taskPrepareRunner = newListingStudioBatchTaskPrepareService(
+		updateSession,
+		updateBatch,
+		s.loadStudioBatchTaskPreparationResult,
+		s.currentTime,
+	)
+}
+
+func (s *taskStudioBatchService) ensureTaskResumeRunner() {
+	if s == nil || s.taskResumeRunner != nil {
+		return
+	}
+	var updateSession func(context.Context, *SheinStudioSession) error
+	if sessionUpdater, ok := s.studioSessionRepo.(interface {
+		UpdateSession(context.Context, *SheinStudioSession) error
+	}); ok {
+		updateSession = sessionUpdater.UpdateSession
+	}
+	var updateBatch func(context.Context, *StudioBatchRecord) error
+	if s.repo != nil {
+		updateBatch = s.repo.UpdateStudioBatch
+	}
+	s.taskResumeRunner = newListingStudioBatchTaskResumeService(
+		updateSession,
+		updateBatch,
+		s.loadStudioBatchTaskPreparationResult,
+		s.currentTime,
+	)
 }
 
 func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
@@ -330,34 +381,17 @@ func (s *taskStudioBatchService) PrepareCreateStudioBatchTasks(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	session.PendingTaskDesignIDs = append(SheinStudioStringList(nil), designIDs...)
-	session.FailedTasks = nil
-	session.Status = SheinStudioSessionStatusTasksCreating
-	session.UpdatedAt = s.currentTime().UTC()
-	if sessionUpdater, ok := s.studioSessionRepo.(interface {
-		UpdateSession(context.Context, *SheinStudioSession) error
-	}); ok {
-		if err := sessionUpdater.UpdateSession(ctx, session); err != nil {
-			return nil, err
-		}
-	}
 	batch, err := s.repo.GetStudioBatch(ctx, normalizedBatchID)
 	if err != nil {
 		return nil, err
 	}
-	batch.Status = StudioBatchStatusTasksCreating
-	batch.UpdatedAt = s.currentTime().UTC()
-	if err := s.repo.UpdateStudioBatch(ctx, batch); err != nil {
-		return nil, err
+	s.ensureTaskPrepareRunner()
+	if s.taskPrepareRunner == nil {
+		return nil, fmt.Errorf("studio batch task prepare runner is not configured")
 	}
-	currentDetail, err := s.GetStudioBatchDetail(ctx, normalizedBatchID)
-	if err != nil {
-		return nil, err
-	}
-	return &CreateStudioBatchTasksResult{
-		Batch:        currentDetail.Batch,
-		Items:        currentDetail.Items,
-		CreatedTasks: currentDetail.CreatedTasks,
-		FailedTasks:  currentDetail.FailedTasks,
-	}, nil
+	return s.taskPrepareRunner.PrepareTaskCreation(ctx, normalizedBatchID, listingStudioBatchTaskPrepareState{
+		Session:   session,
+		Batch:     batch,
+		DesignIDs: designIDs,
+	})
 }

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	listingsubmission "task-processor/internal/listing/submission"
+	submissiondomain "task-processor/internal/listing/submission"
 )
 
 func (s *taskRecoveryService) restoreRecoveryDurability(ctx context.Context, taskID string, previousBlock *RetryableBlock, errorMsg string, submitErr error, persistErr error) error {
@@ -35,55 +35,12 @@ func (s *taskRecoveryService) restoreRecoveryDurability(ctx context.Context, tas
 }
 
 func (s *taskRecoveryService) buildReblockedTask(previous *RetryableBlock, classified *RetryableBlock, recoveredAt time.Time) *RetryableBlock {
-	block := cloneRetryableBlock(previous)
-	if block == nil {
-		block = cloneRetryableBlock(classified)
-	}
-	if block == nil {
-		block = &RetryableBlock{}
-	}
-	if classified != nil {
-		if strings.TrimSpace(classified.ReasonCode) != "" {
-			block.ReasonCode = strings.TrimSpace(classified.ReasonCode)
-		}
-		if strings.TrimSpace(classified.ReasonMessage) != "" {
-			block.ReasonMessage = strings.TrimSpace(classified.ReasonMessage)
-		}
-		if strings.TrimSpace(classified.RecoveryScope) != "" {
-			block.RecoveryScope = strings.TrimSpace(classified.RecoveryScope)
-		}
-		if block.ReasonCode == "" && classified.AutoResumeEnabled {
-			block.AutoResumeEnabled = true
-		}
-	}
-	if block.BlockedAt.IsZero() {
-		block.BlockedAt = recoveredAt
-	}
-	block.RetryAttempts++
-	block.LastRetryAt = cloneTimePointer(recoveredAt)
-	if strings.TrimSpace(block.RecoveryScope) == "" {
-		block.RecoveryScope = retryableRecoveryScopeTask
-	}
-	if block.AutoRetryPaused {
-		block.NextRetryAt = nil
-		return block
-	}
-	if block.MaxAutoRetryAttempts > 0 && block.RetryAttempts >= block.MaxAutoRetryAttempts {
-		block.AutoRetryPaused = true
-		block.NextRetryAt = nil
-		return block
-	}
-	if block.AutoResumeEnabled {
-		nextRetryAt := recoveredAt.Add(boundedRecoveryRetryDelay(block.RetryAttempts))
-		block.NextRetryAt = cloneTimePointer(nextRetryAt)
-	} else {
-		block.NextRetryAt = nil
-	}
-	return block
-}
-
-func boundedRecoveryRetryDelay(attempt int) time.Duration {
-	return listingsubmission.BoundedEnqueueRetryDelay(attempt)
+	return adaptSubmissionRetryableBlock(submissiondomain.BuildReblockedRetryableBlock(
+		adaptRetryableBlockState(previous),
+		adaptRetryableBlockState(classified),
+		recoveredAt,
+		retryableRecoveryScopeTask,
+	))
 }
 
 func cloneTimePointer(value time.Time) *time.Time {

@@ -30,28 +30,23 @@ func (s *taskStudioBatchService) resumeStudioBatchTaskCreation(ctx context.Conte
 	if err != nil {
 		return nil, err
 	}
-	if sessionUpdater, ok := s.studioSessionRepo.(interface {
-		UpdateSession(context.Context, *SheinStudioSession) error
-	}); ok {
-		session.PendingTaskDesignIDs = nil
-		session.CreatedTasks = append(SheinStudioCreatedTaskList(nil), result.CreatedTasks...)
-		session.CreatedTaskIDs = buildCreatedTaskIDs(result.CreatedTasks)
-		session.FailedTasks = append(SheinStudioFailedTaskList(nil), result.FailedTasks...)
-		session.Status = SheinStudioSessionStatusTasksCreated
-		session.UpdatedAt = s.currentTime().UTC()
-		if err := sessionUpdater.UpdateSession(ctx, session); err != nil {
-			return nil, err
-		}
-	}
 	batch, err := s.repo.GetStudioBatch(ctx, batchID)
 	if err != nil {
 		return nil, err
 	}
-	batch.Status = StudioBatchStatusTasksCreated
-	batch.UpdatedAt = s.currentTime().UTC()
-	if err := s.repo.UpdateStudioBatch(ctx, batch); err != nil {
-		return nil, err
+	s.ensureTaskResumeRunner()
+	if s.taskResumeRunner == nil {
+		return nil, fmt.Errorf("studio batch task resume runner is not configured")
 	}
+	return s.taskResumeRunner.FinalizeTaskCreation(ctx, batchID, listingStudioBatchTaskResumeState{
+		Session:      session,
+		Batch:        batch,
+		CreatedTasks: result.CreatedTasks,
+		FailedTasks:  result.FailedTasks,
+	})
+}
+
+func (s *taskStudioBatchService) loadStudioBatchTaskPreparationResult(ctx context.Context, batchID string) (*CreateStudioBatchTasksResult, error) {
 	detail, err := s.GetStudioBatchDetail(ctx, batchID)
 	if err != nil {
 		return nil, err

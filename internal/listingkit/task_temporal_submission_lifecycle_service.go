@@ -100,22 +100,29 @@ func (s *taskTemporalSubmissionLifecycleService) BeginSheinPublishAttempt(ctx co
 }
 
 func (s *taskTemporalSubmissionLifecycleService) ValidateSheinPublishReadiness(ctx context.Context, in SheinPublishAttemptInput) error {
-	task, pkg, err := s.loadSheinPublishTaskState(ctx, in.TaskID)
+	state, err := s.loadSheinPreparedPublishState(ctx, in)
 	if err != nil {
 		return err
 	}
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	prepared := prepareSheinSubmitReadinessForAction(task, pkg, sheinSubmitRequestFromActivity(in), in.Action, s.normalizeSheinSubmitPackage)
-	if prepared.stateChanged {
-		task.Result.UpdatedAt = time.Now()
+	if state.execution == nil {
+		return ErrTaskResultUnavailable
+	}
+	execution := state.execution
+	pkg := sheinpub.NormalizePackageSemanticFields(execution.pkg)
+	stateChanged := state.finalDraftConfirmedChanged
+	if ensureTaskPodExecution(execution.task) {
+		stateChanged = true
+	}
+	if stateChanged {
+		execution.task.Result.UpdatedAt = time.Now()
 		if s.saveTaskResult != nil {
-			if err := s.saveTaskResult(ctx, in.TaskID, task.Result); err != nil {
+			if err := s.saveTaskResult(ctx, execution.taskID, execution.task.Result); err != nil {
 				return err
 			}
 		}
 	}
-	readiness := prepared.readiness
-	return validateSheinSubmitReadinessGates(ctx, task, pkg, in.Action, readiness, s.validateSheinPublishFreshness)
+	readiness := buildSheinSubmitReadinessWithPodForAction(pkg, taskPodExecution(execution.task), execution.action)
+	return validateSheinSubmitReadinessGates(ctx, execution.task, pkg, execution.action, readiness, s.validateSheinPublishFreshness)
 }
 
 func (s *taskTemporalSubmissionLifecycleService) BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error) {

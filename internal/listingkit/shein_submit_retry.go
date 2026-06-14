@@ -17,7 +17,7 @@ func (s *service) retrySheinSensitiveWordSubmit(ctx context.Context, taskID stri
 		return response, responseErr, false
 	}
 
-	appendSheinSubmissionEvent(pkg, buildSheinSensitiveWordRetryEvent(taskID, action, requestID, time.Now()))
+	sheinpub.AppendSubmissionEvent(pkg, buildSheinSensitiveWordRetryEvent(taskID, action, requestID, time.Now()))
 	retryResponse, retryErr := s.taskSubmissionExecutionOrDefault().executeSheinSubmitRemote(productAPI, action, submitProduct)
 	if retryErr == nil {
 		retryErr = submissiondomain.BuildResponseError("SHEIN", action, sheinpub.SubmissionResponseOutcome(retryResponse))

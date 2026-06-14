@@ -220,26 +220,29 @@ func TestBuildSubmissionRefreshRemoteInputsPreservesCurrentFallbackBehavior(t *t
 	}
 
 	inputs := buildSubmissionRefreshRemoteInputs(task.Result.Shein, "publish", "SKC-1")
-	if !inputs.defaultConfirmed {
+	if !inputs.DefaultConfirmed {
 		t.Fatal("defaultConfirmed = false, want true")
 	}
-	if got := len(inputs.lookupCodes); got == 0 {
+	if got := len(inputs.LookupCodes); got == 0 {
 		t.Fatal("lookupCodes = empty, want collected codes")
 	}
-	if inputs.spuName != "SPU-PUBLISH" {
-		t.Fatalf("spuName = %q, want SPU-PUBLISH", inputs.spuName)
+	if inputs.SPUName != "SPU-PUBLISH" {
+		t.Fatalf("spuName = %q, want SPU-PUBLISH", inputs.SPUName)
 	}
-	if inputs.fallbackMessage != "" {
-		t.Fatalf("fallbackMessage = %q, want empty to preserve current submission-service behavior", inputs.fallbackMessage)
+	if inputs.FallbackMessage != "" {
+		t.Fatalf("fallbackMessage = %q, want empty to preserve current submission-service behavior", inputs.FallbackMessage)
 	}
 }
 
-func TestBuildSubmissionRefreshRequestIDTrimsRecordValue(t *testing.T) {
+func TestBuildSubmissionRefreshRequestTrimsRecordRequestID(t *testing.T) {
 	t.Parallel()
 
-	requestID := buildSubmissionRefreshRequestID(&sheinpub.SubmissionRecord{RequestID: "  refresh-123  "})
-	if requestID != "refresh-123" {
-		t.Fatalf("requestID = %q, want refresh-123", requestID)
+	req := buildSubmissionRefreshRequest(&SheinPackage{}, &sheinpub.SubmissionRefreshSelection{
+		Action: "publish",
+		Record: &sheinpub.SubmissionRecord{RequestID: "  refresh-123  "},
+	})
+	if req.RequestID != "refresh-123" {
+		t.Fatalf("requestID = %q, want refresh-123", req.RequestID)
 	}
 }
 
@@ -266,29 +269,29 @@ func TestBuildSubmissionRefreshRequestMapsSelectionAndRemoteInputs(t *testing.T)
 		},
 	}
 
-	request := buildSubmissionRefreshRequest(task.Result.Shein, &sheinSubmissionRefreshSelection{
-		action:       "publish",
-		record:       task.Result.Shein.Submission.Publish,
-		supplierCode: "SKC-1",
+	request := buildSubmissionRefreshRequest(task.Result.Shein, &sheinpub.SubmissionRefreshSelection{
+		Action:       "publish",
+		Record:       task.Result.Shein.Submission.Publish,
+		SupplierCode: "SKC-1",
 	})
 
-	if request.action != "publish" {
-		t.Fatalf("action = %q, want publish", request.action)
+	if request.Action != "publish" {
+		t.Fatalf("action = %q, want publish", request.Action)
 	}
-	if request.requestID != "refresh-123" {
-		t.Fatalf("requestID = %q, want refresh-123", request.requestID)
+	if request.RequestID != "refresh-123" {
+		t.Fatalf("requestID = %q, want refresh-123", request.RequestID)
 	}
-	if len(request.remoteInputs.lookupCodes) == 0 {
+	if len(request.RemoteInputs.LookupCodes) == 0 {
 		t.Fatal("lookupCodes = empty, want collected codes")
 	}
-	if !request.remoteInputs.defaultConfirmed {
+	if !request.RemoteInputs.DefaultConfirmed {
 		t.Fatal("defaultConfirmed = false, want true")
 	}
-	if request.remoteInputs.spuName != "SPU-PUBLISH" {
-		t.Fatalf("spuName = %q, want SPU-PUBLISH", request.remoteInputs.spuName)
+	if request.RemoteInputs.SPUName != "SPU-PUBLISH" {
+		t.Fatalf("spuName = %q, want SPU-PUBLISH", request.RemoteInputs.SPUName)
 	}
-	if request.remoteInputs.fallbackMessage != "" {
-		t.Fatalf("fallbackMessage = %q, want empty", request.remoteInputs.fallbackMessage)
+	if request.RemoteInputs.FallbackMessage != "" {
+		t.Fatalf("fallbackMessage = %q, want empty", request.RemoteInputs.FallbackMessage)
 	}
 }
 
@@ -300,10 +303,10 @@ func TestNewSubmissionRefreshStateMapsInputs(t *testing.T) {
 	productAPI := stubSheinProductAPI{}
 	otherAPI := stubSheinOtherAPI{}
 	state := newSubmissionRefreshState(task, "publish", "refresh-123", startedAt, productAPI, otherAPI, sheinSubmissionRefreshRemoteInputs{
-		lookupCodes:      []string{"SKC-1", "SKU-1"},
-		spuName:          "SPU-PUBLISH",
-		defaultConfirmed: true,
-		fallbackMessage:  "",
+		LookupCodes:      []string{"SKC-1", "SKU-1"},
+		SPUName:          "SPU-PUBLISH",
+		DefaultConfirmed: true,
+		FallbackMessage:  "",
 	})
 
 	if state == nil {
@@ -312,51 +315,56 @@ func TestNewSubmissionRefreshStateMapsInputs(t *testing.T) {
 	if state.task != task {
 		t.Fatalf("task = %+v, want original task", state.task)
 	}
-	if state.action != "publish" {
-		t.Fatalf("action = %q, want publish", state.action)
+	if state.remoteRequest == nil {
+		t.Fatal("remoteRequest = nil")
 	}
-	if state.requestID != "refresh-123" {
-		t.Fatalf("requestID = %q, want refresh-123", state.requestID)
+	if state.remoteRequest.action != "publish" {
+		t.Fatalf("action = %q, want publish", state.remoteRequest.action)
 	}
-	if !state.startedAt.Equal(startedAt) {
-		t.Fatalf("startedAt = %v, want %v", state.startedAt, startedAt)
+	if state.remoteRequest.requestID != "refresh-123" {
+		t.Fatalf("requestID = %q, want refresh-123", state.remoteRequest.requestID)
 	}
-	if len(state.lookupCodes) != 2 {
-		t.Fatalf("lookupCodes = %+v, want 2 entries", state.lookupCodes)
+	if !state.remoteRequest.startedAt.Equal(startedAt) {
+		t.Fatalf("startedAt = %v, want %v", state.remoteRequest.startedAt, startedAt)
 	}
-	if !state.defaultConfirmed {
+	if len(state.remoteRequest.lookupCodes) != 2 {
+		t.Fatalf("lookupCodes = %+v, want 2 entries", state.remoteRequest.lookupCodes)
+	}
+	if !state.remoteRequest.defaultConfirmed {
 		t.Fatal("defaultConfirmed = false, want true")
 	}
-	if state.spuName != "SPU-PUBLISH" {
-		t.Fatalf("spuName = %q, want SPU-PUBLISH", state.spuName)
+	if state.remoteRequest.spuName != "SPU-PUBLISH" {
+		t.Fatalf("spuName = %q, want SPU-PUBLISH", state.remoteRequest.spuName)
 	}
-	if state.productAPI == nil {
+	if state.remoteRequest.productAPI == nil {
 		t.Fatal("productAPI = nil, want assigned api")
 	}
-	if state.otherAPI == nil {
+	if state.remoteRequest.otherAPI == nil {
 		t.Fatal("otherAPI = nil, want assigned api")
 	}
 }
 
-func TestBuildSubmissionRefreshConfirmationRequestMapsRefreshState(t *testing.T) {
+func TestBuildSheinRemoteStatusRequestMapsRefreshState(t *testing.T) {
 	t.Parallel()
 
 	startedAt := time.Now()
 	productAPI := stubSheinProductAPI{}
 	otherAPI := stubSheinOtherAPI{}
-	request, err := buildSubmissionRefreshConfirmationRequest("task-123", &sheinSubmissionRefreshState{
-		action:           "publish",
-		requestID:        "refresh-123",
-		startedAt:        startedAt,
-		lookupCodes:      []string{"SKC-1", "SKU-1"},
-		defaultConfirmed: true,
-		fallbackMessage:  "",
-		productAPI:       productAPI,
-		otherAPI:         otherAPI,
-		spuName:          "SPU-PUBLISH",
+	request, err := buildSheinRemoteStatusRequest("task-123", &sheinSubmissionRefreshState{
+		remoteRequest: &sheinRemoteStatusRequest{
+			action:           "publish",
+			requestID:        "refresh-123",
+			startedAt:        startedAt,
+			lookupCodes:      []string{"SKC-1", "SKU-1"},
+			defaultConfirmed: true,
+			fallbackMessage:  "",
+			productAPI:       productAPI,
+			otherAPI:         otherAPI,
+			spuName:          "SPU-PUBLISH",
+		},
 	})
 	if err != nil {
-		t.Fatalf("buildSubmissionRefreshConfirmationRequest() error = %v", err)
+		t.Fatalf("buildSheinRemoteStatusRequest() error = %v", err)
 	}
 	if request == nil {
 		t.Fatal("request = nil")
@@ -415,14 +423,14 @@ func TestLoadSubmissionRefreshSelectionMapsFields(t *testing.T) {
 	if selection == nil {
 		t.Fatal("selection = nil")
 	}
-	if selection.action != "publish" {
-		t.Fatalf("action = %q, want publish", selection.action)
+	if selection.Action != "publish" {
+		t.Fatalf("action = %q, want publish", selection.Action)
 	}
-	if selection.record == nil || selection.record.RequestID != "refresh-123" {
-		t.Fatalf("record = %+v, want request id refresh-123", selection.record)
+	if selection.Record == nil || selection.Record.RequestID != "refresh-123" {
+		t.Fatalf("record = %+v, want request id refresh-123", selection.Record)
 	}
-	if selection.supplierCode != "SKC-1" {
-		t.Fatalf("supplierCode = %q, want SKC-1", selection.supplierCode)
+	if selection.SupplierCode != "SKC-1" {
+		t.Fatalf("supplierCode = %q, want SKC-1", selection.SupplierCode)
 	}
 }
 
@@ -447,11 +455,11 @@ func TestLoadSubmissionRefreshSelectionFallsBackToPublishWhenLastActionMissing(t
 	if selection == nil {
 		t.Fatal("selection = nil")
 	}
-	if selection.action != "publish" {
-		t.Fatalf("action = %q, want publish", selection.action)
+	if selection.Action != "publish" {
+		t.Fatalf("action = %q, want publish", selection.Action)
 	}
-	if selection.record == nil || selection.record.RequestID != "refresh-123" {
-		t.Fatalf("record = %+v, want request id refresh-123", selection.record)
+	if selection.Record == nil || selection.Record.RequestID != "refresh-123" {
+		t.Fatalf("record = %+v, want request id refresh-123", selection.Record)
 	}
 }
 
@@ -476,8 +484,8 @@ func TestLoadSubmissionRefreshSelectionFallsBackToPackageSupplierCode(t *testing
 	if selection == nil {
 		t.Fatal("selection = nil")
 	}
-	if selection.supplierCode != "SKC-1" {
-		t.Fatalf("supplierCode = %q, want SKC-1", selection.supplierCode)
+	if selection.SupplierCode != "SKC-1" {
+		t.Fatalf("supplierCode = %q, want SKC-1", selection.SupplierCode)
 	}
 }
 
@@ -550,9 +558,11 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshReturnsRemoteErrorAfterPers
 	})
 
 	preview, err := submitter.finishSubmissionRefresh(context.Background(), task.ID, &sheinSubmissionRefreshState{
-		action:    "publish",
-		requestID: "refresh-123",
-		startedAt: now,
+		remoteRequest: &sheinRemoteStatusRequest{
+			action:    "publish",
+			requestID: "refresh-123",
+			startedAt: now,
+		},
 	}, nil, remoteErr)
 	if !errors.Is(err, remoteErr) {
 		t.Fatalf("finishSubmissionRefresh() error = %v, want %v", err, remoteErr)
@@ -605,9 +615,11 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshBuildsPreviewOnSuccess(t *t
 	})
 
 	preview, err := submitter.finishSubmissionRefresh(context.Background(), task.ID, &sheinSubmissionRefreshState{
-		action:    "publish",
-		requestID: "refresh-123",
-		startedAt: now,
+		remoteRequest: &sheinRemoteStatusRequest{
+			action:    "publish",
+			requestID: "refresh-123",
+			startedAt: now,
+		},
 	}, nil, nil)
 	if err != nil {
 		t.Fatalf("finishSubmissionRefresh() error = %v", err)
@@ -668,25 +680,28 @@ func TestTaskSubmissionServiceLoadSheinSubmissionRefreshStateMapsLoadedTask(t *t
 	if state.task == nil || state.task.ID != task.ID {
 		t.Fatalf("task = %+v, want task %q", state.task, task.ID)
 	}
-	if state.action != "publish" {
-		t.Fatalf("action = %q, want publish", state.action)
+	if state.remoteRequest == nil {
+		t.Fatal("remoteRequest = nil")
 	}
-	if state.requestID != "refresh-123" {
-		t.Fatalf("requestID = %q, want refresh-123", state.requestID)
+	if state.remoteRequest.action != "publish" {
+		t.Fatalf("action = %q, want publish", state.remoteRequest.action)
 	}
-	if len(state.lookupCodes) == 0 {
+	if state.remoteRequest.requestID != "refresh-123" {
+		t.Fatalf("requestID = %q, want refresh-123", state.remoteRequest.requestID)
+	}
+	if len(state.remoteRequest.lookupCodes) == 0 {
 		t.Fatal("lookupCodes = empty, want collected codes")
 	}
-	if !state.defaultConfirmed {
+	if !state.remoteRequest.defaultConfirmed {
 		t.Fatal("defaultConfirmed = false, want true")
 	}
-	if state.spuName != "SPU-PUBLISH" {
-		t.Fatalf("spuName = %q, want SPU-PUBLISH", state.spuName)
+	if state.remoteRequest.spuName != "SPU-PUBLISH" {
+		t.Fatalf("spuName = %q, want SPU-PUBLISH", state.remoteRequest.spuName)
 	}
-	if state.productAPI == nil {
+	if state.remoteRequest.productAPI == nil {
 		t.Fatal("productAPI = nil, want assigned api")
 	}
-	if state.otherAPI == nil {
+	if state.remoteRequest.otherAPI == nil {
 		t.Fatal("otherAPI = nil, want assigned api")
 	}
 }
@@ -734,53 +749,55 @@ func TestTaskSubmissionServiceResolveSubmissionRefreshConfirmationPassesRequestF
 	productAPI := stubSheinProductAPI{}
 	otherAPI := stubSheinOtherAPI{}
 	startedAt := time.Now()
-	expected := &sheinRemoteConfirmation{message: "resolved"}
+	expected := &sheinRemoteConfirmation{Message: "resolved"}
 	submitter := newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{
-		resolveRemoteStatus: func(gotProductAPI sheinproduct.ProductAPI, gotOtherAPI sheinother.OtherAPI, action, requestID string, lookupCodes []string, spuName string, defaultConfirmed bool, fallbackMessage string, gotStartedAt time.Time, taskID string) (*sheinRemoteConfirmation, error) {
-			if gotProductAPI == nil {
+		resolveRemoteStatus: func(request *sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error) {
+			if request.productAPI == nil {
 				t.Fatal("productAPI = nil, want assigned api")
 			}
-			if gotOtherAPI == nil {
+			if request.otherAPI == nil {
 				t.Fatal("otherAPI = nil, want assigned api")
 			}
-			if action != "publish" {
-				t.Fatalf("action = %q, want publish", action)
+			if request.action != "publish" {
+				t.Fatalf("action = %q, want publish", request.action)
 			}
-			if requestID != "refresh-123" {
-				t.Fatalf("requestID = %q, want refresh-123", requestID)
+			if request.requestID != "refresh-123" {
+				t.Fatalf("requestID = %q, want refresh-123", request.requestID)
 			}
-			if len(lookupCodes) != 2 {
-				t.Fatalf("lookupCodes = %+v, want 2 entries", lookupCodes)
+			if len(request.lookupCodes) != 2 {
+				t.Fatalf("lookupCodes = %+v, want 2 entries", request.lookupCodes)
 			}
-			if spuName != "SPU-PUBLISH" {
-				t.Fatalf("spuName = %q, want SPU-PUBLISH", spuName)
+			if request.spuName != "SPU-PUBLISH" {
+				t.Fatalf("spuName = %q, want SPU-PUBLISH", request.spuName)
 			}
-			if !defaultConfirmed {
+			if !request.defaultConfirmed {
 				t.Fatal("defaultConfirmed = false, want true")
 			}
-			if fallbackMessage != "SHEIN accepted publish request; remote record not yet visible" {
-				t.Fatalf("fallbackMessage = %q, want publish fallback", fallbackMessage)
+			if request.fallbackMessage != "SHEIN accepted publish request; remote record not yet visible" {
+				t.Fatalf("fallbackMessage = %q, want publish fallback", request.fallbackMessage)
 			}
-			if !gotStartedAt.Equal(startedAt) {
-				t.Fatalf("startedAt = %v, want %v", gotStartedAt, startedAt)
+			if !request.startedAt.Equal(startedAt) {
+				t.Fatalf("startedAt = %v, want %v", request.startedAt, startedAt)
 			}
-			if taskID != "task-123" {
-				t.Fatalf("taskID = %q, want task-123", taskID)
+			if request.taskID != "task-123" {
+				t.Fatalf("taskID = %q, want task-123", request.taskID)
 			}
 			return expected, nil
 		},
 	})
 
 	confirmation, err := submitter.resolveSubmissionRefreshConfirmation("task-123", &sheinSubmissionRefreshState{
-		action:           "publish",
-		requestID:        "refresh-123",
-		startedAt:        startedAt,
-		lookupCodes:      []string{"SKC-1", "SKU-1"},
-		defaultConfirmed: true,
-		fallbackMessage:  "",
-		productAPI:       productAPI,
-		otherAPI:         otherAPI,
-		spuName:          "SPU-PUBLISH",
+		remoteRequest: &sheinRemoteStatusRequest{
+			action:           "publish",
+			requestID:        "refresh-123",
+			startedAt:        startedAt,
+			lookupCodes:      []string{"SKC-1", "SKU-1"},
+			defaultConfirmed: true,
+			fallbackMessage:  "",
+			productAPI:       productAPI,
+			otherAPI:         otherAPI,
+			spuName:          "SPU-PUBLISH",
+		},
 	})
 	if err != nil {
 		t.Fatalf("resolveSubmissionRefreshConfirmation() error = %v", err)
@@ -806,16 +823,16 @@ func TestApplySubmissionRefreshConfirmationAppliesEventParts(t *testing.T) {
 	}
 
 	confirmation := &sheinRemoteConfirmation{
-		remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
-		record: &sheinproduct.RecordItem{
+		RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+		Record: &sheinproduct.RecordItem{
 			RecordID:     "record-123",
 			SupplierCode: "SKC-1",
 			State:        4,
 			AuditState:   5,
 		},
-		checkedAt: now.Add(time.Minute),
-		message:   "confirmed remotely",
-		event: &sheinpub.SubmissionEvent{
+		CheckedAt: now.Add(time.Minute),
+		Message:   "confirmed remotely",
+		Event: &sheinpub.SubmissionEvent{
 			TaskID:         task.ID,
 			Action:         "publish",
 			Phase:          sheinpub.SubmissionPhaseConfirmRemote,
@@ -863,15 +880,15 @@ func TestApplySubmissionRefreshConfirmationWithoutEventSetsRemoteRecordOnly(t *t
 	}
 
 	applySubmissionRefreshConfirmation(task.Result.Shein, "publish", "refresh-apply-record", &sheinRemoteConfirmation{
-		remoteStatus: sheinpub.SubmissionRemoteStatusPending,
-		record: &sheinproduct.RecordItem{
+		RemoteStatus: sheinpub.SubmissionRemoteStatusPending,
+		Record: &sheinproduct.RecordItem{
 			RecordID:     "record-only",
 			SupplierCode: "SKC-1",
 			State:        1,
 			AuditState:   2,
 		},
-		checkedAt: now.Add(time.Minute),
-		message:   "pending remotely",
+		CheckedAt: now.Add(time.Minute),
+		Message:   "pending remotely",
 	})
 
 	record := sheinSubmissionRecordForAction(task.Result.Shein.SubmissionState, "publish")
@@ -894,13 +911,15 @@ func TestBuildSubmissionRefreshMutationRequestMapsStateAndConfirmation(t *testin
 
 	startedAt := time.Now().Add(-time.Minute)
 	confirmation := &sheinRemoteConfirmation{
-		remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
-		message:      "confirmed remotely",
+		RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+		Message:      "confirmed remotely",
 	}
 	request, err := buildSubmissionRefreshMutationRequest("task-123", &sheinSubmissionRefreshState{
-		action:    "publish",
-		requestID: "refresh-123",
-		startedAt: startedAt,
+		remoteRequest: &sheinRemoteStatusRequest{
+			action:    "publish",
+			requestID: "refresh-123",
+			startedAt: startedAt,
+		},
 	}, confirmation)
 	if err != nil {
 		t.Fatalf("buildSubmissionRefreshMutationRequest() error = %v", err)
@@ -960,16 +979,16 @@ func TestApplySubmissionRefreshMutationAppendsRunningEventBeforeConfirmation(t *
 		},
 	}
 	confirmation := &sheinRemoteConfirmation{
-		remoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
-		record: &sheinproduct.RecordItem{
+		RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
+		Record: &sheinproduct.RecordItem{
 			RecordID:     "record-123",
 			SupplierCode: "SKC-1",
 			State:        4,
 			AuditState:   5,
 		},
-		checkedAt: startedAt.Add(time.Minute),
-		message:   "confirmed remotely",
-		event: &sheinpub.SubmissionEvent{
+		CheckedAt: startedAt.Add(time.Minute),
+		Message:   "confirmed remotely",
+		Event: &sheinpub.SubmissionEvent{
 			TaskID:         task.ID,
 			Action:         "publish",
 			Phase:          sheinpub.SubmissionPhaseConfirmRemote,
@@ -982,9 +1001,11 @@ func TestApplySubmissionRefreshMutationAppendsRunningEventBeforeConfirmation(t *
 	}
 
 	request, err := buildSubmissionRefreshMutationRequest(task.ID, &sheinSubmissionRefreshState{
-		action:    "publish",
-		requestID: "refresh-123",
-		startedAt: startedAt,
+		remoteRequest: &sheinRemoteStatusRequest{
+			action:    "publish",
+			requestID: "refresh-123",
+			startedAt: startedAt,
+		},
 	}, confirmation)
 	if err != nil {
 		t.Fatalf("buildSubmissionRefreshMutationRequest() error = %v", err)

@@ -18,6 +18,7 @@ type submissionCollaborators struct {
 	taskSubmissionRefresh  *taskSubmissionRefreshService
 
 	// Workflow-facing collaborators.
+	taskTemporalSubmission            *taskTemporalSubmissionService
 	taskTemporalSubmissionLifecycle   *taskTemporalSubmissionLifecycleService
 	taskTemporalSubmissionFlow        *taskTemporalSubmissionFlowService
 	taskTemporalSubmissionPersistence *taskTemporalSubmissionPersistenceService

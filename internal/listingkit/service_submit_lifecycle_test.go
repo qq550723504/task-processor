@@ -891,9 +891,8 @@ func TestResolveSheinSubmitRemoteStatusConfirmsPublishViaBatchCheckOnWay(t *test
 	t.Parallel()
 
 	var recordCalls int32
-	confirmation, err := resolveSheinSubmitRemoteStatus(
-		nil,
-		stubSheinOtherAPI{
+	confirmation, err := resolveSheinSubmitRemoteStatus(&sheinRemoteStatusRequest{
+		otherAPI: stubSheinOtherAPI{
 			batchCheckOnWayResp: &sheinother.BatchCheckOnWayResponse{
 				Code: "0",
 				Msg:  "OK",
@@ -910,29 +909,29 @@ func TestResolveSheinSubmitRemoteStatusConfirmsPublishViaBatchCheckOnWay(t *test
 				},
 			},
 		},
-		"publish",
-		"request-on-way-123",
-		[]string{"SUP-1"},
-		"SPU-PUBLISH",
-		false,
-		"refreshing SHEIN remote record",
-		time.Now(),
-		"task-on-way-123",
-	)
+		action:           "publish",
+		requestID:        "request-on-way-123",
+		lookupCodes:      []string{"SUP-1"},
+		spuName:          "SPU-PUBLISH",
+		defaultConfirmed: false,
+		fallbackMessage:  "refreshing SHEIN remote record",
+		startedAt:        time.Now(),
+		taskID:           "task-on-way-123",
+	})
 	if err != nil {
 		t.Fatalf("resolveSheinSubmitRemoteStatus() error = %v", err)
 	}
 	if confirmation == nil {
 		t.Fatal("expected remote confirmation")
 	}
-	if confirmation.remoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
-		t.Fatalf("remote status = %q, want confirmed", confirmation.remoteStatus)
+	if confirmation.RemoteStatus != sheinpub.SubmissionRemoteStatusConfirmed {
+		t.Fatalf("remote status = %q, want confirmed", confirmation.RemoteStatus)
 	}
-	if !strings.Contains(confirmation.message, "SPMPA4202605293776059") {
-		t.Fatalf("remote message = %q, want document_sn detail", confirmation.message)
+	if !strings.Contains(confirmation.Message, "SPMPA4202605293776059") {
+		t.Fatalf("remote message = %q, want document_sn detail", confirmation.Message)
 	}
-	if confirmation.event == nil || confirmation.event.Phase != sheinpub.SubmissionPhaseConfirmRemote {
-		t.Fatalf("event = %+v, want confirm_remote event", confirmation.event)
+	if confirmation.Event == nil || confirmation.Event.Phase != sheinpub.SubmissionPhaseConfirmRemote {
+		t.Fatalf("event = %+v, want confirm_remote event", confirmation.Event)
 	}
 	if got := atomic.LoadInt32(&recordCalls); got != 0 {
 		t.Fatalf("record calls = %d, want 0 when on-way document confirms publish", got)
@@ -1300,7 +1299,7 @@ func TestSubmitTaskTemporalReplayReturnsCurrentPreviewWithoutRestartingWorkflow(
 		Success: true,
 		SPUName: "SPU-123",
 	}, nil, now)
-	appendSheinSubmissionEvent(task.Result.Shein, sheinpub.BuildSubmissionAttemptEvent(task.ID, "publish", record, record.Result, nil, record.StartedAt))
+	sheinpub.AppendSubmissionEvent(task.Result.Shein, sheinpub.BuildSubmissionAttemptEvent(task.ID, "publish", record, record.Result, nil, record.StartedAt))
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}

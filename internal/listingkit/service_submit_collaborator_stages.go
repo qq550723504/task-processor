@@ -4,34 +4,26 @@ func (s *service) initializeSubmitTaskRecoveryCollaborators() {
 	if s == nil {
 		return
 	}
-	s.submission.taskRecovery = s.taskRecoveryOrDefault()
-	s.submission.taskRequeue = s.taskRequeueOrDefault()
+	s.ensureTaskSubmitTaskRecoveryCollaborators()
 }
 
 func (s *service) initializeSubmitStateCollaborators() {
 	if s == nil {
 		return
 	}
-	s.submission.taskSubmissionState = s.taskSubmissionStateOrDefault()
-	s.submission.taskSubmissionExecution = s.taskSubmissionExecutionOrDefault()
+	s.ensureTaskSubmissionCoreCollaborators()
 }
 
 func (s *service) initializeSubmitOrchestratorCollaborators() {
 	if s == nil {
 		return
 	}
-	s.submission.taskSubmissionRefresh = s.taskSubmissionRefreshOrDefault()
-	s.submission.taskSubmissionRecovery = s.taskSubmissionRecoveryOrDefault()
-	s.submission.taskDirectSubmission = s.taskDirectSubmissionOrDefault()
-	s.submission.taskSubmission = s.taskSubmissionOrDefault()
+	s.ensureTaskManagedSubmissionCollaborators()
 }
 
 func (s *service) initializeSubmitWorkflowCollaborators() {
 	if s == nil {
 		return
 	}
-	s.submission.taskTemporalSubmissionLifecycle = s.taskTemporalSubmissionLifecycleOrDefault()
-	s.submission.taskTemporalSubmissionFlow = s.taskTemporalSubmissionFlowOrDefault()
-	s.submission.taskTemporalSubmissionPersistence = s.taskTemporalSubmissionPersistenceOrDefault()
-	s.submission.taskTemporalSubmissionRefresh = s.taskTemporalSubmissionRefreshOrDefault()
+	s.ensureTaskTemporalSubmissionCollaborators()
 }

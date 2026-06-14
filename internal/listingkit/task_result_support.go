@@ -8,22 +8,24 @@ import (
 	"time"
 
 	"task-processor/internal/catalog"
+	submissiondomain "task-processor/internal/listing/submission"
 )
 
 func persistClassifiedTaskFailure(ctx context.Context, repo Repository, taskID string, errorMsg string, cause error) error {
 	if repo == nil {
 		return fmt.Errorf("repository is nil")
 	}
-	if block, ok := classifyRetryableTaskFailure(cause); ok {
-		if err := repo.MarkBlockedRetryable(ctx, taskID, block, errorMsg); err != nil {
-			return fmt.Errorf("mark blocked retryable: %w", err)
-		}
-		return nil
-	}
-	if err := repo.MarkFailed(ctx, taskID, errorMsg); err != nil {
-		return fmt.Errorf("mark failed: %w", err)
-	}
-	return nil
+	return submissiondomain.PersistClassifiedRetryableFailure(submissiondomain.RetryableFailurePersistenceRequest{
+		DefaultRecoveryScope: retryableRecoveryScopeTask,
+		ErrorMessage:         errorMsg,
+		Cause:                cause,
+		MarkBlockedRetryable: func(block *submissiondomain.RetryableBlockState, markedErrorMsg string) error {
+			return repo.MarkBlockedRetryable(ctx, taskID, adaptSubmissionRetryableBlock(block), markedErrorMsg)
+		},
+		MarkFailed: func(markedErrorMsg string) error {
+			return repo.MarkFailed(ctx, taskID, markedErrorMsg)
+		},
+	})
 }
 
 func (s *service) buildTaskResultPayload(ctx context.Context, task *Task) (*ListingKitResult, error) {

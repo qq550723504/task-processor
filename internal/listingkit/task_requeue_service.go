@@ -46,19 +46,13 @@ func newTaskRequeueService(config taskRequeueServiceConfig) *taskRequeueService 
 			return errors.Is(err, ErrTaskNotFound)
 		},
 		CanRequeue: func(task *submissiondomain.RequeueTask) (bool, string) {
-			if task == nil {
-				return false, `task status "" is not processable`
-			}
-			if TaskStatus(task.Status) != TaskStatusPending {
-				return false, fmt.Sprintf("task status %q is not processable", TaskStatus(task.Status))
-			}
-			return true, ""
+			return submissiondomain.CanRequeueTaskWithStatus(task, string(TaskStatusPending))
 		},
 		SubmitTask: func(submit submissiondomain.RequeueSubmitFunc, taskID string) error {
 			if submit == nil {
 				return ErrTaskRequeueUnavailable
 			}
-			return submitTaskWithRetry(taskRequeueSubmitterFunc(submit), taskID, taskRequeueMaxWait)
+			return submissiondomain.RetryEnqueueSubmit(taskID, taskRequeueMaxWait, submit)
 		},
 		ErrUnavailable:    ErrTaskRequeueUnavailable,
 		ErrInvalidRequest: ErrTaskRequeueInvalidRequest,

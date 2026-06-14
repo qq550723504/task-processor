@@ -79,9 +79,6 @@ func (c *studioBatchRunCoordinator) StartRun(ctx context.Context, runID string) 
 func (s *service) initializeStudioBatchRunRecovery() {
 	coordinator := s.studioBatchRunCoordinatorOrDefault()
 	if coordinator == nil {
-		coordinator = s.buildStudioBatchRunCoordinator()
-	}
-	if coordinator == nil {
 		return
 	}
 	go func() {
@@ -94,9 +91,6 @@ func (s *service) initializeStudioBatchRunRecovery() {
 func (s *service) startStudioBatchRun(ctx context.Context, runID string) error {
 	coordinator := s.studioBatchRunCoordinatorOrDefault()
 	if coordinator == nil {
-		coordinator = s.buildStudioBatchRunCoordinator()
-	}
-	if coordinator == nil {
 		return fmt.Errorf("studio batch run executor is not configured")
 	}
 	return coordinator.StartRun(ctx, runID)
@@ -106,42 +100,17 @@ func (s *service) initializeStudioBatchRunSupportCollaborators() {
 	if s == nil {
 		return
 	}
-	if s.studioBatchRunExecutorOrDefault() == nil {
-		s.buildStudioBatchRunExecutor()
-	}
-	if s.studioBatchRunCoordinatorOrDefault() == nil {
-		s.buildStudioBatchRunCoordinator()
-	}
+	s.ensureTaskStudioBatchRunCollaborators()
 }
 
 func (s *service) buildStudioBatchRunCoordinator() *studioBatchRunCoordinator {
-	if s == nil {
-		return nil
-	}
-	return syncGroupedCollaborator(&s.studio.runCoordinator, &s.collabMirrors.studioBatchRunCoordinator, func() *studioBatchRunCoordinator {
-		executor := s.buildStudioBatchRunExecutor()
-		if executor == nil {
-			return nil
-		}
-		config := buildStudioBatchRunCoordinatorConfig(s)
-		config.executor = executor
-		return newStudioBatchRunCoordinator(config)
-	})
+	s.ensureTaskStudioBatchRunCollaborators()
+	return s.studio.runCoordinator
 }
 
 func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {
-	if s == nil {
-		return nil
-	}
-	return syncGroupedCollaborator(&s.studio.runExecutor, &s.collabMirrors.studioBatchRunExecutor, func() *taskStudioBatchRunExecutor {
-		if resolveStudioBatchRunRepo(s) == nil || resolveStudioSessionRepo(s) == nil {
-			return nil
-		}
-		if resolveStudioImageGenerator(s) == nil || resolveStudioUploadStore(s) == nil {
-			return nil
-		}
-		return newTaskStudioBatchRunExecutor(buildTaskStudioBatchRunExecutorConfig(s))
-	})
+	s.ensureTaskStudioBatchRunCollaborators()
+	return s.studio.runExecutor
 }
 
 func studioBatchRunLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {

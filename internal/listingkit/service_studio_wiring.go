@@ -3,22 +3,22 @@ package listingkit
 import "context"
 
 func buildTaskStudioSessionServiceConfig(s *service) taskStudioSessionServiceConfig {
-	wiring := buildTaskStudioSessionRepoWiring(s)
+	config := buildTaskStudioSessionConfigWiring(s)
 	return taskStudioSessionServiceConfig{
-		repo:                     wiring.repo,
-		runner:                   newListingStudioSessionService(wiring.repo),
-		asyncJobRunner:           newListingStudioSessionAsyncJobService(wiring.repo),
-		generationMetadataRunner: newListingStudioSessionGenerationMetadataService(wiring.repo),
-		reviewTaskMetadataRunner: newListingStudioSessionReviewTaskMetadataService(wiring.repo),
-		generalMetadataRunner:    newListingStudioSessionGeneralMetadataService(wiring.repo),
+		repo:                     config.session.repo,
+		runner:                   config.runner,
+		asyncJobRunner:           config.asyncJobRunner,
+		generationMetadataRunner: config.generationMetadataRunner,
+		reviewTaskMetadataRunner: config.reviewTaskMetadataRunner,
+		generalMetadataRunner:    config.generalMetadataRunner,
 	}
 }
 
 func buildTaskStudioBatchDraftServiceConfig(s *service) taskStudioBatchDraftServiceConfig {
-	wiring := buildTaskStudioSessionRepoWiring(s)
+	config := buildTaskStudioSessionConfigWiring(s)
 	return taskStudioBatchDraftServiceConfig{
-		repo:   wiring.repo,
-		runner: newListingStudioBatchDraftService(wiring.repo),
+		repo:   config.session.repo,
+		runner: config.batchDraftRunner,
 	}
 }
 
@@ -41,45 +41,74 @@ func buildStudioBatchGenerationServiceConfig(s *service) studioBatchGenerationSe
 }
 
 func buildTaskStudioBatchServiceConfig(s *service) taskStudioBatchServiceConfig {
-	wiring := buildTaskStudioBatchServiceWiring(s)
+	return buildTaskStudioBatchServiceConfigWithCollaborators(buildTaskStudioBatchServiceConfigWiring(s))
+}
+
+func buildTaskStudioBatchServiceConfigWithCollaborators(
+	config taskStudioBatchServiceConfigWiring,
+) taskStudioBatchServiceConfig {
 	return taskStudioBatchServiceConfig{
-		repo:               wiring.repo,
-		studioSessionRepo:  wiring.studioSessionRepo,
-		generator:          wiring.generator,
-		createGenerateTask: wiring.createGenerateTask,
-		getTask:            wiring.getTask,
-		detailRunner:       wiring.detailRunner,
-		reviewRunner:       wiring.reviewRunner,
+		repo:               config.batch.repo,
+		studioSessionRepo:  config.batch.studioSessionRepo,
+		generator:          config.batch.generator,
+		createGenerateTask: config.batch.createGenerateTask,
+		getTask:            config.batch.getTask,
+		detailRunner:       config.detailRunner,
+		reviewRunner:       config.reviewRunner,
+		retryRunner:        config.retryRunner,
+		taskPrepareRunner:  config.taskPrepare,
+		taskResumeRunner:   config.taskResume,
 	}
 }
 
 func buildTaskStudioBatchRunServiceConfig(s *service) taskStudioBatchRunServiceConfig {
-	wiring := buildTaskStudioBatchRunRepoWiring(s)
+	config := buildTaskStudioBatchRunConfigWiring(s)
+	return buildTaskStudioBatchRunServiceConfigWithCollaborators(config.batchRun, s.studioBatchRunCoordinatorOrDefault())
+}
+
+func buildTaskStudioBatchRunServiceConfigWithCollaborators(
+	wiring taskStudioBatchRunWiring,
+	coordinator *studioBatchRunCoordinator,
+) taskStudioBatchRunServiceConfig {
 	var startRun func(ctx context.Context, runID string) error
-	if s.buildStudioBatchRunCoordinator() != nil {
-		startRun = s.startStudioBatchRun
+	if coordinator != nil {
+		startRun = coordinator.StartRun
 	}
 	return taskStudioBatchRunServiceConfig{
 		repo:              wiring.repo,
 		studioSessionRepo: wiring.studioSessionRepo,
 		startRun:          startRun,
-		runner:            newListingStudioBatchRunService(wiring.repo, wiring.studioSessionRepo, startRun),
+		runner:            wiring.newServiceRunner(startRun),
 	}
 }
 
 func buildStudioBatchRunCoordinatorConfig(s *service) studioBatchRunCoordinatorConfig {
-	wiring := buildTaskStudioBatchRunRepoWiring(s)
+	config := buildTaskStudioBatchRunConfigWiring(s)
+	return buildStudioBatchRunCoordinatorConfigWithCollaborators(config.batchRun, s.studioBatchRunExecutorOrDefault())
+}
+
+func buildStudioBatchRunCoordinatorConfigWithCollaborators(
+	wiring taskStudioBatchRunWiring,
+	executor *taskStudioBatchRunExecutor,
+) studioBatchRunCoordinatorConfig {
 	return studioBatchRunCoordinatorConfig{
 		repo:     wiring.repo,
-		executor: s.buildStudioBatchRunExecutor(),
+		executor: executor,
 	}
 }
 
 func buildTaskStudioBatchRunExecutorConfig(s *service) taskStudioBatchRunExecutorConfig {
-	wiring := buildTaskStudioBatchRunRepoWiring(s)
+	config := buildTaskStudioBatchRunConfigWiring(s)
+	return buildTaskStudioBatchRunExecutorConfigWithWiring(s, config.batchRun)
+}
+
+func buildTaskStudioBatchRunExecutorConfigWithWiring(
+	s *service,
+	wiring taskStudioBatchRunWiring,
+) taskStudioBatchRunExecutorConfig {
 	return taskStudioBatchRunExecutorConfig{
 		repo:             wiring.repo,
 		executeOne:       s.executeStudioBatchRunItem,
-		completionRunner: newListingStudioBatchRunCompletionService(wiring.repo, nil),
+		completionRunner: wiring.newCompletionRunner(nil),
 	}
 }

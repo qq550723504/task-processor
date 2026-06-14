@@ -7,7 +7,7 @@ func TestSheinSubmissionPersistenceBoundary(t *testing.T) {
 
 	temporalSource := readNamedFunctionSource(t, "service_shein_publish_temporal_entrypoints.go", "PersistSheinPublishSuccess")
 	assertSourceContainsAll(t, temporalSource, []string{
-		"return persistence.PersistSheinPublishSuccess(ctx, in)",
+		"return temporal.PersistSheinPublishSuccess(ctx, in)",
 	})
 	assertSourceExcludesAll(t, temporalSource, []string{
 		"sheinpub.ApplySubmissionPersistenceInput(",
@@ -15,8 +15,13 @@ func TestSheinSubmissionPersistenceBoundary(t *testing.T) {
 
 	serviceSource := readNamedFunctionSource(t, "task_temporal_submission_persistence_service.go", "PersistSheinPublishSuccess")
 	assertSourceContainsAll(t, serviceSource, []string{
-		"sheinpub.ApplySubmissionPersistenceInput(",
+		"loadSheinSubmitPersistenceState(",
 		"return s.persistSheinTemporalSubmissionSuccess(",
+	})
+
+	loaderSource := readNamedFunctionSource(t, "task_temporal_submission_persistence_service.go", "loadSheinSubmitPersistenceState")
+	assertSourceContainsAll(t, loaderSource, []string{
+		"sheinpub.ApplySubmissionPersistenceInput(",
 	})
 
 	directSource := readNamedFunctionSource(t, "task_direct_submission_support.go", "persistDirectSubmitSnapshot")

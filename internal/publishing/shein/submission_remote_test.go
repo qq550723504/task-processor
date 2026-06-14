@@ -3,10 +3,13 @@ package shein
 import (
 	"errors"
 	"reflect"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	listingsubmission "task-processor/internal/listing/submission"
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
+	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -367,12 +370,22 @@ func TestResolveSubmissionRecoverySelection(t *testing.T) {
 	if selection.RequestID != "recover-123" {
 		t.Fatalf("ResolveSubmissionRecoverySelection().RequestID = %q, want recover-123", selection.RequestID)
 	}
+	if selection.SupplierCode != "" {
+		t.Fatalf("ResolveSubmissionRecoverySelection().SupplierCode = %q, want empty before record supplier code is set", selection.SupplierCode)
+	}
+	if !selection.StartedAt.Equal(startedAt) {
+		t.Fatalf("ResolveSubmissionRecoverySelection().StartedAt = %v, want %v", selection.StartedAt, startedAt)
+	}
 	if selection.Response != lastResult {
 		t.Fatalf("ResolveSubmissionRecoverySelection().Response = %+v, want last result fallback", selection.Response)
 	}
 
+	pkg.SubmissionState.Publish.SupplierCode = "REC-SKC-1"
 	pkg.SubmissionState.Publish.Result = &SubmissionResponse{Success: true, Message: "record"}
 	selection = ResolveSubmissionRecoverySelection(pkg, "publish")
+	if selection.SupplierCode != "REC-SKC-1" {
+		t.Fatalf("ResolveSubmissionRecoverySelection().SupplierCode = %q, want REC-SKC-1", selection.SupplierCode)
+	}
 	if selection.Response == nil || selection.Response.Message != "record" {
 		t.Fatalf("ResolveSubmissionRecoverySelection().Response = %+v, want record result", selection.Response)
 	}
@@ -595,6 +608,374 @@ func TestRemotePublishAccepted(t *testing.T) {
 	if RemotePublishAccepted(pkg, "save_draft") {
 		t.Fatal("RemotePublishAccepted(save_draft) = true, want false")
 	}
+}
+
+func TestBuildSubmissionRemoteLookupInputs(t *testing.T) {
+	t.Parallel()
+
+	pkg := &Package{
+		PreviewPayload: &sheinproduct.Product{
+			SupplierCode: "PKG-SKC-1",
+			SKCList: []sheinproduct.SKC{
+				{
+					SupplierCode: stringRef("SKC-1"),
+					SKUS: []sheinproduct.SKU{
+						{SupplierSKU: "SKU-1"},
+					},
+				},
+			},
+		},
+		SubmissionState: &SubmissionReport{
+			LastResult: &SubmissionResponse{SPUName: "LAST"},
+			Publish: &SubmissionRecord{
+				Action: "publish",
+				Result: &SubmissionResponse{SPUName: "PUBLISH"},
+			},
+		},
+	}
+
+	inputs := BuildSubmissionRemoteLookupInputs(pkg, "publish", "SUPPLIER-ROOT", true, "fallback")
+	if !inputs.DefaultConfirmed {
+		t.Fatal("DefaultConfirmed = false, want true")
+	}
+	if inputs.FallbackMessage != "fallback" {
+		t.Fatalf("FallbackMessage = %q, want fallback", inputs.FallbackMessage)
+	}
+	if inputs.SPUName != "PUBLISH" {
+		t.Fatalf("SPUName = %q, want PUBLISH", inputs.SPUName)
+	}
+	if len(inputs.LookupCodes) < 3 {
+		t.Fatalf("LookupCodes = %#v, want collected supplier codes", inputs.LookupCodes)
+	}
+}
+
+func TestBuildSubmissionRefreshLookupInputs(t *testing.T) {
+	t.Parallel()
+
+	pkg := &Package{
+		SubmissionState: &SubmissionReport{
+			Publish: &SubmissionRecord{
+				Action: "publish",
+				Result: &SubmissionResponse{Success: true, SPUName: "SPU-123"},
+			},
+		},
+	}
+
+	inputs := BuildSubmissionRefreshLookupInputs(pkg, "publish", "SUPPLIER-1")
+	if !inputs.DefaultConfirmed {
+		t.Fatal("BuildSubmissionRefreshLookupInputs().DefaultConfirmed = false, want true")
+	}
+	if inputs.FallbackMessage != "" {
+		t.Fatalf("BuildSubmissionRefreshLookupInputs().FallbackMessage = %q", inputs.FallbackMessage)
+	}
+}
+
+func TestResolveSubmissionRefreshFallbackMessage(t *testing.T) {
+	t.Parallel()
+
+	if got := ResolveSubmissionRefreshFallbackMessage("publish", true, ""); got != "SHEIN accepted publish request; remote record not yet visible" {
+		t.Fatalf("ResolveSubmissionRefreshFallbackMessage(publish, true, empty) = %q", got)
+	}
+	if got := ResolveSubmissionRefreshFallbackMessage("save_draft", false, "custom fallback"); got != "custom fallback" {
+		t.Fatalf("ResolveSubmissionRefreshFallbackMessage(save_draft, false, custom) = %q", got)
+	}
+}
+
+func TestBuildSubmissionRecoveryLookupInputs(t *testing.T) {
+	t.Parallel()
+
+	pkg := &Package{
+		SubmissionState: &SubmissionReport{
+			Publish: &SubmissionRecord{
+				Action: "publish",
+				Result: &SubmissionResponse{Success: true, SPUName: "SPU-123"},
+			},
+		},
+	}
+
+	inputs := BuildSubmissionRecoveryLookupInputs(pkg, "publish", "SUPPLIER-1")
+	if !inputs.DefaultConfirmed {
+		t.Fatal("BuildSubmissionRecoveryLookupInputs().DefaultConfirmed = false, want true")
+	}
+	if inputs.FallbackMessage != "SHEIN accepted publish request; remote record not yet visible" {
+		t.Fatalf("BuildSubmissionRecoveryLookupInputs().FallbackMessage = %q", inputs.FallbackMessage)
+	}
+}
+
+func TestBuildSubmissionRefreshRequest(t *testing.T) {
+	t.Parallel()
+
+	pkg := &Package{
+		PreviewPayload: &sheinproduct.Product{SupplierCode: "PKG-SKC-1"},
+		SubmissionState: &SubmissionReport{
+			Publish: &SubmissionRecord{
+				Action:       "publish",
+				RequestID:    " refresh-123 ",
+				SupplierCode: "REC-SKC-1",
+				Result:       &SubmissionResponse{Success: true, SPUName: "SPU-123"},
+			},
+		},
+	}
+
+	request := BuildSubmissionRefreshRequest(pkg, SubmissionRefreshSelection{
+		Action:       "publish",
+		Record:       pkg.SubmissionState.Publish,
+		SupplierCode: "REC-SKC-1",
+	})
+	if request.Action != "publish" {
+		t.Fatalf("BuildSubmissionRefreshRequest().Action = %q, want publish", request.Action)
+	}
+	if request.RequestID != "refresh-123" {
+		t.Fatalf("BuildSubmissionRefreshRequest().RequestID = %q, want refresh-123", request.RequestID)
+	}
+	if !request.RemoteInputs.DefaultConfirmed {
+		t.Fatal("BuildSubmissionRefreshRequest().RemoteInputs.DefaultConfirmed = false, want true")
+	}
+}
+
+func TestResolveSubmissionRefreshValidation(t *testing.T) {
+	t.Parallel()
+
+	pkg := &Package{
+		SubmissionState: &SubmissionReport{
+			LastAction: "publish",
+			Publish: &SubmissionRecord{
+				Action:    "publish",
+				RequestID: "publish-req",
+			},
+		},
+	}
+
+	validation := ResolveSubmissionRefreshValidation(pkg, "publish", " publish-req ")
+	if !validation.Available {
+		t.Fatal("ResolveSubmissionRefreshValidation().Available = false, want true")
+	}
+	if !validation.ActionMatches {
+		t.Fatal("ResolveSubmissionRefreshValidation().ActionMatches = false, want true")
+	}
+	if !validation.RequestMatches {
+		t.Fatal("ResolveSubmissionRefreshValidation().RequestMatches = false, want true")
+	}
+
+	validation = ResolveSubmissionRefreshValidation(pkg, "save_draft", "publish-req")
+	if validation.ActionMatches {
+		t.Fatal("ResolveSubmissionRefreshValidation().ActionMatches = true, want false for changed action")
+	}
+
+	validation = ResolveSubmissionRefreshValidation(pkg, "publish", "other")
+	if validation.RequestMatches {
+		t.Fatal("ResolveSubmissionRefreshValidation().RequestMatches = true, want false for changed request")
+	}
+}
+
+func TestBuildSubmissionMissingSupplierCodeRemoteUpdate(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, 6, 14, 19, 0, 0, 0, time.UTC)
+	update := BuildSubmissionMissingSupplierCodeRemoteUpdate("task-1", "publish", "req-1", startedAt, true)
+	if update.RemoteStatus != SubmissionRemoteStatusConfirmed {
+		t.Fatalf("RemoteStatus = %q, want confirmed", update.RemoteStatus)
+	}
+	if update.Message != "SHEIN accepted publish request, but supplier code is unavailable for remote confirmation" {
+		t.Fatalf("Message = %q", update.Message)
+	}
+	if update.Event == nil || update.Event.Phase != SubmissionPhaseConfirmRemote {
+		t.Fatalf("Event = %+v, want confirm_remote event", update.Event)
+	}
+}
+
+func TestApplySubmissionMissingSupplierCodeRemoteUpdate(t *testing.T) {
+	t.Parallel()
+
+	pkg := &Package{
+		SubmissionState: &SubmissionReport{
+			Publish: &SubmissionRecord{
+				Action:    "publish",
+				RequestID: "req-1",
+			},
+		},
+	}
+	startedAt := time.Date(2026, 6, 14, 19, 0, 0, 0, time.UTC)
+
+	event := ApplySubmissionMissingSupplierCodeRemoteUpdate(pkg, "task-1", "publish", "req-1", startedAt, true)
+	if event == nil {
+		t.Fatal("event = nil, want confirm_remote event")
+	}
+	if pkg.SubmissionState == nil || pkg.SubmissionState.RemoteStatus != SubmissionRemoteStatusConfirmed {
+		t.Fatalf("submission state = %+v, want confirmed remote status", pkg.SubmissionState)
+	}
+	if pkg.SubmissionState.Publish == nil || pkg.SubmissionState.Publish.RemoteMessage == "" {
+		t.Fatalf("publish record = %+v, want fallback remote message", pkg.SubmissionState.Publish)
+	}
+	if len(pkg.SubmissionEvents) != 0 {
+		t.Fatalf("submission events = %+v, want caller-controlled event append only", pkg.SubmissionEvents)
+	}
+}
+
+func TestResolveSubmissionConfirmRemoteUpdatePrefersOnWayDocument(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, 6, 14, 19, 10, 0, 0, time.UTC)
+	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
+		OnWayDocument: &sheinmarketpub.OnWayDocument{
+			SpuName:    "SPU-1",
+			DocumentSn: "DOC-1",
+		},
+		DefaultConfirmed: true,
+	})
+	if err != nil {
+		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
+	}
+	if update.RemoteStatus != SubmissionRemoteStatusConfirmed {
+		t.Fatalf("RemoteStatus = %q, want confirmed", update.RemoteStatus)
+	}
+	if update.Message != "SHEIN on-way document confirmed for spu_name=SPU-1 document_sn=DOC-1" {
+		t.Fatalf("Message = %q", update.Message)
+	}
+}
+
+func TestResolveSubmissionConfirmRemoteUpdateUsesRecordOutcome(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, 6, 14, 19, 20, 0, 0, time.UTC)
+	record := &sheinproduct.RecordItem{
+		RecordID:   "record-1",
+		SpuName:    "SPU-1",
+		State:      4,
+		AuditState: 5,
+	}
+	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
+		Record: record,
+	})
+	if err != nil {
+		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
+	}
+	if update.Record != record || update.RemoteStatus != SubmissionRemoteStatusConfirmed {
+		t.Fatalf("update = %+v, want confirmed update for record", update)
+	}
+	if update.Event == nil || update.Event.RemoteRecordID != "record-1" {
+		t.Fatalf("Event = %+v, want remote record id", update.Event)
+	}
+}
+
+func TestResolveSubmissionConfirmRemoteUpdateUsesInventoryFallback(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, 6, 14, 19, 30, 0, 0, time.UTC)
+	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
+		InventoryConfirmed: true,
+		SPUName:            "SPU-INV",
+	})
+	if err != nil {
+		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
+	}
+	if update.Message != "SHEIN remote inventory confirmed for spu_name=SPU-INV" {
+		t.Fatalf("Message = %q", update.Message)
+	}
+	if update.RemoteStatus != SubmissionRemoteStatusConfirmed {
+		t.Fatalf("RemoteStatus = %q, want confirmed", update.RemoteStatus)
+	}
+}
+
+func TestResolveSubmissionConfirmRemoteUpdateUsesRecordErrorAsPendingMessage(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, 6, 14, 19, 40, 0, 0, time.UTC)
+	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
+		RecordErr:        errors.New("remote query failed"),
+		FallbackMessage:  "fallback pending",
+		DefaultConfirmed: true,
+	})
+	if err != nil {
+		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
+	}
+	if update.RemoteStatus != SubmissionRemoteStatusPending {
+		t.Fatalf("RemoteStatus = %q, want pending", update.RemoteStatus)
+	}
+	if update.Message != "remote query failed" {
+		t.Fatalf("Message = %q, want remote query failed", update.Message)
+	}
+}
+
+func TestProbeSubmissionRemoteResolutionShortCircuitsOnWayDocument(t *testing.T) {
+	t.Parallel()
+
+	var recordCalls int32
+	resolution := ProbeSubmissionRemoteResolution(
+		probeTestProductAPI{
+			recordFunc: func(request *sheinproduct.ProductRecordRequest) (*sheinproduct.RecordResponse, error) {
+				atomic.AddInt32(&recordCalls, 1)
+				return nil, nil
+			},
+		},
+		probeTestOtherAPI{
+			batchCheckOnWayFunc: func(spuNameList []string) (*sheinother.BatchCheckOnWayResponse, error) {
+				return &sheinother.BatchCheckOnWayResponse{
+					Code: "0",
+					Msg:  "OK",
+					Info: []struct {
+						SpuName    string `json:"spu_name"`
+						SkcName    string `json:"skc_name"`
+						DocumentSn string `json:"document_sn"`
+					}{
+						{SpuName: "SPU-1", DocumentSn: "DOC-1"},
+					},
+				}, nil
+			},
+		},
+		"publish",
+		[]string{"SUP-1"},
+		"SPU-1",
+		true,
+		"fallback",
+		nil,
+	)
+	if resolution.OnWayDocument == nil || resolution.OnWayDocument.DocumentSn != "DOC-1" {
+		t.Fatalf("OnWayDocument = %+v, want DOC-1", resolution.OnWayDocument)
+	}
+	if got := atomic.LoadInt32(&recordCalls); got != 0 {
+		t.Fatalf("record calls = %d, want 0 after on-way short circuit", got)
+	}
+}
+
+func TestProbeSubmissionRemoteResolutionCapturesRecordErrorAndInventoryFallback(t *testing.T) {
+	t.Parallel()
+
+	var inventoryCalls int32
+	resolution := ProbeSubmissionRemoteResolution(
+		probeTestProductAPI{
+			recordFunc: func(request *sheinproduct.ProductRecordRequest) (*sheinproduct.RecordResponse, error) {
+				return nil, errors.New("record failed")
+			},
+			queryInventoryFunc: func(spuName string) (*sheinproduct.InventoryQueryResponse, error) {
+				atomic.AddInt32(&inventoryCalls, 1)
+				return &sheinproduct.InventoryQueryResponse{
+					Code: "0",
+					Info: sheinproduct.InventoryInfo{SpuName: "SPU-2"},
+				}, nil
+			},
+		},
+		nil,
+		"publish",
+		[]string{"SUP-2"},
+		"SPU-2",
+		false,
+		"fallback",
+		nil,
+	)
+	if resolution.RecordErr == nil || resolution.RecordErr.Error() != "record failed" {
+		t.Fatalf("RecordErr = %v, want record failed", resolution.RecordErr)
+	}
+	if !resolution.InventoryConfirmed {
+		t.Fatal("InventoryConfirmed = false, want true")
+	}
+	if got := atomic.LoadInt32(&inventoryCalls); got != 1 {
+		t.Fatalf("inventory calls = %d, want 1", got)
+	}
+}
+
+func stringRef(value string) *string {
+	return &value
 }
 
 func TestSubmissionSucceededAndClearSubmissionInFlight(t *testing.T) {
@@ -958,4 +1339,79 @@ func TestCollectRemoteLookupCodesIncludesNormalizedSupplierSKUs(t *testing.T) {
 
 func testSubmissionRemoteFinishedAt() (finishedAt time.Time) {
 	return finishedAt.Add(5)
+}
+
+type probeTestProductAPI struct {
+	recordFunc         func(request *sheinproduct.ProductRecordRequest) (*sheinproduct.RecordResponse, error)
+	queryInventoryFunc func(spuName string) (*sheinproduct.InventoryQueryResponse, error)
+}
+
+func (p probeTestProductAPI) GetProduct(productID string) (*sheinproduct.Product, error) {
+	return nil, nil
+}
+func (p probeTestProductAPI) UpdateProduct(product *sheinproduct.Product) error { return nil }
+func (p probeTestProductAPI) DeleteProduct(productID string) error              { return nil }
+func (p probeTestProductAPI) GetPartInfo(categoryID int) (*sheinproduct.PartInfoResponse, error) {
+	return nil, nil
+}
+func (p probeTestProductAPI) SaveDraftProduct(product *sheinproduct.Product) (*sheinproduct.SheinResponse, string, error) {
+	return nil, "", nil
+}
+func (p probeTestProductAPI) PublishProduct(product *sheinproduct.Product) (*sheinproduct.SheinResponse, string, error) {
+	return nil, "", nil
+}
+func (p probeTestProductAPI) ConfirmPublish(product *sheinproduct.Product) (bool, string, error) {
+	return false, "", nil
+}
+func (p probeTestProductAPI) Record(request *sheinproduct.ProductRecordRequest) (*sheinproduct.RecordResponse, error) {
+	if p.recordFunc == nil {
+		return nil, nil
+	}
+	return p.recordFunc(request)
+}
+func (p probeTestProductAPI) ListProducts(pageNum, pageSize int, request *sheinproduct.ProductListRequest) (*sheinproduct.ProductListResponse, error) {
+	return nil, nil
+}
+func (p probeTestProductAPI) QueryStock(request *sheinproduct.StockQueryRequest) (*sheinproduct.StockQueryResponse, error) {
+	return nil, nil
+}
+func (p probeTestProductAPI) QueryInventory(spuName string) (*sheinproduct.InventoryQueryResponse, error) {
+	if p.queryInventoryFunc == nil {
+		return nil, nil
+	}
+	return p.queryInventoryFunc(spuName)
+}
+func (p probeTestProductAPI) UpdateInventory(request *sheinproduct.InventoryUpdateRequest) error {
+	return nil
+}
+func (p probeTestProductAPI) QueryPrice(spuName string) (*sheinproduct.PriceQueryResponse, error) {
+	return nil, nil
+}
+func (p probeTestProductAPI) QueryCostPrice(spuName string, skcNameList []string) (*sheinproduct.CostPriceQueryResponse, error) {
+	return nil, nil
+}
+func (p probeTestProductAPI) OffShelf(request *sheinproduct.ShelfOperateRequest) error { return nil }
+func (p probeTestProductAPI) OnShelf(request *sheinproduct.ShelfOperateRequest) error  { return nil }
+
+type probeTestOtherAPI struct {
+	batchCheckOnWayFunc func(spuNameList []string) (*sheinother.BatchCheckOnWayResponse, error)
+}
+
+func (o probeTestOtherAPI) BatchCheckOnWay(spuNameList []string) (*sheinother.BatchCheckOnWayResponse, error) {
+	if o.batchCheckOnWayFunc == nil {
+		return nil, nil
+	}
+	return o.batchCheckOnWayFunc(spuNameList)
+}
+func (o probeTestOtherAPI) GetUser(uuid int64) (*sheinother.UserInfo, error) {
+	return nil, nil
+}
+func (o probeTestOtherAPI) GetSupplierOperateInfo() (*sheinother.SupplierOperateInfoResponse, error) {
+	return nil, nil
+}
+func (o probeTestOtherAPI) GetSpuLimitCount() (*sheinother.SpuLimitCountInfo, error) {
+	return nil, nil
+}
+func (o probeTestOtherAPI) QueryShelfQuota() (*sheinother.ShelfQuotaResponse, error) {
+	return nil, nil
 }

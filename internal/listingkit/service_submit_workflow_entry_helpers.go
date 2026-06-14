@@ -5,11 +5,11 @@ import (
 )
 
 func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string, task *Task, req *SubmitTaskRequest, opts sheinWorkflowSubmitOptions) (*ListingKitPreview, error) {
-	lifecycle := s.taskTemporalSubmissionLifecycleOrDefault()
-	if lifecycle == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	return lifecycle.startSheinPublishWorkflowAttempt(ctx, taskID, task, req, opts)
+	return temporal.StartSheinPublishWorkflowAttempt(ctx, taskID, task, req, opts)
 }
 
 func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {

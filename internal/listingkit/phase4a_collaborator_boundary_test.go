@@ -83,6 +83,7 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 		{
 			file: "service_submit_wiring.go",
 			needles: []string{
+				"func buildTaskTemporalSubmissionServiceConfig(s *service) taskTemporalSubmissionServiceConfig {",
 				"func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {",
 				"func buildTaskSubmissionRefreshServiceConfig(s *service) taskSubmissionRefreshServiceConfig {",
 				"func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecutionServiceConfig {",
@@ -90,6 +91,39 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 				"func buildTaskTemporalSubmissionFlowServiceConfig(s *service) taskTemporalSubmissionFlowServiceConfig {",
 				"func buildTaskTemporalSubmissionPersistenceServiceConfig(s *service) taskTemporalSubmissionPersistenceServiceConfig {",
 				"func buildTaskTemporalSubmissionRefreshServiceConfig(s *service) taskTemporalSubmissionRefreshServiceConfig {",
+			},
+		},
+		{
+			file: "service_submit_wiring_support.go",
+			needles: []string{
+				"func buildTaskManagedSubmissionWiring(s *service) taskManagedSubmissionWiring {",
+				"func buildTaskManagedSubmissionWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskManagedSubmissionWiring {",
+				"func buildTaskManagedSubmissionWiringWithAssemblyAndRecovery(s *service, assembly taskSubmissionAssembly, recovery *taskSubmissionRecoveryService) taskManagedSubmissionWiring {",
+				"func buildTaskManagedSubmissionCollaboratorWiring(s *service) taskManagedSubmissionCollaboratorWiring {",
+				"func buildTaskSubmissionCoreCollaboratorWiring(s *service) taskSubmissionCoreCollaboratorWiring {",
+				"func buildTaskSubmitTaskRecoveryCollaboratorWiring(s *service) taskSubmitTaskRecoveryCollaboratorWiring {",
+				"func buildTaskSubmissionBaseWiring(s *service) taskSubmissionBaseWiring {",
+				"func buildTaskSubmissionBaseWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionBaseWiring {",
+				"func buildTaskSubmissionSupportWiring(s *service) taskSubmissionSupportWiring {",
+				"func buildTaskSubmissionSupportWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionSupportWiring {",
+				"func buildTaskTemporalSubmissionWiring(s *service) taskTemporalSubmissionWiring {",
+				"func buildTaskTemporalSubmissionFacadeWiring(s *service) taskTemporalSubmissionFacadeWiring {",
+				"func buildTaskTemporalSubmissionCollaboratorWiring(s *service) taskTemporalSubmissionCollaboratorWiring {",
+				"func buildTaskTemporalSubmissionWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskTemporalSubmissionWiring {",
+			},
+		},
+		{
+			file: "service_studio_wiring_support.go",
+			needles: []string{
+				"func buildTaskStudioSessionWiring(s *service) taskStudioSessionWiring {",
+				"func (w taskStudioSessionWiring) newSessionRunner() *listingStudioSessionRunner {",
+				"func (w taskStudioSessionWiring) newBatchDraftRunner() *listingStudioBatchDraftRunner {",
+				"func buildTaskStudioBatchServiceWiring(s *service) taskStudioBatchServiceWiring {",
+				"func (w taskStudioBatchServiceWiring) newDetailRunner() *listingStudioBatchDetailRunner {",
+				"func (w taskStudioBatchServiceWiring) newReviewRunner() *listingStudioBatchReviewRunner {",
+				"func buildTaskStudioBatchRunWiring(s *service) taskStudioBatchRunWiring {",
+				"func (w taskStudioBatchRunWiring) newServiceRunner(startRun func(context.Context, string) error) *studiodomain.BatchRunService {",
+				"func (w taskStudioBatchRunWiring) newCompletionRunner(now func() time.Time) *listingStudioBatchRunCompletionRunner {",
 			},
 		},
 	}

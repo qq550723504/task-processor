@@ -3,6 +3,7 @@ package listingkit
 import (
 	"testing"
 
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -10,7 +11,7 @@ func TestAttachSheinSubmissionEventStoreResolutionDecoratesMissingItems(t *testi
 	t.Parallel()
 
 	storeResolution := &sheinpub.SubmissionStoreResolution{StoreID: 903}
-	items := attachSheinSubmissionEventStoreResolution([]sheinpub.SubmissionEvent{
+	items := sheinworkspace.AttachSubmissionEventStoreResolution([]sheinpub.SubmissionEvent{
 		{ID: "event-1"},
 	}, storeResolution)
 	if len(items) != 1 || items[0].StoreResolution == nil || items[0].StoreResolution.StoreID != 903 {
@@ -21,7 +22,7 @@ func TestAttachSheinSubmissionEventStoreResolutionDecoratesMissingItems(t *testi
 func TestAttachSheinSubmissionEventStoreResolutionPreservesExistingItems(t *testing.T) {
 	t.Parallel()
 
-	items := attachSheinSubmissionEventStoreResolution([]sheinpub.SubmissionEvent{
+	items := sheinworkspace.AttachSubmissionEventStoreResolution([]sheinpub.SubmissionEvent{
 		{
 			ID:              "event-1",
 			StoreResolution: &sheinpub.SubmissionStoreResolution{StoreID: 777},

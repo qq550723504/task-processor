@@ -3,87 +3,81 @@ package listingkit
 import "context"
 
 func (s *service) BeginSheinPublishAttempt(ctx context.Context, in SheinPublishAttemptInput) error {
-	lifecycle := s.taskTemporalSubmissionLifecycleOrDefault()
-	if lifecycle == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return ErrTaskResultUnavailable
 	}
-	return lifecycle.BeginSheinPublishAttempt(ctx, in)
+	return temporal.BeginSheinPublishAttempt(ctx, in)
 }
 
 func (s *service) ValidateSheinPublishReadiness(ctx context.Context, in SheinPublishAttemptInput) error {
-	lifecycle := s.taskTemporalSubmissionLifecycleOrDefault()
-	if lifecycle == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return ErrTaskResultUnavailable
 	}
-	return lifecycle.ValidateSheinPublishReadiness(ctx, in)
+	return temporal.ValidateSheinPublishReadiness(ctx, in)
 }
 
 func (s *service) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {
-	flow := s.taskTemporalSubmissionFlowOrDefault()
-	if flow == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	return flow.PrepareSheinPublishPayload(ctx, in)
+	return temporal.PrepareSheinPublishPayload(ctx, in)
 }
 
 func (s *service) UploadSheinPublishImages(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinPreparedSubmitPayload, error) {
-	if err := requireSheinPreparedSubmitPayload(in); err != nil {
-		return nil, err
-	}
-	if !in.NeedsImageUpload {
-		return in, nil
-	}
-	flow := s.taskTemporalSubmissionFlowOrDefault()
-	if flow == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	return flow.UploadSheinPublishImages(ctx, in)
+	return temporal.UploadSheinPublishImages(ctx, in)
 }
 
 func (s *service) PreValidateSheinPublish(ctx context.Context, in *SheinPreparedSubmitPayload) error {
-	flow := s.taskTemporalSubmissionFlowOrDefault()
-	if flow == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return ErrTaskResultUnavailable
 	}
-	return flow.PreValidateSheinPublish(ctx, in)
+	return temporal.PreValidateSheinPublish(ctx, in)
 }
 
 func (s *service) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {
-	flow := s.taskTemporalSubmissionFlowOrDefault()
-	if flow == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	return flow.SubmitSheinPublishRemote(ctx, in)
+	return temporal.SubmitSheinPublishRemote(ctx, in)
 }
 
 func (s *service) PersistSheinPublishSuccess(ctx context.Context, in SheinPersistSubmitSuccessInput) error {
-	persistence := s.taskTemporalSubmissionPersistenceOrDefault()
-	if persistence == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return nil
 	}
-	return persistence.PersistSheinPublishSuccess(ctx, in)
+	return temporal.PersistSheinPublishSuccess(ctx, in)
 }
 
 func (s *service) PersistSheinPublishFailure(ctx context.Context, in SheinPersistSubmitFailureInput) error {
-	persistence := s.taskTemporalSubmissionPersistenceOrDefault()
-	if persistence == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return nil
 	}
-	return persistence.PersistSheinPublishFailure(ctx, in)
+	return temporal.PersistSheinPublishFailure(ctx, in)
 }
 
 func (s *service) RefreshSheinPublishRemoteStatus(ctx context.Context, in SheinRefreshRemoteStatusInput) (*SheinRefreshRemoteStatusResult, error) {
-	refresh := s.taskTemporalSubmissionRefreshOrDefault()
-	if refresh == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	return refresh.RefreshSheinPublishRemoteStatus(ctx, in)
+	return temporal.RefreshSheinPublishRemoteStatus(ctx, in)
 }
 
 func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error) {
-	lifecycle := s.taskTemporalSubmissionLifecycleOrDefault()
-	if lifecycle == nil {
+	temporal := s.taskTemporalSubmissionOrDefault()
+	if temporal == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	return lifecycle.BuildSheinTaskPreview(ctx, taskID)
+	return temporal.BuildSheinTaskPreview(ctx, taskID)
 }

@@ -150,6 +150,20 @@ func TestFindSheinSubmissionRecordByRequestIDReturnsCompletedRecord(t *testing.T
 	}
 }
 
+func TestFindActiveSheinSubmitAttemptHonorsLeaseExpiry(t *testing.T) {
+	startedAt := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+	now := startedAt.Add(sheinSubmitInFlightTTL + time.Minute)
+	pkg := &SheinPackage{}
+	beginSheinSubmitAttempt(pkg, "publish", "idem-1", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+
+	if active := findActiveSheinSubmitAttempt(pkg, "publish", now); active != nil {
+		t.Fatalf("active = %+v, want nil after lease expiry", active)
+	}
+	if !sheinSubmitAttemptNeedsRemoteRecovery(pkg.Submission, "publish", now) {
+		t.Fatal("expected remote recovery after lease expiry")
+	}
+}
+
 var errTestSubmitState = submitStateTestError("submit state test error")
 
 type submitStateTestError string

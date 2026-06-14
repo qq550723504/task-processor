@@ -27,7 +27,7 @@ func (s *taskSubmissionRecoveryService) prepareSheinSubmitLease(task *Task, pkg 
 		return errSheinSubmitReplayExisting
 	}
 	if shouldRecoverSheinSubmitLeaseWithSupplierCode(pkg, action, requestID, startedAt) {
-		appendSheinSubmissionEvent(pkg, buildRecoverRemoteLeaseEvent(taskID, action, pkg.SubmissionState.CurrentPhase, requestID, startedAt))
+		sheinpub.AppendSubmissionEvent(pkg, buildRecoverRemoteLeaseEvent(taskID, action, pkg.SubmissionState.CurrentPhase, requestID, startedAt))
 		return errSheinSubmitRecoverRemote
 	}
 	if err := validateActiveSheinSubmitLease(pkg, action, requestID, startedAt); err != nil {
@@ -88,7 +88,7 @@ func beginNewSheinSubmitLease(task *Task, pkg *SheinPackage, taskID, action, req
 	}
 	beginSheinSubmitAttempt(pkg, action, requestID, sheinpub.SubmissionPhaseValidate, startedAt)
 	event := sheinpub.BuildSubmissionPhaseEvent(taskID, action, sheinpub.SubmissionPhaseValidate, sheinpub.SubmissionStatusRunning, requestID, startedAt, "", nil)
-	appendSheinSubmissionEvent(pkg, event)
+	sheinpub.AppendSubmissionEvent(pkg, event)
 	task.Result.UpdatedAt = startedAt
 }
 
@@ -143,5 +143,5 @@ func markSheinSubmitStartFailure(pkg *SheinPackage, taskID, action, requestID st
 	if record == nil {
 		return
 	}
-	appendSheinSubmissionEvent(pkg, sheinpub.BuildSubmissionAttemptEvent(taskID, action, record, nil, startErr, record.StartedAt))
+	sheinpub.AppendSubmissionEvent(pkg, sheinpub.BuildSubmissionAttemptEvent(taskID, action, record, nil, startErr, record.StartedAt))
 }

@@ -5,32 +5,14 @@ import (
 	"time"
 
 	apperrors "task-processor/internal/core/errors"
-	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
-type sheinSubmissionRefreshRemoteInputs struct {
-	lookupCodes      []string
-	spuName          string
-	defaultConfirmed bool
-	fallbackMessage  string
-}
+type sheinSubmissionRefreshRemoteInputs = sheinpub.SubmissionRemoteLookupInputs
 
-type sheinSubmissionRefreshRequest struct {
-	action       string
-	requestID    string
-	remoteInputs sheinSubmissionRefreshRemoteInputs
-}
-
-type sheinSubmissionRefreshSelection struct {
-	action       string
-	record       *sheinpub.SubmissionRecord
-	supplierCode string
-}
-
-func (s *taskSubmissionRefreshService) loadSubmissionRefreshInputs(ctx context.Context, taskID string, task *Task, pkg *SheinPackage) (*sheinSubmissionRefreshSelection, sheinproduct.ProductAPI, error) {
+func (s *taskSubmissionRefreshService) loadSubmissionRefreshInputs(ctx context.Context, taskID string, task *Task, pkg *SheinPackage) (*sheinpub.SubmissionRefreshSelection, sheinproduct.ProductAPI, error) {
 	selection, err := loadSubmissionRefreshSelection(pkg)
 	if err != nil {
 		return nil, nil, err
@@ -50,14 +32,7 @@ func (s *taskSubmissionRefreshService) buildSubmissionRefreshProductAPI(ctx cont
 	return productAPI, nil
 }
 
-func resolveSubmissionRefreshAction(report *sheinpub.SubmissionReport) string {
-	if report == nil {
-		return ""
-	}
-	return listingsubmission.ResolveRefreshAction(report.LastAction, report.Publish != nil, report.SaveDraft != nil)
-}
-
-func loadSubmissionRefreshSelection(pkg *SheinPackage) (*sheinSubmissionRefreshSelection, error) {
+func loadSubmissionRefreshSelection(pkg *SheinPackage) (*sheinpub.SubmissionRefreshSelection, error) {
 	var ok bool
 	pkg, ok = sheinpub.SubmissionStatePackage(pkg)
 	if !ok {
@@ -70,67 +45,37 @@ func loadSubmissionRefreshSelection(pkg *SheinPackage) (*sheinSubmissionRefreshS
 	if selection.SupplierCode == "" {
 		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein supplier code is not available")
 	}
-	return &sheinSubmissionRefreshSelection{
-		action:       selection.Action,
-		record:       selection.Record,
-		supplierCode: selection.SupplierCode,
-	}, nil
+	return &selection, nil
 }
 
-func (s *taskSubmissionRefreshService) buildSheinSubmissionRefreshState(ctx context.Context, task *Task, pkg *SheinPackage, selection *sheinSubmissionRefreshSelection, productAPI sheinproduct.ProductAPI) *sheinSubmissionRefreshState {
+func (s *taskSubmissionRefreshService) buildSheinSubmissionRefreshState(ctx context.Context, task *Task, pkg *SheinPackage, selection *sheinpub.SubmissionRefreshSelection, productAPI sheinproduct.ProductAPI) *sheinSubmissionRefreshState {
 	startedAt := time.Now()
 	request := buildSubmissionRefreshRequest(pkg, selection)
 	var otherAPI sheinother.OtherAPI
 	if s.buildSheinSubmitOtherAPI != nil {
 		otherAPI, _ = s.buildSheinSubmitOtherAPI(ctx, task)
 	}
-	return newSubmissionRefreshState(task, request.action, request.requestID, startedAt, productAPI, otherAPI, request.remoteInputs)
+	return newSubmissionRefreshState(task, request.Action, request.RequestID, startedAt, productAPI, otherAPI, request.RemoteInputs)
 }
 
-func buildSubmissionRefreshRequestID(record *sheinpub.SubmissionRecord) string {
-	if record == nil {
-		return ""
+func buildSubmissionRefreshRequest(pkg *SheinPackage, selection *sheinpub.SubmissionRefreshSelection) sheinpub.SubmissionRefreshRequest {
+	if selection == nil {
+		return sheinpub.SubmissionRefreshRequest{}
 	}
-	return listingsubmission.ResolveRefreshRequestID(record.RequestID)
-}
-
-func buildSubmissionRefreshRequest(pkg *SheinPackage, selection *sheinSubmissionRefreshSelection) sheinSubmissionRefreshRequest {
-	action := ""
-	record := (*sheinpub.SubmissionRecord)(nil)
-	supplierCode := ""
-	if selection != nil {
-		action = selection.action
-		record = selection.record
-		supplierCode = selection.supplierCode
-	}
-	return sheinSubmissionRefreshRequest{
-		action:       action,
-		requestID:    buildSubmissionRefreshRequestID(record),
-		remoteInputs: buildSubmissionRefreshRemoteInputs(pkg, action, supplierCode),
-	}
-}
-
-func newSubmissionRefreshState(task *Task, action, requestID string, startedAt time.Time, productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, remoteInputs sheinSubmissionRefreshRemoteInputs) *sheinSubmissionRefreshState {
-	return &sheinSubmissionRefreshState{
-		task:             task,
-		action:           action,
-		requestID:        requestID,
-		startedAt:        startedAt,
-		lookupCodes:      remoteInputs.lookupCodes,
-		defaultConfirmed: remoteInputs.defaultConfirmed,
-		fallbackMessage:  remoteInputs.fallbackMessage,
-		productAPI:       productAPI,
-		otherAPI:         otherAPI,
-		spuName:          remoteInputs.spuName,
-	}
+	return sheinpub.BuildSubmissionRefreshRequest(pkg, *selection)
 }
 
 func buildSubmissionRefreshRemoteInputs(pkg *SheinPackage, action, supplierCode string) sheinSubmissionRefreshRemoteInputs {
-	policy := listingsubmission.BuildRefreshRemotePolicy(action, sheinpub.RemotePublishAccepted(pkg, action))
-	return sheinSubmissionRefreshRemoteInputs{
-		lookupCodes:      sheinpub.CollectRemoteLookupCodes(pkg, supplierCode),
-		spuName:          sheinpub.RemoteLookupSPUName(pkg, action),
-		defaultConfirmed: policy.DefaultConfirmed,
-		fallbackMessage:  policy.FallbackMessage,
+	return sheinpub.BuildSubmissionRefreshLookupInputs(pkg, action, supplierCode)
+}
+
+func newSubmissionRefreshState(task *Task, action, requestID string, startedAt time.Time, productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, remoteInputs sheinSubmissionRefreshRemoteInputs) *sheinSubmissionRefreshState {
+	taskID := ""
+	if task != nil {
+		taskID = task.ID
+	}
+	return &sheinSubmissionRefreshState{
+		task:          task,
+		remoteRequest: newSheinRemoteStatusRequest(task, taskID, action, requestID, startedAt, productAPI, otherAPI, remoteInputs),
 	}
 }

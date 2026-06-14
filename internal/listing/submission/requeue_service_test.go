@@ -15,6 +15,22 @@ func TestNormalizeRequeueTaskIDs(t *testing.T) {
 	}
 }
 
+func TestCanRequeueTaskWithStatus(t *testing.T) {
+	t.Parallel()
+
+	if allowed, reason := CanRequeueTaskWithStatus(nil, "pending"); allowed || reason != `task status "" is not processable` {
+		t.Fatalf("nil task = (%v, %q)", allowed, reason)
+	}
+
+	if allowed, reason := CanRequeueTaskWithStatus(&RequeueTask{ID: "task-review", Status: "needs_review"}, "pending"); allowed || reason != `task status "needs_review" is not processable` {
+		t.Fatalf("needs_review = (%v, %q)", allowed, reason)
+	}
+
+	if allowed, reason := CanRequeueTaskWithStatus(&RequeueTask{ID: "task-pending", Status: "pending"}, "pending"); !allowed || reason != "" {
+		t.Fatalf("pending = (%v, %q)", allowed, reason)
+	}
+}
+
 func TestRequeueServiceRequeueTasks(t *testing.T) {
 	t.Parallel()
 
@@ -45,10 +61,7 @@ func TestRequeueServiceRequeueTasks(t *testing.T) {
 			},
 			IsTaskNotFound: func(err error) bool { return errors.Is(err, errNotFound) },
 			CanRequeue: func(task *RequeueTask) (bool, string) {
-				if task.Status != "pending" {
-					return false, `task status "` + task.Status + `" is not processable`
-				}
-				return true, ""
+				return CanRequeueTaskWithStatus(task, "pending")
 			},
 			SubmitTask: func(submit RequeueSubmitFunc, taskID string) error {
 				return submit(taskID)

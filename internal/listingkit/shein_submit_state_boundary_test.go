@@ -1,4 +1,4 @@
-package submission
+package listingkit
 
 import (
 	"os"
@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-func TestStateFileKeepsTransitionSequencingBoundary(t *testing.T) {
+func TestSheinSubmitStateKeepsTransitionSequencingBoundary(t *testing.T) {
 	t.Parallel()
 
-	path := filepath.Join("state.go")
+	path := filepath.Join("shein_submit_state.go")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)

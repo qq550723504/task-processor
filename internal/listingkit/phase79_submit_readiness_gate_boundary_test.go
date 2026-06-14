@@ -31,7 +31,7 @@ func TestSheinSubmitReadinessGateBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "task_temporal_submission_lifecycle_service.go", "ValidateSheinPublishReadiness")
 
 		assertSourceContainsAll(t, source, []string{
-			"return validateSheinSubmitReadinessGates(ctx, task, pkg, in.Action, readiness, s.validateSheinPublishFreshness)",
+			"return validateSheinSubmitReadinessGates(ctx, execution.task, pkg, execution.action, readiness, s.validateSheinPublishFreshness)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"firstSubmitReadinessMessage(readiness)",

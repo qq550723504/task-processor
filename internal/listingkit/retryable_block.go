@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	submissiondomain "task-processor/internal/listing/submission"
 )
 
 const (
@@ -69,4 +71,40 @@ func cloneRetryableBlock(src *RetryableBlock) *RetryableBlock {
 	cloned.ReasonMessage = strings.TrimSpace(src.ReasonMessage)
 	cloned.RecoveryScope = strings.TrimSpace(src.RecoveryScope)
 	return &cloned
+}
+
+func adaptRetryableBlockState(src *RetryableBlock) *submissiondomain.RetryableBlockState {
+	if src == nil {
+		return nil
+	}
+	return &submissiondomain.RetryableBlockState{
+		ReasonCode:           src.ReasonCode,
+		ReasonMessage:        src.ReasonMessage,
+		BlockedAt:            src.BlockedAt,
+		LastRetryAt:          src.LastRetryAt,
+		NextRetryAt:          src.NextRetryAt,
+		RetryAttempts:        src.RetryAttempts,
+		MaxAutoRetryAttempts: src.MaxAutoRetryAttempts,
+		RecoveryScope:        src.RecoveryScope,
+		AutoResumeEnabled:    src.AutoResumeEnabled,
+		AutoRetryPaused:      src.AutoRetryPaused,
+	}
+}
+
+func adaptSubmissionRetryableBlock(src *submissiondomain.RetryableBlockState) *RetryableBlock {
+	if src == nil {
+		return nil
+	}
+	return cloneRetryableBlock(&RetryableBlock{
+		ReasonCode:           src.ReasonCode,
+		ReasonMessage:        src.ReasonMessage,
+		BlockedAt:            src.BlockedAt,
+		LastRetryAt:          src.LastRetryAt,
+		NextRetryAt:          src.NextRetryAt,
+		RetryAttempts:        src.RetryAttempts,
+		MaxAutoRetryAttempts: src.MaxAutoRetryAttempts,
+		RecoveryScope:        src.RecoveryScope,
+		AutoResumeEnabled:    src.AutoResumeEnabled,
+		AutoRetryPaused:      src.AutoRetryPaused,
+	})
 }

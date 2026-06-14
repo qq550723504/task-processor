@@ -23,6 +23,21 @@ Current extracted seams:
 - batch draft upsert policy: default design type, create-time generation-job sanitization, and batch-name resolution,
 - batch detail status aggregation and status-preservation policy,
 - batch-run completion rules: cancel unfinished items, count item statuses, resolve final run status.
+- `internal/listingkit` studio batch-run service/coordinator/executor config assembly now also reuses one shared root-side wiring bundle, so the compatibility shell no longer rebuilds the same batch-run repo pair and domain-runner assembly separately across those three builders.
+- `internal/listingkit` studio session and batch-draft config assembly now also reuse one shared root-side session wiring bundle, so the compatibility shell no longer rebuilds the same studio-session repository plus domain-runner set separately across those builders.
+- `internal/listingkit` studio batch service config assembly now also reuses one shared root-side batch-service wiring bundle, so the compatibility shell no longer stores prebuilt batch detail/review runners directly in the config builder path.
+
+### `internal/listingkit` submission/root wiring
+
+Current state:
+
+- submission service, execution, and state config assembly now also reuse one shared root-side support wiring bundle, so the compatibility shell no longer re-resolves repository access, runtime resolver callbacks, pricing rule lookup, and remember-submitted hooks separately across those builders.
+- submission core collaborators now also reuse one shared root-side ensure seam plus collaborator wiring bundle, so the compatibility shell no longer repeats execution/state lazy-construction steps across the state initializer and the core accessor pair.
+- submission task-recovery collaborators now also reuse one shared root-side ensure seam plus collaborator wiring bundle, so the compatibility shell no longer repeats recovery/requeue lazy-construction steps across the task-recovery initializer and the task-recovery accessor pair.
+- requeue task-status eligibility policy now also lives in `internal/listing/submission`, so the compatibility shell no longer formats nil/non-pending rejection reasons inline and keeps only its local pending-status mapping.
+- managed submission collaborators now also reuse one shared root-side ensure seam plus collaborator wiring bundle, so the compatibility shell no longer repeats recovery/direct/refresh/submission lazy-construction steps across the orchestrator initializer and the managed-submission accessor set.
+- Temporal submit facade construction now also reuses one explicit root-side config builder, so the compatibility shell no longer hand-assembles lifecycle, flow, persistence, and refresh collaborators directly inside the lazy accessor.
+- Temporal workflow collaborators now also reuse one shared root-side ensure seam plus collaborator wiring bundle, so the compatibility shell no longer repeats lifecycle/flow/persistence/refresh lazy-construction steps across the workflow initializer and the Temporal accessor set.
 
 `internal/listingkit` still owns:
 
@@ -76,13 +91,14 @@ Current state:
 - SHEIN preview resolution-cache summary plus image-upload preflight aggregation rules now also live in the marketplace workspace package; `listingkit` keeps only runtime upload/cache classifiers and preview payload shell wiring,
 - SHEIN source-product summary projection from canonical product now also lives in the marketplace workspace package; `listingkit` keeps only preview/final-review payload assembly that references it,
 - SHEIN store-resolution summary DTO/value projection now also lives in the marketplace workspace package; `listingkit` still keeps selection/task/preview context fallback logic and submission-store-resolution conversion,
+- SHEIN submission-event store-resolution attachment and submission store-resolution DTO construction now also live in the marketplace workspace package; `listingkit` keeps only task/snapshot extraction and root DTO adaptation entrypoints,
 - SHEIN remote-submit persistence input preparation now also lives in `internal/publishing/shein`; root `internal/listingkit` no longer resolves supplier-code fallback or snapshot persistence inline before remote submit attempts,
 - SHEIN temporal/direct submit snapshot and remote-response persistence now call `internal/publishing/shein` mutations directly; root `internal/listingkit` no longer keeps pass-through setter wrappers for those pure submission-state writes,
 - Temporal submit persistence is now owned by a dedicated collaborator instead of living inline in the Temporal host surface; success/failure state completion concentrates in a separate service,
 - Temporal submit payload-stage plus remote-submit flow is now owned by a dedicated collaborator instead of living inline in the Temporal host surface; prepare/upload/pre-validate/remote-submit flow concentrates in a separate service,
 - Temporal submit lifecycle entry responsibilities are now owned by a dedicated collaborator instead of living inline in the Temporal host surface; begin/readiness/workflow-start/preview flow concentrates in a separate service,
 - Temporal submit remote-refresh orchestration is now owned by a dedicated collaborator instead of living inline in the Temporal host surface; refresh phase switching, remote refresh, and completion handling concentrate in a separate service,
-- Temporal SHEIN activity host entrypoints now route directly from `service` to `lifecycle`, `flow`, `persistence`, and `refresh` collaborators; the extra workflow adapter layer has been removed,
+- Temporal SHEIN activity host entrypoints now route through one dedicated Temporal submit collaborator, while lifecycle, flow, persistence, and refresh remain internal sub-services behind that seam; the extra workflow adapter layer has been removed,
 - SHEIN task-list work-queue and action-queue derivation rules now also live in the marketplace workspace package,
 - SHEIN inspection review-reason extraction plus cookie-unavailable review-note detection/cleanup rules now also live in the marketplace workspace package,
 - SHEIN workflow/work-queue/action-queue taxonomy definitions and display descriptors now also live in the marketplace workspace package, while `listingkit` keeps only task-list facet DTO adaptation plus blocker/warning descriptors tied to local issue codes,
@@ -112,7 +128,7 @@ Current stop lines:
 - do not keep splitting `internal/listing/studio` unless the seam removes real root-object ownership; field assignment adapters, generation resume, task creation, and batch-run execution should stay in `listingkit` for now,
 - do not keep moving `asset_render_preview_groups.go` platform DTO composition into `internal/listing/preview`; preview now owns neutral render metadata, summary, and capability rules, while platform image-bundle adapters remain legacy DTO glue,
 - do not ban `internal/publishing/shein` imports from `listingkit` yet; existing submission/model flows still depend on it as a compatibility package.
-- do not keep shaving `internal/listingkit/submission` once the remaining imports are only SHEIN event/state/confirm-remote adapters, label maps, and compatibility shells; new generic submit primitives should land in `internal/listing/submission` directly.
+- do not recreate an `internal/listingkit/submission` compatibility package now that the last production transition sequencer has been folded back into `shein_submit_state.go`; new generic submit primitives should land in `internal/listing/submission` directly.
 
 Good next candidates:
 
@@ -137,7 +153,7 @@ Recommended next slice:
 
 Current submission stop line:
 
-- `internal/listingkit/submission` is now expected to be a SHEIN-focused adapter layer. Production imports should be limited to `shein_submit_state.go`, where SHEIN submit transition composition stays centralized. Generic readiness, retry, locking, response-error, lease, and event DTO primitives should not route through this package anymore.
+- `shein_submit_state.go` is now the direct root-side stop-line for SHEIN submit transition sequencing. Generic readiness, retry, locking, response-error, lease, and event DTO primitives should not route through a recreated `internal/listingkit/submission` compatibility package anymore.
 
 Completed submission slices:
 
@@ -160,6 +176,15 @@ Completed submission slices:
 - refresh mutation guard policy now lives in `internal/listing/submission`; `internal/listingkit` keeps SHEIN report/record loading and error translation.
 - refresh selection policy now lives in `internal/listing/submission`; `internal/publishing/shein` now owns SHEIN report/record/supplier-code projection for refresh, while `internal/listingkit` keeps only validation error translation.
 - refresh request-id normalization now lives in `internal/listing/submission`; `internal/listingkit` keeps refresh request DTO assembly.
+- retryable failure classification and blocked-task reblock policy now live in `internal/listing/submission`; `internal/listingkit` keeps task-owned `RetryableBlock` persistence and rollback wiring.
+- retryable failure persistence branching and failed-task backfill block construction now also live in `internal/listing/submission`; `internal/listingkit` keeps only repository callbacks plus root `RetryableBlock` adaptation for those paths.
+- failed-task retryable backfill orchestration now also lives in `internal/listing/submission`; `internal/listingkit` keeps only failed-task listing and blocked-state persistence callbacks for the historical backfill path.
+- submit result persistence dispatch now also lives in `internal/listing/submission`; `internal/listingkit` keeps only SHEIN task/result/package adaptation plus local fallback callbacks while generic success-vs-failure routing and original-error return policy moved out.
+- submit collaborator config builders now also retain shared root-side submitter/support/assembly/temporal wiring bundles within each ensure seam, so `internal/listingkit` no longer re-snapshots the same dependency graph across recovery/requeue, submission core, managed submission, and Temporal collaborator constructors.
+- submission assembly/support builder paths now also converge on one shared root-side base wiring bundle, so `internal/listingkit` no longer rebuilds the same assembly plus support view separately across submission core, managed submission, and Temporal config/collaborator entrypoints.
+- managed submission ensure wiring now also reuses one per-resolve managed wiring snapshot for direct/refresh construction, so `internal/listingkit` no longer rebuilds the same managed submit dependency view multiple times inside one collaborator resolution pass.
+- submission recovery and Temporal config builders now also converge on shared base/temporal wiring helpers, so `internal/listingkit` no longer rebuilds standalone assembly or temporal wiring views separately across recovery, lifecycle, persistence, flow, and refresh config entrypoints.
+- recovered submission state now also carries one publishing-side recovery selection snapshot, so `internal/listingkit` no longer mirrors recovery report/record/supplier-code fields separately before local-vs-remote recovery and remote-refresh routing.
 - refresh remote policy now lives in `internal/listing/submission`; `internal/listingkit` keeps SHEIN lookup-code/SPU-name enrichment.
 - action-record state policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN package/report DTO adaptation while generic action-slot selection and last-state synchronization moved out.
 - action-record query policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN record DTO views while success checks and completed-record lookup moved out.
@@ -179,6 +204,39 @@ Completed submission slices:
 - SHEIN remote record selection rules now live in `internal/marketplace/shein/publishing`; `internal/listingkit` no longer decides preferred SPU match vs latest-create-time fallback after remote record queries.
 - SHEIN remote response parsing rules now live in `internal/marketplace/shein/publishing`; `internal/listingkit` no longer interprets on-way/record/inventory response DTO success semantics directly.
 - SHEIN submission response acceptance, remote lookup SPU resolution, and remote lookup-code collection now live in `internal/publishing/shein`; `internal/listingkit` no longer derives those identities from package state inline during refresh/recovery orchestration.
+- SHEIN remote refresh/recovery lookup input projection now also lives in `internal/publishing/shein`; `internal/listingkit` no longer keeps separate root-side structs for lookup codes, SPU name, and fallback-policy payload wiring before remote confirmation orchestration.
+- SHEIN remote confirmation payload shape now reuses `internal/publishing/shein.SubmissionConfirmRemoteUpdate`; root `internal/listingkit` no longer keeps a separate `sheinRemoteConfirmation` DTO or refresh-side duplicate confirm-remote apply path.
+- SHEIN remote refresh/recovery confirm-remote decision tree now also lives in `internal/publishing/shein`; root `internal/listingkit` remote recovery keeps only SHEIN API probing, task-state mutation, and callback/orchestration glue.
+- SHEIN remote refresh/recovery probe helper now also lives in `internal/publishing/shein`; root `internal/listingkit` no longer issues on-way/record/inventory probe requests inline, and keeps only logging hooks, task-state mutation, and callback/orchestration glue.
+- SHEIN remote refresh/recovery request wiring now routes through one shared root-side request object; `internal/listingkit` no longer keeps a refresh-only confirm-remote request DTO or ten-argument remote-status callback signatures across refresh/recovery wiring.
+- SHEIN remote refresh execution now also routes through one shared root-side refresh request object; `internal/listingkit` temporal refresh and recovery no longer feed long positional argument lists into the shared remote-refresh executor.
+- SHEIN recovery-remote confirm state application now also routes through `internal/publishing/shein`; `internal/listingkit` recovery remote no longer keeps local wrappers for missing-supplier fallback or confirm-remote state mutation, and runner-owned event ordering remains separate from model updates.
+- SHEIN submission refresh state now stores the shared remote-status request directly instead of mirroring its fields; `internal/listingkit` refresh flow no longer keeps a second copy of action/request/lookup/fallback/API state beside the shared request boundary.
+- SHEIN refresh remote-fallback rule lookup now also routes through `internal/publishing/shein`; `internal/listingkit` refresh service no longer imports marketplace publishing policy directly just to override refresh confirm-remote fallback messaging.
+- SHEIN refresh selection/request assembly now also reuses `internal/publishing/shein` snapshot types directly; `internal/listingkit` no longer mirrors refresh action/record/supplier-code or trimmed request-id/remote-input payload fields in local compatibility DTOs before state assembly.
+- SHEIN remote-status request construction now also routes through shared root-side builders; `internal/listingkit` refresh-state assembly, recovery remote-refresh orchestration, and task-id cloning no longer hand-compose parallel `sheinRemoteStatusRequest` field groups at each callsite.
+- SHEIN remote refresh execution now also reuses one shared root-side execution state; `internal/listingkit` recovery and Temporal refresh no longer hand-assemble separate supplier-code plus refresh-started-at request wrappers before invoking shared remote refresh orchestration.
+- SHEIN remote refresh orchestration now also routes through `internal/listing/submission`; `internal/listingkit` recovery and Temporal refresh keep only phase/request/event/persistence callbacks while the generic persist-phase, execute, record-event, and finish dispatch skeleton moved out.
+- SHEIN recovered submission route dispatch now also routes through `internal/listing/submission`; `internal/listingkit` keeps only the accepted-response predicate plus local/remote handlers while the generic local-vs-remote recovery branch skeleton moved out.
+- SHEIN recovered submit lease-acquire dispatch now also routes through `internal/listing/submission`; `internal/listingkit` keeps only begin-lease, replay-preview, remote-recovery, and blocked-error adapters while the generic sentinel-error branch skeleton moved out.
+- SHEIN workflow-start failure cleanup now also routes through `internal/listing/submission`; `internal/listingkit` keeps only failure-record and lease-clear callbacks while the generic record-failure, clear-lease, and returned-error priority skeleton moved out.
+- SHEIN recovered remote-recovery routing now also runs on one shared root-side state object; `internal/listingkit` recovery flow no longer threads task/package/action/request/response fields separately across local recovery, remote confirmation, and success/failure completion paths.
+- SHEIN remote confirmation/refresh success and failure tails now also reuse one shared root-side completion support layer; `internal/listingkit` recovery and Temporal refresh no longer hand-assemble duplicate complete/fail plus remember/persist-success/save-result sequences after remote confirmation.
+- SHEIN Temporal publish success/failure entrypoints now also reuse one shared root-side persistence state; `internal/listingkit` Temporal persistence no longer loads task/package and reapplies supplier-code/response/snapshot input separately across success and failure paths before routing into persistence tails.
+- SHEIN Temporal persistence state now also narrows to completion plus failure-tail fields after publishing-side persistence input application; `internal/listingkit` no longer keeps unused supplier-code or snapshot fields on that root-side state shell once model mutation has already been applied.
+- SHEIN Temporal payload/remote-submit flow now also reuses one shared root-side execution state; `internal/listingkit` Temporal flow no longer reloads task/package and rebuilds payload-stage or remote-submit input context separately across prepare/upload/prevalidate/submit-remote entrypoints.
+- SHEIN Temporal flow support now also drops prepared-state payload-stage forwarding wrappers and the dead execution-state guard helper; `internal/listingkit` no longer keeps single-hop support helpers once the execution-state stage-context builder is the only real seam still consumed.
+- SHEIN Temporal facade upload entrypoint now also delegates directly into flow service; `internal/listingkit` no longer keeps prepared-payload validation or no-upload branching in the facade once flow already owns that decision seam.
+- direct-submit and Temporal persistence owners now also wire `submissiondomain.NewResultPersistenceService(...)` directly; `internal/listingkit` no longer keeps a separate result-persistence support file just to map generic result input into success/failure inputs for those two owner services.
+- SHEIN Temporal readiness/payload preparation now also reuses one shared root-side prepared publish state; `internal/listingkit` Temporal lifecycle and prepare-payload entrypoints no longer rebuild activity request plus submit-package normalization separately before readiness gates or payload-stage entry.
+- SHEIN Temporal upload/prevalidate/submit-remote continuation now also reuses one shared root-side prepared-payload resume state; `internal/listingkit` Temporal flow no longer re-validates payload shape, reloads task/package, and rebuilds payload-stage context separately at each resumed prepared-payload entrypoint.
+- SHEIN Temporal service entrypoints now also converge on one root-side Temporal submit facade; `internal/listingkit` service no longer routes publish lifecycle, payload flow, persistence, and remote-refresh entrypoints through four separate workflow collaborators.
+- SHEIN Temporal collaborator config assembly now also converges on one shared root-side wiring bundle; `internal/listingkit` service wiring no longer rebuilds the same submission assembly plus orchestrator binding set separately in each Temporal lifecycle/flow/persistence/refresh config builder.
+- SHEIN Temporal ensure wiring now also resolves one collaborator bundle before assignment; `internal/listingkit` service no longer hand-orders persistence/lifecycle/flow/refresh/facade construction inside the ensure seam itself.
+- SHEIN direct-submit and refresh config assembly now also converges on one shared root-side managed-submission wiring bundle; `internal/listingkit` service wiring no longer rebuilds the same submission assembly plus callback set in those builders, while recovery config stays as the constructor stop-line because it participates in the orchestrator's own recovery dependency.
+- SHEIN managed-submission ensure wiring now also resolves one collaborator bundle before assignment; `internal/listingkit` service no longer hand-orders recovery/direct/refresh/submission construction inside the ensure seam itself.
+- submission core ensure wiring now also resolves one collaborator bundle before assignment; `internal/listingkit` service no longer hand-orders execution/state construction inside the ensure seam itself.
+- submission task-recovery ensure wiring now also resolves one collaborator bundle before assignment; `internal/listingkit` service no longer hand-orders recovery/requeue construction inside the ensure seam itself.
 - SHEIN submission workflow-status derivation plus latest-outcome/primary-record selection now live in `internal/publishing/shein`; root `internal/listingkit` submission projection keeps readiness fallback wiring and DTO assembly, but no longer interprets submission event/report precedence inline.
 - remaining SHEIN submission projection state merge for latest status/error and remote summary now also lives in `internal/publishing/shein`; root `internal/listingkit` no longer reads submission-state fallback branches or remote-record checked-at precedence inline when shaping task-list DTO fields.
 - SHEIN action-aware response acceptance now lives in `internal/publishing/shein`; `internal/listingkit/submission` no longer keeps a save-draft success compatibility helper for recovered submit routing.
@@ -215,7 +273,9 @@ Completed submission slices:
 - recovered SHEIN submission-state projection now lives in `internal/publishing/shein`; root `internal/listingkit` no longer assembles report/record/request-id/response fallback tuples inline before recovery orchestration, and keeps only the orchestration-local timestamp wrapper.
 - Temporal remote-refresh state projection now lives in `internal/publishing/shein`; root `internal/listingkit` no longer assembles started-at, response fallback, and remote-status tuples inline across Temporal refresh entry and success-result shaping.
 - Temporal persistence input mutation now lives in `internal/publishing/shein`; root `internal/listingkit` no longer batches snapshot, supplier-code, and remote-response writes inline before Temporal success/failure persistence routing.
+- Temporal and direct submit result-tail routing now also reuse the shared submission result-persistence runner; root `internal/listingkit` no longer duplicates success/failure dispatch scaffolding before delegating to SHEIN-specific state/event fallbacks.
 - Temporal success/failure persistence support now routes attempt transition-plus-event assembly through `shein_submit_state.go`; fallback success and remote-refresh completion/failure paths no longer hand-compose duplicate complete/fail + event sequences inline in root `internal/listingkit`.
+- the last production `internal/listingkit/submission` transition sequencer has now been folded into `shein_submit_state.go`; the compatibility package has been removed from production code entirely, and the boundary guard now sits on the root state-entry file instead.
 
 Completed sourcing slices:
 

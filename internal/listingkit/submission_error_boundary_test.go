@@ -21,7 +21,6 @@ func TestGenericSubmissionCallsitesUseListingSubmissionPackage(t *testing.T) {
 		"submit_remote_attempt_shein.go",
 		"task_lifecycle_service.go",
 		"task_recovery_durability.go",
-		"task_requeue_helpers.go",
 		"temporal/client.go",
 	}
 

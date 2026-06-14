@@ -34,14 +34,15 @@ func (s *taskSubmissionRefreshService) persistSheinSubmissionRefreshResult(ctx c
 }
 
 func buildSubmissionRefreshMutationRequest(taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation) (*sheinSubmissionRefreshMutationRequest, error) {
-	if refreshState == nil {
-		return nil, apperrors.New(apperrors.ErrCodeSystem, "submission refresh state is not available")
+	remoteRequest, err := buildSheinRemoteStatusRequest(taskID, refreshState)
+	if err != nil {
+		return nil, err
 	}
 	return &sheinSubmissionRefreshMutationRequest{
 		taskID:       taskID,
-		action:       refreshState.action,
-		requestID:    refreshState.requestID,
-		startedAt:    refreshState.startedAt,
+		action:       remoteRequest.action,
+		requestID:    remoteRequest.requestID,
+		startedAt:    remoteRequest.startedAt,
 		confirmation: confirmation,
 	}, nil
 }
@@ -63,7 +64,7 @@ func appendSubmissionRefreshMutationEvents(pkg *SheinPackage, request *sheinSubm
 	if pkg == nil || request == nil {
 		return
 	}
-	appendSheinSubmissionEvent(pkg, sheinpub.BuildSubmissionRefreshConfirmRemoteRunningEvent(request.taskID, request.action, request.requestID, request.startedAt))
+	sheinpub.AppendSubmissionEvent(pkg, sheinpub.BuildSubmissionRefreshConfirmRemoteRunningEvent(request.taskID, request.action, request.requestID, request.startedAt))
 	applySubmissionRefreshConfirmation(pkg, request.action, request.requestID, request.confirmation)
 }
 
@@ -73,11 +74,15 @@ func validateSubmissionRefreshMutation(task *Task, action, requestID string) (*S
 	if err != nil {
 		return nil, err
 	}
-	if err := validateSubmissionRefreshAction(pkg, request.action); err != nil {
-		return nil, err
+	validation := sheinpub.ResolveSubmissionRefreshValidation(pkg, request.action, request.requestID)
+	if !validation.Available {
+		return nil, buildSubmissionRefreshUnavailableError()
 	}
-	if err := validateSubmissionRefreshRequest(pkg, request.action, request.requestID); err != nil {
-		return nil, err
+	if !validation.ActionMatches {
+		return nil, buildSubmissionRefreshChangedError()
+	}
+	if !validation.RequestMatches {
+		return nil, buildSubmissionRefreshChangedError()
 	}
 	return pkg, nil
 }
@@ -106,20 +111,22 @@ func loadSubmissionRefreshTaskPackage(task *Task) (*SheinPackage, error) {
 }
 
 func validateSubmissionRefreshAction(pkg *SheinPackage, action string) error {
-	if _, err := loadSubmissionRefreshPackageState(pkg); err != nil {
-		return err
+	validation := sheinpub.ResolveSubmissionRefreshValidation(pkg, action, "")
+	if !validation.Available {
+		return buildSubmissionRefreshUnavailableError()
 	}
-	if !sheinpub.SubmissionRefreshActionMatches(pkg, action) {
+	if !validation.ActionMatches {
 		return buildSubmissionRefreshChangedError()
 	}
 	return nil
 }
 
 func validateSubmissionRefreshRequest(pkg *SheinPackage, action, requestID string) error {
-	if _, err := loadSubmissionRefreshPackageState(pkg); err != nil {
-		return err
+	validation := sheinpub.ResolveSubmissionRefreshValidation(pkg, action, requestID)
+	if !validation.Available {
+		return buildSubmissionRefreshUnavailableError()
 	}
-	if !sheinpub.SubmissionRefreshRequestMatches(pkg, action, requestID) {
+	if !validation.RequestMatches {
 		return buildSubmissionRefreshChangedError()
 	}
 	return nil
@@ -146,15 +153,5 @@ func applySubmissionRefreshConfirmation(pkg *SheinPackage, action, requestID str
 	if pkg == nil || confirmation == nil {
 		return
 	}
-	if sheinpub.ApplySubmissionConfirmRemoteWithEvent(pkg, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message, confirmation.event) {
-		return
-	}
-	applySubmissionRefreshRemoteRecord(pkg, action, requestID, confirmation)
-}
-
-func applySubmissionRefreshRemoteRecord(pkg *SheinPackage, action, requestID string, confirmation *sheinRemoteConfirmation) {
-	if pkg == nil || confirmation == nil {
-		return
-	}
-	setSheinSubmitRemoteRecord(pkg, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message)
+	sheinpub.ApplySubmissionConfirmRemoteUpdate(pkg, action, requestID, *confirmation)
 }

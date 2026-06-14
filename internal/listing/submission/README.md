@@ -8,11 +8,15 @@ Current stable ownership:
 - generic task requeue orchestration seam (`RequeueTasks` style load/check/submit flow)
 - generic immediate recovery orchestration seam (`RecoverNow` style load/recover/submit/reload flow)
 - generic batch recovery orchestration seam (`RecoverBatch` style list/recover/submit/aggregate flow)
+- generic recovered-submission route seam (`accepted/local completion vs remote confirmation` dispatch)
+- generic lease-acquire seam (`begin lease -> replay preview / remote recovery / blocked mapping / task handoff`)
+- generic workflow-start failure seam (`record failure -> clear lease -> return-priority resolution`)
 - generic direct-submit phase orchestration seam (`DirectSubmit` style build/prepare/upload/pre-validate/submit flow)
 - generic prepared-payload phase seam (`Prepare/Upload/PreValidate` stage flow)
 - generic remote-submit attempt seam (`prepare state -> execute attempt -> shape result`)
 - generic post-success persistence seam (`persist result/phase -> complete attempt -> remember -> persist success`)
 - generic failure-record persistence seam (`record failure event/state`)
+- generic remote refresh orchestration seam (`persist phase -> execute remote refresh -> record event -> finish`)
 - source-facts readiness policy for 1688-derived facts
 - in-process submit lock manager
 - enqueue retry/backoff policy for queue-full submit retries

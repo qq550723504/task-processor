@@ -4,6 +4,9 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func (s *service) decorateSheinStoreResolutionPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {
@@ -25,6 +28,14 @@ func (s *service) decorateSheinStoreResolutionPreview(ctx context.Context, task 
 			preview.Shein.FinalReview.Site = summary.Site
 		}
 	}
+}
+
+func sheinSubmissionEventsWithStoreResolution(events []sheinpub.SubmissionEvent, task *Task) []sheinpub.SubmissionEvent {
+	if len(events) == 0 {
+		return nil
+	}
+	storeResolution := sheinSubmissionStoreResolutionFromTask(task)
+	return sheinworkspace.AttachSubmissionEventStoreResolution(events, storeResolution)
 }
 
 func buildSheinStoreResolutionSummary(selection *sheinStoreSelection, task *Task, preview *ListingKitPreview) *SheinStoreResolutionSummary {

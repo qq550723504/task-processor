@@ -57,7 +57,7 @@ func buildSheinStoreResolutionSummaryValue(
 }
 
 func sheinSubmissionStoreResolutionFromSnapshotValue(snapshot *SheinStoreResolutionSnapshot) *sheinpub.SubmissionStoreResolution {
-	if snapshot == nil || snapshot.StoreID <= 0 {
+	if snapshot == nil {
 		return nil
 	}
 	var resolvedAt *time.Time
@@ -65,17 +65,21 @@ func sheinSubmissionStoreResolutionFromSnapshotValue(snapshot *SheinStoreResolut
 		value := snapshot.ResolvedAt
 		resolvedAt = &value
 	}
-	return &sheinpub.SubmissionStoreResolution{
-		StoreID:          snapshot.StoreID,
-		Site:             snapshot.Site,
-		Strategy:         snapshot.Strategy,
-		Reason:           snapshot.Reason,
-		MatchedRuleKinds: append([]string(nil), snapshot.MatchedRuleKinds...),
-		MatchedProfileID: snapshot.MatchedProfileID,
-		ManualOverride:   snapshot.ManualOverride,
-		Fallback:         snapshot.Fallback,
-		ResolvedAt:       resolvedAt,
-	}
+	return sheinworkspace.BuildSubmissionStoreResolution(
+		snapshot.StoreID,
+		snapshot.Site,
+		snapshot.Strategy,
+		snapshot.Reason,
+		snapshot.MatchedRuleKinds,
+		snapshot.MatchedProfileID,
+		snapshot.ManualOverride,
+		snapshot.Fallback,
+		resolvedAt,
+	)
+}
+
+func sheinSubmissionStoreResolutionFromSnapshot(snapshot *SheinStoreResolutionSnapshot) *sheinpub.SubmissionStoreResolution {
+	return sheinSubmissionStoreResolutionFromSnapshotValue(snapshot)
 }
 
 func sheinSubmissionStoreResolutionFromTask(task *Task) *sheinpub.SubmissionStoreResolution {
