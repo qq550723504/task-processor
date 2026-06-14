@@ -44,7 +44,7 @@ func (s stubSDSBaselineRemoteProvider) GetPrototypeGroups(context.Context, int64
 func TestWarmSDSBaselineReturnsReadyWhenCacheAndValidationPass(t *testing.T) {
 	t.Parallel()
 
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: NewInMemoryRepositoryForTest(),
 		mirrors: serviceDependencyMirrors{
 			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
@@ -62,7 +62,7 @@ func TestWarmSDSBaselineReturnsReadyWhenCacheAndValidationPass(t *testing.T) {
 				prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 7001}},
 			},
 		},
-	}
+	})
 
 	readiness, err := svc.WarmSDSBaseline(context.Background(), &WarmSDSBaselineRequest{
 		SDS: &SDSSyncOptions{
@@ -96,7 +96,7 @@ func TestWarmSDSBaselineReturnsReadyWhenCacheAndValidationPass(t *testing.T) {
 func TestWarmSDSBaselineReturnsBlockedWhenRemoteSurfaceMismatches(t *testing.T) {
 	t.Parallel()
 
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: NewInMemoryRepositoryForTest(),
 		mirrors: serviceDependencyMirrors{
 			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
@@ -114,7 +114,7 @@ func TestWarmSDSBaselineReturnsBlockedWhenRemoteSurfaceMismatches(t *testing.T) 
 				prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 9999}},
 			},
 		},
-	}
+	})
 
 	readiness, err := svc.WarmSDSBaseline(context.Background(), &WarmSDSBaselineRequest{
 		SDS: &SDSSyncOptions{
@@ -231,7 +231,7 @@ func TestGetSDSBaselineReadinessReturnsCachedWhenValidationUnknown(t *testing.T)
 func TestWarmSDSBaselineTreatsRemoteDesignSurfaceCredentialBootstrapFailureAsReady(t *testing.T) {
 	t.Parallel()
 
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		repo: NewInMemoryRepositoryForTest(),
 		mirrors: serviceDependencyMirrors{
 			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
@@ -244,7 +244,7 @@ func TestWarmSDSBaselineTreatsRemoteDesignSurfaceCredentialBootstrapFailureAsRea
 				designProductErr: fmt.Errorf("merchant_name, username and password are required"),
 			},
 		},
-	}
+	})
 
 	readiness, err := svc.WarmSDSBaseline(context.Background(), &WarmSDSBaselineRequest{
 		SDS: &SDSSyncOptions{

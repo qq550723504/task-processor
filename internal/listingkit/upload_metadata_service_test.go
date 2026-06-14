@@ -11,7 +11,7 @@ func TestUploadImagesRecordsUploadedImageMetadata(t *testing.T) {
 	t.Parallel()
 
 	metadataRepo := NewMemUploadedImageRepository()
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		studioDeps: studioDependencies{
 			uploadStore: &stubMetadataImageUploadStore{
 				saveResult: &StoredUploadedImage{
@@ -26,7 +26,7 @@ func TestUploadImagesRecordsUploadedImageMetadata(t *testing.T) {
 		mirrors: serviceDependencyMirrors{
 			uploadedImageRepo: metadataRepo,
 		},
-	}
+	})
 	ctx := tenantctx.WithTenantID(context.Background(), "tenant-a")
 
 	if _, err := svc.UploadImages(ctx, &UploadImagesRequest{Files: []ImageUploadInput{{Filename: "a.jpg", Data: []byte{1, 2, 3}}}}); err != nil {
@@ -61,10 +61,10 @@ func TestDeleteUploadedImageUsesMetadataAndMarksRecordDeleted(t *testing.T) {
 		t.Fatalf("SaveUploadedImage() error = %v", err)
 	}
 	store := &stubMetadataImageUploadStore{}
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		studioDeps: studioDependencies{uploadStore: store},
 		mirrors:    serviceDependencyMirrors{uploadedImageRepo: metadataRepo},
-	}
+	})
 
 	deleted, err := svc.DeleteUploadedImage(ctx, "20260515/a.jpg")
 	if err != nil {

@@ -21,6 +21,7 @@ Recent progress in this area:
 - shein runtime-only resolver and pricing-cache dependencies now read directly from `sheinRuntimeDeps`; legacy dependency mirrors no longer own runtime-only resolution cache, category/attribute resolvers, or pricing policy.
 - shared shein catalog/API factory/content optimizer dependencies now resolve from their owning grouped deps (`submissionDeps`, `sheinRuntimeDeps`, `workflowDeps`) instead of flowing through legacy mirrors.
 - workflow product/image/asset dependencies now resolve directly from `workflowDeps`; legacy dependency mirrors no longer own workflow-only product, image, asset repository, recipe, bundle, or generation services.
+- SDS support collaborators and task SDS login status now resolve directly from grouped dependencies (`supportDeps` / `taskDeps`) instead of syncing through legacy mirrors on production paths.
 - workflow asset dispatch persistence phases now resolve their asset repository dependency up front instead of reaching through `service.mirrors` at runtime.
 
 ## 2. Current File Groups

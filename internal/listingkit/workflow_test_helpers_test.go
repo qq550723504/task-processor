@@ -22,5 +22,23 @@ func seedWorkflowDepsFromMirrors(s *service) *service {
 	if s.workflowDeps.assetGenerationService == nil {
 		s.workflowDeps.assetGenerationService = s.mirrors.assetGenerator
 	}
+	if s.supportDeps.sdsSyncService == nil {
+		s.supportDeps.sdsSyncService = s.mirrors.sdsSyncSvc
+	}
+	if s.supportDeps.sdsBaselineRemoteProvider == nil {
+		s.supportDeps.sdsBaselineRemoteProvider = s.mirrors.sdsBaselineRemoteProvider
+	}
+	if s.supportDeps.uploadedImageRepository == nil {
+		s.supportDeps.uploadedImageRepository = s.mirrors.uploadedImageRepo
+	}
+	if s.supportDeps.assembler == nil {
+		s.supportDeps.assembler = s.mirrors.assembler
+	}
+	if s.supportDeps.reviewRepository == nil {
+		s.supportDeps.reviewRepository = s.mirrors.reviewRepo
+	}
+	if s.taskDeps.sdsLoginStatusProvider == nil {
+		s.taskDeps.sdsLoginStatusProvider = s.mirrors.sdsLoginStatusProvider
+	}
 	return s
 }

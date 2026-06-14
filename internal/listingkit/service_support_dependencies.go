@@ -17,33 +17,33 @@ func resolveSDSSyncService(s *service) sdsusecase.Service {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.supportDeps.sdsSyncService, &s.mirrors.sdsSyncSvc)
+	return s.supportDeps.sdsSyncService
 }
 
 func resolveSDSBaselineRemoteProvider(s *service) SDSBaselineRemoteProvider {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.supportDeps.sdsBaselineRemoteProvider, &s.mirrors.sdsBaselineRemoteProvider)
+	return s.supportDeps.sdsBaselineRemoteProvider
 }
 
 func resolveUploadedImageRepository(s *service) UploadedImageRepository {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.supportDeps.uploadedImageRepository, &s.mirrors.uploadedImageRepo)
+	return s.supportDeps.uploadedImageRepository
 }
 
 func resolveAssembler(s *service) Assembler {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.supportDeps.assembler, &s.mirrors.assembler)
+	return s.supportDeps.assembler
 }
 
 func resolveReviewRepository(s *service) reviewstore.Repository {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.supportDeps.reviewRepository, &s.mirrors.reviewRepo)
+	return s.supportDeps.reviewRepository
 }

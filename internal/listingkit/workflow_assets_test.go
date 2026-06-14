@@ -2347,7 +2347,7 @@ func TestSyncSDSDesignVariantsSubmitsEachRepresentativeVariantAsPrimary(t *testi
 			},
 		},
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc}})
 	task := &Task{
 		ID: "listingkit-task-variants",
 		Request: &GenerateRequest{
@@ -2419,10 +2419,10 @@ func TestSyncSDSDesignFromRemoteUsesLocalFileForUploadedImagePath(t *testing.T) 
 		},
 	}
 
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		studioDeps: studioDependencies{uploadStore: store},
 		mirrors:    serviceDependencyMirrors{sdsSyncSvc: sdsSvc},
-	}
+	})
 	task := &Task{
 		ID: "listingkit-task-uploaded-remote-sds",
 		Request: &GenerateRequest{
@@ -2492,10 +2492,10 @@ func TestSyncSDSDesignVariantsFromRemoteUsesLocalFileForUploadedImagePath(t *tes
 		},
 	}
 
-	svc := &service{
+	svc := seedWorkflowDepsFromMirrors(&service{
 		studioDeps: studioDependencies{uploadStore: store},
 		mirrors:    serviceDependencyMirrors{sdsSyncSvc: sdsSvc},
-	}
+	})
 	task := &Task{
 		ID: "listingkit-task-uploaded-variant-sds",
 		Request: &GenerateRequest{
@@ -2603,7 +2603,7 @@ func TestRunWorkflowSkipsPlatformAdaptationWhenRequiredRemoteSDSFails(t *testing
 	sdsSvc := &stubWorkflowSDSSyncService{
 		err: fmt.Errorf("remote sds failed"),
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}})
 
 	task := &Task{
 		ID: "listingkit-task-remote-sds-blocked",
@@ -2664,7 +2664,7 @@ func TestSyncSDSDesignVariantsFromRemoteSurfacesAuthFailureReason(t *testing.T) 
 			Message:    "用户未登录",
 		},
 	}
-	svc := &service{mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc}}
+	svc := seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc}})
 	task := &Task{
 		ID: "listingkit-task-variants-auth",
 		Request: &GenerateRequest{

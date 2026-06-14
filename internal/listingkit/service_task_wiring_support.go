@@ -50,7 +50,7 @@ func resolveSDSLoginStatusProvider(s *service) SDSLoginStatusProvider {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.taskDeps.sdsLoginStatusProvider, &s.mirrors.sdsLoginStatusProvider)
+	return s.taskDeps.sdsLoginStatusProvider
 }
 
 func resolveStandardWorkflowClient(s *service) (StandardProductWorkflowClient, bool) {
