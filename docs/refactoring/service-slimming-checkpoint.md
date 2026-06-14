@@ -59,7 +59,7 @@ internal/listingkit/service_studio_batch_entrypoints.go  // studio batch entrypo
 internal/listingkit/service_studio_batch_run_entrypoints.go // studio batch run entrypoints
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 internal/listingkit/service_task_wiring.go               // task/generation/revision collaborator config builders
-internal/listingkit/service_studio_wiring.go             // studio collaborator config builders
+internal/listingkit/service_studio_wiring_support.go     // studio collaborator wiring plus config assembly helpers
 internal/listingkit/service_submit_entrypoint.go          // submit facade entrypoint
 internal/listingkit/service_submit_lease_helper.go        // shared submit lease helper
 internal/listingkit/service_submit_contracts.go           // shared submit option structs / normalization helpers
@@ -409,9 +409,9 @@ Owns explicit config builders for non-submit task collaborators:
 
 This keeps accessor files thin while leaving task-specific wiring visible in one place.
 
-### `service_studio_wiring.go`
+### `service_studio_wiring_support.go`
 
-Owns explicit config builders for studio collaborators:
+Owns studio collaborator wiring plus explicit config assembly for:
 
 - studio session,
 - studio batch draft,
@@ -419,9 +419,9 @@ Owns explicit config builders for studio collaborators:
 - studio batch,
 - studio batch run.
 
-Studio batch generation wiring is also routed through this file so nested studio
+Studio batch generation wiring is also routed through this seam so nested studio
 collaborator construction stays visible without re-expanding accessor files.
-Studio batch run coordinator/executor config also flows through this seam.
+Studio batch run coordinator/executor config also stays beside the wiring support.
 Coordinator-owned batch run start/recovery helpers live alongside the
 coordinator in `studio_batch_run_coordinator.go`.
 

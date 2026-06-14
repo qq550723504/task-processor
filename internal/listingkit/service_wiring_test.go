@@ -549,12 +549,6 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			inlineConfig: nil,
 		},
 		{
-			name:         "studio wiring",
-			file:         "service_studio_wiring.go",
-			builderCalls: nil,
-			inlineConfig: nil,
-		},
-		{
 			name:         "studio batch run",
 			file:         "studio_batch_run_service.go",
 			builderCalls: nil,
@@ -599,34 +593,10 @@ func TestStudioCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("service_studio_wiring.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_studio_wiring.go) error = %v", err)
-	}
-	content := string(src)
-
-	for _, needle := range []string{
-		"config := buildTaskStudioSessionConfigWiring(s)",
-		"runner:                   config.runner,",
-		"asyncJobRunner:           config.asyncJobRunner,",
-		"generationMetadataRunner: config.generationMetadataRunner,",
-		"reviewTaskMetadataRunner: config.reviewTaskMetadataRunner,",
-		"generalMetadataRunner:    config.generalMetadataRunner,",
-		"runner: config.batchDraftRunner,",
-		"func buildTaskStudioBatchServiceConfigWithCollaborators(",
-		"return buildTaskStudioBatchServiceConfigWithCollaborators(buildTaskStudioBatchServiceConfigWiring(s))",
-		"detailRunner:       config.detailRunner,",
-		"reviewRunner:       config.reviewRunner,",
-		"retryRunner:        config.retryRunner,",
-		"taskPrepareRunner:  config.taskPrepare,",
-		"taskResumeRunner:   config.taskResume,",
-		"config := buildTaskStudioBatchRunConfigWiring(s)",
-		"runner:            wiring.newServiceRunner(startRun),",
-		"completionRunner: wiring.newCompletionRunner(nil),",
-	} {
-		if !strings.Contains(content, needle) {
-			t.Fatalf("service_studio_wiring.go should contain %q", needle)
-		}
+	if _, err := os.ReadFile("service_studio_wiring.go"); err == nil {
+		t.Fatal("service_studio_wiring.go should be removed after studio collaborator wiring consolidation")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_studio_wiring.go) unexpected error = %v", err)
 	}
 
 	supportSrc, err := os.ReadFile("service_studio_wiring_support.go")
@@ -638,12 +608,28 @@ func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 	for _, needle := range []string{
 		"type taskStudioSessionConfigWiring struct {",
 		"func buildTaskStudioSessionConfigWiring(s *service) taskStudioSessionConfigWiring {",
+		"func buildTaskStudioSessionServiceConfigWithWiring(config taskStudioSessionConfigWiring) taskStudioSessionServiceConfig {",
+		"runner:                   config.runner,",
+		"asyncJobRunner:           config.asyncJobRunner,",
+		"generationMetadataRunner: config.generationMetadataRunner,",
+		"reviewTaskMetadataRunner: config.reviewTaskMetadataRunner,",
+		"generalMetadataRunner:    config.generalMetadataRunner,",
+		"func buildTaskStudioBatchDraftServiceConfigWithWiring(config taskStudioSessionConfigWiring) taskStudioBatchDraftServiceConfig {",
+		"runner: config.batchDraftRunner,",
+		"func buildTaskStudioMediaServiceConfigWithWiring(wiring taskStudioMediaWiring) taskStudioMediaServiceConfig {",
 		"type taskStudioBatchServiceConfigWiring struct {",
 		"type taskStudioBatchCollaboratorWiring struct {",
 		"type taskStudioBatchCollaborators struct {",
 		"resetRetryItems    func(context.Context, []StudioBatchItemRecord) error",
 		"taskPrepare  *listingStudioBatchTaskPrepareRunner",
 		"taskResume   *listingStudioBatchTaskResumeRunner",
+		"func buildStudioBatchGenerationServiceConfigWithWiring(wiring studioBatchGenerationWiring) studioBatchGenerationServiceConfig {",
+		"func buildTaskStudioBatchServiceConfigWithCollaborators(",
+		"detailRunner:       config.detailRunner,",
+		"reviewRunner:       config.reviewRunner,",
+		"retryRunner:        config.retryRunner,",
+		"taskPrepareRunner:  config.taskPrepare,",
+		"taskResumeRunner:   config.taskResume,",
 		"func buildTaskStudioBatchServiceConfigWiring(s *service) taskStudioBatchServiceConfigWiring {",
 		"func buildTaskStudioBatchServiceConfigWiringWithGenerator(s *service, generator *studioBatchGenerationService) taskStudioBatchServiceConfigWiring {",
 		"func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studioBatchGenerationService) taskStudioBatchServiceWiring {",
@@ -654,6 +640,11 @@ func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 		"taskResume: newListingStudioBatchTaskResumeService(",
 		"type taskStudioBatchRunConfigWiring struct {",
 		"func buildTaskStudioBatchRunConfigWiring(s *service) taskStudioBatchRunConfigWiring {",
+		"func buildTaskStudioBatchRunServiceConfigWithCollaborators(",
+		"runner:            wiring.newServiceRunner(startRun),",
+		"func buildStudioBatchRunCoordinatorConfigWithCollaborators(",
+		"func buildTaskStudioBatchRunExecutorConfigWithWiring(",
+		"completionRunner: wiring.newCompletionRunner(nil),",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_studio_wiring_support.go should contain %q", needle)
@@ -757,21 +748,6 @@ func TestTaskStudioBatchCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		t.Fatalf("service_task_collaborator_stages.go should contain %q", "s.ensureTaskStudioBatchCollaborators()")
 	}
 
-	wiringSrc, err := os.ReadFile("service_studio_wiring.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_studio_wiring.go) error = %v", err)
-	}
-	wiringContent := string(wiringSrc)
-
-	for _, needle := range []string{
-		"func buildTaskStudioBatchServiceConfigWithCollaborators(",
-		"return buildTaskStudioBatchServiceConfigWithCollaborators(buildTaskStudioBatchServiceConfigWiring(s))",
-	} {
-		if !strings.Contains(wiringContent, needle) {
-			t.Fatalf("service_studio_wiring.go should contain %q", needle)
-		}
-	}
-
 	supportSrc, err := os.ReadFile("service_studio_wiring_support.go")
 	if err != nil {
 		t.Fatalf("ReadFile(service_studio_wiring_support.go) error = %v", err)
@@ -781,6 +757,7 @@ func TestTaskStudioBatchCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	for _, needle := range []string{
 		"type taskStudioBatchCollaboratorWiring struct {",
 		"type taskStudioBatchCollaborators struct {",
+		"func buildTaskStudioBatchServiceConfigWithCollaborators(",
 		"func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studioBatchGenerationService) taskStudioBatchServiceWiring {",
 		"func buildTaskStudioBatchServiceConfigWiringWithGenerator(s *service, generator *studioBatchGenerationService) taskStudioBatchServiceConfigWiring {",
 		"func buildTaskStudioBatchCollaboratorWiring(s *service) taskStudioBatchCollaboratorWiring {",
@@ -852,23 +829,6 @@ func TestTaskStudioBatchRunCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		}
 	}
 
-	wiringSrc, err := os.ReadFile("service_studio_wiring.go")
-	if err != nil {
-		t.Fatalf("ReadFile(service_studio_wiring.go) error = %v", err)
-	}
-	wiringContent := string(wiringSrc)
-
-	for _, needle := range []string{
-		"func buildTaskStudioBatchRunServiceConfigWithCollaborators(",
-		"startRun = coordinator.StartRun",
-		"func buildStudioBatchRunCoordinatorConfigWithCollaborators(",
-		"func buildTaskStudioBatchRunExecutorConfigWithWiring(",
-	} {
-		if !strings.Contains(wiringContent, needle) {
-			t.Fatalf("service_studio_wiring.go should contain %q", needle)
-		}
-	}
-
 	supportSrc, err := os.ReadFile("service_studio_wiring_support.go")
 	if err != nil {
 		t.Fatalf("ReadFile(service_studio_wiring_support.go) error = %v", err)
@@ -878,6 +838,10 @@ func TestTaskStudioBatchRunCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	for _, needle := range []string{
 		"type taskStudioBatchRunCollaboratorWiring struct {",
 		"type taskStudioBatchRunCollaborators struct {",
+		"func buildTaskStudioBatchRunServiceConfigWithCollaborators(",
+		"startRun = coordinator.StartRun",
+		"func buildStudioBatchRunCoordinatorConfigWithCollaborators(",
+		"func buildTaskStudioBatchRunExecutorConfigWithWiring(",
 		"func buildTaskStudioBatchRunCollaboratorWiring(s *service) taskStudioBatchRunCollaboratorWiring {",
 		"func (w taskStudioBatchRunCollaboratorWiring) newRunExecutor() *taskStudioBatchRunExecutor {",
 		"func (w taskStudioBatchRunCollaboratorWiring) newRunCoordinator(executor *taskStudioBatchRunExecutor) *studioBatchRunCoordinator {",

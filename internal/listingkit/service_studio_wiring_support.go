@@ -158,15 +158,15 @@ func buildTaskStudioSessionCollaboratorWiring(s *service) taskStudioSessionColla
 }
 
 func (w taskStudioSessionCollaboratorWiring) newSession() *taskStudioSessionService {
-	return newTaskStudioSessionService(buildTaskStudioSessionServiceConfig(w.service))
+	return newTaskStudioSessionService(buildTaskStudioSessionServiceConfigWithWiring(buildTaskStudioSessionConfigWiring(w.service)))
 }
 
 func (w taskStudioSessionCollaboratorWiring) newBatchDraft() *taskStudioBatchDraftService {
-	return newTaskStudioBatchDraftService(buildTaskStudioBatchDraftServiceConfig(w.service))
+	return newTaskStudioBatchDraftService(buildTaskStudioBatchDraftServiceConfigWithWiring(buildTaskStudioSessionConfigWiring(w.service)))
 }
 
 func (w taskStudioSessionCollaboratorWiring) newMedia() *taskStudioMediaService {
-	return newTaskStudioMediaService(buildTaskStudioMediaServiceConfig(w.service))
+	return newTaskStudioMediaService(buildTaskStudioMediaServiceConfigWithWiring(buildTaskStudioMediaWiring(w.service)))
 }
 
 func (w taskStudioSessionCollaboratorWiring) resolve(existing studioCollaborators) taskStudioSessionCollaborators {
@@ -371,7 +371,7 @@ func buildTaskStudioBatchCollaboratorWiring(s *service) taskStudioBatchCollabora
 }
 
 func (w taskStudioBatchCollaboratorWiring) newBatchGeneration() *studioBatchGenerationService {
-	return newStudioBatchGenerationService(buildStudioBatchGenerationServiceConfig(w.service))
+	return newStudioBatchGenerationService(buildStudioBatchGenerationServiceConfigWithWiring(buildStudioBatchGenerationWiring(w.service)))
 }
 
 func (w taskStudioBatchCollaboratorWiring) newBatch(batchGeneration *studioBatchGenerationService) *taskStudioBatchService {
@@ -453,4 +453,92 @@ func resolveStudioUploadStore(s *service) ImageUploadStore {
 		return nil
 	}
 	return syncGroupedDependency(&s.studioDeps.uploadStore, &s.mirrors.uploadStore)
+}
+
+func buildTaskStudioSessionServiceConfigWithWiring(config taskStudioSessionConfigWiring) taskStudioSessionServiceConfig {
+	return taskStudioSessionServiceConfig{
+		repo:                     config.session.repo,
+		runner:                   config.runner,
+		asyncJobRunner:           config.asyncJobRunner,
+		generationMetadataRunner: config.generationMetadataRunner,
+		reviewTaskMetadataRunner: config.reviewTaskMetadataRunner,
+		generalMetadataRunner:    config.generalMetadataRunner,
+	}
+}
+
+func buildTaskStudioBatchDraftServiceConfigWithWiring(config taskStudioSessionConfigWiring) taskStudioBatchDraftServiceConfig {
+	return taskStudioBatchDraftServiceConfig{
+		repo:   config.session.repo,
+		runner: config.batchDraftRunner,
+	}
+}
+
+func buildTaskStudioMediaServiceConfigWithWiring(wiring taskStudioMediaWiring) taskStudioMediaServiceConfig {
+	return taskStudioMediaServiceConfig{
+		imageGenerator:        wiring.imageGenerator,
+		promptDiversifier:     wiring.promptDiversifier,
+		uploadStoreConfigured: wiring.uploadStoreConfigured,
+		uploadImages:          wiring.uploadImages,
+	}
+}
+
+func buildStudioBatchGenerationServiceConfigWithWiring(wiring studioBatchGenerationWiring) studioBatchGenerationServiceConfig {
+	return studioBatchGenerationServiceConfig{
+		repo:    wiring.repo,
+		execute: wiring.execute,
+	}
+}
+
+func buildTaskStudioBatchServiceConfigWithCollaborators(
+	config taskStudioBatchServiceConfigWiring,
+) taskStudioBatchServiceConfig {
+	return taskStudioBatchServiceConfig{
+		repo:               config.batch.repo,
+		studioSessionRepo:  config.batch.studioSessionRepo,
+		generator:          config.batch.generator,
+		createGenerateTask: config.batch.createGenerateTask,
+		getTask:            config.batch.getTask,
+		detailRunner:       config.detailRunner,
+		reviewRunner:       config.reviewRunner,
+		retryRunner:        config.retryRunner,
+		taskPrepareRunner:  config.taskPrepare,
+		taskResumeRunner:   config.taskResume,
+	}
+}
+
+func buildTaskStudioBatchRunServiceConfigWithCollaborators(
+	wiring taskStudioBatchRunWiring,
+	coordinator *studioBatchRunCoordinator,
+) taskStudioBatchRunServiceConfig {
+	var startRun func(ctx context.Context, runID string) error
+	if coordinator != nil {
+		startRun = coordinator.StartRun
+	}
+	return taskStudioBatchRunServiceConfig{
+		repo:              wiring.repo,
+		studioSessionRepo: wiring.studioSessionRepo,
+		startRun:          startRun,
+		runner:            wiring.newServiceRunner(startRun),
+	}
+}
+
+func buildStudioBatchRunCoordinatorConfigWithCollaborators(
+	wiring taskStudioBatchRunWiring,
+	executor *taskStudioBatchRunExecutor,
+) studioBatchRunCoordinatorConfig {
+	return studioBatchRunCoordinatorConfig{
+		repo:     wiring.repo,
+		executor: executor,
+	}
+}
+
+func buildTaskStudioBatchRunExecutorConfigWithWiring(
+	s *service,
+	wiring taskStudioBatchRunWiring,
+) taskStudioBatchRunExecutorConfig {
+	return taskStudioBatchRunExecutorConfig{
+		repo:             wiring.repo,
+		executeOne:       s.executeStudioBatchRunItem,
+		completionRunner: wiring.newCompletionRunner(nil),
+	}
 }
