@@ -3,11 +3,12 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+
+	studiodomain "task-processor/internal/listing/studio"
 )
 
 type taskStudioBatchDraftServiceConfig struct {
@@ -199,14 +200,7 @@ func (s *taskStudioBatchDraftService) nextTenantBatchName(ctx context.Context) (
 	if err != nil {
 		return "", err
 	}
-	maxBatchNumber := 0
-	for _, name := range names {
-		nextValue, ok := parseStudioBatchNumber(name)
-		if ok && nextValue > maxBatchNumber {
-			maxBatchNumber = nextValue
-		}
-	}
-	return fmt.Sprintf("批次%d", maxBatchNumber+1), nil
+	return studiodomain.NextBatchName(names), nil
 }
 
 func (s *taskStudioBatchDraftService) loadStudioBatchDraftDetail(ctx context.Context, session *SheinStudioSession) (*StudioBatchDraftDetail, error) {
@@ -218,18 +212,6 @@ func (s *taskStudioBatchDraftService) loadStudioBatchDraftDetail(ctx context.Con
 		Batch:   (*StudioBatchDraft)(session),
 		Designs: designs,
 	}, nil
-}
-
-func parseStudioBatchNumber(name string) (int, bool) {
-	trimmed := strings.TrimSpace(name)
-	if !strings.HasPrefix(trimmed, "批次") {
-		return 0, false
-	}
-	value, err := strconv.Atoi(strings.TrimPrefix(trimmed, "批次"))
-	if err != nil || value <= 0 {
-		return 0, false
-	}
-	return value, true
 }
 
 func (s *taskStudioBatchDraftService) ensureRunner() {

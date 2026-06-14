@@ -19,6 +19,7 @@ Current extracted seams:
 - session generation metadata patch flow,
 - session review/task metadata patch flow,
 - session general metadata patch orchestration,
+- batch draft default-name sequencing,
 - batch-run completion rules: cancel unfinished items, count item statuses, resolve final run status.
 
 `internal/listingkit` still owns:
