@@ -1,6 +1,6 @@
 package listingkit
 
-import "task-processor/internal/listingkit/submission"
+import listingsubmission "task-processor/internal/listing/submission"
 
 func (s *service) taskRecoveryOrDefault() *taskRecoveryService {
 	if s == nil {
@@ -29,7 +29,7 @@ func (s *service) taskSubmissionOrDefault() *taskSubmissionService {
 		return s.submission.taskSubmission
 	}
 	if s.submission.sheinSubmitLocks == nil {
-		s.submission.sheinSubmitLocks = submission.NewSubmitLockManager()
+		s.submission.sheinSubmitLocks = listingsubmission.NewSubmitLockManager()
 	}
 	s.submission.taskSubmission = newTaskSubmissionService(buildTaskSubmissionServiceConfig(s))
 	return s.submission.taskSubmission
@@ -75,10 +75,34 @@ func (s *service) taskDirectSubmissionOrDefault() *taskDirectSubmissionService {
 	return s.submission.taskDirectSubmission
 }
 
-func (s *service) taskTemporalSubmissionAdapterOrDefault() *taskTemporalSubmissionAdapter {
-	if s.submission.taskTemporalSubmissionAdapter != nil {
-		return s.submission.taskTemporalSubmissionAdapter
+func (s *service) taskTemporalSubmissionPersistenceOrDefault() *taskTemporalSubmissionPersistenceService {
+	if s.submission.taskTemporalSubmissionPersistence != nil {
+		return s.submission.taskTemporalSubmissionPersistence
 	}
-	s.submission.taskTemporalSubmissionAdapter = newTaskTemporalSubmissionAdapter(buildTaskTemporalSubmissionAdapterConfig(s))
-	return s.submission.taskTemporalSubmissionAdapter
+	s.submission.taskTemporalSubmissionPersistence = newTaskTemporalSubmissionPersistenceService(buildTaskTemporalSubmissionPersistenceServiceConfig(s))
+	return s.submission.taskTemporalSubmissionPersistence
+}
+
+func (s *service) taskTemporalSubmissionLifecycleOrDefault() *taskTemporalSubmissionLifecycleService {
+	if s.submission.taskTemporalSubmissionLifecycle != nil {
+		return s.submission.taskTemporalSubmissionLifecycle
+	}
+	s.submission.taskTemporalSubmissionLifecycle = newTaskTemporalSubmissionLifecycleService(buildTaskTemporalSubmissionLifecycleServiceConfig(s))
+	return s.submission.taskTemporalSubmissionLifecycle
+}
+
+func (s *service) taskTemporalSubmissionFlowOrDefault() *taskTemporalSubmissionFlowService {
+	if s.submission.taskTemporalSubmissionFlow != nil {
+		return s.submission.taskTemporalSubmissionFlow
+	}
+	s.submission.taskTemporalSubmissionFlow = newTaskTemporalSubmissionFlowService(buildTaskTemporalSubmissionFlowServiceConfig(s))
+	return s.submission.taskTemporalSubmissionFlow
+}
+
+func (s *service) taskTemporalSubmissionRefreshOrDefault() *taskTemporalSubmissionRefreshService {
+	if s.submission.taskTemporalSubmissionRefresh != nil {
+		return s.submission.taskTemporalSubmissionRefresh
+	}
+	s.submission.taskTemporalSubmissionRefresh = newTaskTemporalSubmissionRefreshService(buildTaskTemporalSubmissionRefreshServiceConfig(s))
+	return s.submission.taskTemporalSubmissionRefresh
 }

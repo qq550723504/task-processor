@@ -66,6 +66,32 @@ Guardrail:
 
 - `internal/marketplace/shein/publishing` must not import `internal/listingkit` or root runtime/integration wiring.
 
+### `internal/marketplace/shein/workspace`
+
+Current state:
+
+- workspace package already owns inspection, status overview, success messaging, revision helpers, and other SHEIN workspace-facing presentation rules,
+- SHEIN preview-card status, summary, and needs-review rules now also live in the marketplace workspace package,
+- SHEIN preview review-summary plus final-review image/SKU projection rules now also live in the marketplace workspace package, while `listingkit` keeps the preview payload shell and canonical/source-product wiring,
+- SHEIN preview resolution-cache summary plus image-upload preflight aggregation rules now also live in the marketplace workspace package; `listingkit` keeps only runtime upload/cache classifiers and preview payload shell wiring,
+- SHEIN source-product summary projection from canonical product now also lives in the marketplace workspace package; `listingkit` keeps only preview/final-review payload assembly that references it,
+- SHEIN store-resolution summary DTO/value projection now also lives in the marketplace workspace package; `listingkit` still keeps selection/task/preview context fallback logic and submission-store-resolution conversion,
+- SHEIN remote-submit persistence input preparation now also lives in `internal/publishing/shein`; root `internal/listingkit` no longer resolves supplier-code fallback or snapshot persistence inline before remote submit attempts,
+- SHEIN temporal/direct submit snapshot and remote-response persistence now call `internal/publishing/shein` mutations directly; root `internal/listingkit` no longer keeps pass-through setter wrappers for those pure submission-state writes,
+- Temporal submit persistence is now owned by a dedicated collaborator instead of living inline in the Temporal host surface; success/failure state completion concentrates in a separate service,
+- Temporal submit payload-stage plus remote-submit flow is now owned by a dedicated collaborator instead of living inline in the Temporal host surface; prepare/upload/pre-validate/remote-submit flow concentrates in a separate service,
+- Temporal submit lifecycle entry responsibilities are now owned by a dedicated collaborator instead of living inline in the Temporal host surface; begin/readiness/workflow-start/preview flow concentrates in a separate service,
+- Temporal submit remote-refresh orchestration is now owned by a dedicated collaborator instead of living inline in the Temporal host surface; refresh phase switching, remote refresh, and completion handling concentrate in a separate service,
+- Temporal SHEIN activity host entrypoints now route directly from `service` to `lifecycle`, `flow`, `persistence`, and `refresh` collaborators; the extra workflow adapter layer has been removed,
+- SHEIN task-list work-queue and action-queue derivation rules now also live in the marketplace workspace package,
+- SHEIN inspection review-reason extraction plus cookie-unavailable review-note detection/cleanup rules now also live in the marketplace workspace package,
+- SHEIN workflow/work-queue/action-queue taxonomy definitions and display descriptors now also live in the marketplace workspace package, while `listingkit` keeps only task-list facet DTO adaptation plus blocker/warning descriptors tied to local issue codes,
+- `listingkit` keeps only platform-card DTO assembly and cross-platform queue/preview enrichment.
+
+Guardrail:
+
+- `internal/marketplace/shein/workspace` must not import `internal/listingkit` or root runtime/integration wiring.
+
 ## Legacy Exceptions
 
 These exceptions are intentional for the current checkpoint:
@@ -86,6 +112,7 @@ Current stop lines:
 - do not keep splitting `internal/listing/studio` unless the seam removes real root-object ownership; field assignment adapters, generation resume, task creation, and batch-run execution should stay in `listingkit` for now,
 - do not keep moving `asset_render_preview_groups.go` platform DTO composition into `internal/listing/preview`; preview now owns neutral render metadata, summary, and capability rules, while platform image-bundle adapters remain legacy DTO glue,
 - do not ban `internal/publishing/shein` imports from `listingkit` yet; existing submission/model flows still depend on it as a compatibility package.
+- do not keep shaving `internal/listingkit/submission` once the remaining imports are only SHEIN event/state/confirm-remote adapters, label maps, and compatibility shells; new generic submit primitives should land in `internal/listing/submission` directly.
 
 Good next candidates:
 
@@ -108,17 +135,87 @@ Recommended next slice:
 
 - evaluate another minimal `internal/listing/submission` read-only policy seam or SHEIN marketplace publishing guard-backed rule seam before extracting more studio/preview helpers.
 
+Current submission stop line:
+
+- `internal/listingkit/submission` is now expected to be a SHEIN-focused adapter layer. Production imports should be limited to `shein_submit_state.go`, where SHEIN submit transition composition stays centralized. Generic readiness, retry, locking, response-error, lease, and event DTO primitives should not route through this package anymore.
+
 Completed submission slices:
 
-- source-facts readiness policy for 1688-derived facts now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps a compatibility wrapper.
-- in-process submit lock manager now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps a compatibility alias.
-- enqueue retry/backoff policy for queue-full submit retries now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps a compatibility wrapper.
+- source-facts readiness policy for 1688-derived facts now lives in `internal/listing/submission`; the old `internal/listingkit/submission` compatibility wrapper has been removed.
+- in-process submit lock manager now lives in `internal/listing/submission`; the old `internal/listingkit/submission` compatibility alias has been removed.
+- enqueue retry/backoff policy for queue-full submit retries now lives in `internal/listing/submission`; the old `internal/listingkit/submission` compatibility wrapper has been removed.
 - response outcome policy for save-draft success and publish response errors now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN response adapters.
 - phase detail mapping policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN phase labels.
 - failure-state fallback policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN report adapters.
 - remote-recovery lease expiry policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN phase/report adapters.
 - active attempt lease policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN report adapters.
 - in-flight clearing match policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN report mutation.
+- submit-in-progress error shape now lives in `internal/listing/submission`; the old `internal/listingkit/submission` compatibility alias has been removed.
+- submission event history policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN event model adaptation.
+- attempt result status policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN record/event DTO shaping.
+- submission event outcome policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN event DTO assembly and response pointer wiring.
+- phase event policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN phase-event DTO assembly.
+- remote record id normalization policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN confirm-remote DTO assembly and record mutation.
+- confirm-remote state policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN confirm-remote DTO assembly.
+- refresh mutation guard policy now lives in `internal/listing/submission`; `internal/listingkit` keeps SHEIN report/record loading and error translation.
+- refresh selection policy now lives in `internal/listing/submission`; `internal/publishing/shein` now owns SHEIN report/record/supplier-code projection for refresh, while `internal/listingkit` keeps only validation error translation.
+- refresh request-id normalization now lives in `internal/listing/submission`; `internal/listingkit` keeps refresh request DTO assembly.
+- refresh remote policy now lives in `internal/listing/submission`; `internal/listingkit` keeps SHEIN lookup-code/SPU-name enrichment.
+- action-record state policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN package/report DTO adaptation while generic action-slot selection and last-state synchronization moved out.
+- action-record query policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN record DTO views while success checks and completed-record lookup moved out.
+- action-record mutation policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN field assignment details while request-id-guarded slot mutation moved out.
+- remote-sync policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN remote field assignment while report-level remote status/check-time sync and guarded record mutation moved out.
+- attempt-record fallback policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN record construction details while matching-request reuse and in-flight timing/attempt fallback moved out.
+- in-flight state policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN report/record field mapping while begin/advance state updates for action, phase, lease, and attempt count moved out.
+- attempt finalize policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN record field assignment while final status/error/finished-at resolution moved out.
+- attempt record draft policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN record DTO assembly while minimal draft status/error/submitted-at shaping moved out.
+- event draft policy now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps SHEIN submission-event DTO assembly while generic attempt/phase event field shaping moved out.
+- generic submit lock manager ownership now lives in `internal/listing/submission`; service collaborator/config callsites now use the new package directly, while `internal/listingkit/submission` keeps only a compatibility alias.
+- generic source-facts, enqueue-retry, response-error, and in-flight TTL primitives now live in `internal/listing/submission`; direct service/readiness/requeue/remote-submit callsites use the new package directly, while `internal/listingkit/submission` remains for SHEIN-specific event/state adaptation.
+- generic requeue task-id normalization now lives in `internal/listing/submission`; `internal/listingkit` no longer keeps a duplicate trim/dedupe helper for requeue requests.
+- generic `SubmitInProgressError` ownership now lives in `internal/listing/submission`; direct API/service/Temporal callsites use the new package, while `internal/listingkit/submission` stays a compatibility shell for SHEIN-specific submission helpers.
+- SHEIN remote record classification rules now live in `internal/marketplace/shein/publishing`; `internal/listingkit` keeps remote lookup orchestration and submission-state mutation only.
+- SHEIN remote confirmation fallback/default-confirmed policy now lives in `internal/marketplace/shein/publishing`; `internal/listingkit` keeps refresh/recovery orchestration only.
+- SHEIN remote record selection rules now live in `internal/marketplace/shein/publishing`; `internal/listingkit` no longer decides preferred SPU match vs latest-create-time fallback after remote record queries.
+- SHEIN remote response parsing rules now live in `internal/marketplace/shein/publishing`; `internal/listingkit` no longer interprets on-way/record/inventory response DTO success semantics directly.
+- SHEIN submission response acceptance, remote lookup SPU resolution, and remote lookup-code collection now live in `internal/publishing/shein`; `internal/listingkit` no longer derives those identities from package state inline during refresh/recovery orchestration.
+- SHEIN submission workflow-status derivation plus latest-outcome/primary-record selection now live in `internal/publishing/shein`; root `internal/listingkit` submission projection keeps readiness fallback wiring and DTO assembly, but no longer interprets submission event/report precedence inline.
+- remaining SHEIN submission projection state merge for latest status/error and remote summary now also lives in `internal/publishing/shein`; root `internal/listingkit` no longer reads submission-state fallback branches or remote-record checked-at precedence inline when shaping task-list DTO fields.
+- SHEIN action-aware response acceptance now lives in `internal/publishing/shein`; `internal/listingkit/submission` no longer keeps a save-draft success compatibility helper for recovered submit routing.
+- `internal/listingkit/submission` event helpers no longer keep unused response-error or record-draft compatibility wrappers; direct response-error policy stays in `internal/listing/submission`, while the adapter package keeps only active SHEIN event DTO assembly.
+- SHEIN submission event history mutation now lives in `internal/publishing/shein`; root `internal/listingkit` no longer imports `internal/listingkit/submission` just to append events, and the adapter package no longer re-exports event-history append logic.
+- SHEIN refresh confirm-remote running-event assembly and event-backed confirm-remote application now live in `internal/publishing/shein`; `task_submission_refresh_mutation.go` no longer depends on `internal/listingkit/submission` for those model-layer mutations.
+- SHEIN confirm-remote update construction now also lives in `internal/publishing/shein`; `task_submission_recovery_remote.go` no longer depends on `internal/listingkit/submission`, and the old `submission/confirm_remote.go` compatibility shell has been removed.
+- sensitive-word retry phase-event assembly no longer routes through `internal/listingkit/submission`; `shein_submit_retry.go` now uses the generic phase-event draft policy directly because it only needs a custom retry detail message, not the full SHEIN event adapter surface.
+- SHEIN submission event DTO assembly now lives in `internal/publishing/shein`; direct lifecycle, lease, recovery-test, and Temporal persistence callsites no longer import `internal/listingkit/submission` just to build attempt/phase/confirm-remote events, while `internal/listingkit/submission` keeps transition composition helpers.
+- SHEIN lease-start event assembly no longer routes through `internal/listingkit/submission`; `task_submission_recovery_lease.go` now reuses the root `beginSheinSubmitAttempt(...)` transition helper plus `internal/publishing/shein` event DTO construction directly.
+- SHEIN submission report initialization, action-slot record selection, completed-record lookup, success checks, and in-flight clearing helpers now live in `internal/publishing/shein`; `internal/listingkit/submission` keeps transition assembly while pure model helpers move down to the compatibility/model layer.
+- SHEIN submission report/record mutation helpers now live in `internal/publishing/shein`; `internal/listingkit/submission` keeps transition orchestration while direct supplier-code, remote-response, submit-snapshot, and remote-record mutations no longer live in the adapter layer.
+- SHEIN active submission attempt and remote-recovery state checks now live in `internal/publishing/shein`; `internal/listingkit/submission` keeps transition assembly while stale-attempt and recoverability checks no longer live in the adapter layer.
+- `internal/listingkit/submission` no longer re-exports those pure SHEIN report/record query or mutation helpers; root `internal/listingkit` callsites now use `internal/publishing/shein` directly, leaving the adapter package focused on transition assembly, event shaping, and confirm-remote glue.
+- SHEIN transition-plus-event composition no longer leaks into recovery or state persistence services; those callsites now route through `shein_submit_state.go`, so direct production imports of `internal/listingkit/submission` are reduced to the single SHEIN state adapter entrypoint.
+- obsolete `internal/listingkit/submission/transitions.go` compatibility exports have been removed; failure-state resolution now happens at the `shein_submit_state.go` entrypoint, while `internal/listingkit/submission` itself stays focused on pure SHEIN transition state mutation.
+- SHEIN submission in-flight state projection, action-record slot matching, and attempt-record reuse helpers now live in `internal/publishing/shein`; `internal/listingkit/submission/state.go` keeps transition sequencing while no longer owning the repeated report/record slot plumbing.
+- SHEIN submission response-outcome mapping and attempt finalize field assignment now live in `internal/publishing/shein`; `internal/listingkit/submission/state.go` resolves generic finalize state, then delegates pure record mutation back to the model layer.
+- SHEIN running-attempt record construction and attempt-seed record assembly now also live in `internal/publishing/shein`; `internal/listingkit/submission/state.go` no longer instantiates `SubmissionRecord` inline during begin/reuse flows.
+- `internal/listingkit/submission/state.go` is now treated as a stop-line transition sequencer. Guard tests should fail if pure SHEIN record literals or local `ResponseOutcome` shaping reappear there.
+- obsolete generic compatibility files for source-facts readiness, enqueue retry, submit lock, and submit-in-progress error have been deleted from `internal/listingkit/submission`; the package surface now tracks its actual remaining SHEIN-only responsibility more closely.
+- empty historical subdirectories under `internal/listingkit/submission/` have also been removed; the package is now physically flat around `doc.go`, `state.go`, and boundary/state tests, matching its reduced ownership.
+- SHEIN remote submit error shaping now reuses `internal/publishing/shein.SubmissionResponseOutcome(...)`; root `internal/listingkit` no longer keeps duplicate response-outcome mappers in remote-attempt or sensitive-word retry paths.
+- SHEIN remote-response-persisted checks now live in `internal/publishing/shein`; recovery lease orchestration no longer keeps that report/record query inline in `internal/listingkit`.
+- SHEIN confirmed remote-check response shaping now lives in `internal/publishing/shein`; Temporal persistence no longer keeps the action-aware confirmed-response DTO helper in root `internal/listingkit`.
+- SHEIN submit started-at and response lookup queries now live in `internal/publishing/shein`; Temporal persistence no longer keeps those package/report read helpers inline in root `internal/listingkit`.
+- SHEIN refresh action/record/supplier-code selection now lives in `internal/publishing/shein`; root `internal/listingkit` no longer keeps that package/report projection inline before refresh orchestration.
+- SHEIN refresh action/request match queries now live in `internal/publishing/shein`; root `internal/listingkit` keeps only changed-state error translation during refresh mutation guards.
+- SHEIN submission-state availability/canonicalization query for refresh flows now lives in `internal/publishing/shein`; root `internal/listingkit` no longer duplicates `NormalizePackageSemanticFields + SubmissionState != nil` checks before refresh selection/mutation error translation.
+- SHEIN lease remote-recovery query now lives in `internal/publishing/shein`; root `internal/listingkit` no longer decides inline whether same-request non-remote phases, persisted remote responses, or stale submit-remote attempts require remote recovery before lease replay handling.
+- SHEIN preview-payload availability/canonicalization query now lives in `internal/publishing/shein`; recovery-lease and Temporal submit loaders no longer duplicate `NormalizePackageSemanticFields + PreviewPayload != nil` checks before translating missing-package errors in `internal/listingkit`.
+- SHEIN workflow-start failure record mutation now lives in `internal/publishing/shein`; recovery-lease cleanup no longer rewrites failed submission record fields inline in root `internal/listingkit`, and submission-state lease loading now reuses the shared shein submission-state availability query.
+- recovered SHEIN submission-state loading now reuses the shared shein submission-state availability query, and recovery-state response fallback now reuses `internal/publishing/shein.SubmissionResponseForAction(...)`; root `internal/listingkit` no longer opens report/record fallback branches inline for that recovery path.
+- recovered SHEIN submission-state projection now lives in `internal/publishing/shein`; root `internal/listingkit` no longer assembles report/record/request-id/response fallback tuples inline before recovery orchestration, and keeps only the orchestration-local timestamp wrapper.
+- Temporal remote-refresh state projection now lives in `internal/publishing/shein`; root `internal/listingkit` no longer assembles started-at, response fallback, and remote-status tuples inline across Temporal refresh entry and success-result shaping.
+- Temporal persistence input mutation now lives in `internal/publishing/shein`; root `internal/listingkit` no longer batches snapshot, supplier-code, and remote-response writes inline before Temporal success/failure persistence routing.
+- Temporal success/failure persistence support now routes attempt transition-plus-event assembly through `shein_submit_state.go`; fallback success and remote-refresh completion/failure paths no longer hand-compose duplicate complete/fail + event sequences inline in root `internal/listingkit`.
 
 Completed sourcing slices:
 

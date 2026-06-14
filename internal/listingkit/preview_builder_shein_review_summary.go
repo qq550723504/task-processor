@@ -1,17 +1,7 @@
 package listingkit
 
-import sheinpub "task-processor/internal/publishing/shein"
+import sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 
-func buildSheinPreviewReviewSummary(pkg *sheinpub.Package) (bool, []string) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil {
-		return false, nil
-	}
-	needsReview := len(pkg.ReviewNotes) > 0
-	summary := uniqueStrings(append([]string(nil), pkg.ReviewNotes...))
-	if pkg.Inspection != nil {
-		needsReview = needsReview || pkg.Inspection.NeedsReview
-		summary = uniqueStrings(append(summary, pkg.Inspection.Summary...))
-	}
-	return needsReview, summary
+func buildSheinPreviewReviewSummary(pkg *SheinPackage) (bool, []string) {
+	return sheinworkspace.BuildPreviewReviewSummary(pkg)
 }

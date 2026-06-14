@@ -11,9 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	listingsubmission "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/listingkit/submission"
 )
 
 type stubSubmitService struct {
@@ -82,7 +82,7 @@ func TestSubmitTaskConflictIncludesCurrentPhaseAndLease(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	leaseExpiresAt := time.Date(2026, 5, 7, 11, 0, 0, 0, time.UTC)
-	svc := &stubSubmitService{err: &submission.SubmitInProgressError{
+	svc := &stubSubmitService{err: &listingsubmission.SubmitInProgressError{
 		Platform:       "shein",
 		Action:         "publish",
 		Phase:          "submit_remote",

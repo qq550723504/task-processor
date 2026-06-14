@@ -3,6 +3,7 @@ package listingkit
 import (
 	"time"
 
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -42,17 +43,17 @@ func buildSheinStoreResolutionSummaryValue(
 	fallback bool,
 	resolvedAt string,
 ) *SheinStoreResolutionSummary {
-	return &SheinStoreResolutionSummary{
-		StoreID:          storeID,
-		Site:             site,
-		Strategy:         strategy,
-		Reason:           reason,
-		MatchedRuleKinds: append([]string(nil), matchedRuleKinds...),
-		MatchedProfileID: matchedProfileID,
-		ManualOverride:   manualOverride,
-		Fallback:         fallback,
-		ResolvedAt:       resolvedAt,
-	}
+	return sheinworkspace.BuildStoreResolutionSummary(
+		storeID,
+		site,
+		strategy,
+		reason,
+		matchedRuleKinds,
+		matchedProfileID,
+		manualOverride,
+		fallback,
+		resolvedAt,
+	)
 }
 
 func sheinSubmissionStoreResolutionFromSnapshotValue(snapshot *SheinStoreResolutionSnapshot) *sheinpub.SubmissionStoreResolution {

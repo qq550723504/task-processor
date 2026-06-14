@@ -100,30 +100,3 @@ func isSupportedSubmitAction(action string) bool {
 func unsupportedSubmitActionError(action string) error {
 	return fmt.Errorf("unsupported submit action: %s", action)
 }
-
-func sheinSubmitSupplierCode(product *sheinproduct.Product, pkg *SheinPackage) string {
-	if product != nil {
-		if value := strings.TrimSpace(product.SupplierCode); value != "" {
-			return value
-		}
-		for i := range product.SKCList {
-			if product.SKCList[i].SupplierCode == nil {
-				continue
-			}
-			if value := strings.TrimSpace(*product.SKCList[i].SupplierCode); value != "" {
-				return value
-			}
-		}
-	}
-	if pkg != nil {
-		for _, skc := range pkg.SkcList {
-			if value := strings.TrimSpace(skc.SupplierCode); value != "" {
-				return value
-			}
-		}
-	}
-	if product != nil && strings.TrimSpace(product.SPUName) != "" {
-		return strings.TrimSpace(product.SPUName)
-	}
-	return ""
-}

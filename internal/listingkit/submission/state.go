@@ -5,34 +5,19 @@ import (
 
 	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinproduct "task-processor/internal/shein/api/product"
 )
 
-const InFlightTTL = 15 * time.Minute
+const InFlightTTL = listingsubmission.InFlightTTL
 
 func BeginAttempt(pkg *sheinpub.Package, action, requestID, phase string, startedAt time.Time, ttl time.Duration) *sheinpub.SubmissionRecord {
 	if pkg == nil {
 		return nil
 	}
-	report := EnsureReport(pkg)
-	report.AttemptCount++
-	report.CurrentAction = action
-	report.CurrentPhase = phase
-	report.CurrentRequestID = requestID
-	report.InFlightStartedAt = &startedAt
-	leaseExpiresAt := startedAt.Add(ttl)
-	report.LeaseExpiresAt = &leaseExpiresAt
-
-	record := &sheinpub.SubmissionRecord{
-		Action:      action,
-		Status:      sheinpub.SubmissionStatusRunning,
-		SubmittedAt: startedAt,
-		RequestID:   requestID,
-		Phase:       phase,
-		StartedAt:   startedAt,
-		Attempt:     report.AttemptCount,
-	}
-	ApplyRecord(pkg, record)
+	report := sheinpub.EnsureSubmissionReport(pkg)
+	inFlight := listingsubmission.BeginInFlightState(sheinpub.SubmissionInFlightState(report), action, requestID, phase, startedAt, ttl)
+	sheinpub.ApplySubmissionInFlightState(report, inFlight)
+	record := sheinpub.BuildSubmissionRunningRecord(action, requestID, phase, startedAt, inFlight.AttemptCount)
+	sheinpub.ApplySubmissionRecord(pkg, record)
 	return record
 }
 
@@ -40,52 +25,25 @@ func AdvancePhase(pkg *sheinpub.Package, action, requestID, phase string, now ti
 	if pkg == nil {
 		return
 	}
-	report := EnsureReport(pkg)
-	report.CurrentAction = action
-	report.CurrentPhase = phase
-	report.CurrentRequestID = requestID
-	leaseExpiresAt := now.Add(ttl)
-	report.LeaseExpiresAt = &leaseExpiresAt
-	record := RecordForAction(report, action)
-	if record == nil || record.RequestID != requestID {
-		return
-	}
-	record.Phase = phase
+	report := sheinpub.EnsureSubmissionReport(pkg)
+	inFlight := listingsubmission.AdvanceInFlightState(sheinpub.SubmissionInFlightState(report), action, requestID, phase, now, ttl)
+	sheinpub.ApplySubmissionInFlightState(report, inFlight)
+	sheinpub.SetSubmissionRecordPhase(report, action, requestID, phase)
 }
 
 func CompleteAttempt(pkg *sheinpub.Package, action, requestID string, response *sheinpub.SubmissionResponse, submitErr error, finishedAt time.Time) *sheinpub.SubmissionRecord {
 	if pkg == nil {
 		return nil
 	}
-	report := EnsureReport(pkg)
-	record := RecordForAction(report, action)
-	if record == nil || record.RequestID != requestID {
-		startedAt := finishedAt
-		if report.InFlightStartedAt != nil {
-			startedAt = *report.InFlightStartedAt
-		}
-		record = &sheinpub.SubmissionRecord{
-			Action:      action,
-			SubmittedAt: startedAt,
-			RequestID:   requestID,
-			StartedAt:   startedAt,
-			Attempt:     report.AttemptCount,
-		}
-	}
-	record.Result = response
-	record.FinishedAt = &finishedAt
-	if submitErr != nil {
-		record.Status = sheinpub.SubmissionStatusFailed
-		record.Error = submitErr.Error()
-	} else if response != nil && (response.Success || SaveDraftSucceeded(action, response)) {
-		record.Status = sheinpub.SubmissionStatusSuccess
-		record.Error = ""
-	} else {
-		record.Status = "unknown"
-		record.Error = ""
-	}
-	ApplyRecord(pkg, record)
-	ClearInFlight(report, action, requestID)
+	report := sheinpub.EnsureSubmissionReport(pkg)
+	record := sheinpub.ResolveSubmissionAttemptRecord(report, action, requestID, listingsubmission.AttemptSeedState{
+		AttemptCount:      report.AttemptCount,
+		InFlightStartedAt: report.InFlightStartedAt,
+	}, finishedAt)
+	finalizeState := listingsubmission.ResolveAttemptFinalizeState(action, sheinpub.SubmissionResponseOutcome(response), submitErr, finishedAt)
+	sheinpub.ApplySubmissionAttemptFinalizeState(record, response, finalizeState)
+	sheinpub.ApplySubmissionRecord(pkg, record)
+	sheinpub.ClearSubmissionInFlight(report, action, requestID)
 	return record
 }
 
@@ -93,210 +51,14 @@ func FailAttempt(pkg *sheinpub.Package, action, requestID, phase string, submitE
 	if pkg == nil {
 		return nil
 	}
-	report := EnsureReport(pkg)
-	startedAt := finishedAt
-	if report.InFlightStartedAt != nil {
-		startedAt = *report.InFlightStartedAt
-	}
-	record := RecordForAction(report, action)
-	if record == nil || record.RequestID != requestID {
-		record = &sheinpub.SubmissionRecord{
-			Action:      action,
-			SubmittedAt: startedAt,
-			RequestID:   requestID,
-			StartedAt:   startedAt,
-			Attempt:     report.AttemptCount,
-		}
-	}
-	record.Status = sheinpub.SubmissionStatusFailed
-	record.Phase = phase
-	record.FinishedAt = &finishedAt
-	if submitErr != nil {
-		record.Error = submitErr.Error()
-	}
-	ApplyRecord(pkg, record)
-	ClearInFlight(report, action, requestID)
-	return record
-}
-
-func FindRecordByRequestID(pkg *sheinpub.Package, action, requestID string) *sheinpub.SubmissionRecord {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.SubmissionState == nil || requestID == "" {
-		return nil
-	}
-	record := RecordForAction(pkg.SubmissionState, action)
-	if record == nil || record.RequestID != requestID || record.FinishedAt == nil {
-		return nil
-	}
-	return record
-}
-
-func SubmissionSucceeded(pkg *sheinpub.Package, action string) bool {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.SubmissionState == nil {
-		return false
-	}
-	record := RecordForAction(pkg.SubmissionState, action)
-	return record != nil && record.Status == sheinpub.SubmissionStatusSuccess
-}
-
-func FindActiveAttempt(pkg *sheinpub.Package, action string, now time.Time, ttl time.Duration) *sheinpub.SubmissionReport {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.SubmissionState == nil {
-		return nil
-	}
-	report := pkg.SubmissionState
-	if !listingsubmission.IsActiveAttempt(listingsubmission.RecoveryLeaseState{
-		CurrentAction:     report.CurrentAction,
-		CurrentRequestID:  report.CurrentRequestID,
-		CurrentPhase:      report.CurrentPhase,
+	report := sheinpub.EnsureSubmissionReport(pkg)
+	record := sheinpub.ResolveSubmissionAttemptRecord(report, action, requestID, listingsubmission.AttemptSeedState{
+		AttemptCount:      report.AttemptCount,
 		InFlightStartedAt: report.InFlightStartedAt,
-		LeaseExpiresAt:    report.LeaseExpiresAt,
-	}, action, now, ttl) {
-		return nil
-	}
-	return report
-}
-
-func NeedsRemoteRecovery(report *sheinpub.SubmissionReport, action string, now time.Time, ttl time.Duration) bool {
-	if report == nil {
-		return false
-	}
-	return listingsubmission.NeedsRemoteRecovery(listingsubmission.RecoveryLeaseState{
-		CurrentAction:     report.CurrentAction,
-		CurrentRequestID:  report.CurrentRequestID,
-		CurrentPhase:      report.CurrentPhase,
-		InFlightStartedAt: report.InFlightStartedAt,
-		LeaseExpiresAt:    report.LeaseExpiresAt,
-	}, action, now, ttl, sheinRemoteRecoveryPhases)
-}
-
-var sheinRemoteRecoveryPhases = map[string]struct{}{
-	sheinpub.SubmissionPhaseSubmitRemote:  {},
-	sheinpub.SubmissionPhasePersistResult: {},
-	sheinpub.SubmissionPhaseConfirmRemote: {},
-}
-
-func EnsureReport(pkg *sheinpub.Package) *sheinpub.SubmissionReport {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg.SubmissionState == nil {
-		pkg.SubmissionState = &sheinpub.SubmissionReport{}
-	}
-	return pkg.SubmissionState
-}
-
-func ApplyRecord(pkg *sheinpub.Package, record *sheinpub.SubmissionRecord) {
-	if pkg == nil || record == nil {
-		return
-	}
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg.SubmissionState == nil {
-		pkg.SubmissionState = &sheinpub.SubmissionReport{}
-	}
-	pkg.SubmissionState.LastAction = record.Action
-	pkg.SubmissionState.LastStatus = record.Status
-	pkg.SubmissionState.LastError = record.Error
-	pkg.SubmissionState.SubmittedAt = &record.SubmittedAt
-	pkg.SubmissionState.LastResult = record.Result
-	switch record.Action {
-	case "save_draft":
-		pkg.SubmissionState.SaveDraft = record
-	case "publish":
-		pkg.SubmissionState.Publish = record
-	}
-}
-
-func RecordForAction(report *sheinpub.SubmissionReport, action string) *sheinpub.SubmissionRecord {
-	if report == nil {
-		return nil
-	}
-	switch action {
-	case "save_draft":
-		return report.SaveDraft
-	case "publish":
-		return report.Publish
-	default:
-		return nil
-	}
-}
-
-func ClearInFlight(report *sheinpub.SubmissionReport, action, requestID string) {
-	if report == nil {
-		return
-	}
-	if !listingsubmission.ShouldClearInFlight(report.CurrentAction, report.CurrentRequestID, action, requestID) {
-		return
-	}
-	report.CurrentAction = ""
-	report.CurrentPhase = ""
-	report.CurrentRequestID = ""
-	report.InFlightStartedAt = nil
-	report.LeaseExpiresAt = nil
-}
-
-func SetSupplierCode(pkg *sheinpub.Package, action, requestID, supplierCode string) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.SubmissionState == nil || supplierCode == "" {
-		return
-	}
-	record := RecordForAction(pkg.SubmissionState, action)
-	if record == nil || record.RequestID != requestID {
-		return
-	}
-	record.SupplierCode = supplierCode
-}
-
-func SetRemoteResponse(pkg *sheinpub.Package, action, requestID, supplierCode string, response *sheinpub.SubmissionResponse) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.SubmissionState == nil {
-		return
-	}
-	record := RecordForAction(pkg.SubmissionState, action)
-	if record == nil || record.RequestID != requestID {
-		return
-	}
-	if supplierCode != "" {
-		record.SupplierCode = supplierCode
-	}
-	record.Result = response
-	pkg.SubmissionState.LastResult = response
-}
-
-func SetSubmitSnapshot(pkg *sheinpub.Package, action, requestID string, snapshot *sheinpub.SubmitSnapshot) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.SubmissionState == nil || snapshot == nil {
-		return
-	}
-	record := RecordForAction(pkg.SubmissionState, action)
-	if record == nil || record.RequestID != requestID {
-		return
-	}
-	record.SubmitSnapshot = snapshot
-}
-
-func SetRemoteRecord(pkg *sheinpub.Package, action, requestID, remoteStatus string, item *sheinproduct.RecordItem, checkedAt time.Time, message string) {
-	if pkg == nil {
-		return
-	}
-	report := EnsureReport(pkg)
-	report.RemoteStatus = remoteStatus
-	report.RemoteCheckedAt = &checkedAt
-	record := RecordForAction(report, action)
-	if record == nil || record.RequestID != requestID {
-		return
-	}
-	record.RemoteCheckedAt = &checkedAt
-	record.RemoteMessage = message
-	if item != nil {
-		record.RemoteRecordID = item.RecordID
-		record.RemoteState = item.State
-		record.RemoteAuditState = item.AuditState
-		if record.SupplierCode == "" {
-			record.SupplierCode = item.SupplierCode
-		}
-	}
-}
-
-func SaveDraftSucceeded(action string, result *sheinpub.SubmissionResponse) bool {
-	return listingsubmission.SaveDraftSucceeded(action, responseOutcome(result))
+	}, finishedAt)
+	finalizeState := listingsubmission.ResolveAttemptFailureFinalizeState(phase, submitErr, finishedAt)
+	sheinpub.ApplySubmissionAttemptFailureState(record, phase, finalizeState)
+	sheinpub.ApplySubmissionRecord(pkg, record)
+	sheinpub.ClearSubmissionInFlight(report, action, requestID)
+	return record
 }

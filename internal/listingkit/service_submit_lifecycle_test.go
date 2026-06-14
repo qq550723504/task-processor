@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -517,7 +516,7 @@ func TestCollectSheinRemoteLookupCodesIncludesNormalizedSupplierSKUs(t *testing.
 		},
 	}
 
-	codes := collectSheinRemoteLookupCodes(pkg, "MG8089003001")
+	codes := sheinpub.CollectRemoteLookupCodes(pkg, "MG8089003001")
 
 	expected := []string{
 		"MG8089003001",
@@ -892,8 +891,7 @@ func TestResolveSheinSubmitRemoteStatusConfirmsPublishViaBatchCheckOnWay(t *test
 	t.Parallel()
 
 	var recordCalls int32
-	svc := &service{}
-	confirmation, err := svc.resolveSheinSubmitRemoteStatus(
+	confirmation, err := resolveSheinSubmitRemoteStatus(
 		nil,
 		stubSheinOtherAPI{
 			batchCheckOnWayResp: &sheinother.BatchCheckOnWayResponse{
@@ -1302,7 +1300,7 @@ func TestSubmitTaskTemporalReplayReturnsCurrentPreviewWithoutRestartingWorkflow(
 		Success: true,
 		SPUName: "SPU-123",
 	}, nil, now)
-	appendSheinSubmissionEvent(task.Result.Shein, submission.BuildEvent(task.ID, "publish", record, record.Result, nil, record.StartedAt))
+	appendSheinSubmissionEvent(task.Result.Shein, sheinpub.BuildSubmissionAttemptEvent(task.ID, "publish", record, record.Result, nil, record.StartedAt))
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}

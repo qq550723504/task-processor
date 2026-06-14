@@ -11,9 +11,9 @@ import (
 	"go.temporal.io/api/serviceerror"
 	sdkclient "go.temporal.io/sdk/client"
 
+	listingsubmission "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/listingkit/submission"
 )
 
 func TestClientStartSheinPublishUsesStableWorkflowID(t *testing.T) {
@@ -194,7 +194,7 @@ func TestClientMapsAlreadyStartedToDetailedSubmitInProgressWhenStateQuerySucceed
 		Action: "publish",
 	})
 
-	var inProgress *submission.SubmitInProgressError
+	var inProgress *listingsubmission.SubmitInProgressError
 	if !errors.As(err, &inProgress) {
 		t.Fatalf("start err = %v, want SubmitInProgressError", err)
 	}

@@ -128,7 +128,7 @@ func TestTaskSubmissionStateServiceFinishSheinDirectSubmitAttemptReturnsSubmitEr
 		Success: true,
 		SPUName: "SPU-456",
 	}
-	setSheinSubmitRemoteResponse(task.Result.Shein, "publish", "req-finish", "SUP-2", response)
+	sheinpub.SetSubmissionRemoteResponse(task.Result.Shein, "publish", "req-finish", "SUP-2", response)
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}

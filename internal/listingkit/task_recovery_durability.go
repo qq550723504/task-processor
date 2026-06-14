@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/listingkit/submission"
+	listingsubmission "task-processor/internal/listing/submission"
 )
 
 func (s *taskRecoveryService) restoreRecoveryDurability(ctx context.Context, taskID string, previousBlock *RetryableBlock, errorMsg string, submitErr error, persistErr error) error {
@@ -83,7 +83,7 @@ func (s *taskRecoveryService) buildReblockedTask(previous *RetryableBlock, class
 }
 
 func boundedRecoveryRetryDelay(attempt int) time.Duration {
-	return submission.BoundedEnqueueRetryDelay(attempt)
+	return listingsubmission.BoundedEnqueueRetryDelay(attempt)
 }
 
 func cloneTimePointer(value time.Time) *time.Time {

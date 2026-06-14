@@ -105,6 +105,39 @@ func TestSheinSubmitReadinessProjectionBoundary(t *testing.T) {
 		})
 	})
 
+	t.Run("task_state_queue_helpers_delegate_workspace_queue_rules", func(t *testing.T) {
+		t.Parallel()
+
+		workQueueSource := readNamedFunctionSource(t, "task_list_item_support.go", "deriveSheinWorkQueue")
+		workQueueCalls := readNamedFunctionCallNames(t, "task_list_item_support.go", "deriveSheinWorkQueue")
+		actionQueueSource := readNamedFunctionSource(t, "task_list_item_support.go", "deriveSheinActionQueue")
+		actionQueueCalls := readNamedFunctionCallNames(t, "task_list_item_support.go", "deriveSheinActionQueue")
+
+		assertSourceContainsAll(t, workQueueSource, []string{
+			"return sheinworkspace.BuildTaskWorkQueue(string(task.Status), workflowStatus, overview)",
+		})
+		assertSourceExcludesAll(t, workQueueSource, []string{
+			"switch task.Status",
+			"switch workflowStatus",
+			"case \"blocked\":",
+		})
+		assertFunctionCallsContainAll(t, workQueueCalls, []string{
+			"BuildTaskWorkQueue",
+		})
+
+		assertSourceContainsAll(t, actionQueueSource, []string{
+			"return sheinworkspace.BuildTaskActionQueue(string(task.Status), workflowStatus, overview, blockingKeys, warningKeys)",
+		})
+		assertSourceExcludesAll(t, actionQueueSource, []string{
+			"sheinActionQueueForKey",
+			"switch task.Status",
+			"switch workflowStatus",
+		})
+		assertFunctionCallsContainAll(t, actionQueueCalls, []string{
+			"BuildTaskActionQueue",
+		})
+	})
+
 	t.Run("shared_projection_seam_owns_readiness_checklist_and_status_projection_contract", func(t *testing.T) {
 		t.Parallel()
 

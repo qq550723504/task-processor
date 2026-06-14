@@ -1,6 +1,10 @@
 package listingkit
 
-import "strings"
+import (
+	"strings"
+
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+)
 
 const (
 	sheinCookieUnavailableIssueCode = "shein_cookie_unavailable"
@@ -58,18 +62,10 @@ func addSheinReviewWorkflowIssues(result *ListingKitResult) {
 }
 
 func sheinInspectionReviewReasons(result *ListingKitResult) []string {
-	if result == nil || result.Shein == nil || result.Shein.Inspection == nil || !result.Shein.Inspection.NeedsReview {
+	if result == nil {
 		return nil
 	}
-
-	reasons := normalizeReviewReasons(result.Shein.Inspection.Summary)
-	if len(reasons) == 0 {
-		reasons = normalizeReviewReasons(result.Shein.ReviewNotes)
-	}
-	if len(reasons) == 0 {
-		reasons = []string{"SHEIN 信息需要人工复核"}
-	}
-	return reasons
+	return sheinworkspace.InspectionReviewReasons(result.Shein)
 }
 
 func sheinReviewIssueReasons(result *ListingKitResult) []string {
@@ -78,7 +74,7 @@ func sheinReviewIssueReasons(result *ListingKitResult) []string {
 
 	filtered := make([]string, 0)
 	for _, reason := range sheinInspectionReviewReasons(result) {
-		if isSheinCookieUnavailableText(reason) {
+		if sheinworkspace.IsCookieUnavailableText(reason) {
 			continue
 		}
 		if coverageBlocked && coverageWarning != "" && strings.TrimSpace(reason) == coverageWarning {
@@ -93,73 +89,21 @@ func sheinReviewIssueReasons(result *ListingKitResult) []string {
 }
 
 func sheinCookieUnavailableReviewNotes(pkg *SheinPackage) []string {
-	if pkg == nil {
-		return nil
-	}
-	notes := make([]string, 0, 4)
-	notes = append(notes, pkg.ReviewNotes...)
-	if pkg.CategoryResolution != nil {
-		notes = append(notes, pkg.CategoryResolution.ReviewNotes...)
-	}
-	if pkg.AttributeResolution != nil {
-		notes = append(notes, pkg.AttributeResolution.ReviewNotes...)
-	}
-	if pkg.SaleAttributeResolution != nil {
-		notes = append(notes, pkg.SaleAttributeResolution.ReviewNotes...)
-	}
-	filtered := make([]string, 0, len(notes))
-	for _, note := range normalizeReviewReasons(notes) {
-		if isSheinCookieUnavailableText(note) {
-			filtered = append(filtered, note)
-		}
-	}
-	return filtered
+	return sheinworkspace.CookieUnavailableReviewNotes(pkg)
 }
 
 func stripSheinCookieUnavailableReviewNotes(pkg *SheinPackage) {
-	if pkg == nil {
-		return
-	}
-	pkg.ReviewNotes = filterOutSheinCookieUnavailableReviewNotes(pkg.ReviewNotes)
-	if pkg.CategoryResolution != nil {
-		pkg.CategoryResolution.ReviewNotes = filterOutSheinCookieUnavailableReviewNotes(pkg.CategoryResolution.ReviewNotes)
-	}
-	if pkg.AttributeResolution != nil {
-		pkg.AttributeResolution.ReviewNotes = filterOutSheinCookieUnavailableReviewNotes(pkg.AttributeResolution.ReviewNotes)
-	}
-	if pkg.SaleAttributeResolution != nil {
-		pkg.SaleAttributeResolution.ReviewNotes = filterOutSheinCookieUnavailableReviewNotes(pkg.SaleAttributeResolution.ReviewNotes)
-	}
+	sheinworkspace.StripCookieUnavailableReviewNotes(pkg)
 }
 
 func filterOutSheinCookieUnavailableReviewNotes(notes []string) []string {
-	if len(notes) == 0 {
-		return nil
-	}
-	filtered := make([]string, 0, len(notes))
-	for _, note := range notes {
-		if isSheinCookieUnavailableText(note) {
-			continue
-		}
-		filtered = append(filtered, note)
-	}
-	if len(filtered) == 0 {
-		return nil
-	}
-	return filtered
+	return sheinworkspace.FilterOutCookieUnavailableReviewNotes(notes)
 }
 
 func sheinCookieUnavailable(pkg *SheinPackage) bool {
-	return len(sheinCookieUnavailableReviewNotes(pkg)) > 0
+	return sheinworkspace.HasCookieUnavailableReviewNotes(pkg)
 }
 
 func isSheinCookieUnavailableText(value string) bool {
-	text := strings.ToLower(strings.TrimSpace(value))
-	if text == "" {
-		return false
-	}
-	return strings.Contains(text, "cookie 不可用") ||
-		strings.Contains(text, "cookies are unavailable") ||
-		strings.Contains(text, "store cookies are unavailable") ||
-		strings.Contains(text, "店铺 cookie")
+	return sheinworkspace.IsCookieUnavailableText(value)
 }

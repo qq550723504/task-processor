@@ -27,11 +27,11 @@ func TestSheinSubmitReadinessGateBoundary(t *testing.T) {
 	t.Run("temporal_submit_flow_delegates_readiness_gating_to_shared_seam", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "task_temporal_submission_adapter.go", "ValidateSheinPublishReadiness")
-		callNames := readNamedFunctionCallNames(t, "task_temporal_submission_adapter.go", "ValidateSheinPublishReadiness")
+		source := readNamedFunctionSource(t, "task_temporal_submission_lifecycle_service.go", "ValidateSheinPublishReadiness")
+		callNames := readNamedFunctionCallNames(t, "task_temporal_submission_lifecycle_service.go", "ValidateSheinPublishReadiness")
 
 		assertSourceContainsAll(t, source, []string{
-			"if err := validateSheinSubmitReadinessGates(ctx, task, pkg, in.Action, readiness, s.validateSheinPublishFreshness); err != nil {",
+			"return validateSheinSubmitReadinessGates(ctx, task, pkg, in.Action, readiness, s.validateSheinPublishFreshness)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"firstSubmitReadinessMessage(readiness)",

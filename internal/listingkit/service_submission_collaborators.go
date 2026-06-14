@@ -1,6 +1,6 @@
 package listingkit
 
-import "task-processor/internal/listingkit/submission"
+import listingsubmission "task-processor/internal/listing/submission"
 
 type submissionCollaborators struct {
 	// Task-level retry/recovery collaborators.
@@ -17,9 +17,12 @@ type submissionCollaborators struct {
 	taskSubmission         *taskSubmissionService
 	taskSubmissionRefresh  *taskSubmissionRefreshService
 
-	// Workflow-facing adapter.
-	taskTemporalSubmissionAdapter *taskTemporalSubmissionAdapter
+	// Workflow-facing collaborators.
+	taskTemporalSubmissionLifecycle   *taskTemporalSubmissionLifecycleService
+	taskTemporalSubmissionFlow        *taskTemporalSubmissionFlowService
+	taskTemporalSubmissionPersistence *taskTemporalSubmissionPersistenceService
+	taskTemporalSubmissionRefresh     *taskTemporalSubmissionRefreshService
 
 	// Shared submit coordination primitives.
-	sheinSubmitLocks *submission.SubmitLockManager
+	sheinSubmitLocks *listingsubmission.SubmitLockManager
 }

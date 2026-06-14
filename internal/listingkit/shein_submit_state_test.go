@@ -113,6 +113,26 @@ func TestFailSheinSubmitAttemptRecordsFailedPhaseAndError(t *testing.T) {
 	}
 }
 
+func TestFailSheinSubmitAttemptWithResponseAndBuildEventPreservesResponse(t *testing.T) {
+	startedAt := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
+	finishedAt := startedAt.Add(time.Second)
+	pkg := &SheinPackage{}
+	beginSheinSubmitAttempt(pkg, "publish", "idem-1", sheinpub.SubmissionPhaseConfirmRemote, startedAt)
+	response := &sheinpub.SubmissionResponse{Success: true, Message: "remote payload"}
+
+	record, event := failSheinSubmitAttemptWithResponseAndBuildEvent(pkg, "task-1", "publish", "idem-1", sheinpub.SubmissionPhaseConfirmRemote, response, errTestSubmitState, finishedAt)
+
+	if record == nil {
+		t.Fatal("expected failed record")
+	}
+	if event.Response != response {
+		t.Fatalf("event response = %+v, want original response", event.Response)
+	}
+	if event.Status != sheinpub.SubmissionStatusFailed || event.Phase != sheinpub.SubmissionPhaseConfirmRemote {
+		t.Fatalf("event = %+v, want failed confirm_remote event", event)
+	}
+}
+
 func TestFindSheinSubmissionRecordByRequestIDReturnsCompletedRecord(t *testing.T) {
 	startedAt := time.Date(2026, 5, 7, 10, 0, 0, 0, time.UTC)
 	finishedAt := startedAt.Add(time.Second)

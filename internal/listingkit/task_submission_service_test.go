@@ -17,13 +17,15 @@ func TestTaskSubmissionServiceSubmitTaskRoutesSheinPublishToWorkflow(t *testing.
 	t.Parallel()
 
 	task := makeReadySheinTask()
+	repo := &stubSubmitRepo{}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
 	var workflowCalls int
 	var directCalls int
 	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
 		lockSubmit: func(string) func() { return func() {} },
-		acquireSheinSubmitTask: func(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
-			return task, nil, nil
-		},
+		recovery:   newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{repo: repo}),
 		shouldStartSheinPublishWorkflow: func(platform, action string) bool {
 			return platform == "shein" && action == "publish"
 		},
@@ -60,7 +62,10 @@ func TestTaskSubmissionServiceSubmitTaskUsesResolvedDefaultActionWhenRequestActi
 	t.Parallel()
 
 	task := makeReadySheinTask()
-	var acquiredAction string
+	repo := &stubSubmitRepo{}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
 	var directAction string
 	submitter := newTaskSubmissionService(taskSubmissionServiceConfig{
 		lockSubmit: func(string) func() { return func() {} },
@@ -70,10 +75,7 @@ func TestTaskSubmissionServiceSubmitTaskUsesResolvedDefaultActionWhenRequestActi
 			}
 			return "save_draft", nil
 		},
-		acquireSheinSubmitTask: func(_ context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
-			acquiredAction = action
-			return task, nil, nil
-		},
+		recovery: newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{repo: repo}),
 		shouldStartSheinPublishWorkflow: func(platform, action string) bool {
 			return false
 		},
@@ -92,11 +94,18 @@ func TestTaskSubmissionServiceSubmitTaskUsesResolvedDefaultActionWhenRequestActi
 	if preview == nil || preview.TaskID != task.ID {
 		t.Fatalf("preview = %+v, want preview for task", preview)
 	}
-	if acquiredAction != "save_draft" {
-		t.Fatalf("acquired action = %q, want save_draft", acquiredAction)
-	}
 	if directAction != "save_draft" {
 		t.Fatalf("direct action = %q, want save_draft", directAction)
+	}
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if saved.Result == nil || saved.Result.Shein == nil || saved.Result.Shein.Submission == nil {
+		t.Fatalf("submission = %+v, want saved draft state", saved.Result)
+	}
+	if saved.Result.Shein.Submission.CurrentAction != "save_draft" {
+		t.Fatalf("current action = %q, want save_draft", saved.Result.Shein.Submission.CurrentAction)
 	}
 }
 
@@ -518,6 +527,7 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshReturnsRemoteErrorAfterPers
 	var previewCalls int
 	remoteErr := errors.New("remote refresh failed")
 	task := makeReadySheinTask()
+	repo := &stubSubmitRepo{}
 	now := time.Now().Add(-time.Hour)
 	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
 		LastAction: "publish",
@@ -528,20 +538,11 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshReturnsRemoteErrorAfterPers
 			StartedAt:    now,
 		},
 	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
 	submitter := newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{
-		mutateTaskResult: func(_ context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
-			mutateCalls++
-			if taskID != task.ID {
-				t.Fatalf("taskID = %q, want %q", taskID, task.ID)
-			}
-			if mutate == nil {
-				t.Fatal("expected mutation callback")
-			}
-			if err := mutate(task); err != nil {
-				t.Fatalf("mutate(task) error = %v", err)
-			}
-			return task, nil
-		},
+		recovery: newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{repo: repo}),
 		buildTaskPreview: func(context.Context, *Task, string) (*ListingKitPreview, error) {
 			previewCalls++
 			return &ListingKitPreview{TaskID: task.ID}, nil
@@ -559,6 +560,7 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshReturnsRemoteErrorAfterPers
 	if preview != nil {
 		t.Fatalf("preview = %+v, want nil", preview)
 	}
+	mutateCalls = repo.mutateCalls
 	if mutateCalls != 1 {
 		t.Fatalf("mutate calls = %d, want 1", mutateCalls)
 	}
@@ -573,6 +575,7 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshBuildsPreviewOnSuccess(t *t
 	var mutateCalls int
 	var previewCalls int
 	task := makeReadySheinTask()
+	repo := &stubSubmitRepo{}
 	now := time.Now().Add(-time.Hour)
 	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
 		LastAction: "publish",
@@ -583,22 +586,16 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshBuildsPreviewOnSuccess(t *t
 			StartedAt:    now,
 		},
 	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
 	expectedPreview := &ListingKitPreview{TaskID: task.ID}
 	submitter := newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{
-		mutateTaskResult: func(_ context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
-			mutateCalls++
-			if taskID != task.ID {
-				t.Fatalf("taskID = %q, want %q", taskID, task.ID)
-			}
-			if err := mutate(task); err != nil {
-				t.Fatalf("mutate(task) error = %v", err)
-			}
-			return task, nil
-		},
+		recovery: newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{repo: repo}),
 		buildTaskPreview: func(_ context.Context, previewTask *Task, platform string) (*ListingKitPreview, error) {
 			previewCalls++
-			if previewTask != task {
-				t.Fatalf("preview task = %+v, want original task", previewTask)
+			if previewTask == nil || previewTask.ID != task.ID {
+				t.Fatalf("preview task = %+v, want task %q", previewTask, task.ID)
 			}
 			if platform != "shein" {
 				t.Fatalf("platform = %q, want shein", platform)
@@ -618,6 +615,7 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshBuildsPreviewOnSuccess(t *t
 	if preview != expectedPreview {
 		t.Fatalf("preview = %+v, want %+v", preview, expectedPreview)
 	}
+	mutateCalls = repo.mutateCalls
 	if mutateCalls != 1 {
 		t.Fatalf("mutate calls = %d, want 1", mutateCalls)
 	}

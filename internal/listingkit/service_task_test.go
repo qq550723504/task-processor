@@ -47,7 +47,7 @@ func TestBuildTaskListItemIncludesSheinRemoteSubmissionSummary(t *testing.T) {
 func TestDeriveSheinWorkflowStatusPrefersLatestSubmissionEvent(t *testing.T) {
 	t.Parallel()
 
-	status := deriveSheinWorkflowStatus(&SheinPackage{
+	status := sheinpub.SubmissionWorkflowStatus(&SheinPackage{
 		SubmissionEvents: []sheinpub.SubmissionEvent{{
 			Action: "save_draft",
 			Status: "success",
@@ -55,7 +55,7 @@ func TestDeriveSheinWorkflowStatusPrefersLatestSubmissionEvent(t *testing.T) {
 		Submission: &sheinpub.SubmissionReport{
 			Publish: &sheinpub.SubmissionRecord{Status: "success"},
 		},
-	})
+	}, false)
 	if status != SheinWorkflowStatusDraftSaved {
 		t.Fatalf("workflow status = %q, want %q", status, SheinWorkflowStatusDraftSaved)
 	}
@@ -64,7 +64,7 @@ func TestDeriveSheinWorkflowStatusPrefersLatestSubmissionEvent(t *testing.T) {
 func TestDeriveSheinWorkflowStatusIgnoresLatestSubmitPhaseEvent(t *testing.T) {
 	t.Parallel()
 
-	status := deriveSheinWorkflowStatus(&SheinPackage{
+	status := sheinpub.SubmissionWorkflowStatus(&SheinPackage{
 		SubmissionEvents: []sheinpub.SubmissionEvent{
 			{Action: "submit_phase", Phase: sheinpub.SubmissionPhaseConfirmRemote, Status: sheinpub.SubmissionRemoteStatusPending},
 			{Action: "publish", Status: sheinpub.SubmissionStatusSuccess},
@@ -72,7 +72,7 @@ func TestDeriveSheinWorkflowStatusIgnoresLatestSubmitPhaseEvent(t *testing.T) {
 		Submission: &sheinpub.SubmissionReport{
 			Publish: &sheinpub.SubmissionRecord{Status: sheinpub.SubmissionStatusSuccess},
 		},
-	})
+	}, false)
 	if status != SheinWorkflowStatusPublished {
 		t.Fatalf("workflow status = %q, want %q", status, SheinWorkflowStatusPublished)
 	}

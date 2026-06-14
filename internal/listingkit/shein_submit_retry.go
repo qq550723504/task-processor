@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	listingsubmission "task-processor/internal/listingkit/submission"
+	submissiondomain "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -17,10 +17,33 @@ func (s *service) retrySheinSensitiveWordSubmit(ctx context.Context, taskID stri
 		return response, responseErr, false
 	}
 
-	appendSheinSubmissionEvent(pkg, listingsubmission.BuildPhaseEvent(taskID, action, sheinpub.SubmissionPhaseSubmitRemote, sheinpub.SubmissionStatusRunning, requestID, time.Now(), "检测到敏感词，已自动清理并重试提交", nil))
+	appendSheinSubmissionEvent(pkg, buildSheinSensitiveWordRetryEvent(taskID, action, requestID, time.Now()))
 	retryResponse, retryErr := s.taskSubmissionExecutionOrDefault().executeSheinSubmitRemote(productAPI, action, submitProduct)
 	if retryErr == nil {
-		retryErr = listingsubmission.BuildResponseError(action, retryResponse)
+		retryErr = submissiondomain.BuildResponseError("SHEIN", action, sheinpub.SubmissionResponseOutcome(retryResponse))
 	}
 	return retryResponse, retryErr, true
+}
+
+func buildSheinSensitiveWordRetryEvent(taskID, action, requestID string, startedAt time.Time) sheinpub.SubmissionEvent {
+	finishedAt := time.Now()
+	draft := submissiondomain.BuildPhaseEventDraft(
+		sheinpub.SubmissionStatusRunning,
+		"检测到敏感词，已自动清理并重试提交",
+		"",
+		nil,
+		finishedAt,
+	)
+	return sheinpub.SubmissionEvent{
+		TaskID:       taskID,
+		Platform:     "shein",
+		Action:       "submit_phase",
+		Phase:        sheinpub.SubmissionPhaseSubmitRemote,
+		Status:       draft.Status,
+		RequestID:    requestID,
+		StartedAt:    startedAt,
+		FinishedAt:   &draft.FinishedAt,
+		Detail:       draft.Detail,
+		ErrorMessage: draft.ErrorMessage,
+	}
 }

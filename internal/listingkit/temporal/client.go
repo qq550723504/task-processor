@@ -10,9 +10,9 @@ import (
 	sdkconverter "go.temporal.io/sdk/converter"
 	sdktemporal "go.temporal.io/sdk/temporal"
 
+	listingsubmission "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/listingkit/submission"
 )
 
 type encodedValue = sdkconverter.EncodedValue
@@ -93,12 +93,7 @@ func (c *Client) StartSheinPublish(ctx context.Context, in listingkit.SheinPubli
 		if sdktemporal.IsWorkflowExecutionAlreadyStartedError(err) {
 			state, queryErr := c.QuerySheinPublishState(ctx, in.TaskID)
 			if queryErr == nil && state != nil {
-				return &submission.SubmitInProgressError{
-					Platform:  in.Platform,
-					Action:    in.Action,
-					Phase:     strings.TrimSpace(state.CurrentPhase),
-					RequestID: strings.TrimSpace(state.RequestID),
-				}
+				return listingsubmission.NewSubmitInProgressError(in.Platform, in.Action, state.CurrentPhase, state.RequestID, nil)
 			}
 			return fmt.Errorf("%w: shein publish workflow already started", core.ErrSubmitInProgress)
 		}

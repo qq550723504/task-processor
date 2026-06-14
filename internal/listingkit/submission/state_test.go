@@ -73,10 +73,10 @@ func TestFindActiveAttemptHonorsLeaseExpiry(t *testing.T) {
 	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
 	BeginAttempt(pkg, "publish", "idem-1", sheinpub.SubmissionPhaseSubmitRemote, now.Add(-InFlightTTL-time.Minute), InFlightTTL)
 
-	if active := FindActiveAttempt(pkg, "publish", now, InFlightTTL); active != nil {
+	if active := sheinpub.FindActiveSubmissionAttempt(pkg, "publish", now, InFlightTTL); active != nil {
 		t.Fatalf("active = %+v, want nil after lease expiry", active)
 	}
-	if !NeedsRemoteRecovery(pkg.Submission, "publish", now, InFlightTTL) {
+	if !sheinpub.SubmissionNeedsRemoteRecovery(pkg.Submission, "publish", now, InFlightTTL) {
 		t.Fatal("expected remote recovery after lease expiry")
 	}
 }

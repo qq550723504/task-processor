@@ -3,7 +3,7 @@ package listingkit
 import (
 	"errors"
 
-	"task-processor/internal/listingkit/submission"
+	submission "task-processor/internal/listing/submission"
 )
 
 const sheinSubmitInFlightTTL = submission.InFlightTTL

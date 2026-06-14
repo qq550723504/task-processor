@@ -1,3 +1,3 @@
-// Package submission is the target home for marketplace submission readiness,
-// submit state transitions, submission events, and status refresh behavior.
+// Package submission keeps the remaining SHEIN-specific submit transition
+// sequencing that still needs ListingKit adapter ownership.
 package submission

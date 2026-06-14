@@ -3,7 +3,7 @@ package listingkit
 import (
 	"context"
 
-	"task-processor/internal/listingkit/submission"
+	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -29,7 +29,7 @@ func executeSheinSubmitRemoteAttempt(
 ) sheinSubmitRemoteAttemptResult {
 	response, responseErr := executeRemote(productAPI, action, submitProduct)
 	if responseErr == nil {
-		responseErr = submission.BuildResponseError(action, response)
+		responseErr = listingsubmission.BuildResponseError("SHEIN", action, sheinpub.SubmissionResponseOutcome(response))
 	}
 
 	snapshot := sheinpub.BuildSubmitSnapshot(submitProduct)
@@ -38,7 +38,7 @@ func executeSheinSubmitRemoteAttempt(
 			response = retryResponse
 			responseErr = retryErr
 			snapshot = sheinpub.BuildSubmitSnapshot(submitProduct)
-			setSheinSubmitSnapshot(pkg, action, requestID, snapshot)
+			sheinpub.SetSubmissionSnapshot(pkg, action, requestID, snapshot)
 		}
 	}
 

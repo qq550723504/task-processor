@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -133,16 +132,16 @@ func (s *taskSubmissionRecoveryService) handleSheinWorkflowStartFailure(ctx cont
 }
 
 func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {
-	pkg, report, err := loadRecoveredSheinSubmissionReport(task)
+	pkg, _, err := loadRecoveredSheinSubmissionReport(task)
 	if err != nil {
 		return nil, err
 	}
-	recoveredState := buildRecoveredSheinRemoteState(report, action)
+	recoveredState := buildRecoveredSheinRemoteState(pkg, action)
 	return s.executeRecoveredSheinSubmitRoute(ctx, task, pkg, action, recoveredState)
 }
 
 func (s *taskSubmissionRecoveryService) executeRecoveredSheinSubmitRoute(ctx context.Context, task *Task, pkg *SheinPackage, action string, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
-	if sheinSubmissionResponseAccepted(state.response) || (action == "save_draft" && submission.SaveDraftSucceeded(action, state.response)) {
+	if sheinpub.SubmissionResponseAcceptedForAction(action, state.response) {
 		return s.recoverSheinSubmitLocally(ctx, task, pkg, action, state)
 	}
 	return s.recoverSheinSubmitViaRemoteConfirmation(ctx, task, pkg, action, state)
@@ -152,9 +151,9 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitLocally(ctx context.Co
 	if task == nil || pkg == nil || state == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	appendSheinSubmissionEvent(pkg, submission.BuildPhaseEvent(task.ID, action, sheinpub.SubmissionPhasePersistResult, sheinpub.SubmissionStatusRunning, state.requestID, state.now, "恢复本地提交完成状态", nil))
+	appendSheinSubmissionEvent(pkg, sheinpub.BuildSubmissionPhaseEvent(task.ID, action, sheinpub.SubmissionPhasePersistResult, sheinpub.SubmissionStatusRunning, state.requestID, state.now, "恢复本地提交完成状态", nil))
 	if state.record != nil {
-		_, completionEvent := submission.CompleteAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, state.response, nil, state.record.StartedAt, time.Now())
+		_, completionEvent := completeSheinSubmitAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, state.response, nil, state.record.StartedAt, time.Now())
 		appendSheinSubmissionEvent(pkg, completionEvent)
 	}
 	return s.finalizeRecoveredSheinSubmission(ctx, task, action)
@@ -164,28 +163,24 @@ func loadRecoveredSheinSubmissionReport(task *Task) (*SheinPackage, *sheinpub.Su
 	if task == nil || task.Result == nil {
 		return nil, nil, ErrTaskResultUnavailable
 	}
-	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
-	if pkg == nil || pkg.SubmissionState == nil {
+	pkg, ok := sheinpub.SubmissionStatePackage(task.Result.Shein)
+	if !ok {
 		return nil, nil, ErrTaskResultUnavailable
 	}
 	return pkg, pkg.SubmissionState, nil
 }
 
-func buildRecoveredSheinRemoteState(report *sheinpub.SubmissionReport, action string) *sheinRecoveredRemoteState {
-	if report == nil {
+func buildRecoveredSheinRemoteState(pkg *SheinPackage, action string) *sheinRecoveredRemoteState {
+	selection := sheinpub.ResolveSubmissionRecoverySelection(pkg, action)
+	if selection.Report == nil {
 		return nil
 	}
-	record := sheinSubmissionRecordForAction(report, action)
-	response := recordResult(record)
-	if response == nil {
-		response = report.LastResult
-	}
 	return &sheinRecoveredRemoteState{
-		report:    report,
-		record:    record,
-		requestID: report.CurrentRequestID,
+		report:    selection.Report,
+		record:    selection.Record,
+		requestID: selection.RequestID,
 		now:       time.Now(),
-		response:  response,
+		response:  selection.Response,
 	}
 }
 
@@ -200,7 +195,7 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(
 	if err != nil {
 		return nil, err
 	}
-	appendSheinSubmissionEvent(pkg, submission.AdvancePhaseAndBuildEvent(pkg, task.ID, action, state.requestID, sheinpub.SubmissionPhaseConfirmRemote, state.now, sheinSubmitInFlightTTL))
+	appendSheinSubmissionEvent(pkg, advanceSheinSubmitPhaseAndBuildEvent(pkg, task.ID, action, state.requestID, sheinpub.SubmissionPhaseConfirmRemote, state.now))
 	if state.record == nil {
 		return nil, ErrTaskResultUnavailable
 	}
@@ -218,7 +213,7 @@ func (s *taskSubmissionRecoveryService) persistSheinRecoveredRemoteFailure(ctx c
 	if task == nil || pkg == nil || state == nil {
 		return remoteErr
 	}
-	_, failureEvent := submission.FailAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, sheinpub.SubmissionPhaseConfirmRemote, remoteErr, time.Now())
+	_, failureEvent := failSheinSubmitAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, sheinpub.SubmissionPhaseConfirmRemote, remoteErr, time.Now())
 	appendSheinSubmissionEvent(pkg, failureEvent)
 	if task.Result == nil {
 		return remoteErr
@@ -239,7 +234,7 @@ func (s *taskSubmissionRecoveryService) completeSheinRecoveredRemoteSuccess(ctx 
 		if response == nil && state.report != nil {
 			response = state.report.LastResult
 		}
-		record, completionEvent := submission.CompleteAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, response, nil, state.record.StartedAt, time.Now())
+		record, completionEvent := completeSheinSubmitAttemptAndBuildEvent(pkg, task.ID, action, state.requestID, response, nil, state.record.StartedAt, time.Now())
 		if record != nil && record.Result == nil {
 			record.Status = sheinpub.SubmissionStatusSuccess
 		}

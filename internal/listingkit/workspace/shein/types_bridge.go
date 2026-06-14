@@ -8,6 +8,7 @@ import (
 type Package = sheinpub.Package
 type RequestDraft = sheinpub.RequestDraft
 type ImageDraft = sheinpub.ImageDraft
+type FinalDraft = sheinpub.FinalDraft
 type LocalizedText = sheinpub.LocalizedText
 type SKCRequestDraft = sheinpub.SKCRequestDraft
 type SKUDraft = sheinpub.SKUDraft

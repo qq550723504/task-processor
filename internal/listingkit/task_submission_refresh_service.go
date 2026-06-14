@@ -6,6 +6,7 @@ import (
 
 	apperrors "task-processor/internal/core/errors"
 	submissiondomain "task-processor/internal/listing/submission"
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -42,7 +43,7 @@ type taskSubmissionRefreshServiceConfig struct {
 	buildTaskPreview           func(context.Context, *Task, string) (*ListingKitPreview, error)
 	buildSheinSubmitProductAPI func(context.Context, *Task) (sheinproduct.ProductAPI, error)
 	buildSheinSubmitOtherAPI   func(context.Context, *Task) (sheinother.OtherAPI, error)
-	mutateTaskResult           func(context.Context, string, TaskResultMutation) (*Task, error)
+	recovery                   *taskSubmissionRecoveryService
 	resolveRemoteStatus        func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
 }
 
@@ -52,7 +53,7 @@ type taskSubmissionRefreshService struct {
 	buildTaskPreview           func(context.Context, *Task, string) (*ListingKitPreview, error)
 	buildSheinSubmitProductAPI func(context.Context, *Task) (sheinproduct.ProductAPI, error)
 	buildSheinSubmitOtherAPI   func(context.Context, *Task) (sheinother.OtherAPI, error)
-	mutateTaskResult           func(context.Context, string, TaskResultMutation) (*Task, error)
+	recovery                   *taskSubmissionRecoveryService
 	resolveRemoteStatus        func(sheinproduct.ProductAPI, sheinother.OtherAPI, string, string, []string, string, bool, string, time.Time, string) (*sheinRemoteConfirmation, error)
 	refreshRunner              *submissiondomain.StatusRefreshService[sheinSubmissionRefreshState, sheinRemoteConfirmation, ListingKitPreview]
 }
@@ -64,7 +65,7 @@ func newTaskSubmissionRefreshService(config taskSubmissionRefreshServiceConfig) 
 		buildTaskPreview:           config.buildTaskPreview,
 		buildSheinSubmitProductAPI: config.buildSheinSubmitProductAPI,
 		buildSheinSubmitOtherAPI:   config.buildSheinSubmitOtherAPI,
-		mutateTaskResult:           config.mutateTaskResult,
+		recovery:                   config.recovery,
 		resolveRemoteStatus:        config.resolveRemoteStatus,
 	}
 	svc.refreshRunner = submissiondomain.NewStatusRefreshService(
@@ -176,8 +177,13 @@ func (s *taskSubmissionRefreshService) resolveSheinSubmitRemoteStatus(productAPI
 	if s.resolveRemoteStatus == nil {
 		return nil, apperrors.New(apperrors.ErrCodeSystem, "submit remote status resolution is not configured")
 	}
-	if defaultConfirmed {
-		fallbackMessage = "SHEIN accepted publish request; remote record not yet visible"
-	}
+	fallbackMessage = sheinmarketpub.BuildRemoteConfirmationPolicy(action, defaultConfirmed).RefreshFallbackMessage
 	return s.resolveRemoteStatus(productAPI, otherAPI, action, requestID, lookupCodes, spuName, defaultConfirmed, fallbackMessage, startedAt, taskID)
+}
+
+func (s *taskSubmissionRefreshService) mutateSubmissionRefreshTask(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
+	if s.recovery == nil {
+		return nil, apperrors.New(apperrors.ErrCodeSystem, "submission refresh recovery is not configured")
+	}
+	return s.recovery.mutateTaskResult(ctx, taskID, mutate)
 }

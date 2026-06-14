@@ -11,7 +11,7 @@ import (
 type taskRevisionServiceConfig struct {
 	repo                                    Repository
 	resolveManualSheinSaleAttributeValueIDs func(context.Context, *Task, *ApplyRevisionRequest) error
-	mutateTaskResult                        func(context.Context, string, TaskResultMutation) (*Task, error)
+	recovery                                *taskSubmissionRecoveryService
 	refreshSheinDerivedState                func(*Task, *ApplyRevisionRequest)
 	buildTaskPreview                        func(context.Context, *Task, string) (*ListingKitPreview, error)
 }
@@ -19,7 +19,7 @@ type taskRevisionServiceConfig struct {
 type taskRevisionService struct {
 	repo                                    Repository
 	resolveManualSheinSaleAttributeValueIDs func(context.Context, *Task, *ApplyRevisionRequest) error
-	mutateTaskResult                        func(context.Context, string, TaskResultMutation) (*Task, error)
+	recovery                                *taskSubmissionRecoveryService
 	refreshSheinDerivedState                func(*Task, *ApplyRevisionRequest)
 	buildTaskPreview                        func(context.Context, *Task, string) (*ListingKitPreview, error)
 }
@@ -28,7 +28,7 @@ func newTaskRevisionService(config taskRevisionServiceConfig) *taskRevisionServi
 	return &taskRevisionService{
 		repo:                                    config.repo,
 		resolveManualSheinSaleAttributeValueIDs: config.resolveManualSheinSaleAttributeValueIDs,
-		mutateTaskResult:                        config.mutateTaskResult,
+		recovery:                                config.recovery,
 		refreshSheinDerivedState:                config.refreshSheinDerivedState,
 		buildTaskPreview:                        config.buildTaskPreview,
 	}
@@ -52,7 +52,7 @@ func (s *taskRevisionService) ApplyTaskRevision(ctx context.Context, taskID stri
 		}
 	}
 	var appliedChanges *RevisionDiffPreview
-	task, err = s.mutateTaskResult(ctx, taskID, func(task *Task) error {
+	task, err = s.mutateRevisionTask(ctx, taskID, func(task *Task) error {
 		if task.Result == nil {
 			return ErrTaskResultUnavailable
 		}
@@ -208,4 +208,11 @@ func (s *taskRevisionService) ValidateTaskRevision(ctx context.Context, taskID s
 	}
 	validationErr := validateApplyRevisionRequest(effectiveReq)
 	return buildRevisionValidationResult(taskID, platform, task.Result, validationErr, restorePreview), nil
+}
+
+func (s *taskRevisionService) mutateRevisionTask(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
+	if s.recovery == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	return s.recovery.mutateTaskResult(ctx, taskID, mutate)
 }

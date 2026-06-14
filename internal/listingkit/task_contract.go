@@ -1,70 +1,39 @@
 package listingkit
 
+import sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+
 const (
-	SheinWorkflowStatusPublished           = "published"
-	SheinWorkflowStatusDraftSaved          = "draft_saved"
-	SheinWorkflowStatusPublishFailed       = "publish_failed"
-	SheinWorkflowStatusReadyToSubmit       = "ready_to_submit"
-	SheinWorkflowStatusPendingConfirmation = "pending_confirmation"
+	SheinWorkflowStatusPublished           = sheinworkspace.WorkflowStatusPublished
+	SheinWorkflowStatusDraftSaved          = sheinworkspace.WorkflowStatusDraftSaved
+	SheinWorkflowStatusPublishFailed       = sheinworkspace.WorkflowStatusPublishFailed
+	SheinWorkflowStatusReadyToSubmit       = sheinworkspace.WorkflowStatusReadyToSubmit
+	SheinWorkflowStatusPendingConfirmation = sheinworkspace.WorkflowStatusPendingConfirmation
 )
 
 const (
-	SheinWorkQueueGeneration       = "generation_queue"
-	SheinWorkQueueGenerationFailed = "generation_failed_queue"
-	SheinWorkQueueRepair           = "repair_queue"
-	SheinWorkQueueReview           = "review_queue"
-	SheinWorkQueueSubmitReady      = "submit_ready_queue"
-	SheinWorkQueueDraft            = "draft_queue"
-	SheinWorkQueueSubmitFailed     = "submit_failed_queue"
-	SheinWorkQueuePublished        = "published_queue"
+	SheinWorkQueueGeneration       = sheinworkspace.WorkQueueGeneration
+	SheinWorkQueueGenerationFailed = sheinworkspace.WorkQueueGenerationFailed
+	SheinWorkQueueRepair           = sheinworkspace.WorkQueueRepair
+	SheinWorkQueueReview           = sheinworkspace.WorkQueueReview
+	SheinWorkQueueSubmitReady      = sheinworkspace.WorkQueueSubmitReady
+	SheinWorkQueueDraft            = sheinworkspace.WorkQueueDraft
+	SheinWorkQueueSubmitFailed     = sheinworkspace.WorkQueueSubmitFailed
+	SheinWorkQueuePublished        = sheinworkspace.WorkQueuePublished
 )
 
 const (
-	SheinActionQueueStoreAuth      = "store_auth_queue"
-	SheinActionQueueClassification = "classification_queue"
-	SheinActionQueueAttributes     = "attributes_queue"
-	SheinActionQueueVariant        = "variant_queue"
-	SheinActionQueueMedia          = "media_queue"
-	SheinActionQueuePricing        = "pricing_queue"
-	SheinActionQueueFinalReview    = "final_review_queue"
-	SheinActionQueueSourceReview   = "source_review_queue"
-	SheinActionQueuePayloadRebuild = "payload_rebuild_queue"
-	SheinActionQueueManualReview   = "manual_review_queue"
-	SheinActionQueueSubmitReady    = "submit_ready_action_queue"
+	SheinActionQueueStoreAuth      = sheinworkspace.ActionQueueStoreAuth
+	SheinActionQueueClassification = sheinworkspace.ActionQueueClassification
+	SheinActionQueueAttributes     = sheinworkspace.ActionQueueAttributes
+	SheinActionQueueVariant        = sheinworkspace.ActionQueueVariant
+	SheinActionQueueMedia          = sheinworkspace.ActionQueueMedia
+	SheinActionQueuePricing        = sheinworkspace.ActionQueuePricing
+	SheinActionQueueFinalReview    = sheinworkspace.ActionQueueFinalReview
+	SheinActionQueueSourceReview   = sheinworkspace.ActionQueueSourceReview
+	SheinActionQueuePayloadRebuild = sheinworkspace.ActionQueuePayloadRebuild
+	SheinActionQueueManualReview   = sheinworkspace.ActionQueueManualReview
+	SheinActionQueueSubmitReady    = sheinworkspace.ActionQueueSubmitReady
 )
-
-var sheinWorkflowStatusDescriptors = []TaskFacetDescriptor{
-	{Key: SheinWorkflowStatusPendingConfirmation, Label: "待确认", Description: "资料包已生成，但还未满足正式提交或草稿提交后的终态。", Severity: "neutral"},
-	{Key: SheinWorkflowStatusReadyToSubmit, Label: "可提交", Description: "资料包已具备提交前关键骨架，可进入正式发布操作。", Severity: "positive"},
-	{Key: SheinWorkflowStatusDraftSaved, Label: "已存草稿", Description: "资料包已经保存为 SHEIN 草稿，可继续人工补充或复核。", Severity: "neutral"},
-	{Key: SheinWorkflowStatusPublished, Label: "已发布", Description: "资料包已经完成 SHEIN 发布。", Severity: "positive"},
-	{Key: SheinWorkflowStatusPublishFailed, Label: "提交失败", Description: "最近一次保存草稿或正式发布失败，需要人工排查。", Severity: "negative"},
-}
-
-var sheinWorkQueueDescriptors = []TaskFacetDescriptor{
-	{Key: SheinWorkQueueGeneration, Label: "生成队列", Description: "任务仍在生成或等待生成。", Severity: "neutral"},
-	{Key: SheinWorkQueueGenerationFailed, Label: "生成失败队列", Description: "生成流程失败，需要回看上游数据或任务执行。", Severity: "negative"},
-	{Key: SheinWorkQueueRepair, Label: "修复队列", Description: "存在阻断项，暂时不能进入提交态。", Severity: "negative"},
-	{Key: SheinWorkQueueReview, Label: "复核队列", Description: "可提交但仍有 warning，建议人工复核。", Severity: "warning"},
-	{Key: SheinWorkQueueSubmitReady, Label: "待提交队列", Description: "资料包已准备好，可直接进入提交。", Severity: "positive"},
-	{Key: SheinWorkQueueDraft, Label: "草稿队列", Description: "已经保存草稿，等待后续处理。", Severity: "neutral"},
-	{Key: SheinWorkQueueSubmitFailed, Label: "提交失败队列", Description: "远端提交流程失败，需要人工重试或修复。", Severity: "negative"},
-	{Key: SheinWorkQueuePublished, Label: "已发布队列", Description: "已经完成发布。", Severity: "positive"},
-}
-
-var sheinActionQueueDescriptors = []TaskFacetDescriptor{
-	{Key: SheinActionQueueStoreAuth, Label: "店铺授权处理", Description: "SHEIN 店铺登录或 cookie 异常，需先恢复店铺授权。", Severity: "negative"},
-	{Key: SheinActionQueueClassification, Label: "类目处理", Description: "优先处理类目骨架或类目复核问题。", Severity: "negative"},
-	{Key: SheinActionQueueAttributes, Label: "属性处理", Description: "优先处理普通属性映射与属性补齐。", Severity: "negative"},
-	{Key: SheinActionQueueVariant, Label: "规格处理", Description: "优先处理销售属性、SKC/SKU 结构和变体问题。", Severity: "negative"},
-	{Key: SheinActionQueueMedia, Label: "图片处理", Description: "优先处理主图、最终图片和图片覆盖问题。", Severity: "negative"},
-	{Key: SheinActionQueuePricing, Label: "价格处理", Description: "优先处理价格生成与价格确认。", Severity: "negative"},
-	{Key: SheinActionQueueFinalReview, Label: "最终确认", Description: "进入正式提交前的最终人工核对。", Severity: "warning"},
-	{Key: SheinActionQueueSourceReview, Label: "来源复核", Description: "优先复核缺少来源依据的字段。", Severity: "negative"},
-	{Key: SheinActionQueuePayloadRebuild, Label: "载荷重建", Description: "需要重建 request draft 或 preview payload。", Severity: "negative"},
-	{Key: SheinActionQueueManualReview, Label: "人工备注复核", Description: "处理非阻断的人工备注与人工确认项。", Severity: "warning"},
-	{Key: SheinActionQueueSubmitReady, Label: "直接提交", Description: "当前已无优先修复项，可以直接进入提交。", Severity: "positive"},
-}
 
 var sheinBlockerDescriptors = []TaskFacetDescriptor{
 	{Key: sheinCookieUnavailableIssueCode, Label: "店铺登录", Description: "店铺登录或 cookie 不可用。", Severity: "negative"},
@@ -90,9 +59,9 @@ var sheinWarningDescriptors = []TaskFacetDescriptor{
 
 func BuildTaskListTaxonomy() *TaskListTaxonomy {
 	return &TaskListTaxonomy{
-		SheinWorkflowStatuses: cloneTaskFacetDescriptors(sheinWorkflowStatusDescriptors),
-		SheinWorkQueues:       cloneTaskFacetDescriptors(sheinWorkQueueDescriptors),
-		SheinActionQueues:     cloneTaskFacetDescriptors(sheinActionQueueDescriptors),
+		SheinWorkflowStatuses: cloneTaskFacetDescriptorsFromWorkspace(sheinworkspace.WorkflowStatusDescriptors()),
+		SheinWorkQueues:       cloneTaskFacetDescriptorsFromWorkspace(sheinworkspace.WorkQueueDescriptors()),
+		SheinActionQueues:     cloneTaskFacetDescriptorsFromWorkspace(sheinworkspace.ActionQueueDescriptors()),
 		SheinBlockers:         cloneTaskFacetDescriptors(sheinBlockerDescriptors),
 		SheinWarnings:         cloneTaskFacetDescriptors(sheinWarningDescriptors),
 	}
@@ -104,5 +73,21 @@ func cloneTaskFacetDescriptors(items []TaskFacetDescriptor) []TaskFacetDescripto
 	}
 	cloned := make([]TaskFacetDescriptor, len(items))
 	copy(cloned, items)
+	return cloned
+}
+
+func cloneTaskFacetDescriptorsFromWorkspace(items []sheinworkspace.FacetDescriptor) []TaskFacetDescriptor {
+	if len(items) == 0 {
+		return nil
+	}
+	cloned := make([]TaskFacetDescriptor, 0, len(items))
+	for _, item := range items {
+		cloned = append(cloned, TaskFacetDescriptor{
+			Key:         item.Key,
+			Label:       item.Label,
+			Description: item.Description,
+			Severity:    item.Severity,
+		})
+	}
 	return cloned
 }

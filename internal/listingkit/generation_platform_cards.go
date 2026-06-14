@@ -3,6 +3,7 @@ package listingkit
 import (
 	"strings"
 
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -112,39 +113,11 @@ func buildSheinPreviewCard(pkg *sheinpub.Package, queue *GenerationWorkQueue, pr
 	}
 	card := ListingKitPlatformCard{
 		Platform:    "shein",
-		Status:      buildSheinPreviewCardStatus(pkg),
-		Summary:     buildSheinPreviewCardSummary(pkg),
-		NeedsReview: sheinPreviewCardNeedsReview(pkg),
+		Status:      sheinworkspace.BuildPreviewCardStatus(pkg),
+		Summary:     sheinworkspace.BuildPreviewCardSummary(pkg),
+		NeedsReview: sheinworkspace.PreviewCardNeedsReview(pkg),
 	}
 	return enrichListingKitPlatformCard(card, queue, previews), true
-}
-
-func buildSheinPreviewCardStatus(pkg *sheinpub.Package) string {
-	if pkg != nil && pkg.Inspection != nil && pkg.Inspection.NeedsReview {
-		return "needs_review"
-	}
-	return "ready"
-}
-
-func buildSheinPreviewCardSummary(pkg *sheinpub.Package) string {
-	summary := "已生成 SHEIN 预览"
-	if pkg != nil {
-		summary = firstNonEmpty(pkg.SpuName, pkg.ProductNameEn, summary)
-	}
-	if pkg != nil && pkg.Inspection != nil {
-		summary = firstNonEmpty(joinStrings(pkg.Inspection.Summary, "；"), summary)
-	}
-	return summary
-}
-
-func sheinPreviewCardNeedsReview(pkg *sheinpub.Package) bool {
-	if pkg == nil {
-		return false
-	}
-	if len(pkg.ReviewNotes) > 0 {
-		return true
-	}
-	return pkg.Inspection != nil && pkg.Inspection.NeedsReview
 }
 
 func buildTemuPreviewCard(pkg *TemuPackage, queue *GenerationWorkQueue, previews *PlatformAssetRenderPreviews) (ListingKitPlatformCard, bool) {

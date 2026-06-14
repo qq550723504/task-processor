@@ -56,18 +56,16 @@ func TestTaskRevisionServiceApplyTaskRevisionInvokesSheinCollaborators(t *testin
 	var manualResolveCalls int
 	var refreshCalls int
 	var previewCalls int
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		repo: repo,
+	})
 	revision := newTaskRevisionService(taskRevisionServiceConfig{
 		repo: repo,
 		resolveManualSheinSaleAttributeValueIDs: func(ctx context.Context, task *Task, req *ApplyRevisionRequest) error {
 			manualResolveCalls++
 			return nil
 		},
-		mutateTaskResult: func(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
-			if err := mutate(task); err != nil {
-				return nil, err
-			}
-			return task, nil
-		},
+		recovery: recovery,
 		refreshSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) {
 			refreshCalls++
 		},

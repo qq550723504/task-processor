@@ -13,7 +13,7 @@ import (
 
 type sheinAdminServiceConfig struct {
 	repo                  Repository
-	mutateTaskResult      func(context.Context, string, TaskResultMutation) (*Task, error)
+	recovery              *taskSubmissionRecoveryService
 	currentPricingRule    func() sheinpub.PricingRule
 	newSheinAPIClient     func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
 	buildTaskPreview      func(context.Context, *Task, string) (*ListingKitPreview, error)
@@ -25,7 +25,7 @@ type sheinAdminServiceConfig struct {
 
 type sheinAdminService struct {
 	repo                  Repository
-	mutateTaskResult      func(context.Context, string, TaskResultMutation) (*Task, error)
+	recovery              *taskSubmissionRecoveryService
 	currentPricingRule    func() sheinpub.PricingRule
 	newSheinAPIClient     func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
 	buildTaskPreview      func(context.Context, *Task, string) (*ListingKitPreview, error)
@@ -38,7 +38,7 @@ type sheinAdminService struct {
 func newSheinAdminService(config sheinAdminServiceConfig) *sheinAdminService {
 	return &sheinAdminService{
 		repo:                  config.repo,
-		mutateTaskResult:      config.mutateTaskResult,
+		recovery:              config.recovery,
 		currentPricingRule:    config.currentPricingRule,
 		newSheinAPIClient:     config.newSheinAPIClient,
 		buildTaskPreview:      config.buildTaskPreview,
@@ -79,7 +79,7 @@ func (s *sheinAdminService) PreviewSheinPrice(ctx context.Context, taskID string
 	}
 	review := buildSheinPricingReview(task.Result.Shein, rule, overrides)
 	if applyToTask {
-		task, err = s.mutateTaskResult(ctx, taskID, func(task *Task) error {
+		task, err = s.mutateAdminTask(ctx, taskID, func(task *Task) error {
 			if task.Result == nil || task.Result.Shein == nil {
 				return ErrTaskResultUnavailable
 			}
@@ -154,7 +154,7 @@ func (s *sheinAdminService) GetSubmissionEvents(ctx context.Context, taskID stri
 }
 
 func (s *sheinAdminService) UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error) {
-	task, err := s.mutateTaskResult(ctx, taskID, func(task *Task) error {
+	task, err := s.mutateAdminTask(ctx, taskID, func(task *Task) error {
 		if task.Result == nil || task.Result.Shein == nil {
 			return ErrTaskResultUnavailable
 		}
@@ -274,4 +274,11 @@ func (s *sheinAdminService) ClearSheinResolutionCache(ctx context.Context, taskI
 		Kind:         kind,
 		DeletedKinds: deletedKinds,
 	}, nil
+}
+
+func (s *sheinAdminService) mutateAdminTask(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
+	if s.recovery == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	return s.recovery.mutateTaskResult(ctx, taskID, mutate)
 }

@@ -52,16 +52,20 @@ func TestSheinSubmissionProjectionBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "submission_projection_shein.go", "buildSheinSubmissionProjection")
 
 		assertSourceContainsAll(t, source, []string{
-			"projection.StatusFields.SheinWorkflowStatus = deriveSheinWorkflowStatus(pkg)",
-			"projection.StatusFields.SheinLatestSubmissionStatus = latest.Status",
-			"projection.StatusFields.SheinSubmissionRemoteStatus = submission.RemoteStatus",
-			"projection.TaskList.SheinSubmissionRemoteRecordID = record.RemoteRecordID",
+			"state := sheinpub.ResolveSubmissionProjection(pkg, readyToSubmit)",
+			"projection.StatusFields.SheinWorkflowStatus = state.WorkflowStatus",
+			"projection.TaskList.SheinSubmissionRemoteRecordID = state.RemoteRecordID",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"LatestSubmissionOutcomeEvent(pkg)",
+			"PrimarySubmissionRecord(",
+			"pkg.SubmissionState.LastStatus",
+			"pkg.SubmissionState.RemoteStatus",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"NormalizePackageSemanticFields",
-			"deriveSheinWorkflowStatus",
-			"latestSheinSubmissionOutcomeEvent",
-			"sheinPrimarySubmissionRecord",
+			"buildSheinSubmitReadiness",
+			"ResolveSubmissionProjection",
 		})
 	})
 }

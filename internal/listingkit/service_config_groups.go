@@ -1,6 +1,6 @@
 package listingkit
 
-import "task-processor/internal/listingkit/submission"
+import listingsubmission "task-processor/internal/listing/submission"
 
 func buildGenerateRequestDefaults(config *ServiceConfig) generateRequestDefaults {
 	if config == nil {
@@ -52,7 +52,7 @@ func buildAdminDependencies(config *ServiceConfig) adminDependencies {
 
 func buildSubmissionCollaborators() submissionCollaborators {
 	return submissionCollaborators{
-		sheinSubmitLocks: submission.NewSubmitLockManager(),
+		sheinSubmitLocks: listingsubmission.NewSubmitLockManager(),
 	}
 }
 

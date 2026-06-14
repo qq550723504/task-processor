@@ -173,7 +173,7 @@ func (s *taskDirectSubmissionService) prepareDirectSubmitPayload(ctx context.Con
 
 func (s *taskDirectSubmissionService) persistDirectSubmitSnapshot(_ context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], snapshot *sheinpub.SubmitSnapshot) error {
 	if snapshot != nil {
-		setSheinSubmitSnapshot(in.Package, in.Action, in.RequestID, snapshot)
+		sheinpub.SetSubmissionSnapshot(in.Package, in.Action, in.RequestID, snapshot)
 	}
 	return nil
 }

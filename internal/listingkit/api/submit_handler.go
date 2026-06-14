@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	listingsubmission "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/listingkit/submission"
 )
 
 func (h *handler) SubmitTask(c *gin.Context) {
@@ -34,7 +34,7 @@ func (h *handler) SubmitTask(c *gin.Context) {
 			status = http.StatusConflict
 		}
 		body := gin.H{"error": "submit_failed", "message": err.Error()}
-		var inProgress *submission.SubmitInProgressError
+		var inProgress *listingsubmission.SubmitInProgressError
 		if errors.As(err, &inProgress) {
 			body["current_phase"] = inProgress.Phase
 			body["current_request_id"] = inProgress.RequestID

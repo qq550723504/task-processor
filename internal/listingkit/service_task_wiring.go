@@ -33,7 +33,7 @@ func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
 		resolveManualSheinSaleAttributeValueIDs: func(ctx context.Context, task *Task, req *ApplyRevisionRequest) error {
 			return s.resolveManualSheinSaleAttributeValueIDs(ctx, task, req)
 		},
-		mutateTaskResult: s.mutateTaskResult,
+		recovery: s.taskSubmissionRecoveryOrDefault(),
 		refreshSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) {
 			s.refreshSheinDerivedState(task, req)
 		},

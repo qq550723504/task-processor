@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/listingkit/submission"
+	listingsubmission "task-processor/internal/listing/submission"
 )
 
 type sheinWorkflowSubmitOptions struct {
@@ -50,7 +50,7 @@ func normalizeSubmitTargetWithDefault(req *SubmitTaskRequest, defaultAction stri
 }
 
 func shouldReplayStartedTemporalSubmit(err error, requestID string) bool {
-	var inProgress *submission.SubmitInProgressError
+	var inProgress *listingsubmission.SubmitInProgressError
 	return errors.As(err, &inProgress) &&
 		inProgress != nil &&
 		strings.TrimSpace(inProgress.RequestID) != "" &&

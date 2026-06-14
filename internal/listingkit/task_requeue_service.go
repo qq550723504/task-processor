@@ -74,7 +74,9 @@ func (s *taskRequeueService) RequeuePendingTasks(ctx context.Context, req *Reque
 		return nil, fmt.Errorf("task requeue runner is not configured")
 	}
 	result, err := s.runner.RequeueTasks(ctx, &submissiondomain.RequeueRequest{
-		TaskIDs: normalizeRequeueTaskIDs(req),
+		TaskIDs: submissiondomain.NormalizeRequeueTaskIDs(&submissiondomain.RequeueRequest{
+			TaskIDs: req.TaskIDs,
+		}),
 	})
 	if err != nil {
 		return nil, err

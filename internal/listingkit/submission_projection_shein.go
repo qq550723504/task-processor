@@ -30,93 +30,17 @@ func buildSheinSubmissionProjection(pkg *SheinPackage) *sheinSubmissionProjectio
 	}
 
 	projection := &sheinSubmissionProjection{}
-	projection.StatusFields.SheinWorkflowStatus = deriveSheinWorkflowStatus(pkg)
-
-	if latest := latestSheinSubmissionOutcomeEvent(pkg); latest != nil {
-		projection.StatusFields.SheinLatestSubmissionStatus = latest.Status
-		projection.StatusFields.SheinLatestSubmissionError = latest.ErrorMessage
-	} else if pkg.SubmissionState != nil {
-		projection.StatusFields.SheinLatestSubmissionStatus = pkg.SubmissionState.LastStatus
-		projection.StatusFields.SheinLatestSubmissionError = pkg.SubmissionState.LastError
+	readyToSubmit := false
+	if readiness := buildSheinSubmitReadiness(pkg); readiness != nil {
+		readyToSubmit = readiness.Ready
 	}
-
-	if pkg.SubmissionState == nil {
-		return projection
-	}
-
-	submission := pkg.SubmissionState
-	projection.StatusFields.SheinSubmissionRemoteStatus = submission.RemoteStatus
-	projection.TaskList.SheinSubmissionRemoteCheckedAt = submission.RemoteCheckedAt
-
-	record := sheinPrimarySubmissionRecord(submission)
-	if record == nil {
-		return projection
-	}
-	projection.TaskList.SheinSubmissionRemoteRecordID = record.RemoteRecordID
-	if projection.TaskList.SheinSubmissionRemoteCheckedAt == nil {
-		projection.TaskList.SheinSubmissionRemoteCheckedAt = record.RemoteCheckedAt
-	}
+	state := sheinpub.ResolveSubmissionProjection(pkg, readyToSubmit)
+	projection.StatusFields.SheinWorkflowStatus = state.WorkflowStatus
+	projection.StatusFields.SheinLatestSubmissionStatus = state.LatestStatus
+	projection.StatusFields.SheinLatestSubmissionError = state.LatestError
+	projection.StatusFields.SheinSubmissionRemoteStatus = state.RemoteStatus
+	projection.TaskList.SheinSubmissionRemoteCheckedAt = state.RemoteCheckedAt
+	projection.TaskList.SheinSubmissionRemoteRecordID = state.RemoteRecordID
 
 	return projection
-}
-
-func deriveSheinWorkflowStatus(pkg *SheinPackage) string {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil {
-		return ""
-	}
-	if latest := latestSheinSubmissionOutcomeEvent(pkg); latest != nil {
-		if latest.Action == "publish" && latest.Status == "success" {
-			return SheinWorkflowStatusPublished
-		}
-		if latest.Action == "save_draft" && latest.Status == "success" {
-			return SheinWorkflowStatusDraftSaved
-		}
-		if latest.Status == "failed" {
-			return SheinWorkflowStatusPublishFailed
-		}
-	}
-	if pkg.SubmissionState != nil {
-		if pkg.SubmissionState.Publish != nil && pkg.SubmissionState.Publish.Status == "success" {
-			return SheinWorkflowStatusPublished
-		}
-		if pkg.SubmissionState.SaveDraft != nil && pkg.SubmissionState.SaveDraft.Status == "success" {
-			return SheinWorkflowStatusDraftSaved
-		}
-		if pkg.SubmissionState.LastStatus == "failed" {
-			return SheinWorkflowStatusPublishFailed
-		}
-	}
-	readiness := buildSheinSubmitReadiness(pkg)
-	if readiness != nil && readiness.Ready {
-		return SheinWorkflowStatusReadyToSubmit
-	}
-	return SheinWorkflowStatusPendingConfirmation
-}
-
-func latestSheinSubmissionOutcomeEvent(pkg *SheinPackage) *sheinpub.SubmissionEvent {
-	if pkg == nil || len(pkg.SubmissionEvents) == 0 {
-		return nil
-	}
-	for i := range pkg.SubmissionEvents {
-		event := &pkg.SubmissionEvents[i]
-		if event.Action != "submit_phase" {
-			return event
-		}
-	}
-	return nil
-}
-
-func sheinPrimarySubmissionRecord(submission *sheinpub.SubmissionReport) *sheinpub.SubmissionRecord {
-	if submission == nil {
-		return nil
-	}
-	record := sheinSubmissionRecordForAction(submission, submission.LastAction)
-	if record != nil {
-		return record
-	}
-	if submission.Publish != nil {
-		return submission.Publish
-	}
-	return submission.SaveDraft
 }

@@ -2,34 +2,24 @@ package listingkit
 
 import "testing"
 
-func TestBuildSheinPreviewCardSummaryPrefersInspectionSummary(t *testing.T) {
+func TestBuildSheinPreviewCardUsesWorkspaceSignals(t *testing.T) {
 	t.Parallel()
 
-	got := buildSheinPreviewCardSummary(&SheinPackage{
-		SpuName:       "fallback name",
-		ProductNameEn: "english name",
-		Inspection:    &SheinInspection{Summary: []string{"图像需复核", "类目待确认"}},
-	})
-	if want := "图像需复核；类目待确认"; got != want {
-		t.Fatalf("buildSheinPreviewCardSummary() = %q, want %q", got, want)
+	card, ok := buildSheinPreviewCard(&SheinPackage{
+		Inspection:  &SheinInspection{NeedsReview: true, Summary: []string{"图像需复核", "类目待确认"}},
+		ReviewNotes: []string{"manual review"},
+	}, nil, nil)
+	if !ok {
+		t.Fatal("buildSheinPreviewCard() ok = false, want true")
 	}
-}
-
-func TestBuildSheinPreviewCardStatusUsesInspectionNeedsReview(t *testing.T) {
-	t.Parallel()
-
-	if got := buildSheinPreviewCardStatus(&SheinPackage{
-		Inspection: &SheinInspection{NeedsReview: true},
-	}); got != "needs_review" {
-		t.Fatalf("buildSheinPreviewCardStatus() = %q, want %q", got, "needs_review")
+	if card.Status != "needs_review" {
+		t.Fatalf("buildSheinPreviewCard().Status = %q, want %q", card.Status, "needs_review")
 	}
-}
-
-func TestSheinPreviewCardNeedsReviewFromReviewNotes(t *testing.T) {
-	t.Parallel()
-
-	if !sheinPreviewCardNeedsReview(&SheinPackage{ReviewNotes: []string{"manual review"}}) {
-		t.Fatal("expected review notes to mark SHEIN preview card as needs review")
+	if card.Summary != "图像需复核；类目待确认" {
+		t.Fatalf("buildSheinPreviewCard().Summary = %q, want inspection summary", card.Summary)
+	}
+	if !card.NeedsReview {
+		t.Fatal("buildSheinPreviewCard().NeedsReview = false, want true")
 	}
 }
 

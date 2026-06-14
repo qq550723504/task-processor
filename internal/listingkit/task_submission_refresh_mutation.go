@@ -2,12 +2,10 @@ package listingkit
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	apperrors "task-processor/internal/core/errors"
 	"task-processor/internal/listingkit/core"
-	"task-processor/internal/listingkit/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -30,7 +28,7 @@ func (s *taskSubmissionRefreshService) persistSheinSubmissionRefreshResult(ctx c
 	if err != nil {
 		return nil, err
 	}
-	return s.mutateTaskResult(ctx, taskID, func(task *Task) error {
+	return s.mutateSubmissionRefreshTask(ctx, taskID, func(task *Task) error {
 		return applySubmissionRefreshMutation(task, request)
 	})
 }
@@ -65,7 +63,7 @@ func appendSubmissionRefreshMutationEvents(pkg *SheinPackage, request *sheinSubm
 	if pkg == nil || request == nil {
 		return
 	}
-	appendSheinSubmissionEvent(pkg, submission.BuildRefreshConfirmRemoteRunningEvent(request.taskID, request.action, request.requestID, request.startedAt))
+	appendSheinSubmissionEvent(pkg, sheinpub.BuildSubmissionRefreshConfirmRemoteRunningEvent(request.taskID, request.action, request.requestID, request.startedAt))
 	applySubmissionRefreshConfirmation(pkg, request.action, request.requestID, request.confirmation)
 }
 
@@ -108,46 +106,32 @@ func loadSubmissionRefreshTaskPackage(task *Task) (*SheinPackage, error) {
 }
 
 func validateSubmissionRefreshAction(pkg *SheinPackage, action string) error {
-	report, err := loadSubmissionRefreshPackageReport(pkg)
-	if err != nil {
+	if _, err := loadSubmissionRefreshPackageState(pkg); err != nil {
 		return err
 	}
-	currentAction := resolveSubmissionRefreshAction(report)
-	if currentAction == "" {
-		currentAction = action
-	}
-	if currentAction != action {
+	if !sheinpub.SubmissionRefreshActionMatches(pkg, action) {
 		return buildSubmissionRefreshChangedError()
 	}
 	return nil
 }
 
 func validateSubmissionRefreshRequest(pkg *SheinPackage, action, requestID string) error {
-	report, err := loadSubmissionRefreshPackageReport(pkg)
-	if err != nil {
+	if _, err := loadSubmissionRefreshPackageState(pkg); err != nil {
 		return err
 	}
-	currentRecord := sheinSubmissionRecordForAction(report, action)
-	if currentRecord == nil || strings.TrimSpace(currentRecord.RequestID) != requestID {
+	if !sheinpub.SubmissionRefreshRequestMatches(pkg, action, requestID) {
 		return buildSubmissionRefreshChangedError()
 	}
 	return nil
 }
 
 func loadSubmissionRefreshPackageState(pkg *SheinPackage) (*SheinPackage, error) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.SubmissionState == nil {
+	var ok bool
+	pkg, ok = sheinpub.SubmissionStatePackage(pkg)
+	if !ok {
 		return nil, buildSubmissionRefreshUnavailableError()
 	}
 	return pkg, nil
-}
-
-func loadSubmissionRefreshPackageReport(pkg *SheinPackage) (*sheinpub.SubmissionReport, error) {
-	pkg, err := loadSubmissionRefreshPackageState(pkg)
-	if err != nil {
-		return nil, err
-	}
-	return pkg.SubmissionState, nil
 }
 
 func buildSubmissionRefreshUnavailableError() error {
@@ -162,24 +146,10 @@ func applySubmissionRefreshConfirmation(pkg *SheinPackage, action, requestID str
 	if pkg == nil || confirmation == nil {
 		return
 	}
-	if parts, ok := buildSubmissionRefreshConfirmRemoteParts(confirmation); ok {
-		submission.ApplyConfirmRemoteParts(pkg, action, requestID, parts)
+	if sheinpub.ApplySubmissionConfirmRemoteWithEvent(pkg, action, requestID, confirmation.remoteStatus, confirmation.record, confirmation.checkedAt, confirmation.message, confirmation.event) {
 		return
 	}
 	applySubmissionRefreshRemoteRecord(pkg, action, requestID, confirmation)
-}
-
-func buildSubmissionRefreshConfirmRemoteParts(confirmation *sheinRemoteConfirmation) (submission.ConfirmRemoteParts, bool) {
-	if confirmation == nil || confirmation.event == nil {
-		return submission.ConfirmRemoteParts{}, false
-	}
-	return submission.ConfirmRemoteParts{
-		RemoteStatus: confirmation.remoteStatus,
-		Record:       confirmation.record,
-		CheckedAt:    confirmation.checkedAt,
-		Message:      confirmation.message,
-		Event:        *confirmation.event,
-	}, true
 }
 
 func applySubmissionRefreshRemoteRecord(pkg *SheinPackage, action, requestID string, confirmation *sheinRemoteConfirmation) {

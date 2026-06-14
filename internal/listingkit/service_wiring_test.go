@@ -138,8 +138,17 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.submission.taskDirectSubmission == nil {
 		t.Fatal("expected taskDirectSubmission to be initialized")
 	}
-	if impl.submission.taskTemporalSubmissionAdapter == nil {
-		t.Fatal("expected taskTemporalSubmissionAdapter to be initialized")
+	if impl.submission.taskTemporalSubmissionLifecycle == nil {
+		t.Fatal("expected taskTemporalSubmissionLifecycle to be initialized")
+	}
+	if impl.submission.taskTemporalSubmissionFlow == nil {
+		t.Fatal("expected taskTemporalSubmissionFlow to be initialized")
+	}
+	if impl.submission.taskTemporalSubmissionPersistence == nil {
+		t.Fatal("expected taskTemporalSubmissionPersistence to be initialized")
+	}
+	if impl.submission.taskTemporalSubmissionRefresh == nil {
+		t.Fatal("expected taskTemporalSubmissionRefresh to be initialized")
 	}
 }
 
@@ -275,8 +284,17 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	}
 
 	svc.initializeSubmitWorkflowCollaborators()
-	if svc.submission.taskTemporalSubmissionAdapter == nil {
-		t.Fatal("expected taskTemporalSubmissionAdapter to be initialized")
+	if svc.submission.taskTemporalSubmissionLifecycle == nil {
+		t.Fatal("expected taskTemporalSubmissionLifecycle to be initialized")
+	}
+	if svc.submission.taskTemporalSubmissionFlow == nil {
+		t.Fatal("expected taskTemporalSubmissionFlow to be initialized")
+	}
+	if svc.submission.taskTemporalSubmissionPersistence == nil {
+		t.Fatal("expected taskTemporalSubmissionPersistence to be initialized")
+	}
+	if svc.submission.taskTemporalSubmissionRefresh == nil {
+		t.Fatal("expected taskTemporalSubmissionRefresh to be initialized")
 	}
 }
 
@@ -686,7 +704,10 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 				"buildTaskSubmissionStateServiceConfig(s)",
 				"buildTaskSubmissionRecoveryServiceConfig(s)",
 				"buildTaskDirectSubmissionServiceConfig(s)",
-				"buildTaskTemporalSubmissionAdapterConfig(s)",
+				"buildTaskTemporalSubmissionLifecycleServiceConfig(s)",
+				"buildTaskTemporalSubmissionFlowServiceConfig(s)",
+				"buildTaskTemporalSubmissionPersistenceServiceConfig(s)",
+				"buildTaskTemporalSubmissionRefreshServiceConfig(s)",
 			},
 			inlineConfig: []string{
 				"newTaskSubmissionService(taskSubmissionServiceConfig{",
@@ -695,14 +716,11 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 				"newTaskSubmissionStateService(taskSubmissionStateServiceConfig{",
 				"newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{",
 				"newTaskDirectSubmissionService(taskDirectSubmissionServiceConfig{",
-				"newTaskTemporalSubmissionAdapter(taskTemporalSubmissionAdapterConfig{",
+				"newTaskTemporalSubmissionLifecycleService(taskTemporalSubmissionLifecycleServiceConfig{",
+				"newTaskTemporalSubmissionFlowService(taskTemporalSubmissionFlowServiceConfig{",
+				"newTaskTemporalSubmissionPersistenceService(taskTemporalSubmissionPersistenceServiceConfig{",
+				"newTaskTemporalSubmissionRefreshService(taskTemporalSubmissionRefreshServiceConfig{",
 			},
-		},
-		{
-			name:         "temporal submission facade",
-			file:         "task_temporal_submission_adapter.go",
-			builderCalls: nil,
-			inlineConfig: nil,
 		},
 	}
 
@@ -1678,25 +1696,25 @@ func TestSubmitTemporalEntrypointsFileOwnsRootDelegates(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) BeginSheinPublishAttempt(ctx context.Context, in SheinPublishAttemptInput) error {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().BeginSheinPublishAttempt(ctx, in)",
+		"return lifecycle.BeginSheinPublishAttempt(ctx, in)",
 		"func (s *service) ValidateSheinPublishReadiness(ctx context.Context, in SheinPublishAttemptInput) error {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().ValidateSheinPublishReadiness(ctx, in)",
+		"return lifecycle.ValidateSheinPublishReadiness(ctx, in)",
 		"func (s *service) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().PrepareSheinPublishPayload(ctx, in)",
+		"return flow.PrepareSheinPublishPayload(ctx, in)",
 		"func (s *service) UploadSheinPublishImages(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinPreparedSubmitPayload, error) {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().UploadSheinPublishImages(ctx, in)",
+		"return flow.UploadSheinPublishImages(ctx, in)",
 		"func (s *service) PreValidateSheinPublish(ctx context.Context, in *SheinPreparedSubmitPayload) error {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().PreValidateSheinPublish(ctx, in)",
+		"return flow.PreValidateSheinPublish(ctx, in)",
 		"func (s *service) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().SubmitSheinPublishRemote(ctx, in)",
+		"return flow.SubmitSheinPublishRemote(ctx, in)",
 		"func (s *service) PersistSheinPublishSuccess(ctx context.Context, in SheinPersistSubmitSuccessInput) error {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().PersistSheinPublishSuccess(ctx, in)",
+		"return persistence.PersistSheinPublishSuccess(ctx, in)",
 		"func (s *service) PersistSheinPublishFailure(ctx context.Context, in SheinPersistSubmitFailureInput) error {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().PersistSheinPublishFailure(ctx, in)",
+		"return persistence.PersistSheinPublishFailure(ctx, in)",
 		"func (s *service) RefreshSheinPublishRemoteStatus(ctx context.Context, in SheinRefreshRemoteStatusInput) (*SheinRefreshRemoteStatusResult, error) {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().RefreshSheinPublishRemoteStatus(ctx, in)",
+		"return refresh.RefreshSheinPublishRemoteStatus(ctx, in)",
 		"func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error) {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().BuildSheinTaskPreview(ctx, taskID)",
+		"return lifecycle.BuildSheinTaskPreview(ctx, taskID)",
 	} {
 		if !strings.Contains(facadeContent, needle) {
 			t.Fatalf("service_shein_publish_temporal_entrypoints.go should contain %q", needle)
@@ -1709,9 +1727,9 @@ func TestSubmitTemporalEntrypointsFileOwnsRootDelegates(t *testing.T) {
 		t.Fatalf("ReadFile(service_submit_temporal.go) unexpected error = %v", err)
 	}
 
-	adapterSrc, err := os.ReadFile("task_temporal_submission_adapter.go")
+	adapterSrc, err := os.ReadFile("task_temporal_submission_lifecycle_service.go")
 	if err != nil {
-		t.Fatalf("ReadFile(task_temporal_submission_adapter.go) error = %v", err)
+		t.Fatalf("ReadFile(task_temporal_submission_lifecycle_service.go) error = %v", err)
 	}
 	adapterContent := string(adapterSrc)
 
@@ -1728,12 +1746,12 @@ func TestSubmitTemporalEntrypointsFileOwnsRootDelegates(t *testing.T) {
 		"func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error) {",
 	} {
 		if strings.Contains(adapterContent, needle) {
-			t.Fatalf("task_temporal_submission_adapter.go should not contain %q", needle)
+			t.Fatalf("task_temporal_submission_lifecycle_service.go should not contain %q", needle)
 		}
 	}
 
 	if !strings.Contains(adapterContent, "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {") {
-		t.Fatalf("task_temporal_submission_adapter.go should keep %q", "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {")
+		t.Fatalf("task_temporal_submission_lifecycle_service.go should keep %q", "func (s *service) loadSheinPublishTaskForTemporal(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {")
 	}
 
 	if _, err := os.ReadFile("service_submit_temporal_task_loader_helper.go"); err == nil {
@@ -2165,8 +2183,8 @@ func TestSheinResolutionCachePreviewHelpersLiveOutsideMainSheinPreviewBuilder(t 
 	}
 	mainContent := string(mainSrc)
 	for _, needle := range []string{
-		"func buildSheinResolutionCacheSummary(pkg *sheinpub.Package) *SheinResolutionCacheSummary {",
-		"func enrichCategoryResolutionCacheInfo(info *sheinpub.ResolutionCacheInfo, resolution *sheinpub.CategoryResolution) {",
+		"func buildSheinResolutionCacheSummary(pkg *SheinPackage) *SheinResolutionCacheSummary {",
+		"return sheinworkspace.BuildResolutionCacheSummary(pkg)",
 	} {
 		if strings.Contains(mainContent, needle) {
 			t.Fatalf("preview_builder_shein.go should not contain %q", needle)
@@ -2179,13 +2197,40 @@ func TestSheinResolutionCachePreviewHelpersLiveOutsideMainSheinPreviewBuilder(t 
 	}
 	cacheContent := string(cacheSrc)
 	for _, needle := range []string{
-		"func buildSheinResolutionCacheSummary(pkg *sheinpub.Package) *SheinResolutionCacheSummary {",
-		"func enrichCategoryResolutionCacheInfo(info *sheinpub.ResolutionCacheInfo, resolution *sheinpub.CategoryResolution) {",
-		"func enrichPricingResolutionCacheInfo(info *sheinpub.ResolutionCacheInfo, review *sheinpub.PricingReview) {",
+		"func buildSheinResolutionCacheSummary(pkg *SheinPackage) *SheinResolutionCacheSummary {",
+		"return sheinworkspace.BuildResolutionCacheSummary(pkg)",
 	} {
 		if !strings.Contains(cacheContent, needle) {
 			t.Fatalf("preview_builder_shein_resolution_cache.go should contain %q", needle)
 		}
+	}
+}
+
+func TestSheinStoreResolutionSummaryValueLivesOutsidePreviewContextBuilder(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("shein_store_resolution_presentation.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_store_resolution_presentation.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		"func buildSheinStoreResolutionSummaryValue(",
+		"return sheinworkspace.BuildStoreResolutionSummary(",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("shein_store_resolution_presentation.go should contain %q", needle)
+		}
+	}
+
+	previewSrc, err := os.ReadFile("service_shein_store_resolution_preview_support_helper.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_store_resolution_preview_support_helper.go) error = %v", err)
+	}
+	previewContent := string(previewSrc)
+	if strings.Contains(previewContent, "return &SheinStoreResolutionSummary{") {
+		t.Fatalf("service_shein_store_resolution_preview_support_helper.go should not inline store resolution summary literals")
 	}
 }
 
@@ -2250,13 +2295,43 @@ func TestSheinPreviewReviewSummaryHelperLivesOutsideMainSheinPreviewBuilder(t *t
 	}
 	reviewSummaryContent := string(reviewSummarySrc)
 	for _, needle := range []string{
-		"func buildSheinPreviewReviewSummary(pkg *sheinpub.Package) (bool, []string) {",
-		"needsReview := len(pkg.ReviewNotes) > 0",
-		"summary := uniqueStrings(append([]string(nil), pkg.ReviewNotes...))",
-		"needsReview = needsReview || pkg.Inspection.NeedsReview",
+		"func buildSheinPreviewReviewSummary(pkg *SheinPackage) (bool, []string) {",
+		"return sheinworkspace.BuildPreviewReviewSummary(pkg)",
 	} {
 		if !strings.Contains(reviewSummaryContent, needle) {
 			t.Fatalf("preview_builder_shein_review_summary.go should contain %q", needle)
+		}
+	}
+}
+
+func TestSheinSourceProductSummaryHelperLivesOutsideMainSheinPreviewBuilder(t *testing.T) {
+	t.Parallel()
+
+	mainSrc, err := os.ReadFile("preview_builder_shein.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein.go) error = %v", err)
+	}
+	mainContent := string(mainSrc)
+	for _, needle := range []string{
+		"func buildSheinSourceProductSummary(product *canonical.Product) *SheinSourceProductSummary {",
+		"return sheinworkspace.BuildSourceProductSummary(product)",
+	} {
+		if strings.Contains(mainContent, needle) {
+			t.Fatalf("preview_builder_shein.go should not contain %q", needle)
+		}
+	}
+
+	sourceSrc, err := os.ReadFile("preview_builder_shein_source_product.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_source_product.go) error = %v", err)
+	}
+	sourceContent := string(sourceSrc)
+	for _, needle := range []string{
+		"func buildSheinSourceProductSummary(product *canonical.Product) *SheinSourceProductSummary {",
+		"return sheinworkspace.BuildSourceProductSummary(product)",
+	} {
+		if !strings.Contains(sourceContent, needle) {
+			t.Fatalf("preview_builder_shein_source_product.go should contain %q", needle)
 		}
 	}
 }
@@ -2305,10 +2380,8 @@ func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testin
 	imageHelpersContent := string(imageHelpersSrc)
 
 	for _, needle := range []string{
-		"func buildSheinFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *sheinpub.FinalDraft, product *sheinproduct.Product) []SheinFinalReviewImage {",
-		"func resolveSheinFinalReviewImageRole(url, role string, main bool, finalDraft *sheinpub.FinalDraft, sizeMapURLs map[string]struct{}) (string, bool) {",
-		"func isSheinFinalReviewSwatchRole(role string) bool {",
-		"func mergeSheinFinalReviewImage(existing *SheinFinalReviewImage, role string, main bool) {",
+		"func buildSheinFinalReviewImages(draft *SheinRequestDraft, finalDraft *sheinpub.FinalDraft, product *sheinproduct.Product) []SheinFinalReviewImage {",
+		"return sheinworkspace.BuildFinalReviewImages(draft, finalDraft, product)",
 	} {
 		if !strings.Contains(imageHelpersContent, needle) {
 			t.Fatalf("preview_builder_shein_final_review_images.go should contain %q", needle)
@@ -2343,9 +2416,10 @@ func TestSheinFinalReviewSKUHelpersLiveOutsideMainFinalReviewBuilder(t *testing.
 	skuHelpersContent := string(skuHelpersSrc)
 
 	for _, needle := range []string{
-		"func buildSheinFinalReviewSKUs(draft *sheinpub.RequestDraft) []SheinFinalReviewSKU {",
+		"func buildSheinFinalReviewSKUs(draft *SheinRequestDraft) []SheinFinalReviewSKU {",
+		"return sheinworkspace.BuildFinalReviewSKUs(draft)",
 		"func buildSheinFinalReviewSKU(supplierCode string, sku SheinSKUDraft) SheinFinalReviewSKU {",
-		"func normalizeSheinFinalReviewAttributeName(name string) string {",
+		"return sheinworkspace.BuildFinalReviewSKU(supplierCode, sku)",
 	} {
 		if !strings.Contains(skuHelpersContent, needle) {
 			t.Fatalf("preview_builder_shein_final_review_skus.go should contain %q", needle)
@@ -2359,9 +2433,8 @@ func TestSheinFinalReviewSKUHelpersLiveOutsideMainFinalReviewBuilder(t *testing.
 	finalReviewContent := string(finalReviewSrc)
 
 	for _, needle := range []string{
-		"func buildSheinFinalReviewSKUs(draft *sheinpub.RequestDraft) []SheinFinalReviewSKU {",
+		"func buildSheinFinalReviewSKUs(draft *SheinRequestDraft) []SheinFinalReviewSKU {",
 		"func buildSheinFinalReviewSKU(supplierCode string, sku SheinSKUDraft) SheinFinalReviewSKU {",
-		"func normalizeSheinFinalReviewAttributeName(name string) string {",
 	} {
 		if strings.Contains(finalReviewContent, needle) {
 			t.Fatalf("preview_builder_shein_final_review.go should not contain %q", needle)
@@ -2380,9 +2453,10 @@ func TestSheinImageUploadPreviewHelpersLiveOutsideSubmitImageRuntime(t *testing.
 
 	for _, needle := range []string{
 		"func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPreflight {",
-		"func collectSheinProductImageURLs(product *sheinproduct.Product) []string {",
-		"func appendSheinImageInfoURLs(urls []string, info *sheinproduct.ImageInfo) []string {",
-		"func buildSheinImageUploadPreflightSummary(report *SheinImageUploadPreflight) []string {",
+		"return sheinworkspace.BuildImageUploadPreflight(",
+		"isSheinUploadedImageURL,",
+		"sheinImageUploadCacheHit,",
+		"isSDSImageURL,",
 	} {
 		if !strings.Contains(previewHelpersContent, needle) {
 			t.Fatalf("preview_builder_shein_image_upload.go should contain %q", needle)
@@ -2397,9 +2471,10 @@ func TestSheinImageUploadPreviewHelpersLiveOutsideSubmitImageRuntime(t *testing.
 
 	for _, needle := range []string{
 		"func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPreflight {",
-		"func collectSheinProductImageURLs(product *sheinproduct.Product) []string {",
-		"func appendSheinImageInfoURLs(urls []string, info *sheinproduct.ImageInfo) []string {",
-		"func buildSheinImageUploadPreflightSummary(report *SheinImageUploadPreflight) []string {",
+		"return sheinworkspace.BuildImageUploadPreflight(",
+		"isSheinUploadedImageURL,",
+		"sheinImageUploadCacheHit,",
+		"isSDSImageURL,",
 	} {
 		if strings.Contains(submitImagesContent, needle) {
 			t.Fatalf("shein_submit_images.go should not contain %q", needle)
@@ -3310,7 +3385,7 @@ func TestSubmitWorkflowHelpersFileOwnsRootHelpers(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) submitSheinTaskWithWorkflow(ctx context.Context, taskID string, task *Task, req *SubmitTaskRequest, opts sheinWorkflowSubmitOptions) (*ListingKitPreview, error) {",
-		"return s.taskTemporalSubmissionAdapterOrDefault().startSheinPublishWorkflowAttempt(ctx, taskID, task, req, opts)",
+		"return lifecycle.startSheinPublishWorkflowAttempt(ctx, taskID, task, req, opts)",
 		"func (s *service) shouldStartSheinPublishWorkflow(platform, action string) bool {",
 		"client, enabled := resolveSubmissionWorkflowClient(s)",
 		"enabled &&",
@@ -3365,7 +3440,7 @@ func TestTaskTemporalSubmissionPayloadUsesSubmissionDomainRunner(t *testing.T) {
 	supportContent := string(supportSrc)
 
 	for _, needle := range []string{
-		"func newSheinTemporalSubmitPayloadStages(s *taskTemporalSubmissionAdapter) *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot] {",
+		"func newSheinTemporalSubmitPayloadStages(s *taskTemporalSubmissionFlowService) *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot] {",
 		"return submissiondomain.NewPayloadStageService(",
 		"PersistPhase:           s.persistTemporalSubmitPayloadPhase,",
 		"PreparePayload:         s.prepareTemporalSubmitPayload,",
@@ -3379,20 +3454,20 @@ func TestTaskTemporalSubmissionPayloadUsesSubmissionDomainRunner(t *testing.T) {
 		}
 	}
 
-	payloadSrc, err := os.ReadFile("task_temporal_submission_payload.go")
+	payloadSrc, err := os.ReadFile("service_shein_publish_temporal_entrypoints.go")
 	if err != nil {
-		t.Fatalf("ReadFile(task_temporal_submission_payload.go) error = %v", err)
+		t.Fatalf("ReadFile(service_shein_publish_temporal_entrypoints.go) error = %v", err)
 	}
 	payloadContent := string(payloadSrc)
 
 	for _, needle := range []string{
-		"s.payloadStages.Prepare(",
-		"s.payloadStages.UploadImages(",
-		"s.payloadStages.PreValidate(",
-		"s.remoteSubmitter.Submit(",
+		"return flow.PrepareSheinPublishPayload(ctx, in)",
+		"return flow.UploadSheinPublishImages(ctx, in)",
+		"return flow.PreValidateSheinPublish(ctx, in)",
+		"return flow.SubmitSheinPublishRemote(ctx, in)",
 	} {
 		if !strings.Contains(payloadContent, needle) {
-			t.Fatalf("task_temporal_submission_payload.go should contain %q", needle)
+			t.Fatalf("service_shein_publish_temporal_entrypoints.go should contain %q", needle)
 		}
 	}
 
@@ -3400,11 +3475,35 @@ func TestTaskTemporalSubmissionPayloadUsesSubmissionDomainRunner(t *testing.T) {
 		"prepareSheinSubmitPayloadProduct(ctx, in.TaskID, in.Action, in.RequestID, task, pkg, s.prepareSheinSubmitProduct)",
 		"finalizeSheinUploadedSubmitPayload(ctx, in.TaskID, in.Action, in.RequestID, task, in, s.resolveSubmitSettings)",
 		"return s.preValidateSheinSubmitProduct(pkg, in.Product)",
-		"remoteState := prepareSheinRemoteSubmitState(pkg, in.Action, in.RequestID, in.Product, in.Snapshot)",
-		"attempt := executeSheinSubmitRemoteAttempt(",
+		"s.payloadStages.Prepare(",
+		"s.payloadStages.UploadImages(",
+		"s.payloadStages.PreValidate(",
+		"s.remoteSubmitter.Submit(",
 	} {
 		if strings.Contains(payloadContent, needle) {
-			t.Fatalf("task_temporal_submission_payload.go should not contain %q after payload-stage extraction", needle)
+			t.Fatalf("service_shein_publish_temporal_entrypoints.go should not contain %q after temporal flow extraction", needle)
+		}
+	}
+
+	if _, err := os.ReadFile("task_temporal_submission_payload.go"); err == nil {
+		t.Fatal("task_temporal_submission_payload.go should be removed after service-owned temporal host extraction")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(task_temporal_submission_payload.go) unexpected error = %v", err)
+	}
+
+	flowSrc, err := os.ReadFile("task_temporal_submission_flow_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_flow_service.go) error = %v", err)
+	}
+	flowContent := string(flowSrc)
+	for _, needle := range []string{
+		"s.payloadStages.Prepare(",
+		"s.payloadStages.UploadImages(",
+		"s.payloadStages.PreValidate(",
+		"s.remoteSubmitter.Submit(",
+	} {
+		if !strings.Contains(flowContent, needle) {
+			t.Fatalf("task_temporal_submission_flow_service.go should contain %q", needle)
 		}
 	}
 }
@@ -3426,6 +3525,29 @@ func TestTaskSubmissionRemoteSupportUsesSubmissionDomainRunner(t *testing.T) {
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("task_submission_remote_support.go should contain %q", needle)
+		}
+	}
+
+	stateSrc, err := os.ReadFile("submit_remote_state_shein.go")
+	if err != nil {
+		t.Fatalf("ReadFile(submit_remote_state_shein.go) error = %v", err)
+	}
+	stateContent := string(stateSrc)
+	for _, needle := range []string{
+		"func prepareSheinRemoteSubmitState(",
+		"supplierCode, snapshot := sheinpub.PrepareSubmissionPersistenceInput(",
+	} {
+		if !strings.Contains(stateContent, needle) {
+			t.Fatalf("submit_remote_state_shein.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"sheinSubmitSupplierCode(",
+		"setSheinSubmitSupplierCode(",
+		"setSheinSubmitSnapshot(",
+	} {
+		if strings.Contains(stateContent, needle) {
+			t.Fatalf("submit_remote_state_shein.go should not contain %q after publishing extraction", needle)
 		}
 	}
 }
@@ -3466,20 +3588,46 @@ func TestTaskSubmissionSuccessPersistenceUsesSubmissionDomainRunner(t *testing.T
 		}
 	}
 
-	temporalSrc, err := os.ReadFile("task_temporal_submission_persistence_support.go")
+	temporalSrc, err := os.ReadFile("task_temporal_submission_persistence_service.go")
 	if err != nil {
-		t.Fatalf("ReadFile(task_temporal_submission_persistence_support.go) error = %v", err)
+		t.Fatalf("ReadFile(task_temporal_submission_persistence_service.go) error = %v", err)
 	}
 	temporalContent := string(temporalSrc)
 
 	for _, needle := range []string{
 		"s.successRunner.PersistSuccess(ctx, submissiondomain.SuccessPersistenceInput[*Task, *SheinPackage, *sheinpub.SubmissionResponse]{",
-		"func (s *taskTemporalSubmissionAdapter) persistTemporalSuccessResultAndPhase(",
-		"func (s *taskTemporalSubmissionAdapter) completeTemporalSubmitAttempt(",
+		"func (s *taskTemporalSubmissionPersistenceService) persistTemporalSuccessResultAndPhase(",
+		"func (s *taskTemporalSubmissionPersistenceService) completeTemporalSubmitAttempt(",
 	} {
 		if !strings.Contains(temporalContent, needle) {
-			t.Fatalf("task_temporal_submission_persistence_support.go should contain %q", needle)
+			t.Fatalf("task_temporal_submission_persistence_service.go should contain %q", needle)
 		}
+	}
+
+	persistSrc, err := os.ReadFile("service_shein_publish_temporal_entrypoints.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_shein_publish_temporal_entrypoints.go) error = %v", err)
+	}
+	persistContent := string(persistSrc)
+	for _, needle := range []string{
+		"return persistence.PersistSheinPublishSuccess(ctx, in)",
+	} {
+		if !strings.Contains(persistContent, needle) {
+			t.Fatalf("service_shein_publish_temporal_entrypoints.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"sheinpub.ApplySubmissionPersistenceInput(",
+	} {
+		if strings.Contains(persistContent, needle) {
+			t.Fatalf("service_shein_publish_temporal_entrypoints.go should not contain %q after temporal persistence service extraction", needle)
+		}
+	}
+
+	if _, err := os.ReadFile("task_temporal_submission_persistence.go"); err == nil {
+		t.Fatal("task_temporal_submission_persistence.go should be removed after service-owned temporal host extraction")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(task_temporal_submission_persistence.go) unexpected error = %v", err)
 	}
 }
 
@@ -3518,18 +3666,18 @@ func TestTaskSubmissionFailurePersistenceUsesSubmissionDomainRunner(t *testing.T
 		}
 	}
 
-	temporalSrc, err := os.ReadFile("task_temporal_submission_persistence_support.go")
+	temporalSrc, err := os.ReadFile("task_temporal_submission_persistence_service.go")
 	if err != nil {
-		t.Fatalf("ReadFile(task_temporal_submission_persistence_support.go) error = %v", err)
+		t.Fatalf("ReadFile(task_temporal_submission_persistence_service.go) error = %v", err)
 	}
 	temporalContent := string(temporalSrc)
 
 	for _, needle := range []string{
 		"s.failureRunner.PersistFailure(ctx, input)",
-		"func (s *taskTemporalSubmissionAdapter) recordTemporalFailureState(",
+		"func (s *taskTemporalSubmissionPersistenceService) recordTemporalFailureState(",
 	} {
 		if !strings.Contains(temporalContent, needle) {
-			t.Fatalf("task_temporal_submission_persistence_support.go should contain %q", needle)
+			t.Fatalf("task_temporal_submission_persistence_service.go should contain %q", needle)
 		}
 	}
 }

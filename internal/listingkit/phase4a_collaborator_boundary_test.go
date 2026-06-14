@@ -21,13 +21,19 @@ func TestServiceRootFileKeepsCollaboratorWiringOutOfServiceRoot(t *testing.T) {
 		"newTaskSubmissionService(",
 		"newTaskSubmissionRefreshService(",
 		"newTaskSubmissionExecutionService(",
-		"newTaskTemporalSubmissionAdapter(",
+		"newTaskTemporalSubmissionLifecycleService(",
+		"newTaskTemporalSubmissionFlowService(",
+		"newTaskTemporalSubmissionPersistenceService(",
+		"newTaskTemporalSubmissionRefreshService(",
 		"buildSettingsAdminServiceConfig(",
 		"buildSheinAdminServiceConfig(",
 		"buildTaskSubmissionServiceConfig(",
 		"buildTaskSubmissionRefreshServiceConfig(",
 		"buildTaskSubmissionExecutionServiceConfig(",
-		"buildTaskTemporalSubmissionAdapterConfig(",
+		"buildTaskTemporalSubmissionLifecycleServiceConfig(",
+		"buildTaskTemporalSubmissionFlowServiceConfig(",
+		"buildTaskTemporalSubmissionPersistenceServiceConfig(",
+		"buildTaskTemporalSubmissionRefreshServiceConfig(",
 	} {
 		if strings.Contains(content, needle) {
 			t.Fatalf("service.go should not contain %q", needle)
@@ -80,7 +86,10 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 				"func buildTaskSubmissionServiceConfig(s *service) taskSubmissionServiceConfig {",
 				"func buildTaskSubmissionRefreshServiceConfig(s *service) taskSubmissionRefreshServiceConfig {",
 				"func buildTaskSubmissionExecutionServiceConfig(s *service) taskSubmissionExecutionServiceConfig {",
-				"func buildTaskTemporalSubmissionAdapterConfig(s *service) taskTemporalSubmissionAdapterConfig {",
+				"func buildTaskTemporalSubmissionLifecycleServiceConfig(s *service) taskTemporalSubmissionLifecycleServiceConfig {",
+				"func buildTaskTemporalSubmissionFlowServiceConfig(s *service) taskTemporalSubmissionFlowServiceConfig {",
+				"func buildTaskTemporalSubmissionPersistenceServiceConfig(s *service) taskTemporalSubmissionPersistenceServiceConfig {",
+				"func buildTaskTemporalSubmissionRefreshServiceConfig(s *service) taskTemporalSubmissionRefreshServiceConfig {",
 			},
 		},
 	}

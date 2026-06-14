@@ -14,7 +14,7 @@ type taskSubmissionServiceConfig struct {
 	repo                            Repository
 	lockSubmit                      func(key string) func()
 	resolveDefaultSheinSubmitAction func(context.Context, string) (string, error)
-	acquireSheinSubmitTask          func(context.Context, string, string, string, time.Time) (*Task, *ListingKitPreview, error)
+	recovery                        *taskSubmissionRecoveryService
 	shouldStartSheinPublishWorkflow func(platform, action string) bool
 	submitSheinTaskWithWorkflow     func(context.Context, string, *Task, *SubmitTaskRequest, sheinWorkflowSubmitOptions) (*ListingKitPreview, error)
 	submitSheinTaskDirect           func(context.Context, string, *Task, *SubmitTaskRequest, sheinDirectSubmitOptions) (*ListingKitPreview, error)
@@ -24,7 +24,7 @@ type taskSubmissionService struct {
 	repo                            Repository
 	lockSubmit                      func(key string) func()
 	resolveDefaultSheinSubmitAction func(context.Context, string) (string, error)
-	acquireSheinSubmitTask          func(context.Context, string, string, string, time.Time) (*Task, *ListingKitPreview, error)
+	recovery                        *taskSubmissionRecoveryService
 	shouldStartSheinPublishWorkflow func(platform, action string) bool
 	submitSheinTaskWithWorkflow     func(context.Context, string, *Task, *SubmitTaskRequest, sheinWorkflowSubmitOptions) (*ListingKitPreview, error)
 	submitSheinTaskDirect           func(context.Context, string, *Task, *SubmitTaskRequest, sheinDirectSubmitOptions) (*ListingKitPreview, error)
@@ -44,7 +44,7 @@ func newTaskSubmissionService(config taskSubmissionServiceConfig) *taskSubmissio
 		repo:                            config.repo,
 		lockSubmit:                      config.lockSubmit,
 		resolveDefaultSheinSubmitAction: config.resolveDefaultSheinSubmitAction,
-		acquireSheinSubmitTask:          config.acquireSheinSubmitTask,
+		recovery:                        config.recovery,
 		shouldStartSheinPublishWorkflow: config.shouldStartSheinPublishWorkflow,
 		submitSheinTaskWithWorkflow:     config.submitSheinTaskWithWorkflow,
 		submitSheinTaskDirect:           config.submitSheinTaskDirect,
@@ -158,8 +158,8 @@ func (s *taskSubmissionService) normalizeSubmitTarget(ctx context.Context, taskI
 }
 
 func (s *taskSubmissionService) acquireSubmitTask(ctx context.Context, taskID, action, requestID string, startedAt time.Time) (*Task, *ListingKitPreview, error) {
-	if s.acquireSheinSubmitTask == nil {
+	if s.recovery == nil {
 		return nil, nil, apperrors.New(apperrors.ErrCodeSystem, "submit task acquisition is not configured")
 	}
-	return s.acquireSheinSubmitTask(ctx, taskID, action, requestID, startedAt)
+	return s.recovery.acquireSheinSubmitTask(ctx, taskID, action, requestID, startedAt)
 }

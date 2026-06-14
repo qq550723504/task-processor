@@ -22,10 +22,34 @@ Current stable ownership:
 - remote-recovery lease expiry policy
 - active attempt lease policy
 - in-flight clearing match policy
+- submit-in-progress error shape and unwrap behavior
+- submission event history policy: default event ID and recent-event retention
+- attempt result status policy for success, failure, and unknown completion states
+- submission event outcome policy: record metadata carry-over, response-note selection, and submit-error override
+- phase event policy: default running status, default detail fallback, and error-message propagation
+- remote record id normalization policy for confirm-remote event/result sync
+- confirm-remote state policy: checked-at, message, and event remote-record-id normalization
+- refresh mutation guard policy: action consistency and request-id consistency checks
+- refresh selection policy: action fallback priority and supplier-code fallback
+- refresh request-id normalization policy
+- refresh remote policy: default-confirmed flag and fallback-message defaults
+- action-record state policy: action slot selection and last-submission state synchronization
+- action-record query policy: success-state checks and completed-record lookup by request id
+- action-record mutation policy: request-id-guarded slot mutation for record updates
+- remote-sync policy: always sync report remote status/check time before guarded record mutation
+- attempt-record fallback policy: reuse matching request records or synthesize timing/attempt seeds from in-flight state
+- in-flight state policy: begin/advance attempt state updates for current action, phase, lease, and attempt count
+- attempt finalize policy: resolve final status, error message, and finished-at state for completion/failure writes
+- attempt record draft policy: shape minimal record drafts from generic outcome/finalize state
+- event draft policy: shape generic attempt/phase event fields before marketplace DTO assembly
+- generic submit lock manager ownership for service-level coordination primitives
+- generic source-facts, enqueue-retry, response-error, and in-flight TTL primitives for service-level submission coordination
+- generic requeue task-id normalization for dedupe/trim request shaping
+- generic submit-in-progress error ownership for non-SHEIN-specific API/service/Temporal callsites
 
 Does not own yet:
 
 - full submit orchestration and platform routing
 - SHEIN-specific submit package loading and remote confirmation details
-- Temporal-facing submit workflow adapters
+- Temporal-facing submit workflow adapters beyond generic submit-in-progress error shaping
 - durable retry/reblock persistence policies

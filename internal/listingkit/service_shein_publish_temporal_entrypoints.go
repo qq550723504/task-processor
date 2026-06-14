@@ -3,41 +3,87 @@ package listingkit
 import "context"
 
 func (s *service) BeginSheinPublishAttempt(ctx context.Context, in SheinPublishAttemptInput) error {
-	return s.taskTemporalSubmissionAdapterOrDefault().BeginSheinPublishAttempt(ctx, in)
+	lifecycle := s.taskTemporalSubmissionLifecycleOrDefault()
+	if lifecycle == nil {
+		return ErrTaskResultUnavailable
+	}
+	return lifecycle.BeginSheinPublishAttempt(ctx, in)
 }
 
 func (s *service) ValidateSheinPublishReadiness(ctx context.Context, in SheinPublishAttemptInput) error {
-	return s.taskTemporalSubmissionAdapterOrDefault().ValidateSheinPublishReadiness(ctx, in)
+	lifecycle := s.taskTemporalSubmissionLifecycleOrDefault()
+	if lifecycle == nil {
+		return ErrTaskResultUnavailable
+	}
+	return lifecycle.ValidateSheinPublishReadiness(ctx, in)
 }
 
 func (s *service) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {
-	return s.taskTemporalSubmissionAdapterOrDefault().PrepareSheinPublishPayload(ctx, in)
+	flow := s.taskTemporalSubmissionFlowOrDefault()
+	if flow == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	return flow.PrepareSheinPublishPayload(ctx, in)
 }
 
 func (s *service) UploadSheinPublishImages(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinPreparedSubmitPayload, error) {
-	return s.taskTemporalSubmissionAdapterOrDefault().UploadSheinPublishImages(ctx, in)
+	if err := requireSheinPreparedSubmitPayload(in); err != nil {
+		return nil, err
+	}
+	if !in.NeedsImageUpload {
+		return in, nil
+	}
+	flow := s.taskTemporalSubmissionFlowOrDefault()
+	if flow == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	return flow.UploadSheinPublishImages(ctx, in)
 }
 
 func (s *service) PreValidateSheinPublish(ctx context.Context, in *SheinPreparedSubmitPayload) error {
-	return s.taskTemporalSubmissionAdapterOrDefault().PreValidateSheinPublish(ctx, in)
+	flow := s.taskTemporalSubmissionFlowOrDefault()
+	if flow == nil {
+		return ErrTaskResultUnavailable
+	}
+	return flow.PreValidateSheinPublish(ctx, in)
 }
 
 func (s *service) SubmitSheinPublishRemote(ctx context.Context, in *SheinPreparedSubmitPayload) (*SheinRemoteSubmitResult, error) {
-	return s.taskTemporalSubmissionAdapterOrDefault().SubmitSheinPublishRemote(ctx, in)
+	flow := s.taskTemporalSubmissionFlowOrDefault()
+	if flow == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	return flow.SubmitSheinPublishRemote(ctx, in)
 }
 
 func (s *service) PersistSheinPublishSuccess(ctx context.Context, in SheinPersistSubmitSuccessInput) error {
-	return s.taskTemporalSubmissionAdapterOrDefault().PersistSheinPublishSuccess(ctx, in)
+	persistence := s.taskTemporalSubmissionPersistenceOrDefault()
+	if persistence == nil {
+		return nil
+	}
+	return persistence.PersistSheinPublishSuccess(ctx, in)
 }
 
 func (s *service) PersistSheinPublishFailure(ctx context.Context, in SheinPersistSubmitFailureInput) error {
-	return s.taskTemporalSubmissionAdapterOrDefault().PersistSheinPublishFailure(ctx, in)
+	persistence := s.taskTemporalSubmissionPersistenceOrDefault()
+	if persistence == nil {
+		return nil
+	}
+	return persistence.PersistSheinPublishFailure(ctx, in)
 }
 
 func (s *service) RefreshSheinPublishRemoteStatus(ctx context.Context, in SheinRefreshRemoteStatusInput) (*SheinRefreshRemoteStatusResult, error) {
-	return s.taskTemporalSubmissionAdapterOrDefault().RefreshSheinPublishRemoteStatus(ctx, in)
+	refresh := s.taskTemporalSubmissionRefreshOrDefault()
+	if refresh == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	return refresh.RefreshSheinPublishRemoteStatus(ctx, in)
 }
 
 func (s *service) BuildSheinTaskPreview(ctx context.Context, taskID string) (*ListingKitPreview, error) {
-	return s.taskTemporalSubmissionAdapterOrDefault().BuildSheinTaskPreview(ctx, taskID)
+	lifecycle := s.taskTemporalSubmissionLifecycleOrDefault()
+	if lifecycle == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	return lifecycle.BuildSheinTaskPreview(ctx, taskID)
 }

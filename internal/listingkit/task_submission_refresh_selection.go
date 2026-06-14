@@ -2,10 +2,10 @@ package listingkit
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	apperrors "task-processor/internal/core/errors"
+	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -54,67 +54,26 @@ func resolveSubmissionRefreshAction(report *sheinpub.SubmissionReport) string {
 	if report == nil {
 		return ""
 	}
-	action := strings.TrimSpace(report.LastAction)
-	if action != "" {
-		return action
-	}
-	if report.Publish != nil {
-		return "publish"
-	}
-	if report.SaveDraft != nil {
-		return "save_draft"
-	}
-	return ""
-}
-
-func loadSubmissionRefreshReport(pkg *SheinPackage) (*sheinpub.SubmissionReport, error) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.SubmissionState == nil {
-		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
-	}
-	return pkg.SubmissionState, nil
-}
-
-func resolveSubmissionRefreshRecord(report *sheinpub.SubmissionReport, action string) (*sheinpub.SubmissionRecord, error) {
-	record := sheinSubmissionRecordForAction(report, action)
-	if record == nil {
-		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission record is not available")
-	}
-	return record, nil
-}
-
-func resolveSubmissionRefreshSupplierCode(record *sheinpub.SubmissionRecord, pkg *SheinPackage) (string, error) {
-	supplierCode := ""
-	if record != nil {
-		supplierCode = strings.TrimSpace(record.SupplierCode)
-	}
-	if supplierCode == "" {
-		supplierCode = sheinSubmitSupplierCode(nil, pkg)
-	}
-	if supplierCode == "" {
-		return "", apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein supplier code is not available")
-	}
-	return supplierCode, nil
+	return listingsubmission.ResolveRefreshAction(report.LastAction, report.Publish != nil, report.SaveDraft != nil)
 }
 
 func loadSubmissionRefreshSelection(pkg *SheinPackage) (*sheinSubmissionRefreshSelection, error) {
-	report, err := loadSubmissionRefreshReport(pkg)
-	if err != nil {
-		return nil, err
+	var ok bool
+	pkg, ok = sheinpub.SubmissionStatePackage(pkg)
+	if !ok {
+		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission is not available")
 	}
-	action := resolveSubmissionRefreshAction(report)
-	record, err := resolveSubmissionRefreshRecord(report, action)
-	if err != nil {
-		return nil, err
+	selection := sheinpub.ResolveSubmissionRefreshSelection(pkg)
+	if selection.Record == nil {
+		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein submission record is not available")
 	}
-	supplierCode, err := resolveSubmissionRefreshSupplierCode(record, pkg)
-	if err != nil {
-		return nil, err
+	if selection.SupplierCode == "" {
+		return nil, apperrors.Wrap(ErrSubmitBlocked, apperrors.ErrCodeValidation, "shein supplier code is not available")
 	}
 	return &sheinSubmissionRefreshSelection{
-		action:       action,
-		record:       record,
-		supplierCode: supplierCode,
+		action:       selection.Action,
+		record:       selection.Record,
+		supplierCode: selection.SupplierCode,
 	}, nil
 }
 
@@ -132,7 +91,7 @@ func buildSubmissionRefreshRequestID(record *sheinpub.SubmissionRecord) string {
 	if record == nil {
 		return ""
 	}
-	return strings.TrimSpace(record.RequestID)
+	return listingsubmission.ResolveRefreshRequestID(record.RequestID)
 }
 
 func buildSubmissionRefreshRequest(pkg *SheinPackage, selection *sheinSubmissionRefreshSelection) sheinSubmissionRefreshRequest {
@@ -167,12 +126,11 @@ func newSubmissionRefreshState(task *Task, action, requestID string, startedAt t
 }
 
 func buildSubmissionRefreshRemoteInputs(pkg *SheinPackage, action, supplierCode string) sheinSubmissionRefreshRemoteInputs {
+	policy := listingsubmission.BuildRefreshRemotePolicy(action, sheinpub.RemotePublishAccepted(pkg, action))
 	return sheinSubmissionRefreshRemoteInputs{
-		lookupCodes:      collectSheinRemoteLookupCodes(pkg, supplierCode),
-		spuName:          sheinRemoteLookupSPUName(pkg, action),
-		defaultConfirmed: action == "publish" && sheinRemotePublishAccepted(pkg, action),
-		// Preserve current submission-service behavior; resolveSheinSubmitRemoteStatus supplies
-		// the publish fallback when defaultConfirmed is true.
-		fallbackMessage: "",
+		lookupCodes:      sheinpub.CollectRemoteLookupCodes(pkg, supplierCode),
+		spuName:          sheinpub.RemoteLookupSPUName(pkg, action),
+		defaultConfirmed: policy.DefaultConfirmed,
+		fallbackMessage:  policy.FallbackMessage,
 	}
 }

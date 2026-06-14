@@ -30,5 +30,8 @@ func (s *service) initializeSubmitWorkflowCollaborators() {
 	if s == nil {
 		return
 	}
-	s.submission.taskTemporalSubmissionAdapter = s.taskTemporalSubmissionAdapterOrDefault()
+	s.submission.taskTemporalSubmissionLifecycle = s.taskTemporalSubmissionLifecycleOrDefault()
+	s.submission.taskTemporalSubmissionFlow = s.taskTemporalSubmissionFlowOrDefault()
+	s.submission.taskTemporalSubmissionPersistence = s.taskTemporalSubmissionPersistenceOrDefault()
+	s.submission.taskTemporalSubmissionRefresh = s.taskTemporalSubmissionRefreshOrDefault()
 }

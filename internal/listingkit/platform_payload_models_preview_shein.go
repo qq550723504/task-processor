@@ -41,17 +41,7 @@ type SheinPreviewPayload struct {
 	InspectionData    *sheinpub.Inspection              `json:"inspection_data,omitempty"`
 }
 
-type SheinStoreResolutionSummary struct {
-	StoreID          int64    `json:"store_id,omitempty"`
-	Site             string   `json:"site,omitempty"`
-	Strategy         string   `json:"strategy,omitempty"`
-	Reason           string   `json:"reason,omitempty"`
-	MatchedRuleKinds []string `json:"matched_rule_kinds,omitempty"`
-	MatchedProfileID int64    `json:"matched_profile_id,omitempty"`
-	ManualOverride   bool     `json:"manual_override,omitempty"`
-	Fallback         bool     `json:"fallback,omitempty"`
-	ResolvedAt       string   `json:"resolved_at,omitempty"`
-}
+type SheinStoreResolutionSummary = sheinworkspace.StoreResolutionSummary
 
 type SheinFinalReview struct {
 	Confirmed      bool                             `json:"confirmed"`
@@ -70,55 +60,10 @@ type SheinFinalReview struct {
 	BlockingItems  []SheinReadinessItem             `json:"blocking_items,omitempty"`
 }
 
-type SheinFinalReviewSKU struct {
-	SupplierCode string  `json:"supplier_code,omitempty"`
-	SupplierSKU  string  `json:"supplier_sku,omitempty"`
-	Color        string  `json:"color,omitempty"`
-	Size         string  `json:"size,omitempty"`
-	Price        float64 `json:"price,omitempty"`
-	Currency     string  `json:"currency,omitempty"`
-	Stock        int     `json:"stock,omitempty"`
-	Weight       float64 `json:"weight,omitempty"`
-}
+type SheinFinalReviewSKU = sheinworkspace.FinalReviewSKU
+type SheinFinalReviewImage = sheinworkspace.FinalReviewImage
 
-type SheinFinalReviewImage struct {
-	URL     string `json:"url,omitempty"`
-	Role    string `json:"role,omitempty"`
-	Sort    int    `json:"sort,omitempty"`
-	Final   bool   `json:"final"`
-	Main    bool   `json:"main,omitempty"`
-	Swatch  bool   `json:"swatch,omitempty"`
-	SizeMap bool   `json:"size_map,omitempty"`
-}
+type SheinResolutionCacheSummary = sheinworkspace.ResolutionCacheSummary
+type SheinImageUploadPreflight = sheinworkspace.ImageUploadPreflight
 
-type SheinResolutionCacheSummary struct {
-	Category       *sheinpub.ResolutionCacheInfo `json:"category,omitempty"`
-	Attributes     *sheinpub.ResolutionCacheInfo `json:"attributes,omitempty"`
-	SaleAttributes *sheinpub.ResolutionCacheInfo `json:"sale_attributes,omitempty"`
-	Pricing        *sheinpub.ResolutionCacheInfo `json:"pricing,omitempty"`
-}
-
-type SheinImageUploadPreflight struct {
-	TotalImageReferences int      `json:"total_image_references"`
-	UniqueImageURLs      int      `json:"unique_image_urls"`
-	PendingUploadURLs    int      `json:"pending_upload_urls"`
-	SheinUploadedURLs    int      `json:"shein_uploaded_urls"`
-	SDSMockupURLs        int      `json:"sds_mockup_urls"`
-	UsesSDSMockups       bool     `json:"uses_sds_mockups"`
-	ReadyForUpload       bool     `json:"ready_for_upload"`
-	Summary              []string `json:"summary,omitempty"`
-}
-
-type SheinSourceProductSummary struct {
-	Title           string            `json:"title,omitempty"`
-	SKU             string            `json:"sku,omitempty"`
-	CategoryPath    []string          `json:"category_path,omitempty"`
-	Attributes      map[string]string `json:"attributes,omitempty"`
-	VariantSKU      string            `json:"variant_sku,omitempty"`
-	VariantSize     string            `json:"variant_size,omitempty"`
-	VariantColor    string            `json:"variant_color,omitempty"`
-	VariantPrice    float64           `json:"variant_price,omitempty"`
-	VariantWeight   float64           `json:"variant_weight,omitempty"`
-	ProductionCycle string            `json:"production_cycle,omitempty"`
-	ImageURLs       []string          `json:"image_urls,omitempty"`
-}
+type SheinSourceProductSummary = sheinworkspace.SourceProductSummary

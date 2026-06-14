@@ -15,7 +15,7 @@ func buildSheinAdminServiceConfig(s *service) sheinAdminServiceConfig {
 	wiring := buildSheinAdminWiring(s)
 	return sheinAdminServiceConfig{
 		repo:                  wiring.repo,
-		mutateTaskResult:      wiring.mutateTaskResult,
+		recovery:              wiring.recovery,
 		currentPricingRule:    wiring.currentPricingRule,
 		newSheinAPIClient:     wiring.newSheinAPIClient,
 		buildTaskPreview:      wiring.buildTaskPreview,

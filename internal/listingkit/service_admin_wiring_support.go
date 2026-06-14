@@ -17,7 +17,7 @@ type settingsAdminWiring struct {
 
 type sheinAdminWiring struct {
 	repo                  Repository
-	mutateTaskResult      func(context.Context, string, TaskResultMutation) (*Task, error)
+	recovery              *taskSubmissionRecoveryService
 	currentPricingRule    func() sheinpub.PricingRule
 	newSheinAPIClient     func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
 	buildTaskPreview      func(context.Context, *Task, string) (*ListingKitPreview, error)
@@ -51,7 +51,7 @@ func buildSheinAdminWiring(s *service) sheinAdminWiring {
 	preview := buildTaskPreviewAccessWiring(s)
 	return sheinAdminWiring{
 		repo:                  repository.repo,
-		mutateTaskResult:      s.mutateTaskResult,
+		recovery:              s.taskSubmissionRecoveryOrDefault(),
 		currentPricingRule:    s.currentSheinPricingRule,
 		newSheinAPIClient:     s.newSheinAPIClient,
 		buildTaskPreview:      preview.buildTaskPreview,
