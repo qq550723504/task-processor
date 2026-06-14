@@ -19,6 +19,7 @@ Owns:
 
 - source-result normalization
 - source-result alignment with source identities
+- 1688 URL/result identity normalization
 - source identity normalization
 - source-to-product handoff contracts
 - source platform to crawler platform mapping

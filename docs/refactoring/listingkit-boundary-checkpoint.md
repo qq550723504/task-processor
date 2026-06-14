@@ -84,6 +84,7 @@ Recommended next slice:
 - inspect current crawler/source boundaries and identify one small normalization seam for `product/sourcing`.
 - current first sourcing seam: `SourceIdentity` and normalized `SourceRequest` fields now live in `internal/product/sourcing`, with Amazon crawl request planning consuming that normalization.
 - current second sourcing seam: Amazon batch result alignment now lives in `internal/product/sourcing`, preserving source identity for each requested product ID.
+- current third sourcing seam: 1688 URL/result identity normalization now lives in `internal/product/sourcing`, while crawler execution remains in `internal/integration/crawler/a1688` and legacy `internal/crawler/alibaba1688`.
 
 ## Verification Matrix
 
