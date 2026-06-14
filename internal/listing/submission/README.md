@@ -14,6 +14,7 @@ Current stable ownership:
 - generic post-success persistence seam (`persist result/phase -> complete attempt -> remember -> persist success`)
 - generic failure-record persistence seam (`record failure event/state`)
 - source-facts readiness policy for 1688-derived facts
+- in-process submit lock manager
 
 Does not own yet:
 
