@@ -75,22 +75,42 @@ These exceptions are intentional for the current checkpoint:
 
 These exceptions should get thinner over time, but they are not blockers for this checkpoint.
 
+## Phase Closeout
+
+This boundary wave is now a checkpointed phase, not an open invitation to keep shaving helpers.
+
+Current stop lines:
+
+- do not keep splitting `internal/listing/studio` unless the seam removes real root-object ownership; field assignment adapters, generation resume, task creation, and batch-run execution should stay in `listingkit` for now,
+- do not keep moving `asset_render_preview_groups.go` platform DTO composition into `internal/listing/preview`; preview now owns neutral render metadata, summary, and capability rules, while platform image-bundle adapters remain legacy DTO glue,
+- do not ban `internal/publishing/shein` imports from `listingkit` yet; existing submission/model flows still depend on it as a compatibility package.
+
+Good next candidates:
+
+- `internal/listing/submission`: start with a small skeleton or read-only policy seam that does not touch Temporal determinism or platform submit side effects,
+- `internal/marketplace/shein/publishing`: continue guard-backed migration of new SHEIN publishing rules, not legacy model relocation,
+- `internal/product/sourcing`: only add source normalization seams when crawler/runtime adapters can remain thin.
+
 ## Next Direction
 
-Do not continue extracting studio internals unless a new seam clearly reduces root `listingkit` ownership.
+Do not continue extracting studio or preview internals unless a new seam clearly reduces root `listingkit` ownership.
 
 Preferred next areas:
 
-- `internal/product/sourcing`: consolidate product source request/result normalization and source identity.
-- `internal/integration/crawler/*`: keep crawler adapters focused on raw source execution.
 - `internal/listing/submission`: only continue if a seam reduces duplicate orchestration without touching Temporal determinism or platform submit semantics.
+- `internal/marketplace/shein/publishing`: keep new marketplace publishing rules out of root `listingkit`.
+- `internal/product/sourcing`: consolidate product source request/result normalization and source identity only when a new crawler/source seam appears.
+- `internal/integration/crawler/*`: keep crawler adapters focused on raw source execution.
 
 Recommended next slice:
 
-- inspect current crawler/source boundaries and identify one small normalization seam for `product/sourcing`.
-- current first sourcing seam: `SourceIdentity` and normalized `SourceRequest` fields now live in `internal/product/sourcing`, with Amazon crawl request planning consuming that normalization.
-- current second sourcing seam: Amazon batch result alignment now lives in `internal/product/sourcing`, preserving source identity for each requested product ID.
-- current third sourcing seam: 1688 URL/result identity normalization now lives in `internal/product/sourcing`, while crawler execution remains in `internal/integration/crawler/a1688` and legacy `internal/crawler/alibaba1688`.
+- evaluate a minimal `internal/listing/submission` skeleton or SHEIN marketplace publishing guard-backed rule seam before extracting more studio/preview helpers.
+
+Completed sourcing slices:
+
+- `SourceIdentity` and normalized `SourceRequest` fields now live in `internal/product/sourcing`, with Amazon crawl request planning consuming that normalization.
+- Amazon batch result alignment now lives in `internal/product/sourcing`, preserving source identity for each requested product ID.
+- 1688 URL/result identity normalization now lives in `internal/product/sourcing`, while crawler execution remains in `internal/integration/crawler/a1688` and legacy `internal/crawler/alibaba1688`.
 
 ## Verification Matrix
 
@@ -103,6 +123,13 @@ go test ./internal/listingkit
 go test ./internal/marketplace/shein/publishing
 go test ./internal/marketplace/shein/workspace
 go test ./internal/workspace/shein
+```
+
+Latest checkpoint verification:
+
+```powershell
+go test ./internal/listing/studio ./internal/listing/preview ./internal/product/sourcing ./internal/marketplace/shein/publishing ./internal/marketplace/shein/workspace ./internal/workspace/shein
+go test ./internal/listingkit -run 'Test.*Boundary|Test.*Guard|Test.*Preview|Test.*Studio|Test.*Source|Test.*Crawler'
 ```
 
 For narrower iterations, use package-specific `-run` filters, but always rerun the affected package without a filter before claiming the package is fully verified.
