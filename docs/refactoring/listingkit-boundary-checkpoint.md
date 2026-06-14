@@ -71,6 +71,7 @@ Guardrail:
 These exceptions are intentional for the current checkpoint:
 
 - `internal/publishing/shein` may still be imported by existing ListingKit submission/model flows.
+- `internal/publishing/shein` may still depend on legacy OpenAI infra helpers, but production code must not import `internal/listingkit` or root runtime packages.
 - `internal/workspace/shein` may still exist as a compatibility shell over `internal/marketplace/shein/workspace`.
 - root `internal/listingkit` may still own facade composition, API-facing DTOs, and adapter glue.
 
