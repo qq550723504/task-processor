@@ -71,6 +71,25 @@ func TestAmazonSourceFetcherReturnsSourceError(t *testing.T) {
 	}
 }
 
+func TestAmazonSourceFetcherFetchBatchRequiresSource(t *testing.T) {
+	fetcher := AmazonSourceFetcher{
+		Planner: AmazonCrawlRequestPlanner{
+			DomainResolver: stubAmazonDomainResolver{domain: "amazon.com"},
+		},
+	}
+
+	got, err := fetcher.FetchBatch(context.Background(), AmazonCrawlRequestInput{Region: "us"}, []string{"B001"})
+	if err == nil {
+		t.Fatal("FetchBatch() error = nil, want configuration error")
+	}
+	if got != nil {
+		t.Fatalf("FetchBatch() results = %+v, want nil", got)
+	}
+	if err.Error() != "amazon crawler source is not configured" {
+		t.Fatalf("FetchBatch() error = %q, want configuration error", err.Error())
+	}
+}
+
 func TestAmazonSourceFetcherFetchBatchUsesBatchSource(t *testing.T) {
 	source := &stubAmazonSourceFetcherSource{
 		results: []model.ProductResult{{Product: &model.Product{Asin: "B001"}}},

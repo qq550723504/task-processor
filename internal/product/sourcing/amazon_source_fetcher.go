@@ -44,6 +44,9 @@ func (f AmazonSourceFetcher) Fetch(ctx context.Context, input AmazonCrawlRequest
 // FetchBatch plans crawler requests and delegates batch execution to the source
 // when available.
 func (f AmazonSourceFetcher) FetchBatch(ctx context.Context, input AmazonCrawlRequestInput, productIDs []string) ([]model.ProductResult, error) {
+	if f.Source == nil {
+		return nil, fmt.Errorf("amazon crawler source is not configured")
+	}
 	requests, err := f.Planner.BuildBatchRequests(input, productIDs)
 	if err != nil {
 		return nil, err
