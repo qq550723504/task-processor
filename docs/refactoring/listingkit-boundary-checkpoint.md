@@ -110,6 +110,7 @@ Completed submission slices:
 
 - source-facts readiness policy for 1688-derived facts now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps a compatibility wrapper.
 - in-process submit lock manager now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps a compatibility alias.
+- enqueue retry/backoff policy for queue-full submit retries now lives in `internal/listing/submission`; `internal/listingkit/submission` keeps a compatibility wrapper.
 
 Completed sourcing slices:
 

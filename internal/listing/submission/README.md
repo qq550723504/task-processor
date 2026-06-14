@@ -15,6 +15,7 @@ Current stable ownership:
 - generic failure-record persistence seam (`record failure event/state`)
 - source-facts readiness policy for 1688-derived facts
 - in-process submit lock manager
+- enqueue retry/backoff policy for queue-full submit retries
 
 Does not own yet:
 
