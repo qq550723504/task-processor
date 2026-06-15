@@ -9,7 +9,7 @@ import (
 func TestTaskGenerationNavigationDispatchPlanServiceBoundary(t *testing.T) {
 	t.Parallel()
 
-	planSource := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) executeGenerationNavigationDispatchPlan(")
+	planSource := readExactMethodSource(t, "task_generation_service_support.go", "func (s *taskGenerationService) executeGenerationNavigationDispatchPlan(")
 	assertSourceOccurrenceCount(t, planSource, "buildTaskGenerationNavigationDispatchPlanPhase(s).run(", 1)
 	assertSourceExcludesAll(t, planSource, []string{
 		"cloneGenerationNavigationDispatchPlan(",
@@ -23,7 +23,7 @@ func TestTaskGenerationNavigationDispatchPlanServiceBoundary(t *testing.T) {
 		"GetTaskGenerationReviewSession(",
 	})
 
-	parallelSource := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) executeGenerationNavigationDispatchPlanParallel(")
+	parallelSource := readExactMethodSource(t, "task_generation_service_support.go", "func (s *taskGenerationService) executeGenerationNavigationDispatchPlanParallel(")
 	assertSourceOccurrenceCount(t, parallelSource, "buildTaskGenerationNavigationDispatchPlanParallelPhase(s).run(", 1)
 	assertSourceExcludesAll(t, parallelSource, []string{
 		"generationNavigationDispatchStepDeduplicationKey(",
@@ -34,7 +34,7 @@ func TestTaskGenerationNavigationDispatchPlanServiceBoundary(t *testing.T) {
 		"GetTaskGenerationReviewSession(",
 	})
 
-	stepSource := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) executeGenerationNavigationDispatchPlanStep(")
+	stepSource := readExactMethodSource(t, "task_generation_service_support.go", "func (s *taskGenerationService) executeGenerationNavigationDispatchPlanStep(")
 	assertSourceOccurrenceCount(t, stepSource, "buildTaskGenerationNavigationDispatchStepExecutionPhase(s).run(", 1)
 	assertSourceExcludesAll(t, stepSource, []string{
 		"generationNavigationDispatchPlanRunsInParallel(",

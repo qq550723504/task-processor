@@ -5,7 +5,7 @@ import "testing"
 func TestTaskGenerationCurrentStateResultServiceBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) getCurrentListingKitResult(")
+	source := readExactMethodSource(t, "task_generation_service_support.go", "func (s *taskGenerationService) getCurrentListingKitResult(")
 
 	assertSourceOccurrenceCount(t, source, "buildTaskGenerationCurrentStateSnapshotPhase(s).run(", 1)
 	assertSourceExcludesAll(t, source, []string{
@@ -56,7 +56,7 @@ func TestTaskGenerationCurrentStateSnapshotPhaseBoundary(t *testing.T) {
 func TestTaskGenerationCurrentStateOverviewServiceBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) getCurrentAssetGenerationOverview(")
+	source := readExactMethodSource(t, "task_generation_service_support.go", "func (s *taskGenerationService) getCurrentAssetGenerationOverview(")
 
 	assertSourceOccurrenceCount(t, source, "s.getCurrentListingKitResult(", 1)
 	assertSourceOccurrenceCount(t, source, "buildTaskGenerationCurrentStateViewsPhase().overview(", 1)
@@ -79,7 +79,7 @@ func TestTaskGenerationCurrentStateOverviewServiceBoundary(t *testing.T) {
 func TestTaskGenerationCurrentStateQueueServiceBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) getCurrentAssetGenerationQueue(")
+	source := readExactMethodSource(t, "task_generation_service_support.go", "func (s *taskGenerationService) getCurrentAssetGenerationQueue(")
 
 	assertSourceOccurrenceCount(t, source, "s.getCurrentListingKitResult(", 1)
 	assertSourceOccurrenceCount(t, source, "buildTaskGenerationCurrentStateViewsPhase().queue(", 1)
@@ -102,7 +102,7 @@ func TestTaskGenerationCurrentStateQueueServiceBoundary(t *testing.T) {
 func TestTaskGenerationCurrentStateRenderPreviewsServiceBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readExactMethodSource(t, "task_generation_service.go", "func (s *taskGenerationService) getCurrentActionRenderPreviews(")
+	source := readExactMethodSource(t, "task_generation_service_support.go", "func (s *taskGenerationService) getCurrentActionRenderPreviews(")
 
 	assertSourceOccurrenceCount(t, source, "s.getCurrentListingKitResult(", 1)
 	assertSourceOccurrenceCount(t, source, "buildTaskGenerationCurrentStateViewsPhase().renderPreviews(", 1)

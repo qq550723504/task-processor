@@ -8,7 +8,7 @@ import (
 func TestTaskGenerationLayerTemporalActionBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readFunctionSourceMatching(t, "task_generation_service.go", "method executeLayerTemporalAction", func(decl *ast.FuncDecl) bool {
+	source := readFunctionSourceMatching(t, "task_generation_service_support.go", "method executeLayerTemporalAction", func(decl *ast.FuncDecl) bool {
 		if decl.Name == nil || decl.Name.Name != "executeLayerTemporalAction" || decl.Recv == nil || len(decl.Recv.List) != 1 {
 			return false
 		}
@@ -19,7 +19,7 @@ func TestTaskGenerationLayerTemporalActionBoundary(t *testing.T) {
 		ident, ok := star.X.(*ast.Ident)
 		return ok && ident.Name == "taskGenerationService"
 	})
-	callNames := readNamedFunctionCallNames(t, "task_generation_service.go", "executeLayerTemporalAction")
+	callNames := readNamedFunctionCallNames(t, "task_generation_service_support.go", "executeLayerTemporalAction")
 
 	assertSourceContainsAll(t, source, []string{
 		"requestedAssetGenerationActionKey(req)",
@@ -67,7 +67,7 @@ func TestTaskGenerationLayerTemporalPhaseOwnershipBoundary(t *testing.T) {
 	}{
 		{
 			name: "service_router_only",
-			path: "task_generation_service.go",
+			path: "task_generation_service_support.go",
 			required: []string{
 				"requestedAssetGenerationActionKey(req)",
 				"buildTaskGenerationActionTemporalStandardPhase(s).run(ctx, taskID, req)",

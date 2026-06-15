@@ -658,7 +658,7 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflowUsesParse
 func TestTaskGenerationLayerTemporalStandardServiceDelegatesStandardPhase(t *testing.T) {
 	t.Parallel()
 
-	source := readFunctionSourceMatching(t, "task_generation_service.go", "method executeLayerTemporalAction", func(decl *ast.FuncDecl) bool {
+	source := readFunctionSourceMatching(t, "task_generation_service_support.go", "method executeLayerTemporalAction", func(decl *ast.FuncDecl) bool {
 		if decl.Name == nil || decl.Name.Name != "executeLayerTemporalAction" || decl.Recv == nil || len(decl.Recv.List) != 1 {
 			return false
 		}
@@ -682,7 +682,7 @@ func TestTaskGenerationLayerTemporalStandardServiceDelegatesStandardPhase(t *tes
 func TestTaskGenerationLayerTemporalPlatformServiceDelegatesPlatformPhase(t *testing.T) {
 	t.Parallel()
 
-	source := readFunctionSourceMatching(t, "task_generation_service.go", "method executeLayerTemporalAction", func(decl *ast.FuncDecl) bool {
+	source := readFunctionSourceMatching(t, "task_generation_service_support.go", "method executeLayerTemporalAction", func(decl *ast.FuncDecl) bool {
 		if decl.Name == nil || decl.Name.Name != "executeLayerTemporalAction" || decl.Recv == nil || len(decl.Recv.List) != 1 {
 			return false
 		}
