@@ -312,7 +312,9 @@ func TestDefaultModulesIncludesOSSStorage(t *testing.T) {
 
 func TestSubscriptionPlanApplyCreatesEntitlements(t *testing.T) {
 	svc := newTestService(t)
-	expiresAt := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return now }
+	expiresAt := now.Add(24 * time.Hour)
 
 	subscription, err := svc.ApplyPlan(context.Background(), "org-286", PlanApplyInput{
 		PlanCode:  PlanProfessional,
