@@ -304,6 +304,7 @@ Current checkpoint:
 - generation navigation identity home construction now retains only descriptor plus identity/cache/query helpers, while follow-up read and dispatch-plan assembly helpers live in a dedicated support file, so root `listingkit` no longer mixes target identity and dispatch orchestration helper families in one broad navigation support file.
 - SHEIN admin service home construction now retains only constructor plus admin entry methods, while task loading, category-client assembly, final-draft mutation, and resolution-cache clearing helpers live in a dedicated support file, so root `listingkit` no longer mixes entry methods with internal admin helper families in one broad service file.
 - SHEIN submit readiness home construction now retains only normalization, validation, guidance, and summary seams, while readiness check assembly plus pod/template/payload check families live in a dedicated support file, so root `listingkit` no longer mixes all check-construction branches into one broad submit-readiness builder.
+- request model support now also splits into studio/SDS request families and submit/admin request families, so root `listingkit` no longer keeps unrelated studio generation inputs and SHEIN submit/settings DTOs in one broad request-support file.
 - The next preferred slice is to stop and reassess whether more submit extraction still shrinks `listingkit`, rather than automatically extracting every leftover helper.
 
 ### Phase 3.5: Studio Skeleton Extraction
