@@ -19,7 +19,7 @@ func TestSheinSubmissionPersistenceBoundary(t *testing.T) {
 		"return s.persistSheinTemporalSubmissionSuccess(",
 	})
 
-	loaderSource := readNamedFunctionSource(t, "task_temporal_submission_persistence_service.go", "loadSheinSubmitPersistenceState")
+	loaderSource := readNamedFunctionSource(t, "task_temporal_submission_persistence_service_support.go", "loadSheinSubmitPersistenceState")
 	assertSourceContainsAll(t, loaderSource, []string{
 		"sheinpub.ApplySubmissionPersistenceInput(",
 	})

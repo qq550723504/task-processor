@@ -3714,12 +3714,25 @@ func TestTaskSubmissionSuccessPersistenceUsesSubmissionDomainRunner(t *testing.T
 
 	for _, needle := range []string{
 		"service.resultRunner = submissiondomain.NewResultPersistenceService(",
+	} {
+		if !strings.Contains(temporalContent, needle) {
+			t.Fatalf("task_temporal_submission_persistence_service.go should contain %q", needle)
+		}
+	}
+
+	temporalSupportSrc, err := os.ReadFile("task_temporal_submission_persistence_service_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_persistence_service_support.go) error = %v", err)
+	}
+	temporalSupportContent := string(temporalSupportSrc)
+
+	for _, needle := range []string{
 		"return s.resultRunner.PersistSuccess(ctx, submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]{",
 		"func (s *taskTemporalSubmissionPersistenceService) persistTemporalSuccessResultAndPhase(",
 		"func (s *taskTemporalSubmissionPersistenceService) completeTemporalSubmitAttempt(",
 	} {
-		if !strings.Contains(temporalContent, needle) {
-			t.Fatalf("task_temporal_submission_persistence_service.go should contain %q", needle)
+		if !strings.Contains(temporalSupportContent, needle) {
+			t.Fatalf("task_temporal_submission_persistence_service_support.go should contain %q", needle)
 		}
 	}
 
@@ -3786,9 +3799,9 @@ func TestTaskSubmissionFailurePersistenceUsesSubmissionDomainRunner(t *testing.T
 		}
 	}
 
-	temporalSrc, err := os.ReadFile("task_temporal_submission_persistence_service.go")
+	temporalSrc, err := os.ReadFile("task_temporal_submission_persistence_service_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(task_temporal_submission_persistence_service.go) error = %v", err)
+		t.Fatalf("ReadFile(task_temporal_submission_persistence_service_support.go) error = %v", err)
 	}
 	temporalContent := string(temporalSrc)
 
@@ -3797,7 +3810,7 @@ func TestTaskSubmissionFailurePersistenceUsesSubmissionDomainRunner(t *testing.T
 		"func (s *taskTemporalSubmissionPersistenceService) recordTemporalFailureState(",
 	} {
 		if !strings.Contains(temporalContent, needle) {
-			t.Fatalf("task_temporal_submission_persistence_service.go should contain %q", needle)
+			t.Fatalf("task_temporal_submission_persistence_service_support.go should contain %q", needle)
 		}
 	}
 }
