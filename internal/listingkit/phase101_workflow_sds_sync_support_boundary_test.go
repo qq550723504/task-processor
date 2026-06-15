@@ -19,7 +19,6 @@ func TestWorkflowSDSSyncSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *ListingKitResult, imageResult *productimage.ImageProcessResult, recorder *workflowRecorder) {",
 		"func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) {",
 		"func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Task, result *ListingKitResult, imageURL string, recorder *workflowRecorder) {",
-		"func needsLocalSDSMockupFallback(summary *SDSSyncSummary, options *SDSSyncOptions) bool {",
 	} {
 		if !strings.Contains(homeContent, needle) {
 			t.Fatalf("workflow_sds_sync.go should contain %q", needle)
@@ -30,6 +29,7 @@ func TestWorkflowSDSSyncSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func (s *service) syncSDSDesignFromUploadedImageKey(ctx context.Context, task *Task, key string, syncInput sdsusecase.SyncInput, timeout time.Duration) (*sdsworkflow.SyncResult, bool, error) {",
 		"func representativeSDSVariantsByColor(variants []SDSSyncVariantOption) []SDSSyncVariantOption {",
 		"func mergeSDSVariantSyncSummaries(options *SDSSyncOptions, summaries []SDSSyncSummary) *SDSSyncSummary {",
+		"func needsLocalSDSMockupFallback(summary *SDSSyncSummary, options *SDSSyncOptions) bool {",
 	} {
 		if strings.Contains(homeContent, needle) {
 			t.Fatalf("workflow_sds_sync.go should delegate helper seam %q", needle)
@@ -67,6 +67,22 @@ func TestWorkflowSDSSyncSupportFilesOwnHelperFamilies(t *testing.T) {
 	} {
 		if !strings.Contains(variantContent, needle) {
 			t.Fatalf("workflow_sds_sync_variant_support.go should contain %q", needle)
+		}
+	}
+
+	fallbackSrc, err := os.ReadFile("workflow_sds_sync_fallback_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(workflow_sds_sync_fallback_support.go) error = %v", err)
+	}
+	fallbackContent := string(fallbackSrc)
+
+	for _, needle := range []string{
+		"func needsLocalSDSMockupFallback(summary *SDSSyncSummary, options *SDSSyncOptions) bool {",
+		"func (s *service) applyLocalSDSMockupFallback(ctx context.Context, result *ListingKitResult, sourceURL string, options *SDSSyncOptions) {",
+		"func firstImageResultURL(imageResult *productimage.ImageProcessResult) string {",
+	} {
+		if !strings.Contains(fallbackContent, needle) {
+			t.Fatalf("workflow_sds_sync_fallback_support.go should contain %q", needle)
 		}
 	}
 }

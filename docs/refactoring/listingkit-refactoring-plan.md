@@ -214,6 +214,7 @@ Current checkpoint:
 - pod execution support is now split by helper family, so root `listingkit` keeps result-level POD summary orchestration while status/readiness policy helpers and audit/history helpers live in dedicated support files.
 - generation queue support is now split by helper family, so root `listingkit` keeps the queue assembly/index seam while bundle-slot projection helpers and queue summary/quality aggregation helpers live in dedicated support files.
 - asset render preview support is now split by helper family, so root `listingkit` keeps platform-preview entrypoints while slot projection helpers and published-asset URL resolution helpers live in dedicated support files.
+- workflow SDS sync support is now split by helper family, so root `listingkit` keeps the primary SDS sync orchestration seams while uploaded-image helpers, variant merge helpers, and fallback/mockup helpers live in dedicated support files.
 - `internal/listingkit` direct submit now delegates phase sequencing to the submission-domain runner while still owning SHEIN readiness gates, state persistence hooks, and remote-submit error semantics.
 - Temporal payload preparation/upload/pre-validate steps now also delegate to a submission-domain payload-stage runner.
 - direct submit and Temporal now also share a submission-domain remote-submit attempt runner while keeping post-attempt persistence semantics separate.
