@@ -17,7 +17,6 @@ func TestGenerationOverviewSupportFilesOwnActionHelpers(t *testing.T) {
 
 	for _, needle := range []string{
 		"func buildAssetGenerationOverview(queue *GenerationWorkQueue) *AssetGenerationOverview {",
-		"func dominantGenerationQualityGrade(summary *GenerationWorkQueueSummary) string {",
 		"func reviewActionKey(summary *GenerationWorkQueueSummary) string {",
 		"func actionFiltersForKey(actionKey string, base *AssetGenerationRecommendedFilters) *AssetGenerationRecommendedFilters {",
 		"func applyAssetGenerationActionFiltersMutation(actionKey string, filters *AssetGenerationRecommendedFilters) {",
@@ -31,6 +30,7 @@ func TestGenerationOverviewSupportFilesOwnActionHelpers(t *testing.T) {
 	for _, needle := range []string{
 		"func buildAssetGenerationActionTarget(queue *GenerationWorkQueue, actionKey string, filters *AssetGenerationRecommendedFilters) *AssetGenerationActionTarget {",
 		"func buildAssetGenerationActionImpact(queue *GenerationWorkQueue, query *GenerationQueueQuery) *AssetGenerationActionImpact {",
+		"func dominantGenerationQualityGrade(summary *GenerationWorkQueueSummary) string {",
 	} {
 		if strings.Contains(homeContent, needle) {
 			t.Fatalf("generation_overview.go should delegate action helper %q", needle)
