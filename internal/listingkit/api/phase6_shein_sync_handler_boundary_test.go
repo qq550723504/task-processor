@@ -18,6 +18,9 @@ func TestSheinSyncHandlerFilesOwnSeparatedFamilies(t *testing.T) {
 	enrollmentFile := readSheinSyncHandlerFileContent(t, filepath.Join(dir, "shein_sync_handler_enrollment.go"))
 	supportFile := readSheinSyncHandlerFileContent(t, filepath.Join(dir, "shein_sync_handler_support.go"))
 	summaryFile := readSheinSyncHandlerFileContent(t, filepath.Join(dir, "shein_sync_summary_handler.go"))
+	summaryDashboardFile := readSheinSyncHandlerFileContent(t, filepath.Join(dir, "shein_sync_summary_handler_dashboard.go"))
+	summaryRunsFile := readSheinSyncHandlerFileContent(t, filepath.Join(dir, "shein_sync_summary_handler_runs.go"))
+	summarySupportFile := readSheinSyncHandlerFileContent(t, filepath.Join(dir, "shein_sync_summary_handler_support.go"))
 
 	assertSheinSyncHandlerContainsAll(t, rootFile,
 		"type triggerSheinStoreSyncRequest struct {",
@@ -74,13 +77,43 @@ func TestSheinSyncHandlerFilesOwnSeparatedFamilies(t *testing.T) {
 	)
 
 	assertSheinSyncHandlerContainsAll(t, summaryFile,
-		"func (h *handler) ListSheinEnrollmentDashboard(",
-		"func (h *handler) ListSheinActivityEnrollmentRuns(",
+		"type sheinSummaryQuery struct {",
+		"type listSheinEnrollmentRunsQuery struct {",
 	)
 	assertSheinSyncHandlerNotContainsAny(t, summaryFile,
+		"func (h *handler) ListSheinEnrollmentDashboard(",
+		"func (h *handler) ListSheinActivityEnrollmentRuns(",
 		"func (h *handler) TriggerSheinStoreSync(",
-		"func (h *handler) ReviewSheinActivityCandidate(",
-		"func parseSheinScopedRequest(",
+		"func resolveSheinSummaryActivityType(",
+	)
+
+	assertSheinSyncHandlerContainsAll(t, summaryDashboardFile,
+		"func (h *handler) ListSheinEnrollmentDashboard(",
+		"func (h *handler) GetSheinEnrollmentStoreSummary(",
+	)
+	assertSheinSyncHandlerNotContainsAny(t, summaryDashboardFile,
+		"func (h *handler) ListSheinActivityEnrollmentRuns(",
+		"func resolveSheinSummaryActivityType(",
+	)
+
+	assertSheinSyncHandlerContainsAll(t, summaryRunsFile,
+		"func (h *handler) ListSheinActivityEnrollmentRuns(",
+	)
+	assertSheinSyncHandlerNotContainsAny(t, summaryRunsFile,
+		"func (h *handler) ListSheinEnrollmentDashboard(",
+		"func resolveSheinSummaryActivityType(",
+	)
+
+	assertSheinSyncHandlerContainsAll(t, summarySupportFile,
+		"func resolveSheinSummaryActivityType(",
+		"func (h *handler) listSheinStores(",
+		"func (h *handler) buildSheinEnrollmentStoreSummary(",
+		"func summarizeLatestSheinCandidates(",
+	)
+	assertSheinSyncHandlerNotContainsAny(t, summarySupportFile,
+		"func (h *handler) ListSheinEnrollmentDashboard(",
+		"func (h *handler) ListSheinActivityEnrollmentRuns(",
+		"func (h *handler) TriggerSheinStoreSync(",
 	)
 }
 
