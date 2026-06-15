@@ -103,7 +103,7 @@ func (s *SensitiveWordService) startSaveWorker() {
 // initDefaultConfig 初始化默认配置
 func (s *SensitiveWordService) initDefaultConfig() {
 	s.config = s.createDefaultConfig()
-	s.logger.Info("✅ 已初始化默认敏感词配置")
+	s.logger.Debug("✅ 已初始化默认敏感词配置")
 }
 
 // ProcessProductData 处理产品数据中的敏感词

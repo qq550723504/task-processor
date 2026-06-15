@@ -74,7 +74,7 @@ func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, task *model.
 		logFields["priority"] = task.Priority
 		logFields["retry_count"] = task.RetryCount
 	}
-	logger.GetGlobalLogger("shein/pipeline").WithFields(logFields).Info("submit task status update")
+	logger.GetGlobalLogger("shein/pipeline").WithFields(logFields).Debug("submit task status update")
 
 	input := taskstatus.UpdateInput{
 		TaskID:         id,
