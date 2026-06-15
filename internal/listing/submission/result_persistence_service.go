@@ -40,6 +40,34 @@ type ResultPersistenceServiceConfig[TTask, TResult, TPackage, TResponse any] str
 	ReturnOriginalFailure bool
 }
 
+func BuildSuccessPersistenceInput[TTask, TResult, TPackage, TResponse any](
+	in ResultPersistenceInput[TTask, TResult, TPackage, TResponse],
+) SuccessPersistenceInput[TTask, TPackage, TResponse] {
+	return SuccessPersistenceInput[TTask, TPackage, TResponse]{
+		TaskID:    in.TaskID,
+		Task:      in.Task,
+		Package:   in.Package,
+		Action:    in.Action,
+		RequestID: in.RequestID,
+		Response:  in.Response,
+		StartedAt: in.StartedAt,
+	}
+}
+
+func BuildFailurePersistenceInput[TTask, TResult, TPackage, TResponse any](
+	in ResultPersistenceInput[TTask, TResult, TPackage, TResponse],
+) FailurePersistenceInput[TResult, TPackage] {
+	return FailurePersistenceInput[TResult, TPackage]{
+		TaskID:    in.TaskID,
+		Result:    in.Result,
+		Package:   in.Package,
+		Action:    in.Action,
+		RequestID: in.RequestID,
+		Phase:     in.Phase,
+		Err:       in.Err,
+	}
+}
+
 func NewResultPersistenceService[TTask, TResult, TPackage, TResponse any](config ResultPersistenceServiceConfig[TTask, TResult, TPackage, TResponse]) *ResultPersistenceService[TTask, TResult, TPackage, TResponse] {
 	return &ResultPersistenceService[TTask, TResult, TPackage, TResponse]{
 		successRunner:         config.SuccessRunner,

@@ -60,26 +60,10 @@ func newTaskTemporalSubmissionPersistenceService(config taskTemporalSubmissionPe
 		SuccessRunner: successRunner,
 		FailureRunner: failureRunner,
 		BuildSuccessInput: func(in submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]) submissiondomain.SuccessPersistenceInput[*Task, *SheinPackage, *sheinpub.SubmissionResponse] {
-			return submissiondomain.SuccessPersistenceInput[*Task, *SheinPackage, *sheinpub.SubmissionResponse]{
-				TaskID:    in.TaskID,
-				Task:      in.Task,
-				Package:   in.Package,
-				Action:    in.Action,
-				RequestID: in.RequestID,
-				Response:  in.Response,
-				StartedAt: in.StartedAt,
-			}
+			return submissiondomain.BuildSuccessPersistenceInput(in)
 		},
 		BuildFailureInput: func(in submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]) submissiondomain.FailurePersistenceInput[*ListingKitResult, *SheinPackage] {
-			return submissiondomain.FailurePersistenceInput[*ListingKitResult, *SheinPackage]{
-				TaskID:    in.TaskID,
-				Result:    in.Result,
-				Package:   in.Package,
-				Action:    in.Action,
-				RequestID: in.RequestID,
-				Phase:     in.Phase,
-				Err:       in.Err,
-			}
+			return submissiondomain.BuildFailurePersistenceInput(in)
 		},
 		FallbackSuccess: func(ctx context.Context, in submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]) error {
 			return service.persistTemporalSuccessFallback(ctx, in)

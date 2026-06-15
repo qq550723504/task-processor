@@ -57,6 +57,42 @@ func TestResultPersistenceServiceFinishPersistsSuccess(t *testing.T) {
 	}
 }
 
+func TestBuildSuccessPersistenceInputMapsCommonFields(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Now()
+	got := BuildSuccessPersistenceInput(ResultPersistenceInput[string, string, string, string]{
+		TaskID:    "task-1",
+		Task:      "task",
+		Package:   "pkg",
+		Action:    "publish",
+		RequestID: "req-1",
+		Response:  "resp",
+		StartedAt: startedAt,
+	})
+	if got.TaskID != "task-1" || got.Task != "task" || got.Package != "pkg" || got.Action != "publish" || got.RequestID != "req-1" || got.Response != "resp" || !got.StartedAt.Equal(startedAt) {
+		t.Fatalf("BuildSuccessPersistenceInput() = %+v", got)
+	}
+}
+
+func TestBuildFailurePersistenceInputMapsCommonFields(t *testing.T) {
+	t.Parallel()
+
+	originalErr := errors.New("boom")
+	got := BuildFailurePersistenceInput(ResultPersistenceInput[string, string, string, string]{
+		TaskID:    "task-1",
+		Result:    "result",
+		Package:   "pkg",
+		Action:    "publish",
+		RequestID: "req-1",
+		Phase:     "submit_remote",
+		Err:       originalErr,
+	})
+	if got.TaskID != "task-1" || got.Result != "result" || got.Package != "pkg" || got.Action != "publish" || got.RequestID != "req-1" || got.Phase != "submit_remote" || got.Err != originalErr {
+		t.Fatalf("BuildFailurePersistenceInput() = %+v", got)
+	}
+}
+
 func TestResultPersistenceServiceFinishReturnsOriginalFailureAfterPersistence(t *testing.T) {
 	t.Parallel()
 
