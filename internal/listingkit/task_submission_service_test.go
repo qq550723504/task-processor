@@ -7,6 +7,7 @@ import (
 	"time"
 
 	apperrors "task-processor/internal/core/errors"
+	listingsubmission "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
@@ -172,7 +173,7 @@ func TestBuildSubmissionAttemptStateDerivesWorkflowRequestID(t *testing.T) {
 	if attempt.requestID == "" {
 		t.Fatal("requestID = empty, want derived workflow request id")
 	}
-	if attempt.requestID != derivedSheinSubmitRequestID("task-123", "publish", startedAt) {
+	if attempt.requestID != listingsubmission.DeriveWorkflowRequestID("task-123", "publish", startedAt) {
 		t.Fatalf("requestID = %q, want derived id", attempt.requestID)
 	}
 	if !attempt.startedAt.Equal(startedAt) {

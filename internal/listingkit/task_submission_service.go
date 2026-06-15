@@ -6,6 +6,7 @@ import (
 	"time"
 
 	apperrors "task-processor/internal/core/errors"
+	listingsubmission "task-processor/internal/listing/submission"
 
 	"github.com/sirupsen/logrus"
 )
@@ -86,17 +87,19 @@ func (s *taskSubmissionService) buildSubmissionAttemptState(taskID, platform, ac
 }
 
 func buildSubmissionAttemptState(taskID, platform, action string, req *SubmitTaskRequest, startedAt time.Time, shouldStartWorkflow func(string, string) bool) *sheinSubmissionAttemptState {
-	requestID := normalizedSubmitIdempotencyKey(req)
-	useWorkflow := shouldStartWorkflow != nil && shouldStartWorkflow(platform, action)
-	if useWorkflow && requestID == "" {
-		requestID = derivedSheinSubmitRequestID(taskID, action, startedAt)
+	idempotencyKey := ""
+	explicitRequestID := ""
+	if req != nil {
+		idempotencyKey = req.IdempotencyKey
+		explicitRequestID = req.RequestID
 	}
+	plan := listingsubmission.BuildSubmitAttemptPlan(taskID, platform, action, idempotencyKey, explicitRequestID, startedAt, shouldStartWorkflow)
 	return &sheinSubmissionAttemptState{
-		platform:    platform,
-		action:      action,
-		requestID:   requestID,
-		startedAt:   startedAt,
-		useWorkflow: useWorkflow,
+		platform:    plan.Platform,
+		action:      plan.Action,
+		requestID:   plan.RequestID,
+		startedAt:   plan.StartedAt,
+		useWorkflow: plan.UseWorkflow,
 	}
 }
 
