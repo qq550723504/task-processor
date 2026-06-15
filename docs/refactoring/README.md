@@ -9,6 +9,7 @@ Project-wide restructuring should follow:
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md)
 - [project-wide-execution-plan.md](./project-wide-execution-plan.md)
 - [listingkit-boundary-checkpoint.md](./listingkit-boundary-checkpoint.md) for the current approved ListingKit boundary stop-lines and submission-direction checkpoint
+- [next-phase-plan.md](./next-phase-plan.md) for the immediate next-phase execution focus after the current checkpoint
 
 Use the refactoring plan as the default architecture authority, and use the execution plan as the default implementation sequence for broad package, boundary, runtime assembly, marketplace, infrastructure, or ListingKit modularization decisions.
 
@@ -61,6 +62,7 @@ The current active direction is:
 
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
 - [project-wide-execution-plan.md](./project-wide-execution-plan.md) - concrete phase-by-phase execution plan with PR slices, acceptance criteria, tests, and stop conditions.
+- [next-phase-plan.md](./next-phase-plan.md) - immediate next-phase goals: checkpoint validation, HTTPAPI runtime closeout, small target-domain seams, and boundary guard stabilization.
 - [project-migration-roadmap.md](./project-migration-roadmap.md) - staged migration sequence from the current layout to the approved target architecture.
 - [module-target-mapping.md](./module-target-mapping.md) - working map from current package areas to target domains.
 - [product-sourcing-inventory.md](./product-sourcing-inventory.md) - Amazon / 1688 source-flow inventory and first migration slices for `product/sourcing` plus crawler adapters.
