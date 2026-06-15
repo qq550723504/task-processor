@@ -5,8 +5,6 @@ import sheinpub "task-processor/internal/publishing/shein"
 
 type submissionDependencies struct {
 	storeProfileRepo            StoreProfileRepository
-	sheinStoreCatalog           SheinStoreCatalog
-	sheinAPIClientFactory       SheinAPIClientFactory
 	sheinProductAPIBuilder      sheinpub.ProductAPIBuilder
 	sheinImageAPIBuilder        sheinpub.ImageAPIBuilder
 	sheinTranslateAPIBuilder    sheinpub.TranslateAPIBuilder

@@ -279,12 +279,6 @@ func TestNewServiceWithConfigSeedsSharedSheinDependenciesPerOwnerGroup(t *testin
 		}),
 	))
 
-	if svc.submissionDeps.sheinStoreCatalog != storeCatalog {
-		t.Fatalf("submission deps shein store catalog = %v, want seeded catalog", svc.submissionDeps.sheinStoreCatalog)
-	}
-	if svc.submissionDeps.sheinAPIClientFactory != apiFactory {
-		t.Fatalf("submission deps shein api client factory = %v, want seeded factory", svc.submissionDeps.sheinAPIClientFactory)
-	}
 	if svc.submissionDeps.sheinContentOptimizer != contentOptimizer {
 		t.Fatalf("submission deps shein content optimizer = %v, want seeded optimizer", svc.submissionDeps.sheinContentOptimizer)
 	}

@@ -481,17 +481,11 @@ func resolveSubmissionStoreProfileRepo(s *service) StoreProfileRepository {
 }
 
 func resolveSubmissionStoreCatalog(s *service) SheinStoreCatalog {
-	if s == nil {
-		return nil
-	}
-	return s.submissionDeps.sheinStoreCatalog
+	return resolveSheinStoreCatalog(s)
 }
 
 func resolveSubmissionAPIClientFactory(s *service) SheinAPIClientFactory {
-	if s == nil {
-		return nil
-	}
-	return s.submissionDeps.sheinAPIClientFactory
+	return resolveSheinAPIClientFactory(s)
 }
 
 func resolveSubmissionProductAPIBuilder(s *service) sheinpub.ProductAPIBuilder {
