@@ -2,7 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
 
 	"task-processor/internal/catalog/canonical"
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
@@ -101,57 +100,11 @@ func buildSheinSubmitFreshnessReadiness(pkg *SheinPackage, checks []sheinworkspa
 }
 
 func evaluateSheinCategoryFreshness(current *SheinPackage, info *sheincategory.CategoryInfo) (bool, string) {
-	current = sheinpub.NormalizePackageSemanticFields(current)
-	if current == nil {
-		return true, ""
-	}
-	if info == nil {
-		return false, "当前类目模板在线校验失败，需重新刷新类目结果后再提交"
-	}
-	if current.CategoryID <= 0 {
-		return false, "当前类目结果缺少 category_id，需重新刷新类目结果后再提交"
-	}
-	if info.CategoryID != current.CategoryID {
-		return false, fmt.Sprintf(
-			"当前类目模板已发生变化：原 category_id=%d，当前在线查询结果为 category_id=%d",
-			current.CategoryID,
-			info.CategoryID,
-		)
-	}
-	currentProductTypeID := 0
-	if current.ProductTypeID != nil {
-		currentProductTypeID = *current.ProductTypeID
-	}
-	if currentProductTypeID <= 0 {
-		return false, "当前类目结果缺少 product_type_id，需重新刷新类目结果后再提交"
-	}
-	if info.ProductTypeID != currentProductTypeID {
-		return false, fmt.Sprintf(
-			"当前类目模板已发生变化：原 category_id=%d/product_type_id=%d，当前在线查询结果为 category_id=%d/product_type_id=%d",
-			current.CategoryID,
-			currentProductTypeID,
-			info.CategoryID,
-			info.ProductTypeID,
-		)
-	}
-	return true, "当前类目结果仍然可用于当前提交"
+	return sheinworkspace.EvaluateCategoryFreshness(current, info)
 }
 
 func evaluateSheinAttributeFreshness(current *SheinPackage, templates *sheinattribute.AttributeTemplateInfo) (bool, string) {
-	current = sheinpub.NormalizePackageSemanticFields(current)
-	if current == nil {
-		return true, ""
-	}
-	if templates == nil || len(templates.Data) == 0 {
-		return false, "当前普通属性模板在线校验失败，需重新刷新属性模板后再提交"
-	}
-
-	templateContext, ok := buildSheinAttributeFreshnessTemplateContext(current, templates)
-	if !ok {
-		return false, "当前普通属性模板为空，需重新刷新属性模板后再提交"
-	}
-
-	return evaluateSheinResolvedAttributeFreshness(current, templateContext)
+	return sheinworkspace.EvaluateAttributeFreshness(current, templates)
 }
 
 func evaluateSheinSaleAttributeFreshness(current *SheinPackage, templates *sheinattribute.AttributeTemplateInfo) (bool, string) {
@@ -164,22 +117,5 @@ func evaluateSheinSaleAttributeFreshnessWithCustomValidation(
 	templates *sheinattribute.AttributeTemplateInfo,
 	api sheinpub.AttributeAPI,
 ) (bool, string, bool) {
-	current = sheinpub.NormalizePackageSemanticFields(current)
-	if current == nil {
-		return true, "", false
-	}
-	if templates == nil || len(templates.Data) == 0 {
-		return false, "当前销售属性模板在线校验失败，需重新刷新销售属性后再提交", false
-	}
-	currentResolution := current.SaleAttributeResolution
-	if currentResolution == nil {
-		return true, "", false
-	}
-
-	templateContext, ok := buildSheinSaleAttributeFreshnessTemplateContext(templates)
-	if !ok {
-		return false, "当前销售属性模板为空，需重新刷新销售属性后再提交", false
-	}
-
-	return evaluateSheinSaleAttributeFreshnessResolution(current, currentResolution, templateContext, api)
+	return sheinworkspace.EvaluateSaleAttributeFreshnessWithCustomValidation(current, templates, api)
 }

@@ -102,6 +102,7 @@ Current state:
 - SHEIN task-list work-queue and action-queue derivation rules now also live in the marketplace workspace package,
 - SHEIN inspection review-reason extraction plus cookie-unavailable review-note detection/cleanup rules now also live in the marketplace workspace package,
 - SHEIN workflow/work-queue/action-queue taxonomy definitions and display descriptors now also live in the marketplace workspace package, while `listingkit` keeps only task-list facet DTO adaptation plus blocker/warning descriptors tied to local issue codes,
+- SHEIN submit template-freshness evaluation rules for category, attribute, and sale-attribute drift now also live in the marketplace workspace package; `listingkit` keeps only online template loading, readiness check assembly, and persistence/orchestration glue,
 - `listingkit` keeps only platform-card DTO assembly and cross-platform queue/preview enrichment.
 
 Guardrail:
