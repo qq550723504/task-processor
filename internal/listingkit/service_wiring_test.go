@@ -48,40 +48,40 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.admin.shein == nil {
 		t.Fatal("expected admin group shein to be initialized")
 	}
-	if impl.submission.taskSubmission == nil {
+	if impl.submission.managedGroup.submission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
 	}
-	if impl.submission.taskSubmissionRefresh == nil {
+	if impl.submission.managedGroup.refresh == nil {
 		t.Fatal("expected taskSubmissionRefresh to be initialized")
 	}
-	if impl.submission.taskRecovery == nil {
+	if impl.submission.recoveryGroup.taskRecovery == nil {
 		t.Fatal("expected taskRecovery to be initialized")
 	}
-	if impl.submission.taskRequeue == nil {
+	if impl.submission.recoveryGroup.taskRequeue == nil {
 		t.Fatal("expected taskRequeue to be initialized")
 	}
-	if impl.submission.taskSubmissionRecovery == nil {
+	if impl.submission.managedGroup.recovery == nil {
 		t.Fatal("expected taskSubmissionRecovery to be initialized")
 	}
-	if impl.submission.taskSubmissionExecution == nil {
+	if impl.submission.coreGroup.execution == nil {
 		t.Fatal("expected taskSubmissionExecution to be initialized")
 	}
-	if impl.submission.taskSubmissionState == nil {
+	if impl.submission.coreGroup.state == nil {
 		t.Fatal("expected taskSubmissionState to be initialized")
 	}
-	if impl.submission.taskDirectSubmission == nil {
+	if impl.submission.managedGroup.direct == nil {
 		t.Fatal("expected taskDirectSubmission to be initialized")
 	}
-	if impl.submission.taskTemporalSubmissionLifecycle == nil {
+	if impl.submission.temporalGroup.lifecycle == nil {
 		t.Fatal("expected taskTemporalSubmissionLifecycle to be initialized")
 	}
-	if impl.submission.taskTemporalSubmissionFlow == nil {
+	if impl.submission.temporalGroup.flow == nil {
 		t.Fatal("expected taskTemporalSubmissionFlow to be initialized")
 	}
-	if impl.submission.taskTemporalSubmissionPersistence == nil {
+	if impl.submission.temporalGroup.persistence == nil {
 		t.Fatal("expected taskTemporalSubmissionPersistence to be initialized")
 	}
-	if impl.submission.taskTemporalSubmissionRefresh == nil {
+	if impl.submission.temporalGroup.refresh == nil {
 		t.Fatal("expected taskTemporalSubmissionRefresh to be initialized")
 	}
 }
@@ -126,42 +126,42 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	}
 
 	svc.initializeSubmitCollaborators()
-	if svc.submission.taskRecovery == nil {
+	if svc.submission.recoveryGroup.taskRecovery == nil {
 		t.Fatal("expected taskRecovery to be initialized")
 	}
-	if svc.submission.taskRequeue == nil {
+	if svc.submission.recoveryGroup.taskRequeue == nil {
 		t.Fatal("expected taskRequeue to be initialized")
 	}
-	if svc.submission.taskSubmission == nil {
+	if svc.submission.managedGroup.submission == nil {
 		t.Fatal("expected taskSubmission to be initialized")
 	}
-	if svc.submission.taskSubmissionRefresh == nil {
+	if svc.submission.managedGroup.refresh == nil {
 		t.Fatal("expected taskSubmissionRefresh to be initialized")
 	}
-	if svc.submission.taskSubmissionRecovery == nil {
+	if svc.submission.managedGroup.recovery == nil {
 		t.Fatal("expected taskSubmissionRecovery to be initialized")
 	}
-	if svc.submission.taskSubmissionExecution == nil {
+	if svc.submission.coreGroup.execution == nil {
 		t.Fatal("expected taskSubmissionExecution to be initialized")
 	}
-	if svc.submission.taskSubmissionState == nil {
+	if svc.submission.coreGroup.state == nil {
 		t.Fatal("expected taskSubmissionState to be initialized")
 	}
-	if svc.submission.taskDirectSubmission == nil {
+	if svc.submission.managedGroup.direct == nil {
 		t.Fatal("expected taskDirectSubmission to be initialized")
 	}
 
 	svc.initializeSubmitWorkflowCollaborators()
-	if svc.submission.taskTemporalSubmissionLifecycle == nil {
+	if svc.submission.temporalGroup.lifecycle == nil {
 		t.Fatal("expected taskTemporalSubmissionLifecycle to be initialized")
 	}
-	if svc.submission.taskTemporalSubmissionFlow == nil {
+	if svc.submission.temporalGroup.flow == nil {
 		t.Fatal("expected taskTemporalSubmissionFlow to be initialized")
 	}
-	if svc.submission.taskTemporalSubmissionPersistence == nil {
+	if svc.submission.temporalGroup.persistence == nil {
 		t.Fatal("expected taskTemporalSubmissionPersistence to be initialized")
 	}
-	if svc.submission.taskTemporalSubmissionRefresh == nil {
+	if svc.submission.temporalGroup.refresh == nil {
 		t.Fatal("expected taskTemporalSubmissionRefresh to be initialized")
 	}
 }
@@ -800,10 +800,10 @@ func TestSubmitCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			name: "submit collaborators",
 			file: "service_submit_collaborators.go",
 			builderCalls: []string{
-				"ensureTaskSubmitTaskRecoveryCollaborators()",
-				"ensureTaskSubmissionCoreCollaborators()",
-				"ensureTaskManagedSubmissionCollaborators()",
-				"ensureTaskTemporalSubmissionCollaborators()",
+				"resolveTaskSubmitTaskRecoveryCollaborators()",
+				"resolveTaskSubmissionCoreCollaborators()",
+				"resolveTaskManagedSubmissionCollaborators()",
+				"resolveTaskTemporalSubmissionCollaborators()",
 			},
 			inlineConfig: []string{},
 		},
@@ -4110,12 +4110,9 @@ func TestTaskTemporalSubmissionFacadeUsesExplicitConfigBuilder(t *testing.T) {
 	collaboratorContent := string(collaboratorSrc)
 
 	for _, needle := range []string{
-		"func (s *service) ensureTaskTemporalSubmissionCollaborators() {",
-		"collaborators := wiring.resolve(s.submission)",
-		"s.submission.taskTemporalSubmissionPersistence = collaborators.persistence",
-		"s.submission.taskTemporalSubmissionLifecycle = collaborators.lifecycle",
-		"s.submission.taskTemporalSubmissionFlow = collaborators.flow",
-		"s.submission.taskTemporalSubmissionRefresh = collaborators.refresh",
+		"func (s *service) resolveTaskTemporalSubmissionCollaborators() taskTemporalSubmissionCollaborators {",
+		"s.submission.temporalGroup = wiring.resolve(s.submission.temporalGroup)",
+		"return s.submission.temporalGroup",
 	} {
 		if !strings.Contains(collaboratorContent, needle) {
 			t.Fatalf("service_submit_collaborators.go should contain %q", needle)
@@ -4157,14 +4154,11 @@ func TestTaskTemporalSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	content := string(src)
 
 	for _, needle := range []string{
-		"func (s *service) ensureTaskTemporalSubmissionCollaborators() {",
+		"func (s *service) resolveTaskTemporalSubmissionCollaborators() taskTemporalSubmissionCollaborators {",
 		"wiring := buildTaskTemporalSubmissionCollaboratorWiring(s)",
-		"collaborators := wiring.resolve(s.submission)",
-		"s.submission.taskTemporalSubmissionPersistence = collaborators.persistence",
-		"s.submission.taskTemporalSubmissionLifecycle = collaborators.lifecycle",
-		"s.submission.taskTemporalSubmissionFlow = collaborators.flow",
-		"s.submission.taskTemporalSubmissionRefresh = collaborators.refresh",
-		"s.ensureTaskTemporalSubmissionCollaborators()",
+		"s.submission.temporalGroup = wiring.resolve(s.submission.temporalGroup)",
+		"return s.submission.temporalGroup",
+		"s.resolveTaskTemporalSubmissionCollaborators()",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service_submit_collaborators.go should contain %q", needle)
@@ -4177,8 +4171,15 @@ func TestTaskTemporalSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	}
 	stageContent := string(stageSrc)
 
-	if !strings.Contains(stageContent, "s.ensureTaskTemporalSubmissionCollaborators()") {
-		t.Fatalf("service_submit_collaborator_stages.go should contain %q", "s.ensureTaskTemporalSubmissionCollaborators()")
+	for _, needle := range []string{
+		"s.taskTemporalSubmissionPersistenceOrDefault()",
+		"s.taskTemporalSubmissionLifecycleOrDefault()",
+		"s.taskTemporalSubmissionFlowOrDefault()",
+		"s.taskTemporalSubmissionRefreshOrDefault()",
+	} {
+		if !strings.Contains(stageContent, needle) {
+			t.Fatalf("service_submit_collaborator_stages.go should contain %q", needle)
+		}
 	}
 
 	supportSrc, err := os.ReadFile("service_submit_wiring_support.go")
@@ -4196,7 +4197,7 @@ func TestTaskTemporalSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func buildTaskTemporalSubmissionConfigWiringWithPersistence(",
 		"func (w taskTemporalSubmissionCollaboratorWiring) newFlow(persistence *taskTemporalSubmissionPersistenceService) *taskTemporalSubmissionFlowService {",
 		"func (w taskTemporalSubmissionCollaboratorWiring) newRefresh(persistence *taskTemporalSubmissionPersistenceService) *taskTemporalSubmissionRefreshService {",
-		"func (w taskTemporalSubmissionCollaboratorWiring) resolve(existing submissionCollaborators) taskTemporalSubmissionCollaborators {",
+		"func (w taskTemporalSubmissionCollaboratorWiring) resolve(existing taskTemporalSubmissionCollaborators) taskTemporalSubmissionCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
@@ -4225,14 +4226,11 @@ func TestTaskManagedSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	content := string(src)
 
 	for _, needle := range []string{
-		"func (s *service) ensureTaskManagedSubmissionCollaborators() {",
+		"func (s *service) resolveTaskManagedSubmissionCollaborators() taskManagedSubmissionCollaborators {",
 		"wiring := buildTaskManagedSubmissionCollaboratorWiring(s)",
-		"collaborators := wiring.resolve(s.submission)",
-		"s.submission.taskSubmissionRecovery = collaborators.recovery",
-		"s.submission.taskDirectSubmission = collaborators.direct",
-		"s.submission.taskSubmissionRefresh = collaborators.refresh",
-		"s.submission.taskSubmission = collaborators.submission",
-		"s.ensureTaskManagedSubmissionCollaborators()",
+		"s.submission.managedGroup = wiring.resolve(s.submission.managedGroup)",
+		"return s.submission.managedGroup",
+		"s.resolveTaskManagedSubmissionCollaborators()",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service_submit_collaborators.go should contain %q", needle)
@@ -4245,8 +4243,15 @@ func TestTaskManagedSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	}
 	stageContent := string(stageSrc)
 
-	if !strings.Contains(stageContent, "s.ensureTaskManagedSubmissionCollaborators()") {
-		t.Fatalf("service_submit_collaborator_stages.go should contain %q", "s.ensureTaskManagedSubmissionCollaborators()")
+	for _, needle := range []string{
+		"s.taskSubmissionRecoveryOrDefault()",
+		"s.taskDirectSubmissionOrDefault()",
+		"s.taskSubmissionRefreshOrDefault()",
+		"s.taskSubmissionOrDefault()",
+	} {
+		if !strings.Contains(stageContent, needle) {
+			t.Fatalf("service_submit_collaborator_stages.go should contain %q", needle)
+		}
 	}
 
 	supportSrc, err := os.ReadFile("service_submit_wiring_support.go")
@@ -4265,7 +4270,7 @@ func TestTaskManagedSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func (w taskManagedSubmissionCollaboratorWiring) newDirect(managed taskManagedSubmissionWiring) *taskDirectSubmissionService {",
 		"func (w taskManagedSubmissionCollaboratorWiring) newRefresh(managed taskManagedSubmissionWiring) *taskSubmissionRefreshService {",
 		"func (w taskManagedSubmissionCollaboratorWiring) newSubmission(recovery *taskSubmissionRecoveryService, direct *taskDirectSubmissionService) *taskSubmissionService {",
-		"func (w taskManagedSubmissionCollaboratorWiring) resolve(existing submissionCollaborators) taskManagedSubmissionCollaborators {",
+		"func (w taskManagedSubmissionCollaboratorWiring) resolve(existing taskManagedSubmissionCollaborators) taskManagedSubmissionCollaborators {",
 		"managed := w.buildManaged(recovery)",
 	} {
 		if !strings.Contains(supportContent, needle) {
@@ -4294,12 +4299,11 @@ func TestTaskSubmissionCoreCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	content := string(src)
 
 	for _, needle := range []string{
-		"func (s *service) ensureTaskSubmissionCoreCollaborators() {",
+		"func (s *service) resolveTaskSubmissionCoreCollaborators() taskSubmissionCoreCollaborators {",
 		"wiring := buildTaskSubmissionCoreCollaboratorWiring(s)",
-		"collaborators := wiring.resolve(s.submission)",
-		"s.submission.taskSubmissionExecution = collaborators.execution",
-		"s.submission.taskSubmissionState = collaborators.state",
-		"s.ensureTaskSubmissionCoreCollaborators()",
+		"s.submission.coreGroup = wiring.resolve(s.submission.coreGroup)",
+		"return s.submission.coreGroup",
+		"s.resolveTaskSubmissionCoreCollaborators()",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service_submit_collaborators.go should contain %q", needle)
@@ -4312,8 +4316,13 @@ func TestTaskSubmissionCoreCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	}
 	stageContent := string(stageSrc)
 
-	if !strings.Contains(stageContent, "s.ensureTaskSubmissionCoreCollaborators()") {
-		t.Fatalf("service_submit_collaborator_stages.go should contain %q", "s.ensureTaskSubmissionCoreCollaborators()")
+	for _, needle := range []string{
+		"s.taskSubmissionExecutionOrDefault()",
+		"s.taskSubmissionStateOrDefault()",
+	} {
+		if !strings.Contains(stageContent, needle) {
+			t.Fatalf("service_submit_collaborator_stages.go should contain %q", needle)
+		}
 	}
 
 	supportSrc, err := os.ReadFile("service_submit_wiring_support.go")
@@ -4328,7 +4337,7 @@ func TestTaskSubmissionCoreCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func buildTaskSubmissionCoreCollaboratorWiring(s *service) taskSubmissionCoreCollaboratorWiring {",
 		"func (w taskSubmissionCoreCollaboratorWiring) newExecution() *taskSubmissionExecutionService {",
 		"func (w taskSubmissionCoreCollaboratorWiring) newState() *taskSubmissionStateService {",
-		"func (w taskSubmissionCoreCollaboratorWiring) resolve(existing submissionCollaborators) taskSubmissionCoreCollaborators {",
+		"func (w taskSubmissionCoreCollaboratorWiring) resolve(existing taskSubmissionCoreCollaborators) taskSubmissionCoreCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
@@ -4346,12 +4355,11 @@ func TestTaskSubmitTaskRecoveryCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	content := string(src)
 
 	for _, needle := range []string{
-		"func (s *service) ensureTaskSubmitTaskRecoveryCollaborators() {",
+		"func (s *service) resolveTaskSubmitTaskRecoveryCollaborators() taskSubmitTaskRecoveryCollaborators {",
 		"wiring := buildTaskSubmitTaskRecoveryCollaboratorWiring(s)",
-		"collaborators := wiring.resolve(s.submission)",
-		"s.submission.taskRecovery = collaborators.taskRecovery",
-		"s.submission.taskRequeue = collaborators.taskRequeue",
-		"s.ensureTaskSubmitTaskRecoveryCollaborators()",
+		"s.submission.recoveryGroup = wiring.resolve(s.submission.recoveryGroup)",
+		"return s.submission.recoveryGroup",
+		"s.resolveTaskSubmitTaskRecoveryCollaborators()",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service_submit_collaborators.go should contain %q", needle)
@@ -4364,8 +4372,13 @@ func TestTaskSubmitTaskRecoveryCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	}
 	stageContent := string(stageSrc)
 
-	if !strings.Contains(stageContent, "s.ensureTaskSubmitTaskRecoveryCollaborators()") {
-		t.Fatalf("service_submit_collaborator_stages.go should contain %q", "s.ensureTaskSubmitTaskRecoveryCollaborators()")
+	for _, needle := range []string{
+		"s.taskRecoveryOrDefault()",
+		"s.taskRequeueOrDefault()",
+	} {
+		if !strings.Contains(stageContent, needle) {
+			t.Fatalf("service_submit_collaborator_stages.go should contain %q", needle)
+		}
 	}
 
 	supportSrc, err := os.ReadFile("service_submit_wiring_support.go")
@@ -4380,7 +4393,7 @@ func TestTaskSubmitTaskRecoveryCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func buildTaskSubmitTaskRecoveryCollaboratorWiring(s *service) taskSubmitTaskRecoveryCollaboratorWiring {",
 		"func (w taskSubmitTaskRecoveryCollaboratorWiring) newTaskRecovery() *taskRecoveryService {",
 		"func (w taskSubmitTaskRecoveryCollaboratorWiring) newTaskRequeue() *taskRequeueService {",
-		"func (w taskSubmitTaskRecoveryCollaboratorWiring) resolve(existing submissionCollaborators) taskSubmitTaskRecoveryCollaborators {",
+		"func (w taskSubmitTaskRecoveryCollaboratorWiring) resolve(existing taskSubmitTaskRecoveryCollaborators) taskSubmitTaskRecoveryCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)

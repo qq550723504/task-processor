@@ -161,7 +161,7 @@ func (w taskSubmitTaskRecoveryCollaboratorWiring) newTaskRequeue() *taskRequeueS
 	return newTaskRequeueService(buildTaskRequeueServiceConfigWithWiring(w.submitter))
 }
 
-func (w taskSubmitTaskRecoveryCollaboratorWiring) resolve(existing submissionCollaborators) taskSubmitTaskRecoveryCollaborators {
+func (w taskSubmitTaskRecoveryCollaboratorWiring) resolve(existing taskSubmitTaskRecoveryCollaborators) taskSubmitTaskRecoveryCollaborators {
 	taskRecovery := existing.taskRecovery
 	if taskRecovery == nil {
 		taskRecovery = w.newTaskRecovery()
@@ -276,12 +276,12 @@ func (w taskSubmissionCoreCollaboratorWiring) newState() *taskSubmissionStateSer
 	return newTaskSubmissionStateService(buildTaskSubmissionStateServiceConfigWithSupport(w.support))
 }
 
-func (w taskSubmissionCoreCollaboratorWiring) resolve(existing submissionCollaborators) taskSubmissionCoreCollaborators {
-	execution := existing.taskSubmissionExecution
+func (w taskSubmissionCoreCollaboratorWiring) resolve(existing taskSubmissionCoreCollaborators) taskSubmissionCoreCollaborators {
+	execution := existing.execution
 	if execution == nil {
 		execution = w.newExecution()
 	}
-	state := existing.taskSubmissionState
+	state := existing.state
 	if state == nil {
 		state = w.newState()
 	}
@@ -360,21 +360,21 @@ func (w taskManagedSubmissionCollaboratorWiring) newSubmission(recovery *taskSub
 	))
 }
 
-func (w taskManagedSubmissionCollaboratorWiring) resolve(existing submissionCollaborators) taskManagedSubmissionCollaborators {
-	recovery := existing.taskSubmissionRecovery
+func (w taskManagedSubmissionCollaboratorWiring) resolve(existing taskManagedSubmissionCollaborators) taskManagedSubmissionCollaborators {
+	recovery := existing.recovery
 	if recovery == nil {
 		recovery = w.newRecovery()
 	}
 	managed := w.buildManaged(recovery)
-	direct := existing.taskDirectSubmission
+	direct := existing.direct
 	if direct == nil {
 		direct = w.newDirect(managed)
 	}
-	refresh := existing.taskSubmissionRefresh
+	refresh := existing.refresh
 	if refresh == nil {
 		refresh = w.newRefresh(managed)
 	}
-	submission := existing.taskSubmission
+	submission := existing.submission
 	if submission == nil {
 		submission = w.newSubmission(recovery, direct)
 	}
@@ -430,20 +430,20 @@ func (w taskTemporalSubmissionCollaboratorWiring) newRefresh(persistence *taskTe
 	return newTaskTemporalSubmissionRefreshService(buildTaskTemporalSubmissionRefreshServiceConfigWithWiring(w.wiring, persistence))
 }
 
-func (w taskTemporalSubmissionCollaboratorWiring) resolve(existing submissionCollaborators) taskTemporalSubmissionCollaborators {
-	persistence := existing.taskTemporalSubmissionPersistence
+func (w taskTemporalSubmissionCollaboratorWiring) resolve(existing taskTemporalSubmissionCollaborators) taskTemporalSubmissionCollaborators {
+	persistence := existing.persistence
 	if persistence == nil {
 		persistence = w.newPersistence()
 	}
-	lifecycle := existing.taskTemporalSubmissionLifecycle
+	lifecycle := existing.lifecycle
 	if lifecycle == nil {
 		lifecycle = w.newLifecycle()
 	}
-	flow := existing.taskTemporalSubmissionFlow
+	flow := existing.flow
 	if flow == nil {
 		flow = w.newFlow(persistence)
 	}
-	refresh := existing.taskTemporalSubmissionRefresh
+	refresh := existing.refresh
 	if refresh == nil {
 		refresh = w.newRefresh(persistence)
 	}

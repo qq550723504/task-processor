@@ -3,108 +3,88 @@ package listingkit
 import listingsubmission "task-processor/internal/listing/submission"
 
 func (s *service) taskRecoveryOrDefault() *taskRecoveryService {
-	s.ensureTaskSubmitTaskRecoveryCollaborators()
-	return s.submission.taskRecovery
+	return s.resolveTaskSubmitTaskRecoveryCollaborators().taskRecovery
 }
 
 func (s *service) taskRequeueOrDefault() *taskRequeueService {
-	s.ensureTaskSubmitTaskRecoveryCollaborators()
-	return s.submission.taskRequeue
+	return s.resolveTaskSubmitTaskRecoveryCollaborators().taskRequeue
 }
 
-func (s *service) ensureTaskSubmitTaskRecoveryCollaborators() {
+func (s *service) resolveTaskSubmitTaskRecoveryCollaborators() taskSubmitTaskRecoveryCollaborators {
 	if s == nil {
-		return
+		return taskSubmitTaskRecoveryCollaborators{}
 	}
 	wiring := buildTaskSubmitTaskRecoveryCollaboratorWiring(s)
-	collaborators := wiring.resolve(s.submission)
-	s.submission.taskRecovery = collaborators.taskRecovery
-	s.submission.taskRequeue = collaborators.taskRequeue
+	s.submission.recoveryGroup = wiring.resolve(s.submission.recoveryGroup)
+	return s.submission.recoveryGroup
 }
 
 func (s *service) taskSubmissionOrDefault() *taskSubmissionService {
-	s.ensureTaskManagedSubmissionCollaborators()
-	return s.submission.taskSubmission
+	return s.resolveTaskManagedSubmissionCollaborators().submission
 }
 
 func (s *service) taskSubmissionRefreshOrDefault() *taskSubmissionRefreshService {
-	s.ensureTaskManagedSubmissionCollaborators()
-	return s.submission.taskSubmissionRefresh
+	return s.resolveTaskManagedSubmissionCollaborators().refresh
 }
 
 func (s *service) taskSubmissionExecutionOrDefault() *taskSubmissionExecutionService {
-	s.ensureTaskSubmissionCoreCollaborators()
-	return s.submission.taskSubmissionExecution
+	return s.resolveTaskSubmissionCoreCollaborators().execution
 }
 
 func (s *service) taskSubmissionStateOrDefault() *taskSubmissionStateService {
-	s.ensureTaskSubmissionCoreCollaborators()
-	return s.submission.taskSubmissionState
+	return s.resolveTaskSubmissionCoreCollaborators().state
 }
 
-func (s *service) ensureTaskSubmissionCoreCollaborators() {
+func (s *service) resolveTaskSubmissionCoreCollaborators() taskSubmissionCoreCollaborators {
 	if s == nil {
-		return
+		return taskSubmissionCoreCollaborators{}
 	}
 	wiring := buildTaskSubmissionCoreCollaboratorWiring(s)
-	collaborators := wiring.resolve(s.submission)
-	s.submission.taskSubmissionExecution = collaborators.execution
-	s.submission.taskSubmissionState = collaborators.state
+	s.submission.coreGroup = wiring.resolve(s.submission.coreGroup)
+	return s.submission.coreGroup
 }
 
 func (s *service) taskSubmissionRecoveryOrDefault() *taskSubmissionRecoveryService {
-	s.ensureTaskManagedSubmissionCollaborators()
-	return s.submission.taskSubmissionRecovery
+	return s.resolveTaskManagedSubmissionCollaborators().recovery
 }
 
 func (s *service) taskDirectSubmissionOrDefault() *taskDirectSubmissionService {
-	s.ensureTaskManagedSubmissionCollaborators()
-	return s.submission.taskDirectSubmission
+	return s.resolveTaskManagedSubmissionCollaborators().direct
 }
 
-func (s *service) ensureTaskManagedSubmissionCollaborators() {
+func (s *service) resolveTaskManagedSubmissionCollaborators() taskManagedSubmissionCollaborators {
 	if s == nil {
-		return
+		return taskManagedSubmissionCollaborators{}
 	}
 	if s.submission.sheinSubmitLocks == nil {
 		s.submission.sheinSubmitLocks = listingsubmission.NewSubmitLockManager()
 	}
 	wiring := buildTaskManagedSubmissionCollaboratorWiring(s)
-	collaborators := wiring.resolve(s.submission)
-	s.submission.taskSubmissionRecovery = collaborators.recovery
-	s.submission.taskDirectSubmission = collaborators.direct
-	s.submission.taskSubmissionRefresh = collaborators.refresh
-	s.submission.taskSubmission = collaborators.submission
+	s.submission.managedGroup = wiring.resolve(s.submission.managedGroup)
+	return s.submission.managedGroup
 }
 
 func (s *service) taskTemporalSubmissionPersistenceOrDefault() *taskTemporalSubmissionPersistenceService {
-	s.ensureTaskTemporalSubmissionCollaborators()
-	return s.submission.taskTemporalSubmissionPersistence
+	return s.resolveTaskTemporalSubmissionCollaborators().persistence
 }
 
-func (s *service) ensureTaskTemporalSubmissionCollaborators() {
+func (s *service) resolveTaskTemporalSubmissionCollaborators() taskTemporalSubmissionCollaborators {
 	if s == nil {
-		return
+		return taskTemporalSubmissionCollaborators{}
 	}
 	wiring := buildTaskTemporalSubmissionCollaboratorWiring(s)
-	collaborators := wiring.resolve(s.submission)
-	s.submission.taskTemporalSubmissionPersistence = collaborators.persistence
-	s.submission.taskTemporalSubmissionLifecycle = collaborators.lifecycle
-	s.submission.taskTemporalSubmissionFlow = collaborators.flow
-	s.submission.taskTemporalSubmissionRefresh = collaborators.refresh
+	s.submission.temporalGroup = wiring.resolve(s.submission.temporalGroup)
+	return s.submission.temporalGroup
 }
 
 func (s *service) taskTemporalSubmissionLifecycleOrDefault() *taskTemporalSubmissionLifecycleService {
-	s.ensureTaskTemporalSubmissionCollaborators()
-	return s.submission.taskTemporalSubmissionLifecycle
+	return s.resolveTaskTemporalSubmissionCollaborators().lifecycle
 }
 
 func (s *service) taskTemporalSubmissionFlowOrDefault() *taskTemporalSubmissionFlowService {
-	s.ensureTaskTemporalSubmissionCollaborators()
-	return s.submission.taskTemporalSubmissionFlow
+	return s.resolveTaskTemporalSubmissionCollaborators().flow
 }
 
 func (s *service) taskTemporalSubmissionRefreshOrDefault() *taskTemporalSubmissionRefreshService {
-	s.ensureTaskTemporalSubmissionCollaborators()
-	return s.submission.taskTemporalSubmissionRefresh
+	return s.resolveTaskTemporalSubmissionCollaborators().refresh
 }

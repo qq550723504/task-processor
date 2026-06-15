@@ -36,7 +36,7 @@ func TestServiceValidateReadinessBlocksOnFreshnessGate(t *testing.T) {
 
 	task := makeReadySheinTask()
 	svc := &service{}
-	svc.submission.taskTemporalSubmissionLifecycle = newTaskTemporalSubmissionLifecycleService(taskTemporalSubmissionLifecycleServiceConfig{
+	svc.submission.temporalGroup.lifecycle = newTaskTemporalSubmissionLifecycleService(taskTemporalSubmissionLifecycleServiceConfig{
 		loadSheinPublishTask: func(context.Context, string) (*Task, *SheinPackage, error) {
 			return task, task.Result.Shein, nil
 		},
@@ -75,7 +75,7 @@ func TestServiceSubmitSheinTaskWithWorkflowReturnsPreviewOnSuccess(t *testing.T)
 	var started SheinPublishWorkflowStartInput
 	expectedPreview := &ListingKitPreview{TaskID: task.ID}
 	svc := &service{}
-	svc.submission.taskTemporalSubmissionLifecycle = newTaskTemporalSubmissionLifecycleService(taskTemporalSubmissionLifecycleServiceConfig{
+	svc.submission.temporalGroup.lifecycle = newTaskTemporalSubmissionLifecycleService(taskTemporalSubmissionLifecycleServiceConfig{
 		startSheinPublishWorkflow: func(_ context.Context, in SheinPublishWorkflowStartInput) error {
 			started = in
 			return nil
@@ -123,7 +123,7 @@ func TestServiceSubmitSheinTaskWithWorkflowBuildsReplayPreview(t *testing.T) {
 	task := makeReadySheinTask()
 	expectedPreview := &ListingKitPreview{TaskID: task.ID}
 	svc := &service{}
-	svc.submission.taskTemporalSubmissionLifecycle = newTaskTemporalSubmissionLifecycleService(taskTemporalSubmissionLifecycleServiceConfig{
+	svc.submission.temporalGroup.lifecycle = newTaskTemporalSubmissionLifecycleService(taskTemporalSubmissionLifecycleServiceConfig{
 		startSheinPublishWorkflow: func(context.Context, SheinPublishWorkflowStartInput) error {
 			return &listingsubmission.SubmitInProgressError{
 				Platform:  "shein",
@@ -160,7 +160,7 @@ func TestServiceSubmitSheinTaskWithWorkflowDelegatesFailureCleanup(t *testing.T)
 	startErr := errors.New("workflow start failed")
 	var handled bool
 	svc := &service{}
-	svc.submission.taskTemporalSubmissionLifecycle = newTaskTemporalSubmissionLifecycleService(taskTemporalSubmissionLifecycleServiceConfig{
+	svc.submission.temporalGroup.lifecycle = newTaskTemporalSubmissionLifecycleService(taskTemporalSubmissionLifecycleServiceConfig{
 		startSheinPublishWorkflow: func(context.Context, SheinPublishWorkflowStartInput) error {
 			return startErr
 		},

@@ -526,15 +526,16 @@ The task/studio/admin collaborator groups are now the preferred internal shape.
 
 The root `service` struct no longer uses legacy flat collaborator fields such as
 `taskGeneration`, `taskStudioBatch`, and `settingsAdmin` as the primary ownership
-boundary. Collaborators now live in grouped containers, and the `studio`
-container is further split into `sessionGroup`, `batchGroup`, and `runGroup`
-subgroups so related lazy construction stays local to the concept it serves.
+boundary. Collaborators now live in grouped containers, and larger domains such
+as `studio` and `submission` are further split into concept-local subgroups so
+related lazy construction stays local to the seam it serves.
 
 Current expectation:
 
-- grouped collaborator containers (`task`, `studio`, `admin`) are the primary internal representation,
+- grouped collaborator containers (`task`, `studio`, `admin`, `submission`) are the primary internal representation,
 - `...OrDefault()` accessors should own lazy construction for grouped collaborators instead of stage-specific manual field rewrites,
 - `studio` collaborator access should stay scoped to subgroup-local caches (`sessionGroup`, `batchGroup`, `runGroup`) instead of reintroducing flat fields,
+- `submission` collaborator access should stay scoped to subgroup-local caches (`recoveryGroup`, `coreGroup`, `managedGroup`, `temporalGroup`) instead of reintroducing flat fields,
 - grouped dependency buckets (`taskDeps`, `studioDeps`, `adminDeps`, `submissionDeps`, `workflowDeps`, `sheinRuntimeDeps`, `supportDeps`) should own resolver state first,
 - service construction should seed grouped dependency buckets first instead of introducing new root dependency mirrors,
 - runtime-configurable submit/workflow overrides should remain owned by their grouped dependency buckets instead of expanding the root service surface,
