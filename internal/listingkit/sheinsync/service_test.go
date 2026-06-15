@@ -748,6 +748,10 @@ func (s *sheinSyncServiceProductAPIStub) ListProducts(pageNum, pageSize int, req
 	return s.listResponses[index], nil
 }
 
+func (s *sheinSyncServiceProductAPIStub) QueryBrandList() (*sheinproduct.BrandListResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *sheinSyncServiceProductAPIStub) QueryStock(*sheinproduct.StockQueryRequest) (*sheinproduct.StockQueryResponse, error) {
 	return nil, errors.New("not implemented")
 }

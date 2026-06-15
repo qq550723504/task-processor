@@ -232,6 +232,9 @@ func (s temporalStubSheinProductAPI) Record(*sheinproduct.ProductRecordRequest) 
 func (s temporalStubSheinProductAPI) ListProducts(int, int, *sheinproduct.ProductListRequest) (*sheinproduct.ProductListResponse, error) {
 	return nil, errors.New("not implemented")
 }
+func (s temporalStubSheinProductAPI) QueryBrandList() (*sheinproduct.BrandListResponse, error) {
+	return nil, errors.New("not implemented")
+}
 func (s temporalStubSheinProductAPI) QueryStock(*sheinproduct.StockQueryRequest) (*sheinproduct.StockQueryResponse, error) {
 	return nil, errors.New("not implemented")
 }

@@ -160,6 +160,10 @@ func (s *blockingSheinSyncProductAPIStub) ListProducts(pageNum, pageSize int, re
 	return s.response, nil
 }
 
+func (s *blockingSheinSyncProductAPIStub) QueryBrandList() (*sheinproduct.BrandListResponse, error) {
+	return nil, nil
+}
+
 func (s *blockingSheinSyncProductAPIStub) QueryStock(*sheinproduct.StockQueryRequest) (*sheinproduct.StockQueryResponse, error) {
 	return nil, nil
 }
