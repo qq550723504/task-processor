@@ -3911,12 +3911,25 @@ func TestTaskStudioBatchDetailAdapterUsesListingStudioRunner(t *testing.T) {
 
 	for _, needle := range []string{
 		"service.ensureDetailRunner()",
-		"func (s *taskStudioBatchService) ensureDetailRunner() {",
-		"s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.ensureStudioBatchGenerationGraphForResume)",
 		"return s.detailRunner.GetDetail(ctx, normalizedBatchID)",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
+		}
+	}
+
+	supportSrc, err := os.ReadFile("task_studio_batch_runner_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_runner_support.go) error = %v", err)
+	}
+	supportContent := string(supportSrc)
+
+	for _, needle := range []string{
+		"func (s *taskStudioBatchService) ensureDetailRunner() {",
+		"s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.ensureStudioBatchGenerationGraphForResume)",
+	} {
+		if !strings.Contains(supportContent, needle) {
+			t.Fatalf("task_studio_batch_runner_support.go should contain %q", needle)
 		}
 	}
 }
@@ -3954,12 +3967,25 @@ func TestTaskStudioBatchReviewAdapterUsesListingStudioRunner(t *testing.T) {
 
 	for _, needle := range []string{
 		"service.ensureReviewRunner()",
-		"func (s *taskStudioBatchService) ensureReviewRunner() {",
-		"s.reviewRunner = newListingStudioBatchReviewService(s.repo, s.GetStudioBatchDetail, s.currentTime)",
 		"return s.reviewRunner.ApproveDesigns(ctx, normalizedBatchID, approvedIDs)",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
+		}
+	}
+
+	supportSrc, err := os.ReadFile("task_studio_batch_runner_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_runner_support.go) error = %v", err)
+	}
+	supportContent := string(supportSrc)
+
+	for _, needle := range []string{
+		"func (s *taskStudioBatchService) ensureReviewRunner() {",
+		"s.reviewRunner = newListingStudioBatchReviewService(s.repo, s.GetStudioBatchDetail, s.currentTime)",
+	} {
+		if !strings.Contains(supportContent, needle) {
+			t.Fatalf("task_studio_batch_runner_support.go should contain %q", needle)
 		}
 	}
 }
@@ -3997,12 +4023,25 @@ func TestTaskStudioBatchRetryAdapterUsesListingStudioRunner(t *testing.T) {
 
 	for _, needle := range []string{
 		"service.ensureRetryRunner()",
-		"func (s *taskStudioBatchService) ensureRetryRunner() {",
-		"s.retryRunner = newListingStudioBatchRetryPrepareService(s.repo, s.GetStudioBatchDetail, s.resetStudioBatchRetryItems)",
 		"return s.retryRunner.PrepareRetryItems(ctx, normalizedBatchID, itemIDs)",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
+		}
+	}
+
+	supportSrc, err := os.ReadFile("task_studio_batch_runner_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_runner_support.go) error = %v", err)
+	}
+	supportContent := string(supportSrc)
+
+	for _, needle := range []string{
+		"func (s *taskStudioBatchService) ensureRetryRunner() {",
+		"s.retryRunner = newListingStudioBatchRetryPrepareService(s.repo, s.GetStudioBatchDetail, s.resetStudioBatchRetryItems)",
+	} {
+		if !strings.Contains(supportContent, needle) {
+			t.Fatalf("task_studio_batch_runner_support.go should contain %q", needle)
 		}
 	}
 }
@@ -4041,12 +4080,27 @@ func TestTaskStudioBatchTaskPrepareAdapterUsesListingStudioRunner(t *testing.T) 
 
 	for _, needle := range []string{
 		"service.ensureTaskPrepareRunner()",
-		"func (s *taskStudioBatchService) ensureTaskPrepareRunner() {",
-		"s.taskPrepareRunner = newListingStudioBatchTaskPrepareService(",
 		"return s.taskPrepareRunner.PrepareTaskCreation(ctx, normalizedBatchID, listingStudioBatchTaskPrepareState{",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
+		}
+	}
+
+	supportSrc, err := os.ReadFile("task_studio_batch_runner_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_runner_support.go) error = %v", err)
+	}
+	supportContent := string(supportSrc)
+
+	for _, needle := range []string{
+		"func (s *taskStudioBatchService) ensureTaskPrepareRunner() {",
+		"s.taskPrepareRunner = newListingStudioBatchTaskPrepareService(",
+		"func (s *taskStudioBatchService) studioBatchSessionUpdater() func(context.Context, *SheinStudioSession) error {",
+		"func (s *taskStudioBatchService) studioBatchUpdater() func(context.Context, *StudioBatchRecord) error {",
+	} {
+		if !strings.Contains(supportContent, needle) {
+			t.Fatalf("task_studio_batch_runner_support.go should contain %q", needle)
 		}
 	}
 
@@ -4097,12 +4151,25 @@ func TestTaskStudioBatchTaskResumeAdapterUsesListingStudioRunner(t *testing.T) {
 
 	for _, needle := range []string{
 		"service.ensureTaskResumeRunner()",
-		"func (s *taskStudioBatchService) ensureTaskResumeRunner() {",
-		"s.taskResumeRunner = newListingStudioBatchTaskResumeService(",
 		"taskResumeRunner   *listingStudioBatchTaskResumeRunner",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
+		}
+	}
+
+	supportSrc, err := os.ReadFile("task_studio_batch_runner_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_runner_support.go) error = %v", err)
+	}
+	supportContent := string(supportSrc)
+
+	for _, needle := range []string{
+		"func (s *taskStudioBatchService) ensureTaskResumeRunner() {",
+		"s.taskResumeRunner = newListingStudioBatchTaskResumeService(",
+	} {
+		if !strings.Contains(supportContent, needle) {
+			t.Fatalf("task_studio_batch_runner_support.go should contain %q", needle)
 		}
 	}
 
