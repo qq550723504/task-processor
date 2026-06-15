@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
-	"task-processor/internal/listingkit/tenantctx"
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 )
 
 type stubTitleAIClient struct {
@@ -252,7 +252,7 @@ func TestBuildSheinListingCopyCleansSensitiveWords(t *testing.T) {
 		},
 	}
 
-	copy := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "101"), canonical, canonical.Title, nil)
+	copy := buildSheinListingCopy(sharedtenantctx.WithTenantID(context.Background(), "101"), canonical, canonical.Title, nil)
 
 	assertNoSensitivePhrase(t, copy.Title, "title")
 	assertNoSensitivePhrase(t, copy.Description, "description")
@@ -272,7 +272,7 @@ func TestBuildSheinListingCopyLoadsTenantSensitiveWordsFromRepository(t *testing
 	})
 	defer restoreRepo()
 
-	runtimeCtx := tenantctx.WithTenantID(context.Background(), "101")
+	runtimeCtx := sharedtenantctx.WithTenantID(context.Background(), "101")
 	canonical := &canonical.Product{
 		Title:       "Whimsy Door Curtain",
 		Description: "Whimsy curtain for home decor.",
@@ -303,14 +303,14 @@ func TestDifferentTenantsLoadDifferentGenerationTopicLexicons(t *testing.T) {
 	}, nil)
 	defer restoreRepo()
 
-	copyA := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "101"), &canonical.Product{
+	copyA := buildSheinListingCopy(sharedtenantctx.WithTenantID(context.Background(), "101"), &canonical.Product{
 		Title:       "Kids Room Curtain",
 		Description: "Decor for children bedroom",
 		Attributes: map[string]canonical.Attribute{
 			"product_english_name": {Value: "Kids Room Curtain"},
 		},
 	}, "Kids Room Curtain", nil)
-	copyB := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "202"), &canonical.Product{
+	copyB := buildSheinListingCopy(sharedtenantctx.WithTenantID(context.Background(), "202"), &canonical.Product{
 		Title:       "Breakfast Table Curtain",
 		Description: "Meal-themed decor",
 		Attributes: map[string]canonical.Attribute{
@@ -346,7 +346,7 @@ func TestBuildSheinListingCopyLoadsTenantGenerationTopicOverrideLexicon(t *testi
 	})
 	defer restoreRepos()
 
-	copy := buildSheinListingCopy(tenantctx.WithTenantID(context.Background(), "101"), &canonical.Product{
+	copy := buildSheinListingCopy(sharedtenantctx.WithTenantID(context.Background(), "101"), &canonical.Product{
 		Title:       "Toddler Room Curtain",
 		Description: "Toddler-themed decor for a kids room",
 		Attributes: map[string]canonical.Attribute{

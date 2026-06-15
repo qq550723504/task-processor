@@ -182,8 +182,6 @@ Use this table for violations that are known and intentionally tolerated during 
 
 | Package/File | Import | Reason | Owner | Cleanup target |
 | --- | --- | --- | --- | --- |
-| `internal/publishing/shein/generation_topic_runtime.go` | `task-processor/internal/listingkit/tenantctx` | Publishing package depended on a ListingKit-owned tenant context helper at scan time; follow-up refactors moved it to the shared tenant context package | Listing / Publishing boundary owners | Keep enforced by boundary tests; do not reintroduce ListingKit tenant context into publishing |
-
 Rules:
 
 - Do not add new exceptions silently.

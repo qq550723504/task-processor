@@ -106,6 +106,7 @@ func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
 	}
 	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "shein"), []string{
 		`"task-processor/internal/listingkit"`,
+		`"task-processor/internal/listingkit/tenantctx"`,
 		`"task-processor/internal/productenrich"`,
 		`"task-processor/internal/shein/pipeline"`,
 		`"task-processor/internal/shein/publish"`,

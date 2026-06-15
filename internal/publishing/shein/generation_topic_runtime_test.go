@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
-	"task-processor/internal/listingkit/tenantctx"
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 )
 
 type stubGenerationTopicPolicyRepository struct {
@@ -107,7 +107,7 @@ func TestLoadTenantGenerationTopicPolicySummaryBuildsDirectiveSummary(t *testing
 	})
 	defer restore()
 
-	ctx := tenantctx.WithTenantID(context.Background(), "101")
+	ctx := sharedtenantctx.WithTenantID(context.Background(), "101")
 	summary := loadTenantGenerationTopicPolicySummary(ctx)
 	if !strings.Contains(summary, "Do not mention children, babies, or age-specific users.") {
 		t.Fatalf("summary = %q, want children directive", summary)
@@ -148,7 +148,7 @@ func TestTenantGenerationTopicPolicyPromptBlockFormatsSummary(t *testing.T) {
 	})
 	defer restore()
 
-	block := tenantGenerationTopicPolicyPromptBlock(tenantctx.WithTenantID(context.Background(), "101"))
+	block := tenantGenerationTopicPolicyPromptBlock(sharedtenantctx.WithTenantID(context.Background(), "101"))
 	if !strings.Contains(block, "Additional tenant content restrictions:") {
 		t.Fatalf("prompt block = %q, want restrictions header", block)
 	}
@@ -177,7 +177,7 @@ func TestLoadTenantGenerationTopicPolicySummaryIncludesOverrideDirectives(t *tes
 	})
 	defer restoreOverrideRepo()
 
-	summary := loadTenantGenerationTopicPolicySummary(tenantctx.WithTenantID(context.Background(), "101"))
+	summary := loadTenantGenerationTopicPolicySummary(sharedtenantctx.WithTenantID(context.Background(), "101"))
 	if !strings.Contains(summary, "Do not mention children, babies, or age-specific users.") {
 		t.Fatalf("summary = %q, want default directive retained", summary)
 	}

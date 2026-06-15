@@ -9,8 +9,8 @@ import (
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
-	"task-processor/internal/listingkit/tenantctx"
 	common "task-processor/internal/publishing/common"
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 	sheinproduct "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/submitprep"
 )
@@ -324,7 +324,7 @@ func TestOptimizeSubmitContentWithAI_IncludesTenantGenerationPolicyText(t *testi
 	}
 
 	_, _, err := optimizeSubmitContentWithAI(
-		tenantctx.WithTenantID(context.Background(), "101"),
+		sharedtenantctx.WithTenantID(context.Background(), "101"),
 		ai,
 		"Door curtain",
 		"Soft curtain",
@@ -371,7 +371,7 @@ func TestExtractListingTitleAdditionWithLLM_IncludesTenantGenerationPolicyText(t
 	}
 
 	addition := extractListingTitleAdditionWithLLM(
-		tenantctx.WithTenantID(context.Background(), "101"),
+		sharedtenantctx.WithTenantID(context.Background(), "101"),
 		"Door curtain",
 		&canonical.Product{
 			Attributes: map[string]canonical.Attribute{
@@ -422,7 +422,7 @@ func TestExtractPromptTitleWithLLM_IncludesTenantGenerationPolicyText(t *testing
 	}
 
 	title := extractPromptTitleWithLLM(
-		tenantctx.WithTenantID(context.Background(), "101"),
+		sharedtenantctx.WithTenantID(context.Background(), "101"),
 		"Please design a floral door curtain print with dramatic text and graphics, 3000px",
 		nil,
 		"Door curtain",
@@ -624,7 +624,7 @@ func TestRetrySensitiveWordCleanup_PersistsNewValidationWordsToTenantRepository(
 	restoreRepo := submitprep.SetSensitiveWordRepository(repo)
 	defer restoreRepo()
 
-	ctx := tenantctx.WithTenantID(context.Background(), "101")
+	ctx := sharedtenantctx.WithTenantID(context.Background(), "101")
 	product := &sheinproduct.Product{
 		MultiLanguageNameList: []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy Door Curtain"}},
 		MultiLanguageDescList: []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy curtain for home decor"}},
@@ -664,7 +664,7 @@ func TestRetrySensitiveWordCleanup_ReenablesExistingDisabledValidationWord(t *te
 	restoreRepo := submitprep.SetSensitiveWordRepository(repo)
 	defer restoreRepo()
 
-	ctx := tenantctx.WithTenantID(context.Background(), "101")
+	ctx := sharedtenantctx.WithTenantID(context.Background(), "101")
 	product := &sheinproduct.Product{
 		MultiLanguageNameList: []sheinproduct.LanguageContent{{Language: "en", Name: "Whimsy Door Curtain"}},
 	}
@@ -709,7 +709,7 @@ func TestSanitizeDraftPayloadSensitiveContent_CleansDraftTextFields(t *testing.T
 		},
 	}
 
-	changed := SanitizeDraftPayloadSensitiveContent(pkg, tenantctx.WithTenantID(context.Background(), "101"), nil)
+	changed := SanitizeDraftPayloadSensitiveContent(pkg, sharedtenantctx.WithTenantID(context.Background(), "101"), nil)
 	if !changed {
 		t.Fatal("changed = false, want true")
 	}
@@ -737,7 +737,7 @@ func TestPrepareSubmitProductContent_LoadsTenantSensitiveWordsFromRepository(t *
 	})
 	defer restoreRepo()
 
-	ctx := tenantctx.WithTenantID(context.Background(), "101")
+	ctx := sharedtenantctx.WithTenantID(context.Background(), "101")
 	product := &sheinproduct.Product{
 		MultiLanguageNameList: []sheinproduct.LanguageContent{{
 			Language: "en",
@@ -799,7 +799,7 @@ func TestPrepareSubmitProductContent_LoadsTenantGenerationTopicOverrideLexicon(t
 	})
 	defer restoreOverrideRepo()
 
-	ctx := tenantctx.WithTenantID(context.Background(), "101")
+	ctx := sharedtenantctx.WithTenantID(context.Background(), "101")
 	product := &sheinproduct.Product{
 		MultiLanguageNameList: []sheinproduct.LanguageContent{{
 			Language: "en",
@@ -865,7 +865,7 @@ func TestPrepareSubmitProductContent_CleansFreeTextAttributesAndSKCNames(t *test
 		}},
 	}
 
-	if err := PrepareSubmitProductContent(tenantctx.WithTenantID(context.Background(), "101"), product, "US", nil, nil); err != nil {
+	if err := PrepareSubmitProductContent(sharedtenantctx.WithTenantID(context.Background(), "101"), product, "US", nil, nil); err != nil {
 		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
 	}
 
