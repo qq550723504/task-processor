@@ -1,9 +1,7 @@
 package listingkit
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	listingsubmission "task-processor/internal/listing/submission"
@@ -27,19 +25,15 @@ func normalizeSubmitTarget(req *SubmitTaskRequest) (platform string, action stri
 }
 
 func normalizeSubmitTargetWithDefault(req *SubmitTaskRequest, defaultAction string) (platform string, action string, err error) {
-	platform = "shein"
-	action = "publish"
-	if value := strings.ToLower(strings.TrimSpace(defaultAction)); value != "" {
-		action = value
-	}
+	requestedPlatform := ""
+	requestedAction := ""
 	if req != nil {
-		if value := strings.ToLower(strings.TrimSpace(req.Platform)); value != "" {
-			platform = value
-		}
-		if value := strings.ToLower(strings.TrimSpace(req.Action)); value != "" {
-			action = value
-		}
+		requestedPlatform = req.Platform
+		requestedAction = req.Action
 	}
+	target := listingsubmission.ResolveSubmitTarget(requestedPlatform, requestedAction, "shein", defaultAction)
+	platform = target.Platform
+	action = target.Action
 	if platform != "shein" {
 		return "", "", fmt.Errorf("%w: %s", ErrUnsupportedSubmitPlatform, platform)
 	}
@@ -50,9 +44,5 @@ func normalizeSubmitTargetWithDefault(req *SubmitTaskRequest, defaultAction stri
 }
 
 func shouldReplayStartedTemporalSubmit(err error, requestID string) bool {
-	var inProgress *listingsubmission.SubmitInProgressError
-	return errors.As(err, &inProgress) &&
-		inProgress != nil &&
-		strings.TrimSpace(inProgress.RequestID) != "" &&
-		inProgress.RequestID == strings.TrimSpace(requestID)
+	return listingsubmission.IsReplayOfStartedSubmit(err, requestID)
 }
