@@ -1511,16 +1511,8 @@ func TestTaskStudioSessionAdapterUsesListingStudioRunner(t *testing.T) {
 		"service.ensureAsyncJobRunner()",
 		"service.ensureGenerationMetadataRunner()",
 		"service.ensureReviewTaskMetadataRunner()",
-		"func (s *taskStudioSessionService) ensureRunner() {",
-		"func (s *taskStudioSessionService) ensureAsyncJobRunner() {",
-		"func (s *taskStudioSessionService) ensureGenerationMetadataRunner() {",
-		"func (s *taskStudioSessionService) ensureReviewTaskMetadataRunner() {",
-		"s.runner = newListingStudioSessionService(s.repo)",
-		"s.asyncJobRunner = newListingStudioSessionAsyncJobService(s.repo)",
-		"s.generationMetadataRunner = newListingStudioSessionGenerationMetadataService(s.repo)",
 		"if isStudioSessionGenerationMetadataOnlyUpdate(req) {",
 		"session, err = s.generationMetadataRunner.Patch(ctx, studiodomain.SessionGenerationMetadataPatchRequest[",
-		"s.reviewTaskMetadataRunner = newListingStudioSessionReviewTaskMetadataService(s.repo)",
 		"if isStudioSessionReviewTaskMetadataOnlyUpdate(req) {",
 		"session, err = s.reviewTaskMetadataRunner.Patch(ctx, studiodomain.SessionReviewTaskMetadataPatchRequest[SheinStudioCreatedTask]{",
 		"result, err := s.runner.EnsureSession(ctx, &studiodomain.EnsureSessionRequest[SheinStudioSelection]{",
@@ -1530,6 +1522,29 @@ func TestTaskStudioSessionAdapterUsesListingStudioRunner(t *testing.T) {
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_session_service.go should contain %q", needle)
+		}
+	}
+
+	supportSrc, err := os.ReadFile("task_studio_session_service_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_session_service_support.go) error = %v", err)
+	}
+	supportContent := string(supportSrc)
+
+	for _, needle := range []string{
+		"func (s *taskStudioSessionService) ensureRunner() {",
+		"func (s *taskStudioSessionService) ensureAsyncJobRunner() {",
+		"func (s *taskStudioSessionService) ensureGenerationMetadataRunner() {",
+		"func (s *taskStudioSessionService) ensureReviewTaskMetadataRunner() {",
+		"func (s *taskStudioSessionService) ensureGeneralMetadataRunner() {",
+		"s.runner = newListingStudioSessionService(s.repo)",
+		"s.asyncJobRunner = newListingStudioSessionAsyncJobService(s.repo)",
+		"s.generationMetadataRunner = newListingStudioSessionGenerationMetadataService(s.repo)",
+		"s.reviewTaskMetadataRunner = newListingStudioSessionReviewTaskMetadataService(s.repo)",
+		"s.generalMetadataRunner = newListingStudioSessionGeneralMetadataService(s.repo)",
+	} {
+		if !strings.Contains(supportContent, needle) {
+			t.Fatalf("task_studio_session_service_support.go should contain %q", needle)
 		}
 	}
 }
