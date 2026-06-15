@@ -301,6 +301,7 @@ Current checkpoint:
 - studio batch collaborators now also initialize through one shared root-side ensure seam plus collaborator wiring bundle, so root `listingkit` no longer repeats batch-generation/batch-service lazy-construction steps across the studio batch initializer and accessor set.
 - studio session collaborators now also initialize through one shared root-side ensure seam plus collaborator wiring bundle, so root `listingkit` no longer repeats session/batch-draft/media lazy-construction steps across the studio session initializer and accessor set.
 - studio batch-run collaborators now also initialize through one shared root-side ensure seam plus collaborator wiring bundle, so root `listingkit` no longer repeats batch-run/executor/coordinator lazy-construction steps across the studio batch initializer, accessor set, and recovery bootstrap path.
+- generation navigation identity home construction now retains only descriptor plus identity/cache/query helpers, while follow-up read and dispatch-plan assembly helpers live in a dedicated support file, so root `listingkit` no longer mixes target identity and dispatch orchestration helper families in one broad navigation support file.
 - The next preferred slice is to stop and reassess whether more submit extraction still shrinks `listingkit`, rather than automatically extracting every leftover helper.
 
 ### Phase 3.5: Studio Skeleton Extraction
