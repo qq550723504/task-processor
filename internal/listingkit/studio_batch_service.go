@@ -72,6 +72,7 @@ type taskStudioBatchServiceConfig struct {
 	detailRunner       *listingStudioBatchDetailRunner
 	reviewRunner       *listingStudioBatchReviewRunner
 	retryRunner        *listingStudioBatchRetryPrepareRunner
+	taskCreationRunner *listingStudioBatchTaskCreationRunner
 	taskPrepareRunner  *listingStudioBatchTaskPrepareRunner
 	taskResumeRunner   *listingStudioBatchTaskResumeRunner
 }

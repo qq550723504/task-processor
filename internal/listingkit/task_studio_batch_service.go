@@ -20,6 +20,7 @@ type taskStudioBatchService struct {
 	detailRunner       *listingStudioBatchDetailRunner
 	reviewRunner       *listingStudioBatchReviewRunner
 	retryRunner        *listingStudioBatchRetryPrepareRunner
+	taskCreationRunner *listingStudioBatchTaskCreationRunner
 	taskPrepareRunner  *listingStudioBatchTaskPrepareRunner
 	taskResumeRunner   *listingStudioBatchTaskResumeRunner
 }
@@ -36,6 +37,7 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 		detailRunner:       config.detailRunner,
 		reviewRunner:       config.reviewRunner,
 		retryRunner:        config.retryRunner,
+		taskCreationRunner: config.taskCreationRunner,
 		taskPrepareRunner:  config.taskPrepareRunner,
 		taskResumeRunner:   config.taskResumeRunner,
 	}
@@ -43,6 +45,7 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 	service.ensureDetailRunner()
 	service.ensureReviewRunner()
 	service.ensureRetryRunner()
+	service.ensureTaskCreationRunner()
 	service.ensureTaskPrepareRunner()
 	service.ensureTaskResumeRunner()
 	return service
@@ -174,6 +177,13 @@ func (s *taskStudioBatchService) ensureRetryRunner() {
 		return
 	}
 	s.retryRunner = newListingStudioBatchRetryPrepareService(s.repo, s.GetStudioBatchDetail, s.resetStudioBatchRetryItems)
+}
+
+func (s *taskStudioBatchService) ensureTaskCreationRunner() {
+	if s == nil || s.taskCreationRunner != nil {
+		return
+	}
+	s.taskCreationRunner = newListingStudioBatchTaskCreationService(s)
 }
 
 func (s *taskStudioBatchService) ensureTaskPrepareRunner() {
@@ -362,11 +372,13 @@ func (s *taskStudioBatchService) PrepareCreateStudioBatchTasks(ctx context.Conte
 		return nil, fmt.Errorf("studio batch repository is not configured")
 	}
 	normalizedBatchID := strings.TrimSpace(batchID)
-	designIDs, session, _, err := s.prepareStudioBatchTaskCreation(ctx, normalizedBatchID, req)
-	if err != nil {
-		return nil, err
+	designIDs := normalizeStudioBatchDesignIDs(nil)
+	if req != nil {
+		designIDs = normalizeStudioBatchDesignIDs(req.DesignIDs)
 	}
-	batch, err := s.repo.GetStudioBatch(ctx, normalizedBatchID)
+	designIDs, session, batchDetail, err := s.prepareStudioBatchTaskCreation(ctx, normalizedBatchID, &CreateStudioBatchTasksRequest{
+		DesignIDs: designIDs,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -376,7 +388,7 @@ func (s *taskStudioBatchService) PrepareCreateStudioBatchTasks(ctx context.Conte
 	}
 	return s.taskPrepareRunner.PrepareTaskCreation(ctx, normalizedBatchID, listingStudioBatchTaskPrepareState{
 		Session:   session,
-		Batch:     batch,
+		Batch:     batchDetail.Batch,
 		DesignIDs: designIDs,
 	})
 }

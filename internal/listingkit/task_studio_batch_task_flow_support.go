@@ -9,41 +9,15 @@ import (
 )
 
 func (s *taskStudioBatchService) resumeStudioBatchTaskCreation(ctx context.Context, batchID string) (*CreateStudioBatchTasksResult, error) {
-	session, err := s.loadStudioBatchTaskSession(ctx, batchID)
-	if err != nil {
-		return nil, err
-	}
-	designIDs := normalizeStudioBatchDesignIDs([]string(session.PendingTaskDesignIDs))
-	if len(designIDs) == 0 {
-		detail, detailErr := s.GetStudioBatchDetail(ctx, batchID)
-		if detailErr != nil {
-			return nil, detailErr
-		}
-		return &CreateStudioBatchTasksResult{
-			Batch:        detail.Batch,
-			Items:        detail.Items,
-			CreatedTasks: detail.CreatedTasks,
-			FailedTasks:  detail.FailedTasks,
-		}, nil
-	}
-	result, err := s.CreateStudioBatchTasks(ctx, batchID, &CreateStudioBatchTasksRequest{DesignIDs: designIDs})
-	if err != nil {
-		return nil, err
-	}
-	batch, err := s.repo.GetStudioBatch(ctx, batchID)
-	if err != nil {
-		return nil, err
-	}
 	s.ensureTaskResumeRunner()
 	if s.taskResumeRunner == nil {
 		return nil, fmt.Errorf("studio batch task resume runner is not configured")
 	}
-	return s.taskResumeRunner.FinalizeTaskCreation(ctx, batchID, listingStudioBatchTaskResumeState{
-		Session:      session,
-		Batch:        batch,
-		CreatedTasks: result.CreatedTasks,
-		FailedTasks:  result.FailedTasks,
-	})
+	s.ensureTaskCreationRunner()
+	if s.taskCreationRunner == nil {
+		return nil, fmt.Errorf("studio batch task creation service is not configured")
+	}
+	return s.taskCreationRunner.ResumeTaskCreation(ctx, batchID)
 }
 
 func (s *taskStudioBatchService) loadStudioBatchTaskPreparationResult(ctx context.Context, batchID string) (*CreateStudioBatchTasksResult, error) {
@@ -57,6 +31,31 @@ func (s *taskStudioBatchService) loadStudioBatchTaskPreparationResult(ctx contex
 		CreatedTasks: detail.CreatedTasks,
 		FailedTasks:  detail.FailedTasks,
 	}, nil
+}
+
+func (s *taskStudioBatchService) finalizeStudioBatchTaskCreation(
+	ctx context.Context,
+	batchID string,
+	session *SheinStudioSession,
+	batch *StudioBatchRecord,
+	result *CreateStudioBatchTasksResult,
+) (*CreateStudioBatchTasksResult, error) {
+	s.ensureTaskResumeRunner()
+	if s.taskResumeRunner == nil {
+		return nil, fmt.Errorf("studio batch task resume runner is not configured")
+	}
+	var createdTasks []SheinStudioCreatedTask
+	var failedTasks []SheinStudioFailedTask
+	if result != nil {
+		createdTasks = result.CreatedTasks
+		failedTasks = result.FailedTasks
+	}
+	return s.taskResumeRunner.FinalizeTaskCreation(ctx, batchID, listingStudioBatchTaskResumeState{
+		Session:      session,
+		Batch:        batch,
+		CreatedTasks: createdTasks,
+		FailedTasks:  failedTasks,
+	})
 }
 
 func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
