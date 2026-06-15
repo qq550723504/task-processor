@@ -1,9 +1,6 @@
 package listingkit
 
 import (
-	"database/sql/driver"
-	"encoding/json"
-	"errors"
 	"time"
 
 	"task-processor/internal/amazonlisting"
@@ -261,34 +258,4 @@ type TemuBatchSKUInfo struct {
 	Height    string `json:"height,omitempty"`
 	Price     string `json:"price,omitempty"`
 	CostPrice string `json:"cost_price,omitempty"`
-}
-
-func (r GenerateRequest) Value() (driver.Value, error) { return json.Marshal(r) }
-
-func (r *GenerateRequest) Scan(value any) error {
-	var b []byte
-	switch v := value.(type) {
-	case []byte:
-		b = v
-	case string:
-		b = []byte(v)
-	default:
-		return errors.New("type assertion to []byte failed")
-	}
-	return json.Unmarshal(b, r)
-}
-
-func (r ListingKitResult) Value() (driver.Value, error) { return json.Marshal(r) }
-
-func (r *ListingKitResult) Scan(value any) error {
-	var b []byte
-	switch v := value.(type) {
-	case []byte:
-		b = v
-	case string:
-		b = []byte(v)
-	default:
-		return errors.New("type assertion to []byte failed")
-	}
-	return json.Unmarshal(b, r)
 }
