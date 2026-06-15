@@ -211,6 +211,7 @@ Current checkpoint:
 - SHEIN submit SKU normalization support is now split by helper family, so root `listingkit` keeps the normalization entrypoint while variant-matching/base-SKU helpers and pricing/style alias helpers live in dedicated support files.
 - manual sale-attribute revision support is now split by helper family, so root `listingkit` keeps the revision resolution entrypoints while assignment/backfill helpers and source-value/compare helpers live in dedicated support files.
 - SHEIN revision apply support is now split by helper family, so root `listingkit` keeps the top-level revision apply seam and sale-attribute state normalization while resolution patch helpers and SKC/SKU patch helpers live in dedicated support files.
+- pod execution support is now split by helper family, so root `listingkit` keeps result-level POD summary orchestration while status/readiness policy helpers and audit/history helpers live in dedicated support files.
 - `internal/listingkit` direct submit now delegates phase sequencing to the submission-domain runner while still owning SHEIN readiness gates, state persistence hooks, and remote-submit error semantics.
 - Temporal payload preparation/upload/pre-validate steps now also delegate to a submission-domain payload-stage runner.
 - direct submit and Temporal now also share a submission-domain remote-submit attempt runner while keeping post-attempt persistence semantics separate.
