@@ -212,17 +212,6 @@ func TestApplySubmissionConfirmRemoteUpdateWithoutEvent(t *testing.T) {
 	}
 }
 
-func TestSubmissionResponseAcceptedWithSPU(t *testing.T) {
-	t.Parallel()
-
-	if !SubmissionResponseAcceptedWithSPU(&SubmissionResponse{Success: true, SPUName: " SPU-123 "}) {
-		t.Fatal("SubmissionResponseAcceptedWithSPU(success+spu) = false, want true")
-	}
-	if SubmissionResponseAcceptedWithSPU(&SubmissionResponse{Success: true}) {
-		t.Fatal("SubmissionResponseAcceptedWithSPU(blank spu) = true, want false")
-	}
-}
-
 func TestConfirmedSubmissionResponse(t *testing.T) {
 	t.Parallel()
 

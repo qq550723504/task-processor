@@ -299,6 +299,13 @@ func ResponseAcceptedWithSPU(success bool, spuName string) bool {
 	return success && strings.TrimSpace(spuName) != ""
 }
 
+func ConfirmedSubmissionMessage(action string) string {
+	if strings.TrimSpace(action) == "save_draft" {
+		return "save draft confirmed by remote check"
+	}
+	return "publish confirmed by remote check"
+}
+
 func ResolveRemoteLookupSPUName(recordSPUName, lastSPUName string) string {
 	if value := strings.TrimSpace(recordSPUName); value != "" {
 		return value

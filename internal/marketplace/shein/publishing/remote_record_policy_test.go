@@ -409,6 +409,17 @@ func TestResponseAcceptedWithSPURequiresSuccessAndVisibleSPU(t *testing.T) {
 	}
 }
 
+func TestConfirmedSubmissionMessageUsesActionSpecificText(t *testing.T) {
+	t.Parallel()
+
+	if got := ConfirmedSubmissionMessage("save_draft"); got != "save draft confirmed by remote check" {
+		t.Fatalf("save_draft message = %q", got)
+	}
+	if got := ConfirmedSubmissionMessage("publish"); got != "publish confirmed by remote check" {
+		t.Fatalf("publish message = %q", got)
+	}
+}
+
 func TestResolveRemoteLookupSPUNamePrefersRecordThenLastResult(t *testing.T) {
 	t.Parallel()
 

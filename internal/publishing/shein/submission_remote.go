@@ -196,21 +196,15 @@ func SubmissionResponseAcceptedForAction(action string, result *SubmissionRespon
 	return listingsubmission.SaveDraftSucceeded(action, SubmissionResponseOutcome(result))
 }
 
-func SubmissionResponseAcceptedWithSPU(result *SubmissionResponse) bool {
-	if !SubmissionResponseAccepted(result) {
-		return false
-	}
-	return strings.TrimSpace(result.SPUName) != ""
-}
-
 func ConfirmedSubmissionResponse(response *SubmissionResponse, action string) *SubmissionResponse {
 	if response != nil {
 		return response
 	}
-	if strings.TrimSpace(action) == "save_draft" {
-		return &SubmissionResponse{Code: "0", Success: true, Message: "save draft confirmed by remote check"}
+	return &SubmissionResponse{
+		Code:    "0",
+		Success: true,
+		Message: sheinmarketpub.ConfirmedSubmissionMessage(action),
 	}
-	return &SubmissionResponse{Code: "0", Success: true, Message: "publish confirmed by remote check"}
 }
 
 func SubmissionStartedAt(pkg *Package, action, requestID string, fallback time.Time) time.Time {
