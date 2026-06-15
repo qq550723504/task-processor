@@ -55,10 +55,15 @@ func TestRunWorkflowPersistsModelBackedGenerationMetadata(t *testing.T) {
 	}
 	assetRepository := assetrepo.NewMemRepository()
 
-	svc := seedWorkflowServices(seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRepo: assetRepository, assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{
-		DeferredRenderer: assetgeneration.NewProductImageDeferredRenderer(&stubModelMetadataSceneRenderer{}),
-	})},
-	}), productSvc, nil)
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}}),
+		assetRepository,
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		assetgeneration.NewService(assetgeneration.Config{
+			DeferredRenderer: assetgeneration.NewProductImageDeferredRenderer(&stubModelMetadataSceneRenderer{}),
+		}),
+	), productSvc, nil)
 
 	task := &Task{
 		ID: "listingkit-task-model-meta",

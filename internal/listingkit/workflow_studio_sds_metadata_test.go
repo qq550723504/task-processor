@@ -273,9 +273,9 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 			Title: "Unexpected Product",
 		},
 	}
-	svc := seedWorkflowServices(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
-	}), productSvc, nil)
+	svc := seedWorkflowServices(seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+		repo: repo, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})},
+	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
 
 	state, err := svc.runStandardProductWorkflow(context.Background(), task)
 	if err != nil {
@@ -344,9 +344,9 @@ func TestRunStandardProductWorkflowUsesTaskTenantIDWhenRequestTenantMissing(t *t
 			Title: "Unexpected Product",
 		},
 	}
-	svc := seedWorkflowServices(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
-	}), productSvc, nil)
+	svc := seedWorkflowServices(seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+		repo: repo, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})},
+	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
 
 	state, err := svc.runStandardProductWorkflow(context.Background(), task)
 	if err != nil {
@@ -372,9 +372,9 @@ func TestRunStandardProductWorkflowFallsBackToStudioCanonicalWhenSDSBaselineMiss
 			Attributes: map[string]string{"brand": "DemoBrand"},
 		},
 	}
-	svc := seedWorkflowServices(seedWorkflowDepsFromMirrors(&service{
-		repo: NewInMemoryRepositoryForTest(), mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
-	}), productSvc, nil)
+	svc := seedWorkflowServices(seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+		repo: NewInMemoryRepositoryForTest(), mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})},
+	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
 	task := &Task{
 		ID: "task-baseline-miss",
 		Request: &GenerateRequest{
@@ -435,9 +435,9 @@ func TestRunStandardProductWorkflowReusesCanonicalCacheBeforeProductEnrich(t *te
 			Title: "Unexpected Product",
 		},
 	}
-	svc := seedWorkflowServices(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
-	}), productSvc, nil)
+	svc := seedWorkflowServices(seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+		repo: repo, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})},
+	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
 
 	state, err := svc.runStandardProductWorkflow(context.Background(), task)
 	if err != nil {
@@ -492,9 +492,9 @@ func TestRunStandardProductWorkflowReappliesSDSMetadataWithoutDroppingProcessedA
 			},
 		},
 	}
-	svc := seedWorkflowServices(seedWorkflowDepsFromMirrors(&service{
-		repo: NewInMemoryRepositoryForTest(), mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
-	}), nil, imageSvc)
+	svc := seedWorkflowServices(seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+		repo: NewInMemoryRepositoryForTest(), mirrors: serviceDependencyMirrors{sdsSyncSvc: sdsSvc, assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})},
+	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), nil, imageSvc)
 	task := &Task{
 		ID: "task-sds-assets",
 		Request: &GenerateRequest{
@@ -548,7 +548,7 @@ func TestRunStandardProductWorkflowContinuesWhenSDSBaselineLookupErrors(t *testi
 		repo: &stubInlineTaskRepo{
 			tasks:             map[string]*Task{},
 			sdsBaselineGetErr: fmt.Errorf("baseline repo unavailable"),
-		}, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
+		}, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})},
 	})
 	task := &Task{
 		ID: "task-baseline-error",
@@ -632,9 +632,9 @@ func TestRunStandardProductWorkflowIgnoresUnavailableOrMalformedSDSBaselineEntri
 				t.Fatalf("SaveSDSBaselineCache: %v", err)
 			}
 
-			svc := seedWorkflowDepsFromMirrors(&service{
-				repo: repo, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}), assetRecipeResolver: newDefaultAssetRecipeResolver(), assetBundleBuilder: newDefaultAssetBundleBuilder(), assetGenerator: newDefaultAssetGenerationService()},
-			})
+			svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+				repo: repo, mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})},
+			}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService())
 
 			state, err := svc.runStandardProductWorkflow(context.Background(), task)
 			if err != nil {

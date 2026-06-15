@@ -18,9 +18,9 @@ func TestGetTaskPreviewIncludesGenerationTasks(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository, assetRecipeResolver: assetrecipe.NewStaticResolver(), assetBundleBuilder: assetbundle.NewBuilder(), assetGenerator: assetgeneration.NewService(assetgeneration.Config{})},
-	})
+	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+		repo: repo,
+	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
 	task := &Task{
 		ID:        "task-preview-generation-1",
@@ -69,9 +69,9 @@ func TestGetTaskGenerationTasksAppliesQueryFiltersAndRebuildsSummary(t *testing.
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
-	})
+	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+		repo: repo,
+	}), assetRepository, nil, nil, nil)
 
 	task := &Task{
 		ID:        "task-generation-query-1",
@@ -116,9 +116,9 @@ func TestGetTaskGenerationTasksAppliesPaginationAndSorting(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{assetRepo: assetRepository},
-	})
+	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+		repo: repo,
+	}), assetRepository, nil, nil, nil)
 
 	task := &Task{
 		ID:        "task-generation-query-page-1",

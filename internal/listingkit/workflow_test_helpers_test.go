@@ -1,20 +1,15 @@
 package listingkit
 
+import (
+	assetbundle "task-processor/internal/asset/bundle"
+	assetgeneration "task-processor/internal/asset/generation"
+	assetrecipe "task-processor/internal/asset/recipe"
+	assetrepo "task-processor/internal/asset/repository"
+)
+
 func seedWorkflowDepsFromMirrors(s *service) *service {
 	if s == nil {
 		return nil
-	}
-	if s.workflowDeps.assetRepository == nil {
-		s.workflowDeps.assetRepository = s.mirrors.assetRepo
-	}
-	if s.workflowDeps.assetRecipeResolver == nil {
-		s.workflowDeps.assetRecipeResolver = s.mirrors.assetRecipeResolver
-	}
-	if s.workflowDeps.assetBundleBuilder == nil {
-		s.workflowDeps.assetBundleBuilder = s.mirrors.assetBundleBuilder
-	}
-	if s.workflowDeps.assetGenerationService == nil {
-		s.workflowDeps.assetGenerationService = s.mirrors.assetGenerator
 	}
 	if s.supportDeps.sdsSyncService == nil {
 		s.supportDeps.sdsSyncService = s.mirrors.sdsSyncSvc
@@ -46,6 +41,31 @@ func seedWorkflowServices(s *service, productSvc ProductService, imageSvc ImageS
 	}
 	if s.workflowDeps.imageService == nil {
 		s.workflowDeps.imageService = imageSvc
+	}
+	return s
+}
+
+func seedWorkflowAssets(
+	s *service,
+	assetRepo assetrepo.Repository,
+	assetRecipeResolver assetrecipe.Resolver,
+	assetBundleBuilder assetbundle.Builder,
+	assetGenerator assetgeneration.Service,
+) *service {
+	if s == nil {
+		return nil
+	}
+	if s.workflowDeps.assetRepository == nil {
+		s.workflowDeps.assetRepository = assetRepo
+	}
+	if s.workflowDeps.assetRecipeResolver == nil {
+		s.workflowDeps.assetRecipeResolver = assetRecipeResolver
+	}
+	if s.workflowDeps.assetBundleBuilder == nil {
+		s.workflowDeps.assetBundleBuilder = assetBundleBuilder
+	}
+	if s.workflowDeps.assetGenerationService == nil {
+		s.workflowDeps.assetGenerationService = assetGenerator
 	}
 	return s
 }

@@ -22,6 +22,7 @@ Recent progress in this area:
 - shared shein catalog/API factory/content optimizer dependencies now resolve from their owning grouped deps (`submissionDeps`, `sheinRuntimeDeps`, `workflowDeps`) instead of flowing through legacy mirrors.
 - workflow product/image/asset dependencies now resolve directly from `workflowDeps`; legacy dependency mirrors no longer own workflow-only product, image, asset repository, recipe, bundle, or generation services.
 - SDS support collaborators and task SDS login status now resolve directly from grouped dependencies (`supportDeps` / `taskDeps`) instead of syncing through legacy mirrors on production paths.
+- workflow product/image/asset mirror fields have now been retired from `serviceDependencyMirrors`; tests seed these dependencies through grouped workflow helpers instead of reintroducing legacy service mirror ownership.
 - workflow asset dispatch persistence phases now resolve their asset repository dependency up front instead of reaching through `service.mirrors` at runtime.
 
 ## 2. Current File Groups
