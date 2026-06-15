@@ -749,11 +749,11 @@ func TestRetryTaskGenerationTasksIncludesMatchedQueueSummary(t *testing.T) {
 			Metadata: map[string]string{"renderer": "service-test"},
 		},
 	}
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{
-			DeferredRenderer: renderer,
-		}))
+		DeferredRenderer: renderer,
+	}))
 
 	task := &Task{
 		ID:        "task-generation-retry-match-1",
@@ -879,7 +879,7 @@ func TestRetryTaskGenerationTasksFiltersByExecutionQuality(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
@@ -977,7 +977,7 @@ func TestRetryTaskGenerationTasksFiltersByExecutionQualityLabel(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
@@ -1045,7 +1045,7 @@ func TestRetryTaskGenerationTasksFiltersByQualityGradeLabel(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
@@ -1113,7 +1113,7 @@ func TestRetryTaskGenerationTasksFiltersByQualityGrade(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
@@ -1181,7 +1181,7 @@ func TestRetryTaskGenerationTasksReturnsEmptyPageWhenQueueFilterMatchesNothing(t
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
@@ -1268,11 +1268,11 @@ func TestRetryTaskGenerationTasksReplacesFallbackAssetAndPersistsResult(t *testi
 			Metadata: map[string]string{"renderer": "service-test"},
 		},
 	}
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{
-			DeferredRenderer: renderer,
-		}))
+		DeferredRenderer: renderer,
+	}))
 
 	task := &Task{
 		ID:        "task-generation-retry-1",
@@ -1391,11 +1391,11 @@ func TestRetryTaskGenerationTasksMergesReturnedTasksAndRefreshesRetriedAssets(t 
 			Metadata: map[string]string{"renderer": "service-test"},
 		},
 	}
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{
-			DeferredRenderer: renderer,
-		}))
+		DeferredRenderer: renderer,
+	}))
 
 	task := &Task{
 		ID:        "task-generation-retry-merge-1",
@@ -3813,7 +3813,7 @@ func TestRetryTaskGenerationTasksCanFilterFallbackSlotsOnly(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
@@ -3903,11 +3903,11 @@ func TestRetryTaskGenerationTasksPlansMissingQueueFallbackSlot(t *testing.T) {
 			},
 		},
 	}
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{
-			DeferredRenderer: renderer,
-		}))
+		DeferredRenderer: renderer,
+	}))
 
 	task := &Task{
 		ID:        "task-generation-retry-plan-missing-1",

@@ -1104,7 +1104,7 @@ func TestExecuteTaskGenerationActionRunsRetryableTarget(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 
@@ -1615,7 +1615,7 @@ func TestExecuteTaskGenerationActionBuildsRetryReviewSessionFromExecutedQueue(t 
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetgeneration.NewService(assetgeneration.Config{}))
 

@@ -21,7 +21,7 @@ type taskDependencySeed struct {
 	sdsLoginStatusProvider SDSLoginStatusProvider
 }
 
-func seedWorkflowDepsFromMirrors(s *service) *service {
+func seedWorkflowDeps(s *service) *service {
 	return s
 }
 

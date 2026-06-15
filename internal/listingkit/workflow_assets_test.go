@@ -1148,7 +1148,7 @@ func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence
 			}},
 		},
 	}
-	phase := buildPlatformAssetDispatchPhase(seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{}), assetRepository, nil, newDefaultAssetBundleBuilder(), assetGenerator))
+	phase := buildPlatformAssetDispatchPhase(seedWorkflowAssets(seedWorkflowDeps(&service{}), assetRepository, nil, newDefaultAssetBundleBuilder(), assetGenerator))
 	final := &ListingKitResult{
 		Summary: &GenerationSummary{},
 		Amazon:  &AmazonPackage{},

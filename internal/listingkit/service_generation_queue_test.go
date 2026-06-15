@@ -18,7 +18,7 @@ func TestGetTaskGenerationQueueReturnsNotModifiedWhenDeltaMatches(t *testing.T) 
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
@@ -72,7 +72,7 @@ func TestGetTaskGenerationQueueBuildsEmptyQueueFinalResponseShape(t *testing.T) 
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
@@ -217,7 +217,7 @@ func TestGetTaskGenerationQueueFinalResponseIncludesQueueResourceDescriptors(t *
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
@@ -1525,7 +1525,7 @@ func TestGetTaskGenerationQueueAppliesFilteringSortingAndPaging(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
@@ -1604,7 +1604,7 @@ func TestGetTaskGenerationQueueFiltersByExecutionQuality(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
@@ -1678,7 +1678,7 @@ func TestGetTaskGenerationQueueFiltersByRenderPreviewAvailability(t *testing.T) 
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 
@@ -1766,7 +1766,7 @@ func TestGetTaskGenerationQueueBuildsOperationalSummaryAndTemplateSort(t *testin
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedWorkflowDeps(&service{
 		repo: repo,
 	}), assetRepository, nil, nil, nil)
 

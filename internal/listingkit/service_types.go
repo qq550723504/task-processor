@@ -26,9 +26,6 @@ type service struct {
 	workflowDeps     workflowDependencies
 	sheinRuntimeDeps sheinRuntimeDependencies
 	supportDeps      supportDependencies
-	// Legacy dependency mirrors retained for incremental service slimming.
-	// The grouped dependency buckets above are the preferred initialization source.
-	mirrors serviceDependencyMirrors
 	// Legacy runtime mirrors retained for incremental service slimming.
 	// Runtime-configurable submit/workflow overrides live here instead of the root service surface.
 	runtime         serviceRuntimeState

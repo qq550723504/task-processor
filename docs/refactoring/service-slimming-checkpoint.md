@@ -10,7 +10,7 @@ This checkpoint records the first service-object slimming wave. It does not intr
 
 The current internal representation direction is also clearer now:
 
-- legacy dependency mirrors should live under a dedicated `mirrors` bucket instead of remaining as flat root `service` fields;
+- grouped dependency buckets should remain the primary ownership boundary for resolver state;
 - task/studio/admin grouped collaborator containers should remain the single ownership boundary for collaborator instances.
 
 Recent progress in this area:
@@ -22,8 +22,8 @@ Recent progress in this area:
 - shared shein catalog/API factory/content optimizer dependencies now resolve from their owning grouped deps (`submissionDeps`, `sheinRuntimeDeps`, `workflowDeps`) instead of flowing through legacy mirrors.
 - workflow product/image/asset dependencies now resolve directly from `workflowDeps`; legacy dependency mirrors no longer own workflow-only product, image, asset repository, recipe, bundle, or generation services.
 - SDS support collaborators and task SDS login status now resolve directly from grouped dependencies (`supportDeps` / `taskDeps`) instead of syncing through legacy mirrors on production paths.
-- workflow product/image/asset mirror fields have now been retired from `serviceDependencyMirrors`; tests seed these dependencies through grouped workflow helpers instead of reintroducing legacy service mirror ownership.
-- workflow asset dispatch persistence phases now resolve their asset repository dependency up front instead of reaching through `service.mirrors` at runtime.
+- the legacy dependency mirror bucket has now been removed from the root `service`; tests seed grouped workflow dependencies directly through grouped helpers.
+- workflow asset dispatch persistence phases now resolve their asset repository dependency up front instead of reaching through legacy service mirrors at runtime.
 
 ## 2. Current File Groups
 
@@ -532,8 +532,7 @@ Current expectation:
 - grouped collaborator containers (`task`, `studio`, `admin`) are the primary internal representation,
 - `...OrDefault()` accessors are the only place that should synchronize grouped fields with legacy mirrors,
 - grouped dependency buckets (`taskDeps`, `studioDeps`, `adminDeps`, `submissionDeps`, `workflowDeps`, `sheinRuntimeDeps`, `supportDeps`) should own resolver state first,
-- service construction should seed grouped dependency buckets first; legacy root dependency mirrors should hydrate lazily through resolvers,
-- legacy dependency mirrors should live under a dedicated `mirrors` bucket instead of remaining as flat root `service` fields,
+- service construction should seed grouped dependency buckets first instead of introducing new root dependency mirrors,
 - runtime-configurable submit/workflow overrides should live in a dedicated runtime bucket instead of expanding the root service surface,
 - initialization stages should trigger accessors rather than re-assign grouped fields manually,
 - dependency resolvers should use shared synchronization helpers instead of open-coded root/group mirror logic,
