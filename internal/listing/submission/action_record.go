@@ -114,6 +114,37 @@ func FindCompletedRecordByRequestID[Record any](slots ActionRecordSlots[Record],
 	return record
 }
 
+func ResolveRecordStartedAt[Record any](slots ActionRecordSlots[Record], action, requestID string, view func(*Record) ActionRecordView, startedAt func(*Record) time.Time, inFlightStartedAt *time.Time, fallback time.Time) time.Time {
+	if startedAt != nil {
+		record := FindRecordByRequestID(slots, action, requestID, view)
+		if record != nil {
+			recordStartedAt := startedAt(record)
+			if !recordStartedAt.IsZero() {
+				return recordStartedAt
+			}
+		}
+	}
+	if inFlightStartedAt != nil {
+		return *inFlightStartedAt
+	}
+	return fallback
+}
+
+func ResolveActionResult[Record any, Result any](report *ReportState[Record, Result], action string, recordResult func(*Record) *Result) *Result {
+	if report == nil {
+		return nil
+	}
+	if recordResult != nil {
+		record := RecordForAction(report.Slots, action)
+		if record != nil {
+			if result := recordResult(record); result != nil {
+				return result
+			}
+		}
+	}
+	return report.LastResult
+}
+
 func MutateMatchingRecord[Record any](slots ActionRecordSlots[Record], action, requestID string, view func(*Record) ActionRecordView, mutate func(*Record)) bool {
 	if mutate == nil {
 		return false

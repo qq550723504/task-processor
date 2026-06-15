@@ -178,6 +178,73 @@ func TestFindRecordByRequestIDAndStatusRequiresMatchingStatus(t *testing.T) {
 	}
 }
 
+func TestResolveRecordStartedAtFallsBackFromRecordToInFlightToFallback(t *testing.T) {
+	t.Parallel()
+
+	recordStartedAt := time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC)
+	inFlightStartedAt := recordStartedAt.Add(-time.Minute)
+	fallback := inFlightStartedAt.Add(-time.Minute)
+	publish := &testActionRecord{ID: "publish"}
+	slots := ActionRecordSlots[testActionRecord]{
+		Publish: publish,
+	}
+	view := func(record *testActionRecord) ActionRecordView {
+		return ActionRecordView{RequestID: record.ID}
+	}
+	startedAtByID := map[string]time.Time{
+		"publish": recordStartedAt,
+	}
+	recordStartedAtView := func(record *testActionRecord) time.Time {
+		return startedAtByID[record.ID]
+	}
+
+	if got := ResolveRecordStartedAt(slots, "publish", " publish ", view, recordStartedAtView, &inFlightStartedAt, fallback); !got.Equal(recordStartedAt) {
+		t.Fatalf("ResolveRecordStartedAt(record) = %v, want %v", got, recordStartedAt)
+	}
+
+	startedAtByID["publish"] = time.Time{}
+	if got := ResolveRecordStartedAt(slots, "publish", "publish", view, recordStartedAtView, &inFlightStartedAt, fallback); !got.Equal(inFlightStartedAt) {
+		t.Fatalf("ResolveRecordStartedAt(in-flight) = %v, want %v", got, inFlightStartedAt)
+	}
+
+	if got := ResolveRecordStartedAt(slots, "publish", "other", view, recordStartedAtView, nil, fallback); !got.Equal(fallback) {
+		t.Fatalf("ResolveRecordStartedAt(fallback) = %v, want %v", got, fallback)
+	}
+}
+
+func TestResolveActionResultPrefersRecordResultThenLastResult(t *testing.T) {
+	t.Parallel()
+
+	recordResult := &testActionResult{OK: true}
+	lastResult := &testActionResult{OK: false}
+	publish := &testActionRecord{ID: "publish"}
+	resultsByID := map[string]*testActionResult{
+		"publish": recordResult,
+	}
+	report := &ReportState[testActionRecord, testActionResult]{
+		LastResult: lastResult,
+		Slots: ActionRecordSlots[testActionRecord]{
+			Publish: publish,
+		},
+	}
+	resultView := func(record *testActionRecord) *testActionResult {
+		return resultsByID[record.ID]
+	}
+
+	if got := ResolveActionResult(report, "publish", resultView); got != recordResult {
+		t.Fatalf("ResolveActionResult(record) = %+v, want %+v", got, recordResult)
+	}
+
+	resultsByID["publish"] = nil
+	if got := ResolveActionResult(report, "publish", resultView); got != lastResult {
+		t.Fatalf("ResolveActionResult(last) = %+v, want %+v", got, lastResult)
+	}
+
+	if got := ResolveActionResult((*ReportState[testActionRecord, testActionResult])(nil), "publish", resultView); got != nil {
+		t.Fatalf("ResolveActionResult(nil report) = %+v, want nil", got)
+	}
+}
+
 func TestMutateMatchingRecordRequiresMatchingRequestID(t *testing.T) {
 	t.Parallel()
 

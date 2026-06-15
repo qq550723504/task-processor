@@ -212,14 +212,17 @@ func SubmissionStartedAt(pkg *Package, action, requestID string, fallback time.T
 	if pkg == nil || pkg.SubmissionState == nil {
 		return fallback
 	}
-	record := SubmissionRecordForAction(pkg.SubmissionState, action)
-	if record != nil && record.RequestID == requestID && !record.StartedAt.IsZero() {
-		return record.StartedAt
-	}
-	if pkg.SubmissionState.InFlightStartedAt != nil {
-		return *pkg.SubmissionState.InFlightStartedAt
-	}
-	return fallback
+	return listingsubmission.ResolveRecordStartedAt(
+		submissionActionRecordSlots(pkg.SubmissionState),
+		action,
+		requestID,
+		submissionActionRecordView,
+		func(record *SubmissionRecord) time.Time {
+			return record.StartedAt
+		},
+		pkg.SubmissionState.InFlightStartedAt,
+		fallback,
+	)
 }
 
 func SubmissionResponseForAction(pkg *Package, action string) *SubmissionResponse {
@@ -227,11 +230,16 @@ func SubmissionResponseForAction(pkg *Package, action string) *SubmissionRespons
 	if pkg == nil || pkg.SubmissionState == nil {
 		return nil
 	}
-	record := SubmissionRecordForAction(pkg.SubmissionState, action)
-	if record != nil && record.Result != nil {
-		return record.Result
-	}
-	return pkg.SubmissionState.LastResult
+	return listingsubmission.ResolveActionResult(
+		&listingsubmission.ReportState[SubmissionRecord, SubmissionResponse]{
+			LastResult: pkg.SubmissionState.LastResult,
+			Slots:      submissionActionRecordSlots(pkg.SubmissionState),
+		},
+		action,
+		func(record *SubmissionRecord) *SubmissionResponse {
+			return record.Result
+		},
+	)
 }
 
 func SubmissionStatePackage(pkg *Package) (*Package, bool) {

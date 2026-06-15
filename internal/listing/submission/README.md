@@ -40,6 +40,7 @@ Current stable ownership:
 - refresh remote policy: default-confirmed flag and fallback-message defaults
 - action-record state policy: action slot selection and last-submission state synchronization
 - action-record query policy: success-state checks plus generic selected-slot, status-scoped, and completed-record lookup by request id
+- action-record query fallback policy: request-scoped started-at lookup and last-result fallback by action
 - action-record mutation policy: request-id-guarded slot mutation for record updates
 - remote-sync policy: always sync report remote status/check time before guarded record mutation
 - attempt-record fallback policy: reuse matching request records or synthesize timing/attempt seeds from in-flight state
