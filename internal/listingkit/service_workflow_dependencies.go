@@ -15,7 +15,6 @@ type workflowDependencies struct {
 	assetRecipeResolver    assetrecipe.Resolver
 	assetBundleBuilder     assetbundle.Builder
 	assetGenerationService assetgeneration.Service
-	sheinContentOptimizer  openaiclient.ChatCompleter
 }
 
 func resolveWorkflowProductService(s *service) ProductService {
@@ -61,8 +60,5 @@ func resolveWorkflowAssetGenerationService(s *service) assetgeneration.Service {
 }
 
 func resolveWorkflowSheinContentOptimizer(s *service) openaiclient.ChatCompleter {
-	if s == nil {
-		return nil
-	}
-	return s.workflowDeps.sheinContentOptimizer
+	return resolveSheinContentOptimizer(s)
 }

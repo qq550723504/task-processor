@@ -156,7 +156,7 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 
 	svc := &service{
 		repo: repo,
-		sheinRuntimeDeps: sheinRuntimeDependencies{
+		sheinSharedDeps: sheinSharedDependencies{
 			storeCatalog: &stubSheinStoreCatalog{
 				storeInfo: &SheinStoreInfo{
 					ID:       870,

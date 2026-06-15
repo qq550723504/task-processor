@@ -4,8 +4,6 @@ import sheinpub "task-processor/internal/publishing/shein"
 
 type sheinRuntimeDependencies struct {
 	resolutionCacheStore  sheinpub.ResolutionCacheStore
-	storeCatalog          SheinStoreCatalog
-	apiClientFactory      SheinAPIClientFactory
 	categoryResolver      sheinpub.CategoryResolver
 	attributeResolver     sheinpub.AttributeResolver
 	saleAttributeResolver sheinpub.SaleAttributeResolver
@@ -17,20 +15,6 @@ func resolveSheinResolutionCacheStore(s *service) sheinpub.ResolutionCacheStore 
 		return nil
 	}
 	return s.sheinRuntimeDeps.resolutionCacheStore
-}
-
-func resolveSheinStoreCatalog(s *service) SheinStoreCatalog {
-	if s == nil {
-		return nil
-	}
-	return s.sheinRuntimeDeps.storeCatalog
-}
-
-func resolveSheinAPIClientFactory(s *service) SheinAPIClientFactory {
-	if s == nil {
-		return nil
-	}
-	return s.sheinRuntimeDeps.apiClientFactory
 }
 
 func resolveSheinCategoryResolver(s *service) sheinpub.CategoryResolver {

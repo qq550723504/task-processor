@@ -510,10 +510,7 @@ func resolveSubmissionTranslateAPIBuilder(s *service) sheinpub.TranslateAPIBuild
 }
 
 func resolveSubmissionContentOptimizer(s *service) openaiclient.ChatCompleter {
-	if s == nil {
-		return nil
-	}
-	return s.submissionDeps.sheinContentOptimizer
+	return resolveSheinContentOptimizer(s)
 }
 
 func resolveSubmissionWorkflowClient(s *service) (SheinPublishWorkflowClient, bool) {

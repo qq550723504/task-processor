@@ -34,8 +34,8 @@ func TestRunWorkflowOptimizesSheinContentBeforeFinalReview(t *testing.T) {
 	}
 
 	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{
-		workflowDeps: workflowDependencies{
-			sheinContentOptimizer: ai,
+		sheinSharedDeps: sheinSharedDependencies{
+			contentOptimizer: ai,
 		},
 	}, supportDependencySeed{
 		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),

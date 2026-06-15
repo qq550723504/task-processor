@@ -23,6 +23,7 @@ type service struct {
 	adminDeps        adminDependencies
 	submission       submissionCollaborators
 	submissionDeps   submissionDependencies
+	sheinSharedDeps  sheinSharedDependencies
 	workflowDeps     workflowDependencies
 	sheinRuntimeDeps sheinRuntimeDependencies
 	supportDeps      supportDependencies

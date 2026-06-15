@@ -18,7 +18,7 @@ func TestSettingsAdminServiceGetSheinSettingsAttachesAvailableStores(t *testing.
 			Site:              "US",
 			WarehouseCode:     "WH-US-1",
 			DefaultSubmitMode: "publish",
-		}, sheinRuntimeDeps: sheinRuntimeDependencies{storeCatalog: &stubSheinStoreCatalog{
+		}, sheinSharedDeps: sheinSharedDependencies{storeCatalog: &stubSheinStoreCatalog{
 			options: []SheinStoreOption{
 				{ID: 870, Name: "primary"},
 				{ID: 871, Name: "backup"},

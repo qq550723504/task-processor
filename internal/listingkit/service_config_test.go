@@ -279,17 +279,14 @@ func TestNewServiceWithConfigSeedsSharedSheinDependenciesPerOwnerGroup(t *testin
 		}),
 	))
 
-	if svc.submissionDeps.sheinContentOptimizer != contentOptimizer {
-		t.Fatalf("submission deps shein content optimizer = %v, want seeded optimizer", svc.submissionDeps.sheinContentOptimizer)
+	if svc.sheinSharedDeps.contentOptimizer != contentOptimizer {
+		t.Fatalf("shein shared deps content optimizer = %v, want seeded optimizer", svc.sheinSharedDeps.contentOptimizer)
 	}
-	if svc.sheinRuntimeDeps.storeCatalog != storeCatalog {
-		t.Fatalf("shein runtime deps store catalog = %v, want seeded catalog", svc.sheinRuntimeDeps.storeCatalog)
+	if svc.sheinSharedDeps.storeCatalog != storeCatalog {
+		t.Fatalf("shein shared deps store catalog = %v, want seeded catalog", svc.sheinSharedDeps.storeCatalog)
 	}
-	if svc.sheinRuntimeDeps.apiClientFactory != apiFactory {
-		t.Fatalf("shein runtime deps api client factory = %v, want seeded factory", svc.sheinRuntimeDeps.apiClientFactory)
-	}
-	if svc.workflowDeps.sheinContentOptimizer != contentOptimizer {
-		t.Fatalf("workflow deps shein content optimizer = %v, want seeded optimizer", svc.workflowDeps.sheinContentOptimizer)
+	if svc.sheinSharedDeps.apiClientFactory != apiFactory {
+		t.Fatalf("shein shared deps api client factory = %v, want seeded factory", svc.sheinSharedDeps.apiClientFactory)
 	}
 
 	if got := resolveSubmissionStoreCatalog(svc); got != storeCatalog {
@@ -306,6 +303,9 @@ func TestNewServiceWithConfigSeedsSharedSheinDependenciesPerOwnerGroup(t *testin
 	}
 	if got := resolveSheinAPIClientFactory(svc); got != apiFactory {
 		t.Fatalf("resolveSheinAPIClientFactory() = %v, want seeded factory", got)
+	}
+	if got := resolveSheinContentOptimizer(svc); got != contentOptimizer {
+		t.Fatalf("resolveSheinContentOptimizer() = %v, want seeded optimizer", got)
 	}
 	if got := resolveWorkflowSheinContentOptimizer(svc); got != contentOptimizer {
 		t.Fatalf("resolveWorkflowSheinContentOptimizer() = %v, want seeded optimizer", got)

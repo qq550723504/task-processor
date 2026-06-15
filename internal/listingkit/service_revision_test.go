@@ -931,9 +931,11 @@ func TestApplyTaskRevisionClearsStaleSheinCookieBlockersAfterOnlineRefresh(t *te
 
 	svc := &service{
 		repo: repo,
+		sheinSharedDeps: sheinSharedDependencies{
+			storeCatalog:     &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
+			apiClientFactory: stubSheinAPIClientFactory{client: apiClient},
+		},
 		sheinRuntimeDeps: sheinRuntimeDependencies{
-			storeCatalog:          &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
-			apiClientFactory:      stubSheinAPIClientFactory{client: apiClient},
 			attributeResolver:     stubRevisionSheinAttributeResolver{},
 			saleAttributeResolver: stubRevisionSheinSaleResolver{},
 		},
@@ -1047,9 +1049,11 @@ func TestApplyTaskRevisionDecoratesPreviewWithLiveSheinCookieBlocker(t *testing.
 
 	svc := &service{
 		repo: repo,
+		sheinSharedDeps: sheinSharedDependencies{
+			storeCatalog:     &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
+			apiClientFactory: stubSheinAPIClientFactory{client: apiClient},
+		},
 		sheinRuntimeDeps: sheinRuntimeDependencies{
-			storeCatalog:          &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 227, StoreID: "870", Platform: "shein", LoginURL: "sso.geiwohuo.com"}},
-			apiClientFactory:      stubSheinAPIClientFactory{client: apiClient},
 			attributeResolver:     stubRevisionSheinAttributeResolver{},
 			saleAttributeResolver: stubRevisionSheinSaleResolver{},
 		},

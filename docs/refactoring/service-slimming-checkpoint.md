@@ -19,8 +19,8 @@ Recent progress in this area:
 - admin dependency resolution now reads directly from `adminDeps`; AI client settings and store-profile admin wiring no longer depend on legacy dependency mirrors.
 - submission store-profile and submit API builder resolution now reads directly from `submissionDeps`; legacy dependency mirrors no longer own submission-only store-profile or submit builder dependencies.
 - shein runtime-only resolver and pricing-cache dependencies now read directly from `sheinRuntimeDeps`; legacy dependency mirrors no longer own runtime-only resolution cache, category/attribute resolvers, or pricing policy.
-- shared shein catalog/API factory dependencies now resolve from their runtime owner (`sheinRuntimeDeps`) even when submission wiring asks for them, instead of being duplicated across grouped buckets or flowing through legacy mirrors.
-- shein content optimizer dependencies still resolve from their concept owners (`submissionDeps` for submit preparation and `workflowDeps` for workflow finalization) instead of flowing through legacy mirrors.
+- shared shein catalog/API factory/content optimizer dependencies now resolve from a dedicated shared owner bucket (`sheinSharedDeps`) instead of being duplicated across runtime/submit/workflow buckets or flowing through legacy mirrors.
+- shein runtime-only dependencies now stay focused on resolution cache, category/attribute resolvers, and pricing policy, while submit/workflow paths read shared SHEIN base services through shared resolvers.
 - workflow product/image/asset dependencies now resolve directly from `workflowDeps`; legacy dependency mirrors no longer own workflow-only product, image, asset repository, recipe, bundle, or generation services.
 - SDS support collaborators and task SDS login status now resolve directly from grouped dependencies (`supportDeps` / `taskDeps`) instead of syncing through legacy mirrors on production paths.
 - the legacy dependency mirror bucket has now been removed from the root `service`; tests seed grouped workflow dependencies directly through grouped helpers.

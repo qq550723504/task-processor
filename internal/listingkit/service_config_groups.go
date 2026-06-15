@@ -65,9 +65,19 @@ func buildSubmissionDependencies(config *ServiceConfig) submissionDependencies {
 		sheinProductAPIBuilder:      config.Shein.SheinProductAPIBuilder,
 		sheinImageAPIBuilder:        config.Shein.SheinImageAPIBuilder,
 		sheinTranslateAPIBuilder:    config.Shein.SheinTranslateAPIBuilder,
-		sheinContentOptimizer:       config.Shein.SheinContentOptimizer,
 		sheinPublishWorkflowClient:  config.Workflow.SheinPublishWorkflowClient,
 		sheinPublishWorkflowEnabled: config.Workflow.SheinPublishWorkflowEnabled,
+	}
+}
+
+func buildSheinSharedDependencies(config *ServiceConfig) sheinSharedDependencies {
+	if config == nil {
+		return sheinSharedDependencies{}
+	}
+	return sheinSharedDependencies{
+		storeCatalog:     config.Shein.SheinStoreCatalog,
+		apiClientFactory: config.Shein.SheinAPIClientFactory,
+		contentOptimizer: config.Shein.SheinContentOptimizer,
 	}
 }
 
@@ -82,7 +92,6 @@ func buildWorkflowDependencies(config *ServiceConfig) workflowDependencies {
 		assetRecipeResolver:    config.Assets.AssetRecipeResolver,
 		assetBundleBuilder:     config.Assets.AssetBundleBuilder,
 		assetGenerationService: config.Assets.AssetGenerationService,
-		sheinContentOptimizer:  config.Shein.SheinContentOptimizer,
 	}
 }
 
@@ -92,8 +101,6 @@ func buildSheinRuntimeDependencies(config *ServiceConfig) sheinRuntimeDependenci
 	}
 	return sheinRuntimeDependencies{
 		resolutionCacheStore:  config.Shein.SheinResolutionCacheStore,
-		storeCatalog:          config.Shein.SheinStoreCatalog,
-		apiClientFactory:      config.Shein.SheinAPIClientFactory,
 		categoryResolver:      config.Shein.SheinCategoryResolver,
 		attributeResolver:     config.Shein.SheinAttributeResolver,
 		saleAttributeResolver: config.Shein.SheinSaleAttributeResolver,
@@ -123,6 +130,7 @@ func applyServiceDependencyGroups(svc *service, config *ServiceConfig) {
 	svc.submission = buildSubmissionCollaborators()
 	svc.adminDeps = buildAdminDependencies(config)
 	svc.submissionDeps = buildSubmissionDependencies(config)
+	svc.sheinSharedDeps = buildSheinSharedDependencies(config)
 	svc.workflowDeps = buildWorkflowDependencies(config)
 	svc.sheinRuntimeDeps = buildSheinRuntimeDependencies(config)
 	svc.supportDeps = buildSupportDependencies(config)
