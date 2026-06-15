@@ -16,6 +16,9 @@ func TestBuildersFamiliesOwnSeparatedResponsibilities(t *testing.T) {
 
 	schemaFile := readFileContent(t, filepath.Join(dir, "builders_repository_schema.go"))
 	repositoriesFile := readFileContent(t, filepath.Join(dir, "builders_repositories.go"))
+	listingKitRepositoriesFile := readFileContent(t, filepath.Join(dir, "builders_repositories_listingkit.go"))
+	adminRepositoriesFile := readFileContent(t, filepath.Join(dir, "builders_repositories_admin.go"))
+	supportRepositoriesFile := readFileContent(t, filepath.Join(dir, "builders_repositories_support.go"))
 	dbRepositorySupportFile := readFileContent(t, filepath.Join(dir, "builders_db_repository_support.go"))
 	dbListingKitRepositoriesFile := readFileContent(t, filepath.Join(dir, "builders_db_listingkit_repositories.go"))
 	dbAdminRepositoriesFile := readFileContent(t, filepath.Join(dir, "builders_db_admin_repositories.go"))
@@ -38,15 +41,48 @@ func TestBuildersFamiliesOwnSeparatedResponsibilities(t *testing.T) {
 
 	assertContainsAll(t, repositoriesFile,
 		"func buildRepositoryWithFallback",
+	)
+	assertNotContainsAny(t, repositoriesFile,
 		"func BuildListingKitTaskRepository",
 		"func BuildListingAdminStoreRepository",
 		"func BuildSheinResolutionCacheStore",
-	)
-	assertNotContainsAny(t, repositoriesFile,
 		"func ensureListingKitRepositorySchema",
 		"func BuildImageUploadStore",
 		"func ConfigureLegacyTenantResolver",
 		"func newDBListingKitTaskRepository",
+	)
+
+	assertContainsAll(t, listingKitRepositoriesFile,
+		"func BuildListingKitTaskRepository",
+		"func BuildListingKitSheinSyncRepository",
+		"func BuildListingKitUploadedImageRepository",
+	)
+	assertNotContainsAny(t, listingKitRepositoriesFile,
+		"func BuildListingAdminStoreRepository",
+		"func BuildSheinResolutionCacheStore",
+		"func ensureListingKitRepositorySchema",
+	)
+
+	assertContainsAll(t, adminRepositoriesFile,
+		"func BuildListingAdminStoreRepository",
+		"func BuildListingAdminGenerationTopicPolicyRepository",
+		"func BuildListingAdminProductDataRepository",
+	)
+	assertNotContainsAny(t, adminRepositoriesFile,
+		"func BuildListingKitTaskRepository",
+		"func BuildSheinResolutionCacheStore",
+		"func ensureListingKitRepositorySchema",
+	)
+
+	assertContainsAll(t, supportRepositoriesFile,
+		"func BuildListingSubscriptionRepository",
+		"func BuildAssetRepository",
+		"func BuildSheinResolutionCacheStore",
+	)
+	assertNotContainsAny(t, supportRepositoriesFile,
+		"func BuildListingKitTaskRepository",
+		"func BuildListingAdminStoreRepository",
+		"func ensureListingKitRepositorySchema",
 	)
 
 	assertNoFile(t, filepath.Join(dir, "builders_db_repositories.go"))
