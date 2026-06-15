@@ -1463,6 +1463,36 @@ func TestTaskStudioSessionAdapterUsesListingStudioRunner(t *testing.T) {
 	}
 
 	for _, needle := range []string{
+		"type studioSessionRepositoryAdapter struct {",
+		"func applyListingStudioSessionGeneralMetadataPatch(session *SheinStudioSession, req *UpdateStudioSessionRequest) {",
+		"func adaptStudioSessionError(err error) error {",
+	} {
+		if strings.Contains(adapterContent, needle) {
+			t.Fatalf("task_studio_session_adapter.go should not contain %q after adapter support split", needle)
+		}
+	}
+
+	adapterSupportSrc, err := os.ReadFile("task_studio_session_adapter_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_session_adapter_support.go) error = %v", err)
+	}
+	adapterSupportContent := string(adapterSupportSrc)
+
+	for _, needle := range []string{
+		"type studioSessionRepositoryAdapter struct {",
+		"type studioSessionMutationRepositoryAdapter struct {",
+		"func validateStudioSessionSelection(selection *SheinStudioSelection) error {",
+		"func newListingStudioSessionRecord(id string, userID string, selectionKey string, selection *SheinStudioSelection) *SheinStudioSession {",
+		"func studioSessionStatusForAsyncJob(jobStatus string) SheinStudioSessionStatus {",
+		"func applyListingStudioSessionGeneralMetadataPatch(session *SheinStudioSession, req *UpdateStudioSessionRequest) {",
+		"func adaptStudioSessionError(err error) error {",
+	} {
+		if !strings.Contains(adapterSupportContent, needle) {
+			t.Fatalf("task_studio_session_adapter_support.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
 		"func newListingStudioSessionAsyncJobService(repo studioSessionDraftRepository) *listingStudioSessionAsyncJobRunner {",
 		"return studiodomain.NewSessionAsyncJobSyncService(studiodomain.SessionAsyncJobSyncServiceConfig[",
 		"Repo:               studioSessionMutationRepositoryAdapter{repo: repo},",
