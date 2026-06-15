@@ -1070,7 +1070,7 @@ func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 		},
 		{
 			name: "submit shared wiring",
-			file: "service_submit_wiring_support.go",
+			file: "service_submit_wiring_resolution_support.go",
 			needles: []string{
 				"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
 				"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
@@ -4233,11 +4233,6 @@ func TestTaskSubmissionServiceConfigsUseSharedSupportWiring(t *testing.T) {
 	for _, needle := range []string{
 		"type taskSubmissionBaseWiring struct {",
 		"type taskSubmissionSupportWiring struct {",
-		"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
-		"sheinProductAPIBuilder:   wiring.sheinProductAPIBuilder,",
-		"resolveSubmitSettings:    wiring.resolveSubmitSettings,",
-		"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
-		"rememberSheinSubmitted: wiring.rememberSheinSubmitted,",
 		"func buildTaskSubmissionBaseWiring(s *service) taskSubmissionBaseWiring {",
 		"func buildTaskSubmissionBaseWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionBaseWiring {",
 		"func buildTaskSubmissionSupportWiring(s *service) taskSubmissionSupportWiring {",
@@ -4250,6 +4245,36 @@ func TestTaskSubmissionServiceConfigsUseSharedSupportWiring(t *testing.T) {
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
+		"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
+		"func resolveSubmissionWorkflowClient(s *service) (SheinPublishWorkflowClient, bool) {",
+	} {
+		if strings.Contains(supportContent, needle) {
+			t.Fatalf("service_submit_wiring_support.go should not contain %q after resolution/config split", needle)
+		}
+	}
+
+	resolutionSrc, err := os.ReadFile("service_submit_wiring_resolution_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_wiring_resolution_support.go) error = %v", err)
+	}
+	resolutionContent := string(resolutionSrc)
+
+	for _, needle := range []string{
+		"func resolveSubmissionStoreProfileRepo(s *service) StoreProfileRepository {",
+		"func resolveSubmissionWorkflowClient(s *service) (SheinPublishWorkflowClient, bool) {",
+		"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
+		"sheinProductAPIBuilder:   wiring.sheinProductAPIBuilder,",
+		"resolveSubmitSettings:    wiring.resolveSubmitSettings,",
+		"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
+		"rememberSheinSubmitted: wiring.rememberSheinSubmitted,",
+	} {
+		if !strings.Contains(resolutionContent, needle) {
+			t.Fatalf("service_submit_wiring_resolution_support.go should contain %q", needle)
 		}
 	}
 

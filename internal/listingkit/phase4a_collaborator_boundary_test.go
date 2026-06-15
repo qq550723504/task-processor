@@ -88,7 +88,7 @@ func TestCollaboratorWiringFilesOwnExplicitBuilders(t *testing.T) {
 			},
 		},
 		{
-			file: "service_submit_wiring_support.go",
+			file: "service_submit_wiring_resolution_support.go",
 			needles: []string{
 				"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
 			},
