@@ -26,7 +26,7 @@ func TestModelResultValueSupportBoundary(t *testing.T) {
 		"type StandardProductSnapshot struct {",
 		"type SDSSyncSummary struct {",
 		"type PodExecutionSummary struct {",
-		"type TemuBatchSKUInfo struct {",
+		"type SDSSyncSensitiveWordHit struct {",
 	} {
 		if !strings.Contains(modelContent, needle) {
 			t.Fatalf("model_result.go should contain %q", needle)
