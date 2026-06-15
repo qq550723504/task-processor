@@ -157,6 +157,11 @@ Recommended next slice:
 Current submission stop line:
 
 - `shein_submit_state.go` is now the direct root-side stop-line for SHEIN submit transition sequencing. Generic readiness, retry, locking, response-error, lease, and event DTO primitives should not route through a recreated `internal/listingkit/submission` compatibility package anymore.
+- remaining root-side submission owners should now stay narrow:
+  - `shein_submit_state.go` keeps only transition sequencing that binds generic submission state flow to SHEIN event ordering and task-owned persistence callers,
+  - `task_submission_refresh_service.go` and `task_submission_refresh_mutation.go` keep only task/repository mutation entrypoints plus refresh-runner adaptation around publishing-side selection/validation helpers,
+  - `task_submission_state_service.go`, `task_submission_state_persistence_support.go`, and `task_temporal_submission_persistence_service*.go` keep only task/result persistence callbacks, Temporal/direct fallback routing, and event append ordering around submission-domain runners,
+  - new submission work should prefer `internal/listing/submission` or `internal/publishing/shein` unless it truly requires those root task/repo/event ordering responsibilities.
 
 Completed submission slices:
 
