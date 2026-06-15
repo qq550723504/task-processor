@@ -20,12 +20,6 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 		"type SheinRepairPatchPayload struct {",
 		"type sheinRepairRevisionBundle struct {",
 		"type sheinRepairArtifacts struct {",
-		"func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayload) sheinRepairRevisionBundle {",
-		"func buildSheinRepairRevisionSkeleton(action string, payload *SheinRepairPatchPayload) *SheinEditorRevisionSkeleton {",
-		"func buildSheinRepairApplyRequest(action string, payload *SheinRepairPatchPayload) *ApplyRevisionRequest {",
-		"func buildSheinRepairRevisionInput(payload *SheinRepairPatchPayload) *SheinRevisionInput {",
-		"func buildSheinRepairReason(action string) string {",
-		"func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {",
 	} {
 		if !strings.Contains(rootContent, needle) {
 			t.Fatalf("shein_repair_support.go should contain %q", needle)
@@ -44,7 +38,6 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 		"func cloneRepairStringPointer(value *string) *string {",
 		"func cloneRepairIntPointer(value *int) *int {",
 		"func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEditorRevisionSkeleton, request *ApplyRevisionRequest, validation *SheinRepairValidationPreview) sheinRepairArtifacts {",
-		"func buildSheinRepairValidationPreview(pkg *SheinPackage, editorSection string, revision *ApplyRevisionRequest, skeleton *SheinEditorRevisionSkeleton) *SheinRepairValidationPreview {",
 		"func cloneSheinRepairValidationPreview(src *SheinRepairValidationPreview) *SheinRepairValidationPreview {",
 		"func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {",
 	} {
@@ -71,7 +64,6 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 		"func cloneRepairStringPointer(value *string) *string {",
 		"func cloneRepairIntPointer(value *int) *int {",
 		"func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEditorRevisionSkeleton, request *ApplyRevisionRequest, validation *SheinRepairValidationPreview) sheinRepairArtifacts {",
-		"func buildSheinRepairValidationPreview(pkg *SheinPackage, editorSection string, revision *ApplyRevisionRequest, skeleton *SheinEditorRevisionSkeleton) *SheinRepairValidationPreview {",
 		"func cloneSheinRepairValidationPreview(src *SheinRepairValidationPreview) *SheinRepairValidationPreview {",
 		"func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {",
 	} {
