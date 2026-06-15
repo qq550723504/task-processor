@@ -28,8 +28,8 @@ func TestNonRetryRegularActionKeyMutationBoundary(t *testing.T) {
 	t.Run("filter_mutation_home_owns_review_ready_and_section_review_rule_family", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_overview.go", "applyAssetGenerationReviewReadyFilterMutation")
-		callNames := readNamedFunctionCallNames(t, "generation_overview.go", "applyAssetGenerationReviewReadyFilterMutation")
+		source := readNamedFunctionSource(t, "generation_overview_filter_support.go", "applyAssetGenerationReviewReadyFilterMutation")
+		callNames := readNamedFunctionCallNames(t, "generation_overview_filter_support.go", "applyAssetGenerationReviewReadyFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
 			"case \"review_ready_assets\", \"continue_publish_review\":",

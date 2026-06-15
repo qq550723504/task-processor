@@ -8,8 +8,8 @@ func TestActionTargetPreviewCapabilityFilterMutationBoundary(t *testing.T) {
 	t.Run("preview_capability_filter_mutation_home_owns_capability_specialization", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "generation_overview.go", "applyAssetGenerationPreviewCapabilityFilterMutation")
-		callNames := readNamedFunctionCallNames(t, "generation_overview.go", "applyAssetGenerationPreviewCapabilityFilterMutation")
+		source := readNamedFunctionSource(t, "generation_overview_filter_support.go", "applyAssetGenerationPreviewCapabilityFilterMutation")
+		callNames := readNamedFunctionCallNames(t, "generation_overview_filter_support.go", "applyAssetGenerationPreviewCapabilityFilterMutation")
 
 		assertSourceContainsAll(t, source, []string{
 			"spec := listinggeneration.PreviewCapabilityActionSpecForKey(actionKey)",

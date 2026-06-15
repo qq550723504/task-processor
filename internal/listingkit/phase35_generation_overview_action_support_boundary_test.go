@@ -21,6 +21,7 @@ func TestGenerationOverviewSupportFilesOwnActionHelpers(t *testing.T) {
 		"func reviewActionKey(summary *GenerationWorkQueueSummary) string {",
 		"func actionFiltersForKey(actionKey string, base *AssetGenerationRecommendedFilters) *AssetGenerationRecommendedFilters {",
 		"func applyAssetGenerationActionFiltersMutation(actionKey string, filters *AssetGenerationRecommendedFilters) {",
+		"func applyAssetGenerationRegularActionKeyFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) {",
 	} {
 		if !strings.Contains(homeContent, needle) {
 			t.Fatalf("generation_overview.go should contain %q", needle)
@@ -51,6 +52,24 @@ func TestGenerationOverviewSupportFilesOwnActionHelpers(t *testing.T) {
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("generation_overview_action_support.go should contain %q", needle)
+		}
+	}
+
+	filterSupportSrc, err := os.ReadFile("generation_overview_filter_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(generation_overview_filter_support.go) error = %v", err)
+	}
+	filterSupportContent := string(filterSupportSrc)
+
+	for _, needle := range []string{
+		"func applyAssetGenerationPreviewCapabilityFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) bool {",
+		"func applyAssetGenerationIdealReviewFilters(filters *AssetGenerationRecommendedFilters) {",
+		"func applyAssetGenerationReviewReadyFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) bool {",
+		"func applyAssetGenerationFailedRetryFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) bool {",
+		"func applyAssetGenerationProvisionalRetryFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) bool {",
+	} {
+		if !strings.Contains(filterSupportContent, needle) {
+			t.Fatalf("generation_overview_filter_support.go should contain %q", needle)
 		}
 	}
 }

@@ -217,6 +217,7 @@ Current checkpoint:
 - workflow SDS sync support is now split by helper family, so root `listingkit` keeps the primary SDS sync orchestration seams while uploaded-image helpers, variant merge helpers, and fallback/mockup helpers live in dedicated support files.
 - studio session model support is now split by helper family, so root `listingkit` keeps session/design/batch DTO definitions while JSON value/scan wrapper types live in a dedicated support file.
 - result model support is now split by helper family, so root `listingkit` keeps result and package type definitions while request/result JSON value-scan persistence helpers live in a dedicated support file.
+- generation overview filter support is now split by helper family, so root `listingkit` keeps overview decisioning plus top-level filter routing while preview/review/retry filter rule helpers live in a dedicated support file.
 - `internal/listingkit` direct submit now delegates phase sequencing to the submission-domain runner while still owning SHEIN readiness gates, state persistence hooks, and remote-submit error semantics.
 - Temporal payload preparation/upload/pre-validate steps now also delegate to a submission-domain payload-stage runner.
 - direct submit and Temporal now also share a submission-domain remote-submit attempt runner while keeping post-attempt persistence semantics separate.
