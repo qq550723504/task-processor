@@ -24,12 +24,19 @@ func TestModelResultValueSupportBoundary(t *testing.T) {
 	for _, needle := range []string{
 		"type ListingKitResult struct {",
 		"type StandardProductSnapshot struct {",
+	} {
+		if !strings.Contains(modelContent, needle) {
+			t.Fatalf("model_result.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
 		"type SDSSyncSummary struct {",
 		"type PodExecutionSummary struct {",
 		"type SDSSyncSensitiveWordHit struct {",
 	} {
-		if !strings.Contains(modelContent, needle) {
-			t.Fatalf("model_result.go should contain %q", needle)
+		if strings.Contains(modelContent, needle) {
+			t.Fatalf("model_result.go should delegate execution summary model %q", needle)
 		}
 	}
 

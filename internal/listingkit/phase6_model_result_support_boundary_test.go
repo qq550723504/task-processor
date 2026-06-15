@@ -10,14 +10,14 @@ func TestModelResultSupportBoundary(t *testing.T) {
 		"type ListingKitResult struct {",
 		"type StandardProductSnapshot struct {",
 		"type GenerationSummary struct {",
+	})
+	assertSourceExcludesAll(t, rootSource, []string{
 		"type SDSSyncSummary struct {",
 		"type SDSSyncDiagnostics struct {",
 		"type PodExecutionSummary struct {",
 		"type PodExecutionAuditEvent struct {",
 		"type SDSSyncFinishedProductObservation struct {",
 		"type SDSSyncSensitiveWordHit struct {",
-	})
-	assertSourceExcludesAll(t, rootSource, []string{
 		"type GenerationRecoverySummary struct {",
 		"type GenerationResolvedActionSummary struct {",
 		"type AmazonPackage struct {",
@@ -38,7 +38,21 @@ func TestModelResultSupportBoundary(t *testing.T) {
 	assertSourceExcludesAll(t, supportSource, []string{
 		"type ListingKitResult struct {",
 		"type StandardProductSnapshot struct {",
+	})
+
+	executionSource := readTaskGenerationSourceFile(t, "model_result_execution_support.go")
+	assertSourceContainsAll(t, executionSource, []string{
 		"type SDSSyncSummary struct {",
 		"type PodExecutionSummary struct {",
+		"type SDSSyncDiagnostics struct {",
+		"type PodExecutionAuditEvent struct {",
+		"type SDSSyncFinishedProductObservation struct {",
+		"type SDSSyncSensitiveWordHit struct {",
+	})
+	assertSourceExcludesAll(t, executionSource, []string{
+		"type ListingKitResult struct {",
+		"type StandardProductSnapshot struct {",
+		"type GenerationRecoverySummary struct {",
+		"type GenerationResolvedActionSummary struct {",
 	})
 }
