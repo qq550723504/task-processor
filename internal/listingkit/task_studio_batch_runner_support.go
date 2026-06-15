@@ -9,6 +9,13 @@ func (s *taskStudioBatchService) ensureDetailRunner() {
 	s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.ensureStudioBatchGenerationGraphForResume)
 }
 
+func (s *taskStudioBatchService) ensureServiceRunner() {
+	if s == nil || s.serviceRunner != nil {
+		return
+	}
+	s.serviceRunner = newListingStudioBatchServiceRunner(s)
+}
+
 func (s *taskStudioBatchService) ensureBatchRunner() {
 	if s == nil || s.batchRunner != nil {
 		return

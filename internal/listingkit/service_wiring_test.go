@@ -4005,8 +4005,8 @@ func TestTaskStudioBatchDetailAdapterUsesListingStudioRunner(t *testing.T) {
 	serviceContent := string(serviceSrc)
 
 	for _, needle := range []string{
-		"service.ensureDetailRunner()",
-		"return s.detailRunner.GetDetail(ctx, normalizedBatchID)",
+		"service.ensureServiceRunner()",
+		"return s.serviceRunner.GetDetail(ctx, batchID)",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
@@ -4021,10 +4021,26 @@ func TestTaskStudioBatchDetailAdapterUsesListingStudioRunner(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *taskStudioBatchService) ensureDetailRunner() {",
+		"func (s *taskStudioBatchService) ensureServiceRunner() {",
 		"s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.ensureStudioBatchGenerationGraphForResume)",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("task_studio_batch_runner_support.go should contain %q", needle)
+		}
+	}
+
+	serviceAdapterSrc, err := os.ReadFile("task_studio_batch_service_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_service_adapter.go) error = %v", err)
+	}
+	serviceAdapterContent := string(serviceAdapterSrc)
+
+	for _, needle := range []string{
+		"GetDetail: func(ctx context.Context, batchID string) (*StudioBatchDetail, error) {",
+		"return s.detailRunner.GetDetail(ctx, batchID)",
+	} {
+		if !strings.Contains(serviceAdapterContent, needle) {
+			t.Fatalf("task_studio_batch_service_adapter.go should contain %q", needle)
 		}
 	}
 }
@@ -4061,8 +4077,8 @@ func TestTaskStudioBatchReviewAdapterUsesListingStudioRunner(t *testing.T) {
 	serviceContent := string(serviceSrc)
 
 	for _, needle := range []string{
-		"service.ensureReviewRunner()",
-		"return s.reviewRunner.ApproveDesigns(ctx, normalizedBatchID, approvedIDs)",
+		"service.ensureServiceRunner()",
+		"return s.serviceRunner.ApproveDesigns(ctx, batchID, req)",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
@@ -4081,6 +4097,21 @@ func TestTaskStudioBatchReviewAdapterUsesListingStudioRunner(t *testing.T) {
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("task_studio_batch_runner_support.go should contain %q", needle)
+		}
+	}
+
+	serviceAdapterSrc, err := os.ReadFile("task_studio_batch_service_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_service_adapter.go) error = %v", err)
+	}
+	serviceAdapterContent := string(serviceAdapterSrc)
+
+	for _, needle := range []string{
+		"ApproveDesigns: func(ctx context.Context, batchID string, designIDs []string) (*StudioBatchDetail, error) {",
+		"return s.reviewRunner.ApproveDesigns(ctx, batchID, designIDs)",
+	} {
+		if !strings.Contains(serviceAdapterContent, needle) {
+			t.Fatalf("task_studio_batch_service_adapter.go should contain %q", needle)
 		}
 	}
 }
@@ -4117,8 +4148,8 @@ func TestTaskStudioBatchRetryAdapterUsesListingStudioRunner(t *testing.T) {
 	serviceContent := string(serviceSrc)
 
 	for _, needle := range []string{
-		"service.ensureRetryRunner()",
-		"return s.retryRunner.PrepareRetryItems(ctx, normalizedBatchID, itemIDs)",
+		"service.ensureServiceRunner()",
+		"return s.serviceRunner.PrepareRetryItems(ctx, batchID, req)",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
@@ -4137,6 +4168,21 @@ func TestTaskStudioBatchRetryAdapterUsesListingStudioRunner(t *testing.T) {
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("task_studio_batch_runner_support.go should contain %q", needle)
+		}
+	}
+
+	serviceAdapterSrc, err := os.ReadFile("task_studio_batch_service_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_service_adapter.go) error = %v", err)
+	}
+	serviceAdapterContent := string(serviceAdapterSrc)
+
+	for _, needle := range []string{
+		"PrepareRetryItems: func(ctx context.Context, batchID string, itemIDs []string) (*StudioBatchDetail, error) {",
+		"return s.retryRunner.PrepareRetryItems(ctx, batchID, itemIDs)",
+	} {
+		if !strings.Contains(serviceAdapterContent, needle) {
+			t.Fatalf("task_studio_batch_service_adapter.go should contain %q", needle)
 		}
 	}
 }
@@ -4174,8 +4220,8 @@ func TestTaskStudioBatchTaskPrepareAdapterUsesListingStudioRunner(t *testing.T) 
 	serviceContent := string(serviceSrc)
 
 	for _, needle := range []string{
-		"service.ensureTaskPrepareRunner()",
-		"return s.taskPrepareRunner.PrepareTaskCreation(ctx, normalizedBatchID, listingStudioBatchTaskPrepareState{",
+		"service.ensureServiceRunner()",
+		"return s.serviceRunner.PrepareCreateTasks(ctx, batchID, req)",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
@@ -4207,6 +4253,21 @@ func TestTaskStudioBatchTaskPrepareAdapterUsesListingStudioRunner(t *testing.T) 
 
 	if !strings.Contains(flowContent, "func (s *taskStudioBatchService) loadStudioBatchTaskPreparationResult(ctx context.Context, batchID string) (*CreateStudioBatchTasksResult, error) {") {
 		t.Fatalf("task_studio_batch_task_flow_support.go should contain task preparation result helper")
+	}
+
+	serviceAdapterSrc, err := os.ReadFile("task_studio_batch_service_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_service_adapter.go) error = %v", err)
+	}
+	serviceAdapterContent := string(serviceAdapterSrc)
+
+	for _, needle := range []string{
+		"PrepareCreateTasks: func(ctx context.Context, batchID string, designIDs []string) (*CreateStudioBatchTasksResult, error) {",
+		"return s.taskPrepareRunner.PrepareTaskCreation(ctx, batchID, listingStudioBatchTaskPrepareState{",
+	} {
+		if !strings.Contains(serviceAdapterContent, needle) {
+			t.Fatalf("task_studio_batch_service_adapter.go should contain %q", needle)
+		}
 	}
 }
 

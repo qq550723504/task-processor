@@ -34,6 +34,7 @@ func TestTaskStudioBatchRunnerSupportBoundary(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *taskStudioBatchService) ensureDetailRunner() {",
+		"func (s *taskStudioBatchService) ensureServiceRunner() {",
 		"func (s *taskStudioBatchService) ensureBatchRunner() {",
 		"func (s *taskStudioBatchService) ensureReviewRunner() {",
 		"func (s *taskStudioBatchService) ensureRetryRunner() {",
@@ -57,6 +58,7 @@ func TestTaskStudioBatchRunnerSupportBoundary(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *taskStudioBatchService) ensureDetailRunner() {",
+		"func (s *taskStudioBatchService) ensureServiceRunner() {",
 		"func (s *taskStudioBatchService) ensureBatchRunner() {",
 		"func (s *taskStudioBatchService) ensureReviewRunner() {",
 		"func (s *taskStudioBatchService) ensureRetryRunner() {",

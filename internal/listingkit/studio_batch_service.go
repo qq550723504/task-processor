@@ -68,6 +68,7 @@ type taskStudioBatchServiceConfig struct {
 	generator          studioBatchGenerator
 	createGenerateTask func(ctx context.Context, req *GenerateRequest) (*Task, error)
 	getTask            func(ctx context.Context, taskID string) (*Task, error)
+	serviceRunner      *listingStudioBatchServiceRunner
 	batchRunner        *listingStudioBatchGenerationRunner
 	detailRunner       *listingStudioBatchDetailRunner
 	reviewRunner       *listingStudioBatchReviewRunner

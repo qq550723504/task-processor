@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 )
 
@@ -14,6 +13,7 @@ type taskStudioBatchService struct {
 	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
 	getTask            func(context.Context, string) (*Task, error)
 	currentTime        func() time.Time
+	serviceRunner      *listingStudioBatchServiceRunner
 	batchRunner        *listingStudioBatchGenerationRunner
 	detailRunner       *listingStudioBatchDetailRunner
 	reviewRunner       *listingStudioBatchReviewRunner
@@ -32,6 +32,7 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 		createGenerateTask: config.createGenerateTask,
 		getTask:            config.getTask,
 		currentTime:        time.Now,
+		serviceRunner:      config.serviceRunner,
 		batchRunner:        config.batchRunner,
 		detailRunner:       config.detailRunner,
 		reviewRunner:       config.reviewRunner,
@@ -49,31 +50,32 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 	service.ensureTaskExecuteRunner()
 	service.ensureTaskPrepareRunner()
 	service.ensureTaskResumeRunner()
+	service.ensureServiceRunner()
 	return service
 }
 
 func (s *taskStudioBatchService) StartStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
-	s.ensureBatchRunner()
-	if s.batchRunner == nil {
-		return nil, fmt.Errorf("studio batch generation runner is not configured")
+	s.ensureServiceRunner()
+	if s.serviceRunner == nil {
+		return nil, fmt.Errorf("studio batch service is not configured")
 	}
-	return s.batchRunner.StartGeneration(ctx, strings.TrimSpace(batchID))
+	return s.serviceRunner.StartGeneration(ctx, batchID)
 }
 
 func (s *taskStudioBatchService) PrepareStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
-	s.ensureBatchRunner()
-	if s.batchRunner == nil {
-		return nil, fmt.Errorf("studio batch generation runner is not configured")
+	s.ensureServiceRunner()
+	if s.serviceRunner == nil {
+		return nil, fmt.Errorf("studio batch service is not configured")
 	}
-	return s.batchRunner.PrepareGeneration(ctx, strings.TrimSpace(batchID))
+	return s.serviceRunner.PrepareGeneration(ctx, batchID)
 }
 
 func (s *taskStudioBatchService) ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
-	s.ensureBatchRunner()
-	if s.batchRunner == nil {
-		return nil, fmt.Errorf("studio batch generation runner is not configured")
+	s.ensureServiceRunner()
+	if s.serviceRunner == nil {
+		return nil, fmt.Errorf("studio batch service is not configured")
 	}
-	return s.batchRunner.ResumeGeneration(ctx, strings.TrimSpace(batchID))
+	return s.serviceRunner.ResumeGeneration(ctx, batchID)
 }
 
 func (s *taskStudioBatchService) continueStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
@@ -96,100 +98,49 @@ func (s *taskStudioBatchService) continueStudioBatchGeneration(ctx context.Conte
 }
 
 func (s *taskStudioBatchService) GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
-	s.ensureDetailRunner()
-	if s.detailRunner == nil {
-		return nil, fmt.Errorf("studio batch repository is not configured")
+	s.ensureServiceRunner()
+	if s.serviceRunner == nil {
+		return nil, fmt.Errorf("studio batch service is not configured")
 	}
-	normalizedBatchID := strings.TrimSpace(batchID)
-	return s.detailRunner.GetDetail(ctx, normalizedBatchID)
+	return s.serviceRunner.GetDetail(ctx, batchID)
 }
 
 func (s *taskStudioBatchService) ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error) {
-	s.ensureReviewRunner()
-	if s.reviewRunner == nil {
-		return nil, fmt.Errorf("studio batch repository is not configured")
+	s.ensureServiceRunner()
+	if s.serviceRunner == nil {
+		return nil, fmt.Errorf("studio batch service is not configured")
 	}
-	normalizedBatchID := strings.TrimSpace(batchID)
-	approvedIDs := normalizeStudioBatchDesignIDs(nil)
-	if req != nil {
-		approvedIDs = normalizeStudioBatchDesignIDs(req.DesignIDs)
-	}
-	return s.reviewRunner.ApproveDesigns(ctx, normalizedBatchID, approvedIDs)
+	return s.serviceRunner.ApproveDesigns(ctx, batchID, req)
 }
 
 func (s *taskStudioBatchService) RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {
-	normalizedBatchID := strings.TrimSpace(batchID)
-	itemIDs := normalizeStudioBatchItemIDs(nil)
-	if req != nil {
-		itemIDs = normalizeStudioBatchItemIDs(req.ItemIDs)
+	s.ensureServiceRunner()
+	if s.serviceRunner == nil {
+		return nil, fmt.Errorf("studio batch service is not configured")
 	}
-	s.ensureBatchRunner()
-	if s.batchRunner == nil {
-		return nil, fmt.Errorf("studio batch generation runner is not configured")
-	}
-	return s.batchRunner.RetryItems(ctx, normalizedBatchID, itemIDs)
+	return s.serviceRunner.RetryItems(ctx, batchID, req)
 }
 
 func (s *taskStudioBatchService) PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {
-	if s.repo == nil {
-		return nil, fmt.Errorf("studio batch repository is not configured")
+	s.ensureServiceRunner()
+	if s.serviceRunner == nil {
+		return nil, fmt.Errorf("studio batch service is not configured")
 	}
-	if s.generator == nil {
-		return nil, fmt.Errorf("studio batch generator is not configured")
-	}
-	normalizedBatchID := strings.TrimSpace(batchID)
-	itemIDs := normalizeStudioBatchItemIDs(nil)
-	if req != nil {
-		itemIDs = normalizeStudioBatchItemIDs(req.ItemIDs)
-	}
-	if err := s.syncStudioBatchRetryExecutionConfigFromDraft(ctx, normalizedBatchID); err != nil {
-		return nil, err
-	}
-	s.ensureRetryRunner()
-	if s.retryRunner == nil {
-		return nil, fmt.Errorf("studio batch repository is not configured")
-	}
-	return s.retryRunner.PrepareRetryItems(ctx, normalizedBatchID, itemIDs)
+	return s.serviceRunner.PrepareRetryItems(ctx, batchID, req)
 }
 
 func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
-	if s.repo == nil {
-		return nil, fmt.Errorf("studio batch repository is not configured")
+	s.ensureServiceRunner()
+	if s.serviceRunner == nil {
+		return nil, fmt.Errorf("studio batch service is not configured")
 	}
-	normalizedBatchID := strings.TrimSpace(batchID)
-	designIDs := normalizeStudioBatchDesignIDs(nil)
-	if req != nil {
-		designIDs = normalizeStudioBatchDesignIDs(req.DesignIDs)
-	}
-	s.ensureTaskExecuteRunner()
-	if s.taskExecuteRunner == nil {
-		return nil, fmt.Errorf("studio batch task execute service is not configured")
-	}
-	return s.taskExecuteRunner.Execute(ctx, normalizedBatchID, designIDs)
+	return s.serviceRunner.CreateTasks(ctx, batchID, req)
 }
 
 func (s *taskStudioBatchService) PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
-	if s.repo == nil {
-		return nil, fmt.Errorf("studio batch repository is not configured")
+	s.ensureServiceRunner()
+	if s.serviceRunner == nil {
+		return nil, fmt.Errorf("studio batch service is not configured")
 	}
-	normalizedBatchID := strings.TrimSpace(batchID)
-	designIDs := normalizeStudioBatchDesignIDs(nil)
-	if req != nil {
-		designIDs = normalizeStudioBatchDesignIDs(req.DesignIDs)
-	}
-	designIDs, session, batchDetail, err := s.prepareStudioBatchTaskCreation(ctx, normalizedBatchID, &CreateStudioBatchTasksRequest{
-		DesignIDs: designIDs,
-	})
-	if err != nil {
-		return nil, err
-	}
-	s.ensureTaskPrepareRunner()
-	if s.taskPrepareRunner == nil {
-		return nil, fmt.Errorf("studio batch task prepare runner is not configured")
-	}
-	return s.taskPrepareRunner.PrepareTaskCreation(ctx, normalizedBatchID, listingStudioBatchTaskPrepareState{
-		Session:   session,
-		Batch:     batchDetail.Batch,
-		DesignIDs: designIDs,
-	})
+	return s.serviceRunner.PrepareCreateTasks(ctx, batchID, req)
 }

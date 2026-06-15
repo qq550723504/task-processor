@@ -17,7 +17,7 @@ func TestTaskStudioBatchTaskCreationOwnerBoundary(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *taskStudioBatchService) PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {",
-		"return s.taskPrepareRunner.PrepareTaskCreation(ctx, normalizedBatchID, listingStudioBatchTaskPrepareState{",
+		"return s.serviceRunner.PrepareCreateTasks(ctx, batchID, req)",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)
@@ -54,6 +54,21 @@ func TestTaskStudioBatchTaskCreationOwnerBoundary(t *testing.T) {
 	} {
 		if !strings.Contains(adapterContent, needle) {
 			t.Fatalf("task_studio_batch_task_creation_adapter.go should contain %q", needle)
+		}
+	}
+
+	serviceAdapterSrc, err := os.ReadFile("task_studio_batch_service_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_studio_batch_service_adapter.go) error = %v", err)
+	}
+	serviceAdapterContent := string(serviceAdapterSrc)
+
+	for _, needle := range []string{
+		"PrepareCreateTasks: func(ctx context.Context, batchID string, designIDs []string) (*CreateStudioBatchTasksResult, error) {",
+		"return s.taskPrepareRunner.PrepareTaskCreation(ctx, batchID, listingStudioBatchTaskPrepareState{",
+	} {
+		if !strings.Contains(serviceAdapterContent, needle) {
+			t.Fatalf("task_studio_batch_service_adapter.go should contain %q", needle)
 		}
 	}
 }

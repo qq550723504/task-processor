@@ -6,6 +6,7 @@ Current stable ownership:
 
 - generic studio batch repository contract and ownership-conflict / unknown-item sentinel errors
 - batch-run service skeleton (`create/get/list/cancel` flow)
+- batch facade skeleton (`detail/generation/review/retry/task-creation` top-level routing)
 - batch-detail read skeleton (`read graph -> fallback -> ensure graph -> project detail`)
 - batch review skeleton (`ensure batch -> replace reviews -> reload detail`)
 - batch-draft read/delete skeleton (`gallery/list/get/delete` flow)
