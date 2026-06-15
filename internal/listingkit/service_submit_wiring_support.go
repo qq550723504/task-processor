@@ -526,12 +526,7 @@ func resolveSubmissionWorkflowClient(s *service) (SheinPublishWorkflowClient, bo
 	if s == nil {
 		return nil, false
 	}
-	return syncGroupedOptionalDependency(
-		&s.submissionDeps.sheinPublishWorkflowClient,
-		&s.submissionDeps.sheinPublishWorkflowEnabled,
-		&s.runtime.sheinPublishWorkflowClient,
-		&s.runtime.sheinPublishWorkflowEnabled,
-	)
+	return s.submissionDeps.sheinPublishWorkflowClient, s.submissionDeps.sheinPublishWorkflowEnabled
 }
 
 func buildTaskRequeueServiceConfigWithWiring(wiring taskSubmitterWiring) taskRequeueServiceConfig {

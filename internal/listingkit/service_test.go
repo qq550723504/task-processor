@@ -414,7 +414,7 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 		submissionDeps: submissionDependencies{
 			storeProfileRepo: storeProfileRepo,
 		},
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			taskSubmitter: noopTaskSubmitter{},
 		},
 	}
@@ -488,7 +488,7 @@ func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRu
 		submissionDeps: submissionDependencies{
 			storeProfileRepo: storeProfileRepo,
 		},
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			taskSubmitter: noopTaskSubmitter{},
 		},
 	}
@@ -527,10 +527,10 @@ func TestCreateGenerateTaskStartsStandardProductTemporalWhenEnabled(t *testing.T
 	standardClient := &stubStandardProductWorkflowClient{}
 	svc := &service{
 		repo: repo,
-		runtime: serviceRuntimeState{
-			taskSubmitter:                  noopTaskSubmitter{},
-			standardProductWorkflowClient:  standardClient,
-			standardProductWorkflowEnabled: true,
+		taskDeps: taskDependencies{
+			taskSubmitter:           noopTaskSubmitter{},
+			standardWorkflowClient:  standardClient,
+			standardWorkflowEnabled: true,
 		},
 	}
 
@@ -562,7 +562,7 @@ func TestCreateGenerateTaskRetriesQueueFullAsynchronously(t *testing.T) {
 	}
 	svc := &service{
 		repo: repo,
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			taskSubmitter: submitter,
 		},
 	}
@@ -612,7 +612,7 @@ func TestCreateGenerateTaskKeepsTaskPendingWhileQueueRemainsFull(t *testing.T) {
 	}
 	svc := &service{
 		repo: repo,
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			taskSubmitter: submitter,
 		},
 	}

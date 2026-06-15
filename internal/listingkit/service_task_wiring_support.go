@@ -36,7 +36,7 @@ func resolveTaskSubmitter(s *service) TaskSubmitter {
 	if s == nil {
 		return nil
 	}
-	return syncGroupedDependency(&s.taskDeps.taskSubmitter, &s.runtime.taskSubmitter)
+	return s.taskDeps.taskSubmitter
 }
 
 func resolveTaskRequestDefaults(s *service) generateRequestDefaults {
@@ -57,22 +57,12 @@ func resolveStandardWorkflowClient(s *service) (StandardProductWorkflowClient, b
 	if s == nil {
 		return nil, false
 	}
-	return syncGroupedOptionalDependency(
-		&s.taskDeps.standardWorkflowClient,
-		&s.taskDeps.standardWorkflowEnabled,
-		&s.runtime.standardProductWorkflowClient,
-		&s.runtime.standardProductWorkflowEnabled,
-	)
+	return s.taskDeps.standardWorkflowClient, s.taskDeps.standardWorkflowEnabled
 }
 
 func resolvePlatformAdaptWorkflowClient(s *service) (PlatformAdaptWorkflowClient, bool) {
 	if s == nil {
 		return nil, false
 	}
-	return syncGroupedOptionalDependency(
-		&s.taskDeps.platformAdaptWorkflowClient,
-		&s.taskDeps.platformAdaptWorkflowEnabled,
-		&s.runtime.platformAdaptWorkflowClient,
-		&s.runtime.platformAdaptWorkflowEnabled,
-	)
+	return s.taskDeps.platformAdaptWorkflowClient, s.taskDeps.platformAdaptWorkflowEnabled
 }

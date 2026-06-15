@@ -26,11 +26,8 @@ type service struct {
 	workflowDeps     workflowDependencies
 	sheinRuntimeDeps sheinRuntimeDependencies
 	supportDeps      supportDependencies
-	// Legacy runtime mirrors retained for incremental service slimming.
-	// Runtime-configurable submit/workflow overrides live here instead of the root service surface.
-	runtime         serviceRuntimeState
-	sheinSettingsMu sync.RWMutex
-	sheinSettings   SheinSettings
+	sheinSettingsMu  sync.RWMutex
+	sheinSettings    SheinSettings
 }
 
 type ServiceCoreDependencies struct {

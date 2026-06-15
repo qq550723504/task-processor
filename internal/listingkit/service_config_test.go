@@ -92,7 +92,7 @@ func TestNewServiceWithConfigInitializesSubmitLockManager(t *testing.T) {
 	}
 }
 
-func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyMirrors(t *testing.T) {
+func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyRuntimeMirrors(t *testing.T) {
 	t.Parallel()
 
 	sessionRepo := &studioBatchRunExecutorSessionRepoStub{}
@@ -137,13 +137,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyMirrors(t *testing
 		t.Fatalf("task deps standard workflow = (%v, %v), want seeded+enabled", svc.taskDeps.standardWorkflowClient, svc.taskDeps.standardWorkflowEnabled)
 	}
 
-	if svc.runtime.taskSubmitter != nil {
-		t.Fatalf("legacy taskSubmitter runtime mirror = %v, want nil before resolver sync", svc.runtime.taskSubmitter)
-	}
-	if svc.runtime.standardProductWorkflowClient != nil || svc.runtime.standardProductWorkflowEnabled {
-		t.Fatalf("legacy standard workflow runtime = (%v, %v), want nil+disabled before resolver sync", svc.runtime.standardProductWorkflowClient, svc.runtime.standardProductWorkflowEnabled)
-	}
-
 	if got := resolveTaskSubmitter(svc); got != submitter {
 		t.Fatalf("resolveTaskSubmitter() = %v, want seeded submitter", got)
 	}
@@ -163,12 +156,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyMirrors(t *testing
 		t.Fatalf("resolveStandardWorkflowClient() = (%v, %v), want seeded+enabled", got, enabled)
 	}
 
-	if svc.runtime.taskSubmitter != submitter {
-		t.Fatalf("legacy taskSubmitter runtime mirror = %v, want hydrated submitter", svc.runtime.taskSubmitter)
-	}
-	if svc.runtime.standardProductWorkflowClient != workflowClient || !svc.runtime.standardProductWorkflowEnabled {
-		t.Fatalf("legacy standard workflow runtime = (%v, %v), want hydrated+enabled", svc.runtime.standardProductWorkflowClient, svc.runtime.standardProductWorkflowEnabled)
-	}
 }
 
 func TestNewServiceWithConfigSeedsSubmissionDependenciesWithoutLegacyMirrors(t *testing.T) {

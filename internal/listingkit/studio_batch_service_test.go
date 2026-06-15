@@ -1265,7 +1265,7 @@ func TestServiceCreateStudioBatchTasksUsesApprovedDesignOwnership(t *testing.T) 
 
 	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
 	svc.repo = newStudioBatchTaskRepositoryStub()
-	svc.runtime.taskSubmitter = &studioBatchTaskSubmitterStub{}
+	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 	svc.studioDeps.sessionRepo = &studioBatchTaskCreationSessionRepoStub{
 		session: &SheinStudioSession{
 			ID:            "batch-1",
@@ -1385,7 +1385,7 @@ func TestServiceCreateStudioBatchTasksCreatesRealListingKitTasks(t *testing.T) {
 				},
 			}, batchRepo: batchRepo,
 		},
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
@@ -1524,7 +1524,7 @@ func TestServiceCreateStudioBatchTasksUsesItemSelectionOwnershipForGroupedProduc
 				},
 			}, batchRepo: batchRepo,
 		},
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
@@ -1618,7 +1618,7 @@ func TestServiceCreateStudioBatchTasksReturnsPartialSuccessWhenQueueIsFull(t *te
 				},
 			}, batchRepo: batchRepo,
 		},
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			taskSubmitter: &studioBatchTaskSubmitterStub{failAfter: 1},
 		},
 	}
@@ -1695,7 +1695,7 @@ func TestServiceCreateStudioBatchTasksReusesExistingTasksForRepeatedRequests(t *
 		studioDeps: studioDependencies{
 			sessionRepo: sessionRepo, batchRepo: batchRepo,
 		},
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
@@ -1772,7 +1772,7 @@ func TestServiceCreateStudioBatchTasksRejectsUnapprovedDesignIDs(t *testing.T) {
 				},
 			}, batchRepo: repo,
 		},
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}

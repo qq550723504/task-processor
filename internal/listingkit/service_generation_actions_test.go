@@ -485,9 +485,9 @@ func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *tes
 	client := &stubStandardProductWorkflowClient{}
 	svc := &service{
 		repo: repo,
-		runtime: serviceRuntimeState{
-			standardProductWorkflowClient:  client,
-			standardProductWorkflowEnabled: true,
+		taskDeps: taskDependencies{
+			standardWorkflowClient:  client,
+			standardWorkflowEnabled: true,
 		},
 	}
 
@@ -542,7 +542,7 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflow(t *testi
 	client := &stubPlatformAdaptWorkflowClient{}
 	svc := &service{
 		repo: repo,
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			platformAdaptWorkflowClient:  client,
 			platformAdaptWorkflowEnabled: true,
 		},
@@ -602,7 +602,7 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflowUsesParse
 	client := &stubPlatformAdaptWorkflowClient{}
 	svc := &service{
 		repo: repo,
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			platformAdaptWorkflowClient:  client,
 			platformAdaptWorkflowEnabled: true,
 		},

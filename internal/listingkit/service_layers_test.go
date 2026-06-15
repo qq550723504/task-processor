@@ -28,7 +28,7 @@ func TestProcessStandardProductLayerStartsPlatformAdaptTemporalWhenEnabled(t *te
 	}
 	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{
 		repo: repo,
-		runtime: serviceRuntimeState{
+		taskDeps: taskDependencies{
 			platformAdaptWorkflowClient:  platformClient,
 			platformAdaptWorkflowEnabled: true,
 		},

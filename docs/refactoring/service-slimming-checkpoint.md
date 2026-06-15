@@ -533,7 +533,7 @@ Current expectation:
 - `...OrDefault()` accessors are the only place that should synchronize grouped fields with legacy mirrors,
 - grouped dependency buckets (`taskDeps`, `studioDeps`, `adminDeps`, `submissionDeps`, `workflowDeps`, `sheinRuntimeDeps`, `supportDeps`) should own resolver state first,
 - service construction should seed grouped dependency buckets first instead of introducing new root dependency mirrors,
-- runtime-configurable submit/workflow overrides should live in a dedicated runtime bucket instead of expanding the root service surface,
+- runtime-configurable submit/workflow overrides should remain owned by their grouped dependency buckets instead of expanding the root service surface,
 - initialization stages should trigger accessors rather than re-assign grouped fields manually,
 - dependency resolvers should use shared synchronization helpers instead of open-coded root/group mirror logic,
 - tests should prefer asserting grouped ownership first and mirror compatibility second.
