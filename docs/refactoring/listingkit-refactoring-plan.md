@@ -208,6 +208,7 @@ Current checkpoint:
   - failure-record persistence flow (`record failure event/state`)
 - `internal/listingkit` submit/recovery services remain compatibility adapters that still own ListingKit DTO mapping, repository contracts, and root retryable-block persistence/rollback hooks.
 - pricing cache support is now split by helper family, so root `listingkit` keeps submission-facing cache entrypoints while cache-key/SKU fact helpers and review/logging helpers live in dedicated support files.
+- SHEIN submit SKU normalization support is now split by helper family, so root `listingkit` keeps the normalization entrypoint while variant-matching/base-SKU helpers and pricing/style alias helpers live in dedicated support files.
 - `internal/listingkit` direct submit now delegates phase sequencing to the submission-domain runner while still owning SHEIN readiness gates, state persistence hooks, and remote-submit error semantics.
 - Temporal payload preparation/upload/pre-validate steps now also delegate to a submission-domain payload-stage runner.
 - direct submit and Temporal now also share a submission-domain remote-submit attempt runner while keeping post-attempt persistence semantics separate.
