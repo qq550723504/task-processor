@@ -28,7 +28,7 @@ func NewSaleAttributeJSONParser() *SaleAttributeJSONParser {
 // 返回值:
 //   - ResultSaleAttribute: 解析后的销售属性结果
 func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) sheinattr.ResultSaleAttribute {
-	logger.GetGlobalLogger("shein/product").Infof("📝 开始解析AI响应，长度: %d 字符", len(content))
+	logger.GetGlobalLogger("shein/product").Debugf("📝 开始解析AI响应，长度: %d 字符", len(content))
 
 	// 清理JSON格式
 	content = jsonx.CleanLLMResponse(content)
@@ -45,7 +45,7 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) sheinattr
 			logger.GetGlobalLogger("shein/product").Debugf("原始内容前500字符: %s", content[:min(500, len(content))])
 			return sheinattr.ResultSaleAttribute{}
 		}
-		logger.GetGlobalLogger("shein/product").Info("✅ JSON修复成功")
+		logger.GetGlobalLogger("shein/product").Debug("✅ JSON修复成功")
 		content = fixedContent
 	} else {
 		logger.GetGlobalLogger("shein/product").Debug("✅ JSON格式有效")
@@ -58,7 +58,7 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) sheinattr
 		return sheinattr.ResultSaleAttribute{}
 	}
 
-	logger.GetGlobalLogger("shein/product").Infof("✅ 成功解析AI响应 - 销售属性: %d 个, 变体: %d 个",
+	logger.GetGlobalLogger("shein/product").Debugf("✅ 成功解析AI响应 - 销售属性: %d 个, 变体: %d 个",
 		len(saleAttributeData.SaleAttributes), len(saleAttributeData.Variants))
 
 	return saleAttributeData
@@ -67,7 +67,7 @@ func (p *SaleAttributeJSONParser) ParseAndValidateJSON(content string) sheinattr
 // fixCommonJsonIssues 修复常见的JSON问题
 func (p *SaleAttributeJSONParser) fixCommonJsonIssues(content string) string {
 	original := content
-	logger.GetGlobalLogger("shein/product").Infof("🔧 开始修复JSON，原始长度: %d", len(content))
+	logger.GetGlobalLogger("shein/product").Debugf("🔧 开始修复JSON，原始长度: %d", len(content))
 
 	// 1. 移除尾部的无效内容（在最后一个有效结构后的说明文字）
 	content = p.removeTrailingExplanation(content)
@@ -80,7 +80,7 @@ func (p *SaleAttributeJSONParser) fixCommonJsonIssues(content string) string {
 	closeBrackets := strings.Count(content, "]")
 	if openBrackets > closeBrackets {
 		missing := openBrackets - closeBrackets
-		logger.GetGlobalLogger("shein/product").Infof("🔧 修复缺失的%d个中括号", missing)
+		logger.GetGlobalLogger("shein/product").Debugf("🔧 修复缺失的%d个中括号", missing)
 		// 在最后一个 } 之前添加缺失的 ]
 		lastBraceIndex := strings.LastIndex(content, "}")
 		if lastBraceIndex > 0 {
@@ -95,7 +95,7 @@ func (p *SaleAttributeJSONParser) fixCommonJsonIssues(content string) string {
 	closeBraces := strings.Count(content, "}")
 	if openBraces > closeBraces {
 		missing := openBraces - closeBraces
-		logger.GetGlobalLogger("shein/product").Infof("🔧 修复缺失的%d个大括号", missing)
+		logger.GetGlobalLogger("shein/product").Debugf("🔧 修复缺失的%d个大括号", missing)
 		content = content + strings.Repeat("}", missing)
 	}
 
@@ -105,16 +105,16 @@ func (p *SaleAttributeJSONParser) fixCommonJsonIssues(content string) string {
 	// 6. 确保JSON以大括号开始和结束
 	content = strings.TrimSpace(content)
 	if !strings.HasPrefix(content, "{") {
-		logger.GetGlobalLogger("shein/product").Warnf("JSON不以{开头，添加开头大括号")
+		logger.GetGlobalLogger("shein/product").Debug("JSON不以{开头，添加开头大括号")
 		content = "{" + content
 	}
 	if !strings.HasSuffix(content, "}") {
-		logger.GetGlobalLogger("shein/product").Warnf("JSON不以}结尾，添加结尾大括号")
+		logger.GetGlobalLogger("shein/product").Debug("JSON不以}结尾，添加结尾大括号")
 		content = content + "}"
 	}
 
 	if content != original {
-		logger.GetGlobalLogger("shein/product").Infof("✅ JSON修复完成，原始长度: %d, 修复后长度: %d", len(original), len(content))
+		logger.GetGlobalLogger("shein/product").Debugf("✅ JSON修复完成，原始长度: %d, 修复后长度: %d", len(original), len(content))
 	} else {
 		logger.GetGlobalLogger("shein/product").Debug("JSON无需修复")
 	}
@@ -141,7 +141,7 @@ func (p *SaleAttributeJSONParser) removeIncompleteLastObject(content string) str
 	if match := lastCompleteObjectPattern.FindStringIndex(afterVariants); match != nil {
 		// 找到了不完整的最后一个对象，截断到最后一个完整对象
 		cutPosition := variantsIndex + match[0] + 1 // +1保留}
-		logger.GetGlobalLogger("shein/product").Infof("🔧 检测到不完整的最后一个对象，截断位置: %d", cutPosition)
+		logger.GetGlobalLogger("shein/product").Debugf("🔧 检测到不完整的最后一个对象，截断位置: %d", cutPosition)
 		content = content[:cutPosition] + "\n]}"
 	}
 
@@ -165,7 +165,7 @@ func (p *SaleAttributeJSONParser) removeTrailingExplanation(content string) stri
 			// 检查这个位置之前是否有完整的JSON结构
 			beforePattern := content[:idx]
 			if p.looksLikeCompleteJson(beforePattern) {
-				logger.GetGlobalLogger("shein/product").Infof("检测到说明文字开始于位置%d，移除后续内容", idx)
+				logger.GetGlobalLogger("shein/product").Debugf("检测到说明文字开始于位置%d，移除后续内容", idx)
 				return beforePattern
 			}
 		}

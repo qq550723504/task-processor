@@ -31,7 +31,7 @@ func (f *SaleAttributeVariantFilter) FilterVariantsByRules(ctx *sheinctx.TaskCon
 	}
 
 	ctx.SetVariants(filteredVariants)
-	logger.GetGlobalLogger("shein/product").Infof("filtered variants before sale attribute generation: removed=%d kept=%d", filteredOutCount, len(filteredVariants))
+	logger.GetGlobalLogger("shein/product").Debugf("filtered variants before sale attribute generation: removed=%d kept=%d", filteredOutCount, len(filteredVariants))
 }
 
 func (f *SaleAttributeVariantFilter) FilterVariantsByRulesAfterGeneration(ctx *sheinctx.TaskContext, saleAttributeData *sheinattr.ResultSaleAttribute) {
@@ -51,5 +51,5 @@ func (f *SaleAttributeVariantFilter) FilterVariantsByRulesAfterGeneration(ctx *s
 	}
 
 	saleAttributeData.Variants = filteredVariants
-	logger.GetGlobalLogger("shein/product").Infof("filtered variants after sale attribute generation: removed=%d kept=%d", filteredOutCount, len(filteredVariants))
+	logger.GetGlobalLogger("shein/product").Debugf("filtered variants after sale attribute generation: removed=%d kept=%d", filteredOutCount, len(filteredVariants))
 }

@@ -36,7 +36,7 @@ func (h *SaleAttributeHandler) Handle(ctx *sheinctx.TaskContext) error {
 }
 
 func (h *SaleAttributeHandler) generateSaleSpec(ctx *sheinctx.TaskContext) error {
-	logger.GetGlobalLogger("shein/product").Info("start generating sale attributes")
+	logger.GetGlobalLogger("shein/product").Debug("start generating sale attributes")
 
 	cacheKey := fmt.Sprintf("%s:%d", ctx.AmazonProduct.ParentAsin, ctx.ProductData.CategoryID)
 	if ctx.AICache != nil {
@@ -44,6 +44,13 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *sheinctx.TaskContext) error
 		if ctx.AICache.Get(aicache.TypeSaleAttr, cacheKey, &cached) {
 			output := NewSaleAttributeOutput(cached)
 			ctx.SetSaleSpecResult(&output.Result)
+			logger.GetGlobalLogger("shein/product").WithFields(map[string]any{
+				"source":          "cache",
+				"category_id":     ctx.ProductData.CategoryID,
+				"variant_count":   output.VariantCount,
+				"sale_attr_count": output.SaleAttributeCount,
+				"requested_count": len(ctx.FilteredVariants()),
+			}).Info("sale attributes ready")
 			return nil
 		}
 	}
@@ -85,7 +92,14 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *sheinctx.TaskContext) error
 	if ctx.AICache != nil {
 		ctx.AICache.Set(aicache.TypeSaleAttr, cacheKey, output.Result)
 	}
-	logger.GetGlobalLogger("shein/product").Infof("generated sale attributes: variants=%d sale_attributes=%d", output.VariantCount, output.SaleAttributeCount)
+	logger.GetGlobalLogger("shein/product").WithFields(map[string]any{
+		"source":          "generated",
+		"category_id":     ctx.ProductData.CategoryID,
+		"variant_count":   output.VariantCount,
+		"sale_attr_count": output.SaleAttributeCount,
+		"requested_count": len(productsData),
+		"batched":         len(request.VariationData) > 20,
+	}).Info("sale attributes ready")
 	return nil
 }
 

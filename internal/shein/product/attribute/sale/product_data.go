@@ -27,18 +27,18 @@ func (p *SaleAttributeProductDataPreparer) PrepareProductsData(ctx *sheinctx.Tas
 
 	if !hasVariants {
 		// 单体产品：使用主产品信息
-		logger.GetGlobalLogger("shein/product").Infof("📦 检测到单体产品，使用主产品信息")
+		logger.GetGlobalLogger("shein/product").Debug("📦 检测到单体产品，使用主产品信息")
 		if ctx.AmazonProduct != nil {
 			productDetails := p.prepareSingleProductData(ctx)
 			productsData = append(productsData, productDetails)
 		}
 	} else {
 		// 多变体产品：使用变体信息
-		logger.GetGlobalLogger("shein/product").Infof("📊 检测到多变体产品，变体数量: %d", len(*ctx.Variants))
+		logger.GetGlobalLogger("shein/product").Debugf("📊 检测到多变体产品，变体数量: %d", len(*ctx.Variants))
 		productsData = p.prepareMultiVariantProductsData(ctx)
 	}
 
-	logger.GetGlobalLogger("shein/product").Infof("✅ 准备了 %d 个产品数据（包含属性信息）", len(productsData))
+	logger.GetGlobalLogger("shein/product").Debugf("✅ 准备了 %d 个产品数据（包含属性信息）", len(productsData))
 	return productsData
 }
 
@@ -101,7 +101,7 @@ func (p *SaleAttributeProductDataPreparer) extractAllAttributes(product *model.P
 
 	// 如果从 Variations 中找到了属性，就不再从其他地方提取
 	if foundInVariations {
-		logger.GetGlobalLogger("shein/product").Infof("✅ 从 Variations 中找到属性，跳过其他来源")
+		logger.GetGlobalLogger("shein/product").Debug("✅ 从 Variations 中找到属性，跳过其他来源")
 	} else {
 		// 从 ProductDetails 中提取其他属性
 		p.extractFromProductDetails(product, productDetails)

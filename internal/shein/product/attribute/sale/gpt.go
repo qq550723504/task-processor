@@ -10,7 +10,7 @@ func (h *SaleAttributeHandler) callGPTAPI(input *SaleAttributeInput, request *sh
 	variantCount := len(request.VariationData)
 
 	if variantCount > maxVariantsPerBatch {
-		logger.GetGlobalLogger("shein/product").Infof("processing sale attributes in batches: variants=%d batch_size=%d", variantCount, maxVariantsPerBatch)
+		logger.GetGlobalLogger("shein/product").Debugf("processing sale attributes in batches: variants=%d batch_size=%d", variantCount, maxVariantsPerBatch)
 		batchProcessor := NewSaleAttributeBatchProcessor(h)
 		return batchProcessor.ProcessInBatches(input, request, maxVariantsPerBatch)
 	}

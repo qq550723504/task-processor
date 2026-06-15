@@ -44,8 +44,8 @@ func (h *VariantJsonDataHandler) Handle(ctx *shein.TaskContext) error {
 		ctx.SetVariants([]model.Product{})
 		return nil
 	}
-	if len(variantAsins) > 100 {
-		return shein.NewNonRetryableError("too many variant ASINs", nil)
+	if err := validateVariantASINCount(variantAsins); err != nil {
+		return err
 	}
 
 	tracker.StartStep("fetch_variants")

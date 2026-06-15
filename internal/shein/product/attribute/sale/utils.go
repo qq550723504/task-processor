@@ -43,7 +43,7 @@ func convertMillimetersToCentimeters(variant *sheinattr.Variant) {
 	if height := parseFloat(variant.Height.String()); height > 0 {
 		variant.Height = types.FlexibleString(fmt.Sprintf("%.1f", height/10))
 	}
-	logger.GetGlobalLogger("shein/product").Infof("ASIN %s: 已将尺寸从毫米转换为厘米", variant.ASIN)
+	logger.GetGlobalLogger("shein/product").Debugf("ASIN %s: 已将尺寸从毫米转换为厘米", variant.ASIN)
 }
 
 // convertMetersToCentimeters 将米转换为厘米
@@ -57,7 +57,7 @@ func convertMetersToCentimeters(variant *sheinattr.Variant) {
 	if height := parseFloat(variant.Height.String()); height > 0 {
 		variant.Height = types.FlexibleString(fmt.Sprintf("%.1f", height*100))
 	}
-	logger.GetGlobalLogger("shein/product").Infof("ASIN %s: 已将尺寸从米转换为厘米", variant.ASIN)
+	logger.GetGlobalLogger("shein/product").Debugf("ASIN %s: 已将尺寸从米转换为厘米", variant.ASIN)
 }
 
 // convertInchesToCentimeters 将英寸转换为厘米 (1 inch = 2.54 cm)
@@ -71,7 +71,7 @@ func convertInchesToCentimeters(variant *sheinattr.Variant) {
 	if height := parseFloat(variant.Height.String()); height > 0 {
 		variant.Height = types.FlexibleString(fmt.Sprintf("%.1f", height*2.54))
 	}
-	logger.GetGlobalLogger("shein/product").Infof("ASIN %s: 已将尺寸从英寸转换为厘米 (长=%s, 宽=%s, 高=%s)",
+	logger.GetGlobalLogger("shein/product").Debugf("ASIN %s: 已将尺寸从英寸转换为厘米 (长=%s, 宽=%s, 高=%s)",
 		variant.ASIN, variant.Length.String(), variant.Width.String(), variant.Height.String())
 }
 
@@ -86,7 +86,7 @@ func convertFeetToCentimeters(variant *sheinattr.Variant) {
 	if height := parseFloat(variant.Height.String()); height > 0 {
 		variant.Height = types.FlexibleString(fmt.Sprintf("%.1f", height*30.48))
 	}
-	logger.GetGlobalLogger("shein/product").Infof("ASIN %s: 已将尺寸从英尺转换为厘米 (长=%s, 宽=%s, 高=%s)",
+	logger.GetGlobalLogger("shein/product").Debugf("ASIN %s: 已将尺寸从英尺转换为厘米 (长=%s, 宽=%s, 高=%s)",
 		variant.ASIN, variant.Length.String(), variant.Width.String(), variant.Height.String())
 }
 

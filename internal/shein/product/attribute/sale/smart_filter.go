@@ -33,18 +33,18 @@ func (f *SaleAttributeSmartFilter) FilterRelevantAttributes(
 	requiredSaleAttrs := f.getRequiredSaleAttributes(attributeTemplates.Data[0].AttributeInfos)
 	relevantAttributes = append(relevantAttributes, requiredSaleAttrs...)
 
-	logger.GetGlobalLogger("shein/product").Infof("🎯 SHEIN平台必填销售属性: 找到 %d 个", len(requiredSaleAttrs))
+	logger.GetGlobalLogger("shein/product").Debugf("🎯 SHEIN平台必填销售属性: 找到 %d 个", len(requiredSaleAttrs))
 	for _, attr := range requiredSaleAttrs {
-		logger.GetGlobalLogger("shein/product").Infof("  ⭐ 必填销售属性: %s (ID:%d, Label:%d)", attr.AttributeNameEn, attr.AttributeID, attr.AttributeLabel)
+		logger.GetGlobalLogger("shein/product").Debugf("  ⭐ 必填销售属性: %s (ID:%d, Label:%d)", attr.AttributeNameEn, attr.AttributeID, attr.AttributeLabel)
 	}
 
 	// 第二步：如果没有必填销售属性，则基于产品变化进行智能筛选
 	if len(relevantAttributes) == 0 {
-		logger.GetGlobalLogger("shein/product").Info("🔍 没有找到必填销售属性，开始基于产品变化进行智能筛选")
+		logger.GetGlobalLogger("shein/product").Debug("🔍 没有找到必填销售属性，开始基于产品变化进行智能筛选")
 
 		// 分析产品数据中的实际变化
 		variationAnalysis := f.analyzeProductVariations(input)
-		logger.GetGlobalLogger("shein/product").Infof("🔍 产品变化分析结果: %+v", variationAnalysis)
+		logger.GetGlobalLogger("shein/product").Debugf("🔍 产品变化分析结果: %+v", variationAnalysis)
 
 		// 遍历所有销售属性（AttributeType == 1）
 		for _, attr := range attributeTemplates.Data[0].AttributeInfos {
@@ -55,16 +55,16 @@ func (f *SaleAttributeSmartFilter) FilterRelevantAttributes(
 			// 检查该属性是否与实际产品变化相关
 			if f.isAttributeRelevant(attr, variationAnalysis) {
 				relevantAttributes = append(relevantAttributes, attr)
-				logger.GetGlobalLogger("shein/product").Infof("✅ 属性 %s (ID:%d) 与产品变化相关，已包含",
+				logger.GetGlobalLogger("shein/product").Debugf("✅ 属性 %s (ID:%d) 与产品变化相关，已包含",
 					attr.AttributeNameEn, attr.AttributeID)
 			} else {
-				logger.GetGlobalLogger("shein/product").Infof("❌ 属性 %s (ID:%d) 与产品变化无关，已过滤",
+				logger.GetGlobalLogger("shein/product").Debugf("❌ 属性 %s (ID:%d) 与产品变化无关，已过滤",
 					attr.AttributeNameEn, attr.AttributeID)
 			}
 		}
 	}
 
-	logger.GetGlobalLogger("shein/product").Infof("📊 筛选结果: 从 %d 个销售属性中筛选出 %d 个相关属性",
+	logger.GetGlobalLogger("shein/product").Debugf("📊 筛选结果: 从 %d 个销售属性中筛选出 %d 个相关属性",
 		f.countSaleAttributes(attributeTemplates.Data[0].AttributeInfos),
 		len(relevantAttributes))
 
@@ -74,7 +74,7 @@ func (f *SaleAttributeSmartFilter) FilterRelevantAttributes(
 		defaultAttr := f.selectDefaultSaleAttribute(attributeTemplates.Data[0].AttributeInfos)
 		if defaultAttr != nil {
 			relevantAttributes = append(relevantAttributes, *defaultAttr)
-			logger.GetGlobalLogger("shein/product").Infof("✅ 已添加默认销售属性: %s (ID:%d)", defaultAttr.AttributeNameEn, defaultAttr.AttributeID)
+			logger.GetGlobalLogger("shein/product").Debugf("✅ 已添加默认销售属性: %s (ID:%d)", defaultAttr.AttributeNameEn, defaultAttr.AttributeID)
 		}
 	}
 
@@ -89,7 +89,7 @@ func (f *SaleAttributeSmartFilter) getRequiredSaleAttributes(attributes []attrib
 		// 只处理销售属性（AttributeType == 1）且必填（AttributeLabel == 1）
 		if attr.AttributeType == 1 && attr.AttributeLabel == 1 {
 			requiredSaleAttrs = append(requiredSaleAttrs, attr)
-			logger.GetGlobalLogger("shein/product").Infof("🎯 发现必填销售属性: %s (ID:%d, Type:%d, Label:%d)",
+			logger.GetGlobalLogger("shein/product").Debugf("🎯 发现必填销售属性: %s (ID:%d, Type:%d, Label:%d)",
 				attr.AttributeNameEn, attr.AttributeID, attr.AttributeType, attr.AttributeLabel)
 		}
 	}
@@ -115,7 +115,7 @@ func (f *SaleAttributeSmartFilter) analyzeProductVariations(input *SmartFilterIn
 
 	// 如果是单变体产品，仍需要分析基础属性信息
 	if len(input.Variants) <= 1 {
-		logger.GetGlobalLogger("shein/product").Info("单变体产品，分析基础属性信息")
+		logger.GetGlobalLogger("shein/product").Debug("单变体产品，分析基础属性信息")
 		// 对于单变体产品，从主产品中提取基础属性信息
 		if input.AmazonProduct != nil {
 			f.extractBasicAttributesFromSingleVariant(input.AmazonProduct, &analysis)
@@ -181,7 +181,7 @@ func (f *SaleAttributeSmartFilter) extractBasicAttributesFromSingleVariant(
 		if strings.Contains(title, color) {
 			analysis.UniqueColors = append(analysis.UniqueColors, color)
 			analysis.HasColorVariation = true
-			logger.GetGlobalLogger("shein/product").Infof("🎨 从产品标题中检测到颜色: %s", color)
+			logger.GetGlobalLogger("shein/product").Debugf("🎨 从产品标题中检测到颜色: %s", color)
 			break // 只取第一个匹配的颜色
 		}
 	}
@@ -190,7 +190,7 @@ func (f *SaleAttributeSmartFilter) extractBasicAttributesFromSingleVariant(
 		if strings.Contains(title, size) {
 			analysis.UniqueSizes = append(analysis.UniqueSizes, size)
 			analysis.HasSizeVariation = true
-			logger.GetGlobalLogger("shein/product").Infof("📏 从产品标题中检测到尺寸: %s", size)
+			logger.GetGlobalLogger("shein/product").Debugf("📏 从产品标题中检测到尺寸: %s", size)
 			break // 只取第一个匹配的尺寸
 		}
 	}
@@ -199,7 +199,7 @@ func (f *SaleAttributeSmartFilter) extractBasicAttributesFromSingleVariant(
 	if !analysis.HasColorVariation && !analysis.HasSizeVariation {
 		// 对于单变体产品，我们假设它至少需要颜色或尺寸属性之一
 		analysis.HasColorVariation = true // 默认认为需要颜色属性
-		logger.GetGlobalLogger("shein/product").Info("🔧 单变体产品默认需要颜色属性")
+		logger.GetGlobalLogger("shein/product").Debug("🔧 单变体产品默认需要颜色属性")
 	}
 }
 
@@ -269,7 +269,7 @@ func (f *SaleAttributeSmartFilter) isAttributeRelevant(
 	// 必填属性(attribute_label=1)总是相关的，但这里不应该被调用到
 	// 因为必填属性已经在FilterRelevantAttributes的第一步中处理了
 	if attr.AttributeLabel == 1 {
-		logger.GetGlobalLogger("shein/product").Infof("⭐ 属性 %s (ID:%d) 是必填属性，应该已在第一步处理", attr.AttributeNameEn, attr.AttributeID)
+		logger.GetGlobalLogger("shein/product").Debugf("⭐ 属性 %s (ID:%d) 是必填属性，应该已在第一步处理", attr.AttributeNameEn, attr.AttributeID)
 		return true
 	}
 
@@ -341,19 +341,19 @@ func (f *SaleAttributeSmartFilter) selectDefaultSaleAttribute(attributes []attri
 
 	// 按优先级返回
 	if requiredAttr != nil {
-		logger.GetGlobalLogger("shein/product").Infof("⭐ 选择必填属性作为默认销售属性: %s (label=%d)", requiredAttr.AttributeNameEn, requiredAttr.AttributeLabel)
+		logger.GetGlobalLogger("shein/product").Debugf("⭐ 选择必填属性作为默认销售属性: %s (label=%d)", requiredAttr.AttributeNameEn, requiredAttr.AttributeLabel)
 		return requiredAttr
 	}
 	if colorAttr != nil {
-		logger.GetGlobalLogger("shein/product").Infof("🎨 选择颜色属性作为默认销售属性: %s", colorAttr.AttributeNameEn)
+		logger.GetGlobalLogger("shein/product").Debugf("🎨 选择颜色属性作为默认销售属性: %s", colorAttr.AttributeNameEn)
 		return colorAttr
 	}
 	if sizeAttr != nil {
-		logger.GetGlobalLogger("shein/product").Infof("📏 选择尺寸属性作为默认销售属性: %s", sizeAttr.AttributeNameEn)
+		logger.GetGlobalLogger("shein/product").Debugf("📏 选择尺寸属性作为默认销售属性: %s", sizeAttr.AttributeNameEn)
 		return sizeAttr
 	}
 	if otherSaleAttr != nil {
-		logger.GetGlobalLogger("shein/product").Infof("🔧 选择其他销售属性作为默认: %s", otherSaleAttr.AttributeNameEn)
+		logger.GetGlobalLogger("shein/product").Debugf("🔧 选择其他销售属性作为默认: %s", otherSaleAttr.AttributeNameEn)
 		return otherSaleAttr
 	}
 
