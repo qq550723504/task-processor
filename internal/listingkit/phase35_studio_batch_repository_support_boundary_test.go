@@ -46,10 +46,30 @@ func TestStudioBatchRepositorySupportFilesOwnConcreteImplementations(t *testing.
 		"type MemStudioBatchRepository struct {",
 		"func NewMemStudioBatchRepository() *MemStudioBatchRepository {",
 		"func (r *MemStudioBatchRepository) CreateStudioBatchGraph(",
-		"func (r *MemStudioBatchRepository) buildDetailGraphLocked(",
+		"func (r *MemStudioBatchRepository) GetStudioBatchDetail(",
 	} {
 		if !strings.Contains(memContent, needle) {
 			t.Fatalf("studio_batch_repository_mem.go should contain %q", needle)
+		}
+	}
+
+	memSupportSrc, err := os.ReadFile("studio_batch_repository_mem_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(studio_batch_repository_mem_support.go) error = %v", err)
+	}
+	memSupportContent := string(memSupportSrc)
+
+	for _, needle := range []string{
+		"func (r *MemStudioBatchRepository) ReplaceStudioBatchGenerationGraph(",
+		"func (r *MemStudioBatchRepository) ReplaceStudioMaterializedDesignReviews(",
+		"func (r *MemStudioBatchRepository) UpdateStudioBatch(",
+		"func (r *MemStudioBatchRepository) UpdateStudioBatchItem(",
+		"func (r *MemStudioBatchRepository) UpdateStudioGenerationAttempt(",
+		"func (r *MemStudioBatchRepository) UpdateStudioMaterializedDesign(",
+		"func (r *MemStudioBatchRepository) buildDetailGraphLocked(",
+	} {
+		if !strings.Contains(memSupportContent, needle) {
+			t.Fatalf("studio_batch_repository_mem_support.go should contain %q", needle)
 		}
 	}
 
