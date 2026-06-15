@@ -11,6 +11,7 @@ func GetEndpoint(name string) string {
 		"getCategoryTree":        getCategoryTreeEndpoint,
 		"cvTextSuggestCategory":  cvTextSuggestCategoryEndpoint,
 		"getProduct":             getProductEndpoint,
+		"queryBrandList":         queryBrandListEndpoint,
 		"updateProduct":          updateProductEndpoint,
 		"deleteProduct":          deleteProductEndpoint,
 		"confirmPublish":         confirmPublishEndpoint,
@@ -57,6 +58,7 @@ func GetCategoryEndpoint() string               { return getCategoryEndpoint }
 func GetCategoryTreeEndpoint() string           { return getCategoryTreeEndpoint }
 func GetCvTextSuggestCategoryEndpoint() string  { return cvTextSuggestCategoryEndpoint }
 func GetProductEndpoint() string                { return getProductEndpoint }
+func GetQueryBrandListEndpoint() string         { return queryBrandListEndpoint }
 func GetUpdateProductEndpoint() string          { return updateProductEndpoint }
 func GetDeleteProductEndpoint() string          { return deleteProductEndpoint }
 func GetConfirmPublishEndpoint() string         { return confirmPublishEndpoint }

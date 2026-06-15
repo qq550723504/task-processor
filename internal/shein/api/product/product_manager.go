@@ -164,3 +164,16 @@ func (m *productManager) listProducts(pageNum, pageSize int, request *ProductLis
 	}
 	return &result, nil
 }
+
+func (m *productManager) queryBrandList() (*BrandListResponse, error) {
+	url := fmt.Sprintf("%s%s", m.baseClient.GetBaseURL(), client.GetQueryBrandListEndpoint())
+
+	var result BrandListResponse
+	if err := m.baseClient.APIRequest(http.MethodPost, url, nil, &result); err != nil {
+		return nil, err
+	}
+	if err := m.baseClient.CheckCode(result.Code, result.Msg, url, "获取品牌列表失败"); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}

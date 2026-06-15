@@ -17,6 +17,7 @@ type ProductAPI interface {
 	// 产品查询
 	Record(request *ProductRecordRequest) (*RecordResponse, error)
 	ListProducts(pageNum, pageSize int, request *ProductListRequest) (*ProductListResponse, error)
+	QueryBrandList() (*BrandListResponse, error)
 
 	// 库存管理
 	QueryStock(request *StockQueryRequest) (*StockQueryResponse, error)
