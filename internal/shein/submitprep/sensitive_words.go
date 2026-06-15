@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/shared/tenantctx"
 	sheinproduct "task-processor/internal/shein/api/product"
+	"task-processor/internal/shein/authorizedbrand"
 	sheincontent "task-processor/internal/shein/content"
 	sheinctx "task-processor/internal/shein/context"
 	generationtopics "task-processor/internal/shein/generationtopics"
@@ -35,6 +36,7 @@ func CleanSensitiveWordsWithContext(ctx context.Context, product *sheinproduct.P
 	}
 	service := NewSensitiveWordServiceForContext(ctx)
 	taskCtx := &sheinctx.TaskContext{}
+	applyAuthorizedBrandFromRuntime(taskCtx, ctx)
 	taskCtx.ProductData = product
 	return service.ProcessProductData(taskCtx)
 }
@@ -61,9 +63,23 @@ func RetrySensitiveWordCleanupWithContext(ctx context.Context, product *sheinpro
 	service := NewSensitiveWordServiceForContext(ctx)
 	persistValidationSensitiveWords(ctx, service, validationNotes)
 	taskCtx := &sheinctx.TaskContext{}
+	applyAuthorizedBrandFromRuntime(taskCtx, ctx)
 	taskCtx.ProductData = product
 	results := []sheinctx.PreValidResult{{Messages: append([]string(nil), validationNotes...)}}
 	return service.HandleValidationErrors(taskCtx, results)
+}
+
+func applyAuthorizedBrandFromRuntime(taskCtx *sheinctx.TaskContext, runtimeCtx context.Context) {
+	if taskCtx == nil {
+		return
+	}
+	taskCtx.Context = runtimeCtx
+	if taskCtx.AuthorizedBrand != nil {
+		return
+	}
+	if resolved, ok := authorizedbrand.FromContext(runtimeCtx); ok {
+		taskCtx.AuthorizedBrand = resolved
+	}
 }
 
 func SetSensitiveWordRepository(repo listingadmin.SensitiveWordRepository) func() {

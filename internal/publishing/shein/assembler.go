@@ -9,6 +9,7 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
+	"task-processor/internal/shein/authorizedbrand"
 )
 
 type AssemblerConfig struct {
@@ -51,6 +52,12 @@ func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *
 	spuName := common.WithBrandHint(product.Title, req.BrandHint)
 	copy := buildSheinListingCopy(req.Context, product, spuName, a.titleOptimizer)
 	brand := common.ResolveBrand(req.BrandHint, product)
+	authorizedBrandCode := ""
+	authorizedBrandName := ""
+	if resolved, ok := authorizedbrand.FromContext(req.Context); ok {
+		authorizedBrandCode = strings.TrimSpace(resolved.Code)
+		authorizedBrandName = strings.TrimSpace(common.FirstNonEmpty(resolved.Name, resolved.NameEn))
+	}
 	variants := common.BuildVariants(product)
 	productAttributes := common.BuildAttributes(product.Attributes)
 	siteList := common.DefaultSites(req.Country)
@@ -79,11 +86,13 @@ func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *
 			SiteList:              siteList,
 		},
 		Metadata: map[string]string{
-			"target_platform": "shein",
-			"country":         req.Country,
-			"language":        req.Language,
-			"category_name":   categoryName,
-			"source_category_path": strings.Join(product.CategoryPath, " > "),
+			"target_platform":       "shein",
+			"country":               req.Country,
+			"language":              req.Language,
+			"category_name":         categoryName,
+			"source_category_path":  strings.Join(product.CategoryPath, " > "),
+			"authorized_brand_code": authorizedBrandCode,
+			"authorized_brand_name": authorizedBrandName,
 		},
 	}
 	NormalizePackageSemanticFields(pkg)

@@ -61,6 +61,8 @@ If the configured brand cannot be found in the SHEIN list, fail the task early w
 When authorized-brand mode is enabled:
 
 - set the final SHEIN `Product.BrandCode` from the resolved authorized brand
+- write the resolved brand code and preferred display name into payload metadata for downstream use
+- do not rewrite package-level display surfaces such as `pkg.BrandName` in the first implementation
 - keep the resolved brand name available for text-sanitization allowlisting
 
 When the mode is disabled, retain current behavior.
