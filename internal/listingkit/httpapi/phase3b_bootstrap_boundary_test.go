@@ -10,10 +10,25 @@ import (
 func TestExtractedBootstrapFilesOwnSplitAssemblers(t *testing.T) {
 	t.Parallel()
 
-	repositoriesSrc, err := os.ReadFile("bootstrap_repositories.go")
+	repositoryContractsSrc, err := os.ReadFile("bootstrap_repositories_contracts.go")
 	require.NoError(t, err)
-	require.Contains(t, string(repositoriesSrc), "func buildRepositories(")
-	require.Contains(t, string(repositoriesSrc), "func buildCoreRepositories(")
+	require.Contains(t, string(repositoryContractsSrc), "type builtRepositories struct")
+	require.Contains(t, string(repositoryContractsSrc), "type repositoryAssembly struct")
+
+	repositoryCoreSrc, err := os.ReadFile("bootstrap_repositories_core.go")
+	require.NoError(t, err)
+	require.Contains(t, string(repositoryCoreSrc), "func buildCoreRepositories(")
+	require.Contains(t, string(repositoryCoreSrc), "func buildLateCoreRepositories(")
+
+	repositoryAdminSrc, err := os.ReadFile("bootstrap_repositories_admin.go")
+	require.NoError(t, err)
+	require.Contains(t, string(repositoryAdminSrc), "func buildAdminRepositories(")
+	require.Contains(t, string(repositoryAdminSrc), "func buildAdminCatalogRepositories(")
+
+	repositoryMergeSrc, err := os.ReadFile("bootstrap_repositories_merge.go")
+	require.NoError(t, err)
+	require.Contains(t, string(repositoryMergeSrc), "func buildRepositories(")
+	require.Contains(t, string(repositoryMergeSrc), "func mergeBuiltRepositories(")
 
 	contractsSrc, err := os.ReadFile("bootstrap_contracts.go")
 	require.NoError(t, err)
