@@ -27,15 +27,8 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 	}
 	result = normalizeListingKitResultSemanticFields(result)
 	defer normalizeListingKitResultSemanticFields(result)
-	if recorder == nil {
-		recorder = newWorkflowRecorder(result)
-	}
-
 	options := task.Request.Options.SDS
-	stage := recorder.Start("sds_design_sync", "")
-	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
-	ensureResultPodExecution(result, task.Request)
-	markPodExecutionStatus(result, podStatusProcessing, time.Now())
+	recorder, stage := beginSDSSyncStage(result, task.Request, recorder)
 
 	syncCtx, cancel := context.WithTimeout(ctx, sdsDesignSyncTimeout)
 	defer cancel()
@@ -54,39 +47,19 @@ func (s *service) syncSDSDesign(ctx context.Context, task *Task, result *Listing
 		ImageResult: imageResult,
 	})
 	if err != nil {
-		result.SDSDesignResult = &SDSSyncSummary{
-			VariantID: options.VariantID,
-			Status:    "failed",
-			Error:     err.Error(),
-		}
-		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
-		appendWarning(result, "sds design sync failed: "+err.Error())
-		finishSDSStageWithError(stage, recorder, "sds_design_sync_failed", "SDS design sync failed", err)
-		ensureResultPodExecution(result, task.Request)
+		failSDSSyncStage(result, task.Request, recorder, stage, options.VariantID, "sds design sync failed: ", "sds_design_sync_failed", "SDS design sync failed", err)
 		return
 	}
 
+	var summary *SDSSyncSummary
 	if syncResult != nil && syncResult.DesignSync != nil && syncResult.DesignSync.DesignResult != nil {
-		result.SDSDesignResult = buildSDSSyncSummary(options, syncResult.DesignSync.DesignResult)
+		summary = buildSDSSyncSummary(options, syncResult.DesignSync.DesignResult)
 	} else {
-		result.SDSDesignResult = buildSDSSyncSummary(options, nil)
+		summary = buildSDSSyncSummary(options, nil)
 	}
-	if needsLocalSDSMockupFallback(result.SDSDesignResult, options) {
-		appendWarning(result, "SDS render returned fewer images than expected; local fallback disabled")
-		recorder.AddIssue(WorkflowIssueSeverityWarning, "sds_design_sync", "sds_render_incomplete", "SDS render returned fewer images than expected", "local fallback disabled")
-	}
-	if sdsRenderedLooksBlank(ctx, result.SDSDesignResult, options) {
-		result.SDSDesignResult.Status = "failed"
-		result.SDSDesignResult.Error = "SDS render returned blank template"
-		result.SDSDesignResult.MockupImageURLs = nil
-		appendWarning(result, "SDS render returned blank template; official SDS render needs investigation")
-		stage.Degrade("sds_render_blank", "SDS render returned blank template", "official SDS render needs investigation")
-		ensureResultPodExecution(result, task.Request)
+	if !finalizeSDSSyncSummary(ctx, result, task.Request, recorder, stage, summary, options) {
 		return
 	}
-	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
-	stage.Complete()
-	ensureResultPodExecution(result, task.Request)
 }
 
 func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) {
@@ -96,9 +69,7 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 	}
 	result = normalizeListingKitResultSemanticFields(result)
 	defer normalizeListingKitResultSemanticFields(result)
-	if recorder == nil {
-		recorder = newWorkflowRecorder(result)
-	}
+	recorder = normalizeSDSSyncRecorder(result, recorder)
 	log := logrus.WithFields(logrus.Fields{
 		"component": "listingkit/sds_sync_remote",
 		"task_id":   task.ID,
@@ -129,10 +100,7 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 		}).Info("finished remote SDS variant design sync")
 		return
 	}
-	stage := recorder.Start("sds_design_sync", "")
-	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
-	ensureResultPodExecution(result, task.Request)
-	markPodExecutionStatus(result, podStatusProcessing, time.Now())
+	recorder, stage := beginSDSSyncStage(result, task.Request, recorder)
 	log.WithFields(logrus.Fields{
 		"variant_id":         options.VariantID,
 		"parent_product_id":  options.ParentProductID,
@@ -150,35 +118,14 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 		BlankDesignURL:   options.BlankDesignURL,
 	}); handled {
 		if err != nil {
-			result.SDSDesignResult = &SDSSyncSummary{
-				VariantID: options.VariantID,
-				Status:    "failed",
-				Error:     err.Error(),
-			}
-			markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
-			appendWarning(result, "sds template render failed: "+err.Error())
-			finishSDSStageWithError(stage, recorder, "sds_template_render_failed", "SDS template render failed", err)
+			failSDSSyncStage(result, task.Request, recorder, stage, options.VariantID, "sds template render failed: ", "sds_template_render_failed", "SDS template render failed", err)
 			log.WithError(err).Error("remote SDS design sync failed")
-			ensureResultPodExecution(result, task.Request)
 			return
 		}
-		result.SDSDesignResult = buildSDSSyncSummary(options, syncResult.DesignResult)
-		if needsLocalSDSMockupFallback(result.SDSDesignResult, options) {
-			appendWarning(result, "SDS render returned fewer images than expected; local fallback disabled")
-			recorder.AddIssue(WorkflowIssueSeverityWarning, "sds_design_sync", "sds_render_incomplete", "SDS render returned fewer images than expected", "local fallback disabled")
-		}
-		if sdsRenderedLooksBlank(ctx, result.SDSDesignResult, options) {
-			result.SDSDesignResult.Status = "failed"
-			result.SDSDesignResult.Error = "SDS render returned blank template"
-			result.SDSDesignResult.MockupImageURLs = nil
-			appendWarning(result, "SDS render returned blank template; official SDS render needs investigation")
-			stage.Degrade("sds_render_blank", "SDS render returned blank template", "official SDS render needs investigation")
-			ensureResultPodExecution(result, task.Request)
+		summary := buildSDSSyncSummary(options, syncResult.DesignResult)
+		if !finalizeSDSSyncSummary(ctx, result, task.Request, recorder, stage, summary, options) {
 			return
 		}
-		markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
-		stage.Complete()
-		ensureResultPodExecution(result, task.Request)
 		log.WithFields(logrus.Fields{
 			"status":        result.SDSDesignResult.Status,
 			"mockup_count":  len(result.SDSDesignResult.MockupImageURLs),
@@ -207,36 +154,15 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 		},
 	})
 	if err != nil {
-		result.SDSDesignResult = &SDSSyncSummary{
-			VariantID: options.VariantID,
-			Status:    "failed",
-			Error:     err.Error(),
-		}
-		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
-		appendWarning(result, "sds template render failed: "+err.Error())
-		finishSDSStageWithError(stage, recorder, "sds_template_render_failed", "SDS template render failed", err)
+		failSDSSyncStage(result, task.Request, recorder, stage, options.VariantID, "sds template render failed: ", "sds_template_render_failed", "SDS template render failed", err)
 		log.WithError(err).Error("remote SDS design sync failed")
-		ensureResultPodExecution(result, task.Request)
 		return
 	}
 
-	result.SDSDesignResult = buildSDSSyncSummary(options, syncResult.DesignResult)
-	if needsLocalSDSMockupFallback(result.SDSDesignResult, options) {
-		appendWarning(result, "SDS render returned fewer images than expected; local fallback disabled")
-		recorder.AddIssue(WorkflowIssueSeverityWarning, "sds_design_sync", "sds_render_incomplete", "SDS render returned fewer images than expected", "local fallback disabled")
-	}
-	if sdsRenderedLooksBlank(ctx, result.SDSDesignResult, options) {
-		result.SDSDesignResult.Status = "failed"
-		result.SDSDesignResult.Error = "SDS render returned blank template"
-		result.SDSDesignResult.MockupImageURLs = nil
-		appendWarning(result, "SDS render returned blank template; official SDS render needs investigation")
-		stage.Degrade("sds_render_blank", "SDS render returned blank template", "official SDS render needs investigation")
-		ensureResultPodExecution(result, task.Request)
+	summary := buildSDSSyncSummary(options, syncResult.DesignResult)
+	if !finalizeSDSSyncSummary(ctx, result, task.Request, recorder, stage, summary, options) {
 		return
 	}
-	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
-	stage.Complete()
-	ensureResultPodExecution(result, task.Request)
 	log.WithFields(logrus.Fields{
 		"status":        result.SDSDesignResult.Status,
 		"mockup_count":  len(result.SDSDesignResult.MockupImageURLs),
@@ -252,9 +178,7 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 	options := task.Request.Options.SDS
 	result = normalizeListingKitResultSemanticFields(result)
 	defer normalizeListingKitResultSemanticFields(result)
-	if recorder == nil {
-		recorder = newWorkflowRecorder(result)
-	}
+	recorder = normalizeSDSSyncRecorder(result, recorder)
 	representatives := representativeSDSVariantsByColor(options.Variants)
 	if len(representatives) == 0 {
 		return
@@ -296,28 +220,12 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 		}()
 		if err != nil {
 			finishSDSStageWithError(stage, recorder, "sds_variant_render_failed", "SDS variant render failed", err)
-			summaries = append(summaries, SDSSyncSummary{
-				VariantID:    variant.VariantID,
-				ProductID:    variant.VariantID,
-				VariantSKU:   strings.TrimSpace(variant.VariantSKU),
-				VariantSize:  strings.TrimSpace(variant.Size),
-				VariantColor: strings.TrimSpace(variant.Color),
-				Status:       "failed",
-				Error:        err.Error(),
-			})
+			summaries = append(summaries, failedSDSVariantSyncSummary(variant, err.Error()))
 			continue
 		}
 		if syncResult == nil {
 			stage.Degrade("sds_variant_render_empty", "SDS variant render returned empty result", "")
-			summaries = append(summaries, SDSSyncSummary{
-				VariantID:    variant.VariantID,
-				ProductID:    variant.VariantID,
-				VariantSKU:   strings.TrimSpace(variant.VariantSKU),
-				VariantSize:  strings.TrimSpace(variant.Size),
-				VariantColor: strings.TrimSpace(variant.Color),
-				Status:       "failed",
-				Error:        "SDS template render returned empty result",
-			})
+			summaries = append(summaries, emptySDSVariantSyncSummary(variant))
 			continue
 		}
 		summaries = append(summaries, buildSDSVariantSyncSummaries(options, []SDSSyncVariantOption{variant}, syncResult.DesignResult)...)

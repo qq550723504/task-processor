@@ -30,6 +30,8 @@ func TestWorkflowSDSSyncSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func representativeSDSVariantsByColor(variants []SDSSyncVariantOption) []SDSSyncVariantOption {",
 		"func mergeSDSVariantSyncSummaries(options *SDSSyncOptions, summaries []SDSSyncSummary) *SDSSyncSummary {",
 		"func needsLocalSDSMockupFallback(summary *SDSSyncSummary, options *SDSSyncOptions) bool {",
+		"func beginSDSSyncStage(",
+		"func finalizeSDSSyncSummary(",
 	} {
 		if strings.Contains(homeContent, needle) {
 			t.Fatalf("workflow_sds_sync.go should delegate helper seam %q", needle)

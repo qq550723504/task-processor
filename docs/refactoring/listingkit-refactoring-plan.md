@@ -223,6 +223,7 @@ Current checkpoint:
 - task lifecycle service support is now split by helper family, so root `listingkit` keeps lifecycle entrypoints while task-list summary builders, request validation, and dispatch/enqueue helpers live in a dedicated support file.
 - task temporal submission persistence service support is now split by helper family, so root `listingkit` keeps temporal submit persistence entrypoints plus result-runner wiring while state loading, success/failure persistence helpers, and remote-refresh completion helpers live in a dedicated support file.
 - task studio media service support is now split by helper family, so root `listingkit` keeps studio-media entrypoints while prompt diversification, image generation, upload persistence, and product-image sanitize helpers live in a dedicated support file.
+- workflow SDS sync support is now split by helper family, so root `listingkit` keeps the three SDS sync orchestration entrypoints while stage setup, failure/success finalization, and variant failure summary helpers live in a dedicated support file.
 - `internal/listingkit` direct submit now delegates phase sequencing to the submission-domain runner while still owning SHEIN readiness gates, state persistence hooks, and remote-submit error semantics.
 - Temporal payload preparation/upload/pre-validate steps now also delegate to a submission-domain payload-stage runner.
 - direct submit and Temporal now also share a submission-domain remote-submit attempt runner while keeping post-attempt persistence semantics separate.
