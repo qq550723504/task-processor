@@ -83,7 +83,7 @@ func sheinSubmitSaleAttributesNeedRepair(pkg *SheinPackage) bool {
 }
 
 func isSupportedSubmitAction(action string) bool {
-	return action == "publish" || action == "save_draft"
+	return listingsubmission.IsSupportedSubmitAction(action)
 }
 
 func unsupportedSubmitActionError(action string) error {
