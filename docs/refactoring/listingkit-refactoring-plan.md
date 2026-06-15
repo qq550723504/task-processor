@@ -220,6 +220,7 @@ Current checkpoint:
 - generation overview filter support is now split by helper family, so root `listingkit` keeps overview decisioning plus top-level filter routing while preview/review/retry filter rule helpers live in a dedicated support file.
 - studio batch gorm repository support is now split by helper family, so root `listingkit` keeps graph creation/read flows while design-review replacement and batch/item/attempt/design update helpers live in a dedicated support file.
 - task generation service support is now split by helper family, so root `listingkit` keeps public task-generation service entrypoints while temporal routing, current-state readers, and navigation-plan helper wrappers live in a dedicated support file.
+- task lifecycle service support is now split by helper family, so root `listingkit` keeps lifecycle entrypoints while task-list summary builders, request validation, and dispatch/enqueue helpers live in a dedicated support file.
 - `internal/listingkit` direct submit now delegates phase sequencing to the submission-domain runner while still owning SHEIN readiness gates, state persistence hooks, and remote-submit error semantics.
 - Temporal payload preparation/upload/pre-validate steps now also delegate to a submission-domain payload-stage runner.
 - direct submit and Temporal now also share a submission-domain remote-submit attempt runner while keeping post-attempt persistence semantics separate.
