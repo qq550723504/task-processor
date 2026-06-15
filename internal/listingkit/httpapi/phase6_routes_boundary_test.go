@@ -20,7 +20,12 @@ func TestRouteContractFamiliesOwnSeparatedSurfaces(t *testing.T) {
 	adminFile := readRouteFileContent(t, filepath.Join(dir, "routes_admin.go"))
 	sheinSyncFile := readRouteFileContent(t, filepath.Join(dir, "routes_shein_sync.go"))
 	handlerFile := readRouteFileContent(t, filepath.Join(dir, "routes_handler.go"))
-	descriptorsFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptors.go"))
+	descriptorEntryFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_entrypoints.go"))
+	descriptorSettingsFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_settings.go"))
+	descriptorStoreSubscriptionFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_store_subscription.go"))
+	descriptorAdminFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_admin.go"))
+	descriptorTaskFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_task.go"))
+	descriptorSheinSyncFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_shein_sync.go"))
 
 	assertRouteContainsAll(t, taskFile,
 		"type TaskActionRouteHandler interface {",
@@ -82,15 +87,67 @@ func TestRouteContractFamiliesOwnSeparatedSurfaces(t *testing.T) {
 		"type AdminRouteHandler interface {",
 	)
 
-	assertRouteContainsAll(t, descriptorsFile,
+	assertRouteContainsAll(t, descriptorEntryFile,
 		"func AppendRouteDescriptors",
 		"func AppendStudioSessionRouteDescriptors",
+		"appendSettingsRouteDescriptors",
+		"appendSheinSyncRouteDescriptors",
+	)
+	assertRouteNotContainsAny(t, descriptorEntryFile,
+		"func appendTaskRouteDescriptors",
+		"func appendAdminRouteDescriptors",
+		"type TaskRouteHandler interface {",
+		"type SettingsRouteHandler interface {",
+	)
+
+	assertRouteContainsAll(t, descriptorSettingsFile,
+		"func appendSettingsRouteDescriptors",
+		"ListSettingsNamespaces",
+		"UpdateAIClientSettings",
+	)
+	assertRouteNotContainsAny(t, descriptorSettingsFile,
 		"func appendTaskRouteDescriptors",
 		"func appendAdminRouteDescriptors",
 	)
-	assertRouteNotContainsAny(t, descriptorsFile,
-		"type TaskRouteHandler interface {",
-		"type SettingsRouteHandler interface {",
+
+	assertRouteContainsAll(t, descriptorStoreSubscriptionFile,
+		"func appendStoreRouteDescriptors",
+		"func appendSubscriptionRouteDescriptors",
+		"func appendPlatformAdminRouteDescriptors",
+	)
+	assertRouteNotContainsAny(t, descriptorStoreSubscriptionFile,
+		"func appendAdminRouteDescriptors",
+		"func appendTaskRouteDescriptors",
+	)
+
+	assertRouteContainsAll(t, descriptorAdminFile,
+		"func appendAdminRouteDescriptors",
+		"ListAdminStores",
+		"DeleteAdminProductData",
+	)
+	assertRouteNotContainsAny(t, descriptorAdminFile,
+		"func appendTaskRouteDescriptors",
+		"func appendSheinSyncRouteDescriptors",
+	)
+
+	assertRouteContainsAll(t, descriptorTaskFile,
+		"func appendStudioGenerationRouteDescriptors",
+		"func appendTaskRouteDescriptors",
+		"DispatchTaskGenerationNavigation",
+	)
+	assertRouteNotContainsAny(t, descriptorTaskFile,
+		"func appendAdminRouteDescriptors",
+		"func appendSheinSyncRouteDescriptors",
+	)
+
+	assertRouteContainsAll(t, descriptorSheinSyncFile,
+		"func appendSheinSyncRouteDescriptors",
+		"TriggerSheinStoreSync",
+		"ListSheinActivityEnrollmentRuns",
+	)
+	assertRouteNotContainsAny(t, descriptorSheinSyncFile,
+		"func appendTaskRouteDescriptors",
+		"func appendAdminRouteDescriptors",
 	)
 }
 
