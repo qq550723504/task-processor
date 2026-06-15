@@ -19,7 +19,7 @@ func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.C
 	if err != nil {
 		return nil, err
 	}
-	if attrs := sheinpub.BuildProductAttributes(pkg); sheinProductAttributesReadyForSubmit(attrs) {
+	if attrs := sheinpub.BuildProductAttributes(pkg); sheinpub.ProductAttributesReadyForSubmit(attrs) {
 		submitProduct.ProductAttributeList = attrs
 	}
 	translateAPI := s.buildSheinSubmitTranslateAPI(runtimeCtx, task, submitProduct)

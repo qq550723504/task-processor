@@ -282,6 +282,7 @@ Completed submission slices:
 - Temporal and direct submit result-tail routing now also reuse the shared submission result-persistence runner; root `internal/listingkit` no longer duplicates success/failure dispatch scaffolding before delegating to SHEIN-specific state/event fallbacks.
 - Temporal success/failure persistence support now routes attempt transition-plus-event assembly through `shein_submit_state.go`; fallback success and remote-refresh completion/failure paths no longer hand-compose duplicate complete/fail + event sequences inline in root `internal/listingkit`.
 - the last production `internal/listingkit/submission` transition sequencer has now been folded into `shein_submit_state.go`; the compatibility package has been removed from production code entirely, and the boundary guard now sits on the root state-entry file instead.
+- SHEIN submit payload attribute-readiness checks and sale-attribute repair now live in `internal/publishing/shein`; root `internal/listingkit` submission execution keeps only submit-request normalization, platform-facing unsupported-action wording, and orchestration glue around those payload helpers.
 
 Completed sourcing slices:
 

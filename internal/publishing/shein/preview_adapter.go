@@ -47,6 +47,21 @@ func BuildProductAttributes(pkg *Package) []sheinproduct.ProductAttribute {
 	return toResolvedAttributes(pkg)
 }
 
+func ProductAttributesReadyForSubmit(attrs []sheinproduct.ProductAttribute) bool {
+	if len(attrs) == 0 {
+		return false
+	}
+	for _, attr := range attrs {
+		if attr.AttributeID <= 0 {
+			return false
+		}
+		if attr.AttributeValueID == nil && strings.TrimSpace(attr.AttributeExtraValue) == "" {
+			return false
+		}
+	}
+	return true
+}
+
 func toLanguageContents(items []LocalizedText) []sheinproduct.LanguageContent {
 	if len(items) == 0 {
 		return nil
