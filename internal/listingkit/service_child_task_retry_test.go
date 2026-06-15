@@ -137,12 +137,11 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 		},
 	}
 
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			sdsSyncSvc:          sdsSvc,
-			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		},
+	}, supportDependencySeed{
+		sdsSyncService: sdsSvc,
+		assembler:      NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService())
 
 	result, err := svc.RetryTaskChildTask(context.Background(), task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"})
@@ -237,11 +236,10 @@ func TestRetryTaskChildTaskRetriesSDSCatalogProduct(t *testing.T) {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		},
+	}, supportDependencySeed{
+		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService())
 
 	result, err := svc.RetryTaskChildTask(context.Background(), task.ID, &RetryChildTaskRequest{Kind: "sds_catalog_product"})

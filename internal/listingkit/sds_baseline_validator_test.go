@@ -44,22 +44,22 @@ func (s stubSDSBaselineRemoteProvider) GetPrototypeGroups(context.Context, int64
 func TestWarmSDSBaselineReturnsReadyWhenCacheAndValidationPass(t *testing.T) {
 	t.Parallel()
 
-	svc := seedWorkflowDepsFromMirrors(&service{
+	svc := seedTaskDeps(seedSupportDeps(&service{
 		repo: NewInMemoryRepositoryForTest(),
-		mirrors: serviceDependencyMirrors{
-			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-				status: &sdslogin.Status{
-					HasAccessToken: true,
-				},
+	}, supportDependencySeed{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			productDetail: &sdstemplate.ProductDetail{},
+			designProduct: &sdsdesign.DesignProductPage{
+				Product:        sdsdesign.DesignProduct{ID: 101},
+				PrototypeGroup: sdsdesign.PrototypeGroup{ID: 7001},
+				Layers:         []sdsdesign.DesignLayer{{ID: "layer-1"}},
 			},
-			sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
-				productDetail: &sdstemplate.ProductDetail{},
-				designProduct: &sdsdesign.DesignProductPage{
-					Product:        sdsdesign.DesignProduct{ID: 101},
-					PrototypeGroup: sdsdesign.PrototypeGroup{ID: 7001},
-					Layers:         []sdsdesign.DesignLayer{{ID: "layer-1"}},
-				},
-				prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 7001}},
+			prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 7001}},
+		},
+	}), taskDependencySeed{
+		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+			status: &sdslogin.Status{
+				HasAccessToken: true,
 			},
 		},
 	})
@@ -96,22 +96,22 @@ func TestWarmSDSBaselineReturnsReadyWhenCacheAndValidationPass(t *testing.T) {
 func TestWarmSDSBaselineReturnsBlockedWhenRemoteSurfaceMismatches(t *testing.T) {
 	t.Parallel()
 
-	svc := seedWorkflowDepsFromMirrors(&service{
+	svc := seedTaskDeps(seedSupportDeps(&service{
 		repo: NewInMemoryRepositoryForTest(),
-		mirrors: serviceDependencyMirrors{
-			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-				status: &sdslogin.Status{
-					HasAccessToken: true,
-				},
+	}, supportDependencySeed{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			productDetail: &sdstemplate.ProductDetail{},
+			designProduct: &sdsdesign.DesignProductPage{
+				Product:        sdsdesign.DesignProduct{ID: 101},
+				PrototypeGroup: sdsdesign.PrototypeGroup{ID: 9999},
+				Layers:         []sdsdesign.DesignLayer{{ID: "other-layer"}},
 			},
-			sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
-				productDetail: &sdstemplate.ProductDetail{},
-				designProduct: &sdsdesign.DesignProductPage{
-					Product:        sdsdesign.DesignProduct{ID: 101},
-					PrototypeGroup: sdsdesign.PrototypeGroup{ID: 9999},
-					Layers:         []sdsdesign.DesignLayer{{ID: "other-layer"}},
-				},
-				prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 9999}},
+			prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 9999}},
+		},
+	}), taskDependencySeed{
+		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+			status: &sdslogin.Status{
+				HasAccessToken: true,
 			},
 		},
 	})
@@ -231,17 +231,17 @@ func TestGetSDSBaselineReadinessReturnsCachedWhenValidationUnknown(t *testing.T)
 func TestWarmSDSBaselineTreatsRemoteDesignSurfaceCredentialBootstrapFailureAsReady(t *testing.T) {
 	t.Parallel()
 
-	svc := seedWorkflowDepsFromMirrors(&service{
+	svc := seedTaskDeps(seedSupportDeps(&service{
 		repo: NewInMemoryRepositoryForTest(),
-		mirrors: serviceDependencyMirrors{
-			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-				status: &sdslogin.Status{
-					HasAccessToken: true,
-				},
-			},
-			sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
-				productDetail:    &sdstemplate.ProductDetail{},
-				designProductErr: fmt.Errorf("merchant_name, username and password are required"),
+	}, supportDependencySeed{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			productDetail:    &sdstemplate.ProductDetail{},
+			designProductErr: fmt.Errorf("merchant_name, username and password are required"),
+		},
+	}), taskDependencySeed{
+		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+			status: &sdslogin.Status{
+				HasAccessToken: true,
 			},
 		},
 	})

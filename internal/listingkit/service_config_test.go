@@ -140,12 +140,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyMirrors(t *testing
 	if svc.runtime.taskSubmitter != nil {
 		t.Fatalf("legacy taskSubmitter runtime mirror = %v, want nil before resolver sync", svc.runtime.taskSubmitter)
 	}
-	if svc.mirrors.sdsSyncSvc != nil {
-		t.Fatalf("legacy sdsSyncSvc mirror = %v, want nil before resolver sync", svc.mirrors.sdsSyncSvc)
-	}
-	if svc.mirrors.sdsLoginStatusProvider != nil {
-		t.Fatalf("legacy sdsLoginStatusProvider mirror = %v, want nil before resolver sync", svc.mirrors.sdsLoginStatusProvider)
-	}
 	if svc.runtime.standardProductWorkflowClient != nil || svc.runtime.standardProductWorkflowEnabled {
 		t.Fatalf("legacy standard workflow runtime = (%v, %v), want nil+disabled before resolver sync", svc.runtime.standardProductWorkflowClient, svc.runtime.standardProductWorkflowEnabled)
 	}
@@ -171,12 +165,6 @@ func TestNewServiceWithConfigSeedsDependencyGroupsBeforeLegacyMirrors(t *testing
 
 	if svc.runtime.taskSubmitter != submitter {
 		t.Fatalf("legacy taskSubmitter runtime mirror = %v, want hydrated submitter", svc.runtime.taskSubmitter)
-	}
-	if svc.mirrors.sdsSyncSvc != nil {
-		t.Fatalf("legacy sdsSyncSvc mirror = %v, want nil after grouped resolution", svc.mirrors.sdsSyncSvc)
-	}
-	if svc.mirrors.sdsLoginStatusProvider != nil {
-		t.Fatalf("legacy sdsLoginStatusProvider mirror = %v, want nil after grouped resolution", svc.mirrors.sdsLoginStatusProvider)
 	}
 	if svc.runtime.standardProductWorkflowClient != workflowClient || !svc.runtime.standardProductWorkflowEnabled {
 		t.Fatalf("legacy standard workflow runtime = (%v, %v), want hydrated+enabled", svc.runtime.standardProductWorkflowClient, svc.runtime.standardProductWorkflowEnabled)

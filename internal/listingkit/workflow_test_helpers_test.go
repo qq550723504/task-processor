@@ -5,29 +5,54 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/reviewstore"
+	sdsusecase "task-processor/internal/sds/usecase"
 )
 
+type supportDependencySeed struct {
+	sdsSyncService            sdsusecase.Service
+	sdsBaselineRemoteProvider SDSBaselineRemoteProvider
+	uploadedImageRepository   UploadedImageRepository
+	assembler                 Assembler
+	reviewRepository          reviewstore.Repository
+}
+
+type taskDependencySeed struct {
+	sdsLoginStatusProvider SDSLoginStatusProvider
+}
+
 func seedWorkflowDepsFromMirrors(s *service) *service {
+	return s
+}
+
+func seedSupportDeps(s *service, deps supportDependencySeed) *service {
 	if s == nil {
 		return nil
 	}
 	if s.supportDeps.sdsSyncService == nil {
-		s.supportDeps.sdsSyncService = s.mirrors.sdsSyncSvc
+		s.supportDeps.sdsSyncService = deps.sdsSyncService
 	}
 	if s.supportDeps.sdsBaselineRemoteProvider == nil {
-		s.supportDeps.sdsBaselineRemoteProvider = s.mirrors.sdsBaselineRemoteProvider
+		s.supportDeps.sdsBaselineRemoteProvider = deps.sdsBaselineRemoteProvider
 	}
 	if s.supportDeps.uploadedImageRepository == nil {
-		s.supportDeps.uploadedImageRepository = s.mirrors.uploadedImageRepo
+		s.supportDeps.uploadedImageRepository = deps.uploadedImageRepository
 	}
 	if s.supportDeps.assembler == nil {
-		s.supportDeps.assembler = s.mirrors.assembler
+		s.supportDeps.assembler = deps.assembler
 	}
 	if s.supportDeps.reviewRepository == nil {
-		s.supportDeps.reviewRepository = s.mirrors.reviewRepo
+		s.supportDeps.reviewRepository = deps.reviewRepository
+	}
+	return s
+}
+
+func seedTaskDeps(s *service, deps taskDependencySeed) *service {
+	if s == nil {
+		return nil
 	}
 	if s.taskDeps.sdsLoginStatusProvider == nil {
-		s.taskDeps.sdsLoginStatusProvider = s.mirrors.sdsLoginStatusProvider
+		s.taskDeps.sdsLoginStatusProvider = deps.sdsLoginStatusProvider
 	}
 	return s
 }

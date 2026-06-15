@@ -380,11 +380,10 @@ func TestCreateGenerateTaskRunsInlineWithoutSubmitter(t *testing.T) {
 		},
 	}
 	repo := NewInMemoryRepositoryForTest()
-	svc := seedWorkflowServices(seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		},
+	}, supportDependencySeed{
+		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, imageSvc)
 
 	task, err := svc.CreateGenerateTask(context.Background(), &GenerateRequest{

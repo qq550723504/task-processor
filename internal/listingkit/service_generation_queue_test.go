@@ -125,8 +125,10 @@ func TestGetTaskGenerationQueueFinalResponseRetainsReviewSummaryAndDeltaSensitiv
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{reviewRepo: reviewstore.NewMemRepository()},
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
+		repo: repo,
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
 	updatedAt := time.Date(2026, 5, 30, 11, 5, 0, 0, time.UTC)
@@ -336,8 +338,10 @@ func TestGetTaskGenerationQueueDeferredOnlyReviewSummaryChangeInvalidatesOldToke
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{reviewRepo: reviewstore.NewMemRepository()},
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
+		repo: repo,
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
 	now := time.Date(2026, 5, 30, 12, 5, 0, 0, time.UTC)

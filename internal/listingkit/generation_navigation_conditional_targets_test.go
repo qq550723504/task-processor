@@ -14,12 +14,11 @@ func TestReviewSessionResponseCarriesConditionalNavigationTargets(t *testing.T) 
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	svc := seedWorkflowAssets(&service{
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			reviewRepo: reviewstore.NewMemRepository(),
-		},
-	}, assetrepo.NewMemRepository(), nil, nil, nil)
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
+	}), assetrepo.NewMemRepository(), nil, nil, nil)
 
 	task := newConditionalContractTestTask("task-generation-navigation-target-conditional-1")
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -131,12 +130,11 @@ func TestReviewPreviewResponseCarriesConditionalNavigationTargets(t *testing.T) 
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	svc := seedWorkflowAssets(&service{
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			reviewRepo: reviewstore.NewMemRepository(),
-		},
-	}, assetrepo.NewMemRepository(), nil, nil, nil)
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
+	}), assetrepo.NewMemRepository(), nil, nil, nil)
 
 	task := newConditionalContractTestTask("task-generation-navigation-target-conditional-2")
 	if err := repo.CreateTask(context.Background(), task); err != nil {

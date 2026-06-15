@@ -1198,8 +1198,10 @@ func TestExecuteTaskGenerationActionRunsQueueOnlyTarget(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{reviewRepo: reviewstore.NewMemRepository()},
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
+		repo: repo,
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
 	task := &Task{
@@ -1318,8 +1320,10 @@ func TestExecuteTaskGenerationActionSupportsPatchOnlyResponseMode(t *testing.T) 
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{reviewRepo: reviewstore.NewMemRepository()},
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
+		repo: repo,
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
 	task := &Task{
@@ -1393,8 +1397,10 @@ func TestGetTaskGenerationReviewSessionReturnsNotModifiedWhenDeltaMatches(t *tes
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{reviewRepo: reviewstore.NewMemRepository()},
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
+		repo: repo,
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
 	task := &Task{
@@ -1459,8 +1465,10 @@ func TestGetTaskGenerationReviewPreviewReturnsNotModifiedWhenDeltaMatches(t *tes
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{reviewRepo: reviewstore.NewMemRepository()},
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
+		repo: repo,
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
 	task := &Task{
@@ -1525,8 +1533,10 @@ func TestGetTaskGenerationReviewSessionSupportsPatchOnlyNavigationRead(t *testin
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{reviewRepo: reviewstore.NewMemRepository()},
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
+		repo: repo,
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
 	task := &Task{
@@ -1782,8 +1792,10 @@ func TestExecuteTaskGenerationActionAppliesSectionReviewOutcome(t *testing.T) {
 
 	repo := &stubGenerationRepo{}
 	assetRepository := assetrepo.NewMemRepository()
-	svc := seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
-		repo: repo, mirrors: serviceDependencyMirrors{reviewRepo: reviewstore.NewMemRepository()},
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
+		repo: repo,
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
 	}), assetRepository, nil, nil, nil)
 
 	task := &Task{

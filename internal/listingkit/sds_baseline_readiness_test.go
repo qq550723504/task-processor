@@ -249,12 +249,11 @@ func TestGetSDSBaselineReadinessClearsCachedLoginCredentialBlockWhenAccessTokenE
 		t.Fatalf("SaveSDSBaselineCache: %v", err)
 	}
 
-	svc := seedWorkflowDepsFromMirrors(&service{
+	svc := seedTaskDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-				status: &sdslogin.Status{HasAccessToken: true},
-			},
+	}, taskDependencySeed{
+		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+			status: &sdslogin.Status{HasAccessToken: true},
 		},
 	})
 	readiness, err := svc.GetSDSBaselineReadiness(ctx, query)
@@ -305,13 +304,12 @@ func TestGetSDSBaselineReadinessClearsCachedLoginInProgressBlockWhenLoginHasComp
 		t.Fatalf("SaveSDSBaselineCache: %v", err)
 	}
 
-	svc := seedWorkflowDepsFromMirrors(&service{
+	svc := seedTaskDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-				status: &sdslogin.Status{
-					HasAccessToken: true,
-				},
+	}, taskDependencySeed{
+		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+			status: &sdslogin.Status{
+				HasAccessToken: true,
 			},
 		},
 	})
@@ -363,12 +361,11 @@ func TestGetSDSBaselineReadinessClearsCachedDesignSurfaceCredentialFailureWhenAc
 		t.Fatalf("SaveSDSBaselineCache: %v", err)
 	}
 
-	svc := seedWorkflowDepsFromMirrors(&service{
+	svc := seedTaskDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-				status: &sdslogin.Status{HasAccessToken: true},
-			},
+	}, taskDependencySeed{
+		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
+			status: &sdslogin.Status{HasAccessToken: true},
 		},
 	})
 	readiness, err := svc.GetSDSBaselineReadiness(ctx, query)

@@ -26,15 +26,14 @@ func TestProcessStandardProductLayerStartsPlatformAdaptTemporalWhenEnabled(t *te
 			Title: "Standard Layer Product",
 		},
 	}
-	svc := seedWorkflowServices(seedWorkflowAssets(seedWorkflowDepsFromMirrors(&service{
+	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			assembler:           NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
-		},
 		runtime: serviceRuntimeState{
 			platformAdaptWorkflowClient:  platformClient,
 			platformAdaptWorkflowEnabled: true,
 		},
+	}, supportDependencySeed{
+		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
 	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
 
 	task := &Task{

@@ -14,12 +14,11 @@ func TestGenerationActionDeltaTokenMatchesSubsequentReviewReads(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	svc := seedWorkflowAssets(&service{
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			reviewRepo: reviewstore.NewMemRepository(),
-		},
-	}, assetrepo.NewMemRepository(), nil, nil, nil)
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
+	}), assetrepo.NewMemRepository(), nil, nil, nil)
 
 	task := newConditionalContractTestTask("task-generation-conditional-contract-1")
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -112,12 +111,11 @@ func TestDispatchTaskGenerationNavigationReusesActionDeltaTokenForConditionalRea
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	svc := seedWorkflowAssets(&service{
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			reviewRepo: reviewstore.NewMemRepository(),
-		},
-	}, assetrepo.NewMemRepository(), nil, nil, nil)
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
+	}), assetrepo.NewMemRepository(), nil, nil, nil)
 
 	task := newConditionalContractTestTask("task-generation-conditional-contract-2")
 	if err := repo.CreateTask(context.Background(), task); err != nil {
@@ -205,12 +203,11 @@ func TestGenerationQueueExposesUnifiedConditionalMetadata(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubGenerationRepo{}
-	svc := seedWorkflowAssets(&service{
+	svc := seedWorkflowAssets(seedSupportDeps(&service{
 		repo: repo,
-		mirrors: serviceDependencyMirrors{
-			reviewRepo: reviewstore.NewMemRepository(),
-		},
-	}, assetrepo.NewMemRepository(), nil, nil, nil)
+	}, supportDependencySeed{
+		reviewRepository: reviewstore.NewMemRepository(),
+	}), assetrepo.NewMemRepository(), nil, nil, nil)
 
 	task := newConditionalContractTestTask("task-generation-conditional-contract-3")
 	if err := repo.CreateTask(context.Background(), task); err != nil {

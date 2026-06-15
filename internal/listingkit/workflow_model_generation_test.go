@@ -56,7 +56,9 @@ func TestRunWorkflowPersistsModelBackedGenerationMetadata(t *testing.T) {
 	assetRepository := assetrepo.NewMemRepository()
 
 	svc := seedWorkflowServices(seedWorkflowAssets(
-		seedWorkflowDepsFromMirrors(&service{mirrors: serviceDependencyMirrors{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}}),
+		seedSupportDeps(&service{}, supportDependencySeed{
+			assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		}),
 		assetRepository,
 		newDefaultAssetRecipeResolver(),
 		newDefaultAssetBundleBuilder(),
