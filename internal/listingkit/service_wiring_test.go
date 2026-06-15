@@ -473,11 +473,11 @@ func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 		t.Fatalf("ReadFile(service_studio_wiring.go) unexpected error = %v", err)
 	}
 
-	supportSrc, err := os.ReadFile("service_studio_wiring_support.go")
+	sessionSrc, err := os.ReadFile("service_studio_session_wiring_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_studio_wiring_support.go) error = %v", err)
+		t.Fatalf("ReadFile(service_studio_session_wiring_support.go) error = %v", err)
 	}
-	supportContent := string(supportSrc)
+	sessionContent := string(sessionSrc)
 
 	for _, needle := range []string{
 		"type taskStudioSessionConfigWiring struct {",
@@ -491,6 +491,19 @@ func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 		"func buildTaskStudioBatchDraftServiceConfigWithWiring(config taskStudioSessionConfigWiring) taskStudioBatchDraftServiceConfig {",
 		"runner: config.batchDraftRunner,",
 		"func buildTaskStudioMediaServiceConfigWithWiring(wiring taskStudioMediaWiring) taskStudioMediaServiceConfig {",
+	} {
+		if !strings.Contains(sessionContent, needle) {
+			t.Fatalf("service_studio_session_wiring_support.go should contain %q", needle)
+		}
+	}
+
+	batchSrc, err := os.ReadFile("service_studio_batch_wiring_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_studio_batch_wiring_support.go) error = %v", err)
+	}
+	batchContent := string(batchSrc)
+
+	for _, needle := range []string{
 		"type taskStudioBatchServiceConfigWiring struct {",
 		"type taskStudioBatchCollaboratorWiring struct {",
 		"type taskStudioBatchCollaborators struct {",
@@ -512,6 +525,19 @@ func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 		"func (w taskStudioBatchCollaboratorWiring) newBatch(batchGeneration *studioBatchGenerationService) *taskStudioBatchService {",
 		"func (w taskStudioBatchCollaboratorWiring) resolve(existing taskStudioBatchCollaborators) taskStudioBatchCollaborators {",
 		"taskResume: newListingStudioBatchTaskResumeService(",
+	} {
+		if !strings.Contains(batchContent, needle) {
+			t.Fatalf("service_studio_batch_wiring_support.go should contain %q", needle)
+		}
+	}
+
+	batchRunSrc, err := os.ReadFile("service_studio_batch_run_wiring_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_studio_batch_run_wiring_support.go) error = %v", err)
+	}
+	batchRunContent := string(batchRunSrc)
+
+	for _, needle := range []string{
 		"type taskStudioBatchRunConfigWiring struct {",
 		"func buildTaskStudioBatchRunConfigWiring(s *service) taskStudioBatchRunConfigWiring {",
 		"func buildTaskStudioBatchRunServiceConfigWithCollaborators(",
@@ -520,8 +546,8 @@ func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 		"func buildTaskStudioBatchRunExecutorConfigWithWiring(",
 		"completionRunner: wiring.newCompletionRunner(nil),",
 	} {
-		if !strings.Contains(supportContent, needle) {
-			t.Fatalf("service_studio_wiring_support.go should contain %q", needle)
+		if !strings.Contains(batchRunContent, needle) {
+			t.Fatalf("service_studio_batch_run_wiring_support.go should contain %q", needle)
 		}
 	}
 }
@@ -568,9 +594,9 @@ func TestTaskStudioSessionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		}
 	}
 
-	supportSrc, err := os.ReadFile("service_studio_wiring_support.go")
+	supportSrc, err := os.ReadFile("service_studio_session_wiring_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_studio_wiring_support.go) error = %v", err)
+		t.Fatalf("ReadFile(service_studio_session_wiring_support.go) error = %v", err)
 	}
 	supportContent := string(supportSrc)
 
@@ -584,7 +610,7 @@ func TestTaskStudioSessionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func (w taskStudioSessionCollaboratorWiring) resolve(existing taskStudioSessionCollaborators) taskStudioSessionCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
-			t.Fatalf("service_studio_wiring_support.go should contain %q", needle)
+			t.Fatalf("service_studio_session_wiring_support.go should contain %q", needle)
 		}
 	}
 }
@@ -628,9 +654,9 @@ func TestTaskStudioBatchCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		}
 	}
 
-	supportSrc, err := os.ReadFile("service_studio_wiring_support.go")
+	supportSrc, err := os.ReadFile("service_studio_batch_wiring_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_studio_wiring_support.go) error = %v", err)
+		t.Fatalf("ReadFile(service_studio_batch_wiring_support.go) error = %v", err)
 	}
 	supportContent := string(supportSrc)
 
@@ -646,7 +672,7 @@ func TestTaskStudioBatchCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func (w taskStudioBatchCollaboratorWiring) resolve(existing taskStudioBatchCollaborators) taskStudioBatchCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
-			t.Fatalf("service_studio_wiring_support.go should contain %q", needle)
+			t.Fatalf("service_studio_batch_wiring_support.go should contain %q", needle)
 		}
 	}
 }
@@ -712,9 +738,9 @@ func TestTaskStudioBatchRunCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		}
 	}
 
-	supportSrc, err := os.ReadFile("service_studio_wiring_support.go")
+	supportSrc, err := os.ReadFile("service_studio_batch_run_wiring_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_studio_wiring_support.go) error = %v", err)
+		t.Fatalf("ReadFile(service_studio_batch_run_wiring_support.go) error = %v", err)
 	}
 	supportContent := string(supportSrc)
 
@@ -732,7 +758,7 @@ func TestTaskStudioBatchRunCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func (w taskStudioBatchRunCollaboratorWiring) resolve(existing taskStudioBatchRunCollaborators) taskStudioBatchRunCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
-			t.Fatalf("service_studio_wiring_support.go should contain %q", needle)
+			t.Fatalf("service_studio_batch_run_wiring_support.go should contain %q", needle)
 		}
 	}
 }
@@ -1043,13 +1069,25 @@ func TestSubmitRuntimeContextFilesUseExplicitResolverSeam(t *testing.T) {
 			},
 		},
 		{
-			name: "submit wiring",
+			name: "submit shared wiring",
 			file: "service_submit_wiring_support.go",
+			needles: []string{
+				"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
+				"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
+			},
+		},
+		{
+			name: "submit managed wiring",
+			file: "service_submit_managed_wiring_support.go",
 			needles: []string{
 				"func buildTaskSubmissionServiceConfigWithSupportAndCollaborators(",
 				"func buildTaskSubmissionRefreshServiceConfigWithWiring(wiring taskManagedSubmissionWiring) taskSubmissionRefreshServiceConfig {",
-				"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
-				"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
+			},
+		},
+		{
+			name: "submit temporal wiring",
+			file: "service_submit_temporal_wiring_support.go",
+			needles: []string{
 				"func buildTaskTemporalSubmissionLifecycleServiceConfigWithWiring(wiring taskTemporalSubmissionWiring) taskTemporalSubmissionLifecycleServiceConfig {",
 			},
 		},
@@ -4074,9 +4112,6 @@ func TestTaskSubmissionServiceConfigsUseSharedSupportWiring(t *testing.T) {
 	for _, needle := range []string{
 		"type taskSubmissionBaseWiring struct {",
 		"type taskSubmissionSupportWiring struct {",
-		"func buildTaskSubmissionRecoveryServiceConfigWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionRecoveryServiceConfig {",
-		"func buildTaskSubmissionServiceConfigWithSupportAndCollaborators(",
-		"repo:                            support.repo,",
 		"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
 		"sheinProductAPIBuilder:   wiring.sheinProductAPIBuilder,",
 		"resolveSubmitSettings:    wiring.resolveSubmitSettings,",
@@ -4086,8 +4121,6 @@ func TestTaskSubmissionServiceConfigsUseSharedSupportWiring(t *testing.T) {
 		"func buildTaskSubmissionBaseWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionBaseWiring {",
 		"func buildTaskSubmissionSupportWiring(s *service) taskSubmissionSupportWiring {",
 		"func buildTaskSubmissionSupportWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionSupportWiring {",
-		"type taskManagedSubmissionConfigWiring struct {",
-		"func buildTaskManagedSubmissionConfigWiringWithRecovery(s *service, recovery *taskSubmissionRecoveryService) taskManagedSubmissionConfigWiring {",
 		"resolveSheinStoreID      func(context.Context, *Task) (int64, error)",
 		"resolveSubmitSettings    func(context.Context, *Task) SheinSettings",
 		"support:  buildTaskSubmissionSupportWiringWithAssembly(s, assembly),",
@@ -4096,6 +4129,24 @@ func TestTaskSubmissionServiceConfigsUseSharedSupportWiring(t *testing.T) {
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
+		}
+	}
+
+	managedSrc, err := os.ReadFile("service_submit_managed_wiring_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service_submit_managed_wiring_support.go) error = %v", err)
+	}
+	managedContent := string(managedSrc)
+
+	for _, needle := range []string{
+		"func buildTaskSubmissionRecoveryServiceConfigWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionRecoveryServiceConfig {",
+		"func buildTaskSubmissionServiceConfigWithSupportAndCollaborators(",
+		"repo:                            support.repo,",
+		"type taskManagedSubmissionConfigWiring struct {",
+		"func buildTaskManagedSubmissionConfigWiringWithRecovery(s *service, recovery *taskSubmissionRecoveryService) taskManagedSubmissionConfigWiring {",
+	} {
+		if !strings.Contains(managedContent, needle) {
+			t.Fatalf("service_submit_managed_wiring_support.go should contain %q", needle)
 		}
 	}
 }
@@ -4125,9 +4176,9 @@ func TestTaskTemporalSubmissionFacadeUsesExplicitConfigBuilder(t *testing.T) {
 		t.Fatalf("ReadFile(task_temporal_submission_service.go) unexpected error = %v", err)
 	}
 
-	wiringSrc, err := os.ReadFile("service_submit_wiring_support.go")
+	wiringSrc, err := os.ReadFile("service_submit_temporal_wiring_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_wiring_support.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_temporal_wiring_support.go) error = %v", err)
 	}
 	wiringContent := string(wiringSrc)
 
@@ -4139,7 +4190,7 @@ func TestTaskTemporalSubmissionFacadeUsesExplicitConfigBuilder(t *testing.T) {
 		"func buildTaskTemporalSubmissionRefreshServiceConfigWithWiring(",
 	} {
 		if !strings.Contains(wiringContent, needle) {
-			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
+			t.Fatalf("service_submit_temporal_wiring_support.go should contain %q", needle)
 		}
 	}
 }
@@ -4182,9 +4233,9 @@ func TestTaskTemporalSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		}
 	}
 
-	supportSrc, err := os.ReadFile("service_submit_wiring_support.go")
+	supportSrc, err := os.ReadFile("service_submit_temporal_wiring_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_wiring_support.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_temporal_wiring_support.go) error = %v", err)
 	}
 	supportContent := string(supportSrc)
 
@@ -4200,7 +4251,7 @@ func TestTaskTemporalSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func (w taskTemporalSubmissionCollaboratorWiring) resolve(existing taskTemporalSubmissionCollaborators) taskTemporalSubmissionCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
-			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
+			t.Fatalf("service_submit_temporal_wiring_support.go should contain %q", needle)
 		}
 	}
 
@@ -4254,9 +4305,9 @@ func TestTaskManagedSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		}
 	}
 
-	supportSrc, err := os.ReadFile("service_submit_wiring_support.go")
+	supportSrc, err := os.ReadFile("service_submit_managed_wiring_support.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_submit_wiring_support.go) error = %v", err)
+		t.Fatalf("ReadFile(service_submit_managed_wiring_support.go) error = %v", err)
 	}
 	supportContent := string(supportSrc)
 
@@ -4274,7 +4325,7 @@ func TestTaskManagedSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"managed := w.buildManaged(recovery)",
 	} {
 		if !strings.Contains(supportContent, needle) {
-			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
+			t.Fatalf("service_submit_managed_wiring_support.go should contain %q", needle)
 		}
 	}
 
@@ -4284,7 +4335,7 @@ func TestTaskManagedSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func buildTaskDirectSubmissionServiceConfigWithWiring(wiring taskManagedSubmissionWiring) taskDirectSubmissionServiceConfig {",
 	} {
 		if !strings.Contains(supportContent, needle) {
-			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
+			t.Fatalf("service_submit_managed_wiring_support.go should contain %q", needle)
 		}
 	}
 }

@@ -25,6 +25,8 @@ Recent progress in this area:
 - SDS support collaborators and task SDS login status now resolve directly from grouped dependencies (`supportDeps` / `taskDeps`) instead of syncing through legacy mirrors on production paths.
 - the legacy dependency mirror bucket has now been removed from the root `service`; tests seed grouped workflow dependencies directly through grouped helpers.
 - workflow asset dispatch persistence phases now resolve their asset repository dependency up front instead of reaching through legacy service mirrors at runtime.
+- submit wiring support has now been split by ownership into shared/base support, managed submission, and Temporal submission files, so root `listingkit` no longer mixes recovery/core support with managed submit and Temporal config assembly in one large wiring surface.
+- studio wiring support has now been split by ownership into shared resolver support, session/media wiring, batch wiring, and batch-run wiring files, so root `listingkit` no longer mixes all studio collaborator config assembly into one broad support surface.
 
 ## 2. Current File Groups
 
@@ -73,7 +75,10 @@ internal/listingkit/service_studio_batch_entrypoints.go  // studio batch entrypo
 internal/listingkit/service_studio_batch_run_entrypoints.go // studio batch run entrypoints
 internal/listingkit/service_submission_collaborators.go   // submission collaborator container
 internal/listingkit/service_task_wiring.go               // task/generation/revision collaborator config builders
-internal/listingkit/service_studio_wiring_support.go     // studio collaborator wiring plus config assembly helpers
+internal/listingkit/service_studio_wiring_support.go     // shared studio dependency resolver/support helpers
+internal/listingkit/service_studio_session_wiring_support.go // studio session, batch-draft, and media wiring helpers
+internal/listingkit/service_studio_batch_wiring_support.go // studio batch and batch-generation wiring helpers
+internal/listingkit/service_studio_batch_run_wiring_support.go // studio batch-run wiring plus config assembly helpers
 internal/listingkit/service_submit_entrypoint.go          // submit facade entrypoint
 internal/listingkit/service_submit_lease_helper.go        // shared submit lease helper
 internal/listingkit/service_submit_contracts.go           // shared submit option structs / normalization helpers
@@ -86,7 +91,9 @@ internal/listingkit/service_submit_task_identity_helper.go // submit identity he
 internal/listingkit/service_submit_remote_context_helpers.go // submit remote context helpers
 internal/listingkit/service_submit_settings_resolution_helpers.go // submit settings context helpers
 internal/listingkit/service_submit_warehouse_selection_helper.go // submit warehouse helper
-internal/listingkit/service_submit_wiring_support.go      // submit collaborator wiring plus config assembly helpers
+internal/listingkit/service_submit_wiring_support.go      // shared submit base/support/core/recovery wiring helpers
+internal/listingkit/service_submit_managed_wiring_support.go // managed submit wiring plus config assembly helpers
+internal/listingkit/service_submit_temporal_wiring_support.go // Temporal submit wiring plus config assembly helpers
 internal/listingkit/service_upload_logic.go               // uploaded image logic
 ```
 
@@ -432,17 +439,37 @@ This keeps accessor files thin while leaving task-specific wiring visible in one
 
 ### `service_studio_wiring_support.go`
 
-Owns studio collaborator wiring plus explicit config assembly for:
+Owns shared studio dependency resolver/support helpers:
+
+- session repository resolution,
+- batch repository resolution,
+- batch-run repository resolution,
+- prompt/image/upload dependency resolution.
+
+### `service_studio_session_wiring_support.go`
+
+Owns studio session-facing wiring plus explicit config assembly for:
 
 - studio session,
 - studio batch draft,
-- studio media,
-- studio batch,
-- studio batch run.
+- studio media.
 
-Studio batch generation wiring is also routed through this seam so nested studio
-collaborator construction stays visible without re-expanding accessor files.
-Studio batch run coordinator/executor config also stays beside the wiring support.
+### `service_studio_batch_wiring_support.go`
+
+Owns studio batch-facing wiring plus explicit config assembly for:
+
+- studio batch,
+- studio batch generation.
+
+### `service_studio_batch_run_wiring_support.go`
+
+Owns studio batch-run wiring plus explicit config assembly for:
+
+- studio batch run,
+- batch-run coordinator,
+- batch-run executor.
+
+Studio batch run coordinator/executor config stays beside the batch-run wiring support.
 Coordinator-owned batch run start/recovery helpers live alongside the
 coordinator in `studio_batch_run_coordinator.go`.
 
