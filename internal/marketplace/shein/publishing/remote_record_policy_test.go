@@ -363,3 +363,62 @@ func TestInventoryConfirmedRequiresSuccessCodeAndSPUName(t *testing.T) {
 		t.Fatal("InventoryConfirmed(blank spu) = true, want false")
 	}
 }
+
+func TestResponseAcceptedWithSPURequiresSuccessAndVisibleSPU(t *testing.T) {
+	t.Parallel()
+
+	if !ResponseAcceptedWithSPU(true, "SPU-123") {
+		t.Fatal("accepted response with SPU should be true")
+	}
+	if ResponseAcceptedWithSPU(false, "SPU-123") {
+		t.Fatal("failed response should be false")
+	}
+	if ResponseAcceptedWithSPU(true, " ") {
+		t.Fatal("blank SPU should be false")
+	}
+}
+
+func TestResolveRemoteLookupSPUNamePrefersRecordThenLastResult(t *testing.T) {
+	t.Parallel()
+
+	if got := ResolveRemoteLookupSPUName(" PUBLISH ", "LAST"); got != "PUBLISH" {
+		t.Fatalf("spu name = %q, want PUBLISH", got)
+	}
+	if got := ResolveRemoteLookupSPUName("", " LAST "); got != "LAST" {
+		t.Fatalf("fallback spu name = %q, want LAST", got)
+	}
+}
+
+func TestRemotePublishAcceptedRequiresPublishAction(t *testing.T) {
+	t.Parallel()
+
+	if !RemotePublishAccepted("publish", true, false) {
+		t.Fatal("publish action with accepted record should be true")
+	}
+	if !RemotePublishAccepted("publish", false, true) {
+		t.Fatal("publish action with accepted last result should be true")
+	}
+	if RemotePublishAccepted("save_draft", true, true) {
+		t.Fatal("save_draft should not be treated as remote publish accepted")
+	}
+}
+
+func TestCollectRemoteLookupCodesDedupesAndTrims(t *testing.T) {
+	t.Parallel()
+
+	got := CollectRemoteLookupCodes(
+		" ROOT ",
+		"PKG",
+		[]string{"SKC-1", " PKG ", "", "SKC-1"},
+		[]string{"SKU-1", "ROOT", " SKU-2 "},
+	)
+	want := []string{"ROOT", "PKG", "SKC-1", "SKU-1", "SKU-2"}
+	if len(got) != len(want) {
+		t.Fatalf("codes = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("codes[%d] = %q, want %q; all=%#v", i, got[i], want[i], got)
+		}
+	}
+}

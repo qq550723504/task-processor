@@ -279,3 +279,44 @@ func InventoryConfirmed(resp *sheinproduct.InventoryQueryResponse) bool {
 	}
 	return strings.TrimSpace(resp.Info.SpuName) != ""
 }
+
+func ResponseAcceptedWithSPU(success bool, spuName string) bool {
+	return success && strings.TrimSpace(spuName) != ""
+}
+
+func ResolveRemoteLookupSPUName(recordSPUName, lastSPUName string) string {
+	if value := strings.TrimSpace(recordSPUName); value != "" {
+		return value
+	}
+	return strings.TrimSpace(lastSPUName)
+}
+
+func RemotePublishAccepted(action string, recordAccepted, lastAccepted bool) bool {
+	return strings.TrimSpace(action) == "publish" && (recordAccepted || lastAccepted)
+}
+
+func CollectRemoteLookupCodes(rootSupplierCode, previewSupplierCode string, skcSupplierCodes, skuSupplierCodes []string) []string {
+	seen := make(map[string]struct{})
+	codes := make([]string, 0, 2+len(skcSupplierCodes)+len(skuSupplierCodes))
+	appendCode := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		codes = append(codes, value)
+	}
+
+	appendCode(rootSupplierCode)
+	appendCode(previewSupplierCode)
+	for _, value := range skcSupplierCodes {
+		appendCode(value)
+	}
+	for _, value := range skuSupplierCodes {
+		appendCode(value)
+	}
+	return codes
+}
