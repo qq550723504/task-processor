@@ -308,6 +308,7 @@ Current checkpoint:
 - result model support now also splits out SDS/POD execution summaries into a dedicated support file, so root `listingkit` no longer mixes result skeleton and standard snapshot bones with lower-level execution detail DTO families in one broad result-model file.
 - workflow SDS sync home construction now also keeps local sync plus remote entry routing, while remote single-run execution and remote variant summary/finalize flows live in a dedicated support file, so root `listingkit` no longer mixes remote execution skeletons with top-level SDS sync entry seams in one broad workflow file.
 - asset workflow home construction now also keeps inventory/bundle rebuild primitives and task merge helpers, while platform image-bundle attachment plus pending-generation collection live in a dedicated support file, so root `listingkit` no longer mixes generic asset rebuild helpers with platform bundle handoff seams in one broad asset-workflow file.
+- interface definitions now also split into dependency/configurer contracts and business service contracts, so root `listingkit` no longer keeps repository/client/store abstractions mixed with high-level lifecycle/admin/generation service surfaces in one broad interfaces file.
 - The next preferred slice is to stop and reassess whether more submit extraction still shrinks `listingkit`, rather than automatically extracting every leftover helper.
 
 ### Phase 3.5: Studio Skeleton Extraction
