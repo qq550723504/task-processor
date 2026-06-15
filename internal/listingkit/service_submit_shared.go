@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -28,23 +29,11 @@ func normalizedSubmitIdempotencyKey(req *SubmitTaskRequest) string {
 	if req == nil {
 		return ""
 	}
-	if value := strings.TrimSpace(req.IdempotencyKey); value != "" {
-		return value
-	}
-	return strings.TrimSpace(req.RequestID)
+	return listingsubmission.ResolveSubmitRequestID(req.IdempotencyKey, req.RequestID)
 }
 
 func derivedSheinSubmitRequestID(taskID, action string, requestedAt time.Time) string {
-	taskID = strings.TrimSpace(taskID)
-	action = strings.ToLower(strings.TrimSpace(action))
-	if action == "" {
-		action = "publish"
-	}
-	timestamp := requestedAt.UTC().Format("20060102T150405.000000000Z")
-	if taskID == "" {
-		taskID = "unknown-task"
-	}
-	return fmt.Sprintf("temporal:%s:%s:%s", taskID, action, timestamp)
+	return listingsubmission.DeriveWorkflowRequestID(taskID, action, requestedAt)
 }
 
 func repairSheinSubmitSaleAttributes(pkg *SheinPackage) {
