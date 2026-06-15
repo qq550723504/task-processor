@@ -16,6 +16,7 @@ type taskStudioBatchService struct {
 	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
 	getTask            func(context.Context, string) (*Task, error)
 	currentTime        func() time.Time
+	batchRunner        *listingStudioBatchGenerationRunner
 	detailRunner       *listingStudioBatchDetailRunner
 	reviewRunner       *listingStudioBatchReviewRunner
 	retryRunner        *listingStudioBatchRetryPrepareRunner
@@ -31,12 +32,14 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 		createGenerateTask: config.createGenerateTask,
 		getTask:            config.getTask,
 		currentTime:        time.Now,
+		batchRunner:        config.batchRunner,
 		detailRunner:       config.detailRunner,
 		reviewRunner:       config.reviewRunner,
 		retryRunner:        config.retryRunner,
 		taskPrepareRunner:  config.taskPrepareRunner,
 		taskResumeRunner:   config.taskResumeRunner,
 	}
+	service.ensureBatchRunner()
 	service.ensureDetailRunner()
 	service.ensureReviewRunner()
 	service.ensureRetryRunner()
@@ -46,63 +49,36 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 }
 
 func (s *taskStudioBatchService) StartStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
-	if s.repo == nil {
-		return nil, fmt.Errorf("studio batch repository is not configured")
+	s.ensureBatchRunner()
+	if s.batchRunner == nil {
+		return nil, fmt.Errorf("studio batch generation runner is not configured")
 	}
-	if s.generator == nil {
-		return nil, fmt.Errorf("studio batch generator is not configured")
-	}
-
-	normalizedBatchID := strings.TrimSpace(batchID)
-	if err := s.refreshStudioBatchGenerationGraph(ctx, normalizedBatchID); err != nil {
-		return nil, err
-	}
-	return s.continueStudioBatchGeneration(ctx, normalizedBatchID)
+	return s.batchRunner.StartGeneration(ctx, strings.TrimSpace(batchID))
 }
 
 func (s *taskStudioBatchService) PrepareStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
-	if s.repo == nil {
-		return nil, fmt.Errorf("studio batch repository is not configured")
+	s.ensureBatchRunner()
+	if s.batchRunner == nil {
+		return nil, fmt.Errorf("studio batch generation runner is not configured")
 	}
-	if s.generator == nil {
-		return nil, fmt.Errorf("studio batch generator is not configured")
-	}
-
-	normalizedBatchID := strings.TrimSpace(batchID)
-	if err := s.refreshStudioBatchGenerationGraph(ctx, normalizedBatchID); err != nil {
-		return nil, err
-	}
-	return s.GetStudioBatchDetail(ctx, normalizedBatchID)
+	return s.batchRunner.PrepareGeneration(ctx, strings.TrimSpace(batchID))
 }
 
 func (s *taskStudioBatchService) ResumeStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
-	if s.repo == nil {
+	s.ensureBatchRunner()
+	if s.batchRunner == nil {
+		return nil, fmt.Errorf("studio batch generation runner is not configured")
+	}
+	return s.batchRunner.ResumeGeneration(ctx, strings.TrimSpace(batchID))
+}
+
+func (s *taskStudioBatchService) continueStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
+	if s == nil || s.repo == nil {
 		return nil, fmt.Errorf("studio batch repository is not configured")
 	}
 	if s.generator == nil {
 		return nil, fmt.Errorf("studio batch generator is not configured")
 	}
-
-	normalizedBatchID := strings.TrimSpace(batchID)
-	if err := s.ensureStudioBatchGenerationGraphForResume(ctx, normalizedBatchID); err != nil {
-		return nil, err
-	}
-	if shouldResumeStudioBatchTaskCreation(ctx, s.repo, normalizedBatchID) {
-		result, err := s.resumeStudioBatchTaskCreation(ctx, normalizedBatchID)
-		if err != nil {
-			return nil, err
-		}
-		return &StudioBatchDetail{
-			Batch:        result.Batch,
-			Items:        result.Items,
-			CreatedTasks: result.CreatedTasks,
-			FailedTasks:  result.FailedTasks,
-		}, nil
-	}
-	return s.continueStudioBatchGeneration(ctx, normalizedBatchID)
-}
-
-func (s *taskStudioBatchService) continueStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
 	if err := s.generator.RecoverStudioBatchMaterialization(ctx, batchID); err != nil {
 		return nil, err
 	}
@@ -138,11 +114,16 @@ func (s *taskStudioBatchService) ApproveStudioBatchDesigns(ctx context.Context, 
 }
 
 func (s *taskStudioBatchService) RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {
-	detail, err := s.PrepareRetryStudioBatchItems(ctx, batchID, req)
-	if err != nil {
-		return nil, err
+	normalizedBatchID := strings.TrimSpace(batchID)
+	itemIDs := normalizeStudioBatchItemIDs(nil)
+	if req != nil {
+		itemIDs = normalizeStudioBatchItemIDs(req.ItemIDs)
 	}
-	return s.continueStudioBatchGeneration(ctx, detail.Batch.ID)
+	s.ensureBatchRunner()
+	if s.batchRunner == nil {
+		return nil, fmt.Errorf("studio batch generation runner is not configured")
+	}
+	return s.batchRunner.RetryItems(ctx, normalizedBatchID, itemIDs)
 }
 
 func (s *taskStudioBatchService) PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error) {
@@ -152,14 +133,11 @@ func (s *taskStudioBatchService) PrepareRetryStudioBatchItems(ctx context.Contex
 	if s.generator == nil {
 		return nil, fmt.Errorf("studio batch generator is not configured")
 	}
-
 	normalizedBatchID := strings.TrimSpace(batchID)
-
 	itemIDs := normalizeStudioBatchItemIDs(nil)
 	if req != nil {
 		itemIDs = normalizeStudioBatchItemIDs(req.ItemIDs)
 	}
-
 	if err := s.syncStudioBatchRetryExecutionConfigFromDraft(ctx, normalizedBatchID); err != nil {
 		return nil, err
 	}
@@ -175,6 +153,13 @@ func (s *taskStudioBatchService) ensureDetailRunner() {
 		return
 	}
 	s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.ensureStudioBatchGenerationGraphForResume)
+}
+
+func (s *taskStudioBatchService) ensureBatchRunner() {
+	if s == nil || s.batchRunner != nil {
+		return
+	}
+	s.batchRunner = newListingStudioBatchGenerationService(s)
 }
 
 func (s *taskStudioBatchService) ensureReviewRunner() {
