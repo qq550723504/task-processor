@@ -23,10 +23,9 @@ func TestStudioSessionJSONSupportBoundary(t *testing.T) {
 
 	for _, needle := range []string{
 		"type SheinStudioSessionStatus string",
-		"type SheinStudioSelection struct {",
 		"type SheinStudioSession struct {",
 		"type SheinStudioDesign struct {",
-		"type UpsertStudioBatchRequest struct {",
+		"type SheinStudioSessionDetail struct {",
 	} {
 		if !strings.Contains(modelContent, needle) {
 			t.Fatalf("studio_session_model.go should contain %q", needle)
