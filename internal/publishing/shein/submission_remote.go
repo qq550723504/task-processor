@@ -392,10 +392,7 @@ func BuildSubmissionRecoveryLookupInputs(pkg *Package, action, supplierCode stri
 }
 
 func ResolveSubmissionRefreshFallbackMessage(action string, defaultConfirmed bool, fallbackMessage string) string {
-	if strings.TrimSpace(fallbackMessage) != "" {
-		return strings.TrimSpace(fallbackMessage)
-	}
-	return sheinmarketpub.BuildRemoteConfirmationPolicy(action, defaultConfirmed).RefreshFallbackMessage
+	return sheinmarketpub.ResolveRemoteRefreshFallbackMessage(action, defaultConfirmed, fallbackMessage)
 }
 
 func BuildSubmissionRefreshRequest(pkg *Package, selection SubmissionRefreshSelection) SubmissionRefreshRequest {
@@ -443,8 +440,8 @@ func ProbeSubmissionRemoteResolution(
 }
 
 func BuildSubmissionMissingSupplierCodeRemoteUpdate(taskID, action, requestID string, startedAt time.Time, defaultConfirmed bool) SubmissionConfirmRemoteUpdate {
-	policy := sheinmarketpub.BuildRemoteConfirmationPolicy(action, defaultConfirmed)
-	return BuildSubmissionConfirmRemoteUpdate(taskID, action, policy.MissingSupplierCodeStatus, requestID, startedAt, policy.MissingSupplierCodeDetail, nil)
+	decision := sheinmarketpub.BuildMissingSupplierCodeDecision(action, defaultConfirmed)
+	return BuildSubmissionConfirmRemoteUpdate(taskID, action, decision.Status, requestID, startedAt, decision.Detail, nil)
 }
 
 func ApplySubmissionMissingSupplierCodeRemoteUpdate(pkg *Package, taskID, action, requestID string, startedAt time.Time, defaultConfirmed bool) *SubmissionEvent {

@@ -77,6 +77,37 @@ func TestResolveRemoteConfirmationFallbackMessagePrefersExplicitFallback(t *test
 	}
 }
 
+func TestResolveRemoteRefreshFallbackMessagePrefersExplicitFallback(t *testing.T) {
+	t.Parallel()
+
+	if got := ResolveRemoteRefreshFallbackMessage("save_draft", false, " custom fallback "); got != "custom fallback" {
+		t.Fatalf("refresh fallback message = %q, want custom fallback", got)
+	}
+	if got := ResolveRemoteRefreshFallbackMessage("publish", true, ""); got != "SHEIN accepted publish request; remote record not yet visible" {
+		t.Fatalf("default refresh fallback message = %q", got)
+	}
+}
+
+func TestBuildMissingSupplierCodeDecisionUsesPolicyState(t *testing.T) {
+	t.Parallel()
+
+	confirmed := BuildMissingSupplierCodeDecision("publish", true)
+	if confirmed.Status != RemoteRecordStatusConfirmed {
+		t.Fatalf("status = %q, want confirmed", confirmed.Status)
+	}
+	if confirmed.Detail != "SHEIN accepted publish request, but supplier code is unavailable for remote confirmation" {
+		t.Fatalf("detail = %q", confirmed.Detail)
+	}
+
+	pending := BuildMissingSupplierCodeDecision("publish", false)
+	if pending.Status != RemoteRecordStatusPending {
+		t.Fatalf("status = %q, want pending", pending.Status)
+	}
+	if pending.Detail != "SHEIN submit succeeded, but supplier code is unavailable for remote confirmation" {
+		t.Fatalf("detail = %q", pending.Detail)
+	}
+}
+
 func TestResolveRemoteConfirmationDecisionPrefersOnWayDocument(t *testing.T) {
 	t.Parallel()
 

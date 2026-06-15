@@ -77,6 +77,21 @@ func ResolveRemoteConfirmationFallbackMessage(action string, defaultConfirmed bo
 	return BuildRemoteConfirmationPolicy(action, defaultConfirmed).ResolveFallbackMessage
 }
 
+func ResolveRemoteRefreshFallbackMessage(action string, defaultConfirmed bool, fallbackMessage string) string {
+	if trimmed := strings.TrimSpace(fallbackMessage); trimmed != "" {
+		return trimmed
+	}
+	return BuildRemoteConfirmationPolicy(action, defaultConfirmed).RefreshFallbackMessage
+}
+
+func BuildMissingSupplierCodeDecision(action string, defaultConfirmed bool) RemoteConfirmationDecision {
+	policy := BuildRemoteConfirmationPolicy(action, defaultConfirmed)
+	return RemoteConfirmationDecision{
+		Status: policy.MissingSupplierCodeStatus,
+		Detail: policy.MissingSupplierCodeDetail,
+	}
+}
+
 func ResolveRemoteConfirmationDecision(action string, resolution RemoteConfirmationResolution) RemoteConfirmationDecision {
 	fallbackMessage := ResolveRemoteConfirmationFallbackMessage(action, resolution.DefaultConfirmed, resolution.FallbackMessage)
 	if action == "publish" && resolution.OnWayDocument != nil {
