@@ -4,6 +4,7 @@ Owns studio session, batch, media, and workspace orchestration that is generic t
 
 Current stable ownership:
 
+- generic studio batch repository contract and ownership-conflict / unknown-item sentinel errors
 - batch-run service skeleton (`create/get/list/cancel` flow)
 - batch-detail read skeleton (`read graph -> fallback -> ensure graph -> project detail`)
 - batch review skeleton (`ensure batch -> replace reviews -> reload detail`)

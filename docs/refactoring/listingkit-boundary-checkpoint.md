@@ -23,6 +23,7 @@ Current extracted seams:
 - batch draft upsert policy: default design type, create-time generation-job sanitization, and batch-name resolution,
 - batch detail status aggregation and status-preservation policy,
 - batch-run completion rules: cancel unfinished items, count item statuses, resolve final run status.
+- generic studio batch repository contract plus unknown-item/ownership-conflict sentinel errors now live in `internal/listing/studio`; `internal/listingkit` keeps only concrete record/detail types plus repository implementation and wiring bridges.
 - `internal/listingkit` studio batch-run service/coordinator/executor config assembly now also reuses one shared root-side wiring bundle, so the compatibility shell no longer rebuilds the same batch-run repo pair and domain-runner assembly separately across those three builders.
 - `internal/listingkit` studio session and batch-draft config assembly now also reuse one shared root-side session wiring bundle, so the compatibility shell no longer rebuilds the same studio-session repository plus domain-runner set separately across those builders.
 - `internal/listingkit` studio batch service config assembly now also reuses one shared root-side batch-service wiring bundle, so the compatibility shell no longer stores prebuilt batch detail/review runners directly in the config builder path.

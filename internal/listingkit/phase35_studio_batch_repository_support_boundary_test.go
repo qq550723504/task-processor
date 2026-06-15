@@ -16,9 +16,9 @@ func TestStudioBatchRepositorySupportFilesOwnConcreteImplementations(t *testing.
 	homeContent := string(homeSrc)
 
 	for _, needle := range []string{
-		"type StudioBatchRepository interface {",
-		"var ErrStudioBatchUnknownItemReference = errors.New(\"studio batch graph references unknown item\")",
-		"var ErrStudioBatchOwnershipConflict = errors.New(\"studio batch update conflicts with immutable ownership\")",
+		"var ErrStudioBatchUnknownItemReference = studiodomain.ErrBatchUnknownItemReference",
+		"var ErrStudioBatchOwnershipConflict = studiodomain.ErrBatchOwnershipConflict",
+		"type StudioBatchRepository = studiodomain.BatchRepository[",
 	} {
 		if !strings.Contains(homeContent, needle) {
 			t.Fatalf("studio_batch_repository.go should contain %q", needle)
