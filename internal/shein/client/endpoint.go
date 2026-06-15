@@ -15,6 +15,7 @@ const (
 	getCategoryTreeEndpoint        = apiPrefix + "/supplier/query_category_tree"
 	cvTextSuggestCategoryEndpoint  = apiPrefix + "/abc/cv_text_suggest_category"
 	getProductEndpoint             = apiPrefix + "/product/get_product"
+	queryBrandListEndpoint         = apiPrefix + "/supplier/query_brand_list"
 	updateProductEndpoint          = apiPrefix + "/product/update_product"
 	deleteProductEndpoint          = apiPrefix + "/product/delete_product"
 	confirmPublishEndpoint         = apiPrefix + "/product/confirm_publish"

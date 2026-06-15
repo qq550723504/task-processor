@@ -512,6 +512,9 @@ func (s stubSheinProductAPI) Record(request *sheinproduct.ProductRecordRequest) 
 func (s stubSheinProductAPI) ListProducts(pageNum, pageSize int, request *sheinproduct.ProductListRequest) (*sheinproduct.ProductListResponse, error) {
 	return nil, errors.New("not implemented")
 }
+func (s stubSheinProductAPI) QueryBrandList() (*sheinproduct.BrandListResponse, error) {
+	return nil, errors.New("not implemented")
+}
 func (s stubSheinProductAPI) QueryStock(request *sheinproduct.StockQueryRequest) (*sheinproduct.StockQueryResponse, error) {
 	return nil, errors.New("not implemented")
 }

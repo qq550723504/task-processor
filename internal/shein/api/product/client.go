@@ -73,6 +73,11 @@ func (c *Client) ListProducts(pageNum, pageSize int, request *ProductListRequest
 	return c.productMgr.listProducts(pageNum, pageSize, request)
 }
 
+// QueryBrandList 查询品牌列表
+func (c *Client) QueryBrandList() (*BrandListResponse, error) {
+	return c.productMgr.queryBrandList()
+}
+
 // QueryStock 查询产品库存
 func (c *Client) QueryStock(request *StockQueryRequest) (*StockQueryResponse, error) {
 	return c.inventoryMgr.queryStock(request)

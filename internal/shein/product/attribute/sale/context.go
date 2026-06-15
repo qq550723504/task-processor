@@ -59,11 +59,11 @@ func (c *SaleAttributeContextBuilder) BuildExtraContext(amazonProduct model.Prod
 	// 检测缺失信息
 	missingInfo := c.detectMissingInfo(productsData)
 	if !missingInfo.needsExtraContext {
-		logger.GetGlobalLogger("shein/product").Info("✅ 产品信息完整，无需额外上下文")
+		logger.GetGlobalLogger("shein/product").Debug("✅ 产品信息完整，无需额外上下文")
 		return ""
 	}
 
-	logger.GetGlobalLogger("shein/product").Infof("⚠️ 检测到缺失信息：缺少尺寸(%d个) 缺少重量(%d个) 缺少属性(%d个)，开始构建针对性额外上下文...",
+	logger.GetGlobalLogger("shein/product").Debugf("⚠️ 检测到缺失信息：缺少尺寸(%d个) 缺少重量(%d个) 缺少属性(%d个)，开始构建针对性额外上下文...",
 		missingInfo.missingDimensions, missingInfo.missingWeight, missingInfo.missingAttributes)
 
 	var extraParts []string
@@ -82,7 +82,7 @@ func (c *SaleAttributeContextBuilder) BuildExtraContext(amazonProduct model.Prod
 		return ""
 	}
 
-	logger.GetGlobalLogger("shein/product").Infof("✅ 构建了针对性额外上下文，包含 %d 个信息块", len(extraParts))
+	logger.GetGlobalLogger("shein/product").Debugf("✅ 构建了针对性额外上下文，包含 %d 个信息块", len(extraParts))
 	return strings.Join(extraParts, "\n")
 }
 
@@ -126,13 +126,13 @@ func (c *SaleAttributeContextBuilder) detectMissingInfo(productsData []sheinattr
 
 	// 详细记录缺失信息
 	if detection.missingDimensions > 0 {
-		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 缺少尺寸信息的ASIN: %v", detection.missingDimensionsASINs)
+		logger.GetGlobalLogger("shein/product").Debugf("⚠️ 缺少尺寸信息的ASIN: %v", detection.missingDimensionsASINs)
 	}
 	if detection.missingWeight > 0 {
-		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 缺少重量信息的ASIN: %v", detection.missingWeightASINs)
+		logger.GetGlobalLogger("shein/product").Debugf("⚠️ 缺少重量信息的ASIN: %v", detection.missingWeightASINs)
 	}
 	if detection.missingAttributes > 0 {
-		logger.GetGlobalLogger("shein/product").Warnf("⚠️ 缺少属性信息的ASIN: %v", detection.missingAttributesASINs)
+		logger.GetGlobalLogger("shein/product").Debugf("⚠️ 缺少属性信息的ASIN: %v", detection.missingAttributesASINs)
 	}
 
 	return detection

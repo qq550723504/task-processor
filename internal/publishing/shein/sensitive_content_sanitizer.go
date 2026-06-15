@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	common "task-processor/internal/publishing/common"
+	"task-processor/internal/shein/authorizedbrand"
 	sheinctx "task-processor/internal/shein/context"
 )
 
@@ -13,6 +14,7 @@ func sanitizeSheinListingCopy(copy *listingCopy, runtimeCtx context.Context, ctx
 	if copy == nil {
 		return false
 	}
+	ctx = ensureSanitizerTaskContext(runtimeCtx, ctx)
 	service := newSheinSensitiveWordSanitizer(runtimeCtx)
 	changed := false
 	changed = sanitizeStringField(service, ctx, &copy.Title) || changed
@@ -29,6 +31,7 @@ func SanitizeDraftPayloadSensitiveContent(pkg *Package, runtimeCtx context.Conte
 	if pkg == nil || pkg.DraftPayload == nil {
 		return false
 	}
+	ctx = ensureSanitizerTaskContext(runtimeCtx, ctx)
 	service := newSheinSensitiveWordSanitizer(runtimeCtx)
 	changed := false
 
@@ -45,6 +48,29 @@ func SanitizeDraftPayloadSensitiveContent(pkg *Package, runtimeCtx context.Conte
 	}
 
 	return changed
+}
+
+func ensureSanitizerTaskContext(runtimeCtx context.Context, ctx *sheinctx.TaskContext) *sheinctx.TaskContext {
+	if ctx == nil {
+		if resolved, ok := authorizedbrand.FromContext(runtimeCtx); ok {
+			return &sheinctx.TaskContext{
+				RuntimeState: sheinctx.RuntimeState{
+					Context:         runtimeCtx,
+					AuthorizedBrand: resolved,
+				},
+			}
+		}
+		return nil
+	}
+	if ctx.Context == nil {
+		ctx.Context = runtimeCtx
+	}
+	if ctx.AuthorizedBrand == nil {
+		if resolved, ok := authorizedbrand.FromContext(runtimeCtx); ok {
+			ctx.AuthorizedBrand = resolved
+		}
+	}
+	return ctx
 }
 
 func sanitizeResolvedAttributes(service sheinSensitiveWordSanitizer, ctx *sheinctx.TaskContext, attrs []ResolvedAttribute) bool {

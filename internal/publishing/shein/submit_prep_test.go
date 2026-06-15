@@ -12,6 +12,7 @@ import (
 	common "task-processor/internal/publishing/common"
 	sharedtenantctx "task-processor/internal/shared/tenantctx"
 	sheinproduct "task-processor/internal/shein/api/product"
+	"task-processor/internal/shein/authorizedbrand"
 	"task-processor/internal/shein/submitprep"
 )
 
@@ -774,6 +775,55 @@ func TestPrepareSubmitProductContent_LoadsTenantSensitiveWordsFromRepository(t *
 	}
 	if strings.Contains(strings.ToLower(findLocalizedText(product.SKCList[0].MultiLanguageNameList, "en")), "whimsy") {
 		t.Fatalf("skc still contains tenant sensitive word: %+v", product.SKCList[0].MultiLanguageNameList)
+	}
+}
+
+func TestCleanSubmitProductSensitiveWords_PreservesAuthorizedBrandFromRuntimeContext(t *testing.T) {
+	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
+		pages: map[int64][]listingadmin.SensitiveWord{
+			101: {
+				{TenantID: 101, Language: "en", Word: "bpa free", Status: 1},
+			},
+		},
+	})
+	defer restoreRepo()
+
+	ctx := sharedtenantctx.WithTenantID(authorizedbrand.WithResolved(context.Background(), &authorizedbrand.Resolved{
+		Enabled: true,
+		Name:    "Amazon Basics",
+		NameEn:  "Amazon Basics",
+	}), "101")
+	product := &sheinproduct.Product{
+		ProductAttributeList: []sheinproduct.ProductAttribute{{
+			AttributeExtraValue: "Amazon Basics BPA Free acrylic",
+		}},
+		SKCList: []sheinproduct.SKC{{
+			MultiLanguageName: sheinproduct.LanguageContent{
+				Language: "en",
+				Name:     "Amazon Basics BPA Free Blue",
+			},
+			MultiLanguageNameList: []sheinproduct.LanguageContent{{
+				Language: "en",
+				Name:     "Amazon Basics BPA Free Blue",
+			}},
+		}},
+	}
+
+	if err := CleanSubmitProductSensitiveWords(ctx, product); err != nil {
+		t.Fatalf("CleanSubmitProductSensitiveWords() error = %v", err)
+	}
+
+	if strings.Contains(strings.ToLower(product.ProductAttributeList[0].AttributeExtraValue), "bpa free") {
+		t.Fatalf("AttributeExtraValue = %q, want sensitive phrase removed", product.ProductAttributeList[0].AttributeExtraValue)
+	}
+	if !strings.Contains(strings.ToLower(product.ProductAttributeList[0].AttributeExtraValue), "amazon basics") {
+		t.Fatalf("AttributeExtraValue = %q, want authorized brand preserved", product.ProductAttributeList[0].AttributeExtraValue)
+	}
+	if !strings.Contains(strings.ToLower(product.SKCList[0].MultiLanguageName.Name), "amazon basics") {
+		t.Fatalf("SKC primary name = %q, want authorized brand preserved", product.SKCList[0].MultiLanguageName.Name)
+	}
+	if !strings.Contains(strings.ToLower(product.SKCList[0].MultiLanguageNameList[0].Name), "amazon basics") {
+		t.Fatalf("SKC localized name = %q, want authorized brand preserved", product.SKCList[0].MultiLanguageNameList[0].Name)
 	}
 }
 

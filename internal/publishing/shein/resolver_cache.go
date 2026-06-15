@@ -414,13 +414,13 @@ func logResolutionCacheHit(
 	extra logrus.Fields,
 ) {
 	log := sheinLogger("shein/cache").WithFields(logrus.Fields{
-		"event":        "hit",
-		"cache_kind":   kind,
-		"cache_source": source,
-		"store_id":     sheinStoreID(req),
-		"category_id":  categoryID(pkg),
-		"cache_key":    key,
-		"product_identities": strings.Join(stableProductIdentity(canonical, pkg), ","),
+		"event":                "hit",
+		"cache_kind":           kind,
+		"cache_source":         source,
+		"store_id":             sheinStoreID(req),
+		"category_id":          categoryID(pkg),
+		"cache_key":            key,
+		"product_identities":   strings.Join(stableProductIdentity(canonical, pkg), ","),
 		"source_category_path": strings.Join(normalizedCategoryCachePath(canonical, pkg), " > "),
 	})
 	if info != nil {
@@ -429,7 +429,7 @@ func logResolutionCacheHit(
 	for field, value := range extra {
 		log = log.WithField(field, value)
 	}
-	log.Info("resolved SHEIN cache hit")
+	log.Debug("resolved SHEIN cache hit")
 }
 
 func logResolutionCacheEvent(

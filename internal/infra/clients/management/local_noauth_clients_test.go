@@ -47,6 +47,9 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 			enable_draft BOOLEAN,
 			enable_auto_price BOOLEAN,
 			enable_rebargain BOOLEAN,
+			enable_brand_authorization BOOLEAN,
+			authorized_brand_code TEXT,
+			authorized_brand_name TEXT,
 			temu_price_reject_strategy TEXT,
 			price_type TEXT,
 			remark TEXT,
@@ -198,6 +201,28 @@ func TestLocalDataProviderGetStoreMapsListingStoreMetadata(t *testing.T) {
 	}
 	if store.Creator != "admin" || store.CreateTime == nil || !store.CreateTime.Time.Equal(createdAt) {
 		t.Fatalf("GetStore() metadata = creator %q createTime %#v", store.Creator, store.CreateTime)
+	}
+}
+
+func TestLocalListingStoreToDTO_IncludesAuthorizedBrandFields(t *testing.T) {
+	enabled := true
+	row := localListingStore{
+		ID:                       968,
+		EnableBrandAuthorization: &enabled,
+		AuthorizedBrandCode:      "2fd1n",
+		AuthorizedBrandName:      "Logitech",
+	}
+
+	dto := row.toDTO()
+
+	if dto.EnableBrandAuthorization == nil || !*dto.EnableBrandAuthorization {
+		t.Fatalf("EnableBrandAuthorization = %#v, want true", dto.EnableBrandAuthorization)
+	}
+	if dto.AuthorizedBrandCode != "2fd1n" {
+		t.Fatalf("AuthorizedBrandCode = %q, want 2fd1n", dto.AuthorizedBrandCode)
+	}
+	if dto.AuthorizedBrandName != "Logitech" {
+		t.Fatalf("AuthorizedBrandName = %q, want Logitech", dto.AuthorizedBrandName)
 	}
 }
 

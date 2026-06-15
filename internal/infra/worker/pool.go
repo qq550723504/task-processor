@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/recovery"
+	"time"
 )
 
 // Pool 工作池实现
@@ -21,7 +23,12 @@ type Pool struct {
 	mu         sync.RWMutex
 	jobHandler JobHandler // 任务处理钩子
 	metrics    *Metrics   // 指标收集器
+
+	lastQueueFullLogUnixNano int64
+	suppressedQueueFullLogs  uint64
 }
+
+const queueFullLogInterval = 30 * time.Second
 
 // NewPool 创建新的工作池（兼容旧版本）
 // 参数:
@@ -179,12 +186,33 @@ func (p *Pool) Submit(job WorkerJob) error {
 			p.metrics.RecordQueueFull()
 		}
 
-		logger.GetGlobalLogger("worker.pool").WithFields(map[string]any{
-			"tenant_id": job.TenantID,
-			"shop_id":   job.ShopID,
-		}).Warn("工作池队列已满，任务提交失败")
+		p.logQueueFull(job)
 		return ErrQueueFull
 	}
+}
+
+func (p *Pool) logQueueFull(job WorkerJob) {
+	now := time.Now().UnixNano()
+	last := atomic.LoadInt64(&p.lastQueueFullLogUnixNano)
+
+	if last == 0 || time.Duration(now-last) >= queueFullLogInterval {
+		if atomic.CompareAndSwapInt64(&p.lastQueueFullLogUnixNano, last, now) {
+			suppressed := atomic.SwapUint64(&p.suppressedQueueFullLogs, 0)
+			log := logger.GetGlobalLogger("worker.pool").WithFields(map[string]any{
+				"tenant_id":   job.TenantID,
+				"shop_id":     job.ShopID,
+				"queue_size":  len(p.jobQueue),
+				"buffer_size": p.config.BufferSize,
+			})
+			if suppressed > 0 {
+				log = log.WithField("suppressed_count", suppressed)
+			}
+			log.Warn("工作池队列已满，任务提交失败")
+			return
+		}
+	}
+
+	atomic.AddUint64(&p.suppressedQueueFullLogs, 1)
 }
 
 // AvailableSlots 返回可用槽位数

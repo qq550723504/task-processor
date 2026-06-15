@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
@@ -69,16 +70,18 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(input *SaleAttributeInput,
 	saleAttributeDataBytes, _ := json.Marshal(request.SaleAttributesData)
 	productsDataBytes, _ := json.Marshal(request.ProductsData)
 	attributeMappingBytes, _ := json.Marshal(request.AttributeMappings)
-	productContext := r.contextBuilder.BuildCompactProductContext(*input.AmazonProduct, input.Variants)
+	batchAmazonProduct := scopedAmazonProductForRequest(input, request)
+	batchVariants := scopedVariantsForRequest(input, request)
+	productContext := r.contextBuilder.BuildCompactProductContext(batchAmazonProduct, batchVariants)
 	isSingleVariant := !input.HasVariants()
 
 	var originalAttributeValues string
 	var attributeValueHint string
-	if len(input.AmazonProduct.VariationsValues) > 0 {
-		originalAttributeValuesBytes, _ := json.Marshal(input.AmazonProduct.VariationsValues)
+	if request.VariationAttributeValues != nil && len(*request.VariationAttributeValues) > 0 {
+		originalAttributeValuesBytes, _ := json.Marshal(*request.VariationAttributeValues)
 		originalAttributeValues = string(originalAttributeValuesBytes)
 		attributeValueHint = "Use original variation values exactly as-is. saleAttributes should include only values actually used by variants."
-		logger.GetGlobalLogger("shein/product").Info("loaded original variation values for prompt")
+		logger.GetGlobalLogger("shein/product").Debug("loaded original variation values for prompt")
 	} else {
 		originalAttributeValues = "[]"
 		if isSingleVariant {
@@ -95,7 +98,7 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(input *SaleAttributeInput,
 		productTypeHint = fmt.Sprintf("This is a multi-variant product. Generate %d variants.", request.RequiredVariantCount)
 	}
 
-	extraContextSection := r.contextBuilder.BuildExtraContext(*input.AmazonProduct, input.Variants, request.ProductsData)
+	extraContextSection := r.contextBuilder.BuildExtraContext(batchAmazonProduct, batchVariants, request.ProductsData)
 
 	return fmt.Sprintf(`Task: generate SHEIN sale attributes for %d Amazon products.
 
@@ -129,4 +132,104 @@ Extra context:
 		string(attributeMappingBytes),
 		extraContextSection,
 	)
+}
+
+func scopedAmazonProductForRequest(input *SaleAttributeInput, request *sheinattr.GenerationRequest) model.Product {
+	if input == nil || input.AmazonProduct == nil {
+		return model.Product{}
+	}
+
+	scoped := *input.AmazonProduct
+	scoped.Variations = append([]model.Variation(nil), request.VariationData...)
+	if request.VariationAttributeValues != nil {
+		scoped.VariationsValues = append([]model.VariationValue(nil), (*request.VariationAttributeValues)...)
+	} else {
+		scoped.VariationsValues = nil
+	}
+	return scoped
+}
+
+func scopedVariantsForRequest(input *SaleAttributeInput, request *sheinattr.GenerationRequest) []model.Product {
+	if input == nil || len(input.Variants) == 0 {
+		return nil
+	}
+
+	expected := make(map[string]struct{}, len(request.ProductsData))
+	for _, product := range request.ProductsData {
+		asin := strings.TrimSpace(product.ASIN)
+		if asin != "" {
+			expected[asin] = struct{}{}
+		}
+	}
+
+	scoped := make([]model.Product, 0, len(expected))
+	for _, variant := range input.Variants {
+		if _, ok := expected[strings.TrimSpace(variant.Asin)]; ok {
+			scoped = append(scoped, variant)
+		}
+	}
+	return scoped
+}
+
+func scopeVariationAttributeValuesToProductsData(values *[]model.VariationValue, productsData []sheinattr.ProductVariantData) []model.VariationValue {
+	if values == nil {
+		return nil
+	}
+
+	scoped := make([]model.VariationValue, 0, len(*values))
+	for _, variation := range *values {
+		used := usedVariationValuesForName(variation.VariantName, productsData)
+		if len(used) == 0 {
+			scoped = append(scoped, variation)
+			continue
+		}
+
+		filtered := model.VariationValue{
+			VariantName: variation.VariantName,
+			Values:      make([]string, 0, len(variation.Values)),
+		}
+		for _, value := range variation.Values {
+			if _, ok := used[normalizeVariationField(value)]; ok {
+				filtered.Values = append(filtered.Values, value)
+			}
+		}
+		if len(filtered.Values) == 0 {
+			filtered.Values = append(filtered.Values, variation.Values...)
+		}
+		scoped = append(scoped, filtered)
+	}
+
+	return scoped
+}
+
+func usedVariationValuesForName(name string, productsData []sheinattr.ProductVariantData) map[string]struct{} {
+	normalizedName := normalizeVariationField(name)
+	used := make(map[string]struct{})
+	for _, product := range productsData {
+		for attrName, attrValue := range product.Attributes {
+			if normalizeVariationField(attrName) != normalizedName {
+				continue
+			}
+			value := normalizeVariationField(attrValue)
+			if value != "" {
+				used[value] = struct{}{}
+			}
+		}
+	}
+	return used
+}
+
+func normalizeVariationField(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "_", "")
+	value = strings.ReplaceAll(value, " ", "")
+	return value
+}
+
+func variationAttributeValuesPointer(values []model.VariationValue) *[]model.VariationValue {
+	if values == nil {
+		return nil
+	}
+	copied := append([]model.VariationValue(nil), values...)
+	return &copied
 }

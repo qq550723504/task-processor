@@ -21,7 +21,12 @@ func BuildPreviewProduct(pkg *Package) *sheinproduct.Product {
 		return nil
 	}
 	productTypeID := pkg.ProductTypeID
+	var brandCode *string
+	if value := strings.TrimSpace(pkg.Metadata["authorized_brand_code"]); value != "" {
+		brandCode = &value
+	}
 	return &sheinproduct.Product{
+		BrandCode:               brandCode,
 		SPUName:                 pkg.DraftPayload.SpuName,
 		SupplierCode:            pkg.DraftPayload.SupplierCode,
 		CategoryID:              pkg.CategoryID,

@@ -1379,6 +1379,9 @@ func (p probeTestProductAPI) QueryPrice(spuName string) (*sheinproduct.PriceQuer
 func (p probeTestProductAPI) QueryCostPrice(spuName string, skcNameList []string) (*sheinproduct.CostPriceQueryResponse, error) {
 	return nil, nil
 }
+func (p probeTestProductAPI) QueryBrandList() (*sheinproduct.BrandListResponse, error) {
+	return nil, nil
+}
 func (p probeTestProductAPI) OffShelf(request *sheinproduct.ShelfOperateRequest) error { return nil }
 func (p probeTestProductAPI) OnShelf(request *sheinproduct.ShelfOperateRequest) error  { return nil }
 
