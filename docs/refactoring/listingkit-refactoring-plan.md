@@ -302,6 +302,7 @@ Current checkpoint:
 - studio session collaborators now also initialize through one shared root-side ensure seam plus collaborator wiring bundle, so root `listingkit` no longer repeats session/batch-draft/media lazy-construction steps across the studio session initializer and accessor set.
 - studio batch-run collaborators now also initialize through one shared root-side ensure seam plus collaborator wiring bundle, so root `listingkit` no longer repeats batch-run/executor/coordinator lazy-construction steps across the studio batch initializer, accessor set, and recovery bootstrap path.
 - generation navigation identity home construction now retains only descriptor plus identity/cache/query helpers, while follow-up read and dispatch-plan assembly helpers live in a dedicated support file, so root `listingkit` no longer mixes target identity and dispatch orchestration helper families in one broad navigation support file.
+- SHEIN admin service home construction now retains only constructor plus admin entry methods, while task loading, category-client assembly, final-draft mutation, and resolution-cache clearing helpers live in a dedicated support file, so root `listingkit` no longer mixes entry methods with internal admin helper families in one broad service file.
 - The next preferred slice is to stop and reassess whether more submit extraction still shrinks `listingkit`, rather than automatically extracting every leftover helper.
 
 ### Phase 3.5: Studio Skeleton Extraction

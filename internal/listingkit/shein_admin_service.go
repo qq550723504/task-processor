@@ -2,12 +2,9 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
 	"strings"
-	"time"
 
 	sheinpub "task-processor/internal/publishing/shein"
-	sheincategory "task-processor/internal/shein/api/category"
 	sheinclient "task-processor/internal/shein/client"
 )
 
@@ -50,18 +47,14 @@ func newSheinAdminService(config sheinAdminServiceConfig) *sheinAdminService {
 }
 
 func (s *sheinAdminService) PreviewSheinPrice(ctx context.Context, taskID string, req *SheinPricePreviewRequest) (*sheinpub.PricingReview, error) {
-	task, err := s.repo.GetTask(ctx, taskID)
+	_, pkg, err := s.loadAdminTaskPackage(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
-	if task.Result == nil || task.Result.Shein == nil {
-		return nil, ErrTaskResultUnavailable
-	}
 	rule := s.currentPricingRule()
 	overrides := map[string]float64{}
-	task.Result.Shein = sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
-	if task.Result.Shein.FinalSubmissionDraft != nil {
-		for sku, price := range task.Result.Shein.FinalSubmissionDraft.ManualPriceOverrides {
+	if pkg.FinalSubmissionDraft != nil {
+		for sku, price := range pkg.FinalSubmissionDraft.ManualPriceOverrides {
 			overrides[sku] = price
 		}
 	}
@@ -77,20 +70,13 @@ func (s *sheinAdminService) PreviewSheinPrice(ctx context.Context, taskID string
 		}
 		applyToTask = req.ApplyToTask
 	}
-	review := buildSheinPricingReview(task.Result.Shein, rule, overrides)
+	review := buildSheinPricingReview(pkg, rule, overrides)
 	if applyToTask {
-		task, err = s.mutateAdminTask(ctx, taskID, func(task *Task) error {
-			if task.Result == nil || task.Result.Shein == nil {
-				return ErrTaskResultUnavailable
-			}
-			applySheinPricingReview(task.Result.Shein, review)
-			task.Result.UpdatedAt = time.Now()
-			return nil
-		})
-		if err != nil {
+		if _, err := s.mutateAdminTask(ctx, taskID, func(task *Task) error {
+			return applySheinAdminPricingReview(task, review)
+		}); err != nil {
 			return nil, err
 		}
-		_ = task
 	}
 	return review, nil
 }
@@ -101,32 +87,15 @@ func (s *sheinAdminService) SearchSheinCategories(ctx context.Context, taskID st
 		return nil, ErrInvalidSheinCategorySearchQuery
 	}
 
-	task, err := s.repo.GetTask(ctx, taskID)
+	task, err := s.loadAdminTask(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
 
-	apiClient, storeID, err := s.newSheinAPIClient(ctx, task)
+	categoryAPI, err := s.newSheinCategoryAPI(ctx, task)
 	if err != nil {
-		return nil, fmt.Errorf("%w for category search", err)
+		return nil, err
 	}
-	if !apiClient.HasCookies() {
-		if err := apiClient.ForceRefreshCookies(); err != nil {
-			return nil, fmt.Errorf("shein store cookies are unavailable for category search: %w", err)
-		}
-	}
-	if !apiClient.HasCookies() {
-		return nil, fmt.Errorf("shein store cookies are unavailable for category search")
-	}
-
-	baseAPI := sheinclient.NewBaseAPIClient(
-		apiClient.GetBaseURL(),
-		apiClient.GetTenantID(),
-		storeID,
-		apiClient.GetHTTPClient(),
-	)
-	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
-	categoryAPI := sheincategory.NewClient(baseAPI)
 	tree, err := categoryAPI.GetCategoryTree()
 	if err != nil {
 		return nil, err
@@ -140,72 +109,19 @@ func (s *sheinAdminService) SearchSheinCategories(ctx context.Context, taskID st
 }
 
 func (s *sheinAdminService) GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error) {
-	task, err := s.repo.GetTask(ctx, taskID)
+	task, pkg, err := s.loadAdminTaskPackage(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
-	if task.Result == nil || task.Result.Shein == nil {
-		return nil, ErrTaskResultUnavailable
-	}
 	return &SheinSubmissionEventPage{
 		TaskID: taskID,
-		Items:  sheinSubmissionEventsWithStoreResolution(task.Result.Shein.SubmissionEvents, task),
+		Items:  sheinSubmissionEventsWithStoreResolution(pkg.SubmissionEvents, task),
 	}, nil
 }
 
 func (s *sheinAdminService) UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error) {
 	task, err := s.mutateAdminTask(ctx, taskID, func(task *Task) error {
-		if task.Result == nil || task.Result.Shein == nil {
-			return ErrTaskResultUnavailable
-		}
-		pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
-		if pkg.FinalSubmissionDraft == nil {
-			pkg.FinalSubmissionDraft = &sheinpub.FinalDraft{}
-		}
-		if req != nil {
-			if req.SubmitMode != "" {
-				mode := strings.ToLower(strings.TrimSpace(req.SubmitMode))
-				if mode == "publish" || mode == "save_draft" {
-					pkg.FinalSubmissionDraft.SubmitMode = mode
-				}
-			}
-			if len(req.ManualPriceOverrides) > 0 {
-				pkg.FinalSubmissionDraft.ManualPriceOverrides = clonePriceOverrides(req.ManualPriceOverrides)
-			}
-			if req.FinalImageOrder != nil {
-				pkg.FinalSubmissionDraft.FinalImageOrder = uniqueNonEmptyStrings(*req.FinalImageOrder)
-			}
-			if value := strings.TrimSpace(req.MainImageURL); value != "" {
-				pkg.FinalSubmissionDraft.MainImageURL = value
-			}
-			if req.DeletedImageURLs != nil {
-				pkg.FinalSubmissionDraft.DeletedImageURLs = uniqueNonEmptyStrings(*req.DeletedImageURLs)
-			}
-			if len(req.ImageRoleOverrides) > 0 {
-				pkg.FinalSubmissionDraft.ImageRoleOverrides = normalizeImageRoleOverrides(req.ImageRoleOverrides)
-			}
-			if req.Confirmed != nil {
-				pkg.FinalSubmissionDraft.Confirmed = *req.Confirmed
-				if *req.Confirmed {
-					now := time.Now()
-					pkg.FinalSubmissionDraft.ConfirmedAt = &now
-				} else {
-					pkg.FinalSubmissionDraft.ConfirmedAt = nil
-				}
-			}
-		}
-		now := time.Now()
-		pkg.FinalSubmissionDraft.UpdatedAt = &now
-		rule := s.currentPricingRule()
-		if pkg.Pricing != nil && pkg.Pricing.RuleSnapshot != nil {
-			rule = *pkg.Pricing.RuleSnapshot
-		}
-		review := buildSheinDraftBackedPricingReview(pkg, rule, pkg.FinalSubmissionDraft.ManualPriceOverrides)
-		applySheinPricingReview(pkg, review)
-		applySheinFinalImageDraft(pkg)
-		applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)
-		task.Result.UpdatedAt = now
-		return nil
+		return s.applySheinFinalDraftUpdate(task, req)
 	})
 	if err != nil {
 		return nil, err
@@ -217,12 +133,9 @@ func (s *sheinAdminService) ClearSheinResolutionCache(ctx context.Context, taskI
 	if s == nil {
 		return nil, ErrTaskNotFound
 	}
-	task, err := s.repo.GetTask(ctx, taskID)
+	task, pkg, err := s.loadAdminTaskPackage(ctx, taskID)
 	if err != nil {
 		return nil, err
-	}
-	if task.Result == nil || task.Result.Shein == nil {
-		return nil, ErrTaskResultUnavailable
 	}
 
 	kind = strings.ToLower(strings.TrimSpace(kind))
@@ -234,39 +147,9 @@ func (s *sheinAdminService) ClearSheinResolutionCache(ctx context.Context, taskI
 	}
 
 	buildReq := buildSheinPublishRequest(task.Request)
-	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
-	canonical := task.Result.CanonicalProduct
-	deletedKinds := make([]string, 0, 3)
-
-	if kind == "all" || kind == sheinpub.ResolutionCacheKindCategory {
-		if cache, ok := s.categoryResolver.(sheinpub.CategoryResolutionCache); ok {
-			if err := cache.ClearCategoryResolution(buildReq, canonical, pkg); err != nil {
-				return nil, err
-			}
-			deletedKinds = append(deletedKinds, sheinpub.ResolutionCacheKindCategory)
-		}
-	}
-	if kind == "all" || kind == sheinpub.ResolutionCacheKindAttribute {
-		if cache, ok := s.attributeResolver.(sheinpub.AttributeResolutionCache); ok {
-			if err := cache.ClearAttributeResolution(buildReq, canonical, pkg); err != nil {
-				return nil, err
-			}
-			deletedKinds = append(deletedKinds, sheinpub.ResolutionCacheKindAttribute)
-		}
-	}
-	if kind == "all" || kind == sheinpub.ResolutionCacheKindSaleAttribute {
-		if cache, ok := s.saleAttributeResolver.(sheinpub.SaleAttributeResolutionCache); ok {
-			if err := cache.ClearSaleAttributeResolution(buildReq, canonical, pkg); err != nil {
-				return nil, err
-			}
-			deletedKinds = append(deletedKinds, sheinpub.ResolutionCacheKindSaleAttribute)
-		}
-	}
-	if kind == "all" || kind == sheinpub.ResolutionCacheKindPricing {
-		if err := s.clearPricingCache(buildReq, pkg); err != nil {
-			return nil, err
-		}
-		deletedKinds = append(deletedKinds, sheinpub.ResolutionCacheKindPricing)
+	deletedKinds, err := s.clearSheinAdminResolutionKinds(kind, buildReq, task.Result.CanonicalProduct, pkg)
+	if err != nil {
+		return nil, err
 	}
 
 	return &SheinResolutionCacheClearResult{

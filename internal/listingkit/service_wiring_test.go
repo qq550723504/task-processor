@@ -275,6 +275,45 @@ func TestAdminCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 			}
 		})
 	}
+
+	adminSrc, err := os.ReadFile("shein_admin_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_admin_service.go) error = %v", err)
+	}
+	adminContent := string(adminSrc)
+
+	for _, needle := range []string{
+		"func (s *sheinAdminService) loadAdminTask(",
+		"func (s *sheinAdminService) loadAdminTaskPackage(",
+		"func (s *sheinAdminService) newSheinCategoryAPI(",
+		"func (s *sheinAdminService) applySheinFinalDraftUpdate(",
+		"func applySheinFinalDraftRequest(",
+		"func (s *sheinAdminService) clearSheinAdminResolutionKinds(",
+	} {
+		if strings.Contains(adminContent, needle) {
+			t.Fatalf("shein_admin_service.go should not contain %q after admin support split", needle)
+		}
+	}
+
+	adminSupportSrc, err := os.ReadFile("shein_admin_service_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_admin_service_support.go) error = %v", err)
+	}
+	adminSupportContent := string(adminSupportSrc)
+
+	for _, needle := range []string{
+		"func (s *sheinAdminService) loadAdminTask(",
+		"func (s *sheinAdminService) loadAdminTaskPackage(",
+		"func (s *sheinAdminService) newSheinCategoryAPI(",
+		"func applySheinAdminPricingReview(",
+		"func (s *sheinAdminService) applySheinFinalDraftUpdate(",
+		"func applySheinFinalDraftRequest(",
+		"func (s *sheinAdminService) clearSheinAdminResolutionKinds(",
+	} {
+		if !strings.Contains(adminSupportContent, needle) {
+			t.Fatalf("shein_admin_service_support.go should contain %q", needle)
+		}
+	}
 }
 
 func TestTaskCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
