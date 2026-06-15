@@ -216,7 +216,6 @@ func TestBootstrapFileDelegatesToExtractedAssemblers(t *testing.T) {
 	}
 	content := string(src)
 	for _, needle := range []string{
-		"buildListingKitServiceConfig(buildListingKitServiceConfigInput{",
 		"buildModuleRuntime(input, bundle)",
 		"buildRepositories(input, closers)",
 		"buildServiceRuntime(input, repositories, closers)",
@@ -224,6 +223,9 @@ func TestBootstrapFileDelegatesToExtractedAssemblers(t *testing.T) {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("bootstrap.go should delegate through %q", needle)
 		}
+	}
+	if strings.Contains(content, "buildListingKitServiceConfig(buildListingKitServiceConfigInput{") {
+		t.Fatal("bootstrap.go should no longer own direct service config assembly")
 	}
 }
 
