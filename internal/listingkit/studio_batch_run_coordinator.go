@@ -100,17 +100,15 @@ func (s *service) initializeStudioBatchRunSupportCollaborators() {
 	if s == nil {
 		return
 	}
-	s.ensureTaskStudioBatchRunCollaborators()
+	s.resolveTaskStudioBatchRunCollaborators()
 }
 
 func (s *service) buildStudioBatchRunCoordinator() *studioBatchRunCoordinator {
-	s.ensureTaskStudioBatchRunCollaborators()
-	return s.studio.runCoordinator
+	return s.resolveTaskStudioBatchRunCollaborators().runCoordinator
 }
 
 func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {
-	s.ensureTaskStudioBatchRunCollaborators()
-	return s.studio.runExecutor
+	return s.resolveTaskStudioBatchRunCollaborators().runExecutor
 }
 
 func studioBatchRunLogFields(ctx context.Context, fields logrus.Fields) logrus.Fields {

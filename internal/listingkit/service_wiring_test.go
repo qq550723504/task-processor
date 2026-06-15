@@ -33,13 +33,13 @@ func TestNewServiceInitializesCollaborators(t *testing.T) {
 	if impl.task.sdsBaseline == nil {
 		t.Fatal("expected task group sdsBaseline to be initialized")
 	}
-	if impl.studio.session == nil {
+	if impl.studio.sessionGroup.session == nil {
 		t.Fatal("expected studio group session to be initialized")
 	}
-	if impl.studio.batchGeneration == nil {
+	if impl.studio.batchGroup.batchGeneration == nil {
 		t.Fatal("expected studio group batchGeneration to be initialized")
 	}
-	if impl.studio.media == nil {
+	if impl.studio.sessionGroup.media == nil {
 		t.Fatal("expected studio group media to be initialized")
 	}
 	if impl.admin.settings == nil {
@@ -107,13 +107,13 @@ func TestServiceInitializeCollaboratorGroups(t *testing.T) {
 	if svc.task.sdsBaseline == nil {
 		t.Fatal("expected task group sdsBaseline to be initialized")
 	}
-	if svc.studio.session == nil {
+	if svc.studio.sessionGroup.session == nil {
 		t.Fatal("expected studio group session to be initialized")
 	}
-	if svc.studio.batchGeneration == nil {
+	if svc.studio.batchGroup.batchGeneration == nil {
 		t.Fatal("expected studio group batchGeneration to be initialized")
 	}
-	if svc.studio.media == nil {
+	if svc.studio.sessionGroup.media == nil {
 		t.Fatal("expected studio group media to be initialized")
 	}
 
@@ -510,7 +510,7 @@ func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 		"func buildTaskStudioBatchCollaboratorWiring(s *service) taskStudioBatchCollaboratorWiring {",
 		"func (w taskStudioBatchCollaboratorWiring) newBatchGeneration() *studioBatchGenerationService {",
 		"func (w taskStudioBatchCollaboratorWiring) newBatch(batchGeneration *studioBatchGenerationService) *taskStudioBatchService {",
-		"func (w taskStudioBatchCollaboratorWiring) resolve(existing studioCollaborators) taskStudioBatchCollaborators {",
+		"func (w taskStudioBatchCollaboratorWiring) resolve(existing taskStudioBatchCollaborators) taskStudioBatchCollaborators {",
 		"taskResume: newListingStudioBatchTaskResumeService(",
 		"type taskStudioBatchRunConfigWiring struct {",
 		"func buildTaskStudioBatchRunConfigWiring(s *service) taskStudioBatchRunConfigWiring {",
@@ -537,15 +537,15 @@ func TestTaskStudioSessionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) taskStudioSessionOrDefault() *taskStudioSessionService {",
-		"s.ensureTaskStudioSessionCollaborators()",
+		"return s.resolveTaskStudioSessionCollaborators().session",
 		"func (s *service) taskStudioBatchDraftOrDefault() *taskStudioBatchDraftService {",
+		"return s.resolveTaskStudioSessionCollaborators().batchDraft",
 		"func (s *service) taskStudioMediaOrDefault() *taskStudioMediaService {",
-		"func (s *service) ensureTaskStudioSessionCollaborators() {",
+		"return s.resolveTaskStudioSessionCollaborators().media",
+		"func (s *service) resolveTaskStudioSessionCollaborators() taskStudioSessionCollaborators {",
 		"wiring := buildTaskStudioSessionCollaboratorWiring(s)",
-		"collaborators := wiring.resolve(s.studio)",
-		"s.studio.session = collaborators.session",
-		"s.studio.batchDraft = collaborators.batchDraft",
-		"s.studio.media = collaborators.media",
+		"s.studio.sessionGroup = wiring.resolve(s.studio.sessionGroup)",
+		"return s.studio.sessionGroup",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service_studio_collaborators.go should contain %q", needle)
@@ -558,8 +558,14 @@ func TestTaskStudioSessionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	}
 	stageContent := string(stageSrc)
 
-	if !strings.Contains(stageContent, "s.ensureTaskStudioSessionCollaborators()") {
-		t.Fatalf("service_task_collaborator_stages.go should contain %q", "s.ensureTaskStudioSessionCollaborators()")
+	for _, needle := range []string{
+		"s.taskStudioSessionOrDefault()",
+		"s.taskStudioBatchDraftOrDefault()",
+		"s.taskStudioMediaOrDefault()",
+	} {
+		if !strings.Contains(stageContent, needle) {
+			t.Fatalf("service_task_collaborator_stages.go should contain %q", needle)
+		}
 	}
 
 	supportSrc, err := os.ReadFile("service_studio_wiring_support.go")
@@ -575,7 +581,7 @@ func TestTaskStudioSessionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func (w taskStudioSessionCollaboratorWiring) newSession() *taskStudioSessionService {",
 		"func (w taskStudioSessionCollaboratorWiring) newBatchDraft() *taskStudioBatchDraftService {",
 		"func (w taskStudioSessionCollaboratorWiring) newMedia() *taskStudioMediaService {",
-		"func (w taskStudioSessionCollaboratorWiring) resolve(existing studioCollaborators) taskStudioSessionCollaborators {",
+		"func (w taskStudioSessionCollaboratorWiring) resolve(existing taskStudioSessionCollaborators) taskStudioSessionCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_studio_wiring_support.go should contain %q", needle)
@@ -594,13 +600,13 @@ func TestTaskStudioBatchCollaboratorsShareOneEnsureSeam(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) studioBatchGenerationOrDefault() *studioBatchGenerationService {",
-		"s.ensureTaskStudioBatchCollaborators()",
+		"return s.resolveTaskStudioBatchCollaborators().batchGeneration",
 		"func (s *service) taskStudioBatchOrDefault() *taskStudioBatchService {",
-		"func (s *service) ensureTaskStudioBatchCollaborators() {",
+		"return s.resolveTaskStudioBatchCollaborators().batch",
+		"func (s *service) resolveTaskStudioBatchCollaborators() taskStudioBatchCollaborators {",
 		"wiring := buildTaskStudioBatchCollaboratorWiring(s)",
-		"collaborators := wiring.resolve(s.studio)",
-		"s.studio.batchGeneration = collaborators.batchGeneration",
-		"s.studio.batch = collaborators.batch",
+		"s.studio.batchGroup = wiring.resolve(s.studio.batchGroup)",
+		"return s.studio.batchGroup",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service_studio_collaborators.go should contain %q", needle)
@@ -613,8 +619,13 @@ func TestTaskStudioBatchCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	}
 	stageContent := string(stageSrc)
 
-	if !strings.Contains(stageContent, "s.ensureTaskStudioBatchCollaborators()") {
-		t.Fatalf("service_task_collaborator_stages.go should contain %q", "s.ensureTaskStudioBatchCollaborators()")
+	for _, needle := range []string{
+		"s.studioBatchGenerationOrDefault()",
+		"s.taskStudioBatchOrDefault()",
+	} {
+		if !strings.Contains(stageContent, needle) {
+			t.Fatalf("service_task_collaborator_stages.go should contain %q", needle)
+		}
 	}
 
 	supportSrc, err := os.ReadFile("service_studio_wiring_support.go")
@@ -632,7 +643,7 @@ func TestTaskStudioBatchCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func buildTaskStudioBatchCollaboratorWiring(s *service) taskStudioBatchCollaboratorWiring {",
 		"func (w taskStudioBatchCollaboratorWiring) newBatchGeneration() *studioBatchGenerationService {",
 		"func (w taskStudioBatchCollaboratorWiring) newBatch(batchGeneration *studioBatchGenerationService) *taskStudioBatchService {",
-		"func (w taskStudioBatchCollaboratorWiring) resolve(existing studioCollaborators) taskStudioBatchCollaborators {",
+		"func (w taskStudioBatchCollaboratorWiring) resolve(existing taskStudioBatchCollaborators) taskStudioBatchCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_studio_wiring_support.go should contain %q", needle)
@@ -651,15 +662,15 @@ func TestTaskStudioBatchRunCollaboratorsShareOneEnsureSeam(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) taskStudioBatchRunOrDefault() *taskStudioBatchRunService {",
-		"s.ensureTaskStudioBatchRunCollaborators()",
+		"return s.resolveTaskStudioBatchRunCollaborators().batchRun",
 		"func (s *service) studioBatchRunExecutorOrDefault() *taskStudioBatchRunExecutor {",
+		"return s.resolveTaskStudioBatchRunCollaborators().runExecutor",
 		"func (s *service) studioBatchRunCoordinatorOrDefault() *studioBatchRunCoordinator {",
-		"func (s *service) ensureTaskStudioBatchRunCollaborators() {",
+		"return s.resolveTaskStudioBatchRunCollaborators().runCoordinator",
+		"func (s *service) resolveTaskStudioBatchRunCollaborators() taskStudioBatchRunCollaborators {",
 		"wiring := buildTaskStudioBatchRunCollaboratorWiring(s)",
-		"collaborators := wiring.resolve(s.studio)",
-		"s.studio.batchRun = collaborators.batchRun",
-		"s.studio.runExecutor = collaborators.runExecutor",
-		"s.studio.runCoordinator = collaborators.runCoordinator",
+		"s.studio.runGroup = wiring.resolve(s.studio.runGroup)",
+		"return s.studio.runGroup",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service_studio_collaborators.go should contain %q", needle)
@@ -672,8 +683,14 @@ func TestTaskStudioBatchRunCollaboratorsShareOneEnsureSeam(t *testing.T) {
 	}
 	stageContent := string(stageSrc)
 
-	if !strings.Contains(stageContent, "s.ensureTaskStudioBatchRunCollaborators()") {
-		t.Fatalf("service_task_collaborator_stages.go should contain %q", "s.ensureTaskStudioBatchRunCollaborators()")
+	for _, needle := range []string{
+		"s.taskStudioBatchRunOrDefault()",
+		"s.studioBatchRunExecutorOrDefault()",
+		"s.studioBatchRunCoordinatorOrDefault()",
+	} {
+		if !strings.Contains(stageContent, needle) {
+			t.Fatalf("service_task_collaborator_stages.go should contain %q", needle)
+		}
 	}
 
 	coordinatorSrc, err := os.ReadFile("studio_batch_run_coordinator.go")
@@ -684,11 +701,11 @@ func TestTaskStudioBatchRunCollaboratorsShareOneEnsureSeam(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) initializeStudioBatchRunSupportCollaborators() {",
-		"s.ensureTaskStudioBatchRunCollaborators()",
+		"s.resolveTaskStudioBatchRunCollaborators()",
 		"func (s *service) buildStudioBatchRunCoordinator() *studioBatchRunCoordinator {",
-		"return s.studio.runCoordinator",
+		"return s.resolveTaskStudioBatchRunCollaborators().runCoordinator",
 		"func (s *service) buildStudioBatchRunExecutor() *taskStudioBatchRunExecutor {",
-		"return s.studio.runExecutor",
+		"return s.resolveTaskStudioBatchRunCollaborators().runExecutor",
 	} {
 		if !strings.Contains(coordinatorContent, needle) {
 			t.Fatalf("studio_batch_run_coordinator.go should contain %q", needle)
@@ -712,7 +729,7 @@ func TestTaskStudioBatchRunCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func (w taskStudioBatchRunCollaboratorWiring) newRunExecutor() *taskStudioBatchRunExecutor {",
 		"func (w taskStudioBatchRunCollaboratorWiring) newRunCoordinator(executor *taskStudioBatchRunExecutor) *studioBatchRunCoordinator {",
 		"func (w taskStudioBatchRunCollaboratorWiring) newBatchRun(coordinator *studioBatchRunCoordinator) *taskStudioBatchRunService {",
-		"func (w taskStudioBatchRunCollaboratorWiring) resolve(existing studioCollaborators) taskStudioBatchRunCollaborators {",
+		"func (w taskStudioBatchRunCollaboratorWiring) resolve(existing taskStudioBatchRunCollaborators) taskStudioBatchRunCollaborators {",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_studio_wiring_support.go should contain %q", needle)

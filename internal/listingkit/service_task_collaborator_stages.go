@@ -24,14 +24,19 @@ func (s *service) initializeTaskStudioSessionCollaborators() {
 	if s == nil {
 		return
 	}
-	s.ensureTaskStudioSessionCollaborators()
+	s.taskStudioSessionOrDefault()
+	s.taskStudioBatchDraftOrDefault()
+	s.taskStudioMediaOrDefault()
 }
 
 func (s *service) initializeTaskStudioBatchCollaborators() {
 	if s == nil {
 		return
 	}
-	s.ensureTaskStudioBatchCollaborators()
-	s.ensureTaskStudioBatchRunCollaborators()
+	s.studioBatchGenerationOrDefault()
+	s.taskStudioBatchOrDefault()
+	s.taskStudioBatchRunOrDefault()
+	s.studioBatchRunExecutorOrDefault()
+	s.studioBatchRunCoordinatorOrDefault()
 	s.initializeStudioBatchRunRecovery()
 }

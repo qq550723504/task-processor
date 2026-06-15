@@ -318,7 +318,7 @@ func TestServiceTaskStudioBatchOrDefaultCachesOnService(t *testing.T) {
 	if collaborator == nil {
 		t.Fatal("taskStudioBatchOrDefault() = nil, want collaborator")
 	}
-	if svc.studio.batch != collaborator {
+	if svc.studio.batchGroup.batch != collaborator {
 		t.Fatal("expected collaborator to be cached on studio group")
 	}
 }

@@ -523,20 +523,23 @@ The split is intended to be behavior-preserving:
 
 The task/studio/admin collaborator groups are now the preferred internal shape.
 
-The root `service` struct still retains legacy flat collaborator fields such as
-`taskGeneration`, `taskStudioBatch`, and `settingsAdmin`, but they should now be
-treated as compatibility mirrors rather than the primary ownership boundary.
+The root `service` struct no longer uses legacy flat collaborator fields such as
+`taskGeneration`, `taskStudioBatch`, and `settingsAdmin` as the primary ownership
+boundary. Collaborators now live in grouped containers, and the `studio`
+container is further split into `sessionGroup`, `batchGroup`, and `runGroup`
+subgroups so related lazy construction stays local to the concept it serves.
 
 Current expectation:
 
 - grouped collaborator containers (`task`, `studio`, `admin`) are the primary internal representation,
-- `...OrDefault()` accessors are the only place that should synchronize grouped fields with legacy mirrors,
+- `...OrDefault()` accessors should own lazy construction for grouped collaborators instead of stage-specific manual field rewrites,
+- `studio` collaborator access should stay scoped to subgroup-local caches (`sessionGroup`, `batchGroup`, `runGroup`) instead of reintroducing flat fields,
 - grouped dependency buckets (`taskDeps`, `studioDeps`, `adminDeps`, `submissionDeps`, `workflowDeps`, `sheinRuntimeDeps`, `supportDeps`) should own resolver state first,
 - service construction should seed grouped dependency buckets first instead of introducing new root dependency mirrors,
 - runtime-configurable submit/workflow overrides should remain owned by their grouped dependency buckets instead of expanding the root service surface,
 - initialization stages should trigger accessors rather than re-assign grouped fields manually,
-- dependency resolvers should use shared synchronization helpers instead of open-coded root/group mirror logic,
-- tests should prefer asserting grouped ownership first and mirror compatibility second.
+- dependency resolvers and collaborator wiring should prefer concept-specific builders over open-coded root/group synchronization logic,
+- tests should prefer asserting grouped ownership first and behavior compatibility second.
 
 This keeps the service object behavior-compatible while reducing the amount of
 duplicated root/group synchronization logic that later Phase 4 work would
@@ -562,11 +565,11 @@ go test ./... -count=1
 
 Recommended next low-risk slices:
 
-1. Review `service_types.go` for possible internal grouping comments or dependency buckets without changing fields.
-2. Continue shrinking legacy dependency mirror reads/writes so grouped dependency containers become the obvious ownership boundary.
-3. Review service accessor files to ensure each accessor remains thin and delegates to concept-specific config builders.
-4. Keep `service_config.go` focused on factory wiring; avoid adding new default-building logic there.
-5. Continue moving default construction helpers to concept-specific files only when the move is behavior-preserving.
+1. Continue shrinking legacy dependency mirror reads/writes so grouped dependency containers become the obvious ownership boundary.
+2. Review service accessor files to ensure each accessor remains thin and delegates to concept-specific config builders.
+3. Keep `service_config.go` focused on factory wiring; avoid adding new default-building logic there.
+4. Continue moving default construction helpers to concept-specific files only when the move is behavior-preserving.
+5. Apply the same subgroup-oriented ownership test to any remaining large collaborator cluster before introducing new service fields.
 6. Use [legacy-store-routing-retirement-checklist.md](/D:/code/task-processor/docs/refactoring/legacy-store-routing-retirement-checklist.md) before removing `/store-routing` compatibility surfaces.
 
 Avoid for now:

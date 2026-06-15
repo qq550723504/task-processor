@@ -1,73 +1,60 @@
 package listingkit
 
 func (s *service) taskStudioSessionOrDefault() *taskStudioSessionService {
-	s.ensureTaskStudioSessionCollaborators()
-	return s.studio.session
+	return s.resolveTaskStudioSessionCollaborators().session
 }
 
 func (s *service) taskStudioBatchDraftOrDefault() *taskStudioBatchDraftService {
-	s.ensureTaskStudioSessionCollaborators()
-	return s.studio.batchDraft
+	return s.resolveTaskStudioSessionCollaborators().batchDraft
 }
 
 func (s *service) taskStudioMediaOrDefault() *taskStudioMediaService {
-	s.ensureTaskStudioSessionCollaborators()
-	return s.studio.media
+	return s.resolveTaskStudioSessionCollaborators().media
 }
 
-func (s *service) ensureTaskStudioSessionCollaborators() {
+func (s *service) resolveTaskStudioSessionCollaborators() taskStudioSessionCollaborators {
 	if s == nil {
-		return
+		return taskStudioSessionCollaborators{}
 	}
 	wiring := buildTaskStudioSessionCollaboratorWiring(s)
-	collaborators := wiring.resolve(s.studio)
-	s.studio.session = collaborators.session
-	s.studio.batchDraft = collaborators.batchDraft
-	s.studio.media = collaborators.media
+	s.studio.sessionGroup = wiring.resolve(s.studio.sessionGroup)
+	return s.studio.sessionGroup
 }
 
 func (s *service) studioBatchGenerationOrDefault() *studioBatchGenerationService {
-	s.ensureTaskStudioBatchCollaborators()
-	return s.studio.batchGeneration
+	return s.resolveTaskStudioBatchCollaborators().batchGeneration
 }
 
 func (s *service) taskStudioBatchOrDefault() *taskStudioBatchService {
-	s.ensureTaskStudioBatchCollaborators()
-	return s.studio.batch
+	return s.resolveTaskStudioBatchCollaborators().batch
 }
 
-func (s *service) ensureTaskStudioBatchCollaborators() {
+func (s *service) resolveTaskStudioBatchCollaborators() taskStudioBatchCollaborators {
 	if s == nil {
-		return
+		return taskStudioBatchCollaborators{}
 	}
 	wiring := buildTaskStudioBatchCollaboratorWiring(s)
-	collaborators := wiring.resolve(s.studio)
-	s.studio.batchGeneration = collaborators.batchGeneration
-	s.studio.batch = collaborators.batch
+	s.studio.batchGroup = wiring.resolve(s.studio.batchGroup)
+	return s.studio.batchGroup
 }
 
 func (s *service) taskStudioBatchRunOrDefault() *taskStudioBatchRunService {
-	s.ensureTaskStudioBatchRunCollaborators()
-	return s.studio.batchRun
+	return s.resolveTaskStudioBatchRunCollaborators().batchRun
 }
 
 func (s *service) studioBatchRunExecutorOrDefault() *taskStudioBatchRunExecutor {
-	s.ensureTaskStudioBatchRunCollaborators()
-	return s.studio.runExecutor
+	return s.resolveTaskStudioBatchRunCollaborators().runExecutor
 }
 
 func (s *service) studioBatchRunCoordinatorOrDefault() *studioBatchRunCoordinator {
-	s.ensureTaskStudioBatchRunCollaborators()
-	return s.studio.runCoordinator
+	return s.resolveTaskStudioBatchRunCollaborators().runCoordinator
 }
 
-func (s *service) ensureTaskStudioBatchRunCollaborators() {
+func (s *service) resolveTaskStudioBatchRunCollaborators() taskStudioBatchRunCollaborators {
 	if s == nil {
-		return
+		return taskStudioBatchRunCollaborators{}
 	}
 	wiring := buildTaskStudioBatchRunCollaboratorWiring(s)
-	collaborators := wiring.resolve(s.studio)
-	s.studio.batchRun = collaborators.batchRun
-	s.studio.runExecutor = collaborators.runExecutor
-	s.studio.runCoordinator = collaborators.runCoordinator
+	s.studio.runGroup = wiring.resolve(s.studio.runGroup)
+	return s.studio.runGroup
 }

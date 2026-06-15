@@ -174,7 +174,9 @@ func TestStudioBatchRunServiceGetAndListProxyToRepository(t *testing.T) {
 
 	svc := &service{
 		studio: studioCollaborators{
-			batchRun: &taskStudioBatchRunService{repo: repo},
+			runGroup: taskStudioBatchRunCollaborators{
+				batchRun: &taskStudioBatchRunService{repo: repo},
+			},
 		},
 	}
 
@@ -207,7 +209,9 @@ func TestStudioBatchRunServiceCancelMarksRunAsCancelRequested(t *testing.T) {
 
 	svc := &service{
 		studio: studioCollaborators{
-			batchRun: &taskStudioBatchRunService{repo: repo},
+			runGroup: taskStudioBatchRunCollaborators{
+				batchRun: &taskStudioBatchRunService{repo: repo},
+			},
 		},
 	}
 

@@ -169,7 +169,7 @@ func (w taskStudioSessionCollaboratorWiring) newMedia() *taskStudioMediaService 
 	return newTaskStudioMediaService(buildTaskStudioMediaServiceConfigWithWiring(buildTaskStudioMediaWiring(w.service)))
 }
 
-func (w taskStudioSessionCollaboratorWiring) resolve(existing studioCollaborators) taskStudioSessionCollaborators {
+func (w taskStudioSessionCollaboratorWiring) resolve(existing taskStudioSessionCollaborators) taskStudioSessionCollaborators {
 	session := existing.session
 	if session == nil {
 		session = w.newSession()
@@ -246,7 +246,7 @@ func (w taskStudioBatchRunCollaboratorWiring) newBatchRun(coordinator *studioBat
 	return newTaskStudioBatchRunService(buildTaskStudioBatchRunServiceConfigWithCollaborators(w.wiring, coordinator))
 }
 
-func (w taskStudioBatchRunCollaboratorWiring) resolve(existing studioCollaborators) taskStudioBatchRunCollaborators {
+func (w taskStudioBatchRunCollaboratorWiring) resolve(existing taskStudioBatchRunCollaborators) taskStudioBatchRunCollaborators {
 	runExecutor := existing.runExecutor
 	if runExecutor == nil {
 		runExecutor = w.newRunExecutor()
@@ -380,7 +380,7 @@ func (w taskStudioBatchCollaboratorWiring) newBatch(batchGeneration *studioBatch
 	))
 }
 
-func (w taskStudioBatchCollaboratorWiring) resolve(existing studioCollaborators) taskStudioBatchCollaborators {
+func (w taskStudioBatchCollaboratorWiring) resolve(existing taskStudioBatchCollaborators) taskStudioBatchCollaborators {
 	batchGeneration := existing.batchGeneration
 	if batchGeneration == nil {
 		batchGeneration = w.newBatchGeneration()
