@@ -2,9 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -247,72 +244,6 @@ func (s *service) syncSDSDesignFromRemote(ctx context.Context, task *Task, resul
 	}).Info("remote SDS design sync completed")
 }
 
-func (s *service) syncSDSDesignFromUploadedImagePath(ctx context.Context, task *Task, imageURL string, syncInput sdsusecase.SyncInput) (*sdsworkflow.SyncResult, bool, error) {
-	key, ok := uploadedListingKitImageKeyFromURL(imageURL)
-	if !ok {
-		return nil, false, nil
-	}
-	return s.syncSDSDesignFromUploadedImageKey(ctx, task, key, syncInput, sdsDesignSyncTimeout)
-}
-
-func (s *service) syncSDSDesignFromUploadedImageKey(ctx context.Context, task *Task, key string, syncInput sdsusecase.SyncInput, timeout time.Duration) (*sdsworkflow.SyncResult, bool, error) {
-	syncService := resolveSDSSyncService(s)
-	if syncService == nil {
-		return nil, true, fmt.Errorf("sds sync service is not configured")
-	}
-	uploadStore := resolveStudioUploadStore(s)
-	if uploadStore == nil {
-		return nil, true, fmt.Errorf("uploaded image store is not configured")
-	}
-	stored, err := uploadStore.Open(ctx, key)
-	if err != nil {
-		return nil, true, err
-	}
-	data := stored.Data
-	if len(data) == 0 {
-		data, err = os.ReadFile(stored.Path)
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil, true, ErrUploadedImageNotFound
-			}
-			return nil, true, fmt.Errorf("read uploaded image: %w", err)
-		}
-	}
-	tempDir := os.TempDir()
-	fileName := strings.TrimSpace(stored.Filename)
-	if fileName == "" {
-		fileName = studioSDSMaterialFileName(task)
-	}
-	tempPattern := "listingkit-sds-*-" + filepath.Base(fileName)
-	tempFile, err := os.CreateTemp(tempDir, tempPattern)
-	if err != nil {
-		return nil, true, fmt.Errorf("create temp uploaded image: %w", err)
-	}
-	tempPath := tempFile.Name()
-	defer os.Remove(tempPath)
-	if _, err := tempFile.Write(data); err != nil {
-		_ = tempFile.Close()
-		return nil, true, fmt.Errorf("write temp uploaded image: %w", err)
-	}
-	if err := tempFile.Close(); err != nil {
-		return nil, true, fmt.Errorf("close temp uploaded image: %w", err)
-	}
-	syncCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	syncResult, err := syncService.SyncFromLocalFile(syncCtx, sdsusecase.LocalFileInput{
-		Sync: syncInput,
-		File: sdsworkflow.FileSource{
-			Path:        tempPath,
-			FileName:    filepath.Base(fileName),
-			ContentType: strings.TrimSpace(stored.ContentType),
-		},
-	})
-	if err != nil {
-		return nil, true, err
-	}
-	return syncResult, true, nil
-}
-
 func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Task, result *ListingKitResult, imageURL string, recorder *workflowRecorder) {
 	syncService := resolveSDSSyncService(s)
 	if syncService == nil {
@@ -403,125 +334,6 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 	}
 	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
 	ensureResultPodExecution(result, task.Request)
-}
-
-func sdsVariantIDs(variants []SDSSyncVariantOption) []int64 {
-	ids := make([]int64, 0, len(variants))
-	seen := map[int64]struct{}{}
-	for _, variant := range variants {
-		if variant.VariantID <= 0 {
-			continue
-		}
-		if _, ok := seen[variant.VariantID]; ok {
-			continue
-		}
-		seen[variant.VariantID] = struct{}{}
-		ids = append(ids, variant.VariantID)
-	}
-	return ids
-}
-
-func representativeSDSVariantsByColor(variants []SDSSyncVariantOption) []SDSSyncVariantOption {
-	seen := map[string]struct{}{}
-	result := make([]SDSSyncVariantOption, 0, len(variants))
-	for _, variant := range variants {
-		key := strings.ToLower(strings.TrimSpace(variant.Color))
-		if key == "" {
-			key = "__default__"
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, variant)
-	}
-	return result
-}
-
-func mergeSDSVariantSyncSummaries(options *SDSSyncOptions, summaries []SDSSyncSummary) *SDSSyncSummary {
-	merged := &SDSSyncSummary{Status: "failed", Error: "SDS did not render any selected color variants"}
-	if options != nil {
-		merged.VariantID = options.VariantID
-	}
-	var failedColors []string
-	var authFailureDetail string
-	var primary *SDSSyncSummary
-	for _, summary := range summaries {
-		if summary.Status == "failed" || len(summary.MockupImageURLs) == 0 {
-			if authFailureDetail == "" && isSDSAuthRequiredError(fmt.Errorf("%s", strings.TrimSpace(summary.Error))) {
-				authFailureDetail = strings.TrimSpace(summary.Error)
-			}
-			label := strings.TrimSpace(summary.VariantColor)
-			if label == "" {
-				label = strings.TrimSpace(summary.VariantSKU)
-			}
-			if label == "" {
-				label = "unknown"
-			}
-			failedColors = append(failedColors, label)
-			continue
-		}
-		if primary == nil {
-			copy := summary
-			primary = &copy
-		}
-	}
-	if primary != nil {
-		*merged = *primary
-		merged.VariantResults = append([]SDSSyncSummary(nil), summaries...)
-	}
-	if authFailureDetail != "" {
-		merged.Status = "failed"
-		merged.Error = sdsAuthRequiredMessage
-		merged.MockupImageURLs = nil
-		return merged
-	}
-	if len(failedColors) > 0 {
-		merged.Status = "failed"
-		merged.Error = "SDS render failed for selected color variants: " + strings.Join(uniqueNonEmptyStrings(failedColors), ", ")
-		merged.MockupImageURLs = nil
-	}
-	return merged
-}
-
-func firstNonZeroInt64(values ...int64) int64 {
-	for _, value := range values {
-		if value != 0 {
-			return value
-		}
-	}
-	return 0
-}
-
-func uploadedListingKitImageKeyFromURL(rawURL string) (string, bool) {
-	trimmed := strings.TrimSpace(rawURL)
-	if trimmed == "" {
-		return "", false
-	}
-	const prefix = "/api/v1/listing-kits/uploads/files/"
-	if strings.HasPrefix(trimmed, prefix) {
-		return strings.TrimPrefix(trimmed, prefix), true
-	}
-	const localhostPrefix = "http://localhost:3000/api/v1/listing-kits/uploads/files/"
-	if strings.HasPrefix(trimmed, localhostPrefix) {
-		return strings.TrimPrefix(trimmed, localhostPrefix), true
-	}
-	const localhostSecurePrefix = "https://localhost:3000/api/v1/listing-kits/uploads/files/"
-	if strings.HasPrefix(trimmed, localhostSecurePrefix) {
-		return strings.TrimPrefix(trimmed, localhostSecurePrefix), true
-	}
-	return "", false
-}
-
-func studioSDSMaterialFileName(task *Task) string {
-	if task == nil || strings.TrimSpace(task.ID) == "" {
-		return "listingkit-studio-design.png"
-	}
-	taskID := strings.TrimSpace(task.ID)
-	if len(taskID) > 8 {
-		taskID = taskID[:8]
-	}
-	return fmt.Sprintf("listingkit-studio-design-%s.png", taskID)
 }
 
 func needsLocalSDSMockupFallback(summary *SDSSyncSummary, options *SDSSyncOptions) bool {
