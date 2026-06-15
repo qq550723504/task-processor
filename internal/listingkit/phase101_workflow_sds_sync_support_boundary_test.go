@@ -32,6 +32,8 @@ func TestWorkflowSDSSyncSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func needsLocalSDSMockupFallback(summary *SDSSyncSummary, options *SDSSyncOptions) bool {",
 		"func beginSDSSyncStage(",
 		"func finalizeSDSSyncSummary(",
+		"func (s *service) performSingleSDSRemoteSync(",
+		"func (s *service) collectSDSVariantRemoteSummaries(",
 	} {
 		if strings.Contains(homeContent, needle) {
 			t.Fatalf("workflow_sds_sync.go should delegate helper seam %q", needle)
@@ -85,6 +87,24 @@ func TestWorkflowSDSSyncSupportFilesOwnHelperFamilies(t *testing.T) {
 	} {
 		if !strings.Contains(fallbackContent, needle) {
 			t.Fatalf("workflow_sds_sync_fallback_support.go should contain %q", needle)
+		}
+	}
+
+	remoteSrc, err := os.ReadFile("workflow_sds_sync_remote_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(workflow_sds_sync_remote_support.go) error = %v", err)
+	}
+	remoteContent := string(remoteSrc)
+
+	for _, needle := range []string{
+		"func (s *service) runSingleSDSDesignFromRemote(",
+		"func (s *service) performSingleSDSRemoteSync(",
+		"func (s *service) collectSDSVariantRemoteSummaries(",
+		"func (s *service) performVariantSDSRemoteSync(",
+		"func finalizeSDSVariantRemoteSummaries(",
+	} {
+		if !strings.Contains(remoteContent, needle) {
+			t.Fatalf("workflow_sds_sync_remote_support.go should contain %q", needle)
 		}
 	}
 }
