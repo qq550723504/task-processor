@@ -33,6 +33,44 @@ func (s *taskStudioBatchService) loadStudioBatchTaskPreparationResult(ctx contex
 	}, nil
 }
 
+func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
+	ctx context.Context,
+	batchID string,
+	session *SheinStudioSession,
+	batch *StudioBatchRecord,
+	createdTasks []SheinStudioCreatedTask,
+	failedTasks []SheinStudioFailedTask,
+) (*CreateStudioBatchTasksResult, error) {
+	if sessionUpdater, ok := s.studioSessionRepo.(interface {
+		UpdateSession(context.Context, *SheinStudioSession) error
+	}); ok && session != nil {
+		session.CreatedTasks = mergeStudioCreatedTasks(session.CreatedTasks, createdTasks)
+		session.CreatedTaskIDs = buildCreatedTaskIDs(session.CreatedTasks)
+		session.FailedTasks = append(SheinStudioFailedTaskList(nil), failedTasks...)
+		session.UpdatedAt = s.currentTime().UTC()
+		if err := sessionUpdater.UpdateSession(ctx, session); err != nil {
+			return nil, err
+		}
+	}
+	if len(createdTasks) > 0 && batch != nil {
+		batch.Status = StudioBatchStatusTasksCreated
+		batch.UpdatedAt = s.currentTime().UTC()
+		if err := s.repo.UpdateStudioBatch(ctx, batch); err != nil {
+			return nil, err
+		}
+	}
+	detail, err := s.GetStudioBatchDetail(ctx, batchID)
+	if err != nil {
+		return nil, err
+	}
+	return &CreateStudioBatchTasksResult{
+		Batch:        detail.Batch,
+		Items:        detail.Items,
+		CreatedTasks: createdTasks,
+		FailedTasks:  failedTasks,
+	}, nil
+}
+
 func (s *taskStudioBatchService) finalizeStudioBatchTaskCreation(
 	ctx context.Context,
 	batchID string,
@@ -56,6 +94,62 @@ func (s *taskStudioBatchService) finalizeStudioBatchTaskCreation(
 		CreatedTasks: createdTasks,
 		FailedTasks:  failedTasks,
 	})
+}
+
+func (s *taskStudioBatchService) prepareStudioBatchTaskExecuteCandidates(
+	ctx context.Context,
+	batchID string,
+	designIDs []string,
+) ([]listingStudioBatchTaskExecuteCandidate, *SheinStudioSession, error) {
+	designIDs, session, batchDetail, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
+		DesignIDs: append([]string(nil), designIDs...),
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	itemByID := make(map[string]StudioBatchItemRecord, len(batchDetail.Items))
+	for _, item := range batchDetail.Items {
+		itemByID[item.ID] = item
+	}
+	designs, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, batchID, designIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	sessionDesignsByID, err := s.loadStudioBatchSessionDesigns(ctx, batchID)
+	if err != nil {
+		return nil, nil, err
+	}
+	candidates := make([]listingStudioBatchTaskExecuteCandidate, 0, len(designs))
+	for _, design := range designs {
+		item, ok := itemByID[design.ItemID]
+		if !ok {
+			return nil, nil, gorm.ErrRecordNotFound
+		}
+		selections := resolveStudioBatchItemSelections(batchDetail.Batch, item)
+		if len(selections) == 0 {
+			selections = []SheinStudioGroupedSelection{{
+				SelectionID:  selectionIDForStudioSelection(SheinStudioSelection(session.Selection)),
+				Selection:    SheinStudioSelection(session.Selection),
+				Eligible:     true,
+				SheinStoreID: strings.TrimSpace(session.SheinStoreID),
+			}}
+		}
+		for _, grouped := range selections {
+			candidates = append(candidates, listingStudioBatchTaskExecuteCandidate{
+				session: session,
+				design:  design,
+				grouped: grouped,
+				title: firstNonEmpty(
+					strings.TrimSpace(grouped.Selection.VariantLabel),
+					strings.TrimSpace(grouped.Selection.ProductName),
+					strings.TrimSpace(design.TargetGroupLabel),
+					strings.TrimSpace(design.ID),
+				),
+				sessionDesign: sessionDesignsByID[design.ID],
+			})
+		}
+	}
+	return candidates, session, nil
 }
 
 func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(

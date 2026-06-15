@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"gorm.io/gorm"
 )
 
 type taskStudioBatchService struct {
@@ -21,6 +19,7 @@ type taskStudioBatchService struct {
 	reviewRunner       *listingStudioBatchReviewRunner
 	retryRunner        *listingStudioBatchRetryPrepareRunner
 	taskCreationRunner *listingStudioBatchTaskCreationRunner
+	taskExecuteRunner  *listingStudioBatchTaskExecuteRunner
 	taskPrepareRunner  *listingStudioBatchTaskPrepareRunner
 	taskResumeRunner   *listingStudioBatchTaskResumeRunner
 }
@@ -38,6 +37,7 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 		reviewRunner:       config.reviewRunner,
 		retryRunner:        config.retryRunner,
 		taskCreationRunner: config.taskCreationRunner,
+		taskExecuteRunner:  config.taskExecuteRunner,
 		taskPrepareRunner:  config.taskPrepareRunner,
 		taskResumeRunner:   config.taskResumeRunner,
 	}
@@ -46,6 +46,7 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 	service.ensureReviewRunner()
 	service.ensureRetryRunner()
 	service.ensureTaskCreationRunner()
+	service.ensureTaskExecuteRunner()
 	service.ensureTaskPrepareRunner()
 	service.ensureTaskResumeRunner()
 	return service
@@ -186,6 +187,13 @@ func (s *taskStudioBatchService) ensureTaskCreationRunner() {
 	s.taskCreationRunner = newListingStudioBatchTaskCreationService(s)
 }
 
+func (s *taskStudioBatchService) ensureTaskExecuteRunner() {
+	if s == nil || s.taskExecuteRunner != nil {
+		return
+	}
+	s.taskExecuteRunner = newListingStudioBatchTaskExecuteService(s)
+}
+
 func (s *taskStudioBatchService) ensureTaskPrepareRunner() {
 	if s == nil || s.taskPrepareRunner != nil {
 		return
@@ -234,137 +242,16 @@ func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, bat
 	if s.repo == nil {
 		return nil, fmt.Errorf("studio batch repository is not configured")
 	}
-	if s.createGenerateTask == nil {
-		return nil, fmt.Errorf("listing task creator is not configured")
-	}
-
 	normalizedBatchID := strings.TrimSpace(batchID)
 	designIDs := normalizeStudioBatchDesignIDs(nil)
 	if req != nil {
 		designIDs = normalizeStudioBatchDesignIDs(req.DesignIDs)
 	}
-	if len(designIDs) == 0 {
-		return nil, NewStudioBatchActionValidationError("design_ids is required")
+	s.ensureTaskExecuteRunner()
+	if s.taskExecuteRunner == nil {
+		return nil, fmt.Errorf("studio batch task execute service is not configured")
 	}
-
-	designs, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, normalizedBatchID, designIDs)
-	if err != nil {
-		return nil, err
-	}
-	if len(designs) != len(designIDs) {
-		return nil, gorm.ErrRecordNotFound
-	}
-	batchDetail, err := s.repo.GetStudioBatchDetail(ctx, normalizedBatchID)
-	if err != nil {
-		return nil, err
-	}
-	if batchDetail == nil || batchDetail.Batch == nil {
-		return nil, gorm.ErrRecordNotFound
-	}
-	itemByID := make(map[string]StudioBatchItemRecord, len(batchDetail.Items))
-	for _, item := range batchDetail.Items {
-		itemByID[item.ID] = item
-	}
-
-	var session *SheinStudioSession
-	if s.studioSessionRepo != nil {
-		session, err = s.studioSessionRepo.GetSession(ctx, normalizedBatchID)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if session == nil {
-		return nil, ErrStudioSessionNotFound
-	}
-
-	sessionDesignsByID, err := s.loadStudioBatchSessionDesigns(ctx, normalizedBatchID)
-	if err != nil {
-		return nil, err
-	}
-
-	createdTasks := make([]SheinStudioCreatedTask, 0, len(designs))
-	failedTasks := make([]SheinStudioFailedTask, 0)
-	for _, design := range designs {
-		if design.ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
-			return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s is not approved", design.ID))
-		}
-		item, ok := itemByID[design.ItemID]
-		if !ok {
-			return nil, gorm.ErrRecordNotFound
-		}
-		selections := resolveStudioBatchItemSelections(batchDetail.Batch, item)
-		if len(selections) == 0 {
-			selections = []SheinStudioGroupedSelection{{
-				SelectionID:  selectionIDForStudioSelection(SheinStudioSelection(session.Selection)),
-				Selection:    SheinStudioSelection(session.Selection),
-				Eligible:     true,
-				SheinStoreID: strings.TrimSpace(session.SheinStoreID),
-			}}
-		}
-		for _, grouped := range selections {
-			title := firstNonEmpty(
-				strings.TrimSpace(grouped.Selection.VariantLabel),
-				strings.TrimSpace(grouped.Selection.ProductName),
-				strings.TrimSpace(design.TargetGroupLabel),
-				strings.TrimSpace(design.ID),
-			)
-			if existing, ok := s.findExistingStudioBatchTask(ctx, session.CreatedTasks, design, grouped, title); ok {
-				createdTasks = append(createdTasks, existing)
-				continue
-			}
-			task, createErr := s.createGenerateTask(
-				ctx,
-				buildStudioBatchTaskGenerateRequest(session, grouped, design, sessionDesignsByID[design.ID]),
-			)
-			if createErr != nil {
-				failedTasks = append(failedTasks, SheinStudioFailedTask{
-					DesignID: design.ID,
-					Title:    title,
-					Message:  createErr.Error(),
-				})
-				continue
-			}
-			createdTasks = append(createdTasks, SheinStudioCreatedTask{
-				ID:       task.ID,
-				Title:    title,
-				DesignID: design.ID,
-			})
-		}
-	}
-
-	if sessionUpdater, ok := s.studioSessionRepo.(interface {
-		UpdateSession(context.Context, *SheinStudioSession) error
-	}); ok {
-		session.CreatedTasks = mergeStudioCreatedTasks(session.CreatedTasks, createdTasks)
-		session.CreatedTaskIDs = buildCreatedTaskIDs(session.CreatedTasks)
-		session.FailedTasks = append(SheinStudioFailedTaskList(nil), failedTasks...)
-		session.UpdatedAt = s.currentTime().UTC()
-		if err := sessionUpdater.UpdateSession(ctx, session); err != nil {
-			return nil, err
-		}
-	}
-	if len(createdTasks) > 0 {
-		batch, err := s.repo.GetStudioBatch(ctx, normalizedBatchID)
-		if err != nil {
-			return nil, err
-		}
-		batch.Status = StudioBatchStatusTasksCreated
-		batch.UpdatedAt = s.currentTime().UTC()
-		if err := s.repo.UpdateStudioBatch(ctx, batch); err != nil {
-			return nil, err
-		}
-	}
-
-	detail, err := s.GetStudioBatchDetail(ctx, normalizedBatchID)
-	if err != nil {
-		return nil, err
-	}
-	return &CreateStudioBatchTasksResult{
-		Batch:        detail.Batch,
-		Items:        detail.Items,
-		CreatedTasks: createdTasks,
-		FailedTasks:  failedTasks,
-	}, nil
+	return s.taskExecuteRunner.Execute(ctx, normalizedBatchID, designIDs)
 }
 
 func (s *taskStudioBatchService) PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {
