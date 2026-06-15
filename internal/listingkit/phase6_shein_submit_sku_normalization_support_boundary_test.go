@@ -61,11 +61,25 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 		"func applySheinStudioSupplierSKURenames(pkg *sheinpub.Package, renames []sheinStudioSupplierSKURename) {",
 		"func reconcileSheinStudioPricingReferences(pkg *sheinpub.Package) bool {",
 		"func sheinStudioPricingSKUAlias(value string) string {",
-		"func resolveStudioSubmitStyleSuffix(task *Task) string {",
-		"func combineStudioSubmitDiscriminators(values ...string) string {",
 	} {
 		if !strings.Contains(pricingContent, needle) {
 			t.Fatalf("shein_submit_sku_pricing_support.go should contain %q", needle)
+		}
+	}
+
+	styleSrc, err := os.ReadFile("shein_submit_sku_style_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_submit_sku_style_support.go) error = %v", err)
+	}
+	styleContent := string(styleSrc)
+
+	for _, needle := range []string{
+		"func resolveStudioSubmitStyleSuffix(task *Task) string {",
+		"func combineStudioSubmitDiscriminators(values ...string) string {",
+		"func studioSubmitRequestDiscriminator(requestID string) string {",
+	} {
+		if !strings.Contains(styleContent, needle) {
+			t.Fatalf("shein_submit_sku_style_support.go should contain %q", needle)
 		}
 	}
 }
