@@ -50,13 +50,15 @@ func TestSheinSubmitReadinessGateBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "submit_readiness_gate_shein.go", "validateSheinSubmitReadinessGates")
 
 		assertSourceContainsAll(t, source, []string{
-			"if readiness == nil || !readiness.Ready {",
-			"return fmt.Errorf(\"%w: %s\", ErrSubmitBlocked, firstSubmitReadinessMessage(readiness))",
-			"freshness, err := validateFreshness(ctx, task, pkg, action)",
-			"return fmt.Errorf(\"%w: %s\", ErrSubmitBlocked, firstSubmitReadinessMessage(freshness))",
+			"return listingsubmission.ValidateReadinessGates(",
+			"sheinSubmitReadinessSnapshot(readiness)",
+			"adaptSheinSubmitFreshnessValidator(validateFreshness)",
+			"ErrSubmitBlocked",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"firstSubmitReadinessMessage",
+			"ValidateReadinessGates",
+			"sheinSubmitReadinessSnapshot",
+			"adaptSheinSubmitFreshnessValidator",
 		})
 	})
 }
