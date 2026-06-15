@@ -91,68 +91,74 @@ func (p *LocalDataProvider) HasRedis() bool {
 }
 
 type localListingStore struct {
-	ID                      int64      `gorm:"column:id"`
-	TenantID                int64      `gorm:"column:tenant_id"`
-	StoreID                 string     `gorm:"column:store_id"`
-	Name                    string     `gorm:"column:name"`
-	Username                string     `gorm:"column:username"`
-	Password                string     `gorm:"column:password"`
-	LoginURL                string     `gorm:"column:login_url"`
-	ShopType                string     `gorm:"column:shop_type"`
-	Region                  string     `gorm:"column:region"`
-	Platform                string     `gorm:"column:platform"`
-	DailyLimit              *int       `gorm:"column:daily_limit"`
-	DailyLimitType          string     `gorm:"column:daily_limit_type"`
-	FixedStockCount         *int       `gorm:"column:fixed_stock_count"`
-	SKUGenerateStrategy     string     `gorm:"column:sku_generate_strategy"`
-	Prefix                  string     `gorm:"column:prefix"`
-	Suffix                  string     `gorm:"column:suffix"`
-	Proxy                   string     `gorm:"column:proxy"`
-	EnableAutoListing       *bool      `gorm:"column:enable_auto_listing"`
-	EnableAutoLogin         *bool      `gorm:"column:enable_auto_login"`
-	EnableDraft             *bool      `gorm:"column:enable_draft"`
-	EnableAutoPrice         *bool      `gorm:"column:enable_auto_price"`
-	EnableRebargain         *bool      `gorm:"column:enable_rebargain"`
-	TemuPriceRejectStrategy string     `gorm:"column:temu_price_reject_strategy"`
-	PriceType               string     `gorm:"column:price_type"`
-	Remark                  string     `gorm:"column:remark"`
-	Status                  int16      `gorm:"column:status"`
-	ValidFrom               *time.Time `gorm:"column:valid_from"`
-	ValidUntil              *time.Time `gorm:"column:valid_until"`
-	CreateTime              *time.Time `gorm:"column:create_time"`
-	Creator                 string     `gorm:"column:creator"`
+	ID                       int64      `gorm:"column:id"`
+	TenantID                 int64      `gorm:"column:tenant_id"`
+	StoreID                  string     `gorm:"column:store_id"`
+	Name                     string     `gorm:"column:name"`
+	Username                 string     `gorm:"column:username"`
+	Password                 string     `gorm:"column:password"`
+	LoginURL                 string     `gorm:"column:login_url"`
+	ShopType                 string     `gorm:"column:shop_type"`
+	Region                   string     `gorm:"column:region"`
+	Platform                 string     `gorm:"column:platform"`
+	DailyLimit               *int       `gorm:"column:daily_limit"`
+	DailyLimitType           string     `gorm:"column:daily_limit_type"`
+	FixedStockCount          *int       `gorm:"column:fixed_stock_count"`
+	SKUGenerateStrategy      string     `gorm:"column:sku_generate_strategy"`
+	Prefix                   string     `gorm:"column:prefix"`
+	Suffix                   string     `gorm:"column:suffix"`
+	Proxy                    string     `gorm:"column:proxy"`
+	EnableAutoListing        *bool      `gorm:"column:enable_auto_listing"`
+	EnableAutoLogin          *bool      `gorm:"column:enable_auto_login"`
+	EnableDraft              *bool      `gorm:"column:enable_draft"`
+	EnableAutoPrice          *bool      `gorm:"column:enable_auto_price"`
+	EnableRebargain          *bool      `gorm:"column:enable_rebargain"`
+	EnableBrandAuthorization *bool      `gorm:"column:enable_brand_authorization"`
+	AuthorizedBrandCode      string     `gorm:"column:authorized_brand_code"`
+	AuthorizedBrandName      string     `gorm:"column:authorized_brand_name"`
+	TemuPriceRejectStrategy  string     `gorm:"column:temu_price_reject_strategy"`
+	PriceType                string     `gorm:"column:price_type"`
+	Remark                   string     `gorm:"column:remark"`
+	Status                   int16      `gorm:"column:status"`
+	ValidFrom                *time.Time `gorm:"column:valid_from"`
+	ValidUntil               *time.Time `gorm:"column:valid_until"`
+	CreateTime               *time.Time `gorm:"column:create_time"`
+	Creator                  string     `gorm:"column:creator"`
 }
 
 func (s localListingStore) toDTO() *api.StoreRespDTO {
 	return &api.StoreRespDTO{
-		ID:                      s.ID,
-		TenantID:                s.TenantID,
-		StoreID:                 s.StoreID,
-		Name:                    s.Name,
-		Username:                s.Username,
-		Password:                s.Password,
-		LoginUrl:                s.LoginURL,
-		ShopType:                s.ShopType,
-		Region:                  s.Region,
-		Platform:                s.Platform,
-		DailyLimit:              s.DailyLimit,
-		DailyLimitType:          s.DailyLimitType,
-		FixedStockCount:         s.FixedStockCount,
-		SkuGenerateStrategy:     s.SKUGenerateStrategy,
-		Prefix:                  s.Prefix,
-		Suffix:                  s.Suffix,
-		Proxy:                   s.Proxy,
-		EnableAutoListing:       s.EnableAutoListing,
-		EnableAutoLogin:         s.EnableAutoLogin,
-		EnableDraft:             s.EnableDraft,
-		EnableAutoPrice:         s.EnableAutoPrice,
-		EnableRebargain:         s.EnableRebargain,
-		TemuPriceRejectStrategy: s.TemuPriceRejectStrategy,
-		PriceType:               s.PriceType,
-		Remark:                  s.Remark,
-		Status:                  s.Status,
-		CreateTime:              types.ToFlexibleTime(s.CreateTime),
-		Creator:                 s.Creator,
+		ID:                       s.ID,
+		TenantID:                 s.TenantID,
+		StoreID:                  s.StoreID,
+		Name:                     s.Name,
+		Username:                 s.Username,
+		Password:                 s.Password,
+		LoginUrl:                 s.LoginURL,
+		ShopType:                 s.ShopType,
+		Region:                   s.Region,
+		Platform:                 s.Platform,
+		DailyLimit:               s.DailyLimit,
+		DailyLimitType:           s.DailyLimitType,
+		FixedStockCount:          s.FixedStockCount,
+		SkuGenerateStrategy:      s.SKUGenerateStrategy,
+		Prefix:                   s.Prefix,
+		Suffix:                   s.Suffix,
+		Proxy:                    s.Proxy,
+		EnableAutoListing:        s.EnableAutoListing,
+		EnableAutoLogin:          s.EnableAutoLogin,
+		EnableDraft:              s.EnableDraft,
+		EnableAutoPrice:          s.EnableAutoPrice,
+		EnableRebargain:          s.EnableRebargain,
+		EnableBrandAuthorization: s.EnableBrandAuthorization,
+		AuthorizedBrandCode:      s.AuthorizedBrandCode,
+		AuthorizedBrandName:      s.AuthorizedBrandName,
+		TemuPriceRejectStrategy:  s.TemuPriceRejectStrategy,
+		PriceType:                s.PriceType,
+		Remark:                   s.Remark,
+		Status:                   s.Status,
+		CreateTime:               types.ToFlexibleTime(s.CreateTime),
+		Creator:                  s.Creator,
 	}
 }
 

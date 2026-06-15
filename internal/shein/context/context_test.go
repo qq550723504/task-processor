@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"task-processor/internal/shein/authorizedbrand"
 	sheinctx "task-processor/internal/shein/context"
 )
 
@@ -195,5 +196,21 @@ func TestTaskContext_GetContext(t *testing.T) {
 	got := ctx.GetContext()
 	if got.Value(ctxKey{}) != "marker" {
 		t.Error("GetContext should return the original context")
+	}
+}
+
+func TestTaskContext_SetAuthorizedBrand(t *testing.T) {
+	ctx := newCtx()
+	brand := &authorizedbrand.Resolved{
+		Enabled: true,
+		Code:    "2fd1n",
+		Name:    "Logitech罗技",
+		NameEn:  "Logitech",
+	}
+
+	ctx.SetAuthorizedBrand(brand)
+
+	if ctx.AuthorizedBrand != brand {
+		t.Fatalf("AuthorizedBrand = %+v, want same pointer %+v", ctx.AuthorizedBrand, brand)
 	}
 }

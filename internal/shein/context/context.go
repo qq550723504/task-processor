@@ -16,6 +16,7 @@ import (
 	"task-processor/internal/shein/api/product"
 	sheintranslate "task-processor/internal/shein/api/translate"
 	"task-processor/internal/shein/api/warehouse"
+	"task-processor/internal/shein/authorizedbrand"
 	"task-processor/internal/state"
 )
 
@@ -50,6 +51,7 @@ type RuntimeState struct {
 	ManagementClientMgr *management.ClientManager
 	AICache             *aicache.Cache
 	StoreInfo           *managementapi.StoreRespDTO
+	AuthorizedBrand     *authorizedbrand.Resolved
 }
 
 type ProductState struct {
@@ -130,6 +132,10 @@ func (ctx *TaskContext) AttachRuntime(memoryManager *state.MemoryManager, manage
 
 func (ctx *TaskContext) SetStoreInfo(storeInfo *managementapi.StoreRespDTO) {
 	ctx.StoreInfo = storeInfo
+}
+
+func (ctx *TaskContext) SetAuthorizedBrand(value *authorizedbrand.Resolved) {
+	ctx.AuthorizedBrand = value
 }
 
 func (ctx *TaskContext) SetValidationRules(filterRule *managementapi.FilterRuleRespDTO, profitRule *managementapi.ProfitRuleRespDTO) {
