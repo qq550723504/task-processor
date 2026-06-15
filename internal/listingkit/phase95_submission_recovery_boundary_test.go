@@ -15,18 +15,18 @@ func TestSheinSubmissionRecoveryBoundary(t *testing.T) {
 		"recoverSheinSubmitViaRemoteConfirmation(",
 	})
 
-	localRouteSource := readNamedFunctionSource(t, "task_submission_recovery_service.go", "shouldRecoverLocally")
+	localRouteSource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "shouldRecoverLocally")
 	assertSourceContainsAll(t, localRouteSource, []string{
 		"sheinpub.SubmissionResponseAcceptedForAction(",
 	})
 
-	localSource := readNamedFunctionSource(t, "task_submission_recovery_service.go", "recoverSheinSubmitLocally")
+	localSource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "recoverSheinSubmitLocally")
 	assertSourceContainsAll(t, localSource, []string{
 		"persistSheinRemoteCompletionSuccess(",
 		"finalizeRecoveredSheinSubmission(",
 	})
 
-	remoteSource := readNamedFunctionSource(t, "task_submission_recovery_service.go", "recoverSheinSubmitViaRemoteConfirmation")
+	remoteSource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "recoverSheinSubmitViaRemoteConfirmation")
 	assertSourceContainsAll(t, remoteSource, []string{
 		"return s.remoteRefreshRunner.Refresh(ctx, state)",
 	})

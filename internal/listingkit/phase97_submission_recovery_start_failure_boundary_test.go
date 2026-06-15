@@ -15,13 +15,13 @@ func TestSheinSubmissionRecoveryStartFailureBoundary(t *testing.T) {
 		"errors.Join(",
 	})
 
-	recordSource := readNamedFunctionSource(t, "task_submission_recovery_service.go", "recordWorkflowStartFailure")
+	recordSource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "recordWorkflowStartFailure")
 	assertSourceContainsAll(t, recordSource, []string{
 		"s.recordSubmissionFailure(",
 		"sheinpub.SubmissionPhaseValidate",
 	})
 
-	clearSource := readNamedFunctionSource(t, "task_submission_recovery_service.go", "clearWorkflowStartFailure")
+	clearSource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "clearWorkflowStartFailure")
 	assertSourceContainsAll(t, clearSource, []string{
 		"s.clearSheinSubmitLeaseAfterStartFailure(",
 	})

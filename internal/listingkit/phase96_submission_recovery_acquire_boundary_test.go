@@ -18,18 +18,18 @@ func TestSheinSubmissionRecoveryAcquireBoundary(t *testing.T) {
 		"buildTaskPreview(",
 	})
 
-	beginSource := readNamedFunctionSource(t, "task_submission_recovery_service.go", "beginSheinSubmitLeaseWithoutStartTime")
+	beginSource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "beginSheinSubmitLeaseWithoutStartTime")
 	assertSourceContainsAll(t, beginSource, []string{
 		"ctx.Value(sheinSubmitStartedAtContextKey{})",
 		"beginSheinSubmitLease(",
 	})
 
-	replaySource := readNamedFunctionSource(t, "task_submission_recovery_service.go", "buildSheinReplayPreview")
+	replaySource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "buildSheinReplayPreview")
 	assertSourceContainsAll(t, replaySource, []string{
 		"s.buildTaskPreview(ctx, task, \"shein\")",
 	})
 
-	missingSource := readNamedFunctionSource(t, "task_submission_recovery_service.go", "buildMissingPackageAcquireError")
+	missingSource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "buildMissingPackageAcquireError")
 	assertSourceContainsAll(t, missingSource, []string{
 		"ErrSubmitBlocked",
 		"shein preview payload is not available",
