@@ -16,7 +16,10 @@ func TestBuildersFamiliesOwnSeparatedResponsibilities(t *testing.T) {
 
 	schemaFile := readFileContent(t, filepath.Join(dir, "builders_repository_schema.go"))
 	repositoriesFile := readFileContent(t, filepath.Join(dir, "builders_repositories.go"))
-	dbRepositoriesFile := readFileContent(t, filepath.Join(dir, "builders_db_repositories.go"))
+	dbRepositorySupportFile := readFileContent(t, filepath.Join(dir, "builders_db_repository_support.go"))
+	dbListingKitRepositoriesFile := readFileContent(t, filepath.Join(dir, "builders_db_listingkit_repositories.go"))
+	dbAdminRepositoriesFile := readFileContent(t, filepath.Join(dir, "builders_db_admin_repositories.go"))
+	dbSupportRepositoriesFile := readFileContent(t, filepath.Join(dir, "builders_db_support_repositories.go"))
 	imageStoreFile := readFileContent(t, filepath.Join(dir, "builders_image_store.go"))
 	legacyTenantFile := readFileContent(t, filepath.Join(dir, "builders_legacy_tenant.go"))
 	recoveryFile := readFileContent(t, filepath.Join(dir, "builders_recovery.go"))
@@ -46,13 +49,48 @@ func TestBuildersFamiliesOwnSeparatedResponsibilities(t *testing.T) {
 		"func newDBListingKitTaskRepository",
 	)
 
-	assertContainsAll(t, dbRepositoriesFile,
+	assertNoFile(t, filepath.Join(dir, "builders_db_repositories.go"))
+
+	assertContainsAll(t, dbRepositorySupportFile,
+		"func openListingKitRepositoryDB",
+		"func autoMigrateListingKitTaskRepository",
+	)
+	assertNotContainsAny(t, dbRepositorySupportFile,
 		"func newDBListingKitTaskRepository",
 		"func newDBListingAdminStoreRepository",
 		"func newDBListingSubscriptionRepository",
 	)
-	assertNotContainsAny(t, dbRepositoriesFile,
-		"func BuildListingKitTaskRepository",
+
+	assertContainsAll(t, dbListingKitRepositoriesFile,
+		"func newDBListingKitTaskRepository",
+		"func newDBListingKitStudioAsyncJobRepository",
+		"func newDBListingKitStoreProfileRepository",
+	)
+	assertNotContainsAny(t, dbListingKitRepositoriesFile,
+		"func newDBListingAdminStoreRepository",
+		"func newDBListingSubscriptionRepository",
+		"func autoMigrateListingKitTaskRepository",
+	)
+
+	assertContainsAll(t, dbAdminRepositoriesFile,
+		"func newDBListingAdminStoreRepository",
+		"func newDBListingAdminGenerationTopicPolicyRepository",
+		"func newDBListingAdminProductDataRepository",
+	)
+	assertNotContainsAny(t, dbAdminRepositoriesFile,
+		"func newDBListingKitTaskRepository",
+		"func newDBListingSubscriptionRepository",
+		"func autoMigrateListingKitTaskRepository",
+	)
+
+	assertContainsAll(t, dbSupportRepositoriesFile,
+		"func newDBSheinResolutionCacheStore",
+		"func newDBAssetRepository",
+		"func newDBListingSubscriptionRepository",
+	)
+	assertNotContainsAny(t, dbSupportRepositoriesFile,
+		"func newDBListingKitTaskRepository",
+		"func newDBListingAdminStoreRepository",
 		"func BuildImageUploadStore",
 		"func ConfigureLegacyTenantResolver",
 		"func BuildListingKitTaskRecoverySweepInterval",
