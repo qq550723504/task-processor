@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/listingkit"
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 )
 
 func tenantScope(ctx context.Context, column string) func(*gorm.DB) *gorm.DB {

@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"task-processor/internal/listingkit"
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 )
 
 func (r *GormRepository) FindLatestSessionBySelectionKey(ctx context.Context, selectionKey string) (*listingkit.SheinStudioSession, error) {

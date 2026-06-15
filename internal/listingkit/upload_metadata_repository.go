@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

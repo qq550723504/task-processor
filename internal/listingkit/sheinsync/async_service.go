@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 

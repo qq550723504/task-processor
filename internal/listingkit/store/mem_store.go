@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit"
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 )
 
 type MemTaskRepository struct {

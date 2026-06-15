@@ -9,8 +9,8 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/listingkit"
-	"task-processor/internal/listingkit/tenantctx"
 	sheinpub "task-processor/internal/publishing/shein"
+	"task-processor/internal/shared/tenantctx"
 )
 
 func (r *taskRepository) CreateTask(ctx context.Context, task *listingkit.Task) error {

@@ -9,7 +9,7 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	studiodomain "task-processor/internal/listing/studio"
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 )
 
 type studioSessionRepoStub struct {

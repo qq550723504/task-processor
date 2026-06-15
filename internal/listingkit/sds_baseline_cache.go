@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 )
 
 const sdsBaselineCacheKeyVersion = "listingkit:sds_baseline:v1:"

@@ -3,7 +3,7 @@ package listingkit
 import (
 	"context"
 
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 )
 
 const DefaultTenantID = tenantctx.DefaultTenantID

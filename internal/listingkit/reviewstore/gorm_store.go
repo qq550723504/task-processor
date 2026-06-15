@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 )
 
 type GormRepository struct {

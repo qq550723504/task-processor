@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 )
 
 func TestMemRepositoryScopesReviewsByTenant(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/listingkit/tenantctx"
+	"task-processor/internal/shared/tenantctx"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

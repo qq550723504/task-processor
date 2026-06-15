@@ -147,6 +147,7 @@ Current status after follow-up refactors on 2026-06-12:
 - `internal/publishing/shein/generation_topic_runtime.go` no longer depends on `internal/listingkit/tenantctx`
 - `internal/shein/submitprep/sensitive_words.go` no longer depends on `internal/listingkit/tenantctx`
 - `internal/shein/pipeline/task.go` no longer depends on `internal/listingkit`
+- ListingKit and platform test/runtime callsites now use `internal/shared/tenantctx` directly, and the old `internal/listingkit/tenantctx` compatibility package has been removed
 - `internal/productimage/handler.go` no longer depends on Gin
 - `internal/productimage/api/handler.go` was folded into `internal/productimage/httpapi/handler.go`
 - The dependency script now excludes `api` and `httpapi` adapter packages from the Gin prohibition rule to avoid transport-layer false positives
@@ -192,7 +193,6 @@ Rules:
 
 Use this section for violations or package shapes that should be fixed before moving files.
 
-- Decide whether `internal/listingkit/tenantctx` is truly ListingKit-owned. If not, move it before further publishing / SHEIN package cleanup to avoid spreading the dependency.
 - Break down the largest root ListingKit files before attempting risky package extraction from those areas:
   - `internal/listingkit/studio_batch_repository.go` (`1031` lines)
   - `internal/listingkit/task_studio_batch_service.go` (`946` lines)

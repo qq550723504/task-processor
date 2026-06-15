@@ -6,8 +6,8 @@ import (
 
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
-	"task-processor/internal/listingkit/tenantctx"
 	"task-processor/internal/prompt"
+	"task-processor/internal/shared/tenantctx"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
