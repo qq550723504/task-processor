@@ -281,6 +281,7 @@ Current checkpoint:
 - recovered submit lease-acquire dispatch now also routes through an `internal/listing/submission` runner, so root `listingkit` no longer open-codes replay-preview vs remote-recovery vs blocked-missing-package branching after lease acquisition.
 - task submission recovery support is now split by concern, so the compatibility adapter keeps runner wiring and local completion flow while recovered-remote helpers and workflow-start-failure helpers live in dedicated support files.
 - workflow-start failure cleanup now also routes through an `internal/listing/submission` runner, so root `listingkit` no longer open-codes failure-record persistence, lease cleanup, and returned-error priority resolution after publish workflow start fails.
+- submission action-slot selection plus request-id-based record query policy now also route through `internal/listing/submission`, so the SHEIN compatibility package no longer hand-owns action slot branching, generic record lookup, finished-record matching, or request-id trim handling for those query paths.
 - recovered remote-recovery routing now also shares one root-side state boundary across route selection, local completion, remote confirmation, and success/failure finish paths, so root `listingkit` no longer threads task/package/action/request/response fields separately through that recovery chain.
 - remote confirmation/refresh success and failure tails now also share one root-side completion support layer across recovery and Temporal refresh, so root `listingkit` no longer hand-assembles duplicate complete/fail plus remember/persist-success/save-result sequences after remote confirmation.
 - Temporal publish success/failure entrypoints now also share one root-side persistence state across task load, persistence-input application, and tail routing, so root `listingkit` no longer duplicates task/package load plus supplier-code/response/snapshot input application before success vs failure persistence paths.
@@ -492,7 +493,7 @@ Current checkpoint:
 - When a helper is structurally independent, prefer moving the implementation first and letting the old package re-export it, instead of doing another large in-place cleanup in `listingkit`.
 - The current boundary posture is guard-first: keep `internal/publishing/shein` as a legacy compatibility/model package for now, while preventing new `internal/marketplace/shein/publishing` logic from depending on `listingkit` or root runtime wiring.
 - Current migrated examples:
-  - `publishing`: pricing policy
+  - `publishing`: pricing policy, remote confirmation fallback/default-confirmed rules, remote record classification/selection rules, confirm-remote decision policy
   - `workspace`: state helpers, dirty hints, editor progress, editor recommendations/effects, readiness/checklist/guidance helpers, repair center/plan/session projection helpers, editor context/revision models, editor context builder, editor revision skeleton, editor revision-from-context projection, minimal revision pruning, revision diff/applied-changes/history-compare helpers, restore draft/request/preview helpers, history detail/restore detail/presentation projections, revision field validation, revision validation/success payloads, overview projection, inspection payload/build helpers
 
 Acceptance criteria:

@@ -1,6 +1,9 @@
 package submission
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type RecoveryLeaseState struct {
 	CurrentAction     string
@@ -34,4 +37,13 @@ func NeedsRemoteRecovery(state RecoveryLeaseState, action string, now time.Time,
 		return true
 	}
 	return now.Sub(*state.InFlightStartedAt) > ttl
+}
+
+func NeedsRequestScopedRemoteRecovery(currentRequestID, currentPhase, requestedRequestID, remoteSubmitPhase string, responsePersisted bool) bool {
+	currentRequestID = strings.TrimSpace(currentRequestID)
+	requestedRequestID = strings.TrimSpace(requestedRequestID)
+	if currentRequestID == "" || currentRequestID != requestedRequestID {
+		return false
+	}
+	return strings.TrimSpace(currentPhase) != strings.TrimSpace(remoteSubmitPhase) || responsePersisted
 }

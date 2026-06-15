@@ -1,7 +1,6 @@
 package shein
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -394,7 +393,7 @@ func BuildSubmissionRecoveryLookupInputs(pkg *Package, action, supplierCode stri
 
 func ResolveSubmissionRefreshFallbackMessage(action string, defaultConfirmed bool, fallbackMessage string) string {
 	if strings.TrimSpace(fallbackMessage) != "" {
-		return fallbackMessage
+		return strings.TrimSpace(fallbackMessage)
 	}
 	return sheinmarketpub.BuildRemoteConfirmationPolicy(action, defaultConfirmed).RefreshFallbackMessage
 }
@@ -458,41 +457,28 @@ func ApplySubmissionMissingSupplierCodeRemoteUpdate(pkg *Package, taskID, action
 }
 
 func ResolveSubmissionConfirmRemoteUpdate(taskID, action, requestID string, startedAt time.Time, resolution SubmissionRemoteResolution) (SubmissionConfirmRemoteUpdate, error) {
-	fallbackMessage := strings.TrimSpace(resolution.FallbackMessage)
-	if fallbackMessage == "" {
-		fallbackMessage = sheinmarketpub.BuildRemoteConfirmationPolicy(action, resolution.DefaultConfirmed).ResolveFallbackMessage
+	decision := sheinmarketpub.ResolveRemoteConfirmationDecision(action, sheinmarketpub.RemoteConfirmationResolution{
+		DefaultConfirmed:   resolution.DefaultConfirmed,
+		FallbackMessage:    resolution.FallbackMessage,
+		OnWayDocument:      resolution.OnWayDocument,
+		Record:             resolution.Record,
+		RecordErr:          resolution.RecordErr,
+		InventoryConfirmed: resolution.InventoryConfirmed,
+		SPUName:            strings.TrimSpace(RemoteResolutionSPUName(resolution)),
+	})
+	if resolution.Record != nil && resolution.RecordErr == nil {
+		update := BuildSubmissionConfirmRemoteUpdateForRecord(taskID, action, decision.Status, requestID, startedAt, decision.Detail, decision.Err, resolution.Record)
+		return update, decision.Err
 	}
-	if action == "publish" && resolution.OnWayDocument != nil {
-		detail := fmt.Sprintf(
-			"SHEIN on-way document confirmed for spu_name=%s document_sn=%s",
-			resolution.OnWayDocument.SpuName,
-			resolution.OnWayDocument.DocumentSn,
-		)
-		update := BuildSubmissionConfirmRemoteUpdate(taskID, action, SubmissionRemoteStatusConfirmed, requestID, startedAt, detail, nil)
-		return update, nil
-	}
-	if resolution.RecordErr == nil && resolution.Record != nil {
-		outcome := sheinmarketpub.ClassifyRemoteRecord(action, resolution.Record, resolution.DefaultConfirmed)
-		update := BuildSubmissionConfirmRemoteUpdateForRecord(taskID, action, outcome.Status, requestID, startedAt, outcome.Detail, outcome.Err, resolution.Record)
-		return update, outcome.Err
-	}
-	if action == "publish" && resolution.InventoryConfirmed {
-		detail := fmt.Sprintf("SHEIN remote inventory confirmed for spu_name=%s", strings.TrimSpace(RemoteResolutionSPUName(resolution)))
-		update := BuildSubmissionConfirmRemoteUpdate(taskID, action, SubmissionRemoteStatusConfirmed, requestID, startedAt, detail, nil)
-		return update, nil
-	}
+	update := BuildSubmissionConfirmRemoteUpdate(taskID, action, decision.Status, requestID, startedAt, decision.Detail, decision.Err)
 	if resolution.RecordErr != nil {
-		update := BuildSubmissionConfirmRemoteUpdate(taskID, action, SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
 		update.Message = resolution.RecordErr.Error()
 		return update, nil
 	}
-	if resolution.DefaultConfirmed {
-		update := BuildSubmissionConfirmRemoteUpdate(taskID, action, SubmissionRemoteStatusConfirmed, requestID, startedAt, fallbackMessage, nil)
-		return update, nil
+	if decision.Status == sheinmarketpub.RemoteRecordStatusPending && resolution.Record == nil && resolution.RecordErr == nil && !resolution.DefaultConfirmed {
+		update.Message = "record not found"
 	}
-	update := BuildSubmissionConfirmRemoteUpdate(taskID, action, SubmissionRemoteStatusPending, requestID, startedAt, fallbackMessage, nil)
-	update.Message = "record not found"
-	return update, nil
+	return update, decision.Err
 }
 
 func RemoteResolutionSPUName(resolution SubmissionRemoteResolution) string {
@@ -669,17 +655,7 @@ func EnsureSubmissionReport(pkg *Package) *SubmissionReport {
 }
 
 func SubmissionRecordForAction(report *SubmissionReport, action string) *SubmissionRecord {
-	if report == nil {
-		return nil
-	}
-	switch strings.TrimSpace(action) {
-	case "save_draft":
-		return report.SaveDraft
-	case "publish":
-		return report.Publish
-	default:
-		return nil
-	}
+	return listingsubmission.RecordForAction(submissionActionRecordSlots(report), action)
 }
 
 func SubmissionInFlightState(report *SubmissionReport) listingsubmission.InFlightState {
@@ -729,20 +705,15 @@ func RemoteRecordForAction(report *SubmissionReport, action string) *SubmissionR
 
 func FindCompletedSubmissionRecordByRequestID(pkg *Package, action, requestID string) *SubmissionRecord {
 	pkg = NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.SubmissionState == nil || strings.TrimSpace(requestID) == "" {
+	if pkg == nil || pkg.SubmissionState == nil {
 		return nil
 	}
-	record := SubmissionRecordForAction(pkg.SubmissionState, action)
-	if record == nil {
-		return nil
-	}
-	if strings.TrimSpace(record.RequestID) != strings.TrimSpace(requestID) {
-		return nil
-	}
-	if record.FinishedAt == nil {
-		return nil
-	}
-	return record
+	return listingsubmission.FindCompletedRecordByRequestID(
+		submissionActionRecordSlots(pkg.SubmissionState),
+		action,
+		requestID,
+		submissionActionRecordView,
+	)
 }
 
 func SubmissionRemoteResponsePersisted(pkg *Package, action, requestID string) bool {
@@ -750,8 +721,13 @@ func SubmissionRemoteResponsePersisted(pkg *Package, action, requestID string) b
 	if pkg == nil || pkg.SubmissionState == nil {
 		return false
 	}
-	record := SubmissionRecordForAction(pkg.SubmissionState, action)
-	if record == nil || record.RequestID != requestID {
+	record := listingsubmission.FindRecordByRequestID(
+		submissionActionRecordSlots(pkg.SubmissionState),
+		action,
+		requestID,
+		submissionActionRecordView,
+	)
+	if record == nil {
 		return false
 	}
 	return record.Result != nil
@@ -762,11 +738,12 @@ func SubmissionSucceeded(pkg *Package, action string) bool {
 	if pkg == nil || pkg.SubmissionState == nil {
 		return false
 	}
-	record := SubmissionRecordForAction(pkg.SubmissionState, action)
-	if record == nil || record.FinishedAt == nil {
-		return false
-	}
-	return record.Status == SubmissionStatusSuccess
+	return listingsubmission.ActionSucceeded(
+		submissionActionRecordSlots(pkg.SubmissionState),
+		action,
+		submissionActionRecordView,
+		SubmissionStatusSuccess,
+	)
 }
 
 func ClearSubmissionInFlight(report *SubmissionReport, action, requestID string) {
@@ -880,8 +857,14 @@ func ApplySubmissionStartFailure(pkg *Package, action, requestID string, startEr
 	if !ok {
 		return nil
 	}
-	record := SubmissionRecordForAction(pkg.SubmissionState, action)
-	if record == nil || record.RequestID != requestID || record.Status != SubmissionStatusRunning {
+	record := listingsubmission.FindRecordByRequestIDAndStatus(
+		submissionActionRecordSlots(pkg.SubmissionState),
+		action,
+		requestID,
+		submissionActionRecordView,
+		SubmissionStatusRunning,
+	)
+	if record == nil {
 		return nil
 	}
 	record.Status = SubmissionStatusFailed
@@ -1009,7 +992,14 @@ func submissionActionRecordSlots(report *SubmissionReport) listingsubmission.Act
 }
 
 func submissionActionRecordView(record *SubmissionRecord) listingsubmission.ActionRecordView {
-	return listingsubmission.ActionRecordView{RequestID: record.RequestID}
+	if record == nil {
+		return listingsubmission.ActionRecordView{}
+	}
+	return listingsubmission.ActionRecordView{
+		RequestID:  record.RequestID,
+		Status:     record.Status,
+		FinishedAt: record.FinishedAt,
+	}
 }
 
 func FindActiveSubmissionAttempt(pkg *Package, action string, now time.Time, ttl time.Duration) *SubmissionReport {
@@ -1036,9 +1026,13 @@ func SubmissionLeaseNeedsRemoteRecovery(pkg *Package, action, requestID string, 
 		return false
 	}
 	report := pkg.SubmissionState
-	sameRequestNeedsRecovery := report.CurrentRequestID == requestID &&
-		(report.CurrentPhase != SubmissionPhaseSubmitRemote ||
-			SubmissionRemoteResponsePersisted(pkg, action, requestID))
+	sameRequestNeedsRecovery := listingsubmission.NeedsRequestScopedRemoteRecovery(
+		report.CurrentRequestID,
+		report.CurrentPhase,
+		requestID,
+		SubmissionPhaseSubmitRemote,
+		SubmissionRemoteResponsePersisted(pkg, action, requestID),
+	)
 	return sameRequestNeedsRecovery || SubmissionNeedsRemoteRecovery(report, action, now, ttl)
 }
 

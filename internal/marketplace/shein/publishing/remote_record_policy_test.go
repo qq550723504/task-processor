@@ -1,6 +1,7 @@
 package publishing
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -62,6 +63,96 @@ func TestBuildRemoteConfirmationPolicyForPendingRefresh(t *testing.T) {
 	}
 	if policy.MissingSupplierCodeDetail != "SHEIN submit succeeded, but supplier code is unavailable for remote confirmation" {
 		t.Fatalf("MissingSupplierCodeDetail = %q", policy.MissingSupplierCodeDetail)
+	}
+}
+
+func TestResolveRemoteConfirmationFallbackMessagePrefersExplicitFallback(t *testing.T) {
+	t.Parallel()
+
+	if got := ResolveRemoteConfirmationFallbackMessage("save_draft", false, " custom fallback "); got != "custom fallback" {
+		t.Fatalf("fallback message = %q, want custom fallback", got)
+	}
+	if got := ResolveRemoteConfirmationFallbackMessage("publish", true, ""); got != "SHEIN accepted publish request; remote confirmation pending" {
+		t.Fatalf("default fallback message = %q", got)
+	}
+}
+
+func TestResolveRemoteConfirmationDecisionPrefersOnWayDocument(t *testing.T) {
+	t.Parallel()
+
+	decision := ResolveRemoteConfirmationDecision("publish", RemoteConfirmationResolution{
+		DefaultConfirmed: true,
+		OnWayDocument: &OnWayDocument{
+			SpuName:    "SPU-1",
+			DocumentSn: "DOC-1",
+		},
+	})
+	if decision.Status != RemoteRecordStatusConfirmed {
+		t.Fatalf("status = %q, want confirmed", decision.Status)
+	}
+	if decision.Detail != "SHEIN on-way document confirmed for spu_name=SPU-1 document_sn=DOC-1" {
+		t.Fatalf("detail = %q", decision.Detail)
+	}
+	if decision.Err != nil {
+		t.Fatalf("err = %v, want nil", decision.Err)
+	}
+}
+
+func TestResolveRemoteConfirmationDecisionUsesRecordOutcome(t *testing.T) {
+	t.Parallel()
+
+	decision := ResolveRemoteConfirmationDecision("publish", RemoteConfirmationResolution{
+		Record: &sheinproduct.RecordItem{State: 4, AuditState: 5},
+	})
+	if decision.Status != RemoteRecordStatusConfirmed {
+		t.Fatalf("status = %q, want confirmed", decision.Status)
+	}
+	if decision.Detail != "SHEIN remote record confirmed" {
+		t.Fatalf("detail = %q", decision.Detail)
+	}
+	if decision.Err != nil {
+		t.Fatalf("err = %v, want nil", decision.Err)
+	}
+}
+
+func TestResolveRemoteConfirmationDecisionUsesInventoryFallback(t *testing.T) {
+	t.Parallel()
+
+	decision := ResolveRemoteConfirmationDecision("publish", RemoteConfirmationResolution{
+		InventoryConfirmed: true,
+		SPUName:            "SPU-INV",
+	})
+	if decision.Status != RemoteRecordStatusConfirmed {
+		t.Fatalf("status = %q, want confirmed", decision.Status)
+	}
+	if decision.Detail != "SHEIN remote inventory confirmed for spu_name=SPU-INV" {
+		t.Fatalf("detail = %q", decision.Detail)
+	}
+}
+
+func TestResolveRemoteConfirmationDecisionFallsBackForRecordErrorsAndDefaultConfirmed(t *testing.T) {
+	t.Parallel()
+
+	recordErrDecision := ResolveRemoteConfirmationDecision("publish", RemoteConfirmationResolution{
+		DefaultConfirmed: true,
+		FallbackMessage:  "fallback pending",
+		RecordErr:        errors.New("remote query failed"),
+	})
+	if recordErrDecision.Status != RemoteRecordStatusPending {
+		t.Fatalf("status = %q, want pending", recordErrDecision.Status)
+	}
+	if recordErrDecision.Detail != "fallback pending" {
+		t.Fatalf("detail = %q, want fallback pending", recordErrDecision.Detail)
+	}
+
+	defaultConfirmedDecision := ResolveRemoteConfirmationDecision("publish", RemoteConfirmationResolution{
+		DefaultConfirmed: true,
+	})
+	if defaultConfirmedDecision.Status != RemoteRecordStatusConfirmed {
+		t.Fatalf("status = %q, want confirmed", defaultConfirmedDecision.Status)
+	}
+	if defaultConfirmedDecision.Detail != "SHEIN accepted publish request; remote confirmation pending" {
+		t.Fatalf("detail = %q", defaultConfirmedDecision.Detail)
 	}
 }
 

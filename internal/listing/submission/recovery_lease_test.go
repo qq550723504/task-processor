@@ -79,3 +79,20 @@ func TestNeedsRemoteRecovery(t *testing.T) {
 		t.Fatal("mismatched action should not need recovery")
 	}
 }
+
+func TestNeedsRequestScopedRemoteRecovery(t *testing.T) {
+	t.Parallel()
+
+	if !NeedsRequestScopedRemoteRecovery("req-1", "validate", "req-1", "submit_remote", false) {
+		t.Fatal("pre-remote current phase should need remote recovery for the same request")
+	}
+	if !NeedsRequestScopedRemoteRecovery("req-1", "submit_remote", "req-1", "submit_remote", true) {
+		t.Fatal("persisted response should need remote recovery confirmation for the same request")
+	}
+	if NeedsRequestScopedRemoteRecovery("req-1", "submit_remote", "req-1", "submit_remote", false) {
+		t.Fatal("in-flight remote submit without persisted response should not force request-scoped recovery")
+	}
+	if NeedsRequestScopedRemoteRecovery(" req-1 ", "submit_remote", "other", "submit_remote", true) {
+		t.Fatal("mismatched request should not need request-scoped recovery")
+	}
+}

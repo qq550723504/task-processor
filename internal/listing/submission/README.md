@@ -24,6 +24,7 @@ Current stable ownership:
 - phase detail mapping policy for submission phase events
 - failure-state fallback policy for submission failure records
 - remote-recovery lease expiry policy
+- request-scoped remote-recovery predicate for same-request lease confirmation handoff
 - active attempt lease policy
 - in-flight clearing match policy
 - submit-in-progress error shape and unwrap behavior
@@ -38,7 +39,7 @@ Current stable ownership:
 - refresh request-id normalization policy
 - refresh remote policy: default-confirmed flag and fallback-message defaults
 - action-record state policy: action slot selection and last-submission state synchronization
-- action-record query policy: success-state checks and completed-record lookup by request id
+- action-record query policy: success-state checks plus generic selected-slot, status-scoped, and completed-record lookup by request id
 - action-record mutation policy: request-id-guarded slot mutation for record updates
 - remote-sync policy: always sync report remote status/check time before guarded record mutation
 - attempt-record fallback policy: reuse matching request records or synthesize timing/attempt seeds from in-flight state

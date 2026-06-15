@@ -24,6 +24,22 @@ type RemoteConfirmationPolicy struct {
 	MissingSupplierCodeDetail string
 }
 
+type RemoteConfirmationResolution struct {
+	DefaultConfirmed   bool
+	FallbackMessage    string
+	OnWayDocument      *OnWayDocument
+	Record             *sheinproduct.RecordItem
+	RecordErr          error
+	InventoryConfirmed bool
+	SPUName            string
+}
+
+type RemoteConfirmationDecision struct {
+	Status string
+	Detail string
+	Err    error
+}
+
 const (
 	RemoteRecordStatusConfirmed = "confirmed"
 	RemoteRecordStatusPending   = "pending"
@@ -52,6 +68,57 @@ func BuildRemoteConfirmationPolicy(action string, publishAccepted bool) RemoteCo
 	policy.MissingSupplierCodeStatus = RemoteRecordStatusConfirmed
 	policy.MissingSupplierCodeDetail = "SHEIN accepted publish request, but supplier code is unavailable for remote confirmation"
 	return policy
+}
+
+func ResolveRemoteConfirmationFallbackMessage(action string, defaultConfirmed bool, fallbackMessage string) string {
+	if trimmed := strings.TrimSpace(fallbackMessage); trimmed != "" {
+		return trimmed
+	}
+	return BuildRemoteConfirmationPolicy(action, defaultConfirmed).ResolveFallbackMessage
+}
+
+func ResolveRemoteConfirmationDecision(action string, resolution RemoteConfirmationResolution) RemoteConfirmationDecision {
+	fallbackMessage := ResolveRemoteConfirmationFallbackMessage(action, resolution.DefaultConfirmed, resolution.FallbackMessage)
+	if action == "publish" && resolution.OnWayDocument != nil {
+		return RemoteConfirmationDecision{
+			Status: RemoteRecordStatusConfirmed,
+			Detail: fmt.Sprintf(
+				"SHEIN on-way document confirmed for spu_name=%s document_sn=%s",
+				resolution.OnWayDocument.SpuName,
+				resolution.OnWayDocument.DocumentSn,
+			),
+		}
+	}
+	if resolution.RecordErr == nil && resolution.Record != nil {
+		outcome := ClassifyRemoteRecord(action, resolution.Record, resolution.DefaultConfirmed)
+		return RemoteConfirmationDecision{
+			Status: outcome.Status,
+			Detail: outcome.Detail,
+			Err:    outcome.Err,
+		}
+	}
+	if action == "publish" && resolution.InventoryConfirmed {
+		return RemoteConfirmationDecision{
+			Status: RemoteRecordStatusConfirmed,
+			Detail: fmt.Sprintf("SHEIN remote inventory confirmed for spu_name=%s", strings.TrimSpace(resolution.SPUName)),
+		}
+	}
+	if resolution.RecordErr != nil {
+		return RemoteConfirmationDecision{
+			Status: RemoteRecordStatusPending,
+			Detail: fallbackMessage,
+		}
+	}
+	if resolution.DefaultConfirmed {
+		return RemoteConfirmationDecision{
+			Status: RemoteRecordStatusConfirmed,
+			Detail: fallbackMessage,
+		}
+	}
+	return RemoteConfirmationDecision{
+		Status: RemoteRecordStatusPending,
+		Detail: fallbackMessage,
+	}
 }
 
 func ClassifyRemoteRecord(action string, item *sheinproduct.RecordItem, publishAccepted bool) RemoteRecordOutcome {

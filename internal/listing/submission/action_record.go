@@ -1,6 +1,9 @@
 package submission
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 type ActionRecordSlots[Record any] struct {
 	SaveDraft *Record
@@ -73,7 +76,8 @@ func ActionSucceeded[Record any](slots ActionRecordSlots[Record], action string,
 	return view(record).Status == successStatus
 }
 
-func FindCompletedRecordByRequestID[Record any](slots ActionRecordSlots[Record], action, requestID string, view func(*Record) ActionRecordView) *Record {
+func FindRecordByRequestID[Record any](slots ActionRecordSlots[Record], action, requestID string, view func(*Record) ActionRecordView) *Record {
+	requestID = strings.TrimSpace(requestID)
 	if requestID == "" {
 		return nil
 	}
@@ -82,7 +86,29 @@ func FindCompletedRecordByRequestID[Record any](slots ActionRecordSlots[Record],
 		return nil
 	}
 	recordView := view(record)
-	if recordView.RequestID != requestID || recordView.FinishedAt == nil {
+	if strings.TrimSpace(recordView.RequestID) != requestID {
+		return nil
+	}
+	return record
+}
+
+func FindRecordByRequestIDAndStatus[Record any](slots ActionRecordSlots[Record], action, requestID string, view func(*Record) ActionRecordView, status string) *Record {
+	record := FindRecordByRequestID(slots, action, requestID, view)
+	if record == nil {
+		return nil
+	}
+	if view(record).Status != status {
+		return nil
+	}
+	return record
+}
+
+func FindCompletedRecordByRequestID[Record any](slots ActionRecordSlots[Record], action, requestID string, view func(*Record) ActionRecordView) *Record {
+	record := FindRecordByRequestID(slots, action, requestID, view)
+	if record == nil {
+		return nil
+	}
+	if view(record).FinishedAt == nil {
 		return nil
 	}
 	return record

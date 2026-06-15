@@ -123,7 +123,7 @@ func TestFindCompletedRecordByRequestIDRequiresMatchingFinishedRecord(t *testing
 		}
 	}
 
-	if got := FindCompletedRecordByRequestID(slots, "publish", "publish", view); got != publish {
+	if got := FindCompletedRecordByRequestID(slots, "publish", " publish ", view); got != publish {
 		t.Fatalf("publish completed record = %+v, want %+v", got, publish)
 	}
 	if got := FindCompletedRecordByRequestID(slots, "save_draft", "save", view); got != nil {
@@ -131,6 +131,50 @@ func TestFindCompletedRecordByRequestIDRequiresMatchingFinishedRecord(t *testing
 	}
 	if got := FindCompletedRecordByRequestID(slots, "publish", "other", view); got != nil {
 		t.Fatalf("mismatched request record = %+v, want nil", got)
+	}
+}
+
+func TestFindRecordByRequestIDTrimsAndMatchesSelectedSlot(t *testing.T) {
+	t.Parallel()
+
+	saveDraft := &testActionRecord{ID: "save"}
+	publish := &testActionRecord{ID: "publish"}
+	slots := ActionRecordSlots[testActionRecord]{
+		SaveDraft: saveDraft,
+		Publish:   publish,
+	}
+
+	view := func(record *testActionRecord) ActionRecordView {
+		return ActionRecordView{RequestID: record.ID}
+	}
+
+	if got := FindRecordByRequestID(slots, "publish", " publish ", view); got != publish {
+		t.Fatalf("publish record = %+v, want %+v", got, publish)
+	}
+	if got := FindRecordByRequestID(slots, "save_draft", "publish", view); got != nil {
+		t.Fatalf("wrong action slot record = %+v, want nil", got)
+	}
+}
+
+func TestFindRecordByRequestIDAndStatusRequiresMatchingStatus(t *testing.T) {
+	t.Parallel()
+
+	publish := &testActionRecord{ID: "publish"}
+	slots := ActionRecordSlots[testActionRecord]{
+		Publish: publish,
+	}
+	view := func(record *testActionRecord) ActionRecordView {
+		return ActionRecordView{
+			RequestID: record.ID,
+			Status:    "running",
+		}
+	}
+
+	if got := FindRecordByRequestIDAndStatus(slots, "publish", "publish", view, "running"); got != publish {
+		t.Fatalf("running publish record = %+v, want %+v", got, publish)
+	}
+	if got := FindRecordByRequestIDAndStatus(slots, "publish", "publish", view, "failed"); got != nil {
+		t.Fatalf("wrong-status record = %+v, want nil", got)
 	}
 }
 
