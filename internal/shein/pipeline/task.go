@@ -19,6 +19,7 @@ import (
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheintranslate "task-processor/internal/shein/api/translate"
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
+	"task-processor/internal/shein/authorizedbrand"
 	"task-processor/internal/shein/client"
 	sheincontext "task-processor/internal/shein/context"
 	sheinmanagedclient "task-processor/internal/shein/managedclient"
@@ -31,6 +32,10 @@ type TaskHandler struct {
 	processor    *SheinProcessor
 	errorHandler *TaskErrorHandler
 	errorRouter  *TaskErrorRouter
+}
+
+type authorizedBrandResolver interface {
+	Resolve(ctx context.Context, cfg authorizedbrand.Config) (*authorizedbrand.Resolved, error)
 }
 
 func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
@@ -204,6 +209,30 @@ func (h *TaskHandler) initShopClient(taskCtx *sheincontext.TaskContext) error {
 		return shein.NewCookieLoadError(taskCtx.Task.TenantID, taskCtx.Task.StoreID, cookieError)
 	}
 
+	if err := applyAuthorizedBrandConfig(taskCtx, authorizedbrand.NewResolver(taskCtx.ProductAPI)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func applyAuthorizedBrandConfig(taskCtx *sheincontext.TaskContext, resolver authorizedBrandResolver) error {
+	if taskCtx == nil {
+		return nil
+	}
+
+	storeCfg := authorizedbrand.ConfigFromStore(taskCtx.StoreInfo)
+	if !storeCfg.Enabled {
+		return nil
+	}
+
+	resolved, err := resolver.Resolve(taskCtx.Context, storeCfg)
+	if err != nil {
+		return err
+	}
+
+	taskCtx.SetAuthorizedBrand(resolved)
+	taskCtx.Context = authorizedbrand.WithResolved(taskCtx.Context, resolved)
 	return nil
 }
 
