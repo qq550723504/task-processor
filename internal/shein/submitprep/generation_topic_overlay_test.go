@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
-	"task-processor/internal/listingkit/tenantctx"
+	sharedtenantctx "task-processor/internal/shared/tenantctx"
 )
 
 type stubGenerationTopicPolicyRepository struct {
@@ -57,7 +57,7 @@ func TestNewSensitiveWordServiceForContext_OverlaysTenantGenerationTopicLexicon(
 	})
 	defer restoreRepo()
 
-	service := NewSensitiveWordServiceForContext(tenantctx.WithTenantID(context.Background(), "101"))
+	service := NewSensitiveWordServiceForContext(sharedtenantctx.WithTenantID(context.Background(), "101"))
 	got := service.SanitizeDisplayTextWithContext(nil, "Kids room curtain for home decor")
 	if strings.Contains(strings.ToLower(got), "kids") {
 		t.Fatalf("sanitized text = %q, want children topic lexicon removed", got)

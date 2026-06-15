@@ -113,6 +113,19 @@ func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
 	}, allowedFiles)
 }
 
+func TestSheinPipelineDoesNotImportListingKitFacade(t *testing.T) {
+	assertNoBannedImports(t, filepath.Join("..", "internal", "shein", "pipeline"), []string{
+		`"task-processor/internal/listingkit"`,
+		`"task-processor/internal/listingkit/tenantctx"`,
+	}, nil)
+}
+
+func TestSheinSubmitPrepDoesNotImportListingKitTenantContext(t *testing.T) {
+	assertNoBannedImports(t, filepath.Join("..", "internal", "shein", "submitprep"), []string{
+		`"task-processor/internal/listingkit/tenantctx"`,
+	}, nil)
+}
+
 func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "publishing", "shein")
 	allowedImports := map[string]map[string]struct{}{

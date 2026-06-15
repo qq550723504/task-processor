@@ -182,9 +182,7 @@ Use this table for violations that are known and intentionally tolerated during 
 
 | Package/File | Import | Reason | Owner | Cleanup target |
 | --- | --- | --- | --- | --- |
-| `internal/publishing/shein/generation_topic_runtime.go` | `task-processor/internal/listingkit/tenantctx` | Publishing package depends on ListingKit-owned tenant context helper | Listing / Publishing boundary owners | Move tenant context contract to a shared or marketplace-neutral package before CI enforcement |
-| `internal/shein/pipeline/task.go` | `task-processor/internal/listingkit` | SHEIN pipeline still depends on ListingKit facade concepts | SHEIN pipeline and ListingKit owners | Reduce pipeline dependency to a narrower abstraction during marketplace boundary normalization |
-| `internal/shein/submitprep/sensitive_words.go` | `task-processor/internal/listingkit/tenantctx` | SHEIN submit prep depends on ListingKit-owned tenant context helper | SHEIN submit prep and ListingKit owners | Move tenant context helper or replace with marketplace-local contract |
+| `internal/publishing/shein/generation_topic_runtime.go` | `task-processor/internal/listingkit/tenantctx` | Publishing package depended on a ListingKit-owned tenant context helper at scan time; follow-up refactors moved it to the shared tenant context package | Listing / Publishing boundary owners | Keep enforced by boundary tests; do not reintroduce ListingKit tenant context into publishing |
 
 Rules:
 
@@ -196,7 +194,6 @@ Rules:
 
 Use this section for violations or package shapes that should be fixed before moving files.
 
-- Fix `internal/shein/pipeline/task.go -> internal/listingkit` before broad marketplace-boundary work proceeds, or explicitly isolate the dependency behind a transitional interface.
 - Decide whether `internal/listingkit/tenantctx` is truly ListingKit-owned. If not, move it before further publishing / SHEIN package cleanup to avoid spreading the dependency.
 - Break down the largest root ListingKit files before attempting risky package extraction from those areas:
   - `internal/listingkit/studio_batch_repository.go` (`1031` lines)
