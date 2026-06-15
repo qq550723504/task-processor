@@ -29,6 +29,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func buildSheinReadinessGuidance(",
 		"func sheinHasSubmitImage(pkg *SheinPackage) bool {",
 		"func sheinFinalImagesReadyForAction(pkg *SheinPackage, action string) (bool, string) {",
+		"func buildSheinSubmitReadinessChecks(",
 	} {
 		if strings.Contains(homeContent, needle) {
 			t.Fatalf("shein_submit_readiness.go should delegate helper seam %q", needle)
@@ -65,6 +66,25 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	} {
 		if !strings.Contains(statusContent, needle) {
 			t.Fatalf("shein_submit_readiness_status_support.go should contain %q", needle)
+		}
+	}
+
+	checksSrc, err := os.ReadFile("shein_submit_readiness_checks_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_submit_readiness_checks_support.go) error = %v", err)
+	}
+	checksContent := string(checksSrc)
+
+	for _, needle := range []string{
+		"func buildSheinSubmitReadinessChecks(pkg *SheinPackage, pod *PodExecutionSummary, action string, validation sheinBuildValidation) []sheinworkspace.ReadinessCheckSpec {",
+		"func appendSheinPodReadinessChecks(",
+		"func appendSheinTemplateReadinessChecks(",
+		"func appendSheinPayloadReadinessChecks(",
+		"func sheinSubmitReadinessFinalDraftReady(pkg *SheinPackage, action string) bool {",
+		"func sheinSubmitReadinessFinalReviewMessage(action string) string {",
+	} {
+		if !strings.Contains(checksContent, needle) {
+			t.Fatalf("shein_submit_readiness_checks_support.go should contain %q", needle)
 		}
 	}
 }
