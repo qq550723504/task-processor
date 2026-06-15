@@ -3714,10 +3714,23 @@ func TestTaskSubmissionSuccessPersistenceUsesSubmissionDomainRunner(t *testing.T
 	for _, needle := range []string{
 		"successRunner := newSheinSubmissionSuccessPersistenceService(",
 		"service.resultRunner = submissiondomain.NewResultPersistenceService(",
-		"return s.resultRunner.Finish(ctx, submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]{",
 	} {
 		if !strings.Contains(stateContent, needle) {
 			t.Fatalf("task_submission_state_service.go should contain %q", needle)
+		}
+	}
+
+	stateSupportSrc, err := os.ReadFile("task_submission_state_persistence_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_state_persistence_support.go) error = %v", err)
+	}
+	stateSupportContent := string(stateSupportSrc)
+
+	for _, needle := range []string{
+		"return s.resultRunner.Finish(ctx, submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]{",
+	} {
+		if !strings.Contains(stateSupportContent, needle) {
+			t.Fatalf("task_submission_state_persistence_support.go should contain %q", needle)
 		}
 	}
 
@@ -3806,11 +3819,24 @@ func TestTaskSubmissionFailurePersistenceUsesSubmissionDomainRunner(t *testing.T
 	for _, needle := range []string{
 		"failureRunner := newSheinSubmissionFailurePersistenceService(service.recordFailureState)",
 		"service.failureRunner = failureRunner",
-		"s.failureRunner.PersistFailure(ctx, submissiondomain.FailurePersistenceInput[*ListingKitResult, *SheinPackage]{",
-		"func (s *taskSubmissionStateService) recordFailureState(",
 	} {
 		if !strings.Contains(stateContent, needle) {
 			t.Fatalf("task_submission_state_service.go should contain %q", needle)
+		}
+	}
+
+	stateSupportSrc, err := os.ReadFile("task_submission_state_persistence_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_state_persistence_support.go) error = %v", err)
+	}
+	stateSupportContent := string(stateSupportSrc)
+
+	for _, needle := range []string{
+		"s.failureRunner.PersistFailure(ctx, submissiondomain.FailurePersistenceInput[*ListingKitResult, *SheinPackage]{",
+		"func (s *taskSubmissionStateService) recordFailureState(",
+	} {
+		if !strings.Contains(stateSupportContent, needle) {
+			t.Fatalf("task_submission_state_persistence_support.go should contain %q", needle)
 		}
 	}
 
