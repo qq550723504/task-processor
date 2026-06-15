@@ -64,7 +64,7 @@ func TestStudioBatchRepositorySupportFilesOwnConcreteImplementations(t *testing.
 		"func NewGormStudioBatchRepository(db *gorm.DB) *GormStudioBatchRepository {",
 		"func AutoMigrateStudioBatchRepository(db *gorm.DB) error {",
 		"func (r *GormStudioBatchRepository) CreateStudioBatchGraph(",
-		"func (r *GormStudioBatchRepository) UpdateStudioMaterializedDesign(",
+		"func (r *GormStudioBatchRepository) GetStudioBatchDetail(",
 	} {
 		if !strings.Contains(gormContent, needle) {
 			t.Fatalf("studio_batch_repository_gorm.go should contain %q", needle)
