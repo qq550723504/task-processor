@@ -24,6 +24,10 @@ func TestRouteContractFamiliesOwnSeparatedSurfaces(t *testing.T) {
 	descriptorSettingsFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_settings.go"))
 	descriptorStoreSubscriptionFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_store_subscription.go"))
 	descriptorAdminFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_admin.go"))
+	descriptorAdminStoreFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_admin_store.go"))
+	descriptorAdminRulesFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_admin_rules.go"))
+	descriptorAdminTopicsFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_admin_topics.go"))
+	descriptorAdminCatalogFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_admin_catalog.go"))
 	descriptorTaskFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_task.go"))
 	descriptorSheinSyncFile := readRouteFileContent(t, filepath.Join(dir, "routes_descriptor_shein_sync.go"))
 
@@ -122,12 +126,54 @@ func TestRouteContractFamiliesOwnSeparatedSurfaces(t *testing.T) {
 
 	assertRouteContainsAll(t, descriptorAdminFile,
 		"func appendAdminRouteDescriptors",
-		"ListAdminStores",
-		"DeleteAdminProductData",
+		"appendAdminStoreRouteDescriptors",
+		"appendAdminCatalogDataRouteDescriptors",
 	)
 	assertRouteNotContainsAny(t, descriptorAdminFile,
+		"ListAdminStores",
+		"DeleteAdminProductData",
 		"func appendTaskRouteDescriptors",
 		"func appendSheinSyncRouteDescriptors",
+	)
+
+	assertRouteContainsAll(t, descriptorAdminStoreFile,
+		"func appendAdminStoreRouteDescriptors",
+		"ListAdminStores",
+		"DeleteAdminImportTask",
+	)
+	assertRouteNotContainsAny(t, descriptorAdminStoreFile,
+		"func appendAdminRuleRouteDescriptors",
+		"DeleteAdminProductData",
+	)
+
+	assertRouteContainsAll(t, descriptorAdminRulesFile,
+		"func appendAdminRuleRouteDescriptors",
+		"ListAdminFilterRules",
+		"DeleteAdminSensitiveWord",
+	)
+	assertRouteNotContainsAny(t, descriptorAdminRulesFile,
+		"func appendAdminStoreRouteDescriptors",
+		"DeleteAdminProductImportMapping",
+	)
+
+	assertRouteContainsAll(t, descriptorAdminTopicsFile,
+		"func appendAdminTopicRouteDescriptors",
+		"ListAdminGenerationTopicCatalog",
+		"DeleteAdminGenerationTopicPolicy",
+	)
+	assertRouteNotContainsAny(t, descriptorAdminTopicsFile,
+		"func appendAdminRuleRouteDescriptors",
+		"DeleteAdminProductData",
+	)
+
+	assertRouteContainsAll(t, descriptorAdminCatalogFile,
+		"func appendAdminCatalogDataRouteDescriptors",
+		"ListAdminProductImportMappings",
+		"DeleteAdminProductData",
+	)
+	assertRouteNotContainsAny(t, descriptorAdminCatalogFile,
+		"func appendAdminStoreRouteDescriptors",
+		"DeleteAdminSensitiveWord",
 	)
 
 	assertRouteContainsAll(t, descriptorTaskFile,
