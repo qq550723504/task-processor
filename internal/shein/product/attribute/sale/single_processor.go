@@ -34,12 +34,12 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(input *SaleAttributeIn
 	response, err := p.handler.openaiClient.CreateChatCompletion(input.Context, req)
 	if err != nil {
 		logger.GetGlobalLogger("shein/product").Errorf("GPT request failed: %v", err)
-		_ = p.debugSaver.SaveFailureData(taskID, productID, systemPrompt, userPrompt, err)
+		_ = p.debugSaver.SaveFailureData(taskID, productID, systemPrompt, userPrompt, "", err)
 		return sheinattr.ResultSaleAttribute{}
 	}
 	if len(response.Choices) == 0 {
 		emptyErr := fmt.Errorf("GPT response is empty")
-		_ = p.debugSaver.SaveFailureData(taskID, productID, systemPrompt, userPrompt, emptyErr)
+		_ = p.debugSaver.SaveFailureData(taskID, productID, systemPrompt, userPrompt, "", emptyErr)
 		return sheinattr.ResultSaleAttribute{}
 	}
 
@@ -51,7 +51,7 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(input *SaleAttributeIn
 			return result
 		}
 		fixErr := fmt.Errorf("truncated GPT response could not be recovered")
-		_ = p.debugSaver.SaveFailureData(taskID, productID+"_fix_failed", systemPrompt, userPrompt, fixErr)
+		_ = p.debugSaver.SaveFailureData(taskID, productID+"_fix_failed", systemPrompt, userPrompt, content, fixErr)
 		return sheinattr.ResultSaleAttribute{}
 	}
 
@@ -59,7 +59,7 @@ func (p *SaleAttributeSingleProcessor) ProcessSingleBatch(input *SaleAttributeIn
 	result := jsonParser.ParseAndValidateJSON(content)
 	if len(result.Variants) == 0 {
 		parseErr := fmt.Errorf("JSON parsing failed or no valid variants")
-		_ = p.debugSaver.SaveFailureData(taskID, productID, systemPrompt, userPrompt, parseErr)
+		_ = p.debugSaver.SaveFailureData(taskID, productID, systemPrompt, userPrompt, content, parseErr)
 	}
 	return result
 }

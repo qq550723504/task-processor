@@ -37,8 +37,8 @@ type DebugData struct {
 }
 
 // SaveFailureData 保存失败的调试数据
-func (s *SaleAttributeDebugSaver) SaveFailureData(taskID, productID, systemPrompt, userPrompt string, err error) error {
-	return s.saveDebugData(taskID, productID, systemPrompt, userPrompt, "", err, 0, "", false)
+func (s *SaleAttributeDebugSaver) SaveFailureData(taskID, productID, systemPrompt, userPrompt, response string, err error) error {
+	return s.saveDebugData(taskID, productID, systemPrompt, userPrompt, response, err, 0, "", false)
 }
 
 // SaveTruncatedData 保存被截断的调试数据

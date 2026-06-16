@@ -144,21 +144,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 
 		// 转换请求参数
-		openaiReq := openai.ChatCompletionRequest{
-			Model:    req.Model,
-			Messages: convertMessages(req.Messages),
-		}
-
-		// 设置可选参数
-		if req.Temperature != nil {
-			openaiReq.Temperature = *req.Temperature
-		}
-		if req.Seed != nil {
-			openaiReq.Seed = req.Seed
-		}
-		if req.MaxTokens != nil {
-			openaiReq.MaxTokens = *req.MaxTokens
-		}
+		openaiReq := buildOpenAIChatCompletionRequest(req)
 
 		// 调用OpenAI API
 		resp, err := bc.client.CreateChatCompletion(timeoutCtx, openaiReq)
@@ -381,6 +367,30 @@ func shouldRetry(err error) bool {
 	}
 
 	return true
+}
+
+func buildOpenAIChatCompletionRequest(req *ChatCompletionRequest) openai.ChatCompletionRequest {
+	openaiReq := openai.ChatCompletionRequest{
+		Model:    req.Model,
+		Messages: convertMessages(req.Messages),
+	}
+
+	if req.Temperature != nil {
+		openaiReq.Temperature = *req.Temperature
+	}
+	if req.Seed != nil {
+		openaiReq.Seed = req.Seed
+	}
+	if req.MaxTokens != nil {
+		openaiReq.MaxTokens = *req.MaxTokens
+	}
+	if strings.TrimSpace(req.ResponseFormat) == string(openai.ChatCompletionResponseFormatTypeJSONObject) {
+		openaiReq.ResponseFormat = &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		}
+	}
+
+	return openaiReq
 }
 
 func isRetryableOpenAIAPIError(err *openai.APIError) bool {
