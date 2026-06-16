@@ -1,5 +1,11 @@
 package listing
 
+import (
+	"os"
+	"strconv"
+	"strings"
+)
+
 const defaultConfigPath = "config/config-prod.yaml"
 
 type Options struct {
@@ -23,4 +29,18 @@ func ResolveConfigPath(configPath, appConfigPath string) string {
 		return appConfigPath
 	}
 	return defaultConfigPath
+}
+
+func ResolveDebugTaskID() int64 {
+	raw := strings.TrimSpace(os.Getenv("TASK_PROCESSOR_DEBUG_TASK_ID"))
+	if raw == "" {
+		return 0
+	}
+
+	taskID, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || taskID <= 0 {
+		return 0
+	}
+
+	return taskID
 }

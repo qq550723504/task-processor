@@ -35,6 +35,12 @@ func Run(ctx context.Context, opts Options) error {
 	if err := applyLoggingConfigFromConfig(logger, cfg); err != nil {
 		return fmt.Errorf("apply logging config failed: %w", err)
 	}
+
+	debugTaskID := ResolveDebugTaskID()
+	if debugTaskID > 0 {
+		return runDebugTask(ctx, cfg, logger, platform, displayName, debugTaskID)
+	}
+
 	if cfg.RabbitMQ == nil || !cfg.RabbitMQ.Enabled {
 		return fmt.Errorf("RabbitMQ is not enabled")
 	}
@@ -71,6 +77,61 @@ func Run(ctx context.Context, opts Options) error {
 
 	serviceManager.Wait()
 	return nil
+}
+
+func runDebugTask(
+	ctx context.Context,
+	cfg *config.Config,
+	logger *logrus.Logger,
+	platform string,
+	displayName string,
+	taskID int64,
+) error {
+	logger.Infof("starting %s debug single-task mode: taskID=%d", displayName, taskID)
+
+	consumerDeps := bootstrap.BuildConsumerDependencies()
+	processorRegistry := consumer.NewPlatformProcessorRegistry(cfg, logger, platform, consumerDeps)
+	module, err := processorRegistry.ResolvePlatformModule(platform)
+	if err != nil {
+		return err
+	}
+
+	needsAmazon := module.NeedsAmazon(cfg) || consumer.PlatformUsesLocalFetcher(cfg, platform)
+	resources, err := consumerDeps.SharedResourceProvider(cfg, logger, needsAmazon)
+	if err != nil {
+		return fmt.Errorf("initialize shared resources: %w", err)
+	}
+
+	rt := consumer.PlatformRuntimeContext{
+		Config:           cfg,
+		Logger:           logger,
+		ManagementClient: resources.ManagementClient,
+		CrawlSource:      resources.CrawlSource,
+		ProductFetcher:   resources.ProductFetcher,
+	}
+	if err := module.ConfigureListingRuntime(ctx, rt); err != nil {
+		return fmt.Errorf("configure %s debug runtime failed: %w", displayName, err)
+	}
+
+	registrar := &debugProcessorRegistrar{}
+	if err := module.RegisterConsumer(ctx, rt, registrar); err != nil {
+		return fmt.Errorf("register %s debug processor failed: %w", displayName, err)
+	}
+	if registrar.processor == nil {
+		return fmt.Errorf("%s debug processor is not available", displayName)
+	}
+
+	taskDTO, err := resources.ManagementClient.GetImportTaskClient().GetTaskByID(taskID)
+	if err != nil {
+		return fmt.Errorf("load debug task %d: %w", taskID, err)
+	}
+	runner := debugTaskRunner{
+		displayName: displayName,
+		logger:      logger,
+		taskLoader:  staticDebugTaskLoader{task: taskDTO},
+		processor:   registrar.processor,
+	}
+	return runner.run(ctx, taskID)
 }
 
 func applyLoggingConfigFromConfig(log *logrus.Logger, cfg *config.Config) error {

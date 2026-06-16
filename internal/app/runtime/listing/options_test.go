@@ -1,6 +1,9 @@
 package listing
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestResolveConfigPath(t *testing.T) {
 	tests := []struct {
@@ -33,4 +36,43 @@ func TestResolveConfigPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestResolveDebugTaskID(t *testing.T) {
+	const envKey = "TASK_PROCESSOR_DEBUG_TASK_ID"
+	original := os.Getenv(envKey)
+	t.Cleanup(func() {
+		if original == "" {
+			_ = os.Unsetenv(envKey)
+			return
+		}
+		_ = os.Setenv(envKey, original)
+	})
+
+	t.Run("reads env value", func(t *testing.T) {
+		if err := os.Setenv(envKey, " 8189311 "); err != nil {
+			t.Fatalf("Setenv() error = %v", err)
+		}
+		if got := ResolveDebugTaskID(); got != 8189311 {
+			t.Fatalf("ResolveDebugTaskID() = %d, want %d", got, 8189311)
+		}
+	})
+
+	t.Run("invalid env value falls back to zero", func(t *testing.T) {
+		if err := os.Setenv(envKey, "abc"); err != nil {
+			t.Fatalf("Setenv() error = %v", err)
+		}
+		if got := ResolveDebugTaskID(); got != 0 {
+			t.Fatalf("ResolveDebugTaskID() = %d, want 0", got)
+		}
+	})
+
+	t.Run("missing env value falls back to zero", func(t *testing.T) {
+		if err := os.Unsetenv(envKey); err != nil {
+			t.Fatalf("Unsetenv() error = %v", err)
+		}
+		if got := ResolveDebugTaskID(); got != 0 {
+			t.Fatalf("ResolveDebugTaskID() = %d, want 0", got)
+		}
+	})
 }
