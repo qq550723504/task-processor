@@ -7,7 +7,10 @@
 1. [ListingKit 产品总览](./listingkit-product-overview.md)
 2. [ListingKit 操作指南](./listingkit-operating-guide.md)
 3. [ListingKit 产品路线图](./listingkit-product-roadmap.md)
-4. [ListingKit 错误恢复手册](./listingkit-error-recovery.md)
+4. [ListingKit 下一阶段执行计划](./listingkit-next-execution-plan.md)
+5. [ListingKit 错误恢复手册](./listingkit-error-recovery.md)
+6. [ListingKit 错误恢复 SOP](./ops/listingkit-error-recovery-sop.md)
+7. [ListingKit 真实接口验收报告模板](./validation/listingkit-real-api-validation-report-template.md)
 
 ## 面向读者
 
@@ -18,10 +21,3 @@
 ## 文档边界
 
 本目录只记录产品级语义。除非字段会直接影响用户操作，否则不展开底层字段清单。
-
-实现和接口细节继续看：
-
-- [product-listing-api README](../../cmd/product-listing-api/README.md)
-- [ListingKit UI README](../../web/listingkit-ui/README.md)
-- [ListingKit 重构边界](../architecture/listingkit-refactor-status.md)
-- [ListingKit 真实接口联调清单](../../web/listingkit-ui/REAL_API_VALIDATION_CHECKLIST.md)
