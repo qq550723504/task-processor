@@ -118,6 +118,7 @@ platforms:
   shein:
     enabled: true            # 是否启用SHEIN处理器（处理上架任务·）
     schedulerEnabled: false   # 是否启用SHEIN调度任务（核价、同步等）
+    fetchMode: "local"       # 本地开发默认直接走本地浏览器抓取，避免误走 shared distributed 配置
     # SHEIN 登录态刷新配置；cookie 失效时调用 login 服务重新登录并回写 Redis
     loginService:
       baseURL: "http://localhost:8000"
@@ -192,7 +193,7 @@ browser:
 
 # RabbitMQ配置（分布式爬虫）
 rabbitmq:
-  enabled: true  # 启用RabbitMQ连接
+  enabled: false  # 本地调试默认关闭，避免误连分布式爬虫/RabbitMQ
   #url: "amqp://admin:admin123@localhost:5672/"  # 连接到unified的RabbitMQ
   url: "amqp://task-processor:replace-me@rabbitmq.example.internal:5672/"  # 示例值，生产凭据请通过部署环境注入
   reconnectInterval: "5s"   # 重连间隔
@@ -242,7 +243,7 @@ rabbitmq:
 # Amazon配置
 amazon:
   # Amazon 爬虫配置
-  enabled: false
+  enabled: true
   dataFreshnessDays: 15  # 数据新鲜度天数，默认15天
   crawlTimeout: 300      # 爬虫超时时间（秒），默认5分钟
   remoteAPI:
