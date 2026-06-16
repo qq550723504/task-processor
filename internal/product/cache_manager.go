@@ -4,6 +4,7 @@ package product
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -15,6 +16,17 @@ type CacheManager struct {
 	dataParser        *DataParser
 	logger            *logrus.Entry
 }
+
+type rawJsonDataExistenceClient interface {
+	GetRawJsonDataAnyFreshness(req *RawJsonReq) (*RawJsonResp, error)
+}
+
+type cacheWriteDecision int
+
+const (
+	cacheWriteSkip cacheWriteDecision = iota
+	cacheWriteSave
+)
 
 // NewCacheManager 创建缓存管理器
 func NewCacheManager(rawJsonDataClient RawJsonDataClient, logger *logrus.Entry) *CacheManager {
@@ -78,6 +90,10 @@ func (c *CacheManager) SaveToCache(req *FetchRequest, product *model.Product) er
 	}
 	id, err := c.rawJsonDataClient.CreateRawJsonData(createReq)
 	if err != nil {
+		if isDuplicateRawJSONCacheError(err) {
+			c.logger.Infof("⏭️ 产品缓存已存在，跳过重复写入: ProductID=%s", req.ProductID)
+			return nil
+		}
 		return fmt.Errorf("保存失败: %w", err)
 	}
 	c.logger.Infof("✅ 保存成功: ProductID=%s, ID=%d", req.ProductID, id)
@@ -86,8 +102,8 @@ func (c *CacheManager) SaveToCache(req *FetchRequest, product *model.Product) er
 
 // CacheProduct 缓存产品数据（检查是否已存在）
 func (c *CacheManager) CacheProduct(req *FetchRequest, product *model.Product) error {
-	if _, err := c.GetFromCache(req); err == nil {
-		c.logger.Infof("⏭️ 服务器已有产品数据缓存，跳过: ProductID=%s", req.ProductID)
+	decision := c.decideRawCacheWrite(req)
+	if decision == cacheWriteSkip {
 		return nil
 	}
 	return c.SaveToCache(req, product)
@@ -110,7 +126,7 @@ func (c *CacheManager) CacheVariants(req *FetchRequest, variants []*model.Produc
 			CategoryID: req.CategoryID,
 			Creator:    req.Creator,
 		}
-		if _, err := c.GetFromCache(variantReq); err == nil {
+		if c.decideRawCacheWrite(variantReq) == cacheWriteSkip {
 			skipCount++
 			continue
 		}
@@ -155,4 +171,86 @@ func (c *CacheManager) needsRefetchForOldFormat(product *model.Product) bool {
 
 func (c *CacheManager) needsRefetchForMissingShipsFrom(product *model.Product) bool {
 	return product != nil && product.ShipsFrom == ""
+}
+
+func (c *CacheManager) decideRawCacheWrite(req *FetchRequest) cacheWriteDecision {
+	if _, err := c.GetFromCache(req); err == nil {
+		c.logger.Infof("⏭️ 服务器已有产品数据缓存，跳过: ProductID=%s", req.ProductID)
+		return cacheWriteSkip
+	}
+	if c.shouldOverwriteExistingRawCache(req) {
+		c.logger.Infof("♻️ 检测到旧缓存内容不完整，使用最新抓取结果覆盖: ProductID=%s", req.ProductID)
+		return cacheWriteSave
+	}
+	if c.rawCacheRecordExists(req) {
+		c.logger.Infof("⏭️ 服务器已有原始缓存记录但当前判定需重抓，跳过重复创建: ProductID=%s", req.ProductID)
+		return cacheWriteSkip
+	}
+	return cacheWriteSave
+}
+
+func isDuplicateRawJSONCacheError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "duplicate key value violates unique constraint") ||
+		strings.Contains(msg, "SQLSTATE 23505") ||
+		strings.Contains(strings.ToLower(msg), "duplicate entry")
+}
+
+func (c *CacheManager) rawCacheRecordExists(req *FetchRequest) bool {
+	if req == nil || c == nil || c.rawJsonDataClient == nil {
+		return false
+	}
+	existenceClient, ok := c.rawJsonDataClient.(rawJsonDataExistenceClient)
+	if !ok {
+		return false
+	}
+
+	raw, err := existenceClient.GetRawJsonDataAnyFreshness(&RawJsonReq{
+		TenantID:   req.TenantID,
+		Platform:   req.Platform,
+		ProductID:  req.ProductID,
+		Region:     req.Region,
+		StoreID:    req.StoreID,
+		CategoryID: req.CategoryID,
+		Creator:    req.Creator,
+	})
+	return err == nil && raw != nil && raw.RawJSONData != ""
+}
+
+func (c *CacheManager) shouldOverwriteExistingRawCache(req *FetchRequest) bool {
+	raw, ok := c.getExistingRawCache(req)
+	if !ok {
+		return false
+	}
+
+	product, err := c.dataParser.ParseAmazonProduct(raw.RawJSONData)
+	if err != nil {
+		c.logger.Warnf("⚠️ 现有缓存解析失败，允许覆盖旧记录: ProductID=%s, err=%v", req.ProductID, err)
+		return true
+	}
+	return c.needsRefetch(product)
+}
+
+func (c *CacheManager) getExistingRawCache(req *FetchRequest) (*RawJsonResp, bool) {
+	if req == nil || c == nil || c.rawJsonDataClient == nil {
+		return nil, false
+	}
+	existenceClient, ok := c.rawJsonDataClient.(rawJsonDataExistenceClient)
+	if !ok {
+		return nil, false
+	}
+
+	raw, err := existenceClient.GetRawJsonDataAnyFreshness(&RawJsonReq{
+		TenantID:   req.TenantID,
+		Platform:   req.Platform,
+		ProductID:  req.ProductID,
+		Region:     req.Region,
+		StoreID:    req.StoreID,
+		CategoryID: req.CategoryID,
+		Creator:    req.Creator,
+	})
+	return raw, err == nil && raw != nil && raw.RawJSONData != ""
 }

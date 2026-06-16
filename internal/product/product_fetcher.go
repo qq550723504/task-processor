@@ -3,6 +3,7 @@ package product
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"task-processor/internal/core/config"
@@ -78,7 +79,7 @@ func (f *ProductFetcher) FetchProduct(ctx context.Context, req *FetchRequest) (*
 		})
 	}
 
-	return nil, nil
+	return nil, f.crawlerUnavailableError(req)
 }
 
 // FetchProductWithRetry 带重试的产品获取
@@ -140,6 +141,9 @@ func (f *ProductFetcher) FetchVariants(ctx context.Context, req *FetchRequest, v
 			continue
 		}
 		if product != nil {
+			if cacheErr := f.CacheProduct(variantReq, product); cacheErr != nil {
+				f.logger.Warnf("cache variant immediately failed: ASIN=%s, err=%v", asin, cacheErr)
+			}
 			variants = append(variants, product)
 		}
 	}
@@ -153,6 +157,24 @@ func (f *ProductFetcher) GetStats() map[string]any {
 
 func (f *ProductFetcher) shouldUseCache(req *FetchRequest) bool {
 	return req == nil || strings.TrimSpace(req.Zipcode) == ""
+}
+
+func (f *ProductFetcher) crawlerUnavailableError(req *FetchRequest) error {
+	productID := ""
+	region := ""
+	if req != nil {
+		productID = req.ProductID
+		region = req.Region
+	}
+
+	switch {
+	case !f.sourceFetcher.Configured():
+		return fmt.Errorf("crawler source is not configured for product fetch: product_id=%s region=%s", productID, region)
+	case f.amazonConfig == nil || !f.amazonConfig.Enabled:
+		return fmt.Errorf("amazon crawler is disabled for product fetch: product_id=%s region=%s", productID, region)
+	default:
+		return fmt.Errorf("crawler fetch is unavailable for product fetch: product_id=%s region=%s", productID, region)
+	}
 }
 
 type productAmazonZipcodePolicy struct{}
