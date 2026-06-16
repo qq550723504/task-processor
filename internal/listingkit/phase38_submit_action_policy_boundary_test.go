@@ -18,6 +18,7 @@ func TestSubmitActionPolicyBoundary(t *testing.T) {
 	for _, needle := range []string{
 		"func NormalizeSubmitAction(action, fallback string) string {",
 		"func IsSupportedSubmitAction(action string) bool {",
+		"func UnsupportedSubmitActionError(action string) error {",
 	} {
 		if !strings.Contains(submissionContent, needle) {
 			t.Fatalf("submit_action.go should contain %q", needle)
@@ -32,5 +33,8 @@ func TestSubmitActionPolicyBoundary(t *testing.T) {
 
 	if !strings.Contains(sharedContent, "return listingsubmission.IsSupportedSubmitAction(action)") {
 		t.Fatalf("service_submit_shared.go should delegate submit action support policy to internal/listing/submission")
+	}
+	if !strings.Contains(sharedContent, "return listingsubmission.UnsupportedSubmitActionError(action)") {
+		t.Fatalf("service_submit_shared.go should delegate unsupported submit action error policy to internal/listing/submission")
 	}
 }

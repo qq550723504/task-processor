@@ -1,7 +1,6 @@
 package listingkit
 
 import (
-	"fmt"
 	"time"
 
 	listingsubmission "task-processor/internal/listing/submission"
@@ -23,5 +22,5 @@ func isSupportedSubmitAction(action string) bool {
 }
 
 func unsupportedSubmitActionError(action string) error {
-	return fmt.Errorf("unsupported submit action: %s", action)
+	return listingsubmission.UnsupportedSubmitActionError(action)
 }

@@ -30,3 +30,11 @@ func TestIsSupportedSubmitAction(t *testing.T) {
 		t.Fatal("IsSupportedSubmitAction(delete) = true, want false")
 	}
 }
+
+func TestUnsupportedSubmitActionError(t *testing.T) {
+	t.Parallel()
+
+	if got := UnsupportedSubmitActionError("delete"); got == nil || got.Error() != "unsupported submit action: delete" {
+		t.Fatalf("UnsupportedSubmitActionError() = %v, want unsupported submit action error", got)
+	}
+}

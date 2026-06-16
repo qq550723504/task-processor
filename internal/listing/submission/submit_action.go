@@ -1,6 +1,9 @@
 package submission
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 func NormalizeSubmitAction(action, fallback string) string {
 	action = strings.ToLower(strings.TrimSpace(action))
@@ -17,4 +20,8 @@ func IsSupportedSubmitAction(action string) bool {
 	default:
 		return false
 	}
+}
+
+func UnsupportedSubmitActionError(action string) error {
+	return fmt.Errorf("unsupported submit action: %s", action)
 }
