@@ -78,3 +78,47 @@ func TestScopeVariationAttributeValuesToProductsData_FiltersByBatchUsage(t *test
 		t.Fatalf("scoped size values = %q, want %q", got, "S,M")
 	}
 }
+
+func TestBuildGenerationRequest_FiltersVariationDataToProductsDataASINs(t *testing.T) {
+	builder := NewSaleAttributeRequestBuilder()
+	input := &SaleAttributeInput{
+		Context: context.Background(),
+		AmazonProduct: &model.Product{
+			Variations: []model.Variation{
+				{Asin: "A1", Attributes: map[string]any{"Color": "Red"}},
+				{Asin: "A2", Attributes: map[string]any{"Color": "Blue"}},
+				{Asin: "A3", Attributes: map[string]any{"Color": "Green"}},
+			},
+			VariationsValues: []model.VariationValue{
+				{VariantName: "Color", Values: []string{"Red", "Blue", "Green"}},
+			},
+		},
+		Variants: []model.Product{
+			{Asin: "A1"},
+			{Asin: "A2"},
+		},
+	}
+
+	request := builder.BuildGenerationRequest(
+		input,
+		[]map[string]string{
+			{"asin": "A1", "title": "Variant A1", "color": "Red"},
+			{"asin": "A2", "title": "Variant A2", "color": "Blue"},
+		},
+		nil,
+		nil,
+	)
+
+	if got := len(request.ProductsData); got != 2 {
+		t.Fatalf("products data count = %d, want 2", got)
+	}
+	if got := len(request.VariationData); got != 2 {
+		t.Fatalf("variation data count = %d, want 2", got)
+	}
+	if request.VariationData[0].Asin != "A1" || request.VariationData[1].Asin != "A2" {
+		t.Fatalf("variation data ASINs = [%s %s], want [A1 A2]", request.VariationData[0].Asin, request.VariationData[1].Asin)
+	}
+	if request.RequiredVariantCount != 2 {
+		t.Fatalf("required variant count = %d, want 2", request.RequiredVariantCount)
+	}
+}

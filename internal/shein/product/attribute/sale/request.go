@@ -56,9 +56,11 @@ func (r *SaleAttributeRequestBuilder) BuildGenerationRequest(input *SaleAttribut
 		variationAttributeValues = &emptyVariations
 	}
 
+	variationData := scopeVariationsToProductsData(input.AmazonProduct.Variations, productVariantData)
+
 	return &sheinattr.GenerationRequest{
 		ProductsData:             productVariantData,
-		VariationData:            input.AmazonProduct.Variations,
+		VariationData:            variationData,
 		VariationAttributeValues: variationAttributeValues,
 		SaleAttributesData:       attributeMetadata,
 		AttributeMappings:        attributeMappings,
@@ -197,6 +199,33 @@ func scopeVariationAttributeValuesToProductsData(values *[]model.VariationValue,
 			filtered.Values = append(filtered.Values, variation.Values...)
 		}
 		scoped = append(scoped, filtered)
+	}
+
+	return scoped
+}
+
+func scopeVariationsToProductsData(variations []model.Variation, productsData []sheinattr.ProductVariantData) []model.Variation {
+	if len(variations) == 0 || len(productsData) == 0 {
+		return append([]model.Variation(nil), variations...)
+	}
+
+	expected := make(map[string]struct{}, len(productsData))
+	for _, product := range productsData {
+		asin := strings.TrimSpace(product.ASIN)
+		if asin != "" {
+			expected[asin] = struct{}{}
+		}
+	}
+
+	scoped := make([]model.Variation, 0, len(productsData))
+	for _, variation := range variations {
+		if _, ok := expected[strings.TrimSpace(variation.Asin)]; ok {
+			scoped = append(scoped, variation)
+		}
+	}
+
+	if len(scoped) == 0 {
+		return append([]model.Variation(nil), variations...)
 	}
 
 	return scoped
