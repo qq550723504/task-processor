@@ -3,7 +3,11 @@ package openai
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"strings"
 	"sync"
 	"task-processor/internal/core/logger"
 	"time"
@@ -351,7 +355,48 @@ func shouldRetry(err error) bool {
 	if err == nil {
 		return false
 	}
-	// 这里可以根据具体错误类型判断是否重试
-	// 简化处理，大部分错误都重试
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+
+	var apiErr *openai.APIError
+	if errors.As(err, &apiErr) {
+		if isRetryableOpenAIAPIError(apiErr) {
+			return true
+		}
+		return false
+	}
+
+	var reqErr *openai.RequestError
+	if errors.As(err, &reqErr) {
+		if reqErr.HTTPStatusCode >= http.StatusInternalServerError || reqErr.HTTPStatusCode == http.StatusTooManyRequests {
+			return true
+		}
+		return false
+	}
+
 	return true
+}
+
+func isRetryableOpenAIAPIError(err *openai.APIError) bool {
+	if err == nil {
+		return false
+	}
+
+	switch err.HTTPStatusCode {
+	case http.StatusRequestTimeout, http.StatusConflict, http.StatusTooManyRequests:
+		return true
+	case http.StatusBadRequest:
+		message := strings.ToLower(strings.TrimSpace(err.Message))
+		return strings.Contains(message, "model load is too high") ||
+			strings.Contains(message, "please try again later") ||
+			strings.Contains(message, "server is overloaded")
+	default:
+		return err.HTTPStatusCode >= http.StatusInternalServerError
+	}
 }

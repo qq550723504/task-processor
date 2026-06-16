@@ -78,6 +78,10 @@ func (f *FetcherFactory) CreateFetcherFromConfig(
 	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (ProductFetcher, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config is required")
+	}
+
 	if cfg.Amazon.RemoteAPI.Enabled {
 		f.logger.Info("creating remote api fetcher from config")
 		return f.CreateFetcher(
@@ -91,6 +95,9 @@ func (f *FetcherFactory) CreateFetcherFromConfig(
 
 	if cfg.RabbitMQ == nil || !cfg.RabbitMQ.Enabled {
 		return nil, fmt.Errorf("crawler fetcher requires amazon.remoteAPI.enabled=true or rabbitmq.enabled=true; local fallback is disabled")
+	}
+	if !cfg.Amazon.Enabled {
+		return nil, fmt.Errorf("distributed fetcher requires amazon.enabled=true when amazon.remoteAPI.enabled=false; local fallback is disabled")
 	}
 	if rabbitmqClient == nil {
 		return nil, fmt.Errorf("distributed fetcher requires RabbitMQ client; local fallback is disabled")

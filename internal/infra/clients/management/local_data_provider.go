@@ -452,7 +452,7 @@ func (p *LocalDataProvider) GetRawJSONData(req *api.RawJsonDataReqDTO) (*api.Raw
 	}
 	var row api.RawJsonDataRespDTO
 	err := p.db.Table("listing_raw_json_data").
-		Where("deleted = ? AND platform = ? AND product_id = ? AND region = ?", false, req.Platform, req.ProductID, req.Region).
+		Where("deleted = ? AND platform = ? AND product_id = ? AND region = ?", 0, req.Platform, req.ProductID, req.Region).
 		Order("id desc").Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -473,10 +473,12 @@ func (p *LocalDataProvider) CreateRawJSONData(req *api.RawJsonDataCreateReqDTO) 
 		"product_id":    req.ProductID,
 		"region":        req.Region,
 		"raw_json_data": req.RawJsonData,
+		"status":        0,
 		"create_time":   time.Now(),
 		"update_time":   time.Now(),
 		"creator":       req.Creator,
 		"updater":       req.Creator,
+		"deleted":       0,
 	}
 	if err := p.db.Table("listing_raw_json_data").Create(record).Error; err != nil {
 		return 0, err
@@ -1151,6 +1153,24 @@ func (p *LocalDataProvider) GetPendingAndRetryTasks(limit int, userID int64, sto
 		result = append(result, row.toDTO())
 	}
 	return result, true, nil
+}
+
+func (p *LocalDataProvider) GetImportTaskByID(taskID int64) (*api.ProductImportTaskRespDTO, bool, error) {
+	if p == nil || p.db == nil || taskID <= 0 {
+		return nil, false, nil
+	}
+
+	var row localImportTaskRow
+	err := p.db.Table("listing_product_import_task").Where("id = ?", taskID).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, true, nil
+	}
+	if err != nil {
+		return nil, true, err
+	}
+
+	dto := row.toDTO()
+	return &dto, true, nil
 }
 
 func (p *LocalDataProvider) UpdateImportTaskStatus(req *api.ProductImportTaskUpdateReqDTO) (bool, error) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync/atomic"
 	"testing"
 
@@ -333,5 +334,71 @@ func TestTaskHandlerHandleMessage_DiscardsPausedMessageBeforeClaim(t *testing.T)
 
 	if processor.processCalls != 0 {
 		t.Fatalf("expected processor not to be called for paused message, got %d calls", processor.processCalls)
+	}
+}
+
+func TestTaskHandlerHandleMessage_DiscardsNonDebugASINBeforeProcessing(t *testing.T) {
+	const envKey = "TASK_PROCESSOR_DEBUG_ONLY_ASIN"
+	original := os.Getenv(envKey)
+	if err := os.Setenv(envKey, "B0BPF6V5V6"); err != nil {
+		t.Fatalf("Setenv() error = %v", err)
+	}
+	t.Cleanup(func() {
+		if original == "" {
+			_ = os.Unsetenv(envKey)
+			return
+		}
+		_ = os.Setenv(envKey, original)
+	})
+
+	autoListingEnabled := true
+	processor := &stubProcessor{}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "shein",
+		Processor: processor,
+		StoreAPI: &stubStoreAPI{
+			store: &managementapi.StoreRespDTO{
+				ID:                846,
+				Name:              "enabled-store",
+				Status:            storeStatusEnabled,
+				EnableAutoListing: &autoListingEnabled,
+			},
+		},
+		Logger: logrus.New(),
+	})
+
+	msg := &rabbitmq.Message{
+		ID:   "msg-debug-asin-1",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":         float64(7812003),
+			"tenantId":       float64(286),
+			"storeId":        float64(846),
+			"sourcePlatform": "amazon",
+			"targetPlatform": "shein",
+			"region":         "US",
+			"productId":      "B0DC9NVDBY",
+			"priority":       float64(10),
+			"retryCount":     float64(0),
+			"maxRetryCount":  float64(3),
+			"status":         "queued",
+		},
+	}
+
+	err := handler.HandleMessage(context.Background(), msg)
+	if err == nil {
+		t.Fatal("expected non-debug ASIN message to be discarded")
+	}
+
+	type discardable interface {
+		ShouldDiscard() bool
+	}
+	var discardErr discardable
+	if !errors.As(err, &discardErr) || !discardErr.ShouldDiscard() {
+		t.Fatalf("expected discardable error, got %v", err)
+	}
+
+	if processor.processCalls != 0 {
+		t.Fatalf("expected processor not to be called for non-debug ASIN, got %d calls", processor.processCalls)
 	}
 }

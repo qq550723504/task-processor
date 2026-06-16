@@ -13,6 +13,16 @@ type ImportTaskAPIClient struct {
 	localDataProvider *LocalDataProvider
 }
 
+func (m *ImportTaskAPIClient) GetTaskByID(taskID int64) (*api.ProductImportTaskRespDTO, error) {
+	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+		if task, handled, err := m.localDataProvider.GetImportTaskByID(taskID); err != nil || handled {
+			return task, err
+		}
+	}
+
+	return nil, fmt.Errorf("GetTaskByID is only supported when local management data provider is configured")
+}
+
 // GetPendingAndRetryTasks 获取待处理及待重试的任务列表
 func (m *ImportTaskAPIClient) GetPendingAndRetryTasks(limit int, userId int64, storeIds []int64) ([]api.ProductImportTaskRespDTO, error) {
 	logger.GetGlobalLogger("infra/clients").Warn("[GetPendingAndRetryTasks] legacy polling API is deprecated; prefer RabbitMQ-driven task dispatch")

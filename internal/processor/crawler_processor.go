@@ -103,6 +103,9 @@ func (p *CrawlerProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob
 	fetchReq := p.fetchRequestFromTask(task, platform)
 
 	productData, err := p.productFetcher.FetchProduct(ctx, fetchReq)
+	if err == nil && productData == nil {
+		err = fmt.Errorf("爬取产品数据为空")
+	}
 
 	if replyTo != "" {
 		p.sendCrawlResult(replyTo, taskIDStr, productData, err, time.Since(startTime))

@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/app/task"
@@ -40,7 +41,7 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 				if creator == nil {
 					return fmt.Errorf("TEMU processor creator not configured")
 				}
-				productFetcher, err := buildRuntimeProductFetcher(cfg, s)
+				productFetcher, err := buildRuntimeProductFetcher(cfg, s, "temu")
 				if err != nil {
 					return err
 				}
@@ -75,7 +76,7 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 				if creator == nil {
 					return fmt.Errorf("SHEIN processor creator not configured")
 				}
-				productFetcher, err := buildRuntimeProductFetcher(cfg, s)
+				productFetcher, err := buildRuntimeProductFetcher(cfg, s, "shein")
 				if err != nil {
 					return err
 				}
@@ -99,21 +100,66 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 	}
 }
 
-func buildRuntimeProductFetcher(cfg *config.Config, s *processorServiceImpl) (appfetcher.ProductFetcher, error) {
+func buildRuntimeProductFetcher(cfg *config.Config, s *processorServiceImpl, platform string) (appfetcher.ProductFetcher, error) {
 	if s.managementClient == nil {
 		return nil, fmt.Errorf("management client not initialized")
 	}
 
 	factory := appfetcher.NewFetcherFactory()
-	fetcher, err := factory.CreateFetcherFromConfig(
-		cfg,
+	fetcherType, err := resolveRuntimePlatformFetcherType(cfg, platform)
+	if err != nil {
+		return nil, fmt.Errorf("resolve %s fetch mode: %w", platform, err)
+	}
+
+	if fetcherType == "" {
+		fetcher, err := factory.CreateFetcherFromConfig(
+			cfg,
+			s.managementClient.GetRawJsonDataAdapter(),
+			s.crawlSource,
+			s.rabbitmqClient,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create %s product fetcher: %w", platform, err)
+		}
+		return fetcher, nil
+	}
+
+	fetcher, err := factory.CreateFetcher(
+		fetcherType,
 		s.managementClient.GetRawJsonDataAdapter(),
+		&cfg.Amazon,
 		s.crawlSource,
 		s.rabbitmqClient,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("create distributed product fetcher: %w", err)
+		return nil, fmt.Errorf("create %s product fetcher: %w", platform, err)
+	}
+	return fetcher, nil
+}
+
+func resolveRuntimePlatformFetcherType(cfg *config.Config, platform string) (appfetcher.FetcherType, error) {
+	if cfg == nil {
+		return "", nil
 	}
 
-	return fetcher, nil
+	mode := "auto"
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "temu":
+		mode = strings.TrimSpace(cfg.Platforms.Temu.FetchMode)
+	case "shein":
+		mode = strings.TrimSpace(cfg.Platforms.Shein.FetchMode)
+	}
+
+	switch strings.ToLower(mode) {
+	case "", "auto":
+		return "", nil
+	case "local":
+		return appfetcher.LocalFetcher, nil
+	case "distributed":
+		return appfetcher.DistributedFetcher, nil
+	case "remote-api", "remoteapi", "remote_api":
+		return appfetcher.RemoteAPIFetcher, nil
+	default:
+		return "", fmt.Errorf("unsupported fetch mode %q", mode)
+	}
 }

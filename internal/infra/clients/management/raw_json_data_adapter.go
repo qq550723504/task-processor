@@ -42,6 +42,40 @@ func (a *RawJsonDataAdapter) GetRawJsonData(req *product.RawJsonReq) (*product.R
 	}, nil
 }
 
+func (a *RawJsonDataAdapter) GetRawJsonDataAnyFreshness(req *product.RawJsonReq) (*product.RawJsonResp, error) {
+	freshClient, ok := a.client.(interface {
+		GetRawJsonDataAnyFreshness(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error)
+	})
+	if !ok {
+		return nil, nil
+	}
+
+	resp, err := freshClient.GetRawJsonDataAnyFreshness(&api.RawJsonDataReqDTO{
+		TenantID:   req.TenantID,
+		Platform:   req.Platform,
+		ProductID:  req.ProductID,
+		Region:     req.Region,
+		StoreID:    req.StoreID,
+		CategoryID: req.CategoryID,
+		Creator:    req.Creator,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, nil
+	}
+	return &product.RawJsonResp{
+		ID:          resp.ID,
+		Platform:    resp.Platform,
+		ProductID:   resp.ProductID,
+		Region:      resp.Region,
+		RawJSONData: resp.RawJSONData,
+		CreateTime:  resp.CreateTime.UnixMilli(),
+		UpdateTime:  resp.UpdateTime.UnixMilli(),
+	}, nil
+}
+
 func (a *RawJsonDataAdapter) CreateRawJsonData(req *product.RawJsonCreateReq) (int64, error) {
 	return a.client.CreateRawJsonData(&api.RawJsonDataCreateReqDTO{
 		TenantID:    req.TenantID,

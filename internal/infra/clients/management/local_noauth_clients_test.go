@@ -125,6 +125,7 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 			product_id TEXT,
 			region TEXT,
 			raw_json_data TEXT,
+			status INTEGER DEFAULT 0,
 			create_time DATETIME,
 			update_time DATETIME,
 			creator TEXT,
@@ -273,6 +274,52 @@ func TestLocalDataProviderGetRawJSONDataIgnoresDeletedRows(t *testing.T) {
 	}
 	if got.RawJSONData != `{"source":"active"}` {
 		t.Fatalf("GetRawJSONData() raw_json_data = %s, want active row", got.RawJSONData)
+	}
+}
+
+func TestLocalDataProviderGetRawJSONDataSupportsSmallintDeletedColumn(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	if err := provider.db.Exec(`DROP TABLE listing_raw_json_data`).Error; err != nil {
+		t.Fatalf("drop listing_raw_json_data: %v", err)
+	}
+	if err := provider.db.Exec(`
+		CREATE TABLE listing_raw_json_data (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			product_id TEXT,
+			platform TEXT,
+			region TEXT,
+			raw_json_data TEXT,
+			status INTEGER DEFAULT 0,
+			creator TEXT,
+			create_time DATETIME,
+			updater TEXT,
+			update_time DATETIME,
+			deleted INTEGER DEFAULT 0
+		)
+	`).Error; err != nil {
+		t.Fatalf("create listing_raw_json_data with smallint-like deleted: %v", err)
+	}
+
+	if _, err := provider.CreateRawJSONData(&api.RawJsonDataCreateReqDTO{
+		Platform:    "amazon",
+		ProductID:   "B0SMALLINT",
+		Region:      "us",
+		RawJsonData: `{"asin":"B0SMALLINT"}`,
+		Creator:     "tester",
+	}); err != nil {
+		t.Fatalf("CreateRawJSONData() error = %v", err)
+	}
+
+	got, err := provider.GetRawJSONData(&api.RawJsonDataReqDTO{
+		Platform:  "amazon",
+		ProductID: "B0SMALLINT",
+		Region:    "us",
+	})
+	if err != nil {
+		t.Fatalf("GetRawJSONData() error = %v", err)
+	}
+	if got == nil || got.RawJSONData == "" {
+		t.Fatalf("GetRawJSONData() = %+v, want stored row", got)
 	}
 }
 
@@ -524,5 +571,42 @@ func TestTaskRPCAPIClient_LocalProvider(t *testing.T) {
 	}
 	if !strings.Contains(stats, `"source":"local-db"`) {
 		t.Fatalf("GetQueueStats() = %s", stats)
+	}
+}
+
+func TestImportTaskAPIClient_GetTaskByID_LocalProvider(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	row := localImportTaskRow{
+		ID:            9101,
+		TenantID:      12,
+		StoreID:       34,
+		Platform:      "shein",
+		Region:        "us",
+		CategoryID:    56,
+		ProductID:     "B0BPF6V5V6",
+		Status:        model.TaskStatusPending.Int16(),
+		RetryCount:    1,
+		MaxRetryCount: 3,
+		Priority:      9,
+		CreateTime:    time.Now(),
+		UpdateTime:    time.Now(),
+		Creator:       "tester",
+		Updater:       "tester",
+	}
+	if err := provider.db.Table("listing_product_import_task").Create(&row).Error; err != nil {
+		t.Fatalf("insert import task row: %v", err)
+	}
+
+	client := &ImportTaskAPIClient{
+		ManagementAPIClient: NewManagementAPIClientWithBaseURL("http://127.0.0.1:1"),
+		localDataProvider:   provider,
+	}
+
+	task, err := client.GetTaskByID(9101)
+	if err != nil {
+		t.Fatalf("GetTaskByID() error = %v", err)
+	}
+	if task == nil || task.ID != 9101 || task.ProductID != "B0BPF6V5V6" || task.StatusKey != "PENDING" {
+		t.Fatalf("GetTaskByID() = %+v", task)
 	}
 }

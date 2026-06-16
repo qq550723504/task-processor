@@ -100,11 +100,11 @@ func (ce *CompositeExtractor) ExtractWithContext(ctx context.Context, page playw
 	// 定义处理函数
 	processFunc := func(ctx context.Context, task *goroutine.Task) (any, error) {
 		extractor := task.Data.(Extractor)
-		startedAt := time.Now()
-		logger.GetGlobalLogger("crawler/amazon").Infof("并行提取器开始执行: %s", task.ID)
-		defer func() {
-			logger.GetGlobalLogger("crawler/amazon").Infof("并行提取器执行结束: %s (耗时=%s)", task.ID, time.Since(startedAt).Round(time.Millisecond))
-		}()
+		// startedAt := time.Now()
+		// logger.GetGlobalLogger("crawler/amazon").Infof("并行提取器开始执行: %s", task.ID)
+		// defer func() {
+		// 	logger.GetGlobalLogger("crawler/amazon").Infof("并行提取器执行结束: %s (耗时=%s)", task.ID, time.Since(startedAt).Round(time.Millisecond))
+		// }()
 		return nil, extractor.Extract(page, product)
 	}
 

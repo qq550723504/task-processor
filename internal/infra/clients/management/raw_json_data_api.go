@@ -25,19 +25,31 @@ func (m *RawJsonDataAPIClient) SetDataFreshnessDays(days int) {
 
 // GetRawJsonData 获取原始JSON数据，数据不新鲜时返回 nil
 func (m *RawJsonDataAPIClient) GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error) {
+	rawData, err := m.getRawJsonData(req)
+	if err != nil || rawData == nil {
+		return rawData, err
+	}
+
+	freshnessDays := m.dataFreshnessDays
+	if freshnessDays <= 0 {
+		freshnessDays = 15
+	}
+	if !isDataFresh(rawData.CreateTime, rawData.UpdateTime, freshnessDays) {
+		return nil, nil
+	}
+
+	return rawData, nil
+}
+
+// GetRawJsonDataAnyFreshness 获取原始JSON数据，忽略 freshness 过滤。
+func (m *RawJsonDataAPIClient) GetRawJsonDataAnyFreshness(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error) {
+	return m.getRawJsonData(req)
+}
+
+func (m *RawJsonDataAPIClient) getRawJsonData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error) {
 	if m.localDataProvider != nil {
 		if rawData, err := m.localDataProvider.GetRawJSONData(req); err != nil || rawData != nil {
-			if err != nil || rawData == nil {
-				return rawData, err
-			}
-			freshnessDays := m.dataFreshnessDays
-			if freshnessDays <= 0 {
-				freshnessDays = 15
-			}
-			if !isDataFresh(rawData.CreateTime, rawData.UpdateTime, freshnessDays) {
-				return nil, nil
-			}
-			return rawData, nil
+			return rawData, err
 		}
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/raw-json-data/get", m.baseURL)
@@ -60,14 +72,6 @@ func (m *RawJsonDataAPIClient) GetRawJsonData(req *api.RawJsonDataReqDTO) (*api.
 	rawData, ok := result.Data.(*api.RawJsonDataRespDTO)
 	if !ok {
 		return nil, fmt.Errorf("原始JSON数据类型转换失败")
-	}
-
-	freshnessDays := m.dataFreshnessDays
-	if freshnessDays <= 0 {
-		freshnessDays = 15
-	}
-	if !isDataFresh(rawData.CreateTime, rawData.UpdateTime, freshnessDays) {
-		return nil, nil
 	}
 
 	return rawData, nil
