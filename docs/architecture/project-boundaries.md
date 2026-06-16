@@ -223,7 +223,7 @@ Use this table when adding new code:
 | Preview aggregation | `internal/listingkit/preview` during migration |
 | Export aggregation | `internal/listingkit/export` during migration |
 | Revision/history facade | `internal/listingkit/revision` during migration |
-| Submission state / retry / recovery | `internal/listingkit/submission` during migration |
+| Submission state / retry / recovery | `internal/listing/submission` target; use `internal/listingkit/submission` only as a temporary compatibility bridge during migration |
 | Product facts | `internal/catalog` |
 | Reusable asset facts | `internal/asset` |
 | Product image processing | `internal/productimage` or `internal/asset` depending on ownership |

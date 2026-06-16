@@ -11,6 +11,16 @@
 - 是否能让真实接口联调、版本验收和日常运营更可控。
 - 是否为后续 TEMU、Amazon、Walmart 产品化复用能力。
 
+## 落地执行入口
+
+下一阶段执行以 [`listingkit-next-execution-plan.md`](./listingkit-next-execution-plan.md) 为准。
+
+配套文档：
+
+- [`validation/listingkit-real-api-validation-report-template.md`](./validation/listingkit-real-api-validation-report-template.md)：真实接口验收报告模板。
+- [`ops/listingkit-error-recovery-sop.md`](./ops/listingkit-error-recovery-sop.md)：错误恢复 SOP。
+- [`backlog/listingkit-execution-issues.md`](./backlog/listingkit-execution-issues.md)：建议拆分的 Epic / Issue 清单。
+
 ## 当前阶段判断
 
 ListingKit 已经具备从 SDS / 来源素材到 SHEIN 工作台再到保存草稿或发布的主链路。当前主要问题不是缺少单点能力，而是产品闭环还需要更稳定：
