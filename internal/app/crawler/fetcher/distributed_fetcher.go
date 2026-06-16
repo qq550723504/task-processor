@@ -62,7 +62,11 @@ func NewDistributedProductFetcher(
 	}
 
 	// 创建专职处理器
-	cacheManager := domainProduct.NewCacheManager(rawJsonDataClient, logger)
+	freshnessDays := 0
+	if amazonConfig != nil {
+		freshnessDays = amazonConfig.DataFreshnessDays
+	}
+	cacheManager := domainProduct.NewCacheManagerWithFreshness(rawJsonDataClient, logger, freshnessDays)
 	dataParser := domainProduct.NewDataParser(logger)
 	domainResolver := domainProduct.NewDomainResolver()
 

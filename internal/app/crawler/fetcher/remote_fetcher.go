@@ -95,7 +95,7 @@ func NewRemoteAPIProductFetcher(
 
 	logger := coreLogger.GetGlobalLogger("RemoteAPIProductFetcher")
 	return &RemoteAPIProductFetcher{
-		cacheManager:   domainProduct.NewCacheManager(rawJsonDataClient, logger),
+		cacheManager:   domainProduct.NewCacheManagerWithFreshness(rawJsonDataClient, logger, amazonConfig.DataFreshnessDays),
 		cacheEnabled:   rawJsonDataClient != nil,
 		domainResolver: domainProduct.NewDomainResolver(),
 		amazonConfig:   amazonConfig,

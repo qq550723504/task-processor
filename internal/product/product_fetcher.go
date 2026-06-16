@@ -47,7 +47,7 @@ func NewProductFetcherWithLogger(
 		zipcodes = amazonConfig.Zipcodes
 	}
 	return &ProductFetcher{
-		cacheManager: NewCacheManager(rawJsonDataClient, log),
+		cacheManager: NewCacheManagerWithFreshness(rawJsonDataClient, log, amazonConfigFreshnessDays(amazonConfig)),
 		amazonConfig: amazonConfig,
 		sourceFetcher: sourcing.AmazonSourceFetcher{
 			Planner: sourcing.AmazonCrawlRequestPlanner{
@@ -59,6 +59,13 @@ func NewProductFetcherWithLogger(
 		},
 		logger: log,
 	}
+}
+
+func amazonConfigFreshnessDays(cfg *config.AmazonConfig) int {
+	if cfg == nil {
+		return 0
+	}
+	return cfg.DataFreshnessDays
 }
 
 // FetchProduct 获取产品

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/internal/model"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -14,6 +15,7 @@ import (
 type CacheManager struct {
 	rawJsonDataClient RawJsonDataClient
 	dataParser        *DataParser
+	freshnessDays     int
 	logger            *logrus.Entry
 }
 
@@ -26,13 +28,24 @@ type cacheWriteDecision int
 const (
 	cacheWriteSkip cacheWriteDecision = iota
 	cacheWriteSave
+
+	defaultCacheFreshnessDays = 15
 )
 
 // NewCacheManager 创建缓存管理器
 func NewCacheManager(rawJsonDataClient RawJsonDataClient, logger *logrus.Entry) *CacheManager {
+	return NewCacheManagerWithFreshness(rawJsonDataClient, logger, defaultCacheFreshnessDays)
+}
+
+// NewCacheManagerWithFreshness 创建带 freshness 配置的缓存管理器。
+func NewCacheManagerWithFreshness(rawJsonDataClient RawJsonDataClient, logger *logrus.Entry, freshnessDays int) *CacheManager {
+	if freshnessDays <= 0 {
+		freshnessDays = defaultCacheFreshnessDays
+	}
 	return &CacheManager{
 		rawJsonDataClient: rawJsonDataClient,
 		dataParser:        NewDataParser(logger),
+		freshnessDays:     freshnessDays,
 		logger:            logger.WithField("component", "CacheManager"),
 	}
 }
@@ -63,7 +76,7 @@ func (c *CacheManager) GetFromCache(req *FetchRequest) (*model.Product, error) {
 	if parseErr != nil {
 		return nil, fmt.Errorf("解析缓存数据失败: %w", parseErr)
 	}
-	if c.needsRefetch(product) {
+	if c.needsRefetch(product, rawJsonData) {
 		return nil, fmt.Errorf("缓存数据需要更新")
 	}
 	return product, nil
@@ -145,12 +158,12 @@ func (c *CacheManager) CacheVariants(req *FetchRequest, variants []*model.Produc
 	return nil
 }
 
-func (c *CacheManager) needsRefetch(product *model.Product) bool {
+func (c *CacheManager) needsRefetch(product *model.Product, raw *RawJsonResp) bool {
 	if c.needsRefetchForOldFormat(product) {
 		c.logger.Warnf("⚠️ 检测到旧版数据格式（variations 缺少 attributes），需要重新抓取")
 		return true
 	}
-	if c.needsRefetchForMissingShipsFrom(product) {
+	if c.needsRefetchForMissingShipsFrom(product, raw) {
 		c.logger.Warnf("⚠️ 检测到缓存数据缺少 ShipsFrom 字段，需要重新抓取")
 		return true
 	}
@@ -169,8 +182,11 @@ func (c *CacheManager) needsRefetchForOldFormat(product *model.Product) bool {
 	return false
 }
 
-func (c *CacheManager) needsRefetchForMissingShipsFrom(product *model.Product) bool {
-	return product != nil && product.ShipsFrom == ""
+func (c *CacheManager) needsRefetchForMissingShipsFrom(product *model.Product, raw *RawJsonResp) bool {
+	if product == nil || product.ShipsFrom != "" {
+		return false
+	}
+	return !c.isRawCacheFresh(raw)
 }
 
 func (c *CacheManager) decideRawCacheWrite(req *FetchRequest) cacheWriteDecision {
@@ -231,7 +247,7 @@ func (c *CacheManager) shouldOverwriteExistingRawCache(req *FetchRequest) bool {
 		c.logger.Warnf("⚠️ 现有缓存解析失败，允许覆盖旧记录: ProductID=%s, err=%v", req.ProductID, err)
 		return true
 	}
-	return c.needsRefetch(product)
+	return c.needsRefetch(product, raw)
 }
 
 func (c *CacheManager) getExistingRawCache(req *FetchRequest) (*RawJsonResp, bool) {
@@ -253,4 +269,22 @@ func (c *CacheManager) getExistingRawCache(req *FetchRequest) (*RawJsonResp, boo
 		Creator:    req.Creator,
 	})
 	return raw, err == nil && raw != nil && raw.RawJSONData != ""
+}
+
+func (c *CacheManager) isRawCacheFresh(raw *RawJsonResp) bool {
+	if raw == nil {
+		return false
+	}
+
+	latestMillis := raw.CreateTime
+	if raw.UpdateTime > latestMillis {
+		latestMillis = raw.UpdateTime
+	}
+	if latestMillis <= 0 {
+		return false
+	}
+
+	latestTime := time.UnixMilli(latestMillis)
+	ageDays := time.Since(latestTime).Hours() / 24
+	return ageDays < float64(c.freshnessDays)
 }
