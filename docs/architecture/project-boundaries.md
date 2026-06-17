@@ -262,6 +262,10 @@ guards include:
 - `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`
 - `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly`
 - `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain`
+- `TestListingKitDoesNotImportLegacySheinRuntime`
+- `TestListingKitDoesNotImportSheinAPIRoot`
+- `TestListingKitNonAPISheinImportsStayAllowlisted`
+- `TestListingKitAmazonListingImportsStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 

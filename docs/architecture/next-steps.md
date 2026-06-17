@@ -90,6 +90,10 @@ Current guard coverage:
 - `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly` 禁止 ListingKit 根 SHEIN workspace bridge 直接依赖 workspace domain，保持兼容桥接层隔离
 - `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly` 禁止 ListingKit 根非测试文件绕过 `internal/listingkit/workspace/shein` 兼容层直接依赖 workspace domain
 - `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain` 禁止 ListingKit SHEIN workspace bridge 回退依赖 legacy workspace domain
+- `TestListingKitDoesNotImportLegacySheinRuntime` 禁止 ListingKit 根 facade 新增历史 SHEIN pipeline/publish/build runtime 依赖
+- `TestListingKitDoesNotImportSheinAPIRoot` 禁止 ListingKit 根 facade 重新依赖 SHEIN API root
+- `TestListingKitNonAPISheinImportsStayAllowlisted` 禁止 ListingKit 根 facade 新增未登记的非 API SHEIN 实现依赖，当前 adapter seam 必须精确登记
+- `TestListingKitAmazonListingImportsStayAllowlisted` 禁止 ListingKit 根 facade 新增未登记的 AmazonListing 依赖，保持当前 result/bridge seam 可审查
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer` 禁止新代码重新 import `internal/app/processor`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer` 禁止新代码重新 import `internal/app/state`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted` 禁止 module builder 回流到中心化装配文件
