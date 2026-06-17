@@ -22,6 +22,19 @@
   - 默认不提交，避免继续污染仓库根目录。
   - 推荐按 `logs/`、`tmp/`、`chrome/`、`bin/`、`dev-logs/`、`playwright-cli/` 分子目录管理。
 
+## 当前护栏
+
+目录约定由以下测试守住：
+
+- `TestCmdContainsOnlyOfficialEntrypoints`
+- `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
+- `TestHackContainsOnlyManagedSupportAreas`
+- `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
+- `TestTrackedLocalArtifactsStayOutOfTools`
+- `TestPlatformRegistrationPackagesStayThin`
+
+如果需要新增正式入口、调试目录或平台注册文件，应在同一变更中更新这份文档和对应 allowlist。
+
 ## internal 当前稳定边界
 
 - `internal/app`

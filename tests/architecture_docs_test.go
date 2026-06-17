@@ -222,6 +222,32 @@ func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
 	}
 }
 
+func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
+	path := filepath.Join("..", "docs", "development", "repository-structure.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"# Repository Structure",
+		"`cmd/`",
+		"`hack/`",
+		"`tools/`",
+		"TestCmdContainsOnlyOfficialEntrypoints",
+		"TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages",
+		"TestHackContainsOnlyManagedSupportAreas",
+		"TestTrackedLocalArtifactsStayOutOfProductionEntrypoints",
+		"TestTrackedLocalArtifactsStayOutOfTools",
+		"TestPlatformRegistrationPackagesStayThin",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so repository layout rules stay connected to guard tests", path, phrase)
+		}
+	}
+}
+
 func TestAppAssemblyBoundaryDocumentDefinesStableAssemblyVocabulary(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "app-assembly-boundaries.md")
 	content, err := os.ReadFile(path)
