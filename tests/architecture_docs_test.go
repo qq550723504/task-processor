@@ -57,6 +57,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"owning module `internal/*/httpapi`",
 		"Temporal",
 		"platform-boundary-strategy.md",
+		"historical-platform-migration-inventory.md",
 		"boundary exception",
 		"import-boundary and architecture tests",
 	}
@@ -86,6 +87,29 @@ func TestPlatformBoundaryStrategyDefinesConvergenceRoles(t *testing.T) {
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
 			t.Errorf("%s must mention %q so platform convergence has a stable review target", path, phrase)
+		}
+	}
+}
+
+func TestHistoricalPlatformMigrationInventoryDefinesCostSlices(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "historical-platform-migration-inventory.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"# Historical Platform Migration Inventory",
+		"`internal/shein`",
+		"`internal/temu`",
+		"`internal/amazon`",
+		"Cost Tiers",
+		"Next Slice Candidates",
+		"Non-goals",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so historical platform migration cost is reviewable", path, phrase)
 		}
 	}
 }

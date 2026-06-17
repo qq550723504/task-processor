@@ -8,6 +8,9 @@ make future ownership decisions predictable so new features do not spread
 platform rules across historical packages, ListingKit facade code, publishing
 packages, and runtime registration packages at the same time.
 
+For migration-cost triage of historical platform packages, use
+`docs/architecture/historical-platform-migration-inventory.md`.
+
 ## Current Package Families
 
 The repository currently has four platform-adjacent families:

@@ -118,6 +118,10 @@ Temporal 现在最像下一块容易膨胀的运行时区域。
 
 不是现在立刻迁，而是先盘点：
 
+迁移成本盘点已收口到：
+
+- `docs/architecture/historical-platform-migration-inventory.md`
+
 - 哪些文件已经只剩 facade 作用
 - 哪些文件还混着 runtime、平台规则、状态管理和组装逻辑
 - 哪些子域最适合下一轮拆分

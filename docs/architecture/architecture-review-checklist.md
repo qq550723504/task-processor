@@ -34,6 +34,7 @@ Use these documents as the stable source of truth:
 - `docs/architecture/app-assembly-boundaries.md`
 - `docs/architecture/temporal-boundaries.md`
 - `docs/architecture/platform-boundary-strategy.md`
+- `docs/architecture/historical-platform-migration-inventory.md`
 - `docs/development/repository-structure.md`
 
 ## Working Rule
