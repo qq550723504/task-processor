@@ -715,6 +715,35 @@ func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 	}
 }
 
+func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
+	for _, infraRoot := range []string{
+		filepath.Join("..", "internal", "infra"),
+		filepath.Join("..", "internal", "integration"),
+		filepath.Join("..", "internal", "platformbase"),
+		filepath.Join("..", "internal", "platformtask"),
+	} {
+		t.Run(filepath.ToSlash(infraRoot), func(t *testing.T) {
+			assertNoBannedImportPrefixes(t, infraRoot, []string{
+				"task-processor/internal/amazon",
+				"task-processor/internal/amazonlisting",
+				"task-processor/internal/asset",
+				"task-processor/internal/catalog",
+				"task-processor/internal/listing",
+				"task-processor/internal/listingkit",
+				"task-processor/internal/marketplace",
+				"task-processor/internal/pricing",
+				"task-processor/internal/productenrich",
+				"task-processor/internal/productimage",
+				"task-processor/internal/publishing",
+				"task-processor/internal/sds",
+				"task-processor/internal/shein",
+				"task-processor/internal/temu",
+				"task-processor/internal/workspace",
+			}, nil)
+		})
+	}
+}
+
 func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "listingkit", "httpapi")) + string(os.PathSeparator): {},
