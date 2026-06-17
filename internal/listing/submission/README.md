@@ -33,6 +33,7 @@ Current stable ownership:
 - attempt result status policy for success, failure, and unknown completion states
 - submission event outcome policy: record metadata carry-over, response-note selection, and submit-error override
 - submission projection policy: latest outcome selection, submit-phase event skipping, workflow status fallback, primary action record selection, and remote record summary projection
+- generic readiness projection skeleton: carry readiness, checklist, submit-state, and status-overview assembly through one reusable projection bundle while platform packages supply the concrete builders
 - phase event policy: default running status, default detail fallback, and error-message propagation
 - remote record id normalization policy for confirm-remote event/result sync
 - confirm-remote state policy: checked-at, message, and event remote-record-id normalization
