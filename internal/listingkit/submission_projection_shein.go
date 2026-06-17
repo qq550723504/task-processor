@@ -29,11 +29,20 @@ func buildSheinSubmissionProjection(pkg *SheinPackage) *sheinSubmissionProjectio
 		return nil
 	}
 
-	projection := &sheinSubmissionProjection{}
 	readyToSubmit := false
 	if readiness := buildSheinSubmitReadiness(pkg); readiness != nil {
 		readyToSubmit = readiness.Ready
 	}
+	return buildSheinSubmissionProjectionWithReady(pkg, readyToSubmit)
+}
+
+func buildSheinSubmissionProjectionWithReady(pkg *SheinPackage, readyToSubmit bool) *sheinSubmissionProjection {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil {
+		return nil
+	}
+
+	projection := &sheinSubmissionProjection{}
 	state := sheinpub.ResolveSubmissionProjection(pkg, readyToSubmit)
 	projection.StatusFields.SheinWorkflowStatus = state.WorkflowStatus
 	projection.StatusFields.SheinLatestSubmissionStatus = state.LatestStatus
@@ -43,4 +52,8 @@ func buildSheinSubmissionProjection(pkg *SheinPackage) *sheinSubmissionProjectio
 	projection.TaskList.SheinSubmissionRemoteRecordID = state.RemoteRecordID
 
 	return projection
+}
+
+func sheinSubmitReadyFromReadinessProjection(projection *sheinSubmitReadinessProjection) bool {
+	return projection != nil && projection.Readiness != nil && projection.Readiness.Ready
 }

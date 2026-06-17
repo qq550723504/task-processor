@@ -157,15 +157,16 @@ func applySheinTaskListFields(item *TaskListItem, task *Task, pkg *SheinPackage)
 			item.SheinStoreSite = site
 		}
 	}
-	submissionProjection := buildSheinSubmissionProjection(pkg)
-	if submissionProjection != nil {
-		item.SheinSubmissionStatusFields = submissionProjection.StatusFields
-	}
 	var pod *PodExecutionSummary
 	if task != nil && task.Result != nil {
 		pod = task.Result.PodExecution
 	}
 	readinessProjection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)
+	readyToSubmit := sheinSubmitReadyFromReadinessProjection(readinessProjection)
+	submissionProjection := buildSheinSubmissionProjectionWithReady(pkg, readyToSubmit)
+	if submissionProjection != nil {
+		item.SheinSubmissionStatusFields = submissionProjection.StatusFields
+	}
 	if readinessProjection != nil {
 		item.SheinStatusOverview = readinessProjection.StatusOverview
 		if readiness := readinessProjection.Readiness; readiness != nil {

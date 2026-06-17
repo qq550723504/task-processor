@@ -50,11 +50,11 @@ func TestSheinSubmissionProjectionBoundary(t *testing.T) {
 
 		source := readNamedFunctionSource(t, "submission_projection_shein.go", "buildSheinSubmissionProjection")
 		callNames := readNamedFunctionCallNames(t, "submission_projection_shein.go", "buildSheinSubmissionProjection")
+		withReadySource := readNamedFunctionSource(t, "submission_projection_shein.go", "buildSheinSubmissionProjectionWithReady")
+		withReadyCallNames := readNamedFunctionCallNames(t, "submission_projection_shein.go", "buildSheinSubmissionProjectionWithReady")
 
 		assertSourceContainsAll(t, source, []string{
-			"state := sheinpub.ResolveSubmissionProjection(pkg, readyToSubmit)",
-			"projection.StatusFields.SheinWorkflowStatus = state.WorkflowStatus",
-			"projection.TaskList.SheinSubmissionRemoteRecordID = state.RemoteRecordID",
+			"return buildSheinSubmissionProjectionWithReady(pkg, readyToSubmit)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"LatestSubmissionOutcomeEvent(pkg)",
@@ -65,6 +65,22 @@ func TestSheinSubmissionProjectionBoundary(t *testing.T) {
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"NormalizePackageSemanticFields",
 			"buildSheinSubmitReadiness",
+			"buildSheinSubmissionProjectionWithReady",
+		})
+		assertSourceContainsAll(t, withReadySource, []string{
+			"state := sheinpub.ResolveSubmissionProjection(pkg, readyToSubmit)",
+			"projection.StatusFields.SheinWorkflowStatus = state.WorkflowStatus",
+			"projection.TaskList.SheinSubmissionRemoteRecordID = state.RemoteRecordID",
+		})
+		assertSourceExcludesAll(t, withReadySource, []string{
+			"buildSheinSubmitReadiness(pkg)",
+			"LatestSubmissionOutcomeEvent(pkg)",
+			"PrimarySubmissionRecord(",
+			"pkg.SubmissionState.LastStatus",
+			"pkg.SubmissionState.RemoteStatus",
+		})
+		assertFunctionCallsContainAll(t, withReadyCallNames, []string{
+			"NormalizePackageSemanticFields",
 			"ResolveSubmissionProjection",
 		})
 	})
@@ -76,16 +92,19 @@ func TestSheinSubmissionProjectionBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "task_list_item_support.go", "applySheinTaskListFields")
 
 		assertSourceContainsAll(t, source, []string{
-			"submissionProjection := buildSheinSubmissionProjection(pkg)",
+			"readyToSubmit := sheinSubmitReadyFromReadinessProjection(readinessProjection)",
+			"submissionProjection := buildSheinSubmissionProjectionWithReady(pkg, readyToSubmit)",
 			"item.SheinSubmissionStatusFields = submissionProjection.StatusFields",
 			"item.SheinTaskListSubmissionFields = submissionProjection.TaskList",
 		})
 		assertSourceExcludesAll(t, source, []string{
+			"submissionProjection := buildSheinSubmissionProjection(pkg)",
 			"applySheinSubmissionStatusFields(&item.SheinSubmissionStatusFields, pkg)",
 			"applySheinSubmissionRemoteSummary(&item.SheinTaskListSubmissionFields, pkg)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"buildSheinSubmissionProjection",
+			"sheinSubmitReadyFromReadinessProjection",
+			"buildSheinSubmissionProjectionWithReady",
 		})
 	})
 }
