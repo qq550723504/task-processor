@@ -334,10 +334,14 @@ func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct m
 		return data
 	}
 
-	// 构建原始属性值映射
+	// 构建原始属性值映射：维度名 -> 原始值列表
 	originalValues := make(map[string][]string)
 	for _, variation := range amazonProduct.VariationsValues {
-		originalValues[strings.ToLower(variation.VariantName)] = variation.Values
+		dimensionName := normalizeAttributeKey(variation.VariantName)
+		if dimensionName == "" {
+			continue
+		}
+		originalValues[dimensionName] = variation.Values
 	}
 
 	// 定义AI可以合理添加的默认属性值（用于满足SHEIN必填要求）
@@ -348,61 +352,57 @@ func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct m
 		"color": {"Default", "Multi-Color", "Default-Color"},
 	}
 
-	// 构建忽略大小写的默认值映射，提高匹配性能
-	allowedDefaultValuesLower := h.buildCaseInsensitiveDefaultValues(allowedDefaultValues)
+	// 构建按维度忽略大小写的默认值映射
+	allowedDefaultValuesLower := h.buildCaseInsensitiveDefaultValuesByDimension(allowedDefaultValues)
 
 	inconsistentCount := 0
 
 	// 验证销售属性中的值
 	for i := range data.SaleAttributes {
 		saleAttr := &data.SaleAttributes[i]
-		for j := range saleAttr.AttrValue {
-			attrValue := &saleAttr.AttrValue[j]
-
-			// 检查是否存在对应的原始属性值
-			found := h.isValueInOriginalData(attrValue.Value, originalValues)
-
-			if !found {
-				// 检查是否为允许的默认值（使用优化后的忽略大小写匹配）
-				isAllowedDefault := h.isAllowedDefaultValueOptimized(attrValue.Value, allowedDefaultValuesLower)
-
-				if isAllowedDefault {
-					logger.GetGlobalLogger("shein/product").Debugf("✅ AI添加的合理默认属性值: '%s'（用于满足SHEIN必填要求）", attrValue.Value)
-				} else {
-					logger.GetGlobalLogger("shein/product").Warnf("发现不一致的属性值: '%s'，不在原始属性值列表中", attrValue.Value)
-					inconsistentCount++
-
-					// 尝试找到最相似的原始值进行修正
-					if correctedValue := h.findMostSimilarValue(attrValue.Value, originalValues); correctedValue != "" {
-						logger.GetGlobalLogger("shein/product").Debugf("将属性值 '%s' 修正为原始值 '%s'", attrValue.Value, correctedValue)
-						attrValue.Value = correctedValue
-					}
-				}
-			}
+		dimensionName := h.inferOriginalDimensionForSaleAttribute(*saleAttr, originalValues, allowedDefaultValuesLower)
+		if dimensionName == "" {
+			continue
 		}
+
+		var cleanedValues []sheinattr.AttributeValue
+		seenValues := make(map[string]bool)
+		for _, attrValue := range saleAttr.AttrValue {
+			resolvedValue, keepValue := h.resolveValueWithinDimension(attrValue.Value, dimensionName, originalValues, allowedDefaultValuesLower)
+			if !keepValue {
+				logger.GetGlobalLogger("shein/product").Warnf("发现跨维度污染的销售属性值: attrID=%d, dimension=%s, value='%s'，已移除", saleAttr.AttrID, dimensionName, attrValue.Value)
+				inconsistentCount++
+				continue
+			}
+			attrValue.Value = resolvedValue
+			normalizedValue := normalizeAttributeValue(resolvedValue)
+			if normalizedValue != "" && seenValues[normalizedValue] {
+				continue
+			}
+			seenValues[normalizedValue] = true
+			cleanedValues = append(cleanedValues, attrValue)
+		}
+		saleAttr.AttrValue = cleanedValues
 	}
 
 	// 验证变体中的属性值
 	for i, variant := range data.Variants {
 		for attrName, attrValue := range variant.Attributes {
-			found := h.isValueInOriginalData(attrValue, originalValues)
+			dimensionName := normalizeAttributeKey(attrName)
+			if _, exists := originalValues[dimensionName]; !exists {
+				continue
+			}
 
-			if !found {
-				// 检查是否为允许的默认值（使用优化后的忽略大小写匹配）
-				isAllowedDefault := h.isAllowedDefaultValueOptimized(attrValue, allowedDefaultValuesLower)
-
-				if isAllowedDefault {
-					logger.GetGlobalLogger("shein/product").Debugf("✅ 变体 %s 中AI添加的合理默认属性值: %s='%s'", variant.ASIN, attrName, attrValue)
-				} else {
-					logger.GetGlobalLogger("shein/product").Warnf("变体 %s 中发现不一致的属性值: %s='%s'", variant.ASIN, attrName, attrValue)
-					inconsistentCount++
-
-					// 尝试找到最相似的原始值进行修正
-					if correctedValue := h.findMostSimilarValue(attrValue, originalValues); correctedValue != "" {
-						logger.GetGlobalLogger("shein/product").Debugf("将变体 %s 的属性值 '%s' 修正为原始值 '%s'", variant.ASIN, attrValue, correctedValue)
-						data.Variants[i].Attributes[attrName] = correctedValue
-					}
-				}
+			resolvedValue, keepValue := h.resolveValueWithinDimension(attrValue, dimensionName, originalValues, allowedDefaultValuesLower)
+			if !keepValue {
+				logger.GetGlobalLogger("shein/product").Warnf("变体 %s 中发现跨维度污染的属性值: %s='%s'，已移除", variant.ASIN, attrName, attrValue)
+				delete(data.Variants[i].Attributes, attrName)
+				inconsistentCount++
+				continue
+			}
+			data.Variants[i].Attributes[attrName] = resolvedValue
+			if resolvedValue != attrValue {
+				logger.GetGlobalLogger("shein/product").Debugf("将变体 %s 的属性值 '%s' 修正为原始值 '%s'", variant.ASIN, attrValue, resolvedValue)
 			}
 		}
 	}
@@ -416,26 +416,21 @@ func (h *SaleAttributeHandler) validateAttributeValueConsistency(amazonProduct m
 	return data
 }
 
-// isValueInOriginalData 检查值是否在原始数据中
-func (h *SaleAttributeHandler) isValueInOriginalData(value string, originalValues map[string][]string) bool {
-	for _, originalValueList := range originalValues {
-		for _, originalValue := range originalValueList {
-			if value == originalValue {
-				return true
-			}
+// buildCaseInsensitiveDefaultValuesByDimension 构建按维度忽略大小写的默认值映射
+func (h *SaleAttributeHandler) buildCaseInsensitiveDefaultValuesByDimension(allowedDefaults map[string][]string) map[string]map[string]bool {
+	caseInsensitiveMap := make(map[string]map[string]bool)
+
+	for dimensionName, defaultList := range allowedDefaults {
+		normalizedDimension := normalizeAttributeKey(dimensionName)
+		if normalizedDimension == "" {
+			continue
 		}
-	}
-	return false
-}
-
-// buildCaseInsensitiveDefaultValues 构建忽略大小写的默认值映射，提高匹配性能
-func (h *SaleAttributeHandler) buildCaseInsensitiveDefaultValues(allowedDefaults map[string][]string) map[string]bool {
-	caseInsensitiveMap := make(map[string]bool)
-
-	for _, defaultList := range allowedDefaults {
+		if caseInsensitiveMap[normalizedDimension] == nil {
+			caseInsensitiveMap[normalizedDimension] = make(map[string]bool)
+		}
 		for _, defaultValue := range defaultList {
 			normalizedValue := strings.ToLower(strings.TrimSpace(defaultValue))
-			caseInsensitiveMap[normalizedValue] = true
+			caseInsensitiveMap[normalizedDimension][normalizedValue] = true
 		}
 	}
 
@@ -443,48 +438,101 @@ func (h *SaleAttributeHandler) buildCaseInsensitiveDefaultValues(allowedDefaults
 }
 
 // isAllowedDefaultValueOptimized 使用预处理的映射进行优化的默认值检查（忽略大小写）
-func (h *SaleAttributeHandler) isAllowedDefaultValueOptimized(value string, allowedDefaultsLower map[string]bool) bool {
+func (h *SaleAttributeHandler) isAllowedDefaultValueOptimized(value string, dimensionName string, allowedDefaultsLower map[string]map[string]bool) bool {
 	valueLower := strings.ToLower(strings.TrimSpace(value))
-	return allowedDefaultsLower[valueLower]
+	dimensionDefaults := allowedDefaultsLower[normalizeAttributeKey(dimensionName)]
+	return dimensionDefaults[valueLower]
 }
 
-// isAllowedDefaultValue 检查是否为允许的默认值（忽略大小写）
-func (h *SaleAttributeHandler) isAllowedDefaultValue(value string, allowedDefaults map[string][]string) bool {
-	valueLower := strings.ToLower(strings.TrimSpace(value))
+func (h *SaleAttributeHandler) inferOriginalDimensionForSaleAttribute(
+	saleAttr sheinattr.ResultAttribute,
+	originalValues map[string][]string,
+	allowedDefaultsLower map[string]map[string]bool,
+) string {
+	bestDimension := ""
+	bestScore := 0
 
-	for _, defaultList := range allowedDefaults {
-		for _, defaultValue := range defaultList {
-			defaultLower := strings.ToLower(strings.TrimSpace(defaultValue))
-			if defaultLower == valueLower {
-				return true
+	for dimensionName, valueList := range originalValues {
+		score := 0
+		for _, attrValue := range saleAttr.AttrValue {
+			if h.isValueInDimension(attrValue.Value, valueList) || h.isAllowedDefaultValueOptimized(attrValue.Value, dimensionName, allowedDefaultsLower) {
+				score++
 			}
+		}
+		if score > bestScore {
+			bestScore = score
+			bestDimension = dimensionName
+		}
+	}
+
+	if bestScore == 0 {
+		return ""
+	}
+	return bestDimension
+}
+
+func (h *SaleAttributeHandler) resolveValueWithinDimension(
+	value string,
+	dimensionName string,
+	originalValues map[string][]string,
+	allowedDefaultsLower map[string]map[string]bool,
+) (string, bool) {
+	valueList, exists := originalValues[normalizeAttributeKey(dimensionName)]
+	if !exists {
+		return value, true
+	}
+
+	if h.isValueInDimension(value, valueList) {
+		return value, true
+	}
+
+	if h.isAllowedDefaultValueOptimized(value, dimensionName, allowedDefaultsLower) {
+		logger.GetGlobalLogger("shein/product").Debugf("✅ AI添加的合理默认属性值: dimension=%s, value='%s'", dimensionName, value)
+		return value, true
+	}
+
+	if correctedValue := h.findMostSimilarValueInDimension(value, valueList); correctedValue != "" {
+		return correctedValue, true
+	}
+
+	return "", false
+}
+
+func (h *SaleAttributeHandler) isValueInDimension(value string, originalValues []string) bool {
+	for _, originalValue := range originalValues {
+		if normalizeAttributeValue(originalValue) == normalizeAttributeValue(value) {
+			return true
 		}
 	}
 	return false
 }
 
-// findMostSimilarValue 找到最相似的原始属性值
-func (h *SaleAttributeHandler) findMostSimilarValue(targetValue string, originalValues map[string][]string) string {
+// findMostSimilarValueInDimension 找到同一维度内最相似的原始属性值
+func (h *SaleAttributeHandler) findMostSimilarValueInDimension(targetValue string, originalValues []string) string {
 	targetLower := strings.ToLower(strings.TrimSpace(targetValue))
 
 	// 首先尝试精确匹配（忽略大小写）
-	for _, valueList := range originalValues {
-		for _, originalValue := range valueList {
-			if strings.ToLower(strings.TrimSpace(originalValue)) == targetLower {
-				return originalValue
-			}
+	for _, originalValue := range originalValues {
+		if strings.ToLower(strings.TrimSpace(originalValue)) == targetLower {
+			return originalValue
 		}
 	}
 
 	// 然后尝试包含匹配
-	for _, valueList := range originalValues {
-		for _, originalValue := range valueList {
-			originalLower := strings.ToLower(strings.TrimSpace(originalValue))
-			if strings.Contains(originalLower, targetLower) || strings.Contains(targetLower, originalLower) {
-				return originalValue
-			}
+	for _, originalValue := range originalValues {
+		originalLower := strings.ToLower(strings.TrimSpace(originalValue))
+		if strings.Contains(originalLower, targetLower) || strings.Contains(targetLower, originalLower) {
+			return originalValue
 		}
 	}
 
 	return ""
+}
+
+func normalizeAttributeKey(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizeAttributeValue(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }

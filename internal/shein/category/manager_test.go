@@ -5,12 +5,14 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/shein/aicache"
 	sheinapicategory "task-processor/internal/shein/api/category"
 )
 
 type stubAISelector struct {
 	coreItemInput CoreItemInput
 	coreItem      string
+	coreItemCalls int
 	levelOneID    int
 	categoryID    int
 	leafIDs       []int
@@ -32,6 +34,7 @@ func (s *stubAISelector) SelectCategoryByAI(_ context.Context, _ string, leafIDs
 
 func (s *stubAISelector) ExtractCoreItemByAI(_ context.Context, input CoreItemInput) (string, error) {
 	s.coreItemInput = input
+	s.coreItemCalls++
 	return s.coreItem, nil
 }
 
@@ -145,6 +148,32 @@ func TestGetCategoryIDBySuggestSkipsChildrenCandidates(t *testing.T) {
 	}
 	if categoryID != 1002 {
 		t.Fatalf("categoryID = %d, want 1002", categoryID)
+	}
+}
+
+func TestGetCategoryIDBySuggestUsesTitleLevelCategoryCacheBeforeCoreItemAI(t *testing.T) {
+	selector := &stubAISelector{coreItem: "walking shoes"}
+	manager := NewCategoryManager(selector)
+	cache := aicache.New(nil)
+	title := "Skechers Women's Go Walk 5 Walking Shoes"
+	cache.Set(aicache.TypeCategory, aicache.HashKey(title), 4455)
+	categoryAPI := stubCategoryTreeAPI{
+		suggestAPI: &stubSuggestAPI{resp: &sheinapicategory.SuggestCategoryResponse{
+			Data: []sheinapicategory.SuggestCategoryItem{{CategoryID: "9999"}},
+		}},
+	}
+
+	categoryID, err := manager.GetCategoryIDBySuggest(context.Background(), CoreItemInput{
+		Title: title,
+	}, categoryAPI, cache)
+	if err != nil {
+		t.Fatalf("GetCategoryIDBySuggest error = %v", err)
+	}
+	if categoryID != 4455 {
+		t.Fatalf("categoryID = %d, want 4455", categoryID)
+	}
+	if selector.coreItemCalls != 0 {
+		t.Fatalf("ExtractCoreItemByAI call count = %d, want 0 when title cache hits", selector.coreItemCalls)
 	}
 }
 

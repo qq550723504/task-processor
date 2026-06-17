@@ -9,6 +9,7 @@ import (
 	shein "task-processor/internal/shein"
 	sheinimage "task-processor/internal/shein/api/image"
 	productapi "task-processor/internal/shein/api/product"
+	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
 func TestSKCVariantProcessor_NewSKURuntimeInputIncludesContextDependencies(t *testing.T) {
@@ -58,5 +59,31 @@ func TestSKCVariantProcessor_NewSKURuntimeInputIncludesContextDependencies(t *te
 	}
 	if runtime.AsinSkuMap["A1"] != "SKU-1" {
 		t.Fatalf("expected asin sku map to be copied, got %+v", runtime.AsinSkuMap)
+	}
+}
+
+func TestValidateMappedStrategyAttributes_ReturnsErrorWhenSecondaryValuesRemainUnmapped(t *testing.T) {
+	strategy := sheinattr.AttributeStrategy{
+		PrimaryAttribute: sheinattr.ResultAttribute{
+			AttrID: 27,
+			AttrValue: []sheinattr.AttributeValue{
+				{ID: 100, Value: "Light Pink"},
+			},
+		},
+		SecondaryAttribute: sheinattr.ResultAttribute{
+			AttrID: 87,
+			AttrValue: []sheinattr.AttributeValue{
+				{ID: 0, Value: "6"},
+				{ID: 0, Value: "6.5"},
+			},
+		},
+	}
+
+	err := validateMappedStrategyAttributes(strategy)
+	if err == nil {
+		t.Fatal("expected error when all secondary attribute values remain unmapped")
+	}
+	if got := err.Error(); got != "secondary attribute 87 has no valid mapped values after ID mapping" {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

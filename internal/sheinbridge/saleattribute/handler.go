@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/core/logger"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/model"
@@ -60,14 +61,80 @@ func (h *SaleAttributeResolutionHandler) Handle(ctx *sheinctx.TaskContext) error
 		return nil
 	}
 
+	secondaryAttributeID := resolution.SecondaryAttributeID
+	secondarySourceDimension := strings.TrimSpace(resolution.SecondarySourceDimension)
+	secondaryUsable, secondaryReason := evaluateSecondarySelection(resolution)
+	if !secondaryUsable {
+		logger.GetGlobalLogger("shein/product").Warnf(
+			"sale attribute secondary selection dropped: secondaryAttrID=%d secondaryDimension=%q skuAssignments=%d skuAttributes=%d reason=%s",
+			resolution.SecondaryAttributeID,
+			secondarySourceDimension,
+			len(resolution.SKUValueAssignments),
+			len(resolution.SKUAttributes),
+			secondaryReason,
+		)
+		secondaryAttributeID = 0
+		secondarySourceDimension = ""
+	} else if resolution.SecondaryAttributeID > 0 {
+		logger.GetGlobalLogger("shein/product").Infof(
+			"sale attribute secondary selection kept: secondaryAttrID=%d secondaryDimension=%q skuAssignments=%d skuAttributes=%d reason=%s",
+			resolution.SecondaryAttributeID,
+			secondarySourceDimension,
+			len(resolution.SKUValueAssignments),
+			len(resolution.SKUAttributes),
+			secondaryReason,
+		)
+	}
+
 	ctx.SetSaleAttributeSelection(&sheinctx.SaleAttributeSelectionState{
 		Source:                   strings.TrimSpace(resolution.Source),
 		PrimaryAttributeID:       resolution.PrimaryAttributeID,
-		SecondaryAttributeID:     resolution.SecondaryAttributeID,
+		SecondaryAttributeID:     secondaryAttributeID,
 		PrimarySourceDimension:   strings.TrimSpace(resolution.PrimarySourceDimension),
-		SecondarySourceDimension: strings.TrimSpace(resolution.SecondarySourceDimension),
+		SecondarySourceDimension: secondarySourceDimension,
 	})
 	return nil
+}
+
+func hasUsableSecondarySelection(resolution *sheinpub.SaleAttributeResolution) bool {
+	usable, _ := evaluateSecondarySelection(resolution)
+	return usable
+}
+
+func evaluateSecondarySelection(resolution *sheinpub.SaleAttributeResolution) (bool, string) {
+	if resolution == nil || resolution.SecondaryAttributeID <= 0 {
+		return false, "secondary attribute id is missing"
+	}
+	if len(resolution.SKUValueAssignments) > 0 {
+		return true, fmt.Sprintf("resolved sku value assignments=%d", len(resolution.SKUValueAssignments))
+	}
+	for idx, attr := range resolution.SKUAttributes {
+		if attr.AttributeID > 0 && attr.AttributeValueID != nil && *attr.AttributeValueID > 0 {
+			return true, fmt.Sprintf("resolved sku attribute[%d] valueID=%d", idx, *attr.AttributeValueID)
+		}
+	}
+	if strings.TrimSpace(resolution.SecondarySourceDimension) != "" && len(resolution.SKUAttributes) > 0 {
+		return true, "secondary source dimension and sku attributes are present; defer value id repair to downstream mapping"
+	}
+	if len(resolution.SKUAttributes) == 0 {
+		return false, "sku attributes are empty and sku value assignments are empty"
+	}
+
+	var invalidReasons []string
+	for idx, attr := range resolution.SKUAttributes {
+		switch {
+		case attr.AttributeID <= 0:
+			invalidReasons = append(invalidReasons, fmt.Sprintf("sku attribute[%d] has invalid attribute id", idx))
+		case attr.AttributeValueID == nil:
+			invalidReasons = append(invalidReasons, fmt.Sprintf("sku attribute[%d] value id is nil", idx))
+		case *attr.AttributeValueID <= 0:
+			invalidReasons = append(invalidReasons, fmt.Sprintf("sku attribute[%d] value id=%d", idx, *attr.AttributeValueID))
+		}
+	}
+	if len(invalidReasons) == 0 {
+		return false, "sku attributes present but none has a usable value id"
+	}
+	return false, strings.Join(invalidReasons, "; ")
 }
 
 func buildSaleAttributeResolutionInput(ctx *sheinctx.TaskContext) (*canonical.Product, *sheinpub.BuildRequest, *sheinpub.Package, error) {

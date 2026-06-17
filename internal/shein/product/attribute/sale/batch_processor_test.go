@@ -125,3 +125,37 @@ func TestProcessInBatches_RejectsCrossBatchASINs(t *testing.T) {
 		t.Fatalf("variants = %d, want 0 when batch contains invalid ASINs", len(result.Variants))
 	}
 }
+
+func TestProcessInBatches_UsesProductsDataAsBatchSourceWhenVariationDataIsLonger(t *testing.T) {
+	handler := NewSaleAttributeHandler(&batchTestChatClient{
+		responses: []string{
+			`{"saleAttributes":[{"attrId":27,"attrValue":[{"id":1,"value":"Red"}]}],"variants":[{"asin":"A01","attributes":{"Color":"Red"}},{"asin":"A02","attributes":{"Color":"Red"}},{"asin":"A03","attributes":{"Color":"Red"}},{"asin":"A04","attributes":{"Color":"Red"}},{"asin":"A05","attributes":{"Color":"Red"}},{"asin":"A06","attributes":{"Color":"Red"}},{"asin":"A07","attributes":{"Color":"Red"}},{"asin":"A08","attributes":{"Color":"Red"}},{"asin":"A09","attributes":{"Color":"Red"}},{"asin":"A10","attributes":{"Color":"Red"}}]}`,
+			`{"saleAttributes":[{"attrId":27,"attrValue":[{"id":2,"value":"Blue"}]}],"variants":[{"asin":"A11","attributes":{"Color":"Blue"}},{"asin":"A12","attributes":{"Color":"Blue"}}]}`,
+		},
+	})
+	client := handler.openaiClient.(*batchTestChatClient)
+	processor := NewSaleAttributeBatchProcessor(handler)
+	input := &SaleAttributeInput{
+		Context: context.Background(),
+		AmazonProduct: &model.Product{
+			Variations: buildVariationASINs(24),
+			VariationsValues: []model.VariationValue{{
+				VariantName: "Color",
+				Values:      []string{"Red", "Blue"},
+			}},
+		},
+	}
+
+	result := processor.ProcessInBatches(input, &sheinattr.GenerationRequest{
+		ProductsData:         buildProductVariantData(12),
+		VariationData:        buildVariationASINs(24),
+		RequiredVariantCount: 24,
+	}, 10)
+
+	if client.index != 2 {
+		t.Fatalf("chat client call count = %d, want 2", client.index)
+	}
+	if got := len(result.Variants); got != 12 {
+		t.Fatalf("variants = %d, want 12", got)
+	}
+}

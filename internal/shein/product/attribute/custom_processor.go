@@ -24,20 +24,55 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *s
 
 	sanitizedValue := content.SanitizeForSheinAttribute(attrValue)
 	if !content.IsValidForSheinAttribute(sanitizedValue) {
+		logger.GetGlobalLogger("shein/product").Warnf(
+			"custom attribute value rejected after sanitize: attrID=%d raw=%q sanitized=%q required=%v shouldContinue=%v",
+			attrID, attrValue, sanitizedValue, isRequired, !isRequired,
+		)
 		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
+	}
+	if sanitizedValue != attrValue {
+		logger.GetGlobalLogger("shein/product").Infof(
+			"custom attribute value sanitized: attrID=%d raw=%q sanitized=%q",
+			attrID, attrValue, sanitizedValue,
+		)
 	}
 
 	validateResponse, err := runtime.AttributeAPI.ValidateCustomAttributeValue(attrID, sanitizedValue, runtime.CategoryID, runtime.ProductTitle)
 	if err != nil {
+		logger.GetGlobalLogger("shein/product").Warnf(
+			"validate custom attribute value failed: attrID=%d value=%q categoryID=%d required=%v shouldContinue=%v err=%v",
+			attrID, sanitizedValue, runtime.CategoryID, isRequired, !isRequired, err,
+		)
 		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
 	}
-	if validateResponse.Data.AttributeID == 0 {
+	if validateResponse == nil {
+		logger.GetGlobalLogger("shein/product").Warnf(
+			"validate custom attribute value returned nil response: attrID=%d value=%q categoryID=%d required=%v shouldContinue=%v",
+			attrID, sanitizedValue, runtime.CategoryID, isRequired, !isRequired,
+		)
+		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
+	}
+	if validateResponse.Data.AttributeID == 0 || validateResponse.Data.PreAttributeValueID == 0 {
+		logger.GetGlobalLogger("shein/product").Warnf(
+			"validate custom attribute value not accepted: attrID=%d value=%q categoryID=%d responseAttrID=%d preAttrValueID=%d required=%v shouldContinue=%v",
+			attrID,
+			sanitizedValue,
+			runtime.CategoryID,
+			validateResponse.Data.AttributeID,
+			validateResponse.Data.PreAttributeValueID,
+			isRequired,
+			!isRequired,
+		)
 		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
 	}
 
 	p.normalizeTranslatedNameMultis(&validateResponse.Data.AttributeValueNameMultis, sanitizedValue)
 	nameMultis := p.convertToAttributeValueNameMultis(validateResponse.Data.AttributeValueNameMultis)
 	if len(nameMultis) == 0 {
+		logger.GetGlobalLogger("shein/product").Warnf(
+			"custom attribute value missing translated names: attrID=%d value=%q preAttrValueID=%d required=%v shouldContinue=%v",
+			attrID, sanitizedValue, validateResponse.Data.PreAttributeValueID, isRequired, !isRequired,
+		)
 		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
 	}
 
@@ -51,11 +86,37 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *s
 		}},
 	})
 	if err != nil {
+		logger.GetGlobalLogger("shein/product").Warnf(
+			"add custom attribute value failed: attrID=%d value=%q categoryID=%d preAttrValueID=%d required=%v shouldContinue=%v err=%v",
+			attrID,
+			sanitizedValue,
+			runtime.CategoryID,
+			validateResponse.Data.PreAttributeValueID,
+			isRequired,
+			!isRequired,
+			err,
+		)
+		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
+	}
+	if addResponse == nil {
+		logger.GetGlobalLogger("shein/product").Warnf(
+			"add custom attribute value returned nil response: attrID=%d value=%q categoryID=%d preAttrValueID=%d required=%v shouldContinue=%v",
+			attrID,
+			sanitizedValue,
+			runtime.CategoryID,
+			validateResponse.Data.PreAttributeValueID,
+			isRequired,
+			!isRequired,
+		)
 		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
 	}
 
 	if len(addResponse.Info.Data.CustomAttributeRelation) > 0 {
 		newValueID := int(addResponse.Info.Data.CustomAttributeRelation[0].AttributeValueID)
+		logger.GetGlobalLogger("shein/product").Infof(
+			"custom attribute value created: attrID=%d value=%q newValueID=%d relationCount=%d",
+			attrID, sanitizedValue, newValueID, len(addResponse.Info.Data.CustomAttributeRelation),
+		)
 		return CustomAttributeResult{
 			Success:        true,
 			NewValueID:     newValueID,
@@ -64,6 +125,16 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *s
 		}
 	}
 
+	logger.GetGlobalLogger("shein/product").Warnf(
+		"add custom attribute value returned no relation: attrID=%d value=%q categoryID=%d code=%q msg=%q required=%v shouldContinue=%v",
+		attrID,
+		sanitizedValue,
+		runtime.CategoryID,
+		addResponse.Code,
+		addResponse.Msg,
+		isRequired,
+		!isRequired,
+	)
 	return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
 }
 

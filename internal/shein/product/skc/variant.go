@@ -95,6 +95,9 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(input *SKCVariantBuildInp
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to map attribute values to SHEIN IDs: %w", err)
 	}
+	if err := validateMappedStrategyAttributes(strategy); err != nil {
+		return nil, nil, err
+	}
 	customAttributeRelations = append(customAttributeRelations, mappingRelations...)
 
 	p.ensureVariantsHaveRequiredAttributes(input, strategy)
@@ -158,6 +161,28 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(input *SKCVariantBuildInp
 	}
 
 	return skcList, customAttributeRelations, nil
+}
+
+func validateMappedStrategyAttributes(strategy sheinattr.AttributeStrategy) error {
+	if strategy.PrimaryAttribute.AttrID > 0 && len(strategy.PrimaryAttribute.AttrValue) > 0 && countMappedAttributeValueIDs(strategy.PrimaryAttribute) == 0 {
+		return fmt.Errorf("primary attribute %d has no valid mapped values after ID mapping", strategy.PrimaryAttribute.AttrID)
+	}
+
+	if strategy.SecondaryAttribute.AttrID > 0 && len(strategy.SecondaryAttribute.AttrValue) > 0 && countMappedAttributeValueIDs(strategy.SecondaryAttribute) == 0 {
+		return fmt.Errorf("secondary attribute %d has no valid mapped values after ID mapping", strategy.SecondaryAttribute.AttrID)
+	}
+
+	return nil
+}
+
+func countMappedAttributeValueIDs(attr sheinattr.ResultAttribute) int {
+	count := 0
+	for _, attrValue := range attr.AttrValue {
+		if attrValue.ID.Int() > 0 {
+			count++
+		}
+	}
+	return count
 }
 
 func (p *SKCVariantProcessor) buildSingleVariantDirect(input *SKCVariantBuildInput, ctx *shein.TaskContext, variantItem shein.Variant, strategy sheinattr.AttributeStrategy) ([]product.SKC, []api_attribute.CustomAttributeRelation, error) {

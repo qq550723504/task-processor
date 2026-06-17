@@ -398,6 +398,15 @@ func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, input Core
 	SuggestCategoryByText(productInfo string) (*category.SuggestCategoryResponse, error)
 	GetCategory(categoryID int) (*category.CategoryInfo, error)
 }, cache *aicache.Cache) (int, error) {
+	if cache != nil {
+		titleCacheKey := aicache.HashKey(input.Title)
+		var cached int
+		if cache.Get(aicache.TypeCategory, titleCacheKey, &cached) {
+			logger.GetGlobalLogger("shein/category").Infof("分类结果命中标题缓存: title=%q, categoryID=%d", input.Title, cached)
+			return cached, nil
+		}
+	}
+
 	// 1. 用AI提取核心物品描述
 	aiCtx, cancel := timeout.WithAIShortTimeout(ctx)
 	defer cancel()
@@ -438,6 +447,7 @@ func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, input Core
 			logger.GetGlobalLogger("shein/category").Infof("SuggestCategoryByText推荐分类: coreItem=%q, categoryID=%d", coreItem, categoryID)
 			if cache != nil {
 				cache.Set(aicache.TypeCategory, cacheKey, categoryID)
+				cache.Set(aicache.TypeCategory, aicache.HashKey(input.Title), categoryID)
 			}
 			return categoryID, nil
 		}
@@ -449,6 +459,7 @@ func (m *CategoryManager) GetCategoryIDBySuggest(ctx context.Context, input Core
 			logger.GetGlobalLogger("shein/category").Infof("SuggestCategoryByText推荐分类: coreItem=%q, categoryID=%d", coreItem, categoryID)
 			if cache != nil {
 				cache.Set(aicache.TypeCategory, cacheKey, categoryID)
+				cache.Set(aicache.TypeCategory, aicache.HashKey(input.Title), categoryID)
 			}
 			return categoryID, nil
 		}
