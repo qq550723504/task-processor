@@ -68,6 +68,17 @@ It should not own:
 - raw external client construction when a local interface is enough
 - product facts that belong in catalog or asset modules
 
+Publishing convergence is guarded by:
+
+- `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
+- `TestPublishingSheinNonAPISheinImportsStayAllowlisted`
+- `TestPublishingCommonUsesCanonicalPackage`
+- `TestPublishingCommonDoesNotImportPlatformImplementations`
+
+Treat direct dependencies on legacy SHEIN runtime packages, ListingKit facade
+code, or platform implementation packages as migration seams, not precedent
+for new publishing behavior.
+
 ### `internal/listingkit`
 
 `internal/listingkit` remains the product facade and listing orchestration

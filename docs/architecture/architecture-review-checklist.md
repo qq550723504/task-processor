@@ -57,6 +57,10 @@ At minimum, structural review should consider representative guards such as:
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
+- `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
+- `TestPublishingSheinNonAPISheinImportsStayAllowlisted`
+- `TestPublishingCommonUsesCanonicalPackage`
+- `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
 - `TestHackContainsOnlyManagedSupportAreas`

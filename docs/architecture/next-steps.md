@@ -99,6 +99,10 @@ Current guard coverage:
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages` 禁止 `internal/platforms/*` 新增业务域或 HTTP 装配依赖，保持平台注册层只做注册/选择/委托
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted` 禁止 `internal/platforms/*` 新增历史平台实现依赖，当前 Amazon/SHEIN/TEMU 注册委托必须精确登记
 - `TestPlatformRegistrationPackagesStayThin` 禁止 `internal/platforms/*` 新增非 module descriptor / doc / test 文件，避免平台注册层承接业务规则
+- `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit` 禁止 `internal/publishing/shein` 重新依赖 ListingKit facade 或历史 SHEIN runtime，当前提交校验例外必须精确登记
+- `TestPublishingSheinNonAPISheinImportsStayAllowlisted` 禁止 `internal/publishing/shein` 新增未登记的历史 SHEIN 实现依赖，保持 publishing seam 收口
+- `TestPublishingCommonUsesCanonicalPackage` 禁止 `internal/publishing/common` 回退到 ProductEnrich 兼容别名，保持 publishing shared vocabulary 依赖 canonical package
+- `TestPublishingCommonDoesNotImportPlatformImplementations` 禁止 `internal/publishing/common` 依赖 SHEIN/TEMU/Amazon 实现包，避免 shared publishing vocabulary 反向承接平台规则
 - `TestInfrastructurePackagesDoNotImportBusinessDomains` 禁止 `internal/infra`、`internal/integration`、`internal/platformbase`、`internal/platformtask` 反向依赖业务域
 - `TestProductImageExternalClientImportsStayAllowlisted` 禁止 `internal/productimage` 新增 concrete `openai` / `nanobanana` adapter 依赖，当前 provider/runtime seam 必须精确登记
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted` 禁止 `internal/app/httpapi` ProductImage 装配文件新增 concrete `openai` / `nanobanana` adapter 依赖，当前模型默认值/装配 seam 必须精确登记
