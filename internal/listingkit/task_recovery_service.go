@@ -129,21 +129,22 @@ func (s *taskRecoveryService) submitRecoveredTask(ctx context.Context, submitter
 	if submitter == nil {
 		return ErrTaskRecoveryUnavailable
 	}
-	if err := submitter.Submit(taskID); err != nil {
-		if block, ok := classifyRetryableTaskFailure(err); ok {
-			updated := s.buildReblockedTask(previousBlock, block, recoveredAt)
-			errorMsg := fmt.Sprintf("failed to submit task: %v", err)
-			if markErr := s.repo.MarkBlockedRetryable(ctx, taskID, updated, errorMsg); markErr != nil {
-				return s.restoreRecoveryDurability(ctx, taskID, previousBlock, errorMsg, err, fmt.Errorf("mark blocked retryable: %w", markErr))
-			}
-			return fmt.Errorf("submit recovered task %s: %w", taskID, err)
-		}
-		if persistErr := persistClassifiedTaskFailure(ctx, s.repo, taskID, fmt.Sprintf("failed to submit task: %v", err), err); persistErr != nil {
-			return s.restoreRecoveryDurability(ctx, taskID, previousBlock, fmt.Sprintf("failed to submit task: %v", err), err, persistErr)
-		}
-		return fmt.Errorf("submit recovered task %s: %w", taskID, err)
-	}
-	return nil
+	return submissiondomain.SubmitRecoveredWithRetryablePersistence(submissiondomain.RecoveredSubmitPersistenceRequest{
+		TaskID:               taskID,
+		PreviousBlock:        adaptRetryableBlockState(previousBlock),
+		RecoveredAt:          recoveredAt,
+		DefaultRecoveryScope: submissiondomain.RetryableRecoveryScopeTask,
+		Submit:               submitter.Submit,
+		MarkBlockedRetryable: func(block *submissiondomain.RetryableBlockState, errorMsg string) error {
+			return s.repo.MarkBlockedRetryable(ctx, taskID, adaptSubmissionRetryableBlock(block), errorMsg)
+		},
+		PersistFailure: func(errorMsg string, submitErr error) error {
+			return persistClassifiedTaskFailure(ctx, s.repo, taskID, errorMsg, submitErr)
+		},
+		RestoreDurability: func(errorMsg string, submitErr error, persistErr error) error {
+			return s.restoreRecoveryDurability(ctx, taskID, previousBlock, errorMsg, submitErr, persistErr)
+		},
+	})
 }
 
 func (s *taskRecoveryService) currentSubmitter() TaskSubmitter {

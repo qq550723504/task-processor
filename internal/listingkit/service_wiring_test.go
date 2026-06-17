@@ -1058,6 +1058,29 @@ func TestTaskRecoveryServiceUsesSubmissionDomainRunner(t *testing.T) {
 	}
 }
 
+func TestTaskRecoverySubmitRecoveredDelegatesRetryablePersistenceSkeleton(t *testing.T) {
+	t.Parallel()
+
+	source := readNamedFunctionSource(t, "task_recovery_service.go", "submitRecoveredTask")
+	callNames := readNamedFunctionCallNames(t, "task_recovery_service.go", "submitRecoveredTask")
+
+	assertSourceContainsAll(t, source, []string{
+		"return submissiondomain.SubmitRecoveredWithRetryablePersistence(",
+		"PreviousBlock:        adaptRetryableBlockState(previousBlock)",
+		"MarkBlockedRetryable: func(block *submissiondomain.RetryableBlockState, errorMsg string) error {",
+		"PersistFailure: func(errorMsg string, submitErr error) error {",
+		"RestoreDurability: func(errorMsg string, submitErr error, persistErr error) error {",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"if err := submitter.Submit(taskID); err != nil {",
+		"if block, ok := classifyRetryableTaskFailure(err); ok {",
+		"updated := s.buildReblockedTask(previousBlock, block, recoveredAt)",
+	})
+	assertFunctionCallsContainAll(t, callNames, []string{
+		"SubmitRecoveredWithRetryablePersistence",
+	})
+}
+
 func TestSubmitLeaseHelperFileOwnsSharedTTLAndSentinelErrors(t *testing.T) {
 	t.Parallel()
 

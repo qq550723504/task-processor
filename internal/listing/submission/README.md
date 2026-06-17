@@ -9,6 +9,7 @@ Current stable ownership:
 - generic task requeue orchestration seam (`RequeueTasks` style load/check/submit flow)
 - generic immediate recovery orchestration seam (`RecoverNow` style load/recover/submit/reload flow)
 - generic batch recovery orchestration seam (`RecoverBatch` style list/recover/submit/aggregate flow)
+- generic recovered-submit retryable persistence seam (`submit -> retryable reblock / failure persist / durability restore` flow)
 - generic recovered-submission route seam (`accepted/local completion vs remote confirmation` dispatch)
 - generic lease-acquire seam (`begin lease -> replay preview / remote recovery / blocked mapping / task handoff`)
 - generic workflow-start failure seam (`record failure -> clear lease -> return-priority resolution`)
@@ -64,4 +65,4 @@ Does not own yet:
 - full submit orchestration and platform routing
 - SHEIN-specific submit package loading and remote confirmation details
 - Temporal-facing submit workflow adapters beyond generic submit-in-progress error shaping
-- durable retry/reblock persistence policies
+- repository-specific durable retry/reblock persistence adapters
