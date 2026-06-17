@@ -94,6 +94,7 @@ Current guard coverage:
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted` 禁止 `internal/platforms/*` 新增历史平台实现依赖，当前 Amazon/SHEIN/TEMU 注册委托必须精确登记
 - `TestInfrastructurePackagesDoNotImportBusinessDomains` 禁止 `internal/infra`、`internal/integration`、`internal/platformbase`、`internal/platformtask` 反向依赖业务域
 - `TestProductImageExternalClientImportsStayAllowlisted` 禁止 `internal/productimage` 新增 concrete `openai` / `nanobanana` adapter 依赖，当前 provider/runtime seam 必须精确登记
+- `TestPublishingSheinOpenAIImportsStayAllowlisted` 禁止 `internal/publishing/shein` 新增 concrete `openai` adapter 依赖，当前属性/类目/文案 inference seam 必须精确登记
 
 后续重点不是增加很多测试，而是给还没有被守住、且最容易回退的边界补“护栏”。新增护栏前先确认现有测试没有已经覆盖同一个风险。
 

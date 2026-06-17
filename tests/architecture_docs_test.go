@@ -90,6 +90,7 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
 		"TestProductImageExternalClientImportsStayAllowlisted",
+		"TestPublishingSheinOpenAIImportsStayAllowlisted",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
@@ -164,6 +165,7 @@ func TestExternalClientBoundaryInventoryDefinesCouplingHotspots(t *testing.T) {
 		"Local Interface Rule",
 		"Next Slice Candidates",
 		"TestProductImageExternalClientImportsStayAllowlisted",
+		"TestPublishingSheinOpenAIImportsStayAllowlisted",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {

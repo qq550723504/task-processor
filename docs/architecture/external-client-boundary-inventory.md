@@ -35,6 +35,8 @@ Current direct dependency hotspots are:
     copy helpers
   - future publishing rules should depend on local inference interfaces rather
     than concrete adapter packages
+  - current direct OpenAI seams are guarded by
+    `TestPublishingSheinOpenAIImportsStayAllowlisted`
 - `internal/shein`
   - broad `management` coupling across inventory, scheduler, publish,
     validation, activity, mapping, and product packages
@@ -73,7 +75,9 @@ adapter types without changing business behavior:
 1. ListingKit AI settings and studio media generation seams currently importing
    `internal/infra/clients/openai`.
 2. SHEIN publishing attribute/category inference helpers currently importing
-   `internal/infra/clients/openai`.
+   `internal/infra/clients/openai`. Current imports are explicitly allowlisted;
+   reduce them by introducing package-local inference interfaces before adding
+   new concrete OpenAI adapter call sites.
 3. TEMU sync and pricing services currently importing
    `internal/infra/clients/management`.
 4. Product image provider construction currently importing `openai` and

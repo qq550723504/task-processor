@@ -170,6 +170,61 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestPublishingSheinOpenAIImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "publishing", "shein")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "assembler.go")):                                {},
+		filepath.Clean(filepath.Join(root, "attribute_resolver.go")):                       {},
+		filepath.Clean(filepath.Join(root, "attribute_resolver_test.go")):                  {},
+		filepath.Clean(filepath.Join(root, "attribute_value_matcher.go")):                  {},
+		filepath.Clean(filepath.Join(root, "category_resolver_ai.go")):                     {},
+		filepath.Clean(filepath.Join(root, "category_semantic_verifier.go")):               {},
+		filepath.Clean(filepath.Join(root, "category_semantic_verifier_test.go")):          {},
+		filepath.Clean(filepath.Join(root, "category_suggest_fallback.go")):                {},
+		filepath.Clean(filepath.Join(root, "category_tree_fallback.go")):                   {},
+		filepath.Clean(filepath.Join(root, "display_attribute_batch_inference.go")):        {},
+		filepath.Clean(filepath.Join(root, "display_attribute_field_selector.go")):         {},
+		filepath.Clean(filepath.Join(root, "display_attribute_missing_inference.go")):      {},
+		filepath.Clean(filepath.Join(root, "display_attribute_required_repair.go")):        {},
+		filepath.Clean(filepath.Join(root, "display_attribute_resolution_flow.go")):        {},
+		filepath.Clean(filepath.Join(root, "display_attribute_resolution_flow_test.go")):   {},
+		filepath.Clean(filepath.Join(root, "generation_topic_policy_integration_test.go")): {},
+		filepath.Clean(filepath.Join(root, "listing_copy.go")):                             {},
+		filepath.Clean(filepath.Join(root, "listing_copy_test.go")):                        {},
+		filepath.Clean(filepath.Join(root, "review_content.go")):                           {},
+		filepath.Clean(filepath.Join(root, "review_content_test.go")):                      {},
+		filepath.Clean(filepath.Join(root, "runtime_attribute_resolver.go")):               {},
+		filepath.Clean(filepath.Join(root, "runtime_category_resolver.go")):                {},
+		filepath.Clean(filepath.Join(root, "runtime_sale_attribute_resolver.go")):          {},
+		filepath.Clean(filepath.Join(root, "sale_attribute_ai.go")):                        {},
+		filepath.Clean(filepath.Join(root, "sale_attribute_resolution_result.go")):         {},
+		filepath.Clean(filepath.Join(root, "sale_attribute_resolver.go")):                  {},
+		filepath.Clean(filepath.Join(root, "sale_attribute_resolver_test.go")):             {},
+		filepath.Clean(filepath.Join(root, "sale_attribute_value_llm.go")):                 {},
+		filepath.Clean(filepath.Join(root, "sale_attribute_value_matcher.go")):             {},
+		filepath.Clean(filepath.Join(root, "sale_attribute_value_matcher_test.go")):        {},
+		filepath.Clean(filepath.Join(root, "sale_attribute_value_resolution.go")):          {},
+		filepath.Clean(filepath.Join(root, "source_dimension_selection.go")):               {},
+		filepath.Clean(filepath.Join(root, "submit_prep.go")):                              {},
+		filepath.Clean(filepath.Join(root, "submit_prep_test.go")):                         {},
+		filepath.Clean(filepath.Join(root, "title_resolution.go")):                         {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/openai"`]; ok {
+			t.Errorf("%s imports OpenAI adapter directly; keep publishing/shein concrete OpenAI dependencies limited to current inference and runtime resolver seams", path)
+		}
+	}
+}
+
 func TestPublishingCommonUsesCanonicalPackage(t *testing.T) {
 	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "common"), []string{
 		`"task-processor/internal/productenrich"`,
