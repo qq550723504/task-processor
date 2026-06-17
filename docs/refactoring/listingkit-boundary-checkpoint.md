@@ -310,6 +310,7 @@ Completed submission slices:
 - SHEIN task-list projection now reuses one shared submission projection snapshot for status and remote summary fields, so `internal/listingkit` no longer rebuilds the same normalized package/readiness/projection state twice in one task-list item assembly.
 - SHEIN task-list readiness state now also reuses one shared readiness projection snapshot for blocker keys, warning keys, and status overview fields, so the task-list item assembly no longer rebuilds identical readiness/checklist/status state through three helper paths.
 - SHEIN revision success apply/restore result assembly now reuses one shared readiness projection snapshot for status summary and follow-up checklist data, while standalone status/checklist helpers remain as compatibility delegates.
+- SHEIN preview payload entrypoints now share one preview-input assembly helper, so direct preview and result-backed preview construction no longer duplicate readiness projection, repair-center, and workspace-overview wiring.
 
 Completed sourcing slices:
 
