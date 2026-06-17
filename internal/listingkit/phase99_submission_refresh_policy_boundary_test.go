@@ -68,5 +68,7 @@ func TestSheinSubmissionRefreshMutationValidationBoundary(t *testing.T) {
 	})
 	assertSourceExcludesAll(t, source, []string{
 		"sheinpub.ResolveSubmissionRefreshValidation(",
+		"func submissionRefreshActionMatches(",
+		"func submissionRefreshRequestMatches(",
 	})
 }

@@ -75,10 +75,12 @@ func validateSubmissionRefreshMutation(task *Task, action, requestID string) (*S
 	if err != nil {
 		return nil, err
 	}
-	if !submissionRefreshActionMatches(pkg, request.action) {
+	selection := sheinpub.ResolveSubmissionRefreshSelection(pkg)
+	if !submissiondomain.RefreshActionMatches(selection.Action, request.action) {
 		return nil, buildSubmissionRefreshChangedError()
 	}
-	if !submissionRefreshRequestMatches(pkg, request.action, request.requestID) {
+	record := sheinpub.SubmissionRecordForAction(pkg.SubmissionState, request.action)
+	if record == nil || !submissiondomain.RefreshRequestMatches(record.RequestID, request.requestID) {
 		return nil, buildSubmissionRefreshChangedError()
 	}
 	return pkg, nil
@@ -113,7 +115,8 @@ func validateSubmissionRefreshAction(pkg *SheinPackage, action string) error {
 	if !ok {
 		return buildSubmissionRefreshUnavailableError()
 	}
-	if !submissionRefreshActionMatches(pkg, action) {
+	selection := sheinpub.ResolveSubmissionRefreshSelection(pkg)
+	if !submissiondomain.RefreshActionMatches(selection.Action, action) {
 		return buildSubmissionRefreshChangedError()
 	}
 	return nil
@@ -125,29 +128,11 @@ func validateSubmissionRefreshRequest(pkg *SheinPackage, action, requestID strin
 	if !ok {
 		return buildSubmissionRefreshUnavailableError()
 	}
-	if !submissionRefreshRequestMatches(pkg, action, requestID) {
+	record := sheinpub.SubmissionRecordForAction(pkg.SubmissionState, action)
+	if record == nil || !submissiondomain.RefreshRequestMatches(record.RequestID, requestID) {
 		return buildSubmissionRefreshChangedError()
 	}
 	return nil
-}
-
-func submissionRefreshActionMatches(pkg *SheinPackage, requestedAction string) bool {
-	if pkg == nil || pkg.SubmissionState == nil {
-		return false
-	}
-	selection := sheinpub.ResolveSubmissionRefreshSelection(pkg)
-	return submissiondomain.RefreshActionMatches(selection.Action, requestedAction)
-}
-
-func submissionRefreshRequestMatches(pkg *SheinPackage, action, requestedRequestID string) bool {
-	if pkg == nil || pkg.SubmissionState == nil {
-		return false
-	}
-	record := sheinpub.SubmissionRecordForAction(pkg.SubmissionState, action)
-	if record == nil {
-		return false
-	}
-	return submissiondomain.RefreshRequestMatches(record.RequestID, requestedRequestID)
 }
 
 func loadSubmissionRefreshPackageState(pkg *SheinPackage) (*SheinPackage, error) {
