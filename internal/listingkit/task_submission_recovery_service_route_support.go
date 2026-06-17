@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/listingkit/core"
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -35,10 +36,14 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(
 }
 
 func (s *taskSubmissionRecoveryService) shouldRecoverLocally(state *sheinRecoveredRemoteState) bool {
-	if state == nil {
+	if state == nil || state.completion.response == nil {
 		return false
 	}
-	return sheinpub.SubmissionResponseAcceptedForAction(state.completion.action, state.completion.response)
+	return sheinmarketpub.ResponseAcceptedForAction(
+		state.completion.action,
+		state.completion.response.Success,
+		state.completion.response.Code,
+	)
 }
 
 func (s *taskSubmissionRecoveryService) beginSheinSubmitLeaseWithoutStartTime(ctx context.Context, taskID, action, requestID string) (*Task, error) {
