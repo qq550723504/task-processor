@@ -178,7 +178,6 @@ func (p *SaleAttributeSingleProcessor) logAttemptFailure(taskID, productID strin
 
 func (p *SaleAttributeSingleProcessor) persistFailure(taskID, productID, systemPrompt, userPrompt string, category saleAttributeFailureCategory, err error, meta DebugMeta) {
 	if category == saleAttributeFailureTruncated {
-		_ = p.debugSaver.SaveTruncatedData(taskID, productID+"_fix_failed", systemPrompt, userPrompt, meta)
 		_ = p.debugSaver.SaveFailureData(taskID, productID+"_fix_failed", systemPrompt, userPrompt, err, withTruncatedDebugMeta(meta))
 		return
 	}

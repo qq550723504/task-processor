@@ -12,6 +12,10 @@
 
 当前最重要的问题不是目录怎么摆，而是后续平台能力往哪里长。
 
+正式平台边界策略已收口到：
+
+- `docs/architecture/platform-boundary-strategy.md`
+
 当前仓库里同时存在：
 
 - `internal/shein`
@@ -53,10 +57,14 @@
 
 ### 3. 给兼容层设定删除条件
 
-当前仍保留的兼容层：
+兼容层退休状态已收口到：
 
-- `internal/app/processor/compat.go`
-- `internal/app/state/compat.go`
+- `docs/architecture/compatibility-retirement.md`
+
+当前已退休并由测试守住的兼容路径：
+
+- `internal/app/processor`
+- `internal/app/state` Go 兼容文件
 
 这类文件短期有价值，但不能长期双轨存在。
 
@@ -89,11 +97,19 @@
 - `docs/architecture/app-assembly-boundaries.md`
 - `docs/development/repository-structure.md`
 
+长期架构文档入口已收口到：
+
+- `docs/architecture/README.md`
+
 接下来要做的是控制文档数量和语义漂移，尽量把长期有效的规则收口到少数文档，而不是让大量计划文档替代正式架构说明。
 
 ### 6. 明确 Temporal 的正式边界
 
 Temporal 现在最像下一块容易膨胀的运行时区域。
+
+正式边界说明已收口到：
+
+- `docs/architecture/temporal-boundaries.md`
 
 需要尽早明确：
 
@@ -110,6 +126,10 @@ Temporal 现在最像下一块容易膨胀的运行时区域。
 
 不是现在立刻迁，而是先盘点：
 
+迁移成本盘点已收口到：
+
+- `docs/architecture/historical-platform-migration-inventory.md`
+
 - 哪些文件已经只剩 facade 作用
 - 哪些文件还混着 runtime、平台规则、状态管理和组装逻辑
 - 哪些子域最适合下一轮拆分
@@ -119,6 +139,10 @@ Temporal 现在最像下一块容易膨胀的运行时区域。
 ### 8. 把结构治理变成 review 规则
 
 这轮改造要长期生效，靠一次性重构不够，必须转成 review 规则。
+
+正式 review checklist 已收口到：
+
+- `docs/architecture/architecture-review-checklist.md`
 
 建议以后每个相关 PR 至少检查：
 

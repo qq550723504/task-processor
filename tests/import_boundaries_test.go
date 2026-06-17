@@ -715,6 +715,19 @@ func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 	}
 }
 
+func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) {
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "platforms"), []string{
+		"task-processor/internal/app/httpapi",
+		"task-processor/internal/asset",
+		"task-processor/internal/catalog",
+		"task-processor/internal/listingkit",
+		"task-processor/internal/marketplace",
+		"task-processor/internal/productimage",
+		"task-processor/internal/publishing",
+		"task-processor/internal/workspace",
+	}, nil)
+}
+
 func TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages(t *testing.T) {
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "cmd"), []string{
 		"task-processor/internal/amazon",
@@ -750,6 +763,21 @@ func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {
 		`"go.temporal.io/sdk/worker"`,
 		`"go.temporal.io/sdk/workflow"`,
 	}, allowedFiles)
+}
+
+func TestTemporalRuntimePackagesDoNotImportHTTPAPI(t *testing.T) {
+	for _, root := range []string{
+		filepath.Join("..", "internal", "app", "runtime"),
+		filepath.Join("..", "internal", "listingkit", "temporal"),
+		filepath.Join("..", "internal", "listingkit", "workflow"),
+	} {
+		t.Run(filepath.ToSlash(root), func(t *testing.T) {
+			assertNoBannedImportPrefixes(t, root, []string{
+				"task-processor/internal/app/httpapi",
+				"task-processor/internal/listingkit/httpapi",
+			}, nil)
+		})
+	}
 }
 
 func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
