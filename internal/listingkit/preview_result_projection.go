@@ -7,8 +7,14 @@ import (
 )
 
 type listingKitPreviewProjection struct {
-	overview            *ListingKitPreviewHeader
-	needsReview         bool
+	overview        *ListingKitPreviewHeader
+	needsReview     bool
+	attachment      listingKitPreviewProjectionAttachment
+	revisionMeta    *ListingKitRevisionHistoryMeta
+	revisionHistory []ListingKitRevisionRecord
+}
+
+type listingKitPreviewProjectionAttachment struct {
 	catalog             *catalog.Product
 	assets              *asset.Bundle
 	assetInventory      *asset.InventorySummary
@@ -16,8 +22,6 @@ type listingKitPreviewProjection struct {
 	platformPreviews    []PlatformAssetRenderPreviews
 	generationQueue     *GenerationWorkQueue
 	generationOverview  *AssetGenerationOverview
-	revisionMeta        *ListingKitRevisionHistoryMeta
-	revisionHistory     []ListingKitRevisionRecord
 }
 
 func buildListingKitPreviewProjection(task *Task, selectedPlatform string) listingKitPreviewProjection {
@@ -35,17 +39,19 @@ func buildListingKitPreviewProjection(task *Task, selectedPlatform string) listi
 	legacyBase := adaptPreviewDomainShell(base)
 	legacyBase.Overview = adaptPreviewDomainHeaderWithLegacyPlatformCards(base.Overview, readProjection.PlatformCards)
 	return listingKitPreviewProjection{
-		overview:            legacyBase.Overview,
-		needsReview:         legacyBase.NeedsReview,
-		catalog:             legacyBase.Catalog,
-		assets:              legacyBase.Assets,
-		assetInventory:      legacyBase.AssetInventory,
-		assetRenderPreviews: readProjection.AssetRenderPreviews,
-		platformPreviews:    readProjection.PlatformAssetRenderPreviews,
-		generationQueue:     readProjection.AssetGenerationQueue,
-		generationOverview:  readProjection.AssetGenerationOverview,
-		revisionMeta:        legacyBase.RevisionHistoryMeta,
-		revisionHistory:     buildRevisionHistoryPreviewItems(task.Result.RevisionHistory),
+		overview:    legacyBase.Overview,
+		needsReview: legacyBase.NeedsReview,
+		attachment: listingKitPreviewProjectionAttachment{
+			catalog:             legacyBase.Catalog,
+			assets:              legacyBase.Assets,
+			assetInventory:      legacyBase.AssetInventory,
+			assetRenderPreviews: readProjection.AssetRenderPreviews,
+			platformPreviews:    readProjection.PlatformAssetRenderPreviews,
+			generationQueue:     readProjection.AssetGenerationQueue,
+			generationOverview:  readProjection.AssetGenerationOverview,
+		},
+		revisionMeta:    legacyBase.RevisionHistoryMeta,
+		revisionHistory: buildRevisionHistoryPreviewItems(task.Result.RevisionHistory),
 	}
 }
 
@@ -55,13 +61,13 @@ func applyListingKitPreviewProjection(preview *ListingKitPreview, projection lis
 	}
 	preview.Overview = projection.overview
 	preview.NeedsReview = projection.needsReview
-	preview.Catalog = projection.catalog
-	preview.Assets = projection.assets
-	preview.AssetInventory = projection.assetInventory
-	preview.AssetRenderPreviews = projection.assetRenderPreviews
-	preview.PlatformAssetRenderPreviews = projection.platformPreviews
-	preview.AssetGenerationQueue = projection.generationQueue
-	preview.AssetGenerationOverview = projection.generationOverview
+	preview.Catalog = projection.attachment.catalog
+	preview.Assets = projection.attachment.assets
+	preview.AssetInventory = projection.attachment.assetInventory
+	preview.AssetRenderPreviews = projection.attachment.assetRenderPreviews
+	preview.PlatformAssetRenderPreviews = projection.attachment.platformPreviews
+	preview.AssetGenerationQueue = projection.attachment.generationQueue
+	preview.AssetGenerationOverview = projection.attachment.generationOverview
 	preview.RevisionHistoryMeta = projection.revisionMeta
 	preview.RevisionHistory = projection.revisionHistory
 }

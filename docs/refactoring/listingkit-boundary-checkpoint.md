@@ -319,6 +319,7 @@ Completed submission slices:
 - ListingKit read projection attachment extras now move through a named bundle, so asset render previews, platform render previews, and generation queue/overview no longer travel as parallel return values through the read projection assembler.
 - ListingKit read projection preview input now reuses the already-computed platform-card projection, so header DTO shaping no longer rebuilds platform cards separately from the projection shell.
 - ListingKit read projection header assembly now delegates platform-card to preview-domain DTO mapping to a dedicated adapter helper, keeping header metadata assembly separate from card field copy rules.
+- ListingKit preview result projection now carries catalog, asset, render-preview, and generation attachment fields through one nested bundle, so the preview adapter no longer keeps those attachment fields as parallel top-level projection state.
 
 Completed sourcing slices:
 
