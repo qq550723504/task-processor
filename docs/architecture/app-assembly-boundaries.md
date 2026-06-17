@@ -191,6 +191,17 @@ Avoid these patterns in app-layer code:
 If a refactor shortens a function but makes the assembly order harder to read,
 it is usually not worth it.
 
+## Boundary Guards
+
+App-layer assembly boundaries are guarded by:
+
+- `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
+
+This keeps business domains from depending directly on concrete
+`internal/app/{bootstrap,consumer,runner,runtime}` assembly packages. If a new
+transition seam is necessary, document the narrow exception and update the
+allowlist in the same change.
+
 ## Review Questions
 
 When reviewing app-layer changes, these questions are useful:

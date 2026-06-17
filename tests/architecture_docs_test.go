@@ -295,6 +295,7 @@ func TestAppAssemblyBoundaryDocumentDefinesStableAssemblyVocabulary(t *testing.T
 		"`bootstrap` builds and registers",
 		"`runner` starts and supervises",
 		"`consumer` assembles and coordinates",
+		"TestBusinessDomainsDoNotImportAppRuntimeAssembly",
 		"Review Questions",
 	}
 	for _, phrase := range required {
