@@ -666,6 +666,31 @@ func TestDomainHTTPPackagesDoNotImportAppHTTPAPI(t *testing.T) {
 	}
 }
 
+func TestBusinessDomainsDoNotImportAppHTTPAPI(t *testing.T) {
+	for _, domainRoot := range []string{
+		filepath.Join("..", "internal", "amazon"),
+		filepath.Join("..", "internal", "amazonlisting"),
+		filepath.Join("..", "internal", "asset"),
+		filepath.Join("..", "internal", "catalog"),
+		filepath.Join("..", "internal", "listing"),
+		filepath.Join("..", "internal", "listingkit"),
+		filepath.Join("..", "internal", "marketplace"),
+		filepath.Join("..", "internal", "pricing"),
+		filepath.Join("..", "internal", "productenrich"),
+		filepath.Join("..", "internal", "productimage"),
+		filepath.Join("..", "internal", "publishing"),
+		filepath.Join("..", "internal", "sds"),
+		filepath.Join("..", "internal", "shein"),
+		filepath.Join("..", "internal", "temu"),
+	} {
+		t.Run(filepath.Base(domainRoot), func(t *testing.T) {
+			assertNoBannedImports(t, domainRoot, []string{
+				`"task-processor/internal/app/httpapi"`,
+			}, nil)
+		})
+	}
+}
+
 func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
@@ -825,7 +850,7 @@ func assertNoBannedImports(t *testing.T, root string, bannedImports []string, al
 		t.Fatal(err)
 	}
 	for path, facts := range index.files {
-		if _, allowed := allowedFiles[path]; allowed {
+		if pathAllowed(path, allowedFiles) {
 			continue
 		}
 		for _, banned := range bannedImports {

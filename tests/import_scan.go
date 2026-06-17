@@ -87,3 +87,26 @@ func loadGoFileIndex(root, skipRoot string) (*goFileIndex, error) {
 
 	return index, nil
 }
+
+func pathAllowed(path string, allowed map[string]struct{}) bool {
+	if len(allowed) == 0 {
+		return false
+	}
+
+	path = filepath.Clean(path)
+	for allowedPath := range allowed {
+		allowsDirectory := strings.HasSuffix(allowedPath, string(os.PathSeparator))
+		allowedPath = filepath.Clean(allowedPath)
+		if allowsDirectory {
+			allowedDir := allowedPath
+			if path == allowedDir || strings.HasPrefix(path, allowedDir+string(os.PathSeparator)) {
+				return true
+			}
+			continue
+		}
+		if path == allowedPath {
+			return true
+		}
+	}
+	return false
+}

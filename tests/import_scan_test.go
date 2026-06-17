@@ -73,3 +73,31 @@ func TestLoadGoFileIndexSkipsSubtree(t *testing.T) {
 		t.Fatalf("expected skip.go to be excluded from index")
 	}
 }
+
+func TestPathAllowedMatchesFileAndDirectoryAllowlist(t *testing.T) {
+	root := t.TempDir()
+	allowedFile := filepath.Join(root, "allowed.go")
+	allowedDirFile := filepath.Join(root, "adapters", "allowed.go")
+	blockedFile := filepath.Join(root, "blocked.go")
+
+	allowed := map[string]struct{}{
+		filepath.Clean(allowedFile): {},
+		filepath.Clean(filepath.Dir(allowedDirFile)) + string(os.PathSeparator): {},
+	}
+
+	for _, tc := range []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "file", path: allowedFile, want: true},
+		{name: "directory", path: allowedDirFile, want: true},
+		{name: "blocked", path: blockedFile, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := pathAllowed(tc.path, allowed); got != tc.want {
+				t.Fatalf("pathAllowed(%q) = %v, want %v", tc.path, got, tc.want)
+			}
+		})
+	}
+}
