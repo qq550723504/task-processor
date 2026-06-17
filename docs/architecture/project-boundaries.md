@@ -268,6 +268,13 @@ guards include:
 - `TestListingKitAmazonListingImportsStayAllowlisted`
 - `TestCatalogDoesNotDependOnProductEnrichAliases`
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases`
+- `TestSheinPipelineDoesNotImportListingKitFacade`
+- `TestSheinSubmitPrepDoesNotImportListingKitTenantContext`
+- `TestListingKitRootSheinHelpersStayAllowlisted`
+- `TestListingKitRootServiceSubmitFilesStayAllowlisted`
+- `TestListingKitRootTaskSubmissionFilesStayAllowlisted`
+- `TestListingKitRootServiceGenerationFilesStayAllowlisted`
+- `TestListingKitRootGenerationFilesStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 

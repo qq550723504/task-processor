@@ -96,6 +96,13 @@ Current guard coverage:
 - `TestListingKitAmazonListingImportsStayAllowlisted` 禁止 ListingKit 根 facade 新增未登记的 AmazonListing 依赖，保持当前 result/bridge seam 可审查
 - `TestCatalogDoesNotDependOnProductEnrichAliases` 禁止 catalog 回退依赖 ProductEnrich 兼容别名，保持产品事实归属在 canonical/product 模块
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases` 禁止 canonical 类型重新使用 ProductEnrich compatibility aliases，保持规范模型不依赖历史兼容层
+- `TestSheinPipelineDoesNotImportListingKitFacade` 禁止 SHEIN pipeline 回退依赖 ListingKit facade
+- `TestSheinSubmitPrepDoesNotImportListingKitTenantContext` 禁止 SHEIN submitprep 回退依赖 ListingKit tenant context
+- `TestListingKitRootSheinHelpersStayAllowlisted` 禁止 ListingKit 根包新增未登记 SHEIN helper seam
+- `TestListingKitRootServiceSubmitFilesStayAllowlisted` 禁止 ListingKit 根 service submit 文件继续扩散提交 seam
+- `TestListingKitRootTaskSubmissionFilesStayAllowlisted` 禁止 ListingKit 根 task submission 文件继续扩散提交 seam
+- `TestListingKitRootServiceGenerationFilesStayAllowlisted` 禁止 ListingKit 根 service generation 文件继续扩散生成 seam
+- `TestListingKitRootGenerationFilesStayAllowlisted` 禁止 ListingKit 根 generation 文件继续扩散生成 seam
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer` 禁止新代码重新 import `internal/app/processor`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer` 禁止新代码重新 import `internal/app/state`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted` 禁止 module builder 回流到中心化装配文件
