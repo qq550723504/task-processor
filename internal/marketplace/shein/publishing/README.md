@@ -19,6 +19,7 @@ Current stable ownership includes:
 - remote response parsing rules for on-way documents, record-query success handling, and inventory confirmation.
 - recovered-submit local-recovery acceptance rules for publish/save-draft responses.
 - recovery remote-lookup confirmation policy selection for publish/save-draft responses.
+- confirm-remote decision, SPU precedence, and update-message policy for root remote-status orchestration.
 
 Boundary rule:
 

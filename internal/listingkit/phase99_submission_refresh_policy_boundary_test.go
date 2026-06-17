@@ -44,3 +44,16 @@ func TestSheinSubmissionRemoteLookupPolicyBoundary(t *testing.T) {
 		"sheinpub.BuildSubmissionRecoveryLookupInputs(",
 	})
 }
+
+func TestSheinSubmissionConfirmRemotePolicyBoundary(t *testing.T) {
+	t.Parallel()
+
+	source := readNamedFunctionSource(t, "task_submission_recovery_remote.go", "resolveSheinSubmitRemoteStatus")
+	assertSourceContainsAll(t, source, []string{
+		"sheinmarketpub.ResolveRemoteConfirmationDecision(",
+		"sheinmarketpub.ResolveRemoteConfirmationUpdateMessage(",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"sheinpub.ResolveSubmissionConfirmRemoteUpdate(",
+	})
+}
