@@ -752,6 +752,21 @@ func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {
 	}, allowedFiles)
 }
 
+func TestTemporalRuntimePackagesDoNotImportHTTPAPI(t *testing.T) {
+	for _, root := range []string{
+		filepath.Join("..", "internal", "app", "runtime"),
+		filepath.Join("..", "internal", "listingkit", "temporal"),
+		filepath.Join("..", "internal", "listingkit", "workflow"),
+	} {
+		t.Run(filepath.ToSlash(root), func(t *testing.T) {
+			assertNoBannedImportPrefixes(t, root, []string{
+				"task-processor/internal/app/httpapi",
+				"task-processor/internal/listingkit/httpapi",
+			}, nil)
+		})
+	}
+}
+
 func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{

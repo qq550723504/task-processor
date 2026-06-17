@@ -95,6 +95,10 @@
 
 Temporal 现在最像下一块容易膨胀的运行时区域。
 
+正式边界说明已收口到：
+
+- `docs/architecture/temporal-boundaries.md`
+
 需要尽早明确：
 
 - 哪些链路适合进入 Temporal
