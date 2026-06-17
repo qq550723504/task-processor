@@ -44,6 +44,31 @@ func TestProjectBoundaryDocumentKeepsRouteRegistrationInOwningHTTPAPI(t *testing
 	}
 }
 
+func TestHTTPAPIAssemblyBoundaryDocumentTracksGuardTests(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "httpapi-assembly-boundaries.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"# HTTP API Assembly Boundaries",
+		"`cmd/* -> internal/app/httpapi -> internal/*/httpapi -> domain service/runtime/contracts`",
+		"TestDomainHTTPPackagesDoNotImportAppHTTPAPI",
+		"TestBusinessDomainsDoNotImportAppHTTPAPI",
+		"TestAppHTTPAPIModuleBuildersStayAllowlisted",
+		"TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted",
+		"TestAppHTTPAPIListingKitSupportImportsStayAllowlisted",
+		"TestAppHTTPAPIListingKitRootImportsStayAllowlisted",
+		"TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so HTTP API assembly rules stay connected to guard tests", path, phrase)
+		}
+	}
+}
+
 func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
 	content, err := os.ReadFile(path)

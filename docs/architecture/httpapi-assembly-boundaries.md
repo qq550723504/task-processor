@@ -168,6 +168,22 @@
 - 兼容层只减不增
 - 等仓内和外部依赖确认切完后再删除，并用测试防止旧路径重新成为入口
 
+## Boundary Guards
+
+HTTP API 装配边界由以下测试守住：
+
+- `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
+- `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `TestAppHTTPAPIModuleBuildersStayAllowlisted`
+- `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted`
+- `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted`
+- `TestAppHTTPAPIListingKitRootImportsStayAllowlisted`
+- `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
+
+如果需要新增 app/httpapi 过渡 seam，应在同一变更中更新对应 allowlist、
+这份文档和文档测试；否则优先把新增逻辑放到 owning `internal/*/httpapi`
+包。
+
 ## 审查问题
 
 当后续有人改 HTTP API 装配时，优先问这几个问题：
