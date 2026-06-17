@@ -174,6 +174,7 @@ HTTP API 装配边界由以下测试守住：
 
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted`
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted`
 - `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted`
