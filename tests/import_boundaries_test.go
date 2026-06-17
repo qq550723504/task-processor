@@ -830,6 +830,37 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 	}
 }
 
+func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "productimage")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "failure_test.go")):               {},
+		filepath.Clean(filepath.Join(root, "httpapi", "bootstrap.go")):       {},
+		filepath.Clean(filepath.Join(root, "httpapi", "runtime_builder.go")): {},
+		filepath.Clean(filepath.Join(root, "openai_image_editor.go")):        {},
+		filepath.Clean(filepath.Join(root, "openai_scene_generator.go")):     {},
+		filepath.Clean(filepath.Join(root, "pipeline_test.go")):              {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for _, bannedImport := range []string{
+			`"task-processor/internal/infra/clients/nanobanana"`,
+			`"task-processor/internal/infra/clients/openai"`,
+		} {
+			if _, ok := facts.imports[bannedImport]; ok {
+				t.Errorf("%s imports %s; keep productimage concrete external clients limited to current provider adapter and runtime builder seams", path, bannedImport)
+			}
+		}
+	}
+}
+
 func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) {
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "platforms"), []string{
 		"task-processor/internal/app/httpapi",

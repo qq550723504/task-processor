@@ -89,6 +89,7 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 		"TestBusinessDomainsDoNotImportAppRuntimeAssembly",
 		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
+		"TestProductImageExternalClientImportsStayAllowlisted",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
@@ -162,6 +163,7 @@ func TestExternalClientBoundaryInventoryDefinesCouplingHotspots(t *testing.T) {
 		"`internal/temu`",
 		"Local Interface Rule",
 		"Next Slice Candidates",
+		"TestProductImageExternalClientImportsStayAllowlisted",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {

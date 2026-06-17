@@ -50,6 +50,8 @@ Current direct dependency hotspots are:
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
     concrete adapter construction kept in HTTP/runtime assembly
+  - current direct adapter seams are guarded by
+    `TestProductImageExternalClientImportsStayAllowlisted`
 
 ## Local Interface Rule
 
@@ -75,7 +77,9 @@ adapter types without changing business behavior:
 3. TEMU sync and pricing services currently importing
    `internal/infra/clients/management`.
 4. Product image provider construction currently importing `openai` and
-   `nanobanana` outside the narrow runtime builder path.
+   `nanobanana` outside the narrow runtime builder path. Current imports are
+   explicitly allowlisted; do not add new concrete adapter imports without a
+   local interface seam or a documented runtime-builder exception.
 
 ## Non-goals
 
@@ -96,4 +100,3 @@ When reviewing a change that touches external clients, ask:
    public domain contract?
 4. Does the change reduce coupling in one hotspot, or create a new hotspot?
 5. Is any remaining direct dependency documented as a temporary exception?
-
