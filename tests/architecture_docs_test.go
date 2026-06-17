@@ -65,6 +65,10 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"concrete external client",
 		"boundary exception",
 		"import-boundary and architecture tests",
+		"Current guard coverage",
+		"TestBusinessDomainsDoNotImportAppHTTPAPI",
+		"TestProductImageExternalClientImportsStayAllowlisted",
+		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {

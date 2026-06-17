@@ -29,6 +29,19 @@ Before merging a structural or feature PR, verify:
    cleanup path.
 9. Relevant import-boundary and architecture tests were run.
 
+## Guard Baseline
+
+Use the `Current guard coverage` section in
+`docs/architecture/next-steps.md` as the current import-boundary baseline.
+At minimum, structural review should consider representative guards such as:
+
+- `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `TestProductImageExternalClientImportsStayAllowlisted`
+- `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
+
+If a PR changes the intended boundary, update the owning architecture document
+and its document test in the same change as the code exception.
+
 ## Review References
 
 Use these documents as the stable source of truth:
