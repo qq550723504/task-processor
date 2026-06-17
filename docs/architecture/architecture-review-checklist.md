@@ -48,6 +48,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
 - `TestTrackedLocalArtifactsStayOutOfTools`
 - `TestProductImageExternalClientImportsStayAllowlisted`
+- `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
 - `TestListingPreviewPackageStaysPlatformNeutral`

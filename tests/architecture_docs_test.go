@@ -142,6 +142,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestTrackedLocalArtifactsStayOutOfProductionEntrypoints",
 		"TestTrackedLocalArtifactsStayOutOfTools",
 		"TestProductImageExternalClientImportsStayAllowlisted",
+		"TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted",
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
 		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
 		"TestListingPreviewPackageStaysPlatformNeutral",
