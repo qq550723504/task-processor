@@ -49,6 +49,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestTrackedLocalArtifactsStayOutOfTools`
 - `TestProductImageExternalClientImportsStayAllowlisted`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
+- `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
 - `TestListingPreviewPackageStaysPlatformNeutral`
 
 If a PR changes the intended boundary, update the owning architecture document

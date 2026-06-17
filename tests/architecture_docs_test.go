@@ -143,6 +143,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestTrackedLocalArtifactsStayOutOfTools",
 		"TestProductImageExternalClientImportsStayAllowlisted",
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
+		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
 		"TestListingPreviewPackageStaysPlatformNeutral",
 	}
 	for _, phrase := range required {
