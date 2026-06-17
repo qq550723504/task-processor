@@ -61,6 +61,7 @@ func TestSaleAttributeResolutionHandlerStoresSelectionOnTaskContext(t *testing.T
 	t.Parallel()
 
 	ctx := makeSaleResolutionTaskContext()
+	valueID := 1001
 	resolver := &stubSaleAttributeRuntimeResolver{
 		resolution: &sheinpub.SaleAttributeResolution{
 			Status:                   "resolved",
@@ -69,6 +70,12 @@ func TestSaleAttributeResolutionHandlerStoresSelectionOnTaskContext(t *testing.T
 			SecondaryAttributeID:     87,
 			PrimarySourceDimension:   "Color",
 			SecondarySourceDimension: "Size",
+			SKUAttributes: []sheinpub.ResolvedSaleAttribute{{
+				Scope:            "sku",
+				AttributeID:      87,
+				AttributeValueID: &valueID,
+				Value:            "M",
+			}},
 		},
 	}
 
@@ -91,6 +98,76 @@ func TestSaleAttributeResolutionHandlerStoresSelectionOnTaskContext(t *testing.T
 	}
 	if ctx.SaleAttributeSelection.Source != "runtime_resolver" {
 		t.Fatalf("source = %q, want runtime_resolver", ctx.SaleAttributeSelection.Source)
+	}
+}
+
+func TestSaleAttributeResolutionHandlerDropsUnresolvedSecondarySelection(t *testing.T) {
+	t.Parallel()
+
+	ctx := makeSaleResolutionTaskContext()
+	resolver := &stubSaleAttributeRuntimeResolver{
+		resolution: &sheinpub.SaleAttributeResolution{
+			Status:                   "partial",
+			Source:                   "runtime_resolver",
+			PrimaryAttributeID:       27,
+			SecondaryAttributeID:     87,
+			PrimarySourceDimension:   "Color",
+			SecondarySourceDimension: "Size",
+		},
+	}
+
+	handler := NewSaleAttributeResolutionHandler(resolver)
+	if err := handler.Handle(ctx); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+
+	if ctx.SaleAttributeSelection == nil {
+		t.Fatal("expected primary sale attribute selection to be stored on TaskContext")
+	}
+	if ctx.SaleAttributeSelection.PrimaryAttributeID != 27 {
+		t.Fatalf("primary attribute id = %d, want 27", ctx.SaleAttributeSelection.PrimaryAttributeID)
+	}
+	if ctx.SaleAttributeSelection.SecondaryAttributeID != 0 {
+		t.Fatalf("secondary attribute id = %d, want 0 when secondary mapping is unresolved", ctx.SaleAttributeSelection.SecondaryAttributeID)
+	}
+	if ctx.SaleAttributeSelection.SecondarySourceDimension != "" {
+		t.Fatalf("secondary source dimension = %q, want empty when secondary mapping is unresolved", ctx.SaleAttributeSelection.SecondarySourceDimension)
+	}
+}
+
+func TestSaleAttributeResolutionHandlerKeepsSecondarySelectionWhenSourceDimensionExists(t *testing.T) {
+	t.Parallel()
+
+	ctx := makeSaleResolutionTaskContext()
+	resolver := &stubSaleAttributeRuntimeResolver{
+		resolution: &sheinpub.SaleAttributeResolution{
+			Status:                   "partial",
+			Source:                   "runtime_resolver",
+			PrimaryAttributeID:       27,
+			SecondaryAttributeID:     87,
+			PrimarySourceDimension:   "Color",
+			SecondarySourceDimension: "Size",
+			SKUAttributes: []sheinpub.ResolvedSaleAttribute{{
+				Scope:       "sku",
+				AttributeID: 87,
+				Value:       "M",
+			}},
+		},
+	}
+
+	handler := NewSaleAttributeResolutionHandler(resolver)
+	if err := handler.Handle(ctx); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+
+	if ctx.SaleAttributeSelection == nil {
+		t.Fatal("expected sale attribute selection to be stored on TaskContext")
+	}
+	if ctx.SaleAttributeSelection.SecondaryAttributeID != 87 {
+		t.Fatalf("secondary attribute id = %d, want 87 when source dimension is available for downstream repair", ctx.SaleAttributeSelection.SecondaryAttributeID)
+	}
+	if ctx.SaleAttributeSelection.SecondarySourceDimension != "Size" {
+		t.Fatalf("secondary source dimension = %q, want Size", ctx.SaleAttributeSelection.SecondarySourceDimension)
 	}
 }
 

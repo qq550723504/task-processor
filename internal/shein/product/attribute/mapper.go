@@ -72,6 +72,10 @@ func (m *AttributeMapper) mapSingleAttributeValues(ctx *sheinctx.TaskContext, ru
 
 		result := m.processor.ProcessCustomAttributeValueWithRuntime(ctx, runtime, attr.AttrID, attrValue.Value, isRequired)
 		if !result.Success {
+			logger.GetGlobalLogger("shein/product").Warnf(
+				"custom attribute value mapping failed: attrID=%d value=%q required=%v shouldContinue=%v",
+				attr.AttrID, attrValue.Value, isRequired, result.ShouldContinue,
+			)
 			if !result.ShouldContinue {
 				return nil, fmt.Errorf("failed to create custom attribute value: %s", attrValue.Value)
 			}
