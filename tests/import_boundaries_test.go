@@ -691,6 +691,25 @@ func TestBusinessDomainsDoNotImportAppHTTPAPI(t *testing.T) {
 	}
 }
 
+func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join("..", "internal", "app", "runtime")) + string(os.PathSeparator):                  {},
+		filepath.Clean(filepath.Join("..", "internal", "listingkit", "temporal")) + string(os.PathSeparator):          {},
+		filepath.Clean(filepath.Join("..", "internal", "listingkit", "task_temporal_submission_activity_support.go")): {},
+	}
+	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
+		`"go.temporal.io/api/enums/v1"`,
+		`"go.temporal.io/api/serviceerror"`,
+		`"go.temporal.io/sdk/activity"`,
+		`"go.temporal.io/sdk/client"`,
+		`"go.temporal.io/sdk/converter"`,
+		`"go.temporal.io/sdk/temporal"`,
+		`"go.temporal.io/sdk/testsuite"`,
+		`"go.temporal.io/sdk/worker"`,
+		`"go.temporal.io/sdk/workflow"`,
+	}, allowedFiles)
+}
+
 func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
