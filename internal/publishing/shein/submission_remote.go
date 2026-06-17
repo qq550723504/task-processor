@@ -420,23 +420,6 @@ func lookupSubmissionRemoteInventory(productAPI sheinproduct.ProductAPI, spuName
 	return sheinmarketpub.InventoryConfirmed(resp), nil
 }
 
-func SubmissionRefreshActionMatches(pkg *Package, requestedAction string) bool {
-	return listingsubmission.RefreshActionMatches(ResolveSubmissionRefreshSelection(pkg).Action, requestedAction)
-}
-
-func SubmissionRefreshRequestMatches(pkg *Package, action, requestedRequestID string) bool {
-	var ok bool
-	pkg, ok = SubmissionStatePackage(pkg)
-	if !ok {
-		return false
-	}
-	record := SubmissionRecordForAction(pkg.SubmissionState, action)
-	if record == nil {
-		return false
-	}
-	return listingsubmission.RefreshRequestMatches(record.RequestID, requestedRequestID)
-}
-
 func RemoteLookupSPUName(pkg *Package, action string) string {
 	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.SubmissionState == nil {

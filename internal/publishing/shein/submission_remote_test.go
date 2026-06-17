@@ -350,40 +350,6 @@ func TestResolveSubmissionRecoverySelection(t *testing.T) {
 	}
 }
 
-func TestSubmissionRefreshMutationMatchHelpers(t *testing.T) {
-	t.Parallel()
-
-	pkg := &Package{
-		SubmissionState: &SubmissionReport{
-			LastAction: "save_draft",
-			Publish: &SubmissionRecord{
-				Action:    "publish",
-				RequestID: "publish-req",
-			},
-			SaveDraft: &SubmissionRecord{
-				Action:    "save_draft",
-				RequestID: "save-draft-req",
-			},
-		},
-	}
-
-	if !SubmissionRefreshActionMatches(pkg, "save_draft") {
-		t.Fatal("SubmissionRefreshActionMatches() = false, want true for current action")
-	}
-	if SubmissionRefreshActionMatches(pkg, "publish") {
-		t.Fatal("SubmissionRefreshActionMatches() = true, want false for changed action")
-	}
-	if !SubmissionRefreshRequestMatches(pkg, "publish", " publish-req ") {
-		t.Fatal("SubmissionRefreshRequestMatches() = false, want true after trimming request id")
-	}
-	if SubmissionRefreshRequestMatches(pkg, "publish", "other") {
-		t.Fatal("SubmissionRefreshRequestMatches(other) = true, want false")
-	}
-	if SubmissionRefreshRequestMatches(pkg, "unknown", "publish-req") {
-		t.Fatal("SubmissionRefreshRequestMatches(unknown action) = true, want false")
-	}
-}
-
 func TestSubmissionRemoteDoesNotKeepSubmissionRecordResultGetter(t *testing.T) {
 	t.Parallel()
 
@@ -641,6 +607,8 @@ func TestSubmissionRemoteDoesNotKeepObsoletePolicyWrappers(t *testing.T) {
 	content := string(source)
 	for _, forbidden := range []string{
 		"func SubmissionResponseAcceptedForAction(",
+		"func SubmissionRefreshActionMatches(",
+		"func SubmissionRefreshRequestMatches(",
 		"func BuildSubmissionRefreshLookupInputs(",
 		"func BuildSubmissionRecoveryLookupInputs(",
 		"func BuildSubmissionRefreshRequest(",
