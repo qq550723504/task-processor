@@ -251,8 +251,16 @@ Before merging a refactoring or feature PR, check:
 For the full architecture review checklist, use
 [`architecture-review-checklist.md`](./architecture-review-checklist.md).
 
-## 8. Immediate Enforcement
+## 8. Current Enforcement
 
-Use `scripts/analyze-project-deps.ps1` to generate a dependency baseline and flag likely boundary violations.
+Project boundaries are enforced by import-boundary tests first. Representative
+guards include:
 
-The script is advisory at first. Once known legacy exceptions are cataloged, it can be promoted into CI enforcement.
+- `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
+- `TestInfrastructurePackagesDoNotImportBusinessDomains`
+- `TestBusinessImplementationPackagesDoNotImportGinDirectly`
+
+Use `scripts/analyze-project-deps.ps1` as an advisory dependency baseline when
+reviewing broader refactors, but do not treat the script as a substitute for the
+active guard tests.

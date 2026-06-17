@@ -62,6 +62,28 @@ func TestProjectBoundaryDocumentKeepsPreviewPlacementAlignedWithStablePreviewBou
 	}
 }
 
+func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "project-boundaries.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"Current Enforcement",
+		"import-boundary tests",
+		"TestBusinessDomainsDoNotImportAppHTTPAPI",
+		"TestProjectBoundaryDomainsDoNotImportListingKitFacade",
+		"TestInfrastructurePackagesDoNotImportBusinessDomains",
+		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so project boundary enforcement reflects the active guard tests", path, phrase)
+		}
+	}
+}
+
 func TestHTTPAPIAssemblyBoundaryDocumentTracksGuardTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "httpapi-assembly-boundaries.md")
 	content, err := os.ReadFile(path)
