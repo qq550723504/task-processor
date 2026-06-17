@@ -165,9 +165,18 @@ func applySheinTaskListFields(item *TaskListItem, task *Task, pkg *SheinPackage)
 	if task != nil && task.Result != nil {
 		pod = task.Result.PodExecution
 	}
-	item.SheinBlockingKeys = sheinBlockingKeysWithPod(pkg, pod)
-	item.SheinWarningKeys = sheinWarningKeysWithPod(pkg, pod)
-	item.SheinStatusOverview = buildSheinTaskStatusOverviewWithPod(pkg, pod)
+	readinessProjection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)
+	if readinessProjection != nil {
+		item.SheinStatusOverview = readinessProjection.StatusOverview
+		if readiness := readinessProjection.Readiness; readiness != nil {
+			if len(readiness.BlockingItems) > 0 {
+				item.SheinBlockingKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.BlockingItems))
+			}
+			if len(readiness.WarningItems) > 0 {
+				item.SheinWarningKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.WarningItems))
+			}
+		}
+	}
 	item.SheinWorkQueue = deriveSheinWorkQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview)
 	item.SheinActionQueue = deriveSheinActionQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview, item.SheinBlockingKeys, item.SheinWarningKeys)
 	if submissionProjection != nil {

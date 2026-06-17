@@ -138,6 +138,28 @@ func TestSheinSubmitReadinessProjectionBoundary(t *testing.T) {
 		})
 	})
 
+	t.Run("task_list_fields_reuses_one_readiness_projection_for_state_fields", func(t *testing.T) {
+		t.Parallel()
+
+		source := readNamedFunctionSource(t, "task_list_item_support.go", "applySheinTaskListFields")
+		callNames := readNamedFunctionCallNames(t, "task_list_item_support.go", "applySheinTaskListFields")
+
+		assertSourceContainsAll(t, source, []string{
+			"readinessProjection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)",
+			"item.SheinStatusOverview = readinessProjection.StatusOverview",
+			"item.SheinBlockingKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.BlockingItems))",
+			"item.SheinWarningKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.WarningItems))",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"item.SheinBlockingKeys = sheinBlockingKeysWithPod(pkg, pod)",
+			"item.SheinWarningKeys = sheinWarningKeysWithPod(pkg, pod)",
+			"item.SheinStatusOverview = buildSheinTaskStatusOverviewWithPod(pkg, pod)",
+		})
+		assertFunctionCallsContainAll(t, callNames, []string{
+			"buildSheinSubmitReadinessProjectionWithPod",
+		})
+	})
+
 	t.Run("shared_projection_seam_owns_readiness_checklist_and_status_projection_contract", func(t *testing.T) {
 		t.Parallel()
 
