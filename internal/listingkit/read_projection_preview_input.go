@@ -2,15 +2,15 @@ package listingkit
 
 import previewdomain "task-processor/internal/listing/preview"
 
-func buildListingKitPreviewReadModelInput(result *ListingKitResult, selectedPlatform string) previewdomain.ReadModelInput {
+func buildListingKitPreviewReadModelInput(result *ListingKitResult, platformCards []ListingKitPlatformCard) previewdomain.ReadModelInput {
 	return previewdomain.ReadModelInput{
 		NeedsReview: calculateListingKitNeedsReview(result),
 		Attachment:  buildListingKitPreviewAttachmentInput(result),
-		Overview:    buildListingKitPreviewHeaderInput(result, selectedPlatform),
+		Overview:    buildListingKitPreviewHeaderInput(result, platformCards),
 	}
 }
 
-func buildListingKitPreviewHeaderInput(result *ListingKitResult, selectedPlatform string) *previewdomain.HeaderInput {
+func buildListingKitPreviewHeaderInput(result *ListingKitResult, platformCards []ListingKitPlatformCard) *previewdomain.HeaderInput {
 	if result == nil {
 		return nil
 	}
@@ -27,7 +27,6 @@ func buildListingKitPreviewHeaderInput(result *ListingKitResult, selectedPlatfor
 		input.VariantCount = result.Summary.VariantCount
 		input.Warnings = append([]string(nil), result.Summary.Warnings...)
 	}
-	platformCards := buildPlatformPreviewCards(result, selectedPlatform)
 	if len(platformCards) > 0 {
 		input.PlatformCards = make([]previewdomain.PlatformCard, 0, len(platformCards))
 		for _, card := range platformCards {

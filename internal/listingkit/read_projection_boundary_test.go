@@ -46,4 +46,30 @@ func TestListingKitReadProjectionBoundary(t *testing.T) {
 			"return assetRenderPreviews, platformRenderPreviews, result.AssetGenerationQueue, result.AssetGenerationOverview",
 		})
 	})
+
+	t.Run("preview_input_reuses_read_projection_platform_cards", func(t *testing.T) {
+		t.Parallel()
+
+		readSource := readNamedFunctionSource(t, "read_projection.go", "buildListingKitReadProjection")
+		inputSource := readNamedFunctionSource(t, "read_projection_preview_input.go", "buildListingKitPreviewReadModelInput")
+		headerSource := readNamedFunctionSource(t, "read_projection_preview_input.go", "buildListingKitPreviewHeaderInput")
+
+		assertSourceContainsAll(t, readSource, []string{
+			"platformCards := buildPlatformPreviewCards(result, selectedPlatform)",
+			"previewInput := buildListingKitPreviewReadModelInput(result, platformCards)",
+		})
+		assertSourceExcludesAll(t, readSource, []string{
+			"previewInput := buildListingKitPreviewReadModelInput(result, selectedPlatform)",
+		})
+		assertSourceContainsAll(t, inputSource, []string{
+			"func buildListingKitPreviewReadModelInput(result *ListingKitResult, platformCards []ListingKitPlatformCard) previewdomain.ReadModelInput",
+			"Overview:    buildListingKitPreviewHeaderInput(result, platformCards)",
+		})
+		assertSourceContainsAll(t, headerSource, []string{
+			"func buildListingKitPreviewHeaderInput(result *ListingKitResult, platformCards []ListingKitPlatformCard) *previewdomain.HeaderInput",
+		})
+		assertSourceExcludesAll(t, headerSource, []string{
+			"platformCards := buildPlatformPreviewCards(result, selectedPlatform)",
+		})
+	})
 }
