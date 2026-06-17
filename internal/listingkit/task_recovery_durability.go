@@ -23,7 +23,7 @@ func (s *taskRecoveryService) restoreRecoveryDurability(ctx context.Context, tas
 		return joined
 	}
 	if strings.TrimSpace(restoreBlock.RecoveryScope) == "" {
-		restoreBlock.RecoveryScope = retryableRecoveryScopeTask
+		restoreBlock.RecoveryScope = submissiondomain.RetryableRecoveryScopeTask
 	}
 	if restoreBlock.BlockedAt.IsZero() {
 		restoreBlock.BlockedAt = s.currentTime()
@@ -39,7 +39,7 @@ func (s *taskRecoveryService) buildReblockedTask(previous *RetryableBlock, class
 		adaptRetryableBlockState(previous),
 		adaptRetryableBlockState(classified),
 		recoveredAt,
-		retryableRecoveryScopeTask,
+		submissiondomain.RetryableRecoveryScopeTask,
 	))
 }
 

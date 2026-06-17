@@ -32,13 +32,13 @@ func TestRecoverTaskNowRequeuesBlockedTask(t *testing.T) {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{
-		ReasonCode:           retryableBlockReasonCodeWorkerQueueBackpressure,
+		ReasonCode:           listingsubmission.RetryableReasonCodeWorkerQueueBackpressure,
 		ReasonMessage:        "queue full",
 		BlockedAt:            now.Add(-5 * time.Minute),
 		NextRetryAt:          &nextRetryAt,
 		RetryAttempts:        2,
 		MaxAutoRetryAttempts: 8,
-		RecoveryScope:        retryableRecoveryScopeTask,
+		RecoveryScope:        listingsubmission.RetryableRecoveryScopeTask,
 		AutoResumeEnabled:    true,
 	}, "queue full"); err != nil {
 		t.Fatalf("MarkBlockedRetryable() error = %v", err)
@@ -90,13 +90,13 @@ func TestRecoverTaskNowForcesImmediateRecoveryBeforeNextRetryAt(t *testing.T) {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{
-		ReasonCode:           retryableBlockReasonCodeOpenAIRateLimited,
+		ReasonCode:           listingsubmission.RetryableReasonCodeOpenAIRateLimited,
 		ReasonMessage:        "rate limited",
 		BlockedAt:            now.Add(-5 * time.Minute),
 		NextRetryAt:          &futureRetryAt,
 		RetryAttempts:        2,
 		MaxAutoRetryAttempts: 8,
-		RecoveryScope:        retryableRecoveryScopeTask,
+		RecoveryScope:        listingsubmission.RetryableRecoveryScopeTask,
 		AutoResumeEnabled:    true,
 	}, "rate limited"); err != nil {
 		t.Fatalf("MarkBlockedRetryable() error = %v", err)
@@ -157,13 +157,13 @@ func TestRunRecoverySweepRequeuesDueBlockedTasksOnly(t *testing.T) {
 			t.Fatalf("CreateTask(%s) error = %v", fixture.id, err)
 		}
 		if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{
-			ReasonCode:           retryableBlockReasonCodeWorkerQueueBackpressure,
+			ReasonCode:           listingsubmission.RetryableReasonCodeWorkerQueueBackpressure,
 			ReasonMessage:        "queue full",
 			BlockedAt:            now.Add(-5 * time.Minute),
 			NextRetryAt:          &fixture.nextRetryAt,
 			RetryAttempts:        1,
 			MaxAutoRetryAttempts: 8,
-			RecoveryScope:        retryableRecoveryScopeTask,
+			RecoveryScope:        listingsubmission.RetryableRecoveryScopeTask,
 			AutoResumeEnabled:    true,
 		}, "queue full"); err != nil {
 			t.Fatalf("MarkBlockedRetryable(%s) error = %v", fixture.id, err)
@@ -238,13 +238,13 @@ func TestBulkRecoverTasksSkipsNotRecoverableItems(t *testing.T) {
 			t.Fatalf("CreateTask(%s) error = %v", fixture.id, err)
 		}
 		if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{
-			ReasonCode:           retryableBlockReasonCodeWorkerQueueBackpressure,
+			ReasonCode:           listingsubmission.RetryableReasonCodeWorkerQueueBackpressure,
 			ReasonMessage:        "queue full",
 			BlockedAt:            now.Add(-5 * time.Minute),
 			NextRetryAt:          &fixture.nextRetryAt,
 			RetryAttempts:        1,
 			MaxAutoRetryAttempts: 8,
-			RecoveryScope:        retryableRecoveryScopeTask,
+			RecoveryScope:        listingsubmission.RetryableRecoveryScopeTask,
 			AutoResumeEnabled:    true,
 		}, "queue full"); err != nil {
 			t.Fatalf("MarkBlockedRetryable(%s) error = %v", fixture.id, err)
@@ -378,13 +378,13 @@ func TestRecoverTaskNowReblocksRetryableSubmitFailures(t *testing.T) {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{
-		ReasonCode:           retryableBlockReasonCodeWorkerQueueBackpressure,
+		ReasonCode:           listingsubmission.RetryableReasonCodeWorkerQueueBackpressure,
 		ReasonMessage:        "queue full",
 		BlockedAt:            now.Add(-5 * time.Minute),
 		NextRetryAt:          &nextRetryAt,
 		RetryAttempts:        2,
 		MaxAutoRetryAttempts: 8,
-		RecoveryScope:        retryableRecoveryScopeTask,
+		RecoveryScope:        listingsubmission.RetryableRecoveryScopeTask,
 		AutoResumeEnabled:    true,
 	}, "queue full"); err != nil {
 		t.Fatalf("MarkBlockedRetryable() error = %v", err)
@@ -473,12 +473,12 @@ func TestRecoverTaskNowRestoresBlockedStateWhenReblockPersistenceFails(t *testin
 	now := time.Date(2026, 6, 6, 17, 40, 0, 0, time.UTC)
 	nextRetryAt := now.Add(-time.Minute)
 	originalBlock := RetryableBlock{
-		ReasonCode:           retryableBlockReasonCodeWorkerQueueBackpressure,
+		ReasonCode:           listingsubmission.RetryableReasonCodeWorkerQueueBackpressure,
 		ReasonMessage:        "queue full",
 		BlockedAt:            now.Add(-5 * time.Minute),
 		RetryAttempts:        2,
 		MaxAutoRetryAttempts: 8,
-		RecoveryScope:        retryableRecoveryScopeTask,
+		RecoveryScope:        listingsubmission.RetryableRecoveryScopeTask,
 		AutoResumeEnabled:    true,
 	}
 	createBlockedRecoveryTask(t, repo, ctx, "task-restore", now, nextRetryAt, originalBlock)
@@ -528,12 +528,12 @@ func TestBuildReblockedTaskPreservesManualPauseAndAutoResumeDisabled(t *testing.
 	})
 
 	previous := &RetryableBlock{
-		ReasonCode:           retryableBlockReasonCodeWorkerQueueBackpressure,
+		ReasonCode:           listingsubmission.RetryableReasonCodeWorkerQueueBackpressure,
 		ReasonMessage:        "queue full",
 		BlockedAt:            now.Add(-5 * time.Minute),
 		RetryAttempts:        1,
 		MaxAutoRetryAttempts: 8,
-		RecoveryScope:        retryableRecoveryScopeTask,
+		RecoveryScope:        listingsubmission.RetryableRecoveryScopeTask,
 		AutoResumeEnabled:    false,
 		AutoRetryPaused:      true,
 	}
@@ -578,14 +578,14 @@ func createBlockedRecoveryTask(t *testing.T, repo *taskRecoveryServiceTestRepo, 
 	if err := repo.CreateTask(ctx, task); err != nil {
 		t.Fatalf("CreateTask(%s) error = %v", taskID, err)
 	}
-	block.ReasonCode = firstNonEmpty(block.ReasonCode, retryableBlockReasonCodeWorkerQueueBackpressure)
+	block.ReasonCode = firstNonEmpty(block.ReasonCode, listingsubmission.RetryableReasonCodeWorkerQueueBackpressure)
 	block.ReasonMessage = firstNonEmpty(block.ReasonMessage, "queue full")
 	block.BlockedAt = firstNonZeroTime(block.BlockedAt, now.Add(-5*time.Minute))
 	if block.NextRetryAt == nil {
 		block.NextRetryAt = timestampTaskRecoveryServiceTest(nextRetryAt)
 	}
 	if block.RecoveryScope == "" {
-		block.RecoveryScope = retryableRecoveryScopeTask
+		block.RecoveryScope = listingsubmission.RetryableRecoveryScopeTask
 	}
 	if err := repo.MarkBlockedRetryable(ctx, taskID, &block, block.ReasonMessage); err != nil {
 		t.Fatalf("MarkBlockedRetryable(%s) error = %v", taskID, err)

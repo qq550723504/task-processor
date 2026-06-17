@@ -10,18 +10,6 @@ import (
 	submissiondomain "task-processor/internal/listing/submission"
 )
 
-const (
-	retryableBlockReasonCodeOpenAIInsufficientCredits    = "openai_insufficient_credits"
-	retryableBlockReasonCodeOpenAIRateLimited            = "openai_rate_limited"
-	retryableBlockReasonCodeUpstreamTimeout              = "upstream_timeout"
-	retryableBlockReasonCodeUpstreamTransientUnavailable = "upstream_transient_unavailable"
-	retryableBlockReasonCodeWorkerQueueBackpressure      = "worker_queue_backpressure"
-)
-
-const (
-	retryableRecoveryScopeTask = "task"
-)
-
 type RetryableBlock struct {
 	ReasonCode           string     `json:"reason_code,omitempty"`
 	ReasonMessage        string     `json:"reason_message,omitempty"`

@@ -3,6 +3,8 @@ package listingkit
 import (
 	"errors"
 	"testing"
+
+	submissiondomain "task-processor/internal/listing/submission"
 )
 
 func TestClassifyRetryableTaskFailure_OpenAIInsufficientCredits(t *testing.T) {
@@ -15,8 +17,8 @@ func TestClassifyRetryableTaskFailure_OpenAIInsufficientCredits(t *testing.T) {
 	if block == nil {
 		t.Fatal("classifyRetryableTaskFailure() block = nil, want retryable block")
 	}
-	if block.ReasonCode != retryableBlockReasonCodeOpenAIInsufficientCredits {
-		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, retryableBlockReasonCodeOpenAIInsufficientCredits)
+	if block.ReasonCode != submissiondomain.RetryableReasonCodeOpenAIInsufficientCredits {
+		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, submissiondomain.RetryableReasonCodeOpenAIInsufficientCredits)
 	}
 	if block.ReasonMessage == "" {
 		t.Fatal("ReasonMessage = empty, want preserved detail")
@@ -30,8 +32,8 @@ func TestClassifyRetryableTaskFailure_RateLimited(t *testing.T) {
 	if !ok || block == nil {
 		t.Fatalf("classifyRetryableTaskFailure() = (%+v, %t), want retryable block", block, ok)
 	}
-	if block.ReasonCode != retryableBlockReasonCodeOpenAIRateLimited {
-		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, retryableBlockReasonCodeOpenAIRateLimited)
+	if block.ReasonCode != submissiondomain.RetryableReasonCodeOpenAIRateLimited {
+		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, submissiondomain.RetryableReasonCodeOpenAIRateLimited)
 	}
 }
 
@@ -42,8 +44,8 @@ func TestClassifyRetryableTaskFailure_UpstreamTimeout(t *testing.T) {
 	if !ok || block == nil {
 		t.Fatalf("classifyRetryableTaskFailure() = (%+v, %t), want retryable block", block, ok)
 	}
-	if block.ReasonCode != retryableBlockReasonCodeUpstreamTimeout {
-		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, retryableBlockReasonCodeUpstreamTimeout)
+	if block.ReasonCode != submissiondomain.RetryableReasonCodeUpstreamTimeout {
+		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, submissiondomain.RetryableReasonCodeUpstreamTimeout)
 	}
 }
 
@@ -54,8 +56,8 @@ func TestClassifyRetryableTaskFailure_TransientUnavailable(t *testing.T) {
 	if !ok || block == nil {
 		t.Fatalf("classifyRetryableTaskFailure() = (%+v, %t), want retryable block", block, ok)
 	}
-	if block.ReasonCode != retryableBlockReasonCodeUpstreamTransientUnavailable {
-		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, retryableBlockReasonCodeUpstreamTransientUnavailable)
+	if block.ReasonCode != submissiondomain.RetryableReasonCodeUpstreamTransientUnavailable {
+		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, submissiondomain.RetryableReasonCodeUpstreamTransientUnavailable)
 	}
 }
 
@@ -66,8 +68,8 @@ func TestClassifyRetryableTaskFailure_WorkerQueueBackpressure(t *testing.T) {
 	if !ok || block == nil {
 		t.Fatalf("classifyRetryableTaskFailure() = (%+v, %t), want retryable block", block, ok)
 	}
-	if block.ReasonCode != retryableBlockReasonCodeWorkerQueueBackpressure {
-		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, retryableBlockReasonCodeWorkerQueueBackpressure)
+	if block.ReasonCode != submissiondomain.RetryableReasonCodeWorkerQueueBackpressure {
+		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, submissiondomain.RetryableReasonCodeWorkerQueueBackpressure)
 	}
 }
 
@@ -119,8 +121,8 @@ func TestClassifyRetryableTaskFailure_TransportEOF(t *testing.T) {
 		if !ok || block == nil {
 			t.Fatalf("classifyRetryableTaskFailure(%q) = (%+v, %t), want retryable block", err.Error(), block, ok)
 		}
-		if block.ReasonCode != retryableBlockReasonCodeUpstreamTransientUnavailable {
-			t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, retryableBlockReasonCodeUpstreamTransientUnavailable)
+		if block.ReasonCode != submissiondomain.RetryableReasonCodeUpstreamTransientUnavailable {
+			t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, submissiondomain.RetryableReasonCodeUpstreamTransientUnavailable)
 		}
 	}
 }

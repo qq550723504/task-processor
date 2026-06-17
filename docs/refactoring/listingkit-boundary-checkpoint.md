@@ -305,6 +305,8 @@ Completed submission slices:
 - the obsolete actionless `internal/publishing/shein.SubmissionResponseAccepted` wrapper has been removed; the remaining action-aware response acceptance entrypoint stays only as `SubmissionResponse` field adaptation before marketplace policy evaluation.
 - the obsolete internal `internal/publishing/shein.SubmissionRecordResult` getter has been removed; remote publish-accepted adaptation now reads the selected submission record response directly before calling marketplace policy.
 - the obsolete private `internal/publishing/shein.submissionPhaseDetail` forwarding wrapper has been removed; phase-event assembly now calls the marketplace publishing phase-detail policy directly.
+- submit base/support wiring now reuses the submission assembly's repository and runtime resolver snapshots; managed and Temporal collaborator wiring flow through the shared assembly completion path, `buildTaskSubmissionSupportWiringWithAssembly` no longer rebuilds support dependencies before overriding them, and core collaborator wiring is explicitly kept off the base assembly path because base assembly bindings resolve core collaborators.
+- retryable failure reason-code and default task recovery-scope ownership now live in `internal/listing/submission`; root `internal/listingkit` references those submission-domain metadata constants directly instead of keeping root-side retry metadata aliases.
 
 Completed sourcing slices:
 

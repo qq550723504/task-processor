@@ -34,7 +34,7 @@ func backfillRetryableBlockedTasks(ctx context.Context, repo Repository, created
 		},
 		Now:                  func() time.Time { return time.Now().UTC() },
 		MaxAutoRetryAttempts: taskRecoveryBackfillMaxAutoRetryAttempt,
-		DefaultRecoveryScope: retryableRecoveryScopeTask,
+		DefaultRecoveryScope: listingsubmission.RetryableRecoveryScopeTask,
 	})
 	return service.Backfill(ctx, listingsubmission.RetryableBackfillRequest{
 		CreatedAfter: createdAfter,

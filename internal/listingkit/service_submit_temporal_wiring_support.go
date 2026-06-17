@@ -104,9 +104,7 @@ func (w taskTemporalSubmissionCollaboratorWiring) resolve(existing taskTemporalS
 }
 
 func buildTaskTemporalSubmissionWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskTemporalSubmissionWiring {
-	if assembly.resolver == nil {
-		assembly = buildTaskSubmissionAssembly(s)
-	}
+	assembly = completeTaskSubmissionAssembly(s, assembly)
 	return taskTemporalSubmissionWiring{
 		assembly:     assembly,
 		orchestrator: buildTaskSubmissionOrchestratorWiring(s, assembly.resolver),

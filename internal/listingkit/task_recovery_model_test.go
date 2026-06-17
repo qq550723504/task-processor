@@ -1,8 +1,12 @@
 package listingkit
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
+
+	submissiondomain "task-processor/internal/listing/submission"
 )
 
 func TestTaskStatusBlockedRetryable_IsNotTerminal(t *testing.T) {
@@ -26,14 +30,14 @@ func TestTaskResultLifecycleCarriesRetryableBlock(t *testing.T) {
 		CreatedAt: now.Add(-time.Hour),
 		UpdatedAt: now,
 		RetryableBlock: &RetryableBlock{
-			ReasonCode:           retryableBlockReasonCodeWorkerQueueBackpressure,
+			ReasonCode:           submissiondomain.RetryableReasonCodeWorkerQueueBackpressure,
 			ReasonMessage:        "工作队列已满",
 			BlockedAt:            now.Add(-15 * time.Minute),
 			LastRetryAt:          &now,
 			NextRetryAt:          &nextRetryAt,
 			RetryAttempts:        3,
 			MaxAutoRetryAttempts: 12,
-			RecoveryScope:        retryableRecoveryScopeTask,
+			RecoveryScope:        submissiondomain.RetryableRecoveryScopeTask,
 			AutoResumeEnabled:    true,
 		},
 	}
@@ -48,8 +52,8 @@ func TestTaskResultLifecycleCarriesRetryableBlock(t *testing.T) {
 	if result.RetryableBlock == nil {
 		t.Fatal("RetryableBlock = nil, want carried retryable block")
 	}
-	if result.RetryableBlock.ReasonCode != retryableBlockReasonCodeWorkerQueueBackpressure {
-		t.Fatalf("ReasonCode = %q, want %q", result.RetryableBlock.ReasonCode, retryableBlockReasonCodeWorkerQueueBackpressure)
+	if result.RetryableBlock.ReasonCode != submissiondomain.RetryableReasonCodeWorkerQueueBackpressure {
+		t.Fatalf("ReasonCode = %q, want %q", result.RetryableBlock.ReasonCode, submissiondomain.RetryableReasonCodeWorkerQueueBackpressure)
 	}
 	if result.RetryableBlock.NextRetryAt == nil || !result.RetryableBlock.NextRetryAt.Equal(nextRetryAt) {
 		t.Fatalf("NextRetryAt = %v, want %v", result.RetryableBlock.NextRetryAt, nextRetryAt)
@@ -112,5 +116,21 @@ func TestRetryableBlockCloneDeepCopiesRetryPointers(t *testing.T) {
 	}
 	if cloned.NextRetryAt.Equal(updatedNextRetryAt) {
 		t.Fatalf("cloned NextRetryAt mutated to %v, want original %v", cloned.NextRetryAt, nextRetryAt)
+	}
+}
+
+func TestRetryableBlockReasonCodesUseSubmissionDomainConstants(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("retryable_block.go")
+	if err != nil {
+		t.Fatalf("ReadFile(retryable_block.go) error = %v", err)
+	}
+	content := string(source)
+	if strings.Contains(content, "retryableBlockReasonCode") {
+		t.Fatal("retryable_block.go should not keep root retryable reason-code aliases")
+	}
+	if strings.Contains(content, "retryableRecoveryScopeTask") {
+		t.Fatal("retryable_block.go should not keep root retryable recovery-scope aliases")
 	}
 }

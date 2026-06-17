@@ -2,6 +2,8 @@ package submission
 
 import (
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -18,13 +20,13 @@ func TestClassifyRetryableFailure(t *testing.T) {
 		{
 			name:           "insufficient credits",
 			err:            errors.New("OpenAI API error: insufficient credits in account balance"),
-			wantReasonCode: retryableBlockReasonCodeOpenAIInsufficientCredits,
+			wantReasonCode: RetryableReasonCodeOpenAIInsufficientCredits,
 			wantRetryable:  true,
 		},
 		{
 			name:           "worker queue full",
 			err:            errors.New("queue full"),
-			wantReasonCode: retryableBlockReasonCodeWorkerQueueBackpressure,
+			wantReasonCode: RetryableReasonCodeWorkerQueueBackpressure,
 			wantRetryable:  true,
 		},
 		{
@@ -69,7 +71,7 @@ func TestBuildReblockedRetryableBlockPreservesManualPause(t *testing.T) {
 
 	now := time.Date(2026, 6, 6, 17, 45, 0, 0, time.UTC)
 	previous := &RetryableBlockState{
-		ReasonCode:           retryableBlockReasonCodeWorkerQueueBackpressure,
+		ReasonCode:           RetryableReasonCodeWorkerQueueBackpressure,
 		ReasonMessage:        "queue full",
 		BlockedAt:            now.Add(-5 * time.Minute),
 		RetryAttempts:        1,
@@ -111,8 +113,8 @@ func TestBuildBackfilledRetryableBlock(t *testing.T) {
 	if !ok || block == nil {
 		t.Fatalf("BuildBackfilledRetryableBlock() = (%+v, %t), want retryable block", block, ok)
 	}
-	if block.ReasonCode != retryableBlockReasonCodeOpenAIInsufficientCredits {
-		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, retryableBlockReasonCodeOpenAIInsufficientCredits)
+	if block.ReasonCode != RetryableReasonCodeOpenAIInsufficientCredits {
+		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, RetryableReasonCodeOpenAIInsufficientCredits)
 	}
 	if !block.BlockedAt.Equal(blockedAt) {
 		t.Fatalf("BlockedAt = %v, want %v", block.BlockedAt, blockedAt)
@@ -142,8 +144,8 @@ func TestPersistClassifiedRetryableFailure(t *testing.T) {
 				if block == nil {
 					t.Fatal("block = nil, want retryable block")
 				}
-				if block.ReasonCode != retryableBlockReasonCodeWorkerQueueBackpressure {
-					t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, retryableBlockReasonCodeWorkerQueueBackpressure)
+				if block.ReasonCode != RetryableReasonCodeWorkerQueueBackpressure {
+					t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, RetryableReasonCodeWorkerQueueBackpressure)
 				}
 				if errorMessage != "queue full" {
 					t.Fatalf("error message = %q, want queue full", errorMessage)
@@ -197,4 +199,16 @@ func TestPersistClassifiedRetryableFailure(t *testing.T) {
 			t.Fatal("MarkFailed was not called")
 		}
 	})
+}
+
+func TestRetryableBlockUsesExportedReasonCodeConstantsInternally(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("retryable_block.go")
+	if err != nil {
+		t.Fatalf("ReadFile(retryable_block.go) error = %v", err)
+	}
+	if strings.Contains(string(source), "retryableBlockReasonCode") {
+		t.Fatal("retryable_block.go should use exported RetryableReasonCode constants directly")
+	}
 }

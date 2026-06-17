@@ -9,6 +9,7 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
+	submissiondomain "task-processor/internal/listing/submission"
 	"task-processor/internal/productenrich"
 )
 
@@ -102,8 +103,8 @@ func TestCreateGenerateTaskAsyncRetryMarksRetryableFailureWhenRetryStops(t *test
 	if stored.RetryableBlock == nil {
 		t.Fatal("stored RetryableBlock = nil, want retry metadata")
 	}
-	if stored.RetryableBlock.ReasonCode != retryableBlockReasonCodeWorkerQueueBackpressure {
-		t.Fatalf("ReasonCode = %q, want %q", stored.RetryableBlock.ReasonCode, retryableBlockReasonCodeWorkerQueueBackpressure)
+	if stored.RetryableBlock.ReasonCode != submissiondomain.RetryableReasonCodeWorkerQueueBackpressure {
+		t.Fatalf("ReasonCode = %q, want %q", stored.RetryableBlock.ReasonCode, submissiondomain.RetryableReasonCodeWorkerQueueBackpressure)
 	}
 	if stored.Error == "" || !strings.Contains(stored.Error, "工作队列已满") {
 		t.Fatalf("stored error = %q, want queue backpressure message", stored.Error)
@@ -201,8 +202,8 @@ func TestProcessFlowMarksOpenAICreditFailureAsBlockedRetryable(t *testing.T) {
 	if stored.RetryableBlock == nil {
 		t.Fatal("stored RetryableBlock = nil, want retry metadata")
 	}
-	if stored.RetryableBlock.ReasonCode != retryableBlockReasonCodeOpenAIInsufficientCredits {
-		t.Fatalf("ReasonCode = %q, want %q", stored.RetryableBlock.ReasonCode, retryableBlockReasonCodeOpenAIInsufficientCredits)
+	if stored.RetryableBlock.ReasonCode != submissiondomain.RetryableReasonCodeOpenAIInsufficientCredits {
+		t.Fatalf("ReasonCode = %q, want %q", stored.RetryableBlock.ReasonCode, submissiondomain.RetryableReasonCodeOpenAIInsufficientCredits)
 	}
 }
 

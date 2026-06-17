@@ -16,7 +16,7 @@ func persistClassifiedTaskFailure(ctx context.Context, repo Repository, taskID s
 		return fmt.Errorf("repository is nil")
 	}
 	return submissiondomain.PersistClassifiedRetryableFailure(submissiondomain.RetryableFailurePersistenceRequest{
-		DefaultRecoveryScope: retryableRecoveryScopeTask,
+		DefaultRecoveryScope: submissiondomain.RetryableRecoveryScopeTask,
 		ErrorMessage:         errorMsg,
 		Cause:                cause,
 		MarkBlockedRetryable: func(block *submissiondomain.RetryableBlockState, markedErrorMsg string) error {

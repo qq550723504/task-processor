@@ -4385,6 +4385,8 @@ func TestTaskSubmissionServiceConfigsUseSharedSupportWiring(t *testing.T) {
 		"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
 		"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
 		"func resolveSubmissionWorkflowClient(s *service) (SheinPublishWorkflowClient, bool) {",
+		"assembly = buildTaskSubmissionAssembly(s)",
+		"wiring := buildTaskSubmissionSupportWiring(s)",
 	} {
 		if strings.Contains(supportContent, needle) {
 			t.Fatalf("service_submit_wiring_support.go should not contain %q after resolution/config split", needle)
@@ -4539,6 +4541,7 @@ func TestTaskTemporalSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func buildTaskTemporalSubmissionFacadeWiring(s *service) taskTemporalSubmissionFacadeWiring {",
 		"func (w taskTemporalSubmissionCollaboratorWiring) newFacade(",
 		"collaborators.facade",
+		"assembly = buildTaskSubmissionAssembly(s)",
 	} {
 		if strings.Contains(supportContent, needle) || strings.Contains(content, needle) {
 			t.Fatalf("temporal collaborator wiring should not retain facade seam %q", needle)
@@ -4617,6 +4620,10 @@ func TestTaskManagedSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 			t.Fatalf("service_submit_managed_wiring_support.go should contain %q", needle)
 		}
 	}
+
+	if strings.Contains(supportContent, "assembly = buildTaskSubmissionAssembly(s)") {
+		t.Fatal("managed submission wiring should complete the provided assembly instead of rebuilding it")
+	}
 }
 
 func TestTaskSubmissionCoreCollaboratorsShareOneEnsureSeam(t *testing.T) {
@@ -4672,6 +4679,10 @@ func TestTaskSubmissionCoreCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
 		}
+	}
+
+	if strings.Contains(supportContent, "func buildTaskSubmissionCoreCollaboratorWiring(s *service) taskSubmissionCoreCollaboratorWiring {\n\tbase := buildTaskSubmissionBaseWiring(s)") {
+		t.Fatal("core submission collaborator wiring must not build base wiring because base assembly bindings resolve core collaborators")
 	}
 }
 

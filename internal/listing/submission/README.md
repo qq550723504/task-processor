@@ -55,6 +55,8 @@ Current stable ownership:
 - generic requeue task-id normalization for dedupe/trim request shaping
 - generic submit-in-progress error ownership for non-SHEIN-specific API/service/Temporal callsites
 - preferred submit-action selection policy for choosing the first supported action from ordered candidates
+- exported retryable failure reason-code and default task recovery-scope constants for durable retry metadata
+- root ListingKit retryable-block compatibility now consumes those exported reason-code and recovery-scope constants directly instead of keeping root-side retry metadata aliases
 
 Does not own yet:
 
