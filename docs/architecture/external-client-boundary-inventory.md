@@ -58,6 +58,9 @@ Current direct dependency hotspots are:
 - `internal/app`
   - expected to construct concrete clients, but should avoid leaking concrete
     client types into business-facing contracts when a narrower port is enough
+  - ProductImage model/default provider assembly seams in `internal/app/httpapi`
+    are guarded by
+    `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `internal/productimage`
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
@@ -104,8 +107,9 @@ adapter types without changing business behavior:
    than adding new concrete OpenAI adapter call sites.
 5. Product image provider construction currently importing `openai` and
    `nanobanana` outside the narrow runtime builder path. Current imports are
-   explicitly allowlisted; do not add new concrete adapter imports without a
-   local interface seam or a documented runtime-builder exception.
+   explicitly allowlisted in both productimage-owned and app/httpapi ProductImage
+   assembly seams; do not add new concrete adapter imports without a local
+   interface seam or a documented runtime-builder exception.
 
 ## Non-goals
 

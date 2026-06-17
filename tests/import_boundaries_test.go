@@ -1002,6 +1002,36 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "httpapi")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "modules_productimage_models.go")):      {},
+		filepath.Clean(filepath.Join(root, "productimage_model_defaults_test.go")): {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if !strings.Contains(strings.ToLower(filepath.Base(path)), "productimage") {
+			continue
+		}
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for _, bannedImport := range []string{
+			`"task-processor/internal/infra/clients/nanobanana"`,
+			`"task-processor/internal/infra/clients/openai"`,
+		} {
+			if _, ok := facts.imports[bannedImport]; ok {
+				t.Errorf("%s imports %s; keep app/httpapi ProductImage concrete external clients limited to current model defaults and provider assembly seams", path, bannedImport)
+			}
+		}
+	}
+}
+
 func TestTEMUSyncAndPricingManagementImportsStayAllowlisted(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "temu", "pricing", "auto_pricing_service.go")):        {},
