@@ -320,6 +320,11 @@ func TestCompatibilityRetirementDocumentCapturesAppCompatibilityStatus(t *testin
 		"zero in-repository imports",
 		"TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer",
 		"TestAppStateCompatibilityLayerIsRetired",
+		"`internal/infra/productcrawler`",
+		"`internal/app/crawler/fetcher`",
+		"TestInfraProductCrawlerAdapterIsRetired",
+		"TestAppCrawlerFetcherCompatibilityLayerIsRetired",
+		"TestCmdPackagesDoNotImportAppCompatibilityLayers",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {

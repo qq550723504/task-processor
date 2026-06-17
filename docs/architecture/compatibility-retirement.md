@@ -14,6 +14,8 @@ is gone they should not silently return as parallel APIs.
 | --- | --- | --- | --- |
 | `internal/app/processor` | Retired | `internal/processor` | `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`, `TestAppProcessorCompatibilityLayerIsRetired` |
 | `internal/app/state` | Retired for Go code | `internal/state` | `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`, `TestAppStateCompatibilityLayerIsRetired` |
+| `internal/infra/productcrawler` | Retired | `internal/product/sourcing` plus app crawler fetchers | `TestInfraProductCrawlerAdapterIsRetired` |
+| `internal/app/crawler/fetcher` | Retired | `internal/crawler/fetcher` | `TestAppCrawlerFetcherCompatibilityLayerIsRetired` |
 
 The retirement condition for both paths is zero in-repository imports. New Go
 code must not import either app compatibility path.
@@ -21,6 +23,9 @@ code must not import either app compatibility path.
 `internal/app/state` may still appear locally as an ignored runtime-artifact
 directory on developer machines, but it must not contain tracked Go
 compatibility files. State owners should use `internal/state` directly.
+
+Production entrypoints must not keep compatibility paths alive. This is guarded
+by `TestCmdPackagesDoNotImportAppCompatibilityLayers`.
 
 ## Retirement Conditions
 
