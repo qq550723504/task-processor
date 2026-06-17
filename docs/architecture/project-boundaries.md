@@ -266,6 +266,8 @@ guards include:
 - `TestListingKitDoesNotImportSheinAPIRoot`
 - `TestListingKitNonAPISheinImportsStayAllowlisted`
 - `TestListingKitAmazonListingImportsStayAllowlisted`
+- `TestCatalogDoesNotDependOnProductEnrichAliases`
+- `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 

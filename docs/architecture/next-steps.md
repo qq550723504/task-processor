@@ -94,6 +94,8 @@ Current guard coverage:
 - `TestListingKitDoesNotImportSheinAPIRoot` 禁止 ListingKit 根 facade 重新依赖 SHEIN API root
 - `TestListingKitNonAPISheinImportsStayAllowlisted` 禁止 ListingKit 根 facade 新增未登记的非 API SHEIN 实现依赖，当前 adapter seam 必须精确登记
 - `TestListingKitAmazonListingImportsStayAllowlisted` 禁止 ListingKit 根 facade 新增未登记的 AmazonListing 依赖，保持当前 result/bridge seam 可审查
+- `TestCatalogDoesNotDependOnProductEnrichAliases` 禁止 catalog 回退依赖 ProductEnrich 兼容别名，保持产品事实归属在 canonical/product 模块
+- `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases` 禁止 canonical 类型重新使用 ProductEnrich compatibility aliases，保持规范模型不依赖历史兼容层
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer` 禁止新代码重新 import `internal/app/processor`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer` 禁止新代码重新 import `internal/app/state`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted` 禁止 module builder 回流到中心化装配文件
