@@ -814,6 +814,49 @@ func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) 
 	}, nil)
 }
 
+func TestPlatformModulesHistoricalImplementationImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "platforms")
+	allowedImports := map[string]map[string]struct{}{
+		"task-processor/internal/amazon": {
+			filepath.Clean(filepath.Join(root, "amazon", "module.go")): {},
+		},
+		"task-processor/internal/shein/pipeline": {
+			filepath.Clean(filepath.Join(root, "shein", "module.go")): {},
+		},
+		"task-processor/internal/temu": {
+			filepath.Clean(filepath.Join(root, "temu", "module.go")): {},
+		},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		for _, bannedPrefix := range []string{
+			"task-processor/internal/amazon",
+			"task-processor/internal/shein",
+			"task-processor/internal/temu",
+		} {
+			for quotedImport := range facts.imports {
+				importPath := strings.Trim(quotedImport, `"`)
+				if importMatchesPrefix(importPath, bannedPrefix) {
+					if allowedFiles, ok := allowedImports[importPath]; ok {
+						if _, allowed := allowedFiles[path]; allowed {
+							continue
+						}
+					}
+					t.Errorf("%s imports %s; keep internal/platforms as thin registration and route new platform rules to marketplace or publishing packages", path, importPath)
+				}
+			}
+		}
+	}
+}
+
 func TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages(t *testing.T) {
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "cmd"), []string{
 		"task-processor/internal/amazon",

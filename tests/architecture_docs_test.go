@@ -84,6 +84,7 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 		"TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 		"TestBusinessDomainsDoNotImportAppRuntimeAssembly",
+		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
