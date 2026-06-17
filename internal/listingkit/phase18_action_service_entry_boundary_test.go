@@ -188,14 +188,15 @@ func TestTaskGenerationActionPhaseOwnershipServiceEntryBoundary(t *testing.T) {
 
 		source := readExactMethodSource(t, "task_generation_action_execute.go", "func (p *taskGenerationActionFinalizePhase) run(")
 		assertSourceContainsAll(t, source, []string{
+			"applyGenerationActionProjectionToResult(result, projection)",
+			"applyGenerationConditionalStateToActionResult(result)",
+		})
+		assertSourceExcludesAll(t, source, []string{
 			"result.Overview = projection.Overview",
 			"result.Queue = projection.Queue",
 			"result.Retry = projection.Retry",
 			"result.ReviewPatch = projection.ReviewPatch",
 			"result.PlatformRenderPreviews = projection.PlatformRenderPreviews",
-			"applyGenerationConditionalStateToActionResult(result)",
-		})
-		assertSourceExcludesAll(t, source, []string{
 			"executeLayerTemporalAction(",
 			"getCurrentAssetGenerationQueue(",
 			"getCurrentListingKitResult(",

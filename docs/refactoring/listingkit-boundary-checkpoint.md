@@ -315,6 +315,7 @@ Completed submission slices:
 - asset-generation preview/export decoration now applies the shared generation projection through dedicated preview/export adapters, so field assignment no longer drifts separately across read surfaces.
 - asset-generation result decoration now also applies the shared generation projection through a dedicated result adapter, keeping result/preview/export field assignment aligned behind the same projection seam.
 - ListingKit preview/export read-surface projection now applies DTO fields through dedicated preview/export adapters, so projection-to-legacy-field mapping no longer lives inline in the read entrypoints.
+- generation-action finalize now applies action projection fields through a dedicated result adapter before conditional-state decoration, so projection copy-back no longer lives inline in the finalize phase.
 
 Completed sourcing slices:
 

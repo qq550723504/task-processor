@@ -60,15 +60,20 @@ func (p *taskGenerationActionFinalizePhase) run(
 	if result == nil {
 		result = &GenerationActionExecutionResult{}
 	}
-	if projection != nil {
-		result.Overview = projection.Overview
-		result.Queue = projection.Queue
-		result.Retry = projection.Retry
-		result.ReviewWorkflow = projection.ReviewWorkflow
-		result.ReviewSession = projection.ReviewSession
-		result.ReviewPatch = projection.ReviewPatch
-		result.PlatformRenderPreviews = projection.PlatformRenderPreviews
-		result.DeltaToken = projection.DeltaToken
-	}
+	applyGenerationActionProjectionToResult(result, projection)
 	return applyGenerationConditionalStateToActionResult(result)
+}
+
+func applyGenerationActionProjectionToResult(result *GenerationActionExecutionResult, projection *GenerationActionExecutionResult) {
+	if result == nil || projection == nil {
+		return
+	}
+	result.Overview = projection.Overview
+	result.Queue = projection.Queue
+	result.Retry = projection.Retry
+	result.ReviewWorkflow = projection.ReviewWorkflow
+	result.ReviewSession = projection.ReviewSession
+	result.ReviewPatch = projection.ReviewPatch
+	result.PlatformRenderPreviews = projection.PlatformRenderPreviews
+	result.DeltaToken = projection.DeltaToken
 }
