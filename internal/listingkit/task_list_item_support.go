@@ -157,7 +157,10 @@ func applySheinTaskListFields(item *TaskListItem, task *Task, pkg *SheinPackage)
 			item.SheinStoreSite = site
 		}
 	}
-	applySheinSubmissionStatusFields(&item.SheinSubmissionStatusFields, pkg)
+	submissionProjection := buildSheinSubmissionProjection(pkg)
+	if submissionProjection != nil {
+		item.SheinSubmissionStatusFields = submissionProjection.StatusFields
+	}
 	var pod *PodExecutionSummary
 	if task != nil && task.Result != nil {
 		pod = task.Result.PodExecution
@@ -167,7 +170,9 @@ func applySheinTaskListFields(item *TaskListItem, task *Task, pkg *SheinPackage)
 	item.SheinStatusOverview = buildSheinTaskStatusOverviewWithPod(pkg, pod)
 	item.SheinWorkQueue = deriveSheinWorkQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview)
 	item.SheinActionQueue = deriveSheinActionQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview, item.SheinBlockingKeys, item.SheinWarningKeys)
-	applySheinSubmissionRemoteSummary(&item.SheinTaskListSubmissionFields, pkg)
+	if submissionProjection != nil {
+		item.SheinTaskListSubmissionFields = submissionProjection.TaskList
+	}
 }
 
 func buildSheinTaskStatusOverview(pkg *SheinPackage) *sheinworkspace.StatusOverview {

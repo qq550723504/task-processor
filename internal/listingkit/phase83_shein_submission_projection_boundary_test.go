@@ -68,4 +68,24 @@ func TestSheinSubmissionProjectionBoundary(t *testing.T) {
 			"ResolveSubmissionProjection",
 		})
 	})
+
+	t.Run("task_list_fields_reuses_one_shared_submission_projection", func(t *testing.T) {
+		t.Parallel()
+
+		source := readNamedFunctionSource(t, "task_list_item_support.go", "applySheinTaskListFields")
+		callNames := readNamedFunctionCallNames(t, "task_list_item_support.go", "applySheinTaskListFields")
+
+		assertSourceContainsAll(t, source, []string{
+			"submissionProjection := buildSheinSubmissionProjection(pkg)",
+			"item.SheinSubmissionStatusFields = submissionProjection.StatusFields",
+			"item.SheinTaskListSubmissionFields = submissionProjection.TaskList",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"applySheinSubmissionStatusFields(&item.SheinSubmissionStatusFields, pkg)",
+			"applySheinSubmissionRemoteSummary(&item.SheinTaskListSubmissionFields, pkg)",
+		})
+		assertFunctionCallsContainAll(t, callNames, []string{
+			"buildSheinSubmissionProjection",
+		})
+	})
 }
