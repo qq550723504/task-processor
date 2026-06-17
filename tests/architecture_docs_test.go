@@ -285,44 +285,32 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 
 func TestNextTechnicalPrioritiesTracksEveryImportBoundaryGuard(t *testing.T) {
 	nextStepsPath := filepath.Join("..", "docs", "architecture", "next-steps.md")
-	nextStepsContent, err := os.ReadFile(nextStepsPath)
-	if err != nil {
-		t.Fatalf("read %s: %v", nextStepsPath, err)
-	}
-
-	testPath := filepath.Join(".", "import_boundaries_test.go")
-	testContent, err := os.ReadFile(testPath)
-	if err != nil {
-		t.Fatalf("read %s: %v", testPath, err)
-	}
-
-	testNamePattern := regexp.MustCompile(`(?m)^func (Test\w+)`)
-	for _, match := range testNamePattern.FindAllStringSubmatch(string(testContent), -1) {
-		testName := match[1]
-		if !strings.Contains(string(nextStepsContent), testName) {
-			t.Errorf("%s must list %s in Current guard coverage so active import-boundary guards stay visible to reviewers", nextStepsPath, testName)
-		}
-	}
+	assertDocumentTracksEveryImportBoundaryGuard(t, nextStepsPath, "Current guard coverage so active import-boundary guards stay visible to reviewers")
 }
 
 func TestArchitectureReviewChecklistTracksEveryImportBoundaryGuard(t *testing.T) {
 	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
-	checklistContent, err := os.ReadFile(checklistPath)
+	assertDocumentTracksEveryImportBoundaryGuard(t, checklistPath, "Guard Baseline so architecture review covers every active import-boundary guard")
+}
+
+func assertDocumentTracksEveryImportBoundaryGuard(t *testing.T, documentPath string, sectionDescription string) {
+	t.Helper()
+
+	documentContent, err := os.ReadFile(documentPath)
 	if err != nil {
-		t.Fatalf("read %s: %v", checklistPath, err)
+		t.Fatalf("read %s: %v", documentPath, err)
 	}
 
-	testPath := filepath.Join(".", "import_boundaries_test.go")
-	testContent, err := os.ReadFile(testPath)
+	testContent, err := os.ReadFile(filepath.Join(".", "import_boundaries_test.go"))
 	if err != nil {
-		t.Fatalf("read %s: %v", testPath, err)
+		t.Fatalf("read import_boundaries_test.go: %v", err)
 	}
 
 	testNamePattern := regexp.MustCompile(`(?m)^func (Test\w+)`)
 	for _, match := range testNamePattern.FindAllStringSubmatch(string(testContent), -1) {
 		testName := match[1]
-		if !strings.Contains(string(checklistContent), testName) {
-			t.Errorf("%s must list %s in Guard Baseline so architecture review covers every active import-boundary guard", checklistPath, testName)
+		if !strings.Contains(string(documentContent), testName) {
+			t.Errorf("%s must list %s in %s", documentPath, testName, sectionDescription)
 		}
 	}
 }
