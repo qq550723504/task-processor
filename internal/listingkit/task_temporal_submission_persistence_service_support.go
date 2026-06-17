@@ -149,12 +149,15 @@ func (s *taskTemporalSubmissionPersistenceService) finishSheinTemporalRemoteRefr
 		return nil, err
 	}
 
-	selection := sheinpub.ResolveSubmissionRemoteRefreshSelection(state.completion.pkg, state.completion.action, state.completion.requestID, time.Now())
+	remoteStatus := ""
+	if pkg, ok := sheinpub.SubmissionStatePackage(state.completion.pkg); ok && pkg.SubmissionState != nil {
+		remoteStatus = pkg.SubmissionState.RemoteStatus
+	}
 	return &SheinRefreshRemoteStatusResult{
 		TaskID:       state.completion.taskID,
 		Action:       state.completion.action,
 		RequestID:    state.completion.requestID,
-		RemoteStatus: selection.RemoteStatus,
+		RemoteStatus: remoteStatus,
 	}, nil
 }
 

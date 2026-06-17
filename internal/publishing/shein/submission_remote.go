@@ -285,12 +285,6 @@ type SubmissionRecoverySelection struct {
 	StartedAt    time.Time
 }
 
-type SubmissionRemoteRefreshSelection struct {
-	StartedAt    time.Time
-	Response     *SubmissionResponse
-	RemoteStatus string
-}
-
 func ResolveSubmissionRefreshSelection(pkg *Package) SubmissionRefreshSelection {
 	var ok bool
 	pkg, ok = SubmissionStatePackage(pkg)
@@ -334,18 +328,6 @@ func ResolveSubmissionRecoverySelection(pkg *Package, action string) SubmissionR
 		RequestID:    report.CurrentRequestID,
 		Response:     SubmissionResponseForAction(pkg, action),
 		StartedAt:    startedAt,
-	}
-}
-
-func ResolveSubmissionRemoteRefreshSelection(pkg *Package, action, requestID string, fallbackStartedAt time.Time) SubmissionRemoteRefreshSelection {
-	pkg, ok := SubmissionStatePackage(pkg)
-	if !ok {
-		return SubmissionRemoteRefreshSelection{StartedAt: fallbackStartedAt}
-	}
-	return SubmissionRemoteRefreshSelection{
-		StartedAt:    SubmissionStartedAt(pkg, action, requestID, fallbackStartedAt),
-		Response:     SubmissionResponseForAction(pkg, action),
-		RemoteStatus: pkg.SubmissionState.RemoteStatus,
 	}
 }
 

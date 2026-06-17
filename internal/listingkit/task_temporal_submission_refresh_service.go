@@ -60,16 +60,16 @@ func (s *taskTemporalSubmissionRefreshService) RefreshSheinPublishRemoteStatus(c
 }
 
 func buildSheinTemporalRemoteRefreshState(task *Task, pkg *SheinPackage, in SheinRefreshRemoteStatusInput, fallbackStartedAt time.Time) *sheinTemporalRemoteRefreshState {
-	selection := sheinpub.ResolveSubmissionRemoteRefreshSelection(pkg, in.Action, in.RequestID, fallbackStartedAt)
+	startedAt := sheinpub.SubmissionStartedAt(pkg, in.Action, in.RequestID, fallbackStartedAt)
 	return newSheinRemoteRefreshExecutionState(sheinRemoteCompletionState{
 		taskID:    in.TaskID,
 		task:      task,
 		pkg:       pkg,
 		action:    in.Action,
 		requestID: in.RequestID,
-		startedAt: selection.StartedAt,
-		response:  selection.Response,
-	}, in.SupplierCode, selection.StartedAt)
+		startedAt: startedAt,
+		response:  sheinpub.SubmissionResponseForAction(pkg, in.Action),
+	}, in.SupplierCode, startedAt)
 }
 
 func (s *taskTemporalSubmissionRefreshService) persistTemporalRemoteRefreshPhase(ctx context.Context, state *sheinTemporalRemoteRefreshState) error {

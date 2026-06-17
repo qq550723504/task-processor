@@ -399,42 +399,6 @@ func TestResolveSubmissionRecoverySelection(t *testing.T) {
 	}
 }
 
-func TestResolveSubmissionRemoteRefreshSelection(t *testing.T) {
-	t.Parallel()
-
-	startedAt := time.Date(2026, 6, 14, 18, 30, 0, 0, time.UTC)
-	fallback := startedAt.Add(-time.Minute)
-	lastResult := &SubmissionResponse{Success: true, Message: "last"}
-	pkg := &Package{
-		SubmissionState: &SubmissionReport{
-			RemoteStatus: "confirmed",
-			LastResult:   lastResult,
-			Publish: &SubmissionRecord{
-				Action:    "publish",
-				RequestID: "req-1",
-				StartedAt: startedAt,
-			},
-		},
-	}
-
-	selection := ResolveSubmissionRemoteRefreshSelection(pkg, "publish", "req-1", fallback)
-	if !selection.StartedAt.Equal(startedAt) {
-		t.Fatalf("ResolveSubmissionRemoteRefreshSelection().StartedAt = %v, want %v", selection.StartedAt, startedAt)
-	}
-	if selection.Response != lastResult {
-		t.Fatalf("ResolveSubmissionRemoteRefreshSelection().Response = %+v, want last result fallback", selection.Response)
-	}
-	if selection.RemoteStatus != "confirmed" {
-		t.Fatalf("ResolveSubmissionRemoteRefreshSelection().RemoteStatus = %q, want confirmed", selection.RemoteStatus)
-	}
-
-	pkg.SubmissionState.Publish.Result = &SubmissionResponse{Success: true, Message: "record"}
-	selection = ResolveSubmissionRemoteRefreshSelection(pkg, "publish", "req-1", fallback)
-	if selection.Response == nil || selection.Response.Message != "record" {
-		t.Fatalf("ResolveSubmissionRemoteRefreshSelection().Response = %+v, want record result", selection.Response)
-	}
-}
-
 func TestSubmissionRefreshMutationMatchHelpers(t *testing.T) {
 	t.Parallel()
 
@@ -730,7 +694,9 @@ func TestSubmissionRemoteDoesNotKeepObsoletePolicyWrappers(t *testing.T) {
 		"func BuildSubmissionRefreshRequest(",
 		"func ResolveSubmissionConfirmRemoteUpdate(",
 		"func ResolveSubmissionRefreshValidation(",
+		"func ResolveSubmissionRemoteRefreshSelection(",
 		"type SubmissionRefreshValidation struct",
+		"type SubmissionRemoteRefreshSelection struct",
 	} {
 		if strings.Contains(content, forbidden) {
 			t.Fatalf("submission_remote.go should not keep obsolete policy wrapper %q", forbidden)
