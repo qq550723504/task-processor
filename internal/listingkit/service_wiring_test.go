@@ -1018,12 +1018,16 @@ func TestTaskRecoveryServiceUsesSubmissionDomainRunner(t *testing.T) {
 	serviceContent := string(serviceSrc)
 
 	for _, needle := range []string{
+		`type taskRecoveryRunnerWiring struct {`,
+		`func buildTaskRecoveryRunnerWiring(svc *taskRecoveryService) taskRecoveryRunnerWiring {`,
+		`wiring := buildTaskRecoveryRunnerWiring(svc)`,
 		`submissiondomain.NewRecoveryNowService(submissiondomain.RecoveryNowServiceConfig[Task]{`,
 		`submissiondomain.NewRecoveryBatchService(submissiondomain.RecoveryBatchServiceConfig[Task]{`,
-		`return svc.repo.RecoverBlockedTaskNow(ctx, taskID, time.Time{})`,
-		`return svc.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{`,
-		`return svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), taskID, current.RetryableBlock, svc.currentTime())`,
-		`return svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), task.ID, task.RetryableBlock, recoverAt)`,
+		`CurrentSubmitter: wiring.currentSubmitter,`,
+		`LoadTask:         wiring.loadTask,`,
+		`ListCandidates:       wiring.listCandidates,`,
+		`SubmitRecovered:  wiring.submitRecoveredNow,`,
+		`SubmitRecovered:      wiring.submitRecoveredBatch,`,
 		`return s.recoveryNow.RecoverNow(ctx, taskID)`,
 		`return s.recoveryBatch.RecoverBatch(ctx, request)`,
 	} {

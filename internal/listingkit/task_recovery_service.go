@@ -38,57 +38,78 @@ func newTaskRecoveryService(config taskRecoveryServiceConfig) *taskRecoveryServi
 		taskSubmitter: config.taskSubmitter,
 		now:           nowFn,
 	}
+	wiring := buildTaskRecoveryRunnerWiring(svc)
 	svc.recoveryNow = submissiondomain.NewRecoveryNowService(submissiondomain.RecoveryNowServiceConfig[Task]{
-		LoadTask: func(ctx context.Context, taskID string) (*Task, error) {
-			return svc.repo.GetTask(ctx, taskID)
-		},
-		CurrentSubmitter: func() submissiondomain.RecoverySubmitFunc {
-			submitter := svc.currentSubmitter()
-			if submitter == nil {
-				return nil
-			}
-			return submitter.Submit
-		},
-		MarkRecovered: func(ctx context.Context, taskID string) error {
-			return svc.repo.RecoverBlockedTaskNow(ctx, taskID, time.Time{})
-		},
-		SubmitRecovered: func(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, taskID string, current *Task) error {
-			return svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), taskID, current.RetryableBlock, svc.currentTime())
-		},
-		ReloadTask: func(ctx context.Context, taskID string) (*Task, error) {
-			return svc.repo.GetTask(ctx, taskID)
-		},
-		ErrUnavailable: ErrTaskRecoveryUnavailable,
-		ErrEmptyTaskID: ErrTaskNotFound,
+		LoadTask:         wiring.loadTask,
+		CurrentSubmitter: wiring.currentSubmitter,
+		MarkRecovered:    wiring.markRecoveredNow,
+		SubmitRecovered:  wiring.submitRecoveredNow,
+		ReloadTask:       wiring.loadTask,
+		ErrUnavailable:   ErrTaskRecoveryUnavailable,
+		ErrEmptyTaskID:   ErrTaskNotFound,
 	})
 	svc.recoveryBatch = submissiondomain.NewRecoveryBatchService(submissiondomain.RecoveryBatchServiceConfig[Task]{
-		ListCandidates: func(ctx context.Context, dueBefore time.Time, limit int) ([]Task, error) {
-			return svc.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{
-				DueBefore: dueBefore,
-				Limit:     limit,
-			})
-		},
-		CurrentSubmitter: func() submissiondomain.RecoverySubmitFunc {
-			submitter := svc.currentSubmitter()
-			if submitter == nil {
-				return nil
-			}
-			return submitter.Submit
-		},
-		MarkRecovered: func(ctx context.Context, taskID string, recoverAt time.Time) error {
-			return svc.repo.RecoverBlockedTaskNow(ctx, taskID, recoverAt)
-		},
-		SubmitRecovered: func(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, task Task, recoverAt time.Time) error {
-			return svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), task.ID, task.RetryableBlock, recoverAt)
-		},
-		TaskID: func(task Task) string { return task.ID },
-		IsTaskNotRecoverable: func(err error) bool {
-			return errors.Is(err, ErrTaskNotRecoverable)
-		},
-		Now:            svc.currentTime,
-		ErrUnavailable: ErrTaskRecoveryUnavailable,
+		ListCandidates:       wiring.listCandidates,
+		CurrentSubmitter:     wiring.currentSubmitter,
+		MarkRecovered:        wiring.markRecoveredBatch,
+		SubmitRecovered:      wiring.submitRecoveredBatch,
+		TaskID:               wiring.taskID,
+		IsTaskNotRecoverable: wiring.isTaskNotRecoverable,
+		Now:                  svc.currentTime,
+		ErrUnavailable:       ErrTaskRecoveryUnavailable,
 	})
 	return svc
+}
+
+type taskRecoveryRunnerWiring struct {
+	svc *taskRecoveryService
+}
+
+func buildTaskRecoveryRunnerWiring(svc *taskRecoveryService) taskRecoveryRunnerWiring {
+	return taskRecoveryRunnerWiring{svc: svc}
+}
+
+func (w taskRecoveryRunnerWiring) loadTask(ctx context.Context, taskID string) (*Task, error) {
+	return w.svc.repo.GetTask(ctx, taskID)
+}
+
+func (w taskRecoveryRunnerWiring) listCandidates(ctx context.Context, dueBefore time.Time, limit int) ([]Task, error) {
+	return w.svc.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{
+		DueBefore: dueBefore,
+		Limit:     limit,
+	})
+}
+
+func (w taskRecoveryRunnerWiring) currentSubmitter() submissiondomain.RecoverySubmitFunc {
+	submitter := w.svc.currentSubmitter()
+	if submitter == nil {
+		return nil
+	}
+	return submitter.Submit
+}
+
+func (w taskRecoveryRunnerWiring) markRecoveredNow(ctx context.Context, taskID string) error {
+	return w.svc.repo.RecoverBlockedTaskNow(ctx, taskID, time.Time{})
+}
+
+func (w taskRecoveryRunnerWiring) markRecoveredBatch(ctx context.Context, taskID string, recoverAt time.Time) error {
+	return w.svc.repo.RecoverBlockedTaskNow(ctx, taskID, recoverAt)
+}
+
+func (w taskRecoveryRunnerWiring) submitRecoveredNow(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, taskID string, current *Task) error {
+	return w.svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), taskID, current.RetryableBlock, w.svc.currentTime())
+}
+
+func (w taskRecoveryRunnerWiring) submitRecoveredBatch(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, task Task, recoverAt time.Time) error {
+	return w.svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), task.ID, task.RetryableBlock, recoverAt)
+}
+
+func (w taskRecoveryRunnerWiring) taskID(task Task) string {
+	return task.ID
+}
+
+func (w taskRecoveryRunnerWiring) isTaskNotRecoverable(err error) bool {
+	return errors.Is(err, ErrTaskNotRecoverable)
 }
 
 func (s *taskRecoveryService) RecoverTaskNow(ctx context.Context, taskID string) (*Task, error) {
