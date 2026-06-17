@@ -200,6 +200,11 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	required := []string{
 		"Current guard coverage",
 		"TestBusinessDomainsDoNotImportAppHTTPAPI",
+		"TestProjectBoundaryDomainsDoNotImportListingKitFacade",
+		"TestListingKitSubdomainsDoNotImportRootFacade",
+		"TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly",
+		"TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly",
+		"TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain",
 		"TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer",
 		"TestInternalPackagesDoNotImportAppStateCompatibilityLayer",
 		"TestAppHTTPAPIModuleBuildersStayAllowlisted",

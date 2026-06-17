@@ -85,6 +85,11 @@
 Current guard coverage:
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI` 禁止业务域重新依赖 `internal/app/httpapi`
+- `TestProjectBoundaryDomainsDoNotImportListingKitFacade` 禁止产品、发布、市场、平台和 infra 包重新依赖 ListingKit 根 facade
+- `TestListingKitSubdomainsDoNotImportRootFacade` 禁止 ListingKit 子域包回流依赖根 facade，保持子域可以继续独立收口
+- `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly` 禁止 ListingKit 根 SHEIN workspace bridge 直接依赖 workspace domain，保持兼容桥接层隔离
+- `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly` 禁止 ListingKit 根非测试文件绕过 `internal/listingkit/workspace/shein` 兼容层直接依赖 workspace domain
+- `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain` 禁止 ListingKit SHEIN workspace bridge 回退依赖 legacy workspace domain
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer` 禁止新代码重新 import `internal/app/processor`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer` 禁止新代码重新 import `internal/app/state`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted` 禁止 module builder 回流到中心化装配文件
