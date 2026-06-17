@@ -312,6 +312,7 @@ Completed submission slices:
 - SHEIN revision success apply/restore result assembly now reuses one shared readiness projection snapshot for status summary and follow-up checklist data, while standalone status/checklist helpers remain as compatibility delegates.
 - SHEIN preview payload entrypoints now share one preview-input assembly helper, so direct preview and result-backed preview construction no longer duplicate readiness projection, repair-center, and workspace-overview wiring.
 - SHEIN task-list submission projection now accepts the already-computed readiness result, so task-list item assembly no longer reruns readiness solely to decide ready-vs-pending workflow status.
+- asset-generation preview/export decoration now applies the shared generation projection through dedicated preview/export adapters, so field assignment no longer drifts separately across read surfaces.
 
 Completed sourcing slices:
 

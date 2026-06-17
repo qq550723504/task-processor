@@ -51,36 +51,40 @@ func TestAssetGenerationProjectionBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, previewFinalizeSource, []string{
 			"projection := buildAssetGenerationProjection(task.Result, tasks)",
-			"preview.AssetGenerationSummary = projection.Summary",
-			"preview.AssetGenerationTasks = projection.Tasks",
-			"preview.AssetGenerationQueue = projection.Queue",
-			"preview.AssetGenerationOverview = projection.Overview",
+			"applyAssetGenerationProjectionToPreview(preview, projection)",
 		})
 		assertSourceExcludesAll(t, previewFinalizeSource, []string{
 			"preview.AssetGenerationSummary = buildAssetGenerationSummary(tasks)",
 			"preview.AssetGenerationTasks = append([]assetgeneration.Task(nil), tasks...)",
 			"preview.AssetGenerationQueue = buildGenerationWorkQueue(withListingKitResultGeneration(task.Result, tasks))",
 			"preview.AssetGenerationOverview = buildAssetGenerationOverview(preview.AssetGenerationQueue)",
+			"preview.AssetGenerationSummary = projection.Summary",
+			"preview.AssetGenerationTasks = projection.Tasks",
+			"preview.AssetGenerationQueue = projection.Queue",
+			"preview.AssetGenerationOverview = projection.Overview",
 		})
 		assertFunctionCallsContainAll(t, previewFinalizeCalls, []string{
 			"buildAssetGenerationProjection",
+			"applyAssetGenerationProjectionToPreview",
 		})
 
 		assertSourceContainsAll(t, exportSource, []string{
 			"projection := buildAssetGenerationProjection(task.Result, tasks)",
-			"export.AssetGenerationSummary = projection.Summary",
-			"export.AssetGenerationTasks = projection.Tasks",
-			"export.AssetGenerationQueue = projection.Queue",
-			"export.AssetGenerationOverview = projection.Overview",
+			"applyAssetGenerationProjectionToExport(export, projection)",
 		})
 		assertSourceExcludesAll(t, exportSource, []string{
 			"export.AssetGenerationSummary = buildAssetGenerationSummary(tasks)",
 			"export.AssetGenerationTasks = append([]assetgeneration.Task(nil), tasks...)",
 			"export.AssetGenerationQueue = buildGenerationWorkQueue(withListingKitResultGeneration(task.Result, tasks))",
 			"export.AssetGenerationOverview = buildAssetGenerationOverview(export.AssetGenerationQueue)",
+			"export.AssetGenerationSummary = projection.Summary",
+			"export.AssetGenerationTasks = projection.Tasks",
+			"export.AssetGenerationQueue = projection.Queue",
+			"export.AssetGenerationOverview = projection.Overview",
 		})
 		assertFunctionCallsContainAll(t, exportCalls, []string{
 			"buildAssetGenerationProjection",
+			"applyAssetGenerationProjectionToExport",
 		})
 	})
 
