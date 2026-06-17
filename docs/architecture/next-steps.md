@@ -124,6 +124,10 @@ Temporal 现在最像下一块容易膨胀的运行时区域。
 
 这轮改造要长期生效，靠一次性重构不够，必须转成 review 规则。
 
+正式 review checklist 已收口到：
+
+- `docs/architecture/architecture-review-checklist.md`
+
 建议以后每个相关 PR 至少检查：
 
 1. 有没有新增反向依赖

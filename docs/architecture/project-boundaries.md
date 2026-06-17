@@ -216,7 +216,7 @@ Use this table when adding new code:
 
 | New code type | Preferred home |
 | --- | --- |
-| API route registration | `internal/app/httpapi` |
+| API route registration | owning module `internal/*/httpapi` first; `internal/app/httpapi` only for shared runtime aggregation |
 | Request parsing / response writing | `internal/listingkit/api` or API package owned by the module |
 | Task lifecycle | `internal/listingkit/task` during migration |
 | Workflow orchestration | `internal/listingkit/workflow` during migration |
@@ -246,6 +246,9 @@ Before merging a refactoring or feature PR, check:
 - Does it avoid creating new import cycles?
 - Are behavior-preserving moves separated from feature changes?
 - Were relevant tests run?
+
+For the full architecture review checklist, use
+[`architecture-review-checklist.md`](./architecture-review-checklist.md).
 
 ## 8. Immediate Enforcement
 

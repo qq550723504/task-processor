@@ -28,3 +28,40 @@ func TestTemporalBoundaryDocumentDefinesStableReviewRules(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectBoundaryDocumentKeepsRouteRegistrationInOwningHTTPAPI(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "project-boundaries.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	text := string(content)
+	if !strings.Contains(text, "| API route registration | owning module `internal/*/httpapi` first; `internal/app/httpapi` only for shared runtime aggregation |") {
+		t.Fatalf("%s must keep new route registration owned by module httpapi packages, with app/httpapi limited to shared aggregation", path)
+	}
+}
+
+func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"reverse dependency",
+		"internal/app/httpapi",
+		"internal/app/processor",
+		"internal/app/state",
+		"owning module `internal/*/httpapi`",
+		"Temporal",
+		"boundary exception",
+		"import-boundary and architecture tests",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so architecture review catches common boundary regressions", path, phrase)
+		}
+	}
+}
