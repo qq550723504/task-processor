@@ -93,6 +93,7 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 		"TestPublishingSheinOpenAIImportsStayAllowlisted",
 		"TestListingKitHTTPAPIExternalClientImportsStayAllowlisted",
 		"TestTEMUSyncAndPricingManagementImportsStayAllowlisted",
+		"TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
@@ -170,6 +171,7 @@ func TestExternalClientBoundaryInventoryDefinesCouplingHotspots(t *testing.T) {
 		"TestPublishingSheinOpenAIImportsStayAllowlisted",
 		"TestListingKitHTTPAPIExternalClientImportsStayAllowlisted",
 		"TestTEMUSyncAndPricingManagementImportsStayAllowlisted",
+		"TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {

@@ -97,6 +97,7 @@ Current guard coverage:
 - `TestPublishingSheinOpenAIImportsStayAllowlisted` 禁止 `internal/publishing/shein` 新增 concrete `openai` adapter 依赖，当前属性/类目/文案 inference seam 必须精确登记
 - `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted` 禁止 `internal/listingkit/httpapi` 新增 concrete `openai` / `nanobanana` adapter 依赖，当前 AI runtime/bootstrap seam 必须精确登记
 - `TestTEMUSyncAndPricingManagementImportsStayAllowlisted` 禁止 `internal/temu/{sync,pricing}` 新增 concrete `management` adapter 依赖，当前同步/定价 seam 必须精确登记
+- `TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted` 禁止 `internal/temu/{product,store,scheduler}` 新增 concrete `management` adapter 依赖，当前商品/店铺/调度 seam 必须精确登记
 
 后续重点不是增加很多测试，而是给还没有被守住、且最容易回退的边界补“护栏”。新增护栏前先确认现有测试没有已经覆盖同一个风险。
 

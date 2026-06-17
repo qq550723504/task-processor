@@ -1009,6 +1009,55 @@ func TestTEMUSyncAndPricingManagementImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted(t *testing.T) {
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join("..", "internal", "temu", "product", "build_spu_handler.go")):           {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "product", "exists_check_handler.go")):        {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "product", "filter_checker.go")):              {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "product", "price_handler.go")):               {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "product", "publish_result_input.go")):        {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "product", "save_publish_result_handler.go")): {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "product", "spu_builder.go")):                 {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "product", "submit_handler.go")):              {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "scheduler", "auto_pricing_adapter.go")):      {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "scheduler", "auto_pricing_adapter_test.go")): {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "scheduler", "factory.go")):                   {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "scheduler", "inventory_sync_adapter.go")):    {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "scheduler", "inventory_task.go")):            {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "scheduler", "pricing_task.go")):              {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "scheduler", "product_sync_adapter.go")):      {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "scheduler", "product_sync_adapter_test.go")): {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "scheduler", "product_task.go")):              {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "store", "id_handler.go")):                    {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "store", "info_handler.go")):                  {},
+	}
+
+	for _, root := range []string{
+		filepath.Join("..", "internal", "temu", "product"),
+		filepath.Join("..", "internal", "temu", "scheduler"),
+		filepath.Join("..", "internal", "temu", "store"),
+	} {
+		t.Run(filepath.ToSlash(root), func(t *testing.T) {
+			index, err := loadGoFileIndex(root, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for path, facts := range index.files {
+				if pathAllowed(path, allowedFiles) {
+					continue
+				}
+				for quotedImport := range facts.imports {
+					importPath := strings.Trim(quotedImport, `"`)
+					if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+						t.Errorf("%s imports %s; keep TEMU concrete management client dependencies limited to current product, store, and scheduler seams", path, importPath)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) {
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "platforms"), []string{
 		"task-processor/internal/app/httpapi",
