@@ -3,6 +3,7 @@ package tests
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -278,6 +279,28 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
 			t.Errorf("%s must mention %q so completed boundary guards do not drift back into open-ended priorities", path, phrase)
+		}
+	}
+}
+
+func TestNextTechnicalPrioritiesTracksEveryImportBoundaryGuard(t *testing.T) {
+	nextStepsPath := filepath.Join("..", "docs", "architecture", "next-steps.md")
+	nextStepsContent, err := os.ReadFile(nextStepsPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", nextStepsPath, err)
+	}
+
+	testPath := filepath.Join(".", "import_boundaries_test.go")
+	testContent, err := os.ReadFile(testPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", testPath, err)
+	}
+
+	testNamePattern := regexp.MustCompile(`(?m)^func (Test\w+)`)
+	for _, match := range testNamePattern.FindAllStringSubmatch(string(testContent), -1) {
+		testName := match[1]
+		if !strings.Contains(string(nextStepsContent), testName) {
+			t.Errorf("%s must list %s in Current guard coverage so active import-boundary guards stay visible to reviewers", nextStepsPath, testName)
 		}
 	}
 }

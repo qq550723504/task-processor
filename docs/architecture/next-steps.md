@@ -104,9 +104,19 @@ Current guard coverage:
 - `TestListingKitRootServiceGenerationFilesStayAllowlisted` 禁止 ListingKit 根 service generation 文件继续扩散生成 seam
 - `TestListingKitRootGenerationFilesStayAllowlisted` 禁止 ListingKit 根 generation 文件继续扩散生成 seam
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer` 禁止新代码重新 import `internal/app/processor`
+- `TestAppProcessorCompatibilityLayerIsRetired` 确认 `internal/app/processor` 兼容层保持退休状态
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer` 禁止新代码重新 import `internal/app/state`
+- `TestAppStateCompatibilityLayerIsRetired` 确认 `internal/app/state` Go 兼容文件保持退休状态
+- `TestInfraProductCrawlerAdapterIsRetired` 确认 `internal/infra/productcrawler` 兼容 adapter 保持退休状态
+- `TestAppCrawlerFetcherCompatibilityLayerIsRetired` 确认 `internal/app/crawler/fetcher` 兼容层保持退休状态
+- `TestCmdPackagesDoNotImportAppCompatibilityLayers` 禁止生产入口重新依赖已退休 app 兼容层
+- `TestDomainHTTPPackagesDoNotImportAppHTTPAPI` 禁止业务域 HTTP 包反向依赖 `internal/app/httpapi`
+- `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted` 禁止 `internal/app/httpapi` 根目录新增 ListingKit helper，ListingKit 专属逻辑应下沉到 owning HTTPAPI 或 domain 包
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted` 禁止 module builder 回流到中心化装配文件
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted` 禁止 route descriptor helper 回流到中心化装配文件
+- `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted` 禁止 `listingkit_support.go` 扩散非装配/仓储 wiring 依赖
+- `TestAppHTTPAPIListingKitRootImportsStayAllowlisted` 禁止 app/httpapi 新增未登记 ListingKit root facade 依赖
+- `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted` 禁止 app/httpapi 新增未登记 ListingKit HTTPAPI 依赖，保持当前 module/runtime/route/server 装配 seam 可审查
 - `TestCmdContainsOnlyOfficialEntrypoints` 禁止 `cmd/` 新增临时或非正式入口，调试程序应放入受管 `hack/` 区域
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages` 禁止生产入口绕过 app 装配层直接依赖业务域或 infra 包
 - `TestHackContainsOnlyManagedSupportAreas` 禁止 `hack/` 继续扩散未登记的临时支持目录
