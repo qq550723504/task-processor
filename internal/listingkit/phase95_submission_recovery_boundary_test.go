@@ -41,4 +41,18 @@ func TestSheinSubmissionRecoveryBoundary(t *testing.T) {
 		"restoreBlock.RecoveryScope = submissiondomain.RetryableRecoveryScopeTask",
 		"restoreBlock.BlockedAt = s.currentTime()",
 	})
+
+	durabilitySource = readNamedFunctionSource(t, "task_recovery_durability.go", "restoreRecoveryDurability")
+	backfillSource := readNamedFunctionSource(t, "task_recovery_backfill.go", "backfillRetryableBlockedTasks")
+	recoveredSubmitSource := readNamedFunctionSource(t, "task_recovery_service.go", "submitRecoveredTask")
+	failurePersistenceSource := readNamedFunctionSource(t, "task_result_support.go", "persistClassifiedTaskFailure")
+	for _, source := range []string{durabilitySource, backfillSource, recoveredSubmitSource, failurePersistenceSource} {
+		assertSourceContainsAll(t, source, []string{
+			"markTaskBlockedRetryableState(",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"adaptSubmissionRetryableBlock(block)",
+			"adaptSubmissionRetryableBlock(restoreBlock)",
+		})
+	}
 }

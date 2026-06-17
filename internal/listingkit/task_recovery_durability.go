@@ -25,7 +25,7 @@ func (s *taskRecoveryService) restoreRecoveryDurability(ctx context.Context, tas
 	if !ok {
 		return joined
 	}
-	if rollbackErr := s.repo.MarkBlockedRetryable(ctx, taskID, adaptSubmissionRetryableBlock(restoreBlock), errorMsg); rollbackErr != nil {
+	if rollbackErr := markTaskBlockedRetryableState(ctx, s.repo, taskID, restoreBlock, errorMsg); rollbackErr != nil {
 		return errors.Join(joined, fmt.Errorf("restore blocked retryable state: %w", rollbackErr))
 	}
 	return joined

@@ -136,7 +136,7 @@ func (s *taskRecoveryService) submitRecoveredTask(ctx context.Context, submitter
 		DefaultRecoveryScope: submissiondomain.RetryableRecoveryScopeTask,
 		Submit:               submitter.Submit,
 		MarkBlockedRetryable: func(block *submissiondomain.RetryableBlockState, errorMsg string) error {
-			return s.repo.MarkBlockedRetryable(ctx, taskID, adaptSubmissionRetryableBlock(block), errorMsg)
+			return markTaskBlockedRetryableState(ctx, s.repo, taskID, block, errorMsg)
 		},
 		PersistFailure: func(errorMsg string, submitErr error) error {
 			return persistClassifiedTaskFailure(ctx, s.repo, taskID, errorMsg, submitErr)

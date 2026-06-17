@@ -20,7 +20,7 @@ func persistClassifiedTaskFailure(ctx context.Context, repo Repository, taskID s
 		ErrorMessage:         errorMsg,
 		Cause:                cause,
 		MarkBlockedRetryable: func(block *submissiondomain.RetryableBlockState, markedErrorMsg string) error {
-			return repo.MarkBlockedRetryable(ctx, taskID, adaptSubmissionRetryableBlock(block), markedErrorMsg)
+			return markTaskBlockedRetryableState(ctx, repo, taskID, block, markedErrorMsg)
 		},
 		MarkFailed: func(markedErrorMsg string) error {
 			return repo.MarkFailed(ctx, taskID, markedErrorMsg)
