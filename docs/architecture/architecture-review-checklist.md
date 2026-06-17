@@ -47,6 +47,12 @@ At minimum, structural review should consider representative guards such as:
 - `TestHackContainsOnlyManagedSupportAreas`
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
 - `TestTrackedLocalArtifactsStayOutOfTools`
+- `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
+- `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
+- `TestAppStateCompatibilityLayerIsRetired`
+- `TestInfraProductCrawlerAdapterIsRetired`
+- `TestAppCrawlerFetcherCompatibilityLayerIsRetired`
+- `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestProductImageExternalClientImportsStayAllowlisted`
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestPublishingSheinOpenAIImportsStayAllowlisted`
