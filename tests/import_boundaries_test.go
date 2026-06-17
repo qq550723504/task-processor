@@ -767,6 +767,44 @@ func TestAppHTTPAPIModuleBuildersStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "httpapi")
+	allowed := map[string]struct{}{
+		"appendTaskRPCRouteDescriptors":    {},
+		"appendSheinLoginRouteDescriptors": {},
+		"appendSDSLoginRouteDescriptors":   {},
+		"appendSDSCatalogRouteDescriptors": {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, path, facts.source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv != nil {
+				continue
+			}
+			name := fn.Name.Name
+			if !strings.HasPrefix(name, "append") || !strings.HasSuffix(name, "RouteDescriptors") {
+				continue
+			}
+			if _, ok := allowed[name]; !ok {
+				t.Errorf("%s declares app/httpapi route descriptor helper %s; add new feature routes in the owning domain httpapi package instead", path, name)
+			}
+		}
+	}
+}
+
 func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 	filePath := filepath.Join("..", "internal", "app", "httpapi", "listingkit_support.go")
 	fset := token.NewFileSet()
