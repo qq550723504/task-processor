@@ -1058,6 +1058,41 @@ func TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted(t *testing
 	}
 }
 
+func TestTEMUOpenAIImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "ai", "content_rewriter.go")):             {},
+		filepath.Clean(filepath.Join(root, "ai", "property_mapper_core.go")):         {},
+		filepath.Clean(filepath.Join(root, "ai", "service.go")):                      {},
+		filepath.Clean(filepath.Join(root, "image", "dimension_annotator.go")):       {},
+		filepath.Clean(filepath.Join(root, "image", "vision_detector.go")):           {},
+		filepath.Clean(filepath.Join(root, "pipeline_registry.go")):                  {},
+		filepath.Clean(filepath.Join(root, "product", "build_spu_handler.go")):       {},
+		filepath.Clean(filepath.Join(root, "product", "spu_builder.go")):             {},
+		filepath.Clean(filepath.Join(root, "sku", "ai_mapping_handler.go")):          {},
+		filepath.Clean(filepath.Join(root, "sku", "ai_mapping_single_processor.go")): {},
+		filepath.Clean(filepath.Join(root, "sku", "builder.go")):                     {},
+		filepath.Clean(filepath.Join(root, "sku", "variant_processor.go")):           {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+				t.Errorf("%s imports %s; keep TEMU concrete OpenAI client dependencies limited to current AI, image, SKU, product, and pipeline seams", path, importPath)
+			}
+		}
+	}
+}
+
 func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) {
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "platforms"), []string{
 		"task-processor/internal/app/httpapi",

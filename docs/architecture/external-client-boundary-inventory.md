@@ -46,12 +46,13 @@ Current direct dependency hotspots are:
   - cleanup should follow marketplace slices, not one large adapter rewrite
 - `internal/temu`
   - broad `management` coupling in sync, pricing, product, store, and scheduler
-    paths, plus some `openai` coupling in image and SKU helpers
+    paths, plus `openai` coupling in AI, image, SKU, product, and pipeline helpers
   - `internal/temu/sync` and `internal/temu/pricing` management seams are guarded by
     `TestTEMUSyncAndPricingManagementImportsStayAllowlisted`
   - `internal/temu/product`, `internal/temu/store`, and `internal/temu/scheduler`
     management seams are guarded by
     `TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted`
+  - TEMU OpenAI seams are guarded by `TestTEMUOpenAIImportsStayAllowlisted`
   - cleanup should begin at service constructors and package-local contracts
 - `internal/app`
   - expected to construct concrete clients, but should avoid leaking concrete
@@ -94,7 +95,11 @@ adapter types without changing business behavior:
    behind package-local interfaces before adding new concrete adapter call sites.
    Product, store, and scheduler management imports are also explicitly allowlisted;
    keep future changes behind local interfaces or narrow adapter seams.
-4. Product image provider construction currently importing `openai` and
+4. TEMU AI, image, SKU, product, and pipeline helpers currently importing
+   `internal/infra/clients/openai`. Current imports are explicitly allowlisted;
+   future feature work should introduce local AI/rewrite/mapping interfaces rather
+   than adding new concrete OpenAI adapter call sites.
+5. Product image provider construction currently importing `openai` and
    `nanobanana` outside the narrow runtime builder path. Current imports are
    explicitly allowlisted; do not add new concrete adapter imports without a
    local interface seam or a documented runtime-builder exception.
