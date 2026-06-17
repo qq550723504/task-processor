@@ -305,6 +305,28 @@ func TestNextTechnicalPrioritiesTracksEveryImportBoundaryGuard(t *testing.T) {
 	}
 }
 
+func TestArchitectureReviewChecklistTracksEveryImportBoundaryGuard(t *testing.T) {
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	testPath := filepath.Join(".", "import_boundaries_test.go")
+	testContent, err := os.ReadFile(testPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", testPath, err)
+	}
+
+	testNamePattern := regexp.MustCompile(`(?m)^func (Test\w+)`)
+	for _, match := range testNamePattern.FindAllStringSubmatch(string(testContent), -1) {
+		testName := match[1]
+		if !strings.Contains(string(checklistContent), testName) {
+			t.Errorf("%s must list %s in Guard Baseline so architecture review covers every active import-boundary guard", checklistPath, testName)
+		}
+	}
+}
+
 func TestPlatformBoundaryStrategyDefinesConvergenceRoles(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "platform-boundary-strategy.md")
 	content, err := os.ReadFile(path)

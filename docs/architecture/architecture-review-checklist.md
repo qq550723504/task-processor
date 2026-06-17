@@ -80,6 +80,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
 - `TestTrackedLocalArtifactsStayOutOfTools`
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
+- `TestAppProcessorCompatibilityLayerIsRetired`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
 - `TestAppStateCompatibilityLayerIsRetired`
 - `TestInfraProductCrawlerAdapterIsRetired`
