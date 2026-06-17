@@ -24,7 +24,8 @@ func buildRevisionRestoreResult(req *ApplyRevisionRequest, listingResult *Listin
 		restoredFieldCount = record.Timeline.ChangeCount
 	}
 	nextActions := buildRevisionSuccessNextActions(listingResult)
-	statusSummary := buildRevisionSuccessStatusSummary(listingResult)
+	readinessProjection := buildRevisionSuccessReadinessProjection(listingResult)
+	statusSummary := buildRevisionSuccessStatusSummaryFromProjection(listingResult, readinessProjection)
 	messages := buildRevisionSuccessMessages(revisionSuccessModeRestore, headline, restoredFieldCount, sourceRevisionID, statusSummary)
 	recommendedView := buildRevisionSuccessRecommendedView(revisionSuccessModeRestore, listingResult, statusSummary)
 	restoreFollowUp := buildRevisionSuccessFollowUpData(
@@ -33,6 +34,7 @@ func buildRevisionRestoreResult(req *ApplyRevisionRequest, listingResult *Listin
 		statusSummary,
 		messages,
 		nextActions,
+		readinessProjection,
 	)
 	var followUpChecklist *RevisionFollowUpChecklist
 	var followUpOverview *RevisionFollowUpOverview

@@ -23,10 +23,20 @@ func buildRevisionSuccessNextActions(result *ListingKitResult) []string {
 }
 
 func buildRevisionSuccessStatusSummary(result *ListingKitResult) *RevisionStatusSummary {
+	return buildRevisionSuccessStatusSummaryFromProjection(result, buildRevisionSuccessReadinessProjection(result))
+}
+
+func buildRevisionSuccessReadinessProjection(result *ListingKitResult) *sheinSubmitReadinessProjection {
 	if result == nil || result.Shein == nil {
 		return nil
 	}
-	projection := buildSheinSubmitReadinessProjectionWithPod(result.Shein, result.PodExecution)
+	return buildSheinSubmitReadinessProjectionWithPod(result.Shein, result.PodExecution)
+}
+
+func buildRevisionSuccessStatusSummaryFromProjection(result *ListingKitResult, projection *sheinSubmitReadinessProjection) *RevisionStatusSummary {
+	if result == nil || result.Shein == nil {
+		return nil
+	}
 	if projection == nil {
 		return nil
 	}
@@ -43,10 +53,10 @@ func buildRevisionSuccessRecommendedView(mode revisionSuccessMode, result *Listi
 }
 
 func buildRevisionSuccessFollowUpChecklist(result *ListingKitResult) *RevisionFollowUpChecklist {
-	if result == nil || result.Shein == nil {
-		return nil
-	}
-	projection := buildSheinSubmitReadinessProjectionWithPod(result.Shein, result.PodExecution)
+	return buildRevisionSuccessFollowUpChecklistFromProjection(buildRevisionSuccessReadinessProjection(result))
+}
+
+func buildRevisionSuccessFollowUpChecklistFromProjection(projection *sheinSubmitReadinessProjection) *RevisionFollowUpChecklist {
 	if projection == nil {
 		return nil
 	}
@@ -66,8 +76,9 @@ func buildRevisionSuccessFollowUpData(
 	summary *RevisionStatusSummary,
 	messages *RevisionResultMessages,
 	nextActions []string,
+	readinessProjection *sheinSubmitReadinessProjection,
 ) *revisionSuccessFollowUpData {
-	checklist := buildRevisionSuccessFollowUpChecklist(result)
+	checklist := buildRevisionSuccessFollowUpChecklistFromProjection(readinessProjection)
 	overview := buildRevisionSuccessFollowUpOverview(mode, summary, messages, checklist, nextActions)
 	suggested := buildRevisionSuccessSuggestedFollowUpRevision(mode, result)
 	if checklist == nil && overview == nil && suggested == nil {

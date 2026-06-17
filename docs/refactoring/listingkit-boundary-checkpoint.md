@@ -309,6 +309,7 @@ Completed submission slices:
 - retryable failure reason-code and default task recovery-scope ownership now live in `internal/listing/submission`; root `internal/listingkit` references those submission-domain metadata constants directly instead of keeping root-side retry metadata aliases.
 - SHEIN task-list projection now reuses one shared submission projection snapshot for status and remote summary fields, so `internal/listingkit` no longer rebuilds the same normalized package/readiness/projection state twice in one task-list item assembly.
 - SHEIN task-list readiness state now also reuses one shared readiness projection snapshot for blocker keys, warning keys, and status overview fields, so the task-list item assembly no longer rebuilds identical readiness/checklist/status state through three helper paths.
+- SHEIN revision success apply/restore result assembly now reuses one shared readiness projection snapshot for status summary and follow-up checklist data, while standalone status/checklist helpers remain as compatibility delegates.
 
 Completed sourcing slices:
 
