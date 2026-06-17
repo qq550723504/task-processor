@@ -94,6 +94,12 @@ This thin-layer rule is guarded by
 `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages` and
 `TestPlatformRegistrationPackagesStayThin`.
 
+Current historical implementation imports from `internal/platforms/*` are
+guarded by `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`.
+Treat the Amazon, SHEIN, and TEMU registration delegates as explicit migration
+seams, not as precedent for adding new business-rule imports to platform
+registration packages.
+
 ## Migration Rules
 
 When adding or moving platform behavior:

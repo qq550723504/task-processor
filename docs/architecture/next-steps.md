@@ -91,7 +91,9 @@ Current guard coverage:
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted` 禁止 route descriptor helper 回流到中心化装配文件
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly` 禁止业务实现包新增直接 `gin` 依赖，当前历史 handler 例外必须显式登记
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly` 禁止业务域新增对 `internal/app/{bootstrap,consumer,runner,runtime}` 的具体装配依赖，当前 `listingkit/httpapi` 过渡适配例外必须显式登记
+- `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages` 禁止 `internal/platforms/*` 新增业务域或 HTTP 装配依赖，保持平台注册层只做注册/选择/委托
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted` 禁止 `internal/platforms/*` 新增历史平台实现依赖，当前 Amazon/SHEIN/TEMU 注册委托必须精确登记
+- `TestPlatformRegistrationPackagesStayThin` 禁止 `internal/platforms/*` 新增非 module descriptor / doc / test 文件，避免平台注册层承接业务规则
 - `TestInfrastructurePackagesDoNotImportBusinessDomains` 禁止 `internal/infra`、`internal/integration`、`internal/platformbase`、`internal/platformtask` 反向依赖业务域
 - `TestProductImageExternalClientImportsStayAllowlisted` 禁止 `internal/productimage` 新增 concrete `openai` / `nanobanana` adapter 依赖，当前 provider/runtime seam 必须精确登记
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted` 禁止 `internal/app/httpapi` ProductImage 装配文件新增 concrete `openai` / `nanobanana` adapter 依赖，当前模型默认值/装配 seam 必须精确登记
