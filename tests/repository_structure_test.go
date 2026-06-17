@@ -14,14 +14,7 @@ func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 		"temu-listing":        {},
 	}
 
-	out, err := exec.Command("git", "ls-files", "cmd").Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line == "" {
-			continue
-		}
+	for _, line := range trackedFiles(t, "cmd") {
 		parts := strings.Split(filepath.ToSlash(line), "/")
 		if len(parts) < 2 || parts[0] != "cmd" {
 			continue
@@ -34,20 +27,54 @@ func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 }
 
 func TestTrackedLocalArtifactsStayOutOfProductionEntrypoints(t *testing.T) {
-	out, err := exec.Command("git", "ls-files", "cmd").Output()
+	assertNoTrackedLocalArtifacts(t, "cmd")
+}
+
+func TestHackContainsOnlyManagedSupportAreas(t *testing.T) {
+	allowed := map[string]struct{}{
+		"debug": {},
+		"k8s":   {},
+	}
+
+	for _, line := range trackedFiles(t, "hack") {
+		parts := strings.Split(filepath.ToSlash(line), "/")
+		if len(parts) < 2 || parts[0] != "hack" {
+			continue
+		}
+		name := parts[1]
+		if _, ok := allowed[name]; !ok {
+			t.Errorf("hack/%s is not a managed support area; put debug experiments under hack/debug or promote long-lived tools to tools", name)
+		}
+	}
+}
+
+func TestTrackedLocalArtifactsStayOutOfTools(t *testing.T) {
+	assertNoTrackedLocalArtifacts(t, "tools")
+}
+
+func trackedFiles(t *testing.T, pathspec string) []string {
+	t.Helper()
+
+	out, err := exec.Command("git", "ls-files", pathspec).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, "\n")
+}
 
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if line == "" {
-			continue
-		}
+func assertNoTrackedLocalArtifacts(t *testing.T, pathspec string) {
+	t.Helper()
+
+	for _, line := range trackedFiles(t, pathspec) {
 		parts := strings.Split(filepath.ToSlash(line), "/")
 		for _, part := range parts {
 			switch part {
 			case "logs", "tmp", "bin", "dev-logs", "playwright-cli":
-				t.Errorf("%s is a tracked local artifact path under cmd; keep runtime files under .local instead", line)
+				t.Errorf("%s is a tracked local artifact path under %s; keep runtime files under .local instead", line, pathspec)
 			}
 		}
 	}
