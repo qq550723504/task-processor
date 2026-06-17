@@ -182,13 +182,6 @@ func ApplySubmissionConfirmRemoteUpdate(pkg *Package, action, requestID string, 
 	AppendSubmissionEvent(pkg, *event)
 }
 
-func SubmissionResponseAcceptedForAction(action string, result *SubmissionResponse) bool {
-	if result == nil {
-		return false
-	}
-	return sheinmarketpub.ResponseAcceptedForAction(action, result.Success, result.Code)
-}
-
 func SubmissionStartedAt(pkg *Package, action, requestID string, fallback time.Time) time.Time {
 	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.SubmissionState == nil {

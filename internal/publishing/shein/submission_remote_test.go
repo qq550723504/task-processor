@@ -27,36 +27,6 @@ func TestSubmissionRemoteDoesNotKeepActionlessResponseAcceptedWrapper(t *testing
 	}
 }
 
-func TestSubmissionResponseAcceptedForAction(t *testing.T) {
-	t.Parallel()
-
-	if !SubmissionResponseAcceptedForAction("publish", &SubmissionResponse{Success: true}) {
-		t.Fatal("SubmissionResponseAcceptedForAction(publish success) = false, want true")
-	}
-	if !SubmissionResponseAcceptedForAction("save_draft", &SubmissionResponse{Code: "0"}) {
-		t.Fatal("SubmissionResponseAcceptedForAction(save_draft code=0) = false, want true")
-	}
-	if SubmissionResponseAcceptedForAction("publish", &SubmissionResponse{Code: "0"}) {
-		t.Fatal("SubmissionResponseAcceptedForAction(publish code=0) = true, want false")
-	}
-}
-
-func TestSubmissionResponseAcceptedForActionDelegatesToMarketplacePolicy(t *testing.T) {
-	t.Parallel()
-
-	source, err := os.ReadFile("submission_remote.go")
-	if err != nil {
-		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
-	}
-	content := string(source)
-	if !strings.Contains(content, "sheinmarketpub.ResponseAcceptedForAction(action, result.Success, result.Code)") {
-		t.Fatal("SubmissionResponseAcceptedForAction should delegate action-aware response interpretation to marketplace publishing policy")
-	}
-	if strings.Contains(content, "SaveDraftSucceeded(action") {
-		t.Fatal("submission_remote.go should not own save-draft response acceptance policy")
-	}
-}
-
 func TestAppendSubmissionEventAssignsIDAndPrependsHistory(t *testing.T) {
 	t.Parallel()
 
@@ -670,6 +640,7 @@ func TestSubmissionRemoteDoesNotKeepObsoletePolicyWrappers(t *testing.T) {
 	}
 	content := string(source)
 	for _, forbidden := range []string{
+		"func SubmissionResponseAcceptedForAction(",
 		"func BuildSubmissionRefreshLookupInputs(",
 		"func BuildSubmissionRecoveryLookupInputs(",
 		"func BuildSubmissionRefreshRequest(",
