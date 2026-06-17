@@ -336,6 +336,7 @@ Completed sourcing slices:
 - Amazon source batch fetch now guards configured sources only when execution is required, while empty batches stay side-effect free.
 - 1688 URL/result identity normalization now lives in `internal/product/sourcing`, while crawler execution remains in `internal/integration/crawler/a1688` and legacy `internal/crawler/alibaba1688`.
 - 1688 scraped-data normalization now trims and drops empty specs/details, falls back to title when details are blank, and normalizes image lists before enrichment handoff.
+- product fetch variant request adaptation now routes through one product-layer helper backed by source request inheritance, so local, remote-API, and distributed fetchers no longer hand-compose source/fetch request conversions.
 - crawler integration packages now have a boundary guard that prevents dependencies on `listingkit`, marketplace/workspace/publishing packages, or `product/sourcing`.
 
 Current sourcing stop line:

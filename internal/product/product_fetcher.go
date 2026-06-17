@@ -141,7 +141,7 @@ func (f *ProductFetcher) FetchVariants(ctx context.Context, req *FetchRequest, v
 
 	variants := make([]*model.Product, 0, len(variantASINs))
 	for _, asin := range variantASINs {
-		variantReq := FetchRequestFromSource(sourcing.VariantSourceRequest(SourceRequestFromFetch(req), asin))
+		variantReq := VariantFetchRequest(req, asin)
 		product, err := f.FetchProduct(ctx, variantReq)
 		if err != nil {
 			f.logger.Warnf("fetch variant failed: ASIN=%s, err=%v", asin, err)

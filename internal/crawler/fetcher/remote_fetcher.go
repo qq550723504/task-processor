@@ -424,7 +424,7 @@ func (f *RemoteAPIProductFetcher) FetchVariants(ctx context.Context, req *domain
 
 	var variants []*model.Product
 	for _, asin := range variantASINs {
-		variantReq := domainProduct.FetchRequestFromSource(sourcing.VariantSourceRequest(domainProduct.SourceRequestFromFetch(req), asin))
+		variantReq := domainProduct.VariantFetchRequest(req, asin)
 		product, err := f.FetchProduct(ctx, variantReq)
 		if err != nil {
 			f.logger.WithError(err).Warnf("fetch variant via crawler api failed: %s", asin)

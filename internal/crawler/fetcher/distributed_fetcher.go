@@ -228,7 +228,7 @@ func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *doma
 	cachedProducts := make(map[string]*model.Product)
 
 	for _, asin := range variantASINs {
-		variantReq := domainProduct.FetchRequestFromSource(sourcing.VariantSourceRequest(domainProduct.SourceRequestFromFetch(req), asin))
+		variantReq := domainProduct.VariantFetchRequest(req, asin)
 		if product, err := f.cacheManager.GetFromCache(variantReq); err == nil && product != nil {
 			f.logger.Debugf("✅ 变体从缓存获取: ASIN=%s", asin)
 			cachedProducts[asin] = product
