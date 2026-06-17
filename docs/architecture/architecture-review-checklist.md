@@ -39,6 +39,9 @@ Use the `Current guard coverage` section in
 At minimum, structural review should consider representative guards such as:
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
+- `TestInfrastructurePackagesDoNotImportBusinessDomains`
+- `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 - `TestProductImageExternalClientImportsStayAllowlisted`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestListingPreviewPackageStaysPlatformNeutral`
