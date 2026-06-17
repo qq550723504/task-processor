@@ -101,3 +101,23 @@ func TestPathAllowedMatchesFileAndDirectoryAllowlist(t *testing.T) {
 		})
 	}
 }
+
+func TestImportMatchesPrefixOnlyAtPackageBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		importPath string
+		prefix     string
+		want       bool
+	}{
+		{name: "exact", importPath: "task-processor/internal/listingkit", prefix: "task-processor/internal/listingkit", want: true},
+		{name: "subpackage", importPath: "task-processor/internal/listingkit/core", prefix: "task-processor/internal/listingkit", want: true},
+		{name: "sibling", importPath: "task-processor/internal/listingkitten", prefix: "task-processor/internal/listingkit", want: false},
+		{name: "different", importPath: "task-processor/internal/catalog", prefix: "task-processor/internal/listingkit", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := importMatchesPrefix(tc.importPath, tc.prefix); got != tc.want {
+				t.Fatalf("importMatchesPrefix(%q, %q) = %v, want %v", tc.importPath, tc.prefix, got, tc.want)
+			}
+		})
+	}
+}

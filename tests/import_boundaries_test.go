@@ -691,6 +691,30 @@ func TestBusinessDomainsDoNotImportAppHTTPAPI(t *testing.T) {
 	}
 }
 
+func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
+	for _, domainRoot := range []string{
+		filepath.Join("..", "internal", "amazon"),
+		filepath.Join("..", "internal", "asset"),
+		filepath.Join("..", "internal", "catalog"),
+		filepath.Join("..", "internal", "infra"),
+		filepath.Join("..", "internal", "integration"),
+		filepath.Join("..", "internal", "marketplace"),
+		filepath.Join("..", "internal", "platform"),
+		filepath.Join("..", "internal", "product", "sourcing"),
+		filepath.Join("..", "internal", "productimage"),
+		filepath.Join("..", "internal", "publishing"),
+		filepath.Join("..", "internal", "shein"),
+		filepath.Join("..", "internal", "temu"),
+		filepath.Join("..", "internal", "workspace"),
+	} {
+		t.Run(filepath.ToSlash(domainRoot), func(t *testing.T) {
+			assertNoBannedImportPrefixes(t, domainRoot, []string{
+				"task-processor/internal/listingkit",
+			}, nil)
+		})
+	}
+}
+
 func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "app", "runtime")) + string(os.PathSeparator):                  {},
@@ -913,6 +937,28 @@ func assertNoBannedImports(t *testing.T, root string, bannedImports []string, al
 		for _, banned := range bannedImports {
 			if _, ok := facts.imports[banned]; ok {
 				t.Errorf("%s imports banned boundary package %s", path, banned)
+			}
+		}
+	}
+}
+
+func assertNoBannedImportPrefixes(t *testing.T, root string, bannedPrefixes []string, allowedFiles map[string]struct{}) {
+	t.Helper()
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") || pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			for _, bannedPrefix := range bannedPrefixes {
+				if importMatchesPrefix(importPath, bannedPrefix) {
+					t.Errorf("%s imports banned boundary package prefix %s via %s", path, bannedPrefix, importPath)
+				}
 			}
 		}
 	}

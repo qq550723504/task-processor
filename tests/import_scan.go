@@ -110,3 +110,7 @@ func pathAllowed(path string, allowed map[string]struct{}) bool {
 	}
 	return false
 }
+
+func importMatchesPrefix(importPath, prefix string) bool {
+	return importPath == prefix || strings.HasPrefix(importPath, prefix+"/")
+}
