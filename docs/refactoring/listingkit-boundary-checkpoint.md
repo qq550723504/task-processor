@@ -313,6 +313,7 @@ Completed submission slices:
 - SHEIN preview payload entrypoints now share one preview-input assembly helper, so direct preview and result-backed preview construction no longer duplicate readiness projection, repair-center, and workspace-overview wiring.
 - SHEIN task-list submission projection now accepts the already-computed readiness result, so task-list item assembly no longer reruns readiness solely to decide ready-vs-pending workflow status.
 - asset-generation preview/export decoration now applies the shared generation projection through dedicated preview/export adapters, so field assignment no longer drifts separately across read surfaces.
+- asset-generation result decoration now also applies the shared generation projection through a dedicated result adapter, keeping result/preview/export field assignment aligned behind the same projection seam.
 - ListingKit preview/export read-surface projection now applies DTO fields through dedicated preview/export adapters, so projection-to-legacy-field mapping no longer lives inline in the read entrypoints.
 
 Completed sourcing slices:

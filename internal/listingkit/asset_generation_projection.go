@@ -34,6 +34,13 @@ func decorateListingKitResultGeneration(result *ListingKitResult, tasks []assetg
 		return
 	}
 	projection := buildAssetGenerationProjection(result, tasks)
+	applyAssetGenerationProjectionToResult(result, projection)
+}
+
+func applyAssetGenerationProjectionToResult(result *ListingKitResult, projection *assetGenerationProjection) {
+	if result == nil || projection == nil {
+		return
+	}
 	result.AssetGenerationTasks = projection.Tasks
 	result.AssetGenerationSummary = projection.Summary
 	result.AssetGenerationQueue = projection.Queue

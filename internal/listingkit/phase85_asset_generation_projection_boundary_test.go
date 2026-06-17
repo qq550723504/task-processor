@@ -13,19 +13,21 @@ func TestAssetGenerationProjectionBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, source, []string{
 			"projection := buildAssetGenerationProjection(result, tasks)",
-			"result.AssetGenerationTasks = projection.Tasks",
-			"result.AssetGenerationSummary = projection.Summary",
-			"result.AssetGenerationQueue = projection.Queue",
-			"result.AssetGenerationOverview = projection.Overview",
+			"applyAssetGenerationProjectionToResult(result, projection)",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"result.AssetGenerationTasks = cloneGenerationTasks(tasks)",
 			"result.AssetGenerationSummary = buildAssetGenerationSummary(tasks)",
 			"result.AssetGenerationQueue = buildGenerationWorkQueue(result)",
 			"result.AssetGenerationOverview = buildAssetGenerationOverview(result.AssetGenerationQueue)",
+			"result.AssetGenerationTasks = projection.Tasks",
+			"result.AssetGenerationSummary = projection.Summary",
+			"result.AssetGenerationQueue = projection.Queue",
+			"result.AssetGenerationOverview = projection.Overview",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"buildAssetGenerationProjection",
+			"applyAssetGenerationProjectionToResult",
 		})
 	})
 
