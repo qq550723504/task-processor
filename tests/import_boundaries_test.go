@@ -715,6 +715,38 @@ func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 	}
 }
 
+func TestBusinessDomainsDoNotImportAppRuntimeAssembly(t *testing.T) {
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join("..", "internal", "listingkit", "httpapi")) + string(os.PathSeparator): {},
+	}
+
+	for _, domainRoot := range []string{
+		filepath.Join("..", "internal", "amazon"),
+		filepath.Join("..", "internal", "amazonlisting"),
+		filepath.Join("..", "internal", "asset"),
+		filepath.Join("..", "internal", "catalog"),
+		filepath.Join("..", "internal", "listing"),
+		filepath.Join("..", "internal", "listingkit"),
+		filepath.Join("..", "internal", "marketplace"),
+		filepath.Join("..", "internal", "pricing"),
+		filepath.Join("..", "internal", "productenrich"),
+		filepath.Join("..", "internal", "productimage"),
+		filepath.Join("..", "internal", "publishing"),
+		filepath.Join("..", "internal", "sds"),
+		filepath.Join("..", "internal", "shein"),
+		filepath.Join("..", "internal", "temu"),
+	} {
+		t.Run(filepath.Base(domainRoot), func(t *testing.T) {
+			assertNoBannedImportPrefixes(t, domainRoot, []string{
+				"task-processor/internal/app/bootstrap",
+				"task-processor/internal/app/consumer",
+				"task-processor/internal/app/runner",
+				"task-processor/internal/app/runtime",
+			}, allowedFiles)
+		})
+	}
+}
+
 func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 	root := filepath.Join("..", "internal")
 	allowedHTTPPackages := map[string]struct{}{
