@@ -37,6 +37,15 @@ Use these as the main source of truth for structural work:
 - `architecture-review-checklist.md`
   - repeatable PR review checklist for boundary-sensitive changes
 
+## Development Boundary Documents
+
+These documents live outside `docs/architecture`, but still define long-lived
+structure rules that should be reviewed with architecture changes:
+
+- `docs/development/repository-structure.md`
+  - top-level directory ownership, local artifact placement, and repository
+    layout guard tests
+
 ## Supporting Context
 
 These documents are useful background, but should not override stable boundary

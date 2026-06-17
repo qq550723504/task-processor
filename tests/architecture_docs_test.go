@@ -290,6 +290,8 @@ func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
 		"compatibility-retirement.md",
 		"listing-preview-boundaries.md",
 		"architecture-review-checklist.md",
+		"Development Boundary Documents",
+		"docs/development/repository-structure.md",
 		"Plans, runbooks, and evaluations",
 	}
 	for _, phrase := range required {
@@ -303,6 +305,12 @@ func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
 	supportingIndex := strings.Index(text, "## Supporting Context")
 	if stableIndex == -1 || supportingIndex == -1 || stableIndex > supportingIndex {
 		t.Errorf("%s must list listing-preview-boundaries.md as a stable boundary document, not only supporting context", path)
+	}
+
+	repositoryIndex := strings.Index(text, "docs/development/repository-structure.md")
+	plansIndex := strings.Index(text, "## Plans, runbooks, and evaluations")
+	if repositoryIndex == -1 || plansIndex == -1 || repositoryIndex > plansIndex {
+		t.Errorf("%s must list docs/development/repository-structure.md before plan/runbook context so repository layout rules stay discoverable", path)
 	}
 }
 
