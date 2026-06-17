@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -56,7 +57,8 @@ func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx conte
 type sheinRemoteRefreshState = sheinpub.SubmissionRemoteLookupInputs
 
 func buildSheinRemoteRefreshState(pkg *SheinPackage, action, supplierCode string) sheinRemoteRefreshState {
-	return sheinpub.BuildSubmissionRecoveryLookupInputs(pkg, action, supplierCode)
+	policy := sheinmarketpub.BuildRemoteConfirmationPolicy(action, sheinpub.RemotePublishAccepted(pkg, action))
+	return sheinpub.BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, policy.RefreshFallbackMessage)
 }
 
 func newSheinRemoteStatusRequest(
