@@ -46,6 +46,10 @@ Representative files:
 
 This package should remain platform-neutral. It should not start depending on marketplace-specific draft models, repository state, or HTTP wiring.
 
+Current guardrail:
+
+- `TestListingPreviewPackageStaysPlatformNeutral` prevents `internal/listing/preview` from importing the ListingKit facade or marketplace-specific Amazon, SHEIN, TEMU, publishing, or workspace implementation packages.
+
 ## `internal/listingkit`
 
 This remains the compatibility facade and preview orchestration layer.

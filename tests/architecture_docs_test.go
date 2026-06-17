@@ -332,3 +332,24 @@ func TestCompatibilityRetirementDocumentCapturesAppCompatibilityStatus(t *testin
 		}
 	}
 }
+
+func TestListingPreviewBoundaryDocumentTracksPlatformNeutralGuard(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "listing-preview-boundaries.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"# Listing Preview Boundaries",
+		"`internal/listing/preview`",
+		"`internal/listingkit`",
+		"platform-neutral",
+		"TestListingPreviewPackageStaysPlatformNeutral",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so preview extraction keeps a stable platform-neutral boundary", path, phrase)
+		}
+	}
+}
