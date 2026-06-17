@@ -26,6 +26,9 @@ Use these as the main source of truth for structural work:
 - `historical-platform-migration-inventory.md`
   - migration-cost tiers and next-slice candidates for historical platform
     packages
+- `external-client-boundary-inventory.md`
+  - direct external client adapter hotspots, local-interface rules, and
+    next-slice candidates
 - `compatibility-retirement.md`
   - retired compatibility paths, replacement owners, and guard tests
 - `architecture-review-checklist.md`

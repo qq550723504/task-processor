@@ -1,0 +1,99 @@
+# External Client Boundary Inventory
+
+## Goal
+
+This inventory records the current direct coupling between business-facing
+packages and concrete external client adapters under `internal/infra/clients`.
+It is not a migration plan and should not trigger broad rewrites by itself.
+
+The goal is to make future cleanup predictable: new code should prefer local
+interfaces, while existing direct dependencies should be reduced in narrow
+slices when the owning domain boundary is clear.
+
+## Client Families
+
+Current concrete client families that frequently cross domain boundaries:
+
+- `internal/infra/clients/management`
+- `internal/infra/clients/openai`
+- `internal/infra/clients/nanobanana`
+
+These packages are allowed infrastructure adapters. The architectural risk is
+not their existence. The risk is business packages importing adapter types as
+part of their domain-facing contracts.
+
+## Hotspots
+
+Current direct dependency hotspots are:
+
+- `internal/listingkit`
+  - broad `openai` coupling across facade, studio, task, and settings code
+  - should shrink behind ListingKit-owned AI interfaces before new features add
+    more concrete OpenAI types
+- `internal/publishing/shein`
+  - concentrated `openai` coupling in attribute, category, content, and listing
+    copy helpers
+  - future publishing rules should depend on local inference interfaces rather
+    than concrete adapter packages
+- `internal/shein`
+  - broad `management` coupling across inventory, scheduler, publish,
+    validation, activity, mapping, and product packages
+  - cleanup should follow marketplace slices, not one large adapter rewrite
+- `internal/temu`
+  - broad `management` coupling in sync, pricing, product, store, and scheduler
+    paths, plus some `openai` coupling in image and SKU helpers
+  - cleanup should begin at service constructors and package-local contracts
+- `internal/app`
+  - expected to construct concrete clients, but should avoid leaking concrete
+    client types into business-facing contracts when a narrower port is enough
+- `internal/productimage`
+  - uses `openai` and `nanobanana` as provider adapters
+  - provider-facing interfaces should stay in the product image domain, with
+    concrete adapter construction kept in HTTP/runtime assembly
+
+## Local Interface Rule
+
+When adding new behavior that needs a remote service:
+
+1. Put the required capability behind a package-local interface first.
+2. Keep concrete adapter construction in app, HTTP, runtime, or narrow
+   bootstrap code.
+3. Do not add concrete `internal/infra/clients/*` types to public domain
+   contracts unless the package is explicitly an adapter boundary.
+4. If an existing direct dependency remains, treat it as a migration hotspot,
+   not as precedent for new code.
+
+## Next Slice Candidates
+
+Good next slices are small seams where a local interface can replace concrete
+adapter types without changing business behavior:
+
+1. ListingKit AI settings and studio media generation seams currently importing
+   `internal/infra/clients/openai`.
+2. SHEIN publishing attribute/category inference helpers currently importing
+   `internal/infra/clients/openai`.
+3. TEMU sync and pricing services currently importing
+   `internal/infra/clients/management`.
+4. Product image provider construction currently importing `openai` and
+   `nanobanana` outside the narrow runtime builder path.
+
+## Non-goals
+
+- Do not move every external client import in one refactor.
+- Do not create generic global client interfaces that every domain depends on.
+- Do not hide useful provider-specific behavior behind an interface that is too
+  vague to test.
+- Do not add import guards until the current hotspots have either narrow
+  allowlists or local interface seams.
+
+## Review Questions
+
+When reviewing a change that touches external clients, ask:
+
+1. Is this package constructing an adapter, or expressing a domain capability?
+2. Would a local interface make the call site easier to test?
+3. Is a concrete `management`, `openai`, or `nanobanana` type leaking into a
+   public domain contract?
+4. Does the change reduce coupling in one hotspot, or create a new hotspot?
+5. Is any remaining direct dependency documented as a temporary exception?
+

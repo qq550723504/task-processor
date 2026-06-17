@@ -140,6 +140,33 @@ func TestHistoricalPlatformMigrationInventoryDefinesCostSlices(t *testing.T) {
 	}
 }
 
+func TestExternalClientBoundaryInventoryDefinesCouplingHotspots(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "external-client-boundary-inventory.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"# External Client Boundary Inventory",
+		"`internal/infra/clients/management`",
+		"`internal/infra/clients/openai`",
+		"`internal/infra/clients/nanobanana`",
+		"Hotspots",
+		"`internal/listingkit`",
+		"`internal/publishing/shein`",
+		"`internal/shein`",
+		"`internal/temu`",
+		"Local Interface Rule",
+		"Next Slice Candidates",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so external client coupling can be reduced intentionally", path, phrase)
+		}
+	}
+}
+
 func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "README.md")
 	content, err := os.ReadFile(path)
@@ -156,6 +183,7 @@ func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
 		"temporal-boundaries.md",
 		"platform-boundary-strategy.md",
 		"historical-platform-migration-inventory.md",
+		"external-client-boundary-inventory.md",
 		"compatibility-retirement.md",
 		"architecture-review-checklist.md",
 		"Plans, runbooks, and evaluations",

@@ -103,12 +103,15 @@ Current guard coverage:
 - `docs/architecture/httpapi-assembly-boundaries.md`
 - `docs/architecture/app-assembly-boundaries.md`
 - `docs/development/repository-structure.md`
+- `docs/architecture/external-client-boundary-inventory.md`
 
 长期架构文档入口已收口到：
 
 - `docs/architecture/README.md`
 
 接下来要做的是控制文档数量和语义漂移，尽量把长期有效的规则收口到少数文档，而不是让大量计划文档替代正式架构说明。
+
+外部 client 依赖当前不适合一刀切禁止。后续应优先从 `external-client-boundary-inventory.md` 里的热点目录做窄切片，把具体 `management` / `openai` / `nanobanana` adapter 类型收口到本地接口或装配层。
 
 ### 6. 明确 Temporal 的正式边界
 
