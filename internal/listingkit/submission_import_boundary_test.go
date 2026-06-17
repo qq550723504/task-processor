@@ -7,11 +7,14 @@ import (
 	"testing"
 )
 
-func TestListingKitSubmissionImportsStayWithinSheinAdapterBoundary(t *testing.T) {
+func TestRetiredListingKitSubmissionPackageStaysAbsent(t *testing.T) {
 	t.Parallel()
 
-	allowed := map[string]struct{}{
-		"shein_submit_state.go": {},
+	retiredDir := filepath.Join("..", "..", "internal", "listingkit", "submission")
+	if _, err := os.Stat(retiredDir); err == nil {
+		t.Fatalf("internal/listingkit/submission directory still exists; keep SHEIN transition sequencing in shein_submit_state.go")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", retiredDir, err)
 	}
 
 	matches, err := filepath.Glob(filepath.Join("..", "..", "internal", "listingkit", "*.go"))
@@ -27,9 +30,6 @@ func TestListingKitSubmissionImportsStayWithinSheinAdapterBoundary(t *testing.T)
 		if !strings.Contains(content, "\"task-processor/internal/listingkit/submission\"") {
 			continue
 		}
-		base := filepath.Base(path)
-		if _, ok := allowed[base]; !ok {
-			t.Fatalf("%s imports internal/listingkit/submission outside the approved SHEIN adapter boundary", path)
-		}
+		t.Fatalf("%s imports retired internal/listingkit/submission compatibility package", path)
 	}
 }
