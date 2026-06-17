@@ -30,4 +30,15 @@ func TestSheinSubmissionRecoveryBoundary(t *testing.T) {
 	assertSourceContainsAll(t, remoteSource, []string{
 		"return s.remoteRefreshRunner.Refresh(ctx, state)",
 	})
+
+	durabilitySource := readNamedFunctionSource(t, "task_recovery_durability.go", "restoreRecoveryDurability")
+	assertSourceContainsAll(t, durabilitySource, []string{
+		"submissiondomain.BuildRecoveryDurabilityRestoreBlock(",
+	})
+	assertSourceExcludesAll(t, durabilitySource, []string{
+		"cloneRetryableBlock(previousBlock)",
+		"classifyRetryableTaskFailure(submitErr)",
+		"restoreBlock.RecoveryScope = submissiondomain.RetryableRecoveryScopeTask",
+		"restoreBlock.BlockedAt = s.currentTime()",
+	})
 }

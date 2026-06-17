@@ -168,6 +168,26 @@ func BuildRecoveredRetryableBlock(previous *RetryableBlockState, recoveredAt tim
 	return block
 }
 
+// BuildRecoveryDurabilityRestoreBlock returns the retryable block used when
+// restoring durable blocked state after recovered-submit persistence fails.
+func BuildRecoveryDurabilityRestoreBlock(previous *RetryableBlockState, submitErr error, restoredAt time.Time, defaultRecoveryScope string) (*RetryableBlockState, bool) {
+	block := CloneRetryableBlockState(previous)
+	if block == nil {
+		classified, ok := ClassifyRetryableFailure(submitErr, defaultRecoveryScope)
+		if !ok {
+			return nil, false
+		}
+		block = classified
+	}
+	if strings.TrimSpace(block.RecoveryScope) == "" {
+		block.RecoveryScope = strings.TrimSpace(defaultRecoveryScope)
+	}
+	if block.BlockedAt.IsZero() {
+		block.BlockedAt = restoredAt
+	}
+	return block, true
+}
+
 func BuildBackfilledRetryableBlock(err error, blockedAt time.Time, backfilledAt time.Time, maxAutoRetryAttempts int, defaultRecoveryScope string) (*RetryableBlockState, bool) {
 	block, ok := ClassifyRetryableFailure(err, defaultRecoveryScope)
 	if !ok {

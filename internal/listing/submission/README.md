@@ -11,6 +11,7 @@ Current stable ownership:
 - generic batch recovery orchestration seam (`RecoverBatch` style list/recover/submit/aggregate flow)
 - generic recovered-submit retryable persistence seam (`submit -> retryable reblock / failure persist / durability restore` flow)
 - generic recovered retryable-block mutation policy (`LastRetryAt` stamp, `NextRetryAt` clear, auto-retry pause reset)
+- generic recovery durability restore-block policy (`previous block` restore vs retryable-error reclassification, recovery-scope and blocked-time defaults)
 - generic recovered-submission route seam (`accepted/local completion vs remote confirmation` dispatch)
 - generic lease-acquire seam (`begin lease -> replay preview / remote recovery / blocked mapping / task handoff`)
 - generic workflow-start failure seam (`record failure -> clear lease -> return-priority resolution`)

@@ -135,6 +135,61 @@ func TestBuildRecoveredRetryableBlockResetsRecoveryScheduling(t *testing.T) {
 	}
 }
 
+func TestBuildRecoveryDurabilityRestoreBlockUsesPreviousBlock(t *testing.T) {
+	t.Parallel()
+
+	restoredAt := time.Date(2026, 6, 17, 14, 0, 0, 0, time.UTC)
+	nextRetryAt := restoredAt.Add(10 * time.Minute)
+	previous := &RetryableBlockState{
+		ReasonCode:           RetryableReasonCodeOpenAIInsufficientCredits,
+		ReasonMessage:        "insufficient credits",
+		NextRetryAt:          &nextRetryAt,
+		RetryAttempts:        4,
+		MaxAutoRetryAttempts: 8,
+		AutoResumeEnabled:    true,
+	}
+
+	restored, ok := BuildRecoveryDurabilityRestoreBlock(previous, errors.New("queue full"), restoredAt, RetryableRecoveryScopeTask)
+	if !ok || restored == nil {
+		t.Fatalf("BuildRecoveryDurabilityRestoreBlock() = (%+v, %t), want previous block", restored, ok)
+	}
+	if restored == previous {
+		t.Fatal("BuildRecoveryDurabilityRestoreBlock() reused previous pointer, want clone")
+	}
+	if restored.ReasonCode != previous.ReasonCode || restored.RetryAttempts != previous.RetryAttempts {
+		t.Fatalf("restored = %+v, want previous reason and attempts from %+v", restored, previous)
+	}
+	if restored.RecoveryScope != RetryableRecoveryScopeTask {
+		t.Fatalf("RecoveryScope = %q, want %q", restored.RecoveryScope, RetryableRecoveryScopeTask)
+	}
+	if !restored.BlockedAt.Equal(restoredAt) {
+		t.Fatalf("BlockedAt = %v, want %v", restored.BlockedAt, restoredAt)
+	}
+	if restored.NextRetryAt == previous.NextRetryAt {
+		t.Fatal("NextRetryAt reused previous pointer, want clone")
+	}
+}
+
+func TestBuildRecoveryDurabilityRestoreBlockClassifiesRetryableErrorWhenPreviousMissing(t *testing.T) {
+	t.Parallel()
+
+	restoredAt := time.Date(2026, 6, 17, 14, 30, 0, 0, time.UTC)
+
+	restored, ok := BuildRecoveryDurabilityRestoreBlock(nil, errors.New("queue full"), restoredAt, RetryableRecoveryScopeTask)
+	if !ok || restored == nil {
+		t.Fatalf("BuildRecoveryDurabilityRestoreBlock() = (%+v, %t), want classified block", restored, ok)
+	}
+	if restored.ReasonCode != RetryableReasonCodeWorkerQueueBackpressure {
+		t.Fatalf("ReasonCode = %q, want %q", restored.ReasonCode, RetryableReasonCodeWorkerQueueBackpressure)
+	}
+	if restored.RecoveryScope != RetryableRecoveryScopeTask {
+		t.Fatalf("RecoveryScope = %q, want %q", restored.RecoveryScope, RetryableRecoveryScopeTask)
+	}
+	if !restored.BlockedAt.Equal(restoredAt) {
+		t.Fatalf("BlockedAt = %v, want %v", restored.BlockedAt, restoredAt)
+	}
+}
+
 func TestBuildBackfilledRetryableBlock(t *testing.T) {
 	t.Parallel()
 
