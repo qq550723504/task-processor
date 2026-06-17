@@ -113,3 +113,29 @@ func TestHistoricalPlatformMigrationInventoryDefinesCostSlices(t *testing.T) {
 		}
 	}
 }
+
+func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "README.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"# Architecture Documentation",
+		"Stable Boundary Documents",
+		"project-boundaries.md",
+		"httpapi-assembly-boundaries.md",
+		"app-assembly-boundaries.md",
+		"temporal-boundaries.md",
+		"platform-boundary-strategy.md",
+		"historical-platform-migration-inventory.md",
+		"architecture-review-checklist.md",
+		"Plans, runbooks, and evaluations",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so stable architecture rules stay discoverable", path, phrase)
+		}
+	}
+}

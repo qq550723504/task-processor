@@ -93,6 +93,10 @@
 - `docs/architecture/app-assembly-boundaries.md`
 - `docs/development/repository-structure.md`
 
+长期架构文档入口已收口到：
+
+- `docs/architecture/README.md`
+
 接下来要做的是控制文档数量和语义漂移，尽量把长期有效的规则收口到少数文档，而不是让大量计划文档替代正式架构说明。
 
 ### 6. 明确 Temporal 的正式边界
