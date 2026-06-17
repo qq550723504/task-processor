@@ -172,7 +172,7 @@ func (bc *BaseClient) doJSONImageRequest(ctx context.Context, method string, api
 			return lastResp, nil
 		}
 		lastErr = err
-		if !shouldRetry(err) {
+		if !shouldRetryWithContext(ctx, err) {
 			break
 		}
 	}
@@ -224,7 +224,7 @@ func (bc *BaseClient) doMultipartImageRequest(ctx context.Context, apiPath strin
 			return lastResp, nil
 		}
 		lastErr = err
-		if !shouldRetry(err) {
+		if !shouldRetryWithContext(ctx, err) {
 			break
 		}
 	}

@@ -15,6 +15,14 @@ type SaleAttributeDebugSaver struct {
 	debugDir string
 }
 
+type DebugMeta struct {
+	Response     string
+	TokensUsed   int
+	Model        string
+	IsTruncated  bool
+	FinishReason string
+}
+
 // NewSaleAttributeDebugSaver 创建调试数据保存器
 func NewSaleAttributeDebugSaver() *SaleAttributeDebugSaver {
 	return &SaleAttributeDebugSaver{
@@ -33,21 +41,23 @@ type DebugData struct {
 	Error        string    `json:"error,omitempty"`
 	TokensUsed   int       `json:"tokens_used,omitempty"`
 	Model        string    `json:"model,omitempty"`
+	FinishReason string    `json:"finish_reason,omitempty"`
 	IsTruncated  bool      `json:"is_truncated"`
 }
 
 // SaveFailureData 保存失败的调试数据
-func (s *SaleAttributeDebugSaver) SaveFailureData(taskID, productID, systemPrompt, userPrompt, response string, err error) error {
-	return s.saveDebugData(taskID, productID, systemPrompt, userPrompt, response, err, 0, "", false)
+func (s *SaleAttributeDebugSaver) SaveFailureData(taskID, productID, systemPrompt, userPrompt string, err error, meta DebugMeta) error {
+	return s.saveDebugData(taskID, productID, systemPrompt, userPrompt, err, meta)
 }
 
 // SaveTruncatedData 保存被截断的调试数据
-func (s *SaleAttributeDebugSaver) SaveTruncatedData(taskID, productID, systemPrompt, userPrompt, response, model string, tokensUsed int) error {
-	return s.saveDebugData(taskID, productID, systemPrompt, userPrompt, response, nil, tokensUsed, model, true)
+func (s *SaleAttributeDebugSaver) SaveTruncatedData(taskID, productID, systemPrompt, userPrompt string, meta DebugMeta) error {
+	meta.IsTruncated = true
+	return s.saveDebugData(taskID, productID, systemPrompt, userPrompt, nil, meta)
 }
 
 // saveDebugData 保存调试数据
-func (s *SaleAttributeDebugSaver) saveDebugData(taskID, productID, systemPrompt, userPrompt, response string, err error, tokensUsed int, model string, isTruncated bool) error {
+func (s *SaleAttributeDebugSaver) saveDebugData(taskID, productID, systemPrompt, userPrompt string, err error, meta DebugMeta) error {
 	// 确保目录存在
 	if createErr := os.MkdirAll(s.debugDir, 0755); createErr != nil {
 		return fmt.Errorf("创建调试目录失败: %w", createErr)
@@ -60,10 +70,11 @@ func (s *SaleAttributeDebugSaver) saveDebugData(taskID, productID, systemPrompt,
 		ProductID:    productID,
 		SystemPrompt: systemPrompt,
 		UserPrompt:   userPrompt,
-		Response:     response,
-		TokensUsed:   tokensUsed,
-		Model:        model,
-		IsTruncated:  isTruncated,
+		Response:     meta.Response,
+		TokensUsed:   meta.TokensUsed,
+		Model:        meta.Model,
+		FinishReason: meta.FinishReason,
+		IsTruncated:  meta.IsTruncated,
 	}
 
 	if err != nil {
@@ -73,7 +84,7 @@ func (s *SaleAttributeDebugSaver) saveDebugData(taskID, productID, systemPrompt,
 	// 生成文件名
 	timestamp := time.Now().Format("20060102_150405")
 	status := "failure"
-	if err == nil && isTruncated {
+	if meta.IsTruncated {
 		status = "truncated"
 	}
 

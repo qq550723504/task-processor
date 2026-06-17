@@ -37,7 +37,7 @@ worker:
 openai:
   apiKey: ""
   model: "gemini-2.5-flash"
-  baseURL: "https://api.bltcy.ai/v1"
+  baseURL: "https://grsai.dakka.com.cn/v1"
   timeout: 300  # API调用超时5分钟
 
   # 各阶段命名客户端（key 与代码中 GetClient(name) 对应）

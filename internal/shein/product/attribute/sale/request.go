@@ -76,6 +76,7 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(input *SaleAttributeInput,
 	batchVariants := scopedVariantsForRequest(input, request)
 	productContext := r.contextBuilder.BuildCompactProductContext(batchAmazonProduct, batchVariants)
 	isSingleVariant := !input.HasVariants()
+	targetVariantCount := effectivePromptVariantCount(request)
 
 	var originalAttributeValues string
 	var attributeValueHint string
@@ -97,7 +98,7 @@ func (r *SaleAttributeRequestBuilder) BuildUserPrompt(input *SaleAttributeInput,
 	if isSingleVariant {
 		productTypeHint = "This is a single-variant product. Generate exactly one variant."
 	} else {
-		productTypeHint = fmt.Sprintf("This is a multi-variant product. Generate %d variants.", request.RequiredVariantCount)
+		productTypeHint = fmt.Sprintf("This is a multi-variant product. Generate %d variants.", targetVariantCount)
 	}
 
 	extraContextSection := r.contextBuilder.BuildExtraContext(batchAmazonProduct, batchVariants, request.ProductsData)
@@ -124,7 +125,7 @@ Attribute mappings:
 
 Extra context:
 %s`,
-		request.RequiredVariantCount,
+		targetVariantCount,
 		productTypeHint,
 		productContext,
 		string(productsDataBytes),
@@ -134,6 +135,16 @@ Extra context:
 		string(attributeMappingBytes),
 		extraContextSection,
 	)
+}
+
+func effectivePromptVariantCount(request *sheinattr.GenerationRequest) int {
+	if request == nil {
+		return 0
+	}
+	if len(request.ProductsData) > 0 {
+		return len(request.ProductsData)
+	}
+	return request.RequiredVariantCount
 }
 
 func scopedAmazonProductForRequest(input *SaleAttributeInput, request *sheinattr.GenerationRequest) model.Product {

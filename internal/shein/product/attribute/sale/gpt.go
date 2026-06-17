@@ -6,7 +6,7 @@ import (
 )
 
 func (h *SaleAttributeHandler) callGPTAPI(input *SaleAttributeInput, request *sheinattr.GenerationRequest) sheinattr.ResultSaleAttribute {
-	const maxVariantsPerBatch = 20
+	const maxVariantsPerBatch = 10
 	variantCount := len(request.VariationData)
 
 	if variantCount > maxVariantsPerBatch {

@@ -122,3 +122,48 @@ func TestBuildGenerationRequest_FiltersVariationDataToProductsDataASINs(t *testi
 		t.Fatalf("required variant count = %d, want 2", request.RequiredVariantCount)
 	}
 }
+
+func TestBuildUserPrompt_UsesProductsDataCountWhenRequiredVariantCountMismatches(t *testing.T) {
+	builder := NewSaleAttributeRequestBuilder()
+	input := &SaleAttributeInput{
+		Context: context.Background(),
+		AmazonProduct: &model.Product{
+			Title: "Test Product",
+			VariationsValues: []model.VariationValue{
+				{VariantName: "Color", Values: []string{"Red", "Blue"}},
+			},
+		},
+		Variants: []model.Product{
+			{Asin: "A1"},
+			{Asin: "A2"},
+			{Asin: "A3"},
+			{Asin: "A4"},
+			{Asin: "A5"},
+			{Asin: "A6"},
+		},
+	}
+
+	request := &sheinattr.GenerationRequest{
+		ProductsData: []sheinattr.ProductVariantData{
+			{ASIN: "A1", Attributes: map[string]string{"color": "Red"}},
+			{ASIN: "A2", Attributes: map[string]string{"color": "Blue"}},
+			{ASIN: "A3", Attributes: map[string]string{"color": "Red"}},
+			{ASIN: "A4", Attributes: map[string]string{"color": "Blue"}},
+			{ASIN: "A5", Attributes: map[string]string{"color": "Red"}},
+			{ASIN: "A6", Attributes: map[string]string{"color": "Blue"}},
+		},
+		VariationAttributeValues: &[]model.VariationValue{
+			{VariantName: "Color", Values: []string{"Red", "Blue"}},
+		},
+		RequiredVariantCount: 14,
+	}
+
+	prompt := builder.BuildUserPrompt(input, request)
+
+	if !strings.Contains(prompt, "Task: generate SHEIN sale attributes for 6 Amazon products.") {
+		t.Fatalf("prompt should use products data count in task header, got: %s", prompt)
+	}
+	if !strings.Contains(prompt, "This is a multi-variant product. Generate 6 variants.") {
+		t.Fatalf("prompt should use products data count in variant hint, got: %s", prompt)
+	}
+}

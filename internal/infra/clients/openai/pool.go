@@ -161,7 +161,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 		lastErr = err
 
 		// 检查是否应该重试
-		if !shouldRetry(err) {
+		if !shouldRetryWithContext(ctx, err) {
 			logger.GetGlobalLogger("infra/clients").Warnf("OpenAI API调用失败，错误不可重试: %v", err)
 			break
 		}
@@ -338,11 +338,19 @@ func convertResponse(resp *openai.ChatCompletionResponse) *ChatCompletionRespons
 
 // shouldRetry 判断错误是否应该重试
 func shouldRetry(err error) bool {
+	return shouldRetryWithContext(nil, err)
+}
+
+func shouldRetryWithContext(parentCtx context.Context, err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) {
 		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		// 父 context 已结束时，继续重试只会立刻失败；否则通常是单次请求超时，可继续尝试。
+		return parentCtx == nil || parentCtx.Err() == nil
 	}
 
 	var netErr net.Error

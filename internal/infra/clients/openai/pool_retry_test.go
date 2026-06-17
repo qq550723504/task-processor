@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"testing"
+	"time"
 
 	goopenai "github.com/sashabaranov/go-openai"
 )
@@ -70,4 +72,45 @@ func TestShouldRetry(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestShouldRetryWithContext(t *testing.T) {
+	t.Parallel()
+
+	t.Run("request timeout from inner attempt is retryable while parent context is still active", func(t *testing.T) {
+		t.Parallel()
+
+		err := &url.Error{
+			Op:  "Post",
+			URL: "https://example.com/v1/chat/completions",
+			Err: context.DeadlineExceeded,
+		}
+
+		if got := shouldRetryWithContext(context.Background(), err); !got {
+			t.Fatalf("shouldRetryWithContext(active parent, %v) = %v, want true", err, got)
+		}
+	})
+
+	t.Run("parent context deadline exceeded is not retryable", func(t *testing.T) {
+		t.Parallel()
+
+		parentCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		if got := shouldRetryWithContext(parentCtx, context.Canceled); got {
+			t.Fatalf("shouldRetryWithContext(canceled parent, context.Canceled) = %v, want false", got)
+		}
+	})
+
+	t.Run("parent context timeout is not retryable", func(t *testing.T) {
+		t.Parallel()
+
+		parentCtx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+		defer cancel()
+		<-parentCtx.Done()
+
+		if got := shouldRetryWithContext(parentCtx, parentCtx.Err()); got {
+			t.Fatalf("shouldRetryWithContext(expired parent, %v) = %v, want false", parentCtx.Err(), got)
+		}
+	})
 }
