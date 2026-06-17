@@ -672,41 +672,6 @@ func TestBuildSubmissionRemoteLookupInputs(t *testing.T) {
 	}
 }
 
-func TestResolveSubmissionRefreshValidation(t *testing.T) {
-	t.Parallel()
-
-	pkg := &Package{
-		SubmissionState: &SubmissionReport{
-			LastAction: "publish",
-			Publish: &SubmissionRecord{
-				Action:    "publish",
-				RequestID: "publish-req",
-			},
-		},
-	}
-
-	validation := ResolveSubmissionRefreshValidation(pkg, "publish", " publish-req ")
-	if !validation.Available {
-		t.Fatal("ResolveSubmissionRefreshValidation().Available = false, want true")
-	}
-	if !validation.ActionMatches {
-		t.Fatal("ResolveSubmissionRefreshValidation().ActionMatches = false, want true")
-	}
-	if !validation.RequestMatches {
-		t.Fatal("ResolveSubmissionRefreshValidation().RequestMatches = false, want true")
-	}
-
-	validation = ResolveSubmissionRefreshValidation(pkg, "save_draft", "publish-req")
-	if validation.ActionMatches {
-		t.Fatal("ResolveSubmissionRefreshValidation().ActionMatches = true, want false for changed action")
-	}
-
-	validation = ResolveSubmissionRefreshValidation(pkg, "publish", "other")
-	if validation.RequestMatches {
-		t.Fatal("ResolveSubmissionRefreshValidation().RequestMatches = true, want false for changed request")
-	}
-}
-
 func TestBuildSubmissionMissingSupplierCodeRemoteUpdate(t *testing.T) {
 	t.Parallel()
 
@@ -764,6 +729,8 @@ func TestSubmissionRemoteDoesNotKeepObsoletePolicyWrappers(t *testing.T) {
 		"func BuildSubmissionRecoveryLookupInputs(",
 		"func BuildSubmissionRefreshRequest(",
 		"func ResolveSubmissionConfirmRemoteUpdate(",
+		"func ResolveSubmissionRefreshValidation(",
+		"type SubmissionRefreshValidation struct",
 	} {
 		if strings.Contains(content, forbidden) {
 			t.Fatalf("submission_remote.go should not keep obsolete policy wrapper %q", forbidden)

@@ -291,12 +291,6 @@ type SubmissionRemoteRefreshSelection struct {
 	RemoteStatus string
 }
 
-type SubmissionRefreshValidation struct {
-	Available      bool
-	ActionMatches  bool
-	RequestMatches bool
-}
-
 func ResolveSubmissionRefreshSelection(pkg *Package) SubmissionRefreshSelection {
 	var ok bool
 	pkg, ok = SubmissionStatePackage(pkg)
@@ -352,18 +346,6 @@ func ResolveSubmissionRemoteRefreshSelection(pkg *Package, action, requestID str
 		StartedAt:    SubmissionStartedAt(pkg, action, requestID, fallbackStartedAt),
 		Response:     SubmissionResponseForAction(pkg, action),
 		RemoteStatus: pkg.SubmissionState.RemoteStatus,
-	}
-}
-
-func ResolveSubmissionRefreshValidation(pkg *Package, action, requestID string) SubmissionRefreshValidation {
-	pkg, ok := SubmissionStatePackage(pkg)
-	if !ok {
-		return SubmissionRefreshValidation{}
-	}
-	return SubmissionRefreshValidation{
-		Available:      true,
-		ActionMatches:  SubmissionRefreshActionMatches(pkg, action),
-		RequestMatches: SubmissionRefreshRequestMatches(pkg, action, requestID),
 	}
 }
 

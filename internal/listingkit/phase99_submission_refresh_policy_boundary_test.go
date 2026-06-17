@@ -57,3 +57,16 @@ func TestSheinSubmissionConfirmRemotePolicyBoundary(t *testing.T) {
 		"sheinpub.ResolveSubmissionConfirmRemoteUpdate(",
 	})
 }
+
+func TestSheinSubmissionRefreshMutationValidationBoundary(t *testing.T) {
+	t.Parallel()
+
+	source := readTaskGenerationSourceFile(t, "task_submission_refresh_mutation.go")
+	assertSourceContainsAll(t, source, []string{
+		"submissiondomain.RefreshActionMatches(",
+		"submissiondomain.RefreshRequestMatches(",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"sheinpub.ResolveSubmissionRefreshValidation(",
+	})
+}
