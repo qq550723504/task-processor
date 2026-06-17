@@ -189,17 +189,6 @@ func SubmissionResponseAcceptedForAction(action string, result *SubmissionRespon
 	return sheinmarketpub.ResponseAcceptedForAction(action, result.Success, result.Code)
 }
 
-func ConfirmedSubmissionResponse(response *SubmissionResponse, action string) *SubmissionResponse {
-	if response != nil {
-		return response
-	}
-	return &SubmissionResponse{
-		Code:    "0",
-		Success: true,
-		Message: sheinmarketpub.ConfirmedSubmissionMessage(action),
-	}
-}
-
 func SubmissionStartedAt(pkg *Package, action, requestID string, fallback time.Time) time.Time {
 	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.SubmissionState == nil {

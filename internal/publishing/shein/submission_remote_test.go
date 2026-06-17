@@ -231,25 +231,6 @@ func TestApplySubmissionConfirmRemoteUpdateWithoutEvent(t *testing.T) {
 	}
 }
 
-func TestConfirmedSubmissionResponse(t *testing.T) {
-	t.Parallel()
-
-	existing := &SubmissionResponse{Success: true, Message: "existing"}
-	if got := ConfirmedSubmissionResponse(existing, "publish"); got != existing {
-		t.Fatalf("ConfirmedSubmissionResponse(existing) = %+v, want original response", got)
-	}
-
-	saveDraft := ConfirmedSubmissionResponse(nil, "save_draft")
-	if saveDraft == nil || saveDraft.Code != "0" || !saveDraft.Success || saveDraft.Message != "save draft confirmed by remote check" {
-		t.Fatalf("save draft confirmed response = %+v", saveDraft)
-	}
-
-	publish := ConfirmedSubmissionResponse(nil, "publish")
-	if publish == nil || publish.Code != "0" || !publish.Success || publish.Message != "publish confirmed by remote check" {
-		t.Fatalf("publish confirmed response = %+v", publish)
-	}
-}
-
 func TestSubmissionStartedAtAndResponseForAction(t *testing.T) {
 	t.Parallel()
 
@@ -695,6 +676,7 @@ func TestSubmissionRemoteDoesNotKeepObsoletePolicyWrappers(t *testing.T) {
 		"func ResolveSubmissionConfirmRemoteUpdate(",
 		"func ResolveSubmissionRefreshValidation(",
 		"func ResolveSubmissionRemoteRefreshSelection(",
+		"func ConfirmedSubmissionResponse(",
 		"type SubmissionRefreshValidation struct",
 		"type SubmissionRemoteRefreshSelection struct",
 	} {
