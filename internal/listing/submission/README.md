@@ -59,6 +59,7 @@ Current stable ownership:
 - preferred submit-action selection policy for choosing the first supported action from ordered candidates
 - exported retryable failure reason-code and default task recovery-scope constants for durable retry metadata
 - root ListingKit retryable-block compatibility now consumes those exported reason-code and recovery-scope constants directly instead of keeping root-side retry metadata aliases
+- root ListingKit recovery now calls the generic reblock policy directly through state adapters instead of keeping a root-side reblock builder
 
 Does not own yet:
 

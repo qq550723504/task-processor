@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	submissiondomain "task-processor/internal/listing/submission"
 )
@@ -32,21 +31,4 @@ func (s *taskRecoveryService) restoreRecoveryDurability(ctx context.Context, tas
 		return errors.Join(joined, fmt.Errorf("restore blocked retryable state: %w", rollbackErr))
 	}
 	return joined
-}
-
-func (s *taskRecoveryService) buildReblockedTask(previous *RetryableBlock, classified *RetryableBlock, recoveredAt time.Time) *RetryableBlock {
-	return adaptSubmissionRetryableBlock(submissiondomain.BuildReblockedRetryableBlock(
-		adaptRetryableBlockState(previous),
-		adaptRetryableBlockState(classified),
-		recoveredAt,
-		submissiondomain.RetryableRecoveryScopeTask,
-	))
-}
-
-func cloneTimePointer(value time.Time) *time.Time {
-	if value.IsZero() {
-		return nil
-	}
-	copied := value
-	return &copied
 }

@@ -518,15 +518,10 @@ func TestRecoverTaskNowRestoresBlockedStateWhenReblockPersistenceFails(t *testin
 	}
 }
 
-func TestBuildReblockedTaskPreservesManualPauseAndAutoResumeDisabled(t *testing.T) {
+func TestSubmissionReblockedRetryableBlockPreservesManualPauseAndAutoResumeDisabled(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, 6, 6, 17, 45, 0, 0, time.UTC)
-	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
-		repo: newTaskRecoveryServiceTestRepo(),
-		now:  func() time.Time { return now },
-	})
-
 	previous := &RetryableBlock{
 		ReasonCode:           listingsubmission.RetryableReasonCodeWorkerQueueBackpressure,
 		ReasonMessage:        "queue full",
@@ -542,7 +537,12 @@ func TestBuildReblockedTaskPreservesManualPauseAndAutoResumeDisabled(t *testing.
 		t.Fatal("classifyRetryableTaskFailure() = not retryable, want queue full classification")
 	}
 
-	reblocked := svc.buildReblockedTask(previous, classified, now)
+	reblocked := adaptSubmissionRetryableBlock(listingsubmission.BuildReblockedRetryableBlock(
+		adaptRetryableBlockState(previous),
+		adaptRetryableBlockState(classified),
+		now,
+		listingsubmission.RetryableRecoveryScopeTask,
+	))
 	if reblocked.AutoResumeEnabled {
 		t.Fatal("AutoResumeEnabled = true, want preserved false")
 	}

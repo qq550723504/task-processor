@@ -1063,6 +1063,7 @@ func TestTaskRecoverySubmitRecoveredDelegatesRetryablePersistenceSkeleton(t *tes
 
 	source := readNamedFunctionSource(t, "task_recovery_service.go", "submitRecoveredTask")
 	callNames := readNamedFunctionCallNames(t, "task_recovery_service.go", "submitRecoveredTask")
+	durabilitySource := readTaskGenerationSourceFile(t, "task_recovery_durability.go")
 
 	assertSourceContainsAll(t, source, []string{
 		"return submissiondomain.SubmitRecoveredWithRetryablePersistence(",
@@ -1075,6 +1076,10 @@ func TestTaskRecoverySubmitRecoveredDelegatesRetryablePersistenceSkeleton(t *tes
 		"if err := submitter.Submit(taskID); err != nil {",
 		"if block, ok := classifyRetryableTaskFailure(err); ok {",
 		"updated := s.buildReblockedTask(previousBlock, block, recoveredAt)",
+	})
+	assertSourceExcludesAll(t, durabilitySource, []string{
+		"func (s *taskRecoveryService) buildReblockedTask(",
+		"func cloneTimePointer(",
 	})
 	assertFunctionCallsContainAll(t, callNames, []string{
 		"SubmitRecoveredWithRetryablePersistence",
