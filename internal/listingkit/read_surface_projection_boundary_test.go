@@ -89,4 +89,45 @@ func TestReadSurfaceProjectionBoundary(t *testing.T) {
 			"preview.AssetGenerationOverview = projection.generationOverview",
 		})
 	})
+
+	t.Run("export_projection_carries_attachment_fields_as_bundle", func(t *testing.T) {
+		t.Parallel()
+
+		source := readNamedFunctionSource(t, "export_result_projection.go", "buildListingKitExportProjection")
+		applySource := readNamedFunctionSource(t, "export_result_projection.go", "applyListingKitExportProjection")
+		fileSource := readTaskGenerationSourceFile(t, "export_result_projection.go")
+
+		assertSourceContainsAll(t, fileSource, []string{
+			"type listingKitExportProjectionAttachment struct {",
+			"attachment listingKitExportProjectionAttachment",
+		})
+		assertSourceContainsAll(t, source, []string{
+			"attachment: listingKitExportProjectionAttachment{",
+			"catalog:             attachment.CatalogProduct",
+			"assetBundle:         attachment.AssetBundle",
+			"assetInventory:      attachment.AssetInventorySummary",
+			"assetRenderPreviews: readProjection.AssetRenderPreviews",
+			"platformPreviews:    readProjection.PlatformAssetRenderPreviews",
+			"generationQueue:     readProjection.AssetGenerationQueue",
+			"generationOverview:  readProjection.AssetGenerationOverview",
+		})
+		assertSourceContainsAll(t, applySource, []string{
+			"export.CatalogProduct = projection.attachment.catalog",
+			"export.AssetBundle = projection.attachment.assetBundle",
+			"export.AssetInventorySummary = projection.attachment.assetInventory",
+			"export.AssetRenderPreviews = projection.attachment.assetRenderPreviews",
+			"export.PlatformAssetRenderPreviews = projection.attachment.platformPreviews",
+			"export.AssetGenerationQueue = projection.attachment.generationQueue",
+			"export.AssetGenerationOverview = projection.attachment.generationOverview",
+		})
+		assertSourceExcludesAll(t, fileSource, []string{
+			"export.CatalogProduct = projection.catalog",
+			"export.AssetBundle = projection.assetBundle",
+			"export.AssetInventorySummary = projection.assetInventory",
+			"export.AssetRenderPreviews = projection.assetRenderPreviews",
+			"export.PlatformAssetRenderPreviews = projection.platformPreviews",
+			"export.AssetGenerationQueue = projection.generationQueue",
+			"export.AssetGenerationOverview = projection.generationOverview",
+		})
+	})
 }
