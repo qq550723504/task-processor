@@ -110,7 +110,8 @@ Good candidates for the next framework slice:
 
 1. Keep extending import or structure guards that keep `internal/platforms/*`
    thin. Current guard:
-   `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`.
+   `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages` and
+   `TestPlatformRegistrationPackagesStayThin`.
 2. Identify one SHEIN publishing helper still living in a root or runtime-heavy
    package and move it only if tests can pin the behavior.
 3. Add a focused TEMU inventory before moving code, because test coverage is

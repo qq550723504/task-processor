@@ -52,6 +52,24 @@ func TestTrackedLocalArtifactsStayOutOfTools(t *testing.T) {
 	assertNoTrackedLocalArtifacts(t, "tools")
 }
 
+func TestPlatformRegistrationPackagesStayThin(t *testing.T) {
+	allowedFiles := map[string]struct{}{
+		"internal/platforms/modules.go":           {},
+		"internal/platforms/amazon/module.go":     {},
+		"internal/platforms/shein/doc.go":         {},
+		"internal/platforms/shein/module.go":      {},
+		"internal/platforms/shein/module_test.go": {},
+		"internal/platforms/temu/module.go":       {},
+	}
+
+	for _, line := range trackedFiles(t, "internal/platforms") {
+		path := filepath.ToSlash(line)
+		if _, ok := allowedFiles[path]; !ok {
+			t.Errorf("%s is a new platform registration file; keep internal/platforms limited to module descriptors and put platform business rules in marketplace or publishing packages", path)
+		}
+	}
+}
+
 func trackedFiles(t *testing.T, pathspec string) []string {
 	t.Helper()
 
