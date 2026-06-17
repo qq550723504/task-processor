@@ -62,9 +62,9 @@ func buildListingKitPreviewAttachmentInput(result *ListingKitResult) *previewdom
 func buildListingKitReadProjectionAttachmentExtras(
 	result *ListingKitResult,
 	selectedPlatform string,
-) ([]AssetRenderPreview, []PlatformAssetRenderPreviews, *GenerationWorkQueue, *AssetGenerationOverview) {
+) listingKitReadProjectionAttachmentExtras {
 	if result == nil {
-		return nil, nil, nil, nil
+		return listingKitReadProjectionAttachmentExtras{}
 	}
 
 	assetRenderPreviews := append([]AssetRenderPreview(nil), result.AssetRenderPreviews...)
@@ -78,5 +78,10 @@ func buildListingKitReadProjectionAttachmentExtras(
 	}
 	platformRenderPreviews = filterPlatformAssetRenderPreviews(platformRenderPreviews, selectedPlatform)
 
-	return assetRenderPreviews, platformRenderPreviews, result.AssetGenerationQueue, result.AssetGenerationOverview
+	return listingKitReadProjectionAttachmentExtras{
+		AssetRenderPreviews:         assetRenderPreviews,
+		PlatformAssetRenderPreviews: platformRenderPreviews,
+		AssetGenerationQueue:        result.AssetGenerationQueue,
+		AssetGenerationOverview:     result.AssetGenerationOverview,
+	}
 }

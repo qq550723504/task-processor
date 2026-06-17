@@ -13,6 +13,13 @@ type listingKitReadProjection struct {
 	AssetGenerationOverview     *AssetGenerationOverview
 }
 
+type listingKitReadProjectionAttachmentExtras struct {
+	AssetRenderPreviews         []AssetRenderPreview
+	PlatformAssetRenderPreviews []PlatformAssetRenderPreviews
+	AssetGenerationQueue        *GenerationWorkQueue
+	AssetGenerationOverview     *AssetGenerationOverview
+}
+
 func (projection *listingKitReadProjection) previewDomainReadModelInput() previewdomain.ReadModelInput {
 	if projection == nil {
 		return previewdomain.ReadModelInput{}
