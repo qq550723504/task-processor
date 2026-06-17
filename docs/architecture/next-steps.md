@@ -12,6 +12,10 @@
 
 当前最重要的问题不是目录怎么摆，而是后续平台能力往哪里长。
 
+正式平台边界策略已收口到：
+
+- `docs/architecture/platform-boundary-strategy.md`
+
 当前仓库里同时存在：
 
 - `internal/shein`

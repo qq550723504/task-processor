@@ -56,12 +56,36 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"internal/app/state",
 		"owning module `internal/*/httpapi`",
 		"Temporal",
+		"platform-boundary-strategy.md",
 		"boundary exception",
 		"import-boundary and architecture tests",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
 			t.Errorf("%s must mention %q so architecture review catches common boundary regressions", path, phrase)
+		}
+	}
+}
+
+func TestPlatformBoundaryStrategyDefinesConvergenceRoles(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "platform-boundary-strategy.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"# Platform Boundary Strategy",
+		"Historical platform packages",
+		"`internal/publishing/*`",
+		"`internal/listingkit`",
+		"`internal/platforms/*`",
+		"Migration Rules",
+		"Review Questions",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so platform convergence has a stable review target", path, phrase)
 		}
 	}
 }
