@@ -20,6 +20,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$script:PortForwardSessionId = "{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $PID
 
 function Wait-ForPortForwardReady {
     param(
@@ -41,6 +42,33 @@ function Wait-ForPortForwardReady {
     throw "Timed out waiting for kubectl port-forward readiness: $LogPath"
 }
 
+function Stop-ExistingPortForwardProcess {
+    param(
+        [string]$Namespace,
+        [string]$Service,
+        [int]$LocalPort,
+        [int]$RemotePort
+    )
+
+    $portForwardPattern = [regex]::Escape("svc/$Service")
+    $portMappingPattern = [regex]::Escape("${LocalPort}:${RemotePort}")
+    $namespacePattern = "(^|\s)-n\s+$([regex]::Escape($Namespace))(\s|$)"
+
+    $existingProcesses = Get-CimInstance Win32_Process |
+        Where-Object {
+            $_.Name -eq "kubectl.exe" -and
+            $_.CommandLine -match "port-forward" -and
+            $_.CommandLine -match $portForwardPattern -and
+            $_.CommandLine -match $portMappingPattern -and
+            $_.CommandLine -match $namespacePattern
+        }
+
+    foreach ($existingProcess in $existingProcesses) {
+        Write-Host "Stopping existing kubectl port-forward PID $($existingProcess.ProcessId) for ${Namespace}/${Service} on localhost:${LocalPort} ..." -ForegroundColor DarkYellow
+        Stop-Process -Id $existingProcess.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Start-PortForwardProcess {
     param(
         [string]$Namespace,
@@ -50,10 +78,8 @@ function Start-PortForwardProcess {
         [string]$LogPrefix
     )
 
-    $stdoutLog = Join-Path $env:TEMP "$LogPrefix.stdout.log"
-    $stderrLog = Join-Path $env:TEMP "$LogPrefix.stderr.log"
-    if (Test-Path -LiteralPath $stdoutLog) { Remove-Item -LiteralPath $stdoutLog -Force }
-    if (Test-Path -LiteralPath $stderrLog) { Remove-Item -LiteralPath $stderrLog -Force }
+    $stdoutLog = Join-Path $env:TEMP ("{0}.{1}.stdout.log" -f $LogPrefix, $script:PortForwardSessionId)
+    $stderrLog = Join-Path $env:TEMP ("{0}.{1}.stderr.log" -f $LogPrefix, $script:PortForwardSessionId)
 
     $args = @(
         "-n", $Namespace,
@@ -61,6 +87,8 @@ function Start-PortForwardProcess {
         "svc/$Service",
         "${LocalPort}:${RemotePort}"
     )
+
+    Stop-ExistingPortForwardProcess -Namespace $Namespace -Service $Service -LocalPort $LocalPort -RemotePort $RemotePort
 
     Write-Host "Starting kubectl port-forward to ${Namespace}/${Service} on localhost:${LocalPort} ..." -ForegroundColor Cyan
     $process = Start-Process `
@@ -121,6 +149,7 @@ try {
 
     Write-Host ""
     Write-Host "Local shein dependencies port-forward is ready." -ForegroundColor Green
+    Write-Host "Port-forward session id: $script:PortForwardSessionId" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "Suggested env override for local shein-listing:" -ForegroundColor Yellow
     if (-not $SkipDatabase) {

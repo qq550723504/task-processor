@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"task-processor/internal/core/logger"
+	"task-processor/internal/model"
 	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
@@ -19,7 +20,11 @@ func NewSaleAttributeBatchProcessor(handler *SaleAttributeHandler) *SaleAttribut
 func (p *SaleAttributeBatchProcessor) ProcessInBatches(input *SaleAttributeInput, request *sheinattr.GenerationRequest, batchSize int) sheinattr.ResultSaleAttribute {
 	variationData := request.VariationData
 	productsData := request.ProductsData
-	totalBatches := (len(variationData) + batchSize - 1) / batchSize
+	totalVariants := len(productsData)
+	if totalVariants == 0 {
+		totalVariants = len(variationData)
+	}
+	totalBatches := (totalVariants + batchSize - 1) / batchSize
 
 	var allVariants []sheinattr.Variant
 	var allSaleAttributes []sheinattr.ResultAttribute
@@ -28,31 +33,32 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(input *SaleAttributeInput
 		batchNumber := batchIndex + 1
 		start := batchIndex * batchSize
 		end := start + batchSize
-		if end > len(variationData) {
-			end = len(variationData)
-		}
 
 		var batchProductsData []sheinattr.ProductVariantData
 		if start < len(productsData) {
-			productsEnd := end
-			if productsEnd > len(productsData) {
-				productsEnd = len(productsData)
+			if end > len(productsData) {
+				end = len(productsData)
 			}
-			batchProductsData = productsData[start:productsEnd]
+			batchProductsData = productsData[start:end]
 		} else {
 			batchProductsData = []sheinattr.ProductVariantData{}
+			if end > len(variationData) {
+				end = len(variationData)
+			}
 		}
+
+		batchVariationData := scopeVariationsToProductsData(variationData, batchProductsData)
 
 		batchRequest := &sheinattr.GenerationRequest{
 			ProductsData:             batchProductsData,
-			VariationData:            variationData[start:end],
+			VariationData:            fallbackBatchVariations(batchVariationData, variationData, start, end),
 			VariationAttributeValues: variationAttributeValuesPointer(scopeVariationAttributeValuesToProductsData(request.VariationAttributeValues, batchProductsData)),
 			SaleAttributesData:       request.SaleAttributesData,
 			AttributeMappings:        request.AttributeMappings,
-			RequiredVariantCount:     end - start,
+			RequiredVariantCount:     len(batchProductsData),
 		}
 
-		progressFields := buildBatchProgressFields(batchNumber, totalBatches, batchSize, len(batchProductsData), len(variationData))
+		progressFields := buildBatchProgressFields(batchNumber, totalBatches, batchSize, len(batchProductsData), totalVariants)
 		logger.GetGlobalLogger("shein/product").WithFields(progressFields).Info("sale attribute batch started")
 		singleProcessor := NewSaleAttributeSingleProcessor(p.handler)
 		batchResult := singleProcessor.ProcessSingleBatch(input, batchRequest)
@@ -66,6 +72,19 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(input *SaleAttributeInput
 	}
 
 	return sheinattr.ResultSaleAttribute{SaleAttributes: allSaleAttributes, Variants: allVariants}
+}
+
+func fallbackBatchVariations(batchVariations []model.Variation, allVariations []model.Variation, start, end int) []model.Variation {
+	if len(batchVariations) > 0 {
+		return batchVariations
+	}
+	if start >= len(allVariations) {
+		return nil
+	}
+	if end > len(allVariations) {
+		end = len(allVariations)
+	}
+	return allVariations[start:end]
 }
 
 func buildBatchProgressFields(batchNumber, totalBatches, batchSize, batchVariantCount, totalVariants int) map[string]any {
