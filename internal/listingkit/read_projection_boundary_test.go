@@ -72,4 +72,26 @@ func TestListingKitReadProjectionBoundary(t *testing.T) {
 			"platformCards := buildPlatformPreviewCards(result, selectedPlatform)",
 		})
 	})
+
+	t.Run("preview_header_uses_platform_card_adapter", func(t *testing.T) {
+		t.Parallel()
+
+		headerSource := readNamedFunctionSource(t, "read_projection_preview_input.go", "buildListingKitPreviewHeaderInput")
+		adapterSource := readNamedFunctionSource(t, "read_projection_preview_input.go", "buildPreviewDomainPlatformCards")
+
+		assertSourceContainsAll(t, headerSource, []string{
+			"input.PlatformCards = buildPreviewDomainPlatformCards(platformCards)",
+		})
+		assertSourceExcludesAll(t, headerSource, []string{
+			"make([]previewdomain.PlatformCard, 0, len(platformCards))",
+			"input.PlatformCards = append(input.PlatformCards, previewdomain.PlatformCard{",
+		})
+		assertSourceContainsAll(t, adapterSource, []string{
+			"func buildPreviewDomainPlatformCards(platformCards []ListingKitPlatformCard) []previewdomain.PlatformCard",
+			"cards := make([]previewdomain.PlatformCard, 0, len(platformCards))",
+			"cards = append(cards, previewdomain.PlatformCard{",
+			"PrimaryActionKey:      card.PrimaryActionKey",
+			"PrimaryCTAKind:        card.PrimaryCTAKind",
+		})
+	})
 }

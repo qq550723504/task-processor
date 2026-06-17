@@ -28,23 +28,28 @@ func buildListingKitPreviewHeaderInput(result *ListingKitResult, platformCards [
 		input.Warnings = append([]string(nil), result.Summary.Warnings...)
 	}
 	if len(platformCards) > 0 {
-		input.PlatformCards = make([]previewdomain.PlatformCard, 0, len(platformCards))
-		for _, card := range platformCards {
-			input.PlatformCards = append(input.PlatformCards, previewdomain.PlatformCard{
-				Platform:              card.Platform,
-				Status:                card.Status,
-				Summary:               card.Summary,
-				NeedsReview:           card.NeedsReview,
-				PreviewableItems:      card.PreviewableItems,
-				ApprovedSections:      card.ApprovedSections,
-				DeferredSections:      card.DeferredSections,
-				ReviewPendingSections: card.ReviewPendingSections,
-				PrimaryActionKey:      card.PrimaryActionKey,
-				PrimaryCTAKind:        card.PrimaryCTAKind,
-			})
-		}
+		input.PlatformCards = buildPreviewDomainPlatformCards(platformCards)
 	}
 	return input
+}
+
+func buildPreviewDomainPlatformCards(platformCards []ListingKitPlatformCard) []previewdomain.PlatformCard {
+	cards := make([]previewdomain.PlatformCard, 0, len(platformCards))
+	for _, card := range platformCards {
+		cards = append(cards, previewdomain.PlatformCard{
+			Platform:              card.Platform,
+			Status:                card.Status,
+			Summary:               card.Summary,
+			NeedsReview:           card.NeedsReview,
+			PreviewableItems:      card.PreviewableItems,
+			ApprovedSections:      card.ApprovedSections,
+			DeferredSections:      card.DeferredSections,
+			ReviewPendingSections: card.ReviewPendingSections,
+			PrimaryActionKey:      card.PrimaryActionKey,
+			PrimaryCTAKind:        card.PrimaryCTAKind,
+		})
+	}
+	return cards
 }
 
 func buildListingKitPreviewAttachmentInput(result *ListingKitResult) *previewdomain.AttachmentInput {
