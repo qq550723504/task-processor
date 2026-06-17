@@ -715,6 +715,19 @@ func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 	}
 }
 
+func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) {
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "platforms"), []string{
+		"task-processor/internal/app/httpapi",
+		"task-processor/internal/asset",
+		"task-processor/internal/catalog",
+		"task-processor/internal/listingkit",
+		"task-processor/internal/marketplace",
+		"task-processor/internal/productimage",
+		"task-processor/internal/publishing",
+		"task-processor/internal/workspace",
+	}, nil)
+}
+
 func TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages(t *testing.T) {
 	assertNoBannedImportPrefixes(t, filepath.Join("..", "cmd"), []string{
 		"task-processor/internal/amazon",

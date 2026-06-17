@@ -90,6 +90,9 @@ substantial validation, payload shaping, pricing, category, workspace, or
 publishing behavior, the owning package should be a marketplace or publishing
 module, with `internal/platforms/*` only delegating to it.
 
+This thin-layer rule is guarded by
+`TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`.
+
 ## Migration Rules
 
 When adding or moving platform behavior:
