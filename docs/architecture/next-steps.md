@@ -57,10 +57,14 @@
 
 ### 3. 给兼容层设定删除条件
 
-当前仍保留的兼容层：
+兼容层退休状态已收口到：
 
-- `internal/app/processor/compat.go`
-- `internal/app/state/compat.go`
+- `docs/architecture/compatibility-retirement.md`
+
+当前已退休并由测试守住的兼容路径：
+
+- `internal/app/processor`
+- `internal/app/state` Go 兼容文件
 
 这类文件短期有价值，但不能长期双轨存在。
 

@@ -26,6 +26,8 @@ Use these as the main source of truth for structural work:
 - `historical-platform-migration-inventory.md`
   - migration-cost tiers and next-slice candidates for historical platform
     packages
+- `compatibility-retirement.md`
+  - retired compatibility paths, replacement owners, and guard tests
 - `architecture-review-checklist.md`
   - repeatable PR review checklist for boundary-sensitive changes
 

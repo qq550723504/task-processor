@@ -35,6 +35,7 @@ Use these documents as the stable source of truth:
 - `docs/architecture/temporal-boundaries.md`
 - `docs/architecture/platform-boundary-strategy.md`
 - `docs/architecture/historical-platform-migration-inventory.md`
+- `docs/architecture/compatibility-retirement.md`
 - `docs/development/repository-structure.md`
 
 ## Working Rule

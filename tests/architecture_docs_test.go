@@ -130,12 +130,36 @@ func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
 		"temporal-boundaries.md",
 		"platform-boundary-strategy.md",
 		"historical-platform-migration-inventory.md",
+		"compatibility-retirement.md",
 		"architecture-review-checklist.md",
 		"Plans, runbooks, and evaluations",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
 			t.Errorf("%s must mention %q so stable architecture rules stay discoverable", path, phrase)
+		}
+	}
+}
+
+func TestCompatibilityRetirementDocumentCapturesAppCompatibilityStatus(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "compatibility-retirement.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"# Compatibility Retirement",
+		"`internal/app/processor`",
+		"`internal/app/state`",
+		"Retired",
+		"zero in-repository imports",
+		"TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer",
+		"TestAppStateCompatibilityLayerIsRetired",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so retired compatibility paths stay explicit", path, phrase)
 		}
 	}
 }
