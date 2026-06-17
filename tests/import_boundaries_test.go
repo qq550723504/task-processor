@@ -657,6 +657,55 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "access_scope.go")):                              {},
+		filepath.Clean(filepath.Join(root, "ai_client_settings.go")):                        {},
+		filepath.Clean(filepath.Join(root, "assembler.go")):                                 {},
+		filepath.Clean(filepath.Join(root, "interfaces_dependencies.go")):                   {},
+		filepath.Clean(filepath.Join(root, "processor.go")):                                 {},
+		filepath.Clean(filepath.Join(root, "request_context.go")):                           {},
+		filepath.Clean(filepath.Join(root, "service_shein_shared_dependencies.go")):         {},
+		filepath.Clean(filepath.Join(root, "service_studio_dependencies.go")):               {},
+		filepath.Clean(filepath.Join(root, "service_studio_media_generation_helpers.go")):   {},
+		filepath.Clean(filepath.Join(root, "service_studio_session_wiring_support.go")):     {},
+		filepath.Clean(filepath.Join(root, "service_studio_wiring_support.go")):             {},
+		filepath.Clean(filepath.Join(root, "service_submit_task_identity_helper.go")):       {},
+		filepath.Clean(filepath.Join(root, "service_submit_wiring_resolution_support.go")):  {},
+		filepath.Clean(filepath.Join(root, "service_submit_wiring_support.go")):             {},
+		filepath.Clean(filepath.Join(root, "service_task_layer_processing_helpers.go")):     {},
+		filepath.Clean(filepath.Join(root, "service_types.go")):                             {},
+		filepath.Clean(filepath.Join(root, "service_workflow_dependencies.go")):             {},
+		filepath.Clean(filepath.Join(root, "settings_admin_ai_client_settings_service.go")): {},
+		filepath.Clean(filepath.Join(root, "shein_settings.go")):                            {},
+		filepath.Clean(filepath.Join(root, "studio_designs.go")):                            {},
+		filepath.Clean(filepath.Join(root, "task_studio_media_service.go")):                 {},
+		filepath.Clean(filepath.Join(root, "task_studio_media_service_support.go")):         {},
+		filepath.Clean(filepath.Join(root, "task_submission_execution_service.go")):         {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if filepath.Dir(path) != filepath.Clean(root) || strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+				t.Errorf("%s imports %s; keep ListingKit root concrete OpenAI client dependencies limited to current facade, settings, service, studio, and task seams", path, importPath)
+			}
+		}
+	}
+}
+
 func TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases(t *testing.T) {
 	assertNoBannedSelectorsOutside(t, filepath.Join("..", "internal"), filepath.Join("..", "internal", "productenrich"), map[string]struct{}{
 		"CanonicalProduct":           {},
