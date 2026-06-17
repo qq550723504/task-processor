@@ -58,6 +58,9 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"Temporal",
 		"platform-boundary-strategy.md",
 		"historical-platform-migration-inventory.md",
+		"external-client-boundary-inventory.md",
+		"local interface",
+		"concrete external client",
 		"boundary exception",
 		"import-boundary and architecture tests",
 	}

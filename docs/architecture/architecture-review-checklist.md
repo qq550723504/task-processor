@@ -21,9 +21,13 @@ Before merging a structural or feature PR, verify:
    keeps SDK types out of domain-facing contracts.
 6. New platform-specific rules do not grow the root `internal/listingkit`
    facade when a marketplace, publishing, or product module owns the behavior.
-7. Any boundary exception is documented with a narrow scope and a follow-up
+7. New remote-service behavior follows
+   `docs/architecture/external-client-boundary-inventory.md`: prefer a local
+   interface and avoid leaking a concrete external client adapter into
+   domain-facing contracts.
+8. Any boundary exception is documented with a narrow scope and a follow-up
    cleanup path.
-8. Relevant import-boundary and architecture tests were run.
+9. Relevant import-boundary and architecture tests were run.
 
 ## Review References
 
@@ -35,6 +39,7 @@ Use these documents as the stable source of truth:
 - `docs/architecture/temporal-boundaries.md`
 - `docs/architecture/platform-boundary-strategy.md`
 - `docs/architecture/historical-platform-migration-inventory.md`
+- `docs/architecture/external-client-boundary-inventory.md`
 - `docs/architecture/compatibility-retirement.md`
 - `docs/development/repository-structure.md`
 
