@@ -30,6 +30,9 @@ Current direct dependency hotspots are:
   - broad `openai` coupling across facade, studio, task, and settings code
   - should shrink behind ListingKit-owned AI interfaces before new features add
     more concrete OpenAI types
+  - `internal/listingkit/httpapi` AI runtime/bootstrap seams are guarded by
+    `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted`; root facade
+    OpenAI coupling remains a later slice
 - `internal/publishing/shein`
   - concentrated `openai` coupling in attribute, category, content, and listing
     copy helpers
@@ -73,7 +76,9 @@ Good next slices are small seams where a local interface can replace concrete
 adapter types without changing business behavior:
 
 1. ListingKit AI settings and studio media generation seams currently importing
-   `internal/infra/clients/openai`.
+   `internal/infra/clients/openai`. The HTTPAPI runtime/bootstrap seam is now
+   explicitly allowlisted; the next ListingKit slice should target root facade
+   OpenAI dependencies behind ListingKit-owned interfaces.
 2. SHEIN publishing attribute/category inference helpers currently importing
    `internal/infra/clients/openai`. Current imports are explicitly allowlisted;
    reduce them by introducing package-local inference interfaces before adding

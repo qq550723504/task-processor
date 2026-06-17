@@ -620,6 +620,43 @@ func TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain(t *tes
 	}, nil)
 }
 
+func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit", "httpapi")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "ai_client_fallback_helpers.go")):            {},
+		filepath.Clean(filepath.Join(root, "ai_client_image_routing.go")):               {},
+		filepath.Clean(filepath.Join(root, "ai_client_strict_chat.go")):                 {},
+		filepath.Clean(filepath.Join(root, "ai_client_strict_image.go")):                {},
+		filepath.Clean(filepath.Join(root, "ai_clients.go")):                            {},
+		filepath.Clean(filepath.Join(root, "ai_clients_test.go")):                       {},
+		filepath.Clean(filepath.Join(root, "bootstrap_contracts.go")):                   {},
+		filepath.Clean(filepath.Join(root, "bootstrap_submit_module.go")):               {},
+		filepath.Clean(filepath.Join(root, "bootstrap_test.go")):                        {},
+		filepath.Clean(filepath.Join(root, "runtime_support_hooks.go")):                 {},
+		filepath.Clean(filepath.Join(root, "runtime_support_shein.go")):                 {},
+		filepath.Clean(filepath.Join(root, "runtime_support_shein_adapter_helpers.go")): {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for _, bannedImport := range []string{
+			`"task-processor/internal/infra/clients/nanobanana"`,
+			`"task-processor/internal/infra/clients/openai"`,
+		} {
+			if _, ok := facts.imports[bannedImport]; ok {
+				t.Errorf("%s imports %s; keep listingkit/httpapi concrete external clients limited to current AI runtime and bootstrap seams", path, bannedImport)
+			}
+		}
+	}
+}
+
 func TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases(t *testing.T) {
 	assertNoBannedSelectorsOutside(t, filepath.Join("..", "internal"), filepath.Join("..", "internal", "productenrich"), map[string]struct{}{
 		"CanonicalProduct":           {},
