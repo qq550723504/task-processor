@@ -193,7 +193,14 @@ func TestCatalogDoesNotDependOnProductEnrichAliases(t *testing.T) {
 func TestListingKitSubdomainsDoNotImportRootFacade(t *testing.T) {
 	for _, subdomain := range []string{"generation", "submission", "workflow", "workspace"} {
 		t.Run(subdomain, func(t *testing.T) {
-			assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit", subdomain), []string{
+			dir := filepath.Join("..", "internal", "listingkit", subdomain)
+			if _, err := os.Stat(dir); err != nil {
+				if os.IsNotExist(err) {
+					t.Skipf("listingkit subdomain %s is retired", subdomain)
+				}
+				t.Fatalf("stat %s: %v", dir, err)
+			}
+			assertNoBannedImports(t, dir, []string{
 				`"task-processor/internal/listingkit"`,
 			}, nil)
 		})
