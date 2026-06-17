@@ -235,13 +235,7 @@ func (r *MemTaskRepository) RecoverBlockedTaskNow(ctx context.Context, taskID st
 	if !taskIsRecoverable(task, effectiveRecoveredAt, force) {
 		return listingkit.ErrTaskNotRecoverable
 	}
-	block := copyRetryableBlock(task.RetryableBlock)
-	if block == nil {
-		block = &listingkit.RetryableBlock{}
-	}
-	block.LastRetryAt = timestampPointer(effectiveRecoveredAt)
-	block.NextRetryAt = nil
-	block.AutoRetryPaused = false
+	block := listingkit.BuildRecoveredRetryableBlock(task.RetryableBlock, effectiveRecoveredAt)
 	task.Status = listingkit.TaskStatusPending
 	task.RetryableBlock = block
 	task.Error = ""

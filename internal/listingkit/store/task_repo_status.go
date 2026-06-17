@@ -98,13 +98,7 @@ func (r *taskRepository) RecoverBlockedTaskNow(ctx context.Context, taskID strin
 	if !taskIsRecoverable(task, effectiveRecoveredAt, force) {
 		return listingkit.ErrTaskNotRecoverable
 	}
-	block := copyRetryableBlock(task.RetryableBlock)
-	if block == nil {
-		block = &listingkit.RetryableBlock{}
-	}
-	block.LastRetryAt = timestampPointer(effectiveRecoveredAt)
-	block.NextRetryAt = nil
-	block.AutoRetryPaused = false
+	block := listingkit.BuildRecoveredRetryableBlock(task.RetryableBlock, effectiveRecoveredAt)
 	return r.updateTaskFields(ctx, taskID, map[string]any{
 		"status":          listingkit.TaskStatusPending,
 		"retryable_block": block,

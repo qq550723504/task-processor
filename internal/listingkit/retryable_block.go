@@ -61,6 +61,14 @@ func cloneRetryableBlock(src *RetryableBlock) *RetryableBlock {
 	return &cloned
 }
 
+// BuildRecoveredRetryableBlock returns the listingkit retryable block after recovery.
+func BuildRecoveredRetryableBlock(previous *RetryableBlock, recoveredAt time.Time) *RetryableBlock {
+	return adaptSubmissionRetryableBlock(submissiondomain.BuildRecoveredRetryableBlock(
+		adaptRetryableBlockState(previous),
+		recoveredAt,
+	))
+}
+
 func adaptRetryableBlockState(src *RetryableBlock) *submissiondomain.RetryableBlockState {
 	if src == nil {
 		return nil

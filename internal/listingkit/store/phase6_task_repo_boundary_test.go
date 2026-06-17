@@ -78,6 +78,31 @@ func TestTaskRepositoryFilesOwnSeparatedFamilies(t *testing.T) {
 	)
 }
 
+func TestTaskRepositoryRecoveryDelegatesRetryableBlockPolicy(t *testing.T) {
+	t.Parallel()
+
+	statusFile := readTaskRepoFileContent(t, "task_repo_status.go")
+	memStoreFile := readTaskRepoFileContent(t, "mem_store.go")
+
+	assertTaskRepoContainsAll(t, statusFile,
+		"listingkit.BuildRecoveredRetryableBlock(",
+	)
+	assertTaskRepoNotContainsAny(t, statusFile,
+		"block.LastRetryAt = timestampPointer(effectiveRecoveredAt)",
+		"block.NextRetryAt = nil",
+		"block.AutoRetryPaused = false",
+	)
+
+	assertTaskRepoContainsAll(t, memStoreFile,
+		"listingkit.BuildRecoveredRetryableBlock(",
+	)
+	assertTaskRepoNotContainsAny(t, memStoreFile,
+		"block.LastRetryAt = timestampPointer(effectiveRecoveredAt)",
+		"block.NextRetryAt = nil",
+		"block.AutoRetryPaused = false",
+	)
+}
+
 func readTaskRepoFileContent(t *testing.T, path string) string {
 	t.Helper()
 

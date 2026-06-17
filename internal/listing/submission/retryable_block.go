@@ -156,6 +156,18 @@ func BuildReblockedRetryableBlock(previous *RetryableBlockState, classified *Ret
 	return block
 }
 
+// BuildRecoveredRetryableBlock returns the retryable block state after a manual recovery.
+func BuildRecoveredRetryableBlock(previous *RetryableBlockState, recoveredAt time.Time) *RetryableBlockState {
+	block := CloneRetryableBlockState(previous)
+	if block == nil {
+		block = &RetryableBlockState{}
+	}
+	block.LastRetryAt = cloneTimePointer(recoveredAt)
+	block.NextRetryAt = nil
+	block.AutoRetryPaused = false
+	return block
+}
+
 func BuildBackfilledRetryableBlock(err error, blockedAt time.Time, backfilledAt time.Time, maxAutoRetryAttempts int, defaultRecoveryScope string) (*RetryableBlockState, bool) {
 	block, ok := ClassifyRetryableFailure(err, defaultRecoveryScope)
 	if !ok {

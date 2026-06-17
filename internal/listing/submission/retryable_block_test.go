@@ -97,6 +97,44 @@ func TestBuildReblockedRetryableBlockPreservesManualPause(t *testing.T) {
 	}
 }
 
+func TestBuildRecoveredRetryableBlockResetsRecoveryScheduling(t *testing.T) {
+	t.Parallel()
+
+	recoveredAt := time.Date(2026, 6, 17, 10, 30, 0, 0, time.UTC)
+	nextRetryAt := recoveredAt.Add(5 * time.Minute)
+	previous := &RetryableBlockState{
+		ReasonCode:           RetryableReasonCodeWorkerQueueBackpressure,
+		ReasonMessage:        "queue full",
+		BlockedAt:            recoveredAt.Add(-time.Hour),
+		NextRetryAt:          &nextRetryAt,
+		RetryAttempts:        3,
+		MaxAutoRetryAttempts: 8,
+		RecoveryScope:        "task",
+		AutoResumeEnabled:    true,
+		AutoRetryPaused:      true,
+	}
+
+	recovered := BuildRecoveredRetryableBlock(previous, recoveredAt)
+	if recovered == nil {
+		t.Fatal("BuildRecoveredRetryableBlock() = nil, want recovered block")
+	}
+	if recovered == previous {
+		t.Fatal("BuildRecoveredRetryableBlock() reused previous pointer, want clone")
+	}
+	if recovered.LastRetryAt == nil || !recovered.LastRetryAt.Equal(recoveredAt) {
+		t.Fatalf("LastRetryAt = %v, want %v", recovered.LastRetryAt, recoveredAt)
+	}
+	if recovered.NextRetryAt != nil {
+		t.Fatalf("NextRetryAt = %v, want nil after manual recovery", recovered.NextRetryAt)
+	}
+	if recovered.AutoRetryPaused {
+		t.Fatal("AutoRetryPaused = true, want false after manual recovery")
+	}
+	if recovered.ReasonCode != previous.ReasonCode || recovered.RetryAttempts != previous.RetryAttempts {
+		t.Fatalf("recovered block = %+v, want preserved reason and attempts from %+v", recovered, previous)
+	}
+}
+
 func TestBuildBackfilledRetryableBlock(t *testing.T) {
 	t.Parallel()
 
