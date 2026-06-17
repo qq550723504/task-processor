@@ -132,6 +132,7 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 		"TestTEMUOpenAIImportsStayAllowlisted",
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
 		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
+		"TestListingPreviewPackageStaysPlatformNeutral",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
@@ -242,6 +243,7 @@ func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
 		"historical-platform-migration-inventory.md",
 		"external-client-boundary-inventory.md",
 		"compatibility-retirement.md",
+		"listing-preview-boundaries.md",
 		"architecture-review-checklist.md",
 		"Plans, runbooks, and evaluations",
 	}
@@ -249,6 +251,13 @@ func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
 		if !strings.Contains(string(content), phrase) {
 			t.Errorf("%s must mention %q so stable architecture rules stay discoverable", path, phrase)
 		}
+	}
+
+	text := string(content)
+	stableIndex := strings.Index(text, "listing-preview-boundaries.md")
+	supportingIndex := strings.Index(text, "## Supporting Context")
+	if stableIndex == -1 || supportingIndex == -1 || stableIndex > supportingIndex {
+		t.Errorf("%s must list listing-preview-boundaries.md as a stable boundary document, not only supporting context", path)
 	}
 }
 

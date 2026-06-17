@@ -105,6 +105,7 @@ Current guard coverage:
 - `TestTEMUOpenAIImportsStayAllowlisted` 禁止 `internal/temu` 新增 concrete `openai` adapter 依赖，当前 AI/image/SKU/product/pipeline seam 必须精确登记
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters` 禁止 Temporal SDK 扩散到非 runtime / orchestration adapter 区域，当前 app runtime、ListingKit temporal 和提交 activity adapter 例外必须精确登记
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI` 禁止 Temporal runtime / workflow package 反向依赖 HTTP API，避免编排层吞掉请求层行为
+- `TestListingPreviewPackageStaysPlatformNeutral` 禁止 `internal/listing/preview` 重新依赖 ListingKit facade 或 Amazon/SHEIN/TEMU 等平台实现包，保持 preview 抽取层平台中立
 
 后续重点不是增加很多测试，而是给还没有被守住、且最容易回退的边界补“护栏”。新增护栏前先确认现有测试没有已经覆盖同一个风险。
 

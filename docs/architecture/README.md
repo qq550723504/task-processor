@@ -31,6 +31,9 @@ Use these as the main source of truth for structural work:
     next-slice candidates
 - `compatibility-retirement.md`
   - retired compatibility paths, replacement owners, and guard tests
+- `listing-preview-boundaries.md`
+  - platform-neutral preview ownership, ListingKit facade limits, and guard
+    tests for preview extraction
 - `architecture-review-checklist.md`
   - repeatable PR review checklist for boundary-sensitive changes
 
@@ -40,7 +43,6 @@ These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
 - `project-target-architecture.md`
-- `listing-preview-boundaries.md`
 - `task-status-lifecycle.md`
 - `temu-architecture-patterns.md`
 - `temu-pipeline-stages.md`
