@@ -25,6 +25,7 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(input *SaleAttributeInput
 	var allSaleAttributes []sheinattr.ResultAttribute
 
 	for batchIndex := 0; batchIndex < totalBatches; batchIndex++ {
+		batchNumber := batchIndex + 1
 		start := batchIndex * batchSize
 		end := start + batchSize
 		if end > len(variationData) {
@@ -51,18 +52,36 @@ func (p *SaleAttributeBatchProcessor) ProcessInBatches(input *SaleAttributeInput
 			RequiredVariantCount:     end - start,
 		}
 
-		logger.GetGlobalLogger("shein/product").Debugf("process sale attribute batch %d/%d", batchIndex+1, totalBatches)
+		progressFields := buildBatchProgressFields(batchNumber, totalBatches, batchSize, len(batchProductsData), len(variationData))
+		logger.GetGlobalLogger("shein/product").WithFields(progressFields).Info("sale attribute batch started")
 		singleProcessor := NewSaleAttributeSingleProcessor(p.handler)
 		batchResult := singleProcessor.ProcessSingleBatch(input, batchRequest)
 		if err := validateBatchResult(batchResult, batchProductsData); err != nil {
-			logger.GetGlobalLogger("shein/product").Errorf("sale attribute batch %d/%d validation failed: %v", batchIndex+1, totalBatches, err)
+			logger.GetGlobalLogger("shein/product").Errorf("sale attribute batch %d/%d validation failed: %v", batchNumber, totalBatches, err)
 			return sheinattr.ResultSaleAttribute{}
 		}
 		allVariants = append(allVariants, batchResult.Variants...)
 		allSaleAttributes = mergeBatchSaleAttributes(allSaleAttributes, batchResult.SaleAttributes)
+		logger.GetGlobalLogger("shein/product").WithFields(progressFields).Info("sale attribute batch completed")
 	}
 
 	return sheinattr.ResultSaleAttribute{SaleAttributes: allSaleAttributes, Variants: allVariants}
+}
+
+func buildBatchProgressFields(batchNumber, totalBatches, batchSize, batchVariantCount, totalVariants int) map[string]any {
+	processedVariants := (batchNumber-1)*batchSize + batchVariantCount
+	if processedVariants > totalVariants {
+		processedVariants = totalVariants
+	}
+
+	return map[string]any{
+		"batch":              batchNumber,
+		"total_batches":      totalBatches,
+		"batch_size":         batchSize,
+		"batch_variant_count": batchVariantCount,
+		"processed_variants": processedVariants,
+		"total_variants":     totalVariants,
+	}
 }
 
 func mergeBatchSaleAttributes(existing []sheinattr.ResultAttribute, incoming []sheinattr.ResultAttribute) []sheinattr.ResultAttribute {
