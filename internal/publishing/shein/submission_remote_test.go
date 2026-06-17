@@ -10,7 +10,6 @@ import (
 	"time"
 
 	listingsubmission "task-processor/internal/listing/submission"
-	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -673,79 +672,6 @@ func TestBuildSubmissionRemoteLookupInputs(t *testing.T) {
 	}
 }
 
-func TestBuildSubmissionRefreshLookupInputs(t *testing.T) {
-	t.Parallel()
-
-	pkg := &Package{
-		SubmissionState: &SubmissionReport{
-			Publish: &SubmissionRecord{
-				Action: "publish",
-				Result: &SubmissionResponse{Success: true, SPUName: "SPU-123"},
-			},
-		},
-	}
-
-	inputs := BuildSubmissionRefreshLookupInputs(pkg, "publish", "SUPPLIER-1")
-	if !inputs.DefaultConfirmed {
-		t.Fatal("BuildSubmissionRefreshLookupInputs().DefaultConfirmed = false, want true")
-	}
-	if inputs.FallbackMessage != "" {
-		t.Fatalf("BuildSubmissionRefreshLookupInputs().FallbackMessage = %q", inputs.FallbackMessage)
-	}
-}
-
-func TestBuildSubmissionRecoveryLookupInputs(t *testing.T) {
-	t.Parallel()
-
-	pkg := &Package{
-		SubmissionState: &SubmissionReport{
-			Publish: &SubmissionRecord{
-				Action: "publish",
-				Result: &SubmissionResponse{Success: true, SPUName: "SPU-123"},
-			},
-		},
-	}
-
-	inputs := BuildSubmissionRecoveryLookupInputs(pkg, "publish", "SUPPLIER-1")
-	if !inputs.DefaultConfirmed {
-		t.Fatal("BuildSubmissionRecoveryLookupInputs().DefaultConfirmed = false, want true")
-	}
-	if inputs.FallbackMessage != "SHEIN accepted publish request; remote record not yet visible" {
-		t.Fatalf("BuildSubmissionRecoveryLookupInputs().FallbackMessage = %q", inputs.FallbackMessage)
-	}
-}
-
-func TestBuildSubmissionRefreshRequest(t *testing.T) {
-	t.Parallel()
-
-	pkg := &Package{
-		PreviewPayload: &sheinproduct.Product{SupplierCode: "PKG-SKC-1"},
-		SubmissionState: &SubmissionReport{
-			Publish: &SubmissionRecord{
-				Action:       "publish",
-				RequestID:    " refresh-123 ",
-				SupplierCode: "REC-SKC-1",
-				Result:       &SubmissionResponse{Success: true, SPUName: "SPU-123"},
-			},
-		},
-	}
-
-	request := BuildSubmissionRefreshRequest(pkg, SubmissionRefreshSelection{
-		Action:       "publish",
-		Record:       pkg.SubmissionState.Publish,
-		SupplierCode: "REC-SKC-1",
-	})
-	if request.Action != "publish" {
-		t.Fatalf("BuildSubmissionRefreshRequest().Action = %q, want publish", request.Action)
-	}
-	if request.RequestID != "refresh-123" {
-		t.Fatalf("BuildSubmissionRefreshRequest().RequestID = %q, want refresh-123", request.RequestID)
-	}
-	if !request.RemoteInputs.DefaultConfirmed {
-		t.Fatal("BuildSubmissionRefreshRequest().RemoteInputs.DefaultConfirmed = false, want true")
-	}
-}
-
 func TestResolveSubmissionRefreshValidation(t *testing.T) {
 	t.Parallel()
 
@@ -825,92 +751,7 @@ func TestApplySubmissionMissingSupplierCodeRemoteUpdate(t *testing.T) {
 	}
 }
 
-func TestResolveSubmissionConfirmRemoteUpdatePrefersOnWayDocument(t *testing.T) {
-	t.Parallel()
-
-	startedAt := time.Date(2026, 6, 14, 19, 10, 0, 0, time.UTC)
-	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
-		OnWayDocument: &sheinmarketpub.OnWayDocument{
-			SpuName:    "SPU-1",
-			DocumentSn: "DOC-1",
-		},
-		DefaultConfirmed: true,
-	})
-	if err != nil {
-		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
-	}
-	if update.RemoteStatus != SubmissionRemoteStatusConfirmed {
-		t.Fatalf("RemoteStatus = %q, want confirmed", update.RemoteStatus)
-	}
-	if update.Message != "SHEIN on-way document confirmed for spu_name=SPU-1 document_sn=DOC-1" {
-		t.Fatalf("Message = %q", update.Message)
-	}
-}
-
-func TestResolveSubmissionConfirmRemoteUpdateUsesRecordOutcome(t *testing.T) {
-	t.Parallel()
-
-	startedAt := time.Date(2026, 6, 14, 19, 20, 0, 0, time.UTC)
-	record := &sheinproduct.RecordItem{
-		RecordID:   "record-1",
-		SpuName:    "SPU-1",
-		State:      4,
-		AuditState: 5,
-	}
-	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
-		Record: record,
-	})
-	if err != nil {
-		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
-	}
-	if update.Record != record || update.RemoteStatus != SubmissionRemoteStatusConfirmed {
-		t.Fatalf("update = %+v, want confirmed update for record", update)
-	}
-	if update.Event == nil || update.Event.RemoteRecordID != "record-1" {
-		t.Fatalf("Event = %+v, want remote record id", update.Event)
-	}
-}
-
-func TestResolveSubmissionConfirmRemoteUpdateUsesInventoryFallback(t *testing.T) {
-	t.Parallel()
-
-	startedAt := time.Date(2026, 6, 14, 19, 30, 0, 0, time.UTC)
-	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
-		InventoryConfirmed: true,
-		SPUName:            "SPU-INV",
-	})
-	if err != nil {
-		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
-	}
-	if update.Message != "SHEIN remote inventory confirmed for spu_name=SPU-INV" {
-		t.Fatalf("Message = %q", update.Message)
-	}
-	if update.RemoteStatus != SubmissionRemoteStatusConfirmed {
-		t.Fatalf("RemoteStatus = %q, want confirmed", update.RemoteStatus)
-	}
-}
-
-func TestResolveSubmissionConfirmRemoteUpdateUsesRecordErrorAsPendingMessage(t *testing.T) {
-	t.Parallel()
-
-	startedAt := time.Date(2026, 6, 14, 19, 40, 0, 0, time.UTC)
-	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
-		RecordErr:        errors.New("remote query failed"),
-		FallbackMessage:  "fallback pending",
-		DefaultConfirmed: true,
-	})
-	if err != nil {
-		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
-	}
-	if update.RemoteStatus != SubmissionRemoteStatusPending {
-		t.Fatalf("RemoteStatus = %q, want pending", update.RemoteStatus)
-	}
-	if update.Message != "remote query failed" {
-		t.Fatalf("Message = %q, want remote query failed", update.Message)
-	}
-}
-
-func TestResolveSubmissionConfirmRemoteUpdateDelegatesRemoteResolutionSPUName(t *testing.T) {
+func TestSubmissionRemoteDoesNotKeepObsoletePolicyWrappers(t *testing.T) {
 	t.Parallel()
 
 	source, err := os.ReadFile("submission_remote.go")
@@ -918,11 +759,15 @@ func TestResolveSubmissionConfirmRemoteUpdateDelegatesRemoteResolutionSPUName(t 
 		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
 	}
 	content := string(source)
-	if strings.Contains(content, "func RemoteResolutionSPUName(") {
-		t.Fatal("submission_remote.go should not keep a local RemoteResolutionSPUName wrapper")
-	}
-	if !strings.Contains(content, "sheinmarketpub.ResolveRemoteResolutionSPUName(resolution.OnWayDocument, resolution.Record, resolution.SPUName)") {
-		t.Fatal("ResolveSubmissionConfirmRemoteUpdate should delegate remote-resolution SPU precedence directly to marketplace publishing policy")
+	for _, forbidden := range []string{
+		"func BuildSubmissionRefreshLookupInputs(",
+		"func BuildSubmissionRecoveryLookupInputs(",
+		"func BuildSubmissionRefreshRequest(",
+		"func ResolveSubmissionConfirmRemoteUpdate(",
+	} {
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("submission_remote.go should not keep obsolete policy wrapper %q", forbidden)
+		}
 	}
 }
 

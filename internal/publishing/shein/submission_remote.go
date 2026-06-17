@@ -376,28 +376,6 @@ func BuildSubmissionRemoteLookupInputs(pkg *Package, action, supplierCode string
 	}
 }
 
-func BuildSubmissionRefreshLookupInputs(pkg *Package, action, supplierCode string) SubmissionRemoteLookupInputs {
-	policy := listingsubmission.BuildRefreshRemotePolicy(action, RemotePublishAccepted(pkg, action))
-	return BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, policy.FallbackMessage)
-}
-
-func BuildSubmissionRecoveryLookupInputs(pkg *Package, action, supplierCode string) SubmissionRemoteLookupInputs {
-	policy := sheinmarketpub.BuildRemoteConfirmationPolicy(action, RemotePublishAccepted(pkg, action))
-	return BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, policy.RefreshFallbackMessage)
-}
-
-func BuildSubmissionRefreshRequest(pkg *Package, selection SubmissionRefreshSelection) SubmissionRefreshRequest {
-	requestID := ""
-	if selection.Record != nil {
-		requestID = listingsubmission.ResolveRefreshRequestID(selection.Record.RequestID)
-	}
-	return SubmissionRefreshRequest{
-		Action:       selection.Action,
-		RequestID:    requestID,
-		RemoteInputs: BuildSubmissionRefreshLookupInputs(pkg, selection.Action, selection.SupplierCode),
-	}
-}
-
 func ProbeSubmissionRemoteResolution(
 	productAPI sheinproduct.ProductAPI,
 	otherAPI sheinother.OtherAPI,
@@ -442,32 +420,6 @@ func ApplySubmissionMissingSupplierCodeRemoteUpdate(pkg *Package, taskID, action
 	update := BuildSubmissionMissingSupplierCodeRemoteUpdate(taskID, action, requestID, startedAt, defaultConfirmed)
 	applySubmissionConfirmRemoteState(pkg, action, requestID, update)
 	return update.Event
-}
-
-func ResolveSubmissionConfirmRemoteUpdate(taskID, action, requestID string, startedAt time.Time, resolution SubmissionRemoteResolution) (SubmissionConfirmRemoteUpdate, error) {
-	decision := sheinmarketpub.ResolveRemoteConfirmationDecision(action, sheinmarketpub.RemoteConfirmationResolution{
-		DefaultConfirmed:   resolution.DefaultConfirmed,
-		FallbackMessage:    resolution.FallbackMessage,
-		OnWayDocument:      resolution.OnWayDocument,
-		Record:             resolution.Record,
-		RecordErr:          resolution.RecordErr,
-		InventoryConfirmed: resolution.InventoryConfirmed,
-		SPUName:            strings.TrimSpace(sheinmarketpub.ResolveRemoteResolutionSPUName(resolution.OnWayDocument, resolution.Record, resolution.SPUName)),
-	})
-	if resolution.Record != nil && resolution.RecordErr == nil {
-		update := BuildSubmissionConfirmRemoteUpdateForRecord(taskID, action, decision.Status, requestID, startedAt, decision.Detail, decision.Err, resolution.Record)
-		return update, decision.Err
-	}
-	update := BuildSubmissionConfirmRemoteUpdate(taskID, action, decision.Status, requestID, startedAt, decision.Detail, decision.Err)
-	update.Message = sheinmarketpub.ResolveRemoteConfirmationUpdateMessage(decision, sheinmarketpub.RemoteConfirmationResolution{
-		DefaultConfirmed: resolution.DefaultConfirmed,
-		Record:           resolution.Record,
-		RecordErr:        resolution.RecordErr,
-	})
-	if resolution.RecordErr != nil {
-		return update, nil
-	}
-	return update, decision.Err
 }
 
 func lookupSubmissionRemoteOnWayDocument(otherAPI sheinother.OtherAPI, expectedSPUName string, logger SubmissionBatchCheckOnWayLogger) (*sheinmarketpub.OnWayDocument, error) {
