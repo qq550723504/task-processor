@@ -49,6 +49,23 @@ func buildListingKitPreviewProjection(task *Task, selectedPlatform string) listi
 	}
 }
 
+func applyListingKitPreviewProjection(preview *ListingKitPreview, projection listingKitPreviewProjection) {
+	if preview == nil {
+		return
+	}
+	preview.Overview = projection.overview
+	preview.NeedsReview = projection.needsReview
+	preview.Catalog = projection.catalog
+	preview.Assets = projection.assets
+	preview.AssetInventory = projection.assetInventory
+	preview.AssetRenderPreviews = projection.assetRenderPreviews
+	preview.PlatformAssetRenderPreviews = projection.platformPreviews
+	preview.AssetGenerationQueue = projection.generationQueue
+	preview.AssetGenerationOverview = projection.generationOverview
+	preview.RevisionHistoryMeta = projection.revisionMeta
+	preview.RevisionHistory = projection.revisionHistory
+}
+
 func buildListingKitTaskPreviewDomainProjection(
 	task *Task,
 	readProjection *listingKitReadProjection,

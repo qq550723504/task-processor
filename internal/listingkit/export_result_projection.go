@@ -33,3 +33,17 @@ func buildListingKitExportProjection(result *ListingKitResult, selectedPlatform 
 		overview:            buildListingKitExportMetaFromReadProjection(readProjection),
 	}
 }
+
+func applyListingKitExportProjection(export *ListingKitExport, projection listingKitExportProjection) {
+	if export == nil {
+		return
+	}
+	export.CatalogProduct = projection.catalog
+	export.AssetBundle = projection.assetBundle
+	export.AssetInventorySummary = projection.assetInventory
+	export.AssetRenderPreviews = projection.assetRenderPreviews
+	export.PlatformAssetRenderPreviews = projection.platformPreviews
+	export.AssetGenerationQueue = projection.generationQueue
+	export.AssetGenerationOverview = projection.generationOverview
+	export.Overview = projection.overview
+}

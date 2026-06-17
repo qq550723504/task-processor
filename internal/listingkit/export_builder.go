@@ -33,14 +33,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 	}
 
 	projection := buildListingKitExportProjection(task.Result, selectedPlatform)
-	export.CatalogProduct = projection.catalog
-	export.AssetBundle = projection.assetBundle
-	export.AssetInventorySummary = projection.assetInventory
-	export.AssetRenderPreviews = projection.assetRenderPreviews
-	export.PlatformAssetRenderPreviews = projection.platformPreviews
-	export.AssetGenerationQueue = projection.generationQueue
-	export.AssetGenerationOverview = projection.generationOverview
-	export.Overview = projection.overview
+	applyListingKitExportProjection(export, projection)
 
 	return export, buildExportPlatformSections(task.Result, export, selectedPlatform)
 }
