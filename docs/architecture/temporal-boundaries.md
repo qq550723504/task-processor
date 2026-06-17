@@ -75,6 +75,16 @@ These areas are allowed because they are runtime or orchestration adapters.
 They should stay thin and should not become the place where new ListingKit
 business behavior is implemented.
 
+## Boundary Guards
+
+The stable import boundaries are enforced by:
+
+- `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
+- `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
+
+Treat failures in these tests as architecture regressions, not as prompts to
+broaden the allowed runtime surface without review.
+
 ## Review Questions
 
 When reviewing a Temporal-related change, ask:

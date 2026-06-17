@@ -20,6 +20,8 @@ func TestTemporalBoundaryDocumentDefinesStableReviewRules(t *testing.T) {
 		"service facade",
 		"workflow runtime",
 		"RabbitMQ",
+		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
+		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
 		"Review Questions",
 	}
 	for _, phrase := range required {
@@ -97,6 +99,8 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 		"TestTEMUSyncAndPricingManagementImportsStayAllowlisted",
 		"TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted",
 		"TestTEMUOpenAIImportsStayAllowlisted",
+		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
+		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
