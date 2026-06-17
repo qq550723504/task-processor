@@ -355,6 +355,45 @@ func TestListTasksFiltersBySheinActionQueue(t *testing.T) {
 	}
 }
 
+func TestListTasksFiltersBySourceReadinessAndSubmissionStatus(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	sourceReadyFailed := makeTaskListFixture("task-source-ready-failed", now.Add(-time.Minute), SheinWorkflowStatusPublishFailed, "ready")
+	sourceReadyFailed.Result.Summary = &GenerationSummary{SourceType: "sds"}
+	textReadySuccess := makeTaskListFixture("task-text-ready-success", now.Add(-2*time.Minute), SheinWorkflowStatusPublished, "ready")
+	textReadySuccess.Result.Summary = &GenerationSummary{SourceType: "text"}
+	sourceBlockedFailed := makeTaskListFixture("task-source-blocked-failed", now.Add(-3*time.Minute), SheinWorkflowStatusPublishFailed, "category")
+	sourceBlockedFailed.Result.Summary = &GenerationSummary{SourceType: "sds"}
+	repo := &stubTaskListRepo{
+		tasks: []Task{sourceReadyFailed, textReadySuccess, sourceBlockedFailed},
+	}
+	svc := &service{repo: repo}
+
+	page, err := svc.ListTasks(context.Background(), &TaskListQuery{
+		Page:                  1,
+		PageSize:              1,
+		SourceType:            "sds",
+		ReadinessStatus:       "ready",
+		SheinSubmissionStatus: sheinpub.SubmissionStatusFailed,
+	})
+	if err != nil {
+		t.Fatalf("ListTasks error = %v", err)
+	}
+	if repo.lastQuery == nil || repo.lastQuery.SourceType != "sds" || repo.lastQuery.ReadinessStatus != "ready" || repo.lastQuery.SheinSubmissionStatus != sheinpub.SubmissionStatusFailed {
+		t.Fatalf("repo query = %+v, want source/readiness/submission filters propagated", repo.lastQuery)
+	}
+	if page.Total != 1 {
+		t.Fatalf("page total = %d, want 1", page.Total)
+	}
+	if len(page.Items) != 1 || page.Items[0].TaskID != "task-source-ready-failed" {
+		t.Fatalf("page items = %+v, want task-source-ready-failed only", page.Items)
+	}
+	if page.Items[0].SourceType != "sds" || page.Items[0].SheinLatestSubmissionStatus != sheinpub.SubmissionStatusFailed {
+		t.Fatalf("page item = %+v, want source and submission fields", page.Items[0])
+	}
+}
+
 func TestCreateGenerateTaskRunsInlineWithoutSubmitter(t *testing.T) {
 	t.Parallel()
 
@@ -666,44 +705,8 @@ func (r *stubTaskListRepo) ListTasks(_ context.Context, query *TaskListQuery) ([
 	}
 	filtered := make([]Task, 0, len(r.tasks))
 	for _, task := range r.tasks {
-		if query != nil && query.SheinWorkflowStatus != "" {
-			if buildTaskListItem(&task).SheinWorkflowStatus != query.SheinWorkflowStatus {
-				continue
-			}
-		}
-		if query != nil && query.SheinBlockerKey != "" {
-			matched := false
-			for _, key := range buildTaskListItem(&task).SheinBlockingKeys {
-				if key == query.SheinBlockerKey {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
-		}
-		if query != nil && query.SheinWarningKey != "" {
-			matched := false
-			for _, key := range buildTaskListItem(&task).SheinWarningKeys {
-				if key == query.SheinWarningKey {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				continue
-			}
-		}
-		if query != nil && query.SheinWorkQueue != "" {
-			if buildTaskListItem(&task).SheinWorkQueue != query.SheinWorkQueue {
-				continue
-			}
-		}
-		if query != nil && query.SheinActionQueue != "" {
-			if buildTaskListItem(&task).SheinActionQueue != query.SheinActionQueue {
-				continue
-			}
+		if !TaskMatchesListQuery(&task, query) {
+			continue
 		}
 		filtered = append(filtered, task)
 	}
@@ -874,6 +877,12 @@ func makeTaskListFixture(id string, createdAt time.Time, workflowStatus string, 
 		task.Result.Shein.SubmissionEvents = []sheinpub.SubmissionEvent{{
 			Action: "save_draft",
 			Status: "success",
+		}}
+	case SheinWorkflowStatusPublishFailed:
+		task.Result.Shein.SubmissionEvents = []sheinpub.SubmissionEvent{{
+			Action:       "publish",
+			Status:       sheinpub.SubmissionStatusFailed,
+			ErrorMessage: "remote submit failed",
 		}}
 	}
 	return task

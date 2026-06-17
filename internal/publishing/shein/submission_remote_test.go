@@ -2,39 +2,28 @@ package shein
 
 import (
 	"errors"
+	"os"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	listingsubmission "task-processor/internal/listing/submission"
-	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
-func TestSubmissionResponseAccepted(t *testing.T) {
+func TestSubmissionRemoteDoesNotKeepActionlessResponseAcceptedWrapper(t *testing.T) {
 	t.Parallel()
 
-	if !SubmissionResponseAccepted(&SubmissionResponse{Success: true}) {
-		t.Fatal("SubmissionResponseAccepted(success) = false, want true")
+	source, err := os.ReadFile("submission_remote.go")
+	if err != nil {
+		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
 	}
-	if SubmissionResponseAccepted(nil) {
-		t.Fatal("SubmissionResponseAccepted(nil) = true, want false")
-	}
-}
-
-func TestSubmissionResponseAcceptedForAction(t *testing.T) {
-	t.Parallel()
-
-	if !SubmissionResponseAcceptedForAction("publish", &SubmissionResponse{Success: true}) {
-		t.Fatal("SubmissionResponseAcceptedForAction(publish success) = false, want true")
-	}
-	if !SubmissionResponseAcceptedForAction("save_draft", &SubmissionResponse{Code: "0"}) {
-		t.Fatal("SubmissionResponseAcceptedForAction(save_draft code=0) = false, want true")
-	}
-	if SubmissionResponseAcceptedForAction("publish", &SubmissionResponse{Code: "0"}) {
-		t.Fatal("SubmissionResponseAcceptedForAction(publish code=0) = true, want false")
+	content := string(source)
+	if strings.Contains(content, "func SubmissionResponseAccepted(") {
+		t.Fatal("submission_remote.go should not keep an actionless response-accepted wrapper")
 	}
 }
 
@@ -212,25 +201,6 @@ func TestApplySubmissionConfirmRemoteUpdateWithoutEvent(t *testing.T) {
 	}
 }
 
-func TestConfirmedSubmissionResponse(t *testing.T) {
-	t.Parallel()
-
-	existing := &SubmissionResponse{Success: true, Message: "existing"}
-	if got := ConfirmedSubmissionResponse(existing, "publish"); got != existing {
-		t.Fatalf("ConfirmedSubmissionResponse(existing) = %+v, want original response", got)
-	}
-
-	saveDraft := ConfirmedSubmissionResponse(nil, "save_draft")
-	if saveDraft == nil || saveDraft.Code != "0" || !saveDraft.Success || saveDraft.Message != "save draft confirmed by remote check" {
-		t.Fatalf("save draft confirmed response = %+v", saveDraft)
-	}
-
-	publish := ConfirmedSubmissionResponse(nil, "publish")
-	if publish == nil || publish.Code != "0" || !publish.Success || publish.Message != "publish confirmed by remote check" {
-		t.Fatalf("publish confirmed response = %+v", publish)
-	}
-}
-
 func TestSubmissionStartedAtAndResponseForAction(t *testing.T) {
 	t.Parallel()
 
@@ -380,82 +350,27 @@ func TestResolveSubmissionRecoverySelection(t *testing.T) {
 	}
 }
 
-func TestResolveSubmissionRemoteRefreshSelection(t *testing.T) {
+func TestSubmissionRemoteDoesNotKeepSubmissionRecordResultGetter(t *testing.T) {
 	t.Parallel()
 
-	startedAt := time.Date(2026, 6, 14, 18, 30, 0, 0, time.UTC)
-	fallback := startedAt.Add(-time.Minute)
-	lastResult := &SubmissionResponse{Success: true, Message: "last"}
-	pkg := &Package{
-		SubmissionState: &SubmissionReport{
-			RemoteStatus: "confirmed",
-			LastResult:   lastResult,
-			Publish: &SubmissionRecord{
-				Action:    "publish",
-				RequestID: "req-1",
-				StartedAt: startedAt,
-			},
-		},
+	source, err := os.ReadFile("submission_remote.go")
+	if err != nil {
+		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
 	}
-
-	selection := ResolveSubmissionRemoteRefreshSelection(pkg, "publish", "req-1", fallback)
-	if !selection.StartedAt.Equal(startedAt) {
-		t.Fatalf("ResolveSubmissionRemoteRefreshSelection().StartedAt = %v, want %v", selection.StartedAt, startedAt)
-	}
-	if selection.Response != lastResult {
-		t.Fatalf("ResolveSubmissionRemoteRefreshSelection().Response = %+v, want last result fallback", selection.Response)
-	}
-	if selection.RemoteStatus != "confirmed" {
-		t.Fatalf("ResolveSubmissionRemoteRefreshSelection().RemoteStatus = %q, want confirmed", selection.RemoteStatus)
-	}
-
-	pkg.SubmissionState.Publish.Result = &SubmissionResponse{Success: true, Message: "record"}
-	selection = ResolveSubmissionRemoteRefreshSelection(pkg, "publish", "req-1", fallback)
-	if selection.Response == nil || selection.Response.Message != "record" {
-		t.Fatalf("ResolveSubmissionRemoteRefreshSelection().Response = %+v, want record result", selection.Response)
+	if strings.Contains(string(source), "func SubmissionRecordResult(") {
+		t.Fatal("submission_remote.go should not keep a local SubmissionRecordResult getter")
 	}
 }
 
-func TestSubmissionRefreshMutationMatchHelpers(t *testing.T) {
+func TestSubmissionRemoteDoesNotKeepSubmissionPhaseDetailWrapper(t *testing.T) {
 	t.Parallel()
 
-	pkg := &Package{
-		SubmissionState: &SubmissionReport{
-			LastAction: "save_draft",
-			Publish: &SubmissionRecord{
-				Action:    "publish",
-				RequestID: "publish-req",
-			},
-			SaveDraft: &SubmissionRecord{
-				Action:    "save_draft",
-				RequestID: "save-draft-req",
-			},
-		},
+	source, err := os.ReadFile("submission_remote.go")
+	if err != nil {
+		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
 	}
-
-	if !SubmissionRefreshActionMatches(pkg, "save_draft") {
-		t.Fatal("SubmissionRefreshActionMatches() = false, want true for current action")
-	}
-	if SubmissionRefreshActionMatches(pkg, "publish") {
-		t.Fatal("SubmissionRefreshActionMatches() = true, want false for changed action")
-	}
-	if !SubmissionRefreshRequestMatches(pkg, "publish", " publish-req ") {
-		t.Fatal("SubmissionRefreshRequestMatches() = false, want true after trimming request id")
-	}
-	if SubmissionRefreshRequestMatches(pkg, "publish", "other") {
-		t.Fatal("SubmissionRefreshRequestMatches(other) = true, want false")
-	}
-	if SubmissionRefreshRequestMatches(pkg, "unknown", "publish-req") {
-		t.Fatal("SubmissionRefreshRequestMatches(unknown action) = true, want false")
-	}
-}
-
-func TestSubmissionRecordResult(t *testing.T) {
-	t.Parallel()
-
-	resp := &SubmissionResponse{Success: true}
-	if got := SubmissionRecordResult(&SubmissionRecord{Result: resp}); got != resp {
-		t.Fatalf("SubmissionRecordResult() = %+v, want original response", got)
+	if strings.Contains(string(source), "func submissionPhaseDetail(") {
+		t.Fatal("submission_remote.go should use marketplace publishing phase detail policy directly")
 	}
 }
 
@@ -638,125 +553,6 @@ func TestBuildSubmissionRemoteLookupInputs(t *testing.T) {
 	}
 }
 
-func TestBuildSubmissionRefreshLookupInputs(t *testing.T) {
-	t.Parallel()
-
-	pkg := &Package{
-		SubmissionState: &SubmissionReport{
-			Publish: &SubmissionRecord{
-				Action: "publish",
-				Result: &SubmissionResponse{Success: true, SPUName: "SPU-123"},
-			},
-		},
-	}
-
-	inputs := BuildSubmissionRefreshLookupInputs(pkg, "publish", "SUPPLIER-1")
-	if !inputs.DefaultConfirmed {
-		t.Fatal("BuildSubmissionRefreshLookupInputs().DefaultConfirmed = false, want true")
-	}
-	if inputs.FallbackMessage != "" {
-		t.Fatalf("BuildSubmissionRefreshLookupInputs().FallbackMessage = %q", inputs.FallbackMessage)
-	}
-}
-
-func TestResolveSubmissionRefreshFallbackMessage(t *testing.T) {
-	t.Parallel()
-
-	if got := ResolveSubmissionRefreshFallbackMessage("publish", true, ""); got != "SHEIN accepted publish request; remote record not yet visible" {
-		t.Fatalf("ResolveSubmissionRefreshFallbackMessage(publish, true, empty) = %q", got)
-	}
-	if got := ResolveSubmissionRefreshFallbackMessage("save_draft", false, "custom fallback"); got != "custom fallback" {
-		t.Fatalf("ResolveSubmissionRefreshFallbackMessage(save_draft, false, custom) = %q", got)
-	}
-}
-
-func TestBuildSubmissionRecoveryLookupInputs(t *testing.T) {
-	t.Parallel()
-
-	pkg := &Package{
-		SubmissionState: &SubmissionReport{
-			Publish: &SubmissionRecord{
-				Action: "publish",
-				Result: &SubmissionResponse{Success: true, SPUName: "SPU-123"},
-			},
-		},
-	}
-
-	inputs := BuildSubmissionRecoveryLookupInputs(pkg, "publish", "SUPPLIER-1")
-	if !inputs.DefaultConfirmed {
-		t.Fatal("BuildSubmissionRecoveryLookupInputs().DefaultConfirmed = false, want true")
-	}
-	if inputs.FallbackMessage != "SHEIN accepted publish request; remote record not yet visible" {
-		t.Fatalf("BuildSubmissionRecoveryLookupInputs().FallbackMessage = %q", inputs.FallbackMessage)
-	}
-}
-
-func TestBuildSubmissionRefreshRequest(t *testing.T) {
-	t.Parallel()
-
-	pkg := &Package{
-		PreviewPayload: &sheinproduct.Product{SupplierCode: "PKG-SKC-1"},
-		SubmissionState: &SubmissionReport{
-			Publish: &SubmissionRecord{
-				Action:       "publish",
-				RequestID:    " refresh-123 ",
-				SupplierCode: "REC-SKC-1",
-				Result:       &SubmissionResponse{Success: true, SPUName: "SPU-123"},
-			},
-		},
-	}
-
-	request := BuildSubmissionRefreshRequest(pkg, SubmissionRefreshSelection{
-		Action:       "publish",
-		Record:       pkg.SubmissionState.Publish,
-		SupplierCode: "REC-SKC-1",
-	})
-	if request.Action != "publish" {
-		t.Fatalf("BuildSubmissionRefreshRequest().Action = %q, want publish", request.Action)
-	}
-	if request.RequestID != "refresh-123" {
-		t.Fatalf("BuildSubmissionRefreshRequest().RequestID = %q, want refresh-123", request.RequestID)
-	}
-	if !request.RemoteInputs.DefaultConfirmed {
-		t.Fatal("BuildSubmissionRefreshRequest().RemoteInputs.DefaultConfirmed = false, want true")
-	}
-}
-
-func TestResolveSubmissionRefreshValidation(t *testing.T) {
-	t.Parallel()
-
-	pkg := &Package{
-		SubmissionState: &SubmissionReport{
-			LastAction: "publish",
-			Publish: &SubmissionRecord{
-				Action:    "publish",
-				RequestID: "publish-req",
-			},
-		},
-	}
-
-	validation := ResolveSubmissionRefreshValidation(pkg, "publish", " publish-req ")
-	if !validation.Available {
-		t.Fatal("ResolveSubmissionRefreshValidation().Available = false, want true")
-	}
-	if !validation.ActionMatches {
-		t.Fatal("ResolveSubmissionRefreshValidation().ActionMatches = false, want true")
-	}
-	if !validation.RequestMatches {
-		t.Fatal("ResolveSubmissionRefreshValidation().RequestMatches = false, want true")
-	}
-
-	validation = ResolveSubmissionRefreshValidation(pkg, "save_draft", "publish-req")
-	if validation.ActionMatches {
-		t.Fatal("ResolveSubmissionRefreshValidation().ActionMatches = true, want false for changed action")
-	}
-
-	validation = ResolveSubmissionRefreshValidation(pkg, "publish", "other")
-	if validation.RequestMatches {
-		t.Fatal("ResolveSubmissionRefreshValidation().RequestMatches = true, want false for changed request")
-	}
-}
-
 func TestBuildSubmissionMissingSupplierCodeRemoteUpdate(t *testing.T) {
 	t.Parallel()
 
@@ -801,88 +597,31 @@ func TestApplySubmissionMissingSupplierCodeRemoteUpdate(t *testing.T) {
 	}
 }
 
-func TestResolveSubmissionConfirmRemoteUpdatePrefersOnWayDocument(t *testing.T) {
+func TestSubmissionRemoteDoesNotKeepObsoletePolicyWrappers(t *testing.T) {
 	t.Parallel()
 
-	startedAt := time.Date(2026, 6, 14, 19, 10, 0, 0, time.UTC)
-	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
-		OnWayDocument: &sheinmarketpub.OnWayDocument{
-			SpuName:    "SPU-1",
-			DocumentSn: "DOC-1",
-		},
-		DefaultConfirmed: true,
-	})
+	source, err := os.ReadFile("submission_remote.go")
 	if err != nil {
-		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
+		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
 	}
-	if update.RemoteStatus != SubmissionRemoteStatusConfirmed {
-		t.Fatalf("RemoteStatus = %q, want confirmed", update.RemoteStatus)
-	}
-	if update.Message != "SHEIN on-way document confirmed for spu_name=SPU-1 document_sn=DOC-1" {
-		t.Fatalf("Message = %q", update.Message)
-	}
-}
-
-func TestResolveSubmissionConfirmRemoteUpdateUsesRecordOutcome(t *testing.T) {
-	t.Parallel()
-
-	startedAt := time.Date(2026, 6, 14, 19, 20, 0, 0, time.UTC)
-	record := &sheinproduct.RecordItem{
-		RecordID:   "record-1",
-		SpuName:    "SPU-1",
-		State:      4,
-		AuditState: 5,
-	}
-	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
-		Record: record,
-	})
-	if err != nil {
-		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
-	}
-	if update.Record != record || update.RemoteStatus != SubmissionRemoteStatusConfirmed {
-		t.Fatalf("update = %+v, want confirmed update for record", update)
-	}
-	if update.Event == nil || update.Event.RemoteRecordID != "record-1" {
-		t.Fatalf("Event = %+v, want remote record id", update.Event)
-	}
-}
-
-func TestResolveSubmissionConfirmRemoteUpdateUsesInventoryFallback(t *testing.T) {
-	t.Parallel()
-
-	startedAt := time.Date(2026, 6, 14, 19, 30, 0, 0, time.UTC)
-	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
-		InventoryConfirmed: true,
-		SPUName:            "SPU-INV",
-	})
-	if err != nil {
-		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
-	}
-	if update.Message != "SHEIN remote inventory confirmed for spu_name=SPU-INV" {
-		t.Fatalf("Message = %q", update.Message)
-	}
-	if update.RemoteStatus != SubmissionRemoteStatusConfirmed {
-		t.Fatalf("RemoteStatus = %q, want confirmed", update.RemoteStatus)
-	}
-}
-
-func TestResolveSubmissionConfirmRemoteUpdateUsesRecordErrorAsPendingMessage(t *testing.T) {
-	t.Parallel()
-
-	startedAt := time.Date(2026, 6, 14, 19, 40, 0, 0, time.UTC)
-	update, err := ResolveSubmissionConfirmRemoteUpdate("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
-		RecordErr:        errors.New("remote query failed"),
-		FallbackMessage:  "fallback pending",
-		DefaultConfirmed: true,
-	})
-	if err != nil {
-		t.Fatalf("ResolveSubmissionConfirmRemoteUpdate() error = %v", err)
-	}
-	if update.RemoteStatus != SubmissionRemoteStatusPending {
-		t.Fatalf("RemoteStatus = %q, want pending", update.RemoteStatus)
-	}
-	if update.Message != "remote query failed" {
-		t.Fatalf("Message = %q, want remote query failed", update.Message)
+	content := string(source)
+	for _, forbidden := range []string{
+		"func SubmissionResponseAcceptedForAction(",
+		"func SubmissionRefreshActionMatches(",
+		"func SubmissionRefreshRequestMatches(",
+		"func BuildSubmissionRefreshLookupInputs(",
+		"func BuildSubmissionRecoveryLookupInputs(",
+		"func BuildSubmissionRefreshRequest(",
+		"func ResolveSubmissionConfirmRemoteUpdate(",
+		"func ResolveSubmissionRefreshValidation(",
+		"func ResolveSubmissionRemoteRefreshSelection(",
+		"func ConfirmedSubmissionResponse(",
+		"type SubmissionRefreshValidation struct",
+		"type SubmissionRemoteRefreshSelection struct",
+	} {
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("submission_remote.go should not keep obsolete policy wrapper %q", forbidden)
+		}
 	}
 }
 

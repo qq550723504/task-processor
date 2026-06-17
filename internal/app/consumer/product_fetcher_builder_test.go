@@ -3,7 +3,7 @@ package consumer
 import (
 	"testing"
 
-	appfetcher "task-processor/internal/app/crawler/fetcher"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/core/config"
 
 	"github.com/stretchr/testify/require"

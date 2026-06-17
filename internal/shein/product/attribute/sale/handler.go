@@ -114,7 +114,13 @@ func (h *SaleAttributeHandler) newAttributeImportanceCalculator(rules *sheinattr
 func (h *SaleAttributeHandler) createChatCompletionRequest(systemPrompt, userPrompt string, variantCount int) *openaiClient.ChatCompletionRequest {
 	seed := 42
 	temperature := float32(0.1)
-	return &openaiClient.ChatCompletionRequest{Model: h.openaiClient.GetDefaultModel(), Messages: []openaiClient.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}}, Temperature: &temperature, Seed: &seed}
+	return &openaiClient.ChatCompletionRequest{
+		Model:          h.openaiClient.GetDefaultModel(),
+		Messages:       []openaiClient.ChatCompletionMessage{{Role: "system", Content: systemPrompt}, {Role: "user", Content: userPrompt}},
+		Temperature:    &temperature,
+		Seed:           &seed,
+		ResponseFormat: "json_object",
+	}
 }
 
 func (h *SaleAttributeHandler) prepareProductsData(ctx *sheinctx.TaskContext) []map[string]string {

@@ -59,10 +59,7 @@ func finalizeTaskPreview(ctx context.Context, task *Task, preview *ListingKitPre
 		return err
 	}
 	projection := buildAssetGenerationProjection(task.Result, tasks)
-	preview.AssetGenerationSummary = projection.Summary
-	preview.AssetGenerationTasks = projection.Tasks
-	preview.AssetGenerationQueue = projection.Queue
-	preview.AssetGenerationOverview = projection.Overview
+	applyAssetGenerationProjectionToPreview(preview, projection)
 	backfillTaskPreviewRenderPreviews(preview, task.Result)
 	if decorators.decorateSheinStoreResolutionPreview != nil {
 		decorators.decorateSheinStoreResolutionPreview(ctx, task, preview)

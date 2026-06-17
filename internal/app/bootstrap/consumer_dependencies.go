@@ -6,7 +6,6 @@ import (
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/platforms"
 	"task-processor/internal/product"
 
@@ -46,7 +45,7 @@ func BuildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies 
 func BuildCrawlerDependencies() consumer.CrawlerRegistryDependencies {
 	return consumer.CrawlerRegistryDependencies{
 		AmazonCrawlerCreator: func(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource {
-			return amazon.CreateProcessor(cfg, logger)
+			return bootstrapresources.BuildAmazonCrawler(cfg, logger)
 		},
 		ProductFetcherProvider: func(cfg *config.Config, logger *logrus.Logger, crawlSource runner.CrawlSource) (*product.ProductFetcher, error) {
 			resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{})

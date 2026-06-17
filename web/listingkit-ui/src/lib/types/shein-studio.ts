@@ -224,6 +224,27 @@ export type SheinStudioBatchItemStatus =
   | "review_ready"
   | "failed";
 
+export type SheinStudioBatchStatusGroupKey =
+  | "submittable"
+  | "needs_fix"
+  | "processing"
+  | "generation_failed"
+  | "submission_failed"
+  | "draft_saved"
+  | "published";
+
+export type SheinStudioBatchStatusGroup = {
+  key: SheinStudioBatchStatusGroupKey | string;
+  label: string;
+  count: number;
+  ids?: string[];
+};
+
+export type SheinStudioBatchStatusGroups = {
+  items: SheinStudioBatchStatusGroup[];
+  byKey: Record<string, SheinStudioBatchStatusGroup>;
+};
+
 export type SheinStudioBatchRecord = {
   id: string;
   tenantId?: string;
@@ -283,6 +304,7 @@ export type SheinStudioBatchDetail = {
   items: SheinStudioItemizedBatchItem[];
   createdTasks?: SheinStudioCreatedTask[];
   failedTasks?: SheinStudioFailedTask[];
+  statusGroups?: SheinStudioBatchStatusGroups;
 };
 
 export type SheinStudioDraft = {

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 )

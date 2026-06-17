@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 
@@ -21,7 +22,7 @@ func (s *taskSubmissionExecutionService) executeSheinSubmitRemote(productAPI she
 		logSheinSubmitRemoteResponse(action, submitProduct, raw, err)
 		return sheinpub.BuildSubmissionResponseSummary(raw), err
 	default:
-		return nil, unsupportedSubmitActionError(action)
+		return nil, listingsubmission.UnsupportedSubmitActionError(action)
 	}
 }
 

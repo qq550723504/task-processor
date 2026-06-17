@@ -144,21 +144,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 		timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
 
 		// 转换请求参数
-		openaiReq := openai.ChatCompletionRequest{
-			Model:    req.Model,
-			Messages: convertMessages(req.Messages),
-		}
-
-		// 设置可选参数
-		if req.Temperature != nil {
-			openaiReq.Temperature = *req.Temperature
-		}
-		if req.Seed != nil {
-			openaiReq.Seed = req.Seed
-		}
-		if req.MaxTokens != nil {
-			openaiReq.MaxTokens = *req.MaxTokens
-		}
+		openaiReq := buildOpenAIChatCompletionRequest(req)
 
 		// 调用OpenAI API
 		resp, err := bc.client.CreateChatCompletion(timeoutCtx, openaiReq)
@@ -175,7 +161,7 @@ func (bc *BaseClient) createChatCompletion(ctx context.Context, req *ChatComplet
 		lastErr = err
 
 		// 检查是否应该重试
-		if !shouldRetry(err) {
+		if !shouldRetryWithContext(ctx, err) {
 			logger.GetGlobalLogger("infra/clients").Warnf("OpenAI API调用失败，错误不可重试: %v", err)
 			break
 		}
@@ -352,11 +338,19 @@ func convertResponse(resp *openai.ChatCompletionResponse) *ChatCompletionRespons
 
 // shouldRetry 判断错误是否应该重试
 func shouldRetry(err error) bool {
+	return shouldRetryWithContext(nil, err)
+}
+
+func shouldRetryWithContext(parentCtx context.Context, err error) bool {
 	if err == nil {
 		return false
 	}
-	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(err, context.Canceled) {
 		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		// 父 context 已结束时，继续重试只会立刻失败；否则通常是单次请求超时，可继续尝试。
+		return parentCtx == nil || parentCtx.Err() == nil
 	}
 
 	var netErr net.Error
@@ -381,6 +375,30 @@ func shouldRetry(err error) bool {
 	}
 
 	return true
+}
+
+func buildOpenAIChatCompletionRequest(req *ChatCompletionRequest) openai.ChatCompletionRequest {
+	openaiReq := openai.ChatCompletionRequest{
+		Model:    req.Model,
+		Messages: convertMessages(req.Messages),
+	}
+
+	if req.Temperature != nil {
+		openaiReq.Temperature = *req.Temperature
+	}
+	if req.Seed != nil {
+		openaiReq.Seed = req.Seed
+	}
+	if req.MaxTokens != nil {
+		openaiReq.MaxTokens = *req.MaxTokens
+	}
+	if strings.TrimSpace(req.ResponseFormat) == string(openai.ChatCompletionResponseFormatTypeJSONObject) {
+		openaiReq.ResponseFormat = &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		}
+	}
+
+	return openaiReq
 }
 
 func isRetryableOpenAIAPIError(err *openai.APIError) bool {

@@ -5,16 +5,13 @@ func buildListingKitReadProjection(result *ListingKitResult, selectedPlatform st
 		return nil
 	}
 
-	previewInput := buildListingKitPreviewReadModelInput(result, selectedPlatform)
 	platformCards := buildPlatformPreviewCards(result, selectedPlatform)
-	assetRenderPreviews, platformRenderPreviews, generationQueue, generationOverview := buildListingKitReadProjectionAttachmentExtras(result, selectedPlatform)
+	previewInput := buildListingKitPreviewReadModelInput(result, platformCards)
+	attachmentExtras := buildListingKitReadProjectionAttachmentExtras(result, selectedPlatform)
 	return assembleListingKitReadProjection(
 		previewInput,
 		platformCards,
-		assetRenderPreviews,
-		platformRenderPreviews,
-		generationQueue,
-		generationOverview,
+		attachmentExtras,
 		buildPreviewDomainRevisionHistoryMetaInput(result),
 	)
 }

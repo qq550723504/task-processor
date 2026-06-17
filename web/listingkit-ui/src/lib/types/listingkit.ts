@@ -4,6 +4,7 @@ export * from "./listingkit/revision";
 export * from "./listingkit/shein-enrollment";
 export * from "./listingkit/shein";
 export * from "./listingkit/review";
+export * from "./listingkit/settings";
 export * from "./listingkit/tasks";
 export * from "./prompt-management";
 export * from "./shein-login";

@@ -48,6 +48,7 @@ type settingsService struct {
 
 type settingsNamespaceService interface {
 	Get(ctx context.Context, namespace string, query settingsNamespaceQuery) (any, error)
+	Health(ctx context.Context) (listingkit.SettingsHealthPage, error)
 	ListSchemas() []settingsNamespaceSchema
 	GetSchema(namespace string) (*settingsNamespaceSchema, error)
 	Update(ctx context.Context, namespace string, query settingsNamespaceQuery, payload []byte) (any, error)
@@ -58,6 +59,10 @@ type settingsHandlerService interface {
 	UpdateSheinSettings(ctx context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error)
 	GetAIClientSettings(ctx context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error)
 	UpdateAIClientSettings(ctx context.Context, req *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error)
+}
+
+type settingsHealthProbeProvider interface {
+	GetSettingsHealthProbes(ctx context.Context) listingkit.SettingsHealthProbes
 }
 
 var settingsNamespaceSchemas = []settingsNamespaceSchema{
@@ -110,6 +115,35 @@ func (s *settingsService) Get(ctx context.Context, namespace string, query setti
 	default:
 		return nil, fmt.Errorf("%w: %s", errUnsupportedSettingsNamespace, namespace)
 	}
+}
+
+func (s *settingsService) Health(ctx context.Context) (listingkit.SettingsHealthPage, error) {
+	defaultAI, err := s.service.GetAIClientSettings(ctx, "tenant", "default")
+	if err != nil {
+		return listingkit.SettingsHealthPage{}, err
+	}
+	imageAI, err := s.service.GetAIClientSettings(ctx, "tenant", "image")
+	if err != nil {
+		return listingkit.SettingsHealthPage{}, err
+	}
+	shein, err := s.service.GetSheinSettings(ctx)
+	if err != nil {
+		return listingkit.SettingsHealthPage{}, err
+	}
+	return listingkit.BuildSettingsHealth(listingkit.SettingsHealthInputs{
+		DefaultAI: defaultAI,
+		ImageAI:   imageAI,
+		Shein:     shein,
+		Probes:    s.healthProbes(ctx),
+	}), nil
+}
+
+func (s *settingsService) healthProbes(ctx context.Context) listingkit.SettingsHealthProbes {
+	provider, ok := s.service.(settingsHealthProbeProvider)
+	if !ok || provider == nil {
+		return listingkit.SettingsHealthProbes{}
+	}
+	return provider.GetSettingsHealthProbes(ctx)
 }
 
 func (s *settingsService) ListSchemas() []settingsNamespaceSchema {

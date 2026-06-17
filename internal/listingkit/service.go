@@ -52,6 +52,13 @@ func (s *service) currentSheinSubmitSettings() SheinSettings {
 	return s.sheinSettings
 }
 
+func (s *service) settingsHealthProbes() SettingsHealthProbes {
+	if s == nil {
+		return SettingsHealthProbes{}
+	}
+	return s.healthProbes
+}
+
 func normalizeGenerateRequest(req *GenerateRequest) {
 	if req == nil {
 		return

@@ -6,7 +6,7 @@ Current implementation:
 
 - `processor.go` adapts the legacy Amazon crawler processor behind a small source interface.
 - The adapter owns raw crawler invocation for single and batch requests.
-- `ZipcodePolicy` preserves legacy default-zipcode behavior at this integration boundary.
+- `NewLegacyCrawlSource` owns concrete legacy processor construction so app/bootstrap packages do not import the legacy crawler root directly.
 - Product-facing request planning remains in `internal/product/sourcing`.
 
 Owns:

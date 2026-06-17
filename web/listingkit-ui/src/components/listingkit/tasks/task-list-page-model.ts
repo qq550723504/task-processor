@@ -21,6 +21,22 @@ export const PLATFORM_OPTIONS = [
   { value: "temu", label: "Temu" },
 ];
 
+export const SOURCE_TYPE_OPTIONS = [
+  { value: "", label: "全部来源" },
+  { value: "sds", label: "SDS" },
+  { value: "text", label: "文本" },
+  { value: "images", label: "图片" },
+  { value: "images_and_text", label: "图文" },
+  { value: "1688_url", label: "1688 链接" },
+];
+
+export const READINESS_STATUS_OPTIONS = [
+  { value: "", label: "全部 Readiness" },
+  { value: "blocked", label: "阻断中" },
+  { value: "warning", label: "Readiness 待确认" },
+  { value: "ready", label: "Readiness 可提交" },
+];
+
 export const SHEIN_WORKFLOW_OPTIONS = [
   { value: "", label: "全部 SHEIN 状态" },
   { value: "pending_confirmation", label: "待确认" },
@@ -28,6 +44,14 @@ export const SHEIN_WORKFLOW_OPTIONS = [
   { value: "publish_failed", label: "发布失败" },
   { value: "published", label: "已发布" },
   { value: "draft_saved", label: "草稿已保存" },
+];
+
+export const SHEIN_SUBMISSION_OPTIONS = [
+  { value: "", label: "全部提交结果" },
+  { value: "running", label: "提交中" },
+  { value: "success", label: "提交成功" },
+  { value: "failed", label: "提交失败" },
+  { value: "blocked", label: "提交阻断" },
 ];
 
 export const SHEIN_WORK_QUEUE_OPTIONS = [

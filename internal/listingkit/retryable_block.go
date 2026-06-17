@@ -10,18 +10,6 @@ import (
 	submissiondomain "task-processor/internal/listing/submission"
 )
 
-const (
-	retryableBlockReasonCodeOpenAIInsufficientCredits    = "openai_insufficient_credits"
-	retryableBlockReasonCodeOpenAIRateLimited            = "openai_rate_limited"
-	retryableBlockReasonCodeUpstreamTimeout              = "upstream_timeout"
-	retryableBlockReasonCodeUpstreamTransientUnavailable = "upstream_transient_unavailable"
-	retryableBlockReasonCodeWorkerQueueBackpressure      = "worker_queue_backpressure"
-)
-
-const (
-	retryableRecoveryScopeTask = "task"
-)
-
 type RetryableBlock struct {
 	ReasonCode           string     `json:"reason_code,omitempty"`
 	ReasonMessage        string     `json:"reason_message,omitempty"`
@@ -71,6 +59,14 @@ func cloneRetryableBlock(src *RetryableBlock) *RetryableBlock {
 	cloned.ReasonMessage = strings.TrimSpace(src.ReasonMessage)
 	cloned.RecoveryScope = strings.TrimSpace(src.RecoveryScope)
 	return &cloned
+}
+
+// BuildRecoveredRetryableBlock returns the listingkit retryable block after recovery.
+func BuildRecoveredRetryableBlock(previous *RetryableBlock, recoveredAt time.Time) *RetryableBlock {
+	return adaptSubmissionRetryableBlock(submissiondomain.BuildRecoveredRetryableBlock(
+		adaptRetryableBlockState(previous),
+		recoveredAt,
+	))
 }
 
 func adaptRetryableBlockState(src *RetryableBlock) *submissiondomain.RetryableBlockState {

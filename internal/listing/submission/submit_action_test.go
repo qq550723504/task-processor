@@ -31,6 +31,22 @@ func TestIsSupportedSubmitAction(t *testing.T) {
 	}
 }
 
+func TestPreferredSubmitActionUsesFirstSupportedCandidate(t *testing.T) {
+	t.Parallel()
+
+	if got := PreferredSubmitAction(" delete ", " SAVE_DRAFT ", "publish"); got != "save_draft" {
+		t.Fatalf("PreferredSubmitAction() = %q, want save_draft", got)
+	}
+}
+
+func TestPreferredSubmitActionReturnsEmptyWhenNoCandidateSupported(t *testing.T) {
+	t.Parallel()
+
+	if got := PreferredSubmitAction("delete", ""); got != "" {
+		t.Fatalf("PreferredSubmitAction() = %q, want empty", got)
+	}
+}
+
 func TestUnsupportedSubmitActionError(t *testing.T) {
 	t.Parallel()
 

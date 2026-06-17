@@ -7,11 +7,12 @@ import (
 )
 
 const (
-	retryableBlockReasonCodeOpenAIInsufficientCredits    = "openai_insufficient_credits"
-	retryableBlockReasonCodeOpenAIRateLimited            = "openai_rate_limited"
-	retryableBlockReasonCodeUpstreamTimeout              = "upstream_timeout"
-	retryableBlockReasonCodeUpstreamTransientUnavailable = "upstream_transient_unavailable"
-	retryableBlockReasonCodeWorkerQueueBackpressure      = "worker_queue_backpressure"
+	RetryableReasonCodeOpenAIInsufficientCredits    = "openai_insufficient_credits"
+	RetryableReasonCodeOpenAIRateLimited            = "openai_rate_limited"
+	RetryableReasonCodeUpstreamTimeout              = "upstream_timeout"
+	RetryableReasonCodeUpstreamTransientUnavailable = "upstream_transient_unavailable"
+	RetryableReasonCodeWorkerQueueBackpressure      = "worker_queue_backpressure"
+	RetryableRecoveryScopeTask                      = "task"
 )
 
 type RetryableBlockState struct {
@@ -68,19 +69,19 @@ func ClassifyRetryableFailure(err error, defaultRecoveryScope string) (*Retryabl
 
 	switch {
 	case strings.Contains(normalized, "insufficient credits"):
-		return newRetryableClassification(retryableBlockReasonCodeOpenAIInsufficientCredits, message, defaultRecoveryScope), true
+		return newRetryableClassification(RetryableReasonCodeOpenAIInsufficientCredits, message, defaultRecoveryScope), true
 	case strings.Contains(normalized, "rate limit"),
 		strings.Contains(normalized, "rate limited"),
 		strings.Contains(normalized, "too many requests"),
 		strings.Contains(normalized, "status code: 429"),
 		strings.Contains(normalized, "error code: 429"):
-		return newRetryableClassification(retryableBlockReasonCodeOpenAIRateLimited, message, defaultRecoveryScope), true
+		return newRetryableClassification(RetryableReasonCodeOpenAIRateLimited, message, defaultRecoveryScope), true
 	case strings.Contains(normalized, "upstream timeout"),
 		strings.Contains(normalized, "gateway timeout"),
 		strings.Contains(normalized, "context deadline exceeded"),
 		strings.Contains(normalized, "i/o timeout"),
 		strings.Contains(normalized, "client timeout exceeded while awaiting headers"):
-		return newRetryableClassification(retryableBlockReasonCodeUpstreamTimeout, message, defaultRecoveryScope), true
+		return newRetryableClassification(RetryableReasonCodeUpstreamTimeout, message, defaultRecoveryScope), true
 	case strings.Contains(normalized, "temporarily unavailable"),
 		strings.Contains(normalized, "service unavailable"),
 		strings.Contains(normalized, "upstream unavailable"),
@@ -97,11 +98,11 @@ func ClassifyRetryableFailure(err error, defaultRecoveryScope string) (*Retryabl
 		strings.Contains(normalized, "write tcp") && strings.Contains(normalized, ": eof"),
 		strings.Contains(normalized, "request failed: eof"),
 		strings.Contains(normalized, "request error: eof"):
-		return newRetryableClassification(retryableBlockReasonCodeUpstreamTransientUnavailable, message, defaultRecoveryScope), true
+		return newRetryableClassification(RetryableReasonCodeUpstreamTransientUnavailable, message, defaultRecoveryScope), true
 	case strings.Contains(normalized, "worker queue"),
 		strings.Contains(normalized, "queue full"),
 		strings.Contains(message, "工作队列已满"):
-		return newRetryableClassification(retryableBlockReasonCodeWorkerQueueBackpressure, message, defaultRecoveryScope), true
+		return newRetryableClassification(RetryableReasonCodeWorkerQueueBackpressure, message, defaultRecoveryScope), true
 	default:
 		return nil, false
 	}
@@ -153,6 +154,38 @@ func BuildReblockedRetryableBlock(previous *RetryableBlockState, classified *Ret
 		block.NextRetryAt = nil
 	}
 	return block
+}
+
+// BuildRecoveredRetryableBlock returns the retryable block state after a manual recovery.
+func BuildRecoveredRetryableBlock(previous *RetryableBlockState, recoveredAt time.Time) *RetryableBlockState {
+	block := CloneRetryableBlockState(previous)
+	if block == nil {
+		block = &RetryableBlockState{}
+	}
+	block.LastRetryAt = cloneTimePointer(recoveredAt)
+	block.NextRetryAt = nil
+	block.AutoRetryPaused = false
+	return block
+}
+
+// BuildRecoveryDurabilityRestoreBlock returns the retryable block used when
+// restoring durable blocked state after recovered-submit persistence fails.
+func BuildRecoveryDurabilityRestoreBlock(previous *RetryableBlockState, submitErr error, restoredAt time.Time, defaultRecoveryScope string) (*RetryableBlockState, bool) {
+	block := CloneRetryableBlockState(previous)
+	if block == nil {
+		classified, ok := ClassifyRetryableFailure(submitErr, defaultRecoveryScope)
+		if !ok {
+			return nil, false
+		}
+		block = classified
+	}
+	if strings.TrimSpace(block.RecoveryScope) == "" {
+		block.RecoveryScope = strings.TrimSpace(defaultRecoveryScope)
+	}
+	if block.BlockedAt.IsZero() {
+		block.BlockedAt = restoredAt
+	}
+	return block, true
 }
 
 func BuildBackfilledRetryableBlock(err error, blockedAt time.Time, backfilledAt time.Time, maxAutoRetryAttempts int, defaultRecoveryScope string) (*RetryableBlockState, bool) {

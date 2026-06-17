@@ -56,11 +56,14 @@ func TestWithDependenciesConfiguresSubscriptionState(t *testing.T) {
 
 type stubSettingsHandlerService struct {
 	gotAIQuery settingsNamespaceQuery
+	aiResults  map[string]*listingkit.AIClientSettings
 	aiResult   *listingkit.AIClientSettings
+	shein      *listingkit.SheinSettings
+	probes     listingkit.SettingsHealthProbes
 }
 
 func (s *stubSettingsHandlerService) GetSheinSettings(context.Context) (*listingkit.SheinSettings, error) {
-	return nil, nil
+	return s.shein, nil
 }
 
 func (s *stubSettingsHandlerService) UpdateSheinSettings(context.Context, *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
@@ -69,6 +72,9 @@ func (s *stubSettingsHandlerService) UpdateSheinSettings(context.Context, *listi
 
 func (s *stubSettingsHandlerService) GetAIClientSettings(_ context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
 	s.gotAIQuery = settingsNamespaceQuery{Scope: scope, ClientName: clientName}
+	if s.aiResults != nil {
+		return s.aiResults[clientName], nil
+	}
 	if s.aiResult != nil {
 		return s.aiResult, nil
 	}
@@ -77,6 +83,10 @@ func (s *stubSettingsHandlerService) GetAIClientSettings(_ context.Context, scop
 
 func (s *stubSettingsHandlerService) UpdateAIClientSettings(context.Context, *listingkit.AIClientSettings) (*listingkit.AIClientSettings, error) {
 	return nil, nil
+}
+
+func (s *stubSettingsHandlerService) GetSettingsHealthProbes(context.Context) listingkit.SettingsHealthProbes {
+	return s.probes
 }
 
 func TestWithSettingsHandlerServiceOverridesDefaultSettingsService(t *testing.T) {
@@ -112,6 +122,69 @@ func TestWithSettingsHandlerServiceOverridesDefaultSettingsService(t *testing.T)
 	}
 	if aiSettings.Model != "gpt-test" {
 		t.Fatalf("ai settings = %+v", aiSettings)
+	}
+}
+
+func TestSettingsServiceHealthReadsExistingAIAndSheinSettings(t *testing.T) {
+	t.Parallel()
+
+	settingsStub := &stubSettingsHandlerService{
+		aiResults: map[string]*listingkit.AIClientSettings{
+			"default": {
+				ClientName: "default",
+				Enabled:    true,
+				BaseURL:    "https://api.example.test/v1",
+				Model:      "gpt-test",
+				APIKeySet:  true,
+			},
+			"image": {
+				ClientName: "image",
+				Enabled:    true,
+				BaseURL:    "https://api.example.test/v1",
+				Model:      "image-test",
+				APIKeySet:  true,
+			},
+		},
+		shein: &listingkit.SheinSettings{
+			DefaultStoreID:    7,
+			Site:              "US",
+			DefaultStock:      20,
+			DefaultSubmitMode: "save_draft",
+		},
+		probes: listingkit.SettingsHealthProbes{
+			SheinIntegration: listingkit.SettingsHealthProbe{Configured: true},
+			SDSLogin:         listingkit.SettingsHealthProbe{Configured: true},
+			ObjectStorage:    listingkit.SettingsHealthProbe{Missing: []string{"publisher.s3.bucket 缺失"}},
+		},
+	}
+
+	health, err := newSettingsService(settingsStub).Health(context.Background())
+	if err != nil {
+		t.Fatalf("Health returned error: %v", err)
+	}
+
+	if health.Status != "blocked" {
+		t.Fatalf("health status = %q, want blocked because pricing and object storage are missing", health.Status)
+	}
+	var hasDefaultAI, hasImageAI, hasSheinProbe, hasSDSProbe, hasPricing, hasObjectStorage bool
+	for _, item := range health.Items {
+		switch item.Key {
+		case "ai.default":
+			hasDefaultAI = item.Status == "ready"
+		case "ai.image":
+			hasImageAI = item.Status == "ready"
+		case "shein.integration":
+			hasSheinProbe = item.Status == "ready"
+		case "sds.session":
+			hasSDSProbe = item.Status == "ready"
+		case "shein.pricing":
+			hasPricing = item.Status == "blocked"
+		case "storage.object":
+			hasObjectStorage = item.Status == "blocked"
+		}
+	}
+	if !hasDefaultAI || !hasImageAI || !hasSheinProbe || !hasSDSProbe || !hasPricing || !hasObjectStorage {
+		t.Fatalf("health items = %#v", health.Items)
 	}
 }
 

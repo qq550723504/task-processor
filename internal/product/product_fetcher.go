@@ -47,18 +47,25 @@ func NewProductFetcherWithLogger(
 		zipcodes = amazonConfig.Zipcodes
 	}
 	return &ProductFetcher{
-		cacheManager: NewCacheManager(rawJsonDataClient, log),
+		cacheManager: NewCacheManagerWithFreshness(rawJsonDataClient, log, amazonConfigFreshnessDays(amazonConfig)),
 		amazonConfig: amazonConfig,
 		sourceFetcher: sourcing.AmazonSourceFetcher{
 			Planner: sourcing.AmazonCrawlRequestPlanner{
-				DomainResolver: NewDomainResolver(),
-				ZipcodePolicy:  productAmazonZipcodePolicy{},
+				DomainResolver: sourcing.AmazonDefaultDomainResolver{},
+				ZipcodePolicy:  sourcing.AmazonDefaultZipcodePolicy{},
 				Zipcodes:       zipcodes,
 			},
 			Source: crawlSource,
 		},
 		logger: log,
 	}
+}
+
+func amazonConfigFreshnessDays(cfg *config.AmazonConfig) int {
+	if cfg == nil {
+		return 0
+	}
+	return cfg.DataFreshnessDays
 }
 
 // FetchProduct 获取产品
@@ -134,7 +141,7 @@ func (f *ProductFetcher) FetchVariants(ctx context.Context, req *FetchRequest, v
 
 	variants := make([]*model.Product, 0, len(variantASINs))
 	for _, asin := range variantASINs {
-		variantReq := FetchRequestFromSource(sourcing.VariantSourceRequest(SourceRequestFromFetch(req), asin))
+		variantReq := VariantFetchRequest(req, asin)
 		product, err := f.FetchProduct(ctx, variantReq)
 		if err != nil {
 			f.logger.Warnf("fetch variant failed: ASIN=%s, err=%v", asin, err)
@@ -175,14 +182,4 @@ func (f *ProductFetcher) crawlerUnavailableError(req *FetchRequest) error {
 	default:
 		return fmt.Errorf("crawler fetch is unavailable for product fetch: product_id=%s region=%s", productID, region)
 	}
-}
-
-type productAmazonZipcodePolicy struct{}
-
-func (productAmazonZipcodePolicy) ShouldUseDefaultZipcode(region string) bool {
-	return NewDomainResolver().ShouldUseDefaultZipcode(region)
-}
-
-func (productAmazonZipcodePolicy) DefaultZipcode(region string) string {
-	return NewDomainResolver().GetZipcodeByRegion(region)
 }

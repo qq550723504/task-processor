@@ -37,15 +37,12 @@ func (s *taskExportService) GetTaskExport(ctx context.Context, taskID string, pl
 		return nil, err
 	}
 	projection := buildAssetGenerationProjection(task.Result, tasks)
-	export.AssetGenerationSummary = projection.Summary
-	export.AssetGenerationTasks = projection.Tasks
+	applyAssetGenerationProjectionToExport(export, projection)
 	if len(export.AssetRenderPreviews) == 0 && task.Result != nil {
 		export.AssetRenderPreviews = buildAssetRenderPreviews(task.Result.AssetBundle)
 	}
 	if len(export.PlatformAssetRenderPreviews) == 0 && task.Result != nil {
 		export.PlatformAssetRenderPreviews = buildPlatformAssetRenderPreviews(task.Result)
 	}
-	export.AssetGenerationQueue = projection.Queue
-	export.AssetGenerationOverview = projection.Overview
 	return export, nil
 }

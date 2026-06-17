@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	submissiondomain "task-processor/internal/listing/submission"
 )
 
 func TestBackfillRetryableFailuresReclassifiesKnownCreditErrors(t *testing.T) {
@@ -57,8 +59,8 @@ func TestBackfillRetryableFailuresReclassifiesKnownCreditErrors(t *testing.T) {
 	if storedRetryable.RetryableBlock == nil {
 		t.Fatal("retryable RetryableBlock = nil, want backfilled retryable metadata")
 	}
-	if storedRetryable.RetryableBlock.ReasonCode != retryableBlockReasonCodeOpenAIInsufficientCredits {
-		t.Fatalf("retryable ReasonCode = %q, want %q", storedRetryable.RetryableBlock.ReasonCode, retryableBlockReasonCodeOpenAIInsufficientCredits)
+	if storedRetryable.RetryableBlock.ReasonCode != submissiondomain.RetryableReasonCodeOpenAIInsufficientCredits {
+		t.Fatalf("retryable ReasonCode = %q, want %q", storedRetryable.RetryableBlock.ReasonCode, submissiondomain.RetryableReasonCodeOpenAIInsufficientCredits)
 	}
 	if storedRetryable.RetryableBlock.NextRetryAt == nil {
 		t.Fatal("retryable NextRetryAt = nil, want scheduled retry metadata")

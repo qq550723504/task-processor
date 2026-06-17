@@ -37,13 +37,11 @@ type DistributedProductFetcher struct {
 	logger             *logrus.Entry
 
 	// 专职处理器
-	cacheManager   *domainProduct.CacheManager
-	dataParser     *domainProduct.DataParser
-	domainResolver *domainProduct.DomainResolver
+	cacheManager *domainProduct.CacheManager
 }
 
-// NewDistributedProductFetcher 创建分布式产品数据获取器（使用共享的RabbitMQ客户端）
-func NewDistributedProductFetcher(
+// newDistributedProductFetcher 创建分布式产品数据获取器（使用共享的RabbitMQ客户端）
+func newDistributedProductFetcher(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 	rabbitmqClient *rabbitmq.Client,
@@ -62,9 +60,11 @@ func NewDistributedProductFetcher(
 	}
 
 	// 创建专职处理器
-	cacheManager := domainProduct.NewCacheManager(rawJsonDataClient, logger)
-	dataParser := domainProduct.NewDataParser(logger)
-	domainResolver := domainProduct.NewDomainResolver()
+	freshnessDays := 0
+	if amazonConfig != nil {
+		freshnessDays = amazonConfig.DataFreshnessDays
+	}
+	cacheManager := domainProduct.NewCacheManagerWithFreshness(rawJsonDataClient, logger, freshnessDays)
 
 	return &DistributedProductFetcher{
 		rawJsonDataClient:  rawJsonDataClient,
@@ -72,8 +72,6 @@ func NewDistributedProductFetcher(
 		amazonConfig:       amazonConfig,
 		logger:             logger,
 		cacheManager:       cacheManager,
-		dataParser:         dataParser,
-		domainResolver:     domainResolver,
 	}, nil
 }
 
@@ -230,7 +228,7 @@ func (f *DistributedProductFetcher) FetchVariants(ctx context.Context, req *doma
 	cachedProducts := make(map[string]*model.Product)
 
 	for _, asin := range variantASINs {
-		variantReq := domainProduct.FetchRequestFromSource(sourcing.VariantSourceRequest(domainProduct.SourceRequestFromFetch(req), asin))
+		variantReq := domainProduct.VariantFetchRequest(req, asin)
 		if product, err := f.cacheManager.GetFromCache(variantReq); err == nil && product != nil {
 			f.logger.Debugf("✅ 变体从缓存获取: ASIN=%s", asin)
 			cachedProducts[asin] = product

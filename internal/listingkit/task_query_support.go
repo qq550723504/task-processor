@@ -13,11 +13,20 @@ func TaskMatchesListQuery(task *Task, query *TaskListQuery) bool {
 	if query.Platform != "" && !taskHasPlatform(task, query.Platform) {
 		return false
 	}
-	if !queryHasSheinDerivedFilters(query) {
+	if !queryHasDerivedTaskItemFilters(query) {
 		return true
 	}
 	item := buildTaskListItem(task)
+	if query.SourceType != "" && item.SourceType != query.SourceType {
+		return false
+	}
+	if query.ReadinessStatus != "" && taskListReadinessStatus(item) != query.ReadinessStatus {
+		return false
+	}
 	if query.SheinWorkflowStatus != "" && item.SheinWorkflowStatus != query.SheinWorkflowStatus {
+		return false
+	}
+	if query.SheinSubmissionStatus != "" && item.SheinLatestSubmissionStatus != query.SheinSubmissionStatus {
 		return false
 	}
 	if query.SheinBlockerKey != "" && !taskQueryContainsString(item.SheinBlockingKeys, query.SheinBlockerKey) {
@@ -35,15 +44,38 @@ func TaskMatchesListQuery(task *Task, query *TaskListQuery) bool {
 	return true
 }
 
+func queryHasDerivedTaskItemFilters(query *TaskListQuery) bool {
+	if query == nil {
+		return false
+	}
+	return query.SourceType != "" ||
+		query.ReadinessStatus != "" ||
+		queryHasSheinDerivedFilters(query)
+}
+
 func queryHasSheinDerivedFilters(query *TaskListQuery) bool {
 	if query == nil {
 		return false
 	}
 	return query.SheinWorkflowStatus != "" ||
+		query.SheinSubmissionStatus != "" ||
 		query.SheinBlockerKey != "" ||
 		query.SheinWarningKey != "" ||
 		query.SheinWorkQueue != "" ||
 		query.SheinActionQueue != ""
+}
+
+func taskListReadinessStatus(item TaskListItem) string {
+	if len(item.SheinBlockingKeys) > 0 {
+		return "blocked"
+	}
+	if len(item.SheinWarningKeys) > 0 {
+		return "warning"
+	}
+	if item.SheinStatusOverview != nil || item.SheinWorkflowStatus != "" {
+		return "ready"
+	}
+	return ""
 }
 
 func taskQueryContainsString(values []string, target string) bool {

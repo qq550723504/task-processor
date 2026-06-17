@@ -972,9 +972,13 @@ func TestTaskRequeueServiceUsesSubmissionDomainRunner(t *testing.T) {
 	serviceContent := string(serviceSrc)
 
 	for _, needle := range []string{
+		`type taskRequeueRunnerWiring struct {`,
+		`func buildTaskRequeueRunnerWiring(svc *taskRequeueService) taskRequeueRunnerWiring {`,
+		`wiring := buildTaskRequeueRunnerWiring(svc)`,
 		`submissiondomain.NewRequeueService(submissiondomain.RequeueServiceConfig{`,
-		`return &submissiondomain.RequeueTask{ID: task.ID, Status: string(task.Status)}, nil`,
-		`return submissiondomain.RetryEnqueueSubmit(taskID, taskRequeueMaxWait, submit)`,
+		`LoadTask:          wiring.loadTask,`,
+		`CurrentSubmitter:  wiring.currentSubmitter,`,
+		`SubmitTask:        wiring.submitTask,`,
 		`result, err := s.runner.RequeueTasks(ctx, &submissiondomain.RequeueRequest{`,
 		`return adaptSubmissionDomainRequeueResult(result), nil`,
 	} {
@@ -1018,12 +1022,16 @@ func TestTaskRecoveryServiceUsesSubmissionDomainRunner(t *testing.T) {
 	serviceContent := string(serviceSrc)
 
 	for _, needle := range []string{
+		`type taskRecoveryRunnerWiring struct {`,
+		`func buildTaskRecoveryRunnerWiring(svc *taskRecoveryService) taskRecoveryRunnerWiring {`,
+		`wiring := buildTaskRecoveryRunnerWiring(svc)`,
 		`submissiondomain.NewRecoveryNowService(submissiondomain.RecoveryNowServiceConfig[Task]{`,
 		`submissiondomain.NewRecoveryBatchService(submissiondomain.RecoveryBatchServiceConfig[Task]{`,
-		`return svc.repo.RecoverBlockedTaskNow(ctx, taskID, time.Time{})`,
-		`return svc.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{`,
-		`return svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), taskID, current.RetryableBlock, svc.currentTime())`,
-		`return svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), task.ID, task.RetryableBlock, recoverAt)`,
+		`CurrentSubmitter: wiring.currentSubmitter,`,
+		`LoadTask:         wiring.loadTask,`,
+		`ListCandidates:       wiring.listCandidates,`,
+		`SubmitRecovered:  wiring.submitRecoveredNow,`,
+		`SubmitRecovered:      wiring.submitRecoveredBatch,`,
 		`return s.recoveryNow.RecoverNow(ctx, taskID)`,
 		`return s.recoveryBatch.RecoverBatch(ctx, request)`,
 	} {
@@ -1056,6 +1064,34 @@ func TestTaskRecoveryServiceUsesSubmissionDomainRunner(t *testing.T) {
 			t.Fatalf("task_recovery_adapter.go should contain %q", needle)
 		}
 	}
+}
+
+func TestTaskRecoverySubmitRecoveredDelegatesRetryablePersistenceSkeleton(t *testing.T) {
+	t.Parallel()
+
+	source := readNamedFunctionSource(t, "task_recovery_service.go", "submitRecoveredTask")
+	callNames := readNamedFunctionCallNames(t, "task_recovery_service.go", "submitRecoveredTask")
+	durabilitySource := readTaskGenerationSourceFile(t, "task_recovery_durability.go")
+
+	assertSourceContainsAll(t, source, []string{
+		"return submissiondomain.SubmitRecoveredWithRetryablePersistence(",
+		"PreviousBlock:        adaptRetryableBlockState(previousBlock)",
+		"MarkBlockedRetryable: func(block *submissiondomain.RetryableBlockState, errorMsg string) error {",
+		"PersistFailure: func(errorMsg string, submitErr error) error {",
+		"RestoreDurability: func(errorMsg string, submitErr error, persistErr error) error {",
+	})
+	assertSourceExcludesAll(t, source, []string{
+		"if err := submitter.Submit(taskID); err != nil {",
+		"if block, ok := classifyRetryableTaskFailure(err); ok {",
+		"updated := s.buildReblockedTask(previousBlock, block, recoveredAt)",
+	})
+	assertSourceExcludesAll(t, durabilitySource, []string{
+		"func (s *taskRecoveryService) buildReblockedTask(",
+		"func cloneTimePointer(",
+	})
+	assertFunctionCallsContainAll(t, callNames, []string{
+		"SubmitRecoveredWithRetryablePersistence",
+	})
 }
 
 func TestSubmitLeaseHelperFileOwnsSharedTTLAndSentinelErrors(t *testing.T) {
@@ -2877,11 +2913,14 @@ func TestSubmitSettingsHelpersFileOwnsDefaultActionResolver(t *testing.T) {
 
 	for _, needle := range []string{
 		"func sheinPreferredSubmitAction(task *Task, settings SheinSettings) string {",
-		"func normalizePreferredSheinSubmitAction(action string) string {",
+		"listingsubmission.PreferredSubmitAction(",
 	} {
 		if !strings.Contains(helperContent, needle) {
 			t.Fatalf("service_submit_action_normalization_helper.go should keep %q", needle)
 		}
+	}
+	if strings.Contains(helperContent, "func normalizePreferredSheinSubmitAction(action string) string {") {
+		t.Fatalf("service_submit_action_normalization_helper.go should delegate preferred submit action normalization to internal/listing/submission")
 	}
 
 	if _, err := os.ReadFile("service_submit_default_action.go"); err == nil {
@@ -4382,6 +4421,8 @@ func TestTaskSubmissionServiceConfigsUseSharedSupportWiring(t *testing.T) {
 		"func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionExecutionServiceConfig {",
 		"func buildTaskSubmissionStateServiceConfigWithSupport(wiring taskSubmissionSupportWiring) taskSubmissionStateServiceConfig {",
 		"func resolveSubmissionWorkflowClient(s *service) (SheinPublishWorkflowClient, bool) {",
+		"assembly = buildTaskSubmissionAssembly(s)",
+		"wiring := buildTaskSubmissionSupportWiring(s)",
 	} {
 		if strings.Contains(supportContent, needle) {
 			t.Fatalf("service_submit_wiring_support.go should not contain %q after resolution/config split", needle)
@@ -4536,6 +4577,7 @@ func TestTaskTemporalSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		"func buildTaskTemporalSubmissionFacadeWiring(s *service) taskTemporalSubmissionFacadeWiring {",
 		"func (w taskTemporalSubmissionCollaboratorWiring) newFacade(",
 		"collaborators.facade",
+		"assembly = buildTaskSubmissionAssembly(s)",
 	} {
 		if strings.Contains(supportContent, needle) || strings.Contains(content, needle) {
 			t.Fatalf("temporal collaborator wiring should not retain facade seam %q", needle)
@@ -4614,6 +4656,10 @@ func TestTaskManagedSubmissionCollaboratorsShareOneEnsureSeam(t *testing.T) {
 			t.Fatalf("service_submit_managed_wiring_support.go should contain %q", needle)
 		}
 	}
+
+	if strings.Contains(supportContent, "assembly = buildTaskSubmissionAssembly(s)") {
+		t.Fatal("managed submission wiring should complete the provided assembly instead of rebuilding it")
+	}
 }
 
 func TestTaskSubmissionCoreCollaboratorsShareOneEnsureSeam(t *testing.T) {
@@ -4669,6 +4715,10 @@ func TestTaskSubmissionCoreCollaboratorsShareOneEnsureSeam(t *testing.T) {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("service_submit_wiring_support.go should contain %q", needle)
 		}
+	}
+
+	if strings.Contains(supportContent, "func buildTaskSubmissionCoreCollaboratorWiring(s *service) taskSubmissionCoreCollaboratorWiring {\n\tbase := buildTaskSubmissionBaseWiring(s)") {
+		t.Fatal("core submission collaborator wiring must not build base wiring because base assembly bindings resolve core collaborators")
 	}
 }
 

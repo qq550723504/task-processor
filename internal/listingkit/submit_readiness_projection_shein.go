@@ -1,12 +1,12 @@
 package listingkit
 
-import sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+import (
+	listingsubmission "task-processor/internal/listing/submission"
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+)
 
 type sheinSubmitReadinessProjection struct {
-	Readiness      *SheinSubmitReadiness
-	Checklist      *SheinSubmitChecklist
-	SubmitState    *sheinworkspace.SubmitStateInput
-	StatusOverview *sheinworkspace.StatusOverview
+	listingsubmission.ReadinessProjection[*SheinSubmitReadiness, *SheinSubmitChecklist, *sheinworkspace.SubmitStateInput, *sheinworkspace.StatusOverview]
 }
 
 func buildSheinSubmitReadinessProjection(pkg *SheinPackage) *sheinSubmitReadinessProjection {
@@ -18,11 +18,17 @@ func buildSheinSubmitReadinessProjectionWithPod(pkg *SheinPackage, pod *PodExecu
 		return nil
 	}
 	readiness := buildSheinSubmitReadinessWithPod(pkg, pod)
-	submitState := sheinworkspace.BuildSubmitStateInput(readiness)
-	return &sheinSubmitReadinessProjection{
-		Readiness:      readiness,
-		Checklist:      buildSheinSubmitChecklist(readiness),
-		SubmitState:    submitState,
-		StatusOverview: sheinworkspace.BuildStatusOverview(pkg.Inspection, submitState),
-	}
+	projection := listingsubmission.BuildReadinessProjection(
+		listingsubmission.ReadinessProjectionInput[*SheinSubmitReadiness, *SheinSubmitChecklist, *sheinworkspace.SubmitStateInput, *sheinworkspace.StatusOverview]{
+			Readiness:      readiness,
+			BuildChecklist: buildSheinSubmitChecklist,
+			BuildSubmitState: func(readiness *SheinSubmitReadiness) *sheinworkspace.SubmitStateInput {
+				return sheinworkspace.BuildSubmitStateInput(readiness)
+			},
+			BuildStatusOverview: func(submitState *sheinworkspace.SubmitStateInput) *sheinworkspace.StatusOverview {
+				return sheinworkspace.BuildStatusOverview(pkg.Inspection, submitState)
+			},
+		},
+	)
+	return &sheinSubmitReadinessProjection{ReadinessProjection: projection}
 }

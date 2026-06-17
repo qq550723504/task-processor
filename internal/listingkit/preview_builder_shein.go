@@ -16,6 +16,23 @@ func buildSheinPreviewPayload(
 	if pkg == nil {
 		return nil
 	}
+	input := buildSheinPreviewPayloadInput(
+		pkg,
+		pod,
+		canonical,
+		assetBundle,
+		renderPreviews,
+	)
+	return buildSheinPreviewPayloadFromInput(input)
+}
+
+func buildSheinPreviewPayloadInput(
+	pkg *sheinpub.Package,
+	pod *PodExecutionSummary,
+	canonical *canonical.Product,
+	assetBundle *asset.Bundle,
+	renderPreviews *PlatformAssetRenderPreviews,
+) sheinPreviewPayloadInput {
 	sheinpub.NormalizePackageSemanticFields(pkg)
 	needsReview, summary := buildSheinPreviewReviewSummary(pkg)
 	projection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)
@@ -24,7 +41,7 @@ func buildSheinPreviewPayload(
 	repairCenter := buildSheinRepairCenter(readiness, checklist)
 	submitState := projection.SubmitState
 	statusOverview := projection.StatusOverview
-	return buildSheinPreviewPayloadFromInput(sheinPreviewPayloadInput{
+	return sheinPreviewPayloadInput{
 		pkg:               pkg,
 		canonical:         canonical,
 		visualAssetBundle: assetBundle,
@@ -36,5 +53,5 @@ func buildSheinPreviewPayload(
 		repairCenter:      repairCenter,
 		statusOverview:    statusOverview,
 		workspaceOverview: buildSheinPreviewWorkspaceOverview(statusOverview, submitState, repairCenter),
-	})
+	}
 }

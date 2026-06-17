@@ -2,6 +2,8 @@ package submission
 
 import (
 	"errors"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -18,13 +20,13 @@ func TestClassifyRetryableFailure(t *testing.T) {
 		{
 			name:           "insufficient credits",
 			err:            errors.New("OpenAI API error: insufficient credits in account balance"),
-			wantReasonCode: retryableBlockReasonCodeOpenAIInsufficientCredits,
+			wantReasonCode: RetryableReasonCodeOpenAIInsufficientCredits,
 			wantRetryable:  true,
 		},
 		{
 			name:           "worker queue full",
 			err:            errors.New("queue full"),
-			wantReasonCode: retryableBlockReasonCodeWorkerQueueBackpressure,
+			wantReasonCode: RetryableReasonCodeWorkerQueueBackpressure,
 			wantRetryable:  true,
 		},
 		{
@@ -69,7 +71,7 @@ func TestBuildReblockedRetryableBlockPreservesManualPause(t *testing.T) {
 
 	now := time.Date(2026, 6, 6, 17, 45, 0, 0, time.UTC)
 	previous := &RetryableBlockState{
-		ReasonCode:           retryableBlockReasonCodeWorkerQueueBackpressure,
+		ReasonCode:           RetryableReasonCodeWorkerQueueBackpressure,
 		ReasonMessage:        "queue full",
 		BlockedAt:            now.Add(-5 * time.Minute),
 		RetryAttempts:        1,
@@ -95,6 +97,99 @@ func TestBuildReblockedRetryableBlockPreservesManualPause(t *testing.T) {
 	}
 }
 
+func TestBuildRecoveredRetryableBlockResetsRecoveryScheduling(t *testing.T) {
+	t.Parallel()
+
+	recoveredAt := time.Date(2026, 6, 17, 10, 30, 0, 0, time.UTC)
+	nextRetryAt := recoveredAt.Add(5 * time.Minute)
+	previous := &RetryableBlockState{
+		ReasonCode:           RetryableReasonCodeWorkerQueueBackpressure,
+		ReasonMessage:        "queue full",
+		BlockedAt:            recoveredAt.Add(-time.Hour),
+		NextRetryAt:          &nextRetryAt,
+		RetryAttempts:        3,
+		MaxAutoRetryAttempts: 8,
+		RecoveryScope:        "task",
+		AutoResumeEnabled:    true,
+		AutoRetryPaused:      true,
+	}
+
+	recovered := BuildRecoveredRetryableBlock(previous, recoveredAt)
+	if recovered == nil {
+		t.Fatal("BuildRecoveredRetryableBlock() = nil, want recovered block")
+	}
+	if recovered == previous {
+		t.Fatal("BuildRecoveredRetryableBlock() reused previous pointer, want clone")
+	}
+	if recovered.LastRetryAt == nil || !recovered.LastRetryAt.Equal(recoveredAt) {
+		t.Fatalf("LastRetryAt = %v, want %v", recovered.LastRetryAt, recoveredAt)
+	}
+	if recovered.NextRetryAt != nil {
+		t.Fatalf("NextRetryAt = %v, want nil after manual recovery", recovered.NextRetryAt)
+	}
+	if recovered.AutoRetryPaused {
+		t.Fatal("AutoRetryPaused = true, want false after manual recovery")
+	}
+	if recovered.ReasonCode != previous.ReasonCode || recovered.RetryAttempts != previous.RetryAttempts {
+		t.Fatalf("recovered block = %+v, want preserved reason and attempts from %+v", recovered, previous)
+	}
+}
+
+func TestBuildRecoveryDurabilityRestoreBlockUsesPreviousBlock(t *testing.T) {
+	t.Parallel()
+
+	restoredAt := time.Date(2026, 6, 17, 14, 0, 0, 0, time.UTC)
+	nextRetryAt := restoredAt.Add(10 * time.Minute)
+	previous := &RetryableBlockState{
+		ReasonCode:           RetryableReasonCodeOpenAIInsufficientCredits,
+		ReasonMessage:        "insufficient credits",
+		NextRetryAt:          &nextRetryAt,
+		RetryAttempts:        4,
+		MaxAutoRetryAttempts: 8,
+		AutoResumeEnabled:    true,
+	}
+
+	restored, ok := BuildRecoveryDurabilityRestoreBlock(previous, errors.New("queue full"), restoredAt, RetryableRecoveryScopeTask)
+	if !ok || restored == nil {
+		t.Fatalf("BuildRecoveryDurabilityRestoreBlock() = (%+v, %t), want previous block", restored, ok)
+	}
+	if restored == previous {
+		t.Fatal("BuildRecoveryDurabilityRestoreBlock() reused previous pointer, want clone")
+	}
+	if restored.ReasonCode != previous.ReasonCode || restored.RetryAttempts != previous.RetryAttempts {
+		t.Fatalf("restored = %+v, want previous reason and attempts from %+v", restored, previous)
+	}
+	if restored.RecoveryScope != RetryableRecoveryScopeTask {
+		t.Fatalf("RecoveryScope = %q, want %q", restored.RecoveryScope, RetryableRecoveryScopeTask)
+	}
+	if !restored.BlockedAt.Equal(restoredAt) {
+		t.Fatalf("BlockedAt = %v, want %v", restored.BlockedAt, restoredAt)
+	}
+	if restored.NextRetryAt == previous.NextRetryAt {
+		t.Fatal("NextRetryAt reused previous pointer, want clone")
+	}
+}
+
+func TestBuildRecoveryDurabilityRestoreBlockClassifiesRetryableErrorWhenPreviousMissing(t *testing.T) {
+	t.Parallel()
+
+	restoredAt := time.Date(2026, 6, 17, 14, 30, 0, 0, time.UTC)
+
+	restored, ok := BuildRecoveryDurabilityRestoreBlock(nil, errors.New("queue full"), restoredAt, RetryableRecoveryScopeTask)
+	if !ok || restored == nil {
+		t.Fatalf("BuildRecoveryDurabilityRestoreBlock() = (%+v, %t), want classified block", restored, ok)
+	}
+	if restored.ReasonCode != RetryableReasonCodeWorkerQueueBackpressure {
+		t.Fatalf("ReasonCode = %q, want %q", restored.ReasonCode, RetryableReasonCodeWorkerQueueBackpressure)
+	}
+	if restored.RecoveryScope != RetryableRecoveryScopeTask {
+		t.Fatalf("RecoveryScope = %q, want %q", restored.RecoveryScope, RetryableRecoveryScopeTask)
+	}
+	if !restored.BlockedAt.Equal(restoredAt) {
+		t.Fatalf("BlockedAt = %v, want %v", restored.BlockedAt, restoredAt)
+	}
+}
+
 func TestBuildBackfilledRetryableBlock(t *testing.T) {
 	t.Parallel()
 
@@ -111,8 +206,8 @@ func TestBuildBackfilledRetryableBlock(t *testing.T) {
 	if !ok || block == nil {
 		t.Fatalf("BuildBackfilledRetryableBlock() = (%+v, %t), want retryable block", block, ok)
 	}
-	if block.ReasonCode != retryableBlockReasonCodeOpenAIInsufficientCredits {
-		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, retryableBlockReasonCodeOpenAIInsufficientCredits)
+	if block.ReasonCode != RetryableReasonCodeOpenAIInsufficientCredits {
+		t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, RetryableReasonCodeOpenAIInsufficientCredits)
 	}
 	if !block.BlockedAt.Equal(blockedAt) {
 		t.Fatalf("BlockedAt = %v, want %v", block.BlockedAt, blockedAt)
@@ -142,8 +237,8 @@ func TestPersistClassifiedRetryableFailure(t *testing.T) {
 				if block == nil {
 					t.Fatal("block = nil, want retryable block")
 				}
-				if block.ReasonCode != retryableBlockReasonCodeWorkerQueueBackpressure {
-					t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, retryableBlockReasonCodeWorkerQueueBackpressure)
+				if block.ReasonCode != RetryableReasonCodeWorkerQueueBackpressure {
+					t.Fatalf("ReasonCode = %q, want %q", block.ReasonCode, RetryableReasonCodeWorkerQueueBackpressure)
 				}
 				if errorMessage != "queue full" {
 					t.Fatalf("error message = %q, want queue full", errorMessage)
@@ -197,4 +292,16 @@ func TestPersistClassifiedRetryableFailure(t *testing.T) {
 			t.Fatal("MarkFailed was not called")
 		}
 	})
+}
+
+func TestRetryableBlockUsesExportedReasonCodeConstantsInternally(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("retryable_block.go")
+	if err != nil {
+		t.Fatalf("ReadFile(retryable_block.go) error = %v", err)
+	}
+	if strings.Contains(string(source), "retryableBlockReasonCode") {
+		t.Fatal("retryable_block.go should use exported RetryableReasonCode constants directly")
+	}
 }

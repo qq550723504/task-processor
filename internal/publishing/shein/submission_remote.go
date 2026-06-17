@@ -10,13 +10,6 @@ import (
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
-func SubmissionResponseAccepted(result *SubmissionResponse) bool {
-	if result == nil {
-		return false
-	}
-	return result.Success
-}
-
 func AppendSubmissionEvent(pkg *Package, event SubmissionEvent) {
 	if pkg == nil {
 		return
@@ -72,7 +65,7 @@ func BuildSubmissionAttemptEvent(taskID, action string, record *SubmissionRecord
 
 func BuildSubmissionPhaseEvent(taskID, action, phase, status, requestID string, startedAt time.Time, detail string, err error) SubmissionEvent {
 	finishedAt := time.Now()
-	draft := listingsubmission.BuildPhaseEventDraft(status, detail, submissionPhaseDetail(action, phase), err, finishedAt)
+	draft := listingsubmission.BuildPhaseEventDraft(status, detail, sheinmarketpub.SubmissionPhaseDetail(action, phase), err, finishedAt)
 	return SubmissionEvent{
 		TaskID:       taskID,
 		Platform:     "shein",
@@ -189,24 +182,6 @@ func ApplySubmissionConfirmRemoteUpdate(pkg *Package, action, requestID string, 
 	AppendSubmissionEvent(pkg, *event)
 }
 
-func SubmissionResponseAcceptedForAction(action string, result *SubmissionResponse) bool {
-	if SubmissionResponseAccepted(result) {
-		return true
-	}
-	return listingsubmission.SaveDraftSucceeded(action, SubmissionResponseOutcome(result))
-}
-
-func ConfirmedSubmissionResponse(response *SubmissionResponse, action string) *SubmissionResponse {
-	if response != nil {
-		return response
-	}
-	return &SubmissionResponse{
-		Code:    "0",
-		Success: true,
-		Message: sheinmarketpub.ConfirmedSubmissionMessage(action),
-	}
-}
-
 func SubmissionStartedAt(pkg *Package, action, requestID string, fallback time.Time) time.Time {
 	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.SubmissionState == nil {
@@ -292,18 +267,6 @@ type SubmissionRecoverySelection struct {
 	StartedAt    time.Time
 }
 
-type SubmissionRemoteRefreshSelection struct {
-	StartedAt    time.Time
-	Response     *SubmissionResponse
-	RemoteStatus string
-}
-
-type SubmissionRefreshValidation struct {
-	Available      bool
-	ActionMatches  bool
-	RequestMatches bool
-}
-
 func ResolveSubmissionRefreshSelection(pkg *Package) SubmissionRefreshSelection {
 	var ok bool
 	pkg, ok = SubmissionStatePackage(pkg)
@@ -350,62 +313,12 @@ func ResolveSubmissionRecoverySelection(pkg *Package, action string) SubmissionR
 	}
 }
 
-func ResolveSubmissionRemoteRefreshSelection(pkg *Package, action, requestID string, fallbackStartedAt time.Time) SubmissionRemoteRefreshSelection {
-	pkg, ok := SubmissionStatePackage(pkg)
-	if !ok {
-		return SubmissionRemoteRefreshSelection{StartedAt: fallbackStartedAt}
-	}
-	return SubmissionRemoteRefreshSelection{
-		StartedAt:    SubmissionStartedAt(pkg, action, requestID, fallbackStartedAt),
-		Response:     SubmissionResponseForAction(pkg, action),
-		RemoteStatus: pkg.SubmissionState.RemoteStatus,
-	}
-}
-
-func ResolveSubmissionRefreshValidation(pkg *Package, action, requestID string) SubmissionRefreshValidation {
-	pkg, ok := SubmissionStatePackage(pkg)
-	if !ok {
-		return SubmissionRefreshValidation{}
-	}
-	return SubmissionRefreshValidation{
-		Available:      true,
-		ActionMatches:  SubmissionRefreshActionMatches(pkg, action),
-		RequestMatches: SubmissionRefreshRequestMatches(pkg, action, requestID),
-	}
-}
-
 func BuildSubmissionRemoteLookupInputs(pkg *Package, action, supplierCode string, defaultConfirmed bool, fallbackMessage string) SubmissionRemoteLookupInputs {
 	return SubmissionRemoteLookupInputs{
 		LookupCodes:      CollectRemoteLookupCodes(pkg, supplierCode),
 		SPUName:          RemoteLookupSPUName(pkg, action),
 		DefaultConfirmed: defaultConfirmed,
 		FallbackMessage:  fallbackMessage,
-	}
-}
-
-func BuildSubmissionRefreshLookupInputs(pkg *Package, action, supplierCode string) SubmissionRemoteLookupInputs {
-	policy := listingsubmission.BuildRefreshRemotePolicy(action, RemotePublishAccepted(pkg, action))
-	return BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, policy.FallbackMessage)
-}
-
-func BuildSubmissionRecoveryLookupInputs(pkg *Package, action, supplierCode string) SubmissionRemoteLookupInputs {
-	policy := sheinmarketpub.BuildRemoteConfirmationPolicy(action, RemotePublishAccepted(pkg, action))
-	return BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, policy.RefreshFallbackMessage)
-}
-
-func ResolveSubmissionRefreshFallbackMessage(action string, defaultConfirmed bool, fallbackMessage string) string {
-	return sheinmarketpub.ResolveRemoteRefreshFallbackMessage(action, defaultConfirmed, fallbackMessage)
-}
-
-func BuildSubmissionRefreshRequest(pkg *Package, selection SubmissionRefreshSelection) SubmissionRefreshRequest {
-	requestID := ""
-	if selection.Record != nil {
-		requestID = listingsubmission.ResolveRefreshRequestID(selection.Record.RequestID)
-	}
-	return SubmissionRefreshRequest{
-		Action:       selection.Action,
-		RequestID:    requestID,
-		RemoteInputs: BuildSubmissionRefreshLookupInputs(pkg, selection.Action, selection.SupplierCode),
 	}
 }
 
@@ -453,45 +366,6 @@ func ApplySubmissionMissingSupplierCodeRemoteUpdate(pkg *Package, taskID, action
 	update := BuildSubmissionMissingSupplierCodeRemoteUpdate(taskID, action, requestID, startedAt, defaultConfirmed)
 	applySubmissionConfirmRemoteState(pkg, action, requestID, update)
 	return update.Event
-}
-
-func ResolveSubmissionConfirmRemoteUpdate(taskID, action, requestID string, startedAt time.Time, resolution SubmissionRemoteResolution) (SubmissionConfirmRemoteUpdate, error) {
-	decision := sheinmarketpub.ResolveRemoteConfirmationDecision(action, sheinmarketpub.RemoteConfirmationResolution{
-		DefaultConfirmed:   resolution.DefaultConfirmed,
-		FallbackMessage:    resolution.FallbackMessage,
-		OnWayDocument:      resolution.OnWayDocument,
-		Record:             resolution.Record,
-		RecordErr:          resolution.RecordErr,
-		InventoryConfirmed: resolution.InventoryConfirmed,
-		SPUName:            strings.TrimSpace(RemoteResolutionSPUName(resolution)),
-	})
-	if resolution.Record != nil && resolution.RecordErr == nil {
-		update := BuildSubmissionConfirmRemoteUpdateForRecord(taskID, action, decision.Status, requestID, startedAt, decision.Detail, decision.Err, resolution.Record)
-		return update, decision.Err
-	}
-	update := BuildSubmissionConfirmRemoteUpdate(taskID, action, decision.Status, requestID, startedAt, decision.Detail, decision.Err)
-	if resolution.RecordErr != nil {
-		update.Message = resolution.RecordErr.Error()
-		return update, nil
-	}
-	if decision.Status == sheinmarketpub.RemoteRecordStatusPending && resolution.Record == nil && resolution.RecordErr == nil && !resolution.DefaultConfirmed {
-		update.Message = "record not found"
-	}
-	return update, decision.Err
-}
-
-func RemoteResolutionSPUName(resolution SubmissionRemoteResolution) string {
-	if resolution.OnWayDocument != nil {
-		if value := strings.TrimSpace(resolution.OnWayDocument.SpuName); value != "" {
-			return value
-		}
-	}
-	if resolution.Record != nil {
-		if value := strings.TrimSpace(resolution.Record.SpuName); value != "" {
-			return value
-		}
-	}
-	return strings.TrimSpace(resolution.SPUName)
 }
 
 func lookupSubmissionRemoteOnWayDocument(otherAPI sheinother.OtherAPI, expectedSPUName string, logger SubmissionBatchCheckOnWayLogger) (*sheinmarketpub.OnWayDocument, error) {
@@ -546,30 +420,6 @@ func lookupSubmissionRemoteInventory(productAPI sheinproduct.ProductAPI, spuName
 	return sheinmarketpub.InventoryConfirmed(resp), nil
 }
 
-func SubmissionRefreshActionMatches(pkg *Package, requestedAction string) bool {
-	return listingsubmission.RefreshActionMatches(ResolveSubmissionRefreshSelection(pkg).Action, requestedAction)
-}
-
-func SubmissionRefreshRequestMatches(pkg *Package, action, requestedRequestID string) bool {
-	var ok bool
-	pkg, ok = SubmissionStatePackage(pkg)
-	if !ok {
-		return false
-	}
-	record := SubmissionRecordForAction(pkg.SubmissionState, action)
-	if record == nil {
-		return false
-	}
-	return listingsubmission.RefreshRequestMatches(record.RequestID, requestedRequestID)
-}
-
-func SubmissionRecordResult(record *SubmissionRecord) *SubmissionResponse {
-	if record == nil {
-		return nil
-	}
-	return record.Result
-}
-
 func RemoteLookupSPUName(pkg *Package, action string) string {
 	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.SubmissionState == nil {
@@ -594,7 +444,8 @@ func RemotePublishAccepted(pkg *Package, action string) bool {
 	}
 	record := RemoteRecordForAction(pkg.SubmissionState, action)
 	recordAccepted := false
-	if result := SubmissionRecordResult(record); result != nil {
+	if record != nil && record.Result != nil {
+		result := record.Result
 		recordAccepted = sheinmarketpub.ResponseAcceptedWithSPU(result.Success, result.SPUName)
 	}
 	lastAccepted := false
@@ -1047,19 +898,4 @@ func SubmissionResponseOutcome(result *SubmissionResponse) *listingsubmission.Re
 		Message:         result.Message,
 		ValidationNotes: append([]string(nil), result.ValidationNotes...),
 	}
-}
-
-func submissionPhaseDetail(action, phase string) string {
-	return listingsubmission.PhaseDetail(action, phase, submissionPhaseDetailLabels)
-}
-
-var submissionPhaseDetailLabels = listingsubmission.PhaseDetailLabels{
-	Validate:        "检查 SHEIN 提交前状态",
-	PrepareProduct:  "准备 SHEIN 商品载荷",
-	UploadImages:    "上传 SHEIN 商品图片",
-	PreValidate:     "执行 SHEIN 提交前校验",
-	SubmitRemote:    "提交 SHEIN 发布请求",
-	SaveDraftRemote: "提交 SHEIN 草稿",
-	PersistResult:   "保存本地提交结果",
-	ConfirmRemote:   "刷新 SHEIN 远端诊断状态",
 }

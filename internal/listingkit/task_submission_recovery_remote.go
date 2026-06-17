@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -56,7 +57,8 @@ func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx conte
 type sheinRemoteRefreshState = sheinpub.SubmissionRemoteLookupInputs
 
 func buildSheinRemoteRefreshState(pkg *SheinPackage, action, supplierCode string) sheinRemoteRefreshState {
-	return sheinpub.BuildSubmissionRecoveryLookupInputs(pkg, action, supplierCode)
+	policy := sheinmarketpub.BuildRemoteConfirmationPolicy(action, sheinpub.RemotePublishAccepted(pkg, action))
+	return sheinpub.BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, policy.RefreshFallbackMessage)
 }
 
 func newSheinRemoteStatusRequest(
@@ -137,8 +139,29 @@ func resolveSheinSubmitRemoteStatus(request *sheinRemoteStatusRequest) (*sheinRe
 		request.fallbackMessage,
 		logSheinBatchCheckOnWayResponse,
 	)
-	update, err := sheinpub.ResolveSubmissionConfirmRemoteUpdate(request.taskID, request.action, request.requestID, request.startedAt, resolution)
-	return &update, err
+	decision := sheinmarketpub.ResolveRemoteConfirmationDecision(request.action, sheinmarketpub.RemoteConfirmationResolution{
+		DefaultConfirmed:   resolution.DefaultConfirmed,
+		FallbackMessage:    resolution.FallbackMessage,
+		OnWayDocument:      resolution.OnWayDocument,
+		Record:             resolution.Record,
+		RecordErr:          resolution.RecordErr,
+		InventoryConfirmed: resolution.InventoryConfirmed,
+		SPUName:            strings.TrimSpace(sheinmarketpub.ResolveRemoteResolutionSPUName(resolution.OnWayDocument, resolution.Record, resolution.SPUName)),
+	})
+	if resolution.Record != nil && resolution.RecordErr == nil {
+		update := sheinpub.BuildSubmissionConfirmRemoteUpdateForRecord(request.taskID, request.action, decision.Status, request.requestID, request.startedAt, decision.Detail, decision.Err, resolution.Record)
+		return &update, decision.Err
+	}
+	update := sheinpub.BuildSubmissionConfirmRemoteUpdate(request.taskID, request.action, decision.Status, request.requestID, request.startedAt, decision.Detail, decision.Err)
+	update.Message = sheinmarketpub.ResolveRemoteConfirmationUpdateMessage(decision, sheinmarketpub.RemoteConfirmationResolution{
+		DefaultConfirmed: resolution.DefaultConfirmed,
+		Record:           resolution.Record,
+		RecordErr:        resolution.RecordErr,
+	})
+	if resolution.RecordErr != nil {
+		return &update, nil
+	}
+	return &update, decision.Err
 }
 
 type sheinRemoteConfirmation = sheinpub.SubmissionConfirmRemoteUpdate

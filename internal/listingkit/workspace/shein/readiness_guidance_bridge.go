@@ -4,6 +4,7 @@ import sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
 
 type Guidance[R any, H any] = sheinmarketplace.Guidance[R, H]
 type ReadinessCheckSpec = sheinmarketplace.ReadinessCheckSpec
+type ReadinessTaxonomy = sheinmarketplace.ReadinessTaxonomy
 type ReadinessReasonSpec = sheinmarketplace.ReadinessReasonSpec
 type ReadinessHintSpec = sheinmarketplace.ReadinessHintSpec
 type ReadinessGuidanceSpec = sheinmarketplace.ReadinessGuidanceSpec

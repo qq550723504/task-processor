@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api/client";
 import type {
+  ListingKitSettingsHealthPage,
   ListingKitSettingsNamespaceListResponse,
   ListingKitSettingsNamespaceSchema,
 } from "@/lib/types/listingkit";
@@ -8,6 +9,10 @@ type SettingsQuery = Record<string, string | undefined>;
 
 export function listListingKitSettingsNamespaces() {
   return apiRequest<ListingKitSettingsNamespaceListResponse>("/settings");
+}
+
+export function getListingKitSettingsHealth() {
+  return apiRequest<ListingKitSettingsHealthPage>("/settings-health");
 }
 
 export function getListingKitSettingsSchema(namespace: string) {

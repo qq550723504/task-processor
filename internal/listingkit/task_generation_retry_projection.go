@@ -56,6 +56,20 @@ func (p *retryGenerationProjectionPhase) run(
 	return &rebuiltResult, page
 }
 
+func (p *retryGenerationProjectionPhase) emptySelectionPage(task *Task) *GenerationTaskPage {
+	if task == nil {
+		return nil
+	}
+	page := buildGenerationTaskPage(task.ID, task.UpdatedAt, nil, nil, generationTaskListPage{
+		Page:     defaultGenerationTaskPage,
+		PageSize: defaultGenerationTaskPageSize,
+		Total:    0,
+	})
+	page.MatchedQueue = &GenerationWorkQueue{Summary: &GenerationWorkQueueSummary{}}
+	page.ExecutedQueue = &GenerationWorkQueue{Summary: &GenerationWorkQueueSummary{}}
+	return page
+}
+
 func buildMatchedGenerationQueue(queue *GenerationWorkQueue, tasks []assetgeneration.Task) *GenerationWorkQueue {
 	if queue == nil || len(tasks) == 0 {
 		return &GenerationWorkQueue{Summary: buildGenerationWorkQueueSummary(nil)}

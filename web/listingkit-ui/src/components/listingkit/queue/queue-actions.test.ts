@@ -13,6 +13,8 @@ describe("deriveQueueItemAction", () => {
 
     expect(result.kind).toBe("review");
     expect(result.label).toBe("Review");
+    expect(result.ownerKind).toBe("operations");
+    expect(result.semanticLabel).toBe("Review");
     expect(result.workspaceQuery).toEqual({
       platform: "shein",
       slot: "main",
@@ -32,6 +34,8 @@ describe("deriveQueueItemAction", () => {
 
     expect(result.kind).toBe("retry");
     expect(result.label).toBe("Retry");
+    expect(result.ownerKind).toBe("operations");
+    expect(result.description).toContain("重试生成");
     expect(result.request).toEqual({
       action_key: "retry_section_generation",
       response_mode: "patch_only",
@@ -54,10 +58,19 @@ describe("deriveQueueItemAction", () => {
       slot: "auxiliary",
       render_preview_available: false,
       retryable: false,
+      execution_quality: "failed",
+      retry_hint: "no_retry",
     });
 
     expect(result.kind).toBe("inspect");
     expect(result.label).toBe("Inspect");
+    expect(result.ownerKind).toBe("engineering");
+    expect(result.failureReviewFields).toEqual(
+      expect.arrayContaining([
+        { label: "Execution quality", value: "failed" },
+        { label: "Retry hint", value: "no_retry" },
+      ]),
+    );
     expect(result.workspaceQuery).toEqual({
       platform: "walmart",
       slot: "auxiliary",

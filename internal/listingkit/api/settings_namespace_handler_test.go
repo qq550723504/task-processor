@@ -12,16 +12,22 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 type stubSettingsNamespaceService struct {
-	aiSettings    *listingkit.AIClientSettings
-	aiSettingsReq *listingkit.AIClientSettings
-	err           error
+	aiSettings         *listingkit.AIClientSettings
+	aiSettingsByClient map[string]*listingkit.AIClientSettings
+	aiSettingsReq      *listingkit.AIClientSettings
+	sheinSettings      *listingkit.SheinSettings
+	err                error
 }
 
 func (s *stubSettingsNamespaceService) GetSheinSettings(context.Context) (*listingkit.SheinSettings, error) {
-	return nil, errors.New("not implemented")
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.sheinSettings, nil
 }
 
 func (s *stubSettingsNamespaceService) UpdateSheinSettings(context.Context, *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
@@ -31,6 +37,9 @@ func (s *stubSettingsNamespaceService) UpdateSheinSettings(context.Context, *lis
 func (s *stubSettingsNamespaceService) GetAIClientSettings(_ context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
 	if s.err != nil {
 		return nil, s.err
+	}
+	if s.aiSettingsByClient != nil {
+		return s.aiSettingsByClient[clientName], nil
 	}
 	if s.aiSettings != nil {
 		return s.aiSettings, nil
@@ -50,6 +59,74 @@ func (s *stubSettingsNamespaceService) UpdateAIClientSettings(_ context.Context,
 		return s.aiSettings, nil
 	}
 	return req, nil
+}
+
+func TestGetSettingsHealthReturnsConfigurationImpact(t *testing.T) {
+	t.Helper()
+
+	svc := &stubSettingsNamespaceService{
+		aiSettingsByClient: map[string]*listingkit.AIClientSettings{
+			"default": {
+				ClientName: "default",
+				BaseURL:    "https://tenant-scope.local/v1",
+				Model:      "tenant-model-v1",
+				Enabled:    true,
+				APIKeySet:  true,
+			},
+			"image": {
+				ClientName: "image",
+				BaseURL:    "https://tenant-scope.local/v1",
+				Model:      "image-model-v1",
+				Enabled:    true,
+				APIKeySet:  true,
+			},
+		},
+		sheinSettings: &listingkit.SheinSettings{
+			DefaultStoreID:    9,
+			Site:              "US",
+			DefaultStock:      12,
+			DefaultSubmitMode: "publish",
+			Pricing: sheinpub.PricingRule{
+				TargetCurrency:   "USD",
+				ExchangeRate:     7.1,
+				MarkupMultiplier: 1.3,
+			},
+		},
+	}
+
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSettingsHandlerService(svc))
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/settings-health", h.GetSettingsHealth)
+
+	req := httptest.NewRequest(http.MethodGet, "/settings-health", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /settings-health = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	var payload listingkit.SettingsHealthPage
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if payload.Status != "warning" {
+		t.Fatalf("status = %q, want warning because runtime probes are unknown", payload.Status)
+	}
+	var hasSDSUnknown bool
+	for _, item := range payload.Items {
+		if item.Key == "sds.session" && item.Status == "unknown" && len(item.Impact) > 0 {
+			hasSDSUnknown = true
+		}
+	}
+	if !hasSDSUnknown {
+		t.Fatalf("payload items = %#v", payload.Items)
+	}
 }
 
 func TestUpdateAISettingsDoesNotRequireStudioSubscription(t *testing.T) {

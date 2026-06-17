@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"task-processor/internal/model"
 
@@ -86,6 +87,38 @@ func TestCacheManagerCacheProductOverwritesStaleCacheRecordWhenShipsFromMissing(
 	}
 }
 
+func TestCacheManagerGetFromCacheAllowsFreshRecordWhenShipsFromMissing(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	client := &stubCacheManagerRawJSONClient{
+		rawResp: &RawJsonResp{
+			ID:          42,
+			Platform:    "amazon",
+			ProductID:   "B001",
+			Region:      "us",
+			RawJSONData: `{"asin":"B001","ships_from":""}`,
+			CreateTime:  now.Add(-24 * time.Hour).UnixMilli(),
+			UpdateTime:  now.Add(-2 * time.Hour).UnixMilli(),
+		},
+	}
+	manager := NewCacheManager(client, logrus.NewEntry(logrus.New()))
+
+	product, err := manager.GetFromCache(&FetchRequest{
+		TenantID:  1,
+		Platform:  "amazon",
+		Region:    "us",
+		ProductID: "B001",
+		Creator:   "tester",
+	})
+	if err != nil {
+		t.Fatalf("GetFromCache() error = %v", err)
+	}
+	if product == nil {
+		t.Fatal("GetFromCache() product = nil, want cached product")
+	}
+}
+
 func TestCacheManagerDecideRawCacheWrite(t *testing.T) {
 	t.Parallel()
 
@@ -117,6 +150,18 @@ func TestCacheManagerDecideRawCacheWrite(t *testing.T) {
 				anyFreshnessOK: true,
 			},
 			want: cacheWriteSave,
+		},
+		{
+			name: "skip when fresh cache record misses ships from",
+			client: &stubCacheManagerRawJSONClient{
+				rawResp: &RawJsonResp{
+					RawJSONData: `{"asin":"B001","ships_from":""}`,
+					CreateTime:  time.Now().Add(-24 * time.Hour).UnixMilli(),
+					UpdateTime:  time.Now().Add(-2 * time.Hour).UnixMilli(),
+				},
+				anyFreshnessOK: true,
+			},
+			want: cacheWriteSkip,
 		},
 		{
 			name: "skip when only old raw record exists but should not overwrite",

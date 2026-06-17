@@ -24,7 +24,10 @@ Owns:
 - source-to-product handoff contracts
 - source platform to crawler platform mapping
 - source request inheritance for variants
+- product fetch variant-request adaptation through source request inheritance
 - Amazon batch fetch source-configuration and empty-batch semantics
+- Amazon source domain, language, and URL planning used by crawl requests
+- Amazon source default-zipcode policy used by crawl request planning
 - enrichment-ready intermediate models
 - 1688 scraped-data normalization for specs, descriptions, and image lists
 - handoff into catalog, asset, and image domains
@@ -38,6 +41,7 @@ Does not own:
 Boundary guard:
 
 - this package may normalize crawler outputs, but must not depend on `internal/listingkit`, marketplace packages, or runtime/platform wiring.
+- this package may consume raw crawler DTO/model packages when they are the handoff format, but must not import legacy crawler runtime packages directly.
 
 Current stop line:
 

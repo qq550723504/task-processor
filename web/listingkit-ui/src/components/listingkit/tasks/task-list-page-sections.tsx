@@ -14,12 +14,15 @@ import {
   PLATFORM_OPTIONS,
   primaryLinkClass,
   queueTone,
+  READINESS_STATUS_OPTIONS,
   secondaryLinkClass,
   sheinActionQueueLabel,
   sheinWorkQueueLabel,
   SHEIN_WORKFLOW_OPTIONS,
   SHEIN_ACTION_QUEUE_OPTIONS,
+  SHEIN_SUBMISSION_OPTIONS,
   SHEIN_WORK_QUEUE_OPTIONS,
+  SOURCE_TYPE_OPTIONS,
   STATUS_OPTIONS,
   statusTone,
   taskStatusLabel,
@@ -53,7 +56,10 @@ import type {
 export type FilterKey =
   | "status"
   | "platform"
+  | "source_type"
+  | "readiness_status"
   | "shein_workflow_status"
+  | "shein_latest_submission_status"
   | "shein_work_queue"
   | "shein_action_queue"
   | "shein_blocker_key"
@@ -131,11 +137,14 @@ function hasPodPlatformIssue(task: ListingKitTaskListItem) {
 
 export function TaskListFilters({
   platform,
+  readinessStatus,
   sheinActionQueue,
   sheinBlockerKey,
+  sheinSubmissionStatus,
   sheinWorkflowStatus,
   sheinWarningKey,
   sheinWorkQueue,
+  sourceType,
   status,
   summary,
   taxonomy,
@@ -144,11 +153,14 @@ export function TaskListFilters({
   updateFilter,
 }: {
   platform: string;
+  readinessStatus: string;
   sheinActionQueue: string;
   sheinBlockerKey: string;
+  sheinSubmissionStatus: string;
   sheinWorkflowStatus: string;
   sheinWarningKey: string;
   sheinWorkQueue: string;
+  sourceType: string;
   status: string;
   summary?: ListingKitTaskListSummary;
   taxonomy?: ListingKitTaskListTaxonomy;
@@ -184,11 +196,14 @@ export function TaskListFilters({
   const summarySections = buildFacetSummarySections(summary, taxonomy);
   const activeFacetValueByKey: Record<FilterKey, string> = {
     platform,
+    readiness_status: readinessStatus,
     shein_action_queue: sheinActionQueue,
     shein_blocker_key: sheinBlockerKey,
+    shein_latest_submission_status: sheinSubmissionStatus,
     shein_warning_key: sheinWarningKey,
     shein_work_queue: sheinWorkQueue,
     shein_workflow_status: sheinWorkflowStatus,
+    source_type: sourceType,
     status,
   };
   const activeFilters = [
@@ -204,6 +219,22 @@ export function TaskListFilters({
           label: facetDescriptorLabel(platform, undefined, PLATFORM_OPTIONS),
         }
       : null,
+    sourceType
+      ? {
+          key: "source_type" as const,
+          label: facetDescriptorLabel(sourceType, undefined, SOURCE_TYPE_OPTIONS),
+        }
+      : null,
+    readinessStatus
+      ? {
+          key: "readiness_status" as const,
+          label: facetDescriptorLabel(
+            readinessStatus,
+            undefined,
+            READINESS_STATUS_OPTIONS,
+          ),
+        }
+      : null,
     sheinWorkflowStatus
       ? {
           key: "shein_workflow_status" as const,
@@ -211,6 +242,16 @@ export function TaskListFilters({
             sheinWorkflowStatus,
             taxonomy?.shein_workflow_statuses,
             SHEIN_WORKFLOW_OPTIONS,
+          ),
+        }
+      : null,
+    sheinSubmissionStatus
+      ? {
+          key: "shein_latest_submission_status" as const,
+          label: facetDescriptorLabel(
+            sheinSubmissionStatus,
+            undefined,
+            SHEIN_SUBMISSION_OPTIONS,
           ),
         }
       : null,
@@ -341,6 +382,41 @@ export function TaskListFilters({
             </option>
           ))}
         </Select>
+        <Select
+          className="h-11 w-full rounded-2xl px-4 text-sm"
+          value={sourceType}
+          onChange={(event) => updateFilter("source_type", event.target.value)}
+        >
+          {SOURCE_TYPE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select
+          className="h-11 w-full rounded-2xl px-4 text-sm"
+          value={readinessStatus}
+          onChange={(event) => updateFilter("readiness_status", event.target.value)}
+        >
+          {READINESS_STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select
+          className="h-11 w-full rounded-2xl px-4 text-sm"
+          value={sheinSubmissionStatus}
+          onChange={(event) =>
+            updateFilter("shein_latest_submission_status", event.target.value)
+          }
+        >
+          {SHEIN_SUBMISSION_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
         {blockerOptions.length > 1 ? (
           <Select
             className="h-11 w-full rounded-2xl px-4 text-sm"
@@ -395,11 +471,14 @@ export function TaskListFilters({
               onClick={() =>
                 updateFilters({
                   platform: null,
+                  readiness_status: null,
                   shein_action_queue: null,
                   shein_blocker_key: null,
+                  shein_latest_submission_status: null,
                   shein_warning_key: null,
                   shein_work_queue: null,
                   shein_workflow_status: null,
+                  source_type: null,
                   status: null,
                 })
               }
@@ -653,6 +732,14 @@ function TaskRow({
                 variant="outline"
               >
                 {sheinRemoteBadgeLabel(task.shein_submission_remote_status)}
+              </Badge>
+            ) : null}
+            {task.source_type ? (
+              <Badge
+                className="rounded-full border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-stone-700"
+                variant="outline"
+              >
+                来源 {facetDescriptorLabel(task.source_type, undefined, SOURCE_TYPE_OPTIONS)}
               </Badge>
             ) : null}
             {(task.platforms ?? []).map((platform) => (

@@ -4,10 +4,14 @@ Owns submit, retry, recovery, state, and submission orchestration that is generi
 
 Current stable ownership:
 
+- generic submit attempt domain model for identity, target, action, status, phase, idempotency, remote ids, errors, and timing fields
 - generic submission refresh orchestration seam (`RefreshStatus` style load/resolve/finish flow)
 - generic task requeue orchestration seam (`RequeueTasks` style load/check/submit flow)
 - generic immediate recovery orchestration seam (`RecoverNow` style load/recover/submit/reload flow)
 - generic batch recovery orchestration seam (`RecoverBatch` style list/recover/submit/aggregate flow)
+- generic recovered-submit retryable persistence seam (`submit -> retryable reblock / failure persist / durability restore` flow)
+- generic recovered retryable-block mutation policy (`LastRetryAt` stamp, `NextRetryAt` clear, auto-retry pause reset)
+- generic recovery durability restore-block policy (`previous block` restore vs retryable-error reclassification, recovery-scope and blocked-time defaults)
 - generic recovered-submission route seam (`accepted/local completion vs remote confirmation` dispatch)
 - generic lease-acquire seam (`begin lease -> replay preview / remote recovery / blocked mapping / task handoff`)
 - generic workflow-start failure seam (`record failure -> clear lease -> return-priority resolution`)
@@ -31,6 +35,8 @@ Current stable ownership:
 - submission event history policy: default event ID and recent-event retention
 - attempt result status policy for success, failure, and unknown completion states
 - submission event outcome policy: record metadata carry-over, response-note selection, and submit-error override
+- submission projection policy: latest outcome selection, submit-phase event skipping, workflow status fallback, primary action record selection, and remote record summary projection
+- generic readiness projection skeleton: carry readiness, checklist, submit-state, and status-overview assembly through one reusable projection bundle while platform packages supply the concrete builders
 - phase event policy: default running status, default detail fallback, and error-message propagation
 - remote record id normalization policy for confirm-remote event/result sync
 - confirm-remote state policy: checked-at, message, and event remote-record-id normalization
@@ -52,10 +58,15 @@ Current stable ownership:
 - generic source-facts, enqueue-retry, response-error, and in-flight TTL primitives for service-level submission coordination
 - generic requeue task-id normalization for dedupe/trim request shaping
 - generic submit-in-progress error ownership for non-SHEIN-specific API/service/Temporal callsites
+- preferred submit-action selection policy for choosing the first supported action from ordered candidates
+- exported retryable failure reason-code and default task recovery-scope constants for durable retry metadata
+- root ListingKit retryable-block compatibility now consumes those exported reason-code and recovery-scope constants directly instead of keeping root-side retry metadata aliases
+- root ListingKit recovery now calls the generic reblock policy directly through state adapters instead of keeping a root-side reblock builder
+- root ListingKit retryable persistence callbacks now share one root-side adapter for converting submission retryable-block state before repository writes
 
 Does not own yet:
 
 - full submit orchestration and platform routing
 - SHEIN-specific submit package loading and remote confirmation details
 - Temporal-facing submit workflow adapters beyond generic submit-in-progress error shaping
-- durable retry/reblock persistence policies
+- repository-specific durable retry/reblock persistence adapters

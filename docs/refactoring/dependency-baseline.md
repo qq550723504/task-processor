@@ -155,26 +155,19 @@ Current status after follow-up refactors on 2026-06-12:
 ## 7. ListingKit Import Pressure Snapshot
 
 ```text
-Packages importing internal/listingkit*: 19
+Packages importing internal/listingkit*: 12
 - internal/app/httpapi
 - internal/app/runtime
+- internal/compatibility/listingkit
+- internal/listing/submission
 - internal/listingkit/api
 - internal/listingkit/core
 - internal/listingkit/httpapi
-- internal/listingkit/reviewstore
 - internal/listingkit/service
 - internal/listingkit/service/studio
-- internal/listingkit/sheinsync
 - internal/listingkit/store
 - internal/listingkit/studiostore
-- internal/listingkit/submission
 - internal/listingkit/temporal
-- internal/prompt
-- internal/promptmgmt
-- internal/promptmgmt/api
-- internal/publishing/shein
-- internal/shein/pipeline
-- internal/shein/submitprep
 ```
 
 ## 8. Legacy Exception Register

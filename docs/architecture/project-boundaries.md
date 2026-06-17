@@ -223,7 +223,7 @@ Use this table when adding new code:
 | Preview aggregation | `internal/listingkit/preview` during migration |
 | Export aggregation | `internal/listingkit/export` during migration |
 | Revision/history facade | `internal/listingkit/revision` during migration |
-| Submission state / retry / recovery | `internal/listingkit/submission` during migration |
+| Submission state / retry / recovery | `internal/listing/submission` for generic mechanics; SHEIN transition sequencing stays at the root `internal/listingkit/shein_submit_state.go` stop-line; do not recreate `internal/listingkit/submission` |
 | Product facts | `internal/catalog` |
 | Reusable asset facts | `internal/asset` |
 | Product image processing | `internal/productimage` or `internal/asset` depending on ownership |

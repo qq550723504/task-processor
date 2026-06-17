@@ -5,6 +5,7 @@ import (
 	"time"
 
 	apperrors "task-processor/internal/core/errors"
+	submissiondomain "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -62,11 +63,20 @@ func buildSubmissionRefreshRequest(pkg *SheinPackage, selection *sheinpub.Submis
 	if selection == nil {
 		return sheinpub.SubmissionRefreshRequest{}
 	}
-	return sheinpub.BuildSubmissionRefreshRequest(pkg, *selection)
+	requestID := ""
+	if selection.Record != nil {
+		requestID = submissiondomain.ResolveRefreshRequestID(selection.Record.RequestID)
+	}
+	return sheinpub.SubmissionRefreshRequest{
+		Action:       selection.Action,
+		RequestID:    requestID,
+		RemoteInputs: buildSubmissionRefreshRemoteInputs(pkg, selection.Action, selection.SupplierCode),
+	}
 }
 
 func buildSubmissionRefreshRemoteInputs(pkg *SheinPackage, action, supplierCode string) sheinSubmissionRefreshRemoteInputs {
-	return sheinpub.BuildSubmissionRefreshLookupInputs(pkg, action, supplierCode)
+	policy := submissiondomain.BuildRefreshRemotePolicy(action, sheinpub.RemotePublishAccepted(pkg, action))
+	return sheinpub.BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, policy.FallbackMessage)
 }
 
 func newSubmissionRefreshState(task *Task, action, requestID string, startedAt time.Time, productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, remoteInputs sheinSubmissionRefreshRemoteInputs) *sheinSubmissionRefreshState {

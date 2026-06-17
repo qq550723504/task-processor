@@ -39,4 +39,12 @@ func TestSheinSubmissionPersistenceBoundary(t *testing.T) {
 	assertSourceExcludesAll(t, stateSource, []string{
 		"setSheinSubmitRemoteResponse(",
 	})
+
+	remoteRefreshSource := readNamedFunctionSource(t, "task_temporal_submission_persistence_service_support.go", "confirmedTemporalRemoteRefreshResponse")
+	assertSourceContainsAll(t, remoteRefreshSource, []string{
+		"sheinmarketpub.ConfirmedSubmissionMessage(",
+	})
+	assertSourceExcludesAll(t, remoteRefreshSource, []string{
+		"sheinpub.ConfirmedSubmissionResponse(",
+	})
 }

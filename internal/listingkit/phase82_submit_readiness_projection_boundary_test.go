@@ -8,55 +8,103 @@ func TestSheinSubmitReadinessProjectionBoundary(t *testing.T) {
 	t.Run("preview_payload_delegates_readiness_derived_projection_bundle_to_shared_seam", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "preview_builder_shein.go", "buildSheinPreviewPayload")
-		callNames := readNamedFunctionCallNames(t, "preview_builder_shein.go", "buildSheinPreviewPayload")
+		payloadSource := readNamedFunctionSource(t, "preview_builder_shein.go", "buildSheinPreviewPayload")
+		payloadCalls := readNamedFunctionCallNames(t, "preview_builder_shein.go", "buildSheinPreviewPayload")
+		resultSource := readNamedFunctionSource(t, "preview_platform_payload_from_result.go", "buildSheinPreviewPayloadInputFromResult")
+		resultCalls := readNamedFunctionCallNames(t, "preview_platform_payload_from_result.go", "buildSheinPreviewPayloadInputFromResult")
+		inputSource := readNamedFunctionSource(t, "preview_builder_shein.go", "buildSheinPreviewPayloadInput")
+		inputCalls := readNamedFunctionCallNames(t, "preview_builder_shein.go", "buildSheinPreviewPayloadInput")
 
-		assertSourceContainsAll(t, source, []string{
+		assertSourceContainsAll(t, payloadSource, []string{
+			"input := buildSheinPreviewPayloadInput(",
+			"return buildSheinPreviewPayloadFromInput(input)",
+		})
+		assertSourceExcludesAll(t, payloadSource, []string{
+			"projection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)",
+			"buildSheinRepairCenter(readiness, checklist)",
+		})
+		assertFunctionCallsContainAll(t, payloadCalls, []string{
+			"buildSheinPreviewPayloadInput",
+			"buildSheinPreviewPayloadFromInput",
+		})
+
+		assertSourceContainsAll(t, resultSource, []string{
+			"return buildSheinPreviewPayloadInput(",
+		})
+		assertSourceExcludesAll(t, resultSource, []string{
+			"projection := buildSheinSubmitReadinessProjectionWithPod(sheinContext.pkg, result.PodExecution)",
+			"buildSheinRepairCenter(readiness, checklist)",
+		})
+		assertFunctionCallsContainAll(t, resultCalls, []string{
+			"buildSheinPreviewPayloadInput",
+		})
+
+		assertSourceContainsAll(t, inputSource, []string{
 			"projection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)",
 			"readiness := projection.Readiness",
 			"checklist := projection.Checklist",
 			"submitState := projection.SubmitState",
 			"statusOverview := projection.StatusOverview",
 		})
-		assertSourceExcludesAll(t, source, []string{
+		assertSourceExcludesAll(t, inputSource, []string{
 			"readiness := buildSheinSubmitReadinessWithPod(pkg, pod)",
 			"checklist := buildSheinSubmitChecklist(readiness)",
 			"submitState := sheinworkspace.BuildSubmitStateInput(readiness)",
 			"statusOverview := sheinworkspace.BuildStatusOverview(pkg.Inspection, submitState)",
 		})
-		assertFunctionCallsContainAll(t, callNames, []string{
+		assertFunctionCallsContainAll(t, inputCalls, []string{
 			"buildSheinSubmitReadinessProjectionWithPod",
+			"buildSheinRepairCenter",
+			"buildSheinPreviewWorkspaceOverview",
 		})
 	})
 
 	t.Run("revision_success_helpers_delegate_readiness_projection_bundle_to_shared_seam", func(t *testing.T) {
 		t.Parallel()
 
+		projectionSource := readNamedFunctionSource(t, "revision_success_shared.go", "buildRevisionSuccessReadinessProjection")
+		projectionCalls := readNamedFunctionCallNames(t, "revision_success_shared.go", "buildRevisionSuccessReadinessProjection")
 		statusSource := readNamedFunctionSource(t, "revision_success_shared.go", "buildRevisionSuccessStatusSummary")
 		statusCalls := readNamedFunctionCallNames(t, "revision_success_shared.go", "buildRevisionSuccessStatusSummary")
+		statusFromProjectionSource := readNamedFunctionSource(t, "revision_success_shared.go", "buildRevisionSuccessStatusSummaryFromProjection")
 		checklistSource := readNamedFunctionSource(t, "revision_success_shared.go", "buildRevisionSuccessFollowUpChecklist")
 		checklistCalls := readNamedFunctionCallNames(t, "revision_success_shared.go", "buildRevisionSuccessFollowUpChecklist")
+		checklistFromProjectionSource := readNamedFunctionSource(t, "revision_success_shared.go", "buildRevisionSuccessFollowUpChecklistFromProjection")
 
+		assertSourceContainsAll(t, projectionSource, []string{
+			"return buildSheinSubmitReadinessProjectionWithPod(result.Shein, result.PodExecution)",
+		})
+		assertFunctionCallsContainAll(t, projectionCalls, []string{
+			"buildSheinSubmitReadinessProjectionWithPod",
+		})
 		assertSourceContainsAll(t, statusSource, []string{
-			"projection := buildSheinSubmitReadinessProjectionWithPod(result.Shein, result.PodExecution)",
+			"return buildRevisionSuccessStatusSummaryFromProjection(result, buildRevisionSuccessReadinessProjection(result))",
+		})
+		assertSourceContainsAll(t, statusFromProjectionSource, []string{
 			"return sheinworkspace.BuildSuccessStatusSummary(result.Shein, projection.Readiness)",
 		})
 		assertSourceExcludesAll(t, statusSource, []string{
 			"buildSheinSubmitReadinessWithPod(result.Shein, result.PodExecution)",
+			"buildSheinSubmitReadinessProjectionWithPod(result.Shein, result.PodExecution)",
 		})
 		assertFunctionCallsContainAll(t, statusCalls, []string{
-			"buildSheinSubmitReadinessProjectionWithPod",
+			"buildRevisionSuccessReadinessProjection",
+			"buildRevisionSuccessStatusSummaryFromProjection",
 		})
 
 		assertSourceContainsAll(t, checklistSource, []string{
-			"projection := buildSheinSubmitReadinessProjectionWithPod(result.Shein, result.PodExecution)",
+			"return buildRevisionSuccessFollowUpChecklistFromProjection(buildRevisionSuccessReadinessProjection(result))",
+		})
+		assertSourceContainsAll(t, checklistFromProjectionSource, []string{
 			"return sheinworkspace.BuildSuccessFollowUpChecklist(projection.Checklist)",
 		})
 		assertSourceExcludesAll(t, checklistSource, []string{
 			"buildSheinSubmitChecklist(buildSheinSubmitReadinessWithPod(result.Shein, result.PodExecution))",
+			"buildSheinSubmitReadinessProjectionWithPod(result.Shein, result.PodExecution)",
 		})
 		assertFunctionCallsContainAll(t, checklistCalls, []string{
-			"buildSheinSubmitReadinessProjectionWithPod",
+			"buildRevisionSuccessReadinessProjection",
+			"buildRevisionSuccessFollowUpChecklistFromProjection",
 		})
 	})
 
@@ -138,23 +186,84 @@ func TestSheinSubmitReadinessProjectionBoundary(t *testing.T) {
 		})
 	})
 
+	t.Run("task_list_fields_reuses_one_readiness_projection_for_state_fields", func(t *testing.T) {
+		t.Parallel()
+
+		source := readNamedFunctionSource(t, "task_list_item_support.go", "applySheinTaskListFields")
+		callNames := readNamedFunctionCallNames(t, "task_list_item_support.go", "applySheinTaskListFields")
+
+		assertSourceContainsAll(t, source, []string{
+			"readinessProjection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)",
+			"item.SheinStatusOverview = readinessProjection.StatusOverview",
+			"item.SheinBlockingKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.BlockingItems))",
+			"item.SheinWarningKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.WarningItems))",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"item.SheinBlockingKeys = sheinBlockingKeysWithPod(pkg, pod)",
+			"item.SheinWarningKeys = sheinWarningKeysWithPod(pkg, pod)",
+			"item.SheinStatusOverview = buildSheinTaskStatusOverviewWithPod(pkg, pod)",
+		})
+		assertFunctionCallsContainAll(t, callNames, []string{
+			"buildSheinSubmitReadinessProjectionWithPod",
+		})
+	})
+
+	t.Run("revision_success_results_reuse_one_readiness_projection_for_status_and_followup", func(t *testing.T) {
+		t.Parallel()
+
+		applySource := readNamedFunctionSource(t, "revision_apply_result.go", "buildRevisionApplyResult")
+		applyCalls := readNamedFunctionCallNames(t, "revision_apply_result.go", "buildRevisionApplyResult")
+		restoreSource := readNamedFunctionSource(t, "revision_restore_result.go", "buildRevisionRestoreResult")
+		restoreCalls := readNamedFunctionCallNames(t, "revision_restore_result.go", "buildRevisionRestoreResult")
+
+		for _, source := range []string{applySource, restoreSource} {
+			assertSourceContainsAll(t, source, []string{
+				"readinessProjection := buildRevisionSuccessReadinessProjection(listingResult)",
+				"statusSummary := buildRevisionSuccessStatusSummaryFromProjection(listingResult, readinessProjection)",
+				"readinessProjection,",
+			})
+			assertSourceExcludesAll(t, source, []string{
+				"statusSummary := buildRevisionSuccessStatusSummary(listingResult)",
+			})
+		}
+		assertFunctionCallsContainAll(t, applyCalls, []string{
+			"buildRevisionSuccessReadinessProjection",
+			"buildRevisionSuccessStatusSummaryFromProjection",
+		})
+		assertFunctionCallsContainAll(t, restoreCalls, []string{
+			"buildRevisionSuccessReadinessProjection",
+			"buildRevisionSuccessStatusSummaryFromProjection",
+		})
+	})
+
 	t.Run("shared_projection_seam_owns_readiness_checklist_and_status_projection_contract", func(t *testing.T) {
 		t.Parallel()
 
+		fileSource := readTaskGenerationSourceFile(t, "submit_readiness_projection_shein.go")
 		source := readNamedFunctionSource(t, "submit_readiness_projection_shein.go", "buildSheinSubmitReadinessProjectionWithPod")
 		callNames := readNamedFunctionCallNames(t, "submit_readiness_projection_shein.go", "buildSheinSubmitReadinessProjectionWithPod")
 
+		assertSourceContainsAll(t, fileSource, []string{
+			`listingsubmission "task-processor/internal/listing/submission"`,
+			"listingsubmission.ReadinessProjection[",
+		})
 		assertSourceContainsAll(t, source, []string{
 			"readiness := buildSheinSubmitReadinessWithPod(pkg, pod)",
+			"projection := listingsubmission.BuildReadinessProjection(",
+			"BuildChecklist: buildSheinSubmitChecklist",
+			"BuildSubmitState: func(readiness *SheinSubmitReadiness) *sheinworkspace.SubmitStateInput {",
+			"return sheinworkspace.BuildSubmitStateInput(readiness)",
+			"BuildStatusOverview: func(submitState *sheinworkspace.SubmitStateInput) *sheinworkspace.StatusOverview {",
+			"return sheinworkspace.BuildStatusOverview(pkg.Inspection, submitState)",
+		})
+		assertSourceExcludesAll(t, source, []string{
 			"submitState := sheinworkspace.BuildSubmitStateInput(readiness)",
 			"Checklist:      buildSheinSubmitChecklist(readiness)",
 			"StatusOverview: sheinworkspace.BuildStatusOverview(pkg.Inspection, submitState)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"buildSheinSubmitReadinessWithPod",
-			"buildSheinSubmitChecklist",
-			"BuildSubmitStateInput",
-			"BuildStatusOverview",
+			"BuildReadinessProjection",
 		})
 	})
 }

@@ -31,12 +31,20 @@ func TestSubmitTargetPolicyBoundary(t *testing.T) {
 	}
 	contractsContent := string(contractsSrc)
 
-	for _, needle := range []string{
-		`target := listingsubmission.ResolveSubmitTarget(requestedPlatform, requestedAction, "shein", defaultAction)`,
-		"return listingsubmission.IsReplayOfStartedSubmit(err, requestID)",
-	} {
-		if !strings.Contains(contractsContent, needle) {
-			t.Fatalf("service_submit_contracts.go should contain %q", needle)
-		}
+	needle := `target := listingsubmission.ResolveSubmitTarget(requestedPlatform, requestedAction, "shein", defaultAction)`
+	if !strings.Contains(contractsContent, needle) {
+		t.Fatalf("service_submit_contracts.go should contain %q", needle)
+	}
+	if strings.Contains(contractsContent, "func shouldReplayStartedTemporalSubmit(") {
+		t.Fatal("service_submit_contracts.go should not keep a root replay wrapper; call internal/listing/submission directly")
+	}
+
+	lifecycleSrc, err := os.ReadFile("task_temporal_submission_lifecycle_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_lifecycle_service.go) error = %v", err)
+	}
+	lifecycleContent := string(lifecycleSrc)
+	if !strings.Contains(lifecycleContent, "listingsubmission.IsReplayOfStartedSubmit(err, opts.requestID)") {
+		t.Fatal("task_temporal_submission_lifecycle_service.go should call internal/listing/submission replay policy directly")
 	}
 }

@@ -19,7 +19,11 @@ export function TaskListPage() {
   const searchParams = useSearchParams();
   const status = searchParams.get("status") ?? "";
   const platform = searchParams.get("platform") ?? "";
+  const sourceType = searchParams.get("source_type") ?? "";
+  const readinessStatus = searchParams.get("readiness_status") ?? "";
   const sheinWorkflowStatus = searchParams.get("shein_workflow_status") ?? "";
+  const sheinSubmissionStatus =
+    searchParams.get("shein_latest_submission_status") ?? "";
   const sheinWorkQueue = searchParams.get("shein_work_queue") ?? "";
   const sheinActionQueue = searchParams.get("shein_action_queue") ?? "";
   const sheinBlockerKey = searchParams.get("shein_blocker_key") ?? "";
@@ -29,7 +33,10 @@ export function TaskListPage() {
   const tasks = useListingKitTasks({
     status: status || undefined,
     platform: platform || undefined,
+    source_type: sourceType || undefined,
+    readiness_status: readinessStatus || undefined,
     shein_workflow_status: sheinWorkflowStatus || undefined,
+    shein_latest_submission_status: sheinSubmissionStatus || undefined,
     shein_work_queue: sheinWorkQueue || undefined,
     shein_action_queue: sheinActionQueue || undefined,
     shein_blocker_key: sheinBlockerKey || undefined,
@@ -74,11 +81,14 @@ export function TaskListPage() {
       <TaskListHero onRefresh={() => tasks.refetch()} />
       <TaskListFilters
         platform={platform}
+        readinessStatus={readinessStatus}
         sheinActionQueue={sheinActionQueue}
         sheinBlockerKey={sheinBlockerKey}
+        sheinSubmissionStatus={sheinSubmissionStatus}
         sheinWorkflowStatus={sheinWorkflowStatus}
         sheinWarningKey={sheinWarningKey}
         sheinWorkQueue={sheinWorkQueue}
+        sourceType={sourceType}
         status={status}
         summary={tasks.data?.summary}
         taxonomy={tasks.data?.taxonomy}

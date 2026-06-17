@@ -1,0 +1,258 @@
+ok  	task-processor/cmd/product-listing-api	4.146s
+?   	task-processor/cmd/shein-listing	[no test files]
+?   	task-processor/cmd/temu-listing	[no test files]
+ok  	task-processor/internal/amazon	1.087s
+ok  	task-processor/internal/amazon/api	(cached) [no tests to run]
+?   	task-processor/internal/amazon/attribute	[no test files]
+?   	task-processor/internal/amazon/image	[no test files]
+?   	task-processor/internal/amazon/listing	[no test files]
+ok  	task-processor/internal/amazon/llm	2.461s
+?   	task-processor/internal/amazon/model	[no test files]
+ok  	task-processor/internal/amazon/pipeline	0.999s
+?   	task-processor/internal/amazon/schema	[no test files]
+ok  	task-processor/internal/amazonlisting	(cached)
+ok  	task-processor/internal/amazonlisting/api	(cached)
+ok  	task-processor/internal/amazonlisting/httpapi	(cached)
+?   	task-processor/internal/amazonlisting/store	[no test files]
+?   	task-processor/internal/app/bootstrap	[no test files]
+ok  	task-processor/internal/app/bootstrap/fetchers	(cached)
+?   	task-processor/internal/app/bootstrap/processors	[no test files]
+ok  	task-processor/internal/app/bootstrap/resources	1.676s
+?   	task-processor/internal/app/bootstrap/schedulers	[no test files]
+ok  	task-processor/internal/app/consumer	3.142s
+ok  	task-processor/internal/app/crawler/distributed	(cached)
+ok  	task-processor/internal/app/crawler/fetcher	3.802s
+ok  	task-processor/internal/app/httpapi	30.077s
+?   	task-processor/internal/app/ports	[no test files]
+?   	task-processor/internal/app/processor	[no test files]
+ok  	task-processor/internal/app/runner	2.657s
+ok  	task-processor/internal/app/runtime	2.497s
+ok  	task-processor/internal/app/runtime/listing	2.716s
+ok  	task-processor/internal/app/scheduler	2.650s
+?   	task-processor/internal/app/state	[no test files]
+ok  	task-processor/internal/app/task	4.855s
+ok  	task-processor/internal/app/taskstatus	2.242s
+ok  	task-processor/internal/app/updater	3.352s
+?   	task-processor/internal/app/worker	[no test files]
+ok  	task-processor/internal/asset	(cached)
+ok  	task-processor/internal/asset/bundle	(cached)
+ok  	task-processor/internal/asset/generation	(cached)
+ok  	task-processor/internal/asset/recipe	(cached)
+ok  	task-processor/internal/asset/repository	(cached)
+?   	task-processor/internal/authz	[no test files]
+ok  	task-processor/internal/catalog	(cached)
+?   	task-processor/internal/catalog/canonical	[no test files]
+ok  	task-processor/internal/compatibility/listingkit	1.159s
+ok  	task-processor/internal/core/config	4.302s
+ok  	task-processor/internal/core/errors	(cached)
+?   	task-processor/internal/core/lifecycle	[no test files]
+ok  	task-processor/internal/core/logger	33.100s
+?   	task-processor/internal/core/metrics	[no test files]
+ok  	task-processor/internal/crawler/alibaba1688	(cached)
+ok  	task-processor/internal/crawler/alibaba1688/extractor	(cached)
+?   	task-processor/internal/crawler/alibaba1688/model	[no test files]
+ok  	task-processor/internal/crawler/amazon	6.954s
+ok  	task-processor/internal/crawler/amazon/browser	1.003s
+ok  	task-processor/internal/crawler/amazon/extractor	3.553s
+?   	task-processor/internal/crawler/amazon/variations	[no test files]
+?   	task-processor/internal/crawler/fetcher	[no test files]
+ok  	task-processor/internal/crawler/shared	(cached)
+ok  	task-processor/internal/crawler/shared/browser	3.983s
+ok  	task-processor/internal/domain/task	(cached)
+?   	task-processor/internal/httpbootstrap	[no test files]
+?   	task-processor/internal/httproute	[no test files]
+ok  	task-processor/internal/imageasset	(cached)
+?   	task-processor/internal/infra/auth	[no test files]
+ok  	task-processor/internal/infra/clients/management	1.003s
+ok  	task-processor/internal/infra/clients/management/api	(cached)
+ok  	task-processor/internal/infra/clients/nanobanana	(cached)
+ok  	task-processor/internal/infra/clients/openai	0.942s
+ok  	task-processor/internal/infra/database	(cached)
+ok  	task-processor/internal/infra/httpx	(cached)
+ok  	task-processor/internal/infra/lock	(cached)
+ok  	task-processor/internal/infra/metrics	(cached)
+?   	task-processor/internal/infra/monitoring	[no test files]
+ok  	task-processor/internal/infra/productcrawler	(cached)
+ok  	task-processor/internal/infra/rabbitmq	(cached)
+?   	task-processor/internal/infra/redisclient	[no test files]
+ok  	task-processor/internal/infra/resilience	(cached)
+ok  	task-processor/internal/infra/storage	4.114s
+ok  	task-processor/internal/infra/worker	(cached)
+ok  	task-processor/internal/integration/crawler	(cached)
+ok  	task-processor/internal/integration/crawler/a1688	(cached)
+ok  	task-processor/internal/integration/crawler/amazon	(cached)
+ok  	task-processor/internal/kernel/module	(cached)
+ok  	task-processor/internal/listing/preview	(cached)
+ok  	task-processor/internal/listing/studio	(cached)
+ok  	task-processor/internal/listing/submission	(cached)
+ok  	task-processor/internal/listingadmin	(cached)
+ok  	task-processor/internal/listingkit	11.317s
+ok  	task-processor/internal/listingkit/api	3.215s
+?   	task-processor/internal/listingkit/core	[no test files]
+ok  	task-processor/internal/listingkit/generation	(cached)
+ok  	task-processor/internal/listingkit/httpapi	2.242s
+ok  	task-processor/internal/listingkit/reviewstore	(cached)
+?   	task-processor/internal/listingkit/service	[no test files]
+?   	task-processor/internal/listingkit/service/studio	[no test files]
+ok  	task-processor/internal/listingkit/sheinsync	(cached)
+ok  	task-processor/internal/listingkit/store	2.899s
+ok  	task-processor/internal/listingkit/studiostore	2.663s
+ok  	task-processor/internal/listingkit/temporal	1.879s
+ok  	task-processor/internal/listingkit/workflow	(cached)
+?   	task-processor/internal/listingkit/workspace	[no test files]
+?   	task-processor/internal/listingkit/workspace/shein	[no test files]
+ok  	task-processor/internal/listingsubscription	(cached)
+?   	task-processor/internal/marketplace/amazon/api	[no test files]
+?   	task-processor/internal/marketplace/amazon/model	[no test files]
+?   	task-processor/internal/marketplace/amazon/publishing	[no test files]
+?   	task-processor/internal/marketplace/amazon/workspace	[no test files]
+ok  	task-processor/internal/marketplace/shein/publishing	(cached)
+ok  	task-processor/internal/marketplace/shein/workspace	(cached)
+ok  	task-processor/internal/model	(cached)
+?   	task-processor/internal/pipeline	[no test files]
+?   	task-processor/internal/pipeline/handlers	[no test files]
+?   	task-processor/internal/pkg/appenv	[no test files]
+?   	task-processor/internal/pkg/cache	[no test files]
+ok  	task-processor/internal/pkg/downloader	5.142s
+ok  	task-processor/internal/pkg/fileio	2.966s
+?   	task-processor/internal/pkg/goroutine	[no test files]
+?   	task-processor/internal/pkg/hashx	[no test files]
+?   	task-processor/internal/pkg/httpapicmd	[no test files]
+ok  	task-processor/internal/pkg/httpclient	(cached)
+ok  	task-processor/internal/pkg/imagex	(cached)
+?   	task-processor/internal/pkg/jsonx	[no test files]
+ok  	task-processor/internal/pkg/mathx	(cached)
+?   	task-processor/internal/pkg/perf	[no test files]
+ok  	task-processor/internal/pkg/ptr	(cached)
+?   	task-processor/internal/pkg/recovery	[no test files]
+ok  	task-processor/internal/pkg/resilience	(cached)
+ok  	task-processor/internal/pkg/skugen	(cached)
+ok  	task-processor/internal/pkg/strx	(cached)
+?   	task-processor/internal/pkg/timeout	[no test files]
+?   	task-processor/internal/pkg/timex	[no test files]
+ok  	task-processor/internal/pkg/types	(cached)
+ok  	task-processor/internal/pkg/watermark	(cached)
+ok  	task-processor/internal/platformbase	1.095s
+?   	task-processor/internal/platforms	[no test files]
+?   	task-processor/internal/platforms/amazon	[no test files]
+ok  	task-processor/internal/platforms/shein	1.173s
+?   	task-processor/internal/platforms/temu	[no test files]
+ok  	task-processor/internal/platformtask	0.994s
+?   	task-processor/internal/ports	[no test files]
+ok  	task-processor/internal/pricing	1.209s
+ok  	task-processor/internal/processor	1.455s
+ok  	task-processor/internal/product	0.926s
+ok  	task-processor/internal/product/sourcing	(cached)
+ok  	task-processor/internal/productenrich	4.163s
+ok  	task-processor/internal/productenrich/api	0.927s
+ok  	task-processor/internal/productenrich/enrich	0.922s
+ok  	task-processor/internal/productenrich/httpapi	(cached)
+ok  	task-processor/internal/productenrich/pipeline	(cached)
+?   	task-processor/internal/productenrich/store	[no test files]
+ok  	task-processor/internal/productimage	13.265s
+?   	task-processor/internal/productimage/domain	[no test files]
+ok  	task-processor/internal/productimage/httpapi	(cached)
+ok  	task-processor/internal/productimage/pipeline	(cached)
+?   	task-processor/internal/productimage/providers	[no test files]
+?   	task-processor/internal/productimage/store	[no test files]
+ok  	task-processor/internal/prompt	2.414s
+ok  	task-processor/internal/promptmgmt	(cached)
+ok  	task-processor/internal/promptmgmt/api	1.312s
+ok  	task-processor/internal/publishing/common	(cached)
+ok  	task-processor/internal/publishing/shein	4.444s
+ok  	task-processor/internal/publishing/sheinmanaged	2.078s
+?   	task-processor/internal/scheduler	[no test files]
+ok  	task-processor/internal/sds/adapter	(cached)
+ok  	task-processor/internal/sds/client	5.002s
+ok  	task-processor/internal/sds/design	1.299s
+ok  	task-processor/internal/sds/httpapi	1.680s
+ok  	task-processor/internal/sds/httpbootstrap	1.343s
+ok  	task-processor/internal/sds/template	(cached)
+ok  	task-processor/internal/sds/usecase	(cached)
+ok  	task-processor/internal/sds/workflow	(cached)
+ok  	task-processor/internal/sdslogin	2.849s
+ok  	task-processor/internal/sdslogin/bootstrap	1.245s
+?   	task-processor/internal/shared/tenantctx	[no test files]
+?   	task-processor/internal/shein	[no test files]
+ok  	task-processor/internal/shein/activity	(cached)
+ok  	task-processor/internal/shein/addresscopy	(cached)
+?   	task-processor/internal/shein/aicache	[no test files]
+?   	task-processor/internal/shein/api	[no test files]
+?   	task-processor/internal/shein/api/attribute	[no test files]
+?   	task-processor/internal/shein/api/category	[no test files]
+ok  	task-processor/internal/shein/api/image	0.885s
+?   	task-processor/internal/shein/api/marketing	[no test files]
+?   	task-processor/internal/shein/api/other	[no test files]
+?   	task-processor/internal/shein/api/pricing	[no test files]
+ok  	task-processor/internal/shein/api/product	(cached)
+?   	task-processor/internal/shein/api/translate	[no test files]
+ok  	task-processor/internal/shein/api/warehouse	(cached)
+ok  	task-processor/internal/shein/authorizedbrand	(cached)
+ok  	task-processor/internal/shein/category	1.633s
+ok  	task-processor/internal/shein/client	1.416s
+ok  	task-processor/internal/shein/content	0.913s
+ok  	task-processor/internal/shein/context	(cached)
+?   	task-processor/internal/shein/generationtopics	[no test files]
+?   	task-processor/internal/shein/inventory	[no test files]
+ok  	task-processor/internal/shein/managedclient	1.239s
+ok  	task-processor/internal/shein/mapping	1.082s
+ok  	task-processor/internal/shein/pipeline	2.095s
+ok  	task-processor/internal/shein/pricing	(cached)
+ok  	task-processor/internal/shein/product	1.891s
+ok  	task-processor/internal/shein/product/attribute	1.514s
+ok  	task-processor/internal/shein/product/attribute/sale	1.520s
+ok  	task-processor/internal/shein/product/build	(cached)
+?   	task-processor/internal/shein/product/image	[no test files]
+ok  	task-processor/internal/shein/product/skc	2.536s
+ok  	task-processor/internal/shein/product/sku	1.346s
+ok  	task-processor/internal/shein/product/variant	1.523s
+ok  	task-processor/internal/shein/productdata	(cached)
+?   	task-processor/internal/shein/productsync	[no test files]
+ok  	task-processor/internal/shein/publish	1.439s
+ok  	task-processor/internal/shein/scheduler	1.337s
+ok  	task-processor/internal/shein/sherr	(cached)
+ok  	task-processor/internal/shein/store	1.678s
+ok  	task-processor/internal/shein/submitprep	3.576s
+?   	task-processor/internal/shein/translate	[no test files]
+ok  	task-processor/internal/shein/validation	2.559s
+ok  	task-processor/internal/sheinbridge/saleattribute	(cached)
+ok  	task-processor/internal/sheinlogin	5.211s
+ok  	task-processor/internal/sheinlogin/bootstrap	2.411s
+ok  	task-processor/internal/sheinloginmanaged	1.274s
+ok  	task-processor/internal/state	1.178s
+ok  	task-processor/internal/taskrpcapi	1.216s
+?   	task-processor/internal/taskstatus	[no test files]
+ok  	task-processor/internal/temu	(cached)
+?   	task-processor/internal/temu/ai	[no test files]
+?   	task-processor/internal/temu/api	[no test files]
+?   	task-processor/internal/temu/api/category	[no test files]
+ok  	task-processor/internal/temu/api/client	(cached)
+?   	task-processor/internal/temu/api/image	[no test files]
+?   	task-processor/internal/temu/api/inventory	[no test files]
+?   	task-processor/internal/temu/api/pricing	[no test files]
+?   	task-processor/internal/temu/api/product	[no test files]
+?   	task-processor/internal/temu/api/query	[no test files]
+?   	task-processor/internal/temu/api/template	[no test files]
+?   	task-processor/internal/temu/api/types	[no test files]
+?   	task-processor/internal/temu/bulkrelist	[no test files]
+?   	task-processor/internal/temu/category	[no test files]
+?   	task-processor/internal/temu/context	[no test files]
+?   	task-processor/internal/temu/filter	[no test files]
+ok  	task-processor/internal/temu/format	(cached)
+?   	task-processor/internal/temu/handlerbase	[no test files]
+?   	task-processor/internal/temu/image	[no test files]
+ok  	task-processor/internal/temu/pricing	1.089s
+?   	task-processor/internal/temu/product	[no test files]
+?   	task-processor/internal/temu/property	[no test files]
+ok  	task-processor/internal/temu/rules	0.848s
+ok  	task-processor/internal/temu/scheduler	0.932s
+?   	task-processor/internal/temu/sku	[no test files]
+?   	task-processor/internal/temu/spec	[no test files]
+?   	task-processor/internal/temu/store	[no test files]
+?   	task-processor/internal/temu/sync	[no test files]
+?   	task-processor/internal/temu/template	[no test files]
+ok  	task-processor/internal/tenantbridge	(cached)
+ok  	task-processor/internal/workspace/shein	(cached)
+ok  	task-processor/internal/zitadelprovision	(cached)
+ok  	task-processor/tests	14.250s
+?   	task-processor/web/listingkit-ui/node_modules/flatted/golang/pkg/flatted	[no test files]

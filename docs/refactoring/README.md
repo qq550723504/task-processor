@@ -71,6 +71,7 @@ The current active direction is:
 - [preview-subpackage-feasibility.md](./preview-subpackage-feasibility.md) - current decision note explaining why preview stays inside `package listingkit` before a real subpackage extraction.
 - [submission-inventory.md](./submission-inventory.md) - historical submission consolidation inventory; useful for file grouping history, but current submission target direction is governed by the boundary checkpoint plus the project-wide plan.
 - [service-slimming-checkpoint.md](./service-slimming-checkpoint.md) - Phase 4 first checkpoint for root service object file-group slimming.
+- [checkpoint-validation-2026-06-17.md](./checkpoint-validation-2026-06-17.md) - focused next-phase validation run covering ListingKit, HTTPAPI, boundary tests, dependency scan, and blocker classification.
 - [listingkit-refactoring-plan.md](./listingkit-refactoring-plan.md) - detailed ListingKit root-directory reduction plan.
 - [studio-migration-plan.md](./studio-migration-plan.md) - Studio migration planning.
 - [architecture-improvement-plan.md](./architecture-improvement-plan.md) - earlier architecture quality improvement notes.

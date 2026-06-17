@@ -166,6 +166,7 @@ export function useWorkspaceNavigationActions({
       router,
       searchParams: searchParams.toString(),
       key: item.key,
+      repairTarget: item.taxonomy?.repair_target,
       storeID: sheinStoreID,
       sheinFreshnessActions,
     });
@@ -199,6 +200,7 @@ function navigateOrScrollSheinActionTarget({
   router,
   searchParams,
   key,
+  repairTarget,
   storeID,
   sheinFreshnessActions,
 }: {
@@ -206,13 +208,14 @@ function navigateOrScrollSheinActionTarget({
   router: ReturnType<typeof useRouter>;
   searchParams: string;
   key?: string | null;
+  repairTarget?: string | null;
   storeID?: number | null;
   sheinFreshnessActions?: SheinFreshnessActionHandlers;
 }) {
   if (runSheinFreshnessAction(key, sheinFreshnessActions)) {
     return;
   }
-  const normalizedKey = normalizeSheinWorkspaceActionKey(key);
+  const normalizedKey = normalizeSheinWorkspaceActionKey(key, repairTarget);
   if (!normalizedKey) {
     return;
   }

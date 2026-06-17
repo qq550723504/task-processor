@@ -5,7 +5,7 @@ import (
 
 	apperrors "task-processor/internal/core/errors"
 	submissiondomain "task-processor/internal/listing/submission"
-	sheinpub "task-processor/internal/publishing/shein"
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -134,7 +134,7 @@ func (s *taskSubmissionRefreshService) resolveSheinSubmitRemoteStatus(request *s
 		return nil, apperrors.New(apperrors.ErrCodeSystem, "submit remote status resolution is not configured")
 	}
 	copyRequest := *request
-	copyRequest.fallbackMessage = sheinpub.ResolveSubmissionRefreshFallbackMessage(copyRequest.action, copyRequest.defaultConfirmed, copyRequest.fallbackMessage)
+	copyRequest.fallbackMessage = sheinmarketpub.ResolveRemoteRefreshFallbackMessage(copyRequest.action, copyRequest.defaultConfirmed, copyRequest.fallbackMessage)
 	return s.resolveRemoteStatus(&copyRequest)
 }
 

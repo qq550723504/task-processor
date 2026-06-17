@@ -35,3 +35,9 @@ func FetchRequestFromSource(req sourcing.SourceRequest) *FetchRequest {
 		Creator:    req.Creator,
 	}
 }
+
+// VariantFetchRequest builds a product fetch request for one variant while
+// preserving source-scoped fields from the parent fetch request.
+func VariantFetchRequest(base *FetchRequest, productID string) *FetchRequest {
+	return FetchRequestFromSource(sourcing.VariantSourceRequest(SourceRequestFromFetch(base), productID))
+}

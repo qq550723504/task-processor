@@ -109,14 +109,7 @@ func (s *taskGenerationService) RetryTaskGenerationTasks(ctx context.Context, ta
 		return nil, err
 	}
 	if len(selectedTasks) == 0 {
-		page := buildGenerationTaskPage(task.ID, task.UpdatedAt, nil, nil, generationTaskListPage{
-			Page:     defaultGenerationTaskPage,
-			PageSize: defaultGenerationTaskPageSize,
-			Total:    0,
-		})
-		page.MatchedQueue = &GenerationWorkQueue{Summary: &GenerationWorkQueueSummary{}}
-		page.ExecutedQueue = &GenerationWorkQueue{Summary: &GenerationWorkQueueSummary{}}
-		return page, nil
+		return buildRetryGenerationProjectionPhase(s.assetRecipeResolver, s.assetBundleBuilder).emptySelectionPage(task), nil
 	}
 
 	dispatchResult, err := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{

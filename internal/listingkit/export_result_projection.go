@@ -6,6 +6,11 @@ import (
 )
 
 type listingKitExportProjection struct {
+	attachment listingKitExportProjectionAttachment
+	overview   *ListingKitExportMeta
+}
+
+type listingKitExportProjectionAttachment struct {
 	catalog             *catalog.Product
 	assetBundle         *asset.Bundle
 	assetInventory      *asset.InventorySummary
@@ -13,7 +18,6 @@ type listingKitExportProjection struct {
 	platformPreviews    []PlatformAssetRenderPreviews
 	generationQueue     *GenerationWorkQueue
 	generationOverview  *AssetGenerationOverview
-	overview            *ListingKitExportMeta
 }
 
 func buildListingKitExportProjection(result *ListingKitResult, selectedPlatform string) listingKitExportProjection {
@@ -23,13 +27,29 @@ func buildListingKitExportProjection(result *ListingKitResult, selectedPlatform 
 	}
 	attachment := readProjection.PreviewInput.Attachment
 	return listingKitExportProjection{
-		catalog:             attachment.CatalogProduct,
-		assetBundle:         attachment.AssetBundle,
-		assetInventory:      attachment.AssetInventorySummary,
-		assetRenderPreviews: readProjection.AssetRenderPreviews,
-		platformPreviews:    readProjection.PlatformAssetRenderPreviews,
-		generationQueue:     readProjection.AssetGenerationQueue,
-		generationOverview:  readProjection.AssetGenerationOverview,
-		overview:            buildListingKitExportMetaFromReadProjection(readProjection),
+		attachment: listingKitExportProjectionAttachment{
+			catalog:             attachment.CatalogProduct,
+			assetBundle:         attachment.AssetBundle,
+			assetInventory:      attachment.AssetInventorySummary,
+			assetRenderPreviews: readProjection.AssetRenderPreviews,
+			platformPreviews:    readProjection.PlatformAssetRenderPreviews,
+			generationQueue:     readProjection.AssetGenerationQueue,
+			generationOverview:  readProjection.AssetGenerationOverview,
+		},
+		overview: buildListingKitExportMetaFromReadProjection(readProjection),
 	}
+}
+
+func applyListingKitExportProjection(export *ListingKitExport, projection listingKitExportProjection) {
+	if export == nil {
+		return
+	}
+	export.CatalogProduct = projection.attachment.catalog
+	export.AssetBundle = projection.attachment.assetBundle
+	export.AssetInventorySummary = projection.attachment.assetInventory
+	export.AssetRenderPreviews = projection.attachment.assetRenderPreviews
+	export.PlatformAssetRenderPreviews = projection.attachment.platformPreviews
+	export.AssetGenerationQueue = projection.attachment.generationQueue
+	export.AssetGenerationOverview = projection.attachment.generationOverview
+	export.Overview = projection.overview
 }

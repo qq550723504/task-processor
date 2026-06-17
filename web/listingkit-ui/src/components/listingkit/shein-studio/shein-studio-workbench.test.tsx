@@ -102,6 +102,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
     groupedImageMode?: string;
     generationError?: string;
     isGenerating?: boolean;
+    onCreateTasks?: () => void;
     onGenerate: () => void;
     onRestorePrompt?: (value: string) => void;
     prompt: string;
@@ -128,6 +129,11 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
         <button disabled={props.isGenerating} onClick={props.onGenerate} type="button">
           generate styles
         </button>
+        {props.onCreateTasks ? (
+          <button onClick={props.onCreateTasks} type="button">
+            create tasks from panel
+          </button>
+        ) : null}
         {(props.promptHistory ?? []).map((entry) => (
           <button
             key={entry.createdAt}
@@ -1584,6 +1590,115 @@ describe("SheinStudioWorkbench", () => {
       ]),
     );
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
+  });
+
+  it("routes completed itemized task creation results back into the task list", async () => {
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch(
+        {
+          name: "Retro Cherries",
+          updatedAt: "2026-05-26T10:00:00.000Z",
+        },
+        {
+          batch: {
+            ...buildHydratedBatch().detail.batch,
+            status: "review_ready",
+            updatedAt: "2026-05-26T10:06:00.000Z",
+          },
+          items: [
+            {
+              item: {
+                id: "item-1",
+                batchId: "batch-1",
+                targetGroupKey: "size:1000x1000",
+                status: "review_ready",
+                selectionCount: 1,
+                createdAt: "2026-05-26T09:59:00.000Z",
+                updatedAt: "2026-05-26T10:06:00.000Z",
+              },
+              designs: [
+                {
+                  id: "design-1",
+                  batchId: "batch-1",
+                  itemId: "item-1",
+                  sourceAttemptId: "attempt-1",
+                  targetGroupKey: "size:1000x1000",
+                  imageUrl: "https://example.com/design-1.png",
+                  reviewStatus: "approved",
+                  createdAt: "2026-05-26T10:01:00.000Z",
+                  updatedAt: "2026-05-26T10:06:00.000Z",
+                },
+              ],
+            },
+          ],
+        },
+      ),
+    );
+    createSheinStudioBatchTasks.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        status: "tasks_created",
+        updatedAt: "2026-05-26T10:08:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "size:1000x1000",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:08:00.000Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "size:1000x1000",
+              imageUrl: "https://example.com/design-1.png",
+              reviewStatus: "approved",
+              createdAt: "2026-05-26T10:01:00.000Z",
+              updatedAt: "2026-05-26T10:08:00.000Z",
+            },
+          ],
+        },
+      ],
+      createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+      failedTasks: [],
+      statusGroups: {
+        items: [
+          { key: "draft_saved", label: "已保存草稿", count: 1, ids: ["task-1"] },
+        ],
+        byKey: {
+          draft_saved: {
+            key: "draft_saved",
+            label: "已保存草稿",
+            count: 1,
+            ids: ["task-1"],
+          },
+        },
+      },
+    });
+
+    render(<SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "create review tasks" }));
+
+    await waitFor(() =>
+      expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
+        "design-1",
+      ]),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("created tasks: 1")).toBeInTheDocument(),
+    );
   });
 
   it("keeps the dedicated batch page busy when generate times out but the batch is still running", async () => {

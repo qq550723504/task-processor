@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"task-processor/internal/core/config"
-	appfetcher "task-processor/internal/crawler/fetcher"
 )
 
 func TestDefaultProductFetcherBuilderBuildPrefersRemoteAPIWithoutCrawler(t *testing.T) {
@@ -21,7 +20,7 @@ func TestDefaultProductFetcherBuilderBuildPrefersRemoteAPIWithoutCrawler(t *test
 		t.Fatalf("Build() error = %v", err)
 	}
 
-	if _, ok := productFetcher.(*appfetcher.RemoteAPIProductFetcher); !ok {
-		t.Fatalf("Build() returned %T, want *RemoteAPIProductFetcher", productFetcher)
+	if got := productFetcher.GetStats()["type"]; got != "remote-api" {
+		t.Fatalf("Build() fetcher type = %v, want remote-api", got)
 	}
 }

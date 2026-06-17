@@ -13,6 +13,7 @@ type settingsAdminWiring struct {
 	currentSheinSettings func() SheinSettings
 	mutateSheinSettings  func(func(*SheinSettings)) SheinSettings
 	listStoreOptions     func(context.Context) []SheinStoreOption
+	settingsHealthProbes SettingsHealthProbes
 }
 
 type sheinAdminWiring struct {
@@ -42,7 +43,8 @@ func buildSettingsAdminWiring(s *service) settingsAdminWiring {
 			s.sheinSettings = settings
 			return settings
 		},
-		listStoreOptions: s.listSheinStoreOptions,
+		listStoreOptions:     s.listSheinStoreOptions,
+		settingsHealthProbes: s.settingsHealthProbes(),
 	}
 }
 
@@ -83,6 +85,7 @@ func buildSettingsAdminServiceConfigWithWiring(wiring settingsAdminWiring) setti
 		currentSheinSettings: wiring.currentSheinSettings,
 		mutateSheinSettings:  wiring.mutateSheinSettings,
 		listStoreOptions:     wiring.listStoreOptions,
+		settingsHealthProbes: wiring.settingsHealthProbes,
 	}
 }
 

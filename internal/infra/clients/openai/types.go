@@ -28,13 +28,14 @@ type ChatCompletionContentPartImage struct {
 
 // ChatCompletionRequest 聊天完成请求
 type ChatCompletionRequest struct {
-	Temperature *float32                `json:"temperature,omitempty"`
-	Seed        *int                    `json:"seed,omitempty"`
-	MaxTokens   *int                    `json:"max_tokens,omitempty"`
-	Model       string                  `json:"model"`
-	Messages    []ChatCompletionMessage `json:"messages"`
-	Timeout     *time.Duration          `json:"-"`
-	MaxRetries  *int                    `json:"-"`
+	Temperature    *float32                `json:"temperature,omitempty"`
+	Seed           *int                    `json:"seed,omitempty"`
+	MaxTokens      *int                    `json:"max_tokens,omitempty"`
+	ResponseFormat string                  `json:"response_format,omitempty"`
+	Model          string                  `json:"model"`
+	Messages       []ChatCompletionMessage `json:"messages"`
+	Timeout        *time.Duration          `json:"-"`
+	MaxRetries     *int                    `json:"-"`
 }
 
 // ChatCompletionChoice 聊天完成选择

@@ -6,12 +6,14 @@ import { AIClientSettingsCard } from "@/components/listingkit/settings/ai-client
 import {
   ListingKitSettingsSectionDefinition,
 } from "@/components/listingkit/settings/listingkit-settings-shell";
+import { SettingsHealthCard } from "@/components/listingkit/settings/settings-health-card";
 import { ZitadelSessionCard } from "@/components/listingkit/settings/zitadel-session-card";
 import { useListingKitSettingsNamespaces } from "@/lib/query/use-listingkit-settings-metadata";
 import type { ListingKitSettingsNamespaceSchema } from "@/lib/types/listingkit";
 
 const staticSectionSummary: Record<string, string> = {
   session: "当前 ZITADEL 登录态和角色。",
+  health: "新任务、SHEIN 提交和图片链路的配置预检。",
   ai: "租户和用户级模型 endpoint、key 与模型。",
 };
 
@@ -42,6 +44,13 @@ export function useListingKitSettingsSections() {
       label: "会话",
       summary: resolveSummary("session"),
       render: () => <ZitadelSessionCard />,
+    },
+    {
+      id: "health",
+      label: "健康检查",
+      summary: resolveSummary("health"),
+      badges: ["新任务预检", "影响范围"],
+      render: () => <SettingsHealthCard />,
     },
     {
       id: "ai",

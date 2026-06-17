@@ -9,6 +9,29 @@ import (
 	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
+func TestBuildBatchProgressFields(t *testing.T) {
+	fields := buildBatchProgressFields(2, 5, 10, 4, 20)
+
+	if got := fields["batch"]; got != 2 {
+		t.Fatalf("batch = %v, want 2", got)
+	}
+	if got := fields["total_batches"]; got != 5 {
+		t.Fatalf("total_batches = %v, want 5", got)
+	}
+	if got := fields["batch_size"]; got != 10 {
+		t.Fatalf("batch_size = %v, want 10", got)
+	}
+	if got := fields["batch_variant_count"]; got != 4 {
+		t.Fatalf("batch_variant_count = %v, want 4", got)
+	}
+	if got := fields["processed_variants"]; got != 14 {
+		t.Fatalf("processed_variants = %v, want 14", got)
+	}
+	if got := fields["total_variants"]; got != 20 {
+		t.Fatalf("total_variants = %v, want 20", got)
+	}
+}
+
 type batchTestChatClient struct {
 	responses []string
 	index     int

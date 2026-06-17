@@ -17,11 +17,11 @@
 ### 已有子模块
 
 #### 1. `submission/` - 提交域通用机制
-**当前目标职责**: generic listing submission mechanics owned by `internal/listing/submission`; SHEIN-specific transition/state composition stays in a narrowed `internal/listingkit/submission` compatibility surface until a safer owner exists
+**当前目标职责**: generic listing submission mechanics are owned by `internal/listing/submission`; SHEIN-specific transition sequencing now stays at the root `internal/listingkit/shein_submit_state.go` stop-line rather than a separate `internal/listingkit/submission` compatibility package
 
 **当前方向说明**:
 - 通用锁、重试、event draft、confirm-remote state、refresh policy、attempt/action record、remote sync 等轻量机制优先归到 `internal/listing/submission`
-- `internal/listingkit/submission` 不再作为通用 submission 主归宿，而是逐步缩成 SHEIN-focused adapter/transition surface
+- `internal/listingkit/submission` 已从生产代码 retired；不要重新创建这个兼容包，新的通用 submission 机制应继续进入 `internal/listing/submission`
 - Temporal 提交流程也不再以单独 adapter 为中心，而是拆成 lifecycle / flow / persistence / refresh collaborators
 
 **根目录中当前仍相关的文件**:

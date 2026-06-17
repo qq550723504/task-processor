@@ -11,6 +11,8 @@ import type {
   SheinStudioBatchItemStatus,
   SheinStudioBatchRecord,
   SheinStudioBatchStatus,
+  SheinStudioBatchStatusGroup,
+  SheinStudioBatchStatusGroups,
   SheinStudioCreatedTask,
   SheinStudioFailedTask,
   SheinStudioItemizedBatchItem,
@@ -115,12 +117,29 @@ const studioFailedTaskSchema = z
   })
   .passthrough();
 
+const studioBatchStatusGroupSchema = z
+  .object({
+    key: z.string(),
+    label: z.string(),
+    count: z.number().optional(),
+    ids: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+const studioBatchStatusGroupsSchema = z
+  .object({
+    items: z.array(studioBatchStatusGroupSchema).optional(),
+    by_key: z.record(z.string(), studioBatchStatusGroupSchema).optional(),
+  })
+  .passthrough();
+
 const studioBatchDetailResponseSchema = z
   .object({
     batch: studioBatchSchema,
     items: z.array(studioBatchDetailItemSchema).optional(),
     created_tasks: z.array(studioCreatedTaskSchema).optional(),
     failed_tasks: z.array(studioFailedTaskSchema).optional(),
+    status_groups: studioBatchStatusGroupsSchema.optional(),
   })
   .passthrough();
 
@@ -130,6 +149,7 @@ const studioBatchTaskCreationResponseSchema = z
     items: z.array(studioBatchDetailItemSchema).optional(),
     created_tasks: z.array(studioCreatedTaskSchema).optional(),
     failed_tasks: z.array(studioFailedTaskSchema).optional(),
+    status_groups: studioBatchStatusGroupsSchema.optional(),
   })
   .passthrough();
 
@@ -275,6 +295,34 @@ function mapStudioFailedTasks(
     .filter((item): item is SheinStudioFailedTask => Boolean(item));
 }
 
+function mapStudioBatchStatusGroup(
+  payload: z.infer<typeof studioBatchStatusGroupSchema>,
+): SheinStudioBatchStatusGroup {
+  return {
+    key: payload.key,
+    label: payload.label,
+    count: payload.count ?? 0,
+    ids: payload.ids,
+  };
+}
+
+function mapStudioBatchStatusGroups(
+  payload: z.infer<typeof studioBatchStatusGroupsSchema> | undefined,
+): SheinStudioBatchStatusGroups | undefined {
+  if (!payload) {
+    return undefined;
+  }
+  return {
+    items: (payload.items ?? []).map(mapStudioBatchStatusGroup),
+    byKey: Object.fromEntries(
+      Object.entries(payload.by_key ?? {}).map(([key, group]) => [
+        key,
+        mapStudioBatchStatusGroup(group),
+      ]),
+    ),
+  };
+}
+
 export function parseSheinStudioBatchDetailResponse(
   payload: unknown,
 ): SheinStudioBatchDetail {
@@ -289,6 +337,7 @@ export function parseSheinStudioBatchDetailResponse(
     items: (parsed.items ?? []).map(mapStudioBatchDetailItem),
     createdTasks: mapStudioCreatedTasks(parsed.created_tasks ?? []),
     failedTasks: mapStudioFailedTasks(parsed.failed_tasks ?? []),
+    statusGroups: mapStudioBatchStatusGroups(parsed.status_groups),
   };
 }
 
@@ -306,6 +355,7 @@ export function parseSheinStudioBatchTaskCreationResponse(
     items: (parsed.items ?? []).map(mapStudioBatchDetailItem),
     createdTasks: mapStudioCreatedTasks(parsed.created_tasks ?? []),
     failedTasks: mapStudioFailedTasks(parsed.failed_tasks ?? []),
+    statusGroups: mapStudioBatchStatusGroups(parsed.status_groups),
   };
 }
 

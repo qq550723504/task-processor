@@ -77,6 +77,7 @@ func TestBuildRevisionSuccessFollowUpDataBuildsSharedPayload(t *testing.T) {
 	messages := &RevisionResultMessages{
 		Description: "本次已保存 1 个字段的更新。",
 	}
+	readinessProjection := buildRevisionSuccessReadinessProjection(result)
 
 	followUp := buildRevisionSuccessFollowUpData(
 		revisionSuccessModeApply,
@@ -84,6 +85,7 @@ func TestBuildRevisionSuccessFollowUpDataBuildsSharedPayload(t *testing.T) {
 		summary,
 		messages,
 		[]string{"处理人工备注"},
+		readinessProjection,
 	)
 	if followUp == nil {
 		t.Fatal("expected follow-up data")

@@ -27,6 +27,7 @@ type service struct {
 	workflowDeps     workflowDependencies
 	sheinRuntimeDeps sheinRuntimeDependencies
 	supportDeps      supportDependencies
+	healthProbes     SettingsHealthProbes
 	sheinSettingsMu  sync.RWMutex
 	sheinSettings    SheinSettings
 }
@@ -88,4 +89,5 @@ type ServiceConfig struct {
 	Assets   ServiceAssetDependencies
 	Shein    ServiceSheinDependencies
 	Workflow ServiceWorkflowDependencies
+	Health   SettingsHealthProbes
 }

@@ -45,9 +45,7 @@ func buildTaskManagedSubmissionWiringWithAssembly(s *service, assembly taskSubmi
 }
 
 func buildTaskManagedSubmissionWiringWithAssemblyAndRecovery(s *service, assembly taskSubmissionAssembly, recovery *taskSubmissionRecoveryService) taskManagedSubmissionWiring {
-	if assembly.resolver == nil {
-		assembly = buildTaskSubmissionAssembly(s)
-	}
+	assembly = completeTaskSubmissionAssembly(s, assembly)
 	return taskManagedSubmissionWiring{
 		assembly:                         assembly,
 		orchestrator:                     buildTaskSubmissionOrchestratorWiringWithRecovery(s, assembly.resolver, recovery),

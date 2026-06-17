@@ -41,9 +41,11 @@ func summaryTaskListQuery(query *TaskListQuery) *TaskListQuery {
 		return nil
 	}
 	return &TaskListQuery{
-		TenantID: query.TenantID,
-		Status:   query.Status,
-		Platform: query.Platform,
+		TenantID:        query.TenantID,
+		Status:          query.Status,
+		Platform:        query.Platform,
+		SourceType:      query.SourceType,
+		ReadinessStatus: query.ReadinessStatus,
 	}
 }
 
@@ -73,6 +75,9 @@ func buildTaskListItem(task *Task) TaskListItem {
 		ensureTaskPodExecution(task)
 		task.Result = normalizeListingKitResultSemanticFields(task.Result)
 		item.PodExecution = clonePodExecutionSummary(task.Result.PodExecution)
+		if task.Result.Summary != nil {
+			item.SourceType = strings.TrimSpace(task.Result.Summary.SourceType)
+		}
 	}
 	if task.Result != nil && task.Result.SDSDesignResult != nil {
 		item.SDSSyncStatus = task.Result.SDSDesignResult.Status
@@ -152,17 +157,32 @@ func applySheinTaskListFields(item *TaskListItem, task *Task, pkg *SheinPackage)
 			item.SheinStoreSite = site
 		}
 	}
-	applySheinSubmissionStatusFields(&item.SheinSubmissionStatusFields, pkg)
 	var pod *PodExecutionSummary
 	if task != nil && task.Result != nil {
 		pod = task.Result.PodExecution
 	}
-	item.SheinBlockingKeys = sheinBlockingKeysWithPod(pkg, pod)
-	item.SheinWarningKeys = sheinWarningKeysWithPod(pkg, pod)
-	item.SheinStatusOverview = buildSheinTaskStatusOverviewWithPod(pkg, pod)
+	readinessProjection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)
+	readyToSubmit := sheinSubmitReadyFromReadinessProjection(readinessProjection)
+	submissionProjection := buildSheinSubmissionProjectionWithReady(pkg, readyToSubmit)
+	if submissionProjection != nil {
+		item.SheinSubmissionStatusFields = submissionProjection.StatusFields
+	}
+	if readinessProjection != nil {
+		item.SheinStatusOverview = readinessProjection.StatusOverview
+		if readiness := readinessProjection.Readiness; readiness != nil {
+			if len(readiness.BlockingItems) > 0 {
+				item.SheinBlockingKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.BlockingItems))
+			}
+			if len(readiness.WarningItems) > 0 {
+				item.SheinWarningKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.WarningItems))
+			}
+		}
+	}
 	item.SheinWorkQueue = deriveSheinWorkQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview)
 	item.SheinActionQueue = deriveSheinActionQueue(task, item.SheinWorkflowStatus, item.SheinStatusOverview, item.SheinBlockingKeys, item.SheinWarningKeys)
-	applySheinSubmissionRemoteSummary(&item.SheinTaskListSubmissionFields, pkg)
+	if submissionProjection != nil {
+		item.SheinTaskListSubmissionFields = submissionProjection.TaskList
+	}
 }
 
 func buildSheinTaskStatusOverview(pkg *SheinPackage) *sheinworkspace.StatusOverview {

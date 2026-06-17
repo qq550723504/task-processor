@@ -37,3 +37,24 @@ func TestFetchRequestFromSourcePreservesFields(t *testing.T) {
 		t.Fatalf("FetchRequestFromSource() = %+v, want fields from %+v", got, source)
 	}
 }
+
+func TestVariantFetchRequestPreservesSourceScopedFields(t *testing.T) {
+	base := &FetchRequest{
+		TenantID:   10,
+		Platform:   " SHEIN ",
+		Region:     " UK ",
+		ProductID:  "parent",
+		Zipcode:    " W1A 1AA ",
+		StoreID:    20,
+		CategoryID: 30,
+		Creator:    " tester ",
+	}
+
+	got := VariantFetchRequest(base, " B002 ")
+	if got.ProductID != "B002" {
+		t.Fatalf("ProductID = %q, want variant ASIN", got.ProductID)
+	}
+	if got.TenantID != 10 || got.Platform != "shein" || got.Region != "uk" || got.Zipcode != "W1A 1AA" || got.StoreID != 20 || got.CategoryID != 30 || got.Creator != "tester" {
+		t.Fatalf("VariantFetchRequest() = %+v, want normalized source-scoped fields", got)
+	}
+}

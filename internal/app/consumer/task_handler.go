@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"task-processor/internal/core/metrics"
@@ -105,6 +106,10 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 		return err
 	}
 
+	if err := eth.discardNonDebugASIN(task); err != nil {
+		return err
+	}
+
 	// 2. 去重检查
 	if eth.shouldSkipDuplicate(task) {
 		return nil
@@ -156,6 +161,32 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 		eth.platform, task.ID, processingTime)
 
 	return nil
+}
+
+func (eth *TaskHandler) discardNonDebugASIN(task *model.Task) error {
+	debugASIN := strings.TrimSpace(os.Getenv("TASK_PROCESSOR_DEBUG_ONLY_ASIN"))
+	if debugASIN == "" || task == nil {
+		return nil
+	}
+
+	productID := strings.TrimSpace(task.ProductID)
+	if strings.EqualFold(productID, debugASIN) {
+		return nil
+	}
+
+	eth.logger.WithFields(logrus.Fields{
+		"task_id":    task.ID,
+		"product_id": productID,
+		"debug_asin": debugASIN,
+	}).Info("discarding task outside debug-only ASIN scope")
+
+	return &staleTaskMessageError{
+		taskID:           task.ID,
+		messageStatus:    task.Status,
+		currentStatus:    productID,
+		currentStatusKey: "DEBUG_ONLY_ASIN",
+		reason:           "debug_only_asin_mismatch",
+	}
 }
 
 func (eth *TaskHandler) recordListingTaskMetricsOnStart(task *model.Task, startTime time.Time) {

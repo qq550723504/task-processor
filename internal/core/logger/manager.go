@@ -145,6 +145,9 @@ func (lm *LogManager) Close() error {
 
 	// 如果有其他输出，确保所有日志都被写入
 	for _, output := range lm.outputs {
+		if output == os.Stdout || output == os.Stderr {
+			continue
+		}
 		if closer, ok := output.(io.Closer); ok {
 			// 跳过已经关闭的fileWriter
 			if output == lm.fileWriter {

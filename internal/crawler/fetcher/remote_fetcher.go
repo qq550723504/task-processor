@@ -70,16 +70,15 @@ type remoteTaskResponse struct {
 }
 
 type RemoteAPIProductFetcher struct {
-	cacheManager   *domainProduct.CacheManager
-	cacheEnabled   bool
-	domainResolver *domainProduct.DomainResolver
-	amazonConfig   *config.AmazonConfig
-	client         *http.Client
-	baseURL        string
-	logger         *logrus.Entry
+	cacheManager *domainProduct.CacheManager
+	cacheEnabled bool
+	amazonConfig *config.AmazonConfig
+	client       *http.Client
+	baseURL      string
+	logger       *logrus.Entry
 }
 
-func NewRemoteAPIProductFetcher(
+func newRemoteAPIProductFetcher(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 ) (*RemoteAPIProductFetcher, error) {
@@ -95,10 +94,9 @@ func NewRemoteAPIProductFetcher(
 
 	logger := coreLogger.GetGlobalLogger("RemoteAPIProductFetcher")
 	return &RemoteAPIProductFetcher{
-		cacheManager:   domainProduct.NewCacheManager(rawJsonDataClient, logger),
-		cacheEnabled:   rawJsonDataClient != nil,
-		domainResolver: domainProduct.NewDomainResolver(),
-		amazonConfig:   amazonConfig,
+		cacheManager: domainProduct.NewCacheManagerWithFreshness(rawJsonDataClient, logger, amazonConfig.DataFreshnessDays),
+		cacheEnabled: rawJsonDataClient != nil,
+		amazonConfig: amazonConfig,
 		client: &http.Client{
 			Timeout: time.Duration(amazonConfig.RemoteAPI.Timeout) * time.Second,
 			Transport: &http.Transport{
@@ -297,25 +295,10 @@ func (f *RemoteAPIProductFetcher) resolveZipcode(req *domainProduct.FetchRequest
 		zipcodes = f.amazonConfig.Zipcodes
 	}
 	planner := sourcing.AmazonCrawlRequestPlanner{
-		ZipcodePolicy: remoteAmazonZipcodePolicy{resolver: f.domainResolver},
+		ZipcodePolicy: sourcing.AmazonDefaultZipcodePolicy{},
 		Zipcodes:      zipcodes,
 	}
 	return planner.ResolveZipcode(req.Region, req.Zipcode)
-}
-
-type remoteAmazonZipcodePolicy struct {
-	resolver *domainProduct.DomainResolver
-}
-
-func (p remoteAmazonZipcodePolicy) ShouldUseDefaultZipcode(region string) bool {
-	return p.resolver != nil && p.resolver.ShouldUseDefaultZipcode(region)
-}
-
-func (p remoteAmazonZipcodePolicy) DefaultZipcode(region string) string {
-	if p.resolver == nil {
-		return ""
-	}
-	return p.resolver.GetZipcodeByRegion(region)
 }
 
 func (f *RemoteAPIProductFetcher) pollAsyncResult(ctx context.Context, taskID string) (*model.Product, error) {
@@ -441,7 +424,7 @@ func (f *RemoteAPIProductFetcher) FetchVariants(ctx context.Context, req *domain
 
 	var variants []*model.Product
 	for _, asin := range variantASINs {
-		variantReq := domainProduct.FetchRequestFromSource(sourcing.VariantSourceRequest(domainProduct.SourceRequestFromFetch(req), asin))
+		variantReq := domainProduct.VariantFetchRequest(req, asin)
 		product, err := f.FetchProduct(ctx, variantReq)
 		if err != nil {
 			f.logger.WithError(err).Warnf("fetch variant via crawler api failed: %s", asin)

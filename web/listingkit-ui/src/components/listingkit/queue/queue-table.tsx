@@ -120,9 +120,33 @@ export function QueueTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  <Button variant="secondary" onClick={() => onAction(item, action)}>
-                    {action.label}
-                  </Button>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant={
+                          action.ownerKind === "engineering" ? "destructive" : "success"
+                        }
+                      >
+                        {action.ownerLabel}
+                      </Badge>
+                      <Badge variant="neutral">{action.semanticLabel}</Badge>
+                    </div>
+                    <p className="max-w-[16rem] text-xs leading-5 text-zinc-500">
+                      {action.description}
+                    </p>
+                    {action.failureReviewFields.length ? (
+                      <p className="max-w-[16rem] text-xs leading-5 text-zinc-500">
+                        复盘字段：
+                        {action.failureReviewFields
+                          .slice(0, 3)
+                          .map((field) => `${field.label}=${field.value}`)
+                          .join(" · ")}
+                      </p>
+                    ) : null}
+                    <Button variant="secondary" onClick={() => onAction(item, action)}>
+                      {action.label}
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             );

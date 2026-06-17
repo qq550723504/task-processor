@@ -27,37 +27,56 @@ func newTaskRequeueService(config taskRequeueServiceConfig) *taskRequeueService 
 		repo:          config.repo,
 		taskSubmitter: config.taskSubmitter,
 	}
+	wiring := buildTaskRequeueRunnerWiring(svc)
 	svc.runner = submissiondomain.NewRequeueService(submissiondomain.RequeueServiceConfig{
-		LoadTask: func(ctx context.Context, taskID string) (*submissiondomain.RequeueTask, error) {
-			task, err := svc.repo.GetTask(ctx, taskID)
-			if err != nil {
-				return nil, err
-			}
-			return &submissiondomain.RequeueTask{ID: task.ID, Status: string(task.Status)}, nil
-		},
-		CurrentSubmitter: func() submissiondomain.RequeueSubmitFunc {
-			submitter := svc.currentSubmitter()
-			if submitter == nil {
-				return nil
-			}
-			return submitter.Submit
-		},
-		IsTaskNotFound: func(err error) bool {
-			return errors.Is(err, ErrTaskNotFound)
-		},
-		CanRequeue: func(task *submissiondomain.RequeueTask) (bool, string) {
-			return submissiondomain.CanRequeueTaskWithStatus(task, string(TaskStatusPending))
-		},
-		SubmitTask: func(submit submissiondomain.RequeueSubmitFunc, taskID string) error {
-			if submit == nil {
-				return ErrTaskRequeueUnavailable
-			}
-			return submissiondomain.RetryEnqueueSubmit(taskID, taskRequeueMaxWait, submit)
-		},
+		LoadTask:          wiring.loadTask,
+		CurrentSubmitter:  wiring.currentSubmitter,
+		IsTaskNotFound:    wiring.isTaskNotFound,
+		CanRequeue:        wiring.canRequeue,
+		SubmitTask:        wiring.submitTask,
 		ErrUnavailable:    ErrTaskRequeueUnavailable,
 		ErrInvalidRequest: ErrTaskRequeueInvalidRequest,
 	})
 	return svc
+}
+
+type taskRequeueRunnerWiring struct {
+	svc *taskRequeueService
+}
+
+func buildTaskRequeueRunnerWiring(svc *taskRequeueService) taskRequeueRunnerWiring {
+	return taskRequeueRunnerWiring{svc: svc}
+}
+
+func (w taskRequeueRunnerWiring) loadTask(ctx context.Context, taskID string) (*submissiondomain.RequeueTask, error) {
+	task, err := w.svc.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	return &submissiondomain.RequeueTask{ID: task.ID, Status: string(task.Status)}, nil
+}
+
+func (w taskRequeueRunnerWiring) currentSubmitter() submissiondomain.RequeueSubmitFunc {
+	submitter := w.svc.currentSubmitter()
+	if submitter == nil {
+		return nil
+	}
+	return submitter.Submit
+}
+
+func (w taskRequeueRunnerWiring) isTaskNotFound(err error) bool {
+	return errors.Is(err, ErrTaskNotFound)
+}
+
+func (w taskRequeueRunnerWiring) canRequeue(task *submissiondomain.RequeueTask) (bool, string) {
+	return submissiondomain.CanRequeueTaskWithStatus(task, string(TaskStatusPending))
+}
+
+func (w taskRequeueRunnerWiring) submitTask(submit submissiondomain.RequeueSubmitFunc, taskID string) error {
+	if submit == nil {
+		return ErrTaskRequeueUnavailable
+	}
+	return submissiondomain.RetryEnqueueSubmit(taskID, taskRequeueMaxWait, submit)
 }
 
 func (s *taskRequeueService) RequeuePendingTasks(ctx context.Context, req *RequeuePendingTasksRequest) (*RequeuePendingTasksResult, error) {

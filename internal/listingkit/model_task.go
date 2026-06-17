@@ -35,17 +35,20 @@ type TaskResult struct {
 }
 
 type TaskListQuery struct {
-	TenantID            string `form:"tenant_id" json:"tenant_id,omitempty"`
-	Status              string `form:"status" json:"status,omitempty"`
-	Platform            string `form:"platform" json:"platform,omitempty"`
-	SheinWorkflowStatus string `form:"shein_workflow_status" json:"shein_workflow_status,omitempty"`
-	SheinBlockerKey     string `form:"shein_blocker_key" json:"shein_blocker_key,omitempty"`
-	SheinWarningKey     string `form:"shein_warning_key" json:"shein_warning_key,omitempty"`
-	SheinWorkQueue      string `form:"shein_work_queue" json:"shein_work_queue,omitempty"`
-	SheinActionQueue    string `form:"shein_action_queue" json:"shein_action_queue,omitempty"`
-	IncludeSummary      bool   `form:"include_summary" json:"include_summary,omitempty"`
-	Page                int    `form:"page" json:"page,omitempty"`
-	PageSize            int    `form:"page_size" json:"page_size,omitempty"`
+	TenantID              string `form:"tenant_id" json:"tenant_id,omitempty"`
+	Status                string `form:"status" json:"status,omitempty"`
+	Platform              string `form:"platform" json:"platform,omitempty"`
+	SourceType            string `form:"source_type" json:"source_type,omitempty"`
+	ReadinessStatus       string `form:"readiness_status" json:"readiness_status,omitempty"`
+	SheinWorkflowStatus   string `form:"shein_workflow_status" json:"shein_workflow_status,omitempty"`
+	SheinSubmissionStatus string `form:"shein_latest_submission_status" json:"shein_latest_submission_status,omitempty"`
+	SheinBlockerKey       string `form:"shein_blocker_key" json:"shein_blocker_key,omitempty"`
+	SheinWarningKey       string `form:"shein_warning_key" json:"shein_warning_key,omitempty"`
+	SheinWorkQueue        string `form:"shein_work_queue" json:"shein_work_queue,omitempty"`
+	SheinActionQueue      string `form:"shein_action_queue" json:"shein_action_queue,omitempty"`
+	IncludeSummary        bool   `form:"include_summary" json:"include_summary,omitempty"`
+	Page                  int    `form:"page" json:"page,omitempty"`
+	PageSize              int    `form:"page_size" json:"page_size,omitempty"`
 }
 
 type RecoverableTaskQuery struct {
@@ -93,6 +96,7 @@ type TaskListDisplayFields struct {
 	Platforms     []string `json:"platforms,omitempty"`
 	Title         string   `json:"title,omitempty"`
 	ImageCount    int      `json:"image_count"`
+	SourceType    string   `json:"source_type,omitempty"`
 	ProductName   string   `json:"product_name,omitempty"`
 	VariantLabel  string   `json:"variant_label,omitempty"`
 	SDSSyncStatus string   `json:"sds_sync_status,omitempty"`

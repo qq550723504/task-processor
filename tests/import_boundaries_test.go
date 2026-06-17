@@ -193,7 +193,14 @@ func TestCatalogDoesNotDependOnProductEnrichAliases(t *testing.T) {
 func TestListingKitSubdomainsDoNotImportRootFacade(t *testing.T) {
 	for _, subdomain := range []string{"generation", "submission", "workflow", "workspace"} {
 		t.Run(subdomain, func(t *testing.T) {
-			assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit", subdomain), []string{
+			dir := filepath.Join("..", "internal", "listingkit", subdomain)
+			if _, err := os.Stat(dir); err != nil {
+				if os.IsNotExist(err) {
+					t.Skipf("listingkit subdomain %s is retired", subdomain)
+				}
+				t.Fatalf("stat %s: %v", dir, err)
+			}
+			assertNoBannedImports(t, dir, []string{
 				`"task-processor/internal/listingkit"`,
 			}, nil)
 		})
@@ -552,6 +559,12 @@ func TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly(t *testing
 	}
 }
 
+func TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain(t *testing.T) {
+	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit", "workspace", "shein"), []string{
+		`"task-processor/internal/workspace/shein"`,
+	}, nil)
+}
+
 func TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases(t *testing.T) {
 	assertNoBannedSelectorsOutside(t, filepath.Join("..", "internal"), filepath.Join("..", "internal", "productenrich"), map[string]struct{}{
 		"CanonicalProduct":           {},
@@ -577,21 +590,58 @@ func TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases(t *testing.T) {
 }
 
 func TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer(t *testing.T) {
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join("..", "internal", "app", "processor", "compat.go")): {},
-	}
 	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
 		`"task-processor/internal/app/processor"`,
-	}, allowedFiles)
+	}, nil)
+}
+
+func TestAppProcessorCompatibilityLayerIsRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "processor")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; use internal/processor directly instead of the app compatibility layer", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
 }
 
 func TestInternalPackagesDoNotImportAppStateCompatibilityLayer(t *testing.T) {
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join("..", "internal", "app", "state", "compat.go")): {},
-	}
 	assertNoBannedImports(t, filepath.Join("..", "internal"), []string{
 		`"task-processor/internal/app/state"`,
-	}, allowedFiles)
+	}, nil)
+}
+
+func TestAppStateCompatibilityLayerIsRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "state")
+	entries, err := os.ReadDir(path)
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".go") {
+			t.Fatalf("%s still contains Go compatibility file %s; use internal/state directly instead", path, entry.Name())
+		}
+	}
+}
+
+func TestInfraProductCrawlerAdapterIsRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "infra", "productcrawler")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; use product/sourcing plus app crawler fetchers instead of the unwired infra productcrawler adapter", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+}
+
+func TestAppCrawlerFetcherCompatibilityLayerIsRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "crawler", "fetcher")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; use internal/crawler/fetcher for product fetcher contracts and implementations", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
 }
 
 func TestCmdPackagesDoNotImportAppCompatibilityLayers(t *testing.T) {
@@ -708,6 +758,61 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 		path := imp.Path.Value
 		if _, ok := allowed[path]; !ok {
 			t.Errorf("%s imports %s; keep app/httpapi/listingkit_support.go limited to assembly and repository wiring, and move new ListingKit-specific logic into internal/listingkit/httpapi or domain packages", filePath, path)
+		}
+	}
+}
+
+func TestAppHTTPAPIListingKitRootImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "httpapi")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "runtime_support_listingkit.go")): {},
+		filepath.Clean(filepath.Join(root, "types.go")):                      {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/listingkit"`]; !ok {
+			continue
+		}
+		if _, ok := allowedFiles[path]; !ok {
+			t.Errorf("%s imports task-processor/internal/listingkit; keep app/httpapi ListingKit root dependencies limited to runtime support types and move new feature logic into internal/listingkit/httpapi", path)
+		}
+	}
+}
+
+func TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "httpapi")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "composition_builder.go")):        {},
+		filepath.Clean(filepath.Join(root, "feature_builder_listingkit.go")): {},
+		filepath.Clean(filepath.Join(root, "http_modules.go")):               {},
+		filepath.Clean(filepath.Join(root, "listingkit_support.go")):         {},
+		filepath.Clean(filepath.Join(root, "listingkit_temporal_worker.go")): {},
+		filepath.Clean(filepath.Join(root, "modules.go")):                    {},
+		filepath.Clean(filepath.Join(root, "runtime.go")):                    {},
+		filepath.Clean(filepath.Join(root, "server.go")):                     {},
+		filepath.Clean(filepath.Join(root, "types.go")):                      {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/listingkit/httpapi"`]; !ok {
+			continue
+		}
+		if _, ok := allowedFiles[path]; !ok {
+			t.Errorf("%s imports task-processor/internal/listingkit/httpapi; keep app/httpapi feature-owned ListingKit HTTPAPI dependencies limited to current module, runtime, route, and server assembly files", path)
 		}
 	}
 }

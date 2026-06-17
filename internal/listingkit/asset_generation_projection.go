@@ -34,10 +34,37 @@ func decorateListingKitResultGeneration(result *ListingKitResult, tasks []assetg
 		return
 	}
 	projection := buildAssetGenerationProjection(result, tasks)
+	applyAssetGenerationProjectionToResult(result, projection)
+}
+
+func applyAssetGenerationProjectionToResult(result *ListingKitResult, projection *assetGenerationProjection) {
+	if result == nil || projection == nil {
+		return
+	}
 	result.AssetGenerationTasks = projection.Tasks
 	result.AssetGenerationSummary = projection.Summary
 	result.AssetGenerationQueue = projection.Queue
 	result.AssetGenerationOverview = projection.Overview
+}
+
+func applyAssetGenerationProjectionToPreview(preview *ListingKitPreview, projection *assetGenerationProjection) {
+	if preview == nil || projection == nil {
+		return
+	}
+	preview.AssetGenerationTasks = projection.Tasks
+	preview.AssetGenerationSummary = projection.Summary
+	preview.AssetGenerationQueue = projection.Queue
+	preview.AssetGenerationOverview = projection.Overview
+}
+
+func applyAssetGenerationProjectionToExport(export *ListingKitExport, projection *assetGenerationProjection) {
+	if export == nil || projection == nil {
+		return
+	}
+	export.AssetGenerationTasks = projection.Tasks
+	export.AssetGenerationSummary = projection.Summary
+	export.AssetGenerationQueue = projection.Queue
+	export.AssetGenerationOverview = projection.Overview
 }
 
 func withListingKitResultGeneration(result *ListingKitResult, tasks []assetgeneration.Task) *ListingKitResult {

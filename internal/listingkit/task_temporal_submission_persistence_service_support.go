@@ -7,6 +7,7 @@ import (
 	"time"
 
 	submissiondomain "task-processor/internal/listing/submission"
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -144,18 +145,32 @@ func (s *taskTemporalSubmissionPersistenceService) finishSheinTemporalRemoteRefr
 	if state == nil || state.completion.task == nil || state.completion.pkg == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	response := sheinpub.ConfirmedSubmissionResponse(state.completion.response, state.completion.action)
+	response := confirmedTemporalRemoteRefreshResponse(state.completion.response, state.completion.action)
 	if _, err := persistSheinRemoteCompletionSuccess(ctx, &state.completion, response, s.rememberSheinSubmitted, s.persistSuccessfulSheinSubmission); err != nil {
 		return nil, err
 	}
 
-	selection := sheinpub.ResolveSubmissionRemoteRefreshSelection(state.completion.pkg, state.completion.action, state.completion.requestID, time.Now())
+	remoteStatus := ""
+	if pkg, ok := sheinpub.SubmissionStatePackage(state.completion.pkg); ok && pkg.SubmissionState != nil {
+		remoteStatus = pkg.SubmissionState.RemoteStatus
+	}
 	return &SheinRefreshRemoteStatusResult{
 		TaskID:       state.completion.taskID,
 		Action:       state.completion.action,
 		RequestID:    state.completion.requestID,
-		RemoteStatus: selection.RemoteStatus,
+		RemoteStatus: remoteStatus,
 	}, nil
+}
+
+func confirmedTemporalRemoteRefreshResponse(response *sheinpub.SubmissionResponse, action string) *sheinpub.SubmissionResponse {
+	if response != nil {
+		return response
+	}
+	return &sheinpub.SubmissionResponse{
+		Code:    "0",
+		Success: true,
+		Message: sheinmarketpub.ConfirmedSubmissionMessage(action),
+	}
 }
 
 func (s *taskTemporalSubmissionPersistenceService) recordTemporalFailureState(ctx context.Context, in submissiondomain.FailurePersistenceInput[*ListingKitResult, *SheinPackage]) error {

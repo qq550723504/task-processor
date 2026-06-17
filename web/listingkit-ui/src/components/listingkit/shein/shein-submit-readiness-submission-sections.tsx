@@ -2,8 +2,10 @@ import { Button } from "@/components/ui/button";
 import { SubmitFailureGuidance } from "@/components/listingkit/shein/shein-submit-readiness-sections";
 import type {
   SheinImageUploadPreflight,
+  SheinSubmissionRecord,
   SheinSubmissionReport,
 } from "@/lib/types/listingkit";
+import { sheinSubmitPhaseLabel } from "@/lib/shein-studio/shein-submission-display";
 
 export function SubmitActionCard({
   canRunSubmitActions,
@@ -264,6 +266,17 @@ export function LatestSubmissionCard({
   }
 
   const submissionState = submission;
+  const latestRecord = latestSubmissionRecord(submissionState);
+  const failed =
+    latestSubmissionStatus === "failed" ||
+    latestRecord?.status === "failed" ||
+    Boolean(latestRecord?.error);
+  const recoverability =
+    typeof latestRecord?.recoverable === "boolean"
+      ? latestRecord.recoverable
+        ? "可由运营修复后重试"
+        : "需工程确认后处理"
+      : null;
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white/80 p-4">
       <div className="space-y-3">
@@ -297,6 +310,20 @@ export function LatestSubmissionCard({
               </p>
             </details>
           ) : null}
+          {failed ? (
+            <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
+              <div className="space-y-1 text-xs leading-5 text-rose-800">
+                {latestRecord?.phase ? (
+                  <p>失败阶段：{sheinSubmitPhaseLabel(latestRecord.phase)}</p>
+                ) : null}
+                {latestRecord?.error ? <p>失败原因：{latestRecord.error}</p> : null}
+                {recoverability ? <p>是否可重试：{recoverability}</p> : null}
+                {latestRecord?.next_action ? (
+                  <p>下一步：{latestRecord.next_action}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
         {latestValidationNotes.length ? (
           <details className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
@@ -318,4 +345,17 @@ export function LatestSubmissionCard({
       </div>
     </div>
   );
+}
+
+function latestSubmissionRecord(
+  submissionState?: SheinSubmissionReport | null,
+): SheinSubmissionRecord | undefined {
+  switch (submissionState?.last_action) {
+    case "save_draft":
+      return submissionState.save_draft;
+    case "publish":
+      return submissionState.publish;
+    default:
+      return undefined;
+  }
 }

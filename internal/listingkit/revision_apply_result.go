@@ -17,7 +17,8 @@ func buildRevisionApplyResult(req *ApplyRevisionRequest, listingResult *ListingK
 		changeCount = appliedChanges.ChangeCount
 	}
 	nextActions := buildRevisionSuccessNextActions(listingResult)
-	statusSummary := buildRevisionSuccessStatusSummary(listingResult)
+	readinessProjection := buildRevisionSuccessReadinessProjection(listingResult)
+	statusSummary := buildRevisionSuccessStatusSummaryFromProjection(listingResult, readinessProjection)
 	messages := buildRevisionSuccessMessages(revisionSuccessModeApply, headline, changeCount, "", statusSummary)
 	recommendedView := buildRevisionSuccessRecommendedView(revisionSuccessModeApply, listingResult, statusSummary)
 	applyFollowUp := buildRevisionSuccessFollowUpData(
@@ -26,6 +27,7 @@ func buildRevisionApplyResult(req *ApplyRevisionRequest, listingResult *ListingK
 		statusSummary,
 		messages,
 		nextActions,
+		readinessProjection,
 	)
 	var followUpChecklist *RevisionFollowUpChecklist
 	var followUpOverview *RevisionFollowUpOverview

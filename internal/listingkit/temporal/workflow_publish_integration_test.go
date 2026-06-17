@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	sdktestsuite "go.temporal.io/sdk/testsuite"
-
 	"task-processor/internal/listingkit"
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/productenrich"
@@ -58,8 +56,7 @@ func TestPublishWorkflowWithConcreteActivitiesPersistsStateAndBuildsPreview(t *t
 		t.Fatalf("new shein publish activity host: %v", err)
 	}
 
-	var suite sdktestsuite.WorkflowTestSuite
-	env := suite.NewTestWorkflowEnvironment()
+	env := newPublishWorkflowTestEnvironment()
 	env.RegisterWorkflow(PublishWorkflow)
 	if err := RegisterSubmitActivities(env, &SubmitActivities{Host: host}); err != nil {
 		t.Fatalf("register submit activities: %v", err)

@@ -165,18 +165,40 @@ func buildTaskSubmissionBaseWiring(s *service) taskSubmissionBaseWiring {
 }
 
 func buildTaskSubmissionBaseWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionBaseWiring {
-	if assembly.resolver == nil {
-		assembly = buildTaskSubmissionAssembly(s)
-	}
+	assembly = completeTaskSubmissionAssembly(s, assembly)
 	return taskSubmissionBaseWiring{
 		assembly: assembly,
 		support:  buildTaskSubmissionSupportWiringWithAssembly(s, assembly),
 	}
 }
 
+func completeTaskSubmissionAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionAssembly {
+	if assembly.preview.getTaskPreview == nil || assembly.preview.buildTaskPreview == nil {
+		assembly.preview = buildTaskPreviewAccessWiring(s)
+	}
+	if assembly.repository.repo == nil {
+		assembly.repository = buildTaskSubmissionRepositoryWiring(s)
+	}
+	if assembly.resolver == nil {
+		assembly.resolver = buildSubmitRuntimeContextResolver(s)
+	}
+	if assembly.bindings.resolver == nil {
+		assembly.bindings = buildTaskSubmissionBindings(s, assembly.resolver)
+	}
+	return assembly
+}
+
 func buildTaskSubmissionSupportWiring(s *service) taskSubmissionSupportWiring {
 	repository := buildTaskSubmissionRepositoryWiring(s)
 	resolver := buildSubmitRuntimeContextResolver(s)
+	return buildTaskSubmissionSupportWiringWithDependencies(s, repository, resolver)
+}
+
+func buildTaskSubmissionSupportWiringWithDependencies(
+	s *service,
+	repository taskSubmissionRepositoryWiring,
+	resolver *submitRuntimeContextResolver,
+) taskSubmissionSupportWiring {
 	wiring := taskSubmissionSupportWiring{
 		repo:                     repository.repo,
 		sheinProductAPIBuilder:   resolveSubmissionProductAPIBuilder(s),
@@ -194,15 +216,15 @@ func buildTaskSubmissionSupportWiring(s *service) taskSubmissionSupportWiring {
 }
 
 func buildTaskSubmissionSupportWiringWithAssembly(s *service, assembly taskSubmissionAssembly) taskSubmissionSupportWiring {
-	wiring := buildTaskSubmissionSupportWiring(s)
-	if assembly.resolver != nil {
-		wiring.resolveSheinStoreID = assembly.resolver.resolveStoreID
-		wiring.resolveSubmitSettings = assembly.resolver.resolveSubmitSettings
+	repository := assembly.repository
+	if repository.repo == nil {
+		repository = buildTaskSubmissionRepositoryWiring(s)
 	}
-	if assembly.repository.repo != nil {
-		wiring.repo = assembly.repository.repo
+	resolver := assembly.resolver
+	if resolver == nil {
+		resolver = buildSubmitRuntimeContextResolver(s)
 	}
-	return wiring
+	return buildTaskSubmissionSupportWiringWithDependencies(s, repository, resolver)
 }
 
 func buildTaskSubmissionCoreCollaboratorWiring(s *service) taskSubmissionCoreCollaboratorWiring {
