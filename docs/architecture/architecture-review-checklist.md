@@ -42,6 +42,11 @@ At minimum, structural review should consider representative guards such as:
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
+- `TestCmdContainsOnlyOfficialEntrypoints`
+- `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
+- `TestHackContainsOnlyManagedSupportAreas`
+- `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
+- `TestTrackedLocalArtifactsStayOutOfTools`
 - `TestProductImageExternalClientImportsStayAllowlisted`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestListingPreviewPackageStaysPlatformNeutral`
