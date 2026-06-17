@@ -972,9 +972,13 @@ func TestTaskRequeueServiceUsesSubmissionDomainRunner(t *testing.T) {
 	serviceContent := string(serviceSrc)
 
 	for _, needle := range []string{
+		`type taskRequeueRunnerWiring struct {`,
+		`func buildTaskRequeueRunnerWiring(svc *taskRequeueService) taskRequeueRunnerWiring {`,
+		`wiring := buildTaskRequeueRunnerWiring(svc)`,
 		`submissiondomain.NewRequeueService(submissiondomain.RequeueServiceConfig{`,
-		`return &submissiondomain.RequeueTask{ID: task.ID, Status: string(task.Status)}, nil`,
-		`return submissiondomain.RetryEnqueueSubmit(taskID, taskRequeueMaxWait, submit)`,
+		`LoadTask:          wiring.loadTask,`,
+		`CurrentSubmitter:  wiring.currentSubmitter,`,
+		`SubmitTask:        wiring.submitTask,`,
 		`result, err := s.runner.RequeueTasks(ctx, &submissiondomain.RequeueRequest{`,
 		`return adaptSubmissionDomainRequeueResult(result), nil`,
 	} {
