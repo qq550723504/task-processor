@@ -86,6 +86,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"platform-boundary-strategy.md",
 		"historical-platform-migration-inventory.md",
 		"external-client-boundary-inventory.md",
+		"listing-preview-boundaries.md",
 		"local interface",
 		"concrete external client",
 		"boundary exception",
@@ -94,6 +95,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestBusinessDomainsDoNotImportAppHTTPAPI",
 		"TestProductImageExternalClientImportsStayAllowlisted",
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
+		"TestListingPreviewPackageStaysPlatformNeutral",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {

@@ -21,13 +21,16 @@ Before merging a structural or feature PR, verify:
    keeps SDK types out of domain-facing contracts.
 6. New platform-specific rules do not grow the root `internal/listingkit`
    facade when a marketplace, publishing, or product module owns the behavior.
-7. New remote-service behavior follows
+7. Preview extraction follows `docs/architecture/listing-preview-boundaries.md`:
+   platform-neutral preview behavior belongs in `internal/listing/preview`, not
+   in marketplace-specific implementation packages.
+8. New remote-service behavior follows
    `docs/architecture/external-client-boundary-inventory.md`: prefer a local
    interface and avoid leaking a concrete external client adapter into
    domain-facing contracts.
-8. Any boundary exception is documented with a narrow scope and a follow-up
+9. Any boundary exception is documented with a narrow scope and a follow-up
    cleanup path.
-9. Relevant import-boundary and architecture tests were run.
+10. Relevant import-boundary and architecture tests were run.
 
 ## Guard Baseline
 
@@ -38,6 +41,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
 - `TestProductImageExternalClientImportsStayAllowlisted`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
+- `TestListingPreviewPackageStaysPlatformNeutral`
 
 If a PR changes the intended boundary, update the owning architecture document
 and its document test in the same change as the code exception.
@@ -54,6 +58,7 @@ Use these documents as the stable source of truth:
 - `docs/architecture/historical-platform-migration-inventory.md`
 - `docs/architecture/external-client-boundary-inventory.md`
 - `docs/architecture/compatibility-retirement.md`
+- `docs/architecture/listing-preview-boundaries.md`
 - `docs/development/repository-structure.md`
 
 ## Working Rule
