@@ -715,6 +715,24 @@ func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 	}
 }
 
+func TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages(t *testing.T) {
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "cmd"), []string{
+		"task-processor/internal/amazon",
+		"task-processor/internal/amazonlisting",
+		"task-processor/internal/asset",
+		"task-processor/internal/catalog",
+		"task-processor/internal/infra",
+		"task-processor/internal/listingkit",
+		"task-processor/internal/marketplace",
+		"task-processor/internal/productenrich",
+		"task-processor/internal/productimage",
+		"task-processor/internal/publishing",
+		"task-processor/internal/shein",
+		"task-processor/internal/temu",
+		"task-processor/internal/workspace",
+	}, nil)
+}
+
 func TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "app", "runtime")) + string(os.PathSeparator):                  {},
