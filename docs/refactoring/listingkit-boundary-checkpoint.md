@@ -337,6 +337,7 @@ Completed submission slices:
 - ListingKit read projection header assembly now delegates platform-card to preview-domain DTO mapping to a dedicated adapter helper, keeping header metadata assembly separate from card field copy rules.
 - ListingKit preview result projection now carries catalog, asset, render-preview, and generation attachment fields through one nested bundle, so the preview adapter no longer keeps those attachment fields as parallel top-level projection state.
 - ListingKit export result projection now also carries catalog, asset, render-preview, and generation attachment fields through one nested bundle, keeping export metadata separate from attachment field copy rules.
+- ListingKit task-generation retry empty-selection response shaping now lives in the retry projection seam, so the retry service entrypoint no longer builds generation task pages directly for that branch.
 
 Completed sourcing slices:
 
