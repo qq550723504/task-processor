@@ -40,6 +40,10 @@ At minimum, structural review should consider representative guards such as:
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
+- `TestListingKitSubdomainsDoNotImportRootFacade`
+- `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`
+- `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly`
+- `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`

@@ -258,6 +258,10 @@ guards include:
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
+- `TestListingKitSubdomainsDoNotImportRootFacade`
+- `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`
+- `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly`
+- `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
