@@ -80,14 +80,17 @@
 
 ### 4. 加强边界约束测试
 
-当前已经有一批 import boundary 测试，但下一步应继续加强：
+当前已经有一批 import boundary 和结构测试。已落地的核心护栏不要再当成开放待办，而应该作为后续 review 的基线。
 
-- 禁止业务域重新依赖 `internal/app/httpapi`
-- 禁止新代码重新 import `internal/app/processor`
-- 禁止新代码重新 import `internal/app/state`
-- 禁止 route / module builder 回流到中心化装配文件
+Current guard coverage:
 
-重点不是增加很多测试，而是给最容易回退的边界加“护栏”。
+- `TestBusinessDomainsDoNotImportAppHTTPAPI` 禁止业务域重新依赖 `internal/app/httpapi`
+- `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer` 禁止新代码重新 import `internal/app/processor`
+- `TestInternalPackagesDoNotImportAppStateCompatibilityLayer` 禁止新代码重新 import `internal/app/state`
+- `TestAppHTTPAPIModuleBuildersStayAllowlisted` 禁止 module builder 回流到中心化装配文件
+- `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted` 禁止 route descriptor helper 回流到中心化装配文件
+
+后续重点不是增加很多测试，而是给还没有被守住、且最容易回退的边界补“护栏”。新增护栏前先确认现有测试没有已经覆盖同一个风险。
 
 ### 5. 收口长期有效的装配文档
 

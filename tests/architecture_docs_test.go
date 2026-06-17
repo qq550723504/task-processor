@@ -68,6 +68,28 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 	}
 }
 
+func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"Current guard coverage",
+		"TestBusinessDomainsDoNotImportAppHTTPAPI",
+		"TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer",
+		"TestInternalPackagesDoNotImportAppStateCompatibilityLayer",
+		"TestAppHTTPAPIModuleBuildersStayAllowlisted",
+		"TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so completed boundary guards do not drift back into open-ended priorities", path, phrase)
+		}
+	}
+}
+
 func TestPlatformBoundaryStrategyDefinesConvergenceRoles(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "platform-boundary-strategy.md")
 	content, err := os.ReadFile(path)
@@ -137,6 +159,32 @@ func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
 			t.Errorf("%s must mention %q so stable architecture rules stay discoverable", path, phrase)
+		}
+	}
+}
+
+func TestAppAssemblyBoundaryDocumentDefinesStableAssemblyVocabulary(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "app-assembly-boundaries.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"# App Assembly Boundaries",
+		"Assembly Vocabulary",
+		"build / initialize",
+		"register",
+		"start",
+		"coordinate",
+		"`bootstrap` builds and registers",
+		"`runner` starts and supervises",
+		"`consumer` assembles and coordinates",
+		"Review Questions",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so app-layer assembly changes keep the stable bootstrap/runner/consumer vocabulary", path, phrase)
 		}
 	}
 }
