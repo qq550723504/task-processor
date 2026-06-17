@@ -82,6 +82,7 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 		"TestInternalPackagesDoNotImportAppStateCompatibilityLayer",
 		"TestAppHTTPAPIModuleBuildersStayAllowlisted",
 		"TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted",
+		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
