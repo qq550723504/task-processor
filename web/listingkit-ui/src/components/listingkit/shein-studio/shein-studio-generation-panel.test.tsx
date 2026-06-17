@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
-import type { SDSGroupedPromptHistoryEntry } from "@/lib/types/shein-studio";
+import type {
+  SDSGroupedPromptHistoryEntry,
+  SheinStudioBatchStatusGroups,
+} from "@/lib/types/shein-studio";
 
 vi.mock("@/components/listingkit/shein-studio/shein-created-tasks-list", () => ({
   SheinCreatedTasksList: () => <div>created tasks</div>,
@@ -42,6 +45,7 @@ function renderPanel(options?: {
   styleCount?: string;
   storeRequiredMessage?: string;
   subscriptionBlockedMessage?: string;
+  statusGroups?: SheinStudioBatchStatusGroups;
 }) {
   return render(
     <SheinStudioGenerationPanel
@@ -77,6 +81,7 @@ function renderPanel(options?: {
       selectedSdsImages={[]}
       selectedStyleCount={0}
       selectionReady={true}
+      statusGroups={options?.statusGroups}
       storeRequiredMessage={options?.storeRequiredMessage ?? ""}
       subscriptionBlockedMessage={options?.subscriptionBlockedMessage ?? ""}
       variationIntensity="medium"
@@ -362,6 +367,32 @@ describe("SheinStudioGenerationPanel", () => {
     expect(screen.getByText("先回到上方选择批次店铺，再继续生成。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "生成款式图" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "生成 SHEIN 资料" })).toBeDisabled();
+  });
+
+  it("summarizes itemized batch status groups for mixed batch results", () => {
+    renderPanel({
+      statusGroups: {
+        items: [
+          { key: "submittable", label: "可提交", count: 2, ids: ["item-1", "item-2"] },
+          { key: "needs_fix", label: "需修复", count: 1, ids: ["item-3"] },
+          { key: "processing", label: "处理中", count: 1, ids: ["item-4"] },
+          { key: "generation_failed", label: "生成失败", count: 1, ids: ["item-5"] },
+          { key: "submission_failed", label: "提交失败", count: 1, ids: ["design-6"] },
+          { key: "draft_saved", label: "已保存草稿", count: 3, ids: ["task-1", "task-2", "task-3"] },
+          { key: "published", label: "已发布", count: 1, ids: ["task-4"] },
+        ],
+        byKey: {},
+      },
+    });
+
+    expect(screen.getByText("批量状态分组")).toBeInTheDocument();
+    expect(screen.getByText("可提交")).toBeInTheDocument();
+    expect(screen.getByText("2 项")).toBeInTheDocument();
+    expect(screen.getByText("需修复")).toBeInTheDocument();
+    expect(screen.getAllByText("1 项")).toHaveLength(5);
+    expect(screen.getByText("已保存草稿")).toBeInTheDocument();
+    expect(screen.getByText("3 项")).toBeInTheDocument();
+    expect(screen.getByText("已发布")).toBeInTheDocument();
   });
 
   it("locks only artwork-generation fields while a style generation is in progress", () => {

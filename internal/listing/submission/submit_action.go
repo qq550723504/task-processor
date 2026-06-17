@@ -22,6 +22,16 @@ func IsSupportedSubmitAction(action string) bool {
 	}
 }
 
+func PreferredSubmitAction(candidates ...string) string {
+	for _, candidate := range candidates {
+		action := NormalizeSubmitAction(candidate, "")
+		if IsSupportedSubmitAction(action) {
+			return action
+		}
+	}
+	return ""
+}
+
 func UnsupportedSubmitActionError(action string) error {
 	return fmt.Errorf("unsupported submit action: %s", action)
 }

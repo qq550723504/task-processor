@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	appfetcher "task-processor/internal/app/crawler/fetcher"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"

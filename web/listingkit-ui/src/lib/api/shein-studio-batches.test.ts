@@ -85,6 +85,21 @@ describe("parseSheinStudioBatchDetailResponse", () => {
             ],
           },
         ],
+        status_groups: {
+          items: [
+            { key: "submittable", label: "可提交", count: 1, ids: ["item-1"] },
+            { key: "submission_failed", label: "提交失败", count: 1, ids: ["design-2"] },
+          ],
+          by_key: {
+            submittable: { key: "submittable", label: "可提交", count: 1, ids: ["item-1"] },
+            submission_failed: {
+              key: "submission_failed",
+              label: "提交失败",
+              count: 1,
+              ids: ["design-2"],
+            },
+          },
+        },
       }),
     ).toEqual({
       batch: {
@@ -161,6 +176,21 @@ describe("parseSheinStudioBatchDetailResponse", () => {
       },
       createdTasks: [],
       failedTasks: [],
+      statusGroups: {
+        items: [
+          { key: "submittable", label: "可提交", count: 1, ids: ["item-1"] },
+          { key: "submission_failed", label: "提交失败", count: 1, ids: ["design-2"] },
+        ],
+        byKey: {
+          submittable: { key: "submittable", label: "可提交", count: 1, ids: ["item-1"] },
+          submission_failed: {
+            key: "submission_failed",
+            label: "提交失败",
+            count: 1,
+            ids: ["design-2"],
+          },
+        },
+      },
       items: [
         {
           item: {

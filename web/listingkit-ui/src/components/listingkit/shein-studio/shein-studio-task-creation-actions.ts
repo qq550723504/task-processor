@@ -162,15 +162,17 @@ export function useSheinStudioTaskCreationAction({
         created = result.createdTasks;
         batchTaskFailures = result.failedTasks ?? [];
         itemizedBatchContext.onCreated(result);
-        setCreatingMessage("已开始在后台创建 SHEIN 资料，可离开当前页面，结果会自动刷新。");
-        setCreatingWarning("");
-        toast.info(
-          "已开始后台创建 SHEIN 资料",
-          "可离开当前页面，结果会自动刷新。",
-          7000,
-        );
         keepCreatingState = result.batch.status === "tasks_creating";
-        return;
+        if (keepCreatingState) {
+          setCreatingMessage("已开始在后台创建 SHEIN 资料，可离开当前页面，结果会自动刷新。");
+          setCreatingWarning("");
+          toast.info(
+            "已开始后台创建 SHEIN 资料",
+            "可离开当前页面，结果会自动刷新。",
+            7000,
+          );
+          return;
+        }
       } else if (groupedSelections.length > 0) {
         const result = await createGroupedSheinReviewTasks({
           prompt,

@@ -124,6 +124,8 @@ func TestServiceGetStudioBatchDetailProjectsItemizedGraph(t *testing.T) {
 	if detail.Items[0].Designs[0].ID != "design-1" || detail.Items[0].Designs[1].ID != "design-2" {
 		t.Fatalf("detail.Items[0].Designs = %+v, want sorted item-1 designs", detail.Items[0].Designs)
 	}
+	assertStudioBatchStatusGroup(t, detail.StatusGroups, "submittable", 1, "item-1")
+	assertStudioBatchStatusGroup(t, detail.StatusGroups, "processing", 1, "item-2")
 }
 
 func TestTaskStudioBatchServiceUsesListingStudioDetailRunner(t *testing.T) {

@@ -108,3 +108,37 @@ func TestAmazonCrawlRequestPlannerResolveZipcodePreservesExplicit(t *testing.T) 
 		t.Fatalf("ResolveZipcode() = %q, want explicit zipcode", got)
 	}
 }
+
+func TestAmazonDefaultZipcodePolicyKeepsSourceDefaults(t *testing.T) {
+	policy := AmazonDefaultZipcodePolicy{}
+
+	if policy.ShouldUseDefaultZipcode("us") {
+		t.Fatal("ShouldUseDefaultZipcode(us) = true, want false")
+	}
+	if !policy.ShouldUseDefaultZipcode(" UK ") {
+		t.Fatal("ShouldUseDefaultZipcode(UK) = false, want true")
+	}
+	if got := policy.DefaultZipcode("UK"); got != "SW1A 1AA" {
+		t.Fatalf("DefaultZipcode(UK) = %q, want SW1A 1AA", got)
+	}
+	if got := policy.DefaultZipcode("unknown"); got != "94107" {
+		t.Fatalf("DefaultZipcode(unknown) = %q, want fallback 94107", got)
+	}
+}
+
+func TestAmazonDefaultDomainResolverKeepsSourceURLRules(t *testing.T) {
+	resolver := AmazonDefaultDomainResolver{}
+
+	if got := resolver.GetAmazonDomainByRegion(" UK "); got != "amazon.co.uk" {
+		t.Fatalf("GetAmazonDomainByRegion(UK) = %q, want amazon.co.uk", got)
+	}
+	if got := resolver.GetAmazonDomainByRegion("unknown"); got != "amazon.com" {
+		t.Fatalf("GetAmazonDomainByRegion(unknown) = %q, want amazon.com", got)
+	}
+	if got := resolver.BuildAmazonProductURL("UK", "B001"); got != "https://www.amazon.co.uk/dp/B001?th=1&psc=1&language=en_GB" {
+		t.Fatalf("BuildAmazonProductURL(UK, B001) = %q, want UK URL with language", got)
+	}
+	if got := resolver.BuildAmazonProductURL("unknown", "B002"); got != "https://www.amazon.com/dp/B002?th=1&psc=1&language=en_US" {
+		t.Fatalf("BuildAmazonProductURL(unknown, B002) = %q, want US fallback URL", got)
+	}
+}

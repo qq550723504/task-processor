@@ -12,6 +12,7 @@ import (
 	sdktemporal "go.temporal.io/sdk/temporal"
 
 	sheintestsuite "go.temporal.io/sdk/testsuite"
+	"go.temporal.io/sdk/worker"
 	"task-processor/internal/listingkit"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -19,8 +20,7 @@ import (
 func TestPublishWorkflowRunsExpectedPhaseOrder(t *testing.T) {
 	t.Parallel()
 
-	var suite sheintestsuite.WorkflowTestSuite
-	env := suite.NewTestWorkflowEnvironment()
+	env := newPublishWorkflowTestEnvironment()
 	registerPublishWorkflowActivityNames(env)
 
 	var phases []string
@@ -84,8 +84,7 @@ func TestPublishWorkflowRunsExpectedPhaseOrder(t *testing.T) {
 func TestPublishWorkflowPersistsFailureOnPreValidateError(t *testing.T) {
 	t.Parallel()
 
-	var suite sheintestsuite.WorkflowTestSuite
-	env := suite.NewTestWorkflowEnvironment()
+	env := newPublishWorkflowTestEnvironment()
 	registerPublishWorkflowActivityNames(env)
 
 	prepared := &listingkit.SheinPreparedSubmitPayload{
@@ -128,8 +127,7 @@ func TestPublishWorkflowPersistsFailureOnPreValidateError(t *testing.T) {
 func TestPublishWorkflowPersistsFailureDetailsOnSubmitRemoteError(t *testing.T) {
 	t.Parallel()
 
-	var suite sheintestsuite.WorkflowTestSuite
-	env := suite.NewTestWorkflowEnvironment()
+	env := newPublishWorkflowTestEnvironment()
 	registerPublishWorkflowActivityNames(env)
 
 	snapshot := &sheinpub.SubmitSnapshot{SupplierCode: "SUP-1"}
@@ -189,8 +187,7 @@ func TestPublishWorkflowPersistsFailureDetailsOnSubmitRemoteError(t *testing.T) 
 func TestPublishWorkflowQueryReportsCurrentPhaseWhileRunning(t *testing.T) {
 	t.Parallel()
 
-	var suite sheintestsuite.WorkflowTestSuite
-	env := suite.NewTestWorkflowEnvironment()
+	env := newPublishWorkflowTestEnvironment()
 	registerPublishWorkflowActivityNames(env)
 
 	prepared := &listingkit.SheinPreparedSubmitPayload{
@@ -240,8 +237,7 @@ func TestPublishWorkflowQueryReportsCurrentPhaseWhileRunning(t *testing.T) {
 func TestPublishWorkflowReturnsPersistFailureErrorWhenPersistenceFails(t *testing.T) {
 	t.Parallel()
 
-	var suite sheintestsuite.WorkflowTestSuite
-	env := suite.NewTestWorkflowEnvironment()
+	env := newPublishWorkflowTestEnvironment()
 	registerPublishWorkflowActivityNames(env)
 
 	prepared := &listingkit.SheinPreparedSubmitPayload{
@@ -291,6 +287,13 @@ func extractPersistFailureInput(t *testing.T, args mock.Arguments) listingkit.Sh
 
 type activityRegistrar interface {
 	RegisterActivityWithOptions(a interface{}, options sdkactivity.RegisterOptions)
+}
+
+func newPublishWorkflowTestEnvironment() *sheintestsuite.TestWorkflowEnvironment {
+	var suite sheintestsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	env.SetWorkerOptions(worker.Options{DeadlockDetectionTimeout: 5 * time.Second})
+	return env
 }
 
 func registerPublishWorkflowActivityNames(env activityRegistrar) {

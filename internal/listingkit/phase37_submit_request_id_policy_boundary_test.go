@@ -30,12 +30,11 @@ func TestSubmitRequestIDPolicyBoundary(t *testing.T) {
 	}
 	sharedContent := string(sharedSrc)
 
-	for _, needle := range []string{
-		"return listingsubmission.ResolveSubmitRequestID(req.IdempotencyKey, req.RequestID)",
-		"return listingsubmission.DeriveWorkflowRequestID(taskID, action, requestedAt)",
-	} {
-		if !strings.Contains(sharedContent, needle) {
-			t.Fatalf("service_submit_shared.go should contain %q", needle)
-		}
+	needle := "return listingsubmission.ResolveSubmitRequestID(req.IdempotencyKey, req.RequestID)"
+	if !strings.Contains(sharedContent, needle) {
+		t.Fatalf("service_submit_shared.go should contain DTO adapter delegation %q", needle)
+	}
+	if strings.Contains(sharedContent, "func derivedSheinSubmitRequestID(") {
+		t.Fatal("service_submit_shared.go should not keep an unused workflow request-id wrapper; call internal/listing/submission directly")
 	}
 }

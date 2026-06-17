@@ -2,7 +2,9 @@ package shein
 
 import (
 	"errors"
+	"os"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,14 +15,16 @@ import (
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
-func TestSubmissionResponseAccepted(t *testing.T) {
+func TestSubmissionRemoteDoesNotKeepActionlessResponseAcceptedWrapper(t *testing.T) {
 	t.Parallel()
 
-	if !SubmissionResponseAccepted(&SubmissionResponse{Success: true}) {
-		t.Fatal("SubmissionResponseAccepted(success) = false, want true")
+	source, err := os.ReadFile("submission_remote.go")
+	if err != nil {
+		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
 	}
-	if SubmissionResponseAccepted(nil) {
-		t.Fatal("SubmissionResponseAccepted(nil) = true, want false")
+	content := string(source)
+	if strings.Contains(content, "func SubmissionResponseAccepted(") {
+		t.Fatal("submission_remote.go should not keep an actionless response-accepted wrapper")
 	}
 }
 
@@ -35,6 +39,22 @@ func TestSubmissionResponseAcceptedForAction(t *testing.T) {
 	}
 	if SubmissionResponseAcceptedForAction("publish", &SubmissionResponse{Code: "0"}) {
 		t.Fatal("SubmissionResponseAcceptedForAction(publish code=0) = true, want false")
+	}
+}
+
+func TestSubmissionResponseAcceptedForActionDelegatesToMarketplacePolicy(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("submission_remote.go")
+	if err != nil {
+		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
+	}
+	content := string(source)
+	if !strings.Contains(content, "sheinmarketpub.ResponseAcceptedForAction(action, result.Success, result.Code)") {
+		t.Fatal("SubmissionResponseAcceptedForAction should delegate action-aware response interpretation to marketplace publishing policy")
+	}
+	if strings.Contains(content, "SaveDraftSucceeded(action") {
+		t.Fatal("submission_remote.go should not own save-draft response acceptance policy")
 	}
 }
 
@@ -450,12 +470,27 @@ func TestSubmissionRefreshMutationMatchHelpers(t *testing.T) {
 	}
 }
 
-func TestSubmissionRecordResult(t *testing.T) {
+func TestSubmissionRemoteDoesNotKeepSubmissionRecordResultGetter(t *testing.T) {
 	t.Parallel()
 
-	resp := &SubmissionResponse{Success: true}
-	if got := SubmissionRecordResult(&SubmissionRecord{Result: resp}); got != resp {
-		t.Fatalf("SubmissionRecordResult() = %+v, want original response", got)
+	source, err := os.ReadFile("submission_remote.go")
+	if err != nil {
+		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
+	}
+	if strings.Contains(string(source), "func SubmissionRecordResult(") {
+		t.Fatal("submission_remote.go should not keep a local SubmissionRecordResult getter")
+	}
+}
+
+func TestSubmissionRemoteDoesNotKeepSubmissionPhaseDetailWrapper(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("submission_remote.go")
+	if err != nil {
+		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
+	}
+	if strings.Contains(string(source), "func submissionPhaseDetail(") {
+		t.Fatal("submission_remote.go should use marketplace publishing phase detail policy directly")
 	}
 }
 
@@ -656,17 +691,6 @@ func TestBuildSubmissionRefreshLookupInputs(t *testing.T) {
 	}
 	if inputs.FallbackMessage != "" {
 		t.Fatalf("BuildSubmissionRefreshLookupInputs().FallbackMessage = %q", inputs.FallbackMessage)
-	}
-}
-
-func TestResolveSubmissionRefreshFallbackMessage(t *testing.T) {
-	t.Parallel()
-
-	if got := ResolveSubmissionRefreshFallbackMessage("publish", true, ""); got != "SHEIN accepted publish request; remote record not yet visible" {
-		t.Fatalf("ResolveSubmissionRefreshFallbackMessage(publish, true, empty) = %q", got)
-	}
-	if got := ResolveSubmissionRefreshFallbackMessage("save_draft", false, "custom fallback"); got != "custom fallback" {
-		t.Fatalf("ResolveSubmissionRefreshFallbackMessage(save_draft, false, custom) = %q", got)
 	}
 }
 
@@ -883,6 +907,22 @@ func TestResolveSubmissionConfirmRemoteUpdateUsesRecordErrorAsPendingMessage(t *
 	}
 	if update.Message != "remote query failed" {
 		t.Fatalf("Message = %q, want remote query failed", update.Message)
+	}
+}
+
+func TestResolveSubmissionConfirmRemoteUpdateDelegatesRemoteResolutionSPUName(t *testing.T) {
+	t.Parallel()
+
+	source, err := os.ReadFile("submission_remote.go")
+	if err != nil {
+		t.Fatalf("ReadFile(submission_remote.go) error = %v", err)
+	}
+	content := string(source)
+	if strings.Contains(content, "func RemoteResolutionSPUName(") {
+		t.Fatal("submission_remote.go should not keep a local RemoteResolutionSPUName wrapper")
+	}
+	if !strings.Contains(content, "sheinmarketpub.ResolveRemoteResolutionSPUName(resolution.OnWayDocument, resolution.Record, resolution.SPUName)") {
+		t.Fatal("ResolveSubmissionConfirmRemoteUpdate should delegate remote-resolution SPU precedence directly to marketplace publishing policy")
 	}
 }
 

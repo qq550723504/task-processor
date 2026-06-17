@@ -13,10 +13,107 @@ type AmazonDomainResolver interface {
 	BuildAmazonProductURL(region, asin string) string
 }
 
+// AmazonDefaultDomainResolver preserves Amazon source domain and language URL rules.
+type AmazonDefaultDomainResolver struct{}
+
+var amazonDefaultDomains = map[string]string{
+	"us": "amazon.com",
+	"uk": "amazon.co.uk",
+	"de": "amazon.de",
+	"fr": "amazon.fr",
+	"it": "amazon.it",
+	"es": "amazon.es",
+	"ca": "amazon.ca",
+	"jp": "amazon.co.jp",
+	"au": "amazon.com.au",
+	"mx": "amazon.com.mx",
+	"br": "amazon.com.br",
+	"in": "amazon.in",
+	"ae": "amazon.ae",
+	"sa": "amazon.sa",
+}
+
+var amazonDefaultLanguages = map[string]string{
+	"us": "en_US",
+	"uk": "en_GB",
+	"de": "de_DE",
+	"fr": "fr_FR",
+	"it": "it_IT",
+	"es": "es_ES",
+	"ca": "en_CA",
+	"jp": "ja_JP",
+	"au": "en_AU",
+	"mx": "es_MX",
+	"br": "pt_BR",
+	"in": "en_IN",
+	"ae": "en_AE",
+	"sa": "en_AE",
+}
+
+// GetAmazonDomainByRegion returns the Amazon domain for a source region.
+func (AmazonDefaultDomainResolver) GetAmazonDomainByRegion(region string) string {
+	if domain := strings.TrimSpace(amazonDefaultDomains[normalizeAmazonRegion(region)]); domain != "" {
+		return domain
+	}
+	return amazonDefaultDomains["us"]
+}
+
+// BuildAmazonProductURL builds the canonical Amazon product URL for crawler requests.
+func (r AmazonDefaultDomainResolver) BuildAmazonProductURL(region, asin string) string {
+	domain := r.GetAmazonDomainByRegion(region)
+	language := r.languageByRegion(region)
+	return "https://www." + domain + "/dp/" + asin + "?th=1&psc=1&language=" + language
+}
+
+func (AmazonDefaultDomainResolver) languageByRegion(region string) string {
+	if language := strings.TrimSpace(amazonDefaultLanguages[normalizeAmazonRegion(region)]); language != "" {
+		return language
+	}
+	return amazonDefaultLanguages["us"]
+}
+
 // AmazonZipcodePolicy owns source-specific default zipcode behavior.
 type AmazonZipcodePolicy interface {
 	ShouldUseDefaultZipcode(region string) bool
 	DefaultZipcode(region string) string
+}
+
+// AmazonDefaultZipcodePolicy preserves source-level default zipcode behavior.
+type AmazonDefaultZipcodePolicy struct{}
+
+var amazonDefaultZipcodes = map[string]string{
+	"us": "94107",
+	"uk": "SW1A 1AA",
+	"de": "10115",
+	"fr": "75001",
+	"jp": "153-0064",
+	"ca": "M5H 2N2",
+	"it": "00118",
+	"es": "28001",
+	"in": "110001",
+	"mx": "11000",
+	"br": "01310-100",
+	"au": "2000",
+	"ae": "00000",
+	"sa": "11564",
+}
+
+// ShouldUseDefaultZipcode reports whether a region should receive a source default.
+func (AmazonDefaultZipcodePolicy) ShouldUseDefaultZipcode(region string) bool {
+	region = normalizeAmazonRegion(region)
+	return region != "" && region != "us"
+}
+
+// DefaultZipcode returns the source default zipcode for a region.
+func (AmazonDefaultZipcodePolicy) DefaultZipcode(region string) string {
+	if zipcode := strings.TrimSpace(amazonDefaultZipcodes[normalizeAmazonRegion(region)]); zipcode != "" {
+		return zipcode
+	}
+	return amazonDefaultZipcodes["us"]
+}
+
+func normalizeAmazonRegion(region string) string {
+	return strings.ToLower(strings.TrimSpace(region))
 }
 
 // AmazonCrawlRequestPlanner converts product fetch requests into raw Amazon

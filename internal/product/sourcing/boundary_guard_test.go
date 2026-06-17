@@ -28,6 +28,19 @@ func TestProductSourcingDoesNotDependOnListingKitMarketplaceOrRuntime(t *testing
 	assertProductSourcingDoesNotImportPrefixes(t, productSourcingPackageDir(t), forbiddenPrefixes)
 }
 
+func TestProductSourcingDoesNotDependOnLegacyCrawlerRuntime(t *testing.T) {
+	t.Parallel()
+
+	forbiddenPrefixes := []string{
+		"task-processor/internal/crawler/amazon",
+		"task-processor/internal/crawler/alibaba1688",
+	}
+	allowedImports := map[string]struct{}{
+		"task-processor/internal/crawler/alibaba1688/model": {},
+	}
+	assertProductSourcingDoesNotImportPrefixesExcept(t, productSourcingPackageDir(t), forbiddenPrefixes, allowedImports)
+}
+
 func productSourcingPackageDir(t *testing.T) string {
 	t.Helper()
 
@@ -39,6 +52,11 @@ func productSourcingPackageDir(t *testing.T) string {
 }
 
 func assertProductSourcingDoesNotImportPrefixes(t *testing.T, dir string, forbiddenPrefixes []string) {
+	t.Helper()
+	assertProductSourcingDoesNotImportPrefixesExcept(t, dir, forbiddenPrefixes, nil)
+}
+
+func assertProductSourcingDoesNotImportPrefixesExcept(t *testing.T, dir string, forbiddenPrefixes []string, allowedImports map[string]struct{}) {
 	t.Helper()
 
 	entries, err := os.ReadDir(dir)
@@ -59,6 +77,9 @@ func assertProductSourcingDoesNotImportPrefixes(t *testing.T, dir string, forbid
 			importPath, err := strconv.Unquote(imported.Path.Value)
 			if err != nil {
 				t.Fatalf("unquote import %s: %v", imported.Path.Value, err)
+			}
+			if _, allowed := allowedImports[importPath]; allowed {
+				continue
 			}
 			for _, forbidden := range forbiddenPrefixes {
 				if strings.HasPrefix(importPath, forbidden) {

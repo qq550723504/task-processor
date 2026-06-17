@@ -32,6 +32,27 @@ describe("shein workspace actions", () => {
     expect(canSelectSheinReadinessItem({ key: "manual_notes" })).toBe(false);
   });
 
+  it("uses readiness taxonomy repair targets before legacy blocker aliases", () => {
+    expect(
+      canSelectSheinReadinessItem({
+        key: "remote_gate",
+        taxonomy: {
+          blocker_key: "image_upload_failed",
+          domain: "image",
+          repair_target: "image_review",
+          repair_route: "workspace.images",
+          recoverable: true,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      normalizeSheinWorkspaceActionKey("remote_gate", "image_review"),
+    ).toBe("images");
+    expect(
+      normalizeSheinWorkspaceActionKey("remote_gate", "sku_review"),
+    ).toBe("variants");
+  });
+
   it("maps normalized keys to concrete workspace section ids", () => {
     expect(sheinWorkspaceTargetIdForKey("images")).toBe("shein-preview-images");
     expect(sheinWorkspaceTargetIdForKey("pod_platform")).toBe("shein-preview-images");

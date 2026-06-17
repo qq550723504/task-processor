@@ -3,6 +3,8 @@ package product
 import (
 	"context"
 	"errors"
+	"os"
+	"strings"
 	"testing"
 
 	"task-processor/internal/core/config"
@@ -65,6 +67,52 @@ func (s *selectiveProductFetcherCrawlSource) ProcessWithContext(_ context.Contex
 }
 
 func (s *selectiveProductFetcherCrawlSource) Shutdown() {}
+
+func TestProductFetcherUsesSourcingDefaultZipcodePolicy(t *testing.T) {
+	source, err := os.ReadFile("product_fetcher.go")
+	if err != nil {
+		t.Fatalf("ReadFile(product_fetcher.go) error = %v", err)
+	}
+	content := string(source)
+	if !strings.Contains(content, "ZipcodePolicy:  sourcing.AmazonDefaultZipcodePolicy{}") {
+		t.Fatal("ProductFetcher should delegate Amazon default zipcode policy to internal/product/sourcing")
+	}
+	if strings.Contains(content, "type productAmazonZipcodePolicy struct{}") {
+		t.Fatal("product_fetcher.go should not own Amazon default zipcode policy")
+	}
+}
+
+func TestProductFetcherUsesSourcingDefaultDomainResolver(t *testing.T) {
+	source, err := os.ReadFile("product_fetcher.go")
+	if err != nil {
+		t.Fatalf("ReadFile(product_fetcher.go) error = %v", err)
+	}
+	content := string(source)
+	if !strings.Contains(content, "DomainResolver: sourcing.AmazonDefaultDomainResolver{}") {
+		t.Fatal("ProductFetcher should delegate Amazon domain and URL planning to internal/product/sourcing")
+	}
+	if strings.Contains(content, "DomainResolver: NewDomainResolver()") {
+		t.Fatal("product_fetcher.go should not construct the product package Amazon domain resolver")
+	}
+}
+
+func TestProductDomainResolverCompatibilityLayerIsRetired(t *testing.T) {
+	if _, err := os.Stat("domain_resolver.go"); err == nil {
+		t.Fatal("domain_resolver.go still exists; Amazon source URL and zipcode rules belong in internal/product/sourcing")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat domain_resolver.go: %v", err)
+	}
+}
+
+func TestProductRepositoryServiceCompatibilityLayerIsRetired(t *testing.T) {
+	for _, file := range []string{"repository.go", "service.go"} {
+		if _, err := os.Stat(file); err == nil {
+			t.Fatalf("%s still exists; use ProductFetcher and product/sourcing instead of the unwired repository-style product crawler service", file)
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("stat %s: %v", file, err)
+		}
+	}
+}
 
 func TestProductFetcherUsesExplicitZipcodeForCrawlerRequest(t *testing.T) {
 	source := &stubProductFetcherCrawlSource{}

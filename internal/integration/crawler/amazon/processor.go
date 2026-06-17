@@ -3,10 +3,12 @@ package amazon
 import (
 	"context"
 	"fmt"
-	"strings"
 
+	"task-processor/internal/core/config"
 	legacyamazon "task-processor/internal/crawler/amazon"
 	"task-processor/internal/model"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Source is the legacy-compatible Amazon crawler capability used by this adapter.
@@ -20,12 +22,32 @@ type Processor struct {
 	source Source
 }
 
+// LegacyCrawlSource adapts the legacy Amazon crawler to app/product crawl-source
+// contracts without exposing the legacy package outside this integration boundary.
+type LegacyCrawlSource struct {
+	source Source
+}
+
 // NewProcessor creates an Amazon crawler integration adapter.
 func NewProcessor(source Source) *Processor {
 	if source == nil {
 		return nil
 	}
 	return &Processor{source: source}
+}
+
+// NewLegacySource constructs the legacy Amazon crawler behind the integration source interface.
+func NewLegacySource(cfg *config.Config, logger *logrus.Logger) Source {
+	return legacyamazon.CreateProcessor(cfg, logger)
+}
+
+// NewLegacyCrawlSource constructs a legacy-backed crawl source.
+func NewLegacyCrawlSource(cfg *config.Config, logger *logrus.Logger) *LegacyCrawlSource {
+	source := NewLegacySource(cfg, logger)
+	if source == nil {
+		return nil
+	}
+	return &LegacyCrawlSource{source: source}
 }
 
 // Process fetches one Amazon source product.
@@ -58,16 +80,37 @@ func (p *Processor) ProcessBatchWithContext(ctx context.Context, requests []mode
 	return p.ProcessBatch(ctx, requests)
 }
 
-// ZipcodePolicy preserves legacy Amazon default-zipcode behavior at the crawler
-// integration boundary.
-type ZipcodePolicy struct{}
-
-// ShouldUseDefaultZipcode reports whether a region should receive a default zipcode.
-func (ZipcodePolicy) ShouldUseDefaultZipcode(region string) bool {
-	return legacyamazon.NewDomainResolver().ShouldUseDefaultZipcode(region)
+// Process fetches one Amazon source product.
+func (s *LegacyCrawlSource) Process(url, zipcode string) (*model.Product, error) {
+	return s.ProcessWithContext(context.Background(), url, zipcode)
 }
 
-// DefaultZipcode returns the legacy Amazon default zipcode for a region.
-func (ZipcodePolicy) DefaultZipcode(region string) string {
-	return legacyamazon.GetDefaultZipcode(strings.ToLower(region))
+// ProcessWithContext fetches one Amazon source product with cancellation.
+func (s *LegacyCrawlSource) ProcessWithContext(ctx context.Context, url, zipcode string) (*model.Product, error) {
+	if s == nil || s.source == nil {
+		return nil, fmt.Errorf("amazon crawler source is not configured")
+	}
+	return s.source.ProcessWithContext(ctx, url, zipcode)
+}
+
+// ProcessBatchWithContext fetches multiple Amazon source products with cancellation.
+func (s *LegacyCrawlSource) ProcessBatchWithContext(ctx context.Context, requests []model.ProductRequest) []model.ProductResult {
+	if s == nil || s.source == nil {
+		results := make([]model.ProductResult, len(requests))
+		for i := range requests {
+			results[i] = model.ProductResult{Error: fmt.Errorf("amazon crawler source is not configured")}
+		}
+		return results
+	}
+	return s.source.ProcessBatchWithContext(ctx, requests)
+}
+
+// Shutdown releases the underlying legacy crawler if it supports shutdown.
+func (s *LegacyCrawlSource) Shutdown() {
+	if s == nil || s.source == nil {
+		return
+	}
+	if shutdown, ok := s.source.(interface{ Shutdown() }); ok {
+		shutdown.Shutdown()
+	}
 }

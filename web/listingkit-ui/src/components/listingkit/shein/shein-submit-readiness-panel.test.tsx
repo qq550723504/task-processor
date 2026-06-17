@@ -336,6 +336,33 @@ describe("SheinSubmitReadinessPanel", () => {
     expect(screen.getAllByText("raw SHEIN response: square image missing").length).toBeGreaterThan(0);
   });
 
+  it("renders failed submission phase, reason, recoverability, and next action", () => {
+    render(
+      <SheinSubmitReadinessPanel
+        readiness={{ status: "blocked" }}
+        submission={{
+          last_action: "publish",
+          last_status: "failed",
+          last_error: "remote validation rejected size image",
+          publish: {
+            action: "publish",
+            status: "failed",
+            phase: "pre_validate",
+            error: "方形图必须有一个",
+            request_id: "submit-failed-123",
+            recoverable: true,
+            next_action: "补齐方形图后重新发布",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("失败阶段：SHEIN 预校验")).toBeInTheDocument();
+    expect(screen.getByText("失败原因：方形图必须有一个")).toBeInTheDocument();
+    expect(screen.getByText("是否可重试：可由运营修复后重试")).toBeInTheDocument();
+    expect(screen.getByText("下一步：补齐方形图后重新发布")).toBeInTheDocument();
+  });
+
   it("renders current submit attempt status and error", () => {
     const { rerender } = render(
       <SheinSubmitReadinessPanel

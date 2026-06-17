@@ -50,8 +50,12 @@ export function normalizeSheinFreshnessActionKey(
 
 export function normalizeSheinWorkspaceActionKey(
   key?: string | null,
+  repairTarget?: string | null,
 ): SheinWorkspaceActionKey | false {
-  const normalized = (key ?? "").toLowerCase();
+  const normalizedRepairTarget = (repairTarget ?? "").toLowerCase();
+  const normalized =
+    normalizedRepairTarget ||
+    (key ?? "").toLowerCase();
   if (!normalized) {
     return false;
   }
@@ -90,6 +94,9 @@ export function normalizeSheinWorkspaceActionKey(
   ) {
     return "pod_platform";
   }
+  if (normalized.includes("sku")) {
+    return "variants";
+  }
   if (
     normalized === "images" ||
     normalized.includes("image") ||
@@ -127,7 +134,10 @@ export function isSheinWorkspaceActionKey(
 }
 
 export function canSelectSheinReadinessItem(item: SheinReadinessItem) {
-  return normalizeSheinWorkspaceActionKey(item.key) !== false;
+  return normalizeSheinWorkspaceActionKey(
+    item.key,
+    item.taxonomy?.repair_target,
+  ) !== false;
 }
 
 export function sheinWorkspaceTargetIdForKey(key: SheinWorkspaceActionKey) {

@@ -43,6 +43,7 @@ const taskListItemSchema = z
     platforms: z.array(z.string()).optional(),
     title: z.string().optional(),
     image_count: z.coerce.number().optional(),
+    source_type: z.string().optional(),
     product_name: z.string().optional(),
     variant_label: z.string().optional(),
     sds_sync_status: z.string().optional(),

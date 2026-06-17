@@ -156,7 +156,10 @@ export type ListingKitTaskListQuery = {
   tenant_id?: string;
   status?: string;
   platform?: string;
+  source_type?: string;
+  readiness_status?: string;
   shein_workflow_status?: string;
+  shein_latest_submission_status?: string;
   shein_blocker_key?: string;
   shein_warning_key?: string;
   shein_work_queue?: string;
@@ -181,6 +184,7 @@ export type ListingKitTaskListItem = {
   platforms?: string[];
   title?: string;
   image_count?: number;
+  source_type?: string;
   product_name?: string;
   variant_label?: string;
   sds_sync_status?: string;

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -76,7 +77,7 @@ func (s *taskTemporalSubmissionLifecycleService) startSheinPublishWorkflowAttemp
 	if err == nil {
 		return s.getTaskPreview(ctx, taskID, "shein")
 	}
-	if shouldReplayStartedTemporalSubmit(err, opts.requestID) {
+	if listingsubmission.IsReplayOfStartedSubmit(err, opts.requestID) {
 		return s.buildSheinWorkflowReplayPreview(ctx, task)
 	}
 	if s.handleWorkflowStartFailure == nil {

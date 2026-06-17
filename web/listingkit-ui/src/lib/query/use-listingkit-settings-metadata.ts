@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import {
+  getListingKitSettingsHealth,
   getListingKitSettingsSchema,
   listListingKitSettingsNamespaces,
 } from "@/lib/api/listingkit-settings";
@@ -13,6 +14,14 @@ export function useListingKitSettingsNamespaces() {
     queryKey: listingKitSettingsKeys.metadataIndex(),
     queryFn: listListingKitSettingsNamespaces,
     staleTime: 60_000,
+  });
+}
+
+export function useListingKitSettingsHealth() {
+  return useQuery({
+    queryKey: listingKitSettingsKeys.health(),
+    queryFn: getListingKitSettingsHealth,
+    staleTime: 30_000,
   });
 }
 

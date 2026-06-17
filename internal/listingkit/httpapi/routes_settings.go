@@ -14,6 +14,7 @@ type SettingsStoreRouteHandler interface {
 
 type SettingsRouteHandler interface {
 	ListSettingsNamespaces(c *gin.Context)
+	GetSettingsHealth(c *gin.Context)
 	GetSettingsNamespaceSchema(c *gin.Context)
 	GetSettingsNamespace(c *gin.Context)
 	UpdateSettingsNamespace(c *gin.Context)

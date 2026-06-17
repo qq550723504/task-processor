@@ -12,6 +12,10 @@ vi.mock("@/components/listingkit/settings/ai-client-settings-card", () => ({
   AIClientSettingsCard: () => <div>AI card</div>,
 }));
 
+vi.mock("@/components/listingkit/settings/settings-health-card", () => ({
+  SettingsHealthCard: () => <div>Health card</div>,
+}));
+
 vi.mock("@/lib/api/listingkit-settings", () => ({
   listListingKitSettingsNamespaces: vi.fn().mockResolvedValue({
     items: [
@@ -32,9 +36,12 @@ describe("ListingKitSettingsPage", () => {
 
     expect(screen.getByText("ListingKit 设置")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "会话" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "健康检查" })).toBeInTheDocument();
     expect(await screen.findByRole("link", { name: "AI 模型" })).toBeInTheDocument();
     expect(screen.getByTestId("settings-section-session")).toBeInTheDocument();
+    expect(screen.getByTestId("settings-section-health")).toBeInTheDocument();
     expect(screen.getByTestId("settings-section-ai")).toBeInTheDocument();
+    expect(screen.getByText("Health card")).toBeInTheDocument();
     expect(screen.getByText("租户级和用户级模型配置。")).toBeInTheDocument();
     expect(screen.getByText("租户")).toBeInTheDocument();
     expect(screen.getByText("用户")).toBeInTheDocument();

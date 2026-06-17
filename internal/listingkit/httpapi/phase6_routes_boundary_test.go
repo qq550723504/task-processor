@@ -46,6 +46,7 @@ func TestRouteContractFamiliesOwnSeparatedSurfaces(t *testing.T) {
 	assertRouteContainsAll(t, settingsFile,
 		"type SettingsStoreRouteHandler interface {",
 		"type SettingsRouteHandler interface {",
+		"GetSettingsHealth(c *gin.Context)",
 	)
 	assertRouteNotContainsAny(t, settingsFile,
 		"type TaskRouteHandler interface {",
@@ -106,6 +107,8 @@ func TestRouteContractFamiliesOwnSeparatedSurfaces(t *testing.T) {
 
 	assertRouteContainsAll(t, descriptorSettingsFile,
 		"func appendSettingsRouteDescriptors",
+		"/api/v1/listing-kits/settings-health",
+		"GetSettingsHealth",
 		"ListSettingsNamespaces",
 		"UpdateAIClientSettings",
 	)

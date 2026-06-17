@@ -136,6 +136,16 @@ func ResolveRemoteConfirmationDecision(action string, resolution RemoteConfirmat
 	}
 }
 
+func ResolveRemoteConfirmationUpdateMessage(decision RemoteConfirmationDecision, resolution RemoteConfirmationResolution) string {
+	if resolution.RecordErr != nil {
+		return resolution.RecordErr.Error()
+	}
+	if decision.Status == RemoteRecordStatusPending && resolution.Record == nil && !resolution.DefaultConfirmed {
+		return "record not found"
+	}
+	return decision.Detail
+}
+
 func ClassifyRemoteRecord(action string, item *sheinproduct.RecordItem, publishAccepted bool) RemoteRecordOutcome {
 	if item == nil {
 		return RemoteRecordOutcome{
@@ -299,6 +309,13 @@ func ResponseAcceptedWithSPU(success bool, spuName string) bool {
 	return success && strings.TrimSpace(spuName) != ""
 }
 
+func ResponseAcceptedForAction(action string, success bool, code string) bool {
+	if success {
+		return true
+	}
+	return strings.TrimSpace(action) == "save_draft" && strings.TrimSpace(code) == "0"
+}
+
 func ConfirmedSubmissionMessage(action string) string {
 	if strings.TrimSpace(action) == "save_draft" {
 		return "save draft confirmed by remote check"
@@ -311,6 +328,20 @@ func ResolveRemoteLookupSPUName(recordSPUName, lastSPUName string) string {
 		return value
 	}
 	return strings.TrimSpace(lastSPUName)
+}
+
+func ResolveRemoteResolutionSPUName(onWay *OnWayDocument, record *sheinproduct.RecordItem, fallbackSPUName string) string {
+	if onWay != nil {
+		if value := strings.TrimSpace(onWay.SpuName); value != "" {
+			return value
+		}
+	}
+	if record != nil {
+		if value := strings.TrimSpace(record.SpuName); value != "" {
+			return value
+		}
+	}
+	return strings.TrimSpace(fallbackSPUName)
 }
 
 func RemotePublishAccepted(action string, recordAccepted, lastAccepted bool) bool {

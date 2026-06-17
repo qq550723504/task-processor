@@ -16,6 +16,7 @@ import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selec
 import type {
   SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
+  SheinStudioBatchStatusGroups,
   SheinStudioCreatedTask,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
@@ -58,6 +59,7 @@ export function SheinStudioGenerationPanel({
   createTaskButtonLabel = "生成 SHEIN 资料",
   selectionReady,
   showSavedBatches = true,
+  statusGroups,
   storeRequiredMessage,
   subscriptionBlockedMessage,
   variationIntensity,
@@ -108,6 +110,7 @@ export function SheinStudioGenerationPanel({
   createTaskButtonLabel?: string;
   selectionReady: boolean;
   showSavedBatches?: boolean;
+  statusGroups?: SheinStudioBatchStatusGroups;
   storeRequiredMessage: string;
   subscriptionBlockedMessage: string;
   variationIntensity: SheinStudioVariationIntensity;
@@ -174,6 +177,7 @@ export function SheinStudioGenerationPanel({
           }
         />
       </div>
+      <BatchStatusGroupsSummary statusGroups={statusGroups} />
       {selectionReady ? (
         <div
           className={`rounded-2xl border px-4 py-3 text-sm ${
@@ -289,6 +293,42 @@ export function SheinStudioGenerationPanel({
           onLoad={onLoadBatch}
         />
       ) : null}
+    </div>
+  );
+}
+
+function BatchStatusGroupsSummary({
+  statusGroups,
+}: {
+  statusGroups?: SheinStudioBatchStatusGroups;
+}) {
+  const groups = statusGroups?.items.filter((group) => group.count > 0) ?? [];
+  if (groups.length === 0) {
+    return null;
+  }
+  return (
+    <div className="rounded-[1.5rem] border border-sky-200 bg-sky-50/70 px-4 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-sky-600">
+            批量状态分组
+          </div>
+          <p className="mt-1 text-xs leading-5 text-sky-800">
+            混合结果不会阻断可提交项，失败项可单独处理或稍后重试。
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {groups.map((group) => (
+          <div
+            className="rounded-full border border-white/80 bg-white px-3 py-2 text-xs shadow-sm"
+            key={group.key}
+          >
+            <span className="font-semibold text-zinc-900">{group.label}</span>
+            <span className="ml-2 text-zinc-500">{group.count} 项</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -41,9 +41,11 @@ func summaryTaskListQuery(query *TaskListQuery) *TaskListQuery {
 		return nil
 	}
 	return &TaskListQuery{
-		TenantID: query.TenantID,
-		Status:   query.Status,
-		Platform: query.Platform,
+		TenantID:        query.TenantID,
+		Status:          query.Status,
+		Platform:        query.Platform,
+		SourceType:      query.SourceType,
+		ReadinessStatus: query.ReadinessStatus,
 	}
 }
 
@@ -73,6 +75,9 @@ func buildTaskListItem(task *Task) TaskListItem {
 		ensureTaskPodExecution(task)
 		task.Result = normalizeListingKitResultSemanticFields(task.Result)
 		item.PodExecution = clonePodExecutionSummary(task.Result.PodExecution)
+		if task.Result.Summary != nil {
+			item.SourceType = strings.TrimSpace(task.Result.Summary.SourceType)
+		}
 	}
 	if task.Result != nil && task.Result.SDSDesignResult != nil {
 		item.SDSSyncStatus = task.Result.SDSDesignResult.Status

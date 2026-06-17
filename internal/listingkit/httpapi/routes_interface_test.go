@@ -4,17 +4,18 @@ import "github.com/gin-gonic/gin"
 
 type settingsOnlyRouteHandler struct{}
 
-func (settingsOnlyRouteHandler) ListSettingsNamespaces(c *gin.Context)       {}
-func (settingsOnlyRouteHandler) GetSettingsNamespaceSchema(c *gin.Context)   {}
-func (settingsOnlyRouteHandler) GetSettingsNamespace(c *gin.Context)         {}
-func (settingsOnlyRouteHandler) UpdateSettingsNamespace(c *gin.Context)      {}
-func (settingsOnlyRouteHandler) ListSheinStoreProfiles(c *gin.Context)       {}
-func (settingsOnlyRouteHandler) UpsertSheinStoreProfile(c *gin.Context)      {}
-func (settingsOnlyRouteHandler) DeleteSheinStoreProfile(c *gin.Context)      {}
-func (settingsOnlyRouteHandler) GetSheinSettings(c *gin.Context)       {}
-func (settingsOnlyRouteHandler) UpdateSheinSettings(c *gin.Context)    {}
-func (settingsOnlyRouteHandler) GetAIClientSettings(c *gin.Context)    {}
-func (settingsOnlyRouteHandler) UpdateAIClientSettings(c *gin.Context) {}
+func (settingsOnlyRouteHandler) ListSettingsNamespaces(c *gin.Context)     {}
+func (settingsOnlyRouteHandler) GetSettingsHealth(c *gin.Context)          {}
+func (settingsOnlyRouteHandler) GetSettingsNamespaceSchema(c *gin.Context) {}
+func (settingsOnlyRouteHandler) GetSettingsNamespace(c *gin.Context)       {}
+func (settingsOnlyRouteHandler) UpdateSettingsNamespace(c *gin.Context)    {}
+func (settingsOnlyRouteHandler) ListSheinStoreProfiles(c *gin.Context)     {}
+func (settingsOnlyRouteHandler) UpsertSheinStoreProfile(c *gin.Context)    {}
+func (settingsOnlyRouteHandler) DeleteSheinStoreProfile(c *gin.Context)    {}
+func (settingsOnlyRouteHandler) GetSheinSettings(c *gin.Context)           {}
+func (settingsOnlyRouteHandler) UpdateSheinSettings(c *gin.Context)        {}
+func (settingsOnlyRouteHandler) GetAIClientSettings(c *gin.Context)        {}
+func (settingsOnlyRouteHandler) UpdateAIClientSettings(c *gin.Context)     {}
 
 type taskOnlyRouteHandler struct{}
 

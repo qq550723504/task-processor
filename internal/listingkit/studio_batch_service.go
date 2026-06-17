@@ -43,6 +43,7 @@ type StudioBatchDetail struct {
 	Items        []StudioBatchItemDetail  `json:"items,omitempty"`
 	CreatedTasks []SheinStudioCreatedTask `json:"created_tasks,omitempty"`
 	FailedTasks  []SheinStudioFailedTask  `json:"failed_tasks,omitempty"`
+	StatusGroups StudioBatchStatusGroups  `json:"status_groups,omitempty"`
 }
 
 type StudioBatchItemDetail struct {

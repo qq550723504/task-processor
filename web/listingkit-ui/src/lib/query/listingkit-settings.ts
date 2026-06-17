@@ -15,6 +15,9 @@ export const listingKitSettingsKeys = {
   metadataIndex() {
     return this.namespace("metadata-index");
   },
+  health() {
+    return this.namespace("health");
+  },
   schema(namespace: string) {
     return this.namespace("schema", namespace);
   },

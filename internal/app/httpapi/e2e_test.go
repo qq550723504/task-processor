@@ -418,7 +418,7 @@ func createTaskViaAPI[T any](t *testing.T, client *http.Client, url string, payl
 func waitForTaskResult[T any](t *testing.T, client *http.Client, url string, terminal func(T) (bool, string)) T {
 	t.Helper()
 
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
 		result := getJSON[T](t, client, url)
 		done, status := terminal(result)

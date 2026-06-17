@@ -15,6 +15,17 @@ type ReadinessCheckSpec struct {
 	FieldPaths      []string
 	SuggestedAction string
 	WarningOnly     bool
+	Taxonomy        ReadinessTaxonomy
+}
+
+type ReadinessTaxonomy struct {
+	BlockerKey          string `json:"blocker_key,omitempty"`
+	Severity            string `json:"severity,omitempty"`
+	Domain              string `json:"domain,omitempty"`
+	RepairTarget        string `json:"repair_target,omitempty"`
+	RepairRoute         string `json:"repair_route,omitempty"`
+	Recoverable         bool   `json:"recoverable,omitempty"`
+	RequiresEngineering bool   `json:"requires_engineering,omitempty"`
 }
 
 type SubmitReadiness[R any, H any] struct {
@@ -27,24 +38,26 @@ type SubmitReadiness[R any, H any] struct {
 }
 
 type ReadinessItem[R any, H any] struct {
-	Key             string   `json:"key,omitempty"`
-	Label           string   `json:"label,omitempty"`
-	Message         string   `json:"message,omitempty"`
-	FieldPaths      []string `json:"field_paths,omitempty"`
-	SuggestedAction string   `json:"suggested_action,omitempty"`
-	Reason          *R       `json:"reason,omitempty"`
-	RepairHints     []H      `json:"repair_hints,omitempty"`
+	Key             string            `json:"key,omitempty"`
+	Label           string            `json:"label,omitempty"`
+	Message         string            `json:"message,omitempty"`
+	FieldPaths      []string          `json:"field_paths,omitempty"`
+	SuggestedAction string            `json:"suggested_action,omitempty"`
+	Reason          *R                `json:"reason,omitempty"`
+	RepairHints     []H               `json:"repair_hints,omitempty"`
+	Taxonomy        ReadinessTaxonomy `json:"taxonomy,omitempty"`
 }
 
 type ReadinessCheck[R any, H any] struct {
-	Key             string   `json:"key,omitempty"`
-	Label           string   `json:"label,omitempty"`
-	Status          string   `json:"status,omitempty"`
-	Message         string   `json:"message,omitempty"`
-	FieldPaths      []string `json:"field_paths,omitempty"`
-	SuggestedAction string   `json:"suggested_action,omitempty"`
-	Reason          *R       `json:"reason,omitempty"`
-	RepairHints     []H      `json:"repair_hints,omitempty"`
+	Key             string            `json:"key,omitempty"`
+	Label           string            `json:"label,omitempty"`
+	Status          string            `json:"status,omitempty"`
+	Message         string            `json:"message,omitempty"`
+	FieldPaths      []string          `json:"field_paths,omitempty"`
+	SuggestedAction string            `json:"suggested_action,omitempty"`
+	Reason          *R                `json:"reason,omitempty"`
+	RepairHints     []H               `json:"repair_hints,omitempty"`
+	Taxonomy        ReadinessTaxonomy `json:"taxonomy,omitempty"`
 }
 
 type SubmitChecklist[R any, H any] struct {
@@ -54,14 +67,15 @@ type SubmitChecklist[R any, H any] struct {
 }
 
 type ChecklistGroupItem[R any, H any] struct {
-	Key             string   `json:"key,omitempty"`
-	Label           string   `json:"label,omitempty"`
-	Status          string   `json:"status,omitempty"`
-	Message         string   `json:"message,omitempty"`
-	FieldPaths      []string `json:"field_paths,omitempty"`
-	SuggestedAction string   `json:"suggested_action,omitempty"`
-	Reason          *R       `json:"reason,omitempty"`
-	RepairHints     []H      `json:"repair_hints,omitempty"`
+	Key             string            `json:"key,omitempty"`
+	Label           string            `json:"label,omitempty"`
+	Status          string            `json:"status,omitempty"`
+	Message         string            `json:"message,omitempty"`
+	FieldPaths      []string          `json:"field_paths,omitempty"`
+	SuggestedAction string            `json:"suggested_action,omitempty"`
+	Reason          *R                `json:"reason,omitempty"`
+	RepairHints     []H               `json:"repair_hints,omitempty"`
+	Taxonomy        ReadinessTaxonomy `json:"taxonomy,omitempty"`
 }
 
 func BuildSubmitReadiness[R any, H any](
@@ -99,6 +113,7 @@ func BuildSubmitReadiness[R any, H any](
 			SuggestedAction: spec.SuggestedAction,
 			Reason:          guidance.Reason,
 			RepairHints:     append([]H(nil), guidance.RepairHints...),
+			Taxonomy:        spec.Taxonomy,
 		}
 		resolvedChecks = append(resolvedChecks, check)
 		if spec.OK {
@@ -112,6 +127,7 @@ func BuildSubmitReadiness[R any, H any](
 			SuggestedAction: spec.SuggestedAction,
 			Reason:          guidance.Reason,
 			RepairHints:     append([]H(nil), guidance.RepairHints...),
+			Taxonomy:        spec.Taxonomy,
 		}
 		if spec.WarningOnly {
 			warnings = append(warnings, item)
@@ -154,11 +170,13 @@ func BuildSubmitChecklist[R any, H any](readiness *SubmitReadiness[R, H], groupF
 			SuggestedAction: check.SuggestedAction,
 			Reason:          check.Reason,
 			RepairHints:     append([]H(nil), check.RepairHints...),
+			Taxonomy:        check.Taxonomy,
 		}
 		if source := findReadinessItem(readiness, check.Key); source != nil {
 			item.SuggestedAction = source.SuggestedAction
 			item.Reason = source.Reason
 			item.RepairHints = append([]H(nil), source.RepairHints...)
+			item.Taxonomy = source.Taxonomy
 		}
 
 		switch groupForCheck(check.Key) {

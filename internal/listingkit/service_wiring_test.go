@@ -2877,11 +2877,14 @@ func TestSubmitSettingsHelpersFileOwnsDefaultActionResolver(t *testing.T) {
 
 	for _, needle := range []string{
 		"func sheinPreferredSubmitAction(task *Task, settings SheinSettings) string {",
-		"func normalizePreferredSheinSubmitAction(action string) string {",
+		"listingsubmission.PreferredSubmitAction(",
 	} {
 		if !strings.Contains(helperContent, needle) {
 			t.Fatalf("service_submit_action_normalization_helper.go should keep %q", needle)
 		}
+	}
+	if strings.Contains(helperContent, "func normalizePreferredSheinSubmitAction(action string) string {") {
+		t.Fatalf("service_submit_action_normalization_helper.go should delegate preferred submit action normalization to internal/listing/submission")
 	}
 
 	if _, err := os.ReadFile("service_submit_default_action.go"); err == nil {

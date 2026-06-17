@@ -187,6 +187,32 @@ func TestResolveRemoteConfirmationDecisionFallsBackForRecordErrorsAndDefaultConf
 	}
 }
 
+func TestResolveRemoteConfirmationUpdateMessagePrefersOperationalMessages(t *testing.T) {
+	t.Parallel()
+
+	decision := RemoteConfirmationDecision{Status: RemoteRecordStatusPending, Detail: "fallback pending"}
+	recordErrMessage := ResolveRemoteConfirmationUpdateMessage(decision, RemoteConfirmationResolution{
+		RecordErr:       errors.New("remote query failed"),
+		FallbackMessage: "fallback pending",
+	})
+	if recordErrMessage != "remote query failed" {
+		t.Fatalf("record error update message = %q, want remote query failed", recordErrMessage)
+	}
+
+	notFoundMessage := ResolveRemoteConfirmationUpdateMessage(decision, RemoteConfirmationResolution{})
+	if notFoundMessage != "record not found" {
+		t.Fatalf("not-found update message = %q, want record not found", notFoundMessage)
+	}
+
+	confirmedMessage := ResolveRemoteConfirmationUpdateMessage(
+		RemoteConfirmationDecision{Status: RemoteRecordStatusConfirmed, Detail: "confirmed fallback"},
+		RemoteConfirmationResolution{DefaultConfirmed: true},
+	)
+	if confirmedMessage != "confirmed fallback" {
+		t.Fatalf("confirmed update message = %q, want confirmed fallback", confirmedMessage)
+	}
+}
+
 func TestClassifyRemoteRecordConfirmsSaveDraft(t *testing.T) {
 	t.Parallel()
 
@@ -409,6 +435,20 @@ func TestResponseAcceptedWithSPURequiresSuccessAndVisibleSPU(t *testing.T) {
 	}
 }
 
+func TestResponseAcceptedForAction(t *testing.T) {
+	t.Parallel()
+
+	if !ResponseAcceptedForAction("publish", true, "") {
+		t.Fatal("ResponseAcceptedForAction(publish success) = false, want true")
+	}
+	if !ResponseAcceptedForAction("save_draft", false, "0") {
+		t.Fatal("ResponseAcceptedForAction(save_draft code=0) = false, want true")
+	}
+	if ResponseAcceptedForAction("publish", false, "0") {
+		t.Fatal("ResponseAcceptedForAction(publish code=0) = true, want false")
+	}
+}
+
 func TestConfirmedSubmissionMessageUsesActionSpecificText(t *testing.T) {
 	t.Parallel()
 
@@ -428,6 +468,22 @@ func TestResolveRemoteLookupSPUNamePrefersRecordThenLastResult(t *testing.T) {
 	}
 	if got := ResolveRemoteLookupSPUName("", " LAST "); got != "LAST" {
 		t.Fatalf("fallback spu name = %q, want LAST", got)
+	}
+}
+
+func TestResolveRemoteResolutionSPUNamePrefersOnWayThenRecordThenFallback(t *testing.T) {
+	t.Parallel()
+
+	record := &sheinproduct.RecordItem{SpuName: " RECORD-SPU "}
+	onWay := &OnWayDocument{SpuName: " ON-WAY-SPU "}
+	if got := ResolveRemoteResolutionSPUName(onWay, record, " FALLBACK-SPU "); got != "ON-WAY-SPU" {
+		t.Fatalf("on-way SPU name = %q, want ON-WAY-SPU", got)
+	}
+	if got := ResolveRemoteResolutionSPUName(&OnWayDocument{}, record, " FALLBACK-SPU "); got != "RECORD-SPU" {
+		t.Fatalf("record SPU name = %q, want RECORD-SPU", got)
+	}
+	if got := ResolveRemoteResolutionSPUName(nil, &sheinproduct.RecordItem{}, " FALLBACK-SPU "); got != "FALLBACK-SPU" {
+		t.Fatalf("fallback SPU name = %q, want FALLBACK-SPU", got)
 	}
 }
 

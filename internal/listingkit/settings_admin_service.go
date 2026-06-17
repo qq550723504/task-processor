@@ -10,6 +10,7 @@ type settingsAdminServiceConfig struct {
 	currentSheinSettings func() SheinSettings
 	mutateSheinSettings  func(func(*SheinSettings)) SheinSettings
 	listStoreOptions     func(context.Context) []SheinStoreOption
+	settingsHealthProbes SettingsHealthProbes
 }
 
 type settingsAdminService struct {
@@ -18,6 +19,7 @@ type settingsAdminService struct {
 	currentSheinSettings func() SheinSettings
 	mutateSheinSettings  func(func(*SheinSettings)) SheinSettings
 	listStoreOptions     func(context.Context) []SheinStoreOption
+	settingsHealthProbes SettingsHealthProbes
 }
 
 func newSettingsAdminService(config settingsAdminServiceConfig) *settingsAdminService {
@@ -27,7 +29,15 @@ func newSettingsAdminService(config settingsAdminServiceConfig) *settingsAdminSe
 		currentSheinSettings: config.currentSheinSettings,
 		mutateSheinSettings:  config.mutateSheinSettings,
 		listStoreOptions:     config.listStoreOptions,
+		settingsHealthProbes: config.settingsHealthProbes,
 	}
+}
+
+func (s *settingsAdminService) GetSettingsHealthProbes(context.Context) SettingsHealthProbes {
+	if s == nil {
+		return SettingsHealthProbes{}
+	}
+	return s.settingsHealthProbes
 }
 
 func (s *settingsAdminService) attachStoreOptions(ctx context.Context, items []ListingKitStoreProfile) []ListingKitStoreProfile {

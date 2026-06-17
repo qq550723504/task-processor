@@ -25,6 +25,7 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 
 	keys := routeKeys(reg.Routes())
 	require.Contains(t, keys, "POST /api/v1/listing-kits/generate")
+	require.Contains(t, keys, "GET /api/v1/listing-kits/settings-health")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/tasks/requeue")
 	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
 }
@@ -154,6 +155,7 @@ func (stubRouteHandler) ReviewSheinActivityCandidate(*gin.Context)              
 func (stubRouteHandler) ExecuteSheinActivityEnrollment(*gin.Context)              {}
 func (stubRouteHandler) ListSheinActivityEnrollmentRuns(*gin.Context)             {}
 func (stubRouteHandler) ListSettingsNamespaces(*gin.Context)                      {}
+func (stubRouteHandler) GetSettingsHealth(*gin.Context)                           {}
 func (stubRouteHandler) GetSettingsNamespaceSchema(*gin.Context)                  {}
 func (stubRouteHandler) GetSettingsNamespace(*gin.Context)                        {}
 func (stubRouteHandler) UpdateSettingsNamespace(*gin.Context)                     {}

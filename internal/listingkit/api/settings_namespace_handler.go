@@ -34,6 +34,18 @@ func (h *handler) GetSettingsNamespace(c *gin.Context) {
 	c.JSON(http.StatusOK, settings)
 }
 
+func (h *handler) GetSettingsHealth(c *gin.Context) {
+	health, err := h.settingsService.Health(requestContext(c))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "settings_health_failed",
+			"message": err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, health)
+}
+
 func (h *handler) ListSettingsNamespaces(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"items": h.settingsService.ListSchemas(),

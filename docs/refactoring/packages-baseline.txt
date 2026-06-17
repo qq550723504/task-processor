@@ -79,8 +79,11 @@ task-processor/internal/infra/resilience
 task-processor/internal/infra/storage
 task-processor/internal/infra/worker
 task-processor/internal/integration/crawler
+task-processor/internal/integration/crawler/a1688
+task-processor/internal/integration/crawler/amazon
 task-processor/internal/kernel/module
 task-processor/internal/listing/preview
+task-processor/internal/listing/studio
 task-processor/internal/listing/submission
 task-processor/internal/listingadmin
 task-processor/internal/listingkit
@@ -94,9 +97,7 @@ task-processor/internal/listingkit/service/studio
 task-processor/internal/listingkit/sheinsync
 task-processor/internal/listingkit/store
 task-processor/internal/listingkit/studiostore
-task-processor/internal/listingkit/submission
 task-processor/internal/listingkit/temporal
-task-processor/internal/listingkit/tenantctx
 task-processor/internal/listingkit/workflow
 task-processor/internal/listingkit/workspace
 task-processor/internal/listingkit/workspace/shein
@@ -106,6 +107,7 @@ task-processor/internal/marketplace/amazon/model
 task-processor/internal/marketplace/amazon/publishing
 task-processor/internal/marketplace/amazon/workspace
 task-processor/internal/marketplace/shein/publishing
+task-processor/internal/marketplace/shein/workspace
 task-processor/internal/model
 task-processor/internal/pipeline
 task-processor/internal/pipeline/handlers
@@ -185,6 +187,7 @@ task-processor/internal/shein/api/pricing
 task-processor/internal/shein/api/product
 task-processor/internal/shein/api/translate
 task-processor/internal/shein/api/warehouse
+task-processor/internal/shein/authorizedbrand
 task-processor/internal/shein/category
 task-processor/internal/shein/client
 task-processor/internal/shein/content
@@ -252,3 +255,4 @@ task-processor/internal/tenantbridge
 task-processor/internal/workspace/shein
 task-processor/internal/zitadelprovision
 task-processor/tests
+task-processor/web/listingkit-ui/node_modules/flatted/golang/pkg/flatted

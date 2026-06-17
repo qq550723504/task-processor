@@ -51,8 +51,8 @@ func NewProductFetcherWithLogger(
 		amazonConfig: amazonConfig,
 		sourceFetcher: sourcing.AmazonSourceFetcher{
 			Planner: sourcing.AmazonCrawlRequestPlanner{
-				DomainResolver: NewDomainResolver(),
-				ZipcodePolicy:  productAmazonZipcodePolicy{},
+				DomainResolver: sourcing.AmazonDefaultDomainResolver{},
+				ZipcodePolicy:  sourcing.AmazonDefaultZipcodePolicy{},
 				Zipcodes:       zipcodes,
 			},
 			Source: crawlSource,
@@ -182,14 +182,4 @@ func (f *ProductFetcher) crawlerUnavailableError(req *FetchRequest) error {
 	default:
 		return fmt.Errorf("crawler fetch is unavailable for product fetch: product_id=%s region=%s", productID, region)
 	}
-}
-
-type productAmazonZipcodePolicy struct{}
-
-func (productAmazonZipcodePolicy) ShouldUseDefaultZipcode(region string) bool {
-	return NewDomainResolver().ShouldUseDefaultZipcode(region)
-}
-
-func (productAmazonZipcodePolicy) DefaultZipcode(region string) string {
-	return NewDomainResolver().GetZipcodeByRegion(region)
 }

@@ -37,12 +37,8 @@ func normalizeSubmitTargetWithDefault(req *SubmitTaskRequest, defaultAction stri
 	if platform != "shein" {
 		return "", "", fmt.Errorf("%w: %s", ErrUnsupportedSubmitPlatform, platform)
 	}
-	if !isSupportedSubmitAction(action) {
-		return "", "", unsupportedSubmitActionError(action)
+	if !listingsubmission.IsSupportedSubmitAction(action) {
+		return "", "", listingsubmission.UnsupportedSubmitActionError(action)
 	}
 	return platform, action, nil
-}
-
-func shouldReplayStartedTemporalSubmit(err error, requestID string) bool {
-	return listingsubmission.IsReplayOfStartedSubmit(err, requestID)
 }

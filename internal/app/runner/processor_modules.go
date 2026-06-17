@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	appfetcher "task-processor/internal/app/crawler/fetcher"
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 )

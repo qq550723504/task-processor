@@ -1,6 +1,11 @@
 package shein
 
-import "time"
+import (
+	"time"
+
+	listingsubmission "task-processor/internal/listing/submission"
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
+)
 
 type SubmissionProjection struct {
 	WorkflowStatus  string
@@ -16,10 +21,15 @@ func LatestSubmissionOutcomeEvent(pkg *Package) *SubmissionEvent {
 	if pkg == nil || len(pkg.SubmissionEvents) == 0 {
 		return nil
 	}
+	latest := listingsubmission.LatestOutcomeEvent(submissionProjectionEvents(pkg))
+	if latest == nil {
+		return nil
+	}
 	for i := range pkg.SubmissionEvents {
-		event := &pkg.SubmissionEvents[i]
-		if event.Action != "submit_phase" {
-			return event
+		if pkg.SubmissionEvents[i].Action == latest.Action &&
+			pkg.SubmissionEvents[i].Status == latest.Status &&
+			pkg.SubmissionEvents[i].ErrorMessage == latest.ErrorMessage {
+			return &pkg.SubmissionEvents[i]
 		}
 	}
 	return nil
@@ -29,14 +39,18 @@ func PrimarySubmissionRecord(report *SubmissionReport) *SubmissionRecord {
 	if report == nil {
 		return nil
 	}
-	record := SubmissionRecordForAction(report, report.LastAction)
-	if record != nil {
-		return record
+	primary := listingsubmission.PrimaryActionRecord(submissionProjectionReport(report))
+	if primary == nil {
+		return nil
 	}
-	if report.Publish != nil {
+	switch primary.Action {
+	case listingsubmission.SubmitActionPublish:
 		return report.Publish
+	case listingsubmission.SubmitActionSaveDraft:
+		return report.SaveDraft
+	default:
+		return nil
 	}
-	return report.SaveDraft
 }
 
 func SubmissionWorkflowStatus(pkg *Package, ready bool) string {
@@ -44,32 +58,12 @@ func SubmissionWorkflowStatus(pkg *Package, ready bool) string {
 	if pkg == nil {
 		return ""
 	}
-	if latest := LatestSubmissionOutcomeEvent(pkg); latest != nil {
-		if latest.Action == "publish" && latest.Status == SubmissionStatusSuccess {
-			return "published"
-		}
-		if latest.Action == "save_draft" && latest.Status == SubmissionStatusSuccess {
-			return "draft_saved"
-		}
-		if latest.Status == SubmissionStatusFailed {
-			return "publish_failed"
-		}
-	}
-	if pkg.SubmissionState != nil {
-		if pkg.SubmissionState.Publish != nil && pkg.SubmissionState.Publish.Status == SubmissionStatusSuccess {
-			return "published"
-		}
-		if pkg.SubmissionState.SaveDraft != nil && pkg.SubmissionState.SaveDraft.Status == SubmissionStatusSuccess {
-			return "draft_saved"
-		}
-		if pkg.SubmissionState.LastStatus == SubmissionStatusFailed {
-			return "publish_failed"
-		}
-	}
-	if ready {
-		return "ready_to_submit"
-	}
-	return "pending_confirmation"
+	return listingsubmission.WorkflowStatus(
+		submissionProjectionEvents(pkg),
+		submissionProjectionReport(pkg.SubmissionState),
+		ready,
+		sheinSubmissionProjectionPolicy(),
+	)
 }
 
 func ResolveSubmissionProjection(pkg *Package, ready bool) SubmissionProjection {
@@ -78,30 +72,74 @@ func ResolveSubmissionProjection(pkg *Package, ready bool) SubmissionProjection 
 		return SubmissionProjection{}
 	}
 
-	projection := SubmissionProjection{
-		WorkflowStatus: SubmissionWorkflowStatus(pkg, ready),
+	generic := listingsubmission.ResolveProjection(
+		submissionProjectionEvents(pkg),
+		submissionProjectionReport(pkg.SubmissionState),
+		ready,
+		sheinSubmissionProjectionPolicy(),
+	)
+	return SubmissionProjection{
+		WorkflowStatus:  generic.WorkflowStatus,
+		LatestStatus:    generic.LatestStatus,
+		LatestError:     generic.LatestError,
+		RemoteStatus:    generic.RemoteStatus,
+		RemoteCheckedAt: generic.RemoteCheckedAt,
+		RemoteRecordID:  generic.RemoteRecordID,
 	}
-	if latest := LatestSubmissionOutcomeEvent(pkg); latest != nil {
-		projection.LatestStatus = latest.Status
-		projection.LatestError = latest.ErrorMessage
-	} else if pkg.SubmissionState != nil {
-		projection.LatestStatus = pkg.SubmissionState.LastStatus
-		projection.LatestError = pkg.SubmissionState.LastError
-	}
-	if pkg.SubmissionState == nil {
-		return projection
-	}
+}
 
-	projection.RemoteStatus = pkg.SubmissionState.RemoteStatus
-	projection.RemoteCheckedAt = pkg.SubmissionState.RemoteCheckedAt
+func sheinSubmissionProjectionPolicy() listingsubmission.ProjectionWorkflowPolicy {
+	return sheinmarketpub.SubmissionProjectionWorkflowPolicy(SubmissionStatusSuccess, SubmissionStatusFailed)
+}
 
-	record := PrimarySubmissionRecord(pkg.SubmissionState)
+func submissionProjectionEvents(pkg *Package) []listingsubmission.Event {
+	if pkg == nil || len(pkg.SubmissionEvents) == 0 {
+		return nil
+	}
+	events := make([]listingsubmission.Event, 0, len(pkg.SubmissionEvents))
+	for _, event := range pkg.SubmissionEvents {
+		events = append(events, listingsubmission.Event{
+			Action:       event.Action,
+			Status:       event.Status,
+			ErrorMessage: event.ErrorMessage,
+		})
+	}
+	return events
+}
+
+func submissionProjectionReport(report *SubmissionReport) *listingsubmission.Report {
+	if report == nil {
+		return nil
+	}
+	return &listingsubmission.Report{
+		LastAction:      report.LastAction,
+		LastStatus:      report.LastStatus,
+		LastError:       report.LastError,
+		RemoteStatus:    report.RemoteStatus,
+		RemoteCheckedAt: report.RemoteCheckedAt,
+		SaveDraft:       submissionProjectionRecord(report.SaveDraft, listingsubmission.SubmitActionSaveDraft),
+		Publish:         submissionProjectionRecord(report.Publish, listingsubmission.SubmitActionPublish),
+	}
+}
+
+func submissionProjectionRecord(record *SubmissionRecord, fallbackAction string) *listingsubmission.ActionRecord {
 	if record == nil {
-		return projection
+		return nil
 	}
-	projection.RemoteRecordID = record.RemoteRecordID
-	if projection.RemoteCheckedAt == nil {
-		projection.RemoteCheckedAt = record.RemoteCheckedAt
+	return &listingsubmission.ActionRecord{
+		Action:          submissionRecordAction(record, fallbackAction),
+		Status:          record.Status,
+		RemoteRecordID:  record.RemoteRecordID,
+		RemoteCheckedAt: record.RemoteCheckedAt,
 	}
-	return projection
+}
+
+func submissionRecordAction(record *SubmissionRecord, fallback string) string {
+	if record == nil {
+		return ""
+	}
+	if record.Action != "" {
+		return record.Action
+	}
+	return fallback
 }

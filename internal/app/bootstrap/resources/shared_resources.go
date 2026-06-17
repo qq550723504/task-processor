@@ -7,10 +7,10 @@ import (
 
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	"task-processor/internal/crawler/amazon"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
+	crawleramazon "task-processor/internal/integration/crawler/amazon"
 	"task-processor/internal/prompt"
 
 	"github.com/sirupsen/logrus"
@@ -93,7 +93,7 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 	}
 
 	if options.NeedAmazonCrawler {
-		resources.AmazonCrawler = buildAmazonCrawler(cfg, logger)
+		resources.AmazonCrawler = BuildAmazonCrawler(cfg, logger)
 	}
 
 	return resources, nil
@@ -145,8 +145,9 @@ func newConfiguredManagementClient(cfg *config.Config, logger *logrus.Logger) *m
 	return managementClient
 }
 
-func buildAmazonCrawler(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource {
-	return amazon.CreateProcessor(cfg, logger)
+// BuildAmazonCrawler constructs the concrete Amazon crawler at the bootstrap edge.
+func BuildAmazonCrawler(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource {
+	return crawleramazon.NewLegacyCrawlSource(cfg, logger)
 }
 
 func resolveTenantID(cfg *config.Config) string {

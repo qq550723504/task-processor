@@ -17,6 +17,11 @@ type stubAmazonCrawlerSource struct {
 	results     []model.ProductResult
 }
 
+type shutdownAmazonCrawlerSource struct {
+	stubAmazonCrawlerSource
+	shutdownCalled bool
+}
+
 func (s *stubAmazonCrawlerSource) ProcessWithContext(_ context.Context, url string, zipcode string) (*model.Product, error) {
 	s.lastURL = url
 	s.lastZipcode = zipcode
@@ -26,6 +31,10 @@ func (s *stubAmazonCrawlerSource) ProcessWithContext(_ context.Context, url stri
 func (s *stubAmazonCrawlerSource) ProcessBatchWithContext(_ context.Context, requests []model.ProductRequest) []model.ProductResult {
 	s.lastBatch = requests
 	return s.results
+}
+
+func (s *shutdownAmazonCrawlerSource) Shutdown() {
+	s.shutdownCalled = true
 }
 
 func TestProcessorProcessDelegatesToSource(t *testing.T) {
@@ -85,16 +94,42 @@ func TestProcessorProcessBatchWithoutSourceReturnsErrors(t *testing.T) {
 	}
 }
 
-func TestZipcodePolicyKeepsLegacyAmazonDefaults(t *testing.T) {
-	policy := ZipcodePolicy{}
+func TestLegacyCrawlSourceProcessDelegatesToSource(t *testing.T) {
+	want := &model.Product{Asin: "B002"}
+	source := &stubAmazonCrawlerSource{product: want}
+	crawlSource := &LegacyCrawlSource{source: source}
 
-	if policy.ShouldUseDefaultZipcode("us") {
-		t.Fatal("ShouldUseDefaultZipcode(us) = true, want false")
+	got, err := crawlSource.Process("https://www.amazon.com/dp/B002", "10001")
+	if err != nil {
+		t.Fatalf("Process() error = %v", err)
 	}
-	if !policy.ShouldUseDefaultZipcode("uk") {
-		t.Fatal("ShouldUseDefaultZipcode(uk) = false, want true")
+	if got != want {
+		t.Fatal("Process() did not return source product")
 	}
-	if got := policy.DefaultZipcode("UK"); got != "SW1A 1AA" {
-		t.Fatalf("DefaultZipcode(UK) = %q, want SW1A 1AA", got)
+	if source.lastURL != "https://www.amazon.com/dp/B002" || source.lastZipcode != "10001" {
+		t.Fatalf("source args = %q/%q, want request URL/zipcode", source.lastURL, source.lastZipcode)
+	}
+}
+
+func TestLegacyCrawlSourceProcessBatchWithoutSourceReturnsErrors(t *testing.T) {
+	var crawlSource *LegacyCrawlSource
+
+	got := crawlSource.ProcessBatchWithContext(context.Background(), []model.ProductRequest{{}, {}})
+	if len(got) != 2 {
+		t.Fatalf("len(got) = %d, want 2", len(got))
+	}
+	if got[0].Error == nil || got[1].Error == nil {
+		t.Fatalf("got = %+v, want errors for each request", got)
+	}
+}
+
+func TestLegacyCrawlSourceShutdownDelegatesWhenAvailable(t *testing.T) {
+	source := &shutdownAmazonCrawlerSource{}
+	crawlSource := &LegacyCrawlSource{source: source}
+
+	crawlSource.Shutdown()
+
+	if !source.shutdownCalled {
+		t.Fatal("Shutdown() did not delegate to source")
 	}
 }

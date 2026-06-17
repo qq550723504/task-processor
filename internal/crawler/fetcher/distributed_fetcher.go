@@ -37,13 +37,11 @@ type DistributedProductFetcher struct {
 	logger             *logrus.Entry
 
 	// 专职处理器
-	cacheManager   *domainProduct.CacheManager
-	dataParser     *domainProduct.DataParser
-	domainResolver *domainProduct.DomainResolver
+	cacheManager *domainProduct.CacheManager
 }
 
-// NewDistributedProductFetcher 创建分布式产品数据获取器（使用共享的RabbitMQ客户端）
-func NewDistributedProductFetcher(
+// newDistributedProductFetcher 创建分布式产品数据获取器（使用共享的RabbitMQ客户端）
+func newDistributedProductFetcher(
 	rawJsonDataClient domainProduct.RawJsonDataClient,
 	amazonConfig *config.AmazonConfig,
 	rabbitmqClient *rabbitmq.Client,
@@ -67,8 +65,6 @@ func NewDistributedProductFetcher(
 		freshnessDays = amazonConfig.DataFreshnessDays
 	}
 	cacheManager := domainProduct.NewCacheManagerWithFreshness(rawJsonDataClient, logger, freshnessDays)
-	dataParser := domainProduct.NewDataParser(logger)
-	domainResolver := domainProduct.NewDomainResolver()
 
 	return &DistributedProductFetcher{
 		rawJsonDataClient:  rawJsonDataClient,
@@ -76,8 +72,6 @@ func NewDistributedProductFetcher(
 		amazonConfig:       amazonConfig,
 		logger:             logger,
 		cacheManager:       cacheManager,
-		dataParser:         dataParser,
-		domainResolver:     domainResolver,
 	}, nil
 }
 

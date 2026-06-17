@@ -1281,6 +1281,7 @@ export function SheinStudioWorkbench({
                   items: result.items,
                   createdTasks: result.createdTasks,
                   failedTasks: result.failedTasks,
+                  statusGroups: result.statusGroups,
                 };
                 const nextSavedBatch: SheinStudioSavedBatch = {
                   ...(currentActiveBatch ?? {}),
@@ -2582,6 +2583,7 @@ export function SheinStudioWorkbench({
                 selectionReady={Boolean(activeSelection?.variantId)}
                 storeRequiredMessage={storeRequiredMessage}
                 showSavedBatches={!initialBatchId}
+                statusGroups={itemizedBatchDetail?.statusGroups}
                 subscriptionBlockedMessage={subscriptionBlockedMessage}
                 setArtworkModel={setArtworkModel}
                 setGroupedImageMode={setGroupedImageMode}

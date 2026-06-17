@@ -68,6 +68,49 @@ describe("TaskListPage", () => {
     expect(screen.getByText(/SHEIN 远端：远端已确认 · record-123/)).toBeInTheDocument();
   });
 
+  it("passes source readiness and latest submission filters from the URL", () => {
+    mocks.currentSearch =
+      "source_type=sds&readiness_status=ready&shein_latest_submission_status=failed";
+    mocks.useListingKitTasks.mockReturnValue({
+      data: {
+        page: 1,
+        page_size: 20,
+        total: 1,
+        items: [
+          {
+            task_id: "task-filtered",
+            status: "needs_review",
+            platforms: ["shein"],
+            title: "筛选商品",
+            source_type: "sds",
+            shein_latest_submission_status: "failed",
+            shein_status_overview: {
+              primary_action: "修复失败后重试",
+            },
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      refetch: mocks.refetch,
+    });
+
+    render(<TaskListPage />);
+
+    expect(mocks.useListingKitTasks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source_type: "sds",
+        readiness_status: "ready",
+        shein_latest_submission_status: "failed",
+      }),
+    );
+    expect(screen.getByRole("option", { name: "全部来源" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "全部 Readiness" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "全部提交结果" })).toBeInTheDocument();
+    expect(screen.getByText("来源 SDS")).toBeInTheDocument();
+    expect(screen.getByText("下一步 修复失败后重试")).toBeInTheDocument();
+  });
+
   it("renders latest SHEIN failure summary in Chinese", () => {
     mocks.useListingKitTasks.mockReturnValue({
       data: {

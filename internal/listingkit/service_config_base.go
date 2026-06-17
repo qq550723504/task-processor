@@ -6,6 +6,7 @@ func newServiceBase(config *ServiceConfig, defaultSettings SheinSettings) *servi
 	}
 	return &service{
 		repo:          config.Core.Repository,
+		healthProbes:  config.Health,
 		sheinSettings: defaultSettings,
 	}
 }

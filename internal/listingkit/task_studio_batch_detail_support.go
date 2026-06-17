@@ -45,12 +45,14 @@ func projectStudioBatchDetail(
 		})
 	}
 
-	return &StudioBatchDetail{
+	projected := &StudioBatchDetail{
 		Batch:        batch,
 		Items:        items,
 		CreatedTasks: append([]SheinStudioCreatedTask(nil), createdTasks...),
 		FailedTasks:  append([]SheinStudioFailedTask(nil), failedTasks...),
 	}
+	projected.StatusGroups = BuildStudioBatchStatusGroups(projected)
+	return projected
 }
 
 func projectStudioBatchRecord(batch *StudioBatchRecord, items []StudioBatchItemRecord, draftUpdatedAt *time.Time) *StudioBatchRecord {
@@ -103,10 +105,12 @@ func buildStudioBatchDraftOnlyDetail(session *SheinStudioSession) *StudioBatchDe
 	batch.Status = StudioBatchStatusDraft
 	updatedAt := session.UpdatedAt.UTC()
 	batch.DraftUpdatedAt = &updatedAt
-	return &StudioBatchDetail{
+	detail := &StudioBatchDetail{
 		Batch:        batch,
 		Items:        []StudioBatchItemDetail{},
 		CreatedTasks: append([]SheinStudioCreatedTask(nil), session.CreatedTasks...),
 		FailedTasks:  append([]SheinStudioFailedTask(nil), session.FailedTasks...),
 	}
+	detail.StatusGroups = BuildStudioBatchStatusGroups(detail)
+	return detail
 }

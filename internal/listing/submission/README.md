@@ -4,6 +4,7 @@ Owns submit, retry, recovery, state, and submission orchestration that is generi
 
 Current stable ownership:
 
+- generic submit attempt domain model for identity, target, action, status, phase, idempotency, remote ids, errors, and timing fields
 - generic submission refresh orchestration seam (`RefreshStatus` style load/resolve/finish flow)
 - generic task requeue orchestration seam (`RequeueTasks` style load/check/submit flow)
 - generic immediate recovery orchestration seam (`RecoverNow` style load/recover/submit/reload flow)
@@ -31,6 +32,7 @@ Current stable ownership:
 - submission event history policy: default event ID and recent-event retention
 - attempt result status policy for success, failure, and unknown completion states
 - submission event outcome policy: record metadata carry-over, response-note selection, and submit-error override
+- submission projection policy: latest outcome selection, submit-phase event skipping, workflow status fallback, primary action record selection, and remote record summary projection
 - phase event policy: default running status, default detail fallback, and error-message propagation
 - remote record id normalization policy for confirm-remote event/result sync
 - confirm-remote state policy: checked-at, message, and event remote-record-id normalization
@@ -52,6 +54,7 @@ Current stable ownership:
 - generic source-facts, enqueue-retry, response-error, and in-flight TTL primitives for service-level submission coordination
 - generic requeue task-id normalization for dedupe/trim request shaping
 - generic submit-in-progress error ownership for non-SHEIN-specific API/service/Temporal callsites
+- preferred submit-action selection policy for choosing the first supported action from ordered candidates
 
 Does not own yet:
 

@@ -6,6 +6,26 @@ export type SheinReadinessReason = {
   summary?: string;
 };
 
+export type SheinReadinessTaxonomy = {
+  blocker_key?: string;
+  severity?: "blocker" | "warning" | "info" | string;
+  domain?:
+    | "category"
+    | "attribute"
+    | "sale_attribute"
+    | "image"
+    | "price"
+    | "sku"
+    | "store"
+    | "remote"
+    | "system"
+    | string;
+  repair_target?: string;
+  repair_route?: string;
+  recoverable?: boolean;
+  requires_engineering?: boolean;
+};
+
 export type SheinRepairValidationPreview = {
   valid?: boolean;
   status?: string;
@@ -32,6 +52,7 @@ export type SheinReadinessItem = {
   suggested_action?: string;
   reason?: SheinReadinessReason;
   repair_hints?: SheinRepairHint[];
+  taxonomy?: SheinReadinessTaxonomy;
 };
 
 export type SheinReadinessCheck = {
@@ -43,6 +64,7 @@ export type SheinReadinessCheck = {
   suggested_action?: string;
   reason?: SheinReadinessReason;
   repair_hints?: SheinRepairHint[];
+  taxonomy?: SheinReadinessTaxonomy;
 };
 
 export type SheinSubmitReadiness = {
@@ -95,6 +117,7 @@ export type SheinChecklistGroupItem = {
   suggested_action?: string;
   reason?: SheinReadinessReason;
   repair_hints?: SheinRepairHint[];
+  taxonomy?: SheinReadinessTaxonomy;
 };
 
 export type SheinSubmitChecklist = {
@@ -564,6 +587,8 @@ export type SheinSubmissionRecord = {
   remote_audit_state?: number;
   remote_message?: string;
   remote_checked_at?: string;
+  recoverable?: boolean;
+  next_action?: string;
 };
 
 export type SheinSubmissionReport = {
