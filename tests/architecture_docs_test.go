@@ -44,6 +44,24 @@ func TestProjectBoundaryDocumentKeepsRouteRegistrationInOwningHTTPAPI(t *testing
 	}
 }
 
+func TestProjectBoundaryDocumentKeepsPreviewPlacementAlignedWithStablePreviewBoundary(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "project-boundaries.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"| Platform-neutral preview rules | `internal/listing/preview`; see `listing-preview-boundaries.md` |",
+		"| Legacy preview facade / task-result aggregation | `internal/listingkit` during migration |",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so new preview code follows the stable preview boundary", path, phrase)
+		}
+	}
+}
+
 func TestHTTPAPIAssemblyBoundaryDocumentTracksGuardTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "httpapi-assembly-boundaries.md")
 	content, err := os.ReadFile(path)

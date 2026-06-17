@@ -220,7 +220,8 @@ Use this table when adding new code:
 | Request parsing / response writing | `internal/listingkit/api` or API package owned by the module |
 | Task lifecycle | `internal/listingkit/task` during migration |
 | Workflow orchestration | `internal/listingkit/workflow` during migration |
-| Preview aggregation | `internal/listingkit/preview` during migration |
+| Platform-neutral preview rules | `internal/listing/preview`; see `listing-preview-boundaries.md` |
+| Legacy preview facade / task-result aggregation | `internal/listingkit` during migration |
 | Export aggregation | `internal/listingkit/export` during migration |
 | Revision/history facade | `internal/listingkit/revision` during migration |
 | Submission state / retry / recovery | `internal/listing/submission` for generic mechanics; SHEIN transition sequencing stays at the root `internal/listingkit/shein_submit_state.go` stop-line; do not recreate `internal/listingkit/submission` |
