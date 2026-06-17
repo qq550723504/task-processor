@@ -47,10 +47,13 @@ func (p *SKCVariantProcessor) BuildSingleVariantSKC(input *SKCVariantBuildInput,
 	var customAttributeRelations []api_attribute.CustomAttributeRelation
 
 	mapperRuntime := &attribute.MapperRuntimeInput{
-		CategoryID:         input.CategoryID,
-		ProductTitle:       p.runtime.AmazonProduct.Title,
-		AttributeTemplates: p.runtime.AttributeTemplates,
-		AttributeAPI:       input.AttributeAPI,
+		CategoryID:            input.CategoryID,
+		ProductTitle:          p.runtime.AmazonProduct.Title,
+		AmazonProduct:         p.runtime.AmazonProduct,
+		AttributeTemplates:    p.runtime.AttributeTemplates,
+		AttributeAPI:          input.AttributeAPI,
+		FallbackCache:         ctx.AICache,
+		FallbackValueResolver: attribute.NewLLMPlatformValueFallbackResolver(p.openaiClient),
 	}
 	mappingRelations, err := p.attributeMapper.MapAttributeValuesToSheinIDsWithRuntime(ctx, mapperRuntime, &strategy)
 	if err != nil {
@@ -86,10 +89,13 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(input *SKCVariantBuildInp
 	usedAttributeValueIDs := make(map[int]bool)
 
 	mapperRuntime := &attribute.MapperRuntimeInput{
-		CategoryID:         input.CategoryID,
-		ProductTitle:       p.runtime.AmazonProduct.Title,
-		AttributeTemplates: p.runtime.AttributeTemplates,
-		AttributeAPI:       input.AttributeAPI,
+		CategoryID:            input.CategoryID,
+		ProductTitle:          p.runtime.AmazonProduct.Title,
+		AmazonProduct:         p.runtime.AmazonProduct,
+		AttributeTemplates:    p.runtime.AttributeTemplates,
+		AttributeAPI:          input.AttributeAPI,
+		FallbackCache:         ctx.AICache,
+		FallbackValueResolver: attribute.NewLLMPlatformValueFallbackResolver(p.openaiClient),
 	}
 	mappingRelations, err := p.attributeMapper.MapAttributeValuesToSheinIDsWithRuntime(ctx, mapperRuntime, &strategy)
 	if err != nil {

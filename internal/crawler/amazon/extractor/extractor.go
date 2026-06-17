@@ -41,6 +41,7 @@ func NewCompositeExtractor(marketplace string) *CompositeExtractor {
 			&ShipsFromExtractor{},       // 发货地提取器
 			&DeliveryExtractor{},        // 配送信息提取器
 			NewDescriptionExtractor(),   // 使用构造函数正确初始化
+			NewSizeChartExtractor(),     // 尺码表提取器
 			&ProductDetailsExtractor{},  // 产品详情提取器
 			NewVariationsExtractor(),    // 变体提取器
 			NewBestsellerExtractor(),    // 畅销排名提取器

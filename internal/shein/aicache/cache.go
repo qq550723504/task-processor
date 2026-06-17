@@ -38,11 +38,12 @@ func (AIResultCache) TableName() string { return "shein_ai_result_cache" }
 // ---- 缓存类型常量 ----
 
 const (
-	TypeCategory     = "category"  // AI 分类选择
-	TypeContent      = "content"   // 标题/描述内容优化
-	TypeAttribute    = "attribute" // AI 属性选择
-	TypeSaleAttr     = "sale_attr" // AI 销售规格生成
-	TypeSKCTranslate = "skc_trans" // SKC 翻译优化
+	TypeCategory          = "category"            // AI 分类选择
+	TypeContent           = "content"             // 标题/描述内容优化
+	TypeAttribute         = "attribute"           // AI 属性选择
+	TypeSaleAttr          = "sale_attr"           // AI 销售规格生成
+	TypeSKCTranslate      = "skc_trans"           // SKC 翻译优化
+	TypeAttrValueFallback = "attr_value_fallback" // 属性值兜底映射
 )
 
 const memCacheTTL = 30 * time.Minute // 内存二级缓存 30 分钟

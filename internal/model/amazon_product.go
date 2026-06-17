@@ -73,13 +73,14 @@ type Product struct {
 	ProductDetails   []ProductDetail  `json:"product_details"`
 
 	// 产品详细信息
-	ProductDimensions  string `json:"product_dimensions,omitempty"`
-	ItemWeight         string `json:"item_weight,omitempty"`
-	ModelNumber        string `json:"model_number,omitempty"`
-	Department         string `json:"department,omitempty"`
-	DateFirstAvailable string `json:"date_first_available,omitempty"`
-	Manufacturer       string `json:"manufacturer,omitempty"`
-	CountryOfOrigin    string `json:"country_of_origin,omitempty"`
+	ProductDimensions  string     `json:"product_dimensions,omitempty"`
+	ItemWeight         string     `json:"item_weight,omitempty"`
+	ModelNumber        string     `json:"model_number,omitempty"`
+	Department         string     `json:"department,omitempty"`
+	DateFirstAvailable string     `json:"date_first_available,omitempty"`
+	Manufacturer       string     `json:"manufacturer,omitempty"`
+	CountryOfOrigin    string     `json:"country_of_origin,omitempty"`
+	SizeChart          *SizeChart `json:"size_chart,omitempty"`
 
 	// 配送信息
 	Delivery  []string `json:"delivery,omitempty"`
@@ -196,6 +197,15 @@ func (vv *VariationValue) UnmarshalJSON(data []byte) error {
 type ProductDetail struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`
+}
+
+// SizeChart Amazon 尺码表
+type SizeChart struct {
+	Title    string     `json:"title,omitempty"`
+	Subtitle string     `json:"subtitle,omitempty"`
+	Headers  []string   `json:"headers,omitempty"`
+	Rows     [][]string `json:"rows,omitempty"`
+	RawText  string     `json:"raw_text,omitempty"`
 }
 
 // VideoInfo 视频信息

@@ -39,11 +39,12 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *s
 
 	validateResponse, err := runtime.AttributeAPI.ValidateCustomAttributeValue(attrID, sanitizedValue, runtime.CategoryID, runtime.ProductTitle)
 	if err != nil {
+		permissionDenied := isCustomAttributePermissionDeniedError(err)
 		logger.GetGlobalLogger("shein/product").Warnf(
 			"validate custom attribute value failed: attrID=%d value=%q categoryID=%d required=%v shouldContinue=%v err=%v",
 			attrID, sanitizedValue, runtime.CategoryID, isRequired, !isRequired, err,
 		)
-		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
+		return CustomAttributeResult{Success: false, PermissionDenied: permissionDenied, ShouldContinue: !isRequired}
 	}
 	if validateResponse == nil {
 		logger.GetGlobalLogger("shein/product").Warnf(
@@ -86,6 +87,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *s
 		}},
 	})
 	if err != nil {
+		permissionDenied := isCustomAttributePermissionDeniedError(err)
 		logger.GetGlobalLogger("shein/product").Warnf(
 			"add custom attribute value failed: attrID=%d value=%q categoryID=%d preAttrValueID=%d required=%v shouldContinue=%v err=%v",
 			attrID,
@@ -96,7 +98,7 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *s
 			!isRequired,
 			err,
 		)
-		return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
+		return CustomAttributeResult{Success: false, PermissionDenied: permissionDenied, ShouldContinue: !isRequired}
 	}
 	if addResponse == nil {
 		logger.GetGlobalLogger("shein/product").Warnf(
@@ -136,6 +138,13 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *s
 		!isRequired,
 	)
 	return CustomAttributeResult{Success: false, ShouldContinue: !isRequired}
+}
+
+func isCustomAttributePermissionDeniedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "没有自定义属性值权限")
 }
 
 func (p *CustomAttributeProcessor) convertToAttributeValueNameMultis(source []struct {

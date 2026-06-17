@@ -109,7 +109,12 @@ func (m *AttributeValueMatcher) GetPlatformAttributeValues(attrID int, attribute
 						}
 					}
 				}
-				logger.GetGlobalLogger("shein/product").Debugf("属性ID %d 找到 %d 个平台属性值", attrID, len(platformValues)/2) // 除以2因为每个值存储了两次
+				logger.GetGlobalLogger("shein/product").Infof(
+					"loaded platform attribute values: attrID=%d unique_value_count=%d sample=%v",
+					attrID,
+					countUniquePlatformValues(platformValues),
+					samplePlatformValues(platformValues, 8),
+				)
 				return platformValues
 			}
 		}

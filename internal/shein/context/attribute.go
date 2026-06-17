@@ -9,10 +9,11 @@ import (
 
 // CustomAttributeResult 自定义属性处理结果
 type CustomAttributeResult struct {
-	Success        bool
-	NewValueID     int
-	Relations      []attribute.CustomAttributeRelation
-	ShouldContinue bool
+	Success          bool
+	NewValueID       int
+	Relations        []attribute.CustomAttributeRelation
+	PermissionDenied bool
+	ShouldContinue   bool
 }
 
 // AttributeStrategy 属性策略结构体

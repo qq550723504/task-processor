@@ -4,7 +4,9 @@ package prompt
 // 命名规则：K + 大驼峰路径，例如 shein.category_selector.select_category_system → KSheinCategorySelectorSelectCategorySystem
 const (
 	// ── shein/attribute_selector.yaml ──────────────────────────────────────
-	KSheinAttributeSelectorSystem = "shein.attribute_selector.system"
+	KSheinAttributeSelectorSystem      = "shein.attribute_selector.system"
+	KSheinAttributeValueFallbackSystem = "shein.attribute_value_fallback.system"
+	KSheinAttributeValueFallbackUser   = "shein.attribute_value_fallback.user"
 
 	// ── shein/category_selector.yaml ───────────────────────────────────────
 	KSheinCategorySelectorSelectCategorySystem  = "shein.category_selector.select_category_system"
