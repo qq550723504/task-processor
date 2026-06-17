@@ -329,3 +329,49 @@ func TestProcessSingleBatch_DoesNotRetryOnRequestError(t *testing.T) {
 		t.Fatalf("variants count = %d, want 0", len(result.Variants))
 	}
 }
+
+func TestProcessSingleBatch_UsesProductsDataCountWhenRequiredVariantCountMismatches(t *testing.T) {
+	t.Parallel()
+
+	client := &sequentialChatClient{
+		responses: []*openaiclient.ChatCompletionResponse{
+			{
+				Model: "test-model",
+				Choices: []openaiclient.ChatCompletionChoice{{
+					FinishReason: "stop",
+					Message: openaiclient.ChatCompletionMessage{
+						Content: `{"saleAttributes":[{"attrId":27,"attrValue":[]}],"variants":[{"asin":"A1","quantity":1},{"asin":"A2","quantity":1},{"asin":"A3","quantity":1},{"asin":"A4","quantity":1},{"asin":"A5","quantity":1},{"asin":"A6","quantity":1}]}`,
+					},
+				}},
+			},
+		},
+	}
+
+	handler := NewSaleAttributeHandler(client)
+	processor := NewSaleAttributeSingleProcessor(handler)
+	processor.debugSaver.debugDir = t.TempDir()
+
+	input := &SaleAttributeInput{
+		Context: context.Background(),
+		Task:    &model.Task{ID: 8213798, ProductID: "B07N14BP26"},
+	}
+
+	result := processor.ProcessSingleBatch(input, &sheinattr.GenerationRequest{
+		ProductsData: []sheinattr.ProductVariantData{
+			{ASIN: "A1"},
+			{ASIN: "A2"},
+			{ASIN: "A3"},
+			{ASIN: "A4"},
+			{ASIN: "A5"},
+			{ASIN: "A6"},
+		},
+		RequiredVariantCount: 10,
+	})
+
+	if client.callCount != 1 {
+		t.Fatalf("CreateChatCompletion call count = %d, want 1", client.callCount)
+	}
+	if len(result.Variants) != 6 {
+		t.Fatalf("variants count = %d, want 6", len(result.Variants))
+	}
+}

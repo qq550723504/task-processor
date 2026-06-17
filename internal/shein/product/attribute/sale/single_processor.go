@@ -160,10 +160,10 @@ func expectedVariantCount(request *sheinattr.GenerationRequest) int {
 	if request == nil {
 		return 0
 	}
-	if request.RequiredVariantCount > 0 {
-		return request.RequiredVariantCount
+	if len(request.ProductsData) > 0 {
+		return len(request.ProductsData)
 	}
-	return len(request.ProductsData)
+	return request.RequiredVariantCount
 }
 
 func (p *SaleAttributeSingleProcessor) logAttemptFailure(taskID, productID string, category saleAttributeFailureCategory, attempt int, recoverable bool, err error) {
