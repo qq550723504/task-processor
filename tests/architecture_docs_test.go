@@ -335,6 +335,33 @@ func TestArchitectureReviewChecklistReferencesExistingDocuments(t *testing.T) {
 	assertMarkdownReferencesExistingDocuments(t, checklistPath, reviewReferences)
 }
 
+func TestArchitectureReviewChecklistReferencesAreUnique(t *testing.T) {
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	reviewReferences := markdownSection(t, string(checklistContent), "## Review References")
+	const uniqueRule = "Review references must not contain duplicate document entries"
+	if !strings.Contains(reviewReferences, uniqueRule) {
+		t.Errorf("%s Review References must state %q so formal review entrypoints remain a clear set", checklistPath, uniqueRule)
+	}
+
+	referenceListStart := strings.Index(reviewReferences, "- ")
+	if referenceListStart == -1 {
+		t.Fatalf("%s Review References must include a reference list", checklistPath)
+	}
+	referenceList := reviewReferences[referenceListStart:]
+	seen := map[string]bool{}
+	for _, reference := range normalizedArchitectureDocReferences(t, referenceList) {
+		if seen[reference] {
+			t.Errorf("%s Review References must not list %q more than once", checklistPath, reference)
+		}
+		seen[reference] = true
+	}
+}
+
 func TestArchitectureReviewChecklistExcludesTimeBoundedReviewReferences(t *testing.T) {
 	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
 	readmeContent, err := os.ReadFile(readmePath)
