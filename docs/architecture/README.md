@@ -61,10 +61,20 @@ These documents are useful background, but should not override stable boundary
 documents unless they say so explicitly:
 
 - `project-target-architecture.md`
+  - target architecture context; use stable boundary documents for current
+    review policy
 - `task-status-lifecycle.md`
+  - status lifecycle context; use stable boundary documents for package
+    ownership and dependency rules
 - `temu-architecture-patterns.md`
+  - TEMU architecture pattern context; use stable boundary documents for
+    cross-platform dependency rules
 - `temu-pipeline-stages.md`
+  - TEMU pipeline stage context; use stable boundary documents for runtime and
+    assembly boundaries
 - `listingkit-refactor-status.md`
+  - ListingKit refactor status context; use stable boundary documents for
+    long-lived ListingKit boundaries
 - `amazon-crawler-runtime-flow.md`
   - Amazon crawler runtime flow context; use stable boundary documents for
     review policy

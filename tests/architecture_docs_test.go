@@ -714,6 +714,28 @@ func TestArchitectureReadmeIndexesRuntimeFlowSupportingContext(t *testing.T) {
 	}
 }
 
+func TestArchitectureReadmeDescribesSupportingContextRoles(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "README.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	supportingContext := markdownSection(t, string(content), "## Supporting Context")
+	required := []string{
+		"target architecture context",
+		"status lifecycle context",
+		"TEMU architecture pattern context",
+		"TEMU pipeline stage context",
+		"ListingKit refactor status context",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(supportingContext, phrase) {
+			t.Errorf("%s Supporting Context must mention %q so background documents have explicit roles instead of becoming an undifferentiated file list", path, phrase)
+		}
+	}
+}
+
 func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "development", "repository-structure.md")
 	content, err := os.ReadFile(path)
