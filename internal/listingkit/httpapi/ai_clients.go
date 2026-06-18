@@ -30,21 +30,6 @@ func BuildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientC
 	return buildListingKitRoutedImageClient(cfg, resolver)
 }
 
-func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
-	nanoClient := buildStrictListingKitNanobananaImageClient(cfg, resolver, listingKitImageClientNameNanobanana)
-	gptClient := buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientNameGPTImage2)
-	defaultClient := nanoClient
-	if resolver == nil {
-		defaultClient = buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientName)
-	}
-	return &listingKitRoutedImageClient{
-		defaultModel: listingKitImageModelSelectorGPTImage2,
-		defaultImage: defaultClient,
-		gptImage2:    gptClient,
-		nanobanana:   nanoClient,
-	}
-}
-
 func errListingKitAIClientNotConfigured(clientName string) error {
 	return fmt.Errorf("listingkit ai client %q is not configured for current tenant/user", normalizeListingKitClientName(clientName))
 }

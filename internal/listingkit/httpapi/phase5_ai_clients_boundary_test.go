@@ -27,9 +27,9 @@ func TestAIClientsFileStaysFocusedOnClientBuilderAndResolverAssembly(t *testing.
 	require.NotContains(t, content, "func buildStrictListingKitChatClient(")
 	require.NotContains(t, content, "func buildStrictListingKitImageClient(")
 	require.NotContains(t, content, "func buildStrictListingKitNanobananaImageClient(")
+	require.NotContains(t, content, "func buildListingKitRoutedImageClient(")
 
 	require.Contains(t, content, "func BuildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {")
-	require.Contains(t, content, "func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {")
 }
 
 func TestAIClientImageRoutingHelpersFileOwnsRoutedImageLogic(t *testing.T) {
@@ -40,6 +40,7 @@ func TestAIClientImageRoutingHelpersFileOwnsRoutedImageLogic(t *testing.T) {
 	content := string(src)
 
 	require.Contains(t, content, "type listingKitRoutedImageClient struct {")
+	require.Contains(t, content, "func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {")
 	require.Contains(t, content, "func normalizeListingKitImageSelector(selector string) string {")
 	require.Contains(t, content, "func enforceListingKitImageClientTimeout(clientName string, cfg *openaiclient.ClientConfig) *openaiclient.ClientConfig {")
 }

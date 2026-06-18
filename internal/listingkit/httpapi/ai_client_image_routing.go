@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
@@ -12,6 +13,21 @@ type listingKitRoutedImageClient struct {
 	defaultImage openaiclient.ImageGenerator
 	gptImage2    openaiclient.ImageGenerator
 	nanobanana   openaiclient.ImageGenerator
+}
+
+func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
+	nanoClient := buildStrictListingKitNanobananaImageClient(cfg, resolver, listingKitImageClientNameNanobanana)
+	gptClient := buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientNameGPTImage2)
+	defaultClient := nanoClient
+	if resolver == nil {
+		defaultClient = buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientName)
+	}
+	return &listingKitRoutedImageClient{
+		defaultModel: listingKitImageModelSelectorGPTImage2,
+		defaultImage: defaultClient,
+		gptImage2:    gptClient,
+		nanobanana:   nanoClient,
+	}
 }
 
 func (c *listingKitRoutedImageClient) GenerateImage(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {
