@@ -59,17 +59,13 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	composition.imageModule = listingKitFeatures.imageModule
 
 	done = timer.phase("buildAmazonListingModule")
-	amazonListingModule, err := b.buildAmazonListing(amazonlistinghttpapi.RuntimeBuildInput{
-		Logger:         logger,
-		Config:         deps.shared.cfg,
-		ProductService: deps.features.productService,
-		ImageService:   deps.features.imageService,
-	})
+	amazonListingModule, err := amazonListingFeatureBuilder{
+		buildAmazonListing: b.buildAmazonListing,
+	}.build(logger, deps)
 	done()
 	if err != nil {
 		return composition, err
 	}
-	deps.attachAmazonListingModule(amazonListingModule)
 	composition.amazonListingModule = amazonListingModule
 
 	done = timer.phase("buildSheinLoginModule")

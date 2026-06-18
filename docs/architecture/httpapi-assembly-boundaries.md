@@ -193,6 +193,9 @@ ListingKit 的 SDS sync service hook、SHEIN cookie store 和 SDS baseline provi
 ProductEnrich / ProductImage 的 runtime build input 组装和对应 feature attach
 应由 `feature_builder_listingkit.go` 承接，`composition_builder.go` 只负责调用 feature builder
 并记录返回的 module，避免中心 composition builder 重新持有 Product/Image 的输入细节。
+AmazonListing 的 runtime build input 组装和 feature attach 应由
+`feature_builder_amazonlisting.go` 承接，避免中心 composition builder 持有 AmazonListing
+对 Product/Image service 的输入拼装细节。
 
 `internal/app/httpapi/adapters.go` 不应重新长成所有基础设施 adapter 的集中入口。
 OpenAI manager / credential resolver 组装应放在 `adapters_openai.go`，schema migration
@@ -240,6 +243,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
 - `TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook`
 - `TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs`
+- `TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput`
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`
