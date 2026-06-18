@@ -169,6 +169,27 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 			}
 		}
 	}
+
+	managedRoot := filepath.Join("..", "internal", "publishing", "sheinmanaged")
+	managedAllowedImports := map[string]map[string]struct{}{
+		`"task-processor/internal/shein/category"`: {
+			filepath.Clean(filepath.Join(managedRoot, "category_selector_adapter.go")): {},
+		},
+	}
+	managedIndex, err := loadGoFileIndex(managedRoot, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range managedIndex.files {
+		for bannedImport, allowedFiles := range managedAllowedImports {
+			if _, ok := facts.imports[bannedImport]; !ok {
+				continue
+			}
+			if _, ok := allowedFiles[path]; !ok {
+				t.Errorf("%s imports %s; keep publishing/sheinmanaged direct dependencies on legacy shein category implementation isolated to adapter files", path, bannedImport)
+			}
+		}
+	}
 }
 
 func TestPublishingSheinOpenAIImportsStayAllowlisted(t *testing.T) {
