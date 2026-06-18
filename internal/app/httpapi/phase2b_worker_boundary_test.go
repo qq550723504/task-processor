@@ -101,6 +101,34 @@ func TestLegacyBuildHandlersUsesRouteHandlerAliases(t *testing.T) {
 	require.Contains(t, content, "func BuildHandlers(logger *logrus.Logger, options Options) (productRouteHandler, imageRouteHandler, []worker.WorkerPool, []func() error, error)")
 }
 
+func TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers(t *testing.T) {
+	t.Parallel()
+
+	appSrc, err := os.ReadFile("app.go")
+	require.NoError(t, err)
+	appContent := string(appSrc)
+
+	for _, marker := range []string{
+		"func buildHTTPServerBundleFromModules(",
+		"buildRuntimeBundleFromModules(cfg, modules)",
+		"bundle.buildServerBundle(port)",
+	} {
+		require.NotContains(t, appContent, marker)
+	}
+
+	moduleRuntimeSrc, err := os.ReadFile("module_runtime.go")
+	require.NoError(t, err)
+	moduleRuntimeContent := string(moduleRuntimeSrc)
+	for _, marker := range []string{
+		"func buildHTTPServerBundleFromModules(",
+		"func buildRegisteredRoutesForModules(",
+		"buildRuntimeBundleFromModules(cfg, modules)",
+		"bundle.buildServerBundle(port)",
+	} {
+		require.Contains(t, moduleRuntimeContent, marker)
+	}
+}
+
 func TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport(t *testing.T) {
 	t.Parallel()
 

@@ -160,6 +160,9 @@ Legacy `BuildHandlers(...)` facade 应放在 `handlers_legacy.go`，避免 `modu
 为了兼容出口重新携带 handler / worker 具体类型依赖。
 Legacy facade 的 handler 返回类型也应使用 `route_handler_types.go` 中的本包 alias，
 避免兼容出口重新直接暴露业务 handler concrete type。
+`app.go` 应聚焦 `Run(...)`、HTTP serve 和资源关闭生命周期；从 kernel modules 构造
+server bundle / route list 的 helper 应放在 `module_runtime.go`，避免 app 入口重新承担
+module runtime 组装细节。
 
 `internal/app/httpapi/types.go` 应保持为 runtime state / module state 类型定义文件。
 `httpFeatureComposition` 的 runtime module、route module、handler accessor 和 server
@@ -263,6 +266,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
 - `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
 - `TestLegacyBuildHandlersUsesRouteHandlerAliases`
+- `TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers`
 - `TestHTTPAPICompositionBuilderDoesNotOwnFeatureModuleBuilderContracts`
 - `TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods`
 - `TestHTTPAPITypesDoesNotOwnRouteHandlerContracts`
