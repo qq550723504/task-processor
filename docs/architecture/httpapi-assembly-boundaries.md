@@ -188,6 +188,8 @@ SHEIN 登录账号配置、SHEIN login module 和 SDS login module bootstrap 应
 `types.go` / `runtime_deps_methods.go` 直接依赖具体登录 bootstrap 包。
 Prompt、SDS 和 taskRPC module result 类型别名应放在 `runtime_module_results.go`，
 避免 `types.go` 为了 composition state 字段直接依赖具体 module result 包。
+Prompt、SDS 和 taskRPC 的 module builder 函数签名与默认 wrapper 也应放在
+`runtime_module_results.go`，避免 `composition_builder.go` 为了 builder 注入直接依赖具体支撑模块包。
 ListingKit 的 SDS sync service hook、SHEIN cookie store 和 SDS baseline provider
 应放在 `runtime_support_listingkit.go`，避免 `modules.go` 持有 ListingKit runtime support 前置依赖。
 ProductEnrich / ProductImage 的 runtime build input 组装和对应 feature attach
@@ -244,6 +246,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
+- `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts`
 - `TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook`
 - `TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs`
 - `TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput`

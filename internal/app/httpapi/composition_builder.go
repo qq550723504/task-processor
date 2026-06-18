@@ -3,12 +3,7 @@ package httpapi
 import (
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/core/config"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	prompt "task-processor/internal/prompt"
-	promptmgmtapi "task-processor/internal/promptmgmt/api"
-	sdshttpapi "task-processor/internal/sds/httpapi"
-	"task-processor/internal/taskrpcapi"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -22,9 +17,9 @@ type httpFeatureCompositionBuilder struct {
 	buildSheinLogin    sheinLoginModuleBuilder
 	buildSDSLogin      sdsLoginModuleBuilder
 	buildListingKit    func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)
-	buildPrompt        func(store prompt.TenantPromptStore) *promptmgmtapi.BuildResult
-	buildTaskRPC       func(provider taskrpcapi.ClientProvider, localStatusProvider taskrpcapi.LocalStatusProvider) (*taskrpcapi.BuildResult, error)
-	buildSDS           func(logger *logrus.Logger, cfg *config.Config) *sdshttpapi.BuildResult
+	buildPrompt        promptModuleBuilder
+	buildTaskRPC       taskRPCModuleBuilder
+	buildSDS           sdsModuleBuilder
 }
 
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
@@ -35,9 +30,9 @@ func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 		buildSheinLogin:    buildSheinLoginModuleResult,
 		buildSDSLogin:      buildSDSLoginModuleResult,
 		buildListingKit:    listingkithttpapi.BuildRuntimeModule,
-		buildPrompt:        promptmgmtapi.BuildModule,
-		buildTaskRPC:       taskrpcapi.BuildModule,
-		buildSDS:           sdshttpapi.BuildModule,
+		buildPrompt:        buildPromptModuleResult,
+		buildTaskRPC:       buildTaskRPCModuleResult,
+		buildSDS:           buildSDSModuleResult,
 	}
 }
 

@@ -244,3 +244,44 @@ func TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes(t *testing.T) {
 		require.Contains(t, resultContent, marker)
 	}
 }
+
+func TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts(t *testing.T) {
+	t.Parallel()
+
+	compositionSrc, err := os.ReadFile("composition_builder.go")
+	require.NoError(t, err)
+	compositionContent := string(compositionSrc)
+
+	for _, marker := range []string{
+		`"task-processor/internal/core/config"`,
+		`"task-processor/internal/prompt"`,
+		`"task-processor/internal/promptmgmt/api"`,
+		`"task-processor/internal/sds/httpapi"`,
+		`"task-processor/internal/taskrpcapi"`,
+		"*promptmgmtapi.BuildResult",
+		"*sdshttpapi.BuildResult",
+		"*taskrpcapi.BuildResult",
+		"taskrpcapi.ClientProvider",
+		"taskrpcapi.LocalStatusProvider",
+		"prompt.TenantPromptStore",
+	} {
+		require.NotContains(t, compositionContent, marker)
+	}
+
+	resultSrc, err := os.ReadFile("runtime_module_results.go")
+	require.NoError(t, err)
+	resultContent := string(resultSrc)
+	for _, marker := range []string{
+		"type promptModuleBuilder func(",
+		"type sdsModuleBuilder func(",
+		"type taskRPCModuleBuilder func(",
+		"func buildPromptModuleResult(",
+		"func buildSDSModuleResult(",
+		"func buildTaskRPCModuleResult(",
+		"*promptModuleResult",
+		"*sdsModuleResult",
+		"*taskRPCModuleResult",
+	} {
+		require.Contains(t, resultContent, marker)
+	}
+}
