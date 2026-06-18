@@ -316,6 +316,25 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	}
 }
 
+func TestNextTechnicalPrioritiesCurrentGuardCoveragePointsToReviewEntrypoints(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	currentGuardCoverage := markdownBlockBetween(t, string(content), "Current guard coverage:", "后续重点")
+	required := []string{
+		"docs/architecture/README.md",
+		"docs/architecture/architecture-review-checklist.md",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(currentGuardCoverage, phrase) {
+			t.Errorf("%s Current guard coverage must mention %q so the active guard baseline points back to the review entrypoints", path, phrase)
+		}
+	}
+}
+
 func markdownSection(t *testing.T, content, heading string) string {
 	t.Helper()
 
@@ -329,6 +348,22 @@ func markdownSection(t *testing.T, content, heading string) string {
 		section = section[:nextHeading]
 	}
 	return section
+}
+
+func markdownBlockBetween(t *testing.T, content, startMarker, endMarker string) string {
+	t.Helper()
+
+	start := strings.Index(content, startMarker)
+	if start == -1 {
+		t.Fatalf("markdown content must include start marker %q", startMarker)
+	}
+
+	block := content[start+len(startMarker):]
+	end := strings.Index(block, endMarker)
+	if end == -1 {
+		t.Fatalf("markdown content after %q must include end marker %q", startMarker, endMarker)
+	}
+	return block[:end]
 }
 
 func TestNextTechnicalPrioritiesTracksEveryImportBoundaryGuard(t *testing.T) {
