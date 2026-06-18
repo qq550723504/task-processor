@@ -65,6 +65,10 @@ Current direct dependency hotspots are:
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
     concrete adapter construction kept in HTTP/runtime assembly
+  - OpenAI-compatible image edit request/response mapping is isolated to
+    `internal/productimage/openai_image_edit_adapter.go`; renderer logic should
+    use the local image edit port instead of concrete OpenAI client request
+    types
   - current direct adapter seams are guarded by
     `TestProductImageExternalClientImportsStayAllowlisted`
 
@@ -107,9 +111,10 @@ adapter types without changing business behavior:
    than adding new concrete OpenAI adapter call sites.
 5. Product image provider construction currently importing `openai` and
    `nanobanana` outside the narrow runtime builder path. Current imports are
-   explicitly allowlisted in both productimage-owned and app/httpapi ProductImage
-   assembly seams; do not add new concrete adapter imports without a local
-   interface seam or a documented runtime-builder exception.
+   explicitly allowlisted in productimage-owned adapter seams and app/httpapi
+   ProductImage assembly seams; renderer logic should stay behind local
+   ProductImage ports and must not add new concrete adapter imports without a
+   local interface seam or a documented runtime-builder exception.
 
 ## Non-goals
 
