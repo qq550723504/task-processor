@@ -62,7 +62,7 @@ func (p *platformPostprocessPhase) run(
 	sdsOptions *SDSSyncOptions,
 ) {
 	if final.Shein != nil {
-		if err := sheinpub.OptimizePackageReviewContent(ctx, final.Shein, resolveWorkflowSheinContentOptimizer(p.service)); err != nil {
+		if err := sheinpub.OptimizePackageReviewContent(ctx, final.Shein, sheinpub.NewAIReviewContentOptimizer(resolveWorkflowSheinContentOptimizer(p.service))); err != nil {
 			appendWarning(final, "shein content optimization skipped: "+err.Error())
 		}
 	}

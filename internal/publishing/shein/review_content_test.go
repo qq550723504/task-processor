@@ -44,7 +44,7 @@ func TestOptimizePackageReviewContent_UsesAIAndUpdatesPreviewSurface(t *testing.
 		},
 	}
 
-	if err := OptimizePackageReviewContent(context.Background(), pkg, ai); err != nil {
+	if err := OptimizePackageReviewContent(context.Background(), pkg, NewAIReviewContentOptimizer(ai)); err != nil {
 		t.Fatalf("OptimizePackageReviewContent returned error: %v", err)
 	}
 	if ai.lastReq == nil || len(ai.lastReq.Messages) < 2 {

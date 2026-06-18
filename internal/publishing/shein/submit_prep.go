@@ -158,6 +158,21 @@ func optimizeSubmitProductContent(ctx context.Context, product *sheinproduct.Pro
 	return nil
 }
 
+type aiReviewContentOptimizer struct {
+	aiClient openaiclient.ChatCompleter
+}
+
+func NewAIReviewContentOptimizer(aiClient openaiclient.ChatCompleter) ReviewContentOptimizer {
+	if aiClient == nil {
+		return nil
+	}
+	return aiReviewContentOptimizer{aiClient: aiClient}
+}
+
+func (o aiReviewContentOptimizer) OptimizeReviewContent(ctx context.Context, title, description, features string, imageURLs []string) (string, string, error) {
+	return optimizeSubmitContentWithAI(ctx, o.aiClient, title, description, features, imageURLs)
+}
+
 func optimizeSubmitContentWithAI(ctx context.Context, aiClient openaiclient.ChatCompleter, title, description, features string, imageURLs []string) (string, string, error) {
 	systemPrompt := `You are an e-commerce content optimization expert for SHEIN product listings.
 Requirements:

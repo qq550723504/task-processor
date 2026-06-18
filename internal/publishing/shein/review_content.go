@@ -4,14 +4,17 @@ import (
 	"context"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	sheincontent "task-processor/internal/shein/content"
 )
+
+type ReviewContentOptimizer interface {
+	OptimizeReviewContent(ctx context.Context, title, description, features string, imageURLs []string) (string, string, error)
+}
 
 // OptimizePackageReviewContent enhances the reviewed SHEIN copy before the
 // workbench enters final confirmation. Submit-time preparation stays
 // deterministic and reuses the reviewed content produced here.
-func OptimizePackageReviewContent(ctx context.Context, pkg *Package, aiClient openaiclient.ChatCompleter) error {
+func OptimizePackageReviewContent(ctx context.Context, pkg *Package, optimizer ReviewContentOptimizer) error {
 	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil {
 		return nil
@@ -41,10 +44,9 @@ func OptimizePackageReviewContent(ctx context.Context, pkg *Package, aiClient op
 		description = sourceDescription
 	}
 
-	if aiClient != nil {
-		optimizedTitle, optimizedDescription, err := optimizeSubmitContentWithAI(
+	if optimizer != nil {
+		optimizedTitle, optimizedDescription, err := optimizer.OptimizeReviewContent(
 			ctx,
-			aiClient,
 			title,
 			description,
 			buildPackageReviewContentFeatures(pkg),

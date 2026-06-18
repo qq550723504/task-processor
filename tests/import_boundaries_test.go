@@ -192,7 +192,6 @@ func TestPublishingSheinOpenAIImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "display_attribute_resolution_flow_test.go")):   {},
 		filepath.Clean(filepath.Join(root, "generation_topic_policy_integration_test.go")): {},
 		filepath.Clean(filepath.Join(root, "listing_copy_test.go")):                        {},
-		filepath.Clean(filepath.Join(root, "review_content.go")):                           {},
 		filepath.Clean(filepath.Join(root, "review_content_test.go")):                      {},
 		filepath.Clean(filepath.Join(root, "sale_attribute_resolver_test.go")):             {},
 		filepath.Clean(filepath.Join(root, "sale_attribute_value_matcher_test.go")):        {},
