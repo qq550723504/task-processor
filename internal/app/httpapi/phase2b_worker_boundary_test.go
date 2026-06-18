@@ -82,6 +82,37 @@ func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
 	}
 }
 
+func TestHTTPAPITypesDoesNotOwnAppBootstrapState(t *testing.T) {
+	t.Parallel()
+
+	typesSrc, err := os.ReadFile("types.go")
+	require.NoError(t, err)
+	typesContent := string(typesSrc)
+
+	for _, marker := range []string{
+		"type appBootstrap struct",
+		"server         *http.Server",
+		"routes         []routeDescriptor",
+		"pools          []worker.WorkerPool",
+		"closers        []func() error",
+	} {
+		require.NotContains(t, typesContent, marker)
+	}
+
+	bootstrapTypesSrc, err := os.ReadFile("bootstrap_types.go")
+	require.NoError(t, err)
+	bootstrapTypesContent := string(bootstrapTypesSrc)
+	for _, marker := range []string{
+		"type appBootstrap struct",
+		"server         *http.Server",
+		"routes         []routeDescriptor",
+		"pools          []worker.WorkerPool",
+		"closers        []func() error",
+	} {
+		require.Contains(t, bootstrapTypesContent, marker)
+	}
+}
+
 func TestLegacyBuildHandlersUsesRouteHandlerAliases(t *testing.T) {
 	t.Parallel()
 

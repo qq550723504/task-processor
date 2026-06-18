@@ -165,6 +165,8 @@ server bundle / route list 的 helper 应放在 `module_runtime.go`，避免 app
 module runtime 组装细节。
 
 `internal/app/httpapi/types.go` 应保持为 runtime state / module state 类型定义文件。
+`appBootstrap` 这类启动结果 / server bundle 状态应放在 `bootstrap_types.go`，
+避免 `types.go` 重新混入进程生命周期输出类型。
 `httpFeatureComposition` 的 runtime module、route module、handler accessor 和 server
 bundle 组装方法应放在 `composition_modules.go`，route handler contract / alias 应放在
 `route_handler_types.go`，避免类型文件继续承载装配行为或路由契约细节。
@@ -270,6 +272,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPICompositionBuilderDoesNotOwnFeatureModuleBuilderContracts`
 - `TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods`
 - `TestHTTPAPITypesDoesNotOwnRouteHandlerContracts`
+- `TestHTTPAPITypesDoesNotOwnAppBootstrapState`
 - `TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport`
 - `TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport`
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
