@@ -657,6 +657,25 @@ func TestArchitectureReadmeClassifiesValidationDocsAsTimeBoundedContext(t *testi
 	}
 }
 
+func TestArchitectureReadmeClassifiesSplitDocsAsTimeBoundedContext(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "README.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	plansRunbooksAndEvaluations := markdownSection(t, string(content), "## Plans, runbooks, and evaluations")
+	required := []string{
+		"*-split.md",
+		"review policy",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(plansRunbooksAndEvaluations, phrase) {
+			t.Errorf("%s Plans, runbooks, and evaluations must mention %q so split plans stay contextual until promoted into stable boundary docs", path, phrase)
+		}
+	}
+}
+
 func TestArchitectureReadmeIndexesRuntimeFlowSupportingContext(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "README.md")
 	content, err := os.ReadFile(path)

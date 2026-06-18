@@ -72,10 +72,10 @@ documents unless they say so explicitly:
 ## Plans, runbooks, and evaluations
 
 Documents with names such as `*-plan.md`, `*-runbook.md`, `*-evaluation.md`,
-`*-checklist.md`, `*-status.md`, `*-playbook.md`, or `*-validation.md` are
-normally time-bounded. They may explain why a decision was made, but stable
-boundary rules should be copied or linked into one of the stable documents above
-before being treated as review policy.
+`*-checklist.md`, `*-status.md`, `*-playbook.md`, `*-validation.md`, or
+`*-split.md` are normally time-bounded. They may explain why a decision was
+made, but stable boundary rules should be copied or linked into one of the
+stable documents above before being treated as review policy.
 
 ## Working Rule
 
