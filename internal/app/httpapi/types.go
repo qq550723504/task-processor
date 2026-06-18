@@ -1,19 +1,11 @@
 package httpapi
 
 import (
-	"os"
-
 	"task-processor/internal/listingkit"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	"task-processor/internal/sheinlogin"
 )
-
-type Options struct {
-	ConfigPath     string
-	Port           int
-	ShutdownSignal chan os.Signal
-}
 
 type runtimeDeps struct {
 	shared   *sharedRuntimeDeps

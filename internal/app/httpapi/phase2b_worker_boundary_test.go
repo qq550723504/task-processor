@@ -113,6 +113,35 @@ func TestHTTPAPITypesDoesNotOwnAppBootstrapState(t *testing.T) {
 	}
 }
 
+func TestHTTPAPITypesDoesNotOwnRunOptions(t *testing.T) {
+	t.Parallel()
+
+	typesSrc, err := os.ReadFile("types.go")
+	require.NoError(t, err)
+	typesContent := string(typesSrc)
+
+	for _, marker := range []string{
+		"type Options struct",
+		"ConfigPath     string",
+		"Port           int",
+		"ShutdownSignal chan os.Signal",
+	} {
+		require.NotContains(t, typesContent, marker)
+	}
+
+	optionsSrc, err := os.ReadFile("options.go")
+	require.NoError(t, err)
+	optionsContent := string(optionsSrc)
+	for _, marker := range []string{
+		"type Options struct",
+		"ConfigPath     string",
+		"Port           int",
+		"ShutdownSignal chan os.Signal",
+	} {
+		require.Contains(t, optionsContent, marker)
+	}
+}
+
 func TestLegacyBuildHandlersUsesRouteHandlerAliases(t *testing.T) {
 	t.Parallel()
 
