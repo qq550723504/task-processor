@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 	common "task-processor/internal/publishing/common"
@@ -21,7 +20,7 @@ func inferMissingRequiredDisplayAttributesRepair(
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	resolvedByID map[int]ResolvedAttribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) ([]ResolvedAttribute, []string) {
 	if llm == nil || len(attributes) == 0 || len(inputs) == 0 {
 		return nil, nil
@@ -78,7 +77,7 @@ func inferRequiredDisplayAttributeRepair(
 	ctx context.Context,
 	attr sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (ResolvedAttribute, []string, bool) {
 	ctx, cancel := context.WithTimeout(contextWithFallback(ctx), 12*time.Second)
 	defer cancel()

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 	common "task-processor/internal/publishing/common"
@@ -19,7 +18,7 @@ func inferMissingRequiredDisplayAttributes(
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	resolvedByID map[int]ResolvedAttribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) ([]ResolvedAttribute, []string) {
 	if len(attributes) == 0 || len(inputs) == 0 {
 		return nil, nil
@@ -70,7 +69,7 @@ func inferMissingDisplayAttributeTextCandidates(
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	resolvedByID map[int]ResolvedAttribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) ([]ResolvedAttribute, []string) {
 	if llm == nil || len(attributes) == 0 || len(inputs) == 0 {
 		return nil, nil
@@ -116,7 +115,7 @@ func inferDisplayAttributeTextFromContext(
 	ctx context.Context,
 	attr sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (ResolvedAttribute, []string, bool) {
 	if llm == nil || len(inputs) == 0 {
 		return ResolvedAttribute{}, nil, false
@@ -209,7 +208,7 @@ func inferDisplayAttributeValueFromContext(
 	ctx context.Context,
 	attr sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (ResolvedAttribute, []string, bool) {
 	if llm == nil || len(attr.AttributeValueInfoList) == 0 || len(inputs) == 0 {
 		return ResolvedAttribute{}, nil, false

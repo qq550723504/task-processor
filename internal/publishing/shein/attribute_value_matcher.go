@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 	common "task-processor/internal/publishing/common"
@@ -43,7 +42,7 @@ func matchTemplateAttributeValue(
 	sourceName string,
 	sourceValue string,
 	contextInputs []common.Attribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (ResolvedAttribute, []string) {
 	resolved, reasons, unresolved, ok := matchTemplateAttributeValueDeterministic(attr, sourceName, sourceValue)
 	if ok {
@@ -157,7 +156,7 @@ func matchTemplateAttributeValueWithLLM(
 	sourceName string,
 	sourceValue string,
 	contextInputs []common.Attribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (ResolvedAttribute, []string, bool) {
 	if llm == nil || len(attr.AttributeValueInfoList) == 0 {
 		return ResolvedAttribute{}, nil, false
@@ -193,7 +192,7 @@ func matchTemplateAttributeValueWithLLM(
 func matchTemplateAttributeValuesBatch(
 	entries []unresolvedDisplayAttributeValue,
 	contextInputs []common.Attribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (map[int]ResolvedAttribute, []string) {
 	if llm == nil || len(entries) == 0 {
 		return nil, nil

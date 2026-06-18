@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -29,7 +28,7 @@ func matchSaleAttributeValuesWithLLM(
 	sourceDimension string,
 	sourceValues []string,
 	scope string,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (map[string]ResolvedSaleAttribute, []string) {
 	if llm == nil || len(attr.AttributeValueInfoList) == 0 || len(sourceValues) == 0 {
 		return nil, nil
