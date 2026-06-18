@@ -36,15 +36,21 @@
 
 ### 2. 控制过渡装配层继续膨胀
 
-当前需要重点盯的文件是：
+历史上需要重点盯的文件是：
 
 - `internal/app/httpapi/listingkit_support.go`
 
-它现在作为过渡层是合理的，但只能承担：
+该过渡文件已经退役；ListingKit runtime input shaping 已并入
+`internal/app/httpapi/feature_builder_listingkit.go`。后续应重点盯：
+
+- `internal/app/httpapi/feature_builder_listingkit.go`
+- `internal/app/httpapi/runtime_support_listingkit.go`
+
+这些文件可以承担：
 
 - 显式依赖注入
 - app 层到业务域 builder 的输入适配
-- 还没来得及下沉的 repo factory / bridge wiring
+- 共享 runtime prerequisite 准备
 
 它不应该继续承接：
 
@@ -122,7 +128,8 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted` 禁止 `internal/app/httpapi` 根目录新增 ListingKit helper，ListingKit 专属逻辑应下沉到 owning HTTPAPI 或 domain 包
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted` 禁止 module builder 回流到中心化装配文件
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted` 禁止 route descriptor helper 回流到中心化装配文件
-- `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted` 禁止 `listingkit_support.go` 扩散非装配/仓储 wiring 依赖
+- `TestListingKitSupportFileStaysRetired` 禁止 `listingkit_support.go` 作为过渡桶复活
+- `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted` 若旧文件被恢复，会继续限制其 import 面
 - `TestAppHTTPAPIListingKitRootImportsStayAllowlisted` 禁止 app/httpapi 新增未登记 ListingKit root facade 依赖
 - `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted` 禁止 app/httpapi 新增未登记 ListingKit HTTPAPI 依赖，保持当前 module/runtime/route/server 装配 seam 可审查
 - `TestCmdContainsOnlyOfficialEntrypoints` 禁止 `cmd/` 新增临时或非正式入口，调试程序应放入受管 `hack/` 区域

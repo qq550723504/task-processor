@@ -108,22 +108,23 @@
 
 不应该再把这些逻辑放回 `internal/app/httpapi`。
 
-## 当前允许的过渡点
+## 已退役的过渡点
 
-当前仍允许少量过渡装配留在：
+历史上曾允许少量过渡装配留在：
 
 - `internal/app/httpapi/listingkit_support.go`
 
-它现在承接的是：
+该文件已退役。它曾经承接的是：
 
 - app 层到 `listingkit/httpapi` 的输入适配
 - 部分 repo factory / legacy bridge / transitional configurator 注入
 
-这类文件可以存在，但要求是：
+当前归属是：
 
-- 只做显式注入
-- 不再新增业务规则
-- 不把业务 helper 再定义回 app 层
+- ListingKit runtime input shaping 放在 `feature_builder_listingkit.go`
+- SDS sync / SHEIN cookie store / baseline provider 这类 runtime prerequisite
+  准备放在 `runtime_support_listingkit.go`
+- 不应重新创建 `listingkit_support.go` 作为新的 app 层过渡桶
 
 ## 依赖方向规则
 

@@ -20,8 +20,7 @@ Goal:
 
 | File | Classification | Notes |
 | --- | --- | --- |
-| `listingkit_support.go` | `assembly-only` | Shapes `listingkithttpapi.RuntimeBuildInput` and delegates feature-owned support building to `BuildRuntimeSupport(...)`. |
-| `feature_builder_listingkit.go` | `assembly-only` | Composes ProductEnrich, ProductImage, and ListingKit runtime modules without embedding ListingKit behavior. |
+| `feature_builder_listingkit.go` | `assembly-only` | Composes ProductEnrich, ProductImage, and ListingKit runtime modules, including ListingKit runtime input shaping, without embedding ListingKit behavior. |
 | `listingkit_temporal_worker.go` | `assembly-only` | Boots the standalone ListingKit Temporal worker process and delegates feature/runtime construction. |
 | `runtime_support_listingkit.go` | `adapter construction` | Prepares shared prerequisites such as the SHEIN cookie store, SDS sync service, and SDS baseline remote provider for the feature-owned runtime support contract. |
 

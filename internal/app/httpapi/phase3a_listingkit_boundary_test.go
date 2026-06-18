@@ -7,19 +7,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestListingKitSupportFileKeepsFeatureOwnedServiceBundlesOutOfAppLayer(t *testing.T) {
+func TestListingKitSupportFileStaysRetired(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("listingkit_support.go")
+	_, err := os.Stat("listingkit_support.go")
+	require.True(t, os.IsNotExist(err), "listingkit_support.go should stay retired; ListingKit runtime input shaping belongs in feature_builder_listingkit.go")
+
+	featureBuilderSrc, err := os.ReadFile("feature_builder_listingkit.go")
 	require.NoError(t, err)
-	require.NotContains(t, string(src), "newListingKitBuildServiceRepositories")
-	require.NotContains(t, string(src), "newListingKitBuildServiceHooks")
-	require.NotContains(t, string(src), "BuildServiceRepositories{")
-	require.NotContains(t, string(src), "BuildServiceHooks{")
-	require.NotContains(t, string(src), "sheinlogin.NewRedisStore(")
-	require.Contains(t, string(src), "sheinloginbootstrap.BuildRedisStore")
-	require.Contains(t, string(src), "RuntimeSupportInput{")
-	require.Contains(t, string(src), "BuildRuntimeSupport")
+	require.Contains(t, string(featureBuilderSrc), "func newListingKitRuntimeBuildInput(")
+	require.Contains(t, string(featureBuilderSrc), "RuntimeSupportInput{")
+	require.Contains(t, string(featureBuilderSrc), "BuildRuntimeSupport")
 }
 
 func TestListingKitTemporalWorkerUsesRuntimeSupportPath(t *testing.T) {

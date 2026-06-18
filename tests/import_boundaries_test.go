@@ -1365,7 +1365,6 @@ func TestTemporalRuntimePackagesDoNotImportHTTPAPI(t *testing.T) {
 func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
-		"listingkit_support.go":         {},
 		"listingkit_shein_support.go":   {},
 		"listingkit_temporal_worker.go": {},
 	}
@@ -1385,6 +1384,15 @@ func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 		if _, ok := allowed[name]; !ok {
 			t.Errorf("%s is a new app/httpapi ListingKit helper; move ListingKit-specific logic into internal/listingkit/httpapi instead", filepath.Join(root, name))
 		}
+	}
+}
+
+func TestListingKitSupportFileStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "listingkit_support.go")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; keep ListingKit runtime input shaping in feature_builder_listingkit.go instead of reviving the transition bucket", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
 	}
 }
 
@@ -1465,6 +1473,9 @@ func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filePath, nil, parser.ImportsOnly)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
 		t.Fatal(err)
 	}
 
@@ -1531,7 +1542,6 @@ func TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "feature_module_builders.go")):    {},
 		filepath.Clean(filepath.Join(root, "feature_builder_listingkit.go")): {},
 		filepath.Clean(filepath.Join(root, "http_modules.go")):               {},
-		filepath.Clean(filepath.Join(root, "listingkit_support.go")):         {},
 		filepath.Clean(filepath.Join(root, "listingkit_temporal_worker.go")): {},
 		filepath.Clean(filepath.Join(root, "runtime_login_modules.go")):      {},
 		filepath.Clean(filepath.Join(root, "runtime.go")):                    {},
