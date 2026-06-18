@@ -158,6 +158,34 @@ func TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated(t *testing.T) {
+	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
+	for _, marker := range []string{
+		"prompt.InitGlobal(",
+		"prompt.SetTenantPromptStore(",
+		"cfg.Prompts.Dir",
+		"cfg.Prompts.HotReload",
+	} {
+		if strings.Contains(runtimeSource, marker) {
+			t.Fatalf("runtime.go should keep prompt runtime assembly in runtime_prompt.go; found %s", marker)
+		}
+	}
+
+	promptRuntimeSource := readHTTPAPIBoundaryFile(t, "runtime_prompt.go")
+	for _, marker := range []string{
+		"func initPromptRegistry(",
+		"func initTenantPromptStore(",
+		"prompt.InitGlobal(",
+		"prompt.SetTenantPromptStore(",
+		"cfg.Prompts.Dir",
+		"cfg.Prompts.HotReload",
+	} {
+		if !strings.Contains(promptRuntimeSource, marker) {
+			t.Fatalf("runtime_prompt.go missing %s", marker)
+		}
+	}
+}
+
 func readHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)

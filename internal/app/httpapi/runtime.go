@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
 
@@ -28,14 +27,9 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	done = timer.phase("resolveImageWorkDir")
 	imageWorkDir := resolveImageWorkDir(cfg)
 	done()
-	promptsDir := cfg.Prompts.Dir
-	if promptsDir == "" {
-		promptsDir = "./prompts"
-	}
+
 	done = timer.phase("initPromptRegistry")
-	if err := prompt.InitGlobal(context.Background(), promptsDir, cfg.Prompts.HotReload, logger.WithField("component", "prompt")); err != nil {
-		logger.Warnf("prompt registry initialization failed, fallback prompts will be used: %v", err)
-	}
+	initPromptRegistry(cfg, logger)
 	done()
 
 	done = timer.phase("createOpenAIManager")
@@ -50,15 +44,15 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	if cfg.Database != nil {
 		var closer func() error
 		done = timer.phase("initTenantPromptStore")
-		tenantPromptStore, closer, err = newDBTenantPromptStore(cfg.Database, logger)
+		tenantPromptStore, closer, err = initTenantPromptStore(cfg.Database, logger)
 		done()
 		if err != nil {
 			return nil, fmt.Errorf("create tenant prompt store: %w", err)
 		}
 		done = timer.phase("attachTenantPromptStore")
-		if err := prompt.SetTenantPromptStore(tenantPromptStore); err != nil {
+		if err := attachTenantPromptStore(tenantPromptStore); err != nil {
 			done()
-			return nil, fmt.Errorf("attach tenant prompt store: %w", err)
+			return nil, err
 		}
 		done()
 		if closer != nil {
