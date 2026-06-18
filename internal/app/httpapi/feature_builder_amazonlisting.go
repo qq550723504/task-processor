@@ -7,10 +7,10 @@ import (
 )
 
 type amazonListingFeatureBuilder struct {
-	buildAmazonListing func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)
+	buildAmazonListing amazonListingModuleBuilder
 }
 
-func (b amazonListingFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (*amazonlistinghttpapi.Module, error) {
+func (b amazonListingFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (*amazonListingModuleResult, error) {
 	amazonListingModule, err := b.buildAmazonListing(amazonlistinghttpapi.RuntimeBuildInput{
 		Logger:         logger,
 		Config:         deps.shared.cfg,

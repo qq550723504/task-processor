@@ -367,6 +367,49 @@ func TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures(t *testing.
 	}
 }
 
+func TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"feature_builder_listingkit.go", "feature_builder_amazonlisting.go"} {
+		src, err := os.ReadFile(name)
+		require.NoError(t, err)
+		content := string(src)
+
+		for _, marker := range []string{
+			"*productenrichhttpapi.Module",
+			"*productimagehttpapi.Module",
+			"*amazonlistinghttpapi.Module",
+			"*listingkithttpapi.Module",
+		} {
+			require.NotContains(t, content, marker)
+		}
+	}
+
+	listingKitFeatureSrc, err := os.ReadFile("feature_builder_listingkit.go")
+	require.NoError(t, err)
+	listingKitFeatureContent := string(listingKitFeatureSrc)
+	for _, marker := range []string{
+		"productModule    *productModuleResult",
+		"imageModule      *imageModuleResult",
+		"listingKitModule *listingKitModuleResult",
+		"buildProduct    productModuleBuilder",
+		"buildImage      imageModuleBuilder",
+		"buildListingKit listingKitModuleBuilder",
+	} {
+		require.Contains(t, listingKitFeatureContent, marker)
+	}
+
+	amazonListingFeatureSrc, err := os.ReadFile("feature_builder_amazonlisting.go")
+	require.NoError(t, err)
+	amazonListingFeatureContent := string(amazonListingFeatureSrc)
+	for _, marker := range []string{
+		"buildAmazonListing amazonListingModuleBuilder",
+		"func (b amazonListingFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (*amazonListingModuleResult, error)",
+	} {
+		require.Contains(t, amazonListingFeatureContent, marker)
+	}
+}
+
 func TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts(t *testing.T) {
 	t.Parallel()
 

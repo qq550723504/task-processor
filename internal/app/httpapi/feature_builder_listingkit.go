@@ -3,7 +3,6 @@ package httpapi
 import (
 	"github.com/sirupsen/logrus"
 
-	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
@@ -15,22 +14,22 @@ type listingKitFeatureBuildOptions struct {
 }
 
 type listingKitFeatureSet struct {
-	productModule    *productenrichhttpapi.Module
-	imageModule      *productimagehttpapi.Module
-	listingKitModule *listingkithttpapi.Module
+	productModule    *productModuleResult
+	imageModule      *imageModuleResult
+	listingKitModule *listingKitModuleResult
 }
 
 type listingKitFeatureBuilder struct {
-	buildProduct    func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)
-	buildImage      func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)
-	buildListingKit func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)
+	buildProduct    productModuleBuilder
+	buildImage      imageModuleBuilder
+	buildListingKit listingKitModuleBuilder
 }
 
 func newListingKitFeatureBuilder() listingKitFeatureBuilder {
 	return listingKitFeatureBuilder{
-		buildProduct:    productenrichhttpapi.BuildRuntimeModule,
-		buildImage:      productimagehttpapi.BuildRuntimeModule,
-		buildListingKit: listingkithttpapi.BuildRuntimeModule,
+		buildProduct:    buildProductModuleResult,
+		buildImage:      buildImageModuleResult,
+		buildListingKit: buildListingKitModuleResult,
 	}
 }
 
