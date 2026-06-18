@@ -628,12 +628,31 @@ func TestArchitectureReadmeClassifiesPlaybooksAsTimeBoundedContext(t *testing.T)
 	plansRunbooksAndEvaluations := markdownSection(t, string(content), "## Plans, runbooks, and evaluations")
 	required := []string{
 		"*-playbook.md",
-		"stable boundary rules",
+		"boundary rules",
 		"copied or linked",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(plansRunbooksAndEvaluations, phrase) {
 			t.Errorf("%s Plans, runbooks, and evaluations must mention %q so playbooks stay contextual until promoted into stable boundary docs", path, phrase)
+		}
+	}
+}
+
+func TestArchitectureReadmeClassifiesValidationDocsAsTimeBoundedContext(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "README.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	plansRunbooksAndEvaluations := markdownSection(t, string(content), "## Plans, runbooks, and evaluations")
+	required := []string{
+		"*-validation.md",
+		"review policy",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(plansRunbooksAndEvaluations, phrase) {
+			t.Errorf("%s Plans, runbooks, and evaluations must mention %q so validation findings stay contextual until promoted into stable boundary docs", path, phrase)
 		}
 	}
 }
