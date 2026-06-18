@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -70,6 +71,10 @@ func TestPlatformRegistrationPackagesStayThin(t *testing.T) {
 	}
 }
 
+func TestPlatformRegistrationPackagesContainNoLocalArtifacts(t *testing.T) {
+	assertNoLocalArtifactPaths(t, filepath.Join("..", "internal", "platforms"))
+}
+
 func trackedFiles(t *testing.T, pathspec string) []string {
 	t.Helper()
 
@@ -88,12 +93,39 @@ func assertNoTrackedLocalArtifacts(t *testing.T, pathspec string) {
 	t.Helper()
 
 	for _, line := range trackedFiles(t, pathspec) {
-		parts := strings.Split(filepath.ToSlash(line), "/")
-		for _, part := range parts {
-			switch part {
-			case "logs", "tmp", "bin", "dev-logs", "playwright-cli":
-				t.Errorf("%s is a tracked local artifact path under %s; keep runtime files under .local instead", line, pathspec)
-			}
+		if containsLocalArtifactPathPart(line) {
+			t.Errorf("%s is a tracked local artifact path under %s; keep runtime files under .local instead", line, pathspec)
 		}
 	}
+}
+
+func assertNoLocalArtifactPaths(t *testing.T, pathspec string) {
+	t.Helper()
+
+	err := filepath.Walk(pathspec, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == pathspec {
+			return nil
+		}
+		if containsLocalArtifactPathPart(path) {
+			t.Errorf("%s is a local artifact path under %s; keep runtime files under .local instead", path, pathspec)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func containsLocalArtifactPathPart(path string) bool {
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	for _, part := range parts {
+		switch part {
+		case "logs", "tmp", "bin", "dev-logs", "playwright-cli":
+			return true
+		}
+	}
+	return false
 }

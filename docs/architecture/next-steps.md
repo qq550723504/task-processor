@@ -142,6 +142,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages` 禁止 `internal/platforms/*` 新增业务域或 HTTP 装配依赖，保持平台注册层只做注册/选择/委托
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted` 禁止 `internal/platforms/*` 新增历史平台实现依赖，当前 Amazon/SHEIN/TEMU 注册委托必须精确登记
 - `TestPlatformRegistrationPackagesStayThin` 禁止 `internal/platforms/*` 新增非 module descriptor / doc / test 文件，避免平台注册层承接业务规则
+- `TestPlatformRegistrationPackagesContainNoLocalArtifacts` 禁止 `internal/platforms/*` 混入本地 `tmp` / `logs` / `bin` 等运行产物，保持平台注册层只包含可审查源码
 - `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit` 禁止 `internal/publishing/shein` 重新依赖 ListingKit facade 或历史 SHEIN runtime，当前提交校验例外必须精确登记
 - `TestPublishingSheinNonAPISheinImportsStayAllowlisted` 禁止 `internal/publishing/shein` 新增未登记的历史 SHEIN 实现依赖，保持 publishing seam 收口
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted` 禁止 `internal/publishing/sheinmanaged` 新增未登记的 concrete SHEIN API client 依赖，保持 managed runtime API 构造集中在 builder/factory seam

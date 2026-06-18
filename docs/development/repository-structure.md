@@ -32,6 +32,7 @@
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
 - `TestTrackedLocalArtifactsStayOutOfTools`
 - `TestPlatformRegistrationPackagesStayThin`
+- `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 
 如果需要新增正式入口、调试目录或平台注册文件，应在同一变更中更新这份文档和对应 allowlist。
 
@@ -47,6 +48,9 @@
 - `internal/shein` / `internal/temu` / `internal/amazon`
   - 当前仍然存在的历史平台实现目录。
   - 本阶段不迁移、不改 import，只在后续迭代中逐步收口。
+- `internal/platforms`
+  - 平台注册和选择层，只保留 module descriptor、文档和必要测试。
+  - 不放本地 `tmp`、`logs`、`bin` 等运行态产物；这类文件统一放到 `.local/`。
 - `internal/pkg`
   - 纯技术通用件目录。
   - 继续保留现状，不在本阶段重命名。

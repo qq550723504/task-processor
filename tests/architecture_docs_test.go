@@ -183,6 +183,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages",
 		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
 		"TestPlatformRegistrationPackagesStayThin",
+		"TestPlatformRegistrationPackagesContainNoLocalArtifacts",
 		"TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit",
 		"TestPublishingSheinNonAPISheinImportsStayAllowlisted",
 		"TestPublishingCommonUsesCanonicalPackage",
@@ -629,6 +630,7 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 		"TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages",
 		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
 		"TestPlatformRegistrationPackagesStayThin",
+		"TestPlatformRegistrationPackagesContainNoLocalArtifacts",
 		"TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit",
 		"TestPublishingSheinNonAPISheinImportsStayAllowlisted",
 		"TestPublishingCommonUsesCanonicalPackage",
@@ -1261,6 +1263,7 @@ func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 		"TestTrackedLocalArtifactsStayOutOfProductionEntrypoints",
 		"TestTrackedLocalArtifactsStayOutOfTools",
 		"TestPlatformRegistrationPackagesStayThin",
+		"TestPlatformRegistrationPackagesContainNoLocalArtifacts",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
