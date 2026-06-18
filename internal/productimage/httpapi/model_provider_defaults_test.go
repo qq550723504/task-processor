@@ -30,7 +30,7 @@ func (stubLLMManager) GetDefaultClient() productenrich.LLMClient {
 	return stubLLMClient{}
 }
 
-func TestBuildProductImageModelProviderBuildsConfiguredCapabilities(t *testing.T) {
+func TestBuildModelProviderBuildsConfiguredCapabilities(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.OpenAI.APIKey = "test-key"
 	cfg.OpenAI.Model = "gpt-5.1"
@@ -53,9 +53,9 @@ func TestBuildProductImageModelProviderBuildsConfiguredCapabilities(t *testing.T
 		t.Fatalf("NewManager() error = %v", err)
 	}
 
-	provider, err := buildProductImageModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
+	provider, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
 	if err != nil {
-		t.Fatalf("buildProductImageModelProvider() error = %v", err)
+		t.Fatalf("buildModelProvider() error = %v", err)
 	}
 	if provider == nil {
 		t.Fatal("provider = nil")
@@ -74,7 +74,7 @@ func TestBuildProductImageModelProviderBuildsConfiguredCapabilities(t *testing.T
 	}
 }
 
-func TestBuildProductImageModelProviderBuildsNanobananaCapabilities(t *testing.T) {
+func TestBuildModelProviderBuildsNanobananaCapabilities(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.OpenAI.APIKey = "test-key"
 	cfg.OpenAI.Model = "gpt-5.1"
@@ -98,9 +98,9 @@ func TestBuildProductImageModelProviderBuildsNanobananaCapabilities(t *testing.T
 		t.Fatalf("NewManager() error = %v", err)
 	}
 
-	provider, err := buildProductImageModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
+	provider, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
 	if err != nil {
-		t.Fatalf("buildProductImageModelProvider() error = %v", err)
+		t.Fatalf("buildModelProvider() error = %v", err)
 	}
 	if provider == nil {
 		t.Fatal("provider = nil")
@@ -137,9 +137,9 @@ func TestResolveImagePipelineComponentsBackfillsModelBackedDependencies(t *testi
 		t.Fatalf("NewManager() error = %v", err)
 	}
 
-	provider, err := buildProductImageModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
+	provider, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
 	if err != nil {
-		t.Fatalf("buildProductImageModelProvider() error = %v", err)
+		t.Fatalf("buildModelProvider() error = %v", err)
 	}
 
 	resolved := resolveImagePipelineComponents(provider, nil, nil, nil)

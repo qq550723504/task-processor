@@ -19,6 +19,19 @@ func TestHTTPAPIModulesFileStaysRetired(t *testing.T) {
 	requireModulesFileRetired(t)
 }
 
+func TestHTTPAPIAppDoesNotOwnProductImageBuilderShadows(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		"modules_productimage_models.go",
+		"modules_productimage_components.go",
+		"modules_object_storage.go",
+	} {
+		_, err := os.Stat(name)
+		require.True(t, os.IsNotExist(err), "%s should stay retired; ProductImage HTTP builder assembly belongs in internal/productimage/httpapi", name)
+	}
+}
+
 func TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration(t *testing.T) {
 	modulesContent := readRetiredModulesFileIfPresent(t)
 

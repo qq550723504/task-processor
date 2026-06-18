@@ -1059,11 +1059,12 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "productimage")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "failure_test.go")):                      {},
-		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_builder.go")): {},
-		filepath.Clean(filepath.Join(root, "httpapi", "runtime_builder.go")):        {},
-		filepath.Clean(filepath.Join(root, "openai_image_edit_adapter.go")):         {},
-		filepath.Clean(filepath.Join(root, "pipeline_test.go")):                     {},
+		filepath.Clean(filepath.Join(root, "failure_test.go")):                            {},
+		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_builder.go")):       {},
+		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_defaults_test.go")): {},
+		filepath.Clean(filepath.Join(root, "httpapi", "runtime_builder.go")):              {},
+		filepath.Clean(filepath.Join(root, "openai_image_edit_adapter.go")):               {},
+		filepath.Clean(filepath.Join(root, "pipeline_test.go")):                           {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
@@ -1088,10 +1089,7 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 
 func TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "modules_productimage_models.go")):      {},
-		filepath.Clean(filepath.Join(root, "productimage_model_defaults_test.go")): {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -1110,7 +1108,7 @@ func TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted(t *testing.T
 			`"task-processor/internal/infra/clients/openai"`,
 		} {
 			if _, ok := facts.imports[bannedImport]; ok {
-				t.Errorf("%s imports %s; keep app/httpapi ProductImage concrete external clients limited to current model defaults and provider assembly seams", path, bannedImport)
+				t.Errorf("%s imports %s; keep app/httpapi free of ProductImage concrete external clients; ProductImage provider assembly belongs in internal/productimage/httpapi", path, bannedImport)
 			}
 		}
 	}

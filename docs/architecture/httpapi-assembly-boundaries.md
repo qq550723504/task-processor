@@ -78,6 +78,8 @@
 - 模型 provider / publisher / image pipeline 组件装配
 - 具体模型 provider 和资产 publisher/S3 client 组装应放在专用 builder 文件，
   `bootstrap.go` 只负责串起 module 依赖图
+- app 层旧 `modules_productimage_*` / `modules_object_storage.go` shadow helper
+  已退休，不应为复用 ProductImage 装配逻辑重新放回 `internal/app/httpapi`
 - task repository / DB migration 组装应放在专用 repository builder 文件，
   避免 `bootstrap.go` 重新承担数据库细节
 - image pipeline 组件选择、远程 segmenter/white-background client 组装和
@@ -274,6 +276,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestAppHTTPAPIListingKitRootImportsStayAllowlisted`
 - `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
 - `TestHTTPAPIModulesFileStaysRetired`
+- `TestHTTPAPIAppDoesNotOwnProductImageBuilderShadows`
 - `TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration`
 - `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
 - `TestLegacyBuildHandlersUsesRouteHandlerAliases`
