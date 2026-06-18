@@ -363,6 +363,33 @@ func TestArchitectureReviewChecklistExcludesTimeBoundedReviewReferences(t *testi
 	}
 }
 
+func TestArchitectureReviewChecklistExcludesSupportingContextReferences(t *testing.T) {
+	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
+	readmeContent, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", readmePath, err)
+	}
+
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	reviewReferences := markdownSection(t, string(checklistContent), "## Review References")
+	const supportingContextRule = "Supporting context documents must not be listed as review references unless promoted into stable boundary documents"
+	if !strings.Contains(reviewReferences, supportingContextRule) {
+		t.Errorf("%s Review References must state %q so background documents do not become formal review entrypoints", checklistPath, supportingContextRule)
+	}
+
+	supportingContext := markdownSection(t, string(readmeContent), "## Supporting Context")
+	for _, reference := range normalizedArchitectureDocReferences(t, supportingContext) {
+		if strings.Contains(reviewReferences, reference) {
+			t.Errorf("%s Review References must not include supporting context document %q from %s", checklistPath, reference, readmePath)
+		}
+	}
+}
+
 func TestArchitectureReviewChecklistExplainsReviewReferenceRoles(t *testing.T) {
 	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
 	checklistContent, err := os.ReadFile(checklistPath)

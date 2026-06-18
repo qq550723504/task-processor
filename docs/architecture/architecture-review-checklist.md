@@ -116,6 +116,7 @@ development boundary documents define long-lived repository structure rules.
 `docs/architecture/next-steps.md` points to the current guard coverage baseline:
 Every review reference must resolve to an existing repository document.
 Time-bounded plans, runbooks, and evaluations must not be listed as review references.
+Supporting context documents must not be listed as review references unless promoted into stable boundary documents.
 
 - `docs/architecture/README.md`
 - `docs/architecture/project-boundaries.md`
