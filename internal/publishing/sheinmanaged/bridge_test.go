@@ -42,6 +42,45 @@ func TestSheinManagedBridgeKeepsAPIBuildersInDedicatedFile(t *testing.T) {
 	}
 }
 
+func TestSheinManagedBridgeKeepsResolversInDedicatedFiles(t *testing.T) {
+	bridgeSource := readSheinManagedTestFile(t, "bridge.go")
+	for _, marker := range []string{
+		"type categoryResolver struct",
+		"func NewCategoryResolver",
+		"type attributeResolver struct",
+		"func NewAttributeResolver",
+		"type saleAttributeResolver struct",
+		"func NewSaleAttributeResolver",
+	} {
+		if strings.Contains(bridgeSource, marker) {
+			t.Fatalf("bridge.go should keep package-level wiring only; move %s to a dedicated resolver file", marker)
+		}
+	}
+
+	resolverFiles := map[string][]string{
+		"category_resolver.go": {
+			"type categoryResolver struct",
+			"func NewCategoryResolver",
+		},
+		"attribute_resolver.go": {
+			"type attributeResolver struct",
+			"func NewAttributeResolver",
+		},
+		"sale_attribute_resolver.go": {
+			"type saleAttributeResolver struct",
+			"func NewSaleAttributeResolver",
+		},
+	}
+	for fileName, markers := range resolverFiles {
+		source := readSheinManagedTestFile(t, fileName)
+		for _, marker := range markers {
+			if !strings.Contains(source, marker) {
+				t.Fatalf("%s missing %s", fileName, marker)
+			}
+		}
+	}
+}
+
 func readSheinManagedTestFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(".", name))
