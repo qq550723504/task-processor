@@ -292,17 +292,7 @@ func TestArchitectureReviewChecklistReferencesExistingDocuments(t *testing.T) {
 		t.Errorf("%s Review References must state %q so review entrypoints cannot drift into dead links", checklistPath, referenceRule)
 	}
 
-	for _, reference := range normalizedArchitectureDocReferences(t, reviewReferences) {
-		name := filepath.Base(reference)
-		if strings.Contains(name, "*") {
-			continue
-		}
-
-		targetPath := filepath.Join("..", filepath.FromSlash(reference))
-		if _, err := os.Stat(targetPath); err != nil {
-			t.Errorf("%s references %s, but it must resolve to an existing repository document: %v", checklistPath, reference, err)
-		}
-	}
+	assertMarkdownReferencesExistingDocuments(t, checklistPath, reviewReferences)
 }
 
 func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
@@ -841,7 +831,13 @@ func TestArchitectureReadmeReferencesExistingDocuments(t *testing.T) {
 		t.Fatalf("read %s: %v", readmePath, err)
 	}
 
-	for _, reference := range normalizedArchitectureDocReferences(t, string(readmeContent)) {
+	assertMarkdownReferencesExistingDocuments(t, readmePath, string(readmeContent))
+}
+
+func assertMarkdownReferencesExistingDocuments(t *testing.T, sourcePath string, markdownContent string) {
+	t.Helper()
+
+	for _, reference := range normalizedArchitectureDocReferences(t, markdownContent) {
 		name := filepath.Base(reference)
 		if strings.Contains(name, "*") {
 			continue
@@ -849,7 +845,7 @@ func TestArchitectureReadmeReferencesExistingDocuments(t *testing.T) {
 
 		targetPath := filepath.Join("..", filepath.FromSlash(reference))
 		if _, err := os.Stat(targetPath); err != nil {
-			t.Errorf("%s references %s, but it must resolve to an existing repository document: %v", readmePath, reference, err)
+			t.Errorf("%s references %s, but it must resolve to an existing repository document: %v", sourcePath, reference, err)
 		}
 	}
 }
