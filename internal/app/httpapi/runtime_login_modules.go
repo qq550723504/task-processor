@@ -7,9 +7,13 @@ import (
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 )
 
-type sheinLoginModuleBuilder func(deps *runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error)
+type sheinLoginModuleResult = sheinloginbootstrap.BuildResult
 
-type sdsLoginModuleBuilder func(deps *runtimeDeps) (*sdsloginbootstrap.BuildResult, func() error, error)
+type sdsLoginModuleResult = sdsloginbootstrap.BuildResult
+
+type sheinLoginModuleBuilder func(deps *runtimeDeps) (*sheinLoginModuleResult, func() error, error)
+
+type sdsLoginModuleBuilder func(deps *runtimeDeps) (*sdsLoginModuleResult, func() error, error)
 
 func configureSheinLoginAccount(deps *runtimeDeps) {
 	if deps == nil || deps.shared == nil {
@@ -18,7 +22,7 @@ func configureSheinLoginAccount(deps *runtimeDeps) {
 	sheinclient.ConfigureLoginAccountFromConfig(deps.shared.cfg)
 }
 
-func buildSheinLoginModuleResult(deps *runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error) {
+func buildSheinLoginModuleResult(deps *runtimeDeps) (*sheinLoginModuleResult, func() error, error) {
 	if deps == nil {
 		return nil, nil, nil
 	}
@@ -37,7 +41,7 @@ func buildSheinLoginModuleResult(deps *runtimeDeps) (*sheinloginbootstrap.BuildR
 	return result, result.Close, nil
 }
 
-func buildSDSLoginModuleResult(deps *runtimeDeps) (*sdsloginbootstrap.BuildResult, func() error, error) {
+func buildSDSLoginModuleResult(deps *runtimeDeps) (*sdsLoginModuleResult, func() error, error) {
 	if deps == nil {
 		return nil, nil, nil
 	}

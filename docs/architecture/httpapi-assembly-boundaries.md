@@ -184,6 +184,8 @@ SHEIN 登录账号配置、SHEIN login module 和 SDS login module bootstrap 应
 `runtime_login_modules.go`，避免 `modules.go` 直接依赖具体登录子系统 bootstrap。
 登录 module builder 的函数签名也应由 `runtime_login_modules.go` 暴露，避免
 `composition_builder.go` 为了类型字段直接依赖具体登录 bootstrap 包。
+登录 module result 类型别名也应由 `runtime_login_modules.go` 暴露，避免
+`types.go` / `runtime_deps_methods.go` 直接依赖具体登录 bootstrap 包。
 ListingKit 的 SDS sync service hook、SHEIN cookie store 和 SDS baseline provider
 应放在 `runtime_support_listingkit.go`，避免 `modules.go` 持有 ListingKit runtime support 前置依赖。
 
@@ -229,6 +231,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport`
 - `TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport`
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
+- `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
 - `TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook`
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`

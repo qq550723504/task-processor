@@ -14,9 +14,7 @@ import (
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
-	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	"task-processor/internal/sheinlogin"
-	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 	"task-processor/internal/taskrpcapi"
 )
 
@@ -63,6 +61,6 @@ type httpFeatureComposition struct {
 	promptModule        *promptmgmtapi.BuildResult
 	sdsModule           *sdshttpapi.BuildResult
 	taskRPCResult       *taskrpcapi.BuildResult
-	sheinLoginResult    *sheinloginbootstrap.BuildResult
-	sdsLoginResult      *sdsloginbootstrap.BuildResult
+	sheinLoginResult    *sheinLoginModuleResult
+	sdsLoginResult      *sdsLoginModuleResult
 }
