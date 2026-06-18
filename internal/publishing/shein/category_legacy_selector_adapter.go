@@ -3,8 +3,36 @@ package shein
 import (
 	"context"
 
+	sheincategoryapi "task-processor/internal/shein/api/category"
 	sheincategoryselector "task-processor/internal/shein/category"
 )
+
+type legacyCategoryManager struct {
+	manager *sheincategoryselector.CategoryManager
+}
+
+func newLegacyCategoryManager(selector CategoryAISelector) *legacyCategoryManager {
+	if selector == nil {
+		return nil
+	}
+	return &legacyCategoryManager{
+		manager: sheincategoryselector.NewCategoryManager(categoryAISelectorAdapter{selector: selector}),
+	}
+}
+
+func (m *legacyCategoryManager) SelectCategoryIDBySuggest(ctx context.Context, input CategoryCoreItemInput, api CategoryAPI) (int, error) {
+	if m == nil || m.manager == nil {
+		return 0, nil
+	}
+	return m.manager.GetCategoryIDBySuggest(ctx, toLegacyCategoryCoreItemInput(input), api, nil)
+}
+
+func (m *legacyCategoryManager) SelectCategoryIDByTree(ctx context.Context, query string, tree *sheincategoryapi.CategoryTreeResponse) (int, error) {
+	if m == nil || m.manager == nil {
+		return 0, nil
+	}
+	return m.manager.GetCategoryIDByTitleWithTree(ctx, query, tree, nil)
+}
 
 type categoryAISelectorAdapter struct {
 	selector CategoryAISelector

@@ -3,8 +3,6 @@ package shein
 import (
 	"context"
 	"strings"
-
-	sheincategoryselector "task-processor/internal/shein/category"
 )
 
 type categorySuggestFallback interface {
@@ -16,8 +14,12 @@ type CategoryAIConfig struct {
 	SemanticVerifier TextGenerator
 }
 
+type categorySuggestManager interface {
+	SelectCategoryIDBySuggest(ctx context.Context, input CategoryCoreItemInput, api CategoryAPI) (int, error)
+}
+
 type aiCategorySuggestFallback struct {
-	manager *sheincategoryselector.CategoryManager
+	manager categorySuggestManager
 }
 
 func newAICategorySuggestFallback(selector CategoryAISelector) categorySuggestFallback {
@@ -25,7 +27,7 @@ func newAICategorySuggestFallback(selector CategoryAISelector) categorySuggestFa
 		return nil
 	}
 	return &aiCategorySuggestFallback{
-		manager: sheincategoryselector.NewCategoryManager(categoryAISelectorAdapter{selector: selector}),
+		manager: newLegacyCategoryManager(selector),
 	}
 }
 
@@ -33,5 +35,5 @@ func (f *aiCategorySuggestFallback) SelectCategoryID(ctx context.Context, input 
 	if f == nil || f.manager == nil || api == nil || strings.TrimSpace(input.Title) == "" && strings.TrimSpace(input.ProductType) == "" && len(input.CategoryPath) == 0 {
 		return 0, nil
 	}
-	return f.manager.GetCategoryIDBySuggest(ctx, toLegacyCategoryCoreItemInput(input), api, nil)
+	return f.manager.SelectCategoryIDBySuggest(ctx, input, api)
 }

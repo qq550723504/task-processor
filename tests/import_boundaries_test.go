@@ -148,8 +148,6 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 		`"task-processor/internal/shein/content"`: {},
 		`"task-processor/internal/shein/category"`: {
 			filepath.Clean(filepath.Join(root, "category_legacy_selector_adapter.go")): {},
-			filepath.Clean(filepath.Join(root, "category_suggest_fallback.go")):        {},
-			filepath.Clean(filepath.Join(root, "category_tree_fallback.go")):           {},
 		},
 		`"task-processor/internal/shein/submitprep"`: {
 			filepath.Clean(filepath.Join(root, "submit_prep.go")): {},
