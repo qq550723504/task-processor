@@ -103,6 +103,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases` 禁止 canonical 类型重新使用 ProductEnrich compatibility aliases，保持规范模型不依赖历史兼容层
 - `TestSheinPipelineDoesNotImportListingKitFacade` 禁止 SHEIN pipeline 回退依赖 ListingKit facade
 - `TestSheinSubmitPrepDoesNotImportListingKitTenantContext` 禁止 SHEIN submitprep 回退依赖 ListingKit tenant context
+- `TestPublishingSheinSubmitPrepUsesOnlySensitiveWordAdapter` 禁止 `internal/publishing/shein/submit_prep.go` 继续通过旧 `submitprep` 复用纯语言/翻译 helper，保留的 `submitprep` 依赖只能作为敏感词和仓储 adapter seam
 - `TestListingKitRootSheinHelpersStayAllowlisted` 禁止 ListingKit 根包新增未登记 SHEIN helper seam
 - `TestListingKitRootServiceSubmitFilesStayAllowlisted` 禁止 ListingKit 根 service submit 文件继续扩散提交 seam
 - `TestListingKitRootTaskSubmissionFilesStayAllowlisted` 禁止 ListingKit 根 task submission 文件继续扩散提交 seam

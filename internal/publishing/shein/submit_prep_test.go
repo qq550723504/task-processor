@@ -13,7 +13,6 @@ import (
 	sharedtenantctx "task-processor/internal/shared/tenantctx"
 	sheinproduct "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/authorizedbrand"
-	"task-processor/internal/shein/submitprep"
 )
 
 type stubChatCompleter struct {
@@ -632,7 +631,7 @@ func TestRetrySensitiveWordCleanup_RemovesFlaggedWord(t *testing.T) {
 
 func TestRetrySensitiveWordCleanup_PersistsNewValidationWordsToTenantRepository(t *testing.T) {
 	repo := &stubSensitiveWordRepository{pages: map[int64][]listingadmin.SensitiveWord{}}
-	restoreRepo := submitprep.SetSensitiveWordRepository(repo)
+	restoreRepo := SetSensitiveWordRepository(repo)
 	defer restoreRepo()
 
 	ctx := sharedtenantctx.WithTenantID(context.Background(), "101")
@@ -672,7 +671,7 @@ func TestRetrySensitiveWordCleanup_ReenablesExistingDisabledValidationWord(t *te
 			}},
 		},
 	}
-	restoreRepo := submitprep.SetSensitiveWordRepository(repo)
+	restoreRepo := SetSensitiveWordRepository(repo)
 	defer restoreRepo()
 
 	ctx := sharedtenantctx.WithTenantID(context.Background(), "101")
@@ -695,7 +694,7 @@ func TestRetrySensitiveWordCleanup_ReenablesExistingDisabledValidationWord(t *te
 }
 
 func TestSanitizeDraftPayloadSensitiveContent_CleansDraftTextFields(t *testing.T) {
-	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
+	restoreRepo := SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {
 				{TenantID: 101, Language: "en", Word: "amazon", Status: 1},
@@ -736,7 +735,7 @@ func TestSanitizeDraftPayloadSensitiveContent_CleansDraftTextFields(t *testing.T
 }
 
 func TestPrepareSubmitProductContent_LoadsTenantSensitiveWordsFromRepository(t *testing.T) {
-	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
+	restoreRepo := SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {{
 				TenantID: 101,
@@ -789,7 +788,7 @@ func TestPrepareSubmitProductContent_LoadsTenantSensitiveWordsFromRepository(t *
 }
 
 func TestCleanSubmitProductSensitiveWords_PreservesAuthorizedBrandFromRuntimeContext(t *testing.T) {
-	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
+	restoreRepo := SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {
 				{TenantID: 101, Language: "en", Word: "bpa free", Status: 1},
@@ -838,26 +837,28 @@ func TestCleanSubmitProductSensitiveWords_PreservesAuthorizedBrandFromRuntimeCon
 }
 
 func TestPrepareSubmitProductContent_LoadsTenantGenerationTopicOverrideLexicon(t *testing.T) {
-	restorePolicyRepo := submitprep.SetGenerationTopicPolicyRepository(&stubGenerationTopicPolicyRepository{
-		keys: map[int64][]string{
-			101: {"children"},
-		},
-	})
-	defer restorePolicyRepo()
-	restoreOverrideRepo := submitprep.SetGenerationTopicOverrideRepository(&stubGenerationTopicOverrideRepository{
-		items: map[string]listingadmin.GenerationTopicOverride{
-			overrideRepoKey(101, "shein", "children"): {
-				TenantID: 101,
-				Platform: "shein",
-				TopicKey: "children",
-				AdditionalLexiconByLanguage: map[string][]string{
-					"en": {"toddler"},
-				},
-				Status: 1,
+	restoreRepos := ConfigureSubmitPrepRepositories(
+		nil,
+		&stubGenerationTopicPolicyRepository{
+			keys: map[int64][]string{
+				101: {"children"},
 			},
 		},
-	})
-	defer restoreOverrideRepo()
+		&stubGenerationTopicOverrideRepository{
+			items: map[string]listingadmin.GenerationTopicOverride{
+				overrideRepoKey(101, "shein", "children"): {
+					TenantID: 101,
+					Platform: "shein",
+					TopicKey: "children",
+					AdditionalLexiconByLanguage: map[string][]string{
+						"en": {"toddler"},
+					},
+					Status: 1,
+				},
+			},
+		},
+	)
+	defer restoreRepos()
 
 	ctx := sharedtenantctx.WithTenantID(context.Background(), "101")
 	product := &sheinproduct.Product{
@@ -893,7 +894,7 @@ func TestPrepareSubmitProductContent_LoadsTenantGenerationTopicOverrideLexicon(t
 }
 
 func TestPrepareSubmitProductContent_CleansFreeTextAttributesAndSKCNames(t *testing.T) {
-	restoreRepo := submitprep.SetSensitiveWordRepository(&stubSensitiveWordRepository{
+	restoreRepo := SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{
 			101: {
 				{TenantID: 101, Language: "en", Word: "amazon", Status: 1},

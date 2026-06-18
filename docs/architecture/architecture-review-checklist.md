@@ -59,6 +59,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases`
 - `TestSheinPipelineDoesNotImportListingKitFacade`
 - `TestSheinSubmitPrepDoesNotImportListingKitTenantContext`
+- `TestPublishingSheinSubmitPrepUsesOnlySensitiveWordAdapter`
 - `TestListingKitRootSheinHelpersStayAllowlisted`
 - `TestListingKitRootServiceSubmitFilesStayAllowlisted`
 - `TestListingKitRootTaskSubmissionFilesStayAllowlisted`

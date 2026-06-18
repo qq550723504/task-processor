@@ -35,11 +35,11 @@ func SubmitProductNeedsTranslation(product *sheinproduct.Product) bool {
 	if product == nil {
 		return false
 	}
-	if submitprep.LocalizedListNeedsTranslation(product.MultiLanguageNameList) || submitprep.LocalizedListNeedsTranslation(product.MultiLanguageDescList) {
+	if submitLocalizedListNeedsTranslation(product.MultiLanguageNameList) || submitLocalizedListNeedsTranslation(product.MultiLanguageDescList) {
 		return true
 	}
 	for _, skc := range product.SKCList {
-		if submitprep.LocalizedListNeedsTranslation(skc.MultiLanguageNameList) || submitprep.TextNeedsTranslation(skc.MultiLanguageName.Name, skc.MultiLanguageName.Language) {
+		if submitLocalizedListNeedsTranslation(skc.MultiLanguageNameList) || submitTextNeedsTranslation(skc.MultiLanguageName.Name, skc.MultiLanguageName.Language) {
 			return true
 		}
 	}
@@ -50,15 +50,15 @@ func SubmitProductNeedsTargetLanguages(product *sheinproduct.Product, region str
 	if product == nil {
 		return false
 	}
-	targetLanguages := submitprep.GetTargetLanguagesByRegion(strings.ToUpper(strings.TrimSpace(region)))
+	targetLanguages := submitTargetLanguagesByRegion(strings.ToUpper(strings.TrimSpace(region)))
 	if len(targetLanguages) == 0 {
 		targetLanguages = []string{"en"}
 	}
-	if submitprep.LocalizedListMissingTargets(product.MultiLanguageNameList, targetLanguages) || submitprep.LocalizedListMissingTargets(product.MultiLanguageDescList, targetLanguages) {
+	if submitLocalizedListMissingTargets(product.MultiLanguageNameList, targetLanguages) || submitLocalizedListMissingTargets(product.MultiLanguageDescList, targetLanguages) {
 		return true
 	}
 	for _, skc := range product.SKCList {
-		if submitprep.LocalizedListMissingTargets(skc.MultiLanguageNameList, targetLanguages) {
+		if submitLocalizedListMissingTargets(skc.MultiLanguageNameList, targetLanguages) {
 			return true
 		}
 	}
@@ -133,8 +133,8 @@ func optimizeSubmitProductContent(ctx context.Context, product *sheinproduct.Pro
 	if product == nil {
 		return nil
 	}
-	title := submitprep.FirstLocalizedText(product.MultiLanguageNameList)
-	description := submitprep.FirstLocalizedText(product.MultiLanguageDescList)
+	title := firstSubmitLocalizedText(product.MultiLanguageNameList)
+	description := firstSubmitLocalizedText(product.MultiLanguageDescList)
 	if strings.TrimSpace(title) == "" && strings.TrimSpace(description) == "" {
 		return nil
 	}
@@ -240,7 +240,7 @@ func buildSubmitContentFeatures(product *sheinproduct.Product) string {
 		parts = append(parts, fmt.Sprintf("SHEIN category id: %d", product.CategoryID))
 	}
 	for _, skc := range product.SKCList {
-		if text := submitprep.FirstLocalizedText(skc.MultiLanguageNameList); text != "" {
+		if text := firstSubmitLocalizedText(skc.MultiLanguageNameList); text != "" {
 			parts = append(parts, "Variant: "+text)
 		} else if text := strings.TrimSpace(skc.MultiLanguageName.Name); text != "" {
 			parts = append(parts, "Variant: "+text)
@@ -275,7 +275,7 @@ func applySubmitSKCContent(product *sheinproduct.Product, title string) {
 	}
 	for skcIndex := range product.SKCList {
 		skc := &product.SKCList[skcIndex]
-		suffix := submitprep.FirstLocalizedText(skc.MultiLanguageNameList)
+		suffix := firstSubmitLocalizedText(skc.MultiLanguageNameList)
 		if strings.TrimSpace(suffix) == "" {
 			suffix = strings.TrimSpace(skc.MultiLanguageName.Name)
 		}
@@ -313,7 +313,7 @@ func strengthenSubmitTitle(title, sourceTitle, sourceDescription string) string 
 		extra = strings.TrimSpace(sourceTitle)
 	}
 	extra = strings.TrimSpace(extra)
-	if submitprep.TextNeedsTranslation(extra, "en") {
+	if submitTextNeedsTranslation(extra, "en") {
 		extra = ""
 	}
 	if extra == "" || strings.Contains(strings.ToLower(title), strings.ToLower(extra)) {
@@ -328,7 +328,7 @@ func strengthenSubmitDescription(description, sourceDescription string) string {
 		return truncateSubmitDescription(description, sheinSubmitDescriptionMaxLength)
 	}
 	extra := strings.TrimSpace(sourceDescription)
-	if submitprep.TextNeedsTranslation(extra, "en") {
+	if submitTextNeedsTranslation(extra, "en") {
 		extra = ""
 	}
 	if extra == "" || strings.Contains(strings.ToLower(description), strings.ToLower(extra)) {
@@ -360,28 +360,28 @@ func translateSubmitProductContent(product *sheinproduct.Product, api sheintrans
 	if product == nil {
 		return nil
 	}
-	targetLanguages := submitprep.GetTargetLanguagesByRegion(strings.ToUpper(strings.TrimSpace(region)))
+	targetLanguages := submitTargetLanguagesByRegion(strings.ToUpper(strings.TrimSpace(region)))
 	if len(targetLanguages) == 0 {
 		targetLanguages = []string{"en"}
 	}
 
 	var err error
-	product.MultiLanguageNameList, err = submitprep.TranslateLocalizedList(product.MultiLanguageNameList, "", targetLanguages, api)
+	product.MultiLanguageNameList, err = translateSubmitLocalizedList(product.MultiLanguageNameList, "", targetLanguages, api)
 	if err != nil {
 		return fmt.Errorf("translate SHEIN product name: %w", err)
 	}
-	product.MultiLanguageDescList, err = submitprep.TranslateLocalizedList(product.MultiLanguageDescList, "", targetLanguages, api)
+	product.MultiLanguageDescList, err = translateSubmitLocalizedList(product.MultiLanguageDescList, "", targetLanguages, api)
 	if err != nil {
 		return fmt.Errorf("translate SHEIN product description: %w", err)
 	}
 	for skcIndex := range product.SKCList {
 		skc := &product.SKCList[skcIndex]
 		fallback := strings.TrimSpace(skc.MultiLanguageName.Name)
-		skc.MultiLanguageNameList, err = submitprep.TranslateLocalizedList(skc.MultiLanguageNameList, fallback, targetLanguages, api)
+		skc.MultiLanguageNameList, err = translateSubmitLocalizedList(skc.MultiLanguageNameList, fallback, targetLanguages, api)
 		if err != nil {
 			return fmt.Errorf("translate SHEIN SKC name: %w", err)
 		}
-		if translated := submitprep.FindLanguageContent(skc.MultiLanguageNameList, "en"); translated != "" {
+		if translated := findSubmitLanguageContent(skc.MultiLanguageNameList, "en"); translated != "" {
 			skc.MultiLanguageName = sheinproduct.LanguageContent{Language: "en", Name: translated}
 		}
 	}

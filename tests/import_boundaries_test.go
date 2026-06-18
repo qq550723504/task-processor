@@ -153,8 +153,7 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 			filepath.Clean(filepath.Join(root, "category_tree_fallback.go")):    {},
 		},
 		`"task-processor/internal/shein/submitprep"`: {
-			filepath.Clean(filepath.Join(root, "submit_prep.go")):      {},
-			filepath.Clean(filepath.Join(root, "submit_prep_test.go")): {},
+			filepath.Clean(filepath.Join(root, "submit_prep.go")): {},
 		},
 		`"task-processor/internal/shein/publish"`: {},
 	}
@@ -202,6 +201,38 @@ func TestPublishingSheinOpenAIImportsStayAllowlisted(t *testing.T) {
 			t.Errorf("%s imports OpenAI adapter directly; keep publishing/shein concrete OpenAI dependencies limited to current inference and runtime resolver seams", path)
 		}
 	}
+}
+
+func TestPublishingSheinSubmitPrepUsesOnlySensitiveWordAdapter(t *testing.T) {
+	filePath := filepath.Join("..", "internal", "publishing", "shein", "submit_prep.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filePath, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	allowedSelectors := map[string]struct{}{
+		"CleanSensitiveWordsWithContext":       {},
+		"RetrySensitiveWordCleanupWithContext": {},
+		"NewSensitiveWordServiceForContext":    {},
+		"SetSensitiveWordRepository":           {},
+		"SetGenerationTopicPolicyRepository":   {},
+		"SetGenerationTopicOverrideRepository": {},
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		ident, ok := selector.X.(*ast.Ident)
+		if !ok || ident.Name != "submitprep" {
+			return true
+		}
+		if _, ok := allowedSelectors[selector.Sel.Name]; !ok {
+			t.Errorf("%s uses submitprep.%s; keep submitprep dependency limited to sensitive-word repository adapters and move pure submit content helpers into publishing/shein", filePath, selector.Sel.Name)
+		}
+		return true
+	})
 }
 
 func TestPublishingCommonUsesCanonicalPackage(t *testing.T) {
