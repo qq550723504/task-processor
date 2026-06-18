@@ -111,6 +111,18 @@ func TestSheinSyncActivityAdapterUsesLocalPromotionBridgeContract(t *testing.T) 
 	)
 }
 
+func TestSheinSyncEnrollmentTestsUseLocalPromotionContracts(t *testing.T) {
+	t.Parallel()
+
+	testFile := readSheinSyncServiceFileContent(t, "enrollment_service_test.go")
+	assertSheinSyncServiceNotContainsAny(t, testFile,
+		`"task-processor/internal/infra/clients/management/api"`,
+		`"task-processor/internal/shein/activity"`,
+		"managementapi.OperationStrategyDTO",
+		"activity.PromotionRegistrationResult",
+	)
+}
+
 func readSheinSyncServiceFileContent(t *testing.T, path string) string {
 	t.Helper()
 

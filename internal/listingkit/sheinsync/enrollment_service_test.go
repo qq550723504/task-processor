@@ -7,8 +7,6 @@ import (
 	"sync"
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
 
 	"github.com/stretchr/testify/require"
@@ -269,7 +267,7 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 		}),
 	}
 	bridge := &sheinPromotionBridgeStub{
-		result: &activity.PromotionRegistrationResult{
+		result: &SheinPromotionRegistrationResult{
 			Request: &marketing.SaveConfigRequest{
 				ConfigList: []marketing.ActivityConfig{
 					{Skc: "skc-approved", ActStock: 5, DropRate: 20, ReservedActStock: 10},
@@ -278,7 +276,7 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 			Response: &marketing.SaveConfigResponse{Code: "0", Msg: "ok"},
 		},
 	}
-	adapter := NewSheinActivityAdapter(strategyProvider, bridge)
+	adapter := newSheinActivityAdapter(strategyProvider, bridge)
 
 	results, err := adapter.EnrollCandidates(
 		context.Background(),
@@ -494,22 +492,22 @@ func (s *sheinPromotionStrategyProviderStub) GetPromotionStrategy(_ context.Cont
 
 type sheinPromotionBridgeStub struct {
 	calls  []sheinPromotionBridgeCall
-	result *activity.PromotionRegistrationResult
+	result *SheinPromotionRegistrationResult
 	err    error
 }
 
 type sheinPromotionBridgeCall struct {
-	Strategy    *managementapi.OperationStrategyDTO
+	Strategy    *SheinPromotionStrategy
 	ActivityKey string
 	Products    []marketing.SkcInfo
 }
 
 func (s *sheinPromotionBridgeStub) RegisterPromotionProducts(
 	_ context.Context,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *SheinPromotionStrategy,
 	activityKey string,
 	products []marketing.SkcInfo,
-) (*activity.PromotionRegistrationResult, error) {
+) (*SheinPromotionRegistrationResult, error) {
 	copiedProducts := append([]marketing.SkcInfo(nil), products...)
 	s.calls = append(s.calls, sheinPromotionBridgeCall{
 		Strategy:    strategy,
