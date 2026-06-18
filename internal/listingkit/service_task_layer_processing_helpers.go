@@ -9,7 +9,6 @@ import (
 	assetpkg "task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrepo "task-processor/internal/asset/repository"
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 func (s *service) loadTaskExecutionContext(ctx context.Context, taskID string) (context.Context, *Task, error) {
@@ -22,7 +21,7 @@ func (s *service) loadTaskExecutionContext(ctx context.Context, taskID string) (
 	if task.Request != nil {
 		userID = strings.TrimSpace(task.Request.UserID)
 	}
-	ctx = openaiclient.WithIdentity(ctx, openaiclient.Identity{
+	ctx = WithRequestIdentity(ctx, RequestIdentity{
 		TenantID: task.TenantID,
 		UserID:   userID,
 	})

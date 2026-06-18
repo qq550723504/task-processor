@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/tenantbridge"
 )
 
@@ -25,7 +24,7 @@ func (s *service) listSheinStoreOptions(ctx context.Context) []SheinStoreOption 
 }
 
 func tenantIDInt64FromContext(ctx context.Context) (int64, bool) {
-	identity := openaiclient.IdentityFromContext(ctx)
+	identity := RequestIdentityFromContext(ctx)
 	tenantID := strings.TrimSpace(identity.TenantID)
 	if tenantID == "" {
 		return 0, false
