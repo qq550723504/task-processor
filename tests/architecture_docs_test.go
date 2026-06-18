@@ -250,6 +250,35 @@ func TestArchitectureReviewChecklistSeparatesStableRulesFromCurrentGuardBaseline
 	}
 }
 
+func TestArchitectureReviewChecklistReferencesArchitectureIndexEntrypoints(t *testing.T) {
+	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
+	readmeContent, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", readmePath, err)
+	}
+
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	reviewReferences := markdownSection(t, string(checklistContent), "## Review References")
+	required := []string{"docs/architecture/README.md"}
+	for _, heading := range []string{"## Stable Boundary Documents", "## Development Boundary Documents", "## Current Guard Baseline"} {
+		required = append(required, normalizedArchitectureDocReferences(t, markdownSection(t, string(readmeContent), heading))...)
+	}
+
+	for _, reference := range required {
+		if reference == "docs/architecture/architecture-review-checklist.md" {
+			continue
+		}
+		if !strings.Contains(reviewReferences, reference) {
+			t.Errorf("%s Review References must include %q from %s so the checklist stays aligned with the architecture index", checklistPath, reference, readmePath)
+		}
+	}
+}
+
 func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
 	content, err := os.ReadFile(path)
@@ -348,6 +377,26 @@ func markdownSection(t *testing.T, content, heading string) string {
 		section = section[:nextHeading]
 	}
 	return section
+}
+
+func normalizedArchitectureDocReferences(t *testing.T, content string) []string {
+	t.Helper()
+
+	referencePattern := regexp.MustCompile("`([^`]+\\.md)`")
+	matches := referencePattern.FindAllStringSubmatch(content, -1)
+	if len(matches) == 0 {
+		t.Fatalf("markdown content must include at least one doc reference")
+	}
+
+	references := make([]string, 0, len(matches))
+	for _, match := range matches {
+		reference := match[1]
+		if !strings.HasPrefix(reference, "docs/") {
+			reference = "docs/architecture/" + reference
+		}
+		references = append(references, reference)
+	}
+	return references
 }
 
 func markdownBlockBetween(t *testing.T, content, startMarker, endMarker string) string {
