@@ -50,6 +50,9 @@ func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 		`"task-processor/internal/shein/submitprep"`: {
 			filepath.Clean(filepath.Join(root, "shein_submit_test_helpers_test.go")): {},
 		},
+		`"task-processor/internal/shein/category"`: {
+			filepath.Clean(filepath.Join(root, "httpapi", "shein_category_selector_adapter.go")): {},
+		},
 	}
 
 	index, err := loadGoFileIndex(root, "")
@@ -669,6 +672,7 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "bootstrap_submit_module.go")):               {},
 		filepath.Clean(filepath.Join(root, "bootstrap_test.go")):                        {},
 		filepath.Clean(filepath.Join(root, "runtime_support_hooks.go")):                 {},
+		filepath.Clean(filepath.Join(root, "shein_category_selector_adapter.go")):       {},
 		filepath.Clean(filepath.Join(root, "runtime_support_shein.go")):                 {},
 		filepath.Clean(filepath.Join(root, "runtime_support_shein_adapter_helpers.go")): {},
 	}
