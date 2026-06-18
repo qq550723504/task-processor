@@ -24,10 +24,12 @@ func TestAIClientsFileStaysFocusedOnClientBuilderAndResolverAssembly(t *testing.
 	require.NotContains(t, content, "type strictListingKitConfiguredImageClient struct {")
 	require.NotContains(t, content, "func resolveStrictListingKitClient(")
 	require.NotContains(t, content, "func resolveStrictListingKitImageClient(")
+	require.NotContains(t, content, "func buildStrictListingKitChatClient(")
+	require.NotContains(t, content, "func buildStrictListingKitImageClient(")
+	require.NotContains(t, content, "func buildStrictListingKitNanobananaImageClient(")
 
 	require.Contains(t, content, "func BuildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {")
-	require.Contains(t, content, "func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ChatCompleter {")
-	require.Contains(t, content, "func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ImageGenerator {")
+	require.Contains(t, content, "func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {")
 }
 
 func TestAIClientImageRoutingHelpersFileOwnsRoutedImageLogic(t *testing.T) {
@@ -74,4 +76,17 @@ func TestAIClientStrictImageFileOwnsStrictImageResolution(t *testing.T) {
 
 	require.Contains(t, content, "type strictListingKitConfiguredImageClient struct {")
 	require.Contains(t, content, "func resolveStrictListingKitImageClient(")
+}
+
+func TestAIClientBuildersFileOwnsStrictClientConstruction(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("ai_client_builders.go")
+	require.NoError(t, err)
+	content := string(src)
+
+	require.Contains(t, content, "func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ChatCompleter {")
+	require.Contains(t, content, "func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ImageGenerator {")
+	require.Contains(t, content, "func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ImageGenerator {")
+	require.Contains(t, content, "nanobanana.NewClient(")
 }

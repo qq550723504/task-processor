@@ -728,6 +728,7 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "ai_credential_store_adapter.go")):           {},
 		filepath.Clean(filepath.Join(root, "ai_image_generator_adapter.go")):            {},
+		filepath.Clean(filepath.Join(root, "ai_client_builders.go")):                    {},
 		filepath.Clean(filepath.Join(root, "ai_client_fallback_helpers.go")):            {},
 		filepath.Clean(filepath.Join(root, "ai_client_image_routing.go")):               {},
 		filepath.Clean(filepath.Join(root, "ai_client_strict_chat.go")):                 {},

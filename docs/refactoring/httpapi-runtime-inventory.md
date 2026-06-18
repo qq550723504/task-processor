@@ -46,7 +46,7 @@ Current package shape: 67 non-test Go files.
 | SHEIN runtime support | `adapter construction` | `runtime_support_shein.go`, `runtime_support_shein_adapter_helpers.go`, `runtime_support_shein_factories.go` | Runtime resolver/bridge builders, tenant/cookie/store config adapters, and SHEIN API factory binding. |
 | Settings health | `adapter construction` | `settings_health_probes.go` | Runtime capability probe construction from config and submit-module availability; not business readiness policy. |
 | SHEIN sync runtime | `adapter construction` | `shein_sync_runtime.go`, `shein_sync_runtime_bridge_helpers.go`, `shein_sync_runtime_strategy_helpers.go` | SHEIN sync service construction, bridge shaping, and management strategy-provider construction. |
-| AI clients | `adapter construction` | `ai_clients.go`, `ai_client_fallback_helpers.go`, `ai_client_image_routing.go`, `ai_client_strict_chat.go`, `ai_client_strict_image.go` | ListingKit AI client entrypoints, routing, strict wrappers, timeout/fallback shaping, and cache construction. |
+| AI clients | `adapter construction` | `ai_clients.go`, `ai_client_builders.go`, `ai_client_fallback_helpers.go`, `ai_client_image_routing.go`, `ai_client_strict_chat.go`, `ai_client_strict_image.go` | ListingKit AI client entrypoints, strict client builders, routing, strict wrappers, timeout/fallback shaping, and cache construction. |
 | ZITADEL auth | `adapter construction` | `zitadel_auth.go`, `zitadel_auth_middleware.go`, `zitadel_auth_parsing_helpers.go`, `zitadel_auth_route_authorization.go`, `zitadel_auth_runtime.go` | Runtime auth/authz middleware construction, route authorization wiring, and role/allowlist parsing helpers. |
 
 ## Follow-Up Candidates
@@ -73,6 +73,7 @@ Suggested next slice:
 Why it stands out:
 
 - it now mostly owns builder entrypoints and routed client assembly,
+- concrete strict chat/image/nanobanana builders now live in `ai_client_builders.go`,
 - strict chat/image client wrappers and cache resolution have been pushed into dedicated helper files,
 - fallback shaping and naming are already isolated,
 - if more request-shaping or model-selection rules land there, they should stay in helper homes rather than re-grow the main builder file.
