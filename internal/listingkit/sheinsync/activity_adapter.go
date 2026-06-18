@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
 )
@@ -37,7 +36,7 @@ type SheinActivityAdapter interface {
 }
 
 type SheinPromotionStrategyProvider interface {
-	GetPromotionStrategy(ctx context.Context, storeID int64, activityKey string) (*managementapi.OperationStrategyDTO, error)
+	GetPromotionStrategy(ctx context.Context, storeID int64, activityKey string) (*SheinPromotionStrategy, error)
 }
 
 type sheinActivityAdapter struct {
@@ -118,7 +117,7 @@ func (a *sheinActivityAdapter) enrollPromotionCandidates(
 		return products[i].Skc < products[j].Skc
 	})
 
-	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy, activityKey, products)
+	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy.managementOperationStrategy(), activityKey, products)
 	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC), bridgeErr
 }
 

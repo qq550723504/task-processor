@@ -43,6 +43,6 @@ func TestSheinSyncRuntimeStrategyHelpersFileOwnsManagementStrategyAssembly(t *te
 	content := string(src)
 
 	require.Contains(t, content, "type localManagementPromotionStrategyProvider struct {")
-	require.Contains(t, content, "func (p localManagementPromotionStrategyProvider) GetPromotionStrategy(_ context.Context, storeID int64, _ string) (*managementapi.OperationStrategyDTO, error) {")
+	require.Contains(t, content, "func (p localManagementPromotionStrategyProvider) GetPromotionStrategy(_ context.Context, storeID int64, _ string) (*sheinsync.SheinPromotionStrategy, error) {")
 	require.Contains(t, content, "func buildSheinPromotionStrategyProvider(input BuildServiceInput, closers *closerStack) (localManagementPromotionStrategyProvider, error) {")
 }

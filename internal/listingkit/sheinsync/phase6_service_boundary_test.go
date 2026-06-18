@@ -63,6 +63,26 @@ func TestSheinSyncServiceFilesOwnSeparatedFamilies(t *testing.T) {
 	)
 }
 
+func TestSheinSyncActivityAdapterUsesLocalPromotionStrategyContract(t *testing.T) {
+	t.Parallel()
+
+	activityFile := readSheinSyncServiceFileContent(t, "activity_adapter.go")
+	assertSheinSyncServiceContainsAll(t, activityFile,
+		"type SheinPromotionStrategyProvider interface {",
+		"GetPromotionStrategy(ctx context.Context, storeID int64, activityKey string) (*SheinPromotionStrategy, error)",
+	)
+	assertSheinSyncServiceNotContainsAny(t, activityFile,
+		`"task-processor/internal/infra/clients/management/api"`,
+		"managementapi.OperationStrategyDTO",
+	)
+
+	strategyFile := readSheinSyncServiceFileContent(t, "promotion_strategy.go")
+	assertSheinSyncServiceContainsAll(t, strategyFile,
+		"type SheinPromotionStrategy struct {",
+		"func NewSheinPromotionStrategy(",
+	)
+}
+
 func readSheinSyncServiceFileContent(t *testing.T, path string) string {
 	t.Helper()
 

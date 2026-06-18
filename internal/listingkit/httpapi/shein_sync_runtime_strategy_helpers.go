@@ -6,18 +6,22 @@ import (
 
 	"task-processor/internal/core/config"
 	managementclient "task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	sheinsync "task-processor/internal/listingkit/sheinsync"
 )
 
 type localManagementPromotionStrategyProvider struct {
 	client *managementclient.OperationStrategyClient
 }
 
-func (p localManagementPromotionStrategyProvider) GetPromotionStrategy(_ context.Context, storeID int64, _ string) (*managementapi.OperationStrategyDTO, error) {
+func (p localManagementPromotionStrategyProvider) GetPromotionStrategy(_ context.Context, storeID int64, _ string) (*sheinsync.SheinPromotionStrategy, error) {
 	if p.client == nil {
 		return nil, fmt.Errorf("SHEIN promotion strategy client is not configured")
 	}
-	return p.client.GetOperationStrategyByStoreId(storeID)
+	strategy, err := p.client.GetOperationStrategyByStoreId(storeID)
+	if err != nil {
+		return nil, err
+	}
+	return sheinsync.NewSheinPromotionStrategy(strategy), nil
 }
 
 func buildSheinPromotionStrategyProvider(input BuildServiceInput, closers *closerStack) (localManagementPromotionStrategyProvider, error) {

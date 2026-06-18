@@ -261,12 +261,12 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 	t.Parallel()
 
 	strategyProvider := &sheinPromotionStrategyProviderStub{
-		strategy: &managementapi.OperationStrategyDTO{
+		strategy: NewSheinPromotionStrategy(&managementapi.OperationStrategyDTO{
 			StoreID:              22,
 			ActivityPriceMode:    "DISCOUNT",
 			ActivityDiscountRate: 0.2,
 			ActivityStockRatio:   0.5,
-		},
+		}),
 	}
 	bridge := &sheinPromotionBridgeStub{
 		result: &activity.PromotionRegistrationResult{
@@ -484,11 +484,11 @@ func (s *sheinEnrollmentAdapterStub) EnrollCandidates(
 }
 
 type sheinPromotionStrategyProviderStub struct {
-	strategy *managementapi.OperationStrategyDTO
+	strategy *SheinPromotionStrategy
 	err      error
 }
 
-func (s *sheinPromotionStrategyProviderStub) GetPromotionStrategy(_ context.Context, storeID int64, activityKey string) (*managementapi.OperationStrategyDTO, error) {
+func (s *sheinPromotionStrategyProviderStub) GetPromotionStrategy(_ context.Context, storeID int64, activityKey string) (*SheinPromotionStrategy, error) {
 	return s.strategy, s.err
 }
 

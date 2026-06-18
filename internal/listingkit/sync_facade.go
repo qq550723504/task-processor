@@ -98,6 +98,7 @@ type SheinSyncRepository = sheinsync.SheinSyncRepository
 type SheinActivityEnrollmentCandidate = sheinsync.SheinActivityEnrollmentCandidate
 type SheinActivityEnrollmentResult = sheinsync.SheinActivityEnrollmentResult
 type SheinActivityAdapter = sheinsync.SheinActivityAdapter
+type SheinPromotionStrategy = sheinsync.SheinPromotionStrategy
 type SheinPromotionStrategyProvider = sheinsync.SheinPromotionStrategyProvider
 type SheinSyncService = sheinsync.SheinSyncService
 type SheinCandidateService = sheinsync.SheinCandidateService
