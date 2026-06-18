@@ -1,8 +1,11 @@
 package variant
 
 import (
+	"context"
 	"testing"
 
+	shein "task-processor/internal/shein"
+	"task-processor/internal/shein/api/attribute"
 	sheinattr "task-processor/internal/shein/product/attribute"
 )
 
@@ -168,5 +171,33 @@ func TestVariantMatcherUtils_IsColorAttribute(t *testing.T) {
 				t.Errorf("IsColorAttribute(%q, %q) = %v, want %v", tt.variantVal, tt.targetVal, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestVariantMatcher_FindUniqueMatchesForValues(t *testing.T) {
+	m := NewVariantMatcher()
+	ctx := shein.NewTaskContext(context.Background(), nil)
+	ctx.AttributeTemplates = &attribute.AttributeTemplateInfo{
+		Data: []attribute.AttributeTemplate{
+			{
+				AttributeInfos: []attribute.AttributeInfo{
+					{AttributeID: 27, AttributeName: "颜色", AttributeNameEn: "Color"},
+				},
+			},
+		},
+	}
+
+	variants := []sheinattr.Variant{
+		makeVariant("B001", map[string]string{"Color": "Black/White"}),
+		makeVariant("B002", map[string]string{"Color": "White"}),
+	}
+
+	assignments := m.FindUniqueMatchesForValues(ctx, variants, 27, []string{"Black", "White"})
+
+	if len(assignments["Black"]) != 1 || assignments["Black"][0].ASIN != "B001" {
+		t.Fatalf("expected Black to own B001, got %+v", assignments["Black"])
+	}
+	if len(assignments["White"]) != 1 || assignments["White"][0].ASIN != "B002" {
+		t.Fatalf("expected White to own B002 only, got %+v", assignments["White"])
 	}
 }

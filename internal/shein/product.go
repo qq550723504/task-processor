@@ -83,4 +83,5 @@ type SKUBuildRequest struct {
 	Strategy          AttributeStrategy
 	PrimaryAttrValue  string
 	WarehouseCode     string
+	MatchedVariants   []Variant
 }

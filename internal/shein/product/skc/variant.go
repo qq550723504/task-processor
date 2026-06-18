@@ -109,7 +109,33 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(input *SKCVariantBuildInp
 	p.ensureVariantsHaveRequiredAttributes(input, strategy)
 
 	skuRuntime := p.newSKURuntimeInput(ctx)
+	primaryValues := make([]string, 0, len(strategy.PrimaryAttribute.AttrValue))
+	for _, attrValue := range strategy.PrimaryAttribute.AttrValue {
+		if processedValues[attrValue.Value] {
+			continue
+		}
+		attrValueID := attrValue.ID.Int()
+		if usedAttributeValueIDs[attrValueID] || attrValueID <= 0 {
+			continue
+		}
+		processedValues[attrValue.Value] = true
+		usedAttributeValueIDs[attrValueID] = true
+		primaryValues = append(primaryValues, attrValue.Value)
+	}
+	primaryAssignments := variantMatcher.FindUniqueMatchesForValues(
+		ctx,
+		input.SaleAttributeData.Variants,
+		strategy.PrimaryAttribute.AttrID,
+		primaryValues,
+	)
+	logger.GetGlobalLogger("shein/product").Infof(
+		"primary unique assignment prepared: candidate_variants=%d primary_values=%d",
+		len(input.SaleAttributeData.Variants),
+		len(primaryValues),
+	)
 
+	processedValues = make(map[string]bool)
+	usedAttributeValueIDs = make(map[int]bool)
 	for i := 0; i < len(strategy.PrimaryAttribute.AttrValue); i++ {
 		attrValue := &strategy.PrimaryAttribute.AttrValue[i]
 		if processedValues[attrValue.Value] {
@@ -122,7 +148,13 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(input *SKCVariantBuildInp
 		processedValues[attrValue.Value] = true
 		usedAttributeValueIDs[attrValueID] = true
 
-		matchedVariants := variantMatcher.FindMatchingVariants(ctx, input.SaleAttributeData.Variants, strategy.PrimaryAttribute.AttrID, attrValue.Value)
+		matchedVariants := primaryAssignments[attrValue.Value]
+		logger.GetGlobalLogger("shein/product").Infof(
+			"primary unique assignment consumed: primary_value=%q value_id=%d assigned_variants=%d",
+			attrValue.Value,
+			attrValueID,
+			len(matchedVariants),
+		)
 		if len(matchedVariants) == 0 {
 			continue
 		}
@@ -143,6 +175,7 @@ func (p *SKCVariantProcessor) BuildMultiVariantSKCList(input *SKCVariantBuildInp
 			Strategy:          strategy,
 			PrimaryAttrValue:  attrValue.Value,
 			WarehouseCode:     input.WarehouseCode,
+			MatchedVariants:   matchedVariants,
 		}
 		skuList, err := p.skuBuilder.BuildSKUListWithRuntime(ctx, skuRuntime, skuBuildReq)
 		if err != nil {

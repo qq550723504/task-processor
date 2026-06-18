@@ -107,11 +107,20 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUs(ctx *shein.TaskContext, req she
 }
 
 func (p *SKUStrategyProcessor) BuildMultipleSKUsWithRuntime(ctx *shein.TaskContext, runtime *RuntimeInput, req shein.SKUBuildRequest) ([]product.SKU, error) {
-	primaryMatchedVariants := p.variantMatcher.FindMatchingVariants(ctx,
-		req.SaleAttributeData.Variants,
-		req.Strategy.PrimaryAttribute.AttrID,
-		req.PrimaryAttrValue,
-	)
+	primaryMatchedVariants := req.MatchedVariants
+	if len(primaryMatchedVariants) == 0 {
+		primaryMatchedVariants = p.variantMatcher.FindMatchingVariants(ctx,
+			req.SaleAttributeData.Variants,
+			req.Strategy.PrimaryAttribute.AttrID,
+			req.PrimaryAttrValue,
+		)
+	} else {
+		logger.GetGlobalLogger("shein/product").Infof(
+			"using pre-matched primary variants for sku build: primary_value=%q variants=%d",
+			req.PrimaryAttrValue,
+			len(primaryMatchedVariants),
+		)
+	}
 	if len(primaryMatchedVariants) == 0 {
 		return []product.SKU{}, nil
 	}
@@ -119,6 +128,7 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUsWithRuntime(ctx *shein.TaskConte
 	processedSecondaryValues := make(map[string]bool)
 	variantInfoMap := make(map[string]sheinattr.VariantInfo)
 	usedValueIDs := make(map[int]bool)
+	secondaryValues := make([]string, 0, len(req.Strategy.SecondaryAttribute.AttrValue))
 	for _, attr := range req.Strategy.SecondaryAttribute.AttrValue {
 		if processedSecondaryValues[attr.Value] {
 			continue
@@ -130,22 +140,40 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUsWithRuntime(ctx *shein.TaskConte
 			continue
 		}
 		usedValueIDs[currentValueID] = true
+		secondaryValues = append(secondaryValues, attr.Value)
+	}
 
-		secondaryMatchedVariants := p.variantMatcher.FindMatchingVariants(ctx,
-			primaryMatchedVariants,
-			req.Strategy.SecondaryAttribute.AttrID,
+	secondaryAssignments := p.variantMatcher.FindUniqueMatchesForValues(
+		ctx,
+		primaryMatchedVariants,
+		req.Strategy.SecondaryAttribute.AttrID,
+		secondaryValues,
+	)
+	logger.GetGlobalLogger("shein/product").Infof(
+		"secondary unique assignment prepared: primary_value=%q candidate_variants=%d secondary_values=%d",
+		req.PrimaryAttrValue,
+		len(primaryMatchedVariants),
+		len(secondaryValues),
+	)
+	for _, attr := range req.Strategy.SecondaryAttribute.AttrValue {
+		currentValueID := attr.ID.Int()
+		if currentValueID <= 0 {
+			continue
+		}
+		secondaryMatchedVariants := secondaryAssignments[attr.Value]
+		logger.GetGlobalLogger("shein/product").Infof(
+			"secondary unique assignment consumed: primary_value=%q secondary_value=%q value_id=%d assigned_variants=%d",
+			req.PrimaryAttrValue,
 			attr.Value,
+			currentValueID,
+			len(secondaryMatchedVariants),
 		)
-
 		for _, variantItem := range secondaryMatchedVariants {
-			compositeKey := fmt.Sprintf("%s:%d", variantItem.ASIN, currentValueID)
-			if _, exists := variantInfoMap[compositeKey]; !exists {
-				variantInfoMap[compositeKey] = sheinattr.VariantInfo{
-					Variant:   variantItem,
-					AttrID:    req.Strategy.SecondaryAttribute.AttrID,
-					ValueID:   currentValueID,
-					AttrValue: attr.Value,
-				}
+			variantInfoMap[variantItem.ASIN] = sheinattr.VariantInfo{
+				Variant:   variantItem,
+				AttrID:    req.Strategy.SecondaryAttribute.AttrID,
+				ValueID:   currentValueID,
+				AttrValue: attr.Value,
 			}
 		}
 	}
@@ -156,9 +184,15 @@ func (p *SKUStrategyProcessor) BuildMultipleSKUsWithRuntime(ctx *shein.TaskConte
 func (p *SKUStrategyProcessor) buildSKUListForMultipleVariantsWithRuntime(ctx *shein.TaskContext, runtime *RuntimeInput, variantInfoMap map[string]sheinattr.VariantInfo, req shein.SKUBuildRequest) ([]product.SKU, error) {
 	var skuList []product.SKU
 	usedAttributeValueIDs := make(map[int]bool)
+	usedASINs := make(map[string]bool)
+	usedSupplierSKUs := make(map[string]bool)
 
 	for _, varInfo := range variantInfoMap {
 		if usedAttributeValueIDs[varInfo.ValueID] {
+			continue
+		}
+		if usedASINs[varInfo.Variant.ASIN] {
+			logger.GetGlobalLogger("shein/product").Warnf("duplicate variant ASIN detected during SKU build, skipping ASIN=%s", varInfo.Variant.ASIN)
 			continue
 		}
 		usedAttributeValueIDs[varInfo.ValueID] = true
@@ -188,6 +222,27 @@ func (p *SKUStrategyProcessor) buildSKUListForMultipleVariantsWithRuntime(ctx *s
 		if err != nil || skuItem == nil {
 			continue
 		}
+		if skuItem.SupplierSKU != "" && usedSupplierSKUs[skuItem.SupplierSKU] {
+			logger.GetGlobalLogger("shein/product").Warnf(
+				"duplicate supplier SKU detected during SKU build, skipping supplierSKU=%s asin=%s attrValue=%s",
+				skuItem.SupplierSKU,
+				varInfo.Variant.ASIN,
+				varInfo.AttrValue,
+			)
+			continue
+		}
+		usedASINs[varInfo.Variant.ASIN] = true
+		if skuItem.SupplierSKU != "" {
+			usedSupplierSKUs[skuItem.SupplierSKU] = true
+		}
+		logger.GetGlobalLogger("shein/product").Infof(
+			"sku build assignment: asin=%s supplier_sku=%s secondary_attr_id=%d secondary_value=%q secondary_value_id=%d",
+			varInfo.Variant.ASIN,
+			skuItem.SupplierSKU,
+			varInfo.AttrID,
+			varInfo.AttrValue,
+			varInfo.ValueID,
+		)
 		skuList = append(skuList, *skuItem)
 	}
 

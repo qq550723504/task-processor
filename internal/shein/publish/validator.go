@@ -100,6 +100,7 @@ func (v *PublishProductValidator) validateSKCAndSKUData(input *ValidationInput) 
 
 	totalSKUs := 0
 	issues := []string{}
+	seenSupplierSKUs := make(map[string]string)
 
 	for skcIndex, skc := range product.SKCList {
 		if len(skc.SKUS) == 0 {
@@ -112,6 +113,13 @@ func (v *PublishProductValidator) validateSKCAndSKUData(input *ValidationInput) 
 
 			if sku.SupplierSKU == "" {
 				issues = append(issues, fmt.Sprintf("SKC[%d] SKU[%d]缺少SupplierSKU", skcIndex, skuIndex))
+			} else {
+				currentLocation := fmt.Sprintf("SKC[%d] SKU[%d]", skcIndex, skuIndex)
+				if firstLocation, exists := seenSupplierSKUs[sku.SupplierSKU]; exists {
+					issues = append(issues, fmt.Sprintf("%s与%s使用了重复的SupplierSKU: %s", firstLocation, currentLocation, sku.SupplierSKU))
+				} else {
+					seenSupplierSKUs[sku.SupplierSKU] = currentLocation
+				}
 			}
 			if sku.CostInfo == nil || sku.CostInfo.CostPrice == "" {
 				issues = append(issues, fmt.Sprintf("SKC[%d] SKU[%d]缺少成本价格信息", skcIndex, skuIndex))
