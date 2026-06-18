@@ -117,6 +117,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestAppConsumerManagementClientImportsStayAllowlisted`
 - `TestAppBootstrapManagementClientImportsStayAllowlisted`
 - `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
+- `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestPublishingSheinOpenAIImportsStayAllowlisted`
 - `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted`

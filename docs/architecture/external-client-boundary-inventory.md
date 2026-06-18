@@ -110,6 +110,10 @@ Current direct dependency hotspots are:
   - `internal/app/httpapi` still imports `management` in runtime dependency
     methods and SHEIN module test seams; these should stay narrow while HTTP
     assembly data access moves toward in-repository database/repository access
+  - `internal/app/runtime/listing` still imports `management` in debug task
+    runner seams; these should remain explicit runtime retirement seams while
+    listing runtime data access moves toward in-repository database/repository
+    access
   - ProductImage model/default provider assembly seams in `internal/app/httpapi`
     are guarded by
     `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
@@ -123,6 +127,8 @@ Current direct dependency hotspots are:
     `TestAppBootstrapManagementClientImportsStayAllowlisted`
   - `internal/app/httpapi` management retirement seams are guarded by
     `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
+  - `internal/app/runtime/listing` management retirement seams are guarded by
+    `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
 - `internal/productimage`
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
@@ -230,7 +236,12 @@ adapter types without changing business behavior:
    allowlisted to freeze current HTTP assembly seams; future HTTP-facing data
    access should prefer in-repository database/repository access rather than
    adding new management API call sites.
-15. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+15. App listing runtime debug task runner seams currently importing
+   `internal/infra/clients/management`. Current imports are explicitly
+   allowlisted to freeze current debug runtime seams; future listing runtime
+   data access should prefer in-repository database/repository access rather
+   than adding new management API call sites.
+16. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding
