@@ -32,6 +32,13 @@ func TestHTTPAPIAppDoesNotOwnProductImageBuilderShadows(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIAppDoesNotOwnProductEnrichScorerBuilderShadow(t *testing.T) {
+	t.Parallel()
+
+	_, err := os.Stat("modules_product_scorer.go")
+	require.True(t, os.IsNotExist(err), "modules_product_scorer.go should stay retired; ProductEnrich scorer assembly belongs in internal/productenrich/httpapi")
+}
+
 func TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration(t *testing.T) {
 	modulesContent := readRetiredModulesFileIfPresent(t)
 

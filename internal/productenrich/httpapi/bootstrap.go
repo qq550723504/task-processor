@@ -108,24 +108,6 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 	}, nil
 }
 
-const productScorerClientName = "scorer"
-
-func buildLLMScorerWithCache(cfg *config.Config, llmMgr productenrich.LLMManager, scoreCache productenrich.LLMScoreCache) productenrich.LLMScorer {
-	scorerCfg := &productenrich.LLMScorerConfig{
-		LLMManager: llmMgr,
-		ScoreCache: scoreCache,
-	}
-
-	if cfg != nil {
-		if _, ok := cfg.OpenAI.Clients[productScorerClientName]; ok {
-			scorerCfg.TextClient = productScorerClientName
-			scorerCfg.VisionClient = productScorerClientName
-		}
-	}
-
-	return productenrich.NewLLMScorer(scorerCfg)
-}
-
 func buildTaskRepository(cfg *config.Config, logger *logrus.Logger) (productenrich.TaskRepository, []func() error, error) {
 	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
 		repo, closer, err := newDBTaskRepository(cfg.Database, logger)

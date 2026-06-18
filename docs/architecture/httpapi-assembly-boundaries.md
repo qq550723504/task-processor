@@ -68,6 +68,8 @@
 
 - `productenrich` 的 module builder
 - `productenrich` 的 route registrar
+- `productenrich` 的 LLM scorer 选择策略应放在专用 scorer builder 文件，
+  `bootstrap.go` 只负责调用它组装 service
 - `productenrich` 自己的 task repo / pool / handler 装配
 
 ### `internal/productimage/httpapi`
@@ -277,6 +279,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
 - `TestHTTPAPIModulesFileStaysRetired`
 - `TestHTTPAPIAppDoesNotOwnProductImageBuilderShadows`
+- `TestHTTPAPIAppDoesNotOwnProductEnrichScorerBuilderShadow`
 - `TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration`
 - `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
 - `TestLegacyBuildHandlersUsesRouteHandlerAliases`
@@ -315,6 +318,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated`
 - `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated`
 - `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile`
+- `TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile`
 - `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
 - `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile`
 - `TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile`

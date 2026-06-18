@@ -31,7 +31,7 @@ func (m *recordingScorerManager) GetDefaultClient() productenrich.LLMClient {
 	return recordingScorerClient{}
 }
 
-func TestBuildProductLLMScorerConfig_PrefersScorerClientWhenConfigured(t *testing.T) {
+func TestBuildLLMScorerConfigPrefersScorerClientWhenConfigured(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.OpenAI.Clients = map[string]config.OpenAIClientConfig{
 		"scorer": {
@@ -39,7 +39,7 @@ func TestBuildProductLLMScorerConfig_PrefersScorerClientWhenConfigured(t *testin
 		},
 	}
 
-	scorerCfg := buildProductLLMScorerConfig(cfg, nil)
+	scorerCfg := buildLLMScorerConfig(cfg, nil, nil)
 	if scorerCfg.TextClient != productScorerClientName {
 		t.Fatalf("TextClient = %q, want %q", scorerCfg.TextClient, productScorerClientName)
 	}
@@ -48,7 +48,7 @@ func TestBuildProductLLMScorerConfig_PrefersScorerClientWhenConfigured(t *testin
 	}
 }
 
-func TestBuildProductLLMScorerConfig_PreservesDefaultFallbackWhenScorerClientMissing(t *testing.T) {
+func TestBuildLLMScorerConfigPreservesDefaultFallbackWhenScorerClientMissing(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.OpenAI.Clients = map[string]config.OpenAIClientConfig{
 		"fast": {
@@ -59,7 +59,7 @@ func TestBuildProductLLMScorerConfig_PreservesDefaultFallbackWhenScorerClientMis
 		},
 	}
 
-	scorerCfg := buildProductLLMScorerConfig(cfg, nil)
+	scorerCfg := buildLLMScorerConfig(cfg, nil, nil)
 	if scorerCfg.TextClient != "" {
 		t.Fatalf("TextClient = %q, want empty for default fallback", scorerCfg.TextClient)
 	}
@@ -68,7 +68,7 @@ func TestBuildProductLLMScorerConfig_PreservesDefaultFallbackWhenScorerClientMis
 	}
 }
 
-func TestBuildProductLLMScorer_UsesScorerClientAtRuntimeWhenConfigured(t *testing.T) {
+func TestBuildLLMScorerWithCacheUsesScorerClientAtRuntimeWhenConfigured(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.OpenAI.Clients = map[string]config.OpenAIClientConfig{
 		"scorer": {
@@ -76,7 +76,7 @@ func TestBuildProductLLMScorer_UsesScorerClientAtRuntimeWhenConfigured(t *testin
 		},
 	}
 	manager := &recordingScorerManager{}
-	scorer := buildProductLLMScorer(cfg, manager)
+	scorer := buildLLMScorerWithCache(cfg, manager, nil)
 
 	if _, err := scorer.ScoreText(context.Background(), "sample", 50); err != nil {
 		t.Fatalf("ScoreText() error = %v", err)
