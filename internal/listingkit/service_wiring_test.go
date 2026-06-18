@@ -3143,12 +3143,30 @@ func TestSubmitIdentityHelperFileOwnsTaskIdentityContextHelper(t *testing.T) {
 
 	for _, needle := range []string{
 		"func withSheinSubmitTaskIdentity(ctx context.Context, task *Task) (context.Context, error) {",
-		"identity := openaiclient.IdentityFromContext(ctx)",
+		"identity := RequestIdentityFromContext(ctx)",
 		"ctx = WithTenantID(ctx, tenantID)",
-		"return openaiclient.WithIdentity(ctx, identity), nil",
+		"return WithRequestIdentity(ctx, identity), nil",
 	} {
 		if !strings.Contains(helperContent, needle) {
 			t.Fatalf("service_submit_task_identity_helper.go should contain %q", needle)
+		}
+	}
+
+	requestIdentitySrc, err := os.ReadFile("request_identity.go")
+	if err != nil {
+		t.Fatalf("ReadFile(request_identity.go) error = %v", err)
+	}
+	requestIdentityContent := string(requestIdentitySrc)
+
+	for _, needle := range []string{
+		"type RequestIdentity struct {",
+		"func WithRequestIdentity(ctx context.Context, identity RequestIdentity) context.Context {",
+		"return openaiclient.WithIdentity(ctx, openaiclient.Identity{",
+		"func RequestIdentityFromContext(ctx context.Context) RequestIdentity {",
+		"identity := openaiclient.IdentityFromContext(ctx)",
+	} {
+		if !strings.Contains(requestIdentityContent, needle) {
+			t.Fatalf("request_identity.go should contain %q", needle)
 		}
 	}
 

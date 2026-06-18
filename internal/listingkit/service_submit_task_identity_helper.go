@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 func withSheinSubmitTaskIdentity(ctx context.Context, task *Task) (context.Context, error) {
@@ -17,12 +15,12 @@ func withSheinSubmitTaskIdentity(ctx context.Context, task *Task) (context.Conte
 		return nil, fmt.Errorf("shein submit tenant id is unavailable")
 	}
 
-	identity := openaiclient.IdentityFromContext(ctx)
+	identity := RequestIdentityFromContext(ctx)
 	identity.TenantID = tenantID
 	if strings.TrimSpace(identity.UserID) == "" {
 		identity.UserID = strings.TrimSpace(task.UserID)
 	}
 
 	ctx = WithTenantID(ctx, tenantID)
-	return openaiclient.WithIdentity(ctx, identity), nil
+	return WithRequestIdentity(ctx, identity), nil
 }

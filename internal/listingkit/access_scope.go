@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 
 	"task-processor/internal/authz"
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 var ownerScopeRequired atomic.Bool
@@ -31,7 +30,7 @@ func OwnerScopeEnabled() bool {
 }
 
 func RequestUserIDFromContext(ctx context.Context) string {
-	return strings.TrimSpace(openaiclient.IdentityFromContext(ctx).UserID)
+	return strings.TrimSpace(RequestIdentityFromContext(ctx).UserID)
 }
 
 func WithRequestRoles(ctx context.Context, roles []string) context.Context {
