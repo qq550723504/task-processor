@@ -115,9 +115,6 @@ func TestListingPreviewPackageStaysPlatformNeutral(t *testing.T) {
 }
 
 func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join("..", "internal", "publishing", "shein", "submit_validation.go")): {},
-	}
 	assertNoBannedImports(t, filepath.Join("..", "internal", "publishing", "shein"), []string{
 		`"task-processor/internal/listingkit"`,
 		`"task-processor/internal/listingkit/tenantctx"`,
@@ -125,7 +122,7 @@ func TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit(t *testing.T) {
 		`"task-processor/internal/shein/pipeline"`,
 		`"task-processor/internal/shein/publish"`,
 		`"task-processor/internal/shein/product/build"`,
-	}, allowedFiles)
+	}, nil)
 }
 
 func TestSheinPipelineDoesNotImportListingKitFacade(t *testing.T) {
@@ -159,9 +156,7 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 			filepath.Clean(filepath.Join(root, "submit_prep.go")):      {},
 			filepath.Clean(filepath.Join(root, "submit_prep_test.go")): {},
 		},
-		`"task-processor/internal/shein/publish"`: {
-			filepath.Clean(filepath.Join(root, "submit_validation.go")): {},
-		},
+		`"task-processor/internal/shein/publish"`: {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
