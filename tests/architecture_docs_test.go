@@ -808,6 +808,26 @@ func TestArchitectureReadmeCoversEveryArchitectureDocument(t *testing.T) {
 	}
 }
 
+func TestArchitectureReadmeReferencesExistingDocuments(t *testing.T) {
+	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
+	readmeContent, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", readmePath, err)
+	}
+
+	for _, reference := range normalizedArchitectureDocReferences(t, string(readmeContent)) {
+		name := filepath.Base(reference)
+		if strings.Contains(name, "*") {
+			continue
+		}
+
+		targetPath := filepath.Join("..", filepath.FromSlash(reference))
+		if _, err := os.Stat(targetPath); err != nil {
+			t.Errorf("%s references %s, but it must resolve to an existing repository document: %v", readmePath, reference, err)
+		}
+	}
+}
+
 func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "development", "repository-structure.md")
 	content, err := os.ReadFile(path)
