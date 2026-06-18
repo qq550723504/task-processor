@@ -182,6 +182,14 @@ Current direct dependency hotspots are:
     database/repository access
   - current direct management seams are guarded by
     `TestSheinLoginBootstrapManagementClientImportsStayAllowlisted`
+- `internal/sheinloginmanaged`
+  - current managed login bridge still imports `management` in bridge and
+    account seams
+  - these are managed-login retirement seams, not a long-lived login data
+    direction; future managed-login data should use in-repository
+    database/repository access
+  - current direct management seams are guarded by
+    `TestSheinLoginManagedManagementClientImportsStayAllowlisted`
 - `internal/state`
   - current state runtime helpers still import `management` in manager and
     daily-count seams
@@ -342,7 +350,12 @@ adapter types without changing business behavior:
    allowlisted to freeze current login bootstrap seam; future login bootstrap
    data should prefer in-repository database/repository access rather than
    adding new management API call sites.
-24. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+24. SHEIN managed-login bridge and account seams currently importing
+   `internal/infra/clients/management`. Current imports are explicitly
+   allowlisted to freeze current managed-login seams; future managed-login data
+   should prefer in-repository database/repository access rather than adding new
+   management API call sites.
+25. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding
