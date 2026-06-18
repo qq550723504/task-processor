@@ -279,6 +279,46 @@ func TestArchitectureReviewChecklistReferencesArchitectureIndexEntrypoints(t *te
 	}
 }
 
+func TestArchitectureReviewChecklistPreservesArchitectureIndexReferenceOrder(t *testing.T) {
+	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
+	readmeContent, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", readmePath, err)
+	}
+
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	reviewReferences := markdownSection(t, string(checklistContent), "## Review References")
+	referenceListStart := strings.Index(reviewReferences, "- ")
+	if referenceListStart == -1 {
+		t.Fatalf("%s Review References must include a reference list", checklistPath)
+	}
+	referenceList := reviewReferences[referenceListStart:]
+	required := []string{"docs/architecture/README.md"}
+	for _, heading := range []string{"## Stable Boundary Documents", "## Development Boundary Documents", "## Current Guard Baseline"} {
+		required = append(required, normalizedArchitectureDocReferences(t, markdownSection(t, string(readmeContent), heading))...)
+	}
+
+	lastIndex := -1
+	for _, reference := range required {
+		if reference == "docs/architecture/architecture-review-checklist.md" {
+			continue
+		}
+		index := strings.Index(referenceList, reference)
+		if index == -1 {
+			t.Fatalf("%s Review References must include %q from %s before order can be checked", checklistPath, reference, readmePath)
+		}
+		if index < lastIndex {
+			t.Errorf("%s Review References must preserve the %s order; %q appears out of order", checklistPath, readmePath, reference)
+		}
+		lastIndex = index
+	}
+}
+
 func TestArchitectureReviewChecklistReferencesExistingDocuments(t *testing.T) {
 	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
 	checklistContent, err := os.ReadFile(checklistPath)

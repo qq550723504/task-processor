@@ -126,8 +126,8 @@ Every review reference must resolve to an existing repository document.
 - `docs/architecture/external-client-boundary-inventory.md`
 - `docs/architecture/compatibility-retirement.md`
 - `docs/architecture/listing-preview-boundaries.md`
-- `docs/architecture/next-steps.md` for the current guard coverage baseline
 - `docs/development/repository-structure.md`
+- `docs/architecture/next-steps.md` for the current guard coverage baseline
 
 ## Working Rule
 
