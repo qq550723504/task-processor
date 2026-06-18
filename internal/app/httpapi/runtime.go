@@ -1,21 +1,15 @@
 package httpapi
 
-import (
-	"fmt"
-
-	"github.com/sirupsen/logrus"
-
-	"task-processor/internal/core/config"
-)
+import "github.com/sirupsen/logrus"
 
 func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, error) {
 	timer := newStartupTimer(logger)
 
 	done := timer.phase("loadConfig")
-	cfg, err := config.LoadConfigFromFile(configPath)
+	cfg, err := loadHTTPAPIConfig(configPath)
 	done()
 	if err != nil {
-		return nil, fmt.Errorf("load config: %w", err)
+		return nil, err
 	}
 
 	done = timer.phase("resolveImageWorkDir")

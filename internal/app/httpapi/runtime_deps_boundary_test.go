@@ -307,6 +307,31 @@ func TestHTTPAPIRuntimeKeepsPathResolutionDedicated(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIRuntimeKeepsConfigLoadingDedicated(t *testing.T) {
+	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
+	for _, marker := range []string{
+		`"task-processor/internal/core/config"`,
+		"config.LoadConfigFromFile(",
+		`fmt.Errorf("load config: %w", err)`,
+	} {
+		if strings.Contains(runtimeSource, marker) {
+			t.Fatalf("runtime.go should keep config loading in runtime_config.go; found %s", marker)
+		}
+	}
+
+	configSource := readHTTPAPIBoundaryFile(t, "runtime_config.go")
+	for _, marker := range []string{
+		`"task-processor/internal/core/config"`,
+		"func loadHTTPAPIConfig(",
+		"config.LoadConfigFromFile(",
+		`fmt.Errorf("load config: %w", err)`,
+	} {
+		if !strings.Contains(configSource, marker) {
+			t.Fatalf("runtime_config.go missing %s", marker)
+		}
+	}
+}
+
 func readHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)
