@@ -152,3 +152,32 @@ func TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport(t *testing.T) {
 		require.Contains(t, loginSupportContent, marker)
 	}
 }
+
+func TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes(t *testing.T) {
+	t.Parallel()
+
+	compositionSrc, err := os.ReadFile("composition_builder.go")
+	require.NoError(t, err)
+	compositionContent := string(compositionSrc)
+
+	for _, marker := range []string{
+		`"task-processor/internal/sheinlogin/bootstrap"`,
+		`"task-processor/internal/sdslogin/bootstrap"`,
+		"*sheinloginbootstrap.BuildResult",
+		"*sdsloginbootstrap.BuildResult",
+	} {
+		require.NotContains(t, compositionContent, marker)
+	}
+
+	loginSupportSrc, err := os.ReadFile("runtime_login_modules.go")
+	require.NoError(t, err)
+	loginSupportContent := string(loginSupportSrc)
+	for _, marker := range []string{
+		"type sheinLoginModuleBuilder func(",
+		"type sdsLoginModuleBuilder func(",
+		"*sheinloginbootstrap.BuildResult",
+		"*sdsloginbootstrap.BuildResult",
+	} {
+		require.Contains(t, loginSupportContent, marker)
+	}
+}

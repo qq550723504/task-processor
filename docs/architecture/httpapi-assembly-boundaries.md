@@ -180,6 +180,8 @@ Worker pool 默认配置和本地 task health provider 聚合应放在
 `runtime_worker_pools.go`，避免 `modules.go` 承载 worker runtime 观测和池参数细节。
 SHEIN 登录账号配置、SHEIN login module 和 SDS login module bootstrap 应放在
 `runtime_login_modules.go`，避免 `modules.go` 直接依赖具体登录子系统 bootstrap。
+登录 module builder 的函数签名也应由 `runtime_login_modules.go` 暴露，避免
+`composition_builder.go` 为了类型字段直接依赖具体登录 bootstrap 包。
 ListingKit 的 SDS sync service hook、SHEIN cookie store 和 SDS baseline provider
 应放在 `runtime_support_listingkit.go`，避免 `modules.go` 持有 ListingKit runtime support 前置依赖。
 
@@ -223,6 +225,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPITypesDoesNotOwnRouteHandlerContracts`
 - `TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport`
 - `TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport`
+- `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
 - `TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook`
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`

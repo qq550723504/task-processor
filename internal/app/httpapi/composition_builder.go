@@ -8,8 +8,6 @@ import (
 	prompt "task-processor/internal/prompt"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
-	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
-	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 	"task-processor/internal/taskrpcapi"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
@@ -21,8 +19,8 @@ type httpFeatureCompositionBuilder struct {
 	buildProduct       func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)
 	buildImage         func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)
 	buildAmazonListing func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)
-	buildSheinLogin    func(deps *runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error)
-	buildSDSLogin      func(deps *runtimeDeps) (*sdsloginbootstrap.BuildResult, func() error, error)
+	buildSheinLogin    sheinLoginModuleBuilder
+	buildSDSLogin      sdsLoginModuleBuilder
 	buildListingKit    func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)
 	buildPrompt        func(store prompt.TenantPromptStore) *promptmgmtapi.BuildResult
 	buildTaskRPC       func(provider taskrpcapi.ClientProvider, localStatusProvider taskrpcapi.LocalStatusProvider) (*taskrpcapi.BuildResult, error)

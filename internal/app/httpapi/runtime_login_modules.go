@@ -7,6 +7,10 @@ import (
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 )
 
+type sheinLoginModuleBuilder func(deps *runtimeDeps) (*sheinloginbootstrap.BuildResult, func() error, error)
+
+type sdsLoginModuleBuilder func(deps *runtimeDeps) (*sdsloginbootstrap.BuildResult, func() error, error)
+
 func configureSheinLoginAccount(deps *runtimeDeps) {
 	if deps == nil || deps.shared == nil {
 		return
