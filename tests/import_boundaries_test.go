@@ -1091,7 +1091,7 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "amazon")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "llm", "openai_llm_client.go")):      {},
+		filepath.Clean(filepath.Join(root, "llm", "openai_llm_client.go")):     {},
 		filepath.Clean(filepath.Join(root, "model", "context.go")):             {},
 		filepath.Clean(filepath.Join(root, "model", "task_context.go")):        {},
 		filepath.Clean(filepath.Join(root, "pipeline", "daily_limit_test.go")): {},
@@ -1113,6 +1113,97 @@ func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") ||
 				importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
 				t.Errorf("%s imports %s; keep Amazon concrete external client dependencies limited to current management DTO and OpenAI LLM seams", path, importPath)
+			}
+		}
+	}
+}
+
+func TestSheinManagementClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "shein")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "activity", "mixed.go")):                                   {},
+		filepath.Clean(filepath.Join(root, "activity", "product_data_helper.go")):                     {},
+		filepath.Clean(filepath.Join(root, "activity", "profit.go")):                                  {},
+		filepath.Clean(filepath.Join(root, "activity", "registration.go")):                            {},
+		filepath.Clean(filepath.Join(root, "activity", "registration_config.go")):                     {},
+		filepath.Clean(filepath.Join(root, "activity", "time_limited.go")):                            {},
+		filepath.Clean(filepath.Join(root, "addresscopy", "service.go")):                              {},
+		filepath.Clean(filepath.Join(root, "api", "image", "client.go")):                              {},
+		filepath.Clean(filepath.Join(root, "api", "image", "client_test.go")):                         {},
+		filepath.Clean(filepath.Join(root, "authorizedbrand", "context_test.go")):                     {},
+		filepath.Clean(filepath.Join(root, "authorizedbrand", "types.go")):                            {},
+		filepath.Clean(filepath.Join(root, "context", "context.go")):                                  {},
+		filepath.Clean(filepath.Join(root, "inventory", "api.go")):                                    {},
+		filepath.Clean(filepath.Join(root, "inventory", "change_checker.go")):                         {},
+		filepath.Clean(filepath.Join(root, "inventory", "cost_calculator.go")):                        {},
+		filepath.Clean(filepath.Join(root, "inventory", "monitor.go")):                                {},
+		filepath.Clean(filepath.Join(root, "inventory", "price_strategy.go")):                         {},
+		filepath.Clean(filepath.Join(root, "inventory", "record.go")):                                 {},
+		filepath.Clean(filepath.Join(root, "inventory", "strategy.go")):                               {},
+		filepath.Clean(filepath.Join(root, "inventory", "sync.go")):                                   {},
+		filepath.Clean(filepath.Join(root, "inventory", "types.go")):                                  {},
+		filepath.Clean(filepath.Join(root, "managedclient", "api_client_test.go")):                    {},
+		filepath.Clean(filepath.Join(root, "managedclient", "bridge.go")):                             {},
+		filepath.Clean(filepath.Join(root, "managedclient", "manager.go")):                            {},
+		filepath.Clean(filepath.Join(root, "mapping", "builder.go")):                                  {},
+		filepath.Clean(filepath.Join(root, "mapping", "service.go")):                                  {},
+		filepath.Clean(filepath.Join(root, "mapping", "strategies.go")):                               {},
+		filepath.Clean(filepath.Join(root, "mapping", "strategies_test.go")):                          {},
+		filepath.Clean(filepath.Join(root, "mapping", "types.go")):                                    {},
+		filepath.Clean(filepath.Join(root, "models.go")):                                              {},
+		filepath.Clean(filepath.Join(root, "pipeline", "processor.go")):                               {},
+		filepath.Clean(filepath.Join(root, "pipeline", "sale_attribute_resolution_pipeline_test.go")): {},
+		filepath.Clean(filepath.Join(root, "pipeline", "task.go")):                                    {},
+		filepath.Clean(filepath.Join(root, "pipeline", "task_authorized_brand_test.go")):              {},
+		filepath.Clean(filepath.Join(root, "pricing", "auto_pricing.go")):                             {},
+		filepath.Clean(filepath.Join(root, "pricing", "calculator.go")):                               {},
+		filepath.Clean(filepath.Join(root, "pricing", "calculator_test.go")):                          {},
+		filepath.Clean(filepath.Join(root, "pricing", "pricing_calculator.go")):                       {},
+		filepath.Clean(filepath.Join(root, "pricing", "pricing_evaluator.go")):                        {},
+		filepath.Clean(filepath.Join(root, "product", "skc", "skc_build_input.go")):                   {},
+		filepath.Clean(filepath.Join(root, "product", "skc", "variant_runtime_test.go")):              {},
+		filepath.Clean(filepath.Join(root, "product", "sku", "sku_runtime_input.go")):                 {},
+		filepath.Clean(filepath.Join(root, "product", "sku", "strategy_test.go")):                     {},
+		filepath.Clean(filepath.Join(root, "productsync", "product_sync.go")):                         {},
+		filepath.Clean(filepath.Join(root, "productsync", "product_sync_enricher.go")):                {},
+		filepath.Clean(filepath.Join(root, "productsync", "product_sync_types.go")):                   {},
+		filepath.Clean(filepath.Join(root, "publish", "checker.go")):                                  {},
+		filepath.Clean(filepath.Join(root, "publish", "exists_check.go")):                             {},
+		filepath.Clean(filepath.Join(root, "publish", "handler.go")):                                  {},
+		filepath.Clean(filepath.Join(root, "publish", "handler_test.go")):                             {},
+		filepath.Clean(filepath.Join(root, "publish", "mapping_helper.go")):                           {},
+		filepath.Clean(filepath.Join(root, "publish", "publish_input.go")):                            {},
+		filepath.Clean(filepath.Join(root, "publish", "result_test.go")):                              {},
+		filepath.Clean(filepath.Join(root, "scheduler", "activity_task.go")):                          {},
+		filepath.Clean(filepath.Join(root, "scheduler", "factory.go")):                                {},
+		filepath.Clean(filepath.Join(root, "scheduler", "inventory_sync_adapter.go")):                 {},
+		filepath.Clean(filepath.Join(root, "scheduler", "inventory_sync_adapter_test.go")):            {},
+		filepath.Clean(filepath.Join(root, "scheduler", "inventory_task.go")):                         {},
+		filepath.Clean(filepath.Join(root, "scheduler", "pricing_task.go")):                           {},
+		filepath.Clean(filepath.Join(root, "scheduler", "product_sync_adapter.go")):                   {},
+		filepath.Clean(filepath.Join(root, "scheduler", "product_sync_adapter_test.go")):              {},
+		filepath.Clean(filepath.Join(root, "scheduler", "product_task.go")):                           {},
+		filepath.Clean(filepath.Join(root, "store", "store_id.go")):                                   {},
+		filepath.Clean(filepath.Join(root, "store", "store_info.go")):                                 {},
+		filepath.Clean(filepath.Join(root, "store", "store_info_test.go")):                            {},
+		filepath.Clean(filepath.Join(root, "validation", "daily_limit_test.go")):                      {},
+		filepath.Clean(filepath.Join(root, "validation", "get_rule.go")):                              {},
+		filepath.Clean(filepath.Join(root, "validation", "reapply_filter.go")):                        {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep SHEIN concrete management client dependencies limited to current inventory, scheduler, publish, validation, activity, mapping, and product seams", path, importPath)
 			}
 		}
 	}
