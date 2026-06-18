@@ -2478,7 +2478,7 @@ func TestSheinPreviewPayloadAssemblerLivesOutsideMainSheinPreviewBuilder(t *test
 	for _, needle := range []string{
 		"type sheinPreviewPayloadBodyInput struct {",
 		"func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPreviewPayload {",
-		"Headline:          firstNonEmpty(pkg.SpuName, pkg.ProductNameEn),",
+		"Headline:          sheinDisplayTitle(pkg),",
 		"ResolutionCache:   buildSheinResolutionCacheSummary(pkg),",
 	} {
 		if strings.Contains(mainContent, needle) {
@@ -2494,7 +2494,7 @@ func TestSheinPreviewPayloadAssemblerLivesOutsideMainSheinPreviewBuilder(t *test
 	for _, needle := range []string{
 		"type sheinPreviewPayloadBodyInput struct {",
 		"func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPreviewPayload {",
-		"Headline:          firstNonEmpty(pkg.SpuName, pkg.ProductNameEn),",
+		"Headline:          sheinDisplayTitle(pkg),",
 		"ResolutionCache:   buildSheinResolutionCacheSummary(pkg),",
 		"FinalReview:       buildSheinFinalReviewPayload(pkg, input.canonical, input.readiness),",
 	} {

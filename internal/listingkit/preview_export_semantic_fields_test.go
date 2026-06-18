@@ -115,3 +115,27 @@ func TestPreviewAndExportJSONIncludeLegacyAndSemanticFieldNames(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildSheinPreviewPayloadDoesNotFallbackHeadlineOrFinalReviewTitle(t *testing.T) {
+	pkg := &sheinpub.Package{
+		SpuName:          "Fallback SPU Name",
+		Description:      "Preview description",
+		TitleDiagnostics: &sheinpub.TitleDiagnostics{Source: "unresolved_prompt_title"},
+		DraftPayload:     &sheinpub.RequestDraft{SpuName: "Fallback SPU Name"},
+	}
+	sheinpub.NormalizePackageSemanticFields(pkg)
+
+	payload := buildSheinPreviewPayload(pkg, nil, nil, nil, nil)
+	if payload == nil {
+		t.Fatal("payload = nil")
+	}
+	if payload.Headline != "" {
+		t.Fatalf("headline = %q, want empty without generated title fallback", payload.Headline)
+	}
+	if payload.FinalReview == nil {
+		t.Fatal("final review = nil")
+	}
+	if payload.FinalReview.Title != "" {
+		t.Fatalf("final review title = %q, want empty without generated title fallback", payload.FinalReview.Title)
+	}
+}

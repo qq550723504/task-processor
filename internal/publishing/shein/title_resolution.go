@@ -374,7 +374,6 @@ func structuredFallbackTitle(canonical *canonical.Product, fallbackTitle string)
 			lookupCanonicalAttribute(canonical, "english_name"),
 		),
 		sanitizeResolvedTitle(inferEnglishProductType(canonical, fallbackTitle)),
-		sanitizeResolvedTitle(synthesizeEnglishTitle(canonical, fallbackTitle)),
 		sanitizeResolvedTitle(fallbackTitle),
 	}
 	for _, candidate := range candidates {

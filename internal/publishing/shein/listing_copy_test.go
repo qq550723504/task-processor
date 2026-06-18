@@ -259,6 +259,24 @@ func TestBuildSheinListingCopyCleansSensitiveWords(t *testing.T) {
 	assertNoSensitivePhrase(t, copy.SKCTitleBase, "skc base")
 }
 
+func TestBuildSheinListingCopyDoesNotFallbackToSyntheticCustomTitle(t *testing.T) {
+	canonical := &canonical.Product{
+		Title: "门帘",
+		Attributes: map[string]canonical.Attribute{
+			"material":        {Value: "polyester"},
+			"picture_request": {Value: "帮我设计一个印在门帘上的图案，图案要有英文跟图案，元素多样，图片有3d视觉效果，摇滚风格，2277 × 4500px"},
+		},
+	}
+
+	copy := buildSheinListingCopy(nil, canonical, canonical.Title, nil)
+	if copy.Title != "" {
+		t.Fatalf("title = %q, want empty instead of synthetic custom fallback", copy.Title)
+	}
+	if copy.SKCTitleBase != "" {
+		t.Fatalf("skc base title = %q, want empty instead of synthetic custom fallback", copy.SKCTitleBase)
+	}
+}
+
 func TestBuildSheinListingCopyLoadsTenantSensitiveWordsFromRepository(t *testing.T) {
 	restoreRepo := SetSensitiveWordRepository(&stubSensitiveWordRepository{
 		pages: map[int64][]listingadmin.SensitiveWord{

@@ -111,3 +111,45 @@ func TestOptimizePackageReviewContent_FallsBackWithoutAIRewrite(t *testing.T) {
 		t.Fatalf("preview description = %q", got)
 	}
 }
+
+func TestOptimizePackageReviewContent_DoesNotFallbackTitleFromSPUOrDescription(t *testing.T) {
+	pkg := &Package{
+		SpuName:     "Fallback SPU Name",
+		Description: "A soft curtain for bedrooms and living rooms.",
+		RequestDraft: &RequestDraft{
+			SpuName:               "Fallback SPU Name",
+			MultiLanguageDescList: localizedEnglishText("en_US", "A soft curtain for bedrooms and living rooms."),
+			SKCList: []SKCRequestDraft{{
+				SkcName:               "white",
+				SaleName:              "white",
+				MultiLanguageNameList: []LocalizedText{{Language: "en", Name: "white"}},
+			}},
+		},
+		SkcList: []SKCPackage{{
+			SkcName:  "white",
+			SaleName: "white",
+		}},
+	}
+
+	if err := OptimizePackageReviewContent(context.Background(), pkg, nil); err != nil {
+		t.Fatalf("OptimizePackageReviewContent returned error: %v", err)
+	}
+	if pkg.ProductNameEn != "" {
+		t.Fatalf("pkg title = %q, want empty without title fallback", pkg.ProductNameEn)
+	}
+	if pkg.ProductNameMulti != "" {
+		t.Fatalf("pkg multi title = %q, want empty without title fallback", pkg.ProductNameMulti)
+	}
+	if got := firstLocalizedText(pkg.RequestDraft.MultiLanguageNameList); got != "" {
+		t.Fatalf("draft title = %q, want empty without title fallback", got)
+	}
+	if pkg.PreviewProduct == nil {
+		t.Fatal("preview product = nil")
+	}
+	if got := findLocalizedText(pkg.PreviewProduct.MultiLanguageNameList, "en"); got != "" {
+		t.Fatalf("preview title = %q, want empty without title fallback", got)
+	}
+	if got := pkg.RequestDraft.SKCList[0].SkcName; got != "white" {
+		t.Fatalf("draft skc name = %q, want unchanged sale name when title empty", got)
+	}
+}

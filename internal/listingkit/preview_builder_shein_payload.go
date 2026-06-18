@@ -1,6 +1,8 @@
 package listingkit
 
 import (
+	"strings"
+
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog/canonical"
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
@@ -28,7 +30,7 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 	}
 	visualBase := buildPlatformVisualPresentationBase(pkg.ImageBundle, input.assetBundle, input.renderPreviews)
 	return &SheinPreviewPayload{
-		Headline:          firstNonEmpty(pkg.SpuName, pkg.ProductNameEn),
+		Headline:          sheinDisplayTitle(pkg),
 		BrandName:         pkg.BrandName,
 		CategoryPath:      append([]string(nil), pkg.CategoryPath...),
 		CategoryID:        pkg.CategoryID,
@@ -55,5 +57,34 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 		FinalReview:       buildSheinFinalReviewPayload(pkg, input.canonical, input.readiness),
 		SubmissionEvents:  append([]sheinpub.SubmissionEvent(nil), pkg.SubmissionEvents...),
 		InspectionData:    pkg.Inspection,
+	}
+}
+
+func sheinDisplayTitle(pkg *sheinpub.Package) string {
+	if pkg == nil {
+		return ""
+	}
+	title := firstNonEmpty(pkg.ProductNameEn, pkg.ProductNameMulti)
+	if strings.TrimSpace(title) != "" {
+		return title
+	}
+	if shouldSuppressSheinTitleFallback(pkg) {
+		return ""
+	}
+	return strings.TrimSpace(pkg.SpuName)
+}
+
+func shouldSuppressSheinTitleFallback(pkg *sheinpub.Package) bool {
+	if pkg == nil || pkg.TitleDiagnostics == nil {
+		return false
+	}
+	if strings.TrimSpace(firstNonEmpty(pkg.ProductNameEn, pkg.ProductNameMulti)) != "" {
+		return false
+	}
+	switch strings.TrimSpace(pkg.TitleDiagnostics.Source) {
+	case "unresolved_prompt_title", "structured_fallback":
+		return true
+	default:
+		return false
 	}
 }

@@ -13,7 +13,7 @@ func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *canonical.Pr
 	}
 	final := &SheinFinalReview{
 		SourceProduct: buildSheinSourceProductSummary(canonical),
-		Title:         firstNonEmpty(pkg.ProductNameEn, pkg.SpuName),
+		Title:         sheinDisplayTitle(pkg),
 		Description:   pkg.Description,
 		CategoryPath:  append([]string(nil), pkg.CategoryPath...),
 		CategoryID:    pkg.CategoryID,

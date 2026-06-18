@@ -21,7 +21,6 @@ func OptimizePackageReviewContent(ctx context.Context, pkg *Package, optimizer R
 	sourceTitle := strings.TrimSpace(firstNonEmpty(
 		pkg.ProductNameEn,
 		pkg.ProductNameMulti,
-		pkg.SpuName,
 		packageFirstDraftTitle(pkg),
 	))
 	sourceDescription := strings.TrimSpace(firstNonEmpty(
@@ -55,7 +54,9 @@ func OptimizePackageReviewContent(ctx context.Context, pkg *Package, optimizer R
 		}
 	}
 
-	title = strengthenSubmitTitle(title, sourceTitle, sourceDescription)
+	if strings.TrimSpace(title) != "" {
+		title = strengthenSubmitTitle(title, sourceTitle, sourceDescription)
+	}
 	description = strengthenSubmitDescription(description, sourceDescription)
 	applyPackageReviewContent(ctx, pkg, title, description)
 	return nil
