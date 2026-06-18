@@ -12,10 +12,7 @@ import (
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
-	promptmgmtapi "task-processor/internal/promptmgmt/api"
-	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sheinlogin"
-	"task-processor/internal/taskrpcapi"
 )
 
 type Options struct {
@@ -58,9 +55,9 @@ type httpFeatureComposition struct {
 	imageModule         *productimagehttpapi.Module
 	amazonListingModule *amazonlistinghttpapi.Module
 	listingKitModule    *listingkithttpapi.Module
-	promptModule        *promptmgmtapi.BuildResult
-	sdsModule           *sdshttpapi.BuildResult
-	taskRPCResult       *taskrpcapi.BuildResult
+	promptModule        *promptModuleResult
+	sdsModule           *sdsModuleResult
+	taskRPCResult       *taskRPCModuleResult
 	sheinLoginResult    *sheinLoginModuleResult
 	sdsLoginResult      *sdsLoginModuleResult
 }

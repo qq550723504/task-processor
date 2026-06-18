@@ -214,3 +214,33 @@ func TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes(t *testing.T) {
 		require.Contains(t, loginSupportContent, marker)
 	}
 }
+
+func TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes(t *testing.T) {
+	t.Parallel()
+
+	typesSrc, err := os.ReadFile("types.go")
+	require.NoError(t, err)
+	typesContent := string(typesSrc)
+
+	for _, marker := range []string{
+		`"task-processor/internal/promptmgmt/api"`,
+		`"task-processor/internal/sds/httpapi"`,
+		`"task-processor/internal/taskrpcapi"`,
+		"*promptmgmtapi.BuildResult",
+		"*sdshttpapi.BuildResult",
+		"*taskrpcapi.BuildResult",
+	} {
+		require.NotContains(t, typesContent, marker)
+	}
+
+	resultSrc, err := os.ReadFile("runtime_module_results.go")
+	require.NoError(t, err)
+	resultContent := string(resultSrc)
+	for _, marker := range []string{
+		"type promptModuleResult = promptmgmtapi.BuildResult",
+		"type sdsModuleResult = sdshttpapi.BuildResult",
+		"type taskRPCModuleResult = taskrpcapi.BuildResult",
+	} {
+		require.Contains(t, resultContent, marker)
+	}
+}
