@@ -48,3 +48,32 @@ func TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade(t *testing.T) {
 		require.Contains(t, facadeContent, marker)
 	}
 }
+
+func TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs(t *testing.T) {
+	compositionSrc, err := os.ReadFile("composition_builder.go")
+	require.NoError(t, err)
+	compositionContent := string(compositionSrc)
+
+	for _, marker := range []string{
+		"productenrichhttpapi.RuntimeBuildInput{",
+		"productimagehttpapi.RuntimeBuildInput{",
+		"deps.attachProductModule(",
+		"deps.attachImageModule(",
+		"ImageWorkDir:",
+	} {
+		require.NotContains(t, compositionContent, marker)
+	}
+
+	featureBuilderSrc, err := os.ReadFile("feature_builder_listingkit.go")
+	require.NoError(t, err)
+	featureBuilderContent := string(featureBuilderSrc)
+	for _, marker := range []string{
+		"productenrichhttpapi.RuntimeBuildInput{",
+		"productimagehttpapi.RuntimeBuildInput{",
+		"deps.attachProductModule(",
+		"deps.attachImageModule(",
+		"ImageWorkDir:",
+	} {
+		require.Contains(t, featureBuilderContent, marker)
+	}
+}

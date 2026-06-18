@@ -45,37 +45,18 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	var composition httpFeatureComposition
 	timer := newStartupTimer(logger)
 
-	done := timer.phase("buildProductModule")
-	productModule, err := b.buildProduct(productenrichhttpapi.RuntimeBuildInput{
-		Logger:        logger,
-		Config:        deps.shared.cfg,
-		LLMManager:    deps.shared.llmMgr,
-		InputParser:   deps.shared.inputParser,
-		Understanding: deps.shared.understanding,
-	})
+	done := timer.phase("buildProductImageModules")
+	listingKitFeatures, err := listingKitFeatureBuilder{
+		buildProduct:    b.buildProduct,
+		buildImage:      b.buildImage,
+		buildListingKit: b.buildListingKit,
+	}.build(logger, deps, listingKitFeatureBuildOptions{includeImage: true})
 	done()
 	if err != nil {
 		return composition, err
 	}
-	deps.attachProductModule(productModule)
-	composition.productModule = productModule
-
-	done = timer.phase("buildImageModule")
-	imageModule, err := b.buildImage(productimagehttpapi.RuntimeBuildInput{
-		Logger:        logger,
-		Config:        deps.shared.cfg,
-		LLMManager:    deps.shared.llmMgr,
-		OpenAIManager: deps.shared.openaiMgr,
-		InputParser:   deps.shared.inputParser,
-		Understanding: deps.shared.understanding,
-		ImageWorkDir:  deps.shared.imageWorkDir,
-	})
-	done()
-	if err != nil {
-		return composition, err
-	}
-	deps.attachImageModule(imageModule)
-	composition.imageModule = imageModule
+	composition.productModule = listingKitFeatures.productModule
+	composition.imageModule = listingKitFeatures.imageModule
 
 	done = timer.phase("buildAmazonListingModule")
 	amazonListingModule, err := b.buildAmazonListing(amazonlistinghttpapi.RuntimeBuildInput{

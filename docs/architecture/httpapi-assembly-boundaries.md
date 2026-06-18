@@ -190,6 +190,9 @@ Prompt、SDS 和 taskRPC module result 类型别名应放在 `runtime_module_res
 避免 `types.go` 为了 composition state 字段直接依赖具体 module result 包。
 ListingKit 的 SDS sync service hook、SHEIN cookie store 和 SDS baseline provider
 应放在 `runtime_support_listingkit.go`，避免 `modules.go` 持有 ListingKit runtime support 前置依赖。
+ProductEnrich / ProductImage 的 runtime build input 组装和对应 feature attach
+应由 `feature_builder_listingkit.go` 承接，`composition_builder.go` 只负责调用 feature builder
+并记录返回的 module，避免中心 composition builder 重新持有 Product/Image 的输入细节。
 
 `internal/app/httpapi/adapters.go` 不应重新长成所有基础设施 adapter 的集中入口。
 OpenAI manager / credential resolver 组装应放在 `adapters_openai.go`，schema migration
@@ -236,6 +239,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
 - `TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook`
+- `TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs`
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`
