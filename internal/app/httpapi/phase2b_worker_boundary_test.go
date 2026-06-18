@@ -189,6 +189,35 @@ func TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIServerDoesNotOwnListingKitAuthMiddlewareSelection(t *testing.T) {
+	t.Parallel()
+
+	serverSrc, err := os.ReadFile("server.go")
+	require.NoError(t, err)
+	serverContent := string(serverSrc)
+
+	for _, marker := range []string{
+		`"task-processor/internal/listingkit/httpapi"`,
+		"NewZitadelAuthMiddlewareFromEnv(",
+		"RouteRequiresZitadelAuth(",
+		"NewRouteRoleMiddleware(",
+	} {
+		require.NotContains(t, serverContent, marker)
+	}
+
+	authSrc, err := os.ReadFile("server_auth.go")
+	require.NoError(t, err)
+	authContent := string(authSrc)
+	for _, marker := range []string{
+		`"task-processor/internal/listingkit/httpapi"`,
+		"NewZitadelAuthMiddlewareFromEnv(",
+		"RouteRequiresZitadelAuth(",
+		"NewRouteRoleMiddleware(",
+	} {
+		require.Contains(t, authContent, marker)
+	}
+}
+
 func TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport(t *testing.T) {
 	t.Parallel()
 

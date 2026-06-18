@@ -138,6 +138,8 @@
 
 - route descriptor 类型统一放在 `internal/httproute`
 - `internal/app/httpapi/server.go` 只做 route 汇总和挂载
+- ListingKit ZITADEL / role auth middleware 选择放在 `server_auth.go`，避免
+  `server.go` 在挂载循环里重新持有 ListingKit auth 细节
 - 各业务域自己维护 `AppendRouteDescriptors(...)`
 
 这意味着新增一个 ListingKit API 时，优先改：
@@ -276,6 +278,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
 - `TestLegacyBuildHandlersUsesRouteHandlerAliases`
 - `TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers`
+- `TestHTTPAPIServerDoesNotOwnListingKitAuthMiddlewareSelection`
 - `TestHTTPAPICompositionBuilderDoesNotOwnFeatureModuleBuilderContracts`
 - `TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods`
 - `TestHTTPAPITypesDoesNotOwnRouteHandlerContracts`

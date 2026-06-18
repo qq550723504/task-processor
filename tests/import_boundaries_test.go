@@ -1535,12 +1535,12 @@ func TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "http_modules.go")):               {},
 		filepath.Clean(filepath.Join(root, "listingkit_support.go")):         {},
 		filepath.Clean(filepath.Join(root, "listingkit_temporal_worker.go")): {},
-		filepath.Clean(filepath.Join(root, "modules.go")):                    {},
 		filepath.Clean(filepath.Join(root, "runtime_login_modules.go")):      {},
 		filepath.Clean(filepath.Join(root, "runtime.go")):                    {},
 		filepath.Clean(filepath.Join(root, "runtime_deps_methods.go")):       {},
 		filepath.Clean(filepath.Join(root, "route_handler_types.go")):        {},
 		filepath.Clean(filepath.Join(root, "server.go")):                     {},
+		filepath.Clean(filepath.Join(root, "server_auth.go")):                {},
 		filepath.Clean(filepath.Join(root, "types.go")):                      {},
 	}
 

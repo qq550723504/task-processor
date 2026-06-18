@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 )
 
 func buildHTTPServerFromRoutes(port int, routes []routeDescriptor) *http.Server {
@@ -22,16 +20,9 @@ func buildHTTPServerFromRoutes(port int, routes []routeDescriptor) *http.Server 
 }
 
 func mountRoutes(r *gin.Engine, routes []routeDescriptor) {
-	zitadelAuth := listingkithttpapi.NewZitadelAuthMiddlewareFromEnv()
+	zitadelAuth := newZitadelAuthMiddleware()
 	for _, route := range routes {
-		if zitadelAuth != nil && listingkithttpapi.RouteRequiresZitadelAuth(route) {
-			if roleAuth := listingkithttpapi.NewRouteRoleMiddleware(route); roleAuth != nil {
-				r.Handle(route.Method, route.Path, zitadelAuth, roleAuth, route.Handler)
-				continue
-			}
-			r.Handle(route.Method, route.Path, zitadelAuth, route.Handler)
-			continue
-		}
-		r.Handle(route.Method, route.Path, route.Handler)
+		handlers := append(routeAuthHandlers(route, zitadelAuth), route.Handler)
+		r.Handle(route.Method, route.Path, handlers...)
 	}
 }
