@@ -161,6 +161,11 @@ func TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated(t *testing.T) {
 func TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated(t *testing.T) {
 	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
 	for _, marker := range []string{
+		`"task-processor/internal/prompt"`,
+		"prompt.TenantPromptStore",
+		"initPromptRegistry(",
+		"initTenantPromptStore(",
+		"attachTenantPromptStore(",
 		"prompt.InitGlobal(",
 		"prompt.SetTenantPromptStore(",
 		"cfg.Prompts.Dir",
@@ -173,6 +178,8 @@ func TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated(t *testing.T) {
 
 	promptRuntimeSource := readHTTPAPIBoundaryFile(t, "runtime_prompt.go")
 	for _, marker := range []string{
+		"type promptRuntimeDeps struct",
+		"func buildPromptRuntimeDeps(",
 		"func initPromptRegistry(",
 		"func initTenantPromptStore(",
 		"prompt.InitGlobal(",

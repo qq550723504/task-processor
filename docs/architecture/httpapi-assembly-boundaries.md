@@ -163,8 +163,9 @@ bundle 组装方法应放在 `composition_modules.go`，route handler contract /
 `route_handler_types.go`，避免类型文件继续承载装配行为或路由契约细节。
 `runtime.go` 应聚焦 `buildRuntimeDeps(...)` 的启动流程，`runtimeDeps` 的 accessor、
 closer 和 module attach 方法应放在 `runtime_deps_methods.go`。
-Prompt registry 初始化和 tenant prompt store attach 流程应放在 `runtime_prompt.go`，
-避免 `runtime.go` 直接承载 prompt runtime 细节。
+Prompt registry 初始化、tenant prompt store attach 和相关 closer 收集应放在
+`runtime_prompt.go`，由 `buildPromptRuntimeDeps(...)` 对外提供 prompt runtime deps，
+避免 `runtime.go` 直接承载 prompt runtime 细节或依赖 prompt adapter 类型。
 ProductEnrich 的 LLM manager、mock LLM 校验、product understanding 和 input parser
 初始化应放在 `runtime_productenrich.go`，让 `runtime.go` 保持顶层运行时编排。
 Shared resources 的 app bootstrap 调用和 `SharedResourceOptions` 应放在

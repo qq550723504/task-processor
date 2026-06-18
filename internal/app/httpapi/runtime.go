@@ -7,7 +7,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/prompt"
 )
 
 func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, error) {
@@ -24,10 +23,12 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	imageWorkDir := resolveImageWorkDir(cfg)
 	done()
 
-	done = timer.phase("initPromptRegistry")
-	initPromptRegistry(cfg, logger)
+	done = timer.phase("buildPromptRuntimeDeps")
+	promptDeps, err := buildPromptRuntimeDeps(cfg, logger)
 	done()
-
+	if err != nil {
+		return nil, err
+	}
 	done = timer.phase("buildOpenAIRuntimeDeps")
 	openaiDeps, err := buildOpenAIRuntimeDeps(cfg, logger)
 	done()
@@ -35,25 +36,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		return nil, err
 	}
 	closers := openaiDeps.closers
-	var tenantPromptStore prompt.TenantPromptStore
-	if cfg.Database != nil {
-		var closer func() error
-		done = timer.phase("initTenantPromptStore")
-		tenantPromptStore, closer, err = initTenantPromptStore(cfg.Database, logger)
-		done()
-		if err != nil {
-			return nil, fmt.Errorf("create tenant prompt store: %w", err)
-		}
-		done = timer.phase("attachTenantPromptStore")
-		if err := attachTenantPromptStore(tenantPromptStore); err != nil {
-			done()
-			return nil, err
-		}
-		done()
-		if closer != nil {
-			closers = append(closers, closer)
-		}
-	}
+	closers = append(closers, promptDeps.closers...)
 	done = timer.phase("buildProductEnrichRuntimeDeps")
 	productEnrichDeps, err := buildProductEnrichRuntimeDeps(logger, cfg, openaiDeps.openaiMgr)
 	done()
@@ -75,7 +58,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 			closers:           closers,
 			openaiMgr:         openaiDeps.openaiMgr,
 			aiCredentialStore: openaiDeps.aiCredentialStore,
-			tenantPromptStore: tenantPromptStore,
+			tenantPromptStore: promptDeps.tenantPromptStore,
 			llmMgr:            productEnrichDeps.llmMgr,
 			inputParser:       productEnrichDeps.inputParser,
 			understanding:     productEnrichDeps.understanding,
