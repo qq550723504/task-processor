@@ -69,6 +69,10 @@ Current direct dependency hotspots are:
     `internal/productimage/openai_image_edit_adapter.go`; renderer logic should
     use the local image edit port instead of concrete OpenAI client request
     types
+  - ProductImage HTTPAPI model provider assembly is isolated to
+    `internal/productimage/httpapi/model_provider_builder.go`; module bootstrap
+    should delegate provider construction instead of owning concrete provider
+    selection
   - current direct adapter seams are guarded by
     `TestProductImageExternalClientImportsStayAllowlisted`
 
