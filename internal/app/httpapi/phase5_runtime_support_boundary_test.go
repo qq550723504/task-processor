@@ -24,3 +24,23 @@ func TestListingKitRuntimeSupportPrerequisitesStayOutOfFeatureOwnedBundleAssembl
 	require.Contains(t, content, "newSDSSyncServiceForHTTPAPI")
 	require.Contains(t, content, "sdsbootstrap.NewBaselineRemoteProvider")
 }
+
+func TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook(t *testing.T) {
+	t.Parallel()
+
+	modulesSrc, err := os.ReadFile("modules.go")
+	require.NoError(t, err)
+	modulesContent := string(modulesSrc)
+
+	require.NotContains(t, modulesContent, `"task-processor/internal/sds/httpbootstrap"`)
+	require.NotContains(t, modulesContent, "var newSDSSyncServiceForHTTPAPI")
+	require.NotContains(t, modulesContent, "sdsbootstrap.NewSyncService")
+
+	supportSrc, err := os.ReadFile("runtime_support_listingkit.go")
+	require.NoError(t, err)
+	supportContent := string(supportSrc)
+
+	require.Contains(t, supportContent, `"task-processor/internal/sds/httpbootstrap"`)
+	require.Contains(t, supportContent, "var newSDSSyncServiceForHTTPAPI")
+	require.Contains(t, supportContent, "sdsbootstrap.NewSyncService")
+}

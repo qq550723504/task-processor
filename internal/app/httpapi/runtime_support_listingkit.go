@@ -13,6 +13,8 @@ import (
 	sheinloginbootstrap "task-processor/internal/sheinlogin/bootstrap"
 )
 
+var newSDSSyncServiceForHTTPAPI = sdsbootstrap.NewSyncService
+
 func ensureListingKitSheinCookieStore(logger *logrus.Logger, deps *runtimeDeps) *sheinlogin.RedisStore {
 	if deps == nil || deps.shared == nil || deps.shared.cfg == nil {
 		return nil

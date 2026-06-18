@@ -6,10 +6,7 @@ import (
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
-	sdsbootstrap "task-processor/internal/sds/httpbootstrap"
 )
-
-var newSDSSyncServiceForHTTPAPI = sdsbootstrap.NewSyncService
 
 func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, error) {
 	timer := newStartupTimer(logger)
