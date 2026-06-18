@@ -34,7 +34,9 @@ Before merging a structural or feature PR, verify:
    and long-lived tool directories.
 10. Any boundary exception is documented with a narrow scope and a follow-up
    cleanup path.
-11. Relevant import-boundary and architecture tests were run.
+11. Relevant import-boundary and architecture tests were run. If a guard is
+   added, removed, or renamed, update the `docs/architecture/next-steps.md`
+   `Current guard coverage` guard baseline in the same change.
 
 ## Guard Baseline
 

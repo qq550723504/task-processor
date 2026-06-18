@@ -358,6 +358,26 @@ func TestArchitectureReviewChecklistCoversRepositoryStructureRules(t *testing.T)
 	}
 }
 
+func TestArchitectureReviewChecklistRequiresGuardBaselineUpdates(t *testing.T) {
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	requiredChecks := markdownSection(t, string(checklistContent), "## Required Checks")
+	required := []string{
+		"docs/architecture/next-steps.md",
+		"Current guard coverage",
+		"guard baseline",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(requiredChecks, phrase) {
+			t.Errorf("%s Required Checks must mention %q so guard baseline changes stay aligned with review actions", checklistPath, phrase)
+		}
+	}
+}
+
 func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
 	content, err := os.ReadFile(path)
