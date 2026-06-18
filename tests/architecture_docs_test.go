@@ -736,6 +736,26 @@ func TestArchitectureReadmeDescribesSupportingContextRoles(t *testing.T) {
 	}
 }
 
+func TestArchitectureReadmeWorkingRuleCoversContextualNotes(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "README.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	workingRule := markdownSection(t, string(content), "## Working Rule")
+	required := []string{
+		"prefer the stable boundary document",
+		"contextual note",
+		"instead of creating a third interpretation",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(workingRule, phrase) {
+			t.Errorf("%s Working Rule must mention %q so every non-stable architecture note is resolved through stable boundary docs", path, phrase)
+		}
+	}
+}
+
 func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "development", "repository-structure.md")
 	content, err := os.ReadFile(path)

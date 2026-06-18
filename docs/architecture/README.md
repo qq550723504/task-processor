@@ -91,4 +91,4 @@ into one of the stable documents above before being treated as review policy.
 
 When a structural question comes up, start with this index. If two documents
 appear to disagree, prefer the stable boundary document and update the older
-plan or status note with a link instead of creating a third interpretation.
+contextual note with a link instead of creating a third interpretation.
