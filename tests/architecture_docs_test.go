@@ -217,6 +217,20 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 	}
 }
 
+func TestArchitectureReviewChecklistReferencesCurrentGuardCoverageSource(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	reviewReferences := markdownSection(t, string(content), "## Review References")
+	required := "docs/architecture/next-steps.md"
+	if !strings.Contains(reviewReferences, required) {
+		t.Fatalf("%s Review References must list %q so reviewers can find the current guard coverage baseline", path, required)
+	}
+}
+
 func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
 	content, err := os.ReadFile(path)
@@ -281,6 +295,21 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 			t.Errorf("%s must mention %q so completed boundary guards do not drift back into open-ended priorities", path, phrase)
 		}
 	}
+}
+
+func markdownSection(t *testing.T, content, heading string) string {
+	t.Helper()
+
+	start := strings.Index(content, heading)
+	if start == -1 {
+		t.Fatalf("markdown content must include heading %q", heading)
+	}
+
+	section := content[start+len(heading):]
+	if nextHeading := strings.Index(section, "\n## "); nextHeading != -1 {
+		section = section[:nextHeading]
+	}
+	return section
 }
 
 func TestNextTechnicalPrioritiesTracksEveryImportBoundaryGuard(t *testing.T) {

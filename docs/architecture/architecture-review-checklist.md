@@ -114,6 +114,7 @@ Use these documents as the stable source of truth:
 - `docs/architecture/external-client-boundary-inventory.md`
 - `docs/architecture/compatibility-retirement.md`
 - `docs/architecture/listing-preview-boundaries.md`
+- `docs/architecture/next-steps.md` for the current guard coverage baseline
 - `docs/development/repository-structure.md`
 
 ## Working Rule
