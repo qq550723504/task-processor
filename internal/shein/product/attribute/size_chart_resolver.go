@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"task-processor/internal/model"
+	sheinsize "task-processor/internal/shein/product/size"
 )
 
 var (
@@ -37,13 +38,40 @@ func resolveShoeSizePlatformID(attrID int, rawValue string, runtime *MapperRunti
 	if !ok {
 		return 0, ""
 	}
-
 	row, headers, found := findMatchingSizeChartRow(runtime.AmazonProduct.SizeChart, baseSize)
 	if !found {
 		return 0, ""
 	}
 
-	candidates := buildShoeSizeCandidates(baseSize, row, headers, runtime.ProductTitle)
+	candidates := sheinsize.BuildShoeSizeCandidatesFromChart(runtime.AmazonProduct.SizeChart, rawValue)
+	legacyCandidates := buildShoeSizeCandidates(baseSize, row, headers, runtime.ProductTitle)
+	if len(legacyCandidates) > 0 {
+		seen := make(map[string]struct{}, len(candidates)+len(legacyCandidates))
+		merged := make([]string, 0, len(candidates)+len(legacyCandidates))
+		for _, candidate := range candidates {
+			key := strings.ToLower(strings.TrimSpace(candidate))
+			if key == "" {
+				continue
+			}
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, candidate)
+		}
+		for _, candidate := range legacyCandidates {
+			key := strings.ToLower(strings.TrimSpace(candidate))
+			if key == "" {
+				continue
+			}
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			merged = append(merged, candidate)
+		}
+		candidates = merged
+	}
 	for _, candidate := range candidates {
 		if platformID := matcher.FindMatchingPlatformValue(candidate, platformValues); platformID > 0 {
 			return platformID, candidate
@@ -68,8 +96,13 @@ func normalizeBaseShoeSize(rawValue string) (string, bool) {
 }
 
 func findMatchingSizeChartRow(chart *model.SizeChart, baseSize string) ([]string, []string, bool) {
+	row, headers, _, found := findMatchingSizeChartRowWithIndex(chart, baseSize)
+	return row, headers, found
+}
+
+func findMatchingSizeChartRowWithIndex(chart *model.SizeChart, baseSize string) ([]string, []string, int, bool) {
 	if chart == nil || len(chart.Headers) == 0 || len(chart.Rows) == 0 {
-		return nil, nil, false
+		return nil, nil, -1, false
 	}
 
 	preferredIndexes := findPreferredSizeChartColumns(chart.Headers)
@@ -83,12 +116,12 @@ func findMatchingSizeChartRow(chart *model.SizeChart, baseSize string) ([]string
 				continue
 			}
 			if normalized, ok := normalizeBaseShoeSize(cell); ok && normalized == baseSize {
-				return row, chart.Headers, true
+				return row, chart.Headers, idx, true
 			}
 		}
 	}
 
-	return nil, nil, false
+	return nil, nil, -1, false
 }
 
 func findPreferredSizeChartColumns(headers []string) []int {

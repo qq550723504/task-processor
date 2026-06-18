@@ -2,11 +2,13 @@ package attribute
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"task-processor/internal/model"
 	"task-processor/internal/shein/aicache"
 	sheinapi "task-processor/internal/shein/api/attribute"
+	productapi "task-processor/internal/shein/api/product"
 	sheinctx "task-processor/internal/shein/context"
 )
 
@@ -26,6 +28,24 @@ type stubPlatformValueFallbackResolver struct {
 	err       error
 	callCount int
 	lastReq   *PlatformValueFallbackRequest
+}
+
+type stubAttributeAPI struct {
+	validateErr       error
+	validateCallCount int
+}
+
+func (s *stubAttributeAPI) GetAttributeTemplates(categoryID int) (*sheinapi.AttributeTemplateInfo, error) {
+	return nil, nil
+}
+
+func (s *stubAttributeAPI) ValidateCustomAttributeValue(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinapi.ValidateAttributeResponse, error) {
+	s.validateCallCount++
+	return nil, s.validateErr
+}
+
+func (s *stubAttributeAPI) AddCustomAttributeValue(req *sheinapi.AddCustomAttributeValueRequest) (*sheinapi.AddCustomAttributeValueResponse, error) {
+	return nil, nil
 }
 
 func (s *stubPlatformValueFallbackResolver) ResolvePlatformValue(_ context.Context, req *PlatformValueFallbackRequest) (*PlatformValueFallbackResult, error) {
@@ -593,5 +613,316 @@ func TestMapSingleAttributeValues_NarrowsMixedSizeSystemCandidatesForNonCustomGe
 	}
 	if got := attr.AttrValue[0].ID.Int(); got != 2235 {
 		t.Fatalf("mapped ID = %d, want 2235", got)
+	}
+}
+
+func TestMapSingleAttributeValues_CachesCustomPermissionDeniedByCategoryAndAttribute(t *testing.T) {
+	attrAPI := &stubAttributeAPI{
+		validateErr: fmt.Errorf("API错误 [0]: 验证自定义属性值失败: 没有自定义属性值权限"),
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    NewCustomAttributeProcessor(),
+	}
+
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "6 Wide"},
+			{ID: -1, Value: "7.5 Wide"},
+		},
+	}
+
+	runtime := &MapperRuntimeInput{
+		CategoryID:         4455,
+		ProductTitle:       "Skechers Women's Go Walk 5 Walking Shoes",
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{Data: []sheinapi.AttributeTemplate{{AttributeInfos: []sheinapi.AttributeInfo{{AttributeID: 87, AttributeType: 2}}}}},
+		AttributeAPI:       attrAPI,
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, runtime, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if attrAPI.validateCallCount != 1 {
+		t.Fatalf("validate custom attribute call count = %d, want 1 after permission denial is cached", attrAPI.validateCallCount)
+	}
+	if len(attr.AttrValue) != 0 {
+		t.Fatalf("attr values = %#v, want all unmatched values dropped after cached permission denial", attr.AttrValue)
+	}
+}
+
+func TestMapSingleAttributeValues_NarrowsMixedSizeSystemCandidatesByTargetSitePreference(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "US7",
+			Confidence:    0.94,
+			Reason:        "target site is US and source value is ambiguous numeric size",
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    stubCustomAttributeValueProcessor{},
+	}
+
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "7"},
+		},
+	}
+
+	runtime := &MapperRuntimeInput{
+		CategoryID:   8838,
+		ProductTitle: "Skechers Women's Go Walk 5 Walking Shoes",
+		Region:       "US",
+		SiteList: []productapi.SiteInfo{{
+			MainSite:    "shein",
+			SubSiteList: []string{"shein-us"},
+		}},
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{
+				{
+					AttributeInfos: []sheinapi.AttributeInfo{
+						{
+							AttributeID:   87,
+							AttributeName: "Size",
+							AttributeType: 2,
+							AttributeValueInfoList: []sheinapi.AttributeValue{
+								{AttributeValueID: 2235, AttributeValue: "US6.5"},
+								{AttributeValueID: 2240, AttributeValue: "US7"},
+								{AttributeValueID: 3337, AttributeValue: "BR37"},
+								{AttributeValueID: 3340, AttributeValue: "BR38"},
+							},
+						},
+					},
+				},
+			},
+		},
+		FallbackValueResolver: fallback,
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, runtime, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 0 {
+		t.Fatalf("fallback call count = %d, want 0 after local structured size resolution", fallback.callCount)
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != 2240 {
+		t.Fatalf("mapped ID = %d, want 2240", got)
+	}
+}
+
+func TestMapSingleAttributeValues_UsesMatchedChartColumnBeforeTargetSitePreference(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "US7",
+			Confidence:    0.94,
+			Reason:        "raw size matched US size column in the source chart",
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    stubCustomAttributeValueProcessor{},
+	}
+
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "7"},
+		},
+	}
+
+	runtime := &MapperRuntimeInput{
+		CategoryID:   8838,
+		ProductTitle: "Skechers Women's Go Walk 5 Walking Shoes",
+		Region:       "US",
+		SiteList: []productapi.SiteInfo{{
+			MainSite:    "shein",
+			SubSiteList: []string{"shein-us"},
+		}},
+		AmazonProduct: &model.Product{
+			Title: "Skechers Women's Go Walk 5 Walking Shoes",
+			SizeChart: &model.SizeChart{
+				Headers: []string{"BR Size", "US Size", "UK Size"},
+				Rows: [][]string{
+					{"35", "7", "4"},
+				},
+			},
+		},
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{
+				{
+					AttributeInfos: []sheinapi.AttributeInfo{
+						{
+							AttributeID:   87,
+							AttributeName: "Size",
+							AttributeType: 2,
+							AttributeValueInfoList: []sheinapi.AttributeValue{
+								{AttributeValueID: 2240, AttributeValue: "US7"},
+								{AttributeValueID: 3337, AttributeValue: "BR37"},
+							},
+						},
+					},
+				},
+			},
+		},
+		FallbackValueResolver: fallback,
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, runtime, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 0 {
+		t.Fatalf("fallback call count = %d, want 0 after local structured size resolution", fallback.callCount)
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != 2240 {
+		t.Fatalf("mapped ID = %d, want 2240", got)
+	}
+}
+
+func TestMapSingleAttributeValues_ResolvesStructuredShoeSizeBeforeFallback(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "US7 Wide",
+			Confidence:    0.95,
+			Reason:        "should not be used",
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    stubCustomAttributeValueProcessor{},
+	}
+
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "7 Wide"},
+		},
+	}
+
+	runtime := &MapperRuntimeInput{
+		CategoryID:   8838,
+		ProductTitle: "Skechers Women's Go Walk 5 Walking Shoes",
+		AmazonProduct: &model.Product{
+			Title: "Skechers Women's Go Walk 5 Walking Shoes",
+			SizeChart: &model.SizeChart{
+				Headers: []string{"US Size", "UK Size", "EU Size"},
+				Rows: [][]string{
+					{"7", "4", "37"},
+				},
+			},
+		},
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{
+				{
+					AttributeInfos: []sheinapi.AttributeInfo{
+						{
+							AttributeID:   87,
+							AttributeName: "Size",
+							AttributeType: 2,
+							AttributeValueInfoList: []sheinapi.AttributeValue{
+								{AttributeValueID: 2240, AttributeValue: "US7"},
+								{AttributeValueID: 2241, AttributeValue: "US7 Wide"},
+								{AttributeValueID: 3337, AttributeValue: "BR37"},
+							},
+						},
+					},
+				},
+			},
+		},
+		FallbackValueResolver: fallback,
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, runtime, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 0 {
+		t.Fatalf("fallback call count = %d, want 0", fallback.callCount)
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != 2241 {
+		t.Fatalf("mapped ID = %d, want 2241", got)
+	}
+}
+
+func TestMapSingleAttributeValues_FallsBackWhenStructuredShoeSizeCannotResolveUniquely(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "US7",
+			Confidence:    0.94,
+			Reason:        "width-specific value unavailable on platform",
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    stubCustomAttributeValueProcessor{},
+	}
+
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "7 Wide"},
+		},
+	}
+
+	runtime := &MapperRuntimeInput{
+		CategoryID:   8838,
+		ProductTitle: "Skechers Women's Go Walk 5 Walking Shoes",
+		AmazonProduct: &model.Product{
+			Title: "Skechers Women's Go Walk 5 Walking Shoes",
+			SizeChart: &model.SizeChart{
+				Headers: []string{"US Size", "UK Size", "EU Size"},
+				Rows: [][]string{
+					{"7", "4", "37"},
+				},
+			},
+		},
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{
+				{
+					AttributeInfos: []sheinapi.AttributeInfo{
+						{
+							AttributeID:   87,
+							AttributeName: "Size",
+							AttributeType: 2,
+							AttributeValueInfoList: []sheinapi.AttributeValue{
+								{AttributeValueID: 2240, AttributeValue: "US7"},
+								{AttributeValueID: 3337, AttributeValue: "BR37"},
+							},
+						},
+					},
+				},
+			},
+		},
+		FallbackValueResolver: fallback,
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, runtime, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 1 {
+		t.Fatalf("fallback call count = %d, want 1", fallback.callCount)
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != 2240 {
+		t.Fatalf("mapped ID = %d, want 2240", got)
 	}
 }

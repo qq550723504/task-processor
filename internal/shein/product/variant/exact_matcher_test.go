@@ -201,3 +201,55 @@ func TestVariantMatcher_FindUniqueMatchesForValues(t *testing.T) {
 		t.Fatalf("expected White to own B002 only, got %+v", assignments["White"])
 	}
 }
+
+func TestVariantMatcher_FindUniqueMatchesForValues_DoesNotFuzzyMatchFarShoeSizes(t *testing.T) {
+	m := NewVariantMatcher()
+	ctx := shein.NewTaskContext(context.Background(), nil)
+	ctx.AttributeTemplates = &attribute.AttributeTemplateInfo{
+		Data: []attribute.AttributeTemplate{
+			{
+				AttributeInfos: []attribute.AttributeInfo{
+					{AttributeID: 87, AttributeName: "尺寸", AttributeNameEn: "Size"},
+				},
+			},
+		},
+	}
+
+	variants := []sheinattr.Variant{
+		makeVariant("B001", map[string]string{"Size": "8.5 Wide"}),
+		makeVariant("B002", map[string]string{"Size": "10"}),
+	}
+
+	assignments := m.FindUniqueMatchesForValues(ctx, variants, 87, []string{"5 Wide", "10.5"})
+
+	if got := len(assignments["5 Wide"]); got != 0 {
+		t.Fatalf("expected 5 Wide to keep no assignments, got %+v", assignments["5 Wide"])
+	}
+	if got := len(assignments["10.5"]); got != 0 {
+		t.Fatalf("expected 10.5 to keep no assignments, got %+v", assignments["10.5"])
+	}
+}
+
+func TestVariantMatcher_FindUniqueMatchesForValues_AllowsFuzzyMatchForSameBaseShoeSizeWidthVariant(t *testing.T) {
+	m := NewVariantMatcher()
+	ctx := shein.NewTaskContext(context.Background(), nil)
+	ctx.AttributeTemplates = &attribute.AttributeTemplateInfo{
+		Data: []attribute.AttributeTemplate{
+			{
+				AttributeInfos: []attribute.AttributeInfo{
+					{AttributeID: 87, AttributeName: "尺寸", AttributeNameEn: "Size"},
+				},
+			},
+		},
+	}
+
+	variants := []sheinattr.Variant{
+		makeVariant("B001", map[string]string{"Size": "7 X-Wide"}),
+	}
+
+	assignments := m.FindUniqueMatchesForValues(ctx, variants, 87, []string{"7 Wide"})
+
+	if len(assignments["7 Wide"]) != 1 || assignments["7 Wide"][0].ASIN != "B001" {
+		t.Fatalf("expected 7 Wide to fuzzy-match same base size width variant, got %+v", assignments["7 Wide"])
+	}
+}

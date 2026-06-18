@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/core/logger"
 	sheinattr "task-processor/internal/shein/product/attribute"
+	sheinsize "task-processor/internal/shein/product/size"
 )
 
 // VariantFuzzyMatcher 变体模糊匹配器
@@ -56,11 +57,10 @@ func (m *VariantFuzzyMatcher) isValidColorFuzzyMatch(variantValue, targetValue s
 
 // isValidSizeFuzzyMatch 尺寸属性的严格模糊匹配
 func (m *VariantFuzzyMatcher) isValidSizeFuzzyMatch(variantValue, targetValue string) bool {
-	// 对于尺寸属性，只有在以下情况下才允许模糊匹配：
-	// 1. 目标值是变体值的完整子串（如 "4x6" 匹配 "4x6 inch"）
-	// 2. 变体值是目标值的完整子串（如 "4x6" 匹配 "4x6"）
+	if m.isNumericShoeSizeLike(variantValue, targetValue) {
+		return m.isCompatibleNumericShoeSizeMatch(variantValue, targetValue)
+	}
 
-	// 提取主要尺寸数字（前两个数字通常是主要尺寸）
 	variantNumbers := m.extractSizeNumbers(variantValue)
 	targetNumbers := m.extractSizeNumbers(targetValue)
 
@@ -105,7 +105,7 @@ func (m *VariantFuzzyMatcher) isValidSizeFuzzyMatch(variantValue, targetValue st
 // extractSizeNumbers 提取尺寸中的数字
 func (m *VariantFuzzyMatcher) extractSizeNumbers(sizeStr string) []string {
 	// 使用正则表达式提取数字
-	re := regexp.MustCompile(`\d+`)
+	re := regexp.MustCompile(`\d+(?:\.\d+)?`)
 	return re.FindAllString(sizeStr, -1)
 }
 
@@ -132,4 +132,12 @@ func (m *VariantFuzzyMatcher) isSimpleContainment(variantValue, targetValue stri
 	}
 
 	return false
+}
+
+func (m *VariantFuzzyMatcher) isNumericShoeSizeLike(variantValue, targetValue string) bool {
+	return sheinsize.ParseShoeSize(variantValue).IsShoeSize && sheinsize.ParseShoeSize(targetValue).IsShoeSize
+}
+
+func (m *VariantFuzzyMatcher) isCompatibleNumericShoeSizeMatch(variantValue, targetValue string) bool {
+	return sheinsize.AreShoeSizesFuzzyCompatible(variantValue, targetValue)
 }

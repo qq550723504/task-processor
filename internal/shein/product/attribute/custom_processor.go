@@ -21,6 +21,15 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValue(ctx *sheinctx.Tas
 
 func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *sheinctx.TaskContext, runtime *MapperRuntimeInput, attrID int, attrValue string, isRequired bool) CustomAttributeResult {
 	logger.GetGlobalLogger("shein/product").Infof("processing custom attribute value: attrID=%d value=%q required=%v", attrID, attrValue, isRequired)
+	if runtime != nil && runtime.HasCustomAttributePermissionDenied(attrID) {
+		logger.GetGlobalLogger("shein/product").Infof(
+			"skip custom attribute value validation due to cached permission denial: attrID=%d categoryID=%d value=%q",
+			attrID,
+			runtime.CategoryID,
+			attrValue,
+		)
+		return CustomAttributeResult{Success: false, PermissionDenied: true, ShouldContinue: !isRequired}
+	}
 
 	sanitizedValue := content.SanitizeForSheinAttribute(attrValue)
 	if !content.IsValidForSheinAttribute(sanitizedValue) {
@@ -40,6 +49,9 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *s
 	validateResponse, err := runtime.AttributeAPI.ValidateCustomAttributeValue(attrID, sanitizedValue, runtime.CategoryID, runtime.ProductTitle)
 	if err != nil {
 		permissionDenied := isCustomAttributePermissionDeniedError(err)
+		if permissionDenied && runtime != nil {
+			runtime.MarkCustomAttributePermissionDenied(attrID)
+		}
 		logger.GetGlobalLogger("shein/product").Warnf(
 			"validate custom attribute value failed: attrID=%d value=%q categoryID=%d required=%v shouldContinue=%v err=%v",
 			attrID, sanitizedValue, runtime.CategoryID, isRequired, !isRequired, err,
@@ -88,6 +100,9 @@ func (p *CustomAttributeProcessor) ProcessCustomAttributeValueWithRuntime(ctx *s
 	})
 	if err != nil {
 		permissionDenied := isCustomAttributePermissionDeniedError(err)
+		if permissionDenied && runtime != nil {
+			runtime.MarkCustomAttributePermissionDenied(attrID)
+		}
 		logger.GetGlobalLogger("shein/product").Warnf(
 			"add custom attribute value failed: attrID=%d value=%q categoryID=%d preAttrValueID=%d required=%v shouldContinue=%v err=%v",
 			attrID,

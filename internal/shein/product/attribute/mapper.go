@@ -110,6 +110,21 @@ func (m *AttributeMapper) mapSingleAttributeValues(ctx *sheinctx.TaskContext, ru
 			continue
 		}
 
+		if valueDomain == platformValueDomainGeneric && isSizeLikeAttribute(attrInfo) {
+			if platformID, resolvedValue := resolvePlatformValueByStructuredSize(attrValue.Value, runtime, platformValues, m.valueMatcher); platformID > 0 {
+				logger.GetGlobalLogger("shein/product").Infof(
+					"resolved platform value via structured size resolver: attrID=%d domain=%s original=%q resolved=%q platformID=%d",
+					attr.AttrID,
+					valueDomain,
+					attrValue.Value,
+					resolvedValue,
+					platformID,
+				)
+				attr.AttrValue[i].ID = types.FlexibleID(platformID)
+				continue
+			}
+		}
+
 		fallbackPlatformValues := m.selectFallbackPlatformValues(attrInfo, runtime, valueDomain, attrValue.Value, platformValues)
 		if platformID, resolvedValue := m.resolvePlatformValueByFallback(ctx, runtime, valueDomain, attr.AttrID, attrValue.Value, fallbackPlatformValues); platformID > 0 {
 			logger.GetGlobalLogger("shein/product").Infof(
@@ -169,10 +184,28 @@ func (m *AttributeMapper) selectFallbackPlatformValues(attrInfo *attribute.Attri
 
 	sourceSystem := inferSourceSizeSystem(rawValue, runtime)
 	if sourceSystem == sizeSystemUnknown {
+		preferredSystems := preferredTargetSizeSystems(runtime)
+		filtered, preferredSystem := narrowPlatformValuesByPreferredSizeSystems(platformValues, preferredSystems)
+		if preferredSystem != sizeSystemUnknown && len(filtered) != len(platformValues) {
+			logger.GetGlobalLogger("shein/product").Infof(
+				"size-system narrowing applied by target site preference: attrID=%d value=%q preferred_system=%s preferred_systems=%s region=%q original_candidates=%d narrowed_candidates=%d",
+				attrInfo.AttributeID,
+				rawValue,
+				preferredSystem,
+				formatSizeSystemsForLog(preferredSystems),
+				runtime.Region,
+				countUniquePlatformValues(platformValues),
+				countUniquePlatformValues(filtered),
+			)
+			return filtered
+		}
+
 		logger.GetGlobalLogger("shein/product").Infof(
-			"size-system narrowing skipped: attrID=%d value=%q reason=unknown_source_system mixed_systems=true",
+			"size-system narrowing skipped: attrID=%d value=%q reason=unknown_source_system mixed_systems=true preferred_systems=%s region=%q",
 			attrInfo.AttributeID,
 			rawValue,
+			formatSizeSystemsForLog(preferredSystems),
+			runtime.Region,
 		)
 		return platformValues
 	}

@@ -3,6 +3,8 @@ package variant
 
 import (
 	"strings"
+
+	sheinsize "task-processor/internal/shein/product/size"
 )
 
 // VariantMatcherUtils 变体匹配工具类
@@ -30,12 +32,15 @@ func (u *VariantMatcherUtils) RemoveDuplicates(slice []string) []string {
 
 // IsSizeAttribute 判断是否为尺寸属性
 func (u *VariantMatcherUtils) IsSizeAttribute(variantValue, targetValue string) bool {
-	sizePatterns := []string{"x", "inch", "cm", "mm", "mat", "w/", "to"}
+	sizePatterns := []string{"x", "inch", "cm", "mm", "mat", "w/", "to", "wide", "size", "us", "uk", "eu", "cn", "br"}
 
 	for _, pattern := range sizePatterns {
 		if strings.Contains(variantValue, pattern) || strings.Contains(targetValue, pattern) {
 			return true
 		}
+	}
+	if sheinsize.ParseShoeSize(variantValue).IsShoeSize && sheinsize.ParseShoeSize(targetValue).IsShoeSize {
+		return true
 	}
 	return false
 }

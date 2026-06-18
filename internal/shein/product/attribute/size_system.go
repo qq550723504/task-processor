@@ -1,8 +1,12 @@
 package attribute
 
 import (
+	"fmt"
 	"regexp"
+	"slices"
 	"strings"
+
+	sheinsize "task-processor/internal/shein/product/size"
 )
 
 type sizeSystem string
@@ -35,17 +39,13 @@ func inferSourceSizeSystem(rawValue string, runtime *MapperRuntimeInput) sizeSys
 		return sizeSystemUnknown
 	}
 
-	if row, headers, found := findMatchingSizeChartRow(runtime.AmazonProduct.SizeChart, rawValue); found {
-		for idx, header := range headers {
-			if idx >= len(row) {
-				continue
-			}
-			headerSystem := inferSizeSystemFromHeader(header)
-			if headerSystem == sizeSystemUnknown {
-				continue
-			}
-			if system := inferSizeSystemFromValue(row[idx]); system == headerSystem || system == sizeSystemUnknown {
-				return headerSystem
+	if row, headers, matchedIndex, found := findMatchingSizeChartRowWithIndex(runtime.AmazonProduct.SizeChart, rawValue); found {
+		if matchedIndex >= 0 && matchedIndex < len(headers) && matchedIndex < len(row) {
+			headerSystem := inferSizeSystemFromHeader(headers[matchedIndex])
+			if headerSystem != sizeSystemUnknown {
+				if system := inferSizeSystemFromValue(row[matchedIndex]); system == headerSystem || system == sizeSystemUnknown {
+					return headerSystem
+				}
 			}
 		}
 	}
@@ -127,20 +127,111 @@ func narrowPlatformValuesBySizeSystem(platformValues map[string]int, system size
 	return filtered
 }
 
+func narrowPlatformValuesByPreferredSizeSystems(platformValues map[string]int, systems []sizeSystem) (map[string]int, sizeSystem) {
+	if len(platformValues) == 0 || len(systems) == 0 {
+		return platformValues, sizeSystemUnknown
+	}
+
+	for _, system := range systems {
+		if system == sizeSystemUnknown {
+			continue
+		}
+		filtered := narrowPlatformValuesBySizeSystem(platformValues, system)
+		if len(filtered) == 0 || len(filtered) == len(platformValues) {
+			continue
+		}
+		return filtered, system
+	}
+
+	return platformValues, sizeSystemUnknown
+}
+
+func preferredTargetSizeSystems(runtime *MapperRuntimeInput) []sizeSystem {
+	if runtime == nil {
+		return nil
+	}
+
+	for _, site := range runtime.SiteList {
+		for _, subSite := range site.SubSiteList {
+			if systems := preferredSizeSystemsBySite(subSite); len(systems) > 0 {
+				return systems
+			}
+		}
+	}
+
+	return preferredSizeSystemsByRegion(runtime.Region)
+}
+
+func preferredSizeSystemsBySite(site string) []sizeSystem {
+	normalized := strings.ToLower(strings.TrimSpace(site))
+	if normalized == "" {
+		return nil
+	}
+	if strings.HasPrefix(normalized, "shein-") {
+		normalized = strings.TrimPrefix(normalized, "shein-")
+	}
+	return preferredSizeSystemsByRegion(normalized)
+}
+
+func preferredSizeSystemsByRegion(region string) []sizeSystem {
+	switch strings.ToUpper(strings.TrimSpace(region)) {
+	case "US", "CA", "MX":
+		return []sizeSystem{sizeSystemUS, sizeSystemMM, sizeSystemEU}
+	case "UK":
+		return []sizeSystem{sizeSystemEU, sizeSystemUS, sizeSystemMM}
+	case "FR", "DE", "IT", "ES":
+		return []sizeSystem{sizeSystemEU, sizeSystemMM, sizeSystemUS}
+	case "JP":
+		return []sizeSystem{sizeSystemMM, sizeSystemUS, sizeSystemEU}
+	case "BR":
+		return []sizeSystem{sizeSystemBR, sizeSystemUS, sizeSystemMM}
+	case "CN":
+		return []sizeSystem{sizeSystemCN, sizeSystemMM, sizeSystemEU}
+	case "AU":
+		return []sizeSystem{sizeSystemUS, sizeSystemEU, sizeSystemMM}
+	case "SA", "AE":
+		return []sizeSystem{sizeSystemEU, sizeSystemUS, sizeSystemMM}
+	default:
+		return nil
+	}
+}
+
+func formatSizeSystemsForLog(systems []sizeSystem) string {
+	if len(systems) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(systems))
+	for _, system := range systems {
+		if system == sizeSystemUnknown {
+			continue
+		}
+		parts = append(parts, string(system))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	slices.Sort(parts)
+	return fmt.Sprintf("[%s]", strings.Join(parts, ","))
+}
+
 func inferSizeSystemFromValue(value string) sizeSystem {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return sizeSystemUnknown
 	}
-	switch {
-	case sizeSystemUSPattern.MatchString(trimmed):
-		return sizeSystemUS
-	case sizeSystemCNPattern.MatchString(trimmed):
-		return sizeSystemCN
-	case sizeSystemEUPattern.MatchString(trimmed):
-		return sizeSystemEU
-	case sizeSystemBRPattern.MatchString(trimmed):
-		return sizeSystemBR
+	if parsed := sheinsize.ParseShoeSize(trimmed); parsed.IsShoeSize {
+		switch parsed.System {
+		case sheinsize.SystemUS:
+			return sizeSystemUS
+		case sheinsize.SystemCN:
+			return sizeSystemCN
+		case sheinsize.SystemEU:
+			return sizeSystemEU
+		case sheinsize.SystemBR:
+			return sizeSystemBR
+		case sheinsize.SystemMM:
+			return sizeSystemMM
+		}
 	}
 
 	if normalized, ok := normalizeAlphaSizeLabel(trimmed); ok && normalized != "" {

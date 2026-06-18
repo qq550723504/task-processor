@@ -7,18 +7,22 @@ import (
 	"task-processor/internal/model"
 	"task-processor/internal/shein/aicache"
 	sheinapi "task-processor/internal/shein/api/attribute"
+	productapi "task-processor/internal/shein/api/product"
 	sheinctx "task-processor/internal/shein/context"
 )
 
 type MapperRuntimeInput struct {
-	CategoryID            int
-	ProductTitle          string
-	AmazonProduct         *model.Product
-	AttributeTemplates    *sheinapi.AttributeTemplateInfo
-	AttributeAPI          *sheinapi.Client
-	FallbackValueResolver platformValueFallbackResolver
-	FallbackCache         *aicache.Cache
-	FallbackMinConfidence float64
+	CategoryID             int
+	ProductTitle           string
+	AmazonProduct          *model.Product
+	AttributeTemplates     *sheinapi.AttributeTemplateInfo
+	AttributeAPI           sheinapi.AttributeAPI
+	FallbackValueResolver  platformValueFallbackResolver
+	FallbackCache          *aicache.Cache
+	FallbackMinConfidence  float64
+	SiteList               []productapi.SiteInfo
+	Region                 string
+	customPermissionDenied map[string]bool
 }
 
 func newMapperRuntimeInput(ctx *sheinctx.TaskContext) *MapperRuntimeInput {
@@ -34,7 +38,34 @@ func newMapperRuntimeInput(ctx *sheinctx.TaskContext) *MapperRuntimeInput {
 		input.ProductTitle = ctx.AmazonProduct.Title
 		input.AmazonProduct = ctx.AmazonProduct
 	}
+	if len(ctx.SiteList) > 0 {
+		input.SiteList = append([]productapi.SiteInfo(nil), ctx.SiteList...)
+	}
+	if ctx.Task != nil {
+		input.Region = ctx.Task.Region
+	}
 	return input
+}
+
+func (in *MapperRuntimeInput) HasCustomAttributePermissionDenied(attrID int) bool {
+	if in == nil || len(in.customPermissionDenied) == 0 {
+		return false
+	}
+	return in.customPermissionDenied[in.customPermissionKey(attrID)]
+}
+
+func (in *MapperRuntimeInput) MarkCustomAttributePermissionDenied(attrID int) {
+	if in == nil {
+		return
+	}
+	if in.customPermissionDenied == nil {
+		in.customPermissionDenied = make(map[string]bool)
+	}
+	in.customPermissionDenied[in.customPermissionKey(attrID)] = true
+}
+
+func (in *MapperRuntimeInput) customPermissionKey(attrID int) string {
+	return fmt.Sprintf("%d:%d", in.CategoryID, attrID)
 }
 
 func (in *MapperRuntimeInput) Validate() error {
