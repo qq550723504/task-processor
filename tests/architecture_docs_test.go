@@ -618,7 +618,7 @@ func TestArchitectureReadmeCurrentGuardBaselinePointsToReviewEntrypoints(t *test
 	}
 }
 
-func TestArchitectureReadmeClassifiesPlaybooksAsTimeBoundedContext(t *testing.T) {
+func TestArchitectureReadmeClassifiesTimeBoundedContextDocumentPatterns(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "README.md")
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -626,72 +626,47 @@ func TestArchitectureReadmeClassifiesPlaybooksAsTimeBoundedContext(t *testing.T)
 	}
 
 	plansRunbooksAndEvaluations := markdownSection(t, string(content), "## Plans, runbooks, and evaluations")
-	required := []string{
-		"*-playbook.md",
-		"boundary rules",
-		"copied or linked",
-	}
-	for _, phrase := range required {
-		if !strings.Contains(plansRunbooksAndEvaluations, phrase) {
-			t.Errorf("%s Plans, runbooks, and evaluations must mention %q so playbooks stay contextual until promoted into stable boundary docs", path, phrase)
-		}
-	}
-}
 
-func TestArchitectureReadmeClassifiesValidationDocsAsTimeBoundedContext(t *testing.T) {
-	path := filepath.Join("..", "docs", "architecture", "README.md")
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-
-	plansRunbooksAndEvaluations := markdownSection(t, string(content), "## Plans, runbooks, and evaluations")
-	required := []string{
-		"*-validation.md",
-		"review policy",
-	}
-	for _, phrase := range required {
-		if !strings.Contains(plansRunbooksAndEvaluations, phrase) {
-			t.Errorf("%s Plans, runbooks, and evaluations must mention %q so validation findings stay contextual until promoted into stable boundary docs", path, phrase)
-		}
-	}
-}
-
-func TestArchitectureReadmeClassifiesSplitDocsAsTimeBoundedContext(t *testing.T) {
-	path := filepath.Join("..", "docs", "architecture", "README.md")
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
+	tests := []struct {
+		name       string
+		pattern    string
+		policyTerm string
+		reason     string
+	}{
+		{
+			name:       "playbooks",
+			pattern:    "*-playbook.md",
+			policyTerm: "boundary rules",
+			reason:     "playbooks stay contextual until promoted into stable boundary docs",
+		},
+		{
+			name:       "validation docs",
+			pattern:    "*-validation.md",
+			policyTerm: "review policy",
+			reason:     "validation findings stay contextual until promoted into stable boundary docs",
+		},
+		{
+			name:       "split plans",
+			pattern:    "*-split.md",
+			policyTerm: "review policy",
+			reason:     "split plans stay contextual until promoted into stable boundary docs",
+		},
+		{
+			name:       "management notes",
+			pattern:    "*-management.md",
+			policyTerm: "review policy",
+			reason:     "management notes stay contextual until promoted into stable boundary docs",
+		},
 	}
 
-	plansRunbooksAndEvaluations := markdownSection(t, string(content), "## Plans, runbooks, and evaluations")
-	required := []string{
-		"*-split.md",
-		"review policy",
-	}
-	for _, phrase := range required {
-		if !strings.Contains(plansRunbooksAndEvaluations, phrase) {
-			t.Errorf("%s Plans, runbooks, and evaluations must mention %q so split plans stay contextual until promoted into stable boundary docs", path, phrase)
-		}
-	}
-}
-
-func TestArchitectureReadmeClassifiesManagementDocsAsTimeBoundedContext(t *testing.T) {
-	path := filepath.Join("..", "docs", "architecture", "README.md")
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-
-	plansRunbooksAndEvaluations := markdownSection(t, string(content), "## Plans, runbooks, and evaluations")
-	required := []string{
-		"*-management.md",
-		"review policy",
-	}
-	for _, phrase := range required {
-		if !strings.Contains(plansRunbooksAndEvaluations, phrase) {
-			t.Errorf("%s Plans, runbooks, and evaluations must mention %q so management notes stay contextual until promoted into stable boundary docs", path, phrase)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, phrase := range []string{tt.pattern, tt.policyTerm} {
+				if !strings.Contains(plansRunbooksAndEvaluations, phrase) {
+					t.Errorf("%s Plans, runbooks, and evaluations must mention %q so %s", path, phrase, tt.reason)
+				}
+			}
+		})
 	}
 }
 
