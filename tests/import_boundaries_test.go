@@ -1663,6 +1663,30 @@ func TestTaskRPCAPIManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestSDSClientManagementClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "sds", "client")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "auth_bootstrap.go")): {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep sds/client management dependencies limited to current SDS auth bootstrap retirement seams and prefer in-repository database/repository access for new SDS state data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestTEMUSyncAndPricingManagementImportsStayAllowlisted(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "temu", "pricing", "auto_pricing_service.go")):        {},
