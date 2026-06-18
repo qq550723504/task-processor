@@ -1502,6 +1502,7 @@ func TestAppHTTPAPIListingKitRootImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "runtime_support_listingkit.go")): {},
+		filepath.Clean(filepath.Join(root, "route_handler_types.go")):        {},
 		filepath.Clean(filepath.Join(root, "types.go")):                      {},
 	}
 
@@ -1532,6 +1533,7 @@ func TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "listingkit_temporal_worker.go")): {},
 		filepath.Clean(filepath.Join(root, "modules.go")):                    {},
 		filepath.Clean(filepath.Join(root, "runtime.go")):                    {},
+		filepath.Clean(filepath.Join(root, "route_handler_types.go")):        {},
 		filepath.Clean(filepath.Join(root, "server.go")):                     {},
 		filepath.Clean(filepath.Join(root, "types.go")):                      {},
 	}

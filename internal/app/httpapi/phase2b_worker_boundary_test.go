@@ -50,3 +50,34 @@ func TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods(t *testing.T) {
 		require.Contains(t, string(compositionSrc), marker)
 	}
 }
+
+func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
+	t.Parallel()
+
+	typesSrc, err := os.ReadFile("types.go")
+	require.NoError(t, err)
+
+	for _, marker := range []string{
+		"type productRouteHandler =",
+		"type imageRouteHandler =",
+		"type amazonListingRouteHandler =",
+		"type listingKitRouteHandler =",
+		"type sheinLoginRouteHandler interface",
+		"type routeDescriptor =",
+	} {
+		require.NotContains(t, string(typesSrc), marker)
+	}
+
+	routeTypesSrc, err := os.ReadFile("route_handler_types.go")
+	require.NoError(t, err)
+	for _, marker := range []string{
+		"type productRouteHandler =",
+		"type imageRouteHandler =",
+		"type amazonListingRouteHandler =",
+		"type listingKitRouteHandler =",
+		"type sheinLoginRouteHandler interface",
+		"type routeDescriptor =",
+	} {
+		require.Contains(t, string(routeTypesSrc), marker)
+	}
+}
