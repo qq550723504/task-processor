@@ -124,6 +124,40 @@ func TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated(t *testing.T) {
+	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
+	for _, marker := range []string{
+		"func (d *runtimeDeps) managementClient(",
+		"func (d *runtimeDeps) ensureListingKitSupport(",
+		"func (d *runtimeDeps) addClosers(",
+		"func (d *runtimeDeps) attachProductModule(",
+		"func (d *runtimeDeps) attachImageModule(",
+		"func (d *runtimeDeps) attachAmazonListingModule(",
+		"func (d *runtimeDeps) attachListingKitModule(",
+		"func (d *runtimeDeps) attachSDSLoginResult(",
+	} {
+		if strings.Contains(runtimeSource, marker) {
+			t.Fatalf("runtime.go should keep runtimeDeps state helpers in runtime_deps_methods.go; found %s", marker)
+		}
+	}
+
+	methodsSource := readHTTPAPIBoundaryFile(t, "runtime_deps_methods.go")
+	for _, marker := range []string{
+		"func (d *runtimeDeps) managementClient(",
+		"func (d *runtimeDeps) ensureListingKitSupport(",
+		"func (d *runtimeDeps) addClosers(",
+		"func (d *runtimeDeps) attachProductModule(",
+		"func (d *runtimeDeps) attachImageModule(",
+		"func (d *runtimeDeps) attachAmazonListingModule(",
+		"func (d *runtimeDeps) attachListingKitModule(",
+		"func (d *runtimeDeps) attachSDSLoginResult(",
+	} {
+		if !strings.Contains(methodsSource, marker) {
+			t.Fatalf("runtime_deps_methods.go missing %s", marker)
+		}
+	}
+}
+
 func readHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)
