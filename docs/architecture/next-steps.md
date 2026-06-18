@@ -186,7 +186,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 
 接下来要做的是控制文档数量和语义漂移，尽量把长期有效的规则收口到少数文档，而不是让大量计划文档替代正式架构说明。
 
-外部 client 依赖当前不适合一刀切禁止。后续应优先从 `external-client-boundary-inventory.md` 里的热点目录做窄切片，把具体 `management` / `openai` / `nanobanana` adapter 类型收口到本地接口或装配层。
+外部 client 依赖当前不适合一刀切禁止。后续应优先从 `external-client-boundary-inventory.md` 里的热点目录做窄切片：`management` 是待淘汰接口，业务数据应逐步改为仓内 database/repository 访问；`openai` / `nanobanana` 这类真实外部服务 adapter 则继续收口到本地接口或装配层。
 
 ### 6. 明确 Temporal 的正式边界
 

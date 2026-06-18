@@ -951,6 +951,9 @@ func TestExternalClientBoundaryInventoryDefinesCouplingHotspots(t *testing.T) {
 	required := []string{
 		"# External Client Boundary Inventory",
 		"`internal/infra/clients/management`",
+		"management retirement target",
+		"in-repository database/repository access",
+		"freeze current seams",
 		"`internal/infra/clients/openai`",
 		"`internal/infra/clients/nanobanana`",
 		"Hotspots",

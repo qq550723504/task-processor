@@ -22,6 +22,13 @@ These packages are allowed infrastructure adapters. The architectural risk is
 not their existence. The risk is business packages importing adapter types as
 part of their domain-facing contracts.
 
+`internal/infra/clients/management` is a management retirement target, not a
+long-lived integration direction. New business behavior should prefer
+in-repository database/repository access owned by the relevant domain or
+assembly layer. Current management allowlists freeze current seams so the
+coupling cannot grow silently while each slice moves away from the management
+API.
+
 ## Hotspots
 
 Current direct dependency hotspots are:
@@ -50,7 +57,9 @@ Current direct dependency hotspots are:
     `TestSheinManagementClientImportsStayAllowlisted`
   - current direct OpenAI seams are guarded by
     `TestSheinOpenAIImportsStayAllowlisted`
-  - cleanup should follow marketplace slices, not one large adapter rewrite
+  - cleanup should replace management calls with in-repository
+    database/repository access by marketplace slice, not one large adapter
+    rewrite
 - `internal/amazon`
   - current `management` coupling is concentrated in context/DTO seams and
     tests, while `openai` coupling is isolated to the current processor and
@@ -120,9 +129,9 @@ adapter types without changing business behavior:
 3. Historical SHEIN inventory, scheduler, publish, validation, activity, mapping,
    product, product sync, store, and managed-client paths currently importing
    `internal/infra/clients/management`. Current imports are explicitly
-   allowlisted; future SHEIN cleanup should move one marketplace capability at
-   a time behind package-local interfaces before adding new concrete management
-   adapter call sites.
+   allowlisted to freeze current seams; future SHEIN cleanup should move one
+   marketplace capability at a time to in-repository database/repository access
+   before adding new concrete management adapter call sites.
 4. Historical SHEIN category, content, pipeline, product, submit-prep, and
    translate helpers currently importing `internal/infra/clients/openai`.
    Current imports are explicitly allowlisted; future SHEIN cleanup should move
@@ -130,10 +139,11 @@ adapter types without changing business behavior:
    adding new concrete OpenAI adapter call sites.
 5. TEMU sync and pricing services currently importing
    `internal/infra/clients/management`. Current sync/pricing imports are explicitly
-   allowlisted; future TEMU cleanup should move service-facing management calls
-   behind package-local interfaces before adding new concrete adapter call sites.
-   Product, store, and scheduler management imports are also explicitly allowlisted;
-   keep future changes behind local interfaces or narrow adapter seams.
+   allowlisted to freeze current seams; future TEMU cleanup should move
+   service-facing management calls to in-repository database/repository access
+   before adding new concrete adapter call sites. Product, store, and scheduler
+   management imports are also explicitly allowlisted; keep future changes
+   behind local interfaces or narrow adapter seams.
 6. TEMU AI, image, SKU, product, and pipeline helpers currently importing
    `internal/infra/clients/openai`. Current imports are explicitly allowlisted;
    future feature work should introduce local AI/rewrite/mapping interfaces rather
@@ -145,9 +155,10 @@ adapter types without changing business behavior:
    ProductImage ports and must not add new concrete adapter imports without a
    local interface seam or a documented runtime-builder exception.
 8. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
-   import concrete external clients. Current imports are explicitly allowlisted;
-   future Amazon feature work should add package-local ports before adding new
-   concrete management or OpenAI adapter imports.
+   import concrete external clients. Current imports are explicitly allowlisted
+   to freeze current seams; future Amazon feature work should prefer
+   in-repository database/repository access or package-local ports before adding
+   new concrete management or OpenAI adapter imports.
 
 ## Non-goals
 
@@ -167,4 +178,6 @@ When reviewing a change that touches external clients, ask:
 3. Is a concrete `management`, `openai`, or `nanobanana` type leaking into a
    public domain contract?
 4. Does the change reduce coupling in one hotspot, or create a new hotspot?
-5. Is any remaining direct dependency documented as a temporary exception?
+5. If the dependency is `management`, why is this not using in-repository
+   database/repository access yet?
+6. Is any remaining direct dependency documented as a temporary exception?

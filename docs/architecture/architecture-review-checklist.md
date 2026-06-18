@@ -28,6 +28,9 @@ Before merging a structural or feature PR, verify:
    `docs/architecture/external-client-boundary-inventory.md`: prefer a local
    interface and avoid leaking a concrete external client adapter into
    domain-facing contracts.
+   Treat `management` as a retirement target: new business data access should
+   prefer in-repository database/repository access instead of new management API
+   call sites.
 9. Repository layout changes follow `docs/development/repository-structure.md`:
    `cmd/` stays limited to official entrypoints, `hack/` stays limited to
    managed support areas, and local artifacts stay out of production entrypoint
