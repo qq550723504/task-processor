@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -22,7 +21,7 @@ type saleAttributeMappingSelection struct {
 }
 
 func selectSaleAttributeMappingWithLLM(
-	client openaiclient.ChatCompleter,
+	client TextGenerator,
 	sourceDimensions []SourceVariantDimension,
 	templates []sheinattribute.AttributeInfo,
 ) (*saleAttributeMappingSelection, error) {
@@ -30,7 +29,7 @@ func selectSaleAttributeMappingWithLLM(
 }
 
 func selectSaleAttributeMappingWithLLMFeedback(
-	client openaiclient.ChatCompleter,
+	client TextGenerator,
 	sourceDimensions []SourceVariantDimension,
 	templates []sheinattribute.AttributeInfo,
 	feedback string,

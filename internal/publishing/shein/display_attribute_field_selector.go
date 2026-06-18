@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 	common "task-processor/internal/publishing/common"
@@ -35,7 +34,7 @@ func selectDisplayTemplateAttribute(
 	attributes []sheinattribute.AttributeInfo,
 	source common.Attribute,
 	contextInputs []common.Attribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (*sheinattribute.AttributeInfo, []string) {
 	if attr, notes := selectDisplayTemplateAttributeExact(attributes, source); attr != nil {
 		return attr, notes
@@ -76,7 +75,7 @@ func selectDisplayTemplateAttributesBatch(
 	attributes []sheinattribute.AttributeInfo,
 	sources []common.Attribute,
 	contextInputs []common.Attribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (map[int]*sheinattribute.AttributeInfo, []string) {
 	results := make(map[int]*sheinattribute.AttributeInfo)
 	if llm == nil || len(attributes) == 0 || len(sources) == 0 {

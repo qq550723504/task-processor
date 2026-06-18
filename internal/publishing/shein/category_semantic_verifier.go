@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 )
@@ -18,10 +17,10 @@ type categorySemanticVerifier interface {
 }
 
 type aiCategorySemanticVerifier struct {
-	client openaiclient.ChatCompleter
+	client TextGenerator
 }
 
-func newAICategorySemanticVerifier(client openaiclient.ChatCompleter) categorySemanticVerifier {
+func newAICategorySemanticVerifier(client TextGenerator) categorySemanticVerifier {
 	if client == nil {
 		return nil
 	}

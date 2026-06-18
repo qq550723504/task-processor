@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 )
@@ -19,7 +18,7 @@ type sourceDimensionSelection struct {
 	Reasons                  []string `json:"reasons,omitempty"`
 }
 
-func selectSourceDimensions(dimensions []SourceVariantDimension, client openaiclient.ChatCompleter) *sourceDimensionSelection {
+func selectSourceDimensions(dimensions []SourceVariantDimension, client TextGenerator) *sourceDimensionSelection {
 	if len(dimensions) == 0 {
 		return nil
 	}
@@ -29,7 +28,7 @@ func selectSourceDimensions(dimensions []SourceVariantDimension, client openaicl
 	return selectSourceDimensionsFallback(dimensions)
 }
 
-func selectSourceDimensionsWithLLM(dimensions []SourceVariantDimension, client openaiclient.ChatCompleter) *sourceDimensionSelection {
+func selectSourceDimensionsWithLLM(dimensions []SourceVariantDimension, client TextGenerator) *sourceDimensionSelection {
 	if client == nil || len(dimensions) == 0 {
 		return nil
 	}
