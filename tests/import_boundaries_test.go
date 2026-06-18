@@ -148,9 +148,7 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 			filepath.Clean(filepath.Join(root, "managed_api_factory.go")): {},
 			filepath.Clean(filepath.Join(root, "runtime_api_factory.go")): {},
 		},
-		`"task-processor/internal/shein/content"`: {
-			filepath.Clean(filepath.Join(root, "sale_attribute_custom_values.go")): {},
-		},
+		`"task-processor/internal/shein/content"`: {},
 		`"task-processor/internal/shein/category"`: {
 			filepath.Clean(filepath.Join(root, "category_query.go")):            {},
 			filepath.Clean(filepath.Join(root, "category_resolver_test.go")):    {},

@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	sheinattribute "task-processor/internal/shein/api/attribute"
-	"task-processor/internal/shein/content"
 )
 
 type customSaleAttributePermissionDeniedKey struct {
@@ -45,8 +44,8 @@ func resolveCustomSaleAttributeValues(
 	}
 
 	for _, sourceValue := range uniqueNormalizedValues(sourceValues) {
-		sanitizedValue := content.SanitizeForSheinAttribute(sourceValue)
-		if !content.IsValidForSheinAttribute(sanitizedValue) {
+		sanitizedValue := sanitizeSheinAttributeText(sourceValue)
+		if !isValidSheinAttributeText(sanitizedValue) {
 			notes = append(notes, fmt.Sprintf(
 				"SHEIN 自定义销售属性值不可用: 源维度 %q 的值 %q 清洗后不符合 SHEIN 约束",
 				sourceDimension,
