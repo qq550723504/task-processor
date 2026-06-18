@@ -399,6 +399,51 @@ func normalizedArchitectureDocReferences(t *testing.T, content string) []string 
 	return references
 }
 
+func architectureReadmeExplicitReferences(t *testing.T, content string) map[string]bool {
+	t.Helper()
+
+	references := make(map[string]bool)
+	for _, reference := range normalizedArchitectureDocReferences(t, content) {
+		name := filepath.Base(reference)
+		if !strings.Contains(name, "*") {
+			references[name] = true
+		}
+	}
+	return references
+}
+
+func architectureReadmeTimeBoundedPatterns(t *testing.T, content string) []string {
+	t.Helper()
+
+	plansRunbooksAndEvaluations := markdownSection(t, content, "## Plans, runbooks, and evaluations")
+	referencePattern := regexp.MustCompile("`(\\*-[^`]+\\.md)`")
+	matches := referencePattern.FindAllStringSubmatch(plansRunbooksAndEvaluations, -1)
+	if len(matches) == 0 {
+		t.Fatalf("Plans, runbooks, and evaluations must include time-bounded context patterns")
+	}
+
+	patterns := make([]string, 0, len(matches))
+	for _, match := range matches {
+		patterns = append(patterns, match[1])
+	}
+	return patterns
+}
+
+func matchesAnyPattern(t *testing.T, name string, patterns []string) bool {
+	t.Helper()
+
+	for _, pattern := range patterns {
+		matched, err := filepath.Match(pattern, name)
+		if err != nil {
+			t.Fatalf("invalid time-bounded context pattern %q: %v", pattern, err)
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
 func markdownBlockBetween(t *testing.T, content, startMarker, endMarker string) string {
 	t.Helper()
 
@@ -728,6 +773,38 @@ func TestArchitectureReadmeWorkingRuleCoversContextualNotes(t *testing.T) {
 		if !strings.Contains(workingRule, phrase) {
 			t.Errorf("%s Working Rule must mention %q so every non-stable architecture note is resolved through stable boundary docs", path, phrase)
 		}
+	}
+}
+
+func TestArchitectureReadmeCoversEveryArchitectureDocument(t *testing.T) {
+	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
+	readmeContent, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", readmePath, err)
+	}
+
+	for _, phrase := range []string{"Every architecture document", "indexed above", "time-bounded context pattern"} {
+		if !strings.Contains(string(readmeContent), phrase) {
+			t.Errorf("%s must mention %q so new architecture documents cannot drift outside the index contract", readmePath, phrase)
+		}
+	}
+
+	explicitReferences := architectureReadmeExplicitReferences(t, string(readmeContent))
+	contextPatterns := architectureReadmeTimeBoundedPatterns(t, string(readmeContent))
+	documents, err := filepath.Glob(filepath.Join("..", "docs", "architecture", "*.md"))
+	if err != nil {
+		t.Fatalf("glob architecture docs: %v", err)
+	}
+
+	for _, document := range documents {
+		name := filepath.Base(document)
+		if name == "README.md" {
+			continue
+		}
+		if explicitReferences[name] || matchesAnyPattern(t, name, contextPatterns) {
+			continue
+		}
+		t.Errorf("%s must be explicitly indexed in %s or match one of the time-bounded context patterns %v", name, readmePath, contextPatterns)
 	}
 }
 

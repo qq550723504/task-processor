@@ -86,6 +86,8 @@ Documents with names such as `*-plan.md`, `*-runbook.md`, `*-evaluation.md`,
 `*-split.md`, or `*-management.md` are normally time-bounded. They may explain
 why a decision was made, but stable boundary rules should be copied or linked
 into one of the stable documents above before being treated as review policy.
+Every architecture document must be either indexed above or match a
+time-bounded context pattern.
 
 ## Working Rule
 
