@@ -281,6 +281,32 @@ func TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIRuntimeKeepsPathResolutionDedicated(t *testing.T) {
+	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
+	for _, marker := range []string{
+		`"path/filepath"`,
+		"func resolveImageWorkDir(",
+		"filepath.Clean(",
+		`filepath.Join(".", "tmp", "productimage")`,
+	} {
+		if strings.Contains(runtimeSource, marker) {
+			t.Fatalf("runtime.go should keep path resolution in runtime_paths.go; found %s", marker)
+		}
+	}
+
+	pathSource := readHTTPAPIBoundaryFile(t, "runtime_paths.go")
+	for _, marker := range []string{
+		`"path/filepath"`,
+		"func resolveImageWorkDir(",
+		"filepath.Clean(",
+		`filepath.Join(".", "tmp", "productimage")`,
+	} {
+		if !strings.Contains(pathSource, marker) {
+			t.Fatalf("runtime_paths.go missing %s", marker)
+		}
+	}
+}
+
 func readHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)

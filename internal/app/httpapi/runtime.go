@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/sirupsen/logrus"
 
@@ -67,17 +66,4 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		},
 		features: &featureRuntimeState{},
 	}, nil
-}
-
-func resolveImageWorkDir(cfg *config.Config) string {
-	if cfg == nil {
-		return filepath.Join(".", "tmp", "productimage")
-	}
-
-	workDir := filepath.Clean(cfg.ProductImage.WorkDir)
-	if workDir == "" || workDir == "." {
-		return filepath.Join(".", "tmp", "productimage")
-	}
-
-	return workDir
 }
