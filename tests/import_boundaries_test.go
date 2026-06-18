@@ -1589,6 +1589,30 @@ func TestStateManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestPlatformBaseManagementClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "platformbase")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "base_factory.go")): {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep platformbase management dependencies limited to current platform-factory retirement seams and prefer in-repository database/repository access for new platform data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestTEMUSyncAndPricingManagementImportsStayAllowlisted(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "temu", "pricing", "auto_pricing_service.go")):        {},
