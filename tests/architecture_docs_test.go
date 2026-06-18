@@ -279,6 +279,32 @@ func TestArchitectureReviewChecklistReferencesArchitectureIndexEntrypoints(t *te
 	}
 }
 
+func TestArchitectureReviewChecklistReferencesExistingDocuments(t *testing.T) {
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	reviewReferences := markdownSection(t, string(checklistContent), "## Review References")
+	const referenceRule = "Every review reference must resolve to an existing repository document"
+	if !strings.Contains(reviewReferences, referenceRule) {
+		t.Errorf("%s Review References must state %q so review entrypoints cannot drift into dead links", checklistPath, referenceRule)
+	}
+
+	for _, reference := range normalizedArchitectureDocReferences(t, reviewReferences) {
+		name := filepath.Base(reference)
+		if strings.Contains(name, "*") {
+			continue
+		}
+
+		targetPath := filepath.Join("..", filepath.FromSlash(reference))
+		if _, err := os.Stat(targetPath); err != nil {
+			t.Errorf("%s references %s, but it must resolve to an existing repository document: %v", checklistPath, reference, err)
+		}
+	}
+}
+
 func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
 	content, err := os.ReadFile(path)
