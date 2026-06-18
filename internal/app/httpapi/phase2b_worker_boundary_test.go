@@ -192,9 +192,7 @@ func TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers(t *testing.T) {
 func TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport(t *testing.T) {
 	t.Parallel()
 
-	modulesSrc, err := os.ReadFile("modules.go")
-	require.NoError(t, err)
-	modulesContent := string(modulesSrc)
+	modulesContent := readRetiredModulesFileIfPresent(t)
 
 	for _, marker := range []string{
 		"func newWorkerPool(",
@@ -225,9 +223,7 @@ func TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport(t *testing.T) {
 func TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport(t *testing.T) {
 	t.Parallel()
 
-	modulesSrc, err := os.ReadFile("modules.go")
-	require.NoError(t, err)
-	modulesContent := string(modulesSrc)
+	modulesContent := readRetiredModulesFileIfPresent(t)
 
 	for _, marker := range []string{
 		`"task-processor/internal/shein/client"`,

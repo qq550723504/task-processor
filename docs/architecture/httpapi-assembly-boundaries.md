@@ -155,7 +155,8 @@
 - `amazonlisting` builder 在 `internal/amazonlisting/httpapi`
 - `listingkit` builder 在 `internal/listingkit/httpapi`
 
-`internal/app/httpapi/modules.go` 现在应该保持“薄委托”，而不是再重新长成一个集中式 God file。
+历史上的 `internal/app/httpapi/modules.go` 已退休；新增 app/httpapi 装配逻辑应放入
+职责明确的 focused 文件，而不是恢复这个容易重新长成 God file 的历史入口。
 `buildBootstrap(...)` 这类 app 启动编排应放在 `bootstrap.go`，避免 `modules.go`
 继续以历史文件名承载 bootstrap orchestration。
 Legacy `BuildHandlers(...)` facade 应放在 `handlers_legacy.go`，避免 `modules.go`
@@ -270,6 +271,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted`
 - `TestAppHTTPAPIListingKitRootImportsStayAllowlisted`
 - `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
+- `TestHTTPAPIModulesFileStaysRetired`
 - `TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration`
 - `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
 - `TestLegacyBuildHandlersUsesRouteHandlerAliases`

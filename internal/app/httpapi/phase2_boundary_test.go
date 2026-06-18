@@ -8,18 +8,19 @@ import (
 )
 
 func TestHTTPAPIModulesFileDoesNotOwnFeatureBuildWrappers(t *testing.T) {
-	src, err := os.ReadFile("modules.go")
-	require.NoError(t, err)
-	require.NotContains(t, string(src), "func buildProductModule(")
-	require.NotContains(t, string(src), "func buildImageModule(")
-	require.NotContains(t, string(src), "func buildAmazonListingModule(")
-	require.NotContains(t, string(src), "func buildListingKitModule(")
+	content := readRetiredModulesFileIfPresent(t)
+	require.NotContains(t, content, "func buildProductModule(")
+	require.NotContains(t, content, "func buildImageModule(")
+	require.NotContains(t, content, "func buildAmazonListingModule(")
+	require.NotContains(t, content, "func buildListingKitModule(")
+}
+
+func TestHTTPAPIModulesFileStaysRetired(t *testing.T) {
+	requireModulesFileRetired(t)
 }
 
 func TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration(t *testing.T) {
-	modulesSrc, err := os.ReadFile("modules.go")
-	require.NoError(t, err)
-	modulesContent := string(modulesSrc)
+	modulesContent := readRetiredModulesFileIfPresent(t)
 
 	for _, marker := range []string{
 		"func buildBootstrap(",
@@ -46,9 +47,7 @@ func TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration(t *testing.T) {
 }
 
 func TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade(t *testing.T) {
-	modulesSrc, err := os.ReadFile("modules.go")
-	require.NoError(t, err)
-	modulesContent := string(modulesSrc)
+	modulesContent := readRetiredModulesFileIfPresent(t)
 
 	for _, marker := range []string{
 		"func BuildHandlers(",
@@ -82,6 +81,24 @@ func TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade(t *testing.T) {
 	} {
 		require.NotContains(t, facadeContent, marker)
 	}
+}
+
+func readRetiredModulesFileIfPresent(t *testing.T) string {
+	t.Helper()
+
+	src, err := os.ReadFile("modules.go")
+	if os.IsNotExist(err) {
+		return ""
+	}
+	require.NoError(t, err)
+	return string(src)
+}
+
+func requireModulesFileRetired(t *testing.T) {
+	t.Helper()
+
+	_, err := os.Stat("modules.go")
+	require.True(t, os.IsNotExist(err), "modules.go should stay retired; add focused files instead of reviving the historical God file")
 }
 
 func TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs(t *testing.T) {

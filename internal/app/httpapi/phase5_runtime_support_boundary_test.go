@@ -28,9 +28,7 @@ func TestListingKitRuntimeSupportPrerequisitesStayOutOfFeatureOwnedBundleAssembl
 func TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook(t *testing.T) {
 	t.Parallel()
 
-	modulesSrc, err := os.ReadFile("modules.go")
-	require.NoError(t, err)
-	modulesContent := string(modulesSrc)
+	modulesContent := readRetiredModulesFileIfPresent(t)
 
 	require.NotContains(t, modulesContent, `"task-processor/internal/sds/httpbootstrap"`)
 	require.NotContains(t, modulesContent, "var newSDSSyncServiceForHTTPAPI")
