@@ -3,11 +3,19 @@ package shein
 import (
 	"context"
 
-	sheinclient "task-processor/internal/shein/client"
+	"github.com/imroc/req/v3"
 )
 
 type RuntimeAPIClientFactory interface {
-	NewAPIClient(ctx context.Context, storeID int64) *sheinclient.APIClient
+	NewAPIClient(ctx context.Context, storeID int64) RuntimeAPIClient
+}
+
+type RuntimeAPIClient interface {
+	HasCookies() bool
+	ForceRefreshCookies() error
+	GetBaseURL() string
+	GetTenantID() int64
+	GetHTTPClient() *req.Client
 }
 
 type runtimeAPIFactory struct {
@@ -18,7 +26,7 @@ func newRuntimeAPIFactory(clientFactory RuntimeAPIClientFactory) *runtimeAPIFact
 	return &runtimeAPIFactory{clientFactory: clientFactory}
 }
 
-func (f *runtimeAPIFactory) BuildBaseClient(ctx context.Context, storeID int64) (*sheinclient.BaseAPIClient, string) {
+func (f *runtimeAPIFactory) BuildBaseClient(ctx context.Context, storeID int64) (*RuntimeBaseAPIClient, string) {
 	if storeID <= 0 {
 		return nil, "未提供 shein_store_id，SHEIN 在线解析未启用"
 	}
@@ -39,12 +47,5 @@ func (f *runtimeAPIFactory) BuildBaseClient(ctx context.Context, storeID int64) 
 		return nil, "SHEIN 店铺 cookie 不可用，已降级为离线解析"
 	}
 
-	baseAPI := sheinclient.NewBaseAPIClient(
-		apiClient.GetBaseURL(),
-		apiClient.GetTenantID(),
-		storeID,
-		apiClient.GetHTTPClient(),
-	)
-	baseAPI.SetAuthRefreshFunc(apiClient.ForceRefreshCookies)
-	return baseAPI, ""
+	return newRuntimeBaseAPIClient(apiClient, storeID), ""
 }

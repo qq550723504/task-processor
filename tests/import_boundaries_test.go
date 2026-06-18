@@ -142,8 +142,8 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "publishing", "shein")
 	allowedImports := map[string]map[string]struct{}{
 		`"task-processor/internal/shein/client"`: {
-			filepath.Clean(filepath.Join(root, "managed_api_factory.go")): {},
-			filepath.Clean(filepath.Join(root, "runtime_api_factory.go")): {},
+			filepath.Clean(filepath.Join(root, "managed_api_factory.go")):        {},
+			filepath.Clean(filepath.Join(root, "runtime_base_client_legacy.go")): {},
 		},
 		`"task-processor/internal/shein/content"`: {},
 		`"task-processor/internal/shein/category"`: {

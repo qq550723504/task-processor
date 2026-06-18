@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/sheinlogin"
 )
 
@@ -26,7 +27,7 @@ type listingKitSheinRuntimeFactory struct {
 	cookieStore *sheinlogin.RedisStore
 }
 
-func (f listingKitSheinRuntimeFactory) NewAPIClient(ctx context.Context, storeID int64) *listingkit.SheinRuntimeAPIClient {
+func (f listingKitSheinRuntimeFactory) NewAPIClient(ctx context.Context, storeID int64) sheinpub.RuntimeAPIClient {
 	storeInfo := f.resolveStoreConfig(ctx, storeID)
 	return listingkit.NewSheinRuntimeAPIClientWithStoreConfig(storeID, storeInfo, boundSheinCookieProvider{
 		store:    f.cookieStore,

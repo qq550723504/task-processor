@@ -123,7 +123,7 @@ type sheinFreshnessRuntimeClientFactory struct {
 	task *Task
 }
 
-func (f sheinFreshnessRuntimeClientFactory) NewAPIClient(ctx context.Context, storeID int64) *SheinRuntimeAPIClient {
+func (f sheinFreshnessRuntimeClientFactory) NewAPIClient(ctx context.Context, storeID int64) sheinpub.RuntimeAPIClient {
 	if f.svc == nil || f.task == nil {
 		return nil
 	}
