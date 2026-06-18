@@ -599,6 +599,25 @@ func TestArchitectureReadmeIndexesCurrentGuardCoverageBaseline(t *testing.T) {
 	}
 }
 
+func TestArchitectureReadmeCurrentGuardBaselinePointsToReviewEntrypoints(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "README.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	currentGuardBaseline := markdownSection(t, string(content), "## Current Guard Baseline")
+	required := []string{
+		"docs/architecture/next-steps.md",
+		"docs/architecture/architecture-review-checklist.md",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(currentGuardBaseline, phrase) {
+			t.Errorf("%s Current Guard Baseline must mention %q so the architecture index uses the same review entrypoint paths as the checklist", path, phrase)
+		}
+	}
+}
+
 func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "development", "repository-structure.md")
 	content, err := os.ReadFile(path)

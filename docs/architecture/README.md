@@ -48,9 +48,11 @@ structure rules that should be reviewed with architecture changes:
 
 ## Current Guard Baseline
 
-Use `next-steps.md` and its `Current guard coverage` section as the current
-guard coverage baseline for active import-boundary tests. This baseline tracks
-what reviewers must keep visible while the stable boundary documents remain the
+Use `docs/architecture/next-steps.md` and its `Current guard coverage` section
+as the current guard coverage baseline for active import-boundary tests. Formal
+review actions should still start from
+`docs/architecture/architecture-review-checklist.md`. This baseline tracks what
+reviewers must keep visible while the stable boundary documents remain the
 source of truth for long-lived rules.
 
 ## Supporting Context
