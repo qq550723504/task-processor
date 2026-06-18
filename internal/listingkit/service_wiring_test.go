@@ -1852,7 +1852,7 @@ func TestSheinSettingsEntrypointsFileOwnsAIClientSettingsDelegates(t *testing.T)
 	}
 
 	for _, needle := range []string{
-		"func aiSettingsUserID(identity openaiclient.Identity, scope string) string {",
+		"func aiSettingsUserID(identity RequestIdentity, scope string) string {",
 		"func normalizeAISettingsScope(scope string, userID string) string {",
 		"func normalizeAIClientName(name string) string {",
 	} {

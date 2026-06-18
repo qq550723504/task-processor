@@ -674,7 +674,6 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "ai_client_settings.go")):                        {},
 		filepath.Clean(filepath.Join(root, "assembler.go")):                                 {},
 		filepath.Clean(filepath.Join(root, "interfaces_dependencies.go")):                   {},
 		filepath.Clean(filepath.Join(root, "request_identity.go")):                          {},

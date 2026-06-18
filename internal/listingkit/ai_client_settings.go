@@ -2,11 +2,9 @@ package listingkit
 
 import (
 	"strings"
-
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
-func aiSettingsUserID(identity openaiclient.Identity, scope string) string {
+func aiSettingsUserID(identity RequestIdentity, scope string) string {
 	if strings.EqualFold(strings.TrimSpace(scope), "tenant") {
 		return ""
 	}

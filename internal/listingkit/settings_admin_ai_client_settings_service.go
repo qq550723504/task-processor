@@ -12,7 +12,7 @@ func (s *settingsAdminService) GetAIClientSettings(ctx context.Context, scope st
 	if s.aiCredentialStore == nil {
 		return nil, fmt.Errorf("ai credential store is not configured")
 	}
-	identity := openaiclient.IdentityFromContext(ctx)
+	identity := RequestIdentityFromContext(ctx)
 	tenantID := strings.TrimSpace(identity.TenantID)
 	requestedScope := normalizeAISettingsScope(scope, identity.UserID)
 	userID := aiSettingsUserID(identity, scope)
@@ -44,7 +44,7 @@ func (s *settingsAdminService) UpdateAIClientSettings(ctx context.Context, req *
 	if req == nil {
 		return nil, fmt.Errorf("ai settings request cannot be nil")
 	}
-	identity := openaiclient.IdentityFromContext(ctx)
+	identity := RequestIdentityFromContext(ctx)
 	tenantID := strings.TrimSpace(identity.TenantID)
 	if tenantID == "" {
 		return nil, fmt.Errorf("tenant_id is required")
