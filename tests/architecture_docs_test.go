@@ -638,6 +638,25 @@ func TestArchitectureReadmeClassifiesPlaybooksAsTimeBoundedContext(t *testing.T)
 	}
 }
 
+func TestArchitectureReadmeIndexesRuntimeFlowSupportingContext(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "README.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	supportingContext := markdownSection(t, string(content), "## Supporting Context")
+	required := []string{
+		"amazon-crawler-runtime-flow.md",
+		"runtime flow",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(supportingContext, phrase) {
+			t.Errorf("%s Supporting Context must mention %q so runtime-flow background stays discoverable without becoming stable policy", path, phrase)
+		}
+	}
+}
+
 func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "development", "repository-structure.md")
 	content, err := os.ReadFile(path)

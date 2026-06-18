@@ -65,6 +65,9 @@ documents unless they say so explicitly:
 - `temu-architecture-patterns.md`
 - `temu-pipeline-stages.md`
 - `listingkit-refactor-status.md`
+- `amazon-crawler-runtime-flow.md`
+  - Amazon crawler runtime flow context; use stable boundary documents for
+    review policy
 
 ## Plans, runbooks, and evaluations
 
