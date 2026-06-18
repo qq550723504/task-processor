@@ -6,7 +6,6 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -26,8 +25,8 @@ type ImageService interface {
 }
 
 type AIClientCredentialStore interface {
-	SaveCredential(ctx context.Context, credential openaiclient.AIClientCredential) error
-	GetCredential(ctx context.Context, tenantID, userID, clientName string) (*openaiclient.AIClientCredential, error)
+	SaveCredential(ctx context.Context, credential AIClientCredential) error
+	GetCredential(ctx context.Context, tenantID, userID, clientName string) (*AIClientCredential, error)
 }
 
 type Repository interface {

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 func (s *settingsAdminService) GetAIClientSettings(ctx context.Context, scope string, clientName string) (*AIClientSettings, error) {
@@ -60,7 +58,7 @@ func (s *settingsAdminService) UpdateAIClientSettings(ctx context.Context, req *
 			apiKey = existing.APIKey
 		}
 	}
-	credential := openaiclient.AIClientCredential{
+	credential := AIClientCredential{
 		TenantID:      tenantID,
 		UserID:        userID,
 		ClientName:    normalizeAIClientName(req.ClientName),
@@ -81,7 +79,7 @@ func (s *settingsAdminService) resolveAISettingsCredential(
 	tenantID string,
 	requestedUserID string,
 	clientName string,
-) (*openaiclient.AIClientCredential, string, error) {
+) (*AIClientCredential, string, error) {
 	if tenantID == "" {
 		return nil, "", nil
 	}

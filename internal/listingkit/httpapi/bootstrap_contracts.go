@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+
 	"github.com/sirupsen/logrus"
 
 	assetrepo "task-processor/internal/asset/repository"
@@ -76,8 +78,9 @@ type moduleService interface {
 }
 
 type aiCredentialStore interface {
-	listingkit.AIClientCredentialStore
 	openaiclient.ClientConfigResolver
+	SaveCredential(ctx context.Context, credential openaiclient.AIClientCredential) error
+	GetCredential(ctx context.Context, tenantID, userID, clientName string) (*openaiclient.AIClientCredential, error)
 }
 
 type BuildModuleInput struct {

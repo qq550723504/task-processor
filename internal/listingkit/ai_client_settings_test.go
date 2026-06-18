@@ -4,13 +4,11 @@ import (
 	"context"
 	"testing"
 	"time"
-
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testing.T) {
 	store := &fakeAIClientCredentialStore{
-		credentials: map[string]*openaiclient.AIClientCredential{
+		credentials: map[string]*AIClientCredential{
 			"tenant-a||default": {
 				TenantID:      "tenant-a",
 				ClientName:    "default",
@@ -24,7 +22,7 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 		},
 	}
 	svc := &service{adminDeps: adminDependencies{aiCredentialStore: store}}
-	ctx := openaiclient.WithTenantID(context.Background(), "tenant-a")
+	ctx := WithRequestIdentity(context.Background(), RequestIdentity{TenantID: "tenant-a"})
 
 	_, err := svc.UpdateAIClientSettings(ctx, &AIClientSettings{
 		Scope:      "tenant",
@@ -49,22 +47,22 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 }
 
 type fakeAIClientCredentialStore struct {
-	credentials map[string]*openaiclient.AIClientCredential
-	saved       *openaiclient.AIClientCredential
+	credentials map[string]*AIClientCredential
+	saved       *AIClientCredential
 }
 
-func (f *fakeAIClientCredentialStore) SaveCredential(ctx context.Context, credential openaiclient.AIClientCredential) error {
+func (f *fakeAIClientCredentialStore) SaveCredential(ctx context.Context, credential AIClientCredential) error {
 	saved := credential
 	saved.UpdatedAt = time.Now()
 	f.saved = &saved
 	if f.credentials == nil {
-		f.credentials = make(map[string]*openaiclient.AIClientCredential)
+		f.credentials = make(map[string]*AIClientCredential)
 	}
 	f.credentials[aiCredentialKey(saved.TenantID, saved.UserID, saved.ClientName)] = &saved
 	return nil
 }
 
-func (f *fakeAIClientCredentialStore) GetCredential(ctx context.Context, tenantID, userID, clientName string) (*openaiclient.AIClientCredential, error) {
+func (f *fakeAIClientCredentialStore) GetCredential(ctx context.Context, tenantID, userID, clientName string) (*AIClientCredential, error) {
 	if f.credentials == nil {
 		return nil, nil
 	}
@@ -83,7 +81,7 @@ func aiCredentialKey(tenantID, userID, clientName string) string {
 func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 	now := time.Now()
 	store := &fakeAIClientCredentialStore{
-		credentials: map[string]*openaiclient.AIClientCredential{
+		credentials: map[string]*AIClientCredential{
 			aiCredentialKey("tenant-a", "", "default"): {
 				TenantID:      "tenant-a",
 				UserID:        "",
@@ -109,7 +107,7 @@ func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 		},
 	}
 	svc := &service{adminDeps: adminDependencies{aiCredentialStore: store}}
-	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{
+	ctx := WithRequestIdentity(context.Background(), RequestIdentity{
 		TenantID: "tenant-a",
 		UserID:   "user-a",
 	})
@@ -151,7 +149,7 @@ func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 func TestUpdateAIClientSettingsIgnoresRequestedTimeout(t *testing.T) {
 	store := &fakeAIClientCredentialStore{}
 	svc := &service{adminDeps: adminDependencies{aiCredentialStore: store}}
-	ctx := openaiclient.WithTenantID(context.Background(), "tenant-a")
+	ctx := WithRequestIdentity(context.Background(), RequestIdentity{TenantID: "tenant-a"})
 
 	_, err := svc.UpdateAIClientSettings(ctx, &AIClientSettings{
 		Scope:      "tenant",
@@ -175,7 +173,7 @@ func TestUpdateAIClientSettingsIgnoresRequestedTimeout(t *testing.T) {
 func TestGetAIClientSettingsDoesNotExposeStoredTimeout(t *testing.T) {
 	now := time.Now()
 	store := &fakeAIClientCredentialStore{
-		credentials: map[string]*openaiclient.AIClientCredential{
+		credentials: map[string]*AIClientCredential{
 			aiCredentialKey("tenant-a", "", "image_gpt_image_2"): {
 				TenantID:      "tenant-a",
 				ClientName:    "image_gpt_image_2",
@@ -189,7 +187,7 @@ func TestGetAIClientSettingsDoesNotExposeStoredTimeout(t *testing.T) {
 		},
 	}
 	svc := &service{adminDeps: adminDependencies{aiCredentialStore: store}}
-	ctx := openaiclient.WithTenantID(context.Background(), "tenant-a")
+	ctx := WithRequestIdentity(context.Background(), RequestIdentity{TenantID: "tenant-a"})
 
 	settings, err := svc.GetAIClientSettings(ctx, "tenant", "image_gpt_image_2")
 	if err != nil {
