@@ -125,6 +125,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestProcessorManagementClientImportsStayAllowlisted`
 - `TestTaskRPCAPIManagementClientImportsStayAllowlisted`
 - `TestSDSClientManagementClientImportsStayAllowlisted`
+- `TestSheinLoginBootstrapManagementClientImportsStayAllowlisted`
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestPublishingSheinOpenAIImportsStayAllowlisted`
 - `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted`
