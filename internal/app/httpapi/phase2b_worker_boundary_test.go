@@ -82,6 +82,25 @@ func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
 	}
 }
 
+func TestLegacyBuildHandlersUsesRouteHandlerAliases(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("handlers_legacy.go")
+	require.NoError(t, err)
+	content := string(src)
+
+	for _, marker := range []string{
+		"productenrich.ProductHandler",
+		"productimagehttpapi.RouteHandler",
+		`"task-processor/internal/productenrich"`,
+		`"task-processor/internal/productimage/httpapi"`,
+	} {
+		require.NotContains(t, content, marker)
+	}
+
+	require.Contains(t, content, "func BuildHandlers(logger *logrus.Logger, options Options) (productRouteHandler, imageRouteHandler, []worker.WorkerPool, []func() error, error)")
+}
+
 func TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport(t *testing.T) {
 	t.Parallel()
 

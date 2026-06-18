@@ -39,13 +39,19 @@ func TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade(t *testing.T) {
 	for _, marker := range []string{
 		"func BuildHandlers(",
 		`"task-processor/internal/infra/worker"`,
+		"productRouteHandler",
+		"imageRouteHandler",
+		"[]worker.WorkerPool",
+	} {
+		require.Contains(t, facadeContent, marker)
+	}
+	for _, marker := range []string{
 		`"task-processor/internal/productenrich"`,
 		`"task-processor/internal/productimage/httpapi"`,
 		"productenrich.ProductHandler",
 		"productimagehttpapi.RouteHandler",
-		"[]worker.WorkerPool",
 	} {
-		require.Contains(t, facadeContent, marker)
+		require.NotContains(t, facadeContent, marker)
 	}
 }
 

@@ -158,6 +158,8 @@
 `internal/app/httpapi/modules.go` 现在应该保持“薄委托”，而不是再重新长成一个集中式 God file。
 Legacy `BuildHandlers(...)` facade 应放在 `handlers_legacy.go`，避免 `modules.go`
 为了兼容出口重新携带 handler / worker 具体类型依赖。
+Legacy facade 的 handler 返回类型也应使用 `route_handler_types.go` 中的本包 alias，
+避免兼容出口重新直接暴露业务 handler concrete type。
 
 `internal/app/httpapi/types.go` 应保持为 runtime state / module state 类型定义文件。
 `httpFeatureComposition` 的 runtime module、route module、handler accessor 和 server
@@ -260,6 +262,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestAppHTTPAPIListingKitRootImportsStayAllowlisted`
 - `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
 - `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
+- `TestLegacyBuildHandlersUsesRouteHandlerAliases`
 - `TestHTTPAPICompositionBuilderDoesNotOwnFeatureModuleBuilderContracts`
 - `TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods`
 - `TestHTTPAPITypesDoesNotOwnRouteHandlerContracts`
