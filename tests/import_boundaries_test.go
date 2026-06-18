@@ -764,6 +764,30 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestListingKitHTTPAPIManagementClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit", "httpapi")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "shein_sync_runtime_strategy_helpers.go")): {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep listingkit/httpapi management dependencies limited to current retirement seams and prefer in-repository database/repository access for new business data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedFiles := map[string]struct{}{
