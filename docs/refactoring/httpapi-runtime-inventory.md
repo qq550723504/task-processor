@@ -45,7 +45,7 @@ Current package shape: 67 non-test Go files.
 | Runtime support contract | `adapter construction` | `runtime_support.go`, `runtime_support_hooks.go`, `runtime_support_recovery.go`, `runtime_support_repositories.go`, `runtime_support_store_catalog.go`, `runtime_support_submit_prep.go` | Feature-owned runtime support construction and prerequisite setup. Keep as adapter reporting and boot-time wiring. |
 | SHEIN runtime support | `adapter construction` | `runtime_support_shein.go`, `runtime_support_shein_adapter_helpers.go`, `runtime_support_shein_factories.go` | Runtime resolver/bridge builders, tenant/cookie/store config adapters, and SHEIN API factory binding. |
 | Settings health | `adapter construction` | `settings_health_probes.go` | Runtime capability probe construction from config and submit-module availability; not business readiness policy. |
-| SHEIN sync runtime | `adapter construction` | `shein_sync_runtime.go`, `shein_sync_runtime_bridge_helpers.go`, `shein_sync_runtime_strategy_helpers.go` | SHEIN sync service construction, bridge shaping, and management strategy-provider construction. |
+| SHEIN sync runtime | `adapter construction` | `shein_sync_runtime.go`, `shein_sync_runtime_bridge_helpers.go`, `shein_sync_runtime_strategy_helpers.go` | SHEIN sync service construction, bridge factory/shaping helpers, and management strategy-provider construction. |
 | AI clients | `adapter construction` | `ai_clients.go`, `ai_client_builders.go`, `ai_client_fallback_helpers.go`, `ai_client_image_routing.go`, `ai_client_strict_chat.go`, `ai_client_strict_image.go` | ListingKit AI client entrypoints, strict client builders, routing, strict wrappers, timeout/fallback shaping, and cache construction. |
 | ZITADEL auth | `adapter construction` | `zitadel_auth.go`, `zitadel_auth_middleware.go`, `zitadel_auth_parsing_helpers.go`, `zitadel_auth_route_authorization.go`, `zitadel_auth_runtime.go` | Runtime auth/authz middleware construction, route authorization wiring, and role/allowlist parsing helpers. |
 
@@ -58,7 +58,7 @@ Current package shape: 67 non-test Go files.
 Why it stands out:
 
 - it is still mostly adapter assembly,
-- the remaining bridge shaping has already been narrowed into a dedicated helper file,
+- the remaining bridge shaping and bridge-factory construction have already been narrowed into a dedicated helper file,
 - management strategy-provider construction has also been split into its own helper file,
 - if more branching lands there, it could become the next mixed runtime hotspot.
 

@@ -23,10 +23,7 @@ func buildSheinSyncRuntimeServices(input BuildServiceInput, repositories *builtR
 	if err != nil {
 		return sheinSyncRuntimeServices{}, err
 	}
-	bridgeFactory := sheinPromotionBridgeRuntimeFactory{
-		storeCatalog: sheinManagementStoreCatalog{repo: repositories.storeRepository},
-		apiFactory:   input.Hooks.SheinAPIClientFactoryBuilder(repositories.storeRepository),
-	}
+	bridgeFactory := buildSheinPromotionBridgeRuntimeFactory(input, repositories)
 	enrollmentAdapter := listingkit.NewSheinActivityAdapterWithFactory(strategyProvider, bridgeFactory)
 	enrollmentService := listingkit.NewSheinEnrollmentService(repositories.sheinSyncRepository, enrollmentAdapter)
 

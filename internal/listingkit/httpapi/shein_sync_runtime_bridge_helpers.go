@@ -15,6 +15,13 @@ type sheinPromotionBridgeRuntimeFactory struct {
 	apiFactory   listingkit.SheinAPIClientFactory
 }
 
+func buildSheinPromotionBridgeRuntimeFactory(input BuildServiceInput, repositories *builtRepositories) sheinPromotionBridgeRuntimeFactory {
+	return sheinPromotionBridgeRuntimeFactory{
+		storeCatalog: sheinManagementStoreCatalog{repo: repositories.storeRepository},
+		apiFactory:   input.Hooks.SheinAPIClientFactoryBuilder(repositories.storeRepository),
+	}
+}
+
 func (f sheinPromotionBridgeRuntimeFactory) BuildPromotionBridge(ctx context.Context, storeID int64) (activity.PromotionRegistrationBridge, error) {
 	if f.storeCatalog == nil {
 		return nil, fmt.Errorf("SHEIN store catalog is not configured")
