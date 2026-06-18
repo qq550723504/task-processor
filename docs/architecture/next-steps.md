@@ -139,6 +139,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints` 禁止本地产物或调试文件进入生产入口目录
 - `TestProductionEntrypointsContainNoLocalArtifacts` 禁止未跟踪或被忽略的本地 `logs` / `tmp` / `__debug_bin*` 产物留在 `cmd/` 生产入口目录
 - `TestTrackedLocalArtifactsStayOutOfTools` 禁止本地产物或一次性调试文件进入长期维护的 `tools/` 目录
+- `TestToolsContainNoLocalArtifacts` 禁止未跟踪、被忽略或输出型 `node_modules` / `.exe` / `result` 产物留在长期维护的 `tools/` 目录
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly` 禁止业务实现包新增直接 `gin` 依赖，当前历史 handler 例外必须显式登记
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly` 禁止业务域新增对 `internal/app/{bootstrap,consumer,runner,runtime}` 的具体装配依赖，当前 `listingkit/httpapi` 过渡适配例外必须显式登记
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages` 禁止 `internal/platforms/*` 新增业务域或 HTTP 装配依赖，保持平台注册层只做注册/选择/委托

@@ -17,6 +17,7 @@
 - `tools/`
   - 放长期维护的小工具模块。
   - 适合独立可复用的开发工具，不适合一次性验证程序。
+  - 不放 `node_modules`、生成的 `.exe`、`result` 输出目录等本地产物；依赖和输出应保持可重建。
 - `scripts/`
   - 放运维脚本、迁移脚本、部署脚本和一次性自动化脚本。
 - `.local/`
@@ -35,6 +36,7 @@
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
 - `TestProductionEntrypointsContainNoLocalArtifacts`
 - `TestTrackedLocalArtifactsStayOutOfTools`
+- `TestToolsContainNoLocalArtifacts`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 

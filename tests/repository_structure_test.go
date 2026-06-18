@@ -61,6 +61,10 @@ func TestTrackedLocalArtifactsStayOutOfTools(t *testing.T) {
 	assertNoTrackedLocalArtifacts(t, "tools")
 }
 
+func TestToolsContainNoLocalArtifacts(t *testing.T) {
+	assertNoLocalArtifactPaths(t, filepath.Join("..", "tools"))
+}
+
 func TestPlatformRegistrationPackagesStayThin(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		"internal/platforms/modules.go":           {},
@@ -133,8 +137,11 @@ func containsLocalArtifactPathPart(path string) bool {
 		if strings.HasPrefix(part, "__debug_bin") {
 			return true
 		}
+		if strings.HasSuffix(strings.ToLower(part), ".exe") {
+			return true
+		}
 		switch part {
-		case "logs", "tmp", "bin", "dev-logs", "playwright-cli":
+		case "logs", "tmp", "bin", "dev-logs", "playwright-cli", "node_modules", "result":
 			return true
 		}
 	}

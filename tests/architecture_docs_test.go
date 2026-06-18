@@ -195,6 +195,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestTrackedLocalArtifactsStayOutOfProductionEntrypoints",
 		"TestProductionEntrypointsContainNoLocalArtifacts",
 		"TestTrackedLocalArtifactsStayOutOfTools",
+		"TestToolsContainNoLocalArtifacts",
 		"TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer",
 		"TestInternalPackagesDoNotImportAppStateCompatibilityLayer",
 		"TestAppStateCompatibilityLayerIsRetired",
@@ -630,6 +631,7 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 		"TestTrackedLocalArtifactsStayOutOfProductionEntrypoints",
 		"TestProductionEntrypointsContainNoLocalArtifacts",
 		"TestTrackedLocalArtifactsStayOutOfTools",
+		"TestToolsContainNoLocalArtifacts",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 		"TestBusinessDomainsDoNotImportAppRuntimeAssembly",
 		"TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages",
@@ -1271,6 +1273,7 @@ func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 		"TestTrackedLocalArtifactsStayOutOfProductionEntrypoints",
 		"TestProductionEntrypointsContainNoLocalArtifacts",
 		"TestTrackedLocalArtifactsStayOutOfTools",
+		"TestToolsContainNoLocalArtifacts",
 		"TestPlatformRegistrationPackagesStayThin",
 		"TestPlatformRegistrationPackagesContainNoLocalArtifacts",
 	}
