@@ -96,6 +96,34 @@ func TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated(t *testing.T) {
+	adaptersSource := readHTTPAPIBoundaryFile(t, "adapters.go")
+	for _, marker := range []string{
+		`"task-processor/internal/app/bootstrap/resources"`,
+		`"task-processor/internal/prompt"`,
+		"func newDBTenantPromptStore(",
+		"prompt.NewGormTenantPromptStore(",
+		"bootstrapresources.NewDBTenantPromptStore(",
+	} {
+		if strings.Contains(adaptersSource, marker) {
+			t.Fatalf("adapters.go should keep tenant prompt store adapter assembly in adapters_prompt.go; found %s", marker)
+		}
+	}
+
+	promptAdaptersSource := readHTTPAPIBoundaryFile(t, "adapters_prompt.go")
+	for _, marker := range []string{
+		`"task-processor/internal/app/bootstrap/resources"`,
+		`"task-processor/internal/prompt"`,
+		"func newDBTenantPromptStore(",
+		"prompt.NewGormTenantPromptStore(",
+		"bootstrapresources.NewDBTenantPromptStore(",
+	} {
+		if !strings.Contains(promptAdaptersSource, marker) {
+			t.Fatalf("adapters_prompt.go missing %s", marker)
+		}
+	}
+}
+
 func readHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)
