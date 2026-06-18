@@ -2,17 +2,13 @@ package httpapi
 
 import (
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/sirupsen/logrus"
-	"gorm.io/gorm"
 
 	"task-processor/internal/amazonlisting"
 	amazonlistingstore "task-processor/internal/amazonlisting/store"
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/infra/redisclient"
 	"task-processor/internal/infra/worker"
@@ -23,75 +19,6 @@ import (
 	productimagestore "task-processor/internal/productimage/store"
 	"task-processor/internal/prompt"
 )
-
-func shouldAutoMigrateProductListingAPIRuntime() bool {
-	raw := strings.TrimSpace(os.Getenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE"))
-	if raw == "" {
-		return true
-	}
-	switch strings.ToLower(raw) {
-	case "0", "false", "no", "n", "off", "disabled":
-		return false
-	default:
-		return true
-	}
-}
-
-func AutoMigrateProductListingAPIRuntimeSchema(db *gorm.DB) error {
-	if db == nil {
-		return fmt.Errorf("database is nil")
-	}
-	if err := db.AutoMigrate(&openaiclient.AIClientCredential{}); err != nil {
-		return fmt.Errorf("openai credential auto-migrate failed: %w", err)
-	}
-	if err := db.AutoMigrate(&prompt.TenantPromptTemplate{}); err != nil {
-		return fmt.Errorf("tenant prompt auto-migrate failed: %w", err)
-	}
-	if err := db.AutoMigrate(&productenrich.Task{}); err != nil {
-		return fmt.Errorf("productenrich auto-migrate failed: %w", err)
-	}
-	if err := db.AutoMigrate(&productimage.Task{}); err != nil {
-		return fmt.Errorf("productimage auto-migrate failed: %w", err)
-	}
-	if err := db.AutoMigrate(&amazonlisting.Task{}); err != nil {
-		return fmt.Errorf("amazonlisting auto-migrate failed: %w", err)
-	}
-	return nil
-}
-
-func newLLMManager(cfg config.OpenAIConfig) (productenrich.LLMManager, error) {
-	manager, err := newOpenAIManager(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return productenrich.NewLLMManagerAdapterFromManager(manager)
-}
-
-func newOpenAIManager(cfg config.OpenAIConfig) (*openaiclient.Manager, error) {
-	return openaiclient.NewManager(&openaiclient.ManagerConfig{
-		Clients:       cfg.ToClientConfigs(),
-		DefaultClient: "default",
-	})
-}
-
-func newDBOpenAICredentialResolver(cfg *config.DatabaseConfig, logger *logrus.Logger) (*openaiclient.GormCredentialResolver, func() error, error) {
-	if cfg == nil {
-		return nil, nil, fmt.Errorf("database config is nil")
-	}
-	db, err := database.NewSharedDatabaseFromConfig(cfg)
-	if err != nil {
-		return nil, nil, fmt.Errorf("database connection failed(%s:%d/%s): %w", cfg.Host, cfg.Port, cfg.Database, err)
-	}
-	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
-	if shouldAutoMigrateProductListingAPIRuntime() {
-		if err := db.AutoMigrate(&openaiclient.AIClientCredential{}); err != nil {
-			return nil, nil, fmt.Errorf("openai credential auto-migrate failed: %w", err)
-		}
-	}
-	resolver := openaiclient.NewGormCredentialResolver(db)
-	closer := func() error { return database.CloseSharedDatabase(cfg, db) }
-	return resolver, closer, nil
-}
 
 func newDBTenantPromptStore(cfg *config.DatabaseConfig, logger *logrus.Logger) (prompt.TenantPromptStore, func() error, error) {
 	if !shouldAutoMigrateProductListingAPIRuntime() {
