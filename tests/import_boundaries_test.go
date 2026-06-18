@@ -150,7 +150,7 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 			filepath.Clean(filepath.Join(root, "category_legacy_selector_adapter.go")): {},
 		},
 		`"task-processor/internal/shein/submitprep"`: {
-			filepath.Clean(filepath.Join(root, "submit_prep.go")): {},
+			filepath.Clean(filepath.Join(root, "submit_prep_sensitive_adapter.go")): {},
 		},
 		`"task-processor/internal/shein/publish"`: {},
 	}
