@@ -165,6 +165,8 @@ bundle 组装方法应放在 `composition_modules.go`，route handler contract /
 closer 和 module attach 方法应放在 `runtime_deps_methods.go`。
 Prompt registry 初始化和 tenant prompt store attach 流程应放在 `runtime_prompt.go`，
 避免 `runtime.go` 直接承载 prompt runtime 细节。
+ProductEnrich 的 LLM manager、mock LLM 校验、product understanding 和 input parser
+初始化应放在 `runtime_productenrich.go`，让 `runtime.go` 保持顶层运行时编排。
 
 `internal/app/httpapi/adapters.go` 不应重新长成所有基础设施 adapter 的集中入口。
 OpenAI manager / credential resolver 组装应放在 `adapters_openai.go`，schema migration
@@ -206,6 +208,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPITypesDoesNotOwnRouteHandlerContracts`
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
 - `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated`
 - `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated`

@@ -186,6 +186,35 @@ func TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated(t *testing.T) {
+	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
+	for _, marker := range []string{
+		"productenrich.NewLLMManagerAdapterFromManager(",
+		"productenrich.NewLocalMockLLMManager(",
+		"productenrich.ValidateMockLLMManager(",
+		"productenrichenrich.NewProductUnderstanding(",
+		"productenrichenrich.NewInputParser(",
+	} {
+		if strings.Contains(runtimeSource, marker) {
+			t.Fatalf("runtime.go should keep ProductEnrich runtime assembly in runtime_productenrich.go; found %s", marker)
+		}
+	}
+
+	productEnrichRuntimeSource := readHTTPAPIBoundaryFile(t, "runtime_productenrich.go")
+	for _, marker := range []string{
+		"func buildProductEnrichRuntimeDeps(",
+		"productenrich.NewLLMManagerAdapterFromManager(",
+		"productenrich.NewLocalMockLLMManager(",
+		"productenrich.ValidateMockLLMManager(",
+		"productenrichenrich.NewProductUnderstanding(",
+		"productenrichenrich.NewInputParser(",
+	} {
+		if !strings.Contains(productEnrichRuntimeSource, marker) {
+			t.Fatalf("runtime_productenrich.go missing %s", marker)
+		}
+	}
+}
+
 func readHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)

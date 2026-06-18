@@ -9,8 +9,6 @@ import (
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
-	"task-processor/internal/productenrich"
-	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/prompt"
 )
 
@@ -73,35 +71,11 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 			closers = append(closers, closer)
 		}
 	}
-	done = timer.phase("createLLMManager")
-	llmMgr, err := productenrich.NewLLMManagerAdapterFromManager(openaiMgr)
+	done = timer.phase("buildProductEnrichRuntimeDeps")
+	productEnrichDeps, err := buildProductEnrichRuntimeDeps(logger, cfg, openaiMgr)
 	done()
 	if err != nil {
-		return nil, fmt.Errorf("create LLM manager: %w", err)
-	}
-	if cfg.Debug.ProductEnrichMockLLM {
-		logger.WithField("config", "debug.productEnrichMockLLM").Warn("productenrich mock LLM enabled for local runtime")
-		llmMgr = productenrich.NewLocalMockLLMManager()
-	}
-	if err := productenrich.ValidateMockLLMManager(llmMgr); err != nil {
-		return nil, fmt.Errorf("validate LLM manager: %w", err)
-	}
-
-	done = timer.phase("createProductUnderstanding")
-	productUnderstanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)
-	done()
-	if err != nil {
-		return nil, fmt.Errorf("create product understanding: %w", err)
-	}
-
-	done = timer.phase("createWebScraper")
-	webScraper := newWebScraper(cfg)
-	done()
-	done = timer.phase("createInputParser")
-	inputParser, err := productenrichenrich.NewInputParser(logger, &productenrich.InputParserConfig{}, webScraper)
-	done()
-	if err != nil {
-		return nil, fmt.Errorf("create input parser: %w", err)
+		return nil, err
 	}
 
 	done = timer.phase("buildSharedResources")
@@ -122,9 +96,9 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 			openaiMgr:         openaiMgr,
 			aiCredentialStore: aiCredentialStore,
 			tenantPromptStore: tenantPromptStore,
-			llmMgr:            llmMgr,
-			inputParser:       inputParser,
-			understanding:     productUnderstanding,
+			llmMgr:            productEnrichDeps.llmMgr,
+			inputParser:       productEnrichDeps.inputParser,
+			understanding:     productEnrichDeps.understanding,
 			imageWorkDir:      imageWorkDir,
 			sharedResources:   shared,
 		},
