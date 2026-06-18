@@ -80,6 +80,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
 - `TestPublishingSheinNonAPISheinImportsStayAllowlisted`
+- `TestPublishingSheinManagedAPIImportsStayAllowlisted`
 - `TestPublishingCommonUsesCanonicalPackage`
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestCmdContainsOnlyOfficialEntrypoints`
