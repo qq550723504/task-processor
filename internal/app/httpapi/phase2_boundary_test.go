@@ -16,6 +16,35 @@ func TestHTTPAPIModulesFileDoesNotOwnFeatureBuildWrappers(t *testing.T) {
 	require.NotContains(t, string(src), "func buildListingKitModule(")
 }
 
+func TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration(t *testing.T) {
+	modulesSrc, err := os.ReadFile("modules.go")
+	require.NoError(t, err)
+	modulesContent := string(modulesSrc)
+
+	for _, marker := range []string{
+		"func buildBootstrap(",
+		"buildRuntimeDeps(",
+		"configureSheinLoginAccount(",
+		"newHTTPFeatureCompositionBuilder().build(",
+		"runtimeBundle.buildServerBundle(",
+	} {
+		require.NotContains(t, modulesContent, marker)
+	}
+
+	bootstrapSrc, err := os.ReadFile("bootstrap.go")
+	require.NoError(t, err)
+	bootstrapContent := string(bootstrapSrc)
+	for _, marker := range []string{
+		"func buildBootstrap(",
+		"buildRuntimeDeps(",
+		"configureSheinLoginAccount(",
+		"newHTTPFeatureCompositionBuilder().build(",
+		"runtimeBundle.buildServerBundle(",
+	} {
+		require.Contains(t, bootstrapContent, marker)
+	}
+}
+
 func TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade(t *testing.T) {
 	modulesSrc, err := os.ReadFile("modules.go")
 	require.NoError(t, err)

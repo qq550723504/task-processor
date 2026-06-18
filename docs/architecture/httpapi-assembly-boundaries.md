@@ -156,6 +156,8 @@
 - `listingkit` builder 在 `internal/listingkit/httpapi`
 
 `internal/app/httpapi/modules.go` 现在应该保持“薄委托”，而不是再重新长成一个集中式 God file。
+`buildBootstrap(...)` 这类 app 启动编排应放在 `bootstrap.go`，避免 `modules.go`
+继续以历史文件名承载 bootstrap orchestration。
 Legacy `BuildHandlers(...)` facade 应放在 `handlers_legacy.go`，避免 `modules.go`
 为了兼容出口重新携带 handler / worker 具体类型依赖。
 Legacy facade 的 handler 返回类型也应使用 `route_handler_types.go` 中的本包 alias，
@@ -268,6 +270,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted`
 - `TestAppHTTPAPIListingKitRootImportsStayAllowlisted`
 - `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
+- `TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration`
 - `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
 - `TestLegacyBuildHandlersUsesRouteHandlerAliases`
 - `TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers`
