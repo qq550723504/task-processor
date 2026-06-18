@@ -1,6 +1,8 @@
 package product
 
 import (
+	"strings"
+
 	shein "task-processor/internal/shein"
 	productapi "task-processor/internal/shein/api/product"
 )
@@ -16,6 +18,12 @@ func (h *InitProductDataHandler) Name() string {
 }
 
 func (h *InitProductDataHandler) Handle(ctx *shein.TaskContext) error {
-	ctx.SetProductData(&productapi.Product{})
+	productData := &productapi.Product{}
+	if ctx != nil && ctx.AuthorizedBrand != nil {
+		if code := strings.TrimSpace(ctx.AuthorizedBrand.Code); code != "" {
+			productData.BrandCode = &code
+		}
+	}
+	ctx.SetProductData(productData)
 	return nil
 }

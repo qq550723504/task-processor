@@ -88,7 +88,7 @@ func (m *AttributeMapper) mapSingleAttributeValues(ctx *sheinctx.TaskContext, ru
 
 	for i := 0; i < len(attr.AttrValue); i++ {
 		attrValue := &attr.AttrValue[i]
-		if attrValue.ID.Int() > 0 {
+		if attrValue.ID.Int() > 0 && !shouldRemapSizeLikeAttributeValue(attrInfo) {
 			continue
 		}
 
@@ -167,6 +167,10 @@ func (m *AttributeMapper) mapSingleAttributeValues(ctx *sheinctx.TaskContext, ru
 	}
 
 	return relations, nil
+}
+
+func shouldRemapSizeLikeAttributeValue(attrInfo *attribute.AttributeInfo) bool {
+	return isSizeLikeAttribute(attrInfo)
 }
 
 func (m *AttributeMapper) selectFallbackPlatformValues(attrInfo *attribute.AttributeInfo, runtime *MapperRuntimeInput, valueDomain platformValueDomain, rawValue string, platformValues map[string]int) map[string]int {

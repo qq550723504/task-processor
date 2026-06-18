@@ -42,6 +42,7 @@ var (
 	sizeTokenOnlyPattern  = regexp.MustCompile(`^\s*(?:us|uk|eu|eur|br|cn)?\s*\d+(?:\.\d+)?(?:\s*(?:w|ww|xw|x[\s-]*wide|wide|narrow|medium|m))?(?:\s*us)?\s*$`)
 	widthCompactWPattern  = regexp.MustCompile(`\d(?:\.\d+)?\s*w$`)
 	widthCompactWWPattern = regexp.MustCompile(`\d(?:\.\d+)?\s*ww$`)
+	sizeRangePattern      = regexp.MustCompile(`\d+(?:\.\d+)?\s*-\s*\d+(?:\.\d+)?`)
 )
 
 func ParseShoeSize(raw string) ShoeSize {
@@ -51,6 +52,9 @@ func ParseShoeSize(raw string) ShoeSize {
 	}
 
 	normalized := strings.ToLower(strings.Join(strings.Fields(trimmed), " "))
+	if sizeRangePattern.MatchString(normalized) {
+		return ShoeSize{Raw: raw, System: SystemUnknown, Width: WidthUnknown}
+	}
 	base := extractBaseSize(normalized)
 	if base == "" {
 		return ShoeSize{Raw: raw, System: SystemUnknown, Width: WidthUnknown}

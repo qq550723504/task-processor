@@ -16,6 +16,7 @@ func TestParseShoeSize(t *testing.T) {
 		{name: "us_xwide_words", raw: "US 7 X-Wide", wantBase: "7", wantSystem: SystemUS, wantWidth: WidthXWide, wantShoe: true},
 		{name: "brand_us_style", raw: "7.5 B(M) US", wantBase: "7.5", wantSystem: SystemUS, wantWidth: WidthRegular, wantShoe: true},
 		{name: "eu_value", raw: "EU 40", wantBase: "40", wantSystem: SystemEU, wantWidth: WidthRegular, wantShoe: true},
+		{name: "range_value_is_not_single_size", raw: "US7-8", wantBase: "", wantSystem: SystemUnknown, wantWidth: WidthUnknown, wantShoe: false},
 		{name: "non_size_text", raw: "Light Pink", wantBase: "", wantSystem: SystemUnknown, wantWidth: WidthUnknown, wantShoe: false},
 	}
 

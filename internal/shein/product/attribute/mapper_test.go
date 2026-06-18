@@ -926,3 +926,110 @@ func TestMapSingleAttributeValues_FallsBackWhenStructuredShoeSizeCannotResolveUn
 		t.Fatalf("mapped ID = %d, want 2240", got)
 	}
 }
+
+func TestMapSingleAttributeValues_ResolvesSingleSizeOverRangeCandidateBeforeFallback(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "US8",
+			Confidence:    0.95,
+			Reason:        "should not be used when single-size candidate exists",
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    stubCustomAttributeValueProcessor{},
+	}
+
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "8"},
+		},
+	}
+
+	runtime := &MapperRuntimeInput{
+		CategoryID:   8838,
+		ProductTitle: "Skechers Women's Go Walk 5 Walking Shoes",
+		AmazonProduct: &model.Product{
+			Title: "Skechers Women's Go Walk 5 Walking Shoes",
+			SizeChart: &model.SizeChart{
+				Headers: []string{"US Size", "UK Size", "EU Size"},
+				Rows: [][]string{
+					{"8", "5", "38"},
+				},
+			},
+		},
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{{
+				AttributeInfos: []sheinapi.AttributeInfo{{
+					AttributeID:   87,
+					AttributeName: "Size",
+					AttributeType: 2,
+					AttributeValueInfoList: []sheinapi.AttributeValue{
+						{AttributeValueID: 8001, AttributeValue: "US8"},
+						{AttributeValueID: 8002, AttributeValue: "US8-9"},
+						{AttributeValueID: 8003, AttributeValue: "US8W"},
+					},
+				}},
+			}},
+		},
+		FallbackValueResolver: fallback,
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, runtime, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 0 {
+		t.Fatalf("fallback call count = %d, want 0", fallback.callCount)
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != 8001 {
+		t.Fatalf("mapped ID = %d, want 8001", got)
+	}
+}
+
+func TestMapSingleAttributeValues_RemapSizeLikeValueEvenWhenInitialIDIsPositive(t *testing.T) {
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    stubCustomAttributeValueProcessor{},
+	}
+
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: 710, Value: "10.5"},
+		},
+	}
+
+	runtime := &MapperRuntimeInput{
+		CategoryID:   8838,
+		ProductTitle: "Skechers Women's Go Walk 5 Walking Shoes",
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{{
+				AttributeInfos: []sheinapi.AttributeInfo{{
+					AttributeID:   87,
+					AttributeName: "Size",
+					AttributeType: 2,
+					AttributeValueInfoList: []sheinapi.AttributeValue{
+						{AttributeValueID: 710, AttributeValue: "7"},
+						{AttributeValueID: 1355, AttributeValue: "10.5"},
+					},
+				}},
+			}},
+		},
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, runtime, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != 1355 {
+		t.Fatalf("mapped ID = %d, want 1355", got)
+	}
+}

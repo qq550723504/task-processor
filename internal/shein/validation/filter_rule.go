@@ -1,6 +1,9 @@
 package validation
 
-import "task-processor/internal/shein"
+import (
+	"task-processor/internal/core/logger"
+	"task-processor/internal/shein"
+)
 
 // ApplyFilterRuleHandler 应用筛选规则处理器
 // 作用对象：主产品（ctx.AmazonProduct）
@@ -35,9 +38,11 @@ func (h *ApplyFilterRuleHandler) Handle(ctx *shein.TaskContext) error {
 	}
 
 	// 校验库存
-	inventory := h.ruleChecker.getInventory(ctx.AmazonProduct)
-	if err := h.ruleChecker.CheckInventory(filterRule, inventory); err != nil {
-		return err
+	if !shouldDeferInventoryFilter(ctx) {
+		inventory := h.ruleChecker.getInventory(ctx.AmazonProduct)
+		if err := h.ruleChecker.CheckInventory(filterRule, inventory); err != nil {
+			return err
+		}
 	}
 
 	// 校验发货时效
@@ -62,4 +67,21 @@ func (h *ApplyFilterRuleHandler) Handle(ctx *shein.TaskContext) error {
 	}
 
 	return nil
+}
+
+func shouldDeferInventoryFilter(ctx *shein.TaskContext) bool {
+	if ctx == nil || ctx.AmazonProduct == nil {
+		return false
+	}
+
+	if len(ctx.AmazonProduct.Variations) == 0 {
+		return false
+	}
+
+	logger.GetGlobalLogger("shein/validation").Infof(
+		"defer inventory filter to variant stage: asin=%s variation_count=%d",
+		ctx.AmazonProduct.Asin,
+		len(ctx.AmazonProduct.Variations),
+	)
+	return true
 }
