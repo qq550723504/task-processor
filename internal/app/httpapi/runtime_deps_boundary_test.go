@@ -244,6 +244,36 @@ func TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated(t *testing.T) {
+	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
+	for _, marker := range []string{
+		`"task-processor/internal/infra/clients/openai"`,
+		"newOpenAIManager(",
+		"newDBOpenAICredentialResolver(",
+		"SetConfigResolver(",
+		"*openaiclient.GormCredentialResolver",
+	} {
+		if strings.Contains(runtimeSource, marker) {
+			t.Fatalf("runtime.go should keep OpenAI runtime assembly in runtime_openai.go; found %s", marker)
+		}
+	}
+
+	openAIRuntimeSource := readHTTPAPIBoundaryFile(t, "runtime_openai.go")
+	for _, marker := range []string{
+		`"task-processor/internal/infra/clients/openai"`,
+		"type openAIRuntimeDeps struct",
+		"func buildOpenAIRuntimeDeps(",
+		"newOpenAIManager(",
+		"newDBOpenAICredentialResolver(",
+		"SetConfigResolver(",
+		"*openaiclient.GormCredentialResolver",
+	} {
+		if !strings.Contains(openAIRuntimeSource, marker) {
+			t.Fatalf("runtime_openai.go missing %s", marker)
+		}
+	}
+}
+
 func readHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)

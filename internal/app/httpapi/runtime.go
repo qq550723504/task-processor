@@ -7,7 +7,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/prompt"
 )
 
@@ -29,14 +28,13 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	initPromptRegistry(cfg, logger)
 	done()
 
-	done = timer.phase("createOpenAIManager")
-	openaiMgr, err := newOpenAIManager(cfg.OpenAI)
+	done = timer.phase("buildOpenAIRuntimeDeps")
+	openaiDeps, err := buildOpenAIRuntimeDeps(cfg, logger)
 	done()
 	if err != nil {
-		return nil, fmt.Errorf("create OpenAI manager: %w", err)
+		return nil, err
 	}
-	closers := make([]func() error, 0)
-	var aiCredentialStore *openaiclient.GormCredentialResolver
+	closers := openaiDeps.closers
 	var tenantPromptStore prompt.TenantPromptStore
 	if cfg.Database != nil {
 		var closer func() error
@@ -55,23 +53,9 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		if closer != nil {
 			closers = append(closers, closer)
 		}
-
-		done = timer.phase("initOpenAICredentialResolver")
-		credentialResolver, closer, err := newDBOpenAICredentialResolver(cfg.Database, logger)
-		done()
-		if err != nil {
-			return nil, fmt.Errorf("create OpenAI credential resolver: %w", err)
-		}
-		aiCredentialStore = credentialResolver
-		done = timer.phase("attachOpenAICredentialResolver")
-		openaiMgr.SetConfigResolver(credentialResolver)
-		done()
-		if closer != nil {
-			closers = append(closers, closer)
-		}
 	}
 	done = timer.phase("buildProductEnrichRuntimeDeps")
-	productEnrichDeps, err := buildProductEnrichRuntimeDeps(logger, cfg, openaiMgr)
+	productEnrichDeps, err := buildProductEnrichRuntimeDeps(logger, cfg, openaiDeps.openaiMgr)
 	done()
 	if err != nil {
 		return nil, err
@@ -89,8 +73,8 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		shared: &sharedRuntimeDeps{
 			cfg:               cfg,
 			closers:           closers,
-			openaiMgr:         openaiMgr,
-			aiCredentialStore: aiCredentialStore,
+			openaiMgr:         openaiDeps.openaiMgr,
+			aiCredentialStore: openaiDeps.aiCredentialStore,
 			tenantPromptStore: tenantPromptStore,
 			llmMgr:            productEnrichDeps.llmMgr,
 			inputParser:       productEnrichDeps.inputParser,

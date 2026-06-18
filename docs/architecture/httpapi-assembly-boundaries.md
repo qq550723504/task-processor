@@ -169,6 +169,8 @@ ProductEnrich 的 LLM manager、mock LLM 校验、product understanding 和 inpu
 初始化应放在 `runtime_productenrich.go`，让 `runtime.go` 保持顶层运行时编排。
 Shared resources 的 app bootstrap 调用和 `SharedResourceOptions` 应放在
 `runtime_shared_resources.go`，避免 `runtime.go` 重新承载基础设施装配选项。
+OpenAI manager 创建、DB credential resolver 挂载和相关 closer 收集应放在
+`runtime_openai.go`，避免 `runtime.go` 直接依赖具体 OpenAI client adapter 类型。
 
 `internal/app/httpapi/adapters.go` 不应重新长成所有基础设施 adapter 的集中入口。
 OpenAI manager / credential resolver 组装应放在 `adapters_openai.go`，schema migration
@@ -212,6 +214,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
 - `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated`
 - `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated`
