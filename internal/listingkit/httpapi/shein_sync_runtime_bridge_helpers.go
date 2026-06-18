@@ -22,6 +22,11 @@ func buildSheinPromotionBridgeRuntimeFactory(input BuildServiceInput, repositori
 	}
 }
 
+func buildSheinEnrollmentAdapter(input BuildServiceInput, repositories *builtRepositories, strategyProvider localManagementPromotionStrategyProvider) listingkit.SheinActivityAdapter {
+	bridgeFactory := buildSheinPromotionBridgeRuntimeFactory(input, repositories)
+	return listingkit.NewSheinActivityAdapterWithFactory(strategyProvider, bridgeFactory)
+}
+
 func (f sheinPromotionBridgeRuntimeFactory) BuildPromotionBridge(ctx context.Context, storeID int64) (activity.PromotionRegistrationBridge, error) {
 	if f.storeCatalog == nil {
 		return nil, fmt.Errorf("SHEIN store catalog is not configured")
