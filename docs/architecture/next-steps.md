@@ -160,6 +160,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestSheinManagementClientImportsStayAllowlisted` 禁止 `internal/shein` 新增未登记的 concrete `management` adapter 依赖，当前库存、调度、发布、校验、活动、映射和商品 seam 必须精确登记
 - `TestSheinOpenAIImportsStayAllowlisted` 禁止 `internal/shein` 新增未登记的 concrete `openai` adapter 依赖，当前类目、内容、pipeline、商品、submit-prep 和翻译 seam 必须精确登记
 - `TestAppTaskManagementClientImportsStayAllowlisted` 禁止 `internal/app/task` 新增未登记的 concrete `management` adapter 依赖，当前任务源、分发、claim 和 fetcher seam 只是 management 退休前过渡点
+- `TestAppRunnerManagementClientImportsStayAllowlisted` 禁止 `internal/app/runner` 新增未登记的 concrete `management` adapter 依赖，当前 scheduler、processor 和 health-check runtime seam 只是 management 退休前过渡点
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted` 禁止 `internal/app/httpapi` ProductImage 装配文件新增 concrete `openai` / `nanobanana` adapter 依赖，当前模型默认值/装配 seam 必须精确登记
 - `TestPublishingSheinOpenAIImportsStayAllowlisted` 禁止 `internal/publishing/shein` 新增 concrete `openai` adapter 依赖，当前属性/类目/文案 inference seam 必须精确登记
 - `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted` 禁止 `internal/listingkit/httpapi` 新增 concrete `openai` / `nanobanana` adapter 依赖，当前 AI runtime/bootstrap seam 必须精确登记

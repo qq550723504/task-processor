@@ -851,6 +851,37 @@ func TestAppTaskManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestAppRunnerManagementClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "runner")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "health_checks.go")):                  {},
+		filepath.Clean(filepath.Join(root, "processor_modules_test.go")):         {},
+		filepath.Clean(filepath.Join(root, "processor_service.go")):              {},
+		filepath.Clean(filepath.Join(root, "processor_service_impl.go")):         {},
+		filepath.Clean(filepath.Join(root, "scheduler_dependencies_builder.go")): {},
+		filepath.Clean(filepath.Join(root, "scheduler_service.go")):              {},
+		filepath.Clean(filepath.Join(root, "scheduler_task_starter.go")):         {},
+		filepath.Clean(filepath.Join(root, "scheduler_task_starter_test.go")):    {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep app/runner management dependencies limited to current runtime assembly retirement seams and prefer in-repository database/repository access for new runtime data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedFiles := map[string]struct{}{

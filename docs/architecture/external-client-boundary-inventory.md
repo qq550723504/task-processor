@@ -96,11 +96,16 @@ Current direct dependency hotspots are:
   - `internal/app/task` still imports `management` in task source, dispatch,
     claim, and fetcher seams; these are task-framework retirement seams and new
     task data access should move toward in-repository database/repository access
+  - `internal/app/runner` still imports `management` in scheduler, processor,
+    and health-check runtime assembly seams; these should stay narrow while
+    runtime data access moves toward in-repository database/repository access
   - ProductImage model/default provider assembly seams in `internal/app/httpapi`
     are guarded by
     `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
   - `internal/app/task` management retirement seams are guarded by
     `TestAppTaskManagementClientImportsStayAllowlisted`
+  - `internal/app/runner` management retirement seams are guarded by
+    `TestAppRunnerManagementClientImportsStayAllowlisted`
 - `internal/productimage`
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
@@ -186,7 +191,12 @@ adapter types without changing business behavior:
    allowlisted to freeze current task-framework seams; future task data access
    should prefer in-repository database/repository access rather than adding new
    management API call sites.
-11. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+11. App runner scheduler, processor, and health-check assembly seams currently
+   importing `internal/infra/clients/management`. Current imports are explicitly
+   allowlisted to freeze current runtime assembly seams; future runtime data
+   access should prefer in-repository database/repository access rather than
+   adding new management API call sites.
+12. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding
