@@ -53,6 +53,10 @@ func TestHackContainsOnlyManagedSupportAreas(t *testing.T) {
 	}
 }
 
+func TestHackSupportAreasContainNoLocalArtifacts(t *testing.T) {
+	assertNoLocalArtifactPaths(t, filepath.Join("..", "hack"))
+}
+
 func TestTrackedLocalArtifactsStayOutOfTools(t *testing.T) {
 	assertNoTrackedLocalArtifacts(t, "tools")
 }

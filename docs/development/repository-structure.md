@@ -13,6 +13,7 @@
 - `hack/`
   - 放调试、试验、验证程序。
   - `hack/debug` 是当前受管的非生产调试入口目录。
+  - 不放本地 `tmp`、`logs`、`bin` 等运行态产物；调试产物统一放到仓库根 `.local/`。
 - `tools/`
   - 放长期维护的小工具模块。
   - 适合独立可复用的开发工具，不适合一次性验证程序。
@@ -30,6 +31,7 @@
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
 - `TestHackContainsOnlyManagedSupportAreas`
+- `TestHackSupportAreasContainNoLocalArtifacts`
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
 - `TestProductionEntrypointsContainNoLocalArtifacts`
 - `TestTrackedLocalArtifactsStayOutOfTools`

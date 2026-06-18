@@ -90,6 +90,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
 - `TestHackContainsOnlyManagedSupportAreas`
+- `TestHackSupportAreasContainNoLocalArtifacts`
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
 - `TestProductionEntrypointsContainNoLocalArtifacts`
 - `TestTrackedLocalArtifactsStayOutOfTools`

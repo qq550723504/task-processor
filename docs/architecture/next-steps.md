@@ -135,6 +135,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestCmdContainsOnlyOfficialEntrypoints` 禁止 `cmd/` 新增临时或非正式入口，调试程序应放入受管 `hack/` 区域
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages` 禁止生产入口绕过 app 装配层直接依赖业务域或 infra 包
 - `TestHackContainsOnlyManagedSupportAreas` 禁止 `hack/` 继续扩散未登记的临时支持目录
+- `TestHackSupportAreasContainNoLocalArtifacts` 禁止未跟踪或被忽略的本地 `tmp` / `logs` / `bin` 产物留在 `hack/` 调试支持目录
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints` 禁止本地产物或调试文件进入生产入口目录
 - `TestProductionEntrypointsContainNoLocalArtifacts` 禁止未跟踪或被忽略的本地 `logs` / `tmp` / `__debug_bin*` 产物留在 `cmd/` 生产入口目录
 - `TestTrackedLocalArtifactsStayOutOfTools` 禁止本地产物或一次性调试文件进入长期维护的 `tools/` 目录
