@@ -88,6 +88,38 @@ func TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile(t *testing.T) {
 	}
 }
 
+func TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile(t *testing.T) {
+	bootstrapSource := readProductImageHTTPAPIBoundaryFile(t, "bootstrap.go")
+	for _, marker := range []string{
+		"func buildSubjectExtractor(",
+		"func buildWhiteBackgroundRenderer(",
+		"func buildSceneRenderer(",
+		"func resolveImagePipelineComponents(",
+		"productimage.HTTPSegmentationClientConfig{",
+		"productimage.HTTPWhiteBackgroundClientConfig{",
+		"productimage.NewModelSubjectExtractor(",
+	} {
+		if strings.Contains(bootstrapSource, marker) {
+			t.Fatalf("bootstrap.go should delegate ProductImage image pipeline component assembly to image_pipeline_component_builder.go; found %s", marker)
+		}
+	}
+
+	builderSource := readProductImageHTTPAPIBoundaryFile(t, "image_pipeline_component_builder.go")
+	for _, marker := range []string{
+		"func buildSubjectExtractor(",
+		"func buildWhiteBackgroundRenderer(",
+		"func buildSceneRenderer(",
+		"func resolveImagePipelineComponents(",
+		"productimage.HTTPSegmentationClientConfig{",
+		"productimage.HTTPWhiteBackgroundClientConfig{",
+		"productimage.NewModelSubjectExtractor(",
+	} {
+		if !strings.Contains(builderSource, marker) {
+			t.Fatalf("image_pipeline_component_builder.go missing %s", marker)
+		}
+	}
+}
+
 func readProductImageHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)

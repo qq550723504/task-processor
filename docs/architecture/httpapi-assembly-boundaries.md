@@ -80,6 +80,8 @@
   `bootstrap.go` 只负责串起 module 依赖图
 - task repository / DB migration 组装应放在专用 repository builder 文件，
   避免 `bootstrap.go` 重新承担数据库细节
+- image pipeline 组件选择、远程 segmenter/white-background client 组装和
+  model-backed fallback resolution 应放在专用 component builder 文件
 - `productimage` 自己的 handler / pool / repo 构建
 
 ### `internal/amazonlisting/httpapi`
@@ -187,6 +189,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile`
 - `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
 - `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile`
+- `TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile`
 
 如果需要新增 app/httpapi 过渡 seam，应在同一变更中更新对应 allowlist、
 这份文档和文档测试；否则优先把新增逻辑放到 owning `internal/*/httpapi`
