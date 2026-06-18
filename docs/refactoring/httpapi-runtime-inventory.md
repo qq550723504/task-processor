@@ -32,7 +32,7 @@ Current app-layer read:
 
 ## `internal/listingkit/httpapi`
 
-Current package shape: 67 non-test Go files.
+Current package shape: 74 non-test Go files.
 
 | File group | Classification | Current files | Notes |
 | --- | --- | --- | --- |
@@ -57,14 +57,14 @@ Current package shape: 67 non-test Go files.
 
 Why it stands out:
 
-- it is still mostly adapter assembly,
-- the remaining bridge shaping, bridge-factory construction, and enrollment adapter construction have already been narrowed into a dedicated helper file,
+- it is now mostly service assembly,
+- bridge shaping, bridge-factory construction, and enrollment adapter construction live in a dedicated helper file,
 - management strategy-provider construction has also been split into its own helper file,
-- if more branching lands there, it could become the next mixed runtime hotspot.
+- if more branching lands there, it could become a mixed runtime hotspot again.
 
 Suggested next slice:
 
-- keep service construction in place, and continue extracting any new tenant/bridge shaping helpers instead of letting them drift back into the main assembly file.
+- keep service construction in place, and continue routing any new tenant/bridge/adapter shaping helpers into the existing helper files instead of letting them drift back into the main assembly file.
 
 ### Additional candidate
 
@@ -72,11 +72,12 @@ Suggested next slice:
 
 Why it stands out:
 
-- it now mostly owns builder entrypoints and routed client assembly,
+- it now mostly owns public builder entrypoints,
 - concrete strict chat/image/nanobanana builders now live in `ai_client_builders.go`,
+- routed image client assembly and selector handling now live in `ai_client_image_routing.go`,
 - strict chat/image client wrappers and cache resolution have been pushed into dedicated helper files,
 - fallback shaping and naming are already isolated,
-- if more request-shaping or model-selection rules land there, they should stay in helper homes rather than re-grow the main builder file.
+- if more request-shaping or model-selection rules land there, they should stay in helper homes rather than re-grow the entrypoint file.
 
 ### Additional note
 
@@ -101,7 +102,7 @@ The current `internal/listingkit/httpapi` package has been refreshed from the li
 
 - The old one-file rows for `bootstrap_repositories.go` and `routes.go` were replaced by grouped current files because those responsibilities now live across narrower helper files.
 - The package still classifies as feature-owned assembly plus adapter construction; this refresh did not identify app-layer business policy drift.
-- `shein_sync_runtime.go` and `ai_clients.go` remain watchlist entrypoints, but their bridge/strategy/fallback/strict-wrapper details are already held in narrower helper files.
+- `shein_sync_runtime.go` and `ai_clients.go` remain watchlist entrypoints, but their bridge/strategy/fallback/routing/strict-wrapper details are already held in narrower helper files.
 
 ## Current Boundary Conclusion
 
@@ -112,4 +113,4 @@ At this checkpoint:
 - the default SHEIN store heuristic should be feature-owned in `internal/listingkit`, not `httpapi`-owned,
 - settings-health probe construction is feature-owned adapter reporting, not app-layer policy,
 - the most meaningful remaining cleanup is inside feature-owned runtime adapter helpers under `internal/listingkit/httpapi`,
-- the next safe refactor should target suspicious shaping helpers, not reopen the already-stable app-layer assembly split.
+- the next safe refactor should target newly introduced suspicious shaping helpers, not continue splitting already-thin entrypoints or reopen the stable app-layer assembly split.
