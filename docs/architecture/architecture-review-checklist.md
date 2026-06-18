@@ -113,7 +113,8 @@ and its document test in the same change as the code exception.
 Use these documents during boundary-sensitive review. The stable architecture
 documents are the stable source of truth for long-lived boundary rules, while
 development boundary documents define long-lived repository structure rules.
-`docs/architecture/next-steps.md` points to the current guard coverage baseline:
+The current guard baseline entry points to the current guard coverage baseline:
+Document paths in Review References must be listed only in the reference list.
 Every review reference must resolve to an existing repository document.
 Every review reference must come from the architecture index stable, development, or current guard baseline sections.
 Review references must not contain duplicate document entries.

@@ -362,6 +362,32 @@ func TestArchitectureReviewChecklistReferencesAreUnique(t *testing.T) {
 	}
 }
 
+func TestArchitectureReviewChecklistKeepsDocumentPathsInReferenceList(t *testing.T) {
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	reviewReferences := markdownSection(t, string(checklistContent), "## Review References")
+	const listOnlyRule = "Document paths in Review References must be listed only in the reference list"
+	if !strings.Contains(reviewReferences, listOnlyRule) {
+		t.Errorf("%s Review References must state %q so explanatory prose does not become an implicit reference list", checklistPath, listOnlyRule)
+	}
+
+	referenceListStart := strings.Index(reviewReferences, "- ")
+	if referenceListStart == -1 {
+		t.Fatalf("%s Review References must include a reference list", checklistPath)
+	}
+	prose := reviewReferences[:referenceListStart]
+	referencePattern := regexp.MustCompile("`([^`]+\\.md)`")
+	if matches := referencePattern.FindAllStringSubmatch(prose, -1); len(matches) > 0 {
+		for _, match := range matches {
+			t.Errorf("%s Review References prose must not contain document path %q; put formal paths in the reference list", checklistPath, match[1])
+		}
+	}
+}
+
 func TestArchitectureReviewChecklistExcludesTimeBoundedReviewReferences(t *testing.T) {
 	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
 	readmeContent, err := os.ReadFile(readmePath)
