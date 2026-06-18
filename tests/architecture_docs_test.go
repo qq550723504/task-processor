@@ -1015,6 +1015,37 @@ func TestArchitectureReadmeReferencesExistingDocuments(t *testing.T) {
 	assertMarkdownReferencesExistingDocuments(t, readmePath, string(readmeContent))
 }
 
+func TestArchitectureReadmeRequiresBoundaryDocumentsToHaveDocumentTests(t *testing.T) {
+	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
+	readmeContent, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", readmePath, err)
+	}
+
+	readmeText := string(readmeContent)
+	const testRule = "Every stable or development boundary document must have a document test"
+	if !strings.Contains(readmeText, testRule) {
+		t.Errorf("%s must state %q so new long-lived architecture entrypoints are added with automated guard coverage", readmePath, testRule)
+	}
+
+	testPath := filepath.Join(".", "architecture_docs_test.go")
+	testContent, err := os.ReadFile(testPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", testPath, err)
+	}
+
+	for _, heading := range []string{"## Stable Boundary Documents", "## Development Boundary Documents"} {
+		for _, reference := range normalizedArchitectureDocReferences(t, markdownSection(t, readmeText, heading)) {
+			if reference == "docs/architecture/architecture-review-checklist.md" {
+				continue
+			}
+			if !strings.Contains(string(testContent), reference) && !strings.Contains(string(testContent), filepath.Base(reference)) {
+				t.Errorf("%s lists %q as a boundary document, but %s does not reference it", readmePath, reference, testPath)
+			}
+		}
+	}
+}
+
 func assertMarkdownReferencesExistingDocuments(t *testing.T, sourcePath string, markdownContent string) {
 	t.Helper()
 

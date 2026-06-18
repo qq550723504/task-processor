@@ -94,3 +94,5 @@ time-bounded context pattern.
 When a structural question comes up, start with this index. If two documents
 appear to disagree, prefer the stable boundary document and update the older
 contextual note with a link instead of creating a third interpretation.
+Every stable or development boundary document must have a document test before
+it is treated as a long-lived review entrypoint.
