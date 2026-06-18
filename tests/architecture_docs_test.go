@@ -295,6 +295,26 @@ func TestArchitectureReviewChecklistReferencesExistingDocuments(t *testing.T) {
 	assertMarkdownReferencesExistingDocuments(t, checklistPath, reviewReferences)
 }
 
+func TestArchitectureReviewChecklistExplainsReviewReferenceRoles(t *testing.T) {
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	reviewReferences := markdownSection(t, string(checklistContent), "## Review References")
+	required := []string{
+		"stable source of truth for long-lived boundary rules",
+		"current guard coverage baseline",
+		"development boundary documents define long-lived repository structure rules",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(reviewReferences, phrase) {
+			t.Errorf("%s Review References must explain %q so reviewers know how to use each entrypoint class", checklistPath, phrase)
+		}
+	}
+}
+
 func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
 	content, err := os.ReadFile(path)
