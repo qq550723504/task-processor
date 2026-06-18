@@ -476,6 +476,26 @@ func TestArchitectureReadmeIndexesStableBoundaryDocs(t *testing.T) {
 	}
 }
 
+func TestArchitectureReadmeIndexesCurrentGuardCoverageBaseline(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "README.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	required := []string{
+		"Current Guard Baseline",
+		"next-steps.md",
+		"Current guard coverage",
+		"guard coverage baseline",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q so the architecture index points reviewers to the active guard baseline", path, phrase)
+		}
+	}
+}
+
 func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "development", "repository-structure.md")
 	content, err := os.ReadFile(path)

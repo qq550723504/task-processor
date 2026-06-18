@@ -46,6 +46,13 @@ structure rules that should be reviewed with architecture changes:
   - top-level directory ownership, local artifact placement, and repository
     layout guard tests
 
+## Current Guard Baseline
+
+Use `next-steps.md` and its `Current guard coverage` section as the current
+guard coverage baseline for active import-boundary tests. This baseline tracks
+what reviewers must keep visible while the stable boundary documents remain the
+source of truth for long-lived rules.
+
 ## Supporting Context
 
 These documents are useful background, but should not override stable boundary
