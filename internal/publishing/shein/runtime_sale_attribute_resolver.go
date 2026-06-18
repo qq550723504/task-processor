@@ -5,18 +5,17 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 type runtimeSaleAttributeResolver struct {
 	fallback    SaleAttributeResolver
 	factory     *runtimeAPIFactory
-	llm         openaiclient.ChatCompleter
+	llm         TextGenerator
 	deniedStore ResolutionCacheStore
 }
 
-func NewRuntimeSaleAttributeResolver(factory RuntimeAPIClientFactory, llm openaiclient.ChatCompleter, stores ...ResolutionCacheStore) SaleAttributeResolver {
+func NewRuntimeSaleAttributeResolver(factory RuntimeAPIClientFactory, llm TextGenerator, stores ...ResolutionCacheStore) SaleAttributeResolver {
 	return &runtimeSaleAttributeResolver{
 		fallback:    NewSaleAttributeResolverWithDeniedStore(nil, llm, firstResolutionCacheStore(stores)),
 		factory:     newRuntimeAPIFactory(factory),

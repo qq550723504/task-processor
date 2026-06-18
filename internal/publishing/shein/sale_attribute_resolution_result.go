@@ -3,8 +3,6 @@ package shein
 import (
 	"sort"
 	"strconv"
-
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 func applySelectedCandidate(
@@ -16,7 +14,7 @@ func applySelectedCandidate(
 	spuName string,
 	storeID string,
 	deniedStore ResolutionCacheStore,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 	resolution *SaleAttributeResolution,
 ) {
 	if candidate == nil || candidate.Match.AttributeID <= 0 || resolution == nil {

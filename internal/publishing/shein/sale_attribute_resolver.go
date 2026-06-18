@@ -4,14 +4,13 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 type saleAttributeResolver struct {
 	api         AttributeAPI
-	llm         openaiclient.ChatCompleter
+	llm         TextGenerator
 	deniedStore ResolutionCacheStore
 }
 
@@ -31,11 +30,11 @@ type saleAttributeCandidateState struct {
 	blockUnsafePrimaryFallback bool
 }
 
-func NewSaleAttributeResolver(api AttributeAPI, llm openaiclient.ChatCompleter) SaleAttributeResolver {
+func NewSaleAttributeResolver(api AttributeAPI, llm TextGenerator) SaleAttributeResolver {
 	return &saleAttributeResolver{api: api, llm: llm}
 }
 
-func NewSaleAttributeResolverWithDeniedStore(api AttributeAPI, llm openaiclient.ChatCompleter, store ResolutionCacheStore) SaleAttributeResolver {
+func NewSaleAttributeResolverWithDeniedStore(api AttributeAPI, llm TextGenerator, store ResolutionCacheStore) SaleAttributeResolver {
 	return &saleAttributeResolver{api: api, llm: llm, deniedStore: store}
 }
 

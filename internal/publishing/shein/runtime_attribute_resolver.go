@@ -5,17 +5,16 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 type runtimeAttributeResolver struct {
 	fallback AttributeResolver
 	factory  *runtimeAPIFactory
-	llm      openaiclient.ChatCompleter
+	llm      TextGenerator
 }
 
-func NewRuntimeAttributeResolver(factory RuntimeAPIClientFactory, llm openaiclient.ChatCompleter) AttributeResolver {
+func NewRuntimeAttributeResolver(factory RuntimeAPIClientFactory, llm TextGenerator) AttributeResolver {
 	return &runtimeAttributeResolver{
 		fallback: NewAttributeResolver(nil, llm),
 		factory:  newRuntimeAPIFactory(factory),

@@ -7,17 +7,16 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 type attributeResolver struct {
 	api AttributeAPI
-	llm openaiclient.ChatCompleter
+	llm TextGenerator
 }
 
-func NewAttributeResolver(api AttributeAPI, llm openaiclient.ChatCompleter) AttributeResolver {
+func NewAttributeResolver(api AttributeAPI, llm TextGenerator) AttributeResolver {
 	return &attributeResolver{api: api, llm: llm}
 }
 
@@ -89,7 +88,7 @@ func (r *attributeResolver) Resolve(req *BuildRequest, canonical *canonical.Prod
 	return resolution
 }
 
-func matchAttributes(ctx context.Context, templates *sheinattribute.AttributeTemplateInfo, pkg *Package, llm openaiclient.ChatCompleter) ([]ResolvedAttribute, []common.Attribute, []PendingAttributeCandidate, []PendingAttributeCandidate, []string) {
+func matchAttributes(ctx context.Context, templates *sheinattribute.AttributeTemplateInfo, pkg *Package, llm TextGenerator) ([]ResolvedAttribute, []common.Attribute, []PendingAttributeCandidate, []PendingAttributeCandidate, []string) {
 	if templates == nil || len(templates.Data) == 0 || pkg == nil {
 		return nil, nil, nil, nil, nil
 	}
