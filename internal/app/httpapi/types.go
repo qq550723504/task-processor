@@ -8,10 +8,8 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
-	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingkit"
@@ -20,7 +18,6 @@ import (
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
-	"task-processor/internal/prompt"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
@@ -39,19 +36,6 @@ type Options struct {
 type runtimeDeps struct {
 	shared   *sharedRuntimeDeps
 	features *featureRuntimeState
-}
-
-type sharedRuntimeDeps struct {
-	cfg               *config.Config
-	closers           []func() error
-	openaiMgr         *openaiclient.Manager
-	aiCredentialStore *openaiclient.GormCredentialResolver
-	tenantPromptStore prompt.TenantPromptStore
-	llmMgr            productenrich.LLMManager
-	inputParser       productenrich.InputParser
-	understanding     productenrich.ProductUnderstanding
-	imageWorkDir      string
-	sharedResources   *appbootstrap.SharedResources
 }
 
 type featureRuntimeState struct {
