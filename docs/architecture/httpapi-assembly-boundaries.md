@@ -157,6 +157,10 @@
 
 `internal/app/httpapi/modules.go` 现在应该保持“薄委托”，而不是再重新长成一个集中式 God file。
 
+`internal/app/httpapi/types.go` 应保持为类型和别名定义文件。`httpFeatureComposition`
+的 runtime module、route module、handler accessor 和 server bundle 组装方法应放在
+`composition_modules.go`，避免类型文件继续承载装配行为。
+
 ## 兼容层规则
 
 当前仓库里曾经有一些 app 兼容层，例如：
@@ -186,6 +190,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted`
 - `TestAppHTTPAPIListingKitRootImportsStayAllowlisted`
 - `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
+- `TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods`
 - `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile`
 - `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
 - `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile`
