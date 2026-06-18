@@ -7,7 +7,6 @@ import (
 	"unicode"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 type listingCopy struct {
@@ -17,7 +16,7 @@ type listingCopy struct {
 	TitleDiagnostics *TitleDiagnostics
 }
 
-func buildSheinListingCopy(runtimeCtx context.Context, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) listingCopy {
+func buildSheinListingCopy(runtimeCtx context.Context, canonical *canonical.Product, fallbackTitle string, aiClient TextGenerator) listingCopy {
 	titleResolution := resolveListingTitle(runtimeCtx, canonical, fallbackTitle, aiClient)
 	titleResolution = enrichResolvedListingTitle(runtimeCtx, titleResolution, canonical, fallbackTitle, aiClient)
 	title := titleResolution.title

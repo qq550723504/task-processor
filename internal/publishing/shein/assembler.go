@@ -6,7 +6,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 	"task-processor/internal/shein/authorizedbrand"
@@ -17,7 +16,7 @@ type AssemblerConfig struct {
 	AttributeResolver     AttributeResolver
 	SaleAttributeResolver SaleAttributeResolver
 	PricingPolicy         PricingPolicy
-	TitleOptimizer        openaiclient.ChatCompleter
+	TitleOptimizer        TextGenerator
 }
 
 type Assembler interface {
@@ -29,7 +28,7 @@ type assembler struct {
 	attributeResolver     AttributeResolver
 	saleAttributeResolver SaleAttributeResolver
 	pricingPolicy         PricingPolicy
-	titleOptimizer        openaiclient.ChatCompleter
+	titleOptimizer        TextGenerator
 }
 
 func NewAssembler(config AssemblerConfig) Assembler {

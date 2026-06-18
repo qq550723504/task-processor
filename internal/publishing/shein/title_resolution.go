@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/timeout"
 )
@@ -42,7 +41,7 @@ var (
 	titleCanvasNoisePattern = regexp.MustCompile(`(?i)([,;:，；：]\s*)?(?:\d{3,5}\s*(?:pixels?|px)|\d+\s*[x*]\s*\d+).*$`)
 )
 
-func resolveListingTitle(ctx context.Context, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
+func resolveListingTitle(ctx context.Context, canonical *canonical.Product, fallbackTitle string, aiClient TextGenerator) titleResolution {
 	candidates := []titleCandidate{
 		{source: "product_english_name", value: lookupCanonicalAttribute(canonical, "product_english_name")},
 		{source: "english_name", value: lookupCanonicalAttribute(canonical, "english_name")},
@@ -80,7 +79,7 @@ func resolveListingTitle(ctx context.Context, canonical *canonical.Product, fall
 	return buildResolvedTitle(title, "structured_fallback", "", false, canonical, fallbackTitle)
 }
 
-func enrichResolvedListingTitle(ctx context.Context, resolution titleResolution, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) titleResolution {
+func enrichResolvedListingTitle(ctx context.Context, resolution titleResolution, canonical *canonical.Product, fallbackTitle string, aiClient TextGenerator) titleResolution {
 	if !shouldEnrichListingTitle(resolution.title) {
 		return resolution
 	}
@@ -255,7 +254,7 @@ func collectListingTitlePromptSignals(canonical *canonical.Product) []string {
 	return result
 }
 
-func extractListingTitleAdditionWithLLM(ctx context.Context, baseTitle string, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
+func extractListingTitleAdditionWithLLM(ctx context.Context, baseTitle string, canonical *canonical.Product, fallbackTitle string, aiClient TextGenerator) string {
 	if aiClient == nil {
 		return ""
 	}
@@ -285,20 +284,12 @@ Rules:
 		cleanListingText(productType),
 		strings.Join(signals, "\n- "),
 	)
-	temperature := float32(0.2)
-	resp, err := aiClient.CreateChatCompletion(ctx, &openaiclient.ChatCompletionRequest{
-		Model:       aiClient.GetDefaultModel(),
-		Temperature: &temperature,
-		Messages: []openaiclient.ChatCompletionMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-	})
-	if err != nil || resp == nil || len(resp.Choices) == 0 {
+	content, err := aiClient.Generate(ctx, systemPrompt+"\n\n"+userPrompt)
+	if err != nil {
 		return ""
 	}
 	var parsed titleAdditionExtraction
-	if err := jsonx.UnmarshalString(jsonx.CleanLLMResponse(resp.Choices[0].Message.Content), &parsed, "parse SHEIN title addition extraction"); err != nil {
+	if err := jsonx.UnmarshalString(jsonx.CleanLLMResponse(content), &parsed, "parse SHEIN title addition extraction"); err != nil {
 		return ""
 	}
 	addition := sanitizeListingTitleAddition(parsed.Addition)
@@ -339,7 +330,7 @@ func mergeListingTitleWithAddition(baseTitle string, addition string) string {
 	return trimShortTitle(cleanListingText(baseTitle+" with "+addition), 90, 12)
 }
 
-func extractPromptTitleWithLLM(ctx context.Context, promptText string, canonical *canonical.Product, fallbackTitle string, aiClient openaiclient.ChatCompleter) string {
+func extractPromptTitleWithLLM(ctx context.Context, promptText string, canonical *canonical.Product, fallbackTitle string, aiClient TextGenerator) string {
 	if aiClient == nil {
 		return ""
 	}
@@ -358,23 +349,15 @@ Rules:
 4. Prefer 3-10 words and under 80 characters.`
 	systemPrompt += tenantGenerationTopicPolicyPromptBlock(ctx)
 	userPrompt := fmt.Sprintf("Fallback product title: %s\nPrompt-like source text: %s\nExtract a short product title.", productType, cleanListingText(promptText))
-	temperature := float32(0.2)
-	resp, err := aiClient.CreateChatCompletion(ctx, &openaiclient.ChatCompletionRequest{
-		Model:       aiClient.GetDefaultModel(),
-		Temperature: &temperature,
-		Messages: []openaiclient.ChatCompletionMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: userPrompt},
-		},
-	})
-	if err != nil || resp == nil || len(resp.Choices) == 0 {
+	content, err := aiClient.Generate(ctx, systemPrompt+"\n\n"+userPrompt)
+	if err != nil {
 		return ""
 	}
 	type llmTitle struct {
 		Title string `json:"title"`
 	}
 	var parsed llmTitle
-	if err := jsonx.UnmarshalString(jsonx.CleanLLMResponse(resp.Choices[0].Message.Content), &parsed, "parse SHEIN title extraction"); err != nil {
+	if err := jsonx.UnmarshalString(jsonx.CleanLLMResponse(content), &parsed, "parse SHEIN title extraction"); err != nil {
 		return ""
 	}
 	title := sanitizeResolvedTitle(parsed.Title)

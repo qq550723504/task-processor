@@ -43,8 +43,9 @@ func (s stubChatCompleter) GetDefaultModel() string {
 }
 
 type recordingChatCompleter struct {
-	response *openaiclient.ChatCompletionResponse
-	lastReq  *openaiclient.ChatCompletionRequest
+	response   *openaiclient.ChatCompletionResponse
+	lastReq    *openaiclient.ChatCompletionRequest
+	lastPrompt string
 }
 
 func (s *recordingChatCompleter) CreateChatCompletion(ctx context.Context, req *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
@@ -52,8 +53,12 @@ func (s *recordingChatCompleter) CreateChatCompletion(ctx context.Context, req *
 	return s.response, nil
 }
 
-func (s *recordingChatCompleter) Generate(context.Context, string) (string, error) {
-	return "", errors.New("not implemented")
+func (s *recordingChatCompleter) Generate(_ context.Context, prompt string) (string, error) {
+	s.lastPrompt = prompt
+	if s.response == nil || len(s.response.Choices) == 0 {
+		return "", nil
+	}
+	return s.response.Choices[0].Message.Content, nil
 }
 
 func (s *recordingChatCompleter) AnalyzeImage(context.Context, string, string) (string, error) {
@@ -62,6 +67,15 @@ func (s *recordingChatCompleter) AnalyzeImage(context.Context, string, string) (
 
 func (s *recordingChatCompleter) GetDefaultModel() string {
 	return "test-model"
+}
+
+func promptPolicySection(prompt string) string {
+	for _, marker := range []string{"\n\nBase title:", "\n\nFallback product title:"} {
+		if head, _, ok := strings.Cut(prompt, marker); ok {
+			return head
+		}
+	}
+	return prompt
 }
 
 type stubTranslateAPI struct{}
@@ -386,10 +400,10 @@ func TestExtractListingTitleAdditionWithLLM_IncludesTenantGenerationPolicyText(t
 	if addition != "Rock Typography Graphic Print" {
 		t.Fatalf("addition = %q, want extracted addition", addition)
 	}
-	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
-		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	if ai.lastPrompt == "" {
+		t.Fatal("ai prompt is empty, want system prompt")
 	}
-	systemPrompt := ai.lastReq.Messages[0].Content
+	systemPrompt := promptPolicySection(ai.lastPrompt)
 	if !strings.Contains(systemPrompt, "Additional tenant content restrictions:") {
 		t.Fatalf("system prompt = %q, want tenant policy header", systemPrompt)
 	}
@@ -432,10 +446,10 @@ func TestExtractPromptTitleWithLLM_IncludesTenantGenerationPolicyText(t *testing
 	if title != "Floral Door Curtain" {
 		t.Fatalf("title = %q, want extracted title", title)
 	}
-	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
-		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	if ai.lastPrompt == "" {
+		t.Fatal("ai prompt is empty, want system prompt")
 	}
-	systemPrompt := ai.lastReq.Messages[0].Content
+	systemPrompt := promptPolicySection(ai.lastPrompt)
 	if !strings.Contains(systemPrompt, "Additional tenant content restrictions:") {
 		t.Fatalf("system prompt = %q, want tenant policy header", systemPrompt)
 	}
