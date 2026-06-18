@@ -99,6 +99,10 @@ Current direct dependency hotspots are:
   - `internal/app/runner` still imports `management` in scheduler, processor,
     and health-check runtime assembly seams; these should stay narrow while
     runtime data access moves toward in-repository database/repository access
+  - `internal/app/consumer` still imports `management` in processor registry,
+    RabbitMQ service, task handler, shared-resource, and auto-shard seams; these
+    should remain explicit retirement seams while consumer data access moves
+    toward in-repository database/repository access
   - ProductImage model/default provider assembly seams in `internal/app/httpapi`
     are guarded by
     `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
@@ -106,6 +110,8 @@ Current direct dependency hotspots are:
     `TestAppTaskManagementClientImportsStayAllowlisted`
   - `internal/app/runner` management retirement seams are guarded by
     `TestAppRunnerManagementClientImportsStayAllowlisted`
+  - `internal/app/consumer` management retirement seams are guarded by
+    `TestAppConsumerManagementClientImportsStayAllowlisted`
 - `internal/productimage`
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
@@ -196,7 +202,13 @@ adapter types without changing business behavior:
    allowlisted to freeze current runtime assembly seams; future runtime data
    access should prefer in-repository database/repository access rather than
    adding new management API call sites.
-12. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+12. App consumer processor registry, RabbitMQ service, task handler,
+   shared-resource, and auto-shard seams currently importing
+   `internal/infra/clients/management`. Current imports are explicitly
+   allowlisted to freeze current consumer runtime seams; future consumer data
+   access should prefer in-repository database/repository access rather than
+   adding new management API call sites.
+13. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding

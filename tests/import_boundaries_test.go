@@ -882,6 +882,42 @@ func TestAppRunnerManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestAppConsumerManagementClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "consumer")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "auto_shard_coordinator.go")):      {},
+		filepath.Clean(filepath.Join(root, "auto_shard_coordinator_test.go")): {},
+		filepath.Clean(filepath.Join(root, "listing_runtime_support.go")):     {},
+		filepath.Clean(filepath.Join(root, "platform_processor_registry.go")): {},
+		filepath.Clean(filepath.Join(root, "processor_registry.go")):          {},
+		filepath.Clean(filepath.Join(root, "product_fetcher_builder.go")):     {},
+		filepath.Clean(filepath.Join(root, "rabbitmq_service.go")):            {},
+		filepath.Clean(filepath.Join(root, "rabbitmq_service_test.go")):       {},
+		filepath.Clean(filepath.Join(root, "service_component_state.go")):     {},
+		filepath.Clean(filepath.Join(root, "service_manager.go")):             {},
+		filepath.Clean(filepath.Join(root, "shared_resources.go")):            {},
+		filepath.Clean(filepath.Join(root, "task_handler.go")):                {},
+		filepath.Clean(filepath.Join(root, "task_handler_test.go")):           {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep app/consumer management dependencies limited to current consumer runtime retirement seams and prefer in-repository database/repository access for new consumer data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedFiles := map[string]struct{}{
