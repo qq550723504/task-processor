@@ -231,6 +231,25 @@ func TestArchitectureReviewChecklistReferencesCurrentGuardCoverageSource(t *test
 	}
 }
 
+func TestArchitectureReviewChecklistSeparatesStableRulesFromCurrentGuardBaseline(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	reviewReferences := markdownSection(t, string(content), "## Review References")
+	required := []string{
+		"stable source of truth for long-lived boundary rules",
+		"current guard coverage baseline",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(reviewReferences, phrase) {
+			t.Errorf("%s Review References must mention %q so review policy does not confuse stable rules with the current guard baseline", path, phrase)
+		}
+	}
+}
+
 func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
 	content, err := os.ReadFile(path)

@@ -103,7 +103,9 @@ and its document test in the same change as the code exception.
 
 ## Review References
 
-Use these documents as the stable source of truth:
+Use these documents during boundary-sensitive review. The stable architecture
+documents are the stable source of truth for long-lived boundary rules, while
+`docs/architecture/next-steps.md` points to the current guard coverage baseline:
 
 - `docs/architecture/project-boundaries.md`
 - `docs/architecture/httpapi-assembly-boundaries.md`
