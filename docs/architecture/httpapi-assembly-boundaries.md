@@ -178,6 +178,8 @@ Config 文件加载和加载错误包装应放在 `runtime_config.go`，让 `run
 保持启动阶段编排，而不是直接依赖具体配置加载实现。
 Worker pool 默认配置和本地 task health provider 聚合应放在
 `runtime_worker_pools.go`，避免 `modules.go` 承载 worker runtime 观测和池参数细节。
+SHEIN 登录账号配置、SHEIN login module 和 SDS login module bootstrap 应放在
+`runtime_login_modules.go`，避免 `modules.go` 直接依赖具体登录子系统 bootstrap。
 
 `internal/app/httpapi/adapters.go` 不应重新长成所有基础设施 adapter 的集中入口。
 OpenAI manager / credential resolver 组装应放在 `adapters_openai.go`，schema migration
@@ -218,6 +220,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods`
 - `TestHTTPAPITypesDoesNotOwnRouteHandlerContracts`
 - `TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport`
+- `TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport`
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`

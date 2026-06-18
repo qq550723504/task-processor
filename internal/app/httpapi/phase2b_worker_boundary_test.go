@@ -114,3 +114,41 @@ func TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport(t *testing.T) {
 		require.Contains(t, workerSupportContent, marker)
 	}
 }
+
+func TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport(t *testing.T) {
+	t.Parallel()
+
+	modulesSrc, err := os.ReadFile("modules.go")
+	require.NoError(t, err)
+	modulesContent := string(modulesSrc)
+
+	for _, marker := range []string{
+		`"task-processor/internal/shein/client"`,
+		`"task-processor/internal/sheinlogin/bootstrap"`,
+		`"task-processor/internal/sdslogin/bootstrap"`,
+		"sheinclient.ConfigureLoginAccountFromConfig(",
+		"func buildSheinLoginModuleResult(",
+		"func buildSDSLoginModuleResult(",
+		"sheinloginbootstrap.BuildHandler(",
+		"sdsloginbootstrap.BuildHandler(",
+	} {
+		require.NotContains(t, modulesContent, marker)
+	}
+
+	loginSupportSrc, err := os.ReadFile("runtime_login_modules.go")
+	require.NoError(t, err)
+	loginSupportContent := string(loginSupportSrc)
+	for _, marker := range []string{
+		`"task-processor/internal/shein/client"`,
+		`"task-processor/internal/sheinlogin/bootstrap"`,
+		`"task-processor/internal/sdslogin/bootstrap"`,
+		"func configureSheinLoginAccount(",
+		"func buildSheinLoginModuleResult(",
+		"func buildSDSLoginModuleResult(",
+		"sheinclient.ConfigureLoginAccountFromConfig(",
+		"sheinloginbootstrap.BuildHandler(",
+		"sdsloginbootstrap.BuildHandler(",
+	} {
+		require.Contains(t, loginSupportContent, marker)
+	}
+}
