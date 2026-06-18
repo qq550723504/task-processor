@@ -97,6 +97,9 @@ It should avoid:
 - long inlined construction sequences when they can be named as initialization
   steps
 - runtime coordination details that belong to specialized services
+- placing concrete external-client runtime state in generic type files; keep
+  shared external runtime dependencies in a named seam such as
+  `internal/app/httpapi/runtime_shared_deps.go`
 
 ### runner
 
