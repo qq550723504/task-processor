@@ -335,6 +335,29 @@ func TestArchitectureReviewChecklistKeepsContextDocumentsOutOfReviewPolicy(t *te
 	}
 }
 
+func TestArchitectureReviewChecklistCoversRepositoryStructureRules(t *testing.T) {
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	requiredChecks := markdownSection(t, string(checklistContent), "## Required Checks")
+	required := []string{
+		"docs/development/repository-structure.md",
+		"`cmd/`",
+		"official entrypoints",
+		"`hack/`",
+		"managed support areas",
+		"local artifacts",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(requiredChecks, phrase) {
+			t.Errorf("%s Required Checks must mention %q so repository layout rules are reviewed with architecture changes", checklistPath, phrase)
+		}
+	}
+}
+
 func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
 	content, err := os.ReadFile(path)

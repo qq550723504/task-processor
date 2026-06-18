@@ -28,9 +28,13 @@ Before merging a structural or feature PR, verify:
    `docs/architecture/external-client-boundary-inventory.md`: prefer a local
    interface and avoid leaking a concrete external client adapter into
    domain-facing contracts.
-9. Any boundary exception is documented with a narrow scope and a follow-up
+9. Repository layout changes follow `docs/development/repository-structure.md`:
+   `cmd/` stays limited to official entrypoints, `hack/` stays limited to
+   managed support areas, and local artifacts stay out of production entrypoint
+   and long-lived tool directories.
+10. Any boundary exception is documented with a narrow scope and a follow-up
    cleanup path.
-10. Relevant import-boundary and architecture tests were run.
+11. Relevant import-boundary and architecture tests were run.
 
 ## Guard Baseline
 
