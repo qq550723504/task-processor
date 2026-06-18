@@ -127,3 +127,6 @@ Every review reference must resolve to an existing repository document.
 If a change makes the dependency direction less obvious, require either a
 smaller adapter, a local interface, or an explicit documented exception before
 merging.
+
+If plans, runbooks, or contextual notes introduce a long-lived boundary rule,
+that rule must be copied or linked into a stable boundary document before being used as review policy.

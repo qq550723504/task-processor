@@ -315,6 +315,26 @@ func TestArchitectureReviewChecklistExplainsReviewReferenceRoles(t *testing.T) {
 	}
 }
 
+func TestArchitectureReviewChecklistKeepsContextDocumentsOutOfReviewPolicy(t *testing.T) {
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	workingRule := markdownSection(t, string(checklistContent), "## Working Rule")
+	required := []string{
+		"plans, runbooks, or contextual notes",
+		"copied or linked into a stable boundary document",
+		"before being used as review policy",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(workingRule, phrase) {
+			t.Errorf("%s Working Rule must mention %q so contextual documents cannot silently become review policy", checklistPath, phrase)
+		}
+	}
+}
+
 func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
 	content, err := os.ReadFile(path)
