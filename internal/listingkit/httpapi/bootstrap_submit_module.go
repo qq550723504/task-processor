@@ -54,7 +54,7 @@ type submitSheinDependencies struct {
 }
 
 type submitStudioDependencies struct {
-	imageGenerator openaiclient.ImageGenerator
+	imageGenerator listingkit.AIImageGenerator
 }
 
 type submitModule struct {
@@ -182,7 +182,7 @@ func buildSubmitModule(in submitModuleInput) submitModule {
 			defaultStoreID:        defaultSheinStoreID,
 		},
 		studio: submitStudioDependencies{
-			imageGenerator: studioImageGenerator,
+			imageGenerator: adaptListingKitAIImageGenerator(studioImageGenerator),
 		},
 	}
 }

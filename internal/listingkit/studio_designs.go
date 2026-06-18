@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 )
@@ -215,7 +214,7 @@ func compactStudioGenerationError(err error) string {
 	return message
 }
 
-func decodeGeneratedImageData(ctx context.Context, image openaiclient.ImageData) ([]byte, string, error) {
+func decodeGeneratedImageData(ctx context.Context, image AIImageData) ([]byte, string, error) {
 	if strings.TrimSpace(image.B64JSON) != "" {
 		data, err := base64.StdEncoding.DecodeString(image.B64JSON)
 		if err != nil {

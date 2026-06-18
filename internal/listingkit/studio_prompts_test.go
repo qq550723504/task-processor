@@ -182,7 +182,7 @@ func TestResolveStudioDesignImageModelUsesGPTForTransparency(t *testing.T) {
 func TestGenerateStudioDesignImageFallsBackWhenMultiReferenceEditFails(t *testing.T) {
 	generator := &stubStudioImageGenerator{
 		editErr: errors.New("provider rejected references"),
-		generateResponse: &openaiclient.ImageResponse{Data: []openaiclient.ImageData{{
+		generateResponse: &AIImageResponse{Data: []AIImageData{{
 			B64JSON: "aW1hZ2U=",
 		}}},
 	}
@@ -211,10 +211,10 @@ type stubStudioImageGenerator struct {
 	editErr          error
 	editErrs         []error
 	editCalls        int
-	editRequests     []*openaiclient.ImageEditRequest
+	editRequests     []*AIImageEditRequest
 	generateCalls    int
 	generateErrs     []error
-	generateResponse *openaiclient.ImageResponse
+	generateResponse *AIImageResponse
 }
 
 type stubStudioChatCompleter struct {
@@ -238,7 +238,7 @@ func (s *stubStudioChatCompleter) GetDefaultModel() string {
 	return "test-model"
 }
 
-func (s *stubStudioImageGenerator) GenerateImage(context.Context, *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {
+func (s *stubStudioImageGenerator) GenerateImage(context.Context, *AIImageGenerateRequest) (*AIImageResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.generateCalls++
@@ -251,7 +251,7 @@ func (s *stubStudioImageGenerator) GenerateImage(context.Context, *openaiclient.
 	return s.generateResponse, nil
 }
 
-func (s *stubStudioImageGenerator) EditImage(_ context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageResponse, error) {
+func (s *stubStudioImageGenerator) EditImage(_ context.Context, req *AIImageEditRequest) (*AIImageResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.editCalls++
@@ -285,8 +285,8 @@ func TestGenerateStudioDesignsAddsWarningsForPromptFallbackAndPartialSuccess(t *
 			errors.New("upstream rate limited"),
 			errors.New("upstream timeout"),
 		},
-		generateResponse: &openaiclient.ImageResponse{
-			Data: []openaiclient.ImageData{{
+		generateResponse: &AIImageResponse{
+			Data: []AIImageData{{
 				B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
 			}},
 		},
@@ -333,8 +333,8 @@ func TestGenerateStudioDesignsRetriesFailedVariantsSequentially(t *testing.T) {
 			nil,
 			nil,
 		},
-		generateResponse: &openaiclient.ImageResponse{
-			Data: []openaiclient.ImageData{{
+		generateResponse: &AIImageResponse{
+			Data: []AIImageData{{
 				B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
 			}},
 		},
@@ -361,8 +361,8 @@ func TestGenerateStudioDesignsRetriesFailedVariantsSequentially(t *testing.T) {
 
 func TestGenerateStudioDesignsCapsCountAtTen(t *testing.T) {
 	generator := &stubStudioImageGenerator{
-		generateResponse: &openaiclient.ImageResponse{
-			Data: []openaiclient.ImageData{{
+		generateResponse: &AIImageResponse{
+			Data: []AIImageData{{
 				B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
 			}},
 		},
@@ -475,8 +475,8 @@ func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t 
 			errors.New("nanobanana job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
 			nil,
 		},
-		generateResponse: &openaiclient.ImageResponse{
-			Data: []openaiclient.ImageData{{
+		generateResponse: &AIImageResponse{
+			Data: []AIImageData{{
 				B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
 			}},
 		},

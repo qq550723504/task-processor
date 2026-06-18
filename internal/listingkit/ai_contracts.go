@@ -14,7 +14,35 @@ type AIChatCompleter interface {
 }
 
 type AIImageGenerator interface {
-	GenerateImage(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error)
-	EditImage(ctx context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageResponse, error)
+	GenerateImage(ctx context.Context, req *AIImageGenerateRequest) (*AIImageResponse, error)
+	EditImage(ctx context.Context, req *AIImageEditRequest) (*AIImageResponse, error)
 	GetDefaultModel() string
+}
+
+type AIImageGenerateRequest struct {
+	Model          string
+	Prompt         string
+	Size           string
+	ResponseFormat string
+	N              int
+}
+
+type AIImageEditRequest struct {
+	Model          string
+	Prompt         string
+	ImageURL       string
+	ImageURLs      []string
+	Size           string
+	ResponseFormat string
+	N              int
+}
+
+type AIImageResponse struct {
+	Data []AIImageData
+}
+
+type AIImageData struct {
+	URL           string
+	B64JSON       string
+	RevisedPrompt string
 }

@@ -638,6 +638,7 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit", "httpapi")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "ai_credential_store_adapter.go")):           {},
+		filepath.Clean(filepath.Join(root, "ai_image_generator_adapter.go")):            {},
 		filepath.Clean(filepath.Join(root, "ai_client_fallback_helpers.go")):            {},
 		filepath.Clean(filepath.Join(root, "ai_client_image_routing.go")):               {},
 		filepath.Clean(filepath.Join(root, "ai_client_strict_chat.go")):                 {},
@@ -675,11 +676,8 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "ai_contracts.go")):                            {},
-		filepath.Clean(filepath.Join(root, "request_identity.go")):                        {},
-		filepath.Clean(filepath.Join(root, "service_studio_media_generation_helpers.go")): {},
-		filepath.Clean(filepath.Join(root, "studio_designs.go")):                          {},
-		filepath.Clean(filepath.Join(root, "task_studio_media_service_support.go")):       {},
+		filepath.Clean(filepath.Join(root, "ai_contracts.go")):     {},
+		filepath.Clean(filepath.Join(root, "request_identity.go")): {},
 	}
 
 	index, err := loadGoFileIndex(root, "")

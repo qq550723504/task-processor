@@ -764,7 +764,7 @@ func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	productAPIBuilder := &httpapiStubProductAPIBuilder{}
 	imageAPIBuilder := &httpapiStubImageAPIBuilder{}
 	translateAPIBuilder := &httpapiStubTranslateAPIBuilder{}
-	imageGenerator := &httpapiStubImageGenerator{}
+	imageGenerator := &httpapiStubImageGenerator{defaultModel: "studio-model"}
 	storeRepo := &listingadmin.GormStoreRepository{}
 	resolutionCache := &httpapiStubResolutionCacheStore{}
 	categoryResolverBuilt := false
@@ -865,8 +865,11 @@ func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	if module.shein.apiClientFactory != apiFactory {
 		t.Fatal("expected shein api client factory to be built by submit module")
 	}
-	if module.studio.imageGenerator != imageGenerator {
+	if module.studio.imageGenerator == nil {
 		t.Fatal("expected studio image generator to be built by submit module")
+	}
+	if got := module.studio.imageGenerator.GetDefaultModel(); got != "studio-model" {
+		t.Fatalf("studio image generator default model = %q, want studio-model", got)
 	}
 	if module.shein.defaultStoreID != 903 {
 		t.Fatalf("default shein store id = %d, want 903", module.shein.defaultStoreID)
@@ -1424,7 +1427,9 @@ func (*httpapiStubTranslateAPIBuilder) BuildTranslateAPI(context.Context, int64)
 	return nil, ""
 }
 
-type httpapiStubImageGenerator struct{}
+type httpapiStubImageGenerator struct {
+	defaultModel string
+}
 
 func (*httpapiStubImageGenerator) GenerateImage(context.Context, *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {
 	return nil, nil
@@ -1434,8 +1439,8 @@ func (*httpapiStubImageGenerator) EditImage(context.Context, *openaiclient.Image
 	return nil, nil
 }
 
-func (*httpapiStubImageGenerator) GetDefaultModel() string {
-	return ""
+func (s *httpapiStubImageGenerator) GetDefaultModel() string {
+	return s.defaultModel
 }
 
 type httpapiStubResolutionCacheStore struct{}

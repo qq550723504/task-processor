@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 func (s *taskStudioMediaService) generateStudioDesignSiblingThemes(ctx context.Context, req *StudioDesignRequest, count int) ([]string, error) {
@@ -31,7 +29,7 @@ func (s *taskStudioMediaService) generateStudioDesignSiblingThemes(ctx context.C
 	return themes, nil
 }
 
-func (s *taskStudioMediaService) generateStudioDesignImage(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
+func (s *taskStudioMediaService) generateStudioDesignImage(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*AIImageResponse, error) {
 	if len(referenceURLs) == 0 {
 		return s.generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
 	}
@@ -48,8 +46,8 @@ func (s *taskStudioMediaService) generateStudioDesignImage(ctx context.Context, 
 	return s.generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
 }
 
-func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*openaiclient.ImageResponse, error) {
-	return s.imageGenerator.EditImage(ctx, &openaiclient.ImageEditRequest{
+func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*AIImageResponse, error) {
+	return s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
 		Model:          model,
 		Prompt:         promptText,
 		ImageURL:       referenceURLs[0],
@@ -60,8 +58,8 @@ func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context
 	})
 }
 
-func (s *taskStudioMediaService) generateStudioDesignImageWithoutReferences(ctx context.Context, model string, promptText string, size string) (*openaiclient.ImageResponse, error) {
-	return s.imageGenerator.GenerateImage(ctx, &openaiclient.ImageGenerateRequest{
+func (s *taskStudioMediaService) generateStudioDesignImageWithoutReferences(ctx context.Context, model string, promptText string, size string) (*AIImageResponse, error) {
+	return s.imageGenerator.GenerateImage(ctx, &AIImageGenerateRequest{
 		Model:          model,
 		Prompt:         promptText,
 		Size:           size,
@@ -70,7 +68,7 @@ func (s *taskStudioMediaService) generateStudioDesignImageWithoutReferences(ctx 
 	})
 }
 
-func (s *taskStudioMediaService) persistGeneratedStudioImage(ctx context.Context, response *openaiclient.ImageResponse, filename string) (string, string, error) {
+func (s *taskStudioMediaService) persistGeneratedStudioImage(ctx context.Context, response *AIImageResponse, filename string) (string, string, error) {
 	if response == nil || len(response.Data) == 0 {
 		return "", "", fmt.Errorf("studio image generation returned no image data")
 	}
@@ -112,8 +110,8 @@ func (s *taskStudioMediaService) generateOneStudioProductImage(ctx context.Conte
 	return imageURL, err
 }
 
-func (s *taskStudioMediaService) tryGenerateStudioProductImage(ctx context.Context, inputImages []string, promptText string) (*openaiclient.ImageResponse, error) {
-	generated, err := s.imageGenerator.EditImage(ctx, &openaiclient.ImageEditRequest{
+func (s *taskStudioMediaService) tryGenerateStudioProductImage(ctx context.Context, inputImages []string, promptText string) (*AIImageResponse, error) {
+	generated, err := s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
 		Model:          s.imageGenerator.GetDefaultModel(),
 		Prompt:         promptText,
 		ImageURL:       inputImages[0],
@@ -123,7 +121,7 @@ func (s *taskStudioMediaService) tryGenerateStudioProductImage(ctx context.Conte
 		N:              1,
 	})
 	if err != nil {
-		generated, err = s.imageGenerator.EditImage(ctx, &openaiclient.ImageEditRequest{
+		generated, err = s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
 			Model:          s.imageGenerator.GetDefaultModel(),
 			Prompt:         promptText,
 			ImageURL:       inputImages[0],
