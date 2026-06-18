@@ -184,6 +184,35 @@ func TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes(t *testing.T) {
 	}
 }
 
+func TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly(t *testing.T) {
+	t.Parallel()
+
+	compositionSrc, err := os.ReadFile("composition_builder.go")
+	require.NoError(t, err)
+	compositionContent := string(compositionSrc)
+
+	for _, marker := range []string{
+		"deps.addClosers(sheinLoginCloser)",
+		"deps.addClosers(sdsLoginCloser)",
+		"deps.attachSDSLoginResult(",
+	} {
+		require.NotContains(t, compositionContent, marker)
+	}
+
+	loginSupportSrc, err := os.ReadFile("runtime_login_modules.go")
+	require.NoError(t, err)
+	loginSupportContent := string(loginSupportSrc)
+	for _, marker := range []string{
+		"type loginFeatureBuilder struct",
+		"type loginFeatureSet struct",
+		"deps.addClosers(sheinLoginCloser)",
+		"deps.addClosers(sdsLoginCloser)",
+		"deps.attachSDSLoginResult(",
+	} {
+		require.Contains(t, loginSupportContent, marker)
+	}
+}
+
 func TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes(t *testing.T) {
 	t.Parallel()
 

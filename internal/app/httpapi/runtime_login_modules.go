@@ -15,6 +15,37 @@ type sheinLoginModuleBuilder func(deps *runtimeDeps) (*sheinLoginModuleResult, f
 
 type sdsLoginModuleBuilder func(deps *runtimeDeps) (*sdsLoginModuleResult, func() error, error)
 
+type loginFeatureSet struct {
+	sheinLoginResult *sheinLoginModuleResult
+	sdsLoginResult   *sdsLoginModuleResult
+}
+
+type loginFeatureBuilder struct {
+	buildSheinLogin sheinLoginModuleBuilder
+	buildSDSLogin   sdsLoginModuleBuilder
+}
+
+func (b loginFeatureBuilder) build(deps *runtimeDeps) (loginFeatureSet, error) {
+	var features loginFeatureSet
+
+	sheinLoginResult, sheinLoginCloser, err := b.buildSheinLogin(deps)
+	if err != nil {
+		return features, err
+	}
+	deps.addClosers(sheinLoginCloser)
+	features.sheinLoginResult = sheinLoginResult
+
+	sdsLoginResult, sdsLoginCloser, err := b.buildSDSLogin(deps)
+	if err != nil {
+		return features, err
+	}
+	deps.addClosers(sdsLoginCloser)
+	deps.attachSDSLoginResult(sdsLoginResult)
+	features.sdsLoginResult = sdsLoginResult
+
+	return features, nil
+}
+
 func configureSheinLoginAccount(deps *runtimeDeps) {
 	if deps == nil || deps.shared == nil {
 		return

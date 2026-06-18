@@ -189,6 +189,8 @@ SHEIN 登录账号配置、SHEIN login module 和 SDS login module bootstrap 应
 `composition_builder.go` 为了类型字段直接依赖具体登录 bootstrap 包。
 登录 module result 类型别名也应由 `runtime_login_modules.go` 暴露，避免
 `types.go` / `runtime_deps_methods.go` 直接依赖具体登录 bootstrap 包。
+登录 feature assembly 的 closer 收集和 SDS login result attach 也应放在
+`runtime_login_modules.go`，避免 `composition_builder.go` 重新持有登录模块的状态注入细节。
 Prompt、SDS 和 taskRPC module result 类型别名应放在 `runtime_module_results.go`，
 避免 `types.go` 为了 composition state 字段直接依赖具体 module result 包。
 Prompt、SDS 和 taskRPC 的 module builder 函数签名与默认 wrapper 也应放在
@@ -248,6 +250,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport`
 - `TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport`
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
+- `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly`
 - `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts`

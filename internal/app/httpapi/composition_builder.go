@@ -58,23 +58,16 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	composition.amazonListingModule = amazonListingModule
 
 	done = timer.phase("buildSheinLoginModule")
-	sheinLoginResult, sheinLoginCloser, err := b.buildSheinLogin(deps)
+	loginFeatures, err := loginFeatureBuilder{
+		buildSheinLogin: b.buildSheinLogin,
+		buildSDSLogin:   b.buildSDSLogin,
+	}.build(deps)
 	done()
 	if err != nil {
 		return composition, err
 	}
-	deps.addClosers(sheinLoginCloser)
-	composition.sheinLoginResult = sheinLoginResult
-
-	done = timer.phase("buildSDSLoginModule")
-	sdsLoginResult, sdsLoginCloser, err := b.buildSDSLogin(deps)
-	done()
-	if err != nil {
-		return composition, err
-	}
-	deps.addClosers(sdsLoginCloser)
-	deps.attachSDSLoginResult(sdsLoginResult)
-	composition.sdsLoginResult = sdsLoginResult
+	composition.sheinLoginResult = loginFeatures.sheinLoginResult
+	composition.sdsLoginResult = loginFeatures.sdsLoginResult
 
 	done = timer.phase("buildListingKitModule")
 	listingKitFeatures, err = listingKitFeatureBuilder{
