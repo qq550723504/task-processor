@@ -380,6 +380,22 @@ func TestNextTechnicalPrioritiesCurrentGuardCoveragePointsToReviewEntrypoints(t 
 	}
 }
 
+func TestNextTechnicalPrioritiesReferencesExistingDocuments(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	currentGuardCoverage := markdownBlockBetween(t, string(content), "Current guard coverage:", "后续重点")
+	const referenceRule = "Every next-step reference must resolve to an existing repository document"
+	if !strings.Contains(currentGuardCoverage, referenceRule) {
+		t.Errorf("%s Current guard coverage must state %q so active baseline links cannot drift into dead references", path, referenceRule)
+	}
+
+	assertMarkdownReferencesExistingDocuments(t, path, currentGuardCoverage)
+}
+
 func markdownSection(t *testing.T, content, heading string) string {
 	t.Helper()
 
