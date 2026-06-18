@@ -60,6 +60,42 @@ func TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated(t *testing.T) {
+	adaptersSource := readHTTPAPIBoundaryFile(t, "adapters.go")
+	for _, marker := range []string{
+		`"task-processor/internal/amazonlisting/store"`,
+		`"task-processor/internal/productenrich/store"`,
+		`"task-processor/internal/productimage/store"`,
+		"func newDBTaskRepository(",
+		"func newDBImageTaskRepository(",
+		"func newDBAmazonListingTaskRepository(",
+		"store.NewTaskRepository(",
+		"productimagestore.NewTaskRepository(",
+		"amazonlistingstore.NewTaskRepository(",
+	} {
+		if strings.Contains(adaptersSource, marker) {
+			t.Fatalf("adapters.go should keep task repository adapter assembly in adapters_task_repositories.go; found %s", marker)
+		}
+	}
+
+	repositoryAdaptersSource := readHTTPAPIBoundaryFile(t, "adapters_task_repositories.go")
+	for _, marker := range []string{
+		`"task-processor/internal/amazonlisting/store"`,
+		`"task-processor/internal/productenrich/store"`,
+		`"task-processor/internal/productimage/store"`,
+		"func newDBTaskRepository(",
+		"func newDBImageTaskRepository(",
+		"func newDBAmazonListingTaskRepository(",
+		"store.NewTaskRepository(",
+		"productimagestore.NewTaskRepository(",
+		"amazonlistingstore.NewTaskRepository(",
+	} {
+		if !strings.Contains(repositoryAdaptersSource, marker) {
+			t.Fatalf("adapters_task_repositories.go missing %s", marker)
+		}
+	}
+}
+
 func readHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)

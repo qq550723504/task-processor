@@ -165,7 +165,9 @@ bundle 组装方法应放在 `composition_modules.go`，route handler contract /
 `internal/app/httpapi/adapters.go` 不应重新长成所有基础设施 adapter 的集中入口。
 OpenAI manager / credential resolver 组装应放在 `adapters_openai.go`，schema migration
 集合应放在 `adapters_schema_migration.go`，通用 repo / Redis / scraper adapter helper
-才留在 `adapters.go`。
+才留在 `adapters.go`。产品、图片和 Amazon Listing 的 DB task repository adapter 工厂
+应放在 `adapters_task_repositories.go`，避免 `adapters.go` 继续承载多业务 repository
+细节。
 
 ## 兼容层规则
 
@@ -199,6 +201,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods`
 - `TestHTTPAPITypesDoesNotOwnRouteHandlerContracts`
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
+- `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated`
 - `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile`
 - `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
 - `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile`
