@@ -1209,6 +1209,47 @@ func TestSheinManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestSheinOpenAIImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "shein")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "category", "ai_selector.go")):                                  {},
+		filepath.Clean(filepath.Join(root, "category", "manager.go")):                                      {},
+		filepath.Clean(filepath.Join(root, "content", "optimizer.go")):                                     {},
+		filepath.Clean(filepath.Join(root, "pipeline", "pipeline.go")):                                     {},
+		filepath.Clean(filepath.Join(root, "product", "attribute", "input.go")):                            {},
+		filepath.Clean(filepath.Join(root, "product", "attribute", "platform_value_fallback_llm.go")):      {},
+		filepath.Clean(filepath.Join(root, "product", "attribute", "platform_value_fallback_llm_test.go")): {},
+		filepath.Clean(filepath.Join(root, "product", "attribute", "sale", "batch_processor_test.go")):     {},
+		filepath.Clean(filepath.Join(root, "product", "attribute", "sale", "handler.go")):                  {},
+		filepath.Clean(filepath.Join(root, "product", "attribute", "sale", "single_processor.go")):         {},
+		filepath.Clean(filepath.Join(root, "product", "attribute", "sale", "single_processor_test.go")):    {},
+		filepath.Clean(filepath.Join(root, "product", "attribute", "selector.go")):                         {},
+		filepath.Clean(filepath.Join(root, "product", "build", "skc_list.go")):                             {},
+		filepath.Clean(filepath.Join(root, "product", "skc", "builder.go")):                                {},
+		filepath.Clean(filepath.Join(root, "product", "skc", "translation.go")):                            {},
+		filepath.Clean(filepath.Join(root, "product", "skc", "variant.go")):                                {},
+		filepath.Clean(filepath.Join(root, "submitprep", "localized_content.go")):                          {},
+		filepath.Clean(filepath.Join(root, "translate", "translate.go")):                                   {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+				t.Errorf("%s imports %s; keep SHEIN concrete OpenAI client dependencies limited to current category, content, pipeline, product, submit-prep, and translate seams", path, importPath)
+			}
+		}
+	}
+}
+
 func TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowedFiles := map[string]struct{}{}
