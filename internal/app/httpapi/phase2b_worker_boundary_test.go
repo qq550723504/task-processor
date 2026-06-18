@@ -81,3 +81,36 @@ func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
 		require.Contains(t, string(routeTypesSrc), marker)
 	}
 }
+
+func TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport(t *testing.T) {
+	t.Parallel()
+
+	modulesSrc, err := os.ReadFile("modules.go")
+	require.NoError(t, err)
+	modulesContent := string(modulesSrc)
+
+	for _, marker := range []string{
+		"func newWorkerPool(",
+		"func buildLocalTaskHealthProvider(",
+		"worker.NewPoolWithConfig(",
+		"TaskTimeout:",
+		"GetQueueStats()",
+		"GetMetrics()",
+	} {
+		require.NotContains(t, modulesContent, marker)
+	}
+
+	workerSupportSrc, err := os.ReadFile("runtime_worker_pools.go")
+	require.NoError(t, err)
+	workerSupportContent := string(workerSupportSrc)
+	for _, marker := range []string{
+		"func newWorkerPool(",
+		"func buildLocalTaskHealthProvider(",
+		"worker.NewPoolWithConfig(",
+		"TaskTimeout:",
+		"GetQueueStats()",
+		"GetMetrics()",
+	} {
+		require.Contains(t, workerSupportContent, marker)
+	}
+}
