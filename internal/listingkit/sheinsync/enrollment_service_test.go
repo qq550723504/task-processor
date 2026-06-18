@@ -261,7 +261,7 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 	t.Parallel()
 
 	strategyProvider := &sheinPromotionStrategyProviderStub{
-		strategy: NewSheinPromotionStrategy(&managementapi.OperationStrategyDTO{
+		strategy: NewSheinPromotionStrategy(SheinPromotionStrategyInput{
 			StoreID:              22,
 			ActivityPriceMode:    "DISCOUNT",
 			ActivityDiscountRate: 0.2,

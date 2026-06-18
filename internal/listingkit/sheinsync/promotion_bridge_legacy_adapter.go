@@ -3,6 +3,7 @@ package sheinsync
 import (
 	"context"
 
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
 )
@@ -58,4 +59,18 @@ func (a legacyPromotionBridgeFactoryAdapter) BuildPromotionBridge(ctx context.Co
 		return nil, err
 	}
 	return legacyPromotionBridgeAdapter{bridge: bridge}, nil
+}
+
+func (s *SheinPromotionStrategy) managementOperationStrategy() *managementapi.OperationStrategyDTO {
+	if s == nil {
+		return nil
+	}
+	return &managementapi.OperationStrategyDTO{
+		StoreID:               s.StoreID,
+		ActivityPriceMode:     s.ActivityPriceMode,
+		ActivityDiscountRate:  s.ActivityDiscountRate,
+		ActivityMinProfitRate: s.ActivityMinProfitRate,
+		ActivityStockRatio:    s.ActivityStockRatio,
+		FixedPriceAdjustment:  s.FixedPriceAdjustment,
+	}
 }

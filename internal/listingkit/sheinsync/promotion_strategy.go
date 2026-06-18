@@ -1,21 +1,30 @@
 package sheinsync
 
-import managementapi "task-processor/internal/infra/clients/management/api"
+type SheinPromotionStrategyInput struct {
+	StoreID               int64
+	ActivityPriceMode     string
+	ActivityDiscountRate  float64
+	ActivityMinProfitRate float64
+	ActivityStockRatio    float64
+	FixedPriceAdjustment  float64
+}
 
 type SheinPromotionStrategy struct {
-	managementStrategy *managementapi.OperationStrategyDTO
+	StoreID               int64
+	ActivityPriceMode     string
+	ActivityDiscountRate  float64
+	ActivityMinProfitRate float64
+	ActivityStockRatio    float64
+	FixedPriceAdjustment  float64
 }
 
-func NewSheinPromotionStrategy(strategy *managementapi.OperationStrategyDTO) *SheinPromotionStrategy {
-	if strategy == nil {
-		return nil
+func NewSheinPromotionStrategy(input SheinPromotionStrategyInput) *SheinPromotionStrategy {
+	return &SheinPromotionStrategy{
+		StoreID:               input.StoreID,
+		ActivityPriceMode:     input.ActivityPriceMode,
+		ActivityDiscountRate:  input.ActivityDiscountRate,
+		ActivityMinProfitRate: input.ActivityMinProfitRate,
+		ActivityStockRatio:    input.ActivityStockRatio,
+		FixedPriceAdjustment:  input.FixedPriceAdjustment,
 	}
-	return &SheinPromotionStrategy{managementStrategy: strategy}
-}
-
-func (s *SheinPromotionStrategy) managementOperationStrategy() *managementapi.OperationStrategyDTO {
-	if s == nil {
-		return nil
-	}
-	return s.managementStrategy
 }

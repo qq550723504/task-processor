@@ -21,7 +21,17 @@ func (p localManagementPromotionStrategyProvider) GetPromotionStrategy(_ context
 	if err != nil {
 		return nil, err
 	}
-	return sheinsync.NewSheinPromotionStrategy(strategy), nil
+	if strategy == nil {
+		return nil, nil
+	}
+	return sheinsync.NewSheinPromotionStrategy(sheinsync.SheinPromotionStrategyInput{
+		StoreID:               strategy.StoreID,
+		ActivityPriceMode:     strategy.ActivityPriceMode,
+		ActivityDiscountRate:  strategy.ActivityDiscountRate,
+		ActivityMinProfitRate: strategy.ActivityMinProfitRate,
+		ActivityStockRatio:    strategy.ActivityStockRatio,
+		FixedPriceAdjustment:  strategy.FixedPriceAdjustment,
+	}), nil
 }
 
 func buildSheinPromotionStrategyProvider(input BuildServiceInput, closers *closerStack) (localManagementPromotionStrategyProvider, error) {

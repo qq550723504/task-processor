@@ -79,7 +79,12 @@ func TestSheinSyncActivityAdapterUsesLocalPromotionStrategyContract(t *testing.T
 	strategyFile := readSheinSyncServiceFileContent(t, "promotion_strategy.go")
 	assertSheinSyncServiceContainsAll(t, strategyFile,
 		"type SheinPromotionStrategy struct {",
+		"type SheinPromotionStrategyInput struct {",
 		"func NewSheinPromotionStrategy(",
+	)
+	assertSheinSyncServiceNotContainsAny(t, strategyFile,
+		`"task-processor/internal/infra/clients/management/api"`,
+		"managementapi.OperationStrategyDTO",
 	)
 }
 
