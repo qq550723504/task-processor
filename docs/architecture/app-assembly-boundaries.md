@@ -199,11 +199,22 @@ it is usually not worth it.
 App-layer assembly boundaries are guarded by:
 
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
+- `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
+- `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated`
 
 This keeps business domains from depending directly on concrete
 `internal/app/{bootstrap,consumer,runner,runtime}` assembly packages. If a new
 transition seam is necessary, document the narrow exception and update the
 allowlist in the same change.
+
+The `internal/app/httpapi` package also has package-local runtime seam guards.
+They keep generic files such as `types.go`, `adapters.go`, and `runtime.go`
+from absorbing concrete external-client state or shared resource assembly.
+When a runtime dependency needs a concrete client or bootstrap resource, prefer
+a named seam such as `runtime_shared_deps.go`, `adapters_openai.go`, or
+`runtime_openai.go` instead of expanding the generic assembly files.
 
 ## Review Questions
 

@@ -1290,6 +1290,10 @@ func TestAppAssemblyBoundaryDocumentDefinesStableAssemblyVocabulary(t *testing.T
 		"`runner` starts and supervises",
 		"`consumer` assembles and coordinates",
 		"TestBusinessDomainsDoNotImportAppRuntimeAssembly",
+		"TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated",
+		"TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated",
+		"TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated",
+		"TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated",
 		"Review Questions",
 	}
 	for _, phrase := range required {
