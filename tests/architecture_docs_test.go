@@ -335,6 +335,34 @@ func TestArchitectureReviewChecklistReferencesExistingDocuments(t *testing.T) {
 	assertMarkdownReferencesExistingDocuments(t, checklistPath, reviewReferences)
 }
 
+func TestArchitectureReviewChecklistExcludesTimeBoundedReviewReferences(t *testing.T) {
+	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
+	readmeContent, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", readmePath, err)
+	}
+
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	reviewReferences := markdownSection(t, string(checklistContent), "## Review References")
+	const timeBoundedRule = "Time-bounded plans, runbooks, and evaluations must not be listed as review references"
+	if !strings.Contains(reviewReferences, timeBoundedRule) {
+		t.Errorf("%s Review References must state %q so temporary context documents do not become formal review entrypoints", checklistPath, timeBoundedRule)
+	}
+
+	patterns := architectureReadmeTimeBoundedPatterns(t, string(readmeContent))
+	for _, reference := range normalizedArchitectureDocReferences(t, reviewReferences) {
+		name := filepath.Base(reference)
+		if matchesAnyPattern(t, name, patterns) {
+			t.Errorf("%s Review References must not include time-bounded context document %q matching patterns %v", checklistPath, reference, patterns)
+		}
+	}
+}
+
 func TestArchitectureReviewChecklistExplainsReviewReferenceRoles(t *testing.T) {
 	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
 	checklistContent, err := os.ReadFile(checklistPath)

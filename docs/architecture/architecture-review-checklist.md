@@ -115,6 +115,7 @@ documents are the stable source of truth for long-lived boundary rules, while
 development boundary documents define long-lived repository structure rules.
 `docs/architecture/next-steps.md` points to the current guard coverage baseline:
 Every review reference must resolve to an existing repository document.
+Time-bounded plans, runbooks, and evaluations must not be listed as review references.
 
 - `docs/architecture/README.md`
 - `docs/architecture/project-boundaries.md`
