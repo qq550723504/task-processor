@@ -1458,6 +1458,32 @@ func TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted(t *testing.T
 	}
 }
 
+func TestAppHTTPAPIManagementClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "httpapi")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "modules_shein_test.go")):   {},
+		filepath.Clean(filepath.Join(root, "runtime_deps_methods.go")): {},
+		filepath.Clean(filepath.Join(root, "runtime_deps_test.go")):    {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep app/httpapi management dependencies limited to current HTTP runtime dependency retirement seams and prefer in-repository database/repository access for new HTTP assembly data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestTEMUSyncAndPricingManagementImportsStayAllowlisted(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "temu", "pricing", "auto_pricing_service.go")):        {},
