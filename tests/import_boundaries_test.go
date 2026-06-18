@@ -188,16 +188,12 @@ func TestPublishingSheinOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "publishing", "shein")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "attribute_resolver_test.go")):                  {},
-		filepath.Clean(filepath.Join(root, "category_resolver_ai.go")):                     {},
 		filepath.Clean(filepath.Join(root, "category_semantic_verifier_test.go")):          {},
-		filepath.Clean(filepath.Join(root, "category_suggest_fallback.go")):                {},
-		filepath.Clean(filepath.Join(root, "category_tree_fallback.go")):                   {},
 		filepath.Clean(filepath.Join(root, "display_attribute_resolution_flow_test.go")):   {},
 		filepath.Clean(filepath.Join(root, "generation_topic_policy_integration_test.go")): {},
 		filepath.Clean(filepath.Join(root, "listing_copy_test.go")):                        {},
 		filepath.Clean(filepath.Join(root, "review_content.go")):                           {},
 		filepath.Clean(filepath.Join(root, "review_content_test.go")):                      {},
-		filepath.Clean(filepath.Join(root, "runtime_category_resolver.go")):                {},
 		filepath.Clean(filepath.Join(root, "sale_attribute_resolver_test.go")):             {},
 		filepath.Clean(filepath.Join(root, "sale_attribute_value_matcher_test.go")):        {},
 		filepath.Clean(filepath.Join(root, "submit_prep.go")):                              {},

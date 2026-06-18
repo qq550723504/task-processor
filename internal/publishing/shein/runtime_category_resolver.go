@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	sheincategory "task-processor/internal/shein/api/category"
 )
 
@@ -17,13 +16,13 @@ type runtimeCategoryResolver struct {
 	semanticVerifier categorySemanticVerifier
 }
 
-func NewRuntimeCategoryResolver(factory RuntimeAPIClientFactory, llmClient ...openaiclient.ChatCompleter) CategoryResolver {
+func NewRuntimeCategoryResolver(factory RuntimeAPIClientFactory, aiConfig CategoryAIConfig) CategoryResolver {
 	return &runtimeCategoryResolver{
 		fallback:         NewCategoryResolver(nil),
 		factory:          newRuntimeAPIFactory(factory),
-		suggestFallback:  buildAICategorySuggestFallback(llmClient...),
-		treeFallback:     buildAICategoryTreeFallback(llmClient...),
-		semanticVerifier: buildAICategorySemanticVerifier(llmClient...),
+		suggestFallback:  buildAICategorySuggestFallback(aiConfig),
+		treeFallback:     buildAICategoryTreeFallback(aiConfig),
+		semanticVerifier: buildAICategorySemanticVerifier(aiConfig),
 	}
 }
 
@@ -42,25 +41,25 @@ func (r *runtimeCategoryResolver) Resolve(req *BuildRequest, canonical *canonica
 	return resolution
 }
 
-func buildAICategorySuggestFallback(llmClient ...openaiclient.ChatCompleter) categorySuggestFallback {
-	if len(llmClient) == 0 {
+func buildAICategorySuggestFallback(aiConfig CategoryAIConfig) categorySuggestFallback {
+	if aiConfig.Selector == nil {
 		return nil
 	}
-	return newAICategorySuggestFallback(llmClient[0])
+	return newAICategorySuggestFallback(aiConfig.Selector)
 }
 
-func buildAICategoryTreeFallback(llmClient ...openaiclient.ChatCompleter) categoryTreeFallback {
-	if len(llmClient) == 0 {
+func buildAICategoryTreeFallback(aiConfig CategoryAIConfig) categoryTreeFallback {
+	if aiConfig.Selector == nil {
 		return nil
 	}
-	return newAICategoryTreeFallback(llmClient[0])
+	return newAICategoryTreeFallback(aiConfig.Selector)
 }
 
-func buildAICategorySemanticVerifier(llmClient ...openaiclient.ChatCompleter) categorySemanticVerifier {
-	if len(llmClient) == 0 {
+func buildAICategorySemanticVerifier(aiConfig CategoryAIConfig) categorySemanticVerifier {
+	if aiConfig.SemanticVerifier == nil {
 		return nil
 	}
-	return newAICategorySemanticVerifier(llmClient[0])
+	return newAICategorySemanticVerifier(aiConfig.SemanticVerifier)
 }
 
 func (r *runtimeCategoryResolver) buildAPI(ctx context.Context, storeID int64) (CategoryAPI, string) {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	sheincategoryselector "task-processor/internal/shein/category"
 )
 
@@ -12,15 +11,19 @@ type categorySuggestFallback interface {
 	SelectCategoryID(ctx context.Context, input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error)
 }
 
+type CategoryAIConfig struct {
+	Selector         sheincategoryselector.AISelector
+	SemanticVerifier TextGenerator
+}
+
 type aiCategorySuggestFallback struct {
 	manager *sheincategoryselector.CategoryManager
 }
 
-func newAICategorySuggestFallback(client openaiclient.ChatCompleter) categorySuggestFallback {
-	if client == nil {
+func newAICategorySuggestFallback(selector sheincategoryselector.AISelector) categorySuggestFallback {
+	if selector == nil {
 		return nil
 	}
-	selector := sheincategoryselector.NewOpenAISelector(client)
 	return &aiCategorySuggestFallback{
 		manager: sheincategoryselector.NewCategoryManager(selector),
 	}

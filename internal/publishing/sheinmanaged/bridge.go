@@ -15,6 +15,7 @@ import (
 	sheinimage "task-processor/internal/shein/api/image"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheintranslate "task-processor/internal/shein/api/translate"
+	sheincategoryselector "task-processor/internal/shein/category"
 	sheinclient "task-processor/internal/shein/client"
 	sheinmanagedclient "task-processor/internal/shein/managedclient"
 )
@@ -84,14 +85,19 @@ func (f *apiFactory) BuildBaseClient(storeID int64) (*sheinclient.BaseAPIClient,
 type categoryResolver struct {
 	fallback sheinpub.CategoryResolver
 	factory  *apiFactory
-	llm      []openaiclient.ChatCompleter
+	aiConfig sheinpub.CategoryAIConfig
 }
 
 func NewCategoryResolver(client *management.ClientManager, llmClient ...openaiclient.ChatCompleter) sheinpub.CategoryResolver {
+	var aiConfig sheinpub.CategoryAIConfig
+	if len(llmClient) > 0 && llmClient[0] != nil {
+		aiConfig.Selector = sheincategoryselector.NewOpenAISelector(llmClient[0])
+		aiConfig.SemanticVerifier = llmClient[0]
+	}
 	return &categoryResolver{
 		fallback: sheinpub.NewCategoryResolver(nil),
 		factory:  newAPIFactory(client),
-		llm:      append([]openaiclient.ChatCompleter(nil), llmClient...),
+		aiConfig: aiConfig,
 	}
 }
 
@@ -101,7 +107,7 @@ func (r *categoryResolver) Resolve(req *sheinpub.BuildRequest, canonicalProduct 
 	}
 
 	api, note := r.buildAPI(req.Context, req.SheinStoreID)
-	resolver := sheinpub.NewCategoryResolverWithAI(api, r.llm...)
+	resolver := sheinpub.NewCategoryResolverWithAI(api, r.aiConfig)
 	resolution := resolver.Resolve(req, canonicalProduct, pkg)
 	if note != "" {
 		resolution.ReviewNotes = append(resolution.ReviewNotes, note)

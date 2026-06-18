@@ -1,15 +1,15 @@
 package shein
 
-import openaiclient "task-processor/internal/infra/clients/openai"
-
-func NewCategoryResolverWithAI(api CategoryAPI, llmClient ...openaiclient.ChatCompleter) CategoryResolver {
+func NewCategoryResolverWithAI(api CategoryAPI, aiConfig CategoryAIConfig) CategoryResolver {
 	var suggestFallback categorySuggestFallback
 	var treeFallback categoryTreeFallback
 	var semanticVerifier categorySemanticVerifier
-	if len(llmClient) > 0 {
-		suggestFallback = newAICategorySuggestFallback(llmClient[0])
-		treeFallback = newAICategoryTreeFallback(llmClient[0])
-		semanticVerifier = newAICategorySemanticVerifier(llmClient[0])
+	if aiConfig.Selector != nil {
+		suggestFallback = newAICategorySuggestFallback(aiConfig.Selector)
+		treeFallback = newAICategoryTreeFallback(aiConfig.Selector)
+	}
+	if aiConfig.SemanticVerifier != nil {
+		semanticVerifier = newAICategorySemanticVerifier(aiConfig.SemanticVerifier)
 	}
 	return NewCategoryResolverWithSemanticVerifier(api, suggestFallback, treeFallback, semanticVerifier)
 }

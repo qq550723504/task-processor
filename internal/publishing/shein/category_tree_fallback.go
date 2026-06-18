@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	sheincategoryapi "task-processor/internal/shein/api/category"
 	sheincategoryselector "task-processor/internal/shein/category"
 )
@@ -17,11 +16,10 @@ type aiCategoryTreeFallback struct {
 	manager *sheincategoryselector.CategoryManager
 }
 
-func newAICategoryTreeFallback(client openaiclient.ChatCompleter) categoryTreeFallback {
-	if client == nil {
+func newAICategoryTreeFallback(selector sheincategoryselector.AISelector) categoryTreeFallback {
+	if selector == nil {
 		return nil
 	}
-	selector := sheincategoryselector.NewOpenAISelector(client)
 	return &aiCategoryTreeFallback{
 		manager: sheincategoryselector.NewCategoryManager(selector),
 	}

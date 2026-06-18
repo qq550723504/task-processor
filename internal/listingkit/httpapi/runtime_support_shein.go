@@ -7,12 +7,18 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
+	sheincategoryselector "task-processor/internal/shein/category"
 	"task-processor/internal/sheinlogin"
 )
 
 func buildListingKitSheinCategoryResolver(storeRepo listingadmin.StoreRepository, cookieStore *sheinlogin.RedisStore, llm openaiclient.ChatCompleter, cache sheinpub.ResolutionCacheStore) sheinpub.CategoryResolver {
+	var aiConfig sheinpub.CategoryAIConfig
+	if llm != nil {
+		aiConfig.Selector = sheincategoryselector.NewOpenAISelector(llm)
+		aiConfig.SemanticVerifier = llm
+	}
 	return sheinpub.NewCachedCategoryResolver(
-		sheinpub.NewRuntimeCategoryResolver(listingKitSheinRuntimeFactory{repo: storeRepo, cookieStore: cookieStore}, llm),
+		sheinpub.NewRuntimeCategoryResolver(listingKitSheinRuntimeFactory{repo: storeRepo, cookieStore: cookieStore}, aiConfig),
 		cache,
 	)
 }
