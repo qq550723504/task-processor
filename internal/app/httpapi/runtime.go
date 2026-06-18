@@ -6,7 +6,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/prompt"
@@ -79,13 +78,10 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	}
 
 	done = timer.phase("buildSharedResources")
-	shared, err := appbootstrap.BuildSharedResources(cfg, logger, appbootstrap.SharedResourceOptions{
-		AllowMissingManagementAuth: true,
-		SkipManagementAuth:         true,
-	})
+	shared, err := buildHTTPAPISharedResources(cfg, logger)
 	done()
 	if err != nil {
-		return nil, fmt.Errorf("build shared resources: %w", err)
+		return nil, err
 	}
 
 	timer.total("buildRuntimeDeps")

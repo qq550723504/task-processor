@@ -215,6 +215,35 @@ func TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated(t *testing.T) 
 	}
 }
 
+func TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated(t *testing.T) {
+	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
+	for _, marker := range []string{
+		`"task-processor/internal/app/bootstrap"`,
+		"appbootstrap.BuildSharedResources(",
+		"appbootstrap.SharedResourceOptions{",
+		"AllowMissingManagementAuth: true",
+		"SkipManagementAuth:         true",
+	} {
+		if strings.Contains(runtimeSource, marker) {
+			t.Fatalf("runtime.go should keep shared resource assembly in runtime_shared_resources.go; found %s", marker)
+		}
+	}
+
+	sharedResourcesSource := readHTTPAPIBoundaryFile(t, "runtime_shared_resources.go")
+	for _, marker := range []string{
+		`"task-processor/internal/app/bootstrap"`,
+		"func buildHTTPAPISharedResources(",
+		"appbootstrap.BuildSharedResources(",
+		"appbootstrap.SharedResourceOptions{",
+		"AllowMissingManagementAuth: true",
+		"SkipManagementAuth:         true",
+	} {
+		if !strings.Contains(sharedResourcesSource, marker) {
+			t.Fatalf("runtime_shared_resources.go missing %s", marker)
+		}
+	}
+}
+
 func readHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)
