@@ -158,6 +158,14 @@ Current direct dependency hotspots are:
     database/repository access
   - current direct management seam is guarded by
     `TestProcessorManagementClientImportsStayAllowlisted`
+- `internal/taskrpcapi`
+  - current task RPC assembly still imports `management` in build and handler
+    seams
+  - this is a task-RPC retirement seam, not a long-lived task transport data
+    direction; future task RPC data should use in-repository
+    database/repository access
+  - current direct management seams are guarded by
+    `TestTaskRPCAPIManagementClientImportsStayAllowlisted`
 - `internal/state`
   - current state runtime helpers still import `management` in manager and
     daily-count seams
@@ -303,7 +311,12 @@ adapter types without changing business behavior:
    allowlisted to freeze current processor seam; future processor data should
    prefer in-repository database/repository access rather than adding new
    management API call sites.
-21. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+21. Task RPC build and handler seams currently importing
+   `internal/infra/clients/management`. Current imports are explicitly
+   allowlisted to freeze current RPC seam; future task RPC data should prefer
+   in-repository database/repository access rather than adding new management
+   API call sites.
+22. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding
