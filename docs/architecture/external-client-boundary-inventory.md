@@ -182,6 +182,14 @@ Current direct dependency hotspots are:
     database/repository access
   - current direct management seams are guarded by
     `TestSheinLoginBootstrapManagementClientImportsStayAllowlisted`
+- `internal/sheinlogin`
+  - current SHEIN login service package still imports `management` in
+    bootstrap and login-service seams
+  - these are login-service retirement seams, not a long-lived login state
+    data direction; future login service data should use in-repository
+    database/repository access
+  - current direct management seams are guarded by
+    `TestSheinLoginServiceManagementClientImportsStayAllowlisted`
 - `internal/sheinloginmanaged`
   - current managed login bridge still imports `management` in bridge and
     account seams
