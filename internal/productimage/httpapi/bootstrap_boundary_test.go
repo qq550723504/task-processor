@@ -58,6 +58,36 @@ func TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile(t *testing.T) {
 	}
 }
 
+func TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile(t *testing.T) {
+	bootstrapSource := readProductImageHTTPAPIBoundaryFile(t, "bootstrap.go")
+	for _, marker := range []string{
+		`"task-processor/internal/infra/database"`,
+		`"task-processor/internal/productimage/store"`,
+		"func buildTaskRepository(",
+		"func newDBTaskRepository(",
+		"database.NewSharedDatabaseFromConfig(",
+		"db.AutoMigrate(&productimage.Task{})",
+	} {
+		if strings.Contains(bootstrapSource, marker) {
+			t.Fatalf("bootstrap.go should delegate ProductImage task repository assembly to task_repository_builder.go; found %s", marker)
+		}
+	}
+
+	builderSource := readProductImageHTTPAPIBoundaryFile(t, "task_repository_builder.go")
+	for _, marker := range []string{
+		`"task-processor/internal/infra/database"`,
+		`"task-processor/internal/productimage/store"`,
+		"func buildTaskRepository(",
+		"func newDBTaskRepository(",
+		"database.NewSharedDatabaseFromConfig(",
+		"db.AutoMigrate(&productimage.Task{})",
+	} {
+		if !strings.Contains(builderSource, marker) {
+			t.Fatalf("task_repository_builder.go missing %s", marker)
+		}
+	}
+}
+
 func readProductImageHTTPAPIBoundaryFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(name)

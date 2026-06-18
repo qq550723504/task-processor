@@ -78,6 +78,8 @@
 - 模型 provider / publisher / image pipeline 组件装配
 - 具体模型 provider 和资产 publisher/S3 client 组装应放在专用 builder 文件，
   `bootstrap.go` 只负责串起 module 依赖图
+- task repository / DB migration 组装应放在专用 repository builder 文件，
+  避免 `bootstrap.go` 重新承担数据库细节
 - `productimage` 自己的 handler / pool / repo 构建
 
 ### `internal/amazonlisting/httpapi`
@@ -184,6 +186,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
 - `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile`
 - `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
+- `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile`
 
 如果需要新增 app/httpapi 过渡 seam，应在同一变更中更新对应 allowlist、
 这份文档和文档测试；否则优先把新增逻辑放到 owning `internal/*/httpapi`
