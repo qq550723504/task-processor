@@ -83,6 +83,29 @@ func TestSheinSyncActivityAdapterUsesLocalPromotionStrategyContract(t *testing.T
 	)
 }
 
+func TestSheinSyncActivityAdapterUsesLocalPromotionBridgeContract(t *testing.T) {
+	t.Parallel()
+
+	activityFile := readSheinSyncServiceFileContent(t, "activity_adapter.go")
+	assertSheinSyncServiceContainsAll(t, activityFile,
+		"type SheinPromotionBridge interface {",
+		"type SheinPromotionBridgeFactory interface {",
+	)
+	assertSheinSyncServiceNotContainsAny(t, activityFile,
+		`"task-processor/internal/shein/activity"`,
+		"activity.PromotionRegistrationBridge",
+		"activity.PromotionRegistrationResult",
+	)
+
+	legacyAdapterFile := readSheinSyncServiceFileContent(t, "promotion_bridge_legacy_adapter.go")
+	assertSheinSyncServiceContainsAll(t, legacyAdapterFile,
+		`"task-processor/internal/shein/activity"`,
+		"func NewSheinActivityAdapter(",
+		"func NewSheinActivityAdapterWithFactory(",
+		"type legacyPromotionBridgeAdapter struct",
+	)
+}
+
 func readSheinSyncServiceFileContent(t *testing.T, path string) string {
 	t.Helper()
 

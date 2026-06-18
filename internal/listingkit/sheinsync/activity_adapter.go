@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
 )
 
@@ -39,13 +38,17 @@ type SheinPromotionStrategyProvider interface {
 	GetPromotionStrategy(ctx context.Context, storeID int64, activityKey string) (*SheinPromotionStrategy, error)
 }
 
+type SheinPromotionBridge interface {
+	RegisterPromotionProducts(ctx context.Context, strategy *SheinPromotionStrategy, activityKey string, products []marketing.SkcInfo) (*SheinPromotionRegistrationResult, error)
+}
+
 type sheinActivityAdapter struct {
 	strategyProvider       SheinPromotionStrategyProvider
-	promotionBridge        activity.PromotionRegistrationBridge
+	promotionBridge        SheinPromotionBridge
 	promotionBridgeFactory SheinPromotionBridgeFactory
 }
 
-func NewSheinActivityAdapter(strategyProvider SheinPromotionStrategyProvider, promotionBridge activity.PromotionRegistrationBridge) SheinActivityAdapter {
+func newSheinActivityAdapter(strategyProvider SheinPromotionStrategyProvider, promotionBridge SheinPromotionBridge) SheinActivityAdapter {
 	return &sheinActivityAdapter{
 		strategyProvider: strategyProvider,
 		promotionBridge:  promotionBridge,
@@ -53,10 +56,10 @@ func NewSheinActivityAdapter(strategyProvider SheinPromotionStrategyProvider, pr
 }
 
 type SheinPromotionBridgeFactory interface {
-	BuildPromotionBridge(ctx context.Context, storeID int64) (activity.PromotionRegistrationBridge, error)
+	BuildPromotionBridge(ctx context.Context, storeID int64) (SheinPromotionBridge, error)
 }
 
-func NewSheinActivityAdapterWithFactory(strategyProvider SheinPromotionStrategyProvider, promotionBridgeFactory SheinPromotionBridgeFactory) SheinActivityAdapter {
+func newSheinActivityAdapterWithFactory(strategyProvider SheinPromotionStrategyProvider, promotionBridgeFactory SheinPromotionBridgeFactory) SheinActivityAdapter {
 	return &sheinActivityAdapter{
 		strategyProvider:       strategyProvider,
 		promotionBridgeFactory: promotionBridgeFactory,
@@ -117,11 +120,11 @@ func (a *sheinActivityAdapter) enrollPromotionCandidates(
 		return products[i].Skc < products[j].Skc
 	})
 
-	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy.managementOperationStrategy(), activityKey, products)
+	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy, activityKey, products)
 	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC), bridgeErr
 }
 
-func (a *sheinActivityAdapter) resolvePromotionBridge(ctx context.Context, storeID int64) (activity.PromotionRegistrationBridge, error) {
+func (a *sheinActivityAdapter) resolvePromotionBridge(ctx context.Context, storeID int64) (SheinPromotionBridge, error) {
 	if a == nil {
 		return nil, fmt.Errorf("SHEIN activity adapter is required")
 	}
@@ -164,7 +167,7 @@ func buildPromotionCandidateProduct(candidate SheinActivityEnrollmentCandidate) 
 
 func buildPromotionEnrollmentResults(
 	candidates []SheinActivityEnrollmentCandidate,
-	bridgeResult *activity.PromotionRegistrationResult,
+	bridgeResult *SheinPromotionRegistrationResult,
 	bridgeErr error,
 	productBySKC map[string]marketing.SkcInfo,
 ) []SheinActivityEnrollmentResult {
