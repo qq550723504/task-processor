@@ -127,3 +127,41 @@ func TestHTTPAPICompositionBuilderDoesNotOwnListingKitRuntimeInput(t *testing.T)
 		require.Contains(t, featureBuilderContent, marker)
 	}
 }
+
+func TestHTTPAPICompositionBuilderDoesNotOwnFeatureModuleBuilderContracts(t *testing.T) {
+	compositionSrc, err := os.ReadFile("composition_builder.go")
+	require.NoError(t, err)
+	compositionContent := string(compositionSrc)
+
+	for _, marker := range []string{
+		`"task-processor/internal/amazonlisting/httpapi"`,
+		`"task-processor/internal/listingkit/httpapi"`,
+		`"task-processor/internal/productenrich/httpapi"`,
+		`"task-processor/internal/productimage/httpapi"`,
+		"RuntimeBuildInput",
+		"BuildRuntimeModule",
+		"*amazonlistinghttpapi.Module",
+		"*listingkithttpapi.Module",
+		"*productenrichhttpapi.Module",
+		"*productimagehttpapi.Module",
+	} {
+		require.NotContains(t, compositionContent, marker)
+	}
+
+	contractSrc, err := os.ReadFile("feature_module_builders.go")
+	require.NoError(t, err)
+	contractContent := string(contractSrc)
+	for _, marker := range []string{
+		"type productModuleBuilder func(",
+		"type imageModuleBuilder func(",
+		"type amazonListingModuleBuilder func(",
+		"type listingKitModuleBuilder func(",
+		"func buildProductModuleResult(",
+		"func buildImageModuleResult(",
+		"func buildAmazonListingModuleResult(",
+		"func buildListingKitModuleResult(",
+		"BuildRuntimeModule",
+	} {
+		require.Contains(t, contractContent, marker)
+	}
+}

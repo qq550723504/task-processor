@@ -2,21 +2,15 @@ package httpapi
 
 import (
 	"github.com/sirupsen/logrus"
-
-	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-
-	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 type httpFeatureCompositionBuilder struct {
-	buildProduct       func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)
-	buildImage         func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)
-	buildAmazonListing func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)
+	buildProduct       productModuleBuilder
+	buildImage         imageModuleBuilder
+	buildAmazonListing amazonListingModuleBuilder
 	buildSheinLogin    sheinLoginModuleBuilder
 	buildSDSLogin      sdsLoginModuleBuilder
-	buildListingKit    func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)
+	buildListingKit    listingKitModuleBuilder
 	buildPrompt        promptModuleBuilder
 	buildTaskRPC       taskRPCModuleBuilder
 	buildSDS           sdsModuleBuilder
@@ -24,12 +18,12 @@ type httpFeatureCompositionBuilder struct {
 
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 	return httpFeatureCompositionBuilder{
-		buildProduct:       productenrichhttpapi.BuildRuntimeModule,
-		buildImage:         productimagehttpapi.BuildRuntimeModule,
-		buildAmazonListing: amazonlistinghttpapi.BuildRuntimeModule,
+		buildProduct:       buildProductModuleResult,
+		buildImage:         buildImageModuleResult,
+		buildAmazonListing: buildAmazonListingModuleResult,
 		buildSheinLogin:    buildSheinLoginModuleResult,
 		buildSDSLogin:      buildSDSLoginModuleResult,
-		buildListingKit:    listingkithttpapi.BuildRuntimeModule,
+		buildListingKit:    buildListingKitModuleResult,
 		buildPrompt:        buildPromptModuleResult,
 		buildTaskRPC:       buildTaskRPCModuleResult,
 		buildSDS:           buildSDSModuleResult,

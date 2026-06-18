@@ -1527,6 +1527,7 @@ func TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "composition_builder.go")):        {},
+		filepath.Clean(filepath.Join(root, "feature_module_builders.go")):    {},
 		filepath.Clean(filepath.Join(root, "feature_builder_listingkit.go")): {},
 		filepath.Clean(filepath.Join(root, "http_modules.go")):               {},
 		filepath.Clean(filepath.Join(root, "listingkit_support.go")):         {},

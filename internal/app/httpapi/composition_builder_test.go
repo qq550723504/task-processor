@@ -32,19 +32,19 @@ func TestNewHTTPFeatureCompositionBuilderUsesFeatureOwnedRuntimeBuilders(t *test
 	builder := newHTTPFeatureCompositionBuilder()
 
 	require.Equal(t,
-		runtime.FuncForPC(reflect.ValueOf(productenrichhttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(buildProductModuleResult).Pointer()).Name(),
 		runtime.FuncForPC(reflect.ValueOf(builder.buildProduct).Pointer()).Name(),
 	)
 	require.Equal(t,
-		runtime.FuncForPC(reflect.ValueOf(productimagehttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(buildImageModuleResult).Pointer()).Name(),
 		runtime.FuncForPC(reflect.ValueOf(builder.buildImage).Pointer()).Name(),
 	)
 	require.Equal(t,
-		runtime.FuncForPC(reflect.ValueOf(amazonlistinghttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(buildAmazonListingModuleResult).Pointer()).Name(),
 		runtime.FuncForPC(reflect.ValueOf(builder.buildAmazonListing).Pointer()).Name(),
 	)
 	require.Equal(t,
-		runtime.FuncForPC(reflect.ValueOf(listingkithttpapi.BuildRuntimeModule).Pointer()).Name(),
+		runtime.FuncForPC(reflect.ValueOf(buildListingKitModuleResult).Pointer()).Name(),
 		runtime.FuncForPC(reflect.ValueOf(builder.buildListingKit).Pointer()).Name(),
 	)
 }
