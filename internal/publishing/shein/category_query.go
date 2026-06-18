@@ -5,7 +5,6 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
-	sheincategoryselector "task-processor/internal/shein/category"
 )
 
 func buildCategoryQuery(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
@@ -26,8 +25,8 @@ func buildCategorySuggestionQuery(req *BuildRequest, canonical *canonical.Produc
 	return ""
 }
 
-func buildCategorySuggestInput(req *BuildRequest, canonical *canonical.Product, pkg *Package) sheincategoryselector.CoreItemInput {
-	input := sheincategoryselector.CoreItemInput{
+func buildCategorySuggestInput(req *BuildRequest, canonical *canonical.Product, pkg *Package) CategoryCoreItemInput {
+	input := CategoryCoreItemInput{
 		Title:        firstNonGenericTitle(canonicalTitle(canonical), packageTitle(pkg), reqText(req)),
 		ProductType:  extractCategoryProductType(canonical, pkg),
 		CategoryPath: append([]string(nil), categoryPathFromCanonical(canonical)...),

@@ -9,7 +9,6 @@ import (
 	"task-processor/internal/catalog/canonical"
 	sheinapi "task-processor/internal/shein/api"
 	sheincategory "task-processor/internal/shein/api/category"
-	sheincategoryselector "task-processor/internal/shein/category"
 )
 
 type stubCategoryAPI struct {
@@ -94,13 +93,13 @@ type stubCategorySuggestFallback struct {
 	err        error
 }
 
-func (s stubCategorySuggestFallback) SelectCategoryID(_ context.Context, input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error) {
+func (s stubCategorySuggestFallback) SelectCategoryID(_ context.Context, input CategoryCoreItemInput, api CategoryAPI) (int, error) {
 	return s.selectedID, s.err
 }
 
-type categorySuggestFallbackFunc func(ctx context.Context, input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error)
+type categorySuggestFallbackFunc func(ctx context.Context, input CategoryCoreItemInput, api CategoryAPI) (int, error)
 
-func (f categorySuggestFallbackFunc) SelectCategoryID(ctx context.Context, input sheincategoryselector.CoreItemInput, api CategoryAPI) (int, error) {
+func (f categorySuggestFallbackFunc) SelectCategoryID(ctx context.Context, input CategoryCoreItemInput, api CategoryAPI) (int, error) {
 	return f(ctx, input, api)
 }
 

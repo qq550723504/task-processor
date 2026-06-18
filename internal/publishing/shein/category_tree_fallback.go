@@ -16,12 +16,12 @@ type aiCategoryTreeFallback struct {
 	manager *sheincategoryselector.CategoryManager
 }
 
-func newAICategoryTreeFallback(selector sheincategoryselector.AISelector) categoryTreeFallback {
+func newAICategoryTreeFallback(selector CategoryAISelector) categoryTreeFallback {
 	if selector == nil {
 		return nil
 	}
 	return &aiCategoryTreeFallback{
-		manager: sheincategoryselector.NewCategoryManager(selector),
+		manager: sheincategoryselector.NewCategoryManager(categoryAISelectorAdapter{selector: selector}),
 	}
 }
 
