@@ -5,7 +5,6 @@ import (
 	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 type attributeResolver struct {
@@ -40,9 +39,5 @@ func (r *attributeResolver) Resolve(req *sheinpub.BuildRequest, canonicalProduct
 }
 
 func (r *attributeResolver) buildAPI(storeID int64) (sheinpub.AttributeAPI, string) {
-	baseAPIClient, note := r.factory.BuildBaseClient(storeID)
-	if baseAPIClient == nil {
-		return nil, note
-	}
-	return sheinattribute.NewClient(baseAPIClient), ""
+	return buildAttributeAPI(r.factory, storeID)
 }

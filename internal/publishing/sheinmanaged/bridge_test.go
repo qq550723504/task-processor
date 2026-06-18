@@ -81,6 +81,28 @@ func TestSheinManagedBridgeKeepsResolversInDedicatedFiles(t *testing.T) {
 	}
 }
 
+func TestSheinManagedAttributeAPIConstructionStaysInDedicatedFactory(t *testing.T) {
+	for _, fileName := range []string{
+		"attribute_resolver.go",
+		"sale_attribute_resolver.go",
+	} {
+		source := readSheinManagedTestFile(t, fileName)
+		if strings.Contains(source, `"task-processor/internal/shein/api/attribute"`) {
+			t.Fatalf("%s should use attribute_api_factory.go instead of importing the SHEIN attribute API directly", fileName)
+		}
+	}
+
+	factorySource := readSheinManagedTestFile(t, "attribute_api_factory.go")
+	for _, marker := range []string{
+		`"task-processor/internal/shein/api/attribute"`,
+		"func buildAttributeAPI",
+	} {
+		if !strings.Contains(factorySource, marker) {
+			t.Fatalf("attribute_api_factory.go missing %s", marker)
+		}
+	}
+}
+
 func readSheinManagedTestFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(".", name))
