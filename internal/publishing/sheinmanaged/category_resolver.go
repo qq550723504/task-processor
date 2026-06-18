@@ -7,7 +7,6 @@ import (
 	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheincategory "task-processor/internal/shein/api/category"
 )
 
 type categoryResolver struct {
@@ -45,9 +44,5 @@ func (r *categoryResolver) Resolve(req *sheinpub.BuildRequest, canonicalProduct 
 }
 
 func (r *categoryResolver) buildAPI(_ context.Context, storeID int64) (sheinpub.CategoryAPI, string) {
-	baseAPIClient, note := r.factory.BuildBaseClient(storeID)
-	if baseAPIClient == nil {
-		return nil, note
-	}
-	return sheincategory.NewClient(baseAPIClient), ""
+	return buildCategoryAPI(r.factory, storeID)
 }

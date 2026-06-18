@@ -103,6 +103,23 @@ func TestSheinManagedAttributeAPIConstructionStaysInDedicatedFactory(t *testing.
 	}
 }
 
+func TestSheinManagedCategoryAPIConstructionStaysInDedicatedFactory(t *testing.T) {
+	resolverSource := readSheinManagedTestFile(t, "category_resolver.go")
+	if strings.Contains(resolverSource, `"task-processor/internal/shein/api/category"`) {
+		t.Fatal("category_resolver.go should use category_api_factory.go instead of importing the SHEIN category API directly")
+	}
+
+	factorySource := readSheinManagedTestFile(t, "category_api_factory.go")
+	for _, marker := range []string{
+		`"task-processor/internal/shein/api/category"`,
+		"func buildCategoryAPI",
+	} {
+		if !strings.Contains(factorySource, marker) {
+			t.Fatalf("category_api_factory.go missing %s", marker)
+		}
+	}
+}
+
 func readSheinManagedTestFile(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(".", name))
