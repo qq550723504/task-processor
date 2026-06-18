@@ -8,9 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
-	"task-processor/internal/pkg/ptr"
 	"task-processor/internal/prompt"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -33,7 +31,7 @@ func inferDisplayAttributesTemplateBatch(
 	attributes []sheinattribute.AttributeInfo,
 	inputs []common.Attribute,
 	resolvedByID map[int]ResolvedAttribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) ([]ResolvedAttribute, []string) {
 	if llm == nil || len(attributes) == 0 || len(inputs) == 0 {
 		return nil, nil
@@ -190,26 +188,17 @@ func hasExactDisplayAttributeInput(attr sheinattribute.AttributeInfo, inputs []c
 
 func generateDisplayAttributeTemplateBatch(
 	ctx context.Context,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 	promptText string,
 ) (string, error) {
-	maxRetries := 0
-	timeout := 35 * time.Second
-	resp, err := llm.CreateChatCompletion(ctx, &openaiclient.ChatCompletionRequest{
-		Messages: []openaiclient.ChatCompletionMessage{
-			{Role: "user", Content: promptText},
-		},
-		Temperature: ptr.Float32Ptr(0.1),
-		Timeout:     &timeout,
-		MaxRetries:  &maxRetries,
-	})
+	resp, err := llm.Generate(ctx, promptText)
 	if err != nil {
 		return "", err
 	}
-	if resp == nil || len(resp.Choices) == 0 {
-		return "", fmt.Errorf("SHEIN 模板批量属性决策未返回有效 choice")
+	if strings.TrimSpace(resp) == "" {
+		return "", fmt.Errorf("SHEIN 模板批量属性决策未返回有效文本")
 	}
-	return resp.Choices[0].Message.Content, nil
+	return resp, nil
 }
 
 func buildDisplayAttributeTemplateBatchPrompt(attributes []sheinattribute.AttributeInfo, inputs []common.Attribute) string {

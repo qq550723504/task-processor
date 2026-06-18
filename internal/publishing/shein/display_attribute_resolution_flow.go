@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	common "task-processor/internal/publishing/common"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
@@ -19,7 +18,7 @@ func resolveDisplayAttributes(
 	ctx context.Context,
 	attributes []sheinattribute.AttributeInfo,
 	evidence *DisplayAttributeEvidencePool,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) ([]ResolvedAttribute, []common.Attribute, []PendingAttributeCandidate, []PendingAttributeCandidate, []string) {
 	if len(attributes) == 0 || evidence == nil {
 		return nil, nil, nil, nil, nil
@@ -126,7 +125,7 @@ func assignDisplayAttributeResolutionInputs(
 	attributes []sheinattribute.AttributeInfo,
 	resolutionInputs []common.Attribute,
 	contextInputs []common.Attribute,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (map[int]displayAttributeInput, []string) {
 	assignments := make(map[int]displayAttributeInput, len(attributes))
 	if len(attributes) == 0 || len(resolutionInputs) == 0 {

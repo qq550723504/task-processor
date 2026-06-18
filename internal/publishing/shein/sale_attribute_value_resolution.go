@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -55,7 +54,7 @@ func prepareSaleAttributeSourceValue(
 	sourceDimension string,
 	sourceValue string,
 	productTitle string,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) saleAttributeValuePreparation {
 	original := strings.TrimSpace(sourceValue)
 	if original == "" {
@@ -181,7 +180,7 @@ func looksLikeCompactSaleAttributeValue(value string) bool {
 	return true
 }
 
-func extractSaleAttributeValueWithLLM(attributeName string, sourceDimension string, sourceValue string, productTitle string, llm openaiclient.ChatCompleter) string {
+func extractSaleAttributeValueWithLLM(attributeName string, sourceDimension string, sourceValue string, productTitle string, llm TextGenerator) string {
 	if llm == nil {
 		return ""
 	}

@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
@@ -25,7 +24,7 @@ func buildValueAssignments(
 	api AttributeAPI,
 	categoryID int,
 	spuName string,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, saleAttributeValueSummary) {
 	return buildValueAssignmentsWithDeniedStore(values, sourceDimension, templateName, scope, index, api, categoryID, spuName, "", nil, llm)
 }
@@ -41,7 +40,7 @@ func buildValueAssignmentsWithDeniedStore(
 	spuName string,
 	storeID string,
 	deniedStore ResolutionCacheStore,
-	llm openaiclient.ChatCompleter,
+	llm TextGenerator,
 ) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, saleAttributeValueSummary) {
 	if len(values) == 0 || strings.TrimSpace(templateName) == "" || index == nil {
 		return nil, nil, nil, saleAttributeValueSummary{}
