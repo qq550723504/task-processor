@@ -44,15 +44,14 @@ func TestOptimizePackageReviewContent_UsesAIAndUpdatesPreviewSurface(t *testing.
 		},
 	}
 
-	if err := OptimizePackageReviewContent(context.Background(), pkg, NewAIReviewContentOptimizer(ai)); err != nil {
+	if err := OptimizePackageReviewContent(context.Background(), pkg, NewReviewContentOptimizer(ai)); err != nil {
 		t.Fatalf("OptimizePackageReviewContent returned error: %v", err)
 	}
-	if ai.lastReq == nil || len(ai.lastReq.Messages) < 2 {
-		t.Fatalf("ai request = %+v, want multimodal optimization request", ai.lastReq)
+	if ai.lastUserPrompt == "" {
+		t.Fatal("ai user prompt is empty, want multimodal optimization request")
 	}
-	parts := ai.lastReq.Messages[1].MultiContent
-	if len(parts) != 2 || parts[1].ImageURL == nil || parts[1].ImageURL.URL != "https://example.com/main.jpg" {
-		t.Fatalf("ai request parts = %+v, want text + main image", parts)
+	if len(ai.lastImageURLs) != 1 || ai.lastImageURLs[0] != "https://example.com/main.jpg" {
+		t.Fatalf("ai image URLs = %+v, want main image", ai.lastImageURLs)
 	}
 	if got := pkg.ProductNameEn; !strings.Contains(got, "Botanical Envelope Pillow Cover") {
 		t.Fatalf("pkg title = %q", got)

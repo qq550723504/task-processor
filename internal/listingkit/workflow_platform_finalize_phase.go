@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
+	"task-processor/internal/listingkit/sheinadapter"
 	sheinpub "task-processor/internal/publishing/shein"
 
 	"github.com/sirupsen/logrus"
@@ -62,7 +63,7 @@ func (p *platformPostprocessPhase) run(
 	sdsOptions *SDSSyncOptions,
 ) {
 	if final.Shein != nil {
-		if err := sheinpub.OptimizePackageReviewContent(ctx, final.Shein, sheinpub.NewAIReviewContentOptimizer(resolveWorkflowSheinContentOptimizer(p.service))); err != nil {
+		if err := sheinpub.OptimizePackageReviewContent(ctx, final.Shein, sheinadapter.NewReviewContentOptimizer(resolveWorkflowSheinContentOptimizer(p.service))); err != nil {
 			appendWarning(final, "shein content optimization skipped: "+err.Error())
 		}
 	}

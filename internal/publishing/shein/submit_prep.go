@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/jsonx"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -20,8 +19,8 @@ const (
 	sheinSubmitDescriptionMaxLength = 5000
 )
 
-func PrepareSubmitProductContent(ctx context.Context, product *sheinproduct.Product, region string, aiClient openaiclient.ChatCompleter, translateAPI sheintranslateapi.TranslateAPI) error {
-	if err := optimizeSubmitProductContent(ctx, product, aiClient); err != nil {
+func PrepareSubmitProductContent(ctx context.Context, product *sheinproduct.Product, region string, translateAPI sheintranslateapi.TranslateAPI) error {
+	if err := optimizeSubmitProductContent(ctx, product); err != nil {
 		return err
 	}
 	if err := translateSubmitProductContent(product, translateAPI, region); err != nil {
@@ -130,9 +129,8 @@ func BuildSubmitSnapshot(product *sheinproduct.Product) *SubmitSnapshot {
 	return snapshot
 }
 
-func optimizeSubmitProductContent(ctx context.Context, product *sheinproduct.Product, aiClient openaiclient.ChatCompleter) error {
+func optimizeSubmitProductContent(ctx context.Context, product *sheinproduct.Product) error {
 	_ = ctx
-	_ = aiClient
 	if product == nil {
 		return nil
 	}
@@ -158,22 +156,25 @@ func optimizeSubmitProductContent(ctx context.Context, product *sheinproduct.Pro
 	return nil
 }
 
-type aiReviewContentOptimizer struct {
-	aiClient openaiclient.ChatCompleter
+type multimodalReviewContentOptimizer struct {
+	generator MultimodalTextGenerator
 }
 
-func NewAIReviewContentOptimizer(aiClient openaiclient.ChatCompleter) ReviewContentOptimizer {
-	if aiClient == nil {
+func NewReviewContentOptimizer(generator MultimodalTextGenerator) ReviewContentOptimizer {
+	if generator == nil {
 		return nil
 	}
-	return aiReviewContentOptimizer{aiClient: aiClient}
+	return multimodalReviewContentOptimizer{generator: generator}
 }
 
-func (o aiReviewContentOptimizer) OptimizeReviewContent(ctx context.Context, title, description, features string, imageURLs []string) (string, string, error) {
-	return optimizeSubmitContentWithAI(ctx, o.aiClient, title, description, features, imageURLs)
+func (o multimodalReviewContentOptimizer) OptimizeReviewContent(ctx context.Context, title, description, features string, imageURLs []string) (string, string, error) {
+	return optimizeSubmitContentWithGenerator(ctx, o.generator, title, description, features, imageURLs)
 }
 
-func optimizeSubmitContentWithAI(ctx context.Context, aiClient openaiclient.ChatCompleter, title, description, features string, imageURLs []string) (string, string, error) {
+func optimizeSubmitContentWithGenerator(ctx context.Context, generator MultimodalTextGenerator, title, description, features string, imageURLs []string) (string, string, error) {
+	if generator == nil {
+		return title, description, nil
+	}
 	systemPrompt := `You are an e-commerce content optimization expert for SHEIN product listings.
 Requirements:
 1. Output title and description in natural English only.
@@ -186,45 +187,11 @@ Requirements:
 8. Return strict JSON only: {"title":"...","description":"..."}`
 	systemPrompt += tenantGenerationTopicPolicyPromptBlock(ctx)
 	userPrompt := fmt.Sprintf("Source product content:\nTitle: %s\nDescription: %s\nFeatures:\n%s\n\nCreate a stronger SHEIN listing title and description aimed at ecommerce conversion. Use the images as additional evidence for visible style, pattern, room context, and shopper intent. Do not invent hidden materials, dimensions, or compliance claims.", title, description, features)
-	temperature := float32(0.7)
-	messages := []openaiclient.ChatCompletionMessage{{
-		Role:    "system",
-		Content: systemPrompt,
-	}}
-	if len(imageURLs) == 0 {
-		messages = append(messages, openaiclient.ChatCompletionMessage{
-			Role:    "user",
-			Content: userPrompt,
-		})
-	} else {
-		parts := make([]openaiclient.ChatCompletionContentPart, 0, 1+len(imageURLs))
-		parts = append(parts, openaiclient.ChatCompletionContentPart{
-			Type: "text",
-			Text: userPrompt,
-		})
-		for _, imageURL := range imageURLs {
-			parts = append(parts, openaiclient.ChatCompletionContentPart{
-				Type: "image_url",
-				ImageURL: &openaiclient.ChatCompletionContentPartImage{
-					URL:    imageURL,
-					Detail: "auto",
-				},
-			})
-		}
-		messages = append(messages, openaiclient.ChatCompletionMessage{
-			Role:         "user",
-			MultiContent: parts,
-		})
-	}
-	resp, err := aiClient.CreateChatCompletion(ctx, &openaiclient.ChatCompletionRequest{
-		Model:       aiClient.GetDefaultModel(),
-		Temperature: &temperature,
-		Messages:    messages,
-	})
+	content, err := generator.GenerateMultimodal(ctx, systemPrompt, userPrompt, imageURLs)
 	if err != nil {
 		return title, description, err
 	}
-	if resp == nil || len(resp.Choices) == 0 {
+	if strings.TrimSpace(content) == "" {
 		return title, description, fmt.Errorf("AI content optimizer returned no choices")
 	}
 	type optimizedContent struct {
@@ -232,7 +199,7 @@ Requirements:
 		Description string `json:"description"`
 	}
 	var parsed optimizedContent
-	clean := jsonx.CleanLLMResponse(resp.Choices[0].Message.Content)
+	clean := jsonx.CleanLLMResponse(content)
 	if err := jsonx.UnmarshalString(clean, &parsed, "parse SHEIN optimized content"); err != nil {
 		return title, description, err
 	}

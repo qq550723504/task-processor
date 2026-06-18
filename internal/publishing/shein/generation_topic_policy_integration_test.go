@@ -40,7 +40,7 @@ func TestAdminGenerationTopicPolicyCreationFlowsIntoPromptAndPreviewSanitizer(t 
 		},
 	}
 
-	if _, _, err := optimizeSubmitContentWithAI(
+	if _, _, err := optimizeSubmitContentWithGenerator(
 		sharedtenantctx.WithTenantID(context.Background(), "101"),
 		ai,
 		"Kids room curtain",
@@ -48,12 +48,12 @@ func TestAdminGenerationTopicPolicyCreationFlowsIntoPromptAndPreviewSanitizer(t 
 		"",
 		nil,
 	); err != nil {
-		t.Fatalf("optimizeSubmitContentWithAI returned error: %v", err)
+		t.Fatalf("optimizeSubmitContentWithGenerator returned error: %v", err)
 	}
-	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
-		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	if ai.lastSystemPrompt == "" {
+		t.Fatal("system prompt is empty")
 	}
-	systemPrompt := ai.lastReq.Messages[0].Content
+	systemPrompt := ai.lastSystemPrompt
 	if !strings.Contains(systemPrompt, "Do not mention children, babies, or age-specific users.") {
 		t.Fatalf("system prompt = %q, want children directive from admin-created policy", systemPrompt)
 	}
@@ -112,7 +112,7 @@ func TestAdminGenerationTopicOverrideFlowsIntoPromptAndPreviewSanitizer(t *testi
 		},
 	}
 
-	if _, _, err := optimizeSubmitContentWithAI(
+	if _, _, err := optimizeSubmitContentWithGenerator(
 		sharedtenantctx.WithTenantID(context.Background(), "101"),
 		ai,
 		"Toddler room curtain",
@@ -120,12 +120,12 @@ func TestAdminGenerationTopicOverrideFlowsIntoPromptAndPreviewSanitizer(t *testi
 		"",
 		nil,
 	); err != nil {
-		t.Fatalf("optimizeSubmitContentWithAI returned error: %v", err)
+		t.Fatalf("optimizeSubmitContentWithGenerator returned error: %v", err)
 	}
-	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
-		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	if ai.lastSystemPrompt == "" {
+		t.Fatal("system prompt is empty")
 	}
-	systemPrompt := ai.lastReq.Messages[0].Content
+	systemPrompt := ai.lastSystemPrompt
 	if !strings.Contains(systemPrompt, "Do not mention children, babies, or age-specific users.") {
 		t.Fatalf("system prompt = %q, want default directive retained", systemPrompt)
 	}

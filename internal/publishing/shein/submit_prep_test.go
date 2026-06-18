@@ -43,9 +43,12 @@ func (s stubChatCompleter) GetDefaultModel() string {
 }
 
 type recordingChatCompleter struct {
-	response   *openaiclient.ChatCompletionResponse
-	lastReq    *openaiclient.ChatCompletionRequest
-	lastPrompt string
+	response         *openaiclient.ChatCompletionResponse
+	lastReq          *openaiclient.ChatCompletionRequest
+	lastPrompt       string
+	lastSystemPrompt string
+	lastUserPrompt   string
+	lastImageURLs    []string
 }
 
 func (s *recordingChatCompleter) CreateChatCompletion(ctx context.Context, req *openaiclient.ChatCompletionRequest) (*openaiclient.ChatCompletionResponse, error) {
@@ -55,6 +58,16 @@ func (s *recordingChatCompleter) CreateChatCompletion(ctx context.Context, req *
 
 func (s *recordingChatCompleter) Generate(_ context.Context, prompt string) (string, error) {
 	s.lastPrompt = prompt
+	if s.response == nil || len(s.response.Choices) == 0 {
+		return "", nil
+	}
+	return s.response.Choices[0].Message.Content, nil
+}
+
+func (s *recordingChatCompleter) GenerateMultimodal(_ context.Context, systemPrompt string, userPrompt string, imageURLs []string) (string, error) {
+	s.lastSystemPrompt = systemPrompt
+	s.lastUserPrompt = userPrompt
+	s.lastImageURLs = append([]string(nil), imageURLs...)
 	if s.response == nil || len(s.response.Choices) == 0 {
 		return "", nil
 	}
@@ -197,7 +210,7 @@ func TestPrepareSubmitProductContent_FallsBackWhenAIUnavailable(t *testing.T) {
 		}},
 	}
 
-	err := PrepareSubmitProductContent(context.Background(), product, "US", stubChatCompleter{err: errors.New("ai down")}, nil)
+	err := PrepareSubmitProductContent(context.Background(), product, "US", nil)
 	if err != nil {
 		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
 	}
@@ -238,7 +251,7 @@ func TestPrepareSubmitProductContent_UsesTranslateAPIForMissingTargets(t *testin
 		}},
 	}
 
-	err := PrepareSubmitProductContent(context.Background(), product, "US", nil, stubTranslateAPI{})
+	err := PrepareSubmitProductContent(context.Background(), product, "US", stubTranslateAPI{})
 	if err != nil {
 		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
 	}
@@ -291,7 +304,7 @@ func TestOptimizeSubmitContentWithAI_SendsMainImageToAI(t *testing.T) {
 		},
 	}
 
-	title, description, err := optimizeSubmitContentWithAI(
+	title, description, err := optimizeSubmitContentWithGenerator(
 		context.Background(),
 		ai,
 		findLocalizedText(product.MultiLanguageNameList, "en"),
@@ -305,18 +318,14 @@ func TestOptimizeSubmitContentWithAI_SendsMainImageToAI(t *testing.T) {
 	if title == "" || description == "" {
 		t.Fatalf("optimized content = %q / %q, want non-empty", title, description)
 	}
-	if ai.lastReq == nil || len(ai.lastReq.Messages) < 2 {
-		t.Fatalf("ai request = %+v, want multimodal user message", ai.lastReq)
+	if ai.lastUserPrompt == "" {
+		t.Fatal("user prompt is empty, want multimodal user message")
 	}
-	parts := ai.lastReq.Messages[1].MultiContent
-	if len(parts) != 2 {
-		t.Fatalf("user multi-content parts = %+v, want text + main image", parts)
+	if !strings.Contains(ai.lastUserPrompt, "Create a stronger SHEIN listing title") {
+		t.Fatalf("user prompt = %q, want content optimization instruction", ai.lastUserPrompt)
 	}
-	if parts[0].Type != "text" {
-		t.Fatalf("first part type = %q, want text", parts[0].Type)
-	}
-	if parts[1].Type != "image_url" || parts[1].ImageURL == nil || parts[1].ImageURL.URL != "https://example.com/main.jpg" {
-		t.Fatalf("image part = %+v, want main image only", parts[1])
+	if len(ai.lastImageURLs) != 1 || ai.lastImageURLs[0] != "https://example.com/main.jpg" {
+		t.Fatalf("image URLs = %+v, want main image only", ai.lastImageURLs)
 	}
 }
 
@@ -338,7 +347,7 @@ func TestOptimizeSubmitContentWithAI_IncludesTenantGenerationPolicyText(t *testi
 		},
 	}
 
-	_, _, err := optimizeSubmitContentWithAI(
+	_, _, err := optimizeSubmitContentWithGenerator(
 		sharedtenantctx.WithTenantID(context.Background(), "101"),
 		ai,
 		"Door curtain",
@@ -349,10 +358,10 @@ func TestOptimizeSubmitContentWithAI_IncludesTenantGenerationPolicyText(t *testi
 	if err != nil {
 		t.Fatalf("optimizeSubmitContentWithAI returned error: %v", err)
 	}
-	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
-		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	if ai.lastSystemPrompt == "" {
+		t.Fatal("system prompt is empty")
 	}
-	systemPrompt := ai.lastReq.Messages[0].Content
+	systemPrompt := ai.lastSystemPrompt
 	if !strings.Contains(systemPrompt, "Additional tenant content restrictions:") {
 		t.Fatalf("system prompt = %q, want tenant policy header", systemPrompt)
 	}
@@ -482,14 +491,14 @@ func TestPromptEntryPointsOmitTenantPolicyWithoutTenantContext(t *testing.T) {
 		},
 	}
 
-	if _, _, err := optimizeSubmitContentWithAI(context.Background(), ai, "Door curtain", "Soft curtain", "", nil); err != nil {
-		t.Fatalf("optimizeSubmitContentWithAI returned error: %v", err)
+	if _, _, err := optimizeSubmitContentWithGenerator(context.Background(), ai, "Door curtain", "Soft curtain", "", nil); err != nil {
+		t.Fatalf("optimizeSubmitContentWithGenerator returned error: %v", err)
 	}
-	if ai.lastReq == nil || len(ai.lastReq.Messages) == 0 {
-		t.Fatalf("ai request = %+v, want system prompt", ai.lastReq)
+	if ai.lastSystemPrompt == "" {
+		t.Fatal("system prompt is empty")
 	}
-	if strings.Contains(ai.lastReq.Messages[0].Content, "Additional tenant content restrictions:") {
-		t.Fatalf("system prompt = %q, want no tenant policy block without tenant context", ai.lastReq.Messages[0].Content)
+	if strings.Contains(ai.lastSystemPrompt, "Additional tenant content restrictions:") {
+		t.Fatalf("system prompt = %q, want no tenant policy block without tenant context", ai.lastSystemPrompt)
 	}
 }
 
@@ -511,21 +520,8 @@ func TestPrepareSubmitProductContent_PreservesExistingContentWithoutAIRewrite(t 
 			}},
 		}},
 	}
-	ai := &recordingChatCompleter{
-		response: &openaiclient.ChatCompletionResponse{
-			Choices: []openaiclient.ChatCompletionChoice{{
-				Message: openaiclient.ChatCompletionMessage{
-					Content: `{"title":"Unexpected rewrite","description":"Unexpected rewrite"}`,
-				},
-			}},
-		},
-	}
-
-	if err := PrepareSubmitProductContent(context.Background(), product, "US", ai, nil); err != nil {
+	if err := PrepareSubmitProductContent(context.Background(), product, "US", nil); err != nil {
 		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
-	}
-	if ai.lastReq != nil {
-		t.Fatalf("ai request = %+v, want submit content to skip AI rewrite", ai.lastReq)
 	}
 	if got := findLocalizedText(product.MultiLanguageNameList, "en"); got != "Envelope style pillow cover" {
 		t.Fatalf("english title = %q, want original reviewed content", got)
@@ -774,7 +770,7 @@ func TestPrepareSubmitProductContent_LoadsTenantSensitiveWordsFromRepository(t *
 		}},
 	}
 
-	if err := PrepareSubmitProductContent(ctx, product, "US", nil, nil); err != nil {
+	if err := PrepareSubmitProductContent(ctx, product, "US", nil); err != nil {
 		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
 	}
 
@@ -882,7 +878,7 @@ func TestPrepareSubmitProductContent_LoadsTenantGenerationTopicOverrideLexicon(t
 		}},
 	}
 
-	if err := PrepareSubmitProductContent(ctx, product, "US", nil, nil); err != nil {
+	if err := PrepareSubmitProductContent(ctx, product, "US", nil); err != nil {
 		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
 	}
 	if strings.Contains(strings.ToLower(findLocalizedText(product.MultiLanguageNameList, "en")), "toddler") {
@@ -929,7 +925,7 @@ func TestPrepareSubmitProductContent_CleansFreeTextAttributesAndSKCNames(t *test
 		}},
 	}
 
-	if err := PrepareSubmitProductContent(sharedtenantctx.WithTenantID(context.Background(), "101"), product, "US", nil, nil); err != nil {
+	if err := PrepareSubmitProductContent(sharedtenantctx.WithTenantID(context.Background(), "101"), product, "US", nil); err != nil {
 		t.Fatalf("PrepareSubmitProductContent returned error: %v", err)
 	}
 

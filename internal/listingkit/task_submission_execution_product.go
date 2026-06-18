@@ -23,7 +23,7 @@ func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.C
 		submitProduct.ProductAttributeList = attrs
 	}
 	translateAPI := s.buildSheinSubmitTranslateAPI(runtimeCtx, task, submitProduct)
-	if err := sheinpub.PrepareSubmitProductContent(runtimeCtx, submitProduct, task.Request.Country, s.sheinContentOptimizer, translateAPI); err != nil {
+	if err := sheinpub.PrepareSubmitProductContent(runtimeCtx, submitProduct, task.Request.Country, translateAPI); err != nil {
 		return nil, err
 	}
 	prepareSheinProductForSubmit(submitProduct, s.resolveSubmitSettings(runtimeCtx, task))
