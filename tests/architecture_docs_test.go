@@ -390,6 +390,39 @@ func TestArchitectureReviewChecklistExcludesSupportingContextReferences(t *testi
 	}
 }
 
+func TestArchitectureReviewChecklistReferencesOnlyArchitectureIndexEntrypoints(t *testing.T) {
+	readmePath := filepath.Join("..", "docs", "architecture", "README.md")
+	readmeContent, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read %s: %v", readmePath, err)
+	}
+
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	reviewReferences := markdownSection(t, string(checklistContent), "## Review References")
+	const indexedEntrypointsRule = "Every review reference must come from the architecture index stable, development, or current guard baseline sections"
+	if !strings.Contains(reviewReferences, indexedEntrypointsRule) {
+		t.Errorf("%s Review References must state %q so ad-hoc documents cannot become formal review entrypoints", checklistPath, indexedEntrypointsRule)
+	}
+
+	allowed := map[string]bool{"docs/architecture/README.md": true}
+	for _, heading := range []string{"## Stable Boundary Documents", "## Development Boundary Documents", "## Current Guard Baseline"} {
+		for _, reference := range normalizedArchitectureDocReferences(t, markdownSection(t, string(readmeContent), heading)) {
+			allowed[reference] = true
+		}
+	}
+
+	for _, reference := range normalizedArchitectureDocReferences(t, reviewReferences) {
+		if !allowed[reference] {
+			t.Errorf("%s Review References includes %q, but it is not indexed in %s as a stable, development, or current guard baseline entrypoint", checklistPath, reference, readmePath)
+		}
+	}
+}
+
 func TestArchitectureReviewChecklistExplainsReviewReferenceRoles(t *testing.T) {
 	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
 	checklistContent, err := os.ReadFile(checklistPath)
