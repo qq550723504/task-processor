@@ -308,6 +308,39 @@ func TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes(t *testing.T) {
+	t.Parallel()
+
+	methodsSrc, err := os.ReadFile("runtime_deps_methods.go")
+	require.NoError(t, err)
+	methodsContent := string(methodsSrc)
+
+	for _, marker := range []string{
+		`"task-processor/internal/amazonlisting/httpapi"`,
+		`"task-processor/internal/listingkit/httpapi"`,
+		`"task-processor/internal/productenrich/httpapi"`,
+		`"task-processor/internal/productimage/httpapi"`,
+		"*amazonlistinghttpapi.Module",
+		"*listingkithttpapi.Module",
+		"*productenrichhttpapi.Module",
+		"*productimagehttpapi.Module",
+	} {
+		require.NotContains(t, methodsContent, marker)
+	}
+
+	contractSrc, err := os.ReadFile("feature_module_builders.go")
+	require.NoError(t, err)
+	contractContent := string(contractSrc)
+	for _, marker := range []string{
+		"type productModuleResult = productenrichhttpapi.Module",
+		"type imageModuleResult = productimagehttpapi.Module",
+		"type amazonListingModuleResult = amazonlistinghttpapi.Module",
+		"type listingKitModuleResult = listingkithttpapi.Module",
+	} {
+		require.Contains(t, contractContent, marker)
+	}
+}
+
 func TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts(t *testing.T) {
 	t.Parallel()
 

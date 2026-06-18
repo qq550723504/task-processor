@@ -169,6 +169,8 @@ Product/Image/AmazonListing/ListingKit 的 module builder 函数签名与默认 
 Product/Image/AmazonListing/ListingKit 的 module result 类型别名也应放在
 `feature_module_builders.go`，避免 `types.go` 为了 composition state 字段直接依赖业务
 `internal/*/httpapi` 包。
+`runtime_deps_methods.go` 的 feature module attach 方法也应使用这些本包类型别名，
+避免 runtime deps accessor / attach 文件重新直接依赖业务 `internal/*/httpapi` module 类型。
 `runtime.go` 应聚焦 `buildRuntimeDeps(...)` 的启动流程，`runtimeDeps` 的 accessor、
 closer 和 module attach 方法应放在 `runtime_deps_methods.go`。
 Prompt registry 初始化、tenant prompt store attach 和相关 closer 收集应放在
@@ -259,6 +261,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly`
 - `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes`
+- `TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly`
