@@ -175,6 +175,12 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 		`"task-processor/internal/shein/category"`: {
 			filepath.Clean(filepath.Join(managedRoot, "category_selector_adapter.go")): {},
 		},
+		`"task-processor/internal/shein/client"`: {
+			filepath.Clean(filepath.Join(managedRoot, "api_factory.go")): {},
+		},
+		`"task-processor/internal/shein/managedclient"`: {
+			filepath.Clean(filepath.Join(managedRoot, "api_factory.go")): {},
+		},
 	}
 	managedIndex, err := loadGoFileIndex(managedRoot, "")
 	if err != nil {
