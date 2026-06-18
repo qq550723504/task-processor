@@ -341,6 +341,32 @@ func TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes(t *testing.T
 	}
 }
 
+func TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures(t *testing.T) {
+	t.Parallel()
+
+	modulesSrc, err := os.ReadFile("http_modules.go")
+	require.NoError(t, err)
+	modulesContent := string(modulesSrc)
+
+	for _, marker := range []string{
+		"built *productenrichhttpapi.Module",
+		"imageBuilt *productimagehttpapi.Module",
+		"built *amazonlistinghttpapi.Module",
+		"built *listingkithttpapi.Module",
+	} {
+		require.NotContains(t, modulesContent, marker)
+	}
+
+	for _, marker := range []string{
+		"built *productModuleResult",
+		"imageBuilt *imageModuleResult",
+		"built *amazonListingModuleResult",
+		"built *listingKitModuleResult",
+	} {
+		require.Contains(t, modulesContent, marker)
+	}
+}
+
 func TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts(t *testing.T) {
 	t.Parallel()
 
