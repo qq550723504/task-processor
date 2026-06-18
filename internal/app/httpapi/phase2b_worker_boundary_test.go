@@ -314,3 +314,35 @@ func TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts(t *tes
 		require.Contains(t, resultContent, marker)
 	}
 }
+
+func TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly(t *testing.T) {
+	t.Parallel()
+
+	compositionSrc, err := os.ReadFile("composition_builder.go")
+	require.NoError(t, err)
+	compositionContent := string(compositionSrc)
+
+	for _, marker := range []string{
+		"deps.shared.tenantPromptStore",
+		"buildRuntimeBundleFromModules(",
+		"runtimeBundle.localTaskHealthProvider()",
+		"composition.promptModule = b.buildPrompt(",
+		"composition.taskRPCResult = taskRPCResult",
+		"composition.sdsModule = b.buildSDS(",
+	} {
+		require.NotContains(t, compositionContent, marker)
+	}
+
+	resultSrc, err := os.ReadFile("runtime_module_results.go")
+	require.NoError(t, err)
+	resultContent := string(resultSrc)
+	for _, marker := range []string{
+		"type supportFeatureBuilder struct",
+		"type supportFeatureSet struct",
+		"deps.shared.tenantPromptStore",
+		"buildRuntimeBundleFromModules(",
+		"runtimeBundle.localTaskHealthProvider()",
+	} {
+		require.Contains(t, resultContent, marker)
+	}
+}

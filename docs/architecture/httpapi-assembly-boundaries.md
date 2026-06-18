@@ -195,6 +195,9 @@ Prompt、SDS 和 taskRPC module result 类型别名应放在 `runtime_module_res
 避免 `types.go` 为了 composition state 字段直接依赖具体 module result 包。
 Prompt、SDS 和 taskRPC 的 module builder 函数签名与默认 wrapper 也应放在
 `runtime_module_results.go`，避免 `composition_builder.go` 为了 builder 注入直接依赖具体支撑模块包。
+Prompt、TaskRPC 和 SDS 的 support feature assembly，包括 tenant prompt store 注入、
+中间 runtime bundle 构建和 local task health provider 传递，也应放在
+`runtime_module_results.go`，避免 `composition_builder.go` 重新持有支撑模块装配细节。
 ListingKit 的 SDS sync service hook、SHEIN cookie store 和 SDS baseline provider
 应放在 `runtime_support_listingkit.go`，避免 `modules.go` 持有 ListingKit runtime support 前置依赖。
 ProductEnrich / ProductImage 的 runtime build input 组装和对应 feature attach
@@ -254,6 +257,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts`
+- `TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly`
 - `TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook`
 - `TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs`
 - `TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput`

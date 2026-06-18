@@ -83,27 +83,20 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		return composition, err
 	}
 	composition.listingKitModule = listingKitFeatures.listingKitModule
-	done = timer.phase("buildPromptModule")
-	composition.promptModule = b.buildPrompt(deps.shared.tenantPromptStore)
-	done()
 
-	done = timer.phase("buildIntermediateRuntimeBundle")
-	runtimeBundle, err := buildRuntimeBundleFromModules(deps.shared.cfg, composition.runtimeModules())
+	done = timer.phase("buildSupportModules")
+	supportFeatures, err := supportFeatureBuilder{
+		buildPrompt:  b.buildPrompt,
+		buildTaskRPC: b.buildTaskRPC,
+		buildSDS:     b.buildSDS,
+	}.build(logger, deps, composition)
 	done()
 	if err != nil {
 		return composition, err
 	}
-
-	done = timer.phase("buildTaskRPCModule")
-	taskRPCResult, err := b.buildTaskRPC(deps.managementClient(), runtimeBundle.localTaskHealthProvider())
-	done()
-	if err != nil {
-		return composition, err
-	}
-	composition.taskRPCResult = taskRPCResult
-	done = timer.phase("buildSDSModule")
-	composition.sdsModule = b.buildSDS(logger, deps.shared.cfg)
-	done()
+	composition.promptModule = supportFeatures.promptModule
+	composition.taskRPCResult = supportFeatures.taskRPCResult
+	composition.sdsModule = supportFeatures.sdsModule
 	timer.total("buildHTTPFeatureComposition")
 
 	return composition, nil
