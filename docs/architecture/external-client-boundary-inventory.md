@@ -52,6 +52,14 @@ Current direct dependency hotspots are:
     than concrete adapter packages
   - current direct OpenAI seams are guarded by
     `TestPublishingSheinOpenAIImportsStayAllowlisted`
+- `internal/publishing/sheinmanaged`
+  - current managed-publishing helpers still import `management` to build
+    category, attribute, sale-attribute, and API factory seams
+  - these are management retirement seams, not a long-lived publishing
+    direction; future managed publishing data should use in-repository
+    database/repository access
+  - current direct management seams are guarded by
+    `TestPublishingSheinManagedManagementImportsStayAllowlisted`
 - `internal/shein`
   - broad `management` coupling across inventory, scheduler, publish,
     validation, activity, mapping, and product packages
@@ -131,39 +139,44 @@ adapter types without changing business behavior:
    allowlisted to freeze current seams; future ListingKit cleanup should move
    this business data access to in-repository database/repository access rather
    than adding new management API call sites.
-3. SHEIN publishing attribute/category inference helpers currently importing
+3. `internal/publishing/sheinmanaged` category, attribute, sale-attribute, and
+   API factory seams currently import `internal/infra/clients/management`.
+   Current imports are explicitly allowlisted to freeze current seams; future
+   managed publishing cleanup should move this business data access to
+   in-repository database/repository access.
+4. SHEIN publishing attribute/category inference helpers currently importing
    `internal/infra/clients/openai`. Current imports are explicitly allowlisted;
    reduce them by introducing package-local inference interfaces before adding
    new concrete OpenAI adapter call sites.
-4. Historical SHEIN inventory, scheduler, publish, validation, activity, mapping,
+5. Historical SHEIN inventory, scheduler, publish, validation, activity, mapping,
    product, product sync, store, and managed-client paths currently importing
    `internal/infra/clients/management`. Current imports are explicitly
    allowlisted to freeze current seams; future SHEIN cleanup should move one
    marketplace capability at a time to in-repository database/repository access
    before adding new concrete management adapter call sites.
-5. Historical SHEIN category, content, pipeline, product, submit-prep, and
+6. Historical SHEIN category, content, pipeline, product, submit-prep, and
    translate helpers currently importing `internal/infra/clients/openai`.
    Current imports are explicitly allowlisted; future SHEIN cleanup should move
    inference and translation capabilities behind package-local interfaces before
    adding new concrete OpenAI adapter call sites.
-6. TEMU sync and pricing services currently importing
+7. TEMU sync and pricing services currently importing
    `internal/infra/clients/management`. Current sync/pricing imports are explicitly
    allowlisted to freeze current seams; future TEMU cleanup should move
    service-facing management calls to in-repository database/repository access
    before adding new concrete adapter call sites. Product, store, and scheduler
    management imports are also explicitly allowlisted; keep future changes
    behind local interfaces or narrow adapter seams.
-7. TEMU AI, image, SKU, product, and pipeline helpers currently importing
+8. TEMU AI, image, SKU, product, and pipeline helpers currently importing
    `internal/infra/clients/openai`. Current imports are explicitly allowlisted;
    future feature work should introduce local AI/rewrite/mapping interfaces rather
    than adding new concrete OpenAI adapter call sites.
-8. Product image provider construction currently importing `openai` and
+9. Product image provider construction currently importing `openai` and
    `nanobanana` outside the narrow runtime builder path. Current imports are
    explicitly allowlisted in productimage-owned adapter seams and app/httpapi
    ProductImage assembly seams; renderer logic should stay behind local
    ProductImage ports and must not add new concrete adapter imports without a
    local interface seam or a documented runtime-builder exception.
-9. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+10. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding

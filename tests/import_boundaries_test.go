@@ -267,6 +267,34 @@ func TestPublishingSheinManagedAPIImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestPublishingSheinManagedManagementImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "publishing", "sheinmanaged")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "api_builders.go")):            {},
+		filepath.Clean(filepath.Join(root, "api_factory.go")):             {},
+		filepath.Clean(filepath.Join(root, "attribute_resolver.go")):      {},
+		filepath.Clean(filepath.Join(root, "category_resolver.go")):       {},
+		filepath.Clean(filepath.Join(root, "sale_attribute_resolver.go")): {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep publishing/sheinmanaged management dependencies limited to current retirement seams and prefer in-repository database/repository access for new business data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestPublishingSheinOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "publishing", "shein")
 	allowedFiles := map[string]struct{}{
