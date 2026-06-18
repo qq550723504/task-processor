@@ -169,6 +169,9 @@ Product/Image/AmazonListing/ListingKit 的 module builder 函数签名与默认 
 Product/Image/AmazonListing/ListingKit 的 module result 类型别名也应放在
 `feature_module_builders.go`，避免 `types.go` 为了 composition state 字段直接依赖业务
 `internal/*/httpapi` 包。
+`feature_module_builders.go` 的 builder contract 和默认 wrapper 返回值也应使用这些本包
+module result 别名，避免 contract 文件一边定义 alias、一边在函数签名里重新暴露 concrete
+业务 `internal/*/httpapi` module 类型。
 `runtime_deps_methods.go` 的 feature module attach 方法也应使用这些本包类型别名，
 避免 runtime deps accessor / attach 文件重新直接依赖业务 `internal/*/httpapi` module 类型。
 `http_modules.go` 的 runtime module wrapper 参数也应使用这些本包类型别名，
@@ -269,6 +272,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes`
 - `TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
 - `TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
+- `TestFeatureModuleBuilderContractsReturnLocalModuleAliases`
 - `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly`
