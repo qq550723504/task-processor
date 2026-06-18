@@ -88,13 +88,19 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	composition.sdsLoginResult = sdsLoginResult
 
 	done = timer.phase("buildListingKitModule")
-	listingKitModule, err := b.buildListingKit(newListingKitRuntimeBuildInput(logger, deps))
+	listingKitFeatures, err = listingKitFeatureBuilder{
+		buildProduct:    b.buildProduct,
+		buildImage:      b.buildImage,
+		buildListingKit: b.buildListingKit,
+	}.build(logger, deps, listingKitFeatureBuildOptions{
+		includeListingKit: true,
+		skipProduct:       true,
+	})
 	done()
 	if err != nil {
 		return composition, err
 	}
-	deps.attachListingKitModule(listingKitModule)
-	composition.listingKitModule = listingKitModule
+	composition.listingKitModule = listingKitFeatures.listingKitModule
 	done = timer.phase("buildPromptModule")
 	composition.promptModule = b.buildPrompt(deps.shared.tenantPromptStore)
 	done()

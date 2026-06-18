@@ -39,6 +39,8 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 		name                 string
 		options              listingKitFeatureBuildOptions
 		wantOrder            []string
+		seedProductFeature   bool
+		wantProductModule    bool
 		wantImageModule      bool
 		wantListingKitModule bool
 	}{
@@ -48,6 +50,7 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 				includeListingKit: true,
 			},
 			wantOrder:            []string{"product", "listingkit"},
+			wantProductModule:    true,
 			wantListingKitModule: true,
 		},
 		{
@@ -55,8 +58,19 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 			options: listingKitFeatureBuildOptions{
 				includeImage: true,
 			},
-			wantOrder:       []string{"product", "image"},
-			wantImageModule: true,
+			wantOrder:         []string{"product", "image"},
+			wantProductModule: true,
+			wantImageModule:   true,
+		},
+		{
+			name: "listingkit without rebuilding product",
+			options: listingKitFeatureBuildOptions{
+				includeListingKit: true,
+				skipProduct:       true,
+			},
+			wantOrder:            []string{"listingkit"},
+			seedProductFeature:   true,
+			wantListingKitModule: true,
 		},
 	}
 
@@ -70,6 +84,9 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 			order := make([]string, 0, 3)
 			productService := &stubCompositionProductService{}
 			imageService := &stubCompositionImageService{}
+			if tt.seedProductFeature {
+				deps.features.productService = productService
+			}
 
 			builder := listingKitFeatureBuilder{
 				buildProduct: func(productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error) {
@@ -103,7 +120,7 @@ func TestListingKitFeatureBuilderBuildsRequestedFeatures(t *testing.T) {
 			features, err := builder.build(logger, deps, tt.options)
 			require.NoError(t, err)
 			require.Equal(t, tt.wantOrder, order)
-			require.NotNil(t, features.productModule)
+			require.Equal(t, tt.wantProductModule, features.productModule != nil)
 			require.Equal(t, tt.wantImageModule, features.imageModule != nil)
 			require.Equal(t, tt.wantListingKitModule, features.listingKitModule != nil)
 		})

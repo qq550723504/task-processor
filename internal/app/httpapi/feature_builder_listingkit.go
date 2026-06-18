@@ -11,6 +11,7 @@ import (
 type listingKitFeatureBuildOptions struct {
 	includeImage      bool
 	includeListingKit bool
+	skipProduct       bool
 }
 
 type listingKitFeatureSet struct {
@@ -36,18 +37,20 @@ func newListingKitFeatureBuilder() listingKitFeatureBuilder {
 func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps, options listingKitFeatureBuildOptions) (listingKitFeatureSet, error) {
 	var features listingKitFeatureSet
 
-	productModule, err := b.buildProduct(productenrichhttpapi.RuntimeBuildInput{
-		Logger:        logger,
-		Config:        deps.shared.cfg,
-		LLMManager:    deps.shared.llmMgr,
-		InputParser:   deps.shared.inputParser,
-		Understanding: deps.shared.understanding,
-	})
-	if err != nil {
-		return features, err
+	if !options.skipProduct {
+		productModule, err := b.buildProduct(productenrichhttpapi.RuntimeBuildInput{
+			Logger:        logger,
+			Config:        deps.shared.cfg,
+			LLMManager:    deps.shared.llmMgr,
+			InputParser:   deps.shared.inputParser,
+			Understanding: deps.shared.understanding,
+		})
+		if err != nil {
+			return features, err
+		}
+		deps.attachProductModule(productModule)
+		features.productModule = productModule
 	}
-	deps.attachProductModule(productModule)
-	features.productModule = productModule
 
 	if options.includeImage {
 		imageModule, err := b.buildImage(productimagehttpapi.RuntimeBuildInput{

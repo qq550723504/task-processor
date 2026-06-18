@@ -104,3 +104,26 @@ func TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput(t *testing
 		require.Contains(t, featureBuilderContent, marker)
 	}
 }
+
+func TestHTTPAPICompositionBuilderDoesNotOwnListingKitRuntimeInput(t *testing.T) {
+	compositionSrc, err := os.ReadFile("composition_builder.go")
+	require.NoError(t, err)
+	compositionContent := string(compositionSrc)
+
+	for _, marker := range []string{
+		"newListingKitRuntimeBuildInput(",
+		"deps.attachListingKitModule(",
+	} {
+		require.NotContains(t, compositionContent, marker)
+	}
+
+	featureBuilderSrc, err := os.ReadFile("feature_builder_listingkit.go")
+	require.NoError(t, err)
+	featureBuilderContent := string(featureBuilderSrc)
+	for _, marker := range []string{
+		"newListingKitRuntimeBuildInput(",
+		"deps.attachListingKitModule(",
+	} {
+		require.Contains(t, featureBuilderContent, marker)
+	}
+}
