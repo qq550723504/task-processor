@@ -166,6 +166,9 @@ bundle 组装方法应放在 `composition_modules.go`，route handler contract /
 Product/Image/AmazonListing/ListingKit 的 module builder 函数签名与默认 wrapper
 应放在 `feature_module_builders.go`，避免 `composition_builder.go` 为了 builder 注入直接依赖业务
 `internal/*/httpapi` 包。
+Product/Image/AmazonListing/ListingKit 的 module result 类型别名也应放在
+`feature_module_builders.go`，避免 `types.go` 为了 composition state 字段直接依赖业务
+`internal/*/httpapi` 包。
 `runtime.go` 应聚焦 `buildRuntimeDeps(...)` 的启动流程，`runtimeDeps` 的 accessor、
 closer 和 module attach 方法应放在 `runtime_deps_methods.go`。
 Prompt registry 初始化、tenant prompt store attach 和相关 closer 收集应放在
@@ -255,6 +258,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly`
 - `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
+- `TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly`

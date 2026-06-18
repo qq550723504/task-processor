@@ -7,6 +7,14 @@ import (
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
+type productModuleResult = productenrichhttpapi.Module
+
+type imageModuleResult = productimagehttpapi.Module
+
+type amazonListingModuleResult = amazonlistinghttpapi.Module
+
+type listingKitModuleResult = listingkithttpapi.Module
+
 type productModuleBuilder func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)
 
 type imageModuleBuilder func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)

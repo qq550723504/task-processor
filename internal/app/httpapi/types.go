@@ -4,14 +4,10 @@ import (
 	"net/http"
 	"os"
 
-	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
-	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
-	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/sheinlogin"
 )
 
@@ -42,8 +38,8 @@ type listingKitSupport struct {
 }
 
 type appBootstrap struct {
-	productHandler productenrich.ProductHandler
-	imageHandler   productimagehttpapi.RouteHandler
+	productHandler productRouteHandler
+	imageHandler   imageRouteHandler
 	server         *http.Server
 	routes         []routeDescriptor
 	pools          []worker.WorkerPool
@@ -51,10 +47,10 @@ type appBootstrap struct {
 }
 
 type httpFeatureComposition struct {
-	productModule       *productenrichhttpapi.Module
-	imageModule         *productimagehttpapi.Module
-	amazonListingModule *amazonlistinghttpapi.Module
-	listingKitModule    *listingkithttpapi.Module
+	productModule       *productModuleResult
+	imageModule         *imageModuleResult
+	amazonListingModule *amazonListingModuleResult
+	listingKitModule    *listingKitModuleResult
 	promptModule        *promptModuleResult
 	sdsModule           *sdsModuleResult
 	taskRPCResult       *taskRPCModuleResult
