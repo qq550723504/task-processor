@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -16,7 +15,7 @@ type assembler struct {
 	sheinAttributeResolver     sheinpub.AttributeResolver
 	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
 	sheinPricingPolicy         sheinpub.PricingPolicy
-	sheinTitleOptimizer        openaiclient.ChatCompleter
+	sheinTitleOptimizer        AIChatCompleter
 }
 
 func NewAssembler(amazonBuilder AmazonDraftBuilder) Assembler {
@@ -29,7 +28,7 @@ type AssemblerConfig struct {
 	SheinAttributeResolver     sheinpub.AttributeResolver
 	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
 	SheinPricingPolicy         sheinpub.PricingPolicy
-	SheinTitleOptimizer        openaiclient.ChatCompleter
+	SheinTitleOptimizer        AIChatCompleter
 }
 
 func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
@@ -84,9 +83,9 @@ func buildSheinPublishRequestForTask(task *Task, req *GenerateRequest) *sheinpub
 	if req == nil {
 		return &sheinpub.BuildRequest{}
 	}
-	var ctxIdentity openaiclient.Identity
+	var ctxIdentity RequestIdentity
 	if task != nil {
-		ctxIdentity = openaiclient.Identity{TenantID: task.TenantID, UserID: task.UserID}
+		ctxIdentity = RequestIdentity{TenantID: task.TenantID, UserID: task.UserID}
 	}
 	// 使用 task 的 TenantID 构建 context,避免使用 context.Background()
 	ctx := context.Background()
@@ -100,7 +99,7 @@ func buildSheinPublishRequestForTask(task *Task, req *GenerateRequest) *sheinpub
 		BrandHint:          req.BrandHint,
 		TargetCategoryHint: req.TargetCategoryHint,
 		SheinStoreID:       req.SheinStoreID,
-		Context:            openaiclient.WithIdentity(ctx, ctxIdentity),
+		Context:            WithRequestIdentity(ctx, ctxIdentity),
 	}
 }
 

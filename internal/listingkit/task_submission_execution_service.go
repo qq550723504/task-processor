@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -13,7 +12,7 @@ type taskSubmissionExecutionServiceConfig struct {
 	sheinProductAPIBuilder   sheinpub.ProductAPIBuilder
 	sheinImageAPIBuilder     sheinpub.ImageAPIBuilder
 	sheinTranslateAPIBuilder sheinpub.TranslateAPIBuilder
-	sheinContentOptimizer    openaiclient.ChatCompleter
+	sheinContentOptimizer    AIChatCompleter
 	currentSheinPricingRule  func() sheinpub.PricingRule
 	resolveSheinStoreID      func(context.Context, *Task) (int64, error)
 	resolveSubmitSettings    func(context.Context, *Task) SheinSettings
@@ -23,7 +22,7 @@ type taskSubmissionExecutionService struct {
 	sheinProductAPIBuilder   sheinpub.ProductAPIBuilder
 	sheinImageAPIBuilder     sheinpub.ImageAPIBuilder
 	sheinTranslateAPIBuilder sheinpub.TranslateAPIBuilder
-	sheinContentOptimizer    openaiclient.ChatCompleter
+	sheinContentOptimizer    AIChatCompleter
 	currentSheinPricingRule  func() sheinpub.PricingRule
 	resolveSheinStoreID      func(context.Context, *Task) (int64, error)
 	resolveSubmitSettings    func(context.Context, *Task) SheinSettings

@@ -1,9 +1,5 @@
 package listingkit
 
-import (
-	openaiclient "task-processor/internal/infra/clients/openai"
-)
-
 func resolveStudioSessionRepo(s *service) StudioSessionRepository {
 	if s == nil {
 		return nil
@@ -25,14 +21,14 @@ func resolveStudioBatchRunRepo(s *service) StudioBatchRunRepository {
 	return s.studioDeps.batchRunRepo
 }
 
-func resolveStudioPromptDiversifier(s *service) openaiclient.ChatCompleter {
+func resolveStudioPromptDiversifier(s *service) AIChatCompleter {
 	if s == nil {
 		return nil
 	}
 	return s.studioDeps.promptDiversifier
 }
 
-func resolveStudioImageGenerator(s *service) openaiclient.ImageGenerator {
+func resolveStudioImageGenerator(s *service) AIImageGenerator {
 	if s == nil {
 		return nil
 	}

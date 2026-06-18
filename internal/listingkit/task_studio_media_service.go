@@ -8,20 +8,18 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 type taskStudioMediaServiceConfig struct {
-	imageGenerator        openaiclient.ImageGenerator
-	promptDiversifier     openaiclient.ChatCompleter
+	imageGenerator        AIImageGenerator
+	promptDiversifier     AIChatCompleter
 	uploadStoreConfigured bool
 	uploadImages          func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
 }
 
 type taskStudioMediaService struct {
-	imageGenerator        openaiclient.ImageGenerator
-	promptDiversifier     openaiclient.ChatCompleter
+	imageGenerator        AIImageGenerator
+	promptDiversifier     AIChatCompleter
 	uploadStoreConfigured bool
 	uploadImages          func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
 }

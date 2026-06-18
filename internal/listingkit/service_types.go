@@ -7,7 +7,6 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/reviewstore"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsusecase "task-processor/internal/sds/usecase"
@@ -70,9 +69,9 @@ type ServiceSheinDependencies struct {
 	SheinProductAPIBuilder     sheinpub.ProductAPIBuilder
 	SheinImageAPIBuilder       sheinpub.ImageAPIBuilder
 	SheinTranslateAPIBuilder   sheinpub.TranslateAPIBuilder
-	SheinContentOptimizer      openaiclient.ChatCompleter
-	StudioPromptDiversifier    openaiclient.ChatCompleter
-	StudioImageGenerator       openaiclient.ImageGenerator
+	SheinContentOptimizer      AIChatCompleter
+	StudioPromptDiversifier    AIChatCompleter
+	StudioImageGenerator       AIImageGenerator
 }
 
 type ServiceWorkflowDependencies struct {

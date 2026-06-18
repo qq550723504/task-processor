@@ -1,11 +1,9 @@
 package listingkit
 
-import openaiclient "task-processor/internal/infra/clients/openai"
-
 type sheinSharedDependencies struct {
 	storeCatalog     SheinStoreCatalog
 	apiClientFactory SheinAPIClientFactory
-	contentOptimizer openaiclient.ChatCompleter
+	contentOptimizer AIChatCompleter
 }
 
 func resolveSheinStoreCatalog(s *service) SheinStoreCatalog {
@@ -22,7 +20,7 @@ func resolveSheinAPIClientFactory(s *service) SheinAPIClientFactory {
 	return s.sheinSharedDeps.apiClientFactory
 }
 
-func resolveSheinContentOptimizer(s *service) openaiclient.ChatCompleter {
+func resolveSheinContentOptimizer(s *service) AIChatCompleter {
 	if s == nil {
 		return nil
 	}

@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -20,7 +19,7 @@ type taskSubmissionSupportWiring struct {
 	sheinProductAPIBuilder   sheinpub.ProductAPIBuilder
 	sheinImageAPIBuilder     sheinpub.ImageAPIBuilder
 	sheinTranslateAPIBuilder sheinpub.TranslateAPIBuilder
-	sheinContentOptimizer    openaiclient.ChatCompleter
+	sheinContentOptimizer    AIChatCompleter
 	currentSheinPricingRule  func() sheinpub.PricingRule
 	rememberSheinSubmitted   func(*Task, string)
 }

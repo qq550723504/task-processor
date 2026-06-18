@@ -5,7 +5,6 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 type workflowDependencies struct {
@@ -59,6 +58,6 @@ func resolveWorkflowAssetGenerationService(s *service) assetgeneration.Service {
 	return s.workflowDeps.assetGenerationService
 }
 
-func resolveWorkflowSheinContentOptimizer(s *service) openaiclient.ChatCompleter {
+func resolveWorkflowSheinContentOptimizer(s *service) AIChatCompleter {
 	return resolveSheinContentOptimizer(s)
 }

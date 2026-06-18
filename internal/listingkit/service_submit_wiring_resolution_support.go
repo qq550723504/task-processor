@@ -1,9 +1,6 @@
 package listingkit
 
-import (
-	openaiclient "task-processor/internal/infra/clients/openai"
-	sheinpub "task-processor/internal/publishing/shein"
-)
+import sheinpub "task-processor/internal/publishing/shein"
 
 func resolveSubmissionStoreProfileRepo(s *service) StoreProfileRepository {
 	if s == nil {
@@ -41,7 +38,7 @@ func resolveSubmissionTranslateAPIBuilder(s *service) sheinpub.TranslateAPIBuild
 	return s.submissionDeps.sheinTranslateAPIBuilder
 }
 
-func resolveSubmissionContentOptimizer(s *service) openaiclient.ChatCompleter {
+func resolveSubmissionContentOptimizer(s *service) AIChatCompleter {
 	return resolveSheinContentOptimizer(s)
 }
 

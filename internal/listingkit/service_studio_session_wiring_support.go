@@ -2,8 +2,6 @@ package listingkit
 
 import (
 	"context"
-
-	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 type taskStudioSessionRepoWiring struct {
@@ -35,8 +33,8 @@ type taskStudioSessionCollaborators struct {
 }
 
 type taskStudioMediaWiring struct {
-	imageGenerator        openaiclient.ImageGenerator
-	promptDiversifier     openaiclient.ChatCompleter
+	imageGenerator        AIImageGenerator
+	promptDiversifier     AIChatCompleter
 	uploadStoreConfigured bool
 	uploadImages          func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
 }

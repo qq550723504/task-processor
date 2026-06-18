@@ -674,23 +674,13 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "assembler.go")):                                 {},
+		filepath.Clean(filepath.Join(root, "ai_contracts.go")):                              {},
 		filepath.Clean(filepath.Join(root, "interfaces_dependencies.go")):                   {},
 		filepath.Clean(filepath.Join(root, "request_identity.go")):                          {},
-		filepath.Clean(filepath.Join(root, "service_shein_shared_dependencies.go")):         {},
-		filepath.Clean(filepath.Join(root, "service_studio_dependencies.go")):               {},
 		filepath.Clean(filepath.Join(root, "service_studio_media_generation_helpers.go")):   {},
-		filepath.Clean(filepath.Join(root, "service_studio_session_wiring_support.go")):     {},
-		filepath.Clean(filepath.Join(root, "service_studio_wiring_support.go")):             {},
-		filepath.Clean(filepath.Join(root, "service_submit_wiring_resolution_support.go")):  {},
-		filepath.Clean(filepath.Join(root, "service_submit_wiring_support.go")):             {},
-		filepath.Clean(filepath.Join(root, "service_types.go")):                             {},
-		filepath.Clean(filepath.Join(root, "service_workflow_dependencies.go")):             {},
 		filepath.Clean(filepath.Join(root, "settings_admin_ai_client_settings_service.go")): {},
 		filepath.Clean(filepath.Join(root, "studio_designs.go")):                            {},
-		filepath.Clean(filepath.Join(root, "task_studio_media_service.go")):                 {},
 		filepath.Clean(filepath.Join(root, "task_studio_media_service_support.go")):         {},
-		filepath.Clean(filepath.Join(root, "task_submission_execution_service.go")):         {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
