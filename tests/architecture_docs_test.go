@@ -507,6 +507,28 @@ func TestNextTechnicalPrioritiesReferencesExistingDocuments(t *testing.T) {
 	assertMarkdownReferencesExistingDocuments(t, path, currentGuardCoverage)
 }
 
+func TestNextTechnicalPrioritiesCurrentGuardCoverageReferencesImplementedTests(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	currentGuardCoverage := markdownBlockBetween(t, string(content), "Current guard coverage:", "后续重点")
+	const implementedTestRule = "Every guard listed in current coverage must resolve to an implemented test function"
+	if !strings.Contains(currentGuardCoverage, implementedTestRule) {
+		t.Errorf("%s Current guard coverage must state %q so the active baseline cannot drift into phantom test names", path, implementedTestRule)
+	}
+
+	implementedTests := implementedTestNames(t)
+	guardPattern := regexp.MustCompile("`(Test[A-Za-z0-9_]+)`")
+	for _, match := range guardPattern.FindAllStringSubmatch(currentGuardCoverage, -1) {
+		if !implementedTests[match[1]] {
+			t.Errorf("%s Current guard coverage references %q, but no matching test function exists under tests/", path, match[1])
+		}
+	}
+}
+
 func markdownSection(t *testing.T, content, heading string) string {
 	t.Helper()
 
@@ -540,6 +562,38 @@ func normalizedArchitectureDocReferences(t *testing.T, content string) []string 
 		references = append(references, reference)
 	}
 	return references
+}
+
+func implementedTestNames(t *testing.T) map[string]bool {
+	t.Helper()
+
+	testNames := make(map[string]bool)
+	testFuncPattern := regexp.MustCompile(`func (Test[A-Za-z0-9_]+)\(`)
+	err := filepath.WalkDir(".", func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, match := range testFuncPattern.FindAllStringSubmatch(string(content), -1) {
+			testNames[match[1]] = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("collect implemented test names: %v", err)
+	}
+
+	if len(testNames) == 0 {
+		t.Fatalf("expected to find implemented test functions under tests/")
+	}
+	return testNames
 }
 
 func architectureReadmeExplicitReferences(t *testing.T, content string) map[string]bool {

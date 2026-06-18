@@ -87,6 +87,7 @@ Current guard coverage:
 当前 baseline 的长期入口由 `docs/architecture/README.md` 索引，正式 review 动作以
 `docs/architecture/architecture-review-checklist.md` 为准。
 Every next-step reference must resolve to an existing repository document.
+Every guard listed in current coverage must resolve to an implemented test function.
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI` 禁止业务域重新依赖 `internal/app/httpapi`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade` 禁止产品、发布、市场、平台和 infra 包重新依赖 ListingKit 根 facade
