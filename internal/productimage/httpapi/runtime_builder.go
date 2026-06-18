@@ -18,6 +18,16 @@ type RuntimeBuildInput struct {
 	ImageWorkDir  string
 }
 
+type BuildModuleInput struct {
+	Config        *config.Config
+	Logger        *logrus.Logger
+	LLMManager    productenrich.LLMManager
+	OpenAIManager *openaiclient.Manager
+	InputParser   productenrich.InputParser
+	Understanding productenrich.ProductUnderstanding
+	ImageWorkDir  string
+}
+
 func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 	return BuildModule(BuildModuleInput{
 		Config:        input.Config,
