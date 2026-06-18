@@ -93,9 +93,14 @@ Current direct dependency hotspots are:
 - `internal/app`
   - expected to construct concrete clients, but should avoid leaking concrete
     client types into business-facing contracts when a narrower port is enough
+  - `internal/app/task` still imports `management` in task source, dispatch,
+    claim, and fetcher seams; these are task-framework retirement seams and new
+    task data access should move toward in-repository database/repository access
   - ProductImage model/default provider assembly seams in `internal/app/httpapi`
     are guarded by
     `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
+  - `internal/app/task` management retirement seams are guarded by
+    `TestAppTaskManagementClientImportsStayAllowlisted`
 - `internal/productimage`
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
@@ -176,7 +181,12 @@ adapter types without changing business behavior:
    ProductImage assembly seams; renderer logic should stay behind local
    ProductImage ports and must not add new concrete adapter imports without a
    local interface seam or a documented runtime-builder exception.
-10. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+10. App task source, dispatch, claim, and fetcher seams currently importing
+   `internal/infra/clients/management`. Current imports are explicitly
+   allowlisted to freeze current task-framework seams; future task data access
+   should prefer in-repository database/repository access rather than adding new
+   management API call sites.
+11. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding

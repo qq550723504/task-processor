@@ -816,6 +816,41 @@ func TestListingKitHTTPAPIManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestAppTaskManagementClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "task")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "claim_journal_test.go")):       {},
+		filepath.Clean(filepath.Join(root, "dispatcher.go")):               {},
+		filepath.Clean(filepath.Join(root, "fetcher.go")):                  {},
+		filepath.Clean(filepath.Join(root, "fetcher_utils.go")):            {},
+		filepath.Clean(filepath.Join(root, "interfaces.go")):               {},
+		filepath.Clean(filepath.Join(root, "task_claim_service.go")):       {},
+		filepath.Clean(filepath.Join(root, "task_claim_service_test.go")):  {},
+		filepath.Clean(filepath.Join(root, "task_dispatch_guard.go")):      {},
+		filepath.Clean(filepath.Join(root, "task_dispatch_guard_test.go")): {},
+		filepath.Clean(filepath.Join(root, "task_dispatcher.go")):          {},
+		filepath.Clean(filepath.Join(root, "task_dispatcher_test.go")):     {},
+		filepath.Clean(filepath.Join(root, "task_source.go")):              {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep app/task management dependencies limited to current task-source retirement seams and prefer in-repository database/repository access for new task data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedFiles := map[string]struct{}{
