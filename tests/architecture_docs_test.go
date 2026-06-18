@@ -618,6 +618,26 @@ func TestArchitectureReadmeCurrentGuardBaselinePointsToReviewEntrypoints(t *test
 	}
 }
 
+func TestArchitectureReadmeClassifiesPlaybooksAsTimeBoundedContext(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "README.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	plansRunbooksAndEvaluations := markdownSection(t, string(content), "## Plans, runbooks, and evaluations")
+	required := []string{
+		"*-playbook.md",
+		"stable boundary rules",
+		"copied or linked",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(plansRunbooksAndEvaluations, phrase) {
+			t.Errorf("%s Plans, runbooks, and evaluations must mention %q so playbooks stay contextual until promoted into stable boundary docs", path, phrase)
+		}
+	}
+}
+
 func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "development", "repository-structure.md")
 	content, err := os.ReadFile(path)
