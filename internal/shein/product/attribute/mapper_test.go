@@ -25,10 +25,12 @@ type stubPlatformValueFallbackResolver struct {
 	result    *PlatformValueFallbackResult
 	err       error
 	callCount int
+	lastReq   *PlatformValueFallbackRequest
 }
 
-func (s *stubPlatformValueFallbackResolver) ResolvePlatformValue(_ context.Context, _ *PlatformValueFallbackRequest) (*PlatformValueFallbackResult, error) {
+func (s *stubPlatformValueFallbackResolver) ResolvePlatformValue(_ context.Context, req *PlatformValueFallbackRequest) (*PlatformValueFallbackResult, error) {
 	s.callCount++
+	s.lastReq = req
 	return s.result, s.err
 }
 
@@ -517,5 +519,79 @@ func TestMapSingleAttributeValues_UsesCachedFallbackResult(t *testing.T) {
 	}
 	if got := attr.AttrValue[0].ID.Int(); got != 12 {
 		t.Fatalf("mapped ID = %d, want 12", got)
+	}
+}
+
+func TestMapSingleAttributeValues_NarrowsMixedSizeSystemCandidatesForNonCustomGenericFallback(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "US6.5",
+			Confidence:    0.96,
+			Reason:        "source size is US width-based shoe size",
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    stubCustomAttributeValueProcessor{},
+	}
+
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "6.5 Wide"},
+		},
+	}
+
+	runtime := &MapperRuntimeInput{
+		CategoryID:   8838,
+		ProductTitle: "Skechers Women's Go Walk 5 Walking Shoes",
+		AmazonProduct: &model.Product{
+			Title: "Skechers Women's Go Walk 5 Walking Shoes",
+			SizeChart: &model.SizeChart{
+				Headers: []string{"US Size", "CN Size"},
+				Rows: [][]string{
+					{"6.5", "235"},
+				},
+			},
+		},
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{
+				{
+					AttributeInfos: []sheinapi.AttributeInfo{
+						{
+							AttributeID:   87,
+							AttributeName: "Size",
+							AttributeType: 2,
+							AttributeValueInfoList: []sheinapi.AttributeValue{
+								{AttributeValueID: 1235, AttributeValue: "235"},
+								{AttributeValueID: 2235, AttributeValue: "US6.5"},
+								{AttributeValueID: 2240, AttributeValue: "US7"},
+							},
+						},
+					},
+				},
+			},
+		},
+		FallbackValueResolver: fallback,
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, runtime, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 1 {
+		t.Fatalf("fallback call count = %d, want 1", fallback.callCount)
+	}
+	if fallback.lastReq == nil {
+		t.Fatalf("fallback request is nil")
+	}
+	if got := fallback.lastReq.PlatformValues; len(got) != 2 || got[0] != "us6.5" || got[1] != "us7" {
+		t.Fatalf("fallback platform values = %#v, want only narrowed US candidates", got)
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != 2235 {
+		t.Fatalf("mapped ID = %d, want 2235", got)
 	}
 }

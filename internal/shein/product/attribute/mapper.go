@@ -110,7 +110,8 @@ func (m *AttributeMapper) mapSingleAttributeValues(ctx *sheinctx.TaskContext, ru
 			continue
 		}
 
-		if platformID, resolvedValue := m.resolvePlatformValueByFallback(ctx, runtime, valueDomain, attr.AttrID, attrValue.Value, platformValues); platformID > 0 {
+		fallbackPlatformValues := m.selectFallbackPlatformValues(attrInfo, runtime, valueDomain, attrValue.Value, platformValues)
+		if platformID, resolvedValue := m.resolvePlatformValueByFallback(ctx, runtime, valueDomain, attr.AttrID, attrValue.Value, fallbackPlatformValues); platformID > 0 {
 			logger.GetGlobalLogger("shein/product").Infof(
 				"resolved platform value via fallback resolver: attrID=%d domain=%s original=%q resolved=%q platformID=%d",
 				attr.AttrID,
@@ -151,6 +152,45 @@ func (m *AttributeMapper) mapSingleAttributeValues(ctx *sheinctx.TaskContext, ru
 	}
 
 	return relations, nil
+}
+
+func (m *AttributeMapper) selectFallbackPlatformValues(attrInfo *attribute.AttributeInfo, runtime *MapperRuntimeInput, valueDomain platformValueDomain, rawValue string, platformValues map[string]int) map[string]int {
+	if attrInfo == nil || valueDomain != platformValueDomainGeneric {
+		return platformValues
+	}
+	if attrInfo.AttributeType == 0 {
+		return platformValues
+	}
+
+	buckets := buildSizeSystemBuckets(platformValues)
+	if !buckets.isMixed() {
+		return platformValues
+	}
+
+	sourceSystem := inferSourceSizeSystem(rawValue, runtime)
+	if sourceSystem == sizeSystemUnknown {
+		logger.GetGlobalLogger("shein/product").Infof(
+			"size-system narrowing skipped: attrID=%d value=%q reason=unknown_source_system mixed_systems=true",
+			attrInfo.AttributeID,
+			rawValue,
+		)
+		return platformValues
+	}
+
+	filtered := narrowPlatformValuesBySizeSystem(platformValues, sourceSystem)
+	if len(filtered) == len(platformValues) {
+		return platformValues
+	}
+
+	logger.GetGlobalLogger("shein/product").Infof(
+		"size-system narrowing applied: attrID=%d value=%q source_system=%s original_candidates=%d narrowed_candidates=%d",
+		attrInfo.AttributeID,
+		rawValue,
+		sourceSystem,
+		countUniquePlatformValues(platformValues),
+		countUniquePlatformValues(filtered),
+	)
+	return filtered
 }
 
 func (m *AttributeMapper) resolvePlatformValueByFallback(taskCtx *sheinctx.TaskContext, runtime *MapperRuntimeInput, domain platformValueDomain, attrID int, rawValue string, platformValues map[string]int) (int, string) {
