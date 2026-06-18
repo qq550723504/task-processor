@@ -45,6 +45,14 @@ Current direct dependency hotspots are:
   - broad `management` coupling across inventory, scheduler, publish,
     validation, activity, mapping, and product packages
   - cleanup should follow marketplace slices, not one large adapter rewrite
+- `internal/amazon`
+  - current `management` coupling is concentrated in context/DTO seams and
+    tests, while `openai` coupling is isolated to the current processor and
+    LLM adapter path
+  - direct external client imports are guarded by
+    `TestAmazonExternalClientImportsStayAllowlisted`
+  - future Amazon cleanup should introduce Amazon-owned ports before adding
+    new concrete management or OpenAI adapter call sites
 - `internal/temu`
   - broad `management` coupling in sync, pricing, product, store, and scheduler
     paths, plus `openai` coupling in AI, image, SKU, product, and pipeline helpers
@@ -119,6 +127,10 @@ adapter types without changing business behavior:
    ProductImage assembly seams; renderer logic should stay behind local
    ProductImage ports and must not add new concrete adapter imports without a
    local interface seam or a documented runtime-builder exception.
+6. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+   import concrete external clients. Current imports are explicitly allowlisted;
+   future Amazon feature work should add package-local ports before adding new
+   concrete management or OpenAI adapter imports.
 
 ## Non-goals
 

@@ -1088,6 +1088,36 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "amazon")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "llm", "openai_llm_client.go")):      {},
+		filepath.Clean(filepath.Join(root, "model", "context.go")):             {},
+		filepath.Clean(filepath.Join(root, "model", "task_context.go")):        {},
+		filepath.Clean(filepath.Join(root, "pipeline", "daily_limit_test.go")): {},
+		filepath.Clean(filepath.Join(root, "processor.go")):                    {},
+		filepath.Clean(filepath.Join(root, "task_status_test.go")):             {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") ||
+				importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+				t.Errorf("%s imports %s; keep Amazon concrete external client dependencies limited to current management DTO and OpenAI LLM seams", path, importPath)
+			}
+		}
+	}
+}
+
 func TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowedFiles := map[string]struct{}{}
