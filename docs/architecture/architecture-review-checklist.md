@@ -55,6 +55,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestListingKitDoesNotImportSheinAPIRoot`
 - `TestListingKitNonAPISheinImportsStayAllowlisted`
 - `TestListingKitRootDoesNotImportManagementAPI`
+- `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted`
 - `TestListingKitAmazonListingImportsStayAllowlisted`
 - `TestCatalogDoesNotDependOnProductEnrichAliases`
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases`

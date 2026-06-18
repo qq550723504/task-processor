@@ -87,6 +87,31 @@ func TestListingKitRootDoesNotImportManagementAPI(t *testing.T) {
 	}
 }
 
+func TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingkit", "sheinsync")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "promotion_bridge_legacy_adapter.go")): {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") || pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for _, bannedImport := range []string{
+			`"task-processor/internal/infra/clients/management/api"`,
+			`"task-processor/internal/shein/activity"`,
+		} {
+			if _, ok := facts.imports[bannedImport]; ok {
+				t.Errorf("%s imports %s; keep SHEIN sync legacy promotion DTO/bridge dependencies isolated to promotion_bridge_legacy_adapter.go", path, bannedImport)
+			}
+		}
+	}
+}
+
 func TestListingKitAmazonListingImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedFiles := map[string]struct{}{
