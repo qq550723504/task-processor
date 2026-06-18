@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	sheinsync "task-processor/internal/listingkit/sheinsync"
 	"task-processor/internal/shein/activity"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -99,6 +98,7 @@ type SheinSyncRepository = sheinsync.SheinSyncRepository
 type SheinActivityEnrollmentCandidate = sheinsync.SheinActivityEnrollmentCandidate
 type SheinActivityEnrollmentResult = sheinsync.SheinActivityEnrollmentResult
 type SheinActivityAdapter = sheinsync.SheinActivityAdapter
+type SheinPromotionStrategyProvider = sheinsync.SheinPromotionStrategyProvider
 type SheinSyncService = sheinsync.SheinSyncService
 type SheinCandidateService = sheinsync.SheinCandidateService
 type SheinCandidateRefreshResult = sheinsync.SheinCandidateRefreshResult
@@ -150,11 +150,7 @@ func NewSheinCandidateService(repo SheinSyncRepository) SheinCandidateService {
 	return sheinsync.NewSheinCandidateService(repo)
 }
 
-type sheinPromotionStrategyProvider interface {
-	GetPromotionStrategy(ctx context.Context, storeID int64, activityKey string) (*managementapi.OperationStrategyDTO, error)
-}
-
-func NewSheinActivityAdapter(strategyProvider sheinPromotionStrategyProvider, promotionBridge activity.PromotionRegistrationBridge) SheinActivityAdapter {
+func NewSheinActivityAdapter(strategyProvider SheinPromotionStrategyProvider, promotionBridge activity.PromotionRegistrationBridge) SheinActivityAdapter {
 	return sheinsync.NewSheinActivityAdapter(strategyProvider, promotionBridge)
 }
 
@@ -162,7 +158,7 @@ type sheinPromotionBridgeFactory interface {
 	BuildPromotionBridge(ctx context.Context, storeID int64) (activity.PromotionRegistrationBridge, error)
 }
 
-func NewSheinActivityAdapterWithFactory(strategyProvider sheinPromotionStrategyProvider, promotionBridgeFactory sheinPromotionBridgeFactory) SheinActivityAdapter {
+func NewSheinActivityAdapterWithFactory(strategyProvider SheinPromotionStrategyProvider, promotionBridgeFactory sheinPromotionBridgeFactory) SheinActivityAdapter {
 	return sheinsync.NewSheinActivityAdapterWithFactory(strategyProvider, promotionBridgeFactory)
 }
 

@@ -98,6 +98,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestListingKitDoesNotImportLegacySheinRuntime` 禁止 ListingKit 根 facade 新增历史 SHEIN pipeline/publish/build runtime 依赖
 - `TestListingKitDoesNotImportSheinAPIRoot` 禁止 ListingKit 根 facade 重新依赖 SHEIN API root
 - `TestListingKitNonAPISheinImportsStayAllowlisted` 禁止 ListingKit 根 facade 新增未登记的非 API SHEIN 实现依赖，当前 adapter seam 必须精确登记
+- `TestListingKitRootDoesNotImportManagementAPI` 禁止 ListingKit 根 facade 直接依赖 management API DTO，保持 concrete management contracts 下沉到子域或装配 adapter seam
 - `TestListingKitAmazonListingImportsStayAllowlisted` 禁止 ListingKit 根 facade 新增未登记的 AmazonListing 依赖，保持当前 result/bridge seam 可审查
 - `TestCatalogDoesNotDependOnProductEnrichAliases` 禁止 catalog 回退依赖 ProductEnrich 兼容别名，保持产品事实归属在 canonical/product 模块
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases` 禁止 canonical 类型重新使用 ProductEnrich compatibility aliases，保持规范模型不依赖历史兼容层
