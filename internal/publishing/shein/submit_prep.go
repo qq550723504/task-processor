@@ -9,7 +9,6 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheintranslateapi "task-processor/internal/shein/api/translate"
-	sheincontent "task-processor/internal/shein/content"
 	sheinctx "task-processor/internal/shein/context"
 	"task-processor/internal/shein/submitprep"
 )
@@ -140,9 +139,8 @@ func optimizeSubmitProductContent(ctx context.Context, product *sheinproduct.Pro
 		return nil
 	}
 
-	cleaner := sheincontent.NewTextCleaner()
-	title = cleaner.NormalizeText(title)
-	description = cleaner.NormalizeText(description)
+	title = normalizeSheinContentText(title)
+	description = normalizeSheinContentText(description)
 	if title == "" {
 		title = "Quality Home Decor Product"
 	}

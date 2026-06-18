@@ -3,8 +3,6 @@ package shein
 import (
 	"context"
 	"strings"
-
-	sheincontent "task-processor/internal/shein/content"
 )
 
 type ReviewContentOptimizer interface {
@@ -34,9 +32,8 @@ func OptimizePackageReviewContent(ctx context.Context, pkg *Package, optimizer R
 		return nil
 	}
 
-	cleaner := sheincontent.NewTextCleaner()
-	title := cleaner.NormalizeText(sourceTitle)
-	description := cleaner.NormalizeText(sourceDescription)
+	title := normalizeSheinContentText(sourceTitle)
+	description := normalizeSheinContentText(sourceDescription)
 	if title == "" {
 		title = sourceTitle
 	}
