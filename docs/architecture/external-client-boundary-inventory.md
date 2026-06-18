@@ -114,6 +114,9 @@ Current direct dependency hotspots are:
     runner seams; these should remain explicit runtime retirement seams while
     listing runtime data access moves toward in-repository database/repository
     access
+  - `internal/app/taskstatus` still imports `management` in task status service
+    seams; these should remain explicit retirement seams while task-status data
+    access moves toward in-repository database/repository access
   - ProductImage model/default provider assembly seams in `internal/app/httpapi`
     are guarded by
     `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
@@ -129,6 +132,8 @@ Current direct dependency hotspots are:
     `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
   - `internal/app/runtime/listing` management retirement seams are guarded by
     `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
+  - `internal/app/taskstatus` management retirement seams are guarded by
+    `TestAppTaskStatusManagementClientImportsStayAllowlisted`
 - `internal/productimage`
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
@@ -241,7 +246,12 @@ adapter types without changing business behavior:
    allowlisted to freeze current debug runtime seams; future listing runtime
    data access should prefer in-repository database/repository access rather
    than adding new management API call sites.
-16. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+16. App task-status service seams currently importing
+   `internal/infra/clients/management`. Current imports are explicitly
+   allowlisted to freeze current task-status seams; future task-status data
+   access should prefer in-repository database/repository access rather than
+   adding new management API call sites.
+17. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding

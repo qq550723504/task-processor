@@ -1509,6 +1509,31 @@ func TestAppRuntimeListingManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestAppTaskStatusManagementClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "taskstatus")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "service.go")):      {},
+		filepath.Clean(filepath.Join(root, "service_test.go")): {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep app/taskstatus management dependencies limited to current task-status retirement seams and prefer in-repository database/repository access for new task-status data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestTEMUSyncAndPricingManagementImportsStayAllowlisted(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "temu", "pricing", "auto_pricing_service.go")):        {},
