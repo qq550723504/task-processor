@@ -378,6 +378,34 @@ func TestArchitectureReviewChecklistRequiresGuardBaselineUpdates(t *testing.T) {
 	}
 }
 
+func TestArchitectureReviewChecklistGuardBaselineStaysSubsetOfCurrentCoverage(t *testing.T) {
+	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
+	checklistContent, err := os.ReadFile(checklistPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", checklistPath, err)
+	}
+
+	nextStepsPath := filepath.Join("..", "docs", "architecture", "next-steps.md")
+	nextStepsContent, err := os.ReadFile(nextStepsPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", nextStepsPath, err)
+	}
+
+	guardBaseline := markdownSection(t, string(checklistContent), "## Guard Baseline")
+	const subsetRule = "Representative guard references must remain a subset of the current guard coverage baseline"
+	if !strings.Contains(guardBaseline, subsetRule) {
+		t.Errorf("%s Guard Baseline must state %q so checklist guard examples cannot drift from %s", checklistPath, subsetRule, nextStepsPath)
+	}
+
+	currentGuardCoverage := markdownBlockBetween(t, string(nextStepsContent), "Current guard coverage:", "后续重点")
+	guardPattern := regexp.MustCompile("`(Test[A-Za-z0-9_]+)`")
+	for _, match := range guardPattern.FindAllStringSubmatch(guardBaseline, -1) {
+		if !strings.Contains(currentGuardCoverage, match[1]) {
+			t.Errorf("%s Guard Baseline references %q, but %s Current guard coverage does not include it", checklistPath, match[1], nextStepsPath)
+		}
+	}
+}
+
 func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "next-steps.md")
 	content, err := os.ReadFile(path)

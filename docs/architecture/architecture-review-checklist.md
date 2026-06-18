@@ -42,6 +42,7 @@ Before merging a structural or feature PR, verify:
 
 Use the `Current guard coverage` section in
 `docs/architecture/next-steps.md` as the current import-boundary baseline.
+Representative guard references must remain a subset of the current guard coverage baseline.
 At minimum, structural review should consider representative guards such as:
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
