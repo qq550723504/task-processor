@@ -38,6 +38,7 @@
 - `TestTrackedLocalArtifactsStayOutOfTools`
 - `TestToolsContainNoLocalArtifacts`
 - `TestInternalPackagesContainNoLocalArtifacts`
+- `TestSDSLoginRuntimeStateStaysOutOfInternalPackages`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 
@@ -51,6 +52,7 @@
   - 其中 `internal/app/httpapi` 当前只负责共享 HTTP runtime 协调；各业务 HTTP builder 已下沉到 `internal/*/httpapi`。
 - `internal/*`
   - 不放本地 `.local`、`logs`、`tmp` 等运行态产物；业务包、基础设施包和平台包都应保持源码可审查。
+  - SDS 登录态、浏览器状态和 auth/cookie JSON 必须放在仓库根 `.local/sds/` 或其他明确忽略的运行态目录，不能放在 `internal/sdslogin/data/`。
 - `internal/listingkit`
   - 产品主域，承接 ListingKit 的任务、工作台、审核、提交编排、多租户产品能力。
   - `internal/listingkit/httpapi` 是 ListingKit 专属 HTTP 装配、认证运行时和 AI client helper 的稳定归属地。

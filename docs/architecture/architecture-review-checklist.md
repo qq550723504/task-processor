@@ -96,6 +96,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestTrackedLocalArtifactsStayOutOfTools`
 - `TestToolsContainNoLocalArtifacts`
 - `TestInternalPackagesContainNoLocalArtifacts`
+- `TestSDSLoginRuntimeStateStaysOutOfInternalPackages`
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
 - `TestAppProcessorCompatibilityLayerIsRetired`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`

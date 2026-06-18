@@ -85,6 +85,6 @@ web/listingkit-ui/node_modules/
 web/listingkit-ui/tsconfig.tsbuildinfo
 
 # Local SDS/SHEIN integration state and credentials
+.local/sds/
 data/sds/
-internal/sdslogin/data/sds/*.json
 config/*local*.yaml

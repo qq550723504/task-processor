@@ -69,6 +69,15 @@ func TestInternalPackagesContainNoLocalArtifacts(t *testing.T) {
 	assertNoLocalArtifactPaths(t, filepath.Join("..", "internal"))
 }
 
+func TestSDSLoginRuntimeStateStaysOutOfInternalPackages(t *testing.T) {
+	path := filepath.Join("..", "internal", "sdslogin", "data")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s is SDS login runtime state; keep browser/auth state under .local or another ignored runtime directory outside internal packages", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+}
+
 func TestPlatformRegistrationPackagesStayThin(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		"internal/platforms/modules.go":           {},
@@ -89,6 +98,12 @@ func TestPlatformRegistrationPackagesStayThin(t *testing.T) {
 
 func TestPlatformRegistrationPackagesContainNoLocalArtifacts(t *testing.T) {
 	assertNoLocalArtifactPaths(t, filepath.Join("..", "internal", "platforms"))
+}
+
+func TestLocalArtifactPathDetectionCoversLocalRuntimeDirectories(t *testing.T) {
+	if !containsLocalArtifactPathPart(filepath.Join("internal", "sdslogin", ".local", "auth_state.json")) {
+		t.Fatal("expected .local runtime directory to be detected as a local artifact path")
+	}
 }
 
 func trackedFiles(t *testing.T, pathspec string) []string {
@@ -145,7 +160,7 @@ func containsLocalArtifactPathPart(path string) bool {
 			return true
 		}
 		switch part {
-		case "logs", "tmp", "bin", "dev-logs", "playwright-cli", "node_modules", "result":
+		case ".local", "logs", "tmp", "bin", "dev-logs", "playwright-cli", "node_modules", "result":
 			return true
 		}
 	}

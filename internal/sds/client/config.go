@@ -92,8 +92,8 @@ func DefaultConfig() *Config {
 		RetryInterval: 1500 * time.Millisecond,
 		UserAgent:     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
 		Referer:       "https://www.sdsdiy.com/portal/search?sideActiveId=overseas&isOverseas=overseas",
-		CookieFile:    "data/sds/session_cookies.json",
-		AuthFile:      "data/sds/auth_state.json",
+		CookieFile:    ".local/sds/session_cookies.json",
+		AuthFile:      ".local/sds/auth_state.json",
 		AuthBootstrap: AuthBootstrapConfig{},
 		Endpoints: EndpointSet{
 			TemplateListPath:         "/products/page",
