@@ -5,16 +5,15 @@ import (
 	"fmt"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/prompt"
 )
 
 type openAICompatibleSceneGenerator struct {
 	runtime *realImageComponents
-	client  openaiclient.ImageGenerator
+	client  imageEditClient
 }
 
-func NewOpenAICompatibleSceneGenerator(workDir string, client openaiclient.ImageGenerator) (SceneGenerator, error) {
+func NewOpenAICompatibleSceneGenerator(workDir string, client openAICompatibleImageGenerator) (SceneGenerator, error) {
 	if client == nil {
 		return nil, fmt.Errorf("openai-compatible image client is not configured")
 	}
@@ -24,7 +23,7 @@ func NewOpenAICompatibleSceneGenerator(workDir string, client openaiclient.Image
 	}
 	return &openAICompatibleSceneGenerator{
 		runtime: rt,
-		client:  client,
+		client:  newOpenAIImageEditClientAdapter(client),
 	}, nil
 }
 
@@ -38,7 +37,7 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	}
 	options := resolveScenePromptOptions(req, req.ProductContext)
 	resolvedPrompt := buildSceneGenerationResolvedPrompt(req)
-	response, err := g.client.EditImage(ctx, &openaiclient.ImageEditRequest{
+	response, err := g.client.EditImage(ctx, imageEditRequest{
 		Model:          g.client.GetDefaultModel(),
 		Prompt:         resolvedPrompt.Text,
 		Image:          data,
@@ -50,7 +49,7 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	if err != nil {
 		return nil, err
 	}
-	imageData, revisedPrompt, err := decodeFirstOpenAIImage(response)
+	imageData, revisedPrompt, err := decodeFirstEditedImage(response)
 	if err != nil {
 		return nil, err
 	}

@@ -1062,8 +1062,7 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "failure_test.go")):               {},
 		filepath.Clean(filepath.Join(root, "httpapi", "bootstrap.go")):       {},
 		filepath.Clean(filepath.Join(root, "httpapi", "runtime_builder.go")): {},
-		filepath.Clean(filepath.Join(root, "openai_image_editor.go")):        {},
-		filepath.Clean(filepath.Join(root, "openai_scene_generator.go")):     {},
+		filepath.Clean(filepath.Join(root, "openai_image_edit_adapter.go")):  {},
 		filepath.Clean(filepath.Join(root, "pipeline_test.go")):              {},
 	}
 

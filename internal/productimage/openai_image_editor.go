@@ -6,16 +6,15 @@ import (
 	"fmt"
 	"strings"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/prompt"
 )
 
 type openAICompatibleFaithfulEditor struct {
 	runtime *realImageComponents
-	client  openaiclient.ImageGenerator
+	client  imageEditClient
 }
 
-func NewOpenAICompatibleFaithfulEditor(workDir string, client openaiclient.ImageGenerator) (FaithfulEditor, error) {
+func NewOpenAICompatibleFaithfulEditor(workDir string, client openAICompatibleImageGenerator) (FaithfulEditor, error) {
 	if client == nil {
 		return nil, fmt.Errorf("openai-compatible image client is not configured")
 	}
@@ -25,7 +24,7 @@ func NewOpenAICompatibleFaithfulEditor(workDir string, client openaiclient.Image
 	}
 	return &openAICompatibleFaithfulEditor{
 		runtime: rt,
-		client:  client,
+		client:  newOpenAIImageEditClientAdapter(client),
 	}, nil
 }
 
@@ -38,7 +37,7 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 		return nil, err
 	}
 	resolvedPrompt := buildFaithfulEditResolvedPrompt(req)
-	response, err := e.client.EditImage(ctx, &openaiclient.ImageEditRequest{
+	response, err := e.client.EditImage(ctx, imageEditRequest{
 		Model:          e.client.GetDefaultModel(),
 		Prompt:         resolvedPrompt.Text,
 		Image:          data,
@@ -50,7 +49,7 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 	if err != nil {
 		return nil, err
 	}
-	imageData, revisedPrompt, err := decodeFirstOpenAIImage(response)
+	imageData, revisedPrompt, err := decodeFirstEditedImage(response)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +188,7 @@ func productTitle(context *ProductContext) string {
 	return strings.TrimSpace(context.Title)
 }
 
-func decodeFirstOpenAIImage(response *openaiclient.ImageResponse) ([]byte, string, error) {
+func decodeFirstEditedImage(response *imageEditResponse) ([]byte, string, error) {
 	if response == nil || len(response.Data) == 0 {
 		return nil, "", fmt.Errorf("image response contained no data")
 	}
