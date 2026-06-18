@@ -136,6 +136,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages` 禁止生产入口绕过 app 装配层直接依赖业务域或 infra 包
 - `TestHackContainsOnlyManagedSupportAreas` 禁止 `hack/` 继续扩散未登记的临时支持目录
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints` 禁止本地产物或调试文件进入生产入口目录
+- `TestProductionEntrypointsContainNoLocalArtifacts` 禁止未跟踪或被忽略的本地 `logs` / `tmp` / `__debug_bin*` 产物留在 `cmd/` 生产入口目录
 - `TestTrackedLocalArtifactsStayOutOfTools` 禁止本地产物或一次性调试文件进入长期维护的 `tools/` 目录
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly` 禁止业务实现包新增直接 `gin` 依赖，当前历史 handler 例外必须显式登记
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly` 禁止业务域新增对 `internal/app/{bootstrap,consumer,runner,runtime}` 的具体装配依赖，当前 `listingkit/httpapi` 过渡适配例外必须显式登记

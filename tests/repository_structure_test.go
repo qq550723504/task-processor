@@ -31,6 +31,10 @@ func TestTrackedLocalArtifactsStayOutOfProductionEntrypoints(t *testing.T) {
 	assertNoTrackedLocalArtifacts(t, "cmd")
 }
 
+func TestProductionEntrypointsContainNoLocalArtifacts(t *testing.T) {
+	assertNoLocalArtifactPaths(t, filepath.Join("..", "cmd"))
+}
+
 func TestHackContainsOnlyManagedSupportAreas(t *testing.T) {
 	allowed := map[string]struct{}{
 		"debug": {},
@@ -122,6 +126,9 @@ func assertNoLocalArtifactPaths(t *testing.T, pathspec string) {
 func containsLocalArtifactPathPart(path string) bool {
 	parts := strings.Split(filepath.ToSlash(path), "/")
 	for _, part := range parts {
+		if strings.HasPrefix(part, "__debug_bin") {
+			return true
+		}
 		switch part {
 		case "logs", "tmp", "bin", "dev-logs", "playwright-cli":
 			return true

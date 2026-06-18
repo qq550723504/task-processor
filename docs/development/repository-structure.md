@@ -9,6 +9,7 @@
 - `cmd/`
   - 只放正式服务或正式任务入口。
   - 不再新增临时调试可执行程序。
+  - 不放本地 `logs`、`tmp`、`__debug_bin*` 等运行态产物；这类文件统一放到仓库根 `.local/`。
 - `hack/`
   - 放调试、试验、验证程序。
   - `hack/debug` 是当前受管的非生产调试入口目录。
@@ -30,6 +31,7 @@
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
 - `TestHackContainsOnlyManagedSupportAreas`
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
+- `TestProductionEntrypointsContainNoLocalArtifacts`
 - `TestTrackedLocalArtifactsStayOutOfTools`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
