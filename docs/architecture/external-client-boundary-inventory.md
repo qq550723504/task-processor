@@ -134,6 +134,14 @@ Current direct dependency hotspots are:
     `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
   - `internal/app/taskstatus` management retirement seams are guarded by
     `TestAppTaskStatusManagementClientImportsStayAllowlisted`
+- `internal/platformtask`
+  - current platform task helpers still import `management` in product sync,
+    inventory sync, and auto pricing task seams
+  - these are platform-task retirement seams, not a long-lived task data
+    direction; future platform task data should use in-repository
+    database/repository access
+  - current direct management seams are guarded by
+    `TestPlatformTaskManagementClientImportsStayAllowlisted`
 - `internal/productimage`
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
@@ -251,7 +259,12 @@ adapter types without changing business behavior:
    allowlisted to freeze current task-status seams; future task-status data
    access should prefer in-repository database/repository access rather than
    adding new management API call sites.
-17. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+17. Platform task product sync, inventory sync, and auto pricing seams
+   currently importing `internal/infra/clients/management`. Current imports are
+   explicitly allowlisted to freeze current task seams; future platform task
+   data access should prefer in-repository database/repository access rather
+   than adding new management API call sites.
+18. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding

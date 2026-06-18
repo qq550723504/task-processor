@@ -1534,6 +1534,35 @@ func TestAppTaskStatusManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestPlatformTaskManagementClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "platformtask")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "auto_pricing_task.go")):        {},
+		filepath.Clean(filepath.Join(root, "auto_pricing_task_test.go")):   {},
+		filepath.Clean(filepath.Join(root, "inventory_sync_task.go")):      {},
+		filepath.Clean(filepath.Join(root, "inventory_sync_task_test.go")): {},
+		filepath.Clean(filepath.Join(root, "product_sync_task.go")):        {},
+		filepath.Clean(filepath.Join(root, "product_sync_task_test.go")):   {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep platformtask management dependencies limited to current platform task retirement seams and prefer in-repository database/repository access for new platform task data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestTEMUSyncAndPricingManagementImportsStayAllowlisted(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "temu", "pricing", "auto_pricing_service.go")):        {},
