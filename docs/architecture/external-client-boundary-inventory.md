@@ -142,6 +142,14 @@ Current direct dependency hotspots are:
     database/repository access
   - current direct management seams are guarded by
     `TestPlatformTaskManagementClientImportsStayAllowlisted`
+- `internal/state`
+  - current state runtime helpers still import `management` in manager and
+    daily-count seams
+  - these are state-runtime retirement seams, not a long-lived state data
+    direction; future state data should use in-repository database/repository
+    access
+  - current direct management seams are guarded by
+    `TestStateManagementClientImportsStayAllowlisted`
 - `internal/productimage`
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
@@ -264,7 +272,12 @@ adapter types without changing business behavior:
    explicitly allowlisted to freeze current task seams; future platform task
    data access should prefer in-repository database/repository access rather
    than adding new management API call sites.
-18. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+18. State runtime manager and daily-count seams currently importing
+   `internal/infra/clients/management`. Current imports are explicitly
+   allowlisted to freeze current state seams; future state data access should
+   prefer in-repository database/repository access rather than adding new
+   management API call sites.
+19. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding
