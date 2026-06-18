@@ -150,6 +150,14 @@ Current direct dependency hotspots are:
     database/repository access
   - current direct management seam is guarded by
     `TestPlatformBaseManagementClientImportsStayAllowlisted`
+- `internal/processor`
+  - current processor base still imports `management` in the shared processor
+    seam
+  - this is a processor retirement seam, not a long-lived processor data
+    direction; future processor data should use in-repository
+    database/repository access
+  - current direct management seam is guarded by
+    `TestProcessorManagementClientImportsStayAllowlisted`
 - `internal/state`
   - current state runtime helpers still import `management` in manager and
     daily-count seams
@@ -290,7 +298,12 @@ adapter types without changing business behavior:
    allowlisted to freeze current factory seam; future platform factory data
    should prefer in-repository database/repository access rather than adding new
    management API call sites.
-20. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
+20. Processor base seam currently importing
+   `internal/infra/clients/management`. Current imports are explicitly
+   allowlisted to freeze current processor seam; future processor data should
+   prefer in-repository database/repository access rather than adding new
+   management API call sites.
+21. Amazon management DTO/context seams and OpenAI LLM adapter seams currently
    import concrete external clients. Current imports are explicitly allowlisted
    to freeze current seams; future Amazon feature work should prefer
    in-repository database/repository access or package-local ports before adding

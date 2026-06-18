@@ -218,6 +218,7 @@ func TestArchitectureReviewChecklistCoversBoundaryRegressionRisks(t *testing.T) 
 		"TestPlatformTaskManagementClientImportsStayAllowlisted",
 		"TestStateManagementClientImportsStayAllowlisted",
 		"TestPlatformBaseManagementClientImportsStayAllowlisted",
+		"TestProcessorManagementClientImportsStayAllowlisted",
 		"TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted",
 		"TestPublishingSheinOpenAIImportsStayAllowlisted",
 		"TestListingKitHTTPAPIExternalClientImportsStayAllowlisted",

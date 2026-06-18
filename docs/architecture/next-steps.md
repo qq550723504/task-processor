@@ -169,6 +169,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestPlatformTaskManagementClientImportsStayAllowlisted` 禁止 `internal/platformtask` 新增未登记的 concrete `management` adapter 依赖，当前 product sync、inventory sync 和 auto pricing task seam 只是 management 退休前过渡点
 - `TestStateManagementClientImportsStayAllowlisted` 禁止 `internal/state` 新增未登记的 concrete `management` adapter 依赖，当前 manager 和 daily-count seam 只是 management 退休前过渡点
 - `TestPlatformBaseManagementClientImportsStayAllowlisted` 禁止 `internal/platformbase` 新增未登记的 concrete `management` adapter 依赖，当前 platform factory seam 只是 management 退休前过渡点
+- `TestProcessorManagementClientImportsStayAllowlisted` 禁止 `internal/processor` 新增未登记的 concrete `management` adapter 依赖，当前 base processor seam 只是 management 退休前过渡点
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted` 禁止 `internal/app/httpapi` ProductImage 装配文件新增 concrete `openai` / `nanobanana` adapter 依赖，当前模型默认值/装配 seam 必须精确登记
 - `TestPublishingSheinOpenAIImportsStayAllowlisted` 禁止 `internal/publishing/shein` 新增 concrete `openai` adapter 依赖，当前属性/类目/文案 inference seam 必须精确登记
 - `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted` 禁止 `internal/listingkit/httpapi` 新增 concrete `openai` / `nanobanana` adapter 依赖，当前 AI runtime/bootstrap seam 必须精确登记
