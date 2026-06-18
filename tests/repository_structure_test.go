@@ -65,6 +65,10 @@ func TestToolsContainNoLocalArtifacts(t *testing.T) {
 	assertNoLocalArtifactPaths(t, filepath.Join("..", "tools"))
 }
 
+func TestInternalPackagesContainNoLocalArtifacts(t *testing.T) {
+	assertNoLocalArtifactPaths(t, filepath.Join("..", "internal"))
+}
+
 func TestPlatformRegistrationPackagesStayThin(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		"internal/platforms/modules.go":           {},
