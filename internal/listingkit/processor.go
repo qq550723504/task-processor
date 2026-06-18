@@ -7,7 +7,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 )
 
@@ -64,7 +63,7 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 	if task.Request != nil {
 		userID = task.Request.UserID
 	}
-	ctx = openaiclient.WithIdentity(ctx, openaiclient.Identity{TenantID: task.TenantID, UserID: userID})
+	ctx = WithRequestIdentity(ctx, RequestIdentity{TenantID: task.TenantID, UserID: userID})
 	if _, err := p.service.ProcessListingKit(ctx, task); err != nil {
 		if errors.Is(err, ErrTaskNotPending) {
 			return nil

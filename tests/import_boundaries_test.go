@@ -677,7 +677,6 @@ func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "ai_client_settings.go")):                        {},
 		filepath.Clean(filepath.Join(root, "assembler.go")):                                 {},
 		filepath.Clean(filepath.Join(root, "interfaces_dependencies.go")):                   {},
-		filepath.Clean(filepath.Join(root, "processor.go")):                                 {},
 		filepath.Clean(filepath.Join(root, "request_identity.go")):                          {},
 		filepath.Clean(filepath.Join(root, "service_shein_shared_dependencies.go")):         {},
 		filepath.Clean(filepath.Join(root, "service_studio_dependencies.go")):               {},

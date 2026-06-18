@@ -8,7 +8,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 )
 
@@ -225,7 +224,7 @@ func TestProcessorProcessTaskInjectsTenantAndIdentityBeforeServiceExecution(t *t
 	if got := TenantIDFromContext(svc.lastCtx); got != "tenant-a" {
 		t.Fatalf("tenant in context = %q, want tenant-a", got)
 	}
-	identity := openaiclient.IdentityFromContext(svc.lastCtx)
+	identity := RequestIdentityFromContext(svc.lastCtx)
 	if identity.TenantID != "tenant-a" || identity.UserID != "user-a" {
 		t.Fatalf("identity = %+v, want tenant-a/user-a", identity)
 	}
