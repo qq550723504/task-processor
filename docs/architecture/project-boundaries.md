@@ -309,6 +309,7 @@ guards include:
 - `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated`
 - `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile`
 - `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile`
+- `TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -400,6 +401,9 @@ catch-all construction hub.
 Model-provider assembly should follow the same rule, so bootstrap keeps provider
 selection and related wiring in a dedicated seam instead of folding it into the
 generic startup file.
+
+LLM scorer assembly should stay dedicated for the same reason, keeping scoring
+bootstrap out of the catch-all startup path and in its own owning seam.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
