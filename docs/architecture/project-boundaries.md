@@ -9,6 +9,21 @@ It complements the project-wide refactoring authority:
 
 When implementing broad refactoring, use these rules unless a newer ADR or refactoring document explicitly supersedes them.
 
+## How To Use This Document
+
+Use this as the default repository-wide entrypoint for package ownership,
+dependency direction, and placement rules.
+
+When a change falls into a specialized area such as HTTP API assembly, app
+assembly, platform convergence, Temporal orchestration, external-client
+coupling, compatibility retirement, preview extraction, or repository layout:
+
+1. Start here to decide the default boundary direction.
+2. Then open the matching specialized document to refine that rule for the
+   narrower area.
+3. If the specialized document seems broader than this one, tighten the
+   specialized note instead of creating a second top-level policy source.
+
 ## 1. Architecture Style
 
 The project should remain a modular monolith until package boundaries are stable.
