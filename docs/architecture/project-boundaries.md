@@ -299,6 +299,7 @@ guards include:
 - `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -352,6 +353,10 @@ construction concerns.
 The runtime side of that assembly should remain dedicated too: OpenAI runtime
 bootstrap belongs in its own seam instead of accreting inside generic runtime
 startup paths.
+
+Shared-resource assembly follows the same rule: common bootstrap resources
+should be attached through a dedicated runtime seam rather than mixed into
+unrelated startup responsibilities.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
