@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/shein/api/attribute"
 	"task-processor/internal/shein/content"
 	sheinctx "task-processor/internal/shein/context"
+	sheinsize "task-processor/internal/shein/product/size"
 )
 
 type AttributeMapper struct {
@@ -242,7 +243,7 @@ func (m *AttributeMapper) resolvePlatformValueByFallback(taskCtx *sheinctx.TaskC
 				"platform value fallback cache hit: attrID=%d domain=%s value=%q resolved=%q confidence=%.2f",
 				attrID, domain, rawValue, cached.ResolvedValue, cached.Confidence,
 			)
-			if platformID, resolved := m.matchFallbackResult(runtime, &cached, platformValues); platformID > 0 {
+			if platformID, resolved := m.matchFallbackResult(runtime, &cached, rawValue, platformValues); platformID > 0 {
 				return platformID, resolved
 			}
 		}
@@ -271,7 +272,7 @@ func (m *AttributeMapper) resolvePlatformValueByFallback(taskCtx *sheinctx.TaskC
 	if result == nil {
 		return 0, ""
 	}
-	if platformID, resolved := m.matchFallbackResult(runtime, result, platformValues); platformID > 0 {
+	if platformID, resolved := m.matchFallbackResult(runtime, result, rawValue, platformValues); platformID > 0 {
 		if runtime.FallbackCache != nil {
 			runtime.FallbackCache.Set(aicache.TypeAttrValueFallback, cacheKey, result)
 			logger.GetGlobalLogger("shein/product").Infof(
@@ -288,7 +289,7 @@ func (m *AttributeMapper) resolvePlatformValueByFallback(taskCtx *sheinctx.TaskC
 	return 0, ""
 }
 
-func (m *AttributeMapper) matchFallbackResult(runtime *MapperRuntimeInput, result *PlatformValueFallbackResult, platformValues map[string]int) (int, string) {
+func (m *AttributeMapper) matchFallbackResult(runtime *MapperRuntimeInput, result *PlatformValueFallbackResult, rawValue string, platformValues map[string]int) (int, string) {
 	if result == nil || result.ResolvedValue == "" {
 		return 0, ""
 	}
@@ -303,10 +304,45 @@ func (m *AttributeMapper) matchFallbackResult(runtime *MapperRuntimeInput, resul
 		)
 		return 0, ""
 	}
+	if !fallbackShoeSizeSemanticsCompatible(runtime, rawValue, result.ResolvedValue) {
+		logger.GetGlobalLogger("shein/product").Infof(
+			"platform value fallback rejected due to shoe-size semantic mismatch: source=%q resolved=%q",
+			rawValue, result.ResolvedValue,
+		)
+		return 0, ""
+	}
 	if platformID := m.valueMatcher.FindMatchingPlatformValue(result.ResolvedValue, platformValues); platformID > 0 {
 		return platformID, result.ResolvedValue
 	}
 	return 0, ""
+}
+
+func fallbackShoeSizeSemanticsCompatible(runtime *MapperRuntimeInput, rawValue, resolvedValue string) bool {
+	source, ok := resolveStructuredSourceShoeSize(rawValue, runtime)
+	if !ok {
+		return true
+	}
+	resolved := sheinsize.ParseShoeSize(resolvedValue)
+	if !resolved.IsShoeSize {
+		return true
+	}
+	if source.BaseSize != "" && resolved.BaseSize != "" && source.BaseSize != resolved.BaseSize {
+		return false
+	}
+	if source.System != sheinsize.SystemUnknown &&
+		resolved.System != sheinsize.SystemUnknown &&
+		source.System != resolved.System {
+		return false
+	}
+	if source.Width == sheinsize.WidthWide || source.Width == sheinsize.WidthXWide {
+		if resolved.Width == sheinsize.WidthUnknown || resolved.Width == sheinsize.WidthRegular {
+			return false
+		}
+		if !sheinsize.AreShoeSizesFuzzyCompatible(rawValue, resolvedValue) {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *AttributeMapper) logUnmatchedPlatformValue(attrID int, rawValue string, valueDomain platformValueDomain, platformValues map[string]int) {

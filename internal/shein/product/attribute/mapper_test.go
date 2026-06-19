@@ -552,7 +552,11 @@ func TestMapSingleAttributeValues_NarrowsMixedSizeSystemCandidatesForNonCustomGe
 	}
 	mapper := &AttributeMapper{
 		valueMatcher: NewAttributeValueMatcher(),
-		processor:    stubCustomAttributeValueProcessor{},
+		processor: stubCustomAttributeValueProcessor{
+			results: map[string]CustomAttributeResult{
+				"6.5 Wide": {Success: false, PermissionDenied: false, ShouldContinue: true},
+			},
+		},
 	}
 
 	attr := &ResultAttribute{
@@ -611,8 +615,8 @@ func TestMapSingleAttributeValues_NarrowsMixedSizeSystemCandidatesForNonCustomGe
 	if got := fallback.lastReq.PlatformValues; len(got) != 2 || got[0] != "us6.5" || got[1] != "us7" {
 		t.Fatalf("fallback platform values = %#v, want only narrowed US candidates", got)
 	}
-	if got := attr.AttrValue[0].ID.Int(); got != 2235 {
-		t.Fatalf("mapped ID = %d, want 2235", got)
+	if got := attr.AttrValue[0].ID.Int(); got != -1 {
+		t.Fatalf("mapped ID = %d, want unresolved when fallback downgrades width", got)
 	}
 }
 
@@ -870,7 +874,11 @@ func TestMapSingleAttributeValues_FallsBackWhenStructuredShoeSizeCannotResolveUn
 	}
 	mapper := &AttributeMapper{
 		valueMatcher: NewAttributeValueMatcher(),
-		processor:    stubCustomAttributeValueProcessor{},
+		processor: stubCustomAttributeValueProcessor{
+			results: map[string]CustomAttributeResult{
+				"7 Wide": {Success: false, PermissionDenied: false, ShouldContinue: true},
+			},
+		},
 	}
 
 	attr := &ResultAttribute{
@@ -922,8 +930,8 @@ func TestMapSingleAttributeValues_FallsBackWhenStructuredShoeSizeCannotResolveUn
 	if fallback.callCount != 1 {
 		t.Fatalf("fallback call count = %d, want 1", fallback.callCount)
 	}
-	if got := attr.AttrValue[0].ID.Int(); got != 2240 {
-		t.Fatalf("mapped ID = %d, want 2240", got)
+	if got := attr.AttrValue[0].ID.Int(); got != -1 {
+		t.Fatalf("mapped ID = %d, want unresolved when only regular-width fallback exists", got)
 	}
 }
 
@@ -1031,5 +1039,47 @@ func TestMapSingleAttributeValues_RemapSizeLikeValueEvenWhenInitialIDIsPositive(
 	}
 	if got := attr.AttrValue[0].ID.Int(); got != 1355 {
 		t.Fatalf("mapped ID = %d, want 1355", got)
+	}
+}
+
+func TestMatchFallbackResult_RejectsWidthDowngradeForShoeSize(t *testing.T) {
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+	}
+
+	platformValues := map[string]int{
+		"US8":        8001,
+		"US8 X-Wide": 8002,
+	}
+	result := &PlatformValueFallbackResult{
+		ResolvedValue: "US8",
+		Confidence:    0.95,
+		Reason:        "closest available size",
+	}
+
+	platformID, resolved := mapper.matchFallbackResult(&MapperRuntimeInput{}, result, "8 X-Wide", platformValues)
+	if platformID != 0 || resolved != "" {
+		t.Fatalf("matchFallbackResult() = (%d, %q), want rejected width downgrade", platformID, resolved)
+	}
+}
+
+func TestMatchFallbackResult_AllowsWidthCompatibleFallbackForShoeSize(t *testing.T) {
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+	}
+
+	platformValues := map[string]int{
+		"US8":        8001,
+		"US8 X-Wide": 8002,
+	}
+	result := &PlatformValueFallbackResult{
+		ResolvedValue: "US8 X-Wide",
+		Confidence:    0.95,
+		Reason:        "matched width-specific size",
+	}
+
+	platformID, resolved := mapper.matchFallbackResult(&MapperRuntimeInput{}, result, "8 X-Wide", platformValues)
+	if platformID != 8002 || resolved != "US8 X-Wide" {
+		t.Fatalf("matchFallbackResult() = (%d, %q), want (8002, %q)", platformID, resolved, "US8 X-Wide")
 	}
 }
