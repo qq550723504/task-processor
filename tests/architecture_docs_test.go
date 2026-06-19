@@ -1087,6 +1087,7 @@ func TestPlatformBoundaryStrategyDefinesConvergenceRoles(t *testing.T) {
 		"TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages",
 		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
 		"TestPlatformRegistrationPackagesStayThin",
+		"TestPlatformRegistrationPackagesContainNoLocalArtifacts",
 		"Migration Rules",
 		"Review Questions",
 	}

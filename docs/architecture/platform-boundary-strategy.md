@@ -105,6 +105,10 @@ This thin-layer rule is guarded by
 `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages` and
 `TestPlatformRegistrationPackagesStayThin`.
 
+Platform registration packages must also stay free of checked-in local
+artifacts. This is guarded by
+`TestPlatformRegistrationPackagesContainNoLocalArtifacts`.
+
 Current historical implementation imports from `internal/platforms/*` are
 guarded by `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`.
 Treat the Amazon, SHEIN, and TEMU registration delegates as explicit migration
