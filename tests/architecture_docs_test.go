@@ -120,6 +120,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestAppProcessorCompatibilityLayerIsRetired",
 		"TestAppStateCompatibilityLayerIsRetired",
 		"TestInfraProductCrawlerAdapterIsRetired",
+		"TestAppCrawlerFetcherCompatibilityLayerIsRetired",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 	}

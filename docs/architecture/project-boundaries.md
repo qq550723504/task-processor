@@ -305,6 +305,7 @@ guards include:
 - `TestAppProcessorCompatibilityLayerIsRetired`
 - `TestAppStateCompatibilityLayerIsRetired`
 - `TestInfraProductCrawlerAdapterIsRetired`
+- `TestAppCrawlerFetcherCompatibilityLayerIsRetired`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -373,3 +374,7 @@ optional. New code should treat `internal/state` as the only supported owner.
 The old `internal/infra/productcrawler` adapter is retired as well. Product
 sourcing flows should move through the current sourcing and crawler ownership
 packages instead of preserving that legacy infra bridge.
+
+The same is true for `internal/app/crawler/fetcher`: it is a retired
+compatibility path, and new crawler fetch logic should live under the current
+`internal/crawler/fetcher` owner instead.
