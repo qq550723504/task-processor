@@ -297,6 +297,7 @@ guards include:
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
+- `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -334,3 +335,7 @@ not become precedent for new platform-to-business coupling.
 Platform registration packages should remain thin delegation shells as well.
 They can wire stable entrypoints together, but they should not accumulate local
 business rules, runtime orchestration, or long-lived feature ownership.
+
+Those registration packages should also stay free of checked-in local
+artifacts, so temporary scaffolding and machine-specific outputs do not turn
+into accidental platform-layer ownership.
