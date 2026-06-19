@@ -303,6 +303,7 @@ guards include:
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
 - `TestAppProcessorCompatibilityLayerIsRetired`
+- `TestAppStateCompatibilityLayerIsRetired`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -364,3 +365,6 @@ an alternate path.
 That applies to the old app state compatibility layer too: internal packages
 should use `internal/state` directly instead of reviving the deprecated app
 state bridge.
+
+And like the processor bridge, that app state bridge is retired rather than
+optional. New code should treat `internal/state` as the only supported owner.
