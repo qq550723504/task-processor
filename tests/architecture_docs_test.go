@@ -1536,6 +1536,7 @@ func TestAppAssemblyBoundaryDocumentDefinesStableAssemblyVocabulary(t *testing.T
 		"TestAppHTTPAPIManagementClientImportsStayAllowlisted",
 		"TestAppRuntimeListingManagementClientImportsStayAllowlisted",
 		"TestAppTaskStatusManagementClientImportsStayAllowlisted",
+		"TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted",
 		"TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated",
 		"TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated",
 		"TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated",

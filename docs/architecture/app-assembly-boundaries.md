@@ -206,6 +206,7 @@ App-layer assembly boundaries are guarded by:
 - `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
 - `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
 - `TestAppTaskStatusManagementClientImportsStayAllowlisted`
+- `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
@@ -227,7 +228,10 @@ They keep generic files such as `types.go`, `adapters.go`, and `runtime.go`
 from absorbing concrete external-client state or shared resource assembly.
 When a runtime dependency needs a concrete client or bootstrap resource, prefer
 a named seam such as `runtime_shared_deps.go`, `adapters_openai.go`, or
-`runtime_openai.go` instead of expanding the generic assembly files.
+`runtime_openai.go` instead of expanding the generic assembly files. The same
+rule applies to ProductImage provider/external client assembly: keep provider
+selection and concrete external client wiring in dedicated seams instead of
+spreading them across generic app/httpapi assembly files.
 
 ## Review Questions
 
