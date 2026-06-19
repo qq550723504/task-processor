@@ -296,6 +296,7 @@ guards include:
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
+- `TestPlatformRegistrationPackagesStayThin`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -329,3 +330,7 @@ layer.
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
 not become precedent for new platform-to-business coupling.
+
+Platform registration packages should remain thin delegation shells as well.
+They can wire stable entrypoints together, but they should not accumulate local
+business rules, runtime orchestration, or long-lived feature ownership.
