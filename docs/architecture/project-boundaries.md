@@ -304,6 +304,7 @@ guards include:
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
 - `TestAppProcessorCompatibilityLayerIsRetired`
 - `TestAppStateCompatibilityLayerIsRetired`
+- `TestInfraProductCrawlerAdapterIsRetired`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -368,3 +369,7 @@ state bridge.
 
 And like the processor bridge, that app state bridge is retired rather than
 optional. New code should treat `internal/state` as the only supported owner.
+
+The old `internal/infra/productcrawler` adapter is retired as well. Product
+sourcing flows should move through the current sourcing and crawler ownership
+packages instead of preserving that legacy infra bridge.
