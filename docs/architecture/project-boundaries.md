@@ -320,6 +320,7 @@ guards include:
 - `TestAppBootstrapManagementClientImportsStayAllowlisted`
 - `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
 - `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
+- `TestAppTaskStatusManagementClientImportsStayAllowlisted`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
@@ -445,6 +446,10 @@ integration path for new request handling.
 Runtime listing flows should treat management clients the same way: if one is
 still present, it must stay on an explicit allowlist seam rather than becoming
 the preferred runtime composition path.
+
+Task-status flows should keep the same discipline: any surviving management
+client dependency must remain an explicit transition seam rather than a renewed
+source of status orchestration ownership.
 
 Production entrypoints should not keep deprecated compatibility layers alive
 either. `cmd/*` packages must depend on the current owning packages directly
