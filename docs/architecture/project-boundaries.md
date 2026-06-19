@@ -289,9 +289,15 @@ guards include:
 - `TestSheinOpenAIImportsStayAllowlisted`
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestPublishingSheinOpenAIImportsStayAllowlisted`
+- `TestPublishingSheinManagedManagementImportsStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
 Use `scripts/analyze-project-deps.ps1` as an advisory dependency baseline when
 reviewing broader refactors, but do not treat the script as a substitute for the
 active guard tests.
+
+For the SHEIN publishing path specifically, treat managed management clients as
+a retirement seam rather than a stable dependency direction: new flows should
+prefer direct database-backed composition instead of expanding management API
+coupling.
