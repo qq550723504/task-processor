@@ -306,6 +306,7 @@ guards include:
 - `TestHTTPAPIRuntimeKeepsConfigLoadingDedicated`
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
 - `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated`
+- `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -385,6 +386,10 @@ or generic bootstrap files.
 Task-repository assembly should stay behind dedicated HTTP API adapters as
 well, so persistence wiring does not spread into unrelated runtime or feature
 assembly seams.
+
+Prompt-store assembly should follow the same rule, keeping prompt persistence
+and tenant store wiring behind a dedicated adapter seam instead of leaking into
+broader runtime setup.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
