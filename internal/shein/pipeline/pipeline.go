@@ -53,7 +53,7 @@ func (p *Pipeline) Process(ctx *shein.TaskContext) error {
 	for i, handler := range p.handlers {
 		stepNum := i + 1
 		ctx.SetStage(resolveStageName(handler.Name()))
-		logger.GetGlobalLogger("shein/pipeline").Debugf("开始执行步骤 [%d/%d]: %s", stepNum, len(p.handlers), handler.Name())
+		logger.GetGlobalLogger("shein/pipeline").Debugf("开始执、 行步骤 [%d/%d]: %s", stepNum, len(p.handlers), handler.Name())
 		if err := handler.Handle(ctx); err != nil {
 			// 区分业务过滤和真正的错误
 			if shein.IsFilteredError(err) {
