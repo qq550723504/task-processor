@@ -308,6 +308,20 @@ guards include:
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
+- `TestAppHTTPAPIModuleBuildersStayAllowlisted`
+- `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted`
+- `TestHTTPAPITypesDoesNotOwnRunOptions`
+- `TestHTTPAPIModulesFileDoesNotOwnFeatureBuildWrappers`
+- `TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration`
+- `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
+- `TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport`
+- `TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport`
+- `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly`
+- `TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes`
+- `TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes`
+- `TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
+- `TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
+- `TestFeatureModuleBuilderContractsReturnLocalModuleAliases`
 - `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
@@ -411,6 +425,12 @@ contracts or domain-facing surfaces.
 OpenAI assembly should stay behind dedicated HTTP API adapters as well, so
 feature modules and broader runtime wiring do not absorb concrete provider
 construction concerns.
+
+The same anti-monolith rule applies to HTTP API composition itself. The central
+`modules.go`, runtime state, and shared types files should not grow back into a
+catch-all owner for feature builders, bootstrap orchestration, login/runtime
+support, or concrete feature module types; those concerns belong in dedicated
+builder, support, and feature-local seams with narrow local contracts.
 
 The runtime side of that assembly should remain dedicated too: OpenAI runtime
 bootstrap belongs in its own seam instead of accreting inside generic runtime
