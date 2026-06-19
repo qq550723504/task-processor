@@ -139,6 +139,8 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入 runtimeDeps 状态 helper，保持方法拆分集中在 `runtime_deps_methods.go`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入 prompt runtime 装配，保持 prompt 运行时组装集中在 `runtime_prompt.go`
 - `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入 ProductEnrich runtime 装配，保持 ProductEnrich 运行时组装集中在 `runtime_productenrich.go`
+- `TestHTTPAPIRuntimeKeepsPathResolutionDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入路径解析逻辑，保持路径决策集中在 `runtime_paths.go`
+- `TestHTTPAPIRuntimeKeepsConfigLoadingDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入配置加载逻辑，保持配置读取集中在 `runtime_config.go`
 - `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated` 禁止 `internal/app/httpapi/adapters.go` 吞入任务仓储装配，保持 repository adapter 组装集中在 `adapters_task_repositories.go`
 - `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated` 禁止 `internal/app/httpapi/adapters.go` 吞入 prompt store 装配，保持 prompt store adapter 组装集中在 `adapters_prompt.go`
 - `TestCmdContainsOnlyOfficialEntrypoints` 禁止 `cmd/` 新增临时或非正式入口，调试程序应放入受管 `hack/` 区域
