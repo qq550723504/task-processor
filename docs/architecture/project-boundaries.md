@@ -300,6 +300,7 @@ guards include:
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
+- `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -349,3 +350,7 @@ because composition belongs at the app edge rather than inside domain logic.
 Production entrypoints should not keep deprecated compatibility layers alive
 either. `cmd/*` packages must depend on the current owning packages directly
 rather than routing new behavior back through retired app compatibility paths.
+
+The same retirement rule applies inside `internal/*`: packages should not
+reconnect themselves to the old app processor compatibility layer once the
+direct owner package already exists.
