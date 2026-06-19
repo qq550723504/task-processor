@@ -12,9 +12,11 @@ import (
 type stubProductAPI struct {
 	brandResp *sheinproduct.BrandListResponse
 	brandErr  error
+	brandCalls int
 }
 
 func (s *stubProductAPI) QueryBrandList() (*sheinproduct.BrandListResponse, error) {
+	s.brandCalls++
 	return s.brandResp, s.brandErr
 }
 
@@ -131,6 +133,51 @@ func TestResolveAuthorizedBrand_ReturnsRetryableWhenBrandListQueryFails(t *testi
 	}
 	if !sherr.IsRetryableError(err) {
 		t.Fatalf("Resolve() error retryable = false, want true: %v", err)
+	}
+}
+
+func TestResolveForProductBrand_PrefersProductBrandOverStoreFallback(t *testing.T) {
+	resolver := NewResolver(&stubProductAPI{
+		brandResp: brandListResponse(
+			sheinproduct.BrandItem{BrandCode: "2wex9", BrandName: "Skechers", BrandNameEn: "Skechers"},
+			sheinproduct.BrandItem{BrandCode: "nike-1", BrandName: "Nike", BrandNameEn: "Nike"},
+		),
+	})
+
+	got, err := resolver.ResolveForProductBrand(context.Background(), Config{
+		Enabled: true,
+		Code:    "2wex9",
+		Name:    "Skechers",
+	}, "Nike")
+	if err != nil {
+		t.Fatalf("ResolveForProductBrand() error = %v", err)
+	}
+	if got == nil || got.Code != "nike-1" || got.NameEn != "Nike" {
+		t.Fatalf("ResolveForProductBrand() = %+v, want Nike brand", got)
+	}
+}
+
+func TestResolveForProductBrand_FallsBackToConfiguredBrandWhenProductBrandEmpty(t *testing.T) {
+	productAPI := &stubProductAPI{
+		brandResp: brandListResponse(
+			sheinproduct.BrandItem{BrandCode: "2wex9", BrandName: "Skechers", BrandNameEn: "Skechers"},
+		),
+	}
+	resolver := NewResolver(productAPI)
+
+	got, err := resolver.ResolveForProductBrand(context.Background(), Config{
+		Enabled: true,
+		Code:    "2wex9",
+		Name:    "Skechers",
+	}, "")
+	if err != nil {
+		t.Fatalf("ResolveForProductBrand() error = %v", err)
+	}
+	if got == nil || got.Code != "2wex9" {
+		t.Fatalf("ResolveForProductBrand() = %+v, want Skechers brand", got)
+	}
+	if productAPI.brandCalls != 1 {
+		t.Fatalf("QueryBrandList() call count = %d, want 1", productAPI.brandCalls)
 	}
 }
 
