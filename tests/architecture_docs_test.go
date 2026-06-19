@@ -1112,6 +1112,8 @@ func TestHistoricalPlatformMigrationInventoryDefinesCostSlices(t *testing.T) {
 		"`internal/amazon`",
 		"Cost Tiers",
 		"Next Slice Candidates",
+		"TestPlatformRegistrationPackagesStayThin",
+		"TestPlatformRegistrationPackagesContainNoLocalArtifacts",
 		"Non-goals",
 	}
 	for _, phrase := range required {
