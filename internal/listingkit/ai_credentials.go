@@ -9,6 +9,7 @@ type AIClientCredential struct {
 	APIKey        string
 	BaseURL       string
 	Model         string
+	APIStyle      string
 	TimeoutSecond int
 	Enabled       bool
 	UpdatedAt     time.Time

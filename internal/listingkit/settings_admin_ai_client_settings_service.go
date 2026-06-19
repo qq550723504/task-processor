@@ -30,6 +30,7 @@ func (s *settingsAdminService) GetAIClientSettings(ctx context.Context, scope st
 	settings.APIKeySet = credential.APIKey != ""
 	settings.BaseURL = credential.BaseURL
 	settings.Model = credential.Model
+	settings.APIStyle = credential.APIStyle
 	settings.Enabled = credential.Enabled
 	settings.UpdatedAt = credential.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
 	return settings, nil
@@ -65,6 +66,7 @@ func (s *settingsAdminService) UpdateAIClientSettings(ctx context.Context, req *
 		APIKey:        apiKey,
 		BaseURL:       req.BaseURL,
 		Model:         req.Model,
+		APIStyle:      strings.TrimSpace(req.APIStyle),
 		TimeoutSecond: 0,
 		Enabled:       req.Enabled,
 	}

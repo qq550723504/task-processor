@@ -15,6 +15,7 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 				APIKey:        "existing-key",
 				BaseURL:       "https://old.example.test/v1",
 				Model:         "old-model",
+				APIStyle:      "grsai_async",
 				TimeoutSecond: 30,
 				Enabled:       true,
 				UpdatedAt:     time.Now(),
@@ -29,6 +30,7 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 		ClientName: "default",
 		BaseURL:    "https://new.example.test/v1",
 		Model:      "new-model",
+		APIStyle:   "openai",
 		Enabled:    true,
 	})
 	if err != nil {
@@ -43,6 +45,9 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 	}
 	if store.saved.BaseURL != "https://new.example.test/v1" || store.saved.Model != "new-model" || store.saved.TimeoutSecond != 0 {
 		t.Fatalf("saved credential = %#v", store.saved)
+	}
+	if store.saved.APIStyle != "openai" {
+		t.Fatalf("saved api_style = %q, want openai", store.saved.APIStyle)
 	}
 }
 
@@ -89,6 +94,7 @@ func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 				APIKey:        "tenant-key",
 				BaseURL:       "https://tenant.example.test/v1",
 				Model:         "tenant-model",
+				APIStyle:      "openai",
 				TimeoutSecond: 40,
 				Enabled:       true,
 				UpdatedAt:     now,
@@ -100,6 +106,7 @@ func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 				APIKey:        "user-key",
 				BaseURL:       "https://user.example.test/v1",
 				Model:         "user-model",
+				APIStyle:      "gemini",
 				TimeoutSecond: 50,
 				Enabled:       true,
 				UpdatedAt:     now,
@@ -122,6 +129,9 @@ func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 	if userScoped.BaseURL != "https://user.example.test/v1" {
 		t.Fatalf("user scoped base_url = %q", userScoped.BaseURL)
 	}
+	if userScoped.APIStyle != "gemini" {
+		t.Fatalf("user scoped api_style = %q, want gemini", userScoped.APIStyle)
+	}
 
 	tenantScoped, err := svc.GetAIClientSettings(ctx, "tenant", "default")
 	if err != nil {
@@ -132,6 +142,9 @@ func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 	}
 	if tenantScoped.BaseURL != "https://tenant.example.test/v1" {
 		t.Fatalf("tenant scoped base_url = %q", tenantScoped.BaseURL)
+	}
+	if tenantScoped.APIStyle != "openai" {
+		t.Fatalf("tenant scoped api_style = %q, want openai", tenantScoped.APIStyle)
 	}
 
 	missing, err := svc.GetAIClientSettings(ctx, "tenant", "scorer")
@@ -157,6 +170,7 @@ func TestUpdateAIClientSettingsIgnoresRequestedTimeout(t *testing.T) {
 		APIKey:     "key",
 		BaseURL:    "https://example.test/v1",
 		Model:      "nano-banana-fast",
+		APIStyle:   "gemini",
 		Enabled:    true,
 	})
 	if err != nil {
@@ -180,6 +194,7 @@ func TestGetAIClientSettingsDoesNotExposeStoredTimeout(t *testing.T) {
 				APIKey:        "tenant-key",
 				BaseURL:       "https://tenant.example.test/v1",
 				Model:         "gpt-image-2",
+				APIStyle:      "openai",
 				TimeoutSecond: 60,
 				Enabled:       true,
 				UpdatedAt:     now,
@@ -195,5 +210,8 @@ func TestGetAIClientSettingsDoesNotExposeStoredTimeout(t *testing.T) {
 	}
 	if settings.ClientName != "image_gpt_image_2" {
 		t.Fatalf("client name = %q, want image_gpt_image_2", settings.ClientName)
+	}
+	if settings.APIStyle != "openai" {
+		t.Fatalf("api_style = %q, want openai", settings.APIStyle)
 	}
 }

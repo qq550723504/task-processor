@@ -26,7 +26,8 @@ type OpenAIConfig struct {
 
 // ToClientConfig 将 OpenAIConfig 转换为 openai.ClientConfig，方便各处统一使用。
 func (c OpenAIConfig) ToClientConfig() *openaiClient.ClientConfig {
-	return openaiClient.NewClientConfig(c.APIKey, c.Model, c.BaseURL, c.Timeout)
+	cfg := openaiClient.NewClientConfig(c.APIKey, c.Model, c.BaseURL, c.Timeout)
+	return cfg
 }
 
 // ToClientConfigs 将 OpenAIConfig 展开为命名客户端 map，包含 "default" 及所有子客户端。
@@ -48,7 +49,9 @@ func (c OpenAIConfig) ToClientConfigs() map[string]*openaiClient.ClientConfig {
 		if timeout == 0 {
 			timeout = c.Timeout
 		}
-		cfgs[name] = openaiClient.NewClientConfig(apiKey, sub.Model, baseURL, timeout)
+		cfg := openaiClient.NewClientConfig(apiKey, sub.Model, baseURL, timeout)
+		cfg.APIStyle = sub.APIStyle
+		cfgs[name] = cfg
 	}
 	return cfgs
 }

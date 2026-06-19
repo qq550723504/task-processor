@@ -21,6 +21,7 @@ func TestGormCredentialResolverPrefersUserThenTenantConfig(t *testing.T) {
 		APIKey:        "tenant-key",
 		BaseURL:       "https://tenant.example.test/v1",
 		Model:         "tenant-model",
+		APIStyle:      "openai",
 		TimeoutSecond: 45,
 		Enabled:       true,
 	}); err != nil {
@@ -33,6 +34,7 @@ func TestGormCredentialResolverPrefersUserThenTenantConfig(t *testing.T) {
 		APIKey:        "user-key",
 		BaseURL:       "https://user.example.test/v1",
 		Model:         "user-model",
+		APIStyle:      "gemini",
 		TimeoutSecond: 60,
 		Enabled:       true,
 	}); err != nil {
@@ -46,6 +48,9 @@ func TestGormCredentialResolverPrefersUserThenTenantConfig(t *testing.T) {
 	if userResolved == nil || userResolved.Config.APIKey != "user-key" || userResolved.Config.BaseURL != "https://user.example.test/v1" || userResolved.Config.Model != "user-model" || userResolved.Config.Timeout != fallback.Timeout {
 		t.Fatalf("user resolved = %#v", userResolved)
 	}
+	if userResolved.Config.APIStyle != "gemini" {
+		t.Fatalf("user resolved api_style = %q, want gemini", userResolved.Config.APIStyle)
+	}
 
 	tenantResolved, err := resolver.ResolveClientConfig(WithTenantID(context.Background(), "tenant-a"), "default", fallback)
 	if err != nil {
@@ -53,6 +58,9 @@ func TestGormCredentialResolverPrefersUserThenTenantConfig(t *testing.T) {
 	}
 	if tenantResolved == nil || tenantResolved.Config.APIKey != "tenant-key" || tenantResolved.Config.BaseURL != "https://tenant.example.test/v1" || tenantResolved.Config.Model != "tenant-model" || tenantResolved.Config.Timeout != fallback.Timeout {
 		t.Fatalf("tenant resolved = %#v", tenantResolved)
+	}
+	if tenantResolved.Config.APIStyle != "openai" {
+		t.Fatalf("tenant resolved api_style = %q, want openai", tenantResolved.Config.APIStyle)
 	}
 
 	missing, err := resolver.ResolveClientConfig(WithTenantID(context.Background(), "tenant-b"), "default", fallback)

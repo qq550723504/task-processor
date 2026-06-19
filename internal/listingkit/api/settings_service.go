@@ -94,6 +94,7 @@ var settingsNamespaceSchemas = []settingsNamespaceSchema{
 			{Key: "client_name", Label: "客户端名称", Type: "string", Required: true},
 			{Key: "base_url", Label: "Endpoint", Type: "string", Required: true},
 			{Key: "model", Label: "模型", Type: "string", Required: true},
+			{Key: "api_style", Label: "协议类型", Type: "string", Description: "可选值如 openai、gemini、grsai_async；为空时按兼容逻辑推断。"},
 			{Key: "api_key", Label: "API Key", Type: "secret"},
 			{Key: "enabled", Label: "启用状态", Type: "boolean"},
 		},

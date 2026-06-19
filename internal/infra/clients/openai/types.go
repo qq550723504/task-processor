@@ -67,6 +67,7 @@ type ClientConfig struct {
 	APIKey     string        `json:"api_key"`
 	Model      string        `json:"model"`
 	BaseURL    string        `json:"base_url"`
+	APIStyle   string        `json:"api_style,omitempty"`
 	Timeout    time.Duration `json:"timeout"`
 	MaxRetries int           `json:"max_retries"`
 	RetryDelay time.Duration `json:"retry_delay"`

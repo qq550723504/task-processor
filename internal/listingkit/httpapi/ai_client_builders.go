@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
+	geminiimage "task-processor/internal/infra/clients/geminiimage"
 	nanobanana "task-processor/internal/infra/clients/nanobanana"
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
@@ -26,7 +27,17 @@ func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.
 		fallback:   buildListingKitClientFallback(cfg, clientName),
 		cache:      make(map[string]openaiclient.ImageGenerator),
 		build: func(cfg *openaiclient.ClientConfig) (openaiclient.ImageGenerator, error) {
-			if shouldUseGRSAIImageProtocol(cfg) {
+			switch normalizeImageAPIStyle(cfg) {
+			case imageAPIStyleGemini:
+				return geminiimage.NewClient(geminiimage.Config{
+					APIKey:      cfg.APIKey,
+					Model:       cfg.Model,
+					BaseURL:     cfg.BaseURL,
+					Timeout:     cfg.Timeout,
+					MaxAttempts: maxImageClientAttempts(cfg.MaxRetries),
+					RetryDelay:  time.Second,
+				}), nil
+			case imageAPIStyleGRSAI:
 				return nanobanana.NewClient(nanobanana.Config{
 					APIKey:       cfg.APIKey,
 					Model:        cfg.Model,
@@ -52,25 +63,62 @@ func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver ope
 		fallback:   buildListingKitClientFallback(cfg, clientName),
 		cache:      make(map[string]openaiclient.ImageGenerator),
 		build: func(cfg *openaiclient.ClientConfig) (openaiclient.ImageGenerator, error) {
-			return nanobanana.NewClient(nanobanana.Config{
-				APIKey:       cfg.APIKey,
-				Model:        cfg.Model,
-				SubmitURL:    cfg.BaseURL,
-				PollInterval: time.Second,
-				Timeout:      cfg.Timeout,
-				MaxAttempts:  cfg.MaxRetries,
-			}), nil
+			switch normalizeImageAPIStyle(cfg) {
+			case imageAPIStyleGemini:
+				return geminiimage.NewClient(geminiimage.Config{
+					APIKey:      cfg.APIKey,
+					Model:       cfg.Model,
+					BaseURL:     cfg.BaseURL,
+					Timeout:     cfg.Timeout,
+					MaxAttempts: maxImageClientAttempts(cfg.MaxRetries),
+					RetryDelay:  time.Second,
+				}), nil
+			default:
+				return nanobanana.NewClient(nanobanana.Config{
+					APIKey:       cfg.APIKey,
+					Model:        cfg.Model,
+					SubmitURL:    cfg.BaseURL,
+					PollInterval: time.Second,
+					Timeout:      cfg.Timeout,
+					MaxAttempts:  maxImageClientAttempts(cfg.MaxRetries),
+				}), nil
+			}
 		},
 	}
 }
 
-func shouldUseGRSAIImageProtocol(cfg *openaiclient.ClientConfig) bool {
+const (
+	imageAPIStyleOpenAI = "openai"
+	imageAPIStyleGemini = "gemini"
+	imageAPIStyleGRSAI  = "grsai_async"
+)
+
+func normalizeImageAPIStyle(cfg *openaiclient.ClientConfig) string {
 	if cfg == nil {
-		return false
+		return imageAPIStyleOpenAI
+	}
+	style := strings.ToLower(strings.TrimSpace(cfg.APIStyle))
+	switch style {
+	case imageAPIStyleOpenAI:
+		return imageAPIStyleOpenAI
+	case imageAPIStyleGemini:
+		return imageAPIStyleGemini
+	case imageAPIStyleGRSAI, "nanobanana":
+		return imageAPIStyleGRSAI
 	}
 	baseURL := strings.ToLower(strings.TrimSpace(cfg.BaseURL))
-	if baseURL == "" {
-		return false
+	if strings.Contains(baseURL, "grsai") {
+		return imageAPIStyleGRSAI
 	}
-	return strings.Contains(baseURL, "grsai")
+	if strings.Contains(strings.ToLower(strings.TrimSpace(cfg.Model)), "gemini") {
+		return imageAPIStyleGemini
+	}
+	return imageAPIStyleOpenAI
+}
+
+func maxImageClientAttempts(retries int) int {
+	if retries <= 0 {
+		return 1
+	}
+	return retries + 1
 }

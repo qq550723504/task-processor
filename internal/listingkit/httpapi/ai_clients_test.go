@@ -262,6 +262,57 @@ func TestBuildStrictListingKitImageClientUsesGRSAIGenerateProtocolForGPTImage2(t
 	}
 }
 
+func TestBuildStrictListingKitNanobananaImageClientUsesGeminiProtocolWhenConfigured(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1beta/models/gemini-2.5-flash-image:generateContent" {
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"candidates": []map[string]any{
+				{
+					"content": map[string]any{
+						"parts": []map[string]any{
+							{
+								"inlineData": map[string]any{
+									"mimeType": "image/png",
+									"data":     "cG5n",
+								},
+							},
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer server.Close()
+
+	resolver := &stubListingKitClientResolver{
+		resolved: &openaiclient.ResolvedClientConfig{
+			CacheKey: "tenant-a:image_nanobanana",
+			Config: &openaiclient.ClientConfig{
+				APIKey:     "tenant-key",
+				BaseURL:    server.URL + "/v1beta",
+				Model:      "gemini-2.5-flash-image",
+				APIStyle:   "gemini",
+				Timeout:    time.Second,
+				MaxRetries: 1,
+				RetryDelay: time.Millisecond,
+			},
+		},
+	}
+
+	client := buildStrictListingKitNanobananaImageClient(&config.Config{}, resolver, listingKitImageClientNameNanobanana)
+	if client == nil {
+		t.Fatal("expected image client")
+	}
+	if _, err := client.GenerateImage(context.Background(), &openaiclient.ImageGenerateRequest{
+		Prompt: "test",
+		Size:   "1024x1024",
+	}); err != nil {
+		t.Fatalf("GenerateImage() error = %v", err)
+	}
+}
+
 func TestEnforceListingKitImageClientTimeoutClampsImageClients(t *testing.T) {
 	cfg := &openaiclient.ClientConfig{Timeout: 60 * time.Second}
 

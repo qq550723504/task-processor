@@ -18,6 +18,7 @@ type AIClientCredential struct {
 	APIKey        string    `json:"-" gorm:"type:text;not null"`
 	BaseURL       string    `json:"base_url" gorm:"type:text;not null"`
 	Model         string    `json:"model" gorm:"type:varchar(128);not null"`
+	APIStyle      string    `json:"api_style,omitempty" gorm:"type:varchar(64);not null;default:''"`
 	TimeoutSecond int       `json:"timeout_second" gorm:"not null;default:0"`
 	Enabled       bool      `json:"enabled" gorm:"not null;default:true"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -46,6 +47,7 @@ func (r *GormCredentialResolver) SaveCredential(ctx context.Context, credential 
 	credential.APIKey = strings.TrimSpace(credential.APIKey)
 	credential.BaseURL = strings.TrimSpace(credential.BaseURL)
 	credential.Model = strings.TrimSpace(credential.Model)
+	credential.APIStyle = strings.TrimSpace(credential.APIStyle)
 	if credential.TenantID == "" {
 		return fmt.Errorf("tenant_id is required")
 	}
@@ -65,6 +67,7 @@ func (r *GormCredentialResolver) SaveCredential(ctx context.Context, credential 
 		"api_key":        credential.APIKey,
 		"base_url":       credential.BaseURL,
 		"model":          credential.Model,
+		"api_style":      credential.APIStyle,
 		"timeout_second": credential.TimeoutSecond,
 		"enabled":        credential.Enabled,
 	}
@@ -156,6 +159,9 @@ func (c AIClientCredential) toResolvedClientConfig(fallback *ClientConfig) *Reso
 	}
 	if c.Model != "" {
 		cfg.Model = c.Model
+	}
+	if c.APIStyle != "" {
+		cfg.APIStyle = c.APIStyle
 	}
 	if cfg.MaxRetries == 0 && fallback != nil {
 		cfg.MaxRetries = fallback.MaxRetries
