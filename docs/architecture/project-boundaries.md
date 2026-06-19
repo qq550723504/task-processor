@@ -303,6 +303,7 @@ guards include:
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsPathResolutionDedicated`
+- `TestHTTPAPIRuntimeKeepsConfigLoadingDedicated`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -371,6 +372,9 @@ instead of spreading into generic startup code.
 
 Path resolution belongs in a dedicated runtime seam too, so environment/workdir
 normalization does not drift back into broader bootstrap orchestration.
+
+Config loading follows the same rule: runtime config assembly should stay in a
+dedicated seam instead of being rebuilt ad hoc across startup entrypoints.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
