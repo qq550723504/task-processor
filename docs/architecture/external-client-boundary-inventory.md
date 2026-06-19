@@ -198,6 +198,14 @@ Current direct dependency hotspots are:
     database/repository access
   - current direct management seams are guarded by
     `TestSheinLoginManagedManagementClientImportsStayAllowlisted`
+- `internal/pricing`
+  - current shared pricing helper still imports `management` in the cost-config
+    lookup seam
+  - this is a shared pricing retirement seam, not a long-lived pricing data
+    direction; future pricing config data should use in-repository
+    database/repository access
+  - current direct management seam is guarded by
+    `TestSharedPricingManagementClientImportsStayAllowlisted`
 - `internal/state`
   - current state runtime helpers still import `management` in manager and
     daily-count seams

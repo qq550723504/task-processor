@@ -175,6 +175,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestSheinLoginBootstrapManagementClientImportsStayAllowlisted` 禁止 `internal/sheinlogin/bootstrap` 新增未登记的 concrete `management` adapter 依赖，当前 login bootstrap seam 只是 management 退休前过渡点
 - `TestSheinLoginServiceManagementClientImportsStayAllowlisted` 禁止 `internal/sheinlogin` 新增未登记的 concrete `management` adapter 依赖，当前 bootstrap 和 login service seam 只是 management 退休前过渡点
 - `TestSheinLoginManagedManagementClientImportsStayAllowlisted` 禁止 `internal/sheinloginmanaged` 新增未登记的 concrete `management` adapter 依赖，当前 managed login bridge 和 account seam 只是 management 退休前过渡点
+- `TestSharedPricingManagementClientImportsStayAllowlisted` 禁止 `internal/pricing` 新增未登记的 concrete `management` adapter 依赖，当前成本配置 lookup seam 只是 management 退休前过渡点
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted` 禁止 `internal/app/httpapi` ProductImage 装配文件新增 concrete `openai` / `nanobanana` adapter 依赖，当前模型默认值/装配 seam 必须精确登记
 - `TestPublishingSheinOpenAIImportsStayAllowlisted` 禁止 `internal/publishing/shein` 新增 concrete `openai` adapter 依赖，当前属性/类目/文案 inference seam 必须精确登记
 - `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted` 禁止 `internal/listingkit/httpapi` 新增 concrete `openai` / `nanobanana` adapter 依赖，当前 AI runtime/bootstrap seam 必须精确登记
