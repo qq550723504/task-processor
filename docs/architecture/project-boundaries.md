@@ -317,6 +317,7 @@ guards include:
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
+- `TestAppBootstrapManagementClientImportsStayAllowlisted`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
@@ -429,6 +430,11 @@ into accidental platform-layer ownership.
 The dependency direction between domain and app assembly should stay one-way as
 well: business-domain packages must not import app runtime assembly packages,
 because composition belongs at the app edge rather than inside domain logic.
+
+Where management clients still appear in app bootstrap, keep them explicitly
+allowlisted as temporary seams only. New assembly should prefer direct owning
+packages or database-backed composition instead of expanding management
+dependencies.
 
 Production entrypoints should not keep deprecated compatibility layers alive
 either. `cmd/*` packages must depend on the current owning packages directly
