@@ -326,6 +326,14 @@ guards include:
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
+- `TestHackContainsOnlyManagedSupportAreas`
+- `TestHackSupportAreasContainNoLocalArtifacts`
+- `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
+- `TestProductionEntrypointsContainNoLocalArtifacts`
+- `TestTrackedLocalArtifactsStayOutOfTools`
+- `TestToolsContainNoLocalArtifacts`
+- `TestInternalPackagesContainNoLocalArtifacts`
+- `TestSDSLoginRuntimeStateStaysOutOfInternalPackages`
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestAppBootstrapManagementClientImportsStayAllowlisted`
 - `TestAppTaskManagementClientImportsStayAllowlisted`
@@ -524,3 +532,12 @@ packages instead of preserving that legacy infra bridge.
 The same is true for `internal/app/crawler/fetcher`: it is a retired
 compatibility path, and new crawler fetch logic should live under the current
 `internal/crawler/fetcher` owner instead.
+
+The same framework discipline applies to local artifacts and runtime state.
+`hack/` may host managed support areas only, while `cmd/`, `tools/`, and
+`internal/` must stay free of local logs, tmp data, debug binaries, and other
+machine-specific outputs that blur the line between source and runtime state.
+
+SDS login state follows the same rule: browser sessions, cookies, and auth JSON
+must stay under the dedicated local runtime area instead of drifting back into
+`internal/*` as if they were checked-in source assets.
