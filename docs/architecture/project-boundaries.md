@@ -324,6 +324,17 @@ guards include:
 - `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
 - `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
 - `TestAppTaskStatusManagementClientImportsStayAllowlisted`
+- `TestPlatformTaskManagementClientImportsStayAllowlisted`
+- `TestStateManagementClientImportsStayAllowlisted`
+- `TestPlatformBaseManagementClientImportsStayAllowlisted`
+- `TestProcessorManagementClientImportsStayAllowlisted`
+- `TestTaskRPCAPIManagementClientImportsStayAllowlisted`
+- `TestSDSClientManagementClientImportsStayAllowlisted`
+- `TestSheinLoginBootstrapManagementClientImportsStayAllowlisted`
+- `TestSheinLoginServiceManagementClientImportsStayAllowlisted`
+- `TestSheinLoginManagedManagementClientImportsStayAllowlisted`
+- `TestSharedPricingManagementClientImportsStayAllowlisted`
+- `TestListingKitHTTPAPIManagementClientImportsStayAllowlisted`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
@@ -457,6 +468,13 @@ source of status orchestration ownership.
 The same expectation applies to task execution, runners, and consumers:
 management clients in those paths should only survive as explicit transition
 seams while ownership moves toward direct database-backed composition.
+
+That retirement expectation extends to the surrounding framework seams too.
+Platform tasks, runtime state, platform base factories, processors, task RPC,
+SDS auth bootstrap, SHEIN login flows, shared pricing lookup, and listing-kit
+HTTP entrypoints should all treat any remaining management client dependency as
+an allowlisted bridge on the way to direct database-backed ownership, not as a
+stable integration surface to expand.
 
 Production entrypoints should not keep deprecated compatibility layers alive
 either. `cmd/*` packages must depend on the current owning packages directly
