@@ -80,6 +80,14 @@ Current direct dependency hotspots are:
     `TestAmazonExternalClientImportsStayAllowlisted`
   - future Amazon cleanup should introduce Amazon-owned ports before adding
     new concrete management or OpenAI adapter call sites
+- `internal/sheinbridge`
+  - current sale-attribute bridge still imports concrete `management/api` and
+    `openai` clients in its runtime bridge seam
+  - this bridge should stay narrow while publishing-facing sale-attribute
+    orchestration moves toward bridge-local contracts instead of concrete
+    adapter types
+  - direct external client imports are guarded by
+    `TestSheinBridgeExternalClientImportsStayAllowlisted`
 - `internal/temu`
   - broad `management` coupling in sync, pricing, product, store, and scheduler
     paths, plus `openai` coupling in AI, image, SKU, product, and pipeline helpers

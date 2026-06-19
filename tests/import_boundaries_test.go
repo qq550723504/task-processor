@@ -1299,6 +1299,32 @@ func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestSheinBridgeExternalClientImportsStayAllowlisted(t *testing.T) {
+	root := filepath.Join("..", "internal", "sheinbridge")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "saleattribute", "handler.go")):      {},
+		filepath.Clean(filepath.Join(root, "saleattribute", "handler_test.go")): {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") ||
+				importMatchesPrefix(importPath, "task-processor/internal/infra/clients/openai") {
+				t.Errorf("%s imports %s; keep sheinbridge concrete external client dependencies limited to current sale-attribute runtime bridge seams", path, importPath)
+			}
+		}
+	}
+}
+
 func TestSheinManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "shein")
 	allowedFiles := map[string]struct{}{

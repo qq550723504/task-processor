@@ -157,6 +157,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestInfrastructurePackagesDoNotImportBusinessDomains` 禁止 `internal/infra`、`internal/integration`、`internal/platformbase`、`internal/platformtask` 反向依赖业务域
 - `TestProductImageExternalClientImportsStayAllowlisted` 禁止 `internal/productimage` 新增 concrete `openai` / `nanobanana` adapter 依赖，当前 provider/runtime seam 必须精确登记
 - `TestAmazonExternalClientImportsStayAllowlisted` 禁止 `internal/amazon` 新增 concrete `management` / `openai` adapter 依赖，当前 context/DTO/LLM seam 必须精确登记
+- `TestSheinBridgeExternalClientImportsStayAllowlisted` 禁止 `internal/sheinbridge` 新增 concrete `management` / `openai` adapter 依赖，当前 sale-attribute runtime bridge seam 必须精确登记
 - `TestSheinManagementClientImportsStayAllowlisted` 禁止 `internal/shein` 新增未登记的 concrete `management` adapter 依赖，当前库存、调度、发布、校验、活动、映射和商品 seam 必须精确登记
 - `TestSheinOpenAIImportsStayAllowlisted` 禁止 `internal/shein` 新增未登记的 concrete `openai` adapter 依赖，当前类目、内容、pipeline、商品、submit-prep 和翻译 seam 必须精确登记
 - `TestAppTaskManagementClientImportsStayAllowlisted` 禁止 `internal/app/task` 新增未登记的 concrete `management` adapter 依赖，当前任务源、分发、claim 和 fetcher seam 只是 management 退休前过渡点

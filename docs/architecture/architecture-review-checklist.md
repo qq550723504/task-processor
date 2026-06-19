@@ -110,6 +110,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestProductImageExternalClientImportsStayAllowlisted`
 - `TestAmazonExternalClientImportsStayAllowlisted`
+- `TestSheinBridgeExternalClientImportsStayAllowlisted`
 - `TestSheinManagementClientImportsStayAllowlisted`
 - `TestSheinOpenAIImportsStayAllowlisted`
 - `TestAppTaskManagementClientImportsStayAllowlisted`
