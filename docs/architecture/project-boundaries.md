@@ -305,6 +305,7 @@ guards include:
 - `TestHTTPAPIRuntimeKeepsPathResolutionDedicated`
 - `TestHTTPAPIRuntimeKeepsConfigLoadingDedicated`
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
+- `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -380,6 +381,10 @@ dedicated seam instead of being rebuilt ad hoc across startup entrypoints.
 The supporting methods on `runtimeDeps` should stay isolated too, so accessors,
 closers, and module-attach helpers do not drift back into the top-level runtime
 or generic bootstrap files.
+
+Task-repository assembly should stay behind dedicated HTTP API adapters as
+well, so persistence wiring does not spread into unrelated runtime or feature
+assembly seams.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
