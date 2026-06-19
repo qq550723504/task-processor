@@ -300,6 +300,7 @@ guards include:
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -357,6 +358,10 @@ startup paths.
 Shared-resource assembly follows the same rule: common bootstrap resources
 should be attached through a dedicated runtime seam rather than mixed into
 unrelated startup responsibilities.
+
+Prompt runtime setup should stay isolated in its own assembly seam too, so
+prompt registry wiring and tenant prompt-store attachment do not leak across
+unrelated runtime concerns.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
