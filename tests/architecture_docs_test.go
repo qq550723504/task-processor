@@ -1592,6 +1592,7 @@ func TestListingPreviewBoundaryDocumentTracksPlatformNeutralGuard(t *testing.T) 
 		"`internal/listing/preview`",
 		"`internal/listingkit`",
 		"platform-neutral",
+		"TestProjectBoundaryDomainsDoNotImportListingKitFacade",
 		"TestListingPreviewPackageStaysPlatformNeutral",
 	}
 	for _, phrase := range required {
