@@ -6,6 +6,12 @@ This inventory records the current direct coupling between business-facing
 packages and concrete external client adapters under `internal/infra/clients`.
 It is not a migration plan and should not trigger broad rewrites by itself.
 
+Use `docs/architecture/project-boundaries.md` as the repository-wide default
+for ownership and dependency direction. This inventory is the focused follow-up
+document for external-client hotspots and cleanup sequencing; it should narrow
+review on concrete adapter coupling, not compete with the top-level boundary
+entrypoint.
+
 The goal is to make future cleanup predictable: new code should prefer local
 interfaces, while existing direct dependencies should be reduced in narrow
 slices when the owning domain boundary is clear.

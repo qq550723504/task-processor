@@ -2,6 +2,12 @@
 
 This note captures the current preview-related boundary for the project-wide refactor.
 
+Use `docs/architecture/project-boundaries.md` as the repository-wide default
+for ownership and dependency direction. This document only narrows that
+baseline for preview extraction and ListingKit preview migration work; broader
+package-placement rules should still be resolved through the main project
+boundary entrypoint first.
+
 It complements:
 
 - [`project-boundaries.md`](./project-boundaries.md)

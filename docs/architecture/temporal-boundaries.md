@@ -6,6 +6,12 @@ This note defines the stable boundary for Temporal usage in this repository.
 Temporal is an orchestration runtime, not a new business domain and not a
 replacement for every asynchronous path.
 
+Use `docs/architecture/project-boundaries.md` as the repository-wide entrypoint
+for default package ownership and dependency direction. This document narrows
+that baseline specifically for Temporal versus RabbitMQ and workflow-runtime
+questions; it should not become a second general policy source for unrelated
+package placement decisions.
+
 The main risk to avoid is letting workflow or activity code absorb HTTP API
 rules, service facade behavior, repository wiring, or platform business logic.
 
