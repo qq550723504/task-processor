@@ -128,6 +128,19 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted` 禁止 `internal/app/httpapi` 根目录新增 ListingKit helper，ListingKit 专属逻辑应下沉到 owning HTTPAPI 或 domain 包
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted` 禁止 module builder 回流到中心化装配文件
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted` 禁止 route descriptor helper 回流到中心化装配文件
+- `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly` 禁止 `internal/app/httpapi/modules.go` 吞入 login feature 装配，保持登录 feature 组装留在专用 feature builder seam
+- `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes` 禁止 `internal/app/httpapi/runtime.go` 直接承接 login bootstrap result 类型，保持登录装配结果通过专用 seam 传递
+- `TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes` 禁止 `internal/app/httpapi/runtime.go` 直接承接 feature HTTP API module 类型，保持 feature module 类型隔离在专用 builder/module seam
+- `TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures` 禁止 `internal/app/httpapi/modules.go` 对外暴露 feature module 具体类型签名，保持中心装配层只依赖局部 contract
+- `TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures` 禁止 feature builder 对外暴露 feature module 具体类型签名，保持 builder contract 使用局部抽象
+- `TestFeatureModuleBuilderContractsReturnLocalModuleAliases` 禁止 feature module builder contract 回退返回具体 feature module 类型，保持返回本地 alias/contract
+- `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes` 禁止 `internal/app/httpapi/runtime.go` 承接 support module result 类型，保持 support module 结果隔离在专用 seam
+- `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts` 禁止 `internal/app/httpapi/modules.go` 吞入 support module builder contract，保持 support 组装 contract 留在专用文件
+- `TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly` 禁止 `internal/app/httpapi/modules.go` 吞入 support feature 具体装配，保持 support 组装拆分在专用文件
+- `TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook` 禁止 `internal/app/httpapi/modules.go` 吞入 ListingKit/SDS runtime support hook，保持 support hook 留在专用 seam
+- `TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs` 禁止 `internal/app/httpapi/modules.go` 吞入 ProductImage runtime input 具体装配，保持 ProductImage 运行时输入留在专用 builder seam
+- `TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput` 禁止 `internal/app/httpapi/modules.go` 吞入 AmazonListing runtime input 具体装配，保持 AmazonListing 运行时输入留在专用 builder seam
+- `TestHTTPAPICompositionBuilderDoesNotOwnListingKitRuntimeInput` 禁止 `internal/app/httpapi/modules.go` 吞入 ListingKit runtime input 具体装配，保持 ListingKit 运行时输入留在专用 builder seam
 - `TestListingKitSupportFileStaysRetired` 禁止 `listingkit_support.go` 作为过渡桶复活
 - `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted` 若旧文件被恢复，会继续限制其 import 面
 - `TestAppHTTPAPIListingKitRootImportsStayAllowlisted` 禁止 app/httpapi 新增未登记 ListingKit root facade 依赖
