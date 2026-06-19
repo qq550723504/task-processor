@@ -105,29 +105,36 @@ func (h *HasSpuRecordHandler) storeAsinSkuMap(ctx *shein.TaskContext, asins []st
 // extractAsinsFromContext 从任务上下文中提取ASIN列表
 func (h *HasSpuRecordHandler) extractAsinsFromContext(ctx *shein.TaskContext) []string {
 	asins := []string{}
+	seen := make(map[string]struct{})
+
+	appendASIN := func(asin string) {
+		if asin == "" {
+			return
+		}
+		if _, exists := seen[asin]; exists {
+			return
+		}
+		seen[asin] = struct{}{}
+		asins = append(asins, asin)
+	}
 
 	// 添加主产品ID
 	if ctx.Task != nil && ctx.Task.ProductID != "" {
-		asins = append(asins, ctx.Task.ProductID)
+		appendASIN(ctx.Task.ProductID)
+	}
+
+	// 优先使用已抓取的完整变体列表，避免主商品 variations 不完整导致映射缺失。
+	if ctx.Variants != nil && len(*ctx.Variants) > 0 {
+		for _, variant := range *ctx.Variants {
+			appendASIN(variant.Asin)
+		}
+		return asins
 	}
 
 	// 从AmazonProduct的Variations中提取ASIN
 	if ctx.AmazonProduct != nil {
 		for _, variant := range ctx.AmazonProduct.Variations {
-			// 直接访问ASIN字段
-			if variant.Asin != "" {
-				// 避免重复添加
-				found := false
-				for _, existingAsin := range asins {
-					if existingAsin == variant.Asin {
-						found = true
-						break
-					}
-				}
-				if !found {
-					asins = append(asins, variant.Asin)
-				}
-			}
+			appendASIN(variant.Asin)
 		}
 	}
 

@@ -105,10 +105,10 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	pipeline.AddHandler(validation.NewTaskValidatorHandler(processor.GetManagementClient()))
 	// 应用筛选规则
 	pipeline.AddHandler(validation.NewApplyFilterRuleHandler())
-	// 查询是否有发品记录
-	pipeline.AddHandler(product.NewHasSpuRecordHandler())
 	// 获取并缓存变体数据（Fetch + Cache 合并为一步；缓存失败仅记录警告，不阻断上架）
 	pipeline.AddHandler(productdata.NewFetchAndCacheVariantsHandler(processor.GetProductFetcher()))
+	// 查询是否有发品记录。放在变体抓取后，确保 ASIN->SupplierSKU 映射覆盖完整变体集。
+	pipeline.AddHandler(product.NewHasSpuRecordHandler())
 	// 重新应用筛选规则到变体
 	pipeline.AddHandler(validation.NewReapplyFilterRuleHandler())
 	// 检查每日上架限制（在获取变体数据后检查，以便准确计算SKC/SKU数量）
