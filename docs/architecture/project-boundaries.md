@@ -310,6 +310,7 @@ guards include:
 - `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile`
 - `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile`
 - `TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile`
+- `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -404,6 +405,9 @@ generic startup file.
 
 LLM scorer assembly should stay dedicated for the same reason, keeping scoring
 bootstrap out of the catch-all startup path and in its own owning seam.
+
+Asset-publisher assembly should stay dedicated as well, so delivery/publishing
+bootstrap does not get folded back into generic startup orchestration.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
