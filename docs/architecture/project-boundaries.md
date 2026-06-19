@@ -284,6 +284,7 @@ guards include:
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
 - `TestProductImageExternalClientImportsStayAllowlisted`
 - `TestAmazonExternalClientImportsStayAllowlisted`
+- `TestSheinBridgeExternalClientImportsStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
