@@ -298,6 +298,7 @@ guards include:
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
+- `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -339,3 +340,7 @@ business rules, runtime orchestration, or long-lived feature ownership.
 Those registration packages should also stay free of checked-in local
 artifacts, so temporary scaffolding and machine-specific outputs do not turn
 into accidental platform-layer ownership.
+
+The dependency direction between domain and app assembly should stay one-way as
+well: business-domain packages must not import app runtime assembly packages,
+because composition belongs at the app edge rather than inside domain logic.
