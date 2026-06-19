@@ -282,6 +282,8 @@ guards include:
 - `TestListingKitRootGenerationFilesStayAllowlisted`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
+- `TestProductImageExternalClientImportsStayAllowlisted`
+- `TestAmazonExternalClientImportsStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 

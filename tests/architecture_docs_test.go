@@ -97,6 +97,8 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestListingPreviewPackageStaysPlatformNeutral",
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
 		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
+		"TestProductImageExternalClientImportsStayAllowlisted",
+		"TestAmazonExternalClientImportsStayAllowlisted",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 	}
