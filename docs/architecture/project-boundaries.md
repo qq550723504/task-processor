@@ -287,6 +287,7 @@ guards include:
 - `TestSheinBridgeExternalClientImportsStayAllowlisted`
 - `TestSheinManagementClientImportsStayAllowlisted`
 - `TestSheinOpenAIImportsStayAllowlisted`
+- `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 

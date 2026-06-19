@@ -102,6 +102,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestSheinBridgeExternalClientImportsStayAllowlisted",
 		"TestSheinManagementClientImportsStayAllowlisted",
 		"TestSheinOpenAIImportsStayAllowlisted",
+		"TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 	}
