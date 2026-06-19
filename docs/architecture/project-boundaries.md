@@ -289,6 +289,9 @@ guards include:
 - `TestSheinBridgeExternalClientImportsStayAllowlisted`
 - `TestSheinManagementClientImportsStayAllowlisted`
 - `TestSheinOpenAIImportsStayAllowlisted`
+- `TestTEMUSyncAndPricingManagementImportsStayAllowlisted`
+- `TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted`
+- `TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted`
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestPublishingSheinOpenAIImportsStayAllowlisted`
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
@@ -353,6 +356,11 @@ For the SHEIN publishing path specifically, treat managed management clients as
 a retirement seam rather than a stable dependency direction: new flows should
 prefer direct database-backed composition instead of expanding management API
 coupling.
+
+Apply the same retirement posture to TEMU runtime, scheduling, product/store,
+and pricing seams: any remaining management dependency there is an explicit
+bridge while ownership moves toward direct database-backed composition, not a
+platform surface to keep broadening.
 
 That same publishing boundary also forbids reintroducing legacy runtime or
 ListingKit-root dependencies into the publishing slice; migration work should
