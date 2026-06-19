@@ -873,7 +873,8 @@ func implementedTestNames(t *testing.T) map[string]bool {
 
 	testNames := make(map[string]bool)
 	testFuncPattern := regexp.MustCompile(`func (Test[A-Za-z0-9_]+)\(`)
-	err := filepath.WalkDir(".", func(path string, entry os.DirEntry, err error) error {
+	repoRoot := filepath.Join("..")
+	err := filepath.WalkDir(repoRoot, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -895,7 +896,7 @@ func implementedTestNames(t *testing.T) map[string]bool {
 	}
 
 	if len(testNames) == 0 {
-		t.Fatalf("expected to find implemented test functions under tests/")
+		t.Fatalf("expected to find implemented test functions under repository root %s", repoRoot)
 	}
 	return testNames
 }
