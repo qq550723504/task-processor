@@ -301,6 +301,7 @@ guards include:
 - `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -362,6 +363,10 @@ unrelated startup responsibilities.
 Prompt runtime setup should stay isolated in its own assembly seam too, so
 prompt registry wiring and tenant prompt-store attachment do not leak across
 unrelated runtime concerns.
+
+ProductEnrich runtime setup should follow the same boundary: LLM manager,
+understanding pipeline, and parser bootstrap belong in a dedicated runtime seam
+instead of spreading into generic startup code.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
