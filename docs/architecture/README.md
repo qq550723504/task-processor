@@ -64,6 +64,12 @@ structure rules that should be reviewed with architecture changes:
   - top-level directory ownership, local artifact placement, and repository
     layout guard tests
 
+Use this development document when the question is mainly about repository
+layout, entrypoint placement, or runtime artifact location. If the question is
+mainly about package ownership or dependency direction, start from the default
+project boundary entrypoint first and only then drop to the development
+document.
+
 ## Current Guard Baseline
 
 Use `docs/architecture/next-steps.md` and its `Current guard coverage` section
