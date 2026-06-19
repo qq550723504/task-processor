@@ -181,6 +181,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestPublishingSheinOpenAIImportsStayAllowlisted` 禁止 `internal/publishing/shein` 新增 concrete `openai` adapter 依赖，当前属性/类目/文案 inference seam 必须精确登记
 - `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted` 禁止 `internal/listingkit/httpapi` 新增 concrete `openai` / `nanobanana` adapter 依赖，当前 AI runtime/bootstrap seam 必须精确登记
 - `TestListingKitHTTPAPIManagementClientImportsStayAllowlisted` 禁止 `internal/listingkit/httpapi` 新增未登记的 concrete `management` adapter 依赖，当前 SHEIN sync runtime strategy seam 只是 management 退休前过渡点
+- `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted` 禁止 `internal/listingkit/sheinsync` 新增未登记的 `management/api` DTO 或 legacy SHEIN activity bridge 依赖，当前 promotion bridge 兼容 seam 必须精确登记
 - `TestListingKitRootOpenAIImportsStayAllowlisted` 禁止 `internal/listingkit` 根包新增 concrete `openai` adapter 依赖，当前 facade/settings/service/studio/task seam 必须精确登记
 - `TestTEMUSyncAndPricingManagementImportsStayAllowlisted` 禁止 `internal/temu/{sync,pricing}` 新增 concrete `management` adapter 依赖，当前同步/定价 seam 必须精确登记
 - `TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted` 禁止 `internal/temu/{product,store,scheduler}` 新增 concrete `management` adapter 依赖，当前商品/店铺/调度 seam 必须精确登记

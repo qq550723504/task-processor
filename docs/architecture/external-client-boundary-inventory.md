@@ -37,6 +37,9 @@ Current direct dependency hotspots are:
   - broad `openai` coupling across facade, studio, task, and settings code
   - a narrow `management` retirement seam remains in `internal/listingkit/httpapi`
     for SHEIN sync runtime strategy wiring
+  - a separate legacy promotion bridge seam remains in
+    `internal/listingkit/sheinsync/promotion_bridge_legacy_adapter.go` for
+    management DTO and legacy SHEIN activity bridge compatibility
   - should shrink behind ListingKit-owned AI interfaces before new features add
     more concrete OpenAI types
   - `internal/listingkit` root OpenAI seams are guarded by
@@ -45,6 +48,8 @@ Current direct dependency hotspots are:
     `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted`
   - `internal/listingkit/httpapi` management retirement seams are guarded by
     `TestListingKitHTTPAPIManagementClientImportsStayAllowlisted`
+  - `internal/listingkit/sheinsync` legacy promotion bridge seams are guarded by
+    `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted`
 - `internal/publishing/shein`
   - concentrated `openai` coupling in attribute, category, content, and listing
     copy helpers
