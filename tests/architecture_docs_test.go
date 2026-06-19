@@ -125,6 +125,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestBootstrapKeepsModelProviderAssemblyInDedicatedFile",
 		"TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile",
 		"TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile",
+		"TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile",
 		"TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages",
 		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
 		"TestPlatformRegistrationPackagesStayThin",

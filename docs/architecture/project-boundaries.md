@@ -311,6 +311,7 @@ guards include:
 - `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile`
 - `TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile`
 - `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
+- `TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -408,6 +409,10 @@ bootstrap out of the catch-all startup path and in its own owning seam.
 
 Asset-publisher assembly should stay dedicated as well, so delivery/publishing
 bootstrap does not get folded back into generic startup orchestration.
+
+Image-pipeline component assembly should follow the same boundary, keeping
+pipeline bootstrap in its own owning file instead of expanding the catch-all
+startup path.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
