@@ -295,6 +295,7 @@ guards include:
 - `TestPublishingCommonUsesCanonicalPackage`
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
+- `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -324,3 +325,7 @@ Likewise, platform modules should stay downstream of domain and HTTP assembly
 boundaries. They can consume stable contracts and adapters, but they must not
 take direct dependencies on business-domain packages or the app HTTP assembly
 layer.
+
+Where historical platform implementation imports still exist, keep them
+explicitly allowlisted as migration seams only. They should shrink over time,
+not become precedent for new platform-to-business coupling.

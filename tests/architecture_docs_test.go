@@ -110,6 +110,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestPublishingCommonUsesCanonicalPackage",
 		"TestPublishingCommonDoesNotImportPlatformImplementations",
 		"TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages",
+		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 	}
