@@ -94,6 +94,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestListingKitRootTaskSubmissionFilesStayAllowlisted",
 		"TestListingKitRootServiceGenerationFilesStayAllowlisted",
 		"TestListingKitRootGenerationFilesStayAllowlisted",
+		"TestListingPreviewPackageStaysPlatformNeutral",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 	}
