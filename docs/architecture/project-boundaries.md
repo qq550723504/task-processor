@@ -302,6 +302,7 @@ guards include:
 - `TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsPathResolutionDedicated`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -367,6 +368,9 @@ unrelated runtime concerns.
 ProductEnrich runtime setup should follow the same boundary: LLM manager,
 understanding pipeline, and parser bootstrap belong in a dedicated runtime seam
 instead of spreading into generic startup code.
+
+Path resolution belongs in a dedicated runtime seam too, so environment/workdir
+normalization does not drift back into broader bootstrap orchestration.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
