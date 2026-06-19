@@ -280,6 +280,8 @@ guards include:
 - `TestListingKitRootTaskSubmissionFilesStayAllowlisted`
 - `TestListingKitRootServiceGenerationFilesStayAllowlisted`
 - `TestListingKitRootGenerationFilesStayAllowlisted`
+- `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
+- `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
