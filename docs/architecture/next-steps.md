@@ -128,6 +128,10 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted` 禁止 `internal/app/httpapi` 根目录新增 ListingKit helper，ListingKit 专属逻辑应下沉到 owning HTTPAPI 或 domain 包
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted` 禁止 module builder 回流到中心化装配文件
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted` 禁止 route descriptor helper 回流到中心化装配文件
+- `TestHTTPAPITypesDoesNotOwnRunOptions` 禁止 `internal/app/httpapi/types.go` 承接运行选项定义，保持 run options 留在专用装配 seam
+- `TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport` 禁止 `internal/app/httpapi/modules.go` 吞入 worker runtime support，保持 worker 运行时支持留在专用 support seam
+- `TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport` 禁止 `internal/app/httpapi/modules.go` 吞入 login runtime support，保持登录运行时支持留在专用 support seam
+- `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes` 禁止 `internal/app/httpapi/modules.go` 直接承接 login bootstrap types，保持登录 bootstrap 类型留在专用登录装配 seam
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly` 禁止 `internal/app/httpapi/modules.go` 吞入 login feature 装配，保持登录 feature 组装留在专用 feature builder seam
 - `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes` 禁止 `internal/app/httpapi/runtime.go` 直接承接 login bootstrap result 类型，保持登录装配结果通过专用 seam 传递
 - `TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes` 禁止 `internal/app/httpapi/runtime.go` 直接承接 feature HTTP API module 类型，保持 feature module 类型隔离在专用 builder/module seam
