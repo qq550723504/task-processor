@@ -292,6 +292,7 @@ guards include:
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
 - `TestPublishingSheinManagedManagementImportsStayAllowlisted`
 - `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
+- `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -308,3 +309,7 @@ That same publishing boundary also forbids reintroducing legacy runtime or
 ListingKit-root dependencies into the publishing slice; migration work should
 converge on dedicated publishing/domain storage seams instead of reviving the
 older facade chain.
+
+At the convergence layer, keep `internal/publishing/common` platform-neutral as
+well: shared publishing code can depend on canonical contracts, but it must not
+pull concrete platform implementations back upward into the common slice.
