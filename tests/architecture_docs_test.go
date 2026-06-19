@@ -110,6 +110,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit",
 		"TestPublishingCommonUsesCanonicalPackage",
 		"TestPublishingCommonDoesNotImportPlatformImplementations",
+		"TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated",
 		"TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages",
 		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
 		"TestPlatformRegistrationPackagesStayThin",
