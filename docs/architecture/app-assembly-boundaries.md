@@ -8,6 +8,11 @@ more consistent: instead of treating `bootstrap`, `runner`, and `consumer` as
 three unrelated places, we can now describe them with one shared assembly
 vocabulary.
 
+Use `docs/architecture/project-boundaries.md` as the repository-wide entrypoint
+for default ownership and dependency direction. This document narrows that
+baseline specifically for app-layer assembly vocabulary and package roles; it
+should not become a parallel policy source for unrelated package placement.
+
 ## Assembly Vocabulary
 
 The app layer is converging on this sequence:

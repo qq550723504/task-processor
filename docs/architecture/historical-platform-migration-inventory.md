@@ -7,6 +7,12 @@ view. It is intentionally not a migration plan. Its job is to make the next
 platform-boundary slice easier to choose without re-scanning the same historical
 packages every time.
 
+Use `docs/architecture/project-boundaries.md` and
+`docs/architecture/platform-boundary-strategy.md` first when the question is
+about current ownership or dependency direction. This inventory is the follow-up
+document for cost triage and slice selection; it should not replace the stable
+boundary entrypoints as the source of current policy.
+
 Snapshot date: 2026-06-17.
 
 ## Current Scale
