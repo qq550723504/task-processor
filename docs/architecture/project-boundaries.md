@@ -299,6 +299,7 @@ guards include:
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
+- `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -344,3 +345,7 @@ into accidental platform-layer ownership.
 The dependency direction between domain and app assembly should stay one-way as
 well: business-domain packages must not import app runtime assembly packages,
 because composition belongs at the app edge rather than inside domain logic.
+
+Production entrypoints should not keep deprecated compatibility layers alive
+either. `cmd/*` packages must depend on the current owning packages directly
+rather than routing new behavior back through retired app compatibility paths.
