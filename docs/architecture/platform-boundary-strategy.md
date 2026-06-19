@@ -8,6 +8,11 @@ make future ownership decisions predictable so new features do not spread
 platform rules across historical packages, ListingKit facade code, publishing
 packages, and runtime registration packages at the same time.
 
+Use `docs/architecture/project-boundaries.md` as the repository-wide entrypoint
+for default package ownership and dependency direction. This strategy document
+narrows that baseline for platform-related convergence work; it should not grow
+into a second repository-wide policy source.
+
 For migration-cost triage of historical platform packages, use
 `docs/architecture/historical-platform-migration-inventory.md`.
 
@@ -130,6 +135,10 @@ When adding or moving platform behavior:
    package families.
 6. If a legacy dependency remains, document the exception and add a cleanup path
    instead of treating it as a precedent.
+
+If a platform-specific note starts reading like a repository-wide default rule,
+promote the stable part back into `project-boundaries.md` and leave this
+document focused on convergence choices and migration tradeoffs.
 
 ## Review Questions
 

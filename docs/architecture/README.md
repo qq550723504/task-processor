@@ -7,6 +7,24 @@ historical evaluations. Use the stable documents for code review and new
 implementation decisions. Use plans and runbooks for context, not as newer
 boundary rules unless they explicitly supersede a stable document.
 
+## Recommended Reading Order
+
+When a change is structural, review the stable documents in this order:
+
+1. Start with `project-boundaries.md` for default package ownership,
+   dependency direction, and repository-wide placement rules.
+2. Then open the most relevant specialized boundary document such as
+   `httpapi-assembly-boundaries.md`, `app-assembly-boundaries.md`, or
+   `platform-boundary-strategy.md`.
+3. Use `architecture-review-checklist.md` to turn those rules into concrete PR
+   review questions.
+4. Use `next-steps.md` only as the current guard coverage ledger, not as a
+   competing source of architecture policy.
+
+If a specialized document appears broader than `project-boundaries.md`, treat
+`project-boundaries.md` as the default review entrypoint and tighten the
+specialized note instead of creating a second top-level policy.
+
 ## Stable Boundary Documents
 
 Use these as the main source of truth for structural work:
