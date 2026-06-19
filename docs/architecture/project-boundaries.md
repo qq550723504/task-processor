@@ -307,6 +307,7 @@ guards include:
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
 - `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated`
 - `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated`
+- `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -390,6 +391,10 @@ assembly seams.
 Prompt-store assembly should follow the same rule, keeping prompt persistence
 and tenant store wiring behind a dedicated adapter seam instead of leaking into
 broader runtime setup.
+
+At bootstrap time, task-repository assembly should still stay in its own
+dedicated file instead of turning the top-level bootstrap path back into a
+catch-all construction hub.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
