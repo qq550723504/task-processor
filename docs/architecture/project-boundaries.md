@@ -318,6 +318,9 @@ guards include:
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestAppBootstrapManagementClientImportsStayAllowlisted`
+- `TestAppTaskManagementClientImportsStayAllowlisted`
+- `TestAppRunnerManagementClientImportsStayAllowlisted`
+- `TestAppConsumerManagementClientImportsStayAllowlisted`
 - `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
 - `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
 - `TestAppTaskStatusManagementClientImportsStayAllowlisted`
@@ -450,6 +453,10 @@ the preferred runtime composition path.
 Task-status flows should keep the same discipline: any surviving management
 client dependency must remain an explicit transition seam rather than a renewed
 source of status orchestration ownership.
+
+The same expectation applies to task execution, runners, and consumers:
+management clients in those paths should only survive as explicit transition
+seams while ownership moves toward direct database-backed composition.
 
 Production entrypoints should not keep deprecated compatibility layers alive
 either. `cmd/*` packages must depend on the current owning packages directly
