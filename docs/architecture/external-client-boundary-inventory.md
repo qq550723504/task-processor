@@ -155,6 +155,11 @@ Current direct dependency hotspots are:
     `TestAppBootstrapManagementClientImportsStayAllowlisted`
   - `internal/app/httpapi` management retirement seams are guarded by
     `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
+  - `internal/app/httpapi` OpenAI runtime state and adapter assembly seams are
+    guarded by
+    `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`,
+    `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`, and
+    `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
   - `internal/app/runtime/listing` management retirement seams are guarded by
     `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
   - `internal/app/taskstatus` management retirement seams are guarded by

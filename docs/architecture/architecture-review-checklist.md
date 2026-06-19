@@ -76,6 +76,9 @@ At minimum, structural review should consider representative guards such as:
 - `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted`
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted`
+- `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
+- `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
 - `TestListingKitSupportFileStaysRetired`
 - `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted`
 - `TestAppHTTPAPIListingKitRootImportsStayAllowlisted`

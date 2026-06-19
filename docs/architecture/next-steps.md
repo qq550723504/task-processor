@@ -132,6 +132,9 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted` 若旧文件被恢复，会继续限制其 import 面
 - `TestAppHTTPAPIListingKitRootImportsStayAllowlisted` 禁止 app/httpapi 新增未登记 ListingKit root facade 依赖
 - `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted` 禁止 app/httpapi 新增未登记 ListingKit HTTPAPI 依赖，保持当前 module/runtime/route/server 装配 seam 可审查
+- `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated` 禁止 `internal/app/httpapi/types.go` 吞入 concrete `openai` runtime 状态，保持外部客户端运行时依赖集中在 `runtime_shared_deps.go`
+- `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated` 禁止 `internal/app/httpapi/adapters.go` 吞入 concrete `openai` adapter 装配，保持 OpenAI 组装集中在 `adapters_openai.go`
+- `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入 concrete `openai` runtime 装配，保持 OpenAI runtime 组装集中在 `runtime_openai.go`
 - `TestCmdContainsOnlyOfficialEntrypoints` 禁止 `cmd/` 新增临时或非正式入口，调试程序应放入受管 `hack/` 区域
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages` 禁止生产入口绕过 app 装配层直接依赖业务域或 infra 包
 - `TestHackContainsOnlyManagedSupportAreas` 禁止 `hack/` 继续扩散未登记的临时支持目录

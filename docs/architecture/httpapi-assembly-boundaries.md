@@ -308,6 +308,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs`
 - `TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput`
 - `TestHTTPAPICompositionBuilderDoesNotOwnListingKitRuntimeInput`
+- `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
 - `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`
