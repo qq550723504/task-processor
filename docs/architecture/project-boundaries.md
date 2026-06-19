@@ -262,6 +262,7 @@ Project boundaries are enforced by import-boundary tests first. Representative
 guards include:
 
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
 - `TestListingKitSubdomainsDoNotImportRootFacade`
 - `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`

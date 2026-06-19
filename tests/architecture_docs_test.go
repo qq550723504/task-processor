@@ -75,6 +75,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 	required := []string{
 		"Current Enforcement",
 		"import-boundary tests",
+		"TestDomainHTTPPackagesDoNotImportAppHTTPAPI",
 		"TestBusinessDomainsDoNotImportAppHTTPAPI",
 		"TestProjectBoundaryDomainsDoNotImportListingKitFacade",
 		"TestListingKitSubdomainsDoNotImportRootFacade",
