@@ -88,6 +88,11 @@ Current direct dependency hotspots are:
   - `internal/temu/product`, `internal/temu/store`, and `internal/temu/scheduler`
     management seams are guarded by
     `TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted`
+  - `internal/temu/api/client`, `internal/temu/context`,
+    `internal/temu/bulkrelist`, `internal/temu/filter`,
+    `internal/temu/handlerbase`, `internal/temu/rules`, and the root
+    `processor.go` runtime seam are guarded by
+    `TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted`
   - TEMU OpenAI seams are guarded by `TestTEMUOpenAIImportsStayAllowlisted`
   - cleanup should begin at service constructors and package-local contracts
 - `internal/app`

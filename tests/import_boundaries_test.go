@@ -1893,6 +1893,70 @@ func TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted(t *testing
 	}
 }
 
+func TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted(t *testing.T) {
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join("..", "internal", "temu", "api", "client", "client.go")):            {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "api", "client", "cookie_manager.go")):    {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "api", "client", "manager.go")):           {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "bulkrelist", "bulk_relist_entry.go")):    {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "context", "sku_runtime_input.go")):       {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "context", "temu_context.go")):            {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "filter", "rule_handler.go")):             {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "filter", "rule_manager.go")):             {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "handlerbase", "fulfillment_checker.go")): {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "processor.go")):                          {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "rules", "rule_validator.go")):            {},
+		filepath.Clean(filepath.Join("..", "internal", "temu", "rules", "rule_validator_test.go")):       {},
+	}
+
+	for _, root := range []string{
+		filepath.Join("..", "internal", "temu", "api", "client"),
+		filepath.Join("..", "internal", "temu", "bulkrelist"),
+		filepath.Join("..", "internal", "temu", "context"),
+		filepath.Join("..", "internal", "temu", "filter"),
+		filepath.Join("..", "internal", "temu", "handlerbase"),
+		filepath.Join("..", "internal", "temu", "rules"),
+	} {
+		t.Run(filepath.ToSlash(root), func(t *testing.T) {
+			index, err := loadGoFileIndex(root, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for path, facts := range index.files {
+				if pathAllowed(path, allowedFiles) {
+					continue
+				}
+				for quotedImport := range facts.imports {
+					importPath := strings.Trim(quotedImport, `"`)
+					if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+						t.Errorf("%s imports %s; keep TEMU runtime and bridge management dependencies limited to current runtime-assembly retirement seams and prefer in-repository database/repository access for new TEMU runtime data", path, importPath)
+					}
+				}
+			}
+		})
+	}
+
+	root := filepath.Join("..", "internal", "temu")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Clean(filepath.Join(root, "processor.go"))
+	for path, facts := range index.files {
+		if path != target || pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Errorf("%s imports %s; keep TEMU runtime and bridge management dependencies limited to current runtime-assembly retirement seams and prefer in-repository database/repository access for new TEMU runtime data", path, importPath)
+			}
+		}
+	}
+}
+
 func TestTEMUOpenAIImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "temu")
 	allowedFiles := map[string]struct{}{

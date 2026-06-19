@@ -183,6 +183,7 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestListingKitRootOpenAIImportsStayAllowlisted` 禁止 `internal/listingkit` 根包新增 concrete `openai` adapter 依赖，当前 facade/settings/service/studio/task seam 必须精确登记
 - `TestTEMUSyncAndPricingManagementImportsStayAllowlisted` 禁止 `internal/temu/{sync,pricing}` 新增 concrete `management` adapter 依赖，当前同步/定价 seam 必须精确登记
 - `TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted` 禁止 `internal/temu/{product,store,scheduler}` 新增 concrete `management` adapter 依赖，当前商品/店铺/调度 seam 必须精确登记
+- `TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted` 禁止 `internal/temu/{api/client,context,bulkrelist,filter,handlerbase,rules}` 和根包 `processor.go` 新增 concrete `management` adapter 依赖，当前 runtime/bridge seam 必须精确登记
 - `TestTEMUOpenAIImportsStayAllowlisted` 禁止 `internal/temu` 新增 concrete `openai` adapter 依赖，当前 AI/image/SKU/product/pipeline seam 必须精确登记
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters` 禁止 Temporal SDK 扩散到非 runtime / orchestration adapter 区域，当前 app runtime、ListingKit temporal 和提交 activity adapter 例外必须精确登记
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI` 禁止 Temporal runtime / workflow package 反向依赖 HTTP API，避免编排层吞掉请求层行为
