@@ -228,6 +228,11 @@ Use this table when adding new code:
 | Product facts | `internal/catalog` |
 | Reusable asset facts | `internal/asset` |
 | Product image processing | `internal/productimage` or `internal/asset` depending on ownership |
+
+Preview extraction is additionally guarded by
+`TestListingPreviewPackageStaysPlatformNeutral`, which keeps
+`internal/listing/preview` from becoming another entry point for marketplace-
+specific or ListingKit-facade imports.
 | SHEIN publishing rules | `internal/marketplace/shein/publishing` |
 | SHEIN workspace/editor/repair rules | `internal/marketplace/shein/workspace` |
 | Amazon-specific rules | `internal/amazon` now; later `internal/marketplace/amazon` |

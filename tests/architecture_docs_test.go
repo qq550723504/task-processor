@@ -55,6 +55,7 @@ func TestProjectBoundaryDocumentKeepsPreviewPlacementAlignedWithStablePreviewBou
 	required := []string{
 		"| Platform-neutral preview rules | `internal/listing/preview`; see `listing-preview-boundaries.md` |",
 		"| Legacy preview facade / task-result aggregation | `internal/listingkit` during migration |",
+		"TestListingPreviewPackageStaysPlatformNeutral",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
