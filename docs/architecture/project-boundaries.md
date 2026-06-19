@@ -298,6 +298,7 @@ guards include:
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -347,6 +348,10 @@ contracts or domain-facing surfaces.
 OpenAI assembly should stay behind dedicated HTTP API adapters as well, so
 feature modules and broader runtime wiring do not absorb concrete provider
 construction concerns.
+
+The runtime side of that assembly should remain dedicated too: OpenAI runtime
+bootstrap belongs in its own seam instead of accreting inside generic runtime
+startup paths.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
