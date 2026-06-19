@@ -42,16 +42,26 @@ func (h *SaleAttributeHandler) generateSaleSpec(ctx *sheinctx.TaskContext) error
 	if ctx.AICache != nil {
 		var cached sheinattr.ResultSaleAttribute
 		if ctx.AICache.Get(aicache.TypeSaleAttr, cacheKey, &cached) {
-			output := NewSaleAttributeOutput(cached)
-			ctx.SetSaleSpecResult(&output.Result)
-			logger.GetGlobalLogger("shein/product").WithFields(map[string]any{
-				"source":          "cache",
-				"category_id":     ctx.ProductData.CategoryID,
-				"variant_count":   output.VariantCount,
-				"sale_attr_count": output.SaleAttributeCount,
-				"requested_count": len(ctx.FilteredVariants()),
-			}).Info("sale attributes ready")
-			return nil
+			if !h.cachedSaleSpecMatchesCurrentVariants(ctx.Variants, cached) {
+				logger.GetGlobalLogger("shein/product").WithFields(map[string]any{
+					"cache_key":          cacheKey,
+					"category_id":        ctx.ProductData.CategoryID,
+					"cached_variants":    len(cached.Variants),
+					"requested_variants": len(ctx.FilteredVariants()),
+				}).Warn("sale attribute cache stale for current variants, regenerating")
+			} else {
+				cached = h.filterValidASINs(ctx.Variants, cached)
+				output := NewSaleAttributeOutput(cached)
+				ctx.SetSaleSpecResult(&output.Result)
+				logger.GetGlobalLogger("shein/product").WithFields(map[string]any{
+					"source":          "cache",
+					"category_id":     ctx.ProductData.CategoryID,
+					"variant_count":   output.VariantCount,
+					"sale_attr_count": output.SaleAttributeCount,
+					"requested_count": len(ctx.FilteredVariants()),
+				}).Info("sale attributes ready")
+				return nil
+			}
 		}
 	}
 

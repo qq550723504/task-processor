@@ -148,6 +148,12 @@ func (f *ProductFetcher) FetchVariants(ctx context.Context, req *FetchRequest, v
 			continue
 		}
 		if product != nil {
+			if strings.TrimSpace(product.Asin) != "" && product.Asin != asin {
+				f.logger.Infof("variant fetch redirected ASIN: requested=%s actual=%s; preserving requested ASIN for downstream mapping", asin, product.Asin)
+				normalized := *product
+				normalized.Asin = asin
+				product = &normalized
+			}
 			if cacheErr := f.CacheProduct(variantReq, product); cacheErr != nil {
 				f.logger.Warnf("cache variant immediately failed: ASIN=%s, err=%v", asin, cacheErr)
 			}

@@ -218,3 +218,40 @@ func TestProductFetcherFetchVariantsCachesEachSuccessfulVariantImmediately(t *te
 		t.Fatalf("created product IDs = %v, want [B-success-1 B-success-2]", rawClient.created)
 	}
 }
+
+func TestProductFetcherFetchVariantsPreservesRequestedASINWhenCrawlerRedirects(t *testing.T) {
+	rawClient := &recordingProductFetcherRawJSONClient{}
+	source := &selectiveProductFetcherCrawlSource{
+		products: map[string]*model.Product{
+			"https://www.amazon.com/dp/B-requested?th=1&psc=1&language=en_US": {
+				Asin:       "B-redirected",
+				ParentAsin: "PARENT-1",
+				ShipsFrom:  "Amazon.com",
+			},
+		},
+	}
+	fetcher := NewProductFetcher(rawClient, &config.AmazonConfig{Enabled: true}, source)
+
+	variants, err := fetcher.FetchVariants(context.Background(), &FetchRequest{
+		TenantID:  1,
+		Platform:  "amazon",
+		Region:    "us",
+		ProductID: "B-parent",
+		Creator:   "tester",
+	}, []string{"B-requested"})
+	if err != nil {
+		t.Fatalf("FetchVariants() error = %v", err)
+	}
+	if len(variants) != 1 {
+		t.Fatalf("len(variants) = %d, want 1", len(variants))
+	}
+	if variants[0] == nil {
+		t.Fatal("variants[0] = nil, want product")
+	}
+	if variants[0].Asin != "B-requested" {
+		t.Fatalf("variants[0].Asin = %q, want requested ASIN preserved", variants[0].Asin)
+	}
+	if len(rawClient.created) != 1 || rawClient.created[0] != "B-requested" {
+		t.Fatalf("created product IDs = %v, want [B-requested]", rawClient.created)
+	}
+}
