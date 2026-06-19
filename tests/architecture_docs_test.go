@@ -118,6 +118,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated",
 		"TestHTTPAPIRuntimeKeepsPathResolutionDedicated",
 		"TestHTTPAPIRuntimeKeepsConfigLoadingDedicated",
+		"TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated",
 		"TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages",
 		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
 		"TestPlatformRegistrationPackagesStayThin",

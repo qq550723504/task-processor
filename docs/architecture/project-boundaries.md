@@ -304,6 +304,7 @@ guards include:
 - `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsPathResolutionDedicated`
 - `TestHTTPAPIRuntimeKeepsConfigLoadingDedicated`
+- `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -375,6 +376,10 @@ normalization does not drift back into broader bootstrap orchestration.
 
 Config loading follows the same rule: runtime config assembly should stay in a
 dedicated seam instead of being rebuilt ad hoc across startup entrypoints.
+
+The supporting methods on `runtimeDeps` should stay isolated too, so accessors,
+closers, and module-attach helpers do not drift back into the top-level runtime
+or generic bootstrap files.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
