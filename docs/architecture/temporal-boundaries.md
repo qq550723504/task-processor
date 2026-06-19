@@ -61,6 +61,7 @@ Default rules for new code:
 4. Workflow runtime packages must not depend on HTTP API packages.
 5. Domain packages must not import Temporal SDK packages.
 6. Temporal SDK imports should stay in runtime or orchestration adapter packages.
+7. Domain, product, and marketplace code should not depend on concrete Temporal worker bootstrap packages; keep Temporal startup details behind service facades or narrow runtime adapters.
 
 ## Current Allowed Runtime Areas
 

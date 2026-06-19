@@ -21,6 +21,7 @@ func TestTemporalBoundaryDocumentDefinesStableReviewRules(t *testing.T) {
 		"service facade",
 		"workflow runtime",
 		"RabbitMQ",
+		"concrete Temporal worker bootstrap",
 		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
 		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
 		"Review Questions",
