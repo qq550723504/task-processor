@@ -8,6 +8,12 @@ the tests that keep them from becoming official entrypoints again.
 Compatibility layers are useful during migration, but once in-repository usage
 is gone they should not silently return as parallel APIs.
 
+Use `docs/architecture/project-boundaries.md` as the repository-wide entrypoint
+for default ownership and dependency direction. This document narrows that
+baseline specifically for retired compatibility paths and their replacement
+owners; it should not become a second general policy source for unrelated
+package placement decisions.
+
 ## Retired App Compatibility Paths
 
 | Path | Status | Replacement | Guard |
