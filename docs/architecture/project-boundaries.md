@@ -328,6 +328,8 @@ guards include:
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 - `TestHackContainsOnlyManagedSupportAreas`
 - `TestHackSupportAreasContainNoLocalArtifacts`
+- `TestCmdContainsOnlyOfficialEntrypoints`
+- `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
 - `TestProductionEntrypointsContainNoLocalArtifacts`
 - `TestTrackedLocalArtifactsStayOutOfTools`
@@ -537,6 +539,11 @@ The same framework discipline applies to local artifacts and runtime state.
 `hack/` may host managed support areas only, while `cmd/`, `tools/`, and
 `internal/` must stay free of local logs, tmp data, debug binaries, and other
 machine-specific outputs that blur the line between source and runtime state.
+
+Production entrypoints follow that same rule structurally too. `cmd/` should
+contain only official entrypoints, and those entrypoints should terminate at
+the app assembly layer instead of reaching directly into domain or infra
+packages.
 
 SDS login state follows the same rule: browser sessions, cookies, and auth JSON
 must stay under the dedicated local runtime area instead of drifting back into
