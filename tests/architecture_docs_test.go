@@ -1530,6 +1530,7 @@ func TestAppAssemblyBoundaryDocumentDefinesStableAssemblyVocabulary(t *testing.T
 		"`consumer` assembles and coordinates",
 		"TestBusinessDomainsDoNotImportAppRuntimeAssembly",
 		"TestAppBootstrapManagementClientImportsStayAllowlisted",
+		"TestAppTaskManagementClientImportsStayAllowlisted",
 		"TestAppRunnerManagementClientImportsStayAllowlisted",
 		"TestAppConsumerManagementClientImportsStayAllowlisted",
 		"TestAppHTTPAPIManagementClientImportsStayAllowlisted",

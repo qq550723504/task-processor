@@ -200,6 +200,7 @@ App-layer assembly boundaries are guarded by:
 
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestAppBootstrapManagementClientImportsStayAllowlisted`
+- `TestAppTaskManagementClientImportsStayAllowlisted`
 - `TestAppRunnerManagementClientImportsStayAllowlisted`
 - `TestAppConsumerManagementClientImportsStayAllowlisted`
 - `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
@@ -216,7 +217,7 @@ transition seam is necessary, document the narrow exception and update the
 allowlist in the same change.
 
 The app-layer management client allowlists are retirement seams, not a long-term
-design target. `bootstrap`, `runner`, `consumer`, `httpapi`,
+design target. `bootstrap`, `task`, `runner`, `consumer`, `httpapi`,
 `runtime/listing`, and `taskstatus` may still assemble current
 management-backed runtime dependencies, but new business data access should
 prefer in-repository database/repository seams owned by the relevant domain.
