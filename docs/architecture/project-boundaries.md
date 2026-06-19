@@ -289,9 +289,16 @@ guards include:
 - `TestSheinBridgeExternalClientImportsStayAllowlisted`
 - `TestSheinManagementClientImportsStayAllowlisted`
 - `TestSheinOpenAIImportsStayAllowlisted`
+- `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted`
+- `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted`
+- `TestListingKitRootOpenAIImportsStayAllowlisted`
+- `TestListingKitRootDoesNotImportManagementAPI`
+- `TestListingKitSupportFileStaysRetired`
+- `TestPublishingSheinSubmitPrepUsesOnlySensitiveWordAdapter`
 - `TestTEMUSyncAndPricingManagementImportsStayAllowlisted`
 - `TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted`
 - `TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted`
+- `TestTEMUOpenAIImportsStayAllowlisted`
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestPublishingSheinOpenAIImportsStayAllowlisted`
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
@@ -361,6 +368,13 @@ Apply the same retirement posture to TEMU runtime, scheduling, product/store,
 and pricing seams: any remaining management dependency there is an explicit
 bridge while ownership moves toward direct database-backed composition, not a
 platform surface to keep broadening.
+
+Use the same discipline for platform-local AI and legacy bridge seams. Listing
+Kit root OpenAI usage, ListingKit HTTP API external-client assembly, SHEIN sync
+legacy promotion bridges, and TEMU OpenAI helpers should stay explicitly
+allowlisted while platform-owned interfaces replace them; retired support files
+and old root-level management API reach-through must not come back as new
+extension points.
 
 That same publishing boundary also forbids reintroducing legacy runtime or
 ListingKit-root dependencies into the publishing slice; migration work should
