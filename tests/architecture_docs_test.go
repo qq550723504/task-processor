@@ -777,29 +777,21 @@ func TestArchitectureReviewChecklistRequiresGuardBaselineUpdates(t *testing.T) {
 }
 
 func TestArchitectureReviewChecklistGuardBaselineStaysSubsetOfCurrentCoverage(t *testing.T) {
-	checklistPath := filepath.Join("..", "docs", "architecture", "architecture-review-checklist.md")
-	checklistContent, err := os.ReadFile(checklistPath)
-	if err != nil {
-		t.Fatalf("read %s: %v", checklistPath, err)
-	}
-
 	nextStepsPath := filepath.Join("..", "docs", "architecture", "next-steps.md")
 	nextStepsContent, err := os.ReadFile(nextStepsPath)
 	if err != nil {
 		t.Fatalf("read %s: %v", nextStepsPath, err)
 	}
 
-	guardBaseline := markdownSection(t, string(checklistContent), "## Guard Baseline")
-	const subsetRule = "Representative guard references must remain a subset of the current guard coverage baseline"
-	if !strings.Contains(guardBaseline, subsetRule) {
-		t.Errorf("%s Guard Baseline must state %q so checklist guard examples cannot drift from %s", checklistPath, subsetRule, nextStepsPath)
-	}
-
 	currentGuardCoverage := markdownBlockBetween(t, string(nextStepsContent), "Current guard coverage:", "后续重点")
-	guardPattern := regexp.MustCompile("`(Test[A-Za-z0-9_]+)`")
-	for _, match := range guardPattern.FindAllStringSubmatch(guardBaseline, -1) {
-		if !strings.Contains(currentGuardCoverage, match[1]) {
-			t.Errorf("%s Guard Baseline references %q, but %s Current guard coverage does not include it", checklistPath, match[1], nextStepsPath)
+	required := []string{
+		"docs/architecture/architecture-review-checklist.md",
+		"权威清单应直接以 checklist 的 `Guard Baseline`",
+		"next-steps.md` 只保留 baseline 入口",
+	}
+	for _, phrase := range required {
+		if !strings.Contains(currentGuardCoverage, phrase) {
+			t.Errorf("%s Current guard coverage must mention %q so the active baseline points to the checklist-owned guard inventory", nextStepsPath, phrase)
 		}
 	}
 }
@@ -812,146 +804,18 @@ func TestNextTechnicalPrioritiesTracksImplementedBoundaryGuards(t *testing.T) {
 	}
 
 	required := []string{
+		"## How To Use This Document",
 		"Current guard coverage",
-		"TestBusinessDomainsDoNotImportAppHTTPAPI",
-		"TestProjectBoundaryDomainsDoNotImportListingKitFacade",
-		"TestListingKitSubdomainsDoNotImportRootFacade",
-		"TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly",
-		"TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly",
-		"TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain",
-		"TestListingKitDoesNotImportLegacySheinRuntime",
-		"TestListingKitDoesNotImportSheinAPIRoot",
-		"TestListingKitNonAPISheinImportsStayAllowlisted",
-		"TestListingKitAmazonListingImportsStayAllowlisted",
-		"TestCatalogDoesNotDependOnProductEnrichAliases",
-		"TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases",
-		"TestSheinPipelineDoesNotImportListingKitFacade",
-		"TestSheinSubmitPrepDoesNotImportListingKitTenantContext",
-		"TestListingKitRootSheinHelpersStayAllowlisted",
-		"TestListingKitRootServiceSubmitFilesStayAllowlisted",
-		"TestListingKitRootTaskSubmissionFilesStayAllowlisted",
-		"TestListingKitRootServiceGenerationFilesStayAllowlisted",
-		"TestListingKitRootGenerationFilesStayAllowlisted",
-		"TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer",
-		"TestAppProcessorCompatibilityLayerIsRetired",
-		"TestInternalPackagesDoNotImportAppStateCompatibilityLayer",
-		"TestAppStateCompatibilityLayerIsRetired",
-		"TestInfraProductCrawlerAdapterIsRetired",
-		"TestAppCrawlerFetcherCompatibilityLayerIsRetired",
-		"TestCmdPackagesDoNotImportAppCompatibilityLayers",
-		"TestDomainHTTPPackagesDoNotImportAppHTTPAPI",
-		"TestAppHTTPAPIRootListingKitHelpersStayAllowlisted",
-		"TestAppHTTPAPIListingKitSupportImportsStayAllowlisted",
-		"TestAppHTTPAPIListingKitRootImportsStayAllowlisted",
-		"TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted",
-		"TestAppHTTPAPIModuleBuildersStayAllowlisted",
-		"TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted",
-		"TestHTTPAPITypesDoesNotOwnRunOptions",
-		"TestHTTPAPIModulesFileDoesNotOwnFeatureBuildWrappers",
-		"TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration",
-		"TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade",
-		"TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport",
-		"TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport",
-		"TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes",
-		"TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly",
-		"TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes",
-		"TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes",
-		"TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes",
-		"TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures",
-		"TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures",
-		"TestFeatureModuleBuilderContractsReturnLocalModuleAliases",
-		"TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes",
-		"TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts",
-		"TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly",
-		"TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook",
-		"TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs",
-		"TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput",
-		"TestHTTPAPICompositionBuilderDoesNotOwnListingKitRuntimeInput",
-		"TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated",
-		"TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated",
-		"TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated",
-		"TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated",
-		"TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated",
-		"TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated",
-		"TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated",
-		"TestHTTPAPIRuntimeKeepsPathResolutionDedicated",
-		"TestHTTPAPIRuntimeKeepsConfigLoadingDedicated",
-		"TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated",
-		"TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated",
-		"TestBootstrapKeepsModelProviderAssemblyInDedicatedFile",
-		"TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile",
-		"TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile",
-		"TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile",
-		"TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile",
-		"TestCmdContainsOnlyOfficialEntrypoints",
-		"TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages",
-		"TestHackContainsOnlyManagedSupportAreas",
-		"TestHackSupportAreasContainNoLocalArtifacts",
-		"TestTrackedLocalArtifactsStayOutOfProductionEntrypoints",
-		"TestProductionEntrypointsContainNoLocalArtifacts",
-		"TestTrackedLocalArtifactsStayOutOfTools",
-		"TestToolsContainNoLocalArtifacts",
-		"TestInternalPackagesContainNoLocalArtifacts",
-		"TestSDSLoginRuntimeStateStaysOutOfInternalPackages",
-		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
-		"TestBusinessDomainsDoNotImportAppRuntimeAssembly",
-		"TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages",
-		"TestPlatformModulesHistoricalImplementationImportsStayAllowlisted",
-		"TestPlatformRegistrationPackagesStayThin",
-		"TestPlatformRegistrationPackagesContainNoLocalArtifacts",
-		"TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit",
-		"TestPublishingSheinNonAPISheinImportsStayAllowlisted",
-		"TestPublishingCommonUsesCanonicalPackage",
-		"TestPublishingSheinSubmitPrepUsesOnlySensitiveWordAdapter",
-		"TestPublishingSheinManagedAPIImportsStayAllowlisted",
-		"TestPublishingSheinManagedManagementImportsStayAllowlisted",
-		"TestPublishingCommonDoesNotImportPlatformImplementations",
-		"TestInfrastructurePackagesDoNotImportBusinessDomains",
-		"TestProductImageExternalClientImportsStayAllowlisted",
-		"TestAmazonExternalClientImportsStayAllowlisted",
-		"TestSheinBridgeExternalClientImportsStayAllowlisted",
-		"TestSheinManagementClientImportsStayAllowlisted",
-		"TestSheinOpenAIImportsStayAllowlisted",
-		"TestAppTaskManagementClientImportsStayAllowlisted",
-		"TestAppRunnerManagementClientImportsStayAllowlisted",
-		"TestAppConsumerManagementClientImportsStayAllowlisted",
-		"TestAppBootstrapManagementClientImportsStayAllowlisted",
-		"TestAppHTTPAPIManagementClientImportsStayAllowlisted",
-		"TestAppRuntimeListingManagementClientImportsStayAllowlisted",
-		"TestAppTaskStatusManagementClientImportsStayAllowlisted",
-		"TestPlatformTaskManagementClientImportsStayAllowlisted",
-		"TestStateManagementClientImportsStayAllowlisted",
-		"TestPlatformBaseManagementClientImportsStayAllowlisted",
-		"TestProcessorManagementClientImportsStayAllowlisted",
-		"TestTaskRPCAPIManagementClientImportsStayAllowlisted",
-		"TestSDSClientManagementClientImportsStayAllowlisted",
-		"TestSheinLoginBootstrapManagementClientImportsStayAllowlisted",
-		"TestSheinLoginServiceManagementClientImportsStayAllowlisted",
-		"TestSheinLoginManagedManagementClientImportsStayAllowlisted",
-		"TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted",
-		"TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated",
-		"TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated",
-		"TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated",
-		"TestPublishingSheinOpenAIImportsStayAllowlisted",
-		"TestPublishingSheinManagedManagementImportsStayAllowlisted",
-		"TestListingKitHTTPAPIExternalClientImportsStayAllowlisted",
-		"TestListingKitHTTPAPIManagementClientImportsStayAllowlisted",
-		"TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted",
-		"TestListingKitRootOpenAIImportsStayAllowlisted",
-		"TestListingKitRootDoesNotImportManagementAPI",
-		"TestListingKitSupportFileStaysRetired",
-		"TestSharedPricingManagementClientImportsStayAllowlisted",
-		"TestTEMUSyncAndPricingManagementImportsStayAllowlisted",
-		"TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted",
-		"TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted",
-		"TestTEMUOpenAIImportsStayAllowlisted",
-		"TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters",
-		"TestTemporalRuntimePackagesDoNotImportHTTPAPI",
-		"TestListingPreviewPackageStaysPlatformNeutral",
+		"权威清单应直接以 checklist 的 `Guard Baseline`",
+		"next-steps.md` 只保留 baseline 入口",
+		"docs/architecture/architecture-review-checklist.md",
+		"docs/architecture/README.md",
+		"Every next-step reference must resolve to an existing repository document",
+		"后续重点不是增加很多测试",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(string(content), phrase) {
-			t.Errorf("%s must mention %q so completed boundary guards do not drift back into open-ended priorities", path, phrase)
+			t.Errorf("%s must mention %q so next-step priorities stay aligned with the checklist-owned guard baseline", path, phrase)
 		}
 	}
 }
@@ -967,6 +831,7 @@ func TestNextTechnicalPrioritiesCurrentGuardCoveragePointsToReviewEntrypoints(t 
 	required := []string{
 		"docs/architecture/README.md",
 		"docs/architecture/architecture-review-checklist.md",
+		"权威清单应直接以 checklist 的 `Guard Baseline`",
 	}
 	for _, phrase := range required {
 		if !strings.Contains(currentGuardCoverage, phrase) {
@@ -1000,16 +865,13 @@ func TestNextTechnicalPrioritiesCurrentGuardCoverageReferencesImplementedTests(t
 
 	currentGuardCoverage := markdownBlockBetween(t, string(content), "Current guard coverage:", "后续重点")
 	const implementedTestRule = "Every guard listed in current coverage must resolve to an implemented test function"
-	if !strings.Contains(currentGuardCoverage, implementedTestRule) {
-		t.Errorf("%s Current guard coverage must state %q so the active baseline cannot drift into phantom test names", path, implementedTestRule)
+	if strings.Contains(currentGuardCoverage, implementedTestRule) {
+		t.Errorf("%s Current guard coverage must not mention %q once the checklist owns the authoritative guard inventory", path, implementedTestRule)
 	}
 
-	implementedTests := implementedTestNames(t)
 	guardPattern := regexp.MustCompile("`(Test[A-Za-z0-9_]+)`")
 	for _, match := range guardPattern.FindAllStringSubmatch(currentGuardCoverage, -1) {
-		if !implementedTests[match[1]] {
-			t.Errorf("%s Current guard coverage references %q, but no matching test function exists under tests/", path, match[1])
-		}
+		t.Errorf("%s Current guard coverage must not enumerate guard test %q once the checklist owns the full guard baseline", path, match[1])
 	}
 }
 
@@ -1140,11 +1002,6 @@ func markdownBlockBetween(t *testing.T, content, startMarker, endMarker string) 
 		t.Fatalf("markdown content after %q must include end marker %q", startMarker, endMarker)
 	}
 	return block[:end]
-}
-
-func TestNextTechnicalPrioritiesTracksEveryImportBoundaryGuard(t *testing.T) {
-	nextStepsPath := filepath.Join("..", "docs", "architecture", "next-steps.md")
-	assertDocumentTracksEveryImportBoundaryGuard(t, nextStepsPath, "Current guard coverage so active import-boundary guards stay visible to reviewers")
 }
 
 func TestArchitectureReviewChecklistTracksEveryImportBoundaryGuard(t *testing.T) {
