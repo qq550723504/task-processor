@@ -302,6 +302,7 @@ guards include:
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
+- `TestAppProcessorCompatibilityLayerIsRetired`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -355,6 +356,10 @@ rather than routing new behavior back through retired app compatibility paths.
 The same retirement rule applies inside `internal/*`: packages should not
 reconnect themselves to the old app processor compatibility layer once the
 direct owner package already exists.
+
+That processor bridge is not merely discouraged; it is retired. New work should
+land in `internal/processor` instead of preserving `internal/app/processor` as
+an alternate path.
 
 That applies to the old app state compatibility layer too: internal packages
 should use `internal/state` directly instead of reviving the deprecated app
