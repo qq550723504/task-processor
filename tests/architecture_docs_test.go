@@ -116,6 +116,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestBusinessDomainsDoNotImportAppRuntimeAssembly",
 		"TestCmdPackagesDoNotImportAppCompatibilityLayers",
 		"TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer",
+		"TestInternalPackagesDoNotImportAppStateCompatibilityLayer",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 	}

@@ -301,6 +301,7 @@ guards include:
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
+- `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -354,3 +355,7 @@ rather than routing new behavior back through retired app compatibility paths.
 The same retirement rule applies inside `internal/*`: packages should not
 reconnect themselves to the old app processor compatibility layer once the
 direct owner package already exists.
+
+That applies to the old app state compatibility layer too: internal packages
+should use `internal/state` directly instead of reviving the deprecated app
+state bridge.
