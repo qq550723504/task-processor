@@ -281,6 +281,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIModulesFileStaysRetired`
 - `TestHTTPAPIAppDoesNotOwnProductImageBuilderShadows`
 - `TestHTTPAPIAppDoesNotOwnProductEnrichScorerBuilderShadow`
+- `TestHTTPAPIModulesFileDoesNotOwnFeatureBuildWrappers`
 - `TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration`
 - `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
 - `TestLegacyBuildHandlersUsesRouteHandlerAliases`
