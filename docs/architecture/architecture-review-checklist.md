@@ -87,6 +87,11 @@ At minimum, structural review should consider representative guards such as:
 - `TestHTTPAPIRuntimeKeepsConfigLoadingDedicated`
 - `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated`
 - `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated`
+- `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile`
+- `TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile`
+- `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
+- `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile`
+- `TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile`
 - `TestListingKitSupportFileStaysRetired`
 - `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted`
 - `TestAppHTTPAPIListingKitRootImportsStayAllowlisted`

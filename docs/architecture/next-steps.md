@@ -143,6 +143,11 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestHTTPAPIRuntimeKeepsConfigLoadingDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入配置加载逻辑，保持配置读取集中在 `runtime_config.go`
 - `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated` 禁止 `internal/app/httpapi/adapters.go` 吞入任务仓储装配，保持 repository adapter 组装集中在 `adapters_task_repositories.go`
 - `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated` 禁止 `internal/app/httpapi/adapters.go` 吞入 prompt store 装配，保持 prompt store adapter 组装集中在 `adapters_prompt.go`
+- `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile` 禁止 `internal/app/httpapi/bootstrap.go` 吞入 model provider 装配，保持模型提供方组装集中在专用 bootstrap seam
+- `TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile` 禁止 `internal/app/httpapi/bootstrap.go` 吞入 LLM scorer 装配，保持评分器组装集中在专用 bootstrap seam
+- `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile` 禁止 `internal/app/httpapi/bootstrap.go` 吞入 asset publisher 装配，保持资源发布组装集中在专用 bootstrap seam
+- `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile` 禁止 `internal/app/httpapi/bootstrap.go` 吞入 task repository 装配，保持任务仓储组装集中在专用 bootstrap seam
+- `TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile` 禁止 `internal/app/httpapi/bootstrap.go` 吞入 image pipeline component 装配，保持图像流水线组件组装集中在专用 bootstrap seam
 - `TestCmdContainsOnlyOfficialEntrypoints` 禁止 `cmd/` 新增临时或非正式入口，调试程序应放入受管 `hack/` 区域
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages` 禁止生产入口绕过 app 装配层直接依赖业务域或 infra 包
 - `TestHackContainsOnlyManagedSupportAreas` 禁止 `hack/` 继续扩散未登记的临时支持目录
