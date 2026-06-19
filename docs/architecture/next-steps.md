@@ -136,6 +136,11 @@ Every guard listed in current coverage must resolve to an implemented test funct
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated` 禁止 `internal/app/httpapi/adapters.go` 吞入 concrete `openai` adapter 装配，保持 OpenAI 组装集中在 `adapters_openai.go`
 - `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入 concrete `openai` runtime 装配，保持 OpenAI runtime 组装集中在 `runtime_openai.go`
 - `TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入 shared resource/bootstrap 装配，保持共享资源组装集中在 `runtime_shared_resources.go`
+- `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入 runtimeDeps 状态 helper，保持方法拆分集中在 `runtime_deps_methods.go`
+- `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入 prompt runtime 装配，保持 prompt 运行时组装集中在 `runtime_prompt.go`
+- `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated` 禁止 `internal/app/httpapi/runtime.go` 吞入 ProductEnrich runtime 装配，保持 ProductEnrich 运行时组装集中在 `runtime_productenrich.go`
+- `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated` 禁止 `internal/app/httpapi/adapters.go` 吞入任务仓储装配，保持 repository adapter 组装集中在 `adapters_task_repositories.go`
+- `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated` 禁止 `internal/app/httpapi/adapters.go` 吞入 prompt store 装配，保持 prompt store adapter 组装集中在 `adapters_prompt.go`
 - `TestCmdContainsOnlyOfficialEntrypoints` 禁止 `cmd/` 新增临时或非正式入口，调试程序应放入受管 `hack/` 区域
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages` 禁止生产入口绕过 app 装配层直接依赖业务域或 infra 包
 - `TestHackContainsOnlyManagedSupportAreas` 禁止 `hack/` 继续扩散未登记的临时支持目录
