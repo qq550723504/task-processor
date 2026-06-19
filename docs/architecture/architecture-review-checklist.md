@@ -6,6 +6,17 @@ Use this checklist when reviewing framework, refactoring, HTTP API assembly,
 Temporal, or platform-boundary changes. It turns the current structure rules
 into repeatable review questions so boundaries do not depend on memory.
 
+For structural review, use it in this order:
+
+1. Start from `docs/architecture/project-boundaries.md` for the default
+   repository-wide rule.
+2. Then open the most relevant specialized boundary document for the changed
+   area.
+3. Use this checklist to turn those stable rules into merge-time review
+   questions.
+4. Use `docs/architecture/next-steps.md` only to confirm the current guard
+   coverage baseline, not to replace the stable boundary documents as policy.
+
 ## Required Checks
 
 Before merging a structural or feature PR, verify:

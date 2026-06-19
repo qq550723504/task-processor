@@ -6,6 +6,18 @@
 
 目标不是继续为了结构而重构，而是把后续 2 到 4 周里最值得投入的工程问题排清楚，避免团队重新回到边界失控或低收益重构。
 
+## How To Use This Document
+
+这份文档记录两类信息：
+
+1. 下一阶段技术优先级，用来帮助排工程投入顺序。
+2. `Current guard coverage` 台账，用来说明当前测试护栏覆盖到哪里。
+
+它不是新的正式架构政策入口。涉及长期边界判断时，先回到
+`docs/architecture/README.md`、`docs/architecture/project-boundaries.md`
+和 `docs/architecture/architecture-review-checklist.md`；这里的 baseline
+只负责说明当前测试覆盖和阶段性优先级，不负责替代稳定边界文档。
+
 ## Priority 1
 
 ### 1. 明确平台边界收口策略
