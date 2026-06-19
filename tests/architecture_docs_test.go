@@ -108,6 +108,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestPublishingSheinManagedManagementImportsStayAllowlisted",
 		"TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit",
 		"TestPublishingCommonDoesNotImportPlatformImplementations",
+		"TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages",
 		"TestInfrastructurePackagesDoNotImportBusinessDomains",
 		"TestBusinessImplementationPackagesDoNotImportGinDirectly",
 	}
