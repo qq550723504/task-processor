@@ -58,6 +58,13 @@ Current direct dependency hotspots are:
   - current direct OpenAI seams are guarded by
     `TestPublishingSheinOpenAIImportsStayAllowlisted`
 - `internal/publishing/sheinmanaged`
+  - current managed-publishing helpers still import concrete SHEIN API clients
+    in builder and category/attribute API factory seams
+  - these are managed runtime API construction seams; future publishing logic
+    should keep concrete SHEIN API client wiring behind local publishing-owned
+    factories instead of spreading adapter types
+  - current direct SHEIN API seams are guarded by
+    `TestPublishingSheinManagedAPIImportsStayAllowlisted`
   - current managed-publishing helpers still import `management` to build
     category, attribute, sale-attribute, and API factory seams
   - these are management retirement seams, not a long-lived publishing
