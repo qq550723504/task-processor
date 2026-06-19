@@ -308,6 +308,10 @@ guards include:
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
+- `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted`
+- `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted`
+- `TestAppHTTPAPIListingKitRootImportsStayAllowlisted`
+- `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted`
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted`
 - `TestHTTPAPITypesDoesNotOwnRunOptions`
@@ -316,12 +320,21 @@ guards include:
 - `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
 - `TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport`
 - `TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport`
+- `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly`
+- `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes`
 - `TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes`
 - `TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
 - `TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
 - `TestFeatureModuleBuilderContractsReturnLocalModuleAliases`
+- `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
+- `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts`
+- `TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly`
+- `TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook`
+- `TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs`
+- `TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput`
+- `TestHTTPAPICompositionBuilderDoesNotOwnListingKitRuntimeInput`
 - `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated`
 - `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
@@ -431,6 +444,13 @@ The same anti-monolith rule applies to HTTP API composition itself. The central
 catch-all owner for feature builders, bootstrap orchestration, login/runtime
 support, or concrete feature module types; those concerns belong in dedicated
 builder, support, and feature-local seams with narrow local contracts.
+
+That same seam discipline applies to ListingKit integration at the HTTP API
+edge. Root helpers, support hooks, and direct ListingKit root/HTTP API imports
+must stay explicitly allowlisted and narrow, while login bootstrap, support
+results, and product/listing runtime inputs continue moving behind dedicated
+feature-local builders instead of accreting inside the central composition
+builder.
 
 The runtime side of that assembly should remain dedicated too: OpenAI runtime
 bootstrap belongs in its own seam instead of accreting inside generic runtime
