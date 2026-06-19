@@ -31,6 +31,7 @@
 
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
+- `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestHackContainsOnlyManagedSupportAreas`
 - `TestHackSupportAreasContainNoLocalArtifacts`
 - `TestTrackedLocalArtifactsStayOutOfProductionEntrypoints`
