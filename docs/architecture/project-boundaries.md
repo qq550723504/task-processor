@@ -297,6 +297,7 @@ guards include:
 - `TestPublishingCommonUsesCanonicalPackage`
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
+- `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
@@ -342,6 +343,10 @@ layer.
 At the HTTP API edge, external client runtime dependencies should stay in
 dedicated runtime-deps types rather than bleeding across unrelated module
 contracts or domain-facing surfaces.
+
+OpenAI assembly should stay behind dedicated HTTP API adapters as well, so
+feature modules and broader runtime wiring do not absorb concrete provider
+construction concerns.
 
 Where historical platform implementation imports still exist, keep them
 explicitly allowlisted as migration seams only. They should shrink over time,
