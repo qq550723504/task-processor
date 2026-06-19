@@ -318,6 +318,7 @@ guards include:
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestAppBootstrapManagementClientImportsStayAllowlisted`
+- `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
@@ -435,6 +436,10 @@ Where management clients still appear in app bootstrap, keep them explicitly
 allowlisted as temporary seams only. New assembly should prefer direct owning
 packages or database-backed composition instead of expanding management
 dependencies.
+
+The same rule applies at the HTTP API edge: management clients there should
+remain narrow, explicit transition seams rather than becoming a default
+integration path for new request handling.
 
 Production entrypoints should not keep deprecated compatibility layers alive
 either. `cmd/*` packages must depend on the current owning packages directly

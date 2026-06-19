@@ -132,6 +132,7 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 		"TestPlatformRegistrationPackagesContainNoLocalArtifacts",
 		"TestBusinessDomainsDoNotImportAppRuntimeAssembly",
 		"TestAppBootstrapManagementClientImportsStayAllowlisted",
+		"TestAppHTTPAPIManagementClientImportsStayAllowlisted",
 		"TestCmdPackagesDoNotImportAppCompatibilityLayers",
 		"TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer",
 		"TestInternalPackagesDoNotImportAppStateCompatibilityLayer",
