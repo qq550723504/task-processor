@@ -291,6 +291,7 @@ guards include:
 - `TestPublishingSheinOpenAIImportsStayAllowlisted`
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
 - `TestPublishingSheinManagedManagementImportsStayAllowlisted`
+- `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
@@ -302,3 +303,8 @@ For the SHEIN publishing path specifically, treat managed management clients as
 a retirement seam rather than a stable dependency direction: new flows should
 prefer direct database-backed composition instead of expanding management API
 coupling.
+
+That same publishing boundary also forbids reintroducing legacy runtime or
+ListingKit-root dependencies into the publishing slice; migration work should
+converge on dedicated publishing/domain storage seams instead of reviving the
+older facade chain.
