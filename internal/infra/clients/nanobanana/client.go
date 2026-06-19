@@ -158,10 +158,14 @@ func (c *Client) submitImagesGeneration(ctx context.Context, req submitRequest) 
 	if err != nil {
 		return nil, err
 	}
+	resultURL, err := buildResultURL(c.cfg.SubmitURL)
+	if err != nil {
+		return nil, err
+	}
 
 	var lastErr error
 	for attempt := 1; attempt <= c.cfg.MaxAttempts; attempt++ {
-		result, err := c.submitGenerationRequest(ctx, submitURL, req)
+		result, err := c.submitGenerationRequest(ctx, submitURL, resultURL, req)
 		if err == nil {
 			return c.downloadGeneratedImages(ctx, result)
 		}
@@ -178,7 +182,7 @@ func (c *Client) submitImagesGeneration(ctx context.Context, req submitRequest) 
 	return nil, lastErr
 }
 
-func (c *Client) submitGenerationRequest(ctx context.Context, submitURL string, req submitRequest) (*gptImageGenerationsResponse, error) {
+func (c *Client) submitGenerationRequest(ctx context.Context, submitURL string, resultURL string, req submitRequest) (*resultPayload, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal image generation request: %w", err)
@@ -213,57 +217,163 @@ func (c *Client) submitGenerationRequest(ctx context.Context, submitURL string, 
 				Reason: strings.TrimSpace(providerStatus.Status),
 				Detail: strings.TrimSpace(providerStatus.Error),
 			}
-		case "running":
-			return nil, fmt.Errorf("unexpected image generation status: %s", providerStatus.Status)
+		case "succeeded":
+			return &resultPayload{
+				ID:      providerStatus.ID,
+				Status:  providerStatus.Status,
+				Results: providerStatus.Results,
+			}, nil
+		}
+		if isRunningStatus(status) && strings.TrimSpace(providerStatus.ID) != "" {
+			return c.pollGenerationResult(ctx, resultURL, providerStatus.ID)
 		}
 	}
 	var parsed gptImageGenerationsResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("decode image generation response: %w", err)
+	if err := json.Unmarshal(body, &parsed); err == nil {
+		results := make([]resultItem, 0, len(parsed.Data))
+		for _, item := range parsed.Data {
+			if strings.TrimSpace(item.URL) == "" {
+				continue
+			}
+			results = append(results, resultItem{URL: item.URL})
+		}
+		if len(results) == 0 {
+			return nil, fmt.Errorf("image generation response contained no url")
+		}
+		return &resultPayload{
+			Status:  "succeeded",
+			Results: results,
+		}, nil
 	}
-	if len(parsed.Data) == 0 || strings.TrimSpace(parsed.Data[0].URL) == "" {
-		return nil, fmt.Errorf("image generation response contained no url")
+	var parsedResult resultPayload
+	if err := json.Unmarshal(body, &parsedResult); err == nil {
+		status := strings.ToLower(strings.TrimSpace(parsedResult.Status))
+		switch status {
+		case "failed", "violation":
+			return nil, &JobError{
+				Reason: strings.TrimSpace(parsedResult.Status),
+				Detail: strings.TrimSpace(parsedResult.Error),
+			}
+		case "succeeded":
+			if len(parsedResult.Results) == 0 {
+				return nil, fmt.Errorf("image generation response contained no result")
+			}
+			return &parsedResult, nil
+		}
+		if isRunningStatus(status) && strings.TrimSpace(parsedResult.ID) != "" {
+			return c.pollGenerationResult(ctx, resultURL, parsedResult.ID)
+		}
 	}
-	return &parsed, nil
+	return nil, fmt.Errorf("decode image generation response: unsupported response shape")
 }
 
-func (c *Client) downloadGeneratedImages(ctx context.Context, resp *gptImageGenerationsResponse) (*openaiclient.ImageResponse, error) {
-	if resp == nil || len(resp.Data) == 0 {
+func (c *Client) pollGenerationResult(ctx context.Context, resultURL string, jobID string) (*resultPayload, error) {
+	for {
+		payload, err := c.fetchGenerationResult(ctx, resultURL, jobID)
+		if err != nil {
+			return nil, err
+		}
+		status := strings.ToLower(strings.TrimSpace(payload.Status))
+		switch status {
+		case "failed", "violation":
+			return nil, &JobError{
+				Reason: strings.TrimSpace(payload.Status),
+				Detail: strings.TrimSpace(payload.Error),
+			}
+		case "succeeded":
+			if len(payload.Results) == 0 {
+				return nil, fmt.Errorf("image generation result contained no output")
+			}
+			return payload, nil
+		}
+		if !isRunningStatus(status) {
+			return nil, fmt.Errorf("unexpected image generation status: %s", payload.Status)
+		}
+		select {
+		case <-time.After(c.cfg.PollInterval):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+}
+
+func (c *Client) fetchGenerationResult(ctx context.Context, resultURL string, jobID string) (*resultPayload, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, resultURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build image generation result request: %w", err)
+	}
+	query := httpReq.URL.Query()
+	query.Set("id", jobID)
+	httpReq.URL.RawQuery = query.Encode()
+	if strings.TrimSpace(c.cfg.APIKey) != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
+	}
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("query image generation result: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("query image generation result returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	var payload resultPayload
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode image generation result: %w", err)
+	}
+	return &payload, nil
+}
+
+func (c *Client) downloadGeneratedImages(ctx context.Context, payload *resultPayload) (*openaiclient.ImageResponse, error) {
+	if payload == nil || len(payload.Results) == 0 {
 		return nil, fmt.Errorf("gpt image response contained no images")
 	}
-	data := make([]openaiclient.ImageData, 0, len(resp.Data))
-	for _, item := range resp.Data {
-		if strings.TrimSpace(item.URL) == "" {
+	data := make([]openaiclient.ImageData, 0, len(payload.Results))
+	for _, item := range payload.Results {
+		urlValue := strings.TrimSpace(item.URL)
+		if urlValue != "" {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlValue, nil)
+			if err != nil {
+				return nil, fmt.Errorf("build download request: %w", err)
+			}
+			httpResp, err := c.httpClient.Do(req)
+			if err != nil {
+				return nil, fmt.Errorf("download gpt image: %w", err)
+			}
+			body, readErr := io.ReadAll(httpResp.Body)
+			httpResp.Body.Close()
+			if readErr != nil {
+				return nil, fmt.Errorf("read gpt image: %w", readErr)
+			}
+			if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
+				return nil, fmt.Errorf("download gpt image returned status %d: %s", httpResp.StatusCode, strings.TrimSpace(string(body)))
+			}
+			data = append(data, openaiclient.ImageData{
+				URL:     urlValue,
+				B64JSON: base64.StdEncoding.EncodeToString(body),
+			})
 			continue
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.URL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("build download request: %w", err)
+		content := strings.TrimSpace(item.Content)
+		if content != "" {
+			data = append(data, openaiclient.ImageData{B64JSON: content})
 		}
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("download gpt image: %w", err)
-		}
-		body, readErr := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if readErr != nil {
-			return nil, fmt.Errorf("read gpt image: %w", readErr)
-		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return nil, fmt.Errorf("download gpt image returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-		}
-		data = append(data, openaiclient.ImageData{
-			URL:     item.URL,
-			B64JSON: base64.StdEncoding.EncodeToString(body),
-		})
 	}
 	if len(data) == 0 {
 		return nil, fmt.Errorf("gpt image response contained no downloadable url")
 	}
-	return &openaiclient.ImageResponse{Data: data, Created: resp.Created}, nil
+	return &openaiclient.ImageResponse{Data: data}, nil
 }
 
 func buildSubmitURL(configuredURL string, model string) (string, error) {
+	return buildGRSAIURL(configuredURL, "/v1/api/generate")
+}
+
+func buildResultURL(configuredURL string) (string, error) {
+	return buildGRSAIURL(configuredURL, "/v1/api/result")
+}
+
+func buildGRSAIURL(configuredURL string, path string) (string, error) {
 	trimmed := strings.TrimSpace(configuredURL)
 	if trimmed == "" {
 		return "", fmt.Errorf("nanobanana submit url cannot be empty")
@@ -272,8 +382,19 @@ func buildSubmitURL(configuredURL string, model string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse nanobanana submit url: %w", err)
 	}
-	parsed.Path = "/v1/images/generations"
+	parsed.Path = path
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
 	return parsed.String(), nil
+}
+
+func isRunningStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "running", "queued", "pending", "processing", "submitted", "in_progress":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeGenerationSize(size string) string {

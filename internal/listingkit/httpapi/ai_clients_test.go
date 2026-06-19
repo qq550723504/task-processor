@@ -2,6 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -203,6 +206,59 @@ func TestListingKitRoutedImageClientUsesGPTImage2ByDefault(t *testing.T) {
 	}
 	if nano.lastGenerate != nil {
 		t.Fatal("did not expect nanobanana client to receive default request")
+	}
+}
+
+func TestBuildStrictListingKitImageClientUsesGRSAIGenerateProtocolForGPTImage2(t *testing.T) {
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/api/generate":
+			var req map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			if req["model"] != "gpt-image-2" {
+				t.Fatalf("model = %#v", req["model"])
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":       "job-1",
+				"status":   "succeeded",
+				"results":  []map[string]any{{"url": serverURL + "/generated.png"}},
+				"progress": 100,
+			})
+		case "/generated.png":
+			_, _ = w.Write([]byte("png"))
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	resolver := &stubListingKitClientResolver{
+		resolved: &openaiclient.ResolvedClientConfig{
+			CacheKey: "tenant-a:image_gpt_image_2",
+			Config: &openaiclient.ClientConfig{
+				APIKey:     "tenant-key",
+				BaseURL:    server.URL + "/grsai/v1",
+				Model:      "gpt-image-2",
+				Timeout:    time.Second,
+				MaxRetries: 1,
+				RetryDelay: time.Millisecond,
+			},
+		},
+	}
+
+	client := buildStrictListingKitImageClient(&config.Config{}, resolver, listingKitImageClientNameGPTImage2)
+	if client == nil {
+		t.Fatal("expected image client")
+	}
+	if _, err := client.GenerateImage(context.Background(), &openaiclient.ImageGenerateRequest{
+		Prompt: "test",
+		Size:   "1024x1024",
+	}); err != nil {
+		t.Fatalf("GenerateImage() error = %v", err)
 	}
 }
 

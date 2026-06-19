@@ -14,13 +14,13 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
-func TestClientEditImageUsesImagesGenerationsEndpointForNanoBanana(t *testing.T) {
+func TestClientEditImageUsesGenerateEndpointForNanoBanana(t *testing.T) {
 	imageBytes := []byte("generated-image")
 	var serverURL string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/images/generations":
+		case "/v1/api/generate":
 			if r.Method != http.MethodPost {
 				t.Fatalf("method = %s", r.Method)
 			}
@@ -47,17 +47,12 @@ func TestClientEditImageUsesImagesGenerationsEndpointForNanoBanana(t *testing.T)
 			if images[0] != "https://example.com/source.png" || images[1] != "https://example.com/side.png" {
 				t.Fatalf("image urls = %#v", images)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"created": 123,
-				"data": []map[string]any{
-					{"url": serverURL + "/generated.png"},
-				},
-				"usage": map[string]any{
-					"total_tokens":         1,
-					"input_tokens":         1,
-					"output_tokens":        0,
-					"input_tokens_details": map[string]any{},
-				},
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				ID:     "job-1",
+				Status: "succeeded",
+				Results: []resultItem{{
+					URL: serverURL + "/generated.png",
+				}},
 			})
 		case "/generated.png":
 			w.Header().Set("Content-Type", "image/png")
@@ -118,7 +113,7 @@ func TestClientEditImageRequiresImageURL(t *testing.T) {
 	}
 }
 
-func TestBuildSubmitURLUsesImagesGenerationsEndpoint(t *testing.T) {
+func TestBuildSubmitURLUsesGenerateEndpoint(t *testing.T) {
 	tests := []struct {
 		name  string
 		base  string
@@ -129,19 +124,19 @@ func TestBuildSubmitURLUsesImagesGenerationsEndpoint(t *testing.T) {
 			name:  "nano model on v1 base",
 			base:  "https://grsaiapi.com/v1",
 			model: "nano-banana-fast",
-			want:  "https://grsaiapi.com/v1/images/generations",
+			want:  "https://grsaiapi.com/v1/api/generate",
 		},
 		{
 			name:  "gpt model on host only",
 			base:  "https://grsai.dakka.com.cn",
 			model: "gpt-image-2",
-			want:  "https://grsai.dakka.com.cn/v1/images/generations",
+			want:  "https://grsai.dakka.com.cn/v1/api/generate",
 		},
 		{
 			name:  "legacy draw path",
 			base:  "https://grsai.dakka.com.cn/v1/draw/nano-banana",
 			model: "nano-banana-fast",
-			want:  "https://grsai.dakka.com.cn/v1/images/generations",
+			want:  "https://grsai.dakka.com.cn/v1/api/generate",
 		},
 	}
 	for _, tt := range tests {
@@ -157,13 +152,13 @@ func TestBuildSubmitURLUsesImagesGenerationsEndpoint(t *testing.T) {
 	}
 }
 
-func TestClientEditImageUsesImagesGenerationsEndpointForGPTImage(t *testing.T) {
+func TestClientEditImageUsesGenerateEndpointForGPTImage(t *testing.T) {
 	imageBytes := []byte("generated-image")
 	var serverURL string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/images/generations":
+		case "/v1/api/generate":
 			if r.Method != http.MethodPost {
 				t.Fatalf("method = %s", r.Method)
 			}
@@ -193,17 +188,12 @@ func TestClientEditImageUsesImagesGenerationsEndpointForGPTImage(t *testing.T) {
 			if images[0] != "https://example.com/source.png" || images[1] != "https://example.com/side.png" {
 				t.Fatalf("image urls = %#v", images)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"created": 123,
-				"data": []map[string]any{
-					{"url": serverURL + "/generated.png"},
-				},
-				"usage": map[string]any{
-					"total_tokens":         1,
-					"input_tokens":         1,
-					"output_tokens":        0,
-					"input_tokens_details": map[string]any{},
-				},
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				ID:     "job-1",
+				Status: "succeeded",
+				Results: []resultItem{{
+					URL: serverURL + "/generated.png",
+				}},
 			})
 		case "/generated.png":
 			w.Header().Set("Content-Type", "image/png")
@@ -247,10 +237,74 @@ func TestClientEditImageUsesImagesGenerationsEndpointForGPTImage(t *testing.T) {
 	}
 }
 
+func TestClientGenerateImagePollsAsyncResultUntilSucceeded(t *testing.T) {
+	imageBytes := []byte("generated-image")
+	var serverURL string
+	var resultCalls int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/v1/api/generate":
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				ID:     "job-async",
+				Status: "running",
+			})
+		case r.URL.Path == "/v1/api/result":
+			call := atomic.AddInt32(&resultCalls, 1)
+			if got := r.URL.Query().Get("id"); got != "job-async" {
+				t.Fatalf("query id = %q", got)
+			}
+			status := "running"
+			var results []resultItem
+			if call >= 2 {
+				status = "succeeded"
+				results = []resultItem{{URL: serverURL + "/generated.png"}}
+			}
+			_ = json.NewEncoder(w).Encode(resultPayload{
+				ID:       "job-async",
+				Status:   status,
+				Results:  results,
+				Progress: int(call) * 50,
+			})
+		case r.URL.Path == "/generated.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(imageBytes)
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	client := NewClient(Config{
+		APIKey:       "test-key",
+		Model:        "gpt-image-2",
+		SubmitURL:    server.URL + "/v1",
+		PollInterval: 10 * time.Millisecond,
+		Timeout:      time.Second,
+		MaxAttempts:  3,
+		HTTPClient:   server.Client(),
+	})
+
+	resp, err := client.GenerateImage(context.Background(), &openaiclient.ImageGenerateRequest{
+		Prompt: "flat pod artwork",
+		Size:   "1024x1024",
+	})
+	if err != nil {
+		t.Fatalf("GenerateImage() error = %v", err)
+	}
+	if resultCalls < 2 {
+		t.Fatalf("result calls = %d, want at least 2", resultCalls)
+	}
+	if len(resp.Data) != 1 || resp.Data[0].URL != serverURL+"/generated.png" {
+		t.Fatalf("response = %+v", resp)
+	}
+}
+
 func TestClientEditImageReturnsTypedModerationError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/images/generations":
+		case "/v1/api/generate":
 			_ = json.NewEncoder(w).Encode(submitResponse{
 				ID:     "job-1",
 				Status: "violation",
@@ -294,23 +348,18 @@ func TestClientGenerateImageRetriesTransientHTTPFailure(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/images/generations":
+		case "/v1/api/generate":
 			if atomic.AddInt32(&submitCount, 1) == 1 {
 				w.WriteHeader(http.StatusInternalServerError)
 				_, _ = w.Write([]byte("internal error"))
 				return
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"created": 123,
-				"data": []map[string]any{
-					{"url": serverURL + "/generated.png"},
-				},
-				"usage": map[string]any{
-					"total_tokens":         1,
-					"input_tokens":         1,
-					"output_tokens":        0,
-					"input_tokens_details": map[string]any{},
-				},
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				ID:     "job-1",
+				Status: "succeeded",
+				Results: []resultItem{{
+					URL: serverURL + "/generated.png",
+				}},
 			})
 		case "/generated.png":
 			w.Header().Set("Content-Type", "image/png")
@@ -352,7 +401,7 @@ func TestClientGenerateImageDoesNotRetryModerationFailure(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/images/generations":
+		case "/v1/api/generate":
 			atomic.AddInt32(&submitCount, 1)
 			_ = json.NewEncoder(w).Encode(submitResponse{
 				ID:     "job-1",
@@ -387,13 +436,13 @@ func TestClientGenerateImageDoesNotRetryModerationFailure(t *testing.T) {
 	}
 }
 
-func TestClientGenerateImageUsesImagesGenerationsEndpointForNanoBanana(t *testing.T) {
+func TestClientGenerateImageUsesGenerateEndpointForNanoBanana(t *testing.T) {
 	imageBytes := []byte("generated-image")
 	var serverURL string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/images/generations":
+		case "/v1/api/generate":
 			if r.Method != http.MethodPost {
 				t.Fatalf("submit method = %s", r.Method)
 			}
@@ -416,17 +465,12 @@ func TestClientGenerateImageUsesImagesGenerationsEndpointForNanoBanana(t *testin
 			if req["response_format"] != "url" {
 				t.Fatalf("response_format = %#v", req["response_format"])
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"created": 123,
-				"data": []map[string]any{
-					{"url": serverURL + "/generated.png"},
-				},
-				"usage": map[string]any{
-					"total_tokens":         1,
-					"input_tokens":         1,
-					"output_tokens":        0,
-					"input_tokens_details": map[string]any{},
-				},
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				ID:     "job-1",
+				Status: "succeeded",
+				Results: []resultItem{{
+					URL: serverURL + "/generated.png",
+				}},
 			})
 		case "/generated.png":
 			w.Header().Set("Content-Type", "image/png")
