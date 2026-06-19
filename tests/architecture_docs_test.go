@@ -17,6 +17,8 @@ func TestTemporalBoundaryDocumentDefinesStableReviewRules(t *testing.T) {
 
 	required := []string{
 		"# Temporal Boundaries",
+		"project-boundaries.md",
+		"repository-wide entrypoint",
 		"HTTP API",
 		"service facade",
 		"workflow runtime",
@@ -73,6 +75,9 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 	}
 
 	required := []string{
+		"How To Use This Document",
+		"default repository-wide entrypoint",
+		"specialized document seems broader",
 		"Current Enforcement",
 		"import-boundary tests",
 		"TestDomainHTTPPackagesDoNotImportAppHTTPAPI",
@@ -1178,6 +1183,8 @@ func TestPlatformBoundaryStrategyDefinesConvergenceRoles(t *testing.T) {
 
 	required := []string{
 		"# Platform Boundary Strategy",
+		"project-boundaries.md",
+		"repository-wide entrypoint",
 		"Historical platform packages",
 		"`internal/publishing/*`",
 		"`internal/listingkit`",
@@ -1209,6 +1216,8 @@ func TestHistoricalPlatformMigrationInventoryDefinesCostSlices(t *testing.T) {
 
 	required := []string{
 		"# Historical Platform Migration Inventory",
+		"project-boundaries.md",
+		"platform-boundary-strategy.md",
 		"`internal/shein`",
 		"`internal/temu`",
 		"`internal/amazon`",
@@ -1234,6 +1243,8 @@ func TestExternalClientBoundaryInventoryDefinesCouplingHotspots(t *testing.T) {
 
 	required := []string{
 		"# External Client Boundary Inventory",
+		"project-boundaries.md",
+		"repository-wide default",
 		"`internal/infra/clients/management`",
 		"management retirement target",
 		"in-repository database/repository access",
@@ -1588,6 +1599,9 @@ func TestRepositoryStructureDocumentTracksDirectoryGuardTests(t *testing.T) {
 
 	required := []string{
 		"# Repository Structure",
+		"How To Use This Document",
+		"docs/architecture/README.md",
+		"docs/architecture/project-boundaries.md",
 		"`cmd/`",
 		"`hack/`",
 		"`tools/`",
@@ -1621,6 +1635,9 @@ func TestAppAssemblyBoundaryDocumentDefinesStableAssemblyVocabulary(t *testing.T
 
 	required := []string{
 		"# App Assembly Boundaries",
+		"project-boundaries.md",
+		"repository-wide entrypoint",
+		"default ownership and dependency direction",
 		"Assembly Vocabulary",
 		"build / initialize",
 		"register",
@@ -1660,6 +1677,8 @@ func TestCompatibilityRetirementDocumentCapturesAppCompatibilityStatus(t *testin
 
 	required := []string{
 		"# Compatibility Retirement",
+		"project-boundaries.md",
+		"repository-wide entrypoint",
 		"`internal/app/processor`",
 		"`internal/app/state`",
 		"Retired",
@@ -1690,6 +1709,8 @@ func TestListingPreviewBoundaryDocumentTracksPlatformNeutralGuard(t *testing.T) 
 
 	required := []string{
 		"# Listing Preview Boundaries",
+		"project-boundaries.md",
+		"repository-wide default",
 		"`internal/listing/preview`",
 		"`internal/listingkit`",
 		"platform-neutral",
