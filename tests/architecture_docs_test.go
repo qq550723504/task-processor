@@ -1551,6 +1551,8 @@ func TestCompatibilityRetirementDocumentCapturesAppCompatibilityStatus(t *testin
 		"Retired",
 		"zero in-repository imports",
 		"TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer",
+		"TestAppProcessorCompatibilityLayerIsRetired",
+		"TestInternalPackagesDoNotImportAppStateCompatibilityLayer",
 		"TestAppStateCompatibilityLayerIsRetired",
 		"`internal/infra/productcrawler`",
 		"`internal/app/crawler/fetcher`",
