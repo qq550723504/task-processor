@@ -319,6 +319,7 @@ guards include:
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestAppBootstrapManagementClientImportsStayAllowlisted`
 - `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
+- `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
 - `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
@@ -440,6 +441,10 @@ dependencies.
 The same rule applies at the HTTP API edge: management clients there should
 remain narrow, explicit transition seams rather than becoming a default
 integration path for new request handling.
+
+Runtime listing flows should treat management clients the same way: if one is
+still present, it must stay on an explicit allowlist seam rather than becoming
+the preferred runtime composition path.
 
 Production entrypoints should not keep deprecated compatibility layers alive
 either. `cmd/*` packages must depend on the current owning packages directly
