@@ -286,6 +286,7 @@ guards include:
 - `TestAmazonExternalClientImportsStayAllowlisted`
 - `TestSheinBridgeExternalClientImportsStayAllowlisted`
 - `TestSheinManagementClientImportsStayAllowlisted`
+- `TestSheinOpenAIImportsStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
 
