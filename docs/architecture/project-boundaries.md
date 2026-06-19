@@ -292,6 +292,7 @@ guards include:
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
 - `TestPublishingSheinManagedManagementImportsStayAllowlisted`
 - `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
+- `TestPublishingCommonUsesCanonicalPackage`
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
@@ -314,6 +315,10 @@ older facade chain.
 At the convergence layer, keep `internal/publishing/common` platform-neutral as
 well: shared publishing code can depend on canonical contracts, but it must not
 pull concrete platform implementations back upward into the common slice.
+
+That common slice should also anchor on canonical publishing packages rather
+than ad hoc platform-specific type aliases, so cross-platform flows converge on
+one stable contract surface before reaching concrete implementations.
 
 Likewise, platform modules should stay downstream of domain and HTTP assembly
 boundaries. They can consume stable contracts and adapters, but they must not
