@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/app/bootstrap/fetchers"
 	bootstrapprocessors "task-processor/internal/app/bootstrap/processors"
 	"task-processor/internal/app/consumer"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 

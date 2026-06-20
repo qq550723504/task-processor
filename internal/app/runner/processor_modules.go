@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 )
