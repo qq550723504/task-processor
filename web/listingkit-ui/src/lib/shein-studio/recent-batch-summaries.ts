@@ -220,6 +220,7 @@ function buildPersistedBatchSummary(
     storeSummary: buildStoreSummaryFromAssignments(storeAssignments),
     designCount,
     createdTaskCount,
+    batchStatus: batch.batchStatus,
     updatedAt: group?.updatedAt ?? batch.updatedAt,
     alerts: buildPersistedBatchAlerts(batch),
     recentResults: buildRecentResults({
@@ -255,6 +256,7 @@ function buildRecoverableDraftSummary(
     ]),
     designCount: group.designs.length,
     createdTaskCount: group.createdTasks.length,
+    batchStatus: draft.batchStatus,
     updatedAt: group.updatedAt || draft.updatedAt,
     alerts: buildRecoverableDraftAlerts(draft, group),
     recentResults: buildRecentResults({

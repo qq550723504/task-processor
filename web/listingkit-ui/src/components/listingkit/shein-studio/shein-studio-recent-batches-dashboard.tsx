@@ -28,6 +28,16 @@ type RecentBatchAlertAction = {
   label: string;
 };
 
+function summaryHasPendingGeneration(summary: SheinStudioRecentBatchSummary) {
+  return (
+    summary.batchStatus === "draft" ||
+    summary.batchStatus === "generating" ||
+    summary.batchStatus === "partially_materialized" ||
+    summary.batchStatus === "partially_failed" ||
+    summary.batchStatus === "failed"
+  );
+}
+
 const DASHBOARD_PREFERENCES_STORAGE_KEY =
   "listingkit:shein-studio:recent-batches-dashboard";
 
@@ -550,6 +560,12 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
             ? "review"
             : "generate",
       label: "恢复草稿",
+    };
+  }
+  if (summaryHasPendingGeneration(summary)) {
+    return {
+      action: "generate",
+      label: "继续生成",
     };
   }
   if (summary.createdTaskCount > 0) {

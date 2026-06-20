@@ -764,6 +764,7 @@ describe("shein studio design metadata", () => {
         {
           id: "batch-1",
           batch_name: "批次1",
+          status: "generating",
           prompt: "retro cherries",
           updated_at: "2026-05-30T00:00:00Z",
           legacy_compatibility_snapshot: {
@@ -789,6 +790,7 @@ describe("shein studio design metadata", () => {
     expect(batches).toMatchObject([
       {
         id: "batch-1",
+        batchStatus: "generating",
         designs: [
           {
             id: "design-1",

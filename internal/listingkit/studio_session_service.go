@@ -66,6 +66,7 @@ func mapStudioBatchListItem(session *SheinStudioSession, designCount int) SheinS
 	return SheinStudioBatchListItem{
 		ID:                      session.ID,
 		BatchName:               session.BatchName,
+		Status:                  string(session.Status),
 		Prompt:                  session.Prompt,
 		StyleCount:              session.StyleCount,
 		VariationIntensity:      session.VariationIntensity,

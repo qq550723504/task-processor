@@ -118,6 +118,7 @@ type UpsertStudioBatchRequest struct {
 type SheinStudioBatchListItem struct {
 	ID                      string                          `json:"id"`
 	BatchName               string                          `json:"batch_name,omitempty"`
+	Status                  string                          `json:"status,omitempty"`
 	Prompt                  string                          `json:"prompt,omitempty"`
 	StyleCount              string                          `json:"style_count,omitempty"`
 	VariationIntensity      string                          `json:"variation_intensity,omitempty"`

@@ -258,6 +258,36 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-2");
   });
 
+  it("prioritizes continue-generate when a batch is still generating even if some designs already exist", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Still Running",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 58,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+            batchStatus: "generating",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "继续生成" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "去创建任务" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens a recent batch on the dedicated batch route", () => {
     render(
       <SheinStudioRecentBatchesDashboard

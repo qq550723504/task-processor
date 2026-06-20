@@ -49,6 +49,7 @@ describe("buildRecentBatchSummaries", () => {
         designs: [{ id: "design-1" }],
         selectedIds: ["design-1"],
         createdTasks: [],
+        batchStatus: "generating",
         updatedAt: "2026-05-26T10:00:00.000Z",
       },
     ]);
@@ -62,6 +63,7 @@ describe("buildRecentBatchSummaries", () => {
       promptPreview: "retro cherries",
       designCount: 1,
       createdTaskCount: 0,
+      batchStatus: "generating",
       storeSummary: "869",
       alerts: [],
     });

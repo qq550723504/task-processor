@@ -528,6 +528,9 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	if list.Items[0].ID != detail.Batch.ID {
 		t.Fatalf("batch id = %q, want %q", list.Items[0].ID, detail.Batch.ID)
 	}
+	if got, want := list.Items[0].Status, string(detail.Batch.Status); got != want {
+		t.Fatalf("batch status = %q, want %q", got, want)
+	}
 	repo := svc.studioDeps.sessionRepo.(*studioSessionRepoStub)
 	storedSession := repo.sessions[detail.Batch.ID]
 	if storedSession == nil {

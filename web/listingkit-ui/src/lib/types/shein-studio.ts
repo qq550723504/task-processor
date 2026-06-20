@@ -353,6 +353,7 @@ export type SheinStudioRecentBatchSummary = {
   storeSummary: string;
   designCount: number;
   createdTaskCount: number;
+  batchStatus?: string;
   updatedAt: string;
   alerts?: SheinStudioRecentBatchAlert[];
   recentResults?: SheinStudioRecentBatchResult[];

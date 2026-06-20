@@ -458,6 +458,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
       normalizedSelectedIds,
       normalizedDesigns,
     ),
+    batchStatus: item.status,
     legacyCompatibilitySnapshot,
     generationError: legacyCompatibilitySnapshot?.generationError ?? "",
     generationJobId: legacyCompatibilitySnapshot?.generationJobId ?? "",
