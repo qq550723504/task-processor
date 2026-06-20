@@ -108,6 +108,7 @@ type StudioBatchListResponse = {
     id: string;
     tenant_id?: string;
     batch_name?: string;
+    status?: StudioBatchDraftStatus;
     prompt?: string;
     style_count?: string;
     variation_intensity?: SheinStudioVariationIntensity;
