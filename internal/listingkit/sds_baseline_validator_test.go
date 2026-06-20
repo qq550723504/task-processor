@@ -228,49 +228,37 @@ func TestGetSDSBaselineReadinessReturnsCachedWhenValidationUnknown(t *testing.T)
 	}
 }
 
-func TestWarmSDSBaselineTreatsRemoteDesignSurfaceCredentialBootstrapFailureAsReady(t *testing.T) {
+func TestValidateSDSBaselineRemote_CredentialBootstrapErrorIsNotReady(t *testing.T) {
 	t.Parallel()
 
-	svc := seedTaskDeps(seedSupportDeps(&service{
+	svc := seedSupportDeps(&service{
 		repo: NewInMemoryRepositoryForTest(),
 	}, supportDependencySeed{
 		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
 			productDetail:    &sdstemplate.ProductDetail{},
 			designProductErr: fmt.Errorf("merchant_name, username and password are required"),
 		},
-	}), taskDependencySeed{
-		sdsLoginStatusProvider: stubSDSLoginStatusProvider{
-			status: &sdslogin.Status{
-				HasAccessToken: true,
-			},
-		},
 	})
 
-	readiness, err := svc.WarmSDSBaseline(context.Background(), &WarmSDSBaselineRequest{
-		SDS: &SDSSyncOptions{
-			ParentProductID:  9001,
-			PrototypeGroupID: 7001,
-			VariantID:        101,
-			DesignType:       "material",
-			LayerID:          "layer-1",
-			PrintableWidth:   1000,
-			PrintableHeight:  1000,
-			ProductName:      "Baseline product",
-		},
+	result := svc.validateSDSBaselineRemote(context.Background(), &SDSSyncOptions{
+		ParentProductID:  9001,
+		PrototypeGroupID: 7001,
+		VariantID:        101,
+		DesignType:       "material",
+		LayerID:          "layer-1",
+		PrintableWidth:   1000,
+		PrintableHeight:  1000,
 	})
-	if err != nil {
-		t.Fatalf("WarmSDSBaseline() error = %v", err)
+	if result.Status == SDSBaselineValidationStatusReady {
+		t.Fatalf("validation result = %+v, want non-ready", result)
 	}
-	if readiness == nil {
-		t.Fatal("expected readiness payload")
+	if result.Status != SDSBaselineValidationStatusBlocked {
+		t.Fatalf("validation status = %q, want blocked", result.Status)
 	}
-	if readiness.ValidationStatus != SDSBaselineValidationStatusReady {
-		t.Fatalf("validation status = %q, want ready", readiness.ValidationStatus)
+	if result.ReasonCode != SDSBaselineReasonCodeLoginMissingCredentials {
+		t.Fatalf("reason code = %q, want %q", result.ReasonCode, SDSBaselineReasonCodeLoginMissingCredentials)
 	}
-	if readiness.Status != SDSBaselineStatusReady {
-		t.Fatalf("status = %q, want ready", readiness.Status)
-	}
-	if readiness.ReasonCode != "" || readiness.Reason != "" {
-		t.Fatalf("readiness = %+v, want empty downgraded reason", readiness)
+	if result.Reason == "" {
+		t.Fatal("expected stable credential bootstrap reason")
 	}
 }

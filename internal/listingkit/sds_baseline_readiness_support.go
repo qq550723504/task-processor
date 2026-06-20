@@ -5,7 +5,87 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"task-processor/internal/catalog/canonical"
 )
+
+const sdsBaselineSupportedVersion = 1
+
+type sdsBaselineReusableReadiness struct {
+	Reusable         bool
+	Product          *canonical.Product
+	CacheStatus      string
+	ValidationStatus string
+	ReasonCode       string
+	Reason           string
+	Err              error
+}
+
+func evaluateSDSBaselineReusableReadiness(entry *SDSBaselineCacheEntry) sdsBaselineReusableReadiness {
+	if entry == nil {
+		return sdsBaselineReusableReadiness{
+			CacheStatus:      SDSBaselineStatusMissing,
+			ValidationStatus: SDSBaselineValidationStatusUnknown,
+			ReasonCode:       SDSBaselineReasonCodeCacheUnavailable,
+			Reason:           "No baseline cache entry exists for this SDS selection.",
+		}
+	}
+	cacheStatus := normalizedSDSBaselineCacheStatus(entry.Status)
+	validationStatus := normalizedSDSBaselineValidationStatus(entry.ValidationStatus)
+	result := sdsBaselineReusableReadiness{
+		CacheStatus:      cacheStatus,
+		ValidationStatus: validationStatus,
+	}
+	if !isUsableSDSBaselineCacheStatus(cacheStatus) {
+		result.ReasonCode = SDSBaselineReasonCodeCacheUnavailable
+		result.Reason = fmt.Sprintf("Baseline cache is not usable for grouped SDS create (status: %s).", firstNonEmpty(cacheStatus, "unknown"))
+		return result
+	}
+	if entry.Version != sdsBaselineSupportedVersion {
+		result.ReasonCode = SDSBaselineReasonCodeCacheVersionUnsupported
+		result.Reason = fmt.Sprintf("Baseline cache version %d is not supported.", entry.Version)
+		return result
+	}
+	if entry.CanonicalProductBase == nil {
+		result.ReasonCode = SDSBaselineReasonCodeCachePayloadMissing
+		result.Reason = "Baseline cache entry is marked baseline_cached but missing canonical payload."
+		return result
+	}
+	product, err := entry.CanonicalProduct()
+	if err != nil {
+		result.ReasonCode = SDSBaselineReasonCodeCachePayloadInvalid
+		result.Reason = fmt.Sprintf("Baseline cache payload is invalid: %v", err)
+		result.Err = err
+		return result
+	}
+	if product == nil {
+		result.ReasonCode = SDSBaselineReasonCodeCachePayloadEmpty
+		result.Reason = "Baseline cache entry resolved to an empty canonical product."
+		result.Err = fmt.Errorf("sds baseline %q resolved to empty canonical product", entry.BaselineKey)
+		return result
+	}
+	if validationStatus != SDSBaselineValidationStatusReady {
+		result.ReasonCode = firstNonEmpty(strings.TrimSpace(entry.ValidationReasonCode), SDSBaselineReasonCodeValidationNotReady)
+		result.Reason = firstNonEmpty(strings.TrimSpace(entry.ValidationReason), "SDS baseline validation is not ready.")
+		return result
+	}
+	result.Reusable = true
+	result.Product = product
+	return result
+}
+
+func normalizedSDSBaselineCacheStatus(status string) string {
+	return strings.ToLower(strings.TrimSpace(status))
+}
+
+func isUsableSDSBaselineCacheStatus(status string) bool {
+	switch normalizedSDSBaselineCacheStatus(status) {
+	case SDSBaselineStatusBaselineCached, SDSBaselineStatusReady:
+		return true
+	default:
+		return false
+	}
+}
 
 func (b *sdsBaselineService) reconcileCachedSDSLoginBaselineReadiness(
 	ctx context.Context,

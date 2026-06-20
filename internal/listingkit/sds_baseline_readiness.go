@@ -64,6 +64,8 @@ const (
 	SDSBaselineReasonCodeCachePayloadInvalid        = "cache_payload_invalid"
 	SDSBaselineReasonCodeCachePayloadEmpty          = "cache_payload_empty"
 	SDSBaselineReasonCodeCacheUnavailable           = "cache_unavailable"
+	SDSBaselineReasonCodeCacheVersionUnsupported    = "cache_version_unsupported"
+	SDSBaselineReasonCodeValidationNotReady         = "validation_not_ready"
 )
 
 func (q *SDSBaselineReadinessQuery) Validate() error {

@@ -187,7 +187,9 @@ func (s *service) validateSDSBaselineRemote(ctx context.Context, options *SDSSyn
 	if err != nil {
 		if isSDSBaselineCredentialBootstrapError(err) {
 			return sdsBaselineValidationResult{
-				Status: SDSBaselineValidationStatusReady,
+				Status:     SDSBaselineValidationStatusBlocked,
+				ReasonCode: SDSBaselineReasonCodeLoginMissingCredentials,
+				Reason:     "SDS credential bootstrap is missing merchant credentials.",
 			}
 		}
 		return sdsBaselineValidationResult{
