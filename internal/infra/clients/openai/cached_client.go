@@ -144,6 +144,18 @@ func (c *CachedClient) GetDefaultModel() string {
 	return c.client.GetDefaultModel()
 }
 
+func (c *CachedClient) SupportsAsyncImageGeneration() bool {
+	return c.client.SupportsAsyncImageGeneration()
+}
+
+func (c *CachedClient) SubmitImageGeneration(ctx context.Context, req *ImageGenerateRequest) (*ImageAsyncSubmitResponse, error) {
+	return c.client.SubmitImageGeneration(ctx, req)
+}
+
+func (c *CachedClient) QueryImageGeneration(ctx context.Context, jobID string) (*ImageAsyncQueryResponse, error) {
+	return c.client.QueryImageGeneration(ctx, jobID)
+}
+
 // ClearCache 清除指定请求的缓存
 func (c *CachedClient) ClearCache(ctx context.Context, req *ChatCompletionRequest) error {
 	if !c.enabled {

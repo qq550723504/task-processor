@@ -54,6 +54,8 @@ func (g *studioBatchGenerationService) recoverGeneratingItem(ctx context.Context
 			return g.failItemAndAttempt(ctx, *claimedItem, attempt, "generation result payload invalid")
 		}
 		return g.recoverAwaitingMaterializationItem(ctx, batch, *claimedItem, attempts)
+	case StudioGenerationAttemptStatusSubmitted, StudioGenerationAttemptStatusPolling:
+		return g.recoverAsyncGeneratingItem(ctx, batch, item, attempt)
 	case StudioGenerationAttemptStatusRunning, StudioGenerationAttemptStatusQueued:
 		if !isStudioBatchAttemptStale(attempt, g.now()) {
 			return nil
@@ -65,6 +67,82 @@ func (g *studioBatchGenerationService) recoverGeneratingItem(ctx context.Context
 		return g.failItemAndAttempt(ctx, item, attempt, message)
 	default:
 		return g.failItemAndAttempt(ctx, item, attempt, firstNonEmpty(strings.TrimSpace(attempt.ErrorMessage), "generation failed"))
+	}
+}
+
+func (g *studioBatchGenerationService) recoverAsyncGeneratingItem(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord) error {
+	if attempt == nil {
+		return nil
+	}
+	if strings.TrimSpace(attempt.UpstreamJobID) == "" {
+		return g.failItemAndAttempt(ctx, item, attempt, "async generation attempt missing upstream job id")
+	}
+	if g == nil || g.queryAsync == nil {
+		return nil
+	}
+
+	queryOutput, err := g.queryAsync(ctx, StudioBatchGenerateExecutionInput{
+		BatchID:   batch.ID,
+		ItemID:    item.ID,
+		AttemptID: attempt.ID,
+		Request:   buildStudioBatchItemDesignRequest(batch, item),
+	}, attempt.UpstreamJobID)
+	if err != nil {
+		message := err.Error()
+		if shouldRetryStudioBatchRecoveredFailure(message, attempt.AttemptNo) {
+			return g.requeueItemAfterFailedAttempt(ctx, item, attempt, message)
+		}
+		return g.failItemAndAttempt(ctx, item, attempt, message)
+	}
+	if queryOutput == nil || queryOutput.Result == nil {
+		return nil
+	}
+
+	now := g.now()
+	attempt.Provider = firstNonEmpty(strings.TrimSpace(queryOutput.Result.Provider), attempt.Provider)
+	attempt.RequestID = firstNonEmpty(strings.TrimSpace(queryOutput.Result.RequestID), attempt.RequestID)
+	attempt.ResultCheckedAt = timePtr(now)
+	attempt.QueryAttempts++
+	if payload := strings.TrimSpace(queryOutput.ResultPayload); payload != "" {
+		attempt.ResultPayload = payload
+	} else if raw := strings.TrimSpace(queryOutput.Result.RawResultResponse); raw != "" {
+		attempt.ResultPayload = raw
+	}
+
+	switch queryOutput.Result.Status {
+	case AIImageAsyncResultQueued, AIImageAsyncResultRunning:
+		attempt.Status = StudioGenerationAttemptStatusPolling
+		attempt.UpdatedAt = now
+		return g.repo.UpdateStudioGenerationAttempt(ctx, attempt)
+	case AIImageAsyncResultSucceeded:
+		execution := &StudioBatchGenerateExecutionOutput{
+			Response:      queryOutput.Response,
+			BatchID:       batch.ID,
+			ItemID:        item.ID,
+			AttemptID:     attempt.ID,
+			ResultPayload: queryOutput.ResultPayload,
+		}
+		if err := g.finalizeSuccessfulAttempt(ctx, attempt, execution); err != nil {
+			return err
+		}
+		claimedItem, claimed, err := g.repo.ClaimStudioBatchItem(ctx, item.ID, StudioBatchItemStatusGenerating, StudioBatchItemStatusAwaitingMaterialization, g.now())
+		if err != nil {
+			return err
+		}
+		if !claimed || claimedItem == nil {
+			return nil
+		}
+		return g.materializeAttempt(ctx, batch, *claimedItem, attempt, queryOutput.Response)
+	case AIImageAsyncResultFailed:
+		message := firstNonEmpty(strings.TrimSpace(queryOutput.Result.Error), "async generation failed")
+		if shouldRetryStudioBatchRecoveredFailure(message, attempt.AttemptNo) {
+			return g.requeueItemAfterFailedAttempt(ctx, item, attempt, message)
+		}
+		return g.failItemAndAttempt(ctx, item, attempt, message)
+	default:
+		attempt.Status = StudioGenerationAttemptStatusPolling
+		attempt.UpdatedAt = now
+		return g.repo.UpdateStudioGenerationAttempt(ctx, attempt)
 	}
 }
 

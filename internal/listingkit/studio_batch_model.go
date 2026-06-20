@@ -30,6 +30,8 @@ type StudioGenerationAttemptStatus string
 const (
 	StudioGenerationAttemptStatusQueued       StudioGenerationAttemptStatus = "queued"
 	StudioGenerationAttemptStatusRunning      StudioGenerationAttemptStatus = "running"
+	StudioGenerationAttemptStatusSubmitted    StudioGenerationAttemptStatus = "submitted"
+	StudioGenerationAttemptStatusPolling      StudioGenerationAttemptStatus = "polling"
 	StudioGenerationAttemptStatusSucceeded    StudioGenerationAttemptStatus = "succeeded"
 	StudioGenerationAttemptStatusMaterialized StudioGenerationAttemptStatus = "materialized"
 	StudioGenerationAttemptStatusFailed       StudioGenerationAttemptStatus = "failed"
@@ -89,21 +91,26 @@ func (StudioBatchItemRecord) TableName() string {
 }
 
 type StudioGenerationAttemptRecord struct {
-	ID             string                        `json:"id" gorm:"primaryKey;type:varchar(96)"`
-	ItemID         string                        `json:"item_id" gorm:"type:varchar(96);index:idx_listingkit_studio_generation_attempts_item_attempt,priority:1"`
-	BatchID        string                        `json:"batch_id,omitempty" gorm:"type:varchar(64);index"`
-	TenantID       string                        `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
-	UserID         string                        `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
-	AttemptNo      int                           `json:"attempt_no" gorm:"index:idx_listingkit_studio_generation_attempts_item_attempt,priority:2;not null"`
-	Status         StudioGenerationAttemptStatus `json:"status" gorm:"type:varchar(32);index;not null"`
-	UpstreamJobID  string                        `json:"upstream_job_id,omitempty" gorm:"type:varchar(64);index"`
-	RequestPayload string                        `json:"request_payload,omitempty" gorm:"type:text"`
-	ResultPayload  string                        `json:"result_payload,omitempty" gorm:"type:text"`
-	ErrorMessage   string                        `json:"error_message,omitempty" gorm:"type:text"`
-	StartedAt      *time.Time                    `json:"started_at,omitempty"`
-	FinishedAt     *time.Time                    `json:"finished_at,omitempty"`
-	CreatedAt      time.Time                     `json:"created_at"`
-	UpdatedAt      time.Time                     `json:"updated_at"`
+	ID                    string                        `json:"id" gorm:"primaryKey;type:varchar(96)"`
+	ItemID                string                        `json:"item_id" gorm:"type:varchar(96);index:idx_listingkit_studio_generation_attempts_item_attempt,priority:1"`
+	BatchID               string                        `json:"batch_id,omitempty" gorm:"type:varchar(64);index"`
+	TenantID              string                        `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	UserID                string                        `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
+	AttemptNo             int                           `json:"attempt_no" gorm:"index:idx_listingkit_studio_generation_attempts_item_attempt,priority:2;not null"`
+	Status                StudioGenerationAttemptStatus `json:"status" gorm:"type:varchar(32);index;not null"`
+	Provider              string                        `json:"provider,omitempty" gorm:"type:varchar(64)"`
+	UpstreamJobID         string                        `json:"upstream_job_id,omitempty" gorm:"type:varchar(64);index"`
+	RequestID             string                        `json:"request_id,omitempty" gorm:"type:varchar(128);index"`
+	RequestPayload        string                        `json:"request_payload,omitempty" gorm:"type:text"`
+	SubmitResponsePayload string                        `json:"submit_response_payload,omitempty" gorm:"type:text"`
+	ResultPayload         string                        `json:"result_payload,omitempty" gorm:"type:text"`
+	ResultCheckedAt       *time.Time                    `json:"result_checked_at,omitempty"`
+	QueryAttempts         int                           `json:"query_attempts" gorm:"not null;default:0"`
+	ErrorMessage          string                        `json:"error_message,omitempty" gorm:"type:text"`
+	StartedAt             *time.Time                    `json:"started_at,omitempty"`
+	FinishedAt            *time.Time                    `json:"finished_at,omitempty"`
+	CreatedAt             time.Time                     `json:"created_at"`
+	UpdatedAt             time.Time                     `json:"updated_at"`
 }
 
 func (StudioGenerationAttemptRecord) TableName() string {

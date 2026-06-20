@@ -2,6 +2,8 @@ package listingkit
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
@@ -17,6 +19,12 @@ type AIImageGenerator interface {
 	GenerateImage(ctx context.Context, req *AIImageGenerateRequest) (*AIImageResponse, error)
 	EditImage(ctx context.Context, req *AIImageEditRequest) (*AIImageResponse, error)
 	GetDefaultModel() string
+}
+
+type AIAsyncImageGenerator interface {
+	SupportsAsyncImageGeneration() bool
+	SubmitImageGeneration(ctx context.Context, req *AIImageGenerateRequest) (*AIImageAsyncSubmit, error)
+	QueryImageGeneration(ctx context.Context, jobID string) (*AIImageAsyncResult, error)
 }
 
 type AIImageGenerateRequest struct {
@@ -58,3 +66,33 @@ type AIUsage struct {
 }
 
 type StudioAIUsage = AIUsage
+
+var ErrAsyncImageGenerationNotSupported = errors.New("async image generation is not supported")
+
+type AIImageAsyncSubmit struct {
+	JobID             string    `json:"job_id,omitempty"`
+	RequestID         string    `json:"request_id,omitempty"`
+	Provider          string    `json:"provider,omitempty"`
+	RawSubmitResponse string    `json:"raw_submit_response,omitempty"`
+	AcceptedAt        time.Time `json:"accepted_at,omitempty"`
+}
+
+type AIImageAsyncResultStatus string
+
+const (
+	AIImageAsyncResultQueued    AIImageAsyncResultStatus = "queued"
+	AIImageAsyncResultRunning   AIImageAsyncResultStatus = "running"
+	AIImageAsyncResultSucceeded AIImageAsyncResultStatus = "succeeded"
+	AIImageAsyncResultFailed    AIImageAsyncResultStatus = "failed"
+)
+
+type AIImageAsyncResult struct {
+	JobID             string                   `json:"job_id,omitempty"`
+	RequestID         string                   `json:"request_id,omitempty"`
+	Provider          string                   `json:"provider,omitempty"`
+	Status            AIImageAsyncResultStatus `json:"status,omitempty"`
+	RawResultResponse string                   `json:"raw_result_response,omitempty"`
+	Error             string                   `json:"error,omitempty"`
+	Usage             AIUsage                  `json:"usage,omitempty"`
+	Response          *AIImageResponse         `json:"response,omitempty"`
+}

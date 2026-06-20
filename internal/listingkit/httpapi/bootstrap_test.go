@@ -1443,6 +1443,18 @@ func (s *httpapiStubImageGenerator) GetDefaultModel() string {
 	return s.defaultModel
 }
 
+func (*httpapiStubImageGenerator) SupportsAsyncImageGeneration() bool {
+	return false
+}
+
+func (*httpapiStubImageGenerator) SubmitImageGeneration(context.Context, *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
+}
+
+func (*httpapiStubImageGenerator) QueryImageGeneration(context.Context, string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
+}
+
 type httpapiStubResolutionCacheStore struct{}
 
 func (*httpapiStubResolutionCacheStore) GetResolutionCache(context.Context, string, string, string) (*sheinpub.SheinResolutionCacheEntry, error) {

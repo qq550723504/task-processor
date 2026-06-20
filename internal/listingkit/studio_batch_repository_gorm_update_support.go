@@ -183,15 +183,20 @@ func (r *GormStudioBatchRepository) UpdateStudioGenerationAttempt(ctx context.Co
 		Model(&StudioGenerationAttemptRecord{}).
 		Where("id = ?", row.ID).
 		Updates(map[string]any{
-			"attempt_no":      row.AttemptNo,
-			"status":          row.Status,
-			"upstream_job_id": row.UpstreamJobID,
-			"request_payload": row.RequestPayload,
-			"result_payload":  row.ResultPayload,
-			"error_message":   row.ErrorMessage,
-			"started_at":      row.StartedAt,
-			"finished_at":     row.FinishedAt,
-			"updated_at":      row.UpdatedAt,
+			"attempt_no":              row.AttemptNo,
+			"status":                  row.Status,
+			"provider":                row.Provider,
+			"upstream_job_id":         row.UpstreamJobID,
+			"request_id":              row.RequestID,
+			"request_payload":         row.RequestPayload,
+			"submit_response_payload": row.SubmitResponsePayload,
+			"result_payload":          row.ResultPayload,
+			"result_checked_at":       row.ResultCheckedAt,
+			"query_attempts":          row.QueryAttempts,
+			"error_message":           row.ErrorMessage,
+			"started_at":              row.StartedAt,
+			"finished_at":             row.FinishedAt,
+			"updated_at":              row.UpdatedAt,
 		})
 	if result.Error != nil {
 		return result.Error

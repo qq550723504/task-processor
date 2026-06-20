@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -20,16 +21,28 @@ type studioBatchGenerator interface {
 }
 
 type studioBatchGenerateExecutor func(context.Context, StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error)
+type studioBatchGenerateAsyncSubmitter func(context.Context, StudioBatchGenerateExecutionInput) (*AIImageAsyncSubmit, error)
+type studioBatchGenerateAsyncQuerier func(context.Context, StudioBatchGenerateExecutionInput, string) (*studioBatchAsyncQueryOutput, error)
+
+type studioBatchAsyncQueryOutput struct {
+	Result        *AIImageAsyncResult
+	Response      *StudioDesignResponse
+	ResultPayload string
+}
 
 type studioBatchGenerationServiceConfig struct {
 	repo        StudioBatchRepository
 	execute     studioBatchGenerateExecutor
+	submitAsync studioBatchGenerateAsyncSubmitter
+	queryAsync  studioBatchGenerateAsyncQuerier
 	currentTime func() time.Time
 }
 
 type studioBatchGenerationService struct {
 	repo        StudioBatchRepository
 	execute     studioBatchGenerateExecutor
+	submitAsync studioBatchGenerateAsyncSubmitter
+	queryAsync  studioBatchGenerateAsyncQuerier
 	currentTime func() time.Time
 }
 
@@ -37,6 +50,8 @@ func newStudioBatchGenerationService(config studioBatchGenerationServiceConfig) 
 	return &studioBatchGenerationService{
 		repo:        config.repo,
 		execute:     config.execute,
+		submitAsync: config.submitAsync,
+		queryAsync:  config.queryAsync,
 		currentTime: config.currentTime,
 	}
 }
@@ -125,9 +140,8 @@ func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch
 			ID:             buildStudioBatchAttemptID(item.ID, nextAttemptNo),
 			ItemID:         item.ID,
 			AttemptNo:      nextAttemptNo,
-			Status:         StudioGenerationAttemptStatusRunning,
+			Status:         StudioGenerationAttemptStatusQueued,
 			RequestPayload: string(requestPayload),
-			StartedAt:      timePtr(now),
 			CreatedAt:      now,
 			UpdatedAt:      now,
 		}
@@ -135,18 +149,42 @@ func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch
 			return err
 		}
 
-		execution, execErr := g.execute(ctx, StudioBatchGenerateExecutionInput{
+		input := StudioBatchGenerateExecutionInput{
 			BatchID:   batch.ID,
 			ItemID:    item.ID,
 			AttemptID: attempt.ID,
 			Request:   request,
-		})
+		}
+		submitted, submitErr := g.submitAsyncItemAttempt(ctx, item, attempt, input)
+		if submitErr != nil {
+			finishedAt := g.now()
+			attempt.Status = StudioGenerationAttemptStatusFailed
+			attempt.ErrorMessage = submitErr.Error()
+			attempt.FinishedAt = timePtr(finishedAt)
+			attempt.UpdatedAt = finishedAt
+			if updateErr := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); updateErr != nil {
+				return updateErr
+			}
+			if shouldRetryStudioBatchAttempt(submitErr, nextAttemptNo) {
+				nextAttemptNo++
+				continue
+			}
+			item.Status = StudioBatchItemStatusFailed
+			item.LastError = submitErr.Error()
+			item.UpdatedAt = finishedAt
+			return g.repo.UpdateStudioBatchItem(ctx, &item)
+		}
+		if submitted {
+			return nil
+		}
+
+		execution, execErr := g.executeSyncItemAttempt(ctx, attempt, input)
 		finishedAt := g.now()
-		attempt.FinishedAt = timePtr(finishedAt)
-		attempt.UpdatedAt = finishedAt
 		if execErr != nil {
 			attempt.Status = StudioGenerationAttemptStatusFailed
 			attempt.ErrorMessage = execErr.Error()
+			attempt.FinishedAt = timePtr(finishedAt)
+			attempt.UpdatedAt = finishedAt
 			if updateErr := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); updateErr != nil {
 				return updateErr
 			}
@@ -160,19 +198,7 @@ func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch
 			return g.repo.UpdateStudioBatchItem(ctx, &item)
 		}
 
-		attempt.Status = StudioGenerationAttemptStatusSucceeded
-		attempt.ResultPayload = strings.TrimSpace(execution.ResultPayload)
-		if execution.Response != nil {
-			attempt.UpstreamJobID = strings.TrimSpace(execution.Response.UpstreamJobID)
-		}
-		if attempt.ResultPayload == "" && execution.Response != nil {
-			payload, marshalErr := json.Marshal(execution.Response)
-			if marshalErr != nil {
-				return marshalErr
-			}
-			attempt.ResultPayload = string(payload)
-		}
-		if err := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); err != nil {
+		if err := g.finalizeSuccessfulAttempt(ctx, attempt, execution); err != nil {
 			return err
 		}
 
@@ -186,6 +212,77 @@ func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch
 
 		return g.materializeAttempt(ctx, batch, *claimedItem, attempt, execution.Response)
 	}
+}
+
+func (g *studioBatchGenerationService) submitAsyncItemAttempt(ctx context.Context, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord, input StudioBatchGenerateExecutionInput) (bool, error) {
+	if g == nil || g.submitAsync == nil {
+		return false, nil
+	}
+	submit, err := g.submitAsync(ctx, input)
+	if err != nil {
+		if errors.Is(err, ErrAsyncImageGenerationNotSupported) {
+			return false, nil
+		}
+		return false, err
+	}
+	if submit == nil {
+		return false, nil
+	}
+	now := g.now()
+	attempt.Status = StudioGenerationAttemptStatusSubmitted
+	attempt.Provider = strings.TrimSpace(submit.Provider)
+	attempt.UpstreamJobID = strings.TrimSpace(submit.JobID)
+	attempt.RequestID = strings.TrimSpace(submit.RequestID)
+	attempt.SubmitResponsePayload = strings.TrimSpace(submit.RawSubmitResponse)
+	attempt.StartedAt = timePtr(firstNonZeroStudioBatchTime(submit.AcceptedAt, now))
+	attempt.UpdatedAt = now
+	if err := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); err != nil {
+		return false, err
+	}
+
+	item.Status = StudioBatchItemStatusGenerating
+	item.LastError = ""
+	item.UpdatedAt = now
+	if err := g.repo.UpdateStudioBatchItem(ctx, &item); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (g *studioBatchGenerationService) executeSyncItemAttempt(ctx context.Context, attempt *StudioGenerationAttemptRecord, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+	if g == nil || g.execute == nil {
+		return nil, fmt.Errorf("studio batch execute function is not configured")
+	}
+	now := g.now()
+	attempt.Status = StudioGenerationAttemptStatusRunning
+	attempt.StartedAt = timePtr(now)
+	attempt.UpdatedAt = now
+	if err := g.repo.UpdateStudioGenerationAttempt(ctx, attempt); err != nil {
+		return nil, err
+	}
+	return g.execute(ctx, input)
+}
+
+func (g *studioBatchGenerationService) finalizeSuccessfulAttempt(ctx context.Context, attempt *StudioGenerationAttemptRecord, execution *StudioBatchGenerateExecutionOutput) error {
+	finishedAt := g.now()
+	attempt.Status = StudioGenerationAttemptStatusSucceeded
+	attempt.FinishedAt = timePtr(finishedAt)
+	attempt.UpdatedAt = finishedAt
+	if execution != nil {
+		attempt.ResultPayload = strings.TrimSpace(execution.ResultPayload)
+		if execution.Response != nil {
+			attempt.UpstreamJobID = strings.TrimSpace(execution.Response.UpstreamJobID)
+			attempt.RequestID = firstNonEmpty(strings.TrimSpace(execution.Response.RequestID), attempt.RequestID)
+		}
+		if attempt.ResultPayload == "" && execution.Response != nil {
+			payload, marshalErr := json.Marshal(execution.Response)
+			if marshalErr != nil {
+				return marshalErr
+			}
+			attempt.ResultPayload = string(payload)
+		}
+	}
+	return g.repo.UpdateStudioGenerationAttempt(ctx, attempt)
 }
 
 func (g *studioBatchGenerationService) materializeAttempt(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord, response *StudioDesignResponse) error {
@@ -259,4 +356,13 @@ func (g *studioBatchGenerationService) now() time.Time {
 		return g.currentTime().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func firstNonZeroStudioBatchTime(values ...time.Time) time.Time {
+	for _, value := range values {
+		if !value.IsZero() {
+			return value.UTC()
+		}
+	}
+	return time.Time{}
 }

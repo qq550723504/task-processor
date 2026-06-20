@@ -31,6 +31,18 @@ func (c *Client) EditImage(ctx context.Context, req *ImageEditRequest) (*ImageRe
 	return c.pool.EditImage(ctx, req)
 }
 
+func (c *Client) SupportsAsyncImageGeneration() bool {
+	return false
+}
+
+func (c *Client) SubmitImageGeneration(context.Context, *ImageGenerateRequest) (*ImageAsyncSubmitResponse, error) {
+	return nil, ErrAsyncImageGenerationNotSupported
+}
+
+func (c *Client) QueryImageGeneration(context.Context, string) (*ImageAsyncQueryResponse, error) {
+	return nil, ErrAsyncImageGenerationNotSupported
+}
+
 func (p *RequestPool) GenerateImage(ctx context.Context, req *ImageGenerateRequest) (*ImageResponse, error) {
 	if err := p.waitForRateLimit(ctx); err != nil {
 		return nil, fmt.Errorf("速率限制等待失败: %w", err)

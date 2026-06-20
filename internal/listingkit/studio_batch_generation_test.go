@@ -202,6 +202,214 @@ func TestRunPendingStudioBatchItemsPersistsAttemptDiagnostics(t *testing.T) {
 	}
 }
 
+func TestStudioBatchRepositoryPersistsAsyncAttemptMetadata(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Date(2026, 6, 20, 10, 0, 0, 0, time.UTC)
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:     "batch-1",
+			Status: StudioBatchStatusGenerating,
+		},
+		items: []StudioBatchItemRecord{{
+			ID:      "item-1",
+			BatchID: "batch-1",
+			Status:  StudioBatchItemStatusGenerating,
+		}},
+		attempts: []StudioGenerationAttemptRecord{{
+			ID:        "attempt-1",
+			ItemID:    "item-1",
+			AttemptNo: 1,
+			Status:    StudioGenerationAttemptStatusRunning,
+		}},
+	})
+
+	err := repo.UpdateStudioGenerationAttempt(ctx, &StudioGenerationAttemptRecord{
+		ID:                    "attempt-1",
+		ItemID:                "item-1",
+		AttemptNo:             1,
+		Status:                StudioGenerationAttemptStatusSubmitted,
+		Provider:              "nanobanana",
+		UpstreamJobID:         "job-1",
+		RequestID:             "req-1",
+		RequestPayload:        "{\"prompt\":\"x\"}",
+		SubmitResponsePayload: "{\"id\":\"job-1\",\"status\":\"running\"}",
+		ResultPayload:         "{\"status\":\"running\"}",
+		ResultCheckedAt:       &now,
+		QueryAttempts:         3,
+		ErrorMessage:          "",
+	})
+	if err != nil {
+		t.Fatalf("UpdateStudioGenerationAttempt() error = %v", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	attempts := detail.AttemptsByItem["item-1"]
+	if len(attempts) != 1 {
+		t.Fatalf("attempt count = %d, want 1", len(attempts))
+	}
+	if attempts[0].Status != StudioGenerationAttemptStatusSubmitted {
+		t.Fatalf("attempt status = %q, want %q", attempts[0].Status, StudioGenerationAttemptStatusSubmitted)
+	}
+	if attempts[0].Provider != "nanobanana" {
+		t.Fatalf("provider = %q, want nanobanana", attempts[0].Provider)
+	}
+	if attempts[0].UpstreamJobID != "job-1" {
+		t.Fatalf("upstream job id = %q, want job-1", attempts[0].UpstreamJobID)
+	}
+	if attempts[0].RequestID != "req-1" {
+		t.Fatalf("request id = %q, want req-1", attempts[0].RequestID)
+	}
+	if attempts[0].SubmitResponsePayload != "{\"id\":\"job-1\",\"status\":\"running\"}" {
+		t.Fatalf("submit response payload = %q, want submit response persisted", attempts[0].SubmitResponsePayload)
+	}
+	if attempts[0].ResultCheckedAt == nil || !attempts[0].ResultCheckedAt.Equal(now) {
+		t.Fatalf("result checked at = %v, want %v", attempts[0].ResultCheckedAt, now)
+	}
+	if attempts[0].QueryAttempts != 3 {
+		t.Fatalf("query attempts = %d, want 3", attempts[0].QueryAttempts)
+	}
+}
+
+func TestRunPendingStudioBatchItemsSubmitsAsyncAttemptWithoutImmediateMaterialization(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	engine := newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+		repo: repo,
+		execute: func(context.Context, StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+			t.Fatal("execute should not be called for async-capable submission")
+			return nil, nil
+		},
+		submitAsync: func(context.Context, StudioBatchGenerateExecutionInput) (*AIImageAsyncSubmit, error) {
+			return &AIImageAsyncSubmit{
+				JobID:             "job-async-1",
+				RequestID:         "req-async-1",
+				Provider:          "nanobanana",
+				RawSubmitResponse: `{"id":"job-async-1","status":"running"}`,
+				AcceptedAt:        time.Date(2026, 6, 20, 11, 0, 0, 0, time.UTC),
+			}, nil
+		},
+		currentTime: func() time.Time { return time.Date(2026, 6, 20, 11, 0, 5, 0, time.UTC) },
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusGenerating,
+			Prompt:           "retro summer fruit",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusPending,
+			SelectionCount:   1,
+		}},
+	})
+
+	if err := engine.RunPendingStudioBatchItems(ctx, "batch-1"); err != nil {
+		t.Fatalf("RunPendingStudioBatchItems() error = %v", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if got := detail.Items[0].Status; got != StudioBatchItemStatusGenerating {
+		t.Fatalf("item status = %q, want %q", got, StudioBatchItemStatusGenerating)
+	}
+	if got := len(detail.DesignsByItem["item-1"]); got != 0 {
+		t.Fatalf("design count = %d, want 0 before async polling/materialization", got)
+	}
+	attempts := detail.AttemptsByItem["item-1"]
+	if len(attempts) != 1 {
+		t.Fatalf("attempt count = %d, want 1", len(attempts))
+	}
+	if got := attempts[0].Status; got != StudioGenerationAttemptStatusSubmitted {
+		t.Fatalf("attempt status = %q, want %q", got, StudioGenerationAttemptStatusSubmitted)
+	}
+	if got := attempts[0].Provider; got != "nanobanana" {
+		t.Fatalf("provider = %q, want nanobanana", got)
+	}
+	if got := attempts[0].UpstreamJobID; got != "job-async-1" {
+		t.Fatalf("upstream job id = %q, want job-async-1", got)
+	}
+	if got := attempts[0].RequestID; got != "req-async-1" {
+		t.Fatalf("request id = %q, want req-async-1", got)
+	}
+	if got := attempts[0].SubmitResponsePayload; got != `{"id":"job-async-1","status":"running"}` {
+		t.Fatalf("submit response payload = %q, want raw submit response", got)
+	}
+}
+
+func TestRunPendingStudioBatchItemsFallsBackToSyncWhenAsyncUnsupported(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	engine := newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+		repo: repo,
+		execute: func(context.Context, StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+			return &StudioBatchGenerateExecutionOutput{
+				Response: testStudioDesignResponse("design-1", "https://cdn.example.com/design-1.png"),
+				ItemID:   "item-1",
+				BatchID:  "batch-1",
+			}, nil
+		},
+		submitAsync: func(context.Context, StudioBatchGenerateExecutionInput) (*AIImageAsyncSubmit, error) {
+			return nil, ErrAsyncImageGenerationNotSupported
+		},
+		currentTime: func() time.Time { return time.Date(2026, 6, 20, 11, 30, 0, 0, time.UTC) },
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusGenerating,
+			Prompt:           "retro summer fruit",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusPending,
+			SelectionCount:   1,
+		}},
+	})
+
+	if err := engine.RunPendingStudioBatchItems(ctx, "batch-1"); err != nil {
+		t.Fatalf("RunPendingStudioBatchItems() error = %v", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if got := detail.Items[0].Status; got != StudioBatchItemStatusReviewReady {
+		t.Fatalf("item status = %q, want %q", got, StudioBatchItemStatusReviewReady)
+	}
+	if got := len(detail.DesignsByItem["item-1"]); got != 1 {
+		t.Fatalf("design count = %d, want 1 after sync fallback", got)
+	}
+	if got := detail.AttemptsByItem["item-1"][0].Status; got != StudioGenerationAttemptStatusMaterialized {
+		t.Fatalf("attempt status = %q, want %q", got, StudioGenerationAttemptStatusMaterialized)
+	}
+}
+
 func TestRecoverAwaitingMaterializationReusesAttemptResult(t *testing.T) {
 	t.Parallel()
 
@@ -268,6 +476,131 @@ func TestRecoverAwaitingMaterializationReusesAttemptResult(t *testing.T) {
 			detail.DesignsByItem["item-1"][0].ReviewStatus,
 			StudioMaterializedDesignReviewStatusApproved,
 		)
+	}
+}
+
+func TestRecoverGeneratingAsyncAttemptPollsProviderAndMaterializesOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	engine := newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+		repo: repo,
+		queryAsync: func(context.Context, StudioBatchGenerateExecutionInput, string) (*studioBatchAsyncQueryOutput, error) {
+			return &studioBatchAsyncQueryOutput{
+				Result: &AIImageAsyncResult{
+					JobID:             "job-1",
+					RequestID:         "req-1",
+					Provider:          "nanobanana",
+					Status:            AIImageAsyncResultSucceeded,
+					RawResultResponse: `{"id":"job-1","status":"succeeded"}`,
+				},
+				Response:      testStudioDesignResponse("design-1", "https://cdn.example.com/design-1.png"),
+				ResultPayload: `{"images":[{"id":"design-1","image_url":"https://cdn.example.com/design-1.png"}]}`,
+			}, nil
+		},
+		currentTime: func() time.Time { return time.Date(2026, 6, 20, 12, 0, 0, 0, time.UTC) },
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusGenerating,
+			Prompt:           "retro summer fruit",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusGenerating,
+			SelectionCount:   1,
+		}},
+		attempts: []StudioGenerationAttemptRecord{{
+			ID:            "attempt-1",
+			ItemID:        "item-1",
+			AttemptNo:     1,
+			Status:        StudioGenerationAttemptStatusSubmitted,
+			Provider:      "nanobanana",
+			UpstreamJobID: "job-1",
+		}},
+	})
+
+	if err := engine.RecoverStudioBatchMaterialization(ctx, "batch-1"); err != nil {
+		t.Fatalf("RecoverStudioBatchMaterialization() error = %v", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if got := detail.Items[0].Status; got != StudioBatchItemStatusReviewReady {
+		t.Fatalf("item status = %q, want %q", got, StudioBatchItemStatusReviewReady)
+	}
+	if got := len(detail.DesignsByItem["item-1"]); got != 1 {
+		t.Fatalf("design count = %d, want 1", got)
+	}
+	if got := detail.AttemptsByItem["item-1"][0].Status; got != StudioGenerationAttemptStatusMaterialized {
+		t.Fatalf("attempt status = %q, want %q", got, StudioGenerationAttemptStatusMaterialized)
+	}
+	if got := detail.AttemptsByItem["item-1"][0].QueryAttempts; got != 1 {
+		t.Fatalf("query attempts = %d, want 1", got)
+	}
+}
+
+func TestRecoverSubmittedAttemptWithoutJobIDFailsCleanly(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	engine := newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+		repo:        repo,
+		currentTime: func() time.Time { return time.Date(2026, 6, 20, 12, 10, 0, 0, time.UTC) },
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusGenerating,
+			Prompt:           "retro summer fruit",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusGenerating,
+			SelectionCount:   1,
+		}},
+		attempts: []StudioGenerationAttemptRecord{{
+			ID:        "attempt-1",
+			ItemID:    "item-1",
+			AttemptNo: 1,
+			Status:    StudioGenerationAttemptStatusSubmitted,
+			Provider:  "nanobanana",
+		}},
+	})
+
+	if err := engine.RecoverStudioBatchMaterialization(ctx, "batch-1"); err != nil {
+		t.Fatalf("RecoverStudioBatchMaterialization() error = %v", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if got := detail.Items[0].Status; got != StudioBatchItemStatusFailed {
+		t.Fatalf("item status = %q, want %q", got, StudioBatchItemStatusFailed)
+	}
+	if got := detail.Items[0].LastError; got != "async generation attempt missing upstream job id" {
+		t.Fatalf("item last error = %q, want missing job id diagnostic", got)
+	}
+	if got := detail.AttemptsByItem["item-1"][0].Status; got != StudioGenerationAttemptStatusFailed {
+		t.Fatalf("attempt status = %q, want %q", got, StudioGenerationAttemptStatusFailed)
 	}
 }
 

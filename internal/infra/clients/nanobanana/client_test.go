@@ -238,6 +238,44 @@ func TestClientEditImageUsesGenerateEndpointForGPTImage(t *testing.T) {
 	}
 }
 
+func TestClientSubmitImageGenerationReturnsAsyncJobMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/api/generate" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("X-Request-Id", "req-submit-1")
+		_ = json.NewEncoder(w).Encode(submitResponse{
+			ID:     "job-async-1",
+			Status: "running",
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		APIKey:     "test-key",
+		Model:      "nano-banana-fast",
+		SubmitURL:  server.URL + "/v1",
+		Timeout:    time.Second,
+		HTTPClient: server.Client(),
+	})
+
+	result, err := client.SubmitImageGeneration(context.Background(), &openaiclient.ImageGenerateRequest{
+		Prompt: "flat artwork",
+	})
+	if err != nil {
+		t.Fatalf("SubmitImageGeneration() error = %v", err)
+	}
+	if result.JobID != "job-async-1" {
+		t.Fatalf("job id = %q, want job-async-1", result.JobID)
+	}
+	if result.RequestID != "req-submit-1" {
+		t.Fatalf("request id = %q, want req-submit-1", result.RequestID)
+	}
+	if result.Provider != "nanobanana" {
+		t.Fatalf("provider = %q, want nanobanana", result.Provider)
+	}
+}
+
 func TestClientGenerateImagePollsAsyncResultUntilSucceeded(t *testing.T) {
 	imageBytes := []byte("generated-image")
 	var serverURL string
@@ -309,6 +347,56 @@ func TestClientGenerateImagePollsAsyncResultUntilSucceeded(t *testing.T) {
 	}
 	if !strings.Contains(resp.RawResponse, "\"status\":\"succeeded\"") {
 		t.Fatalf("raw response = %q, want final polled payload", resp.RawResponse)
+	}
+}
+
+func TestClientQueryImageGenerationReturnsSucceededResultPayload(t *testing.T) {
+	imageBytes := []byte("generated-image")
+	var serverURL string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/api/result":
+			if got := r.URL.Query().Get("id"); got != "job-query-1" {
+				t.Fatalf("query id = %q", got)
+			}
+			w.Header().Set("X-Request-Id", "req-query-1")
+			_ = json.NewEncoder(w).Encode(resultPayload{
+				ID:      "job-query-1",
+				Status:  "succeeded",
+				Results: []resultItem{{URL: serverURL + "/generated.png"}},
+			})
+		case "/generated.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(imageBytes)
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	client := NewClient(Config{
+		APIKey:       "test-key",
+		Model:        "nano-banana-fast",
+		SubmitURL:    server.URL + "/v1",
+		PollInterval: 10 * time.Millisecond,
+		Timeout:      time.Second,
+		HTTPClient:   server.Client(),
+	})
+
+	result, err := client.QueryImageGeneration(context.Background(), "job-query-1")
+	if err != nil {
+		t.Fatalf("QueryImageGeneration() error = %v", err)
+	}
+	if result.Status != "succeeded" {
+		t.Fatalf("status = %q, want succeeded", result.Status)
+	}
+	if result.RequestID != "req-query-1" {
+		t.Fatalf("request id = %q, want req-query-1", result.RequestID)
+	}
+	if len(result.Data) != 1 || result.Data[0].URL != serverURL+"/generated.png" {
+		t.Fatalf("result data = %+v, want downloaded image metadata", result.Data)
 	}
 }
 

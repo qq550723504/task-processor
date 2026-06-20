@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -122,5 +123,26 @@ func TestBuildAPIURL(t *testing.T) {
 	got := buildAPIURL("https://example.com/v1/", "/images/generations")
 	if got != "https://example.com/v1/images/generations" {
 		t.Fatalf("buildAPIURL() = %q", got)
+	}
+}
+
+func TestClientDoesNotSupportAsyncImageGenerationByDefault(t *testing.T) {
+	client := NewClient(&ClientConfig{
+		APIKey:     "test-key",
+		Model:      "gpt-image-2",
+		BaseURL:    "https://example.invalid",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+
+	if client.SupportsAsyncImageGeneration() {
+		t.Fatal("SupportsAsyncImageGeneration() = true, want false")
+	}
+
+	_, err := client.SubmitImageGeneration(context.Background(), &ImageGenerateRequest{
+		Prompt: "flat artwork",
+	})
+	if !errors.Is(err, ErrAsyncImageGenerationNotSupported) {
+		t.Fatalf("SubmitImageGeneration() error = %v, want ErrAsyncImageGenerationNotSupported", err)
 	}
 }

@@ -5,7 +5,14 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+type studioDesignAsyncQueryResponse struct {
+	Result   *AIImageAsyncResult
+	Response *StudioDesignResponse
+}
 
 func (s *taskStudioMediaService) generateStudioDesignSiblingThemes(ctx context.Context, req *StudioDesignRequest, count int) ([]string, error) {
 	baseTheme := strings.TrimSpace(req.Prompt)
@@ -92,6 +99,54 @@ func (s *taskStudioMediaService) persistGeneratedStudioImage(ctx context.Context
 		return "", "", fmt.Errorf("uploaded generated image but no url returned")
 	}
 	return upload.ImageURLs[0], first.RevisedPrompt, nil
+}
+
+func (s *taskStudioMediaService) materializeAsyncStudioDesignResult(ctx context.Context, req *StudioDesignRequest, result *AIImageAsyncResult) (*StudioDesignResponse, error) {
+	if result == nil || result.Response == nil || len(result.Response.Data) == 0 {
+		return nil, fmt.Errorf("studio async image query returned no image data")
+	}
+
+	model := resolveStudioDesignImageModel(req, s.imageGenerator.GetDefaultModel())
+	response := &StudioDesignResponse{
+		Prompt:                strings.TrimSpace(req.Prompt),
+		PrintableWidth:        req.PrintableWidth,
+		PrintableHeight:       req.PrintableHeight,
+		ImageModel:            model,
+		TransparentBackground: req.TransparentBackground && model == studioDesignTransparentModel,
+		RequestID:             strings.TrimSpace(firstNonEmpty(result.RequestID, result.Response.RequestID)),
+		UpstreamJobID:         strings.TrimSpace(result.JobID),
+		RawResponse:           strings.TrimSpace(result.RawResultResponse),
+		Usage:                 result.Usage,
+		Images:                make([]StudioGeneratedImage, 0, len(result.Response.Data)),
+	}
+
+	for index, item := range result.Response.Data {
+		generated := &AIImageResponse{
+			Data:          []AIImageData{item},
+			Usage:         result.Usage,
+			RequestID:     response.RequestID,
+			UpstreamJobID: response.UpstreamJobID,
+			RawResponse:   response.RawResponse,
+		}
+		imageURL, revisedPrompt, err := s.persistGeneratedStudioImage(ctx, generated, fmt.Sprintf("studio-design-%d.png", index+1))
+		if err != nil {
+			return nil, fmt.Errorf("persist async studio design %d: %w", index+1, err)
+		}
+		response.Images = append(response.Images, StudioGeneratedImage{
+			ID:                    uuid.NewString(),
+			ImageURL:              imageURL,
+			Prompt:                response.Prompt,
+			RevisedPrompt:         revisedPrompt,
+			ImageModel:            model,
+			TransparentBackground: response.TransparentBackground,
+			VariationIntensity:    req.VariationIntensity,
+			RequestID:             response.RequestID,
+			UpstreamJobID:         response.UpstreamJobID,
+			RawResponse:           response.RawResponse,
+			Usage:                 result.Usage,
+		})
+	}
+	return response, nil
 }
 
 func (s *taskStudioMediaService) generateOneStudioProductImage(ctx context.Context, req *StudioProductImageRequest, sourceURL string, basePrompt string) (string, error) {

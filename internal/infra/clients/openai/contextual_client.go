@@ -69,3 +69,27 @@ func (c *contextualImageClient) GetDefaultModel() string {
 	}
 	return client.GetDefaultModel()
 }
+
+func (c *contextualImageClient) SupportsAsyncImageGeneration() bool {
+	client, err := c.manager.resolveClient(context.Background(), c.name)
+	if err != nil {
+		return false
+	}
+	return client.SupportsAsyncImageGeneration()
+}
+
+func (c *contextualImageClient) SubmitImageGeneration(ctx context.Context, req *ImageGenerateRequest) (*ImageAsyncSubmitResponse, error) {
+	client, err := c.manager.resolveClient(ctx, c.name)
+	if err != nil {
+		return nil, err
+	}
+	return client.SubmitImageGeneration(ctx, req)
+}
+
+func (c *contextualImageClient) QueryImageGeneration(ctx context.Context, jobID string) (*ImageAsyncQueryResponse, error) {
+	client, err := c.manager.resolveClient(ctx, c.name)
+	if err != nil {
+		return nil, err
+	}
+	return client.QueryImageGeneration(ctx, jobID)
+}

@@ -50,6 +50,30 @@ func (c *listingKitRoutedImageClient) GetDefaultModel() string {
 	return c.defaultModel
 }
 
+func (c *listingKitRoutedImageClient) SupportsAsyncImageGeneration() bool {
+	client, _, err := c.resolveBySelector(c.defaultModel)
+	if err != nil || client == nil {
+		return false
+	}
+	return client.SupportsAsyncImageGeneration()
+}
+
+func (c *listingKitRoutedImageClient) SubmitImageGeneration(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	client, nextReq, err := c.resolve(req)
+	if err != nil {
+		return nil, err
+	}
+	return client.SubmitImageGeneration(ctx, nextReq)
+}
+
+func (c *listingKitRoutedImageClient) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	client, _, err := c.resolveBySelector(c.defaultModel)
+	if err != nil {
+		return nil, err
+	}
+	return client.QueryImageGeneration(ctx, jobID)
+}
+
 func (c *listingKitRoutedImageClient) resolve(req *openaiclient.ImageGenerateRequest) (openaiclient.ImageGenerator, *openaiclient.ImageGenerateRequest, error) {
 	selector := c.defaultModel
 	if req != nil && strings.TrimSpace(req.Model) != "" {

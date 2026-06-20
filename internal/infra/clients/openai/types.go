@@ -3,6 +3,7 @@ package openai
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -139,8 +140,32 @@ type ImageResponse struct {
 	RawResponse   string      `json:"raw_response,omitempty"`
 }
 
+var ErrAsyncImageGenerationNotSupported = errors.New("async image generation is not supported")
+
+type ImageAsyncSubmitResponse struct {
+	JobID             string    `json:"job_id,omitempty"`
+	RequestID         string    `json:"request_id,omitempty"`
+	Provider          string    `json:"provider,omitempty"`
+	RawSubmitResponse string    `json:"raw_submit_response,omitempty"`
+	AcceptedAt        time.Time `json:"accepted_at,omitempty"`
+}
+
+type ImageAsyncQueryResponse struct {
+	JobID             string      `json:"job_id,omitempty"`
+	RequestID         string      `json:"request_id,omitempty"`
+	Provider          string      `json:"provider,omitempty"`
+	Status            string      `json:"status,omitempty"`
+	RawResultResponse string      `json:"raw_result_response,omitempty"`
+	Error             string      `json:"error,omitempty"`
+	Usage             Usage       `json:"usage"`
+	Data              []ImageData `json:"data,omitempty"`
+}
+
 type ImageGenerator interface {
 	GenerateImage(ctx context.Context, req *ImageGenerateRequest) (*ImageResponse, error)
 	EditImage(ctx context.Context, req *ImageEditRequest) (*ImageResponse, error)
 	GetDefaultModel() string
+	SupportsAsyncImageGeneration() bool
+	SubmitImageGeneration(ctx context.Context, req *ImageGenerateRequest) (*ImageAsyncSubmitResponse, error)
+	QueryImageGeneration(ctx context.Context, jobID string) (*ImageAsyncQueryResponse, error)
 }

@@ -90,6 +90,18 @@ func (c *Client) GetDefaultModel() string {
 	return c.cfg.Model
 }
 
+func (c *Client) SupportsAsyncImageGeneration() bool {
+	return false
+}
+
+func (c *Client) SubmitImageGeneration(context.Context, *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
+}
+
+func (c *Client) QueryImageGeneration(context.Context, string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
+}
+
 func (c *Client) GenerateImage(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("image generate request cannot be nil")

@@ -38,6 +38,26 @@ func (c *strictListingKitConfiguredImageClient) GetDefaultModel() string {
 	return ""
 }
 
+func (c *strictListingKitConfiguredImageClient) SupportsAsyncImageGeneration() bool {
+	return false
+}
+
+func (c *strictListingKitConfiguredImageClient) SubmitImageGeneration(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	client, err := c.resolve(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return client.SubmitImageGeneration(ctx, req)
+}
+
+func (c *strictListingKitConfiguredImageClient) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	client, err := c.resolve(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return client.QueryImageGeneration(ctx, jobID)
+}
+
 func (c *strictListingKitConfiguredImageClient) resolve(ctx context.Context) (openaiclient.ImageGenerator, error) {
 	return resolveStrictListingKitImageClient(ctx, c.clientName, c.resolver, c.fallback, &c.mu, c.cache, c.build)
 }

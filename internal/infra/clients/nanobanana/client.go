@@ -88,6 +88,10 @@ func (c *Client) GetDefaultModel() string {
 	return c.cfg.Model
 }
 
+func (c *Client) SupportsAsyncImageGeneration() bool {
+	return true
+}
+
 func (c *Client) GenerateImage(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("image generate request cannot be nil")
@@ -98,6 +102,83 @@ func (c *Client) GenerateImage(ctx context.Context, req *openaiclient.ImageGener
 		Size:           normalizeGenerationSize(req.Size),
 		ResponseFormat: "url",
 	})
+}
+
+func (c *Client) SubmitImageGeneration(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("image generate request cannot be nil")
+	}
+	submitReq := submitRequest{
+		Model:          defaultString(req.Model, c.cfg.Model),
+		Prompt:         req.Prompt,
+		Size:           normalizeGenerationSize(req.Size),
+		ResponseFormat: "url",
+	}
+	if strings.TrimSpace(submitReq.Model) == "" {
+		return nil, fmt.Errorf("nanobanana model cannot be empty")
+	}
+	if strings.TrimSpace(submitReq.Prompt) == "" {
+		return nil, fmt.Errorf("nanobanana prompt cannot be empty")
+	}
+	if c.cfg.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.cfg.Timeout)
+		defer cancel()
+	}
+	submitURL, err := buildSubmitURL(c.cfg.SubmitURL, submitReq.Model)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := c.submitGenerationRequestNoPoll(ctx, submitURL, submitReq)
+	if err != nil {
+		return nil, err
+	}
+	return &openaiclient.ImageAsyncSubmitResponse{
+		JobID:             strings.TrimSpace(payload.ID),
+		RequestID:         strings.TrimSpace(payload.RequestID),
+		Provider:          "nanobanana",
+		RawSubmitResponse: strings.TrimSpace(payload.RawResponse),
+		AcceptedAt:        time.Now().UTC(),
+	}, nil
+}
+
+func (c *Client) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	trimmedJobID := strings.TrimSpace(jobID)
+	if trimmedJobID == "" {
+		return nil, fmt.Errorf("job id cannot be empty")
+	}
+	resultURL, err := buildResultURL(c.cfg.SubmitURL)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := c.fetchGenerationResult(ctx, resultURL, trimmedJobID)
+	if err != nil {
+		return nil, err
+	}
+	status := strings.ToLower(strings.TrimSpace(payload.Status))
+	query := &openaiclient.ImageAsyncQueryResponse{
+		JobID:             trimmedJobID,
+		RequestID:         strings.TrimSpace(payload.RequestID),
+		Provider:          "nanobanana",
+		Status:            status,
+		RawResultResponse: strings.TrimSpace(payload.RawResponse),
+	}
+	switch status {
+	case "failed", "violation":
+		query.Error = strings.TrimSpace(payload.Error)
+		return query, nil
+	case "succeeded":
+		resp, err := c.downloadGeneratedImages(ctx, payload)
+		if err != nil {
+			return nil, err
+		}
+		query.RequestID = firstNonEmptyString(query.RequestID, resp.RequestID)
+		query.Data = append(query.Data, resp.Data...)
+		query.RawResultResponse = firstNonEmptyString(query.RawResultResponse, resp.RawResponse)
+		return query, nil
+	default:
+		return query, nil
+	}
 }
 
 func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageResponse, error) {
@@ -185,6 +266,25 @@ func (c *Client) submitImagesGeneration(ctx context.Context, req submitRequest) 
 }
 
 func (c *Client) submitGenerationRequest(ctx context.Context, submitURL string, resultURL string, req submitRequest) (*resultPayload, error) {
+	initial, err := c.submitGenerationRequestNoPoll(ctx, submitURL, req)
+	if err != nil {
+		return nil, err
+	}
+	status := strings.ToLower(strings.TrimSpace(initial.Status))
+	if isRunningStatus(status) && strings.TrimSpace(initial.ID) != "" {
+		result, err := c.pollGenerationResult(ctx, resultURL, initial.ID)
+		if err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(result.RequestID) == "" {
+			result.RequestID = initial.RequestID
+		}
+		return result, nil
+	}
+	return initial, nil
+}
+
+func (c *Client) submitGenerationRequestNoPoll(ctx context.Context, submitURL string, req submitRequest) (*resultPayload, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("marshal image generation request: %w", err)
@@ -230,14 +330,12 @@ func (c *Client) submitGenerationRequest(ctx context.Context, submitURL string, 
 			}, nil
 		}
 		if isRunningStatus(status) && strings.TrimSpace(providerStatus.ID) != "" {
-			result, err := c.pollGenerationResult(ctx, resultURL, providerStatus.ID)
-			if err != nil {
-				return nil, err
-			}
-			if strings.TrimSpace(result.RequestID) == "" {
-				result.RequestID = requestID
-			}
-			return result, nil
+			return &resultPayload{
+				ID:          providerStatus.ID,
+				Status:      providerStatus.Status,
+				RequestID:   requestID,
+				RawResponse: strings.TrimSpace(string(body)),
+			}, nil
 		}
 	}
 	var parsed gptImageGenerationsResponse
@@ -277,7 +375,7 @@ func (c *Client) submitGenerationRequest(ctx context.Context, submitURL string, 
 			return &parsedResult, nil
 		}
 		if isRunningStatus(status) && strings.TrimSpace(parsedResult.ID) != "" {
-			return c.pollGenerationResult(ctx, resultURL, parsedResult.ID)
+			return &parsedResult, nil
 		}
 	}
 	return nil, fmt.Errorf("decode image generation response: unsupported response shape")
@@ -436,6 +534,15 @@ func defaultString(value string, fallback string) string {
 		return value
 	}
 	return strings.TrimSpace(fallback)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func shouldRetryNanobananaError(err error) bool {

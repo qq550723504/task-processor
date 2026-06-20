@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -36,8 +37,10 @@ type taskStudioBatchCollaborators struct {
 }
 
 type studioBatchGenerationWiring struct {
-	repo    StudioBatchRepository
-	execute func(context.Context, StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error)
+	repo        StudioBatchRepository
+	execute     func(context.Context, StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error)
+	submitAsync func(context.Context, StudioBatchGenerateExecutionInput) (*AIImageAsyncSubmit, error)
+	queryAsync  func(context.Context, StudioBatchGenerateExecutionInput, string) (*studioBatchAsyncQueryOutput, error)
 }
 
 func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studioBatchGenerationService) taskStudioBatchServiceWiring {
@@ -175,13 +178,41 @@ func buildStudioBatchGenerationWiring(s *service) studioBatchGenerationWiring {
 		execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
 			return ExecuteStudioDesignBatch(ctx, s, input)
 		},
+		submitAsync: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*AIImageAsyncSubmit, error) {
+			return s.SubmitStudioDesignsAsync(ctx, input.Request)
+		},
+		queryAsync: func(ctx context.Context, input StudioBatchGenerateExecutionInput, jobID string) (*studioBatchAsyncQueryOutput, error) {
+			result, err := s.QueryStudioDesignsAsync(ctx, input.Request, jobID)
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				return nil, nil
+			}
+			output := &studioBatchAsyncQueryOutput{
+				Result:   result.Result,
+				Response: result.Response,
+			}
+			if result.Response != nil {
+				payload, marshalErr := json.Marshal(result.Response)
+				if marshalErr != nil {
+					return nil, marshalErr
+				}
+				output.ResultPayload = string(payload)
+			} else if result.Result != nil {
+				output.ResultPayload = result.Result.RawResultResponse
+			}
+			return output, nil
+		},
 	}
 }
 
 func buildStudioBatchGenerationServiceConfigWithWiring(wiring studioBatchGenerationWiring) studioBatchGenerationServiceConfig {
 	return studioBatchGenerationServiceConfig{
-		repo:    wiring.repo,
-		execute: wiring.execute,
+		repo:        wiring.repo,
+		execute:     wiring.execute,
+		submitAsync: wiring.submitAsync,
+		queryAsync:  wiring.queryAsync,
 	}
 }
 

@@ -33,6 +33,82 @@ func newTaskStudioMediaService(config taskStudioMediaServiceConfig) *taskStudioM
 	}
 }
 
+func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest) (*AIImageAsyncSubmit, error) {
+	if req == nil {
+		return nil, fmt.Errorf("invalid request: request is required")
+	}
+	theme := strings.TrimSpace(req.Prompt)
+	if theme == "" {
+		return nil, fmt.Errorf("invalid request: prompt is required")
+	}
+	if s.imageGenerator == nil {
+		return nil, fmt.Errorf("studio image generator is not configured")
+	}
+
+	asyncGenerator, ok := s.imageGenerator.(AIAsyncImageGenerator)
+	if !ok || !asyncGenerator.SupportsAsyncImageGeneration() {
+		return nil, ErrAsyncImageGenerationNotSupported
+	}
+
+	count := req.Count
+	if count <= 0 {
+		count = 1
+	}
+	if count > maxStudioDesignCount {
+		count = maxStudioDesignCount
+	}
+	if count != 1 {
+		return nil, ErrAsyncImageGenerationNotSupported
+	}
+	referenceURLs := studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)
+	if len(referenceURLs) > 0 {
+		return nil, ErrAsyncImageGenerationNotSupported
+	}
+
+	model := resolveStudioDesignImageModel(req, s.imageGenerator.GetDefaultModel())
+	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
+	return asyncGenerator.SubmitImageGeneration(ctx, &AIImageGenerateRequest{
+		Model:          model,
+		Prompt:         buildStudioDesignPromptWithTheme(req, theme),
+		Size:           size,
+		ResponseFormat: "b64_json",
+		N:              1,
+	})
+}
+
+func (s *taskStudioMediaService) QueryStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest, jobID string) (*studioDesignAsyncQueryResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("invalid request: request is required")
+	}
+	if strings.TrimSpace(jobID) == "" {
+		return nil, fmt.Errorf("invalid request: job id is required")
+	}
+	if s.imageGenerator == nil {
+		return nil, fmt.Errorf("studio image generator is not configured")
+	}
+
+	asyncGenerator, ok := s.imageGenerator.(AIAsyncImageGenerator)
+	if !ok || !asyncGenerator.SupportsAsyncImageGeneration() {
+		return nil, ErrAsyncImageGenerationNotSupported
+	}
+
+	result, err := asyncGenerator.QueryImageGeneration(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	output := &studioDesignAsyncQueryResponse{Result: result}
+	if result == nil || result.Status != AIImageAsyncResultSucceeded {
+		return output, nil
+	}
+
+	response, err := s.materializeAsyncStudioDesignResult(ctx, req, result)
+	if err != nil {
+		return nil, err
+	}
+	output.Response = response
+	return output, nil
+}
+
 func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("invalid request: request is required")

@@ -11,6 +11,7 @@ import (
 
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingkit"
 )
 
 type stubListingKitClientResolver struct {
@@ -21,8 +22,11 @@ type stubListingKitClientResolver struct {
 }
 
 type stubListingKitImageGenerator struct {
-	lastGenerate *openaiclient.ImageGenerateRequest
-	lastEdit     *openaiclient.ImageEditRequest
+	lastGenerate   *openaiclient.ImageGenerateRequest
+	lastEdit       *openaiclient.ImageEditRequest
+	asyncSupported bool
+	submitResponse *openaiclient.ImageAsyncSubmitResponse
+	queryResponse  *openaiclient.ImageAsyncQueryResponse
 }
 
 func (s *stubListingKitImageGenerator) GenerateImage(_ context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {
@@ -37,6 +41,19 @@ func (s *stubListingKitImageGenerator) EditImage(_ context.Context, req *openaic
 
 func (s *stubListingKitImageGenerator) GetDefaultModel() string {
 	return ""
+}
+
+func (s *stubListingKitImageGenerator) SupportsAsyncImageGeneration() bool {
+	return s.asyncSupported
+}
+
+func (s *stubListingKitImageGenerator) SubmitImageGeneration(_ context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	s.lastGenerate = req
+	return s.submitResponse, nil
+}
+
+func (s *stubListingKitImageGenerator) QueryImageGeneration(_ context.Context, _ string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	return s.queryResponse, nil
 }
 
 func (r *stubListingKitClientResolver) ResolveClientConfig(_ context.Context, clientName string, fallback *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
@@ -206,6 +223,61 @@ func TestListingKitRoutedImageClientUsesGPTImage2ByDefault(t *testing.T) {
 	}
 	if nano.lastGenerate != nil {
 		t.Fatal("did not expect nanobanana client to receive default request")
+	}
+}
+
+func TestAdaptListingKitAIImageGeneratorDelegatesAsyncCapability(t *testing.T) {
+	acceptedAt := time.Date(2026, 6, 20, 11, 0, 0, 0, time.UTC)
+	generator := &stubListingKitImageGenerator{
+		asyncSupported: true,
+		submitResponse: &openaiclient.ImageAsyncSubmitResponse{
+			JobID:             "job-1",
+			RequestID:         "req-1",
+			Provider:          "nanobanana",
+			RawSubmitResponse: `{"id":"job-1"}`,
+			AcceptedAt:        acceptedAt,
+		},
+		queryResponse: &openaiclient.ImageAsyncQueryResponse{
+			JobID:             "job-1",
+			RequestID:         "req-1",
+			Provider:          "nanobanana",
+			Status:            "running",
+			RawResultResponse: `{"id":"job-1","status":"running"}`,
+		},
+	}
+
+	adapted := adaptListingKitAIImageGenerator(generator)
+	asyncGenerator, ok := adapted.(listingkit.AIAsyncImageGenerator)
+	if !ok {
+		t.Fatal("adapted generator does not implement AIAsyncImageGenerator")
+	}
+	if !asyncGenerator.SupportsAsyncImageGeneration() {
+		t.Fatal("SupportsAsyncImageGeneration() = false, want true")
+	}
+
+	submit, err := asyncGenerator.SubmitImageGeneration(context.Background(), &listingkit.AIImageGenerateRequest{
+		Model:  "nano-banana-fast",
+		Prompt: "flat artwork",
+	})
+	if err != nil {
+		t.Fatalf("SubmitImageGeneration() error = %v", err)
+	}
+	if submit == nil || submit.JobID != "job-1" {
+		t.Fatalf("submit = %+v, want job-1 metadata", submit)
+	}
+	if submit.AcceptedAt != acceptedAt {
+		t.Fatalf("accepted at = %v, want %v", submit.AcceptedAt, acceptedAt)
+	}
+
+	query, err := asyncGenerator.QueryImageGeneration(context.Background(), "job-1")
+	if err != nil {
+		t.Fatalf("QueryImageGeneration() error = %v", err)
+	}
+	if query == nil || query.Status != listingkit.AIImageAsyncResultRunning {
+		t.Fatalf("query = %+v, want running result", query)
+	}
+	if query.Provider != "nanobanana" {
+		t.Fatalf("query provider = %q, want nanobanana", query.Provider)
 	}
 }
 

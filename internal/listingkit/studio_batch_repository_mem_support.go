@@ -172,6 +172,18 @@ func (r *MemStudioBatchRepository) UpdateStudioGenerationAttempt(ctx context.Con
 	if err := resolveStudioGenerationAttemptOwnership(existing, &row); err != nil {
 		return err
 	}
+	if row.Provider == "" {
+		row.Provider = existing.Provider
+	}
+	if row.RequestID == "" {
+		row.RequestID = existing.RequestID
+	}
+	if row.SubmitResponsePayload == "" {
+		row.SubmitResponsePayload = existing.SubmitResponsePayload
+	}
+	if row.ResultCheckedAt == nil {
+		row.ResultCheckedAt = existing.ResultCheckedAt
+	}
 	r.attempts[row.ID] = row
 	return nil
 }

@@ -266,6 +266,30 @@ func (r *ResilientClient) GetDefaultModel() string {
 	return r.client.GetDefaultModel()
 }
 
+func (r *ResilientClient) SupportsAsyncImageGeneration() bool {
+	return r.client.SupportsAsyncImageGeneration()
+}
+
+func (r *ResilientClient) SubmitImageGeneration(ctx context.Context, req *ImageGenerateRequest) (*ImageAsyncSubmitResponse, error) {
+	var result *ImageAsyncSubmitResponse
+	err := r.circuitBreaker.Execute(ctx, func() error {
+		var execErr error
+		result, execErr = r.client.SubmitImageGeneration(ctx, req)
+		return execErr
+	})
+	return result, err
+}
+
+func (r *ResilientClient) QueryImageGeneration(ctx context.Context, jobID string) (*ImageAsyncQueryResponse, error) {
+	var result *ImageAsyncQueryResponse
+	err := r.circuitBreaker.Execute(ctx, func() error {
+		var execErr error
+		result, execErr = r.client.QueryImageGeneration(ctx, jobID)
+		return execErr
+	})
+	return result, err
+}
+
 // GetCircuitBreakerState 获取熔断器状态
 func (r *ResilientClient) GetCircuitBreakerState() CircuitState {
 	return r.circuitBreaker.State()
