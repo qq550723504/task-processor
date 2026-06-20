@@ -129,8 +129,8 @@ func TestMemStudioBatchRepositoryGetBatchAndItemAndListDesignsAndUpdate(t *testi
 	if err != nil {
 		t.Fatalf("GetStudioBatchItem() error = %v", err)
 	}
-	if item.BatchID != "batch-1" || item.SelectionCount != 3 {
-		t.Fatalf("GetStudioBatchItem() = %+v, want batch-1 selection_count=3", item)
+	if item.BatchID != "batch-1" || item.SelectionCount != 1 {
+		t.Fatalf("GetStudioBatchItem() = %+v, want batch-1 selection_count=1", item)
 	}
 
 	designs, err := repo.ListStudioMaterializedDesignsByIDs(ctx, "batch-1", []string{"design-2", "design-1"})
@@ -623,8 +623,28 @@ func newStudioBatchRecordForTest(batchID string, now time.Time) *StudioBatchReco
 		GroupedImageMode: "shared_by_size",
 		Prompt:           "botanical summer",
 		SheinStoreID:     9001,
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		GroupedSelections: SheinStudioGroupedSelectionList{{
+			SelectionID:  "selection-1",
+			SheinStoreID: "9001",
+			Eligible:     true,
+			Selection: SheinStudioSelection{
+				ProductID:          3003,
+				ParentProductID:    7001,
+				VariantID:          3003,
+				PrototypeGroupID:   9001,
+				LayerID:            "layer-1",
+				DesignType:         "material",
+				ProductName:        "Canvas Tote",
+				VariantLabel:       "Red",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				TemplateImageURL:   "https://cdn.example.com/template.png",
+				MaskImageURL:       "https://cdn.example.com/mask.png",
+				SelectedVariantIDs: []int64{3003},
+			},
+		}},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
@@ -634,8 +654,9 @@ func newStudioBatchItemsForTest(batchID string, now time.Time) []StudioBatchItem
 		BatchID:          batchID,
 		TargetGroupKey:   "size:1200x1200",
 		TargetGroupLabel: "1200 x 1200",
+		SelectionIDs:     SheinStudioStringList{"selection-1"},
 		Status:           StudioBatchItemStatusPending,
-		SelectionCount:   3,
+		SelectionCount:   1,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}}

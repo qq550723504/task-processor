@@ -59,6 +59,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 						DesignIDs:     append([]string(nil), state.DesignIDs...),
 						Candidates:    []studioBatchTaskCandidate{candidate},
 						RejectedTasks: append([]SheinStudioRejectedTask(nil), state.RejectedTasks...),
+						FailedTasks:   append([]SheinStudioFailedTask(nil), state.FailedTasks...),
 					},
 				})
 			}
@@ -150,7 +151,9 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 					return nil, err
 				}
 			}
-			return s.completeStudioBatchTaskExecution(ctx, batchID, session, state.Batch, created, state.RejectedTasks, failed)
+			allFailed := append([]SheinStudioFailedTask(nil), state.FailedTasks...)
+			allFailed = append(allFailed, failed...)
+			return s.completeStudioBatchTaskExecution(ctx, batchID, session, state.Batch, created, state.RejectedTasks, allFailed)
 		},
 	})
 }

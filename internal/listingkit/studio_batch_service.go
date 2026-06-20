@@ -77,6 +77,8 @@ type taskStudioBatchServiceConfig struct {
 	batchRunRepo       StudioBatchRunRepository
 	batchTaskLinkRepo  StudioBatchTaskLinkRepository
 	studioSessionRepo  studioBatchSeedSessionRepository
+	baselineChecker    StudioBatchBaselineReadinessChecker
+	storeValidator     StudioBatchStoreValidator
 	generator          studioBatchGenerator
 	createGenerateTask func(ctx context.Context, req *GenerateRequest) (*Task, error)
 	getTask            func(ctx context.Context, taskID string) (*Task, error)

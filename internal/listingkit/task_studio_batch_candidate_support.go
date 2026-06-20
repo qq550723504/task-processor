@@ -17,6 +17,7 @@ type StudioBatchTaskState struct {
 	DesignIDs     []string
 	Candidates    []studioBatchTaskCandidate
 	RejectedTasks []SheinStudioRejectedTask
+	FailedTasks   []SheinStudioFailedTask
 }
 
 type studioBatchTaskCandidate struct {
@@ -85,13 +86,74 @@ func (s *taskStudioBatchService) buildStudioBatchTaskState(
 	if err != nil {
 		return nil, err
 	}
+	candidates, gateRejectedTasks, failedTasks := s.evaluateStudioBatchTaskCandidates(ctx, batchDetail.Batch, batchDetail, designs, candidates)
+	rejectedTasks = append(rejectedTasks, gateRejectedTasks...)
 	return &StudioBatchTaskState{
 		Session:       session,
 		Batch:         batchDetail.Batch,
 		DesignIDs:     stateDesignIDs,
 		Candidates:    candidates,
 		RejectedTasks: rejectedTasks,
+		FailedTasks:   failedTasks,
 	}, nil
+}
+
+func (s *taskStudioBatchService) evaluateStudioBatchTaskCandidates(
+	ctx context.Context,
+	batch *StudioBatchRecord,
+	detail *StudioBatchDetailGraph,
+	designs []StudioMaterializedDesignRecord,
+	candidates []studioBatchTaskCandidate,
+) ([]studioBatchTaskCandidate, []SheinStudioRejectedTask, []SheinStudioFailedTask) {
+	if len(candidates) == 0 {
+		return candidates, nil, nil
+	}
+	gate := newStudioBatchTaskGate(s.baselineChecker, s.storeValidator)
+	designsByID := make(map[string]StudioMaterializedDesignRecord, len(designs))
+	for _, design := range designs {
+		designsByID[strings.TrimSpace(design.ID)] = design
+	}
+	selectionsByID := studioBatchSelectionSnapshotMap(batch)
+	itemSelectionsByID := make(map[string][]SheinStudioGroupedSelection)
+	if detail != nil {
+		itemSelectionsByID = make(map[string][]SheinStudioGroupedSelection, len(detail.Items))
+		for _, item := range detail.Items {
+			selections, _, _ := resolveStudioBatchTaskCandidateSelections(batch, item)
+			itemSelectionsByID[strings.TrimSpace(item.ID)] = selections
+		}
+	}
+	eligible := make([]studioBatchTaskCandidate, 0, len(candidates))
+	rejected := make([]SheinStudioRejectedTask, 0)
+	failed := make([]SheinStudioFailedTask, 0)
+	for _, candidate := range candidates {
+		result, err := gate.Evaluate(ctx, &studioBatchTaskGateEvaluation{
+			Batch:          batch,
+			Candidate:      candidate,
+			DesignsByID:    designsByID,
+			SelectionsByID: selectionsByID,
+			ItemSelections: itemSelectionsByID[strings.TrimSpace(candidate.Item.ID)],
+		})
+		if err != nil {
+			failed = append(failed, SheinStudioFailedTask{
+				DesignID: strings.TrimSpace(candidate.Design.ID),
+				Title:    strings.TrimSpace(candidate.Title),
+				Message:  err.Error(),
+			})
+			continue
+		}
+		if !result.Eligible {
+			rejected = append(rejected, SheinStudioRejectedTask{
+				DesignID:    strings.TrimSpace(candidate.Design.ID),
+				ItemID:      strings.TrimSpace(candidate.Item.ID),
+				SelectionID: strings.TrimSpace(candidate.SelectionID),
+				ReasonCode:  strings.TrimSpace(result.ReasonCode),
+				Message:     strings.TrimSpace(result.Message),
+			})
+			continue
+		}
+		eligible = append(eligible, candidate)
+	}
+	return eligible, rejected, failed
 }
 
 func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(

@@ -11,6 +11,8 @@ type taskStudioBatchService struct {
 	batchRunRepo       StudioBatchRunRepository
 	batchTaskLinkRepo  StudioBatchTaskLinkRepository
 	studioSessionRepo  studioBatchSeedSessionRepository
+	baselineChecker    StudioBatchBaselineReadinessChecker
+	storeValidator     StudioBatchStoreValidator
 	generator          studioBatchGenerator
 	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
 	getTask            func(context.Context, string) (*Task, error)
@@ -32,6 +34,8 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 		batchRunRepo:       config.batchRunRepo,
 		batchTaskLinkRepo:  config.batchTaskLinkRepo,
 		studioSessionRepo:  config.studioSessionRepo,
+		baselineChecker:    config.baselineChecker,
+		storeValidator:     config.storeValidator,
 		generator:          config.generator,
 		createGenerateTask: config.createGenerateTask,
 		getTask:            config.getTask,

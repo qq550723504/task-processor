@@ -13,6 +13,8 @@ type taskStudioBatchServiceWiring struct {
 	batchRunRepo       StudioBatchRunRepository
 	batchTaskLinkRepo  StudioBatchTaskLinkRepository
 	studioSessionRepo  StudioSessionRepository
+	baselineChecker    StudioBatchBaselineReadinessChecker
+	storeValidator     StudioBatchStoreValidator
 	generator          *studioBatchGenerationService
 	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
 	getTask            func(context.Context, string) (*Task, error)
@@ -59,6 +61,8 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 		batchRunRepo:       resolveStudioBatchRunRepo(s),
 		batchTaskLinkRepo:  resolveStudioBatchTaskLinkRepo(s),
 		studioSessionRepo:  studioSessionRepo,
+		baselineChecker:    resolveStudioBatchBaselineReadinessChecker(s),
+		storeValidator:     resolveStudioBatchStoreValidator(s),
 		generator:          generator,
 		createGenerateTask: s.CreateGenerateTask,
 		getTask:            repository.getTask,
@@ -270,6 +274,8 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 		batchRunRepo:       config.batch.batchRunRepo,
 		batchTaskLinkRepo:  config.batch.batchTaskLinkRepo,
 		studioSessionRepo:  config.batch.studioSessionRepo,
+		baselineChecker:    config.batch.baselineChecker,
+		storeValidator:     config.batch.storeValidator,
 		generator:          config.batch.generator,
 		createGenerateTask: config.batch.createGenerateTask,
 		getTask:            config.batch.getTask,
@@ -279,4 +285,22 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 		taskPrepareRunner:  config.taskPrepare,
 		taskResumeRunner:   config.taskResume,
 	}
+}
+
+func resolveStudioBatchBaselineReadinessChecker(s *service) StudioBatchBaselineReadinessChecker {
+	if s == nil {
+		return nil
+	}
+	repository := buildServiceRepositoryWiring(s)
+	if repo, ok := repository.repo.(SDSBaselineCacheRepository); ok {
+		return studioBatchBaselineCacheReadinessChecker{repo: repo}
+	}
+	return nil
+}
+
+func resolveStudioBatchStoreValidator(s *service) StudioBatchStoreValidator {
+	if repo := resolveAdminStoreProfileRepo(s); repo != nil {
+		return studioBatchStoreProfileValidator{repo: repo}
+	}
+	return nil
 }

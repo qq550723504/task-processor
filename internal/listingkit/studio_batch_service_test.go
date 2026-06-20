@@ -724,7 +724,14 @@ func TestServiceApproveStudioBatchDesignsUpdatesReviewStatusFromDesignIDs(t *tes
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -774,7 +781,14 @@ func TestServiceApproveStudioBatchDesignsRejectsUnknownDesignIDs(t *testing.T) {
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -1401,7 +1415,14 @@ func TestServiceCreateStudioBatchTasksUsesApprovedDesignOwnership(t *testing.T) 
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -1485,12 +1506,16 @@ func TestServiceCreateStudioBatchTasksRejectsInFlightBatchWithoutPartialAllowanc
 	now := time.Now().UTC()
 	batch := newStudioBatchRecordForTest("batch-1", now)
 	batch.Status = StudioBatchStatusGenerating
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
 	items := []StudioBatchItemRecord{
 		{
 			ID:               "item-1",
 			BatchID:          "batch-1",
 			TargetGroupKey:   "size:1200x1200",
 			TargetGroupLabel: "1200 x 1200",
+			SelectionIDs:     SheinStudioStringList{"selection-1"},
 			Status:           StudioBatchItemStatusReviewReady,
 			SelectionCount:   1,
 			CreatedAt:        now,
@@ -1562,12 +1587,16 @@ func TestServiceCreateStudioBatchTasksAllowsExplicitPartialCreationWhileGenerati
 	now := time.Now().UTC()
 	batch := newStudioBatchRecordForTest("batch-1", now)
 	batch.Status = StudioBatchStatusGenerating
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
 	items := []StudioBatchItemRecord{
 		{
 			ID:               "item-1",
 			BatchID:          "batch-1",
 			TargetGroupKey:   "size:1200x1200",
 			TargetGroupLabel: "1200 x 1200",
+			SelectionIDs:     SheinStudioStringList{"selection-1"},
 			Status:           StudioBatchItemStatusReviewReady,
 			SelectionCount:   1,
 			CreatedAt:        now,
@@ -1636,7 +1665,14 @@ func TestServiceCreateStudioBatchTasks_UsesBatchGraphWithoutSession(t *testing.T
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -2045,40 +2081,47 @@ func TestServiceCreateStudioBatchTasks_RejectsCompatibilityMismatch(t *testing.T
 	batch.GroupedImageMode = "shared_by_size"
 	batch.GroupedSelections = SheinStudioGroupedSelectionList{
 		{
-			SelectionID: "selection-1",
+			SelectionID:  "selection-1",
+			SheinStoreID: "9001",
 			Selection: SheinStudioSelection{
-				ProductID:        1001,
-				ParentProductID:  2002,
-				VariantID:        3003,
-				PrototypeGroupID: 4004,
-				LayerID:          "layer-front",
-				DesignType:       "material",
-				PrintableWidth:   1200,
-				PrintableHeight:  1200,
-				TemplateImageURL: "https://cdn.example.com/template-a.png",
-				MaskImageURL:     "https://cdn.example.com/mask-a.png",
+				ProductID:          1001,
+				ParentProductID:    2002,
+				VariantID:          3003,
+				PrototypeGroupID:   4004,
+				LayerID:            "layer-front",
+				DesignType:         "material",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				TemplateImageURL:   "https://cdn.example.com/template-a.png",
+				MaskImageURL:       "https://cdn.example.com/mask-a.png",
+				SelectedVariantIDs: []int64{3003},
 			},
 			Eligible: true,
 		},
 		{
-			SelectionID: "selection-2",
+			SelectionID:  "selection-2",
+			SheinStoreID: "9001",
 			Selection: SheinStudioSelection{
-				ProductID:        1001,
-				ParentProductID:  2002,
-				VariantID:        3004,
-				PrototypeGroupID: 4004,
-				LayerID:          "layer-front",
-				DesignType:       "material",
-				PrintableWidth:   1200,
-				PrintableHeight:  1200,
-				TemplateImageURL: "https://cdn.example.com/template-b.png",
-				MaskImageURL:     "https://cdn.example.com/mask-a.png",
+				ProductID:          1001,
+				ParentProductID:    2002,
+				VariantID:          3004,
+				PrototypeGroupID:   4004,
+				LayerID:            "layer-front",
+				DesignType:         "material",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				TemplateImageURL:   "https://cdn.example.com/template-b.png",
+				MaskImageURL:       "https://cdn.example.com/mask-a.png",
+				SelectedVariantIDs: []int64{3004},
 			},
 			Eligible: true,
 		},
 	}
 
-	if err := repo.CreateStudioBatchGraph(ctx, batch, newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1", "selection-2"}
+	items[0].SelectionCount = 2
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -2119,7 +2162,14 @@ func TestServiceCreateStudioBatchTasksCreatesRealListingKitTasks(t *testing.T) {
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "869", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:               "design-1",
 			BatchID:          "batch-1",
@@ -2250,15 +2300,19 @@ func TestServiceCreateStudioBatchTasksUsesItemSelectionOwnershipForGroupedProduc
 			SheinStoreID: "870",
 			Eligible:     true,
 			Selection: SheinStudioSelection{
-				ProductID:        1002,
-				ParentProductID:  2002,
-				VariantID:        4004,
-				PrototypeGroupID: 5005,
-				LayerID:          "layer-group",
-				ProductName:      "Grouped Wallet",
-				VariantLabel:     "White",
-				PrintableWidth:   1200,
-				PrintableHeight:  1200,
+				ProductID:          1002,
+				ParentProductID:    2002,
+				VariantID:          4004,
+				PrototypeGroupID:   5005,
+				LayerID:            "layer-group",
+				DesignType:         "material",
+				ProductName:        "Grouped Wallet",
+				VariantLabel:       "White",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				TemplateImageURL:   "https://cdn.example.com/group-template.png",
+				MaskImageURL:       "https://cdn.example.com/group-mask.png",
+				SelectedVariantIDs: []int64{4004},
 			},
 		},
 	}
@@ -2731,7 +2785,14 @@ func TestServiceCreateStudioBatchTasks_ConcurrentSlowOwnerReturnsOneTask(t *test
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3001, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -2769,12 +2830,20 @@ func TestServiceCreateStudioBatchTasks_ConcurrentSlowOwnerReturnsOneTask(t *test
 	var wg sync.WaitGroup
 	results := make([]*CreateStudioBatchTasksResult, 2)
 	errs := make([]error, 2)
+	firstDone := make(chan struct{})
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer close(firstDone)
 		results[0], errs[0] = svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
 	}()
-	<-started
+	select {
+	case <-started:
+	case <-firstDone:
+		t.Fatalf("first CreateStudioBatchTasks returned before task creation started: result=%+v err=%v", results[0], errs[0])
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for first task creation to start")
+	}
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -2828,7 +2897,7 @@ func TestServiceCreateStudioBatchTasks_ConcurrentStaleCreatingRecoveryCreatesOne
 	candidateKey := buildStudioBatchTaskCandidateKey(ctx, batch, studioBatchTaskCandidate{
 		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
 		Item:         StudioBatchItemRecord{ID: "item-1"},
-		SelectionID:  "size:1200x1200",
+		SelectionID:  "selection-1",
 		SheinStoreID: 9001,
 	})
 	linkRepo.candidateKey = candidateKey
@@ -2837,7 +2906,7 @@ func TestServiceCreateStudioBatchTasks_ConcurrentStaleCreatingRecoveryCreatesOne
 		BatchID:      "batch-1",
 		ItemID:       "item-1",
 		DesignID:     "design-1",
-		SelectionID:  "size:1200x1200",
+		SelectionID:  "selection-1",
 		SheinStoreID: 9001,
 		CandidateKey: candidateKey,
 		Status:       studioBatchTaskLinkStatusCreating,
@@ -3052,7 +3121,7 @@ func TestServiceCreateStudioBatchTasks_RecoversReservedCandidate(t *testing.T) {
 	candidateKey := buildStudioBatchTaskCandidateKey(ctx, batch, studioBatchTaskCandidate{
 		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
 		Item:         StudioBatchItemRecord{ID: "item-1"},
-		SelectionID:  "size:1200x1200",
+		SelectionID:  "selection-1",
 		SheinStoreID: 9001,
 	})
 	if err := linkRepo.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
@@ -3060,7 +3129,7 @@ func TestServiceCreateStudioBatchTasks_RecoversReservedCandidate(t *testing.T) {
 		BatchID:      "batch-1",
 		ItemID:       "item-1",
 		DesignID:     "design-1",
-		SelectionID:  "size:1200x1200",
+		SelectionID:  "selection-1",
 		SheinStoreID: 9001,
 		CandidateKey: candidateKey,
 		Status:       "reserved",
@@ -3188,7 +3257,7 @@ func TestServiceCreateStudioBatchTasks_RecoversStaleCreatingCandidate(t *testing
 	candidateKey := buildStudioBatchTaskCandidateKey(ctx, batch, studioBatchTaskCandidate{
 		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
 		Item:         StudioBatchItemRecord{ID: "item-1"},
-		SelectionID:  "size:1200x1200",
+		SelectionID:  "selection-1",
 		SheinStoreID: 9001,
 	})
 	if err := linkRepo.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
@@ -3196,7 +3265,7 @@ func TestServiceCreateStudioBatchTasks_RecoversStaleCreatingCandidate(t *testing
 		BatchID:      "batch-1",
 		ItemID:       "item-1",
 		DesignID:     "design-1",
-		SelectionID:  "size:1200x1200",
+		SelectionID:  "selection-1",
 		SheinStoreID: 9001,
 		CandidateKey: candidateKey,
 		Status:       studioBatchTaskLinkStatusCreating,
@@ -3344,8 +3413,8 @@ func TestServiceCreateStudioBatchTasksReusesLegacyStyleIDTasks(t *testing.T) {
 				},
 				SDS: &SDSSyncOptions{
 					VariantID:        3003,
-					ParentProductID:  2002,
-					PrototypeGroupID: 4004,
+					ParentProductID:  7001,
+					PrototypeGroupID: 9001,
 					LayerID:          "layer-1",
 				},
 			},
