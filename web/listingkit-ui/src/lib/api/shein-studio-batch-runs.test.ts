@@ -5,6 +5,7 @@ import {
   getSheinStudioBatchRun,
   listSheinStudioBatchRunItems,
   parseSheinStudioBatchRunStartResponse,
+  recoverSheinStudioBatchRun,
   startSheinStudioBatchRun,
 } from "@/lib/api/shein-studio-batch-runs";
 
@@ -72,6 +73,8 @@ describe("parseSheinStudioBatchRunStartResponse", () => {
           sessionId: "session-1",
           asyncJobId: "job-1",
           errorMessage: undefined,
+          batchStatus: undefined,
+          batchLastError: undefined,
           startedAt: undefined,
           finishedAt: undefined,
           createdAt: "2026-05-31T11:59:00Z",
@@ -211,6 +214,8 @@ describe("shein studio batch run API", () => {
               position: 2,
               status: "failed",
               error_message: "upstream failed",
+              batch_status: "processing",
+              batch_last_error: "provider timeout",
               created_at: "2026-05-31T12:00:00Z",
               updated_at: "2026-05-31T12:00:02Z",
             },
@@ -234,6 +239,8 @@ describe("shein studio batch run API", () => {
         id: "run-5:2",
         batchId: "batch-2",
         errorMessage: "upstream failed",
+        batchStatus: "processing",
+        batchLastError: "provider timeout",
       }),
     ]);
 
@@ -253,6 +260,23 @@ describe("shein studio batch run API", () => {
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "/api/listing-kits/studio/batch-runs/run-cancel/cancel",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
+  });
+
+  it("recovers a studio batch run", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(recoverSheinStudioBatchRun("run-recover")).resolves.toBeUndefined();
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/studio/batch-runs/run-recover/recover",
     );
     expect(fetchMock.mock.calls[0]?.[1]?.method).toBe("POST");
   });

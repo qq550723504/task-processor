@@ -7,10 +7,12 @@ import {
   cancelSheinStudioBatchRun,
   getSheinStudioBatchRun,
   listSheinStudioBatchRunItems,
+  recoverSheinStudioBatchRun,
 } from "@/lib/api/shein-studio-batch-runs";
 import type {
   SheinStudioBatchRun,
   SheinStudioBatchRunItem,
+  SheinStudioBatchRunItemStatus,
   SheinStudioBatchRunStatus,
 } from "@/lib/types/shein-studio-batch-runs";
 
@@ -27,6 +29,15 @@ function isTerminalBatchRunStatus(status?: SheinStudioBatchRunStatus) {
 
 function isCancellingBatchRun(run?: Pick<SheinStudioBatchRun, "status" | "cancelRequested"> | null) {
   return Boolean(run?.cancelRequested && !isTerminalBatchRunStatus(run.status));
+}
+
+function canRecoverBatchRun(
+  run?: Pick<SheinStudioBatchRun, "status" | "cancelRequested"> | null,
+) {
+  if (!run || run.cancelRequested) {
+    return false;
+  }
+  return run.status === "failed" || run.status === "cancelled" || run.status === "partially_succeeded";
 }
 
 function formatBatchRunStatus(
@@ -76,6 +87,29 @@ function getBatchRunFailureMessage(error: unknown) {
     : "批量生成状态暂时没有成功同步，请稍后重试。";
 }
 
+function formatBatchItemStatus(status?: string) {
+  switch (status) {
+    case "pending":
+      return "待提交";
+    case "submitted":
+      return "已提交";
+    case "processing":
+      return "处理中";
+    case "succeeded":
+      return "已完成";
+    case "failed":
+      return "执行失败";
+    case "cancelled":
+      return "已取消";
+    default:
+      return status ?? "状态未知";
+  }
+}
+
+function getItemFailureReason(item: SheinStudioBatchRunItem) {
+  return item.errorMessage || item.batchLastError;
+}
+
 export function SheinStudioBatchRunProgress({
   runId,
   onBack,
@@ -87,8 +121,10 @@ export function SheinStudioBatchRunProgress({
   const [items, setItems] = useState<SheinStudioBatchRunItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [error, setError] = useState("");
   const isCancellingRun = isCancellingBatchRun(run);
+  const canRecoverRun = canRecoverBatchRun(run);
 
   const refreshRun = useCallback(async () => {
     setError("");
@@ -157,6 +193,19 @@ export function SheinStudioBatchRunProgress({
     }
   }
 
+  async function handleRecover() {
+    setIsRecovering(true);
+    setError("");
+    try {
+      await recoverSheinStudioBatchRun(runId);
+      await refreshRun();
+    } catch (nextError) {
+      setError(getBatchRunFailureMessage(nextError));
+    } finally {
+      setIsRecovering(false);
+    }
+  }
+
   return (
     <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
@@ -180,6 +229,17 @@ export function SheinStudioBatchRunProgress({
               variant="secondary"
             >
               {isCancelling ? "正在取消..." : "取消本轮生成"}
+            </Button>
+          ) : null}
+          {canRecoverRun ? (
+            <Button
+              className="w-full sm:w-auto"
+              disabled={isRecovering}
+              onClick={() => void handleRecover()}
+              type="button"
+              variant="secondary"
+            >
+              {isRecovering ? "正在恢复..." : "恢复本轮生成"}
             </Button>
           ) : null}
           <Button className="w-full sm:w-auto" onClick={onBack} type="button" variant="ghost">
@@ -266,13 +326,23 @@ export function SheinStudioBatchRunProgress({
                 >
                   <div className="min-w-0">
                     <p className="break-all font-medium text-zinc-950">{item.batchId}</p>
-                    {item.errorMessage ? (
-                      <p className="mt-1 text-xs text-rose-700">{item.errorMessage}</p>
+                    {item.batchStatus ? (
+                      <p className="mt-1 text-xs text-zinc-500">
+                        子任务状态：{formatBatchItemStatus(item.batchStatus)}
+                        {item.asyncJobId ? ` · Async Job：${item.asyncJobId}` : ""}
+                      </p>
+                    ) : item.asyncJobId ? (
+                      <p className="mt-1 text-xs text-zinc-500">
+                        Async Job：{item.asyncJobId}
+                      </p>
+                    ) : null}
+                    {getItemFailureReason(item) ? (
+                      <p className="mt-1 text-xs text-rose-700">{getItemFailureReason(item)}</p>
                     ) : null}
                   </div>
                   <span className="rounded-full border border-zinc-200 px-2.5 py-1 text-xs text-zinc-700">
                     {formatBatchRunStatus(
-                      item.status as SheinStudioBatchRunStatus,
+                      item.status as SheinStudioBatchRunItemStatus as SheinStudioBatchRunStatus,
                       isCancellingRun && item.status === "running",
                     )}
                   </span>
@@ -288,7 +358,7 @@ export function SheinStudioBatchRunProgress({
                 {failedItems.map((item) => (
                   <li key={`failed:${item.id}`}>
                     {item.batchId}
-                    {item.errorMessage ? `：${item.errorMessage}` : ""}
+                    {getItemFailureReason(item) ? `：${getItemFailureReason(item)}` : ""}
                   </li>
                 ))}
               </ul>
