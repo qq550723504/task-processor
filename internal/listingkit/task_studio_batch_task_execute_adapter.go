@@ -88,9 +88,12 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				return SheinStudioCreatedTask{}, err
 			}
 			return SheinStudioCreatedTask{
-				ID:       task.ID,
-				Title:    taskCandidate.Title,
-				DesignID: taskCandidate.Design.ID,
+				ID:                       task.ID,
+				Title:                    taskCandidate.Title,
+				DesignID:                 taskCandidate.Design.ID,
+				ItemID:                   taskCandidate.Item.ID,
+				SelectionID:              taskCandidate.SelectionID,
+				CompatibilityFingerprint: taskCandidate.CompatibilityFingerprint,
 			}, nil
 		},
 		BuildFailed: func(candidate listingStudioBatchTaskExecuteCandidate, err error) SheinStudioFailedTask {
