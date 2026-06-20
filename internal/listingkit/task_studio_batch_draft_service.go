@@ -15,22 +15,25 @@ import (
 )
 
 type taskStudioBatchDraftServiceConfig struct {
-	repo      studioBatchDraftRepository
-	batchRepo StudioBatchRepository
-	runner    *listingStudioBatchDraftRunner
+	repo       studioBatchDraftRepository
+	batchRepo  StudioBatchRepository
+	loadDetail func(context.Context, string) (*StudioBatchDetail, error)
+	runner     *listingStudioBatchDraftRunner
 }
 
 type taskStudioBatchDraftService struct {
-	repo      studioBatchDraftRepository
-	batchRepo StudioBatchRepository
-	runner    *listingStudioBatchDraftRunner
+	repo       studioBatchDraftRepository
+	batchRepo  StudioBatchRepository
+	loadDetail func(context.Context, string) (*StudioBatchDetail, error)
+	runner     *listingStudioBatchDraftRunner
 }
 
 func newTaskStudioBatchDraftService(config taskStudioBatchDraftServiceConfig) *taskStudioBatchDraftService {
 	service := &taskStudioBatchDraftService{
-		repo:      config.repo,
-		batchRepo: config.batchRepo,
-		runner:    config.runner,
+		repo:       config.repo,
+		batchRepo:  config.batchRepo,
+		loadDetail: config.loadDetail,
+		runner:     config.runner,
 	}
 	service.ensureRunner()
 	return service
@@ -226,12 +229,18 @@ func (s *taskStudioBatchDraftService) ensureRunner() {
 }
 
 func (s *taskStudioBatchDraftService) reconcileBatchListStatuses(ctx context.Context, items []SheinStudioBatchListItem) {
-	if s == nil || s.batchRepo == nil {
+	if s == nil {
 		return
 	}
 	for index := range items {
 		batchID := strings.TrimSpace(items[index].ID)
 		if batchID == "" {
+			continue
+		}
+		if s.reconcileBatchListItemFromProjectedDetail(ctx, &items[index], batchID) {
+			continue
+		}
+		if s.batchRepo == nil {
 			continue
 		}
 		detail, err := s.batchRepo.GetStudioBatchDetail(ctx, batchID)
@@ -245,5 +254,35 @@ func (s *taskStudioBatchDraftService) reconcileBatchListStatuses(ctx context.Con
 			continue
 		}
 		items[index].Status = string(resolveProjectedStudioBatchStatus(detail.Batch.Status, detail.Items))
+		items[index].DesignCount = countStudioBatchGraphMaterializedDesigns(detail.DesignsByItem)
 	}
+}
+
+func (s *taskStudioBatchDraftService) reconcileBatchListItemFromProjectedDetail(ctx context.Context, item *SheinStudioBatchListItem, batchID string) bool {
+	if s == nil || s.loadDetail == nil || item == nil {
+		return false
+	}
+	detail, err := s.loadDetail(ctx, batchID)
+	if err != nil || detail == nil || detail.Batch == nil {
+		return false
+	}
+	item.Status = string(detail.Batch.Status)
+	item.DesignCount = countStudioBatchDetailMaterializedDesigns(detail.Items)
+	return true
+}
+
+func countStudioBatchGraphMaterializedDesigns(designsByItem map[string][]StudioMaterializedDesignRecord) int {
+	total := 0
+	for _, designs := range designsByItem {
+		total += len(designs)
+	}
+	return total
+}
+
+func countStudioBatchDetailMaterializedDesigns(items []StudioBatchItemDetail) int {
+	total := 0
+	for _, item := range items {
+		total += len(item.Designs)
+	}
+	return total
 }

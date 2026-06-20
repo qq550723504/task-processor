@@ -124,6 +124,35 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     );
   });
 
+  it("does not label task creation as ready before any designs exist", () => {
+    render(
+      <SheinStudioRecentBatchesDashboard
+        onCreateBatch={() => undefined}
+        onSelectSummary={() => undefined}
+        summaries={[
+          {
+            id: "batch-1",
+            source: "batch",
+            isRecoverableDraft: false,
+            title: "Need Generate First",
+            primaryProductName: "tee",
+            productCount: 1,
+            promptPreview: "prompt one",
+            storeSummary: "869",
+            designCount: 0,
+            createdTaskCount: 0,
+            updatedAt: "2026-05-26T10:00:00.000Z",
+            batchStatus: "partially_materialized",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("待生成设计")).toBeInTheDocument();
+    expect(screen.getByText("生成后创建任务")).toBeInTheDocument();
+    expect(screen.queryByText("待创建任务")).not.toBeInTheDocument();
+  });
+
   it("uses mobile-safe batch grid and bulk controls", () => {
     const { container } = render(
       <SheinStudioRecentBatchesDashboard

@@ -452,6 +452,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
       primarySelection,
     ),
     designs: normalizedDesigns,
+    persistedDesignCount: item.design_count ?? normalizedDesigns.length,
     selectedIds: normalizedSelectedIds,
     createdTasks: normalizeCreatedTasks(
       item.created_tasks ?? legacyCompatibilitySnapshot?.createdTasks,

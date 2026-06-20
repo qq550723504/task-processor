@@ -47,6 +47,7 @@ describe("buildRecentBatchSummaries", () => {
           },
         ],
         designs: [{ id: "design-1" }],
+        persistedDesignCount: 58,
         selectedIds: ["design-1"],
         createdTasks: [],
         batchStatus: "generating",
@@ -61,11 +62,37 @@ describe("buildRecentBatchSummaries", () => {
       primaryProductName: "tee",
       productCount: 2,
       promptPreview: "retro cherries",
-      designCount: 1,
+      designCount: 58,
       createdTaskCount: 0,
       batchStatus: "generating",
       storeSummary: "869",
       alerts: [],
+    });
+  });
+
+  it("falls back to persisted design count when list payload omits design details", () => {
+    const summaries = buildRecentBatchSummaries([
+      {
+        id: "batch-2",
+        name: "Projected Batch",
+        prompt: "projected prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        groupedSelections: [],
+        designs: [],
+        persistedDesignCount: 12,
+        selectedIds: [],
+        createdTasks: [],
+        batchStatus: "partially_materialized",
+        updatedAt: "2026-05-26T12:00:00.000Z",
+      },
+    ]);
+
+    expect(summaries[0]).toMatchObject({
+      id: "batch-2",
+      designCount: 12,
+      batchStatus: "partially_materialized",
     });
   });
 

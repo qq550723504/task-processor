@@ -727,7 +727,18 @@ func TestStudioSessionServiceListBatchesUsesProjectedBatchStatusWhenGraphExists(
 			CreatedAt:        now.Add(time.Second),
 			UpdatedAt:        now.Add(time.Second),
 		},
-	}, nil, nil); err != nil {
+	}, nil, []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         detail.Batch.ID,
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://oss.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
@@ -740,6 +751,69 @@ func TestStudioSessionServiceListBatchesUsesProjectedBatchStatusWhenGraphExists(
 	}
 	if got, want := list.Items[0].Status, string(StudioBatchStatusPartiallyMaterialized); got != want {
 		t.Fatalf("batch status = %q, want %q", got, want)
+	}
+	if got, want := list.Items[0].DesignCount, 1; got != want {
+		t.Fatalf("batch design count = %d, want %d", got, want)
+	}
+}
+
+func TestStudioSessionServiceListBatchesPrefersProjectedDetailWhenDraftListSnapshotIsStale(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	svc := newTaskStudioBatchDraftService(taskStudioBatchDraftServiceConfig{
+		runner: studiodomain.NewBatchDraftService(studiodomain.BatchDraftServiceConfig[
+			SheinStudioSession,
+			SheinStudioDesign,
+			SheinStudioSessionGalleryItem,
+			SheinStudioBatchListItem,
+		]{
+			Repo: studioBatchDraftDomainRepoStub{
+				session: &SheinStudioSession{
+					ID:           "batch-1",
+					SavedAsBatch: true,
+					BatchName:    "Batch 1",
+					Status:       SheinStudioSessionStatusSelecting,
+				},
+			},
+			IsSavedBatch: func(session *SheinStudioSession) bool { return session != nil && session.SavedAsBatch },
+			SessionID: func(session *SheinStudioSession) string {
+				if session == nil {
+					return ""
+				}
+				return session.ID
+			},
+			MapBatchListItem: mapStudioBatchListItem,
+		}),
+		loadDetail: func(context.Context, string) (*StudioBatchDetail, error) {
+			return &StudioBatchDetail{
+				Batch: &StudioBatchRecord{
+					ID:     "batch-1",
+					Status: StudioBatchStatusPartiallyMaterialized,
+				},
+				Items: []StudioBatchItemDetail{
+					{
+						Item: StudioBatchItemRecord{ID: "item-1", Status: StudioBatchItemStatusReviewReady},
+						Designs: []StudioMaterializedDesignRecord{
+							{ID: "design-1"},
+							{ID: "design-2"},
+						},
+					},
+				},
+			}, nil
+		},
+	})
+
+	list, err := svc.ListStudioBatches(ctx, 10)
+	if err != nil {
+		t.Fatalf("list batches: %v", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("batch count = %d, want 1", len(list.Items))
+	}
+	if got, want := list.Items[0].Status, string(StudioBatchStatusPartiallyMaterialized); got != want {
+		t.Fatalf("batch status = %q, want %q", got, want)
+	}
+	if got, want := list.Items[0].DesignCount, 2; got != want {
+		t.Fatalf("batch design count = %d, want %d", got, want)
 	}
 }
 

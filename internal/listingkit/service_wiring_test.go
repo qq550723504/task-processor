@@ -528,7 +528,8 @@ func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 		"reviewTaskMetadataRunner: config.reviewTaskMetadataRunner,",
 		"generalMetadataRunner:    config.generalMetadataRunner,",
 		"func buildTaskStudioBatchDraftServiceConfigWithWiring(config taskStudioSessionConfigWiring) taskStudioBatchDraftServiceConfig {",
-		"runner: config.batchDraftRunner,",
+		"loadDetail: config.loadBatchDetail,",
+		"runner:     config.batchDraftRunner,",
 		"func buildTaskStudioMediaServiceConfigWithWiring(wiring taskStudioMediaWiring) taskStudioMediaServiceConfig {",
 	} {
 		if !strings.Contains(sessionContent, needle) {

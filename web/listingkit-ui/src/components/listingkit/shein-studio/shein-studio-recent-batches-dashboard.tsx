@@ -38,6 +38,16 @@ function summaryHasPendingGeneration(summary: SheinStudioRecentBatchSummary) {
   );
 }
 
+function buildTaskStageLabel(summary: SheinStudioRecentBatchSummary) {
+  if (summary.createdTaskCount > 0) {
+    return `已建 ${summary.createdTaskCount} 个任务`;
+  }
+  if (summary.designCount > 0) {
+    return "待创建任务";
+  }
+  return "生成后创建任务";
+}
+
 const DASHBOARD_PREFERENCES_STORAGE_KEY =
   "listingkit:shein-studio:recent-batches-dashboard";
 
@@ -1262,6 +1272,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
             const isEditing = editingSummaryId === summaryKey;
             const hasDesigns = summary.designCount > 0;
             const hasTasks = summary.createdTaskCount > 0;
+            const taskStageLabel = buildTaskStageLabel(summary);
             const primaryAction = primaryActionForSummary(summary);
             const riskActions =
               summary.alerts
@@ -1395,9 +1406,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                             : "bg-muted text-muted-foreground"
                         }`}
                       >
-                        {hasTasks
-                          ? `已建 ${summary.createdTaskCount} 个任务`
-                          : "待创建任务"}
+                        {taskStageLabel}
                       </span>
                       <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
                         更新于 {formatRecentBatchTimestamp(summary.updatedAt)}

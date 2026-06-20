@@ -191,6 +191,7 @@ export type SheinStudioSavedBatch = {
   groupedSelections?: GroupedSDSSelectionEligibility[];
   groups?: SheinStudioGroupedWorkspace[];
   designs: SheinStudioGeneratedDesign[];
+  persistedDesignCount?: number;
   selectedIds: string[];
   createdTasks: SheinStudioCreatedTask[];
   generationJobs?: SheinStudioGenerationJob[];

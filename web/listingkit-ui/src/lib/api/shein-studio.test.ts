@@ -766,6 +766,7 @@ describe("shein studio design metadata", () => {
           batch_name: "批次1",
           status: "generating",
           prompt: "retro cherries",
+          design_count: 58,
           updated_at: "2026-05-30T00:00:00Z",
           legacy_compatibility_snapshot: {
             approved_design_ids: ["design-1"],
@@ -791,6 +792,7 @@ describe("shein studio design metadata", () => {
       {
         id: "batch-1",
         batchStatus: "generating",
+        persistedDesignCount: 58,
         designs: [
           {
             id: "design-1",

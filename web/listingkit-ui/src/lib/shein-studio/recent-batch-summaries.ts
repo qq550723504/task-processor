@@ -144,8 +144,10 @@ function buildPersistedBatchAlerts(batch: SheinStudioSavedBatch) {
   const group = pickSummaryGroup(batch.groups);
   const groupedSelections = group?.groupedSelections ?? batch.groupedSelections ?? [];
   const alerts = buildGroupedSelectionAlerts(groupedSelections);
+  const effectiveDesignCount =
+    batch.persistedDesignCount ?? group?.designs.length ?? batch.designs.length;
   const reviewAlert = buildSelectionReviewAlert({
-    designCount: group?.designs.length ?? batch.designs.length,
+    designCount: effectiveDesignCount,
     selectedIds: group?.selectedIds ?? batch.selectedIds,
   });
   if (reviewAlert) {
@@ -205,7 +207,8 @@ function buildPersistedBatchSummary(
         batch.sheinStoreId,
         ...(batch.groupedSelections ?? []).map((item) => item.sheinStoreId),
       ];
-  const designCount = group?.designs.length ?? batch.designs.length;
+  const designCount =
+    batch.persistedDesignCount ?? group?.designs.length ?? batch.designs.length;
   const selectedIds = group?.selectedIds ?? batch.selectedIds;
   const createdTaskCount = group?.createdTasks.length ?? batch.createdTasks.length;
 
