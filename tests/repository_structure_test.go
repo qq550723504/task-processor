@@ -133,21 +133,23 @@ func assertNoTrackedLocalArtifacts(t *testing.T, pathspec string) {
 func assertNoLocalArtifactPaths(t *testing.T, pathspec string) {
 	t.Helper()
 
-	err := filepath.Walk(pathspec, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	for _, path := range trackedFiles(t, normalizeRepoRelativePath(pathspec)) {
+		if !containsLocalArtifactPathPart(path) {
+			continue
 		}
-		if path == pathspec {
-			return nil
-		}
-		if containsLocalArtifactPathPart(path) {
-			t.Errorf("%s is a local artifact path under %s; keep runtime files under .local instead", path, pathspec)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
+		t.Errorf("%s is a local artifact path under %s; keep runtime files under .local instead", path, pathspec)
 	}
+}
+
+func normalizeRepoRelativePath(path string) string {
+	normalized := filepath.ToSlash(filepath.Clean(path))
+	for strings.HasPrefix(normalized, "../") {
+		normalized = strings.TrimPrefix(normalized, "../")
+	}
+	if normalized == "." {
+		return ""
+	}
+	return normalized
 }
 
 func containsLocalArtifactPathPart(path string) bool {

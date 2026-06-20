@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/listingadmin"
+	managementapi "task-processor/internal/ports/managementapi"
 
 	"github.com/sirupsen/logrus"
 )

@@ -40,10 +40,7 @@ func (stubPipelineProductFetcher) GetStats() map[string]any {
 
 var _ fetcher.ProductFetcher = (*stubPipelineProductFetcher)(nil)
 
-func TestCreateTaskProcessingPipelineInsertsSaleAttributeResolutionBeforeBuildSkcList(t *testing.T) {
-	t.Parallel()
-
-	cfg := &config.Config{}
+func newSheinPipelineTestProcessor(cfg *config.Config, productFetcher fetcher.ProductFetcher) *SheinProcessor {
 	clientMgr := management.NewClientManager(&cfg.Management)
 	mem := state.NewMemoryManager(context.Background(), clientMgr)
 	mem.ShopPauseManager.SetStoreClient(clientMgr.GetStoreClient())
@@ -52,13 +49,20 @@ func TestCreateTaskProcessingPipelineInsertsSaleAttributeResolutionBeforeBuildSk
 		Logger:   logrus.New(),
 		Platform: "SHEIN",
 	}, mem)
-	processor := &SheinProcessor{
+	return &SheinProcessor{
 		BaseProcessor:     base,
 		managementClient:  clientMgr,
 		taskStatusRuntime: taskstatus.NewManagementRuntime(clientMgr),
 		imageDownloader:   clientMgr.GetImageDownloader(),
-		productFetcher:    stubPipelineProductFetcher{},
+		productFetcher:    productFetcher,
 	}
+}
+
+func TestCreateTaskProcessingPipelineInsertsSaleAttributeResolutionBeforeBuildSkcList(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.Config{}
+	processor := newSheinPipelineTestProcessor(cfg, stubPipelineProductFetcher{})
 
 	p := CreateTaskProcessingPipeline(processor, cfg)
 	handlers := p.Handlers()

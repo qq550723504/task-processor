@@ -41,7 +41,7 @@ func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 	}
 
 	// 从管理系统获取Cookie字符串
-	storeClient := cm.storeRuntime.GetStoreClient()
+	storeClient := cm.storeRuntime.GetStoreAPI()
 	if storeClient == nil {
 		cm.logger.Error("店铺客户端为空")
 		return nil, fmt.Errorf("店铺客户端为空")
@@ -173,7 +173,7 @@ func (cm *CookieManager) TestConnection() error {
 	}
 
 	// 尝试获取store信息来测试连接
-	storeClient := cm.storeRuntime.GetStoreClient()
+	storeClient := cm.storeRuntime.GetStoreAPI()
 	if storeClient == nil {
 		return fmt.Errorf("店铺客户端为空")
 	}

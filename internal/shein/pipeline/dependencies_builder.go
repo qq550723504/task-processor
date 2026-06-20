@@ -4,8 +4,8 @@ import (
 	"context"
 
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
+	managementapi "task-processor/internal/ports/managementapi"
 	"task-processor/internal/state"
 	"task-processor/internal/taskstatus"
 )
@@ -14,8 +14,10 @@ type dependencyRuntime interface {
 	managementRuntime
 	taskstatus.RuntimeWithTaskRPC
 	state.DailyCountClientProvider
-	GetStoreClient() *management.StoreAPIClient
-	GetImageDownloader() *management.ImageDownloader
+	GetStoreAPI() managementapi.StoreAPI
+	GetImageDownloader() interface {
+		DownloadImage(url string) ([]byte, error)
+	}
 }
 
 func BuildDependencies(
@@ -26,7 +28,7 @@ func BuildDependencies(
 ) Dependencies {
 	mem := state.NewMemoryManager(ctx, runtime)
 	if runtime != nil {
-		mem.ShopPauseManager.SetStoreClient(runtime.GetStoreClient())
+		mem.ShopPauseManager.SetStoreClient(runtime.GetStoreAPI())
 	}
 
 	var imageDownloader interface {

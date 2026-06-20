@@ -3,8 +3,8 @@ package sync
 import (
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
+	managementapi "task-processor/internal/ports/managementapi"
 )
 
 func TestTemuProductSnapshotToBatchSaveReq(t *testing.T) {

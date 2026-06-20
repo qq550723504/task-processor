@@ -12,10 +12,12 @@ import (
 	"task-processor/internal/sheinlogin"
 )
 
+type storeClientFactory func(tenantID int64) managementapi.StoreAPI
+
 type AccountProvider struct {
-	client *management.ClientManager
-	mu     sync.RWMutex
-	cache  map[int64]tenantAccountCache
+	storeClientForTenant storeClientFactory
+	mu                   sync.RWMutex
+	cache                map[int64]tenantAccountCache
 }
 
 type tenantAccountCache struct {
@@ -25,8 +27,20 @@ type tenantAccountCache struct {
 
 func NewAccountProvider(client *management.ClientManager) *AccountProvider {
 	return &AccountProvider{
-		client: client,
-		cache:  make(map[int64]tenantAccountCache),
+		storeClientForTenant: func(tenantID int64) managementapi.StoreAPI {
+			if client == nil {
+				return nil
+			}
+			return client.GetStoreClientWithTenant(tenantID)
+		},
+		cache: make(map[int64]tenantAccountCache),
+	}
+}
+
+func NewAccountProviderWithStoreClientFactory(factory storeClientFactory) *AccountProvider {
+	return &AccountProvider{
+		storeClientForTenant: factory,
+		cache:                make(map[int64]tenantAccountCache),
 	}
 }
 
@@ -64,11 +78,11 @@ func (p *AccountProvider) ListAccounts(ctx context.Context, tenantID int64) ([]s
 	if exists && time.Now().Before(entry.until) && entry.items != nil {
 		return append([]sheinlogin.Account(nil), entry.items...), nil
 	}
-	if p.client == nil {
+	if p.storeClientForTenant == nil {
 		return nil, fmt.Errorf("management client is nil")
 	}
 
-	storeClient := p.client.GetStoreClientWithTenant(tenantID)
+	storeClient := p.storeClientForTenant(tenantID)
 	if storeClient == nil {
 		return nil, fmt.Errorf("management store client is nil")
 	}

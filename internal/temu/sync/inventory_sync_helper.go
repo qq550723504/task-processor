@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"task-processor/internal/core/logger"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
+	managementapi "task-processor/internal/ports/managementapi"
 	productpkg "task-processor/internal/product"
 )
 

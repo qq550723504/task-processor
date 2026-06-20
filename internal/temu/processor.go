@@ -9,7 +9,6 @@ import (
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
@@ -167,7 +166,7 @@ func (p *TemuProcessor) GetStoreClient() managementapi.StoreAPI {
 	if p == nil || p.managementRuntime == nil {
 		return nil
 	}
-	return p.managementRuntime.GetStoreClient()
+	return p.managementRuntime.GetStoreAPI()
 }
 
 func (p *TemuProcessor) GetFilterRuleClient() managementapi.FilterRuleAPI {
@@ -189,13 +188,6 @@ func (p *TemuProcessor) GetProfitRuleClient() managementapi.ProfitRuleAPI {
 		return nil
 	}
 	return p.managementRuntime.GetProfitRuleClient()
-}
-
-func (p *TemuProcessor) GetOpenAIClientConfig() *openai.ClientConfig {
-	if p == nil || p.GetConfig() == nil {
-		return nil
-	}
-	return p.GetConfig().OpenAI.ToClientConfig()
 }
 
 func (p *TemuProcessor) Close(ctx context.Context) {

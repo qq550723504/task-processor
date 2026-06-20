@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/listingadmin"
+	managementapi "task-processor/internal/ports/managementapi"
 
 	"github.com/sirupsen/logrus"
 )
@@ -35,7 +35,7 @@ func TestStoreConfigDTOFromListingStore(t *testing.T) {
 func TestStoreConfigHelpersUseDefaults(t *testing.T) {
 	service := &StoreConfigService{
 		logger:      logrus.NewEntry(logrus.New()),
-		storeConfig: &api.StoreRespDTO{},
+		storeConfig: &managementapi.StoreRespDTO{},
 	}
 
 	if service.IsRebargainEnabled() {

@@ -1,12 +1,10 @@
 package scheduler
 
-import "task-processor/internal/infra/clients/management"
-
 type ManagementRuntime = managementRuntime
 
-func NewManagementRuntime(client *management.ClientManager) ManagementRuntime {
-	if client == nil {
+func NewManagementRuntime(runtime managementRuntime) ManagementRuntime {
+	if runtime == nil {
 		return nil
 	}
-	return client
+	return runtime
 }

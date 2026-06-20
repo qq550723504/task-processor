@@ -161,3 +161,10 @@ func (pr *PipelineRegistry) createOpenAIConfig() *openai.ClientConfig {
 	}
 	return pr.runtime.GetOpenAIClientConfig()
 }
+
+func (p *TemuProcessor) GetOpenAIClientConfig() *openai.ClientConfig {
+	if p == nil || p.GetConfig() == nil {
+		return nil
+	}
+	return p.GetConfig().OpenAI.ToClientConfig()
+}

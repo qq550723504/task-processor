@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
+	managementapi "task-processor/internal/ports/managementapi"
 
 	"github.com/sirupsen/logrus"
 )
@@ -44,7 +44,7 @@ func TestGetProductImportMappingPrefersRepository(t *testing.T) {
 			},
 		},
 		logger:  logrus.NewEntry(logrus.New()),
-		runtime: NewManagementRuntime(new(management.ClientManager)),
+		runtime: NewManagementRuntime(stubPricingRuntimeSource{}),
 	}
 
 	mapping, err := service.GetProductImportMapping("SKU-1", 8)
@@ -72,4 +72,30 @@ func (s stubProductImportMappingRepo) FindLatest(_ context.Context, _ listingadm
 	return s.mapping, nil
 }
 
-var _ = api.PricingRuleRespDTO{}
+var _ = managementapi.PricingRuleRespDTO{}
+
+type stubPricingRuntimeSource struct{}
+
+func (stubPricingRuntimeSource) GetStoreAPI() managementapi.StoreAPI { return nil }
+
+func (stubPricingRuntimeSource) GetPricingRuleClient() managementapi.PricingRuleAPI { return nil }
+
+func (stubPricingRuntimeSource) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
+	return nil
+}
+
+func (stubPricingRuntimeSource) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
+	return nil
+}
+
+func (stubPricingRuntimeSource) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
+	return nil
+}
+
+func (stubPricingRuntimeSource) GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
+	return nil
+}
+
+func (stubPricingRuntimeSource) GetRuntimeOperationStrategy(int64) (*listingruntime.OperationStrategy, error) {
+	return nil, nil
+}

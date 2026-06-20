@@ -3,10 +3,10 @@ package scheduler
 import (
 	"context"
 
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
+	managementapi "task-processor/internal/ports/managementapi"
 	domainproduct "task-processor/internal/product"
 	temuclient "task-processor/internal/temu/api/client"
 	temupricingruntime "task-processor/internal/temu/pricing"
@@ -28,91 +28,92 @@ type runtime interface {
 
 type ManagementRuntime = runtime
 
+type runtimeSource interface {
+	temuclient.StoreRuntime
+	platformtask.AutoPricingStoreConfigProvider
+	GetRawJsonDataAdapter() domainproduct.RawJsonDataClient
+	GetPricingRuleClient() managementapi.PricingRuleAPI
+	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
+	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
+	GetProductDataClient(storeID int64) managementapi.ProductDataAPI
+	GetLocalStoreRepository() *listingadmin.GormStoreRepository
+	GetLocalProductDataRepository() listingadmin.ProductDataRepository
+	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
+	GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository
+	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
+}
+
 type managementRuntime struct {
-	client *management.ClientManager
+	source runtimeSource
 }
 
-func NewManagementRuntime(client *management.ClientManager) ManagementRuntime {
-	if client == nil {
+func NewManagementRuntime(source runtimeSource) ManagementRuntime {
+	if source == nil {
 		return nil
 	}
-	return managementRuntime{client: client}
-}
-
-func (r managementRuntime) GetStoreClient() *management.StoreAPIClient {
-	if r.client == nil {
-		return nil
-	}
-	return r.client.GetStoreClient()
+	return managementRuntime{source: source}
 }
 
 func (r managementRuntime) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error) {
-	if r.client == nil {
+	if r.source == nil {
 		return nil, nil
 	}
-	return r.client.GetAutoPricingStoreConfig(ctx, storeID)
+	return r.source.GetAutoPricingStoreConfig(ctx, storeID)
 }
 
 func (r managementRuntime) GetRawJsonDataAdapter() domainproduct.RawJsonDataClient {
-	if r.client == nil {
+	if r.source == nil {
 		return nil
 	}
-	return r.client.GetRawJsonDataAdapter()
+	return r.source.GetRawJsonDataAdapter()
 }
 
 func (r managementRuntime) GetStoreAPI() managementapi.StoreAPI {
-	if r.client == nil {
+	if r.source == nil {
 		return nil
 	}
-	return r.client.GetStoreClient()
+	return r.source.GetStoreAPI()
 }
 
 func (r managementRuntime) GetPricingRuleClient() managementapi.PricingRuleAPI {
-	if r.client == nil {
+	if r.source == nil {
 		return nil
 	}
-	return r.client.GetPricingRuleClient()
-}
-
-func (r managementRuntime) GetProductImportMappingClient() *management.ProductImportMappingAPIClient {
-	if r.client == nil {
-		return nil
-	}
-	return r.client.GetProductImportMappingClient()
+	return r.source.GetPricingRuleClient()
 }
 
 func (r managementRuntime) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
-	if r.client == nil {
+	if r.source == nil {
 		return nil
 	}
-	return r.client.GetLocalPricingRuleRepository()
+	return r.source.GetLocalPricingRuleRepository()
 }
 
 func (r managementRuntime) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
-	if r.client == nil {
+	if r.source == nil {
 		return nil
 	}
-	return r.client.GetProductImportMappingClient()
+	return r.source.GetProductImportMappingAPI()
 }
 
 func (r managementRuntime) GetInventoryRecordAPI() managementapi.InventoryRecordAPI {
-	if r.client == nil {
+	if r.source == nil {
 		return nil
 	}
-	return r.client.GetInventoryRecordClient()
+	return r.source.GetInventoryRecordAPI()
 }
 
 func (r managementRuntime) GetLocalProductDataRepository() listingadmin.ProductDataRepository {
-	if r.client == nil {
+	if r.source == nil {
 		return nil
 	}
-	return r.client.GetLocalProductDataRepository()
+	return r.source.GetLocalProductDataRepository()
 }
 
 func (r managementRuntime) PricingRuntime() temupricingruntime.ManagementRuntime {
-	return temupricingruntime.NewManagementRuntime(r.client)
+	return temupricingruntime.NewManagementRuntime(r.source)
 }
 
 func (r managementRuntime) SyncRuntime() schedulerservice.ServiceRuntime {
-	return schedulerservice.NewServiceRuntime(r.client)
+	return schedulerservice.NewServiceRuntime(r.source)
 }

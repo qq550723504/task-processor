@@ -3,10 +3,9 @@ package pricing
 import (
 	"context"
 
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	managementapi "task-processor/internal/ports/managementapi"
 )
 
 type runtime interface {
@@ -20,9 +19,9 @@ type runtime interface {
 }
 
 type runtimeSource interface {
-	GetStoreClient() *management.StoreAPIClient
-	GetPricingRuleClient() *management.PricingRuleAPIClient
-	GetProductImportMappingClient() *management.ProductImportMappingAPIClient
+	GetStoreAPI() managementapi.StoreAPI
+	GetPricingRuleClient() managementapi.PricingRuleAPI
+	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
 	GetLocalStoreRepository() *listingadmin.GormStoreRepository
 	GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository
 	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
@@ -41,7 +40,7 @@ func (r ManagementRuntime) GetStoreAPI() managementapi.StoreAPI {
 	if r.source == nil {
 		return nil
 	}
-	return r.source.GetStoreClient()
+	return r.source.GetStoreAPI()
 }
 
 func (r ManagementRuntime) GetPricingRuleClient() managementapi.PricingRuleAPI {
@@ -55,7 +54,7 @@ func (r ManagementRuntime) GetProductImportMappingAPI() managementapi.ProductImp
 	if r.source == nil {
 		return nil
 	}
-	return r.source.GetProductImportMappingClient()
+	return r.source.GetProductImportMappingAPI()
 }
 
 func (r ManagementRuntime) GetLocalStoreRepository() *listingadmin.GormStoreRepository {

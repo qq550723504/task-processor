@@ -40,7 +40,7 @@ func NewAPIClient(storeID int64, storeRuntime StoreRuntime) *APIClient {
 
 	// 获取店铺配置信息（包括代理设置）
 	if storeRuntime != nil {
-		storeClient := storeRuntime.GetStoreClient()
+		storeClient := storeRuntime.GetStoreAPI()
 		if storeClient != nil {
 			if storeInfo, err := storeClient.GetStore(storeID); err != nil {
 				apiClient.logger.WithError(err).Warn("获取店铺配置失败，将不使用代理")
@@ -86,7 +86,7 @@ func (c *APIClient) initializeMallID(storeRuntime StoreRuntime) {
 		return
 	}
 
-	storeClient := storeRuntime.GetStoreClient()
+	storeClient := storeRuntime.GetStoreAPI()
 	if storeClient == nil {
 		c.logger.Warn("店铺客户端为空，跳过MallID初始化")
 		return

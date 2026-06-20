@@ -215,7 +215,7 @@ func (h *TaskHandler) handleAuthenticationExpired(task model.Task, err error) {
 		)
 	}
 
-	storeClient := storeRuntime.GetStoreClient()
+	storeClient := storeRuntime.GetStoreAPI()
 	if storeClient == nil {
 		h.logger.WithField(logger.FieldStoreID, task.StoreID).Warn("store client is not initialized, skip remote store pause")
 		return

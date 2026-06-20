@@ -290,6 +290,13 @@ func (r managementSchedulerFactoryRuntime) GetInventoryRecordAPI() managementapi
 	return r.source.GetInventoryRecordClient()
 }
 
+func (r managementSchedulerFactoryRuntime) GetProductDataClient(storeID int64) managementapi.ProductDataAPI {
+	if r.source == nil {
+		return nil
+	}
+	return r.source.GetProductDataClient(storeID)
+}
+
 func (r managementSchedulerFactoryRuntime) GetLocalProductDataRepository() listingadmin.ProductDataRepository {
 	if r.source == nil {
 		return nil
@@ -298,14 +305,14 @@ func (r managementSchedulerFactoryRuntime) GetLocalProductDataRepository() listi
 }
 
 func (r managementSchedulerFactoryRuntime) PricingRuntime() temupricingruntime.ManagementRuntime {
-	return temupricingruntime.NewManagementRuntime(r.source)
+	return temupricingruntime.NewManagementRuntime(r)
 }
 
 func (r managementSchedulerFactoryRuntime) SyncRuntime() temusyncruntime.ServiceRuntime {
 	if r.source == nil {
 		return nil
 	}
-	return temusyncruntime.NewServiceRuntime(r.source)
+	return temusyncruntime.NewServiceRuntime(r)
 }
 
 func (r managementSchedulerFactoryRuntime) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {

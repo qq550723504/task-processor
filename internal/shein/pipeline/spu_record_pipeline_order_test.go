@@ -6,26 +6,13 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/model"
-	"task-processor/internal/processor"
 	domainproduct "task-processor/internal/product"
-	"task-processor/internal/state"
-	"task-processor/internal/taskstatus"
-
-	"github.com/sirupsen/logrus"
 )
 
 func TestCreateTaskProcessingPipelinePlacesSpuRecordAfterVariantFetch(t *testing.T) {
 	cfg := &config.Config{}
-	clientMgr := management.NewClientManager(&cfg.Management)
-	processor := &SheinProcessor{
-		BaseProcessor:     processor2Base(cfg, clientMgr),
-		managementClient:  clientMgr,
-		taskStatusRuntime: taskstatus.NewManagementRuntime(clientMgr),
-		imageDownloader:   clientMgr.GetImageDownloader(),
-		productFetcher:    stubSpuRecordPipelineProductFetcher{},
-	}
+	processor := newSheinPipelineTestProcessor(cfg, stubSpuRecordPipelineProductFetcher{})
 
 	p := CreateTaskProcessingPipeline(processor, cfg)
 	handlers := p.Handlers()
@@ -51,11 +38,11 @@ func TestCreateTaskProcessingPipelinePlacesSpuRecordAfterVariantFetch(t *testing
 
 type stubSpuRecordPipelineProductFetcher struct{}
 
-func (stubSpuRecordPipelineProductFetcher) FetchProduct(context.Context, *domainproduct.FetchRequest) (*model.Product, error) {
+func (stubSpuRecordPipelineProductFetcher) FetchProduct(_ context.Context, _ *domainproduct.FetchRequest) (*model.Product, error) {
 	return nil, nil
 }
 
-func (stubSpuRecordPipelineProductFetcher) FetchVariants(context.Context, *domainproduct.FetchRequest, []string) ([]*model.Product, error) {
+func (stubSpuRecordPipelineProductFetcher) FetchVariants(_ context.Context, _ *domainproduct.FetchRequest, _ []string) ([]*model.Product, error) {
 	return nil, nil
 }
 
@@ -72,13 +59,3 @@ func (stubSpuRecordPipelineProductFetcher) GetStats() map[string]any {
 }
 
 var _ fetcher.ProductFetcher = (*stubSpuRecordPipelineProductFetcher)(nil)
-
-func processor2Base(cfg *config.Config, client *management.ClientManager) *processor.BaseProcessor {
-	mem := state.NewMemoryManager(context.Background(), client)
-	mem.ShopPauseManager.SetStoreClient(client.GetStoreClient())
-	return processor.NewBaseProcessorWithMemoryManager(&processor.BaseProcessorConfig{
-		Config:   cfg,
-		Logger:   logrus.New(),
-		Platform: "SHEIN",
-	}, mem)
-}

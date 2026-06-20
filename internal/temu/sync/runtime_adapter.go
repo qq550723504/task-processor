@@ -1,10 +1,9 @@
 package sync
 
 import (
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	managementapi "task-processor/internal/ports/managementapi"
 	"task-processor/internal/product"
 )
 
@@ -14,14 +13,14 @@ type ServiceRuntime interface {
 }
 
 type runtimeSource interface {
-	GetProductDataClient(storeID int64) *management.ProductDataAPIClient
+	GetProductDataClient(storeID int64) managementapi.ProductDataAPI
 	GetLocalStoreRepository() *listingadmin.GormStoreRepository
 	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
-	GetStoreClient() *management.StoreAPIClient
+	GetStoreAPI() managementapi.StoreAPI
 	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
 	GetRawJsonDataAdapter() product.RawJsonDataClient
-	GetInventoryRecordClient() *management.InventoryRecordAPIClient
+	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
 }
 
 type managementRuntime struct {
@@ -67,7 +66,7 @@ func (r managementRuntime) GetStoreAPI() managementapi.StoreAPI {
 	if r.source == nil {
 		return nil
 	}
-	return r.source.GetStoreClient()
+	return r.source.GetStoreAPI()
 }
 
 func (r managementRuntime) GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error) {
@@ -88,5 +87,5 @@ func (r managementRuntime) GetInventoryRecordAPI() managementapi.InventoryRecord
 	if r.source == nil {
 		return nil
 	}
-	return r.source.GetInventoryRecordClient()
+	return r.source.GetInventoryRecordAPI()
 }

@@ -21,7 +21,7 @@ func BuildDependencies(
 ) Dependencies {
 	mem := state.NewMemoryManager(ctx, runtime)
 	if runtime != nil {
-		mem.ShopPauseManager.SetStoreClient(runtime.GetStoreClient())
+		mem.ShopPauseManager.SetStoreClient(runtime.GetStoreAPI())
 	}
 
 	return Dependencies{

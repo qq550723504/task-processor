@@ -4,8 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
+	managementapi "task-processor/internal/ports/managementapi"
 	"task-processor/internal/temu/api"
 	temupricing "task-processor/internal/temu/api/pricing"
 	"task-processor/internal/temu/pricing"
@@ -35,9 +37,8 @@ func (m *MockTemuAutoPricingService) AutoProcessPendingPricesWithRules(runtime p
 
 func TestNewTemuAutoPricingAdapter(t *testing.T) {
 	mockAPIClient := &MockTemuAPIClient{storeID: 100}
-	mockManagement := &management.ClientManager{}
 
-	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(mockManagement))
+	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(stubAutoPricingRuntimeSource{}))
 
 	if adapter == nil {
 		t.Fatal("NewTemuAutoPricingAdapter returned nil")
@@ -46,9 +47,8 @@ func TestNewTemuAutoPricingAdapter(t *testing.T) {
 
 func TestTemuAutoPricingAdapter_FetchPendingPriceProducts(t *testing.T) {
 	mockAPIClient := &MockTemuAPIClient{storeID: 100}
-	mockManagement := &management.ClientManager{}
 
-	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(mockManagement))
+	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(stubAutoPricingRuntimeSource{}))
 	ctx := context.Background()
 
 	// Temu平台的实现返回空切片
@@ -65,9 +65,8 @@ func TestTemuAutoPricingAdapter_FetchPendingPriceProducts(t *testing.T) {
 
 func TestTemuAutoPricingAdapter_ApplyPricingRules(t *testing.T) {
 	mockAPIClient := &MockTemuAPIClient{storeID: 100}
-	mockManagement := &management.ClientManager{}
 
-	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(mockManagement))
+	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(stubAutoPricingRuntimeSource{}))
 	ctx := context.Background()
 
 	mockProducts := []any{"product1", "product2"}
@@ -82,6 +81,26 @@ func TestTemuAutoPricingAdapter_ApplyPricingRules(t *testing.T) {
 	if len(results) != len(mockProducts) {
 		t.Errorf("Expected %d items, got %d", len(mockProducts), len(results))
 	}
+}
+
+type stubAutoPricingRuntimeSource struct{}
+
+func (stubAutoPricingRuntimeSource) GetStoreAPI() managementapi.StoreAPI                { return nil }
+func (stubAutoPricingRuntimeSource) GetPricingRuleClient() managementapi.PricingRuleAPI { return nil }
+func (stubAutoPricingRuntimeSource) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
+	return nil
+}
+func (stubAutoPricingRuntimeSource) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
+	return nil
+}
+func (stubAutoPricingRuntimeSource) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
+	return nil
+}
+func (stubAutoPricingRuntimeSource) GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
+	return nil
+}
+func (stubAutoPricingRuntimeSource) GetRuntimeOperationStrategy(int64) (*listingruntime.OperationStrategy, error) {
+	return nil, nil
 }
 
 func TestTemuAutoPricingAdapter_SubmitPricingResults_Success(t *testing.T) {

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/types"
+	managementapi "task-processor/internal/ports/managementapi"
 )
 
 func (prod *TemuInventoryProductSnapshot) toBatchUpdateAttributesReq(attributes string) *managementapi.ProductDataBatchUpdateAttributesReqDTO {
