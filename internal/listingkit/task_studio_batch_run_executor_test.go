@@ -385,10 +385,10 @@ func TestExecuteStudioBatchRunItemReturnsStillRunningForAsyncSubmittedBatch(t *t
 	}
 }
 
-func TestStudioBatchRunExecutorKeepsRunRunningWhenBatchItemStillRunning(t *testing.T) {
+func TestStudioBatchRunExecutorCancelsStillRunningItemWhenCancelRequestedDuringPolling(t *testing.T) {
 	repo := NewMemStudioBatchRunRepository()
 	ctx := WithTenantID(context.Background(), "tenant-a")
-	_, _ = mustCreateStudioBatchRunForTest(t, repo, ctx, "run-1", []string{"batch-1"})
+	run, _ := mustCreateStudioBatchRunForTest(t, repo, ctx, "run-1", []string{"batch-1"})
 
 	now := time.Date(2026, 6, 20, 13, 30, 0, 0, time.UTC)
 	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
@@ -397,6 +397,11 @@ func TestStudioBatchRunExecutorKeepsRunRunningWhenBatchItemStillRunning(t *testi
 			return &studioBatchRunItemStillRunningError{AsyncJobID: "job-run-1"}
 		},
 		now: func() time.Time { return now },
+		waitStillRunning: func(context.Context) error {
+			run.CancelRequested = true
+			run.UpdatedAt = now
+			return repo.UpdateStudioBatchRun(ctx, run)
+		},
 	})
 
 	if err := executor.Run(ctx, "run-1"); err != nil {
@@ -407,14 +412,16 @@ func TestStudioBatchRunExecutorKeepsRunRunningWhenBatchItemStillRunning(t *testi
 	if err != nil {
 		t.Fatalf("GetStudioBatchRun() error = %v", err)
 	}
-	if run.Status != StudioBatchRunStatusRunning {
-		t.Fatalf("run.Status = %q, want %q", run.Status, StudioBatchRunStatusRunning)
+	if run.Status != StudioBatchRunStatusCancelled {
+		t.Fatalf("run.Status = %q, want %q", run.Status, StudioBatchRunStatusCancelled)
 	}
-	if run.CompletedBatches != 0 {
-		t.Fatalf("run.CompletedBatches = %d, want 0", run.CompletedBatches)
+	if run.CompletedBatches != 1 {
+		t.Fatalf("run.CompletedBatches = %d, want 1", run.CompletedBatches)
 	}
 	if run.FinishedAt != nil {
-		t.Fatalf("run.FinishedAt = %v, want nil while still running", run.FinishedAt)
+		// expected to be set after cancellation
+	} else {
+		t.Fatal("run.FinishedAt = nil, want cancellation timestamp")
 	}
 
 	items, err := repo.ListStudioBatchRunItems(ctx, "run-1")
@@ -424,14 +431,11 @@ func TestStudioBatchRunExecutorKeepsRunRunningWhenBatchItemStillRunning(t *testi
 	if len(items) != 1 {
 		t.Fatalf("item count = %d, want 1", len(items))
 	}
-	if items[0].Status != StudioBatchRunItemStatusRunning {
-		t.Fatalf("item status = %q, want %q", items[0].Status, StudioBatchRunItemStatusRunning)
+	if items[0].Status != StudioBatchRunItemStatusCancelled {
+		t.Fatalf("item status = %q, want %q", items[0].Status, StudioBatchRunItemStatusCancelled)
 	}
-	if items[0].AsyncJobID != "job-run-1" {
-		t.Fatalf("item.AsyncJobID = %q, want %q", items[0].AsyncJobID, "job-run-1")
-	}
-	if items[0].FinishedAt != nil {
-		t.Fatalf("item.FinishedAt = %v, want nil while batch still running", items[0].FinishedAt)
+	if items[0].FinishedAt == nil {
+		t.Fatal("item.FinishedAt = nil, want cancellation timestamp")
 	}
 	if items[0].ErrorMessage != "" {
 		t.Fatalf("item.ErrorMessage = %q, want empty", items[0].ErrorMessage)
@@ -457,10 +461,18 @@ func TestStudioBatchRunExecutorPreservesExistingAsyncJobIDWhenStillRunningSignal
 
 	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
 		repo: repo,
-		executeOne: func(context.Context, string) error {
-			return &studioBatchRunItemStillRunningError{}
-		},
+		executeOne: func() func(context.Context, string) error {
+			calls := 0
+			return func(context.Context, string) error {
+				calls++
+				if calls == 1 {
+					return &studioBatchRunItemStillRunningError{}
+				}
+				return nil
+			}
+		}(),
 		now: func() time.Time { return time.Date(2026, 6, 20, 13, 45, 0, 0, time.UTC) },
+		waitStillRunning: func(context.Context) error { return nil },
 	})
 
 	if err := executor.Run(ctx, "run-1"); err != nil {
@@ -473,6 +485,55 @@ func TestStudioBatchRunExecutorPreservesExistingAsyncJobIDWhenStillRunningSignal
 	}
 	if gotItems[0].AsyncJobID != "job-existing-1" {
 		t.Fatalf("item.AsyncJobID = %q, want preserved existing value", gotItems[0].AsyncJobID)
+	}
+	if gotItems[0].Status != StudioBatchRunItemStatusSucceeded {
+		t.Fatalf("item status = %q, want %q", gotItems[0].Status, StudioBatchRunItemStatusSucceeded)
+	}
+}
+
+func TestStudioBatchRunExecutorContinuesPollingStillRunningItemUntilSuccess(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	_, _ = mustCreateStudioBatchRunForTest(t, repo, ctx, "run-1", []string{"batch-1"})
+
+	var calls int
+	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
+		repo: repo,
+		executeOne: func(context.Context, string) error {
+			calls++
+			if calls == 1 {
+				return &studioBatchRunItemStillRunningError{AsyncJobID: "job-poll-1"}
+			}
+			return nil
+		},
+		now: func() time.Time { return time.Date(2026, 6, 20, 14, 0, 0, 0, time.UTC) },
+		waitStillRunning: func(context.Context) error { return nil },
+	})
+
+	if err := executor.Run(ctx, "run-1"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("executeOne calls = %d, want 2", calls)
+	}
+
+	run, err := repo.GetStudioBatchRun(ctx, "run-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchRun() error = %v", err)
+	}
+	if run.Status != StudioBatchRunStatusSucceeded {
+		t.Fatalf("run.Status = %q, want %q", run.Status, StudioBatchRunStatusSucceeded)
+	}
+
+	items, err := repo.ListStudioBatchRunItems(ctx, "run-1")
+	if err != nil {
+		t.Fatalf("ListStudioBatchRunItems() error = %v", err)
+	}
+	if items[0].Status != StudioBatchRunItemStatusSucceeded {
+		t.Fatalf("item status = %q, want %q", items[0].Status, StudioBatchRunItemStatusSucceeded)
+	}
+	if items[0].AsyncJobID != "job-poll-1" {
+		t.Fatalf("item.AsyncJobID = %q, want %q", items[0].AsyncJobID, "job-poll-1")
 	}
 }
 

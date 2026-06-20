@@ -27,6 +27,7 @@ type taskStudioBatchRunExecutorConfig struct {
 	repo             StudioBatchRunRepository
 	executeOne       func(ctx context.Context, batchID string) error
 	now              func() time.Time
+	waitStillRunning func(context.Context) error
 	completionRunner *listingStudioBatchRunCompletionRunner
 }
 
@@ -34,6 +35,7 @@ type taskStudioBatchRunExecutor struct {
 	repo             StudioBatchRunRepository
 	executeOne       func(ctx context.Context, batchID string) error
 	now              func() time.Time
+	waitStillRunning func(context.Context) error
 	completionRunner *listingStudioBatchRunCompletionRunner
 }
 
@@ -42,6 +44,7 @@ func newTaskStudioBatchRunExecutor(config taskStudioBatchRunExecutorConfig) *tas
 		repo:             config.repo,
 		executeOne:       config.executeOne,
 		now:              config.now,
+		waitStillRunning: config.waitStillRunning,
 		completionRunner: config.completionRunner,
 	}
 }
@@ -120,52 +123,71 @@ func (e *taskStudioBatchRunExecutor) Run(ctx context.Context, runID string) erro
 			return err
 		}
 
-		execErr := e.executeOne(ctx, item.BatchID)
-		var stillRunningErr *studioBatchRunItemStillRunningError
-		if errors.As(execErr, &stillRunningErr) {
-			item.AsyncJobID = firstNonEmpty(strings.TrimSpace(stillRunningErr.AsyncJobID), item.AsyncJobID)
-			item.FinishedAt = nil
-			item.ErrorMessage = ""
-			item.UpdatedAt = e.currentTime()
+		for {
+			execErr := e.executeOne(ctx, item.BatchID)
+			var stillRunningErr *studioBatchRunItemStillRunningError
+			if errors.As(execErr, &stillRunningErr) {
+				item.AsyncJobID = firstNonEmpty(strings.TrimSpace(stillRunningErr.AsyncJobID), item.AsyncJobID)
+				item.FinishedAt = nil
+				item.ErrorMessage = ""
+				item.UpdatedAt = e.currentTime()
+				if err := e.repo.UpdateStudioBatchRunItem(ctx, item); err != nil {
+					return err
+				}
+				run.Status = StudioBatchRunStatusRunning
+				run.LastError = ""
+				e.refreshRunCounters(run, items)
+				run.UpdatedAt = e.currentTime()
+				if err := e.repo.UpdateStudioBatchRun(ctx, run); err != nil {
+					return err
+				}
+				if err := e.waitForStillRunning(ctx); err != nil {
+					return err
+				}
+				run, err = e.repo.GetStudioBatchRun(ctx, run.ID)
+				if err != nil {
+					return err
+				}
+				if run.CancelRequested {
+					if err := e.cancelUnfinishedItems(ctx, items); err != nil {
+						return err
+					}
+					return e.finalizeRun(ctx, run, items, StudioBatchRunStatusCancelled, run.LastError)
+				}
+				continue
+			}
+			finishedAt := e.currentTime()
+			item.FinishedAt = &finishedAt
+			item.UpdatedAt = finishedAt
+			if execErr != nil {
+				item.Status = StudioBatchRunItemStatusFailed
+				item.ErrorMessage = execErr.Error()
+			} else {
+				item.Status = StudioBatchRunItemStatusSucceeded
+				item.ErrorMessage = ""
+			}
 			if err := e.repo.UpdateStudioBatchRunItem(ctx, item); err != nil {
 				return err
 			}
-			run.Status = StudioBatchRunStatusRunning
-			run.LastError = ""
+
+			if item.ErrorMessage != "" {
+				run.LastError = item.ErrorMessage
+			}
 			e.refreshRunCounters(run, items)
-			run.UpdatedAt = e.currentTime()
-			return e.repo.UpdateStudioBatchRun(ctx, run)
-		}
-		finishedAt := e.currentTime()
-		item.FinishedAt = &finishedAt
-		item.UpdatedAt = finishedAt
-		if execErr != nil {
-			item.Status = StudioBatchRunItemStatusFailed
-			item.ErrorMessage = execErr.Error()
-		} else {
-			item.Status = StudioBatchRunItemStatusSucceeded
-			item.ErrorMessage = ""
-		}
-		if err := e.repo.UpdateStudioBatchRunItem(ctx, item); err != nil {
-			return err
-		}
+			run.CurrentBatchID = ""
+			run.CurrentIndex = 0
+			run.UpdatedAt = finishedAt
 
-		if item.ErrorMessage != "" {
-			run.LastError = item.ErrorMessage
-		}
-		e.refreshRunCounters(run, items)
-		run.CurrentBatchID = ""
-		run.CurrentIndex = 0
-		run.UpdatedAt = finishedAt
-
-		if execErr != nil && run.FailurePolicy == StudioBatchRunFailurePolicyStopOnError {
-			if err := e.finalizeRun(ctx, run, items, StudioBatchRunStatusFailed, execErr.Error()); err != nil {
+			if execErr != nil && run.FailurePolicy == StudioBatchRunFailurePolicyStopOnError {
+				if err := e.finalizeRun(ctx, run, items, StudioBatchRunStatusFailed, execErr.Error()); err != nil {
+					return err
+				}
+				return execErr
+			}
+			if err := e.repo.UpdateStudioBatchRun(ctx, run); err != nil {
 				return err
 			}
-			return execErr
-		}
-		if err := e.repo.UpdateStudioBatchRun(ctx, run); err != nil {
-			return err
+			break
 		}
 	}
 
@@ -226,6 +248,20 @@ func (e *taskStudioBatchRunExecutor) currentTime() time.Time {
 		return e.now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func (e *taskStudioBatchRunExecutor) waitForStillRunning(ctx context.Context) error {
+	if e != nil && e.waitStillRunning != nil {
+		return e.waitStillRunning(ctx)
+	}
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (e *taskStudioBatchRunExecutor) ensureCompletionRunner() {
