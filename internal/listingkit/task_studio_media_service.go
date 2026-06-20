@@ -61,15 +61,23 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 		return nil, ErrAsyncImageGenerationNotSupported
 	}
 	referenceURLs := studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)
-	if len(referenceURLs) > 0 {
-		return nil, ErrAsyncImageGenerationNotSupported
-	}
-
 	model := resolveStudioDesignImageModel(req, s.imageGenerator.GetDefaultModel())
 	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
+	promptText := buildStudioDesignPromptWithTheme(req, theme)
+	if len(referenceURLs) > 0 {
+		return asyncGenerator.SubmitImageEdit(ctx, &AIImageEditRequest{
+			Model:          model,
+			Prompt:         promptText,
+			ImageURL:       referenceURLs[0],
+			ImageURLs:      referenceURLs,
+			Size:           size,
+			ResponseFormat: "b64_json",
+			N:              1,
+		})
+	}
 	return asyncGenerator.SubmitImageGeneration(ctx, &AIImageGenerateRequest{
 		Model:          model,
-		Prompt:         buildStudioDesignPromptWithTheme(req, theme),
+		Prompt:         promptText,
 		Size:           size,
 		ResponseFormat: "b64_json",
 		N:              1,

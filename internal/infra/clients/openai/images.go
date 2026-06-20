@@ -39,6 +39,10 @@ func (c *Client) SubmitImageGeneration(context.Context, *ImageGenerateRequest) (
 	return nil, ErrAsyncImageGenerationNotSupported
 }
 
+func (c *Client) SubmitImageEdit(context.Context, *ImageEditRequest) (*ImageAsyncSubmitResponse, error) {
+	return nil, ErrAsyncImageGenerationNotSupported
+}
+
 func (c *Client) QueryImageGeneration(context.Context, string) (*ImageAsyncQueryResponse, error) {
 	return nil, ErrAsyncImageGenerationNotSupported
 }

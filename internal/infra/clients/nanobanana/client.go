@@ -142,6 +142,52 @@ func (c *Client) SubmitImageGeneration(ctx context.Context, req *openaiclient.Im
 	}, nil
 }
 
+func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("image edit request cannot be nil")
+	}
+	imageURLs := cleanImageURLs(req.ImageURLs, 8)
+	if len(imageURLs) == 0 {
+		imageURLs = cleanImageURLs([]string{req.ImageURL}, 1)
+	}
+	if len(imageURLs) == 0 {
+		return nil, fmt.Errorf("nanobanana image edit requires image url")
+	}
+	submitReq := submitRequest{
+		Model:          defaultString(req.Model, c.cfg.Model),
+		Prompt:         req.Prompt,
+		Size:           normalizeGenerationSize(req.Size),
+		Image:          imageURLs,
+		ResponseFormat: "url",
+	}
+	if strings.TrimSpace(submitReq.Model) == "" {
+		return nil, fmt.Errorf("nanobanana model cannot be empty")
+	}
+	if strings.TrimSpace(submitReq.Prompt) == "" {
+		return nil, fmt.Errorf("nanobanana prompt cannot be empty")
+	}
+	if c.cfg.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.cfg.Timeout)
+		defer cancel()
+	}
+	submitURL, err := buildSubmitURL(c.cfg.SubmitURL, submitReq.Model)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := c.submitGenerationRequestNoPoll(ctx, submitURL, submitReq)
+	if err != nil {
+		return nil, err
+	}
+	return &openaiclient.ImageAsyncSubmitResponse{
+		JobID:             strings.TrimSpace(payload.ID),
+		RequestID:         strings.TrimSpace(payload.RequestID),
+		Provider:          "nanobanana",
+		RawSubmitResponse: strings.TrimSpace(payload.RawResponse),
+		AcceptedAt:        time.Now().UTC(),
+	}, nil
+}
+
 func (c *Client) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
 	trimmedJobID := strings.TrimSpace(jobID)
 	if trimmedJobID == "" {

@@ -1451,6 +1451,10 @@ func (*httpapiStubImageGenerator) SubmitImageGeneration(context.Context, *openai
 	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
 }
 
+func (*httpapiStubImageGenerator) SubmitImageEdit(context.Context, *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
+}
+
 func (*httpapiStubImageGenerator) QueryImageGeneration(context.Context, string) (*openaiclient.ImageAsyncQueryResponse, error) {
 	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
 }

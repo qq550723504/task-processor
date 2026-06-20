@@ -50,6 +50,14 @@ func (c *strictListingKitConfiguredImageClient) SubmitImageGeneration(ctx contex
 	return client.SubmitImageGeneration(ctx, req)
 }
 
+func (c *strictListingKitConfiguredImageClient) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	client, err := c.resolve(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return client.SubmitImageEdit(ctx, req)
+}
+
 func (c *strictListingKitConfiguredImageClient) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
 	client, err := c.resolve(ctx)
 	if err != nil {

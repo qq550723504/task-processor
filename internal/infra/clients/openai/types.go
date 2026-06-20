@@ -167,5 +167,6 @@ type ImageGenerator interface {
 	GetDefaultModel() string
 	SupportsAsyncImageGeneration() bool
 	SubmitImageGeneration(ctx context.Context, req *ImageGenerateRequest) (*ImageAsyncSubmitResponse, error)
+	SubmitImageEdit(ctx context.Context, req *ImageEditRequest) (*ImageAsyncSubmitResponse, error)
 	QueryImageGeneration(ctx context.Context, jobID string) (*ImageAsyncQueryResponse, error)
 }

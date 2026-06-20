@@ -66,6 +66,14 @@ func (c *listingKitRoutedImageClient) SubmitImageGeneration(ctx context.Context,
 	return client.SubmitImageGeneration(ctx, nextReq)
 }
 
+func (c *listingKitRoutedImageClient) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	client, nextReq, err := c.resolveEdit(req)
+	if err != nil {
+		return nil, err
+	}
+	return client.SubmitImageEdit(ctx, nextReq)
+}
+
 func (c *listingKitRoutedImageClient) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
 	client, _, err := c.resolveBySelector(c.defaultModel)
 	if err != nil {

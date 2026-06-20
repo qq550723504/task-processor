@@ -86,6 +86,14 @@ func (c *contextualImageClient) SubmitImageGeneration(ctx context.Context, req *
 	return client.SubmitImageGeneration(ctx, req)
 }
 
+func (c *contextualImageClient) SubmitImageEdit(ctx context.Context, req *ImageEditRequest) (*ImageAsyncSubmitResponse, error) {
+	client, err := c.manager.resolveClient(ctx, c.name)
+	if err != nil {
+		return nil, err
+	}
+	return client.SubmitImageEdit(ctx, req)
+}
+
 func (c *contextualImageClient) QueryImageGeneration(ctx context.Context, jobID string) (*ImageAsyncQueryResponse, error) {
 	client, err := c.manager.resolveClient(ctx, c.name)
 	if err != nil {

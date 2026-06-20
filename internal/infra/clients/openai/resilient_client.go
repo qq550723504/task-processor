@@ -280,6 +280,16 @@ func (r *ResilientClient) SubmitImageGeneration(ctx context.Context, req *ImageG
 	return result, err
 }
 
+func (r *ResilientClient) SubmitImageEdit(ctx context.Context, req *ImageEditRequest) (*ImageAsyncSubmitResponse, error) {
+	var result *ImageAsyncSubmitResponse
+	err := r.circuitBreaker.Execute(ctx, func() error {
+		var execErr error
+		result, execErr = r.client.SubmitImageEdit(ctx, req)
+		return execErr
+	})
+	return result, err
+}
+
 func (r *ResilientClient) QueryImageGeneration(ctx context.Context, jobID string) (*ImageAsyncQueryResponse, error) {
 	var result *ImageAsyncQueryResponse
 	err := r.circuitBreaker.Execute(ctx, func() error {

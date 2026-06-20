@@ -152,6 +152,10 @@ func (c *CachedClient) SubmitImageGeneration(ctx context.Context, req *ImageGene
 	return c.client.SubmitImageGeneration(ctx, req)
 }
 
+func (c *CachedClient) SubmitImageEdit(ctx context.Context, req *ImageEditRequest) (*ImageAsyncSubmitResponse, error) {
+	return c.client.SubmitImageEdit(ctx, req)
+}
+
 func (c *CachedClient) QueryImageGeneration(ctx context.Context, jobID string) (*ImageAsyncQueryResponse, error) {
 	return c.client.QueryImageGeneration(ctx, jobID)
 }

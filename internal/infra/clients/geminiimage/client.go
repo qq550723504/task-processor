@@ -98,6 +98,10 @@ func (c *Client) SubmitImageGeneration(context.Context, *openaiclient.ImageGener
 	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
 }
 
+func (c *Client) SubmitImageEdit(context.Context, *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
+}
+
 func (c *Client) QueryImageGeneration(context.Context, string) (*openaiclient.ImageAsyncQueryResponse, error) {
 	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
 }

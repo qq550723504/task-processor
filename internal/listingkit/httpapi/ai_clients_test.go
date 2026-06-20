@@ -52,6 +52,11 @@ func (s *stubListingKitImageGenerator) SubmitImageGeneration(_ context.Context, 
 	return s.submitResponse, nil
 }
 
+func (s *stubListingKitImageGenerator) SubmitImageEdit(_ context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	s.lastEdit = req
+	return s.submitResponse, nil
+}
+
 func (s *stubListingKitImageGenerator) QueryImageGeneration(_ context.Context, _ string) (*openaiclient.ImageAsyncQueryResponse, error) {
 	return s.queryResponse, nil
 }
@@ -278,6 +283,19 @@ func TestAdaptListingKitAIImageGeneratorDelegatesAsyncCapability(t *testing.T) {
 	}
 	if query.Provider != "nanobanana" {
 		t.Fatalf("query provider = %q, want nanobanana", query.Provider)
+	}
+
+	editSubmit, err := asyncGenerator.SubmitImageEdit(context.Background(), &listingkit.AIImageEditRequest{
+		Model:     "gpt-image-2",
+		Prompt:    "flat artwork",
+		ImageURL:  "https://example.com/a.png",
+		ImageURLs: []string{"https://example.com/a.png", "https://example.com/b.png"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitImageEdit() error = %v", err)
+	}
+	if editSubmit == nil || generator.lastEdit == nil {
+		t.Fatal("expected async edit submission to delegate to provider")
 	}
 }
 

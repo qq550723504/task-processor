@@ -533,3 +533,19 @@ func (s *studioBatchRunExecutorImageGeneratorStub) EditImage(context.Context, *o
 func (s *studioBatchRunExecutorImageGeneratorStub) GetDefaultModel() string {
 	return "gpt-image-1"
 }
+
+func (s *studioBatchRunExecutorImageGeneratorStub) SupportsAsyncImageGeneration() bool {
+	return false
+}
+
+func (s *studioBatchRunExecutorImageGeneratorStub) SubmitImageGeneration(context.Context, *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
+}
+
+func (s *studioBatchRunExecutorImageGeneratorStub) SubmitImageEdit(context.Context, *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
+}
+
+func (s *studioBatchRunExecutorImageGeneratorStub) QueryImageGeneration(context.Context, string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	return nil, openaiclient.ErrAsyncImageGenerationNotSupported
+}

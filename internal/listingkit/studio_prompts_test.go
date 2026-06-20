@@ -212,6 +212,9 @@ type stubStudioImageGenerator struct {
 	editErrs         []error
 	editCalls        int
 	editRequests     []*AIImageEditRequest
+	asyncEditCalls   int
+	asyncEditReqs    []*AIImageEditRequest
+	asyncSubmit      *AIImageAsyncSubmit
 	generateCalls    int
 	generateErrs     []error
 	generateResponse *AIImageResponse
@@ -274,6 +277,56 @@ func (s *stubStudioImageGenerator) EditImage(_ context.Context, req *AIImageEdit
 
 func (s *stubStudioImageGenerator) GetDefaultModel() string {
 	return "test-model"
+}
+
+func (s *stubStudioImageGenerator) SupportsAsyncImageGeneration() bool {
+	return s.asyncSubmit != nil
+}
+
+func (s *stubStudioImageGenerator) SubmitImageGeneration(context.Context, *AIImageGenerateRequest) (*AIImageAsyncSubmit, error) {
+	return s.asyncSubmit, nil
+}
+
+func (s *stubStudioImageGenerator) SubmitImageEdit(_ context.Context, req *AIImageEditRequest) (*AIImageAsyncSubmit, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.asyncEditCalls++
+	reqCopy := *req
+	s.asyncEditReqs = append(s.asyncEditReqs, &reqCopy)
+	return s.asyncSubmit, nil
+}
+
+func (s *stubStudioImageGenerator) QueryImageGeneration(context.Context, string) (*AIImageAsyncResult, error) {
+	return nil, nil
+}
+
+func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		asyncSubmit: &AIImageAsyncSubmit{
+			JobID:     "job-1",
+			RequestID: "req-1",
+			Provider:  "nanobanana",
+		},
+	}
+	svc := &taskStudioMediaService{imageGenerator: generator}
+
+	result, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+		Prompt:                    "retro cherries",
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://example.com/black-shirt.jpg", "https://example.com/white-shirt.jpg"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
+	}
+	if result == nil || result.JobID != "job-1" {
+		t.Fatalf("result = %+v, want async submit metadata", result)
+	}
+	if generator.asyncEditCalls != 1 {
+		t.Fatalf("asyncEditCalls = %d, want 1", generator.asyncEditCalls)
+	}
+	if len(generator.asyncEditReqs) != 1 || len(generator.asyncEditReqs[0].ImageURLs) != 2 {
+		t.Fatalf("async edit requests = %+v, want 2 reference images", generator.asyncEditReqs)
+	}
 }
 
 func TestGenerateStudioDesignsAddsWarningsForPromptFallbackAndPartialSuccess(t *testing.T) {

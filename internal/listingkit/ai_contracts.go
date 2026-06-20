@@ -24,6 +24,7 @@ type AIImageGenerator interface {
 type AIAsyncImageGenerator interface {
 	SupportsAsyncImageGeneration() bool
 	SubmitImageGeneration(ctx context.Context, req *AIImageGenerateRequest) (*AIImageAsyncSubmit, error)
+	SubmitImageEdit(ctx context.Context, req *AIImageEditRequest) (*AIImageAsyncSubmit, error)
 	QueryImageGeneration(ctx context.Context, jobID string) (*AIImageAsyncResult, error)
 }
 

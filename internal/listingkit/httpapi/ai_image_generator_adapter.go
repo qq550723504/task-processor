@@ -79,6 +79,31 @@ func (g listingKitAIImageGenerator) SubmitImageGeneration(ctx context.Context, r
 	}, nil
 }
 
+func (g listingKitAIImageGenerator) SubmitImageEdit(ctx context.Context, req *listingkit.AIImageEditRequest) (*listingkit.AIImageAsyncSubmit, error) {
+	response, err := g.generator.SubmitImageEdit(ctx, &openaiclient.ImageEditRequest{
+		Model:          req.Model,
+		Prompt:         req.Prompt,
+		ImageURL:       req.ImageURL,
+		ImageURLs:      req.ImageURLs,
+		Size:           req.Size,
+		ResponseFormat: req.ResponseFormat,
+		N:              req.N,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if response == nil {
+		return nil, nil
+	}
+	return &listingkit.AIImageAsyncSubmit{
+		JobID:             response.JobID,
+		RequestID:         response.RequestID,
+		Provider:          response.Provider,
+		RawSubmitResponse: response.RawSubmitResponse,
+		AcceptedAt:        response.AcceptedAt,
+	}, nil
+}
+
 func (g listingKitAIImageGenerator) QueryImageGeneration(ctx context.Context, jobID string) (*listingkit.AIImageAsyncResult, error) {
 	response, err := g.generator.QueryImageGeneration(ctx, jobID)
 	if err != nil {
