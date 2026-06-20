@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildSelectionSummary,
+  normalizeBatch,
   normalizeDraft,
 } from "@/lib/shein-studio/storage-shared";
 
@@ -158,5 +159,27 @@ describe("normalizeDraft", () => {
     expect(draft?.groups?.[0].currentPrompt).toBe("legacy prompt");
     expect(draft?.groups?.[0].groupedSelections).toHaveLength(1);
     expect(draft?.groups?.[0].primarySelection.variantId).toBe(100);
+  });
+});
+
+describe("normalizeBatch", () => {
+  it("preserves persisted design counts from server batch summaries", () => {
+    const batch = normalizeBatch({
+      id: "batch-1",
+      name: "869全品类",
+      prompt: "prompt",
+      styleCount: "4",
+      sheinStoreId: "869",
+      persistedDesignCount: 58,
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-06-18T17:04:49.413822Z",
+    });
+
+    expect(batch).toMatchObject({
+      id: "batch-1",
+      persistedDesignCount: 58,
+    });
   });
 });

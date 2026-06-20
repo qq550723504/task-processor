@@ -611,6 +611,10 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
             .filter(isGeneratedDesign)
             .map(normalizeGeneratedDesign)
       : [],
+    persistedDesignCount:
+      typeof raw.persistedDesignCount === "number"
+        ? raw.persistedDesignCount
+        : undefined,
     selectedIds: Array.isArray(raw.selectedIds)
       ? raw.selectedIds.filter((item): item is string => typeof item === "string")
       : Array.isArray(legacyCompatibilitySnapshot?.selectedIds)
