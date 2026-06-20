@@ -8,6 +8,7 @@ import type {
   SDSGroupedPromptHistoryEntry,
   SheinStudioBatchItem,
   SheinStudioBatchStatusGroups,
+  SheinStudioCreatedTask,
 } from "@/lib/types/shein-studio";
 
 vi.mock("@/components/listingkit/shein-studio/shein-created-tasks-list", () => ({
@@ -44,11 +45,13 @@ function renderPanel(options?: {
   availableSdsImages?: SheinStudioSelectableSDSImage[];
   generationNotice?: string;
   generateButtonLabel?: string;
+  createdTasks?: SheinStudioCreatedTask[];
   failedBatchItems?: SheinStudioBatchItem[];
   isRetryingFailedItems?: boolean;
   onRetryFailedItem?: (itemId: string) => void;
   promptHistory?: SDSGroupedPromptHistoryEntry[];
   retryingFailedItemId?: string;
+  reusedTasks?: SheinStudioCreatedTask[];
   styleCount?: string;
   storeRequiredMessage?: string;
   subscriptionBlockedMessage?: string;
@@ -62,7 +65,7 @@ function renderPanel(options?: {
       batchStoreLabel={
         options?.storeRequiredMessage ? "未设置" : "SHEIN US 1 (shein-us-1 / NA / US)"
       }
-      createdTasks={[]}
+      createdTasks={options?.createdTasks ?? []}
       creatingError=""
       creatingMessage=""
       generationError=""
@@ -88,6 +91,7 @@ function renderPanel(options?: {
       promptInputRef={{ current: null }}
       renderSizeImagesWithSds={true}
       retryingFailedItemId={options?.retryingFailedItemId ?? ""}
+      reusedTasks={options?.reusedTasks ?? []}
       saveMessage=""
       savedBatches={[]}
       selectedSdsImages={[]}
@@ -449,6 +453,110 @@ describe("SheinStudioGenerationPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "重试此项" }));
     expect(onRetryFailedItem).toHaveBeenCalledWith("item-1");
+  });
+
+  it("blocks item retry when a created ListingKit task already owns the batch item", () => {
+    const onRetryFailedItem = vi.fn();
+
+    renderPanel({
+      createdTasks: [
+        {
+          id: "task-created-1",
+          title: "黑色 M review task",
+          designId: "design-1",
+          itemId: "item-1",
+          outcome: "created",
+        },
+      ],
+      failedBatchItems: [
+        {
+          id: "item-1",
+          batchId: "batch-1",
+          targetGroupKey: "size:1000x1000",
+          targetGroupLabel: "黑色 M",
+          status: "failed",
+          selectionCount: 2,
+          lastError: "upstream timeout",
+          createdAt: "2026-05-26T10:00:00.000Z",
+          updatedAt: "2026-05-26T10:01:00.000Z",
+        },
+      ],
+      onRetryFailedItem,
+    });
+
+    expect(screen.getByRole("button", { name: "已有 ListingKit 任务" })).toBeDisabled();
+    expect(screen.getByText(/task-created-1/)).toHaveTextContent(
+      "已创建 ListingKit 任务 task-created-1，请前往下方已有任务继续处理，避免重新生成覆盖已建任务设计。",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "已有 ListingKit 任务" }));
+    expect(onRetryFailedItem).not.toHaveBeenCalled();
+  });
+
+  it("blocks item retry when a reused ListingKit task already owns the batch item", () => {
+    renderPanel({
+      reusedTasks: [
+        {
+          id: "task-reused-1",
+          title: "复用 review task",
+          designId: "design-2",
+          itemId: "item-2",
+          outcome: "reused",
+        },
+      ],
+      failedBatchItems: [
+        {
+          id: "item-2",
+          batchId: "batch-1",
+          targetGroupKey: "size:1200x1200",
+          targetGroupLabel: "白色 L",
+          status: "failed",
+          selectionCount: 1,
+          lastError: "too many requests",
+          createdAt: "2026-05-26T10:00:00.000Z",
+          updatedAt: "2026-05-26T10:01:00.000Z",
+        },
+      ],
+      onRetryFailedItem: vi.fn(),
+    });
+
+    expect(screen.getByRole("button", { name: "已有 ListingKit 任务" })).toBeDisabled();
+    expect(screen.getByText(/task-reused-1/)).toHaveTextContent(
+      "已复用 ListingKit 任务 task-reused-1，请前往下方已有任务继续处理，避免重新生成覆盖已建任务设计。",
+    );
+  });
+
+  it("keeps item retry available when a failed batch item has no linked task", () => {
+    const onRetryFailedItem = vi.fn();
+
+    renderPanel({
+      createdTasks: [
+        {
+          id: "task-created-1",
+          title: "其他 item review task",
+          designId: "design-1",
+          itemId: "item-1",
+          outcome: "created",
+        },
+      ],
+      failedBatchItems: [
+        {
+          id: "item-2",
+          batchId: "batch-1",
+          targetGroupKey: "size:1200x1200",
+          targetGroupLabel: "白色 L",
+          status: "failed",
+          selectionCount: 1,
+          lastError: "too many requests",
+          createdAt: "2026-05-26T10:00:00.000Z",
+          updatedAt: "2026-05-26T10:01:00.000Z",
+        },
+      ],
+      onRetryFailedItem,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "重试此项" }));
+    expect(onRetryFailedItem).toHaveBeenCalledWith("item-2");
   });
 
   it("shows item-level retry progress and locks sibling retries while one item is retrying", () => {

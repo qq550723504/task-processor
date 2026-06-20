@@ -1168,6 +1168,171 @@ func TestServicePrepareRetryStudioBatchItemsResetsRelatedBatchRunState(t *testin
 	}
 }
 
+func TestRetryStudioBatchItems_RejectsItemWithCreatedTaskLinks(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1200x1200",
+			TargetGroupLabel: "1200 x 1200",
+			Status:           StudioBatchItemStatusFailed,
+			LastError:        "previous generation failed after task creation",
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}, []StudioGenerationAttemptRecord{
+		{
+			ID:           "attempt-1",
+			ItemID:       "item-1",
+			AttemptNo:    1,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: "previous generation failed after task creation",
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		},
+	}, []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	mustCreateStudioBatchTaskLinkForTest(t, linkRepo, ctx, &StudioBatchTaskLinkRecord{
+		ID:               "link-1",
+		BatchID:          "batch-1",
+		ItemID:           "item-1",
+		DesignID:         "design-1",
+		SelectionID:      "selection-1",
+		ListingKitTaskID: "task-1",
+		CandidateKey:     "candidate-1",
+		Status:           studioBatchTaskLinkStatusCreated,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	})
+
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		batchTaskLinkRepo: linkRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(_ context.Context, _ StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				t.Fatal("execute should not run when retry item has created task links")
+				return nil, nil
+			},
+		}),
+	})
+
+	_, err := svc.RetryStudioBatchItems(ctx, "batch-1", &RetryStudioBatchItemsRequest{
+		ItemIDs: []string{"item-1"},
+	})
+	if !errors.Is(err, ErrStudioBatchActionValidation) {
+		t.Fatalf("RetryStudioBatchItems() error = %v, want validation error", err)
+	}
+	if !strings.Contains(err.Error(), "tasks_already_created") {
+		t.Fatalf("RetryStudioBatchItems() error = %v, want tasks_already_created", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if got := detail.Items[0].Status; got != StudioBatchItemStatusFailed {
+		t.Fatalf("item status = %q, want failed after rejected retry", got)
+	}
+	if got := detail.DesignsByItem["item-1"]; len(got) != 1 || got[0].ID != "design-1" {
+		t.Fatalf("item designs = %+v, want original task-linked design preserved", got)
+	}
+}
+
+func TestRetryStudioBatchItems_AllowsFailedItemWithoutTaskLinks(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.Status = StudioBatchStatusFailed
+	if err := repo.CreateStudioBatchGraph(ctx, batch, []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1200x1200",
+			TargetGroupLabel: "1200 x 1200",
+			Status:           StudioBatchItemStatusFailed,
+			LastError:        "timed out",
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}, []StudioGenerationAttemptRecord{
+		{
+			ID:           "attempt-1",
+			ItemID:       "item-1",
+			AttemptNo:    1,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: "timed out",
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		},
+	}, nil); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		batchTaskLinkRepo: linkRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(_ context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				return &StudioBatchGenerateExecutionOutput{
+					BatchID: input.BatchID,
+					ItemID:  input.ItemID,
+					Response: &StudioDesignResponse{
+						Images: []StudioGeneratedImage{{
+							ID:       "design-1-retry",
+							ImageURL: "https://cdn.example.com/design-1-retry.png",
+						}},
+					},
+				}, nil
+			},
+			currentTime: func() time.Time { return now.Add(time.Second) },
+		}),
+	})
+
+	detail, err := svc.RetryStudioBatchItems(ctx, "batch-1", &RetryStudioBatchItemsRequest{
+		ItemIDs: []string{"item-1"},
+	})
+	if err != nil {
+		t.Fatalf("RetryStudioBatchItems() error = %v", err)
+	}
+	if len(detail.Items) != 1 {
+		t.Fatalf("len(detail.Items) = %d, want 1", len(detail.Items))
+	}
+	if got := detail.Items[0].Item.Status; got != StudioBatchItemStatusReviewReady {
+		t.Fatalf("item status = %q, want review_ready after retry", got)
+	}
+	if got := detail.Items[0].Designs; len(got) != 1 || got[0].ID != "design-1-retry" {
+		t.Fatalf("item designs = %+v, want retry design", got)
+	}
+}
+
 func TestServiceRetryStudioBatchItemsRefreshesLatestDraftPromptBeforeRunning(t *testing.T) {
 	t.Parallel()
 

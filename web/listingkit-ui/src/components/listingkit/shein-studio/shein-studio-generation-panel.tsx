@@ -161,6 +161,10 @@ export function SheinStudioGenerationPanel({
       ? "重试中..."
       : "生成中..."
     : generateButtonLabel;
+  const linkedTasks = [
+    ...createdTasks.map((task) => ({ ...task, outcome: task.outcome ?? "created" })),
+    ...reusedTasks.map((task) => ({ ...task, outcome: "reused" as const })),
+  ];
 
   return (
     <div
@@ -233,6 +237,7 @@ export function SheinStudioGenerationPanel({
       {failedBatchItems.length > 0 ? (
         <FailedBatchItemsPanel
           items={failedBatchItems}
+          linkedTasks={linkedTasks}
           onRetry={onRetryFailedItem}
           retryingItemId={retryingFailedItemId}
         />
@@ -351,10 +356,12 @@ export function SheinStudioGenerationPanel({
 
 function FailedBatchItemsPanel({
   items,
+  linkedTasks,
   onRetry,
   retryingItemId,
 }: {
   items: SheinStudioBatchItem[];
+  linkedTasks: Array<SheinStudioCreatedTask & { outcome: "created" | "reused" }>;
   onRetry?: (itemId: string) => void;
   retryingItemId?: string;
 }) {
@@ -372,6 +379,11 @@ function FailedBatchItemsPanel({
         {items.map((item) => {
           const itemLabel = item.targetGroupLabel?.trim() || item.targetGroupKey;
           const isRetrying = retryingItemId === item.id;
+          const linkedTask = linkedTasks.find((task) => task.itemId === item.id);
+          const hasLinkedTask = Boolean(linkedTask);
+          const retryDisabled = hasLinkedTask || !onRetry || Boolean(retryingItemId);
+          const linkedTaskAction =
+            linkedTask?.outcome === "reused" ? "已复用" : "已创建";
           return (
             <div
               className="rounded-2xl border border-white/90 bg-white/90 px-4 py-3 shadow-sm"
@@ -386,15 +398,26 @@ function FailedBatchItemsPanel({
                   <p className="text-sm text-rose-800">
                     {item.lastError?.trim() || "上游返回失败，请重试该分组。"}
                   </p>
+                  {linkedTask ? (
+                    <p className="text-xs leading-5 text-amber-700">
+                      {linkedTaskAction} ListingKit 任务 {linkedTask.id}
+                      ，请前往下方已有任务继续处理，避免重新生成覆盖已建任务设计。
+                    </p>
+                  ) : null}
                 </div>
                 <Button
                   className="w-full sm:w-auto"
-                  disabled={!onRetry || Boolean(retryingItemId)}
-                  onClick={() => onRetry?.(item.id)}
+                  disabled={retryDisabled}
+                  onClick={() => {
+                    if (hasLinkedTask) {
+                      return;
+                    }
+                    onRetry?.(item.id);
+                  }}
                   type="button"
                   variant="secondary"
                 >
-                  {isRetrying ? "重试中..." : "重试此项"}
+                  {hasLinkedTask ? "已有 ListingKit 任务" : isRetrying ? "重试中..." : "重试此项"}
                 </Button>
               </div>
             </div>

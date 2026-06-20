@@ -112,7 +112,7 @@ func buildTaskStudioBatchServiceConfigWiringWithGenerator(s *service, generator 
 		batch:        batch,
 		detailRunner: batch.newDetailRunner(),
 		reviewRunner: batch.newReviewRunner(),
-		retryRunner:  newListingStudioBatchRetryPrepareService(batch.repo, batch.loadDetail, batch.resetRetryItems),
+		retryRunner:  newListingStudioBatchRetryPrepareService(batch.repo, batch.batchTaskLinkRepo, batch.loadDetail, batch.resetRetryItems),
 		taskPrepare: newListingStudioBatchTaskPrepareService(
 			updateSession,
 			updateBatch,

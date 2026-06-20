@@ -34,7 +34,7 @@ func (s *taskStudioBatchService) ensureRetryRunner() {
 	if s == nil || s.retryRunner != nil {
 		return
 	}
-	s.retryRunner = newListingStudioBatchRetryPrepareService(s.repo, s.GetStudioBatchDetail, s.resetStudioBatchRetryItems)
+	s.retryRunner = newListingStudioBatchRetryPrepareService(s.repo, s.batchTaskLinkRepo, s.GetStudioBatchDetail, s.resetStudioBatchRetryItems)
 }
 
 func (s *taskStudioBatchService) ensureTaskCreationRunner() {
