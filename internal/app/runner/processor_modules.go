@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 )
@@ -48,7 +49,7 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 				if err != nil {
 					return err
 				}
-				p, err := creator(ctx, cfg, s.logger, temu.BuildDependencies(ctx, s.processorRuntime, productFetcher, s.rabbitmqClient))
+				p, err := creator(ctx, cfg, s.logger, temu.BuildDependencies(ctx, temuDependencyRuntimeAdapter{processorRuntimeProvider: s.processorRuntime}, productFetcher, s.rabbitmqClient))
 				if err != nil {
 					return fmt.Errorf("create TEMU processor: %w", err)
 				}
@@ -81,7 +82,7 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 				if err != nil {
 					return err
 				}
-				p, err := creator(ctx, cfg, s.logger, pipeline.BuildDependencies(ctx, s.processorRuntime, productFetcher, s.rabbitmqClient))
+				p, err := creator(ctx, cfg, s.logger, pipeline.BuildDependencies(ctx, sheinDependencyRuntimeAdapter{processorRuntimeProvider: s.processorRuntime}, productFetcher, s.rabbitmqClient))
 				if err != nil {
 					return fmt.Errorf("create SHEIN processor: %w", err)
 				}
@@ -94,6 +95,37 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 			},
 		},
 	}
+}
+
+type temuDependencyRuntimeAdapter struct {
+	processorRuntimeProvider
+}
+
+func (a temuDependencyRuntimeAdapter) GetStoreAPI() managementapi.StoreAPI {
+	if a.processorRuntimeProvider == nil {
+		return nil
+	}
+	return a.processorRuntimeProvider.GetStoreClient()
+}
+
+type sheinDependencyRuntimeAdapter struct {
+	processorRuntimeProvider
+}
+
+func (a sheinDependencyRuntimeAdapter) GetStoreAPI() managementapi.StoreAPI {
+	if a.processorRuntimeProvider == nil {
+		return nil
+	}
+	return a.processorRuntimeProvider.GetStoreClient()
+}
+
+func (a sheinDependencyRuntimeAdapter) GetImageDownloader() interface {
+	DownloadImage(url string) ([]byte, error)
+} {
+	if a.processorRuntimeProvider == nil {
+		return nil
+	}
+	return a.processorRuntimeProvider.GetImageDownloader()
 }
 
 func buildRuntimeProductFetcher(cfg *config.Config, s *processorServiceImpl, platform string) (appfetcher.ProductFetcher, error) {
