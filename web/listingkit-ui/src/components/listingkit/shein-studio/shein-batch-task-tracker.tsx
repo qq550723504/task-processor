@@ -31,6 +31,12 @@ function statusLabel(status: string) {
     processing: "处理中",
     queued: "排队中",
     unknown: "未知",
+    task_created: "任务已创建",
+    needs_review: "待审核",
+    ready_to_submit: "可提交",
+    draft_saved: "草稿已保存",
+    published: "已发布",
+    submit_failed: "提交失败",
   };
   return labels[status] ?? status;
 }
@@ -128,6 +134,35 @@ export function SheinBatchTaskTracker({
                       SDS：{statusLabel(sdsStatus)}
                     </span>
                   ) : null}
+                  {task.outcome ? (
+                    <span className="rounded-lg bg-white px-2 py-1 font-medium text-zinc-700">
+                      来源：{task.outcome === "reused" ? "复用" : "新建"}
+                    </span>
+                  ) : null}
+                  {task.status ? (
+                    <span className="rounded-lg bg-white px-2 py-1 font-medium text-zinc-700">
+                      批次：{statusLabel(task.status)}
+                    </span>
+                  ) : null}
+                  {task.submissionState ? (
+                    <span className="rounded-lg bg-white px-2 py-1 font-medium text-zinc-700">
+                      提交：{statusLabel(task.submissionState)}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="max-w-3xl text-xs leading-5 text-zinc-500">
+                  {[
+                    task.itemId ? `item ${task.itemId}` : "",
+                    task.selectionId ? `selection ${task.selectionId}` : "",
+                    task.compatibilityFingerprint
+                      ? `fingerprint ${task.compatibilityFingerprint}`
+                      : "",
+                    task.lastSubmissionAction
+                      ? `last ${task.lastSubmissionAction}`
+                      : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </div>
               </div>
 

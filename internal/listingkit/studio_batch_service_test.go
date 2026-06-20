@@ -12,6 +12,7 @@ import (
 	"time"
 
 	studiodomain "task-processor/internal/listing/studio"
+	sheinpub "task-processor/internal/publishing/shein"
 
 	"gorm.io/gorm"
 )
@@ -2570,11 +2571,14 @@ func TestServiceCreateStudioBatchTasksReusesExistingTasksForRepeatedRequests(t *
 	if err != nil {
 		t.Fatalf("second CreateStudioBatchTasks() error = %v", err)
 	}
-	if len(second.CreatedTasks) != 1 {
-		t.Fatalf("second created tasks = %+v, want 1 reused task", second.CreatedTasks)
+	if len(second.CreatedTasks) != 0 {
+		t.Fatalf("second created tasks = %+v, want no newly created task", second.CreatedTasks)
 	}
-	if second.CreatedTasks[0].ID != first.CreatedTasks[0].ID {
-		t.Fatalf("second created task id = %q, want reused %q", second.CreatedTasks[0].ID, first.CreatedTasks[0].ID)
+	if len(second.ReusedTasks) != 1 {
+		t.Fatalf("second reused tasks = %+v, want 1 reused task", second.ReusedTasks)
+	}
+	if second.ReusedTasks[0].ID != first.CreatedTasks[0].ID {
+		t.Fatalf("second reused task id = %q, want %q", second.ReusedTasks[0].ID, first.CreatedTasks[0].ID)
 	}
 	if got := len(taskRepo.tasks); got != 1 {
 		t.Fatalf("persisted task count = %d, want 1 without duplicates", got)
@@ -2628,11 +2632,14 @@ func TestServiceCreateStudioBatchTasks_ReusesDurableLinkedTaskWithoutSession(t *
 	if err != nil {
 		t.Fatalf("second CreateStudioBatchTasks() error = %v", err)
 	}
-	if len(second.CreatedTasks) != 1 {
-		t.Fatalf("second created tasks = %+v, want 1 reused durable task", second.CreatedTasks)
+	if len(second.CreatedTasks) != 0 {
+		t.Fatalf("second created tasks = %+v, want no newly created task", second.CreatedTasks)
 	}
-	if second.CreatedTasks[0].ID != first.CreatedTasks[0].ID {
-		t.Fatalf("second task id = %q, want reused %q", second.CreatedTasks[0].ID, first.CreatedTasks[0].ID)
+	if len(second.ReusedTasks) != 1 {
+		t.Fatalf("second reused tasks = %+v, want 1 reused durable task", second.ReusedTasks)
+	}
+	if second.ReusedTasks[0].ID != first.CreatedTasks[0].ID {
+		t.Fatalf("second reused task id = %q, want %q", second.ReusedTasks[0].ID, first.CreatedTasks[0].ID)
 	}
 	if got := taskRepo.taskCount(); got != 1 {
 		t.Fatalf("persisted task count = %d, want 1", got)
@@ -2765,12 +2772,14 @@ func TestServiceCreateStudioBatchTasks_ConcurrentRequestsCreateOneTask(t *testin
 		if err != nil {
 			t.Fatalf("CreateStudioBatchTasks(%d) error = %v", index, err)
 		}
-		if results[index] == nil || len(results[index].CreatedTasks) != 1 {
+		if ids := studioBatchResultTaskIDs(results[index]); len(ids) != 1 {
 			t.Fatalf("CreateStudioBatchTasks(%d) result = %+v, want one task", index, results[index])
 		}
 	}
-	if results[0].CreatedTasks[0].ID != results[1].CreatedTasks[0].ID {
-		t.Fatalf("concurrent task ids = %q and %q, want same task", results[0].CreatedTasks[0].ID, results[1].CreatedTasks[0].ID)
+	leftIDs := studioBatchResultTaskIDs(results[0])
+	rightIDs := studioBatchResultTaskIDs(results[1])
+	if leftIDs[0] != rightIDs[0] {
+		t.Fatalf("concurrent task ids = %q and %q, want same task", leftIDs[0], rightIDs[0])
 	}
 	if got := taskRepo.taskCount(); got != 1 {
 		t.Fatalf("persisted task count = %d, want 1", got)
@@ -2858,12 +2867,14 @@ func TestServiceCreateStudioBatchTasks_ConcurrentSlowOwnerReturnsOneTask(t *test
 		if err != nil {
 			t.Fatalf("CreateStudioBatchTasks(%d) error = %v", index, err)
 		}
-		if results[index] == nil || len(results[index].CreatedTasks) != 1 {
+		if ids := studioBatchResultTaskIDs(results[index]); len(ids) != 1 {
 			t.Fatalf("CreateStudioBatchTasks(%d) result = %+v, want one task", index, results[index])
 		}
 	}
-	if results[0].CreatedTasks[0].ID != results[1].CreatedTasks[0].ID {
-		t.Fatalf("concurrent task ids = %q and %q, want same task", results[0].CreatedTasks[0].ID, results[1].CreatedTasks[0].ID)
+	leftIDs := studioBatchResultTaskIDs(results[0])
+	rightIDs := studioBatchResultTaskIDs(results[1])
+	if leftIDs[0] != rightIDs[0] {
+		t.Fatalf("concurrent task ids = %q and %q, want same task", leftIDs[0], rightIDs[0])
 	}
 	if got := createCalls.Load(); got != 1 {
 		t.Fatalf("create calls = %d, want 1", got)
@@ -3094,6 +3105,86 @@ func TestStudioBatchDetail_LoadsCreatedTasksPreservesLegacyMetadataFromDurableLi
 	}
 }
 
+func TestStudioBatchDetail_ProjectsCreatedTaskSubmissionStateFromListingKitTask(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	taskRepo.tasks["task-1"] = &Task{
+		ID:     "task-1",
+		Status: TaskStatusCompleted,
+		Result: &ListingKitResult{
+			Shein: &SheinPackage{
+				Submission: &sheinpub.SubmissionReport{
+					LastAction: "save_draft",
+					LastStatus: sheinpub.SubmissionStatusSuccess,
+				},
+			},
+		},
+	}
+	mustCreateStudioBatchTaskLinkForTest(t, linkRepo, ctx, &StudioBatchTaskLinkRecord{
+		ID:                       "link-1",
+		BatchID:                  "batch-1",
+		ItemID:                   "item-1",
+		DesignID:                 "design-1",
+		SelectionID:              "selection-1",
+		CompatibilityFingerprint: "compat-1",
+		SheinStoreID:             9001,
+		ListingKitTaskID:         "task-1",
+		CandidateKey:             "candidate-1",
+		Status:                   studioBatchTaskLinkStatusCreated,
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	})
+	svc := &service{
+		repo: taskRepo,
+		studioDeps: studioDependencies{
+			batchRepo:         batchRepo,
+			batchTaskLinkRepo: linkRepo,
+		},
+		taskDeps: taskDependencies{taskSubmitter: &studioBatchTaskSubmitterStub{}},
+	}
+
+	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if len(detail.CreatedTasks) != 1 {
+		t.Fatalf("created tasks = %+v, want one task", detail.CreatedTasks)
+	}
+	task := detail.CreatedTasks[0]
+	if task.ItemID != "item-1" || task.SelectionID != "selection-1" || task.CompatibilityFingerprint != "compat-1" {
+		t.Fatalf("created task identity = %+v, want item/selection/fingerprint from durable link", task)
+	}
+	if task.Status != "draft_saved" {
+		t.Fatalf("status = %q, want draft_saved from real submission state", task.Status)
+	}
+	if task.SubmissionState != sheinpub.SubmissionStatusSuccess {
+		t.Fatalf("submission_state = %q, want success", task.SubmissionState)
+	}
+	if task.LastSubmissionAction != "save_draft" {
+		t.Fatalf("last_submission_action = %q, want save_draft", task.LastSubmissionAction)
+	}
+}
+
 func TestServiceCreateStudioBatchTasks_RecoversReservedCandidate(t *testing.T) {
 	t.Parallel()
 
@@ -3223,8 +3314,9 @@ func TestServiceCreateStudioBatchTasks_RecoversPostPersistDispatchFailureWithout
 	if err != nil {
 		t.Fatalf("second CreateStudioBatchTasks() error = %v", err)
 	}
-	if len(second.CreatedTasks) != 1 || second.CreatedTasks[0].ID != firstTaskID {
-		t.Fatalf("second created tasks = %+v, want existing persisted task %q", second.CreatedTasks, firstTaskID)
+	secondTaskIDs := studioBatchResultTaskIDs(second)
+	if len(secondTaskIDs) != 1 || secondTaskIDs[0] != firstTaskID {
+		t.Fatalf("second task ids = %+v, want existing persisted task %q", secondTaskIDs, firstTaskID)
 	}
 	if got := taskRepo.taskCount(); got != 1 {
 		t.Fatalf("task count after retry = %d, want no duplicate task", got)
@@ -3445,11 +3537,12 @@ func TestServiceCreateStudioBatchTasksReusesLegacyStyleIDTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateStudioBatchTasks() error = %v", err)
 	}
-	if len(result.CreatedTasks) != 1 {
-		t.Fatalf("created tasks = %+v, want 1 reused task", result.CreatedTasks)
+	resultTaskIDs := studioBatchResultTaskIDs(result)
+	if len(resultTaskIDs) != 1 {
+		t.Fatalf("task ids = %+v, want 1 reused task", resultTaskIDs)
 	}
-	if got := result.CreatedTasks[0].ID; got != "legacy-task-1" {
-		t.Fatalf("created task id = %q, want legacy-task-1", got)
+	if got := resultTaskIDs[0]; got != "legacy-task-1" {
+		t.Fatalf("task id = %q, want legacy-task-1", got)
 	}
 	if got := len(taskRepo.tasks); got != 1 {
 		t.Fatalf("persisted task count = %d, want 1 without duplicates", got)
@@ -3545,6 +3638,24 @@ func studioBatchFanOutSelection(
 			SelectedVariantIDs: []int64{variantID},
 		},
 	}
+}
+
+func studioBatchResultTaskIDs(result *CreateStudioBatchTasksResult) []string {
+	if result == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(result.CreatedTasks)+len(result.ReusedTasks))
+	for _, task := range result.CreatedTasks {
+		if strings.TrimSpace(task.ID) != "" {
+			ids = append(ids, task.ID)
+		}
+	}
+	for _, task := range result.ReusedTasks {
+		if strings.TrimSpace(task.ID) != "" {
+			ids = append(ids, task.ID)
+		}
+	}
+	return ids
 }
 
 type studioBatchTaskRepositoryStub struct {

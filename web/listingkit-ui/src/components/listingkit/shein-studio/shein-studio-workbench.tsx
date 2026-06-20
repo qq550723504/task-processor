@@ -1298,9 +1298,15 @@ export function SheinStudioWorkbench({
                   batch: result.batch,
                   items: result.items,
                   createdTasks: result.createdTasks,
+                  reusedTasks: result.reusedTasks,
+                  rejectedTasks: result.rejectedTasks,
                   failedTasks: result.failedTasks,
                   statusGroups: result.statusGroups,
                 };
+                const availableTasks = [
+                  ...result.createdTasks,
+                  ...(result.reusedTasks ?? []),
+                ];
                 const nextSavedBatch: SheinStudioSavedBatch = {
                   ...(currentActiveBatch ?? {}),
                   id: activeBatchId,
@@ -1327,7 +1333,7 @@ export function SheinStudioWorkbench({
                   groups,
                   designs: flattenItemizedBatchDesigns(nextDetail),
                   selectedIds: getApprovedItemizedBatchDesignIDs(nextDetail),
-                  createdTasks: result.createdTasks,
+                  createdTasks: availableTasks,
                   generationJobs: [],
                   draftUpdatedAt:
                     currentActiveBatch?.draftUpdatedAt || persistedUpdatedAt,
@@ -1478,8 +1484,11 @@ export function SheinStudioWorkbench({
       return;
     }
     const failedTasks = itemizedBatchDetail.failedTasks ?? [];
+    const rejectedTasks = itemizedBatchDetail.rejectedTasks ?? [];
+    const reusedBatchTasks = itemizedBatchDetail.reusedTasks ?? [];
     const createdBatchTasks = itemizedBatchDetail.createdTasks ?? [];
-    const completionSignature = `${itemizedBatchDetail.batch.id}:${itemizedBatchDetail.batch.status}:${createdBatchTasks.length}:${failedTasks.length}`;
+    const availableBatchTasks = [...createdBatchTasks, ...reusedBatchTasks];
+    const completionSignature = `${itemizedBatchDetail.batch.id}:${itemizedBatchDetail.batch.status}:${createdBatchTasks.length}:${reusedBatchTasks.length}:${rejectedTasks.length}:${failedTasks.length}`;
     if (itemizedBatchDetail.batch.status === "tasks_creating") {
       workbenchController.setField("isCreatingTasks", true);
       if (!creatingMessage.trim()) {
@@ -1500,31 +1509,47 @@ export function SheinStudioWorkbench({
       return;
     }
     workbenchController.setField("isCreatingTasks", false);
-    if (failedTasks.length > 0) {
-      const preview = failedTasks
+    if (failedTasks.length > 0 || rejectedTasks.length > 0) {
+      const rejectedPreview = rejectedTasks
         .slice(0, 3)
-        .map((task) => `${task.title}: ${task.message}`)
+        .map(
+          (task) =>
+            `${task.title?.trim() || task.designId}: ${
+              task.reasonCode ? `${task.reasonCode} · ` : ""
+            }${task.message ?? "候选不满足创建条件"}`,
+        )
         .join("；");
+      const failedPreview = failedTasks
+        .slice(0, Math.max(0, 3 - rejectedTasks.length))
+        .map(
+          (task) =>
+            `${task.title}: ${task.reasonCode ? `${task.reasonCode} · ` : ""}${
+              task.message
+            }`,
+        )
+        .join("；");
+      const preview = [rejectedPreview, failedPreview].filter(Boolean).join("；");
+      const blockedCount = failedTasks.length + rejectedTasks.length;
       const suffix =
-        failedTasks.length > 3
-          ? ` 等 ${failedTasks.length} 个任务`
+        blockedCount > 3
+          ? ` 等 ${blockedCount} 个任务`
           : "";
       workbenchController.setField(
         "creatingWarning",
-        `部分任务创建失败：${preview}${suffix}`,
+        `部分任务被拒绝或创建失败：${preview}${suffix}`,
       );
       workbenchController.setField(
         "creatingMessage",
-        createdBatchTasks.length > 0
-          ? `后台已完成创建：成功 ${createdBatchTasks.length} 个，失败 ${failedTasks.length} 个。`
+        availableBatchTasks.length > 0
+          ? `后台已完成创建：可处理 ${availableBatchTasks.length} 个，拒绝 ${rejectedTasks.length} 个，失败 ${failedTasks.length} 个。`
           : "后台任务创建已结束，但本次没有成功创建任务。",
       );
       if (taskCreationToastSignatureRef.current !== completionSignature) {
         taskCreationToastSignatureRef.current = completionSignature;
-        if (createdBatchTasks.length > 0) {
+        if (availableBatchTasks.length > 0) {
           toast.warning(
             "SHEIN 资料已部分创建",
-            `成功 ${createdBatchTasks.length} 个，失败 ${failedTasks.length} 个。`,
+            `可处理 ${availableBatchTasks.length} 个，拒绝 ${rejectedTasks.length} 个，失败 ${failedTasks.length} 个。`,
             8000,
           );
         } else {
@@ -1536,13 +1561,13 @@ export function SheinStudioWorkbench({
     workbenchController.setField("creatingWarning", "");
     workbenchController.setField(
       "creatingMessage",
-      `后台已完成创建，共生成 ${createdBatchTasks.length} 个 SHEIN 任务。`,
+      `后台已完成创建，共生成或复用 ${availableBatchTasks.length} 个 SHEIN 任务。`,
     );
     if (taskCreationToastSignatureRef.current !== completionSignature) {
       taskCreationToastSignatureRef.current = completionSignature;
       toast.success(
         "SHEIN 资料创建完成",
-        `共生成 ${createdBatchTasks.length} 个任务。`,
+        `共生成或复用 ${availableBatchTasks.length} 个任务。`,
         7000,
       );
     }
@@ -2627,6 +2652,7 @@ export function SheinStudioWorkbench({
                 createdTasks={createdTasks}
                 creatingError={creatingError}
                 creatingMessage={creatingMessage}
+                failedTasks={itemizedBatchDetail?.failedTasks ?? []}
                 generationError={generationError}
                 generationNotice={
                   hasRetryableFailedItems
@@ -2661,6 +2687,8 @@ export function SheinStudioWorkbench({
                 promptInputRef={promptInputRef}
                 renderSizeImagesWithSds={renderSizeImagesWithSds}
                 retryingFailedItemId={retryingFailedItemId}
+                rejectedTasks={itemizedBatchDetail?.rejectedTasks ?? []}
+                reusedTasks={itemizedBatchDetail?.reusedTasks ?? []}
                 saveMessage={saveMessage}
                 savedBatches={savedBatches}
                 selectedSdsImages={selectedSdsImages}
@@ -2719,7 +2747,12 @@ export function SheinStudioWorkbench({
           ) : null}
 
           {effectiveStep === "tasks" ? (
-            <SheinStudioTasksStep createdTasks={createdTasks} />
+            <SheinStudioTasksStep
+              createdTasks={createdTasks}
+              failedTasks={itemizedBatchDetail?.failedTasks ?? []}
+              rejectedTasks={itemizedBatchDetail?.rejectedTasks ?? []}
+              reusedTasks={itemizedBatchDetail?.reusedTasks ?? []}
+            />
           ) : null}
         </>
       )}

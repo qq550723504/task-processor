@@ -15,6 +15,7 @@ const (
 	studioBatchTaskLinkStatusCreated  = "created"
 	studioBatchTaskLinkStatusFailed   = "failed"
 	studioBatchCreatedTaskStatus      = "task_created"
+	studioBatchReusedTaskReasonCode   = "__studio_batch_reused"
 	studioBatchTaskCreatingWait       = 5 * time.Second
 )
 
@@ -27,13 +28,16 @@ func (s *taskStudioBatchService) findExistingStudioBatchTask(
 		return SheinStudioCreatedTask{}, false
 	}
 	if task, ok := s.findDurableStudioBatchTask(ctx, candidate); ok {
-		return task, true
+		return markStudioBatchReusedTask(task), true
 	}
 	if s.getTask == nil || len(recorded) == 0 {
 		return SheinStudioCreatedTask{}, false
 	}
 	created, ok, err := s.findLegacyStudioBatchTask(ctx, recorded, candidate)
-	return created, ok && err == nil
+	if ok && err == nil {
+		return markStudioBatchReusedTask(created), true
+	}
+	return SheinStudioCreatedTask{}, false
 }
 
 func (s *taskStudioBatchService) findLegacyStudioBatchTask(
@@ -105,8 +109,10 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 	if link == nil || strings.TrimSpace(link.ListingKitTaskID) == "" {
 		return SheinStudioCreatedTask{}, false
 	}
+	var task *Task
 	if s != nil && s.getTask != nil {
-		task, err := s.getTask(ctx, link.ListingKitTaskID)
+		var err error
+		task, err = s.getTask(ctx, link.ListingKitTaskID)
 		if err != nil || task == nil || task.Status == TaskStatusFailed {
 			if link.Status == studioBatchTaskLinkStatusCreated {
 				link.Status = studioBatchTaskLinkStatusFailed
@@ -127,7 +133,7 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 		}
 		_ = s.batchTaskLinkRepo.UpdateStudioBatchTaskLink(ctx, link)
 	}
-	return normalizeStudioBatchCreatedTask(SheinStudioCreatedTask{
+	created := normalizeStudioBatchCreatedTask(SheinStudioCreatedTask{
 		ID:                       link.ListingKitTaskID,
 		DesignID:                 link.DesignID,
 		ItemID:                   link.ItemID,
@@ -136,7 +142,9 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 		Status:                   studioBatchCreatedTaskStatus,
 		ReasonCode:               link.ReasonCode,
 		Message:                  link.Message,
-	}, candidate), true
+	}, candidate)
+	created = projectStudioBatchCreatedTaskFromListingTask(created, task)
+	return created, true
 }
 
 func (s *taskStudioBatchService) studioBatchTaskLinkIsStale(link *StudioBatchTaskLinkRecord) bool {
@@ -167,6 +175,13 @@ func normalizeStudioBatchCreatedTask(task SheinStudioCreatedTask, candidate stud
 	}
 	if strings.TrimSpace(task.Status) == "" {
 		task.Status = studioBatchCreatedTaskStatus
+	}
+	return task
+}
+
+func markStudioBatchReusedTask(task SheinStudioCreatedTask) SheinStudioCreatedTask {
+	if strings.TrimSpace(task.ReasonCode) == "" {
+		task.ReasonCode = studioBatchReusedTaskReasonCode
 	}
 	return task
 }

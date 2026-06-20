@@ -67,8 +67,33 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-batch-run-progress", 
 }));
 
 vi.mock("@/components/listingkit/shein-studio/shein-created-tasks-list", () => ({
-  SheinCreatedTasksList: ({ tasks }: { tasks: Array<{ id: string }> }) => (
-    <div>created tasks: {tasks.length}</div>
+  SheinCreatedTasksList: ({
+    failedTasks = [],
+    rejectedTasks = [],
+    reusedTasks = [],
+    tasks,
+  }: {
+    failedTasks?: Array<{ message?: string; reasonCode?: string }>;
+    rejectedTasks?: Array<{ message?: string; reasonCode?: string }>;
+    reusedTasks?: Array<{ id: string }>;
+    tasks: Array<{ id: string }>;
+  }) => (
+    <div>
+      <div>created tasks: {tasks.length}</div>
+      <div>reused tasks: {reusedTasks.length}</div>
+      <div>rejected tasks: {rejectedTasks.length}</div>
+      <div>failed tasks: {failedTasks.length}</div>
+      {rejectedTasks.map((task) => (
+        <div key={task.reasonCode ?? task.message}>
+          rejected reason: {task.reasonCode} {task.message}
+        </div>
+      ))}
+      {failedTasks.map((task) => (
+        <div key={task.reasonCode ?? task.message}>
+          failed reason: {task.reasonCode} {task.message}
+        </div>
+      ))}
+    </div>
   ),
 }));
 
@@ -863,6 +888,96 @@ describe("SheinStudioWorkbench", () => {
       expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", ["design-1"]),
     );
     expect(createSheinReviewTasks).not.toHaveBeenCalled();
+  });
+
+  it("shows rejected-only batch task creation as a failure instead of success", async () => {
+    getSheinStudioHydratedBatch.mockResolvedValue({
+      savedBatch: {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: "869",
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+      detail: {
+        batch: {
+          id: "batch-1",
+          status: "review_ready",
+          prompt: "retro cherries",
+          styleCount: "1",
+          sheinStoreId: 869,
+          createdAt: "2026-05-26T09:59:00.000Z",
+          updatedAt: "2026-05-26T10:00:00.000Z",
+        },
+        items: [
+          {
+            item: {
+              id: "item-1",
+              batchId: "batch-1",
+              targetGroupKey: "compat:fp-1",
+              status: "review_ready",
+              selectionCount: 1,
+              createdAt: "2026-05-26T09:59:00.000Z",
+              updatedAt: "2026-05-26T10:00:00.000Z",
+            },
+            designs: [
+              {
+                id: "design-1",
+                batchId: "batch-1",
+                itemId: "item-1",
+                sourceAttemptId: "attempt-1",
+                targetGroupKey: "compat:fp-1",
+                imageUrl: "https://example.com/design-1.png",
+                reviewStatus: "approved",
+                createdAt: "2026-05-26T09:59:30.000Z",
+                updatedAt: "2026-05-26T10:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      },
+    });
+    createSheinStudioBatchTasks.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        status: "tasks_created",
+      },
+      createdTasks: [],
+      reusedTasks: [],
+      rejectedTasks: [
+        {
+          designId: "design-1",
+          itemId: "item-1",
+          selectionId: "selection-1",
+          compatibilityFingerprint: "fp-1",
+          reasonCode: "baseline_not_ready",
+          message: "baseline 还没准备好",
+          outcome: "rejected",
+        },
+      ],
+      failedTasks: [],
+    });
+
+    render(<SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "create review tasks" }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/baseline 还没准备好/)).toBeInTheDocument(),
+    );
+    expect(screen.getByText(/部分任务被拒绝/)).toBeInTheDocument();
+    expect(screen.queryByText(/已生成 0 个 SHEIN 资料任务/)).not.toBeInTheDocument();
+    expect(screen.queryByText("created tasks: 1")).not.toBeInTheDocument();
+    expect(push).not.toHaveBeenCalledWith("?step=tasks");
   });
 
   it("confirms before creating tasks while the dedicated batch is still generating", async () => {

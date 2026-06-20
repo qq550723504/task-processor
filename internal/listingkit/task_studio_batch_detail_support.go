@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	sheinpub "task-processor/internal/publishing/shein"
+
 	"gorm.io/gorm"
 )
 
@@ -119,14 +121,15 @@ func loadStudioBatchCreatedTasksFromLinks(
 		if _, ok := seen[taskID]; ok {
 			continue
 		}
+		var task *Task
 		if getTask != nil {
-			task, err := getTask(ctx, taskID)
+			task, err = getTask(ctx, taskID)
 			if err != nil || task == nil || task.Status == TaskStatusFailed {
 				continue
 			}
 		}
 		seen[taskID] = struct{}{}
-		tasks = append(tasks, SheinStudioCreatedTask{
+		created := SheinStudioCreatedTask{
 			ID:                       taskID,
 			Title:                    strings.TrimSpace(link.DesignID),
 			DesignID:                 strings.TrimSpace(link.DesignID),
@@ -136,9 +139,65 @@ func loadStudioBatchCreatedTasksFromLinks(
 			Status:                   studioBatchCreatedTaskStatus,
 			ReasonCode:               strings.TrimSpace(link.ReasonCode),
 			Message:                  strings.TrimSpace(link.Message),
-		})
+		}
+		created = projectStudioBatchCreatedTaskFromListingTask(created, task)
+		tasks = append(tasks, created)
 	}
 	return tasks, nil
+}
+
+func projectStudioBatchCreatedTaskFromListingTask(created SheinStudioCreatedTask, task *Task) SheinStudioCreatedTask {
+	if task == nil {
+		return created
+	}
+	if strings.TrimSpace(created.Status) == "" {
+		created.Status = studioBatchCreatedTaskStatus
+	}
+	switch task.Status {
+	case TaskStatusNeedsReview:
+		created.Status = "needs_review"
+	case TaskStatusFailed:
+		created.Status = "submit_failed"
+		if strings.TrimSpace(created.Message) == "" {
+			created.Message = strings.TrimSpace(task.Error)
+		}
+	}
+	if task.Result == nil || task.Result.Shein == nil {
+		return created
+	}
+	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+	if pkg == nil || pkg.SubmissionState == nil {
+		if task.Status == TaskStatusCompleted && sheinSubmitReadinessReady(buildSheinSubmitReadiness(pkg)) {
+			created.Status = "ready_to_submit"
+		}
+		return created
+	}
+	latestStatus := strings.TrimSpace(pkg.SubmissionState.LastStatus)
+	latestAction := strings.TrimSpace(pkg.SubmissionState.LastAction)
+	if latestStatus != "" {
+		created.SubmissionState = latestStatus
+	}
+	if latestAction != "" {
+		created.LastSubmissionAction = latestAction
+	}
+	switch {
+	case latestStatus == sheinpub.SubmissionStatusFailed:
+		created.Status = "submit_failed"
+		if strings.TrimSpace(created.Message) == "" {
+			created.Message = strings.TrimSpace(pkg.SubmissionState.LastError)
+		}
+	case latestStatus == sheinpub.SubmissionStatusSuccess && latestAction == "publish":
+		created.Status = "published"
+	case latestStatus == sheinpub.SubmissionStatusSuccess && latestAction == "save_draft":
+		created.Status = "draft_saved"
+	case sheinSubmitReadinessReady(buildSheinSubmitReadiness(pkg)):
+		created.Status = "ready_to_submit"
+	}
+	return created
+}
+
+func sheinSubmitReadinessReady(readiness *SheinSubmitReadiness) bool {
+	return readiness != nil && readiness.Ready
 }
 
 func shouldSyncStudioBatchGraphOnRead(session *SheinStudioSession) bool {

@@ -29,6 +29,7 @@ import type {
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
+  SheinStudioRejectedTask,
   SheinStudioSelectedSDSImage,
 } from "@/lib/types/shein-studio";
 
@@ -159,8 +160,10 @@ export function useSheinStudioTaskCreationAction({
 
     try {
       let created: SheinStudioCreatedTask[] = [];
+      let reused: SheinStudioCreatedTask[] = [];
       let creationWarnings: GroupedSheinTaskCreationWarning[] = [];
       let batchTaskFailures: SheinStudioFailedTask[] = [];
+      let batchTaskRejections: SheinStudioRejectedTask[] = [];
 
       if (itemizedBatchContext) {
         const batchTenantId = itemizedBatchContext.tenantId?.trim();
@@ -183,6 +186,8 @@ export function useSheinStudioTaskCreationAction({
               approvedDesignIds,
             );
         created = result.createdTasks;
+        reused = result.reusedTasks ?? [];
+        batchTaskRejections = result.rejectedTasks ?? [];
         batchTaskFailures = result.failedTasks ?? [];
         itemizedBatchContext.onCreated(result);
         keepCreatingState = result.batch.status === "tasks_creating";
@@ -252,18 +257,22 @@ export function useSheinStudioTaskCreationAction({
       }
 
       hasLocalWorkflowStateRef.current = true;
-      setCreatedTasks(created);
+      const availableTasks = [...created, ...reused];
+      setCreatedTasks(availableTasks);
 
-      if (batchTaskFailures.length > 0) {
-        const failedSummary = buildBatchTaskCreationFailureSummary(batchTaskFailures);
-        setCreatingWarning(failedSummary);
-        if (created.length > 0) {
+      if (batchTaskFailures.length > 0 || batchTaskRejections.length > 0) {
+        const failedSummary = buildBatchTaskCreationFailureSummary(
+          batchTaskFailures,
+          batchTaskRejections,
+        );
+        setCreatingWarning(availableTasks.length > 0 ? failedSummary : "");
+        if (availableTasks.length > 0) {
           setCreatingMessage(
-            `已成功生成 ${created.length} 个 SHEIN 资料任务，另有 ${batchTaskFailures.length} 个任务创建失败。`,
+            `已可处理 ${availableTasks.length} 个 SHEIN 资料任务，另有 ${batchTaskRejections.length} 个被拒绝、${batchTaskFailures.length} 个创建失败。`,
           );
           toast.warning(
             "SHEIN 资料已部分创建",
-            `成功 ${created.length} 个，失败 ${batchTaskFailures.length} 个。`,
+            `可处理 ${availableTasks.length} 个，拒绝 ${batchTaskRejections.length} 个，失败 ${batchTaskFailures.length} 个。`,
             8000,
           );
         } else {
@@ -275,24 +284,24 @@ export function useSheinStudioTaskCreationAction({
       } else {
         setCreatingMessage(
           groupedSelections.length > 0
-            ? `已为 ${created.length} 个 SDS 商品生成 SHEIN 资料任务。请在下方打开并审核。`
-            : `已生成 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
+            ? `已为 ${availableTasks.length} 个 SDS 商品生成或复用 SHEIN 资料任务。请在下方打开并审核。`
+            : `已生成或复用 ${availableTasks.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
         );
         setCreatingWarning(buildGroupedTaskCreationWarningSummary(creationWarnings));
         toast.success(
           "SHEIN 资料创建完成",
-          `共生成 ${created.length} 个任务。`,
+          `共生成或复用 ${availableTasks.length} 个任务。`,
           7000,
         );
       }
 
-      if (created.length === 0) {
+      if (availableTasks.length === 0) {
         return;
       }
 
       navigateToStep("tasks");
       void persistDraft(
-        { createdTasks: created },
+        { createdTasks: availableTasks },
         {
           navigationTriggered: true,
           source: "task_creation_success",
@@ -320,16 +329,29 @@ function buildInFlightTaskCreationConfirmation(approvedCount: number) {
 
 function buildBatchTaskCreationFailureSummary(
   failedTasks: SheinStudioFailedTask[],
+  rejectedTasks: SheinStudioRejectedTask[] = [],
 ) {
-  if (failedTasks.length === 0) {
+  if (failedTasks.length === 0 && rejectedTasks.length === 0) {
     return "";
   }
-  const preview = failedTasks
+  const rejectedPreview = rejectedTasks
     .slice(0, 3)
-    .map((task) => `${task.title}: ${task.message}`)
+    .map((task) => `${task.title?.trim() || task.designId}: ${task.reasonCode ? `${task.reasonCode} · ` : ""}${task.message ?? "候选不满足创建条件"}`)
     .join("；");
-  const suffix = failedTasks.length > 3 ? ` 等 ${failedTasks.length} 个任务` : "";
-  return `部分任务创建失败：${preview}${suffix}`;
+  const failedPreview = failedTasks
+    .slice(0, Math.max(0, 3 - rejectedTasks.length))
+    .map((task) => `${task.title}: ${task.reasonCode ? `${task.reasonCode} · ` : ""}${task.message}`)
+    .join("；");
+  const preview = [rejectedPreview, failedPreview].filter(Boolean).join("；");
+  const total = rejectedTasks.length + failedTasks.length;
+  const suffix = total > 3 ? ` 等 ${total} 个任务` : "";
+  if (failedTasks.length === 0) {
+    return `部分任务被拒绝：${preview}${suffix}`;
+  }
+  if (rejectedTasks.length === 0) {
+    return `部分任务创建失败：${preview}${suffix}`;
+  }
+  return `部分任务被拒绝或创建失败：${preview}${suffix}`;
 }
 
 function buildGroupedTaskCreationWarningSummary(

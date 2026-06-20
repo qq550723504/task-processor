@@ -19,9 +19,11 @@ import type {
   SheinStudioBatchStatusGroups,
   SheinStudioBatchItem,
   SheinStudioCreatedTask,
+  SheinStudioFailedTask,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
+  SheinStudioRejectedTask,
   SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
   SheinStudioVariationIntensity,
@@ -34,6 +36,7 @@ export function SheinStudioGenerationPanel({
   createdTasks,
   creatingError,
   creatingMessage,
+  failedTasks = [],
   generationError,
   generationNotice = "",
   failedBatchItems = [],
@@ -44,6 +47,8 @@ export function SheinStudioGenerationPanel({
   isGenerating,
   isRetryingFailedItems = false,
   retryingFailedItemId = "",
+  rejectedTasks = [],
+  reusedTasks = [],
   onCreateTasks,
   onDeleteBatch,
   onGenerate,
@@ -91,6 +96,7 @@ export function SheinStudioGenerationPanel({
   createdTasks: SheinStudioCreatedTask[];
   creatingError: string;
   creatingMessage: string;
+  failedTasks?: SheinStudioFailedTask[];
   generationError: string;
   generationNotice?: string;
   failedBatchItems?: SheinStudioBatchItem[];
@@ -101,6 +107,8 @@ export function SheinStudioGenerationPanel({
   isGenerating: boolean;
   isRetryingFailedItems?: boolean;
   retryingFailedItemId?: string;
+  rejectedTasks?: SheinStudioRejectedTask[];
+  reusedTasks?: SheinStudioCreatedTask[];
   onCreateTasks: () => void;
   onDeleteBatch: (batchID: string) => void;
   onGenerate: () => void;
@@ -323,7 +331,12 @@ export function SheinStudioGenerationPanel({
       )}
 
       <div id="shein-created-tasks" className="scroll-mt-6">
-        <SheinCreatedTasksList tasks={createdTasks} />
+        <SheinCreatedTasksList
+          failedTasks={failedTasks}
+          rejectedTasks={rejectedTasks}
+          reusedTasks={reusedTasks}
+          tasks={createdTasks}
+        />
       </div>
       {showSavedBatches ? (
         <SheinSavedBatchesPanel

@@ -17,6 +17,8 @@ import type {
   SheinStudioFailedTask,
   SheinStudioItemizedBatchItem,
   SheinStudioMaterializedDesign,
+  SheinStudioRejectedTask,
+  SheinStudioTaskLifecycleStatus,
 } from "@/lib/types/shein-studio";
 import type { QueueQuery } from "@/lib/types/listingkit";
 import { z } from "zod";
@@ -105,6 +107,20 @@ const studioCreatedTaskSchema = z
     title: z.string().optional(),
     designId: z.string().optional(),
     design_id: z.string().optional(),
+    itemId: z.string().optional(),
+    item_id: z.string().optional(),
+    selectionId: z.string().optional(),
+    selection_id: z.string().optional(),
+    compatibilityFingerprint: z.string().optional(),
+    compatibility_fingerprint: z.string().optional(),
+    status: z.string().optional(),
+    submissionState: z.string().optional(),
+    submission_state: z.string().optional(),
+    lastSubmissionAction: z.string().optional(),
+    last_submission_action: z.string().optional(),
+    reasonCode: z.string().optional(),
+    reason_code: z.string().optional(),
+    message: z.string().optional(),
   })
   .passthrough();
 
@@ -112,7 +128,42 @@ const studioFailedTaskSchema = z
   .object({
     designId: z.string().optional(),
     design_id: z.string().optional(),
+    itemId: z.string().optional(),
+    item_id: z.string().optional(),
+    selectionId: z.string().optional(),
+    selection_id: z.string().optional(),
+    compatibilityFingerprint: z.string().optional(),
+    compatibility_fingerprint: z.string().optional(),
     title: z.string().optional(),
+    status: z.string().optional(),
+    submissionState: z.string().optional(),
+    submission_state: z.string().optional(),
+    lastSubmissionAction: z.string().optional(),
+    last_submission_action: z.string().optional(),
+    reasonCode: z.string().optional(),
+    reason_code: z.string().optional(),
+    message: z.string().optional(),
+  })
+  .passthrough();
+
+const studioRejectedTaskSchema = z
+  .object({
+    designId: z.string().optional(),
+    design_id: z.string().optional(),
+    itemId: z.string().optional(),
+    item_id: z.string().optional(),
+    selectionId: z.string().optional(),
+    selection_id: z.string().optional(),
+    compatibilityFingerprint: z.string().optional(),
+    compatibility_fingerprint: z.string().optional(),
+    title: z.string().optional(),
+    status: z.string().optional(),
+    submissionState: z.string().optional(),
+    submission_state: z.string().optional(),
+    lastSubmissionAction: z.string().optional(),
+    last_submission_action: z.string().optional(),
+    reasonCode: z.string().optional(),
+    reason_code: z.string().optional(),
     message: z.string().optional(),
   })
   .passthrough();
@@ -138,6 +189,8 @@ const studioBatchDetailResponseSchema = z
     batch: studioBatchSchema,
     items: z.array(studioBatchDetailItemSchema).optional(),
     created_tasks: z.array(studioCreatedTaskSchema).optional(),
+    reused_tasks: z.array(studioCreatedTaskSchema).optional(),
+    rejected_tasks: z.array(studioRejectedTaskSchema).optional(),
     failed_tasks: z.array(studioFailedTaskSchema).optional(),
     status_groups: studioBatchStatusGroupsSchema.optional(),
   })
@@ -148,6 +201,8 @@ const studioBatchTaskCreationResponseSchema = z
     batch: studioBatchSchema,
     items: z.array(studioBatchDetailItemSchema).optional(),
     created_tasks: z.array(studioCreatedTaskSchema).optional(),
+    reused_tasks: z.array(studioCreatedTaskSchema).optional(),
+    rejected_tasks: z.array(studioRejectedTaskSchema).optional(),
     failed_tasks: z.array(studioFailedTaskSchema).optional(),
     status_groups: studioBatchStatusGroupsSchema.optional(),
   })
@@ -155,6 +210,8 @@ const studioBatchTaskCreationResponseSchema = z
 
 export type SheinStudioBatchTaskCreationResult = SheinStudioBatchDetail & {
   createdTasks: SheinStudioCreatedTask[];
+  reusedTasks: SheinStudioCreatedTask[];
+  rejectedTasks: SheinStudioRejectedTask[];
   failedTasks: SheinStudioFailedTask[];
 };
 
@@ -257,11 +314,42 @@ function mapStudioBatchDetailItem(
   };
 }
 
+const taskLifecycleStatuses = new Set<SheinStudioTaskLifecycleStatus>([
+  "task_created",
+  "needs_review",
+  "ready_to_submit",
+  "draft_saved",
+  "published",
+  "submit_failed",
+  "unknown",
+]);
+
+function normalizeTaskLifecycleStatus(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return taskLifecycleStatuses.has(trimmed as SheinStudioTaskLifecycleStatus)
+    ? (trimmed as SheinStudioTaskLifecycleStatus)
+    : trimmed;
+}
+
+function firstTrimmed(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return undefined;
+}
+
 function mapStudioCreatedTasks(
   payload: z.infer<typeof studioCreatedTaskSchema>[],
+  outcome: "created" | "reused" = "created",
 ): SheinStudioCreatedTask[] {
   return payload
-    .map((item) => {
+    .map((item): SheinStudioCreatedTask | null => {
       const id = item.id?.trim();
       const title = item.title?.trim();
       if (!id || !title) {
@@ -270,27 +358,96 @@ function mapStudioCreatedTasks(
       return {
         id,
         title,
-        designId: item.designId?.trim() || item.design_id?.trim() || "",
+        designId: firstTrimmed(item.designId, item.design_id) ?? "",
+        itemId: firstTrimmed(item.itemId, item.item_id),
+        selectionId: firstTrimmed(item.selectionId, item.selection_id),
+        compatibilityFingerprint: firstTrimmed(
+          item.compatibilityFingerprint,
+          item.compatibility_fingerprint,
+        ),
+        status: normalizeTaskLifecycleStatus(item.status) ?? "task_created",
+        submissionState: normalizeTaskLifecycleStatus(
+          firstTrimmed(item.submissionState, item.submission_state),
+        ),
+        lastSubmissionAction: firstTrimmed(
+          item.lastSubmissionAction,
+          item.last_submission_action,
+        ),
+        reasonCode: firstTrimmed(item.reasonCode, item.reason_code),
+        message: firstTrimmed(item.message),
+        outcome,
       } satisfies SheinStudioCreatedTask;
     })
     .filter((item): item is SheinStudioCreatedTask => Boolean(item));
+}
+
+function mapStudioRejectedTasks(
+  payload: z.infer<typeof studioRejectedTaskSchema>[],
+): SheinStudioRejectedTask[] {
+  return payload
+    .map((item): SheinStudioRejectedTask | null => {
+      const designId = firstTrimmed(item.designId, item.design_id);
+      const message = firstTrimmed(item.message);
+      const reasonCode = firstTrimmed(item.reasonCode, item.reason_code);
+      if (!designId || (!message && !reasonCode)) {
+        return null;
+      }
+      return {
+        designId,
+        title: firstTrimmed(item.title),
+        itemId: firstTrimmed(item.itemId, item.item_id),
+        selectionId: firstTrimmed(item.selectionId, item.selection_id),
+        compatibilityFingerprint: firstTrimmed(
+          item.compatibilityFingerprint,
+          item.compatibility_fingerprint,
+        ),
+        status: firstTrimmed(item.status) ?? "rejected",
+        submissionState: normalizeTaskLifecycleStatus(
+          firstTrimmed(item.submissionState, item.submission_state),
+        ),
+        lastSubmissionAction: firstTrimmed(
+          item.lastSubmissionAction,
+          item.last_submission_action,
+        ),
+        reasonCode,
+        message,
+        outcome: "rejected",
+      } satisfies SheinStudioRejectedTask;
+    })
+    .filter((item): item is SheinStudioRejectedTask => Boolean(item));
 }
 
 function mapStudioFailedTasks(
   payload: z.infer<typeof studioFailedTaskSchema>[],
 ): SheinStudioFailedTask[] {
   return payload
-    .map((item) => {
+    .map((item): SheinStudioFailedTask | null => {
       const designId = item.designId?.trim() || item.design_id?.trim() || "";
       const title = item.title?.trim() || "";
       const message = item.message?.trim() || "";
-      if (!designId || !title || !message) {
+      if (!designId || !message) {
         return null;
       }
       return {
         designId,
-        title,
+        title: title || designId,
+        itemId: firstTrimmed(item.itemId, item.item_id),
+        selectionId: firstTrimmed(item.selectionId, item.selection_id),
+        compatibilityFingerprint: firstTrimmed(
+          item.compatibilityFingerprint,
+          item.compatibility_fingerprint,
+        ),
+        status: firstTrimmed(item.status) ?? "failed",
+        submissionState: normalizeTaskLifecycleStatus(
+          firstTrimmed(item.submissionState, item.submission_state),
+        ),
+        lastSubmissionAction: firstTrimmed(
+          item.lastSubmissionAction,
+          item.last_submission_action,
+        ),
+        reasonCode: firstTrimmed(item.reasonCode, item.reason_code),
         message,
+        outcome: "failed",
       } satisfies SheinStudioFailedTask;
     })
     .filter((item): item is SheinStudioFailedTask => Boolean(item));
@@ -337,6 +494,8 @@ export function parseSheinStudioBatchDetailResponse(
     batch: mapStudioBatch(parsed.batch),
     items: (parsed.items ?? []).map(mapStudioBatchDetailItem),
     createdTasks: mapStudioCreatedTasks(parsed.created_tasks ?? []),
+    reusedTasks: mapStudioCreatedTasks(parsed.reused_tasks ?? [], "reused"),
+    rejectedTasks: mapStudioRejectedTasks(parsed.rejected_tasks ?? []),
     failedTasks: mapStudioFailedTasks(parsed.failed_tasks ?? []),
     statusGroups: mapStudioBatchStatusGroups(parsed.status_groups),
   };
@@ -355,6 +514,8 @@ export function parseSheinStudioBatchTaskCreationResponse(
     batch: mapStudioBatch(parsed.batch),
     items: (parsed.items ?? []).map(mapStudioBatchDetailItem),
     createdTasks: mapStudioCreatedTasks(parsed.created_tasks ?? []),
+    reusedTasks: mapStudioCreatedTasks(parsed.reused_tasks ?? [], "reused"),
+    rejectedTasks: mapStudioRejectedTasks(parsed.rejected_tasks ?? []),
     failedTasks: mapStudioFailedTasks(parsed.failed_tasks ?? []),
     statusGroups: mapStudioBatchStatusGroups(parsed.status_groups),
   };
