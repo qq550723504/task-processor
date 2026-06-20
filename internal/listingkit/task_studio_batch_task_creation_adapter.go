@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	studiodomain "task-processor/internal/listing/studio"
 )
@@ -27,16 +28,26 @@ func newListingStudioBatchTaskCreationService(s *taskStudioBatchService) *listin
 			if s == nil || s.repo == nil {
 				return studiodomain.BatchTaskPrepareState[SheinStudioSession, StudioBatchRecord]{}, fmt.Errorf("studio batch repository is not configured")
 			}
-			stateDesignIDs, session, batchDetail, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
+			state, err := s.buildStudioBatchTaskState(ctx, batchID, designIDs)
+			if err != nil {
+				return studiodomain.BatchTaskPrepareState[SheinStudioSession, StudioBatchRecord]{}, err
+			}
+			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
 				DesignIDs: append([]string(nil), designIDs...),
 			})
 			if err != nil {
 				return studiodomain.BatchTaskPrepareState[SheinStudioSession, StudioBatchRecord]{}, err
 			}
+			if session == nil {
+				session = &SheinStudioSession{
+					ID:                   strings.TrimSpace(batchID),
+					PendingTaskDesignIDs: append(SheinStudioStringList(nil), state.DesignIDs...),
+				}
+			}
 			return studiodomain.BatchTaskPrepareState[SheinStudioSession, StudioBatchRecord]{
 				Session:   session,
-				Batch:     batchDetail.Batch,
-				DesignIDs: stateDesignIDs,
+				Batch:     state.Batch,
+				DesignIDs: state.DesignIDs,
 			}, nil
 		},
 		PrepareTaskCreation: func(ctx context.Context, batchID string, state studiodomain.BatchTaskPrepareState[SheinStudioSession, StudioBatchRecord]) (*CreateStudioBatchTasksResult, error) {
@@ -48,9 +59,13 @@ func newListingStudioBatchTaskCreationService(s *taskStudioBatchService) *listin
 		},
 		LoadSession: func(ctx context.Context, batchID string) (*SheinStudioSession, error) {
 			if s == nil {
-				return nil, ErrStudioSessionNotFound
+				return nil, nil
 			}
-			return s.loadStudioBatchTaskSession(ctx, batchID)
+			session, err := s.loadStudioBatchTaskSession(ctx, batchID)
+			if err != nil && err != ErrStudioSessionNotFound {
+				return nil, err
+			}
+			return session, nil
 		},
 		PendingDesignIDs: func(session *SheinStudioSession) []string {
 			if session == nil {

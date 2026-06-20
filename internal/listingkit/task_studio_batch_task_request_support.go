@@ -1,54 +1,71 @@
 package listingkit
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"strconv"
 	"strings"
 )
 
 func buildStudioBatchTaskGenerateRequest(
 	session *SheinStudioSession,
-	groupedSelection SheinStudioGroupedSelection,
+	batch *StudioBatchRecord,
+	candidate studioBatchTaskCandidate,
 	design StudioMaterializedDesignRecord,
-	sessionDesign SheinStudioDesign,
 ) *GenerateRequest {
-	if session == nil {
+	if batch == nil {
 		return &GenerateRequest{}
 	}
-	selection := groupedSelection.Selection
-	storeID := parseStudioBatchTaskStoreID(groupedSelection.SheinStoreID)
-	if storeID <= 0 {
-		storeID = parseStudioBatchTaskStoreID(session.SheinStoreID)
-	}
+	selection := candidate.SelectionSnapshot
+	storeID := studioBatchTaskStoreID(session, batch, candidate.Selection.SheinStoreID)
 
-	styleID := buildStudioBatchTaskStyleID(design.ID)
-	styleName := firstNonEmpty(
-		strings.TrimSpace(design.TargetGroupLabel),
-		strings.TrimSpace(selection.ProductName),
-		strings.TrimSpace(design.ID),
-	)
+	styleID := buildStudioBatchTaskScopedStyleID(batch.ID, candidate.Item.ID, design.ID, candidate.SelectionID)
+	styleName := firstNonEmpty(strings.TrimSpace(candidate.Title), strings.TrimSpace(design.ID))
 	req := &GenerateRequest{
-		TenantID:     strings.TrimSpace(session.TenantID),
-		UserID:       strings.TrimSpace(session.UserID),
-		Text:         strings.TrimSpace(session.Prompt),
+		TenantID:     strings.TrimSpace(batch.TenantID),
+		UserID:       strings.TrimSpace(batch.UserID),
+		Text:         studioBatchTaskPrompt(session, batch),
 		ImageURLs:    []string{strings.TrimSpace(design.ImageURL)},
 		Platforms:    []string{"shein"},
 		SheinStoreID: storeID,
 		Options: &GenerateOptions{
-			ImageStrategy: strings.TrimSpace(session.ImageStrategy),
 			ProcessImages: false,
 			SheinStudio: &SheinStudioOptions{
-				StyleID:                 styleID,
-				StyleName:               styleName,
-				SourceDesignURLs:        []string{strings.TrimSpace(design.ImageURL)},
-				ProductImageURLs:        append([]string(nil), sessionDesign.ProductImageURLs...),
-				SelectedSDSImages:       toGenerateRequestSelectedSDSImages(session.SelectedSDSImages),
-				SizeReferenceImageURLs:  append([]string(nil), selection.SizeReferenceImageURLs...),
-				RenderSizeImagesWithSDS: session.RenderSizeImagesWithSDS,
+				StyleID:                styleID,
+				StyleName:              styleName,
+				SourceDesignURLs:       []string{strings.TrimSpace(design.ImageURL)},
+				SelectedSDSImages:      toGenerateRequestSelectedSDSImages(batch.SelectedSDSImages),
+				SizeReferenceImageURLs: append([]string(nil), selection.SizeReferenceImageURLs...),
 			},
 			SDS: buildStudioBatchTaskSDSOptions(selection, styleID, styleName),
 		},
 	}
 	return req
+}
+
+func studioBatchTaskPrompt(session *SheinStudioSession, batch *StudioBatchRecord) string {
+	if session != nil && strings.TrimSpace(session.Prompt) != "" {
+		return strings.TrimSpace(session.Prompt)
+	}
+	if batch == nil {
+		return ""
+	}
+	return strings.TrimSpace(batch.Prompt)
+}
+
+func studioBatchTaskStoreID(session *SheinStudioSession, batch *StudioBatchRecord, groupedStoreID string) int64 {
+	if storeID := parseStudioBatchTaskStoreID(groupedStoreID); storeID > 0 {
+		return storeID
+	}
+	if session != nil {
+		if storeID := parseStudioBatchTaskStoreID(session.SheinStoreID); storeID > 0 {
+			return storeID
+		}
+	}
+	if batch == nil {
+		return 0
+	}
+	return batch.SheinStoreID
 }
 
 func buildStudioBatchTaskSDSOptions(
@@ -133,21 +150,11 @@ func parseStudioBatchTaskStoreID(raw string) int64 {
 }
 
 func buildStudioBatchTaskStyleID(designID string) string {
-	compact := strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'a' && r <= 'z':
-			return r - ('a' - 'A')
-		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			return r
-		default:
-			return -1
-		}
-	}, strings.TrimSpace(designID))
-	if len(compact) > 8 {
-		return compact[:8]
-	}
-	if compact == "" {
-		return "STYLE001"
-	}
-	return compact
+	return buildStudioBatchTaskScopedStyleID("", "", designID, "")
+}
+
+func buildStudioBatchTaskScopedStyleID(batchID string, itemID string, designID string, selectionID string) string {
+	raw := strings.Join([]string{batchID, itemID, designID, selectionID}, "|")
+	sum := sha1.Sum([]byte(raw))
+	return strings.ToUpper(hex.EncodeToString(sum[:]))[:10]
 }

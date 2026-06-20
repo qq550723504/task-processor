@@ -8,14 +8,12 @@ import (
 func (s *taskStudioBatchService) findExistingStudioBatchTask(
 	ctx context.Context,
 	recorded SheinStudioCreatedTaskList,
-	design StudioMaterializedDesignRecord,
-	grouped SheinStudioGroupedSelection,
-	fallbackTitle string,
+	candidate studioBatchTaskCandidate,
 ) (SheinStudioCreatedTask, bool) {
 	if s == nil || s.getTask == nil || len(recorded) == 0 {
 		return SheinStudioCreatedTask{}, false
 	}
-	designID := strings.TrimSpace(design.ID)
+	designID := strings.TrimSpace(candidate.Design.ID)
 	for _, created := range recorded {
 		if strings.TrimSpace(created.DesignID) != designID || strings.TrimSpace(created.ID) == "" {
 			continue
@@ -24,11 +22,11 @@ func (s *taskStudioBatchService) findExistingStudioBatchTask(
 		if err != nil || task == nil || task.Status == TaskStatusFailed {
 			continue
 		}
-		if !studioBatchTaskMatchesSelection(task, design, grouped.Selection) {
+		if !studioBatchTaskMatchesSelection(task, candidate) {
 			continue
 		}
 		if strings.TrimSpace(created.Title) == "" {
-			created.Title = fallbackTitle
+			created.Title = candidate.Title
 		}
 		return created, true
 	}
@@ -37,8 +35,7 @@ func (s *taskStudioBatchService) findExistingStudioBatchTask(
 
 func studioBatchTaskMatchesSelection(
 	task *Task,
-	design StudioMaterializedDesignRecord,
-	selection SheinStudioSelection,
+	candidate studioBatchTaskCandidate,
 ) bool {
 	if task == nil || task.Request == nil || task.Request.Options == nil {
 		return false
@@ -48,16 +45,17 @@ func studioBatchTaskMatchesSelection(
 	if studio == nil || sds == nil {
 		return false
 	}
-	if strings.TrimSpace(studio.StyleID) != buildStudioBatchTaskStyleID(design.ID) {
+	styleID := strings.TrimSpace(studio.StyleID)
+	if styleID != candidate.StyleID && styleID != buildStudioBatchTaskStyleID(candidate.Design.ID) {
 		return false
 	}
-	if len(task.Request.ImageURLs) == 0 || strings.TrimSpace(task.Request.ImageURLs[0]) != strings.TrimSpace(design.ImageURL) {
+	if len(task.Request.ImageURLs) == 0 || strings.TrimSpace(task.Request.ImageURLs[0]) != strings.TrimSpace(candidate.Design.ImageURL) {
 		return false
 	}
-	return sds.VariantID == selection.VariantID &&
-		sds.ParentProductID == selection.ParentProductID &&
-		sds.PrototypeGroupID == selection.PrototypeGroupID &&
-		strings.TrimSpace(sds.LayerID) == strings.TrimSpace(selection.LayerID)
+	return sds.VariantID == candidate.SelectionSnapshot.VariantID &&
+		sds.ParentProductID == candidate.SelectionSnapshot.ParentProductID &&
+		sds.PrototypeGroupID == candidate.SelectionSnapshot.PrototypeGroupID &&
+		strings.TrimSpace(sds.LayerID) == strings.TrimSpace(candidate.SelectionSnapshot.LayerID)
 }
 
 func mergeStudioCreatedTasks(

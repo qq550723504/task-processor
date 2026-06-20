@@ -32,6 +32,36 @@ func TestBuildStudioBatchStatusGroupsClassifiesMixedBatchDetail(t *testing.T) {
 	assertStudioBatchStatusGroup(t, groups, "published", 1, "task-published")
 }
 
+func TestBuildStudioBatchStatusGroups_UsesExplicitCreatedTaskState(t *testing.T) {
+	detail := &StudioBatchDetail{
+		CreatedTasks: []SheinStudioCreatedTask{
+			{ID: "task-1", Title: "Style 1", DesignID: "design-1", Status: "task_created"},
+			{ID: "task-2", Title: "Style 2", DesignID: "design-2", Status: "draft_saved"},
+			{ID: "task-3", Title: "Style 3", DesignID: "design-3", Status: "published"},
+		},
+	}
+
+	groups := BuildStudioBatchStatusGroups(detail)
+	if got := groups.ByKey["task_created"].Count; got != 1 {
+		t.Fatalf("task_created count = %d, want 1", got)
+	}
+	if got := groups.ByKey["task_created"].IDs; len(got) != 1 || got[0] != "task-1" {
+		t.Fatalf("task_created ids = %#v, want [task-1]", got)
+	}
+	if got := groups.ByKey["draft_saved"].Count; got != 1 {
+		t.Fatalf("draft_saved count = %d, want 1", got)
+	}
+	if got := groups.ByKey["draft_saved"].IDs; len(got) != 1 || got[0] != "task-2" {
+		t.Fatalf("draft_saved ids = %#v, want [task-2]", got)
+	}
+	if got := groups.ByKey["published"].Count; got != 1 {
+		t.Fatalf("published count = %d, want 1", got)
+	}
+	if got := groups.ByKey["published"].IDs; len(got) != 1 || got[0] != "task-3" {
+		t.Fatalf("published ids = %#v, want [task-3]", got)
+	}
+}
+
 func assertStudioBatchStatusGroup(t *testing.T, groups StudioBatchStatusGroups, key string, count int, id string) {
 	t.Helper()
 	group, ok := groups.ByKey[key]

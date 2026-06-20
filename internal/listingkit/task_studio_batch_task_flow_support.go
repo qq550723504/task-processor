@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -39,6 +40,7 @@ func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
 	session *SheinStudioSession,
 	batch *StudioBatchRecord,
 	createdTasks []SheinStudioCreatedTask,
+	rejectedTasks []SheinStudioRejectedTask,
 	failedTasks []SheinStudioFailedTask,
 ) (*CreateStudioBatchTasksResult, error) {
 	if sessionUpdater, ok := s.studioSessionRepo.(interface {
@@ -64,10 +66,11 @@ func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
 		return nil, err
 	}
 	return &CreateStudioBatchTasksResult{
-		Batch:        detail.Batch,
-		Items:        detail.Items,
-		CreatedTasks: createdTasks,
-		FailedTasks:  failedTasks,
+		Batch:         detail.Batch,
+		Items:         detail.Items,
+		CreatedTasks:  createdTasks,
+		RejectedTasks: rejectedTasks,
+		FailedTasks:   failedTasks,
 	}, nil
 }
 
@@ -100,56 +103,12 @@ func (s *taskStudioBatchService) prepareStudioBatchTaskExecuteCandidates(
 	ctx context.Context,
 	batchID string,
 	designIDs []string,
-) ([]listingStudioBatchTaskExecuteCandidate, *SheinStudioSession, error) {
-	designIDs, session, batchDetail, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
-		DesignIDs: append([]string(nil), designIDs...),
-	})
+) (*StudioBatchTaskState, error) {
+	state, err := s.buildStudioBatchTaskState(ctx, batchID, designIDs)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	itemByID := make(map[string]StudioBatchItemRecord, len(batchDetail.Items))
-	for _, item := range batchDetail.Items {
-		itemByID[item.ID] = item
-	}
-	designs, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, batchID, designIDs)
-	if err != nil {
-		return nil, nil, err
-	}
-	sessionDesignsByID, err := s.loadStudioBatchSessionDesigns(ctx, batchID)
-	if err != nil {
-		return nil, nil, err
-	}
-	candidates := make([]listingStudioBatchTaskExecuteCandidate, 0, len(designs))
-	for _, design := range designs {
-		item, ok := itemByID[design.ItemID]
-		if !ok {
-			return nil, nil, gorm.ErrRecordNotFound
-		}
-		selections := resolveStudioBatchItemSelections(batchDetail.Batch, item)
-		if len(selections) == 0 {
-			selections = []SheinStudioGroupedSelection{{
-				SelectionID:  selectionIDForStudioSelection(SheinStudioSelection(session.Selection)),
-				Selection:    SheinStudioSelection(session.Selection),
-				Eligible:     true,
-				SheinStoreID: strings.TrimSpace(session.SheinStoreID),
-			}}
-		}
-		for _, grouped := range selections {
-			candidates = append(candidates, listingStudioBatchTaskExecuteCandidate{
-				session: session,
-				design:  design,
-				grouped: grouped,
-				title: firstNonEmpty(
-					strings.TrimSpace(grouped.Selection.VariantLabel),
-					strings.TrimSpace(grouped.Selection.ProductName),
-					strings.TrimSpace(design.TargetGroupLabel),
-					strings.TrimSpace(design.ID),
-				),
-				sessionDesign: sessionDesignsByID[design.ID],
-			})
-		}
-	}
-	return candidates, session, nil
+	return state, nil
 }
 
 func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
@@ -185,7 +144,10 @@ func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
 	}
 	session, err := s.loadStudioBatchTaskSession(ctx, batchID)
 	if err != nil {
-		return nil, nil, nil, err
+		if !errors.Is(err, ErrStudioSessionNotFound) {
+			return nil, nil, nil, err
+		}
+		session = nil
 	}
 	return designIDs, session, batchDetail, nil
 }

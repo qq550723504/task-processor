@@ -91,10 +91,27 @@ func studioBatchItemNeedsFix(item StudioBatchItemDetail) bool {
 }
 
 func studioBatchCreatedTaskGroup(task SheinStudioCreatedTask) (string, string) {
-	if taskPublishedHint(task) {
+	switch strings.TrimSpace(task.Status) {
+	case "":
+		if taskPublishedHint(task) {
+			return "published", "已发布"
+		}
+		return "draft_saved", "已保存草稿"
+	case "task_created":
+		return "task_created", "任务已创建"
+	case "needs_review":
+		return "needs_review", "待审核"
+	case "ready_to_submit":
+		return "ready_to_submit", "待提交"
+	case "draft_saved":
+		return "draft_saved", "草稿已保存"
+	case "published":
 		return "published", "已发布"
+	case "submit_failed":
+		return "submission_failed", "提交失败"
+	default:
+		return "task_created", "任务已创建"
 	}
-	return "draft_saved", "已保存草稿"
 }
 
 func taskPublishedHint(task SheinStudioCreatedTask) bool {

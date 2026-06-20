@@ -15,9 +15,17 @@ const (
 )
 
 type SheinStudioCreatedTask struct {
-	ID       string `json:"id,omitempty"`
-	Title    string `json:"title,omitempty"`
-	DesignID string `json:"design_id,omitempty"`
+	ID                       string `json:"id,omitempty"`
+	Title                    string `json:"title,omitempty"`
+	DesignID                 string `json:"design_id,omitempty"`
+	ItemID                   string `json:"item_id,omitempty"`
+	SelectionID              string `json:"selection_id,omitempty"`
+	CompatibilityFingerprint string `json:"compatibility_fingerprint,omitempty"`
+	Status                   string `json:"status,omitempty"`
+	SubmissionState          string `json:"submission_state,omitempty"`
+	LastSubmissionAction     string `json:"last_submission_action,omitempty"`
+	ReasonCode               string `json:"reason_code,omitempty"`
+	Message                  string `json:"message,omitempty"`
 }
 
 type SheinStudioGenerationJob struct {

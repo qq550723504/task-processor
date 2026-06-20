@@ -6,26 +6,31 @@ func TestBuildStudioBatchTaskGenerateRequestIncludesOwnerContext(t *testing.T) {
 	t.Parallel()
 
 	req := buildStudioBatchTaskGenerateRequest(
-		&SheinStudioSession{
+		nil,
+		&StudioBatchRecord{
 			TenantID:     "tenant-1",
 			UserID:       "user-1",
 			Prompt:       "prompt",
-			SheinStoreID: "870",
+			SheinStoreID: 870,
 		},
-		SheinStudioGroupedSelection{
-			SheinStoreID: "870",
-			Selection: SheinStudioSelection{
+		studioBatchTaskCandidate{
+			Item:        StudioBatchItemRecord{ID: "item-1"},
+			SelectionID: "selection-1",
+			Selection: SheinStudioGroupedSelection{
+				SheinStoreID: "870",
+			},
+			SelectionSnapshot: SheinStudioSelection{
 				ProductName:     "wallet",
 				VariantID:       1,
 				ParentProductID: 2,
 			},
+			Title: "group-a",
 		},
 		StudioMaterializedDesignRecord{
 			ID:               "design-1",
 			ImageURL:         "https://example.com/design.png",
 			TargetGroupLabel: "group-a",
 		},
-		SheinStudioDesign{},
 	)
 
 	if req == nil {

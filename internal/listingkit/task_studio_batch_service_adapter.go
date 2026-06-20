@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	studiodomain "task-processor/internal/listing/studio"
 )
@@ -97,6 +98,12 @@ func newListingStudioBatchServiceRunner(s *taskStudioBatchService) *listingStudi
 			if s == nil || s.repo == nil {
 				return nil, fmt.Errorf("studio batch repository is not configured")
 			}
+			state, err := s.prepareStudioBatchTaskExecuteCandidates(ctx, batchID, designIDs)
+			if err != nil {
+				return nil, err
+			}
+			ctx = withStudioBatchTaskState(ctx, batchID, state)
+			designIDs = state.DesignIDs
 			s.ensureTaskExecuteRunner()
 			if s.taskExecuteRunner == nil {
 				return nil, fmt.Errorf("studio batch task execute service is not configured")
@@ -107,11 +114,21 @@ func newListingStudioBatchServiceRunner(s *taskStudioBatchService) *listingStudi
 			if s == nil || s.repo == nil {
 				return nil, fmt.Errorf("studio batch repository is not configured")
 			}
-			designIDs, session, batchDetail, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
-				DesignIDs: designIDs,
+			state, err := s.buildStudioBatchTaskState(ctx, batchID, designIDs)
+			if err != nil {
+				return nil, err
+			}
+			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
+				DesignIDs: state.DesignIDs,
 			})
 			if err != nil {
 				return nil, err
+			}
+			if session == nil {
+				session = &SheinStudioSession{
+					ID:                   strings.TrimSpace(batchID),
+					PendingTaskDesignIDs: append(SheinStudioStringList(nil), state.DesignIDs...),
+				}
 			}
 			s.ensureTaskPrepareRunner()
 			if s.taskPrepareRunner == nil {
@@ -119,8 +136,8 @@ func newListingStudioBatchServiceRunner(s *taskStudioBatchService) *listingStudi
 			}
 			return s.taskPrepareRunner.PrepareTaskCreation(ctx, batchID, listingStudioBatchTaskPrepareState{
 				Session:   session,
-				Batch:     batchDetail.Batch,
-				DesignIDs: designIDs,
+				Batch:     state.Batch,
+				DesignIDs: state.DesignIDs,
 			})
 		},
 		TaskCreationDesignIDs: func(req *CreateStudioBatchTasksRequest) []string {

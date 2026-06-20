@@ -56,11 +56,20 @@ type ApproveStudioBatchDesignsRequest struct {
 	DesignIDs []string `json:"design_ids,omitempty"`
 }
 
+type SheinStudioRejectedTask struct {
+	DesignID    string `json:"design_id,omitempty"`
+	ItemID      string `json:"item_id,omitempty"`
+	SelectionID string `json:"selection_id,omitempty"`
+	ReasonCode  string `json:"reason_code,omitempty"`
+	Message     string `json:"message,omitempty"`
+}
+
 type CreateStudioBatchTasksResult struct {
-	Batch        *StudioBatchRecord       `json:"batch,omitempty"`
-	Items        []StudioBatchItemDetail  `json:"items,omitempty"`
-	CreatedTasks []SheinStudioCreatedTask `json:"created_tasks,omitempty"`
-	FailedTasks  []SheinStudioFailedTask  `json:"failed_tasks,omitempty"`
+	Batch         *StudioBatchRecord        `json:"batch,omitempty"`
+	Items         []StudioBatchItemDetail   `json:"items,omitempty"`
+	CreatedTasks  []SheinStudioCreatedTask  `json:"created_tasks,omitempty"`
+	RejectedTasks []SheinStudioRejectedTask `json:"rejected_tasks,omitempty"`
+	FailedTasks   []SheinStudioFailedTask   `json:"failed_tasks,omitempty"`
 }
 
 type taskStudioBatchServiceConfig struct {
