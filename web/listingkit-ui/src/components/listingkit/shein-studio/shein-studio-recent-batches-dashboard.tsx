@@ -1469,9 +1469,10 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
                         <dd className="break-words text-left sm:text-right">{summary.storeSummary}</dd>
                       </div>
                       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
-                        <dt className="text-muted-foreground">设计/任务</dt>
+                        <dt className="text-muted-foreground">款式/设计/任务</dt>
                         <dd className="text-left sm:text-right">
-                          {summary.designCount} 图 / {summary.createdTaskCount} 任务
+                          {summary.productCount} 款式 / {summary.designCount} 图 /{" "}
+                          {summary.createdTaskCount} 任务
                         </dd>
                       </div>
                     </dl>

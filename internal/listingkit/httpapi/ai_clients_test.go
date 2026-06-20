@@ -352,6 +352,34 @@ func TestBuildStrictListingKitImageClientUsesGRSAIGenerateProtocolForGPTImage2(t
 	}
 }
 
+func TestBuildStrictListingKitImageClientReportsAsyncSupportFromResolvedClient(t *testing.T) {
+	resolver := &stubListingKitClientResolver{
+		resolved: &openaiclient.ResolvedClientConfig{
+			CacheKey: "tenant-a:image_gpt_image_2",
+			Config: &openaiclient.ClientConfig{
+				APIKey:     "tenant-key",
+				BaseURL:    "https://example.test/v1",
+				Model:      "gpt-image-2",
+				Timeout:    time.Second,
+				MaxRetries: 1,
+				RetryDelay: time.Millisecond,
+			},
+		},
+	}
+	client := &strictListingKitConfiguredImageClient{
+		clientName: listingKitImageClientNameGPTImage2,
+		resolver:   resolver,
+		cache:      make(map[string]openaiclient.ImageGenerator),
+		build: func(cfg *openaiclient.ClientConfig) (openaiclient.ImageGenerator, error) {
+			return &stubListingKitImageGenerator{asyncSupported: true}, nil
+		},
+	}
+
+	if !client.SupportsAsyncImageGeneration() {
+		t.Fatal("expected strict image client to report async support from resolved client")
+	}
+}
+
 func TestBuildStrictListingKitNanobananaImageClientUsesGeminiProtocolWhenConfigured(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1beta/models/gemini-2.5-flash-image:generateContent" {

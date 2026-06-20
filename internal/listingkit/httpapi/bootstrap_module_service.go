@@ -140,7 +140,9 @@ func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOp
 	return []listingkitapi.HandlerOption{
 		listingkitapi.WithTaskLifecycleService(runtime.service),
 		listingkitapi.WithGenerationTaskService(runtime.service),
+		listingkitapi.WithStoreAdminService(runtime.service),
 		listingkitapi.WithStudioMediaService(runtime.service),
+		listingkitapi.WithStudioBatchRunService(runtime.service),
 		listingkitapi.WithDependencies(runtime.handlerDependencies),
 		listingkitapi.WithSheinSyncRepository(runtime.sheinSyncRepository),
 		listingkitapi.WithSheinSyncServices(runtime.sheinSyncService, runtime.sheinCandidateService, runtime.sheinEnrollmentService),

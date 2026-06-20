@@ -46,7 +46,8 @@ func (c *studioBatchRunCoordinator) RecoverUnfinishedRuns(ctx context.Context) e
 
 	var recoveryErrors []error
 	for _, run := range runs {
-		if err := c.recoverRun(ctx, run.ID); err != nil {
+		recoveryCtx := withStudioBatchRunIdentity(ctx, &run)
+		if err := c.recoverRun(recoveryCtx, run.ID); err != nil {
 			recoveryErrors = append(recoveryErrors, fmt.Errorf("recover studio batch run %s: %w", run.ID, err))
 		}
 	}

@@ -64,6 +64,7 @@ func (e *taskStudioBatchRunExecutor) Run(ctx context.Context, runID string) erro
 	if err != nil {
 		return err
 	}
+	ctx = withStudioBatchRunIdentity(ctx, run)
 	items, err := e.repo.ListStudioBatchRunItems(ctx, run.ID)
 	if err != nil {
 		return err
@@ -196,6 +197,23 @@ func (e *taskStudioBatchRunExecutor) Run(ctx context.Context, runID string) erro
 
 	finalStatus := e.resolveFinalRunStatus(run, items)
 	return e.finalizeRun(ctx, run, items, finalStatus, run.LastError)
+}
+
+func withStudioBatchRunIdentity(ctx context.Context, run *StudioBatchRunRecord) context.Context {
+	if run == nil {
+		return ctx
+	}
+	identity := RequestIdentityFromContext(ctx)
+	if strings.TrimSpace(identity.TenantID) == "" {
+		identity.TenantID = strings.TrimSpace(run.TenantID)
+	}
+	if strings.TrimSpace(identity.UserID) == "" {
+		identity.UserID = strings.TrimSpace(run.UserID)
+	}
+	if strings.TrimSpace(identity.TenantID) != "" {
+		ctx = WithTenantID(ctx, identity.TenantID)
+	}
+	return WithRequestIdentity(ctx, identity)
 }
 
 func (e *taskStudioBatchRunExecutor) executeOneForMode(ctx context.Context, mode StudioBatchRunMode, batchID string) error {

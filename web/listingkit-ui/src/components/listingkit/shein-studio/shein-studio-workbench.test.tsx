@@ -2654,6 +2654,47 @@ describe("SheinStudioWorkbench", () => {
     expect(push).toHaveBeenCalledWith("/listing-kits/sds/new?targetBatchId=batch-1");
   });
 
+  it("lets the dedicated batch page jump back to generate step", async () => {
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch(),
+    );
+
+    render(
+      <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
+    );
+
+    expect(screen.queryByRole("button", { name: "generate styles" })).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "前往生成区" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "generate styles" })).toBeInTheDocument(),
+    );
+  });
+
+  it("starts a server-side batch run from the dedicated batch page", async () => {
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch(),
+    );
+    startSheinStudioBatchRun.mockResolvedValue({
+      run: {
+        id: "run-dedicated-1",
+      },
+      items: [],
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "继续生成" }));
+
+    await waitFor(() =>
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
+    );
+    expect(await screen.findByText("batch run progress: run-dedicated-1")).toBeInTheDocument();
+  });
+
   it("offers a baseline recovery action on the dedicated batch page when the active selection is abnormal", async () => {
     getSDSBaselineReadiness.mockResolvedValue({
       baselineKey: "baseline-key",

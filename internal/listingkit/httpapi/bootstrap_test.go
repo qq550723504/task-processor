@@ -1296,6 +1296,78 @@ func TestBuildModuleWiresSheinSyncServicesIntoHandler(t *testing.T) {
 	}
 }
 
+func TestBuildModuleWiresStudioBatchRunServiceIntoHandler(t *testing.T) {
+	t.Parallel()
+
+	module, err := BuildModule(BuildModuleInput{
+		ServiceInput: buildSuccessfulServiceInputFixture(),
+	})
+	if err != nil {
+		t.Fatalf("build module: %v", err)
+	}
+	batchRuns, ok := module.Handler.(studioBatchRunRouteHandler)
+	if !ok {
+		t.Fatal("expected route handler to expose studio batch run routes")
+	}
+
+	engine := gin.New()
+	engine.POST("/api/v1/listing-kits/studio/batch-runs", batchRuns.CreateStudioBatchRun)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/listing-kits/studio/batch-runs",
+		strings.NewReader(`{"batch_ids":["missing-batch"],"mode":"generate"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code == http.StatusNotImplemented {
+		t.Fatalf("expected studio batch run handler to be wired, got 501 body=%s", resp.Body.String())
+	}
+}
+
+func TestBuildModuleWiresStoreAdminServiceIntoHandler(t *testing.T) {
+	t.Parallel()
+
+	subscriptionRepo := listingsubscription.NewMemRepository()
+	input := buildSuccessfulServiceInputFixture()
+	input.Repositories.Core.Subscription = func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
+		return subscriptionRepo, nil, nil
+	}
+
+	module, err := BuildModule(BuildModuleInput{ServiceInput: input})
+	if err != nil {
+		t.Fatalf("build module: %v", err)
+	}
+
+	subscriptionSvc, err := listingsubscription.NewService(subscriptionRepo)
+	if err != nil {
+		t.Fatalf("new subscription service: %v", err)
+	}
+	if _, err := subscriptionSvc.UpsertEntitlement(t.Context(), "18", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+	}); err != nil {
+		t.Fatalf("activate studio entitlement: %v", err)
+	}
+
+	engine := gin.New()
+	engine.GET("/api/v1/listing-kits/store-profiles", module.Handler.ListSheinStoreProfiles)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/store-profiles", nil)
+	req.Header.Set("X-Tenant-ID", "18")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code == http.StatusNotImplemented {
+		t.Fatalf("expected store admin handler to be wired, got 501 body=%s", resp.Body.String())
+	}
+	if resp.Code >= http.StatusInternalServerError {
+		t.Fatalf("expected store admin handler to avoid server error, got %d body=%s", resp.Code, resp.Body.String())
+	}
+}
+
 func TestBuildServiceComposesSubmitRegistrarThroughPublicEntryPoint(t *testing.T) {
 	t.Parallel()
 

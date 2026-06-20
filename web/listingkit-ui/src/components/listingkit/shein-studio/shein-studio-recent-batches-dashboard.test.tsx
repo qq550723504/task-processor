@@ -113,6 +113,7 @@ describe("SheinStudioRecentBatchesDashboard", () => {
     expect(screen.getByText("2 款商品")).toBeInTheDocument();
     expect(screen.getByText("已有 1 张设计")).toBeInTheDocument();
     expect(screen.getByText("待创建任务")).toBeInTheDocument();
+    expect(screen.getByText("2 款式 / 1 图 / 0 任务")).toBeInTheDocument();
     expect(screen.getByText("最近提示词")).toBeInTheDocument();
     expect(screen.getByText(/更新于/)).toBeInTheDocument();
 

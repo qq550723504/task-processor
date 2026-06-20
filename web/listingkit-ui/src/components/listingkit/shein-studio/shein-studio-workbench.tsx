@@ -469,6 +469,7 @@ export function SheinStudioWorkbench({
     total: number;
   } | null>(null);
   const [activeBatchRunId, setActiveBatchRunId] = useState("");
+  const [isStartingDedicatedBatchRun, setIsStartingDedicatedBatchRun] = useState(false);
   const [batchRunError, setBatchRunError] = useState("");
   const [selectedRecentBatchHydrations, setSelectedRecentBatchHydrations] = useState<
     Record<string, SheinStudioWorkbenchHydratedBatch>
@@ -2079,6 +2080,38 @@ export function SheinStudioWorkbench({
     setQueueMessage("");
   }, [setQueueMessage, setSelectedRecentBatchSummaryIds]);
 
+  const handleReturnFromDedicatedBatchRun = useCallback(() => {
+    setActiveBatchRunId("");
+    void refreshSavedBatches();
+    if (!initialBatchId) {
+      return;
+    }
+    void getSheinStudioHydratedBatch(initialBatchId).then((hydratedBatch) => {
+      if (!hydratedBatch) {
+        return;
+      }
+      handleLoadHydratedBatchRef.current(hydratedBatch);
+    });
+  }, [initialBatchId, refreshSavedBatches]);
+
+  const handleStartDedicatedBatchRun = useCallback(() => {
+    if (!initialBatchId) {
+      return;
+    }
+    setBatchRunError("");
+    setIsStartingDedicatedBatchRun(true);
+    void startSheinStudioBatchRun([initialBatchId], "generate")
+      .then((response) => {
+        setActiveBatchRunId(response.run.id);
+      })
+      .catch((error) => {
+        setBatchRunError(getBatchRunStartErrorMessage(error));
+      })
+      .finally(() => {
+        setIsStartingDedicatedBatchRun(false);
+      });
+  }, [initialBatchId]);
+
   const handleAdvanceBatchQueue = useCallback(() => {
     if (!batchQueueMode) {
       return;
@@ -2377,11 +2410,11 @@ export function SheinStudioWorkbench({
       "当前正在生成款式图或创建 SHEIN 资料。现在离开会中断当前页面上的进度承接，确认还要离开吗？",
   });
 
-  if (!initialBatchId && activeBatchRunId) {
+  if (activeBatchRunId) {
     return (
       <section className="relative space-y-6">
         <SheinStudioBatchRunProgress
-          onBack={() => {
+          onBack={initialBatchId ? handleReturnFromDedicatedBatchRun : () => {
             setActiveBatchRunId("");
             void refreshSavedBatches();
           }}
@@ -2518,6 +2551,23 @@ export function SheinStudioWorkbench({
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button
+                disabled={isStartingDedicatedBatchRun}
+                onClick={handleStartDedicatedBatchRun}
+                size="sm"
+                type="button"
+                variant="default"
+              >
+                {isStartingDedicatedBatchRun ? "正在启动..." : "继续生成"}
+              </Button>
+              <Button
+                onClick={() => navigateToStep("generate")}
+                size="sm"
+                type="button"
+                variant={effectiveStep === "generate" ? "secondary" : "ghost"}
+              >
+                前往生成区
+              </Button>
               {isEditingCurrentBatchName ? (
                 <>
                   <Button onClick={() => void handleRenameCurrentDedicatedBatch()} size="sm" type="button">

@@ -39,7 +39,11 @@ func (c *strictListingKitConfiguredImageClient) GetDefaultModel() string {
 }
 
 func (c *strictListingKitConfiguredImageClient) SupportsAsyncImageGeneration() bool {
-	return false
+	client, err := c.resolve(context.Background())
+	if err != nil || client == nil {
+		return false
+	}
+	return client.SupportsAsyncImageGeneration()
 }
 
 func (c *strictListingKitConfiguredImageClient) SubmitImageGeneration(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {

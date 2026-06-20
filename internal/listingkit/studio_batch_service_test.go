@@ -370,6 +370,51 @@ func TestTaskStudioBatchServiceContinueGenerationRecoversBeforeRunningPendingIte
 	}
 }
 
+func TestBuildStudioBatchItemDesignRequestOmitsReferenceImagesForStyleGeneration(t *testing.T) {
+	t.Parallel()
+
+	batch := &StudioBatchRecord{
+		ID:                 "batch-1",
+		Prompt:             "punk eagle collage",
+		StyleCount:         "1",
+		VariationIntensity: "medium",
+		ArtworkModel:       "gpt-image-2",
+		Selection:          SheinStudioSelectionSnapshot(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)),
+		GroupedSelections: SheinStudioGroupedSelectionList{
+			{
+				SelectionID: "7001:9001:101:layer-1:101",
+				Selection: func() SheinStudioSelection {
+					selection := testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)
+					selection.MockupImageURL = "https://example.com/mockup.png"
+					selection.MockupImageURLs = []string{
+						"https://example.com/mockup-1.png",
+						"https://example.com/mockup-2.png",
+					}
+					selection.SizeReferenceImageURLs = []string{"https://example.com/size.png"}
+					return selection
+				}(),
+				Eligible: true,
+			},
+		},
+		SelectedSDSImages: SheinStudioSelectedSDSImageList{
+			{ImageURL: "https://example.com/sds.png"},
+		},
+	}
+	item := StudioBatchItemRecord{
+		ID:           "item-1",
+		BatchID:      "batch-1",
+		SelectionIDs: []string{"7001:9001:101:layer-1:101"},
+	}
+
+	req := buildStudioBatchItemDesignRequest(batch, item)
+	if req == nil {
+		t.Fatal("buildStudioBatchItemDesignRequest() = nil")
+	}
+	if len(req.ProductReferenceImageURLs) != 0 {
+		t.Fatalf("ProductReferenceImageURLs = %v, want no reference images for style generation", req.ProductReferenceImageURLs)
+	}
+}
+
 func TestTaskStudioBatchServiceContinueGenerationAutoRetriesStaleGeneratingItemWithinAttemptLimit(t *testing.T) {
 	t.Parallel()
 

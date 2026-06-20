@@ -574,6 +574,37 @@ func TestStudioBatchRunExecutorContinuesPollingStillRunningItemUntilSuccess(t *t
 	}
 }
 
+func TestStudioBatchRunExecutorRehydratesIdentityFromRunWhenUserScopeMissing(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	createCtx := WithTenantID(context.Background(), "tenant-a")
+	createCtx = WithRequestIdentity(createCtx, RequestIdentity{TenantID: "tenant-a", UserID: "user-42"})
+	_, _ = mustCreateStudioBatchRunForTest(t, repo, createCtx, "run-1", []string{"batch-1"})
+
+	type executionIdentity struct {
+		tenantID string
+		userID   string
+	}
+	captured := executionIdentity{}
+	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
+		repo: repo,
+		executeGenerateOne: func(ctx context.Context, _ string) error {
+			captured.tenantID = TenantIDFromContext(ctx)
+			captured.userID = RequestUserIDFromContext(ctx)
+			return nil
+		},
+	})
+
+	if err := executor.Run(WithTenantID(context.Background(), "tenant-a"), "run-1"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if captured.tenantID != "tenant-a" {
+		t.Fatalf("captured.tenantID = %q, want %q", captured.tenantID, "tenant-a")
+	}
+	if captured.userID != "user-42" {
+		t.Fatalf("captured.userID = %q, want %q", captured.userID, "user-42")
+	}
+}
+
 func TestStudioBatchRunCoordinatorRecoversOnlyUnfinishedRunsAndContinuesAfterErrors(t *testing.T) {
 	repo := NewMemStudioBatchRunRepository()
 	ctx := WithTenantID(context.Background(), "tenant-a")
@@ -623,6 +654,42 @@ func TestStudioBatchRunCoordinatorRecoversOnlyUnfinishedRunsAndContinuesAfterErr
 	}
 	if recovered[0] != "run-pending" || recovered[1] != "run-running" {
 		t.Fatalf("recovered = %v, want [run-pending run-running]", recovered)
+	}
+}
+
+func TestStudioBatchRunCoordinatorRecoverUnfinishedRunsRehydratesStoredIdentity(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	createCtx := WithTenantID(context.Background(), "tenant-a")
+	createCtx = WithRequestIdentity(createCtx, RequestIdentity{TenantID: "tenant-a", UserID: "user-42"})
+	_, _ = mustCreateStudioBatchRunForTest(t, repo, createCtx, "run-pending", []string{"batch-1"})
+
+	type recoveredRun struct {
+		tenantID string
+		userID   string
+	}
+	var captured []recoveredRun
+	coordinator := newStudioBatchRunCoordinator(studioBatchRunCoordinatorConfig{
+		repo: repo,
+		recoverRun: func(ctx context.Context, runID string) error {
+			captured = append(captured, recoveredRun{
+				tenantID: TenantIDFromContext(ctx),
+				userID:   RequestUserIDFromContext(ctx),
+			})
+			return nil
+		},
+	})
+
+	if err := coordinator.RecoverUnfinishedRuns(WithTenantID(context.Background(), "tenant-a")); err != nil {
+		t.Fatalf("RecoverUnfinishedRuns() error = %v", err)
+	}
+	if len(captured) != 1 {
+		t.Fatalf("len(captured) = %d, want 1", len(captured))
+	}
+	if captured[0].tenantID != "tenant-a" {
+		t.Fatalf("captured[0].tenantID = %q, want %q", captured[0].tenantID, "tenant-a")
+	}
+	if captured[0].userID != "user-42" {
+		t.Fatalf("captured[0].userID = %q, want %q", captured[0].userID, "user-42")
 	}
 }
 
