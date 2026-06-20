@@ -14,6 +14,7 @@ type builtRepositories struct {
 	studioAsyncJobRepository          listingkit.StudioAsyncJobRepository
 	studioBatchRepository             listingkit.StudioBatchRepository
 	studioBatchRunRepository          listingkit.StudioBatchRunRepository
+	studioBatchTaskLinkRepository     listingkit.StudioBatchTaskLinkRepository
 	sheinSyncRepository               listingkit.SheinSyncRepository
 	storeRepository                   listingadmin.StoreRepository
 	storeStatisticsRepository         listingadmin.StoreStatisticsRepository
@@ -38,11 +39,12 @@ type builtRepositories struct {
 }
 
 type builtCoreRepositories struct {
-	taskRepository           listingkit.Repository
-	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
-	studioBatchRepository    listingkit.StudioBatchRepository
-	studioBatchRunRepository listingkit.StudioBatchRunRepository
-	sheinSyncRepository      listingkit.SheinSyncRepository
+	taskRepository                listingkit.Repository
+	studioAsyncJobRepository      listingkit.StudioAsyncJobRepository
+	studioBatchRepository         listingkit.StudioBatchRepository
+	studioBatchRunRepository      listingkit.StudioBatchRunRepository
+	studioBatchTaskLinkRepository listingkit.StudioBatchTaskLinkRepository
+	sheinSyncRepository           listingkit.SheinSyncRepository
 }
 
 type coreTaskRepositories struct {
@@ -50,10 +52,11 @@ type coreTaskRepositories struct {
 }
 
 type coreAsyncRepositories struct {
-	studioAsyncJobRepository listingkit.StudioAsyncJobRepository
-	studioBatchRepository    listingkit.StudioBatchRepository
-	studioBatchRunRepository listingkit.StudioBatchRunRepository
-	sheinSyncRepository      listingkit.SheinSyncRepository
+	studioAsyncJobRepository      listingkit.StudioAsyncJobRepository
+	studioBatchRepository         listingkit.StudioBatchRepository
+	studioBatchRunRepository      listingkit.StudioBatchRunRepository
+	studioBatchTaskLinkRepository listingkit.StudioBatchTaskLinkRepository
+	sheinSyncRepository           listingkit.SheinSyncRepository
 }
 
 type builtLateCoreRepositories struct {

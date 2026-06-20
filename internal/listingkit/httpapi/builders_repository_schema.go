@@ -114,6 +114,9 @@ func runListingKitRepositoryAutoMigrations(db *gorm.DB) error {
 	if err := listingkit.AutoMigrateStudioBatchRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit studio batch repository: %w", err)
 	}
+	if err := listingkit.AutoMigrateStudioBatchTaskLinkRepository(db); err != nil {
+		return fmt.Errorf("migrate listingkit studio batch task link repository: %w", err)
+	}
 	if err := listingkitstore.AutoMigrateSheinSyncRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit shein sync repository: %w", err)
 	}

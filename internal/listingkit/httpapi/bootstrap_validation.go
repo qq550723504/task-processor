@@ -12,6 +12,8 @@ func (b CoreRepositoryBuilders) Validate() error {
 		return fmt.Errorf("core repository builder studio batch is required")
 	case b.StudioBatchRun == nil:
 		return fmt.Errorf("core repository builder studio batch run is required")
+	case b.StudioBatchTaskLink == nil:
+		return fmt.Errorf("core repository builder studio batch task link is required")
 	case b.SheinSync == nil:
 		return fmt.Errorf("core repository builder shein sync is required")
 	case b.Subscription == nil:

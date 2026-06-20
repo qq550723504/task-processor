@@ -32,20 +32,21 @@ type service struct {
 }
 
 type ServiceCoreDependencies struct {
-	Repository                Repository
-	StudioSessionRepository   StudioSessionRepository
-	StudioBatchRepository     StudioBatchRepository
-	StudioBatchRunRepository  StudioBatchRunRepository
-	ProductService            ProductService
-	ImageService              ImageService
-	SDSSyncService            sdsusecase.Service
-	SDSLoginStatusProvider    SDSLoginStatusProvider
-	SDSBaselineRemoteProvider SDSBaselineRemoteProvider
-	ImageUploadStore          ImageUploadStore
-	UploadedImageRepository   UploadedImageRepository
-	StoreProfileRepository    StoreProfileRepository
-	TaskSubmitter             TaskSubmitter
-	AIClientCredentialStore   AIClientCredentialStore
+	Repository                    Repository
+	StudioSessionRepository       StudioSessionRepository
+	StudioBatchRepository         StudioBatchRepository
+	StudioBatchRunRepository      StudioBatchRunRepository
+	StudioBatchTaskLinkRepository StudioBatchTaskLinkRepository
+	ProductService                ProductService
+	ImageService                  ImageService
+	SDSSyncService                sdsusecase.Service
+	SDSLoginStatusProvider        SDSLoginStatusProvider
+	SDSBaselineRemoteProvider     SDSBaselineRemoteProvider
+	ImageUploadStore              ImageUploadStore
+	UploadedImageRepository       UploadedImageRepository
+	StoreProfileRepository        StoreProfileRepository
+	TaskSubmitter                 TaskSubmitter
+	AIClientCredentialStore       AIClientCredentialStore
 }
 
 type ServiceAssetDependencies struct {

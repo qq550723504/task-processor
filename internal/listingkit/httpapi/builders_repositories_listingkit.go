@@ -37,6 +37,13 @@ func BuildListingKitStudioBatchRepository(cfg *config.Config, logger *logrus.Log
 	})
 }
 
+func BuildListingKitStudioBatchTaskLinkRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.StudioBatchTaskLinkRepository, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBListingKitStudioBatchTaskLinkRepository, func(logger *logrus.Logger) (listingkit.StudioBatchTaskLinkRepository, []func() error, error) {
+		logger.Warn("database not configured, using in-memory listingkit studio batch task link repository")
+		return listingkit.NewMemStudioBatchTaskLinkRepository(), nil, nil
+	})
+}
+
 func BuildListingKitSheinSyncRepository(cfg *config.Config, logger *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error) {
 	return buildRepositoryWithFallback(cfg, logger, newDBListingKitSheinSyncRepository, func(logger *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error) {
 		logger.Warn("database not configured, using in-memory listingkit shein sync repository")

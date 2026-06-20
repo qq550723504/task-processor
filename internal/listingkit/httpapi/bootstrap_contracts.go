@@ -111,6 +111,7 @@ type CoreRepositoryBuilders struct {
 	StudioAsyncJob       func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error)
 	StudioBatch          func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error)
 	StudioBatchRun       func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error)
+	StudioBatchTaskLink  func(*config.Config, *logrus.Logger) (listingkit.StudioBatchTaskLinkRepository, []func() error, error)
 	SheinSync            func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error)
 	Subscription         func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error)
 	Asset                func(*config.Config, *logrus.Logger) (assetrepo.Repository, []func() error, error)

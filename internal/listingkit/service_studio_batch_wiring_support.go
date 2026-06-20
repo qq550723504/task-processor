@@ -11,6 +11,7 @@ import (
 type taskStudioBatchServiceWiring struct {
 	repo               StudioBatchRepository
 	batchRunRepo       StudioBatchRunRepository
+	batchTaskLinkRepo  StudioBatchTaskLinkRepository
 	studioSessionRepo  StudioSessionRepository
 	generator          *studioBatchGenerationService
 	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
@@ -56,6 +57,7 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 	return taskStudioBatchServiceWiring{
 		repo:               repo,
 		batchRunRepo:       resolveStudioBatchRunRepo(s),
+		batchTaskLinkRepo:  resolveStudioBatchTaskLinkRepo(s),
 		studioSessionRepo:  studioSessionRepo,
 		generator:          generator,
 		createGenerateTask: s.CreateGenerateTask,
@@ -266,6 +268,7 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 	return taskStudioBatchServiceConfig{
 		repo:               config.batch.repo,
 		batchRunRepo:       config.batch.batchRunRepo,
+		batchTaskLinkRepo:  config.batch.batchTaskLinkRepo,
 		studioSessionRepo:  config.batch.studioSessionRepo,
 		generator:          config.batch.generator,
 		createGenerateTask: config.batch.createGenerateTask,

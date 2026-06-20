@@ -40,6 +40,14 @@ func newDBListingKitStudioBatchRepository(cfg *config.DatabaseConfig, logger *lo
 	return listingkit.NewGormStudioBatchRepository(db), closer, nil
 }
 
+func newDBListingKitStudioBatchTaskLinkRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.StudioBatchTaskLinkRepository, func() error, error) {
+	db, closer, err := openListingKitRepositoryDB(cfg, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	return listingkit.NewGormStudioBatchTaskLinkRepository(db), closer, nil
+}
+
 func newDBListingKitSheinSyncRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingkit.SheinSyncRepository, func() error, error) {
 	db, closer, err := openListingKitRepositoryDB(cfg, logger)
 	if err != nil {

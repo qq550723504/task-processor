@@ -25,19 +25,20 @@ func buildListingKitServiceConfig(in buildListingKitServiceConfigInput) *listing
 
 func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceCoreDependencies {
 	return listingkit.ServiceCoreDependencies{
-		Repository:                in.repositories.taskRepository,
-		StudioSessionRepository:   in.repositories.studioSessionRepository,
-		StudioBatchRepository:     in.repositories.studioBatchRepository,
-		StudioBatchRunRepository:  in.repositories.studioBatchRunRepository,
-		ProductService:            in.input.ProductService,
-		ImageService:              in.input.ImageService,
-		SDSSyncService:            in.input.SDSSyncService,
-		SDSLoginStatusProvider:    in.input.SDSLoginStatusProvider,
-		SDSBaselineRemoteProvider: in.input.SDSBaselineRemoteProvider,
-		ImageUploadStore:          in.submit.assets.imageUploadStore,
-		UploadedImageRepository:   in.repositories.uploadedImageRepository,
-		StoreProfileRepository:    in.repositories.storeProfileRepository,
-		AIClientCredentialStore:   adaptListingKitAICredentialStore(in.input.AICredentialStore),
+		Repository:                    in.repositories.taskRepository,
+		StudioSessionRepository:       in.repositories.studioSessionRepository,
+		StudioBatchRepository:         in.repositories.studioBatchRepository,
+		StudioBatchRunRepository:      in.repositories.studioBatchRunRepository,
+		StudioBatchTaskLinkRepository: in.repositories.studioBatchTaskLinkRepository,
+		ProductService:                in.input.ProductService,
+		ImageService:                  in.input.ImageService,
+		SDSSyncService:                in.input.SDSSyncService,
+		SDSLoginStatusProvider:        in.input.SDSLoginStatusProvider,
+		SDSBaselineRemoteProvider:     in.input.SDSBaselineRemoteProvider,
+		ImageUploadStore:              in.submit.assets.imageUploadStore,
+		UploadedImageRepository:       in.repositories.uploadedImageRepository,
+		StoreProfileRepository:        in.repositories.storeProfileRepository,
+		AIClientCredentialStore:       adaptListingKitAICredentialStore(in.input.AICredentialStore),
 	}
 }
 
