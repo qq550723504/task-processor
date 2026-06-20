@@ -122,6 +122,41 @@ func (r *MemStudioBatchRunRepository) ListStudioBatchRunItems(ctx context.Contex
 	return items, nil
 }
 
+func (r *MemStudioBatchRunRepository) ListStudioBatchRunItemsByBatchID(ctx context.Context, batchID string) ([]StudioBatchRunItemRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	items := make([]StudioBatchRunItemRecord, 0)
+	for _, item := range r.items {
+		if item.BatchID != batchID || !matchesStudioBatchRunScope(ctx, item.TenantID, item.UserID) {
+			continue
+		}
+		items = append(items, item)
+	}
+	slices.SortStableFunc(items, func(a, b StudioBatchRunItemRecord) int {
+		if a.UpdatedAt.After(b.UpdatedAt) {
+			return -1
+		}
+		if a.UpdatedAt.Before(b.UpdatedAt) {
+			return 1
+		}
+		if a.CreatedAt.After(b.CreatedAt) {
+			return -1
+		}
+		if a.CreatedAt.Before(b.CreatedAt) {
+			return 1
+		}
+		if a.ID < b.ID {
+			return -1
+		}
+		if a.ID > b.ID {
+			return 1
+		}
+		return 0
+	})
+	return items, nil
+}
+
 func (r *MemStudioBatchRunRepository) UpdateStudioBatchRun(ctx context.Context, run *StudioBatchRunRecord) error {
 	if run == nil {
 		return nil

@@ -989,6 +989,122 @@ func TestServicePrepareRetryStudioBatchItemsResetsSelectedItemsWithoutRunningGen
 	}
 }
 
+func TestServicePrepareRetryStudioBatchItemsResetsRelatedBatchRunState(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	runRepo := NewMemStudioBatchRunRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:2000x2000",
+			TargetGroupLabel: "2000 x 2000",
+			Status:           StudioBatchItemStatusFailed,
+			LastError:        "timed out",
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}, []StudioGenerationAttemptRecord{
+		{
+			ID:           "attempt-1",
+			ItemID:       "item-1",
+			AttemptNo:    1,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: "timed out",
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		},
+	}, nil); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	run, items := mustCreateStudioBatchRunForTest(t, runRepo, ctx, "run-1", []string{"batch-1"})
+	items[0].Status = StudioBatchRunItemStatusFailed
+	items[0].AsyncJobID = "job-old-1"
+	items[0].ErrorMessage = "timed out"
+	items[0].StartedAt = timePtr(now.Add(-2 * time.Minute))
+	items[0].FinishedAt = timePtr(now.Add(-time.Minute))
+	if err := runRepo.UpdateStudioBatchRunItem(ctx, &items[0]); err != nil {
+		t.Fatalf("UpdateStudioBatchRunItem() error = %v", err)
+	}
+	run.Status = StudioBatchRunStatusFailed
+	run.FailedBatches = 1
+	run.CompletedBatches = 1
+	run.CancelRequested = true
+	run.LastError = "timed out"
+	run.StartedAt = timePtr(now.Add(-3 * time.Minute))
+	run.FinishedAt = timePtr(now.Add(-time.Minute))
+	if err := runRepo.UpdateStudioBatchRun(ctx, run); err != nil {
+		t.Fatalf("UpdateStudioBatchRun() error = %v", err)
+	}
+
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:         repo,
+		batchRunRepo: runRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(_ context.Context, _ StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				t.Fatal("execute should not run during prepare-only retry")
+				return nil, nil
+			},
+		}),
+	})
+
+	if _, err := svc.PrepareRetryStudioBatchItems(ctx, "batch-1", &RetryStudioBatchItemsRequest{
+		ItemIDs: []string{"item-1"},
+	}); err != nil {
+		t.Fatalf("PrepareRetryStudioBatchItems() error = %v", err)
+	}
+
+	gotRun, err := runRepo.GetStudioBatchRun(ctx, "run-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchRun() error = %v", err)
+	}
+	if gotRun.Status != StudioBatchRunStatusPending {
+		t.Fatalf("run status = %q, want pending", gotRun.Status)
+	}
+	if gotRun.CompletedBatches != 0 {
+		t.Fatalf("run completed batches = %d, want 0", gotRun.CompletedBatches)
+	}
+	if gotRun.FailedBatches != 0 {
+		t.Fatalf("run failed batches = %d, want 0", gotRun.FailedBatches)
+	}
+	if gotRun.LastError != "" {
+		t.Fatalf("run last error = %q, want cleared", gotRun.LastError)
+	}
+	if gotRun.CancelRequested {
+		t.Fatal("run cancel requested = true, want cleared")
+	}
+	if gotRun.StartedAt != nil {
+		t.Fatalf("run started at = %v, want nil", gotRun.StartedAt)
+	}
+	if gotRun.FinishedAt != nil {
+		t.Fatalf("run finished at = %v, want nil", gotRun.FinishedAt)
+	}
+
+	gotItems, err := runRepo.ListStudioBatchRunItems(ctx, "run-1")
+	if err != nil {
+		t.Fatalf("ListStudioBatchRunItems() error = %v", err)
+	}
+	if gotItems[0].Status != StudioBatchRunItemStatusPending {
+		t.Fatalf("run item status = %q, want pending", gotItems[0].Status)
+	}
+	if gotItems[0].AsyncJobID != "" {
+		t.Fatalf("run item async job id = %q, want cleared", gotItems[0].AsyncJobID)
+	}
+	if gotItems[0].ErrorMessage != "" {
+		t.Fatalf("run item error message = %q, want cleared", gotItems[0].ErrorMessage)
+	}
+	if gotItems[0].StartedAt != nil || gotItems[0].FinishedAt != nil {
+		t.Fatalf("run item timestamps = start:%v finish:%v, want nil", gotItems[0].StartedAt, gotItems[0].FinishedAt)
+	}
+}
+
 func TestServiceRetryStudioBatchItemsRefreshesLatestDraftPromptBeforeRunning(t *testing.T) {
 	t.Parallel()
 

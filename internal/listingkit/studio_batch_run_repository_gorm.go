@@ -88,6 +88,17 @@ func (r *GormStudioBatchRunRepository) ListStudioBatchRunItems(ctx context.Conte
 	return items, nil
 }
 
+func (r *GormStudioBatchRunRepository) ListStudioBatchRunItemsByBatchID(ctx context.Context, batchID string) ([]StudioBatchRunItemRecord, error) {
+	var items []StudioBatchRunItemRecord
+	if err := applyStudioBatchRunAccessScope(r.db.WithContext(ctx), ctx).
+		Where("batch_id = ?", batchID).
+		Order("updated_at DESC, created_at DESC, id ASC").
+		Find(&items).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 func (r *GormStudioBatchRunRepository) UpdateStudioBatchRun(ctx context.Context, run *StudioBatchRunRecord) error {
 	if run == nil {
 		return nil

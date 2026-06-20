@@ -65,6 +65,7 @@ type CreateStudioBatchTasksResult struct {
 
 type taskStudioBatchServiceConfig struct {
 	repo               StudioBatchRepository
+	batchRunRepo       StudioBatchRunRepository
 	studioSessionRepo  studioBatchSeedSessionRepository
 	generator          studioBatchGenerator
 	createGenerateTask func(ctx context.Context, req *GenerateRequest) (*Task, error)

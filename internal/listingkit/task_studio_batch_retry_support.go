@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 )
 
 func normalizeStudioBatchDesignIDs(ids []string) []string {
@@ -90,6 +91,8 @@ func (s *taskStudioBatchService) resetStudioBatchRetryItems(
 	items []StudioBatchItemRecord,
 ) error {
 	now := s.currentTime().UTC()
+	batchIDs := make([]string, 0, len(items))
+	seenBatchIDs := make(map[string]struct{}, len(items))
 	for _, item := range items {
 		item.Status = StudioBatchItemStatusPending
 		item.LastError = ""
@@ -97,6 +100,104 @@ func (s *taskStudioBatchService) resetStudioBatchRetryItems(
 		if err := s.repo.UpdateStudioBatchItem(ctx, &item); err != nil {
 			return err
 		}
+		if batchID := strings.TrimSpace(item.BatchID); batchID != "" {
+			if _, ok := seenBatchIDs[batchID]; !ok {
+				seenBatchIDs[batchID] = struct{}{}
+				batchIDs = append(batchIDs, batchID)
+			}
+		}
+	}
+	if err := s.resetStudioBatchRetryRunItems(ctx, batchIDs, now); err != nil {
+		return err
 	}
 	return nil
+}
+
+func (s *taskStudioBatchService) resetStudioBatchRetryRunItems(ctx context.Context, batchIDs []string, now time.Time) error {
+	if s == nil || s.batchRunRepo == nil || len(batchIDs) == 0 {
+		return nil
+	}
+	for _, batchID := range batchIDs {
+		runItems, err := s.batchRunRepo.ListStudioBatchRunItemsByBatchID(ctx, batchID)
+		if err != nil {
+			return err
+		}
+		if len(runItems) == 0 {
+			continue
+		}
+		runItem := runItems[0]
+		runItem.Status = StudioBatchRunItemStatusPending
+		runItem.AsyncJobID = ""
+		runItem.ErrorMessage = ""
+		runItem.StartedAt = nil
+		runItem.FinishedAt = nil
+		runItem.UpdatedAt = now
+		if err := s.batchRunRepo.UpdateStudioBatchRunItem(ctx, &runItem); err != nil {
+			return err
+		}
+		if err := s.refreshStudioBatchRunAfterRetryReset(ctx, runItem.RunID, now); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *taskStudioBatchService) refreshStudioBatchRunAfterRetryReset(ctx context.Context, runID string, now time.Time) error {
+	if s == nil || s.batchRunRepo == nil || strings.TrimSpace(runID) == "" {
+		return nil
+	}
+	run, err := s.batchRunRepo.GetStudioBatchRun(ctx, runID)
+	if err != nil {
+		return err
+	}
+	items, err := s.batchRunRepo.ListStudioBatchRunItems(ctx, runID)
+	if err != nil {
+		return err
+	}
+	run.Status = StudioBatchRunStatusPending
+	run.CancelRequested = false
+	run.CurrentBatchID = ""
+	run.CurrentIndex = 0
+	run.CompletedBatches = countCompletedStudioBatchRunItems(items)
+	run.SucceededBatches = countSucceededStudioBatchRunItems(items)
+	run.FailedBatches = countFailedStudioBatchRunItems(items)
+	run.LastError = firstStudioBatchRunItemError(items)
+	run.StartedAt = nil
+	run.FinishedAt = nil
+	run.UpdatedAt = now
+	return s.batchRunRepo.UpdateStudioBatchRun(ctx, run)
+}
+
+func countCompletedStudioBatchRunItems(items []StudioBatchRunItemRecord) int {
+	return countSucceededStudioBatchRunItems(items) + countFailedStudioBatchRunItems(items)
+}
+
+func countSucceededStudioBatchRunItems(items []StudioBatchRunItemRecord) int {
+	count := 0
+	for _, item := range items {
+		if item.Status == StudioBatchRunItemStatusSucceeded {
+			count++
+		}
+	}
+	return count
+}
+
+func countFailedStudioBatchRunItems(items []StudioBatchRunItemRecord) int {
+	count := 0
+	for _, item := range items {
+		switch item.Status {
+		case StudioBatchRunItemStatusFailed, StudioBatchRunItemStatusCancelled:
+			count++
+		}
+	}
+	return count
+}
+
+func firstStudioBatchRunItemError(items []StudioBatchRunItemRecord) string {
+	for _, item := range items {
+		if trimmed := strings.TrimSpace(item.ErrorMessage); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

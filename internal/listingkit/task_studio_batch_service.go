@@ -8,6 +8,7 @@ import (
 
 type taskStudioBatchService struct {
 	repo               StudioBatchRepository
+	batchRunRepo       StudioBatchRunRepository
 	studioSessionRepo  studioBatchSeedSessionRepository
 	generator          studioBatchGenerator
 	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
@@ -27,6 +28,7 @@ type taskStudioBatchService struct {
 func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioBatchService {
 	service := &taskStudioBatchService{
 		repo:               config.repo,
+		batchRunRepo:       config.batchRunRepo,
 		studioSessionRepo:  config.studioSessionRepo,
 		generator:          config.generator,
 		createGenerateTask: config.createGenerateTask,

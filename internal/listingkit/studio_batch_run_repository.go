@@ -95,6 +95,7 @@ type StudioBatchRunRepository interface {
 	GetStudioBatchRun(ctx context.Context, runID string) (*StudioBatchRunRecord, error)
 	ListUnfinishedStudioBatchRuns(ctx context.Context) ([]StudioBatchRunRecord, error)
 	ListStudioBatchRunItems(ctx context.Context, runID string) ([]StudioBatchRunItemRecord, error)
+	ListStudioBatchRunItemsByBatchID(ctx context.Context, batchID string) ([]StudioBatchRunItemRecord, error)
 	UpdateStudioBatchRun(ctx context.Context, run *StudioBatchRunRecord) error
 	UpdateStudioBatchRunItem(ctx context.Context, item *StudioBatchRunItemRecord) error
 }
