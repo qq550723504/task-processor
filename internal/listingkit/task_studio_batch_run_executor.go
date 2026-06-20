@@ -2,11 +2,14 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 )
+
+var errStudioBatchRunItemStillRunning = errors.New("studio batch run item still running")
 
 type taskStudioBatchRunExecutorConfig struct {
 	repo             StudioBatchRunRepository
@@ -106,6 +109,13 @@ func (e *taskStudioBatchRunExecutor) Run(ctx context.Context, runID string) erro
 		}
 
 		execErr := e.executeOne(ctx, item.BatchID)
+		if errors.Is(execErr, errStudioBatchRunItemStillRunning) {
+			run.Status = StudioBatchRunStatusRunning
+			run.LastError = ""
+			e.refreshRunCounters(run, items)
+			run.UpdatedAt = e.currentTime()
+			return e.repo.UpdateStudioBatchRun(ctx, run)
+		}
 		finishedAt := e.currentTime()
 		item.FinishedAt = &finishedAt
 		item.UpdatedAt = finishedAt
@@ -219,7 +229,26 @@ func (s *service) executeStudioBatchRunItem(ctx context.Context, batchID string)
 	if detail.Batch.Status == StudioBatchStatusReviewReady {
 		return nil
 	}
+	if isStudioBatchRunDetailStillRunning(detail) {
+		return errStudioBatchRunItemStillRunning
+	}
 	return studioBatchRunDetailError(detail)
+}
+
+func isStudioBatchRunDetailStillRunning(detail *StudioBatchDetail) bool {
+	if detail == nil || detail.Batch == nil {
+		return false
+	}
+	switch detail.Batch.Status {
+	case StudioBatchStatusGenerating, StudioBatchStatusPartiallyMaterialized:
+		for _, item := range detail.Items {
+			switch item.Item.Status {
+			case StudioBatchItemStatusPending, StudioBatchItemStatusGenerating, StudioBatchItemStatusAwaitingMaterialization:
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func studioBatchRunDetailError(detail *StudioBatchDetail) error {

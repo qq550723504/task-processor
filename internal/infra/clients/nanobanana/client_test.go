@@ -498,6 +498,47 @@ func TestClientQueryImageGenerationReturnsSucceededResultPayload(t *testing.T) {
 	}
 }
 
+func TestClientQueryImageGenerationTreatsResultNotExist404AsQueued(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/api/result" {
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("id"); got != "job-query-404" {
+			t.Fatalf("query id = %q, want job-query-404", got)
+		}
+		w.Header().Set("X-Request-Id", "req-query-404")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"result not exist, valid for 2 hours"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		APIKey:       "test-key",
+		Model:        "nano-banana-fast",
+		SubmitURL:    server.URL + "/v1",
+		PollInterval: 10 * time.Millisecond,
+		Timeout:      time.Second,
+		HTTPClient:   server.Client(),
+	})
+
+	result, err := client.QueryImageGeneration(context.Background(), "job-query-404")
+	if err != nil {
+		t.Fatalf("QueryImageGeneration() error = %v", err)
+	}
+	if result.Status != "queued" {
+		t.Fatalf("status = %q, want queued", result.Status)
+	}
+	if result.RequestID != "req-query-404" {
+		t.Fatalf("request id = %q, want req-query-404", result.RequestID)
+	}
+	if !strings.Contains(result.RawResultResponse, "result not exist") {
+		t.Fatalf("raw result response = %q, want transient 404 payload", result.RawResultResponse)
+	}
+	if len(result.Data) != 0 {
+		t.Fatalf("result data = %+v, want no materialized image data", result.Data)
+	}
+}
+
 func TestClientEditImageReturnsTypedModerationError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

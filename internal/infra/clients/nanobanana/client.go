@@ -500,7 +500,11 @@ func (c *Client) fetchGenerationResult(ctx context.Context, resultURL string, jo
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("query image generation result returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		rawBody := strings.TrimSpace(string(data))
+		if payload, ok := transientMissingResultPayload(resp.StatusCode, rawBody, jobID, strings.TrimSpace(resp.Header.Get("X-Request-Id"))); ok {
+			return payload, nil
+		}
+		return nil, fmt.Errorf("query image generation result returned status %d: %s", resp.StatusCode, rawBody)
 	}
 	var payload resultPayload
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
@@ -512,6 +516,23 @@ func (c *Client) fetchGenerationResult(ctx context.Context, resultURL string, jo
 		payload.RawResponse = strings.TrimSpace(string(encoded))
 	}
 	return &payload, nil
+}
+
+func transientMissingResultPayload(statusCode int, rawBody string, jobID string, requestID string) (*resultPayload, bool) {
+	if statusCode != http.StatusNotFound {
+		return nil, false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(rawBody))
+	if !strings.Contains(normalized, "result not exist") {
+		return nil, false
+	}
+	return &resultPayload{
+		ID:          strings.TrimSpace(jobID),
+		Status:      "queued",
+		Error:       strings.TrimSpace(rawBody),
+		RequestID:   strings.TrimSpace(requestID),
+		RawResponse: strings.TrimSpace(rawBody),
+	}, true
 }
 
 func (c *Client) downloadGeneratedImages(ctx context.Context, payload *resultPayload) (*openaiclient.ImageResponse, error) {

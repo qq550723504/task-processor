@@ -305,6 +305,136 @@ func TestExecuteStudioBatchRunItemResumesExistingGraphWithoutWipingMaterializedD
 	}
 }
 
+func TestExecuteStudioBatchRunItemReturnsStillRunningForAsyncSubmittedBatch(t *testing.T) {
+	repo := NewMemStudioBatchRepository()
+	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:               "batch-1",
+			SavedAsBatch:     true,
+			Prompt:           "retro cherries",
+			StyleCount:       "1",
+			ArtworkModel:     "gpt-image-2",
+			GroupedImageMode: "per_product",
+			Selection: SheinStudioSelectionSnapshot{
+				ProductID:          101,
+				ParentProductID:    7001,
+				VariantID:          101,
+				PrototypeGroupID:   9001,
+				LayerID:            "layer-1",
+				ProductName:        "Canvas Tote",
+				VariantLabel:       "Red",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				SelectedVariantIDs: []int64{101},
+				MockupImageURL:     "https://example.com/mockup.png",
+			},
+		},
+	}
+	svc := &service{studioDeps: studioDependencies{sessionRepo: sessionRepo, batchRepo: repo}}
+	svc.studio.batchGroup.batch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		studioSessionRepo: sessionRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(context.Context, StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				t.Fatal("execute should not be called when async submission succeeds")
+				return nil, nil
+			},
+			submitAsync: func(context.Context, StudioBatchGenerateExecutionInput) (*studioBatchAsyncSubmitOutput, error) {
+				return &studioBatchAsyncSubmitOutput{
+					Submit: &AIImageAsyncSubmit{
+						JobID:             "job-async-1",
+						RequestID:         "req-async-1",
+						Provider:          "nanobanana",
+						Status:            AIImageAsyncResultRunning,
+						RawSubmitResponse: `{"id":"job-async-1","status":"running"}`,
+						AcceptedAt:        time.Date(2026, 6, 20, 13, 0, 0, 0, time.UTC),
+					},
+				}, nil
+			},
+			currentTime: func() time.Time { return time.Date(2026, 6, 20, 13, 0, 5, 0, time.UTC) },
+		}),
+	})
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	err := svc.executeStudioBatchRunItem(ctx, "batch-1")
+	if !errors.Is(err, errStudioBatchRunItemStillRunning) {
+		t.Fatalf("executeStudioBatchRunItem() error = %v, want errStudioBatchRunItemStillRunning", err)
+	}
+
+	detail, getErr := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if getErr != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", getErr)
+	}
+	if detail.Batch == nil || detail.Batch.Status != StudioBatchStatusGenerating {
+		t.Fatalf("detail.Batch = %+v, want generating batch", detail.Batch)
+	}
+	item := detail.Items[0]
+	if item.Status != StudioBatchItemStatusGenerating {
+		t.Fatalf("item status = %q, want %q", item.Status, StudioBatchItemStatusGenerating)
+	}
+	attempts := detail.AttemptsByItem[item.ID]
+	if len(attempts) != 1 {
+		t.Fatalf("attempt count = %d, want 1", len(attempts))
+	}
+	if attempts[0].Status != StudioGenerationAttemptStatusSubmitted {
+		t.Fatalf("attempt status = %q, want %q", attempts[0].Status, StudioGenerationAttemptStatusSubmitted)
+	}
+	if attempts[0].UpstreamJobID != "job-async-1" {
+		t.Fatalf("upstream job id = %q, want job-async-1", attempts[0].UpstreamJobID)
+	}
+}
+
+func TestStudioBatchRunExecutorKeepsRunRunningWhenBatchItemStillRunning(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	_, _ = mustCreateStudioBatchRunForTest(t, repo, ctx, "run-1", []string{"batch-1"})
+
+	now := time.Date(2026, 6, 20, 13, 30, 0, 0, time.UTC)
+	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
+		repo: repo,
+		executeOne: func(context.Context, string) error {
+			return errStudioBatchRunItemStillRunning
+		},
+		now: func() time.Time { return now },
+	})
+
+	if err := executor.Run(ctx, "run-1"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	run, err := repo.GetStudioBatchRun(ctx, "run-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchRun() error = %v", err)
+	}
+	if run.Status != StudioBatchRunStatusRunning {
+		t.Fatalf("run.Status = %q, want %q", run.Status, StudioBatchRunStatusRunning)
+	}
+	if run.CompletedBatches != 0 {
+		t.Fatalf("run.CompletedBatches = %d, want 0", run.CompletedBatches)
+	}
+	if run.FinishedAt != nil {
+		t.Fatalf("run.FinishedAt = %v, want nil while still running", run.FinishedAt)
+	}
+
+	items, err := repo.ListStudioBatchRunItems(ctx, "run-1")
+	if err != nil {
+		t.Fatalf("ListStudioBatchRunItems() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("item count = %d, want 1", len(items))
+	}
+	if items[0].Status != StudioBatchRunItemStatusRunning {
+		t.Fatalf("item status = %q, want %q", items[0].Status, StudioBatchRunItemStatusRunning)
+	}
+	if items[0].FinishedAt != nil {
+		t.Fatalf("item.FinishedAt = %v, want nil while batch still running", items[0].FinishedAt)
+	}
+	if items[0].ErrorMessage != "" {
+		t.Fatalf("item.ErrorMessage = %q, want empty", items[0].ErrorMessage)
+	}
+}
+
 func TestStudioBatchRunCoordinatorRecoversOnlyUnfinishedRunsAndContinuesAfterErrors(t *testing.T) {
 	repo := NewMemStudioBatchRunRepository()
 	ctx := WithTenantID(context.Background(), "tenant-a")
