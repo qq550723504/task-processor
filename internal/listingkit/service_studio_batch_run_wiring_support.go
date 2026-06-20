@@ -9,11 +9,13 @@ import (
 
 type taskStudioBatchRunRepoWiring struct {
 	repo              StudioBatchRunRepository
+	batchRepo         StudioBatchRepository
 	studioSessionRepo StudioSessionRepository
 }
 
 type taskStudioBatchRunWiring struct {
 	repo              StudioBatchRunRepository
+	batchRepo         StudioBatchRepository
 	studioSessionRepo StudioSessionRepository
 }
 
@@ -35,6 +37,7 @@ type taskStudioBatchRunCollaborators struct {
 func buildTaskStudioBatchRunRepoWiring(s *service) taskStudioBatchRunRepoWiring {
 	return taskStudioBatchRunRepoWiring{
 		repo:              resolveStudioBatchRunRepo(s),
+		batchRepo:         resolveStudioBatchRepo(s),
 		studioSessionRepo: resolveStudioSessionRepo(s),
 	}
 }
@@ -43,6 +46,7 @@ func buildTaskStudioBatchRunWiring(s *service) taskStudioBatchRunWiring {
 	repoWiring := buildTaskStudioBatchRunRepoWiring(s)
 	return taskStudioBatchRunWiring{
 		repo:              repoWiring.repo,
+		batchRepo:         repoWiring.batchRepo,
 		studioSessionRepo: repoWiring.studioSessionRepo,
 	}
 }
@@ -119,6 +123,7 @@ func buildTaskStudioBatchRunServiceConfigWithCollaborators(
 	}
 	return taskStudioBatchRunServiceConfig{
 		repo:              wiring.repo,
+		batchRepo:         wiring.batchRepo,
 		studioSessionRepo: wiring.studioSessionRepo,
 		startRun:          startRun,
 		runner:            wiring.newServiceRunner(startRun),

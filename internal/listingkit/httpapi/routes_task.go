@@ -58,4 +58,5 @@ type studioBatchRunRouteHandler interface {
 	GetStudioBatchRun(c *gin.Context)
 	ListStudioBatchRunItems(c *gin.Context)
 	CancelStudioBatchRun(c *gin.Context)
+	RecoverStudioBatchRun(c *gin.Context)
 }

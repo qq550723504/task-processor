@@ -85,6 +85,26 @@ func (h *handler) CancelStudioBatchRun(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"ok": true})
 }
 
+func (h *handler) RecoverStudioBatchRun(c *gin.Context) {
+	if h == nil || h.studioBatchRunService == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "studio_batch_run_unavailable", "message": "studio batch run service is not configured"})
+		return
+	}
+
+	if err := h.studioBatchRunService.RecoverStudioBatchRun(requestContext(c), c.Param("run_id")); err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, listingkit.ErrStudioBatchActionValidation):
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": "studio_batch_run_recover_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"ok": true})
+}
+
 func classifyCreateStudioBatchRunError(err error) int {
 	switch {
 	case err == nil:

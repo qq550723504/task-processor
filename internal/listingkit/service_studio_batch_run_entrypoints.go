@@ -17,3 +17,7 @@ func (s *service) ListStudioBatchRunItems(ctx context.Context, runID string) ([]
 func (s *service) CancelStudioBatchRun(ctx context.Context, runID string) error {
 	return s.taskStudioBatchRunOrDefault().CancelStudioBatchRun(ctx, runID)
 }
+
+func (s *service) RecoverStudioBatchRun(ctx context.Context, runID string) error {
+	return s.taskStudioBatchRunOrDefault().RecoverStudioBatchRun(ctx, runID)
+}

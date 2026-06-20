@@ -107,6 +107,7 @@ type studioBatchRunHandlerService interface {
 	GetStudioBatchRun(ctx context.Context, runID string) (*listingkit.StudioBatchRunRecord, error)
 	ListStudioBatchRunItems(ctx context.Context, runID string) ([]listingkit.StudioBatchRunItemRecord, error)
 	CancelStudioBatchRun(ctx context.Context, runID string) error
+	RecoverStudioBatchRun(ctx context.Context, runID string) error
 }
 
 type HandlerOption func(*handler)

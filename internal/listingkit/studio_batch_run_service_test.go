@@ -169,13 +169,40 @@ func TestTaskStudioBatchRunServiceMapsListingStudioMissingBatchError(t *testing.
 
 func TestStudioBatchRunServiceGetAndListProxyToRepository(t *testing.T) {
 	repo := NewMemStudioBatchRunRepository()
+	batchRepo := NewMemStudioBatchRepository()
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	run, wantItems := mustCreateStudioBatchRunForTest(t, repo, ctx, "run-1", []string{"batch-1", "batch-2"})
+	now := time.Now().UTC()
+	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), []StudioBatchItemRecord{{
+		ID:             "item-1",
+		BatchID:        "batch-1",
+		Status:         StudioBatchItemStatusGenerating,
+		LastError:      "waiting upstream",
+		SelectionCount: 1,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}}, nil, nil); err != nil {
+		t.Fatalf("CreateStudioBatchGraph(batch-1) error = %v", err)
+	}
+	batch2 := newStudioBatchRecordForTest("batch-2", now.Add(time.Second))
+	batch2.Status = StudioBatchStatusFailed
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch2, []StudioBatchItemRecord{{
+		ID:             "item-2",
+		BatchID:        "batch-2",
+		Status:         StudioBatchItemStatusFailed,
+		LastError:      "provider failed",
+		SelectionCount: 1,
+		CreatedAt:      now.Add(time.Second),
+		UpdatedAt:      now.Add(time.Second),
+	}}, nil, nil); err != nil {
+		t.Fatalf("CreateStudioBatchGraph(batch-2) error = %v", err)
+	}
 
 	svc := &service{
+		studioDeps: studioDependencies{batchRepo: batchRepo},
 		studio: studioCollaborators{
 			runGroup: taskStudioBatchRunCollaborators{
-				batchRun: &taskStudioBatchRunService{repo: repo},
+				batchRun: &taskStudioBatchRunService{repo: repo, batchRepo: batchRepo},
 			},
 		},
 	}
@@ -199,6 +226,12 @@ func TestStudioBatchRunServiceGetAndListProxyToRepository(t *testing.T) {
 		if gotItems[i].ID != wantItems[i].ID || gotItems[i].BatchID != wantItems[i].BatchID || gotItems[i].Position != wantItems[i].Position {
 			t.Fatalf("gotItems[%d] = %+v, want %+v", i, gotItems[i], wantItems[i])
 		}
+	}
+	if gotItems[0].BatchStatus != StudioBatchStatusGenerating || gotItems[0].BatchLastError != "waiting upstream" {
+		t.Fatalf("gotItems[0] diagnostics = %+v, want generating/waiting upstream", gotItems[0])
+	}
+	if gotItems[1].BatchStatus != StudioBatchStatusFailed || gotItems[1].BatchLastError != "provider failed" {
+		t.Fatalf("gotItems[1] diagnostics = %+v, want failed/provider failed", gotItems[1])
 	}
 }
 
@@ -224,6 +257,70 @@ func TestStudioBatchRunServiceCancelMarksRunAsCancelRequested(t *testing.T) {
 	}
 	if !updatedRun.CancelRequested {
 		t.Fatalf("updatedRun.CancelRequested = false, want true")
+	}
+}
+
+func TestStudioBatchRunServiceRecoverStartsPendingRun(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	run, _ := mustCreateStudioBatchRunForTest(t, repo, ctx, "run-1", []string{"batch-1"})
+
+	var recoveredRunID string
+	svc := &service{
+		studio: studioCollaborators{
+			runGroup: taskStudioBatchRunCollaborators{
+				batchRun: &taskStudioBatchRunService{
+					repo: repo,
+					startRun: func(_ context.Context, runID string) error {
+						recoveredRunID = runID
+						return nil
+					},
+				},
+			},
+		},
+	}
+
+	if err := svc.RecoverStudioBatchRun(ctx, run.ID); err != nil {
+		t.Fatalf("RecoverStudioBatchRun() error = %v", err)
+	}
+	if recoveredRunID != "run-1" {
+		t.Fatalf("recoveredRunID = %q, want run-1", recoveredRunID)
+	}
+}
+
+func TestStudioBatchRunServiceRecoverRejectsRunningAndSucceededRuns(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	runRunning, _ := mustCreateStudioBatchRunForTest(t, repo, ctx, "run-running", []string{"batch-1"})
+	runRunning.Status = StudioBatchRunStatusRunning
+	if err := repo.UpdateStudioBatchRun(ctx, runRunning); err != nil {
+		t.Fatalf("UpdateStudioBatchRun(run-running) error = %v", err)
+	}
+	runSucceeded, _ := mustCreateStudioBatchRunForTest(t, repo, ctx, "run-succeeded", []string{"batch-2"})
+	runSucceeded.Status = StudioBatchRunStatusSucceeded
+	if err := repo.UpdateStudioBatchRun(ctx, runSucceeded); err != nil {
+		t.Fatalf("UpdateStudioBatchRun(run-succeeded) error = %v", err)
+	}
+
+	svc := &service{
+		studio: studioCollaborators{
+			runGroup: taskStudioBatchRunCollaborators{
+				batchRun: &taskStudioBatchRunService{
+					repo: repo,
+					startRun: func(_ context.Context, runID string) error {
+						t.Fatalf("startRun should not be called for %s", runID)
+						return nil
+					},
+				},
+			},
+		},
+	}
+
+	if err := svc.RecoverStudioBatchRun(ctx, "run-running"); err == nil {
+		t.Fatal("RecoverStudioBatchRun(run-running) error = nil, want validation error")
+	}
+	if err := svc.RecoverStudioBatchRun(ctx, "run-succeeded"); err == nil {
+		t.Fatal("RecoverStudioBatchRun(run-succeeded) error = nil, want validation error")
 	}
 }
 

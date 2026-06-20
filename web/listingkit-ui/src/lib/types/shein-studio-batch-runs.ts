@@ -47,6 +47,8 @@ export type SheinStudioBatchRunItem = {
   sessionId?: string;
   asyncJobId?: string;
   errorMessage?: string;
+  batchStatus?: string;
+  batchLastError?: string;
   startedAt?: string;
   finishedAt?: string;
   createdAt: string;

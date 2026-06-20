@@ -80,6 +80,8 @@ type StudioBatchRunItemRecord struct {
 	SessionID    string                   `json:"session_id,omitempty" gorm:"type:varchar(64);index"`
 	AsyncJobID   string                   `json:"async_job_id,omitempty" gorm:"type:varchar(64);index"`
 	ErrorMessage string                   `json:"error_message,omitempty" gorm:"type:text"`
+	BatchStatus  StudioBatchStatus        `json:"batch_status,omitempty" gorm:"-"`
+	BatchLastError string                 `json:"batch_last_error,omitempty" gorm:"-"`
 	StartedAt    *time.Time               `json:"started_at,omitempty"`
 	FinishedAt   *time.Time               `json:"finished_at,omitempty"`
 	CreatedAt    time.Time                `json:"created_at"`

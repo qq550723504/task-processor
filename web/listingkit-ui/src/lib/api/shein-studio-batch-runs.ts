@@ -63,6 +63,8 @@ const studioBatchRunItemSchema = z
     session_id: z.string().optional(),
     async_job_id: z.string().optional(),
     error_message: z.string().optional(),
+    batch_status: z.string().optional(),
+    batch_last_error: z.string().optional(),
     started_at: z.string().optional(),
     finished_at: z.string().optional(),
     created_at: z.string(),
@@ -125,6 +127,8 @@ export function mapStudioBatchRunItem(
     sessionId: payload.session_id,
     asyncJobId: payload.async_job_id,
     errorMessage: payload.error_message,
+    batchStatus: payload.batch_status,
+    batchLastError: payload.batch_last_error,
     startedAt: payload.started_at,
     finishedAt: payload.finished_at,
     createdAt: payload.created_at,
@@ -194,6 +198,12 @@ export async function listSheinStudioBatchRunItems(
 
 export async function cancelSheinStudioBatchRun(runId: string): Promise<void> {
   await apiRequest<unknown>(`/studio/batch-runs/${runId}/cancel`, {
+    method: "POST",
+  });
+}
+
+export async function recoverSheinStudioBatchRun(runId: string): Promise<void> {
+  await apiRequest<unknown>(`/studio/batch-runs/${runId}/recover`, {
     method: "POST",
   });
 }

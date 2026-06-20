@@ -22,6 +22,7 @@ func appendStudioGenerationRouteDescriptors(routes []httproute.Descriptor, handl
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id", Module: "listing-kit", Handler: batchRuns.GetStudioBatchRun},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id/items", Module: "listing-kit", Handler: batchRuns.ListStudioBatchRunItems},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id/cancel", Module: "listing-kit", Handler: batchRuns.CancelStudioBatchRun},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/batch-runs/:run_id/recover", Module: "listing-kit", Handler: batchRuns.RecoverStudioBatchRun},
 	)
 }
 

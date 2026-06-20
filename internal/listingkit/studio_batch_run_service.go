@@ -13,4 +13,5 @@ type StudioBatchRunService interface {
 	GetStudioBatchRun(ctx context.Context, runID string) (*StudioBatchRunRecord, error)
 	ListStudioBatchRunItems(ctx context.Context, runID string) ([]StudioBatchRunItemRecord, error)
 	CancelStudioBatchRun(ctx context.Context, runID string) error
+	RecoverStudioBatchRun(ctx context.Context, runID string) error
 }

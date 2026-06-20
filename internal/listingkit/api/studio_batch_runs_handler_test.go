@@ -22,6 +22,7 @@ type stubStudioBatchRunService struct {
 	getErr       error
 	listItemsErr error
 	cancelErr    error
+	recoverErr   error
 	createCtx    context.Context
 	createReq    *listingkit.CreateStudioBatchRunRequest
 	getCtx       context.Context
@@ -30,6 +31,8 @@ type stubStudioBatchRunService struct {
 	listItemsID  string
 	cancelCtx    context.Context
 	cancelRunID  string
+	recoverCtx   context.Context
+	recoverRunID string
 }
 
 func (s *stubStudioBatchRunService) CreateStudioBatchRun(ctx context.Context, req *listingkit.CreateStudioBatchRunRequest) (*listingkit.StudioBatchRunRecord, []listingkit.StudioBatchRunItemRecord, error) {
@@ -54,6 +57,12 @@ func (s *stubStudioBatchRunService) CancelStudioBatchRun(ctx context.Context, ru
 	s.cancelCtx = ctx
 	s.cancelRunID = runID
 	return s.cancelErr
+}
+
+func (s *stubStudioBatchRunService) RecoverStudioBatchRun(ctx context.Context, runID string) error {
+	s.recoverCtx = ctx
+	s.recoverRunID = runID
+	return s.recoverErr
 }
 
 func TestCreateStudioBatchRunReturnsAcceptedRunPayload(t *testing.T) {
@@ -197,6 +206,31 @@ func TestCancelStudioBatchRunReturnsAccepted(t *testing.T) {
 	}
 	if svc.cancelRunID != "run-cancel" {
 		t.Fatalf("cancel run id = %q, want run-cancel", svc.cancelRunID)
+	}
+}
+
+func TestRecoverStudioBatchRunReturnsAccepted(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioBatchRunService{}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(svc))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/batch-runs/:run_id/recover", h.RecoverStudioBatchRun)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batch-runs/run-recover/recover", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202 body=%s", resp.Code, resp.Body.String())
+	}
+	if svc.recoverRunID != "run-recover" {
+		t.Fatalf("recover run id = %q, want run-recover", svc.recoverRunID)
 	}
 }
 
@@ -390,6 +424,45 @@ func TestCancelStudioBatchRunReturnsNotFoundAndInternalErrors(t *testing.T) {
 			router.POST("/api/v1/listing-kits/studio/batch-runs/:run_id/cancel", h.CancelStudioBatchRun)
 
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batch-runs/run-cancel/cancel", nil)
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, req)
+
+			if resp.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d body=%s", resp.Code, tc.wantStatus, resp.Body.String())
+			}
+		})
+	}
+}
+
+func TestRecoverStudioBatchRunReturnsBadRequestNotFoundAndInternalErrors(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name       string
+		serviceErr error
+		wantStatus int
+	}{
+		{name: "validation", serviceErr: listingkit.NewStudioBatchActionValidationError("run cannot be recovered from status running"), wantStatus: http.StatusBadRequest},
+		{name: "not found", serviceErr: gorm.ErrRecordNotFound, wantStatus: http.StatusNotFound},
+		{name: "internal", serviceErr: errors.New("recover failed"), wantStatus: http.StatusInternalServerError},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			gin.SetMode(gin.TestMode)
+			svc := &stubStudioBatchRunService{recoverErr: tc.serviceErr}
+			h, err := NewHandler(&stubHandlerCoreService{}, WithStudioBatchRunService(svc))
+			if err != nil {
+				t.Fatalf("new handler: %v", err)
+			}
+
+			router := gin.New()
+			router.POST("/api/v1/listing-kits/studio/batch-runs/:run_id/recover", h.RecoverStudioBatchRun)
+
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batch-runs/run-recover/recover", nil)
 			resp := httptest.NewRecorder()
 			router.ServeHTTP(resp, req)
 
