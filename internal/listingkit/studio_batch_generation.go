@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -222,22 +224,42 @@ func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch
 
 func (g *studioBatchGenerationService) submitAsyncItemAttempt(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord, input StudioBatchGenerateExecutionInput) (bool, error) {
 	if g == nil || g.submitAsync == nil {
+		logStudioBatchAttemptDiagnostic(ctx, batch, item, attempt, "async_submit_skipped", logrus.Fields{
+			"reason": "submit_async_not_configured",
+		})
 		return false, nil
 	}
 	output, err := g.submitAsync(ctx, input)
 	if err != nil {
+		logStudioBatchAttemptDiagnostic(ctx, batch, item, attempt, "async_submit_error", logrus.Fields{
+			"error":             err.Error(),
+			"async_unsupported": errors.Is(err, ErrAsyncImageGenerationNotSupported),
+		})
 		if errors.Is(err, ErrAsyncImageGenerationNotSupported) {
 			return false, nil
 		}
 		return false, err
 	}
 	if output == nil {
+		logStudioBatchAttemptDiagnostic(ctx, batch, item, attempt, "async_submit_empty", logrus.Fields{
+			"reason": "nil_output",
+		})
 		return false, nil
 	}
 	submit := output.Submit
 	if submit == nil {
+		logStudioBatchAttemptDiagnostic(ctx, batch, item, attempt, "async_submit_empty", logrus.Fields{
+			"reason": "nil_submit",
+		})
 		return false, nil
 	}
+	logStudioBatchAttemptDiagnostic(ctx, batch, item, attempt, "async_submit_success", logrus.Fields{
+		"provider":        strings.TrimSpace(submit.Provider),
+		"upstream_job_id": strings.TrimSpace(submit.JobID),
+		"request_id":      strings.TrimSpace(submit.RequestID),
+		"status":          submit.Status,
+		"direct_response": output.Response != nil,
+	})
 	now := g.now()
 	attempt.Status = StudioGenerationAttemptStatusSubmitted
 	attempt.Provider = strings.TrimSpace(submit.Provider)
@@ -289,6 +311,14 @@ func (g *studioBatchGenerationService) executeSyncItemAttempt(ctx context.Contex
 	if g == nil || g.execute == nil {
 		return nil, fmt.Errorf("studio batch execute function is not configured")
 	}
+	logStudioBatchAttemptDiagnostic(ctx, nil, StudioBatchItemRecord{ID: input.ItemID, BatchID: input.BatchID}, attempt, "sync_execute_start", logrus.Fields{
+		"request_image_model": func() string {
+			if input.Request == nil {
+				return ""
+			}
+			return strings.TrimSpace(input.Request.ImageModel)
+		}(),
+	})
 	now := g.now()
 	attempt.Status = StudioGenerationAttemptStatusRunning
 	attempt.StartedAt = timePtr(now)
@@ -297,6 +327,31 @@ func (g *studioBatchGenerationService) executeSyncItemAttempt(ctx context.Contex
 		return nil, err
 	}
 	return g.execute(ctx, input)
+}
+
+func logStudioBatchAttemptDiagnostic(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord, event string, fields logrus.Fields) {
+	if fields == nil {
+		fields = logrus.Fields{}
+	}
+	fields["event"] = event
+	if batch != nil {
+		fields["batch_id"] = strings.TrimSpace(batch.ID)
+	} else if strings.TrimSpace(item.BatchID) != "" {
+		fields["batch_id"] = strings.TrimSpace(item.BatchID)
+	}
+	fields["item_id"] = strings.TrimSpace(item.ID)
+	if attempt != nil {
+		fields["attempt_id"] = strings.TrimSpace(attempt.ID)
+		fields["attempt_no"] = attempt.AttemptNo
+		fields["attempt_status"] = attempt.Status
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		fields["ctx_deadline"] = deadline.UTC().Format(time.RFC3339Nano)
+		fields["ctx_deadline_remaining_ms"] = time.Until(deadline).Milliseconds()
+	} else {
+		fields["ctx_deadline"] = "none"
+	}
+	logrus.WithFields(fields).Info("listingkit studio batch attempt diagnostic")
 }
 
 func (g *studioBatchGenerationService) finalizeSuccessfulAttempt(ctx context.Context, attempt *StudioGenerationAttemptRecord, execution *StudioBatchGenerateExecutionOutput) error {

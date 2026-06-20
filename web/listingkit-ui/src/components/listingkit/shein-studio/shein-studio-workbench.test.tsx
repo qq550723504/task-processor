@@ -865,6 +865,169 @@ describe("SheinStudioWorkbench", () => {
     expect(createSheinReviewTasks).not.toHaveBeenCalled();
   });
 
+  it("confirms before creating tasks while the dedicated batch is still generating", async () => {
+    getSheinStudioHydratedBatch.mockResolvedValue({
+      savedBatch: {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        styleCount: "2",
+        sheinStoreId: "869",
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+      detail: {
+        batch: {
+          id: "batch-1",
+          status: "generating",
+          prompt: "retro cherries",
+          styleCount: "2",
+          sheinStoreId: 869,
+          createdAt: "2026-05-26T09:59:00.000Z",
+          updatedAt: "2026-05-26T10:00:00.000Z",
+        },
+        items: [
+          {
+            item: {
+              id: "item-1",
+              batchId: "batch-1",
+              targetGroupKey: "size:1000x1000",
+              status: "review_ready",
+              selectionCount: 1,
+              createdAt: "2026-05-26T09:59:00.000Z",
+              updatedAt: "2026-05-26T10:00:00.000Z",
+            },
+            designs: [
+              {
+                id: "design-1",
+                batchId: "batch-1",
+                itemId: "item-1",
+                sourceAttemptId: "attempt-1",
+                targetGroupKey: "size:1000x1000",
+                imageUrl: "https://example.com/design-1.png",
+                reviewStatus: "approved",
+                createdAt: "2026-05-26T09:59:30.000Z",
+                updatedAt: "2026-05-26T10:00:00.000Z",
+              },
+            ],
+          },
+          {
+            item: {
+              id: "item-2",
+              batchId: "batch-1",
+              targetGroupKey: "size:1200x1200",
+              status: "generating",
+              selectionCount: 1,
+              createdAt: "2026-05-26T09:59:00.000Z",
+              updatedAt: "2026-05-26T10:00:00.000Z",
+            },
+            designs: [],
+          },
+        ],
+      },
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    render(<SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "create review tasks" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      "当前批次仍有图片正在生成。本次只会为当前已批准的 1 个款式创建 SHEIN 资料，剩余图片生成完成并批准后需要再次创建。是否继续？",
+    );
+    expect(createSheinStudioBatchTasks).not.toHaveBeenCalled();
+  });
+
+  it("passes partial creation allowance after confirming task creation during generation", async () => {
+    const inFlightDetail = {
+      batch: {
+        id: "batch-1",
+        status: "generating",
+        prompt: "retro cherries",
+        styleCount: "2",
+        sheinStoreId: 869,
+        createdAt: "2026-05-26T09:59:00.000Z",
+        updatedAt: "2026-05-26T10:00:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "size:1000x1000",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "size:1000x1000",
+              imageUrl: "https://example.com/design-1.png",
+              reviewStatus: "approved",
+              createdAt: "2026-05-26T09:59:30.000Z",
+              updatedAt: "2026-05-26T10:00:00.000Z",
+            },
+          ],
+        },
+        {
+          item: {
+            id: "item-2",
+            batchId: "batch-1",
+            targetGroupKey: "size:1200x1200",
+            status: "generating",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+          designs: [],
+        },
+      ],
+    };
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch(
+        {
+          styleCount: "2",
+        },
+        inFlightDetail,
+      ),
+    );
+    createSheinStudioBatchTasks.mockResolvedValue({
+      ...inFlightDetail,
+      batch: {
+        ...inFlightDetail.batch,
+        status: "tasks_creating",
+      },
+      createdTasks: [],
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />);
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "create review tasks" }));
+
+    await waitFor(() =>
+      expect(createSheinStudioBatchTasks).toHaveBeenCalledWith(
+        "batch-1",
+        ["design-1"],
+        { allowPartialWhileGenerating: true },
+      ),
+    );
+  });
+
   it("keeps dedicated batch task creation on the itemized batch endpoint after local review edits", async () => {
     getSheinStudioHydratedBatch.mockResolvedValue({
       savedBatch: {
@@ -2297,14 +2460,16 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.queryByText("已加入 0 款")).not.toBeInTheDocument();
   });
 
-  it("lets the dedicated batch page rename the current batch without losing current draft state", async () => {
+  it("shows a unified dedicated batch header without rename or delete actions", async () => {
     getSheinStudioHydratedBatch.mockResolvedValue(
-      buildHydratedBatch(),
+      buildHydratedBatch({
+        name: "869全品类 副本",
+      }),
     );
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
-        name: "批次1",
+        name: "869全品类 副本",
         prompt: "retro cherries",
         styleCount: "1",
         sheinStoreId: "869",
@@ -2315,42 +2480,42 @@ describe("SheinStudioWorkbench", () => {
         updatedAt: "2026-05-26T10:00:00.000Z",
       },
     ]);
-    saveSheinStudioBatch.mockResolvedValue({
-      id: "batch-1",
-      name: "批次9",
-      prompt: "updated prompt",
-      styleCount: "1",
-      sheinStoreId: "869",
-      selection,
-      designs: [],
-      selectedIds: [],
-      createdTasks: [],
-      updatedAt: "2026-05-26T10:10:00.000Z",
-    });
 
     render(
       <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
     );
 
-    const promptInput = await screen.findByLabelText("prompt");
-    fireEvent.change(promptInput, { target: { value: "updated prompt" } });
-
-    fireEvent.click(await screen.findByRole("button", { name: "重命名当前批次" }));
-    const nameInput = await screen.findByLabelText("当前批次名称");
-    fireEvent.change(nameInput, { target: { value: "批次9" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存名称" }));
-
-    await waitFor(() =>
-      expect(saveSheinStudioBatch).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "batch-1",
-          name: "批次9",
-          prompt: "updated prompt",
-        }),
-        { makeActive: false },
-      ),
-    );
-    expect(await screen.findByText("已重命名为：批次9")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "批次工作台" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("BATCH WORKBENCH")).toBeInTheDocument();
+    expect(screen.getByText("当前批次 · 869全品类 副本")).toBeInTheDocument();
+    expect(
+      screen.getByText("当前正在继续处理批次 batch-1，可以在这里继续生成、审核和创建任务。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "返回最近批次首页" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "去 SDS 选品并加入当前批次" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "继续生成" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "前往生成区" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "重命名当前批次" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "删除当前批次" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("当前批次名称"),
+    ).not.toBeInTheDocument();
+    expect(saveSheinStudioBatch).not.toHaveBeenCalled();
+    expect(deleteSheinStudioBatch).not.toHaveBeenCalled();
   });
 
   it("uses hydrated batch truth for homepage metadata-only writes", async () => {
@@ -2591,36 +2756,6 @@ describe("SheinStudioWorkbench", () => {
     expect(
       screen.queryByText("已恢复之前发起的生成任务，正在继续等待结果。"),
     ).not.toBeInTheDocument();
-  });
-
-  it("lets the dedicated batch page delete the current batch and return to the homepage", async () => {
-    getSheinStudioHydratedBatch.mockResolvedValue(
-      buildHydratedBatch(),
-    );
-    listSheinStudioBatches.mockResolvedValue([
-      {
-        id: "batch-1",
-        name: "批次1",
-        prompt: "retro cherries",
-        styleCount: "1",
-        sheinStoreId: "869",
-        selection,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
-        updatedAt: "2026-05-26T10:00:00.000Z",
-      },
-    ]);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-
-    render(
-      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: "删除当前批次" }));
-
-    await waitFor(() => expect(deleteSheinStudioBatch).toHaveBeenCalledWith("batch-1"));
-    expect(push).toHaveBeenCalledWith("/listing-kits/sds");
   });
 
   it("lets the dedicated batch page jump to SDS selection for the current batch", async () => {

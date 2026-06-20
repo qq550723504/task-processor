@@ -4,7 +4,6 @@ import { useState } from "react";
 import Image from "next/image";
 
 import { SheinDesignLightbox } from "@/components/listingkit/shein-studio/shein-design-lightbox";
-import { SheinDesignReviewNote } from "@/components/listingkit/shein-studio/shein-design-review-note";
 import { Button } from "@/components/ui/button";
 import { resolveGeneratedDesignSrc } from "@/lib/shein-studio/design-image";
 import { toThumbnailPreviewUrl } from "@/lib/utils/imgproxy-url";
@@ -25,7 +24,6 @@ export function SheinDesignPreviewGrid({
   selectionByTargetGroupKey,
   readOnly = false,
   canRegenerate = true,
-  onNoteChange,
   onCreateReviewTasks,
   isCreatingTasks = false,
   createActionLabel = "为已批准款式生成 SHEIN 资料",
@@ -70,8 +68,8 @@ export function SheinDesignPreviewGrid({
 
   return (
     <>
-      <section className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
+      <section className="space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-[linear-gradient(180deg,_#ffffff_0%,_#f8faf7_100%)] px-5 py-5 shadow-sm">
+        <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
               已生成款式
@@ -85,7 +83,7 @@ export function SheinDesignPreviewGrid({
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {designs.map((design, index) => {
             const selected = selectedIds.includes(design.id);
             const designSrc = resolveGeneratedDesignSrc(design);
@@ -95,7 +93,7 @@ export function SheinDesignPreviewGrid({
             });
             return (
               <article
-                className={`overflow-hidden rounded-[1.5rem] border transition ${
+                className={`overflow-hidden rounded-[1.5rem] border transition hover:-translate-y-0.5 hover:shadow-[0_18px_45px_rgba(24,24,27,0.10)] ${
                   selected
                     ? "border-emerald-700 bg-emerald-50/60 shadow-[0_12px_30px_rgba(5,150,105,0.12)]"
                     : "border-zinc-200 bg-zinc-50/70"
@@ -158,7 +156,7 @@ export function SheinDesignPreviewGrid({
 
                   <div className="space-y-3">
                     <Button
-                      className="relative block h-auto w-full overflow-hidden rounded-[1.25rem] p-0"
+                      className="relative block aspect-square h-auto w-full overflow-hidden rounded-[1.25rem] border-zinc-200 bg-zinc-950/5 p-0"
                       onClick={() => {
                         setActivePreviewId(design.id);
                         setActivePreviewView("design");
@@ -175,40 +173,6 @@ export function SheinDesignPreviewGrid({
                         width={1024}
                       />
                     </Button>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <Button
-                        className="w-full"
-                        onClick={() => {
-                          setActivePreviewId(design.id);
-                          setActivePreviewView("design");
-                        }}
-                        variant="secondary"
-                      >
-                        查看原图
-                      </Button>
-                      <Button
-                        className="w-full"
-                        onClick={() => {
-                          setActivePreviewId(design.id);
-                          setActivePreviewView("mockup");
-                        }}
-                        variant="ghost"
-                      >
-                        查看效果图
-                      </Button>
-                    </div>
-                    <div className="rounded-[1rem] border border-dashed border-zinc-200 bg-zinc-50 px-3 py-3 text-xs leading-6 text-zinc-500">
-                      当前卡片只展示原始款式图。打开效果图可检查 SDS 模板上的预览效果。
-                    </div>
-                    <SheinDesignReviewNote
-                      disabled={readOnly}
-                      note={design.reviewNote}
-                      onChange={
-                        onNoteChange
-                          ? (value) => onNoteChange(design.id, value)
-                          : undefined
-                      }
-                    />
                   </div>
                 </div>
               </article>

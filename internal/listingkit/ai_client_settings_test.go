@@ -43,7 +43,7 @@ func TestUpdateAIClientSettingsPreservesExistingKeyWhenRequestKeyBlank(t *testin
 	if store.saved.APIKey != "existing-key" {
 		t.Fatalf("saved APIKey = %q, want existing-key", store.saved.APIKey)
 	}
-	if store.saved.BaseURL != "https://new.example.test/v1" || store.saved.Model != "new-model" || store.saved.TimeoutSecond != 0 {
+	if store.saved.BaseURL != "https://new.example.test/v1" || store.saved.Model != "new-model" || store.saved.TimeoutSecond != 30 {
 		t.Fatalf("saved credential = %#v", store.saved)
 	}
 	if store.saved.APIStyle != "openai" {
@@ -159,19 +159,20 @@ func TestGetAIClientSettingsReportsResolvedScope(t *testing.T) {
 	}
 }
 
-func TestUpdateAIClientSettingsIgnoresRequestedTimeout(t *testing.T) {
+func TestUpdateAIClientSettingsPersistsRequestedTimeout(t *testing.T) {
 	store := &fakeAIClientCredentialStore{}
 	svc := &service{adminDeps: adminDependencies{aiCredentialStore: store}}
 	ctx := WithRequestIdentity(context.Background(), RequestIdentity{TenantID: "tenant-a"})
 
 	_, err := svc.UpdateAIClientSettings(ctx, &AIClientSettings{
-		Scope:      "tenant",
-		ClientName: "image_nanobanana",
-		APIKey:     "key",
-		BaseURL:    "https://example.test/v1",
-		Model:      "nano-banana-fast",
-		APIStyle:   "gemini",
-		Enabled:    true,
+		Scope:         "tenant",
+		ClientName:    "image_nanobanana",
+		APIKey:        "key",
+		BaseURL:       "https://example.test/v1",
+		Model:         "nano-banana-fast",
+		APIStyle:      "gemini",
+		TimeoutSecond: 180,
+		Enabled:       true,
 	})
 	if err != nil {
 		t.Fatalf("UpdateAIClientSettings returned error: %v", err)
@@ -179,12 +180,12 @@ func TestUpdateAIClientSettingsIgnoresRequestedTimeout(t *testing.T) {
 	if store.saved == nil {
 		t.Fatal("expected credential to be saved")
 	}
-	if store.saved.TimeoutSecond != 0 {
-		t.Fatalf("saved timeout = %d, want 0", store.saved.TimeoutSecond)
+	if store.saved.TimeoutSecond != 180 {
+		t.Fatalf("saved timeout = %d, want 180", store.saved.TimeoutSecond)
 	}
 }
 
-func TestGetAIClientSettingsDoesNotExposeStoredTimeout(t *testing.T) {
+func TestGetAIClientSettingsExposesStoredTimeout(t *testing.T) {
 	now := time.Now()
 	store := &fakeAIClientCredentialStore{
 		credentials: map[string]*AIClientCredential{
@@ -213,5 +214,8 @@ func TestGetAIClientSettingsDoesNotExposeStoredTimeout(t *testing.T) {
 	}
 	if settings.APIStyle != "openai" {
 		t.Fatalf("api_style = %q, want openai", settings.APIStyle)
+	}
+	if settings.TimeoutSecond != 60 {
+		t.Fatalf("timeout_second = %d, want 60", settings.TimeoutSecond)
 	}
 }

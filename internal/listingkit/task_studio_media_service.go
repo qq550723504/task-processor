@@ -46,7 +46,7 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 	}
 
 	asyncGenerator, ok := s.imageGenerator.(AIAsyncImageGenerator)
-	if !ok || !asyncGenerator.SupportsAsyncImageGeneration() {
+	if !ok {
 		return nil, ErrAsyncImageGenerationNotSupported
 	}
 
@@ -104,7 +104,7 @@ func (s *taskStudioMediaService) QueryStudioDesignsAsync(ctx context.Context, re
 	}
 
 	asyncGenerator, ok := s.imageGenerator.(AIAsyncImageGenerator)
-	if !ok || !asyncGenerator.SupportsAsyncImageGeneration() {
+	if !ok {
 		return nil, ErrAsyncImageGenerationNotSupported
 	}
 

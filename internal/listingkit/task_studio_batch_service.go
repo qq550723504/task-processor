@@ -136,6 +136,9 @@ func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, bat
 	if s.serviceRunner == nil {
 		return nil, fmt.Errorf("studio batch service is not configured")
 	}
+	if req != nil && req.AllowPartialWhileGenerating {
+		ctx = withStudioBatchPartialTaskCreationAllowed(ctx)
+	}
 	return s.serviceRunner.CreateTasks(ctx, batchID, req)
 }
 
@@ -143,6 +146,9 @@ func (s *taskStudioBatchService) PrepareCreateStudioBatchTasks(ctx context.Conte
 	s.ensureServiceRunner()
 	if s.serviceRunner == nil {
 		return nil, fmt.Errorf("studio batch service is not configured")
+	}
+	if req != nil && req.AllowPartialWhileGenerating {
+		ctx = withStudioBatchPartialTaskCreationAllowed(ctx)
 	}
 	return s.serviceRunner.PrepareCreateTasks(ctx, batchID, req)
 }

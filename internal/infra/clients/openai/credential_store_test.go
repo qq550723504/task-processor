@@ -3,6 +3,7 @@ package openai
 import (
 	"context"
 	"testing"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -45,7 +46,7 @@ func TestGormCredentialResolverPrefersUserThenTenantConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve user: %v", err)
 	}
-	if userResolved == nil || userResolved.Config.APIKey != "user-key" || userResolved.Config.BaseURL != "https://user.example.test/v1" || userResolved.Config.Model != "user-model" || userResolved.Config.Timeout != fallback.Timeout {
+	if userResolved == nil || userResolved.Config.APIKey != "user-key" || userResolved.Config.BaseURL != "https://user.example.test/v1" || userResolved.Config.Model != "user-model" || userResolved.Config.Timeout != 60*time.Second {
 		t.Fatalf("user resolved = %#v", userResolved)
 	}
 	if userResolved.Config.APIStyle != "gemini" {
@@ -56,7 +57,7 @@ func TestGormCredentialResolverPrefersUserThenTenantConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve tenant: %v", err)
 	}
-	if tenantResolved == nil || tenantResolved.Config.APIKey != "tenant-key" || tenantResolved.Config.BaseURL != "https://tenant.example.test/v1" || tenantResolved.Config.Model != "tenant-model" || tenantResolved.Config.Timeout != fallback.Timeout {
+	if tenantResolved == nil || tenantResolved.Config.APIKey != "tenant-key" || tenantResolved.Config.BaseURL != "https://tenant.example.test/v1" || tenantResolved.Config.Model != "tenant-model" || tenantResolved.Config.Timeout != 45*time.Second {
 		t.Fatalf("tenant resolved = %#v", tenantResolved)
 	}
 	if tenantResolved.Config.APIStyle != "openai" {

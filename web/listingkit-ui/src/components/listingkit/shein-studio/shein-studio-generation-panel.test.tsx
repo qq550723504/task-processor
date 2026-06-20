@@ -566,4 +566,12 @@ describe("SheinStudioGenerationPanel", () => {
     expect(actionGroup).not.toBeNull();
     expect(actionGroup?.className).toContain("flex-col");
   });
+
+  it("uses a wide-screen two-column settings layout", () => {
+    renderPanel();
+
+    expect(screen.getByTestId("generation-settings-grid").className).toContain(
+      "xl:grid-cols-[minmax(0,1.08fr)_minmax(24rem,0.92fr)]",
+    );
+  });
 });

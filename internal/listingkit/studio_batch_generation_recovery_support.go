@@ -258,6 +258,7 @@ func isStudioBatchTimeoutFailureMessage(message string) bool {
 	}
 	return strings.Contains(message, "timeout") ||
 		strings.Contains(message, "timed out") ||
+		strings.Contains(message, "deadline exceeded") ||
 		strings.Contains(message, "gateway timeout")
 }
 
@@ -272,6 +273,7 @@ func isStudioBatchTransientRetryMessage(message string) bool {
 		strings.Contains(message, "temporarily unavailable") ||
 		strings.Contains(message, "timeout") ||
 		strings.Contains(message, "timed out") ||
+		strings.Contains(message, "deadline exceeded") ||
 		strings.Contains(message, "connection reset") ||
 		strings.Contains(message, "service unavailable") ||
 		strings.Contains(message, "bad gateway") ||

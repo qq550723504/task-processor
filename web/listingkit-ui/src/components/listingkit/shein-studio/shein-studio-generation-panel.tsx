@@ -157,7 +157,7 @@ export function SheinStudioGenerationPanel({
   return (
     <div
       id="shein-studio-generator"
-      className="scroll-mt-6 space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-white px-5 py-5 shadow-sm"
+      className="scroll-mt-6 space-y-4 rounded-[1.75rem] border border-zinc-200/80 bg-[linear-gradient(180deg,_#ffffff_0%,_#fbfbf8_100%)] px-5 py-5 shadow-sm"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -230,7 +230,10 @@ export function SheinStudioGenerationPanel({
         />
       ) : null}
 
-      <div className="grid gap-4">
+      <div
+        className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(24rem,0.92fr)] xl:items-start"
+        data-testid="generation-settings-grid"
+      >
         <ArtworkGenerationSettings
           artworkModel={artworkModel}
           disabled={isGenerating}

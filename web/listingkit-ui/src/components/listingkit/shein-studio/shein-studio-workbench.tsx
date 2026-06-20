@@ -236,8 +236,6 @@ export function SheinStudioWorkbench({
   const [localDraftSnapshotDetail, setLocalDraftSnapshotDetail] = useState(() =>
     loadLocalSheinStudioDraftSnapshotDetail(),
   );
-  const [isEditingCurrentBatchName, setIsEditingCurrentBatchName] = useState(false);
-  const [currentBatchDraftName, setCurrentBatchDraftName] = useState("");
   const [workbenchState, dispatchWorkbenchState] = useReducer(
     sheinStudioWorkbenchReducer,
     undefined,
@@ -1688,15 +1686,6 @@ export function SheinStudioWorkbench({
     }),
     [],
   );
-  const buildSaveInputForCurrentDedicatedBatch = useCallback(
-    (name?: string) => ({
-      ...buildResultBackedDraftInput(),
-      id: initialBatchId,
-      name: name?.trim() || undefined,
-    }),
-    [buildResultBackedDraftInput, initialBatchId],
-  );
-
   const refreshSavedBatches = useCallback(async () => {
     workbenchController.setField("savedBatches", await listSheinStudioBatches());
   }, [workbenchController]);
@@ -1728,46 +1717,6 @@ export function SheinStudioWorkbench({
     },
     [savedBatches, selectedRecentBatchHydrations],
   );
-
-  const handleRenameCurrentDedicatedBatch = useCallback(async () => {
-    if (!initialBatchId) {
-      return;
-    }
-    const nextName = currentBatchDraftName.trim();
-    if (!nextName) {
-      setQueueMessage("批次名称不能为空。");
-      return;
-    }
-    const saved = await saveSheinStudioBatch(
-      buildSaveInputForCurrentDedicatedBatch(nextName),
-      { makeActive: false },
-    );
-    if (!saved) {
-      setQueueMessage("批次重命名失败。");
-      return;
-    }
-    setIsEditingCurrentBatchName(false);
-    setCurrentBatchDraftName(saved.name);
-    setQueueMessage(`已重命名为：${saved.name}`);
-    await refreshSavedBatches();
-  }, [
-    buildSaveInputForCurrentDedicatedBatch,
-    currentBatchDraftName,
-    initialBatchId,
-    refreshSavedBatches,
-    setQueueMessage,
-  ]);
-
-  const handleDeleteCurrentDedicatedBatch = useCallback(async () => {
-    if (!initialBatchId) {
-      return;
-    }
-    if (!window.confirm("确认删除当前批次吗？删除后无法恢复。")) {
-      return;
-    }
-    await handleDeleteBatch(initialBatchId);
-    router.push("/listing-kits/sds");
-  }, [handleDeleteBatch, initialBatchId, router]);
 
   const handleRenameRecentBatchSummary = useCallback(
     async (summary: (typeof recentBatchSummaries)[number], name: string) => {
@@ -2409,6 +2358,79 @@ export function SheinStudioWorkbench({
     message:
       "当前正在生成款式图或创建 SHEIN 资料。现在离开会中断当前页面上的进度承接，确认还要离开吗？",
   });
+  const dedicatedBatchHeader = initialBatchId ? (
+    <div className="rounded-[1.75rem] border border-border bg-card px-5 py-5 shadow-sm">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <div className="max-w-3xl space-y-4">
+          <div className="flex flex-wrap gap-2 text-sm">
+            <Button
+              onClick={() => router.push("/listing-kits/sds")}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              返回最近批次首页
+            </Button>
+            <Button
+              onClick={() => {
+                setActiveSheinStudioBatchId(initialBatchId);
+                router.push(`/listing-kits/sds/new?targetBatchId=${initialBatchId}`);
+              }}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              去 SDS 选品并加入当前批次
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              BATCH WORKBENCH
+            </p>
+            <div className="space-y-1">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                批次工作台
+              </h1>
+              <p className="text-base font-semibold text-foreground">
+                当前批次 · {currentDedicatedBatch?.name || "未命名批次"}
+              </p>
+            </div>
+            <p className="text-sm leading-6 text-muted-foreground">
+              当前正在继续处理批次 {initialBatchId}，可以在这里继续生成、审核和创建任务。
+            </p>
+          </div>
+
+          <BatchStoreSettings
+            currentStoreLabel={currentStoreLabel}
+            requiredMessage={storeRequiredMessage}
+            setSheinStoreId={setSheinStoreId}
+            sheinStoreId={sheinStoreId}
+          />
+        </div>
+
+        <div className="flex flex-wrap gap-2 xl:justify-end">
+          <Button
+            disabled={isStartingDedicatedBatchRun}
+            onClick={handleStartDedicatedBatchRun}
+            size="sm"
+            type="button"
+            variant="default"
+          >
+            {isStartingDedicatedBatchRun ? "正在启动..." : "继续生成"}
+          </Button>
+          <Button
+            onClick={() => navigateToStep("generate")}
+            size="sm"
+            type="button"
+            variant={effectiveStep === "generate" ? "secondary" : "ghost"}
+          >
+            前往生成区
+          </Button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   if (activeBatchRunId) {
     return (
@@ -2426,6 +2448,8 @@ export function SheinStudioWorkbench({
 
   return (
     <section className="relative space-y-6">
+      {dedicatedBatchHeader}
+
       {busyMessage ? <SheinStudioBusyOverlay message={busyMessage} /> : null}
 
       {!initialBatchId ? (
@@ -2494,120 +2518,6 @@ export function SheinStudioWorkbench({
       {batchRunError ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
           {batchRunError}
-        </div>
-      ) : null}
-
-      {initialBatchId ? (
-        <div className="rounded-2xl border border-border bg-card px-4 py-4 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                当前批次
-              </p>
-              {isEditingCurrentBatchName ? (
-                <label className="block">
-                  <span className="sr-only">当前批次名称</span>
-                  <input
-                    aria-label="当前批次名称"
-                    className="w-full min-w-[280px] rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    onChange={(event) => setCurrentBatchDraftName(event.target.value)}
-                    value={currentBatchDraftName}
-                  />
-                </label>
-              ) : (
-                <p className="text-lg font-semibold text-foreground">
-                  {currentDedicatedBatch?.name || "未命名批次"}
-                </p>
-              )}
-              <p className="text-sm text-muted-foreground">
-                在这里可以管理当前这一个批次；批量管理仍然保留在最近批次首页。
-              </p>
-              <div className="pt-3">
-                <BatchStoreSettings
-                  currentStoreLabel={currentStoreLabel}
-                  requiredMessage={storeRequiredMessage}
-                  setSheinStoreId={setSheinStoreId}
-                  sheinStoreId={sheinStoreId}
-                />
-              </div>
-              <div className="pt-1">
-                <Button
-                  onClick={() => {
-                    if (initialBatchId) {
-                      setActiveSheinStudioBatchId(initialBatchId);
-                    }
-                    router.push(
-                      initialBatchId
-                        ? `/listing-kits/sds/new?targetBatchId=${initialBatchId}`
-                        : "/listing-kits/sds/new",
-                    );
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="secondary"
-                >
-                  去 SDS 选品并加入当前批次
-                </Button>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                disabled={isStartingDedicatedBatchRun}
-                onClick={handleStartDedicatedBatchRun}
-                size="sm"
-                type="button"
-                variant="default"
-              >
-                {isStartingDedicatedBatchRun ? "正在启动..." : "继续生成"}
-              </Button>
-              <Button
-                onClick={() => navigateToStep("generate")}
-                size="sm"
-                type="button"
-                variant={effectiveStep === "generate" ? "secondary" : "ghost"}
-              >
-                前往生成区
-              </Button>
-              {isEditingCurrentBatchName ? (
-                <>
-                  <Button onClick={() => void handleRenameCurrentDedicatedBatch()} size="sm" type="button">
-                    保存名称
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setIsEditingCurrentBatchName(false);
-                      setCurrentBatchDraftName(currentDedicatedBatch?.name ?? "");
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="ghost"
-                  >
-                    取消
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  onClick={() => {
-                    setCurrentBatchDraftName(currentDedicatedBatch?.name ?? "");
-                    setIsEditingCurrentBatchName(true);
-                  }}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  重命名当前批次
-                </Button>
-              )}
-              <Button
-                onClick={() => void handleDeleteCurrentDedicatedBatch()}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                删除当前批次
-              </Button>
-            </div>
-          </div>
         </div>
       ) : null}
 

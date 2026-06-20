@@ -163,6 +163,9 @@ func (c AIClientCredential) toResolvedClientConfig(fallback *ClientConfig) *Reso
 	if c.APIStyle != "" {
 		cfg.APIStyle = c.APIStyle
 	}
+	if c.TimeoutSecond > 0 {
+		cfg.Timeout = time.Duration(c.TimeoutSecond) * time.Second
+	}
 	if cfg.MaxRetries == 0 && fallback != nil {
 		cfg.MaxRetries = fallback.MaxRetries
 	}

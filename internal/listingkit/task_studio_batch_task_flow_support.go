@@ -9,6 +9,17 @@ import (
 	"gorm.io/gorm"
 )
 
+type studioBatchPartialTaskCreationContextKey struct{}
+
+func withStudioBatchPartialTaskCreationAllowed(ctx context.Context) context.Context {
+	return context.WithValue(ctx, studioBatchPartialTaskCreationContextKey{}, true)
+}
+
+func isStudioBatchPartialTaskCreationAllowed(ctx context.Context) bool {
+	allowed, _ := ctx.Value(studioBatchPartialTaskCreationContextKey{}).(bool)
+	return allowed
+}
+
 func (s *taskStudioBatchService) resumeStudioBatchTaskCreation(ctx context.Context, batchID string) (*CreateStudioBatchTasksResult, error) {
 	s.ensureTaskResumeRunner()
 	if s.taskResumeRunner == nil {
@@ -137,11 +148,6 @@ func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
 	if batchDetail == nil || batchDetail.Batch == nil {
 		return nil, nil, nil, gorm.ErrRecordNotFound
 	}
-	for _, design := range designs {
-		if design.ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
-			return nil, nil, nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s is not approved", design.ID))
-		}
-	}
 	session, err := s.loadStudioBatchTaskSession(ctx, batchID)
 	if err != nil {
 		if !errors.Is(err, ErrStudioSessionNotFound) {
@@ -149,7 +155,53 @@ func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
 		}
 		session = nil
 	}
+	allowPartialWhileGenerating := isStudioBatchPartialTaskCreationAllowed(ctx) ||
+		(req != nil && req.AllowPartialWhileGenerating)
+	if !allowPartialWhileGenerating && session != nil {
+		allowPartialWhileGenerating = equalNormalizedStudioBatchDesignIDs(
+			[]string(session.PendingTaskDesignIDs),
+			designIDs,
+		)
+	}
+	if !allowPartialWhileGenerating && studioBatchTaskCreationHasInFlightGeneration(batchDetail) {
+		return nil, nil, nil, NewStudioBatchActionValidationError("batch is still generating; confirm partial task creation before creating SHEIN tasks")
+	}
+	for _, design := range designs {
+		if design.ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
+			return nil, nil, nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s is not approved", design.ID))
+		}
+	}
 	return designIDs, session, batchDetail, nil
+}
+
+func studioBatchTaskCreationHasInFlightGeneration(detail *StudioBatchDetailGraph) bool {
+	if detail == nil || detail.Batch == nil {
+		return false
+	}
+	if detail.Batch.Status == StudioBatchStatusGenerating {
+		return true
+	}
+	for _, item := range detail.Items {
+		if item.Status == StudioBatchItemStatusGenerating ||
+			item.Status == StudioBatchItemStatusAwaitingMaterialization {
+			return true
+		}
+	}
+	return false
+}
+
+func equalNormalizedStudioBatchDesignIDs(left []string, right []string) bool {
+	normalizedLeft := normalizeStudioBatchDesignIDs(left)
+	normalizedRight := normalizeStudioBatchDesignIDs(right)
+	if len(normalizedLeft) != len(normalizedRight) {
+		return false
+	}
+	for index := range normalizedLeft {
+		if normalizedLeft[index] != normalizedRight[index] {
+			return false
+		}
+	}
+	return len(normalizedLeft) > 0
 }
 
 func (s *taskStudioBatchService) loadStudioBatchTaskSession(ctx context.Context, batchID string) (*SheinStudioSession, error) {

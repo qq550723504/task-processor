@@ -647,4 +647,41 @@ describe("shein studio batches API", () => {
       "/api/listing-kits/studio/batches/batch-1/tasks?tenant_id=tenant-9",
     );
   });
+
+  it("can explicitly allow partial task creation while a batch is still generating", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            status: "tasks_creating",
+            prompt: "botanical",
+            style_count: "3",
+            shein_store_id: 7,
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:10:00Z",
+          },
+          items: [],
+          created_tasks: [],
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createSheinStudioBatchTasks("batch-1", ["design-1"], {
+      allowPartialWhileGenerating: true,
+    });
+
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({
+        design_ids: ["design-1"],
+        allow_partial_while_generating: true,
+      }),
+    });
+  });
 });

@@ -202,6 +202,7 @@ function mapStudioBatch(
 }
 
 type SheinStudioBatchRequestOptions = {
+  allowPartialWhileGenerating?: boolean;
   tenantId?: string;
 };
 
@@ -421,12 +422,19 @@ export async function createSheinStudioBatchTasks(
   designIds: string[],
   options?: SheinStudioBatchRequestOptions,
 ): Promise<SheinStudioBatchTaskCreationResult> {
+  const body: {
+    allow_partial_while_generating?: boolean;
+    design_ids: string[];
+  } = { design_ids: designIds };
+  if (options?.allowPartialWhileGenerating) {
+    body.allow_partial_while_generating = true;
+  }
   const payload = await apiRequest<unknown>(
     `/studio/batches/${batchId}/tasks`,
     {
       method: "POST",
       query: buildStudioBatchQuery(options),
-      body: { design_ids: designIds },
+      body,
     },
   );
   return parseSheinStudioBatchTaskCreationResponse(payload);

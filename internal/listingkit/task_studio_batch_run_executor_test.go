@@ -342,6 +342,134 @@ func TestExecuteStudioBatchRunItemResumesExistingGraphWithoutWipingMaterializedD
 	}
 }
 
+func TestExecuteStudioBatchRunItemRetriesFailedItemsWhenResumeHasNoPendingWork(t *testing.T) {
+	repo := NewMemStudioBatchRepository()
+	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:               "batch-1",
+			SavedAsBatch:     true,
+			Prompt:           "retry only failed designs",
+			StyleCount:       "1",
+			GroupedImageMode: "per_product",
+			Selection: SheinStudioSelectionSnapshot{
+				ProductID:          101,
+				ParentProductID:    7001,
+				VariantID:          101,
+				PrototypeGroupID:   9001,
+				LayerID:            "layer-1",
+				ProductName:        "Canvas Tote",
+				VariantLabel:       "Red",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				SelectedVariantIDs: []int64{101, 102},
+			},
+		},
+	}
+	svc := &service{studioDeps: studioDependencies{sessionRepo: sessionRepo, batchRepo: repo}}
+	svc.studio.batchGroup.batch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		studioSessionRepo: sessionRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: stubStudioBatchExecutionByItem(map[string]*StudioDesignResponse{
+				"item-failed": testStudioDesignResponse("design-retry", "https://example.com/design-retry.png"),
+			}),
+			currentTime: func() time.Time { return time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC) },
+		}),
+	})
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	resultPayload, err := json.Marshal(testStudioDesignResponse("design-existing", "https://example.com/design-existing.png"))
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusPartiallyFailed,
+			Prompt:           "retry only failed designs",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-ready",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "ready",
+			TargetGroupLabel: "Ready item",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusReviewReady,
+			SelectionCount:   1,
+		}, {
+			ID:               "item-failed",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "failed",
+			TargetGroupLabel: "Failed item",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusFailed,
+			LastError:        `generate studio design 1: listingkit ai client "image_gpt_image_2" is not configured for current tenant/user`,
+			SelectionCount:   1,
+		}},
+		attempts: []StudioGenerationAttemptRecord{{
+			ID:            "attempt-ready-1",
+			ItemID:        "item-ready",
+			AttemptNo:     1,
+			Status:        StudioGenerationAttemptStatusMaterialized,
+			ResultPayload: string(resultPayload),
+		}, {
+			ID:           "attempt-failed-1",
+			ItemID:       "item-failed",
+			AttemptNo:    1,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: `generate studio design 1: listingkit ai client "image_gpt_image_2" is not configured for current tenant/user`,
+		}, {
+			ID:           "attempt-failed-2",
+			ItemID:       "item-failed",
+			AttemptNo:    2,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: `generate studio design 1: listingkit ai client "image_gpt_image_2" is not configured for current tenant/user`,
+		}, {
+			ID:           "attempt-failed-3",
+			ItemID:       "item-failed",
+			AttemptNo:    3,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: `generate studio design 1: listingkit ai client "image_gpt_image_2" is not configured for current tenant/user`,
+		}},
+		designs: []StudioMaterializedDesignRecord{{
+			ID:               "design-existing",
+			BatchID:          "batch-1",
+			ItemID:           "item-ready",
+			SourceAttemptID:  "attempt-ready-1",
+			TargetGroupKey:   "ready",
+			TargetGroupLabel: "Ready item",
+			ImageURL:         "https://example.com/design-existing.png",
+		}},
+	})
+
+	if err := svc.executeStudioBatchRunItem(ctx, "batch-1"); err != nil {
+		t.Fatalf("executeStudioBatchRunItem() error = %v, want failed item retried", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if detail.Batch == nil || detail.Batch.Status != StudioBatchStatusReviewReady {
+		t.Fatalf("detail.Batch = %+v, want review_ready after retry", detail.Batch)
+	}
+	if got := len(detail.DesignsByItem["item-ready"]); got != 1 {
+		t.Fatalf("ready item designs = %d, want preserved existing design", got)
+	}
+	if got := len(detail.DesignsByItem["item-failed"]); got != 1 {
+		t.Fatalf("retried item designs = %d, want one new design", got)
+	}
+	attempts := detail.AttemptsByItem["item-failed"]
+	if len(attempts) != 4 {
+		t.Fatalf("failed item attempts = %d, want old failed attempts plus manual retry", len(attempts))
+	}
+	if attempts[3].Status != StudioGenerationAttemptStatusMaterialized {
+		t.Fatalf("retry attempt status = %q, want %q", attempts[3].Status, StudioGenerationAttemptStatusMaterialized)
+	}
+}
+
 func TestExecuteStudioBatchRunItemReturnsStillRunningForAsyncSubmittedBatch(t *testing.T) {
 	repo := NewMemStudioBatchRepository()
 	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
@@ -508,7 +636,7 @@ func TestStudioBatchRunExecutorPreservesExistingAsyncJobIDWhenStillRunningSignal
 				return nil
 			}
 		}(),
-		now: func() time.Time { return time.Date(2026, 6, 20, 13, 45, 0, 0, time.UTC) },
+		now:              func() time.Time { return time.Date(2026, 6, 20, 13, 45, 0, 0, time.UTC) },
 		waitStillRunning: func(context.Context) error { return nil },
 	})
 
@@ -543,7 +671,7 @@ func TestStudioBatchRunExecutorContinuesPollingStillRunningItemUntilSuccess(t *t
 			}
 			return nil
 		},
-		now: func() time.Time { return time.Date(2026, 6, 20, 14, 0, 0, 0, time.UTC) },
+		now:              func() time.Time { return time.Date(2026, 6, 20, 14, 0, 0, 0, time.UTC) },
 		waitStillRunning: func(context.Context) error { return nil },
 	})
 

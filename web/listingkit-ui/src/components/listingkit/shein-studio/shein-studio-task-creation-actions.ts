@@ -1,7 +1,10 @@
 import type { MutableRefObject } from "react";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
-import { evaluateImportedGalleryDesigns } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import {
+  evaluateImportedGalleryDesigns,
+  hasInFlightItemizedBatchGeneration,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
   createSheinStudioBatchTasks,
   type SheinStudioBatchTaskCreationResult,
@@ -124,6 +127,18 @@ export function useSheinStudioTaskCreationAction({
       toast.error("无法创建 SHEIN 资料", "请至少批准 1 个款式后再创建 SHEIN 任务。");
       return;
     }
+    let allowPartialWhileGenerating = false;
+    if (itemizedBatchContext) {
+      allowPartialWhileGenerating = hasInFlightItemizedBatchGeneration(
+        itemizedBatchContext.detail,
+      );
+      if (
+        allowPartialWhileGenerating &&
+        !window.confirm(buildInFlightTaskCreationConfirmation(approved.length))
+      ) {
+        return;
+      }
+    }
     const latestRatioCheck = evaluateImportedGalleryDesigns(
       approved,
       activeSelection,
@@ -149,15 +164,23 @@ export function useSheinStudioTaskCreationAction({
 
       if (itemizedBatchContext) {
         const batchTenantId = itemizedBatchContext.tenantId?.trim();
-        const result = batchTenantId
+        const approvedDesignIds = approved.map((design) => design.id);
+        const requestOptions = {
+          ...(batchTenantId ? { tenantId: batchTenantId } : {}),
+          ...(allowPartialWhileGenerating
+            ? { allowPartialWhileGenerating: true }
+            : {}),
+        };
+        const hasRequestOptions = Object.keys(requestOptions).length > 0;
+        const result = hasRequestOptions
           ? await createSheinStudioBatchTasks(
               itemizedBatchContext.batchId,
-              approved.map((design) => design.id),
-              { tenantId: batchTenantId },
+              approvedDesignIds,
+              requestOptions,
             )
           : await createSheinStudioBatchTasks(
               itemizedBatchContext.batchId,
-              approved.map((design) => design.id),
+              approvedDesignIds,
             );
         created = result.createdTasks;
         batchTaskFailures = result.failedTasks ?? [];
@@ -289,6 +312,10 @@ export function useSheinStudioTaskCreationAction({
   }
 
   return { handleCreateTasks };
+}
+
+function buildInFlightTaskCreationConfirmation(approvedCount: number) {
+  return `当前批次仍有图片正在生成。本次只会为当前已批准的 ${approvedCount} 个款式创建 SHEIN 资料，剩余图片生成完成并批准后需要再次创建。是否继续？`;
 }
 
 function buildBatchTaskCreationFailureSummary(

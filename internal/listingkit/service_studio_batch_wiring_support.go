@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 type taskStudioBatchServiceWiring struct {
@@ -182,6 +184,7 @@ func buildStudioBatchGenerationWiring(s *service) studioBatchGenerationWiring {
 			return ExecuteStudioDesignBatch(ctx, s, input)
 		},
 		submitAsync: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*studioBatchAsyncSubmitOutput, error) {
+			logStudioBatchSubmitAsyncDiagnostic(ctx, input)
 			result, err := s.SubmitStudioDesignsAsync(ctx, input.Request)
 			if err != nil {
 				return nil, err
@@ -226,6 +229,26 @@ func buildStudioBatchGenerationWiring(s *service) studioBatchGenerationWiring {
 			return output, nil
 		},
 	}
+}
+
+func logStudioBatchSubmitAsyncDiagnostic(ctx context.Context, input StudioBatchGenerateExecutionInput) {
+	fields := logrus.Fields{
+		"batch_id":   input.BatchID,
+		"item_id":    input.ItemID,
+		"attempt_id": input.AttemptID,
+	}
+	if input.Request != nil {
+		fields["image_model"] = input.Request.ImageModel
+		fields["count"] = input.Request.Count
+		fields["reference_count"] = len(input.Request.ProductReferenceImageURLs)
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		fields["ctx_deadline"] = deadline.UTC().Format(time.RFC3339Nano)
+		fields["ctx_deadline_remaining_ms"] = time.Until(deadline).Milliseconds()
+	} else {
+		fields["ctx_deadline"] = "none"
+	}
+	logrus.WithFields(fields).Info("listingkit studio batch async submit diagnostic")
 }
 
 func buildStudioBatchGenerationServiceConfigWithWiring(wiring studioBatchGenerationWiring) studioBatchGenerationServiceConfig {

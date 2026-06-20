@@ -313,9 +313,19 @@ func (s *service) executeStudioBatchRunItem(ctx context.Context, batchID string)
 	if s == nil {
 		return fmt.Errorf("listingkit service is not configured")
 	}
-	detail, err := s.taskStudioBatchOrDefault().ResumeStudioBatchGeneration(ctx, strings.TrimSpace(batchID))
+	normalizedBatchID := strings.TrimSpace(batchID)
+	batchService := s.taskStudioBatchOrDefault()
+	detail, err := batchService.ResumeStudioBatchGeneration(ctx, normalizedBatchID)
 	if err != nil {
 		return err
+	}
+	if shouldRetryFailedStudioBatchRunItems(detail) {
+		detail, err = batchService.RetryStudioBatchItems(ctx, normalizedBatchID, &RetryStudioBatchItemsRequest{
+			ItemIDs: collectFailedStudioBatchRunItemIDs(detail),
+		})
+		if err != nil {
+			return err
+		}
 	}
 	if detail == nil || detail.Batch == nil {
 		return ErrStudioSessionNotFound
@@ -327,6 +337,34 @@ func (s *service) executeStudioBatchRunItem(ctx context.Context, batchID string)
 		return &studioBatchRunItemStillRunningError{AsyncJobID: resolveStudioBatchRunAsyncJobID(detail)}
 	}
 	return studioBatchRunDetailError(detail)
+}
+
+func shouldRetryFailedStudioBatchRunItems(detail *StudioBatchDetail) bool {
+	if detail == nil || detail.Batch == nil {
+		return false
+	}
+	if isStudioBatchRunDetailStillRunning(detail) {
+		return false
+	}
+	return len(collectFailedStudioBatchRunItemIDs(detail)) > 0
+}
+
+func collectFailedStudioBatchRunItemIDs(detail *StudioBatchDetail) []string {
+	if detail == nil {
+		return nil
+	}
+	ids := make([]string, 0)
+	for _, item := range detail.Items {
+		if item.Item.Status != StudioBatchItemStatusFailed {
+			continue
+		}
+		itemID := strings.TrimSpace(item.Item.ID)
+		if itemID == "" {
+			continue
+		}
+		ids = append(ids, itemID)
+	}
+	return ids
 }
 
 func (s *service) executeStudioBatchRunTaskCreation(ctx context.Context, batchID string) error {

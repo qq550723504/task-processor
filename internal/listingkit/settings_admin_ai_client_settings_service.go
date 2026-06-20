@@ -31,6 +31,7 @@ func (s *settingsAdminService) GetAIClientSettings(ctx context.Context, scope st
 	settings.BaseURL = credential.BaseURL
 	settings.Model = credential.Model
 	settings.APIStyle = credential.APIStyle
+	settings.TimeoutSecond = credential.TimeoutSecond
 	settings.Enabled = credential.Enabled
 	settings.UpdatedAt = credential.UpdatedAt.Format("2006-01-02T15:04:05Z07:00")
 	return settings, nil
@@ -49,15 +50,18 @@ func (s *settingsAdminService) UpdateAIClientSettings(ctx context.Context, req *
 		return nil, fmt.Errorf("tenant_id is required")
 	}
 	userID := aiSettingsUserID(identity, req.Scope)
+	existing, err := s.aiCredentialStore.GetCredential(ctx, tenantID, userID, req.ClientName)
+	if err != nil {
+		return nil, err
+	}
 	apiKey := strings.TrimSpace(req.APIKey)
 	if apiKey == "" {
-		existing, err := s.aiCredentialStore.GetCredential(ctx, tenantID, userID, req.ClientName)
-		if err != nil {
-			return nil, err
-		}
 		if existing != nil {
 			apiKey = existing.APIKey
 		}
+	}
+	if req.TimeoutSecond <= 0 && existing != nil {
+		req.TimeoutSecond = existing.TimeoutSecond
 	}
 	credential := AIClientCredential{
 		TenantID:      tenantID,
@@ -67,7 +71,7 @@ func (s *settingsAdminService) UpdateAIClientSettings(ctx context.Context, req *
 		BaseURL:       req.BaseURL,
 		Model:         req.Model,
 		APIStyle:      strings.TrimSpace(req.APIStyle),
-		TimeoutSecond: 0,
+		TimeoutSecond: req.TimeoutSecond,
 		Enabled:       req.Enabled,
 	}
 	if err := s.aiCredentialStore.SaveCredential(ctx, credential); err != nil {

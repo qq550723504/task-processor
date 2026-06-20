@@ -1475,6 +1475,157 @@ func TestServiceCreateStudioBatchTasksUsesApprovedDesignOwnership(t *testing.T) 
 	}
 }
 
+func TestServiceCreateStudioBatchTasksRejectsInFlightBatchWithoutPartialAllowance(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.Status = StudioBatchStatusGenerating
+	items := []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1200x1200",
+			TargetGroupLabel: "1200 x 1200",
+			Status:           StudioBatchItemStatusReviewReady,
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+		{
+			ID:               "item-2",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1600x1600",
+			TargetGroupLabel: "1600 x 1600",
+			Status:           StudioBatchItemStatusGenerating,
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	submitter := &studioBatchTaskSubmitterStub{}
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
+	svc.repo = taskRepo
+	svc.taskDeps.taskSubmitter = submitter
+	svc.studioDeps.sessionRepo = &studioBatchTaskCreationSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:            "batch-1",
+			Prompt:        "retro cherries",
+			ImageStrategy: "sds_official",
+			Selection: SheinStudioSelectionSnapshot{
+				ProductID:       1001,
+				ParentProductID: 2002,
+				VariantID:       3003,
+			},
+		},
+	}
+
+	_, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
+		DesignIDs: []string{"design-1"},
+	})
+	if !errors.Is(err, ErrStudioBatchActionValidation) {
+		t.Fatalf("CreateStudioBatchTasks() error = %v, want validation error", err)
+	}
+	if got := len(taskRepo.tasks); got != 0 {
+		t.Fatalf("created task count = %d, want 0", got)
+	}
+	if submitter.submitCount != 0 {
+		t.Fatalf("submit count = %d, want 0", submitter.submitCount)
+	}
+}
+
+func TestServiceCreateStudioBatchTasksAllowsExplicitPartialCreationWhileGenerating(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.Status = StudioBatchStatusGenerating
+	items := []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1200x1200",
+			TargetGroupLabel: "1200 x 1200",
+			Status:           StudioBatchItemStatusReviewReady,
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+		{
+			ID:               "item-2",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1600x1600",
+			TargetGroupLabel: "1600 x 1600",
+			Status:           StudioBatchItemStatusGenerating,
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
+	svc.repo = taskRepo
+	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
+	svc.studioDeps.sessionRepo = &studioBatchTaskCreationSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:            "batch-1",
+			Prompt:        "retro cherries",
+			ImageStrategy: "sds_official",
+			Selection: SheinStudioSelectionSnapshot{
+				ProductID:       1001,
+				ParentProductID: 2002,
+				VariantID:       3003,
+			},
+		},
+	}
+
+	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
+		DesignIDs:                   []string{"design-1"},
+		AllowPartialWhileGenerating: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateStudioBatchTasks() error = %v", err)
+	}
+	if len(result.CreatedTasks) != 1 || result.CreatedTasks[0].DesignID != "design-1" {
+		t.Fatalf("created tasks = %+v, want design-1 task", result.CreatedTasks)
+	}
+}
+
 func TestServiceCreateStudioBatchTasks_UsesBatchGraphWithoutSession(t *testing.T) {
 	t.Parallel()
 

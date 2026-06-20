@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
@@ -129,6 +131,7 @@ func (c *Client) SubmitImageGeneration(ctx context.Context, req *openaiclient.Im
 	if err != nil {
 		return nil, err
 	}
+	c.logSubmitDiagnostic(ctx, submitURL, submitReq, "generation")
 	payload, err := c.submitGenerationRequestNoPoll(ctx, submitURL, submitReq)
 	if err != nil {
 		return nil, err
@@ -180,6 +183,7 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 	if err != nil {
 		return nil, err
 	}
+	c.logSubmitDiagnostic(ctx, submitURL, submitReq, "edit")
 	payload, err := c.submitGenerationRequestNoPoll(ctx, submitURL, submitReq)
 	if err != nil {
 		return nil, err
@@ -196,6 +200,26 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 		return nil, err
 	}
 	return response, nil
+}
+
+func (c *Client) logSubmitDiagnostic(ctx context.Context, submitURL string, req submitRequest, mode string) {
+	fields := logrus.Fields{
+		"mode":                mode,
+		"submit_url":          submitURL,
+		"model":               req.Model,
+		"size":                req.Size,
+		"image_count":         len(req.Image),
+		"configured_timeout":  c.cfg.Timeout.String(),
+		"http_client_timeout": c.httpClient.Timeout.String(),
+		"max_attempts":        c.cfg.MaxAttempts,
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		fields["ctx_deadline"] = deadline.UTC().Format(time.RFC3339Nano)
+		fields["ctx_deadline_remaining_ms"] = time.Until(deadline).Milliseconds()
+	} else {
+		fields["ctx_deadline"] = "none"
+	}
+	logrus.WithFields(fields).Info("nanobanana submit diagnostic")
 }
 
 func (c *Client) attachSubmitResponseData(ctx context.Context, payload *resultPayload, response *openaiclient.ImageAsyncSubmitResponse) error {
@@ -312,6 +336,7 @@ func (c *Client) submitImagesGeneration(ctx context.Context, req submitRequest) 
 	if err != nil {
 		return nil, err
 	}
+	c.logSubmitDiagnostic(ctx, submitURL, req, "sync")
 	resultURL, err := buildResultURL(c.cfg.SubmitURL)
 	if err != nil {
 		return nil, err

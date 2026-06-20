@@ -214,6 +214,7 @@ type stubStudioImageGenerator struct {
 	editRequests     []*AIImageEditRequest
 	asyncEditCalls   int
 	asyncEditReqs    []*AIImageEditRequest
+	asyncSupported   *bool
 	asyncSubmit      *AIImageAsyncSubmit
 	generateCalls    int
 	generateErrs     []error
@@ -280,6 +281,9 @@ func (s *stubStudioImageGenerator) GetDefaultModel() string {
 }
 
 func (s *stubStudioImageGenerator) SupportsAsyncImageGeneration() bool {
+	if s.asyncSupported != nil {
+		return *s.asyncSupported
+	}
 	return s.asyncSubmit != nil
 }
 
@@ -326,6 +330,30 @@ func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing
 	}
 	if len(generator.asyncEditReqs) != 1 || len(generator.asyncEditReqs[0].ImageURLs) != 2 {
 		t.Fatalf("async edit requests = %+v, want 2 reference images", generator.asyncEditReqs)
+	}
+}
+
+func TestSubmitStudioDesignsAsyncAttemptsSubmitWhenCapabilityProbeIsContextBlind(t *testing.T) {
+	asyncSupported := false
+	generator := &stubStudioImageGenerator{
+		asyncSupported: &asyncSupported,
+		asyncSubmit: &AIImageAsyncSubmit{
+			JobID:     "job-contextual-1",
+			RequestID: "req-contextual-1",
+			Provider:  "nanobanana",
+		},
+	}
+	svc := &taskStudioMediaService{imageGenerator: generator}
+
+	result, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+		Prompt: "retro cherries",
+		Count:  1,
+	})
+	if err != nil {
+		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
+	}
+	if result == nil || result.Submit == nil || result.Submit.JobID != "job-contextual-1" {
+		t.Fatalf("result = %+v, want contextual async submit metadata", result)
 	}
 }
 
