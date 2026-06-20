@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"strings"
 
-	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,15 +23,20 @@ type processorRegistration struct {
 }
 
 type PlatformProcessorRegistry struct {
-	config                 *config.Config
-	logger                 *logrus.Logger
-	managementClient       *management.ClientManager
-	sharedCrawlSource      runner.CrawlSource
-	sharedProductFetcher   appfetcher.ProductFetcher
-	rabbitmqClient         *rabbitmq.Client
-	enabledPlatforms       []string
-	sharedResourceProvider SharedResourceProvider
-	platformModules        []PlatformModule
+	config                  *config.Config
+	logger                  *logrus.Logger
+	managementClient        *management.ClientManager
+	rawJSONDataClient       product.RawJsonDataClient
+	storeAPI                managementapi.StoreAPI
+	schedulerRuntime        runner.SchedulerRuntimeProvider
+	schedulerFactoryRuntime SchedulerFactoryRuntime
+	processorRuntime        ProcessorRuntime
+	sharedCrawlSource       runner.CrawlSource
+	sharedProductFetcher    appfetcher.ProductFetcher
+	rabbitmqClient          *rabbitmq.Client
+	enabledPlatforms        []string
+	sharedResourceProvider  SharedResourceProvider
+	platformModules         []PlatformModule
 }
 
 func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr string, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
@@ -85,6 +92,11 @@ func (r *PlatformProcessorRegistry) initializeSharedResources(needsAmazon bool) 
 	}
 
 	r.managementClient = resources.ManagementClient
+	r.rawJSONDataClient = resources.RawJSONDataClient
+	r.storeAPI = resources.StoreAPI
+	r.schedulerRuntime = resources.SchedulerRuntime
+	r.schedulerFactoryRuntime = resources.SchedulerFactoryRuntime
+	r.processorRuntime = resources.ProcessorRuntime
 	r.sharedCrawlSource = resources.CrawlSource
 	r.sharedProductFetcher = resources.ProductFetcher
 	r.logger.Info("shared resources initialized")
@@ -139,14 +151,19 @@ func (r *PlatformProcessorRegistry) runtimeContext(
 	schedulerBuilder SchedulerDependenciesBuilder,
 ) PlatformRuntimeContext {
 	return PlatformRuntimeContext{
-		Config:           r.config,
-		Logger:           r.logger,
-		ManagementClient: r.managementClient,
-		CrawlSource:      r.sharedCrawlSource,
-		ProductFetcher:   r.sharedProductFetcher,
-		RabbitMQClient:   r.rabbitmqClient,
-		ServiceManager:   serviceManager,
-		SchedulerBuilder: schedulerBuilder,
+		Config:                  r.config,
+		Logger:                  r.logger,
+		ManagementClient:        r.managementClient,
+		RawJSONDataClient:       r.rawJSONDataClient,
+		StoreAPI:                r.storeAPI,
+		SchedulerRuntime:        r.schedulerRuntime,
+		SchedulerFactoryRuntime: r.schedulerFactoryRuntime,
+		ProcessorRuntime:        r.processorRuntime,
+		CrawlSource:             r.sharedCrawlSource,
+		ProductFetcher:          r.sharedProductFetcher,
+		RabbitMQClient:          r.rabbitmqClient,
+		ServiceManager:          serviceManager,
+		SchedulerBuilder:        schedulerBuilder,
 	}
 }
 

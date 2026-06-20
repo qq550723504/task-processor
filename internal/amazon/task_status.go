@@ -99,7 +99,7 @@ func (p *Processor) updateTaskStatusSyncWithInput(input taskstatus.UpdateInput) 
 		if managementClient == nil {
 			return nil
 		}
-		return managementClient.GetImportTaskClient()
+		return taskstatus.NewManagementClientAdapter(managementClient)
 	})
 
 	if err := statusService.TransitionSyncWithInput(model.TaskStatusProcessing, input); err != nil {

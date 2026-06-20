@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/api/marketing"
 	"task-processor/internal/shein/productsync"
 
@@ -22,7 +22,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigs(
 	configList := make([]marketing.ActivityConfig, 0, len(products))
 
 	// 使用公共的ProductDataHelper构建SKC属性映射
-	helper := NewProductDataHelper(s.managementClient, s.logger.Logger)
+	helper := NewProductDataHelper(s.productDataRepo, s.logger.Logger)
 	skcAttributesMap, err := helper.BuildSkcAttributesMap(storeID)
 	if err != nil {
 		s.logger.WithError(err).Warn("构建SKC属性映射失败，使用原有逻辑")
@@ -65,7 +65,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigs(
 
 			// 检查映射价格信息
 			var hasMappingPrice bool
-			if sku.MappingInfo != nil && sku.MappingInfo.CostPrice != nil && *sku.MappingInfo.CostPrice > 0 {
+			if sku.MappingInfo != nil && sku.MappingInfo.CostPrice > 0 {
 				if parsedPrice, parseErr := strconv.ParseFloat(sku.CostPriceInfo.CostPrice, 64); parseErr == nil && parsedPrice > 0 {
 					hasMappingPrice = true
 				}
@@ -155,7 +155,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 	maxProductsPerActivity := 500 // SHEIN平台限制:一次活动最多500个商品
 
 	// 使用公共的ProductDataHelper构建SKC属性映射
-	helper := NewProductDataHelper(s.managementClient, s.logger.Logger)
+	helper := NewProductDataHelper(s.productDataRepo, s.logger.Logger)
 	skcAttributesMap, err := helper.BuildSkcAttributesMap(storeID)
 	if err != nil {
 		s.logger.WithError(err).Warn("构建SKC属性映射失败，无法使用利润率模式")
@@ -214,7 +214,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 
 			// 获取映射信息中的原价
 			var originalPrice float64
-			if sku.MappingInfo != nil && sku.MappingInfo.CostPrice != nil && *sku.MappingInfo.CostPrice > 0 {
+			if sku.MappingInfo != nil && sku.MappingInfo.CostPrice > 0 {
 				// 半托从CostPriceInfo中解析价格字符串，//todo:自营全托
 				if parsedPrice, err := strconv.ParseFloat(sku.CostPriceInfo.CostPrice, 64); err == nil && parsedPrice > 0 {
 					originalPrice = parsedPrice
@@ -347,8 +347,8 @@ func (s *activityRegistrationServiceImpl) calculateActivityStock(totalStock int,
 
 // buildTimeLimitedDiscountConfig 构建限时折扣配置
 func (s *activityRegistrationServiceImpl) buildTimeLimitedDiscountConfig(
-	storeInfo *managementapi.StoreRespDTO,
-	strategy *managementapi.OperationStrategyDTO,
+	storeInfo *listingruntime.StoreInfo,
+	strategy *listingruntime.OperationStrategy,
 ) TimeLimitedDiscountConfig {
 	// 获取默认配置
 	config := DefaultTimeLimitedDiscountConfig()

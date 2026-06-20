@@ -89,3 +89,40 @@ func TestFindProfitRuleRowsAppliesResourceFilters(t *testing.T) {
 		t.Fatalf("rows = %+v total=%d, want only fully matched rule", rows, total)
 	}
 }
+
+func TestGormProfitRuleRepositoryResolveProfitRulePrefersStoreThenGlobal(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingProfitRule{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, row := range []listingProfitRule{
+		{TenantID: 101, Name: "global", RuleCode: "PR-GLOBAL", SalePriceMultiplier: 1.1, Status: 1, Deleted: 0},
+		{TenantID: 101, Name: "store", RuleCode: "PR-STORE", StoreID: 11, SalePriceMultiplier: 1.3, Status: 1, Deleted: 0},
+	} {
+		if err := db.Table("listing_profit_rule").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	repo := NewGormProfitRuleRepository(db)
+	rule, err := repo.ResolveProfitRule(context.Background(), 101, 11)
+	if err != nil {
+		t.Fatalf("ResolveProfitRule() error = %v", err)
+	}
+	if rule == nil || rule.RuleCode != "PR-STORE" {
+		t.Fatalf("store rule = %+v, want store-specific rule", rule)
+	}
+
+	rule, err = repo.ResolveProfitRule(context.Background(), 101, 88)
+	if err != nil {
+		t.Fatalf("ResolveProfitRule() global fallback error = %v", err)
+	}
+	if rule == nil || rule.RuleCode != "PR-GLOBAL" {
+		t.Fatalf("global fallback rule = %+v, want global rule", rule)
+	}
+}

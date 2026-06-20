@@ -2,7 +2,7 @@ package validation
 
 import (
 	"task-processor/internal/core/logger"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 )
@@ -46,7 +46,7 @@ func (h *ReapplyFilterRuleHandler) Handle(ctx *shein.TaskContext) error {
 	return nil
 }
 
-func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRuleDTO *managementapi.FilterRuleRespDTO, variant model.Product, ctx *shein.TaskContext) error {
+func (h *ReapplyFilterRuleHandler) applyFilterRuleToVariant(filterRuleDTO *listingruntime.FilterRule, variant model.Product, ctx *shein.TaskContext) error {
 	priceType := "special"
 	if ctx.StoreInfo != nil && ctx.StoreInfo.PriceType != "" {
 		priceType = ctx.StoreInfo.PriceType

@@ -5,25 +5,24 @@ import (
 	"errors"
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/shein/inventory"
 )
 
 // mockInventorySyncService 模拟 SHEIN 库存同步服务
 type mockInventorySyncService struct {
-	fetchFunc   func(ctx context.Context, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
-	monitorFunc func(ctx context.Context, products []*managementapi.ProductDataDTO, tenantID, storeID int64) (*inventory.MonitorResult, error)
+	fetchFunc   func(ctx context.Context, tenantID, storeID int64) ([]*inventory.InventoryProductSnapshot, error)
+	monitorFunc func(ctx context.Context, products []*inventory.InventoryProductSnapshot, tenantID, storeID int64) (*inventory.MonitorResult, error)
 }
 
-func (m *mockInventorySyncService) FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+func (m *mockInventorySyncService) FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]*inventory.InventoryProductSnapshot, error) {
 	if m.fetchFunc != nil {
 		return m.fetchFunc(ctx, tenantID, storeID)
 	}
-	return []*managementapi.ProductDataDTO{}, nil
+	return []*inventory.InventoryProductSnapshot{}, nil
 }
 
-func (m *mockInventorySyncService) MonitorInventoryChanges(ctx context.Context, products []*managementapi.ProductDataDTO, tenantID, storeID int64) (*inventory.MonitorResult, error) {
+func (m *mockInventorySyncService) MonitorInventoryChanges(ctx context.Context, products []*inventory.InventoryProductSnapshot, tenantID, storeID int64) (*inventory.MonitorResult, error) {
 	if m.monitorFunc != nil {
 		return m.monitorFunc(ctx, products, tenantID, storeID)
 	}
@@ -42,14 +41,14 @@ func TestNewInventorySyncServiceAdapter(t *testing.T) {
 func TestInventorySyncAdapter_FetchProducts(t *testing.T) {
 	tests := []struct {
 		name      string
-		fetchFunc func(ctx context.Context, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
+		fetchFunc func(ctx context.Context, tenantID, storeID int64) ([]*inventory.InventoryProductSnapshot, error)
 		wantLen   int
 		wantErr   bool
 	}{
 		{
 			name: "成功获取产品列表",
-			fetchFunc: func(_ context.Context, _, _ int64) ([]*managementapi.ProductDataDTO, error) {
-				return []*managementapi.ProductDataDTO{
+			fetchFunc: func(_ context.Context, _, _ int64) ([]*inventory.InventoryProductSnapshot, error) {
+				return []*inventory.InventoryProductSnapshot{
 					{ProductID: "p1"},
 					{ProductID: "p2"},
 				}, nil
@@ -59,15 +58,15 @@ func TestInventorySyncAdapter_FetchProducts(t *testing.T) {
 		},
 		{
 			name: "空产品列表",
-			fetchFunc: func(_ context.Context, _, _ int64) ([]*managementapi.ProductDataDTO, error) {
-				return []*managementapi.ProductDataDTO{}, nil
+			fetchFunc: func(_ context.Context, _, _ int64) ([]*inventory.InventoryProductSnapshot, error) {
+				return []*inventory.InventoryProductSnapshot{}, nil
 			},
 			wantLen: 0,
 			wantErr: false,
 		},
 		{
 			name: "服务返回错误",
-			fetchFunc: func(_ context.Context, _, _ int64) ([]*managementapi.ProductDataDTO, error) {
+			fetchFunc: func(_ context.Context, _, _ int64) ([]*inventory.InventoryProductSnapshot, error) {
 				return nil, errors.New("fetch failed")
 			},
 			wantErr: true,
@@ -91,9 +90,9 @@ func TestInventorySyncAdapter_FetchProducts(t *testing.T) {
 			if len(results) != tt.wantLen {
 				t.Errorf("len(results) = %d, want %d", len(results), tt.wantLen)
 			}
-			// 验证元素类型可以断言回 *ProductDataDTO
+			// 验证元素类型可以断言回 *InventoryProductSnapshot
 			for i, r := range results {
-				if _, ok := r.(*managementapi.ProductDataDTO); !ok {
+				if _, ok := r.(*inventory.InventoryProductSnapshot); !ok {
 					t.Errorf("results[%d] type assertion failed: got %T", i, r)
 				}
 			}
@@ -106,17 +105,17 @@ func TestInventorySyncAdapter_MonitorInventoryChanges(t *testing.T) {
 	tests := []struct {
 		name        string
 		products    []any
-		monitorFunc func(ctx context.Context, products []*managementapi.ProductDataDTO, tenantID, storeID int64) (*inventory.MonitorResult, error)
+		monitorFunc func(ctx context.Context, products []*inventory.InventoryProductSnapshot, tenantID, storeID int64) (*inventory.MonitorResult, error)
 		wantResult  *platformtask.InventorySyncResult
 		wantErr     bool
 	}{
 		{
 			name: "成功监控并映射结果字段",
 			products: []any{
-				&managementapi.ProductDataDTO{ProductID: "p1"},
-				&managementapi.ProductDataDTO{ProductID: "p2"},
+				&inventory.InventoryProductSnapshot{ProductID: "p1"},
+				&inventory.InventoryProductSnapshot{ProductID: "p2"},
 			},
-			monitorFunc: func(_ context.Context, _ []*managementapi.ProductDataDTO, _, _ int64) (*inventory.MonitorResult, error) {
+			monitorFunc: func(_ context.Context, _ []*inventory.InventoryProductSnapshot, _, _ int64) (*inventory.MonitorResult, error) {
 				return &inventory.MonitorResult{
 					TotalProducts:     2,
 					ProcessedProducts: 2,
@@ -140,7 +139,7 @@ func TestInventorySyncAdapter_MonitorInventoryChanges(t *testing.T) {
 		{
 			name:     "空产品列表",
 			products: []any{},
-			monitorFunc: func(_ context.Context, _ []*managementapi.ProductDataDTO, _, _ int64) (*inventory.MonitorResult, error) {
+			monitorFunc: func(_ context.Context, _ []*inventory.InventoryProductSnapshot, _, _ int64) (*inventory.MonitorResult, error) {
 				return &inventory.MonitorResult{}, nil
 			},
 			wantResult: &platformtask.InventorySyncResult{},
@@ -155,9 +154,9 @@ func TestInventorySyncAdapter_MonitorInventoryChanges(t *testing.T) {
 		{
 			name: "服务返回错误",
 			products: []any{
-				&managementapi.ProductDataDTO{ProductID: "p1"},
+				&inventory.InventoryProductSnapshot{ProductID: "p1"},
 			},
-			monitorFunc: func(_ context.Context, _ []*managementapi.ProductDataDTO, _, _ int64) (*inventory.MonitorResult, error) {
+			monitorFunc: func(_ context.Context, _ []*inventory.InventoryProductSnapshot, _, _ int64) (*inventory.MonitorResult, error) {
 				return nil, errors.New("monitor failed")
 			},
 			wantErr: true,

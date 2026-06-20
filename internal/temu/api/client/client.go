@@ -4,7 +4,6 @@ package client
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/clients/management/api"
 
 	"task-processor/internal/core/logger"
@@ -27,7 +26,7 @@ type APIClient struct {
 }
 
 // NewAPIClient 创建TEMU API客户端
-func NewAPIClient(storeID int64, managementClient *management.ClientManager) *APIClient {
+func NewAPIClient(storeID int64, storeRuntime StoreRuntime) *APIClient {
 	config := DefaultConfig()
 
 	logger := logger.GetGlobalLogger("TEMUAPIClient").WithField("storeID", storeID)
@@ -35,13 +34,13 @@ func NewAPIClient(storeID int64, managementClient *management.ClientManager) *AP
 	apiClient := &APIClient{
 		config:        config,
 		storeID:       storeID,
-		cookieManager: NewCookieManager(storeID, managementClient),
+		cookieManager: NewCookieManager(storeID, storeRuntime),
 		logger:        logger,
 	}
 
 	// 获取店铺配置信息（包括代理设置）
-	if managementClient != nil {
-		storeClient := managementClient.GetStoreClient()
+	if storeRuntime != nil {
+		storeClient := storeRuntime.GetStoreClient()
 		if storeClient != nil {
 			if storeInfo, err := storeClient.GetStore(storeID); err != nil {
 				apiClient.logger.WithError(err).Warn("获取店铺配置失败，将不使用代理")
@@ -75,19 +74,19 @@ func NewAPIClient(storeID int64, managementClient *management.ClientManager) *AP
 	}
 
 	// 初始化时处理MallID设置逻辑
-	apiClient.initializeMallID(managementClient)
+	apiClient.initializeMallID(storeRuntime)
 
 	return apiClient
 }
 
 // initializeMallID 初始化时处理MallID设置逻辑
-func (c *APIClient) initializeMallID(managementClient *management.ClientManager) {
-	if managementClient == nil {
+func (c *APIClient) initializeMallID(storeRuntime StoreRuntime) {
+	if storeRuntime == nil {
 		c.logger.Warn("管理客户端为空，跳过MallID初始化")
 		return
 	}
 
-	storeClient := managementClient.GetStoreClient()
+	storeClient := storeRuntime.GetStoreClient()
 	if storeClient == nil {
 		c.logger.Warn("店铺客户端为空，跳过MallID初始化")
 		return

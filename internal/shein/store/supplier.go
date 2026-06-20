@@ -6,18 +6,10 @@ import (
 )
 
 // SupplierInfoHandler 获取供应商信息处理器
-type SupplierInfoHandler struct {
-	storeClient interface {
-		DeleteStoreCookie(id int64) (bool, error)
-	}
-}
+type SupplierInfoHandler struct{}
 
-func NewSupplierInfoHandler(storeClient interface {
-	DeleteStoreCookie(id int64) (bool, error)
-}) *SupplierInfoHandler {
-	return &SupplierInfoHandler{
-		storeClient: storeClient,
-	}
+func NewSupplierInfoHandler() *SupplierInfoHandler {
+	return &SupplierInfoHandler{}
 }
 
 func (h *SupplierInfoHandler) Name() string {

@@ -115,3 +115,23 @@ func (r *GormPricingRuleRepository) DeletePricingRule(ctx context.Context, tenan
 	}
 	return updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_pricing_rule"), tenantID, id, "owner_user_id", updates, ErrPricingRuleNotFound)
 }
+
+func (r *GormPricingRuleRepository) ListByStoreID(ctx context.Context, storeID int64) ([]PricingRule, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("pricing rule repository database is not configured")
+	}
+	var rows []listingPricingRule
+	err := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_pricing_rule").Where("store_id = ? AND deleted = 0", storeID),
+		ctx,
+		"owner_user_id",
+	).Order("id desc").Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	items := make([]PricingRule, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, row.toPricingRule())
+	}
+	return items, nil
+}

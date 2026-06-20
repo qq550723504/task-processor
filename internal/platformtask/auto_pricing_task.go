@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
 	appscheduler "task-processor/internal/scheduler"
 
 	"task-processor/internal/core/logger"
@@ -36,22 +35,32 @@ type AutoPricingService interface {
 	SubmitPricingResults(ctx context.Context, results []any) (*PricingStats, error)
 }
 
+type AutoPricingStoreConfig struct {
+	Name            string
+	EnableAutoPrice *bool
+	EnableRebargain *bool
+}
+
+type AutoPricingStoreConfigProvider interface {
+	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*AutoPricingStoreConfig, error)
+}
+
 // AutoPricingTask 通用自动核价任务
 // 用于半托管模式电商平台的价格审核和自动核价
 type AutoPricingTask struct {
 	*BaseTask
-	managementClient *management.ClientManager
-	pricingService   AutoPricingService
-	logger           *logrus.Entry
-	platformName     string
+	storeConfigProvider AutoPricingStoreConfigProvider
+	pricingService      AutoPricingService
+	logger              *logrus.Entry
+	platformName        string
 }
 
 // AutoPricingTaskConfig 自动核价任务配置
 type AutoPricingTaskConfig struct {
-	TaskConfig       appscheduler.TaskConfig
-	ManagementClient *management.ClientManager
-	PricingService   AutoPricingService
-	PlatformName     string
+	TaskConfig          appscheduler.TaskConfig
+	StoreConfigProvider AutoPricingStoreConfigProvider
+	PricingService      AutoPricingService
+	PlatformName        string
 }
 
 // NewAutoPricingTask 创建通用自动核价任务
@@ -59,10 +68,10 @@ func NewAutoPricingTask(config AutoPricingTaskConfig) *AutoPricingTask {
 	baseTask := NewBaseTask(config.TaskConfig)
 
 	return &AutoPricingTask{
-		BaseTask:         baseTask,
-		managementClient: config.ManagementClient,
-		pricingService:   config.PricingService,
-		platformName:     config.PlatformName,
+		BaseTask:            baseTask,
+		storeConfigProvider: config.StoreConfigProvider,
+		pricingService:      config.PricingService,
+		platformName:        config.PlatformName,
 		logger: logger.GetGlobalLogger("platformtask/auto_pricing_task.go").WithFields(logrus.Fields{
 			"component": fmt.Sprintf("%sAutoPricingTask", config.PlatformName),
 			"task_id":   baseTask.GetID(),
@@ -80,7 +89,10 @@ func (t *AutoPricingTask) Execute(ctx context.Context) error {
 	t.logger.Infof("开始执行%s自动核价任务", t.platformName)
 
 	// 1. 检查店铺是否启用自动核价
-	storeInfo, err := t.managementClient.GetStoreClient().GetStore(t.GetStoreID())
+	if t.storeConfigProvider == nil {
+		return fmt.Errorf("auto pricing store config provider is required")
+	}
+	storeInfo, err := t.storeConfigProvider.GetAutoPricingStoreConfig(ctx, t.GetStoreID())
 	if err != nil {
 		return fmt.Errorf("获取店铺信息失败: %w", err)
 	}
@@ -133,9 +145,8 @@ func (t *AutoPricingTask) Execute(ctx context.Context) error {
 	return nil
 }
 
-// GetManagementClient 获取管理客户端
-func (t *AutoPricingTask) GetManagementClient() *management.ClientManager {
-	return t.managementClient
+func (t *AutoPricingTask) GetStoreConfigProvider() AutoPricingStoreConfigProvider {
+	return t.storeConfigProvider
 }
 
 // GetPricingService 获取核价服务

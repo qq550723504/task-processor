@@ -58,6 +58,7 @@ type ProductDataQuery struct {
 	ParentProductID   string
 	Title             string
 	Brand             string
+	Category          string
 	Status            *int16
 	PlatformProductID string
 	ShelfStatus       *int
@@ -77,6 +78,8 @@ type ProductDataRepository interface {
 	UpdateProductData(ctx context.Context, product *ProductData) (*ProductData, error)
 	UpdateProductDataStatus(ctx context.Context, tenantID, id int64, status int16) (*ProductData, error)
 	DeleteProductData(ctx context.Context, tenantID, id int64) error
+	UpsertProductDataBatch(ctx context.Context, items []ProductData) (int, error)
+	BatchUpdateAttributesByPlatformProductID(ctx context.Context, items []ProductData) (int, error)
 }
 
 type listingProductData struct {

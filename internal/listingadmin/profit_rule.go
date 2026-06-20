@@ -46,6 +46,7 @@ type ProfitRulePage struct {
 type ProfitRuleRepository interface {
 	ListProfitRules(ctx context.Context, query ProfitRuleQuery) (*ProfitRulePage, error)
 	GetProfitRule(ctx context.Context, tenantID, id int64) (*ProfitRule, error)
+	ResolveProfitRule(ctx context.Context, tenantID, storeID int64) (*ProfitRule, error)
 	CreateProfitRule(ctx context.Context, rule *ProfitRule) (*ProfitRule, error)
 	UpdateProfitRule(ctx context.Context, rule *ProfitRule) (*ProfitRule, error)
 	UpdateProfitRuleStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*ProfitRule, error)

@@ -4,7 +4,7 @@ package inventory
 import (
 	"context"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -13,14 +13,13 @@ import (
 // handlePriceChangeWithStrategy 根据价格变化策略处理库存（基于利润率）
 func (s *inventorySyncServiceImpl) handlePriceChangeWithStrategy(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	amazonProduct *model.Product,
 	skuMapping *SKUMappingData,
 	storeID int64,
 ) error {
 	// 获取运营策略
-	strategyClient := s.managementClient.GetOperationStrategyClient()
-	strategy, err := strategyClient.GetOperationStrategyByStoreId(storeID)
+	strategy, err := s.strategyProvider.GetRuntimeOperationStrategy(storeID)
 	if err != nil {
 		s.logger.WithError(err).Debug("获取运营策略失败，跳过价格变化处理")
 		return nil
@@ -73,8 +72,8 @@ func (s *inventorySyncServiceImpl) handlePriceChangeWithStrategy(
 	}
 
 	s.logger.WithFields(logrus.Fields{
-		"asin":             mappingInfo.ProductId,
-		"sku":              s.getStringValue(mappingInfo.Sku),
+		"asin":             mappingInfo.ProductID,
+		"sku":              s.getStringValue(mappingInfo.SKU),
 		"old_cost_price":   oldCostPrice,
 		"new_cost_price":   newCostPrice,
 		"shein_sale_price": sheinSalePrice,
@@ -98,9 +97,9 @@ func (s *inventorySyncServiceImpl) handlePriceChangeWithStrategy(
 // handleLowProfitRate 处理低利润率情况
 func (s *inventorySyncServiceImpl) handleLowProfitRate(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	skuMapping *SKUMappingData,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 	storeID int64,
 	profitRate float64,
 ) error {
@@ -112,8 +111,8 @@ func (s *inventorySyncServiceImpl) handleLowProfitRate(
 	s.logger.WithFields(logrus.Fields{
 		"product_id":  prod.ProductID,
 		"spu_name":    prod.PlatformProductID,
-		"sku":         s.getStringValue(skuMapping.MappingInfo.Sku),
-		"asin":        skuMapping.MappingInfo.ProductId,
+		"sku":         s.getStringValue(skuMapping.MappingInfo.SKU),
+		"asin":        skuMapping.MappingInfo.ProductID,
 		"profit_rate": profitRate,
 		"min_profit":  strategy.MinProfitRate,
 		"action":      action,
@@ -139,9 +138,9 @@ func (s *inventorySyncServiceImpl) handleLowProfitRate(
 // handleProfitRateRestore 处理利润率恢复情况
 func (s *inventorySyncServiceImpl) handleProfitRateRestore(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	skuMapping *SKUMappingData,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 	storeID int64,
 	profitRate float64,
 ) error {
@@ -160,8 +159,8 @@ func (s *inventorySyncServiceImpl) handleProfitRateRestore(
 	s.logger.WithFields(logrus.Fields{
 		"product_id":    prod.ProductID,
 		"spu_name":      prod.PlatformProductID,
-		"sku":           s.getStringValue(skuMapping.MappingInfo.Sku),
-		"asin":          skuMapping.MappingInfo.ProductId,
+		"sku":           s.getStringValue(skuMapping.MappingInfo.SKU),
+		"asin":          skuMapping.MappingInfo.ProductID,
 		"profit_rate":   profitRate,
 		"min_profit":    strategy.MinProfitRate,
 		"restore_stock": restoreStock,
@@ -171,7 +170,7 @@ func (s *inventorySyncServiceImpl) handleProfitRateRestore(
 }
 
 // getRestoreStockAmount 获取恢复库存的数量
-func (s *inventorySyncServiceImpl) getRestoreStockAmount(strategy *managementapi.OperationStrategyDTO) int {
+func (s *inventorySyncServiceImpl) getRestoreStockAmount(strategy *listingruntime.OperationStrategy) int {
 	if strategy.RestoreStockAmount > 0 {
 		return strategy.RestoreStockAmount
 	}

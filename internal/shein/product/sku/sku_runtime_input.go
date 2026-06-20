@@ -3,7 +3,7 @@ package sku
 import (
 	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheinimage "task-processor/internal/shein/api/image"
@@ -16,8 +16,8 @@ type RuntimeInput struct {
 	Variants           []model.Product
 	AttributeTemplates *sheinattribute.AttributeTemplateInfo
 	AsinSkuMap         map[string]string
-	StoreInfo          *managementapi.StoreRespDTO
-	ProfitRule         *managementapi.ProfitRuleRespDTO
+	StoreInfo          *listingruntime.StoreInfo
+	ProfitRule         *listingruntime.ProfitRule
 	SiteList           []productapi.SiteInfo
 	Region             string
 	ImageAPI           sheinimage.ImageAPI

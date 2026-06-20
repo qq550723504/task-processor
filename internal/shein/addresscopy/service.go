@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/shein/api/warehouse"
 	sheinclient "task-processor/internal/shein/client"
 	sheinmanagedclient "task-processor/internal/shein/managedclient"
@@ -13,18 +12,20 @@ import (
 )
 
 type Service struct {
-	managementClient *management.ClientManager
-	logger           *logrus.Entry
+	cookieProvider sheinclient.CookieProvider
+	storeProvider  sheinclient.StoreConfigProvider
+	logger         *logrus.Entry
 }
 
-func NewService(managementClient *management.ClientManager, logger *logrus.Logger) *Service {
+func NewService(cookieProvider sheinclient.CookieProvider, storeProvider sheinclient.StoreConfigProvider, logger *logrus.Logger) *Service {
 	entry := logrus.NewEntry(logger)
 	if logger == nil {
 		entry = logrus.NewEntry(logrus.New())
 	}
 	return &Service{
-		managementClient: managementClient,
-		logger:           entry.WithField("component", "shein-address-copy"),
+		cookieProvider: cookieProvider,
+		storeProvider:  storeProvider,
+		logger:         entry.WithField("component", "shein-address-copy"),
 	}
 }
 
@@ -136,11 +137,18 @@ func (s *Service) Copy(_ context.Context, req CopyRequest) (*CopyResult, error) 
 }
 
 func (s *Service) newWarehouseClient(storeID int64) (*warehouse.Client, error) {
-	if s.managementClient == nil {
-		return nil, fmt.Errorf("management client is nil")
+	if s.cookieProvider == nil {
+		return nil, fmt.Errorf("cookie provider is nil")
+	}
+	if s.storeProvider == nil {
+		return nil, fmt.Errorf("store provider is nil")
 	}
 
-	apiClient := sheinmanagedclient.NewAPIClient(storeID, s.managementClient)
+	apiClient := sheinmanagedclient.NewAPIClient(
+		storeID,
+		s.cookieProvider,
+		s.storeProvider,
+	)
 	if !apiClient.HasCookies() {
 		return nil, fmt.Errorf("store %d has no shein cookies", storeID)
 	}

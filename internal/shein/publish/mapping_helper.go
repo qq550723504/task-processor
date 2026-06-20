@@ -2,9 +2,10 @@
 package publish
 
 import (
-	"fmt"
+	"strconv"
+	"strings"
 
-	management_api "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/shein/productdata"
 	"task-processor/internal/shein/validation"
@@ -12,20 +13,20 @@ import (
 
 // buildMappingReq 构建产品导入映射请求，供 result.go 和 variant_success.go 共用。
 // asin 为来源平台产品ID，supplierSKU 为供应商SKU，status 为映射状态。
-func buildMappingReq(input *MappingRequestInput, asin, supplierSKU string, status model.TaskStatus) *management_api.ProductImportMappingCreateReqDTO {
+func buildMappingReq(input *MappingRequestInput, asin, supplierSKU string, status model.TaskStatus) *listingruntime.ProductImportMappingUpsert {
 	s := status.Int16()
-	req := &management_api.ProductImportMappingCreateReqDTO{
+	req := &listingruntime.ProductImportMappingUpsert{
 		TenantID:     input.Task.TenantID,
-		ImportTaskId: input.Task.ID,
-		StoreId:      input.Task.StoreID,
+		ImportTaskID: input.Task.ID,
+		StoreID:      input.Task.StoreID,
 		Platform:     input.Task.Platform,
 		Region:       input.Task.Region,
-		ProductId:    asin,
+		ProductID:    asin,
 		Status:       &s,
 	}
 
 	if supplierSKU != "" {
-		req.Sku = &supplierSKU
+		req.SKU = &supplierSKU
 	}
 
 	// 成本价
@@ -40,17 +41,17 @@ func buildMappingReq(input *MappingRequestInput, asin, supplierSKU string, statu
 
 	// 父产品ID
 	if input.AmazonProduct != nil && input.AmazonProduct.ParentAsin != "" {
-		req.ParentProductId = &input.AmazonProduct.ParentAsin
+		req.ParentProductID = &input.AmazonProduct.ParentAsin
 	}
 
 	// 平台父产品ID
 	if input.ProductData != nil && input.ProductData.SPUName != "" {
-		req.PlatformParentProductId = &input.ProductData.SPUName
+		req.PlatformParentProductID = &input.ProductData.SPUName
 	}
 
 	// 筛选规则
 	if input.FilterRule != nil {
-		req.FilterRuleId = &input.FilterRule.ID
+		req.FilterRuleID = &input.FilterRule.ID
 		filterRuleRange := buildFilterRuleRange(input.FilterRule)
 		if filterRuleRange != "" {
 			req.FilterRuleRange = &filterRuleRange
@@ -59,11 +60,11 @@ func buildMappingReq(input *MappingRequestInput, asin, supplierSKU string, statu
 
 	// 利润规则
 	if input.ProfitRule != nil {
-		req.ProfitRuleId = &input.ProfitRule.ID
-		salePriceMultiplier := fmt.Sprintf("%.2f", input.ProfitRule.SalePriceMultiplier)
+		req.ProfitRuleID = &input.ProfitRule.ID
+		salePriceMultiplier := input.ProfitRule.SalePriceMultiplier
 		req.SalePriceMultiplier = &salePriceMultiplier
 		if input.ProfitRule.DiscountPriceMultiplier > 0 {
-			discountPriceMultiplier := fmt.Sprintf("%.2f", input.ProfitRule.DiscountPriceMultiplier)
+			discountPriceMultiplier := input.ProfitRule.DiscountPriceMultiplier
 			req.DiscountPriceMultiplier = &discountPriceMultiplier
 		}
 	}
@@ -72,15 +73,36 @@ func buildMappingReq(input *MappingRequestInput, asin, supplierSKU string, statu
 }
 
 // buildFilterRuleRange 将筛选规则的价格范围格式化为字符串。
-func buildFilterRuleRange(rule *management_api.FilterRuleRespDTO) string {
+func buildFilterRuleRange(rule *listingruntime.FilterRule) string {
 	if rule.PriceMin != nil && rule.PriceMax != nil {
-		return fmt.Sprintf("%.2f-%.2f", *rule.PriceMin, *rule.PriceMax)
+		return strings.TrimSpace(formatRange(*rule.PriceMin, *rule.PriceMax, true, true))
 	}
 	if rule.PriceMin != nil {
-		return fmt.Sprintf("%.2f-", *rule.PriceMin)
+		return strings.TrimSpace(formatRange(*rule.PriceMin, 0, true, false))
 	}
 	if rule.PriceMax != nil {
-		return fmt.Sprintf("-%.2f", *rule.PriceMax)
+		return strings.TrimSpace(formatRange(0, *rule.PriceMax, false, true))
 	}
 	return ""
+}
+
+func formatRange(min float64, max float64, hasMin bool, hasMax bool) string {
+	switch {
+	case hasMin && hasMax:
+		return strconvFloat(min) + "-" + strconvFloat(max)
+	case hasMin:
+		return strconvFloat(min) + "-"
+	case hasMax:
+		return "-" + strconvFloat(max)
+	default:
+		return ""
+	}
+}
+
+func strconvFloat(value float64) string {
+	return strings.TrimRight(strings.TrimRight(fmtFloat(value), "0"), ".")
+}
+
+func fmtFloat(value float64) string {
+	return strconv.FormatFloat(value, 'f', 2, 64)
 }

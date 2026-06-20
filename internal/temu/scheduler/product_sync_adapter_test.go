@@ -3,17 +3,18 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	models "task-processor/internal/temu/api/product"
+	temusync "task-processor/internal/temu/sync"
 )
 
 // MockTemuProductSyncService 模拟Temu产品同步服务
 type MockTemuProductSyncService struct {
 	FetchProductListFunc func(ctx context.Context) ([]models.GoodsSearchItem, error)
-	ConvertProductsFunc  func(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
-	SaveProductsFunc     func(ctx context.Context, products []*managementapi.ProductDataDTO) (int, error)
+	ConvertProductsFunc  func(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*temusync.TemuProductSnapshot, error)
+	SaveProductsFunc     func(ctx context.Context, products []*temusync.TemuProductSnapshot) (int, error)
 }
 
 func (m *MockTemuProductSyncService) FetchProductList(ctx context.Context) ([]models.GoodsSearchItem, error) {
@@ -23,14 +24,14 @@ func (m *MockTemuProductSyncService) FetchProductList(ctx context.Context) ([]mo
 	return []models.GoodsSearchItem{}, nil
 }
 
-func (m *MockTemuProductSyncService) ConvertProducts(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+func (m *MockTemuProductSyncService) ConvertProducts(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*temusync.TemuProductSnapshot, error) {
 	if m.ConvertProductsFunc != nil {
 		return m.ConvertProductsFunc(ctx, products, tenantID, storeID)
 	}
-	return []*managementapi.ProductDataDTO{}, nil
+	return []*temusync.TemuProductSnapshot{}, nil
 }
 
-func (m *MockTemuProductSyncService) SaveProducts(ctx context.Context, products []*managementapi.ProductDataDTO) (int, error) {
+func (m *MockTemuProductSyncService) SaveProducts(ctx context.Context, products []*temusync.TemuProductSnapshot) (int, error) {
 	if m.SaveProductsFunc != nil {
 		return m.SaveProductsFunc(ctx, products)
 	}
@@ -101,13 +102,13 @@ func TestTemuProductSyncServiceAdapter_ConvertProducts_Success(t *testing.T) {
 		models.GoodsSearchItem{GoodsID: "2", GoodsName: "Product 2"},
 	}
 
-	mockOutput := []*managementapi.ProductDataDTO{
+	mockOutput := []*temusync.TemuProductSnapshot{
 		{ProductID: "1"},
 		{ProductID: "2"},
 	}
 
 	mockService := &MockTemuProductSyncService{
-		ConvertProductsFunc: func(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+		ConvertProductsFunc: func(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*temusync.TemuProductSnapshot, error) {
 			return mockOutput, nil
 		},
 	}
@@ -124,6 +125,9 @@ func TestTemuProductSyncServiceAdapter_ConvertProducts_Success(t *testing.T) {
 	if len(results) != 2 {
 		t.Errorf("Expected 2 products, got %d", len(results))
 	}
+	if _, ok := results[0].(*temusync.TemuProductSnapshot); !ok {
+		t.Fatalf("Expected snapshot result, got %T", results[0])
+	}
 }
 
 func TestTemuProductSyncServiceAdapter_ConvertProducts_Error(t *testing.T) {
@@ -134,7 +138,7 @@ func TestTemuProductSyncServiceAdapter_ConvertProducts_Error(t *testing.T) {
 	}
 
 	mockService := &MockTemuProductSyncService{
-		ConvertProductsFunc: func(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+		ConvertProductsFunc: func(ctx context.Context, products []models.GoodsSearchItem, tenantID, storeID int64) ([]*temusync.TemuProductSnapshot, error) {
 			return nil, expectedError
 		},
 	}
@@ -155,12 +159,12 @@ func TestTemuProductSyncServiceAdapter_ConvertProducts_Error(t *testing.T) {
 
 func TestTemuProductSyncServiceAdapter_SaveProducts_Success(t *testing.T) {
 	mockInput := []any{
-		&managementapi.ProductDataDTO{ProductID: "1"},
-		&managementapi.ProductDataDTO{ProductID: "2"},
+		&temusync.TemuProductSnapshot{ProductID: "1"},
+		&temusync.TemuProductSnapshot{ProductID: "2"},
 	}
 
 	mockService := &MockTemuProductSyncService{
-		SaveProductsFunc: func(ctx context.Context, products []*managementapi.ProductDataDTO) (int, error) {
+		SaveProductsFunc: func(ctx context.Context, products []*temusync.TemuProductSnapshot) (int, error) {
 			return len(products), nil
 		},
 	}
@@ -179,15 +183,28 @@ func TestTemuProductSyncServiceAdapter_SaveProducts_Success(t *testing.T) {
 	}
 }
 
+func TestTemuProductSyncServiceAdapter_SaveProducts_RejectsUnexpectedType(t *testing.T) {
+	mockService := &MockTemuProductSyncService{}
+	adapter := newProductSyncServiceAdapter(mockService)
+
+	_, err := adapter.SaveProducts(context.Background(), []any{"bad"})
+	if err == nil {
+		t.Fatal("SaveProducts should fail")
+	}
+	if !strings.Contains(err.Error(), "*TemuProductSnapshot") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestTemuProductSyncServiceAdapter_SaveProducts_Error(t *testing.T) {
 	expectedError := errors.New("save failed")
 
 	mockInput := []any{
-		&managementapi.ProductDataDTO{ProductID: "1"},
+		&temusync.TemuProductSnapshot{ProductID: "1"},
 	}
 
 	mockService := &MockTemuProductSyncService{
-		SaveProductsFunc: func(ctx context.Context, products []*managementapi.ProductDataDTO) (int, error) {
+		SaveProductsFunc: func(ctx context.Context, products []*temusync.TemuProductSnapshot) (int, error) {
 			return 0, expectedError
 		},
 	}

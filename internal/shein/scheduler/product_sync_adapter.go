@@ -3,8 +3,8 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/productsync"
@@ -64,11 +64,13 @@ func (a *productSyncServiceAdapter) ConvertProducts(ctx context.Context, product
 // SaveProducts 保存产品（适配到通用接口）
 func (a *productSyncServiceAdapter) SaveProducts(ctx context.Context, products []any) (int, error) {
 	// 转换回SHEIN特定类型
-	productDataList := make([]*managementapi.ProductDataDTO, len(products))
+	productDataList := make([]*productsync.ProductSnapshot, len(products))
 	for i, p := range products {
-		if pd, ok := p.(*managementapi.ProductDataDTO); ok {
-			productDataList[i] = pd
+		pd, ok := p.(*productsync.ProductSnapshot)
+		if !ok {
+			return 0, fmt.Errorf("products[%d] 类型断言失败: 期望 *ProductSnapshot, 实际 %T", i, p)
 		}
+		productDataList[i] = pd
 	}
 
 	// 调用SHEIN服务

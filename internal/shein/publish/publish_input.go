@@ -3,8 +3,7 @@ package publish
 import (
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -83,7 +82,7 @@ func buildValidationInput(ctx *shein.TaskContext) (*ValidationInput, error) {
 
 type ExistenceCheckInput struct {
 	Task                 *model.Task
-	ManagementClientMgr  *management.ClientManager
+	RuntimeRepository    publishRuntimeRepository
 	Variants             *[]model.Product
 	SetVariantFilteredFn func(asin string, filteredOut bool, reason string)
 }
@@ -95,7 +94,7 @@ func buildExistenceCheckInput(ctx *shein.TaskContext) (*ExistenceCheckInput, err
 
 	return &ExistenceCheckInput{
 		Task:                 ctx.Task,
-		ManagementClientMgr:  ctx.ManagementClientMgr,
+		RuntimeRepository:    ctx.RuntimeRepository,
 		Variants:             ctx.Variants,
 		SetVariantFilteredFn: ctx.SetVariantFiltered,
 	}, nil
@@ -105,11 +104,11 @@ type MappingRequestInput struct {
 	Task               *model.Task
 	Variants           *[]model.Product
 	UnfilteredVariants *[]model.Product
-	StoreInfo          *managementapi.StoreRespDTO
+	StoreInfo          *listingruntime.StoreInfo
 	AmazonProduct      *model.Product
 	ProductData        *sheinproduct.Product
-	FilterRule         *managementapi.FilterRuleRespDTO
-	ProfitRule         *managementapi.ProfitRuleRespDTO
+	FilterRule         *listingruntime.FilterRule
+	ProfitRule         *listingruntime.ProfitRule
 }
 
 func buildMappingRequestInput(ctx *shein.TaskContext) (*MappingRequestInput, error) {
@@ -124,7 +123,7 @@ func buildMappingRequestInput(ctx *shein.TaskContext) (*MappingRequestInput, err
 		Task:               ctx.Task,
 		Variants:           ctx.Variants,
 		UnfilteredVariants: ctx.UnFilteredVariants,
-		StoreInfo:          ctx.StoreInfo,
+		StoreInfo:          publishRuntimeStoreInfo(ctx.StoreInfo),
 		AmazonProduct:      ctx.AmazonProduct,
 		ProductData:        ctx.ProductData,
 		FilterRule:         ctx.FilterRule,
@@ -157,13 +156,13 @@ func buildSavePublishStateInput(ctx *shein.TaskContext, response *sheinproduct.S
 }
 
 type PublishResultInput struct {
-	Task                *model.Task
-	ManagementClientMgr *management.ClientManager
-	MemoryManager       *state.MemoryManager
-	StoreInfo           *managementapi.StoreRespDTO
-	SheinResponse       *sheinproduct.SheinResponse
-	AsinSkuMap          map[string]string
-	MappingInput        *MappingRequestInput
+	Task              *model.Task
+	RuntimeRepository publishRuntimeRepository
+	MemoryManager     *state.MemoryManager
+	StoreInfo         *listingruntime.StoreInfo
+	SheinResponse     *sheinproduct.SheinResponse
+	AsinSkuMap        map[string]string
+	MappingInput      *MappingRequestInput
 }
 
 func buildPublishResultInput(ctx *shein.TaskContext) (*PublishResultInput, error) {
@@ -177,24 +176,24 @@ func buildPublishResultInput(ctx *shein.TaskContext) (*PublishResultInput, error
 	}
 
 	return &PublishResultInput{
-		Task:                ctx.Task,
-		ManagementClientMgr: ctx.ManagementClientMgr,
-		MemoryManager:       ctx.MemoryManager,
-		StoreInfo:           ctx.StoreInfo,
-		SheinResponse:       ctx.SheinResponse,
-		AsinSkuMap:          ctx.AsinSkuMap,
-		MappingInput:        mappingInput,
+		Task:              ctx.Task,
+		RuntimeRepository: ctx.RuntimeRepository,
+		MemoryManager:     ctx.MemoryManager,
+		StoreInfo:         publishRuntimeStoreInfo(ctx.StoreInfo),
+		SheinResponse:     ctx.SheinResponse,
+		AsinSkuMap:        ctx.AsinSkuMap,
+		MappingInput:      mappingInput,
 	}, nil
 }
 
 type VariantPublishResultInput struct {
-	Task                *model.Task
-	ManagementClientMgr *management.ClientManager
-	SheinResponse       *sheinproduct.SheinResponse
-	UnfilteredVariants  *[]model.Product
-	AsinSkuMap          map[string]string
-	MappingInput        *MappingRequestInput
-	GetVariantFilterFn  func(asin string) *shein.VariantFilterInfo
+	Task               *model.Task
+	RuntimeRepository  publishRuntimeRepository
+	SheinResponse      *sheinproduct.SheinResponse
+	UnfilteredVariants *[]model.Product
+	AsinSkuMap         map[string]string
+	MappingInput       *MappingRequestInput
+	GetVariantFilterFn func(asin string) *shein.VariantFilterInfo
 }
 
 func buildVariantPublishResultInput(ctx *shein.TaskContext) (*VariantPublishResultInput, error) {
@@ -208,12 +207,20 @@ func buildVariantPublishResultInput(ctx *shein.TaskContext) (*VariantPublishResu
 	}
 
 	return &VariantPublishResultInput{
-		Task:                ctx.Task,
-		ManagementClientMgr: ctx.ManagementClientMgr,
-		SheinResponse:       ctx.SheinResponse,
-		UnfilteredVariants:  ctx.UnFilteredVariants,
-		AsinSkuMap:          ctx.AsinSkuMap,
-		MappingInput:        mappingInput,
-		GetVariantFilterFn:  ctx.GetVariantFilterInfo,
+		Task:               ctx.Task,
+		RuntimeRepository:  ctx.RuntimeRepository,
+		SheinResponse:      ctx.SheinResponse,
+		UnfilteredVariants: ctx.UnFilteredVariants,
+		AsinSkuMap:         ctx.AsinSkuMap,
+		MappingInput:       mappingInput,
+		GetVariantFilterFn: ctx.GetVariantFilterInfo,
 	}, nil
+}
+
+func publishRuntimeStoreInfo(storeInfo *listingruntime.StoreInfo) *listingruntime.StoreInfo {
+	if storeInfo == nil {
+		return nil
+	}
+	copy := *storeInfo
+	return &copy
 }

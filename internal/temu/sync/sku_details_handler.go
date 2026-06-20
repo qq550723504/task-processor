@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
 	temuproduct "task-processor/internal/temu/api/product"
 	temuquery "task-processor/internal/temu/api/query"
@@ -33,7 +32,7 @@ func (s *productSyncServiceImpl) fetchSkuDetails(temuProduct *temuproduct.GoodsS
 
 // fillSkuBasedPriceAndStockInfo 基于SKU查询结果填充价格和库存信息
 func (s *productSyncServiceImpl) fillSkuBasedPriceAndStockInfo(
-	productData *managementapi.ProductDataDTO,
+	productData *TemuProductSnapshot,
 	skuDetails *temuquery.SkuQueryResponse,
 ) {
 	if skuDetails == nil || len(skuDetails.Result.SkuList) == 0 {
@@ -130,7 +129,7 @@ func (s *productSyncServiceImpl) calculateStockStats(skuList []temuquery.SkuQuer
 
 // fillMappingAttributesWithSkuDetails 使用SKU详细信息填充映射属性数据
 func (s *productSyncServiceImpl) fillMappingAttributesWithSkuDetails(
-	productData *managementapi.ProductDataDTO,
+	productData *TemuProductSnapshot,
 	temuProduct *temuproduct.GoodsSearchItem,
 	skuDetails *temuquery.SkuQueryResponse,
 	storeID int64,

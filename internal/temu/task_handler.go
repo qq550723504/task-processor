@@ -111,7 +111,6 @@ func (h *TaskHandler) rollbackReservedDailyQuota(taskCtx *temucontext.TemuTaskCo
 func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *temucontext.TemuTaskContext {
 	taskCtx := temucontext.NewTemuTaskContext(ctx, task)
 	taskCtx.AttachRuntime(
-		h.processor.GetManagementClient(),
 		h.processor.GetMemoryManager(),
 		nil,
 	)
@@ -201,9 +200,9 @@ func (h *TaskHandler) isRetryableError(err error) bool {
 }
 
 func (h *TaskHandler) handleAuthenticationExpired(task model.Task, err error) {
-	managementClient := h.processor.GetManagementClient()
-	if managementClient == nil {
-		h.logger.WithField(logger.FieldTaskID, task.ID).Warn("management client is not initialized, skip store auth pause handling")
+	storeRuntime := h.processor.GetStoreRuntime()
+	if storeRuntime == nil {
+		h.logger.WithField(logger.FieldTaskID, task.ID).Warn("store runtime is not initialized, skip store auth pause handling")
 		return
 	}
 
@@ -216,7 +215,7 @@ func (h *TaskHandler) handleAuthenticationExpired(task model.Task, err error) {
 		)
 	}
 
-	storeClient := managementClient.GetStoreClient()
+	storeClient := storeRuntime.GetStoreClient()
 	if storeClient == nil {
 		h.logger.WithField(logger.FieldStoreID, task.StoreID).Warn("store client is not initialized, skip remote store pause")
 		return
@@ -258,11 +257,11 @@ func (h *TaskHandler) updateTaskStatusSyncWithInput(input taskstatus.UpdateInput
 	}).Debug("update task status synchronously")
 
 	statusService := taskstatus.NewService("temu/task_handler", func() taskstatus.ImportTaskStatusClient {
-		managementClient := h.processor.GetManagementClient()
-		if managementClient == nil {
+		runtime := h.processor.GetTaskStatusRuntime()
+		if runtime == nil {
 			return nil
 		}
-		return managementClient.GetImportTaskClient()
+		return taskstatus.NewManagementClientAdapter(runtime)
 	})
 
 	if err := statusService.TransitionSyncWithInput(model.TaskStatusProcessing, input); err != nil {
@@ -276,9 +275,9 @@ func (h *TaskHandler) updateTaskStatusSyncWithInput(input taskstatus.UpdateInput
 func (h *TaskHandler) initAPIClient(taskCtx *temucontext.TemuTaskContext, task *model.Task) {
 	storeID := task.StoreID
 
-	managementClient := h.processor.GetManagementClient()
-	if managementClient == nil {
-		h.logger.WithField(logger.FieldTaskID, task.ID).Error("management client is not initialized")
+	storeRuntime := h.processor.GetStoreRuntime()
+	if storeRuntime == nil {
+		h.logger.WithField(logger.FieldTaskID, task.ID).Error("store runtime is not initialized")
 		return
 	}
 
@@ -287,7 +286,7 @@ func (h *TaskHandler) initAPIClient(taskCtx *temucontext.TemuTaskContext, task *
 		logger.FieldStoreID:  storeID,
 	}).Debug("initialize TEMU API client")
 
-	apiClient := api.NewAPIClient(storeID, managementClient)
+	apiClient := api.NewAPIClient(storeID, storeRuntime)
 	if apiClient.HasCookies() {
 		h.logger.WithFields(logrus.Fields{
 			logger.FieldTenantID: task.TenantID,

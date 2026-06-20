@@ -88,3 +88,71 @@ func TestFindProductDataRowsAppliesResourceFilters(t *testing.T) {
 		t.Fatalf("rows = %+v total=%d, want only BrandA SHEIN alpha row", rows, total)
 	}
 }
+
+func TestGormProductDataRepositoryBatchOperations(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingProductData{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	repo := NewGormProductDataRepository(db)
+	storeID := int64(11)
+	count, err := repo.UpsertProductDataBatch(context.Background(), []ProductData{
+		{
+			TenantID:          101,
+			StoreID:           &storeID,
+			Platform:          "SHEIN",
+			Region:            "US",
+			ProductID:         "SKU-1",
+			Title:             "Alpha",
+			PlatformProductID: "SP-1",
+			Attributes:        []byte(`{"size":"M"}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpsertProductDataBatch() error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("UpsertProductDataBatch() count = %d, want 1", count)
+	}
+
+	count, err = repo.UpsertProductDataBatch(context.Background(), []ProductData{
+		{
+			TenantID:          101,
+			StoreID:           &storeID,
+			Platform:          "SHEIN",
+			Region:            "US",
+			ProductID:         "SKU-1",
+			Title:             "Alpha Updated",
+			PlatformProductID: "SP-1",
+			Attributes:        []byte(`{"size":"L"}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpsertProductDataBatch(update) error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("UpsertProductDataBatch(update) count = %d, want 1", count)
+	}
+
+	updated, err := repo.BatchUpdateAttributesByPlatformProductID(context.Background(), []ProductData{
+		{
+			TenantID:          101,
+			StoreID:           &storeID,
+			Platform:          "SHEIN",
+			PlatformProductID: "SP-1",
+			Attributes:        []byte(`{"size":"XL"}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("BatchUpdateAttributesByPlatformProductID() error = %v", err)
+	}
+	if updated != 1 {
+		t.Fatalf("BatchUpdateAttributesByPlatformProductID() updated = %d, want 1", updated)
+	}
+}

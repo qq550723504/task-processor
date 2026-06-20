@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/api/marketing"
 
 	"github.com/sirupsen/logrus"
@@ -386,7 +386,7 @@ func GenerateActivityName(username string, sequence int) string {
 // CreateTimeLimitedDiscountActivity 根据运营策略创建限时折扣活动（完整流程）
 func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
 	ctx context.Context,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 ) (int, error) {
 	s.logger.WithFields(logrus.Fields{
 		"store_id":      strategy.StoreID,
@@ -395,8 +395,7 @@ func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
 	}).Info("开始根据运营策略创建限时折扣活动")
 
 	// 1. 获取店铺信息
-	storeClient := s.managementClient.GetStoreClient()
-	storeInfo, err := storeClient.GetStore(strategy.StoreID)
+	storeInfo, err := s.getStoreInfo(ctx, strategy.StoreID)
 	if err != nil {
 		s.logger.WithError(err).Error("获取店铺信息失败")
 		return 0, fmt.Errorf("获取店铺信息失败: %w", err)

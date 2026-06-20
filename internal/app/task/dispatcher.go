@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management/api"
 )
 
 // fetchAndDispatchTasks pulls tasks from management and dispatches them to platform workers.
@@ -29,19 +28,19 @@ func (f *TaskFetcher) fetchAndDispatchTasks(ctx context.Context) {
 	}
 
 	maxTasks := f.calculateFetchCount(totalAvailableSlots)
-	apiTasks, err := f.fetchTasksFromAPI(maxTasks)
+	tasks, err := f.fetchTasksFromAPI(maxTasks)
 	if err != nil {
 		logger.GetGlobalLogger("app/task").Errorf("获取任务失败: %v", err)
 		return
 	}
 
-	if len(apiTasks) == 0 {
+	if len(tasks) == 0 {
 		logger.GetGlobalLogger("app/task").Debug("没有待处理任务")
 		return
 	}
 
-	logger.GetGlobalLogger("app/task").Infof("获取到 %d 个待处理任务", len(apiTasks))
-	f.dispatchTasks(ctx, apiTasks)
+	logger.GetGlobalLogger("app/task").Infof("获取到 %d 个待处理任务", len(tasks))
+	f.dispatchTasks(ctx, tasks)
 }
 
 // checkQueuePressure inspects submitter queue pressure and available capacity.
@@ -93,47 +92,47 @@ func (f *TaskFetcher) calculateFetchCount(totalAvailableSlots int) int {
 }
 
 // dispatchTasks orchestrates claim, guard, and submit for fetched tasks.
-func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductImportTaskRespDTO) {
+func (f *TaskFetcher) dispatchTasks(ctx context.Context, tasks []ImportTaskRecord) {
 	platformCounts := make(map[string]int)
 	errorCount := 0
 	queueFullCount := 0
 	claimService := NewTaskClaimService(f)
 	taskDispatcher := NewTaskDispatcher(f)
 
-	storeClient := f.managementClient.GetStoreClient()
+	storeClient := f.managementClient.GetRuntimeStoreService()
 	dispatchGuard := NewTaskDispatchGuard(f, storeClient)
 
-	for _, apiTask := range apiTasks {
-		apiTaskPtr := f.extractAPITask(apiTask)
-		taskID := fmt.Sprintf("%d", apiTaskPtr.ID)
+	for i := range tasks {
+		task := &tasks[i]
+		taskID := fmt.Sprintf("%d", task.ID)
 
 		logger.GetGlobalLogger("app/task").Debugf(
 			"处理任务: TaskID=%s, StoreID=%d, ProductID=%s, StatusCode=%d, StatusKey=%s, CanonicalStatus=%s",
 			taskID,
-			apiTaskPtr.StoreID,
-			apiTaskPtr.ProductID,
-			apiTaskPtr.Status,
-			apiTaskPtr.StatusKey,
-			apiTaskPtr.CanonicalStatus,
+			task.StoreID,
+			task.ProductID,
+			task.Status,
+			task.StatusKey,
+			task.CanonicalStatus,
 		)
 
-		if _, ok := claimService.Claim(apiTaskPtr); !ok {
+		if _, ok := claimService.Claim(task); !ok {
 			continue
 		}
 
-		storeInfo, isPaused, err := dispatchGuard.Check(apiTaskPtr)
+		storeInfo, isPaused, err := dispatchGuard.Check(task)
 		if err != nil {
-			f.rollbackClaimState(taskID, apiTaskPtr, "dispatch guard check failed")
+			f.rollbackClaimState(taskID, task, "dispatch guard check failed")
 			errorCount++
 			continue
 		}
 
 		if isPaused {
-			f.rollbackClaimState(taskID, apiTaskPtr, "store paused before dispatch")
+			f.rollbackClaimState(taskID, task, "store paused before dispatch")
 			continue
 		}
 
-		success, isQueueFull := taskDispatcher.Dispatch(ctx, apiTaskPtr, storeInfo)
+		success, isQueueFull := taskDispatcher.Dispatch(ctx, task, storeInfo)
 		if success {
 			platform := strings.ToLower(storeInfo.Platform)
 			platformCounts[platform]++
@@ -142,12 +141,12 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, apiTasks []api.ProductI
 		}
 
 		if isQueueFull {
-			f.rollbackClaimState(taskID, apiTaskPtr, "submitter queue full")
+			f.rollbackClaimState(taskID, task, "submitter queue full")
 			queueFullCount++
 			continue
 		}
 
-		f.rollbackClaimState(taskID, apiTaskPtr, "submitter dispatch failed")
+		f.rollbackClaimState(taskID, task, "submitter dispatch failed")
 		errorCount++
 	}
 

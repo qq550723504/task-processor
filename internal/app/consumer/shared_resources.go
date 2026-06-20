@@ -7,36 +7,95 @@ import (
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
+	platformtask "task-processor/internal/platformtask"
+	"task-processor/internal/product"
+	temupricingruntime "task-processor/internal/temu/pricing"
+	temusyncruntime "task-processor/internal/temu/sync"
 
 	"github.com/sirupsen/logrus"
 )
 
+type SchedulerFactoryRuntime interface {
+	runner.SchedulerRuntimeProvider
+	GetStoreClient() *management.StoreAPIClient
+	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
+	GetRawJsonDataAdapter() product.RawJsonDataClient
+	GetStoreAPI() managementapi.StoreAPI
+	GetPricingRuleClient() managementapi.PricingRuleAPI
+	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
+	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
+	GetLocalProductDataRepository() listingadmin.ProductDataRepository
+	PricingRuntime() temupricingruntime.ManagementRuntime
+	SyncRuntime() temusyncruntime.ServiceRuntime
+	GetRuntimeStoreService() listingruntime.StoreService
+	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
+	GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository
+	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
+	GetLocalStoreRepository() *listingadmin.GormStoreRepository
+	GetLocalInventoryRecordRepository() *listingadmin.GormInventoryRecordRepository
+	GetSheinCookie(storeID int64) (string, int64, error)
+	GetSheinStoreCookie(storeID int64) (string, error)
+}
+
+type ProcessorRuntime interface {
+	SchedulerFactoryRuntime
+	GetDailyListingCountClient() *management.DailyListingCountAPIClient
+	GetFilterRuleClient() *management.FilterRuleAPIClient
+	GetProductImportMappingClient() *management.ProductImportMappingAPIClient
+	GetProfitRuleClient() *management.ProfitRuleAPIClient
+	GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository
+	GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository
+	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
+	GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error)
+	DeleteSheinStoreCookie(storeID int64) (bool, error)
+	GetImageDownloader() *management.ImageDownloader
+	SetRuntimeStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error)
+	RuntimePublishedProductExists(ctx context.Context, storeID int64, platform, region, productID string) (bool, error)
+	FindRuntimeProductImportMappingByTaskAndSKU(ctx context.Context, importTaskID int64, sku string) (*listingruntime.ProductImportMapping, error)
+	CreateRuntimeProductImportMapping(ctx context.Context, req *listingruntime.ProductImportMappingUpsert) (int64, error)
+	UpdateRuntimeProductImportMapping(ctx context.Context, req *listingruntime.ProductImportMappingUpsert) error
+	GetRuntimeStorePauseStatusDetail(storeID int64) (*listingruntime.StorePauseStatusDetail, error)
+}
+
 type SharedResources struct {
-	ManagementClient *management.ClientManager
-	CrawlSource      runner.CrawlSource
-	ProductFetcher   appfetcher.ProductFetcher
+	ManagementClient        *management.ClientManager
+	RawJSONDataClient       product.RawJsonDataClient
+	StoreAPI                managementapi.StoreAPI
+	SchedulerRuntime        runner.SchedulerRuntimeProvider
+	SchedulerFactoryRuntime SchedulerFactoryRuntime
+	ProcessorRuntime        ProcessorRuntime
+	CrawlSource             runner.CrawlSource
+	ProductFetcher          appfetcher.ProductFetcher
 }
 
 type SharedResourceProvider func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*SharedResources, error)
 
 type SchedulerDependenciesBuilder func(
-	managementClient *management.ClientManager,
+	schedulerRuntime SchedulerFactoryRuntime,
 	cfg *config.Config,
 	crawlSource runner.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) runner.SchedulerDependencies
 
 type PlatformRuntimeContext struct {
-	Config           *config.Config
-	Logger           *logrus.Logger
-	ManagementClient *management.ClientManager
-	CrawlSource      runner.CrawlSource
-	ProductFetcher   appfetcher.ProductFetcher
-	RabbitMQClient   *rabbitmq.Client
-	ServiceManager   *ServiceManager
-	SchedulerBuilder SchedulerDependenciesBuilder
+	Config                  *config.Config
+	Logger                  *logrus.Logger
+	ManagementClient        *management.ClientManager
+	RawJSONDataClient       product.RawJsonDataClient
+	StoreAPI                managementapi.StoreAPI
+	SchedulerRuntime        runner.SchedulerRuntimeProvider
+	SchedulerFactoryRuntime SchedulerFactoryRuntime
+	ProcessorRuntime        ProcessorRuntime
+	CrawlSource             runner.CrawlSource
+	ProductFetcher          appfetcher.ProductFetcher
+	RabbitMQClient          *rabbitmq.Client
+	ServiceManager          *ServiceManager
+	SchedulerBuilder        SchedulerDependenciesBuilder
 }
 
 type PlatformModule interface {

@@ -8,16 +8,16 @@ import (
 	"time"
 
 	"task-processor/internal/app/taskstatus"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 )
 
 type stubImportTaskStatusClient struct {
-	updateFn func(req *managementapi.ProductImportTaskUpdateReqDTO) error
-	updates  []*managementapi.ProductImportTaskUpdateReqDTO
+	updateFn func(req *listingruntime.TaskStatusUpdate) error
+	updates  []*listingruntime.TaskStatusUpdate
 }
 
-func (s *stubImportTaskStatusClient) UpdateTaskStatus(req *managementapi.ProductImportTaskUpdateReqDTO) error {
+func (s *stubImportTaskStatusClient) UpdateTaskStatus(req *listingruntime.TaskStatusUpdate) error {
 	if s.updateFn != nil {
 		return s.updateFn(req)
 	}
@@ -44,7 +44,7 @@ func TestTaskClaimServiceClaimRejectsInvalidTransition(t *testing.T) {
 	fetcher := newTestTaskFetcher(&stubImportTaskStatusClient{})
 	service := NewTaskClaimService(fetcher)
 
-	task := &managementapi.ProductImportTaskRespDTO{
+	task := &ImportTaskRecord{
 		ID:     101,
 		Status: model.TaskStatusPublished.Int16(),
 	}
@@ -66,7 +66,7 @@ func TestTaskClaimServiceClaimMarksProcessing(t *testing.T) {
 	fetcher := newTestTaskFetcher(client)
 	service := NewTaskClaimService(fetcher)
 
-	task := &managementapi.ProductImportTaskRespDTO{
+	task := &ImportTaskRecord{
 		ID:     202,
 		Status: model.TaskStatusPending.Int16(),
 	}
@@ -98,14 +98,14 @@ func TestTaskClaimServiceClaimMarksProcessing(t *testing.T) {
 
 func TestTaskClaimServiceClaimRollsBackWhenRemoteUpdateFails(t *testing.T) {
 	client := &stubImportTaskStatusClient{
-		updateFn: func(req *managementapi.ProductImportTaskUpdateReqDTO) error {
+		updateFn: func(req *listingruntime.TaskStatusUpdate) error {
 			return fmt.Errorf("management unavailable")
 		},
 	}
 	fetcher := newTestTaskFetcher(client)
 	service := NewTaskClaimService(fetcher)
 
-	taskID, ok := service.Claim(&managementapi.ProductImportTaskRespDTO{
+	taskID, ok := service.Claim(&ImportTaskRecord{
 		ID:     303,
 		Status: model.TaskStatusPending.Int16(),
 	})
@@ -139,7 +139,7 @@ func TestTaskClaimServiceClaimRollsBackWhenJournalPersistFails(t *testing.T) {
 	}
 	service := NewTaskClaimService(fetcher)
 
-	taskID, ok := service.Claim(&managementapi.ProductImportTaskRespDTO{
+	taskID, ok := service.Claim(&ImportTaskRecord{
 		ID:     404,
 		Status: model.TaskStatusPending.Int16(),
 	})

@@ -36,7 +36,7 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 	productFetcher, err := consumer.BuildPlatformProductFetcher(
 		rt.Config,
 		m.Name(),
-		rt.ManagementClient,
+		rt.RawJSONDataClient,
 		rt.CrawlSource,
 		rt.RabbitMQClient,
 	)
@@ -44,11 +44,7 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 		return fmt.Errorf("build SHEIN product fetcher: %w", err)
 	}
 
-	processor, err := pipeline.NewSheinProcessor(ctx, rt.Config, rt.Logger, pipeline.Dependencies{
-		ManagementClient: rt.ManagementClient,
-		ProductFetcher:   productFetcher,
-		RabbitMQClient:   rt.RabbitMQClient,
-	})
+	processor, err := pipeline.NewSheinProcessor(ctx, rt.Config, rt.Logger, pipeline.BuildDependencies(ctx, rt.ProcessorRuntime, productFetcher, rt.RabbitMQClient))
 	if err != nil {
 		return fmt.Errorf("create SHEIN processor: %w", err)
 	}
@@ -127,8 +123,8 @@ func configureScheduler(rt consumer.PlatformRuntimeContext) {
 	if cfg == nil || rt.ServiceManager == nil || !cfg.Platforms.Shein.SchedulerEnabled {
 		return
 	}
-	if rt.ManagementClient == nil {
-		rt.Logger.Warn("SHEIN scheduler is enabled but management client is unavailable")
+	if rt.SchedulerRuntime == nil {
+		rt.Logger.Warn("SHEIN scheduler is enabled but scheduler runtime is unavailable")
 		return
 	}
 	if rt.SchedulerBuilder == nil {
@@ -138,10 +134,10 @@ func configureScheduler(rt consumer.PlatformRuntimeContext) {
 
 	schedulerService := runner.NewSchedulerServiceWithDependencies(
 		rt.Logger,
-		rt.ManagementClient,
+		rt.SchedulerRuntime,
 		cfg,
 		rt.ServiceManager.GetClient(),
-		rt.SchedulerBuilder(rt.ManagementClient, cfg, rt.CrawlSource, rt.ServiceManager.GetClient()),
+		rt.SchedulerBuilder(rt.SchedulerFactoryRuntime, cfg, rt.CrawlSource, rt.ServiceManager.GetClient()),
 	)
 	rt.ServiceManager.SetSchedulerService(schedulerService)
 	rt.Logger.Infof(
@@ -156,11 +152,11 @@ func configureStoreGuard(rt consumer.PlatformRuntimeContext) {
 	if rt.Config == nil || rt.ServiceManager == nil {
 		return
 	}
-	if rt.ManagementClient == nil {
+	if rt.StoreAPI == nil {
 		consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, rt.ServiceManager, nil)
 		return
 	}
-	consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, rt.ServiceManager, rt.ManagementClient.GetStoreClient())
+	consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, rt.ServiceManager, rt.StoreAPI)
 }
 
 func configureAutoShard(rt consumer.PlatformRuntimeContext) error {
@@ -168,14 +164,14 @@ func configureAutoShard(rt consumer.PlatformRuntimeContext) error {
 	if cfg == nil || rt.ServiceManager == nil {
 		return nil
 	}
-	if rt.ManagementClient == nil || cfg.Redis == nil {
-		rt.Logger.Warn("auto shard is enabled but management client or redis config is unavailable")
+	if rt.StoreAPI == nil || cfg.Redis == nil {
+		rt.Logger.Warn("auto shard is enabled but store API or redis config is unavailable")
 		return nil
 	}
 
 	autoShardService, err := consumer.NewAutoShardCoordinator(
 		cfg.RabbitMQ.AutoShard,
-		rt.ManagementClient.GetStoreClient(),
+		rt.StoreAPI,
 		cfg.Redis,
 		cfg.RabbitMQ.URL,
 		cfg.RabbitMQ.Node.NodeID,

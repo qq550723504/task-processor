@@ -6,19 +6,19 @@ import (
 	"testing"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 )
 
 type stubImportTaskClient struct {
-	lastReq   *managementapi.ProductImportTaskUpdateReqDTO
+	lastReq   *listingruntime.TaskStatusUpdate
 	err       error
 	attempts  int32
 	failures  int32
-	handlerFn func(*managementapi.ProductImportTaskUpdateReqDTO) error
+	handlerFn func(*listingruntime.TaskStatusUpdate) error
 }
 
-func (s *stubImportTaskClient) UpdateTaskStatus(req *managementapi.ProductImportTaskUpdateReqDTO) error {
+func (s *stubImportTaskClient) UpdateTaskStatus(req *listingruntime.TaskStatusUpdate) error {
 	copied := *req
 	s.lastReq = &copied
 	atomic.AddInt32(&s.attempts, 1)

@@ -77,12 +77,13 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	pipeline := NewPipeline()
 	aiClient := openaiClient.NewClient(cfg.OpenAI.ToClientConfig())
 	// 添加处理步骤
-	storeClient := processor.GetManagementClient().GetStoreClient()
-	imageDownloder := processor.GetManagementClient().GetImageDownloader()
+	storeRuntimeService := processor.GetRuntimeStoreService()
+	storeRepo := processor.GetLocalStoreRepository()
+	imageDownloder := processor.GetImageDownloader()
 
 	// SHEIN平台上架流程（数据可能来自Amazon爬虫或管理系统API）
 	// 获取店铺信息
-	pipeline.AddHandler(store.NewStoreInfoHandler(storeClient))
+	pipeline.AddHandler(store.NewStoreInfoHandler(storeRuntimeService))
 	// 重新上架任务处理器
 	//pipeline.AddHandler(modules.NewReListingHandler())
 	// 获取并缓存主产品数据（Fetch + Cache 合并为一步；缓存失败仅记录警告，不阻断上架）
@@ -94,15 +95,18 @@ func CreateTaskProcessingPipeline(processor *SheinProcessor, cfg *config.Config)
 	// 初始化产品数据
 	pipeline.AddHandler(product.NewInitProductDataHandler())
 	// 获取店铺ID
-	pipeline.AddHandler(store.NewSupplierInfoHandler(storeClient))
+	pipeline.AddHandler(store.NewSupplierInfoHandler())
 	// 处理店铺ID
-	pipeline.AddHandler(store.NewStoreIDHandler(storeClient))
+	pipeline.AddHandler(store.NewStoreIDHandler(storeRepo))
 	// 检查发品额度
 	//pipeline.AddHandler(product.NewSpuLimitHandler())
 	// 检查SKC上架额度
 	pipeline.AddHandler(product.NewShelfQuotaHandler())
 	// 验证任务（筛选规则和利润规则）
-	pipeline.AddHandler(validation.NewTaskValidatorHandler(processor.GetManagementClient()))
+	pipeline.AddHandler(validation.NewTaskValidatorHandler(
+		processor.GetLocalFilterRuleRepository(),
+		processor.GetLocalProfitRuleRepository(),
+	))
 	// 应用筛选规则
 	pipeline.AddHandler(validation.NewApplyFilterRuleHandler())
 	// 获取并缓存变体数据（Fetch + Cache 合并为一步；缓存失败仅记录警告，不阻断上架）

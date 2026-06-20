@@ -54,6 +54,7 @@ type FilterRulePage struct {
 type FilterRuleRepository interface {
 	ListFilterRules(ctx context.Context, query FilterRuleQuery) (*FilterRulePage, error)
 	GetFilterRule(ctx context.Context, tenantID, id int64) (*FilterRule, error)
+	ResolveFilterRules(ctx context.Context, tenantID, storeID, categoryID int64) ([]FilterRule, error)
 	CreateFilterRule(ctx context.Context, rule *FilterRule) (*FilterRule, error)
 	UpdateFilterRule(ctx context.Context, rule *FilterRule) (*FilterRule, error)
 	UpdateFilterRuleStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*FilterRule, error)

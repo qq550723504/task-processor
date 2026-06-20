@@ -2,14 +2,16 @@
 package pricing
 
 import (
+	"context"
 	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/api/pricing"
 )
 
 // evaluateProduct 评估单个产品
-func (s *autoPricingServiceImpl) evaluateProduct(product *pricing.BargainPageData, rules []managementapi.PricingRuleRespDTO, _ int64, enableRebargain bool) PricingDecision {
+func (s *autoPricingServiceImpl) evaluateProduct(product *pricing.BargainPageData, rules []listingruntime.PricingRule, storeID int64, enableRebargain bool) PricingDecision {
 	// 检查是否有SKU成本价数据
 	if len(product.SkuCostPrices) == 0 {
 		return PricingDecision{
@@ -21,7 +23,7 @@ func (s *autoPricingServiceImpl) evaluateProduct(product *pricing.BargainPageDat
 	}
 
 	// 检查所有SKU是否都符合通过条件
-	allSKUsPass, shouldSkip := s.checkAllSKUsPassCondition(product.SkuCostPrices, rules)
+	allSKUsPass, shouldSkip := s.checkAllSKUsPassCondition(product.SkuCostPrices, rules, storeID)
 	if shouldSkip {
 		return PricingDecision{
 			Product:      *product,
@@ -43,7 +45,7 @@ func (s *autoPricingServiceImpl) evaluateProduct(product *pricing.BargainPageDat
 		// 有SKU不通过，根据配置决定是拒绝还是重新议价
 		if enableRebargain && product.AppealCount > 0 {
 			// 启用重新议价且还有剩余次数，计算新价格并重新议价
-			newPrices := s.calculateReappealPrices(product, rules)
+			newPrices := s.calculateReappealPrices(product, rules, storeID)
 			return PricingDecision{
 				Product:      *product,
 				Action:       "reappeal",
@@ -67,8 +69,7 @@ func (s *autoPricingServiceImpl) evaluateProduct(product *pricing.BargainPageDat
 }
 
 // checkAllSKUsPassCondition 检查所有SKU是否都符合通过条件
-func (s *autoPricingServiceImpl) checkAllSKUsPassCondition(skus []pricing.SkuCostPrice, rules []managementapi.PricingRuleRespDTO) (allPass bool, shouldSkip bool) {
-	mappingClient := s.managementClient.GetProductImportMappingClient()
+func (s *autoPricingServiceImpl) checkAllSKUsPassCondition(skus []pricing.SkuCostPrice, rules []listingruntime.PricingRule, storeID int64) (allPass bool, shouldSkip bool) {
 	passedSKUCount := 0
 	totalSKUCount := 0
 
@@ -79,17 +80,15 @@ func (s *autoPricingServiceImpl) checkAllSKUsPassCondition(skus []pricing.SkuCos
 
 		totalSKUCount++
 
-		reqDto := &managementapi.ProductImportMappingGetReqDTO{PlatformProductId: sku.SkuCode}
-
-		respDto, err := mappingClient.GetProductImportMappingByPlatformProductId(reqDto)
+		respDto, err := s.getProductImportMappingByPlatformProductID(sku.SkuCode, storeID)
 		if err != nil {
 			s.logger.Errorf("获取产品导入映射关系失败: %v", err)
 			return false, true
 		}
 
 		var originPrice float64
-		if respDto.CostPrice != nil {
-			originPrice = *respDto.CostPrice
+		if respDto.CostPrice > 0 {
+			originPrice = respDto.CostPrice
 		} else {
 			if respDto.SalePriceMultiplier != nil {
 				if *respDto.SalePriceMultiplier != 0 {
@@ -125,4 +124,19 @@ func (s *autoPricingServiceImpl) checkAllSKUsPassCondition(skus []pricing.SkuCos
 	}
 
 	return passedSKUCount == totalSKUCount, false
+}
+
+func (s *autoPricingServiceImpl) getProductImportMappingByPlatformProductID(platformProductID string, storeID int64) (*listingruntime.ProductImportMapping, error) {
+	if s.mappingRepo != nil {
+		mapping, err := s.mappingRepo.FindLatest(context.Background(), listingadmin.ProductImportMappingQuery{
+			PlatformProductID: platformProductID,
+			StoreID:           &storeID,
+		})
+		if err != nil {
+			s.logger.WithError(err).Warnf("通过本地仓储获取SHEIN产品导入映射失败: platformProductID=%s", platformProductID)
+		} else if mapping != nil {
+			return sheinProductImportMappingFromListing(mapping), nil
+		}
+	}
+	return nil, fmt.Errorf("product import mapping repository is not configured")
 }

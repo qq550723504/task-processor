@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/worker"
 	types "task-processor/internal/model"
 )
@@ -20,23 +19,23 @@ func NewTaskDispatcher(fetcher *TaskFetcher) *TaskDispatcher {
 	return &TaskDispatcher{fetcher: fetcher}
 }
 
-func (d *TaskDispatcher) Dispatch(ctx context.Context, apiTask *api.ProductImportTaskRespDTO, storeInfo *api.StoreRespDTO) (success bool, isQueueFull bool) {
-	if d == nil || d.fetcher == nil || apiTask == nil || storeInfo == nil {
+func (d *TaskDispatcher) Dispatch(ctx context.Context, task *ImportTaskRecord, storeInfo *StoreInfo) (success bool, isQueueFull bool) {
+	if d == nil || d.fetcher == nil || task == nil || storeInfo == nil {
 		return false, false
 	}
 
 	internalTask := types.Task{
-		ID:         apiTask.ID,
-		TenantID:   apiTask.TenantID,
-		ProductID:  apiTask.ProductID,
-		Platform:   apiTask.Platform,
-		Region:     apiTask.Region,
-		StoreID:    apiTask.StoreID,
-		CategoryID: apiTask.CategoryID,
-		CreateTime: apiTask.CreateTime / 1000,
-		RetryCount: apiTask.RetryCount,
-		Priority:   apiTask.Priority,
-		Creator:    apiTask.Creator,
+		ID:         task.ID,
+		TenantID:   task.TenantID,
+		ProductID:  task.ProductID,
+		Platform:   task.Platform,
+		Region:     task.Region,
+		StoreID:    task.StoreID,
+		CategoryID: task.CategoryID,
+		CreateTime: task.CreateTimeMillis / 1000,
+		RetryCount: task.RetryCount,
+		Priority:   task.Priority,
+		Creator:    task.Creator,
 	}
 
 	taskData, err := json.Marshal(internalTask)
@@ -49,7 +48,7 @@ func (d *TaskDispatcher) Dispatch(ctx context.Context, apiTask *api.ProductImpor
 	submitter, exists := d.fetcher.submitters[platform]
 	if !exists {
 		logger.GetGlobalLogger("app/task").Errorf("❌ 未找到平台处理器: TaskID=%d, StoreID=%d, Platform=%s, 可用平台=%v",
-			internalTask.ID, apiTask.StoreID, platform, d.fetcher.getSubmitterKeys())
+			internalTask.ID, task.StoreID, platform, d.fetcher.getSubmitterKeys())
 		return false, false
 	}
 

@@ -43,7 +43,12 @@ func (f *apiFactory) BuildBaseClient(storeID int64) (*sheinclient.BaseAPIClient,
 		baseAPICache.Delete(cacheKey)
 	}
 
-	apiClient := sheinmanagedclient.NewAPIClient(storeID, f.client)
+	storeService := f.client.GetRuntimeStoreService()
+	apiClient := sheinmanagedclient.NewAPIClient(
+		storeID,
+		sheinmanagedclient.NewRuntimeCookieProvider(f.client, storeService),
+		sheinmanagedclient.NewRuntimeStoreConfigProvider(storeService),
+	)
 	if !apiClient.HasCookies() {
 		if err := apiClient.ForceRefreshCookies(); err == nil && apiClient.HasCookies() {
 			baseAPICache.Delete(cacheKey)

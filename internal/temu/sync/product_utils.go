@@ -3,7 +3,6 @@ package sync
 
 import (
 	"fmt"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -90,7 +89,7 @@ func (s *productSyncServiceImpl) logProgress(current, total, success, interval i
 }
 
 // validateProductData 验证产品数据的完整性
-func (s *productSyncServiceImpl) validateProductData(productData *managementapi.ProductDataDTO) error {
+func (s *productSyncServiceImpl) validateProductData(productData *TemuProductSnapshot) error {
 	if productData.PlatformProductID == "" {
 		return fmt.Errorf("平台产品ID不能为空")
 	}

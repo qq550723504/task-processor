@@ -14,6 +14,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )
@@ -33,11 +34,11 @@ func (s *stubProcessor) Close(ctx context.Context) {}
 
 type stubProcessorWithManagement struct {
 	stubProcessor
-	clientMgr *management.ClientManager
+	runtime taskstatus.RuntimeWithTaskRPC
 }
 
-func (s *stubProcessorWithManagement) GetManagementClient() *management.ClientManager {
-	return s.clientMgr
+func (s *stubProcessorWithManagement) GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
+	return s.runtime
 }
 
 type stubStoreAPI struct {
@@ -180,7 +181,7 @@ func TestTaskHandlerHandleMessage_ClaimsQueuedTaskBeforeProcessing(t *testing.T)
 	clientMgr.GetClient()
 	clientMgr.SetUserToken("token", "1")
 
-	processor := &stubProcessorWithManagement{clientMgr: clientMgr}
+	processor := &stubProcessorWithManagement{runtime: taskstatus.NewManagementRuntime(clientMgr)}
 	handler := NewTaskHandler(TaskHandlerConfig{
 		Platform:  "shein",
 		Processor: processor,
@@ -243,7 +244,7 @@ func TestTaskHandlerHandleMessage_StopsWhenClaimRejected(t *testing.T) {
 	clientMgr.GetClient()
 	clientMgr.SetUserToken("token", "1")
 
-	processor := &stubProcessorWithManagement{clientMgr: clientMgr}
+	processor := &stubProcessorWithManagement{runtime: taskstatus.NewManagementRuntime(clientMgr)}
 	handler := NewTaskHandler(TaskHandlerConfig{
 		Platform:  "shein",
 		Processor: processor,

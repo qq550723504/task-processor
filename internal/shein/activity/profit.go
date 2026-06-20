@@ -2,10 +2,9 @@
 package activity
 
 import (
+	"context"
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/api/marketing"
 
 	"github.com/sirupsen/logrus"
@@ -22,23 +21,12 @@ func (s *activityRegistrationServiceImpl) filterProductsByProfitMargin(
 		return products
 	}
 
-	// 获取产品导入映射API客户端
-	baseClient := s.managementClient.GetClient()
-	productMappingAPI := &management.ProductImportMappingAPIClient{
-		ManagementAPIClient: baseClient,
-	}
-
 	filteredProducts := make([]marketing.SkcInfo, 0, len(products))
 	filteredCount := 0
 
 	for _, product := range products {
 		// 1. 根据SKC查询管理系统获取成本价
-		mapping, err := productMappingAPI.GetProductImportMappingByPlatformProductIdAndStore(
-			&managementapi.ProductImportMappingGetByPlatformProductIdAndStoreReqDTO{
-				PlatformProductId: product.Skc,
-				StoreId:           storeID,
-			},
-		)
+		mapping, err := s.getMappingByPlatformProductIDAndStore(context.Background(), product.Skc, storeID)
 
 		if err != nil {
 			s.logger.WithFields(logrus.Fields{
@@ -49,13 +37,13 @@ func (s *activityRegistrationServiceImpl) filterProductsByProfitMargin(
 			continue
 		}
 
-		if mapping == nil || mapping.CostPrice == nil {
+		if mapping == nil || mapping.CostPrice <= 0 {
 			s.logger.WithField("skc", product.Skc).Warn("产品成本价为空，跳过该产品")
 			filteredCount++
 			continue
 		}
 
-		costPrice := *mapping.CostPrice
+		costPrice := mapping.CostPrice
 
 		// 2. 计算利润率：(售价 - 成本价) / 成本价
 		// 使用第一个站点的售价作为参考

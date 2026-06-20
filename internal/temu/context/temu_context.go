@@ -3,7 +3,6 @@ package context
 import (
 	"context"
 
-	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
@@ -14,11 +13,10 @@ import (
 )
 
 type RuntimeState struct {
-	ManagementClientMgr *management.ClientManager
-	MemoryManager       *state.MemoryManager
-	CrawlSource         ports.CrawlSource
-	APIClient           api.APIClientInterface
-	QueryAPI            api.QueryAPIInterface
+	MemoryManager *state.MemoryManager
+	CrawlSource   ports.CrawlSource
+	APIClient     api.APIClientInterface
+	QueryAPI      api.QueryAPIInterface
 }
 
 type ProductState struct {
@@ -92,8 +90,7 @@ func NewTemuTaskContext(ctx context.Context, task *model.Task) *TemuTaskContext 
 	}
 }
 
-func (tc *TemuTaskContext) AttachRuntime(managementClient *management.ClientManager, memoryManager *state.MemoryManager, crawlSource ports.CrawlSource) {
-	tc.ManagementClientMgr = managementClient
+func (tc *TemuTaskContext) AttachRuntime(memoryManager *state.MemoryManager, crawlSource ports.CrawlSource) {
 	tc.MemoryManager = memoryManager
 	tc.CrawlSource = crawlSource
 }

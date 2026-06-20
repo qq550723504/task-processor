@@ -55,20 +55,20 @@ func (r *Resolver) ResolveForProductBrand(_ context.Context, cfg Config, product
 		return nil, nil
 	}
 
+	productBrand = trimMatchKey(productBrand)
+	if productBrand == "" {
+		return nil, nil
+	}
+
 	resp, err := r.queryBrandList()
 	if err != nil {
 		return nil, err
 	}
 
-	productBrand = trimMatchKey(productBrand)
-	if productBrand != "" {
-		if resolved := findByName(resp.Info.Data, productBrand); resolved != nil {
-			return resolved, nil
-		}
-		return nil, sherr.NewNonRetryableError("product brand was not found in SHEIN authorized brand list", nil)
+	if resolved := findByName(resp.Info.Data, productBrand); resolved != nil {
+		return resolved, nil
 	}
-
-	return resolveFromItems(resp.Info.Data, trimMatchKey(cfg.Code), trimMatchKey(cfg.Name))
+	return nil, sherr.NewNonRetryableError("product brand was not found in SHEIN authorized brand list", nil)
 }
 
 func (r *Resolver) queryBrandList() (*sheinproduct.BrandListResponse, error) {

@@ -91,3 +91,49 @@ func TestFindFilterRuleRowsAppliesResourceFilters(t *testing.T) {
 		t.Fatalf("rows = %+v total=%d, want only fully matched rule", rows, total)
 	}
 }
+
+func TestGormFilterRuleRepositoryResolveFilterRulesPrefersSpecificScope(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingFilterRule{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, row := range []listingFilterRule{
+		{TenantID: 101, Name: "global", RuleCode: "FR-GLOBAL", Status: 1, Deleted: 0},
+		{TenantID: 101, Name: "store", RuleCode: "FR-STORE", StoreID: 11, Status: 1, Deleted: 0},
+		{TenantID: 101, Name: "category", RuleCode: "FR-CATEGORY", StoreID: 11, CategoryID: 22, Status: 1, Deleted: 0},
+	} {
+		if err := db.Table("listing_filter_rule").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	repo := NewGormFilterRuleRepository(db)
+	items, err := repo.ResolveFilterRules(context.Background(), 101, 11, 22)
+	if err != nil {
+		t.Fatalf("ResolveFilterRules() error = %v", err)
+	}
+	if len(items) != 1 || items[0].RuleCode != "FR-CATEGORY" {
+		t.Fatalf("category items = %+v, want category-specific rule", items)
+	}
+
+	items, err = repo.ResolveFilterRules(context.Background(), 101, 11, 99)
+	if err != nil {
+		t.Fatalf("ResolveFilterRules() store fallback error = %v", err)
+	}
+	if len(items) != 1 || items[0].RuleCode != "FR-STORE" {
+		t.Fatalf("store fallback items = %+v, want store-specific rule", items)
+	}
+
+	items, err = repo.ResolveFilterRules(context.Background(), 101, 88, 99)
+	if err != nil {
+		t.Fatalf("ResolveFilterRules() global fallback error = %v", err)
+	}
+	if len(items) != 1 || items[0].RuleCode != "FR-GLOBAL" {
+		t.Fatalf("global fallback items = %+v, want global rule", items)
+	}
+}

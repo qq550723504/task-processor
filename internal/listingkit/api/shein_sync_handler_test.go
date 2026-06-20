@@ -128,6 +128,9 @@ func (*stubSheinSummaryStoreRepository) CreateStore(context.Context, *listingadm
 func (*stubSheinSummaryStoreRepository) UpdateStore(context.Context, *listingadmin.Store) (*listingadmin.Store, error) {
 	panic("unexpected call")
 }
+func (*stubSheinSummaryStoreRepository) UpdateStoreID(context.Context, int64, string) (*listingadmin.Store, error) {
+	panic("unexpected call")
+}
 func (*stubSheinSummaryStoreRepository) UpdateStoreStatus(context.Context, int64, int64, int16, string) (*listingadmin.Store, error) {
 	panic("unexpected call")
 }

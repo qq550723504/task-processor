@@ -7,9 +7,10 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/ports"
+	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
 
 	"github.com/sirupsen/logrus"
@@ -17,15 +18,21 @@ import (
 
 // InventorySyncServiceFactory TEMU库存监控服务工厂
 type InventorySyncServiceFactory struct {
-	managementClient *management.ClientManager
-	logger           *logrus.Entry
+	runtime inventoryServiceFactoryRuntime
+	logger  *logrus.Entry
+}
+
+type inventoryServiceFactoryRuntime interface {
+	inventorySyncRuntime
+	GetRawJsonDataAdapter() product.RawJsonDataClient
+	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
 }
 
 // NewInventorySyncServiceFactory 创建库存监控服务工厂
-func NewInventorySyncServiceFactory(managementClient *management.ClientManager) *InventorySyncServiceFactory {
+func NewInventorySyncServiceFactory(runtime inventoryServiceFactoryRuntime) *InventorySyncServiceFactory {
 	return &InventorySyncServiceFactory{
-		managementClient: managementClient,
-		logger:           logger.GetGlobalLogger("TemuInventorySyncServiceFactory"),
+		runtime: runtime,
+		logger:  logger.GetGlobalLogger("TemuInventorySyncServiceFactory"),
 	}
 }
 
@@ -39,8 +46,11 @@ func (f *InventorySyncServiceFactory) CreateInventorySyncService(
 ) (InventorySyncService, error) {
 	f.logger.Info("创建TEMU库存监控服务")
 
-	rawJsonDataClient := f.managementClient.GetRawJsonDataAdapter()
-	inventoryRecordClient := f.managementClient.GetInventoryRecordClient()
+	if f.runtime == nil {
+		return nil, fmt.Errorf("inventory service runtime is not initialized")
+	}
+	rawJsonDataClient := f.runtime.GetRawJsonDataAdapter()
+	inventoryRecordClient := f.runtime.GetInventoryRecordAPI()
 
 	productFetcher, err := fetcher.NewFetcherFactory().CreateFetcher(
 		fetcher.DistributedFetcher,
@@ -54,7 +64,7 @@ func (f *InventorySyncServiceFactory) CreateInventorySyncService(
 	}
 
 	service := NewInventorySyncService(
-		f.managementClient,
+		f.runtime,
 		temuAPIClient,
 		productFetcher,
 		monitorConfig,

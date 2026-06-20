@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timeout"
 
@@ -16,21 +15,21 @@ import (
 // monitorSingleSKU 监控单个SKU
 func (s *inventorySyncServiceImpl) monitorSingleSKU(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	skuMapping *SKUMappingData,
 	tenantID, storeID int64,
 	result *MonitorResult,
 	resultMutex *sync.Mutex,
 ) error {
 	mappingInfo := skuMapping.MappingInfo
-	asin := mappingInfo.ProductId
+	asin := mappingInfo.ProductID
 	if asin == "" {
-		s.logger.WithField("platform_sku", s.getStringValue(mappingInfo.Sku)).Debug("映射信息中没有ASIN，跳过")
+		s.logger.WithField("platform_sku", s.getStringValue(mappingInfo.SKU)).Debug("映射信息中没有ASIN，跳过")
 		return nil
 	}
 
 	// 检查Amazon监控数据的最后检查时间，如果小于24小时则跳过
-	lastCheckTime := s.getAmazonMonitorLastCheckTime(prod.Attributes, s.getStringValue(mappingInfo.Sku))
+	lastCheckTime := s.getAmazonMonitorLastCheckTime(prod.Attributes, s.getStringValue(mappingInfo.SKU))
 	if lastCheckTime > 0 {
 		lastCheckTimeObj := time.Unix(lastCheckTime, 0)
 		timeSinceLastCheck := time.Since(lastCheckTimeObj)
@@ -56,13 +55,13 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 		if productCtx.Err() == context.DeadlineExceeded {
 			s.logger.WithFields(logrus.Fields{
 				"asin":             asin,
-				"platform_sku":     s.getStringValue(mappingInfo.Sku),
+				"platform_sku":     s.getStringValue(mappingInfo.SKU),
 				"platform_product": prod.ProductID,
 			}).Warn("获取Amazon产品信息超时，跳过该产品")
 		} else {
 			s.logger.WithError(err).WithFields(logrus.Fields{
 				"asin":             asin,
-				"platform_sku":     s.getStringValue(mappingInfo.Sku),
+				"platform_sku":     s.getStringValue(mappingInfo.SKU),
 				"platform_product": prod.ProductID,
 			}).Warn("获取Amazon产品信息失败")
 		}
@@ -92,7 +91,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 			if err := s.handlePriceChangeWithStrategy(context.Background(), prod, amazonProduct, skuMapping, storeID); err != nil {
 				s.logger.WithError(err).WithFields(logrus.Fields{
 					"product_id": prod.ProductID,
-					"sku":        s.getStringValue(skuMapping.MappingInfo.Sku),
+					"sku":        s.getStringValue(skuMapping.MappingInfo.SKU),
 				}).Error("处理价格变化策略失败")
 			}
 		}()
@@ -111,7 +110,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 			if err := s.handleStockChangeWithStrategy(context.Background(), prod, amazonProduct, skuMapping, storeID); err != nil {
 				s.logger.WithError(err).WithFields(logrus.Fields{
 					"product_id": prod.ProductID,
-					"sku":        s.getStringValue(mappingInfo.Sku),
+					"sku":        s.getStringValue(mappingInfo.SKU),
 				}).Error("处理库存变化策略失败")
 			}
 		}()
@@ -119,7 +118,7 @@ func (s *inventorySyncServiceImpl) monitorSingleSKU(
 
 	// 更新管理系统中的产品库存（添加到批量收集器）
 	newInventory := s.extractStockFromProduct(amazonProduct)
-	s.addInventoryUpdate(prod.ProductID, s.getStringValue(skuMapping.MappingInfo.Sku), newInventory, amazonProduct, storeID)
+	s.addInventoryUpdate(prod.ProductID, s.getStringValue(skuMapping.MappingInfo.SKU), newInventory, amazonProduct, storeID)
 
 	return nil
 }

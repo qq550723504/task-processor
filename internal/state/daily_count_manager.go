@@ -9,6 +9,10 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 )
 
+type DailyCountClientProvider interface {
+	GetDailyListingCountClient() *management.DailyListingCountAPIClient
+}
+
 // DailyCountInfo 每日计数信息
 type DailyCountInfo struct {
 	Date  string
@@ -25,16 +29,16 @@ type DailyQuotaReservation struct {
 
 // DailyCountManager 每日上架计数管理器（API版）
 type DailyCountManager struct {
-	managementClientMgr *management.ClientManager
-	locksMu             sync.Mutex
-	locks               map[string]*sync.Mutex
+	clientProvider DailyCountClientProvider
+	locksMu        sync.Mutex
+	locks          map[string]*sync.Mutex
 }
 
 // NewDailyCountManager 创建每日计数管理器
-func NewDailyCountManager(managementClientMgr *management.ClientManager) *DailyCountManager {
+func NewDailyCountManager(clientProvider DailyCountClientProvider) *DailyCountManager {
 	return &DailyCountManager{
-		managementClientMgr: managementClientMgr,
-		locks:               make(map[string]*sync.Mutex),
+		clientProvider: clientProvider,
+		locks:          make(map[string]*sync.Mutex),
 	}
 }
 
@@ -44,7 +48,7 @@ func (m *DailyCountManager) IncrementCount(tenantID, shopID int64, date string, 
 	lock.Lock()
 	defer lock.Unlock()
 
-	client := m.managementClientMgr.GetDailyListingCountClient()
+	client := m.GetClient()
 	if client == nil {
 		logger.GetGlobalLogger("state").Warn("每日上架数量客户端未初始化，返回默认值")
 		return increment
@@ -74,7 +78,7 @@ func (m *DailyCountManager) IncrementCount(tenantID, shopID int64, date string, 
 
 // TryReserveQuota 原子预占每日额度
 func (m *DailyCountManager) TryReserveQuota(tenantID, shopID int64, date string, increment, limit int64) (*DailyQuotaReservation, error) {
-	client := m.managementClientMgr.GetDailyListingCountClient()
+	client := m.GetClient()
 	if client == nil {
 		logger.GetGlobalLogger("state").Warn("每日上架数量客户端未初始化，无法预占额度")
 		return nil, fmt.Errorf("daily listing count client is not initialized")
@@ -104,7 +108,7 @@ func (m *DailyCountManager) TryReserveQuota(tenantID, shopID int64, date string,
 
 // RollbackReservedQuota 回滚预占额度
 func (m *DailyCountManager) RollbackReservedQuota(tenantID, shopID int64, date string, decrement int64) (int64, error) {
-	client := m.managementClientMgr.GetDailyListingCountClient()
+	client := m.GetClient()
 	if client == nil {
 		logger.GetGlobalLogger("state").Warn("每日上架数量客户端未初始化，无法回滚额度")
 		return 0, fmt.Errorf("daily listing count client is not initialized")
@@ -145,7 +149,7 @@ func (m *DailyCountManager) getLock(tenantID, shopID int64, date string) *sync.M
 
 // GetCount 获取计数
 func (m *DailyCountManager) GetCount(tenantID, shopID int64, date string) int64 {
-	client := m.managementClientMgr.GetDailyListingCountClient()
+	client := m.GetClient()
 	if client == nil {
 		logger.GetGlobalLogger("state").Warn("每日上架数量客户端未初始化，返回默认值0")
 		return 0
@@ -169,7 +173,7 @@ func (m *DailyCountManager) GetCount(tenantID, shopID int64, date string) int64 
 
 // ResetCount 重置计数
 func (m *DailyCountManager) ResetCount(tenantID, shopID int64, date string) {
-	client := m.managementClientMgr.GetDailyListingCountClient()
+	client := m.GetClient()
 	if client == nil {
 		logger.GetGlobalLogger("state").Warn("每日上架数量客户端未初始化，无法重置计数")
 		return
@@ -194,8 +198,8 @@ func (m *DailyCountManager) ResetCount(tenantID, shopID int64, date string) {
 
 // GetClient 获取每日上架数量客户端
 func (m *DailyCountManager) GetClient() api.DailyListingCountAPI {
-	if m.managementClientMgr == nil {
+	if m.clientProvider == nil {
 		return nil
 	}
-	return m.managementClientMgr.GetDailyListingCountClient()
+	return m.clientProvider.GetDailyListingCountClient()
 }

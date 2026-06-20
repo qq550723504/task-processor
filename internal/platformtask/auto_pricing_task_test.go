@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/infra/clients/management"
 	appscheduler "task-processor/internal/scheduler"
 )
 
@@ -37,6 +36,17 @@ func (m *MockAutoPricingService) SubmitPricingResults(ctx context.Context, resul
 	return &PricingStats{}, nil
 }
 
+type MockAutoPricingStoreConfigProvider struct {
+	GetAutoPricingStoreConfigFunc func(ctx context.Context, storeID int64) (*AutoPricingStoreConfig, error)
+}
+
+func (m *MockAutoPricingStoreConfigProvider) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*AutoPricingStoreConfig, error) {
+	if m.GetAutoPricingStoreConfigFunc != nil {
+		return m.GetAutoPricingStoreConfigFunc(ctx, storeID)
+	}
+	return &AutoPricingStoreConfig{}, nil
+}
+
 func TestNewAutoPricingTask(t *testing.T) {
 	config := appscheduler.TaskConfig{
 		Platform: "test",
@@ -47,13 +57,11 @@ func TestNewAutoPricingTask(t *testing.T) {
 	}
 
 	mockService := &MockAutoPricingService{}
-	mockManagement := &management.ClientManager{}
-
 	task := NewAutoPricingTask(AutoPricingTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: mockManagement,
-		PricingService:   mockService,
-		PlatformName:     "Test",
+		TaskConfig:          config,
+		StoreConfigProvider: &MockAutoPricingStoreConfigProvider{},
+		PricingService:      mockService,
+		PlatformName:        "Test",
 	})
 
 	if task == nil {
@@ -69,7 +77,7 @@ func TestNewAutoPricingTask(t *testing.T) {
 	}
 }
 
-func TestAutoPricingTask_GetManagementClient(t *testing.T) {
+func TestAutoPricingTask_GetStoreConfigProvider(t *testing.T) {
 	config := appscheduler.TaskConfig{
 		Platform: "test",
 		TaskType: "auto_pricing",
@@ -77,19 +85,19 @@ func TestAutoPricingTask_GetManagementClient(t *testing.T) {
 		StoreID:  100,
 	}
 
-	mockManagement := &management.ClientManager{}
+	mockProvider := &MockAutoPricingStoreConfigProvider{}
 	mockService := &MockAutoPricingService{}
 
 	task := NewAutoPricingTask(AutoPricingTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: mockManagement,
-		PricingService:   mockService,
-		PlatformName:     "Test",
+		TaskConfig:          config,
+		StoreConfigProvider: mockProvider,
+		PricingService:      mockService,
+		PlatformName:        "Test",
 	})
 
-	client := task.GetManagementClient()
-	if client != mockManagement {
-		t.Error("GetManagementClient should return the same client")
+	provider := task.GetStoreConfigProvider()
+	if provider != mockProvider {
+		t.Error("GetStoreConfigProvider should return the same provider")
 	}
 }
 
@@ -104,10 +112,10 @@ func TestAutoPricingTask_GetPricingService(t *testing.T) {
 	mockService := &MockAutoPricingService{}
 
 	task := NewAutoPricingTask(AutoPricingTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
-		PricingService:   mockService,
-		PlatformName:     "Test",
+		TaskConfig:          config,
+		StoreConfigProvider: &MockAutoPricingStoreConfigProvider{},
+		PricingService:      mockService,
+		PlatformName:        "Test",
 	})
 
 	service := task.GetPricingService()
@@ -127,10 +135,10 @@ func TestAutoPricingTask_StatusTransition(t *testing.T) {
 	mockService := &MockAutoPricingService{}
 
 	task := NewAutoPricingTask(AutoPricingTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
-		PricingService:   mockService,
-		PlatformName:     "Test",
+		TaskConfig:          config,
+		StoreConfigProvider: &MockAutoPricingStoreConfigProvider{},
+		PricingService:      mockService,
+		PlatformName:        "Test",
 	})
 
 	// 初始状态应该是Stopped

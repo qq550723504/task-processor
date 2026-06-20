@@ -2,7 +2,6 @@
 package sync
 
 import (
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -10,7 +9,7 @@ import (
 
 // checkPriceChange 检查价格变化（基于利润率，参考SHEIN实现）
 func (s *inventorySyncServiceImpl) checkPriceChange(
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	amazonProduct *model.Product,
 	skuMapping *TemuSkuInfo,
 	storeID int64,

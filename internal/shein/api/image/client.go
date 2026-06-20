@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"time"
 
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/pkg/imagex"
 	"task-processor/internal/shein/api"
 	"task-processor/internal/shein/client"
@@ -19,10 +18,14 @@ import (
 	"golang.org/x/image/draw"
 )
 
+type imageDownloadProvider interface {
+	DownloadImage(url string) ([]byte, error)
+}
+
 // Client 图片相关API实现
 type Client struct {
 	*client.BaseAPIClient
-	imageDownloader *management.ImageDownloader
+	imageDownloader imageDownloadProvider
 }
 
 // NewClient 创建新的图片API客户端
@@ -31,14 +34,38 @@ func NewClient(baseClient *client.BaseAPIClient) *Client {
 }
 
 // NewClientWithImageDownloader 创建新的图片API客户端，并允许复用外部已配置的下载器。
-func NewClientWithImageDownloader(baseClient *client.BaseAPIClient, imageDownloader *management.ImageDownloader) *Client {
+func NewClientWithImageDownloader(baseClient *client.BaseAPIClient, imageDownloader imageDownloadProvider) *Client {
 	if imageDownloader == nil {
-		imageDownloader = management.NewImageDownloader(180*time.Second, false)
+		imageDownloader = &plainHTTPImageDownloader{client: &http.Client{Timeout: 180 * time.Second}}
 	}
 	return &Client{
 		BaseAPIClient:   baseClient,
 		imageDownloader: imageDownloader,
 	}
+}
+
+type plainHTTPImageDownloader struct {
+	client *http.Client
+}
+
+func (d *plainHTTPImageDownloader) DownloadImage(imageURL string) ([]byte, error) {
+	if d == nil || d.client == nil {
+		return downloadImageWithPlainHTTP(imageURL)
+	}
+	req, err := http.NewRequest(http.MethodGet, imageURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 ListingKit ImageUploader/1.0")
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("HTTP状态码: %d", resp.StatusCode)
+	}
+	return io.ReadAll(io.LimitReader(resp.Body, 30<<20))
 }
 
 // UploadImage 下载并上传图片（含尺寸处理）

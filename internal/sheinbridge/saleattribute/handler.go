@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/core/logger"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/model"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -291,7 +291,7 @@ func resolveSaleAttributeCountry(ctx *sheinctx.TaskContext) string {
 	return "US"
 }
 
-func saleAttributeStoreID(storeInfo *managementapi.StoreRespDTO) int64 {
+func saleAttributeStoreID(storeInfo *listingruntime.StoreInfo) int64 {
 	if storeInfo == nil {
 		return 0
 	}

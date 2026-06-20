@@ -2,12 +2,13 @@
 package sync
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
 
 	"task-processor/internal/infra/clients/management/api"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/types"
 	temuproduct "task-processor/internal/temu/api/product"
 
@@ -15,7 +16,7 @@ import (
 )
 
 // convertSingleProduct 转换单个TEMU产品
-func (s *productSyncServiceImpl) convertSingleProduct(temuProduct *temuproduct.SkuResponse, tenantID, storeID int64) (*managementapi.ProductDataDTO, error) {
+func (s *productSyncServiceImpl) convertSingleProduct(temuProduct *temuproduct.SkuResponse, tenantID, storeID int64) (*TemuProductSnapshot, error) {
 	// 检查必要字段
 	if temuProduct.GoodsID == "" {
 		return nil, fmt.Errorf("商品ID为空，跳过转换")
@@ -45,7 +46,7 @@ func (s *productSyncServiceImpl) convertSingleProduct(temuProduct *temuproduct.S
 }
 
 // buildBaseProductData 构建基础产品数据
-func (s *productSyncServiceImpl) buildBaseProductData(temuProduct *temuproduct.SkuResponse, tenantID, storeID int64) *managementapi.ProductDataDTO {
+func (s *productSyncServiceImpl) buildBaseProductData(temuProduct *temuproduct.SkuResponse, tenantID, storeID int64) *TemuProductSnapshot {
 	var publishTime *time.Time
 	if temuProduct.CrtTime != "" {
 		if t, err := s.parseTime(temuProduct.CrtTime); err == nil {
@@ -70,7 +71,7 @@ func (s *productSyncServiceImpl) buildBaseProductData(temuProduct *temuproduct.S
 		description = fmt.Sprintf("%s - %s", description, temuProduct.SpecName)
 	}
 
-	return &managementapi.ProductDataDTO{
+	return &TemuProductSnapshot{
 		TenantID:          tenantID,
 		StoreID:           storeID,
 		Platform:          "TEMU",
@@ -88,14 +89,14 @@ func (s *productSyncServiceImpl) buildBaseProductData(temuProduct *temuproduct.S
 }
 
 // convertSingleGoodsProduct 转换单个TEMU商品（来自商品搜索）
-func (s *productSyncServiceImpl) convertSingleGoodsProduct(temuProduct *temuproduct.GoodsSearchItem, _ int64, storeID int64) (*managementapi.ProductDataDTO, error) {
+func (s *productSyncServiceImpl) convertSingleGoodsProduct(temuProduct *temuproduct.GoodsSearchItem, _ int64, storeID int64) (*TemuProductSnapshot, error) {
 	// 获取店铺信息
-	storeInfo, err := s.storeAPI.GetStore(storeID)
+	storeInfo, err := s.getStoreInfo(context.Background(), 0, storeID)
 	if err != nil {
 		s.logger.WithError(err).WithField("store_id", storeID).Warn("获取店铺信息失败，使用默认处理")
 	}
 	// 构建基础产品数据
-	productData := s.buildBaseGoodsProductData(temuProduct, storeInfo)
+	productData := s.buildBaseGoodsProductData(temuProduct, defaultTemuStoreInfo(storeInfo, 0, storeID))
 
 	// 通过SKU查询接口获取详细的价格和库存信息
 	skuDetails, err := s.fetchSkuDetails(temuProduct)
@@ -141,7 +142,9 @@ func (s *productSyncServiceImpl) convertSingleGoodsProduct(temuProduct *temuprod
 }
 
 // buildBaseGoodsProductData 构建基础商品数据（来自商品搜索）
-func (s *productSyncServiceImpl) buildBaseGoodsProductData(temuProduct *temuproduct.GoodsSearchItem, storeInfo *api.StoreRespDTO) *managementapi.ProductDataDTO {
+func (s *productSyncServiceImpl) buildBaseGoodsProductData(temuProduct *temuproduct.GoodsSearchItem, storeInfo *api.StoreRespDTO) *TemuProductSnapshot {
+	storeInfo = defaultTemuStoreInfo(storeInfo, 0, 0)
+
 	var publishTime *time.Time
 	if temuProduct.CrtTime != "" {
 		if t, err := s.parseTime(temuProduct.CrtTime); err == nil {
@@ -166,7 +169,7 @@ func (s *productSyncServiceImpl) buildBaseGoodsProductData(temuProduct *temuprod
 		description = fmt.Sprintf("%s - %s", description, temuProduct.SpecName)
 	}
 
-	return &managementapi.ProductDataDTO{
+	return &TemuProductSnapshot{
 		TenantID:          storeInfo.TenantID,
 		StoreID:           storeInfo.ID,
 		Region:            storeInfo.Region,
@@ -184,19 +187,94 @@ func (s *productSyncServiceImpl) buildBaseGoodsProductData(temuProduct *temuprod
 	}
 }
 
+func (s *productSyncServiceImpl) getStoreInfo(ctx context.Context, tenantID, storeID int64) (*api.StoreRespDTO, error) {
+	if s.storeRepo != nil && tenantID > 0 {
+		store, err := s.storeRepo.GetStore(ctx, tenantID, storeID)
+		if err == nil && store != nil {
+			return temuStoreDTOFromListingStore(store), nil
+		}
+		if err != nil {
+			s.logger.WithError(err).WithFields(logrus.Fields{
+				"tenant_id": tenantID,
+				"store_id":  storeID,
+				"path":      "repository",
+			}).Warn("从本地仓储获取店铺失败，回退 management 接口")
+		}
+	}
+	if s.storeAPI == nil {
+		return nil, nil
+	}
+	return s.storeAPI.GetStore(storeID)
+}
+
+func defaultTemuStoreInfo(storeInfo *api.StoreRespDTO, tenantID, storeID int64) *api.StoreRespDTO {
+	if storeInfo != nil {
+		if storeInfo.TenantID == 0 {
+			storeInfo.TenantID = tenantID
+		}
+		if storeInfo.ID == 0 {
+			storeInfo.ID = storeID
+		}
+		return storeInfo
+	}
+	return &api.StoreRespDTO{
+		ID:       storeID,
+		TenantID: tenantID,
+		Platform: "TEMU",
+	}
+}
+
+func temuStoreDTOFromListingStore(store *listingadmin.Store) *api.StoreRespDTO {
+	if store == nil {
+		return nil
+	}
+	return &api.StoreRespDTO{
+		ID:                       store.ID,
+		TenantID:                 store.TenantID,
+		StoreID:                  store.StoreID,
+		Name:                     store.Name,
+		Username:                 store.Username,
+		Password:                 store.Password,
+		LoginUrl:                 store.LoginURL,
+		ShopType:                 store.ShopType,
+		Region:                   store.Region,
+		Platform:                 store.Platform,
+		DailyLimit:               store.DailyLimit,
+		DailyLimitType:           store.DailyLimitType,
+		FixedStockCount:          store.FixedStockCount,
+		SkuGenerateStrategy:      store.SKUGenerateStrategy,
+		Prefix:                   store.Prefix,
+		Suffix:                   store.Suffix,
+		Proxy:                    store.Proxy,
+		EnableAutoListing:        store.EnableAutoListing,
+		EnableAutoLogin:          store.EnableAutoLogin,
+		EnableDraft:              store.EnableDraft,
+		EnableAutoPrice:          store.EnableAutoPrice,
+		EnableRebargain:          store.EnableRebargain,
+		EnableBrandAuthorization: store.EnableBrandAuthorization,
+		AuthorizedBrandCode:      store.AuthorizedBrandCode,
+		AuthorizedBrandName:      store.AuthorizedBrandName,
+		TemuPriceRejectStrategy:  store.TemuPriceRejectStrategy,
+		PriceType:                store.PriceType,
+		Remark:                   store.Remark,
+		Status:                   store.Status,
+		Creator:                  store.CreatedBy,
+	}
+}
+
 // fillGoodsPriceInfo 填充商品价格信息
-func (s *productSyncServiceImpl) fillGoodsPriceInfo(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.GoodsSearchItem) {
+func (s *productSyncServiceImpl) fillGoodsPriceInfo(productData *TemuProductSnapshot, temuProduct *temuproduct.GoodsSearchItem) {
 	productData.OriginalPrice = types.FlexibleString(fmt.Sprintf("%.2f", temuProduct.Price))
 	productData.SpecialPrice = types.FlexibleString(fmt.Sprintf("%.2f", temuProduct.Price)) // 商品搜索中没有特价信息，使用原价
 }
 
 // fillGoodsStockInfo 填充商品库存信息
-func (s *productSyncServiceImpl) fillGoodsStockInfo(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.GoodsSearchItem) {
+func (s *productSyncServiceImpl) fillGoodsStockInfo(productData *TemuProductSnapshot, temuProduct *temuproduct.GoodsSearchItem) {
 	productData.Stock = types.FlexibleString(fmt.Sprintf("%d", temuProduct.Quantity))
 }
 
 // fillGoodsCategoryInfo 填充商品分类信息
-func (s *productSyncServiceImpl) fillGoodsCategoryInfo(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.GoodsSearchItem) {
+func (s *productSyncServiceImpl) fillGoodsCategoryInfo(productData *TemuProductSnapshot, temuProduct *temuproduct.GoodsSearchItem) {
 	if len(temuProduct.CatNameList) > 0 {
 		productData.Category = temuProduct.CatNameList[len(temuProduct.CatNameList)-1] // 使用最后一级分类
 	}
@@ -204,7 +282,7 @@ func (s *productSyncServiceImpl) fillGoodsCategoryInfo(productData *managementap
 }
 
 // fillGoodsPlatformData 填充商品平台特有数据
-func (s *productSyncServiceImpl) fillGoodsPlatformData(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.GoodsSearchItem) {
+func (s *productSyncServiceImpl) fillGoodsPlatformData(productData *TemuProductSnapshot, temuProduct *temuproduct.GoodsSearchItem) {
 	platformData := map[string]any{
 		"listing_commit_id":       temuProduct.ListingCommitID,
 		"goods_commit_id":         temuProduct.GoodsCommitID,

@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/api/marketing"
 
 	"github.com/sirupsen/logrus"
@@ -14,7 +14,7 @@ import (
 // RegisterMixedActivity 根据运营策略按比例执行混合活动
 func (s *activityRegistrationServiceImpl) RegisterMixedActivity(
 	ctx context.Context,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 ) (int, int, error) {
 	s.logger.WithFields(logrus.Fields{
 		"store_id":        strategy.StoreID,
@@ -28,7 +28,7 @@ func (s *activityRegistrationServiceImpl) RegisterMixedActivity(
 func (s *activityRegistrationServiceImpl) registerPromotionProducts(
 	_ context.Context,
 	products []marketing.SkcInfo,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 ) (int, error) {
 	if len(products) == 0 {
 		return 0, nil

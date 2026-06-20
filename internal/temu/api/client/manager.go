@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"sync"
 
-	"task-processor/internal/infra/clients/management"
-
 	"task-processor/internal/core/logger"
 
 	"github.com/sirupsen/logrus"
@@ -13,18 +11,18 @@ import (
 
 // APIClientManager API客户端管理器
 type APIClientManager struct {
-	clients          map[string]*APIClient
-	managementClient *management.ClientManager
-	mutex            sync.RWMutex
-	logger           *logrus.Entry
+	clients      map[string]*APIClient
+	storeRuntime StoreRuntime
+	mutex        sync.RWMutex
+	logger       *logrus.Entry
 }
 
 // NewAPIClientManager 创建新的API客户端管理器
-func NewAPIClientManager(managementClient *management.ClientManager) *APIClientManager {
+func NewAPIClientManager(storeRuntime StoreRuntime) *APIClientManager {
 	return &APIClientManager{
-		clients:          make(map[string]*APIClient),
-		managementClient: managementClient,
-		logger:           logger.GetGlobalLogger("TEMUAPIClientManager"),
+		clients:      make(map[string]*APIClient),
+		storeRuntime: storeRuntime,
+		logger:       logger.GetGlobalLogger("TEMUAPIClientManager"),
 	}
 }
 
@@ -51,7 +49,7 @@ func (m *APIClientManager) GetClient(tenantID, storeID int64) (*APIClient, error
 	}
 
 	// 创建新的客户端
-	client = NewAPIClient(storeID, m.managementClient)
+	client = NewAPIClient(storeID, m.storeRuntime)
 	m.clients[key] = client
 
 	m.logger.Infof("成功创建并缓存API客户端: 租户=%d, 店铺=%d", tenantID, storeID)

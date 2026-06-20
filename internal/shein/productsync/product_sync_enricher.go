@@ -2,10 +2,12 @@
 package productsync
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/pkg/types"
 	"task-processor/internal/shein/api/product"
 
@@ -14,7 +16,7 @@ import (
 
 // fillProductLevelInventory 填充产品级别的库存信息
 func (s *productSyncServiceImpl) fillProductLevelInventory(
-	productData *managementapi.ProductDataDTO,
+	productData *ProductSnapshot,
 	inventoryInfo *product.InventoryInfo,
 ) {
 	if inventoryInfo == nil || len(inventoryInfo.SkcInfo) == 0 {
@@ -40,7 +42,7 @@ func (s *productSyncServiceImpl) fillProductLevelInventory(
 
 // fillProductLevelPrice 填充产品级别的价格信息
 func (s *productSyncServiceImpl) fillProductLevelPrice(
-	productData *managementapi.ProductDataDTO,
+	productData *ProductSnapshot,
 	priceMap map[string]*product.SkuPriceInfo,
 	costMap map[string]*product.SkuCostInfo,
 ) {
@@ -65,15 +67,15 @@ func (s *productSyncServiceImpl) fillProductLevelPrice(
 
 // enrichProductWithMappingBySku 通过SKU查询映射表并填充产品数据
 func (s *productSyncServiceImpl) enrichProductWithMappingBySku(
-	productData *managementapi.ProductDataDTO,
+	productData *ProductSnapshot,
 	sheinProduct *product.ProductListItem,
 	_ int64, storeID int64,
 	inventoryInfo *product.InventoryInfo,
 	priceMap map[string]*product.SkuPriceInfo,
 	costMap map[string]*product.SkuCostInfo,
 ) {
-	if s.mappingClient == nil {
-		s.logger.Debug("映射客户端未设置，跳过数据增强")
+	if s.mappingRepo == nil {
+		s.logger.Debug("映射数据源未设置，跳过数据增强")
 		return
 	}
 
@@ -110,10 +112,10 @@ func (s *productSyncServiceImpl) enrichProductWithMappingBySku(
 			enrichedSkc.SkuInfo = append(enrichedSkc.SkuInfo, enrichedSku)
 
 			if enrichedSku.MappingInfo != nil {
-				if !foundMapping && enrichedSku.MappingInfo.ProductId != "" {
-					firstAsin = enrichedSku.MappingInfo.ProductId
-					if enrichedSku.MappingInfo.ParentProductId != nil {
-						firstParentAsin = *enrichedSku.MappingInfo.ParentProductId
+				if !foundMapping && enrichedSku.MappingInfo.ProductID != "" {
+					firstAsin = enrichedSku.MappingInfo.ProductID
+					if enrichedSku.MappingInfo.ParentProductID != nil {
+						firstParentAsin = *enrichedSku.MappingInfo.ParentProductID
 					}
 					foundMapping = true
 				}
@@ -191,9 +193,7 @@ func (s *productSyncServiceImpl) buildEnrichedSkuInfo(
 	}
 
 	// 查询映射关系
-	mapping, err := s.mappingClient.GetProductImportMappingByPlatformProductId(&managementapi.ProductImportMappingGetReqDTO{
-		PlatformProductId: sku.SkuCode,
-	})
+	mapping, err := s.getMappingByPlatformProductID(context.Background(), sku.SkuCode, storeID)
 
 	if err != nil || mapping == nil {
 		s.logger.WithError(err).WithFields(logrus.Fields{
@@ -242,8 +242,44 @@ func (s *productSyncServiceImpl) buildEnrichedSkuInfo(
 	return enrichedSku
 }
 
+func (s *productSyncServiceImpl) getMappingByPlatformProductID(ctx context.Context, platformProductID string, storeID int64) (*listingruntime.ProductImportMapping, error) {
+	if s.mappingRepo != nil {
+		mapping, err := s.mappingRepo.FindLatest(ctx, listingadmin.ProductImportMappingQuery{
+			PlatformProductID: platformProductID,
+			StoreID:           &storeID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if mapping != nil {
+			return &listingruntime.ProductImportMapping{
+				ID:                      mapping.ID,
+				ImportTaskID:            mapping.ImportTaskID,
+				StoreID:                 mapping.StoreID,
+				Platform:                mapping.Platform,
+				Region:                  mapping.Region,
+				ProductID:               mapping.ProductID,
+				ParentProductID:         productSyncStringPtr(mapping.ParentProductID),
+				SKU:                     productSyncStringPtr(mapping.SKU),
+				PlatformProductID:       productSyncStringPtr(mapping.PlatformProductID),
+				PlatformParentProductID: productSyncStringPtr(mapping.PlatformParentProductID),
+				CostPrice:               productSyncFloat64Value(mapping.CostPrice),
+				FilterRuleID:            productSyncInt64Value(mapping.FilterRuleID),
+				FilterRuleRange:         productSyncStringPtr(mapping.FilterRuleRange),
+				ProfitRuleID:            productSyncInt64Value(mapping.ProfitRuleID),
+				SalePriceMultiplier:     productSyncFloat64Ptr(mapping.SalePriceMultiplier),
+				DiscountPriceMultiplier: productSyncFloat64Ptr(mapping.DiscountPriceMultiplier),
+				Status:                  mapping.Status,
+				Remark:                  productSyncStringPtr(mapping.Remark),
+				TenantID:                mapping.TenantID,
+			}, nil
+		}
+	}
+	return nil, nil
+}
+
 // fillProductRegion 填充产品区域信息
-func (s *productSyncServiceImpl) fillProductRegion(productData *managementapi.ProductDataDTO, enrichedSkcList []EnrichedSkcInfo) {
+func (s *productSyncServiceImpl) fillProductRegion(productData *ProductSnapshot, enrichedSkcList []EnrichedSkcInfo) {
 	for _, enrichedSkc := range enrichedSkcList {
 		for _, enrichedSku := range enrichedSkc.SkuInfo {
 			if enrichedSku.MappingInfo != nil && enrichedSku.MappingInfo.Region != "" {
@@ -255,11 +291,41 @@ func (s *productSyncServiceImpl) fillProductRegion(productData *managementapi.Pr
 }
 
 // updateAttributesWithMappings 更新Attributes，包含SKU级别的映射信息
-func (s *productSyncServiceImpl) updateAttributesWithMappings(productData *managementapi.ProductDataDTO, enrichedSkcList []EnrichedSkcInfo) {
+func (s *productSyncServiceImpl) updateAttributesWithMappings(productData *ProductSnapshot, enrichedSkcList []EnrichedSkcInfo) {
 	if attributesJSON, err := json.Marshal(enrichedSkcList); err == nil {
 		productData.Attributes = string(attributesJSON)
 		s.logger.Debug("已更新Attributes，包含SKU级别的完整信息")
 	} else {
 		s.logger.WithError(err).Warn("序列化增强的Attributes失败")
 	}
+}
+
+func productSyncStringPtr(value string) *string {
+	if value == "" {
+		return nil
+	}
+	out := value
+	return &out
+}
+
+func productSyncFloat64Ptr(value float64) *float64 {
+	if value == 0 {
+		return nil
+	}
+	out := value
+	return &out
+}
+
+func productSyncFloat64Value(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func productSyncInt64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }

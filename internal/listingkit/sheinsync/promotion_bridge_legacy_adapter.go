@@ -3,7 +3,7 @@ package sheinsync
 import (
 	"context"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
 )
@@ -39,7 +39,7 @@ type legacyPromotionBridgeAdapter struct {
 }
 
 func (a legacyPromotionBridgeAdapter) RegisterPromotionProducts(ctx context.Context, strategy *SheinPromotionStrategy, activityKey string, products []marketing.SkcInfo) (*SheinPromotionRegistrationResult, error) {
-	result, err := a.bridge.RegisterPromotionProducts(ctx, strategy.managementOperationStrategy(), activityKey, products)
+	result, err := a.bridge.RegisterPromotionProducts(ctx, strategy.runtimeOperationStrategy(), activityKey, products)
 	if result == nil {
 		return nil, err
 	}
@@ -61,11 +61,11 @@ func (a legacyPromotionBridgeFactoryAdapter) BuildPromotionBridge(ctx context.Co
 	return legacyPromotionBridgeAdapter{bridge: bridge}, nil
 }
 
-func (s *SheinPromotionStrategy) managementOperationStrategy() *managementapi.OperationStrategyDTO {
+func (s *SheinPromotionStrategy) runtimeOperationStrategy() *listingruntime.OperationStrategy {
 	if s == nil {
 		return nil
 	}
-	return &managementapi.OperationStrategyDTO{
+	return &listingruntime.OperationStrategy{
 		StoreID:               s.StoreID,
 		ActivityPriceMode:     s.ActivityPriceMode,
 		ActivityDiscountRate:  s.ActivityDiscountRate,

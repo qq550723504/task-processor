@@ -8,35 +8,60 @@ import (
 	"task-processor/internal/core/logger"
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/processor"
+	"task-processor/internal/state"
+	"task-processor/internal/taskstatus"
+	temuclient "task-processor/internal/temu/api/client"
 
 	"github.com/sirupsen/logrus"
 )
 
+type managementRuntime interface {
+	temuclient.StoreRuntime
+	taskstatus.RuntimeTaskStatusUpdater
+	GetFilterRuleClient() *management.FilterRuleAPIClient
+	GetProductImportMappingClient() *management.ProductImportMappingAPIClient
+	GetProfitRuleClient() *management.ProfitRuleAPIClient
+}
+
 type Dependencies struct {
-	ManagementClient *management.ClientManager
-	ProductFetcher   appfetcher.ProductFetcher
-	RabbitMQClient   *rabbitmq.Client
+	ManagementRuntime managementRuntime
+	TaskStatusRuntime taskstatus.RuntimeTaskStatusUpdater
+	MemoryManager     *state.MemoryManager
+	ProductFetcher    appfetcher.ProductFetcher
+	RabbitMQClient    *rabbitmq.Client
 }
 
 type TemuProcessor struct {
 	*processor.BaseProcessor
-	productFetcher   appfetcher.ProductFetcher
-	rabbitmqClient   *rabbitmq.Client
-	taskHandler      *TaskHandler
-	pipelineExecutor *TemuPipelineExecutor
+	managementRuntime managementRuntime
+	taskStatusRuntime taskstatus.RuntimeTaskStatusUpdater
+	productFetcher    appfetcher.ProductFetcher
+	rabbitmqClient    *rabbitmq.Client
+	taskHandler       *TaskHandler
+	pipelineExecutor  *TemuPipelineExecutor
 }
 
 func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *logrus.Logger, deps Dependencies) (*TemuProcessor, error) {
 	log := logger.GetGlobalLogger("temu_processor").WithField(logger.FieldPlatform, "temu")
 
-	if deps.ManagementClient == nil {
-		log.Error("ManagementClient is required")
-		return nil, fmt.Errorf("managementClient is required")
+	if deps.ManagementRuntime == nil {
+		log.Error("ManagementRuntime is required")
+		return nil, fmt.Errorf("managementRuntime is required")
+	}
+	if deps.TaskStatusRuntime == nil {
+		log.Error("TaskStatusRuntime is required")
+		return nil, fmt.Errorf("taskStatusRuntime is required")
+	}
+	if deps.MemoryManager == nil {
+		log.Error("MemoryManager is required")
+		return nil, fmt.Errorf("memoryManager is required")
 	}
 	if deps.ProductFetcher == nil {
 		log.Error("ProductFetcher is required")
@@ -49,17 +74,19 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 		log.Warn("RabbitMQ client not provided; distributed fetching is unavailable")
 	}
 
-	baseProcessor := processor.NewBaseProcessor(ctx, &processor.BaseProcessorConfig{
-		Config:           cfg,
-		ManagementClient: deps.ManagementClient,
-		Logger:           loggerInstance,
-		Platform:         "TEMU",
-	})
+	_ = ctx
+	baseProcessor := processor.NewBaseProcessorWithMemoryManager(&processor.BaseProcessorConfig{
+		Config:   cfg,
+		Logger:   loggerInstance,
+		Platform: "TEMU",
+	}, deps.MemoryManager)
 
 	p := &TemuProcessor{
-		BaseProcessor:  baseProcessor,
-		productFetcher: deps.ProductFetcher,
-		rabbitmqClient: deps.RabbitMQClient,
+		BaseProcessor:     baseProcessor,
+		managementRuntime: deps.ManagementRuntime,
+		taskStatusRuntime: deps.TaskStatusRuntime,
+		productFetcher:    deps.ProductFetcher,
+		rabbitmqClient:    deps.RabbitMQClient,
 	}
 
 	workerPool := worker.NewPool(p, cfg.Worker)
@@ -120,6 +147,55 @@ func (p *TemuProcessor) Start(ctx context.Context) error {
 
 func (p *TemuProcessor) GetProductFetcher() appfetcher.ProductFetcher {
 	return p.productFetcher
+}
+
+func (p *TemuProcessor) GetTaskStatusRuntime() taskstatus.RuntimeTaskStatusUpdater {
+	if p == nil {
+		return nil
+	}
+	return p.taskStatusRuntime
+}
+
+func (p *TemuProcessor) GetStoreRuntime() temuclient.StoreRuntime {
+	if p == nil {
+		return nil
+	}
+	return p.managementRuntime
+}
+
+func (p *TemuProcessor) GetStoreClient() managementapi.StoreAPI {
+	if p == nil || p.managementRuntime == nil {
+		return nil
+	}
+	return p.managementRuntime.GetStoreClient()
+}
+
+func (p *TemuProcessor) GetFilterRuleClient() managementapi.FilterRuleAPI {
+	if p == nil || p.managementRuntime == nil {
+		return nil
+	}
+	return p.managementRuntime.GetFilterRuleClient()
+}
+
+func (p *TemuProcessor) GetProductImportMappingClient() managementapi.ProductImportMappingAPI {
+	if p == nil || p.managementRuntime == nil {
+		return nil
+	}
+	return p.managementRuntime.GetProductImportMappingClient()
+}
+
+func (p *TemuProcessor) GetProfitRuleClient() managementapi.ProfitRuleAPI {
+	if p == nil || p.managementRuntime == nil {
+		return nil
+	}
+	return p.managementRuntime.GetProfitRuleClient()
+}
+
+func (p *TemuProcessor) GetOpenAIClientConfig() *openai.ClientConfig {
+	if p == nil || p.GetConfig() == nil {
+		return nil
+	}
+	return p.GetConfig().OpenAI.ToClientConfig()
 }
 
 func (p *TemuProcessor) Close(ctx context.Context) {

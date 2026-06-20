@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/shein/authorizedbrand"
 	sheinctx "task-processor/internal/shein/context"
@@ -51,7 +51,7 @@ func TestInitProductDataHandlerSetsAuthorizedBrandCode(t *testing.T) {
 func TestEnsureAuthorizedBrandResolvedWithResolver_UsesAmazonBrandAndStoresResolution(t *testing.T) {
 	enabled := true
 	ctx := sheinctx.NewTaskContext(context.Background(), &model.Task{StoreID: 1})
-	ctx.StoreInfo = &managementapi.StoreRespDTO{
+	ctx.StoreInfo = &listingruntime.StoreInfo{
 		EnableBrandAuthorization: &enabled,
 		AuthorizedBrandCode:      "fallback-code",
 		AuthorizedBrandName:      "Fallback",
@@ -90,7 +90,7 @@ func TestInitProductDataHandler_ResolvesAuthorizedBrandBeforeSettingBrandCode(t 
 	ctx := &sheinctx.TaskContext{
 		RuntimeState: sheinctx.RuntimeState{
 			Context: context.Background(),
-			StoreInfo: &managementapi.StoreRespDTO{
+			StoreInfo: &listingruntime.StoreInfo{
 				EnableBrandAuthorization: boolPtr(true),
 			},
 		},
@@ -115,6 +115,31 @@ func TestInitProductDataHandler_ResolvesAuthorizedBrandBeforeSettingBrandCode(t 
 	}
 	if ctx.ProductData == nil || ctx.ProductData.BrandCode == nil || *ctx.ProductData.BrandCode != "nike-1" {
 		t.Fatalf("ProductData.BrandCode = %#v, want nike-1", ctx.ProductData)
+	}
+}
+
+func TestEnsureAuthorizedBrandResolvedWithResolver_SkipsWhenAmazonBrandEmpty(t *testing.T) {
+	ctx := sheinctx.NewTaskContext(context.Background(), &model.Task{StoreID: 1})
+	ctx.StoreInfo = &listingruntime.StoreInfo{
+		EnableBrandAuthorization: boolPtr(true),
+		AuthorizedBrandCode:      "fallback-code",
+		AuthorizedBrandName:      "Fallback",
+	}
+
+	resolver := &stubAuthorizedBrandResolver{}
+
+	err := ensureAuthorizedBrandResolvedWithResolver(ctx, authorizedbrand.ConfigFromStore(ctx.StoreInfo), resolver)
+	if err != nil {
+		t.Fatalf("ensureAuthorizedBrandResolvedWithResolver() error = %v", err)
+	}
+	if resolver.callCount != 0 {
+		t.Fatalf("ResolveForProductBrand() call count = %d, want 0", resolver.callCount)
+	}
+	if resolver.gotBrandName != "" {
+		t.Fatalf("ResolveForProductBrand() productBrand = %q, want empty", resolver.gotBrandName)
+	}
+	if ctx.AuthorizedBrand != nil {
+		t.Fatalf("AuthorizedBrand = %+v, want nil", ctx.AuthorizedBrand)
 	}
 }
 

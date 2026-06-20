@@ -104,10 +104,17 @@ func TestSheinSyncActivityAdapterUsesLocalPromotionBridgeContract(t *testing.T) 
 
 	legacyAdapterFile := readSheinSyncServiceFileContent(t, "promotion_bridge_legacy_adapter.go")
 	assertSheinSyncServiceContainsAll(t, legacyAdapterFile,
+		`"task-processor/internal/listingruntime"`,
 		`"task-processor/internal/shein/activity"`,
 		"func NewSheinActivityAdapter(",
 		"func NewSheinActivityAdapterWithFactory(",
 		"type legacyPromotionBridgeAdapter struct",
+		"func (s *SheinPromotionStrategy) runtimeOperationStrategy() *listingruntime.OperationStrategy",
+	)
+	assertSheinSyncServiceNotContainsAny(t, legacyAdapterFile,
+		`"task-processor/internal/infra/clients/management/api"`,
+		"managementapi.OperationStrategyDTO",
+		"managementOperationStrategy()",
 	)
 }
 

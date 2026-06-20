@@ -81,7 +81,7 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 	var skcDataMap map[string]*productsync.EnrichedSkcInfo
 	var helper *ProductDataHelper
 	if config.PriceMode == "PROFIT" {
-		helper = NewProductDataHelper(s.managementClient, s.logger.Logger)
+		helper = NewProductDataHelper(s.productDataRepo, s.logger.Logger)
 		var err error
 		skcDataMap, err = helper.BuildSkcDataMap(storeID)
 		if err != nil {

@@ -4,7 +4,6 @@ package scheduler
 import (
 	"context"
 
-	"task-processor/internal/infra/clients/management"
 	platformtask "task-processor/internal/platformtask"
 	appscheduler "task-processor/internal/scheduler"
 )
@@ -18,14 +17,12 @@ type InventoryTask struct {
 func NewInventoryTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
-	managementClient *management.ClientManager,
 	inventoryService platformtask.InventorySyncService,
 ) *InventoryTask {
 	_ = ctx
 
 	baseTask := platformtask.NewInventorySyncTask(platformtask.InventorySyncTaskConfig{
 		TaskConfig:       config,
-		ManagementClient: managementClient,
 		InventoryService: inventoryService,
 		PlatformName:     "TEMU",
 	})

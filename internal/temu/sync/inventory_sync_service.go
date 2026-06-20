@@ -8,8 +8,9 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/pricing"
 	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
@@ -19,19 +20,33 @@ import (
 
 // inventorySyncServiceImpl TEMU库存监控服务实现
 type inventorySyncServiceImpl struct {
-	managementClient      *management.ClientManager
+	runtime               inventorySyncRuntime
 	temuAPIClient         client.ClientAPI
 	productFetcher        fetcher.ProductFetcher
 	rawJsonDataClient     product.RawJsonDataClient
 	inventoryRecordClient managementapi.InventoryRecordAPI
+	storeRepo             temuInventoryStoreFinder
+	productDataRepo       listingadmin.ProductDataRepository
 	monitorConfig         *config.MonitorConfig
 	costCalculator        *pricing.CostCalculator
 	logger                *logrus.Entry
 }
 
+type temuInventoryStoreFinder interface {
+	FindStoreByID(ctx context.Context, id int64) (*listingadmin.Store, error)
+}
+
+type inventorySyncRuntime interface {
+	pricing.OperationStrategyProvider
+	productDataClientFactory
+	GetStoreAPI() managementapi.StoreAPI
+	GetLocalStoreRepository() *listingadmin.GormStoreRepository
+	GetLocalProductDataRepository() listingadmin.ProductDataRepository
+}
+
 // NewInventorySyncService 创建TEMU库存监控服务
 func NewInventorySyncService(
-	managementClient *management.ClientManager,
+	runtime inventorySyncRuntime,
 	temuAPIClient client.ClientAPI,
 	productFetcher fetcher.ProductFetcher,
 	monitorConfig *config.MonitorConfig,
@@ -41,34 +56,81 @@ func NewInventorySyncService(
 	log := logger.GetGlobalLogger("TemuInventorySyncService")
 
 	// 创建通用成本计算器（TEMU不需要详细日志）
-	costCalculator := pricing.NewCostCalculator(managementClient, log, false)
+	costCalculator := pricing.NewCostCalculator(runtime, log, false)
 
 	return &inventorySyncServiceImpl{
-		managementClient:      managementClient,
+		runtime:               runtime,
 		temuAPIClient:         temuAPIClient,
 		productFetcher:        productFetcher,
 		rawJsonDataClient:     rawJsonDataClient,
 		inventoryRecordClient: inventoryRecordClient,
-		monitorConfig:         monitorConfig,
-		costCalculator:        costCalculator,
-		logger:                log,
+		storeRepo: func() temuInventoryStoreFinder {
+			if runtime == nil {
+				return nil
+			}
+			return runtime.GetLocalStoreRepository()
+		}(),
+		productDataRepo: func() listingadmin.ProductDataRepository {
+			if runtime == nil {
+				return nil
+			}
+			return runtime.GetLocalProductDataRepository()
+		}(),
+		monitorConfig:  monitorConfig,
+		costCalculator: costCalculator,
+		logger:         log,
 	}
 }
 
 // FetchProductsForInventorySync 获取需要监控库存的产品列表
-func (s *inventorySyncServiceImpl) FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+func (s *inventorySyncServiceImpl) FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]*TemuInventoryProductSnapshot, error) {
 	s.logger.WithFields(logrus.Fields{
 		"tenant_id": tenantID,
 		"store_id":  storeID,
 	}).Info("开始获取需要监控库存的TEMU产品")
 
+	if s.productDataRepo != nil {
+		shelfStatus := managementapi.ShelfStatusOnShelf
+		page, err := s.productDataRepo.ListProductData(ctx, listingadmin.ProductDataQuery{
+			TenantID:    tenantID,
+			StoreID:     temuSyncPtrInt64(storeID),
+			Platform:    "TEMU",
+			ShelfStatus: &shelfStatus,
+			Page:        1,
+			PageSize:    2000,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("通过产品数据仓储获取TEMU产品列表失败: %w", err)
+		}
+		products := make([]*TemuInventoryProductSnapshot, 0)
+		if page != nil {
+			products = make([]*TemuInventoryProductSnapshot, 0, len(page.Items))
+			for i := range page.Items {
+				products = append(products, temuInventoryProductSnapshotFromProductData(&page.Items[i]))
+			}
+		}
+		s.logger.WithField("count", len(products)).Info("通过产品数据仓储获取需要监控库存的TEMU产品完成")
+		return products, nil
+	}
+
 	// 从管理系统获取TEMU平台的在售产品
-	productDataAPI := s.managementClient.GetProductDataClient(storeID)
+	if s.runtime == nil {
+		return nil, fmt.Errorf("inventory sync runtime is not initialized")
+	}
+	productDataAPI := s.runtime.GetProductDataClient(storeID)
+	if productDataAPI == nil {
+		return nil, fmt.Errorf("product data client is not initialized for store %d", storeID)
+	}
 	shelfStatus := managementapi.ShelfStatusOnShelf
-	products, err := productDataAPI.ListByStore("TEMU", tenantID, storeID, &shelfStatus)
+	productDTOs, err := productDataAPI.ListByStore("TEMU", tenantID, storeID, &shelfStatus)
 	if err != nil {
 		s.logger.WithError(err).Warn("从管理系统获取TEMU产品列表失败")
 		return nil, fmt.Errorf("获取TEMU产品列表失败: %w", err)
+	}
+
+	products := make([]*TemuInventoryProductSnapshot, 0, len(productDTOs))
+	for _, prod := range productDTOs {
+		products = append(products, temuInventoryProductSnapshotFromDTO(prod))
 	}
 
 	s.logger.WithField("count", len(products)).Info("获取需要监控库存的TEMU产品完成")
@@ -76,7 +138,7 @@ func (s *inventorySyncServiceImpl) FetchProductsForInventorySync(ctx context.Con
 }
 
 // MonitorInventoryChanges 监控库存和价格变化（并发处理）
-func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, products []*managementapi.ProductDataDTO, tenantID, storeID int64) (*MonitorResult, error) {
+func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, products []*TemuInventoryProductSnapshot, tenantID, storeID int64) (*MonitorResult, error) {
 	totalCount := len(products)
 	s.logger.WithField("count", totalCount).Info("开始监控TEMU产品库存和价格变化（并发处理）")
 
@@ -135,10 +197,12 @@ func (s *inventorySyncServiceImpl) logProgress(currentIndex, totalCount int, res
 }
 
 // getOperationStrategy 获取运营策略
-func (s *inventorySyncServiceImpl) getOperationStrategy(storeID int64) (*managementapi.OperationStrategyDTO, error) {
-	// 从管理系统获取运营策略
-	strategyClient := s.managementClient.GetOperationStrategyClient()
-	strategy, err := strategyClient.GetOperationStrategyByStoreId(storeID)
+func (s *inventorySyncServiceImpl) getOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error) {
+	// 从运行时获取运营策略，优先走本地仓储/运行时抽象
+	if s.runtime == nil {
+		return nil, fmt.Errorf("inventory sync runtime is not initialized")
+	}
+	strategy, err := s.runtime.GetRuntimeOperationStrategy(storeID)
 	if err != nil {
 		return nil, fmt.Errorf("获取TEMU店铺运营策略失败: %w", err)
 	}

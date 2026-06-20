@@ -94,3 +94,46 @@ func TestFindProductImportMappingRowsAppliesResourceFilters(t *testing.T) {
 		t.Fatalf("rows = %+v total=%d, want only fully matched SHEIN row", rows, total)
 	}
 }
+
+func TestGormProductImportMappingRepositoryFindLatestAndExistsPublished(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingProductImportMapping{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, row := range []listingProductImportMapping{
+		{TenantID: 101, ImportTaskID: 10, StoreID: 20, Platform: "SHEIN", Region: "US", ProductID: "P-1", SKU: "SKU-1", PlatformProductID: "", Status: 1, Deleted: 0},
+		{TenantID: 101, ImportTaskID: 10, StoreID: 20, Platform: "SHEIN", Region: "US", ProductID: "P-1", SKU: "SKU-1", PlatformProductID: "SP-NEW", Status: 2, Deleted: 0},
+	} {
+		if err := db.Table("listing_product_import_mapping").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	repo := NewGormProductImportMappingRepository(db)
+	storeID := int64(20)
+	importTaskID := int64(10)
+	mapping, err := repo.FindLatest(context.Background(), ProductImportMappingQuery{
+		StoreID:      &storeID,
+		ImportTaskID: &importTaskID,
+		SKU:          "SKU-1",
+	})
+	if err != nil {
+		t.Fatalf("FindLatest() error = %v", err)
+	}
+	if mapping == nil || mapping.PlatformProductID != "SP-NEW" {
+		t.Fatalf("FindLatest() = %+v, want newest mapping", mapping)
+	}
+
+	exists, err := repo.ExistsPublishedProduct(context.Background(), 20, "SHEIN", "US", "P-1")
+	if err != nil {
+		t.Fatalf("ExistsPublishedProduct() error = %v", err)
+	}
+	if !exists {
+		t.Fatal("ExistsPublishedProduct() = false, want true")
+	}
+}

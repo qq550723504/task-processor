@@ -22,6 +22,7 @@ type SheinCookieLookupResult struct {
 
 type SheinCookieProvider interface {
 	GetCookie(ctx context.Context, storeID int64) (*SheinCookieLookupResult, error)
+	DeleteCookie(ctx context.Context, storeID int64) (bool, error)
 }
 
 type redisSheinCookieProvider struct {
@@ -104,6 +105,54 @@ func (p *redisSheinCookieProvider) GetCookie(ctx context.Context, storeID int64)
 	}
 
 	return nil, nil
+}
+
+func (p *redisSheinCookieProvider) DeleteCookie(ctx context.Context, storeID int64) (bool, error) {
+	if p == nil || p.client == nil {
+		return false, fmt.Errorf("shein cookie redis provider is unavailable")
+	}
+	if storeID <= 0 {
+		return false, fmt.Errorf("invalid shein store id: %d", storeID)
+	}
+
+	pattern := fmt.Sprintf("%s:*:%d", sheinCookieRedisNamespace, storeID)
+	keys, err := p.client.Keys(ctx, pattern).Result()
+	if err != nil {
+		return false, fmt.Errorf("scan shein cookie keys: %w", err)
+	}
+	if len(keys) == 0 {
+		return false, nil
+	}
+
+	for _, key := range keys {
+		tenantID, ok := extractTenantIDFromSheinCookieKey(key, storeID)
+		if !ok {
+			continue
+		}
+
+		lastLoginKey := fmt.Sprintf("shein:last_login_time:%d:%d", tenantID, storeID)
+		lastLoginTimeStr, getErr := p.client.Get(ctx, lastLoginKey).Result()
+		if getErr != nil && getErr != goredis.Nil {
+			return false, fmt.Errorf("get shein last login time %s: %w", lastLoginKey, getErr)
+		}
+		if getErr == nil {
+			lastLoginTime, parseErr := strconv.ParseFloat(strings.TrimSpace(lastLoginTimeStr), 64)
+			if parseErr == nil {
+				currentTime := float64(time.Now().Unix())
+				if currentTime-lastLoginTime < 300 {
+					return false, nil
+				}
+			}
+		}
+
+		deleted, delErr := p.client.Del(ctx, key).Result()
+		if delErr != nil {
+			return false, fmt.Errorf("delete shein cookie key %s: %w", key, delErr)
+		}
+		return deleted > 0, nil
+	}
+
+	return false, nil
 }
 
 func extractTenantIDFromSheinCookieKey(key string, storeID int64) (int64, bool) {

@@ -3,8 +3,11 @@ package sync
 
 // getMinProfitRateThreshold 获取最低利润率阈值（优先从运营策略获取）
 func (s *inventorySyncServiceImpl) getMinProfitRateThreshold(storeID int64) float64 {
-	// 尝试从管理系统获取运营策略
-	strategy, err := s.managementClient.GetOperationStrategyClient().GetOperationStrategyByStoreId(storeID)
+	// 尝试从运行时获取运营策略
+	if s.runtime == nil {
+		return 0
+	}
+	strategy, err := s.runtime.GetRuntimeOperationStrategy(storeID)
 	if err == nil && strategy != nil && strategy.IsEnabled() {
 		if strategy.MinProfitRate > 0 {
 			// 数据格式转换：如果值大于1，认为是百分比形式（如10表示10%），需要转换为小数形式
@@ -20,8 +23,11 @@ func (s *inventorySyncServiceImpl) getMinProfitRateThreshold(storeID int64) floa
 
 // getStockChangeThreshold 获取库存变化阈值（优先从店铺级策略获取）
 func (s *inventorySyncServiceImpl) getStockChangeThreshold(storeID int64) int {
-	// 尝试从管理系统获取店铺级策略
-	strategy, err := s.managementClient.GetOperationStrategyClient().GetOperationStrategyByStoreId(storeID)
+	// 尝试从运行时获取店铺级策略
+	if s.runtime == nil {
+		return 5
+	}
+	strategy, err := s.runtime.GetRuntimeOperationStrategy(storeID)
 	if err == nil && strategy != nil && strategy.IsEnabled() {
 		if strategy.StockChangeThreshold > 0 {
 			return strategy.StockChangeThreshold

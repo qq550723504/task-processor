@@ -1,13 +1,19 @@
 package management
 
 import (
+	"context"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
+	"task-processor/internal/pkg/types"
 
+	miniredis "github.com/alicebob/miniredis/v2"
+	goredis "github.com/redis/go-redis/v9"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -27,6 +33,7 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 		`CREATE TABLE listing_store (
 			id INTEGER PRIMARY KEY,
 			tenant_id INTEGER,
+			owner_user_id TEXT,
 			store_id TEXT,
 			name TEXT,
 			username TEXT,
@@ -56,12 +63,163 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 			status INTEGER,
 			valid_from DATETIME,
 			valid_until DATETIME,
+			expired BOOLEAN DEFAULT 0,
+			dedicated_queue_enabled BOOLEAN,
 			create_time DATETIME,
-			creator TEXT
+			creator TEXT,
+			created_by TEXT,
+			updater TEXT,
+			updated_by TEXT,
+			update_time DATETIME,
+			deleted INTEGER DEFAULT 0
+		)`,
+		`CREATE TABLE listing_filter_rule (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			tenant_id INTEGER,
+			owner_user_id TEXT,
+			name TEXT,
+			rule_code TEXT,
+			description TEXT,
+			store_id INTEGER,
+			category_id INTEGER,
+			price_type TEXT,
+			price_min REAL,
+			price_max REAL,
+			stock_min INTEGER,
+			rating_min REAL,
+			review_count_min INTEGER,
+			delivery_time_max INTEGER,
+			fulfillment_type TEXT,
+			status INTEGER,
+			remark TEXT,
+			create_time DATETIME,
+			update_time DATETIME,
+			deleted INTEGER DEFAULT 0
+		)`,
+		`CREATE TABLE listing_profit_rule (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			tenant_id INTEGER,
+			owner_user_id TEXT,
+			name TEXT,
+			rule_code TEXT,
+			description TEXT,
+			store_id INTEGER,
+			category_id INTEGER,
+			sale_price_multiplier REAL,
+			discount_price_multiplier REAL,
+			status INTEGER,
+			remark TEXT,
+			create_time DATETIME,
+			update_time DATETIME,
+			deleted INTEGER DEFAULT 0
+		)`,
+		`CREATE TABLE listing_operation_strategy (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			tenant_id INTEGER,
+			owner_user_id TEXT,
+			store_id INTEGER,
+			name TEXT,
+			platform TEXT,
+			status INTEGER,
+			stock_change_threshold INTEGER,
+			stock_change_action TEXT,
+			out_of_stock_action TEXT,
+			min_profit_rate REAL,
+			low_profit_action TEXT,
+			price_update_multiplier REAL,
+			stock_update_ratio REAL,
+			activity_enabled INTEGER,
+			activity_type TEXT,
+			activity_discount_rate REAL,
+			activity_stock_ratio REAL,
+			promotion_ratio REAL,
+			activity_min_profit_rate REAL,
+			activity_price_mode TEXT,
+			time_limited_discount_rate REAL,
+			time_limited_min_profit_rate REAL,
+			time_limited_price_mode TEXT,
+			time_limited_user_limit BOOLEAN,
+			time_limited_user_limit_num INTEGER,
+			time_limited_stock_limit BOOLEAN,
+			time_limited_stock_limit_percent INTEGER,
+			fixed_price_adjustment REAL,
+			price_increase_threshold REAL,
+			price_decrease_threshold REAL,
+			price_increase_action TEXT,
+			price_decrease_action TEXT,
+			restore_stock_amount INTEGER,
+			remark TEXT,
+			create_time DATETIME,
+			update_time DATETIME,
+			deleted INTEGER DEFAULT 0
+		)`,
+		`CREATE TABLE listing_pricing_rule (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			tenant_id INTEGER,
+			owner_user_id TEXT,
+			name TEXT,
+			rule_code TEXT,
+			description TEXT,
+			remark TEXT,
+			store_id INTEGER,
+			category_id INTEGER,
+			price_min REAL,
+			price_max REAL,
+			rule_type TEXT,
+			rule_value REAL,
+			fixed_value REAL,
+			accept_condition TEXT,
+			reject_condition TEXT,
+			status INTEGER,
+			create_time DATETIME,
+			update_time DATETIME,
+			deleted INTEGER DEFAULT 0
+		)`,
+		`CREATE TABLE listing_product_data (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			tenant_id INTEGER,
+			owner_user_id TEXT,
+			source TEXT,
+			import_task_id INTEGER,
+			raw_json_data_id INTEGER,
+			store_id INTEGER,
+			category_id INTEGER,
+			platform TEXT,
+			region TEXT,
+			parent_product_id TEXT,
+			product_id TEXT,
+			title TEXT,
+			description TEXT,
+			original_price REAL,
+			special_price REAL,
+			price_currency TEXT,
+			stock TEXT,
+			brand TEXT,
+			category TEXT,
+			main_image_url TEXT,
+			image_urls TEXT,
+			attributes TEXT,
+			source_url TEXT,
+			status INTEGER,
+			platform_product_id TEXT,
+			platform_status TEXT,
+			shelf_status INTEGER,
+			publish_time DATETIME,
+			shelf_time DATETIME,
+			last_sync_time DATETIME,
+			platform_data TEXT,
+			creator TEXT,
+			created_by TEXT,
+			create_time DATETIME,
+			updater TEXT,
+			updated_by TEXT,
+			update_time DATETIME,
+			deleted INTEGER DEFAULT 0
 		)`,
 		`CREATE TABLE listing_product_import_mapping (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			tenant_id INTEGER,
+			owner_user_id TEXT,
 			import_task_id INTEGER,
 			store_id INTEGER,
 			platform TEXT,
@@ -79,8 +237,13 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 			platform_parent_product_id TEXT,
 			filter_rule_id INTEGER,
 			filter_rule_range TEXT,
+			creator TEXT,
+			created_by TEXT,
 			create_time DATETIME,
-			update_time DATETIME
+			updater TEXT,
+			updated_by TEXT,
+			update_time DATETIME,
+			deleted INTEGER DEFAULT 0
 		)`,
 		`CREATE TABLE listing_inventory_record (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,6 +264,7 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 		`CREATE TABLE listing_product_import_task (
 			id INTEGER PRIMARY KEY,
 			tenant_id INTEGER,
+			owner_user_id TEXT,
 			store_id INTEGER,
 			platform TEXT,
 			region TEXT,
@@ -114,16 +278,23 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 			max_retry_count INTEGER,
 			remark TEXT,
 			priority INTEGER,
+			created_by TEXT,
 			create_time DATETIME,
+			updated_by TEXT,
 			update_time DATETIME,
 			creator TEXT,
-			updater TEXT
+			updater TEXT,
+			deleted INTEGER DEFAULT 0
 		)`,
 		`CREATE TABLE listing_raw_json_data (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			tenant_id INTEGER,
+			store_id INTEGER,
+			import_task_id INTEGER,
 			platform TEXT,
 			product_id TEXT,
 			region TEXT,
+			category_id INTEGER,
 			raw_json_data TEXT,
 			status INTEGER DEFAULT 0,
 			create_time DATETIME,
@@ -205,6 +376,268 @@ func TestLocalDataProviderGetStoreMapsListingStoreMetadata(t *testing.T) {
 	}
 }
 
+func TestLocalDataProviderGetFilterRuleResolvesScopedFallbacks(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	rows := []map[string]any{
+		{"tenant_id": 1, "name": "global", "rule_code": "FR-GLOBAL", "status": 1},
+		{"tenant_id": 1, "name": "store", "rule_code": "FR-STORE", "store_id": 11, "status": 1},
+		{"tenant_id": 1, "name": "category", "rule_code": "FR-CATEGORY", "store_id": 11, "category_id": 22, "status": 1},
+	}
+	for _, row := range rows {
+		if err := provider.db.Table("listing_filter_rule").Create(row).Error; err != nil {
+			t.Fatalf("seed listing_filter_rule: %v", err)
+		}
+	}
+
+	got, err := provider.GetFilterRule(&api.FilterRuleReqDTO{TenantID: 1, StoreID: 11, CategoryID: 22})
+	if err != nil {
+		t.Fatalf("GetFilterRule() error = %v", err)
+	}
+	if got == nil || len(*got) != 1 || (*got)[0].RuleCode != "FR-CATEGORY" {
+		t.Fatalf("GetFilterRule() category = %+v, want FR-CATEGORY", got)
+	}
+
+	got, err = provider.GetFilterRule(&api.FilterRuleReqDTO{TenantID: 1, StoreID: 11, CategoryID: 99})
+	if err != nil {
+		t.Fatalf("GetFilterRule() store fallback error = %v", err)
+	}
+	if got == nil || len(*got) != 1 || (*got)[0].RuleCode != "FR-STORE" {
+		t.Fatalf("GetFilterRule() store fallback = %+v, want FR-STORE", got)
+	}
+}
+
+func TestLocalDataProviderGetProfitRuleResolvesStoreThenGlobal(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	rows := []map[string]any{
+		{"tenant_id": 1, "name": "global", "rule_code": "PR-GLOBAL", "sale_price_multiplier": 1.1, "discount_price_multiplier": 1.05, "status": 1},
+		{"tenant_id": 1, "name": "store", "rule_code": "PR-STORE", "store_id": 11, "sale_price_multiplier": 1.3, "discount_price_multiplier": 1.15, "status": 1},
+	}
+	for _, row := range rows {
+		if err := provider.db.Table("listing_profit_rule").Create(row).Error; err != nil {
+			t.Fatalf("seed listing_profit_rule: %v", err)
+		}
+	}
+
+	got, err := provider.GetProfitRule(&api.ProfitRuleReqDTO{TenantID: 1, StoreID: 11})
+	if err != nil {
+		t.Fatalf("GetProfitRule() error = %v", err)
+	}
+	if got == nil || got.RuleCode != "PR-STORE" {
+		t.Fatalf("GetProfitRule() = %+v, want PR-STORE", got)
+	}
+
+	got, err = provider.GetProfitRule(&api.ProfitRuleReqDTO{TenantID: 1, StoreID: 88})
+	if err != nil {
+		t.Fatalf("GetProfitRule() global fallback error = %v", err)
+	}
+	if got == nil || got.RuleCode != "PR-GLOBAL" {
+		t.Fatalf("GetProfitRule() global fallback = %+v, want PR-GLOBAL", got)
+	}
+}
+
+func TestLocalDataProviderGetOperationStrategyUsesRepositoryPath(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	if err := provider.db.Table("listing_operation_strategy").Create(map[string]any{
+		"tenant_id":                   1,
+		"store_id":                    11,
+		"name":                        "strategy",
+		"platform":                    "shein",
+		"status":                      0,
+		"stock_change_threshold":      5,
+		"stock_change_action":         "UPDATE_STOCK",
+		"activity_enabled":            1,
+		"activity_type":               "PROMOTION",
+		"time_limited_user_limit_num": 3,
+		"restore_stock_amount":        8,
+	}).Error; err != nil {
+		t.Fatalf("seed listing_operation_strategy: %v", err)
+	}
+
+	got, err := provider.GetOperationStrategyByStoreID(11)
+	if err != nil {
+		t.Fatalf("GetOperationStrategyByStoreID() error = %v", err)
+	}
+	if got == nil || got.StockChangeThreshold != 5 || !got.ActivityEnabled || got.RestoreStockAmount != 8 {
+		t.Fatalf("GetOperationStrategyByStoreID() = %+v, want mapped strategy", got)
+	}
+}
+
+func TestLocalDataProviderGetPricingRuleUsesRepositoryPath(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	rows := []map[string]any{
+		{"tenant_id": 1, "name": "latest", "rule_code": "PRICE-2", "store_id": 11, "price_min": 10, "price_max": 20, "rule_type": "ratio", "rule_value": 1.3, "status": 0},
+		{"tenant_id": 1, "name": "old", "rule_code": "PRICE-1", "store_id": 11, "price_min": 1, "price_max": 9, "rule_type": "fixed", "rule_value": 2.0, "status": 0},
+	}
+	for _, row := range rows {
+		if err := provider.db.Table("listing_pricing_rule").Create(row).Error; err != nil {
+			t.Fatalf("seed listing_pricing_rule: %v", err)
+		}
+	}
+
+	storeID := int64(11)
+	got, err := provider.GetPricingRule(&api.PricingRuleReqDTO{StoreID: &storeID})
+	if err != nil {
+		t.Fatalf("GetPricingRule() error = %v", err)
+	}
+	if len(got) != 2 || got[0].RuleCode != "PRICE-1" && got[0].RuleCode != "PRICE-2" {
+		t.Fatalf("GetPricingRule() = %+v, want two mapped rules", got)
+	}
+}
+
+func TestLocalDataProviderProductDataUsesRepositoryPath(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	now := time.Date(2026, 6, 19, 10, 0, 0, 0, time.UTC)
+	if err := provider.db.Table("listing_product_data").Create(map[string]any{
+		"tenant_id":           1,
+		"store_id":            11,
+		"platform":            "shein",
+		"region":              "us",
+		"product_id":          "SKU-1",
+		"title":               "alpha shirt",
+		"brand":               "BrandA",
+		"category":            "tops",
+		"platform_product_id": "SP-1",
+		"shelf_status":        2,
+		"attributes":          `{"color":"white"}`,
+		"platform_data":       `{"spu":"123"}`,
+		"create_time":         now,
+		"update_time":         now,
+	}).Error; err != nil {
+		t.Fatalf("seed listing_product_data: %v", err)
+	}
+
+	items, err := provider.ListProductDataByStore("shein", 1, 11, nil)
+	if err != nil {
+		t.Fatalf("ListProductDataByStore() error = %v", err)
+	}
+	if len(items) != 1 || items[0].PlatformProductID != "SP-1" {
+		t.Fatalf("ListProductDataByStore() = %+v, want one mapped product", items)
+	}
+
+	page, err := provider.PageProductDataByStore(&api.ProductDataListByStorePageReqDTO{
+		Platform: "shein",
+		TenantID: 1,
+		StoreID:  11,
+		Title:    "alpha",
+		Brand:    "BrandA",
+		Category: "top",
+		PageNo:   1,
+		PageSize: 20,
+	})
+	if err != nil {
+		t.Fatalf("PageProductDataByStore() error = %v", err)
+	}
+	if page == nil || page.Total != 1 || len(page.List) != 1 {
+		t.Fatalf("PageProductDataByStore() = %+v, want one result", page)
+	}
+}
+
+func TestLocalDataProviderProductDataBatchWritesUseRepositoryPath(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	count, err := provider.BatchCreateOrUpdateProductData(&api.ProductDataBatchSaveReqDTO{
+		Platform: "shein",
+		TenantID: 1,
+		Region:   "us",
+		StoreID:  11,
+		Products: []api.ProductDataItemDTO{
+			{
+				PlatformProductID: "SP-1",
+				ProductName:       "alpha shirt",
+				ProductSku:        "SKU-1",
+				ProductPrice:      types.FlexibleString("19.9"),
+				ProductStock:      types.FlexibleString("12"),
+				ProductCategory:   "tops",
+				Attributes:        `{"size":"M"}`,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("BatchCreateOrUpdateProductData() error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("BatchCreateOrUpdateProductData() count = %d, want 1", count)
+	}
+
+	updated, err := provider.BatchUpdateProductAttributes(&api.ProductDataBatchUpdateAttributesReqDTO{
+		Platform: "shein",
+		TenantID: 1,
+		Region:   "us",
+		StoreID:  11,
+		Products: []api.ProductAttributesItemDTO{
+			{PlatformProductID: "SP-1", Attributes: `{"size":"L"}`},
+		},
+	})
+	if err != nil {
+		t.Fatalf("BatchUpdateProductAttributes() error = %v", err)
+	}
+	if updated != 1 {
+		t.Fatalf("BatchUpdateProductAttributes() updated = %d, want 1", updated)
+	}
+
+	var row struct {
+		Attributes string `gorm:"column:attributes"`
+	}
+	if err := provider.db.Table("listing_product_data").Where("platform_product_id = ?", "SP-1").Take(&row).Error; err != nil {
+		t.Fatalf("load listing_product_data: %v", err)
+	}
+	if row.Attributes != `{"size":"L"}` {
+		t.Fatalf("attributes = %s, want updated value", row.Attributes)
+	}
+}
+
+func TestProductDataToDTO_PreservesJSONAndTimestamps(t *testing.T) {
+	now := time.Date(2026, 6, 14, 12, 34, 56, 0, time.UTC)
+	product := listingadmin.ProductData{
+		ID:                55,
+		Source:            "crawler",
+		ImportTaskID:      ptrInt64(66),
+		StoreID:           ptrInt64(77),
+		Platform:          "shein",
+		CategoryID:        ptrInt64(88),
+		Region:            "us",
+		ParentProductID:   "parent-1",
+		ProductID:         "prod-1",
+		Title:             "Demo Product",
+		Description:       "desc",
+		OriginalPrice:     12.34,
+		SpecialPrice:      9.99,
+		PriceCurrency:     "USD",
+		Stock:             "123",
+		Brand:             "BrandX",
+		Category:          "Accessories",
+		MainImageURL:      "https://img.example/1.png",
+		ImageURLs:         []byte(`["a","b"]`),
+		Attributes:        []byte(`{"color":"red"}`),
+		SourceURL:         "https://example.com/item/1",
+		Status:            3,
+		RawJSONDataID:     ptrInt64(99),
+		PlatformProductID: "platform-1",
+		PlatformStatus:    "online",
+		ShelfStatus:       ptrInt(2),
+		PublishTime:       &now,
+		ShelfTime:         &now,
+		LastSyncTime:      &now,
+		PlatformData:      []byte(`{"foo":"bar"}`),
+		TenantID:          1001,
+		CreateTime:        &now,
+		UpdateTime:        &now,
+	}
+
+	dto := productDataToDTO(&product)
+	if dto == nil {
+		t.Fatal("productDataToDTO() returned nil")
+	}
+	if dto.ImageURLs != `["a","b"]` || dto.Attributes != `{"color":"red"}` || dto.PlatformData != `{"foo":"bar"}` {
+		t.Fatalf("json fields = image:%s attrs:%s platform:%s", dto.ImageURLs, dto.Attributes, dto.PlatformData)
+	}
+	if dto.PublishTime == nil || dto.PublishTime.Time != now || dto.CreateTime == nil || dto.UpdateTime == nil {
+		t.Fatalf("time fields were not preserved: %+v", dto)
+	}
+	if dto.StoreID != 77 || dto.RawJSONDataID != 99 || dto.PlatformProductID != "platform-1" {
+		t.Fatalf("field mapping mismatch: %+v", dto)
+	}
+}
+
 func TestLocalListingStoreToDTO_IncludesAuthorizedBrandFields(t *testing.T) {
 	enabled := true
 	row := localListingStore{
@@ -224,6 +657,199 @@ func TestLocalListingStoreToDTO_IncludesAuthorizedBrandFields(t *testing.T) {
 	}
 	if dto.AuthorizedBrandName != "Logitech" {
 		t.Fatalf("AuthorizedBrandName = %q, want Logitech", dto.AuthorizedBrandName)
+	}
+}
+
+func TestLocalDataProviderUpdateStoreIDUsesRepositoryPath(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	row := map[string]any{
+		"tenant_id":   10,
+		"store_id":    "old-id",
+		"name":        "demo",
+		"username":    "demo-user",
+		"password":    "secret",
+		"platform":    "shein",
+		"shop_type":   "semi",
+		"region":      "us",
+		"status":      0,
+		"deleted":     0,
+		"create_time": time.Now(),
+		"update_time": time.Now(),
+	}
+	if err := provider.db.Table("listing_store").Create(row).Error; err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	var before struct {
+		ID int64 `gorm:"column:id"`
+	}
+	if err := provider.db.Table("listing_store").Where("store_id = ?", "old-id").Take(&before).Error; err != nil {
+		t.Fatalf("load seeded store: %v", err)
+	}
+
+	ok, err := provider.UpdateStoreID(before.ID, "new-id")
+	if err != nil || !ok {
+		t.Fatalf("UpdateStoreID() ok=%v err=%v", ok, err)
+	}
+
+	var after struct {
+		StoreID string `gorm:"column:store_id"`
+	}
+	if err := provider.db.Table("listing_store").Where("id = ?", before.ID).Take(&after).Error; err != nil {
+		t.Fatalf("load updated store: %v", err)
+	}
+	if after.StoreID != "new-id" {
+		t.Fatalf("store_id = %q, want new-id", after.StoreID)
+	}
+}
+
+func TestLocalDataProviderUpdateStoreStatusUsesRepositoryPath(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	row := map[string]any{
+		"tenant_id":   10,
+		"store_id":    "demo-id",
+		"name":        "demo",
+		"username":    "demo-user",
+		"password":    "secret",
+		"platform":    "shein",
+		"shop_type":   "semi",
+		"region":      "us",
+		"status":      0,
+		"remark":      "",
+		"deleted":     0,
+		"create_time": time.Now(),
+		"update_time": time.Now(),
+	}
+	if err := provider.db.Table("listing_store").Create(row).Error; err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	var before struct {
+		ID int64 `gorm:"column:id"`
+	}
+	if err := provider.db.Table("listing_store").Where("store_id = ?", "demo-id").Take(&before).Error; err != nil {
+		t.Fatalf("load seeded store: %v", err)
+	}
+
+	ok, err := provider.UpdateStoreStatus(before.ID, 2, "paused by test")
+	if err != nil || !ok {
+		t.Fatalf("UpdateStoreStatus() ok=%v err=%v", ok, err)
+	}
+
+	var after struct {
+		Status int16  `gorm:"column:status"`
+		Remark string `gorm:"column:remark"`
+	}
+	if err := provider.db.Table("listing_store").Where("id = ?", before.ID).Take(&after).Error; err != nil {
+		t.Fatalf("load updated store: %v", err)
+	}
+	if after.Status != 2 || after.Remark != "paused by test" {
+		t.Fatalf("updated store = %+v, want status=2 remark=paused by test", after)
+	}
+}
+
+func TestLocalDataProviderDeleteStoreCookieUsesRedisPath(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	redisServer := miniredis.RunT(t)
+	provider.redis = goredis.NewClient(&goredis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		_ = provider.redis.Close()
+	})
+
+	row := map[string]any{
+		"tenant_id":   10,
+		"store_id":    "demo-id",
+		"name":        "demo",
+		"username":    "demo-user",
+		"password":    "secret",
+		"platform":    "shein",
+		"shop_type":   "semi",
+		"region":      "us",
+		"status":      0,
+		"deleted":     0,
+		"create_time": time.Now(),
+		"update_time": time.Now(),
+	}
+	if err := provider.db.Table("listing_store").Create(row).Error; err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	var store struct {
+		ID       int64 `gorm:"column:id"`
+		TenantID int64 `gorm:"column:tenant_id"`
+	}
+	if err := provider.db.Table("listing_store").Where("store_id = ?", "demo-id").Take(&store).Error; err != nil {
+		t.Fatalf("load seeded store: %v", err)
+	}
+
+	ctx := context.Background()
+	cookieKey := "shein:cookie:10:" + strconv.FormatInt(store.ID, 10)
+	if err := provider.redis.Set(ctx, cookieKey, `[{"name":"sid"}]`, time.Hour).Err(); err != nil {
+		t.Fatalf("seed cookie: %v", err)
+	}
+
+	ok, err := provider.DeleteStoreCookie(store.ID)
+	if err != nil || !ok {
+		t.Fatalf("DeleteStoreCookie() ok=%v err=%v", ok, err)
+	}
+	if provider.redis.Exists(ctx, cookieKey).Val() != 0 {
+		t.Fatal("cookie key still exists after DeleteStoreCookie()")
+	}
+}
+
+func TestLocalDataProviderDeleteStoreCookieSkipsRecentLogin(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	redisServer := miniredis.RunT(t)
+	provider.redis = goredis.NewClient(&goredis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() {
+		_ = provider.redis.Close()
+	})
+
+	row := map[string]any{
+		"tenant_id":   10,
+		"store_id":    "demo-id",
+		"name":        "demo",
+		"username":    "demo-user",
+		"password":    "secret",
+		"platform":    "shein",
+		"shop_type":   "semi",
+		"region":      "us",
+		"status":      0,
+		"deleted":     0,
+		"create_time": time.Now(),
+		"update_time": time.Now(),
+	}
+	if err := provider.db.Table("listing_store").Create(row).Error; err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	var store struct {
+		ID       int64 `gorm:"column:id"`
+		TenantID int64 `gorm:"column:tenant_id"`
+	}
+	if err := provider.db.Table("listing_store").Where("store_id = ?", "demo-id").Take(&store).Error; err != nil {
+		t.Fatalf("load seeded store: %v", err)
+	}
+
+	ctx := context.Background()
+	cookieKey := "shein:cookie:10:" + strconv.FormatInt(store.ID, 10)
+	lastLoginKey := "shein:last_login_time:10:" + strconv.FormatInt(store.ID, 10)
+	if err := provider.redis.Set(ctx, cookieKey, `[{"name":"sid"}]`, time.Hour).Err(); err != nil {
+		t.Fatalf("seed cookie: %v", err)
+	}
+	if err := provider.redis.Set(ctx, lastLoginKey, time.Now().Unix(), time.Hour).Err(); err != nil {
+		t.Fatalf("seed last login: %v", err)
+	}
+
+	ok, err := provider.DeleteStoreCookie(store.ID)
+	if err != nil {
+		t.Fatalf("DeleteStoreCookie() error = %v", err)
+	}
+	if ok {
+		t.Fatal("DeleteStoreCookie() ok = true, want false for recent login")
+	}
+	if provider.redis.Exists(ctx, cookieKey).Val() != 1 {
+		t.Fatal("cookie key should remain after recent login guard")
 	}
 }
 
@@ -285,9 +911,13 @@ func TestLocalDataProviderGetRawJSONDataSupportsSmallintDeletedColumn(t *testing
 	if err := provider.db.Exec(`
 		CREATE TABLE listing_raw_json_data (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			tenant_id INTEGER,
+			store_id INTEGER,
+			import_task_id INTEGER,
 			product_id TEXT,
 			platform TEXT,
 			region TEXT,
+			category_id INTEGER,
 			raw_json_data TEXT,
 			status INTEGER DEFAULT 0,
 			creator TEXT,
@@ -301,11 +931,15 @@ func TestLocalDataProviderGetRawJSONDataSupportsSmallintDeletedColumn(t *testing
 	}
 
 	if _, err := provider.CreateRawJSONData(&api.RawJsonDataCreateReqDTO{
-		Platform:    "amazon",
-		ProductID:   "B0SMALLINT",
-		Region:      "us",
-		RawJsonData: `{"asin":"B0SMALLINT"}`,
-		Creator:     "tester",
+		TenantID:     10,
+		StoreID:      20,
+		ImportTaskID: 30,
+		Platform:     "amazon",
+		ProductID:    "B0SMALLINT",
+		Region:       "us",
+		CategoryID:   40,
+		RawJsonData:  `{"asin":"B0SMALLINT"}`,
+		Creator:      "tester",
 	}); err != nil {
 		t.Fatalf("CreateRawJSONData() error = %v", err)
 	}
@@ -320,6 +954,9 @@ func TestLocalDataProviderGetRawJSONDataSupportsSmallintDeletedColumn(t *testing
 	}
 	if got == nil || got.RawJSONData == "" {
 		t.Fatalf("GetRawJSONData() = %+v, want stored row", got)
+	}
+	if got.TaskID != 30 {
+		t.Fatalf("GetRawJSONData().TaskID = %d, want 30", got.TaskID)
 	}
 }
 
@@ -393,6 +1030,25 @@ func TestProductImportMappingAPIClient_LocalProvider(t *testing.T) {
 	}
 	if byTaskAndSKU == nil || byTaskAndSKU.PlatformProductId == nil || *byTaskAndSKU.PlatformProductId != updatedPlatformProductID {
 		t.Fatalf("GetProductImportMappingByTaskAndSku() = %+v", byTaskAndSKU)
+	}
+
+	bySKU, err := client.GetProductImportMappingBySku(&api.ProductImportMappingGetBySkuReqDTO{Sku: sku, StoreId: 2002})
+	if err != nil {
+		t.Fatalf("GetProductImportMappingBySku() error = %v", err)
+	}
+	if bySKU == nil || bySKU.PlatformProductId == nil || *bySKU.PlatformProductId != updatedPlatformProductID {
+		t.Fatalf("GetProductImportMappingBySku() = %+v", bySKU)
+	}
+
+	byPlatformAndStore, err := client.GetProductImportMappingByPlatformProductIdAndStore(&api.ProductImportMappingGetByPlatformProductIdAndStoreReqDTO{
+		PlatformProductId: updatedPlatformProductID,
+		StoreId:           2002,
+	})
+	if err != nil {
+		t.Fatalf("GetProductImportMappingByPlatformProductIdAndStore() error = %v", err)
+	}
+	if byPlatformAndStore == nil || byPlatformAndStore.Sku == nil || *byPlatformAndStore.Sku != sku {
+		t.Fatalf("GetProductImportMappingByPlatformProductIdAndStore() = %+v", byPlatformAndStore)
 	}
 
 	exists, err := client.CheckProductExists(&api.ProductImportMappingCheckReqDTO{

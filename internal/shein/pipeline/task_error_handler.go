@@ -131,10 +131,9 @@ func (h *TaskErrorHandler) shouldDeleteCookie(shopID int64) bool {
 }
 
 func (h *TaskErrorHandler) deleteCookieIfNeeded(shopID int64) {
-	storeClient := h.processor.GetManagementClient().GetStoreClient()
-	if storeClient != nil {
+	if h.processor != nil {
 		logger.GetGlobalLogger("shein/pipeline").Infof("正在删除店铺 %d 的过期Cookie...", shopID)
-		success, err := storeClient.DeleteStoreCookie(shopID)
+		success, err := h.processor.DeleteSheinStoreCookie(shopID)
 		if err != nil {
 			logger.GetGlobalLogger("shein/pipeline").Errorf("删除店铺 %d 的过期Cookie失败: %v", shopID, err)
 		} else if success {
@@ -144,7 +143,7 @@ func (h *TaskErrorHandler) deleteCookieIfNeeded(shopID int64) {
 			logger.GetGlobalLogger("shein/pipeline").Warnf("删除店铺 %d 的过期Cookie返回失败", shopID)
 		}
 	} else {
-		logger.GetGlobalLogger("shein/pipeline").Warn("StoreClient未初始化，无法删除过期Cookie")
+		logger.GetGlobalLogger("shein/pipeline").Warn("shein runtime未初始化，无法删除过期Cookie")
 	}
 }
 
@@ -170,14 +169,13 @@ func (h *TaskErrorHandler) updateTaskStatusToAPIWithTask(task *model.Task, statu
 }
 
 func (h *TaskErrorHandler) setPauseKeyForAuthExpired(shopID int64, reason string) error {
-	storeClient := h.processor.GetManagementClient().GetStoreClient()
-	if storeClient == nil {
-		logger.GetGlobalLogger("shein/pipeline").Warn("店铺客户端未初始化，无法设置暂停键")
-		return fmt.Errorf("店铺客户端未初始化")
+	if h.processor == nil {
+		logger.GetGlobalLogger("shein/pipeline").Warn("shein runtime未初始化，无法设置暂停键")
+		return fmt.Errorf("shein runtime未初始化")
 	}
 
 	logger.GetGlobalLogger("shein/pipeline").Infof("设置店铺 %d 的认证过期暂停键，原因: %s", shopID, reason)
-	success, err := storeClient.SetStorePauseStatus(shopID, true, "auth_expired")
+	success, err := h.processor.SetRuntimeStorePauseStatus(shopID, true, "auth_expired")
 	if err != nil {
 		logger.GetGlobalLogger("shein/pipeline").Errorf("设置店铺 %d 的暂停状态失败: %v", shopID, err)
 		return fmt.Errorf("设置暂停状态失败: %w", err)

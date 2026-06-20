@@ -118,3 +118,39 @@ func (r *GormFilterRuleRepository) DeleteFilterRule(ctx context.Context, tenantI
 	}
 	return updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_filter_rule"), tenantID, id, "owner_user_id", updates, ErrFilterRuleNotFound)
 }
+
+func (r *GormFilterRuleRepository) ResolveFilterRules(ctx context.Context, tenantID, storeID, categoryID int64) ([]FilterRule, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("filter rule repository database is not configured")
+	}
+	load := func(db *gorm.DB) ([]FilterRule, error) {
+		var rows []listingFilterRule
+		if err := db.Order("id desc").Find(&rows).Error; err != nil {
+			return nil, err
+		}
+		items := make([]FilterRule, 0, len(rows))
+		for _, row := range rows {
+			items = append(items, row.toFilterRule())
+		}
+		return items, nil
+	}
+
+	base := func() *gorm.DB {
+		return applyOwnerScope(
+			r.db.WithContext(ctx).Table("listing_filter_rule").Where("tenant_id = ? AND deleted = 0", tenantID),
+			ctx,
+			"owner_user_id",
+		)
+	}
+	if categoryID > 0 {
+		items, err := load(base().Where("store_id = ? AND category_id = ?", storeID, categoryID))
+		if err != nil || len(items) > 0 {
+			return items, err
+		}
+	}
+	items, err := load(base().Where("store_id = ? AND (category_id IS NULL OR category_id = 0)", storeID))
+	if err != nil || len(items) > 0 {
+		return items, err
+	}
+	return load(base().Where("(store_id IS NULL OR store_id = 0) AND (category_id IS NULL OR category_id = 0)"))
+}

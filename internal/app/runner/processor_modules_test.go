@@ -3,8 +3,8 @@ package runner
 import (
 	"testing"
 
-	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/core/config"
+	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
 )
 
@@ -20,6 +20,7 @@ func TestBuildRuntimeProductFetcherUsesPlatformFetchModeForShein(t *testing.T) {
 	service := &processorServiceImpl{
 		managementClient: management.NewClientManager(nil),
 	}
+	service.rawJSONDataClient = service.managementClient.GetRawJsonDataAdapter()
 
 	fetcher, err := buildRuntimeProductFetcher(cfg, service, "shein")
 	if err != nil {

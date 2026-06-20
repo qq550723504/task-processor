@@ -46,6 +46,9 @@ func applyProductDataQuery(db *gorm.DB, query ProductDataQuery) *gorm.DB {
 	if query.Brand != "" {
 		db = db.Where("brand = ?", query.Brand)
 	}
+	if query.Category != "" {
+		db = db.Where("category LIKE ?", "%"+query.Category+"%")
+	}
 	if query.Status != nil {
 		db = db.Where("status = ?", *query.Status)
 	}

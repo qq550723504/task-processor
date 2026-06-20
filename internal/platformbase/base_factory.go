@@ -7,20 +7,24 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
+	domainproduct "task-processor/internal/product"
 	appscheduler "task-processor/internal/scheduler"
 
 	"github.com/sirupsen/logrus"
 )
 
+type ManagementRuntime interface {
+	GetRawJsonDataAdapter() domainproduct.RawJsonDataClient
+}
+
 // BaseFactoryConfig 基础工厂配置
 type BaseFactoryConfig struct {
-	Platform         string
-	ManagementClient *management.ClientManager
-	FetcherBuilder   ProductFetcherBuilder
-	AmazonConfig     *config.AmazonConfig
-	MonitorConfig    *config.MonitorConfig
+	Platform          string
+	ManagementRuntime ManagementRuntime
+	FetcherBuilder    ProductFetcherBuilder
+	AmazonConfig      *config.AmazonConfig
+	MonitorConfig     *config.MonitorConfig
 }
 
 // BaseFactory 基础工厂实现
@@ -56,9 +60,8 @@ func (f *BaseFactory) ValidateTaskType(taskType appscheduler.TaskType) error {
 	return fmt.Errorf("不支持的任务类型: %s, 支持的类型: %v", taskType, supportedTypes)
 }
 
-// GetManagementClient 获取管理客户端
-func (f *BaseFactory) GetManagementClient() *management.ClientManager {
-	return f.config.ManagementClient
+func (f *BaseFactory) GetManagementRuntime() ManagementRuntime {
+	return f.config.ManagementRuntime
 }
 
 // GetFetcherBuilder 获取产品获取器构建器。
@@ -72,7 +75,7 @@ func (f *BaseFactory) GetFetcherBuilder() ProductFetcherBuilder {
 // BuildProductFetcher 构建统一产品获取器。
 func (f *BaseFactory) BuildProductFetcher(rabbitmqClient *rabbitmq.Client) (appfetcher.ProductFetcher, error) {
 	return f.GetFetcherBuilder().Build(
-		f.GetManagementClient().GetRawJsonDataAdapter(),
+		f.GetManagementRuntime().GetRawJsonDataAdapter(),
 		f.GetAmazonConfig(),
 		nil,
 		rabbitmqClient,

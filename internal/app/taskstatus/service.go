@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/resilience"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/recovery"
 
@@ -16,7 +17,7 @@ import (
 )
 
 type ImportTaskStatusClient interface {
-	UpdateTaskStatus(req *managementapi.ProductImportTaskUpdateReqDTO) error
+	UpdateTaskStatus(req *listingruntime.TaskStatusUpdate) error
 }
 
 type UpdateInput struct {
@@ -38,6 +39,10 @@ type Service struct {
 	maxRetries     int
 }
 
+type managementClientAdapter struct {
+	client *management.ClientManager
+}
+
 func NewService(component string, clientProvider func() ImportTaskStatusClient) *Service {
 	log := logger.GetGlobalLogger("app/taskstatus").WithField("component", component)
 
@@ -47,6 +52,20 @@ func NewService(component string, clientProvider func() ImportTaskStatusClient) 
 		clientProvider: clientProvider,
 		maxRetries:     3,
 	}
+}
+
+func NewManagementClientAdapter(client *management.ClientManager) ImportTaskStatusClient {
+	if client == nil {
+		return nil
+	}
+	return managementClientAdapter{client: client}
+}
+
+func (a managementClientAdapter) UpdateTaskStatus(req *listingruntime.TaskStatusUpdate) error {
+	if a.client == nil {
+		return fmt.Errorf("management client is not initialized")
+	}
+	return a.client.UpdateRuntimeTaskStatus(req)
 }
 
 func (s *Service) UpdateSync(taskID int64, status model.TaskStatus, errorMsg string) error {
@@ -156,7 +175,7 @@ func (s *Service) updateSync(input UpdateInput) error {
 		return fmt.Errorf("import task client is not initialized")
 	}
 
-	req := &managementapi.ProductImportTaskUpdateReqDTO{
+	req := &listingruntime.TaskStatusUpdate{
 		ID:           input.TaskID,
 		Status:       input.Status.Int16(),
 		ErrorMessage: input.ErrorMessage,

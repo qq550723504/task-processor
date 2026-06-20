@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/pkg/timeout"
 
 	"github.com/sirupsen/logrus"
@@ -15,11 +15,11 @@ import (
 // monitorSingleProduct 监控单个TEMU产品（支持并发处理）
 func (s *inventorySyncServiceImpl) monitorSingleProduct(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	tenantID, storeID int64,
 	result *MonitorResult,
 	resultMutex *sync.Mutex,
-	operationStrategy *managementapi.OperationStrategyDTO,
+	operationStrategy *listingruntime.OperationStrategy,
 ) {
 	s.logger.WithField("product_id", prod.ProductID).Debug("开始监控单个TEMU产品")
 
@@ -76,12 +76,12 @@ func (s *inventorySyncServiceImpl) monitorSingleProduct(
 // 返回库存更新信息，如果不需要更新则返回nil
 func (s *inventorySyncServiceImpl) monitorSingleSKU(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	skuMapping *TemuMappingData,
 	tenantID, storeID int64,
 	result *MonitorResult,
 	resultMutex *sync.Mutex, // 并发模式下不为nil，顺序模式下为nil
-	operationStrategy *managementapi.OperationStrategyDTO, // 预获取的运营策略
+	operationStrategy *listingruntime.OperationStrategy, // 预获取的运营策略
 ) (*SkuInventoryUpdate, error) {
 	mappingInfo := skuMapping.SkuInfo[0].MappingInfo
 	asin := mappingInfo.ProductId

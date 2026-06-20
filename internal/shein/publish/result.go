@@ -1,6 +1,7 @@
 package publish
 
 import (
+	"context"
 	"fmt"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
@@ -51,16 +52,11 @@ func (h *SavePublishResultHandler) Handle(ctx *shein.TaskContext) error {
 }
 
 func (h *SavePublishResultHandler) createProductImportMapping(input *PublishResultInput) error {
-	if input.ManagementClientMgr == nil {
+	if input.RuntimeRepository == nil {
 		return shein.NewNonRetryableError("管理客户端管理器未初始化", nil)
 	}
 	if input.Task == nil {
 		return shein.NewNonRetryableError("任务信息未初始化", nil)
-	}
-
-	mappingClient := input.ManagementClientMgr.GetProductImportMappingClient()
-	if mappingClient == nil {
-		return shein.NewNonRetryableError("产品导入映射客户端未初始化", nil)
 	}
 
 	if input.SheinResponse == nil || len(input.SheinResponse.Info.SKCList) == 0 {
@@ -85,9 +81,9 @@ func (h *SavePublishResultHandler) createProductImportMapping(input *PublishResu
 			}
 
 			createReq := buildMappingReq(input.MappingInput, asin, sku.SupplierSKU, model.TaskStatusPublished)
-			createReq.PlatformProductId = &sku.SKUCode
+			createReq.PlatformProductID = &sku.SKUCode
 
-			existing, err := mappingClient.GetProductImportMappingByTaskAndSku(input.Task.ID, sku.SupplierSKU)
+			existing, err := findMappingByTaskAndSKU(context.Background(), input.RuntimeRepository, input.Task.ID, sku.SupplierSKU)
 			if err != nil {
 				h.logger.Warnf("query existing mapping failed (SKU: %s): %v", sku.SupplierSKU, err)
 			}
@@ -95,14 +91,14 @@ func (h *SavePublishResultHandler) createProductImportMapping(input *PublishResu
 			var id int64
 			if existing != nil && existing.ID > 0 {
 				createReq.ID = &existing.ID
-				if err := mappingClient.UpdateProductImportMapping(createReq); err != nil {
+				if err := input.RuntimeRepository.UpdateRuntimeProductImportMapping(context.Background(), createReq); err != nil {
 					h.logger.Errorf("update product mapping failed (SKU: %s): %v", sku.SupplierSKU, err)
 					continue
 				}
 				id = existing.ID
 				h.logger.Infof("updated product mapping - ID: %d, SKU: %s, PlatformSKU: %s", id, sku.SupplierSKU, sku.SKUCode)
 			} else {
-				id, err = mappingClient.CreateProductImportMapping(createReq)
+				id, err = input.RuntimeRepository.CreateRuntimeProductImportMapping(context.Background(), createReq)
 				if err != nil {
 					h.logger.Errorf("create product mapping failed (SKU: %s): %v", sku.SupplierSKU, err)
 					continue
@@ -204,7 +200,7 @@ func (h *SavePublishResultHandler) calculateIncrement(input *PublishResultInput)
 	}
 	ctx := &sheinctx.TaskContext{
 		RuntimeState: sheinctx.RuntimeState{
-			StoreInfo: input.StoreInfo,
+			StoreInfo: publishRuntimeStoreInfo(input.StoreInfo),
 		},
 		TaskState: sheinctx.TaskState{
 			SheinResponse: input.SheinResponse,
@@ -303,16 +299,11 @@ func (h *SavePublishResultHandler) syncDailyLimitPauseState(ctx *shein.TaskConte
 }
 
 func (h *SavePublishResultHandler) canSafelyResumeQuotaPause(input *PublishResultInput) bool {
-	if input == nil || input.Task == nil || input.ManagementClientMgr == nil {
+	if input == nil || input.Task == nil || input.RuntimeRepository == nil {
 		return false
 	}
 
-	storeClient := input.ManagementClientMgr.GetStoreClient()
-	if storeClient == nil {
-		return false
-	}
-
-	pauseDetail, err := storeClient.GetStorePauseStatusDetail(input.Task.StoreID)
+	pauseDetail, err := input.RuntimeRepository.GetRuntimeStorePauseStatusDetail(input.Task.StoreID)
 	if err != nil {
 		h.logger.Warnf("query store pause detail failed before quota resume: storeId=%d, err=%v", input.Task.StoreID, err)
 		return false

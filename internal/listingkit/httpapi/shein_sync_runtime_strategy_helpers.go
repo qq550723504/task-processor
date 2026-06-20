@@ -4,20 +4,19 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/core/config"
-	managementclient "task-processor/internal/infra/clients/management"
+	"task-processor/internal/listingadmin"
 	sheinsync "task-processor/internal/listingkit/sheinsync"
 )
 
-type localManagementPromotionStrategyProvider struct {
-	client *managementclient.OperationStrategyClient
+type localRuntimePromotionStrategyProvider struct {
+	repo listingadmin.OperationStrategyRepository
 }
 
-func (p localManagementPromotionStrategyProvider) GetPromotionStrategy(_ context.Context, storeID int64, _ string) (*sheinsync.SheinPromotionStrategy, error) {
-	if p.client == nil {
-		return nil, fmt.Errorf("SHEIN promotion strategy client is not configured")
+func (p localRuntimePromotionStrategyProvider) GetPromotionStrategy(ctx context.Context, storeID int64, _ string) (*sheinsync.SheinPromotionStrategy, error) {
+	if p.repo == nil {
+		return nil, fmt.Errorf("SHEIN promotion strategy repository is not configured")
 	}
-	strategy, err := p.client.GetOperationStrategyByStoreId(storeID)
+	strategy, err := p.repo.GetLatestByStoreID(ctx, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -27,33 +26,26 @@ func (p localManagementPromotionStrategyProvider) GetPromotionStrategy(_ context
 	return sheinsync.NewSheinPromotionStrategy(sheinsync.SheinPromotionStrategyInput{
 		StoreID:               strategy.StoreID,
 		ActivityPriceMode:     strategy.ActivityPriceMode,
-		ActivityDiscountRate:  strategy.ActivityDiscountRate,
-		ActivityMinProfitRate: strategy.ActivityMinProfitRate,
-		ActivityStockRatio:    strategy.ActivityStockRatio,
-		FixedPriceAdjustment:  strategy.FixedPriceAdjustment,
+		ActivityDiscountRate:  sheinPromotionFloat64(strategy.ActivityDiscountRate),
+		ActivityMinProfitRate: sheinPromotionFloat64(strategy.ActivityMinProfitRate),
+		ActivityStockRatio:    sheinPromotionFloat64(strategy.ActivityStockRatio),
+		FixedPriceAdjustment:  sheinPromotionFloat64(strategy.FixedPriceAdjustment),
 	}), nil
 }
 
-func buildSheinPromotionStrategyProvider(input BuildServiceInput, closers *closerStack) (localManagementPromotionStrategyProvider, error) {
-	var managementCfg *config.ManagementConfig
-	if input.Config != nil {
-		managementCfg = &input.Config.Management
+func buildSheinPromotionStrategyProvider(repositories *builtRepositories) (localRuntimePromotionStrategyProvider, error) {
+	if repositories == nil {
+		return localRuntimePromotionStrategyProvider{}, nil
 	}
-	clientManager := managementclient.NewClientManager(managementCfg)
+	if repositories.operationStrategyRepository == nil {
+		return localRuntimePromotionStrategyProvider{}, nil
+	}
+	return localRuntimePromotionStrategyProvider{repo: repositories.operationStrategyRepository}, nil
+}
 
-	var dbCfg *config.DatabaseConfig
-	var redisCfg *config.RedisConfig
-	if input.Config != nil {
-		dbCfg = input.Config.Database
-		redisCfg = input.Config.Redis
+func sheinPromotionFloat64(value *float64) float64 {
+	if value == nil {
+		return 0
 	}
-	localProvider, err := managementclient.NewLocalDataProvider(dbCfg, redisCfg)
-	if err != nil {
-		return localManagementPromotionStrategyProvider{}, fmt.Errorf("create local management data provider: %w", err)
-	}
-	if localProvider != nil {
-		clientManager.SetLocalDataProvider(localProvider)
-		closers.Add(localProvider.Close)
-	}
-	return localManagementPromotionStrategyProvider{client: clientManager.GetOperationStrategyClient()}, nil
+	return *value
 }

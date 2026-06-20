@@ -92,6 +92,9 @@ func (r *GormStoreRepository) UpdateStore(ctx context.Context, store *Store) (*S
 		"enable_draft":               row.EnableDraft,
 		"enable_auto_price":          row.EnableAutoPrice,
 		"enable_rebargain":           row.EnableRebargain,
+		"enable_brand_authorization": row.EnableBrandAuthorization,
+		"authorized_brand_code":      row.AuthorizedBrandCode,
+		"authorized_brand_name":      row.AuthorizedBrandName,
 		"temu_price_reject_strategy": row.TemuPriceRejectStrategy,
 		"price_type":                 row.PriceType,
 		"remark":                     row.Remark,
@@ -111,6 +114,22 @@ func (r *GormStoreRepository) UpdateStore(ctx context.Context, store *Store) (*S
 		return nil, err
 	}
 	return r.GetStore(ctx, row.TenantID, row.ID)
+}
+
+func (r *GormStoreRepository) UpdateStoreID(ctx context.Context, id int64, storeID string) (*Store, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("store repository database is not configured")
+	}
+	store, err := r.FindStoreByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := updateStoreAccessRow(ctx, r.db.WithContext(ctx).Table("listing_store"), store.TenantID, id, 0, map[string]any{
+		"store_id": storeID,
+	}); err != nil {
+		return nil, err
+	}
+	return r.FindStoreByID(ctx, id)
 }
 
 func (r *GormStoreRepository) UpdateStoreStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*Store, error) {
@@ -184,4 +203,22 @@ func (r *GormStoreRepository) ExtendStoreValidity(ctx context.Context, tenantID,
 		return nil, err
 	}
 	return r.GetStore(ctx, tenantID, id)
+}
+
+func (r *GormStoreRepository) FindStoreByID(ctx context.Context, id int64) (*Store, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("store repository database is not configured")
+	}
+	var row listingStore
+	err := applyStoreAccessScope(r.db.WithContext(ctx).Table("listing_store"), StoreQuery{}).
+		Where("id = ? AND deleted = 0", id).
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrStoreNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	store := row.toStore()
+	return &store, nil
 }

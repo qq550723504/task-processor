@@ -10,8 +10,8 @@ import (
 )
 
 type stubProductAPI struct {
-	brandResp *sheinproduct.BrandListResponse
-	brandErr  error
+	brandResp  *sheinproduct.BrandListResponse
+	brandErr   error
 	brandCalls int
 }
 
@@ -157,7 +157,7 @@ func TestResolveForProductBrand_PrefersProductBrandOverStoreFallback(t *testing.
 	}
 }
 
-func TestResolveForProductBrand_FallsBackToConfiguredBrandWhenProductBrandEmpty(t *testing.T) {
+func TestResolveForProductBrand_ReturnsNilWhenProductBrandEmpty(t *testing.T) {
 	productAPI := &stubProductAPI{
 		brandResp: brandListResponse(
 			sheinproduct.BrandItem{BrandCode: "2wex9", BrandName: "Skechers", BrandNameEn: "Skechers"},
@@ -173,11 +173,8 @@ func TestResolveForProductBrand_FallsBackToConfiguredBrandWhenProductBrandEmpty(
 	if err != nil {
 		t.Fatalf("ResolveForProductBrand() error = %v", err)
 	}
-	if got == nil || got.Code != "2wex9" {
-		t.Fatalf("ResolveForProductBrand() = %+v, want Skechers brand", got)
-	}
-	if productAPI.brandCalls != 1 {
-		t.Fatalf("QueryBrandList() call count = %d, want 1", productAPI.brandCalls)
+	if got != nil {
+		t.Fatalf("ResolveForProductBrand() = %+v, want nil", got)
 	}
 }
 

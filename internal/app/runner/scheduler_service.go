@@ -5,7 +5,6 @@ import (
 
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
@@ -19,7 +18,7 @@ type SchedulerService interface {
 
 type schedulerServiceImpl struct {
 	logger              *logrus.Logger
-	managementClient    *management.ClientManager
+	storeRuntime        schedulerStoreRuntime
 	config              *config.Config
 	rabbitmqClient      *rabbitmq.Client
 	temuFactoryCreator  TaskFactoryCreator
@@ -32,14 +31,14 @@ type schedulerServiceImpl struct {
 
 func NewSchedulerServiceWithDependencies(
 	logger *logrus.Logger,
-	managementClient *management.ClientManager,
+	runtimeProvider SchedulerRuntimeProvider,
 	cfg *config.Config,
 	rabbitmqClient *rabbitmq.Client,
 	deps SchedulerDependencies,
 ) SchedulerService {
 	return &schedulerServiceImpl{
 		logger:              logger,
-		managementClient:    managementClient,
+		storeRuntime:        schedulerStoreRuntimeAdapter{client: runtimeProvider},
 		config:              cfg,
 		rabbitmqClient:      rabbitmqClient,
 		temuFactoryCreator:  deps.TemuFactoryCreator,

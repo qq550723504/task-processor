@@ -50,6 +50,10 @@ func (s *stubStoreRepository) UpdateStore(context.Context, *listingadmin.Store) 
 	panic("unexpected UpdateStore")
 }
 
+func (s *stubStoreRepository) UpdateStoreID(context.Context, int64, string) (*listingadmin.Store, error) {
+	panic("unexpected UpdateStoreID")
+}
+
 func (s *stubStoreRepository) UpdateStoreStatus(context.Context, int64, int64, int16, string) (*listingadmin.Store, error) {
 	panic("unexpected UpdateStoreStatus")
 }

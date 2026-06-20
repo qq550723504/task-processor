@@ -3,6 +3,7 @@ package extractor
 import (
 	"strings"
 	"task-processor/internal/model"
+	"time"
 
 	"github.com/playwright-community/playwright-go"
 )
@@ -11,13 +12,44 @@ import (
 type BrandExtractor struct{}
 
 func (e *BrandExtractor) Extract(page playwright.Page, product *model.Product) error {
-	selectors := []string{
+	if page != nil {
+		_, _ = page.WaitForSelector(strings.Join(brandSelectors(), ", "), playwright.PageWaitForSelectorOptions{
+			State:   playwright.WaitForSelectorStateAttached,
+			Timeout: playwright.Float(float64((1500 * time.Millisecond).Milliseconds())),
+		})
+	}
+
+	for _, selector := range brandSelectors() {
+		element, err := page.QuerySelector(selector)
+		if err == nil && element != nil {
+			text, _ := element.InnerText()
+			if strings.TrimSpace(text) == "" {
+				text, _ = element.TextContent()
+			}
+			if brand := normalizeBrandText(text); brand != "" {
+				product.Brand = brand
+				return nil
+			}
+		}
+	}
+
+	return nil
+}
+
+func brandSelectors() []string {
+	return []string{
 		"#bylineInfo",
 		"a#brand",
 		".po-brand .po-break-word",
+		"#productBrandLogo_feature_div",
+		"#productBrandLogo_feature_div a",
+		"#productBrandLogo_feature_div .a-link-normal",
 	}
+}
 
-	// 多语言品牌前缀列表
+func normalizeBrandText(value string) string {
+	brand := strings.TrimSpace(value)
+
 	prefixes := []string{
 		"Visit the ",           // 英语
 		"Visita la tienda de ", // 西班牙语（墨西哥、西班牙等）
@@ -30,7 +62,6 @@ func (e *BrandExtractor) Extract(page playwright.Page, product *model.Product) e
 		"Brand: ",              // 通用
 	}
 
-	// 多语言品牌后缀列表
 	suffixes := []string{
 		" Store",    // 英语
 		" tienda",   // 西班牙语
@@ -40,26 +71,13 @@ func (e *BrandExtractor) Extract(page playwright.Page, product *model.Product) e
 		" ストア",      // 日语 Store（带空格）
 	}
 
-	for _, selector := range selectors {
-		element, err := page.QuerySelector(selector)
-		if err == nil && element != nil {
-			text, _ := element.TextContent()
-			brand := strings.TrimSpace(text)
-
-			// 移除所有可能的前缀
-			for _, prefix := range prefixes {
-				brand = strings.TrimPrefix(brand, prefix)
-			}
-
-			// 移除所有可能的后缀
-			for _, suffix := range suffixes {
-				brand = strings.TrimSuffix(brand, suffix)
-			}
-
-			product.Brand = strings.TrimSpace(brand)
-			return nil
-		}
+	for _, prefix := range prefixes {
+		brand = strings.TrimPrefix(brand, prefix)
 	}
 
-	return nil
+	for _, suffix := range suffixes {
+		brand = strings.TrimSuffix(brand, suffix)
+	}
+
+	return strings.TrimSpace(brand)
 }

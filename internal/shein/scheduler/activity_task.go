@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
+	"task-processor/internal/pricing"
 	appscheduler "task-processor/internal/scheduler"
 	"task-processor/internal/shein/activity"
 
@@ -18,7 +18,7 @@ import (
 // ActivityTask SHEIN活动报名任务
 type ActivityTask struct {
 	*BaseTask
-	managementClient *management.ClientManager
+	strategyProvider pricing.OperationStrategyProvider
 	activityService  activity.ActivityRegistrationService
 	logger           *logrus.Entry
 }
@@ -27,7 +27,7 @@ type ActivityTask struct {
 func NewActivityTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
-	managementClient *management.ClientManager,
+	strategyProvider pricing.OperationStrategyProvider,
 	activityService activity.ActivityRegistrationService,
 ) *ActivityTask {
 	_ = ctx
@@ -35,7 +35,7 @@ func NewActivityTask(
 
 	return &ActivityTask{
 		BaseTask:         baseTask,
-		managementClient: managementClient,
+		strategyProvider: strategyProvider,
 		activityService:  activityService,
 		logger: logger.GetGlobalLogger("shein/scheduler").WithFields(logrus.Fields{
 			"component": "SheinActivityTask",
@@ -54,8 +54,10 @@ func (t *ActivityTask) Execute(ctx context.Context) error {
 	t.logger.Info("开始执行SHEIN活动报名任务")
 
 	// 1. 获取运营策略，判断活动类型
-	strategyClient := t.managementClient.GetOperationStrategyClient()
-	strategy, err := strategyClient.GetOperationStrategyByStoreId(t.GetStoreID())
+	if t.strategyProvider == nil {
+		return fmt.Errorf("operation strategy provider is required")
+	}
+	strategy, err := t.strategyProvider.GetRuntimeOperationStrategy(t.GetStoreID())
 	if err != nil {
 		t.logger.WithError(err).Warn("获取运营策略失败，跳过任务")
 		return nil
@@ -82,7 +84,7 @@ func (t *ActivityTask) Execute(ctx context.Context) error {
 }
 
 // executePromotionActivity 执行促销活动报名
-func (t *ActivityTask) executePromotionActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) error {
+func (t *ActivityTask) executePromotionActivity(ctx context.Context, strategy *listingruntime.OperationStrategy) error {
 	t.logger.Info("执行促销活动报名")
 
 	// 根据运营策略报名促销活动（内部会获取产品列表、构建配置、提交报名）
@@ -100,7 +102,7 @@ func (t *ActivityTask) executePromotionActivity(ctx context.Context, strategy *m
 }
 
 // executeTimeLimitedDiscountActivity 执行限时折扣活动创建
-func (t *ActivityTask) executeTimeLimitedDiscountActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) error {
+func (t *ActivityTask) executeTimeLimitedDiscountActivity(ctx context.Context, strategy *listingruntime.OperationStrategy) error {
 	t.logger.Info("执行限时折扣活动创建")
 
 	// 根据运营策略创建限时折扣活动（内部会查询商品、计算价格、创建活动）
@@ -118,7 +120,7 @@ func (t *ActivityTask) executeTimeLimitedDiscountActivity(ctx context.Context, s
 }
 
 // executeMixedActivity 执行混合活动（按比例分配促销和限时折扣）
-func (t *ActivityTask) executeMixedActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) error {
+func (t *ActivityTask) executeMixedActivity(ctx context.Context, strategy *listingruntime.OperationStrategy) error {
 	t.logger.WithField("promotion_ratio", strategy.PromotionRatio).Info("执行混合活动")
 
 	// 根据运营策略按比例执行混合活动

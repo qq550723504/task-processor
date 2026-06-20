@@ -3,18 +3,18 @@ package managedclient
 import (
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 )
 
 func TestNewAPIClientWithStoreInfoAppliesProxyAndLoginURL(t *testing.T) {
-	storeInfo := &managementapi.StoreRespDTO{
+	storeInfo := &listingruntime.StoreInfo{
 		ID:       869,
 		TenantID: 227,
-		LoginUrl: "sso.geiwohuo.com",
+		LoginURL: "sso.geiwohuo.com",
 		Proxy:    "http://10.42.0.1:31069",
 	}
 
-	apiClient := NewAPIClientWithStoreInfo(869, nil, storeInfo)
+	apiClient := NewAPIClientWithStoreInfo(869, nil, nil, storeInfo)
 
 	if got := apiClient.GetProxyURL(); got != storeInfo.Proxy {
 		t.Fatalf("proxy URL = %q, want %q", got, storeInfo.Proxy)
@@ -32,13 +32,13 @@ func TestNewAPIClientWithStoreInfoAppliesProxyAndLoginURL(t *testing.T) {
 
 func TestNewAPIClientWithStoreInfoCanIgnoreStoreProxy(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_SHEIN_IGNORE_STORE_PROXY", "1")
-	storeInfo := &managementapi.StoreRespDTO{
+	storeInfo := &listingruntime.StoreInfo{
 		ID:       869,
 		TenantID: 227,
 		Proxy:    "http://10.42.0.1:31069",
 	}
 
-	apiClient := NewAPIClientWithStoreInfo(869, nil, storeInfo)
+	apiClient := NewAPIClientWithStoreInfo(869, nil, nil, storeInfo)
 
 	if got := apiClient.GetProxyURL(); got != "" {
 		t.Fatalf("proxy URL = %q, want empty when proxy ignored", got)

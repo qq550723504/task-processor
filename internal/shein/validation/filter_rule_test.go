@@ -3,7 +3,7 @@ package validation
 import (
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	sheinctx "task-processor/internal/shein/context"
@@ -14,10 +14,10 @@ func TestApplyFilterRuleHandlerDefersInventoryCheckForVariantProducts(t *testing
 	handler := NewApplyFilterRuleHandler()
 	ctx := &sheinctx.TaskContext{
 		RuntimeState: sheinctx.RuntimeState{
-			StoreInfo: &managementapi.StoreRespDTO{PriceType: "special"},
+			StoreInfo: &listingruntime.StoreInfo{PriceType: "special"},
 		},
 		ProductState: sheinctx.ProductState{
-			FilterRule: &managementapi.FilterRuleRespDTO{StockMin: &stockMin},
+			FilterRule: &listingruntime.FilterRule{StockMin: &stockMin},
 			AmazonProduct: &model.Product{
 				Asin:                 "B0TESTVARIANT",
 				IsAvailable:          true,
@@ -40,10 +40,10 @@ func TestApplyFilterRuleHandlerStillFiltersSingleSKUByInventory(t *testing.T) {
 	handler := NewApplyFilterRuleHandler()
 	ctx := &sheinctx.TaskContext{
 		RuntimeState: sheinctx.RuntimeState{
-			StoreInfo: &managementapi.StoreRespDTO{PriceType: "special"},
+			StoreInfo: &listingruntime.StoreInfo{PriceType: "special"},
 		},
 		ProductState: sheinctx.ProductState{
-			FilterRule: &managementapi.FilterRuleRespDTO{StockMin: &stockMin},
+			FilterRule: &listingruntime.FilterRule{StockMin: &stockMin},
 			AmazonProduct: &model.Product{
 				Asin:                 "B0TESTSINGLE",
 				IsAvailable:          true,

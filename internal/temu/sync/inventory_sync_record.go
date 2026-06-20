@@ -2,6 +2,7 @@
 package sync
 
 import (
+	"context"
 	"encoding/json"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
@@ -18,7 +19,7 @@ import (
 func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 	productId, region string,
 	amazonProduct *model.Product,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	skuMapping *TemuSkuInfo,
 	storeID int64,
 ) {
@@ -131,7 +132,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 
 // updateAttributesWithAmazonData 更新产品attributes中的Amazon数据（异步）- 参考SHEIN实现
 func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	platformSKU string,
 	amazonProduct *model.Product,
 	storeID int64,
@@ -208,24 +209,7 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 		return
 	}
 
-	// 使用批量更新attributes接口
-	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-
-	updateReq := &managementapi.ProductDataBatchUpdateAttributesReqDTO{
-		Platform: "TEMU",
-		TenantID: prod.TenantID,
-		StoreID:  storeID,
-		Region:   prod.Region,
-		Products: []managementapi.ProductAttributesItemDTO{
-			{
-				PlatformProductID: prod.PlatformProductID,
-				Attributes:        string(updatedAttributes),
-				UpdateTime:        &[]int64{time.Now().Unix()}[0],
-			},
-		},
-	}
-
-	if count, err := productDataAPI.BatchUpdateAttributes(updateReq); err != nil {
+	if count, err := s.updateInventoryProductAttributes(context.Background(), prod, string(updatedAttributes)); err != nil {
 		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("更新TEMU产品attributes失败")
 	} else {
 		if count <= 0 {

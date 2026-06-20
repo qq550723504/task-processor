@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/shein/inventory"
 )
@@ -40,11 +39,11 @@ func (a *inventorySyncServiceAdapter) FetchProductsForInventorySync(ctx context.
 // MonitorInventoryChanges 监控库存和价格变化（适配到通用接口）
 func (a *inventorySyncServiceAdapter) MonitorInventoryChanges(ctx context.Context, products []any, tenantID, storeID int64) (*platformtask.InventorySyncResult, error) {
 	// 转换回SHEIN特定类型
-	sheinProducts := make([]*managementapi.ProductDataDTO, len(products))
+	sheinProducts := make([]*inventory.InventoryProductSnapshot, len(products))
 	for i, p := range products {
-		sp, ok := p.(*managementapi.ProductDataDTO)
+		sp, ok := p.(*inventory.InventoryProductSnapshot)
 		if !ok {
-			return nil, fmt.Errorf("products[%d] 类型断言失败: 期望 *ProductDataDTO, 实际 %T", i, p)
+			return nil, fmt.Errorf("products[%d] 类型断言失败: 期望 *InventoryProductSnapshot, 实际 %T", i, p)
 		}
 		sheinProducts[i] = sp
 	}

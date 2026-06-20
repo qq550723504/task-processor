@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 	shein "task-processor/internal/shein"
@@ -34,10 +34,10 @@ func TestBuildSKUListForMultipleVariantsWithRuntimeDeduplicatesSupplierSKU(t *te
 			"ASIN-1": "SUPPLIER-SKU-1",
 		},
 		AttributeTemplates: &sheinattribute.AttributeTemplateInfo{},
-		StoreInfo: &managementapi.StoreRespDTO{
+		StoreInfo: &listingruntime.StoreInfo{
 			PriceType: "special",
 		},
-		ProfitRule: &managementapi.ProfitRuleRespDTO{
+		ProfitRule: &listingruntime.ProfitRule{
 			SalePriceMultiplier: 1,
 		},
 		SiteList: []sheinproduct.SiteInfo{{
@@ -117,10 +117,10 @@ func TestBuildMultipleSKUsWithRuntimeUsesPreMatchedPrimaryVariants(t *testing.T)
 			"ASIN-WHITE-2": "SUPPLIER-WHITE-2",
 		},
 		AttributeTemplates: &sheinattribute.AttributeTemplateInfo{},
-		StoreInfo: &managementapi.StoreRespDTO{
+		StoreInfo: &listingruntime.StoreInfo{
 			PriceType: "special",
 		},
-		ProfitRule: &managementapi.ProfitRuleRespDTO{
+		ProfitRule: &listingruntime.ProfitRule{
 			SalePriceMultiplier: 1,
 		},
 		SiteList: []sheinproduct.SiteInfo{{

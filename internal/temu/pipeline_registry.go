@@ -2,10 +2,13 @@
 package temu
 
 import (
+	appfetcher "task-processor/internal/crawler/fetcher"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/clients/openai"
 	"task-processor/internal/pipeline"
 	commonPipeline "task-processor/internal/pipeline"
 	commonHandlers "task-processor/internal/pipeline/handlers"
+	"task-processor/internal/state"
 	"task-processor/internal/temu/category"
 	"task-processor/internal/temu/filter"
 	"task-processor/internal/temu/handlerbase"
@@ -17,6 +20,16 @@ import (
 	"task-processor/internal/temu/template"
 )
 
+type pipelineRuntime interface {
+	GetProductFetcher() appfetcher.ProductFetcher
+	GetMemoryManager() *state.MemoryManager
+	GetOpenAIClientConfig() *openai.ClientConfig
+	GetStoreClient() managementapi.StoreAPI
+	GetFilterRuleClient() managementapi.FilterRuleAPI
+	GetProductImportMappingClient() managementapi.ProductImportMappingAPI
+	GetProfitRuleClient() managementapi.ProfitRuleAPI
+}
+
 // HandlerRegistryEntry 处理器注册表条目
 type HandlerRegistryEntry struct {
 	Name    string
@@ -25,15 +38,15 @@ type HandlerRegistryEntry struct {
 
 // PipelineRegistry 管道处理器注册表
 type PipelineRegistry struct {
-	processor *TemuProcessor
-	entries   []HandlerRegistryEntry
+	runtime pipelineRuntime
+	entries []HandlerRegistryEntry
 }
 
 // NewPipelineRegistry 创建管道处理器注册表
-func NewPipelineRegistry(processor *TemuProcessor) *PipelineRegistry {
+func NewPipelineRegistry(runtime pipelineRuntime) *PipelineRegistry {
 	return &PipelineRegistry{
-		processor: processor,
-		entries:   make([]HandlerRegistryEntry, 0, 35),
+		runtime: runtime,
+		entries: make([]HandlerRegistryEntry, 0, 35),
 	}
 }
 
@@ -74,27 +87,23 @@ func (pr *PipelineRegistry) registerCommonHandlers() {
 
 // registerInitHandlers 注册初始化阶段处理器
 func (pr *PipelineRegistry) registerInitHandlers() {
-	managementClient := pr.processor.GetManagementClient()
-
 	pr.register("init_data", handlerbase.NewInitDataHandler())
-	pr.register("store_info", store.NewStoreInfoHandler(managementClient.GetStoreClient()))
-	pr.register("raw_json_data", product.NewRawJsonDataHandlerV2(pr.processor.GetProductFetcher()))
+	pr.register("store_info", store.NewStoreInfoHandler(pr.runtime.GetStoreClient()))
+	pr.register("raw_json_data", product.NewRawJsonDataHandlerV2(pr.runtime.GetProductFetcher()))
 	pr.register("prohibited_items", NewTemuHandlerAdapter("prohibited_items_detector", filter.NewProhibitedItemsDetector()))
-	pr.register("cache_product", product.NewCacheProductHandler(pr.processor.GetProductFetcher()))
-	pr.register("product_exists", product.NewProductExistsCheckHandler(managementClient.GetProductImportMappingClient()))
+	pr.register("cache_product", product.NewCacheProductHandler(pr.runtime.GetProductFetcher()))
+	pr.register("product_exists", product.NewProductExistsCheckHandler(pr.runtime.GetProductImportMappingClient()))
 }
 
 // registerFilterHandlers 注册筛选和验证阶段处理器
 func (pr *PipelineRegistry) registerFilterHandlers() {
-	managementClient := pr.processor.GetManagementClient()
-
-	pr.register("filter_rule", filter.NewFilterRuleHandler(managementClient.GetFilterRuleClient()))
-	pr.register("store_id", store.NewStoreIDHandler(managementClient.GetStoreClient()))
+	pr.register("filter_rule", filter.NewFilterRuleHandler(pr.runtime.GetFilterRuleClient()))
+	pr.register("store_id", store.NewStoreIDHandler(pr.runtime.GetStoreClient()))
 	pr.register("text_check", rules.NewTextCheckHandler())
-	pr.register("parallel_variant", sku.NewParallelVariantHandler(pr.processor.GetProductFetcher()))
-	pr.register("cache_variants", sku.NewCacheVariantsHandler(pr.processor.GetProductFetcher()))
-	pr.register("variant_filter", sku.NewVariantFilterHandler(managementClient.GetFilterRuleClient()))
-	pr.register("daily_limit", product.NewCheckDailyLimitHandler(pr.processor.GetMemoryManager()))
+	pr.register("parallel_variant", sku.NewParallelVariantHandler(pr.runtime.GetProductFetcher()))
+	pr.register("cache_variants", sku.NewCacheVariantsHandler(pr.runtime.GetProductFetcher()))
+	pr.register("variant_filter", sku.NewVariantFilterHandler(pr.runtime.GetFilterRuleClient()))
+	pr.register("daily_limit", product.NewCheckDailyLimitHandler(pr.runtime.GetMemoryManager()))
 }
 
 // registerCategoryHandlers 注册分类和SKU处理阶段处理器
@@ -121,14 +130,13 @@ func (pr *PipelineRegistry) registerImageHandlers() {
 
 // registerContentHandlers 注册内容构建和优化阶段处理器
 func (pr *PipelineRegistry) registerContentHandlers() {
-	managementClient := pr.processor.GetManagementClient()
 	openaiConfig := pr.createOpenAIConfig()
 	aiClient := openai.NewClient(openaiConfig)
 
-	skuBuilder := sku.NewSkuBuilder(nil, aiClient, managementClient.GetProfitRuleClient())
+	skuBuilder := sku.NewSkuBuilder(nil, aiClient, pr.runtime.GetProfitRuleClient())
 	specHandler := skuBuilder.GetSpecHandler()
 
-	pr.register("build_spu", NewTemuHandlerAdapter("build_spu", product.NewBuildSpuHandler(aiClient, managementClient.GetProfitRuleClient(), skuBuilder, specHandler)))
+	pr.register("build_spu", NewTemuHandlerAdapter("build_spu", product.NewBuildSpuHandler(aiClient, pr.runtime.GetProfitRuleClient(), skuBuilder, specHandler)))
 	pr.register("content_validation", commonPipeline.NewParallelHandler(
 		"内容验证并行处理",
 		product.NewProductNameValidator(),
@@ -141,14 +149,15 @@ func (pr *PipelineRegistry) registerContentHandlers() {
 
 // registerSubmitHandlers 注册提交和保存阶段处理器
 func (pr *PipelineRegistry) registerSubmitHandlers() {
-	managementClient := pr.processor.GetManagementClient()
-
 	pr.register("price_query", product.NewPriceQueryHandler())
-	pr.register("product_submit", product.NewProductSubmitHandler(managementClient.GetProductImportMappingClient()))
-	pr.register("save_result", product.NewSavePublishResultHandler(managementClient.GetProductImportMappingClient(), pr.processor.GetMemoryManager()))
+	pr.register("product_submit", product.NewProductSubmitHandler(pr.runtime.GetProductImportMappingClient()))
+	pr.register("save_result", product.NewSavePublishResultHandler(pr.runtime.GetProductImportMappingClient(), pr.runtime.GetMemoryManager()))
 }
 
 // createOpenAIConfig 创建OpenAI配置
 func (pr *PipelineRegistry) createOpenAIConfig() *openai.ClientConfig {
-	return pr.processor.GetConfig().OpenAI.ToClientConfig()
+	if pr.runtime == nil {
+		return nil
+	}
+	return pr.runtime.GetOpenAIClientConfig()
 }

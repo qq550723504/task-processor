@@ -4,7 +4,7 @@ package publish
 import (
 	"fmt"
 	"task-processor/internal/core/logger"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein"
 	product "task-processor/internal/shein/api/product"
@@ -112,10 +112,10 @@ func shouldSaveDraftByStore(ctx *shein.TaskContext) bool {
 	if ctx == nil {
 		return false
 	}
-	return storeDraftEnabled(ctx.StoreInfo)
+	return storeDraftEnabled(publishRuntimeStoreInfo(ctx.StoreInfo))
 }
 
-func storeDraftEnabled(storeInfo *managementapi.StoreRespDTO) bool {
+func storeDraftEnabled(storeInfo *listingruntime.StoreInfo) bool {
 	return storeInfo != nil && storeInfo.EnableDraft != nil && *storeInfo.EnableDraft
 }
 

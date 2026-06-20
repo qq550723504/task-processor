@@ -3,30 +3,33 @@ package pricing
 
 import (
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
 )
 
+type OperationStrategyProvider interface {
+	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
+}
+
 // CostCalculator 通用成本计算器
 type CostCalculator struct {
 	logger           *logrus.Entry
-	managementClient *management.ClientManager
+	strategyProvider OperationStrategyProvider
 	enableDetailLog  bool // 是否启用详细日志
 }
 
 // NewCostCalculator 创建成本计算器
 func NewCostCalculator(
-	managementClient *management.ClientManager,
+	strategyProvider OperationStrategyProvider,
 	logger *logrus.Entry,
 	enableDetailLog bool,
 ) *CostCalculator {
 	return &CostCalculator{
 		logger:           logger,
-		managementClient: managementClient,
+		strategyProvider: strategyProvider,
 		enableDetailLog:  enableDetailLog,
 	}
 }
@@ -113,12 +116,12 @@ func (c *CostCalculator) CalculateAmazonProductCost(
 // getCostConfig 获取成本配置
 func (c *CostCalculator) getCostConfig(storeID int64) *config.CostCalculationConfig {
 	// 如果没有管理客户端，直接使用默认配置
-	if c.managementClient == nil {
+	if c.strategyProvider == nil {
 		return config.DefaultCostCalculationConfig()
 	}
 
 	// 尝试从管理系统获取店铺级成本配置
-	strategy, err := c.managementClient.GetOperationStrategyClient().GetOperationStrategyByStoreId(storeID)
+	strategy, err := c.strategyProvider.GetRuntimeOperationStrategy(storeID)
 	if err == nil && strategy != nil && strategy.IsEnabled() {
 		// 如果运营策略中有成本配置，使用策略中的配置
 		// 这里可以扩展 OperationStrategyDTO 来包含成本配置字段
@@ -136,35 +139,35 @@ func (c *CostCalculator) getCostConfig(storeID int64) *config.CostCalculationCon
 }
 
 // getFixedCostAmount 获取固定成本金额
-func (c *CostCalculator) getFixedCostAmount(strategy *managementapi.OperationStrategyDTO) float64 {
+func (c *CostCalculator) getFixedCostAmount(strategy *listingruntime.OperationStrategy) float64 {
 	// 可以从策略中获取，这里使用默认值
 	// 如果策略中有相关字段，可以使用 strategy.FixedCostAmount
 	return 0 // 默认固定成本$0
 }
 
 // getFixedCostPercent 获取固定成本百分比
-func (c *CostCalculator) getFixedCostPercent(strategy *managementapi.OperationStrategyDTO) float64 {
+func (c *CostCalculator) getFixedCostPercent(strategy *listingruntime.OperationStrategy) float64 {
 	// 可以从策略中获取，这里使用默认值
 	// 如果策略中有相关字段，可以使用 strategy.FixedCostPercent
 	return 0 // 默认0%
 }
 
 // getShippingCost 获取运费成本
-func (c *CostCalculator) getShippingCost(strategy *managementapi.OperationStrategyDTO) float64 {
+func (c *CostCalculator) getShippingCost(strategy *listingruntime.OperationStrategy) float64 {
 	// 可以从策略中获取，这里使用默认值
 	// 如果策略中有相关字段，可以使用 strategy.ShippingCost
 	return 0 // 默认运费$0
 }
 
 // getProcessingFee 获取处理费用
-func (c *CostCalculator) getProcessingFee(strategy *managementapi.OperationStrategyDTO) float64 {
+func (c *CostCalculator) getProcessingFee(strategy *listingruntime.OperationStrategy) float64 {
 	// 可以从策略中获取，这里使用默认值
 	// 如果策略中有相关字段，可以使用 strategy.ProcessingFee
 	return 0 // 默认处理费$0
 }
 
 // getPlatformCommission 获取平台佣金百分比
-func (c *CostCalculator) getPlatformCommission(strategy *managementapi.OperationStrategyDTO) float64 {
+func (c *CostCalculator) getPlatformCommission(strategy *listingruntime.OperationStrategy) float64 {
 	// 可以从策略中获取，这里使用默认值
 	// 如果策略中有相关字段，可以使用 strategy.PlatformCommission
 	return 0 // 默认平台佣金0%

@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	sheinproduct "task-processor/internal/shein/api/product"
 	"task-processor/internal/state"
@@ -18,7 +18,7 @@ func TestSavePublishResultCalculateIncrementUsesStoreLimitType(t *testing.T) {
 	handler := NewSavePublishResultHandler()
 	limit := 100
 	input := &PublishResultInput{
-		StoreInfo: &managementapi.StoreRespDTO{
+		StoreInfo: &listingruntime.StoreInfo{
 			DailyLimit:     &limit,
 			DailyLimitType: "SKU",
 		},
@@ -92,7 +92,7 @@ func TestSavePublishResultRecordDailyListingCountWithoutDailyLimit(t *testing.T)
 		MemoryManager: &state.MemoryManager{
 			DailyCountManager: state.NewDailyCountManager(clientMgr),
 		},
-		StoreInfo: &managementapi.StoreRespDTO{
+		StoreInfo: &listingruntime.StoreInfo{
 			ID:             2,
 			DailyLimit:     nil,
 			DailyLimitType: "SKU",

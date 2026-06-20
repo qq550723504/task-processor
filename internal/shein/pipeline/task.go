@@ -6,7 +6,6 @@ import (
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/core/metrics"
-	managementAPI "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/processor"
 	sharedtenantctx "task-processor/internal/shared/tenantctx"
@@ -22,7 +21,6 @@ import (
 	"task-processor/internal/shein/authorizedbrand"
 	"task-processor/internal/shein/client"
 	sheincontext "task-processor/internal/shein/context"
-	sheinmanagedclient "task-processor/internal/shein/managedclient"
 
 	"github.com/sirupsen/logrus"
 )
@@ -32,10 +30,6 @@ type TaskHandler struct {
 	processor    *SheinProcessor
 	errorHandler *TaskErrorHandler
 	errorRouter  *TaskErrorRouter
-}
-
-type authorizedBrandResolver interface {
-	Resolve(ctx context.Context, cfg authorizedbrand.Config) (*authorizedbrand.Resolved, error)
 }
 
 func NewTaskHandler(proc *SheinProcessor) *TaskHandler {
@@ -121,7 +115,7 @@ func (h *TaskHandler) createTaskContext(ctx context.Context, task *model.Task) *
 	taskCtx := sheincontext.NewTaskContext(ctx, task)
 	taskCtx.AttachRuntime(
 		h.processor.GetMemoryManager(),
-		h.processor.GetManagementClient(),
+		h.processor.GetRuntimeRepository(),
 		h.processor.GetAICache(),
 	)
 
@@ -141,22 +135,17 @@ func (h *TaskHandler) initShopClient(taskCtx *sheincontext.TaskContext) error {
 		return err
 	}
 
-	managementClient := h.processor.GetManagementClient()
-	if managementClient == nil {
-		err := fmt.Errorf("management client is not initialized")
-		logger.GetGlobalLogger("shein/pipeline").Error(err.Error())
-		return err
-	}
-
 	logger.GetGlobalLogger("shein/pipeline").WithFields(logrus.Fields{
 		"tenantID": taskCtx.Task.TenantID,
 		"storeID":  taskCtx.Task.StoreID,
 	}).Debug("initialize SHEIN shop client")
 
-	var storeInfo *managementAPI.StoreRespDTO
-	storeClient := managementClient.GetStoreClient()
-	if storeClient != nil {
-		if info, err := storeClient.GetStore(taskCtx.Task.StoreID); err != nil {
+	var storeInfo = taskCtx.StoreInfo
+	if storeInfo == nil {
+		runtimeStoreService := h.processor.GetRuntimeStoreService()
+		if runtimeStoreService == nil {
+			logrus.Warn("runtime store service is not available, using default config")
+		} else if info, err := runtimeStoreService.GetStore(taskCtx.Task.StoreID); err != nil {
 			logrus.WithError(err).Warn("failed to load store info, using default config")
 		} else {
 			storeInfo = info
@@ -164,7 +153,13 @@ func (h *TaskHandler) initShopClient(taskCtx *sheincontext.TaskContext) error {
 		}
 	}
 
-	apiClient := sheinmanagedclient.NewAPIClientWithStoreInfo(taskCtx.Task.StoreID, managementClient, storeInfo)
+	apiClient := h.processor.NewManagedAPIClientWithStoreInfo(taskCtx.Task.StoreID, storeInfo)
+	if apiClient == nil {
+		err := fmt.Errorf("shein runtime is not initialized")
+		logger.GetGlobalLogger("shein/pipeline").Error(err.Error())
+		return err
+	}
+
 	baseAPIClient := client.NewBaseAPIClient(
 		apiClient.GetBaseURL(),
 		apiClient.GetTenantID(),
@@ -194,29 +189,25 @@ func (h *TaskHandler) initShopClient(taskCtx *sheincontext.TaskContext) error {
 		}).Error("SHEIN API client initialization failed because cookies were not loaded")
 
 		var cookieError string
-		if storeClient != nil {
-			if cookieStr, err := storeClient.GetStoreCookie(taskCtx.Task.StoreID); err != nil {
-				cookieError = fmt.Sprintf("failed to load cookie from management service: %v", err)
-			} else if cookieStr == "" {
-				cookieError = "management service returned no cookie data"
-			} else {
-				cookieError = "cookie data exists but failed to parse or apply"
-			}
+		if cookieStr, err := h.processor.GetSheinStoreCookie(taskCtx.Task.StoreID); err != nil {
+			cookieError = fmt.Sprintf("failed to load cookie from local store runtime: %v", err)
+		} else if cookieStr == "" {
+			cookieError = "local store runtime returned no cookie data"
 		} else {
-			cookieError = "store client is not initialized"
+			cookieError = "cookie data exists but failed to parse or apply"
 		}
 
 		return shein.NewCookieLoadError(taskCtx.Task.TenantID, taskCtx.Task.StoreID, cookieError)
 	}
 
-	if err := applyAuthorizedBrandConfig(taskCtx, authorizedbrand.NewResolver(taskCtx.ProductAPI)); err != nil {
+	if err := applyAuthorizedBrandConfig(taskCtx); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func applyAuthorizedBrandConfig(taskCtx *sheincontext.TaskContext, resolver authorizedBrandResolver) error {
+func applyAuthorizedBrandConfig(taskCtx *sheincontext.TaskContext) error {
 	if taskCtx == nil {
 		return nil
 	}
@@ -226,16 +217,9 @@ func applyAuthorizedBrandConfig(taskCtx *sheincontext.TaskContext, resolver auth
 		return nil
 	}
 
-	resolved, err := resolver.Resolve(taskCtx.Context, storeCfg)
-	if err != nil {
-		return err
-	}
-
-	taskCtx.SetAuthorizedBrand(resolved)
-	taskCtx.Context = authorizedbrand.WithResolved(taskCtx.Context, resolved)
+	taskCtx.SetAuthorizedBrand(nil)
 	return nil
 }
-
 func (h *TaskHandler) handleError(taskCtx *sheincontext.TaskContext, err error) {
 	task := model.Task{}
 	if taskCtx != nil && taskCtx.Task != nil {

@@ -10,7 +10,6 @@ import (
 
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	temupricing "task-processor/internal/temu/api/pricing"
@@ -72,7 +71,7 @@ type PricingContext struct {
 
 // NewPricingDecisionService 创建核价决策服务
 func NewPricingDecisionService(
-	managementClient *management.ClientManager,
+	runtime runtime,
 	storeID int64,
 	productFetcher appfetcher.ProductFetcher,
 	platformConfig *config.PlatformConfig,
@@ -89,16 +88,16 @@ func NewPricingDecisionService(
 		config.UseAmazonPrice = platformConfig.AutoPricing.UseAmazonPrice
 	}
 
-	return newPricingDecisionServiceWithConfig(managementClient, config, productFetcher)
+	return newPricingDecisionServiceWithConfig(runtime, config, productFetcher)
 }
 
 // newPricingDecisionServiceWithConfig 内部构造函数
 func newPricingDecisionServiceWithConfig(
-	managementClient *management.ClientManager,
+	runtime runtime,
 	config *ServiceConfig,
 	productFetcher appfetcher.ProductFetcher,
 ) (DecisionMaker, error) {
-	if managementClient == nil {
+	if runtime == nil {
 		return nil, errors.New("managementClient不能为空")
 	}
 	if config == nil {
@@ -108,12 +107,12 @@ func newPricingDecisionServiceWithConfig(
 	logger := logger.GetGlobalLogger("PricingDecisionService").WithField("storeID", config.StoreID)
 
 	// 创建依赖服务
-	storeConfig, err := NewStoreConfigService(config.StoreID, managementClient)
+	storeConfig, err := NewStoreConfigService(config.StoreID, runtime)
 	if err != nil {
 		return nil, fmt.Errorf("创建店铺配置服务失败: %w", err)
 	}
 
-	dataService := NewPricingDataService(managementClient, logger)
+	dataService := NewPricingDataService(runtime, logger)
 	ruleCalculator := NewPricingRuleCalculator(logger)
 
 	return &PricingDecisionService{

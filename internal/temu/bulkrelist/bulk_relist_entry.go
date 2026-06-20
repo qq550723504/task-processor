@@ -2,7 +2,6 @@ package bulkrelist
 
 import (
 	"fmt"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/temu/api/client"
 	"task-processor/internal/temu/api/inventory"
 
@@ -13,22 +12,22 @@ import (
 
 // BulkRelistEntry 批量重新上架入口
 type BulkRelistEntry struct {
-	managementClient *management.ClientManager
-	logger           *logrus.Entry
+	storeRuntime client.StoreRuntime
+	logger       *logrus.Entry
 }
 
 // NewBulkRelistEntry 创建批量重新上架入口
-func NewBulkRelistEntry(managementClient *management.ClientManager) *BulkRelistEntry {
+func NewBulkRelistEntry(storeRuntime client.StoreRuntime) *BulkRelistEntry {
 	return &BulkRelistEntry{
-		managementClient: managementClient,
-		logger:           logger.GetGlobalLogger("BulkRelistEntry"),
+		storeRuntime: storeRuntime,
+		logger:       logger.GetGlobalLogger("BulkRelistEntry"),
 	}
 }
 
 // ExecuteSimpleRelist 执行简单的全部重新上架
 func (e *BulkRelistEntry) ExecuteSimpleRelist(storeID int64) (*RelistAllResult, error) {
 	e.logger.Infof("开始执行简单的全部重新上架: storeID=%d", storeID)
-	apiClient := client.NewAPIClient(storeID, e.managementClient)
+	apiClient := client.NewAPIClient(storeID, e.storeRuntime)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
@@ -38,7 +37,7 @@ func (e *BulkRelistEntry) ExecuteSimpleRelist(storeID int64) (*RelistAllResult, 
 // ExecuteCustomRelist 执行自定义配置的重新上架
 func (e *BulkRelistEntry) ExecuteCustomRelist(storeID int64, options *BulkRelistOptions) (*RelistAllResult, error) {
 	e.logger.Infof("开始执行自定义重新上架: storeID=%d", storeID)
-	apiClient := client.NewAPIClient(storeID, e.managementClient)
+	apiClient := client.NewAPIClient(storeID, e.storeRuntime)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
@@ -48,7 +47,7 @@ func (e *BulkRelistEntry) ExecuteCustomRelist(storeID int64, options *BulkRelist
 // ExecuteFilteredRelist 执行带过滤条件的重新上架
 func (e *BulkRelistEntry) ExecuteFilteredRelist(storeID int64, filter *ProductFilterOptions, options *BulkRelistOptions) (*RelistAllResult, error) {
 	e.logger.Infof("开始执行过滤重新上架: storeID=%d", storeID)
-	apiClient := client.NewAPIClient(storeID, e.managementClient)
+	apiClient := client.NewAPIClient(storeID, e.storeRuntime)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}
@@ -59,7 +58,7 @@ func (e *BulkRelistEntry) ExecuteFilteredRelist(storeID int64, filter *ProductFi
 func (e *BulkRelistEntry) GetOfflineProductsPreview(storeID int64, filter *ProductFilterOptions) (*OfflineProductPreview, error) {
 	e.logger.Infof("获取已下架产品预览: storeID=%d", storeID)
 
-	apiClient := client.NewAPIClient(storeID, e.managementClient)
+	apiClient := client.NewAPIClient(storeID, e.storeRuntime)
 	if apiClient == nil {
 		return nil, fmt.Errorf("创建API客户端失败")
 	}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
 	appscheduler "task-processor/internal/scheduler"
 
 	"task-processor/internal/core/logger"
@@ -29,18 +28,16 @@ type ProductSyncService interface {
 // ProductSyncTask 通用产品同步任务
 type ProductSyncTask struct {
 	*BaseTask
-	managementClient *management.ClientManager
-	syncService      ProductSyncService
-	logger           *logrus.Entry
-	platformName     string
+	syncService  ProductSyncService
+	logger       *logrus.Entry
+	platformName string
 }
 
 // ProductSyncTaskConfig 产品同步任务配置
 type ProductSyncTaskConfig struct {
-	TaskConfig       appscheduler.TaskConfig
-	ManagementClient *management.ClientManager
-	SyncService      ProductSyncService
-	PlatformName     string
+	TaskConfig   appscheduler.TaskConfig
+	SyncService  ProductSyncService
+	PlatformName string
 }
 
 // NewProductSyncTask 创建通用产品同步任务
@@ -48,10 +45,9 @@ func NewProductSyncTask(config ProductSyncTaskConfig) *ProductSyncTask {
 	baseTask := NewBaseTask(config.TaskConfig)
 
 	return &ProductSyncTask{
-		BaseTask:         baseTask,
-		managementClient: config.ManagementClient,
-		syncService:      config.SyncService,
-		platformName:     config.PlatformName,
+		BaseTask:     baseTask,
+		syncService:  config.SyncService,
+		platformName: config.PlatformName,
 		logger: logger.GetGlobalLogger("platformtask/product_sync_task.go").WithFields(logrus.Fields{
 			"component": fmt.Sprintf("%sProductSyncTask", config.PlatformName),
 			"task_id":   baseTask.GetID(),
@@ -91,11 +87,6 @@ func (t *ProductSyncTask) Execute(ctx context.Context) error {
 	// 4. 记录同步统计
 	t.logger.Infof("%s产品同步任务执行完成，成功同步 %d 个产品", t.platformName, savedCount)
 	return nil
-}
-
-// GetManagementClient 获取管理客户端
-func (t *ProductSyncTask) GetManagementClient() *management.ClientManager {
-	return t.managementClient
 }
 
 // GetSyncService 获取同步服务

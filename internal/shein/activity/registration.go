@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/api/marketing"
 
 	"task-processor/internal/core/logger"
@@ -17,27 +17,38 @@ import (
 // ActivityRegistrationService 活动报名服务接口
 type ActivityRegistrationService interface {
 	// RegisterPromotionActivity 根据运营策略报名促销活动（完整流程）
-	RegisterPromotionActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) (int, error)
+	RegisterPromotionActivity(ctx context.Context, strategy *listingruntime.OperationStrategy) (int, error)
 
 	// RegisterPromotionProducts 使用调用方提供的产品集合执行促销活动报名。
-	RegisterPromotionProducts(ctx context.Context, strategy *managementapi.OperationStrategyDTO, activityKey string, products []marketing.SkcInfo) (*PromotionRegistrationResult, error)
+	RegisterPromotionProducts(ctx context.Context, strategy *listingruntime.OperationStrategy, activityKey string, products []marketing.SkcInfo) (*PromotionRegistrationResult, error)
 
 	// CreateTimeLimitedDiscountActivity 根据运营策略创建限时折扣活动（完整流程）
-	CreateTimeLimitedDiscountActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) (int, error)
+	CreateTimeLimitedDiscountActivity(ctx context.Context, strategy *listingruntime.OperationStrategy) (int, error)
 
 	// RegisterMixedActivity 根据运营策略按比例执行混合活动（部分促销 + 部分限时折扣）
-	RegisterMixedActivity(ctx context.Context, strategy *managementapi.OperationStrategyDTO) (promotionCount int, timeLimitedCount int, err error)
+	RegisterMixedActivity(ctx context.Context, strategy *listingruntime.OperationStrategy) (promotionCount int, timeLimitedCount int, err error)
 }
 
 type PromotionRegistrationBridge interface {
-	RegisterPromotionProducts(ctx context.Context, strategy *managementapi.OperationStrategyDTO, activityKey string, products []marketing.SkcInfo) (*PromotionRegistrationResult, error)
+	RegisterPromotionProducts(ctx context.Context, strategy *listingruntime.OperationStrategy, activityKey string, products []marketing.SkcInfo) (*PromotionRegistrationResult, error)
 }
 
 // activityRegistrationServiceImpl 活动报名服务实现
 type activityRegistrationServiceImpl struct {
-	managementClient *management.ClientManager
-	marketingAPI     marketing.MarketingAPI
-	logger           *logrus.Entry
+	storeService    listingruntime.StoreService
+	storeRepo       activityStoreFinder
+	mappingRepo     activityMappingFinder
+	productDataRepo listingadmin.ProductDataRepository
+	marketingAPI    marketing.MarketingAPI
+	logger          *logrus.Entry
+}
+
+type activityStoreFinder interface {
+	FindStoreByID(ctx context.Context, id int64) (*listingadmin.Store, error)
+}
+
+type activityMappingFinder interface {
+	FindLatest(ctx context.Context, query listingadmin.ProductImportMappingQuery) (*listingadmin.ProductImportMapping, error)
 }
 
 type PromotionRegistrationResult struct {
@@ -61,13 +72,19 @@ func (r *PromotionRegistrationResult) GetResponse() *marketing.SaveConfigRespons
 
 // NewActivityRegistrationService 创建活动报名服务
 func NewActivityRegistrationService(
-	managementClient *management.ClientManager,
+	storeService listingruntime.StoreService,
+	storeRepo activityStoreFinder,
+	mappingRepo activityMappingFinder,
+	productDataRepo listingadmin.ProductDataRepository,
 	marketingAPI marketing.MarketingAPI,
 ) ActivityRegistrationService {
 	return &activityRegistrationServiceImpl{
-		managementClient: managementClient,
-		marketingAPI:     marketingAPI,
-		logger:           logger.GetGlobalLogger("ActivityRegistrationService"),
+		storeService:    storeService,
+		storeRepo:       storeRepo,
+		mappingRepo:     mappingRepo,
+		productDataRepo: productDataRepo,
+		marketingAPI:    marketingAPI,
+		logger:          logger.GetGlobalLogger("ActivityRegistrationService"),
 	}
 }
 
@@ -116,7 +133,7 @@ func (s *activityRegistrationServiceImpl) fetchAvailableProducts() ([]marketing.
 // RegisterPromotionActivity 根据运营策略报名促销活动（完整流程）
 func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
 	ctx context.Context,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 ) (int, error) {
 	s.logger.WithFields(logrus.Fields{
 		"store_id":      strategy.StoreID,
@@ -151,7 +168,7 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionActivity(
 
 func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 	ctx context.Context,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 	activityKey string,
 	products []marketing.SkcInfo,
 ) (*PromotionRegistrationResult, error) {
@@ -205,4 +222,124 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 		Request:  saveReq,
 		Response: response,
 	}, nil
+}
+
+func (s *activityRegistrationServiceImpl) getStoreInfo(ctx context.Context, storeID int64) (*listingruntime.StoreInfo, error) {
+	if s.storeRepo != nil {
+		store, err := s.storeRepo.FindStoreByID(ctx, storeID)
+		if err != nil {
+			s.logger.WithError(err).WithField("store_id", storeID).Warn("通过本地仓储获取店铺信息失败，回退 runtime store service")
+		} else if store != nil {
+			return activityStoreInfoFromListingStore(store), nil
+		}
+	}
+	if s.storeService == nil {
+		return nil, fmt.Errorf("runtime store service is nil")
+	}
+	return s.storeService.GetStore(storeID)
+}
+
+func (s *activityRegistrationServiceImpl) getMappingByPlatformProductIDAndStore(ctx context.Context, platformProductID string, storeID int64) (*listingruntime.ProductImportMapping, error) {
+	if s.mappingRepo != nil {
+		mapping, err := s.mappingRepo.FindLatest(ctx, listingadmin.ProductImportMappingQuery{
+			PlatformProductID: platformProductID,
+			StoreID:           &storeID,
+		})
+		if err != nil {
+			s.logger.WithError(err).WithFields(logrus.Fields{
+				"platform_product_id": platformProductID,
+				"store_id":            storeID,
+			}).Warn("通过本地仓储获取产品映射失败")
+		} else if mapping != nil {
+			return activityProductImportMappingFromListing(mapping), nil
+		}
+	}
+	return nil, nil
+}
+
+func activityStoreInfoFromListingStore(store *listingadmin.Store) *listingruntime.StoreInfo {
+	if store == nil {
+		return nil
+	}
+	return &listingruntime.StoreInfo{
+		ID:                       store.ID,
+		TenantID:                 store.TenantID,
+		StoreID:                  store.StoreID,
+		Username:                 store.Username,
+		Name:                     store.Name,
+		ShopType:                 store.ShopType,
+		Region:                   store.Region,
+		Platform:                 store.Platform,
+		LoginURL:                 store.LoginURL,
+		Proxy:                    store.Proxy,
+		DailyLimit:               store.DailyLimit,
+		DailyLimitType:           store.DailyLimitType,
+		PriceType:                store.PriceType,
+		EnableDraft:              store.EnableDraft,
+		EnableAutoListing:        store.EnableAutoListing,
+		FixedStockCount:          store.FixedStockCount,
+		SkuGenerateStrategy:      store.SKUGenerateStrategy,
+		Prefix:                   store.Prefix,
+		Suffix:                   store.Suffix,
+		EnableBrandAuthorization: store.EnableBrandAuthorization,
+		AuthorizedBrandCode:      store.AuthorizedBrandCode,
+		AuthorizedBrandName:      store.AuthorizedBrandName,
+	}
+}
+
+func activityProductImportMappingFromListing(mapping *listingadmin.ProductImportMapping) *listingruntime.ProductImportMapping {
+	if mapping == nil {
+		return nil
+	}
+	return &listingruntime.ProductImportMapping{
+		ID:                      mapping.ID,
+		ImportTaskID:            mapping.ImportTaskID,
+		StoreID:                 mapping.StoreID,
+		Platform:                mapping.Platform,
+		Region:                  mapping.Region,
+		ProductID:               mapping.ProductID,
+		ParentProductID:         activityStringPtr(mapping.ParentProductID),
+		SKU:                     activityStringPtr(mapping.SKU),
+		PlatformProductID:       activityStringPtr(mapping.PlatformProductID),
+		PlatformParentProductID: activityStringPtr(mapping.PlatformParentProductID),
+		CostPrice:               activityFloat64Value(mapping.CostPrice),
+		FilterRuleID:            activityInt64Value(mapping.FilterRuleID),
+		FilterRuleRange:         activityStringPtr(mapping.FilterRuleRange),
+		ProfitRuleID:            activityInt64Value(mapping.ProfitRuleID),
+		SalePriceMultiplier:     activityFloat64PtrFromValue(mapping.SalePriceMultiplier),
+		DiscountPriceMultiplier: activityFloat64PtrFromValue(mapping.DiscountPriceMultiplier),
+		Status:                  mapping.Status,
+		Remark:                  activityStringPtr(mapping.Remark),
+		TenantID:                mapping.TenantID,
+	}
+}
+
+func activityStringPtr(value string) *string {
+	if value == "" {
+		return nil
+	}
+	out := value
+	return &out
+}
+
+func activityFloat64PtrFromValue(value float64) *float64 {
+	if value == 0 {
+		return nil
+	}
+	out := value
+	return &out
+}
+
+func activityFloat64Value(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func activityInt64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }

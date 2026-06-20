@@ -6,22 +6,67 @@ import (
 
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 )
 
+type runtimeImportTaskStatusClient struct {
+	updateFn func(req *listingruntime.TaskStatusUpdate) error
+}
+
+func (c runtimeImportTaskStatusClient) UpdateTaskStatus(req *listingruntime.TaskStatusUpdate) error {
+	if c.updateFn == nil {
+		return fmt.Errorf("runtime import task status updater is not configured")
+	}
+	return c.updateFn(req)
+}
+
 // fetchTasksFromAPI fetches candidate tasks from management.
-func (f *TaskFetcher) fetchTasksFromAPI(maxTasks int) ([]api.ProductImportTaskRespDTO, error) {
+func (f *TaskFetcher) fetchTasksFromAPI(maxTasks int) ([]ImportTaskRecord, error) {
 	return NewTaskSource(f).FetchPendingTasks(maxTasks)
 }
 
-// extractAPITask returns the API task as a pointer for downstream helpers.
-func (f *TaskFetcher) extractAPITask(apiTask api.ProductImportTaskRespDTO) *api.ProductImportTaskRespDTO {
-	return &apiTask
+func toImportTaskRecord(apiTask listingruntime.ImportTask) ImportTaskRecord {
+	return ImportTaskRecord{
+		ID:               apiTask.ID,
+		TenantID:         apiTask.TenantID,
+		StoreID:          apiTask.StoreID,
+		Platform:         apiTask.Platform,
+		Region:           apiTask.Region,
+		CategoryID:       apiTask.CategoryID,
+		ProductID:        apiTask.ProductID,
+		Status:           apiTask.Status,
+		ErrorMessage:     apiTask.ErrorMessage,
+		RetryCount:       apiTask.RetryCount,
+		Priority:         apiTask.Priority,
+		CreateTimeMillis: apiTask.CreateTime,
+		Creator:          apiTask.Creator,
+		StatusKey:        apiTask.StatusKey,
+		CanonicalStatus:  apiTask.CanonicalStatus,
+	}
 }
 
 // getStoreInfo loads store information from the management client.
-func (f *TaskFetcher) getStoreInfo(storeID int64, storeClient any) (*api.StoreRespDTO, error) {
+func toStoreInfo(storeDTO *listingruntime.StoreInfo) *StoreInfo {
+	if storeDTO == nil {
+		return nil
+	}
+	return &StoreInfo{
+		ID:             storeDTO.ID,
+		TenantID:       storeDTO.TenantID,
+		StoreID:        storeDTO.StoreID,
+		Platform:       storeDTO.Platform,
+		Name:           storeDTO.Name,
+		Region:         storeDTO.Region,
+		ShopType:       storeDTO.ShopType,
+		PriceType:      storeDTO.PriceType,
+		DailyLimit:     storeDTO.DailyLimit,
+		DailyLimitType: storeDTO.DailyLimitType,
+		EnableDraft:    storeDTO.EnableDraft,
+	}
+}
+
+func (f *TaskFetcher) getStoreInfo(storeID int64, storeClient any) (*StoreInfo, error) {
 	logger.GetGlobalLogger("app/task").Infof("正在获取店铺信息: StoreID=%d", storeID)
 
 	if client, ok := storeClient.(StoreClient); ok {
@@ -29,14 +74,9 @@ func (f *TaskFetcher) getStoreInfo(storeID int64, storeClient any) (*api.StoreRe
 		if err != nil {
 			return nil, fmt.Errorf("获取店铺信息失败: %w", err)
 		}
-
-		storeInfo := &api.StoreRespDTO{
-			ID:             storeDTO.ID,
-			TenantID:       storeDTO.TenantID,
-			Platform:       storeDTO.Platform,
-			Name:           storeDTO.Name,
-			DailyLimit:     storeDTO.DailyLimit,
-			DailyLimitType: storeDTO.DailyLimitType,
+		storeInfo := toStoreInfo(storeDTO)
+		if storeInfo == nil {
+			return nil, fmt.Errorf("店铺信息为空")
 		}
 
 		logger.GetGlobalLogger("app/task").Infof("成功获取店铺信息: StoreID=%d, Platform=%s, Name=%s",
@@ -78,7 +118,9 @@ func (f *TaskFetcher) newTaskStatusService(component string) *taskstatus.Service
 		if f == nil || f.managementClient == nil {
 			return nil
 		}
-		return f.managementClient.GetImportTaskClient()
+		return runtimeImportTaskStatusClient{
+			updateFn: f.managementClient.UpdateRuntimeTaskStatus,
+		}
 	})
 }
 
@@ -89,35 +131,35 @@ func (f *TaskFetcher) updateTaskStatusToProcessing(taskID int64, fromCode int16)
 }
 
 // rollbackClaimState compensates a claimed task back to its original remote status.
-func (f *TaskFetcher) rollbackClaimState(taskID string, apiTask *api.ProductImportTaskRespDTO, reason string) {
+func (f *TaskFetcher) rollbackClaimState(taskID string, task *ImportTaskRecord, reason string) {
 	defer f.rollbackProcessingStatus(taskID)
 
-	if apiTask == nil {
+	if task == nil {
 		return
 	}
 
-	originalStatus, err := model.ParseTaskStatus(apiTask.Status)
+	originalStatus, err := model.ParseTaskStatus(task.Status)
 	if err != nil {
 		logger.GetGlobalLogger("app/task").WithError(err).Warnf(
 			"无法回滚任务远端状态: TaskID=%s, Reason=%s, StatusCode=%d, StatusKey=%s, CanonicalStatus=%s",
 			taskID,
 			reason,
-			apiTask.Status,
-			apiTask.StatusKey,
-			apiTask.CanonicalStatus,
+			task.Status,
+			task.StatusKey,
+			task.CanonicalStatus,
 		)
 		return
 	}
 
 	statusService := f.newTaskStatusService("app/task_fetcher")
-	if err := statusService.UpdateSync(apiTask.ID, originalStatus, apiTask.ErrorMessage); err != nil {
+	if err := statusService.UpdateSync(task.ID, originalStatus, task.ErrorMessage); err != nil {
 		logger.GetGlobalLogger("app/task").WithError(err).Warnf(
 			"回滚任务远端状态失败: TaskID=%s, TargetStatus=%s, Reason=%s, OriginalStatusKey=%s, OriginalCanonicalStatus=%s",
 			taskID,
 			originalStatus.String(),
 			reason,
-			apiTask.StatusKey,
-			apiTask.CanonicalStatus,
+			task.StatusKey,
+			task.CanonicalStatus,
 		)
 		return
 	}
@@ -127,10 +169,10 @@ func (f *TaskFetcher) rollbackClaimState(taskID string, apiTask *api.ProductImpo
 		taskID,
 		originalStatus.String(),
 		reason,
-		apiTask.StatusKey,
-		apiTask.CanonicalStatus,
+		task.StatusKey,
+		task.CanonicalStatus,
 	)
-	f.removeClaimJournalEntry(apiTask.ID)
+	f.removeClaimJournalEntry(task.ID)
 }
 
 // getSubmitterKeys returns the registered submitter keys for logging.

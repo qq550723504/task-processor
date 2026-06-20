@@ -5,10 +5,9 @@ import (
 	"sync"
 
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/state"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	sheinclient "task-processor/internal/shein/client"
 
 	"github.com/sirupsen/logrus"
@@ -16,25 +15,27 @@ import (
 
 // ClientManager 店铺API客户端管理器
 type ClientManager struct {
-	clients          map[string]*sheinclient.APIClient
-	cookieManager    *state.CookieManager
-	managementClient *management.ClientManager
-	mutex            sync.RWMutex
-	logger           *logrus.Entry
+	clients        map[string]*sheinclient.APIClient
+	cookieManager  *state.CookieManager
+	cookieProvider sheinclient.CookieProvider
+	storeProvider  sheinclient.StoreConfigProvider
+	mutex          sync.RWMutex
+	logger         *logrus.Entry
 }
 
 // NewClientManager 创建新的客户端管理器
-func NewClientManager(cookieManager *state.CookieManager, managementClient *management.ClientManager) *ClientManager {
+func NewClientManager(cookieManager *state.CookieManager, cookieProvider sheinclient.CookieProvider, storeProvider sheinclient.StoreConfigProvider) *ClientManager {
 	return &ClientManager{
-		clients:          make(map[string]*sheinclient.APIClient),
-		cookieManager:    cookieManager,
-		managementClient: managementClient,
-		logger:           logger.GetGlobalLogger("SHEINClientManager"),
+		clients:        make(map[string]*sheinclient.APIClient),
+		cookieManager:  cookieManager,
+		cookieProvider: cookieProvider,
+		storeProvider:  storeProvider,
+		logger:         logger.GetGlobalLogger("SHEINClientManager"),
 	}
 }
 
 // GetClient 获取或创建店铺API客户端
-func (cm *ClientManager) GetClient(shopID int64, storeInfo *managementapi.StoreRespDTO) (*sheinclient.APIClient, error) {
+func (cm *ClientManager) GetClient(shopID int64, storeInfo *listingruntime.StoreInfo) (*sheinclient.APIClient, error) {
 	key := fmt.Sprintf("shein:cookie:%d", shopID)
 
 	cm.mutex.RLock()
@@ -88,20 +89,18 @@ func (cm *ClientManager) GetAllClients() map[string]*sheinclient.APIClient {
 	return clientsCopy
 }
 
-func (cm *ClientManager) createClient(shopID int64, storeInfo *managementapi.StoreRespDTO) (*sheinclient.APIClient, error) {
+func (cm *ClientManager) createClient(shopID int64, storeInfo *listingruntime.StoreInfo) (*sheinclient.APIClient, error) {
 	cookieJSON, err := cm.cookieManager.GetCookie(shopID)
 	if err != nil {
 		cm.logger.Warnf("内存中没有Cookie (店铺=%d)，尝试从管理系统获取", shopID)
 
-		if cm.managementClient != nil {
-			if storeClient := cm.managementClient.GetStoreClient(); storeClient != nil {
-				if cookieStr, err := storeClient.GetStoreCookie(shopID); err == nil && cookieStr != "" {
-					cm.cookieManager.SetCookie(shopID, cookieStr)
-					cm.logger.Infof("✅ 成功从管理系统获取并存储Cookie: 店铺=%d", shopID)
-					cookieJSON = cookieStr
-				} else {
-					return nil, fmt.Errorf("无法获取Cookie:店铺=%d", shopID)
-				}
+		if cm.cookieProvider != nil {
+			if result, lookupErr := cm.cookieProvider.GetCookie(nil, shopID); lookupErr == nil && result != nil && result.CookieJSON != "" {
+				cm.cookieManager.SetCookie(shopID, result.CookieJSON)
+				cm.logger.Infof("✅ 成功从运行时提供方获取并存储Cookie: 店铺=%d", shopID)
+				cookieJSON = result.CookieJSON
+			} else {
+				return nil, fmt.Errorf("无法获取Cookie:店铺=%d", shopID)
 			}
 		}
 
@@ -110,7 +109,7 @@ func (cm *ClientManager) createClient(shopID int64, storeInfo *managementapi.Sto
 		}
 	}
 
-	client := NewAPIClientWithStoreInfo(shopID, cm.managementClient, storeInfo)
+	client := NewAPIClientWithStoreInfo(shopID, cm.cookieProvider, cm.storeProvider, storeInfo)
 	cm.logger.Infof("🔧 创建客户端: 店铺=%d, baseURL=%s", shopID, client.GetBaseURL())
 	return client, nil
 }

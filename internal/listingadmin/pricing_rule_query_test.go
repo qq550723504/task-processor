@@ -90,3 +90,32 @@ func TestFindPricingRuleRowsAppliesResourceFilters(t *testing.T) {
 		t.Fatalf("rows = %+v total=%d, want only fully matched rule", rows, total)
 	}
 }
+
+func TestGormPricingRuleRepositoryListByStoreIDReturnsNewestFirst(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingPricingRule{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, row := range []listingPricingRule{
+		{TenantID: 101, Name: "old", RuleCode: "P-1", StoreID: 11, RuleType: "ratio", RuleValue: 1.1, Status: 0, Deleted: 0},
+		{TenantID: 101, Name: "new", RuleCode: "P-2", StoreID: 11, RuleType: "fixed", RuleValue: 2.2, Status: 0, Deleted: 0},
+	} {
+		if err := db.Table("listing_pricing_rule").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	repo := NewGormPricingRuleRepository(db)
+	items, err := repo.ListByStoreID(context.Background(), 11)
+	if err != nil {
+		t.Fatalf("ListByStoreID() error = %v", err)
+	}
+	if len(items) != 2 || items[0].RuleCode != "P-2" || items[1].RuleCode != "P-1" {
+		t.Fatalf("ListByStoreID() = %+v, want desc order by newest id", items)
+	}
+}

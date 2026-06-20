@@ -118,3 +118,40 @@ func (r *GormProductImportMappingRepository) DeleteProductImportMapping(ctx cont
 	}
 	return updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_product_import_mapping"), tenantID, id, "owner_user_id", updates, ErrProductImportMappingNotFound)
 }
+
+func (r *GormProductImportMappingRepository) FindLatest(ctx context.Context, query ProductImportMappingQuery) (*ProductImportMapping, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("product import mapping repository database is not configured")
+	}
+	var row listingProductImportMapping
+	err := applyProductImportMappingQuery(r.db.WithContext(ctx).Table("listing_product_import_mapping"), query).
+		Order("id desc").
+		Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	mapping := row.toProductImportMapping()
+	return &mapping, nil
+}
+
+func (r *GormProductImportMappingRepository) ExistsPublishedProduct(ctx context.Context, storeID int64, platform, region, productID string) (bool, error) {
+	if r == nil || r.db == nil {
+		return false, errors.New("product import mapping repository database is not configured")
+	}
+	var count int64
+	err := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_product_import_mapping").Where(
+			"store_id = ? AND platform = ? AND region = ? AND product_id = ? AND deleted = 0",
+			storeID,
+			platform,
+			region,
+			productID,
+		),
+		ctx,
+		"owner_user_id",
+	).Where("platform_product_id IS NOT NULL AND platform_product_id <> ''").Count(&count).Error
+	return count > 0, err
+}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/temu/api"
 	temupricing "task-processor/internal/temu/api/pricing"
@@ -22,18 +21,18 @@ import (
 // Temu平台的特点是一次性完成获取、决策和提交的完整流程
 type TemuAutoPricingAdapter struct {
 	autoPricingService *pricing.AutoPricingService
-	managementClient   *management.ClientManager
+	runtime            pricing.ManagementRuntime
 	logger             *logrus.Entry
 }
 
 // NewTemuAutoPricingAdapter 创建Temu自动核价适配器
 func NewTemuAutoPricingAdapter(
 	apiClient api.APIClientInterface,
-	managementClient *management.ClientManager,
+	runtime pricing.ManagementRuntime,
 ) *TemuAutoPricingAdapter {
 	return &TemuAutoPricingAdapter{
 		autoPricingService: pricing.NewAutoPricingService(apiClient),
-		managementClient:   managementClient,
+		runtime:            runtime,
 		logger:             logger.GetGlobalLogger("TemuAutoPricingAdapter").WithField("store_id", apiClient.GetStoreID()),
 	}
 }
@@ -64,7 +63,7 @@ func (a *TemuAutoPricingAdapter) SubmitPricingResults(ctx context.Context, resul
 	// 1. 分页获取待核价商品
 	// 2. 应用核价规则做出决策
 	// 3. 提交核价结果到平台
-	stats, err := a.autoPricingService.AutoProcessPendingPricesWithRules(a.managementClient)
+	stats, err := a.autoPricingService.AutoProcessPendingPricesWithRules(a.runtime)
 	if err != nil {
 		return nil, fmt.Errorf("Temu自动核价处理失败: %w", err)
 	}

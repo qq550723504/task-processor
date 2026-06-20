@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/infra/clients/management"
 	appscheduler "task-processor/internal/scheduler"
 )
 
@@ -40,11 +39,8 @@ func TestNewInventorySyncTask(t *testing.T) {
 	}
 
 	mockService := &MockInventorySyncService{}
-	mockManagement := &management.ClientManager{}
-
 	task := NewInventorySyncTask(InventorySyncTaskConfig{
 		TaskConfig:       config,
-		ManagementClient: mockManagement,
 		InventoryService: mockService,
 		PlatformName:     "Test",
 	})
@@ -90,7 +86,6 @@ func TestInventorySyncTask_Execute_Success(t *testing.T) {
 
 	task := NewInventorySyncTask(InventorySyncTaskConfig{
 		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
 		InventoryService: mockService,
 		PlatformName:     "Test",
 	})
@@ -127,7 +122,6 @@ func TestInventorySyncTask_Execute_FetchError(t *testing.T) {
 
 	task := NewInventorySyncTask(InventorySyncTaskConfig{
 		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
 		InventoryService: mockService,
 		PlatformName:     "Test",
 	})
@@ -166,7 +160,6 @@ func TestInventorySyncTask_Execute_MonitorError(t *testing.T) {
 
 	task := NewInventorySyncTask(InventorySyncTaskConfig{
 		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
 		InventoryService: mockService,
 		PlatformName:     "Test",
 	})
@@ -200,7 +193,6 @@ func TestInventorySyncTask_Execute_EmptyProductList(t *testing.T) {
 
 	task := NewInventorySyncTask(InventorySyncTaskConfig{
 		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
 		InventoryService: mockService,
 		PlatformName:     "Test",
 	})
@@ -248,7 +240,6 @@ func TestInventorySyncTask_Execute_ResultStatistics(t *testing.T) {
 
 	task := NewInventorySyncTask(InventorySyncTaskConfig{
 		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
 		InventoryService: mockService,
 		PlatformName:     "Test",
 	})
@@ -258,30 +249,6 @@ func TestInventorySyncTask_Execute_ResultStatistics(t *testing.T) {
 
 	if err != nil {
 		t.Errorf("Execute should succeed, got error: %v", err)
-	}
-}
-
-func TestInventorySyncTask_GetManagementClient(t *testing.T) {
-	config := appscheduler.TaskConfig{
-		Platform: "test",
-		TaskType: "inventory_sync",
-		TenantID: 1,
-		StoreID:  100,
-	}
-
-	mockManagement := &management.ClientManager{}
-	mockService := &MockInventorySyncService{}
-
-	task := NewInventorySyncTask(InventorySyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: mockManagement,
-		InventoryService: mockService,
-		PlatformName:     "Test",
-	})
-
-	client := task.GetManagementClient()
-	if client != mockManagement {
-		t.Error("GetManagementClient should return the same client")
 	}
 }
 
@@ -297,7 +264,6 @@ func TestInventorySyncTask_GetInventoryService(t *testing.T) {
 
 	task := NewInventorySyncTask(InventorySyncTaskConfig{
 		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
 		InventoryService: mockService,
 		PlatformName:     "Test",
 	})

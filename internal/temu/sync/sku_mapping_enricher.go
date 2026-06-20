@@ -2,9 +2,11 @@
 package sync
 
 import (
+	"context"
 	"fmt"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
 	temuproduct "task-processor/internal/temu/api/product"
 	temuquery "task-processor/internal/temu/api/query"
 
@@ -17,7 +19,7 @@ func (s *productSyncServiceImpl) buildEnrichedMappingData(
 	skuDetails *temuquery.SkuQueryResponse,
 	storeID int64,
 ) ([]*TemuMappingData, error) {
-	if s.mappingClient == nil {
+	if s.mappingClient == nil && s.mappingRepo == nil {
 		return nil, fmt.Errorf("映射客户端未设置")
 	}
 
@@ -39,10 +41,7 @@ func (s *productSyncServiceImpl) buildEnrichedMappingData(
 		}
 
 		// 使用SkuSN查询SKU的映射关系
-		mapping, err := s.mappingClient.GetProductImportMappingBySku(&managementapi.ProductImportMappingGetBySkuReqDTO{
-			Sku:     skuItem.SkuSN, // 使用SkuSN而不是OutGoodsSN
-			StoreId: storeID,
-		})
+		mapping, err := s.getMappingBySKU(context.Background(), skuItem.SkuSN, storeID)
 
 		if err != nil {
 			s.logger.WithError(err).WithFields(logrus.Fields{
@@ -101,9 +100,54 @@ func (s *productSyncServiceImpl) buildEnrichedMappingData(
 	return result, nil
 }
 
+func (s *productSyncServiceImpl) getMappingBySKU(ctx context.Context, sku string, storeID int64) (*managementapi.ProductImportMappingRespDTO, error) {
+	if s.mappingRepo != nil {
+		mapping, err := s.mappingRepo.FindLatest(ctx, listingadmin.ProductImportMappingQuery{
+			SKU:     sku,
+			StoreID: &storeID,
+		})
+		if err == nil && mapping != nil {
+			return temuProductImportMappingDTO(mapping), nil
+		}
+		if err != nil {
+			s.logger.WithError(err).WithFields(logrus.Fields{
+				"sku":      sku,
+				"store_id": storeID,
+				"path":     "repository",
+			}).Warn("从本地仓储查询SKU映射失败，回退 management 接口")
+		}
+	}
+	if s.mappingClient == nil {
+		return nil, nil
+	}
+	return s.mappingClient.GetProductImportMappingBySku(&managementapi.ProductImportMappingGetBySkuReqDTO{
+		Sku:     sku,
+		StoreId: storeID,
+	})
+}
+
+func temuProductImportMappingDTO(mapping *listingadmin.ProductImportMapping) *managementapi.ProductImportMappingRespDTO {
+	if mapping == nil {
+		return nil
+	}
+	return &managementapi.ProductImportMappingRespDTO{
+		ID:           mapping.ID,
+		ImportTaskId: mapping.ImportTaskID,
+		StoreId:      mapping.StoreID,
+		Platform:     mapping.Platform,
+		Region:       mapping.Region,
+		ProductId:    mapping.ProductID,
+		CostPrice:    mapping.CostPrice,
+		FilterRuleId: mapping.FilterRuleID,
+		ProfitRuleId: mapping.ProfitRuleID,
+		Status:       mapping.Status,
+		TenantId:     mapping.TenantID,
+	}
+}
+
 // fillProductLevelMappingInfo 使用第一个找到的映射信息填充产品级别的ProductID和Region
 func (s *productSyncServiceImpl) fillProductLevelMappingInfo(
-	productData *managementapi.ProductDataDTO,
+	productData *TemuProductSnapshot,
 	mappingDataList []*TemuMappingData,
 ) {
 	if len(mappingDataList) == 0 {

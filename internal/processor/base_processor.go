@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/state"
+	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )
@@ -62,12 +63,28 @@ func NewBaseProcessor(ctx context.Context, cfg *BaseProcessorConfig) *BaseProces
 	}
 }
 
+func NewBaseProcessorWithMemoryManager(cfg *BaseProcessorConfig, memoryManager *state.MemoryManager) *BaseProcessor {
+	return &BaseProcessor{
+		config:        cfg.Config,
+		memoryManager: memoryManager,
+		logger:        cfg.Logger,
+		platform:      cfg.Platform,
+	}
+}
+
 func (bp *BaseProcessor) GetConfig() *config.Config {
 	return bp.config
 }
 
 func (bp *BaseProcessor) GetManagementClient() *management.ClientManager {
 	return bp.managementClient
+}
+
+func (bp *BaseProcessor) GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
+	if bp == nil || bp.managementClient == nil {
+		return nil
+	}
+	return taskstatus.NewManagementRuntime(bp.managementClient)
 }
 
 func (bp *BaseProcessor) GetMemoryManager() *state.MemoryManager {

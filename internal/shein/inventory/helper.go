@@ -2,11 +2,14 @@
 package inventory
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"task-processor/internal/core/logger"
 
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/product"
@@ -48,13 +51,13 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 				"has_mapping_info": sku.MappingInfo != nil,
 				"product_id": func() string {
 					if sku.MappingInfo != nil {
-						return sku.MappingInfo.ProductId
+						return sku.MappingInfo.ProductID
 					}
 					return "nil"
 				}(),
 			}).Debug("检查SKU映射信息")
 
-			if sku.MappingInfo != nil && sku.MappingInfo.ProductId != "" {
+			if sku.MappingInfo != nil && sku.MappingInfo.ProductID != "" {
 				totalStock := 0
 				if sku.UsableInventory != nil {
 					totalStock = *sku.UsableInventory
@@ -69,8 +72,8 @@ func (s *inventorySyncServiceImpl) extractMappingInfoFromAttributes(attributesJS
 				s.logger.WithFields(map[string]any{
 					"skc_code":     skc.SkcCode,
 					"sku_index":    skuIndex,
-					"asin":         sku.MappingInfo.ProductId,
-					"platform_sku": s.getStringValue(sku.MappingInfo.Sku),
+					"asin":         sku.MappingInfo.ProductID,
+					"platform_sku": s.getStringValue(sku.MappingInfo.SKU),
 					"stock":        totalStock,
 				}).Debug("找到有效的SKU映射")
 			}
@@ -136,8 +139,7 @@ func (s *inventorySyncServiceImpl) getFloatValue(f *float64) float64 {
 
 // getStorePriceType 获取店铺配置的价格类型
 func (s *inventorySyncServiceImpl) getStorePriceType(storeID int64) string {
-	// 从管理系统获取店铺信息
-	storeInfo, err := s.managementClient.GetStoreClient().GetStore(storeID)
+	storeInfo, err := s.getStoreInfo(context.Background(), storeID)
 	if err != nil {
 		s.logger.WithError(err).WithField("store_id", storeID).Warn("获取店铺信息失败，使用默认价格类型")
 		return "special" // 默认使用特价
@@ -152,8 +154,7 @@ func (s *inventorySyncServiceImpl) getStorePriceType(storeID int64) string {
 
 // getStoreSiteAbbr 获取店铺配置的站点缩写
 func (s *inventorySyncServiceImpl) getStoreSiteAbbr(storeID int64) (string, error) {
-	// 从管理系统获取店铺信息
-	storeInfo, err := s.managementClient.GetStoreClient().GetStore(storeID)
+	storeInfo, err := s.getStoreInfo(context.Background(), storeID)
 	if err != nil {
 		return "", fmt.Errorf("获取店铺信息失败: %w", err)
 	}
@@ -184,7 +185,7 @@ func (s *inventorySyncServiceImpl) checkHasAmazonMonitorData(attributesJSON stri
 	// 查找对应的SKU并检查是否有AmazonMonitorData
 	for _, skc := range skcList {
 		for _, sku := range skc.SkuInfo {
-			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
+			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.SKU) == platformSKU {
 				// 找到对应的SKU，检查是否有AmazonMonitorData
 				if sku.AmazonMonitorData != nil && sku.AmazonMonitorData.LastCheckTime > 0 {
 					s.logger.WithFields(map[string]any{
@@ -217,7 +218,7 @@ func (s *inventorySyncServiceImpl) getAmazonMonitorLastCheckTime(attributesJSON 
 	// 查找对应的SKU并获取LastCheckTime
 	for _, skc := range skcList {
 		for _, sku := range skc.SkuInfo {
-			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
+			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.SKU) == platformSKU {
 				// 找到对应的SKU，返回LastCheckTime
 				if sku.AmazonMonitorData != nil {
 					return sku.AmazonMonitorData.LastCheckTime
@@ -263,5 +264,50 @@ func (s *inventorySyncServiceImpl) debugProductAttributes(productID string, attr
 	// 验证 JSON 结构
 	if err := s.validateAttributesStructure(attributesJSON); err != nil {
 		s.logger.WithError(err).WithField("product_id", productID).Error("产品属性结构验证失败")
+	}
+}
+
+func (s *inventorySyncServiceImpl) getStoreInfo(ctx context.Context, storeID int64) (*listingruntime.StoreInfo, error) {
+	if s.storeRepo != nil {
+		store, err := s.storeRepo.FindStoreByID(ctx, storeID)
+		if err != nil {
+			s.logger.WithError(err).WithField("store_id", storeID).Warn("通过本地仓储获取SHEIN店铺信息失败，回退 runtime store service")
+		} else if store != nil {
+			return sheinInventoryStoreInfoFromListingStore(store), nil
+		}
+	}
+	if s.storeService == nil {
+		return nil, fmt.Errorf("runtime store service is nil")
+	}
+	return s.storeService.GetStore(storeID)
+}
+
+func sheinInventoryStoreInfoFromListingStore(store *listingadmin.Store) *listingruntime.StoreInfo {
+	if store == nil {
+		return nil
+	}
+	return &listingruntime.StoreInfo{
+		ID:                       store.ID,
+		TenantID:                 store.TenantID,
+		StoreID:                  store.StoreID,
+		Username:                 store.Username,
+		Platform:                 store.Platform,
+		Name:                     store.Name,
+		Region:                   store.Region,
+		ShopType:                 store.ShopType,
+		LoginURL:                 store.LoginURL,
+		Proxy:                    store.Proxy,
+		PriceType:                store.PriceType,
+		DailyLimit:               store.DailyLimit,
+		DailyLimitType:           store.DailyLimitType,
+		EnableDraft:              store.EnableDraft,
+		EnableAutoListing:        store.EnableAutoListing,
+		FixedStockCount:          store.FixedStockCount,
+		SkuGenerateStrategy:      store.SKUGenerateStrategy,
+		Prefix:                   store.Prefix,
+		Suffix:                   store.Suffix,
+		EnableBrandAuthorization: store.EnableBrandAuthorization,
+		AuthorizedBrandCode:      store.AuthorizedBrandCode,
+		AuthorizedBrandName:      store.AuthorizedBrandName,
 	}
 }

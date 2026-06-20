@@ -4,7 +4,6 @@ package scheduler
 import (
 	"context"
 
-	"task-processor/internal/infra/clients/management"
 	platformtask "task-processor/internal/platformtask"
 	appscheduler "task-processor/internal/scheduler"
 )
@@ -18,16 +17,14 @@ type ProductSyncTask struct {
 func NewProductSyncTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
-	managementClient *management.ClientManager,
 	syncService platformtask.ProductSyncService,
 ) *ProductSyncTask {
 	_ = ctx
 
 	baseTask := platformtask.NewProductSyncTask(platformtask.ProductSyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: managementClient,
-		SyncService:      syncService,
-		PlatformName:     "SHEIN",
+		TaskConfig:   config,
+		SyncService:  syncService,
+		PlatformName: "SHEIN",
 	})
 
 	return &ProductSyncTask{

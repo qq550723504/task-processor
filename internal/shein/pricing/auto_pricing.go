@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	shein_pricing "task-processor/internal/shein/api/pricing"
 
 	"task-processor/internal/core/logger"
@@ -45,27 +45,39 @@ type PricingDecision struct {
 
 // autoPricingServiceImpl 自动核价服务实现
 type autoPricingServiceImpl struct {
-	managementClient *management.ClientManager
-	pricingAPI       shein_pricing.PricingAPI
-	calculator       *AutoPricingCalculator
-	requestBuilder   *PricingRequestBuilder
-	timeHelper       *TimeHelper
-	logger           *logrus.Entry
+	pricingRuleRepo sheinPricingRuleLister
+	mappingRepo     sheinProductImportMappingFinder
+	pricingAPI      shein_pricing.PricingAPI
+	calculator      *AutoPricingCalculator
+	requestBuilder  *PricingRequestBuilder
+	timeHelper      *TimeHelper
+	logger          *logrus.Entry
+}
+
+type sheinPricingRuleLister interface {
+	ListByStoreID(ctx context.Context, storeID int64) ([]listingadmin.PricingRule, error)
+}
+
+type sheinProductImportMappingFinder interface {
+	FindLatest(ctx context.Context, query listingadmin.ProductImportMappingQuery) (*listingadmin.ProductImportMapping, error)
 }
 
 // NewAutoPricingService 创建自动核价服务
 func NewAutoPricingService(
-	managementClient *management.ClientManager,
+	pricingRuleRepo sheinPricingRuleLister,
+	mappingRepo sheinProductImportMappingFinder,
 	pricingAPI shein_pricing.PricingAPI,
 ) AutoPricingService {
-	return &autoPricingServiceImpl{
-		managementClient: managementClient,
-		pricingAPI:       pricingAPI,
-		calculator:       NewAutoPricingCalculator(),
-		requestBuilder:   NewPricingRequestBuilder(),
-		timeHelper:       NewTimeHelper(),
-		logger:           logger.GetGlobalLogger("AutoPricingService"),
+	service := &autoPricingServiceImpl{
+		pricingRuleRepo: pricingRuleRepo,
+		mappingRepo:     mappingRepo,
+		pricingAPI:      pricingAPI,
+		calculator:      NewAutoPricingCalculator(),
+		requestBuilder:  NewPricingRequestBuilder(),
+		timeHelper:      NewTimeHelper(),
+		logger:          logger.GetGlobalLogger("AutoPricingService"),
 	}
+	return service
 }
 
 // FetchPendingPriceProducts 获取待核价产品列表
@@ -151,18 +163,103 @@ func (s *autoPricingServiceImpl) ApplyPricingRules(ctx context.Context, products
 }
 
 // getPricingRules 获取核价规则
-func (s *autoPricingServiceImpl) getPricingRules(storeID int64) ([]managementapi.PricingRuleRespDTO, error) {
-	pricingRuleAPI := s.managementClient.GetPricingRuleClient()
-	reqDto := &managementapi.PricingRuleReqDTO{
-		StoreID: &storeID,
+func (s *autoPricingServiceImpl) getPricingRules(storeID int64) ([]listingruntime.PricingRule, error) {
+	if s.pricingRuleRepo == nil {
+		return nil, fmt.Errorf("pricing rule repository is not configured")
 	}
-
-	rules, err := pricingRuleAPI.GetPricingRule(reqDto)
+	rules, err := s.pricingRuleRepo.ListByStoreID(context.Background(), storeID)
 	if err != nil {
-		return nil, fmt.Errorf("获取定价规则失败: %w", err)
+		return nil, fmt.Errorf("通过本地仓储获取SHEIN定价规则失败: %w", err)
 	}
+	items := make([]listingruntime.PricingRule, 0, len(rules))
+	for i := range rules {
+		items = append(items, sheinPricingRuleFromListingRule(rules[i]))
+	}
+	return items, nil
+}
 
-	return rules, nil
+func sheinPricingRuleFromListingRule(rule listingadmin.PricingRule) listingruntime.PricingRule {
+	dto := listingruntime.PricingRule{
+		ID:         rule.ID,
+		Name:       rule.Name,
+		RuleCode:   rule.RuleCode,
+		StoreID:    rule.StoreID,
+		CategoryID: rule.CategoryID,
+		RuleType:   rule.RuleType,
+		Status:     int(rule.Status),
+		TenantID:   rule.TenantID,
+	}
+	dto.PriceMin = sheinPtrFloat64(rule.PriceMin)
+	dto.PriceMax = sheinPtrFloat64(rule.PriceMax)
+	dto.RuleValue = sheinPtrFloat64(rule.RuleValue)
+	dto.FixedValue = rule.FixedValue
+	if rule.Description != "" {
+		dto.Description = sheinPtrString(rule.Description)
+	}
+	if rule.AcceptCondition != "" {
+		dto.AcceptCondition = sheinPtrString(rule.AcceptCondition)
+	}
+	if rule.RejectCondition != "" {
+		dto.RejectCondition = sheinPtrString(rule.RejectCondition)
+	}
+	if rule.Remark != "" {
+		dto.Remark = sheinPtrString(rule.Remark)
+	}
+	return dto
+}
+
+func sheinPtrString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	out := value
+	return &out
+}
+
+func sheinPtrFloat64(value float64) *float64 {
+	out := value
+	return &out
+}
+
+func sheinProductImportMappingFromListing(mapping *listingadmin.ProductImportMapping) *listingruntime.ProductImportMapping {
+	if mapping == nil {
+		return nil
+	}
+	return &listingruntime.ProductImportMapping{
+		ID:                      mapping.ID,
+		ImportTaskID:            mapping.ImportTaskID,
+		StoreID:                 mapping.StoreID,
+		Platform:                mapping.Platform,
+		Region:                  mapping.Region,
+		ProductID:               mapping.ProductID,
+		ParentProductID:         sheinPtrString(mapping.ParentProductID),
+		SKU:                     sheinPtrString(mapping.SKU),
+		PlatformProductID:       sheinPtrString(mapping.PlatformProductID),
+		PlatformParentProductID: sheinPtrString(mapping.PlatformParentProductID),
+		CostPrice:               sheinFloat64Value(mapping.CostPrice),
+		FilterRuleID:            sheinInt64Value(mapping.FilterRuleID),
+		FilterRuleRange:         sheinPtrString(mapping.FilterRuleRange),
+		ProfitRuleID:            sheinInt64Value(mapping.ProfitRuleID),
+		SalePriceMultiplier:     sheinPtrFloat64(mapping.SalePriceMultiplier),
+		DiscountPriceMultiplier: sheinPtrFloat64(mapping.DiscountPriceMultiplier),
+		Status:                  mapping.Status,
+		Remark:                  sheinPtrString(mapping.Remark),
+		TenantID:                mapping.TenantID,
+	}
+}
+
+func sheinFloat64Value(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func sheinInt64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 // SubmitPricingResults 提交核价结果

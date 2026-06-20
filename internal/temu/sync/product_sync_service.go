@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
 	temuproduct "task-processor/internal/temu/api/product"
 	temuquery "task-processor/internal/temu/api/query"
 
@@ -15,20 +15,34 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type productDataClientFactory interface {
+	GetProductDataClient(storeID int64) managementapi.ProductDataAPI
+}
+
+type productSyncRuntime interface {
+	productDataClientFactory
+	GetLocalStoreRepository() *listingadmin.GormStoreRepository
+	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
+	GetLocalProductDataRepository() listingadmin.ProductDataRepository
+}
+
 // productSyncServiceImpl TEMU产品同步服务实现
 type productSyncServiceImpl struct {
-	managementClient *management.ClientManager
-	productAPI       *temuproduct.API
-	skuQueryAPI      *temuquery.API
-	mappingClient    managementapi.ProductImportMappingAPI
-	storeAPI         managementapi.StoreAPI
-	config           *ProductSyncConfig
-	logger           *logrus.Entry
+	runtime         productSyncRuntime
+	productAPI      *temuproduct.API
+	skuQueryAPI     *temuquery.API
+	mappingClient   managementapi.ProductImportMappingAPI
+	storeAPI        managementapi.StoreAPI
+	storeRepo       *listingadmin.GormStoreRepository
+	mappingRepo     *listingadmin.GormProductImportMappingRepository
+	productDataRepo listingadmin.ProductDataRepository
+	config          *ProductSyncConfig
+	logger          *logrus.Entry
 }
 
 // NewProductSyncService 创建TEMU产品同步服务
 func NewProductSyncService(
-	managementClient *management.ClientManager,
+	runtime productSyncRuntime,
 	productAPI *temuproduct.API,
 	skuQueryAPI *temuquery.API,
 	mappingClient managementapi.ProductImportMappingAPI,
@@ -45,13 +59,26 @@ func NewProductSyncService(
 	}
 
 	return &productSyncServiceImpl{
-		managementClient: managementClient,
-		productAPI:       productAPI,
-		skuQueryAPI:      skuQueryAPI,
-		mappingClient:    mappingClient,
-		storeAPI:         storeAPI,
-		config:           config,
-		logger:           logger.GetGlobalLogger("TemuProductSyncService"),
+		runtime:         runtime,
+		productAPI:      productAPI,
+		skuQueryAPI:     skuQueryAPI,
+		mappingClient:   mappingClient,
+		storeAPI:        storeAPI,
+		productDataRepo: runtime.GetLocalProductDataRepository(),
+		storeRepo: func() *listingadmin.GormStoreRepository {
+			if runtime == nil {
+				return nil
+			}
+			return runtime.GetLocalStoreRepository()
+		}(),
+		mappingRepo: func() *listingadmin.GormProductImportMappingRepository {
+			if runtime == nil {
+				return nil
+			}
+			return runtime.GetLocalProductImportMappingRepository()
+		}(),
+		config: config,
+		logger: logger.GetGlobalLogger("TemuProductSyncService"),
 	}
 }
 
@@ -118,10 +145,10 @@ func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]temupr
 }
 
 // ConvertProducts 转换TEMU产品格式为管理系统格式
-func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products []temuproduct.GoodsSearchItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products []temuproduct.GoodsSearchItem, tenantID, storeID int64) ([]*TemuProductSnapshot, error) {
 	totalCount := len(products)
 
-	productDataList := make([]*managementapi.ProductDataDTO, 0, totalCount)
+	productDataList := make([]*TemuProductSnapshot, 0, totalCount)
 
 	// 计算进度输出间隔
 	progressInterval := s.calculateProgressInterval(totalCount)
@@ -152,7 +179,7 @@ func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products [
 }
 
 // SaveProducts 保存产品到管理系统
-func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataList []*managementapi.ProductDataDTO) (int, error) {
+func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataList []*TemuProductSnapshot) (int, error) {
 	totalCount := len(productDataList)
 	s.logger.WithField("count", totalCount).Info("开始保存TEMU产品")
 
@@ -161,8 +188,37 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 		return 0, nil
 	}
 
+	if s.productDataRepo != nil {
+		items := make([]listingadmin.ProductData, 0, totalCount)
+		for _, productData := range productDataList {
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			default:
+			}
+			items = append(items, temuProductDataFromSnapshot(productData))
+		}
+		successCount, err := s.productDataRepo.UpsertProductDataBatch(ctx, items)
+		if err != nil {
+			s.logger.WithError(err).Error("通过产品数据仓储批量保存TEMU产品失败")
+			return 0, fmt.Errorf("通过产品数据仓储批量保存TEMU产品失败: %w", err)
+		}
+		s.logger.WithFields(logrus.Fields{
+			"total":   totalCount,
+			"success": successCount,
+			"path":    "repository",
+		}).Info("批量保存TEMU产品完成")
+		return successCount, nil
+	}
+
 	firstProduct := productDataList[0]
-	productDataAPI := s.managementClient.GetProductDataClient(firstProduct.StoreID)
+	if s.runtime == nil {
+		return 0, fmt.Errorf("product sync runtime is not initialized")
+	}
+	productDataAPI := s.runtime.GetProductDataClient(firstProduct.StoreID)
+	if productDataAPI == nil {
+		return 0, fmt.Errorf("product data client is not initialized for store %d", firstProduct.StoreID)
+	}
 
 	// 转换为批量请求格式
 	products := make([]managementapi.ProductDataItemDTO, 0, totalCount)
@@ -173,11 +229,11 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 			return 0, ctx.Err()
 		default:
 		}
-		products = append(products, buildProductDataItem(productData))
+		products = append(products, productData.toProductDataItemDTO())
 	}
 
 	// 构建批量请求并执行保存
-	batchReq := buildBatchSaveReq(firstProduct, products)
+	batchReq := firstProduct.toBatchSaveReq(products)
 
 	// 执行批量保存
 	successCount, err := productDataAPI.BatchCreateOrUpdate(batchReq)
@@ -189,6 +245,7 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 	s.logger.WithFields(logrus.Fields{
 		"total":   totalCount,
 		"success": successCount,
+		"path":    "management_client",
 	}).Info("批量保存TEMU产品完成")
 
 	return successCount, nil

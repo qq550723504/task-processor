@@ -3,7 +3,6 @@ package state
 import (
 	"context"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management"
 )
 
 // MemoryManager 内存管理器（统一管理所有内存存储）
@@ -15,13 +14,13 @@ type MemoryManager struct {
 }
 
 // NewMemoryManager 创建内存管理器
-func NewMemoryManager(ctx context.Context, managementClientMgr *management.ClientManager) *MemoryManager {
+func NewMemoryManager(ctx context.Context, dailyCountClientProvider DailyCountClientProvider) *MemoryManager {
 	logger.GetGlobalLogger("state").Info("初始化内存管理器...")
 
 	manager := &MemoryManager{
 		CookieManager:     NewCookieManager(),
 		ShopPauseManager:  NewShopPauseManager(),
-		DailyCountManager: NewDailyCountManager(managementClientMgr),
+		DailyCountManager: NewDailyCountManager(dailyCountClientProvider),
 		ReListingQueue:    NewReListingQueueManager(),
 	}
 

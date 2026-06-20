@@ -5,11 +5,13 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/platformbase"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/ports"
+	"task-processor/internal/pricing"
 	appscheduler "task-processor/internal/scheduler"
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
@@ -22,6 +24,20 @@ import (
 	"task-processor/internal/shein/productsync"
 	"task-processor/internal/state"
 )
+
+type managementRuntime interface {
+	platformbase.ManagementRuntime
+	platformtask.AutoPricingStoreConfigProvider
+	pricing.OperationStrategyProvider
+	GetRuntimeStoreService() listingruntime.StoreService
+	GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository
+	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
+	GetLocalProductDataRepository() listingadmin.ProductDataRepository
+	GetLocalStoreRepository() *listingadmin.GormStoreRepository
+	GetLocalInventoryRecordRepository() *listingadmin.GormInventoryRecordRepository
+	GetSheinCookie(storeID int64) (string, int64, error)
+	GetSheinStoreCookie(storeID int64) (string, error)
+}
 
 type TaskBuilder func(ctx context.Context, config appscheduler.TaskConfig, factory *SheinTaskFactory) (appscheduler.Task, error)
 type PricingServiceBuilder func(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.AutoPricingService, error)
@@ -60,13 +76,14 @@ type SheinTaskFactory struct {
 }
 
 func NewSheinTaskFactory(
-	managementClient *management.ClientManager,
+	managementClient managementRuntime,
 	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) *SheinTaskFactory {
 	cookieManager := state.NewCookieManager()
+	storeService := managementClient.GetRuntimeStoreService()
 	return NewSheinTaskFactoryWithDependencies(
 		managementClient,
 		crawlSource,
@@ -75,20 +92,21 @@ func NewSheinTaskFactory(
 		rabbitmqClient,
 		Dependencies{
 			CookieManager:  cookieManager,
-			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, managementClient),
+			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, sheinmanagedclient.NewRuntimeCookieProvider(managementClient, storeService), sheinmanagedclient.NewRuntimeStoreConfigProvider(storeService)),
 			FetcherBuilder: platformbase.NewDefaultProductFetcherBuilder(),
 		},
 	)
 }
 
 func NewSheinTaskFactoryWithFetcherBuilder(
-	managementClient *management.ClientManager,
+	managementClient managementRuntime,
 	fetcherBuilder platformbase.ProductFetcherBuilder,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) *SheinTaskFactory {
 	cookieManager := state.NewCookieManager()
+	storeService := managementClient.GetRuntimeStoreService()
 	return NewSheinTaskFactoryWithDependencies(
 		managementClient,
 		nil,
@@ -97,14 +115,14 @@ func NewSheinTaskFactoryWithFetcherBuilder(
 		rabbitmqClient,
 		Dependencies{
 			CookieManager:  cookieManager,
-			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, managementClient),
+			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, sheinmanagedclient.NewRuntimeCookieProvider(managementClient, storeService), sheinmanagedclient.NewRuntimeStoreConfigProvider(storeService)),
 			FetcherBuilder: fetcherBuilder,
 		},
 	)
 }
 
 func NewSheinTaskFactoryWithDependencies(
-	managementClient *management.ClientManager,
+	managementClient managementRuntime,
 	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
@@ -113,11 +131,11 @@ func NewSheinTaskFactoryWithDependencies(
 ) *SheinTaskFactory {
 	_ = crawlSource
 	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
-		Platform:         "SHEIN",
-		ManagementClient: managementClient,
-		FetcherBuilder:   deps.FetcherBuilder,
-		AmazonConfig:     amazonConfig,
-		MonitorConfig:    monitorConfig,
+		Platform:          "SHEIN",
+		ManagementRuntime: managementClient,
+		FetcherBuilder:    deps.FetcherBuilder,
+		AmazonConfig:      amazonConfig,
+		MonitorConfig:     monitorConfig,
 	})
 
 	factory := &SheinTaskFactory{
@@ -132,7 +150,12 @@ func NewSheinTaskFactoryWithDependencies(
 		factory.cookieManager = state.NewCookieManager()
 	}
 	if factory.clientManager == nil {
-		factory.clientManager = sheinmanagedclient.NewClientManager(factory.cookieManager, managementClient)
+		storeService := factory.runtimeProvider().GetRuntimeStoreService()
+		factory.clientManager = sheinmanagedclient.NewClientManager(
+			factory.cookieManager,
+			sheinmanagedclient.NewRuntimeCookieProvider(factory.runtimeProvider(), storeService),
+			sheinmanagedclient.NewRuntimeStoreConfigProvider(storeService),
+		)
 	}
 	factory.pricingServiceBuilder = deps.PricingServiceBuilder
 	if factory.pricingServiceBuilder == nil {
@@ -197,7 +220,7 @@ func defaultBuildSheinPricingTask(ctx context.Context, config appscheduler.TaskC
 	if err != nil {
 		return nil, fmt.Errorf("build SHEIN pricing service: %w", err)
 	}
-	return NewPricingTask(ctx, config, factory.GetManagementClient(), pricingService), nil
+	return NewPricingTask(ctx, config, factory.runtimeProvider(), pricingService), nil
 }
 
 func defaultBuildSheinPricingService(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.AutoPricingService, error) {
@@ -207,7 +230,11 @@ func defaultBuildSheinPricingService(config appscheduler.TaskConfig, factory *Sh
 	}
 
 	pricingAPI := sheinpricingapi.NewClient(baseClient)
-	pricingService := sheinpricing.NewAutoPricingService(factory.GetManagementClient(), pricingAPI)
+	pricingService := sheinpricing.NewAutoPricingService(
+		factory.runtimeProvider().GetLocalPricingRuleRepository(),
+		factory.runtimeProvider().GetLocalProductImportMappingRepository(),
+		pricingAPI,
+	)
 	return NewSheinAutoPricingAdapter(pricingService), nil
 }
 
@@ -216,7 +243,7 @@ func defaultBuildSheinProductSyncTask(ctx context.Context, config appscheduler.T
 	if err != nil {
 		return nil, fmt.Errorf("build SHEIN product sync service: %w", err)
 	}
-	return NewProductSyncTask(ctx, config, factory.GetManagementClient(), syncService), nil
+	return NewProductSyncTask(ctx, config, syncService), nil
 }
 
 func defaultBuildSheinProductSyncService(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.ProductSyncService, error) {
@@ -229,16 +256,15 @@ func defaultBuildSheinProductSyncService(config appscheduler.TaskConfig, factory
 	productAPI := sheinproductapi.NewClient(baseClient)
 	inventoryManager := sheinproductapi.NewInventoryManager(baseClient, errorHandler)
 	priceManager := sheinproductapi.NewPriceManager(baseClient, errorHandler)
-	storeInfoClient := factory.GetManagementClient().GetStoreClient()
-	mappingClient := factory.GetManagementClient().GetProductImportMappingClient()
 
 	syncService := productsync.NewProductSyncService(
-		factory.GetManagementClient(),
 		productAPI,
 		inventoryManager,
 		priceManager,
-		mappingClient,
-		storeInfoClient,
+		factory.runtimeProvider().GetRuntimeStoreService(),
+		factory.runtimeProvider().GetLocalStoreRepository(),
+		factory.runtimeProvider().GetLocalProductImportMappingRepository(),
+		factory.runtimeProvider().GetLocalProductDataRepository(),
 	)
 
 	return newProductSyncServiceAdapter(syncService), nil
@@ -249,7 +275,7 @@ func defaultBuildSheinInventoryTask(ctx context.Context, config appscheduler.Tas
 	if err != nil {
 		return nil, fmt.Errorf("build SHEIN inventory service: %w", err)
 	}
-	return NewInventoryTask(ctx, config, factory.GetManagementClient(), inventoryService), nil
+	return NewInventoryTask(ctx, config, inventoryService), nil
 }
 
 func defaultBuildSheinInventoryService(config appscheduler.TaskConfig, factory *SheinTaskFactory) (platformtask.InventorySyncService, error) {
@@ -259,7 +285,7 @@ func defaultBuildSheinInventoryService(config appscheduler.TaskConfig, factory *
 	}
 
 	productAPI := sheinproductapi.NewClient(baseClient)
-	inventoryRecordClient := factory.GetManagementClient().GetInventoryRecordClient()
+	inventoryRecordRepo := factory.runtimeProvider().GetLocalInventoryRecordRepository()
 
 	productFetcher, err := factory.BuildProductFetcher(factory.rabbitmqClient)
 	if err != nil {
@@ -267,12 +293,15 @@ func defaultBuildSheinInventoryService(config appscheduler.TaskConfig, factory *
 	}
 
 	inventoryService := inventory.NewInventorySyncService(
-		factory.GetManagementClient(),
+		factory.runtimeProvider(),
 		productAPI,
 		productFetcher,
 		factory.GetMonitorConfig(),
-		factory.GetManagementClient().GetRawJsonDataAdapter(),
-		inventoryRecordClient,
+		factory.runtimeProvider().GetRawJsonDataAdapter(),
+		inventoryRecordRepo,
+		factory.runtimeProvider().GetRuntimeStoreService(),
+		factory.runtimeProvider().GetLocalStoreRepository(),
+		factory.runtimeProvider().GetLocalProductDataRepository(),
 	)
 
 	return newInventorySyncServiceAdapter(inventoryService), nil
@@ -283,7 +312,7 @@ func defaultBuildSheinActivityTask(ctx context.Context, config appscheduler.Task
 	if err != nil {
 		return nil, fmt.Errorf("build SHEIN activity service: %w", err)
 	}
-	return NewActivityTask(ctx, config, factory.GetManagementClient(), activityService), nil
+	return NewActivityTask(ctx, config, factory.runtimeProvider(), activityService), nil
 }
 
 func defaultBuildSheinActivityService(config appscheduler.TaskConfig, factory *SheinTaskFactory) (activity.ActivityRegistrationService, error) {
@@ -293,13 +322,24 @@ func defaultBuildSheinActivityService(config appscheduler.TaskConfig, factory *S
 	}
 
 	marketingAPI := marketing.NewClient(baseClient)
-	return activity.NewActivityRegistrationService(factory.GetManagementClient(), marketingAPI), nil
+	return activity.NewActivityRegistrationService(
+		factory.runtimeProvider().GetRuntimeStoreService(),
+		factory.runtimeProvider().GetLocalStoreRepository(),
+		factory.runtimeProvider().GetLocalProductImportMappingRepository(),
+		factory.runtimeProvider().GetLocalProductDataRepository(),
+		marketingAPI,
+	), nil
 }
 
 func (f *SheinTaskFactory) createBaseClient(storeID int64) (*client.BaseAPIClient, error) {
-	storeInfo, err := f.GetManagementClient().GetStoreClient().GetStore(storeID)
+	runtimeStoreService := f.runtimeProvider().GetRuntimeStoreService()
+	if runtimeStoreService == nil {
+		return nil, fmt.Errorf("runtime store service is not initialized")
+	}
+
+	storeInfo, err := runtimeStoreService.GetStore(storeID)
 	if err != nil {
-		return nil, fmt.Errorf("get store info: %w", err)
+		return nil, fmt.Errorf("get runtime store info: %w", err)
 	}
 
 	apiClient, err := f.clientManager.GetClient(storeID, storeInfo)
@@ -317,4 +357,12 @@ func (f *SheinTaskFactory) createBaseClient(storeID int64) (*client.BaseAPIClien
 
 func (f *SheinTaskFactory) SupportedTaskTypes() []appscheduler.TaskType {
 	return f.BaseFactory.SupportedTaskTypes()
+}
+
+func (f *SheinTaskFactory) runtimeProvider() managementRuntime {
+	if f == nil || f.BaseFactory == nil {
+		return nil
+	}
+	runtimeProvider, _ := f.GetManagementRuntime().(managementRuntime)
+	return runtimeProvider
 }

@@ -3,9 +3,10 @@ package mapping
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 
 	"task-processor/internal/core/logger"
 
@@ -14,15 +15,20 @@ import (
 
 // MappingBuilder SKU映射关系构建器
 type MappingBuilder struct {
-	mappingClient managementapi.ProductImportMappingAPI
-	logger        *logrus.Entry
+	mappingGateway runtimeMappingGateway
+	logger         *logrus.Entry
+}
+
+type runtimeMappingGateway interface {
+	CreateMapping(req *listingruntime.ProductImportMappingUpsert) (int64, error)
+	FindMappingByPlatformProductID(platformProductID string, storeID int64) (*listingruntime.ProductImportMapping, error)
 }
 
 // NewMappingBuilder 创建映射关系构建器
-func NewMappingBuilder(mappingClient managementapi.ProductImportMappingAPI) *MappingBuilder {
+func NewMappingBuilder(mappingGateway runtimeMappingGateway) *MappingBuilder {
 	return &MappingBuilder{
-		mappingClient: mappingClient,
-		logger:        logger.GetGlobalLogger("MappingBuilder"),
+		mappingGateway: mappingGateway,
+		logger:         logger.GetGlobalLogger("MappingBuilder"),
 	}
 }
 
@@ -51,7 +57,7 @@ type MappingCreateOptions struct {
 }
 
 // CreateMappingRelation 创建映射关系的统一函数
-func (b *MappingBuilder) CreateMappingRelation(options *MappingCreateOptions) (*managementapi.ProductImportMappingRespDTO, error) {
+func (b *MappingBuilder) CreateMappingRelation(options *MappingCreateOptions) (*listingruntime.ProductImportMapping, error) {
 	b.logger.WithFields(logrus.Fields{
 		"sku_code": options.SkuCode,
 		"store_id": options.StoreID,
@@ -67,7 +73,10 @@ func (b *MappingBuilder) CreateMappingRelation(options *MappingCreateOptions) (*
 	createReq := b.buildCreateRequest(options)
 
 	// 创建映射关系
-	mappingID, err := b.mappingClient.CreateProductImportMapping(createReq)
+	if b.mappingGateway == nil {
+		return nil, fmt.Errorf("mapping gateway is nil")
+	}
+	mappingID, err := b.mappingGateway.CreateMapping(createReq)
 	if err != nil {
 		b.logger.WithError(err).WithFields(logrus.Fields{
 			"sku_code": options.SkuCode,
@@ -90,10 +99,10 @@ func (b *MappingBuilder) CreateMappingRelation(options *MappingCreateOptions) (*
 			"mapping_id": mappingID,
 		}).Warn("查询新创建的映射关系失败")
 		// 即使查询失败，也返回基本信息
-		return &managementapi.ProductImportMappingRespDTO{
+		return &listingruntime.ProductImportMapping{
 			ID:                mappingID,
-			StoreId:           options.StoreID,
-			PlatformProductId: &options.SkuCode,
+			StoreID:           options.StoreID,
+			PlatformProductID: mappingStringPtr(options.SkuCode),
 		}, nil
 	}
 
@@ -101,7 +110,7 @@ func (b *MappingBuilder) CreateMappingRelation(options *MappingCreateOptions) (*
 }
 
 // CreateMappingFromContext 从修复上下文创建映射关系
-func (b *MappingBuilder) CreateMappingFromContext(ctx *MappingRepairContext, reason string) (*managementapi.ProductImportMappingRespDTO, error) {
+func (b *MappingBuilder) CreateMappingFromContext(ctx *MappingRepairContext, reason string) (*listingruntime.ProductImportMapping, error) {
 	options := &MappingCreateOptions{
 		TenantID: ctx.Request.TenantID,
 		StoreID:  ctx.Request.StoreID,
@@ -126,7 +135,7 @@ func (b *MappingBuilder) CreateMappingFromContext(ctx *MappingRepairContext, rea
 }
 
 // CreateBasicMapping 创建基础映射关系（最少参数）
-func (b *MappingBuilder) CreateBasicMapping(tenantID, storeID int64, skuCode, region, reason string) (*managementapi.ProductImportMappingRespDTO, error) {
+func (b *MappingBuilder) CreateBasicMapping(tenantID, storeID int64, skuCode, region, reason string) (*listingruntime.ProductImportMapping, error) {
 	options := &MappingCreateOptions{
 		TenantID: tenantID,
 		StoreID:  storeID,
@@ -139,7 +148,7 @@ func (b *MappingBuilder) CreateBasicMapping(tenantID, storeID int64, skuCode, re
 }
 
 // CreateMappingWithSPU 创建包含SPU信息的映射关系
-func (b *MappingBuilder) CreateMappingWithSPU(tenantID, storeID int64, skuCode, spuCode, spuName, region, reason string) (*managementapi.ProductImportMappingRespDTO, error) {
+func (b *MappingBuilder) CreateMappingWithSPU(tenantID, storeID int64, skuCode, spuCode, spuName, region, reason string) (*listingruntime.ProductImportMapping, error) {
 	options := &MappingCreateOptions{
 		TenantID: tenantID,
 		StoreID:  storeID,
@@ -154,7 +163,7 @@ func (b *MappingBuilder) CreateMappingWithSPU(tenantID, storeID int64, skuCode, 
 }
 
 // CreateMappingWithPrice 创建包含价格信息的映射关系
-func (b *MappingBuilder) CreateMappingWithPrice(tenantID, storeID int64, skuCode, region, reason string, costPrice float64) (*managementapi.ProductImportMappingRespDTO, error) {
+func (b *MappingBuilder) CreateMappingWithPrice(tenantID, storeID int64, skuCode, region, reason string, costPrice float64) (*listingruntime.ProductImportMapping, error) {
 	options := &MappingCreateOptions{
 		TenantID:  tenantID,
 		StoreID:   storeID,
@@ -173,7 +182,7 @@ func (b *MappingBuilder) CreateMappingWithRules(
 	skuCode, region, reason string,
 	profitRuleID, filterRuleID *int64,
 	salePriceMultiplier, discountPriceMultiplier, filterRuleRange *string,
-) (*managementapi.ProductImportMappingRespDTO, error) {
+) (*listingruntime.ProductImportMapping, error) {
 	options := &MappingCreateOptions{
 		TenantID:                tenantID,
 		StoreID:                 storeID,
@@ -198,7 +207,7 @@ func (b *MappingBuilder) CreateMappingFromTaskContext(
 	costPrice *float64,
 	profitRuleID, filterRuleID *int64,
 	salePriceMultiplier, discountPriceMultiplier, filterRuleRange *string,
-) (*managementapi.ProductImportMappingRespDTO, error) {
+) (*listingruntime.ProductImportMapping, error) {
 	options := &MappingCreateOptions{
 		TenantID:                tenantID,
 		StoreID:                 storeID,
@@ -242,7 +251,7 @@ func (b *MappingBuilder) validateOptions(options *MappingCreateOptions) error {
 }
 
 // buildCreateRequest 构建创建请求
-func (b *MappingBuilder) buildCreateRequest(options *MappingCreateOptions) *managementapi.ProductImportMappingCreateReqDTO {
+func (b *MappingBuilder) buildCreateRequest(options *MappingCreateOptions) *listingruntime.ProductImportMappingUpsert {
 	// 设置默认的导入任务ID
 	importTaskID := time.Now().Unix()
 	if options.ImportTaskID != nil {
@@ -255,34 +264,34 @@ func (b *MappingBuilder) buildCreateRequest(options *MappingCreateOptions) *mana
 		status = *options.Status
 	}
 
-	createReq := &managementapi.ProductImportMappingCreateReqDTO{
+	createReq := &listingruntime.ProductImportMappingUpsert{
 		TenantID:          options.TenantID,
-		ImportTaskId:      importTaskID,
-		StoreId:           options.StoreID,
+		ImportTaskID:      importTaskID,
+		StoreID:           options.StoreID,
 		Platform:          "SHEIN",
 		Region:            options.Region,
-		ProductId:         options.ProductID, // ASIN或产品ID
-		PlatformProductId: &options.SkuCode,  // 平台产品ID使用SKU编码
+		ProductID:         options.ProductID,
+		PlatformProductID: &options.SkuCode,
 		Status:            &status,
 		Remark:            &options.Reason,
 	}
 
 	// 设置供应商SKU - 参考result_service.go的映射逻辑
 	if options.SupplierSku != "" {
-		createReq.Sku = &options.SupplierSku
+		createReq.SKU = &options.SupplierSku
 	}
 
 	// 设置父产品ID信息
 	if options.ParentProductID != nil {
-		createReq.ParentProductId = options.ParentProductID
+		createReq.ParentProductID = options.ParentProductID
 	}
 
 	// 设置平台父产品ID（SPU名称）
 	if options.PlatformParentProductID != nil {
-		createReq.PlatformParentProductId = options.PlatformParentProductID
+		createReq.PlatformParentProductID = options.PlatformParentProductID
 	} else if options.SpuName != "" {
 		// 如果没有明确设置PlatformParentProductID，但有SpuName，则使用SpuName
-		createReq.PlatformParentProductId = &options.SpuName
+		createReq.PlatformParentProductID = &options.SpuName
 	}
 
 	// 设置成本价
@@ -292,20 +301,20 @@ func (b *MappingBuilder) buildCreateRequest(options *MappingCreateOptions) *mana
 
 	// 设置利润规则ID和倍数 - 参考result_service.go的格式化逻辑
 	if options.ProfitRuleID != nil {
-		createReq.ProfitRuleId = options.ProfitRuleID
+		createReq.ProfitRuleID = options.ProfitRuleID
 	}
 
 	if options.SalePriceMultiplier != nil {
-		createReq.SalePriceMultiplier = options.SalePriceMultiplier
+		createReq.SalePriceMultiplier = mappingParseFloat(options.SalePriceMultiplier)
 	}
 
 	if options.DiscountPriceMultiplier != nil {
-		createReq.DiscountPriceMultiplier = options.DiscountPriceMultiplier
+		createReq.DiscountPriceMultiplier = mappingParseFloat(options.DiscountPriceMultiplier)
 	}
 
 	// 设置筛选规则ID和范围 - 参考result_service.go的价格范围格式化逻辑
 	if options.FilterRuleID != nil {
-		createReq.FilterRuleId = options.FilterRuleID
+		createReq.FilterRuleID = options.FilterRuleID
 	}
 
 	if options.FilterRuleRange != nil {
@@ -316,17 +325,15 @@ func (b *MappingBuilder) buildCreateRequest(options *MappingCreateOptions) *mana
 }
 
 // queryCreatedMapping 查询创建的映射关系
-func (b *MappingBuilder) queryCreatedMapping(skuCode string, storeID int64) (*managementapi.ProductImportMappingRespDTO, error) {
-	return b.mappingClient.GetProductImportMappingByPlatformProductIdAndStore(
-		&managementapi.ProductImportMappingGetByPlatformProductIdAndStoreReqDTO{
-			PlatformProductId: skuCode,
-			StoreId:           storeID,
-		},
-	)
+func (b *MappingBuilder) queryCreatedMapping(skuCode string, storeID int64) (*listingruntime.ProductImportMapping, error) {
+	if b.mappingGateway == nil {
+		return nil, fmt.Errorf("mapping gateway is nil")
+	}
+	return b.mappingGateway.FindMappingByPlatformProductID(skuCode, storeID)
 }
 
 // determineRegion 确定区域
-func (b *MappingBuilder) determineRegion(storeInfo *managementapi.StoreRespDTO) string {
+func (b *MappingBuilder) determineRegion(storeInfo *listingruntime.StoreInfo) string {
 	if storeInfo != nil && storeInfo.Region != "" {
 		return storeInfo.Region
 	}
@@ -349,28 +356,28 @@ func (b *MappingBuilder) enrichOptionsFromProductInfo(options *MappingCreateOpti
 }
 
 // enrichOptionsFromHistory 从历史映射信息中丰富选项
-func (b *MappingBuilder) enrichOptionsFromHistory(options *MappingCreateOptions, historyMapping *managementapi.ProductImportMappingRespDTO) {
+func (b *MappingBuilder) enrichOptionsFromHistory(options *MappingCreateOptions, historyMapping *listingruntime.ProductImportMapping) {
 	b.logger.WithField("sku_code", options.SkuCode).Debug("使用历史映射信息丰富映射关系")
 
 	// 从历史映射中复用一些字段
-	if historyMapping.ProductId != "" {
-		options.ProductID = historyMapping.ProductId
+	if historyMapping.ProductID != "" {
+		options.ProductID = historyMapping.ProductID
 	}
 
-	if historyMapping.ParentProductId != nil && *historyMapping.ParentProductId != "" {
-		options.ParentProductID = historyMapping.ParentProductId
+	if historyMapping.ParentProductID != nil && *historyMapping.ParentProductID != "" {
+		options.ParentProductID = historyMapping.ParentProductID
 	}
 
-	if historyMapping.PlatformParentProductId != nil && *historyMapping.PlatformParentProductId != "" {
-		options.PlatformParentProductID = historyMapping.PlatformParentProductId
+	if historyMapping.PlatformParentProductID != nil && *historyMapping.PlatformParentProductID != "" {
+		options.PlatformParentProductID = historyMapping.PlatformParentProductID
 	}
 
-	if historyMapping.CostPrice != nil {
-		options.CostPrice = historyMapping.CostPrice
+	if historyMapping.CostPrice > 0 {
+		options.CostPrice = &historyMapping.CostPrice
 	}
 
-	if historyMapping.ProfitRuleId != nil {
-		options.ProfitRuleID = historyMapping.ProfitRuleId
+	if historyMapping.ProfitRuleID > 0 {
+		options.ProfitRuleID = &historyMapping.ProfitRuleID
 	}
 
 	// 转换float64到string类型
@@ -384,8 +391,8 @@ func (b *MappingBuilder) enrichOptionsFromHistory(options *MappingCreateOptions,
 		options.DiscountPriceMultiplier = &discountPriceMultiplier
 	}
 
-	if historyMapping.FilterRuleId != nil {
-		options.FilterRuleID = historyMapping.FilterRuleId
+	if historyMapping.FilterRuleID > 0 {
+		options.FilterRuleID = &historyMapping.FilterRuleID
 	}
 
 	if historyMapping.FilterRuleRange != nil {
@@ -394,8 +401,8 @@ func (b *MappingBuilder) enrichOptionsFromHistory(options *MappingCreateOptions,
 }
 
 // BatchCreateMappings 批量创建映射关系
-func (b *MappingBuilder) BatchCreateMappings(optionsList []*MappingCreateOptions) ([]*managementapi.ProductImportMappingRespDTO, []error) {
-	results := make([]*managementapi.ProductImportMappingRespDTO, len(optionsList))
+func (b *MappingBuilder) BatchCreateMappings(optionsList []*MappingCreateOptions) ([]*listingruntime.ProductImportMapping, []error) {
+	results := make([]*listingruntime.ProductImportMapping, len(optionsList))
 	errors := make([]error, len(optionsList))
 
 	b.logger.WithField("count", len(optionsList)).Info("开始批量创建映射关系")
@@ -424,4 +431,37 @@ func (b *MappingBuilder) BatchCreateMappings(optionsList []*MappingCreateOptions
 	}).Info("批量创建映射关系完成")
 
 	return results, errors
+}
+
+func mappingStringPtr(value string) *string {
+	if value == "" {
+		return nil
+	}
+	out := value
+	return &out
+}
+
+func mappingFloat64Value(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func mappingInt64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func mappingParseFloat(value *string) *float64 {
+	if value == nil || *value == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseFloat(*value, 64)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }

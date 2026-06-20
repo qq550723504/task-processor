@@ -12,13 +12,12 @@ import (
 	"time"
 
 	apptask "task-processor/internal/app/task"
-	"task-processor/internal/app/taskstatus"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/strx"
+	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )
@@ -44,7 +43,7 @@ type TaskHandler struct {
 }
 
 type managementClientProvider interface {
-	GetManagementClient() *management.ClientManager
+	GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC
 }
 
 type staleTaskMessageError struct {
@@ -235,18 +234,18 @@ func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
 
 	provider, ok := eth.processor.(managementClientProvider)
 	if !ok {
-		eth.logger.Debugf("[%s] processor does not expose management client, skip remote claim: ID=%d, Status=%d",
+		eth.logger.Debugf("[%s] processor does not expose task status runtime, skip remote claim: ID=%d, Status=%d",
 			eth.platform, task.ID, task.Status)
 		return nil
 	}
 
-	managementClient := provider.GetManagementClient()
-	if managementClient == nil {
-		return fmt.Errorf("management client is not initialized for platform %s", eth.platform)
+	runtime := provider.GetTaskStatusRuntime()
+	if runtime == nil {
+		return fmt.Errorf("task status runtime is not initialized for platform %s", eth.platform)
 	}
 
 	statusService := taskstatus.NewService("app/consumer", func() taskstatus.ImportTaskStatusClient {
-		return managementClient.GetImportTaskClient()
+		return taskstatus.NewManagementClientAdapter(runtime)
 	})
 	expectedStatuses := []int16{task.Status}
 	if shouldRetryClaimFromQueued(task.Status) {
@@ -267,7 +266,7 @@ func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
 				}).Warn("claim task status failed, retrying with queued fallback")
 				continue
 			}
-			return eth.resolveClaimFailure(managementClient, task, expectedStatus, err)
+			return eth.resolveClaimFailure(runtime, task, expectedStatus, err)
 		}
 
 		task.Status = model.TaskStatusProcessing.Int16()
@@ -277,17 +276,12 @@ func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
 	return fmt.Errorf("claim task %d as processing failed: %w", task.ID, lastErr)
 }
 
-func (eth *TaskHandler) resolveClaimFailure(managementClient *management.ClientManager, task *model.Task, expectedStatus int16, claimErr error) error {
-	if !isClaimConflictError(claimErr) || managementClient == nil {
+func (eth *TaskHandler) resolveClaimFailure(runtime taskstatus.RuntimeWithTaskRPC, task *model.Task, expectedStatus int16, claimErr error) error {
+	if !isClaimConflictError(claimErr) || runtime == nil {
 		return fmt.Errorf("claim task %d as processing failed from status %d: %w", task.ID, expectedStatus, claimErr)
 	}
 
-	taskRPCClient := managementClient.GetTaskRPCClient()
-	if taskRPCClient == nil {
-		return fmt.Errorf("claim task %d as processing failed from status %d: %w", task.ID, expectedStatus, claimErr)
-	}
-
-	statusResp, err := taskRPCClient.GetTaskStatus(task.ID)
+	statusResp, err := runtime.GetTaskStatus(task.ID)
 	if err != nil {
 		eth.logger.WithError(err).WithFields(logrus.Fields{
 			"task_id":         task.ID,

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
 	appscheduler "task-processor/internal/scheduler"
 
 	"task-processor/internal/core/logger"
@@ -37,7 +36,6 @@ type InventorySyncService interface {
 // InventorySyncTask 通用库存同步任务
 type InventorySyncTask struct {
 	*BaseTask
-	managementClient *management.ClientManager
 	inventoryService InventorySyncService
 	logger           *logrus.Entry
 	platformName     string
@@ -46,7 +44,6 @@ type InventorySyncTask struct {
 // InventorySyncTaskConfig 库存同步任务配置
 type InventorySyncTaskConfig struct {
 	TaskConfig       appscheduler.TaskConfig
-	ManagementClient *management.ClientManager
 	InventoryService InventorySyncService
 	PlatformName     string
 }
@@ -57,7 +54,6 @@ func NewInventorySyncTask(config InventorySyncTaskConfig) *InventorySyncTask {
 
 	return &InventorySyncTask{
 		BaseTask:         baseTask,
-		managementClient: config.ManagementClient,
 		inventoryService: config.InventoryService,
 		platformName:     config.PlatformName,
 		logger: logger.GetGlobalLogger("platformtask/inventory_sync_task.go").WithFields(logrus.Fields{
@@ -107,11 +103,6 @@ func (t *InventorySyncTask) Execute(ctx context.Context) error {
 	}).Infof("%s库存同步任务执行完成", t.platformName)
 
 	return nil
-}
-
-// GetManagementClient 获取管理客户端
-func (t *InventorySyncTask) GetManagementClient() *management.ClientManager {
-	return t.managementClient
 }
 
 // GetInventoryService 获取库存同步服务

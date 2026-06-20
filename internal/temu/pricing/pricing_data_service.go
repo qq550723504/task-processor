@@ -2,9 +2,10 @@
 package pricing
 
 import (
+	"context"
 	"fmt"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -12,25 +13,55 @@ import (
 
 // PricingDataService 核价数据服务
 type PricingDataService struct {
-	managementClient *management.ClientManager
-	logger           *logrus.Entry
+	runtime         runtime
+	pricingRuleRepo pricingRuleLister
+	mappingRepo     productImportMappingFinder
+	logger          *logrus.Entry
+}
+
+type pricingRuleLister interface {
+	ListByStoreID(ctx context.Context, storeID int64) ([]listingadmin.PricingRule, error)
+}
+
+type productImportMappingFinder interface {
+	FindLatest(ctx context.Context, query listingadmin.ProductImportMappingQuery) (*listingadmin.ProductImportMapping, error)
 }
 
 // NewPricingDataService 创建核价数据服务
-func NewPricingDataService(managementClient *management.ClientManager, logger *logrus.Entry) ProductDataProvider {
-	return &PricingDataService{
-		managementClient: managementClient,
-		logger:           logger,
+func NewPricingDataService(runtime runtime, logger *logrus.Entry) ProductDataProvider {
+	service := &PricingDataService{
+		runtime: runtime,
+		logger:  logger,
 	}
+	if runtime != nil {
+		service.pricingRuleRepo = runtime.GetLocalPricingRuleRepository()
+		service.mappingRepo = runtime.GetLocalProductImportMappingRepository()
+	}
+	return service
 }
 
 // GetPricingRules 获取核价规则（返回数组）
 func (s *PricingDataService) GetPricingRules(storeID int64) ([]api.PricingRuleRespDTO, error) {
-	if s.managementClient == nil {
+	if s.pricingRuleRepo != nil {
+		rules, err := s.pricingRuleRepo.ListByStoreID(context.Background(), storeID)
+		if err != nil {
+			s.logger.WithError(err).Warnf("通过本地仓储获取核价规则失败: storeID=%d，回退 management client", storeID)
+		} else {
+			items := make([]api.PricingRuleRespDTO, 0, len(rules))
+			for i := range rules {
+				items = append(items, pricingRuleDTOFromListingRule(rules[i]))
+			}
+			enabledRules := s.filterEnabledRules(items)
+			s.logger.Infof("成功通过本地仓储获取核价规则: 总数=%d, 启用=%d", len(items), len(enabledRules))
+			return enabledRules, nil
+		}
+	}
+
+	if s.runtime == nil {
 		return nil, fmt.Errorf("管理客户端未初始化")
 	}
 
-	pricingRuleClient := s.managementClient.GetPricingRuleClient()
+	pricingRuleClient := s.runtime.GetPricingRuleClient()
 	if pricingRuleClient == nil {
 		return nil, fmt.Errorf("核价规则客户端未初始化")
 	}
@@ -60,11 +91,25 @@ func (s *PricingDataService) GetProductImportMapping(skuSN string, storeID int64
 		return nil, fmt.Errorf("SKU编号不能为空")
 	}
 
-	if s.managementClient == nil {
+	if s.runtime == nil {
 		return nil, fmt.Errorf("管理客户端未初始化")
 	}
 
-	mappingClient := s.managementClient.GetProductImportMappingClient()
+	if s.mappingRepo != nil {
+		mapping, err := s.mappingRepo.FindLatest(context.Background(), listingadmin.ProductImportMappingQuery{
+			SKU:     skuSN,
+			StoreID: &storeID,
+		})
+		if err != nil {
+			s.logger.WithError(err).Warnf("通过本地仓储获取产品导入映射失败: sku=%s, storeID=%d，回退 management client", skuSN, storeID)
+		} else if mapping != nil {
+			dto := productImportMappingDTOFromListingMapping(mapping)
+			s.logger.Debugf("成功通过本地仓储获取产品导入映射: sku=%s, productID=%s", skuSN, dto.ProductId)
+			return dto, nil
+		}
+	}
+
+	mappingClient := s.runtime.GetProductImportMappingAPI()
 	if mappingClient == nil {
 		return nil, fmt.Errorf("产品导入映射客户端未初始化")
 	}
@@ -214,4 +259,87 @@ func (s *PricingDataService) getAmazonOriginalPrice(amazonProduct *model.Product
 
 	s.logger.Warn("Amazon产品没有有效的原价信息")
 	return 0
+}
+
+func pricingRuleDTOFromListingRule(rule listingadmin.PricingRule) api.PricingRuleRespDTO {
+	dto := api.PricingRuleRespDTO{
+		ID:         rule.ID,
+		Name:       rule.Name,
+		RuleCode:   rule.RuleCode,
+		StoreID:    rule.StoreID,
+		CategoryID: rule.CategoryID,
+		RuleType:   rule.RuleType,
+		Status:     int(rule.Status),
+		TenantID:   rule.TenantID,
+	}
+	dto.PriceMin = ptrFloat64(rule.PriceMin)
+	dto.PriceMax = ptrFloat64(rule.PriceMax)
+	dto.RuleValue = ptrFloat64(rule.RuleValue)
+	dto.FixedValue = rule.FixedValue
+	if rule.Description != "" {
+		dto.Description = ptrString(rule.Description)
+	}
+	if rule.AcceptCondition != "" {
+		dto.AcceptCondition = ptrString(rule.AcceptCondition)
+	}
+	if rule.RejectCondition != "" {
+		dto.RejectCondition = ptrString(rule.RejectCondition)
+	}
+	if rule.Remark != "" {
+		dto.Remark = ptrString(rule.Remark)
+	}
+	return dto
+}
+
+func productImportMappingDTOFromListingMapping(mapping *listingadmin.ProductImportMapping) *api.ProductImportMappingRespDTO {
+	if mapping == nil {
+		return nil
+	}
+	dto := &api.ProductImportMappingRespDTO{
+		ID:                      mapping.ID,
+		ImportTaskId:            mapping.ImportTaskID,
+		StoreId:                 mapping.StoreID,
+		Platform:                mapping.Platform,
+		Region:                  mapping.Region,
+		ProductId:               mapping.ProductID,
+		CostPrice:               mapping.CostPrice,
+		FilterRuleId:            mapping.FilterRuleID,
+		ProfitRuleId:            mapping.ProfitRuleID,
+		SalePriceMultiplier:     ptrFloat64(mapping.SalePriceMultiplier),
+		DiscountPriceMultiplier: ptrFloat64(mapping.DiscountPriceMultiplier),
+		Status:                  mapping.Status,
+		TenantId:                mapping.TenantID,
+	}
+	if mapping.ParentProductID != "" {
+		dto.ParentProductId = ptrString(mapping.ParentProductID)
+	}
+	if mapping.PlatformProductID != "" {
+		dto.PlatformProductId = ptrString(mapping.PlatformProductID)
+	}
+	if mapping.PlatformParentProductID != "" {
+		dto.PlatformParentProductId = ptrString(mapping.PlatformParentProductID)
+	}
+	if mapping.SKU != "" {
+		dto.Sku = ptrString(mapping.SKU)
+	}
+	if mapping.FilterRuleRange != "" {
+		dto.FilterRuleRange = ptrString(mapping.FilterRuleRange)
+	}
+	if mapping.Remark != "" {
+		dto.Remark = ptrString(mapping.Remark)
+	}
+	return dto
+}
+
+func ptrString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	out := value
+	return &out
+}
+
+func ptrFloat64(value float64) *float64 {
+	out := value
+	return &out
 }

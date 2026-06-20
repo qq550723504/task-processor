@@ -5,17 +5,17 @@ import (
 	"sync"
 	"testing"
 
-	managementAPI "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	sheinctx "task-processor/internal/shein/context"
 )
 
 type mockStoreClient struct {
-	store *managementAPI.StoreRespDTO
+	store *listingruntime.StoreInfo
 	err   error
 }
 
-func (m *mockStoreClient) GetStore(id int64) (*managementAPI.StoreRespDTO, error) {
+func (m *mockStoreClient) GetStore(id int64) (*listingruntime.StoreInfo, error) {
 	return m.store, m.err
 }
 
@@ -27,7 +27,7 @@ func TestStoreInfoHandlerSyncsTenantIDFromStoreInfo(t *testing.T) {
 	storeCache = sync.Map{}
 
 	handler := NewStoreInfoHandler(&mockStoreClient{
-		store: &managementAPI.StoreRespDTO{
+		store: &listingruntime.StoreInfo{
 			ID:                181,
 			TenantID:          227,
 			Name:              "test-store",

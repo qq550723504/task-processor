@@ -4,11 +4,11 @@ import (
 	"testing"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/mapping"
 )
 
-func makeRepairCtx(skuCode, spuCode, spuName string, storeInfo *managementapi.StoreRespDTO) *mapping.MappingRepairContext {
+func makeRepairCtx(skuCode, spuCode, spuName string, storeInfo *listingruntime.StoreInfo) *mapping.MappingRepairContext {
 	return &mapping.MappingRepairContext{
 		Request: &mapping.MappingRepairRequest{
 			SkuCode: skuCode,
@@ -20,8 +20,8 @@ func makeRepairCtx(skuCode, spuCode, spuName string, storeInfo *managementapi.St
 	}
 }
 
-func makeStoreInfo(region string) *managementapi.StoreRespDTO {
-	return &managementapi.StoreRespDTO{Region: region}
+func makeStoreInfo(region string) *listingruntime.StoreInfo {
+	return &listingruntime.StoreInfo{Region: region}
 }
 
 func TestProductBasedRepairStrategy_CanRepair(t *testing.T) {

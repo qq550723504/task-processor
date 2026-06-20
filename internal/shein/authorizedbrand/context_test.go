@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 )
 
 func TestConfigFromStore_UsesTrimmedEnabledFields(t *testing.T) {
 	enabled := true
-	cfg := ConfigFromStore(&managementapi.StoreRespDTO{
+	cfg := ConfigFromStore(&listingruntime.StoreInfo{
 		EnableBrandAuthorization: &enabled,
 		AuthorizedBrandCode:      "  2fd1n  ",
 		AuthorizedBrandName:      "  Logitech  ",
@@ -27,7 +27,7 @@ func TestConfigFromStore_UsesTrimmedEnabledFields(t *testing.T) {
 }
 
 func TestConfigFromStore_DisablesWhenSwitchOff(t *testing.T) {
-	cfg := ConfigFromStore(&managementapi.StoreRespDTO{
+	cfg := ConfigFromStore(&listingruntime.StoreInfo{
 		AuthorizedBrandCode: "2fd1n",
 		AuthorizedBrandName: "Logitech",
 	})

@@ -2,9 +2,13 @@ package management
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"task-processor/internal/core/config"
+	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/platformtask"
 	domainproduct "task-processor/internal/product"
 	"time"
 )
@@ -23,7 +27,7 @@ type ClientManager struct {
 	// 图片下载客户端
 	imageDownloader *ImageDownloader
 	// 图片下载超时时间
-	imageDownloadTimeout time.Duration
+	imageDownloadTimeout            time.Duration
 	imageDownloadInsecureSkipVerify bool
 
 	// 数据新鲜度天数
@@ -46,7 +50,7 @@ func NewClientManager(cfg *config.ManagementConfig) *ClientManager {
 		// 设置默认的管理系统的基准URL
 		baseURL: baseURL,
 		// 设置默认的图片下载超时时间 - 增加到2分钟适应Amazon图片服务器
-		imageDownloadTimeout: 120 * time.Second,
+		imageDownloadTimeout:            120 * time.Second,
 		imageDownloadInsecureSkipVerify: cfg != nil && cfg.HTTPClient.InsecureSkipVerify,
 		// 默认数据新鲜度7天
 		dataFreshnessDays: 7,
@@ -111,6 +115,63 @@ func (cm *ClientManager) GetStoreClient() *StoreAPIClient {
 		localDataProvider:   cm.localDataProvider,
 		sheinCookieProvider: cm.sheinCookieProvider,
 	}
+}
+
+func (cm *ClientManager) ResolveStore(ctx context.Context, storeID int64) (*managementapi.StoreRespDTO, error) {
+	if cm == nil || storeID == 0 {
+		return nil, nil
+	}
+
+	if repo := cm.GetLocalStoreRepository(); repo != nil {
+		store, err := repo.FindStoreByID(ctx, storeID)
+		if err == nil && store != nil {
+			return storeToDTO(store), nil
+		}
+		if err != nil && !errors.Is(err, listingadmin.ErrStoreNotFound) {
+			return nil, err
+		}
+	}
+
+	storeClient := cm.GetStoreClient()
+	if storeClient == nil {
+		return nil, nil
+	}
+	return storeClient.GetStore(storeID)
+}
+
+func (cm *ClientManager) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error) {
+	if cm == nil {
+		return nil, errors.New("management client manager is nil")
+	}
+	if storeID <= 0 {
+		return nil, errors.New("store id is required")
+	}
+	if repo := cm.GetLocalStoreRepository(); repo != nil {
+		store, err := repo.FindStoreByID(ctx, storeID)
+		if err == nil && store != nil {
+			return &platformtask.AutoPricingStoreConfig{
+				Name:            store.Name,
+				EnableAutoPrice: store.EnableAutoPrice,
+				EnableRebargain: store.EnableRebargain,
+			}, nil
+		}
+		if err != nil && !errors.Is(err, listingadmin.ErrStoreNotFound) {
+			return nil, err
+		}
+	}
+
+	store, err := cm.GetStoreClient().GetStore(storeID)
+	if err != nil {
+		return nil, err
+	}
+	if store == nil {
+		return nil, errors.New("store not found")
+	}
+	return &platformtask.AutoPricingStoreConfig{
+		Name:            store.Name,
+		EnableAutoPrice: store.EnableAutoPrice,
+		EnableRebargain: store.EnableRebargain,
+	}, nil
 }
 
 func (cm *ClientManager) GetStoreClientWithTenant(tenantID int64) *StoreAPIClient {
@@ -261,6 +322,16 @@ func (cm *ClientManager) GetInventoryRecordClient() *InventoryRecordAPIClient {
 	}
 }
 
+func (cm *ClientManager) GetLocalInventoryRecordRepository() *listingadmin.GormInventoryRecordRepository {
+	cm.mutex.RLock()
+	provider := cm.localDataProvider
+	cm.mutex.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider.inventoryRecordRepository()
+}
+
 // GetOperationStrategyClient 获取运营策略API客户端
 func (cm *ClientManager) GetOperationStrategyClient() *OperationStrategyClient {
 	// 直接基于基础客户端创建
@@ -339,6 +410,76 @@ func (cm *ClientManager) SetLocalDataProvider(provider *LocalDataProvider) {
 	}
 }
 
+func (cm *ClientManager) GetLocalProductDataRepository() listingadmin.ProductDataRepository {
+	cm.mutex.RLock()
+	provider := cm.localDataProvider
+	cm.mutex.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider.ProductDataRepository()
+}
+
+func (cm *ClientManager) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
+	cm.mutex.RLock()
+	provider := cm.localDataProvider
+	cm.mutex.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider.storeRepository()
+}
+
+func (cm *ClientManager) GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
+	cm.mutex.RLock()
+	provider := cm.localDataProvider
+	cm.mutex.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider.productImportMappingRepository()
+}
+
+func (cm *ClientManager) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
+	cm.mutex.RLock()
+	provider := cm.localDataProvider
+	cm.mutex.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider.pricingRuleRepository()
+}
+
+func (cm *ClientManager) GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository {
+	cm.mutex.RLock()
+	provider := cm.localDataProvider
+	cm.mutex.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider.filterRuleRepository()
+}
+
+func (cm *ClientManager) GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository {
+	cm.mutex.RLock()
+	provider := cm.localDataProvider
+	cm.mutex.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider.profitRuleRepository()
+}
+
+func (cm *ClientManager) GetLocalOperationStrategyRepository() *listingadmin.GormOperationStrategyRepository {
+	cm.mutex.RLock()
+	provider := cm.localDataProvider
+	cm.mutex.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider.operationStrategyRepository()
+}
+
 func (cm *ClientManager) SetSheinCookieRedisConfig(cfg *config.RedisConfig) error {
 	provider, err := newRedisSheinCookieProvider(cfg)
 	if err != nil {
@@ -366,4 +507,26 @@ func (cm *ClientManager) GetSheinCookie(storeID int64) (string, int64, error) {
 	}
 
 	return result.CookieJSON, result.TenantID, nil
+}
+
+func (cm *ClientManager) GetSheinStoreCookie(storeID int64) (string, error) {
+	if cm == nil || storeID == 0 {
+		return "", nil
+	}
+	storeClient := cm.GetStoreClient()
+	if storeClient == nil {
+		return "", nil
+	}
+	return storeClient.GetStoreCookie(storeID)
+}
+
+func (cm *ClientManager) DeleteSheinStoreCookie(storeID int64) (bool, error) {
+	if cm == nil || storeID == 0 {
+		return false, nil
+	}
+	storeClient := cm.GetStoreClient()
+	if storeClient == nil {
+		return false, nil
+	}
+	return storeClient.DeleteStoreCookie(storeID)
 }

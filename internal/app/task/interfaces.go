@@ -2,8 +2,8 @@ package task
 
 import (
 	"context"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingruntime"
 )
 
 // TaskSubmitter 任务提交器接口
@@ -29,7 +29,7 @@ type ManagementClientProvider interface {
 // ImportTaskClient 导入任务API客户端接口
 type ImportTaskClient interface {
 	// GetPendingAndRetryTasks 获取待处理和重试任务
-	GetPendingAndRetryTasks(maxTasks int, userID int64, storeIDs []int64) ([]api.ProductImportTaskRespDTO, error)
+	GetPendingAndRetryTasks(maxTasks int, userID int64, storeIDs []int64) ([]listingruntime.ImportTask, error)
 	// UpdateTaskStatus 更新任务状态
 	UpdateTaskStatus(taskID int64, status int16, errorMessage string) error
 }
@@ -37,5 +37,9 @@ type ImportTaskClient interface {
 // StoreClient 店铺API客户端接口
 type StoreClient interface {
 	// GetStore 获取店铺信息
-	GetStore(storeID int64) (*api.StoreRespDTO, error)
+	GetStore(storeID int64) (*listingruntime.StoreInfo, error)
+}
+
+type storePauseStatusDetailReader interface {
+	GetStorePauseStatusDetail(storeID int64) (*listingruntime.StorePauseStatusDetail, error)
 }

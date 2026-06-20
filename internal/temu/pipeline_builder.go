@@ -9,15 +9,15 @@ import (
 
 // PipelineBuilder TEMU管道构建器
 type PipelineBuilder struct {
-	processor *TemuProcessor
-	registry  *PipelineRegistry
+	runtime  pipelineRuntime
+	registry *PipelineRegistry
 }
 
 // NewPipelineBuilder 创建TEMU管道构建器
-func NewPipelineBuilder(processor *TemuProcessor) *PipelineBuilder {
+func NewPipelineBuilder(runtime pipelineRuntime) *PipelineBuilder {
 	return &PipelineBuilder{
-		processor: processor,
-		registry:  NewPipelineRegistry(processor),
+		runtime:  runtime,
+		registry: NewPipelineRegistry(runtime),
 	}
 }
 
@@ -25,11 +25,10 @@ func NewPipelineBuilder(processor *TemuProcessor) *PipelineBuilder {
 func (pb *PipelineBuilder) BuildPipeline() *TemuPipelineExecutor {
 	p := pipeline.NewPipeline("TEMU产品发布管道")
 
-	// 获取管理客户端
-	managementClient := pb.processor.GetManagementClient()
-	if managementClient == nil {
+	if pb.runtime == nil || pb.runtime.GetStoreClient() == nil || pb.runtime.GetFilterRuleClient() == nil ||
+		pb.runtime.GetProductImportMappingClient() == nil || pb.runtime.GetProfitRuleClient() == nil {
 		log := logger.GetGlobalLogger("temu.pipeline_builder")
-		log.Error("管理客户端未初始化，无法构建管道")
+		log.Error("pipeline runtime is not initialized, cannot build TEMU pipeline")
 		return NewTemuPipelineExecutor(p)
 	}
 

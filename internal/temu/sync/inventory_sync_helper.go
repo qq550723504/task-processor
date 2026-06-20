@@ -2,11 +2,13 @@
 package sync
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"task-processor/internal/core/logger"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	productpkg "task-processor/internal/product"
@@ -77,8 +79,7 @@ func (s *inventorySyncServiceImpl) getFloatValue(f *float64) float64 {
 
 // getStorePriceType 获取店铺配置的价格类型
 func (s *inventorySyncServiceImpl) getStorePriceType(storeID int64) string {
-	// 从管理系统获取店铺信息
-	storeInfo, err := s.managementClient.GetStoreClient().GetStore(storeID)
+	storeInfo, err := s.getStoreInfo(context.Background(), storeID)
 	if err != nil {
 		s.logger.WithError(err).WithField("store_id", storeID).Warn("获取店铺信息失败，使用默认价格类型")
 		return "special" // 默认使用特价
@@ -93,8 +94,7 @@ func (s *inventorySyncServiceImpl) getStorePriceType(storeID int64) string {
 
 // getStoreSiteAbbr 获取店铺配置的站点缩写
 func (s *inventorySyncServiceImpl) getStoreSiteAbbr(storeID int64) (string, error) {
-	// 从管理系统获取店铺信息
-	storeInfo, err := s.managementClient.GetStoreClient().GetStore(storeID)
+	storeInfo, err := s.getStoreInfo(context.Background(), storeID)
 	if err != nil {
 		return "", fmt.Errorf("获取店铺信息失败: %w", err)
 	}
@@ -169,4 +169,23 @@ func (s *inventorySyncServiceImpl) enableDebugLogging() {
 	if err := logger.SetGlobalLogLevel("debug"); err == nil {
 		s.logger.Debug("已启用 Debug 级别日志")
 	}
+}
+
+func (s *inventorySyncServiceImpl) getStoreInfo(ctx context.Context, storeID int64) (*managementapi.StoreRespDTO, error) {
+	if s.storeRepo != nil {
+		store, err := s.storeRepo.FindStoreByID(ctx, storeID)
+		if err != nil {
+			s.logger.WithError(err).WithField("store_id", storeID).Warn("通过本地仓储获取TEMU店铺信息失败，回退 management client")
+		} else if store != nil {
+			return temuStoreDTOFromListingStore(store), nil
+		}
+	}
+	if s.runtime == nil {
+		return nil, fmt.Errorf("inventory sync runtime is nil")
+	}
+	storeClient := s.runtime.GetStoreAPI()
+	if storeClient == nil {
+		return nil, fmt.Errorf("store client is nil")
+	}
+	return storeClient.GetStore(storeID)
 }

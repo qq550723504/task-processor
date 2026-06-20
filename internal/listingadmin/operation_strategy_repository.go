@@ -64,20 +64,39 @@ func (r *GormOperationStrategyRepository) UpdateOperationStrategy(ctx context.Co
 		applyOperationStrategyAuditFields(&row, ownerUserID, false)
 	}
 	updates := map[string]any{
-		"owner_user_id":           row.OwnerUserID,
-		"store_id":                row.StoreID,
-		"name":                    row.Name,
-		"platform":                row.Platform,
-		"status":                  row.Status,
-		"stock_change_threshold":  row.StockChangeThreshold,
-		"stock_change_action":     row.StockChangeAction,
-		"out_of_stock_action":     row.OutOfStockAction,
-		"min_profit_rate":         row.MinProfitRate,
-		"low_profit_action":       row.LowProfitAction,
-		"price_update_multiplier": row.PriceUpdateMultiplier,
-		"fixed_price_adjustment":  row.FixedPriceAdjustment,
-		"stock_update_ratio":      row.StockUpdateRatio,
-		"remark":                  row.Remark,
+		"owner_user_id":                    row.OwnerUserID,
+		"store_id":                         row.StoreID,
+		"name":                             row.Name,
+		"platform":                         row.Platform,
+		"status":                           row.Status,
+		"stock_change_threshold":           row.StockChangeThreshold,
+		"stock_change_action":              row.StockChangeAction,
+		"out_of_stock_action":              row.OutOfStockAction,
+		"min_profit_rate":                  row.MinProfitRate,
+		"low_profit_action":                row.LowProfitAction,
+		"price_update_multiplier":          row.PriceUpdateMultiplier,
+		"fixed_price_adjustment":           row.FixedPriceAdjustment,
+		"stock_update_ratio":               row.StockUpdateRatio,
+		"activity_enabled":                 row.ActivityEnabled,
+		"activity_type":                    row.ActivityType,
+		"activity_discount_rate":           row.ActivityDiscountRate,
+		"activity_stock_ratio":             row.ActivityStockRatio,
+		"promotion_ratio":                  row.PromotionRatio,
+		"activity_min_profit_rate":         row.ActivityMinProfitRate,
+		"activity_price_mode":              row.ActivityPriceMode,
+		"time_limited_discount_rate":       row.TimeLimitedDiscountRate,
+		"time_limited_min_profit_rate":     row.TimeLimitedMinProfitRate,
+		"time_limited_price_mode":          row.TimeLimitedPriceMode,
+		"time_limited_user_limit":          row.TimeLimitedUserLimit,
+		"time_limited_user_limit_num":      row.TimeLimitedUserLimitNum,
+		"time_limited_stock_limit":         row.TimeLimitedStockLimit,
+		"time_limited_stock_limit_percent": row.TimeLimitedStockLimitPercent,
+		"price_increase_threshold":         row.PriceIncreaseThreshold,
+		"price_decrease_threshold":         row.PriceDecreaseThreshold,
+		"price_increase_action":            row.PriceIncreaseAction,
+		"price_decrease_action":            row.PriceDecreaseAction,
+		"restore_stock_amount":             row.RestoreStockAmount,
+		"remark":                           row.Remark,
 	}
 	if updatedBy := requestUserIDFromContext(ctx); updatedBy != "" {
 		updates["updater"] = updatedBy
@@ -111,4 +130,24 @@ func (r *GormOperationStrategyRepository) DeleteOperationStrategy(ctx context.Co
 		updates["updated_by"] = updatedBy
 	}
 	return updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_operation_strategy"), tenantID, id, "owner_user_id", updates, ErrOperationStrategyNotFound)
+}
+
+func (r *GormOperationStrategyRepository) GetLatestByStoreID(ctx context.Context, storeID int64) (*OperationStrategy, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("operation strategy repository database is not configured")
+	}
+	var row listingOperationStrategy
+	err := applyOwnerScope(
+		r.db.WithContext(ctx).Table("listing_operation_strategy").Where("store_id = ? AND deleted = 0", storeID),
+		ctx,
+		"owner_user_id",
+	).Order("id desc").Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	strategy := row.toOperationStrategy()
+	return &strategy, nil
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"task-processor/internal/infra/clients/management/api"
 )
 
 var ErrImportTaskNotFound = errors.New("import task not found")
@@ -53,6 +55,9 @@ type ImportTaskPage struct {
 type ImportTaskRepository interface {
 	ListImportTasks(ctx context.Context, query ImportTaskQuery) (*ImportTaskPage, error)
 	BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) ([]ImportTask, error)
+	GetImportTaskByID(ctx context.Context, id int64) (*ImportTask, error)
+	ListPendingAndRetryTasks(ctx context.Context, limit int, tenantID int64, storeIDs []int64) ([]ImportTask, error)
+	UpdateImportTaskStatus(ctx context.Context, req *api.ProductImportTaskUpdateReqDTO) (bool, error)
 	DeleteImportTask(ctx context.Context, tenantID, id int64) error
 }
 

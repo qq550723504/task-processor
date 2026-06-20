@@ -2,7 +2,6 @@
 package sync
 
 import (
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -10,7 +9,7 @@ import (
 
 // getProductCostPrice 获取产品成本价格（包含固定成本）
 func (s *inventorySyncServiceImpl) getProductCostPrice(
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	skuMapping *TemuSkuInfo,
 	storeID int64,
 ) float64 {

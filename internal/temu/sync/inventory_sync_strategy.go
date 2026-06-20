@@ -4,7 +4,7 @@ package sync
 import (
 	"context"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -13,10 +13,10 @@ import (
 // handlePriceChangeWithStrategy 根据价格变化策略处理（基于利润率）
 func (s *inventorySyncServiceImpl) handlePriceChangeWithStrategy(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	amazonProduct *model.Product,
 	skuMapping *TemuSkuInfo,
-	operationStrategy *managementapi.OperationStrategyDTO, // 预获取的运营策略
+	operationStrategy *listingruntime.OperationStrategy, // 预获取的运营策略
 ) error {
 	if operationStrategy == nil {
 		s.logger.WithField("product_id", prod.ProductID).Debug("未配置运营策略，跳过价格变化处理")
@@ -82,10 +82,10 @@ func (s *inventorySyncServiceImpl) handlePriceChangeWithStrategy(
 // handleStockChangeWithStrategy 根据库存变化策略处理
 func (s *inventorySyncServiceImpl) handleStockChangeWithStrategy(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	amazonProduct *model.Product,
 	skuMapping *TemuSkuInfo,
-	operationStrategy *managementapi.OperationStrategyDTO, // 预获取的运营策略
+	operationStrategy *listingruntime.OperationStrategy, // 预获取的运营策略
 ) error {
 	if operationStrategy == nil {
 		s.logger.WithField("product_id", prod.ProductID).Debug("未配置运营策略，跳过库存变化处理")
@@ -121,9 +121,9 @@ func (s *inventorySyncServiceImpl) handleStockChangeWithStrategy(
 // handleLowProfitRate 处理低利润率情况
 func (s *inventorySyncServiceImpl) handleLowProfitRate(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	skuMapping *TemuSkuInfo,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 	profitRate float64,
 ) error {
 	action := strategy.LowProfitAction
@@ -161,7 +161,7 @@ func (s *inventorySyncServiceImpl) handleLowProfitRate(
 // handleProfitRateRestore 处理利润率恢复情况
 func (s *inventorySyncServiceImpl) handleProfitRateRestore(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	skuMapping *TemuSkuInfo,
 ) error {
 
@@ -173,9 +173,9 @@ func (s *inventorySyncServiceImpl) handleProfitRateRestore(
 // handleOutOfStock 处理缺货情况
 func (s *inventorySyncServiceImpl) handleOutOfStock(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	skuMapping *TemuSkuInfo,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 ) error {
 	action := strategy.OutOfStockAction
 	if action == "" {
@@ -202,9 +202,9 @@ func (s *inventorySyncServiceImpl) handleOutOfStock(
 // handleStockChange 处理库存变化
 func (s *inventorySyncServiceImpl) handleStockChange(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	skuMapping *TemuSkuInfo,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 	_ int, newStock int,
 ) error {
 	action := strategy.StockChangeAction

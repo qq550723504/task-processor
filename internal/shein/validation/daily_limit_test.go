@@ -9,7 +9,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	sheinctx "task-processor/internal/shein/context"
@@ -46,7 +46,7 @@ func TestCheckDailyLimitHandlerReturnsPausedHandledErrorWhenLimitReached(t *test
 		RuntimeState: sheinctx.RuntimeState{
 			Task:          &model.Task{ID: 1, TenantID: 1, StoreID: 2},
 			MemoryManager: mem,
-			StoreInfo: &managementapi.StoreRespDTO{
+			StoreInfo: &listingruntime.StoreInfo{
 				ID:             2,
 				DailyLimit:     &limit,
 				DailyLimitType: "SPU",

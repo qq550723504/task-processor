@@ -2,6 +2,7 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,16 +10,14 @@ import (
 
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 
 	"github.com/sirupsen/logrus"
 )
 
-const storeDiscoveryPageSize = 200
-
-type schedulerStoreClient interface {
-	GetStore(storeID int64) (*managementapi.StoreRespDTO, error)
-	PageStores(req *managementapi.StorePageReqDTO) (*managementapi.PageResult[*managementapi.StoreRespDTO], error)
+type schedulerStoreRuntime interface {
+	GetStore(storeID int64) (*listingruntime.StoreInfo, error)
+	ListAutoPricingStoreIDs(ctx context.Context, platformName string) ([]int64, error)
 }
 
 // startPlatformTasks 启动平台任务
@@ -98,7 +97,7 @@ func (s *schedulerServiceImpl) startTasksByType(
 	cfg *config.Config,
 ) int {
 	taskCount := 0
-	storeIDs := resolveStoreIDsForTask(platformName, taskType, cfg.Management.StoreIDs, s.managementClient.GetStoreClient(), s.logger)
+	storeIDs := resolveStoreIDsForTask(platformName, taskType, cfg.Management.StoreIDs, s.storeRuntime, s.logger)
 
 	for _, storeID := range storeIDs {
 		if err := s.createStoreTask(platformName, storeID, taskType, interval); err != nil {
@@ -116,7 +115,7 @@ func resolveStoreIDsForTask(
 	platformName string,
 	taskType scheduler.TaskType,
 	configuredStoreIDs []int64,
-	storeClient schedulerStoreClient,
+	storeRuntime schedulerStoreRuntime,
 	logger *logrus.Logger,
 ) []int64 {
 	if len(configuredStoreIDs) > 0 {
@@ -130,7 +129,7 @@ func resolveStoreIDsForTask(
 		return nil
 	}
 
-	discoveredStoreIDs, err := discoverAutoPricingStoreIDs(platformName, storeClient)
+	discoveredStoreIDs, err := discoverAutoPricingStoreIDs(platformName, storeRuntime)
 	if err != nil {
 		logger.Warnf("%s平台自动发现已启用自动核价店铺失败: %v", platformName, err)
 		return nil
@@ -145,47 +144,14 @@ func resolveStoreIDsForTask(
 	return discoveredStoreIDs
 }
 
-func discoverAutoPricingStoreIDs(platformName string, storeClient schedulerStoreClient) ([]int64, error) {
-	if storeClient == nil {
-		return nil, fmt.Errorf("店铺客户端未初始化")
+func discoverAutoPricingStoreIDs(platformName string, storeRuntime schedulerStoreRuntime) ([]int64, error) {
+	if storeRuntime == nil {
+		return nil, fmt.Errorf("店铺运行时未初始化")
 	}
-
-	enableAutoPrice := true
-	pageNo := 1
-	storeIDs := make([]int64, 0, storeDiscoveryPageSize)
-
-	for {
-		page, err := storeClient.PageStores(&managementapi.StorePageReqDTO{
-			PageNo:          pageNo,
-			PageSize:        storeDiscoveryPageSize,
-			EnableAutoPrice: &enableAutoPrice,
-		})
-		if err != nil {
-			return nil, err
-		}
-		if page == nil || len(page.List) == 0 {
-			break
-		}
-
-		for _, store := range page.List {
-			if store == nil || store.ID == 0 {
-				continue
-			}
-			if !strings.EqualFold(store.Platform, platformName) {
-				continue
-			}
-			storeIDs = append(storeIDs, store.ID)
-		}
-
-		if page.Total > 0 && int64(pageNo*page.PageSize) >= page.Total {
-			break
-		}
-		if len(page.List) < storeDiscoveryPageSize {
-			break
-		}
-		pageNo++
+	storeIDs, err := storeRuntime.ListAutoPricingStoreIDs(context.Background(), platformName)
+	if err != nil {
+		return nil, err
 	}
-
 	return dedupeAndSortStoreIDs(storeIDs), nil
 }
 
@@ -221,9 +187,12 @@ func (s *schedulerServiceImpl) createStoreTask(
 	interval time.Duration,
 ) error {
 	// 获取店铺信息
-	storeInfo, err := s.managementClient.GetStoreClient().GetStore(storeID)
+	storeInfo, err := s.storeRuntime.GetStore(storeID)
 	if err != nil {
 		return fmt.Errorf("获取店铺信息失败: %w", err)
+	}
+	if storeInfo == nil {
+		return fmt.Errorf("店铺信息不存在")
 	}
 
 	// 只处理匹配平台的店铺（大小写不敏感比较，兼容后端返回 "shein"/"SHEIN"/"Shein" 等格式）
@@ -250,4 +219,26 @@ func (s *schedulerServiceImpl) createStoreTask(
 
 	s.logger.Debugf("✅ 添加%s任务 (店铺:%d, 类型:%s)", platformName, storeID, taskType)
 	return nil
+}
+
+type schedulerStoreRuntimeAdapter struct {
+	client SchedulerRuntimeProvider
+}
+
+func (a schedulerStoreRuntimeAdapter) GetStore(storeID int64) (*listingruntime.StoreInfo, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("management client is not initialized")
+	}
+	storeService := a.client.GetRuntimeStoreService()
+	if storeService == nil {
+		return nil, fmt.Errorf("runtime store service is not initialized")
+	}
+	return storeService.GetStore(storeID)
+}
+
+func (a schedulerStoreRuntimeAdapter) ListAutoPricingStoreIDs(ctx context.Context, platformName string) ([]int64, error) {
+	if a.client == nil {
+		return nil, fmt.Errorf("management client is not initialized")
+	}
+	return a.client.ListRuntimeAutoPricingStoreIDs(ctx, platformName)
 }

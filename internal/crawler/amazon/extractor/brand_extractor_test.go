@@ -1,9 +1,29 @@
 package extractor
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
+
+func TestBrandSelectors(t *testing.T) {
+	selectors := brandSelectors()
+	expected := []string{
+		"#bylineInfo",
+		"a#brand",
+		".po-brand .po-break-word",
+		"#productBrandLogo_feature_div a",
+	}
+
+	for _, want := range expected {
+		found := false
+		for _, got := range selectors {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("brandSelectors() missing %q, got %v", want, selectors)
+		}
+	}
+}
 
 func TestBrandExtractor_CleanBrandText(t *testing.T) {
 	tests := []struct {
@@ -80,50 +100,7 @@ func TestBrandExtractor_CleanBrandText(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 模拟品牌清理逻辑
-			brand := tt.input
-
-			prefixes := []string{
-				"Visit the ",
-				"Visita la tienda de ",
-				"Visitar a loja de ",
-				"Visiter la boutique ",
-				"Besuche den ",
-				"Visita lo store di ",
-				"ブランド: ",
-				"ストアにアクセス ",
-				"Brand: ",
-			}
-
-			suffixes := []string{
-				" Store",
-				" tienda",
-				" loja",
-				" boutique",
-				"ストア",
-				" ストア",
-			}
-
-			// 移除前缀
-			for _, prefix := range prefixes {
-				if len(brand) > len(prefix) && brand[:len(prefix)] == prefix {
-					brand = brand[len(prefix):]
-					break
-				}
-			}
-
-			// 移除后缀
-			for _, suffix := range suffixes {
-				if len(brand) > len(suffix) && brand[len(brand)-len(suffix):] == suffix {
-					brand = brand[:len(brand)-len(suffix)]
-					break
-				}
-			}
-
-			// 移除前后空格
-			brand = strings.TrimSpace(brand)
-
-			if brand != tt.expected {
+			if brand := normalizeBrandText(tt.input); brand != tt.expected {
 				t.Errorf("期望 %q, 实际得到 %q", tt.expected, brand)
 			}
 		})

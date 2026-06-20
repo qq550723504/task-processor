@@ -3,17 +3,18 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/api/product"
+	productsync "task-processor/internal/shein/productsync"
 )
 
 // MockSheinProductSyncService 模拟Shein产品同步服务
 type MockSheinProductSyncService struct {
 	FetchProductListFunc func(ctx context.Context) ([]product.ProductListItem, error)
-	ConvertProductsFunc  func(ctx context.Context, products []product.ProductListItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
-	SaveProductsFunc     func(ctx context.Context, products []*managementapi.ProductDataDTO) (int, error)
+	ConvertProductsFunc  func(ctx context.Context, products []product.ProductListItem, tenantID, storeID int64) ([]*productsync.ProductSnapshot, error)
+	SaveProductsFunc     func(ctx context.Context, products []*productsync.ProductSnapshot) (int, error)
 }
 
 func (m *MockSheinProductSyncService) FetchProductList(ctx context.Context) ([]product.ProductListItem, error) {
@@ -23,14 +24,14 @@ func (m *MockSheinProductSyncService) FetchProductList(ctx context.Context) ([]p
 	return []product.ProductListItem{}, nil
 }
 
-func (m *MockSheinProductSyncService) ConvertProducts(ctx context.Context, products []product.ProductListItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+func (m *MockSheinProductSyncService) ConvertProducts(ctx context.Context, products []product.ProductListItem, tenantID, storeID int64) ([]*productsync.ProductSnapshot, error) {
 	if m.ConvertProductsFunc != nil {
 		return m.ConvertProductsFunc(ctx, products, tenantID, storeID)
 	}
-	return []*managementapi.ProductDataDTO{}, nil
+	return []*productsync.ProductSnapshot{}, nil
 }
 
-func (m *MockSheinProductSyncService) SaveProducts(ctx context.Context, products []*managementapi.ProductDataDTO) (int, error) {
+func (m *MockSheinProductSyncService) SaveProducts(ctx context.Context, products []*productsync.ProductSnapshot) (int, error) {
 	if m.SaveProductsFunc != nil {
 		return m.SaveProductsFunc(ctx, products)
 	}
@@ -101,13 +102,13 @@ func TestProductSyncServiceAdapter_ConvertProducts_Success(t *testing.T) {
 		product.ProductListItem{SpuCode: "2", SpuName: "Product 2"},
 	}
 
-	mockOutput := []*managementapi.ProductDataDTO{
+	mockOutput := []*productsync.ProductSnapshot{
 		{ProductID: "1"},
 		{ProductID: "2"},
 	}
 
 	mockService := &MockSheinProductSyncService{
-		ConvertProductsFunc: func(ctx context.Context, products []product.ProductListItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+		ConvertProductsFunc: func(ctx context.Context, products []product.ProductListItem, tenantID, storeID int64) ([]*productsync.ProductSnapshot, error) {
 			return mockOutput, nil
 		},
 	}
@@ -124,6 +125,9 @@ func TestProductSyncServiceAdapter_ConvertProducts_Success(t *testing.T) {
 	if len(results) != 2 {
 		t.Errorf("Expected 2 products, got %d", len(results))
 	}
+	if _, ok := results[0].(*productsync.ProductSnapshot); !ok {
+		t.Fatalf("Expected snapshot result, got %T", results[0])
+	}
 }
 
 func TestProductSyncServiceAdapter_ConvertProducts_Error(t *testing.T) {
@@ -134,7 +138,7 @@ func TestProductSyncServiceAdapter_ConvertProducts_Error(t *testing.T) {
 	}
 
 	mockService := &MockSheinProductSyncService{
-		ConvertProductsFunc: func(ctx context.Context, products []product.ProductListItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+		ConvertProductsFunc: func(ctx context.Context, products []product.ProductListItem, tenantID, storeID int64) ([]*productsync.ProductSnapshot, error) {
 			return nil, expectedError
 		},
 	}
@@ -155,12 +159,12 @@ func TestProductSyncServiceAdapter_ConvertProducts_Error(t *testing.T) {
 
 func TestProductSyncServiceAdapter_SaveProducts_Success(t *testing.T) {
 	mockInput := []any{
-		&managementapi.ProductDataDTO{ProductID: "1"},
-		&managementapi.ProductDataDTO{ProductID: "2"},
+		&productsync.ProductSnapshot{ProductID: "1"},
+		&productsync.ProductSnapshot{ProductID: "2"},
 	}
 
 	mockService := &MockSheinProductSyncService{
-		SaveProductsFunc: func(ctx context.Context, products []*managementapi.ProductDataDTO) (int, error) {
+		SaveProductsFunc: func(ctx context.Context, products []*productsync.ProductSnapshot) (int, error) {
 			return len(products), nil
 		},
 	}
@@ -179,15 +183,28 @@ func TestProductSyncServiceAdapter_SaveProducts_Success(t *testing.T) {
 	}
 }
 
+func TestProductSyncServiceAdapter_SaveProducts_RejectsUnexpectedType(t *testing.T) {
+	mockService := &MockSheinProductSyncService{}
+	adapter := newProductSyncServiceAdapter(mockService)
+
+	_, err := adapter.SaveProducts(context.Background(), []any{"bad"})
+	if err == nil {
+		t.Fatal("SaveProducts should fail")
+	}
+	if !strings.Contains(err.Error(), "*ProductSnapshot") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestProductSyncServiceAdapter_SaveProducts_Error(t *testing.T) {
 	expectedError := errors.New("save failed")
 
 	mockInput := []any{
-		&managementapi.ProductDataDTO{ProductID: "1"},
+		&productsync.ProductSnapshot{ProductID: "1"},
 	}
 
 	mockService := &MockSheinProductSyncService{
-		SaveProductsFunc: func(ctx context.Context, products []*managementapi.ProductDataDTO) (int, error) {
+		SaveProductsFunc: func(ctx context.Context, products []*productsync.ProductSnapshot) (int, error) {
 			return 0, expectedError
 		},
 	}

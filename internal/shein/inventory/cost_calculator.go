@@ -2,7 +2,6 @@
 package inventory
 
 import (
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -10,14 +9,14 @@ import (
 
 // getProductCostPrice 获取产品成本价格（包含固定成本）
 func (s *inventorySyncServiceImpl) getProductCostPrice(
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	skuMapping *SKUMappingData,
 	storeID int64,
 ) float64 {
 	mappingInfo := skuMapping.MappingInfo
 
 	// 获取基础成本价格
-	baseCostPrice := s.getFloatValue(mappingInfo.CostPrice)
+	baseCostPrice := mappingInfo.CostPrice
 	if baseCostPrice <= 0 {
 		baseCostPrice = s.parsePrice(prod.OriginalPrice.String())
 		if baseCostPrice <= 0 {
@@ -28,7 +27,7 @@ func (s *inventorySyncServiceImpl) getProductCostPrice(
 	if baseCostPrice <= 0 {
 		s.logger.WithFields(logrus.Fields{
 			"product_id": prod.ProductID,
-			"sku":        s.getStringValue(mappingInfo.Sku),
+			"sku":        s.getStringValue(mappingInfo.SKU),
 		}).Debug("无法获取基础成本价格")
 		return 0
 	}
@@ -38,7 +37,7 @@ func (s *inventorySyncServiceImpl) getProductCostPrice(
 		baseCostPrice,
 		storeID,
 		prod.ProductID,
-		s.getStringValue(mappingInfo.Sku),
+		s.getStringValue(mappingInfo.SKU),
 	)
 }
 

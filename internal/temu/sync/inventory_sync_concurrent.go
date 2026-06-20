@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/pkg/recovery"
 
 	"github.com/sirupsen/logrus"
@@ -16,9 +16,9 @@ import (
 // monitorInventoryChangesConcurrent 并发监控库存和价格变化
 func (s *inventorySyncServiceImpl) monitorInventoryChangesConcurrent(
 	ctx context.Context,
-	products []*managementapi.ProductDataDTO,
+	products []*TemuInventoryProductSnapshot,
 	tenantID, storeID int64,
-	operationStrategy *managementapi.OperationStrategyDTO,
+	operationStrategy *listingruntime.OperationStrategy,
 ) (*MonitorResult, error) {
 	totalCount := len(products)
 
@@ -57,7 +57,7 @@ func (s *inventorySyncServiceImpl) monitorInventoryChangesConcurrent(
 	for i, prod := range products {
 		wg.Add(1)
 
-		go func(index int, product *managementapi.ProductDataDTO) {
+		go func(index int, product *TemuInventoryProductSnapshot) {
 			defer recovery.Recover("处理TEMU产品", s.logger)
 			defer wg.Done()
 

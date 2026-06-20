@@ -112,3 +112,34 @@ func (r *GormProfitRuleRepository) DeleteProfitRule(ctx context.Context, tenantI
 	}
 	return updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_profit_rule"), tenantID, id, "owner_user_id", updates, ErrProfitRuleNotFound)
 }
+
+func (r *GormProfitRuleRepository) ResolveProfitRule(ctx context.Context, tenantID, storeID int64) (*ProfitRule, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("profit rule repository database is not configured")
+	}
+	load := func(db *gorm.DB) (*ProfitRule, error) {
+		var row listingProfitRule
+		err := db.Order("id desc").Take(&row).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		rule := row.toProfitRule()
+		return &rule, nil
+	}
+
+	base := func() *gorm.DB {
+		return applyOwnerScope(
+			r.db.WithContext(ctx).Table("listing_profit_rule").Where("tenant_id = ? AND deleted = 0", tenantID),
+			ctx,
+			"owner_user_id",
+		)
+	}
+	rule, err := load(base().Where("store_id = ?", storeID))
+	if err != nil || rule != nil {
+		return rule, err
+	}
+	return load(base().Where("store_id IS NULL OR store_id = 0"))
+}

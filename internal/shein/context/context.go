@@ -3,8 +3,7 @@ package context
 import (
 	"context"
 
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/shein/aicache"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -44,14 +43,22 @@ type SkcErrorMessage struct {
 	OtherLanguageMessageMap map[string][]string `json:"otherLanguageMessageMap"`
 }
 
+type RuntimeRepository interface {
+	RuntimePublishedProductExists(ctx context.Context, storeID int64, platform, region, productID string) (bool, error)
+	FindRuntimeProductImportMappingByTaskAndSKU(ctx context.Context, importTaskID int64, sku string) (*listingruntime.ProductImportMapping, error)
+	CreateRuntimeProductImportMapping(ctx context.Context, req *listingruntime.ProductImportMappingUpsert) (int64, error)
+	UpdateRuntimeProductImportMapping(ctx context.Context, req *listingruntime.ProductImportMappingUpsert) error
+	GetRuntimeStorePauseStatusDetail(storeID int64) (*listingruntime.StorePauseStatusDetail, error)
+}
+
 type RuntimeState struct {
-	Context             context.Context
-	Task                *model.Task
-	MemoryManager       *state.MemoryManager
-	ManagementClientMgr *management.ClientManager
-	AICache             *aicache.Cache
-	StoreInfo           *managementapi.StoreRespDTO
-	AuthorizedBrand     *authorizedbrand.Resolved
+	Context           context.Context
+	Task              *model.Task
+	MemoryManager     *state.MemoryManager
+	RuntimeRepository RuntimeRepository
+	AICache           *aicache.Cache
+	StoreInfo         *listingruntime.StoreInfo
+	AuthorizedBrand   *authorizedbrand.Resolved
 }
 
 type ProductState struct {
@@ -65,8 +72,8 @@ type ProductState struct {
 	AsinSkuMap             map[string]string
 	SupplierSkuMap         map[string]string
 	ProductData            *product.Product
-	FilterRule             *managementapi.FilterRuleRespDTO
-	ProfitRule             *managementapi.ProfitRuleRespDTO
+	FilterRule             *listingruntime.FilterRule
+	ProfitRule             *listingruntime.ProfitRule
 	Warehouses             *warehouse.WarehouseResponse
 	SiteList               []product.SiteInfo
 	CategoryTree           *sheincategory.CategoryTreeResponse
@@ -124,13 +131,13 @@ func NewTaskContext(ctx context.Context, task *model.Task) *TaskContext {
 	}
 }
 
-func (ctx *TaskContext) AttachRuntime(memoryManager *state.MemoryManager, managementClient *management.ClientManager, cache *aicache.Cache) {
+func (ctx *TaskContext) AttachRuntime(memoryManager *state.MemoryManager, runtimeRepository RuntimeRepository, cache *aicache.Cache) {
 	ctx.MemoryManager = memoryManager
-	ctx.ManagementClientMgr = managementClient
+	ctx.RuntimeRepository = runtimeRepository
 	ctx.AICache = cache
 }
 
-func (ctx *TaskContext) SetStoreInfo(storeInfo *managementapi.StoreRespDTO) {
+func (ctx *TaskContext) SetStoreInfo(storeInfo *listingruntime.StoreInfo) {
 	ctx.StoreInfo = storeInfo
 }
 
@@ -138,7 +145,7 @@ func (ctx *TaskContext) SetAuthorizedBrand(value *authorizedbrand.Resolved) {
 	ctx.AuthorizedBrand = value
 }
 
-func (ctx *TaskContext) SetValidationRules(filterRule *managementapi.FilterRuleRespDTO, profitRule *managementapi.ProfitRuleRespDTO) {
+func (ctx *TaskContext) SetValidationRules(filterRule *listingruntime.FilterRule, profitRule *listingruntime.ProfitRule) {
 	ctx.FilterRule = filterRule
 	ctx.ProfitRule = profitRule
 }

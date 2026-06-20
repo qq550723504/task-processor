@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/api/product"
 	shein_product "task-processor/internal/shein/api/product"
 
@@ -22,11 +22,11 @@ type ProductBasedRepairStrategy struct {
 
 // NewProductBasedRepairStrategy 创建基于产品信息的修复策略
 func NewProductBasedRepairStrategy(
-	mappingClient managementapi.ProductImportMappingAPI,
+	mappingGateway runtimeMappingGateway,
 	productAPI shein_product.ProductAPI,
 ) MappingRepairStrategy {
 	return &ProductBasedRepairStrategy{
-		mappingBuilder: NewMappingBuilder(mappingClient),
+		mappingBuilder: NewMappingBuilder(mappingGateway),
 		logger:         logger.GetGlobalLogger("ProductBasedRepair"),
 	}
 }
@@ -83,10 +83,10 @@ type HistoryBasedRepairStrategy struct {
 
 // NewHistoryBasedRepairStrategy 创建基于历史记录的修复策略
 func NewHistoryBasedRepairStrategy(
-	mappingClient managementapi.ProductImportMappingAPI,
+	mappingGateway runtimeMappingGateway,
 ) MappingRepairStrategy {
 	return &HistoryBasedRepairStrategy{
-		mappingBuilder: NewMappingBuilder(mappingClient),
+		mappingBuilder: NewMappingBuilder(mappingGateway),
 		logger:         logger.GetGlobalLogger("HistoryBasedRepair"),
 	}
 }
@@ -129,13 +129,13 @@ type SmartRepairStrategy struct {
 
 // NewSmartRepairStrategy 创建智能修复策略
 func NewSmartRepairStrategy(
-	mappingClient managementapi.ProductImportMappingAPI,
+	mappingGateway runtimeMappingGateway,
 	productAPI shein_product.ProductAPI,
 	inventoryManager *shein_product.InventoryManager,
 	priceManager *shein_product.PriceManager,
 ) MappingRepairStrategy {
 	return &SmartRepairStrategy{
-		mappingBuilder:   NewMappingBuilder(mappingClient),
+		mappingBuilder:   NewMappingBuilder(mappingGateway),
 		productAPI:       productAPI,
 		inventoryManager: inventoryManager,
 		priceManager:     priceManager,
@@ -233,7 +233,7 @@ func (s *SmartRepairStrategy) buildEnhancedMappingOptions(
 }
 
 // determineRegion 确定区域
-func (s *SmartRepairStrategy) determineRegion(storeInfo *managementapi.StoreRespDTO) string {
+func (s *SmartRepairStrategy) determineRegion(storeInfo *listingruntime.StoreInfo) string {
 	if storeInfo != nil && storeInfo.Region != "" {
 		return storeInfo.Region
 	}

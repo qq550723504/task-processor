@@ -25,7 +25,7 @@ func BuildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies 
 
 			productFetcher, err := fetchers.BuildSharedProductFetcher(
 				cfg,
-				resources.ManagementClient.GetRawJsonDataAdapter(),
+				resources.RawJSONDataClient,
 				resources.AmazonCrawler,
 				resources.RabbitMQClient,
 			)
@@ -34,9 +34,14 @@ func BuildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies 
 			}
 
 			return &consumer.SharedResources{
-				ManagementClient: resources.ManagementClient,
-				CrawlSource:      resources.AmazonCrawler,
-				ProductFetcher:   productFetcher,
+				ManagementClient:        resources.ManagementClient,
+				RawJSONDataClient:       resources.RawJSONDataClient,
+				StoreAPI:                resources.StoreAPI,
+				SchedulerRuntime:        resources.SchedulerRuntime,
+				SchedulerFactoryRuntime: resources.SchedulerFactoryRuntime,
+				ProcessorRuntime:        resources.ProcessorRuntime,
+				CrawlSource:             resources.AmazonCrawler,
+				ProductFetcher:          productFetcher,
 			}, nil
 		},
 	}
@@ -54,7 +59,7 @@ func BuildCrawlerDependencies() consumer.CrawlerRegistryDependencies {
 			}
 
 			productFetcher := product.NewProductFetcher(
-				resources.ManagementClient.GetRawJsonDataAdapter(),
+				resources.RawJSONDataClient,
 				&cfg.Amazon,
 				crawlSource,
 			)

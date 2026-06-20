@@ -3,7 +3,6 @@ package pricing
 
 import (
 	"fmt"
-	"task-processor/internal/infra/clients/management"
 	temuapi "task-processor/internal/temu/api"
 	temupricing "task-processor/internal/temu/api/pricing"
 
@@ -31,17 +30,17 @@ func NewAutoPricingService(apiClient temuapi.APIClientInterface) *AutoPricingSer
 }
 
 // AutoProcessPendingPricesWithRules 根据利润率规则智能处理待核价商品
-func (s *AutoPricingService) AutoProcessPendingPricesWithRules(managementClient *management.ClientManager) (*temupricing.Statistics, error) {
+func (s *AutoPricingService) AutoProcessPendingPricesWithRules(runtime runtime) (*temupricing.Statistics, error) {
 	s.logger.Info("开始智能核价处理")
 
 	// 参数校验
-	if managementClient == nil {
+	if runtime == nil {
 		return nil, fmt.Errorf("managementClient不能为空")
 	}
 
 	// 使用基础决策服务
 	s.logger.Info("使用基础决策服务处理待核价商品")
-	decisionService, err := NewPricingDecisionService(managementClient, s.apiClient.GetStoreID(), nil, nil)
+	decisionService, err := NewPricingDecisionService(runtime, s.apiClient.GetStoreID(), nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建决策服务失败: %w", err)
 	}
@@ -51,17 +50,17 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRules(managementClient 
 
 // AutoProcessPendingPricesWithRulesAndAmazon 根据利润率规则智能处理待核价商品（支持Amazon数据）
 func (s *AutoPricingService) AutoProcessPendingPricesWithRulesAndAmazon(
-	managementClient *management.ClientManager,
+	runtime runtime,
 ) (*temupricing.Statistics, error) {
 	s.logger.Info("开始智能核价处理（Amazon增强版）")
 
 	// 参数校验
-	if managementClient == nil {
+	if runtime == nil {
 		return nil, fmt.Errorf("managementClient不能为空")
 	}
 
 	s.logger.Warn("配置提供者为空，使用基础决策服务")
-	return s.AutoProcessPendingPricesWithRules(managementClient)
+	return s.AutoProcessPendingPricesWithRules(runtime)
 }
 
 // processWithService 使用指定的决策服务处理待核价商品

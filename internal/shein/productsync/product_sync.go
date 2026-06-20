@@ -7,12 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/infra/clients/management"
-	"task-processor/internal/infra/clients/management/api"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/pkg/types"
 	shein_product "task-processor/internal/shein/api/product"
-	"task-processor/internal/shein/mapping"
 
 	"task-processor/internal/core/logger"
 
@@ -25,50 +23,52 @@ type ProductSyncService interface {
 	FetchProductList(ctx context.Context) ([]shein_product.ProductListItem, error)
 
 	// ConvertProducts 转换产品格式
-	ConvertProducts(ctx context.Context, products []shein_product.ProductListItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
+	ConvertProducts(ctx context.Context, products []shein_product.ProductListItem, tenantID, storeID int64) ([]*ProductSnapshot, error)
 
 	// SaveProducts 保存产品到管理系统
-	SaveProducts(ctx context.Context, productDataList []*managementapi.ProductDataDTO) (int, error)
+	SaveProducts(ctx context.Context, productDataList []*ProductSnapshot) (int, error)
 }
 
 // productSyncServiceImpl 产品同步服务实现
 type productSyncServiceImpl struct {
-	managementClient *management.ClientManager
 	productAPI       shein_product.ProductAPI
 	inventoryManager *shein_product.InventoryManager
 	priceManager     *shein_product.PriceManager
-	mappingClient    managementapi.ProductImportMappingAPI
-	storeAPI         managementapi.StoreAPI
-	repairService    mapping.MappingRepairService // 新增修复服务
+	storeService     listingruntime.StoreService
+	storeRepo        productSyncStoreFinder
+	mappingRepo      productSyncMappingFinder
+	productDataRepo  listingadmin.ProductDataRepository
 	logger           *logrus.Entry
+}
+
+type productSyncStoreFinder interface {
+	GetStore(ctx context.Context, tenantID, id int64) (*listingadmin.Store, error)
+}
+
+type productSyncMappingFinder interface {
+	FindLatest(ctx context.Context, query listingadmin.ProductImportMappingQuery) (*listingadmin.ProductImportMapping, error)
 }
 
 // NewProductSyncService 创建产品同步服务
 func NewProductSyncService(
-	managementClient *management.ClientManager,
 	productAPI shein_product.ProductAPI,
 	inventoryManager *shein_product.InventoryManager,
 	priceManager *shein_product.PriceManager,
-	mappingClient managementapi.ProductImportMappingAPI,
-	storeAPI managementapi.StoreAPI,
+	storeService listingruntime.StoreService,
+	storeRepo productSyncStoreFinder,
+	mappingRepo productSyncMappingFinder,
+	productDataRepo listingadmin.ProductDataRepository,
 ) ProductSyncService {
 	service := &productSyncServiceImpl{
-		managementClient: managementClient,
 		productAPI:       productAPI,
 		inventoryManager: inventoryManager,
 		priceManager:     priceManager,
-		mappingClient:    mappingClient,
-		storeAPI:         storeAPI,
+		storeService:     storeService,
+		storeRepo:        storeRepo,
+		mappingRepo:      mappingRepo,
+		productDataRepo:  productDataRepo,
 		logger:           logger.GetGlobalLogger("ProductSyncService"),
 	}
-
-	// 创建修复服务
-	service.repairService = mapping.NewMappingRepairService(
-		mappingClient,
-		storeAPI,
-		productAPI,
-		mapping.DefaultMappingRepairConfig(),
-	)
 
 	return service
 }
@@ -113,7 +113,7 @@ func (s *productSyncServiceImpl) FetchProductList(ctx context.Context) ([]shein_
 }
 
 // ConvertProducts 转换产品格式
-func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products []shein_product.ProductListItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products []shein_product.ProductListItem, tenantID, storeID int64) ([]*ProductSnapshot, error) {
 	totalCount := len(products)
 	s.logger.WithFields(logrus.Fields{
 		"tenant_id": tenantID,
@@ -121,7 +121,7 @@ func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products [
 		"count":     totalCount,
 	}).Info("开始转换产品格式")
 
-	productDataList := make([]*managementapi.ProductDataDTO, 0, totalCount)
+	productDataList := make([]*ProductSnapshot, 0, totalCount)
 
 	// 每处理10%或每10个产品输出一次进度
 	progressInterval := totalCount / 10
@@ -160,13 +160,13 @@ func (s *productSyncServiceImpl) ConvertProducts(ctx context.Context, products [
 }
 
 // convertSingleProduct 转换单个产品
-func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *shein_product.ProductListItem, tenantID, storeID int64) *managementapi.ProductDataDTO {
+func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *shein_product.ProductListItem, tenantID, storeID int64) *ProductSnapshot {
 	// 获取店铺信息
-	storeInfo, err := s.storeAPI.GetStore(storeID)
+	storeInfo, err := s.getStoreInfo(context.Background(), tenantID, storeID)
 	if err != nil {
 		s.logger.WithError(err).WithField("store_id", storeID).Warn("获取店铺信息失败，使用默认处理")
 	}
-	productData := s.buildBaseProductData(sheinProduct, storeInfo)
+	productData := s.buildBaseProductData(sheinProduct, defaultSheinStoreInfo(storeInfo, tenantID, storeID))
 
 	// 获取库存信息（所有店铺类型都需要）
 	inventoryInfo, err := s.fetchInventoryInfo(sheinProduct.SpuName)
@@ -229,7 +229,9 @@ func (s *productSyncServiceImpl) convertSingleProduct(sheinProduct *shein_produc
 }
 
 // buildBaseProductData 构建基础产品数据
-func (s *productSyncServiceImpl) buildBaseProductData(sheinProduct *shein_product.ProductListItem, storeInfo *api.StoreRespDTO) *managementapi.ProductDataDTO {
+func (s *productSyncServiceImpl) buildBaseProductData(sheinProduct *shein_product.ProductListItem, storeInfo *listingruntime.StoreInfo) *ProductSnapshot {
+	storeInfo = defaultSheinStoreInfo(storeInfo, 0, 0)
+
 	var publishTime *time.Time
 	if sheinProduct.PublishTime != "" {
 		if t, err := s.parseTime(sheinProduct.PublishTime); err == nil {
@@ -261,7 +263,7 @@ func (s *productSyncServiceImpl) buildBaseProductData(sheinProduct *shein_produc
 		"shelf_status": sheinProduct.ShelfStatus,
 	})
 
-	return &managementapi.ProductDataDTO{
+	return &ProductSnapshot{
 		TenantID:          storeInfo.TenantID,
 		StoreID:           storeInfo.ID,
 		Region:            storeInfo.Region,
@@ -276,6 +278,73 @@ func (s *productSyncServiceImpl) buildBaseProductData(sheinProduct *shein_produc
 		ShelfStatus:       s.mapShelfStatus(sheinProduct.ShelfStatus),
 		PublishTime:       types.ToFlexibleTime(publishTime),
 		ShelfTime:         types.ToFlexibleTime(shelfTime),
+	}
+}
+
+func (s *productSyncServiceImpl) getStoreInfo(ctx context.Context, tenantID, storeID int64) (*listingruntime.StoreInfo, error) {
+	if s.storeRepo != nil && tenantID > 0 {
+		store, err := s.storeRepo.GetStore(ctx, tenantID, storeID)
+		if err == nil && store != nil {
+			return sheinRuntimeStoreInfoFromListingStore(store), nil
+		}
+		if err != nil {
+			s.logger.WithError(err).WithFields(logrus.Fields{
+				"tenant_id": tenantID,
+				"store_id":  storeID,
+				"path":      "repository",
+			}).Warn("从本地仓储获取店铺失败，回退 runtime store service")
+		}
+	}
+	if s.storeService == nil {
+		return nil, nil
+	}
+	return s.storeService.GetStore(storeID)
+}
+
+func defaultSheinStoreInfo(storeInfo *listingruntime.StoreInfo, tenantID, storeID int64) *listingruntime.StoreInfo {
+	if storeInfo != nil {
+		if storeInfo.TenantID == 0 {
+			storeInfo.TenantID = tenantID
+		}
+		if storeInfo.ID == 0 {
+			storeInfo.ID = storeID
+		}
+		return storeInfo
+	}
+	return &listingruntime.StoreInfo{
+		ID:       storeID,
+		TenantID: tenantID,
+		Platform: "SHEIN",
+	}
+}
+
+func sheinRuntimeStoreInfoFromListingStore(store *listingadmin.Store) *listingruntime.StoreInfo {
+	if store == nil {
+		return nil
+	}
+	return &listingruntime.StoreInfo{
+		ID:                       store.ID,
+		TenantID:                 store.TenantID,
+		StoreID:                  store.StoreID,
+		Username:                 store.Username,
+		Name:                     store.Name,
+		ShopType:                 store.ShopType,
+		Region:                   store.Region,
+		Platform:                 store.Platform,
+		LoginURL:                 store.LoginURL,
+		Proxy:                    store.Proxy,
+		DailyLimit:               store.DailyLimit,
+		DailyLimitType:           store.DailyLimitType,
+		PriceType:                store.PriceType,
+		EnableDraft:              store.EnableDraft,
+		EnableAutoListing:        store.EnableAutoListing,
+		FixedStockCount:          store.FixedStockCount,
+		SkuGenerateStrategy:      store.SKUGenerateStrategy,
+		Prefix:                   store.Prefix,
+		Suffix:                   store.Suffix,
+		EnableBrandAuthorization: store.EnableBrandAuthorization,
+		AuthorizedBrandCode:      store.AuthorizedBrandCode,
+		AuthorizedBrandName:      store.AuthorizedBrandName,
 	}
 }
 
@@ -310,7 +379,7 @@ func (s *productSyncServiceImpl) parseTime(timeStr string) (*time.Time, error) {
 }
 
 // SaveProducts 保存产品到管理系统
-func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataList []*managementapi.ProductDataDTO) (int, error) {
+func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataList []*ProductSnapshot) (int, error) {
 	totalCount := len(productDataList)
 	s.logger.WithField("count", totalCount).Info("开始保存产品")
 
@@ -319,29 +388,28 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 		return 0, nil
 	}
 
-	firstProduct := productDataList[0]
-	productDataAPI := s.managementClient.GetProductDataClient(firstProduct.StoreID)
+	if s.productDataRepo == nil {
+		return 0, fmt.Errorf("product data repository is not initialized")
+	}
 
-	// 转换为批量请求格式
-	products := make([]managementapi.ProductDataItemDTO, 0, totalCount)
+	items := make([]listingadmin.ProductData, 0, totalCount)
 	for _, productData := range productDataList {
-		products = append(products, managementapi.NewProductDataItemDTO(productData))
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		default:
+		}
+		items = append(items, sheinProductDataFromSnapshot(productData))
 	}
-
-	// 构建批量请求
-	batchReq := managementapi.NewProductDataBatchSaveReqDTO(firstProduct, products)
-
-	// 执行批量保存
-	successCount, err := productDataAPI.BatchCreateOrUpdate(batchReq)
+	successCount, err := s.productDataRepo.UpsertProductDataBatch(ctx, items)
 	if err != nil {
-		s.logger.WithError(err).Error("批量保存产品失败")
-		return 0, fmt.Errorf("批量保存产品失败: %w", err)
+		s.logger.WithError(err).Error("通过产品数据仓储批量保存SHEIN产品失败")
+		return 0, fmt.Errorf("通过产品数据仓储批量保存SHEIN产品失败: %w", err)
 	}
-
 	s.logger.WithFields(logrus.Fields{
 		"total":   totalCount,
 		"success": successCount,
+		"path":    "repository",
 	}).Info("批量保存产品完成")
-
 	return successCount, nil
 }

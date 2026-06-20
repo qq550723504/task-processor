@@ -4,12 +4,14 @@ import (
 	"context"
 	"testing"
 
-	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/model"
 	"task-processor/internal/processor"
 	domainproduct "task-processor/internal/product"
+	"task-processor/internal/state"
+	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )
@@ -42,15 +44,20 @@ func TestCreateTaskProcessingPipelineInsertsSaleAttributeResolutionBeforeBuildSk
 	t.Parallel()
 
 	cfg := &config.Config{}
-	base := processor.NewBaseProcessor(context.Background(), &processor.BaseProcessorConfig{
-		Config:           cfg,
-		ManagementClient: management.NewClientManager(&cfg.Management),
-		Logger:           logrus.New(),
-		Platform:         "SHEIN",
-	})
+	clientMgr := management.NewClientManager(&cfg.Management)
+	mem := state.NewMemoryManager(context.Background(), clientMgr)
+	mem.ShopPauseManager.SetStoreClient(clientMgr.GetStoreClient())
+	base := processor.NewBaseProcessorWithMemoryManager(&processor.BaseProcessorConfig{
+		Config:   cfg,
+		Logger:   logrus.New(),
+		Platform: "SHEIN",
+	}, mem)
 	processor := &SheinProcessor{
-		BaseProcessor:  base,
-		productFetcher: stubPipelineProductFetcher{},
+		BaseProcessor:     base,
+		managementClient:  clientMgr,
+		taskStatusRuntime: taskstatus.NewManagementRuntime(clientMgr),
+		imageDownloader:   clientMgr.GetImageDownloader(),
+		productFetcher:    stubPipelineProductFetcher{},
 	}
 
 	p := CreateTaskProcessingPipeline(processor, cfg)

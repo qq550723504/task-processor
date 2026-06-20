@@ -4,7 +4,6 @@ package scheduler
 import (
 	"context"
 
-	"task-processor/internal/infra/clients/management"
 	platformtask "task-processor/internal/platformtask"
 	appscheduler "task-processor/internal/scheduler"
 )
@@ -20,16 +19,16 @@ type PricingTask struct {
 func NewPricingTask(
 	ctx context.Context,
 	config appscheduler.TaskConfig,
-	managementClient *management.ClientManager,
+	storeConfigProvider platformtask.AutoPricingStoreConfigProvider,
 	pricingService platformtask.AutoPricingService,
 ) *PricingTask {
 	_ = ctx
 
 	autoPricingTask := platformtask.NewAutoPricingTask(platformtask.AutoPricingTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: managementClient,
-		PricingService:   pricingService,
-		PlatformName:     "Shein",
+		TaskConfig:          config,
+		StoreConfigProvider: storeConfigProvider,
+		PricingService:      pricingService,
+		PlatformName:        "Shein",
 	})
 
 	return &PricingTask{

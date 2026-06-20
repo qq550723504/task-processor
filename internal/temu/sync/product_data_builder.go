@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/types"
 	temuproduct "task-processor/internal/temu/api/product"
 )
@@ -25,7 +24,7 @@ func (s *productSyncServiceImpl) buildImageURLs(temuProduct *temuproduct.SkuResp
 }
 
 // fillPriceInfo 填充价格信息
-func (s *productSyncServiceImpl) fillPriceInfo(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.SkuResponse) {
+func (s *productSyncServiceImpl) fillPriceInfo(productData *TemuProductSnapshot, temuProduct *temuproduct.SkuResponse) {
 	// 设置原价（使用 price 字段）
 	if temuProduct.Price > 0 {
 		productData.OriginalPrice = types.FlexibleString(fmt.Sprintf("%.2f", temuProduct.Price))
@@ -51,7 +50,7 @@ func (s *productSyncServiceImpl) fillPriceInfo(productData *managementapi.Produc
 }
 
 // fillStockInfo 填充库存信息
-func (s *productSyncServiceImpl) fillStockInfo(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.SkuResponse) {
+func (s *productSyncServiceImpl) fillStockInfo(productData *TemuProductSnapshot, temuProduct *temuproduct.SkuResponse) {
 	// 使用普通库存
 	if temuProduct.OrdinaryStock > 0 {
 		productData.Stock = types.FlexibleString(strconv.Itoa(temuProduct.OrdinaryStock))
@@ -65,7 +64,7 @@ func (s *productSyncServiceImpl) fillStockInfo(productData *managementapi.Produc
 }
 
 // fillCategoryInfo 填充分类信息
-func (s *productSyncServiceImpl) fillCategoryInfo(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.SkuResponse) {
+func (s *productSyncServiceImpl) fillCategoryInfo(productData *TemuProductSnapshot, temuProduct *temuproduct.SkuResponse) {
 	// 设置分类ID
 	if temuProduct.CatID > 0 {
 		productData.CategoryID = int64(temuProduct.CatID)
@@ -78,7 +77,7 @@ func (s *productSyncServiceImpl) fillCategoryInfo(productData *managementapi.Pro
 }
 
 // fillPlatformData 填充平台特有数据
-func (s *productSyncServiceImpl) fillPlatformData(productData *managementapi.ProductDataDTO, temuProduct *temuproduct.SkuResponse) {
+func (s *productSyncServiceImpl) fillPlatformData(productData *TemuProductSnapshot, temuProduct *temuproduct.SkuResponse) {
 	// 构建平台状态信息
 	platformStatus := map[string]any{
 		"status4_vo":             temuProduct.Status4VO,

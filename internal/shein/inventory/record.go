@@ -2,8 +2,9 @@
 package inventory
 
 import (
+	"context"
 	"encoding/json"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
@@ -19,7 +20,7 @@ import (
 func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 	productId, region string,
 	amazonProduct *model.Product,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	skuMapping *SKUMappingData,
 	storeID int64,
 ) {
@@ -35,7 +36,11 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 	}
 
 	// 检查今天是否已经记录过
-	latestRecord, err := s.inventoryRecordClient.GetLatestInventoryRecord("Amazon", productId, region)
+	if s.inventoryRecordRepo == nil {
+		s.logger.WithField("productId", productId).Warn("inventory record repository is not configured, skip record")
+		return
+	}
+	latestRecord, err := s.inventoryRecordRepo.GetLatestInventoryRecord(context.Background(), "Amazon", productId, region)
 	if err != nil {
 		s.logger.WithError(err).WithFields(logrus.Fields{
 			"productId": productId,
@@ -45,7 +50,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 
 	// 如果今天已经记录过，跳过
 	if latestRecord != nil {
-		if timex.IsSameDate(latestRecord.CreateTime.Time, time.Now()) {
+		if latestRecord.CreateTime != nil && timex.IsSameDate(*latestRecord.CreateTime, time.Now()) {
 			return
 		}
 	}
@@ -55,7 +60,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 
 	// 从产品 Attributes 中获取该 SKU 的历史价格作为原价
 	var originalPrice float64
-	platformSKU := s.getStringValue(skuMapping.MappingInfo.Sku)
+	platformSKU := s.getStringValue(skuMapping.MappingInfo.SKU)
 
 	// 解析 Attributes 获取 SKU 的 AmazonMonitorData
 	if prod.Attributes != "" {
@@ -64,7 +69,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 			// 查找对应的 SKU
 			for _, skc := range skcList {
 				for _, sku := range skc.SkuInfo {
-					if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
+					if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.SKU) == platformSKU {
 						// 找到对应的 SKU，从 AmazonMonitorData 中获取历史价格
 						if sku.AmazonMonitorData != nil && sku.AmazonMonitorData.Price > 0 {
 							originalPrice = sku.AmazonMonitorData.Price
@@ -102,9 +107,9 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 	}
 
 	// 创建库存记录
-	recordReq := &managementapi.InventoryRecordCreateReqDTO{
+	recordReq := &listingadmin.InventoryRecord{
 		Platform:           "Amazon",
-		ProductId:          productId,
+		ProductID:          productId,
 		Region:             region,
 		Stock:              &stock,
 		StockStatus:        amazonProduct.Availability,
@@ -117,7 +122,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 		Remark:             "库存监控自动记录",
 	}
 
-	if recordID, err := s.inventoryRecordClient.CreateInventoryRecord(recordReq); err != nil {
+	if record, err := s.inventoryRecordRepo.CreateInventoryRecord(context.Background(), recordReq); err != nil {
 		s.logger.WithError(err).WithFields(logrus.Fields{
 			"product_id": productId,
 			"region":     region,
@@ -126,7 +131,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 		s.logger.WithFields(logrus.Fields{
 			"product_id":     productId,
 			"region":         region,
-			"record_id":      recordID,
+			"record_id":      record.ID,
 			"stock":          stock,
 			"price":          currentPrice,
 			"price_type":     priceType,
@@ -137,7 +142,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 
 // updateAttributesWithAmazonData 更新产品attributes中的Amazon数据（异步）
 func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	platformSKU string,
 	amazonProduct *model.Product,
 	storeID int64,
@@ -158,7 +163,7 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 	for i := range skcList {
 		for j := range skcList[i].SkuInfo {
 			sku := &skcList[i].SkuInfo[j]
-			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
+			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.SKU) == platformSKU {
 				newStock := s.extractStockFromProduct(amazonProduct)
 
 				// 使用公共函数获取价格（根据店铺配置的价格类型）
@@ -200,23 +205,7 @@ func (s *inventorySyncServiceImpl) updateAttributesWithAmazonData(
 		return
 	}
 
-	// 使用批量更新attributes接口
-	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-
-	updateReq := &managementapi.ProductDataBatchUpdateAttributesReqDTO{
-		Platform: "SHEIN",
-		TenantID: prod.TenantID,
-		StoreID:  storeID,
-		Region:   prod.Region,
-		Products: []managementapi.ProductAttributesItemDTO{
-			{
-				PlatformProductID: prod.PlatformProductID,
-				Attributes:        string(updatedAttributes),
-			},
-		},
-	}
-
-	if count, err := productDataAPI.BatchUpdateAttributes(updateReq); err != nil {
+	if count, err := s.updateInventoryProductAttributes(context.Background(), prod, string(updatedAttributes)); err != nil {
 		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("更新产品attributes失败")
 	} else {
 		if count <= 0 {

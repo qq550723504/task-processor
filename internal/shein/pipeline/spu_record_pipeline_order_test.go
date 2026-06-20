@@ -10,21 +10,21 @@ import (
 	"task-processor/internal/model"
 	"task-processor/internal/processor"
 	domainproduct "task-processor/internal/product"
+	"task-processor/internal/state"
+	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )
 
 func TestCreateTaskProcessingPipelinePlacesSpuRecordAfterVariantFetch(t *testing.T) {
 	cfg := &config.Config{}
-	base := processor.NewBaseProcessor(context.Background(), &processor.BaseProcessorConfig{
-		Config:           cfg,
-		ManagementClient: management.NewClientManager(&cfg.Management),
-		Logger:           logrus.New(),
-		Platform:         "SHEIN",
-	})
+	clientMgr := management.NewClientManager(&cfg.Management)
 	processor := &SheinProcessor{
-		BaseProcessor:  base,
-		productFetcher: stubSpuRecordPipelineProductFetcher{},
+		BaseProcessor:     processor2Base(cfg, clientMgr),
+		managementClient:  clientMgr,
+		taskStatusRuntime: taskstatus.NewManagementRuntime(clientMgr),
+		imageDownloader:   clientMgr.GetImageDownloader(),
+		productFetcher:    stubSpuRecordPipelineProductFetcher{},
 	}
 
 	p := CreateTaskProcessingPipeline(processor, cfg)
@@ -72,3 +72,13 @@ func (stubSpuRecordPipelineProductFetcher) GetStats() map[string]any {
 }
 
 var _ fetcher.ProductFetcher = (*stubSpuRecordPipelineProductFetcher)(nil)
+
+func processor2Base(cfg *config.Config, client *management.ClientManager) *processor.BaseProcessor {
+	mem := state.NewMemoryManager(context.Background(), client)
+	mem.ShopPauseManager.SetStoreClient(client.GetStoreClient())
+	return processor.NewBaseProcessorWithMemoryManager(&processor.BaseProcessorConfig{
+		Config:   cfg,
+		Logger:   logrus.New(),
+		Platform: "SHEIN",
+	}, mem)
+}

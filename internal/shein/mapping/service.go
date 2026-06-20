@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	shein_product "task-processor/internal/shein/api/product"
 
 	"task-processor/internal/core/logger"
@@ -35,20 +35,20 @@ type MappingRepairService interface {
 
 // mappingRepairServiceImpl SKU映射关系修复服务实现
 type mappingRepairServiceImpl struct {
-	mappingClient managementapi.ProductImportMappingAPI
-	storeAPI      managementapi.StoreAPI
-	productAPI    shein_product.ProductAPI
-	config        *MappingRepairConfig
-	strategies    []MappingRepairStrategy
-	stats         *MappingRepairStats
-	statsMutex    sync.RWMutex
-	logger        *logrus.Entry
+	mappingGateway runtimeMappingGateway
+	storeService   listingruntime.StoreService
+	productAPI     shein_product.ProductAPI
+	config         *MappingRepairConfig
+	strategies     []MappingRepairStrategy
+	stats          *MappingRepairStats
+	statsMutex     sync.RWMutex
+	logger         *logrus.Entry
 }
 
 // NewMappingRepairService 创建SKU映射关系修复服务
 func NewMappingRepairService(
-	mappingClient managementapi.ProductImportMappingAPI,
-	storeAPI managementapi.StoreAPI,
+	mappingGateway runtimeMappingGateway,
+	storeService listingruntime.StoreService,
 	productAPI shein_product.ProductAPI,
 	config *MappingRepairConfig,
 ) MappingRepairService {
@@ -57,11 +57,11 @@ func NewMappingRepairService(
 	}
 
 	service := &mappingRepairServiceImpl{
-		mappingClient: mappingClient,
-		storeAPI:      storeAPI,
-		productAPI:    productAPI,
-		config:        config,
-		strategies:    make([]MappingRepairStrategy, 0),
+		mappingGateway: mappingGateway,
+		storeService:   storeService,
+		productAPI:     productAPI,
+		config:         config,
+		strategies:     make([]MappingRepairStrategy, 0),
 		stats: &MappingRepairStats{
 			LastRepairTime: time.Now(),
 		},
@@ -222,7 +222,7 @@ func (s *mappingRepairServiceImpl) buildRepairContext(_ context.Context, request
 	}
 
 	// 获取店铺信息
-	storeInfo, err := s.storeAPI.GetStore(request.StoreID)
+	storeInfo, err := s.storeService.GetStore(request.StoreID)
 	if err != nil {
 		return nil, fmt.Errorf("获取店铺信息失败: %w", err)
 	}
@@ -294,8 +294,8 @@ func (s *mappingRepairServiceImpl) updateStats(updateFunc func(*MappingRepairSta
 // registerDefaultStrategies 注册默认修复策略
 func (s *mappingRepairServiceImpl) registerDefaultStrategies() {
 	// 注册基于产品信息的修复策略
-	s.RegisterStrategy(NewProductBasedRepairStrategy(s.mappingClient, s.productAPI))
+	s.RegisterStrategy(NewProductBasedRepairStrategy(s.mappingGateway, s.productAPI))
 
 	// 注册基于历史记录的修复策略
-	s.RegisterStrategy(NewHistoryBasedRepairStrategy(s.mappingClient))
+	s.RegisterStrategy(NewHistoryBasedRepairStrategy(s.mappingGateway))
 }

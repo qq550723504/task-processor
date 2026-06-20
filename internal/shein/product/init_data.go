@@ -59,6 +59,10 @@ func ensureAuthorizedBrandResolvedWithResolver(ctx *shein.TaskContext, storeCfg 
 	if ctx.AmazonProduct != nil {
 		productBrand = ctx.AmazonProduct.Brand
 	}
+	productBrand = strings.TrimSpace(productBrand)
+	if productBrand == "" {
+		return nil
+	}
 
 	resolved, err := resolver.ResolveForProductBrand(ctx.Context, storeCfg, productBrand)
 	if err != nil {

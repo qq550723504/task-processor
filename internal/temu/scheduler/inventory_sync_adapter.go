@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	platformtask "task-processor/internal/platformtask"
 	temuscheduler "task-processor/internal/temu/sync"
 )
@@ -40,11 +39,11 @@ func (a *inventorySyncServiceAdapter) FetchProductsForInventorySync(ctx context.
 // MonitorInventoryChanges 监控库存和价格变化（适配到通用接口）
 func (a *inventorySyncServiceAdapter) MonitorInventoryChanges(ctx context.Context, products []any, tenantID, storeID int64) (*platformtask.InventorySyncResult, error) {
 	// 转换回TEMU特定类型
-	temuProducts := make([]*managementapi.ProductDataDTO, len(products))
+	temuProducts := make([]*temuscheduler.TemuInventoryProductSnapshot, len(products))
 	for i, p := range products {
-		tp, ok := p.(*managementapi.ProductDataDTO)
+		tp, ok := p.(*temuscheduler.TemuInventoryProductSnapshot)
 		if !ok {
-			return nil, fmt.Errorf("products[%d] 类型断言失败: 期望 *ProductDataDTO, 实际 %T", i, p)
+			return nil, fmt.Errorf("products[%d] 类型断言失败: 期望 *TemuInventoryProductSnapshot, 实际 %T", i, p)
 		}
 		temuProducts[i] = tp
 	}

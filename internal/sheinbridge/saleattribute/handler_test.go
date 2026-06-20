@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"task-processor/internal/catalog/canonical"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	sheinpub "task-processor/internal/publishing/shein"
 	productapi "task-processor/internal/shein/api/product"
@@ -260,6 +260,6 @@ func makeSaleResolutionTaskContext() *sheinctx.TaskContext {
 		},
 	})
 	ctx.SetProductData(&productapi.Product{CategoryID: 123})
-	ctx.SetStoreInfo(&managementapi.StoreRespDTO{ID: 42, Region: "us"})
+	ctx.SetStoreInfo(&listingruntime.StoreInfo{ID: 42, Region: "us"})
 	return ctx
 }

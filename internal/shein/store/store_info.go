@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
-	managementAPI "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
 )
 
 type storeCacheEntry struct {
-	store      *managementAPI.StoreRespDTO
+	store      *listingruntime.StoreInfo
 	expireTime time.Time
 }
 
@@ -30,12 +30,12 @@ var (
 type StoreInfoHandler struct {
 	logger      *logrus.Entry
 	storeClient interface {
-		GetStore(id int64) (*managementAPI.StoreRespDTO, error)
+		GetStore(storeID int64) (*listingruntime.StoreInfo, error)
 	}
 }
 
 func NewStoreInfoHandler(storeClient interface {
-	GetStore(id int64) (*managementAPI.StoreRespDTO, error)
+	GetStore(storeID int64) (*listingruntime.StoreInfo, error)
 }) *StoreInfoHandler {
 	return &StoreInfoHandler{
 		logger:      logger.GetGlobalLogger("StoreInfoHandler"),
@@ -97,7 +97,7 @@ func (h *StoreInfoHandler) Handle(ctx *shein.TaskContext) error {
 	return nil
 }
 
-func (h *StoreInfoHandler) syncTaskTenant(ctx *shein.TaskContext, storeInfo *managementAPI.StoreRespDTO) {
+func (h *StoreInfoHandler) syncTaskTenant(ctx *shein.TaskContext, storeInfo *listingruntime.StoreInfo) {
 	if ctx == nil || ctx.Task == nil || storeInfo == nil || storeInfo.TenantID == 0 {
 		return
 	}
@@ -111,8 +111,8 @@ func (h *StoreInfoHandler) syncTaskTenant(ctx *shein.TaskContext, storeInfo *man
 	ctx.Task.TenantID = storeInfo.TenantID
 }
 
-func (h *StoreInfoHandler) validateStoreStatus(ctx *shein.TaskContext, storeInfo *managementAPI.StoreRespDTO) error {
-	if !*storeInfo.EnableAutoListing {
+func (h *StoreInfoHandler) validateStoreStatus(ctx *shein.TaskContext, storeInfo *listingruntime.StoreInfo) error {
+	if storeInfo.EnableAutoListing != nil && !*storeInfo.EnableAutoListing {
 		h.logger.Warnf("store auto listing is disabled: store_id=%d", storeInfo.ID)
 		h.cleanupStoreResources(ctx)
 		h.pauseStore(ctx, "store auto listing is disabled")
@@ -143,7 +143,7 @@ func (h *StoreInfoHandler) handleStoreError(err error) error {
 	return shein.NewRetryableError("get store info failed", err)
 }
 
-func (h *StoreInfoHandler) getStoreWithCache(storeID int64) (*managementAPI.StoreRespDTO, bool) {
+func (h *StoreInfoHandler) getStoreWithCache(storeID int64) (*listingruntime.StoreInfo, bool) {
 	if cached, ok := storeCache.Load(storeID); ok {
 		entry := cached.(storeCacheEntry)
 		if time.Now().Before(entry.expireTime) {
@@ -161,7 +161,7 @@ func (h *StoreInfoHandler) getStoreWithCache(storeID int64) (*managementAPI.Stor
 	return nil, false
 }
 
-func (h *StoreInfoHandler) setStoreCache(storeID int64, store *managementAPI.StoreRespDTO) {
+func (h *StoreInfoHandler) setStoreCache(storeID int64, store *listingruntime.StoreInfo) {
 	storeCache.Store(storeID, storeCacheEntry{store: store, expireTime: time.Now().Add(storeCacheTTL)})
 }
 

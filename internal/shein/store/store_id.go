@@ -1,12 +1,13 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
 
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/shein"
 
 	"github.com/sirupsen/logrus"
@@ -14,20 +15,20 @@ import (
 
 // StoreIDHandler 处理店铺StoreID
 type StoreIDHandler struct {
-	logger      *logrus.Entry
-	storeClient interface {
-		UpdateStoreId(req *api.StoreIdUpdateReqDTO) (bool, error)
-		UpdateStoreStatus(req *api.StoreStatusUpdateReqDTO) (bool, error)
+	logger    *logrus.Entry
+	storeRepo interface {
+		UpdateStoreID(ctx context.Context, id int64, storeID string) (*listingadmin.Store, error)
+		UpdateStoreStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*listingadmin.Store, error)
 	}
 }
 
-func NewStoreIDHandler(storeClient interface {
-	UpdateStoreId(req *api.StoreIdUpdateReqDTO) (bool, error)
-	UpdateStoreStatus(req *api.StoreStatusUpdateReqDTO) (bool, error)
+func NewStoreIDHandler(storeRepo interface {
+	UpdateStoreID(ctx context.Context, id int64, storeID string) (*listingadmin.Store, error)
+	UpdateStoreStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*listingadmin.Store, error)
 }) *StoreIDHandler {
 	return &StoreIDHandler{
-		logger:      logger.GetGlobalLogger("store_id_handler"),
-		storeClient: storeClient,
+		logger:    logger.GetGlobalLogger("store_id_handler"),
+		storeRepo: storeRepo,
 	}
 }
 
@@ -43,14 +44,21 @@ func (h *StoreIDHandler) Name() string {
 }
 
 func (h *StoreIDHandler) Handle(ctx *shein.TaskContext) error {
+	if h.storeRepo == nil {
+		return fmt.Errorf("store repository is nil")
+	}
+	if ctx == nil || ctx.StoreInfo == nil || ctx.SupplierInfo == nil {
+		return fmt.Errorf("store info or supplier info is nil")
+	}
+	repoCtx := context.Background()
+	if ctx.Context != nil {
+		repoCtx = ctx.Context
+	}
+
 	// 直接调用店铺客户端的UpdateStoreId方法
 	storeID := ctx.SupplierInfo.StoreID
 	if ctx.StoreInfo != nil && ctx.StoreInfo.StoreID == "" {
-		req := &api.StoreIdUpdateReqDTO{
-			ID:      ctx.StoreInfo.ID,
-			StoreID: fmt.Sprintf("%d", storeID),
-		}
-		_, err := h.storeClient.UpdateStoreId(req)
+		_, err := h.storeRepo.UpdateStoreID(repoCtx, ctx.StoreInfo.ID, fmt.Sprintf("%d", storeID))
 		if err != nil {
 			h.logger.Infof("[实例%s] 处理店铺StoreID失败: %v", GetInstanceID(), err)
 			return err
@@ -73,11 +81,11 @@ func (h *StoreIDHandler) Handle(ctx *shein.TaskContext) error {
 			// 比较StoreID是否不一致
 			if storeInfoStoreID != ctx.SupplierInfo.StoreID {
 				// 禁用店铺
-				statusReq := &api.StoreStatusUpdateReqDTO{
-					ID:     ctx.StoreInfo.ID,
-					Status: 1, // 1表示禁用
+				tenantID := int64(0)
+				if ctx.Task != nil {
+					tenantID = ctx.Task.TenantID
 				}
-				_, err := h.storeClient.UpdateStoreStatus(statusReq)
+				_, err := h.storeRepo.UpdateStoreStatus(repoCtx, tenantID, ctx.StoreInfo.ID, 1, "SHEIN supplier store id mismatch")
 				if err != nil {
 					h.logger.Infof("[实例%s] 更新店铺状态失败: %v", GetInstanceID(), err)
 					return err

@@ -37,10 +37,14 @@ func buildSheinProcessor(svc *appServices, logger *logrus.Logger) (*pipeline.She
 }
 
 func buildTemuProcessorDependencies(svc *appServices) (temu.Dependencies, error) {
+	if svc.processorRuntime == nil {
+		return temu.Dependencies{}, fmt.Errorf("TEMU processor runtime is not configured")
+	}
+
 	productFetcher, err := fetchers.BuildPlatformProductFetcher(
 		svc.cfg,
 		"temu",
-		svc.managementClient.GetRawJsonDataAdapter(),
+		svc.rawJSONDataClient,
 		svc.amazonCrawler,
 		svc.rabbitmqClient,
 	)
@@ -48,18 +52,18 @@ func buildTemuProcessorDependencies(svc *appServices) (temu.Dependencies, error)
 		return temu.Dependencies{}, err
 	}
 
-	return temu.Dependencies{
-		ManagementClient: svc.managementClient,
-		ProductFetcher:   productFetcher,
-		RabbitMQClient:   svc.rabbitmqClient,
-	}, nil
+	return temu.BuildDependencies(context.Background(), svc.processorRuntime, productFetcher, svc.rabbitmqClient), nil
 }
 
 func buildSheinProcessorDependencies(svc *appServices) (pipeline.Dependencies, error) {
+	if svc.processorRuntime == nil {
+		return pipeline.Dependencies{}, fmt.Errorf("SHEIN processor runtime is not configured")
+	}
+
 	productFetcher, err := fetchers.BuildPlatformProductFetcher(
 		svc.cfg,
 		"shein",
-		svc.managementClient.GetRawJsonDataAdapter(),
+		svc.rawJSONDataClient,
 		svc.amazonCrawler,
 		svc.rabbitmqClient,
 	)
@@ -67,9 +71,5 @@ func buildSheinProcessorDependencies(svc *appServices) (pipeline.Dependencies, e
 		return pipeline.Dependencies{}, err
 	}
 
-	return pipeline.Dependencies{
-		ManagementClient: svc.managementClient,
-		ProductFetcher:   productFetcher,
-		RabbitMQClient:   svc.rabbitmqClient,
-	}, nil
+	return pipeline.BuildDependencies(context.Background(), svc.processorRuntime, productFetcher, svc.rabbitmqClient), nil
 }

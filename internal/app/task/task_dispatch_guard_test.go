@@ -9,27 +9,26 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
 )
 
 type stubGuardStoreClient struct {
-	store          *managementapi.StoreRespDTO
+	store          *StoreInfo
 	paused         bool
-	pauseDetail    *managementapi.StorePauseStatusRespDTO
+	pauseDetail    *StorePauseStatusDetail
 	storeErr       error
 	pauseErr       error
 	pauseDetailErr error
 	setPauseCalls  []bool
 }
 
-func (s *stubGuardStoreClient) GetStore(storeID int64) (*managementapi.StoreRespDTO, error) {
+func (s *stubGuardStoreClient) GetStore(storeID int64) (*StoreInfo, error) {
 	if s.storeErr != nil {
 		return nil, s.storeErr
 	}
 	if s.store != nil {
 		return s.store, nil
 	}
-	return &managementapi.StoreRespDTO{ID: storeID, Platform: "temu", Name: "demo"}, nil
+	return &StoreInfo{ID: storeID, Platform: "temu", Name: "demo"}, nil
 }
 
 func (s *stubGuardStoreClient) GetStorePauseStatus(storeID int64) (bool, error) {
@@ -39,7 +38,7 @@ func (s *stubGuardStoreClient) GetStorePauseStatus(storeID int64) (bool, error) 
 	return s.paused, nil
 }
 
-func (s *stubGuardStoreClient) GetStorePauseStatusDetail(storeID int64) (*managementapi.StorePauseStatusRespDTO, error) {
+func (s *stubGuardStoreClient) GetStorePauseStatusDetail(storeID int64) (*StorePauseStatusDetail, error) {
 	if s.pauseDetailErr != nil {
 		return nil, s.pauseDetailErr
 	}
@@ -58,11 +57,11 @@ func (s *stubGuardStoreClient) SetStorePauseStatus(storeID int64, pause bool, pa
 func TestTaskDispatchGuardCheckPausedStore(t *testing.T) {
 	fetcher := &TaskFetcher{}
 	guard := NewTaskDispatchGuard(fetcher, &stubGuardStoreClient{
-		store:  &managementapi.StoreRespDTO{ID: 1, Platform: "shein", Name: "paused-shop"},
+		store:  &StoreInfo{ID: 1, Platform: "shein", Name: "paused-shop"},
 		paused: true,
 	})
 
-	storeInfo, isPaused, err := guard.Check(&managementapi.ProductImportTaskRespDTO{
+	storeInfo, isPaused, err := guard.Check(&ImportTaskRecord{
 		ID:        1,
 		StoreID:   1,
 		ProductID: "P-1",
@@ -81,10 +80,10 @@ func TestTaskDispatchGuardCheckPausedStore(t *testing.T) {
 func TestTaskDispatchGuardCheckActiveStore(t *testing.T) {
 	fetcher := &TaskFetcher{}
 	guard := NewTaskDispatchGuard(fetcher, &stubGuardStoreClient{
-		store: &managementapi.StoreRespDTO{ID: 2, Platform: "temu", Name: "active-shop"},
+		store: &StoreInfo{ID: 2, Platform: "temu", Name: "active-shop"},
 	})
 
-	storeInfo, isPaused, err := guard.Check(&managementapi.ProductImportTaskRespDTO{
+	storeInfo, isPaused, err := guard.Check(&ImportTaskRecord{
 		ID:        2,
 		StoreID:   2,
 		ProductID: "P-2",
@@ -106,7 +105,7 @@ func TestTaskDispatchGuardCheckPauseStatusError(t *testing.T) {
 		pauseErr: fmt.Errorf("pause unavailable"),
 	})
 
-	_, _, err := guard.Check(&managementapi.ProductImportTaskRespDTO{
+	_, _, err := guard.Check(&ImportTaskRecord{
 		ID:      3,
 		StoreID: 3,
 	})
@@ -136,9 +135,9 @@ func TestTaskDispatchGuardCheckResumesStaleQuotaPause(t *testing.T) {
 	clientMgr.SetUserToken("test-token", "1")
 
 	storeClient := &stubGuardStoreClient{
-		store:  &managementapi.StoreRespDTO{ID: 7, TenantID: 246, Platform: "shein", Name: "quota-shop", DailyLimit: &limit},
+		store:  &StoreInfo{ID: 7, TenantID: 246, Platform: "shein", Name: "quota-shop", DailyLimit: &limit},
 		paused: true,
-		pauseDetail: &managementapi.StorePauseStatusRespDTO{
+		pauseDetail: &StorePauseStatusDetail{
 			Paused:    true,
 			PauseType: "",
 			Reason:    "quota_limit",
@@ -147,7 +146,7 @@ func TestTaskDispatchGuardCheckResumesStaleQuotaPause(t *testing.T) {
 	fetcher := &TaskFetcher{managementClient: clientMgr}
 	guard := NewTaskDispatchGuard(fetcher, storeClient)
 
-	storeInfo, isPaused, err := guard.Check(&managementapi.ProductImportTaskRespDTO{
+	storeInfo, isPaused, err := guard.Check(&ImportTaskRecord{
 		ID:        10,
 		TenantID:  246,
 		StoreID:   7,
@@ -179,9 +178,9 @@ func TestTaskDispatchGuardCheckKeepsPausedWhenQuotaCountQueryFails(t *testing.T)
 	clientMgr.SetUserToken("test-token", "1")
 
 	storeClient := &stubGuardStoreClient{
-		store:  &managementapi.StoreRespDTO{ID: 8, TenantID: 246, Platform: "shein", Name: "quota-shop", DailyLimit: &limit},
+		store:  &StoreInfo{ID: 8, TenantID: 246, Platform: "shein", Name: "quota-shop", DailyLimit: &limit},
 		paused: true,
-		pauseDetail: &managementapi.StorePauseStatusRespDTO{
+		pauseDetail: &StorePauseStatusDetail{
 			Paused:    true,
 			PauseType: "quota_limit",
 		},
@@ -189,7 +188,7 @@ func TestTaskDispatchGuardCheckKeepsPausedWhenQuotaCountQueryFails(t *testing.T)
 	fetcher := &TaskFetcher{managementClient: clientMgr}
 	guard := NewTaskDispatchGuard(fetcher, storeClient)
 
-	storeInfo, isPaused, err := guard.Check(&managementapi.ProductImportTaskRespDTO{
+	storeInfo, isPaused, err := guard.Check(&ImportTaskRecord{
 		ID:        11,
 		TenantID:  246,
 		StoreID:   8,

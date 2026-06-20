@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"task-processor/internal/app/taskstatus"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/model"
 )
@@ -38,13 +37,13 @@ func TestTaskDispatcherDispatchQueueFull(t *testing.T) {
 		},
 	})
 
-	success, isQueueFull := dispatcher.Dispatch(context.Background(), &managementapi.ProductImportTaskRespDTO{
+	success, isQueueFull := dispatcher.Dispatch(context.Background(), &ImportTaskRecord{
 		ID:        1,
 		TenantID:  10,
 		StoreID:   20,
 		ProductID: "P-1",
 		Platform:  "temu",
-	}, &managementapi.StoreRespDTO{
+	}, &StoreInfo{
 		ID:       20,
 		Platform: "temu",
 	})
@@ -62,13 +61,13 @@ func TestTaskDispatcherDispatchMissingSubmitter(t *testing.T) {
 		submitters: map[string]TaskSubmitter{},
 	})
 
-	success, isQueueFull := dispatcher.Dispatch(context.Background(), &managementapi.ProductImportTaskRespDTO{
+	success, isQueueFull := dispatcher.Dispatch(context.Background(), &ImportTaskRecord{
 		ID:        2,
 		TenantID:  10,
 		StoreID:   30,
 		ProductID: "P-2",
 		Platform:  "shein",
-	}, &managementapi.StoreRespDTO{
+	}, &StoreInfo{
 		ID:       30,
 		Platform: "shein",
 	})
@@ -92,13 +91,13 @@ func TestRollbackClaimStateRestoresRemoteStatusAndLocalMarker(t *testing.T) {
 		},
 	}
 
-	apiTask := &managementapi.ProductImportTaskRespDTO{
+	task := &ImportTaskRecord{
 		ID:           404,
 		Status:       model.TaskStatusPendingRetry.Int16(),
 		ErrorMessage: "previous error",
 	}
 
-	fetcher.rollbackClaimState("404", apiTask, "queue full")
+	fetcher.rollbackClaimState("404", task, "queue full")
 
 	if _, exists := fetcher.processingTasks["404"]; exists {
 		t.Fatal("rollbackClaimState should clear local processing mark")

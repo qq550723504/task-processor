@@ -3,7 +3,7 @@ package authorizedbrand
 import (
 	"strings"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 )
 
 type Config struct {
@@ -19,7 +19,7 @@ type Resolved struct {
 	NameEn  string
 }
 
-func ConfigFromStore(store *managementapi.StoreRespDTO) Config {
+func ConfigFromStore(store *listingruntime.StoreInfo) Config {
 	if store == nil || store.EnableBrandAuthorization == nil || !*store.EnableBrandAuthorization {
 		return Config{}
 	}

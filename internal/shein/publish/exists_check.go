@@ -1,10 +1,10 @@
 package publish
 
 import (
+	"context"
 	"fmt"
 
 	"task-processor/internal/core/logger"
-	management_api "task-processor/internal/infra/clients/management/api"
 	shein "task-processor/internal/shein"
 )
 
@@ -33,7 +33,7 @@ func (h *ProductExistsCheckHandler) Handle(ctx *shein.TaskContext) error {
 	if err != nil {
 		return err
 	}
-	if input.ManagementClientMgr == nil {
+	if input.RuntimeRepository == nil {
 		logger.GetGlobalLogger("shein/publish").Warn("management client manager is nil, skip existence check")
 		return nil
 	}
@@ -41,16 +41,10 @@ func (h *ProductExistsCheckHandler) Handle(ctx *shein.TaskContext) error {
 		return shein.NewNonRetryableError("任务信息未初始化", nil)
 	}
 
-	mappingClient := input.ManagementClientMgr.GetProductImportMappingClient()
-	if mappingClient == nil {
-		logger.GetGlobalLogger("shein/publish").Warn("product import mapping client is nil, skip existence check")
-		return nil
-	}
-
-	if err := h.checkMainProduct(input, mappingClient); err != nil {
+	if err := h.checkMainProduct(input); err != nil {
 		return err
 	}
-	if err := h.checkVariantProducts(input, mappingClient); err != nil {
+	if err := h.checkVariantProducts(input); err != nil {
 		return err
 	}
 
@@ -58,20 +52,13 @@ func (h *ProductExistsCheckHandler) Handle(ctx *shein.TaskContext) error {
 	return nil
 }
 
-func (h *ProductExistsCheckHandler) checkMainProduct(input *ExistenceCheckInput, mappingClient management_api.ProductImportMappingAPI) error {
+func (h *ProductExistsCheckHandler) checkMainProduct(input *ExistenceCheckInput) error {
 	if input.Task.ProductID == "" {
 		logger.GetGlobalLogger("shein/publish").Debug("main product id is empty, skip main product existence check")
 		return nil
 	}
 
-	req := &management_api.ProductImportMappingCheckReqDTO{
-		StoreId:   input.Task.StoreID,
-		Platform:  input.Task.Platform,
-		Region:    input.Task.Region,
-		ProductId: input.Task.ProductID,
-	}
-
-	exists, err := mappingClient.CheckProductExists(req)
+	exists, err := checkPublishedProductExists(context.Background(), input.RuntimeRepository, input.Task.StoreID, input.Task.Platform, input.Task.Region, input.Task.ProductID)
 	if err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("check main product %s existence failed: %v", input.Task.ProductID, err)
 		return shein.NewRetryableError("检查主产品是否已上架失败", err)
@@ -85,7 +72,7 @@ func (h *ProductExistsCheckHandler) checkMainProduct(input *ExistenceCheckInput,
 	return nil
 }
 
-func (h *ProductExistsCheckHandler) checkVariantProducts(input *ExistenceCheckInput, mappingClient management_api.ProductImportMappingAPI) error {
+func (h *ProductExistsCheckHandler) checkVariantProducts(input *ExistenceCheckInput) error {
 	if input.Variants == nil || len(*input.Variants) == 0 {
 		logger.GetGlobalLogger("shein/publish").Debug("no variants, skip variant existence check")
 		return nil
@@ -97,22 +84,15 @@ func (h *ProductExistsCheckHandler) checkVariantProducts(input *ExistenceCheckIn
 			logger.GetGlobalLogger("shein/publish").Debugf("variant[%d/%d] ASIN is empty, skip", i+1, len(*input.Variants))
 			continue
 		}
-		if err := h.checkSingleVariant(input, mappingClient, variant.Asin, i+1, len(*input.Variants)); err != nil {
+		if err := h.checkSingleVariant(input, variant.Asin, i+1, len(*input.Variants)); err != nil {
 			logger.GetGlobalLogger("shein/publish").Warnf("variant[%d/%d] %s existence check failed: %v", i+1, len(*input.Variants), variant.Asin, err)
 		}
 	}
 	return nil
 }
 
-func (h *ProductExistsCheckHandler) checkSingleVariant(input *ExistenceCheckInput, mappingClient management_api.ProductImportMappingAPI, asin string, index, total int) error {
-	req := &management_api.ProductImportMappingCheckReqDTO{
-		StoreId:   input.Task.StoreID,
-		Platform:  input.Task.Platform,
-		Region:    input.Task.Region,
-		ProductId: asin,
-	}
-
-	exists, err := mappingClient.CheckProductExists(req)
+func (h *ProductExistsCheckHandler) checkSingleVariant(input *ExistenceCheckInput, asin string, index, total int) error {
+	exists, err := checkPublishedProductExists(context.Background(), input.RuntimeRepository, input.Task.StoreID, input.Task.Platform, input.Task.Region, asin)
 	if err != nil {
 		logger.GetGlobalLogger("shein/publish").Errorf("check variant[%d/%d] %s existence failed: %v", index, total, asin, err)
 		return err

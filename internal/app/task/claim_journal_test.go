@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"task-processor/internal/app/taskstatus"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 )
 
@@ -125,4 +124,3 @@ func TestRecoveryPreservesExistingErrorMessage(t *testing.T) {
 	}
 }
 
-var _ = managementapi.ProductImportTaskUpdateReqDTO{}

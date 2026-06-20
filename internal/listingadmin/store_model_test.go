@@ -65,6 +65,33 @@ func TestApplyStoreCreateDefaultsFillsRegionDailyLimitTypeAndAuditNames(t *testi
 	}
 }
 
+func TestListingStoreToStoreIncludesAuthorizedBrandFields(t *testing.T) {
+	t.Parallel()
+
+	enabled := true
+	row := listingStore{
+		ID:                       99,
+		TenantID:                 101,
+		Name:                     "Demo Store",
+		Username:                 "demo-user",
+		Password:                 "secret",
+		Platform:                 "SHEIN",
+		ShopType:                 "semi",
+		Region:                   "US",
+		EnableBrandAuthorization: &enabled,
+		AuthorizedBrandCode:      "2fd1n",
+		AuthorizedBrandName:      "Logitech",
+	}
+
+	store := row.toStore()
+	if store.EnableBrandAuthorization == nil || !*store.EnableBrandAuthorization {
+		t.Fatalf("EnableBrandAuthorization = %#v, want true", store.EnableBrandAuthorization)
+	}
+	if store.AuthorizedBrandCode != "2fd1n" || store.AuthorizedBrandName != "Logitech" {
+		t.Fatalf("authorized brand = %q/%q, want 2fd1n/Logitech", store.AuthorizedBrandCode, store.AuthorizedBrandName)
+	}
+}
+
 func TestApplyStoreAccessScopeHonorsTenantAndOwnerWithoutDeletedFilter(t *testing.T) {
 	t.Parallel()
 

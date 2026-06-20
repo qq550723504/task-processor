@@ -4,7 +4,7 @@ package inventory
 import (
 	"context"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -13,14 +13,13 @@ import (
 // handleStockChangeWithStrategy 根据营销策略处理库存变化
 func (s *inventorySyncServiceImpl) handleStockChangeWithStrategy(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	amazonProduct *model.Product,
 	skuMapping *SKUMappingData,
 	storeID int64,
 ) error {
 	// 获取运营策略
-	strategyClient := s.managementClient.GetOperationStrategyClient()
-	strategy, err := strategyClient.GetOperationStrategyByStoreId(storeID)
+	strategy, err := s.strategyProvider.GetRuntimeOperationStrategy(storeID)
 	if err != nil {
 		s.logger.WithError(err).Debug("获取运营策略失败，跳过自动处理")
 		return nil
@@ -52,9 +51,9 @@ func (s *inventorySyncServiceImpl) handleStockChangeWithStrategy(
 // handleOutOfStock 处理缺货情况
 func (s *inventorySyncServiceImpl) handleOutOfStock(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	skuMapping *SKUMappingData,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 	storeID int64,
 ) error {
 	action := strategy.OutOfStockAction
@@ -65,8 +64,8 @@ func (s *inventorySyncServiceImpl) handleOutOfStock(
 	s.logger.WithFields(logrus.Fields{
 		"product_id": prod.ProductID,
 		"spu_name":   prod.PlatformProductID,
-		"sku":        s.getStringValue(skuMapping.MappingInfo.Sku),
-		"asin":       skuMapping.MappingInfo.ProductId,
+		"sku":        s.getStringValue(skuMapping.MappingInfo.SKU),
+		"asin":       skuMapping.MappingInfo.ProductID,
 		"action":     action,
 	}).Info("检测到Amazon缺货，执行策略")
 
@@ -90,9 +89,9 @@ func (s *inventorySyncServiceImpl) handleOutOfStock(
 // handleStockChange 处理库存变化
 func (s *inventorySyncServiceImpl) handleStockChange(
 	ctx context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	skuMapping *SKUMappingData,
-	strategy *managementapi.OperationStrategyDTO,
+	strategy *listingruntime.OperationStrategy,
 	storeID int64,
 	oldStock, newStock int,
 ) error {
@@ -104,8 +103,8 @@ func (s *inventorySyncServiceImpl) handleStockChange(
 	s.logger.WithFields(logrus.Fields{
 		"product_id":   prod.ProductID,
 		"spu_name":     prod.PlatformProductID,
-		"sku":          s.getStringValue(skuMapping.MappingInfo.Sku),
-		"asin":         skuMapping.MappingInfo.ProductId,
+		"sku":          s.getStringValue(skuMapping.MappingInfo.SKU),
+		"asin":         skuMapping.MappingInfo.ProductID,
 		"old_stock":    oldStock,
 		"new_stock":    newStock,
 		"action":       action,

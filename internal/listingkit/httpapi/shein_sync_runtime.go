@@ -19,7 +19,7 @@ func buildSheinSyncRuntimeServices(input BuildServiceInput, repositories *builtR
 	syncService := listingkit.NewAsyncSheinSyncServiceWithBuilder(repositories.sheinSyncRepository, productAPIBuilder, nil)
 	candidateService := listingkit.NewSheinCandidateService(repositories.sheinSyncRepository)
 
-	strategyProvider, err := buildSheinPromotionStrategyProvider(input, closers)
+	strategyProvider, err := buildSheinPromotionStrategyProvider(repositories)
 	if err != nil {
 		return sheinSyncRuntimeServices{}, err
 	}

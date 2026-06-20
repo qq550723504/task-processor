@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/productsync"
@@ -17,7 +16,7 @@ import (
 // delistProductViaSHEINAPI 通过SHEIN API下架产品
 func (s *inventorySyncServiceImpl) delistProductViaSHEINAPI(
 	_ context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	storeID int64,
 ) error {
 	spuName := prod.PlatformProductID
@@ -74,49 +73,14 @@ func (s *inventorySyncServiceImpl) delistProductViaSHEINAPI(
 	}
 
 	// 更新管理系统中的产品状态
-	prod.ShelfStatus = managementapi.ShelfStatusOffShelf
+	prod.ShelfStatus = sheinInventoryShelfStatusOffShelf
 	platformStatus := map[string]string{
 		"shelf_status": "OFF_SHELF",
 	}
 	platformStatusJSON, _ := json.Marshal(platformStatus)
 	prod.PlatformStatus = string(platformStatusJSON)
 
-	// 构建批量更新请求
-	productItem := managementapi.ProductDataItemDTO{
-		PlatformProductID:  prod.PlatformProductID,
-		ProductName:        prod.Title,
-		ProductSku:         prod.ProductID,
-		ProductPrice:       prod.OriginalPrice,
-		ProductStock:       prod.Stock,
-		ProductCategory:    prod.Category,
-		ProductImage:       prod.MainImageURL,
-		ProductDescription: prod.Description,
-		ShelfStatus:        &prod.ShelfStatus,
-		PublishTime:        prod.PublishTime,
-		ShelfTime:          prod.ShelfTime,
-		Brand:              prod.Brand,
-		CategoryID:         &prod.CategoryID,
-		SpecialPrice:       prod.SpecialPrice,
-		PriceCurrency:      prod.PriceCurrency,
-		ImageUrls:          prod.ImageURLs,
-		Attributes:         prod.Attributes,
-		PlatformStatus:     prod.PlatformStatus,
-		PlatformData:       prod.PlatformData,
-		ParentProductID:    prod.ParentProductID,
-		CreateTime:         prod.CreateTime,
-		UpdateTime:         prod.UpdateTime,
-	}
-
-	batchReq := &managementapi.ProductDataBatchSaveReqDTO{
-		Platform: prod.Platform,
-		TenantID: prod.TenantID,
-		Region:   prod.Region,
-		StoreID:  prod.StoreID,
-		Products: []managementapi.ProductDataItemDTO{productItem},
-	}
-
-	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-	if _, err := productDataAPI.BatchCreateOrUpdate(batchReq); err != nil {
+	if err := s.saveInventoryProductSnapshot(context.Background(), prod); err != nil {
 		s.logger.WithError(err).Warn("更新管理系统中的产品状态失败")
 	}
 
@@ -131,13 +95,13 @@ func (s *inventorySyncServiceImpl) delistProductViaSHEINAPI(
 // updateProductStockViaSHEINAPI 通过SHEIN API更新产品库存
 func (s *inventorySyncServiceImpl) updateProductStockViaSHEINAPI(
 	_ context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	skuMapping *SKUMappingData,
 	targetStock int,
 	_ int64,
 ) error {
 	spuName := prod.PlatformProductID
-	platformSKU := s.getStringValue(skuMapping.MappingInfo.Sku)
+	platformSKU := s.getStringValue(skuMapping.MappingInfo.SKU)
 
 	s.logger.WithFields(logrus.Fields{
 		"product_id":   prod.ProductID,
@@ -158,7 +122,7 @@ func (s *inventorySyncServiceImpl) updateProductStockViaSHEINAPI(
 
 	for _, skc := range skcList {
 		for _, sku := range skc.SkuInfo {
-			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == platformSKU {
+			if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.SKU) == platformSKU {
 				targetSkcCode = skc.SkcCode
 				targetSkcName = skc.SkcName
 				targetSkuCode = sku.SkuCode

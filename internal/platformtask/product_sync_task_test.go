@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/infra/clients/management"
 	appscheduler "task-processor/internal/scheduler"
 )
 
@@ -48,13 +47,10 @@ func TestNewProductSyncTask(t *testing.T) {
 	}
 
 	mockService := &MockProductSyncService{}
-	mockManagement := &management.ClientManager{}
-
 	task := NewProductSyncTask(ProductSyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: mockManagement,
-		SyncService:      mockService,
-		PlatformName:     "Test",
+		TaskConfig:   config,
+		SyncService:  mockService,
+		PlatformName: "Test",
 	})
 
 	if task == nil {
@@ -92,10 +88,9 @@ func TestProductSyncTask_Execute_Success(t *testing.T) {
 	}
 
 	task := NewProductSyncTask(ProductSyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
-		SyncService:      mockService,
-		PlatformName:     "Test",
+		TaskConfig:   config,
+		SyncService:  mockService,
+		PlatformName: "Test",
 	})
 
 	ctx := context.Background()
@@ -129,10 +124,9 @@ func TestProductSyncTask_Execute_FetchError(t *testing.T) {
 	}
 
 	task := NewProductSyncTask(ProductSyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
-		SyncService:      mockService,
-		PlatformName:     "Test",
+		TaskConfig:   config,
+		SyncService:  mockService,
+		PlatformName: "Test",
 	})
 
 	ctx := context.Background()
@@ -168,10 +162,9 @@ func TestProductSyncTask_Execute_ConvertError(t *testing.T) {
 	}
 
 	task := NewProductSyncTask(ProductSyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
-		SyncService:      mockService,
-		PlatformName:     "Test",
+		TaskConfig:   config,
+		SyncService:  mockService,
+		PlatformName: "Test",
 	})
 
 	ctx := context.Background()
@@ -210,10 +203,9 @@ func TestProductSyncTask_Execute_SaveError(t *testing.T) {
 	}
 
 	task := NewProductSyncTask(ProductSyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
-		SyncService:      mockService,
-		PlatformName:     "Test",
+		TaskConfig:   config,
+		SyncService:  mockService,
+		PlatformName: "Test",
 	})
 
 	ctx := context.Background()
@@ -244,10 +236,9 @@ func TestProductSyncTask_Execute_EmptyProductList(t *testing.T) {
 	}
 
 	task := NewProductSyncTask(ProductSyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
-		SyncService:      mockService,
-		PlatformName:     "Test",
+		TaskConfig:   config,
+		SyncService:  mockService,
+		PlatformName: "Test",
 	})
 
 	ctx := context.Background()
@@ -274,10 +265,9 @@ func TestProductSyncTask_Execute_StatusTransition(t *testing.T) {
 	}
 
 	task := NewProductSyncTask(ProductSyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
-		SyncService:      mockService,
-		PlatformName:     "Test",
+		TaskConfig:   config,
+		SyncService:  mockService,
+		PlatformName: "Test",
 	})
 
 	// 初始状态应该是Stopped
@@ -294,30 +284,6 @@ func TestProductSyncTask_Execute_StatusTransition(t *testing.T) {
 	}
 }
 
-func TestProductSyncTask_GetManagementClient(t *testing.T) {
-	config := appscheduler.TaskConfig{
-		Platform: "test",
-		TaskType: "product_sync",
-		TenantID: 1,
-		StoreID:  100,
-	}
-
-	mockManagement := &management.ClientManager{}
-	mockService := &MockProductSyncService{}
-
-	task := NewProductSyncTask(ProductSyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: mockManagement,
-		SyncService:      mockService,
-		PlatformName:     "Test",
-	})
-
-	client := task.GetManagementClient()
-	if client != mockManagement {
-		t.Error("GetManagementClient should return the same client")
-	}
-}
-
 func TestProductSyncTask_GetSyncService(t *testing.T) {
 	config := appscheduler.TaskConfig{
 		Platform: "test",
@@ -329,10 +295,9 @@ func TestProductSyncTask_GetSyncService(t *testing.T) {
 	mockService := &MockProductSyncService{}
 
 	task := NewProductSyncTask(ProductSyncTaskConfig{
-		TaskConfig:       config,
-		ManagementClient: &management.ClientManager{},
-		SyncService:      mockService,
-		PlatformName:     "Test",
+		TaskConfig:   config,
+		SyncService:  mockService,
+		PlatformName: "Test",
 	})
 
 	service := task.GetSyncService()

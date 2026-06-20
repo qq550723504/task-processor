@@ -16,7 +16,7 @@ import (
 // delistProductViaTEMUAPI 通过TEMU API下架产品
 func (s *inventorySyncServiceImpl) delistProductViaTEMUAPI(
 	_ context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	_ *TemuSkuInfo,
 ) error {
 	goodsID := prod.PlatformProductID
@@ -55,9 +55,7 @@ func (s *inventorySyncServiceImpl) delistProductViaTEMUAPI(
 	platformStatusJSON, _ := json.Marshal(platformStatus)
 	prod.PlatformStatus = string(platformStatusJSON)
 
-	productDataAPI := s.managementClient.GetProductDataClient(prod.StoreID)
-	batchReq := buildBatchSaveReq(prod, []managementapi.ProductDataItemDTO{buildProductDataItem(prod)})
-	if _, err := productDataAPI.BatchCreateOrUpdate(batchReq); err != nil {
+	if err := s.saveInventoryProductSnapshot(context.Background(), prod); err != nil {
 		s.logger.WithError(err).Warn("更新管理系统中的产品状态失败")
 	}
 
@@ -67,7 +65,7 @@ func (s *inventorySyncServiceImpl) delistProductViaTEMUAPI(
 // updateProductStockViaTEMUAPI 通过TEMU API更新产品库存
 func (s *inventorySyncServiceImpl) updateProductStockViaTEMUAPI(
 	_ context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	skuInfo *TemuSkuInfo,
 	targetStock int,
 ) error {
@@ -97,7 +95,7 @@ func (s *inventorySyncServiceImpl) updateProductStockViaTEMUAPI(
 // relistProductViaTEMUAPI 通过TEMU API重新上架产品
 func (s *inventorySyncServiceImpl) relistProductViaTEMUAPI(
 	_ context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *TemuInventoryProductSnapshot,
 	skuInfo *TemuSkuInfo,
 ) error {
 	goodsID := prod.PlatformProductID
@@ -143,9 +141,7 @@ func (s *inventorySyncServiceImpl) relistProductViaTEMUAPI(
 	platformStatusJSON, _ := json.Marshal(platformStatus)
 	prod.PlatformStatus = string(platformStatusJSON)
 
-	productDataAPI := s.managementClient.GetProductDataClient(prod.StoreID)
-	batchReq := buildBatchSaveReq(prod, []managementapi.ProductDataItemDTO{buildProductDataItem(prod)})
-	if _, err := productDataAPI.BatchCreateOrUpdate(batchReq); err != nil {
+	if err := s.saveInventoryProductSnapshot(context.Background(), prod); err != nil {
 		s.logger.WithError(err).Warn("更新管理系统中的产品状态失败")
 	}
 

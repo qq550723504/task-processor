@@ -87,3 +87,32 @@ func TestFindOperationStrategyRowsAppliesResourceFilters(t *testing.T) {
 		t.Fatalf("rows = %+v total=%d, want only fully matched SHEIN row", rows, total)
 	}
 }
+
+func TestGormOperationStrategyRepositoryGetLatestByStoreIDReturnsNewestRow(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingOperationStrategy{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, row := range []listingOperationStrategy{
+		{TenantID: 101, StoreID: 21, Name: "old", Platform: "SHEIN", Status: 1, Deleted: 0},
+		{TenantID: 101, StoreID: 21, Name: "new", Platform: "SHEIN", Status: 0, Deleted: 0, ActivityEnabled: 1, RestoreStockAmount: 5},
+	} {
+		if err := db.Table("listing_operation_strategy").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	repo := NewGormOperationStrategyRepository(db)
+	got, err := repo.GetLatestByStoreID(context.Background(), 21)
+	if err != nil {
+		t.Fatalf("GetLatestByStoreID() error = %v", err)
+	}
+	if got == nil || got.Name != "new" || !got.ActivityEnabled || got.RestoreStockAmount == nil || *got.RestoreStockAmount != 5 {
+		t.Fatalf("GetLatestByStoreID() = %+v, want newest mapped row", got)
+	}
+}

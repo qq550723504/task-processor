@@ -32,7 +32,7 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 	productFetcher, err := consumer.BuildPlatformProductFetcher(
 		rt.Config,
 		m.Name(),
-		rt.ManagementClient,
+		rt.RawJSONDataClient,
 		rt.CrawlSource,
 		rt.RabbitMQClient,
 	)
@@ -40,11 +40,7 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 		return fmt.Errorf("build TEMU product fetcher: %w", err)
 	}
 
-	processor, err := temuprocessor.NewTemuProcessor(ctx, rt.Config, rt.Logger, temuprocessor.Dependencies{
-		ManagementClient: rt.ManagementClient,
-		ProductFetcher:   productFetcher,
-		RabbitMQClient:   rt.RabbitMQClient,
-	})
+	processor, err := temuprocessor.NewTemuProcessor(ctx, rt.Config, rt.Logger, temuprocessor.BuildDependencies(ctx, rt.ProcessorRuntime, productFetcher, rt.RabbitMQClient))
 	if err != nil {
 		return fmt.Errorf("create TEMU processor: %w", err)
 	}

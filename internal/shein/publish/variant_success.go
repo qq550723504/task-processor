@@ -1,6 +1,7 @@
 package publish
 
 import (
+	"context"
 	"fmt"
 
 	"task-processor/internal/core/logger"
@@ -39,7 +40,7 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error 
 	if err != nil {
 		return err
 	}
-	if input.ManagementClientMgr == nil {
+	if input.RuntimeRepository == nil {
 		h.logger.Warn("management client manager is nil, skip variant publish marking")
 		return nil
 	}
@@ -107,18 +108,13 @@ func collectPublishedSupplierSKUs(input *VariantPublishResultInput) []string {
 }
 
 func (h *MarkVariantPublishSuccessHandler) markVariantPublished(input *VariantPublishResultInput, asin, sku string) error {
-	mappingClient := input.ManagementClientMgr.GetProductImportMappingClient()
-	if mappingClient == nil {
-		return fmt.Errorf("产品导入映射客户端未初始化")
-	}
-
 	createReq := buildMappingReq(input.MappingInput, asin, sku, model.TaskStatusPublished)
-	id, err := mappingClient.CreateProductImportMapping(createReq)
+	id, err := input.RuntimeRepository.CreateRuntimeProductImportMapping(context.Background(), createReq)
 	if err != nil {
 		h.logger.WithFields(logrus.Fields{
 			"asin":                       asin,
 			"sku":                        sku,
-			"platform_parent_product_id": createReq.PlatformParentProductId,
+			"platform_parent_product_id": createReq.PlatformParentProductID,
 			"error":                      err.Error(),
 		}).Error("create product import mapping failed")
 		return fmt.Errorf("创建产品导入映射关系失败: %w", err)
@@ -128,21 +124,16 @@ func (h *MarkVariantPublishSuccessHandler) markVariantPublished(input *VariantPu
 		"id":                         id,
 		"asin":                       asin,
 		"sku":                        sku,
-		"platform_parent_product_id": createReq.PlatformParentProductId,
+		"platform_parent_product_id": createReq.PlatformParentProductID,
 	}).Info("marked variant as published")
 	return nil
 }
 
 func (h *MarkVariantPublishSuccessHandler) markVariantFailed(input *VariantPublishResultInput, asin, reason string) error {
-	mappingClient := input.ManagementClientMgr.GetProductImportMappingClient()
-	if mappingClient == nil {
-		return fmt.Errorf("产品导入映射客户端未初始化")
-	}
-
 	createReq := buildMappingReq(input.MappingInput, asin, "", model.TaskStatusCrawlFailed)
 	createReq.Remark = &reason
 
-	id, err := mappingClient.CreateProductImportMapping(createReq)
+	id, err := input.RuntimeRepository.CreateRuntimeProductImportMapping(context.Background(), createReq)
 	if err != nil {
 		return fmt.Errorf("创建产品导入映射关系失败: %w", err)
 	}

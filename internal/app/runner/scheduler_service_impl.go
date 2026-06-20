@@ -14,9 +14,9 @@ func (s *schedulerServiceImpl) initializeResources() error {
 	log := logger.GetGlobalLogger("service.scheduler")
 	log.Info("初始化调度服务资源...")
 
-	// 验证管理客户端是否已注入
-	if s.managementClient == nil {
-		return fmt.Errorf("管理客户端未注入")
+	// 验证店铺运行时能力是否已注入
+	if s.storeRuntime == nil {
+		return fmt.Errorf("店铺运行时未注入")
 	}
 
 	log.Info("✅ 调度服务资源初始化完成")

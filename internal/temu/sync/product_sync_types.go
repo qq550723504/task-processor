@@ -4,7 +4,6 @@ package sync
 import (
 	"context"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	temuproduct "task-processor/internal/temu/api/product"
 )
 
@@ -14,10 +13,10 @@ type ProductSyncService interface {
 	FetchProductList(ctx context.Context) ([]temuproduct.GoodsSearchItem, error)
 
 	// ConvertProducts 转换TEMU产品格式为管理系统格式
-	ConvertProducts(ctx context.Context, products []temuproduct.GoodsSearchItem, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
+	ConvertProducts(ctx context.Context, products []temuproduct.GoodsSearchItem, tenantID, storeID int64) ([]*TemuProductSnapshot, error)
 
 	// SaveProducts 保存产品到管理系统
-	SaveProducts(ctx context.Context, productDataList []*managementapi.ProductDataDTO) (int, error)
+	SaveProducts(ctx context.Context, productDataList []*TemuProductSnapshot) (int, error)
 }
 
 // ProductSyncConfig 产品同步配置

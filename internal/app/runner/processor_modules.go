@@ -41,16 +41,14 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 				if creator == nil {
 					return fmt.Errorf("TEMU processor creator not configured")
 				}
+				if s.processorRuntime == nil {
+					return fmt.Errorf("TEMU processor runtime not configured")
+				}
 				productFetcher, err := buildRuntimeProductFetcher(cfg, s, "temu")
 				if err != nil {
 					return err
 				}
-
-				p, err := creator(ctx, cfg, s.logger, temu.Dependencies{
-					ManagementClient: s.managementClient,
-					ProductFetcher:   productFetcher,
-					RabbitMQClient:   s.rabbitmqClient,
-				})
+				p, err := creator(ctx, cfg, s.logger, temu.BuildDependencies(ctx, s.processorRuntime, productFetcher, s.rabbitmqClient))
 				if err != nil {
 					return fmt.Errorf("create TEMU processor: %w", err)
 				}
@@ -76,16 +74,14 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 				if creator == nil {
 					return fmt.Errorf("SHEIN processor creator not configured")
 				}
+				if s.processorRuntime == nil {
+					return fmt.Errorf("SHEIN processor runtime not configured")
+				}
 				productFetcher, err := buildRuntimeProductFetcher(cfg, s, "shein")
 				if err != nil {
 					return err
 				}
-
-				p, err := creator(ctx, cfg, s.logger, pipeline.Dependencies{
-					ManagementClient: s.managementClient,
-					ProductFetcher:   productFetcher,
-					RabbitMQClient:   s.rabbitmqClient,
-				})
+				p, err := creator(ctx, cfg, s.logger, pipeline.BuildDependencies(ctx, s.processorRuntime, productFetcher, s.rabbitmqClient))
 				if err != nil {
 					return fmt.Errorf("create SHEIN processor: %w", err)
 				}
@@ -101,8 +97,8 @@ func (s *processorServiceImpl) processorModules() []processorRuntimeModule {
 }
 
 func buildRuntimeProductFetcher(cfg *config.Config, s *processorServiceImpl, platform string) (appfetcher.ProductFetcher, error) {
-	if s.managementClient == nil {
-		return nil, fmt.Errorf("management client not initialized")
+	if s.rawJSONDataClient == nil {
+		return nil, fmt.Errorf("raw json data client not initialized")
 	}
 
 	factory := appfetcher.NewFetcherFactory()
@@ -114,7 +110,7 @@ func buildRuntimeProductFetcher(cfg *config.Config, s *processorServiceImpl, pla
 	if fetcherType == "" {
 		fetcher, err := factory.CreateFetcherFromConfig(
 			cfg,
-			s.managementClient.GetRawJsonDataAdapter(),
+			s.rawJSONDataClient,
 			s.crawlSource,
 			s.rabbitmqClient,
 		)
@@ -126,7 +122,7 @@ func buildRuntimeProductFetcher(cfg *config.Config, s *processorServiceImpl, pla
 
 	fetcher, err := factory.CreateFetcher(
 		fetcherType,
-		s.managementClient.GetRawJsonDataAdapter(),
+		s.rawJSONDataClient,
 		&cfg.Amazon,
 		s.crawlSource,
 		s.rabbitmqClient,

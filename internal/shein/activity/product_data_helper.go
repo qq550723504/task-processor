@@ -2,7 +2,10 @@
 package activity
 
 import (
-	"task-processor/internal/infra/clients/management"
+	"context"
+	"fmt"
+
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/shein/productsync"
 
@@ -11,23 +14,45 @@ import (
 
 // ProductDataHelper 产品数据处理助手
 type ProductDataHelper struct {
-	managementClient *management.ClientManager
-	logger           *logrus.Logger
+	productDataRepo listingadmin.ProductDataRepository
+	logger          *logrus.Logger
 }
 
 // NewProductDataHelper 创建产品数据处理助手
-func NewProductDataHelper(managementClient *management.ClientManager, logger *logrus.Logger) *ProductDataHelper {
+func NewProductDataHelper(productDataRepo listingadmin.ProductDataRepository, logger *logrus.Logger) *ProductDataHelper {
 	return &ProductDataHelper{
-		managementClient: managementClient,
-		logger:           logger,
+		productDataRepo: productDataRepo,
+		logger:          logger,
 	}
+}
+
+func (h *ProductDataHelper) listStoreProducts(storeID int64) ([]listingadmin.ProductData, error) {
+	if h.productDataRepo == nil {
+		return nil, fmt.Errorf("product data repository is not initialized")
+	}
+	shelfStatus := 2
+	page, err := h.productDataRepo.ListProductData(
+		context.Background(),
+		listingadmin.ProductDataQuery{
+			StoreID:     &storeID,
+			Platform:    "SHEIN",
+			ShelfStatus: &shelfStatus,
+			Page:        1,
+			PageSize:    10000,
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+	if page == nil {
+		return nil, nil
+	}
+	return page.Items, nil
 }
 
 // BuildSkcDataMap 构建SKC到EnrichedSkcInfo的映射
 func (h *ProductDataHelper) BuildSkcDataMap(storeID int64) (map[string]*productsync.EnrichedSkcInfo, error) {
-	productClient := h.managementClient.GetProductDataClient(storeID)
-	shelfStatus := 2 // 2表示在售状态
-	allProducts, err := productClient.ListByStore("SHEIN", 0, storeID, &shelfStatus)
+	allProducts, err := h.listStoreProducts(storeID)
 	if err != nil {
 		h.logger.WithError(err).Warn("获取店铺产品列表失败")
 		return nil, err
@@ -35,12 +60,13 @@ func (h *ProductDataHelper) BuildSkcDataMap(storeID int64) (map[string]*products
 
 	skcDataMap := make(map[string]*productsync.EnrichedSkcInfo)
 	for _, prod := range allProducts {
-		if prod.Attributes == "" {
+		attributes := string(prod.Attributes)
+		if attributes == "" {
 			continue
 		}
 
 		var skcList []productsync.EnrichedSkcInfo
-		if err := jsonx.UnmarshalString(prod.Attributes, &skcList, ""); err != nil {
+		if err := jsonx.UnmarshalString(attributes, &skcList, ""); err != nil {
 			h.logger.WithError(err).Debugf("解析产品Attributes失败: %s", prod.ProductID)
 			continue
 		}
@@ -58,9 +84,7 @@ func (h *ProductDataHelper) BuildSkcDataMap(storeID int64) (map[string]*products
 
 // BuildSkcAttributesMap 构建SKC到Attributes字符串的映射
 func (h *ProductDataHelper) BuildSkcAttributesMap(storeID int64) (map[string]string, error) {
-	productClient := h.managementClient.GetProductDataClient(storeID)
-	shelfStatus := 2 // 2表示在售状态
-	allProducts, err := productClient.ListByStore("SHEIN", 0, storeID, &shelfStatus)
+	allProducts, err := h.listStoreProducts(storeID)
 	if err != nil {
 		h.logger.WithError(err).Warn("获取店铺产品列表失败")
 		return nil, err
@@ -68,19 +92,20 @@ func (h *ProductDataHelper) BuildSkcAttributesMap(storeID int64) (map[string]str
 
 	skcAttributesMap := make(map[string]string)
 	for _, prod := range allProducts {
-		if prod.Attributes == "" {
+		attributes := string(prod.Attributes)
+		if attributes == "" {
 			continue
 		}
 
 		var skcList []productsync.EnrichedSkcInfo
-		if err := jsonx.UnmarshalString(prod.Attributes, &skcList, ""); err != nil {
+		if err := jsonx.UnmarshalString(attributes, &skcList, ""); err != nil {
 			h.logger.WithError(err).Debugf("解析产品Attributes失败: %s", prod.ProductID)
 			continue
 		}
 
 		for i := range skcList {
 			if skcList[i].SkcName != "" {
-				skcAttributesMap[skcList[i].SkcName] = prod.Attributes
+				skcAttributesMap[skcList[i].SkcName] = attributes
 			}
 		}
 	}

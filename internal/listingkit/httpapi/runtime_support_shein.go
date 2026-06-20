@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"context"
+
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingruntime"
 	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/shein/activity"
 	"task-processor/internal/shein/api/marketing"
@@ -49,9 +52,40 @@ func buildListingKitSheinTranslateAPIBuilder(storeRepo listingadmin.StoreReposit
 }
 
 func buildListingKitPromotionRegistrationBridge(apiClient *listingkit.SheinRuntimeAPIClient) activity.PromotionRegistrationBridge {
+	return buildListingKitPromotionRegistrationBridgeWithDependencies(apiClient, nil, nil, nil)
+}
+
+func buildListingKitPromotionRegistrationBridgeWithDependencies(
+	apiClient *listingkit.SheinRuntimeAPIClient,
+	storeService listingruntime.StoreService,
+	mappingRepo listingadmin.ProductImportMappingRepository,
+	productDataRepo listingadmin.ProductDataRepository,
+) activity.PromotionRegistrationBridge {
 	if apiClient == nil {
 		return nil
 	}
 	baseClient := listingkit.NewSheinRuntimeBaseAPIClient(apiClient, apiClient.GetStoreID())
-	return activity.NewActivityRegistrationService(nil, marketing.NewClient(baseClient))
+	return activity.NewActivityRegistrationService(
+		storeService,
+		nil,
+		listingKitActivityMappingFinder{repo: mappingRepo},
+		productDataRepo,
+		marketing.NewClient(baseClient),
+	)
+}
+
+type listingKitActivityMappingFinder struct {
+	repo listingadmin.ProductImportMappingRepository
+}
+
+func (f listingKitActivityMappingFinder) FindLatest(ctx context.Context, query listingadmin.ProductImportMappingQuery) (*listingadmin.ProductImportMapping, error) {
+	if f.repo == nil {
+		return nil, nil
+	}
+	page, err := f.repo.ListProductImportMappings(ctx, query)
+	if err != nil || page == nil || len(page.Items) == 0 {
+		return nil, err
+	}
+	mapping := page.Items[0]
+	return &mapping, nil
 }

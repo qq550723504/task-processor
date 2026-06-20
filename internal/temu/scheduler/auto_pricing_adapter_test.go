@@ -8,6 +8,7 @@ import (
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/temu/api"
 	temupricing "task-processor/internal/temu/api/pricing"
+	"task-processor/internal/temu/pricing"
 )
 
 // MockTemuAPIClient 模拟Temu API客户端
@@ -22,12 +23,12 @@ func (m *MockTemuAPIClient) GetStoreID() int64 {
 
 // MockTemuAutoPricingService 模拟Temu自动核价服务
 type MockTemuAutoPricingService struct {
-	AutoProcessPendingPricesWithRulesFunc func(managementClient *management.ClientManager) (*temupricing.Statistics, error)
+	AutoProcessPendingPricesWithRulesFunc func(runtime pricing.ManagementRuntime) (*temupricing.Statistics, error)
 }
 
-func (m *MockTemuAutoPricingService) AutoProcessPendingPricesWithRules(managementClient *management.ClientManager) (*temupricing.Statistics, error) {
+func (m *MockTemuAutoPricingService) AutoProcessPendingPricesWithRules(runtime pricing.ManagementRuntime) (*temupricing.Statistics, error) {
 	if m.AutoProcessPendingPricesWithRulesFunc != nil {
-		return m.AutoProcessPendingPricesWithRulesFunc(managementClient)
+		return m.AutoProcessPendingPricesWithRulesFunc(runtime)
 	}
 	return &temupricing.Statistics{}, nil
 }
@@ -36,14 +37,10 @@ func TestNewTemuAutoPricingAdapter(t *testing.T) {
 	mockAPIClient := &MockTemuAPIClient{storeID: 100}
 	mockManagement := &management.ClientManager{}
 
-	adapter := NewTemuAutoPricingAdapter(mockAPIClient, mockManagement)
+	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(mockManagement))
 
 	if adapter == nil {
 		t.Fatal("NewTemuAutoPricingAdapter returned nil")
-	}
-
-	if adapter.managementClient != mockManagement {
-		t.Error("Adapter should store the management client")
 	}
 }
 
@@ -51,7 +48,7 @@ func TestTemuAutoPricingAdapter_FetchPendingPriceProducts(t *testing.T) {
 	mockAPIClient := &MockTemuAPIClient{storeID: 100}
 	mockManagement := &management.ClientManager{}
 
-	adapter := NewTemuAutoPricingAdapter(mockAPIClient, mockManagement)
+	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(mockManagement))
 	ctx := context.Background()
 
 	// Temu平台的实现返回空切片
@@ -70,7 +67,7 @@ func TestTemuAutoPricingAdapter_ApplyPricingRules(t *testing.T) {
 	mockAPIClient := &MockTemuAPIClient{storeID: 100}
 	mockManagement := &management.ClientManager{}
 
-	adapter := NewTemuAutoPricingAdapter(mockAPIClient, mockManagement)
+	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(mockManagement))
 	ctx := context.Background()
 
 	mockProducts := []any{"product1", "product2"}

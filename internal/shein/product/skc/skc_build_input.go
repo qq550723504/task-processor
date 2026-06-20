@@ -3,7 +3,6 @@ package skc
 import (
 	"fmt"
 
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
@@ -17,7 +16,6 @@ type SKCBuildInput struct {
 	ProductData         *productapi.Product
 	SaleAttributeOutput *sheinsale.SaleAttributeOutput
 	AttributeTemplates  *sheinattribute.AttributeTemplateInfo
-	ManagementClient    *management.ClientManager
 	Runtime             *SKCRuntimeInput
 	VariantBuild        *SKCVariantBuildInput
 	Validation          *SKCValidationInput
@@ -49,7 +47,6 @@ func NewSKCBuildInput(ctx *shein.TaskContext) *SKCBuildInput {
 	input := &SKCBuildInput{
 		ProductData:        ctx.ProductData,
 		AttributeTemplates: ctx.AttributeTemplates,
-		ManagementClient:   ctx.ManagementClientMgr,
 		Runtime:            newSKCRuntimeInput(ctx),
 		VariantBuild:       newSKCVariantBuildInput(ctx),
 		Validation:         newSKCValidationInput(ctx),

@@ -7,19 +7,19 @@ import (
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/product"
 )
 
 func BuildPlatformProductFetcher(
 	cfg *config.Config,
 	platform string,
-	managementClient *management.ClientManager,
+	rawJsonDataClient product.RawJsonDataClient,
 	crawlSource runner.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (appfetcher.ProductFetcher, error) {
-	if managementClient == nil {
-		return nil, fmt.Errorf("management client is required")
+	if rawJsonDataClient == nil {
+		return nil, fmt.Errorf("raw json data client is required")
 	}
 
 	factory := appfetcher.NewFetcherFactory()
@@ -29,10 +29,10 @@ func BuildPlatformProductFetcher(
 	}
 
 	if fetcherType == "" {
-		return factory.CreateFetcherFromConfig(cfg, managementClient.GetRawJsonDataAdapter(), crawlSource, rabbitmqClient)
+		return factory.CreateFetcherFromConfig(cfg, rawJsonDataClient, crawlSource, rabbitmqClient)
 	}
 
-	return factory.CreateFetcher(fetcherType, managementClient.GetRawJsonDataAdapter(), &cfg.Amazon, crawlSource, rabbitmqClient)
+	return factory.CreateFetcher(fetcherType, rawJsonDataClient, &cfg.Amazon, crawlSource, rabbitmqClient)
 }
 
 func ResolvePlatformFetcherType(cfg *config.Config, platform string) (appfetcher.FetcherType, error) {

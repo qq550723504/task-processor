@@ -2,7 +2,6 @@
 package sync
 
 import (
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 )
 
@@ -76,7 +75,7 @@ type MonitorResult struct {
 
 // InventoryUpdateBatch 批量库存更新数据结构
 type InventoryUpdateBatch struct {
-	Product *managementapi.ProductDataDTO // 产品信息
+	Product *TemuInventoryProductSnapshot // 产品信息
 	Updates []SkuInventoryUpdate          // SKU更新列表
 	StoreID int64                         // 店铺ID
 }

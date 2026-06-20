@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/pkg/jsonx"
 	"time"
 
@@ -15,19 +14,19 @@ import (
 
 // CookieManager Cookie管理器
 type CookieManager struct {
-	storeID          int64
-	managementClient *management.ClientManager
-	logger           *logrus.Entry
+	storeID      int64
+	storeRuntime StoreRuntime
+	logger       *logrus.Entry
 }
 
 // NewCookieManager 创建Cookie管理器
-func NewCookieManager(storeID int64, managementClient *management.ClientManager) *CookieManager {
+func NewCookieManager(storeID int64, storeRuntime StoreRuntime) *CookieManager {
 	logger := logger.GetGlobalLogger("CookieManager").WithField("storeID", storeID)
 
 	return &CookieManager{
-		storeID:          storeID,
-		managementClient: managementClient,
-		logger:           logger,
+		storeID:      storeID,
+		storeRuntime: storeRuntime,
+		logger:       logger,
 	}
 }
 
@@ -36,13 +35,17 @@ func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 	cm.logger.WithField("storeID", cm.storeID).Debug("尝试从管理系统加载Cookie")
 
 	// 检查管理系统客户端是否可用
-	if cm.managementClient == nil {
+	if cm.storeRuntime == nil {
 		cm.logger.Error("管理系统客户端为空")
 		return nil, fmt.Errorf("管理系统客户端为空")
 	}
 
 	// 从管理系统获取Cookie字符串
-	storeClient := cm.managementClient.GetStoreClient()
+	storeClient := cm.storeRuntime.GetStoreClient()
+	if storeClient == nil {
+		cm.logger.Error("店铺客户端为空")
+		return nil, fmt.Errorf("店铺客户端为空")
+	}
 	cookieStr, err := storeClient.GetStoreCookie(cm.storeID)
 	if err != nil {
 		// 检查是否是认证错误
@@ -165,12 +168,15 @@ func (cm *CookieManager) RefreshCookies() ([]*http.Cookie, error) {
 func (cm *CookieManager) TestConnection() error {
 	cm.logger.Debug("测试管理系统连接")
 
-	if cm.managementClient == nil {
+	if cm.storeRuntime == nil {
 		return fmt.Errorf("管理系统客户端为空")
 	}
 
 	// 尝试获取store信息来测试连接
-	storeClient := cm.managementClient.GetStoreClient()
+	storeClient := cm.storeRuntime.GetStoreClient()
+	if storeClient == nil {
+		return fmt.Errorf("店铺客户端为空")
+	}
 	_, err := storeClient.GetStore(cm.storeID)
 	if err != nil {
 		cm.logger.WithError(err).Error("管理系统连接测试失败")
@@ -181,7 +187,7 @@ func (cm *CookieManager) TestConnection() error {
 	return nil
 }
 
-// GetManagementClient 获取管理系统客户端
-func (cm *CookieManager) GetManagementClient() *management.ClientManager {
-	return cm.managementClient
+// GetStoreRuntime 获取店铺运行时
+func (cm *CookieManager) GetStoreRuntime() StoreRuntime {
+	return cm.storeRuntime
 }

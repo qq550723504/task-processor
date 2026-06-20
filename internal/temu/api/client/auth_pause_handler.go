@@ -37,15 +37,15 @@ func (h *TemuPauseHandler) SetPauseKeyForAuthExpired(client ClientAPI, reason st
 		return fmt.Errorf("Cookie管理器未初始化")
 	}
 
-	// 获取管理客户端
-	managementClient := cookieManager.GetManagementClient()
-	if managementClient == nil {
+	// 获取店铺运行时
+	storeRuntime := cookieManager.GetStoreRuntime()
+	if storeRuntime == nil {
 		h.logger.Warn("管理客户端未初始化，无法设置暂停键")
 		return fmt.Errorf("管理客户端未初始化")
 	}
 
 	// 获取店铺客户端
-	storeClient := managementClient.GetStoreClient()
+	storeClient := storeRuntime.GetStoreClient()
 	if storeClient == nil {
 		h.logger.Warn("店铺客户端未初始化，无法设置暂停键")
 		return fmt.Errorf("店铺客户端未初始化")
@@ -83,11 +83,11 @@ func (h *TemuPauseHandler) validateClient(client ClientAPI) error {
 		return fmt.Errorf("Cookie管理器类型错误")
 	}
 
-	if cookieManager.GetManagementClient() == nil {
+	if cookieManager.GetStoreRuntime() == nil {
 		return fmt.Errorf("管理客户端未初始化")
 	}
 
-	storeClient := cookieManager.GetManagementClient().GetStoreClient()
+	storeClient := cookieManager.GetStoreRuntime().GetStoreClient()
 	if storeClient == nil {
 		return fmt.Errorf("店铺客户端未初始化")
 	}

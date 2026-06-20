@@ -34,11 +34,15 @@ type processorServiceImpl struct {
 	healthChecker    *monitoring.HealthChecker
 
 	// 共享资源（通过依赖注入获取）
-	managementClient      *management.ClientManager
-	crawlSource           crawlSource
-	rabbitmqClient        *rabbitmq.Client
-	temuProcessorCreator  TemuProcessorCreator
-	sheinProcessorCreator SheinProcessorCreator
+	managementClient        *management.ClientManager
+	rawJSONDataClient       rawJSONDataClientProvider
+	processorRuntime        processorRuntimeProvider
+	schedulerRuntime        SchedulerRuntimeProvider
+	schedulerFactoryRuntime schedulerFactoryRuntimeProvider
+	crawlSource             crawlSource
+	rabbitmqClient          *rabbitmq.Client
+	temuProcessorCreator    TemuProcessorCreator
+	sheinProcessorCreator   SheinProcessorCreator
 
 	// 生命周期管理
 	ctx     context.Context
@@ -54,12 +58,18 @@ func (s *processorServiceImpl) startSchedulerService(ctx context.Context, cfg *c
 
 	// 创建调度服务（通过依赖注入，不再使用全局状态）
 	// Reuse the shared RabbitMQ client so scheduler-triggered fetches can use distributed crawling.
+	if s.schedulerRuntime == nil {
+		return errors.New(errors.ErrCodeSystem, "调度运行时未注入")
+	}
+	if s.schedulerFactoryRuntime == nil {
+		return errors.New(errors.ErrCodeSystem, "调度工厂运行时未注入")
+	}
 	s.schedulerService = NewSchedulerServiceWithDependencies(
 		s.logger,
-		s.managementClient,
+		s.schedulerRuntime,
 		cfg,
 		s.rabbitmqClient,
-		buildSchedulerDependencies(s.managementClient, cfg, s.crawlSource, s.rabbitmqClient),
+		buildSchedulerDependencies(s.schedulerFactoryRuntime, cfg, s.crawlSource, s.rabbitmqClient),
 	)
 
 	// 启动调度服务

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
 	sheinimage "task-processor/internal/shein/api/image"
@@ -16,8 +16,8 @@ func TestSKCVariantProcessor_NewSKURuntimeInputIncludesContextDependencies(t *te
 	ctx := shein.NewTaskContext(context.Background(), &model.Task{Region: "US"})
 	fixedStock := 7
 
-	ctx.StoreInfo = &managementapi.StoreRespDTO{FixedStockCount: &fixedStock}
-	ctx.ProfitRule = &managementapi.ProfitRuleRespDTO{}
+	ctx.StoreInfo = &listingruntime.StoreInfo{FixedStockCount: &fixedStock}
+	ctx.ProfitRule = &listingruntime.ProfitRule{}
 	ctx.SiteList = []productapi.SiteInfo{{SubSiteList: []string{"us"}}}
 	ctx.ImageAPI = &sheinimage.Client{}
 

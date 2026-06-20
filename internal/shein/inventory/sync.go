@@ -12,8 +12,8 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
@@ -28,10 +28,10 @@ import (
 // InventorySyncService 库存监控服务接口（监控Amazon价格和库存变化）
 type InventorySyncService interface {
 	// FetchProductsForInventorySync 获取需要监控库存的产品列表
-	FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error)
+	FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]*InventoryProductSnapshot, error)
 
 	// MonitorInventoryChanges 监控库存和价格变化
-	MonitorInventoryChanges(ctx context.Context, products []*managementapi.ProductDataDTO, tenantID, storeID int64) (*MonitorResult, error)
+	MonitorInventoryChanges(ctx context.Context, products []*InventoryProductSnapshot, tenantID, storeID int64) (*MonitorResult, error)
 }
 
 // InventoryUpdateRequest 库存更新请求
@@ -45,27 +45,37 @@ type InventoryUpdateRequest struct {
 
 // inventorySyncServiceImpl 库存监控服务实现
 type inventorySyncServiceImpl struct {
-	managementClient      *management.ClientManager
-	productAPI            shein_product.ProductAPI
-	productFetcher        fetcher.ProductFetcher
-	rawJsonDataClient     product.RawJsonDataClient
-	inventoryRecordClient managementapi.InventoryRecordAPI
-	monitorConfig         *config.MonitorConfig
-	costCalculator        *pricing.CostCalculator
-	logger                *logrus.Entry
+	strategyProvider    pricing.OperationStrategyProvider
+	productAPI          shein_product.ProductAPI
+	productFetcher      fetcher.ProductFetcher
+	rawJsonDataClient   product.RawJsonDataClient
+	inventoryRecordRepo listingadmin.InventoryRecordRepository
+	storeService        listingruntime.StoreService
+	storeRepo           sheinInventoryStoreFinder
+	productDataRepo     listingadmin.ProductDataRepository
+	monitorConfig       *config.MonitorConfig
+	costCalculator      *pricing.CostCalculator
+	logger              *logrus.Entry
 
 	// 批量库存更新收集器
 	inventoryUpdates sync.Map // map[string][]InventoryUpdateRequest - key: productID
 }
 
+type sheinInventoryStoreFinder interface {
+	FindStoreByID(ctx context.Context, id int64) (*listingadmin.Store, error)
+}
+
 // NewInventorySyncService 创建库存监控服务
 func NewInventorySyncService(
-	managementClient *management.ClientManager,
+	strategyProvider pricing.OperationStrategyProvider,
 	productAPI shein_product.ProductAPI,
 	productFetcher fetcher.ProductFetcher,
 	monitorConfig *config.MonitorConfig,
 	rawJsonDataClient product.RawJsonDataClient,
-	inventoryRecordClient managementapi.InventoryRecordAPI,
+	inventoryRecordRepo listingadmin.InventoryRecordRepository,
+	storeService listingruntime.StoreService,
+	storeRepo sheinInventoryStoreFinder,
+	productDataRepo listingadmin.ProductDataRepository,
 ) InventorySyncService {
 	// 临时设置 Debug 级别以便调试映射问题
 	logger.SetGlobalLogLevel("debug")
@@ -73,41 +83,59 @@ func NewInventorySyncService(
 	log := logger.GetGlobalLogger("InventorySyncService")
 
 	// 创建通用成本计算器（SHEIN需要详细日志）
-	costCalculator := pricing.NewCostCalculator(managementClient, log, true)
+	costCalculator := pricing.NewCostCalculator(strategyProvider, log, true)
 
 	return &inventorySyncServiceImpl{
-		managementClient:      managementClient,
-		productAPI:            productAPI,
-		productFetcher:        productFetcher,
-		rawJsonDataClient:     rawJsonDataClient,
-		inventoryRecordClient: inventoryRecordClient,
-		monitorConfig:         monitorConfig,
-		costCalculator:        costCalculator,
-		logger:                log,
+		strategyProvider:    strategyProvider,
+		productAPI:          productAPI,
+		productFetcher:      productFetcher,
+		rawJsonDataClient:   rawJsonDataClient,
+		inventoryRecordRepo: inventoryRecordRepo,
+		storeService:        storeService,
+		storeRepo:           storeRepo,
+		productDataRepo:     productDataRepo,
+		monitorConfig:       monitorConfig,
+		costCalculator:      costCalculator,
+		logger:              log,
 	}
 }
 
 // FetchProductsForInventorySync 获取需要监控库存的产品列表
-func (s *inventorySyncServiceImpl) FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]*managementapi.ProductDataDTO, error) {
+func (s *inventorySyncServiceImpl) FetchProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]*InventoryProductSnapshot, error) {
 	s.logger.WithFields(logrus.Fields{
 		"tenant_id": tenantID,
 		"store_id":  storeID,
 	}).Info("开始获取需要监控库存的产品")
 
-	// 从SHEIN接口获取
-	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-	shelfStatus := managementapi.ShelfStatusOnShelf
-	products, err := productDataAPI.ListByStore("SHEIN", tenantID, storeID, &shelfStatus)
-	if err != nil {
-		s.logger.WithError(err).Warn("从管理系统获取产品列表失败")
+	if s.productDataRepo != nil {
+		shelfStatus := sheinInventoryShelfStatusOnShelf
+		page, err := s.productDataRepo.ListProductData(ctx, listingadmin.ProductDataQuery{
+			TenantID:    tenantID,
+			StoreID:     sheinInvPtrInt64(storeID),
+			Platform:    "SHEIN",
+			ShelfStatus: &shelfStatus,
+			Page:        1,
+			PageSize:    2000,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("通过产品数据仓储获取SHEIN产品列表失败: %w", err)
+		}
+		items := make([]*InventoryProductSnapshot, 0)
+		if page != nil {
+			items = make([]*InventoryProductSnapshot, 0, len(page.Items))
+			for i := range page.Items {
+				items = append(items, inventoryProductSnapshotFromProductData(&page.Items[i]))
+			}
+		}
+		s.logger.WithField("count", len(items)).Info("通过产品数据仓储获取需要监控库存的产品完成")
+		return items, nil
 	}
 
-	s.logger.WithField("count", len(products)).Info("获取需要监控库存的产品完成")
-	return products, nil
+	return nil, fmt.Errorf("product data repository is not initialized")
 }
 
 // MonitorInventoryChanges 监控库存和价格变化
-func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, products []*managementapi.ProductDataDTO, tenantID, storeID int64) (*MonitorResult, error) {
+func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, products []*InventoryProductSnapshot, tenantID, storeID int64) (*MonitorResult, error) {
 	totalCount := len(products)
 	s.logger.WithField("count", totalCount).Info("开始监控产品库存和价格变化（并发模式）")
 
@@ -140,7 +168,7 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 		wg.Add(1)
 		semaphore <- struct{}{} // 获取信号量
 
-		go func(_ int, product *managementapi.ProductDataDTO) {
+		go func(_ int, product *InventoryProductSnapshot) {
 			defer func() {
 				<-semaphore // 释放信号量
 				wg.Done()
@@ -172,7 +200,7 @@ func (s *inventorySyncServiceImpl) MonitorInventoryChanges(ctx context.Context, 
 				if err := s.monitorSingleSKU(ctx, product, skuMapping, tenantID, storeID, result, &resultMutex); err != nil {
 					s.logger.WithError(err).WithFields(logrus.Fields{
 						"product_id": product.ProductID,
-						"sku":        s.getStringValue(skuMapping.MappingInfo.Sku),
+						"sku":        s.getStringValue(skuMapping.MappingInfo.SKU),
 					}).Warn("监控SKU失败")
 				}
 			}
@@ -267,7 +295,7 @@ func (s *inventorySyncServiceImpl) addInventoryUpdate(productID, platformSKU str
 // processSingleProductInventoryUpdates 处理单个产品的所有SKU库存更新和Amazon监控数据
 func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 	_ context.Context,
-	prod *managementapi.ProductDataDTO,
+	prod *InventoryProductSnapshot,
 	updates []InventoryUpdateRequest,
 	storeID int64,
 ) error {
@@ -299,7 +327,7 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 		for i := range skcList {
 			for j := range skcList[i].SkuInfo {
 				sku := &skcList[i].SkuInfo[j]
-				if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.Sku) == update.PlatformSKU {
+				if sku.MappingInfo != nil && s.getStringValue(sku.MappingInfo.SKU) == update.PlatformSKU {
 					var oldInventory int
 					if sku.UsableInventory != nil {
 						oldInventory = *sku.UsableInventory
@@ -352,23 +380,7 @@ func (s *inventorySyncServiceImpl) processSingleProductInventoryUpdates(
 		return fmt.Errorf("序列化attributes失败: %w", err)
 	}
 
-	// 使用批量更新attributes接口
-	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-	updateReq := &managementapi.ProductDataBatchUpdateAttributesReqDTO{
-		Platform: "SHEIN",
-		TenantID: prod.TenantID,
-		StoreID:  storeID,
-		Region:   prod.Region,
-		Products: []managementapi.ProductAttributesItemDTO{
-			{
-				PlatformProductID: prod.PlatformProductID,
-				Attributes:        string(updatedAttributes),
-				UpdateTime:        &[]int64{time.Now().Unix()}[0],
-			},
-		},
-	}
-
-	count, err := productDataAPI.BatchUpdateAttributes(updateReq)
+	count, err := s.updateInventoryProductAttributes(context.Background(), prod, string(updatedAttributes))
 	if err != nil {
 		return fmt.Errorf("更新产品attributes失败: %w", err)
 	}

@@ -3,8 +3,8 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	platformtask "task-processor/internal/platformtask"
 	models "task-processor/internal/temu/api/product"
 	temuscheduler "task-processor/internal/temu/sync"
@@ -64,11 +64,13 @@ func (a *productSyncServiceAdapter) ConvertProducts(ctx context.Context, product
 // SaveProducts 保存产品（适配到通用接口）
 func (a *productSyncServiceAdapter) SaveProducts(ctx context.Context, products []any) (int, error) {
 	// 转换回TEMU特定类型
-	productDataList := make([]*managementapi.ProductDataDTO, len(products))
+	productDataList := make([]*temuscheduler.TemuProductSnapshot, len(products))
 	for i, p := range products {
-		if pd, ok := p.(*managementapi.ProductDataDTO); ok {
-			productDataList[i] = pd
+		pd, ok := p.(*temuscheduler.TemuProductSnapshot)
+		if !ok {
+			return 0, fmt.Errorf("products[%d] 类型断言失败: 期望 *TemuProductSnapshot, 实际 %T", i, p)
 		}
+		productDataList[i] = pd
 	}
 
 	// 调用TEMU服务

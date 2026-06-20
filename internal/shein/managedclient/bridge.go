@@ -4,81 +4,57 @@ import (
 	"context"
 	"strings"
 
-	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/listingruntime"
 	sheinclient "task-processor/internal/shein/client"
 )
 
 type runtimeBridge struct {
-	client *management.ClientManager
+	cookieProvider sheinclient.CookieProvider
+	storeProvider  sheinclient.StoreConfigProvider
 }
 
-func NewAPIClient(storeID int64, client *management.ClientManager) *sheinclient.APIClient {
-	bridge := runtimeBridge{client: client}
+func NewAPIClient(storeID int64, cookieProvider sheinclient.CookieProvider, storeProvider sheinclient.StoreConfigProvider) *sheinclient.APIClient {
+	bridge := runtimeBridge{
+		cookieProvider: cookieProvider,
+		storeProvider:  storeProvider,
+	}
 	return sheinclient.NewAPIClientWithProviders(storeID, nil, bridge, bridge)
 }
 
-func NewAPIClientWithStoreInfo(storeID int64, client *management.ClientManager, storeInfo *managementapi.StoreRespDTO) *sheinclient.APIClient {
-	bridge := runtimeBridge{client: client}
-	return sheinclient.NewAPIClientWithProviders(storeID, storeConfigFromManagement(storeInfo), bridge, bridge)
+func NewAPIClientWithStoreInfo(storeID int64, cookieProvider sheinclient.CookieProvider, storeProvider sheinclient.StoreConfigProvider, storeInfo *listingruntime.StoreInfo) *sheinclient.APIClient {
+	bridge := runtimeBridge{
+		cookieProvider: cookieProvider,
+		storeProvider:  storeProvider,
+	}
+	return sheinclient.NewAPIClientWithProviders(storeID, storeConfigFromRuntime(storeInfo), bridge, bridge)
 }
 
 func (b runtimeBridge) GetCookie(_ context.Context, storeID int64) (*sheinclient.CookieLookupResult, error) {
-	if b.client == nil {
+	if b.cookieProvider == nil {
 		return nil, nil
 	}
-
-	cookieJSON, tenantID, err := b.client.GetSheinCookie(storeID)
+	result, err := b.cookieProvider.GetCookie(context.Background(), storeID)
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(cookieJSON) != "" {
-		return &sheinclient.CookieLookupResult{
-			TenantID:   tenantID,
-			CookieJSON: cookieJSON,
-		}, nil
-	}
-
-	storeClient := b.client.GetStoreClient()
-	if storeClient == nil {
+	if result == nil || strings.TrimSpace(result.CookieJSON) == "" {
 		return nil, nil
 	}
-	cookieJSON, err = storeClient.GetStoreCookie(storeID)
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(cookieJSON) == "" {
-		return nil, nil
-	}
-
-	if tenantID <= 0 {
-		if storeInfo, lookupErr := storeClient.GetStore(storeID); lookupErr == nil && storeInfo != nil {
-			tenantID = storeInfo.TenantID
-		}
-	}
-
-	return &sheinclient.CookieLookupResult{
-		TenantID:   tenantID,
-		CookieJSON: cookieJSON,
-	}, nil
+	return result, nil
 }
 
 func (b runtimeBridge) GetStoreConfig(_ context.Context, storeID int64) (*sheinclient.StoreConfig, error) {
-	if b.client == nil {
+	if b.storeProvider == nil {
 		return nil, nil
 	}
-	storeClient := b.client.GetStoreClient()
-	if storeClient == nil {
-		return nil, nil
-	}
-	storeInfo, err := storeClient.GetStore(storeID)
+	storeInfo, err := b.storeProvider.GetStoreConfig(context.Background(), storeID)
 	if err != nil {
 		return nil, err
 	}
-	return storeConfigFromManagement(storeInfo), nil
+	return storeInfo, nil
 }
 
-func storeConfigFromManagement(storeInfo *managementapi.StoreRespDTO) *sheinclient.StoreConfig {
+func storeConfigFromRuntime(storeInfo *listingruntime.StoreInfo) *sheinclient.StoreConfig {
 	if storeInfo == nil {
 		return nil
 	}
@@ -89,7 +65,7 @@ func storeConfigFromManagement(storeInfo *managementapi.StoreRespDTO) *sheinclie
 		Name:     strings.TrimSpace(storeInfo.Name),
 		Platform: strings.TrimSpace(storeInfo.Platform),
 		Region:   strings.TrimSpace(storeInfo.Region),
-		LoginURL: strings.TrimSpace(storeInfo.LoginUrl),
+		LoginURL: strings.TrimSpace(storeInfo.LoginURL),
 		Proxy:    strings.TrimSpace(storeInfo.Proxy),
 	}
 }

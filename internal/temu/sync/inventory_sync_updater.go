@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/product"
@@ -103,24 +102,7 @@ func (s *inventorySyncServiceImpl) batchUpdateTemuInventoryInAttributes(
 		return fmt.Errorf("序列化attributes失败: %w", err)
 	}
 
-	// 使用批量更新attributes接口
-	productDataAPI := s.managementClient.GetProductDataClient(storeID)
-
-	updateReq := &managementapi.ProductDataBatchUpdateAttributesReqDTO{
-		Platform: "TEMU",
-		TenantID: prod.TenantID,
-		StoreID:  storeID,
-		Region:   prod.Region,
-		Products: []managementapi.ProductAttributesItemDTO{
-			{
-				PlatformProductID: prod.PlatformProductID,
-				Attributes:        string(updatedAttributes),
-				UpdateTime:        &[]int64{time.Now().Unix()}[0],
-			},
-		},
-	}
-
-	count, err := productDataAPI.BatchUpdateAttributes(updateReq)
+	count, err := s.updateInventoryProductAttributes(context.Background(), prod, string(updatedAttributes))
 	if err != nil {
 		s.logger.WithError(err).WithField("product_id", prod.ProductID).Error("批量更新TEMU产品attributes失败")
 		return fmt.Errorf("批量更新产品attributes失败: %w", err)
