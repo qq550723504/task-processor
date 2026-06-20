@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shein/pipeline"
 
@@ -44,7 +45,7 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 		return fmt.Errorf("build SHEIN product fetcher: %w", err)
 	}
 
-	processor, err := pipeline.NewSheinProcessor(ctx, rt.Config, rt.Logger, pipeline.BuildDependencies(ctx, rt.ProcessorRuntime, productFetcher, rt.RabbitMQClient))
+	processor, err := pipeline.NewSheinProcessor(ctx, rt.Config, rt.Logger, pipeline.BuildDependencies(ctx, sheinDependencyRuntimeAdapter{ProcessorRuntime: rt.ProcessorRuntime}, productFetcher, rt.RabbitMQClient))
 	if err != nil {
 		return fmt.Errorf("create SHEIN processor: %w", err)
 	}
@@ -183,4 +184,24 @@ func configureAutoShard(rt consumer.PlatformRuntimeContext) error {
 	rt.ServiceManager.SetAutoShardService(autoShardService)
 	rt.Logger.Infof("auto shard coordinator enabled: platform=%s, candidateNodes=%v", cfg.RabbitMQ.AutoShard.Platform, cfg.RabbitMQ.AutoShard.CandidateNodes)
 	return nil
+}
+
+type sheinDependencyRuntimeAdapter struct {
+	consumer.ProcessorRuntime
+}
+
+func (a sheinDependencyRuntimeAdapter) GetStoreAPI() managementapi.StoreAPI {
+	if a.ProcessorRuntime == nil {
+		return nil
+	}
+	return a.ProcessorRuntime.GetStoreAPI()
+}
+
+func (a sheinDependencyRuntimeAdapter) GetImageDownloader() interface {
+	DownloadImage(url string) ([]byte, error)
+} {
+	if a.ProcessorRuntime == nil {
+		return nil
+	}
+	return a.ProcessorRuntime.GetImageDownloader()
 }

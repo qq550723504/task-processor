@@ -6,6 +6,8 @@ import (
 
 	"task-processor/internal/app/bootstrap/fetchers"
 	bootstrapprocessors "task-processor/internal/app/bootstrap/processors"
+	"task-processor/internal/app/consumer"
+	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
@@ -71,5 +73,25 @@ func buildSheinProcessorDependencies(svc *appServices) (pipeline.Dependencies, e
 		return pipeline.Dependencies{}, err
 	}
 
-	return pipeline.BuildDependencies(context.Background(), svc.processorRuntime, productFetcher, svc.rabbitmqClient), nil
+	return pipeline.BuildDependencies(context.Background(), sheinDependencyRuntimeAdapter{ProcessorRuntime: svc.processorRuntime}, productFetcher, svc.rabbitmqClient), nil
+}
+
+type sheinDependencyRuntimeAdapter struct {
+	consumer.ProcessorRuntime
+}
+
+func (a sheinDependencyRuntimeAdapter) GetStoreAPI() managementapi.StoreAPI {
+	if a.ProcessorRuntime == nil {
+		return nil
+	}
+	return a.ProcessorRuntime.GetStoreAPI()
+}
+
+func (a sheinDependencyRuntimeAdapter) GetImageDownloader() interface {
+	DownloadImage(url string) ([]byte, error)
+} {
+	if a.ProcessorRuntime == nil {
+		return nil
+	}
+	return a.ProcessorRuntime.GetImageDownloader()
 }
