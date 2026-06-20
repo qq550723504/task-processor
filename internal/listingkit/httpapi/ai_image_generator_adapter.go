@@ -64,5 +64,11 @@ func adaptListingKitAIImageResponse(response *openaiclient.ImageResponse) *listi
 			RevisedPrompt: item.RevisedPrompt,
 		})
 	}
-	return &listingkit.AIImageResponse{Data: data}
+	return &listingkit.AIImageResponse{
+		Data:          data,
+		Usage:         listingkit.AIUsage(response.Usage),
+		RequestID:     response.RequestID,
+		UpstreamJobID: response.UpstreamJobID,
+		RawResponse:   response.RawResponse,
+	}
 }

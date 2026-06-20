@@ -162,6 +162,9 @@ func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch
 
 		attempt.Status = StudioGenerationAttemptStatusSucceeded
 		attempt.ResultPayload = strings.TrimSpace(execution.ResultPayload)
+		if execution.Response != nil {
+			attempt.UpstreamJobID = strings.TrimSpace(execution.Response.UpstreamJobID)
+		}
 		if attempt.ResultPayload == "" && execution.Response != nil {
 			payload, marshalErr := json.Marshal(execution.Response)
 			if marshalErr != nil {

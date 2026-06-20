@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -245,6 +246,7 @@ func TestClientGenerateImagePollsAsyncResultUntilSucceeded(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/v1/api/generate":
+			w.Header().Set("X-Request-Id", "req-nb-submit")
 			_ = json.NewEncoder(w).Encode(submitResponse{
 				ID:     "job-async",
 				Status: "running",
@@ -298,6 +300,15 @@ func TestClientGenerateImagePollsAsyncResultUntilSucceeded(t *testing.T) {
 	}
 	if len(resp.Data) != 1 || resp.Data[0].URL != serverURL+"/generated.png" {
 		t.Fatalf("response = %+v", resp)
+	}
+	if resp.RequestID != "req-nb-submit" {
+		t.Fatalf("request id = %q, want req-nb-submit", resp.RequestID)
+	}
+	if resp.UpstreamJobID != "job-async" {
+		t.Fatalf("upstream job id = %q, want job-async", resp.UpstreamJobID)
+	}
+	if !strings.Contains(resp.RawResponse, "\"status\":\"succeeded\"") {
+		t.Fatalf("raw response = %q, want final polled payload", resp.RawResponse)
 	}
 }
 

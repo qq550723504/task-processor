@@ -24,8 +24,10 @@ func TestClientGenerateImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 		if req.Model != "nanobanana" {
 			t.Fatalf("model = %q", req.Model)
 		}
+		w.Header().Set("X-Request-Id", "req-openai-1")
 		_ = json.NewEncoder(w).Encode(ImageResponse{
-			Data: []ImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("pngdata"))}},
+			Usage: Usage{TotalTokens: 321},
+			Data:  []ImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("pngdata"))}},
 		})
 	}))
 	defer server.Close()
@@ -45,6 +47,15 @@ func TestClientGenerateImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	}
 	if len(resp.Data) != 1 || resp.Data[0].B64JSON == "" {
 		t.Fatalf("response = %+v", resp)
+	}
+	if resp.RequestID != "req-openai-1" {
+		t.Fatalf("request id = %q, want req-openai-1", resp.RequestID)
+	}
+	if resp.Usage.TotalTokens != 321 {
+		t.Fatalf("usage = %+v, want total_tokens=321", resp.Usage)
+	}
+	if !strings.Contains(resp.RawResponse, "\"b64_json\"") {
+		t.Fatalf("raw response = %q, want encoded image payload", resp.RawResponse)
 	}
 }
 

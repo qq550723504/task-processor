@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+func extractImageRequestID(header http.Header) string {
+	return strings.TrimSpace(header.Get("X-Request-Id"))
+}
+
 func (c *Client) GenerateImage(ctx context.Context, req *ImageGenerateRequest) (*ImageResponse, error) {
 	if c.pool == nil {
 		return nil, fmt.Errorf("请求池未初始化")
@@ -159,10 +163,16 @@ func (bc *BaseClient) doJSONImageRequest(ctx context.Context, method string, api
 				data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 				return fmt.Errorf("image api returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
 			}
-			var parsed ImageResponse
-			if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
 				return err
 			}
+			var parsed ImageResponse
+			if err := json.Unmarshal(bodyBytes, &parsed); err != nil {
+				return err
+			}
+			parsed.RequestID = extractImageRequestID(resp.Header)
+			parsed.RawResponse = strings.TrimSpace(string(bodyBytes))
 			lastErr = nil
 			payloadResp := parsed
 			lastResp = &payloadResp
@@ -211,10 +221,16 @@ func (bc *BaseClient) doMultipartImageRequest(ctx context.Context, apiPath strin
 				data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 				return fmt.Errorf("image api returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
 			}
-			var parsed ImageResponse
-			if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
 				return err
 			}
+			var parsed ImageResponse
+			if err := json.Unmarshal(bodyBytes, &parsed); err != nil {
+				return err
+			}
+			parsed.RequestID = extractImageRequestID(resp.Header)
+			parsed.RawResponse = strings.TrimSpace(string(bodyBytes))
 			lastErr = nil
 			payloadResp := parsed
 			lastResp = &payloadResp

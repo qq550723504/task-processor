@@ -70,6 +70,7 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 	}
 	images := make([]StudioGeneratedImage, count)
 	errs := make([]error, count)
+	generatedResponses := make([]*AIImageResponse, count)
 	generateOne := func(idx int) {
 		promptText := buildStudioDesignPromptWithTheme(req, themes[idx])
 		generated, err := s.generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
@@ -77,6 +78,7 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 			errs[idx] = fmt.Errorf("generate studio design %d: %w", idx+1, err)
 			return
 		}
+		generatedResponses[idx] = generated
 		imageURL, revisedPrompt, err := s.persistGeneratedStudioImage(ctx, generated, fmt.Sprintf("studio-design-%d.png", idx+1))
 		if err != nil {
 			errs[idx] = fmt.Errorf("persist studio design %d: %w", idx+1, err)
@@ -91,6 +93,10 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 			ImageModel:            model,
 			TransparentBackground: response.TransparentBackground,
 			VariationIntensity:    req.VariationIntensity,
+			RequestID:             strings.TrimSpace(generated.RequestID),
+			UpstreamJobID:         strings.TrimSpace(generated.UpstreamJobID),
+			RawResponse:           strings.TrimSpace(generated.RawResponse),
+			Usage:                 generated.Usage,
 		}
 	}
 	var wg sync.WaitGroup
@@ -109,9 +115,24 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 			generateOne(idx)
 		}
 	}
-	for _, image := range images {
+	for idx, image := range images {
 		if strings.TrimSpace(image.ImageURL) != "" {
 			response.Images = append(response.Images, image)
+			metadata := generatedResponses[idx]
+			if metadata != nil {
+				if response.RequestID == "" {
+					response.RequestID = strings.TrimSpace(metadata.RequestID)
+				}
+				if response.UpstreamJobID == "" {
+					response.UpstreamJobID = strings.TrimSpace(metadata.UpstreamJobID)
+				}
+				if response.RawResponse == "" {
+					response.RawResponse = strings.TrimSpace(metadata.RawResponse)
+				}
+				response.Usage.PromptTokens += metadata.Usage.PromptTokens
+				response.Usage.CompletionTokens += metadata.Usage.CompletionTokens
+				response.Usage.TotalTokens += metadata.Usage.TotalTokens
+			}
 		}
 	}
 	if diversifyErr != nil {

@@ -134,6 +134,74 @@ func TestMaterializeAttemptDoesNotBorrowImagesAcrossItems(t *testing.T) {
 	}
 }
 
+func TestRunPendingStudioBatchItemsPersistsAttemptDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	engine := newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+		repo: repo,
+		execute: func(context.Context, StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+			return &StudioBatchGenerateExecutionOutput{
+				Response: &StudioDesignResponse{
+					RequestID:     "req-batch-1",
+					UpstreamJobID: "job-batch-1",
+					Usage:         StudioAIUsage{TotalTokens: 456},
+					RawResponse:   `{"id":"raw-image-response-1"}`,
+					Images: []StudioGeneratedImage{{
+						ID:       "design-1",
+						ImageURL: "https://cdn.example.com/design-1.png",
+					}},
+				},
+				ItemID:    "item-1",
+				BatchID:   "batch-1",
+				AttemptID: "attempt-1",
+			}, nil
+		},
+		currentTime: func() time.Time { return time.Date(2026, 6, 1, 9, 30, 0, 0, time.UTC) },
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchGenerationGraph(t, repo, ctx, studioBatchGenerationSeed{
+		batch: StudioBatchRecord{
+			ID:               "batch-1",
+			Status:           StudioBatchStatusGenerating,
+			Prompt:           "retro summer fruit",
+			GroupedImageMode: "per_product",
+		},
+		items: []StudioBatchItemRecord{{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "7001:9001:101:layer-1:101",
+			TargetGroupLabel: "Canvas Tote · Red",
+			GroupMode:        "per_product",
+			Status:           StudioBatchItemStatusPending,
+			SelectionCount:   1,
+		}},
+	})
+
+	if err := engine.RunPendingStudioBatchItems(ctx, "batch-1"); err != nil {
+		t.Fatalf("RunPendingStudioBatchItems() error = %v", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	attempts := detail.AttemptsByItem["item-1"]
+	if len(attempts) != 1 {
+		t.Fatalf("attempt count = %d, want 1", len(attempts))
+	}
+	if attempts[0].UpstreamJobID != "job-batch-1" {
+		t.Fatalf("upstream job id = %q, want job-batch-1", attempts[0].UpstreamJobID)
+	}
+	if !strings.Contains(attempts[0].ResultPayload, "\"request_id\":\"req-batch-1\"") {
+		t.Fatalf("result payload = %q, want request id", attempts[0].ResultPayload)
+	}
+	if !strings.Contains(attempts[0].ResultPayload, "\"raw_response\":\"{\\\"id\\\":\\\"raw-image-response-1\\\"}\"") {
+		t.Fatalf("result payload = %q, want raw response", attempts[0].ResultPayload)
+	}
+}
+
 func TestRecoverAwaitingMaterializationReusesAttemptResult(t *testing.T) {
 	t.Parallel()
 

@@ -131,8 +131,12 @@ type ImageData struct {
 }
 
 type ImageResponse struct {
-	Created int64       `json:"created"`
-	Data    []ImageData `json:"data"`
+	Created       int64       `json:"created"`
+	Data          []ImageData `json:"data"`
+	Usage         Usage       `json:"usage"`
+	RequestID     string      `json:"request_id,omitempty"`
+	UpstreamJobID string      `json:"upstream_job_id,omitempty"`
+	RawResponse   string      `json:"raw_response,omitempty"`
 }
 
 type ImageGenerator interface {

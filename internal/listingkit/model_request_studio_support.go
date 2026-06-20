@@ -48,15 +48,19 @@ type StudioProductImageResponse struct {
 }
 
 type StudioGeneratedImage struct {
-	ID                    string `json:"id"`
-	ImageURL              string `json:"image_url"`
-	Prompt                string `json:"prompt,omitempty"`
-	RevisedPrompt         string `json:"revised_prompt,omitempty"`
-	ImageModel            string `json:"image_model,omitempty"`
-	TransparentBackground bool   `json:"transparent_background,omitempty"`
-	VariationIntensity    string `json:"variation_intensity,omitempty"`
-	Role                  string `json:"role,omitempty"`
-	RoleLabel             string `json:"role_label,omitempty"`
+	ID                    string  `json:"id"`
+	ImageURL              string  `json:"image_url"`
+	Prompt                string  `json:"prompt,omitempty"`
+	RevisedPrompt         string  `json:"revised_prompt,omitempty"`
+	ImageModel            string  `json:"image_model,omitempty"`
+	TransparentBackground bool    `json:"transparent_background,omitempty"`
+	VariationIntensity    string  `json:"variation_intensity,omitempty"`
+	Role                  string  `json:"role,omitempty"`
+	RoleLabel             string  `json:"role_label,omitempty"`
+	RequestID             string  `json:"request_id,omitempty"`
+	UpstreamJobID         string  `json:"upstream_job_id,omitempty"`
+	RawResponse           string  `json:"raw_response,omitempty"`
+	Usage                 AIUsage `json:"usage,omitempty"`
 }
 
 type StudioDesignRequest struct {
@@ -76,6 +80,10 @@ type StudioDesignResponse struct {
 	PrintableHeight       int                    `json:"printable_height,omitempty"`
 	ImageModel            string                 `json:"image_model,omitempty"`
 	TransparentBackground bool                   `json:"transparent_background"`
+	RequestID             string                 `json:"request_id,omitempty"`
+	UpstreamJobID         string                 `json:"upstream_job_id,omitempty"`
+	RawResponse           string                 `json:"raw_response,omitempty"`
+	Usage                 AIUsage                `json:"usage,omitempty"`
 	Images                []StudioGeneratedImage `json:"images,omitempty"`
 	Warnings              []string               `json:"warnings,omitempty"`
 }

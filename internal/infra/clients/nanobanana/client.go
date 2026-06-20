@@ -46,11 +46,13 @@ type submitResponse struct {
 }
 
 type resultPayload struct {
-	ID       string       `json:"id"`
-	Results  []resultItem `json:"results"`
-	Progress int          `json:"progress"`
-	Status   string       `json:"status"`
-	Error    string       `json:"error"`
+	ID          string       `json:"id"`
+	Results     []resultItem `json:"results"`
+	Progress    int          `json:"progress"`
+	Status      string       `json:"status"`
+	Error       string       `json:"error"`
+	RequestID   string       `json:"-"`
+	RawResponse string       `json:"-"`
 }
 
 type resultItem struct {
@@ -208,6 +210,7 @@ func (c *Client) submitGenerationRequest(ctx context.Context, submitURL string, 
 	if err != nil {
 		return nil, fmt.Errorf("read image generation response: %w", err)
 	}
+	requestID := strings.TrimSpace(resp.Header.Get("X-Request-Id"))
 	var providerStatus submitResponse
 	if err := json.Unmarshal(body, &providerStatus); err == nil {
 		status := strings.ToLower(strings.TrimSpace(providerStatus.Status))
@@ -219,13 +222,22 @@ func (c *Client) submitGenerationRequest(ctx context.Context, submitURL string, 
 			}
 		case "succeeded":
 			return &resultPayload{
-				ID:      providerStatus.ID,
-				Status:  providerStatus.Status,
-				Results: providerStatus.Results,
+				ID:          providerStatus.ID,
+				Status:      providerStatus.Status,
+				Results:     providerStatus.Results,
+				RequestID:   requestID,
+				RawResponse: strings.TrimSpace(string(body)),
 			}, nil
 		}
 		if isRunningStatus(status) && strings.TrimSpace(providerStatus.ID) != "" {
-			return c.pollGenerationResult(ctx, resultURL, providerStatus.ID)
+			result, err := c.pollGenerationResult(ctx, resultURL, providerStatus.ID)
+			if err != nil {
+				return nil, err
+			}
+			if strings.TrimSpace(result.RequestID) == "" {
+				result.RequestID = requestID
+			}
+			return result, nil
 		}
 	}
 	var parsed gptImageGenerationsResponse
@@ -241,12 +253,16 @@ func (c *Client) submitGenerationRequest(ctx context.Context, submitURL string, 
 			return nil, fmt.Errorf("image generation response contained no url")
 		}
 		return &resultPayload{
-			Status:  "succeeded",
-			Results: results,
+			Status:      "succeeded",
+			Results:     results,
+			RequestID:   requestID,
+			RawResponse: strings.TrimSpace(string(body)),
 		}, nil
 	}
 	var parsedResult resultPayload
 	if err := json.Unmarshal(body, &parsedResult); err == nil {
+		parsedResult.RequestID = requestID
+		parsedResult.RawResponse = strings.TrimSpace(string(body))
 		status := strings.ToLower(strings.TrimSpace(parsedResult.Status))
 		switch status {
 		case "failed", "violation":
@@ -321,6 +337,11 @@ func (c *Client) fetchGenerationResult(ctx context.Context, resultURL string, jo
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return nil, fmt.Errorf("decode image generation result: %w", err)
 	}
+	payload.RequestID = strings.TrimSpace(resp.Header.Get("X-Request-Id"))
+	encoded, err := json.Marshal(payload)
+	if err == nil {
+		payload.RawResponse = strings.TrimSpace(string(encoded))
+	}
 	return &payload, nil
 }
 
@@ -362,7 +383,12 @@ func (c *Client) downloadGeneratedImages(ctx context.Context, payload *resultPay
 	if len(data) == 0 {
 		return nil, fmt.Errorf("gpt image response contained no downloadable url")
 	}
-	return &openaiclient.ImageResponse{Data: data}, nil
+	return &openaiclient.ImageResponse{
+		Data:          data,
+		RequestID:     strings.TrimSpace(payload.RequestID),
+		UpstreamJobID: strings.TrimSpace(payload.ID),
+		RawResponse:   strings.TrimSpace(payload.RawResponse),
+	}, nil
 }
 
 func buildSubmitURL(configuredURL string, model string) (string, error) {
