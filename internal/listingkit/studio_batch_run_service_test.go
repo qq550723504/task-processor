@@ -53,6 +53,54 @@ func TestStudioBatchRunServiceCreateReturnsOrderedItemsFromSavedBatchIDs(t *test
 	}
 }
 
+func TestStudioBatchRunServiceCreateUsesRequestedMode(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	sessionRepo := newStudioBatchRunTestSessionRepo()
+	svc := newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{
+		repo:              repo,
+		studioSessionRepo: sessionRepo,
+		startRun: func(context.Context, string) error {
+			return nil
+		},
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchRunSavedBatch(t, sessionRepo, ctx, "batch-1")
+
+	run, _, err := svc.CreateStudioBatchRun(ctx, &CreateStudioBatchRunRequest{
+		BatchIDs: []string{"batch-1"},
+		Mode:     string(StudioBatchRunModeCreateTasks),
+	})
+	if err != nil {
+		t.Fatalf("CreateStudioBatchRun() error = %v", err)
+	}
+	if run.Mode != StudioBatchRunModeCreateTasks {
+		t.Fatalf("run.Mode = %q, want %q", run.Mode, StudioBatchRunModeCreateTasks)
+	}
+}
+
+func TestStudioBatchRunServiceCreateRejectsUnsupportedMode(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	sessionRepo := newStudioBatchRunTestSessionRepo()
+	svc := newTaskStudioBatchRunService(taskStudioBatchRunServiceConfig{
+		repo:              repo,
+		studioSessionRepo: sessionRepo,
+		startRun: func(context.Context, string) error {
+			return nil
+		},
+	})
+	ctx := WithTenantID(context.Background(), "tenant-a")
+
+	seedStudioBatchRunSavedBatch(t, sessionRepo, ctx, "batch-1")
+
+	if _, _, err := svc.CreateStudioBatchRun(ctx, &CreateStudioBatchRunRequest{
+		BatchIDs: []string{"batch-1"},
+		Mode:     "invalid-mode",
+	}); err == nil {
+		t.Fatal("CreateStudioBatchRun() error = nil, want invalid mode error")
+	}
+}
+
 func TestStudioBatchRunServiceCreateRejectsDuplicateBatchIDs(t *testing.T) {
 	repo := NewMemStudioBatchRunRepository()
 	sessionRepo := newStudioBatchRunTestSessionRepo()

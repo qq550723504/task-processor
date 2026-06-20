@@ -2019,7 +2019,7 @@ export function SheinStudioWorkbench({
     (input: { batchIds: string[]; mode: SheinStudioBatchQueueMode }) => {
       if (input.mode === "generate") {
         setBatchRunError("");
-        void startSheinStudioBatchRun(input.batchIds)
+        void startSheinStudioBatchRun(input.batchIds, input.mode)
           .then((response) => {
             setQueueResumeState(null);
             setActiveBatchRunId(response.run.id);
@@ -2029,9 +2029,17 @@ export function SheinStudioWorkbench({
           });
         return;
       }
-      void startBatchQueue(input);
+      setBatchRunError("");
+      void startSheinStudioBatchRun(input.batchIds, input.mode)
+        .then((response) => {
+          setQueueResumeState(null);
+          setActiveBatchRunId(response.run.id);
+        })
+        .catch((error) => {
+          setBatchRunError(getBatchRunStartErrorMessage(error));
+        });
     },
-    [startBatchQueue],
+    [],
   );
 
   const handleExitBatchQueue = useCallback(() => {

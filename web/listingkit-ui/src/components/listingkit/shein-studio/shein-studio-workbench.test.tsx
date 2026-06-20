@@ -2892,7 +2892,7 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1", "batch-2"]),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1", "batch-2"], "generate"),
     );
     expect(await screen.findByText("batch run progress: run-1")).toBeInTheDocument();
     expect(screen.queryByText("最近批次")).not.toBeInTheDocument();
@@ -2939,9 +2939,7 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.queryByText(/batch run progress:/)).not.toBeInTheDocument();
   });
 
-  it("starts create-task queue mode at the review step for batches with designs", async () => {
-    const scrollIntoView = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
+  it("starts a server-side batch run from homepage selection for create-task mode", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
@@ -2993,24 +2991,24 @@ describe("SheinStudioWorkbench", () => {
         },
       ),
     );
+    startSheinStudioBatchRun.mockResolvedValue({
+      run: {
+        id: "run-tasks-1",
+      },
+      items: [],
+    });
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    expect(getSheinStudioHydratedBatch).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(
       await screen.findByRole("button", { name: "批量去创建任务 1 个" }),
     );
 
     await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "create_tasks"),
     );
-    expect(getSheinStudioHydratedBatch).toHaveBeenCalledWith("batch-1");
-    expect(screen.getByText("第 1 / 1 个批次")).toBeInTheDocument();
-    expect(
-      screen.getByText("已定位到审核区，可直接创建任务或调整款式。"),
-    ).toBeInTheDocument();
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(await screen.findByText("batch run progress: run-tasks-1")).toBeInTheDocument();
   });
 
   it("ignores stale recent-batch hydration when a newer batch selection wins", async () => {

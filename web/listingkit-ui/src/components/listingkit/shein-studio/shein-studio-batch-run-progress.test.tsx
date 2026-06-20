@@ -161,4 +161,37 @@ describe("SheinStudioBatchRunProgress", () => {
       expect(mockedGetSheinStudioBatchRun.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
   });
+
+  it("uses task-creation wording for create-task runs", async () => {
+    mockedGetSheinStudioBatchRun.mockResolvedValueOnce({
+      id: "run-3",
+      mode: "create_tasks",
+      failurePolicy: "continue_on_error",
+      status: "failed",
+      currentIndex: 0,
+      totalBatches: 1,
+      completedBatches: 1,
+      succeededBatches: 0,
+      failedBatches: 1,
+      cancelRequested: false,
+      createdAt: "2026-05-31T12:00:00Z",
+      updatedAt: "2026-05-31T12:00:01Z",
+    });
+    mockedListSheinStudioBatchRunItems.mockResolvedValueOnce([
+      {
+        id: "run-3:1",
+        runId: "run-3",
+        batchId: "batch-3",
+        position: 1,
+        status: "failed",
+        createdAt: "2026-05-31T12:00:00Z",
+        updatedAt: "2026-05-31T12:00:01Z",
+      },
+    ]);
+
+    render(<SheinStudioBatchRunProgress onBack={vi.fn()} runId="run-3" />);
+
+    expect(await screen.findByText("批量创建任务已结束")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "恢复本轮任务创建" })).toBeInTheDocument();
+  });
 });

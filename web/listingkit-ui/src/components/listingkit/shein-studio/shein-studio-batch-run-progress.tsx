@@ -66,19 +66,25 @@ function formatBatchRunStatus(
 }
 
 function progressHeading(
+  mode?: SheinStudioBatchRun["mode"],
   status?: SheinStudioBatchRunStatus,
   cancelRequested?: boolean,
 ) {
+  const actionLabel = mode === "create_tasks" ? "批量创建任务" : "批量生成";
   if (cancelRequested && !isTerminalBatchRunStatus(status)) {
-    return "正在取消批量生成";
+    return `正在取消${actionLabel}`;
   }
   if (status === "succeeded" || status === "partially_succeeded") {
-    return "批量生成结果";
+    return `${actionLabel}结果`;
   }
   if (status === "failed" || status === "cancelled") {
-    return "批量生成已结束";
+    return `${actionLabel}已结束`;
   }
-  return "运行中批量生成";
+  return `运行中${actionLabel}`;
+}
+
+function runActionLabel(mode?: SheinStudioBatchRun["mode"]) {
+  return mode === "create_tasks" ? "任务创建" : "生成";
 }
 
 function getBatchRunFailureMessage(error: unknown) {
@@ -210,11 +216,11 @@ export function SheinStudioBatchRunProgress({
     <section className="space-y-4 rounded-2xl border border-zinc-200 bg-white px-5 py-5 shadow-sm">
       <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            STUDIO BATCH RUN
-          </p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              STUDIO BATCH RUN
+            </p>
           <h2 className="text-xl font-semibold tracking-tight text-zinc-950">
-            {progressHeading(run?.status, run?.cancelRequested)}
+            {progressHeading(run?.mode, run?.status, run?.cancelRequested)}
           </h2>
           <p className="break-all text-sm text-zinc-600">
             当前运行 ID：{runId}
@@ -228,7 +234,7 @@ export function SheinStudioBatchRunProgress({
               type="button"
               variant="secondary"
             >
-              {isCancelling ? "正在取消..." : "取消本轮生成"}
+              {isCancelling ? "正在取消..." : `取消本轮${runActionLabel(run?.mode)}`}
             </Button>
           ) : null}
           {canRecoverRun ? (
@@ -239,7 +245,7 @@ export function SheinStudioBatchRunProgress({
               type="button"
               variant="secondary"
             >
-              {isRecovering ? "正在恢复..." : "恢复本轮生成"}
+              {isRecovering ? "正在恢复..." : `恢复本轮${runActionLabel(run?.mode)}`}
             </Button>
           ) : null}
           <Button className="w-full sm:w-auto" onClick={onBack} type="button" variant="ghost">
@@ -291,7 +297,7 @@ export function SheinStudioBatchRunProgress({
 
           {isCancellingRun ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              已提交取消请求，当前批次收尾后会结束这轮批量生成。
+              已提交取消请求，当前批次收尾后会结束这轮{runActionLabel(run?.mode)}。
             </div>
           ) : null}
 

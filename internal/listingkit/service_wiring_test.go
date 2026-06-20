@@ -583,7 +583,9 @@ func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 		"runner:            wiring.newServiceRunner(startRun),",
 		"func buildStudioBatchRunCoordinatorConfigWithCollaborators(",
 		"func buildTaskStudioBatchRunExecutorConfigWithWiring(",
-		"completionRunner: wiring.newCompletionRunner(nil),",
+		"executeGenerateOne: s.executeStudioBatchRunItem,",
+		"executeCreateTasks: s.executeStudioBatchRunTaskCreation,",
+		"completionRunner:   wiring.newCompletionRunner(nil),",
 	} {
 		if !strings.Contains(batchRunContent, needle) {
 			t.Fatalf("service_studio_batch_run_wiring_support.go should contain %q", needle)

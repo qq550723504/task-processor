@@ -19,7 +19,7 @@ func TestStudioBatchRunExecutorContinuesAfterOneItemFailure(t *testing.T) {
 
 	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
 		repo: repo,
-		executeOne: func(ctx context.Context, batchID string) error {
+		executeGenerateOne: func(ctx context.Context, batchID string) error {
 			if batchID == "batch-1" {
 				return errors.New("upstream failed")
 			}
@@ -66,6 +66,43 @@ func TestStudioBatchRunExecutorContinuesAfterOneItemFailure(t *testing.T) {
 	}
 }
 
+func TestStudioBatchRunExecutorUsesCreateTaskExecutorForCreateTaskRuns(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	run, _ := mustCreateStudioBatchRunForTest(t, repo, ctx, "run-1", []string{"batch-1"})
+	run.Mode = StudioBatchRunModeCreateTasks
+	if err := repo.UpdateStudioBatchRun(ctx, run); err != nil {
+		t.Fatalf("UpdateStudioBatchRun() error = %v", err)
+	}
+
+	generateCalls := 0
+	createTaskCalls := 0
+	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
+		repo: repo,
+		executeGenerateOne: func(context.Context, string) error {
+			generateCalls++
+			return nil
+		},
+		executeCreateTasks: func(_ context.Context, batchID string) error {
+			createTaskCalls++
+			if batchID != "batch-1" {
+				t.Fatalf("batchID = %q, want batch-1", batchID)
+			}
+			return nil
+		},
+	})
+
+	if err := executor.Run(ctx, "run-1"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if generateCalls != 0 {
+		t.Fatalf("generateCalls = %d, want 0", generateCalls)
+	}
+	if createTaskCalls != 1 {
+		t.Fatalf("createTaskCalls = %d, want 1", createTaskCalls)
+	}
+}
+
 func TestStudioBatchRunExecutorStopsStartingNewItemsAfterCancelRequested(t *testing.T) {
 	repo := NewMemStudioBatchRunRepository()
 	ctx := WithTenantID(context.Background(), "tenant-a")
@@ -74,7 +111,7 @@ func TestStudioBatchRunExecutorStopsStartingNewItemsAfterCancelRequested(t *test
 
 	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
 		repo: repo,
-		executeOne: func(ctx context.Context, batchID string) error {
+		executeGenerateOne: func(ctx context.Context, batchID string) error {
 			t.Fatalf("executeOne should not start when cancellation is already requested")
 			return nil
 		},
@@ -125,7 +162,7 @@ func TestStudioBatchRunExecutorCancelsRunningAndPendingItemsWhenCancelRequestedB
 
 	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
 		repo: repo,
-		executeOne: func(ctx context.Context, batchID string) error {
+		executeGenerateOne: func(ctx context.Context, batchID string) error {
 			t.Fatalf("executeOne should not run when cancellation is already requested")
 			return nil
 		},
@@ -393,7 +430,7 @@ func TestStudioBatchRunExecutorCancelsStillRunningItemWhenCancelRequestedDuringP
 	now := time.Date(2026, 6, 20, 13, 30, 0, 0, time.UTC)
 	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
 		repo: repo,
-		executeOne: func(context.Context, string) error {
+		executeGenerateOne: func(context.Context, string) error {
 			return &studioBatchRunItemStillRunningError{AsyncJobID: "job-run-1"}
 		},
 		now: func() time.Time { return now },
@@ -461,7 +498,7 @@ func TestStudioBatchRunExecutorPreservesExistingAsyncJobIDWhenStillRunningSignal
 
 	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
 		repo: repo,
-		executeOne: func() func(context.Context, string) error {
+		executeGenerateOne: func() func(context.Context, string) error {
 			calls := 0
 			return func(context.Context, string) error {
 				calls++
@@ -499,7 +536,7 @@ func TestStudioBatchRunExecutorContinuesPollingStillRunningItemUntilSuccess(t *t
 	var calls int
 	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
 		repo: repo,
-		executeOne: func(context.Context, string) error {
+		executeGenerateOne: func(context.Context, string) error {
 			calls++
 			if calls == 1 {
 				return &studioBatchRunItemStillRunningError{AsyncJobID: "job-poll-1"}

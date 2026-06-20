@@ -100,7 +100,7 @@ describe("shein studio batch run API", () => {
     vi.restoreAllMocks();
   });
 
-  it("starts a studio batch run with ordered batch ids", async () => {
+  it("starts a studio batch run with ordered batch ids and explicit mode", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -138,7 +138,7 @@ describe("shein studio batch run API", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(startSheinStudioBatchRun(["batch-1", "batch-2"])).resolves.toMatchObject(
+    await expect(startSheinStudioBatchRun(["batch-1", "batch-2"], "create_tasks")).resolves.toMatchObject(
       {
         run: {
           id: "run-1",
@@ -152,7 +152,7 @@ describe("shein studio batch run API", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/listing-kits/studio/batch-runs");
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       method: "POST",
-      body: JSON.stringify({ batch_ids: ["batch-1", "batch-2"] }),
+      body: JSON.stringify({ batch_ids: ["batch-1", "batch-2"], mode: "create_tasks" }),
     });
   });
 

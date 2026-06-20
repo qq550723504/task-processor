@@ -11,6 +11,7 @@ var ErrBatchSessionNotFound = errors.New("studio batch session not found")
 
 type CreateBatchRunRequest struct {
 	BatchIDs []string
+	Mode     string
 }
 
 type BatchRunRecord struct {
@@ -89,6 +90,14 @@ func (s *BatchRunService) CreateBatchRun(ctx context.Context, req *CreateBatchRu
 		return nil, nil, fmt.Errorf("batch_ids is required")
 	}
 
+	mode := strings.TrimSpace(req.Mode)
+	if mode == "" {
+		mode = "generate"
+	}
+	if mode != "generate" && mode != "create_tasks" {
+		return nil, nil, fmt.Errorf("mode must be generate or create_tasks")
+	}
+
 	batchIDs := make([]string, 0, len(req.BatchIDs))
 	seenBatchIDs := make(map[string]struct{}, len(req.BatchIDs))
 	for _, batchID := range req.BatchIDs {
@@ -114,7 +123,7 @@ func (s *BatchRunService) CreateBatchRun(ctx context.Context, req *CreateBatchRu
 	run := &BatchRunRecord{
 		ID:            runID,
 		UserID:        requestUserID(ctx, s.requestUserID),
-		Mode:          "generate",
+		Mode:          mode,
 		FailurePolicy: "continue_on_error",
 		Status:        "pending",
 		TotalBatches:  len(batchIDs),

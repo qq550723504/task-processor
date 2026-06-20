@@ -88,7 +88,7 @@ func TestCreateStudioBatchRunReturnsAcceptedRunPayload(t *testing.T) {
 	router := gin.New()
 	router.POST("/api/v1/listing-kits/studio/batch-runs", h.CreateStudioBatchRun)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batch-runs", strings.NewReader(`{"batch_ids":["batch-1","batch-2"]}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batch-runs", strings.NewReader(`{"batch_ids":["batch-1","batch-2"],"mode":"create_tasks"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Tenant-ID", "tenant-red")
 	req.Header.Set("X-User-ID", "user-red")
@@ -100,6 +100,9 @@ func TestCreateStudioBatchRunReturnsAcceptedRunPayload(t *testing.T) {
 	}
 	if svc.createReq == nil || len(svc.createReq.BatchIDs) != 2 || svc.createReq.BatchIDs[0] != "batch-1" || svc.createReq.BatchIDs[1] != "batch-2" {
 		t.Fatalf("create req = %+v, want ordered batch ids", svc.createReq)
+	}
+	if svc.createReq.Mode != "create_tasks" {
+		t.Fatalf("create req mode = %q, want create_tasks", svc.createReq.Mode)
 	}
 	if got := listingkit.TenantIDFromContext(svc.createCtx); got != "tenant-red" {
 		t.Fatalf("tenant id = %q, want tenant-red", got)
@@ -290,6 +293,7 @@ func TestCreateStudioBatchRunClassifiesValidationNotFoundAndInternalErrors(t *te
 		{name: "duplicate", serviceErr: errors.New("duplicate batch_id: batch-1"), wantStatus: http.StatusBadRequest},
 		{name: "missing batch", serviceErr: listingkit.ErrStudioSessionNotFound, wantStatus: http.StatusNotFound},
 		{name: "repo not found", serviceErr: gorm.ErrRecordNotFound, wantStatus: http.StatusNotFound},
+		{name: "invalid mode", serviceErr: errors.New("mode must be generate or create_tasks"), wantStatus: http.StatusBadRequest},
 		{name: "internal", serviceErr: errors.New("database unavailable"), wantStatus: http.StatusInternalServerError},
 	}
 

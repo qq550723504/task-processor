@@ -174,10 +174,11 @@ export function parseSheinStudioBatchRunItemsResponse(
 
 export async function startSheinStudioBatchRun(
   batchIds: string[],
+  mode: SheinStudioBatchRunMode = "generate",
 ): Promise<SheinStudioBatchRunStartResponse> {
   const payload = await apiRequest<unknown>("/studio/batch-runs", {
     method: "POST",
-    body: { batch_ids: batchIds },
+    body: { batch_ids: batchIds, mode },
   });
   return parseSheinStudioBatchRunStartResponse(payload);
 }

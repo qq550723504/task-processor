@@ -124,5 +124,7 @@ func isStudioBatchRunValidationError(err error) bool {
 	}
 
 	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "batch_ids is required") || strings.Contains(message, "duplicate batch_id")
+	return strings.Contains(message, "batch_ids is required") ||
+		strings.Contains(message, "duplicate batch_id") ||
+		strings.Contains(message, "mode must be generate or create_tasks")
 }

@@ -223,7 +223,7 @@ export function SdsHomepageEntry() {
 
     setBatchRunError("");
     try {
-      const response = await startSheinStudioBatchRun(input.batchIds);
+      const response = await startSheinStudioBatchRun(input.batchIds, input.mode);
       setActiveBatchRunId(response.run.id);
     } catch (error) {
       setBatchRunError(getBatchRunStartErrorMessage(error));

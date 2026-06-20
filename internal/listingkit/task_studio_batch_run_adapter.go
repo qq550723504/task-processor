@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	studiodomain "task-processor/internal/listing/studio"
@@ -124,7 +125,10 @@ func adaptStudioBatchRunRequest(req *CreateStudioBatchRunRequest) *studiodomain.
 	if req == nil {
 		return nil
 	}
-	return &studiodomain.CreateBatchRunRequest{BatchIDs: append([]string(nil), req.BatchIDs...)}
+	return &studiodomain.CreateBatchRunRequest{
+		BatchIDs: append([]string(nil), req.BatchIDs...),
+		Mode:     strings.TrimSpace(req.Mode),
+	}
 }
 
 func adaptStudioBatchRunRecord(run *studiodomain.BatchRunRecord) *StudioBatchRunRecord {

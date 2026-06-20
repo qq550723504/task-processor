@@ -6,6 +6,7 @@ import (
 
 type CreateStudioBatchRunRequest struct {
 	BatchIDs []string `json:"batch_ids"`
+	Mode     string   `json:"mode,omitempty"`
 }
 
 type StudioBatchRunService interface {

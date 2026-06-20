@@ -119,7 +119,7 @@ describe("SdsHomepageEntry", () => {
     fireEvent.click(screen.getByRole("button", { name: "批量继续生成 1 个" }));
 
     await waitFor(() => {
-      expect(mockedStartSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"]);
+      expect(mockedStartSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate");
     });
     expect(await screen.findByText("运行中批量生成")).toBeInTheDocument();
     expect(screen.getByText("当前运行 ID：run-1")).toBeInTheDocument();
