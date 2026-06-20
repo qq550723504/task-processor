@@ -39,7 +39,7 @@ type taskStudioBatchCollaborators struct {
 type studioBatchGenerationWiring struct {
 	repo        StudioBatchRepository
 	execute     func(context.Context, StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error)
-	submitAsync func(context.Context, StudioBatchGenerateExecutionInput) (*AIImageAsyncSubmit, error)
+	submitAsync func(context.Context, StudioBatchGenerateExecutionInput) (*studioBatchAsyncSubmitOutput, error)
 	queryAsync  func(context.Context, StudioBatchGenerateExecutionInput, string) (*studioBatchAsyncQueryOutput, error)
 }
 
@@ -178,8 +178,26 @@ func buildStudioBatchGenerationWiring(s *service) studioBatchGenerationWiring {
 		execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
 			return ExecuteStudioDesignBatch(ctx, s, input)
 		},
-		submitAsync: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*AIImageAsyncSubmit, error) {
-			return s.SubmitStudioDesignsAsync(ctx, input.Request)
+		submitAsync: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*studioBatchAsyncSubmitOutput, error) {
+			result, err := s.SubmitStudioDesignsAsync(ctx, input.Request)
+			if err != nil {
+				return nil, err
+			}
+			if result == nil {
+				return nil, nil
+			}
+			output := &studioBatchAsyncSubmitOutput{
+				Submit:   result.Submit,
+				Response: result.Response,
+			}
+			if result.Response != nil {
+				payload, marshalErr := json.Marshal(result.Response)
+				if marshalErr != nil {
+					return nil, marshalErr
+				}
+				output.ResultPayload = string(payload)
+			}
+			return output, nil
 		},
 		queryAsync: func(ctx context.Context, input StudioBatchGenerateExecutionInput, jobID string) (*studioBatchAsyncQueryOutput, error) {
 			result, err := s.QueryStudioDesignsAsync(ctx, input.Request, jobID)

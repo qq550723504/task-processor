@@ -318,7 +318,7 @@ func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing
 	if err != nil {
 		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
 	}
-	if result == nil || result.JobID != "job-1" {
+	if result == nil || result.Submit == nil || result.Submit.JobID != "job-1" {
 		t.Fatalf("result = %+v, want async submit metadata", result)
 	}
 	if generator.asyncEditCalls != 1 {
@@ -326,6 +326,43 @@ func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing
 	}
 	if len(generator.asyncEditReqs) != 1 || len(generator.asyncEditReqs[0].ImageURLs) != 2 {
 		t.Fatalf("async edit requests = %+v, want 2 reference images", generator.asyncEditReqs)
+	}
+}
+
+func TestSubmitStudioDesignsAsyncMaterializesDirectSubmitResult(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		asyncSubmit: &AIImageAsyncSubmit{
+			JobID:     "job-1",
+			RequestID: "req-1",
+			Provider:  "nanobanana",
+			Status:    AIImageAsyncResultSucceeded,
+			Response: &AIImageResponse{
+				Data: []AIImageData{{
+					B64JSON: base64.StdEncoding.EncodeToString([]byte{0x89, 0x50, 0x4E, 0x47}),
+				}},
+			},
+		},
+	}
+	svc := &taskStudioMediaService{
+		imageGenerator:        generator,
+		uploadStoreConfigured: true,
+		uploadImages: func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error) {
+			return &UploadImagesResponse{ImageURLs: []string{"https://cdn.example.com/direct.png"}}, nil
+		},
+	}
+
+	result, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+		Prompt: "retro cherries",
+		Count:  1,
+	})
+	if err != nil {
+		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
+	}
+	if result == nil || result.Response == nil {
+		t.Fatalf("result = %+v, want materialized response", result)
+	}
+	if len(result.Response.Images) != 1 || result.Response.Images[0].ImageURL != "https://cdn.example.com/direct.png" {
+		t.Fatalf("images = %+v, want uploaded direct image", result.Response.Images)
 	}
 }
 

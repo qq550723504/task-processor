@@ -143,11 +143,13 @@ type ImageResponse struct {
 var ErrAsyncImageGenerationNotSupported = errors.New("async image generation is not supported")
 
 type ImageAsyncSubmitResponse struct {
-	JobID             string    `json:"job_id,omitempty"`
-	RequestID         string    `json:"request_id,omitempty"`
-	Provider          string    `json:"provider,omitempty"`
-	RawSubmitResponse string    `json:"raw_submit_response,omitempty"`
-	AcceptedAt        time.Time `json:"accepted_at,omitempty"`
+	JobID             string         `json:"job_id,omitempty"`
+	RequestID         string         `json:"request_id,omitempty"`
+	Provider          string         `json:"provider,omitempty"`
+	Status            string         `json:"status,omitempty"`
+	RawSubmitResponse string         `json:"raw_submit_response,omitempty"`
+	AcceptedAt        time.Time      `json:"accepted_at,omitempty"`
+	Response          *ImageResponse `json:"response,omitempty"`
 }
 
 type ImageAsyncQueryResponse struct {

@@ -10,7 +10,7 @@ func (s *service) GenerateStudioProductImages(ctx context.Context, req *StudioPr
 	return s.taskStudioMediaOrDefault().GenerateStudioProductImages(ctx, req)
 }
 
-func (s *service) SubmitStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest) (*AIImageAsyncSubmit, error) {
+func (s *service) SubmitStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest) (*studioDesignAsyncSubmitResponse, error) {
 	asyncService := s.taskStudioMediaOrDefault()
 	if asyncService == nil {
 		return nil, ErrAsyncImageGenerationNotSupported

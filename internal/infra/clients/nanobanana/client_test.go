@@ -276,6 +276,60 @@ func TestClientSubmitImageGenerationReturnsAsyncJobMetadata(t *testing.T) {
 	}
 }
 
+func TestClientSubmitImageEditReturnsDirectResultWhenGenerateAlreadySucceeded(t *testing.T) {
+	imageBytes := []byte("generated-image")
+	var serverURL string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/api/generate":
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				ID:     "job-direct-1",
+				Status: "succeeded",
+				Results: []resultItem{{
+					URL: serverURL + "/generated.png",
+				}},
+			})
+		case "/generated.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(imageBytes)
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	client := NewClient(Config{
+		APIKey:     "test-key",
+		Model:      "gpt-image-2",
+		SubmitURL:  server.URL + "/v1",
+		Timeout:    time.Second,
+		HTTPClient: server.Client(),
+	})
+
+	resp, err := client.SubmitImageEdit(context.Background(), &openaiclient.ImageEditRequest{
+		Model:     "gpt-image-2",
+		Prompt:    "edit faithfully",
+		ImageURLs: []string{"https://example.com/source.png"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitImageEdit() error = %v", err)
+	}
+	if resp == nil || resp.Status != "succeeded" {
+		t.Fatalf("response = %+v, want succeeded submit metadata", resp)
+	}
+	if resp.Response == nil || len(resp.Response.Data) != 1 {
+		t.Fatalf("response data = %+v, want one generated image", resp.Response)
+	}
+	if resp.Response.UpstreamJobID != "job-direct-1" {
+		t.Fatalf("upstream job id = %q, want job-direct-1", resp.Response.UpstreamJobID)
+	}
+	if resp.Response.Data[0].B64JSON == "" {
+		t.Fatal("expected b64_json in direct submit response")
+	}
+}
+
 func TestClientSubmitImageEditReturnsAsyncJobMetadata(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/api/generate" {

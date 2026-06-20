@@ -21,8 +21,14 @@ type studioBatchGenerator interface {
 }
 
 type studioBatchGenerateExecutor func(context.Context, StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error)
-type studioBatchGenerateAsyncSubmitter func(context.Context, StudioBatchGenerateExecutionInput) (*AIImageAsyncSubmit, error)
+type studioBatchGenerateAsyncSubmitter func(context.Context, StudioBatchGenerateExecutionInput) (*studioBatchAsyncSubmitOutput, error)
 type studioBatchGenerateAsyncQuerier func(context.Context, StudioBatchGenerateExecutionInput, string) (*studioBatchAsyncQueryOutput, error)
+
+type studioBatchAsyncSubmitOutput struct {
+	Submit        *AIImageAsyncSubmit
+	Response      *StudioDesignResponse
+	ResultPayload string
+}
 
 type studioBatchAsyncQueryOutput struct {
 	Result        *AIImageAsyncResult
@@ -155,7 +161,7 @@ func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch
 			AttemptID: attempt.ID,
 			Request:   request,
 		}
-		submitted, submitErr := g.submitAsyncItemAttempt(ctx, item, attempt, input)
+		submitted, submitErr := g.submitAsyncItemAttempt(ctx, batch, item, attempt, input)
 		if submitErr != nil {
 			finishedAt := g.now()
 			attempt.Status = StudioGenerationAttemptStatusFailed
@@ -214,17 +220,21 @@ func (g *studioBatchGenerationService) runItemAttempt(ctx context.Context, batch
 	}
 }
 
-func (g *studioBatchGenerationService) submitAsyncItemAttempt(ctx context.Context, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord, input StudioBatchGenerateExecutionInput) (bool, error) {
+func (g *studioBatchGenerationService) submitAsyncItemAttempt(ctx context.Context, batch *StudioBatchRecord, item StudioBatchItemRecord, attempt *StudioGenerationAttemptRecord, input StudioBatchGenerateExecutionInput) (bool, error) {
 	if g == nil || g.submitAsync == nil {
 		return false, nil
 	}
-	submit, err := g.submitAsync(ctx, input)
+	output, err := g.submitAsync(ctx, input)
 	if err != nil {
 		if errors.Is(err, ErrAsyncImageGenerationNotSupported) {
 			return false, nil
 		}
 		return false, err
 	}
+	if output == nil {
+		return false, nil
+	}
+	submit := output.Submit
 	if submit == nil {
 		return false, nil
 	}
@@ -245,6 +255,32 @@ func (g *studioBatchGenerationService) submitAsyncItemAttempt(ctx context.Contex
 	item.UpdatedAt = now
 	if err := g.repo.UpdateStudioBatchItem(ctx, &item); err != nil {
 		return false, err
+	}
+	if output.Response != nil {
+		if strings.TrimSpace(output.ResultPayload) == "" {
+			payload, marshalErr := json.Marshal(output.Response)
+			if marshalErr != nil {
+				return false, marshalErr
+			}
+			output.ResultPayload = string(payload)
+		}
+		if err := g.finalizeSuccessfulAttempt(ctx, attempt, &StudioBatchGenerateExecutionOutput{
+			Response:      output.Response,
+			BatchID:       batch.ID,
+			ItemID:        item.ID,
+			AttemptID:     attempt.ID,
+			ResultPayload: output.ResultPayload,
+		}); err != nil {
+			return false, err
+		}
+		claimedItem, claimed, err := g.repo.ClaimStudioBatchItem(ctx, item.ID, StudioBatchItemStatusGenerating, StudioBatchItemStatusAwaitingMaterialization, g.now())
+		if err != nil {
+			return false, err
+		}
+		if !claimed || claimedItem == nil {
+			return true, nil
+		}
+		return true, g.materializeAttempt(ctx, batch, *claimedItem, attempt, output.Response)
 	}
 	return true, nil
 }
@@ -271,7 +307,7 @@ func (g *studioBatchGenerationService) finalizeSuccessfulAttempt(ctx context.Con
 	if execution != nil {
 		attempt.ResultPayload = strings.TrimSpace(execution.ResultPayload)
 		if execution.Response != nil {
-			attempt.UpstreamJobID = strings.TrimSpace(execution.Response.UpstreamJobID)
+			attempt.UpstreamJobID = firstNonEmpty(strings.TrimSpace(execution.Response.UpstreamJobID), attempt.UpstreamJobID)
 			attempt.RequestID = firstNonEmpty(strings.TrimSpace(execution.Response.RequestID), attempt.RequestID)
 		}
 		if attempt.ResultPayload == "" && execution.Response != nil {

@@ -14,6 +14,11 @@ type studioDesignAsyncQueryResponse struct {
 	Response *StudioDesignResponse
 }
 
+type studioDesignAsyncSubmitResponse struct {
+	Submit   *AIImageAsyncSubmit
+	Response *StudioDesignResponse
+}
+
 func (s *taskStudioMediaService) generateStudioDesignSiblingThemes(ctx context.Context, req *StudioDesignRequest, count int) ([]string, error) {
 	baseTheme := strings.TrimSpace(req.Prompt)
 	if count <= 1 || baseTheme == "" {
@@ -147,6 +152,28 @@ func (s *taskStudioMediaService) materializeAsyncStudioDesignResult(ctx context.
 		})
 	}
 	return response, nil
+}
+
+func (s *taskStudioMediaService) buildStudioDesignAsyncSubmitResponse(ctx context.Context, req *StudioDesignRequest, submit *AIImageAsyncSubmit) (*studioDesignAsyncSubmitResponse, error) {
+	output := &studioDesignAsyncSubmitResponse{Submit: submit}
+	if submit == nil || submit.Status != AIImageAsyncResultSucceeded || submit.Response == nil || len(submit.Response.Data) == 0 {
+		return output, nil
+	}
+
+	response, err := s.materializeAsyncStudioDesignResult(ctx, req, &AIImageAsyncResult{
+		JobID:             strings.TrimSpace(submit.JobID),
+		RequestID:         strings.TrimSpace(submit.RequestID),
+		Provider:          strings.TrimSpace(submit.Provider),
+		Status:            submit.Status,
+		RawResultResponse: strings.TrimSpace(submit.RawSubmitResponse),
+		Usage:             submit.Response.Usage,
+		Response:          submit.Response,
+	})
+	if err != nil {
+		return nil, err
+	}
+	output.Response = response
+	return output, nil
 }
 
 func (s *taskStudioMediaService) generateOneStudioProductImage(ctx context.Context, req *StudioProductImageRequest, sourceURL string, basePrompt string) (string, error) {

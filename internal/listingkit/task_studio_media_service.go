@@ -33,7 +33,7 @@ func newTaskStudioMediaService(config taskStudioMediaServiceConfig) *taskStudioM
 	}
 }
 
-func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest) (*AIImageAsyncSubmit, error) {
+func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest) (*studioDesignAsyncSubmitResponse, error) {
 	if req == nil {
 		return nil, fmt.Errorf("invalid request: request is required")
 	}
@@ -65,7 +65,7 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
 	promptText := buildStudioDesignPromptWithTheme(req, theme)
 	if len(referenceURLs) > 0 {
-		return asyncGenerator.SubmitImageEdit(ctx, &AIImageEditRequest{
+		submit, err := asyncGenerator.SubmitImageEdit(ctx, &AIImageEditRequest{
 			Model:          model,
 			Prompt:         promptText,
 			ImageURL:       referenceURLs[0],
@@ -74,14 +74,22 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 			ResponseFormat: "b64_json",
 			N:              1,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return s.buildStudioDesignAsyncSubmitResponse(ctx, req, submit)
 	}
-	return asyncGenerator.SubmitImageGeneration(ctx, &AIImageGenerateRequest{
+	submit, err := asyncGenerator.SubmitImageGeneration(ctx, &AIImageGenerateRequest{
 		Model:          model,
 		Prompt:         promptText,
 		Size:           size,
 		ResponseFormat: "b64_json",
 		N:              1,
 	})
+	if err != nil {
+		return nil, err
+	}
+	return s.buildStudioDesignAsyncSubmitResponse(ctx, req, submit)
 }
 
 func (s *taskStudioMediaService) QueryStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest, jobID string) (*studioDesignAsyncQueryResponse, error) {

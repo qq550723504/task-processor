@@ -74,8 +74,10 @@ func (g listingKitAIImageGenerator) SubmitImageGeneration(ctx context.Context, r
 		JobID:             response.JobID,
 		RequestID:         response.RequestID,
 		Provider:          response.Provider,
+		Status:            listingkit.AIImageAsyncResultStatus(response.Status),
 		RawSubmitResponse: response.RawSubmitResponse,
 		AcceptedAt:        response.AcceptedAt,
+		Response:          adaptListingKitAIImageResponse(response.Response),
 	}, nil
 }
 
@@ -99,8 +101,10 @@ func (g listingKitAIImageGenerator) SubmitImageEdit(ctx context.Context, req *li
 		JobID:             response.JobID,
 		RequestID:         response.RequestID,
 		Provider:          response.Provider,
+		Status:            listingkit.AIImageAsyncResultStatus(response.Status),
 		RawSubmitResponse: response.RawSubmitResponse,
 		AcceptedAt:        response.AcceptedAt,
+		Response:          adaptListingKitAIImageResponse(response.Response),
 	}, nil
 }
 

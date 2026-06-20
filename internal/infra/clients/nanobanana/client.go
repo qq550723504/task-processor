@@ -133,13 +133,18 @@ func (c *Client) SubmitImageGeneration(ctx context.Context, req *openaiclient.Im
 	if err != nil {
 		return nil, err
 	}
-	return &openaiclient.ImageAsyncSubmitResponse{
+	response := &openaiclient.ImageAsyncSubmitResponse{
 		JobID:             strings.TrimSpace(payload.ID),
 		RequestID:         strings.TrimSpace(payload.RequestID),
 		Provider:          "nanobanana",
+		Status:            strings.ToLower(strings.TrimSpace(payload.Status)),
 		RawSubmitResponse: strings.TrimSpace(payload.RawResponse),
 		AcceptedAt:        time.Now().UTC(),
-	}, nil
+	}
+	if err := c.attachSubmitResponseData(ctx, payload, response); err != nil {
+		return nil, err
+	}
+	return response, nil
 }
 
 func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
@@ -179,13 +184,33 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 	if err != nil {
 		return nil, err
 	}
-	return &openaiclient.ImageAsyncSubmitResponse{
+	response := &openaiclient.ImageAsyncSubmitResponse{
 		JobID:             strings.TrimSpace(payload.ID),
 		RequestID:         strings.TrimSpace(payload.RequestID),
 		Provider:          "nanobanana",
+		Status:            strings.ToLower(strings.TrimSpace(payload.Status)),
 		RawSubmitResponse: strings.TrimSpace(payload.RawResponse),
 		AcceptedAt:        time.Now().UTC(),
-	}, nil
+	}
+	if err := c.attachSubmitResponseData(ctx, payload, response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (c *Client) attachSubmitResponseData(ctx context.Context, payload *resultPayload, response *openaiclient.ImageAsyncSubmitResponse) error {
+	if payload == nil || response == nil {
+		return nil
+	}
+	if strings.ToLower(strings.TrimSpace(payload.Status)) != "succeeded" || len(payload.Results) == 0 {
+		return nil
+	}
+	downloaded, err := c.downloadGeneratedImages(ctx, payload)
+	if err != nil {
+		return err
+	}
+	response.Response = downloaded
+	return nil
 }
 
 func (c *Client) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
