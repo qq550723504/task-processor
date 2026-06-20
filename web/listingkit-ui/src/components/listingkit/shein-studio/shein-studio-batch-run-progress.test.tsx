@@ -148,11 +148,14 @@ describe("SheinStudioBatchRunProgress", () => {
     const user = userEvent.setup();
     render(<SheinStudioBatchRunProgress onBack={vi.fn()} runId="run-2" />);
 
-    expect(await screen.findByRole("button", { name: "恢复本轮生成" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "仅重试失败批次" })).toBeInTheDocument();
     expect(screen.getByText("子任务状态：处理中 · Async Job：job-2")).toBeInTheDocument();
     expect(screen.getByText("provider timeout")).toBeInTheDocument();
+    expect(
+      screen.getByText("恢复只会重新执行失败或已取消的批次，已成功批次会保留当前结果，不会重复生成。"),
+    ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "恢复本轮生成" }));
+    await user.click(screen.getByRole("button", { name: "仅重试失败批次" }));
 
     await waitFor(() => {
       expect(mockedRecoverSheinStudioBatchRun).toHaveBeenCalledWith("run-2");
@@ -192,6 +195,9 @@ describe("SheinStudioBatchRunProgress", () => {
     render(<SheinStudioBatchRunProgress onBack={vi.fn()} runId="run-3" />);
 
     expect(await screen.findByText("批量创建任务已结束")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "恢复本轮任务创建" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "仅重试失败批次" })).toBeInTheDocument();
+    expect(
+      screen.getByText("恢复只会重新执行失败或已取消的批次，已成功批次会保留当前结果，不会重复任务创建。"),
+    ).toBeInTheDocument();
   });
 });

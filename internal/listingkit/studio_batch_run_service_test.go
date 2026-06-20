@@ -336,6 +336,107 @@ func TestStudioBatchRunServiceRecoverStartsPendingRun(t *testing.T) {
 	}
 }
 
+func TestStudioBatchRunServiceRecoverOnlyResetsFailedAndCancelledItems(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	run, items := mustCreateStudioBatchRunForTest(t, repo, ctx, "run-2", []string{"batch-1", "batch-2", "batch-3"})
+
+	now := time.Now().UTC()
+	items[0].Status = StudioBatchRunItemStatusSucceeded
+	items[0].AsyncJobID = "job-success"
+	items[0].StartedAt = &now
+	items[0].FinishedAt = &now
+	items[0].UpdatedAt = now
+	items[1].Status = StudioBatchRunItemStatusFailed
+	items[1].AsyncJobID = "job-failed"
+	items[1].ErrorMessage = "provider timeout"
+	items[1].StartedAt = &now
+	items[1].FinishedAt = &now
+	items[1].UpdatedAt = now
+	items[2].Status = StudioBatchRunItemStatusCancelled
+	items[2].AsyncJobID = "job-cancelled"
+	items[2].ErrorMessage = "cancel requested"
+	items[2].StartedAt = &now
+	items[2].FinishedAt = &now
+	items[2].UpdatedAt = now
+	for index := range items {
+		if err := repo.UpdateStudioBatchRunItem(ctx, &items[index]); err != nil {
+			t.Fatalf("UpdateStudioBatchRunItem(%d) error = %v", index, err)
+		}
+	}
+
+	run.Status = StudioBatchRunStatusPartiallySucceeded
+	run.CompletedBatches = 3
+	run.SucceededBatches = 1
+	run.FailedBatches = 2
+	run.LastError = "provider timeout"
+	run.StartedAt = &now
+	run.FinishedAt = &now
+	run.UpdatedAt = now
+	if err := repo.UpdateStudioBatchRun(ctx, run); err != nil {
+		t.Fatalf("UpdateStudioBatchRun() error = %v", err)
+	}
+
+	var recoveredRunID string
+	svc := &service{
+		studio: studioCollaborators{
+			runGroup: taskStudioBatchRunCollaborators{
+				batchRun: &taskStudioBatchRunService{
+					repo: repo,
+					startRun: func(_ context.Context, runID string) error {
+						recoveredRunID = runID
+						return nil
+					},
+				},
+			},
+		},
+	}
+
+	if err := svc.RecoverStudioBatchRun(ctx, run.ID); err != nil {
+		t.Fatalf("RecoverStudioBatchRun() error = %v", err)
+	}
+	if recoveredRunID != run.ID {
+		t.Fatalf("recoveredRunID = %q, want %q", recoveredRunID, run.ID)
+	}
+
+	updatedRun, err := repo.GetStudioBatchRun(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetStudioBatchRun() error = %v", err)
+	}
+	if updatedRun.Status != StudioBatchRunStatusPending {
+		t.Fatalf("updatedRun.Status = %q, want %q", updatedRun.Status, StudioBatchRunStatusPending)
+	}
+	if updatedRun.CompletedBatches != 1 || updatedRun.SucceededBatches != 1 || updatedRun.FailedBatches != 0 {
+		t.Fatalf("updatedRun counters = %d/%d/%d, want 1/1/0", updatedRun.CompletedBatches, updatedRun.SucceededBatches, updatedRun.FailedBatches)
+	}
+	if updatedRun.LastError != "" {
+		t.Fatalf("updatedRun.LastError = %q, want empty", updatedRun.LastError)
+	}
+	if updatedRun.StartedAt != nil || updatedRun.FinishedAt != nil {
+		t.Fatalf("updatedRun timestamps = %+v/%+v, want nil", updatedRun.StartedAt, updatedRun.FinishedAt)
+	}
+
+	updatedItems, err := repo.ListStudioBatchRunItems(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("ListStudioBatchRunItems() error = %v", err)
+	}
+	if updatedItems[0].Status != StudioBatchRunItemStatusSucceeded {
+		t.Fatalf("updatedItems[0].Status = %q, want %q", updatedItems[0].Status, StudioBatchRunItemStatusSucceeded)
+	}
+	if updatedItems[1].Status != StudioBatchRunItemStatusPending || updatedItems[2].Status != StudioBatchRunItemStatusPending {
+		t.Fatalf("updatedItems statuses = %q/%q, want pending/pending", updatedItems[1].Status, updatedItems[2].Status)
+	}
+	if updatedItems[1].AsyncJobID != "" || updatedItems[2].AsyncJobID != "" {
+		t.Fatalf("updated retry async ids = %q/%q, want empty", updatedItems[1].AsyncJobID, updatedItems[2].AsyncJobID)
+	}
+	if updatedItems[1].ErrorMessage != "" || updatedItems[2].ErrorMessage != "" {
+		t.Fatalf("updated retry errors = %q/%q, want empty", updatedItems[1].ErrorMessage, updatedItems[2].ErrorMessage)
+	}
+	if updatedItems[1].StartedAt != nil || updatedItems[1].FinishedAt != nil || updatedItems[2].StartedAt != nil || updatedItems[2].FinishedAt != nil {
+		t.Fatal("updated retry item timestamps should be cleared")
+	}
+}
+
 func TestStudioBatchRunServiceRecoverRejectsRunningAndSucceededRuns(t *testing.T) {
 	repo := NewMemStudioBatchRunRepository()
 	ctx := WithTenantID(context.Background(), "tenant-a")

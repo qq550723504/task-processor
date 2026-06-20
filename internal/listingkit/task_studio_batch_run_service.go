@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	studiodomain "task-processor/internal/listing/studio"
 )
@@ -98,6 +99,9 @@ func (s *taskStudioBatchRunService) RecoverStudioBatchRun(ctx context.Context, r
 	}
 	if run.CancelRequested {
 		return NewStudioBatchActionValidationError("run cannot be recovered while cancellation is requested")
+	}
+	if err := resetStudioBatchRunForRecovery(ctx, s.repo, run.ID, time.Now().UTC()); err != nil {
+		return err
 	}
 	return s.startRun(ctx, run.ID)
 }

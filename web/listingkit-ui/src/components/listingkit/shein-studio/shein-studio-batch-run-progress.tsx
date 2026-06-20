@@ -87,6 +87,10 @@ function runActionLabel(mode?: SheinStudioBatchRun["mode"]) {
   return mode === "create_tasks" ? "任务创建" : "生成";
 }
 
+function recoverHintLabel(mode?: SheinStudioBatchRun["mode"]) {
+  return mode === "create_tasks" ? "任务创建" : "生成";
+}
+
 function getBatchRunFailureMessage(error: unknown) {
   return error instanceof Error
     ? error.message
@@ -245,7 +249,7 @@ export function SheinStudioBatchRunProgress({
               type="button"
               variant="secondary"
             >
-              {isRecovering ? "正在恢复..." : `恢复本轮${runActionLabel(run?.mode)}`}
+              {isRecovering ? "正在准备重试..." : "仅重试失败批次"}
             </Button>
           ) : null}
           <Button className="w-full sm:w-auto" onClick={onBack} type="button" variant="ghost">
@@ -315,6 +319,13 @@ export function SheinStudioBatchRunProgress({
             </div>
           ) : null}
 
+          {canRecoverRun && failedItems.length > 0 ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              恢复只会重新执行失败或已取消的批次，已成功批次会保留当前结果，不会重复
+              {recoverHintLabel(run?.mode)}。
+            </div>
+          ) : null}
+
           <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-4">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -359,7 +370,7 @@ export function SheinStudioBatchRunProgress({
 
           {failedItems.length > 0 ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4">
-              <h3 className="text-sm font-semibold text-rose-950">失败批次</h3>
+              <h3 className="text-sm font-semibold text-rose-950">待重试批次</h3>
               <ul className="mt-2 space-y-2 text-sm text-rose-900">
                 {failedItems.map((item) => (
                   <li key={`failed:${item.id}`}>
