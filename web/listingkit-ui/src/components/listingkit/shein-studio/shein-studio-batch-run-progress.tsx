@@ -120,6 +120,27 @@ function getItemFailureReason(item: SheinStudioBatchRunItem) {
   return item.errorMessage || item.batchLastError;
 }
 
+function describeRetryableItem(
+  item: SheinStudioBatchRunItem,
+  mode?: SheinStudioBatchRun["mode"],
+) {
+  const reason = getItemFailureReason(item);
+  if (reason) {
+    return reason;
+  }
+  if (item.status === "cancelled") {
+    return "这一个批次之前已被取消，可以重新加入本轮重试。";
+  }
+  if (mode === "create_tasks") {
+    return "这一个批次的任务创建未完成，建议重新执行。";
+  }
+  return "这一个批次的生成未完成，建议重新执行。";
+}
+
+function retryableItemLabel(status: SheinStudioBatchRunItemStatus) {
+  return status === "cancelled" ? "已取消" : "执行失败";
+}
+
 export function SheinStudioBatchRunProgress({
   runId,
   onBack,
@@ -189,6 +210,8 @@ export function SheinStudioBatchRunProgress({
   const failedItems = items.filter(
     (item) => item.status === "failed" || item.status === "cancelled",
   );
+  const failedRetryItems = failedItems.filter((item) => item.status === "failed");
+  const cancelledRetryItems = failedItems.filter((item) => item.status === "cancelled");
 
   async function handleCancel() {
     setIsCancelling(true);
@@ -370,12 +393,19 @@ export function SheinStudioBatchRunProgress({
 
           {failedItems.length > 0 ? (
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4">
-              <h3 className="text-sm font-semibold text-rose-950">待重试批次</h3>
+              <h3 className="text-sm font-semibold text-rose-950">
+                待重试批次
+                <span className="ml-2 text-xs font-normal text-rose-700">
+                  失败 {failedRetryItems.length} · 已取消 {cancelledRetryItems.length}
+                </span>
+              </h3>
               <ul className="mt-2 space-y-2 text-sm text-rose-900">
                 {failedItems.map((item) => (
                   <li key={`failed:${item.id}`}>
-                    {item.batchId}
-                    {getItemFailureReason(item) ? `：${getItemFailureReason(item)}` : ""}
+                    <span className="font-medium">
+                      [{retryableItemLabel(item.status)}] {item.batchId}
+                    </span>
+                    ：{describeRetryableItem(item, run?.mode)}
                   </li>
                 ))}
               </ul>

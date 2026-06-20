@@ -151,6 +151,8 @@ describe("SheinStudioBatchRunProgress", () => {
     expect(await screen.findByRole("button", { name: "仅重试失败批次" })).toBeInTheDocument();
     expect(screen.getByText("子任务状态：处理中 · Async Job：job-2")).toBeInTheDocument();
     expect(screen.getByText("provider timeout")).toBeInTheDocument();
+    expect(screen.getByText("失败 1 · 已取消 0")).toBeInTheDocument();
+    expect(screen.getByText("[执行失败] batch-2")).toBeInTheDocument();
     expect(
       screen.getByText("恢复只会重新执行失败或已取消的批次，已成功批次会保留当前结果，不会重复生成。"),
     ).toBeInTheDocument();
@@ -197,7 +199,64 @@ describe("SheinStudioBatchRunProgress", () => {
     expect(await screen.findByText("批量创建任务已结束")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "仅重试失败批次" })).toBeInTheDocument();
     expect(
+      screen
+        .getAllByText(
+          (_, element) =>
+            element?.textContent === "[执行失败] batch-3：这一个批次的任务创建未完成，建议重新执行。",
+        )
+        .at(-1),
+    ).toBeInTheDocument();
+    expect(
       screen.getByText("恢复只会重新执行失败或已取消的批次，已成功批次会保留当前结果，不会重复任务创建。"),
+    ).toBeInTheDocument();
+  });
+
+  it("separates cancelled items and shows readable retry hints", async () => {
+    mockedGetSheinStudioBatchRun.mockResolvedValueOnce({
+      id: "run-4",
+      mode: "generate",
+      failurePolicy: "continue_on_error",
+      status: "cancelled",
+      currentIndex: 0,
+      totalBatches: 2,
+      completedBatches: 2,
+      succeededBatches: 1,
+      failedBatches: 1,
+      cancelRequested: false,
+      createdAt: "2026-05-31T12:00:00Z",
+      updatedAt: "2026-05-31T12:00:01Z",
+    });
+    mockedListSheinStudioBatchRunItems.mockResolvedValueOnce([
+      {
+        id: "run-4:1",
+        runId: "run-4",
+        batchId: "batch-4a",
+        position: 1,
+        status: "succeeded",
+        createdAt: "2026-05-31T12:00:00Z",
+        updatedAt: "2026-05-31T12:00:01Z",
+      },
+      {
+        id: "run-4:2",
+        runId: "run-4",
+        batchId: "batch-4b",
+        position: 2,
+        status: "cancelled",
+        createdAt: "2026-05-31T12:00:00Z",
+        updatedAt: "2026-05-31T12:00:01Z",
+      },
+    ]);
+
+    render(<SheinStudioBatchRunProgress onBack={vi.fn()} runId="run-4" />);
+
+    expect(await screen.findByText("失败 0 · 已取消 1")).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByText(
+          (_, element) =>
+            element?.textContent === "[已取消] batch-4b：这一个批次之前已被取消，可以重新加入本轮重试。",
+        )
+        .at(-1),
     ).toBeInTheDocument();
   });
 });
