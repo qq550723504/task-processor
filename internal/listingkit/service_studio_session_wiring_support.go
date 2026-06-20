@@ -14,6 +14,7 @@ type taskStudioSessionWiring struct {
 
 type taskStudioSessionConfigWiring struct {
 	session                  taskStudioSessionWiring
+	batchRepo                StudioBatchRepository
 	runner                   *listingStudioSessionRunner
 	asyncJobRunner           *listingStudioSessionAsyncJobRunner
 	generationMetadataRunner *listingStudioSessionGenerationMetadataRunner
@@ -80,6 +81,7 @@ func buildTaskStudioSessionConfigWiring(s *service) taskStudioSessionConfigWirin
 	session := buildTaskStudioSessionWiring(s)
 	return taskStudioSessionConfigWiring{
 		session:                  session,
+		batchRepo:                s.studioDeps.batchRepo,
 		runner:                   session.newSessionRunner(),
 		asyncJobRunner:           session.newAsyncJobRunner(),
 		generationMetadataRunner: session.newGenerationMetadataRunner(),
@@ -147,8 +149,9 @@ func buildTaskStudioSessionServiceConfigWithWiring(config taskStudioSessionConfi
 
 func buildTaskStudioBatchDraftServiceConfigWithWiring(config taskStudioSessionConfigWiring) taskStudioBatchDraftServiceConfig {
 	return taskStudioBatchDraftServiceConfig{
-		repo:   config.session.repo,
-		runner: config.batchDraftRunner,
+		repo:      config.session.repo,
+		batchRepo: config.batchRepo,
+		runner:    config.batchDraftRunner,
 	}
 }
 

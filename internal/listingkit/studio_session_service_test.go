@@ -684,6 +684,65 @@ func TestStudioSessionServiceAllowsCreatingBatchContainerWithoutPrompt(t *testin
 	}
 }
 
+func TestStudioSessionServiceListBatchesUsesProjectedBatchStatusWhenGraphExists(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	sessionRepo := newStudioSessionRepoStub()
+	batchRepo := NewMemStudioBatchRepository()
+	svc := &service{studioDeps: studioDependencies{sessionRepo: sessionRepo, batchRepo: batchRepo}}
+
+	detail, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+		Prompt:     "retro cherries",
+		StyleCount: "1",
+		Selection:  testStudioSelection(),
+		BatchName:  "retro cherries",
+	})
+	if err != nil {
+		t.Fatalf("upsert batch: %v", err)
+	}
+
+	now := time.Now().UTC()
+	if err := batchRepo.CreateStudioBatchGraph(ctx, &StudioBatchRecord{
+		ID:        detail.Batch.ID,
+		Status:    StudioBatchStatusPartiallyFailed,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          detail.Batch.ID,
+			TargetGroupKey:   "size:1200x1200",
+			TargetGroupLabel: "1200 x 1200",
+			Status:           StudioBatchItemStatusReviewReady,
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+		{
+			ID:               "item-2",
+			BatchID:          detail.Batch.ID,
+			TargetGroupKey:   "size:2000x2000",
+			TargetGroupLabel: "2000 x 2000",
+			Status:           StudioBatchItemStatusGenerating,
+			SelectionCount:   1,
+			CreatedAt:        now.Add(time.Second),
+			UpdatedAt:        now.Add(time.Second),
+		},
+	}, nil, nil); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	list, err := svc.ListStudioBatches(ctx, 10)
+	if err != nil {
+		t.Fatalf("list batches: %v", err)
+	}
+	if len(list.Items) != 1 {
+		t.Fatalf("batch count = %d, want 1", len(list.Items))
+	}
+	if got, want := list.Items[0].Status, string(StudioBatchStatusPartiallyMaterialized); got != want {
+		t.Fatalf("batch status = %q, want %q", got, want)
+	}
+}
+
 func TestTaskStudioBatchDraftServiceUsesListingStudioRunner(t *testing.T) {
 	svc := newTaskStudioBatchDraftService(taskStudioBatchDraftServiceConfig{
 		runner: studiodomain.NewBatchDraftService(studiodomain.BatchDraftServiceConfig[

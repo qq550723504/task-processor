@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,22 +10,27 @@ import (
 	"github.com/sirupsen/logrus"
 
 	studiodomain "task-processor/internal/listing/studio"
+
+	"gorm.io/gorm"
 )
 
 type taskStudioBatchDraftServiceConfig struct {
-	repo   studioBatchDraftRepository
-	runner *listingStudioBatchDraftRunner
+	repo      studioBatchDraftRepository
+	batchRepo StudioBatchRepository
+	runner    *listingStudioBatchDraftRunner
 }
 
 type taskStudioBatchDraftService struct {
-	repo   studioBatchDraftRepository
-	runner *listingStudioBatchDraftRunner
+	repo      studioBatchDraftRepository
+	batchRepo StudioBatchRepository
+	runner    *listingStudioBatchDraftRunner
 }
 
 func newTaskStudioBatchDraftService(config taskStudioBatchDraftServiceConfig) *taskStudioBatchDraftService {
 	service := &taskStudioBatchDraftService{
-		repo:   config.repo,
-		runner: config.runner,
+		repo:      config.repo,
+		batchRepo: config.batchRepo,
+		runner:    config.runner,
 	}
 	service.ensureRunner()
 	return service
@@ -54,6 +60,7 @@ func (s *taskStudioBatchDraftService) ListStudioBatches(ctx context.Context, lim
 	if err != nil {
 		return nil, err
 	}
+	s.reconcileBatchListStatuses(ctx, result.Items)
 	return &StudioBatchListResponse{Items: result.Items, Total: result.Total}, nil
 }
 
@@ -216,4 +223,27 @@ func (s *taskStudioBatchDraftService) ensureRunner() {
 		return
 	}
 	s.runner = newListingStudioBatchDraftService(s.repo)
+}
+
+func (s *taskStudioBatchDraftService) reconcileBatchListStatuses(ctx context.Context, items []SheinStudioBatchListItem) {
+	if s == nil || s.batchRepo == nil {
+		return
+	}
+	for index := range items {
+		batchID := strings.TrimSpace(items[index].ID)
+		if batchID == "" {
+			continue
+		}
+		detail, err := s.batchRepo.GetStudioBatchDetail(ctx, batchID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			continue
+		}
+		if detail == nil || detail.Batch == nil {
+			continue
+		}
+		items[index].Status = string(resolveProjectedStudioBatchStatus(detail.Batch.Status, detail.Items))
+	}
 }
