@@ -17,6 +17,7 @@ import type {
   SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
   SheinStudioBatchStatusGroups,
+  SheinStudioBatchItem,
   SheinStudioCreatedTask,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
@@ -35,16 +36,19 @@ export function SheinStudioGenerationPanel({
   creatingMessage,
   generationError,
   generationNotice = "",
+  failedBatchItems = [],
   groupedImageMode,
   artworkModel,
   imageStrategy,
   isCreatingTasks,
   isGenerating,
   isRetryingFailedItems = false,
+  retryingFailedItemId = "",
   onCreateTasks,
   onDeleteBatch,
   onGenerate,
   onLoadBatch,
+  onRetryFailedItem,
   onSaveBatch,
   productImageCount,
   productImagePrompt,
@@ -89,16 +93,19 @@ export function SheinStudioGenerationPanel({
   creatingMessage: string;
   generationError: string;
   generationNotice?: string;
+  failedBatchItems?: SheinStudioBatchItem[];
   groupedImageMode: SheinStudioGroupedImageMode;
   artworkModel: SheinStudioArtworkModel;
   imageStrategy: SheinStudioImageStrategy;
   isCreatingTasks: boolean;
   isGenerating: boolean;
   isRetryingFailedItems?: boolean;
+  retryingFailedItemId?: string;
   onCreateTasks: () => void;
   onDeleteBatch: (batchID: string) => void;
   onGenerate: () => void;
   onLoadBatch: (batch: SheinStudioSavedBatch) => void;
+  onRetryFailedItem?: (itemId: string) => void;
   onSaveBatch: () => void;
   productImageCount: string;
   productImagePrompt: string;
@@ -215,6 +222,14 @@ export function SheinStudioGenerationPanel({
         </div>
       ) : null}
 
+      {failedBatchItems.length > 0 ? (
+        <FailedBatchItemsPanel
+          items={failedBatchItems}
+          onRetry={onRetryFailedItem}
+          retryingItemId={retryingFailedItemId}
+        />
+      ) : null}
+
       <div className="grid gap-4">
         <ArtworkGenerationSettings
           artworkModel={artworkModel}
@@ -314,6 +329,62 @@ export function SheinStudioGenerationPanel({
           onLoad={onLoadBatch}
         />
       ) : null}
+    </div>
+  );
+}
+
+function FailedBatchItemsPanel({
+  items,
+  onRetry,
+  retryingItemId,
+}: {
+  items: SheinStudioBatchItem[];
+  onRetry?: (itemId: string) => void;
+  retryingItemId?: string;
+}) {
+  return (
+    <div className="rounded-[1.5rem] border border-rose-200 bg-rose-50/80 px-4 py-4">
+      <div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.24em] text-rose-600">
+          失败项
+        </div>
+        <p className="mt-1 text-xs leading-5 text-rose-900">
+          这些分组可单独重试，便于按失败原因逐个恢复。
+        </p>
+      </div>
+      <div className="mt-3 space-y-3">
+        {items.map((item) => {
+          const itemLabel = item.targetGroupLabel?.trim() || item.targetGroupKey;
+          const isRetrying = retryingItemId === item.id;
+          return (
+            <div
+              className="rounded-2xl border border-white/90 bg-white/90 px-4 py-3 shadow-sm"
+              key={item.id}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-zinc-900">{itemLabel}</p>
+                  <p className="text-xs text-zinc-500">
+                    {item.selectionCount} 款商品 · {item.targetGroupKey}
+                  </p>
+                  <p className="text-sm text-rose-800">
+                    {item.lastError?.trim() || "上游返回失败，请重试该分组。"}
+                  </p>
+                </div>
+                <Button
+                  className="w-full sm:w-auto"
+                  disabled={!onRetry || Boolean(retryingItemId)}
+                  onClick={() => onRetry?.(item.id)}
+                  type="button"
+                  variant="secondary"
+                >
+                  {isRetrying ? "重试中..." : "重试此项"}
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

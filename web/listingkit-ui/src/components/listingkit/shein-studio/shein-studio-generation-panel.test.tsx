@@ -6,6 +6,7 @@ import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio
 import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selectable-images";
 import type {
   SDSGroupedPromptHistoryEntry,
+  SheinStudioBatchItem,
   SheinStudioBatchStatusGroups,
 } from "@/lib/types/shein-studio";
 
@@ -43,8 +44,11 @@ function renderPanel(options?: {
   availableSdsImages?: SheinStudioSelectableSDSImage[];
   generationNotice?: string;
   generateButtonLabel?: string;
+  failedBatchItems?: SheinStudioBatchItem[];
   isRetryingFailedItems?: boolean;
+  onRetryFailedItem?: (itemId: string) => void;
   promptHistory?: SDSGroupedPromptHistoryEntry[];
+  retryingFailedItemId?: string;
   styleCount?: string;
   storeRequiredMessage?: string;
   subscriptionBlockedMessage?: string;
@@ -63,6 +67,7 @@ function renderPanel(options?: {
       creatingMessage=""
       generationError=""
       generationNotice={options?.generationNotice ?? ""}
+      failedBatchItems={options?.failedBatchItems ?? []}
       groupedImageMode="shared_by_size"
       imageStrategy={options?.imageStrategy ?? "ai_generated"}
       isCreatingTasks={false}
@@ -72,6 +77,7 @@ function renderPanel(options?: {
       onDeleteBatch={() => undefined}
       onGenerate={() => undefined}
       onLoadBatch={() => undefined}
+      onRetryFailedItem={options?.onRetryFailedItem}
       onRestorePrompt={() => undefined}
       onSaveBatch={() => undefined}
       productImageCount="5"
@@ -81,6 +87,7 @@ function renderPanel(options?: {
       promptHistory={options?.promptHistory ?? []}
       promptInputRef={{ current: null }}
       renderSizeImagesWithSds={true}
+      retryingFailedItemId={options?.retryingFailedItemId ?? ""}
       saveMessage=""
       savedBatches={[]}
       selectedSdsImages={[]}
@@ -414,6 +421,68 @@ describe("SheinStudioGenerationPanel", () => {
         "当前批次有 2 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("renders failed batch items and retries one item at a time", () => {
+    const onRetryFailedItem = vi.fn();
+
+    renderPanel({
+      failedBatchItems: [
+        {
+          id: "item-1",
+          batchId: "batch-1",
+          targetGroupKey: "size:1000x1000",
+          targetGroupLabel: "黑色 M",
+          status: "failed",
+          selectionCount: 2,
+          lastError: "upstream timeout",
+          createdAt: "2026-05-26T10:00:00.000Z",
+          updatedAt: "2026-05-26T10:01:00.000Z",
+        },
+      ],
+      onRetryFailedItem,
+    });
+
+    expect(screen.getByText("失败项")).toBeInTheDocument();
+    expect(screen.getByText("黑色 M")).toBeInTheDocument();
+    expect(screen.getByText("upstream timeout")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重试此项" }));
+    expect(onRetryFailedItem).toHaveBeenCalledWith("item-1");
+  });
+
+  it("shows item-level retry progress and locks sibling retries while one item is retrying", () => {
+    renderPanel({
+      failedBatchItems: [
+        {
+          id: "item-1",
+          batchId: "batch-1",
+          targetGroupKey: "size:1000x1000",
+          targetGroupLabel: "黑色 M",
+          status: "failed",
+          selectionCount: 2,
+          lastError: "upstream timeout",
+          createdAt: "2026-05-26T10:00:00.000Z",
+          updatedAt: "2026-05-26T10:01:00.000Z",
+        },
+        {
+          id: "item-2",
+          batchId: "batch-1",
+          targetGroupKey: "size:1200x1200",
+          targetGroupLabel: "白色 L",
+          status: "failed",
+          selectionCount: 1,
+          lastError: "too many requests",
+          createdAt: "2026-05-26T10:00:00.000Z",
+          updatedAt: "2026-05-26T10:01:00.000Z",
+        },
+      ],
+      onRetryFailedItem: () => undefined,
+      retryingFailedItemId: "item-1",
+    });
+
+    expect(screen.getByRole("button", { name: "重试中..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重试此项" })).toBeDisabled();
   });
 
   it("locks only artwork-generation fields while a style generation is in progress", () => {

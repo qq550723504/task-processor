@@ -99,6 +99,12 @@ vi.mock("@/components/listingkit/shein-studio/shein-design-preview-grid", () => 
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", () => ({
   SheinStudioGenerationPanel: (props: {
+    failedBatchItems?: Array<{
+      id: string;
+      lastError?: string;
+      targetGroupLabel?: string;
+      targetGroupKey: string;
+    }>;
     generateButtonLabel?: string;
     generationNotice?: string;
     groupedImageMode?: string;
@@ -107,9 +113,11 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
     isRetryingFailedItems?: boolean;
     onCreateTasks?: () => void;
     onGenerate: () => void;
+    onRetryFailedItem?: (itemId: string) => void;
     onRestorePrompt?: (value: string) => void;
     prompt: string;
     promptHistory?: Array<{ prompt: string; createdAt: string }>;
+    retryingFailedItemId?: string;
     showSavedBatches?: boolean;
     subscriptionBlockedMessage?: string;
     storeRequiredMessage?: string;
@@ -161,6 +169,22 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
         {props.storeRequiredMessage ? <div>{props.storeRequiredMessage}</div> : null}
         {props.generationNotice ? <div>{props.generationNotice}</div> : null}
         {props.generationError ? <div>{props.generationError}</div> : null}
+        {(props.failedBatchItems ?? []).map((item) => (
+          <div key={item.id}>
+            <span>{item.targetGroupLabel ?? item.targetGroupKey}</span>
+            {item.lastError ? <span>{item.lastError}</span> : null}
+            {props.onRetryFailedItem ? (
+              <button
+                disabled={Boolean(props.retryingFailedItemId)}
+                onClick={() => props.onRetryFailedItem?.(item.id)}
+                type="button"
+              >
+                retry-item-{item.id}
+              </button>
+            ) : null}
+          </div>
+        ))}
+        {props.retryingFailedItemId ? <div>retrying-item: {props.retryingFailedItemId}</div> : null}
       </div>
     );
   },
@@ -1929,6 +1953,112 @@ describe("SheinStudioWorkbench", () => {
     expect(
       screen.getByRole("button", { name: "generate styles" }),
     ).toBeDisabled();
+  });
+
+  it("retries a single failed batch item without retriggering the whole failed set", async () => {
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch(
+        {
+          name: "Retro Cherries",
+          updatedAt: "2026-05-26T10:00:00.000Z",
+        },
+        {
+          batch: {
+            ...buildHydratedBatch().detail.batch,
+            status: "partially_failed",
+            updatedAt: "2026-05-26T10:06:00.000Z",
+          },
+          items: [
+            {
+              item: {
+                id: "item-1",
+                batchId: "batch-1",
+                targetGroupKey: "size:1000x1000",
+                targetGroupLabel: "黑色 M",
+                status: "failed",
+                selectionCount: 1,
+                lastError: "upstream timeout",
+                createdAt: "2026-05-26T09:59:00.000Z",
+                updatedAt: "2026-05-26T10:06:00.000Z",
+              },
+              designs: [],
+            },
+            {
+              item: {
+                id: "item-2",
+                batchId: "batch-1",
+                targetGroupKey: "size:1200x1200",
+                targetGroupLabel: "白色 L",
+                status: "failed",
+                selectionCount: 1,
+                lastError: "too many requests",
+                createdAt: "2026-05-26T09:59:00.000Z",
+                updatedAt: "2026-05-26T10:06:00.000Z",
+              },
+              designs: [],
+            },
+          ],
+        },
+      ),
+    );
+    retrySheinStudioBatchItems.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        status: "partially_failed",
+        updatedAt: "2026-05-26T10:07:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "size:1000x1000",
+            targetGroupLabel: "黑色 M",
+            status: "generating",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:07:00.000Z",
+          },
+          designs: [],
+        },
+        {
+          item: {
+            id: "item-2",
+            batchId: "batch-1",
+            targetGroupKey: "size:1200x1200",
+            targetGroupLabel: "白色 L",
+            status: "failed",
+            selectionCount: 1,
+            lastError: "too many requests",
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:06:00.000Z",
+          },
+          designs: [],
+        },
+      ],
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "retry-item-item-1" })).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "retry-item-item-1" }));
+
+    await waitFor(() =>
+      expect(retrySheinStudioBatchItems).toHaveBeenCalledWith("batch-1", [
+        "item-1",
+      ]),
+    );
+    expect(retrySheinStudioBatchItems).not.toHaveBeenCalledWith("batch-1", [
+      "item-1",
+      "item-2",
+    ]);
+    expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
 
   it("saves the dedicated batch back into the same batch id from the save button", async () => {

@@ -74,7 +74,10 @@ import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
 import { getCurrentSubscription } from "@/lib/api/subscription";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
-import { approveSheinStudioBatchDesigns } from "@/lib/api/shein-studio-batches";
+import {
+  approveSheinStudioBatchDesigns,
+  retrySheinStudioBatchItems,
+} from "@/lib/api/shein-studio-batches";
 import { useToast } from "@/components/providers/toast-provider";
 import {
   getSheinStudioHydratedBatch,
@@ -442,6 +445,7 @@ export function SheinStudioWorkbench({
   const activeSelection =
     directSelection ?? activeGroupSelection ?? loadedBatchSelection;
   const [isExecutingWarningAction, setIsExecutingWarningAction] = useState(false);
+  const [retryingFailedItemId, setRetryingFailedItemId] = useState("");
   const [rawSelectedRecentBatchSummaryIds, setRawSelectedRecentBatchSummaryIds] = useState<
     string[]
   >([]);
@@ -2278,6 +2282,49 @@ export function SheinStudioWorkbench({
     );
   }
 
+  async function handleRetryFailedItem(itemId: string) {
+    if (!activeBatchId || !itemizedBatchDetail) {
+      return;
+    }
+    const failedEntry = itemizedBatchDetail.items.find(
+      (entry) => entry.item.id === itemId && entry.item.status === "failed",
+    );
+    if (!failedEntry) {
+      return;
+    }
+
+    setRetryingFailedItemId(itemId);
+    workbenchController.setField("generationError", "");
+    workbenchController.setField("generationWarning", "");
+    workbenchController.setField("creatingError", "");
+    workbenchController.setField("creatingWarning", "");
+
+    try {
+      const batchTenantId =
+        itemizedBatchDetail.batch.tenantId?.trim() ??
+        currentActiveBatch?.tenantId?.trim();
+      const nextDetail = batchTenantId
+        ? await retrySheinStudioBatchItems(activeBatchId, [itemId], {
+            tenantId: batchTenantId,
+          })
+        : await retrySheinStudioBatchItems(activeBatchId, [itemId]);
+      applyItemizedBatchDetail(nextDetail);
+      if (
+        nextDetail.batch.status === "generating" ||
+        hasInFlightItemizedBatchGeneration(nextDetail)
+      ) {
+        setEffectiveStep("generate");
+      }
+    } catch (error) {
+      workbenchController.setField(
+        "generationError",
+        `重试失败项失败：${formatSubscriptionApiError(error)}`,
+      );
+    } finally {
+      setRetryingFailedItemId("");
+    }
+  }
+
   const busyMessage = sheinStudioBusyMessage({
     isCreatingTasks,
     isGenerating: effectiveIsGenerating,
@@ -2571,6 +2618,13 @@ export function SheinStudioWorkbench({
                     ? `当前批次有 ${retryableFailedItemCount} 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。`
                     : ""
                 }
+                failedBatchItems={
+                  hasRetryableFailedItems
+                    ? itemizedBatchDetail?.items
+                        .filter((entry) => entry.item.status === "failed")
+                        .map((entry) => entry.item) ?? []
+                    : []
+                }
                 groupedImageMode={groupedImageMode}
                 imageStrategy={imageStrategy}
                 isCreatingTasks={isCreatingTasks}
@@ -2580,6 +2634,9 @@ export function SheinStudioWorkbench({
                 onDeleteBatch={handleDeleteBatch}
                 onGenerate={handleGenerate}
                 onLoadBatch={handleLoadBatch}
+                onRetryFailedItem={(itemId) => {
+                  void handleRetryFailedItem(itemId);
+                }}
                 onSaveBatch={handleSaveBatch}
                 productImageCount={productImageCount}
                 productImagePrompt={productImagePrompt}
@@ -2588,6 +2645,7 @@ export function SheinStudioWorkbench({
                 promptHistory={activeGroupPromptHistory}
                 promptInputRef={promptInputRef}
                 renderSizeImagesWithSds={renderSizeImagesWithSds}
+                retryingFailedItemId={retryingFailedItemId}
                 saveMessage={saveMessage}
                 savedBatches={savedBatches}
                 selectedSdsImages={selectedSdsImages}
