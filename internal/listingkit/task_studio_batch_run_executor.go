@@ -11,6 +11,18 @@ import (
 
 var errStudioBatchRunItemStillRunning = errors.New("studio batch run item still running")
 
+type studioBatchRunItemStillRunningError struct {
+	AsyncJobID string
+}
+
+func (e *studioBatchRunItemStillRunningError) Error() string {
+	return errStudioBatchRunItemStillRunning.Error()
+}
+
+func (e *studioBatchRunItemStillRunningError) Unwrap() error {
+	return errStudioBatchRunItemStillRunning
+}
+
 type taskStudioBatchRunExecutorConfig struct {
 	repo             StudioBatchRunRepository
 	executeOne       func(ctx context.Context, batchID string) error
@@ -109,7 +121,15 @@ func (e *taskStudioBatchRunExecutor) Run(ctx context.Context, runID string) erro
 		}
 
 		execErr := e.executeOne(ctx, item.BatchID)
-		if errors.Is(execErr, errStudioBatchRunItemStillRunning) {
+		var stillRunningErr *studioBatchRunItemStillRunningError
+		if errors.As(execErr, &stillRunningErr) {
+			item.AsyncJobID = firstNonEmpty(strings.TrimSpace(stillRunningErr.AsyncJobID), item.AsyncJobID)
+			item.FinishedAt = nil
+			item.ErrorMessage = ""
+			item.UpdatedAt = e.currentTime()
+			if err := e.repo.UpdateStudioBatchRunItem(ctx, item); err != nil {
+				return err
+			}
 			run.Status = StudioBatchRunStatusRunning
 			run.LastError = ""
 			e.refreshRunCounters(run, items)
@@ -230,7 +250,7 @@ func (s *service) executeStudioBatchRunItem(ctx context.Context, batchID string)
 		return nil
 	}
 	if isStudioBatchRunDetailStillRunning(detail) {
-		return errStudioBatchRunItemStillRunning
+		return &studioBatchRunItemStillRunningError{AsyncJobID: resolveStudioBatchRunAsyncJobID(detail)}
 	}
 	return studioBatchRunDetailError(detail)
 }
@@ -249,6 +269,29 @@ func isStudioBatchRunDetailStillRunning(detail *StudioBatchDetail) bool {
 		}
 	}
 	return false
+}
+
+func resolveStudioBatchRunAsyncJobID(detail *StudioBatchDetail) string {
+	if detail == nil {
+		return ""
+	}
+	for _, item := range detail.Items {
+		switch item.Item.Status {
+		case StudioBatchItemStatusGenerating, StudioBatchItemStatusAwaitingMaterialization:
+		default:
+			continue
+		}
+		for index := len(item.Attempts) - 1; index >= 0; index-- {
+			attempt := item.Attempts[index]
+			switch attempt.Status {
+			case StudioGenerationAttemptStatusSubmitted, StudioGenerationAttemptStatusPolling, StudioGenerationAttemptStatusSucceeded, StudioGenerationAttemptStatusMaterialized:
+				if jobID := strings.TrimSpace(attempt.UpstreamJobID); jobID != "" {
+					return jobID
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func studioBatchRunDetailError(detail *StudioBatchDetail) error {

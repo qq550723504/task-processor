@@ -394,7 +394,7 @@ func TestStudioBatchRunExecutorKeepsRunRunningWhenBatchItemStillRunning(t *testi
 	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
 		repo: repo,
 		executeOne: func(context.Context, string) error {
-			return errStudioBatchRunItemStillRunning
+			return &studioBatchRunItemStillRunningError{AsyncJobID: "job-run-1"}
 		},
 		now: func() time.Time { return now },
 	})
@@ -427,11 +427,52 @@ func TestStudioBatchRunExecutorKeepsRunRunningWhenBatchItemStillRunning(t *testi
 	if items[0].Status != StudioBatchRunItemStatusRunning {
 		t.Fatalf("item status = %q, want %q", items[0].Status, StudioBatchRunItemStatusRunning)
 	}
+	if items[0].AsyncJobID != "job-run-1" {
+		t.Fatalf("item.AsyncJobID = %q, want %q", items[0].AsyncJobID, "job-run-1")
+	}
 	if items[0].FinishedAt != nil {
 		t.Fatalf("item.FinishedAt = %v, want nil while batch still running", items[0].FinishedAt)
 	}
 	if items[0].ErrorMessage != "" {
 		t.Fatalf("item.ErrorMessage = %q, want empty", items[0].ErrorMessage)
+	}
+}
+
+func TestStudioBatchRunExecutorPreservesExistingAsyncJobIDWhenStillRunningSignalOmitsIt(t *testing.T) {
+	repo := NewMemStudioBatchRunRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	run, items := mustCreateStudioBatchRunForTest(t, repo, ctx, "run-1", []string{"batch-1"})
+
+	items[0].Status = StudioBatchRunItemStatusRunning
+	items[0].AsyncJobID = "job-existing-1"
+	if err := repo.UpdateStudioBatchRunItem(ctx, &items[0]); err != nil {
+		t.Fatalf("UpdateStudioBatchRunItem() error = %v", err)
+	}
+	run.Status = StudioBatchRunStatusRunning
+	run.CurrentBatchID = items[0].BatchID
+	run.CurrentIndex = items[0].Position
+	if err := repo.UpdateStudioBatchRun(ctx, run); err != nil {
+		t.Fatalf("UpdateStudioBatchRun() error = %v", err)
+	}
+
+	executor := newTaskStudioBatchRunExecutor(taskStudioBatchRunExecutorConfig{
+		repo: repo,
+		executeOne: func(context.Context, string) error {
+			return &studioBatchRunItemStillRunningError{}
+		},
+		now: func() time.Time { return time.Date(2026, 6, 20, 13, 45, 0, 0, time.UTC) },
+	})
+
+	if err := executor.Run(ctx, "run-1"); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	gotItems, err := repo.ListStudioBatchRunItems(ctx, "run-1")
+	if err != nil {
+		t.Fatalf("ListStudioBatchRunItems() error = %v", err)
+	}
+	if gotItems[0].AsyncJobID != "job-existing-1" {
+		t.Fatalf("item.AsyncJobID = %q, want preserved existing value", gotItems[0].AsyncJobID)
 	}
 }
 
