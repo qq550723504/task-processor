@@ -34,11 +34,13 @@ export function SheinStudioGenerationPanel({
   creatingError,
   creatingMessage,
   generationError,
+  generationNotice = "",
   groupedImageMode,
   artworkModel,
   imageStrategy,
   isCreatingTasks,
   isGenerating,
+  isRetryingFailedItems = false,
   onCreateTasks,
   onDeleteBatch,
   onGenerate,
@@ -57,6 +59,7 @@ export function SheinStudioGenerationPanel({
   selectedSdsImages,
   selectedStyleCount,
   createTaskButtonLabel = "生成 SHEIN 资料",
+  generateButtonLabel = "生成款式图",
   selectionReady,
   showSavedBatches = true,
   statusGroups,
@@ -85,11 +88,13 @@ export function SheinStudioGenerationPanel({
   creatingError: string;
   creatingMessage: string;
   generationError: string;
+  generationNotice?: string;
   groupedImageMode: SheinStudioGroupedImageMode;
   artworkModel: SheinStudioArtworkModel;
   imageStrategy: SheinStudioImageStrategy;
   isCreatingTasks: boolean;
   isGenerating: boolean;
+  isRetryingFailedItems?: boolean;
   onCreateTasks: () => void;
   onDeleteBatch: (batchID: string) => void;
   onGenerate: () => void;
@@ -108,6 +113,7 @@ export function SheinStudioGenerationPanel({
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   selectedStyleCount: number;
   createTaskButtonLabel?: string;
+  generateButtonLabel?: string;
   selectionReady: boolean;
   showSavedBatches?: boolean;
   statusGroups?: SheinStudioBatchStatusGroups;
@@ -135,6 +141,11 @@ export function SheinStudioGenerationPanel({
   const showRenderSizeImagesWithSdsOption =
     hasSdsSizeReferenceImages && imageStrategy !== "sds_official";
   const showVariationIntensity = parsePositiveInteger(styleCount) > 1;
+  const generateActionLabel = isGenerating
+    ? isRetryingFailedItems
+      ? "重试中..."
+      : "生成中..."
+    : generateButtonLabel;
 
   return (
     <div
@@ -168,7 +179,9 @@ export function SheinStudioGenerationPanel({
           label="当前可执行状态"
           value={
             isGenerating
-              ? "正在生成款式图"
+              ? isRetryingFailedItems
+                ? "正在重试失败批次"
+                : "正在生成款式图"
               : !selectionReady
               ? "请先选择商品"
               : storeRequiredMessage
@@ -189,8 +202,16 @@ export function SheinStudioGenerationPanel({
           {storeRequiredMessage
             ? "先回到上方选择批次店铺，再继续生成。"
             : isGenerating
-              ? "当前批次仍在继续生成，请等待这一轮完成后再继续操作。"
-            : "当前条件已齐备，确认下方参数后即可继续生成或创建任务。"}
+              ? isRetryingFailedItems
+                ? "当前正在重试失败批次，仅会处理失败部分，不会重复生成已成功内容。"
+                : "当前批次仍在继续生成，请等待这一轮完成后再继续操作。"
+              : "当前条件已齐备，确认下方参数后即可继续生成或创建任务。"}
+        </div>
+      ) : null}
+
+      {generationNotice ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900">
+          {generationNotice}
         </div>
       ) : null}
 
@@ -254,7 +275,7 @@ export function SheinStudioGenerationPanel({
             }
             onClick={onGenerate}
           >
-            {isGenerating ? "生成中..." : "生成款式图"}
+            {generateActionLabel}
           </Button>
           <Button className="w-full sm:w-auto" disabled={isGenerating || isCreatingTasks} onClick={onSaveBatch} variant="ghost">
             保存批次

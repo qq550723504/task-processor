@@ -2283,6 +2283,12 @@ export function SheinStudioWorkbench({
     isGenerating: effectiveIsGenerating,
     regeneratingId,
   });
+  const retryableFailedItemCount =
+    itemizedBatchDetail?.items.filter((entry) => entry.item.status === "failed").length ?? 0;
+  const hasRetryableFailedItems =
+    retryableFailedItemCount > 0 &&
+    (itemizedBatchDetail?.batch.status === "partially_failed" ||
+      itemizedBatchDetail?.batch.status === "failed");
   useSheinStudioPendingNavigationGuard({
     enabled: Boolean(effectiveIsGenerating || regeneratingId),
     message:
@@ -2560,10 +2566,16 @@ export function SheinStudioWorkbench({
                 creatingError={creatingError}
                 creatingMessage={creatingMessage}
                 generationError={generationError}
+                generationNotice={
+                  hasRetryableFailedItems
+                    ? `当前批次有 ${retryableFailedItemCount} 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。`
+                    : ""
+                }
                 groupedImageMode={groupedImageMode}
                 imageStrategy={imageStrategy}
                 isCreatingTasks={isCreatingTasks}
                 isGenerating={effectiveIsGenerating}
+                isRetryingFailedItems={hasRetryableFailedItems}
                 onCreateTasks={handleCreateTasks}
                 onDeleteBatch={handleDeleteBatch}
                 onGenerate={handleGenerate}
@@ -2580,6 +2592,9 @@ export function SheinStudioWorkbench({
                 savedBatches={savedBatches}
                 selectedSdsImages={selectedSdsImages}
                 selectedStyleCount={selectedIds.length}
+                generateButtonLabel={
+                  hasRetryableFailedItems ? "重试失败批次" : "生成款式图"
+                }
                 selectionReady={Boolean(activeSelection?.variantId)}
                 storeRequiredMessage={storeRequiredMessage}
                 showSavedBatches={!initialBatchId}

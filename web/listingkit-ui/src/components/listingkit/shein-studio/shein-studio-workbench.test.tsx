@@ -99,9 +99,12 @@ vi.mock("@/components/listingkit/shein-studio/shein-design-preview-grid", () => 
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", () => ({
   SheinStudioGenerationPanel: (props: {
+    generateButtonLabel?: string;
+    generationNotice?: string;
     groupedImageMode?: string;
     generationError?: string;
     isGenerating?: boolean;
+    isRetryingFailedItems?: boolean;
     onCreateTasks?: () => void;
     onGenerate: () => void;
     onRestorePrompt?: (value: string) => void;
@@ -118,6 +121,10 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
     }>;
   }) => {
     lastGenerationPanelProps = props as Record<string, unknown>;
+    const actionLabel =
+      props.generateButtonLabel === "重试失败批次"
+        ? "重试失败批次"
+        : "generate styles";
     return (
       <div id="shein-studio-generator">
         <label htmlFor="prompt">prompt</label>
@@ -127,7 +134,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
           value={props.prompt}
         />
         <button disabled={props.isGenerating} onClick={props.onGenerate} type="button">
-          generate styles
+          {actionLabel}
         </button>
         {props.onCreateTasks ? (
           <button onClick={props.onCreateTasks} type="button">
@@ -152,6 +159,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
           <div>{props.subscriptionBlockedMessage}</div>
         ) : null}
         {props.storeRequiredMessage ? <div>{props.storeRequiredMessage}</div> : null}
+        {props.generationNotice ? <div>{props.generationNotice}</div> : null}
         {props.generationError ? <div>{props.generationError}</div> : null}
       </div>
     );
@@ -1582,7 +1590,10 @@ describe("SheinStudioWorkbench", () => {
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
+    expect(screen.getByRole("button", { name: "重试失败批次" })).toBeInTheDocument();
+    expect(screen.getByText(/当前批次有 1 个失败项/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重试失败批次" }));
 
     await waitFor(() =>
       expect(retrySheinStudioBatchItems).toHaveBeenCalledWith("batch-1", [
@@ -1902,7 +1913,7 @@ describe("SheinStudioWorkbench", () => {
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
+    fireEvent.click(screen.getByRole("button", { name: "重试失败批次" }));
 
     await waitFor(() =>
       expect(retrySheinStudioBatchItems).toHaveBeenCalledWith("batch-1", [

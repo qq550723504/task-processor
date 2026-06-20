@@ -41,6 +41,9 @@ vi.mock("next/image", () => ({
 function renderPanel(options?: {
   imageStrategy?: "ai_generated" | "sds_official" | "hybrid";
   availableSdsImages?: SheinStudioSelectableSDSImage[];
+  generationNotice?: string;
+  generateButtonLabel?: string;
+  isRetryingFailedItems?: boolean;
   promptHistory?: SDSGroupedPromptHistoryEntry[];
   styleCount?: string;
   storeRequiredMessage?: string;
@@ -59,10 +62,12 @@ function renderPanel(options?: {
       creatingError=""
       creatingMessage=""
       generationError=""
+      generationNotice={options?.generationNotice ?? ""}
       groupedImageMode="shared_by_size"
       imageStrategy={options?.imageStrategy ?? "ai_generated"}
       isCreatingTasks={false}
       isGenerating={false}
+      isRetryingFailedItems={options?.isRetryingFailedItems ?? false}
       onCreateTasks={() => undefined}
       onDeleteBatch={() => undefined}
       onGenerate={() => undefined}
@@ -80,6 +85,7 @@ function renderPanel(options?: {
       savedBatches={[]}
       selectedSdsImages={[]}
       selectedStyleCount={0}
+      generateButtonLabel={options?.generateButtonLabel}
       selectionReady={true}
       statusGroups={options?.statusGroups}
       storeRequiredMessage={options?.storeRequiredMessage ?? ""}
@@ -393,6 +399,21 @@ describe("SheinStudioGenerationPanel", () => {
     expect(screen.getByText("已保存草稿")).toBeInTheDocument();
     expect(screen.getByText("3 项")).toBeInTheDocument();
     expect(screen.getByText("已发布")).toBeInTheDocument();
+  });
+
+  it("surfaces a dedicated retry notice for failed batch items", () => {
+    renderPanel({
+      generateButtonLabel: "重试失败批次",
+      generationNotice:
+        "当前批次有 2 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。",
+    });
+
+    expect(screen.getByRole("button", { name: "重试失败批次" })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "当前批次有 2 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("locks only artwork-generation fields while a style generation is in progress", () => {
