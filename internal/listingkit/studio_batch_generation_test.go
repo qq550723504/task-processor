@@ -78,6 +78,71 @@ func TestStartStudioBatchGenerationExpandsPerProductIntoSeparateItems(t *testing
 	}
 }
 
+func TestExpandStudioBatchItemsGroupsSharedSelectionsByCompatibilityFingerprint(t *testing.T) {
+	t.Parallel()
+
+	first := testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)
+	second := testStudioBatchSelection(102, "Canvas Tote", "Blue", 1200, 1200)
+	second.TemplateImageURL = first.TemplateImageURL
+	second.MaskImageURL = first.MaskImageURL
+	third := testStudioBatchSelection(103, "Canvas Tote", "White", 1200, 1200)
+	third.MaskImageURL = "https://cdn.example.com/mask-other.png"
+	batch := &StudioBatchRecord{
+		ID:               "batch-compat",
+		GroupedImageMode: "shared_by_size",
+		Selection:        SheinStudioSelectionSnapshot(first),
+		GroupedSelections: SheinStudioGroupedSelectionList{
+			{SelectionID: selectionIDForStudioSelection(second), Selection: second, Eligible: true},
+			{SelectionID: selectionIDForStudioSelection(third), Selection: third, Eligible: true},
+		},
+	}
+
+	items := expandStudioBatchItems(batch)
+
+	if len(items) != 2 {
+		t.Fatalf("len(items) = %d, want 2 compatibility buckets: %+v", len(items), items)
+	}
+	wantFirstKey := buildStudioBatchSharedCompatibilityGroupKey(first)
+	if items[0].TargetGroupKey != wantFirstKey {
+		t.Fatalf("first target key = %q, want %q", items[0].TargetGroupKey, wantFirstKey)
+	}
+	if items[0].SelectionCount != 2 {
+		t.Fatalf("first selection count = %d, want 2", items[0].SelectionCount)
+	}
+	wantSecondKey := buildStudioBatchSharedCompatibilityGroupKey(third)
+	if items[1].TargetGroupKey != wantSecondKey {
+		t.Fatalf("second target key = %q, want %q", items[1].TargetGroupKey, wantSecondKey)
+	}
+	if items[1].SelectionCount != 1 {
+		t.Fatalf("second selection count = %d, want 1", items[1].SelectionCount)
+	}
+}
+
+func TestExpandStudioBatchItemsFallsBackToPerProductWhenCompatibilityIncomplete(t *testing.T) {
+	t.Parallel()
+
+	selection := testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)
+	selection.MaskImageURL = ""
+	batch := &StudioBatchRecord{
+		ID:               "batch-incomplete",
+		GroupedImageMode: "shared_by_size",
+		Selection:        SheinStudioSelectionSnapshot(selection),
+	}
+
+	items := expandStudioBatchItems(batch)
+
+	if len(items) != 1 {
+		t.Fatalf("len(items) = %d, want 1 fallback item", len(items))
+	}
+	wantKey := selectionIDForStudioSelection(selection)
+	if items[0].TargetGroupKey != wantKey {
+		t.Fatalf("target key = %q, want fallback selection key %q", items[0].TargetGroupKey, wantKey)
+	}
+	if items[0].GroupMode != "per_product" {
+		t.Fatalf("group mode = %q, want per_product fallback", items[0].GroupMode)
+	}
+}
+
 func TestMaterializeAttemptDoesNotBorrowImagesAcrossItems(t *testing.T) {
 	t.Parallel()
 
@@ -740,8 +805,9 @@ func TestStartStudioBatchGenerationRerunRefreshesLatestSessionDraftInput(t *test
 	if len(detail.Items) != 1 {
 		t.Fatalf("len(detail.Items) = %d, want 1 shared-by-size item after rerun", len(detail.Items))
 	}
-	if detail.Items[0].Item.TargetGroupKey != "size:1200x1200" {
-		t.Fatalf("item target group key = %q, want shared-by-size key", detail.Items[0].Item.TargetGroupKey)
+	wantSharedKey := buildStudioBatchSharedCompatibilityGroupKey(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200))
+	if detail.Items[0].Item.TargetGroupKey != wantSharedKey {
+		t.Fatalf("item target group key = %q, want compatibility key %q", detail.Items[0].Item.TargetGroupKey, wantSharedKey)
 	}
 	if got := prompts[len(prompts)-1]; got != "new prompt" {
 		t.Fatalf("latest execution prompt = %q, want refreshed prompt", got)
@@ -1452,10 +1518,13 @@ func testStudioBatchSelection(variantID int64, productName string, variantLabel 
 		VariantID:          variantID,
 		PrototypeGroupID:   9001,
 		LayerID:            "layer-1",
+		DesignType:         "material",
 		ProductName:        productName,
 		VariantLabel:       variantLabel,
 		PrintableWidth:     width,
 		PrintableHeight:    height,
+		TemplateImageURL:   "https://cdn.example.com/template.png",
+		MaskImageURL:       "https://cdn.example.com/mask.png",
 		SelectedVariantIDs: []int64{variantID},
 	}
 }

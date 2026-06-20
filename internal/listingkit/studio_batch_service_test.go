@@ -667,8 +667,9 @@ func TestServiceGetStudioBatchDetailMaterializesBatchGraphFromGeneratingSessionW
 	if len(detail.Items) != 1 {
 		t.Fatalf("len(detail.Items) = %d, want 1 shared-size item", len(detail.Items))
 	}
-	if detail.Items[0].Item.TargetGroupKey != "size:1200x1200" {
-		t.Fatalf("detail.Items[0].Item.TargetGroupKey = %q, want size:1200x1200", detail.Items[0].Item.TargetGroupKey)
+	wantGroupKey := buildStudioBatchSharedCompatibilityGroupKey(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200))
+	if detail.Items[0].Item.TargetGroupKey != wantGroupKey {
+		t.Fatalf("detail.Items[0].Item.TargetGroupKey = %q, want %q", detail.Items[0].Item.TargetGroupKey, wantGroupKey)
 	}
 	if detail.Items[0].Item.SelectionCount != 2 {
 		t.Fatalf("detail.Items[0].Item.SelectionCount = %d, want 2", detail.Items[0].Item.SelectionCount)

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createGroupedSheinReviewTasks } from "@/lib/shein-studio/create-review-tasks";
+import {
+  buildGroupedGenerationTargets,
+  buildSharedCompatibilityGroupKey,
+} from "@/lib/shein-studio/grouped-image-mode";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { SheinStudioGeneratedDesign } from "@/lib/types/shein-studio";
 
@@ -18,8 +22,13 @@ const baseSelection: SDSProductVariantSelection = {
   selectedVariantIds: [101],
   prototypeGroupId: 7001,
   layerId: "layer-1",
+  designType: "material",
   productName: "Baseline Product",
   variantLabel: "Black / M",
+  printableWidth: 1200,
+  printableHeight: 1200,
+  templateImageUrl: "https://cdn.example.com/template.png",
+  maskImageUrl: "https://cdn.example.com/mask.png",
 };
 
 const secondSelection: SDSProductVariantSelection = {
@@ -48,7 +57,7 @@ const baseDesign: SheinStudioGeneratedDesign = {
 const sameSizeDesign: SheinStudioGeneratedDesign = {
   ...baseDesign,
   id: "design-shared",
-  targetGroupKey: "size:1200x1200",
+  targetGroupKey: "compat:0706f0914eb34a4c259c2b498fcbd160cf208d3c",
   targetGroupLabel: "1200 x 1200",
 };
 
@@ -74,6 +83,58 @@ const secondProductDesign: SheinStudioGeneratedDesign = {
 };
 
 describe("createGroupedSheinReviewTasks", () => {
+  it("groups shared generation targets by compatibility fingerprint instead of size only", () => {
+    const sameCompatibility = {
+      ...secondSelection,
+      templateImageUrl: baseSelection.templateImageUrl,
+      maskImageUrl: baseSelection.maskImageUrl,
+    };
+    const differentMask = {
+      ...secondSelection,
+      variantId: 103,
+      selectedVariantIds: [103],
+      maskImageUrl: "https://cdn.example.com/mask-b.png",
+    };
+
+    const targets = buildGroupedGenerationTargets({
+      activeSelection: baseSelection,
+      groupedSelections: [sameCompatibility, differentMask],
+      groupedImageMode: "shared_by_size",
+    });
+
+    expect(targets).toHaveLength(2);
+    expect(targets[0]).toMatchObject({
+      key: "compat:0706f0914eb34a4c259c2b498fcbd160cf208d3c",
+      selectionIds: [
+        "9001:7001:101:layer-1:101",
+        "9001:7001:102:layer-1:102",
+      ],
+    });
+    expect(targets[1]).toMatchObject({
+      key: "compat:0e695ecd33dccfcce7f4fe95171c62b97ee04f6b",
+      selectionIds: ["9001:7001:103:layer-1:103"],
+    });
+  });
+
+  it("falls shared generation back to one product when compatibility is incomplete", () => {
+    const incomplete = { ...baseSelection, maskImageUrl: undefined };
+
+    expect(buildSharedCompatibilityGroupKey(incomplete)).toBe("");
+    expect(
+      buildGroupedGenerationTargets({
+        activeSelection: incomplete,
+        groupedSelections: [],
+        groupedImageMode: "shared_by_size",
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        key: "9001:7001:101:layer-1:101",
+        label: "Baseline Product · Black / M",
+        selectionIds: ["9001:7001:101:layer-1:101"],
+      }),
+    ]);
+  });
+
   it("rejects grouped create when a selection is not baseline validated", async () => {
     await expect(
       createGroupedSheinReviewTasks({
@@ -218,7 +279,7 @@ describe("createGroupedSheinReviewTasks", () => {
     });
   });
 
-  it("reuses the same designs for selections with the same printable size", async () => {
+  it("reuses the same designs for selections with the same compatibility fingerprint", async () => {
     const createReviewTasks = vi.fn().mockResolvedValue([]);
 
     await createGroupedSheinReviewTasks({
@@ -241,6 +302,8 @@ describe("createGroupedSheinReviewTasks", () => {
                 ...secondSelection,
                 printableWidth: 1200,
                 printableHeight: 1200,
+                templateImageUrl: baseSelection.templateImageUrl,
+                maskImageUrl: baseSelection.maskImageUrl,
               },
               baselineStatus: "ready",
             },
