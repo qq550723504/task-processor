@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { SheinStudioBatchQueueBanner } from "@/components/listingkit/shein-studio/shein-studio-batch-queue-banner";
+import { SheinStudioBatchRunProgress } from "@/components/listingkit/shein-studio/shein-studio-batch-run-progress";
 import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/shein-studio-busy-overlay";
 import { BatchStoreSettings } from "@/components/listingkit/shein-studio/shein-studio-generation-form-sections";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
@@ -69,8 +70,10 @@ import {
   clearListingKitTraceContext,
   writeListingKitTraceContext,
 } from "@/lib/listingkit/request-trace";
+import { ApiError } from "@/lib/api/client";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
+import { startSheinStudioBatchRun } from "@/lib/api/shein-studio-batch-runs";
 import { getCurrentSubscription } from "@/lib/api/subscription";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
@@ -106,6 +109,16 @@ const dedicatedBatchPromptOverrides = new Map<string, string>();
 
 function isMissingStudioBatchDeleteError(error: unknown) {
   return error instanceof Error && /studio session not found/i.test(error.message);
+}
+
+function getBatchRunStartErrorMessage(error: unknown) {
+  if (error instanceof ApiError && error.status === 404) {
+    return "这轮批量生成里有批次已经不存在了。请先刷新最近批次列表，再重新选择。";
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "这轮批量生成没有成功启动，请稍后重试。";
 }
 
 function isLocalSnapshotNewerThanBatch(
@@ -455,6 +468,8 @@ export function SheinStudioWorkbench({
     startIndex: number;
     total: number;
   } | null>(null);
+  const [activeBatchRunId, setActiveBatchRunId] = useState("");
+  const [batchRunError, setBatchRunError] = useState("");
   const [selectedRecentBatchHydrations, setSelectedRecentBatchHydrations] = useState<
     Record<string, SheinStudioWorkbenchHydratedBatch>
   >({});
@@ -2002,6 +2017,18 @@ export function SheinStudioWorkbench({
   );
   const handleOpenBatchQueue = useCallback(
     (input: { batchIds: string[]; mode: SheinStudioBatchQueueMode }) => {
+      if (input.mode === "generate") {
+        setBatchRunError("");
+        void startSheinStudioBatchRun(input.batchIds)
+          .then((response) => {
+            setQueueResumeState(null);
+            setActiveBatchRunId(response.run.id);
+          })
+          .catch((error) => {
+            setBatchRunError(getBatchRunStartErrorMessage(error));
+          });
+        return;
+      }
       void startBatchQueue(input);
     },
     [startBatchQueue],
@@ -2342,6 +2369,20 @@ export function SheinStudioWorkbench({
       "当前正在生成款式图或创建 SHEIN 资料。现在离开会中断当前页面上的进度承接，确认还要离开吗？",
   });
 
+  if (!initialBatchId && activeBatchRunId) {
+    return (
+      <section className="relative space-y-6">
+        <SheinStudioBatchRunProgress
+          onBack={() => {
+            setActiveBatchRunId("");
+            void refreshSavedBatches();
+          }}
+          runId={activeBatchRunId}
+        />
+      </section>
+    );
+  }
+
   return (
     <section className="relative space-y-6">
       {busyMessage ? <SheinStudioBusyOverlay message={busyMessage} /> : null}
@@ -2406,6 +2447,12 @@ export function SheinStudioWorkbench({
       {queueMessage ? (
         <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
           {queueMessage}
+        </div>
+      ) : null}
+
+      {batchRunError ? (
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+          {batchRunError}
         </div>
       ) : null}
 

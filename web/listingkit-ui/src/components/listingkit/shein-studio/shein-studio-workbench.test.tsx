@@ -28,6 +28,7 @@ const saveSheinStudioDraftWithOptions = vi.fn();
 const setActiveSheinStudioBatchId = vi.fn();
 const generateSheinStudioBatch = vi.fn();
 const retrySheinStudioBatchItems = vi.fn();
+const startSheinStudioBatchRun = vi.fn();
 const deleteSheinStudioBatch = vi.fn();
 const approveSheinStudioBatchDesigns = vi.fn();
 const createSheinStudioBatchTasks = vi.fn();
@@ -46,6 +47,23 @@ vi.mock("@tanstack/react-query", () => ({
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-progress-strip", () => ({
   SheinStudioProgressStrip: () => <div>progress strip</div>,
+}));
+
+vi.mock("@/components/listingkit/shein-studio/shein-studio-batch-run-progress", () => ({
+  SheinStudioBatchRunProgress: ({
+    onBack,
+    runId,
+  }: {
+    onBack: () => void;
+    runId: string;
+  }) => (
+    <div>
+      <div>batch run progress: {runId}</div>
+      <button onClick={onBack} type="button">
+        back from batch run
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock("@/components/listingkit/shein-studio/shein-created-tasks-list", () => ({
@@ -226,6 +244,10 @@ vi.mock("@/lib/api/shein-studio-batches", () => ({
     createSheinStudioBatchTasks(...args),
 }));
 
+vi.mock("@/lib/api/shein-studio-batch-runs", () => ({
+  startSheinStudioBatchRun: (...args: unknown[]) => startSheinStudioBatchRun(...args),
+}));
+
 vi.mock("@/lib/utils/shein-studio-batches", () => ({
   deleteSheinStudioBatch: (...args: unknown[]) => deleteSheinStudioBatch(...args),
   getSheinStudioBatch: (...args: unknown[]) => getSheinStudioBatch(...args),
@@ -360,6 +382,7 @@ describe("SheinStudioWorkbench", () => {
     saveSheinStudioDraftWithOptions.mockRejectedValue(new Error("timeout"));
     generateSheinStudioBatch.mockReset();
     retrySheinStudioBatchItems.mockReset();
+    startSheinStudioBatchRun.mockReset();
     deleteSheinStudioBatch.mockResolvedValue(undefined);
     approveSheinStudioBatchDesigns.mockReset();
     createSheinStudioBatchTasks.mockReset();
@@ -2828,9 +2851,7 @@ describe("SheinStudioWorkbench", () => {
     expect(push).toHaveBeenCalledWith("/listing-kits/sds/batches/batch-1");
   });
 
-  it("starts queue mode from homepage selection and loads the first batch", async () => {
-    const scrollIntoView = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
+  it("starts a server-side batch run from homepage selection for generate mode", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
@@ -2857,6 +2878,12 @@ describe("SheinStudioWorkbench", () => {
         updatedAt: "2026-05-26T09:00:00.000Z",
       },
     ]);
+    startSheinStudioBatchRun.mockResolvedValue({
+      run: {
+        id: "run-1",
+      },
+      items: [],
+    });
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
@@ -2864,18 +2891,14 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
     fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
 
-    expect(await screen.findByText("第 1 / 2 个批次")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument();
-    expect(
-      screen.getByText("已定位到生成区，可直接修改提示词或继续生成。"),
-    ).toBeInTheDocument();
     await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByLabelText("prompt")),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1", "batch-2"]),
     );
-    expect(scrollIntoView).toHaveBeenCalled();
+    expect(await screen.findByText("batch run progress: run-1")).toBeInTheDocument();
+    expect(screen.queryByText("最近批次")).not.toBeInTheDocument();
   });
 
-  it("moves to the next batch when clicking next", async () => {
+  it("shows batch run start errors inline on the homepage", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
@@ -2902,18 +2925,18 @@ describe("SheinStudioWorkbench", () => {
         updatedAt: "2026-05-26T09:00:00.000Z",
       },
     ]);
+    startSheinStudioBatchRun.mockRejectedValue(new Error("run start failed"));
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
     fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
-    fireEvent.click(await screen.findByRole("button", { name: "下一批次" }));
 
     await waitFor(() =>
-      expect(screen.getByDisplayValue("second prompt")).toBeInTheDocument(),
+      expect(screen.getByText("run start failed")).toBeInTheDocument(),
     );
-    expect(screen.getByText("第 2 / 2 个批次")).toBeInTheDocument();
+    expect(screen.queryByText(/batch run progress:/)).not.toBeInTheDocument();
   });
 
   it("starts create-task queue mode at the review step for batches with designs", async () => {
@@ -2988,74 +3011,6 @@ describe("SheinStudioWorkbench", () => {
       screen.getByText("已定位到审核区，可直接创建任务或调整款式。"),
     ).toBeInTheDocument();
     await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-  });
-
-  it("waits for hydrated truth before determining the queue starting step", async () => {
-    Element.prototype.scrollIntoView = vi.fn();
-    listSheinStudioBatches.mockResolvedValue([
-      {
-        id: "batch-1",
-        name: "Retro Cherries",
-        prompt: "retro cherries",
-        styleCount: "1",
-        sheinStoreId: "869",
-        selection,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
-        updatedAt: "2026-05-26T10:00:00.000Z",
-      },
-    ]);
-    getSheinStudioHydratedBatch.mockImplementation(async () => {
-      await new Promise((resolve) => window.setTimeout(resolve, 20));
-      return buildHydratedBatch(
-        {
-          designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
-          selectedIds: ["design-1"],
-        },
-        {
-          items: [
-            {
-              item: {
-                id: "item-1",
-                batchId: "batch-1",
-                targetGroupKey: "size:1000x1000",
-                status: "review_ready",
-                selectionCount: 1,
-                createdAt: "2026-05-26T09:59:00.000Z",
-                updatedAt: "2026-05-26T10:00:00.000Z",
-              },
-              designs: [
-                {
-                  id: "design-1",
-                  batchId: "batch-1",
-                  itemId: "item-1",
-                  sourceAttemptId: "attempt-1",
-                  targetGroupKey: "size:1000x1000",
-                  imageUrl: "https://example.com/design.png",
-                  reviewStatus: "approved",
-                  createdAt: "2026-05-26T09:59:30.000Z",
-                  updatedAt: "2026-05-26T10:00:00.000Z",
-                },
-              ],
-            },
-          ],
-        },
-      );
-    });
-
-    render(<SheinStudioWorkbench activeStep="generate" />);
-
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 1 个" }));
-
-    await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
-    );
-    expect(screen.getByText("第 1 / 1 个批次")).toBeInTheDocument();
-    expect(
-      screen.getByText("已定位到审核区，可直接创建任务或调整款式。"),
-    ).toBeInTheDocument();
   });
 
   it("ignores stale recent-batch hydration when a newer batch selection wins", async () => {
@@ -3167,10 +3122,7 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.queryByDisplayValue("prompt a")).not.toBeInTheDocument();
   });
 
-  it("ignores an older queue hydration after exiting and starting a newer queue", async () => {
-    Element.prototype.scrollIntoView = vi.fn();
-    const batchOneDeferred = createDeferred<ReturnType<typeof buildHydratedBatch>>();
-    const batchTwoDeferred = createDeferred<ReturnType<typeof buildHydratedBatch>>();
+  it("returns from batch run progress and refreshes saved batches", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
@@ -3197,190 +3149,27 @@ describe("SheinStudioWorkbench", () => {
         updatedAt: "2026-05-26T10:01:00.000Z",
       },
     ]);
-    getSheinStudioHydratedBatch.mockImplementation((batchId: string) => {
-      if (batchId === "batch-1") {
-        return batchOneDeferred.promise;
-      }
-      if (batchId === "batch-2") {
-        return batchTwoDeferred.promise;
-      }
-      return Promise.resolve(null);
+    startSheinStudioBatchRun.mockResolvedValue({
+      run: {
+        id: "run-2",
+      },
+      items: [],
     });
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 1 个" }));
-    fireEvent.click(await screen.findByRole("button", { name: "退出批量处理" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-1" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 1 个" }));
-
-    batchTwoDeferred.resolve(
-      buildHydratedBatch(
-        {
-          id: "batch-2",
-          name: "Batch 2",
-          prompt: "prompt 2",
-          selection: groupedSelection.selection,
-          updatedAt: "2026-05-26T10:02:00.000Z",
-        },
-        {
-          batch: {
-            id: "batch-2",
-            status: "draft",
-            prompt: "prompt 2",
-            styleCount: "1",
-            sheinStoreId: 869,
-            createdAt: "2026-05-26T10:00:00.000Z",
-            updatedAt: "2026-05-26T10:02:00.000Z",
-          },
-        },
-      ),
-    );
-
-    await waitFor(() =>
-      expect(screen.getByDisplayValue("prompt 2")).toBeInTheDocument(),
-    );
-
-    batchOneDeferred.resolve(
-      buildHydratedBatch(
-        {
-          id: "batch-1",
-          name: "Batch 1",
-          prompt: "prompt 1",
-          updatedAt: "2026-05-26T10:02:00.000Z",
-        },
-        {
-          batch: {
-            id: "batch-1",
-            status: "draft",
-            prompt: "prompt 1",
-            styleCount: "1",
-            sheinStoreId: 869,
-            createdAt: "2026-05-26T09:59:00.000Z",
-            updatedAt: "2026-05-26T10:02:00.000Z",
-          },
-        },
-      ),
-    );
-
-    await waitFor(() =>
-      expect(screen.getByDisplayValue("prompt 2")).toBeInTheDocument(),
-    );
-    expect(screen.queryByDisplayValue("prompt 1")).not.toBeInTheDocument();
-  });
-
-  it("starts task-view queue mode from batches that already have created tasks", async () => {
-    const scrollIntoView = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
-    listSheinStudioBatches.mockResolvedValue([
-      {
-        id: "batch-1",
-        name: "Retro Cherries",
-        prompt: "retro cherries",
-        styleCount: "1",
-        sheinStoreId: "869",
-        selection,
-        designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
-        selectedIds: ["design-1"],
-        createdTasks: [{ id: "task-1", title: "Task 1" }],
-        updatedAt: "2026-05-26T10:00:00.000Z",
-      },
-    ]);
-
-    render(<SheinStudioWorkbench activeStep="generate" />);
-
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量查看任务 1 个" }));
-
-    await waitFor(() =>
-      expect(screen.getByText("created tasks: 1")).toBeInTheDocument(),
-    );
-    expect(screen.getByText("第 1 / 1 个批次")).toBeInTheDocument();
-    expect(
-      screen.getByText("已定位到任务区，可继续查看已创建的任务。"),
-    ).toBeInTheDocument();
-    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
-  });
-
-  it("skips missing batch ids and continues to the next available batch", async () => {
-    listSheinStudioBatches.mockResolvedValue([
-      {
-        id: "batch-2",
-        name: "Second Batch",
-        prompt: "second prompt",
-        styleCount: "1",
-        sheinStoreId: "",
-        selection: groupedSelection.selection,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
-        updatedAt: "2026-05-26T09:00:00.000Z",
-      },
-    ]);
-
-    render(<SheinStudioWorkbench activeStep="generate" />);
-
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 1 个" }));
-
-    await waitFor(() =>
-      expect(screen.getByDisplayValue("second prompt")).toBeInTheDocument(),
-    );
-  });
-
-  it("clears queue mode when exiting", async () => {
-    listSheinStudioBatches.mockResolvedValue([
-      {
-        id: "batch-1",
-        name: "Retro Cherries",
-        prompt: "retro cherries",
-        styleCount: "1",
-        sheinStoreId: "869",
-        selection,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
-        updatedAt: "2026-05-26T10:00:00.000Z",
-      },
-      {
-        id: "batch-2",
-        name: "Second Batch",
-        prompt: "second prompt",
-        styleCount: "1",
-        sheinStoreId: "",
-        selection: groupedSelection.selection,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
-        updatedAt: "2026-05-26T09:00:00.000Z",
-      },
-    ]);
-
-    render(<SheinStudioWorkbench activeStep="generate" />);
-
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
     fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
-    fireEvent.click(await screen.findByRole("button", { name: "退出批量处理" }));
 
     await waitFor(() =>
-      expect(screen.queryByText("第 1 / 2 个批次")).not.toBeInTheDocument(),
+      expect(screen.getByText("batch run progress: run-2")).toBeInTheDocument(),
     );
-    expect(screen.getByText(/已停在第 1 \/ 2 个批次/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "继续本轮处理" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "清除这轮选择" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "select batch-1" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "select batch-2" })).toBeChecked();
-  });
-
-  it("resumes the queued homepage selection from the saved queue position", async () => {
-    listSheinStudioBatches.mockResolvedValue([
+    listSheinStudioBatches.mockResolvedValueOnce([
       {
         id: "batch-1",
-        name: "Retro Cherries",
-        prompt: "retro cherries",
+        name: "Batch 1",
+        prompt: "prompt 1",
         styleCount: "1",
         sheinStoreId: "869",
         selection,
@@ -3389,121 +3178,15 @@ describe("SheinStudioWorkbench", () => {
         createdTasks: [],
         updatedAt: "2026-05-26T10:00:00.000Z",
       },
-      {
-        id: "batch-2",
-        name: "Second Batch",
-        prompt: "second prompt",
-        styleCount: "1",
-        sheinStoreId: "",
-        selection: groupedSelection.selection,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
-        updatedAt: "2026-05-26T09:00:00.000Z",
-      },
     ]);
+    const callsBeforeBack = listSheinStudioBatches.mock.calls.length;
 
-    render(<SheinStudioWorkbench activeStep="generate" />);
-
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
-    fireEvent.click(await screen.findByRole("button", { name: "退出批量处理" }));
-    fireEvent.click(screen.getByRole("button", { name: "继续本轮处理" }));
-
-    expect(await screen.findByText("第 1 / 2 个批次")).toBeInTheDocument();
-    expect(screen.queryByText(/已停在第 1 \/ 2 个批次/)).not.toBeInTheDocument();
-  });
-
-  it("clears the queued homepage selection context on demand", async () => {
-    listSheinStudioBatches.mockResolvedValue([
-      {
-        id: "batch-1",
-        name: "Retro Cherries",
-        prompt: "retro cherries",
-        styleCount: "1",
-        sheinStoreId: "869",
-        selection,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
-        updatedAt: "2026-05-26T10:00:00.000Z",
-      },
-      {
-        id: "batch-2",
-        name: "Second Batch",
-        prompt: "second prompt",
-        styleCount: "1",
-        sheinStoreId: "",
-        selection: groupedSelection.selection,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
-        updatedAt: "2026-05-26T09:00:00.000Z",
-      },
-    ]);
-
-    render(<SheinStudioWorkbench activeStep="generate" />);
-
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
-    fireEvent.click(await screen.findByRole("button", { name: "退出批量处理" }));
-    fireEvent.click(screen.getByRole("button", { name: "清除这轮选择" }));
+    fireEvent.click(screen.getByRole("button", { name: "back from batch run" }));
 
     await waitFor(() =>
-      expect(screen.queryByText(/已停在第 1 \/ 2 个批次/)).not.toBeInTheDocument(),
+      expect(listSheinStudioBatches.mock.calls.length).toBeGreaterThan(callsBeforeBack),
     );
-    expect(screen.getByRole("checkbox", { name: "select batch-1" })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "select batch-2" })).not.toBeChecked();
-  });
-
-  it("keeps homepage selection context and shows a completion message after finishing the queue", async () => {
-    listSheinStudioBatches.mockResolvedValue([
-      {
-        id: "batch-1",
-        name: "Retro Cherries",
-        prompt: "retro cherries",
-        styleCount: "1",
-        sheinStoreId: "869",
-        selection,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
-        updatedAt: "2026-05-26T10:00:00.000Z",
-      },
-      {
-        id: "batch-2",
-        name: "Second Batch",
-        prompt: "second prompt",
-        styleCount: "1",
-        sheinStoreId: "",
-        selection: groupedSelection.selection,
-        designs: [],
-        selectedIds: [],
-        createdTasks: [],
-        updatedAt: "2026-05-26T09:00:00.000Z",
-      },
-    ]);
-
-    render(<SheinStudioWorkbench activeStep="generate" />);
-
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
-    fireEvent.click(await screen.findByRole("button", { name: "下一批次" }));
-    fireEvent.click(await screen.findByRole("button", { name: "下一批次" }));
-
-    await waitFor(() =>
-      expect(screen.queryByText("第 2 / 2 个批次")).not.toBeInTheDocument(),
-    );
-    expect(
-      screen.getByText(
-        "已完成这轮继续生成处理，共处理 2 个已保存批次。首页勾选已保留，可继续调整或再次发起批量处理。",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "select batch-1" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "select batch-2" })).toBeChecked();
+    expect(await screen.findByText("最近批次")).toBeInTheDocument();
   });
 
   it("appends the active prompt to the selected group's history when generating", async () => {
