@@ -2,6 +2,8 @@ package listingkit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,6 +26,8 @@ type studioBatchTaskCandidate struct {
 	SelectionSnapshot        SheinStudioSelection
 	SelectionID              string
 	CompatibilityFingerprint string
+	CandidateKey             string
+	SheinStoreID             int64
 	StyleID                  string
 	Title                    string
 }
@@ -97,7 +101,6 @@ func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(
 	detail *StudioBatchDetailGraph,
 	designs []StudioMaterializedDesignRecord,
 ) ([]studioBatchTaskCandidate, []SheinStudioRejectedTask, error) {
-	_ = ctx
 	if batch == nil || detail == nil {
 		return nil, nil, gorm.ErrRecordNotFound
 	}
@@ -128,7 +131,7 @@ func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(
 			continue
 		}
 
-		designCandidates, rejected := buildStudioBatchTaskCandidatesForDesign(batch, item, design, selections)
+		designCandidates, rejected := buildStudioBatchTaskCandidatesForDesign(ctx, session, batch, item, design, selections)
 		if rejected != nil {
 			rejectedTasks = append(rejectedTasks, *rejected)
 		}
@@ -139,6 +142,8 @@ func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(
 }
 
 func buildStudioBatchTaskCandidatesForDesign(
+	ctx context.Context,
+	session *SheinStudioSession,
 	batch *StudioBatchRecord,
 	item StudioBatchItemRecord,
 	design StudioMaterializedDesignRecord,
@@ -216,10 +221,40 @@ func buildStudioBatchTaskCandidatesForDesign(
 				)
 			}
 		}
+		candidate.SheinStoreID = studioBatchTaskStoreID(session, batch, grouped.SheinStoreID)
+		candidate.CandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, candidate)
 		candidates = append(candidates, candidate)
 	}
 
 	return candidates, nil
+}
+
+func buildStudioBatchTaskCandidateKey(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate) string {
+	tenantID := ""
+	if batch != nil {
+		tenantID = strings.TrimSpace(batch.TenantID)
+	}
+	if tenantID == "" {
+		tenantID = strings.TrimSpace(TenantIDFromContext(ctx))
+	}
+	batchID := ""
+	if batch != nil {
+		batchID = strings.TrimSpace(batch.ID)
+	}
+	storeID := candidate.SheinStoreID
+	if storeID <= 0 {
+		storeID = studioBatchTaskStoreID(nil, batch, candidate.Selection.SheinStoreID)
+	}
+	normalized := strings.Join([]string{
+		tenantID,
+		batchID,
+		strings.TrimSpace(candidate.Item.ID),
+		strings.TrimSpace(candidate.Design.ID),
+		strings.TrimSpace(candidate.SelectionID),
+		strconv.FormatInt(storeID, 10),
+	}, "|")
+	sum := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(sum[:])
 }
 
 func orderStudioBatchTaskDesignsByRequest(

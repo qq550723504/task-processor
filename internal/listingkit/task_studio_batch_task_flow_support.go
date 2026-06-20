@@ -45,6 +45,74 @@ func (s *taskStudioBatchService) loadStudioBatchTaskPreparationResult(ctx contex
 	}, nil
 }
 
+func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Context, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return nil
+	}
+	now := s.currentTime().UTC()
+	link := &StudioBatchTaskLinkRecord{
+		ID:                       buildStudioBatchTaskLinkID(candidate),
+		BatchID:                  strings.TrimSpace(candidate.Design.BatchID),
+		ItemID:                   strings.TrimSpace(candidate.Item.ID),
+		DesignID:                 strings.TrimSpace(candidate.Design.ID),
+		SelectionID:              strings.TrimSpace(candidate.SelectionID),
+		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
+		SheinStoreID:             candidate.SheinStoreID,
+		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
+		Status:                   studioBatchTaskLinkStatusReserved,
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	}
+	if link.BatchID == "" {
+		link.BatchID = strings.TrimSpace(candidate.Item.BatchID)
+	}
+	if err := s.batchTaskLinkRepo.CreateStudioBatchTaskLink(ctx, link); err != nil {
+		if _, getErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey); getErr == nil {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *taskStudioBatchService) claimStudioBatchTaskCandidate(ctx context.Context, candidate studioBatchTaskCandidate) (bool, error) {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return true, nil
+	}
+	now := s.currentTime().UTC()
+	existing, existingErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+	if existingErr != nil && !errors.Is(existingErr, gorm.ErrRecordNotFound) {
+		return false, existingErr
+	}
+	if existingErr == nil && existing != nil {
+		if existing.Status == studioBatchTaskLinkStatusFailed && strings.TrimSpace(existing.ListingKitTaskID) != "" {
+			return false, nil
+		}
+		if s.studioBatchTaskLinkIsStale(existing) {
+			if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidateUpdatedAt(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, now); err != nil {
+				return false, err
+			} else if claimed {
+				return true, nil
+			}
+		}
+	}
+	if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidate(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusReserved, studioBatchTaskLinkStatusCreating, now); err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, err
+		}
+	} else if claimed {
+		return true, nil
+	}
+	if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidate(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkStatusCreating, now); err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, err
+		}
+	} else if claimed {
+		return true, nil
+	}
+	return false, nil
+}
+
 func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
 	ctx context.Context,
 	batchID string,

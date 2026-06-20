@@ -97,3 +97,21 @@ func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidate(ctx co
 	}
 	return link, result.RowsAffected > 0, nil
 }
+
+func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAt(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioBatchTaskLinkRecord{}).
+		Where("candidate_key = ? AND status = ? AND updated_at = ?", candidateKey, fromStatus, observedUpdatedAt).
+		Updates(map[string]any{
+			"status":     toStatus,
+			"updated_at": updatedAt,
+		})
+	if result.Error != nil {
+		return nil, false, result.Error
+	}
+	link, err := r.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+	if err != nil {
+		return nil, false, err
+	}
+	return link, result.RowsAffected > 0, nil
+}

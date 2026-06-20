@@ -75,6 +75,21 @@ func TestGormStudioBatchTaskLinkRepositoryUniqueTuple(t *testing.T) {
 	testStudioBatchTaskLinkRepositoryUniqueTuple(t, newGormStudioBatchTaskLinkRepositoryForTest)
 }
 
+func TestMemStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentStores(t *testing.T) {
+	t.Parallel()
+
+	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentStores(t, func(t *testing.T) StudioBatchTaskLinkRepository {
+		t.Helper()
+		return NewMemStudioBatchTaskLinkRepository()
+	})
+}
+
+func TestGormStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentStores(t *testing.T) {
+	t.Parallel()
+
+	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentStores(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
 func TestMemStudioBatchTaskLinkRepositoryUpdateProjectionStatus(t *testing.T) {
 	t.Parallel()
 	testStudioBatchTaskLinkRepositoryUpdateProjectionStatus(t, func(t *testing.T) StudioBatchTaskLinkRepository {
@@ -138,6 +153,21 @@ func TestMemStudioBatchTaskLinkRepositoryClaimCandidate(t *testing.T) {
 func TestGormStudioBatchTaskLinkRepositoryClaimCandidate(t *testing.T) {
 	t.Parallel()
 	testStudioBatchTaskLinkRepositoryClaimCandidate(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
+func TestMemStudioBatchTaskLinkRepositoryClaimCandidateUpdatedAt(t *testing.T) {
+	t.Parallel()
+
+	testStudioBatchTaskLinkRepositoryClaimCandidateUpdatedAt(t, func(t *testing.T) StudioBatchTaskLinkRepository {
+		t.Helper()
+		return NewMemStudioBatchTaskLinkRepository()
+	})
+}
+
+func TestGormStudioBatchTaskLinkRepositoryClaimCandidateUpdatedAt(t *testing.T) {
+	t.Parallel()
+
+	testStudioBatchTaskLinkRepositoryClaimCandidateUpdatedAt(t, newGormStudioBatchTaskLinkRepositoryForTest)
 }
 
 func testStudioBatchTaskLinkRepositoryCreateAndLoadByCandidateKey(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
@@ -237,6 +267,20 @@ func testStudioBatchTaskLinkRepositoryUniqueTuple(t *testing.T, newRepo func(*te
 	duplicate := studioBatchTaskLinkRecordForTest("link-2", "batch-1", "item-1", "design-1", "selection-1", "candidate-2")
 	if err := repo.CreateStudioBatchTaskLink(ctx, duplicate); err == nil {
 		t.Fatal("CreateStudioBatchTaskLink() duplicate tuple error = nil, want error")
+	}
+}
+
+func testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentStores(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
+	t.Helper()
+
+	repo := newRepo(t)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	mustCreateStudioBatchTaskLinkForTest(t, repo, ctx, studioBatchTaskLinkRecordForTest("link-1", "batch-1", "item-1", "design-1", "selection-1", "candidate-1"))
+
+	storeB := studioBatchTaskLinkRecordForTest("link-2", "batch-1", "item-1", "design-1", "selection-1", "candidate-2")
+	storeB.SheinStoreID = 2002
+	if err := repo.CreateStudioBatchTaskLink(ctx, storeB); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink(different store) error = %v, want allowed distinct store candidate", err)
 	}
 }
 
@@ -388,6 +432,34 @@ func testStudioBatchTaskLinkRepositoryClaimCandidate(t *testing.T, newRepo func(
 	}
 	if _, _, err := repo.ClaimStudioBatchTaskCandidate(ctxB, "candidate-1", "creating", "created", now.Add(2*time.Minute)); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Fatalf("cross-tenant claim error = %v, want record not found", err)
+	}
+}
+
+func testStudioBatchTaskLinkRepositoryClaimCandidateUpdatedAt(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
+	t.Helper()
+
+	repo := newRepo(t)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	link := studioBatchTaskLinkRecordForTest("link-1", "batch-1", "item-1", "design-1", "selection-1", "candidate-1")
+	link.Status = "creating"
+	mustCreateStudioBatchTaskLinkForTest(t, repo, ctx, link)
+
+	observed := link.UpdatedAt
+	firstUpdatedAt := observed.Add(time.Minute)
+	got, claimed, err := repo.ClaimStudioBatchTaskCandidateUpdatedAt(ctx, "candidate-1", "creating", observed, "creating", firstUpdatedAt)
+	if err != nil {
+		t.Fatalf("ClaimStudioBatchTaskCandidateUpdatedAt(first) error = %v", err)
+	}
+	if !claimed || !got.UpdatedAt.Equal(firstUpdatedAt) {
+		t.Fatalf("first CAS claim = (%v, %+v), want claimed with updated timestamp %s", claimed, got, firstUpdatedAt)
+	}
+
+	got, claimed, err = repo.ClaimStudioBatchTaskCandidateUpdatedAt(ctx, "candidate-1", "creating", observed, "creating", firstUpdatedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("ClaimStudioBatchTaskCandidateUpdatedAt(second) error = %v", err)
+	}
+	if claimed || !got.UpdatedAt.Equal(firstUpdatedAt) {
+		t.Fatalf("second stale CAS claim = (%v, %+v), want loser preserving first update", claimed, got)
 	}
 }
 

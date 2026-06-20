@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -65,23 +66,79 @@ func projectStudioBatchRecord(batch *StudioBatchRecord, items []StudioBatchItemR
 	return &cloned
 }
 
-func loadStudioBatchDraftState(ctx context.Context, studioSessionRepo studioBatchSeedSessionRepository, batchID string) (*time.Time, []SheinStudioCreatedTask, []SheinStudioFailedTask, error) {
+func loadStudioBatchDraftState(
+	ctx context.Context,
+	studioSessionRepo studioBatchSeedSessionRepository,
+	taskLinkRepo StudioBatchTaskLinkRepository,
+	getTask func(context.Context, string) (*Task, error),
+	batchID string,
+) (*time.Time, []SheinStudioCreatedTask, []SheinStudioFailedTask, error) {
+	linkTasks, err := loadStudioBatchCreatedTasksFromLinks(ctx, taskLinkRepo, getTask, batchID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	if studioSessionRepo == nil {
-		return nil, nil, nil, nil
+		return nil, linkTasks, nil, nil
 	}
 	session, err := studioSessionRepo.GetSession(ctx, batchID)
 	switch {
 	case err == nil:
 		if session == nil || !session.SavedAsBatch {
-			return nil, nil, nil, nil
+			return nil, linkTasks, nil, nil
 		}
 		updatedAt := session.UpdatedAt.UTC()
-		return &updatedAt, append([]SheinStudioCreatedTask(nil), session.CreatedTasks...), append([]SheinStudioFailedTask(nil), session.FailedTasks...), nil
+		createdTasks := mergeStudioCreatedTasks(linkTasks, session.CreatedTasks)
+		return &updatedAt, createdTasks, append([]SheinStudioFailedTask(nil), session.FailedTasks...), nil
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		return nil, nil, nil, nil
+		return nil, linkTasks, nil, nil
 	default:
 		return nil, nil, nil, err
 	}
+}
+
+func loadStudioBatchCreatedTasksFromLinks(
+	ctx context.Context,
+	taskLinkRepo StudioBatchTaskLinkRepository,
+	getTask func(context.Context, string) (*Task, error),
+	batchID string,
+) ([]SheinStudioCreatedTask, error) {
+	if taskLinkRepo == nil {
+		return nil, nil
+	}
+	links, err := taskLinkRepo.ListStudioBatchTaskLinksByBatchID(ctx, batchID)
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]SheinStudioCreatedTask, 0, len(links))
+	seen := make(map[string]struct{}, len(links))
+	for _, link := range links {
+		taskID := strings.TrimSpace(link.ListingKitTaskID)
+		if taskID == "" || link.Status != studioBatchTaskLinkStatusCreated {
+			continue
+		}
+		if _, ok := seen[taskID]; ok {
+			continue
+		}
+		if getTask != nil {
+			task, err := getTask(ctx, taskID)
+			if err != nil || task == nil || task.Status == TaskStatusFailed {
+				continue
+			}
+		}
+		seen[taskID] = struct{}{}
+		tasks = append(tasks, SheinStudioCreatedTask{
+			ID:                       taskID,
+			Title:                    strings.TrimSpace(link.DesignID),
+			DesignID:                 strings.TrimSpace(link.DesignID),
+			ItemID:                   strings.TrimSpace(link.ItemID),
+			SelectionID:              strings.TrimSpace(link.SelectionID),
+			CompatibilityFingerprint: strings.TrimSpace(link.CompatibilityFingerprint),
+			Status:                   studioBatchCreatedTaskStatus,
+			ReasonCode:               strings.TrimSpace(link.ReasonCode),
+			Message:                  strings.TrimSpace(link.Message),
+		})
+	}
+	return tasks, nil
 }
 
 func shouldSyncStudioBatchGraphOnRead(session *SheinStudioSession) bool {

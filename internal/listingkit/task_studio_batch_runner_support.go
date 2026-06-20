@@ -6,7 +6,7 @@ func (s *taskStudioBatchService) ensureDetailRunner() {
 	if s == nil || s.detailRunner != nil {
 		return
 	}
-	s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.ensureStudioBatchGenerationGraphForResume)
+	s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.batchTaskLinkRepo, s.getTask, s.ensureStudioBatchGenerationGraphForResume)
 }
 
 func (s *taskStudioBatchService) ensureServiceRunner() {

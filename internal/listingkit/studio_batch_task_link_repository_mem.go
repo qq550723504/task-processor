@@ -126,6 +126,27 @@ func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidate(ctx con
 	return nil, false, gorm.ErrRecordNotFound
 }
 
+func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAt(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != fromStatus || !link.UpdatedAt.Equal(observedUpdatedAt) {
+			cloned := link
+			return &cloned, false, nil
+		}
+		link.Status = toStatus
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		cloned := link
+		return &cloned, true, nil
+	}
+	return nil, false, gorm.ErrRecordNotFound
+}
+
 func (r *MemStudioBatchTaskLinkRepository) validateUniqueLocked(candidate StudioBatchTaskLinkRecord, existingID string) error {
 	for _, link := range r.links {
 		if link.ID == existingID || link.TenantID != candidate.TenantID {
@@ -137,7 +158,8 @@ func (r *MemStudioBatchTaskLinkRepository) validateUniqueLocked(candidate Studio
 		if link.BatchID == candidate.BatchID &&
 			link.ItemID == candidate.ItemID &&
 			link.DesignID == candidate.DesignID &&
-			link.SelectionID == candidate.SelectionID {
+			link.SelectionID == candidate.SelectionID &&
+			link.SheinStoreID == candidate.SheinStoreID {
 			return fmt.Errorf("studio batch task link tuple already exists")
 		}
 	}

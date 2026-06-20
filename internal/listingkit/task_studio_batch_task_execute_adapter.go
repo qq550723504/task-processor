@@ -65,16 +65,40 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			return items, nil
 		},
 		FindExisting: func(ctx context.Context, session *SheinStudioSession, candidate listingStudioBatchTaskExecuteCandidate) (SheinStudioCreatedTask, bool) {
-			if s == nil || session == nil {
+			if s == nil || len(candidate.state.Candidates) == 0 {
 				return SheinStudioCreatedTask{}, false
 			}
-			return s.findExistingStudioBatchTask(ctx, session.CreatedTasks, candidate.state.Candidates[0])
+			var recorded SheinStudioCreatedTaskList
+			if session != nil {
+				recorded = session.CreatedTasks
+			}
+			return s.findExistingStudioBatchTask(ctx, recorded, candidate.state.Candidates[0])
 		},
 		CreateTask: func(ctx context.Context, candidate listingStudioBatchTaskExecuteCandidate) (SheinStudioCreatedTask, error) {
 			if s == nil || s.createGenerateTask == nil {
 				return SheinStudioCreatedTask{}, fmt.Errorf("listing task creator is not configured")
 			}
 			taskCandidate := candidate.state.Candidates[0]
+			if err := s.reserveStudioBatchTaskCandidate(ctx, taskCandidate); err != nil {
+				return SheinStudioCreatedTask{}, err
+			}
+			claimed, err := s.claimStudioBatchTaskCandidate(ctx, taskCandidate)
+			if err != nil {
+				return SheinStudioCreatedTask{}, err
+			}
+			if !claimed {
+				if existing, ok := s.findDurableStudioBatchTask(ctx, taskCandidate); ok {
+					return existing, nil
+				}
+				return SheinStudioCreatedTask{}, fmt.Errorf("studio batch task candidate is already owned")
+			}
+			if candidate.state.Session != nil {
+				if existing, ok, err := s.findLegacyStudioBatchTask(ctx, candidate.state.Session.CreatedTasks, taskCandidate); err != nil {
+					return SheinStudioCreatedTask{}, err
+				} else if ok {
+					return existing, nil
+				}
+			}
 			task, err := s.createGenerateTask(
 				ctx,
 				buildStudioBatchTaskGenerateRequest(
@@ -85,16 +109,26 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				),
 			)
 			if err != nil {
+				taskID := ""
+				if task != nil {
+					taskID = task.ID
+				}
+				_ = s.persistStudioBatchTaskLink(ctx, taskCandidate, taskID, studioBatchTaskLinkStatusFailed, "task_create_failed", err.Error())
 				return SheinStudioCreatedTask{}, err
 			}
-			return SheinStudioCreatedTask{
+			created := SheinStudioCreatedTask{
 				ID:                       task.ID,
 				Title:                    taskCandidate.Title,
 				DesignID:                 taskCandidate.Design.ID,
 				ItemID:                   taskCandidate.Item.ID,
 				SelectionID:              taskCandidate.SelectionID,
 				CompatibilityFingerprint: taskCandidate.CompatibilityFingerprint,
-			}, nil
+				Status:                   studioBatchCreatedTaskStatus,
+			}
+			if err := s.persistStudioBatchTaskLink(ctx, taskCandidate, task.ID, studioBatchTaskLinkStatusCreated, "", ""); err != nil {
+				return SheinStudioCreatedTask{}, err
+			}
+			return created, nil
 		},
 		BuildFailed: func(candidate listingStudioBatchTaskExecuteCandidate, err error) SheinStudioFailedTask {
 			taskCandidate := candidate.state.Candidates[0]

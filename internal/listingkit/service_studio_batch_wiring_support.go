@@ -85,7 +85,7 @@ func buildTaskStudioBatchServiceWiring(s *service) taskStudioBatchServiceWiring 
 }
 
 func (w taskStudioBatchServiceWiring) newDetailRunner() *listingStudioBatchDetailRunner {
-	return newListingStudioBatchDetailService(w.repo, w.studioSessionRepo, w.ensureGraph)
+	return newListingStudioBatchDetailService(w.repo, w.studioSessionRepo, w.batchTaskLinkRepo, w.getTask, w.ensureGraph)
 }
 
 func (w taskStudioBatchServiceWiring) newReviewRunner() *listingStudioBatchReviewRunner {
