@@ -603,6 +603,7 @@ Follow-up deletion
 | SHEIN submit 翻译决策 | migrated | `internal/listingkit/task_submission_execution_product.go` 不再组合翻译缺失与区域目标语言规则；该判断迁入 `internal/publishing/shein/submit_prep.go` 的 `SubmitProductTranslationNeeded`，ListingKit 仅传入 task region 并决定是否构造 translate API。 |
 | SHEIN submit supplier/publish payload policy | migrated | supplier code 派生和 publish 必需 SKC 图片校验迁入 `internal/publishing/shein/submit_payload_policy.go`；`internal/listingkit/shein_submit_payload_supplier_validation_support.go` 只保留兼容 wrapper。 |
 | SHEIN submit image policy | migrated | submit product 深拷贝、图片 URL 计数、待上传计数、已上传/SDS URL 分类和 upload cache 清洗迁入 `internal/publishing/shein/submit_image_policy.go`；ListingKit 图片上传编排仍保留在根包。 |
+| SHEIN submit payload transport normalization | migrated | submit payload 空集合、extra 默认值和传输字段补齐迁入 `internal/publishing/shein/submit_payload_normalize.go`；`internal/listingkit/shein_submit_payload.go` 保留提交准备顺序和兼容 wrapper。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

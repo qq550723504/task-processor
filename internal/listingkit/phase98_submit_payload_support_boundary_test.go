@@ -32,6 +32,10 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func normalizeSheinSubmitImages(product *sheinproduct.Product) {",
 		"func deriveSheinSubmitProductSupplierCode(product *sheinproduct.Product) string {",
 		"func validateSheinProductPublishPayload(product *sheinproduct.Product) error {",
+		"product.BrandSeriesList = []string{}",
+		"product.Extra.SPUTag = []string{}",
+		"product.Extra.ControlPriceData = map[string]string{}",
+		"sku.CompetingCostPriceImages = []any{}",
 	} {
 		if strings.Contains(homeContent, needle) {
 			t.Fatalf("shein_submit_payload.go should delegate helper seam %q", needle)
