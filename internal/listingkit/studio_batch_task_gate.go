@@ -157,7 +157,7 @@ func (g *studioBatchTaskGate) evaluateCompatibility(eval *studioBatchTaskGateEva
 	candidate := eval.Candidate
 	selectionID := strings.TrimSpace(candidate.SelectionID)
 	fingerprint := g.compatibilityFingerprint(selectionID, candidate.SelectionSnapshot)
-	if fingerprint == "" || !studioBatchCompatibilityFingerprintComplete(candidate.SelectionSnapshot) {
+	if fingerprint == "" || !studioBatchTaskCompatibilityFingerprintComplete(candidate.SelectionSnapshot) {
 		return rejectStudioBatchTaskGate("compatibility_incomplete", fmt.Sprintf("selection %s has an incomplete compatibility fingerprint", selectionID))
 	}
 	groupMode := studioBatchTaskCandidateGroupMode(eval.Batch, candidate.Item)
@@ -168,7 +168,7 @@ func (g *studioBatchTaskGate) evaluateCompatibility(eval *studioBatchTaskGateEva
 				otherID = selectionIDForStudioSelection(grouped.Selection)
 			}
 			otherFingerprint := g.compatibilityFingerprint(otherID, grouped.Selection)
-			if otherFingerprint == "" || !studioBatchCompatibilityFingerprintComplete(grouped.Selection) {
+			if otherFingerprint == "" || !studioBatchTaskCompatibilityFingerprintComplete(grouped.Selection) {
 				return rejectStudioBatchTaskGate("compatibility_incomplete", fmt.Sprintf("selection %s has an incomplete compatibility fingerprint", otherID))
 			}
 			if otherFingerprint != fingerprint {

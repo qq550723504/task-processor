@@ -180,6 +180,22 @@ export function getApprovedItemizedBatchDesignIDs(
   );
 }
 
+export function getItemizedBatchPendingTaskDesignIDs(
+  detail?: SheinStudioBatchDetail | null,
+) {
+  if (!detail) {
+    return [];
+  }
+  const taskDesignIDs = new Set(
+    [...(detail.createdTasks ?? []), ...(detail.reusedTasks ?? [])]
+      .map((task) => task.designId?.trim())
+      .filter((designId): designId is string => Boolean(designId)),
+  );
+  return getApprovedItemizedBatchDesignIDs(detail).filter(
+    (designId) => !taskDesignIDs.has(designId),
+  );
+}
+
 const ACTIVE_ITEMIZED_BATCH_STATUSES = new Set<SheinStudioBatchStatus>([
   "generating",
   "tasks_creating",

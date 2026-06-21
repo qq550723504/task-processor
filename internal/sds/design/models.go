@@ -90,6 +90,10 @@ type DesignProductListResponse struct {
 // DesignProductListItem contains the rendered output images from 成品库.
 type DesignProductListItem struct {
 	ID                 SDSFlexibleString       `json:"id"`
+	ItemID             SDSFlexibleString       `json:"item_id"`
+	ItemIDAlt          SDSFlexibleString       `json:"itemId"`
+	EndProductID       SDSFlexibleString       `json:"end_product_id"`
+	EndProductIDAlt    SDSFlexibleString       `json:"endProductId"`
 	ProductID          int64                   `json:"product_id"`
 	ProductParentID    int64                   `json:"product_parent_id"`
 	DesignTaskID       string                  `json:"design_task_id"`

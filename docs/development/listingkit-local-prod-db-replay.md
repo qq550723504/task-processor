@@ -38,6 +38,27 @@
 - 打印本地 API / UI 的建议启动命令
 - 保持窗口常驻，直到你 `Ctrl+C`
 
+如果本地 API 需要启用 ListingKit Temporal 工作流客户端，也可以同时转发远端
+Temporal frontend：
+
+```powershell
+.\scripts\start-listingkit-local-portforward.ps1 -IncludeTemporal
+```
+
+这会额外转发 `temporal/temporal-frontend:7233` 到 `127.0.0.1:7233`，
+并提示设置：
+
+```powershell
+$env:LISTINGKIT_TEMPORAL_ENABLED='true'
+$env:LISTINGKIT_TEMPORAL_ADDRESS='127.0.0.1:7233'
+```
+
+如果只想单独启动远端 Temporal 转发，也可以执行：
+
+```powershell
+.\scripts\start-listingkit-remote-temporal-portforward.ps1
+```
+
 固定端口约定：
 
 - 数据库固定用 `15432`

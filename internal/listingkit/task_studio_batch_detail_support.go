@@ -32,6 +32,7 @@ func projectStudioBatchDetail(
 	detail *StudioBatchDetailGraph,
 	draftUpdatedAt *time.Time,
 	createdTasks []SheinStudioCreatedTask,
+	rejectedTasks []SheinStudioRejectedTask,
 	failedTasks []SheinStudioFailedTask,
 ) *StudioBatchDetail {
 	if detail == nil {
@@ -49,10 +50,11 @@ func projectStudioBatchDetail(
 	}
 
 	projected := &StudioBatchDetail{
-		Batch:        batch,
-		Items:        items,
-		CreatedTasks: append([]SheinStudioCreatedTask(nil), createdTasks...),
-		FailedTasks:  append([]SheinStudioFailedTask(nil), failedTasks...),
+		Batch:         batch,
+		Items:         items,
+		CreatedTasks:  append([]SheinStudioCreatedTask(nil), createdTasks...),
+		RejectedTasks: append([]SheinStudioRejectedTask(nil), rejectedTasks...),
+		FailedTasks:   append([]SheinStudioFailedTask(nil), failedTasks...),
 	}
 	projected.StatusGroups = BuildStudioBatchStatusGroups(projected)
 	return projected
@@ -74,27 +76,31 @@ func loadStudioBatchDraftState(
 	taskLinkRepo StudioBatchTaskLinkRepository,
 	getTask func(context.Context, string) (*Task, error),
 	batchID string,
-) (*time.Time, []SheinStudioCreatedTask, []SheinStudioFailedTask, error) {
+) (*time.Time, []SheinStudioCreatedTask, []SheinStudioRejectedTask, []SheinStudioFailedTask, error) {
 	linkTasks, err := loadStudioBatchCreatedTasksFromLinks(ctx, taskLinkRepo, getTask, batchID)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
+	}
+	linkRejectedTasks, err := loadStudioBatchRejectedTasksFromLinks(ctx, taskLinkRepo, batchID)
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
 	if studioSessionRepo == nil {
-		return nil, linkTasks, nil, nil
+		return nil, linkTasks, linkRejectedTasks, nil, nil
 	}
 	session, err := studioSessionRepo.GetSession(ctx, batchID)
 	switch {
 	case err == nil:
 		if session == nil || !session.SavedAsBatch {
-			return nil, linkTasks, nil, nil
+			return nil, linkTasks, linkRejectedTasks, nil, nil
 		}
 		updatedAt := session.UpdatedAt.UTC()
 		createdTasks := mergeStudioCreatedTasks(linkTasks, session.CreatedTasks)
-		return &updatedAt, createdTasks, append([]SheinStudioFailedTask(nil), session.FailedTasks...), nil
+		return &updatedAt, createdTasks, linkRejectedTasks, append([]SheinStudioFailedTask(nil), session.FailedTasks...), nil
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		return nil, linkTasks, nil, nil
+		return nil, linkTasks, linkRejectedTasks, nil, nil
 	default:
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 }
 
@@ -144,6 +150,47 @@ func loadStudioBatchCreatedTasksFromLinks(
 		tasks = append(tasks, created)
 	}
 	return tasks, nil
+}
+
+func loadStudioBatchRejectedTasksFromLinks(
+	ctx context.Context,
+	taskLinkRepo StudioBatchTaskLinkRepository,
+	batchID string,
+) ([]SheinStudioRejectedTask, error) {
+	if taskLinkRepo == nil {
+		return nil, nil
+	}
+	links, err := taskLinkRepo.ListStudioBatchTaskLinksByBatchID(ctx, batchID)
+	if err != nil {
+		return nil, err
+	}
+	rejected := make([]SheinStudioRejectedTask, 0)
+	seen := make(map[string]struct{}, len(links))
+	for _, link := range links {
+		if link.Status != studioBatchTaskLinkStatusFailed ||
+			strings.TrimSpace(link.ListingKitTaskID) != "" ||
+			strings.TrimSpace(link.ReasonCode) == "task_create_failed" {
+			continue
+		}
+		key := strings.Join([]string{
+			strings.TrimSpace(link.DesignID),
+			strings.TrimSpace(link.ItemID),
+			strings.TrimSpace(link.SelectionID),
+			strings.TrimSpace(link.ReasonCode),
+		}, "|")
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		rejected = append(rejected, SheinStudioRejectedTask{
+			DesignID:    strings.TrimSpace(link.DesignID),
+			ItemID:      strings.TrimSpace(link.ItemID),
+			SelectionID: strings.TrimSpace(link.SelectionID),
+			ReasonCode:  strings.TrimSpace(link.ReasonCode),
+			Message:     strings.TrimSpace(link.Message),
+		})
+	}
+	return rejected, nil
 }
 
 func projectStudioBatchCreatedTaskFromListingTask(created SheinStudioCreatedTask, task *Task) SheinStudioCreatedTask {

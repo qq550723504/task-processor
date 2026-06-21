@@ -99,7 +99,7 @@ func TestBatchTaskCreationServiceResumeTaskCreationLoadsResultWhenNoPendingDesig
 	}
 }
 
-func TestBatchTaskCreationServiceResumeTaskCreationCreatesThenFinalizes(t *testing.T) {
+func TestBatchTaskCreationServiceResumeTaskCreationReturnsCreateResult(t *testing.T) {
 	t.Parallel()
 
 	var calls []string
@@ -123,14 +123,12 @@ func TestBatchTaskCreationServiceResumeTaskCreationCreatesThenFinalizes(t *testi
 			return &result, nil
 		},
 		LoadBatch: func(ctx context.Context, batchID string) (*string, error) {
-			calls = append(calls, "batch:"+batchID)
-			value := "batch"
-			return &value, nil
+			t.Fatal("LoadBatch should not be called because CreateTasks owns task finalization")
+			return nil, nil
 		},
 		FinalizeTaskCreation: func(ctx context.Context, batchID string, state BatchTaskResumeFinalizeState[string, string, string, string]) (*[]string, error) {
-			calls = append(calls, "finalize:"+batchID)
-			result := append([]string(nil), state.CreatedTasks...)
-			return &result, nil
+			t.Fatal("FinalizeTaskCreation should not be called because CreateTasks owns task finalization")
+			return nil, nil
 		},
 		CreatedTasks: func(result *[]string) []string {
 			return append([]string(nil), (*result)...)
@@ -147,7 +145,7 @@ func TestBatchTaskCreationServiceResumeTaskCreationCreatesThenFinalizes(t *testi
 	if result == nil || len(*result) != 1 || (*result)[0] != "created" {
 		t.Fatalf("ResumeTaskCreation() result = %#v", result)
 	}
-	if got, want := calls, []string{"session:batch-3", "pending", "create:batch-3", "batch:batch-3", "finalize:batch-3"}; len(got) != len(want) {
+	if got, want := calls, []string{"session:batch-3", "pending", "create:batch-3"}; len(got) != len(want) {
 		t.Fatalf("calls = %#v, want %#v", got, want)
 	} else {
 		for i := range want {

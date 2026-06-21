@@ -1,5 +1,6 @@
 import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type {
   SheinStudioCreatedTask,
   SheinStudioFailedTask,
@@ -9,11 +10,15 @@ import type {
 export function SheinStudioTasksStep({
   createdTasks,
   failedTasks = [],
+  onContinueCreateTasks,
+  pendingTaskDesignCount = 0,
   rejectedTasks = [],
   reusedTasks = [],
 }: {
   createdTasks: SheinStudioCreatedTask[];
   failedTasks?: SheinStudioFailedTask[];
+  onContinueCreateTasks?: () => void;
+  pendingTaskDesignCount?: number;
   rejectedTasks?: SheinStudioRejectedTask[];
   reusedTasks?: SheinStudioCreatedTask[];
 }) {
@@ -39,6 +44,17 @@ export function SheinStudioTasksStep({
           {visibleTaskCount} 个任务
         </Badge>
       </div>
+      {pendingTaskDesignCount > 0 && onContinueCreateTasks ? (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+          <span>
+            还有 {pendingTaskDesignCount} 个已批准款式没有创建 SHEIN
+            资料，可以回到审核区继续补创建。
+          </span>
+          <Button onClick={onContinueCreateTasks} size="sm" type="button">
+            继续创建 SHEIN 资料
+          </Button>
+        </div>
+      ) : null}
       {visibleTaskCount || rejectedTasks.length || failedTasks.length ? (
         <SheinCreatedTasksList
           failedTasks={failedTasks}

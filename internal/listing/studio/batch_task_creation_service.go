@@ -69,7 +69,7 @@ func (s *BatchTaskCreationService[Session, Batch, Result, CreatedTask, FailedTas
 	ctx context.Context,
 	batchID string,
 ) (*Result, error) {
-	if s == nil || s.loadSession == nil || s.pendingDesignIDs == nil || s.loadResult == nil || s.createTasks == nil || s.loadBatch == nil || s.finalizeTaskCreation == nil || s.createdTasks == nil || s.failedTasks == nil {
+	if s == nil || s.loadSession == nil || s.pendingDesignIDs == nil || s.loadResult == nil || s.createTasks == nil {
 		return nil, fmt.Errorf("studio batch task creation service is not configured")
 	}
 	normalizedBatchID := strings.TrimSpace(batchID)
@@ -81,18 +81,5 @@ func (s *BatchTaskCreationService[Session, Batch, Result, CreatedTask, FailedTas
 	if len(designIDs) == 0 {
 		return s.loadResult(ctx, normalizedBatchID)
 	}
-	result, err := s.createTasks(ctx, normalizedBatchID, designIDs)
-	if err != nil {
-		return nil, err
-	}
-	batch, err := s.loadBatch(ctx, normalizedBatchID)
-	if err != nil {
-		return nil, err
-	}
-	return s.finalizeTaskCreation(ctx, normalizedBatchID, BatchTaskResumeFinalizeState[Session, Batch, CreatedTask, FailedTask]{
-		Session:      session,
-		Batch:        batch,
-		CreatedTasks: s.createdTasks(result),
-		FailedTasks:  s.failedTasks(result),
-	})
+	return s.createTasks(ctx, normalizedBatchID, designIDs)
 }

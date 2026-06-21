@@ -121,6 +121,7 @@ func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
 	createdTasks []SheinStudioCreatedTask,
 	rejectedTasks []SheinStudioRejectedTask,
 	failedTasks []SheinStudioFailedTask,
+	markTasksCreated bool,
 ) (*CreateStudioBatchTasksResult, error) {
 	newlyCreatedTasks, reusedTasks, ownedTasks := splitStudioBatchCreatedAndReusedTasks(createdTasks)
 	if sessionUpdater, ok := s.studioSessionRepo.(interface {
@@ -129,13 +130,25 @@ func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
 		session.CreatedTasks = mergeStudioCreatedTasks(session.CreatedTasks, ownedTasks)
 		session.CreatedTaskIDs = buildCreatedTaskIDs(session.CreatedTasks)
 		session.FailedTasks = append(SheinStudioFailedTaskList(nil), failedTasks...)
+		session.PendingTaskDesignIDs = nil
+		if markTasksCreated && len(ownedTasks) > 0 {
+			session.Status = SheinStudioSessionStatusTasksCreated
+		} else if session.Status == SheinStudioSessionStatusTasksCreating {
+			session.Status = SheinStudioSessionStatusReviewing
+		}
 		session.UpdatedAt = s.currentTime().UTC()
 		if err := sessionUpdater.UpdateSession(ctx, session); err != nil {
 			return nil, err
 		}
 	}
-	if len(ownedTasks) > 0 && batch != nil {
-		batch.Status = StudioBatchStatusTasksCreated
+	if batch != nil {
+		if markTasksCreated && len(ownedTasks) > 0 {
+			batch.Status = StudioBatchStatusTasksCreated
+		} else if batch.Status == StudioBatchStatusTasksCreating {
+			if graph, err := s.repo.GetStudioBatchDetail(ctx, batchID); err == nil && graph != nil {
+				batch.Status = resolveProjectedStudioBatchStatus("", graph.Items)
+			}
+		}
 		batch.UpdatedAt = s.currentTime().UTC()
 		if err := s.repo.UpdateStudioBatch(ctx, batch); err != nil {
 			return nil, err
@@ -294,6 +307,24 @@ func equalNormalizedStudioBatchDesignIDs(left []string, right []string) bool {
 		}
 	}
 	return len(normalizedLeft) > 0
+}
+
+func equalNormalizedStudioBatchDesignIDSets(left []string, right []string) bool {
+	normalizedLeft := normalizeStudioBatchDesignIDs(left)
+	normalizedRight := normalizeStudioBatchDesignIDs(right)
+	if len(normalizedLeft) == 0 || len(normalizedLeft) != len(normalizedRight) {
+		return false
+	}
+	rightSet := make(map[string]struct{}, len(normalizedRight))
+	for _, designID := range normalizedRight {
+		rightSet[designID] = struct{}{}
+	}
+	for _, designID := range normalizedLeft {
+		if _, ok := rightSet[designID]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *taskStudioBatchService) loadStudioBatchTaskSession(ctx context.Context, batchID string) (*SheinStudioSession, error) {

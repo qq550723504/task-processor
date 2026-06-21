@@ -38,11 +38,11 @@ func newListingStudioBatchDetailService(
 		},
 		EnsureGraph: ensureGraph,
 		ProjectDetail: func(ctx context.Context, batchID string, detail *StudioBatchDetailGraph) (*StudioBatchDetail, error) {
-			draftUpdatedAt, createdTasks, failedTasks, err := loadStudioBatchDraftState(ctx, studioSessionRepo, taskLinkRepo, getTask, batchID)
+			draftUpdatedAt, createdTasks, rejectedTasks, failedTasks, err := loadStudioBatchDraftState(ctx, studioSessionRepo, taskLinkRepo, getTask, batchID)
 			if err != nil {
 				return nil, err
 			}
-			return projectStudioBatchDetail(detail, draftUpdatedAt, createdTasks, failedTasks), nil
+			return projectStudioBatchDetail(detail, draftUpdatedAt, createdTasks, rejectedTasks, failedTasks), nil
 		},
 	})
 }

@@ -96,6 +96,9 @@ func (s *taskStudioBatchService) continueStudioBatchGeneration(ctx context.Conte
 	if err := s.generator.RecoverStudioBatchMaterialization(ctx, batchID); err != nil {
 		return nil, err
 	}
+	if err := s.requeueFailedStudioBatchItemsForContinue(ctx, batchID); err != nil {
+		return nil, err
+	}
 	if err := s.generator.RunPendingStudioBatchItems(ctx, batchID); err != nil {
 		return nil, err
 	}
@@ -103,6 +106,31 @@ func (s *taskStudioBatchService) continueStudioBatchGeneration(ctx context.Conte
 		return nil, err
 	}
 	return s.GetStudioBatchDetail(ctx, batchID)
+}
+
+func (s *taskStudioBatchService) requeueFailedStudioBatchItemsForContinue(ctx context.Context, batchID string) error {
+	if s == nil || s.repo == nil {
+		return nil
+	}
+	detail, err := s.repo.GetStudioBatchDetail(ctx, batchID)
+	if err != nil {
+		return err
+	}
+	if detail == nil || len(detail.Items) == 0 {
+		return nil
+	}
+
+	failedItems := make([]StudioBatchItemRecord, 0)
+	for _, item := range detail.Items {
+		if item.Status != StudioBatchItemStatusFailed {
+			continue
+		}
+		failedItems = append(failedItems, item)
+	}
+	if len(failedItems) == 0 {
+		return nil
+	}
+	return s.resetStudioBatchRetryItems(ctx, failedItems)
 }
 
 func (s *taskStudioBatchService) GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error) {

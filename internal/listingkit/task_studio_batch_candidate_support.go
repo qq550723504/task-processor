@@ -12,12 +12,13 @@ import (
 )
 
 type StudioBatchTaskState struct {
-	Session       *SheinStudioSession
-	Batch         *StudioBatchRecord
-	DesignIDs     []string
-	Candidates    []studioBatchTaskCandidate
-	RejectedTasks []SheinStudioRejectedTask
-	FailedTasks   []SheinStudioFailedTask
+	Session              *SheinStudioSession
+	Batch                *StudioBatchRecord
+	DesignIDs            []string
+	AllApprovedDesignIDs []string
+	Candidates           []studioBatchTaskCandidate
+	RejectedTasks        []SheinStudioRejectedTask
+	FailedTasks          []SheinStudioFailedTask
 }
 
 type studioBatchTaskCandidate struct {
@@ -89,13 +90,34 @@ func (s *taskStudioBatchService) buildStudioBatchTaskState(
 	candidates, gateRejectedTasks, failedTasks := s.evaluateStudioBatchTaskCandidates(ctx, batchDetail.Batch, batchDetail, designs, candidates)
 	rejectedTasks = append(rejectedTasks, gateRejectedTasks...)
 	return &StudioBatchTaskState{
-		Session:       session,
-		Batch:         batchDetail.Batch,
-		DesignIDs:     stateDesignIDs,
-		Candidates:    candidates,
-		RejectedTasks: rejectedTasks,
-		FailedTasks:   failedTasks,
+		Session:              session,
+		Batch:                batchDetail.Batch,
+		DesignIDs:            stateDesignIDs,
+		AllApprovedDesignIDs: allApprovedStudioBatchDesignIDs(batchDetail),
+		Candidates:           candidates,
+		RejectedTasks:        rejectedTasks,
+		FailedTasks:          failedTasks,
 	}, nil
+}
+
+func allApprovedStudioBatchDesignIDs(detail *StudioBatchDetailGraph) []string {
+	if detail == nil || len(detail.DesignsByItem) == 0 {
+		return nil
+	}
+	designIDs := make([]string, 0)
+	for _, item := range detail.Items {
+		for _, design := range detail.DesignsByItem[strings.TrimSpace(item.ID)] {
+			if design.ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
+				continue
+			}
+			designID := strings.TrimSpace(design.ID)
+			if designID == "" {
+				continue
+			}
+			designIDs = append(designIDs, designID)
+		}
+	}
+	return normalizeStudioBatchDesignIDs(designIDs)
 }
 
 func (s *taskStudioBatchService) evaluateStudioBatchTaskCandidates(
@@ -119,6 +141,7 @@ func (s *taskStudioBatchService) evaluateStudioBatchTaskCandidates(
 		itemSelectionsByID = make(map[string][]SheinStudioGroupedSelection, len(detail.Items))
 		for _, item := range detail.Items {
 			selections, _, _ := resolveStudioBatchTaskCandidateSelections(batch, item)
+			selections = normalizeStudioBatchTaskGroupedSelections(batch, selections)
 			itemSelectionsByID[strings.TrimSpace(item.ID)] = selections
 		}
 	}
@@ -142,6 +165,14 @@ func (s *taskStudioBatchService) evaluateStudioBatchTaskCandidates(
 			continue
 		}
 		if !result.Eligible {
+			_ = s.persistStudioBatchTaskLink(
+				ctx,
+				candidate,
+				"",
+				studioBatchTaskLinkStatusFailed,
+				result.ReasonCode,
+				result.Message,
+			)
 			rejected = append(rejected, SheinStudioRejectedTask{
 				DesignID:    strings.TrimSpace(candidate.Design.ID),
 				ItemID:      strings.TrimSpace(candidate.Item.ID),
@@ -236,6 +267,7 @@ func buildStudioBatchTaskCandidatesForDesign(
 	var expectedFingerprint string
 
 	for index, grouped := range selections {
+		grouped = normalizeStudioBatchTaskGroupedSelection(batch, grouped)
 		snapshot := grouped.Selection
 		selectionID := firstNonEmpty(
 			strings.TrimSpace(grouped.SelectionID),
@@ -262,7 +294,7 @@ func buildStudioBatchTaskCandidatesForDesign(
 			),
 		}
 		if groupMode != "per_product" && len(selections) > 1 {
-			if !studioBatchCompatibilityFingerprintComplete(snapshot) {
+			if !studioBatchTaskCompatibilityFingerprintComplete(snapshot) {
 				return nil, buildStudioBatchTaskCandidateRejection(
 					design,
 					item,
@@ -369,6 +401,41 @@ func buildStudioBatchMissingSelectionRejections(
 	return rejections
 }
 
+func normalizeStudioBatchTaskGroupedSelections(
+	batch *StudioBatchRecord,
+	selections []SheinStudioGroupedSelection,
+) []SheinStudioGroupedSelection {
+	if len(selections) == 0 {
+		return selections
+	}
+	normalized := make([]SheinStudioGroupedSelection, 0, len(selections))
+	for _, selection := range selections {
+		normalized = append(normalized, normalizeStudioBatchTaskGroupedSelection(batch, selection))
+	}
+	return normalized
+}
+
+func normalizeStudioBatchTaskGroupedSelection(
+	batch *StudioBatchRecord,
+	grouped SheinStudioGroupedSelection,
+) SheinStudioGroupedSelection {
+	grouped.Selection.DesignType = normalizeStudioBatchTaskDesignType(batch, grouped.Selection.DesignType)
+	return grouped
+}
+
+func normalizeStudioBatchTaskDesignType(batch *StudioBatchRecord, designType string) string {
+	designType = strings.TrimSpace(designType)
+	if designType != "" {
+		return designType
+	}
+	if batch != nil {
+		if fallback := strings.TrimSpace(batch.Selection.DesignType); fallback != "" {
+			return fallback
+		}
+	}
+	return "material"
+}
+
 func buildStudioBatchTaskCandidateRejection(
 	design StudioMaterializedDesignRecord,
 	item StudioBatchItemRecord,
@@ -453,6 +520,16 @@ func studioBatchCompatibilityFingerprintComplete(selection SheinStudioSelection)
 		selection.PrintableHeight > 0 &&
 		strings.TrimSpace(selection.TemplateImageURL) != "" &&
 		strings.TrimSpace(selection.MaskImageURL) != ""
+}
+
+func studioBatchTaskCompatibilityFingerprintComplete(selection SheinStudioSelection) bool {
+	return selection.ParentProductID > 0 &&
+		selection.PrototypeGroupID > 0 &&
+		strings.TrimSpace(selection.LayerID) != "" &&
+		strings.TrimSpace(selection.DesignType) != "" &&
+		selection.PrintableWidth > 0 &&
+		selection.PrintableHeight > 0 &&
+		strings.TrimSpace(selection.TemplateImageURL) != ""
 }
 
 func studioBatchTaskFallbackSelection(

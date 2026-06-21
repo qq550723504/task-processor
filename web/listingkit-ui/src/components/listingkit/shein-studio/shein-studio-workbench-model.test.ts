@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSheinStudioGenerateRequest,
   buildSheinStudioSelectedVariants,
+  getItemizedBatchPendingTaskDesignIDs,
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
   mergeSheinStudioDraftState,
@@ -282,6 +283,60 @@ describe("shein studio workbench model", () => {
     expect(projection.designs.map((item) => item.id)).toEqual(["design-1"]);
     expect(projection.selectedIds).toEqual(["design-1"]);
     expect(projection.itemizedBatchDetail?.batch.id).toBe("batch-1");
+  });
+
+  it("detects approved itemized designs that still need SHEIN task creation", () => {
+    const pendingDesignIds = getItemizedBatchPendingTaskDesignIDs({
+      batch: {
+        id: "batch-1",
+        status: "tasks_created",
+        prompt: "itemized prompt",
+        styleCount: "1",
+        sheinStoreId: 869,
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:10:00Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "group-1",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-06-01T10:00:00Z",
+            updatedAt: "2026-06-01T10:10:00Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "group-1",
+              imageUrl: "https://example.com/design-1.png",
+              reviewStatus: "approved",
+              createdAt: "2026-06-01T10:00:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+            {
+              id: "design-2",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-2",
+              targetGroupKey: "group-1",
+              imageUrl: "https://example.com/design-2.png",
+              reviewStatus: "approved",
+              createdAt: "2026-06-01T10:01:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+          ],
+        },
+      ],
+      createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+    });
+
+    expect(pendingDesignIds).toEqual(["design-2"]);
   });
 
   it("projects saved-batch compatibility snapshots before hydration", () => {

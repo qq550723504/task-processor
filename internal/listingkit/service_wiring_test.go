@@ -4053,7 +4053,7 @@ func TestTaskStudioBatchDetailAdapterUsesListingStudioRunner(t *testing.T) {
 		"ResolveWithoutGraph: func(ctx context.Context, batchID string) (*StudioBatchDetail, bool, error) {",
 		"return resolveStudioBatchDetailWithoutGraph(ctx, studioSessionRepo, batchID)",
 		"EnsureGraph: ensureGraph,",
-		"draftUpdatedAt, createdTasks, failedTasks, err := loadStudioBatchDraftState(ctx, studioSessionRepo, taskLinkRepo, getTask, batchID)",
+		"draftUpdatedAt, createdTasks, rejectedTasks, failedTasks, err := loadStudioBatchDraftState(ctx, studioSessionRepo, taskLinkRepo, getTask, batchID)",
 	} {
 		if !strings.Contains(adapterContent, needle) {
 			t.Fatalf("task_studio_batch_detail_adapter.go should contain %q", needle)

@@ -36,6 +36,7 @@ import {
   buildSheinStudioSelectionKey,
   flattenItemizedBatchDesigns,
   getApprovedItemizedBatchDesignIDs,
+  getItemizedBatchPendingTaskDesignIDs,
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
   mergeSheinStudioDraftState,
@@ -1451,6 +1452,10 @@ export function SheinStudioWorkbench({
   const itemizedBatchGenerationInFlight = hasInFlightItemizedBatchGeneration(
     itemizedBatchDetail,
   );
+  const pendingItemizedTaskDesignIDs = useMemo(
+    () => getItemizedBatchPendingTaskDesignIDs(itemizedBatchDetail),
+    [itemizedBatchDetail],
+  );
   const effectiveIsGenerating = isGenerating || itemizedBatchGenerationInFlight;
 
   useEffect(() => {
@@ -2378,6 +2383,14 @@ export function SheinStudioWorkbench({
     retryableFailedItemCount > 0 &&
     (itemizedBatchDetail?.batch.status === "partially_failed" ||
       itemizedBatchDetail?.batch.status === "failed");
+  const shouldPrioritizeTaskCreationRecovery =
+    pendingItemizedTaskDesignIDs.length > 0 &&
+    !hasRetryableFailedItems &&
+    !itemizedBatchGenerationInFlight;
+  const dedicatedGenerateButtonLabel =
+    hasRetryableFailedItems && retryableFailedItemCount > 0
+      ? `重试失败款式 ${retryableFailedItemCount} 个`
+      : "继续生成剩余款式";
   useSheinStudioPendingNavigationGuard({
     enabled: Boolean(effectiveIsGenerating || regeneratingId),
     message:
@@ -2435,15 +2448,29 @@ export function SheinStudioWorkbench({
         </div>
 
         <div className="flex flex-wrap gap-2 xl:justify-end">
-          <Button
-            disabled={isStartingDedicatedBatchRun}
-            onClick={handleStartDedicatedBatchRun}
-            size="sm"
-            type="button"
-            variant="default"
-          >
-            {isStartingDedicatedBatchRun ? "正在启动..." : "继续生成"}
-          </Button>
+          {shouldPrioritizeTaskCreationRecovery ? (
+            <Button
+              disabled={isCreatingTasks}
+              onClick={() => {
+                void handleCreateTasks();
+              }}
+              size="sm"
+              type="button"
+              variant="default"
+            >
+              {isCreatingTasks ? "正在补建..." : "补建 SHEIN 资料"}
+            </Button>
+          ) : (
+            <Button
+              disabled={isStartingDedicatedBatchRun}
+              onClick={handleStartDedicatedBatchRun}
+              size="sm"
+              type="button"
+              variant="default"
+            >
+              {isStartingDedicatedBatchRun ? "正在启动..." : dedicatedGenerateButtonLabel}
+            </Button>
+          )}
           <Button
             onClick={() => navigateToStep("generate")}
             size="sm"
@@ -2750,6 +2777,12 @@ export function SheinStudioWorkbench({
             <SheinStudioTasksStep
               createdTasks={createdTasks}
               failedTasks={itemizedBatchDetail?.failedTasks ?? []}
+              onContinueCreateTasks={
+                pendingItemizedTaskDesignIDs.length > 0
+                  ? () => navigateToStep("review")
+                  : undefined
+              }
+              pendingTaskDesignCount={pendingItemizedTaskDesignIDs.length}
               rejectedTasks={itemizedBatchDetail?.rejectedTasks ?? []}
               reusedTasks={itemizedBatchDetail?.reusedTasks ?? []}
             />

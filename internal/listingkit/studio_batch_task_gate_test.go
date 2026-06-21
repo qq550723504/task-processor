@@ -183,7 +183,7 @@ func TestStudioBatchTaskGateEvaluateReasonCodes(t *testing.T) {
 		{
 			name: "compatibility_incomplete",
 			mutate: func(eval *studioBatchTaskGateEvaluation) {
-				eval.Candidate.SelectionSnapshot.MaskImageURL = ""
+				eval.Candidate.SelectionSnapshot.TemplateImageURL = ""
 			},
 			wantReason: "compatibility_incomplete",
 		},

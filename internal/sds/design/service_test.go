@@ -852,3 +852,66 @@ func TestPrepareAndSyncDesignCleansUpCreatedSDSArtifacts(t *testing.T) {
 		t.Fatalf("deleted paths = %+v", deleted)
 	}
 }
+
+func TestCleanupDesignArtifactsReportsDeleteFailures(t *testing.T) {
+	t.Parallel()
+
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("method = %s, want DELETE", r.Method)
+		}
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path == "/ps/endproducts/921516041142050816" {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"ret":500,"msg":"delete endproduct failed"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"ret":0,"msg":"SUCCESS"}`))
+	}))
+	defer server.Close()
+
+	cfg := sdsclient.DefaultConfig()
+	cfg.BaseURL = server.URL
+	cfg.RetryCount = 0
+	cfg.Endpoints.MaterialDeletePath = "/ps/material/%d"
+	cfg.Endpoints.EndProductDeletePath = "/ps/endproducts/%s"
+	cfg.AuthBootstrap = sdsclient.AuthBootstrapConfig{}
+	client, err := sdsclient.New(cfg)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	err = NewService(client).cleanupDesignArtifacts(context.Background(), &UploadedMaterial{
+		Material: &Material{ID: 467483443},
+	}, &PrepareSyncDesignResult{
+		RenderedImageObservations: map[int64]RenderedImageObservation{
+			82491: {ItemID: "921516041142050816"},
+		},
+	})
+	if err == nil {
+		t.Fatal("cleanupDesignArtifacts() error = nil, want delete failure")
+	}
+	if !strings.Contains(err.Error(), "delete SDS endproduct 921516041142050816") {
+		t.Fatalf("cleanupDesignArtifacts() error = %v", err)
+	}
+	if strings.Join(paths, "|") != "/ps/endproducts/921516041142050816|/ps/material/467483443" {
+		t.Fatalf("delete paths = %+v, want cleanup to continue after endproduct failure", paths)
+	}
+}
+
+func TestCollectRenderedImageObservationsUsesItemIDAliasForCleanup(t *testing.T) {
+	t.Parallel()
+
+	var response DesignProductListResponse
+	payload := []byte(`{"items":[{"item_id":"921516041142050816","product_id":82491,"buildFinish":true,"status":2,"finish_time":99,"img_urls":["https://cdn.sdspod.com/out/rendered.jpg"]}],"total_count":1}`)
+	if err := json.Unmarshal(payload, &response); err != nil {
+		t.Fatalf("unmarshal design products: %v", err)
+	}
+
+	observations := collectRenderedImageObservations(response.Items, []int64{82491})
+	observation := observations[82491]
+	if observation.ItemID != "921516041142050816" {
+		t.Fatalf("observation item id = %q, want item_id alias for cleanup", observation.ItemID)
+	}
+}

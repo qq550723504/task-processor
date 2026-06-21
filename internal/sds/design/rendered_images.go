@@ -285,12 +285,27 @@ func collectRenderedImageObservations(items []DesignProductListItem, targetIDs [
 			MaterialImageName: strings.TrimSpace(item.MaterialImageName),
 			TaskID:            strings.TrimSpace(item.TaskID),
 			DesignTaskID:      strings.TrimSpace(item.DesignTaskID),
-			ItemID:            strings.TrimSpace(string(item.ID)),
+			ItemID:            designProductListItemCleanupID(item),
 			ImageCount:        len(item.ImageURLs),
 			ThumbnailCount:    len(item.ThumbnailImageURLs),
 		}
 	}
 	return result
+}
+
+func designProductListItemCleanupID(item DesignProductListItem) string {
+	for _, value := range []SDSFlexibleString{
+		item.ID,
+		item.ItemID,
+		item.ItemIDAlt,
+		item.EndProductID,
+		item.EndProductIDAlt,
+	} {
+		if trimmed := strings.TrimSpace(string(value)); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func cloneRenderedImageObservations(input map[int64]RenderedImageObservation) map[int64]RenderedImageObservation {

@@ -6,6 +6,8 @@ param(
     [string]$ConfigPath = "config/config-dev.yaml",
     [string]$LogLevel = "info",
     [switch]$SkipRedis,
+    [switch]$IncludeTemporal,
+    [int]$LocalTemporalPort = 7233,
     [string]$BypassAuthGate = ""
 )
 
@@ -88,7 +90,11 @@ $uiPidFile = Join-Path $repoRoot "web\listingkit-ui\.local-dev\listingkit-ui-loc
 
 Ensure-Directory -Path $runtimeDir
 
-Stop-ListeningProcesses -ListenPorts @($UiPort, $ApiPort, $LocalDbPort, $LocalRedisPort)
+$portsToStop = @($UiPort, $ApiPort, $LocalDbPort, $LocalRedisPort)
+if ($IncludeTemporal) {
+    $portsToStop += $LocalTemporalPort
+}
+Stop-ListeningProcesses -ListenPorts $portsToStop
 
 if (Test-Path -LiteralPath $stdoutLog) { Remove-Item -LiteralPath $stdoutLog -Force }
 if (Test-Path -LiteralPath $stderrLog) { Remove-Item -LiteralPath $stderrLog -Force }
@@ -104,6 +110,9 @@ if ($SkipRedis) {
     $portforwardArgs += "-SkipRedis"
 } else {
     $portforwardArgs += @("-LocalRedisPort", $LocalRedisPort, "-RemoteRedisPort", 6379)
+}
+if ($IncludeTemporal) {
+    $portforwardArgs += @("-IncludeTemporal", "-LocalTemporalPort", $LocalTemporalPort, "-RemoteTemporalPort", 7233)
 }
 
 Write-Host "Starting local port-forward..." -ForegroundColor Cyan
@@ -121,6 +130,9 @@ try {
     if (-not $SkipRedis) {
         Wait-ForListeningPort -ListenPort $LocalRedisPort -TimeoutSeconds 40
     }
+    if ($IncludeTemporal) {
+        Wait-ForListeningPort -ListenPort $LocalTemporalPort -TimeoutSeconds 40
+    }
 } catch {
     if (-not $portforwardProcess.HasExited) {
         Stop-Process -Id $portforwardProcess.Id -Force
@@ -133,6 +145,11 @@ try {
 }
 
 Set-Content -LiteralPath $pidFile -Value $portforwardProcess.Id -NoNewline
+
+if ($IncludeTemporal) {
+    $env:LISTINGKIT_TEMPORAL_ENABLED = "true"
+    $env:LISTINGKIT_TEMPORAL_ADDRESS = "127.0.0.1:${LocalTemporalPort}"
+}
 
 Write-Host "Starting local API..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File $apiScript -Port $ApiPort -ConfigPath $ConfigPath -LogLevel $LogLevel
@@ -183,6 +200,9 @@ if (-not [string]::IsNullOrWhiteSpace($uiPid)) {
     Write-Host "  UI PID: $uiPid"
 }
 Write-Host "  Port-forward logs: $stdoutLog / $stderrLog"
+if ($IncludeTemporal) {
+    Write-Host "  Temporal: 127.0.0.1:${LocalTemporalPort}"
+}
 Write-Host "  API logs: $repoRoot\.local\tmp\listingkit-local-api\logs\stdout.log / $repoRoot\.local\tmp\listingkit-local-api\logs\stderr.log"
 Write-Host "  UI logs: $repoRoot\web\listingkit-ui\.local-dev\ui-stdout.log / $repoRoot\web\listingkit-ui\.local-dev\ui-stderr.log"
 Write-Host ""

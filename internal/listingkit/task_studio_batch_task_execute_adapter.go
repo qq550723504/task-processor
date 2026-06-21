@@ -54,12 +54,13 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			for _, candidate := range state.Candidates {
 				items = append(items, listingStudioBatchTaskExecuteCandidate{
 					state: StudioBatchTaskState{
-						Session:       state.Session,
-						Batch:         state.Batch,
-						DesignIDs:     append([]string(nil), state.DesignIDs...),
-						Candidates:    []studioBatchTaskCandidate{candidate},
-						RejectedTasks: append([]SheinStudioRejectedTask(nil), state.RejectedTasks...),
-						FailedTasks:   append([]SheinStudioFailedTask(nil), state.FailedTasks...),
+						Session:              state.Session,
+						Batch:                state.Batch,
+						DesignIDs:            append([]string(nil), state.DesignIDs...),
+						AllApprovedDesignIDs: append([]string(nil), state.AllApprovedDesignIDs...),
+						Candidates:           []studioBatchTaskCandidate{candidate},
+						RejectedTasks:        append([]SheinStudioRejectedTask(nil), state.RejectedTasks...),
+						FailedTasks:          append([]SheinStudioFailedTask(nil), state.FailedTasks...),
 					},
 				})
 			}
@@ -153,7 +154,11 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			}
 			allFailed := append([]SheinStudioFailedTask(nil), state.FailedTasks...)
 			allFailed = append(allFailed, failed...)
-			return s.completeStudioBatchTaskExecution(ctx, batchID, session, state.Batch, created, state.RejectedTasks, allFailed)
+			shouldMarkTasksCreated := len(created) == len(state.Candidates) &&
+				len(state.RejectedTasks) == 0 &&
+				len(allFailed) == 0 &&
+				equalNormalizedStudioBatchDesignIDSets(state.DesignIDs, state.AllApprovedDesignIDs)
+			return s.completeStudioBatchTaskExecution(ctx, batchID, session, state.Batch, created, state.RejectedTasks, allFailed, shouldMarkTasksCreated)
 		},
 	})
 }

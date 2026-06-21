@@ -3,6 +3,8 @@ import type { MutableRefObject } from "react";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
   evaluateImportedGalleryDesigns,
+  flattenItemizedBatchDesigns,
+  getApprovedItemizedBatchDesignIDs,
   hasInFlightItemizedBatchGeneration,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
@@ -121,7 +123,16 @@ export function useSheinStudioTaskCreationAction({
       toast.error("无法创建 SHEIN 资料", "请先选择批次店铺。");
       return;
     }
-    const approved = designs.filter((design) => selectedIds.includes(design.id));
+    const approvedDesignIdsForTaskCreation = itemizedBatchContext
+      ? getApprovedItemizedBatchDesignIDs(itemizedBatchContext.detail)
+      : selectedIds;
+    const approvedDesignIDSet = new Set(approvedDesignIdsForTaskCreation);
+    const candidateDesigns = itemizedBatchContext
+      ? flattenItemizedBatchDesigns(itemizedBatchContext.detail)
+      : designs;
+    const approved = candidateDesigns.filter((design) =>
+      approvedDesignIDSet.has(design.id),
+    );
     if (approved.length === 0) {
       setCreatingError("请至少批准 1 个款式后再创建 SHEIN 任务。");
       setCreatingWarning("");
@@ -167,7 +178,7 @@ export function useSheinStudioTaskCreationAction({
 
       if (itemizedBatchContext) {
         const batchTenantId = itemizedBatchContext.tenantId?.trim();
-        const approvedDesignIds = approved.map((design) => design.id);
+        const approvedDesignIds = approvedDesignIdsForTaskCreation;
         const requestOptions = {
           ...(batchTenantId ? { tenantId: batchTenantId } : {}),
           ...(allowPartialWhileGenerating
@@ -300,13 +311,15 @@ export function useSheinStudioTaskCreationAction({
       }
 
       navigateToStep("tasks");
-      void persistDraft(
-        { createdTasks: availableTasks },
-        {
-          navigationTriggered: true,
-          source: "task_creation_success",
-        },
-      ).catch(() => undefined);
+      if (!itemizedBatchContext) {
+        void persistDraft(
+          { createdTasks: availableTasks },
+          {
+            navigationTriggered: true,
+            source: "task_creation_success",
+          },
+        ).catch(() => undefined);
+      }
     } catch (error) {
       const message = formatSubscriptionApiError(error);
       setCreatingError(message);

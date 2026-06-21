@@ -9,10 +9,16 @@ param(
     [string]$RedisNamespace = "yudao-cloud",
     [string]$RedisService = "redis-master",
     [int]$LocalRedisPort = 16379,
-    [int]$RemoteRedisPort = 6379
+    [int]$RemoteRedisPort = 6379,
+    [switch]$IncludeTemporal,
+    [string]$TemporalNamespace = "temporal",
+    [string]$TemporalService = "temporal-frontend",
+    [int]$LocalTemporalPort = 7233,
+    [int]$RemoteTemporalPort = 7233
 )
 
 $ErrorActionPreference = "Stop"
+$script:PortForwardSessionId = "{0}-{1}" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $PID
 
 function Wait-ForPortForwardReady {
     param(
@@ -34,6 +40,33 @@ function Wait-ForPortForwardReady {
     throw "Timed out waiting for kubectl port-forward readiness: $LogPath"
 }
 
+function Stop-ExistingPortForwardProcess {
+    param(
+        [string]$Namespace,
+        [string]$Service,
+        [int]$LocalPort,
+        [int]$RemotePort
+    )
+
+    $portForwardPattern = [regex]::Escape("svc/$Service")
+    $portMappingPattern = [regex]::Escape("${LocalPort}:${RemotePort}")
+    $namespacePattern = "(^|\s)-n\s+$([regex]::Escape($Namespace))(\s|$)"
+
+    $existingProcesses = Get-CimInstance Win32_Process |
+        Where-Object {
+            $_.Name -eq "kubectl.exe" -and
+            $_.CommandLine -match "port-forward" -and
+            $_.CommandLine -match $portForwardPattern -and
+            $_.CommandLine -match $portMappingPattern -and
+            $_.CommandLine -match $namespacePattern
+        }
+
+    foreach ($existingProcess in $existingProcesses) {
+        Write-Host "Stopping existing kubectl port-forward PID $($existingProcess.ProcessId) for ${Namespace}/${Service} on localhost:${LocalPort} ..." -ForegroundColor DarkYellow
+        Stop-Process -Id $existingProcess.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Start-PortForwardProcess {
     param(
         [string]$Namespace,
@@ -43,10 +76,8 @@ function Start-PortForwardProcess {
         [string]$LogPrefix
     )
 
-    $stdoutLog = Join-Path $env:TEMP "$LogPrefix.stdout.log"
-    $stderrLog = Join-Path $env:TEMP "$LogPrefix.stderr.log"
-    if (Test-Path -LiteralPath $stdoutLog) { Remove-Item -LiteralPath $stdoutLog -Force }
-    if (Test-Path -LiteralPath $stderrLog) { Remove-Item -LiteralPath $stderrLog -Force }
+    $stdoutLog = Join-Path $env:TEMP ("{0}.{1}.stdout.log" -f $LogPrefix, $script:PortForwardSessionId)
+    $stderrLog = Join-Path $env:TEMP ("{0}.{1}.stderr.log" -f $LogPrefix, $script:PortForwardSessionId)
 
     $args = @(
         "-n", $Namespace,
@@ -54,6 +85,8 @@ function Start-PortForwardProcess {
         "svc/$Service",
         "${LocalPort}:${RemotePort}"
     )
+
+    Stop-ExistingPortForwardProcess -Namespace $Namespace -Service $Service -LocalPort $LocalPort -RemotePort $RemotePort
 
     Write-Host "Starting kubectl port-forward to ${Namespace}/${Service} on localhost:${LocalPort} ..." -ForegroundColor Cyan
     $process = Start-Process `
@@ -70,6 +103,8 @@ function Start-PortForwardProcess {
         Process   = $process
         StdoutLog = $stdoutLog
         StderrLog = $stderrLog
+        Service   = $Service
+        LocalPort = $LocalPort
     }
 }
 
@@ -93,8 +128,18 @@ try {
             -LogPrefix "listingkit-redis-portforward"
     }
 
+    if ($IncludeTemporal) {
+        $forwards += Start-PortForwardProcess `
+            -Namespace $TemporalNamespace `
+            -Service $TemporalService `
+            -LocalPort $LocalTemporalPort `
+            -RemotePort $RemoteTemporalPort `
+            -LogPrefix "listingkit-temporal-portforward"
+    }
+
     Write-Host ""
     Write-Host "Port-forward is ready." -ForegroundColor Green
+    Write-Host "Port-forward session id: $script:PortForwardSessionId" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "Suggested env overrides for local product-listing-api:" -ForegroundColor Yellow
     Write-Host "  `$env:TASK_PROCESSOR_DATABASE_HOST='127.0.0.1'"
@@ -106,6 +151,10 @@ try {
     Write-Host "  `$env:TASK_PROCESSOR_REDIS_PORT='${LocalRedisPort}'"
     Write-Host "  `$env:TASK_PROCESSOR_SHEIN_COOKIE_REDIS_HOST='127.0.0.1'"
     Write-Host "  `$env:TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PORT='${LocalRedisPort}'"
+    if ($IncludeTemporal) {
+        Write-Host "  `$env:LISTINGKIT_TEMPORAL_ENABLED='true'"
+        Write-Host "  `$env:LISTINGKIT_TEMPORAL_ADDRESS='127.0.0.1:${LocalTemporalPort}'"
+    }
     Write-Host "  go run ./cmd/product-listing-api -config config/config-dev.yaml -port 8085 -log-level info"
     Write-Host ""
     Write-Host "Suggested env overrides for local listingkit-ui:" -ForegroundColor Yellow
@@ -119,6 +168,10 @@ try {
         Write-Host "Redis port-forward is skipped by -SkipRedis. Use this only for static or pure read-only UI checks." -ForegroundColor DarkYellow
         Write-Host ""
     }
+    if ($IncludeTemporal) {
+        Write-Host "Remote Temporal is forwarded to 127.0.0.1:${LocalTemporalPort}." -ForegroundColor DarkYellow
+        Write-Host ""
+    }
     Write-Host "This window keeps the port-forward alive. Press Ctrl+C when you are done." -ForegroundColor Yellow
 
     while ($true) {
@@ -129,7 +182,7 @@ try {
                 if (Test-Path -LiteralPath $forward.StderrLog) {
                     $stderr = Get-Content -LiteralPath $forward.StderrLog -Raw -ErrorAction SilentlyContinue
                 }
-                throw "kubectl port-forward exited unexpectedly. ${stderr}"
+                throw "kubectl port-forward for $($forward.Service) exited unexpectedly. ${stderr}"
             }
         }
     }

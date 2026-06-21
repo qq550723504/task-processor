@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"task-processor/internal/core/logger"
 	"task-processor/internal/sds/client"
 	sdstemplate "task-processor/internal/sds/template"
 )
@@ -507,7 +509,9 @@ func (s *Service) PrepareAndSyncDesign(ctx context.Context, input PrepareSyncDes
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		s.cleanupDesignArtifacts(cleanupCtx, material, result)
+		if cleanupErr := s.cleanupDesignArtifacts(cleanupCtx, material, result); cleanupErr != nil {
+			logger.GetGlobalLogger("sds/design").WithError(cleanupErr).Warn("cleanup SDS design artifacts failed")
+		}
 	}()
 
 	result, err = s.PrepareSyncDesign(ctx, input, material)
@@ -530,13 +534,19 @@ func (s *Service) PrepareAndSyncDesign(ctx context.Context, input PrepareSyncDes
 	return result, nil
 }
 
-func (s *Service) cleanupDesignArtifacts(ctx context.Context, material *UploadedMaterial, result *PrepareSyncDesignResult) {
+func (s *Service) cleanupDesignArtifacts(ctx context.Context, material *UploadedMaterial, result *PrepareSyncDesignResult) error {
+	var errs []error
 	for _, itemID := range cleanupEndProductItemIDs(result) {
-		_ = s.DeleteEndProduct(ctx, itemID)
+		if err := s.DeleteEndProduct(ctx, itemID); err != nil {
+			errs = append(errs, fmt.Errorf("delete SDS endproduct %s: %w", itemID, err))
+		}
 	}
 	if material != nil && material.Material != nil && material.Material.ID > 0 {
-		_ = s.DeleteMaterial(ctx, material.Material.ID)
+		if err := s.DeleteMaterial(ctx, material.Material.ID); err != nil {
+			errs = append(errs, fmt.Errorf("delete SDS material %d: %w", material.Material.ID, err))
+		}
 	}
+	return errors.Join(errs...)
 }
 
 func cleanupEndProductItemIDs(result *PrepareSyncDesignResult) []string {
