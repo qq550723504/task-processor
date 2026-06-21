@@ -618,6 +618,7 @@ Follow-up deletion
 | SHEIN submit readiness status predicates | migrated | submit readiness 使用的 SKU、最终图片、SKC/色块图、价格和图片存在性判定迁入 `internal/publishing/shein/submit_readiness_status.go`；ListingKit status support 仅保留兼容 wrapper。 |
 | SHEIN submit image upload cache persistence | migrated | 图片上传后的 FinalSubmissionDraft cache 写入和更新时间迁入 `internal/publishing/shein/submit_image_upload_cache.go`；ListingKit 上传服务仅负责 API/runtime orchestration。 |
 | SHEIN final draft image application | migrated | 最终图片排序、删除、角色覆盖、SKC/SKU fallback 和 preview SKC image 回写迁入 `internal/publishing/shein/final_draft_images.go`；ListingKit final draft 文件仅保留兼容 wrapper。 |
+| SHEIN pricing cache review reconcile | migrated | 缓存命中的旧 SKU/manual price override 按当前 DraftPayload/source_sds_sku 重映射的规则迁入 `internal/publishing/shein/pricing_cache_reconcile.go`；ListingKit pricing cache loader 只负责读取缓存并委托 publishing 规则。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

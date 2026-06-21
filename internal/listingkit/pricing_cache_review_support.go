@@ -68,6 +68,10 @@ func decodeSheinPricingCacheEntry(entry *sheinpub.SheinResolutionCacheEntry) *sh
 	return cloneSheinPricingReview(&review)
 }
 
+func reconcileSheinPricingCacheReview(pkg *sheinpub.Package, review *sheinpub.PricingReview) *sheinpub.PricingReview {
+	return sheinpub.ReconcilePricingCacheReview(pkg, review)
+}
+
 func cloneSheinPricingReview(review *sheinpub.PricingReview) *sheinpub.PricingReview {
 	if review == nil {
 		return nil

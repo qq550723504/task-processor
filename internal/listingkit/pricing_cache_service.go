@@ -96,6 +96,7 @@ func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Pack
 		return nil
 	}
 	review := decodeSheinPricingCacheEntry(entry)
+	review = reconcileSheinPricingCacheReview(pkg, review)
 	if !sheinPricingReviewApplicable(pkg, review) {
 		logPricingCacheEvent("miss", buildReq, pkg, &sheinpub.ResolutionCacheInfo{
 			Source:    cacheEntrySourceLabel(entry),

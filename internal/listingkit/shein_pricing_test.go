@@ -447,6 +447,125 @@ func TestApplyDefaultSheinPricingUsesPublishedPriceCache(t *testing.T) {
 	}
 }
 
+func TestApplyDefaultSheinPricingRemapsCachedManualOverrideToCurrentSKU(t *testing.T) {
+	t.Parallel()
+
+	store := &submitResolutionCacheStore{}
+	svc, err := NewService(newTestServiceConfig(
+		&stubSubmitRepo{},
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinResolutionCacheStore = store
+		}),
+	))
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	req := &GenerateRequest{
+		Platforms:    []string{"shein"},
+		SheinStoreID: 869,
+	}
+	fresh := &sheinpub.Package{
+		CategoryID:     2486,
+		CategoryIDList: []int{2030, 1952, 8007, 2486},
+		CategoryPath:   []string{"家居&生活", "家居装饰", "装饰挂饰和风铃", "装饰挂饰"},
+		ProductAttributes: []common.Attribute{
+			{Name: "product_sku", Value: "MG8006062"},
+			{Name: "variant_sku", Value: "MG8006062004"},
+			{Name: "sku", Value: "MG8006062"},
+		},
+		RequestDraft: &sheinpub.RequestDraft{
+			SKCList: []sheinpub.SKCRequestDraft{{
+				SupplierCode: "MG8006062004-EF926739",
+				SKUList: []sheinpub.SKUDraft{{
+					SupplierSKU: "MG8006062004-EF926739",
+					Attributes:  map[string]string{"source_sds_sku": "MG8006062004"},
+					CostPrice:   "143",
+					BasePrice:   "143",
+					Currency:    "CNY",
+					SitePriceList: []sheinpub.SitePrice{{
+						SubSite:   "US",
+						BasePrice: "143",
+						Currency:  "CNY",
+					}},
+				}},
+			}},
+		},
+		PreviewProduct: &sheinproduct.Product{
+			SKCList: []sheinproduct.SKC{{
+				SKUS: []sheinproduct.SKU{{
+					SupplierSKU: "MG8006062004-EF926739",
+					PriceInfoList: []sheinproduct.PriceInfo{{
+						SubSite:   "US",
+						BasePrice: 143,
+						Currency:  "CNY",
+					}},
+				}},
+			}},
+		},
+	}
+
+	key := sheinPricingCacheKey(buildSheinPublishRequest(req), fresh, svc.(*service).currentSheinPricingRule())
+	if key == "" {
+		t.Fatal("pricing cache key is empty")
+	}
+	cachedReview := &sheinpub.PricingReview{
+		RuleSnapshot: &sheinpub.PricingRule{
+			SourceCurrency:   "CNY",
+			TargetCurrency:   "USD",
+			ExchangeRate:     7.2,
+			MarkupMultiplier: 2,
+			MinimumPrice:     9.99,
+			RoundTo:          0.01,
+		},
+		SKUPrices: []sheinpub.SKUPriceReview{{
+			SupplierSKU:     "MG8006062004-V96697-TB9B6431C-RA8CD5E-E5BADD24",
+			SupplierCode:    "MG8006062004-9D6E1EC4",
+			CostCNY:         143,
+			CalculatedPrice: 143,
+			FinalPrice:      143,
+			Currency:        "USD",
+		}},
+		ManualOverrides: map[string]float64{
+			"MG8006062004-V96697-TAB634DC8-R14A9AC-92B5A7B8": 82,
+		},
+		Ready: true,
+	}
+	if err := store.SaveResolutionCache(context.Background(), &sheinpub.SheinResolutionCacheEntry{
+		StoreID:        "869",
+		CacheKind:      sheinpub.ResolutionCacheKindPricing,
+		CacheKey:       key,
+		ShortKey:       sheinPricingShortKey(key),
+		Source:         "manual_cache",
+		Manual:         true,
+		SourceIdentity: sheinPricingSourceIdentity(fresh),
+		ResolutionJSON: mustMarshalSheinPricingReview(cachedReview),
+	}); err != nil {
+		t.Fatalf("save cache: %v", err)
+	}
+
+	svc.(*service).applyDefaultSheinPricing(req, fresh)
+
+	if fresh.Pricing == nil || len(fresh.Pricing.SKUPrices) != 1 {
+		t.Fatalf("pricing review = %+v, want one cached price", fresh.Pricing)
+	}
+	if got := fresh.Pricing.SKUPrices[0].SupplierSKU; got != "MG8006062004-EF926739" {
+		t.Fatalf("pricing sku = %q, want current draft SKU", got)
+	}
+	if got := fresh.Pricing.SKUPrices[0].FinalPrice; got != 82 {
+		t.Fatalf("final price = %v, want remapped manual override 82", got)
+	}
+	if got := fresh.Pricing.ManualOverrides["MG8006062004-EF926739"]; got != 82 {
+		t.Fatalf("manual overrides = %#v, want current SKU override 82", fresh.Pricing.ManualOverrides)
+	}
+	if got := fresh.RequestDraft.SKCList[0].SKUList[0].BasePrice; got != "82.00" {
+		t.Fatalf("draft base price = %q, want 82.00", got)
+	}
+	if got := fresh.PreviewProduct.SKCList[0].SKUS[0].PriceInfoList[0].BasePrice; got != 82 {
+		t.Fatalf("preview base price = %v, want 82", got)
+	}
+}
+
 func TestApplyDefaultSheinPricingSkipsExistingReadyPricing(t *testing.T) {
 	t.Parallel()
 
