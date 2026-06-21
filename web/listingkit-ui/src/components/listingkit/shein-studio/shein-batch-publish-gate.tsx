@@ -23,6 +23,17 @@ type GateStatus = {
 };
 
 type GateFilter = "all" | "draft" | "publish" | "blocked" | "submitted";
+type BatchSubmitAction = "save_draft" | "publish";
+type BatchSubmitStatus = "succeeded" | "failed";
+type BatchSubmitResults = Record<
+  BatchSubmitAction,
+  Record<string, { error?: string; status: BatchSubmitStatus }>
+>;
+
+const emptyBatchSubmitResults: BatchSubmitResults = {
+  save_draft: {},
+  publish: {},
+};
 
 function deriveGateState(item: GateStatus) {
   const taskStatus = item.result?.status;
@@ -67,6 +78,9 @@ export function SheinBatchPublishGate({
   const [isPublishing, setIsPublishing] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [submissionResults, setSubmissionResults] = useState<BatchSubmitResults>(
+    emptyBatchSubmitResults,
+  );
 
   const resultQueries = useQueries({
     queries: tasks.map((task) => ({
@@ -127,7 +141,7 @@ export function SheinBatchPublishGate({
     ]);
   }
 
-  async function handleBatchSubmit(action: "save_draft" | "publish") {
+  async function handleBatchSubmit(action: BatchSubmitAction) {
     const eligible = action === "publish" ? publishEligible : draftEligible;
     if (eligible.length === 0) {
       setError(
@@ -136,6 +150,20 @@ export function SheinBatchPublishGate({
           : "没有可保存草稿的任务。",
       );
       setMessage("");
+      return;
+    }
+
+    const remaining = eligible.filter(
+      (item) => submissionResults[action][item.task.id]?.status !== "succeeded",
+    );
+    const skippedCount = eligible.length - remaining.length;
+    if (remaining.length === 0) {
+      setError("");
+      setMessage(
+        action === "publish"
+          ? `已跳过 ${skippedCount} 个已成功发布的 SHEIN 任务。`
+          : `已跳过 ${skippedCount} 个已成功保存的 SHEIN 草稿。`,
+      );
       return;
     }
 
@@ -148,24 +176,50 @@ export function SheinBatchPublishGate({
     }
 
     try {
-      for (const item of eligible) {
-        await submitTask(item.task.id, {
-          platform: "shein",
-          action,
-        });
-        await refreshTask(item.task.id);
+      const failures: Array<{ item: GateStatus; message: string }> = [];
+      let successCount = 0;
+
+      for (const item of remaining) {
+        try {
+          await submitTask(item.task.id, {
+            platform: "shein",
+            action,
+          });
+          successCount += 1;
+          setSubmissionResults((current) => ({
+            ...current,
+            [action]: {
+              ...current[action],
+              [item.task.id]: { status: "succeeded" },
+            },
+          }));
+        } catch (submitError) {
+          const failureMessage =
+            submitError instanceof Error
+              ? submitError.message
+              : "SHEIN 批量提交失败。";
+          failures.push({ item, message: failureMessage });
+          setSubmissionResults((current) => ({
+            ...current,
+            [action]: {
+              ...current[action],
+              [item.task.id]: { error: failureMessage, status: "failed" },
+            },
+          }));
+        } finally {
+          await refreshTask(item.task.id);
+        }
       }
 
       setMessage(
-        action === "publish"
-          ? `已发布 ${eligible.length} 个 SHEIN 任务。`
-          : `已保存 ${eligible.length} 个 SHEIN 草稿。`,
+        buildBatchSubmitMessage(action, successCount, failures.length, skippedCount),
       );
-    } catch (submitError) {
       setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "SHEIN 批量提交失败。",
+        failures.length > 0
+          ? failures
+              .map(({ item, message: failureMessage }) => `${item.task.title}：${failureMessage}`)
+              .join("；")
+          : "",
       );
     } finally {
       setIsPublishing(false);
@@ -321,4 +375,24 @@ export function SheinBatchPublishGate({
       </div>
     </Card>
   );
+}
+
+function buildBatchSubmitMessage(
+  action: BatchSubmitAction,
+  successCount: number,
+  failedCount: number,
+  skippedCount: number,
+) {
+  const base =
+    action === "publish"
+      ? `已发布 ${successCount} 个 SHEIN 任务`
+      : `已保存 ${successCount} 个 SHEIN 草稿`;
+  const suffixes = [
+    failedCount > 0 ? `失败 ${failedCount} 个` : "",
+    skippedCount > 0 ? `跳过 ${skippedCount} 个` : "",
+  ].filter(Boolean);
+
+  return suffixes.length > 0
+    ? `${base}，${suffixes.join("，")}。`
+    : `${base}。`;
 }
