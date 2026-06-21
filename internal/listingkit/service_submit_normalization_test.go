@@ -565,7 +565,7 @@ func TestReconcileSheinStudioPricingReferencesTrimsTrailingStyleLikeSuffix(t *te
 		},
 	}
 
-	changed := reconcileSheinStudioPricingReferences(pkg)
+	changed := sheinpub.ReconcileStudioPricingReferences(pkg)
 	if !changed {
 		t.Fatal("expected trailing style-like suffix reconciliation to change pricing references")
 	}

@@ -9,29 +9,20 @@ import (
 func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 	t.Parallel()
 
-	pricingSrc, err := os.ReadFile("shein_submit_sku_pricing_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_sku_pricing_support.go) error = %v", err)
-	}
-	pricingContent := string(pricingSrc)
+	assertFileAbsent(t, "shein_submit_sku_pricing_support.go")
 
-	for _, needle := range []string{
-		"func applySheinStudioSupplierSKURenames(pkg *sheinpub.Package, renames []sheinStudioSupplierSKURename) {",
-		"func reconcileSheinStudioPricingReferences(pkg *sheinpub.Package) bool {",
-		"func sheinStudioPricingSKUAlias(value string) string {",
-	} {
-		if !strings.Contains(pricingContent, needle) {
-			t.Fatalf("shein_submit_sku_pricing_support.go should contain %q", needle)
-		}
+	publishingPricingSrc, err := os.ReadFile("../publishing/shein/submit_sku_pricing.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../publishing/shein/submit_sku_pricing.go) error = %v", err)
 	}
+	publishingPricingContent := string(publishingPricingSrc)
 	for _, needle := range []string{
-		"func remapSheinPriceOverrides(input map[string]float64, renameMap map[string][]string) map[string]float64 {",
-		"func collectSheinRequestDraftSupplierSKUs(draft *sheinpub.RequestDraft) []string {",
-		"func reconcileSheinPriceOverrideAliases(",
-		"func trimSheinStudioPricingStyleLikeSuffix(value string) (string, bool) {",
+		"func ApplyStudioSupplierSKURenames(pkg *Package, renames []SupplierSKURename) {",
+		"func ReconcileStudioPricingReferences(pkg *Package) bool {",
+		"func StudioPricingSKUAlias(value string) string {",
 	} {
-		if strings.Contains(pricingContent, needle) {
-			t.Fatalf("shein_submit_sku_pricing_support.go should delegate pricing detail %q", needle)
+		if !strings.Contains(publishingPricingContent, needle) {
+			t.Fatalf("publishing submit_sku_pricing.go should contain %q", needle)
 		}
 	}
 
@@ -46,7 +37,7 @@ func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 		"func studioSubmitRequestDiscriminator(requestID string) string {",
 		"func combineStudioSubmitDiscriminators(values ...string) string {",
 	} {
-		if strings.Contains(pricingContent, needle) {
+		if strings.Contains(publishingPricingContent, needle) {
 			t.Fatalf("shein_submit_sku_pricing_support.go should delegate style support helper %q", needle)
 		}
 	}
