@@ -91,29 +91,19 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 
-	supplierSrc, err := os.ReadFile("shein_submit_payload_supplier_validation_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_payload_supplier_validation_support.go) error = %v", err)
-	}
-	supplierContent := string(supplierSrc)
+	assertFileAbsent(t, "shein_submit_payload_supplier_validation_support.go")
 
-	for _, needle := range []string{
-		"func deriveSheinSubmitProductSupplierCode(product *sheinproduct.Product) string {",
-		"func validateSheinProductPublishPayload(product *sheinproduct.Product) error {",
-	} {
-		if !strings.Contains(supplierContent, needle) {
-			t.Fatalf("shein_submit_payload_supplier_validation_support.go should contain %q", needle)
-		}
+	publishingPolicySrc, err := os.ReadFile("../publishing/shein/submit_payload_policy.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../publishing/shein/submit_payload_policy.go) error = %v", err)
 	}
+	publishingPolicyContent := string(publishingPolicySrc)
 	for _, needle := range []string{
-		"func deriveSheinSubmitSupplierCodeFromSKU(supplierSKU string) string {",
-		"func looksLikeRawBaseSupplierCode(value string) bool {",
-		"func normalizeSheinSubmitStyleSuffix(value string) string {",
-		"case 5:",
-		"case 6:",
+		"func DeriveSubmitProductSupplierCode(product *sheinproduct.Product) string {",
+		"func ValidateProductPublishPayload(product *sheinproduct.Product) error {",
 	} {
-		if strings.Contains(supplierContent, needle) {
-			t.Fatalf("shein_submit_payload_supplier_validation_support.go should delegate publishing policy detail %q", needle)
+		if !strings.Contains(publishingPolicyContent, needle) {
+			t.Fatalf("publishing submit_payload_policy.go should contain %q", needle)
 		}
 	}
 }

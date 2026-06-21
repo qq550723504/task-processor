@@ -28,7 +28,7 @@ func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.C
 	}
 	prepareSheinProductForSubmit(submitProduct, s.resolveSubmitSettings(runtimeCtx, task))
 	if action == "publish" {
-		if err := validateSheinProductPublishPayload(submitProduct); err != nil {
+		if err := sheinpub.ValidateProductPublishPayload(submitProduct); err != nil {
 			return nil, err
 		}
 	}
