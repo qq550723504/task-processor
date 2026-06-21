@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 const (
@@ -48,28 +47,12 @@ func enforceSheinVariantImageCoverage(pkg *sheinpub.Package, req *GenerateReques
 	})
 }
 
-func sheinVariantImageGroupCount(pkg *sheinpub.Package) int {
-	return sheinpub.VariantImageGroupCount(pkg)
-}
-
-func sheinVariantImageGroupKey(skc sheinpub.SKCRequestDraft) string {
-	return sheinpub.VariantImageGroupKey(skc)
-}
-
 func setSheinVariantImageCoverageMetadata(pkg *sheinpub.Package, warning string, blocked bool) {
 	sheinpub.SetVariantImageCoverageMetadata(pkg, warning, blocked)
 }
 
 func sheinVariantImageCoverageStatus(pkg *sheinpub.Package) (string, bool) {
 	return sheinpub.VariantImageCoverageStatus(pkg)
-}
-
-func sheinDistinctSKCMainImageCount(pkg *sheinpub.Package) int {
-	return sheinpub.DistinctSKCMainImageCount(pkg)
-}
-
-func skcMainImageURL(skc sheinpub.SKCRequestDraft) string {
-	return sheinpub.SKCMainImageURL(skc)
 }
 
 func sheinVariantImageCoverageCount(req *GenerateRequest, sdsSummary *SDSSyncSummary) int {
@@ -111,30 +94,4 @@ func completedSDSVariantCoverage(summary *SDSSyncSummary) map[string]struct{} {
 		}
 	}
 	return coverage
-}
-
-func clearSharedSheinSKCImages(pkg *sheinpub.Package) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil {
-		return
-	}
-	if pkg.DraftPayload != nil {
-		for skcIndex := range pkg.DraftPayload.SKCList {
-			pkg.DraftPayload.SKCList[skcIndex].ImageInfo = nil
-			for skuIndex := range pkg.DraftPayload.SKCList[skcIndex].SKUList {
-				pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex].MainImage = ""
-			}
-		}
-	}
-	for skcIndex := range pkg.SkcList {
-		pkg.SkcList[skcIndex].MainImageURL = ""
-	}
-	if pkg.PreviewPayload != nil {
-		for skcIndex := range pkg.PreviewPayload.SKCList {
-			pkg.PreviewPayload.SKCList[skcIndex].ImageInfo = sheinproduct.ImageInfo{}
-			for skuIndex := range pkg.PreviewPayload.SKCList[skcIndex].SKUS {
-				pkg.PreviewPayload.SKCList[skcIndex].SKUS[skuIndex].ImageInfo = &sheinproduct.ImageInfo{}
-			}
-		}
-	}
 }

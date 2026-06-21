@@ -16,7 +16,3 @@ func appendAIProductImagesToShein(pkg *sheinpub.Package, imageURLs []string, sou
 func imageSetFromAIProductImages(imageURLs []string, sourceImages []string) *common.ImageSet {
 	return sheinpub.ImageSetFromAIProductImages(imageURLs, sourceImages)
 }
-
-func imageDraftToSet(draft *sheinpub.ImageDraft) *common.ImageSet {
-	return sheinpub.ImageDraftToSet(draft)
-}
