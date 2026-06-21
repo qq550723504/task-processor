@@ -9,6 +9,33 @@ import (
 
 type AttributeAPI = sheinpub.AttributeAPI
 
+const (
+	FreshnessAuthKey          = sheinmarketplace.FreshnessAuthKey
+	FreshnessCategoryKey      = sheinmarketplace.FreshnessCategoryKey
+	FreshnessAttributeKey     = sheinmarketplace.FreshnessAttributeKey
+	FreshnessSaleAttributeKey = sheinmarketplace.FreshnessSaleAttributeKey
+)
+
+func BuildFreshnessAuthFailureCheck(err error) ReadinessCheckSpec {
+	return sheinmarketplace.BuildFreshnessAuthFailureCheck(err)
+}
+
+func BuildFreshnessAuthSuccessCheck() ReadinessCheckSpec {
+	return sheinmarketplace.BuildFreshnessAuthSuccessCheck()
+}
+
+func BuildFreshnessCategoryCheck(ok bool, message string) ReadinessCheckSpec {
+	return sheinmarketplace.BuildFreshnessCategoryCheck(ok, message)
+}
+
+func BuildFreshnessAttributeCheck(ok bool, message string) ReadinessCheckSpec {
+	return sheinmarketplace.BuildFreshnessAttributeCheck(ok, message)
+}
+
+func BuildFreshnessSaleAttributeCheck(ok bool, message string) ReadinessCheckSpec {
+	return sheinmarketplace.BuildFreshnessSaleAttributeCheck(ok, message)
+}
+
 func EvaluateCategoryFreshness(current *Package, info *sheincategory.CategoryInfo) (bool, string) {
 	return sheinmarketplace.EvaluateCategoryFreshness(current, info)
 }

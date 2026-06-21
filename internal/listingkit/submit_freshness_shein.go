@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	sheinFreshnessAuthKey          = "shein_online_auth"
-	sheinFreshnessCategoryKey      = "shein_category_template_freshness"
-	sheinFreshnessAttributeKey     = "shein_attribute_template_freshness"
-	sheinFreshnessSaleAttributeKey = "shein_sale_attribute_freshness"
+	sheinFreshnessAuthKey          = sheinworkspace.FreshnessAuthKey
+	sheinFreshnessCategoryKey      = sheinworkspace.FreshnessCategoryKey
+	sheinFreshnessAttributeKey     = sheinworkspace.FreshnessAttributeKey
+	sheinFreshnessSaleAttributeKey = sheinworkspace.FreshnessSaleAttributeKey
 )
 
 func (s *service) validateSheinPublishFreshness(ctx context.Context, task *Task, pkg *SheinPackage, action string) (*SheinSubmitReadiness, error) {

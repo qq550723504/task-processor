@@ -18,58 +18,23 @@ type sheinFreshnessValidationContext struct {
 }
 
 func buildSheinFreshnessAuthFailureCheck(err error) sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.ReadinessCheckSpec{
-		Key:             sheinFreshnessAuthKey,
-		Label:           "SHEIN 在线登录态",
-		OK:              false,
-		Message:         "SHEIN 提交店铺当前不可用，请先刷新登录态后再提交：" + strings.TrimSpace(err.Error()),
-		FieldPaths:      []string{"shein.store_resolution", "shein.review_notes"},
-		SuggestedAction: "重新登录 SHEIN 店铺",
-	}
+	return sheinworkspace.BuildFreshnessAuthFailureCheck(err)
 }
 
 func buildSheinFreshnessAuthSuccessCheck() sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.ReadinessCheckSpec{
-		Key:             sheinFreshnessAuthKey,
-		Label:           "SHEIN 在线登录态",
-		OK:              true,
-		Message:         "SHEIN 提交店铺当前可用",
-		FieldPaths:      []string{"shein.store_resolution"},
-		SuggestedAction: "重新登录 SHEIN 店铺",
-	}
+	return sheinworkspace.BuildFreshnessAuthSuccessCheck()
 }
 
 func buildSheinFreshnessCategoryCheck(ok bool, message string) sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.ReadinessCheckSpec{
-		Key:             sheinFreshnessCategoryKey,
-		Label:           "类目模板新鲜度",
-		OK:              ok,
-		Message:         message,
-		FieldPaths:      []string{"shein.category_id", "shein.category_id_list", "shein.product_type_id"},
-		SuggestedAction: "刷新类目模板",
-	}
+	return sheinworkspace.BuildFreshnessCategoryCheck(ok, message)
 }
 
 func buildSheinFreshnessAttributeCheck(ok bool, message string) sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.ReadinessCheckSpec{
-		Key:             sheinFreshnessAttributeKey,
-		Label:           "普通属性模板新鲜度",
-		OK:              ok,
-		Message:         message,
-		FieldPaths:      []string{"shein.resolved_attributes", "shein.attribute_resolution"},
-		SuggestedAction: "刷新属性模板",
-	}
+	return sheinworkspace.BuildFreshnessAttributeCheck(ok, message)
 }
 
 func buildSheinFreshnessSaleAttributeCheck(ok bool, message string) sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.ReadinessCheckSpec{
-		Key:             sheinFreshnessSaleAttributeKey,
-		Label:           "销售属性模板新鲜度",
-		OK:              ok,
-		Message:         message,
-		FieldPaths:      []string{"shein.sale_attribute_resolution", "shein.request_draft.skc_list"},
-		SuggestedAction: "刷新销售属性",
-	}
+	return sheinworkspace.BuildFreshnessSaleAttributeCheck(ok, message)
 }
 
 func (s *service) prepareSheinFreshnessValidationContext(ctx context.Context, task *Task, pkg *SheinPackage) (*sheinFreshnessValidationContext, *sheinworkspace.ReadinessCheckSpec) {
