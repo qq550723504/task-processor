@@ -32,6 +32,11 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func normalizeSheinSubmitImages(product *sheinproduct.Product) {",
 		"func deriveSheinSubmitProductSupplierCode(product *sheinproduct.Product) string {",
 		"func validateSheinProductPublishPayload(product *sheinproduct.Product) error {",
+		"product.SPUName = \"\"",
+		"product.SourceSystem = \"listingkit\"",
+		"product.SupplierCode = deriveSheinSubmitProductSupplierCode(product)",
+		"normalizeSheinSubmitCollections(product)",
+		"ensureSheinSubmitSKUs(product, settings)",
 		"product.BrandSeriesList = []string{}",
 		"product.Extra.SPUTag = []string{}",
 		"product.Extra.ControlPriceData = map[string]string{}",
@@ -39,6 +44,14 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 	} {
 		if strings.Contains(homeContent, needle) {
 			t.Fatalf("shein_submit_payload.go should delegate helper seam %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"sheinpub.PrepareProductForNewSubmit(product)",
+		"sheinpub.PrepareProductForSubmit(product, sheinSubmitPayloadSettings(settings))",
+	} {
+		if !strings.Contains(homeContent, needle) {
+			t.Fatalf("shein_submit_payload.go should delegate submit product preparation via %q", needle)
 		}
 	}
 
