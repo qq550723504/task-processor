@@ -17,6 +17,18 @@ func BuildReadinessTaxonomy(key string, warningOnly bool) ReadinessTaxonomy {
 	return sheinmarketplace.BuildReadinessTaxonomy(key, warningOnly)
 }
 
+func BuildSubmitReadinessCheck(
+	key string,
+	label string,
+	ok bool,
+	message string,
+	fieldPaths []string,
+	suggestedAction string,
+	warningOnly bool,
+) ReadinessCheckSpec {
+	return sheinmarketplace.BuildSubmitReadinessCheck(key, label, ok, message, fieldPaths, suggestedAction, warningOnly)
+}
+
 func BuildSubmitReadiness[R any, H any](
 	checks []ReadinessCheckSpec,
 	guidanceResolver func(ReadinessCheckSpec) Guidance[R, H],

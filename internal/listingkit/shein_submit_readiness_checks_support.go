@@ -23,16 +23,7 @@ func buildSheinSubmitReadinessChecks(pkg *SheinPackage, pod *PodExecutionSummary
 }
 
 func sheinSubmitReadinessCheck(key, label string, ok bool, message string, fieldPaths []string, suggestedAction string, warningOnly bool) sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.ReadinessCheckSpec{
-		Key:             key,
-		Label:           label,
-		OK:              ok,
-		Message:         message,
-		FieldPaths:      append([]string(nil), fieldPaths...),
-		SuggestedAction: suggestedAction,
-		WarningOnly:     warningOnly,
-		Taxonomy:        sheinReadinessTaxonomyForKey(key, warningOnly),
-	}
+	return sheinworkspace.BuildSubmitReadinessCheck(key, label, ok, message, fieldPaths, suggestedAction, warningOnly)
 }
 
 func sheinReadinessTaxonomyForKey(key string, warningOnly bool) sheinworkspace.ReadinessTaxonomy {
