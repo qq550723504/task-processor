@@ -37,6 +37,10 @@ func BuildSourceFactsReadinessCheck(pkg *Package) ReadinessCheckSpec {
 	return sheinmarketplace.BuildSourceFactsReadinessCheck(pkg)
 }
 
+func BuildSubmitPayloadReadinessChecks(pkg *Package, action string) []ReadinessCheckSpec {
+	return sheinmarketplace.BuildSubmitPayloadReadinessChecks(pkg, action)
+}
+
 func BuildSubmitReadiness[R any, H any](
 	checks []ReadinessCheckSpec,
 	guidanceResolver func(ReadinessCheckSpec) Guidance[R, H],

@@ -96,15 +96,39 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func appendSheinPodReadinessChecks(",
 		"func appendSheinTemplateReadinessChecks(",
 		"func appendSheinPayloadReadinessChecks(",
+		"return append(checks, sheinworkspace.BuildSubmitPayloadReadinessChecks(pkg, action)...)",
 		"func sheinSubmitReadinessFinalDraftReady(pkg *SheinPackage, action string) bool {",
 		"func sheinSubmitReadinessFinalReviewMessage(action string) string {",
 		"return sheinpub.FinalReviewReady(pkg, action)",
 		"return sheinpub.FinalReviewMessage(action)",
-		"checks = append(checks, sheinworkspace.BuildManualNotesReadinessCheck(pkg))",
-		"checks = append(checks, sheinworkspace.BuildSourceFactsReadinessCheck(pkg))",
 	} {
 		if !strings.Contains(checksContent, needle) {
 			t.Fatalf("shein_submit_readiness_checks_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		`"request_draft",`,
+		`"preview_product",`,
+		`"variant_image_coverage",`,
+		`"pricing",`,
+	} {
+		if strings.Contains(checksContent, needle) {
+			t.Fatalf("shein_submit_readiness_checks_support.go should delegate payload check construction, found %q", needle)
+		}
+	}
+
+	workspacePayloadSrc, err := os.ReadFile("../marketplace/shein/workspace/submit_payload_readiness_checks.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../marketplace/shein/workspace/submit_payload_readiness_checks.go) error = %v", err)
+	}
+	workspacePayloadContent := string(workspacePayloadSrc)
+	for _, needle := range []string{
+		"func BuildSubmitPayloadReadinessChecks(pkg *sheinpub.Package, action string) []ReadinessCheckSpec {",
+		"checks = append(checks, BuildManualNotesReadinessCheck(pkg))",
+		"checks = append(checks, BuildSourceFactsReadinessCheck(pkg))",
+	} {
+		if !strings.Contains(workspacePayloadContent, needle) {
+			t.Fatalf("workspace payload readiness checks should contain %q", needle)
 		}
 	}
 }
