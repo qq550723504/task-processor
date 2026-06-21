@@ -14,31 +14,7 @@ func buildSheinReadinessReason(spec *sheinworkspace.ReadinessReasonSpec) *SheinR
 }
 
 func buildSheinReadinessPatchPayload(pkg *SheinPackage, key string) *SheinRepairPatchPayload {
-	switch key {
-	case "category", "category_review":
-		return &SheinRepairPatchPayload{
-			CategoryResolution: buildSheinCategoryResolutionPatch(pkg),
-		}
-	case "attributes", "attribute_review":
-		return &SheinRepairPatchPayload{
-			AttributeResolution: buildSheinAttributeResolutionPatch(pkg),
-		}
-	case "sale_attributes", "variants":
-		return &SheinRepairPatchPayload{
-			SaleAttributeResolution: buildSheinSaleAttributeResolutionPatch(pkg),
-			SKCPatches:              buildSheinEditorSKCPatches(pkg),
-		}
-	case "images":
-		return &SheinRepairPatchPayload{
-			Images: clonePlatformImageSetForEditor(pkg.Images),
-		}
-	case "manual_notes":
-		return &SheinRepairPatchPayload{
-			ReviewNotes: append([]string(nil), pkg.ReviewNotes...),
-		}
-	default:
-		return nil
-	}
+	return sheinworkspace.BuildReadinessPatchPayload(pkg, key)
 }
 
 func buildSheinReadinessRepairHint(pkg *SheinPackage, action string, fieldPaths []string, hint sheinworkspace.ReadinessHintSpec, patch *SheinRepairPatchPayload) SheinRepairHint {

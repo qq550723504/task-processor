@@ -16,6 +16,10 @@ func BuildReadinessGuidanceSpec(key string, warningOnly bool) *ReadinessGuidance
 	return sheinmarketplace.BuildReadinessGuidanceSpec(key, warningOnly)
 }
 
+func BuildReadinessPatchPayload(pkg *Package, key string) *RepairPatchPayload {
+	return sheinmarketplace.BuildReadinessPatchPayload(pkg, key)
+}
+
 func BuildReadinessTaxonomy(key string, warningOnly bool) ReadinessTaxonomy {
 	return sheinmarketplace.BuildReadinessTaxonomy(key, warningOnly)
 }

@@ -1,5 +1,7 @@
 package workspace
 
+import sheinpub "task-processor/internal/publishing/shein"
+
 type ReadinessReasonSpec struct {
 	Code     string
 	Category string
@@ -18,6 +20,38 @@ type ReadinessHintSpec struct {
 type ReadinessGuidanceSpec struct {
 	Reason *ReadinessReasonSpec
 	Hints  []ReadinessHintSpec
+}
+
+// BuildReadinessPatchPayload builds the direct repair patch for a readiness key.
+func BuildReadinessPatchPayload(pkg *sheinpub.Package, key string) *RepairPatchPayload {
+	if pkg == nil {
+		return nil
+	}
+	switch key {
+	case "category", "category_review":
+		return &RepairPatchPayload{
+			CategoryResolution: BuildCategoryResolutionPatch(pkg),
+		}
+	case "attributes", "attribute_review":
+		return &RepairPatchPayload{
+			AttributeResolution: BuildAttributeResolutionPatch(pkg),
+		}
+	case "sale_attributes", "variants":
+		return &RepairPatchPayload{
+			SaleAttributeResolution: BuildSaleAttributeResolutionPatch(pkg),
+			SKCPatches:              BuildEditorSKCPatches(pkg),
+		}
+	case "images":
+		return &RepairPatchPayload{
+			Images: cloneImageSet(pkg.Images),
+		}
+	case "manual_notes":
+		return &RepairPatchPayload{
+			ReviewNotes: append([]string(nil), pkg.ReviewNotes...),
+		}
+	default:
+		return nil
+	}
 }
 
 func BuildReadinessGuidanceSpec(key string, warningOnly bool) *ReadinessGuidanceSpec {
