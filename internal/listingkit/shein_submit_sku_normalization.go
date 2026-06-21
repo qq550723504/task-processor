@@ -6,10 +6,7 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
-type sheinStudioSupplierSKURename struct {
-	Old string
-	New string
-}
+type sheinStudioSupplierSKURename = sheinpub.SupplierSKURename
 
 func normalizeSheinStudioSubmitSupplierSKUs(task *Task, pkg *sheinpub.Package, submitRequestID string) bool {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)

@@ -49,6 +49,13 @@ func resolveStudioSubmitStyleSuffix(task *Task) string {
 	)
 }
 
+func sheinStudioStyleID(options *SheinStudioOptions) string {
+	if options == nil {
+		return ""
+	}
+	return options.StyleID
+}
+
 func deriveStudioSubmitStyleSuffix(values ...string) string {
 	stopwords := map[string]bool{
 		"THE": true, "AND": true, "FOR": true, "WITH": true, "FROM": true,

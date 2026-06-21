@@ -17,16 +17,21 @@ func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 
 	for _, needle := range []string{
 		"func applySheinStudioSupplierSKURenames(pkg *sheinpub.Package, renames []sheinStudioSupplierSKURename) {",
-		"func remapSheinPriceOverrides(input map[string]float64, renameMap map[string][]string) map[string]float64 {",
 		"func reconcileSheinStudioPricingReferences(pkg *sheinpub.Package) bool {",
-		"func collectSheinRequestDraftSupplierSKUs(draft *sheinpub.RequestDraft) []string {",
-		"func reconcileSheinPriceOverrideAliases(",
 		"func sheinStudioPricingSKUAlias(value string) string {",
-		"func trimSheinStudioPricingStyleLikeSuffix(value string) (string, bool) {",
-		"func sheinStudioStyleID(options *SheinStudioOptions) string {",
 	} {
 		if !strings.Contains(pricingContent, needle) {
 			t.Fatalf("shein_submit_sku_pricing_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"func remapSheinPriceOverrides(input map[string]float64, renameMap map[string][]string) map[string]float64 {",
+		"func collectSheinRequestDraftSupplierSKUs(draft *sheinpub.RequestDraft) []string {",
+		"func reconcileSheinPriceOverrideAliases(",
+		"func trimSheinStudioPricingStyleLikeSuffix(value string) (string, bool) {",
+	} {
+		if strings.Contains(pricingContent, needle) {
+			t.Fatalf("shein_submit_sku_pricing_support.go should delegate pricing detail %q", needle)
 		}
 	}
 
@@ -34,6 +39,7 @@ func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 		"func looksLikeStudioSubmitRequestToken(token string) bool {",
 		"func looksLikeStudioSubmitTaskToken(token string) bool {",
 		"func resolveStudioSubmitStyleSuffix(task *Task) string {",
+		"func sheinStudioStyleID(options *SheinStudioOptions) string {",
 		"func deriveStudioSubmitStyleSuffix(values ...string) string {",
 		"func tokenizeStudioStyleSuffixWords(value string) []string {",
 		"func studioSubmitTaskDiscriminator(taskID string) string {",

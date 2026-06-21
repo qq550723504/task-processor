@@ -17,7 +17,7 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 
 	for _, needle := range []string{
 		"func normalizeSheinStudioSubmitSupplierSKUs(task *Task, pkg *sheinpub.Package, submitRequestID string) bool {",
-		"type sheinStudioSupplierSKURename struct {",
+		"type sheinStudioSupplierSKURename = sheinpub.SupplierSKURename",
 	} {
 		if !strings.Contains(homeContent, needle) {
 			t.Fatalf("shein_submit_sku_normalization.go should contain %q", needle)
@@ -64,6 +64,17 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 	} {
 		if !strings.Contains(pricingContent, needle) {
 			t.Fatalf("shein_submit_sku_pricing_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"renameMap := make(map[string][]string",
+		"func remapSheinPriceOverrides(",
+		"func collectSheinRequestDraftSupplierSKUs(",
+		"func reconcileSheinPriceOverrideAliases(",
+		"func trimSheinStudioPricingStyleLikeSuffix(",
+	} {
+		if strings.Contains(pricingContent, needle) {
+			t.Fatalf("shein_submit_sku_pricing_support.go should delegate pricing detail %q", needle)
 		}
 	}
 
