@@ -100,7 +100,8 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func sheinSubmitReadinessFinalReviewMessage(action string) string {",
 		"return sheinpub.FinalReviewReady(pkg, action)",
 		"return sheinpub.FinalReviewMessage(action)",
-		"sourceFactsReady, sourceFactsMessage := sheinworkspace.SourceFactsReady(sourceMetadata)",
+		"checks = append(checks, sheinworkspace.BuildManualNotesReadinessCheck(pkg))",
+		"checks = append(checks, sheinworkspace.BuildSourceFactsReadinessCheck(pkg))",
 	} {
 		if !strings.Contains(checksContent, needle) {
 			t.Fatalf("shein_submit_readiness_checks_support.go should contain %q", needle)

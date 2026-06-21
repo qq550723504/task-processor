@@ -191,31 +191,8 @@ func appendSheinPayloadReadinessChecks(checks []sheinworkspace.ReadinessCheckSpe
 		false,
 	))
 
-	manualNotes := filterManualSheinReviewNotes(pkg.ReviewNotes)
-	checks = append(checks, sheinSubmitReadinessCheck(
-		"manual_notes",
-		"人工备注",
-		len(manualNotes) == 0,
-		"仍有人工备注未处理，建议在提交前再次确认",
-		[]string{"shein.review_notes"},
-		"处理备注",
-		true,
-	))
-
-	var sourceMetadata map[string]string
-	if pkg != nil {
-		sourceMetadata = pkg.Metadata
-	}
-	sourceFactsReady, sourceFactsMessage := sheinworkspace.SourceFactsReady(sourceMetadata)
-	checks = append(checks, sheinSubmitReadinessCheck(
-		"source_facts",
-		"来源事实",
-		sourceFactsReady,
-		sourceFactsMessage,
-		[]string{"shein.metadata.source_fact_review_required", "shein.metadata.source_fact_review_fields"},
-		"复核来源事实",
-		false,
-	))
+	checks = append(checks, sheinworkspace.BuildManualNotesReadinessCheck(pkg))
+	checks = append(checks, sheinworkspace.BuildSourceFactsReadinessCheck(pkg))
 
 	return checks
 }

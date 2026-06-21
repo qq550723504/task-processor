@@ -29,6 +29,14 @@ func BuildSubmitReadinessCheck(
 	return sheinmarketplace.BuildSubmitReadinessCheck(key, label, ok, message, fieldPaths, suggestedAction, warningOnly)
 }
 
+func BuildManualNotesReadinessCheck(pkg *Package) ReadinessCheckSpec {
+	return sheinmarketplace.BuildManualNotesReadinessCheck(pkg)
+}
+
+func BuildSourceFactsReadinessCheck(pkg *Package) ReadinessCheckSpec {
+	return sheinmarketplace.BuildSourceFactsReadinessCheck(pkg)
+}
+
 func BuildSubmitReadiness[R any, H any](
 	checks []ReadinessCheckSpec,
 	guidanceResolver func(ReadinessCheckSpec) Guidance[R, H],
