@@ -3,15 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { LISTINGKIT_TRACE_HEADER_NAMES } from "@/lib/listingkit/request-trace";
 import {
-  authorizeZitadelIdentity,
-  fetchZitadelDiscovery,
   getZitadelAuthOptions,
   readZitadelAccessTokenFromSession,
   readZitadelSessionClientID,
   readZitadelIdentityFromSession,
   readZitadelSessionError,
   readZitadelSessionIssuerURL,
-  verifyZitadelAccessToken,
   type ZitadelVerifiedIdentity,
 } from "@/lib/server/zitadel-auth";
 import { logRequestInfo, logRequestWarn } from "@/lib/server/request-log";
@@ -43,91 +40,52 @@ export async function verifyListingKitRequestIdentity(
 
   try {
     const headerToken = extractBearerToken(request.headers.get("authorization"));
-    let identity: VerifiedIdentity | null = null;
-    let zitadelToken = headerToken;
-
     if (headerToken) {
-      logRequestInfo("listingkit proxy auth using bearer token", {
+      logRequestInfo("listingkit proxy auth forwarding bearer token", {
         path: request.nextUrl.pathname,
       });
-      const discovery = await fetchZitadelDiscovery(zitadelOptions);
-      identity = await verifyZitadelAccessToken(
-        headerToken,
-        zitadelOptions,
-        discovery,
-      );
-    } else {
-      const session = await auth();
-      const sessionError = readZitadelSessionError(session);
-      if (sessionError) {
-        logRequestWarn("listingkit proxy auth session error", {
-          path: request.nextUrl.pathname,
-          error: sessionError,
-        });
-        throw new Error(sessionError);
-      }
-      zitadelToken = readZitadelAccessTokenFromSession(session);
-      const storedIssuerURL = readZitadelSessionIssuerURL(session);
-      const storedClientID = readZitadelSessionClientID(session);
-      identity = readZitadelIdentityFromSession(session);
-
-      logRequestInfo("listingkit proxy auth inspecting stored session", {
-        path: request.nextUrl.pathname,
-        hasToken: Boolean(zitadelToken),
-        hasIdentity: Boolean(identity),
-        storedIssuerURL,
-        storedClientID,
-        configuredIssuerURL: zitadelOptions.issuerUrl,
-        configuredClientID: zitadelOptions.clientId,
-      });
-
-      if (!zitadelToken) {
-        throw new Error("Missing ZITADEL session");
-      }
-
-      if (
-        (storedIssuerURL && storedIssuerURL !== zitadelOptions.issuerUrl) ||
-        (storedClientID && storedClientID !== zitadelOptions.clientId)
-      ) {
-        throw new Error(
-          "Stored ZITADEL session was created for a different issuer/client; please sign in again",
-        );
-      }
-
-      if (!identity || !storedIssuerURL || !storedClientID) {
-        logRequestInfo("listingkit proxy auth revalidating stored session", {
-          path: request.nextUrl.pathname,
-          reason: !identity
-            ? "missing_identity"
-            : !storedIssuerURL
-              ? "missing_issuer"
-              : "missing_client",
-        });
-        const discovery = await fetchZitadelDiscovery(zitadelOptions);
-        identity = await verifyZitadelAccessToken(
-          zitadelToken,
-          zitadelOptions,
-          discovery,
-        );
-      }
+      return {
+        token: headerToken,
+      };
     }
 
-    if (!zitadelToken || !identity) {
+    const session = await auth();
+    const sessionError = readZitadelSessionError(session);
+    if (sessionError) {
+      logRequestWarn("listingkit proxy auth session error", {
+        path: request.nextUrl.pathname,
+        error: sessionError,
+      });
+      throw new Error(sessionError);
+    }
+    const zitadelToken = readZitadelAccessTokenFromSession(session);
+    const storedIssuerURL = readZitadelSessionIssuerURL(session);
+    const storedClientID = readZitadelSessionClientID(session);
+    const identity = readZitadelIdentityFromSession(session) ?? undefined;
+
+    logRequestInfo("listingkit proxy auth forwarding stored session", {
+      path: request.nextUrl.pathname,
+      hasToken: Boolean(zitadelToken),
+      hasIdentity: Boolean(identity),
+      storedIssuerURL,
+      storedClientID,
+      configuredIssuerURL: zitadelOptions.issuerUrl,
+      configuredClientID: zitadelOptions.clientId,
+    });
+
+    if (!zitadelToken) {
       throw new Error("Missing ZITADEL session");
     }
 
-    const authorization = authorizeZitadelIdentity(identity);
-    if (!authorization.authorized) {
-      return {
-        response: NextResponse.json(
-          {
-            error: "zitadel_access_denied",
-            message: authorization.reason ?? "ZITADEL access denied",
-          },
-          { status: 403 },
-        ),
-      };
+    if (
+      (storedIssuerURL && storedIssuerURL !== zitadelOptions.issuerUrl) ||
+      (storedClientID && storedClientID !== zitadelOptions.clientId)
+    ) {
+      throw new Error(
+        "Stored ZITADEL session was created for a different issuer/client; please sign in again",
+      );
     }
+
     return {
       identity,
       token: zitadelToken,

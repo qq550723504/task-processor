@@ -241,6 +241,24 @@ describe("verifyListingKitRequestIdentity", () => {
     expect(result.response?.status).toBe(401);
   });
 
+  it("accepts an incoming bearer token without ZITADEL introspection in the proxy", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await verifyListingKitRequestIdentity(
+      new NextRequest("http://localhost/api/listing-kits/tasks", {
+        headers: { authorization: "Bearer caller-token-1" },
+      }),
+    );
+
+    expect(result.response).toBeUndefined();
+    expect(result.token).toBe("caller-token-1");
+    expect(result.identity).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("returns the Auth.js session identity when a session is present", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
@@ -272,12 +290,13 @@ describe("verifyListingKitRequestIdentity", () => {
     });
   });
 
-  it("revalidates legacy stored sessions that do not record issuer or client", async () => {
+  it("forwards an Auth.js session token without revalidating the token in the proxy", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
-    vi.stubEnv("ZITADEL_CLIENT_SECRET", "secret-1");
     mockedAuthState.session = {
       accessToken: "session-token-1",
+      issuerUrl: "https://issuer.example.com",
+      clientId: "client-1",
       identity: {
         tenantId: "org-286",
         userId: "user-42",
@@ -286,28 +305,7 @@ describe("verifyListingKitRequestIdentity", () => {
         roles: ["listingkit_admin"],
       },
     };
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        Response.json({
-          authorization_endpoint:
-            "https://issuer.example.com/oauth/v2/authorize",
-          token_endpoint: "https://issuer.example.com/oauth/v2/token",
-          introspection_endpoint:
-            "https://issuer.example.com/oauth/v2/introspect",
-        }),
-      )
-      .mockResolvedValueOnce(
-        Response.json({
-          active: true,
-          sub: "user-42",
-          username: "admin",
-          "urn:zitadel:iam:user:resourceowner:id": "org-286",
-          "urn:zitadel:iam:org:project:roles": {
-            listingkit_admin: {},
-          },
-        }),
-      );
+    const fetchMock = vi.fn<typeof fetch>();
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await verifyListingKitRequestIdentity(
@@ -323,7 +321,39 @@ describe("verifyListingKitRequestIdentity", () => {
       userType: "zitadel",
       roles: ["listingkit_admin"],
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("forwards legacy stored sessions without proxy-side introspection", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
+    mockedAuthState.session = {
+      accessToken: "session-token-1",
+      identity: {
+        tenantId: "org-286",
+        userId: "user-42",
+        username: "admin",
+        userType: "zitadel",
+        roles: ["listingkit_admin"],
+      },
+    };
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await verifyListingKitRequestIdentity(
+      new NextRequest("http://localhost/api/listing-kits/tasks"),
+    );
+
+    expect(result.response).toBeUndefined();
+    expect(result.token).toBe("session-token-1");
+    expect(result.identity).toEqual({
+      tenantId: "org-286",
+      userId: "user-42",
+      username: "admin",
+      userType: "zitadel",
+      roles: ["listingkit_admin"],
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("rejects stored sessions created for a different ZITADEL issuer or client", async () => {
