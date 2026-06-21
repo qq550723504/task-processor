@@ -26,15 +26,7 @@ func (s *taskSubmissionExecutionService) uploadSheinSubmitImages(ctx context.Con
 	if err != nil {
 		return err
 	}
-	if len(uploadCache) > 0 {
-		pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-		if pkg.FinalSubmissionDraft == nil {
-			pkg.FinalSubmissionDraft = &sheinpub.FinalDraft{}
-		}
-		pkg.FinalSubmissionDraft.SheinImageUploadCache = uploadCache
-		now := time.Now()
-		pkg.FinalSubmissionDraft.UpdatedAt = &now
-	}
+	sheinpub.ApplyImageUploadCache(pkg, uploadCache, time.Now())
 	return nil
 }
 

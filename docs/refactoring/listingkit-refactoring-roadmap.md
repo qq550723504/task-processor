@@ -616,6 +616,7 @@ Follow-up deletion
 | SHEIN submit source-facts readiness | migrated | 1688 来源事实复核规则抽到底层 `internal/listing/sourcefacts`，并由 SHEIN workspace 暴露 `SourceFactsReady`；ListingKit readiness checks 不再直接依赖 `internal/listing/submission`。 |
 | SHEIN submit final draft confirmation | migrated | submit 请求确认最终草稿时的 FinalSubmissionDraft 初始化、Confirmed/时间戳/SubmitMode 写入迁入 `internal/publishing/shein/final_draft_submit.go`；ListingKit 仅判断请求是否携带 ConfirmedFinal。 |
 | SHEIN submit readiness status predicates | migrated | submit readiness 使用的 SKU、最终图片、SKC/色块图、价格和图片存在性判定迁入 `internal/publishing/shein/submit_readiness_status.go`；ListingKit status support 仅保留兼容 wrapper。 |
+| SHEIN submit image upload cache persistence | migrated | 图片上传后的 FinalSubmissionDraft cache 写入和更新时间迁入 `internal/publishing/shein/submit_image_upload_cache.go`；ListingKit 上传服务仅负责 API/runtime orchestration。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
