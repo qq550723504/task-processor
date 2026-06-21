@@ -52,52 +52,15 @@ func appendSheinPodReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, p
 }
 
 func appendSheinTemplateReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, validation sheinBuildValidation) []sheinworkspace.ReadinessCheckSpec {
-	checks = append(checks, sheinSubmitReadinessCheck(
-		"category",
-		"类目骨架",
-		validation.categoryReady,
-		validation.categoryMessage,
-		[]string{"shein.category_id", "shein.category_id_list", "shein.product_type_id", "shein.sale_attribute_resolution.category_review_reason"},
-		"确认类目",
-		false,
-	))
-	checks = append(checks, sheinSubmitReadinessCheck(
-		"category_review",
-		"类目复核",
-		validation.categoryReviewReady,
-		"当前类目仍被建议复核，提交前必须先确认 SHEIN 类目是否匹配",
-		[]string{"shein.category_resolution.suggested_category", "shein.sale_attribute_resolution.category_review_reason"},
-		"复核类目",
-		false,
-	))
-	checks = append(checks, sheinSubmitReadinessCheck(
-		"attributes",
-		"普通属性",
-		validation.attributeReady,
-		validation.attributeMessage,
-		[]string{"shein.resolved_attributes", "shein.request_draft.resolved_attributes"},
-		"确认属性",
-		false,
-	))
-	checks = append(checks, sheinSubmitReadinessCheck(
-		"attribute_review",
-		"属性复核",
-		validation.attributeReady,
-		"普通属性仍有模板必填项未确认，提交前必须补齐或人工确认",
-		[]string{"shein.attribute_resolution.pending_attributes", "shein.attribute_resolution.review_notes"},
-		"复核属性",
-		false,
-	))
-	checks = append(checks, sheinSubmitReadinessCheck(
-		"sale_attributes",
-		"销售属性",
-		validation.saleAttributeReady,
-		validation.saleAttributeMessage,
-		[]string{"shein.sale_attribute_resolution", "shein.request_draft.skc_list"},
-		"确认规格",
-		false,
-	))
-	return checks
+	return append(checks, sheinworkspace.BuildSubmitTemplateReadinessChecks(sheinworkspace.SubmitTemplateReadinessInput{
+		CategoryReady:        validation.categoryReady,
+		CategoryMessage:      validation.categoryMessage,
+		CategoryReviewReady:  validation.categoryReviewReady,
+		AttributeReady:       validation.attributeReady,
+		AttributeMessage:     validation.attributeMessage,
+		SaleAttributeReady:   validation.saleAttributeReady,
+		SaleAttributeMessage: validation.saleAttributeMessage,
+	})...)
 }
 
 func appendSheinPayloadReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, pkg *SheinPackage, action string) []sheinworkspace.ReadinessCheckSpec {

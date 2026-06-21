@@ -96,6 +96,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func appendSheinPodReadinessChecks(",
 		"func appendSheinTemplateReadinessChecks(",
 		"func appendSheinPayloadReadinessChecks(",
+		"return append(checks, sheinworkspace.BuildSubmitTemplateReadinessChecks(sheinworkspace.SubmitTemplateReadinessInput{",
 		"return append(checks, sheinworkspace.BuildSubmitPayloadReadinessChecks(pkg, action)...)",
 		"func sheinSubmitReadinessFinalDraftReady(pkg *SheinPackage, action string) bool {",
 		"func sheinSubmitReadinessFinalReviewMessage(action string) string {",
@@ -111,9 +112,12 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		`"preview_product",`,
 		`"variant_image_coverage",`,
 		`"pricing",`,
+		`"category_review",`,
+		`"attribute_review",`,
+		`"sale_attributes",`,
 	} {
 		if strings.Contains(checksContent, needle) {
-			t.Fatalf("shein_submit_readiness_checks_support.go should delegate payload check construction, found %q", needle)
+			t.Fatalf("shein_submit_readiness_checks_support.go should delegate check construction, found %q", needle)
 		}
 	}
 
@@ -129,6 +133,22 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	} {
 		if !strings.Contains(workspacePayloadContent, needle) {
 			t.Fatalf("workspace payload readiness checks should contain %q", needle)
+		}
+	}
+
+	workspaceTemplateSrc, err := os.ReadFile("../marketplace/shein/workspace/submit_template_readiness_checks.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../marketplace/shein/workspace/submit_template_readiness_checks.go) error = %v", err)
+	}
+	workspaceTemplateContent := string(workspaceTemplateSrc)
+	for _, needle := range []string{
+		"func BuildSubmitTemplateReadinessChecks(input SubmitTemplateReadinessInput) []ReadinessCheckSpec {",
+		`"category_review",`,
+		`"attribute_review",`,
+		`"sale_attributes",`,
+	} {
+		if !strings.Contains(workspaceTemplateContent, needle) {
+			t.Fatalf("workspace template readiness checks should contain %q", needle)
 		}
 	}
 }
