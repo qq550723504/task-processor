@@ -168,3 +168,25 @@
 | P0 | 重新读取 batch `6e10be71-d37c-4d99-bc12-a444730378e4` 并记录 batch/items/designs/task links。 | QA / engineering | 认证恢复后 | open |
 | P0 | 创建或复用真实 ListingKit task，并保存至少 1 个 SHEIN draft。 | QA / engineering | 认证恢复后 | open |
 | P1 | 如果再次出现 unknown 状态、unknown blocker、空错误或 UI 无下一步动作，更新 `../unknown-state-and-blocker-tracker.md`。 | QA / engineering | 每轮 run 后 | open |
+
+## 12. 复测记录：2026-06-21 19:20 +08:00
+
+本次复测发生在 ListingKit ZITADEL auth convergence 合并到 `master` 之后。目标是继续路线图 Phase 1 的真实环境验收退出条件。
+
+### 接口探测
+
+| 接口 | 结果 | 响应摘要 |
+| --- | --- | --- |
+| `GET http://localhost:3000/healthz` | 200 | `{"ok":true}` |
+| `GET http://localhost:8085/health` | 200 | `{"status":"ok"}` |
+| `GET http://localhost:3000/api/zitadel-auth/session` | 401 | `{"error":"zitadel_token_invalid","message":"Missing ZITADEL session"}` |
+| `GET http://localhost:8085/api/v1/listing-kits/settings-health` | 401 | `{"error":"zitadel_token_missing","message":"Missing ZITADEL bearer token"}` |
+
+### 结论
+
+```text
+本轮是否通过：blocked
+主要问题：UI 和 Go API 均可用，但当前环境仍未取得 Auth.js/ZITADEL session，也没有可用于直连 Go API 的 bearer token。
+路线图影响：Phase 1 的代码层闭环可继续保持为已验证；真实 SDS -> ListingKit -> SHEIN draft 验收仍未达到退出条件。
+下一步：提供有效 bearer token 或在 localhost:3000 完成 ZITADEL 登录后，重新读取 batch 6e10be71-d37c-4d99-bc12-a444730378e4 并继续 Task 12。
+```
