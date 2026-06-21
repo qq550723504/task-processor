@@ -263,6 +263,71 @@ func TestNewServiceWithConfigSeedsSheinRuntimeDependenciesWithoutLegacyMirrors(t
 	}
 }
 
+func TestNewServiceWithConfigUsesResolutionCacheForDefaultSheinCategoryResolver(t *testing.T) {
+	t.Parallel()
+
+	store := &submitResolutionCacheStore{}
+	task := &Task{
+		ID: "task-default-category-cache",
+		Request: &GenerateRequest{
+			Text:         "linen tablecloth",
+			Platforms:    []string{"shein"},
+			Country:      "US",
+			Language:     "en_US",
+			SheinStoreID: 869,
+		},
+	}
+	product := &canonical.Product{
+		Title:        "Linen Tablecloth",
+		CategoryPath: []string{"Home", "Kitchen", "Tablecloths"},
+		Images:       []canonical.Image{{URL: "https://example.com/tablecloth.jpg"}},
+		Variants: []canonical.Variant{{
+			SKU: "JJ05191097001-9848048E",
+			Attributes: map[string]canonical.Attribute{
+				"source_sds_sku": {Value: "JJ05191097001"},
+				"color":          {Value: "White"},
+				"size":           {Value: "Small"},
+			},
+			Price: &canonical.PriceInfo{Currency: "USD", Amount: 23.5},
+			Stock: 12,
+		}},
+	}
+	req := buildSheinPublishRequestForTask(task, task.Request)
+	pkg := sheinpub.NewAssembler(sheinpub.AssemblerConfig{}).Build(req, product, nil)
+	cacheResolver := sheinpub.NewCachedCategoryResolver(sheinpub.NewCategoryResolver(nil), store)
+	categoryCache, ok := cacheResolver.(sheinpub.CategoryResolutionCache)
+	if !ok {
+		t.Fatal("cached category resolver does not expose category cache interface")
+	}
+	categoryCache.RememberCategoryResolution(req, product, pkg, &sheinpub.CategoryResolution{
+		Status:         "resolved",
+		Source:         "manual_cache",
+		MatchedPath:    []string{"Home", "Kitchen", "Table Linens"},
+		CategoryID:     8185,
+		CategoryIDList: []int{2030, 3016, 8185},
+		ProductTypeID:  99,
+		TopCategoryID:  2030,
+	})
+
+	cfg := prepareServiceConfig(newTestServiceConfig(
+		&stubSubmitRepo{},
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Shein.SheinResolutionCacheStore = store
+		}),
+	))
+	result := cfg.Assets.Assembler.Assemble(task, product, nil)
+
+	if result.Shein == nil || result.Shein.CategoryResolution == nil {
+		t.Fatal("expected SHEIN category resolution")
+	}
+	if result.Shein.CategoryID != 8185 {
+		t.Fatalf("SHEIN category id = %d, want cached category 8185", result.Shein.CategoryID)
+	}
+	if result.Shein.CategoryResolution.Cache == nil || result.Shein.CategoryResolution.Cache.HitSource != sheinpub.ResolutionCacheHitSourcePersistentManualCache {
+		t.Fatalf("category cache info = %+v, want persistent manual cache hit", result.Shein.CategoryResolution.Cache)
+	}
+}
+
 func TestNewServiceWithConfigSeedsSharedSheinDependenciesPerOwnerGroup(t *testing.T) {
 	t.Parallel()
 

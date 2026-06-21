@@ -28,14 +28,27 @@ func (config *ServiceConfig) applyDefaults() {
 }
 
 func (config *ServiceConfig) ensureSheinResolvers() {
+	cacheStore := config.Shein.SheinResolutionCacheStore
 	if config.Shein.SheinCategoryResolver == nil {
-		config.Shein.SheinCategoryResolver = sheinpub.NewCategoryResolver(nil)
+		resolver := sheinpub.NewCategoryResolver(nil)
+		if cacheStore != nil {
+			resolver = sheinpub.NewCachedCategoryResolver(resolver, cacheStore)
+		}
+		config.Shein.SheinCategoryResolver = resolver
 	}
 	if config.Shein.SheinAttributeResolver == nil {
-		config.Shein.SheinAttributeResolver = sheinpub.NewAttributeResolver(nil, nil)
+		resolver := sheinpub.NewAttributeResolver(nil, nil)
+		if cacheStore != nil {
+			resolver = sheinpub.NewCachedAttributeResolver(resolver, cacheStore)
+		}
+		config.Shein.SheinAttributeResolver = resolver
 	}
 	if config.Shein.SheinSaleAttributeResolver == nil {
-		config.Shein.SheinSaleAttributeResolver = sheinpub.NewSaleAttributeResolver(nil, nil)
+		resolver := sheinpub.NewSaleAttributeResolver(nil, nil)
+		if cacheStore != nil {
+			resolver = sheinpub.NewCachedSaleAttributeResolver(resolver, cacheStore)
+		}
+		config.Shein.SheinSaleAttributeResolver = resolver
 	}
 }
 
