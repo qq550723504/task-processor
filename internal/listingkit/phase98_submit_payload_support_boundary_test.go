@@ -49,13 +49,23 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 	siteContent := string(siteSrc)
 
 	for _, needle := range []string{
-		"const (",
 		"func ensureSheinSubmitSites(product *sheinproduct.Product, settings SheinSettings) {",
 		"func ensureSheinSubmitSKUs(product *sheinproduct.Product, settings SheinSettings) {",
 		"func normalizeSheinSubmitWeight(sku *sheinproduct.SKU) {",
 	} {
 		if !strings.Contains(siteContent, needle) {
 			t.Fatalf("shein_submit_payload_site_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"defaultSheinSKCShelfWay",
+		"convertSheinWeightToGrams",
+		"roundSheinWeightGrams",
+		"sku.StockInfoList = []sheinproduct.StockInfo",
+		"case \"kg\", \"kilogram\", \"kilograms\":",
+	} {
+		if strings.Contains(siteContent, needle) {
+			t.Fatalf("shein_submit_payload_site_support.go should delegate site/SKU policy detail %q", needle)
 		}
 	}
 

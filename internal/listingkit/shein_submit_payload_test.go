@@ -31,8 +31,8 @@ func TestPrepareSheinProductForNewSubmitDefaultsShelfWay(t *testing.T) {
 
 	prepareSheinProductForNewSubmit(product)
 
-	if got := product.SKCList[0].ShelfWay; got != defaultSheinSKCShelfWay {
-		t.Fatalf("shelf_way = %d, want %d", got, defaultSheinSKCShelfWay)
+	if got := product.SKCList[0].ShelfWay; got != 1 {
+		t.Fatalf("shelf_way = %d, want 1", got)
 	}
 }
 
