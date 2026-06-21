@@ -495,6 +495,18 @@ func TestBuildListingKitWorkflowDependenciesDefaultsToDisabledClients(t *testing
 	}
 }
 
+func TestBuildHandlerOptionsWiresSettingsService(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap_module_service.go")
+	if err != nil {
+		t.Fatalf("read bootstrap_module_service.go: %v", err)
+	}
+	if !strings.Contains(string(src), "listingkitapi.WithSettingsHandlerService(runtime.service)") {
+		t.Fatal("buildHandlerOptions should wire runtime service into ListingKit settings handlers")
+	}
+}
+
 func TestBuildHandlerOptionsWiresChildTaskRetryService(t *testing.T) {
 	t.Parallel()
 

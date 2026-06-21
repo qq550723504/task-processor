@@ -142,6 +142,7 @@ func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOp
 		listingkitapi.WithGenerationTaskService(runtime.service),
 		listingkitapi.WithChildTaskRetryService(runtime.service),
 		listingkitapi.WithStoreAdminService(runtime.service),
+		listingkitapi.WithSettingsHandlerService(runtime.service),
 		listingkitapi.WithStudioMediaService(runtime.service),
 		listingkitapi.WithStudioBatchRunService(runtime.service),
 		listingkitapi.WithDependencies(runtime.handlerDependencies),

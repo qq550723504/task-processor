@@ -35,6 +35,13 @@ func (h *handler) GetSettingsNamespace(c *gin.Context) {
 }
 
 func (h *handler) GetSettingsHealth(c *gin.Context) {
+	if h.settingsService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "settings_service_unavailable",
+			"message": "ListingKit settings service is not available",
+		})
+		return
+	}
 	health, err := h.settingsService.Health(requestContext(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{

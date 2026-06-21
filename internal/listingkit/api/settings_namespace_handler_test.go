@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -126,6 +127,25 @@ func TestGetSettingsHealthReturnsConfigurationImpact(t *testing.T) {
 	}
 	if !hasSDSUnknown {
 		t.Fatalf("payload items = %#v", payload.Items)
+	}
+}
+
+func TestGetSettingsHealthReturnsUnavailableWhenSettingsServiceMissing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := &handler{}
+	router := gin.New()
+	router.GET("/settings-health", h.GetSettingsHealth)
+
+	req := httptest.NewRequest(http.MethodGet, "/settings-health", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("GET /settings-health = %d, want 503; body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "settings_service_unavailable") {
+		t.Fatalf("body = %s, want settings_service_unavailable", resp.Body.String())
 	}
 }
 
