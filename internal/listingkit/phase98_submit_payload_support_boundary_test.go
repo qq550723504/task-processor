@@ -55,30 +55,21 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 
-	siteSrc, err := os.ReadFile("shein_submit_payload_site_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_payload_site_support.go) error = %v", err)
-	}
-	siteContent := string(siteSrc)
+	assertFileAbsent(t, "shein_submit_payload_site_support.go")
 
-	for _, needle := range []string{
-		"func ensureSheinSubmitSites(product *sheinproduct.Product, settings SheinSettings) {",
-		"func ensureSheinSubmitSKUs(product *sheinproduct.Product, settings SheinSettings) {",
-		"func normalizeSheinSubmitWeight(sku *sheinproduct.SKU) {",
-	} {
-		if !strings.Contains(siteContent, needle) {
-			t.Fatalf("shein_submit_payload_site_support.go should contain %q", needle)
-		}
+	publishingSiteSrc, err := os.ReadFile("../publishing/shein/submit_site_sku_policy.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../publishing/shein/submit_site_sku_policy.go) error = %v", err)
 	}
+	publishingSiteContent := string(publishingSiteSrc)
 	for _, needle := range []string{
-		"defaultSheinSKCShelfWay",
-		"convertSheinWeightToGrams",
-		"roundSheinWeightGrams",
-		"sku.StockInfoList = []sheinproduct.StockInfo",
-		"case \"kg\", \"kilogram\", \"kilograms\":",
+		"func EnsureSubmitSites(product *sheinproduct.Product, settings SubmitPayloadSettings) {",
+		"func EnsureSubmitSKUs(product *sheinproduct.Product, settings SubmitPayloadSettings) {",
+		"func NormalizeSubmitWeight(sku *sheinproduct.SKU) {",
+		"func SubmitPreferredWarehouseCode(settings SubmitPayloadSettings) string {",
 	} {
-		if strings.Contains(siteContent, needle) {
-			t.Fatalf("shein_submit_payload_site_support.go should delegate site/SKU policy detail %q", needle)
+		if !strings.Contains(publishingSiteContent, needle) {
+			t.Fatalf("publishing submit_site_sku_policy.go should contain %q", needle)
 		}
 	}
 

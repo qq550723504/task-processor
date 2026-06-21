@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 )
 
@@ -84,7 +85,7 @@ func TestResolveSheinSubmitSettingsUsesStoreProfileFields(t *testing.T) {
 func TestSheinSubmitPreferredWarehouseCodeUsesFirstCSVItem(t *testing.T) {
 	t.Parallel()
 
-	if got := sheinSubmitPreferredWarehouseCode(SheinSettings{WarehouseCode: "WH-CA-1,WH-US-1"}); got != "WH-CA-1" {
+	if got := sheinpub.SubmitPreferredWarehouseCode(sheinpub.SubmitPayloadSettings{WarehouseCode: "WH-CA-1,WH-US-1"}); got != "WH-CA-1" {
 		t.Fatalf("preferred warehouse = %q, want WH-CA-1", got)
 	}
 }

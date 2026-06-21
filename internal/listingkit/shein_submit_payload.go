@@ -13,6 +13,13 @@ func prepareSheinProductForSubmit(product *sheinproduct.Product, settings SheinS
 	sheinpub.PrepareProductForSubmit(product, sheinSubmitPayloadSettings(settings))
 }
 
+func sheinSubmitPayloadSettings(settings SheinSettings) sheinpub.SubmitPayloadSettings {
+	return sheinpub.SubmitPayloadSettings{
+		Site:          settings.Site,
+		WarehouseCode: settings.WarehouseCode,
+	}
+}
+
 func normalizeSheinSubmitCollections(product *sheinproduct.Product) {
 	sheinpub.NormalizeSubmitCollections(product)
 }
