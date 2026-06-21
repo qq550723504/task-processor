@@ -82,31 +82,21 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 
-	imageSrc, err := os.ReadFile("shein_submit_payload_image_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_payload_image_support.go) error = %v", err)
-	}
-	imageContent := string(imageSrc)
+	assertFileAbsent(t, "shein_submit_payload_image_support.go")
 
-	for _, needle := range []string{
-		"func normalizeSheinSubmitImages(product *sheinproduct.Product) {",
-		"func normalizeSheinSubmitSKUImages(skc *sheinproduct.SKC) {",
-		"func normalizeSheinSubmitGalleryImages(images []sheinproduct.ImageDetail, includeColorBlock bool) []sheinproduct.ImageDetail {",
-		"func dedupeSheinImagesByURL(images []sheinproduct.ImageDetail) []sheinproduct.ImageDetail {",
-	} {
-		if !strings.Contains(imageContent, needle) {
-			t.Fatalf("shein_submit_payload_image_support.go should contain %q", needle)
-		}
+	publishingImageSrc, err := os.ReadFile("../publishing/shein/submit_payload_images.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../publishing/shein/submit_payload_images.go) error = %v", err)
 	}
+	publishingImageContent := string(publishingImageSrc)
 	for _, needle := range []string{
-		"product.Extra.SwitchToSPUPic = false",
-		"func sheinSubmitDetailImages(images []sheinproduct.ImageDetail) []sheinproduct.DetailImage {",
-		"image.ImageType = 6",
-		"image.ImageType == 2 && !image.SizeImgFlag",
-		"seen := map[string]bool{}",
+		"func NormalizeSubmitImages(product *sheinproduct.Product) {",
+		"func NormalizeSubmitSKUImages(skc *sheinproduct.SKC) {",
+		"func NormalizeSubmitGalleryImages(images []sheinproduct.ImageDetail, includeColorBlock bool) []sheinproduct.ImageDetail {",
+		"func DedupeImagesByURL(images []sheinproduct.ImageDetail) []sheinproduct.ImageDetail {",
 	} {
-		if strings.Contains(imageContent, needle) {
-			t.Fatalf("shein_submit_payload_image_support.go should delegate image policy detail %q", needle)
+		if !strings.Contains(publishingImageContent, needle) {
+			t.Fatalf("publishing submit_payload_images.go should contain %q", needle)
 		}
 	}
 
