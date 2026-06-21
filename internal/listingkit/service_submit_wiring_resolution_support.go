@@ -51,8 +51,9 @@ func resolveSubmissionWorkflowClient(s *service) (SheinPublishWorkflowClient, bo
 
 func buildTaskRequeueServiceConfigWithWiring(wiring taskSubmitterWiring) taskRequeueServiceConfig {
 	return taskRequeueServiceConfig{
-		repo:          wiring.repo,
-		taskSubmitter: wiring.taskSubmitter,
+		repo:             wiring.repo,
+		taskSubmitter:    wiring.taskSubmitter,
+		standardWorkflow: wiring.standardWorkflow,
 	}
 }
 

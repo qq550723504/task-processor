@@ -63,7 +63,7 @@ func TestRequeueServiceRequeueTasks(t *testing.T) {
 			CanRequeue: func(task *RequeueTask) (bool, string) {
 				return CanRequeueTaskWithStatus(task, "pending")
 			},
-			SubmitTask: func(submit RequeueSubmitFunc, taskID string) error {
+			SubmitTask: func(_ context.Context, submit RequeueSubmitFunc, taskID string) error {
 				return submit(taskID)
 			},
 			ErrUnavailable:    errUnavailable,
@@ -98,7 +98,7 @@ func TestRequeueServiceRequeueTasks(t *testing.T) {
 				return func(string) error { return errors.New("submit failed") }
 			},
 			CanRequeue:        func(task *RequeueTask) (bool, string) { return true, "" },
-			SubmitTask:        func(submit RequeueSubmitFunc, taskID string) error { return submit(taskID) },
+			SubmitTask:        func(_ context.Context, submit RequeueSubmitFunc, taskID string) error { return submit(taskID) },
 			ErrUnavailable:    errUnavailable,
 			ErrInvalidRequest: errInvalid,
 		})

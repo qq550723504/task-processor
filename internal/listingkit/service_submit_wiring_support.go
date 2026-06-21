@@ -52,8 +52,9 @@ type taskSubmissionRepositoryWiring struct {
 }
 
 type taskSubmitterWiring struct {
-	repo          Repository
-	taskSubmitter func() TaskSubmitter
+	repo             Repository
+	taskSubmitter    func() TaskSubmitter
+	standardWorkflow func() (StandardProductWorkflowClient, bool)
 }
 
 type taskSubmitTaskRecoveryCollaboratorWiring struct {
@@ -85,6 +86,9 @@ func buildTaskSubmitterWiring(s *service) taskSubmitterWiring {
 		repo: repository.repo,
 		taskSubmitter: func() TaskSubmitter {
 			return resolveTaskSubmitter(s)
+		},
+		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+			return resolveStandardWorkflowClient(s)
 		},
 	}
 }

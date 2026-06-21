@@ -65,6 +65,54 @@ func TestRequeuePendingTasksRequeuesOnlyPendingTasks(t *testing.T) {
 	}
 }
 
+func TestRequeuePendingTasksUsesStandardWorkflowWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-requeue-temporal")
+	task := &Task{
+		ID:       "task-pending-temporal",
+		TenantID: "tenant-requeue-temporal",
+		Status:   TaskStatusPending,
+		Request:  &GenerateRequest{TenantID: "tenant-requeue-temporal", Platforms: []string{"shein"}, Text: "pending temporal"},
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	client := &stubStandardProductWorkflowClient{}
+	localSubmitCalled := false
+	svc := newTaskRequeueService(taskRequeueServiceConfig{
+		repo: repo,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(taskID string) error {
+				localSubmitCalled = true
+				return nil
+			})
+		},
+		standardWorkflow: func() (StandardProductWorkflowClient, bool) {
+			return client, true
+		},
+	})
+
+	result, err := svc.RequeuePendingTasks(ctx, &RequeuePendingTasksRequest{TaskIDs: []string{task.ID}})
+	if err != nil {
+		t.Fatalf("RequeuePendingTasks() error = %v", err)
+	}
+	if len(result.RequeuedTaskIDs) != 1 || result.RequeuedTaskIDs[0] != task.ID {
+		t.Fatalf("RequeuedTaskIDs = %v, want [%s]", result.RequeuedTaskIDs, task.ID)
+	}
+	if len(client.calls) != 1 || client.calls[0].TaskID != task.ID {
+		t.Fatalf("standard workflow calls = %+v, want task %s", client.calls, task.ID)
+	}
+	if client.calls[0].RequestedAt.IsZero() {
+		t.Fatalf("standard workflow RequestedAt = %v, want non-zero", client.calls[0].RequestedAt)
+	}
+	if localSubmitCalled {
+		t.Fatal("local submitter was called while standard workflow was enabled")
+	}
+}
+
 func TestRequeuePendingTasksReportsSubmitFailures(t *testing.T) {
 	t.Parallel()
 

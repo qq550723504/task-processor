@@ -34,13 +34,14 @@ type RequeueResult struct {
 }
 
 type RequeueSubmitFunc func(string) error
+type RequeueSubmitTaskFunc func(context.Context, RequeueSubmitFunc, string) error
 
 type RequeueServiceConfig struct {
 	LoadTask          func(context.Context, string) (*RequeueTask, error)
 	CurrentSubmitter  func() RequeueSubmitFunc
 	IsTaskNotFound    func(error) bool
 	CanRequeue        func(*RequeueTask) (bool, string)
-	SubmitTask        func(RequeueSubmitFunc, string) error
+	SubmitTask        RequeueSubmitTaskFunc
 	ErrUnavailable    error
 	ErrInvalidRequest error
 }
@@ -50,7 +51,7 @@ type RequeueService struct {
 	currentSubmitter  func() RequeueSubmitFunc
 	isTaskNotFound    func(error) bool
 	canRequeue        func(*RequeueTask) (bool, string)
-	submitTask        func(RequeueSubmitFunc, string) error
+	submitTask        RequeueSubmitTaskFunc
 	errUnavailable    error
 	errInvalidRequest error
 }
@@ -71,14 +72,16 @@ func (s *RequeueService) RequeueTasks(ctx context.Context, req *RequeueRequest) 
 	if s == nil || s.loadTask == nil {
 		return nil, fmt.Errorf("task requeue loader is not configured")
 	}
+	taskIDs := NormalizeRequeueTaskIDs(req)
+	if len(taskIDs) == 0 {
+		return nil, s.errInvalidRequest
+	}
 	submitter := s.currentSubmitterOrNil()
 	if submitter == nil {
 		return nil, s.errUnavailable
 	}
-
-	taskIDs := NormalizeRequeueTaskIDs(req)
-	if len(taskIDs) == 0 {
-		return nil, s.errInvalidRequest
+	if s.submitTask == nil {
+		return nil, s.errUnavailable
 	}
 
 	result := &RequeueResult{
@@ -109,7 +112,7 @@ func (s *RequeueService) RequeueTasks(ctx context.Context, req *RequeueRequest) 
 			continue
 		}
 
-		if err := s.submitTask(submitter, task.ID); err != nil {
+		if err := s.submitTask(ctx, submitter, task.ID); err != nil {
 			result.Failed = append(result.Failed, RequeueFailure{
 				TaskID: task.ID,
 				Status: task.Status,

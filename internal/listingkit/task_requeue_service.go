@@ -12,20 +12,23 @@ import (
 const taskRequeueMaxWait = 5 * time.Second
 
 type taskRequeueServiceConfig struct {
-	repo          Repository
-	taskSubmitter func() TaskSubmitter
+	repo             Repository
+	taskSubmitter    func() TaskSubmitter
+	standardWorkflow func() (StandardProductWorkflowClient, bool)
 }
 
 type taskRequeueService struct {
-	repo          Repository
-	taskSubmitter func() TaskSubmitter
-	runner        *submissiondomain.RequeueService
+	repo             Repository
+	taskSubmitter    func() TaskSubmitter
+	standardWorkflow func() (StandardProductWorkflowClient, bool)
+	runner           *submissiondomain.RequeueService
 }
 
 func newTaskRequeueService(config taskRequeueServiceConfig) *taskRequeueService {
 	svc := &taskRequeueService{
-		repo:          config.repo,
-		taskSubmitter: config.taskSubmitter,
+		repo:             config.repo,
+		taskSubmitter:    config.taskSubmitter,
+		standardWorkflow: config.standardWorkflow,
 	}
 	wiring := buildTaskRequeueRunnerWiring(svc)
 	svc.runner = submissiondomain.NewRequeueService(submissiondomain.RequeueServiceConfig{
@@ -57,6 +60,9 @@ func (w taskRequeueRunnerWiring) loadTask(ctx context.Context, taskID string) (*
 }
 
 func (w taskRequeueRunnerWiring) currentSubmitter() submissiondomain.RequeueSubmitFunc {
+	if client, enabled := w.svc.currentStandardWorkflow(); enabled && client != nil {
+		return func(string) error { return nil }
+	}
 	submitter := w.svc.currentSubmitter()
 	if submitter == nil {
 		return nil
@@ -72,7 +78,13 @@ func (w taskRequeueRunnerWiring) canRequeue(task *submissiondomain.RequeueTask) 
 	return submissiondomain.CanRequeueTaskWithStatus(task, string(TaskStatusPending))
 }
 
-func (w taskRequeueRunnerWiring) submitTask(submit submissiondomain.RequeueSubmitFunc, taskID string) error {
+func (w taskRequeueRunnerWiring) submitTask(ctx context.Context, submit submissiondomain.RequeueSubmitFunc, taskID string) error {
+	if client, enabled := w.svc.currentStandardWorkflow(); enabled && client != nil {
+		return client.StartStandardProduct(ctx, StandardProductWorkflowStartInput{
+			TaskID:      taskID,
+			RequestedAt: time.Now().UTC(),
+		})
+	}
 	if submit == nil {
 		return ErrTaskRequeueUnavailable
 	}
@@ -102,4 +114,11 @@ func (s *taskRequeueService) currentSubmitter() TaskSubmitter {
 		return nil
 	}
 	return s.taskSubmitter()
+}
+
+func (s *taskRequeueService) currentStandardWorkflow() (StandardProductWorkflowClient, bool) {
+	if s == nil || s.standardWorkflow == nil {
+		return nil, false
+	}
+	return s.standardWorkflow()
 }
