@@ -9,6 +9,7 @@ type ReadinessReasonSpec = sheinmarketplace.ReadinessReasonSpec
 type ReadinessHintSpec = sheinmarketplace.ReadinessHintSpec
 type ReadinessGuidanceSpec = sheinmarketplace.ReadinessGuidanceSpec
 type SubmitTemplateReadinessInput = sheinmarketplace.SubmitTemplateReadinessInput
+type SubmitPayloadValidationReadinessInput = sheinmarketplace.SubmitPayloadValidationReadinessInput
 
 func BuildReadinessGuidanceSpec(key string, warningOnly bool) *ReadinessGuidanceSpec {
 	return sheinmarketplace.BuildReadinessGuidanceSpec(key, warningOnly)
@@ -44,6 +45,10 @@ func BuildSubmitPayloadReadinessChecks(pkg *Package, action string) []ReadinessC
 
 func BuildSubmitTemplateReadinessChecks(input SubmitTemplateReadinessInput) []ReadinessCheckSpec {
 	return sheinmarketplace.BuildSubmitTemplateReadinessChecks(input)
+}
+
+func BuildSubmitPayloadValidationReadinessChecks(input SubmitPayloadValidationReadinessInput) []ReadinessCheckSpec {
+	return sheinmarketplace.BuildSubmitPayloadValidationReadinessChecks(input)
 }
 
 func BuildSubmitReadiness[R any, H any](

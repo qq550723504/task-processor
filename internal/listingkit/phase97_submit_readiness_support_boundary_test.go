@@ -85,6 +85,28 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		t.Fatal("shein_submit_readiness_status_support.go should not keep a source-facts wrapper; call SHEIN workspace readiness from checks assembly")
 	}
 
+	buildValidationSrc, err := os.ReadFile("shein_build_validation.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_build_validation.go) error = %v", err)
+	}
+	buildValidationContent := string(buildValidationSrc)
+	for _, needle := range []string{
+		"func appendSheinBuildValidationChecks(",
+		"return append(checks, sheinworkspace.BuildSubmitPayloadValidationReadinessChecks(sheinworkspace.SubmitPayloadValidationReadinessInput{",
+	} {
+		if !strings.Contains(buildValidationContent, needle) {
+			t.Fatalf("shein_build_validation.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		`"发布载荷结构"`,
+		`"shein.preview_product", "shein.request_draft.skc_list"`,
+	} {
+		if strings.Contains(buildValidationContent, needle) {
+			t.Fatalf("shein_build_validation.go should delegate payload validation check construction, found %q", needle)
+		}
+	}
+
 	checksSrc, err := os.ReadFile("shein_submit_readiness_checks_support.go")
 	if err != nil {
 		t.Fatalf("ReadFile(shein_submit_readiness_checks_support.go) error = %v", err)
@@ -133,6 +155,21 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	} {
 		if !strings.Contains(workspacePayloadContent, needle) {
 			t.Fatalf("workspace payload readiness checks should contain %q", needle)
+		}
+	}
+
+	workspacePayloadValidationSrc, err := os.ReadFile("../marketplace/shein/workspace/submit_payload_validation_readiness_checks.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../marketplace/shein/workspace/submit_payload_validation_readiness_checks.go) error = %v", err)
+	}
+	workspacePayloadValidationContent := string(workspacePayloadValidationSrc)
+	for _, needle := range []string{
+		"func BuildSubmitPayloadValidationReadinessChecks(input SubmitPayloadValidationReadinessInput) []ReadinessCheckSpec {",
+		`"发布载荷结构"`,
+		`"shein.preview_product", "shein.request_draft.skc_list"`,
+	} {
+		if !strings.Contains(workspacePayloadValidationContent, needle) {
+			t.Fatalf("workspace payload validation readiness checks should contain %q", needle)
 		}
 	}
 

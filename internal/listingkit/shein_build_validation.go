@@ -41,18 +41,10 @@ func ValidateSheinPackageAgainstTemplates(pkg *SheinPackage) sheinBuildValidatio
 }
 
 func appendSheinBuildValidationChecks(checks []sheinworkspace.ReadinessCheckSpec, validation sheinBuildValidation) []sheinworkspace.ReadinessCheckSpec {
-	if !validation.submitPayloadReady {
-		checks = append(checks, sheinSubmitReadinessCheck(
-			"variants",
-			"发布载荷结构",
-			false,
-			validation.submitPayloadMessage,
-			[]string{"shein.preview_product", "shein.request_draft.skc_list"},
-			"确认规格",
-			false,
-		))
-	}
-	return checks
+	return append(checks, sheinworkspace.BuildSubmitPayloadValidationReadinessChecks(sheinworkspace.SubmitPayloadValidationReadinessInput{
+		Ready:   validation.submitPayloadReady,
+		Message: validation.submitPayloadMessage,
+	})...)
 }
 
 func sheinHasBlockingPendingAttributes(pkg *SheinPackage) bool {
