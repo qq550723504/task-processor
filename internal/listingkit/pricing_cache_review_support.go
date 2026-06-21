@@ -11,42 +11,11 @@ import (
 )
 
 func normalizePublishedSheinPricingReview(pkg *sheinpub.Package) *sheinpub.PricingReview {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil {
-		return nil
-	}
-	review := cloneSheinPricingReview(pkg.Pricing)
-	if review == nil || !review.Ready || len(review.SKUPrices) == 0 {
-		return nil
-	}
-	for idx := range review.SKUPrices {
-		price := &review.SKUPrices[idx]
-		if strings.TrimSpace(price.SupplierSKU) == "" || price.FinalPrice <= 0 {
-			return nil
-		}
-		price.SupplierSKU = strings.TrimSpace(price.SupplierSKU)
-		price.SupplierCode = strings.TrimSpace(price.SupplierCode)
-	}
-	return review
+	return sheinpub.NormalizePublishedPricingReview(pkg)
 }
 
 func sheinPricingReviewApplicable(pkg *sheinpub.Package, review *sheinpub.PricingReview) bool {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.DraftPayload == nil || review == nil || !review.Ready || len(review.SKUPrices) == 0 {
-		return false
-	}
-	current := sheinPricingSKUFacts(pkg, sheinpub.PricingRule{})
-	if len(current) == 0 || len(current) != len(review.SKUPrices) {
-		return false
-	}
-	for _, item := range review.SKUPrices {
-		key := sheinPricingReviewSKUKey(item)
-		fact, ok := current[key]
-		if !ok || fact.CostPrice != formatMoney(item.CostCNY) || item.FinalPrice <= 0 {
-			return false
-		}
-	}
-	return true
+	return sheinpub.PricingReviewApplicable(pkg, review)
 }
 
 func mustMarshalSheinPricingReview(review *sheinpub.PricingReview) string {
@@ -58,14 +27,7 @@ func mustMarshalSheinPricingReview(review *sheinpub.PricingReview) string {
 }
 
 func decodeSheinPricingCacheEntry(entry *sheinpub.SheinResolutionCacheEntry) *sheinpub.PricingReview {
-	if entry == nil || strings.TrimSpace(entry.ResolutionJSON) == "" {
-		return nil
-	}
-	var review sheinpub.PricingReview
-	if err := json.Unmarshal([]byte(entry.ResolutionJSON), &review); err != nil {
-		return nil
-	}
-	return cloneSheinPricingReview(&review)
+	return sheinpub.DecodePricingCacheEntry(entry)
 }
 
 func reconcileSheinPricingCacheReview(pkg *sheinpub.Package, review *sheinpub.PricingReview) *sheinpub.PricingReview {
@@ -73,31 +35,7 @@ func reconcileSheinPricingCacheReview(pkg *sheinpub.Package, review *sheinpub.Pr
 }
 
 func cloneSheinPricingReview(review *sheinpub.PricingReview) *sheinpub.PricingReview {
-	if review == nil {
-		return nil
-	}
-	cloned := *review
-	if review.RuleSnapshot != nil {
-		rule := *review.RuleSnapshot
-		cloned.RuleSnapshot = &rule
-	}
-	if len(review.SKUPrices) > 0 {
-		cloned.SKUPrices = append([]sheinpub.SKUPriceReview(nil), review.SKUPrices...)
-	}
-	if len(review.ManualOverrides) > 0 {
-		cloned.ManualOverrides = clonePriceOverrides(review.ManualOverrides)
-	}
-	if len(review.MissingPriceSKUs) > 0 {
-		cloned.MissingPriceSKUs = append([]string(nil), review.MissingPriceSKUs...)
-	}
-	if review.UpdatedAt != nil {
-		updatedAt := *review.UpdatedAt
-		cloned.UpdatedAt = &updatedAt
-	}
-	if review.Cache != nil {
-		cloned.Cache = sheinpub.CloneResolutionCacheInfo(review.Cache)
-	}
-	return &cloned
+	return sheinpub.ClonePricingReview(review)
 }
 
 func attachPricingCacheInfo(
