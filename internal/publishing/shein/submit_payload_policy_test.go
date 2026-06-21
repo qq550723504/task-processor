@@ -139,3 +139,56 @@ func (a ProductAttributeLike) toShein() sheinproduct.ProductAttribute {
 		AttributeExtraValue: a.AttributeExtraValue,
 	}
 }
+
+func TestDeriveSubmitProductSupplierCode(t *testing.T) {
+	t.Parallel()
+
+	product := &sheinproduct.Product{
+		SupplierCode: "MG8089003001",
+		SKCList: []sheinproduct.SKC{
+			{
+				SKUS: []sheinproduct.SKU{
+					{SupplierSKU: "MG8089003001-V295977-TEEC9CE8E-RCODEX-4F2669C9"},
+				},
+			},
+		},
+	}
+
+	if got := DeriveSubmitProductSupplierCode(product); got != "MG8089003001-4F2669C9" {
+		t.Fatalf("DeriveSubmitProductSupplierCode() = %q, want derived supplier code", got)
+	}
+
+	product.SupplierCode = "SUPPLIER-CODE"
+	if got := DeriveSubmitProductSupplierCode(product); got != "SUPPLIER-CODE" {
+		t.Fatalf("DeriveSubmitProductSupplierCode(existing) = %q, want existing supplier code", got)
+	}
+
+	if got := DeriveSubmitProductSupplierCode(nil); got != "" {
+		t.Fatalf("DeriveSubmitProductSupplierCode(nil) = %q, want empty", got)
+	}
+}
+
+func TestValidateProductPublishPayloadRequiresSKCImages(t *testing.T) {
+	t.Parallel()
+
+	if err := ValidateProductPublishPayload(nil); err == nil || err.Error() != "SHEIN publish payload is empty" {
+		t.Fatalf("ValidateProductPublishPayload(nil) error = %v, want empty payload error", err)
+	}
+
+	product := &sheinproduct.Product{
+		SKCList: []sheinproduct.SKC{{}},
+	}
+	if err := ValidateProductPublishPayload(product); err == nil || err.Error() != "SHEIN publish blocked: SKC[0] has no images" {
+		t.Fatalf("ValidateProductPublishPayload(no images) error = %v, want image error", err)
+	}
+
+	product.SKCList[0].ImageInfo.ImageInfoList = []sheinproduct.ImageDetail{{ImageType: 5}}
+	if err := ValidateProductPublishPayload(product); err == nil || err.Error() != "SHEIN publish blocked: SKC[0] is missing required color block image" {
+		t.Fatalf("ValidateProductPublishPayload(no color block) error = %v, want color block error", err)
+	}
+
+	product.SKCList[0].ImageInfo.ImageInfoList = []sheinproduct.ImageDetail{{ImageType: 5}, {ImageType: 6}}
+	if err := ValidateProductPublishPayload(product); err != nil {
+		t.Fatalf("ValidateProductPublishPayload(valid) error = %v", err)
+	}
+}

@@ -80,12 +80,21 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 
 	for _, needle := range []string{
 		"func deriveSheinSubmitProductSupplierCode(product *sheinproduct.Product) string {",
-		"func deriveSheinSubmitSupplierCodeFromSKU(supplierSKU string) string {",
-		"func looksLikeRawBaseSupplierCode(value string) bool {",
 		"func validateSheinProductPublishPayload(product *sheinproduct.Product) error {",
 	} {
 		if !strings.Contains(supplierContent, needle) {
 			t.Fatalf("shein_submit_payload_supplier_validation_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"func deriveSheinSubmitSupplierCodeFromSKU(supplierSKU string) string {",
+		"func looksLikeRawBaseSupplierCode(value string) bool {",
+		"func normalizeSheinSubmitStyleSuffix(value string) string {",
+		"case 5:",
+		"case 6:",
+	} {
+		if strings.Contains(supplierContent, needle) {
+			t.Fatalf("shein_submit_payload_supplier_validation_support.go should delegate publishing policy detail %q", needle)
 		}
 	}
 }
