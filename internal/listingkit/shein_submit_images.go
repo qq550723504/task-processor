@@ -1,7 +1,6 @@
 package listingkit
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,73 +10,23 @@ import (
 )
 
 func cloneSheinProductForSubmit(product *sheinproduct.Product) (*sheinproduct.Product, error) {
-	if product == nil {
-		return nil, nil
-	}
-	data, err := json.Marshal(product)
-	if err != nil {
-		return nil, fmt.Errorf("clone shein product: %w", err)
-	}
-	var cloned sheinproduct.Product
-	if err := json.Unmarshal(data, &cloned); err != nil {
-		return nil, fmt.Errorf("clone shein product: %w", err)
-	}
-	return &cloned, nil
+	return sheinpub.CloneProductForSubmit(product)
 }
 
 func sheinProductImageURLCount(product *sheinproduct.Product) int {
-	if product == nil {
-		return 0
-	}
-	count := sheinImageInfoURLCount(product.ImageInfo)
-	for i := range product.SKCList {
-		count += sheinImageInfoURLCount(&product.SKCList[i].ImageInfo)
-		for j := range product.SKCList[i].SKUS {
-			count += sheinImageInfoURLCount(product.SKCList[i].SKUS[j].ImageInfo)
-		}
-	}
-	return count
+	return sheinpub.ProductImageURLCount(product)
 }
 
 func sheinProductPendingImageUploadCount(product *sheinproduct.Product) int {
-	if product == nil {
-		return 0
-	}
-	count := sheinImageInfoPendingUploadCount(product.ImageInfo)
-	for i := range product.SKCList {
-		count += sheinImageInfoPendingUploadCount(&product.SKCList[i].ImageInfo)
-		for j := range product.SKCList[i].SKUS {
-			count += sheinImageInfoPendingUploadCount(product.SKCList[i].SKUS[j].ImageInfo)
-		}
-	}
-	return count
+	return sheinpub.ProductPendingImageUploadCount(product)
 }
 
 func sheinImageInfoURLCount(info *sheinproduct.ImageInfo) int {
-	if info == nil {
-		return 0
-	}
-	count := 0
-	for _, image := range info.ImageInfoList {
-		if strings.TrimSpace(image.ImageURL) != "" {
-			count++
-		}
-	}
-	return count
+	return sheinpub.ImageInfoURLCount(info)
 }
 
 func sheinImageInfoPendingUploadCount(info *sheinproduct.ImageInfo) int {
-	if info == nil {
-		return 0
-	}
-	count := 0
-	for _, image := range info.ImageInfoList {
-		url := strings.TrimSpace(image.ImageURL)
-		if url != "" && !isSheinUploadedImageURL(url) {
-			count++
-		}
-	}
-	return count
+	return sheinpub.ImageInfoPendingUploadCount(info)
 }
 
 func uploadSheinProductImages(product *sheinproduct.Product, uploader sheinimage.ImageAPI, cached map[string]string) (int, map[string]string, error) {
@@ -141,15 +90,11 @@ type sheinImageUploadResult struct {
 }
 
 func isSheinUploadedImageURL(url string) bool {
-	value := strings.ToLower(strings.TrimSpace(url))
-	return strings.Contains(value, "shein.com") ||
-		strings.Contains(value, "sheinimg.com") ||
-		strings.Contains(value, "ltwebstatic.com")
+	return sheinpub.IsUploadedImageURL(url)
 }
 
 func isSDSImageURL(url string) bool {
-	value := strings.ToLower(strings.TrimSpace(url))
-	return strings.Contains(value, "sdspod.com") || strings.Contains(value, "sdsdiy.com")
+	return sheinpub.IsSDSImageURL(url)
 }
 
 func sheinImageUploadCache(pkg *SheinPackage) map[string]string {
@@ -166,17 +111,5 @@ func sheinImageUploadCacheHit(pkg *SheinPackage, sourceURL string) bool {
 }
 
 func cloneSheinImageUploadCache(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(input))
-	for sourceURL, uploadedURL := range input {
-		sourceURL = strings.TrimSpace(sourceURL)
-		uploadedURL = strings.TrimSpace(uploadedURL)
-		if sourceURL == "" || uploadedURL == "" || !isSheinUploadedImageURL(uploadedURL) {
-			continue
-		}
-		out[sourceURL] = uploadedURL
-	}
-	return out
+	return sheinpub.CloneImageUploadCache(input)
 }

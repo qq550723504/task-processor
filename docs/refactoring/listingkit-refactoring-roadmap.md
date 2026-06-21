@@ -602,6 +602,7 @@ Follow-up deletion
 | SHEIN remote submit 动作分发 | migrated | `internal/listingkit/task_submission_execution_remote.go` 不再直接 switch `save_draft` / `publish` 调用远端 API；动作分发和 response summary 构造迁入 `internal/publishing/shein/submit_remote_action.go`，ListingKit 仅保留执行服务日志和 orchestration。 |
 | SHEIN submit 翻译决策 | migrated | `internal/listingkit/task_submission_execution_product.go` 不再组合翻译缺失与区域目标语言规则；该判断迁入 `internal/publishing/shein/submit_prep.go` 的 `SubmitProductTranslationNeeded`，ListingKit 仅传入 task region 并决定是否构造 translate API。 |
 | SHEIN submit supplier/publish payload policy | migrated | supplier code 派生和 publish 必需 SKC 图片校验迁入 `internal/publishing/shein/submit_payload_policy.go`；`internal/listingkit/shein_submit_payload_supplier_validation_support.go` 只保留兼容 wrapper。 |
+| SHEIN submit image policy | migrated | submit product 深拷贝、图片 URL 计数、待上传计数、已上传/SDS URL 分类和 upload cache 清洗迁入 `internal/publishing/shein/submit_image_policy.go`；ListingKit 图片上传编排仍保留在根包。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
