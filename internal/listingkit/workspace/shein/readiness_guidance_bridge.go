@@ -13,6 +13,10 @@ func BuildReadinessGuidanceSpec(key string, warningOnly bool) *ReadinessGuidance
 	return sheinmarketplace.BuildReadinessGuidanceSpec(key, warningOnly)
 }
 
+func BuildReadinessTaxonomy(key string, warningOnly bool) ReadinessTaxonomy {
+	return sheinmarketplace.BuildReadinessTaxonomy(key, warningOnly)
+}
+
 func BuildSubmitReadiness[R any, H any](
 	checks []ReadinessCheckSpec,
 	guidanceResolver func(ReadinessCheckSpec) Guidance[R, H],

@@ -598,6 +598,7 @@ Follow-up deletion
 | 对象 | 状态 | 证据 |
 | --- | --- | --- |
 | readiness repair center 组装 | migrated | `internal/listingkit/shein_repair_center.go` 已收缩为 facade；去重、排序、section label、direct apply queue/session 组装迁入 `internal/marketplace/shein/workspace/repair_center_from_readiness.go`，并新增 marketplace 包级测试。 |
+| readiness taxonomy 映射 | migrated | `internal/listingkit/shein_submit_readiness_checks_support.go` 中的 key -> taxonomy switch 已收缩为 facade；映射规则迁入 `internal/marketplace/shein/workspace/readiness_taxonomy.go`，并新增 marketplace 包级测试。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
