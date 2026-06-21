@@ -1,7 +1,6 @@
 package listingkit
 
 import (
-	listingsubmission "task-processor/internal/listing/submission"
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 )
 
@@ -215,7 +214,7 @@ func appendSheinPayloadReadinessChecks(checks []sheinworkspace.ReadinessCheckSpe
 	if pkg != nil {
 		sourceMetadata = pkg.Metadata
 	}
-	sourceFactsReady, sourceFactsMessage := listingsubmission.SourceFactsReady(sourceMetadata)
+	sourceFactsReady, sourceFactsMessage := sheinworkspace.SourceFactsReady(sourceMetadata)
 	checks = append(checks, sheinSubmitReadinessCheck(
 		"source_facts",
 		"来源事实",

@@ -69,7 +69,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 	if strings.Contains(statusContent, "func sheinSourceFactsReady(") {
-		t.Fatal("shein_submit_readiness_status_support.go should not keep a source-facts wrapper; call internal/listing/submission directly from checks assembly")
+		t.Fatal("shein_submit_readiness_status_support.go should not keep a source-facts wrapper; call SHEIN workspace readiness from checks assembly")
 	}
 
 	checksSrc, err := os.ReadFile("shein_submit_readiness_checks_support.go")
@@ -85,7 +85,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func appendSheinPayloadReadinessChecks(",
 		"func sheinSubmitReadinessFinalDraftReady(pkg *SheinPackage, action string) bool {",
 		"func sheinSubmitReadinessFinalReviewMessage(action string) string {",
-		"sourceFactsReady, sourceFactsMessage := listingsubmission.SourceFactsReady(sourceMetadata)",
+		"sourceFactsReady, sourceFactsMessage := sheinworkspace.SourceFactsReady(sourceMetadata)",
 	} {
 		if !strings.Contains(checksContent, needle) {
 			t.Fatalf("shein_submit_readiness_checks_support.go should contain %q", needle)

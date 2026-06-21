@@ -613,6 +613,7 @@ Follow-up deletion
 | SHEIN studio submit supplier SKU normalization flow | migrated | studio supplier SKU 主流程、DraftPayload/SkcList/PreviewPayload 同步更新、rename 收集与 pricing reconcile 编排迁入 `internal/publishing/shein/submit_sku_normalization.go`；ListingKit 只从 `Task` 组装 style/discriminator/variant context。 |
 | SHEIN submit state transitions | migrated | begin/advance/complete/fail attempt 状态转移、lease 刷新、closeout event 构造迁入 `internal/publishing/shein/submission_state.go`；ListingKit 仅保留兼容 wrapper 并注入统一 TTL。 |
 | SHEIN submit sensitive-word retry | migrated | publish validation notes 触发的敏感词清理、retry event 追加和重试响应错误归一迁入 `internal/publishing/shein/submit_sensitive_retry.go`；ListingKit 仅注入现有远端执行函数。 |
+| SHEIN submit source-facts readiness | migrated | 1688 来源事实复核规则抽到底层 `internal/listing/sourcefacts`，并由 SHEIN workspace 暴露 `SourceFactsReady`；ListingKit readiness checks 不再直接依赖 `internal/listing/submission`。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
