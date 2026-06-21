@@ -1,12 +1,23 @@
 import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
 import { Badge } from "@/components/ui/badge";
-import type { SheinStudioCreatedTask } from "@/lib/types/shein-studio";
+import type {
+  SheinStudioCreatedTask,
+  SheinStudioFailedTask,
+  SheinStudioRejectedTask,
+} from "@/lib/types/shein-studio";
 
 export function SheinStudioTasksStep({
   createdTasks,
+  failedTasks = [],
+  rejectedTasks = [],
+  reusedTasks = [],
 }: {
   createdTasks: SheinStudioCreatedTask[];
+  failedTasks?: SheinStudioFailedTask[];
+  rejectedTasks?: SheinStudioRejectedTask[];
+  reusedTasks?: SheinStudioCreatedTask[];
 }) {
+  const visibleTaskCount = createdTasks.length + reusedTasks.length;
   return (
     <div
       id="shein-created-tasks"
@@ -25,11 +36,16 @@ export function SheinStudioTasksStep({
           </p>
         </div>
         <Badge className="rounded-full px-3 py-1 text-xs" variant="neutral">
-          {createdTasks.length} 个任务
+          {visibleTaskCount} 个任务
         </Badge>
       </div>
-      {createdTasks.length ? (
-        <SheinCreatedTasksList tasks={createdTasks} />
+      {visibleTaskCount || rejectedTasks.length || failedTasks.length ? (
+        <SheinCreatedTasksList
+          failedTasks={failedTasks}
+          rejectedTasks={rejectedTasks}
+          reusedTasks={reusedTasks}
+          tasks={createdTasks}
+        />
       ) : (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-6 text-amber-900">
           还没有创建 SHEIN 任务。先回到“审核款式”步骤批准款式，再在“生成图片”

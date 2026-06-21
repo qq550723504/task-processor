@@ -4046,12 +4046,14 @@ func TestTaskStudioBatchDetailAdapterUsesListingStudioRunner(t *testing.T) {
 		"func newListingStudioBatchDetailService(",
 		"repo StudioBatchRepository,",
 		"studioSessionRepo studioBatchSeedSessionRepository,",
+		"taskLinkRepo StudioBatchTaskLinkRepository,",
+		"getTask func(context.Context, string) (*Task, error),",
 		"ensureGraph func(context.Context, string) error,",
 		"return studiodomain.NewBatchDetailService(studiodomain.BatchDetailServiceConfig[",
 		"ResolveWithoutGraph: func(ctx context.Context, batchID string) (*StudioBatchDetail, bool, error) {",
 		"return resolveStudioBatchDetailWithoutGraph(ctx, studioSessionRepo, batchID)",
 		"EnsureGraph: ensureGraph,",
-		"draftUpdatedAt, createdTasks, failedTasks, err := loadStudioBatchDraftState(ctx, studioSessionRepo, batchID)",
+		"draftUpdatedAt, createdTasks, failedTasks, err := loadStudioBatchDraftState(ctx, studioSessionRepo, taskLinkRepo, getTask, batchID)",
 	} {
 		if !strings.Contains(adapterContent, needle) {
 			t.Fatalf("task_studio_batch_detail_adapter.go should contain %q", needle)
@@ -4082,7 +4084,7 @@ func TestTaskStudioBatchDetailAdapterUsesListingStudioRunner(t *testing.T) {
 	for _, needle := range []string{
 		"func (s *taskStudioBatchService) ensureDetailRunner() {",
 		"func (s *taskStudioBatchService) ensureServiceRunner() {",
-		"s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.ensureStudioBatchGenerationGraphForResume)",
+		"s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.batchTaskLinkRepo, s.getTask, s.ensureStudioBatchGenerationGraphForResume)",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("task_studio_batch_runner_support.go should contain %q", needle)
@@ -4188,10 +4190,12 @@ func TestTaskStudioBatchRetryAdapterUsesListingStudioRunner(t *testing.T) {
 	for _, needle := range []string{
 		"func newListingStudioBatchRetryPrepareService(",
 		"repo StudioBatchRepository,",
+		"taskLinkRepo StudioBatchTaskLinkRepository,",
 		"loadDetail func(context.Context, string) (*StudioBatchDetail, error),",
 		"resetItems func(context.Context, []StudioBatchItemRecord) error,",
 		"return studiodomain.NewBatchRetryPrepareService(studiodomain.BatchRetryPrepareServiceConfig[",
-		"LoadDetail: func(ctx context.Context, batchID string) (*StudioBatchDetailGraph, error) {",
+		"LoadDetail: func(ctx context.Context, batchID string) (*studioBatchRetryDetailGraph, error) {",
+		"links, err := taskLinkRepo.ListStudioBatchTaskLinksByBatchID(ctx, batchID)",
 		"SelectItems: selectStudioBatchRetryItems,",
 		"ResetItems:  resetItems,",
 		"LoadResult:  loadDetail,",
@@ -4224,7 +4228,7 @@ func TestTaskStudioBatchRetryAdapterUsesListingStudioRunner(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *taskStudioBatchService) ensureRetryRunner() {",
-		"s.retryRunner = newListingStudioBatchRetryPrepareService(s.repo, s.GetStudioBatchDetail, s.resetStudioBatchRetryItems)",
+		"s.retryRunner = newListingStudioBatchRetryPrepareService(s.repo, s.batchTaskLinkRepo, s.GetStudioBatchDetail, s.resetStudioBatchRetryItems)",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("task_studio_batch_runner_support.go should contain %q", needle)

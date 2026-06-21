@@ -3,7 +3,10 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
+
+	sheinpub "task-processor/internal/publishing/shein"
 
 	"gorm.io/gorm"
 )
@@ -65,23 +68,136 @@ func projectStudioBatchRecord(batch *StudioBatchRecord, items []StudioBatchItemR
 	return &cloned
 }
 
-func loadStudioBatchDraftState(ctx context.Context, studioSessionRepo studioBatchSeedSessionRepository, batchID string) (*time.Time, []SheinStudioCreatedTask, []SheinStudioFailedTask, error) {
+func loadStudioBatchDraftState(
+	ctx context.Context,
+	studioSessionRepo studioBatchSeedSessionRepository,
+	taskLinkRepo StudioBatchTaskLinkRepository,
+	getTask func(context.Context, string) (*Task, error),
+	batchID string,
+) (*time.Time, []SheinStudioCreatedTask, []SheinStudioFailedTask, error) {
+	linkTasks, err := loadStudioBatchCreatedTasksFromLinks(ctx, taskLinkRepo, getTask, batchID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	if studioSessionRepo == nil {
-		return nil, nil, nil, nil
+		return nil, linkTasks, nil, nil
 	}
 	session, err := studioSessionRepo.GetSession(ctx, batchID)
 	switch {
 	case err == nil:
 		if session == nil || !session.SavedAsBatch {
-			return nil, nil, nil, nil
+			return nil, linkTasks, nil, nil
 		}
 		updatedAt := session.UpdatedAt.UTC()
-		return &updatedAt, append([]SheinStudioCreatedTask(nil), session.CreatedTasks...), append([]SheinStudioFailedTask(nil), session.FailedTasks...), nil
+		createdTasks := mergeStudioCreatedTasks(linkTasks, session.CreatedTasks)
+		return &updatedAt, createdTasks, append([]SheinStudioFailedTask(nil), session.FailedTasks...), nil
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		return nil, nil, nil, nil
+		return nil, linkTasks, nil, nil
 	default:
 		return nil, nil, nil, err
 	}
+}
+
+func loadStudioBatchCreatedTasksFromLinks(
+	ctx context.Context,
+	taskLinkRepo StudioBatchTaskLinkRepository,
+	getTask func(context.Context, string) (*Task, error),
+	batchID string,
+) ([]SheinStudioCreatedTask, error) {
+	if taskLinkRepo == nil {
+		return nil, nil
+	}
+	links, err := taskLinkRepo.ListStudioBatchTaskLinksByBatchID(ctx, batchID)
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]SheinStudioCreatedTask, 0, len(links))
+	seen := make(map[string]struct{}, len(links))
+	for _, link := range links {
+		taskID := strings.TrimSpace(link.ListingKitTaskID)
+		if taskID == "" || link.Status != studioBatchTaskLinkStatusCreated {
+			continue
+		}
+		if _, ok := seen[taskID]; ok {
+			continue
+		}
+		var task *Task
+		if getTask != nil {
+			task, err = getTask(ctx, taskID)
+			if err != nil || task == nil || task.Status == TaskStatusFailed {
+				continue
+			}
+		}
+		seen[taskID] = struct{}{}
+		created := SheinStudioCreatedTask{
+			ID:                       taskID,
+			Title:                    strings.TrimSpace(link.DesignID),
+			DesignID:                 strings.TrimSpace(link.DesignID),
+			ItemID:                   strings.TrimSpace(link.ItemID),
+			SelectionID:              strings.TrimSpace(link.SelectionID),
+			CompatibilityFingerprint: strings.TrimSpace(link.CompatibilityFingerprint),
+			Status:                   studioBatchCreatedTaskStatus,
+			ReasonCode:               strings.TrimSpace(link.ReasonCode),
+			Message:                  strings.TrimSpace(link.Message),
+		}
+		created = projectStudioBatchCreatedTaskFromListingTask(created, task)
+		tasks = append(tasks, created)
+	}
+	return tasks, nil
+}
+
+func projectStudioBatchCreatedTaskFromListingTask(created SheinStudioCreatedTask, task *Task) SheinStudioCreatedTask {
+	if task == nil {
+		return created
+	}
+	if strings.TrimSpace(created.Status) == "" {
+		created.Status = studioBatchCreatedTaskStatus
+	}
+	switch task.Status {
+	case TaskStatusNeedsReview:
+		created.Status = "needs_review"
+	case TaskStatusFailed:
+		created.Status = "submit_failed"
+		if strings.TrimSpace(created.Message) == "" {
+			created.Message = strings.TrimSpace(task.Error)
+		}
+	}
+	if task.Result == nil || task.Result.Shein == nil {
+		return created
+	}
+	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
+	if pkg == nil || pkg.SubmissionState == nil {
+		if task.Status == TaskStatusCompleted && sheinSubmitReadinessReady(buildSheinSubmitReadiness(pkg)) {
+			created.Status = "ready_to_submit"
+		}
+		return created
+	}
+	latestStatus := strings.TrimSpace(pkg.SubmissionState.LastStatus)
+	latestAction := strings.TrimSpace(pkg.SubmissionState.LastAction)
+	if latestStatus != "" {
+		created.SubmissionState = latestStatus
+	}
+	if latestAction != "" {
+		created.LastSubmissionAction = latestAction
+	}
+	switch {
+	case latestStatus == sheinpub.SubmissionStatusFailed:
+		created.Status = "submit_failed"
+		if strings.TrimSpace(created.Message) == "" {
+			created.Message = strings.TrimSpace(pkg.SubmissionState.LastError)
+		}
+	case latestStatus == sheinpub.SubmissionStatusSuccess && latestAction == "publish":
+		created.Status = "published"
+	case latestStatus == sheinpub.SubmissionStatusSuccess && latestAction == "save_draft":
+		created.Status = "draft_saved"
+	case sheinSubmitReadinessReady(buildSheinSubmitReadiness(pkg)):
+		created.Status = "ready_to_submit"
+	}
+	return created
+}
+
+func sheinSubmitReadinessReady(readiness *SheinSubmitReadiness) bool {
+	return readiness != nil && readiness.Ready
 }
 
 func shouldSyncStudioBatchGraphOnRead(session *SheinStudioSession) bool {

@@ -39,11 +39,13 @@ type StudioBatchService interface {
 }
 
 type StudioBatchDetail struct {
-	Batch        *StudioBatchRecord       `json:"batch,omitempty"`
-	Items        []StudioBatchItemDetail  `json:"items,omitempty"`
-	CreatedTasks []SheinStudioCreatedTask `json:"created_tasks,omitempty"`
-	FailedTasks  []SheinStudioFailedTask  `json:"failed_tasks,omitempty"`
-	StatusGroups StudioBatchStatusGroups  `json:"status_groups,omitempty"`
+	Batch         *StudioBatchRecord        `json:"batch,omitempty"`
+	Items         []StudioBatchItemDetail   `json:"items,omitempty"`
+	CreatedTasks  []SheinStudioCreatedTask  `json:"created_tasks,omitempty"`
+	ReusedTasks   []SheinStudioCreatedTask  `json:"reused_tasks,omitempty"`
+	RejectedTasks []SheinStudioRejectedTask `json:"rejected_tasks,omitempty"`
+	FailedTasks   []SheinStudioFailedTask   `json:"failed_tasks,omitempty"`
+	StatusGroups  StudioBatchStatusGroups   `json:"status_groups,omitempty"`
 }
 
 type StudioBatchItemDetail struct {
@@ -68,6 +70,7 @@ type CreateStudioBatchTasksResult struct {
 	Batch         *StudioBatchRecord        `json:"batch,omitempty"`
 	Items         []StudioBatchItemDetail   `json:"items,omitempty"`
 	CreatedTasks  []SheinStudioCreatedTask  `json:"created_tasks,omitempty"`
+	ReusedTasks   []SheinStudioCreatedTask  `json:"reused_tasks,omitempty"`
 	RejectedTasks []SheinStudioRejectedTask `json:"rejected_tasks,omitempty"`
 	FailedTasks   []SheinStudioFailedTask   `json:"failed_tasks,omitempty"`
 }
@@ -75,7 +78,10 @@ type CreateStudioBatchTasksResult struct {
 type taskStudioBatchServiceConfig struct {
 	repo               StudioBatchRepository
 	batchRunRepo       StudioBatchRunRepository
+	batchTaskLinkRepo  StudioBatchTaskLinkRepository
 	studioSessionRepo  studioBatchSeedSessionRepository
+	baselineChecker    StudioBatchBaselineReadinessChecker
+	storeValidator     StudioBatchStoreValidator
 	generator          studioBatchGenerator
 	createGenerateTask func(ctx context.Context, req *GenerateRequest) (*Task, error)
 	getTask            func(ctx context.Context, taskID string) (*Task, error)

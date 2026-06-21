@@ -8,6 +8,7 @@ func applyCoreRepositories(repos *builtRepositories, core *builtCoreRepositories
 	repos.studioAsyncJobRepository = core.studioAsyncJobRepository
 	repos.studioBatchRepository = core.studioBatchRepository
 	repos.studioBatchRunRepository = core.studioBatchRunRepository
+	repos.studioBatchTaskLinkRepository = core.studioBatchTaskLinkRepository
 	repos.sheinSyncRepository = core.sheinSyncRepository
 }
 

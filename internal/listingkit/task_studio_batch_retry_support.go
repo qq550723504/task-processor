@@ -57,18 +57,18 @@ func isStudioBatchItemRetryable(status StudioBatchItemStatus) bool {
 }
 
 func selectStudioBatchRetryItems(
-	detail *StudioBatchDetailGraph,
+	detail *studioBatchRetryDetailGraph,
 	itemIDs []string,
 ) ([]StudioBatchItemRecord, error) {
 	if len(itemIDs) == 0 {
 		return nil, NewStudioBatchActionValidationError("item_ids is required")
 	}
-	if detail == nil {
+	if detail == nil || detail.StudioBatchDetailGraph == nil {
 		return nil, NewStudioBatchActionValidationError("studio batch detail is required")
 	}
 
-	itemsByID := make(map[string]StudioBatchItemRecord, len(detail.Items))
-	for _, item := range detail.Items {
+	itemsByID := make(map[string]StudioBatchItemRecord, len(detail.StudioBatchDetailGraph.Items))
+	for _, item := range detail.StudioBatchDetailGraph.Items {
 		itemsByID[item.ID] = item
 	}
 
@@ -83,7 +83,46 @@ func selectStudioBatchRetryItems(
 		}
 		itemsToRetry = append(itemsToRetry, item)
 	}
+	if err := rejectStudioBatchRetryItemsWithCreatedTaskLinks(itemsToRetry, detail.TaskLinks); err != nil {
+		return nil, err
+	}
 	return itemsToRetry, nil
+}
+
+func rejectStudioBatchRetryItemsWithCreatedTaskLinks(
+	items []StudioBatchItemRecord,
+	links []StudioBatchTaskLinkRecord,
+) error {
+	if len(items) == 0 || len(links) == 0 {
+		return nil
+	}
+	itemIDs := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		if itemID := strings.TrimSpace(item.ID); itemID != "" {
+			itemIDs[itemID] = struct{}{}
+		}
+	}
+	for _, link := range links {
+		itemID := strings.TrimSpace(link.ItemID)
+		if _, ok := itemIDs[itemID]; !ok {
+			continue
+		}
+		if !isStudioBatchCreatedOrReusedTaskLink(link) {
+			continue
+		}
+		return NewStudioBatchActionValidationError(fmt.Sprintf("item %s has ListingKit task links: tasks_already_created", itemID))
+	}
+	return nil
+}
+
+func isStudioBatchCreatedOrReusedTaskLink(link StudioBatchTaskLinkRecord) bool {
+	if strings.TrimSpace(link.ListingKitTaskID) == "" {
+		return false
+	}
+	if strings.TrimSpace(link.Status) == studioBatchTaskLinkStatusCreated {
+		return true
+	}
+	return strings.TrimSpace(link.ReasonCode) == studioBatchReusedTaskReasonCode
 }
 
 func (s *taskStudioBatchService) resetStudioBatchRetryItems(

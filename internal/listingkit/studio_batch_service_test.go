@@ -6,10 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	studiodomain "task-processor/internal/listing/studio"
+	sheinpub "task-processor/internal/publishing/shein"
 
 	"gorm.io/gorm"
 )
@@ -665,8 +668,9 @@ func TestServiceGetStudioBatchDetailMaterializesBatchGraphFromGeneratingSessionW
 	if len(detail.Items) != 1 {
 		t.Fatalf("len(detail.Items) = %d, want 1 shared-size item", len(detail.Items))
 	}
-	if detail.Items[0].Item.TargetGroupKey != "size:1200x1200" {
-		t.Fatalf("detail.Items[0].Item.TargetGroupKey = %q, want size:1200x1200", detail.Items[0].Item.TargetGroupKey)
+	wantGroupKey := buildStudioBatchSharedCompatibilityGroupKey(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200))
+	if detail.Items[0].Item.TargetGroupKey != wantGroupKey {
+		t.Fatalf("detail.Items[0].Item.TargetGroupKey = %q, want %q", detail.Items[0].Item.TargetGroupKey, wantGroupKey)
 	}
 	if detail.Items[0].Item.SelectionCount != 2 {
 		t.Fatalf("detail.Items[0].Item.SelectionCount = %d, want 2", detail.Items[0].Item.SelectionCount)
@@ -722,7 +726,14 @@ func TestServiceApproveStudioBatchDesignsUpdatesReviewStatusFromDesignIDs(t *tes
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -772,7 +783,14 @@ func TestServiceApproveStudioBatchDesignsRejectsUnknownDesignIDs(t *testing.T) {
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -1150,6 +1168,171 @@ func TestServicePrepareRetryStudioBatchItemsResetsRelatedBatchRunState(t *testin
 	}
 }
 
+func TestRetryStudioBatchItems_RejectsItemWithCreatedTaskLinks(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1200x1200",
+			TargetGroupLabel: "1200 x 1200",
+			Status:           StudioBatchItemStatusFailed,
+			LastError:        "previous generation failed after task creation",
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}, []StudioGenerationAttemptRecord{
+		{
+			ID:           "attempt-1",
+			ItemID:       "item-1",
+			AttemptNo:    1,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: "previous generation failed after task creation",
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		},
+	}, []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	mustCreateStudioBatchTaskLinkForTest(t, linkRepo, ctx, &StudioBatchTaskLinkRecord{
+		ID:               "link-1",
+		BatchID:          "batch-1",
+		ItemID:           "item-1",
+		DesignID:         "design-1",
+		SelectionID:      "selection-1",
+		ListingKitTaskID: "task-1",
+		CandidateKey:     "candidate-1",
+		Status:           studioBatchTaskLinkStatusCreated,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	})
+
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		batchTaskLinkRepo: linkRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(_ context.Context, _ StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				t.Fatal("execute should not run when retry item has created task links")
+				return nil, nil
+			},
+		}),
+	})
+
+	_, err := svc.RetryStudioBatchItems(ctx, "batch-1", &RetryStudioBatchItemsRequest{
+		ItemIDs: []string{"item-1"},
+	})
+	if !errors.Is(err, ErrStudioBatchActionValidation) {
+		t.Fatalf("RetryStudioBatchItems() error = %v, want validation error", err)
+	}
+	if !strings.Contains(err.Error(), "tasks_already_created") {
+		t.Fatalf("RetryStudioBatchItems() error = %v, want tasks_already_created", err)
+	}
+
+	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if got := detail.Items[0].Status; got != StudioBatchItemStatusFailed {
+		t.Fatalf("item status = %q, want failed after rejected retry", got)
+	}
+	if got := detail.DesignsByItem["item-1"]; len(got) != 1 || got[0].ID != "design-1" {
+		t.Fatalf("item designs = %+v, want original task-linked design preserved", got)
+	}
+}
+
+func TestRetryStudioBatchItems_AllowsFailedItemWithoutTaskLinks(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.Status = StudioBatchStatusFailed
+	if err := repo.CreateStudioBatchGraph(ctx, batch, []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1200x1200",
+			TargetGroupLabel: "1200 x 1200",
+			Status:           StudioBatchItemStatusFailed,
+			LastError:        "timed out",
+			SelectionCount:   1,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}, []StudioGenerationAttemptRecord{
+		{
+			ID:           "attempt-1",
+			ItemID:       "item-1",
+			AttemptNo:    1,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: "timed out",
+			CreatedAt:    now,
+			UpdatedAt:    now,
+		},
+	}, nil); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		batchTaskLinkRepo: linkRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(_ context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				return &StudioBatchGenerateExecutionOutput{
+					BatchID: input.BatchID,
+					ItemID:  input.ItemID,
+					Response: &StudioDesignResponse{
+						Images: []StudioGeneratedImage{{
+							ID:       "design-1-retry",
+							ImageURL: "https://cdn.example.com/design-1-retry.png",
+						}},
+					},
+				}, nil
+			},
+			currentTime: func() time.Time { return now.Add(time.Second) },
+		}),
+	})
+
+	detail, err := svc.RetryStudioBatchItems(ctx, "batch-1", &RetryStudioBatchItemsRequest{
+		ItemIDs: []string{"item-1"},
+	})
+	if err != nil {
+		t.Fatalf("RetryStudioBatchItems() error = %v", err)
+	}
+	if len(detail.Items) != 1 {
+		t.Fatalf("len(detail.Items) = %d, want 1", len(detail.Items))
+	}
+	if got := detail.Items[0].Item.Status; got != StudioBatchItemStatusReviewReady {
+		t.Fatalf("item status = %q, want review_ready after retry", got)
+	}
+	if got := detail.Items[0].Designs; len(got) != 1 || got[0].ID != "design-1-retry" {
+		t.Fatalf("item designs = %+v, want retry design", got)
+	}
+}
+
 func TestServiceRetryStudioBatchItemsRefreshesLatestDraftPromptBeforeRunning(t *testing.T) {
 	t.Parallel()
 
@@ -1399,7 +1582,14 @@ func TestServiceCreateStudioBatchTasksUsesApprovedDesignOwnership(t *testing.T) 
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -1483,12 +1673,16 @@ func TestServiceCreateStudioBatchTasksRejectsInFlightBatchWithoutPartialAllowanc
 	now := time.Now().UTC()
 	batch := newStudioBatchRecordForTest("batch-1", now)
 	batch.Status = StudioBatchStatusGenerating
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
 	items := []StudioBatchItemRecord{
 		{
 			ID:               "item-1",
 			BatchID:          "batch-1",
 			TargetGroupKey:   "size:1200x1200",
 			TargetGroupLabel: "1200 x 1200",
+			SelectionIDs:     SheinStudioStringList{"selection-1"},
 			Status:           StudioBatchItemStatusReviewReady,
 			SelectionCount:   1,
 			CreatedAt:        now,
@@ -1560,12 +1754,16 @@ func TestServiceCreateStudioBatchTasksAllowsExplicitPartialCreationWhileGenerati
 	now := time.Now().UTC()
 	batch := newStudioBatchRecordForTest("batch-1", now)
 	batch.Status = StudioBatchStatusGenerating
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
 	items := []StudioBatchItemRecord{
 		{
 			ID:               "item-1",
 			BatchID:          "batch-1",
 			TargetGroupKey:   "size:1200x1200",
 			TargetGroupLabel: "1200 x 1200",
+			SelectionIDs:     SheinStudioStringList{"selection-1"},
 			Status:           StudioBatchItemStatusReviewReady,
 			SelectionCount:   1,
 			CreatedAt:        now,
@@ -1634,7 +1832,14 @@ func TestServiceCreateStudioBatchTasks_UsesBatchGraphWithoutSession(t *testing.T
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -1665,6 +1870,372 @@ func TestServiceCreateStudioBatchTasks_UsesBatchGraphWithoutSession(t *testing.T
 	}
 }
 
+func TestServiceCreateStudioBatchTasks_FansOutEachDesignToEveryCompatibleSelection(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedImageMode = "shared_by_size"
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3001, "Red", "870", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+		studioBatchFanOutSelection("selection-2", 3002, "Blue", "871", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+		studioBatchFanOutSelection("selection-3", 3003, "Green", "872", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := []StudioBatchItemRecord{{
+		ID:               "item-1",
+		BatchID:          "batch-1",
+		TargetGroupKey:   "size:1200x1200",
+		TargetGroupLabel: "1200 x 1200",
+		SelectionIDs:     SheinStudioStringList{"selection-1", "selection-2", "selection-3"},
+		GroupMode:        "shared_by_size",
+		Status:           StudioBatchItemStatusReviewReady,
+		SelectionCount:   3,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}}
+	designs := []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		{
+			ID:              "design-2",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-2.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now.Add(time.Second),
+			UpdatedAt:       now.Add(time.Second),
+		},
+	}
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, items, nil, designs); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	svc := &service{repo: taskRepo, studioDeps: studioDependencies{batchRepo: batchRepo}}
+	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
+
+	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
+		DesignIDs: []string{"design-1", "design-2"},
+	})
+	if err != nil {
+		t.Fatalf("CreateStudioBatchTasks() error = %v", err)
+	}
+	if len(result.CreatedTasks) != 6 {
+		t.Fatalf("created tasks = %+v, want 6", result.CreatedTasks)
+	}
+	if len(result.RejectedTasks) != 0 {
+		t.Fatalf("rejected tasks = %+v, want none", result.RejectedTasks)
+	}
+
+	gotTuples := make(map[string]struct{}, len(result.CreatedTasks))
+	for _, task := range result.CreatedTasks {
+		if task.ItemID != "item-1" {
+			t.Fatalf("created task item id = %q, want item-1 in %+v", task.ItemID, task)
+		}
+		if task.SelectionID == "" {
+			t.Fatalf("created task = %+v, want selection_id", task)
+		}
+		gotTuples[task.DesignID+":"+task.SelectionID] = struct{}{}
+		persisted, err := taskRepo.GetTask(ctx, task.ID)
+		if err != nil {
+			t.Fatalf("GetTask(%q) error = %v", task.ID, err)
+		}
+		if persisted.Request == nil || persisted.Request.Options == nil || persisted.Request.Options.SDS == nil {
+			t.Fatalf("persisted task request = %+v, want SDS metadata", persisted.Request)
+		}
+	}
+
+	wantTuples := []string{
+		"design-1:selection-1",
+		"design-1:selection-2",
+		"design-1:selection-3",
+		"design-2:selection-1",
+		"design-2:selection-2",
+		"design-2:selection-3",
+	}
+	for _, tuple := range wantTuples {
+		if _, ok := gotTuples[tuple]; !ok {
+			t.Fatalf("created design/selection tuples = %v, missing %s", gotTuples, tuple)
+		}
+	}
+}
+
+func TestServiceCreateStudioBatchTasks_FansOutHonorsRequestDesignOrder(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedImageMode = "shared_by_size"
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3001, "Red", "870", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+		studioBatchFanOutSelection("selection-2", 3002, "Blue", "871", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := []StudioBatchItemRecord{{
+		ID:               "item-1",
+		BatchID:          "batch-1",
+		TargetGroupKey:   "size:1200x1200",
+		TargetGroupLabel: "1200 x 1200",
+		SelectionIDs:     SheinStudioStringList{"selection-1", "selection-2"},
+		GroupMode:        "shared_by_size",
+		Status:           StudioBatchItemStatusReviewReady,
+		SelectionCount:   2,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}}
+	designs := []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			SortOrder:       0,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+		{
+			ID:              "design-2",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-2.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			SortOrder:       1,
+			CreatedAt:       now.Add(time.Second),
+			UpdatedAt:       now.Add(time.Second),
+		},
+	}
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, items, nil, designs); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	svc := &service{repo: taskRepo, studioDeps: studioDependencies{batchRepo: batchRepo}}
+	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
+
+	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
+		DesignIDs: []string{"design-2", "design-1"},
+	})
+	if err != nil {
+		t.Fatalf("CreateStudioBatchTasks() error = %v", err)
+	}
+
+	got := make([]string, 0, len(result.CreatedTasks))
+	for _, task := range result.CreatedTasks {
+		got = append(got, task.DesignID+":"+task.SelectionID)
+	}
+	want := []string{
+		"design-2:selection-1",
+		"design-2:selection-2",
+		"design-1:selection-1",
+		"design-1:selection-2",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("created task tuple order = %v, want %v", got, want)
+	}
+}
+
+func TestBuildStudioBatchTaskCandidates_PerProductRequiresOneSelection(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedImageMode = "per_product"
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3001, "Red", "870", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+		studioBatchFanOutSelection("selection-2", 3002, "Blue", "871", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	item := StudioBatchItemRecord{
+		ID:           "item-1",
+		BatchID:      "batch-1",
+		SelectionIDs: SheinStudioStringList{"selection-1", "selection-2"},
+		GroupMode:    "per_product",
+	}
+	design := StudioMaterializedDesignRecord{
+		ID:           "design-1",
+		BatchID:      "batch-1",
+		ItemID:       "item-1",
+		ImageURL:     "https://cdn.example.com/design-1.png",
+		ReviewStatus: StudioMaterializedDesignReviewStatusApproved,
+	}
+
+	var svc taskStudioBatchService
+	candidates, rejected, err := svc.buildStudioBatchTaskCandidates(context.Background(), nil, batch, &StudioBatchDetailGraph{
+		Batch: batch,
+		Items: []StudioBatchItemRecord{item},
+	}, []StudioMaterializedDesignRecord{design})
+	if err != nil {
+		t.Fatalf("buildStudioBatchTaskCandidates() error = %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("candidates = %+v, want none", candidates)
+	}
+	if len(rejected) != 1 {
+		t.Fatalf("rejected = %+v, want 1", rejected)
+	}
+	if got := rejected[0].ReasonCode; got != "selection_cardinality_mismatch" {
+		t.Fatalf("reason code = %q, want selection_cardinality_mismatch", got)
+	}
+	if rejected[0].DesignID != "design-1" || rejected[0].ItemID != "item-1" {
+		t.Fatalf("rejected task = %+v, want design/item relationship", rejected[0])
+	}
+}
+
+func TestBuildStudioBatchTaskCandidates_SharedMismatchReturnsStructuredRejection(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedImageMode = "shared_by_size"
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3001, "Red", "870", "https://cdn.example.com/template-a.png", "https://cdn.example.com/mask.png"),
+		studioBatchFanOutSelection("selection-2", 3002, "Blue", "871", "https://cdn.example.com/template-b.png", "https://cdn.example.com/mask.png"),
+	}
+	item := StudioBatchItemRecord{
+		ID:           "item-1",
+		BatchID:      "batch-1",
+		SelectionIDs: SheinStudioStringList{"selection-1", "selection-2"},
+		GroupMode:    "shared_by_size",
+	}
+	design := StudioMaterializedDesignRecord{
+		ID:           "design-1",
+		BatchID:      "batch-1",
+		ItemID:       "item-1",
+		ImageURL:     "https://cdn.example.com/design-1.png",
+		ReviewStatus: StudioMaterializedDesignReviewStatusApproved,
+	}
+
+	var svc taskStudioBatchService
+	candidates, rejected, err := svc.buildStudioBatchTaskCandidates(context.Background(), nil, batch, &StudioBatchDetailGraph{
+		Batch: batch,
+		Items: []StudioBatchItemRecord{item},
+	}, []StudioMaterializedDesignRecord{design})
+	if err != nil {
+		t.Fatalf("buildStudioBatchTaskCandidates() error = %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("candidates = %+v, want none", candidates)
+	}
+	if len(rejected) != 1 {
+		t.Fatalf("rejected = %+v, want 1", rejected)
+	}
+	if got := rejected[0].ReasonCode; got != "compatibility_mismatch" {
+		t.Fatalf("reason code = %q, want compatibility_mismatch", got)
+	}
+	if rejected[0].DesignID != "design-1" || rejected[0].ItemID != "item-1" || rejected[0].SelectionID != "selection-2" {
+		t.Fatalf("rejected task = %+v, want structured mismatch on second selection", rejected[0])
+	}
+}
+
+func TestBuildStudioBatchTaskCandidates_PartialMissingOwnedSelectionReturnsCandidateAndRejection(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedImageMode = "shared_by_size"
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3001, "Red", "870", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	item := StudioBatchItemRecord{
+		ID:           "item-1",
+		BatchID:      "batch-1",
+		SelectionIDs: SheinStudioStringList{"selection-1", "selection-owned-missing"},
+		GroupMode:    "shared_by_size",
+	}
+	design := StudioMaterializedDesignRecord{
+		ID:           "design-1",
+		BatchID:      "batch-1",
+		ItemID:       "item-1",
+		ImageURL:     "https://cdn.example.com/design-1.png",
+		ReviewStatus: StudioMaterializedDesignReviewStatusApproved,
+	}
+
+	var svc taskStudioBatchService
+	candidates, rejected, err := svc.buildStudioBatchTaskCandidates(context.Background(), nil, batch, &StudioBatchDetailGraph{
+		Batch: batch,
+		Items: []StudioBatchItemRecord{item},
+	}, []StudioMaterializedDesignRecord{design})
+	if err != nil {
+		t.Fatalf("buildStudioBatchTaskCandidates() error = %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("candidates = %+v, want one valid owned selection candidate", candidates)
+	}
+	if candidates[0].SelectionID != "selection-1" {
+		t.Fatalf("candidate selection id = %q, want selection-1", candidates[0].SelectionID)
+	}
+	if len(rejected) != 1 {
+		t.Fatalf("rejected = %+v, want 1 missing-selection rejection", rejected)
+	}
+	if got := rejected[0].ReasonCode; got != "selection_not_in_batch" {
+		t.Fatalf("reason code = %q, want selection_not_in_batch", got)
+	}
+	if rejected[0].DesignID != "design-1" || rejected[0].ItemID != "item-1" || rejected[0].SelectionID != "selection-owned-missing" {
+		t.Fatalf("rejected task = %+v, want structured missing selection rejection", rejected[0])
+	}
+}
+
+func TestBuildStudioBatchTaskCandidates_DoesNotFallbackToAllBatchSelectionsForOwnedItem(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedImageMode = "shared_by_size"
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-other", 3001, "Red", "870", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	item := StudioBatchItemRecord{
+		ID:           "item-1",
+		BatchID:      "batch-1",
+		SelectionIDs: SheinStudioStringList{"selection-owned-missing"},
+		GroupMode:    "shared_by_size",
+	}
+	design := StudioMaterializedDesignRecord{
+		ID:           "design-1",
+		BatchID:      "batch-1",
+		ItemID:       "item-1",
+		ImageURL:     "https://cdn.example.com/design-1.png",
+		ReviewStatus: StudioMaterializedDesignReviewStatusApproved,
+	}
+
+	var svc taskStudioBatchService
+	candidates, rejected, err := svc.buildStudioBatchTaskCandidates(context.Background(), nil, batch, &StudioBatchDetailGraph{
+		Batch: batch,
+		Items: []StudioBatchItemRecord{item},
+	}, []StudioMaterializedDesignRecord{design})
+	if err != nil {
+		t.Fatalf("buildStudioBatchTaskCandidates() error = %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("candidates = %+v, want no fallback candidate from unrelated batch selections", candidates)
+	}
+	if len(rejected) != 1 {
+		t.Fatalf("rejected = %+v, want 1", rejected)
+	}
+	if got := rejected[0].ReasonCode; got != "selection_not_in_batch" {
+		t.Fatalf("reason code = %q, want selection_not_in_batch", got)
+	}
+	if got := rejected[0].SelectionID; got != "selection-owned-missing" {
+		t.Fatalf("rejected selection id = %q, want selection-owned-missing", got)
+	}
+}
+
 func TestServiceCreateStudioBatchTasks_RejectsCompatibilityMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -1677,40 +2248,47 @@ func TestServiceCreateStudioBatchTasks_RejectsCompatibilityMismatch(t *testing.T
 	batch.GroupedImageMode = "shared_by_size"
 	batch.GroupedSelections = SheinStudioGroupedSelectionList{
 		{
-			SelectionID: "selection-1",
+			SelectionID:  "selection-1",
+			SheinStoreID: "9001",
 			Selection: SheinStudioSelection{
-				ProductID:        1001,
-				ParentProductID:  2002,
-				VariantID:        3003,
-				PrototypeGroupID: 4004,
-				LayerID:          "layer-front",
-				DesignType:       "material",
-				PrintableWidth:   1200,
-				PrintableHeight:  1200,
-				TemplateImageURL: "https://cdn.example.com/template-a.png",
-				MaskImageURL:     "https://cdn.example.com/mask-a.png",
+				ProductID:          1001,
+				ParentProductID:    2002,
+				VariantID:          3003,
+				PrototypeGroupID:   4004,
+				LayerID:            "layer-front",
+				DesignType:         "material",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				TemplateImageURL:   "https://cdn.example.com/template-a.png",
+				MaskImageURL:       "https://cdn.example.com/mask-a.png",
+				SelectedVariantIDs: []int64{3003},
 			},
 			Eligible: true,
 		},
 		{
-			SelectionID: "selection-2",
+			SelectionID:  "selection-2",
+			SheinStoreID: "9001",
 			Selection: SheinStudioSelection{
-				ProductID:        1001,
-				ParentProductID:  2002,
-				VariantID:        3004,
-				PrototypeGroupID: 4004,
-				LayerID:          "layer-front",
-				DesignType:       "material",
-				PrintableWidth:   1200,
-				PrintableHeight:  1200,
-				TemplateImageURL: "https://cdn.example.com/template-b.png",
-				MaskImageURL:     "https://cdn.example.com/mask-a.png",
+				ProductID:          1001,
+				ParentProductID:    2002,
+				VariantID:          3004,
+				PrototypeGroupID:   4004,
+				LayerID:            "layer-front",
+				DesignType:         "material",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				TemplateImageURL:   "https://cdn.example.com/template-b.png",
+				MaskImageURL:       "https://cdn.example.com/mask-a.png",
+				SelectedVariantIDs: []int64{3004},
 			},
 			Eligible: true,
 		},
 	}
 
-	if err := repo.CreateStudioBatchGraph(ctx, batch, newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1", "selection-2"}
+	items[0].SelectionCount = 2
+	if err := repo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:              "design-1",
 			BatchID:         "batch-1",
@@ -1751,7 +2329,14 @@ func TestServiceCreateStudioBatchTasksCreatesRealListingKitTasks(t *testing.T) {
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	now := time.Now().UTC()
 
-	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3003, "Red", "869", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
 		{
 			ID:               "design-1",
 			BatchID:          "batch-1",
@@ -1882,15 +2467,19 @@ func TestServiceCreateStudioBatchTasksUsesItemSelectionOwnershipForGroupedProduc
 			SheinStoreID: "870",
 			Eligible:     true,
 			Selection: SheinStudioSelection{
-				ProductID:        1002,
-				ParentProductID:  2002,
-				VariantID:        4004,
-				PrototypeGroupID: 5005,
-				LayerID:          "layer-group",
-				ProductName:      "Grouped Wallet",
-				VariantLabel:     "White",
-				PrintableWidth:   1200,
-				PrintableHeight:  1200,
+				ProductID:          1002,
+				ParentProductID:    2002,
+				VariantID:          4004,
+				PrototypeGroupID:   5005,
+				LayerID:            "layer-group",
+				DesignType:         "material",
+				ProductName:        "Grouped Wallet",
+				VariantLabel:       "White",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				TemplateImageURL:   "https://cdn.example.com/group-template.png",
+				MaskImageURL:       "https://cdn.example.com/group-mask.png",
+				SelectedVariantIDs: []int64{4004},
 			},
 		},
 	}
@@ -2147,14 +2736,828 @@ func TestServiceCreateStudioBatchTasksReusesExistingTasksForRepeatedRequests(t *
 	if err != nil {
 		t.Fatalf("second CreateStudioBatchTasks() error = %v", err)
 	}
-	if len(second.CreatedTasks) != 1 {
-		t.Fatalf("second created tasks = %+v, want 1 reused task", second.CreatedTasks)
+	if len(second.CreatedTasks) != 0 {
+		t.Fatalf("second created tasks = %+v, want no newly created task", second.CreatedTasks)
 	}
-	if second.CreatedTasks[0].ID != first.CreatedTasks[0].ID {
-		t.Fatalf("second created task id = %q, want reused %q", second.CreatedTasks[0].ID, first.CreatedTasks[0].ID)
+	if len(second.ReusedTasks) != 1 {
+		t.Fatalf("second reused tasks = %+v, want 1 reused task", second.ReusedTasks)
+	}
+	if second.ReusedTasks[0].ID != first.CreatedTasks[0].ID {
+		t.Fatalf("second reused task id = %q, want %q", second.ReusedTasks[0].ID, first.CreatedTasks[0].ID)
 	}
 	if got := len(taskRepo.tasks); got != 1 {
 		t.Fatalf("persisted task count = %d, want 1 without duplicates", got)
+	}
+}
+
+func TestServiceCreateStudioBatchTasks_ReusesDurableLinkedTaskWithoutSession(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	svc := &service{
+		repo: taskRepo,
+		studioDeps: studioDependencies{
+			batchRepo:         batchRepo,
+			batchTaskLinkRepo: linkRepo,
+		},
+		taskDeps: taskDependencies{
+			taskSubmitter: &studioBatchTaskSubmitterStub{},
+		},
+	}
+
+	first, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+	if err != nil {
+		t.Fatalf("first CreateStudioBatchTasks() error = %v", err)
+	}
+	if len(first.CreatedTasks) != 1 {
+		t.Fatalf("first created tasks = %+v, want 1", first.CreatedTasks)
+	}
+
+	second, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+	if err != nil {
+		t.Fatalf("second CreateStudioBatchTasks() error = %v", err)
+	}
+	if len(second.CreatedTasks) != 0 {
+		t.Fatalf("second created tasks = %+v, want no newly created task", second.CreatedTasks)
+	}
+	if len(second.ReusedTasks) != 1 {
+		t.Fatalf("second reused tasks = %+v, want 1 reused durable task", second.ReusedTasks)
+	}
+	if second.ReusedTasks[0].ID != first.CreatedTasks[0].ID {
+		t.Fatalf("second reused task id = %q, want %q", second.ReusedTasks[0].ID, first.CreatedTasks[0].ID)
+	}
+	if got := taskRepo.taskCount(); got != 1 {
+		t.Fatalf("persisted task count = %d, want 1", got)
+	}
+}
+
+func TestServiceCreateStudioBatchTasks_ReusesLegacyLinkWriteFailureSurfacesFailedTask(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := &failingStudioBatchTaskLinkRepository{delegate: NewMemStudioBatchTaskLinkRepository(), failCreate: true}
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	taskRepo.tasks["legacy-task-1"] = &Task{
+		ID:     "legacy-task-1",
+		Status: TaskStatusPending,
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://cdn.example.com/design-1.png"},
+			Options: &GenerateOptions{
+				SheinStudio: &SheinStudioOptions{StyleID: buildStudioBatchTaskStyleID("design-1")},
+				SDS: &SDSSyncOptions{
+					VariantID:        3003,
+					ParentProductID:  2002,
+					PrototypeGroupID: 4004,
+					LayerID:          "layer-1",
+				},
+			},
+		},
+	}
+	sessionRepo := &studioBatchTaskCreationSessionRepoStub{session: &SheinStudioSession{
+		ID: "batch-1",
+		Selection: SheinStudioSelectionSnapshot{
+			ParentProductID:  2002,
+			VariantID:        3003,
+			PrototypeGroupID: 4004,
+			LayerID:          "layer-1",
+		},
+		CreatedTasks: SheinStudioCreatedTaskList{{ID: "legacy-task-1", DesignID: "design-1", Title: "Legacy style"}},
+	}}
+	svc := &service{
+		repo: taskRepo,
+		studioDeps: studioDependencies{
+			batchRepo:         batchRepo,
+			batchTaskLinkRepo: linkRepo,
+			sessionRepo:       sessionRepo,
+		},
+		taskDeps: taskDependencies{taskSubmitter: &studioBatchTaskSubmitterStub{}},
+	}
+
+	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+	if err != nil {
+		t.Fatalf("CreateStudioBatchTasks() error = %v", err)
+	}
+	if len(result.CreatedTasks) != 0 {
+		t.Fatalf("created tasks = %+v, want none when durable legacy backfill fails", result.CreatedTasks)
+	}
+	if len(result.FailedTasks) != 1 || !strings.Contains(result.FailedTasks[0].Message, "forced link create failure") {
+		t.Fatalf("failed tasks = %+v, want surfaced durable link write failure", result.FailedTasks)
+	}
+	if got := taskRepo.taskCount(); got != 1 {
+		t.Fatalf("persisted task count = %d, want no new duplicate task", got)
+	}
+}
+
+func TestServiceCreateStudioBatchTasks_ConcurrentRequestsCreateOneTask(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	svc := &service{
+		repo: taskRepo,
+		studioDeps: studioDependencies{
+			batchRepo:         batchRepo,
+			batchTaskLinkRepo: linkRepo,
+		},
+		taskDeps: taskDependencies{
+			taskSubmitter: &studioBatchTaskSubmitterStub{},
+		},
+	}
+
+	var wg sync.WaitGroup
+	results := make([]*CreateStudioBatchTasksResult, 2)
+	errs := make([]error, 2)
+	for index := 0; index < 2; index++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			results[index], errs[index] = svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+		}(index)
+	}
+	wg.Wait()
+
+	for index, err := range errs {
+		if err != nil {
+			t.Fatalf("CreateStudioBatchTasks(%d) error = %v", index, err)
+		}
+		if ids := studioBatchResultTaskIDs(results[index]); len(ids) != 1 {
+			t.Fatalf("CreateStudioBatchTasks(%d) result = %+v, want one task", index, results[index])
+		}
+	}
+	leftIDs := studioBatchResultTaskIDs(results[0])
+	rightIDs := studioBatchResultTaskIDs(results[1])
+	if leftIDs[0] != rightIDs[0] {
+		t.Fatalf("concurrent task ids = %q and %q, want same task", leftIDs[0], rightIDs[0])
+	}
+	if got := taskRepo.taskCount(); got != 1 {
+		t.Fatalf("persisted task count = %d, want 1", got)
+	}
+}
+
+func TestServiceCreateStudioBatchTasks_ConcurrentSlowOwnerReturnsOneTask(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3001, "Red", "9001", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	items := newStudioBatchItemsForTest("batch-1", now)
+	items[0].SelectionIDs = SheinStudioStringList{"selection-1"}
+	items[0].SelectionCount = 1
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, items, newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	var createCalls atomic.Int64
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var startedOnce sync.Once
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              batchRepo,
+		batchTaskLinkRepo: linkRepo,
+		createGenerateTask: func(ctx context.Context, req *GenerateRequest) (*Task, error) {
+			startedOnce.Do(func() { close(started) })
+			createCalls.Add(1)
+			<-release
+			task := &Task{ID: "slow-task-1", Status: TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
+			if err := taskRepo.CreateTask(ctx, task); err != nil {
+				return nil, err
+			}
+			return task, nil
+		},
+		getTask: taskRepo.GetTask,
+	})
+
+	var wg sync.WaitGroup
+	results := make([]*CreateStudioBatchTasksResult, 2)
+	errs := make([]error, 2)
+	firstDone := make(chan struct{})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(firstDone)
+		results[0], errs[0] = svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+	}()
+	select {
+	case <-started:
+	case <-firstDone:
+		t.Fatalf("first CreateStudioBatchTasks returned before task creation started: result=%+v err=%v", results[0], errs[0])
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for first task creation to start")
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		results[1], errs[1] = svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+	}()
+	time.Sleep(200 * time.Millisecond)
+	close(release)
+	wg.Wait()
+
+	for index, err := range errs {
+		if err != nil {
+			t.Fatalf("CreateStudioBatchTasks(%d) error = %v", index, err)
+		}
+		if ids := studioBatchResultTaskIDs(results[index]); len(ids) != 1 {
+			t.Fatalf("CreateStudioBatchTasks(%d) result = %+v, want one task", index, results[index])
+		}
+	}
+	leftIDs := studioBatchResultTaskIDs(results[0])
+	rightIDs := studioBatchResultTaskIDs(results[1])
+	if leftIDs[0] != rightIDs[0] {
+		t.Fatalf("concurrent task ids = %q and %q, want same task", leftIDs[0], rightIDs[0])
+	}
+	if got := createCalls.Load(); got != 1 {
+		t.Fatalf("create calls = %d, want 1", got)
+	}
+}
+
+func TestServiceCreateStudioBatchTasks_ConcurrentStaleCreatingRecoveryCreatesOneTask(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	baseLinkRepo := NewMemStudioBatchTaskLinkRepository()
+	linkRepo := newSynchronizedStaleCreatingLinkRepository(baseLinkRepo)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	candidateKey := buildStudioBatchTaskCandidateKey(ctx, batch, studioBatchTaskCandidate{
+		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
+		Item:         StudioBatchItemRecord{ID: "item-1"},
+		SelectionID:  "selection-1",
+		SheinStoreID: 9001,
+	})
+	linkRepo.candidateKey = candidateKey
+	if err := baseLinkRepo.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID:           "creating-link-1",
+		BatchID:      "batch-1",
+		ItemID:       "item-1",
+		DesignID:     "design-1",
+		SelectionID:  "selection-1",
+		SheinStoreID: 9001,
+		CandidateKey: candidateKey,
+		Status:       studioBatchTaskLinkStatusCreating,
+		CreatedAt:    now.Add(-10 * time.Minute),
+		UpdatedAt:    now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink(creating) error = %v", err)
+	}
+
+	var sequence atomic.Int64
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              batchRepo,
+		batchTaskLinkRepo: linkRepo,
+		createGenerateTask: func(ctx context.Context, req *GenerateRequest) (*Task, error) {
+			id := fmt.Sprintf("stale-recovery-task-%d", sequence.Add(1))
+			task := &Task{ID: id, Status: TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
+			if err := taskRepo.CreateTask(ctx, task); err != nil {
+				return nil, err
+			}
+			return task, nil
+		},
+		getTask: taskRepo.GetTask,
+	})
+
+	var wg sync.WaitGroup
+	results := make([]*CreateStudioBatchTasksResult, 2)
+	errs := make([]error, 2)
+	for index := range results {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			results[index], errs[index] = svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+		}(index)
+	}
+	wg.Wait()
+
+	for index, err := range errs {
+		if err != nil {
+			t.Fatalf("CreateStudioBatchTasks(%d) error = %v", index, err)
+		}
+		if results[index] == nil || len(results[index].CreatedTasks) != 1 {
+			t.Fatalf("CreateStudioBatchTasks(%d) result = %+v, want one task", index, results[index])
+		}
+	}
+	if results[0].CreatedTasks[0].ID != results[1].CreatedTasks[0].ID {
+		t.Fatalf("stale recovery task ids = %q and %q, want same task", results[0].CreatedTasks[0].ID, results[1].CreatedTasks[0].ID)
+	}
+	if got := taskRepo.taskCount(); got != 1 {
+		t.Fatalf("persisted task count = %d, want exactly one task", got)
+	}
+}
+
+func TestStudioBatchDetail_LoadsCreatedTasksFromDurableLinks(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	svc := &service{
+		repo: taskRepo,
+		studioDeps: studioDependencies{
+			batchRepo:         batchRepo,
+			batchTaskLinkRepo: linkRepo,
+		},
+		taskDeps: taskDependencies{
+			taskSubmitter: &studioBatchTaskSubmitterStub{},
+		},
+	}
+	created, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+	if err != nil {
+		t.Fatalf("CreateStudioBatchTasks() error = %v", err)
+	}
+	if len(created.CreatedTasks) != 1 {
+		t.Fatalf("created tasks = %+v, want 1", created.CreatedTasks)
+	}
+
+	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if len(detail.CreatedTasks) != 1 {
+		t.Fatalf("detail created tasks = %+v, want durable linked task", detail.CreatedTasks)
+	}
+	if detail.CreatedTasks[0].ID != created.CreatedTasks[0].ID {
+		t.Fatalf("detail task id = %q, want %q", detail.CreatedTasks[0].ID, created.CreatedTasks[0].ID)
+	}
+	if detail.CreatedTasks[0].Status != "task_created" {
+		t.Fatalf("detail task status = %q, want task_created", detail.CreatedTasks[0].Status)
+	}
+}
+
+func TestStudioBatchDetail_LoadsCreatedTasksPreservesLegacyMetadataFromDurableLinks(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	taskRepo.tasks["task-1"] = &Task{ID: "task-1", Status: TaskStatusPending}
+	mustCreateStudioBatchTaskLinkForTest(t, linkRepo, ctx, &StudioBatchTaskLinkRecord{
+		ID:               "link-1",
+		BatchID:          "batch-1",
+		ItemID:           "item-1",
+		DesignID:         "design-1",
+		SelectionID:      "selection-1",
+		SheinStoreID:     9001,
+		ListingKitTaskID: "task-1",
+		CandidateKey:     "candidate-1",
+		Status:           studioBatchTaskLinkStatusCreated,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	})
+	sessionRepo := &studioBatchTaskCreationSessionRepoStub{session: &SheinStudioSession{
+		ID:           "batch-1",
+		SavedAsBatch: true,
+		UpdatedAt:    now,
+		CreatedTasks: SheinStudioCreatedTaskList{{
+			ID:                       "task-1",
+			Title:                    "Rich legacy title",
+			DesignID:                 "design-1",
+			ItemID:                   "item-1",
+			SelectionID:              "selection-1",
+			CompatibilityFingerprint: "legacy-fingerprint",
+			Status:                   "ready_to_submit",
+			Message:                  "legacy message",
+		}},
+	}}
+	svc := &service{
+		repo: taskRepo,
+		studioDeps: studioDependencies{
+			batchRepo:         batchRepo,
+			batchTaskLinkRepo: linkRepo,
+			sessionRepo:       sessionRepo,
+		},
+		taskDeps: taskDependencies{taskSubmitter: &studioBatchTaskSubmitterStub{}},
+	}
+
+	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if len(detail.CreatedTasks) != 1 {
+		t.Fatalf("created tasks = %+v, want one deduped task", detail.CreatedTasks)
+	}
+	if got := detail.CreatedTasks[0].Title; got != "Rich legacy title" {
+		t.Fatalf("title = %q, want richer legacy title", got)
+	}
+	if got := detail.CreatedTasks[0].Message; got != "legacy message" {
+		t.Fatalf("message = %q, want richer legacy message", got)
+	}
+}
+
+func TestStudioBatchDetail_ProjectsCreatedTaskSubmissionStateFromListingKitTask(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	taskRepo.tasks["task-1"] = &Task{
+		ID:     "task-1",
+		Status: TaskStatusCompleted,
+		Result: &ListingKitResult{
+			Shein: &SheinPackage{
+				Submission: &sheinpub.SubmissionReport{
+					LastAction: "save_draft",
+					LastStatus: sheinpub.SubmissionStatusSuccess,
+				},
+			},
+		},
+	}
+	mustCreateStudioBatchTaskLinkForTest(t, linkRepo, ctx, &StudioBatchTaskLinkRecord{
+		ID:                       "link-1",
+		BatchID:                  "batch-1",
+		ItemID:                   "item-1",
+		DesignID:                 "design-1",
+		SelectionID:              "selection-1",
+		CompatibilityFingerprint: "compat-1",
+		SheinStoreID:             9001,
+		ListingKitTaskID:         "task-1",
+		CandidateKey:             "candidate-1",
+		Status:                   studioBatchTaskLinkStatusCreated,
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	})
+	svc := &service{
+		repo: taskRepo,
+		studioDeps: studioDependencies{
+			batchRepo:         batchRepo,
+			batchTaskLinkRepo: linkRepo,
+		},
+		taskDeps: taskDependencies{taskSubmitter: &studioBatchTaskSubmitterStub{}},
+	}
+
+	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", err)
+	}
+	if len(detail.CreatedTasks) != 1 {
+		t.Fatalf("created tasks = %+v, want one task", detail.CreatedTasks)
+	}
+	task := detail.CreatedTasks[0]
+	if task.ItemID != "item-1" || task.SelectionID != "selection-1" || task.CompatibilityFingerprint != "compat-1" {
+		t.Fatalf("created task identity = %+v, want item/selection/fingerprint from durable link", task)
+	}
+	if task.Status != "draft_saved" {
+		t.Fatalf("status = %q, want draft_saved from real submission state", task.Status)
+	}
+	if task.SubmissionState != sheinpub.SubmissionStatusSuccess {
+		t.Fatalf("submission_state = %q, want success", task.SubmissionState)
+	}
+	if task.LastSubmissionAction != "save_draft" {
+		t.Fatalf("last_submission_action = %q, want save_draft", task.LastSubmissionAction)
+	}
+}
+
+func TestServiceCreateStudioBatchTasks_RecoversReservedCandidate(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	candidateKey := buildStudioBatchTaskCandidateKey(ctx, batch, studioBatchTaskCandidate{
+		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
+		Item:         StudioBatchItemRecord{ID: "item-1"},
+		SelectionID:  "selection-1",
+		SheinStoreID: 9001,
+	})
+	if err := linkRepo.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID:           "reserved-link-1",
+		BatchID:      "batch-1",
+		ItemID:       "item-1",
+		DesignID:     "design-1",
+		SelectionID:  "selection-1",
+		SheinStoreID: 9001,
+		CandidateKey: candidateKey,
+		Status:       "reserved",
+		CreatedAt:    now.Add(-time.Minute),
+		UpdatedAt:    now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink(reserved) error = %v", err)
+	}
+
+	svc := &service{
+		repo: taskRepo,
+		studioDeps: studioDependencies{
+			batchRepo:         batchRepo,
+			batchTaskLinkRepo: linkRepo,
+		},
+		taskDeps: taskDependencies{
+			taskSubmitter: &studioBatchTaskSubmitterStub{},
+		},
+	}
+
+	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+	if err != nil {
+		t.Fatalf("CreateStudioBatchTasks() error = %v", err)
+	}
+	if len(result.CreatedTasks) != 1 {
+		t.Fatalf("created tasks = %+v, want one recovered reserved candidate", result.CreatedTasks)
+	}
+	link, err := linkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if link.Status != "created" || link.ListingKitTaskID != result.CreatedTasks[0].ID {
+		t.Fatalf("link after recovery = %+v, want created with task id %q", link, result.CreatedTasks[0].ID)
+	}
+}
+
+func TestServiceCreateStudioBatchTasks_RecoversPostPersistDispatchFailureWithoutDuplicate(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	if err := batchRepo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	submitter := &studioBatchMutableSubmitter{err: fmt.Errorf("forced dispatch failure")}
+	svc := &service{
+		repo: taskRepo,
+		studioDeps: studioDependencies{
+			batchRepo:         batchRepo,
+			batchTaskLinkRepo: linkRepo,
+		},
+		taskDeps: taskDependencies{taskSubmitter: submitter},
+	}
+
+	first, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+	if err != nil {
+		t.Fatalf("first CreateStudioBatchTasks() error = %v", err)
+	}
+	if len(first.FailedTasks) != 1 {
+		t.Fatalf("first failed tasks = %+v, want dispatch failure", first.FailedTasks)
+	}
+	if got := taskRepo.taskCount(); got != 1 {
+		t.Fatalf("task count after dispatch failure = %d, want persisted failed task", got)
+	}
+	links, err := linkRepo.ListStudioBatchTaskLinksByBatchID(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("ListStudioBatchTaskLinksByBatchID() error = %v", err)
+	}
+	if len(links) != 1 || strings.TrimSpace(links[0].ListingKitTaskID) == "" {
+		t.Fatalf("links after dispatch failure = %+v, want captured persisted task id", links)
+	}
+	firstTaskID := links[0].ListingKitTaskID
+	submitter.err = nil
+	second, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+	if err != nil {
+		t.Fatalf("second CreateStudioBatchTasks() error = %v", err)
+	}
+	secondTaskIDs := studioBatchResultTaskIDs(second)
+	if len(secondTaskIDs) != 1 || secondTaskIDs[0] != firstTaskID {
+		t.Fatalf("second task ids = %+v, want existing persisted task %q", secondTaskIDs, firstTaskID)
+	}
+	if got := taskRepo.taskCount(); got != 1 {
+		t.Fatalf("task count after retry = %d, want no duplicate task", got)
+	}
+}
+
+func TestServiceCreateStudioBatchTasks_RecoversStaleCreatingCandidate(t *testing.T) {
+	t.Parallel()
+
+	batchRepo := NewMemStudioBatchRepository()
+	taskRepo := newStudioBatchTaskRepositoryStub()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	if err := batchRepo.CreateStudioBatchGraph(ctx, batch, newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), []StudioMaterializedDesignRecord{
+		{
+			ID:              "design-1",
+			BatchID:         "batch-1",
+			ItemID:          "item-1",
+			SourceAttemptID: "attempt-1",
+			ImageURL:        "https://cdn.example.com/design-1.png",
+			ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
+			CreatedAt:       now,
+			UpdatedAt:       now,
+		},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	candidateKey := buildStudioBatchTaskCandidateKey(ctx, batch, studioBatchTaskCandidate{
+		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
+		Item:         StudioBatchItemRecord{ID: "item-1"},
+		SelectionID:  "selection-1",
+		SheinStoreID: 9001,
+	})
+	if err := linkRepo.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID:           "creating-link-1",
+		BatchID:      "batch-1",
+		ItemID:       "item-1",
+		DesignID:     "design-1",
+		SelectionID:  "selection-1",
+		SheinStoreID: 9001,
+		CandidateKey: candidateKey,
+		Status:       studioBatchTaskLinkStatusCreating,
+		CreatedAt:    now.Add(-10 * time.Minute),
+		UpdatedAt:    now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink(creating) error = %v", err)
+	}
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              batchRepo,
+		batchTaskLinkRepo: linkRepo,
+		createGenerateTask: func(ctx context.Context, req *GenerateRequest) (*Task, error) {
+			task := &Task{ID: "recovered-task-1", Status: TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
+			if err := taskRepo.CreateTask(ctx, task); err != nil {
+				return nil, err
+			}
+			return task, nil
+		},
+		getTask: taskRepo.GetTask,
+	})
+
+	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
+	if err != nil {
+		t.Fatalf("CreateStudioBatchTasks() error = %v", err)
+	}
+	if len(result.CreatedTasks) != 1 || result.CreatedTasks[0].ID != "recovered-task-1" {
+		t.Fatalf("created tasks = %+v, want recovered new task", result.CreatedTasks)
+	}
+	link, err := linkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if link.Status != studioBatchTaskLinkStatusCreated || link.ListingKitTaskID != "recovered-task-1" {
+		t.Fatalf("link after stale recovery = %+v, want created recovered-task-1", link)
 	}
 }
 
@@ -2268,8 +3671,8 @@ func TestServiceCreateStudioBatchTasksReusesLegacyStyleIDTasks(t *testing.T) {
 				},
 				SDS: &SDSSyncOptions{
 					VariantID:        3003,
-					ParentProductID:  2002,
-					PrototypeGroupID: 4004,
+					ParentProductID:  7001,
+					PrototypeGroupID: 9001,
 					LayerID:          "layer-1",
 				},
 			},
@@ -2299,11 +3702,12 @@ func TestServiceCreateStudioBatchTasksReusesLegacyStyleIDTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateStudioBatchTasks() error = %v", err)
 	}
-	if len(result.CreatedTasks) != 1 {
-		t.Fatalf("created tasks = %+v, want 1 reused task", result.CreatedTasks)
+	resultTaskIDs := studioBatchResultTaskIDs(result)
+	if len(resultTaskIDs) != 1 {
+		t.Fatalf("task ids = %+v, want 1 reused task", resultTaskIDs)
 	}
-	if got := result.CreatedTasks[0].ID; got != "legacy-task-1" {
-		t.Fatalf("created task id = %q, want legacy-task-1", got)
+	if got := resultTaskIDs[0]; got != "legacy-task-1" {
+		t.Fatalf("task id = %q, want legacy-task-1", got)
 	}
 	if got := len(taskRepo.tasks); got != 1 {
 		t.Fatalf("persisted task count = %d, want 1 without duplicates", got)
@@ -2371,7 +3775,56 @@ func (s *studioBatchTaskCreationSessionRepoStub) ListTenantBatchNames(context.Co
 	return nil, nil
 }
 
+func studioBatchFanOutSelection(
+	selectionID string,
+	variantID int64,
+	variantLabel string,
+	storeID string,
+	templateURL string,
+	maskURL string,
+) SheinStudioGroupedSelection {
+	return SheinStudioGroupedSelection{
+		SelectionID:  selectionID,
+		SheinStoreID: storeID,
+		Eligible:     true,
+		Selection: SheinStudioSelection{
+			ProductID:          variantID,
+			ParentProductID:    7001,
+			VariantID:          variantID,
+			PrototypeGroupID:   9001,
+			LayerID:            "layer-1",
+			DesignType:         "material",
+			ProductName:        "Canvas Tote",
+			VariantLabel:       variantLabel,
+			PrintableWidth:     1200,
+			PrintableHeight:    1200,
+			TemplateImageURL:   templateURL,
+			MaskImageURL:       maskURL,
+			SelectedVariantIDs: []int64{variantID},
+		},
+	}
+}
+
+func studioBatchResultTaskIDs(result *CreateStudioBatchTasksResult) []string {
+	if result == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(result.CreatedTasks)+len(result.ReusedTasks))
+	for _, task := range result.CreatedTasks {
+		if strings.TrimSpace(task.ID) != "" {
+			ids = append(ids, task.ID)
+		}
+	}
+	for _, task := range result.ReusedTasks {
+		if strings.TrimSpace(task.ID) != "" {
+			ids = append(ids, task.ID)
+		}
+	}
+	return ids
+}
+
 type studioBatchTaskRepositoryStub struct {
+	mu    sync.Mutex
 	tasks map[string]*Task
 }
 
@@ -2383,18 +3836,28 @@ func (r *studioBatchTaskRepositoryStub) CreateTask(_ context.Context, task *Task
 	if task == nil {
 		return nil
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	cloned := *task
 	r.tasks[task.ID] = &cloned
 	return nil
 }
 
 func (r *studioBatchTaskRepositoryStub) GetTask(_ context.Context, taskID string) (*Task, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok {
 		return nil, gorm.ErrRecordNotFound
 	}
 	cloned := *task
 	return &cloned, nil
+}
+
+func (r *studioBatchTaskRepositoryStub) taskCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.tasks)
 }
 
 func (r *studioBatchTaskRepositoryStub) ListTasks(context.Context, *TaskListQuery) ([]Task, int64, error) {
@@ -2445,6 +3908,107 @@ func (r *studioBatchTaskRepositoryStub) SaveTaskResult(context.Context, string, 
 	return nil
 }
 
+type failingStudioBatchTaskLinkRepository struct {
+	delegate   StudioBatchTaskLinkRepository
+	failCreate bool
+	failUpdate bool
+}
+
+func (r *failingStudioBatchTaskLinkRepository) GetStudioBatchTaskLinkByCandidateKey(ctx context.Context, candidateKey string) (*StudioBatchTaskLinkRecord, error) {
+	return r.delegate.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+}
+
+func (r *failingStudioBatchTaskLinkRepository) CreateStudioBatchTaskLink(ctx context.Context, link *StudioBatchTaskLinkRecord) error {
+	if r.failCreate {
+		return fmt.Errorf("forced link create failure")
+	}
+	return r.delegate.CreateStudioBatchTaskLink(ctx, link)
+}
+
+func (r *failingStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx context.Context, link *StudioBatchTaskLinkRecord) error {
+	if r.failUpdate {
+		return fmt.Errorf("forced link update failure")
+	}
+	return r.delegate.UpdateStudioBatchTaskLink(ctx, link)
+}
+
+func (r *failingStudioBatchTaskLinkRepository) ListStudioBatchTaskLinksByBatchID(ctx context.Context, batchID string) ([]StudioBatchTaskLinkRecord, error) {
+	return r.delegate.ListStudioBatchTaskLinksByBatchID(ctx, batchID)
+}
+
+func (r *failingStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidate(ctx context.Context, candidateKey string, fromStatus string, toStatus string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	return r.delegate.ClaimStudioBatchTaskCandidate(ctx, candidateKey, fromStatus, toStatus, updatedAt)
+}
+
+func (r *failingStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAt(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	return r.delegate.ClaimStudioBatchTaskCandidateUpdatedAt(ctx, candidateKey, fromStatus, observedUpdatedAt, toStatus, updatedAt)
+}
+
+type synchronizedStaleCreatingLinkRepository struct {
+	delegate     StudioBatchTaskLinkRepository
+	candidateKey string
+	mu           sync.Mutex
+	claimWaiters int
+	claimRelease chan struct{}
+}
+
+func newSynchronizedStaleCreatingLinkRepository(delegate StudioBatchTaskLinkRepository) *synchronizedStaleCreatingLinkRepository {
+	return &synchronizedStaleCreatingLinkRepository{
+		delegate:     delegate,
+		claimRelease: make(chan struct{}),
+	}
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) GetStudioBatchTaskLinkByCandidateKey(ctx context.Context, candidateKey string) (*StudioBatchTaskLinkRecord, error) {
+	return r.delegate.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) CreateStudioBatchTaskLink(ctx context.Context, link *StudioBatchTaskLinkRecord) error {
+	return r.delegate.CreateStudioBatchTaskLink(ctx, link)
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) UpdateStudioBatchTaskLink(ctx context.Context, link *StudioBatchTaskLinkRecord) error {
+	return r.delegate.UpdateStudioBatchTaskLink(ctx, link)
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) ListStudioBatchTaskLinksByBatchID(ctx context.Context, batchID string) ([]StudioBatchTaskLinkRecord, error) {
+	return r.delegate.ListStudioBatchTaskLinksByBatchID(ctx, batchID)
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) ClaimStudioBatchTaskCandidate(ctx context.Context, candidateKey string, fromStatus string, toStatus string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	if candidateKey == r.candidateKey && fromStatus == studioBatchTaskLinkStatusCreating && toStatus == studioBatchTaskLinkStatusCreating {
+		r.mu.Lock()
+		r.claimWaiters++
+		if r.claimWaiters == 2 {
+			close(r.claimRelease)
+		}
+		release := r.claimRelease
+		r.mu.Unlock()
+		select {
+		case <-release:
+		case <-time.After(time.Second):
+		}
+	}
+	return r.delegate.ClaimStudioBatchTaskCandidate(ctx, candidateKey, fromStatus, toStatus, updatedAt)
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAt(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	if candidateKey == r.candidateKey && fromStatus == studioBatchTaskLinkStatusCreating && toStatus == studioBatchTaskLinkStatusCreating {
+		r.mu.Lock()
+		r.claimWaiters++
+		if r.claimWaiters == 2 {
+			close(r.claimRelease)
+		}
+		release := r.claimRelease
+		r.mu.Unlock()
+		select {
+		case <-release:
+		case <-time.After(time.Second):
+		}
+	}
+	return r.delegate.ClaimStudioBatchTaskCandidateUpdatedAt(ctx, candidateKey, fromStatus, observedUpdatedAt, toStatus, updatedAt)
+}
+
 type studioBatchTaskSubmitterStub struct {
 	submitCount int
 	failAfter   int
@@ -2456,6 +4020,14 @@ func (s *studioBatchTaskSubmitterStub) Submit(string) error {
 		return fmt.Errorf("工作队列已满")
 	}
 	return nil
+}
+
+type studioBatchMutableSubmitter struct {
+	err error
+}
+
+func (s *studioBatchMutableSubmitter) Submit(string) error {
+	return s.err
 }
 
 type studioBatchGeneratorStub struct {

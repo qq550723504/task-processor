@@ -62,3 +62,42 @@ func TestTaskStudioBatchGenerationOwnerBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestAdaptCreateStudioBatchTasksResultToDetailPreservesTaskOutcomes(t *testing.T) {
+	t.Parallel()
+
+	detail := adaptCreateStudioBatchTasksResultToDetail(&CreateStudioBatchTasksResult{
+		CreatedTasks: []SheinStudioCreatedTask{{
+			ID:       "created-task",
+			DesignID: "created-design",
+		}},
+		ReusedTasks: []SheinStudioCreatedTask{{
+			ID:         "reused-task",
+			ReasonCode: "existing_task",
+		}},
+		RejectedTasks: []SheinStudioRejectedTask{{
+			DesignID:   "rejected-design",
+			ReasonCode: "baseline_missing",
+		}},
+		FailedTasks: []SheinStudioFailedTask{{
+			DesignID: "failed-design",
+			Message:  "submit failed",
+		}},
+	})
+
+	if detail == nil {
+		t.Fatal("detail is nil")
+	}
+	if len(detail.CreatedTasks) != 1 || detail.CreatedTasks[0].ID != "created-task" {
+		t.Fatalf("created tasks = %+v, want created-task", detail.CreatedTasks)
+	}
+	if len(detail.ReusedTasks) != 1 || detail.ReusedTasks[0].ID != "reused-task" {
+		t.Fatalf("reused tasks = %+v, want reused-task", detail.ReusedTasks)
+	}
+	if len(detail.RejectedTasks) != 1 || detail.RejectedTasks[0].ReasonCode != "baseline_missing" {
+		t.Fatalf("rejected tasks = %+v, want baseline_missing", detail.RejectedTasks)
+	}
+	if len(detail.FailedTasks) != 1 || detail.FailedTasks[0].DesignID != "failed-design" {
+		t.Fatalf("failed tasks = %+v, want failed-design", detail.FailedTasks)
+	}
+}

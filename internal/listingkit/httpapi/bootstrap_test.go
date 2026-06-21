@@ -46,6 +46,9 @@ func buildServiceInputFixture() BuildServiceInput {
 				StudioBatchRun: func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
 					return nil, nil, nil
 				},
+				StudioBatchTaskLink: func(*config.Config, *logrus.Logger) (listingkit.StudioBatchTaskLinkRepository, []func() error, error) {
+					return nil, nil, nil
+				},
 				SheinSync: func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error) {
 					return nil, nil, nil
 				},
@@ -411,6 +414,7 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 	t.Parallel()
 
 	taskRepo := listingkitstore.NewMemTaskRepository()
+	taskLinkRepo := listingkit.NewMemStudioBatchTaskLinkRepository()
 	assetRepo := assetrepo.NewMemRepository()
 	reviewRepo := reviewstore.NewMemRepository()
 	assembler := listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{})
@@ -422,10 +426,11 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 			Config: &config.Config{},
 		},
 		repositories: &builtRepositories{
-			taskRepository:        taskRepo,
-			studioBatchRepository: listingkit.NewMemStudioBatchRepository(),
-			assetRepository:       assetRepo,
-			reviewRepository:      reviewRepo,
+			taskRepository:                taskRepo,
+			studioBatchRepository:         listingkit.NewMemStudioBatchRepository(),
+			studioBatchTaskLinkRepository: taskLinkRepo,
+			assetRepository:               assetRepo,
+			reviewRepository:              reviewRepo,
 		},
 		submit: submitModule{
 			assets: submitAssetDependencies{
@@ -445,6 +450,9 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 	}
 	if cfg.Core.StudioBatchRepository == nil {
 		t.Fatal("expected studio batch repository to be mapped into service config")
+	}
+	if cfg.Core.StudioBatchTaskLinkRepository != taskLinkRepo {
+		t.Fatal("expected studio batch task link repository to be mapped into service config")
 	}
 	if cfg.Core.ImageUploadStore != uploadStore {
 		t.Fatal("expected submit image upload store to be mapped into service config")
@@ -1431,6 +1439,9 @@ func buildSuccessfulServiceInputFixture() BuildServiceInput {
 	input.Repositories.Core.StudioBatchRun = func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error) {
 		return listingkit.NewMemStudioBatchRunRepository(), nil, nil
 	}
+	input.Repositories.Core.StudioBatchTaskLink = func(*config.Config, *logrus.Logger) (listingkit.StudioBatchTaskLinkRepository, []func() error, error) {
+		return listingkit.NewMemStudioBatchTaskLinkRepository(), nil, nil
+	}
 	input.Repositories.Core.SheinSync = func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error) {
 		return listingkitstore.NewMemSheinSyncRepository(), nil, nil
 	}
@@ -1438,6 +1449,15 @@ func buildSuccessfulServiceInputFixture() BuildServiceInput {
 		return listingsubscription.NewMemRepository(), nil, nil
 	}
 	return input
+}
+
+func TestRuntimeSupportRepositoriesIncludesStudioBatchTaskLinkBuilder(t *testing.T) {
+	t.Parallel()
+
+	repos := buildRuntimeSupportRepositories()
+	if repos.Core.StudioBatchTaskLink == nil {
+		t.Fatal("expected runtime support repositories to include studio batch task link builder")
+	}
 }
 
 func newTestModuleService(t *testing.T) moduleService {

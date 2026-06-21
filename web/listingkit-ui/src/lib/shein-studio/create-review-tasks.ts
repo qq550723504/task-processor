@@ -7,7 +7,7 @@ import {
   buildSDSVariantReferenceImageUrls,
 } from "@/lib/shein-studio/sds-reference-images";
 import {
-  buildSharedBySizeGroupKey,
+  buildSharedCompatibilityGroupKey,
   resolveDesignTargetKey,
 } from "@/lib/shein-studio/grouped-image-mode";
 import {
@@ -511,7 +511,8 @@ function selectDesignsForGroupedSelection({
   const targetKey =
     groupedImageMode === "per_product"
       ? buildGroupedSDSSelectionID(selection)
-      : buildSharedBySizeGroupKey(selection);
+      : buildSharedCompatibilityGroupKey(selection) ||
+        buildGroupedSDSSelectionID(selection);
   const matchedDesigns = approvedDesigns.filter(
     (design) =>
       design.targetGroupKey?.trim() &&

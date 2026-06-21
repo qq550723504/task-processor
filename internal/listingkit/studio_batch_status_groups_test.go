@@ -15,7 +15,7 @@ func TestBuildStudioBatchStatusGroupsClassifiesMixedBatchDetail(t *testing.T) {
 			{Item: StudioBatchItemRecord{ID: "item-failed", Status: StudioBatchItemStatusFailed}},
 		},
 		CreatedTasks: []SheinStudioCreatedTask{
-			{ID: "task-draft", DesignID: "design-draft", Title: "Draft saved"},
+			{ID: "task-draft", DesignID: "design-draft", Title: "Draft saved", Status: "draft_saved"},
 			{ID: "task-published", DesignID: "design-published", Title: "Published"},
 		},
 		FailedTasks: []SheinStudioFailedTask{
@@ -59,6 +59,22 @@ func TestBuildStudioBatchStatusGroups_UsesExplicitCreatedTaskState(t *testing.T)
 	}
 	if got := groups.ByKey["published"].IDs; len(got) != 1 || got[0] != "task-3" {
 		t.Fatalf("published ids = %#v, want [task-3]", got)
+	}
+}
+
+func TestBuildStudioBatchStatusGroups_DoesNotTreatEmptyCreatedTaskStateAsDraftSaved(t *testing.T) {
+	detail := &StudioBatchDetail{
+		CreatedTasks: []SheinStudioCreatedTask{
+			{ID: "task-1", Title: "Style 1", DesignID: "design-1"},
+		},
+	}
+
+	groups := BuildStudioBatchStatusGroups(detail)
+	if _, ok := groups.ByKey["draft_saved"]; ok {
+		t.Fatalf("draft_saved group should not be present for an empty created task state: %#v", groups.ByKey["draft_saved"])
+	}
+	if got := groups.ByKey["task_created"].Count; got != 1 {
+		t.Fatalf("task_created count = %d, want 1", got)
 	}
 }
 

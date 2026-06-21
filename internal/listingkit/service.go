@@ -10,6 +10,10 @@ func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {
 	s.taskDeps.taskSubmitter = submitter
 }
 
+func (s *service) SetStudioBatchTaskLinkRepository(repo StudioBatchTaskLinkRepository) {
+	s.studioDeps.batchTaskLinkRepo = repo
+}
+
 func (s *service) ConfigureSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {
 	s.setSheinPublishWorkflowClient(client, enabled && client != nil)
 }

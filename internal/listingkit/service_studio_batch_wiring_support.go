@@ -11,7 +11,10 @@ import (
 type taskStudioBatchServiceWiring struct {
 	repo               StudioBatchRepository
 	batchRunRepo       StudioBatchRunRepository
+	batchTaskLinkRepo  StudioBatchTaskLinkRepository
 	studioSessionRepo  StudioSessionRepository
+	baselineChecker    StudioBatchBaselineReadinessChecker
+	storeValidator     StudioBatchStoreValidator
 	generator          *studioBatchGenerationService
 	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
 	getTask            func(context.Context, string) (*Task, error)
@@ -56,7 +59,10 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 	return taskStudioBatchServiceWiring{
 		repo:               repo,
 		batchRunRepo:       resolveStudioBatchRunRepo(s),
+		batchTaskLinkRepo:  resolveStudioBatchTaskLinkRepo(s),
 		studioSessionRepo:  studioSessionRepo,
+		baselineChecker:    resolveStudioBatchBaselineReadinessChecker(s),
+		storeValidator:     resolveStudioBatchStoreValidator(s),
 		generator:          generator,
 		createGenerateTask: s.CreateGenerateTask,
 		getTask:            repository.getTask,
@@ -83,7 +89,7 @@ func buildTaskStudioBatchServiceWiring(s *service) taskStudioBatchServiceWiring 
 }
 
 func (w taskStudioBatchServiceWiring) newDetailRunner() *listingStudioBatchDetailRunner {
-	return newListingStudioBatchDetailService(w.repo, w.studioSessionRepo, w.ensureGraph)
+	return newListingStudioBatchDetailService(w.repo, w.studioSessionRepo, w.batchTaskLinkRepo, w.getTask, w.ensureGraph)
 }
 
 func (w taskStudioBatchServiceWiring) newReviewRunner() *listingStudioBatchReviewRunner {
@@ -106,7 +112,7 @@ func buildTaskStudioBatchServiceConfigWiringWithGenerator(s *service, generator 
 		batch:        batch,
 		detailRunner: batch.newDetailRunner(),
 		reviewRunner: batch.newReviewRunner(),
-		retryRunner:  newListingStudioBatchRetryPrepareService(batch.repo, batch.loadDetail, batch.resetRetryItems),
+		retryRunner:  newListingStudioBatchRetryPrepareService(batch.repo, batch.batchTaskLinkRepo, batch.loadDetail, batch.resetRetryItems),
 		taskPrepare: newListingStudioBatchTaskPrepareService(
 			updateSession,
 			updateBatch,
@@ -266,7 +272,10 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 	return taskStudioBatchServiceConfig{
 		repo:               config.batch.repo,
 		batchRunRepo:       config.batch.batchRunRepo,
+		batchTaskLinkRepo:  config.batch.batchTaskLinkRepo,
 		studioSessionRepo:  config.batch.studioSessionRepo,
+		baselineChecker:    config.batch.baselineChecker,
+		storeValidator:     config.batch.storeValidator,
 		generator:          config.batch.generator,
 		createGenerateTask: config.batch.createGenerateTask,
 		getTask:            config.batch.getTask,
@@ -276,4 +285,22 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 		taskPrepareRunner:  config.taskPrepare,
 		taskResumeRunner:   config.taskResume,
 	}
+}
+
+func resolveStudioBatchBaselineReadinessChecker(s *service) StudioBatchBaselineReadinessChecker {
+	if s == nil {
+		return nil
+	}
+	repository := buildServiceRepositoryWiring(s)
+	if repo, ok := repository.repo.(SDSBaselineCacheRepository); ok {
+		return studioBatchBaselineCacheReadinessChecker{repo: repo}
+	}
+	return nil
+}
+
+func resolveStudioBatchStoreValidator(s *service) StudioBatchStoreValidator {
+	if repo := resolveAdminStoreProfileRepo(s); repo != nil {
+		return studioBatchStoreProfileValidator{repo: repo}
+	}
+	return nil
 }

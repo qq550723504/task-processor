@@ -108,6 +108,7 @@ func expandStudioBatchItems(batch *StudioBatchRecord) []StudioBatchItemRecord {
 	type bucket struct {
 		key          string
 		label        string
+		groupMode    string
 		selectionIDs []string
 	}
 	buckets := make([]bucket, 0)
@@ -117,13 +118,21 @@ func expandStudioBatchItems(batch *StudioBatchRecord) []StudioBatchItemRecord {
 		if selectionID == "" {
 			continue
 		}
-		key := buildStudioBatchSharedBySizeGroupKey(grouped.Selection)
+		key := buildStudioBatchSharedCompatibilityGroupKey(grouped.Selection)
+		label := buildStudioBatchSharedBySizeGroupLabel(grouped.Selection)
+		groupMode := "shared_by_size"
+		if key == "" {
+			key = selectionID
+			label = buildStudioBatchPerProductLabel(grouped.Selection)
+			groupMode = "per_product"
+		}
 		index, ok := bucketIndex[key]
 		if !ok {
 			bucketIndex[key] = len(buckets)
 			buckets = append(buckets, bucket{
 				key:          key,
-				label:        buildStudioBatchSharedBySizeGroupLabel(grouped.Selection),
+				label:        label,
+				groupMode:    groupMode,
 				selectionIDs: []string{selectionID},
 			})
 			continue
@@ -137,7 +146,7 @@ func expandStudioBatchItems(batch *StudioBatchRecord) []StudioBatchItemRecord {
 			TargetGroupKey:   bucket.key,
 			TargetGroupLabel: bucket.label,
 			SelectionIDs:     append(SheinStudioStringList(nil), bucket.selectionIDs...),
-			GroupMode:        "shared_by_size",
+			GroupMode:        bucket.groupMode,
 			Status:           StudioBatchItemStatusPending,
 			SelectionCount:   len(bucket.selectionIDs),
 		})
@@ -221,6 +230,13 @@ func selectionIDForStudioSelection(selection SheinStudioSelection) string {
 
 func buildStudioBatchSharedBySizeGroupKey(selection SheinStudioSelection) string {
 	return fmt.Sprintf("size:%dx%d", selection.PrintableWidth, selection.PrintableHeight)
+}
+
+func buildStudioBatchSharedCompatibilityGroupKey(selection SheinStudioSelection) string {
+	if !studioBatchCompatibilityFingerprintComplete(selection) {
+		return ""
+	}
+	return "compat:" + buildStudioBatchCompatibilityFingerprint(selection)
 }
 
 func buildStudioBatchSharedBySizeGroupLabel(selection SheinStudioSelection) string {

@@ -16,11 +16,12 @@ func buildCoreRepositories(input BuildServiceInput, closers *closerStack) (*buil
 		return nil, err
 	}
 	return &builtCoreRepositories{
-		taskRepository:           taskRepos.taskRepository,
-		studioAsyncJobRepository: asyncRepos.studioAsyncJobRepository,
-		studioBatchRepository:    asyncRepos.studioBatchRepository,
-		studioBatchRunRepository: asyncRepos.studioBatchRunRepository,
-		sheinSyncRepository:      asyncRepos.sheinSyncRepository,
+		taskRepository:                taskRepos.taskRepository,
+		studioAsyncJobRepository:      asyncRepos.studioAsyncJobRepository,
+		studioBatchRepository:         asyncRepos.studioBatchRepository,
+		studioBatchRunRepository:      asyncRepos.studioBatchRunRepository,
+		studioBatchTaskLinkRepository: asyncRepos.studioBatchTaskLinkRepository,
+		sheinSyncRepository:           asyncRepos.sheinSyncRepository,
 	}, nil
 }
 
@@ -47,15 +48,20 @@ func buildCoreAsyncRepositories(input BuildServiceInput, closers *closerStack) (
 	if err != nil {
 		return nil, err
 	}
+	studioBatchTaskLinkRepository, err := buildNamedWithClosers("core.studio_batch_task_link", input.Repositories.Core.StudioBatchTaskLink, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
 	sheinSyncRepository, err := buildNamedWithClosers("core.shein_sync", input.Repositories.Core.SheinSync, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
 	}
 	return &coreAsyncRepositories{
-		studioAsyncJobRepository: studioAsyncJobRepository,
-		studioBatchRepository:    studioBatchRepository,
-		studioBatchRunRepository: studioBatchRunRepository,
-		sheinSyncRepository:      sheinSyncRepository,
+		studioAsyncJobRepository:      studioAsyncJobRepository,
+		studioBatchRepository:         studioBatchRepository,
+		studioBatchRunRepository:      studioBatchRunRepository,
+		studioBatchTaskLinkRepository: studioBatchTaskLinkRepository,
+		sheinSyncRepository:           sheinSyncRepository,
 	}, nil
 }
 

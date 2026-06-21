@@ -45,6 +45,74 @@ func (s *taskStudioBatchService) loadStudioBatchTaskPreparationResult(ctx contex
 	}, nil
 }
 
+func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Context, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return nil
+	}
+	now := s.currentTime().UTC()
+	link := &StudioBatchTaskLinkRecord{
+		ID:                       buildStudioBatchTaskLinkID(candidate),
+		BatchID:                  strings.TrimSpace(candidate.Design.BatchID),
+		ItemID:                   strings.TrimSpace(candidate.Item.ID),
+		DesignID:                 strings.TrimSpace(candidate.Design.ID),
+		SelectionID:              strings.TrimSpace(candidate.SelectionID),
+		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
+		SheinStoreID:             candidate.SheinStoreID,
+		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
+		Status:                   studioBatchTaskLinkStatusReserved,
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	}
+	if link.BatchID == "" {
+		link.BatchID = strings.TrimSpace(candidate.Item.BatchID)
+	}
+	if err := s.batchTaskLinkRepo.CreateStudioBatchTaskLink(ctx, link); err != nil {
+		if _, getErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey); getErr == nil {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func (s *taskStudioBatchService) claimStudioBatchTaskCandidate(ctx context.Context, candidate studioBatchTaskCandidate) (bool, error) {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return true, nil
+	}
+	now := s.currentTime().UTC()
+	existing, existingErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+	if existingErr != nil && !errors.Is(existingErr, gorm.ErrRecordNotFound) {
+		return false, existingErr
+	}
+	if existingErr == nil && existing != nil {
+		if existing.Status == studioBatchTaskLinkStatusFailed && strings.TrimSpace(existing.ListingKitTaskID) != "" {
+			return false, nil
+		}
+		if s.studioBatchTaskLinkIsStale(existing) {
+			if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidateUpdatedAt(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, now); err != nil {
+				return false, err
+			} else if claimed {
+				return true, nil
+			}
+		}
+	}
+	if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidate(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusReserved, studioBatchTaskLinkStatusCreating, now); err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, err
+		}
+	} else if claimed {
+		return true, nil
+	}
+	if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidate(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkStatusCreating, now); err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, err
+		}
+	} else if claimed {
+		return true, nil
+	}
+	return false, nil
+}
+
 func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
 	ctx context.Context,
 	batchID string,
@@ -54,10 +122,11 @@ func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
 	rejectedTasks []SheinStudioRejectedTask,
 	failedTasks []SheinStudioFailedTask,
 ) (*CreateStudioBatchTasksResult, error) {
+	newlyCreatedTasks, reusedTasks, ownedTasks := splitStudioBatchCreatedAndReusedTasks(createdTasks)
 	if sessionUpdater, ok := s.studioSessionRepo.(interface {
 		UpdateSession(context.Context, *SheinStudioSession) error
 	}); ok && session != nil {
-		session.CreatedTasks = mergeStudioCreatedTasks(session.CreatedTasks, createdTasks)
+		session.CreatedTasks = mergeStudioCreatedTasks(session.CreatedTasks, ownedTasks)
 		session.CreatedTaskIDs = buildCreatedTaskIDs(session.CreatedTasks)
 		session.FailedTasks = append(SheinStudioFailedTaskList(nil), failedTasks...)
 		session.UpdatedAt = s.currentTime().UTC()
@@ -65,7 +134,7 @@ func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
 			return nil, err
 		}
 	}
-	if len(createdTasks) > 0 && batch != nil {
+	if len(ownedTasks) > 0 && batch != nil {
 		batch.Status = StudioBatchStatusTasksCreated
 		batch.UpdatedAt = s.currentTime().UTC()
 		if err := s.repo.UpdateStudioBatch(ctx, batch); err != nil {
@@ -79,10 +148,33 @@ func (s *taskStudioBatchService) completeStudioBatchTaskExecution(
 	return &CreateStudioBatchTasksResult{
 		Batch:         detail.Batch,
 		Items:         detail.Items,
-		CreatedTasks:  createdTasks,
+		CreatedTasks:  newlyCreatedTasks,
+		ReusedTasks:   reusedTasks,
 		RejectedTasks: rejectedTasks,
 		FailedTasks:   failedTasks,
 	}, nil
+}
+
+func splitStudioBatchCreatedAndReusedTasks(tasks []SheinStudioCreatedTask) ([]SheinStudioCreatedTask, []SheinStudioCreatedTask, []SheinStudioCreatedTask) {
+	if len(tasks) == 0 {
+		return nil, nil, nil
+	}
+	created := make([]SheinStudioCreatedTask, 0, len(tasks))
+	reused := make([]SheinStudioCreatedTask, 0)
+	owned := make([]SheinStudioCreatedTask, 0, len(tasks))
+	for _, task := range tasks {
+		isReused := strings.TrimSpace(task.ReasonCode) == studioBatchReusedTaskReasonCode
+		if isReused {
+			task.ReasonCode = ""
+		}
+		owned = append(owned, task)
+		if isReused {
+			reused = append(reused, task)
+			continue
+		}
+		created = append(created, task)
+	}
+	return created, reused, owned
 }
 
 func (s *taskStudioBatchService) finalizeStudioBatchTaskCreation(

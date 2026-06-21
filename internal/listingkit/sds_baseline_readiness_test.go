@@ -58,6 +58,94 @@ func TestGetSDSBaselineReadinessReturnsBaselineCachedForUsableBaseline(t *testin
 	}
 }
 
+func TestSDSBaselineGetCachedBaseline_RejectsBlockedValidation(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	cacheRepo, ok := repo.(SDSBaselineCacheRepository)
+	if !ok {
+		t.Fatal("mem task repository does not expose SDS baseline cache repository")
+	}
+	task := &Task{
+		ID: "task-blocked-baseline",
+		Request: &GenerateRequest{
+			Options: &GenerateOptions{
+				SDS: &SDSSyncOptions{
+					ParentProductID:  9001,
+					PrototypeGroupID: 7001,
+					VariantID:        101,
+				},
+			},
+		},
+	}
+	payload, err := newCanonicalProductCachePayload(&canonical.Product{Title: "Blocked Baseline"})
+	if err != nil {
+		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+	}
+	if err := cacheRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
+		BaselineKey:          sdsBaselineKey("", task.Request.Options.SDS),
+		Status:               SDSBaselineStatusBaselineCached,
+		Version:              1,
+		CanonicalProductBase: payload,
+		ValidationStatus:     SDSBaselineValidationStatusBlocked,
+		ValidationReasonCode: SDSBaselineReasonCodeLayerMissing,
+		ValidationReason:     "layer is missing",
+	}); err != nil {
+		t.Fatalf("SaveSDSBaselineCache: %v", err)
+	}
+
+	product, ok, err := newSDSBaselineService(sdsBaselineServiceConfig{repo: repo}).GetCachedBaseline(context.Background(), task)
+	if err != nil {
+		t.Fatalf("GetCachedBaseline() error = %v", err)
+	}
+	if ok || product != nil {
+		t.Fatalf("GetCachedBaseline() = (%+v, %v), want no reusable baseline", product, ok)
+	}
+}
+
+func TestSDSBaselineGetCachedBaseline_RejectsUnknownValidation(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	cacheRepo, ok := repo.(SDSBaselineCacheRepository)
+	if !ok {
+		t.Fatal("mem task repository does not expose SDS baseline cache repository")
+	}
+	task := &Task{
+		ID: "task-unknown-baseline",
+		Request: &GenerateRequest{
+			Options: &GenerateOptions{
+				SDS: &SDSSyncOptions{
+					ParentProductID:  9001,
+					PrototypeGroupID: 7001,
+					VariantID:        101,
+				},
+			},
+		},
+	}
+	payload, err := newCanonicalProductCachePayload(&canonical.Product{Title: "Unknown Baseline"})
+	if err != nil {
+		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+	}
+	if err := cacheRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
+		BaselineKey:          sdsBaselineKey("", task.Request.Options.SDS),
+		Status:               SDSBaselineStatusBaselineCached,
+		Version:              1,
+		CanonicalProductBase: payload,
+		ValidationStatus:     SDSBaselineValidationStatusUnknown,
+	}); err != nil {
+		t.Fatalf("SaveSDSBaselineCache: %v", err)
+	}
+
+	product, ok, err := newSDSBaselineService(sdsBaselineServiceConfig{repo: repo}).GetCachedBaseline(context.Background(), task)
+	if err != nil {
+		t.Fatalf("GetCachedBaseline() error = %v", err)
+	}
+	if ok || product != nil {
+		t.Fatalf("GetCachedBaseline() = (%+v, %v), want no reusable baseline", product, ok)
+	}
+}
+
 func TestGetSDSBaselineReadinessTreatsReadyCacheStatusAsUsable(t *testing.T) {
 	t.Parallel()
 

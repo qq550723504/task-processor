@@ -263,6 +263,7 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 		Status:               SDSBaselineStatusBaselineCached,
 		Version:              1,
 		CanonicalProductBase: payload,
+		ValidationStatus:     SDSBaselineValidationStatusReady,
 	}); err != nil {
 		t.Fatalf("SaveSDSBaselineCache: %v", err)
 	}
@@ -294,6 +295,80 @@ func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing
 	}
 	if len(state.result.CanonicalProduct.Images) != 1 || state.result.CanonicalProduct.Images[0].URL != "https://example.com/baseline.jpg" {
 		t.Fatalf("canonical images = %+v, want baseline images preserved", state.result.CanonicalProduct.Images)
+	}
+}
+
+func TestRunStandardProductWorkflow_DoesNotReuseBlockedSDSBaseline(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	baselineRepo, ok := repo.(SDSBaselineCacheRepository)
+	if !ok {
+		t.Fatal("mem task repository does not expose SDS baseline cache repository")
+	}
+
+	task := &Task{
+		ID: "task-blocked-baseline-fallback",
+		Request: &GenerateRequest{
+			Text:      "fallback product title",
+			Platforms: []string{"amazon"},
+			Options: &GenerateOptions{
+				ProcessImages: false,
+				SDS: &SDSSyncOptions{
+					ParentProductID:  9001,
+					PrototypeGroupID: 7001,
+					VariantID:        101,
+				},
+			},
+		},
+	}
+
+	payload, err := newCanonicalProductCachePayload(&canonical.Product{
+		Title:  "Blocked Baseline Title",
+		Images: []canonical.Image{{URL: "https://example.com/blocked-baseline.jpg", Role: "primary"}},
+	})
+	if err != nil {
+		t.Fatalf("newCanonicalProductCachePayload: %v", err)
+	}
+	if err := baselineRepo.SaveSDSBaselineCache(context.Background(), &SDSBaselineCacheEntry{
+		BaselineKey:          sdsBaselineKey("", task.Request.Options.SDS),
+		Status:               SDSBaselineStatusBaselineCached,
+		Version:              1,
+		CanonicalProductBase: payload,
+		ValidationStatus:     SDSBaselineValidationStatusBlocked,
+		ValidationReasonCode: SDSBaselineReasonCodeLayerMissing,
+		ValidationReason:     "layer is missing",
+	}); err != nil {
+		t.Fatalf("SaveSDSBaselineCache: %v", err)
+	}
+
+	productSvc := &stubWorkflowProductService{
+		task: &productenrich.Task{ID: "unexpected-product-task"},
+		product: &productenrich.ProductJSON{
+			Title: "Unexpected Product",
+		},
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{
+		repo: repo,
+	}, supportDependencySeed{
+		assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+	}), nil, newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), newDefaultAssetGenerationService()), productSvc, nil)
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if productSvc.lastReq != nil {
+		t.Fatalf("product enrich request = %+v, want studio fallback path after blocked baseline", productSvc.lastReq)
+	}
+	if state.result.CanonicalProduct == nil {
+		t.Fatal("expected fallback canonical product")
+	}
+	if state.result.CanonicalProduct.Title == "Blocked Baseline Title" {
+		t.Fatalf("canonical product = %+v, want blocked baseline ignored", state.result.CanonicalProduct)
+	}
+	if len(state.result.CanonicalProduct.Images) == 1 && state.result.CanonicalProduct.Images[0].URL == "https://example.com/blocked-baseline.jpg" {
+		t.Fatalf("canonical images = %+v, want blocked baseline images ignored", state.result.CanonicalProduct.Images)
 	}
 }
 
@@ -336,6 +411,7 @@ func TestRunStandardProductWorkflowUsesTaskTenantIDWhenRequestTenantMissing(t *t
 		Status:               SDSBaselineStatusBaselineCached,
 		Version:              1,
 		CanonicalProductBase: payload,
+		ValidationStatus:     SDSBaselineValidationStatusReady,
 	}); err != nil {
 		t.Fatalf("SaveSDSBaselineCache: %v", err)
 	}

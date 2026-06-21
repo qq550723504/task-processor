@@ -75,9 +75,11 @@ func adaptCreateStudioBatchTasksResultToDetail(result *CreateStudioBatchTasksRes
 		return nil
 	}
 	return &StudioBatchDetail{
-		Batch:        result.Batch,
-		Items:        result.Items,
-		CreatedTasks: result.CreatedTasks,
-		FailedTasks:  result.FailedTasks,
+		Batch:         result.Batch,
+		Items:         result.Items,
+		CreatedTasks:  result.CreatedTasks,
+		ReusedTasks:   result.ReusedTasks,
+		RejectedTasks: result.RejectedTasks,
+		FailedTasks:   result.FailedTasks,
 	}
 }

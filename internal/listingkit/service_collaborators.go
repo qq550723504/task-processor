@@ -30,3 +30,10 @@ func (s *service) initializeAdminCollaborators() {
 		s.initializeSheinAdminCollaborators,
 	)
 }
+
+func resolveStudioBatchTaskLinkRepo(s *service) StudioBatchTaskLinkRepository {
+	if s == nil {
+		return nil
+	}
+	return s.studioDeps.batchTaskLinkRepo
+}

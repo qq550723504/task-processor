@@ -48,7 +48,11 @@ func (s *taskLifecycleService) CreateGenerateTask(ctx context.Context, req *Gene
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
-	return s.dispatchGenerateTask(ctx, task)
+	dispatched, err := s.dispatchGenerateTask(ctx, task)
+	if err != nil {
+		return task, err
+	}
+	return dispatched, nil
 }
 
 func (s *taskLifecycleService) GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error) {

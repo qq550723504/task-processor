@@ -6,7 +6,7 @@ func (s *taskStudioBatchService) ensureDetailRunner() {
 	if s == nil || s.detailRunner != nil {
 		return
 	}
-	s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.ensureStudioBatchGenerationGraphForResume)
+	s.detailRunner = newListingStudioBatchDetailService(s.repo, s.studioSessionRepo, s.batchTaskLinkRepo, s.getTask, s.ensureStudioBatchGenerationGraphForResume)
 }
 
 func (s *taskStudioBatchService) ensureServiceRunner() {
@@ -34,7 +34,7 @@ func (s *taskStudioBatchService) ensureRetryRunner() {
 	if s == nil || s.retryRunner != nil {
 		return
 	}
-	s.retryRunner = newListingStudioBatchRetryPrepareService(s.repo, s.GetStudioBatchDetail, s.resetStudioBatchRetryItems)
+	s.retryRunner = newListingStudioBatchRetryPrepareService(s.repo, s.batchTaskLinkRepo, s.GetStudioBatchDetail, s.resetStudioBatchRetryItems)
 }
 
 func (s *taskStudioBatchService) ensureTaskCreationRunner() {

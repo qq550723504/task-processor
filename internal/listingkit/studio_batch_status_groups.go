@@ -96,7 +96,7 @@ func studioBatchCreatedTaskGroup(task SheinStudioCreatedTask) (string, string) {
 		if taskPublishedHint(task) {
 			return "published", "已发布"
 		}
-		return "draft_saved", "已保存草稿"
+		return "task_created", "任务已创建"
 	case "task_created":
 		return "task_created", "任务已创建"
 	case "needs_review":

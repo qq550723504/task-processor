@@ -50,20 +50,14 @@ func (b *sdsBaselineService) GetCachedBaseline(ctx context.Context, task *Task) 
 	if err != nil {
 		return nil, false, err
 	}
-	if entry == nil || !strings.EqualFold(strings.TrimSpace(entry.Status), SDSBaselineStatusBaselineCached) {
+	reuse := evaluateSDSBaselineReusableReadiness(entry)
+	if reuse.Err != nil {
+		return nil, false, reuse.Err
+	}
+	if !reuse.Reusable {
 		return nil, false, nil
 	}
-	if entry.CanonicalProductBase == nil {
-		return nil, false, fmt.Errorf("sds baseline %q is cached but missing canonical payload", baselineKey)
-	}
-	product, err := entry.CanonicalProduct()
-	if err != nil {
-		return nil, false, err
-	}
-	if product == nil {
-		return nil, false, fmt.Errorf("sds baseline %q resolved to empty canonical product", baselineKey)
-	}
-	return product, true, nil
+	return reuse.Product, true, nil
 }
 
 func (b *sdsBaselineService) GetReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {
