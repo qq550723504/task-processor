@@ -252,3 +252,23 @@ ZITADEL response: 400 unsupported_grant_type, password not supported
 注释中的测试账号密码可以用于浏览器交互式登录验证，但当前 ZITADEL token endpoint 不支持 password grant，不能用它们直接换取 API bearer token。
 真实验收仍需要通过浏览器完成 Auth.js/ZITADEL 登录，或提供已经签发的有效 bearer token。
 ```
+
+## 15. 本地 bearer token 缓存工具：2026-06-21 19:40 +08:00
+
+为减少每轮手动传递 token 的重复操作，新增两个本地辅助脚本：
+
+| 脚本 | 用途 |
+| --- | --- |
+| `scripts/listingkit-save-token.ps1` | 从安全输入读取 bearer token，去掉可选 `Bearer ` 前缀后保存到 `.local/listingkit-api-token.txt` |
+| `scripts/listingkit-auth-check.ps1` | 优先读取 `LISTINGKIT_API_TOKEN`，否则读取 `.local/listingkit-api-token.txt`，并调用 Go API 的 `settings-health` 验证 token |
+
+`.local/` 已在 `.gitignore` 中忽略，token 文件不会进入仓库。脚本不会在输出中回显 token。
+
+推荐流程：
+
+```powershell
+.\scripts\listingkit-save-token.ps1
+.\scripts\listingkit-auth-check.ps1
+```
+
+后续真实验收可复用同一个本地 token 文件；当 ZITADEL session 过期或 token 被拒绝时，重新保存一次新的 token 即可。
