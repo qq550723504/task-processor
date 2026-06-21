@@ -247,3 +247,36 @@ submit blocked by readiness: 当前仍有关键字段未完成，SHEIN 资料包
 当前阻塞：普通属性和必填属性仍未映射/复核完成，因此 save_draft 仍被 readiness 阶段阻断。
 下一步：在 workspace 确认普通属性和必填属性后，对 task eec9ce8e-5431-4e9b-9bee-9887332b5c3c 重新执行 save_draft。
 ```
+
+## 13. 店铺 870 属性修复与 save_draft 闭环
+
+在 task `eec9ce8e-5431-4e9b-9bee-9887332b5c3c` 上继续执行后端 revision 修复。先应用 preview repair hints，确认可写入 revision history；随后从 SHEIN 模板候选值中选择必填普通属性，并通过 `/revision/validate` 后应用 revision。
+
+### 属性修复
+
+| 属性 | 选择值 | attribute_id | attribute_value_id | 来源 |
+| --- | --- | --- | --- | --- |
+| Installation | `Hanging` | `1001490` | `3516330` | SHEIN candidate list |
+| Product Benefits | `Light Filtering` | `1000421` | `1006179` | SHEIN candidate list |
+| Material | `Glass` | `160` | `325` | SHEIN candidate list |
+
+修复 revision 应用后，preview 状态变为：
+
+| 项目 | 结果 |
+| --- | --- |
+| task status | `completed` |
+| needs_review | `false` |
+| submit readiness | `ready=true`, `status=ready` |
+| submission action | `save_draft` |
+| submission status | `success` |
+| SHEIN response | code `0`, message `OK` |
+| SHEIN spu_name | `h2606212149755694` |
+
+### 闭环结论
+
+```text
+本轮是否通过：pass
+主要变化：store 870 profile 命中、SHEIN cookie/proxy blocker 清除、SDS baseline ready、必填普通属性补齐后真实 save_draft 通过。
+已关闭问题：attributes_unmapped / required_attributes_pending 不再阻断 task eec9ce8e-5431-4e9b-9bee-9887332b5c3c 的 save_draft。
+仍需后续优化：重复 task creation 的响应投影仍应区分 created_tasks 与 reused_tasks。
+```

@@ -23,7 +23,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `shein_cookie_unavailable` | blocker | integration | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | 874 复测时 SHEIN store cookie unavailable；改用店铺 870 后 store resolution 命中 `870` / profile `2`，该 blocker 未再出现。 | yes | ops / platform | closed | 870 task `eec9ce8e-5431-4e9b-9bee-9887332b5c3c` readiness 不再出现 `shein_cookie_unavailable`。 |
 | 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `category_unresolved` | blocker | catalog | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | 874 复测时 SHEIN 类目未解析；870 复测当前 blocker 已收敛到属性映射。 | yes | listing / ops | closed | 870 task readiness blocking items 未再出现 category blocker。 |
-| 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `attributes_unmapped` / `required_attributes_pending` | blocker | attribute | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | 870 复测仍显示普通属性和必填属性未完成，`save_draft` 被 readiness 阻断。 | yes | listing / ops | open | workspace 补齐属性映射后，task `eec9ce8e-5431-4e9b-9bee-9887332b5c3c` 的真实 `save_draft` 不再因属性 blocker 停止。 |
+| 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `attributes_unmapped` / `required_attributes_pending` | blocker | attribute | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | 870 task 通过 revision 补齐 `Installation=Hanging`, `Product Benefits=Light Filtering`, `Material=Glass` 后，readiness 变为 `ready=true`，真实 `save_draft` 通过。 | yes | listing / ops | closed | task `eec9ce8e-5431-4e9b-9bee-9887332b5c3c` save_draft 返回 submission status `success`，SHEIN response code `0`, message `OK`, spu_name `h2606212149755694`。 |
 | 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `sale_attributes_unresolved` | blocker | variation | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | 874 复测时销售属性未完成；870 复测当前 blocker 已收敛到普通属性/必填属性。 | yes | listing / ops | closed | 870 task readiness blocking items 未再出现 sale attribute blocker。 |
 
 ## 空错误响应
@@ -50,7 +50,7 @@
 | 类别 | open | mapped | closed | won't fix |
 | --- | --- | --- | --- | --- |
 | 任务状态 unknown | 0 | 0 | 0 | 0 |
-| Readiness blocker unknown | 1 | 0 | 3 | 0 |
+| Readiness blocker unknown | 0 | 0 | 4 | 0 |
 | 空错误响应 | 0 | 0 | 0 | 0 |
 | UI 无下一步动作 | 1 | 0 | 0 | 0 |
 | 已定位工程问题 | 0 | 0 | 2 | 0 |
