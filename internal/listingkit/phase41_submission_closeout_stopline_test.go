@@ -5,23 +5,17 @@ import "testing"
 func TestSubmissionCloseoutStopLineBoundary(t *testing.T) {
 	t.Parallel()
 
-	t.Run("submit_state_file_remains_root_transition_stop_line", func(t *testing.T) {
+	t.Run("submit_state_file_is_publishing_transition_adapter", func(t *testing.T) {
 		t.Parallel()
 
 		source := readNamedFunctionSource(t, "shein_submit_state.go", "completeSheinSubmitAttemptAt")
 		callNames := readNamedFunctionCallNames(t, "shein_submit_state.go", "completeSheinSubmitAttemptAt")
 
 		assertSourceContainsAll(t, source, []string{
-			"sheinpub.ResolveSubmissionAttemptRecord(",
-			"listingsubmission.ResolveAttemptFinalizeState(",
-			"sheinpub.ApplySubmissionAttemptFinalizeState(",
-			"sheinpub.ClearSubmissionInFlight(",
+			"return sheinpub.CompleteSubmitAttemptAt(",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
-			"ResolveSubmissionAttemptRecord",
-			"ResolveAttemptFinalizeState",
-			"ApplySubmissionAttemptFinalizeState",
-			"ClearSubmissionInFlight",
+			"CompleteSubmitAttemptAt",
 		})
 	})
 

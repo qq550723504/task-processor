@@ -3,21 +3,12 @@ package listingkit
 import (
 	"time"
 
-	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 func beginSheinSubmitAttempt(pkg *SheinPackage, action, requestID, phase string, startedAt time.Time) *sheinpub.SubmissionRecord {
-	if pkg == nil {
-		return nil
-	}
-	report := sheinpub.EnsureSubmissionReport(pkg)
-	inFlight := listingsubmission.BeginInFlightState(sheinpub.SubmissionInFlightState(report), action, requestID, phase, startedAt, sheinSubmitInFlightTTL)
-	sheinpub.ApplySubmissionInFlightState(report, inFlight)
-	record := sheinpub.BuildSubmissionRunningRecord(action, requestID, phase, startedAt, inFlight.AttemptCount)
-	sheinpub.ApplySubmissionRecord(pkg, record)
-	return record
+	return sheinpub.BeginSubmitAttempt(pkg, action, requestID, phase, startedAt, sheinSubmitInFlightTTL)
 }
 
 func advanceSheinSubmitPhase(pkg *SheinPackage, action, requestID, phase string) {
@@ -25,8 +16,7 @@ func advanceSheinSubmitPhase(pkg *SheinPackage, action, requestID, phase string)
 }
 
 func advanceSheinSubmitPhaseAndBuildEvent(pkg *SheinPackage, taskID, action, requestID, phase string, now time.Time) sheinpub.SubmissionEvent {
-	advanceSheinSubmitPhaseAt(pkg, action, requestID, phase, now)
-	return sheinpub.BuildSubmissionPhaseEvent(taskID, action, phase, sheinpub.SubmissionStatusRunning, requestID, now, "", nil)
+	return sheinpub.AdvanceSubmitPhaseAndBuildEvent(pkg, taskID, action, requestID, phase, now, sheinSubmitInFlightTTL)
 }
 
 func completeSheinSubmitAttempt(pkg *SheinPackage, action, requestID string, response *sheinpub.SubmissionResponse, submitErr error, finishedAt time.Time) *sheinpub.SubmissionRecord {
@@ -34,8 +24,7 @@ func completeSheinSubmitAttempt(pkg *SheinPackage, action, requestID string, res
 }
 
 func completeSheinSubmitAttemptAndBuildEvent(pkg *SheinPackage, taskID, action, requestID string, response *sheinpub.SubmissionResponse, responseErr error, startedAt, finishedAt time.Time) (*sheinpub.SubmissionRecord, sheinpub.SubmissionEvent) {
-	record := completeSheinSubmitAttemptAt(pkg, action, requestID, response, responseErr, finishedAt)
-	return record, sheinpub.BuildSubmissionAttemptEvent(taskID, action, record, response, responseErr, startedAt)
+	return sheinpub.CompleteSubmitAttemptAndBuildEvent(pkg, taskID, action, requestID, response, responseErr, startedAt, finishedAt)
 }
 
 func failSheinSubmitAttempt(pkg *SheinPackage, action, requestID, phase string, submitErr error, finishedAt time.Time) *sheinpub.SubmissionRecord {
@@ -43,75 +32,27 @@ func failSheinSubmitAttempt(pkg *SheinPackage, action, requestID, phase string, 
 }
 
 func failSheinSubmitAttemptAndBuildEvent(pkg *SheinPackage, taskID, action, requestedID, phase string, submitErr error, finishedAt time.Time) (*sheinpub.SubmissionRecord, sheinpub.SubmissionEvent) {
-	requestID, resolvedPhase := resolveSheinSubmitFailureState(pkg, requestedID, phase)
-	record := failSheinSubmitAttemptAt(pkg, action, requestID, resolvedPhase, submitErr, finishedAt)
-	startedAt := record.SubmittedAt
-	if !record.StartedAt.IsZero() {
-		startedAt = record.StartedAt
-	}
-	return record, sheinpub.BuildSubmissionAttemptEvent(taskID, action, record, nil, submitErr, startedAt)
+	return sheinpub.FailSubmitAttemptAndBuildEvent(pkg, taskID, action, requestedID, phase, submitErr, finishedAt)
 }
 
 func failSheinSubmitAttemptWithResponseAndBuildEvent(pkg *SheinPackage, taskID, action, requestedID, phase string, response *sheinpub.SubmissionResponse, submitErr error, finishedAt time.Time) (*sheinpub.SubmissionRecord, sheinpub.SubmissionEvent) {
-	requestID, resolvedPhase := resolveSheinSubmitFailureState(pkg, requestedID, phase)
-	record := failSheinSubmitAttemptAt(pkg, action, requestID, resolvedPhase, submitErr, finishedAt)
-	startedAt := record.SubmittedAt
-	if !record.StartedAt.IsZero() {
-		startedAt = record.StartedAt
-	}
-	return record, sheinpub.BuildSubmissionAttemptEvent(taskID, action, record, response, submitErr, startedAt)
+	return sheinpub.FailSubmitAttemptWithResponseAndBuildEvent(pkg, taskID, action, requestedID, phase, response, submitErr, finishedAt)
 }
 
 func resolveSheinSubmitFailureState(pkg *SheinPackage, requestedID, phase string) (string, string) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	var currentID, currentPhase string
-	if pkg != nil && pkg.SubmissionState != nil {
-		currentID = pkg.SubmissionState.CurrentRequestID
-		currentPhase = pkg.SubmissionState.CurrentPhase
-	}
-	return listingsubmission.ResolveFailureState(requestedID, phase, currentID, currentPhase, sheinpub.SubmissionPhaseValidate)
+	return sheinpub.ResolveSubmitFailureState(pkg, requestedID, phase)
 }
 
 func advanceSheinSubmitPhaseAt(pkg *SheinPackage, action, requestID, phase string, now time.Time) {
-	if pkg == nil {
-		return
-	}
-	report := sheinpub.EnsureSubmissionReport(pkg)
-	inFlight := listingsubmission.AdvanceInFlightState(sheinpub.SubmissionInFlightState(report), action, requestID, phase, now, sheinSubmitInFlightTTL)
-	sheinpub.ApplySubmissionInFlightState(report, inFlight)
-	sheinpub.SetSubmissionRecordPhase(report, action, requestID, phase)
+	sheinpub.AdvanceSubmitPhaseAt(pkg, action, requestID, phase, now, sheinSubmitInFlightTTL)
 }
 
 func completeSheinSubmitAttemptAt(pkg *SheinPackage, action, requestID string, response *sheinpub.SubmissionResponse, submitErr error, finishedAt time.Time) *sheinpub.SubmissionRecord {
-	if pkg == nil {
-		return nil
-	}
-	report := sheinpub.EnsureSubmissionReport(pkg)
-	record := sheinpub.ResolveSubmissionAttemptRecord(report, action, requestID, listingsubmission.AttemptSeedState{
-		AttemptCount:      report.AttemptCount,
-		InFlightStartedAt: report.InFlightStartedAt,
-	}, finishedAt)
-	finalizeState := listingsubmission.ResolveAttemptFinalizeState(action, sheinpub.SubmissionResponseOutcome(response), submitErr, finishedAt)
-	sheinpub.ApplySubmissionAttemptFinalizeState(record, response, finalizeState)
-	sheinpub.ApplySubmissionRecord(pkg, record)
-	sheinpub.ClearSubmissionInFlight(report, action, requestID)
-	return record
+	return sheinpub.CompleteSubmitAttemptAt(pkg, action, requestID, response, submitErr, finishedAt)
 }
 
 func failSheinSubmitAttemptAt(pkg *SheinPackage, action, requestID, phase string, submitErr error, finishedAt time.Time) *sheinpub.SubmissionRecord {
-	if pkg == nil {
-		return nil
-	}
-	report := sheinpub.EnsureSubmissionReport(pkg)
-	record := sheinpub.ResolveSubmissionAttemptRecord(report, action, requestID, listingsubmission.AttemptSeedState{
-		AttemptCount:      report.AttemptCount,
-		InFlightStartedAt: report.InFlightStartedAt,
-	}, finishedAt)
-	finalizeState := listingsubmission.ResolveAttemptFailureFinalizeState(phase, submitErr, finishedAt)
-	sheinpub.ApplySubmissionAttemptFailureState(record, phase, finalizeState)
-	sheinpub.ApplySubmissionRecord(pkg, record)
-	sheinpub.ClearSubmissionInFlight(report, action, requestID)
-	return record
+	return sheinpub.FailSubmitAttemptAt(pkg, action, requestID, phase, submitErr, finishedAt)
 }
 
 func findSheinSubmissionRecordByRequestID(pkg *SheinPackage, action, requestID string) *sheinpub.SubmissionRecord {
