@@ -130,6 +130,8 @@ describe("SdsHomepageEntry", () => {
 
     await screen.findByText("最近批次摘要");
 
+    expect(mockedListSheinStudioBatches).toHaveBeenCalledWith({ limit: 3 });
+
     const heroHeading = screen.getByRole("heading", {
       name: "从 POD 商品生成上架资料",
     });
@@ -148,5 +150,18 @@ describe("SdsHomepageEntry", () => {
     ) as HTMLDivElement | null;
     expect(featuredGrid).not.toBeNull();
     expect(featuredGrid?.className).not.toContain("lg:grid-cols-3");
+  });
+
+  it("loads the full recent batch list only when the user opens the dashboard", async () => {
+    render(<SdsHomepageEntry />);
+
+    await screen.findByText("最近批次摘要");
+    fireEvent.click(screen.getByRole("button", { name: "查看全部批次" }));
+
+    await waitFor(() => {
+      expect(mockedListSheinStudioBatches).toHaveBeenCalledWith({
+        limit: undefined,
+      });
+    });
   });
 });

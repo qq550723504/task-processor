@@ -140,6 +140,7 @@ func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOp
 	return []listingkitapi.HandlerOption{
 		listingkitapi.WithTaskLifecycleService(runtime.service),
 		listingkitapi.WithGenerationTaskService(runtime.service),
+		listingkitapi.WithChildTaskRetryService(runtime.service),
 		listingkitapi.WithStoreAdminService(runtime.service),
 		listingkitapi.WithStudioMediaService(runtime.service),
 		listingkitapi.WithStudioBatchRunService(runtime.service),

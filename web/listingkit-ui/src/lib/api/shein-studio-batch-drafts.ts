@@ -132,11 +132,12 @@ type StudioBatchListResponse = {
   }>;
 };
 
-const STUDIO_BATCH_DRAFT_TIMEOUT_MS = 15_000;
+const STUDIO_BATCH_DRAFT_TIMEOUT_MS = 60_000;
 
 type StudioBatchDraftRequestOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
+  limit?: number;
 };
 
 export function buildStudioBatchDraftSelectionKey(selection?: SDSProductVariantSelection) {
@@ -157,6 +158,10 @@ export function buildStudioBatchDraftSelectionKey(selection?: SDSProductVariantS
 
 export async function listSheinStudioBatchDrafts(options?: StudioBatchDraftRequestOptions) {
   const payload = await apiRequest<unknown>("/studio/batches", {
+    query:
+      typeof options?.limit === "number" && options.limit > 0
+        ? { limit: options.limit }
+        : undefined,
     signal: options?.signal,
     timeoutMs: options?.timeoutMs ?? STUDIO_BATCH_DRAFT_TIMEOUT_MS,
   });

@@ -1193,6 +1193,29 @@ describe("shein studio storage api", () => {
     expect(second).toHaveLength(1);
   });
 
+  it("dedupes saved batch list requests per limit", async () => {
+    listSheinStudioBatchDrafts.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve([]);
+          }, 0);
+        }),
+    );
+
+    await Promise.all([
+      listSheinStudioBatches({ limit: 3 }),
+      listSheinStudioBatches({ limit: 3 }),
+      listSheinStudioBatches(),
+    ]);
+
+    expect(listSheinStudioBatchDrafts).toHaveBeenCalledTimes(2);
+    expect(listSheinStudioBatchDrafts).toHaveBeenNthCalledWith(1, { limit: 3 });
+    expect(listSheinStudioBatchDrafts).toHaveBeenNthCalledWith(2, {
+      limit: undefined,
+    });
+  });
+
   it("dedupes concurrent hydrated batch requests for the same batch id", async () => {
     listSheinStudioBatchDrafts.mockImplementation(
       () =>

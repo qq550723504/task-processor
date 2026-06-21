@@ -23,6 +23,8 @@ import {
   saveSheinStudioBatch,
 } from "@/lib/utils/shein-studio-batches";
 
+const FEATURED_RECENT_BATCH_LIMIT = 3;
+
 function pickRecommendedRisk(summaries: SheinStudioRecentBatchSummary[]) {
   return (
     summaries.flatMap((summary) => summary.alerts ?? [])[0] ?? null
@@ -127,11 +129,11 @@ export function SdsHomepageEntry() {
   const [batchRunError, setBatchRunError] = useState("");
   const fullDashboardHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
-  const refreshSummaries = useCallback(async () => {
+  const refreshSummaries = useCallback(async (options?: { limit?: number }) => {
     setIsLoadingSummaries(true);
     setSummariesError("");
     try {
-      const batches = await listSheinStudioBatches();
+      const batches = await listSheinStudioBatches({ limit: options?.limit });
       setSummaries(
         buildRecentBatchSummaries(batches, {
           draft: localDraftSnapshotDetail?.draft ?? null,
@@ -153,7 +155,9 @@ export function SdsHomepageEntry() {
       setIsLoadingSummaries(true);
       setSummariesError("");
       try {
-        const batches = await listSheinStudioBatches();
+        const batches = await listSheinStudioBatches({
+          limit: FEATURED_RECENT_BATCH_LIMIT,
+        });
         if (cancelled) {
           return;
         }
@@ -273,7 +277,13 @@ export function SdsHomepageEntry() {
   }
 
   function handleToggleAllBatches() {
-    setShowAllBatches((current) => !current);
+    setShowAllBatches((current) => {
+      const next = !current;
+      if (next) {
+        void refreshSummaries();
+      }
+      return next;
+    });
   }
 
   const handleRenameSummary = useCallback(

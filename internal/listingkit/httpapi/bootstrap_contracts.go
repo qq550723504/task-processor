@@ -69,6 +69,7 @@ type TemporalWorkerService interface {
 type moduleService interface {
 	listingkit.TaskLifecycleService
 	listingkit.GenerationTaskService
+	listingkit.ChildTaskRetryService
 	listingkit.StoreAdminService
 	listingkit.StudioBatchRunService
 	listingkit.StudioMediaService

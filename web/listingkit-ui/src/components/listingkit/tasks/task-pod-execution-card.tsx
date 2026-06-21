@@ -59,6 +59,18 @@ function sdsAuthIssue(task?: ListingKitTaskResult | null) {
   );
 }
 
+function sdsIssueDetail(task?: ListingKitTaskResult | null, summary?: string) {
+  const normalizedSummary = summary?.trim();
+  const issue = task?.result?.workflow_issues?.find(
+    (item) =>
+      item.stage === "sds_design_sync" &&
+      item.detail &&
+      item.detail.trim() !== "" &&
+      item.detail.trim() !== normalizedSummary,
+  );
+  return issue?.detail?.trim();
+}
+
 function latestSDSWorkflowStage(task?: ListingKitTaskResult | null) {
   const stages =
     task?.result?.workflow_stages?.filter((stage) => stage.kind === "sds_design_sync") ?? [];
@@ -154,6 +166,7 @@ export function TaskPodExecutionCard({
   const Icon = presentation.icon;
   const warning = firstWarning(task);
   const authIssue = sdsAuthIssue(task);
+  const detailedReason = sdsIssueDetail(task, sync?.error ?? warning);
   const workflowStage = latestSDSWorkflowStage(task);
   const podBadge = podExecutionBadgeLabel(pod);
   const podSummary = podExecutionSummaryText(pod);
@@ -300,11 +313,25 @@ export function TaskPodExecutionCard({
           </Alert>
         ) : sync?.error ? (
           <Alert variant="warning">
-            <AlertDescription>{sync.error}</AlertDescription>
+            <AlertDescription>
+              <div>{sync.error}</div>
+              {detailedReason ? (
+                <div className="mt-2 rounded-md border border-warning/30 bg-background/60 px-3 py-2 text-xs leading-5 text-foreground">
+                  <div className="font-semibold">详细原因</div>
+                  <div className="mt-1 break-all font-mono">{detailedReason}</div>
+                </div>
+              ) : null}
+            </AlertDescription>
           </Alert>
         ) : warning ? (
           <div className="rounded-2xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-foreground">
             {warning}
+            {detailedReason ? (
+              <div className="mt-2 rounded-md border border-border bg-background/70 px-3 py-2 text-xs leading-5">
+                <div className="font-semibold">详细原因</div>
+                <div className="mt-1 break-all font-mono">{detailedReason}</div>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

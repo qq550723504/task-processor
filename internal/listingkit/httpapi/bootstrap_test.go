@@ -495,6 +495,18 @@ func TestBuildListingKitWorkflowDependenciesDefaultsToDisabledClients(t *testing
 	}
 }
 
+func TestBuildHandlerOptionsWiresChildTaskRetryService(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap_module_service.go")
+	if err != nil {
+		t.Fatalf("read bootstrap_module_service.go: %v", err)
+	}
+	if !strings.Contains(string(src), "listingkitapi.WithChildTaskRetryService(runtime.service)") {
+		t.Fatal("buildHandlerOptions should wire child task retry service into the HTTP handler")
+	}
+}
+
 func TestNewSubmitModuleInputScopesBuildServiceDependencies(t *testing.T) {
 	t.Parallel()
 

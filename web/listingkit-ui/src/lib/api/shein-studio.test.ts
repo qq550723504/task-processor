@@ -814,6 +814,20 @@ describe("shein studio design metadata", () => {
     ]);
   });
 
+  it("passes recent batch list limits through to the API request", async () => {
+    mockedApiRequest.mockResolvedValueOnce({ items: [] });
+
+    await listSheinStudioBatchDrafts({ limit: 3 });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/batches",
+      expect.objectContaining({
+        query: { limit: 3 },
+        timeoutMs: 60_000,
+      }),
+    );
+  });
+
   it("normalizes legacy created tasks that use design_id or omit design ids", () => {
     const batch = mapStudioBatchDraftDetailToBatch({
       batch: {

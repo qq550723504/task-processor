@@ -102,6 +102,47 @@ describe("TaskPodExecutionCard", () => {
     expect(screen.queryByText(/^sds POST/)).not.toBeInTheDocument();
   });
 
+  it("shows the detailed SDS upstream reason together with the summarized sync error", () => {
+    render(
+      <TaskPodExecutionCard
+        task={{
+          status: "needs_review",
+          result: {
+            sds_design_result: {
+              variant_id: 82491,
+              status: "failed",
+              error: "SDS render failed for selected color variants: white",
+            },
+            workflow_issues: [
+              {
+                code: "sds_variant_render_failed",
+                severity: "warning",
+                stage: "sds_design_sync",
+                message: "SDS variant render failed",
+                detail:
+                  'sds POST /materials/one failed with status 400: {"ret":500,"msg":"您所属的商户总额度已使用完，请升级会员或额外购买增值服务","traceId":"0b2504be48ee144f"}',
+              },
+              {
+                code: "sds_variant_render_failed",
+                severity: "warning",
+                stage: "sds_design_sync",
+                message: "SDS render failed for selected color variants: white",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("SDS render failed for selected color variants: white"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("详细原因")).toBeInTheDocument();
+    expect(
+      screen.getByText(/您所属的商户总额度已使用完，请升级会员或额外购买增值服务/),
+    ).toBeInTheDocument();
+  });
+
   it("renders pod execution status even when only pod summary is available", () => {
     render(
       <TaskPodExecutionCard

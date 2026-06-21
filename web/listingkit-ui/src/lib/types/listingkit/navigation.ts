@@ -31,6 +31,7 @@ export type QueueQuery = {
   preview_capability?: string;
   render_preview_available?: boolean;
   retryable?: boolean;
+  limit?: number;
   page?: number;
   page_size?: number;
   sort_by?: string;

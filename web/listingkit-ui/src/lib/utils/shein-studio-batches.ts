@@ -61,7 +61,11 @@ export type SheinStudioHydratedBatch = {
   detail: SheinStudioBatchDetail;
 };
 
-let inFlightBatchListPromise: Promise<SheinStudioSavedBatch[]> | null = null;
+type SheinStudioBatchListOptions = {
+  limit?: number;
+};
+
+const inFlightBatchListPromises = new Map<string, Promise<SheinStudioSavedBatch[]>>();
 const inFlightHydratedBatchPromises = new Map<
   string,
   Promise<SheinStudioHydratedBatch>
@@ -214,19 +218,32 @@ export async function saveSheinStudioDraftWithOptions(
   });
 }
 
-export async function listSheinStudioBatches() {
-  if (!inFlightBatchListPromise) {
-    inFlightBatchListPromise = listSheinStudioBatchDrafts()
+function buildBatchListCacheKey(options?: SheinStudioBatchListOptions) {
+  const limit =
+    typeof options?.limit === "number" && options.limit > 0
+      ? Math.floor(options.limit)
+      : 0;
+  return `limit:${limit}`;
+}
+
+export async function listSheinStudioBatches(options?: SheinStudioBatchListOptions) {
+  const cacheKey = buildBatchListCacheKey(options);
+  let pending = inFlightBatchListPromises.get(cacheKey);
+  if (!pending) {
+    pending = listSheinStudioBatchDrafts({
+      limit: options?.limit,
+    })
       .then((items) =>
         items
           .map((item) => normalizeBatch(item))
           .filter((item): item is NonNullable<typeof item> => Boolean(item)),
       )
       .finally(() => {
-        inFlightBatchListPromise = null;
+        inFlightBatchListPromises.delete(cacheKey);
       });
+    inFlightBatchListPromises.set(cacheKey, pending);
   }
-  return inFlightBatchListPromise;
+  return pending;
 }
 
 export async function getSheinStudioBatch(batchID: string) {
