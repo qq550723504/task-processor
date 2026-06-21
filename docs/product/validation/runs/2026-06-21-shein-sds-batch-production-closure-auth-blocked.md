@@ -272,3 +272,22 @@ ZITADEL response: 400 unsupported_grant_type, password not supported
 ```
 
 后续真实验收可复用同一个本地 token 文件；当 ZITADEL session 过期或 token 被拒绝时，重新保存一次新的 token 即可。
+
+## 16. ZITADEL service account token 获取工具：2026-06-21 20:35 +08:00
+
+为避免依赖人工复制浏览器用户 token，新增本地机器授权脚本：
+
+| 脚本 | 用途 |
+| --- | --- |
+| `scripts/listingkit-fetch-machine-token.ps1` | 使用 ZITADEL Service Account 的 client credentials 获取 access token，保存到 `.local/listingkit-api-token.txt`，并可自动调用 `listingkit-auth-check.ps1` 验证 Go API |
+
+新增 `.env.example` 变量示例：
+
+```dotenv
+LISTINGKIT_MACHINE_ZITADEL_ISSUER_URL=https://your-instance.zitadel.cloud
+LISTINGKIT_MACHINE_CLIENT_ID=your-service-account-client-id
+LISTINGKIT_MACHINE_CLIENT_SECRET=your-service-account-client-secret
+LISTINGKIT_MACHINE_SCOPES=openid profile urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:<listingkit-project-id>:aud
+```
+
+注意：机器 token 代表 service account，不代表真实浏览器用户。适合本地 API 调试、curl、脚本验收和自动化；调试用户归属、用户级 owner scope 或具体用户权限时仍应使用浏览器登录用户链路。
