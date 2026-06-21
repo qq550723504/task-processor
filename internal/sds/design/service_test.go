@@ -740,3 +740,115 @@ func TestUpdateDesignProductsUsesConfiguredEndpoint(t *testing.T) {
 		t.Fatalf("unexpected body: %s", string(body))
 	}
 }
+
+func TestDeleteSDSMaterialAndEndProductUseConfiguredEndpoints(t *testing.T) {
+	t.Parallel()
+
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("method = %s, want DELETE", r.Method)
+		}
+		paths = append(paths, r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ret":0,"msg":"SUCCESS"}`))
+	}))
+	defer server.Close()
+
+	cfg := sdsclient.DefaultConfig()
+	cfg.BaseURL = server.URL
+	cfg.Endpoints.MaterialDeletePath = "/ps/material/%d"
+	cfg.Endpoints.EndProductDeletePath = "/ps/endproducts/%s"
+	cfg.AuthBootstrap = sdsclient.AuthBootstrapConfig{}
+	client, err := sdsclient.New(cfg)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	service := NewService(client)
+	if err := service.DeleteMaterial(context.Background(), 467483443); err != nil {
+		t.Fatalf("delete material: %v", err)
+	}
+	if err := service.DeleteEndProduct(context.Background(), "921516041142050816"); err != nil {
+		t.Fatalf("delete endproduct: %v", err)
+	}
+
+	if strings.Join(paths, "|") != "/ps/material/467483443|/ps/endproducts/921516041142050816" {
+		t.Fatalf("delete paths = %+v", paths)
+	}
+}
+
+func TestPrepareAndSyncDesignCleansUpCreatedSDSArtifacts(t *testing.T) {
+	t.Parallel()
+
+	var deleted []string
+	var serverURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/upload-sign":
+			_, _ = w.Write([]byte(`{"dir":"listingkit/","policy":"p","ossAccessKeyId":"ak","signature":"sig","host":"` + serverURL + `/oss"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/oss":
+			_, _ = w.Write([]byte(`ok`))
+		case r.Method == http.MethodPost && r.URL.Path == "/materials/one":
+			_, _ = w.Write([]byte(`{"ret":0,"msg":"SUCCESS","data":[{"id":467483443,"name":"cleanup.png","file_code":"cleanup.png","content_type":"image/png","width":1,"height":1,"img_url":"https://cdn.sdspod.com/material.png"}]}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/materials/findByIds":
+			_, _ = w.Write([]byte(`[{"id":467483443,"name":"cleanup.png","file_code":"cleanup.png","content_type":"image/png","width":1,"height":1,"img_url":"https://cdn.sdspod.com/material.png"}]`))
+		case r.Method == http.MethodGet && r.URL.Path == "/ps/design/products/82491":
+			_, _ = w.Write([]byte(`{"product":{"id":82491,"parent_id":82490,"prototypeId":"proto-1","img_url":"https://cdn.sdspod.com/old.jpg"},"prototypeGroup":{"id":13229},"layers":[{"id":"layer-1","prototypeId":"proto-1","name":"素材","printWidth":100,"printHeight":100}],"psds":[{"id":"psd-1","prototypeId":"proto-1","fileCode":"model.psd","thumbnail_url":"https://cdn.sdspod.com/model-thumb.jpg"}]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/ps/design/syncDesign":
+			_, _ = w.Write([]byte(`{"ret":0,"msg":"SUCCESS"}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/ps/design/add_and_design":
+			_, _ = w.Write([]byte(`{"ret":0,"msg":"SUCCESS"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/design_products":
+			_, _ = w.Write([]byte(`{"items":[{"id":"921516041142050816","product_id":82491,"buildFinish":true,"status":2,"finish_time":99,"material_img_name":"cleanup","img_urls":["https://cdn.sdspod.com/out/rendered.jpg"]}],"total_count":1}`))
+		case r.Method == http.MethodDelete && (r.URL.Path == "/ps/material/467483443" || r.URL.Path == "/ps/endproducts/921516041142050816"):
+			deleted = append(deleted, r.URL.Path)
+			_, _ = w.Write([]byte(`{"ret":0,"msg":"SUCCESS"}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	cfg := sdsclient.DefaultConfig()
+	cfg.BaseURL = server.URL
+	cfg.Endpoints.UploadSignPath = "/upload-sign"
+	cfg.Endpoints.MaterialCreatePath = "/materials/one"
+	cfg.Endpoints.MaterialFindByIDs = "/materials/findByIds"
+	cfg.Endpoints.DesignProductPath = "/ps/design/products/%d"
+	cfg.Endpoints.SyncDesignPath = "/ps/design/syncDesign"
+	cfg.Endpoints.AddAndDesignPath = "/ps/design/add_and_design"
+	cfg.Endpoints.DesignProductsPath = server.URL + "/design_products"
+	cfg.Endpoints.MaterialDeletePath = "/ps/material/%d"
+	cfg.Endpoints.EndProductDeletePath = "/ps/endproducts/%s"
+	cfg.AuthBootstrap = sdsclient.AuthBootstrapConfig{}
+	client, err := sdsclient.New(cfg)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	result, err := NewService(client).PrepareAndSyncDesign(context.Background(), PrepareSyncDesignInput{
+		VariantID:        82491,
+		ParentProductID:  82490,
+		PrototypeGroupID: 13229,
+		LayerID:          "layer-1",
+		DesignType:       "material",
+		FitLevel:         1,
+	}, UploadRequest{
+		FileName:    "cleanup.png",
+		Content:     []byte{0x89, 0x50, 0x4e, 0x47},
+		ContentType: "image/png",
+		Width:       1,
+		Height:      1,
+	})
+	if err != nil {
+		t.Fatalf("PrepareAndSyncDesign() error = %v", err)
+	}
+	if result == nil || len(result.RenderedImageURLs) == 0 {
+		t.Fatalf("result = %+v, want rendered image urls", result)
+	}
+	if strings.Join(deleted, "|") != "/ps/endproducts/921516041142050816|/ps/material/467483443" {
+		t.Fatalf("deleted paths = %+v", deleted)
+	}
+}

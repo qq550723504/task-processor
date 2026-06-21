@@ -181,6 +181,20 @@ func (s *Service) FindMaterialsByIDs(ctx context.Context, req FindMaterialsReque
 	return result, nil
 }
 
+// DeleteMaterial removes an uploaded SDS material-library record.
+func (s *Service) DeleteMaterial(ctx context.Context, materialID int64) error {
+	if materialID <= 0 {
+		return fmt.Errorf("materialID must be positive")
+	}
+	pathTemplate := strings.TrimSpace(s.client.Config().Endpoints.MaterialDeletePath)
+	if pathTemplate == "" {
+		return fmt.Errorf("material delete endpoint is not configured")
+	}
+	path := fmt.Sprintf(pathTemplate, materialID)
+	_, err := s.client.Do(ctx, "DELETE", path, nil, nil, nil)
+	return err
+}
+
 // UploadAndCreateMaterial 完成 OSS 上传和素材登记。
 func (s *Service) UploadAndCreateMaterial(ctx context.Context, req UploadRequest) (*UploadedMaterial, error) {
 	image, err := s.UploadToOSS(ctx, req)
@@ -489,7 +503,14 @@ func (s *Service) PrepareAndSyncDesign(ctx context.Context, input PrepareSyncDes
 		return nil, err
 	}
 
-	result, err := s.PrepareSyncDesign(ctx, input, material)
+	var result *PrepareSyncDesignResult
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		s.cleanupDesignArtifacts(cleanupCtx, material, result)
+	}()
+
+	result, err = s.PrepareSyncDesign(ctx, input, material)
 	if err != nil {
 		return nil, err
 	}
@@ -507,6 +528,35 @@ func (s *Service) PrepareAndSyncDesign(ctx context.Context, input PrepareSyncDes
 
 	result.RenderedImageURLs = s.fetchRenderedImageURLs(ctx, input, result)
 	return result, nil
+}
+
+func (s *Service) cleanupDesignArtifacts(ctx context.Context, material *UploadedMaterial, result *PrepareSyncDesignResult) {
+	for _, itemID := range cleanupEndProductItemIDs(result) {
+		_ = s.DeleteEndProduct(ctx, itemID)
+	}
+	if material != nil && material.Material != nil && material.Material.ID > 0 {
+		_ = s.DeleteMaterial(ctx, material.Material.ID)
+	}
+}
+
+func cleanupEndProductItemIDs(result *PrepareSyncDesignResult) []string {
+	if result == nil || len(result.RenderedImageObservations) == 0 {
+		return nil
+	}
+	values := make([]string, 0, len(result.RenderedImageObservations))
+	seen := make(map[string]struct{}, len(result.RenderedImageObservations))
+	for _, observation := range result.RenderedImageObservations {
+		itemID := strings.TrimSpace(observation.ItemID)
+		if itemID == "" {
+			continue
+		}
+		if _, ok := seen[itemID]; ok {
+			continue
+		}
+		seen[itemID] = struct{}{}
+		values = append(values, itemID)
+	}
+	return values
 }
 
 func (s *Service) syncDesignWithRetry(ctx context.Context, req SyncDesignRequest) error {
@@ -629,6 +679,21 @@ func (s *Service) ListDesignProducts(ctx context.Context, req ListDesignProducts
 		return nil, err
 	}
 	return result, nil
+}
+
+// DeleteEndProduct removes a rendered SDS finished-product item from 成品库.
+func (s *Service) DeleteEndProduct(ctx context.Context, itemID string) error {
+	itemID = strings.TrimSpace(itemID)
+	if itemID == "" {
+		return fmt.Errorf("itemID is required")
+	}
+	pathTemplate := strings.TrimSpace(s.client.Config().Endpoints.EndProductDeletePath)
+	if pathTemplate == "" {
+		return fmt.Errorf("endproduct delete endpoint is not configured")
+	}
+	path := fmt.Sprintf(pathTemplate, itemID)
+	_, err := s.client.Do(ctx, "DELETE", path, nil, nil, nil)
+	return err
 }
 
 // ListSensitiveWordsByItemIDs queries SDS for sensitive-word hits on rendered

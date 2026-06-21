@@ -18,6 +18,7 @@ type EndpointSet struct {
 	LoginPath                string
 	UploadSignPath           string
 	MaterialCreatePath       string
+	MaterialDeletePath       string
 	MaterialFindByIDs        string
 	DesignProductPath        string
 	PrototypeGroupPath       string
@@ -26,6 +27,7 @@ type EndpointSet struct {
 	SyncDesignPath           string
 	AddAndDesignPath         string
 	DesignProductsPath       string
+	EndProductDeletePath     string
 	DesignProductsUpdatePath string
 	DesignUploadPath         string
 	PreviewCreatePath        string
@@ -104,6 +106,7 @@ func DefaultConfig() *Config {
 			LoginPath:                "/login",
 			UploadSignPath:           "/ps/image/get_post_signature_to_image_for_oss_upload",
 			MaterialCreatePath:       "/materials/one",
+			MaterialDeletePath:       "/ps/material/%d",
 			MaterialFindByIDs:        "/materials/findByIds",
 			DesignProductPath:        "/ps/design/products/%d",
 			PrototypeGroupPath:       "/merchant_product_parents/%d/prototypeGroup",
@@ -112,6 +115,7 @@ func DefaultConfig() *Config {
 			SyncDesignPath:           "/ps/design/syncDesign",
 			AddAndDesignPath:         "/ps/design/add_and_design",
 			DesignProductsPath:       "https://mapi2.sdspod.com/design_products",
+			EndProductDeletePath:     "/ps/endproducts/%s",
 			DesignProductsUpdatePath: "https://mapi.sdspod.com/design_products",
 			DesignUploadPath:         "",
 		},
