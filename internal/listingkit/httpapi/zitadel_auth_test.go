@@ -231,6 +231,82 @@ func TestListingKitZitadelAuthMapsVerifiedIdentityToHeaders(t *testing.T) {
 	}
 }
 
+func TestListingKitZitadelAuthOverwritesCallerSuppliedIdentityHeaders(t *testing.T) {
+	var introspectionToken string
+	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"authorization_endpoint": r.Host + "/oauth/v2/authorize",
+				"token_endpoint":         r.Host + "/oauth/v2/token",
+				"introspection_endpoint": zitadelURL(r) + "/oauth/v2/introspect",
+			})
+		case "/oauth/v2/introspect":
+			introspectionToken = r.FormValue("token")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"active":                                true,
+				"sub":                                   "verified-user",
+				"urn:zitadel:iam:user:resourceowner:id": "verified-tenant",
+				"urn:zitadel:iam:org:project:roles": map[string]any{
+					"listingkit_admin": map[string]any{},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{
+			IssuerURL: zitadel.URL,
+			ClientID:  "listingkit-client",
+			Required:  true,
+		},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{
+		{
+			Method: http.MethodGet,
+			Path:   "/api/v1/listing-kits/tasks",
+			Module: "listing-kit",
+			Handler: func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{
+					"tenant_id": c.GetHeader("X-Tenant-ID"),
+					"user_id":   c.GetHeader("X-User-ID"),
+					"user_type": c.GetHeader("X-User-Type"),
+					"roles":     c.GetHeader("X-User-Roles"),
+				})
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	req.Header.Set("X-Tenant-ID", "spoofed-tenant")
+	req.Header.Set("tenant-id", "spoofed-tenant")
+	req.Header.Set("X-User-ID", "spoofed-user")
+	req.Header.Set("X-User-Type", "spoofed")
+	req.Header.Set("X-User-Roles", "spoofed_role")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+	if introspectionToken != "access-token-1" {
+		t.Fatalf("introspection token = %q, want access-token-1", introspectionToken)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["tenant_id"] != "verified-tenant" || body["user_id"] != "verified-user" || body["user_type"] != "zitadel" || body["roles"] != "listingkit_admin" {
+		t.Fatalf("identity headers = %#v, want verified token identity to overwrite caller headers", body)
+	}
+}
+
 func TestListingKitZitadelAuthRejectsUnauthorizedIdentity(t *testing.T) {
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
