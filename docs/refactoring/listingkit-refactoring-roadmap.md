@@ -622,6 +622,7 @@ Follow-up deletion
 | SHEIN SDS image matching helpers | migrated | SDS mockup 到 ImageSet 转换、SKU/color key 归一、source_sds_sku/SupplierSKU 匹配和 image set merge 迁入 `internal/publishing/shein/sds_images.go`；ListingKit SDS 图片流程仅保留请求 DTO 适配与编排 wrapper。 |
 | SHEIN studio variant image matching | migrated | AI 生成的 variant image set 按 source_sds_sku/SupplierSKU/SKC color 匹配 DraftPayload/SkcList 的规则迁入 `internal/publishing/shein/variant_image_sets.go`；ListingKit 仅把前端 `SheinStudioVariantImageSet` DTO 归一为 publishing-owned `VariantImageSet`。 |
 | SHEIN variant image coverage guard | migrated | 多 SKC 共享单图的 coverage 阻断判断、SKC group/main image 计数和 metadata 状态读写迁入 `internal/publishing/shein/variant_image_coverage.go`；ListingKit 仅从前端/SDS 输入计算可用变体图片组数并委托 publishing 规则。 |
+| SHEIN studio AI product image application | migrated | AI 商品图替换/追加、ImageSet 构造、DraftPayload/SkcList/PreviewPayload 写回迁入 `internal/publishing/shein/studio_ai_images.go`；ListingKit Studio 图片流程仅保留请求策略、source image 聚合和兼容 wrapper。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
