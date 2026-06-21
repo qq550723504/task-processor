@@ -223,3 +223,32 @@ ZITADEL response: 400 invalid_client, client not found
 1. 浏览器完成 localhost:3000 的 ZITADEL 登录；或
 2. 显式提供有效 LISTINGKIT_API_TOKEN / bearer token。
 ```
+
+## 14. 注释测试账号 password grant 复核：2026-06-21 19:30 +08:00
+
+用户提示 `.env` 注释中有测试账号密码。本轮复核只检查变量是否存在，不记录账号或密码值。
+
+### 变量结论
+
+| 项目 | 结论 |
+| --- | --- |
+| `ZITADEL_TEST_USER_USERNAME` | present in commented `.env` line |
+| `ZITADEL_TEST_USER_PASSWORD` | present in commented `.env` line |
+
+### Token 获取尝试
+
+使用 `.env` 中的 issuer、client id、client secret、scopes，以及注释中的测试账号密码尝试 OIDC `password` grant。
+
+结果：
+
+```text
+TOKEN_REQUEST_FAILED
+ZITADEL response: 400 unsupported_grant_type, password not supported
+```
+
+### 结论
+
+```text
+注释中的测试账号密码可以用于浏览器交互式登录验证，但当前 ZITADEL token endpoint 不支持 password grant，不能用它们直接换取 API bearer token。
+真实验收仍需要通过浏览器完成 Auth.js/ZITADEL 登录，或提供已经签发的有效 bearer token。
+```
