@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"task-processor/internal/catalog/canonical"
@@ -91,39 +90,18 @@ func (s *sheinAdminService) applySheinFinalDraftUpdate(task *Task, req *SheinFin
 }
 
 func applySheinFinalDraftRequest(pkg *sheinpub.Package, req *SheinFinalDraftUpdateRequest) {
-	if pkg == nil || pkg.FinalSubmissionDraft == nil || req == nil {
+	if pkg == nil || req == nil {
 		return
 	}
-	if req.SubmitMode != "" {
-		mode := strings.ToLower(strings.TrimSpace(req.SubmitMode))
-		if mode == "publish" || mode == "save_draft" {
-			pkg.FinalSubmissionDraft.SubmitMode = mode
-		}
-	}
-	if len(req.ManualPriceOverrides) > 0 {
-		pkg.FinalSubmissionDraft.ManualPriceOverrides = clonePriceOverrides(req.ManualPriceOverrides)
-	}
-	if req.FinalImageOrder != nil {
-		pkg.FinalSubmissionDraft.FinalImageOrder = uniqueNonEmptyStrings(*req.FinalImageOrder)
-	}
-	if value := strings.TrimSpace(req.MainImageURL); value != "" {
-		pkg.FinalSubmissionDraft.MainImageURL = value
-	}
-	if req.DeletedImageURLs != nil {
-		pkg.FinalSubmissionDraft.DeletedImageURLs = uniqueNonEmptyStrings(*req.DeletedImageURLs)
-	}
-	if len(req.ImageRoleOverrides) > 0 {
-		pkg.FinalSubmissionDraft.ImageRoleOverrides = normalizeImageRoleOverrides(req.ImageRoleOverrides)
-	}
-	if req.Confirmed != nil {
-		pkg.FinalSubmissionDraft.Confirmed = *req.Confirmed
-		if *req.Confirmed {
-			now := time.Now()
-			pkg.FinalSubmissionDraft.ConfirmedAt = &now
-		} else {
-			pkg.FinalSubmissionDraft.ConfirmedAt = nil
-		}
-	}
+	sheinpub.ApplyFinalDraftUpdate(pkg, sheinpub.FinalDraftUpdate{
+		Confirmed:            req.Confirmed,
+		SubmitMode:           req.SubmitMode,
+		ManualPriceOverrides: req.ManualPriceOverrides,
+		FinalImageOrder:      req.FinalImageOrder,
+		MainImageURL:         req.MainImageURL,
+		DeletedImageURLs:     req.DeletedImageURLs,
+		ImageRoleOverrides:   req.ImageRoleOverrides,
+	}, time.Now())
 }
 
 func (s *sheinAdminService) clearSheinAdminResolutionKinds(kind string, buildReq *sheinpub.BuildRequest, canonicalProduct *canonical.Product, pkg *sheinpub.Package) ([]string, error) {
