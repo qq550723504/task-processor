@@ -8,6 +8,7 @@ type ReadinessTaxonomy = sheinmarketplace.ReadinessTaxonomy
 type ReadinessReasonSpec = sheinmarketplace.ReadinessReasonSpec
 type ReadinessHintSpec = sheinmarketplace.ReadinessHintSpec
 type ReadinessGuidanceSpec = sheinmarketplace.ReadinessGuidanceSpec
+type PackageTemplateValidation = sheinmarketplace.PackageTemplateValidation
 type SubmitTemplateReadinessInput = sheinmarketplace.SubmitTemplateReadinessInput
 type SubmitPayloadValidationReadinessInput = sheinmarketplace.SubmitPayloadValidationReadinessInput
 
@@ -29,6 +30,10 @@ func BuildSubmitReadinessCheck(
 	warningOnly bool,
 ) ReadinessCheckSpec {
 	return sheinmarketplace.BuildSubmitReadinessCheck(key, label, ok, message, fieldPaths, suggestedAction, warningOnly)
+}
+
+func BuildPackageTemplateValidation(pkg *Package, submitPayloadErr error) PackageTemplateValidation {
+	return sheinmarketplace.BuildPackageTemplateValidation(pkg, submitPayloadErr)
 }
 
 func BuildManualNotesReadinessCheck(pkg *Package) ReadinessCheckSpec {
