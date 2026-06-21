@@ -1,6 +1,9 @@
 package listingkit
 
-import common "task-processor/internal/publishing/common"
+import (
+	common "task-processor/internal/publishing/common"
+	sheinpub "task-processor/internal/publishing/shein"
+)
 
 func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {
 	if set == nil {
@@ -165,4 +168,17 @@ func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {
 		cloned.Changes = append([]RevisionFieldChange(nil), src.Changes...)
 	}
 	return cloned
+}
+
+func clonePendingAttributeCandidates(items []SheinPendingAttributeCandidate) []SheinPendingAttributeCandidate {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]SheinPendingAttributeCandidate, 0, len(items))
+	for _, item := range items {
+		clone := item
+		clone.AttributeValueList = append([]sheinpub.AttributeValueCandidate(nil), item.AttributeValueList...)
+		result = append(result, clone)
+	}
+	return result
 }

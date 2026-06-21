@@ -44,7 +44,9 @@ func TestRevisionApplySheinSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func applySheinCategoryResolutionPatch(pkg *sheinpub.Package, patch *SheinCategoryResolutionPatch) {",
 		"func applySheinAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinAttributeResolutionPatch) {",
 		"func applySheinSaleAttributeResolutionPatch(pkg *sheinpub.Package, patch *SheinSaleAttributeResolutionPatch) {",
-		"func cloneSheinResolvedSaleAttributeMap(src map[string]sheinpub.ResolvedSaleAttribute) map[string]sheinpub.ResolvedSaleAttribute {",
+		"sheinworkspace.ApplyCategoryResolutionPatch(pkg, patch)",
+		"sheinworkspace.ApplyAttributeResolutionPatch(pkg, patch)",
+		"sheinworkspace.ApplySaleAttributeResolutionPatch(pkg, patch)",
 	} {
 		if !strings.Contains(resolutionContent, needle) {
 			t.Fatalf("revision_apply_shein_resolution_support.go should contain %q", needle)
@@ -60,9 +62,29 @@ func TestRevisionApplySheinSupportFilesOwnHelperFamilies(t *testing.T) {
 	for _, needle := range []string{
 		"func applySheinSKCRevisionPatches(pkg *sheinpub.Package, patches []SheinSKCRevisionPatch) {",
 		"func applySheinSKURevisionPatches(pkg *sheinpub.Package, draft *sheinpub.SKCRequestDraft, pkgSKC *sheinpub.SKCPackage, patches []SheinSKURevisionPatch) {",
+		"sheinworkspace.ApplySKCRevisionPatches(pkg, patches)",
+		"sheinworkspace.ApplySKURevisionPatches(pkg, draft, pkgSKC, patches)",
 	} {
 		if !strings.Contains(skuContent, needle) {
 			t.Fatalf("revision_apply_shein_sku_support.go should contain %q", needle)
+		}
+	}
+
+	workspaceSrc, err := os.ReadFile("../marketplace/shein/workspace/revision_apply_patch.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../marketplace/shein/workspace/revision_apply_patch.go) error = %v", err)
+	}
+	workspaceContent := string(workspaceSrc)
+
+	for _, needle := range []string{
+		"func ApplyCategoryResolutionPatch(pkg *sheinpub.Package, patch *CategoryResolutionPatch) {",
+		"func ApplyAttributeResolutionPatch(pkg *sheinpub.Package, patch *AttributeResolutionPatch) {",
+		"func ApplySaleAttributeResolutionPatch(pkg *sheinpub.Package, patch *SaleAttributeResolutionPatch) {",
+		"func ApplySKCRevisionPatches(pkg *sheinpub.Package, patches []SKCRevisionPatch) {",
+		"func ApplySKURevisionPatches(pkg *sheinpub.Package, draft *sheinpub.SKCRequestDraft, pkgSKC *sheinpub.SKCPackage, patches []SKURevisionPatch) {",
+	} {
+		if !strings.Contains(workspaceContent, needle) {
+			t.Fatalf("workspace revision apply patch should contain %q", needle)
 		}
 	}
 }
