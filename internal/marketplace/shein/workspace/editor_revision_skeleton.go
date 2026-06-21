@@ -70,6 +70,9 @@ func cloneAttributePatch(src *AttributeResolutionPatch) *AttributeResolutionPatc
 	}
 	out := *src
 	out.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), src.ResolvedAttributes...)
+	out.PendingAttributes = append([]common.Attribute(nil), src.PendingAttributes...)
+	out.PendingAttributeCandidates = clonePendingAttributeCandidates(src.PendingAttributeCandidates)
+	out.RecommendedAttributeCandidates = clonePendingAttributeCandidates(src.RecommendedAttributeCandidates)
 	out.ReviewNotes = append([]string(nil), src.ReviewNotes...)
 	return &out
 }

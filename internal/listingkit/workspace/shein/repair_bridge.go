@@ -14,6 +14,10 @@ func BuildRepairRevisionSeed(action string, payload *RepairPatchPayload) RepairR
 	return sheinmarketplace.BuildRepairRevisionSeed(action, payload)
 }
 
+func CloneRepairPatchPayload(payload *RepairPatchPayload) *RepairPatchPayload {
+	return sheinmarketplace.CloneRepairPatchPayload(payload)
+}
+
 func BuildRepairRevisionInput(payload *RepairPatchPayload) *RevisionInput {
 	return sheinmarketplace.BuildRepairRevisionInput(payload)
 }

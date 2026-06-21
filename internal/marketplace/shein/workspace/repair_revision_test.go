@@ -1,6 +1,93 @@
 package workspace
 
-import "testing"
+import (
+	"testing"
+
+	common "task-processor/internal/publishing/common"
+	sheinpub "task-processor/internal/publishing/shein"
+)
+
+func TestCloneRepairPatchPayloadDeepCopiesNestedSlices(t *testing.T) {
+	t.Parallel()
+
+	categoryID := 123
+	stockCount := -7
+	payload := &RepairPatchPayload{
+		CategoryResolution: &CategoryResolutionPatch{
+			CategoryID:     &categoryID,
+			CategoryIDList: []int{123, 456},
+		},
+		AttributeResolution: &AttributeResolutionPatch{
+			PendingAttributes: []common.Attribute{{Name: "Material", Value: "Cotton"}},
+			PendingAttributeCandidates: []sheinpub.PendingAttributeCandidate{{
+				AttributeID: 11,
+				AttributeValueList: []sheinpub.AttributeValueCandidate{{
+					AttributeValueID: 22,
+					Value:            "Cotton",
+				}},
+			}},
+			RecommendedAttributeCandidates: []sheinpub.PendingAttributeCandidate{{
+				AttributeID: 33,
+				AttributeValueList: []sheinpub.AttributeValueCandidate{{
+					AttributeValueID: 44,
+					Value:            "Blend",
+				}},
+			}},
+		},
+		SKCPatches: []SKCRevisionPatch{{
+			SupplierCode: "SKC-1",
+			SKUPatches: []SKURevisionPatch{{
+				SupplierSKU: "SKU-1",
+				Attributes:  map[string]string{"Size": "M"},
+				StockCount:  &stockCount,
+			}},
+		}},
+		Images: &common.ImageSet{
+			MainImage: "https://cdn.example.com/main.jpg",
+			Gallery:   []string{"https://cdn.example.com/1.jpg"},
+		},
+		ReviewNotes: []string{"manual review"},
+	}
+
+	cloned := CloneRepairPatchPayload(payload)
+	if cloned == nil {
+		t.Fatal("CloneRepairPatchPayload() = nil, want clone")
+	}
+
+	payload.CategoryResolution.CategoryIDList[0] = 999
+	payload.AttributeResolution.PendingAttributes[0].Value = "Polyester"
+	payload.AttributeResolution.PendingAttributeCandidates[0].AttributeValueList[0].Value = "Silk"
+	payload.AttributeResolution.RecommendedAttributeCandidates[0].AttributeValueList[0].Value = "Wool"
+	payload.SKCPatches[0].SKUPatches[0].Attributes["Size"] = "L"
+	*payload.SKCPatches[0].SKUPatches[0].StockCount = 1
+	payload.Images.Gallery[0] = "https://cdn.example.com/changed.jpg"
+	payload.ReviewNotes[0] = "changed"
+
+	if cloned.CategoryResolution.CategoryIDList[0] != 123 {
+		t.Fatalf("CategoryIDList[0] = %d, want deep clone", cloned.CategoryResolution.CategoryIDList[0])
+	}
+	if cloned.AttributeResolution.PendingAttributes[0].Value != "Cotton" {
+		t.Fatalf("PendingAttributes[0].Value = %q, want deep clone", cloned.AttributeResolution.PendingAttributes[0].Value)
+	}
+	if cloned.AttributeResolution.PendingAttributeCandidates[0].AttributeValueList[0].Value != "Cotton" {
+		t.Fatalf("PendingAttributeCandidates value = %q, want deep clone", cloned.AttributeResolution.PendingAttributeCandidates[0].AttributeValueList[0].Value)
+	}
+	if cloned.AttributeResolution.RecommendedAttributeCandidates[0].AttributeValueList[0].Value != "Blend" {
+		t.Fatalf("RecommendedAttributeCandidates value = %q, want deep clone", cloned.AttributeResolution.RecommendedAttributeCandidates[0].AttributeValueList[0].Value)
+	}
+	if cloned.SKCPatches[0].SKUPatches[0].Attributes["Size"] != "M" {
+		t.Fatalf("SKU Attributes[Size] = %q, want deep clone", cloned.SKCPatches[0].SKUPatches[0].Attributes["Size"])
+	}
+	if got := *cloned.SKCPatches[0].SKUPatches[0].StockCount; got != -7 {
+		t.Fatalf("StockCount = %d, want deep clone", got)
+	}
+	if cloned.Images.Gallery[0] != "https://cdn.example.com/1.jpg" {
+		t.Fatalf("Images.Gallery[0] = %q, want deep clone", cloned.Images.Gallery[0])
+	}
+	if cloned.ReviewNotes[0] != "manual review" {
+		t.Fatalf("ReviewNotes[0] = %q, want deep clone", cloned.ReviewNotes[0])
+	}
+}
 
 func TestBuildRepairRevisionSeedBuildsMinimalSkeleton(t *testing.T) {
 	t.Parallel()

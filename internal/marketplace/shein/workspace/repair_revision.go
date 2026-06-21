@@ -1,6 +1,9 @@
 package workspace
 
-import common "task-processor/internal/publishing/common"
+import (
+	common "task-processor/internal/publishing/common"
+	sheinpub "task-processor/internal/publishing/shein"
+)
 
 // RepairPatchPayload carries direct repair patches that can be converted into a revision request seed.
 type RepairPatchPayload struct {
@@ -16,6 +19,71 @@ type RepairPatchPayload struct {
 type RepairRevisionSeed struct {
 	Input    *RevisionInput
 	Skeleton *EditorRevisionSkeleton
+}
+
+// CloneRepairPatchPayload returns a deep copy of repair patches before they are cached or reused.
+func CloneRepairPatchPayload(payload *RepairPatchPayload) *RepairPatchPayload {
+	if payload == nil {
+		return nil
+	}
+	return &RepairPatchPayload{
+		CategoryResolution:      cloneCategoryPatch(payload.CategoryResolution),
+		AttributeResolution:     cloneAttributePatch(payload.AttributeResolution),
+		SaleAttributeResolution: cloneSalePatch(payload.SaleAttributeResolution),
+		SKCPatches:              cloneRepairSKCPatches(payload.SKCPatches),
+		Images:                  cloneImageSet(payload.Images),
+		ReviewNotes:             append([]string(nil), payload.ReviewNotes...),
+	}
+}
+
+func cloneRepairSKCPatches(items []SKCRevisionPatch) []SKCRevisionPatch {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]SKCRevisionPatch, 0, len(items))
+	for _, item := range items {
+		patch := item
+		patch.SkcName = cloneStringPointer(item.SkcName)
+		patch.SaleName = cloneStringPointer(item.SaleName)
+		patch.MainImageURL = cloneStringPointer(item.MainImageURL)
+		if item.SaleAttribute != nil {
+			attr := *item.SaleAttribute
+			patch.SaleAttribute = &attr
+		}
+		patch.SKUPatches = cloneRepairSKUPatches(item.SKUPatches)
+		out = append(out, patch)
+	}
+	return out
+}
+
+func cloneRepairSKUPatches(items []SKURevisionPatch) []SKURevisionPatch {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]SKURevisionPatch, 0, len(items))
+	for _, item := range items {
+		patch := item
+		patch.Attributes = cloneMap(item.Attributes)
+		patch.BasePrice = cloneStringPointer(item.BasePrice)
+		patch.CostPrice = cloneStringPointer(item.CostPrice)
+		patch.Currency = cloneStringPointer(item.Currency)
+		patch.StockCount = cloneIntPointer(item.StockCount)
+		patch.MainImage = cloneStringPointer(item.MainImage)
+		patch.Barcode = cloneStringPointer(item.Barcode)
+		patch.SaleAttributes = append([]sheinpub.ResolvedSaleAttribute(nil), item.SaleAttributes...)
+		patch.SitePriceList = append([]sheinpub.SitePrice(nil), item.SitePriceList...)
+		patch.StockInfoList = append([]sheinpub.StockInfo(nil), item.StockInfoList...)
+		out = append(out, patch)
+	}
+	return out
+}
+
+func cloneIntPointer(in *int) *int {
+	if in == nil {
+		return nil
+	}
+	out := *in
+	return &out
 }
 
 // BuildRepairRevisionSeed builds a minimal SHEIN revision skeleton from a repair patch payload.
