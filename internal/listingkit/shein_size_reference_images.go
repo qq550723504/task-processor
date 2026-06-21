@@ -1,6 +1,6 @@
 package listingkit
 
-import "strings"
+import sheinpub "task-processor/internal/publishing/shein"
 
 func resolveSheinSizeReferenceImages(req *GenerateRequest, sdsSummary *SDSSyncSummary) []string {
 	rawRefs := rawSheinSizeReferenceImages(req)
@@ -47,42 +47,43 @@ func resolveRenderedSDSSizeReferenceImages(req *GenerateRequest, sdsSummary *SDS
 }
 
 func renderedSizeReferenceImagesFromMockups(sizeRefs []string, sourceMockups []string, renderedMockups []string) []string {
-	sizeRefs = uniqueNonEmptyStrings(sizeRefs)
-	sourceMockups = uniqueNonEmptyStrings(sourceMockups)
-	renderedMockups = uniqueNonEmptyStrings(renderedMockups)
-	if len(sizeRefs) == 0 || len(sourceMockups) == 0 || len(renderedMockups) == 0 {
-		return nil
-	}
-	sourceIndex := map[string]int{}
-	for index, url := range sourceMockups {
-		sourceIndex[normalizeImageURLForMatch(url)] = index
-	}
-	var rendered []string
-	for _, ref := range sizeRefs {
-		index, ok := sourceIndex[normalizeImageURLForMatch(ref)]
-		if !ok || index < 0 || index >= len(renderedMockups) {
-			continue
-		}
-		rendered = append(rendered, renderedMockups[index])
-	}
-	return uniqueNonEmptyStrings(rendered)
+	return sheinpub.ResolveRenderedSizeReferenceImages(sizeRefs, sourceMockups, renderedMockups)
 }
 
 func findSDSVariantSummaryForSizeReference(variant SDSSyncVariantOption, summaries []SDSSyncSummary) (SDSSyncSummary, bool) {
+	match, ok := sheinpub.FindSizeReferenceVariantSummary(
+		sheinpub.SizeReferenceVariantInput{
+			VariantID:  variant.VariantID,
+			VariantSKU: variant.VariantSKU,
+			Color:      variant.Color,
+		},
+		sheinSizeReferenceVariantSummaries(summaries),
+	)
+	if !ok {
+		return SDSSyncSummary{}, false
+	}
 	for _, summary := range summaries {
-		if variant.VariantID > 0 && summary.VariantID == variant.VariantID {
-			return summary, true
-		}
-		if strings.TrimSpace(variant.VariantSKU) != "" && strings.EqualFold(strings.TrimSpace(summary.VariantSKU), strings.TrimSpace(variant.VariantSKU)) {
-			return summary, true
-		}
-		if strings.TrimSpace(variant.Color) != "" && strings.EqualFold(strings.TrimSpace(summary.VariantColor), strings.TrimSpace(variant.Color)) {
+		if summary.VariantID == match.VariantID &&
+			summary.VariantSKU == match.VariantSKU &&
+			summary.VariantColor == match.VariantColor {
 			return summary, true
 		}
 	}
-	return SDSSyncSummary{}, false
+	return SDSSyncSummary{VariantID: match.VariantID, VariantSKU: match.VariantSKU, VariantColor: match.VariantColor, MockupImageURLs: match.MockupImageURLs}, true
 }
 
-func normalizeImageURLForMatch(value string) string {
-	return strings.TrimSpace(value)
+func sheinSizeReferenceVariantSummaries(summaries []SDSSyncSummary) []sheinpub.SizeReferenceVariantSummary {
+	if len(summaries) == 0 {
+		return nil
+	}
+	out := make([]sheinpub.SizeReferenceVariantSummary, 0, len(summaries))
+	for _, summary := range summaries {
+		out = append(out, sheinpub.SizeReferenceVariantSummary{
+			VariantID:       summary.VariantID,
+			VariantSKU:      summary.VariantSKU,
+			VariantColor:    summary.VariantColor,
+			MockupImageURLs: append([]string(nil), summary.MockupImageURLs...),
+		})
+	}
+	return out
 }
