@@ -50,6 +50,17 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 			t.Fatalf("shein_submit_sku_variant_support.go should contain %q", needle)
 		}
 	}
+	for _, needle := range []string{
+		"sourceSKU := strings.TrimSpace",
+		"colorMatches := make([]int",
+		"strings.EqualFold(strings.TrimSpace(item.Color)",
+		"styleSuffix := normalizeStyleIDSuffix(styleID)",
+		"studioVariantBaseSKUCounts",
+	} {
+		if strings.Contains(variantContent, needle) {
+			t.Fatalf("shein_submit_sku_variant_support.go should delegate variant detail %q", needle)
+		}
+	}
 
 	pricingSrc, err := os.ReadFile("shein_submit_sku_pricing_support.go")
 	if err != nil {
