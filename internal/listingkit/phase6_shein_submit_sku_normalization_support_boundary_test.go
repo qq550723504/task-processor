@@ -28,6 +28,9 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 		"func matchStudioSubmitVariantOption(sds *SDSSyncOptions, draftSKC *SheinSKCRequestDraft, draftSKU *sheinpub.SKUDraft, globalIndex int) (*SDSSyncVariantOption, int) {",
 		"func applySheinStudioSupplierSKURenames(pkg *sheinpub.Package, renames []sheinStudioSupplierSKURename) {",
 		"func studioSubmitRequestDiscriminator(requestID string) string {",
+		"seen := map[string]int{}",
+		"for skcIndex := range pkg.DraftPayload.SKCList",
+		"pkg.PreviewPayload.SKCList[skcIndex].SKUS[skuIndex].SupplierSKU = newSKU",
 	} {
 		if strings.Contains(homeContent, needle) {
 			t.Fatalf("shein_submit_sku_normalization.go should delegate helper family %q", needle)

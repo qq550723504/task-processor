@@ -610,6 +610,7 @@ Follow-up deletion
 | SHEIN studio submit SKU pricing references | migrated | supplier SKU rename 后的手工价格覆盖、SKU price 引用 remap，以及 stale task/request pricing alias reconcile 迁入 `internal/publishing/shein/submit_sku_pricing.go`；ListingKit pricing support 只保留兼容 wrapper。 |
 | SHEIN studio submit SKU style tokens | migrated | submit task/request discriminator、style suffix 推导、token classifier 和 discriminator 组合迁入 `internal/publishing/shein/submit_sku_style.go`；ListingKit style support 只保留从 `Task` 取值和兼容 wrapper。 |
 | SHEIN studio submit SKU variant rules | migrated | SDS variant 匹配、base SKU 推导、variant discriminator、旧 SKU 反推与是否需要 discriminator 的规则迁入 `internal/publishing/shein/submit_sku_variant.go`；ListingKit variant support 仅适配 `SDSSyncOptions` 到 publishing-owned input。 |
+| SHEIN studio submit supplier SKU normalization flow | migrated | studio supplier SKU 主流程、DraftPayload/SkcList/PreviewPayload 同步更新、rename 收集与 pricing reconcile 编排迁入 `internal/publishing/shein/submit_sku_normalization.go`；ListingKit 只从 `Task` 组装 style/discriminator/variant context。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
