@@ -7,6 +7,7 @@ param(
     [string]$LogLevel = "info",
     [switch]$SkipRedis,
     [switch]$IncludeTemporal,
+    [switch]$SkipTemporal,
     [int]$LocalTemporalPort = 7233,
     [string]$BypassAuthGate = ""
 )
@@ -23,6 +24,60 @@ function Ensure-Directory {
 
     if (-not (Test-Path -LiteralPath $Path)) {
         New-Item -ItemType Directory -Path $Path | Out-Null
+    }
+}
+
+function Stop-ProcessFromPidFile {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $rawPid = (Get-Content -LiteralPath $Path -Raw -ErrorAction SilentlyContinue).Trim()
+    if ([string]::IsNullOrWhiteSpace($rawPid)) {
+        return
+    }
+
+    $processId = 0
+    if (-not [int]::TryParse($rawPid, [ref]$processId)) {
+        return
+    }
+
+    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if ($null -eq $process) {
+        return
+    }
+
+    Write-Host "Stopping existing port-forward wrapper PID ${processId} (${process.ProcessName})" -ForegroundColor DarkYellow
+    Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+    try {
+        $process.WaitForExit()
+    } catch {
+    }
+}
+
+function Remove-FileIfExists {
+    param(
+        [string]$Path,
+        [int]$TimeoutSeconds = 10
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ($true) {
+        try {
+            Remove-Item -LiteralPath $Path -Force
+            return
+        } catch {
+            if ((Get-Date) -ge $deadline) {
+                throw
+            }
+            Start-Sleep -Milliseconds 250
+        }
     }
 }
 
@@ -87,18 +142,21 @@ $apiScript = Join-Path $repoRoot "scripts\start-listingkit-local-api.ps1"
 $uiScript = Join-Path $repoRoot "scripts\start-listingkit-local-ui.ps1"
 $apiPidFile = Join-Path $repoRoot ".local\tmp\listingkit-local-api\product-listing-api-local.pid"
 $uiPidFile = Join-Path $repoRoot "web\listingkit-ui\.local-dev\listingkit-ui-local.pid"
+$useTemporal = (-not $SkipTemporal) -or $IncludeTemporal
 
 Ensure-Directory -Path $runtimeDir
 
+Stop-ProcessFromPidFile -Path $pidFile
+
 $portsToStop = @($UiPort, $ApiPort, $LocalDbPort, $LocalRedisPort)
-if ($IncludeTemporal) {
+if ($useTemporal) {
     $portsToStop += $LocalTemporalPort
 }
 Stop-ListeningProcesses -ListenPorts $portsToStop
 
-if (Test-Path -LiteralPath $stdoutLog) { Remove-Item -LiteralPath $stdoutLog -Force }
-if (Test-Path -LiteralPath $stderrLog) { Remove-Item -LiteralPath $stderrLog -Force }
-if (Test-Path -LiteralPath $pidFile) { Remove-Item -LiteralPath $pidFile -Force }
+Remove-FileIfExists -Path $stdoutLog
+Remove-FileIfExists -Path $stderrLog
+Remove-FileIfExists -Path $pidFile
 
 $portforwardArgs = @(
     "-ExecutionPolicy", "Bypass",
@@ -111,7 +169,7 @@ if ($SkipRedis) {
 } else {
     $portforwardArgs += @("-LocalRedisPort", $LocalRedisPort, "-RemoteRedisPort", 6379)
 }
-if ($IncludeTemporal) {
+if ($useTemporal) {
     $portforwardArgs += @("-IncludeTemporal", "-LocalTemporalPort", $LocalTemporalPort, "-RemoteTemporalPort", 7233)
 }
 
@@ -130,7 +188,7 @@ try {
     if (-not $SkipRedis) {
         Wait-ForListeningPort -ListenPort $LocalRedisPort -TimeoutSeconds 40
     }
-    if ($IncludeTemporal) {
+    if ($useTemporal) {
         Wait-ForListeningPort -ListenPort $LocalTemporalPort -TimeoutSeconds 40
     }
 } catch {
@@ -146,9 +204,12 @@ try {
 
 Set-Content -LiteralPath $pidFile -Value $portforwardProcess.Id -NoNewline
 
-if ($IncludeTemporal) {
+if ($useTemporal) {
     $env:LISTINGKIT_TEMPORAL_ENABLED = "true"
     $env:LISTINGKIT_TEMPORAL_ADDRESS = "127.0.0.1:${LocalTemporalPort}"
+} else {
+    $env:LISTINGKIT_TEMPORAL_ENABLED = "false"
+    $env:LISTINGKIT_TEMPORAL_ADDRESS = ""
 }
 
 Write-Host "Starting local API..." -ForegroundColor Cyan
@@ -200,7 +261,7 @@ if (-not [string]::IsNullOrWhiteSpace($uiPid)) {
     Write-Host "  UI PID: $uiPid"
 }
 Write-Host "  Port-forward logs: $stdoutLog / $stderrLog"
-if ($IncludeTemporal) {
+if ($useTemporal) {
     Write-Host "  Temporal: 127.0.0.1:${LocalTemporalPort}"
 }
 Write-Host "  API logs: $repoRoot\.local\tmp\listingkit-local-api\logs\stdout.log / $repoRoot\.local\tmp\listingkit-local-api\logs\stderr.log"
