@@ -593,6 +593,12 @@ Follow-up deletion
 | 11. 真实环境验收 | pass | 见 `docs/product/validation/runs/2026-06-21-shein-sds-batch-production-closure.md`。store `870` 复测中真实 SDS fan-out、重复请求幂等、受控拒绝、SDS baseline warmup、readiness 清零和真实 SHEIN `save_draft` 均已验证。 |
 | 12. 根据上述实现收缩 ListingKit 根包 | next | Phase 1 退出条件中的“真实 SDS-to-SHEIN 草稿通过”已关闭；下一步可按已验证边界收缩 ListingKit 根包。 |
 
+2026-06-21 Phase 2 启动记录：
+
+| 对象 | 状态 | 证据 |
+| --- | --- | --- |
+| readiness repair center 组装 | migrated | `internal/listingkit/shein_repair_center.go` 已收缩为 facade；去重、排序、section label、direct apply queue/session 组装迁入 `internal/marketplace/shein/workspace/repair_center_from_readiness.go`，并新增 marketplace 包级测试。 |
+
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
 ## 14. 完成定义
