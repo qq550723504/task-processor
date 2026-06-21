@@ -63,9 +63,22 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func sheinFinalImagesReadyForAction(pkg *SheinPackage, action string) (bool, string) {",
 		"func sheinHasSubmitImage(pkg *SheinPackage) bool {",
 		"func sheinProductImageInfoHasImage(info *sheinproduct.ImageInfo) bool {",
+		"return sheinpub.HasAnySubmitSKU(pkg)",
+		"return sheinpub.FinalSubmitImagesReady(pkg, action)",
+		"return sheinpub.HasSubmitImage(pkg)",
+		"return sheinpub.ProductImageInfoHasImage(info)",
 	} {
 		if !strings.Contains(statusContent, needle) {
 			t.Fatalf("shein_submit_readiness_status_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"for _, skc := range pkg.DraftPayload.SKCList",
+		"parseMoney(",
+		"strings.TrimSpace(image.ImageURL)",
+	} {
+		if strings.Contains(statusContent, needle) {
+			t.Fatalf("shein_submit_readiness_status_support.go should delegate readiness status logic, found %q", needle)
 		}
 	}
 	if strings.Contains(statusContent, "func sheinSourceFactsReady(") {
