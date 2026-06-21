@@ -151,6 +151,16 @@ func readTaskGenerationSourceFile(t *testing.T, path string) string {
 	return string(content)
 }
 
+func assertFileAbsent(t *testing.T, path string) {
+	t.Helper()
+
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s should not exist", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("Stat(%s) error = %v", path, err)
+	}
+}
+
 func readNamedFunctionSource(t *testing.T, path, funcName string) string {
 	t.Helper()
 
