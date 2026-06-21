@@ -62,6 +62,13 @@ func SubmitProductNeedsTargetLanguages(product *sheinproduct.Product, region str
 	return false
 }
 
+func SubmitProductTranslationNeeded(product *sheinproduct.Product, region string) bool {
+	if product == nil {
+		return false
+	}
+	return SubmitProductNeedsTranslation(product) || SubmitProductNeedsTargetLanguages(product, region)
+}
+
 func BuildSubmitSnapshot(product *sheinproduct.Product) *SubmitSnapshot {
 	if product == nil {
 		return nil

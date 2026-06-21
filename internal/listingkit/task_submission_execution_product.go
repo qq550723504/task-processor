@@ -55,14 +55,11 @@ func (s *taskSubmissionExecutionService) buildSheinSubmitTranslateAPIForStore(ct
 }
 
 func (s *taskSubmissionExecutionService) sheinSubmitTranslationNeeded(task *Task, submitProduct *sheinproduct.Product) bool {
-	if submitProduct == nil {
-		return false
-	}
 	region := ""
 	if task != nil && task.Request != nil {
 		region = task.Request.Country
 	}
-	return sheinpub.SubmitProductNeedsTranslation(submitProduct) || sheinpub.SubmitProductNeedsTargetLanguages(submitProduct, region)
+	return sheinpub.SubmitProductTranslationNeeded(submitProduct, region)
 }
 
 func (s *taskSubmissionExecutionService) preValidateSheinSubmitProduct(pkg *SheinPackage, submitProduct *sheinproduct.Product) error {

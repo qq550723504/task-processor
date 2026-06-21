@@ -940,6 +940,54 @@ func TestPrepareSubmitProductContent_CleansFreeTextAttributesAndSKCNames(t *test
 	assertNoSensitivePhrase(t, findLocalizedText(product.SKCList[0].MultiLanguageNameList, "en"), "submit localized skc name")
 }
 
+func TestSubmitProductTranslationNeededUsesTranslationAndRegionalTargets(t *testing.T) {
+	t.Parallel()
+
+	if SubmitProductTranslationNeeded(nil, "US") {
+		t.Fatal("SubmitProductTranslationNeeded(nil) = true, want false")
+	}
+
+	needsEnglish := &sheinproduct.Product{}
+	if !SubmitProductTranslationNeeded(needsEnglish, "US") {
+		t.Fatal("SubmitProductTranslationNeeded(missing English) = false, want true")
+	}
+
+	readyForUS := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{
+			{Language: "en", Name: "English Title"},
+			{Language: "es", Name: "Spanish Title"},
+		},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{
+			{Language: "en", Name: "English Description"},
+			{Language: "es", Name: "Spanish Description"},
+		},
+	}
+	if SubmitProductTranslationNeeded(readyForUS, "US") {
+		t.Fatal("SubmitProductTranslationNeeded(US-ready product) = true, want false")
+	}
+
+	missingSKCTarget := &sheinproduct.Product{
+		MultiLanguageNameList: []sheinproduct.LanguageContent{
+			{Language: "en", Name: "English Title"},
+			{Language: "es", Name: "Spanish Title"},
+		},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{
+			{Language: "en", Name: "English Description"},
+			{Language: "es", Name: "Spanish Description"},
+		},
+		SKCList: []sheinproduct.SKC{
+			{
+				MultiLanguageNameList: []sheinproduct.LanguageContent{
+					{Language: "en", Name: "English SKC"},
+				},
+			},
+		},
+	}
+	if !SubmitProductTranslationNeeded(missingSKCTarget, "US") {
+		t.Fatal("SubmitProductTranslationNeeded(missing SKC Spanish) = false, want true")
+	}
+}
+
 func findLocalizedText(items []sheinproduct.LanguageContent, language string) string {
 	for _, item := range items {
 		if strings.EqualFold(strings.TrimSpace(item.Language), language) {
