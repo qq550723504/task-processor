@@ -16,7 +16,7 @@ import { logRequestInfo, logRequestWarn } from "@/lib/server/request-log";
 export type VerifiedIdentity = ZitadelVerifiedIdentity;
 export type VerifiedIdentityResult =
   | {
-      identity: VerifiedIdentity;
+      identity?: VerifiedIdentity;
       token: string;
       response?: undefined;
     }
