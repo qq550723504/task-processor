@@ -168,6 +168,23 @@ func SubmitPricingReady(pkg *Package) bool {
 	return hasSKU
 }
 
+// FinalReviewReady reports whether final review confirmation allows the submit action to continue.
+func FinalReviewReady(pkg *Package, action string) bool {
+	if strings.EqualFold(strings.TrimSpace(action), "save_draft") {
+		return true
+	}
+	pkg = NormalizePackageSemanticFields(pkg)
+	return pkg == nil || pkg.FinalSubmissionDraft == nil || pkg.FinalSubmissionDraft.Confirmed
+}
+
+// FinalReviewMessage returns the readiness message for final review confirmation.
+func FinalReviewMessage(action string) string {
+	if strings.EqualFold(strings.TrimSpace(action), "save_draft") {
+		return "保存草稿允许跳过最终确认；正式发布前仍需在最终确认页核对图片、价格、属性和 SKU"
+	}
+	return "提交前必须在最终确认页核对图片、价格、属性和 SKU 后确认"
+}
+
 // HasSubmitImage reports whether package, draft, or preview payload data contains any submit image.
 func HasSubmitImage(pkg *Package) bool {
 	pkg = NormalizePackageSemanticFields(pkg)

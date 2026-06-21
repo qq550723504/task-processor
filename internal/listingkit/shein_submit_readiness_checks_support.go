@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func buildSheinSubmitReadinessChecks(pkg *SheinPackage, pod *PodExecutionSummary, action string, validation sheinBuildValidation) []sheinworkspace.ReadinessCheckSpec {
@@ -220,15 +221,9 @@ func appendSheinPayloadReadinessChecks(checks []sheinworkspace.ReadinessCheckSpe
 }
 
 func sheinSubmitReadinessFinalDraftReady(pkg *SheinPackage, action string) bool {
-	if action == "save_draft" {
-		return true
-	}
-	return pkg.FinalSubmissionDraft == nil || pkg.FinalSubmissionDraft.Confirmed
+	return sheinpub.FinalReviewReady(pkg, action)
 }
 
 func sheinSubmitReadinessFinalReviewMessage(action string) string {
-	if action == "save_draft" {
-		return "保存草稿允许跳过最终确认；正式发布前仍需在最终确认页核对图片、价格、属性和 SKU"
-	}
-	return "提交前必须在最终确认页核对图片、价格、属性和 SKU 后确认"
+	return sheinpub.FinalReviewMessage(action)
 }

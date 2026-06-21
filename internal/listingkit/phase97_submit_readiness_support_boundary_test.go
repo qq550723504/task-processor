@@ -98,6 +98,8 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func appendSheinPayloadReadinessChecks(",
 		"func sheinSubmitReadinessFinalDraftReady(pkg *SheinPackage, action string) bool {",
 		"func sheinSubmitReadinessFinalReviewMessage(action string) string {",
+		"return sheinpub.FinalReviewReady(pkg, action)",
+		"return sheinpub.FinalReviewMessage(action)",
 		"sourceFactsReady, sourceFactsMessage := sheinworkspace.SourceFactsReady(sourceMetadata)",
 	} {
 		if !strings.Contains(checksContent, needle) {

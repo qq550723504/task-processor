@@ -73,6 +73,33 @@ func TestSubmitPricingReadyRequiresPositiveSKUAndSitePrices(t *testing.T) {
 	}
 }
 
+func TestFinalReviewReadyRequiresConfirmationForPublish(t *testing.T) {
+	t.Parallel()
+
+	pkg := &Package{FinalSubmissionDraft: &FinalDraft{}}
+
+	if FinalReviewReady(pkg, "publish") {
+		t.Fatal("FinalReviewReady(publish, unconfirmed) = true, want false")
+	}
+	pkg.FinalSubmissionDraft.Confirmed = true
+	if !FinalReviewReady(pkg, "publish") {
+		t.Fatal("FinalReviewReady(publish, confirmed) = false, want true")
+	}
+}
+
+func TestFinalReviewReadyAllowsSaveDraft(t *testing.T) {
+	t.Parallel()
+
+	pkg := &Package{FinalSubmissionDraft: &FinalDraft{}}
+
+	if !FinalReviewReady(pkg, " save_draft ") {
+		t.Fatal("FinalReviewReady(save_draft) = false, want true")
+	}
+	if got := FinalReviewMessage("save_draft"); got == "" || got == FinalReviewMessage("publish") {
+		t.Fatalf("FinalReviewMessage(save_draft) = %q, want draft-specific message", got)
+	}
+}
+
 func TestHasSubmitImageChecksPackageDraftAndPreviewImages(t *testing.T) {
 	t.Parallel()
 
