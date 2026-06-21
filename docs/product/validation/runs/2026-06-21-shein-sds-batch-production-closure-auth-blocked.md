@@ -190,3 +190,36 @@
 路线图影响：Phase 1 的代码层闭环可继续保持为已验证；真实 SDS -> ListingKit -> SHEIN draft 验收仍未达到退出条件。
 下一步：提供有效 bearer token 或在 localhost:3000 完成 ZITADEL 登录后，重新读取 batch 6e10be71-d37c-4d99-bc12-a444730378e4 并继续 Task 12。
 ```
+
+## 13. `.env` 认证变量复核：2026-06-21 19:25 +08:00
+
+用户提示 `.env` 中已有认证配置。本轮复核只检查变量是否存在，不记录任何密钥值。
+
+### 变量结论
+
+| 项目 | 结论 |
+| --- | --- |
+| ZITADEL issuer / client / secret / scopes | present |
+| ListingKit allowed roles / usernames | present |
+| `LISTINGKIT_API_TOKEN` | unset；仅存在注释示例 |
+
+### Token 获取尝试
+
+使用 `.env` 中的 ZITADEL issuer、client id、client secret 和 scopes 尝试 `client_credentials` 获取 access token。
+
+结果：
+
+```text
+TOKEN_REQUEST_FAILED
+ZITADEL response: 400 invalid_client, client not found
+```
+
+### 结论
+
+```text
+`.env` 当前提供的是 ZITADEL 配置，不是可直接用于 Go API 的 bearer token。
+该配置不能通过 client_credentials 在当前 issuer 上换取可用 access token。
+真实验收仍需要：
+1. 浏览器完成 localhost:3000 的 ZITADEL 登录；或
+2. 显式提供有效 LISTINGKIT_API_TOKEN / bearer token。
+```
