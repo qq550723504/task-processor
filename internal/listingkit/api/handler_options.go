@@ -47,7 +47,7 @@ func (h *handler) attachOptionalServices(service any) {
 	if batchRunService, ok := service.(studioBatchRunHandlerService); ok {
 		h.studioBatchRunService = batchRunService
 	}
-	if warmService, ok := service.(sdsBaselineWarmService); ok {
+	if warmService, ok := service.(listingkit.SDSBaselineWarmService); ok {
 		h.sdsBaselineWarmService = warmService
 	}
 	if deleteService, ok := service.(uploadedImageDeleteService); ok {

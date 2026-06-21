@@ -13,7 +13,7 @@ type handler struct {
 	taskLifecycleService       listingkit.TaskLifecycleService
 	taskRecoveryService        listingkit.TaskRecoveryService
 	taskRequeueService         listingkit.TaskRequeueService
-	sdsBaselineWarmService     sdsBaselineWarmService
+	sdsBaselineWarmService     listingkit.SDSBaselineWarmService
 	generationTaskService      listingkit.GenerationTaskService
 	childTaskRetryService      childTaskRetryService
 	studioMediaService         listingkit.StudioMediaService
@@ -92,10 +92,6 @@ type childTaskRetryService interface {
 
 type uploadedImageDeleteService interface {
 	DeleteUploadedImage(ctx context.Context, key string) (*listingkit.DeletedUploadedImage, error)
-}
-
-type sdsBaselineWarmService interface {
-	WarmSDSBaseline(ctx context.Context, req *listingkit.WarmSDSBaselineRequest) (*listingkit.SDSBaselineReadiness, error)
 }
 
 type studioSessionAsyncJobService interface {
@@ -243,6 +239,12 @@ func WithUploadedImageDeleteService(service uploadedImageDeleteService) HandlerO
 func WithChildTaskRetryService(service childTaskRetryService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.childTaskRetryService = service
+	})
+}
+
+func WithSDSBaselineWarmService(service listingkit.SDSBaselineWarmService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.sdsBaselineWarmService = service
 	})
 }
 

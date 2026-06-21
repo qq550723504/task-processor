@@ -585,6 +585,14 @@ Follow-up deletion
 12. 根据上述实现收缩 ListingKit 根包
 ```
 
+2026-06-21 执行记录：
+
+| 步骤 | 状态 | 证据 |
+| --- | --- | --- |
+| 1-10 | 已完成代码层闭环 | 见 `docs/product/validation/runs/2026-06-21-shein-sds-batch-production-closure-regression.md`。 |
+| 11. 真实环境验收 | partial | 见 `docs/product/validation/runs/2026-06-21-shein-sds-batch-production-closure.md`。真实 SDS fan-out、重复请求幂等、受控拒绝已验证；真实 SHEIN `save_draft` 被 store cookie/proxy 和类目/属性 readiness 阻断。 |
+| 12. 根据上述实现收缩 ListingKit 根包 | blocked | Phase 1 退出条件中的“真实 SDS-to-SHEIN 草稿通过”尚未关闭，暂不启动大规模根包收缩。 |
+
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
 ## 14. 完成定义

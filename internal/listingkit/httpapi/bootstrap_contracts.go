@@ -70,6 +70,7 @@ type moduleService interface {
 	listingkit.TaskLifecycleService
 	listingkit.GenerationTaskService
 	listingkit.ChildTaskRetryService
+	listingkit.SDSBaselineWarmService
 	listingkit.StoreAdminService
 	listingkit.StudioBatchRunService
 	listingkit.StudioMediaService

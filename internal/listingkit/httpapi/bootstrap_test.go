@@ -519,6 +519,18 @@ func TestBuildHandlerOptionsWiresChildTaskRetryService(t *testing.T) {
 	}
 }
 
+func TestBuildHandlerOptionsWiresSDSBaselineWarmService(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap_module_service.go")
+	if err != nil {
+		t.Fatalf("read bootstrap_module_service.go: %v", err)
+	}
+	if !strings.Contains(string(src), "listingkitapi.WithSDSBaselineWarmService(runtime.service)") {
+		t.Fatal("buildHandlerOptions should wire SDS baseline warmup service into the HTTP handler")
+	}
+}
+
 func TestNewSubmitModuleInputScopesBuildServiceDependencies(t *testing.T) {
 	t.Parallel()
 
