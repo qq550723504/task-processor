@@ -606,6 +606,7 @@ Follow-up deletion
 | SHEIN submit payload transport normalization | migrated | submit payload 空集合、extra 默认值和传输字段补齐迁入 `internal/publishing/shein/submit_payload_normalize.go`；`internal/listingkit/shein_submit_payload.go` 保留提交准备顺序和兼容 wrapper。 |
 | SHEIN submit site/SKU normalization | migrated | submit 站点默认值、仓库选择、SKU 库存/数量/尺寸/重量规范化迁入 `internal/publishing/shein/submit_site_sku_policy.go`；ListingKit 只把 `SheinSettings` 适配为 publishing-owned settings 并保留兼容 wrapper。 |
 | SHEIN submit image upload orchestration | migrated | submit 图片上传去重、cache key、并发 job、color-block fallback 迁入 `internal/publishing/shein/submit_image_upload.go`；ListingKit 仅注入现有 color-block builder 与 SHEIN image API。 |
+| SHEIN submit payload image normalization | migrated | submit SPU/SKC/SKU 图片类型、排序、去重、square/color-block、site detail image 组装迁入 `internal/publishing/shein/submit_payload_images.go`；ListingKit 图片 payload support 只保留兼容 wrapper。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

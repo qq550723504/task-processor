@@ -85,6 +85,17 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 			t.Fatalf("shein_submit_payload_image_support.go should contain %q", needle)
 		}
 	}
+	for _, needle := range []string{
+		"product.Extra.SwitchToSPUPic = false",
+		"func sheinSubmitDetailImages(images []sheinproduct.ImageDetail) []sheinproduct.DetailImage {",
+		"image.ImageType = 6",
+		"image.ImageType == 2 && !image.SizeImgFlag",
+		"seen := map[string]bool{}",
+	} {
+		if strings.Contains(imageContent, needle) {
+			t.Fatalf("shein_submit_payload_image_support.go should delegate image policy detail %q", needle)
+		}
+	}
 
 	supplierSrc, err := os.ReadFile("shein_submit_payload_supplier_validation_support.go")
 	if err != nil {
