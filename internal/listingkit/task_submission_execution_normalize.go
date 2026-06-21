@@ -29,14 +29,5 @@ func applyConfirmedFinalSubmissionDraft(pkg *SheinPackage, req *SubmitTaskReques
 	if pkg == nil || req == nil || !req.ConfirmedFinal {
 		return
 	}
-	if pkg.FinalSubmissionDraft == nil {
-		pkg.FinalSubmissionDraft = &sheinpub.FinalDraft{}
-	}
-	now := time.Now()
-	pkg.FinalSubmissionDraft.Confirmed = true
-	pkg.FinalSubmissionDraft.ConfirmedAt = &now
-	pkg.FinalSubmissionDraft.UpdatedAt = &now
-	if pkg.FinalSubmissionDraft.SubmitMode == "" {
-		pkg.FinalSubmissionDraft.SubmitMode = action
-	}
+	sheinpub.ConfirmFinalSubmissionDraft(pkg, action, time.Now())
 }
