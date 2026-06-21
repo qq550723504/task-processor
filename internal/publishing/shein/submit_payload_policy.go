@@ -98,3 +98,30 @@ func ValidateProductPublishPayload(product *sheinproduct.Product) error {
 	}
 	return nil
 }
+
+// ValidatePreparedProductPublishPayload validates a submit product after submit normalization has run.
+func ValidatePreparedProductPublishPayload(product *sheinproduct.Product) error {
+	if err := ValidateProductPublishPayload(product); err != nil {
+		return err
+	}
+	for skcIndex, skc := range product.SKCList {
+		for skuIndex, sku := range skc.SKUS {
+			if sku.QuantityInfo == nil || sku.QuantityInfo.Quantity == nil || sku.QuantityInfo.QuantityType == nil || sku.QuantityInfo.QuantityUnit == nil {
+				return fmt.Errorf("SHEIN publish blocked: SKC[%d] SKU[%d] is missing quantity_info", skcIndex, skuIndex)
+			}
+			if sku.PackageType == 0 {
+				return fmt.Errorf("SHEIN publish blocked: SKC[%d] SKU[%d] is missing package_type", skcIndex, skuIndex)
+			}
+			if len(sku.StockInfoList) == 0 {
+				return fmt.Errorf("SHEIN publish blocked: SKC[%d] SKU[%d] is missing stock_info_list", skcIndex, skuIndex)
+			}
+			if strings.TrimSpace(sku.Length) == "" ||
+				strings.TrimSpace(sku.Width) == "" ||
+				strings.TrimSpace(sku.Height) == "" ||
+				strings.TrimSpace(sku.LengthUnit) == "" {
+				return fmt.Errorf("SHEIN publish blocked: SKC[%d] SKU[%d] is missing package dimensions", skcIndex, skuIndex)
+			}
+		}
+	}
+	return nil
+}
