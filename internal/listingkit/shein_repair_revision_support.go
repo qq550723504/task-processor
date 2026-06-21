@@ -1,28 +1,20 @@
 package listingkit
 
+import listingworkspace "task-processor/internal/listingkit/workspace/shein"
+
 func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayload) sheinRepairRevisionBundle {
-	input := buildSheinRepairRevisionInput(payload)
-	if input == nil {
+	seed := listingworkspace.BuildRepairRevisionSeed(action, payload)
+	if seed.Input == nil || seed.Skeleton == nil {
 		return sheinRepairRevisionBundle{}
-	}
-	minimal := pruneSheinRevisionInput(input)
-	if minimal == nil || isEmptySheinRevisionInput(minimal) {
-		return sheinRepairRevisionBundle{}
-	}
-	skeleton := &SheinEditorRevisionSkeleton{
-		Platform: "shein",
-		Actor:    "desktop-client",
-		Reason:   buildSheinRepairReason(action),
-		Shein:    minimal,
 	}
 	return sheinRepairRevisionBundle{
-		input:    input,
-		skeleton: skeleton,
+		input:    seed.Input,
+		skeleton: seed.Skeleton,
 		request: &ApplyRevisionRequest{
-			Platform: skeleton.Platform,
-			Actor:    skeleton.Actor,
-			Reason:   skeleton.Reason,
-			Shein:    cloneHistorySheinRevisionInput(skeleton.Shein),
+			Platform: seed.Skeleton.Platform,
+			Actor:    seed.Skeleton.Actor,
+			Reason:   seed.Skeleton.Reason,
+			Shein:    cloneHistorySheinRevisionInput(seed.Skeleton.Shein),
 		},
 	}
 }
@@ -36,28 +28,11 @@ func buildSheinRepairApplyRequest(action string, payload *SheinRepairPatchPayloa
 }
 
 func buildSheinRepairRevisionInput(payload *SheinRepairPatchPayload) *SheinRevisionInput {
-	if payload == nil {
-		return nil
-	}
-	input := &SheinRevisionInput{
-		CategoryResolution:      cloneSheinCategoryResolutionPatch(payload.CategoryResolution),
-		AttributeResolution:     cloneSheinAttributeResolutionPatch(payload.AttributeResolution),
-		SaleAttributeResolution: cloneSheinSaleAttributeResolutionPatch(payload.SaleAttributeResolution),
-		SKCPatches:              cloneSheinSKCRevisionPatches(payload.SKCPatches),
-		Images:                  clonePlatformImageSetForEditor(payload.Images),
-		ReviewNotes:             append([]string(nil), payload.ReviewNotes...),
-	}
-	if isEmptySheinRevisionInput(input) {
-		return nil
-	}
-	return input
+	return listingworkspace.BuildRepairRevisionInput(payload)
 }
 
 func buildSheinRepairReason(action string) string {
-	if action == "" {
-		return "repair suggested issue"
-	}
-	return "repair: " + action
+	return listingworkspace.BuildRepairReason(action)
 }
 
 func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {

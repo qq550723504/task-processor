@@ -17,7 +17,7 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 
 	for _, needle := range []string{
 		"type SheinRepairValidationPreview = listingworkspace.RepairValidationPreview[RevisionFieldError]",
-		"type SheinRepairPatchPayload struct {",
+		"type SheinRepairPatchPayload = listingworkspace.RepairPatchPayload",
 		"type sheinRepairRevisionBundle struct {",
 		"type sheinRepairArtifacts struct {",
 	} {

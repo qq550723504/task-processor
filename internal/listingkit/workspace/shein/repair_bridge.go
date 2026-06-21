@@ -7,6 +7,20 @@ type RepairHintAccessors[H any, P any, S any, Q any, V any] = sheinmarketplace.R
 type RepairCenterFromReadinessOptions[R any, P any, S any, Q any, V any] = sheinmarketplace.RepairCenterFromReadinessOptions[R, P, S, Q, V]
 type RepairValidationPreview[FieldError any] = sheinmarketplace.RepairValidationPreview[FieldError]
 type RepairSessionActionInfo = sheinmarketplace.RepairSessionActionInfo
+type RepairPatchPayload = sheinmarketplace.RepairPatchPayload
+type RepairRevisionSeed = sheinmarketplace.RepairRevisionSeed
+
+func BuildRepairRevisionSeed(action string, payload *RepairPatchPayload) RepairRevisionSeed {
+	return sheinmarketplace.BuildRepairRevisionSeed(action, payload)
+}
+
+func BuildRepairRevisionInput(payload *RepairPatchPayload) *RevisionInput {
+	return sheinmarketplace.BuildRepairRevisionInput(payload)
+}
+
+func BuildRepairReason(action string) string {
+	return sheinmarketplace.BuildRepairReason(action)
+}
 
 func BuildRepairValidationPreview[FieldError any](
 	pkg *Package,
