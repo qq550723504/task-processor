@@ -21,10 +21,10 @@
 
 | 首次发现日期 | run | blocker key / label | severity | domain | 来源接口 | 页面表现 | 是否阻断提交 | owner | 状态 | 关闭标准 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `shein_cookie_unavailable` | blocker | integration | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | SHEIN store cookie unavailable；`sellerhub.shein.com` 访问返回 `net::ERR_PROXY_CONNECTION_FAILED`。 | yes | ops / platform | open | 恢复 sellerhub proxy/cookie 刷新后，同一 task 或后续真实 task readiness 不再出现该 blocker。 |
-| 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `category_unresolved` | blocker | catalog | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | SHEIN 类目未解析，提交被阻断。 | yes | listing / ops | open | workspace 补齐类目后，真实 `save_draft` 可进入提交阶段。 |
-| 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `attributes_unmapped` / `required_attributes_pending` | blocker | attribute | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | SHEIN 普通属性和必填属性未完成。 | yes | listing / ops | open | workspace 补齐属性映射后，真实 `save_draft` 不再因属性 blocker 停止。 |
-| 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `sale_attributes_unresolved` | blocker | variation | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | SHEIN 销售属性未完成。 | yes | listing / ops | open | workspace 补齐销售属性后，真实 `save_draft` 不再因销售属性 blocker 停止。 |
+| 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `shein_cookie_unavailable` | blocker | integration | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | 874 复测时 SHEIN store cookie unavailable；改用店铺 870 后 store resolution 命中 `870` / profile `2`，该 blocker 未再出现。 | yes | ops / platform | closed | 870 task `eec9ce8e-5431-4e9b-9bee-9887332b5c3c` readiness 不再出现 `shein_cookie_unavailable`。 |
+| 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `category_unresolved` | blocker | catalog | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | 874 复测时 SHEIN 类目未解析；870 复测当前 blocker 已收敛到属性映射。 | yes | listing / ops | closed | 870 task readiness blocking items 未再出现 category blocker。 |
+| 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `attributes_unmapped` / `required_attributes_pending` | blocker | attribute | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | 870 复测仍显示普通属性和必填属性未完成，`save_draft` 被 readiness 阻断。 | yes | listing / ops | open | workspace 补齐属性映射后，task `eec9ce8e-5431-4e9b-9bee-9887332b5c3c` 的真实 `save_draft` 不再因属性 blocker 停止。 |
+| 2026-06-21 | `2026-06-21-shein-sds-batch-production-closure` | `sale_attributes_unresolved` | blocker | variation | `GET /api/v1/listing-kits/tasks/{task_id}/preview?platform=shein` | 874 复测时销售属性未完成；870 复测当前 blocker 已收敛到普通属性/必填属性。 | yes | listing / ops | closed | 870 task readiness blocking items 未再出现 sale attribute blocker。 |
 
 ## 空错误响应
 
@@ -50,7 +50,7 @@
 | 类别 | open | mapped | closed | won't fix |
 | --- | --- | --- | --- | --- |
 | 任务状态 unknown | 0 | 0 | 0 | 0 |
-| Readiness blocker unknown | 4 | 0 | 0 | 0 |
+| Readiness blocker unknown | 1 | 0 | 3 | 0 |
 | 空错误响应 | 0 | 0 | 0 | 0 |
 | UI 无下一步动作 | 1 | 0 | 0 | 0 |
 | 已定位工程问题 | 0 | 0 | 2 | 0 |

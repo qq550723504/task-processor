@@ -196,3 +196,54 @@ Prompt: Minimal clean floral stained glass ornament artwork, centered, high cont
 | P0 | readiness 清零后重新执行 `save_draft`，记录 attempt id 和远端 draft id。 | QA / engineering | readiness 修复后 | open |
 | P1 | 调整重复 task creation 响应投影，将 durable link 复用结果归入 `reused_tasks`。 | engineering | Phase 1 hardening | open |
 | P1 | 在真实环境复测 partial submission：一个候选提交失败后，后续候选仍被尝试并记录独立结果。 | QA / engineering | SHEIN cookie/proxy 恢复后 | open |
+
+## 12. 店铺 870 复测记录
+
+用户确认可改用店铺 `870` 进行测试。本轮切换到 tenant `227`，因为店铺 `870` 属于 tenant `227`，不是上一轮使用的 tenant `286`。
+
+### 环境修正
+
+| 项目 | 结果 |
+| --- | --- |
+| 店铺归属 | `870` -> tenant `227`, SHEIN, US, auto login enabled |
+| 本地订阅 | tenant `227` 已激活 `studio`, `store_management`, `oss_storage` |
+| store profile | 已创建 profile `2`, store_id `870`, site `US`, default submit mode `save_draft` |
+| AI settings | 已用本地环境配置补齐 tenant `227` 的 `default`, `image`, `image_gpt_image_2` |
+| SDS baseline | tenant `227` 下两个 selection baseline 均 warm 到 `ready` |
+
+### 新 batch / task 证据
+
+| 字段 | 内容 |
+| --- | --- |
+| batch_id | `03f0ede1-192a-4ccf-97fe-6a605fdaf791` |
+| batch name | `Codex SDS 870 validation full payload 2026-06-21` |
+| grouped mode | `shared_by_size` |
+| compatibility key | `compat:6e462bf5f092b01de4afa3b5835ad5ac4c33bb25` |
+| design_id | `74939466-b86e-4e7b-89af-6be639500cf5` |
+| created tasks | `e5e7a3e7-17ae-4659-86fd-c75ba468b59a`, `eec9ce8e-5431-4e9b-9bee-9887332b5c3c` |
+
+### Readiness / save_draft
+
+使用 task `eec9ce8e-5431-4e9b-9bee-9887332b5c3c` 复测：
+
+| 项目 | 结果 |
+| --- | --- |
+| task status | `needs_review` |
+| store resolution | store `870`, matched profile `2` |
+| submit readiness | `ready=false`, `status=blocked` |
+| 当前 blocker | `attributes_unmapped`, `required_attributes_pending` |
+| 已消失 blocker | `shein_cookie_unavailable` 未再出现 |
+| save_draft | HTTP 400 `submit_failed` |
+
+```text
+submit blocked by readiness: 当前仍有关键字段未完成，SHEIN 资料包还不能直接进入提交态
+```
+
+### 870 复测结论
+
+```text
+本轮是否通过：partial
+主要变化：店铺 870 能命中 store profile，SHEIN cookie/proxy blocker 已不再出现。
+当前阻塞：普通属性和必填属性仍未映射/复核完成，因此 save_draft 仍被 readiness 阶段阻断。
+下一步：在 workspace 确认普通属性和必填属性后，对 task eec9ce8e-5431-4e9b-9bee-9887332b5c3c 重新执行 save_draft。
+```
