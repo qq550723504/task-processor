@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"strings"
 
-	listingsubmission "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 
@@ -12,18 +11,13 @@ import (
 )
 
 func (s *taskSubmissionExecutionService) executeSheinSubmitRemote(productAPI sheinproduct.ProductAPI, action string, submitProduct *sheinproduct.Product) (*sheinpub.SubmissionResponse, error) {
-	switch action {
-	case "save_draft":
-		raw, _, err := productAPI.SaveDraftProduct(submitProduct)
-		logSheinSubmitRemoteResponse(action, submitProduct, raw, err)
-		return sheinpub.BuildSubmissionResponseSummary(raw), err
-	case "publish":
-		raw, _, err := productAPI.PublishProduct(submitProduct)
-		logSheinSubmitRemoteResponse(action, submitProduct, raw, err)
-		return sheinpub.BuildSubmissionResponseSummary(raw), err
-	default:
-		return nil, listingsubmission.UnsupportedSubmitActionError(action)
+	result, err := sheinpub.ExecuteSubmitRemote(productAPI, action, submitProduct)
+	if result == nil {
+		logSheinSubmitRemoteResponse(action, submitProduct, nil, err)
+		return nil, err
 	}
+	logSheinSubmitRemoteResponse(action, submitProduct, result.Raw, err)
+	return result.Response, err
 }
 
 func logSheinSubmitRemoteResponse(action string, submitProduct *sheinproduct.Product, raw *sheinproduct.SheinResponse, err error) {
