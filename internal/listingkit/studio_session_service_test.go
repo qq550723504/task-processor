@@ -757,8 +757,29 @@ func TestStudioSessionServiceListBatchesUsesProjectedBatchStatusWhenGraphExists(
 	}
 }
 
-func TestStudioSessionServiceListBatchesPrefersProjectedDetailWhenDraftListSnapshotIsStale(t *testing.T) {
+func TestStudioSessionServiceListBatchesUsesGraphSummaryWithoutLoadingFullDetail(t *testing.T) {
 	ctx := WithTenantID(context.Background(), "tenant-a")
+	batchRepo := NewMemStudioBatchRepository()
+	now := time.Now().UTC()
+	if err := batchRepo.CreateStudioBatchGraph(ctx, &StudioBatchRecord{
+		ID:        "batch-1",
+		Status:    StudioBatchStatusPartiallyMaterialized,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, []StudioBatchItemRecord{
+		{
+			ID:        "item-1",
+			BatchID:   "batch-1",
+			Status:    StudioBatchItemStatusReviewReady,
+			CreatedAt: now,
+			UpdatedAt: now,
+		},
+	}, nil, []StudioMaterializedDesignRecord{
+		{ID: "design-1", BatchID: "batch-1", ItemID: "item-1"},
+		{ID: "design-2", BatchID: "batch-1", ItemID: "item-1"},
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
 	svc := newTaskStudioBatchDraftService(taskStudioBatchDraftServiceConfig{
 		runner: studiodomain.NewBatchDraftService(studiodomain.BatchDraftServiceConfig[
 			SheinStudioSession,
@@ -783,22 +804,10 @@ func TestStudioSessionServiceListBatchesPrefersProjectedDetailWhenDraftListSnaps
 			},
 			MapBatchListItem: mapStudioBatchListItem,
 		}),
+		batchRepo: batchRepo,
 		loadDetail: func(context.Context, string) (*StudioBatchDetail, error) {
-			return &StudioBatchDetail{
-				Batch: &StudioBatchRecord{
-					ID:     "batch-1",
-					Status: StudioBatchStatusPartiallyMaterialized,
-				},
-				Items: []StudioBatchItemDetail{
-					{
-						Item: StudioBatchItemRecord{ID: "item-1", Status: StudioBatchItemStatusReviewReady},
-						Designs: []StudioMaterializedDesignRecord{
-							{ID: "design-1"},
-							{ID: "design-2"},
-						},
-					},
-				},
-			}, nil
+			t.Fatal("ListStudioBatches must not load full batch detail")
+			return nil, nil
 		},
 	})
 
@@ -809,7 +818,7 @@ func TestStudioSessionServiceListBatchesPrefersProjectedDetailWhenDraftListSnaps
 	if len(list.Items) != 1 {
 		t.Fatalf("batch count = %d, want 1", len(list.Items))
 	}
-	if got, want := list.Items[0].Status, string(StudioBatchStatusPartiallyMaterialized); got != want {
+	if got, want := list.Items[0].Status, string(StudioBatchStatusReviewReady); got != want {
 		t.Fatalf("batch status = %q, want %q", got, want)
 	}
 	if got, want := list.Items[0].DesignCount, 2; got != want {

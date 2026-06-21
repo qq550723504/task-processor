@@ -237,9 +237,6 @@ func (s *taskStudioBatchDraftService) reconcileBatchListStatuses(ctx context.Con
 		if batchID == "" {
 			continue
 		}
-		if s.reconcileBatchListItemFromProjectedDetail(ctx, &items[index], batchID) {
-			continue
-		}
 		if s.batchRepo == nil {
 			continue
 		}
@@ -248,6 +245,11 @@ func (s *taskStudioBatchDraftService) reconcileBatchListStatuses(ctx context.Con
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				continue
 			}
+			studioSessionLogger.WithFields(studioSessionLogFields(ctx, logrus.Fields{
+				"batch_id": batchID,
+				"source":   "batch_repo_error",
+				"error":    err.Error(),
+			})).Warn("listingkit studio batch list item reconcile failed")
 			continue
 		}
 		if detail == nil || detail.Batch == nil {
@@ -258,31 +260,10 @@ func (s *taskStudioBatchDraftService) reconcileBatchListStatuses(ctx context.Con
 	}
 }
 
-func (s *taskStudioBatchDraftService) reconcileBatchListItemFromProjectedDetail(ctx context.Context, item *SheinStudioBatchListItem, batchID string) bool {
-	if s == nil || s.loadDetail == nil || item == nil {
-		return false
-	}
-	detail, err := s.loadDetail(ctx, batchID)
-	if err != nil || detail == nil || detail.Batch == nil {
-		return false
-	}
-	item.Status = string(detail.Batch.Status)
-	item.DesignCount = countStudioBatchDetailMaterializedDesigns(detail.Items)
-	return true
-}
-
 func countStudioBatchGraphMaterializedDesigns(designsByItem map[string][]StudioMaterializedDesignRecord) int {
 	total := 0
 	for _, designs := range designsByItem {
 		total += len(designs)
-	}
-	return total
-}
-
-func countStudioBatchDetailMaterializedDesigns(items []StudioBatchItemDetail) int {
-	total := 0
-	for _, item := range items {
-		total += len(item.Designs)
 	}
 	return total
 }
