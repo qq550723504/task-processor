@@ -608,6 +608,7 @@ Follow-up deletion
 | SHEIN submit image upload orchestration | migrated | submit 图片上传去重、cache key、并发 job、color-block fallback 迁入 `internal/publishing/shein/submit_image_upload.go`；ListingKit 仅注入现有 color-block builder 与 SHEIN image API。 |
 | SHEIN submit payload image normalization | migrated | submit SPU/SKC/SKU 图片类型、排序、去重、square/color-block、site detail image 组装迁入 `internal/publishing/shein/submit_payload_images.go`；ListingKit 图片 payload support 只保留兼容 wrapper。 |
 | SHEIN studio submit SKU pricing references | migrated | supplier SKU rename 后的手工价格覆盖、SKU price 引用 remap，以及 stale task/request pricing alias reconcile 迁入 `internal/publishing/shein/submit_sku_pricing.go`；ListingKit pricing support 只保留兼容 wrapper。 |
+| SHEIN studio submit SKU style tokens | migrated | submit task/request discriminator、style suffix 推导、token classifier 和 discriminator 组合迁入 `internal/publishing/shein/submit_sku_style.go`；ListingKit style support 只保留从 `Task` 取值和兼容 wrapper。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

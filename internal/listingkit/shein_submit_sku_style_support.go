@@ -1,35 +1,17 @@
 package listingkit
 
-import "strings"
+import (
+	"strings"
+
+	sheinpub "task-processor/internal/publishing/shein"
+)
 
 func looksLikeStudioSubmitRequestToken(token string) bool {
-	token = strings.TrimSpace(strings.ToUpper(token))
-	if len(token) < 6 || len(token) > 9 || !strings.HasPrefix(token, "R") {
-		return false
-	}
-	for _, r := range token[1:] {
-		switch {
-		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		default:
-			return false
-		}
-	}
-	return true
+	return sheinpub.LooksLikeSubmitRequestToken(token)
 }
 
 func looksLikeStudioSubmitTaskToken(token string) bool {
-	token = strings.TrimSpace(strings.ToUpper(token))
-	if len(token) != 9 || !strings.HasPrefix(token, "T") {
-		return false
-	}
-	for _, r := range token[1:] {
-		switch {
-		case r >= '0' && r <= '9', r >= 'A' && r <= 'F':
-		default:
-			return false
-		}
-	}
-	return true
+	return sheinpub.LooksLikeSubmitTaskToken(token)
 }
 
 func resolveStudioSubmitStyleSuffix(task *Task) string {
@@ -42,7 +24,7 @@ func resolveStudioSubmitStyleSuffix(task *Task) string {
 	); strings.TrimSpace(value) != "" {
 		return value
 	}
-	return deriveStudioSubmitStyleSuffix(
+	return sheinpub.DeriveSubmitStyleSuffix(
 		task.Request.Text,
 		task.Request.Options.SDS.ProductEnglishName,
 		task.Request.Options.SDS.ProductName,
@@ -57,122 +39,21 @@ func sheinStudioStyleID(options *SheinStudioOptions) string {
 }
 
 func deriveStudioSubmitStyleSuffix(values ...string) string {
-	stopwords := map[string]bool{
-		"THE": true, "AND": true, "FOR": true, "WITH": true, "FROM": true,
-		"FRESH": true, "SDS": true, "TASK": true, "PUBLIC": true, "IMAGE": true,
-		"RETRY": true, "TEST": true, "DEFAULT": true, "DESIGN": true,
-	}
-	tokens := make([]string, 0, 8)
-	for _, value := range values {
-		for _, token := range tokenizeStudioStyleSuffixWords(value) {
-			if stopwords[token] {
-				continue
-			}
-			tokens = append(tokens, token)
-		}
-	}
-	if len(tokens) == 0 {
-		return ""
-	}
-	shortToken := ""
-	longToken := ""
-	for _, token := range tokens {
-		if shortToken == "" && len(token) >= 2 && len(token) <= 3 {
-			shortToken = token
-		}
-		if len(token) > len(longToken) {
-			longToken = token
-		}
-	}
-	if shortToken != "" && longToken != "" && !strings.EqualFold(shortToken, longToken) {
-		return normalizeStyleIDSuffix(shortToken + longToken)
-	}
-	var builder strings.Builder
-	for _, token := range tokens {
-		builder.WriteString(token)
-		if builder.Len() >= 8 {
-			break
-		}
-	}
-	return normalizeStyleIDSuffix(builder.String())
+	return sheinpub.DeriveSubmitStyleSuffix(values...)
 }
 
 func tokenizeStudioStyleSuffixWords(value string) []string {
-	value = strings.TrimSpace(strings.ToUpper(value))
-	if value == "" {
-		return nil
-	}
-	tokens := make([]string, 0, 8)
-	var current strings.Builder
-	flush := func() {
-		if current.Len() == 0 {
-			return
-		}
-		tokens = append(tokens, current.String())
-		current.Reset()
-	}
-	for _, r := range value {
-		switch {
-		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			current.WriteRune(r)
-		default:
-			flush()
-		}
-	}
-	flush()
-	return tokens
+	return sheinpub.TokenizeStyleSuffixWords(value)
 }
 
 func studioSubmitTaskDiscriminator(taskID string) string {
-	taskID = strings.TrimSpace(strings.ToUpper(taskID))
-	if taskID == "" {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("T")
-	for _, r := range taskID {
-		switch {
-		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-		}
-		if b.Len() >= 9 {
-			break
-		}
-	}
-	if b.Len() <= 1 {
-		return ""
-	}
-	return b.String()
+	return sheinpub.SubmitTaskDiscriminator(taskID)
 }
 
 func studioSubmitRequestDiscriminator(requestID string) string {
-	requestID = strings.TrimSpace(strings.ToUpper(requestID))
-	if requestID == "" {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("R")
-	for _, r := range requestID {
-		switch {
-		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-		}
-		if b.Len() >= 9 {
-			break
-		}
-	}
-	if b.Len() <= 1 {
-		return ""
-	}
-	return b.String()
+	return sheinpub.SubmitRequestDiscriminator(requestID)
 }
 
 func combineStudioSubmitDiscriminators(values ...string) string {
-	parts := make([]string, 0, len(values))
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			parts = append(parts, trimmed)
-		}
-	}
-	return strings.Join(parts, "-")
+	return sheinpub.CombineSubmitDiscriminators(values...)
 }

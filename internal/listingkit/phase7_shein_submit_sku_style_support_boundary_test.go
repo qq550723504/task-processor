@@ -71,4 +71,16 @@ func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 			t.Fatalf("shein_submit_sku_style_support.go should contain %q", needle)
 		}
 	}
+	for _, needle := range []string{
+		"stopwords := map[string]bool",
+		"token = strings.TrimSpace(strings.ToUpper(token))",
+		"var builder strings.Builder",
+		"b.WriteString(\"T\")",
+		"b.WriteString(\"R\")",
+		"strings.Join(parts, \"-\")",
+	} {
+		if strings.Contains(styleContent, needle) {
+			t.Fatalf("shein_submit_sku_style_support.go should delegate style detail %q", needle)
+		}
+	}
 }

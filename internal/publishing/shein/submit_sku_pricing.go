@@ -140,7 +140,7 @@ func StudioPricingSKUAlias(value string) string {
 	filtered := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		if looksLikeSubmitRequestToken(part) || looksLikeSubmitTaskToken(part) {
+		if LooksLikeSubmitRequestToken(part) || LooksLikeSubmitTaskToken(part) {
 			continue
 		}
 		filtered = append(filtered, part)
@@ -235,34 +235,4 @@ func trimPricingStyleLikeSuffix(value string) (string, bool) {
 		return "", false
 	}
 	return prefix, true
-}
-
-func looksLikeSubmitRequestToken(token string) bool {
-	token = strings.TrimSpace(strings.ToUpper(token))
-	if len(token) < 6 || len(token) > 9 || !strings.HasPrefix(token, "R") {
-		return false
-	}
-	for _, r := range token[1:] {
-		switch {
-		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-func looksLikeSubmitTaskToken(token string) bool {
-	token = strings.TrimSpace(strings.ToUpper(token))
-	if len(token) != 9 || !strings.HasPrefix(token, "T") {
-		return false
-	}
-	for _, r := range token[1:] {
-		switch {
-		case r >= '0' && r <= '9', r >= 'A' && r <= 'F':
-		default:
-			return false
-		}
-	}
-	return true
 }
