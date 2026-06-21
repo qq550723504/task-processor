@@ -103,3 +103,85 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+  notify:
+    name: WeCom Notification
+    needs:
+      - backend
+      - frontend
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
+      BACKEND_RESULT: ${{ needs.backend.result }}
+      FRONTEND_RESULT: ${{ needs.frontend.result }}
+      CI_BRANCH: ${{ github.head_ref || github.ref_name }}
+      CI_EVENT: ${{ github.event_name }}
+      CI_ACTOR: ${{ github.actor }}
+      CI_SHA: ${{ github.sha }}
+      CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Send CI result to WeCom
+        shell: bash
+        run: |
+          if [[ -z "$WECOM_WEBHOOK_URL" ]]; then
+            echo "::warning::WECOM_WEBHOOK_URL is not configured; notification skipped."
+            exit 0
+          fi
+
+          python3 <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          backend = os.environ.get("BACKEND_RESULT", "unknown")
+          frontend = os.environ.get("FRONTEND_RESULT", "unknown")
+          results = [backend, frontend]
+
+          if all(result == "success" for result in results):
+              overall = "✅ 成功"
+          elif any(result == "failure" for result in results):
+              overall = "❌ 失败"
+          elif any(result == "cancelled" for result in results):
+              overall = "⏹️ 已取消"
+          else:
+              overall = "⚠️ 未完整执行"
+
+          sha = os.environ.get("CI_SHA", "")
+          content = "\n".join([
+              f"### ListingKit CI：{overall}",
+              f"> 仓库：`{os.environ.get('REPOSITORY', '-')}`",
+              f"> 分支：`{os.environ.get('CI_BRANCH') or '-'}`",
+              f"> 事件：`{os.environ.get('CI_EVENT') or '-'}`",
+              f"> Backend：`{backend}`",
+              f"> Frontend：`{frontend}`",
+              f"> 提交：`{sha[:7] if sha else '-'}`",
+              f"> 触发者：`{os.environ.get('CI_ACTOR') or '-'}`",
+              f"> [查看 GitHub Actions 详情]({os.environ.get('CI_RUN_URL', '')})",
+          ])
+
+          payload = {
+              "msgtype": "markdown",
+              "markdown": {
+                  "content": content,
+              },
+          }
+
+          request = urllib.request.Request(
+              os.environ["WECOM_WEBHOOK_URL"],
+              data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+              headers={"Content-Type": "application/json"},
+              method="POST",
+          )
+
+          with urllib.request.urlopen(request, timeout=15) as response:
+              body = response.read().decode("utf-8")
+
+          result = json.loads(body)
+          if result.get("errcode") != 0:
+              raise RuntimeError(f"WeCom notification failed: {body}")
+
+          print("WeCom notification sent successfully.")
+          PY
