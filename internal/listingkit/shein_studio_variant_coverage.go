@@ -89,7 +89,7 @@ func sheinVariantImageGroupKey(skc sheinpub.SKCRequestDraft) string {
 	for _, candidate := range []string{
 		skc.SaleName,
 		skc.SkcName,
-		saleAttributeValue(skc.SaleAttribute),
+		sheinpub.ResolvedSaleAttributeValue(skc.SaleAttribute),
 	} {
 		if key := normalizeVariantImageKey(candidate); key != "" {
 			return key
