@@ -1,6 +1,12 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, CircleHelp, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleHelp,
+  type LucideIcon,
+  XCircle,
+} from "lucide-react";
 
 import { ListingKitSettingsSection } from "@/components/listingkit/settings/listingkit-settings-section";
 import { useListingKitSettingsHealth } from "@/lib/query/use-listingkit-settings-metadata";
@@ -9,22 +15,29 @@ import type {
   ListingKitSettingsHealthStatus,
 } from "@/lib/types/listingkit";
 
-const statusCopy: Record<ListingKitSettingsHealthStatus, { label: string; className: string }> = {
+const statusCopy: Record<
+  ListingKitSettingsHealthStatus,
+  { label: string; className: string; Icon: LucideIcon }
+> = {
   ready: {
     label: "配置可用",
     className: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    Icon: CheckCircle2,
   },
   warning: {
     label: "需要关注",
     className: "border-amber-200 bg-amber-50 text-amber-900",
+    Icon: AlertTriangle,
   },
   blocked: {
     label: "存在阻断项",
     className: "border-rose-200 bg-rose-50 text-rose-800",
+    Icon: XCircle,
   },
   unknown: {
     label: "待接入探针",
     className: "border-slate-200 bg-slate-50 text-slate-700",
+    Icon: CircleHelp,
   },
 };
 
@@ -71,7 +84,7 @@ export function SettingsHealthCard() {
 
 function HealthItemCard({ item }: { item: ListingKitSettingsHealthItem }) {
   const copy = statusCopy[item.status];
-  const Icon = statusIcon(item.status);
+  const Icon = copy.Icon;
   return (
     <article className="rounded-2xl border border-border bg-background p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -101,17 +114,4 @@ function HealthItemCard({ item }: { item: ListingKitSettingsHealthItem }) {
       ) : null}
     </article>
   );
-}
-
-function statusIcon(status: ListingKitSettingsHealthStatus) {
-  switch (status) {
-    case "ready":
-      return CheckCircle2;
-    case "blocked":
-      return XCircle;
-    case "warning":
-      return AlertTriangle;
-    case "unknown":
-      return CircleHelp;
-  }
 }
