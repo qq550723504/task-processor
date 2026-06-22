@@ -112,9 +112,11 @@ func buildTaskTemporalSubmissionWiringWithAssembly(s *service, assembly taskSubm
 			client, _ := resolveSubmissionWorkflowClient(s)
 			return client.StartSheinPublish(ctx, in)
 		},
-		loadSheinPublishTask:             s.loadSheinPublishTaskForTemporal,
-		validateSheinPublishFreshness:    s.validateSheinPublishFreshness,
-		retrySheinSensitiveWordSubmit:    s.retrySheinSensitiveWordSubmit,
+		loadSheinPublishTask:          s.loadSheinPublishTaskForTemporal,
+		validateSheinPublishFreshness: s.validateSheinPublishFreshness,
+		retrySheinSensitiveWordSubmit: func(ctx context.Context, taskID string, pkg *SheinPackage, action string, requestID string, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, response *sheinpub.SubmissionResponse, responseErr error) (*sheinpub.SubmissionResponse, error, bool) {
+			return sheinpub.RetrySensitiveWordSubmit(ctx, taskID, pkg, action, requestID, productAPI, submitProduct, response, responseErr, s.taskSubmissionExecutionOrDefault().executeSheinSubmitRemote)
+		},
 		rememberSheinSubmittedResolution: s.rememberSheinSubmittedResolution,
 	}
 }

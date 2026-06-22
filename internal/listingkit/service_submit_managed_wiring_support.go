@@ -47,11 +47,13 @@ func buildTaskManagedSubmissionWiringWithAssembly(s *service, assembly taskSubmi
 func buildTaskManagedSubmissionWiringWithAssemblyAndRecovery(s *service, assembly taskSubmissionAssembly, recovery *taskSubmissionRecoveryService) taskManagedSubmissionWiring {
 	assembly = completeTaskSubmissionAssembly(s, assembly)
 	return taskManagedSubmissionWiring{
-		assembly:                         assembly,
-		orchestrator:                     buildTaskSubmissionOrchestratorWiringWithRecovery(s, assembly.resolver, recovery),
-		buildSheinSubmitOtherAPI:         s.buildSheinSubmitOtherAPI,
-		validateSheinPublishFreshness:    s.validateSheinPublishFreshness,
-		retrySheinSensitiveWordSubmit:    s.retrySheinSensitiveWordSubmit,
+		assembly:                      assembly,
+		orchestrator:                  buildTaskSubmissionOrchestratorWiringWithRecovery(s, assembly.resolver, recovery),
+		buildSheinSubmitOtherAPI:      s.buildSheinSubmitOtherAPI,
+		validateSheinPublishFreshness: s.validateSheinPublishFreshness,
+		retrySheinSensitiveWordSubmit: func(ctx context.Context, taskID string, pkg *SheinPackage, action string, requestID string, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, response *sheinpub.SubmissionResponse, responseErr error) (*sheinpub.SubmissionResponse, error, bool) {
+			return sheinpub.RetrySensitiveWordSubmit(ctx, taskID, pkg, action, requestID, productAPI, submitProduct, response, responseErr, s.taskSubmissionExecutionOrDefault().executeSheinSubmitRemote)
+		},
 		rememberSheinSubmittedResolution: s.rememberSheinSubmittedResolution,
 	}
 }
