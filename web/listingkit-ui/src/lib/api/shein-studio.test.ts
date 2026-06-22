@@ -8,7 +8,10 @@ import {
   upsertSheinStudioBatchDraft,
 } from "@/lib/api/shein-studio-batch-drafts";
 import { parseStudioBatchDraftDetailResponse } from "@/lib/api/shein-studio-batch-draft-schema";
-import { sheinStudioBatchDraftDetailContractFixture } from "@/lib/api/__fixtures__/shein-studio-batch-contract";
+import {
+  sheinStudioBatchDraftDetailContractFixture,
+  sheinStudioBatchListContractFixture,
+} from "@/lib/api/__fixtures__/shein-studio-batch-contract";
 import { apiAsyncRequest, apiRequest } from "@/lib/api/client";
 
 vi.mock("@/lib/api/client", async () => {
@@ -709,59 +712,15 @@ describe("shein studio design metadata", () => {
   });
 
   it("restores legacy compatibility snapshots from batch list items", async () => {
-    mockedApiRequest.mockResolvedValueOnce({
-      items: [
-        {
-          id: "batch-1",
-          batch_name: "批次1",
-          status: "generating",
-          prompt: "retro cherries",
-          design_count: 58,
-          updated_at: "2026-05-30T00:00:00Z",
-          legacy_compatibility_snapshot: {
-            approved_design_ids: ["design-1"],
-            created_tasks: [{ id: "task-1", title: "Create task", designId: "design-1" }],
-            generation_error: "legacy-error",
-            generation_job_id: "job-1",
-            generation_jobs: [{ job_id: "job-1", status: "running" }],
-            designs: [
-              {
-                id: "design-1",
-                image_url: "https://example.com/design.png",
-                prompt: "legacy prompt",
-              },
-            ],
-          },
-        },
-      ],
-    });
+    mockedApiRequest.mockResolvedValueOnce(
+      sheinStudioBatchListContractFixture.response,
+    );
 
     const batches = await listSheinStudioBatchDrafts();
 
-    expect(batches).toMatchObject([
-      {
-        id: "batch-1",
-        batchStatus: "generating",
-        persistedDesignCount: 58,
-        designs: [
-          {
-            id: "design-1",
-            imageUrl: "https://example.com/design.png",
-            prompt: "legacy prompt",
-          },
-        ],
-        selectedIds: ["design-1"],
-        createdTasks: [{ id: "task-1", title: "Create task", designId: "design-1" }],
-        generationError: "legacy-error",
-        generationJobId: "job-1",
-        generationJobs: [{ jobId: "job-1", status: "running" }],
-        legacyCompatibilitySnapshot: {
-          selectedIds: ["design-1"],
-          generationError: "legacy-error",
-          generationJobId: "job-1",
-        },
-      },
-    ]);
+    expect(batches).toMatchObject(
+      sheinStudioBatchListContractFixture.expectedBatches,
+    );
   });
 
   it("passes recent batch list limits through to the API request", async () => {

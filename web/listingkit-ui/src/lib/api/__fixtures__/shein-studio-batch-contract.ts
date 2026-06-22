@@ -297,3 +297,60 @@ export const sheinStudioBatchDraftDetailContractFixture = {
     },
   },
 } as const;
+
+export const sheinStudioBatchListContractFixture = {
+  response: {
+    items: [
+      {
+        id: "batch-1",
+        batch_name: "批次1",
+        status: "generating",
+        prompt: "retro cherries",
+        design_count: 58,
+        updated_at: "2026-05-30T00:00:00Z",
+        legacy_compatibility_snapshot: {
+          approved_design_ids: ["design-1"],
+          created_tasks: [
+            { id: "task-1", title: "Create task", designId: "design-1" },
+          ],
+          generation_error: "legacy-error",
+          generation_job_id: "job-1",
+          generation_jobs: [{ job_id: "job-1", status: "running" }],
+          designs: [
+            {
+              id: "design-1",
+              image_url: "https://example.com/design.png",
+              prompt: "legacy prompt",
+            },
+          ],
+        },
+      },
+    ],
+  },
+  expectedBatches: [
+    {
+      id: "batch-1",
+      batchStatus: "generating",
+      persistedDesignCount: 58,
+      designs: [
+        {
+          id: "design-1",
+          imageUrl: "https://example.com/design.png",
+          prompt: "legacy prompt",
+        },
+      ],
+      selectedIds: ["design-1"],
+      createdTasks: [
+        { id: "task-1", title: "Create task", designId: "design-1" },
+      ],
+      generationError: "legacy-error",
+      generationJobId: "job-1",
+      generationJobs: [{ jobId: "job-1", status: "running" }],
+      legacyCompatibilitySnapshot: {
+        selectedIds: ["design-1"],
+        generationError: "legacy-error",
+        generationJobId: "job-1",
+      },
+    },
+  ],
+} as const;
