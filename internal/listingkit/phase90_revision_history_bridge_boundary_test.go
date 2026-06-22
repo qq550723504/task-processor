@@ -39,4 +39,25 @@ func TestSheinRevisionHistoryBridgeCallsMarketplaceWorkspaceDirectly(t *testing.
 		"sheinworkspace.BuildRevisionDiffPreviewFromInput(detail.RestorePayload.Core.Draft)",
 		"return sheinworkspace.RebuildRestorePreviewPayload(detail.RestorePayload, compare)",
 	})
+
+	detailSource := readNamedFunctionSource(t, "revision_history_detail.go", "buildRevisionHistoryDetail")
+	assertSourceContainsAll(t, detailSource, []string{
+		"sheinworkspace.BuildHistoryNavigation(",
+	})
+
+	workspaceBridgeSrc, err := os.ReadFile("revision_workspace_bridge.go")
+	if err != nil {
+		t.Fatalf("ReadFile(revision_workspace_bridge.go) error = %v", err)
+	}
+	workspaceBridgeContent := string(workspaceBridgeSrc)
+	for _, forbidden := range []string{
+		"func buildRevisionHistoryNavigation(",
+		"func buildRevisionHistoryRestoreMessages(",
+		"return sheinworkspace.BuildHistoryNavigation(prevRevisionID, nextRevisionID)",
+		"return sheinworkspace.BuildHistoryRestoreMessages(context, safety, overview)",
+	} {
+		if strings.Contains(workspaceBridgeContent, forbidden) {
+			t.Fatalf("revision_workspace_bridge.go should not keep revision history wrapper %q", forbidden)
+		}
+	}
 }

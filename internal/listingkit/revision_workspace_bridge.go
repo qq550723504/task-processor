@@ -11,10 +11,6 @@ type RevisionRestorePreviewCoreData = sheinworkspace.RestorePreviewCoreData[Appl
 type RevisionRestorePreviewPayload = sheinworkspace.RestorePreviewPayload[ApplyRevisionRequest, RevisionHistoryRestoreContext, RevisionHistoryRestoreSafety, RevisionHistoryComparePreview, RevisionInteractionPresentation]
 type revisionHistoryRestoreDetailData = sheinworkspace.HistoryRestoreDetailData[ApplyRevisionRequest, RevisionHistoryComparePreview]
 
-func buildRevisionHistoryNavigation(prevRevisionID, nextRevisionID string) *RevisionHistoryNavigation {
-	return sheinworkspace.BuildHistoryNavigation(prevRevisionID, nextRevisionID)
-}
-
 func buildRevisionHistoryRestoreContext(record *ListingKitRevisionRecord, payload *ApplyRevisionRequest, comparePreview *RevisionHistoryComparePreview) *RevisionHistoryRestoreContext {
 	return sheinworkspace.BuildHistoryRestoreContext(
 		buildRevisionHistoryRestoreRecordInput(record),
@@ -40,11 +36,6 @@ func buildRevisionHistoryRestoreOverview(record *ListingKitRevisionRecord, safet
 		safety,
 		buildRevisionHistoryRestoreCompareInput(comparePreview),
 	)
-}
-
-func buildRevisionHistoryRestoreMessages(record *ListingKitRevisionRecord, context *RevisionHistoryRestoreContext, safety *RevisionHistoryRestoreSafety, overview *RevisionHistoryRestoreOverview) *RevisionHistoryRestoreMessages {
-	_ = record
-	return sheinworkspace.BuildHistoryRestoreMessages(context, safety, overview)
 }
 
 func buildRevisionHistoryRestoreDetailData(

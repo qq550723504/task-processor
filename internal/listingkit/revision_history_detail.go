@@ -46,7 +46,7 @@ func buildRevisionHistoryDetail(result *ListingKitResult, revisionID string, que
 		return sheinworkspace.BuildHistoryDetail(
 			result.TaskID,
 			&recordWithID,
-			buildRevisionHistoryNavigation(
+			sheinworkspace.BuildHistoryNavigation(
 				buildAdjacentRevisionID(records, i-1),
 				buildAdjacentRevisionID(records, i+1),
 			),
