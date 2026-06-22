@@ -21,6 +21,10 @@ import {
   useSheinStudioQueueController,
 } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import {
+  buildRecentBatchSaveInput,
+  buildRecentBatchStoreUpdateInput,
+} from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
+import {
   projectItemizedBatchDetail,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
@@ -1416,51 +1420,6 @@ export function SheinStudioWorkbench({
     ],
   );
 
-  const buildSaveInputFromBatch = useCallback(
-    (
-      batch: SheinStudioSavedBatch,
-      overrides?: Partial<SheinStudioSavedBatch>,
-    ) => ({
-      id: overrides?.id ?? batch.id,
-      updatedAt:
-        overrides?.draftUpdatedAt ??
-        overrides?.updatedAt ??
-        batch.draftUpdatedAt ??
-        batch.updatedAt,
-      name: overrides?.name ?? batch.name,
-      prompt: overrides?.prompt ?? batch.prompt,
-      styleCount: overrides?.styleCount ?? batch.styleCount,
-      variationIntensity:
-        overrides?.variationIntensity ?? batch.variationIntensity,
-      productImageCount: overrides?.productImageCount ?? batch.productImageCount,
-      productImagePrompt:
-        overrides?.productImagePrompt ?? batch.productImagePrompt,
-      productImagePrompts:
-        overrides?.productImagePrompts ?? batch.productImagePrompts,
-      artworkModel: overrides?.artworkModel ?? batch.artworkModel,
-      transparentBackground:
-        overrides?.transparentBackground ?? batch.transparentBackground,
-      sheinStoreId: overrides?.sheinStoreId ?? batch.sheinStoreId,
-      imageStrategy: overrides?.imageStrategy ?? batch.imageStrategy,
-      groupedImageMode:
-        overrides?.groupedImageMode ?? batch.groupedImageMode,
-      selectedSdsImages:
-        overrides?.selectedSdsImages ?? batch.selectedSdsImages,
-      renderSizeImagesWithSds:
-        overrides?.renderSizeImagesWithSds ?? batch.renderSizeImagesWithSds,
-      selection: overrides?.selection ?? batch.selection,
-      groupedSelections:
-        overrides?.groupedSelections ?? batch.groupedSelections,
-      groups: overrides?.groups ?? batch.groups,
-      designs: overrides?.designs ?? batch.designs,
-      selectedIds: overrides?.selectedIds ?? batch.selectedIds,
-      createdTasks: overrides?.createdTasks ?? batch.createdTasks,
-      generationJobs: overrides?.generationJobs ?? batch.generationJobs,
-      generationError: overrides?.generationError ?? batch.generationError,
-      generationJobId: overrides?.generationJobId ?? batch.generationJobId,
-    }),
-    [],
-  );
   const refreshSavedBatches = useCallback(async () => {
     workbenchController.setField("savedBatches", await listSheinStudioBatches());
   }, [workbenchController]);
@@ -1503,12 +1462,12 @@ export function SheinStudioWorkbench({
         return;
       }
       await saveSheinStudioBatch(
-        buildSaveInputFromBatch(batch, { name }),
+        buildRecentBatchSaveInput(batch, { name }),
         { makeActive: false },
       );
       await refreshSavedBatches();
     },
-    [buildSaveInputFromBatch, refreshSavedBatches, resolveRecentBatchForMutation],
+    [refreshSavedBatches, resolveRecentBatchForMutation],
   );
 
   const handleDuplicateRecentBatchSummary = useCallback(
@@ -1578,28 +1537,14 @@ export function SheinStudioWorkbench({
       await Promise.all(
         targets.map((batch) =>
           saveSheinStudioBatch(
-            buildSaveInputFromBatch(batch, {
-              sheinStoreId: storeId,
-              groupedSelections: (batch.groupedSelections ?? []).map((item) => ({
-                ...item,
-                sheinStoreId: storeId,
-              })),
-              groups: (batch.groups ?? []).map((group) => ({
-                ...group,
-                sheinStoreId: storeId,
-                groupedSelections: group.groupedSelections.map((item) => ({
-                  ...item,
-                  sheinStoreId: storeId,
-                })),
-              })),
-            }),
+            buildRecentBatchStoreUpdateInput(batch, storeId),
             { makeActive: false },
           ),
         ),
       );
       await refreshSavedBatches();
     },
-    [buildSaveInputFromBatch, refreshSavedBatches, resolveRecentBatchForMutation],
+    [refreshSavedBatches, resolveRecentBatchForMutation],
   );
 
   const {

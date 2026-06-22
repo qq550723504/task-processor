@@ -1,0 +1,108 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  buildRecentBatchSaveInput,
+  buildRecentBatchStoreUpdateInput,
+} from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
+import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
+
+const selection = {
+  productId: 1,
+  parentProductId: 1,
+  variantId: 100,
+  prototypeGroupId: 200,
+  layerId: "layer-1",
+  productName: "tee",
+  variantLabel: "M / black",
+};
+
+function buildBatch(
+  overrides: Partial<SheinStudioSavedBatch> = {},
+): SheinStudioSavedBatch {
+  return {
+    id: "batch-1",
+    name: "Batch 1",
+    prompt: "prompt",
+    styleCount: "2",
+    sheinStoreId: "store-old",
+    designs: [],
+    selectedIds: [],
+    createdTasks: [],
+    updatedAt: "2026-06-20T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("buildRecentBatchSaveInput", () => {
+  it("projects a saved batch for persistence and prefers draft updated time", () => {
+    const input = buildRecentBatchSaveInput(
+      buildBatch({
+        draftUpdatedAt: "2026-06-21T00:00:00.000Z",
+        generationJobId: "job-1",
+      }),
+      {
+        name: "Renamed",
+      },
+    );
+
+    expect(input).toMatchObject({
+      id: "batch-1",
+      name: "Renamed",
+      prompt: "prompt",
+      sheinStoreId: "store-old",
+      generationJobId: "job-1",
+      updatedAt: "2026-06-21T00:00:00.000Z",
+    });
+  });
+});
+
+describe("buildRecentBatchStoreUpdateInput", () => {
+  it("updates the batch store and nested grouped store ids", () => {
+    const input = buildRecentBatchStoreUpdateInput(
+      buildBatch({
+        groupedSelections: [
+          {
+            selectionId: "selection-1",
+            selection,
+            baselineStatus: "ready",
+            baselineReason: "",
+            sheinStoreId: "store-old",
+            eligible: true,
+          },
+        ],
+        groups: [
+          {
+            id: "group-1",
+            name: "Group 1",
+            primarySelection: selection,
+            groupedSelections: [
+              {
+                selectionId: "selection-2",
+                selection: { ...selection, variantId: 101 },
+                baselineStatus: "ready",
+                baselineReason: "",
+                sheinStoreId: "store-old",
+                eligible: true,
+              },
+            ],
+            sheinStoreId: "store-old",
+            currentPrompt: "group prompt",
+            promptHistory: [],
+            designs: [],
+            selectedIds: [],
+            createdTasks: [],
+            updatedAt: "2026-06-20T00:00:00.000Z",
+          },
+        ],
+      }),
+      "store-new",
+    );
+
+    expect(input.sheinStoreId).toBe("store-new");
+    expect(input.groupedSelections?.[0]?.sheinStoreId).toBe("store-new");
+    expect(input.groups?.[0]?.sheinStoreId).toBe("store-new");
+    expect(input.groups?.[0]?.groupedSelections[0]?.sheinStoreId).toBe(
+      "store-new",
+    );
+  });
+});
