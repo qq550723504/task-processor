@@ -129,13 +129,22 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func appendSheinPayloadReadinessChecks(",
 		"return append(checks, sheinworkspace.BuildSubmitTemplateReadinessChecks(sheinworkspace.SubmitTemplateReadinessInput{",
 		"return append(checks, sheinworkspace.BuildSubmitPayloadReadinessChecks(pkg, action)...)",
+		"sheinworkspace.BuildSubmitReadinessCheck(",
+	} {
+		if !strings.Contains(checksContent, needle) {
+			t.Fatalf("shein_submit_readiness_checks_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"func sheinSubmitReadinessCheck(",
+		"func sheinReadinessTaxonomyForKey(",
 		"func sheinSubmitReadinessFinalDraftReady(pkg *SheinPackage, action string) bool {",
 		"func sheinSubmitReadinessFinalReviewMessage(action string) string {",
 		"return sheinpub.FinalReviewReady(pkg, action)",
 		"return sheinpub.FinalReviewMessage(action)",
 	} {
-		if !strings.Contains(checksContent, needle) {
-			t.Fatalf("shein_submit_readiness_checks_support.go should contain %q", needle)
+		if strings.Contains(checksContent, needle) {
+			t.Fatalf("shein_submit_readiness_checks_support.go should not keep readiness wrapper %q", needle)
 		}
 	}
 	for _, needle := range []string{

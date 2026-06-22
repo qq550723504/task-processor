@@ -1,13 +1,10 @@
 package listingkit
 
-import (
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
-	sheinpub "task-processor/internal/publishing/shein"
-)
+import sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 
 func buildSheinSubmitReadinessChecks(pkg *SheinPackage, pod *PodExecutionSummary, action string, validation sheinBuildValidation) []sheinworkspace.ReadinessCheckSpec {
 	checks := make([]sheinworkspace.ReadinessCheckSpec, 0, 8)
-	checks = append(checks, sheinSubmitReadinessCheck(
+	checks = append(checks, sheinworkspace.BuildSubmitReadinessCheck(
 		sheinCookieUnavailableIssueCode,
 		"SHEIN 店铺登录",
 		!sheinCookieUnavailable(pkg),
@@ -23,14 +20,6 @@ func buildSheinSubmitReadinessChecks(pkg *SheinPackage, pod *PodExecutionSummary
 	return checks
 }
 
-func sheinSubmitReadinessCheck(key, label string, ok bool, message string, fieldPaths []string, suggestedAction string, warningOnly bool) sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.BuildSubmitReadinessCheck(key, label, ok, message, fieldPaths, suggestedAction, warningOnly)
-}
-
-func sheinReadinessTaxonomyForKey(key string, warningOnly bool) sheinworkspace.ReadinessTaxonomy {
-	return sheinworkspace.BuildReadinessTaxonomy(key, warningOnly)
-}
-
 func appendSheinPodReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, pod *PodExecutionSummary, action string) []sheinworkspace.ReadinessCheckSpec {
 	if pod == nil || pod.DependencyMode == podDependencyModeDisabled {
 		return checks
@@ -40,7 +29,7 @@ func appendSheinPodReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, p
 	if action == "save_draft" && pod.Status != podStatusSucceeded {
 		podMessage = firstNonEmptyString(podMessage, "POD 平台处理尚未完成；当前允许先保存草稿，正式发布前仍需确认平台结果")
 	}
-	return append(checks, sheinSubmitReadinessCheck(
+	return append(checks, sheinworkspace.BuildSubmitReadinessCheck(
 		"pod_platform",
 		"POD 平台处理",
 		!podBlocked && (action == "save_draft" || (pod.Status != podStatusFailedDegraded && pod.Status != podStatusBypassed)),
@@ -65,12 +54,4 @@ func appendSheinTemplateReadinessChecks(checks []sheinworkspace.ReadinessCheckSp
 
 func appendSheinPayloadReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, pkg *SheinPackage, action string) []sheinworkspace.ReadinessCheckSpec {
 	return append(checks, sheinworkspace.BuildSubmitPayloadReadinessChecks(pkg, action)...)
-}
-
-func sheinSubmitReadinessFinalDraftReady(pkg *SheinPackage, action string) bool {
-	return sheinpub.FinalReviewReady(pkg, action)
-}
-
-func sheinSubmitReadinessFinalReviewMessage(action string) string {
-	return sheinpub.FinalReviewMessage(action)
 }

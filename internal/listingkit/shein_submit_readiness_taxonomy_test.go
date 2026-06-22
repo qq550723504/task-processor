@@ -1,6 +1,10 @@
 package listingkit
 
-import "testing"
+import (
+	"testing"
+
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+)
 
 func TestSheinReadinessTaxonomyForKnownKeys(t *testing.T) {
 	t.Parallel()
@@ -68,7 +72,7 @@ func TestSheinReadinessTaxonomyForKnownKeys(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			got := sheinReadinessTaxonomyForKey(tc.key, false)
+			got := sheinworkspace.BuildReadinessTaxonomy(tc.key, false)
 			if got.BlockerKey != tc.blockerKey || got.Domain != tc.domain || got.RepairTarget != tc.repairTarget || got.RepairRoute != tc.repairRoute {
 				t.Fatalf("taxonomy = %+v, want %s/%s/%s/%s", got, tc.blockerKey, tc.domain, tc.repairTarget, tc.repairRoute)
 			}
@@ -82,12 +86,12 @@ func TestSheinReadinessTaxonomyForKnownKeys(t *testing.T) {
 func TestSheinReadinessTaxonomyMarksWarningsAndUnknownKeys(t *testing.T) {
 	t.Parallel()
 
-	warning := sheinReadinessTaxonomyForKey("manual_notes", true)
+	warning := sheinworkspace.BuildReadinessTaxonomy("manual_notes", true)
 	if warning.Severity != "warning" || warning.Domain != "system" || !warning.Recoverable {
 		t.Fatalf("warning taxonomy = %+v, want warning/system/recoverable", warning)
 	}
 
-	unknown := sheinReadinessTaxonomyForKey("remote_compliance_hold", false)
+	unknown := sheinworkspace.BuildReadinessTaxonomy("remote_compliance_hold", false)
 	if unknown.BlockerKey != "unknown" || unknown.Domain != "system" || unknown.RepairTarget != "integration_gap" {
 		t.Fatalf("unknown taxonomy = %+v, want unknown/system/integration_gap", unknown)
 	}
@@ -99,7 +103,7 @@ func TestSheinReadinessTaxonomyMarksWarningsAndUnknownKeys(t *testing.T) {
 func TestSheinSubmitReadinessCheckCarriesTaxonomy(t *testing.T) {
 	t.Parallel()
 
-	check := sheinSubmitReadinessCheck(
+	check := sheinworkspace.BuildSubmitReadinessCheck(
 		"pricing",
 		"价格确认",
 		false,

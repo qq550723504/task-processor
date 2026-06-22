@@ -598,7 +598,7 @@ Follow-up deletion
 | 对象 | 状态 | 证据 |
 | --- | --- | --- |
 | readiness repair center 组装 | migrated | `internal/listingkit/shein_repair_center.go` 已收缩为 facade；去重、排序、section label、direct apply queue/session 组装迁入 `internal/marketplace/shein/workspace/repair_center_from_readiness.go`，并新增 marketplace 包级测试。 |
-| readiness taxonomy 映射 | migrated | `internal/listingkit/shein_submit_readiness_checks_support.go` 中的 key -> taxonomy switch 已收缩为 facade；映射规则迁入 `internal/marketplace/shein/workspace/readiness_taxonomy.go`，并新增 marketplace 包级测试。 |
+| readiness taxonomy 映射 | migrated | key -> taxonomy 映射规则迁入 `internal/marketplace/shein/workspace/readiness_taxonomy.go`；ListingKit 直接调用 workspace readiness check/taxonomy builder，已删除 taxonomy/check 直通 wrapper。 |
 | SHEIN remote submit 动作分发 | migrated | `internal/listingkit/task_submission_execution_remote.go` 不再直接 switch `save_draft` / `publish` 调用远端 API；动作分发和 response summary 构造迁入 `internal/publishing/shein/submit_remote_action.go`，ListingKit 仅保留执行服务日志和 orchestration。 |
 | SHEIN submit 翻译决策 | migrated | `internal/listingkit/task_submission_execution_product.go` 不再组合翻译缺失与区域目标语言规则；该判断迁入 `internal/publishing/shein/submit_prep.go` 的 `SubmitProductTranslationNeeded`，ListingKit 仅传入 task region 并决定是否构造 translate API。 |
 | SHEIN submit supplier/publish payload policy | migrated | supplier code 派生和 publish 必需 SKC 图片校验迁入 `internal/publishing/shein/submit_payload_policy.go`；提交执行直接调用 publishing 校验，已删除 ListingKit supplier/publish 兼容 wrapper。 |
@@ -623,7 +623,7 @@ Follow-up deletion
 | SHEIN revision patch application | migrated | editor revision 的 category/attribute/sale attribute/SKC/SKU patch 应用规则迁入 `internal/marketplace/shein/workspace/revision_apply_patch.go`；ListingKit revision apply 编排直接调用 workspace patch application，已删除 resolution/SKC/SKU 直通 support wrapper。 |
 | SHEIN submit freshness readiness checks | migrated | 在线登录态、类目模板、普通属性模板和销售属性 freshness readiness check 的 key/文案/field path 构造迁入 `internal/marketplace/shein/workspace/submit_freshness_readiness.go`；ListingKit freshness flow 仅保留 API 调用、任务上下文和结果持久化。 |
 | SHEIN submit readiness check construction | migrated | submit readiness check 的字段拷贝和 taxonomy 绑定迁入 `internal/marketplace/shein/workspace/submit_readiness_check.go`；ListingKit readiness checks 只负责按当前 payload/service 状态收集输入。 |
-| SHEIN submit final review readiness | migrated | 最终确认页对 `save_draft` / `publish` 的 readiness 判定和提示文案迁入 `internal/publishing/shein/submit_readiness_status.go`；ListingKit readiness checks 仅保留兼容 wrapper。 |
+| SHEIN submit final review readiness | migrated | 最终确认页对 `save_draft` / `publish` 的 readiness 判定和提示文案迁入 `internal/publishing/shein/submit_readiness_status.go`；已删除无生产调用的 ListingKit final review readiness wrapper。 |
 | SHEIN submit review/facts readiness checks | migrated | 人工备注 warning 与来源事实 blocking readiness check 构造迁入 `internal/marketplace/shein/workspace/submit_readiness_review_checks.go`；ListingKit checks assembly 仅追加 workspace 生成的检查项。 |
 | SHEIN submit payload readiness checks | migrated | request draft、preview payload、图片、变体覆盖、规格结构、价格和最终确认 readiness check 构造迁入 `internal/marketplace/shein/workspace/submit_payload_readiness_checks.go`；ListingKit payload checks support 仅委托 workspace。 |
 | SHEIN submit template readiness checks | migrated | 类目骨架、类目复核、普通属性、属性复核和销售属性 readiness check 构造迁入 `internal/marketplace/shein/workspace/submit_template_readiness_checks.go`；ListingKit 仅将 `sheinBuildValidation` 适配为 workspace input。 |
