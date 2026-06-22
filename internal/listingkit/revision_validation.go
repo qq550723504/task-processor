@@ -41,7 +41,7 @@ func validateApplyRevisionRequest(req *ApplyRevisionRequest) error {
 			})
 			break
 		}
-		fieldErrors = append(fieldErrors, validateSheinRevisionInput(req.Shein)...)
+		fieldErrors = append(fieldErrors, sheinworkspace.ValidateRevisionInput(req.Shein)...)
 	case "amazon":
 		if req.Amazon == nil {
 			fieldErrors = append(fieldErrors, RevisionFieldError{
@@ -72,12 +72,4 @@ func validateApplyRevisionRequest(req *ApplyRevisionRequest) error {
 		return nil
 	}
 	return &RevisionValidationError{Fields: fieldErrors}
-}
-
-func validateSheinRevisionInput(req *SheinRevisionInput) []RevisionFieldError {
-	return sheinworkspace.ValidateRevisionInput(req)
-}
-
-func newRevisionFieldError(fieldPath, code, message string) RevisionFieldError {
-	return sheinworkspace.NewFieldError(fieldPath, code, message)
 }

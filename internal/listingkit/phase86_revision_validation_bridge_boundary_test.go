@@ -33,4 +33,25 @@ func TestSheinRevisionValidationBridgeCallsMarketplaceWorkspaceDirectly(t *testi
 			}
 		})
 	}
+
+	source := readNamedFunctionSource(t, "revision_validation.go", "validateApplyRevisionRequest")
+	assertSourceContainsAll(t, source, []string{
+		"fieldErrors = append(fieldErrors, sheinworkspace.ValidateRevisionInput(req.Shein)...)",
+	})
+
+	revisionValidationSrc, err := os.ReadFile("revision_validation.go")
+	if err != nil {
+		t.Fatalf("ReadFile(revision_validation.go) error = %v", err)
+	}
+	revisionValidationContent := string(revisionValidationSrc)
+	for _, forbidden := range []string{
+		"func validateSheinRevisionInput(",
+		"func newRevisionFieldError(",
+		"return sheinworkspace.ValidateRevisionInput(req)",
+		"return sheinworkspace.NewFieldError(fieldPath, code, message)",
+	} {
+		if strings.Contains(revisionValidationContent, forbidden) {
+			t.Fatalf("revision_validation.go should not keep revision validation wrapper %q", forbidden)
+		}
+	}
 }
