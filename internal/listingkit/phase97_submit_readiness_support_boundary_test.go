@@ -44,13 +44,20 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 
 	for _, needle := range []string{
 		"func buildSheinReadinessReason(spec *sheinworkspace.ReadinessReasonSpec) *SheinReadinessReason {",
-		"func buildSheinReadinessPatchPayload(pkg *SheinPackage, key string) *SheinRepairPatchPayload {",
-		"return sheinworkspace.BuildReadinessPatchPayload(pkg, key)",
 		"func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []string, suggestedAction string, warningOnly bool) sheinReadinessGuidance {",
+		"patch := sheinworkspace.BuildReadinessPatchPayload(pkg, key)",
 		"func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {",
 	} {
 		if !strings.Contains(guidanceContent, needle) {
 			t.Fatalf("shein_submit_readiness_guidance_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"func buildSheinReadinessPatchPayload(pkg *SheinPackage, key string) *SheinRepairPatchPayload {",
+		"return sheinworkspace.BuildReadinessPatchPayload(pkg, key)",
+	} {
+		if strings.Contains(guidanceContent, needle) {
+			t.Fatalf("shein_submit_readiness_guidance_support.go should not keep patch payload wrapper %q", needle)
 		}
 	}
 	for _, needle := range []string{

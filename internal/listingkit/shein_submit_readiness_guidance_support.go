@@ -13,10 +13,6 @@ func buildSheinReadinessReason(spec *sheinworkspace.ReadinessReasonSpec) *SheinR
 	}
 }
 
-func buildSheinReadinessPatchPayload(pkg *SheinPackage, key string) *SheinRepairPatchPayload {
-	return sheinworkspace.BuildReadinessPatchPayload(pkg, key)
-}
-
 func buildSheinReadinessRepairHint(pkg *SheinPackage, action string, fieldPaths []string, hint sheinworkspace.ReadinessHintSpec, patch *SheinRepairPatchPayload) SheinRepairHint {
 	artifacts := buildSheinRepairArtifacts(pkg, action, hint.EditorSection, patch)
 	return SheinRepairHint{
@@ -44,7 +40,7 @@ func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []str
 	guidance := sheinReadinessGuidance{
 		reason: buildSheinReadinessReason(spec.Reason),
 	}
-	patch := buildSheinReadinessPatchPayload(pkg, key)
+	patch := sheinworkspace.BuildReadinessPatchPayload(pkg, key)
 	for _, hint := range spec.Hints {
 		guidance.repairHints = append(guidance.repairHints, buildSheinReadinessRepairHint(
 			pkg,

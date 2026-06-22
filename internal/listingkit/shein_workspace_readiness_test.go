@@ -1164,7 +1164,7 @@ func TestBuildSheinReadinessReason(t *testing.T) {
 	}
 }
 
-func TestBuildSheinReadinessPatchPayload(t *testing.T) {
+func TestWorkspaceBuildReadinessPatchPayloadSupportsListingKitAlias(t *testing.T) {
 	t.Parallel()
 
 	pkg := &SheinPackage{
@@ -1172,22 +1172,22 @@ func TestBuildSheinReadinessPatchPayload(t *testing.T) {
 		ReviewNotes: []string{"manual review"},
 	}
 
-	categoryPatch := buildSheinReadinessPatchPayload(pkg, "category")
+	categoryPatch := sheinworkspace.BuildReadinessPatchPayload(pkg, "category")
 	if categoryPatch == nil || categoryPatch.CategoryResolution == nil {
 		t.Fatalf("category patch = %+v", categoryPatch)
 	}
 
-	imagesPatch := buildSheinReadinessPatchPayload(pkg, "images")
+	imagesPatch := sheinworkspace.BuildReadinessPatchPayload(pkg, "images")
 	if imagesPatch == nil || imagesPatch.Images == nil || imagesPatch.Images.MainImage != "https://cdn.example.com/main.jpg" {
 		t.Fatalf("images patch = %+v", imagesPatch)
 	}
 
-	notesPatch := buildSheinReadinessPatchPayload(pkg, "manual_notes")
+	notesPatch := sheinworkspace.BuildReadinessPatchPayload(pkg, "manual_notes")
 	if notesPatch == nil || len(notesPatch.ReviewNotes) != 1 || notesPatch.ReviewNotes[0] != "manual review" {
 		t.Fatalf("manual notes patch = %+v", notesPatch)
 	}
 
-	if patch := buildSheinReadinessPatchPayload(pkg, "request_draft"); patch != nil {
+	if patch := sheinworkspace.BuildReadinessPatchPayload(pkg, "request_draft"); patch != nil {
 		t.Fatalf("request_draft patch = %+v, want nil", patch)
 	}
 }
@@ -1214,7 +1214,7 @@ func TestBuildSheinReadinessRepairHint(t *testing.T) {
 			RevisionPath:  "shein.category_resolution",
 			Description:   "确认类目",
 		},
-		buildSheinReadinessPatchPayload(pkg, "category"),
+		sheinworkspace.BuildReadinessPatchPayload(pkg, "category"),
 	)
 
 	if hint.Target != "editor.category" || hint.Priority != "high" {
