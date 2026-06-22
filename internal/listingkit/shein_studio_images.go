@@ -25,12 +25,12 @@ func applySheinStudioAIImagesToShein(pkg *sheinpub.Package, req *GenerateRequest
 	}
 	productImages = core.AppendUniqueImageURLs(productImages, sizeReferenceImages...)
 	if resolveSheinImageStrategy(req) == sheinImageStrategyHybrid {
-		appendAIProductImagesToShein(pkg, productImages, sourceImages)
+		sheinpub.AppendAIProductImages(pkg, productImages, sourceImages)
 		applyVariantProductImagesToShein(pkg, variantImages, sourceImages)
 		applySheinSizeReferenceImages(pkg, sizeReferenceImages)
 		return
 	}
-	replaceSheinImagesWithAIProductImages(pkg, productImages, sourceImages)
+	sheinpub.ReplaceImagesWithAIProductImages(pkg, productImages, sourceImages)
 	applyVariantProductImagesToShein(pkg, variantImages, sourceImages)
 	applySheinSizeReferenceImages(pkg, sizeReferenceImages)
 }

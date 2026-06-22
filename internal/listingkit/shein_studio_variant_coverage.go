@@ -73,7 +73,7 @@ func sheinVariantImageCoverageCount(req *GenerateRequest, sdsSummary *SDSSyncSum
 func selectedSDSVariantImageCoverage(items []SheinStudioSelectedSDSImage) map[string]struct{} {
 	coverage := map[string]struct{}{}
 	for _, item := range normalizeSelectedSDSImages(items) {
-		if key := normalizeVariantImageKey(firstNonEmptyString(item.VariantSKU, item.Color)); key != "" {
+		if key := sheinpub.NormalizeVariantImageKey(firstNonEmptyString(item.VariantSKU, item.Color)); key != "" {
 			coverage[key] = struct{}{}
 		}
 	}
@@ -89,7 +89,7 @@ func completedSDSVariantCoverage(summary *SDSSyncSummary) map[string]struct{} {
 		if item.Status == "failed" || len(item.MockupImageURLs) == 0 {
 			continue
 		}
-		if key := normalizeVariantImageKey(firstNonEmptyString(item.VariantSKU, item.VariantColor)); key != "" {
+		if key := sheinpub.NormalizeVariantImageKey(firstNonEmptyString(item.VariantSKU, item.VariantColor)); key != "" {
 			coverage[key] = struct{}{}
 		}
 	}

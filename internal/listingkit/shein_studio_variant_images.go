@@ -30,18 +30,18 @@ func applyVariantProductImagesToShein(pkg *sheinpub.Package, variantImages []she
 	byColor := make(map[string]sheinpub.VariantImageSet, len(variantImages))
 	bySKU := make(map[string]sheinpub.VariantImageSet, len(variantImages))
 	for _, item := range variantImages {
-		if key := normalizeVariantImageKey(item.Color); key != "" {
+		if key := sheinpub.NormalizeVariantImageKey(item.Color); key != "" {
 			byColor[key] = item
 		}
-		if key := normalizeVariantImageKey(item.VariantSKU); key != "" {
+		if key := sheinpub.NormalizeVariantImageKey(item.VariantSKU); key != "" {
 			bySKU[key] = item
 		}
 	}
 	if pkg.DraftPayload != nil {
 		for skcIndex := range pkg.DraftPayload.SKCList {
 			skc := &pkg.DraftPayload.SKCList[skcIndex]
-			if item, ok := findVariantImageSetForSKC(*skc, byColor, bySKU); ok {
-				images := imageSetFromAIProductImages(item.ImageURLs, sourceImages)
+			if item, ok := sheinpub.FindVariantImageSetForRequestSKC(*skc, byColor, bySKU); ok {
+				images := sheinpub.ImageSetFromAIProductImages(item.ImageURLs, sourceImages)
 				if images == nil {
 					continue
 				}
@@ -54,22 +54,10 @@ func applyVariantProductImagesToShein(pkg *sheinpub.Package, variantImages []she
 	}
 	for skcIndex := range pkg.SkcList {
 		skc := &pkg.SkcList[skcIndex]
-		if item, ok := findVariantImageSetForSKCPackage(*skc, byColor, bySKU); ok && len(item.ImageURLs) > 0 {
+		if item, ok := sheinpub.FindVariantImageSetForPackageSKC(*skc, byColor, bySKU); ok && len(item.ImageURLs) > 0 {
 			skc.MainImageURL = item.ImageURLs[0]
 		}
 	}
 	preview := sheinpub.BuildPreviewProduct(pkg)
 	sheinpub.SetPreviewPayload(pkg, preview)
-}
-
-func findVariantImageSetForSKC(skc sheinpub.SKCRequestDraft, byColor map[string]sheinpub.VariantImageSet, bySKU map[string]sheinpub.VariantImageSet) (sheinpub.VariantImageSet, bool) {
-	return sheinpub.FindVariantImageSetForRequestSKC(skc, byColor, bySKU)
-}
-
-func findVariantImageSetForSKCPackage(skc sheinpub.SKCPackage, byColor map[string]sheinpub.VariantImageSet, bySKU map[string]sheinpub.VariantImageSet) (sheinpub.VariantImageSet, bool) {
-	return sheinpub.FindVariantImageSetForPackageSKC(skc, byColor, bySKU)
-}
-
-func normalizeVariantImageKey(value string) string {
-	return sheinpub.NormalizeVariantImageKey(value)
 }
