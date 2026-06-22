@@ -2,12 +2,15 @@ package listingkit
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
+	sheincategory "task-processor/internal/shein/api/category"
 )
 
 type sheinFreshnessValidationContext struct {
@@ -38,6 +41,22 @@ func (s *service) prepareSheinFreshnessValidationContext(ctx context.Context, ta
 	}, nil
 }
 
+func cloneSheinPackageForFreshness(pkg *SheinPackage) (*SheinPackage, error) {
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(pkg)
+	if err != nil {
+		return nil, err
+	}
+	var cloned SheinPackage
+	if err := json.Unmarshal(raw, &cloned); err != nil {
+		return nil, err
+	}
+	return sheinpub.NormalizePackageSemanticFields(&cloned), nil
+}
+
 func (s *service) validateSheinFreshnessCategory(ctx context.Context, task *Task, pkg *SheinPackage, state *sheinFreshnessValidationContext) (sheinworkspace.ReadinessCheckSpec, bool) {
 	categoryInfo, categoryInfoErr := s.loadSheinCategoryInfoForFreshness(ctx, task, pkg.CategoryID)
 	categoryReady, categoryMessage := sheinworkspace.EvaluateCategoryFreshness(pkg, categoryInfo)
@@ -61,6 +80,36 @@ func (s *service) validateSheinFreshnessAttributes(ctx context.Context, task *Ta
 
 	state.saleAPI, _ = s.buildSheinAttributeAPI(ctx, task)
 	return sheinworkspace.BuildFreshnessAttributeCheck(attributeReady, attributeMessage)
+}
+
+func (s *service) loadSheinAttributeTemplatesForFreshness(
+	ctx context.Context,
+	task *Task,
+	categoryID int,
+) (*sheinattribute.AttributeTemplateInfo, error) {
+	if categoryID <= 0 {
+		return nil, fmt.Errorf("missing SHEIN category_id")
+	}
+	api, err := s.buildSheinAttributeAPI(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetAttributeTemplates(categoryID)
+}
+
+func (s *service) loadSheinCategoryInfoForFreshness(
+	ctx context.Context,
+	task *Task,
+	categoryID int,
+) (*sheincategory.CategoryInfo, error) {
+	if categoryID <= 0 {
+		return nil, fmt.Errorf("missing SHEIN category_id")
+	}
+	api, err := s.buildSheinCategoryAPI(ctx, task)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetCategory(categoryID)
 }
 
 func (s *service) validateSheinFreshnessSaleAttributes(ctx context.Context, task *Task, pkg *SheinPackage, state *sheinFreshnessValidationContext) (sheinworkspace.ReadinessCheckSpec, error) {
