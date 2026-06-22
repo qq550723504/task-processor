@@ -21,6 +21,9 @@ func TestSheinSubmitStateKeepsTransitionSequencingBoundary(t *testing.T) {
 		"&sheinpub.SubmissionRecord{",
 		"ResponseOutcome{",
 		"func responseOutcome(",
+		"func resolveSheinSubmitFailureState(",
+		"func ensureSheinSubmissionReport(",
+		"func setSheinSubmitRemoteRecord(",
 	}
 	for _, pattern := range forbidden {
 		if strings.Contains(content, pattern) {

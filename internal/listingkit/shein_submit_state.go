@@ -4,7 +4,6 @@ import (
 	"time"
 
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 func beginSheinSubmitAttempt(pkg *SheinPackage, action, requestID, phase string, startedAt time.Time) *sheinpub.SubmissionRecord {
@@ -39,10 +38,6 @@ func failSheinSubmitAttemptWithResponseAndBuildEvent(pkg *SheinPackage, taskID, 
 	return sheinpub.FailSubmitAttemptWithResponseAndBuildEvent(pkg, taskID, action, requestedID, phase, response, submitErr, finishedAt)
 }
 
-func resolveSheinSubmitFailureState(pkg *SheinPackage, requestedID, phase string) (string, string) {
-	return sheinpub.ResolveSubmitFailureState(pkg, requestedID, phase)
-}
-
 func advanceSheinSubmitPhaseAt(pkg *SheinPackage, action, requestID, phase string, now time.Time) {
 	sheinpub.AdvanceSubmitPhaseAt(pkg, action, requestID, phase, now, sheinSubmitInFlightTTL)
 }
@@ -67,18 +62,10 @@ func sheinSubmitAttemptNeedsRemoteRecovery(report *sheinpub.SubmissionReport, ac
 	return sheinpub.SubmissionNeedsRemoteRecovery(report, action, now, sheinSubmitInFlightTTL)
 }
 
-func ensureSheinSubmissionReport(pkg *SheinPackage) *sheinpub.SubmissionReport {
-	return sheinpub.EnsureSubmissionReport(pkg)
-}
-
 func sheinSubmissionRecordForAction(report *sheinpub.SubmissionReport, action string) *sheinpub.SubmissionRecord {
 	return sheinpub.SubmissionRecordForAction(report, action)
 }
 
 func clearSheinSubmitInFlight(report *sheinpub.SubmissionReport, action, requestID string) {
 	sheinpub.ClearSubmissionInFlight(report, action, requestID)
-}
-
-func setSheinSubmitRemoteRecord(pkg *SheinPackage, action, requestID, remoteStatus string, item *sheinproduct.RecordItem, checkedAt time.Time, message string) {
-	sheinpub.SetSubmissionRemoteRecord(pkg, action, requestID, remoteStatus, item, checkedAt, message)
 }
