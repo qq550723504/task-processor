@@ -46,7 +46,7 @@ func TestApplySheinFinalImageDraftRepairsExistingPreviewSKCMainImage(t *testing.
 		},
 	}
 
-	applySheinFinalImageDraft(pkg)
+	sheinpub.ApplyFinalImageDraft(pkg)
 
 	got := pkg.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList
 	if len(got) != 3 {
@@ -95,7 +95,7 @@ func TestApplySheinFinalImageDraftBackfillsSKCGalleryFromFinalOrder(t *testing.T
 		},
 	}
 
-	applySheinFinalImageDraft(pkg)
+	sheinpub.ApplyFinalImageDraft(pkg)
 
 	draftImages := pkg.DraftPayload.SKCList[0].ImageInfo
 	if draftImages == nil {
@@ -151,7 +151,7 @@ func TestApplySheinFinalImageDraftBackfillsSKCGalleryWhenOnlyMainExists(t *testi
 		},
 	}
 
-	applySheinFinalImageDraft(pkg)
+	sheinpub.ApplyFinalImageDraft(pkg)
 
 	draftImages := pkg.DraftPayload.SKCList[0].ImageInfo
 	if draftImages == nil {

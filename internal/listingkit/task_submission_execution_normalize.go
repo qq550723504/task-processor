@@ -21,7 +21,7 @@ func (s *taskSubmissionExecutionService) normalizeSheinSubmitPackage(task *Task,
 	}
 	applyConfirmedFinalSubmissionDraft(pkg, req, action)
 	sheinpub.RepairSubmitSaleAttributes(pkg)
-	applySheinFinalImageDraft(pkg)
+	sheinpub.ApplyFinalImageDraft(pkg)
 	applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)
 }
 

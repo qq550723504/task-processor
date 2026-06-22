@@ -83,7 +83,7 @@ func (s *sheinAdminService) applySheinFinalDraftUpdate(task *Task, req *SheinFin
 	}
 	review := buildSheinDraftBackedPricingReview(pkg, rule, pkg.FinalSubmissionDraft.ManualPriceOverrides)
 	applySheinPricingReview(pkg, review)
-	applySheinFinalImageDraft(pkg)
+	sheinpub.ApplyFinalImageDraft(pkg)
 	applySheinVariantImageCoverageGuard(task.Result, task.Request, pkg)
 	task.Result.UpdatedAt = now
 	return nil

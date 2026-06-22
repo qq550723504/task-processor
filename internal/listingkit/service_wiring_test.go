@@ -3521,18 +3521,10 @@ func TestSheinSettingsEntrypointsFileOwnsFinalDraftDelegate(t *testing.T) {
 		t.Fatalf("ReadFile(service_shein_final_draft_update_entrypoint.go) unexpected error = %v", err)
 	}
 
-	draftSrc, err := os.ReadFile("shein_final_draft.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_final_draft.go) error = %v", err)
-	}
-	draftContent := string(draftSrc)
-
-	if strings.Contains(draftContent, "func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error) {") {
-		t.Fatalf("shein_final_draft.go should not contain %q", "func (s *service) UpdateSheinFinalDraft(ctx context.Context, taskID string, req *SheinFinalDraftUpdateRequest) (*ListingKitPreview, error) {")
-	}
-
-	if !strings.Contains(draftContent, "func applySheinFinalImageDraft(pkg *sheinpub.Package) {") {
-		t.Fatalf("shein_final_draft.go should keep %q", "func applySheinFinalImageDraft(pkg *sheinpub.Package) {")
+	if _, err := os.ReadFile("shein_final_draft.go"); err == nil {
+		t.Fatal("shein_final_draft.go should be removed after final draft image wrapper cleanup")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(shein_final_draft.go) unexpected error = %v", err)
 	}
 }
 
