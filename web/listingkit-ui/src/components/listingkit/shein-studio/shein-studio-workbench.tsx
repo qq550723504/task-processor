@@ -13,6 +13,7 @@ import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio
 import { SheinStudioGroupedSelectionPanel } from "@/components/listingkit/shein-studio/shein-studio-grouped-selection-panel";
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
+import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
 import {
   clearLocalSheinStudioDraftSnapshot,
@@ -70,7 +71,6 @@ import {
 } from "@/lib/shein-studio/batch-queue";
 import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
-import { resolveDedicatedBatchHydration } from "@/lib/shein-studio/batch-hydration";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import {
   clearListingKitTraceContext,
@@ -1230,60 +1230,30 @@ export function SheinStudioWorkbench({
     });
   const handleLoadBatchRef = useRef(handleLoadBatch);
   const handleLoadHydratedBatchRef = useRef(handleLoadHydratedBatch);
-  const loadedInitialBatchIdRef = useRef<string | null>(null);
   useEffect(() => {
     handleLoadBatchRef.current = handleLoadBatch;
   }, [handleLoadBatch]);
   useEffect(() => {
     handleLoadHydratedBatchRef.current = handleLoadHydratedBatch;
   }, [handleLoadHydratedBatch]);
-  useEffect(() => {
-    if (!initialBatchId) {
-      loadedInitialBatchIdRef.current = null;
-      return;
-    }
-    const batchId = initialBatchId;
-    if (loadedInitialBatchIdRef.current === batchId) {
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadInitialBatch() {
-      try {
-        const hydratedBatch = await getSheinStudioHydratedBatch(batchId);
-        if (cancelled || !hydratedBatch) {
-          return;
-        }
-        const localSnapshot = loadLocalSheinStudioDraftSnapshotDetail();
-        const batchWithLocalSnapshot = resolveDedicatedBatchHydration({
-          batchId,
-          hydratedBatch,
-          localSnapshot,
-          promptOverride: dedicatedBatchPromptOverrides.get(batchId),
-        });
-        loadedInitialBatchIdRef.current = batchId;
-        handleLoadHydratedBatchRef.current(batchWithLocalSnapshot);
-        setIsDedicatedBatchLoaded(true);
-      } catch (error) {
-        if (cancelled) {
-          return;
-        }
-        const message = `当前批次加载失败：${
-          error instanceof Error ? error.message : "未知错误"
-        }。请重新登录后再继续。`;
-        workbenchController.setField("generationError", message);
-        setQueueMessage(message);
-        setIsDedicatedBatchLoaded(true);
-      }
-    }
-
-    void loadInitialBatch();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [initialBatchId, setQueueMessage, workbenchController]);
+  const setDedicatedBatchGenerationError = useCallback(
+    (message: string) => {
+      workbenchController.setField("generationError", message);
+    },
+    [workbenchController],
+  );
+  useSheinStudioInitialBatchHydration({
+    initialBatchId,
+    getHydratedBatch: getSheinStudioHydratedBatch,
+    loadLocalSnapshot: loadLocalSheinStudioDraftSnapshotDetail,
+    loadHydratedBatch: handleLoadHydratedBatch,
+    promptOverride: initialBatchId
+      ? dedicatedBatchPromptOverrides.get(initialBatchId)
+      : undefined,
+    setGenerationError: setDedicatedBatchGenerationError,
+    setLoaded: setIsDedicatedBatchLoaded,
+    setQueueMessage,
+  });
 
   const itemizedBatchGenerationInFlight = hasInFlightItemizedBatchGeneration(
     itemizedBatchDetail,
