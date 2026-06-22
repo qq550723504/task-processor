@@ -7,10 +7,6 @@ func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEd
 		Patch:      sheinworkspace.CloneRepairPatchPayload(patch),
 		Skeleton:   sheinworkspace.CloneEditorRevisionSkeleton(skeleton),
 		Request:    cloneApplyRevisionRequest(request),
-		Validation: cloneSheinRepairValidationPreview(validation),
+		Validation: sheinworkspace.CloneRepairValidationPreview(validation),
 	}
-}
-
-func cloneSheinRepairValidationPreview(src *SheinRepairValidationPreview) *SheinRepairValidationPreview {
-	return sheinworkspace.CloneRepairValidationPreview(src)
 }
