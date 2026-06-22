@@ -66,11 +66,7 @@ import {
 } from "@/lib/shein-studio/sds-baseline-ui";
 import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
-import {
-  pickLocalArrayValue,
-  pickLocalStringValue,
-  shouldUseLocalDraftOverRemote,
-} from "@/lib/shein-studio/local-remote-conflict-policy";
+import { resolveDedicatedBatchHydration } from "@/lib/shein-studio/batch-hydration";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import {
   clearListingKitTraceContext,
@@ -125,64 +121,6 @@ function getBatchRunStartErrorMessage(error: unknown) {
     return error.message;
   }
   return "这轮批量生成没有成功启动，请稍后重试。";
-}
-
-function mergeDedicatedBatchWithLocalSnapshot(
-  batchId: string,
-  hydratedBatch: SheinStudioWorkbenchHydratedBatch,
-  localSnapshot: NonNullable<ReturnType<typeof loadLocalSheinStudioDraftSnapshotDetail>>,
-): SheinStudioWorkbenchHydratedBatch {
-  const savedBatch = hydratedBatch.savedBatch;
-  const localDraft = localSnapshot.draft;
-  return {
-    savedBatch: {
-      ...savedBatch,
-      prompt:
-        dedicatedBatchPromptOverrides.get(batchId) ??
-        pickLocalStringValue(localDraft.prompt, savedBatch.prompt),
-      styleCount: pickLocalStringValue(localDraft.styleCount, savedBatch.styleCount),
-      variationIntensity:
-        localDraft.variationIntensity ?? savedBatch.variationIntensity,
-      productImageCount: pickLocalStringValue(
-        localDraft.productImageCount,
-        savedBatch.productImageCount,
-      ),
-      productImagePrompt: pickLocalStringValue(
-        localDraft.productImagePrompt,
-        savedBatch.productImagePrompt,
-      ),
-      productImagePrompts: pickLocalArrayValue(
-        localDraft.productImagePrompts,
-        savedBatch.productImagePrompts,
-      ),
-      artworkModel: pickLocalStringValue(
-        localDraft.artworkModel,
-        savedBatch.artworkModel,
-      ),
-      transparentBackground:
-        localDraft.transparentBackground ?? savedBatch.transparentBackground,
-      sheinStoreId: pickLocalStringValue(
-        localDraft.sheinStoreId,
-        savedBatch.sheinStoreId,
-      ),
-      imageStrategy: localDraft.imageStrategy ?? savedBatch.imageStrategy,
-      groupedImageMode:
-        localDraft.groupedImageMode ?? savedBatch.groupedImageMode,
-      selectedSdsImages: pickLocalArrayValue(
-        localDraft.selectedSdsImages,
-        savedBatch.selectedSdsImages,
-      ),
-      renderSizeImagesWithSds:
-        localDraft.renderSizeImagesWithSds ?? savedBatch.renderSizeImagesWithSds,
-      selection: localDraft.selection ?? savedBatch.selection,
-      groupedSelections: pickLocalArrayValue(
-        localDraft.groupedSelections,
-        savedBatch.groupedSelections,
-      ),
-      groups: pickLocalArrayValue(localDraft.groups, savedBatch.groups),
-    },
-    detail: hydratedBatch.detail,
-  };
 }
 
 function upsertSavedBatch(
@@ -1384,28 +1322,12 @@ export function SheinStudioWorkbench({
           return;
         }
         const localSnapshot = loadLocalSheinStudioDraftSnapshotDetail();
-        const batchWithLocalSnapshot: SheinStudioWorkbenchHydratedBatch =
-          localSnapshot?.batchId === batchId &&
-          shouldUseLocalDraftOverRemote({
-            localUpdatedAt: localSnapshot.draft.updatedAt,
-            remoteUpdatedAt:
-              hydratedBatch.savedBatch.draftUpdatedAt ??
-              hydratedBatch.savedBatch.updatedAt,
-          })
-            ? mergeDedicatedBatchWithLocalSnapshot(
-                batchId,
-                hydratedBatch,
-                localSnapshot,
-              )
-            : {
-                savedBatch: {
-                  ...hydratedBatch.savedBatch,
-                  prompt:
-                    dedicatedBatchPromptOverrides.get(batchId) ??
-                    hydratedBatch.savedBatch.prompt,
-                },
-                detail: hydratedBatch.detail,
-              };
+        const batchWithLocalSnapshot = resolveDedicatedBatchHydration({
+          batchId,
+          hydratedBatch,
+          localSnapshot,
+          promptOverride: dedicatedBatchPromptOverrides.get(batchId),
+        });
         loadedInitialBatchIdRef.current = batchId;
         handleLoadHydratedBatchRef.current(batchWithLocalSnapshot);
         setIsDedicatedBatchLoaded(true);
