@@ -27,7 +27,7 @@ func persistSheinRemoteCompletionFailure(
 	if state == nil || state.task == nil || state.pkg == nil {
 		return remoteErr
 	}
-	_, event := failSheinSubmitAttemptWithResponseAndBuildEvent(state.pkg, state.taskID, state.action, state.requestID, phase, state.response, remoteErr, time.Now())
+	_, event := sheinpub.FailSubmitAttemptWithResponseAndBuildEvent(state.pkg, state.taskID, state.action, state.requestID, phase, state.response, remoteErr, time.Now())
 	sheinpub.AppendSubmissionEvent(state.pkg, event)
 	if state.task.Result == nil {
 		return remoteErr
@@ -52,7 +52,7 @@ func persistSheinRemoteCompletionSuccess(
 	if state == nil || state.task == nil || state.pkg == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	record, event := completeSheinSubmitAttemptAndBuildEvent(state.pkg, state.taskID, state.action, state.requestID, response, nil, state.startedAt, time.Now())
+	record, event := sheinpub.CompleteSubmitAttemptAndBuildEvent(state.pkg, state.taskID, state.action, state.requestID, response, nil, state.startedAt, time.Now())
 	sheinpub.AppendSubmissionEvent(state.pkg, event)
 	if rememberSubmitted != nil {
 		rememberSubmitted(state.task, state.action)

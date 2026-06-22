@@ -28,7 +28,7 @@ func (s *taskSubmissionStateService) finishSheinDirectSubmitAttempt(ctx context.
 }
 
 func (s *taskSubmissionStateService) completeDirectSubmitAttempt(in submissiondomain.SuccessPersistenceInput[*Task, *SheinPackage, *sheinpub.SubmissionResponse], finishedAt time.Time) {
-	_, event := completeSheinSubmitAttemptAndBuildEvent(in.Package, in.TaskID, in.Action, in.RequestID, in.Response, nil, in.StartedAt, finishedAt)
+	_, event := sheinpub.CompleteSubmitAttemptAndBuildEvent(in.Package, in.TaskID, in.Action, in.RequestID, in.Response, nil, in.StartedAt, finishedAt)
 	sheinpub.AppendSubmissionEvent(in.Package, event)
 }
 
@@ -84,7 +84,7 @@ func (s *taskSubmissionStateService) persistDirectSuccessFallback(ctx context.Co
 }
 
 func (s *taskSubmissionStateService) persistDirectFailureFallback(_ context.Context, in submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]) error {
-	_, event := completeSheinSubmitAttemptAndBuildEvent(in.Package, in.TaskID, in.Action, in.RequestID, in.Response, in.Err, in.StartedAt, time.Now())
+	_, event := sheinpub.CompleteSubmitAttemptAndBuildEvent(in.Package, in.TaskID, in.Action, in.RequestID, in.Response, in.Err, in.StartedAt, time.Now())
 	sheinpub.AppendSubmissionEvent(in.Package, event)
 	return nil
 }
@@ -100,7 +100,7 @@ func (s *taskSubmissionStateService) failSheinDirectSubmit(ctx context.Context, 
 }
 
 func (s *taskSubmissionStateService) recordFailureState(ctx context.Context, in submissiondomain.FailurePersistenceInput[*ListingKitResult, *SheinPackage]) error {
-	_, event := failSheinSubmitAttemptAndBuildEvent(in.Package, in.TaskID, in.Action, in.RequestID, in.Phase, in.Err, time.Now())
+	_, event := sheinpub.FailSubmitAttemptAndBuildEvent(in.Package, in.TaskID, in.Action, in.RequestID, in.Phase, in.Err, time.Now())
 	sheinpub.AppendSubmissionEvent(in.Package, event)
 	if in.Result == nil {
 		return nil

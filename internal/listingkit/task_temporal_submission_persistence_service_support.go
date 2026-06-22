@@ -81,7 +81,7 @@ func (s *taskTemporalSubmissionPersistenceService) persistTemporalSuccessResultA
 }
 
 func (s *taskTemporalSubmissionPersistenceService) completeTemporalSubmitAttempt(in submissiondomain.SuccessPersistenceInput[*Task, *SheinPackage, *sheinpub.SubmissionResponse], finishedAt time.Time) {
-	_, event := completeSheinSubmitAttemptAndBuildEvent(in.Package, in.TaskID, in.Action, in.RequestID, in.Response, nil, in.StartedAt, finishedAt)
+	_, event := sheinpub.CompleteSubmitAttemptAndBuildEvent(in.Package, in.TaskID, in.Action, in.RequestID, in.Response, nil, in.StartedAt, finishedAt)
 	sheinpub.AppendSubmissionEvent(in.Package, event)
 }
 

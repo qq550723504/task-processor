@@ -120,7 +120,7 @@ func TestFailSheinSubmitAttemptWithResponseAndBuildEventPreservesResponse(t *tes
 	beginSheinSubmitAttempt(pkg, "publish", "idem-1", sheinpub.SubmissionPhaseConfirmRemote, startedAt)
 	response := &sheinpub.SubmissionResponse{Success: true, Message: "remote payload"}
 
-	record, event := failSheinSubmitAttemptWithResponseAndBuildEvent(pkg, "task-1", "publish", "idem-1", sheinpub.SubmissionPhaseConfirmRemote, response, errTestSubmitState, finishedAt)
+	record, event := sheinpub.FailSubmitAttemptWithResponseAndBuildEvent(pkg, "task-1", "publish", "idem-1", sheinpub.SubmissionPhaseConfirmRemote, response, errTestSubmitState, finishedAt)
 
 	if record == nil {
 		t.Fatal("expected failed record")
