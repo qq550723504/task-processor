@@ -71,6 +71,10 @@ func targetCategoryHint(req *BuildRequest) string {
 }
 
 func attributeResolverCacheKey(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {
+	return attributeResolverCacheKeyWithIdentity(req, pkg, stableProductIdentity(canonical, pkg), pkgProductAttributes(pkg))
+}
+
+func attributeResolverCacheKeyWithIdentity(req *BuildRequest, pkg *Package, identity []string, productAttributes []common.Attribute) string {
 	if pkg == nil || categoryID(pkg) == 0 {
 		return ""
 	}
@@ -80,12 +84,83 @@ func attributeResolverCacheKey(req *BuildRequest, canonical *canonical.Product, 
 		"category_id":           categoryID(pkg),
 		"category_id_list":      append([]int(nil), pkg.CategoryIDList...),
 		"category_path":         normalizedSourceCategoryPath(nil, pkg),
-		"product_identity":      stableProductIdentity(canonical, pkg),
-		"product_attributes":    normalizedAttributeInputs(pkg.ProductAttributes),
+		"product_identity":      identity,
+		"product_attributes":    normalizedAttributeInputs(productAttributes),
 		"supplemental_attrs":    normalizedStringMapInputs(pkg.Attributes),
-		"structured_attr_hints": normalizedStructuredAttributeHints(pkg.ProductAttributes),
+		"structured_attr_hints": normalizedStructuredAttributeHints(productAttributes),
 	}
 	return hashCachePayload(payload)
+}
+
+func attributeResolverLegacyVariantOnlyCacheKeys(req *BuildRequest, canonical *canonical.Product, pkg *Package) []string {
+	variantIDs := legacyVariantOnlySDSIdentifiers(canonical, pkg)
+	if len(variantIDs) == 0 {
+		return nil
+	}
+	legacyInputs := legacyVariantOnlyAttributeInputs(pkgProductAttributes(pkg))
+	keys := make([]string, 0, len(variantIDs))
+	seen := map[string]struct{}{}
+	for _, variantID := range variantIDs {
+		key := attributeResolverCacheKeyWithIdentity(req, pkg, normalizeStableIdentity([]string{variantID}), legacyInputs)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func legacyVariantOnlySDSIdentifiers(canonical *canonical.Product, pkg *Package) []string {
+	values := []string{
+		lookupAttributeValueInList(pkgProductAttributes(pkg), "variant_sku"),
+		lookupAttributeValueInList(pkgProductAttributes(pkg), "source_sds_sku"),
+	}
+	if canonical != nil {
+		if attr, ok := canonical.Attributes["variant_sku"]; ok {
+			values = append(values, attr.Value)
+		}
+		for _, variant := range canonical.Variants {
+			for _, key := range []string{"source_sds_sku", "variant_sku"} {
+				if attr, ok := variant.Attributes[key]; ok {
+					values = append(values, attr.Value)
+				}
+			}
+		}
+	}
+	return normalizeStableIdentity(values)
+}
+
+func legacyVariantOnlyAttributeInputs(inputs []common.Attribute) []common.Attribute {
+	if len(inputs) == 0 {
+		return nil
+	}
+	result := make([]common.Attribute, 0, len(inputs))
+	productSKU := normalizeText(lookupAttributeValueInList(inputs, "product_sku"))
+	for _, item := range inputs {
+		name := normalizeText(item.Name)
+		value := normalizeText(item.Value)
+		switch name {
+		case "product_sku":
+			continue
+		case "sku":
+			if productSKU == "" || value == productSKU {
+				continue
+			}
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
+func pkgProductAttributes(pkg *Package) []common.Attribute {
+	if pkg == nil {
+		return nil
+	}
+	return pkg.ProductAttributes
 }
 
 func saleAttributeResolverCacheKey(req *BuildRequest, canonical *canonical.Product, pkg *Package) string {

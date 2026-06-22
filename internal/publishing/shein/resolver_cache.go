@@ -135,6 +135,21 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 				return resolution
 			}
 		}
+		for _, legacyKey := range attributeResolverLegacyVariantOnlyCacheKeys(req, canonical, pkg) {
+			if legacyKey == key {
+				continue
+			}
+			if entry := r.loadPersistentCache(ResolutionCacheKindAttribute, req, legacyKey); entry != nil {
+				if resolution := decodeAttributeCacheEntry(entry); resolution != nil {
+					migrated := cloneAttributeResolution(resolution)
+					attachResolutionCacheInfoToAttribute(migrated, cacheEntrySource(entry), key, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
+					r.cache.Store(key, cloneAttributeResolution(migrated))
+					r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, migrated, entry.Manual)
+					logResolutionCacheHit("attribute", cacheEntrySource(entry), req, canonical, pkg, legacyKey, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount, "migrated_cache_key": key})
+					return migrated
+				}
+			}
+		}
 	}
 	resolution := r.inner.Resolve(req, canonical, pkg)
 	return resolution

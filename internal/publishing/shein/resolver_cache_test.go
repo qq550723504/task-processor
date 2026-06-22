@@ -728,6 +728,79 @@ func TestCachedAttributeResolverLoadsPersistentCacheAndRefillsMemory(t *testing.
 	}
 }
 
+func TestCachedAttributeResolverMigratesLegacyVariantOnlySDSCache(t *testing.T) {
+	valueID := 2001
+	store := newResolutionCacheTestStore(t)
+	req := &BuildRequest{SheinStoreID: 42}
+	pkg := &Package{
+		CategoryID:     1764,
+		CategoryIDList: []int{3294, 2041, 1764},
+		CategoryPath:   []string{"箱包", "女士包包", "女士单肩包"},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "XB0601059"},
+			{Name: "product_sku", Value: "XB0601059"},
+			{Name: "variant_sku", Value: "XB0601059001"},
+			{Name: "material", Value: "polyester"},
+		},
+	}
+	legacyKey := attributeResolverLegacyVariantOnlyCacheKeyForTest(req, pkg, "XB0601059001")
+	currentKey := attributeResolverCacheKey(req, nil, pkg)
+	if legacyKey == "" || currentKey == "" || legacyKey == currentKey {
+		t.Fatalf("expected distinct legacy/current keys: legacy=%q current=%q", legacyKey, currentKey)
+	}
+	if err := store.SaveResolutionCache(context.Background(), &SheinResolutionCacheEntry{
+		StoreID:        "42",
+		CacheKind:      ResolutionCacheKindAttribute,
+		CacheKey:       legacyKey,
+		ShortKey:       shortResolutionCacheKey(legacyKey),
+		Source:         "manual_cache",
+		Manual:         true,
+		ResolutionJSON: `{"status":"resolved","category_id":1764,"template_count":1,"resolved_count":1,"resolved_attributes":[{"name":"Material","value":"Polyester","attribute_id":160,"attribute_value_id":2001}]}`,
+	}); err != nil {
+		t.Fatalf("seed legacy cache: %v", err)
+	}
+	inner := &countingAttributeResolver{
+		out: &AttributeResolution{Status: "partial", CategoryID: 1764, TemplateCount: 1},
+	}
+	resolver := NewCachedAttributeResolver(inner, store)
+
+	first := resolver.Resolve(req, nil, pkg)
+	if inner.calls != 0 {
+		t.Fatalf("inner calls = %d, want 0", inner.calls)
+	}
+	if first.Cache == nil || first.Cache.HitSource != ResolutionCacheHitSourcePersistentManualCache {
+		t.Fatalf("first cache metadata = %#v, want persistent manual cache", first.Cache)
+	}
+	if got := first.ResolvedAttributes[0].AttributeValueID; got == nil || *got != valueID {
+		t.Fatalf("attribute value id = %v, want %d", got, valueID)
+	}
+	migrated, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "42", currentKey)
+	if err != nil {
+		t.Fatalf("get migrated cache: %v", err)
+	}
+	if migrated == nil || !migrated.Manual || migrated.Source != "manual_cache" {
+		t.Fatalf("migrated cache = %#v, want current-key manual cache", migrated)
+	}
+}
+
+func attributeResolverLegacyVariantOnlyCacheKeyForTest(req *BuildRequest, pkg *Package, variantSKU string) string {
+	if pkg == nil || categoryID(pkg) == 0 {
+		return ""
+	}
+	payload := map[string]any{
+		"version":               14,
+		"store_id":              sheinStoreID(req),
+		"category_id":           categoryID(pkg),
+		"category_id_list":      append([]int(nil), pkg.CategoryIDList...),
+		"category_path":         normalizedSourceCategoryPath(nil, pkg),
+		"product_identity":      normalizeStableIdentity([]string{variantSKU}),
+		"product_attributes":    normalizedAttributeInputs(legacyVariantOnlyAttributeInputs(pkg.ProductAttributes)),
+		"supplemental_attrs":    normalizedStringMapInputs(pkg.Attributes),
+		"structured_attr_hints": normalizedStructuredAttributeHints(legacyVariantOnlyAttributeInputs(pkg.ProductAttributes)),
+	}
+	return hashCachePayload(payload)
+}
+
 func TestCachedAttributeResolverClearUsesStoredCacheMetadata(t *testing.T) {
 	store := newResolutionCacheTestStore(t)
 	req := &BuildRequest{SheinStoreID: 42}
