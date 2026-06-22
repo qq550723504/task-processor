@@ -2535,6 +2535,7 @@ func TestSheinPreviewReviewSummaryHelperLivesOutsideMainSheinPreviewBuilder(t *t
 	for _, needle := range []string{
 		"func buildSheinPreviewReviewSummary(pkg *SheinPackage) (bool, []string) {",
 		"return sheinworkspace.BuildPreviewReviewSummary(pkg)",
+		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
 		if !strings.Contains(reviewSummaryContent, needle) {
 			t.Fatalf("preview_builder_shein_review_summary.go should contain %q", needle)
@@ -2620,6 +2621,7 @@ func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testin
 	for _, needle := range []string{
 		"func buildSheinFinalReviewImages(draft *SheinRequestDraft, finalDraft *sheinpub.FinalDraft, product *sheinproduct.Product) []SheinFinalReviewImage {",
 		"return sheinworkspace.BuildFinalReviewImages(draft, finalDraft, product)",
+		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
 		if !strings.Contains(imageHelpersContent, needle) {
 			t.Fatalf("preview_builder_shein_final_review_images.go should contain %q", needle)
@@ -2658,6 +2660,7 @@ func TestSheinFinalReviewSKUHelpersLiveOutsideMainFinalReviewBuilder(t *testing.
 		"return sheinworkspace.BuildFinalReviewSKUs(draft)",
 		"func buildSheinFinalReviewSKU(supplierCode string, sku SheinSKUDraft) SheinFinalReviewSKU {",
 		"return sheinworkspace.BuildFinalReviewSKU(supplierCode, sku)",
+		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
 		if !strings.Contains(skuHelpersContent, needle) {
 			t.Fatalf("preview_builder_shein_final_review_skus.go should contain %q", needle)

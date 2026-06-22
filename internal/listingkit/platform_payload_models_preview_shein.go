@@ -61,8 +61,8 @@ type SheinFinalReview struct {
 	BlockingItems  []SheinReadinessItem             `json:"blocking_items,omitempty"`
 }
 
-type SheinFinalReviewSKU = sheinworkspace.FinalReviewSKU
-type SheinFinalReviewImage = sheinworkspace.FinalReviewImage
+type SheinFinalReviewSKU = sheinmarketplace.FinalReviewSKU
+type SheinFinalReviewImage = sheinmarketplace.FinalReviewImage
 
 type SheinResolutionCacheSummary = sheinmarketplace.ResolutionCacheSummary
 type SheinImageUploadPreflight = sheinmarketplace.ImageUploadPreflight
