@@ -13,7 +13,6 @@ func TestSheinRepairBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 
 	for _, path := range []string{
 		"shein_workspace_repair_bridge.go",
-		"shein_repair_support.go",
 		"shein_repair_center.go",
 		"shein_repair_revision_support.go",
 	} {
@@ -34,4 +33,6 @@ func TestSheinRepairBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 			}
 		})
 	}
+
+	assertFileAbsent(t, "shein_repair_support.go")
 }

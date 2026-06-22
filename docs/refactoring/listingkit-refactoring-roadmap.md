@@ -663,6 +663,7 @@ Follow-up deletion
 | SHEIN readiness reason wrapper cleanup | migrated | 删除 ListingKit 中单行 `buildSheinReadinessReason` / `cloneSheinReadinessReason` wrapper；readiness guidance resolver 与 repair center 直接调用 `internal/marketplace/shein/workspace` 的 reason builder/clone helper。 |
 | SHEIN readiness guidance DTO cleanup | migrated | 删除 ListingKit 私有 `sheinReadinessGuidance` 中间 DTO 和 `cloneSheinRepairHints` wrapper；guidance resolver 直接返回 workspace 泛型 `Guidance[SheinReadinessReason, SheinRepairHint]`。 |
 | SHEIN repair artifact alias cleanup | migrated | 删除 ListingKit 私有 `sheinRepairArtifacts` alias；repair artifact builder 直接返回 workspace 泛型 `RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]`。 |
+| SHEIN repair support file cleanup | migrated | 删除只剩 `SheinRepairPatchPayload` / `SheinRepairValidationPreview` alias 的 `shein_repair_support.go`；repair DTO alias 统一并入 `shein_workspace_repair_bridge.go`。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

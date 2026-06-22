@@ -9,9 +9,9 @@ import (
 func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 	t.Parallel()
 
-	rootSrc, err := os.ReadFile("shein_repair_support.go")
+	rootSrc, err := os.ReadFile("shein_workspace_repair_bridge.go")
 	if err != nil {
-		t.Fatalf("ReadFile(shein_repair_support.go) error = %v", err)
+		t.Fatalf("ReadFile(shein_workspace_repair_bridge.go) error = %v", err)
 	}
 	rootContent := string(rootSrc)
 
@@ -20,7 +20,7 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 		"type SheinRepairPatchPayload = sheinworkspace.RepairPatchPayload",
 	} {
 		if !strings.Contains(rootContent, needle) {
-			t.Fatalf("shein_repair_support.go should contain %q", needle)
+			t.Fatalf("shein_workspace_repair_bridge.go should contain %q", needle)
 		}
 	}
 
@@ -33,10 +33,11 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 		"type sheinRepairArtifacts = sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]",
 	} {
 		if strings.Contains(rootContent, needle) {
-			t.Fatalf("shein_repair_support.go should delegate clone support helper %q", needle)
+			t.Fatalf("shein_workspace_repair_bridge.go should delegate clone support helper %q", needle)
 		}
 	}
 
+	assertFileAbsent(t, "shein_repair_support.go")
 	assertFileAbsent(t, "shein_repair_clone_support.go")
 
 	repairCenterSrc, err := os.ReadFile("shein_repair_center.go")
