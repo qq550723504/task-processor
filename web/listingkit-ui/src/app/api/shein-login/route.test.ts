@@ -89,22 +89,12 @@ describe("SHEIN login proxy ZITADEL auth", () => {
   it("forwards a verified ZITADEL bearer token upstream", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        Response.json({
-          authorization_endpoint: "https://issuer.example/oauth/v2/authorize",
-          token_endpoint: "https://issuer.example/oauth/v2/token",
-          introspection_endpoint: "https://issuer.example/oauth/v2/introspect",
-        }),
-      )
-      .mockResolvedValueOnce(Response.json({ active: true, sub: "user-42" }))
-      .mockResolvedValueOnce(
-        new Response("[]", {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-      );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const response = await GET(
@@ -115,7 +105,8 @@ describe("SHEIN login proxy ZITADEL auth", () => {
     );
 
     expect(response.status).toBe(200);
-    const upstreamInit = fetchMock.mock.calls[2]?.[1];
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const upstreamInit = fetchMock.mock.calls[0]?.[1];
     expect(new Headers(upstreamInit?.headers).get("Authorization")).toBe(
       "Bearer access-token-1",
     );
