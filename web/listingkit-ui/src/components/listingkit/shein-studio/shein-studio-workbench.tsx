@@ -2434,92 +2434,93 @@ export function SheinStudioWorkbench({
                 storeOptions={enabledProfiles}
               />
               <SheinStudioGenerationPanel
-                artworkModel={artworkModel}
-                availableSdsImages={availableSdsImages}
-                batchProductCount={countSelectionsWithPrimary(
-                  activeSelection,
-                  groupedSelections,
-                )}
-                batchStoreLabel={currentStoreLabel || "未设置"}
-                createTaskButtonLabel={
-                  groupedSelections.length > 0
-                    ? `为 ${countSelectionsWithPrimary(
-                        activeSelection,
-                        groupedSelections,
-                      )} 款商品生成 SHEIN 资料`
-                    : "生成 SHEIN 资料"
-                }
-                createdTasks={createdTasks}
-                creatingError={creatingError}
-                creatingMessage={creatingMessage}
-                failedTasks={itemizedBatchDetail?.failedTasks ?? []}
-                generationError={generationError}
-                generationNotice={
-                  hasRetryableFailedItems
-                    ? `当前批次有 ${retryableFailedItemCount} 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。`
-                    : ""
-                }
-                failedBatchItems={
-                  hasRetryableFailedItems
+                actions={{
+                  onCreateTasks: handleCreateTasks,
+                  onDeleteBatch: handleDeleteBatch,
+                  onGenerate: handleGenerate,
+                  onLoadBatch: handleLoadBatch,
+                  onRetryFailedItem: (itemId) => {
+                    void handleRetryFailedItem(itemId);
+                  },
+                  onRestorePrompt: handlePromptChange,
+                  onSaveBatch: handleSaveBatch,
+                  setArtworkModel,
+                  setGroupedImageMode,
+                  setImageStrategy,
+                  setProductImageCount,
+                  setProductImagePrompt,
+                  setProductImagePrompts,
+                  setPrompt: handlePromptChange,
+                  setRenderSizeImagesWithSds,
+                  setSelectedSdsImages: (value) => {
+                    hasCustomizedSdsSelectionRef.current = true;
+                    setSelectedSdsImages(value);
+                  },
+                  setStyleCount,
+                  setTransparentBackground,
+                  setVariationIntensity,
+                }}
+                form={{
+                  artworkModel,
+                  availableSdsImages,
+                  groupedImageMode,
+                  imageStrategy,
+                  productImageCount,
+                  productImagePrompt,
+                  productImagePrompts,
+                  prompt,
+                  promptHistory: activeGroupPromptHistory,
+                  promptInputRef,
+                  renderSizeImagesWithSds,
+                  selectedSdsImages,
+                  styleCount,
+                  transparentBackground,
+                  variationIntensity,
+                }}
+                status={{
+                  batchProductCount: countSelectionsWithPrimary(
+                    activeSelection,
+                    groupedSelections,
+                  ),
+                  batchStoreLabel: currentStoreLabel || "未设置",
+                  createTaskButtonLabel:
+                    groupedSelections.length > 0
+                      ? `为 ${countSelectionsWithPrimary(
+                          activeSelection,
+                          groupedSelections,
+                        )} 款商品生成 SHEIN 资料`
+                      : "生成 SHEIN 资料",
+                  createdTasks,
+                  creatingError,
+                  creatingMessage,
+                  failedBatchItems: hasRetryableFailedItems
                     ? itemizedBatchDetail?.items
                         .filter((entry) => entry.item.status === "failed")
                         .map((entry) => entry.item) ?? []
-                    : []
-                }
-                groupedImageMode={groupedImageMode}
-                imageStrategy={imageStrategy}
-                isCreatingTasks={isCreatingTasks}
-                isGenerating={effectiveIsGenerating}
-                isRetryingFailedItems={hasRetryableFailedItems}
-                onCreateTasks={handleCreateTasks}
-                onDeleteBatch={handleDeleteBatch}
-                onGenerate={handleGenerate}
-                onLoadBatch={handleLoadBatch}
-                onRetryFailedItem={(itemId) => {
-                  void handleRetryFailedItem(itemId);
+                    : [],
+                  failedTasks: itemizedBatchDetail?.failedTasks ?? [],
+                  generateButtonLabel: hasRetryableFailedItems
+                    ? "重试失败批次"
+                    : "生成款式图",
+                  generationError,
+                  generationNotice: hasRetryableFailedItems
+                    ? `当前批次有 ${retryableFailedItemCount} 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。`
+                    : "",
+                  isCreatingTasks,
+                  isGenerating: effectiveIsGenerating,
+                  isRetryingFailedItems: hasRetryableFailedItems,
+                  rejectedTasks: itemizedBatchDetail?.rejectedTasks ?? [],
+                  retryingFailedItemId,
+                  reusedTasks: itemizedBatchDetail?.reusedTasks ?? [],
+                  savedBatches,
+                  saveMessage,
+                  selectedStyleCount: selectedIds.length,
+                  selectionReady: Boolean(activeSelection?.variantId),
+                  showSavedBatches: !initialBatchId,
+                  statusGroups: itemizedBatchDetail?.statusGroups,
+                  storeRequiredMessage,
+                  subscriptionBlockedMessage,
                 }}
-                onSaveBatch={handleSaveBatch}
-                productImageCount={productImageCount}
-                productImagePrompt={productImagePrompt}
-                productImagePrompts={productImagePrompts}
-                prompt={prompt}
-                promptHistory={activeGroupPromptHistory}
-                promptInputRef={promptInputRef}
-                renderSizeImagesWithSds={renderSizeImagesWithSds}
-                retryingFailedItemId={retryingFailedItemId}
-                rejectedTasks={itemizedBatchDetail?.rejectedTasks ?? []}
-                reusedTasks={itemizedBatchDetail?.reusedTasks ?? []}
-                saveMessage={saveMessage}
-                savedBatches={savedBatches}
-                selectedSdsImages={selectedSdsImages}
-                selectedStyleCount={selectedIds.length}
-                generateButtonLabel={
-                  hasRetryableFailedItems ? "重试失败批次" : "生成款式图"
-                }
-                selectionReady={Boolean(activeSelection?.variantId)}
-                storeRequiredMessage={storeRequiredMessage}
-                showSavedBatches={!initialBatchId}
-                statusGroups={itemizedBatchDetail?.statusGroups}
-                subscriptionBlockedMessage={subscriptionBlockedMessage}
-                setArtworkModel={setArtworkModel}
-                setGroupedImageMode={setGroupedImageMode}
-                setImageStrategy={setImageStrategy}
-                setProductImageCount={setProductImageCount}
-                setProductImagePrompt={setProductImagePrompt}
-                setProductImagePrompts={setProductImagePrompts}
-                onRestorePrompt={handlePromptChange}
-                setPrompt={handlePromptChange}
-                setRenderSizeImagesWithSds={setRenderSizeImagesWithSds}
-                setSelectedSdsImages={(value) => {
-                  hasCustomizedSdsSelectionRef.current = true;
-                  setSelectedSdsImages(value);
-                }}
-                setStyleCount={setStyleCount}
-                setVariationIntensity={setVariationIntensity}
-                setTransparentBackground={setTransparentBackground}
-                styleCount={styleCount}
-                variationIntensity={variationIntensity}
-                transparentBackground={transparentBackground}
               />
             </div>
           ) : null}

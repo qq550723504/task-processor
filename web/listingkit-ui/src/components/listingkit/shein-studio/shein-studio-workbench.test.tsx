@@ -143,38 +143,49 @@ vi.mock("@/components/listingkit/shein-studio/shein-design-preview-grid", () => 
 
 vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", () => ({
   SheinStudioGenerationPanel: (props: {
-    failedBatchItems?: Array<{
-      id: string;
-      lastError?: string;
-      targetGroupLabel?: string;
-      targetGroupKey: string;
-    }>;
-    generateButtonLabel?: string;
-    generationNotice?: string;
-    groupedImageMode?: string;
-    generationError?: string;
-    isGenerating?: boolean;
-    isRetryingFailedItems?: boolean;
-    onCreateTasks?: () => void;
-    onGenerate: () => void;
-    onRetryFailedItem?: (itemId: string) => void;
-    onRestorePrompt?: (value: string) => void;
-    prompt: string;
-    promptHistory?: Array<{ prompt: string; createdAt: string }>;
-    retryingFailedItemId?: string;
-    showSavedBatches?: boolean;
-    subscriptionBlockedMessage?: string;
-    storeRequiredMessage?: string;
-    setPrompt: (value: string) => void;
-    selectedSdsImages?: Array<{
-      color?: string;
-      imageUrl: string;
-      variantSku?: string;
-    }>;
+    actions: {
+      onCreateTasks?: () => void;
+      onGenerate: () => void;
+      onRetryFailedItem?: (itemId: string) => void;
+      onRestorePrompt?: (value: string) => void;
+      setPrompt: (value: string) => void;
+    };
+    form: {
+      groupedImageMode?: string;
+      prompt: string;
+      promptHistory?: Array<{ prompt: string; createdAt: string }>;
+      selectedSdsImages?: Array<{
+        color?: string;
+        imageUrl: string;
+        variantSku?: string;
+      }>;
+    };
+    status: {
+      failedBatchItems?: Array<{
+        id: string;
+        lastError?: string;
+        targetGroupLabel?: string;
+        targetGroupKey: string;
+      }>;
+      generateButtonLabel?: string;
+      generationNotice?: string;
+      generationError?: string;
+      isGenerating?: boolean;
+      isRetryingFailedItems?: boolean;
+      retryingFailedItemId?: string;
+      showSavedBatches?: boolean;
+      subscriptionBlockedMessage?: string;
+      storeRequiredMessage?: string;
+    };
   }) => {
-    lastGenerationPanelProps = props as Record<string, unknown>;
+    const flatProps = {
+      ...props.form,
+      ...props.status,
+      ...props.actions,
+    };
+    lastGenerationPanelProps = flatProps as Record<string, unknown>;
     const actionLabel =
-      props.generateButtonLabel === "重试失败批次"
+      flatProps.generateButtonLabel === "重试失败批次"
         ? "重试失败批次"
         : "generate styles";
     return (
@@ -182,21 +193,21 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
         <label htmlFor="prompt">prompt</label>
         <input
           id="prompt"
-          onChange={(event) => props.setPrompt(event.target.value)}
-          value={props.prompt}
+          onChange={(event) => flatProps.setPrompt(event.target.value)}
+          value={flatProps.prompt}
         />
-        <button disabled={props.isGenerating} onClick={props.onGenerate} type="button">
+        <button disabled={flatProps.isGenerating} onClick={flatProps.onGenerate} type="button">
           {actionLabel}
         </button>
-        {props.onCreateTasks ? (
-          <button onClick={props.onCreateTasks} type="button">
+        {flatProps.onCreateTasks ? (
+          <button onClick={flatProps.onCreateTasks} type="button">
             create tasks from panel
           </button>
         ) : null}
-        {(props.promptHistory ?? []).map((entry) => (
+        {(flatProps.promptHistory ?? []).map((entry) => (
           <button
             key={entry.createdAt}
-            onClick={() => props.onRestorePrompt?.(entry.prompt)}
+            onClick={() => flatProps.onRestorePrompt?.(entry.prompt)}
             type="button"
           >
             restore-{entry.prompt}
@@ -204,23 +215,23 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
         ))}
         <div>
           selected SDS images:{" "}
-          {Array.isArray(props.selectedSdsImages) ? props.selectedSdsImages.length : 0}
+          {Array.isArray(flatProps.selectedSdsImages) ? flatProps.selectedSdsImages.length : 0}
         </div>
-        <div>saved batches visible: {props.showSavedBatches === false ? "no" : "yes"}</div>
-        {props.subscriptionBlockedMessage ? (
-          <div>{props.subscriptionBlockedMessage}</div>
+        <div>saved batches visible: {flatProps.showSavedBatches === false ? "no" : "yes"}</div>
+        {flatProps.subscriptionBlockedMessage ? (
+          <div>{flatProps.subscriptionBlockedMessage}</div>
         ) : null}
-        {props.storeRequiredMessage ? <div>{props.storeRequiredMessage}</div> : null}
-        {props.generationNotice ? <div>{props.generationNotice}</div> : null}
-        {props.generationError ? <div>{props.generationError}</div> : null}
-        {(props.failedBatchItems ?? []).map((item) => (
+        {flatProps.storeRequiredMessage ? <div>{flatProps.storeRequiredMessage}</div> : null}
+        {flatProps.generationNotice ? <div>{flatProps.generationNotice}</div> : null}
+        {flatProps.generationError ? <div>{flatProps.generationError}</div> : null}
+        {(flatProps.failedBatchItems ?? []).map((item) => (
           <div key={item.id}>
             <span>{item.targetGroupLabel ?? item.targetGroupKey}</span>
             {item.lastError ? <span>{item.lastError}</span> : null}
-            {props.onRetryFailedItem ? (
+            {flatProps.onRetryFailedItem ? (
               <button
-                disabled={Boolean(props.retryingFailedItemId)}
-                onClick={() => props.onRetryFailedItem?.(item.id)}
+                disabled={Boolean(flatProps.retryingFailedItemId)}
+                onClick={() => flatProps.onRetryFailedItem?.(item.id)}
                 type="button"
               >
                 retry-item-{item.id}
@@ -228,7 +239,7 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
             ) : null}
           </div>
         ))}
-        {props.retryingFailedItemId ? <div>retrying-item: {props.retryingFailedItemId}</div> : null}
+        {flatProps.retryingFailedItemId ? <div>retrying-item: {flatProps.retryingFailedItemId}</div> : null}
       </div>
     );
   },
