@@ -10,13 +10,3 @@ type SheinSaleAttributeResolutionPatch = sheinworkspace.SaleAttributeResolutionP
 type SheinSKCRevisionPatch = sheinworkspace.SKCRevisionPatch
 type SheinSKURevisionPatch = sheinworkspace.SKURevisionPatch
 type SheinEditorRevisionSkeleton = sheinworkspace.EditorRevisionSkeleton
-
-func buildSheinEditorRevisionSkeleton(pkg *SheinPackage) *SheinEditorRevisionSkeleton {
-	return sheinworkspace.BuildEditorRevisionSkeleton(
-		pkg,
-		sheinworkspace.BuildCategoryResolutionPatch(pkg),
-		sheinworkspace.BuildAttributeResolutionPatch(pkg),
-		sheinworkspace.BuildSaleAttributeResolutionPatch(pkg),
-		sheinworkspace.BuildEditorSKCPatches(pkg),
-	)
-}

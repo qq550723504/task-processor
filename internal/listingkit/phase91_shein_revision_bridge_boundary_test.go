@@ -13,6 +13,7 @@ func TestSheinRevisionBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 
 	for _, path := range []string{
 		"shein_workspace_revision_bridge.go",
+		"revision_history_compare.go",
 		"revision_history_restore_draft.go",
 		"revision_restore_request.go",
 	} {
@@ -34,7 +35,7 @@ func TestSheinRevisionBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 		})
 	}
 
-	source := readNamedFunctionSource(t, "shein_workspace_revision_bridge.go", "buildSheinEditorRevisionSkeleton")
+	source := readNamedFunctionSource(t, "revision_history_compare.go", "buildCurrentHistoryCompareDraft")
 	assertSourceContainsAll(t, source, []string{
 		"return sheinworkspace.BuildEditorRevisionSkeleton(",
 		"sheinworkspace.BuildCategoryResolutionPatch(pkg)",
@@ -49,6 +50,7 @@ func TestSheinRevisionBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 	}
 	content := string(src)
 	for _, forbidden := range []string{
+		"func buildSheinEditorRevisionSkeleton(",
 		"func buildSheinMinimalRevisionSkeleton(",
 		"func pruneSheinRevisionInput(",
 		"func isEmptySheinRevisionInput(",

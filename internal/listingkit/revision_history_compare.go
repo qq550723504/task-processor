@@ -51,5 +51,11 @@ func buildCurrentHistoryCompareDraft(pkg *SheinPackage) *SheinEditorRevisionSkel
 	if pkg == nil {
 		return nil
 	}
-	return buildSheinEditorRevisionSkeleton(pkg)
+	return sheinworkspace.BuildEditorRevisionSkeleton(
+		pkg,
+		sheinworkspace.BuildCategoryResolutionPatch(pkg),
+		sheinworkspace.BuildAttributeResolutionPatch(pkg),
+		sheinworkspace.BuildSaleAttributeResolutionPatch(pkg),
+		sheinworkspace.BuildEditorSKCPatches(pkg),
+	)
 }
