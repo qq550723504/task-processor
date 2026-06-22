@@ -17,7 +17,7 @@ func TestTaskSubmissionRecoveryServiceBeginSheinSubmitLeaseReplaysExistingReques
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	now := time.Now().Add(-time.Minute)
-	record := completeSheinSubmitAttempt(task.Result.Shein, "publish", "replay-123", &sheinpub.SubmissionResponse{
+	record := sheinpub.CompleteSubmitAttemptAt(task.Result.Shein, "publish", "replay-123", &sheinpub.SubmissionResponse{
 		Code:    "0",
 		Message: "success",
 		Success: true,
@@ -153,7 +153,7 @@ func TestTaskSubmissionRecoveryServiceAcquireSheinSubmitTaskBuildsReplayPreview(
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	now := time.Now().Add(-time.Minute)
-	record := completeSheinSubmitAttempt(task.Result.Shein, "publish", "replay-preview-123", &sheinpub.SubmissionResponse{
+	record := sheinpub.CompleteSubmitAttemptAt(task.Result.Shein, "publish", "replay-preview-123", &sheinpub.SubmissionResponse{
 		Code:    "0",
 		Message: "success",
 		Success: true,

@@ -44,7 +44,7 @@ func TestAdvanceSheinSubmitPhasePreservesAttempt(t *testing.T) {
 	pkg := &SheinPackage{}
 	beginSheinSubmitAttempt(pkg, "publish", "idem-1", sheinpub.SubmissionPhaseValidate, startedAt)
 
-	advanceSheinSubmitPhase(pkg, "publish", "idem-1", sheinpub.SubmissionPhaseUploadImages)
+	sheinpub.AdvanceSubmitPhaseAt(pkg, "publish", "idem-1", sheinpub.SubmissionPhaseUploadImages, time.Now(), sheinSubmitInFlightTTL)
 
 	if pkg.Submission.CurrentPhase != sheinpub.SubmissionPhaseUploadImages {
 		t.Fatalf("current phase = %q, want %q", pkg.Submission.CurrentPhase, sheinpub.SubmissionPhaseUploadImages)
@@ -66,7 +66,7 @@ func TestCompleteSheinSubmitAttemptClearsInFlightAndWritesResult(t *testing.T) {
 	pkg := &SheinPackage{}
 	beginSheinSubmitAttempt(pkg, "publish", "idem-1", sheinpub.SubmissionPhaseValidate, startedAt)
 
-	record := completeSheinSubmitAttempt(pkg, "publish", "idem-1", &sheinpub.SubmissionResponse{Success: true}, nil, finishedAt)
+	record := sheinpub.CompleteSubmitAttemptAt(pkg, "publish", "idem-1", &sheinpub.SubmissionResponse{Success: true}, nil, finishedAt)
 
 	if record == nil {
 		t.Fatal("expected completed record")
@@ -94,7 +94,7 @@ func TestFailSheinSubmitAttemptRecordsFailedPhaseAndError(t *testing.T) {
 	pkg := &SheinPackage{}
 	beginSheinSubmitAttempt(pkg, "publish", "idem-1", sheinpub.SubmissionPhasePrepareProduct, startedAt)
 
-	record := failSheinSubmitAttempt(pkg, "publish", "idem-1", sheinpub.SubmissionPhasePrepareProduct, errTestSubmitState, finishedAt)
+	record := sheinpub.FailSubmitAttemptAt(pkg, "publish", "idem-1", sheinpub.SubmissionPhasePrepareProduct, errTestSubmitState, finishedAt)
 
 	if record.Status != sheinpub.SubmissionStatusFailed {
 		t.Fatalf("status = %q, want %q", record.Status, sheinpub.SubmissionStatusFailed)
@@ -138,7 +138,7 @@ func TestFindSheinSubmissionRecordByRequestIDReturnsCompletedRecord(t *testing.T
 	finishedAt := startedAt.Add(time.Second)
 	pkg := &SheinPackage{}
 	beginSheinSubmitAttempt(pkg, "save_draft", "idem-1", sheinpub.SubmissionPhaseValidate, startedAt)
-	completeSheinSubmitAttempt(pkg, "save_draft", "idem-1", &sheinpub.SubmissionResponse{Code: "0"}, nil, finishedAt)
+	sheinpub.CompleteSubmitAttemptAt(pkg, "save_draft", "idem-1", &sheinpub.SubmissionResponse{Code: "0"}, nil, finishedAt)
 
 	record := sheinpub.FindCompletedSubmissionRecordByRequestID(pkg, "save_draft", "idem-1")
 

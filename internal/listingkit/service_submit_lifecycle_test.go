@@ -1293,7 +1293,7 @@ func TestSubmitTaskTemporalReplayReturnsCurrentPreviewWithoutRestartingWorkflow(
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	now := time.Now().Add(-time.Minute)
-	record := completeSheinSubmitAttempt(task.Result.Shein, "publish", "temporal-replay-123", &sheinpub.SubmissionResponse{
+	record := sheinpub.CompleteSubmitAttemptAt(task.Result.Shein, "publish", "temporal-replay-123", &sheinpub.SubmissionResponse{
 		Code:    "0",
 		Message: "success",
 		Success: true,

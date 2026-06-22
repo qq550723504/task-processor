@@ -32,6 +32,9 @@ func TestSheinSubmitStateKeepsTransitionSequencingBoundary(t *testing.T) {
 		"func completeSheinSubmitAttemptAndBuildEvent(",
 		"func failSheinSubmitAttemptAndBuildEvent(",
 		"func failSheinSubmitAttemptWithResponseAndBuildEvent(",
+		"func advanceSheinSubmitPhase(",
+		"func completeSheinSubmitAttempt(",
+		"func failSheinSubmitAttempt(",
 	}
 	for _, pattern := range forbidden {
 		if strings.Contains(content, pattern) {
