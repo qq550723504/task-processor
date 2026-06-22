@@ -17,26 +17,6 @@ type sheinFreshnessValidationContext struct {
 	saleAPI            sheinpub.AttributeAPI
 }
 
-func buildSheinFreshnessAuthFailureCheck(err error) sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.BuildFreshnessAuthFailureCheck(err)
-}
-
-func buildSheinFreshnessAuthSuccessCheck() sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.BuildFreshnessAuthSuccessCheck()
-}
-
-func buildSheinFreshnessCategoryCheck(ok bool, message string) sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.BuildFreshnessCategoryCheck(ok, message)
-}
-
-func buildSheinFreshnessAttributeCheck(ok bool, message string) sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.BuildFreshnessAttributeCheck(ok, message)
-}
-
-func buildSheinFreshnessSaleAttributeCheck(ok bool, message string) sheinworkspace.ReadinessCheckSpec {
-	return sheinworkspace.BuildFreshnessSaleAttributeCheck(ok, message)
-}
-
 func (s *service) prepareSheinFreshnessValidationContext(ctx context.Context, task *Task, pkg *SheinPackage) (*sheinFreshnessValidationContext, *sheinworkspace.ReadinessCheckSpec) {
 	req := buildSheinPublishRequestForTask(task, task.Request)
 	if req == nil {
@@ -48,7 +28,7 @@ func (s *service) prepareSheinFreshnessValidationContext(ctx context.Context, ta
 
 	freshPkg, err := cloneSheinPackageForFreshness(pkg)
 	if err != nil {
-		check := buildSheinFreshnessCategoryCheck(false, "SHEIN 在线模板预检失败，当前无法构建 freshness 校验上下文")
+		check := sheinworkspace.BuildFreshnessCategoryCheck(false, "SHEIN 在线模板预检失败，当前无法构建 freshness 校验上下文")
 		return nil, &check
 	}
 
@@ -65,7 +45,7 @@ func (s *service) validateSheinFreshnessCategory(ctx context.Context, task *Task
 		categoryReady = false
 		categoryMessage = "当前类目模板在线校验失败，需重新刷新类目结果后再提交：" + strings.TrimSpace(categoryInfoErr.Error())
 	}
-	return buildSheinFreshnessCategoryCheck(categoryReady, categoryMessage), categoryReady
+	return sheinworkspace.BuildFreshnessCategoryCheck(categoryReady, categoryMessage), categoryReady
 }
 
 func (s *service) validateSheinFreshnessAttributes(ctx context.Context, task *Task, pkg *SheinPackage, state *sheinFreshnessValidationContext) sheinworkspace.ReadinessCheckSpec {
@@ -76,11 +56,11 @@ func (s *service) validateSheinFreshnessAttributes(ctx context.Context, task *Ta
 	if attributeTemplateErr != nil {
 		attributeReady = false
 		attributeMessage = "当前普通属性模板在线校验失败，需重新刷新属性模板后再提交：" + strings.TrimSpace(attributeTemplateErr.Error())
-		return buildSheinFreshnessAttributeCheck(attributeReady, attributeMessage)
+		return sheinworkspace.BuildFreshnessAttributeCheck(attributeReady, attributeMessage)
 	}
 
 	state.saleAPI, _ = s.buildSheinAttributeAPI(ctx, task)
-	return buildSheinFreshnessAttributeCheck(attributeReady, attributeMessage)
+	return sheinworkspace.BuildFreshnessAttributeCheck(attributeReady, attributeMessage)
 }
 
 func (s *service) validateSheinFreshnessSaleAttributes(ctx context.Context, task *Task, pkg *SheinPackage, state *sheinFreshnessValidationContext) (sheinworkspace.ReadinessCheckSpec, error) {
@@ -94,5 +74,5 @@ func (s *service) validateSheinFreshnessSaleAttributes(ctx context.Context, task
 			return sheinworkspace.ReadinessCheckSpec{}, err
 		}
 	}
-	return buildSheinFreshnessSaleAttributeCheck(saleReady, saleMessage), nil
+	return sheinworkspace.BuildFreshnessSaleAttributeCheck(saleReady, saleMessage), nil
 }

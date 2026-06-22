@@ -27,10 +27,10 @@ func (s *service) validateSheinPublishFreshness(ctx context.Context, task *Task,
 	addCheck := func(check sheinworkspace.ReadinessCheckSpec) { checks = append(checks, check) }
 
 	if err := s.validateSheinOnlineAuthPreflight(ctx, task); err != nil {
-		addCheck(buildSheinFreshnessAuthFailureCheck(err))
+		addCheck(sheinworkspace.BuildFreshnessAuthFailureCheck(err))
 		return buildSheinSubmitFreshnessReadiness(pkg, checks), nil
 	}
-	addCheck(buildSheinFreshnessAuthSuccessCheck())
+	addCheck(sheinworkspace.BuildFreshnessAuthSuccessCheck())
 
 	currentCanonical := sheinFreshnessCanonicalProduct(task)
 	if !s.canRunSheinTemplateFreshnessChecks(task, currentCanonical) {
