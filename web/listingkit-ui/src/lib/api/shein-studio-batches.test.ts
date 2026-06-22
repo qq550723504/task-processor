@@ -9,6 +9,7 @@ import {
   parseSheinStudioBatchTaskCreationResponse,
   retrySheinStudioBatchItems,
 } from "@/lib/api/shein-studio-batches";
+import { sheinStudioBatchTaskCreationContractFixture } from "@/lib/api/__fixtures__/shein-studio-batch-contract";
 
 describe("parseSheinStudioBatchDetailResponse", () => {
   it("maps itemized batch detail responses", () => {
@@ -418,6 +419,14 @@ describe("parseSheinStudioBatchDetailResponse", () => {
 });
 
 describe("parseSheinStudioBatchTaskCreationResponse", () => {
+  it("maps the Studio batch task creation contract fixture", () => {
+    expect(
+      parseSheinStudioBatchTaskCreationResponse(
+        sheinStudioBatchTaskCreationContractFixture.response,
+      ),
+    ).toMatchObject(sheinStudioBatchTaskCreationContractFixture.expected);
+  });
+
   it("does not collapse a rejected-only task result into a successful creation", () => {
     expect(
       parseSheinStudioBatchTaskCreationResponse({
