@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdsdesign "task-processor/internal/sds/design"
@@ -893,7 +894,7 @@ func TestApplySheinStudioAIImagesToSheinReplacesDraftImages(t *testing.T) {
 	if !hasSizeReferenceImage(pkg.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList, "https://cdn.sdspod.com/size-chart.jpg") {
 		t.Fatalf("preview skc size map not marked: %+v", pkg.PreviewProduct.SKCList[0].ImageInfo.ImageInfoList)
 	}
-	finalImages := buildSheinFinalReviewImages(pkg.RequestDraft, pkg.FinalDraft, pkg.PreviewProduct)
+	finalImages := sheinworkspace.BuildFinalReviewImages(pkg.RequestDraft, pkg.FinalDraft, pkg.PreviewProduct)
 	if !hasFinalReviewSizeMap(finalImages, "https://cdn.sdspod.com/size-chart.jpg") {
 		t.Fatalf("final review size map not marked: %+v", finalImages)
 	}
@@ -1248,7 +1249,7 @@ func TestBuildSheinFinalReviewImagesDeduplicatesRepeatedMainImage(t *testing.T) 
 		}},
 	}
 
-	images := buildSheinFinalReviewImages(draft, &sheinpub.FinalDraft{MainImageURL: mainImage}, nil)
+	images := sheinworkspace.BuildFinalReviewImages(draft, &sheinpub.FinalDraft{MainImageURL: mainImage}, nil)
 	if len(images) != 2 {
 		t.Fatalf("final review image count = %d, want 2: %+v", len(images), images)
 	}

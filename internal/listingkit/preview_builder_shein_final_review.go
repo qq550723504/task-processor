@@ -29,8 +29,8 @@ func buildSheinFinalReviewPayload(pkg *sheinpub.Package, canonical *canonical.Pr
 		final.SaleAttributes = append(final.SaleAttributes, pkg.SaleAttributeResolution.SKUAttributes...)
 	}
 	if pkg.DraftPayload != nil {
-		final.SKUs = buildSheinFinalReviewSKUs(pkg.DraftPayload)
-		final.Images = buildSheinFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload)
+		final.SKUs = sheinworkspace.BuildFinalReviewSKUs(pkg.DraftPayload)
+		final.Images = sheinworkspace.BuildFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload)
 	}
 	return final
 }

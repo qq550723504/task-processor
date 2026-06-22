@@ -2611,19 +2611,18 @@ func TestSheinPreviewWorkspaceOverviewHelperLivesOutsideMainSheinPreviewBuilder(
 func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testing.T) {
 	t.Parallel()
 
-	imageHelpersSrc, err := os.ReadFile("preview_builder_shein_final_review_images.go")
-	if err != nil {
-		t.Fatalf("ReadFile(preview_builder_shein_final_review_images.go) error = %v", err)
-	}
-	imageHelpersContent := string(imageHelpersSrc)
+	assertFileAbsent(t, "preview_builder_shein_final_review_images.go")
 
 	for _, needle := range []string{
-		"func buildSheinFinalReviewImages(draft *SheinRequestDraft, finalDraft *sheinpub.FinalDraft, product *sheinproduct.Product) []SheinFinalReviewImage {",
-		"return sheinworkspace.BuildFinalReviewImages(draft, finalDraft, product)",
+		"final.Images = sheinworkspace.BuildFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload)",
 		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
-		if !strings.Contains(imageHelpersContent, needle) {
-			t.Fatalf("preview_builder_shein_final_review_images.go should contain %q", needle)
+		finalReviewSrc, err := os.ReadFile("preview_builder_shein_final_review.go")
+		if err != nil {
+			t.Fatalf("ReadFile(preview_builder_shein_final_review.go) error = %v", err)
+		}
+		if !strings.Contains(string(finalReviewSrc), needle) {
+			t.Fatalf("preview_builder_shein_final_review.go should contain %q", needle)
 		}
 	}
 
@@ -2648,21 +2647,18 @@ func TestSheinFinalReviewImageHelpersLiveOutsideMainFinalReviewBuilder(t *testin
 func TestSheinFinalReviewSKUHelpersLiveOutsideMainFinalReviewBuilder(t *testing.T) {
 	t.Parallel()
 
-	skuHelpersSrc, err := os.ReadFile("preview_builder_shein_final_review_skus.go")
-	if err != nil {
-		t.Fatalf("ReadFile(preview_builder_shein_final_review_skus.go) error = %v", err)
-	}
-	skuHelpersContent := string(skuHelpersSrc)
+	assertFileAbsent(t, "preview_builder_shein_final_review_skus.go")
 
 	for _, needle := range []string{
-		"func buildSheinFinalReviewSKUs(draft *SheinRequestDraft) []SheinFinalReviewSKU {",
-		"return sheinworkspace.BuildFinalReviewSKUs(draft)",
-		"func buildSheinFinalReviewSKU(supplierCode string, sku SheinSKUDraft) SheinFinalReviewSKU {",
-		"return sheinworkspace.BuildFinalReviewSKU(supplierCode, sku)",
+		"final.SKUs = sheinworkspace.BuildFinalReviewSKUs(pkg.DraftPayload)",
 		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
-		if !strings.Contains(skuHelpersContent, needle) {
-			t.Fatalf("preview_builder_shein_final_review_skus.go should contain %q", needle)
+		finalReviewSrc, err := os.ReadFile("preview_builder_shein_final_review.go")
+		if err != nil {
+			t.Fatalf("ReadFile(preview_builder_shein_final_review.go) error = %v", err)
+		}
+		if !strings.Contains(string(finalReviewSrc), needle) {
+			t.Fatalf("preview_builder_shein_final_review.go should contain %q", needle)
 		}
 	}
 

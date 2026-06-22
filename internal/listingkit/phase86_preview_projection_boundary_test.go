@@ -39,57 +39,30 @@ func TestSheinPreviewProjectionBoundary(t *testing.T) {
 	t.Run("final review image and sku projection delegates to workspace", func(t *testing.T) {
 		t.Parallel()
 
-		imageSource := readNamedFunctionSource(t, "preview_builder_shein_final_review_images.go", "buildSheinFinalReviewImages")
-		imageCalls := readNamedFunctionCallNames(t, "preview_builder_shein_final_review_images.go", "buildSheinFinalReviewImages")
-		imageFileSource, err := os.ReadFile("preview_builder_shein_final_review_images.go")
+		source := readNamedFunctionSource(t, "preview_builder_shein_final_review.go", "buildSheinFinalReviewPayload")
+		callNames := readNamedFunctionCallNames(t, "preview_builder_shein_final_review.go", "buildSheinFinalReviewPayload")
+		fileSource, err := os.ReadFile("preview_builder_shein_final_review.go")
 		if err != nil {
-			t.Fatalf("ReadFile(preview_builder_shein_final_review_images.go) error = %v", err)
+			t.Fatalf("ReadFile(preview_builder_shein_final_review.go) error = %v", err)
 		}
-		assertSourceContainsAll(t, imageSource, []string{
-			"return sheinworkspace.BuildFinalReviewImages(draft, finalDraft, product)",
+		assertSourceContainsAll(t, source, []string{
+			"final.SKUs = sheinworkspace.BuildFinalReviewSKUs(pkg.DraftPayload)",
+			"final.Images = sheinworkspace.BuildFinalReviewImages(pkg.DraftPayload, pkg.FinalSubmissionDraft, pkg.PreviewPayload)",
 		})
-		if !strings.Contains(string(imageFileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
-			t.Fatal("preview_builder_shein_final_review_images.go should call marketplace SHEIN workspace directly")
+		if !strings.Contains(string(fileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
+			t.Fatal("preview_builder_shein_final_review.go should call marketplace SHEIN workspace directly")
 		}
-		assertSourceExcludesAll(t, imageSource, []string{
+		assertSourceExcludesAll(t, source, []string{
 			"sheinproduct.CollectSizeMapImageURLs(product)",
 			"mergeSheinFinalReviewImage(",
-		})
-		assertFunctionCallsContainAll(t, imageCalls, []string{
-			"BuildFinalReviewImages",
-		})
-
-		skusSource := readNamedFunctionSource(t, "preview_builder_shein_final_review_skus.go", "buildSheinFinalReviewSKUs")
-		skusCalls := readNamedFunctionCallNames(t, "preview_builder_shein_final_review_skus.go", "buildSheinFinalReviewSKUs")
-		skusFileSource, err := os.ReadFile("preview_builder_shein_final_review_skus.go")
-		if err != nil {
-			t.Fatalf("ReadFile(preview_builder_shein_final_review_skus.go) error = %v", err)
-		}
-		assertSourceContainsAll(t, skusSource, []string{
-			"return sheinworkspace.BuildFinalReviewSKUs(draft)",
-		})
-		if !strings.Contains(string(skusFileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
-			t.Fatal("preview_builder_shein_final_review_skus.go should call marketplace SHEIN workspace directly")
-		}
-		assertSourceExcludesAll(t, skusSource, []string{
 			"for _, skc := range draft.SKCList",
 			"buildSheinFinalReviewSKU(skc.SupplierCode, sku)",
 		})
-		assertFunctionCallsContainAll(t, skusCalls, []string{
+		assertFunctionCallsContainAll(t, callNames, []string{
 			"BuildFinalReviewSKUs",
+			"BuildFinalReviewImages",
 		})
-
-		skuSource := readNamedFunctionSource(t, "preview_builder_shein_final_review_skus.go", "buildSheinFinalReviewSKU")
-		skuCalls := readNamedFunctionCallNames(t, "preview_builder_shein_final_review_skus.go", "buildSheinFinalReviewSKU")
-		assertSourceContainsAll(t, skuSource, []string{
-			"return sheinworkspace.BuildFinalReviewSKU(supplierCode, sku)",
-		})
-		assertSourceExcludesAll(t, skuSource, []string{
-			"parseMoney(sku.BasePrice)",
-			"normalizeSheinFinalReviewAttributeName(attr.Name)",
-		})
-		assertFunctionCallsContainAll(t, skuCalls, []string{
-			"BuildFinalReviewSKU",
-		})
+		assertFileAbsent(t, "preview_builder_shein_final_review_images.go")
+		assertFileAbsent(t, "preview_builder_shein_final_review_skus.go")
 	})
 }
