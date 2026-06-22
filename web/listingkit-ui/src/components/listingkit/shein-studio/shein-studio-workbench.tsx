@@ -14,6 +14,7 @@ import { SheinStudioGroupedSelectionPanel } from "@/components/listingkit/shein-
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
+import { useSheinStudioQueueController } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
 import {
   clearLocalSheinStudioDraftSnapshot,
@@ -66,7 +67,6 @@ import {
   getSDSBaselineReasonMessage,
 } from "@/lib/shein-studio/sds-baseline-ui";
 import {
-  createBatchQueueController,
   type SheinStudioBatchQueueResumeState,
 } from "@/lib/shein-studio/batch-queue";
 import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
@@ -1663,86 +1663,36 @@ export function SheinStudioWorkbench({
     [buildSaveInputFromBatch, refreshSavedBatches, resolveRecentBatchForMutation],
   );
 
-  const getBatchQueueController = useCallback(
-    () =>
-      createBatchQueueController({
-        getSavedBatches: () => savedBatches,
-        getSelectedHydrations: () => selectedRecentBatchHydrations,
-        hydrateBatchSelection: hydrateRecentBatchSelection,
-        loadBatch: handleLoadBatch,
-        loadHydratedBatch: handleLoadHydratedBatch,
-        requestVersionRef: batchQueueRequestVersionRef,
-        recentOpenVersionRef: recentBatchOpenRequestVersionRef,
-        setBatchQueueMode,
-        setEffectiveStep,
-        setQueueMessage,
-        setQueueResumeState,
-        setQueuedBatchIds,
-        setQueuedBatchIndex,
-      }),
-    [
-      handleLoadBatch,
-      handleLoadHydratedBatch,
-      hydrateRecentBatchSelection,
-      savedBatches,
-      selectedRecentBatchHydrations,
-      setBatchQueueMode,
-      setEffectiveStep,
-      setQueueMessage,
-      setQueueResumeState,
-      setQueuedBatchIds,
-      setQueuedBatchIndex,
-    ],
-  );
-  const handleOpenBatchQueue = useCallback(
-    (input: { batchIds: string[]; mode: SheinStudioBatchQueueMode }) => {
-      if (input.mode === "generate") {
-        setBatchRunError("");
-        void startSheinStudioBatchRun(input.batchIds, input.mode)
-          .then((response) => {
-            setQueueResumeState(null);
-            setActiveBatchRunId(response.run.id);
-          })
-          .catch((error) => {
-            setBatchRunError(getBatchRunStartErrorMessage(error));
-          });
-        return;
-      }
-      setBatchRunError("");
-      void startSheinStudioBatchRun(input.batchIds, input.mode)
-        .then((response) => {
-          setQueueResumeState(null);
-          setActiveBatchRunId(response.run.id);
-        })
-        .catch((error) => {
-          setBatchRunError(getBatchRunStartErrorMessage(error));
-        });
-    },
-    [],
-  );
-
-  const handleExitBatchQueue = useCallback(() => {
-    getBatchQueueController().exit({
-      batchIds: queuedBatchIds,
-      currentIndex: queuedBatchIndex,
-      mode: batchQueueMode,
-    });
-  }, [
+  const {
+    clearQueuedSelectionContext,
+    handleAdvanceBatchQueue,
+    handleExitBatchQueue,
+    handleOpenBatchQueue,
+    handleResumeBatchQueue,
+  } = useSheinStudioQueueController({
     batchQueueMode,
-    getBatchQueueController,
+    getBatchRunStartErrorMessage,
+    hydrateBatchSelection: hydrateRecentBatchSelection,
+    loadBatch: handleLoadBatch,
+    loadHydratedBatch: handleLoadHydratedBatch,
+    queueResumeState,
     queuedBatchIds,
     queuedBatchIndex,
-  ]);
-
-  const handleResumeBatchQueue = useCallback(() => {
-    void getBatchQueueController().resume(queueResumeState);
-  }, [getBatchQueueController, queueResumeState]);
-
-  const clearQueuedSelectionContext = useCallback(() => {
-    setQueueResumeState(null);
-    setSelectedRecentBatchSummaryIds([]);
-    setQueueMessage("");
-  }, [setQueueMessage, setSelectedRecentBatchSummaryIds]);
+    recentOpenVersionRef: recentBatchOpenRequestVersionRef,
+    requestVersionRef: batchQueueRequestVersionRef,
+    savedBatches,
+    selectedRecentBatchHydrations,
+    setActiveBatchRunId,
+    setBatchQueueMode,
+    setBatchRunError,
+    setEffectiveStep,
+    setQueueMessage,
+    setQueueResumeState,
+    setQueuedBatchIds,
+    setQueuedBatchIndex,
+    setSelectedRecentBatchSummaryIds,
+    startBatchRun: startSheinStudioBatchRun,
+  });
 
   const handleReturnFromDedicatedBatchRun = useCallback(() => {
     setActiveBatchRunId("");
@@ -1775,17 +1725,6 @@ export function SheinStudioWorkbench({
         setIsStartingDedicatedBatchRun(false);
       });
   }, [initialBatchId]);
-
-  const handleAdvanceBatchQueue = useCallback(() => {
-    if (!batchQueueMode) {
-      return;
-    }
-    void getBatchQueueController().advance({
-      batchIds: queuedBatchIds,
-      currentIndex: queuedBatchIndex,
-      mode: batchQueueMode,
-    });
-  }, [getBatchQueueController, batchQueueMode, queuedBatchIds, queuedBatchIndex]);
 
   useEffect(() => {
     if (!batchQueueMode || !currentQueuedBatchId) {
