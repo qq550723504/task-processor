@@ -26,7 +26,6 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	}
 
 	for _, needle := range []string{
-		"func buildSheinReadinessGuidance(",
 		"func sheinHasSubmitImage(pkg *SheinPackage) bool {",
 		"func sheinFinalImagesReadyForAction(pkg *SheinPackage, action string) (bool, string) {",
 	} {
@@ -57,9 +56,9 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 
-	guidanceSrc, err := os.ReadFile("shein_submit_readiness_guidance_support.go")
+	guidanceSrc, err := os.ReadFile("shein_submit_readiness.go")
 	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_readiness_guidance_support.go) error = %v", err)
+		t.Fatalf("ReadFile(shein_submit_readiness.go) error = %v", err)
 	}
 	guidanceContent := string(guidanceSrc)
 
@@ -69,7 +68,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"patch := sheinworkspace.BuildReadinessPatchPayload(pkg, key)",
 	} {
 		if !strings.Contains(guidanceContent, needle) {
-			t.Fatalf("shein_submit_readiness_guidance_support.go should contain %q", needle)
+			t.Fatalf("shein_submit_readiness.go should contain %q", needle)
 		}
 	}
 	for _, needle := range []string{
@@ -83,7 +82,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"type sheinReadinessGuidance struct {",
 	} {
 		if strings.Contains(guidanceContent, needle) {
-			t.Fatalf("shein_submit_readiness_guidance_support.go should not keep patch payload wrapper %q", needle)
+			t.Fatalf("shein_submit_readiness.go should not keep patch payload wrapper %q", needle)
 		}
 	}
 	for _, needle := range []string{
@@ -94,9 +93,10 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		`ReviewNotes: append([]string(nil), pkg.ReviewNotes...)`,
 	} {
 		if strings.Contains(guidanceContent, needle) {
-			t.Fatalf("shein_submit_readiness_guidance_support.go should delegate patch payload construction, found %q", needle)
+			t.Fatalf("shein_submit_readiness.go should delegate patch payload construction, found %q", needle)
 		}
 	}
+	assertFileAbsent(t, "shein_submit_readiness_guidance_support.go")
 
 	assertFileAbsent(t, "shein_submit_readiness_status_support.go")
 

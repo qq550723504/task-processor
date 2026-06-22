@@ -33,9 +33,9 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 	}
 	assertFileAbsent(t, "shein_repair_support.go")
 
-	revisionSrc, err := os.ReadFile("shein_submit_readiness_guidance_support.go")
+	revisionSrc, err := os.ReadFile("shein_submit_readiness.go")
 	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_readiness_guidance_support.go) error = %v", err)
+		t.Fatalf("ReadFile(shein_submit_readiness.go) error = %v", err)
 	}
 	revisionContent := string(revisionSrc)
 
@@ -47,7 +47,7 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 		"return sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]{",
 	} {
 		if !strings.Contains(revisionContent, needle) {
-			t.Fatalf("shein_submit_readiness_guidance_support.go should contain %q", needle)
+			t.Fatalf("shein_submit_readiness.go should contain %q", needle)
 		}
 	}
 	for _, needle := range []string{
@@ -56,7 +56,7 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 		`Reason:   buildSheinRepairReason(action),`,
 	} {
 		if strings.Contains(revisionContent, needle) {
-			t.Fatalf("shein_submit_readiness_guidance_support.go should delegate repair revision detail %q", needle)
+			t.Fatalf("shein_submit_readiness.go should delegate repair revision detail %q", needle)
 		}
 	}
 	for _, needle := range []string{
@@ -72,7 +72,7 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 		"sheinworkspace.BuildRepairReason(action)",
 	} {
 		if strings.Contains(revisionContent, needle) {
-			t.Fatalf("shein_submit_readiness_guidance_support.go should not keep unused repair revision wrapper %q", needle)
+			t.Fatalf("shein_submit_readiness.go should not keep unused repair revision wrapper %q", needle)
 		}
 	}
 	assertFileAbsent(t, "shein_repair_revision_support.go")

@@ -669,6 +669,7 @@ Follow-up deletion
 | SHEIN repair revision support file cleanup | migrated | 删除只剩 repair artifact builder 的 `shein_repair_revision_support.go`；artifact builder 并入 readiness guidance support，作为 repair hint 组装的一部分。 |
 | SHEIN submit readiness append wrapper cleanup | migrated | 删除单用 `appendSheinTemplateReadinessChecks` / `appendSheinPayloadReadinessChecks` wrapper；checks builder 直接追加 workspace template/payload readiness checks，POD 本地规则保留独立 helper。 |
 | SHEIN submit readiness checks support file cleanup | migrated | 删除只剩 readiness checks builder/POD helper 的 `shein_submit_readiness_checks_support.go`；checks assembly 归并回 `shein_submit_readiness.go`，平台 check 构造仍委托 workspace。 |
+| SHEIN submit readiness guidance support file cleanup | migrated | 删除只剩 guidance/hint assembly 的 `shein_submit_readiness_guidance_support.go`；repair hint artifact 组装和 guidance resolver helper 归并回 `shein_submit_readiness.go`。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

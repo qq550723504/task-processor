@@ -14,7 +14,6 @@ func TestSheinReadinessGuidanceBridgeCallsMarketplaceWorkspaceDirectly(t *testin
 	for _, path := range []string{
 		"shein_submit_readiness.go",
 		"shein_submit_readiness_types.go",
-		"shein_submit_readiness_guidance_support.go",
 		"shein_build_validation.go",
 		"preview_builder_shein_final_review.go",
 		"shein_submit_readiness_taxonomy_test.go",
@@ -39,6 +38,7 @@ func TestSheinReadinessGuidanceBridgeCallsMarketplaceWorkspaceDirectly(t *testin
 	}
 
 	assertFileAbsent(t, "shein_submit_readiness_checks_support.go")
+	assertFileAbsent(t, "shein_submit_readiness_guidance_support.go")
 
 	taskListSource := readNamedFunctionSource(t, "task_list_item_support.go", "sheinBlockingKeysWithPod")
 	assertSourceContainsAll(t, taskListSource, []string{
