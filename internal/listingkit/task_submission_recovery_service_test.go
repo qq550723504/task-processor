@@ -323,7 +323,7 @@ func TestTaskSubmissionRecoveryServiceRefreshSheinSubmitRemoteStatusHandlesMissi
 	if event.Status != sheinpub.SubmissionRemoteStatusConfirmed {
 		t.Fatalf("event status = %q, want %q", event.Status, sheinpub.SubmissionRemoteStatusConfirmed)
 	}
-	record := sheinSubmissionRecordForAction(pkg.SubmissionState, "publish")
+	record := sheinpub.SubmissionRecordForAction(pkg.SubmissionState, "publish")
 	if record == nil {
 		t.Fatalf("publish record = nil, want remote confirmation state")
 	}
@@ -422,7 +422,7 @@ func TestTaskSubmissionRecoveryServiceRefreshSheinSubmitRemoteStatusAppliesResol
 	if len(gotLookupCodes) == 0 || gotLookupCodes[0] != "SKC-1" {
 		t.Fatalf("lookup codes = %+v, want supplier code first", gotLookupCodes)
 	}
-	record := sheinSubmissionRecordForAction(pkg.SubmissionState, "publish")
+	record := sheinpub.SubmissionRecordForAction(pkg.SubmissionState, "publish")
 	if record == nil {
 		t.Fatal("publish record = nil, want remote confirmation state")
 	}

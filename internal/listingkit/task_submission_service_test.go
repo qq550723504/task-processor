@@ -847,7 +847,7 @@ func TestApplySubmissionRefreshConfirmationAppliesEventParts(t *testing.T) {
 
 	applySubmissionRefreshConfirmation(task.Result.Shein, "publish", "refresh-apply-event", confirmation)
 
-	record := sheinSubmissionRecordForAction(task.Result.Shein.SubmissionState, "publish")
+	record := sheinpub.SubmissionRecordForAction(task.Result.Shein.SubmissionState, "publish")
 	if record == nil {
 		t.Fatal("expected publish record")
 	}
@@ -892,7 +892,7 @@ func TestApplySubmissionRefreshConfirmationWithoutEventSetsRemoteRecordOnly(t *t
 		Message:   "pending remotely",
 	})
 
-	record := sheinSubmissionRecordForAction(task.Result.Shein.SubmissionState, "publish")
+	record := sheinpub.SubmissionRecordForAction(task.Result.Shein.SubmissionState, "publish")
 	if record == nil {
 		t.Fatal("expected publish record")
 	}
@@ -1017,7 +1017,7 @@ func TestApplySubmissionRefreshMutationAppendsRunningEventBeforeConfirmation(t *
 		t.Fatalf("applySubmissionRefreshMutation() error = %v", err)
 	}
 
-	record := sheinSubmissionRecordForAction(task.Result.Shein.SubmissionState, "publish")
+	record := sheinpub.SubmissionRecordForAction(task.Result.Shein.SubmissionState, "publish")
 	if record == nil {
 		t.Fatal("expected publish record")
 	}

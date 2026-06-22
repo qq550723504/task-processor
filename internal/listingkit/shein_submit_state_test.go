@@ -140,7 +140,7 @@ func TestFindSheinSubmissionRecordByRequestIDReturnsCompletedRecord(t *testing.T
 	beginSheinSubmitAttempt(pkg, "save_draft", "idem-1", sheinpub.SubmissionPhaseValidate, startedAt)
 	completeSheinSubmitAttempt(pkg, "save_draft", "idem-1", &sheinpub.SubmissionResponse{Code: "0"}, nil, finishedAt)
 
-	record := findSheinSubmissionRecordByRequestID(pkg, "save_draft", "idem-1")
+	record := sheinpub.FindCompletedSubmissionRecordByRequestID(pkg, "save_draft", "idem-1")
 
 	if record == nil {
 		t.Fatal("expected replay record")
@@ -156,10 +156,10 @@ func TestFindActiveSheinSubmitAttemptHonorsLeaseExpiry(t *testing.T) {
 	pkg := &SheinPackage{}
 	beginSheinSubmitAttempt(pkg, "publish", "idem-1", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
 
-	if active := findActiveSheinSubmitAttempt(pkg, "publish", now); active != nil {
+	if active := sheinpub.FindActiveSubmissionAttempt(pkg, "publish", now, sheinSubmitInFlightTTL); active != nil {
 		t.Fatalf("active = %+v, want nil after lease expiry", active)
 	}
-	if !sheinSubmitAttemptNeedsRemoteRecovery(pkg.Submission, "publish", now) {
+	if !sheinpub.SubmissionNeedsRemoteRecovery(pkg.Submission, "publish", now, sheinSubmitInFlightTTL) {
 		t.Fatal("expected remote recovery after lease expiry")
 	}
 }

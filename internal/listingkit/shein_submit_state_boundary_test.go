@@ -24,6 +24,11 @@ func TestSheinSubmitStateKeepsTransitionSequencingBoundary(t *testing.T) {
 		"func resolveSheinSubmitFailureState(",
 		"func ensureSheinSubmissionReport(",
 		"func setSheinSubmitRemoteRecord(",
+		"func findSheinSubmissionRecordByRequestID(",
+		"func findActiveSheinSubmitAttempt(",
+		"func sheinSubmitAttemptNeedsRemoteRecovery(",
+		"func sheinSubmissionRecordForAction(",
+		"func clearSheinSubmitInFlight(",
 	}
 	for _, pattern := range forbidden {
 		if strings.Contains(content, pattern) {

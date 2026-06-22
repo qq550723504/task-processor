@@ -49,14 +49,14 @@ func loadSheinSubmitLeasePackage(task *Task) (*SheinPackage, error) {
 }
 
 func shouldReplayExistingSheinSubmitLease(pkg *SheinPackage, action, requestID string) bool {
-	return findSheinSubmissionRecordByRequestID(pkg, action, requestID) != nil
+	return sheinpub.FindCompletedSubmissionRecordByRequestID(pkg, action, requestID) != nil
 }
 
 func shouldRecoverSheinSubmitLeaseWithSupplierCode(pkg *SheinPackage, action, requestID string, startedAt time.Time) bool {
 	if !sheinpub.SubmissionLeaseNeedsRemoteRecovery(pkg, action, requestID, startedAt, sheinSubmitInFlightTTL) {
 		return false
 	}
-	record := sheinSubmissionRecordForAction(pkg.SubmissionState, action)
+	record := sheinpub.SubmissionRecordForAction(pkg.SubmissionState, action)
 	return record != nil && strings.TrimSpace(record.SupplierCode) != ""
 }
 
@@ -65,7 +65,7 @@ func buildRecoverRemoteLeaseEvent(taskID, action, phase, requestID string, start
 }
 
 func validateActiveSheinSubmitLease(pkg *SheinPackage, action, requestID string, startedAt time.Time) error {
-	active := findActiveSheinSubmitAttempt(pkg, action, startedAt)
+	active := sheinpub.FindActiveSubmissionAttempt(pkg, action, startedAt, sheinSubmitInFlightTTL)
 	if active == nil {
 		return nil
 	}
@@ -134,7 +134,7 @@ func clearSheinSubmitLeaseState(task *Task, pkg *SheinPackage, action, requestID
 	if task == nil || pkg == nil || pkg.SubmissionState == nil {
 		return
 	}
-	clearSheinSubmitInFlight(pkg.SubmissionState, action, requestID)
+	sheinpub.ClearSubmissionInFlight(pkg.SubmissionState, action, requestID)
 	task.Result.UpdatedAt = time.Now()
 }
 

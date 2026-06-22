@@ -648,6 +648,7 @@ Follow-up deletion
 | SHEIN submission refresh remote policy | migrated | refresh remote lookup 的 default-confirmed 判定统一使用 `internal/marketplace/shein/publishing` 的 remote confirmation policy；删除不再使用的通用 `internal/listing/submission` refresh remote policy，ListingKit 仅保留 request ID 与 product API 适配。 |
 | SHEIN direct submit image upload predicate cleanup | migrated | direct submit flow 不再保留 ListingKit 私有 `NeedsImageUpload` wrapper；runner 配置直接调用 `internal/publishing/shein` 的 pending image upload count，ListingKit 仅负责提交阶段编排。 |
 | SHEIN submit state dead wrapper cleanup | migrated | 删除 ListingKit 中无调用的 submit failure/report/remote-record 私有 wrapper；submit 状态转换继续由 `internal/publishing/shein/submission_state.go` 持有，ListingKit 仅保留仍被编排路径使用的 TTL adapter。 |
+| SHEIN submit lease state query cleanup | migrated | submit lease replay、active attempt、remote recovery 和 in-flight 清理不再通过 ListingKit 私有查询 wrapper；recovery lease 编排直接调用 `internal/publishing/shein` 的 submission state helpers，ListingKit 仅注入统一 TTL。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

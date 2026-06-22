@@ -49,23 +49,3 @@ func completeSheinSubmitAttemptAt(pkg *SheinPackage, action, requestID string, r
 func failSheinSubmitAttemptAt(pkg *SheinPackage, action, requestID, phase string, submitErr error, finishedAt time.Time) *sheinpub.SubmissionRecord {
 	return sheinpub.FailSubmitAttemptAt(pkg, action, requestID, phase, submitErr, finishedAt)
 }
-
-func findSheinSubmissionRecordByRequestID(pkg *SheinPackage, action, requestID string) *sheinpub.SubmissionRecord {
-	return sheinpub.FindCompletedSubmissionRecordByRequestID(pkg, action, requestID)
-}
-
-func findActiveSheinSubmitAttempt(pkg *SheinPackage, action string, now time.Time) *sheinpub.SubmissionReport {
-	return sheinpub.FindActiveSubmissionAttempt(pkg, action, now, sheinSubmitInFlightTTL)
-}
-
-func sheinSubmitAttemptNeedsRemoteRecovery(report *sheinpub.SubmissionReport, action string, now time.Time) bool {
-	return sheinpub.SubmissionNeedsRemoteRecovery(report, action, now, sheinSubmitInFlightTTL)
-}
-
-func sheinSubmissionRecordForAction(report *sheinpub.SubmissionReport, action string) *sheinpub.SubmissionRecord {
-	return sheinpub.SubmissionRecordForAction(report, action)
-}
-
-func clearSheinSubmitInFlight(report *sheinpub.SubmissionReport, action, requestID string) {
-	sheinpub.ClearSubmissionInFlight(report, action, requestID)
-}

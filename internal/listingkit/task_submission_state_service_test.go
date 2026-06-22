@@ -88,7 +88,7 @@ func TestTaskSubmissionStateServicePersistSuccessfulSheinDirectResponsePersistsR
 	if err != nil {
 		t.Fatalf("get task: %v", err)
 	}
-	record := sheinSubmissionRecordForAction(saved.Result.Shein.Submission, "publish")
+	record := sheinpub.SubmissionRecordForAction(saved.Result.Shein.Submission, "publish")
 	if record == nil {
 		t.Fatalf("publish record = nil, want persisted record")
 	}
@@ -212,7 +212,7 @@ func TestTaskSubmissionStateServiceRecordSheinSubmissionFailureForStatePersistsR
 	if saved.Result.Shein.Submission.LastStatus != sheinpub.SubmissionStatusFailed {
 		t.Fatalf("last status = %q, want failed", saved.Result.Shein.Submission.LastStatus)
 	}
-	record := sheinSubmissionRecordForAction(saved.Result.Shein.Submission, "publish")
+	record := sheinpub.SubmissionRecordForAction(saved.Result.Shein.Submission, "publish")
 	if record == nil {
 		t.Fatal("publish record = nil, want failed record")
 	}
