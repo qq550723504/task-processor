@@ -191,7 +191,7 @@ func (s *taskDirectSubmissionService) finalizeDirectSubmitPayload(ctx context.Co
 }
 
 func (s *taskDirectSubmissionService) preValidateDirectSubmitPayload(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], product *sheinproduct.Product) error {
-	if err := s.preValidateSheinSubmitProduct(in.Package, product); err != nil {
+	if err := sheinpub.PreValidateSubmitProductWithOptions(product, !sheinpub.SecondarySaleAttributeRequired(in.Package)); err != nil {
 		return s.failDirectSubmit(ctx, in.TaskID, in.Task, in.Package, in.Action, err)
 	}
 	return nil

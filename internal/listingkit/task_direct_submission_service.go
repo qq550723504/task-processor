@@ -18,7 +18,6 @@ type taskDirectSubmissionServiceConfig struct {
 	prepareSheinSubmitProduct       func(context.Context, *Task, *SheinPackage, string) (*sheinproduct.Product, error)
 	uploadSheinSubmitImages         func(context.Context, *Task, *SheinPackage, *sheinproduct.Product) error
 	resolveSubmitSettings           func(context.Context, *Task) SheinSettings
-	preValidateSheinSubmitProduct   func(*SheinPackage, *sheinproduct.Product) error
 	executeSheinSubmitRemote        func(sheinproduct.ProductAPI, string, *sheinproduct.Product) (*sheinpub.SubmissionResponse, error)
 	retrySheinSensitiveWordSubmit   func(context.Context, string, *SheinPackage, string, string, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, error) (*sheinpub.SubmissionResponse, error, bool)
 	persistSuccessfulDirectResponse func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions, string, *sheinpub.SubmissionResponse) error
@@ -38,7 +37,6 @@ type taskDirectSubmissionService struct {
 	prepareSheinSubmitProduct       func(context.Context, *Task, *SheinPackage, string) (*sheinproduct.Product, error)
 	uploadSheinSubmitImages         func(context.Context, *Task, *SheinPackage, *sheinproduct.Product) error
 	resolveSubmitSettings           func(context.Context, *Task) SheinSettings
-	preValidateSheinSubmitProduct   func(*SheinPackage, *sheinproduct.Product) error
 	executeSheinSubmitRemote        func(sheinproduct.ProductAPI, string, *sheinproduct.Product) (*sheinpub.SubmissionResponse, error)
 	retrySheinSensitiveWordSubmit   func(context.Context, string, *SheinPackage, string, string, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, error) (*sheinpub.SubmissionResponse, error, bool)
 	persistSuccessfulDirectResponse func(context.Context, string, *Task, *SheinPackage, sheinDirectSubmitOptions, string, *sheinpub.SubmissionResponse) error
@@ -59,7 +57,6 @@ func newTaskDirectSubmissionService(config taskDirectSubmissionServiceConfig) *t
 		prepareSheinSubmitProduct:       config.prepareSheinSubmitProduct,
 		uploadSheinSubmitImages:         config.uploadSheinSubmitImages,
 		resolveSubmitSettings:           config.resolveSubmitSettings,
-		preValidateSheinSubmitProduct:   config.preValidateSheinSubmitProduct,
 		executeSheinSubmitRemote:        config.executeSheinSubmitRemote,
 		retrySheinSensitiveWordSubmit:   config.retrySheinSensitiveWordSubmit,
 		persistSuccessfulDirectResponse: config.persistSuccessfulDirectResponse,

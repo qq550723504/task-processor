@@ -57,7 +57,7 @@ func (s *taskTemporalSubmissionFlowService) finalizeTemporalSubmitPayload(ctx co
 }
 
 func (s *taskTemporalSubmissionFlowService) preValidateTemporalSubmitPayload(_ context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], product *sheinproduct.Product) error {
-	return s.preValidateSheinSubmitProduct(in.Package, product)
+	return sheinpub.PreValidateSubmitProductWithOptions(product, !sheinpub.SecondarySaleAttributeRequired(in.Package))
 }
 
 func (s *taskTemporalSubmissionFlowService) executeTemporalRemoteSubmitAttempt(ctx context.Context, in submissiondomain.RemoteSubmitInput[*SheinPackage, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmitSnapshot]) submissiondomain.RemoteSubmitResult[*sheinpub.SubmissionResponse, *sheinpub.SubmitSnapshot] {

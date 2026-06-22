@@ -17,7 +17,6 @@ type taskTemporalSubmissionFlowServiceConfig struct {
 	uploadSheinSubmitImages       func(context.Context, *Task, *SheinPackage, *sheinproduct.Product) error
 	resolveSubmitSettings         func(context.Context, *Task) SheinSettings
 	buildSheinSubmitProductAPI    func(context.Context, *Task) (sheinproduct.ProductAPI, error)
-	preValidateSheinSubmitProduct func(*SheinPackage, *sheinproduct.Product) error
 	executeSheinSubmitRemote      func(sheinproduct.ProductAPI, string, *sheinproduct.Product) (*sheinpub.SubmissionResponse, error)
 	retrySheinSensitiveWordSubmit func(context.Context, string, *SheinPackage, string, string, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, error) (*sheinpub.SubmissionResponse, error, bool)
 	payloadStages                 *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot]
@@ -33,7 +32,6 @@ type taskTemporalSubmissionFlowService struct {
 	uploadSheinSubmitImages       func(context.Context, *Task, *SheinPackage, *sheinproduct.Product) error
 	resolveSubmitSettings         func(context.Context, *Task) SheinSettings
 	buildSheinSubmitProductAPI    func(context.Context, *Task) (sheinproduct.ProductAPI, error)
-	preValidateSheinSubmitProduct func(*SheinPackage, *sheinproduct.Product) error
 	executeSheinSubmitRemote      func(sheinproduct.ProductAPI, string, *sheinproduct.Product) (*sheinpub.SubmissionResponse, error)
 	retrySheinSensitiveWordSubmit func(context.Context, string, *SheinPackage, string, string, sheinproduct.ProductAPI, *sheinproduct.Product, *sheinpub.SubmissionResponse, error) (*sheinpub.SubmissionResponse, error, bool)
 	payloadStages                 *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot]
@@ -50,7 +48,6 @@ func newTaskTemporalSubmissionFlowService(config taskTemporalSubmissionFlowServi
 		uploadSheinSubmitImages:       config.uploadSheinSubmitImages,
 		resolveSubmitSettings:         config.resolveSubmitSettings,
 		buildSheinSubmitProductAPI:    config.buildSheinSubmitProductAPI,
-		preValidateSheinSubmitProduct: config.preValidateSheinSubmitProduct,
 		executeSheinSubmitRemote:      config.executeSheinSubmitRemote,
 		retrySheinSensitiveWordSubmit: config.retrySheinSensitiveWordSubmit,
 		payloadStages:                 config.payloadStages,

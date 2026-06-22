@@ -356,9 +356,6 @@ func TestTaskDirectSubmissionServiceSubmitSheinTaskDirectCompletesExecutionFlow(
 		resolveSubmitSettings: func(context.Context, *Task) SheinSettings {
 			return SheinSettings{}
 		},
-		preValidateSheinSubmitProduct: func(*SheinPackage, *sheinproduct.Product) error {
-			return nil
-		},
 		executeSheinSubmitRemote: func(gotAPI sheinproduct.ProductAPI, gotAction string, gotProduct *sheinproduct.Product) (*sheinpub.SubmissionResponse, error) {
 			calls = append(calls, "complete_remote")
 			if gotAPI != productAPI {

@@ -3678,10 +3678,14 @@ func TestTaskDirectSubmissionSupportUsesSubmissionDomainRunner(t *testing.T) {
 		"UploadImages:     s.uploadPendingDirectSubmitImages,",
 		"PreValidate:      s.preValidateDirectSubmitProduct,",
 		"SubmitRemote:     s.completeDirectRemoteSubmit,",
+		"sheinpub.PreValidateSubmitProductWithOptions(product, !sheinpub.SecondarySaleAttributeRequired(in.Package))",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("task_direct_submission_support.go should contain %q", needle)
 		}
+	}
+	if strings.Contains(content, "s.preValidateSheinSubmitProduct(") {
+		t.Fatal("task_direct_submission_support.go should call SHEIN publishing pre-validation directly")
 	}
 }
 
@@ -3703,10 +3707,14 @@ func TestTaskTemporalSubmissionPayloadUsesSubmissionDomainRunner(t *testing.T) {
 		"UploadImages:           s.uploadTemporalSubmitPayloadImages,",
 		"FinalizeUploaded:       s.finalizeTemporalSubmitPayload,",
 		"PreValidate:            s.preValidateTemporalSubmitPayload,",
+		"return sheinpub.PreValidateSubmitProductWithOptions(product, !sheinpub.SecondarySaleAttributeRequired(in.Package))",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("task_temporal_submission_payload_support.go should contain %q", needle)
 		}
+	}
+	if strings.Contains(supportContent, "s.preValidateSheinSubmitProduct(") {
+		t.Fatal("task_temporal_submission_payload_support.go should call SHEIN publishing pre-validation directly")
 	}
 
 	payloadSrc, err := os.ReadFile("service_shein_publish_temporal_entrypoints.go")

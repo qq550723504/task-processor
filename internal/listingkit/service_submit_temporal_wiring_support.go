@@ -144,7 +144,6 @@ func buildTaskTemporalSubmissionFlowServiceConfigWithWiring(
 		uploadSheinSubmitImages:       wiring.orchestrator.bindings.execution.uploadSheinSubmitImages,
 		resolveSubmitSettings:         wiring.orchestrator.bindings.resolver.resolveSubmitSettings,
 		buildSheinSubmitProductAPI:    wiring.orchestrator.bindings.execution.buildSheinSubmitProductAPI,
-		preValidateSheinSubmitProduct: wiring.orchestrator.bindings.execution.preValidateSheinSubmitProduct,
 		executeSheinSubmitRemote:      wiring.orchestrator.bindings.execution.executeSheinSubmitRemote,
 		retrySheinSensitiveWordSubmit: wiring.retrySheinSensitiveWordSubmit,
 		persistence:                   persistence,

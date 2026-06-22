@@ -57,10 +57,17 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 	}
 	for _, needle := range []string{
 		"sheinpub.PrepareProductForSubmit(submitProduct, sheinSubmitPayloadSettings(s.resolveSubmitSettings(runtimeCtx, task)))",
-		"sheinpub.PreValidateSubmitProductWithOptions(submitProduct, !sheinpub.SecondarySaleAttributeRequired(pkg))",
 	} {
 		if !strings.Contains(homeContent, needle) {
 			t.Fatalf("task_submission_execution_product.go should delegate submit product preparation via %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"func (s *taskSubmissionExecutionService) preValidateSheinSubmitProduct(",
+		"return sheinpub.PreValidateSubmitProductWithOptions(submitProduct, !sheinpub.SecondarySaleAttributeRequired(pkg))",
+	} {
+		if strings.Contains(homeContent, needle) {
+			t.Fatalf("task_submission_execution_product.go should not keep submit pre-validation wrapper %q", needle)
 		}
 	}
 	publishingNormalizeSrc, err := os.ReadFile("../publishing/shein/submit_payload_normalize.go")

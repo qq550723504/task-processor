@@ -180,7 +180,6 @@ func buildTaskDirectSubmissionServiceConfigWithWiring(wiring taskManagedSubmissi
 		prepareSheinSubmitProduct:       wiring.assembly.bindings.execution.prepareSheinSubmitProduct,
 		uploadSheinSubmitImages:         wiring.assembly.bindings.execution.uploadSheinSubmitImages,
 		resolveSubmitSettings:           wiring.assembly.bindings.resolver.resolveSubmitSettings,
-		preValidateSheinSubmitProduct:   wiring.assembly.bindings.execution.preValidateSheinSubmitProduct,
 		executeSheinSubmitRemote:        wiring.assembly.bindings.execution.executeSheinSubmitRemote,
 		retrySheinSensitiveWordSubmit:   wiring.retrySheinSensitiveWordSubmit,
 		persistSuccessfulDirectResponse: wiring.assembly.bindings.state.persistSuccessfulSheinDirectResponse,
