@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	common "task-processor/internal/publishing/common"
 )
 
 func resolveRevisionValidationRequest(result *ListingKitResult, req *ApplyRevisionRequest) (*ApplyRevisionRequest, *RevisionRestorePreviewPayload, error) {
@@ -85,7 +86,7 @@ func cloneTemuRevisionInput(src *TemuRevisionInput) *TemuRevisionInput {
 		GoodsName:        cloneHistoryStringPointer(src.GoodsName),
 		ShortDescription: cloneHistoryStringPointer(src.ShortDescription),
 		BulletPoints:     append([]string(nil), src.BulletPoints...),
-		Images:           clonePlatformImageSetForEditor(src.Images),
+		Images:           common.CloneImageSet(src.Images),
 		ReviewNotes:      append([]string(nil), src.ReviewNotes...),
 	}
 }
@@ -100,7 +101,7 @@ func cloneWalmartRevisionInput(src *WalmartRevisionInput) *WalmartRevisionInput 
 		ShortDescription: cloneHistoryStringPointer(src.ShortDescription),
 		LongDescription:  cloneHistoryStringPointer(src.LongDescription),
 		KeyFeatures:      append([]string(nil), src.KeyFeatures...),
-		Images:           clonePlatformImageSetForEditor(src.Images),
+		Images:           common.CloneImageSet(src.Images),
 		ReviewNotes:      append([]string(nil), src.ReviewNotes...),
 	}
 }

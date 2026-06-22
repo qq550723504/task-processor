@@ -45,7 +45,6 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 	supportContent := string(supportSrc)
 
 	for _, needle := range []string{
-		"func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {",
 		"func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEditorRevisionSkeleton, request *ApplyRevisionRequest, validation *SheinRepairValidationPreview) sheinRepairArtifacts {",
 		"sheinworkspace.CloneRepairPatchPayload(patch)",
 		"Patch:      sheinworkspace.CloneRepairPatchPayload(patch)",
@@ -57,6 +56,7 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 		}
 	}
 	for _, needle := range []string{
+		"func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {",
 		"func cloneSheinRepairPatchPayload(payload *SheinRepairPatchPayload) *SheinRepairPatchPayload {",
 		"func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {",
 		"RevisionDiffPreview:         cloneRevisionDiffPreview(src.RevisionDiffPreview)",
@@ -65,5 +65,22 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 		if strings.Contains(supportContent, needle) {
 			t.Fatalf("shein_repair_clone_support.go should not keep patch clone wrapper %q", needle)
 		}
+	}
+
+	restoreSrc, err := os.ReadFile("revision_restore_request.go")
+	if err != nil {
+		t.Fatalf("ReadFile(revision_restore_request.go) error = %v", err)
+	}
+	restoreContent := string(restoreSrc)
+	for _, needle := range []string{
+		`common "task-processor/internal/publishing/common"`,
+		"Images:           common.CloneImageSet(src.Images)",
+	} {
+		if !strings.Contains(restoreContent, needle) {
+			t.Fatalf("revision_restore_request.go should contain %q", needle)
+		}
+	}
+	if strings.Contains(restoreContent, "clonePlatformImageSetForEditor") {
+		t.Fatal("revision_restore_request.go should use publishing/common image set clone")
 	}
 }

@@ -657,6 +657,7 @@ Follow-up deletion
 | SHEIN repair hint DTO ownership | migrated | readiness repair hint JSON DTO 迁入 `internal/marketplace/shein/workspace` 的泛型 `RepairHint`；ListingKit 以 alias 绑定本地 revision request/validation 类型，只保留 artifact clone 和 app request 包装。 |
 | SHEIN repair artifact container ownership | migrated | repair revision bundle 与 patch/skeleton/request/validation artifact 容器迁入 `internal/marketplace/shein/workspace` 泛型类型；ListingKit 仅保留 workspace seed 到 app `ApplyRevisionRequest` 的包装与 clone 调用。 |
 | SHEIN repair validation clone ownership | migrated | repair validation preview 与 revision diff 深拷贝 helper 迁入 `internal/marketplace/shein/workspace`；ListingKit clone support 只委托 workspace helper，不再复制 validation/diff clone 细节。 |
+| Shared image set clone ownership | migrated | `common.ImageSet` 深拷贝 helper 迁入 `internal/publishing/common`；ListingKit revision restore 和 SHEIN workspace image clone 均复用 `common.CloneImageSet`，删除根包 editor image set clone helper。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
