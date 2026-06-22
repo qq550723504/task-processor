@@ -23,11 +23,6 @@ func TestSheinEditorBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 		t.Fatal("shein_workspace_editor_bridge.go should not call ListingKit SHEIN workspace bridge")
 	}
 
-	progressSource := readNamedFunctionSource(t, "shein_workspace_editor_bridge.go", "buildSheinEditorProgress")
-	assertSourceContainsAll(t, progressSource, []string{
-		"return sheinworkspace.BuildEditorProgress(pkg, sheinworkspace.ChecklistItemCount(checklist))",
-	})
-
 	for _, forbidden := range []string{
 		"func buildSheinCategoryRecommendationMeta(",
 		"func buildSheinAttributeRecommendationMeta(",
@@ -37,6 +32,7 @@ func TestSheinEditorBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 		"func buildSheinCategoryEffects(",
 		"func buildSheinAttributeEffects(",
 		"func buildSheinSaleAttributeEffects(",
+		"func buildSheinEditorProgress(",
 		"func buildSheinEditorDirtyHints(",
 	} {
 		if strings.Contains(content, forbidden) {
