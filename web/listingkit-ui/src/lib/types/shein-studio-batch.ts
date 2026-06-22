@@ -2,13 +2,15 @@ import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
-  SheinStudioCreatedTask,
-  SheinStudioFailedTask,
   SheinStudioGroupedImageMode,
-  SheinStudioRejectedTask,
   SheinStudioSelectedSDSImage,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
+import type {
+  SheinStudioCreatedTask,
+  SheinStudioFailedTask,
+  SheinStudioRejectedTask,
+} from "@/lib/types/shein-studio-task";
 
 export type SheinStudioBatchStatus =
   | "draft"
