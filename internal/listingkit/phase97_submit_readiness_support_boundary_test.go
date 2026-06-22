@@ -93,6 +93,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	if strings.Contains(publishingStatusContent, "func sheinSourceFactsReady(") {
 		t.Fatal("shein_submit_readiness_status_support.go should not keep a source-facts wrapper; call SHEIN workspace readiness from checks assembly")
 	}
+	assertFileAbsent(t, "workspace/shein/source_facts_bridge.go")
 
 	buildValidationSrc, err := os.ReadFile("shein_build_validation.go")
 	if err != nil {
