@@ -7,6 +7,8 @@ import {
   mapStudioBatchDraftDetailToDraft,
   upsertSheinStudioBatchDraft,
 } from "@/lib/api/shein-studio-batch-drafts";
+import { parseStudioBatchDraftDetailResponse } from "@/lib/api/shein-studio-batch-draft-schema";
+import { sheinStudioBatchDraftDetailContractFixture } from "@/lib/api/__fixtures__/shein-studio-batch-contract";
 import { apiAsyncRequest, apiRequest } from "@/lib/api/client";
 
 vi.mock("@/lib/api/client", async () => {
@@ -600,66 +602,14 @@ describe("shein studio design metadata", () => {
   });
 
   it("maps generation jobs from batch draft detail into the draft", () => {
-    const draft = mapStudioBatchDraftDetailToDraft({
-      batch: {
-        id: "session-1",
-        prompt: "retro cherries",
-        status: "generating",
-        generation_job_id: "job-primary",
-        generation_jobs: [
-          {
-            job_id: "job-primary",
-            target_group_key: "primary",
-            target_group_label: "当前商品",
-            status: "running",
-          },
-          {
-            job_id: "job-group-1",
-            target_group_key: "group-1",
-            target_group_label: "分组商品 1",
-            status: "running",
-          },
-        ],
-        updated_at: "2026-05-30T00:00:00Z",
-      },
-      designs: [],
-    });
+    const parsed = parseStudioBatchDraftDetailResponse(
+      sheinStudioBatchDraftDetailContractFixture.response,
+    );
+    const draft = mapStudioBatchDraftDetailToDraft(parsed);
 
-    expect(draft).toMatchObject({
-      generationJobId: "job-primary",
-      batchStatus: "generating",
-      legacyCompatibilitySnapshot: {
-        generationJobId: "job-primary",
-        generationJobs: [
-          {
-            jobId: "job-primary",
-            targetGroupKey: "primary",
-            targetGroupLabel: "当前商品",
-            status: "running",
-          },
-          {
-            jobId: "job-group-1",
-            targetGroupKey: "group-1",
-            targetGroupLabel: "分组商品 1",
-            status: "running",
-          },
-        ],
-      },
-      generationJobs: [
-        {
-          jobId: "job-primary",
-          targetGroupKey: "primary",
-          targetGroupLabel: "当前商品",
-          status: "running",
-        },
-        {
-          jobId: "job-group-1",
-          targetGroupKey: "group-1",
-          targetGroupLabel: "分组商品 1",
-          status: "running",
-        },
-      ],
-    });
+    expect(draft).toMatchObject(
+      sheinStudioBatchDraftDetailContractFixture.expectedDraft,
+    );
   });
 
   it("restores grouped legacy compatibility snapshots from batch draft detail", () => {

@@ -202,3 +202,98 @@ export const sheinStudioBatchTaskCreationContractFixture = {
     },
   },
 } as const;
+
+export const sheinStudioBatchDraftDetailContractFixture = {
+  response: {
+    batch: {
+      id: "session-1",
+      prompt: "retro cherries",
+      status: "generating",
+      style_count: "2",
+      shein_store_id: "869",
+      grouped_image_mode: "shared_by_size",
+      generation_job_id: "job-primary",
+      generation_jobs: [
+        {
+          job_id: "job-primary",
+          target_group_key: "primary",
+          target_group_label: "当前商品",
+          status: "running",
+        },
+        {
+          job_id: "job-group-1",
+          target_group_key: "group-1",
+          target_group_label: "分组商品 1",
+          status: "running",
+        },
+      ],
+      generation_error: "partial timeout",
+      approved_design_ids: ["design-1"],
+      updated_at: "2026-05-30T00:00:00Z",
+    },
+    designs: [
+      {
+        id: "design-1",
+        image_url: "https://cdn.example.com/design-1.png",
+        prompt: "retro cherries",
+        image_model: "gpt-image-1",
+        target_group_key: "primary",
+        target_group_label: "当前商品",
+        approved: true,
+      },
+    ],
+  },
+  expectedDraft: {
+    prompt: "retro cherries",
+    styleCount: "2",
+    sheinStoreId: "869",
+    groupedImageMode: "shared_by_size",
+    batchStatus: "generating",
+    generationError: "partial timeout",
+    generationJobId: "job-primary",
+    generationJobs: [
+      {
+        jobId: "job-primary",
+        targetGroupKey: "primary",
+        targetGroupLabel: "当前商品",
+        status: "running",
+      },
+      {
+        jobId: "job-group-1",
+        targetGroupKey: "group-1",
+        targetGroupLabel: "分组商品 1",
+        status: "running",
+      },
+    ],
+    selectedIds: ["design-1"],
+    designs: [
+      {
+        id: "design-1",
+        imageUrl: "https://cdn.example.com/design-1.png",
+        prompt: "retro cherries",
+        imageModel: "gpt-image-1",
+        targetGroupKey: "primary",
+        targetGroupLabel: "当前商品",
+      },
+    ],
+    legacyCompatibilitySnapshot: {
+      generationError: "partial timeout",
+      generationJobId: "job-primary",
+      generationJobs: [
+        {
+          jobId: "job-primary",
+          targetGroupKey: "primary",
+          targetGroupLabel: "当前商品",
+          status: "running",
+        },
+        {
+          jobId: "job-group-1",
+          targetGroupKey: "group-1",
+          targetGroupLabel: "分组商品 1",
+          status: "running",
+        },
+      ],
+      selectedIds: ["design-1"],
+    },
+  },
+} as const;
