@@ -666,6 +666,7 @@ Follow-up deletion
 | SHEIN repair support file cleanup | migrated | 删除只剩 `SheinRepairPatchPayload` / `SheinRepairValidationPreview` alias 的 `shein_repair_support.go`；repair DTO alias 统一并入 `shein_workspace_repair_bridge.go`。 |
 | SHEIN repair apply request wrapper cleanup | migrated | 删除单用 `buildSheinRepairApplyRequest` wrapper；repair artifact builder 直接把 workspace revision seed 包装为 app `ApplyRevisionRequest`。 |
 | SHEIN repair validation preview wrapper cleanup | migrated | 删除单用 `buildSheinRepairValidationPreview` wrapper；repair artifact builder 内联 app revision validation 并直接调用 workspace repair validation preview builder。 |
+| SHEIN repair revision support file cleanup | migrated | 删除只剩 repair artifact builder 的 `shein_repair_revision_support.go`；artifact builder 并入 readiness guidance support，作为 repair hint 组装的一部分。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
