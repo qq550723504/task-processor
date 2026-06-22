@@ -25,7 +25,7 @@ func TestSheinRevisionDiffBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) 
 		},
 		{
 			path: "revision_workspace_bridge.go",
-			want: `sheindiff "task-processor/internal/marketplace/shein/workspace"`,
+			want: `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 		},
 	}
 
@@ -46,6 +46,6 @@ func TestSheinRevisionDiffBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) 
 
 	restoreSource := readNamedFunctionSource(t, "revision_workspace_bridge.go", "buildRevisionRestorePreviewFromDetail")
 	assertSourceContainsAll(t, restoreSource, []string{
-		"sheindiff.BuildRevisionDiffPreviewFromInput(detail.RestorePayload.Core.Draft)",
+		"sheinworkspace.BuildRevisionDiffPreviewFromInput(detail.RestorePayload.Core.Draft)",
 	})
 }

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
 var ErrRevisionHistoryRecordNotFound = errors.New("revision history record not found")
