@@ -645,6 +645,7 @@ Follow-up deletion
 | SHEIN size reference rendered resolution | migrated | raw size reference 与 SDS source/rendered mockup 按位置匹配、variant summary 按 ID/SKU/color 匹配规则迁入 `internal/publishing/shein/size_reference_resolution.go`；ListingKit 只负责从 `GenerateRequest`/`SDSSyncSummary` 适配输入。 |
 | SHEIN Studio image compatibility cleanup | migrated | 删除迁移后未调用的 ListingKit 私有 wrapper/dead helper，包括旧 coverage group/main-image helper、clear shared SKC image helper、ImageDraftToSet wrapper 和 size reference detail wrapper。 |
 | SHEIN store resolution presentation cleanup | migrated | store resolution summary/submission event presentation 不再通过 ListingKit 私有 value wrapper 中转；preview/history/revision 场景直接调用 `internal/marketplace/shein/workspace` 的 summary 与 submission store resolution builder，ListingKit 仅保留 task snapshot/time 适配。 |
+| SHEIN submission refresh remote policy | migrated | refresh remote lookup 的 default-confirmed 判定统一使用 `internal/marketplace/shein/publishing` 的 remote confirmation policy；删除不再使用的通用 `internal/listing/submission` refresh remote policy，ListingKit 仅保留 request ID 与 product API 适配。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

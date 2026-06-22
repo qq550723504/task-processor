@@ -19,10 +19,11 @@ func TestSheinSubmissionRemoteLookupPolicyBoundary(t *testing.T) {
 
 	refreshSource := readNamedFunctionSource(t, "task_submission_refresh_selection.go", "buildSubmissionRefreshRemoteInputs")
 	assertSourceContainsAll(t, refreshSource, []string{
-		"submissiondomain.BuildRefreshRemotePolicy(",
+		"sheinmarketpub.BuildRemoteConfirmationPolicy(",
 		"sheinpub.BuildSubmissionRemoteLookupInputs(",
 	})
 	assertSourceExcludesAll(t, refreshSource, []string{
+		"submissiondomain.BuildRefreshRemotePolicy(",
 		"sheinpub.BuildSubmissionRefreshLookupInputs(",
 	})
 

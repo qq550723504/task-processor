@@ -6,6 +6,7 @@ import (
 
 	apperrors "task-processor/internal/core/errors"
 	submissiondomain "task-processor/internal/listing/submission"
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -75,8 +76,8 @@ func buildSubmissionRefreshRequest(pkg *SheinPackage, selection *sheinpub.Submis
 }
 
 func buildSubmissionRefreshRemoteInputs(pkg *SheinPackage, action, supplierCode string) sheinSubmissionRefreshRemoteInputs {
-	policy := submissiondomain.BuildRefreshRemotePolicy(action, sheinpub.RemotePublishAccepted(pkg, action))
-	return sheinpub.BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, policy.FallbackMessage)
+	policy := sheinmarketpub.BuildRemoteConfirmationPolicy(action, sheinpub.RemotePublishAccepted(pkg, action))
+	return sheinpub.BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, "")
 }
 
 func newSubmissionRefreshState(task *Task, action, requestID string, startedAt time.Time, productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, remoteInputs sheinSubmissionRefreshRemoteInputs) *sheinSubmissionRefreshState {
