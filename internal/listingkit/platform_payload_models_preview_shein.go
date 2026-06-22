@@ -64,7 +64,7 @@ type SheinFinalReview struct {
 type SheinFinalReviewSKU = sheinworkspace.FinalReviewSKU
 type SheinFinalReviewImage = sheinworkspace.FinalReviewImage
 
-type SheinResolutionCacheSummary = sheinworkspace.ResolutionCacheSummary
-type SheinImageUploadPreflight = sheinworkspace.ImageUploadPreflight
+type SheinResolutionCacheSummary = sheinmarketplace.ResolutionCacheSummary
+type SheinImageUploadPreflight = sheinmarketplace.ImageUploadPreflight
 
 type SheinSourceProductSummary = sheinworkspace.SourceProductSummary

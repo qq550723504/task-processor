@@ -2435,6 +2435,7 @@ func TestSheinResolutionCachePreviewHelpersLiveOutsideMainSheinPreviewBuilder(t 
 	for _, needle := range []string{
 		"func buildSheinResolutionCacheSummary(pkg *SheinPackage) *SheinResolutionCacheSummary {",
 		"return sheinworkspace.BuildResolutionCacheSummary(pkg)",
+		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
 		if !strings.Contains(cacheContent, needle) {
 			t.Fatalf("preview_builder_shein_resolution_cache.go should contain %q", needle)
@@ -2691,6 +2692,7 @@ func TestSheinImageUploadPreviewHelpersLiveOutsideSubmitImageRuntime(t *testing.
 	for _, needle := range []string{
 		"func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPreflight {",
 		"return sheinworkspace.BuildImageUploadPreflight(",
+		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 		"isSheinUploadedImageURL,",
 		"sheinImageUploadCacheHit,",
 		"isSDSImageURL,",
