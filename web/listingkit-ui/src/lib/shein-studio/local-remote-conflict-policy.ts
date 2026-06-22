@@ -3,16 +3,28 @@ export type LocalRemoteDraftState =
   | "remote_only"
   | "local_newer"
   | "remote_newer"
+  | "saving"
+  | "save_failed"
   | "synchronized"
   | "conflict";
+
+export type LocalRemoteDraftPersistenceState = "idle" | "saving" | "save_failed";
+
+export type ClassifyLocalRemoteDraftStateInput = {
+  localUpdatedAt?: string;
+  remoteUpdatedAt?: string;
+  persistenceState?: LocalRemoteDraftPersistenceState;
+};
 
 export function classifyLocalRemoteDraftState({
   localUpdatedAt,
   remoteUpdatedAt,
-}: {
-  localUpdatedAt?: string;
-  remoteUpdatedAt?: string;
-}): LocalRemoteDraftState {
+  persistenceState = "idle",
+}: ClassifyLocalRemoteDraftStateInput): LocalRemoteDraftState {
+  if (persistenceState === "saving" || persistenceState === "save_failed") {
+    return persistenceState;
+  }
+
   const localTime = parseTimestamp(localUpdatedAt);
   const remoteTime = parseTimestamp(remoteUpdatedAt);
   const hasLocal = Boolean(localUpdatedAt?.trim());
@@ -36,12 +48,16 @@ export function classifyLocalRemoteDraftState({
   return "synchronized";
 }
 
-export function shouldUseLocalDraftOverRemote(input: {
-  localUpdatedAt?: string;
-  remoteUpdatedAt?: string;
-}) {
+export function shouldUseLocalDraftOverRemote(
+  input: ClassifyLocalRemoteDraftStateInput,
+) {
   const state = classifyLocalRemoteDraftState(input);
-  return state === "local_only" || state === "local_newer";
+  return (
+    state === "local_only" ||
+    state === "local_newer" ||
+    state === "saving" ||
+    state === "save_failed"
+  );
 }
 
 export function pickLocalStringValue(

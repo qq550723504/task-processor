@@ -30,6 +30,18 @@ describe("local/remote draft conflict policy", () => {
       remoteUpdatedAt: "2026-06-22T00:00:01.000Z",
     },
     {
+      expected: "saving",
+      localUpdatedAt: "2026-06-22T00:00:00.000Z",
+      persistenceState: "saving",
+      remoteUpdatedAt: "2026-06-22T00:00:01.000Z",
+    },
+    {
+      expected: "save_failed",
+      localUpdatedAt: "2026-06-22T00:00:00.000Z",
+      persistenceState: "save_failed",
+      remoteUpdatedAt: "2026-06-22T00:00:01.000Z",
+    },
+    {
       expected: "synchronized",
       localUpdatedAt: "2026-06-22T00:00:00.000Z",
       remoteUpdatedAt: "2026-06-22T00:00:00.000Z",
@@ -41,9 +53,13 @@ describe("local/remote draft conflict policy", () => {
     },
   ] as const)(
     "classifies $expected",
-    ({ expected, localUpdatedAt, remoteUpdatedAt }) => {
+    ({ expected, localUpdatedAt, persistenceState, remoteUpdatedAt }) => {
       expect(
-        classifyLocalRemoteDraftState({ localUpdatedAt, remoteUpdatedAt }),
+        classifyLocalRemoteDraftState({
+          localUpdatedAt,
+          persistenceState,
+          remoteUpdatedAt,
+        }),
       ).toBe(expected);
     },
   );
@@ -61,6 +77,20 @@ describe("local/remote draft conflict policy", () => {
         remoteUpdatedAt: "2026-06-22T00:00:01.000Z",
       }),
     ).toBe(false);
+    expect(
+      shouldUseLocalDraftOverRemote({
+        localUpdatedAt: "2026-06-22T00:00:00.000Z",
+        persistenceState: "saving",
+        remoteUpdatedAt: "2026-06-22T00:00:01.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      shouldUseLocalDraftOverRemote({
+        localUpdatedAt: "2026-06-22T00:00:00.000Z",
+        persistenceState: "save_failed",
+        remoteUpdatedAt: "2026-06-22T00:00:01.000Z",
+      }),
+    ).toBe(true);
   });
 
   it("keeps non-empty local field values and falls back to remote empties", () => {
