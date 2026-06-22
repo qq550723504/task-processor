@@ -1,10 +1,102 @@
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
+  SheinStudioCreatedTask,
   SheinStudioFailedTask,
+  SheinStudioGeneratedDesign,
+  SheinStudioGroupedImageMode,
+  SheinStudioImageStrategy,
+  SheinStudioProductImagePrompt,
   SheinStudioRejectedTask,
+  SheinStudioSelectedSDSImage,
 } from "@/lib/types/shein-studio";
-import type { GroupedSheinTaskCreationWarning } from "@/lib/shein-studio/create-review-tasks";
+import type {
+  GroupedSheinTaskCreationWarning,
+} from "@/lib/shein-studio/create-review-tasks";
+
+type TaskCreationGroupSelection = {
+  selection: SDSProductVariantSelection;
+  baselineStatus: GroupedSDSSelectionEligibility["baselineStatus"];
+  baselineReason: string;
+  eligible: boolean;
+  eligibilityReason?: string;
+};
+
+type StandaloneCreateTasksInput = {
+  prompt: string;
+  sheinStoreId: string;
+  imageStrategy?: SheinStudioImageStrategy;
+  selectedSdsImages?: SheinStudioSelectedSDSImage[];
+  productImageCount?: string;
+  productImagePrompt?: string;
+  productImagePrompts?: SheinStudioProductImagePrompt[];
+  renderSizeImagesWithSds?: boolean;
+  selection?: SDSProductVariantSelection;
+  approvedDesigns: SheinStudioGeneratedDesign[];
+  onProgress?: (message: string) => void;
+};
+
+type StandaloneCreateGroupedTasksInput = {
+  prompt: string;
+  imageStrategy?: SheinStudioImageStrategy;
+  groupedImageMode?: SheinStudioGroupedImageMode;
+  selectedSdsImages?: SheinStudioSelectedSDSImage[];
+  productImageCount?: string;
+  productImagePrompt?: string;
+  productImagePrompts?: SheinStudioProductImagePrompt[];
+  renderSizeImagesWithSds?: boolean;
+  onProgress?: (message: string) => void;
+  groups: Array<{
+    sheinStoreId: string;
+    selections: TaskCreationGroupSelection[];
+    approvedDesigns: SheinStudioGeneratedDesign[];
+  }>;
+};
+
+type StandaloneTaskCreationPersistDraft = (
+  overrides?: Partial<{ createdTasks: SheinStudioCreatedTask[] }>,
+  options?: {
+    navigationTriggered?: boolean;
+    source?: string;
+  },
+) => Promise<unknown>;
+
+type ExecuteStandaloneTaskCreationInput = {
+  activeSelection: SDSProductVariantSelection;
+  activeSelectionBaselineReason: string;
+  activeSelectionBaselineStatus: GroupedSDSSelectionEligibility["baselineStatus"];
+  approvedDesigns: SheinStudioGeneratedDesign[];
+  createGroupedTasks: (
+    input: StandaloneCreateGroupedTasksInput,
+  ) => Promise<{
+    created: SheinStudioCreatedTask[];
+    warnings: GroupedSheinTaskCreationWarning[];
+  }>;
+  createTasks: (
+    input: StandaloneCreateTasksInput,
+  ) => Promise<SheinStudioCreatedTask[]>;
+  groupedImageMode: SheinStudioGroupedImageMode;
+  groupedSelections: GroupedSDSSelectionEligibility[];
+  hasLocalWorkflowStateRef: { current: boolean };
+  imageStrategy: SheinStudioImageStrategy;
+  navigateToStep: (step: "tasks") => void;
+  persistDraft: StandaloneTaskCreationPersistDraft;
+  productImageCount: string;
+  productImagePrompt: string;
+  productImagePrompts: SheinStudioProductImagePrompt[];
+  prompt: string;
+  renderSizeImagesWithSds: boolean;
+  selectedSdsImages: SheinStudioSelectedSDSImage[];
+  setCreatedTasks: (value: SheinStudioCreatedTask[]) => void;
+  setCreatingMessage: (value: string) => void;
+  setCreatingWarning: (value: string) => void;
+  sheinStoreId: string;
+};
+
+type ExecuteStandaloneTaskCreationResult = {
+  availableTasks: SheinStudioCreatedTask[];
+  warnings: GroupedSheinTaskCreationWarning[];
+};
 
 export function resolveTaskCreationStartValidation({
   activeSelection,
@@ -98,4 +190,109 @@ export function groupTaskCreationSelectionsByStore(
     byStore.set(key, { sheinStoreId: key, items: [item] });
   }
   return [...byStore.values()];
+}
+
+export async function executeStandaloneTaskCreation({
+  activeSelection,
+  activeSelectionBaselineReason,
+  activeSelectionBaselineStatus,
+  approvedDesigns,
+  createGroupedTasks,
+  createTasks,
+  groupedImageMode,
+  groupedSelections,
+  hasLocalWorkflowStateRef,
+  imageStrategy,
+  navigateToStep,
+  persistDraft,
+  productImageCount,
+  productImagePrompt,
+  productImagePrompts,
+  prompt,
+  renderSizeImagesWithSds,
+  selectedSdsImages,
+  setCreatedTasks,
+  setCreatingMessage,
+  setCreatingWarning,
+  sheinStoreId,
+}: ExecuteStandaloneTaskCreationInput): Promise<ExecuteStandaloneTaskCreationResult> {
+  let created: SheinStudioCreatedTask[] = [];
+  let warnings: GroupedSheinTaskCreationWarning[] = [];
+
+  if (groupedSelections.length > 0) {
+    const result = await createGroupedTasks({
+      prompt,
+      groupedImageMode,
+      imageStrategy,
+      selectedSdsImages,
+      productImageCount,
+      productImagePrompt,
+      productImagePrompts,
+      renderSizeImagesWithSds,
+      onProgress: setCreatingMessage,
+      groups: [
+        {
+          sheinStoreId,
+          selections: [
+            {
+              selection: activeSelection,
+              baselineStatus: activeSelectionBaselineStatus,
+              baselineReason: activeSelectionBaselineReason,
+              eligible: true,
+            },
+          ],
+          approvedDesigns,
+        },
+        ...groupTaskCreationSelectionsByStore(groupedSelections).map((group) => ({
+          sheinStoreId: group.sheinStoreId,
+          selections: group.items.map((item) => ({
+            selection: item.selection,
+            baselineStatus: item.baselineStatus,
+            baselineReason: item.baselineReason,
+            eligible: item.eligible,
+            eligibilityReason: item.eligibilityReason,
+          })),
+          approvedDesigns,
+        })),
+      ],
+    });
+    created = result.created;
+    warnings = result.warnings;
+  } else {
+    created = await createTasks({
+      prompt,
+      sheinStoreId,
+      imageStrategy,
+      selectedSdsImages,
+      productImageCount,
+      productImagePrompt,
+      productImagePrompts,
+      renderSizeImagesWithSds,
+      selection: activeSelection,
+      approvedDesigns,
+      onProgress: setCreatingMessage,
+    });
+  }
+
+  hasLocalWorkflowStateRef.current = true;
+  setCreatedTasks(created);
+  setCreatingMessage(
+    groupedSelections.length > 0
+      ? `已为 ${created.length} 个 SDS 商品生成或复用 SHEIN 资料任务。请在下方打开并审核。`
+      : `已生成或复用 ${created.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
+  );
+  setCreatingWarning(buildGroupedTaskCreationWarningSummary(warnings));
+
+  if (created.length > 0) {
+    navigateToStep("tasks");
+    await persistDraft(
+      { createdTasks: created },
+      {
+        navigationTriggered: true,
+        source: "task_creation_success",
+      },
+    ).catch(() => undefined);
+  }
+
+  return { availableTasks: created, warnings };
 }

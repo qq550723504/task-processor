@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildBatchTaskCreationFailureSummary,
   buildGroupedTaskCreationWarningSummary,
+  executeStandaloneTaskCreation,
   groupTaskCreationSelectionsByStore,
   resolveTaskCreationStartValidation,
 } from "@/lib/shein-studio/task-creation-controller";
@@ -128,5 +129,88 @@ describe("SHEIN Studio task creation controller", () => {
         items: [groupedSelection("870", 102)],
       },
     ]);
+  });
+
+  it("executes grouped standalone task creation and persists created tasks", async () => {
+    const createdTask = {
+      id: "task-1",
+      designId: "design-1",
+      title: "Task 1",
+    };
+    const createGroupedTasks = vi.fn().mockResolvedValue({
+      created: [createdTask],
+      warnings: [
+        {
+          label: "商品 B",
+          selectionId: "selection-102",
+          reason: "missing_design_match",
+          message: "",
+        },
+      ],
+    });
+    const createTasks = vi.fn();
+    const setCreatedTasks = vi.fn();
+    const setCreatingMessage = vi.fn();
+    const setCreatingWarning = vi.fn();
+    const navigateToStep = vi.fn();
+    const persistDraft = vi.fn().mockResolvedValue(undefined);
+    const localWorkflowStateRef = { current: false };
+
+    const result = await executeStandaloneTaskCreation({
+      activeSelection: selection,
+      activeSelectionBaselineReason: "",
+      activeSelectionBaselineStatus: "ready",
+      approvedDesigns: [{ id: "design-1" }],
+      createGroupedTasks,
+      createTasks,
+      groupedImageMode: "shared_by_size",
+      groupedSelections: [groupedSelection("870", 102)],
+      hasLocalWorkflowStateRef: localWorkflowStateRef,
+      imageStrategy: "ai_generated",
+      navigateToStep,
+      persistDraft,
+      productImageCount: "2",
+      productImagePrompt: "front and back",
+      productImagePrompts: [],
+      prompt: "summer flowers",
+      renderSizeImagesWithSds: true,
+      selectedSdsImages: [],
+      setCreatedTasks,
+      setCreatingMessage,
+      setCreatingWarning,
+      sheinStoreId: "869",
+    });
+
+    expect(result.availableTasks).toEqual([createdTask]);
+    expect(createGroupedTasks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "summer flowers",
+        groupedImageMode: "shared_by_size",
+        groups: [
+          expect.objectContaining({
+            sheinStoreId: "869",
+            approvedDesigns: [{ id: "design-1" }],
+          }),
+          expect.objectContaining({
+            sheinStoreId: "870",
+            approvedDesigns: [{ id: "design-1" }],
+          }),
+        ],
+      }),
+    );
+    expect(createTasks).not.toHaveBeenCalled();
+    expect(setCreatedTasks).toHaveBeenCalledWith([createdTask]);
+    expect(setCreatingMessage).toHaveBeenCalledWith(
+      "已为 1 个 SDS 商品生成或复用 SHEIN 资料任务。请在下方打开并审核。",
+    );
+    expect(setCreatingWarning).toHaveBeenCalledWith(
+      "有 1 款商品因为没有匹配到自己的款式图而被跳过：商品 B。这些商品不会创建错误任务，你可以回到生成区补图后再重试。",
+    );
+    expect(navigateToStep).toHaveBeenCalledWith("tasks");
+    expect(persistDraft).toHaveBeenCalledWith(
+      { createdTasks: [createdTask] },
+      { navigationTriggered: true, source: "task_creation_success" },
+    );
+    expect(localWorkflowStateRef.current).toBe(true);
   });
 });

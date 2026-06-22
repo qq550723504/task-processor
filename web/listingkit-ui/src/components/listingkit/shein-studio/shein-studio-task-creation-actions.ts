@@ -14,13 +14,11 @@ import {
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import {
   createGroupedSheinReviewTasks,
-  type GroupedSheinTaskCreationWarning,
   createSheinReviewTasks,
 } from "@/lib/shein-studio/create-review-tasks";
 import {
   buildBatchTaskCreationFailureSummary,
-  buildGroupedTaskCreationWarningSummary,
-  groupTaskCreationSelectionsByStore,
+  executeStandaloneTaskCreation,
   resolveTaskCreationStartValidation,
 } from "@/lib/shein-studio/task-creation-controller";
 import { useToast } from "@/components/providers/toast-provider";
@@ -175,7 +173,6 @@ export function useSheinStudioTaskCreationAction({
     try {
       let created: SheinStudioCreatedTask[] = [];
       let reused: SheinStudioCreatedTask[] = [];
-      let creationWarnings: GroupedSheinTaskCreationWarning[] = [];
       let batchTaskFailures: SheinStudioFailedTask[] = [];
       let batchTaskRejections: SheinStudioRejectedTask[] = [];
 
@@ -215,61 +212,37 @@ export function useSheinStudioTaskCreationAction({
           );
           return;
         }
-      } else if (groupedSelections.length > 0) {
-        const result = await createGroupedSheinReviewTasks({
-          prompt,
-          groupedImageMode,
-          imageStrategy,
-          selectedSdsImages,
-          productImageCount,
-          productImagePrompt,
-          productImagePrompts,
-          renderSizeImagesWithSds,
-          onProgress: setCreatingMessage,
-          groups: [
-            {
-              sheinStoreId,
-              selections: [
-                {
-                  selection: taskCreationSelection,
-                  baselineStatus: activeSelectionBaselineStatus,
-                  baselineReason: activeSelectionBaselineReason,
-                  eligible: true,
-                },
-              ],
-              approvedDesigns: approved,
-            },
-            ...groupTaskCreationSelectionsByStore(groupedSelections).map(
-              (group) => ({
-                sheinStoreId: group.sheinStoreId,
-                selections: group.items.map((item) => ({
-                  selection: item.selection,
-                  baselineStatus: item.baselineStatus,
-                  baselineReason: item.baselineReason,
-                  eligible: item.eligible,
-                  eligibilityReason: item.eligibilityReason,
-                })),
-                approvedDesigns: approved,
-              }),
-            ),
-          ],
-        });
-        created = result.created;
-        creationWarnings = result.warnings;
       } else {
-        created = await createSheinReviewTasks({
-          prompt,
-          sheinStoreId,
+        const result = await executeStandaloneTaskCreation({
+          activeSelection: taskCreationSelection,
+          activeSelectionBaselineReason,
+          activeSelectionBaselineStatus,
+          approvedDesigns: approved,
+          createGroupedTasks: createGroupedSheinReviewTasks,
+          createTasks: createSheinReviewTasks,
+          groupedImageMode,
+          groupedSelections,
+          hasLocalWorkflowStateRef,
           imageStrategy,
-          selectedSdsImages,
+          navigateToStep,
+          persistDraft,
           productImageCount,
           productImagePrompt,
           productImagePrompts,
+          prompt,
           renderSizeImagesWithSds,
-          selection: taskCreationSelection,
-          approvedDesigns: approved,
-          onProgress: setCreatingMessage,
+          selectedSdsImages,
+          setCreatedTasks,
+          setCreatingMessage,
+          setCreatingWarning,
+          sheinStoreId,
         });
+        toast.success(
+          "SHEIN 资料创建完成",
+          `共生成或复用 ${result.availableTasks.length} 个任务。`,
+          7000,
+        );
+        return;
       }
 
       hasLocalWorkflowStateRef.current = true;
@@ -303,7 +276,7 @@ export function useSheinStudioTaskCreationAction({
             ? `已为 ${availableTasks.length} 个 SDS 商品生成或复用 SHEIN 资料任务。请在下方打开并审核。`
             : `已生成或复用 ${availableTasks.length} 个 SHEIN 资料任务。请在下方打开并审核。`,
         );
-        setCreatingWarning(buildGroupedTaskCreationWarningSummary(creationWarnings));
+        setCreatingWarning("");
         toast.success(
           "SHEIN 资料创建完成",
           `共生成或复用 ${availableTasks.length} 个任务。`,
