@@ -200,14 +200,9 @@ Owns root AI client settings entrypoints:
 
 ### `service_shein_settings_entrypoints.go`
 
-Owns root SHEIN settings entrypoints:
+Owns root SHEIN settings and manual category search facade delegates:
 
-- SHEIN settings fetch / update.
-
-### `service_shein_category_search_entrypoint.go`
-
-Owns root SHEIN category search facade delegates:
-
+- SHEIN settings fetch / update;
 - manual SHEIN category search entrypoint.
 
 ### `service_shein_category_api_helpers.go`

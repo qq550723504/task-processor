@@ -2454,6 +2454,7 @@ func TestSheinStoreResolutionSummaryValueLivesOutsidePreviewContextBuilder(t *te
 	for _, needle := range []string{
 		"func buildSheinStoreResolutionSummaryValue(",
 		"return sheinworkspace.BuildStoreResolutionSummary(",
+		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("shein_store_resolution_presentation.go should contain %q", needle)
