@@ -16,9 +16,9 @@ func normalizeSheinStudioSubmitSupplierSKUs(task *Task, pkg *sheinpub.Package, s
 	styleID := resolveStudioSubmitStyleSuffix(task)
 	return sheinpub.NormalizeStudioSubmitSupplierSKUs(pkg, sheinpub.StudioSubmitSKUContext{
 		StyleID: styleID,
-		TaskDiscriminator: combineStudioSubmitDiscriminators(
-			studioSubmitTaskDiscriminator(task.ID),
-			studioSubmitRequestDiscriminator(submitRequestID),
+		TaskDiscriminator: sheinpub.CombineSubmitDiscriminators(
+			sheinpub.SubmitTaskDiscriminator(task.ID),
+			sheinpub.SubmitRequestDiscriminator(submitRequestID),
 		),
 		Variant: adaptSubmitVariantContext(sds),
 	})

@@ -90,8 +90,7 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 
 	for _, needle := range []string{
 		"func resolveStudioSubmitStyleSuffix(task *Task) string {",
-		"func combineStudioSubmitDiscriminators(values ...string) string {",
-		"func studioSubmitRequestDiscriminator(requestID string) string {",
+		"func sheinStudioStyleID(options *SheinStudioOptions) string {",
 	} {
 		if !strings.Contains(styleContent, needle) {
 			t.Fatalf("shein_submit_sku_style_support.go should contain %q", needle)
@@ -99,6 +98,8 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 	}
 	for _, needle := range []string{
 		"stopwords := map[string]bool",
+		"func combineStudioSubmitDiscriminators(values ...string) string {",
+		"func studioSubmitRequestDiscriminator(requestID string) string {",
 		"tokenizeStudioStyleSuffixWords(value)",
 		"b.WriteString(\"R\")",
 	} {

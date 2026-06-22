@@ -49,17 +49,24 @@ func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 	styleContent := string(styleSrc)
 
 	for _, needle := range []string{
+		"func resolveStudioSubmitStyleSuffix(task *Task) string {",
+		"func sheinStudioStyleID(options *SheinStudioOptions) string {",
+	} {
+		if !strings.Contains(styleContent, needle) {
+			t.Fatalf("shein_submit_sku_style_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
 		"func looksLikeStudioSubmitRequestToken(token string) bool {",
 		"func looksLikeStudioSubmitTaskToken(token string) bool {",
-		"func resolveStudioSubmitStyleSuffix(task *Task) string {",
 		"func deriveStudioSubmitStyleSuffix(values ...string) string {",
 		"func tokenizeStudioStyleSuffixWords(value string) []string {",
 		"func studioSubmitTaskDiscriminator(taskID string) string {",
 		"func studioSubmitRequestDiscriminator(requestID string) string {",
 		"func combineStudioSubmitDiscriminators(values ...string) string {",
 	} {
-		if !strings.Contains(styleContent, needle) {
-			t.Fatalf("shein_submit_sku_style_support.go should contain %q", needle)
+		if strings.Contains(styleContent, needle) {
+			t.Fatalf("shein_submit_sku_style_support.go should delegate style wrapper %q", needle)
 		}
 	}
 	for _, needle := range []string{
@@ -72,6 +79,25 @@ func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 	} {
 		if strings.Contains(styleContent, needle) {
 			t.Fatalf("shein_submit_sku_style_support.go should delegate style detail %q", needle)
+		}
+	}
+
+	publishingStyleSrc, err := os.ReadFile("../publishing/shein/submit_sku_style.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../publishing/shein/submit_sku_style.go) error = %v", err)
+	}
+	publishingStyleContent := string(publishingStyleSrc)
+	for _, needle := range []string{
+		"func LooksLikeSubmitRequestToken(token string) bool {",
+		"func LooksLikeSubmitTaskToken(token string) bool {",
+		"func DeriveSubmitStyleSuffix(values ...string) string {",
+		"func TokenizeStyleSuffixWords(value string) []string {",
+		"func SubmitTaskDiscriminator(taskID string) string {",
+		"func SubmitRequestDiscriminator(requestID string) string {",
+		"func CombineSubmitDiscriminators(values ...string) string {",
+	} {
+		if !strings.Contains(publishingStyleContent, needle) {
+			t.Fatalf("publishing submit_sku_style.go should contain %q", needle)
 		}
 	}
 }
