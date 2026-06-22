@@ -64,8 +64,13 @@ import {
   buildGroupedSDSBaselineHandoff,
   getSDSBaselineReasonMessage,
 } from "@/lib/shein-studio/sds-baseline-ui";
+import {
+  createBatchQueueController,
+  type SheinStudioBatchQueueResumeState,
+} from "@/lib/shein-studio/batch-queue";
 import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
+import { resolveDedicatedBatchHydration } from "@/lib/shein-studio/batch-hydration";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import {
   clearListingKitTraceContext,
@@ -120,90 +125,6 @@ function getBatchRunStartErrorMessage(error: unknown) {
     return error.message;
   }
   return "这轮批量生成没有成功启动，请稍后重试。";
-}
-
-function isLocalSnapshotNewerThanBatch(
-  snapshotUpdatedAt: string | undefined,
-  batchUpdatedAt: string | undefined,
-) {
-  const snapshotTime = Date.parse(snapshotUpdatedAt ?? "");
-  const batchTime = Date.parse(batchUpdatedAt ?? "");
-  if (!Number.isFinite(snapshotTime) || !Number.isFinite(batchTime)) {
-    return false;
-  }
-  return snapshotTime > batchTime;
-}
-
-function pickLocalStringValue(
-  localValue: string | undefined,
-  remoteValue: string | undefined,
-) {
-  return localValue?.trim() ? localValue : (remoteValue ?? "");
-}
-
-function pickLocalArrayValue<T>(
-  localValue: T[] | undefined,
-  remoteValue: T[] | undefined,
-) {
-  return ((localValue?.length ?? 0) > 0 ? localValue : (remoteValue ?? [])) as T[];
-}
-
-function mergeDedicatedBatchWithLocalSnapshot(
-  batchId: string,
-  hydratedBatch: SheinStudioWorkbenchHydratedBatch,
-  localSnapshot: NonNullable<ReturnType<typeof loadLocalSheinStudioDraftSnapshotDetail>>,
-): SheinStudioWorkbenchHydratedBatch {
-  const savedBatch = hydratedBatch.savedBatch;
-  const localDraft = localSnapshot.draft;
-  return {
-    savedBatch: {
-      ...savedBatch,
-      prompt:
-        dedicatedBatchPromptOverrides.get(batchId) ??
-        pickLocalStringValue(localDraft.prompt, savedBatch.prompt),
-      styleCount: pickLocalStringValue(localDraft.styleCount, savedBatch.styleCount),
-      variationIntensity:
-        localDraft.variationIntensity ?? savedBatch.variationIntensity,
-      productImageCount: pickLocalStringValue(
-        localDraft.productImageCount,
-        savedBatch.productImageCount,
-      ),
-      productImagePrompt: pickLocalStringValue(
-        localDraft.productImagePrompt,
-        savedBatch.productImagePrompt,
-      ),
-      productImagePrompts: pickLocalArrayValue(
-        localDraft.productImagePrompts,
-        savedBatch.productImagePrompts,
-      ),
-      artworkModel: pickLocalStringValue(
-        localDraft.artworkModel,
-        savedBatch.artworkModel,
-      ),
-      transparentBackground:
-        localDraft.transparentBackground ?? savedBatch.transparentBackground,
-      sheinStoreId: pickLocalStringValue(
-        localDraft.sheinStoreId,
-        savedBatch.sheinStoreId,
-      ),
-      imageStrategy: localDraft.imageStrategy ?? savedBatch.imageStrategy,
-      groupedImageMode:
-        localDraft.groupedImageMode ?? savedBatch.groupedImageMode,
-      selectedSdsImages: pickLocalArrayValue(
-        localDraft.selectedSdsImages,
-        savedBatch.selectedSdsImages,
-      ),
-      renderSizeImagesWithSds:
-        localDraft.renderSizeImagesWithSds ?? savedBatch.renderSizeImagesWithSds,
-      selection: localDraft.selection ?? savedBatch.selection,
-      groupedSelections: pickLocalArrayValue(
-        localDraft.groupedSelections,
-        savedBatch.groupedSelections,
-      ),
-      groups: pickLocalArrayValue(localDraft.groups, savedBatch.groups),
-    },
-    detail: hydratedBatch.detail,
-  };
 }
 
 function upsertSavedBatch(
@@ -461,12 +382,8 @@ export function SheinStudioWorkbench({
   const [rawSelectedRecentBatchSummaryIds, setRawSelectedRecentBatchSummaryIds] = useState<
     string[]
   >([]);
-  const [queueResumeState, setQueueResumeState] = useState<{
-    batchIds: string[];
-    mode: SheinStudioBatchQueueMode;
-    startIndex: number;
-    total: number;
-  } | null>(null);
+  const [queueResumeState, setQueueResumeState] =
+    useState<SheinStudioBatchQueueResumeState | null>(null);
   const [activeBatchRunId, setActiveBatchRunId] = useState("");
   const [isStartingDedicatedBatchRun, setIsStartingDedicatedBatchRun] = useState(false);
   const [batchRunError, setBatchRunError] = useState("");
@@ -780,16 +697,6 @@ export function SheinStudioWorkbench({
       cancelled = true;
     };
   }, [hydrateRecentBatchSelection, selectedPersistedRecentBatchIds]);
-  const queueCompletionMessage = useCallback(
-    (mode: SheinStudioBatchQueueMode, batchCount: number) => {
-      const actionLabel =
-        mode === "create_tasks" ? "创建任务处理" : "继续生成处理";
-      return batchCount > 0
-        ? `已完成这轮${actionLabel}，共处理 ${batchCount} 个已保存批次。首页勾选已保留，可继续调整或再次发起批量处理。`
-        : `当前没有可继续的已保存批次。首页勾选已保留，可重新检查后再发起批量处理。`;
-    },
-    [],
-  );
   const resumableQueueBatchIds = useMemo(
     () =>
       queueResumeState
@@ -1405,27 +1312,12 @@ export function SheinStudioWorkbench({
           return;
         }
         const localSnapshot = loadLocalSheinStudioDraftSnapshotDetail();
-        const batchWithLocalSnapshot: SheinStudioWorkbenchHydratedBatch =
-          localSnapshot?.batchId === batchId &&
-          isLocalSnapshotNewerThanBatch(
-            localSnapshot.draft.updatedAt,
-            hydratedBatch.savedBatch.draftUpdatedAt ??
-              hydratedBatch.savedBatch.updatedAt,
-          )
-            ? mergeDedicatedBatchWithLocalSnapshot(
-                batchId,
-                hydratedBatch,
-                localSnapshot,
-              )
-            : {
-                savedBatch: {
-                  ...hydratedBatch.savedBatch,
-                  prompt:
-                    dedicatedBatchPromptOverrides.get(batchId) ??
-                    hydratedBatch.savedBatch.prompt,
-                },
-                detail: hydratedBatch.detail,
-              };
+        const batchWithLocalSnapshot = resolveDedicatedBatchHydration({
+          batchId,
+          hydratedBatch,
+          localSnapshot,
+          promptOverride: dedicatedBatchPromptOverrides.get(batchId),
+        });
         loadedInitialBatchIdRef.current = batchId;
         handleLoadHydratedBatchRef.current(batchWithLocalSnapshot);
         setIsDedicatedBatchLoaded(true);
@@ -1857,142 +1749,35 @@ export function SheinStudioWorkbench({
     [buildSaveInputFromBatch, refreshSavedBatches, resolveRecentBatchForMutation],
   );
 
-  const clearBatchQueue = useCallback(() => {
-    setBatchQueueMode(null);
-    setQueuedBatchIds([]);
-    setQueuedBatchIndex(0);
-  }, [setBatchQueueMode, setQueuedBatchIds, setQueuedBatchIndex]);
-
-  const stepForQueuedBatch = useCallback(
-    (batch: SheinStudioSavedBatch, mode: SheinStudioBatchQueueMode) => {
-      if (batch.createdTasks.length > 0) {
-        return "tasks" as const;
-      }
-      if (batch.designs.length > 0) {
-        return "review" as const;
-      }
-      if (mode === "generate") {
-        return "generate" as const;
-      }
-      return "generate" as const;
-    },
-    [],
-  );
-
-  const loadQueuedBatch = useCallback(
-    async (
-      batchIds: string[],
-      index: number,
-      mode: SheinStudioBatchQueueMode,
-      options?: {
-        keepResumeState?: boolean;
-        hydratedBatches?: Record<string, SheinStudioWorkbenchHydratedBatch>;
-        requestVersion?: number;
-      },
-    ) => {
-      for (let nextIndex = index; nextIndex < batchIds.length; nextIndex += 1) {
-        if (
-          options?.requestVersion != null &&
-          batchQueueRequestVersionRef.current !== options.requestVersion
-        ) {
-          return false;
-        }
-        const batchId = batchIds[nextIndex];
-        const hydratedBatch =
-          options?.hydratedBatches?.[batchId] ??
-          selectedRecentBatchHydrations[batchId] ??
-          (await hydrateRecentBatchSelection([batchId]))[batchId];
-        if (
-          options?.requestVersion != null &&
-          batchQueueRequestVersionRef.current !== options.requestVersion
-        ) {
-          return false;
-        }
-        const batch =
-          hydratedBatch?.savedBatch ??
-          savedBatches.find((item) => item.id === batchId);
-        if (!batch) {
-          continue;
-        }
-        if (hydratedBatch) {
-          handleLoadHydratedBatch(hydratedBatch);
-        } else {
-          handleLoadBatch(batch);
-        }
-        setQueuedBatchIndex(nextIndex);
-        setEffectiveStep(stepForQueuedBatch(batch, mode));
-        setQueueMessage("");
-        return true;
-      }
-      clearBatchQueue();
-      if (!options?.keepResumeState) {
-        setQueueResumeState(null);
-      }
-      setQueueMessage(queueCompletionMessage(mode, batchIds.length));
-      return false;
-    },
+  const getBatchQueueController = useCallback(
+    () =>
+      createBatchQueueController({
+        getSavedBatches: () => savedBatches,
+        getSelectedHydrations: () => selectedRecentBatchHydrations,
+        hydrateBatchSelection: hydrateRecentBatchSelection,
+        loadBatch: handleLoadBatch,
+        loadHydratedBatch: handleLoadHydratedBatch,
+        requestVersionRef: batchQueueRequestVersionRef,
+        recentOpenVersionRef: recentBatchOpenRequestVersionRef,
+        setBatchQueueMode,
+        setEffectiveStep,
+        setQueueMessage,
+        setQueueResumeState,
+        setQueuedBatchIds,
+        setQueuedBatchIndex,
+      }),
     [
-      clearBatchQueue,
       handleLoadBatch,
       handleLoadHydratedBatch,
       hydrateRecentBatchSelection,
-      queueCompletionMessage,
       savedBatches,
       selectedRecentBatchHydrations,
+      setBatchQueueMode,
       setEffectiveStep,
       setQueueMessage,
-      setQueuedBatchIndex,
       setQueueResumeState,
-      stepForQueuedBatch,
-    ],
-  );
-
-  const startBatchQueue = useCallback(
-    async (input: {
-      batchIds: string[];
-      mode: SheinStudioBatchQueueMode;
-      startIndex?: number;
-    }) => {
-      const requestVersion = batchQueueRequestVersionRef.current + 1;
-      batchQueueRequestVersionRef.current = requestVersion;
-      recentBatchOpenRequestVersionRef.current += 1;
-      const validBatchIds = input.batchIds.filter((batchId) =>
-        savedBatches.some((item) => item.id === batchId),
-      );
-      if (validBatchIds.length === 0) {
-        clearBatchQueue();
-        setQueueResumeState(null);
-        setQueueMessage(queueCompletionMessage(input.mode, 0));
-        return;
-      }
-      const startIndex = Math.max(
-        0,
-        Math.min(input.startIndex ?? 0, validBatchIds.length - 1),
-      );
-      setBatchQueueMode(input.mode);
-      setQueuedBatchIds(validBatchIds);
-      setQueuedBatchIndex(startIndex);
-      setQueueResumeState(null);
-      const hydratedBatches = await hydrateRecentBatchSelection(validBatchIds);
-      if (batchQueueRequestVersionRef.current !== requestVersion) {
-        return;
-      }
-      await loadQueuedBatch(validBatchIds, startIndex, input.mode, {
-        hydratedBatches,
-        requestVersion,
-      });
-    },
-    [
-      clearBatchQueue,
-      hydrateRecentBatchSelection,
-      loadQueuedBatch,
-      queueCompletionMessage,
-      savedBatches,
-      setBatchQueueMode,
-      setQueueMessage,
       setQueuedBatchIds,
       setQueuedBatchIndex,
-      setQueueResumeState,
     ],
   );
   const handleOpenBatchQueue = useCallback(
@@ -2023,35 +1808,21 @@ export function SheinStudioWorkbench({
   );
 
   const handleExitBatchQueue = useCallback(() => {
-    if (batchQueueMode && queuedBatchIds.length > 0) {
-      setQueueResumeState({
-        batchIds: queuedBatchIds,
-        mode: batchQueueMode,
-        startIndex: queuedBatchIndex,
-        total: queuedBatchIds.length,
-      });
-      setQueueMessage("");
-    }
-    batchQueueRequestVersionRef.current += 1;
-    clearBatchQueue();
+    getBatchQueueController().exit({
+      batchIds: queuedBatchIds,
+      currentIndex: queuedBatchIndex,
+      mode: batchQueueMode,
+    });
   }, [
     batchQueueMode,
-    clearBatchQueue,
+    getBatchQueueController,
     queuedBatchIds,
     queuedBatchIndex,
-    setQueueMessage,
   ]);
 
   const handleResumeBatchQueue = useCallback(() => {
-    if (!queueResumeState) {
-      return;
-    }
-    void startBatchQueue({
-      batchIds: queueResumeState.batchIds,
-      mode: queueResumeState.mode,
-      startIndex: queueResumeState.startIndex,
-    });
-  }, [queueResumeState, startBatchQueue]);
+    void getBatchQueueController().resume(queueResumeState);
+  }, [getBatchQueueController, queueResumeState]);
 
   const clearQueuedSelectionContext = useCallback(() => {
     setQueueResumeState(null);
@@ -2095,10 +1866,12 @@ export function SheinStudioWorkbench({
     if (!batchQueueMode) {
       return;
     }
-    void loadQueuedBatch(queuedBatchIds, queuedBatchIndex + 1, batchQueueMode, {
-      requestVersion: batchQueueRequestVersionRef.current,
+    void getBatchQueueController().advance({
+      batchIds: queuedBatchIds,
+      currentIndex: queuedBatchIndex,
+      mode: batchQueueMode,
     });
-  }, [batchQueueMode, loadQueuedBatch, queuedBatchIds, queuedBatchIndex]);
+  }, [getBatchQueueController, batchQueueMode, queuedBatchIds, queuedBatchIndex]);
 
   useEffect(() => {
     if (!batchQueueMode || !currentQueuedBatchId) {
@@ -2661,92 +2434,93 @@ export function SheinStudioWorkbench({
                 storeOptions={enabledProfiles}
               />
               <SheinStudioGenerationPanel
-                artworkModel={artworkModel}
-                availableSdsImages={availableSdsImages}
-                batchProductCount={countSelectionsWithPrimary(
-                  activeSelection,
-                  groupedSelections,
-                )}
-                batchStoreLabel={currentStoreLabel || "未设置"}
-                createTaskButtonLabel={
-                  groupedSelections.length > 0
-                    ? `为 ${countSelectionsWithPrimary(
-                        activeSelection,
-                        groupedSelections,
-                      )} 款商品生成 SHEIN 资料`
-                    : "生成 SHEIN 资料"
-                }
-                createdTasks={createdTasks}
-                creatingError={creatingError}
-                creatingMessage={creatingMessage}
-                failedTasks={itemizedBatchDetail?.failedTasks ?? []}
-                generationError={generationError}
-                generationNotice={
-                  hasRetryableFailedItems
-                    ? `当前批次有 ${retryableFailedItemCount} 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。`
-                    : ""
-                }
-                failedBatchItems={
-                  hasRetryableFailedItems
+                actions={{
+                  onCreateTasks: handleCreateTasks,
+                  onDeleteBatch: handleDeleteBatch,
+                  onGenerate: handleGenerate,
+                  onLoadBatch: handleLoadBatch,
+                  onRetryFailedItem: (itemId) => {
+                    void handleRetryFailedItem(itemId);
+                  },
+                  onRestorePrompt: handlePromptChange,
+                  onSaveBatch: handleSaveBatch,
+                  setArtworkModel,
+                  setGroupedImageMode,
+                  setImageStrategy,
+                  setProductImageCount,
+                  setProductImagePrompt,
+                  setProductImagePrompts,
+                  setPrompt: handlePromptChange,
+                  setRenderSizeImagesWithSds,
+                  setSelectedSdsImages: (value) => {
+                    hasCustomizedSdsSelectionRef.current = true;
+                    setSelectedSdsImages(value);
+                  },
+                  setStyleCount,
+                  setTransparentBackground,
+                  setVariationIntensity,
+                }}
+                form={{
+                  artworkModel,
+                  availableSdsImages,
+                  groupedImageMode,
+                  imageStrategy,
+                  productImageCount,
+                  productImagePrompt,
+                  productImagePrompts,
+                  prompt,
+                  promptHistory: activeGroupPromptHistory,
+                  promptInputRef,
+                  renderSizeImagesWithSds,
+                  selectedSdsImages,
+                  styleCount,
+                  transparentBackground,
+                  variationIntensity,
+                }}
+                status={{
+                  batchProductCount: countSelectionsWithPrimary(
+                    activeSelection,
+                    groupedSelections,
+                  ),
+                  batchStoreLabel: currentStoreLabel || "未设置",
+                  createTaskButtonLabel:
+                    groupedSelections.length > 0
+                      ? `为 ${countSelectionsWithPrimary(
+                          activeSelection,
+                          groupedSelections,
+                        )} 款商品生成 SHEIN 资料`
+                      : "生成 SHEIN 资料",
+                  createdTasks,
+                  creatingError,
+                  creatingMessage,
+                  failedBatchItems: hasRetryableFailedItems
                     ? itemizedBatchDetail?.items
                         .filter((entry) => entry.item.status === "failed")
                         .map((entry) => entry.item) ?? []
-                    : []
-                }
-                groupedImageMode={groupedImageMode}
-                imageStrategy={imageStrategy}
-                isCreatingTasks={isCreatingTasks}
-                isGenerating={effectiveIsGenerating}
-                isRetryingFailedItems={hasRetryableFailedItems}
-                onCreateTasks={handleCreateTasks}
-                onDeleteBatch={handleDeleteBatch}
-                onGenerate={handleGenerate}
-                onLoadBatch={handleLoadBatch}
-                onRetryFailedItem={(itemId) => {
-                  void handleRetryFailedItem(itemId);
+                    : [],
+                  failedTasks: itemizedBatchDetail?.failedTasks ?? [],
+                  generateButtonLabel: hasRetryableFailedItems
+                    ? "重试失败批次"
+                    : "生成款式图",
+                  generationError,
+                  generationNotice: hasRetryableFailedItems
+                    ? `当前批次有 ${retryableFailedItemCount} 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。`
+                    : "",
+                  isCreatingTasks,
+                  isGenerating: effectiveIsGenerating,
+                  isRetryingFailedItems: hasRetryableFailedItems,
+                  rejectedTasks: itemizedBatchDetail?.rejectedTasks ?? [],
+                  retryingFailedItemId,
+                  reusedTasks: itemizedBatchDetail?.reusedTasks ?? [],
+                  savedBatches,
+                  saveMessage,
+                  selectedStyleCount: selectedIds.length,
+                  selectionReady: Boolean(activeSelection?.variantId),
+                  showSavedBatches: !initialBatchId,
+                  statusGroups: itemizedBatchDetail?.statusGroups,
+                  storeRequiredMessage,
+                  subscriptionBlockedMessage,
                 }}
-                onSaveBatch={handleSaveBatch}
-                productImageCount={productImageCount}
-                productImagePrompt={productImagePrompt}
-                productImagePrompts={productImagePrompts}
-                prompt={prompt}
-                promptHistory={activeGroupPromptHistory}
-                promptInputRef={promptInputRef}
-                renderSizeImagesWithSds={renderSizeImagesWithSds}
-                retryingFailedItemId={retryingFailedItemId}
-                rejectedTasks={itemizedBatchDetail?.rejectedTasks ?? []}
-                reusedTasks={itemizedBatchDetail?.reusedTasks ?? []}
-                saveMessage={saveMessage}
-                savedBatches={savedBatches}
-                selectedSdsImages={selectedSdsImages}
-                selectedStyleCount={selectedIds.length}
-                generateButtonLabel={
-                  hasRetryableFailedItems ? "重试失败批次" : "生成款式图"
-                }
-                selectionReady={Boolean(activeSelection?.variantId)}
-                storeRequiredMessage={storeRequiredMessage}
-                showSavedBatches={!initialBatchId}
-                statusGroups={itemizedBatchDetail?.statusGroups}
-                subscriptionBlockedMessage={subscriptionBlockedMessage}
-                setArtworkModel={setArtworkModel}
-                setGroupedImageMode={setGroupedImageMode}
-                setImageStrategy={setImageStrategy}
-                setProductImageCount={setProductImageCount}
-                setProductImagePrompt={setProductImagePrompt}
-                setProductImagePrompts={setProductImagePrompts}
-                onRestorePrompt={handlePromptChange}
-                setPrompt={handlePromptChange}
-                setRenderSizeImagesWithSds={setRenderSizeImagesWithSds}
-                setSelectedSdsImages={(value) => {
-                  hasCustomizedSdsSelectionRef.current = true;
-                  setSelectedSdsImages(value);
-                }}
-                setStyleCount={setStyleCount}
-                setVariationIntensity={setVariationIntensity}
-                setTransparentBackground={setTransparentBackground}
-                styleCount={styleCount}
-                variationIntensity={variationIntensity}
-                transparentBackground={transparentBackground}
               />
             </div>
           ) : null}

@@ -432,7 +432,7 @@ describe("/listing-kits/sds page", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("最近批次")).toBeInTheDocument();
     expect(
-      screen.getByText("最近 3 个批次摘要已折叠，避免和下面的完整看板重复；处理完成后可以随时返回首页摘要。"),
+      await screen.findByText("最近 3 个批次摘要已折叠，避免和下面的完整看板重复；处理完成后可以随时返回首页摘要。"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Product Four")).not.toBeInTheDocument();
     expect(scrollIntoView).toHaveBeenCalled();

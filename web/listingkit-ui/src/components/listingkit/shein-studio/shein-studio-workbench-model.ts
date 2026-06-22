@@ -12,6 +12,7 @@ import {
   DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
 } from "@/lib/shein-studio/storage-shared";
 import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
+export { buildSheinStudioGenerateRequest } from "@/lib/shein-studio/generation-controller";
 import type {
   SheinStudioBatchDetail,
   SheinStudioBatchItemStatus,
@@ -21,7 +22,6 @@ import type {
   SheinStudioGroupedWorkspace,
   SheinStudioDraft,
   SheinStudioGeneratedDesign,
-  SheinStudioGenerateRequest,
   SheinStudioGenerationJob,
   SheinStudioImageStrategy,
   SheinStudioArtworkModel,
@@ -565,76 +565,6 @@ export function mergeSheinStudioDraftState({
     designCount: designs.length,
     createdTaskCount: createdTasks.length,
   };
-}
-
-export function buildSheinStudioGenerateRequest({
-  artworkModel,
-  prompt,
-  printableHeight,
-  printableWidth,
-  productReferenceImageUrls,
-  styleCount,
-  transparentBackground,
-  variationIntensity,
-}: {
-  artworkModel: SheinStudioArtworkModel;
-  prompt: string;
-  printableHeight?: number;
-  printableWidth?: number;
-  productReferenceImageUrls?: string[];
-  styleCount: number;
-  transparentBackground: boolean;
-  variationIntensity: SheinStudioVariationIntensity;
-}): SheinStudioGenerateRequest {
-  const trimmedModel = artworkModel.trim();
-  const normalizedPrompt = normalizeSheinStudioPromptWithSDSSize({
-    prompt,
-    printableWidth,
-    printableHeight,
-  });
-  return {
-    prompt: normalizedPrompt,
-    count: styleCount,
-    variationIntensity,
-    printableWidth,
-    printableHeight,
-    productReferenceImageUrls,
-    imageModel: transparentBackground ? "gpt-image-2" : trimmedModel || undefined,
-    transparentBackground,
-  };
-}
-
-function normalizeSheinStudioPromptWithSDSSize({
-  prompt,
-  printableWidth,
-  printableHeight,
-}: {
-  prompt: string;
-  printableWidth?: number;
-  printableHeight?: number;
-}) {
-  const trimmedPrompt = prompt.trim();
-  if (!trimmedPrompt) {
-    return trimmedPrompt;
-  }
-  if (!printableWidth || !printableHeight) {
-    return trimmedPrompt;
-  }
-  const sizeSuffix = `printable size: ${printableWidth}x${printableHeight}px.`;
-  const normalizedPrompt = trimmedPrompt.replace(/\s+/g, " ");
-  const lowerPrompt = normalizedPrompt.toLowerCase();
-  const lowerSuffix = sizeSuffix.toLowerCase();
-  const compactSizeToken = `${printableWidth}x${printableHeight}px`.toLowerCase();
-  const spacedSizeToken = `${printableWidth} × ${printableHeight}px`.toLowerCase();
-
-  if (
-    lowerPrompt.includes(lowerSuffix) ||
-    lowerPrompt.includes(compactSizeToken) ||
-    lowerPrompt.includes(spacedSizeToken)
-  ) {
-    return normalizedPrompt;
-  }
-  return `${normalizedPrompt}\n\n${sizeSuffix}`;
 }
 
 export function sheinStudioBusyMessage({

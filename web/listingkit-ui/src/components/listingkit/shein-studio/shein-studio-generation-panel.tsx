@@ -29,68 +29,25 @@ import type {
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
-export function SheinStudioGenerationPanel({
-  availableSdsImages,
-  batchProductCount = 0,
-  batchStoreLabel = "未设置",
-  createdTasks,
-  creatingError,
-  creatingMessage,
-  failedTasks = [],
-  generationError,
-  generationNotice = "",
-  failedBatchItems = [],
-  groupedImageMode,
-  artworkModel,
-  imageStrategy,
-  isCreatingTasks,
-  isGenerating,
-  isRetryingFailedItems = false,
-  retryingFailedItemId = "",
-  rejectedTasks = [],
-  reusedTasks = [],
-  onCreateTasks,
-  onDeleteBatch,
-  onGenerate,
-  onLoadBatch,
-  onRetryFailedItem,
-  onSaveBatch,
-  productImageCount,
-  productImagePrompt,
-  productImagePrompts,
-  renderSizeImagesWithSds,
-  transparentBackground,
-  prompt,
-  promptHistory,
-  promptInputRef,
-  savedBatches,
-  saveMessage,
-  selectedSdsImages,
-  selectedStyleCount,
-  createTaskButtonLabel = "生成 SHEIN 资料",
-  generateButtonLabel = "生成款式图",
-  selectionReady,
-  showSavedBatches = true,
-  statusGroups,
-  storeRequiredMessage,
-  subscriptionBlockedMessage,
-  variationIntensity,
-  setImageStrategy,
-  setGroupedImageMode,
-  setSelectedSdsImages,
-  setArtworkModel,
-  setProductImageCount,
-  setProductImagePrompt,
-  setProductImagePrompts,
-  setPrompt,
-  onRestorePrompt,
-  setRenderSizeImagesWithSds,
-  setStyleCount,
-  setVariationIntensity,
-  setTransparentBackground,
-  styleCount,
-}: {
+export type SheinStudioGenerationFormModel = {
   availableSdsImages: SheinStudioSelectableSDSImage[];
+  groupedImageMode: SheinStudioGroupedImageMode;
+  artworkModel: SheinStudioArtworkModel;
+  imageStrategy: SheinStudioImageStrategy;
+  productImageCount: string;
+  productImagePrompt: string;
+  productImagePrompts: SheinStudioProductImagePrompt[];
+  renderSizeImagesWithSds: boolean;
+  transparentBackground: boolean;
+  prompt: string;
+  promptHistory: SDSGroupedPromptHistoryEntry[];
+  promptInputRef: RefObject<HTMLTextAreaElement | null>;
+  selectedSdsImages: SheinStudioSelectedSDSImage[];
+  styleCount: string;
+  variationIntensity: SheinStudioVariationIntensity;
+};
+
+export type SheinStudioGenerationStatusModel = {
   batchProductCount?: number;
   batchStoreLabel?: string;
   createdTasks: SheinStudioCreatedTask[];
@@ -100,32 +57,14 @@ export function SheinStudioGenerationPanel({
   generationError: string;
   generationNotice?: string;
   failedBatchItems?: SheinStudioBatchItem[];
-  groupedImageMode: SheinStudioGroupedImageMode;
-  artworkModel: SheinStudioArtworkModel;
-  imageStrategy: SheinStudioImageStrategy;
   isCreatingTasks: boolean;
   isGenerating: boolean;
   isRetryingFailedItems?: boolean;
   retryingFailedItemId?: string;
   rejectedTasks?: SheinStudioRejectedTask[];
   reusedTasks?: SheinStudioCreatedTask[];
-  onCreateTasks: () => void;
-  onDeleteBatch: (batchID: string) => void;
-  onGenerate: () => void;
-  onLoadBatch: (batch: SheinStudioSavedBatch) => void;
-  onRetryFailedItem?: (itemId: string) => void;
-  onSaveBatch: () => void;
-  productImageCount: string;
-  productImagePrompt: string;
-  productImagePrompts: SheinStudioProductImagePrompt[];
-  renderSizeImagesWithSds: boolean;
-  transparentBackground: boolean;
-  prompt: string;
-  promptHistory: SDSGroupedPromptHistoryEntry[];
-  promptInputRef: RefObject<HTMLTextAreaElement | null>;
   savedBatches: SheinStudioSavedBatch[];
   saveMessage: string;
-  selectedSdsImages: SheinStudioSelectedSDSImage[];
   selectedStyleCount: number;
   createTaskButtonLabel?: string;
   generateButtonLabel?: string;
@@ -134,7 +73,15 @@ export function SheinStudioGenerationPanel({
   statusGroups?: SheinStudioBatchStatusGroups;
   storeRequiredMessage: string;
   subscriptionBlockedMessage: string;
-  variationIntensity: SheinStudioVariationIntensity;
+};
+
+export type SheinStudioGenerationActions = {
+  onCreateTasks: () => void;
+  onDeleteBatch: (batchID: string) => void;
+  onGenerate: () => void;
+  onLoadBatch: (batch: SheinStudioSavedBatch) => void;
+  onRetryFailedItem?: (itemId: string) => void;
+  onSaveBatch: () => void;
   setImageStrategy: (value: SheinStudioImageStrategy) => void;
   setGroupedImageMode: (value: SheinStudioGroupedImageMode) => void;
   setSelectedSdsImages: (value: SheinStudioSelectedSDSImage[]) => void;
@@ -148,8 +95,82 @@ export function SheinStudioGenerationPanel({
   setStyleCount: (value: string) => void;
   setVariationIntensity: (value: SheinStudioVariationIntensity) => void;
   setTransparentBackground: (value: boolean) => void;
-  styleCount: string;
+};
+
+export function SheinStudioGenerationPanel({
+  actions,
+  form,
+  status,
+}: {
+  actions: SheinStudioGenerationActions;
+  form: SheinStudioGenerationFormModel;
+  status: SheinStudioGenerationStatusModel;
 }) {
+  const {
+    artworkModel,
+    availableSdsImages,
+    groupedImageMode,
+    imageStrategy,
+    productImageCount,
+    productImagePrompt,
+    productImagePrompts,
+    prompt,
+    promptHistory,
+    promptInputRef,
+    renderSizeImagesWithSds,
+    selectedSdsImages,
+    styleCount,
+    transparentBackground,
+    variationIntensity,
+  } = form;
+  const {
+    batchProductCount = 0,
+    batchStoreLabel = "未设置",
+    createdTasks,
+    creatingError,
+    creatingMessage,
+    createTaskButtonLabel = "生成 SHEIN 资料",
+    failedBatchItems = [],
+    failedTasks = [],
+    generateButtonLabel = "生成款式图",
+    generationError,
+    generationNotice = "",
+    isCreatingTasks,
+    isGenerating,
+    isRetryingFailedItems = false,
+    rejectedTasks = [],
+    retryingFailedItemId = "",
+    reusedTasks = [],
+    savedBatches,
+    saveMessage,
+    selectedStyleCount,
+    selectionReady,
+    showSavedBatches = true,
+    statusGroups,
+    storeRequiredMessage,
+    subscriptionBlockedMessage,
+  } = status;
+  const {
+    onCreateTasks,
+    onDeleteBatch,
+    onGenerate,
+    onLoadBatch,
+    onRetryFailedItem,
+    onRestorePrompt,
+    onSaveBatch,
+    setArtworkModel,
+    setGroupedImageMode,
+    setImageStrategy,
+    setProductImageCount,
+    setProductImagePrompt,
+    setProductImagePrompts,
+    setPrompt,
+    setRenderSizeImagesWithSds,
+    setSelectedSdsImages,
+    setStyleCount,
+    setTransparentBackground,
+    setVariationIntensity,
+  } = actions;
   const hasSdsSizeReferenceImages = availableSdsImages.some(
     (item) => item.kind === "size_reference",
   );
