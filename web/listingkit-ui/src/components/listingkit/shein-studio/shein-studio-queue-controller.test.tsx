@@ -2,7 +2,10 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useSheinStudioQueueController } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
+import {
+  projectSheinStudioQueueState,
+  useSheinStudioQueueController,
+} from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import type { SheinStudioBatchQueueResumeState } from "@/lib/shein-studio/batch-queue";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 
@@ -176,5 +179,48 @@ describe("useSheinStudioQueueController", () => {
     });
     expect(input.focus).toHaveBeenCalled();
     vi.useRealTimers();
+  });
+});
+
+describe("projectSheinStudioQueueState", () => {
+  it("projects the active queued batch and generate guidance", () => {
+    const batch1 = buildBatch("batch-1");
+    const batch2 = buildBatch("batch-2");
+
+    const projection = projectSheinStudioQueueState({
+      batchQueueMode: "generate",
+      effectiveStep: "generate",
+      queueResumeState: {
+        batchIds: ["batch-1", "missing-batch", "batch-2"],
+        mode: "generate",
+        startIndex: 0,
+        total: 3,
+      },
+      queuedBatchIds: ["batch-1", "batch-2"],
+      queuedBatchIndex: 1,
+      savedBatches: [batch1, batch2],
+    });
+
+    expect(projection.currentQueuedBatchId).toBe("batch-2");
+    expect(projection.currentQueuedBatch).toBe(batch2);
+    expect(projection.batchQueueGuidance).toBe(
+      "已定位到生成区，可直接修改提示词或继续生成。",
+    );
+    expect(projection.resumableQueueBatchIds).toEqual(["batch-1", "batch-2"]);
+  });
+
+  it("clears the active queued batch when queue mode is inactive", () => {
+    const projection = projectSheinStudioQueueState({
+      batchQueueMode: null,
+      effectiveStep: "select",
+      queueResumeState: null,
+      queuedBatchIds: ["batch-1"],
+      queuedBatchIndex: 0,
+      savedBatches: [buildBatch("batch-1")],
+    });
+
+    expect(projection.currentQueuedBatchId).toBe("");
+    expect(projection.currentQueuedBatch).toBeNull();
+    expect(projection.resumableQueueBatchIds).toEqual([]);
   });
 });

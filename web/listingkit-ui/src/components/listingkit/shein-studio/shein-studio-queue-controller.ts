@@ -50,6 +50,51 @@ type QueueControllerParams = {
   startBatchRun: BatchRunStarter;
 };
 
+type QueueProjectionParams = {
+  batchQueueMode: SheinStudioBatchQueueMode | null;
+  effectiveStep: SheinStudioStepKey;
+  queueResumeState: SheinStudioBatchQueueResumeState | null;
+  queuedBatchIds: string[];
+  queuedBatchIndex: number;
+  savedBatches: SheinStudioSavedBatch[];
+};
+
+export function projectSheinStudioQueueState({
+  batchQueueMode,
+  effectiveStep,
+  queueResumeState,
+  queuedBatchIds,
+  queuedBatchIndex,
+  savedBatches,
+}: QueueProjectionParams) {
+  const currentQueuedBatchId = batchQueueMode
+    ? queuedBatchIds[queuedBatchIndex] ?? ""
+    : "";
+  const currentQueuedBatch =
+    savedBatches.find((item) => item.id === currentQueuedBatchId) ?? null;
+  const resumableQueueBatchIds = queueResumeState
+    ? queueResumeState.batchIds.filter((batchId) =>
+        savedBatches.some((item) => item.id === batchId),
+      )
+    : [];
+  let batchQueueGuidance =
+    "当前批次还没有可用设计，已回到生成区继续处理。";
+  if (effectiveStep === "tasks") {
+    batchQueueGuidance = "已定位到任务区，可继续查看已创建的任务。";
+  } else if (effectiveStep === "review") {
+    batchQueueGuidance = "已定位到审核区，可直接创建任务或调整款式。";
+  } else if (batchQueueMode === "generate") {
+    batchQueueGuidance = "已定位到生成区，可直接修改提示词或继续生成。";
+  }
+
+  return {
+    batchQueueGuidance,
+    currentQueuedBatch,
+    currentQueuedBatchId,
+    resumableQueueBatchIds,
+  };
+}
+
 export function useSheinStudioQueueController({
   batchQueueMode,
   currentQueuedBatchId,

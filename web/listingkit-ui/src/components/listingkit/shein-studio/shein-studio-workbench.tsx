@@ -16,7 +16,10 @@ import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein
 import { useSheinStudioDedicatedBatchRunController } from "@/components/listingkit/shein-studio/shein-studio-dedicated-batch-run-controller";
 import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
-import { useSheinStudioQueueController } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
+import {
+  projectSheinStudioQueueState,
+  useSheinStudioQueueController,
+} from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import {
   projectItemizedBatchDetail,
   useSheinStudioItemizedBatchContext,
@@ -552,13 +555,30 @@ export function SheinStudioWorkbench({
       }),
     [selectedRecentBatchSummaryIds],
   );
-  const currentQueuedBatchId = batchQueueMode
-    ? queuedBatchIds[queuedBatchIndex] ?? ""
-    : "";
   const isRecentBatchesHomepage = effectiveStep === "select";
-  const currentQueuedBatch = useMemo(
-    () => savedBatches.find((item) => item.id === currentQueuedBatchId) ?? null,
-    [currentQueuedBatchId, savedBatches],
+  const {
+    batchQueueGuidance,
+    currentQueuedBatch,
+    currentQueuedBatchId,
+    resumableQueueBatchIds,
+  } = useMemo(
+    () =>
+      projectSheinStudioQueueState({
+        batchQueueMode,
+        effectiveStep,
+        queueResumeState,
+        queuedBatchIds,
+        queuedBatchIndex,
+        savedBatches,
+      }),
+    [
+      batchQueueMode,
+      effectiveStep,
+      queueResumeState,
+      queuedBatchIds,
+      queuedBatchIndex,
+      savedBatches,
+    ],
   );
   const traceBatchId = currentQueuedBatchId || activeBatchId || initialBatchId || "";
   const currentActiveBatch = useMemo(
@@ -630,18 +650,6 @@ export function SheinStudioWorkbench({
         : null,
     [currentActiveBatch, initialBatchId],
   );
-  const batchQueueGuidance = useMemo(() => {
-    if (effectiveStep === "tasks") {
-      return "已定位到任务区，可继续查看已创建的任务。";
-    }
-    if (effectiveStep === "review") {
-      return "已定位到审核区，可直接创建任务或调整款式。";
-    }
-    if (batchQueueMode === "generate") {
-      return "已定位到生成区，可直接修改提示词或继续生成。";
-    }
-    return "当前批次还没有可用设计，已回到生成区继续处理。";
-  }, [batchQueueMode, effectiveStep]);
   const hydrateRecentBatchSelection = useCallback(
     async (batchIds: string[]) => {
       const nextEntries = await Promise.all(
@@ -700,15 +708,6 @@ export function SheinStudioWorkbench({
       cancelled = true;
     };
   }, [hydrateRecentBatchSelection, selectedPersistedRecentBatchIds]);
-  const resumableQueueBatchIds = useMemo(
-    () =>
-      queueResumeState
-        ? queueResumeState.batchIds.filter((batchId) =>
-            savedBatches.some((item) => item.id === batchId),
-          )
-        : [],
-    [queueResumeState, savedBatches],
-  );
   const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
     selection: activeSelection,
     galleryRatioCheck,
