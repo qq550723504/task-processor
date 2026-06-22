@@ -2,7 +2,7 @@ package listingkit
 
 import (
 	"task-processor/internal/catalog/canonical"
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 

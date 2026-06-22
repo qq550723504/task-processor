@@ -195,8 +195,8 @@ func TestSheinSubmitReadinessProjectionBoundary(t *testing.T) {
 		assertSourceContainsAll(t, source, []string{
 			"readinessProjection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)",
 			"item.SheinStatusOverview = readinessProjection.StatusOverview",
-			"item.SheinBlockingKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.BlockingItems))",
-			"item.SheinWarningKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.WarningItems))",
+			"item.SheinBlockingKeys = uniqueNonEmptyStrings(sheinreadiness.FindKeys(readiness.BlockingItems))",
+			"item.SheinWarningKeys = uniqueNonEmptyStrings(sheinreadiness.FindKeys(readiness.WarningItems))",
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"item.SheinBlockingKeys = sheinBlockingKeysWithPod(pkg, pod)",

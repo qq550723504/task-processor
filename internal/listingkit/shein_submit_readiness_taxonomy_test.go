@@ -3,7 +3,7 @@ package listingkit
 import (
 	"testing"
 
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
 func TestSheinReadinessTaxonomyForKnownKeys(t *testing.T) {
