@@ -6,8 +6,6 @@ import (
 	"task-processor/internal/catalog/canonical"
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
-	sheinattribute "task-processor/internal/shein/api/attribute"
-	sheincategory "task-processor/internal/shein/api/category"
 )
 
 const (
@@ -97,25 +95,4 @@ func buildSheinSubmitFreshnessReadiness(pkg *SheinPackage, checks []sheinworkspa
 		blockingLabel:       "在线阻断项：",
 		prependFirstBlocker: true,
 	})
-}
-
-func evaluateSheinCategoryFreshness(current *SheinPackage, info *sheincategory.CategoryInfo) (bool, string) {
-	return sheinworkspace.EvaluateCategoryFreshness(current, info)
-}
-
-func evaluateSheinAttributeFreshness(current *SheinPackage, templates *sheinattribute.AttributeTemplateInfo) (bool, string) {
-	return sheinworkspace.EvaluateAttributeFreshness(current, templates)
-}
-
-func evaluateSheinSaleAttributeFreshness(current *SheinPackage, templates *sheinattribute.AttributeTemplateInfo) (bool, string) {
-	ok, message, _ := evaluateSheinSaleAttributeFreshnessWithCustomValidation(current, templates, nil)
-	return ok, message
-}
-
-func evaluateSheinSaleAttributeFreshnessWithCustomValidation(
-	current *SheinPackage,
-	templates *sheinattribute.AttributeTemplateInfo,
-	api sheinpub.AttributeAPI,
-) (bool, string, bool) {
-	return sheinworkspace.EvaluateSaleAttributeFreshnessWithCustomValidation(current, templates, api)
 }

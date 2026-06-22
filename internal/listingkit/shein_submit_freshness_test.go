@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
@@ -23,7 +24,7 @@ func TestEvaluateSheinCategoryFreshnessAllowsCurrentCategoryWhenStillLegal(t *te
 		ProductTypeID: 9001,
 	}
 
-	ok, message := evaluateSheinCategoryFreshness(current, info)
+	ok, message := sheinworkspace.EvaluateCategoryFreshness(current, info)
 	if !ok {
 		t.Fatalf("expected legal category to pass freshness, got %q", message)
 	}
@@ -44,7 +45,7 @@ func TestEvaluateSheinCategoryFreshnessBlocksProductTypeMismatch(t *testing.T) {
 		ProductTypeID: 9002,
 	}
 
-	ok, message := evaluateSheinCategoryFreshness(current, info)
+	ok, message := sheinworkspace.EvaluateCategoryFreshness(current, info)
 	if ok {
 		t.Fatal("expected product type mismatch to block")
 	}
@@ -80,7 +81,7 @@ func TestEvaluateSheinAttributeFreshnessAllowsCurrentValueWhenStillLegal(t *test
 		}},
 	}
 
-	ok, message := evaluateSheinAttributeFreshness(current, templates)
+	ok, message := sheinworkspace.EvaluateAttributeFreshness(current, templates)
 	if !ok {
 		t.Fatalf("expected legal attribute value to pass freshness check, got message %q", message)
 	}
@@ -115,7 +116,7 @@ func TestEvaluateSheinAttributeFreshnessBlocksOfflineValueID(t *testing.T) {
 		}},
 	}
 
-	ok, message := evaluateSheinAttributeFreshness(current, templates)
+	ok, message := sheinworkspace.EvaluateAttributeFreshness(current, templates)
 	if ok {
 		t.Fatal("expected offline attribute value to block")
 	}
@@ -157,7 +158,7 @@ func TestEvaluateSheinAttributeFreshnessReportsValueIDDifferenceDetails(t *testi
 		}},
 	}
 
-	ok, message := evaluateSheinAttributeFreshness(current, templates)
+	ok, message := sheinworkspace.EvaluateAttributeFreshness(current, templates)
 	if ok {
 		t.Fatal("expected offline attribute value to block")
 	}
@@ -209,7 +210,7 @@ func TestEvaluateSheinAttributeFreshnessBlocksMissingRequiredAttribute(t *testin
 		}},
 	}
 
-	ok, message := evaluateSheinAttributeFreshness(current, templates)
+	ok, message := sheinworkspace.EvaluateAttributeFreshness(current, templates)
 	if ok {
 		t.Fatal("expected missing required attribute to block")
 	}
@@ -254,7 +255,7 @@ func TestEvaluateSheinAttributeFreshnessIgnoresSaleScopeRequiredAttributes(t *te
 		}},
 	}
 
-	ok, message := evaluateSheinAttributeFreshness(current, templates)
+	ok, message := sheinworkspace.EvaluateAttributeFreshness(current, templates)
 	if !ok {
 		t.Fatalf("expected sale-scope required attribute to be ignored by display-attribute freshness, got %q", message)
 	}
@@ -317,7 +318,7 @@ func TestEvaluateSheinSaleAttributeFreshnessAllowsCurrentValuesWhenStillLegal(t 
 		}},
 	}
 
-	ok, message := evaluateSheinSaleAttributeFreshness(current, templates)
+	ok, message, _ := sheinworkspace.EvaluateSaleAttributeFreshnessWithCustomValidation(current, templates, nil)
 	if !ok {
 		t.Fatalf("expected legal sale attributes to pass, got message %q", message)
 	}
@@ -361,7 +362,7 @@ func TestEvaluateSheinSaleAttributeFreshnessBlocksOfflineValueID(t *testing.T) {
 		}},
 	}
 
-	ok, message := evaluateSheinSaleAttributeFreshness(current, templates)
+	ok, message, _ := sheinworkspace.EvaluateSaleAttributeFreshnessWithCustomValidation(current, templates, nil)
 	if ok {
 		t.Fatal("expected offline sale value to block")
 	}
@@ -401,7 +402,7 @@ func TestEvaluateSheinSaleAttributeFreshnessBlocksMissingPrimaryTemplate(t *test
 		}},
 	}
 
-	ok, message := evaluateSheinSaleAttributeFreshness(current, templates)
+	ok, message, _ := sheinworkspace.EvaluateSaleAttributeFreshnessWithCustomValidation(current, templates, nil)
 	if ok {
 		t.Fatal("expected missing primary template to block")
 	}
@@ -469,7 +470,7 @@ func TestEvaluateSheinSaleAttributeFreshnessIgnoresUnselectedRequiredSaleCandida
 		}},
 	}
 
-	ok, message := evaluateSheinSaleAttributeFreshness(current, templates)
+	ok, message, _ := sheinworkspace.EvaluateSaleAttributeFreshnessWithCustomValidation(current, templates, nil)
 	if !ok {
 		t.Fatalf("expected unrelated required sale candidates to be ignored, got %q", message)
 	}
@@ -534,7 +535,7 @@ func TestEvaluateSheinSaleAttributeFreshnessRepairsOfflineValueViaCustomValidati
 		},
 	}
 
-	ok, message, changed := evaluateSheinSaleAttributeFreshnessWithCustomValidation(current, templates, api)
+	ok, message, changed := sheinworkspace.EvaluateSaleAttributeFreshnessWithCustomValidation(current, templates, api)
 	if !ok {
 		t.Fatalf("expected custom validation repair to pass, got %q", message)
 	}
@@ -588,7 +589,7 @@ func TestEvaluateSheinSaleAttributeFreshnessBlocksWhenCustomValidationRejectsOff
 		},
 	}
 
-	ok, message, changed := evaluateSheinSaleAttributeFreshnessWithCustomValidation(current, templates, api)
+	ok, message, changed := sheinworkspace.EvaluateSaleAttributeFreshnessWithCustomValidation(current, templates, api)
 	if ok {
 		t.Fatal("expected unresolved offline sale value to keep blocking")
 	}
