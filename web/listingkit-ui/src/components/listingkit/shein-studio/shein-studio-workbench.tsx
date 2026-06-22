@@ -17,6 +17,7 @@ import { useSheinStudioDedicatedBatchRunController } from "@/components/listingk
 import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
 import { useSheinStudioQueueController } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
+import { projectItemizedTaskCreationResult } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
 import {
   clearLocalSheinStudioDraftSnapshot,
@@ -1121,60 +1122,36 @@ export function SheinStudioWorkbench({
               tenantId: itemizedBatchDetail.batch.tenantId ?? currentActiveBatch?.tenantId,
               detail: itemizedBatchDetail,
               onCreated: (result) => {
-                const nextDetail = {
-                  batch: result.batch,
-                  items: result.items,
-                  createdTasks: result.createdTasks,
-                  reusedTasks: result.reusedTasks,
-                  rejectedTasks: result.rejectedTasks,
-                  failedTasks: result.failedTasks,
-                  statusGroups: result.statusGroups,
-                };
-                const availableTasks = [
-                  ...result.createdTasks,
-                  ...(result.reusedTasks ?? []),
-                ];
-                const nextSavedBatch: SheinStudioSavedBatch = {
-                  ...(currentActiveBatch ?? {}),
-                  id: activeBatchId,
-                  tenantId:
-                    result.batch.tenantId ??
-                    itemizedBatchDetail.batch.tenantId ??
-                    currentActiveBatch?.tenantId,
-                  name: currentActiveBatch?.name ?? "未命名批次",
-                  prompt,
-                  styleCount,
-                  variationIntensity,
+                const { detail, savedBatch } = projectItemizedTaskCreationResult({
+                  activeBatchId,
+                  activeSelection,
+                  artworkModel,
+                  currentActiveBatch,
+                  currentDetail: itemizedBatchDetail,
+                  generationJobs,
+                  groupedImageMode,
+                  groupedSelections,
+                  groups,
+                  imageStrategy,
+                  persistedUpdatedAt,
                   productImageCount,
                   productImagePrompt,
                   productImagePrompts,
-                  artworkModel,
-                  transparentBackground,
-                  sheinStoreId,
-                  imageStrategy,
-                  groupedImageMode,
-                  selectedSdsImages,
+                  prompt,
                   renderSizeImagesWithSds,
-                  selection: activeSelection,
-                  groupedSelections,
-                  groups,
-                  designs: flattenItemizedBatchDesigns(nextDetail),
-                  selectedIds: getApprovedItemizedBatchDesignIDs(nextDetail),
-                  createdTasks: availableTasks,
-                  generationJobs: [],
-                  draftUpdatedAt:
-                    currentActiveBatch?.draftUpdatedAt || persistedUpdatedAt,
-                  updatedAt:
-                    currentActiveBatch?.updatedAt ||
-                    nextDetail.batch.updatedAt ||
-                    persistedUpdatedAt,
-                };
+                  result,
+                  selectedSdsImages,
+                  sheinStoreId,
+                  styleCount,
+                  transparentBackground,
+                  variationIntensity,
+                });
                 workbenchController.setField("savedBatches", (current) =>
-                  upsertSavedBatch(current, nextSavedBatch),
+                  upsertSavedBatch(current, savedBatch),
                 );
                 workbenchController.applyHydratedBatch({
-                  savedBatch: nextSavedBatch,
-                  detail: nextDetail,
+                  savedBatch,
+                  detail,
                 });
               },
             }
