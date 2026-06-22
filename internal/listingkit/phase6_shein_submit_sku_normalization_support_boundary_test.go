@@ -44,16 +44,22 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 	variantContent := string(variantSrc)
 
 	for _, needle := range []string{
-		"func matchStudioSubmitVariantOption(sds *SDSSyncOptions, draftSKC *SheinSKCRequestDraft, draftSKU *sheinpub.SKUDraft, globalIndex int) (*SDSSyncVariantOption, int) {",
-		"func resolveStudioSubmitBaseSKU(sds *SDSSyncOptions, draftSKU *sheinpub.SKUDraft, match *SDSSyncVariantOption, oldSKU string) string {",
-		"func resolveStudioSubmitVariantDiscriminator(sds *SDSSyncOptions, draftSKU *sheinpub.SKUDraft, match *SDSSyncVariantOption, matchedIndex, globalIndex int, taskDiscriminator string) string {",
-		"func inferStudioSubmitBaseSKUFromOld(oldSKU, styleID string) string {",
+		"func adaptSubmitVariantContext(sds *SDSSyncOptions) *sheinpub.SubmitVariantContext {",
+		"func adaptSubmitVariantOption(item *SDSSyncVariantOption) *sheinpub.SubmitVariantOption {",
 	} {
 		if !strings.Contains(variantContent, needle) {
 			t.Fatalf("shein_submit_sku_variant_support.go should contain %q", needle)
 		}
 	}
 	for _, needle := range []string{
+		"func matchStudioSubmitVariantOption(",
+		"func resolveStudioSubmitBaseSKU(",
+		"func resolveStudioSubmitVariantDiscriminator(",
+		"func inferStudioSubmitBaseSKUFromOld(",
+		"func studioSubmitRequiresVariantDiscriminator(",
+		"func studioSubmitVariantMatches(",
+		"func sheinDraftSKCSaleAttributeValue(",
+		"func itoa(",
 		"sourceSKU := strings.TrimSpace",
 		"colorMatches := make([]int",
 		"strings.EqualFold(strings.TrimSpace(item.Color)",
@@ -62,6 +68,24 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 	} {
 		if strings.Contains(variantContent, needle) {
 			t.Fatalf("shein_submit_sku_variant_support.go should delegate variant detail %q", needle)
+		}
+	}
+
+	publishingVariantSrc, err := os.ReadFile("../publishing/shein/submit_sku_variant.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../publishing/shein/submit_sku_variant.go) error = %v", err)
+	}
+	publishingVariantContent := string(publishingVariantSrc)
+	for _, needle := range []string{
+		"func MatchSubmitVariantOptionIndex(input *SubmitVariantContext, draftSKCValue string, draftSKU *SKUDraft, globalIndex int) int {",
+		"func SubmitVariantMatches(item *SubmitVariantOption, color, size string) bool {",
+		"func ResolveSubmitBaseSKU(input *SubmitVariantContext, draftSKU *SKUDraft, match *SubmitVariantOption, oldSKU string) string {",
+		"func ResolveSubmitVariantDiscriminator(input *SubmitVariantContext, draftSKU *SKUDraft, match *SubmitVariantOption, matchedIndex, globalIndex int, taskDiscriminator string) string {",
+		"func SubmitRequiresVariantDiscriminator(input *SubmitVariantContext, baseSKU string) bool {",
+		"func InferSubmitBaseSKUFromOld(oldSKU, styleID string) string {",
+	} {
+		if !strings.Contains(publishingVariantContent, needle) {
+			t.Fatalf("publishing submit_sku_variant.go should contain %q", needle)
 		}
 	}
 
