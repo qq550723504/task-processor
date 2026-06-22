@@ -303,4 +303,45 @@ describe("SHEIN Studio generation controller", () => {
     );
     expect(localWorkflowStateRef.current).toBe(true);
   });
+
+  it("fails standalone generation with an explicit error when no images are returned", async () => {
+    const setField = vi.fn();
+    const persistDraft = vi.fn().mockResolvedValue(undefined);
+    const navigateToStep = vi.fn();
+    const generateDesigns = vi.fn().mockResolvedValue({
+      images: [],
+    });
+    const localWorkflowStateRef = { current: false };
+
+    await expect(
+      executeStandaloneGeneration({
+        activeGroupId: "group-1",
+        activeSelection: selection,
+        artworkModel: "gpt-image-1",
+        generateDesigns,
+        generationJobs: [],
+        groupedImageMode: "shared_by_size",
+        groupedSelections: [],
+        groups: [buildGroup()],
+        hasLocalWorkflowStateRef: localWorkflowStateRef,
+        navigateToStep,
+        persistDraft,
+        prompt: "summer flowers",
+        setField,
+        styleCount: "1",
+        transparentBackground: false,
+        variationIntensity: "medium",
+      }),
+    ).rejects.toThrow(
+      "款式图生成完成，但没有返回任何图片。请重试一次；如果持续出现，说明上游生成链路返回了空结果。",
+    );
+
+    expect(generateDesigns).toHaveBeenCalled();
+    expect(navigateToStep).not.toHaveBeenCalledWith("review");
+    expect(persistDraft).not.toHaveBeenCalledWith(
+      expect.objectContaining({ source: "generate_success" }),
+      expect.anything(),
+    );
+    expect(localWorkflowStateRef.current).toBe(false);
+  });
 });

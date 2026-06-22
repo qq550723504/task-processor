@@ -3919,57 +3919,6 @@ describe("SheinStudioWorkbench", () => {
     );
   });
 
-  it("shows explicit error and stays out of review when generation returns no images", async () => {
-    loadSheinStudioDraft.mockResolvedValue({
-      prompt: "",
-      styleCount: "1",
-      productImageCount: "5",
-      productImagePrompt: "",
-      productImagePrompts: [],
-      artworkModel: "nanobanana",
-      transparentBackground: false,
-      sheinStoreId: "1",
-      imageStrategy: "ai_generated",
-      renderSizeImagesWithSds: true,
-      selectionVariantId: 100,
-      selection,
-      designs: [],
-      selectedIds: [],
-      createdTasks: [],
-      updatedAt: "2026-04-29T00:00:00.000Z",
-    });
-    saveSheinStudioBatch.mockResolvedValue({
-      ...buildHydratedBatch().savedBatch,
-      updatedAt: "2026-05-26T10:04:00.000Z",
-    });
-    generateSheinStudioBatch.mockResolvedValue({
-      ...buildHydratedBatch().detail,
-      batch: {
-        ...buildHydratedBatch().detail.batch,
-        updatedAt: "2026-05-26T10:05:00.000Z",
-      },
-      items: [],
-    });
-
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
-
-    await waitFor(() => expect(loadSheinStudioDraft).toHaveBeenCalled());
-
-    fireEvent.change(screen.getByLabelText("prompt"), {
-      target: { value: "retro cherries" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
-
-    await waitFor(() =>
-      expect(
-        screen.getByText(
-          "款式图生成完成，但没有返回任何图片。请重试一次；如果持续出现，说明上游生成链路返回了空结果。",
-        ),
-      ).toBeInTheDocument(),
-    );
-    expect(screen.queryByText("review grid: 1")).not.toBeInTheDocument();
-  });
-
   it("does not surface a draft-save warning after successful batch generation", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",
