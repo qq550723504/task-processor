@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func applySDSSyncMetadataToCanonical(product *canonical.Product, summary *SDSSyncSummary, options *SDSSyncOptions) bool {
@@ -113,7 +114,7 @@ func sdsRenderedImagesByVariant(summary *SDSSyncSummary, trace canonical.FieldTr
 			continue
 		}
 		for _, key := range []string{item.VariantSKU, item.VariantColor} {
-			normalized := normalizeSDSColorKey(key)
+			normalized := sheinpub.NormalizeSDSImageKey(key)
 			if normalized == "__default__" {
 				continue
 			}
@@ -183,12 +184,12 @@ func resolveSDSCanonicalImagesForVariant(variant *canonical.Variant, byVariant m
 	}
 	for _, value := range []string{
 		variant.Attributes["source_sds_sku"].Value,
-		sourceSDSSKUFromSupplierSKU(variant.SKU),
+		sheinpub.SourceSDSSKUFromSupplierSKU(variant.SKU),
 		variant.SKU,
 		variant.Attributes["Color"].Value,
 		variant.Attributes["color"].Value,
 	} {
-		if images := byVariant[normalizeSDSColorKey(value)]; len(images) > 0 {
+		if images := byVariant[sheinpub.NormalizeSDSImageKey(value)]; len(images) > 0 {
 			return images
 		}
 	}

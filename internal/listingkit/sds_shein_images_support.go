@@ -15,30 +15,6 @@ func imageSetFromSDSVariantOption(item SDSSyncVariantOption, sourceImages []stri
 	if len(mockups) == 0 {
 		return nil
 	}
-	return imageSetFromSDSMockups(mockups, sourceImages)
-}
-
-func registerSDSVariantImageSet(bySKU map[string]*common.ImageSet, byColor map[string]*common.ImageSet, sku string, color string, images *common.ImageSet, overwrite bool) {
-	sheinpub.RegisterSDSVariantImageSet(bySKU, byColor, sku, color, images, overwrite)
-}
-
-func firstSDSImageSet(values map[string]*common.ImageSet) *common.ImageSet {
-	return sheinpub.FirstSDSImageSet(values)
-}
-
-func resolveSDSImagesForSKC(pkg *sheinpub.Package, index int, bySKU map[string]*common.ImageSet, byColor map[string]*common.ImageSet) *common.ImageSet {
-	return sheinpub.ResolveSDSImagesForSKC(pkg, index, bySKU, byColor)
-}
-
-func resolveSDSImagesForSKU(sku *sheinpub.SKUDraft, bySKU map[string]*common.ImageSet, byColor map[string]*common.ImageSet) *common.ImageSet {
-	return sheinpub.ResolveSDSImagesForSKU(sku, bySKU, byColor)
-}
-
-func sourceSDSSKUFromSupplierSKU(value string) string {
-	return sheinpub.SourceSDSSKUFromSupplierSKU(value)
-}
-
-func imageSetFromSDSMockups(mockups []string, sourceImages []string) *common.ImageSet {
 	return sheinpub.ImageSetFromSDSMockups(mockups, sourceImages)
 }
 
@@ -77,12 +53,4 @@ func normalizeSelectedSDSImages(input []SheinStudioSelectedSDSImage) []SheinStud
 		})
 	}
 	return result
-}
-
-func mergeImageSet(existing *common.ImageSet, next *common.ImageSet) *common.ImageSet {
-	return sheinpub.MergeSDSImageSet(existing, next)
-}
-
-func normalizeSDSColorKey(value string) string {
-	return sheinpub.NormalizeSDSImageKey(value)
 }
