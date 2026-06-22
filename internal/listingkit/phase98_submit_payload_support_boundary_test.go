@@ -18,9 +18,7 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 	for _, needle := range []string{
 		"func prepareSheinProductForNewSubmit(product *sheinproduct.Product) {",
 		"func prepareSheinProductForSubmit(product *sheinproduct.Product, settings SheinSettings) {",
-		"func normalizeSheinSubmitCollections(product *sheinproduct.Product) {",
-		"func normalizeSheinSubmitExtra(product *sheinproduct.Product) {",
-		"func finalizeSheinSubmitTransportFields(product *sheinproduct.Product) {",
+		"func sheinSubmitPayloadSettings(settings SheinSettings) sheinpub.SubmitPayloadSettings {",
 	} {
 		if !strings.Contains(homeContent, needle) {
 			t.Fatalf("shein_submit_payload.go should contain %q", needle)
@@ -36,6 +34,9 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		"product.SourceSystem = \"listingkit\"",
 		"product.SupplierCode = deriveSheinSubmitProductSupplierCode(product)",
 		"normalizeSheinSubmitCollections(product)",
+		"func normalizeSheinSubmitCollections(product *sheinproduct.Product) {",
+		"func normalizeSheinSubmitExtra(product *sheinproduct.Product) {",
+		"func finalizeSheinSubmitTransportFields(product *sheinproduct.Product) {",
 		"ensureSheinSubmitSKUs(product, settings)",
 		"product.BrandSeriesList = []string{}",
 		"product.Extra.SPUTag = []string{}",
@@ -52,6 +53,20 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 	} {
 		if !strings.Contains(homeContent, needle) {
 			t.Fatalf("shein_submit_payload.go should delegate submit product preparation via %q", needle)
+		}
+	}
+	publishingNormalizeSrc, err := os.ReadFile("../publishing/shein/submit_payload_normalize.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../publishing/shein/submit_payload_normalize.go) error = %v", err)
+	}
+	publishingNormalizeContent := string(publishingNormalizeSrc)
+	for _, needle := range []string{
+		"func NormalizeSubmitCollections(product *sheinproduct.Product) {",
+		"func NormalizeSubmitExtra(product *sheinproduct.Product) {",
+		"func FinalizeSubmitTransportFields(product *sheinproduct.Product) {",
+	} {
+		if !strings.Contains(publishingNormalizeContent, needle) {
+			t.Fatalf("publishing submit_payload_normalize.go should contain %q", needle)
 		}
 	}
 

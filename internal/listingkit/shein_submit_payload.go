@@ -19,15 +19,3 @@ func sheinSubmitPayloadSettings(settings SheinSettings) sheinpub.SubmitPayloadSe
 		WarehouseCode: settings.WarehouseCode,
 	}
 }
-
-func normalizeSheinSubmitCollections(product *sheinproduct.Product) {
-	sheinpub.NormalizeSubmitCollections(product)
-}
-
-func normalizeSheinSubmitExtra(product *sheinproduct.Product) {
-	sheinpub.NormalizeSubmitExtra(product)
-}
-
-func finalizeSheinSubmitTransportFields(product *sheinproduct.Product) {
-	sheinpub.FinalizeSubmitTransportFields(product)
-}
