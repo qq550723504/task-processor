@@ -35,19 +35,15 @@ func resolveRenderedSDSSizeReferenceImages(req *GenerateRequest, sdsSummary *SDS
 	}
 	options := req.Options.SDS
 	var rendered []string
-	rendered = append(rendered, renderedSizeReferenceImagesFromMockups(rawRefs, options.MockupImageURLs, sdsSummary.MockupImageURLs)...)
+	rendered = append(rendered, sheinpub.ResolveRenderedSizeReferenceImages(rawRefs, options.MockupImageURLs, sdsSummary.MockupImageURLs)...)
 	for _, variant := range options.Variants {
 		summary, ok := findSDSVariantSummaryForSizeReference(variant, sdsSummary.VariantResults)
 		if !ok {
 			continue
 		}
-		rendered = append(rendered, renderedSizeReferenceImagesFromMockups(variant.SizeReferenceImageURLs, variant.MockupImageURLs, summary.MockupImageURLs)...)
+		rendered = append(rendered, sheinpub.ResolveRenderedSizeReferenceImages(variant.SizeReferenceImageURLs, variant.MockupImageURLs, summary.MockupImageURLs)...)
 	}
 	return uniqueNonEmptyStrings(rendered)
-}
-
-func renderedSizeReferenceImagesFromMockups(sizeRefs []string, sourceMockups []string, renderedMockups []string) []string {
-	return sheinpub.ResolveRenderedSizeReferenceImages(sizeRefs, sourceMockups, renderedMockups)
 }
 
 func findSDSVariantSummaryForSizeReference(variant SDSSyncVariantOption, summaries []SDSSyncSummary) (SDSSyncSummary, bool) {
