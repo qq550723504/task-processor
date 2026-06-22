@@ -304,6 +304,61 @@ describe("SHEIN Studio generation controller", () => {
     expect(localWorkflowStateRef.current).toBe(true);
   });
 
+  it("keeps standalone generation results when final draft persistence fails", async () => {
+    const setField = vi.fn();
+    const persistDraft = vi.fn().mockRejectedValue(new Error("save failed"));
+    const navigateToStep = vi.fn();
+    const generateDesigns = vi.fn().mockResolvedValue({
+      images: [{ id: "design-1", imageUrl: "generated.png" }],
+    });
+    const localWorkflowStateRef = { current: false };
+
+    const result = await executeStandaloneGeneration({
+      activeGroupId: "group-1",
+      activeSelection: selection,
+      artworkModel: "gpt-image-1",
+      generateDesigns,
+      generationJobs: [],
+      groupedImageMode: "shared_by_size",
+      groupedSelections: [],
+      groups: [buildGroup()],
+      hasLocalWorkflowStateRef: localWorkflowStateRef,
+      navigateToStep,
+      persistDraft,
+      prompt: "summer flowers",
+      setField,
+      styleCount: "1",
+      transparentBackground: false,
+      variationIntensity: "medium",
+    });
+
+    expect(result.designs).toEqual([
+      {
+        id: "design-1",
+        imageUrl: "generated.png",
+        targetGroupKey: expect.any(String),
+        targetGroupLabel: expect.any(String),
+      },
+    ]);
+    expect(setField).toHaveBeenCalledWith("designs", result.designs);
+    expect(setField).toHaveBeenCalledWith("selectedIds", ["design-1"]);
+    expect(setField).toHaveBeenCalledWith("generationJobs", []);
+    expect(navigateToStep).toHaveBeenCalledWith("review");
+    expect(persistDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        designs: result.designs,
+        selectedIds: ["design-1"],
+        generationJobs: [],
+      }),
+      expect.objectContaining({
+        navigationTriggered: true,
+        source: "generate_success",
+        warnOnFailure: false,
+      }),
+    );
+    expect(localWorkflowStateRef.current).toBe(true);
+  });
+
   it("fails standalone generation with an explicit error when no images are returned", async () => {
     const setField = vi.fn();
     const persistDraft = vi.fn().mockResolvedValue(undefined);
