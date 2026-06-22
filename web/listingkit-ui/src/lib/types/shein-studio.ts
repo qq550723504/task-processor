@@ -2,6 +2,7 @@ import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 
 export type * from "@/lib/types/shein-studio-batch";
+export type * from "@/lib/types/shein-studio-recent-batch";
 
 export type SheinStudioGeneratedDesign = {
   id: string;
@@ -266,34 +267,4 @@ export type SheinStudioDraft = {
 export type SheinStudioStorageData = {
   draft: SheinStudioDraft | null;
   batches: SheinStudioSavedBatch[];
-};
-
-export type SheinStudioRecentBatchSummary = {
-  id: string;
-  source: "batch" | "local_draft";
-  isRecoverableDraft: boolean;
-  title: string;
-  primaryProductName: string;
-  productCount: number;
-  promptPreview: string;
-  storeSummary: string;
-  designCount: number;
-  createdTaskCount: number;
-  batchStatus?: string;
-  updatedAt: string;
-  alerts?: SheinStudioRecentBatchAlert[];
-  recentResults?: SheinStudioRecentBatchResult[];
-};
-
-export type SheinStudioRecentBatchAlert = {
-  tone: "warning" | "danger";
-  label: string;
-  reasonCode?: string;
-  detail?: string;
-};
-
-export type SheinStudioRecentBatchResult = {
-  tone: "success" | "warning" | "danger";
-  label: string;
-  detail?: string;
 };
