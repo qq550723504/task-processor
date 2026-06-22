@@ -160,10 +160,10 @@ func buildRevisionHistoryRestoreStateInput(result *ListingKitResult) *sheinworks
 	}
 	return &sheinworkspace.HistoryRestoreStateInput{
 		HasCurrentPackage:     true,
-		CategoryResolved:      isSheinCategoryResolved(result.Shein),
-		AttributeResolved:     isSheinAttributeResolved(result.Shein),
-		SaleAttributeResolved: isSheinSaleAttributeResolved(result.Shein),
-		ManualReviewNotes:     filterManualSheinReviewNotes(result.Shein.ReviewNotes),
+		CategoryResolved:      sheinworkspace.IsCategoryResolved(result.Shein),
+		AttributeResolved:     sheinworkspace.IsAttributeResolved(result.Shein),
+		SaleAttributeResolved: sheinworkspace.IsSaleAttributeResolved(result.Shein),
+		ManualReviewNotes:     sheinworkspace.FilterManualReviewNotes(result.Shein.ReviewNotes),
 	}
 }
 

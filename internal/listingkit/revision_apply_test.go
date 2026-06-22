@@ -3,6 +3,8 @@ package listingkit
 import (
 	"errors"
 	"testing"
+
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
 func TestApplyListingKitRevisionUpdatesSheinDraftAndPreview(t *testing.T) {
@@ -624,7 +626,7 @@ func TestBuildSheinInspectionIncludesStructuredActionsWhenUnresolved(t *testing.
 		},
 	}
 
-	inspection := buildSheinInspection(pkg)
+	inspection := sheinworkspace.BuildInspection(pkg)
 	if inspection == nil {
 		t.Fatal("expected inspection")
 	}

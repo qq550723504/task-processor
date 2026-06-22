@@ -11,8 +11,11 @@ func TestSheinInspectionBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 
 	assertFileAbsent(t, "workspace/shein/inspection_bridge.go")
 
+	assertFileAbsent(t, "shein_workspace_inspection_bridge.go")
+
 	for _, path := range []string{
-		"shein_workspace_inspection_bridge.go",
+		"revision_workspace_bridge.go",
+		"revision_apply_test.go",
 		"shein_review_state.go",
 	} {
 		path := path
@@ -32,4 +35,12 @@ func TestSheinInspectionBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 			}
 		})
 	}
+
+	stateSource := readNamedFunctionSource(t, "revision_workspace_bridge.go", "buildRevisionHistoryRestoreStateInput")
+	assertSourceContainsAll(t, stateSource, []string{
+		"CategoryResolved:      sheinworkspace.IsCategoryResolved(result.Shein)",
+		"AttributeResolved:     sheinworkspace.IsAttributeResolved(result.Shein)",
+		"SaleAttributeResolved: sheinworkspace.IsSaleAttributeResolved(result.Shein)",
+		"ManualReviewNotes:     sheinworkspace.FilterManualReviewNotes(result.Shein.ReviewNotes)",
+	})
 }
