@@ -56,7 +56,6 @@ func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {
 	}
 	cloned := make([]SheinRepairHint, 0, len(items))
 	for _, item := range items {
-		artifacts := cloneSheinRepairArtifacts(item.Patch, item.Skeleton, item.Revision, item.Validation)
 		cloned = append(cloned, SheinRepairHint{
 			Action:        item.Action,
 			Priority:      item.Priority,
@@ -66,10 +65,10 @@ func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {
 			RevisionPath:  item.RevisionPath,
 			Description:   item.Description,
 			FieldPaths:    append([]string(nil), item.FieldPaths...),
-			Patch:         artifacts.Patch,
-			Skeleton:      artifacts.Skeleton,
-			Revision:      artifacts.Request,
-			Validation:    artifacts.Validation,
+			Patch:         sheinworkspace.CloneRepairPatchPayload(item.Patch),
+			Skeleton:      sheinworkspace.CloneEditorRevisionSkeleton(item.Skeleton),
+			Revision:      cloneApplyRevisionRequest(item.Revision),
+			Validation:    sheinworkspace.CloneRepairValidationPreview(item.Validation),
 		})
 	}
 	return cloned

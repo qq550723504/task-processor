@@ -1265,52 +1265,6 @@ func TestBuildSheinRepairRevisionBundle(t *testing.T) {
 	}
 }
 
-func TestCloneSheinRepairArtifacts(t *testing.T) {
-	t.Parallel()
-
-	categoryID := 3001
-	patch := &SheinRepairPatchPayload{
-		CategoryResolution: &SheinCategoryResolutionPatch{
-			CategoryID: &categoryID,
-		},
-	}
-	skeleton := &SheinEditorRevisionSkeleton{
-		Platform: "shein",
-		Reason:   "repair: 确认类目",
-		Shein: &SheinRevisionInput{
-			CategoryResolution: &SheinCategoryResolutionPatch{
-				CategoryID: &categoryID,
-			},
-		},
-	}
-	request := &ApplyRevisionRequest{
-		Platform: "shein",
-		Reason:   "repair: 确认类目",
-		Shein: &SheinRevisionInput{
-			CategoryResolution: &SheinCategoryResolutionPatch{
-				CategoryID: &categoryID,
-			},
-		},
-	}
-	validation := &SheinRepairValidationPreview{
-		Valid: true,
-	}
-
-	artifacts := cloneSheinRepairArtifacts(patch, skeleton, request, validation)
-	if artifacts.Patch == nil || artifacts.Patch.CategoryResolution == nil {
-		t.Fatalf("artifacts patch = %+v", artifacts.Patch)
-	}
-	if artifacts.Skeleton == nil || artifacts.Skeleton.Shein == nil {
-		t.Fatalf("artifacts skeleton = %+v", artifacts.Skeleton)
-	}
-	if artifacts.Request == nil || artifacts.Request.Shein == nil {
-		t.Fatalf("artifacts request = %+v", artifacts.Request)
-	}
-	if artifacts.Validation == nil || !artifacts.Validation.Valid {
-		t.Fatalf("artifacts validation = %+v", artifacts.Validation)
-	}
-}
-
 func TestWorkspaceCloneRepairPatchPayloadDeepCopiesListingKitAlias(t *testing.T) {
 	t.Parallel()
 

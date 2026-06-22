@@ -15,7 +15,6 @@ func TestSheinRepairBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 		"shein_workspace_repair_bridge.go",
 		"shein_repair_support.go",
 		"shein_repair_center.go",
-		"shein_repair_clone_support.go",
 		"shein_repair_revision_support.go",
 	} {
 		path := path

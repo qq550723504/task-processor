@@ -38,32 +38,21 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 		}
 	}
 
-	supportSrc, err := os.ReadFile("shein_repair_clone_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_repair_clone_support.go) error = %v", err)
-	}
-	supportContent := string(supportSrc)
+	assertFileAbsent(t, "shein_repair_clone_support.go")
 
-	for _, needle := range []string{
-		"func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEditorRevisionSkeleton, request *ApplyRevisionRequest, validation *SheinRepairValidationPreview) sheinRepairArtifacts {",
-		"sheinworkspace.CloneRepairPatchPayload(patch)",
-		"Patch:      sheinworkspace.CloneRepairPatchPayload(patch)",
-		"Validation: sheinworkspace.CloneRepairValidationPreview(validation)",
-	} {
-		if !strings.Contains(supportContent, needle) {
-			t.Fatalf("shein_repair_clone_support.go should contain %q", needle)
-		}
+	repairCenterSrc, err := os.ReadFile("shein_repair_center.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_repair_center.go) error = %v", err)
 	}
+	repairCenterContent := string(repairCenterSrc)
 	for _, needle := range []string{
-		"func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {",
-		"func cloneSheinRepairPatchPayload(payload *SheinRepairPatchPayload) *SheinRepairPatchPayload {",
-		"func cloneSheinRepairValidationPreview(src *SheinRepairValidationPreview) *SheinRepairValidationPreview {",
-		"func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {",
-		"RevisionDiffPreview:         cloneRevisionDiffPreview(src.RevisionDiffPreview)",
-		"sheinworkspace.CloneRepairPatchPayload(payload)",
+		"sheinworkspace.CloneRepairPatchPayload(patch)",
+		"sheinworkspace.CloneEditorRevisionSkeleton(skeleton)",
+		"cloneApplyRevisionRequest(request)",
+		"sheinworkspace.CloneRepairValidationPreview(validation)",
 	} {
-		if strings.Contains(supportContent, needle) {
-			t.Fatalf("shein_repair_clone_support.go should not keep patch clone wrapper %q", needle)
+		if !strings.Contains(repairCenterContent, needle) {
+			t.Fatalf("shein_repair_center.go should clone artifacts directly with %q", needle)
 		}
 	}
 
