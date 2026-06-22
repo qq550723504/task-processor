@@ -63,5 +63,5 @@ func (s *taskSubmissionExecutionService) sheinSubmitTranslationNeeded(task *Task
 }
 
 func (s *taskSubmissionExecutionService) preValidateSheinSubmitProduct(pkg *SheinPackage, submitProduct *sheinproduct.Product) error {
-	return sheinpub.PreValidateSubmitProductWithOptions(submitProduct, !sheinSecondarySaleAttributeRequired(pkg))
+	return sheinpub.PreValidateSubmitProductWithOptions(submitProduct, !sheinpub.SecondarySaleAttributeRequired(pkg))
 }

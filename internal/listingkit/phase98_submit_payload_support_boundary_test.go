@@ -10,6 +10,7 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 	t.Parallel()
 
 	assertFileAbsent(t, "shein_submit_payload.go")
+	assertFileAbsent(t, "shein_sale_attribute_policy.go")
 
 	settingsSrc, err := os.ReadFile("shein_settings.go")
 	if err != nil {
@@ -56,6 +57,7 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 	}
 	for _, needle := range []string{
 		"sheinpub.PrepareProductForSubmit(submitProduct, sheinSubmitPayloadSettings(s.resolveSubmitSettings(runtimeCtx, task)))",
+		"sheinpub.PreValidateSubmitProductWithOptions(submitProduct, !sheinpub.SecondarySaleAttributeRequired(pkg))",
 	} {
 		if !strings.Contains(homeContent, needle) {
 			t.Fatalf("task_submission_execution_product.go should delegate submit product preparation via %q", needle)
