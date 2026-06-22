@@ -4,6 +4,11 @@ import { usePathname } from "next/navigation";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { buildSheinStudioSelectionKey } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
+import {
+  clearDraftSaveWarning,
+  type DraftSaveOptions,
+  persistSheinStudioDraft,
+} from "@/lib/shein-studio/draft-persistence";
 import { saveLocalSheinStudioDraftSnapshot } from "@/lib/shein-studio/local-draft-cache";
 import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
 import { buildSheinStudioStepHref } from "@/lib/shein-studio/navigation";
@@ -45,13 +50,6 @@ type DraftOverrides = Partial<{
   generationJobId: string;
 }>;
 
-type DraftSaveOptions = {
-  navigationTriggered?: boolean;
-  source?: string;
-  signal?: AbortSignal;
-  warnOnFailure?: boolean;
-};
-
 type WorkbenchDraftState = {
   activeSelection?: SDSProductVariantSelection;
   artworkModel: SheinStudioArtworkModel;
@@ -83,19 +81,6 @@ type WorkbenchDraftState = {
   transparentBackground: boolean;
   variationIntensity: SheinStudioVariationIntensity;
 };
-
-const DRAFT_SAVE_WARNING =
-  "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。";
-function appendDraftSaveWarning(current: string) {
-  if (current.includes(DRAFT_SAVE_WARNING)) {
-    return current;
-  }
-  return current ? `${current} ${DRAFT_SAVE_WARNING}` : DRAFT_SAVE_WARNING;
-}
-
-function clearDraftSaveWarning(current: string) {
-  return current.replace(DRAFT_SAVE_WARNING, "").trim();
-}
 
 export function useHydratedSDSVariantSelection(
   selection?: SDSProductVariantSelection,
@@ -220,36 +205,16 @@ export function useSheinStudioDraftPersistence(
   const persistDraft = useCallback(
     async (overrides?: DraftOverrides, options?: DraftSaveOptions) => {
       const nextDraftInput = buildDraftInput(overrides);
-      saveLocalSheinStudioDraftSnapshot(nextDraftInput, {
-        batchId: activeBatchId,
+      return persistSheinStudioDraft({
+        activeBatchId,
+        draftInput: nextDraftInput,
+        options,
+        saveLocalSnapshot: saveLocalSheinStudioDraftSnapshot,
+        saveBatch: saveSheinStudioBatch,
+        saveDraft: saveSheinStudioDraftWithOptions,
+        setPersistedUpdatedAt: state.setPersistedUpdatedAt,
+        setDraftWarning: state.setDraftWarning,
       });
-      try {
-        const draft = activeBatchId
-          ? await saveSheinStudioBatch(
-              {
-                ...nextDraftInput,
-                id: activeBatchId,
-              },
-              { makeActive: false },
-            )
-          : await saveSheinStudioDraftWithOptions(nextDraftInput, options);
-        saveLocalSheinStudioDraftSnapshot(draft, {
-          batchId: activeBatchId,
-        });
-        if (draft?.updatedAt) {
-          state.setPersistedUpdatedAt(draft.updatedAt);
-        }
-        state.setDraftWarning((current) => clearDraftSaveWarning(current));
-        return draft;
-      } catch (error) {
-        if (options?.signal?.aborted) {
-          return null;
-        }
-        if (options?.warnOnFailure !== false) {
-          state.setDraftWarning((current) => appendDraftSaveWarning(current));
-        }
-        throw error;
-      }
     },
     [activeBatchId, buildDraftInput, state],
   );
