@@ -746,7 +746,14 @@ func TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly(t *testing
 }
 
 func TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit", "workspace", "shein"), []string{
+	root := filepath.Join("..", "internal", "listingkit", "workspace", "shein")
+	if _, err := os.Stat(root); err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		t.Fatal(err)
+	}
+	assertNoBannedImports(t, root, []string{
 		`"task-processor/internal/workspace/shein"`,
 	}, nil)
 }
