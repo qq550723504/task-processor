@@ -2557,18 +2557,19 @@ func TestSheinSourceProductSummaryHelperLivesOutsideMainSheinPreviewBuilder(t *t
 		}
 	}
 
-	sourceSrc, err := os.ReadFile("preview_builder_shein_source_product.go")
+	assertFileAbsent(t, "preview_builder_shein_source_product.go")
+
+	payloadSrc, err := os.ReadFile("preview_builder_shein_payload.go")
 	if err != nil {
-		t.Fatalf("ReadFile(preview_builder_shein_source_product.go) error = %v", err)
+		t.Fatalf("ReadFile(preview_builder_shein_payload.go) error = %v", err)
 	}
-	sourceContent := string(sourceSrc)
+	payloadContent := string(payloadSrc)
 	for _, needle := range []string{
-		"func buildSheinSourceProductSummary(product *canonical.Product) *SheinSourceProductSummary {",
-		"return sheinworkspace.BuildSourceProductSummary(product)",
+		"SourceProduct:     sheinworkspace.BuildSourceProductSummary(input.canonical),",
 		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
-		if !strings.Contains(sourceContent, needle) {
-			t.Fatalf("preview_builder_shein_source_product.go should contain %q", needle)
+		if !strings.Contains(payloadContent, needle) {
+			t.Fatalf("preview_builder_shein_payload.go should contain %q", needle)
 		}
 	}
 }

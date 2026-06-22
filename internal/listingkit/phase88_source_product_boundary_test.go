@@ -9,18 +9,18 @@ import (
 func TestSheinSourceProductBoundary(t *testing.T) {
 	t.Parallel()
 
-	source := readNamedFunctionSource(t, "preview_builder_shein_source_product.go", "buildSheinSourceProductSummary")
-	callNames := readNamedFunctionCallNames(t, "preview_builder_shein_source_product.go", "buildSheinSourceProductSummary")
-	fileSource, err := os.ReadFile("preview_builder_shein_source_product.go")
+	source := readNamedFunctionSource(t, "preview_builder_shein_payload.go", "buildSheinPreviewPayloadBody")
+	callNames := readNamedFunctionCallNames(t, "preview_builder_shein_payload.go", "buildSheinPreviewPayloadBody")
+	fileSource, err := os.ReadFile("preview_builder_shein_payload.go")
 	if err != nil {
-		t.Fatalf("ReadFile(preview_builder_shein_source_product.go) error = %v", err)
+		t.Fatalf("ReadFile(preview_builder_shein_payload.go) error = %v", err)
 	}
 
 	assertSourceContainsAll(t, source, []string{
-		"return sheinworkspace.BuildSourceProductSummary(product)",
+		"SourceProduct:     sheinworkspace.BuildSourceProductSummary(input.canonical)",
 	})
 	if !strings.Contains(string(fileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
-		t.Fatal("preview_builder_shein_source_product.go should call marketplace SHEIN workspace directly")
+		t.Fatal("preview_builder_shein_payload.go should call marketplace SHEIN workspace directly")
 	}
 	assertSourceExcludesAll(t, source, []string{
 		"canonical.Attributes",
@@ -30,4 +30,5 @@ func TestSheinSourceProductBoundary(t *testing.T) {
 	assertFunctionCallsContainAll(t, callNames, []string{
 		"BuildSourceProductSummary",
 	})
+	assertFileAbsent(t, "preview_builder_shein_source_product.go")
 }

@@ -34,7 +34,7 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 		BrandName:         pkg.BrandName,
 		CategoryPath:      append([]string(nil), pkg.CategoryPath...),
 		CategoryID:        pkg.CategoryID,
-		SourceProduct:     buildSheinSourceProductSummary(input.canonical),
+		SourceProduct:     sheinworkspace.BuildSourceProductSummary(input.canonical),
 		NeedsReview:       input.needsReview,
 		Summary:           input.summary,
 		ReviewNotes:       append([]string(nil), pkg.ReviewNotes...),

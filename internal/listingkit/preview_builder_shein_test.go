@@ -21,7 +21,7 @@ func TestBuildSheinSourceProductSummary(t *testing.T) {
 		},
 	}
 
-	summary := buildSheinSourceProductSummary(product)
+	summary := sheinworkspace.BuildSourceProductSummary(product)
 	if summary == nil {
 		t.Fatal("expected summary")
 	}
