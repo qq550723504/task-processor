@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { renderHook } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   projectItemizedBatchDetail,
   projectItemizedTaskCreationResult,
+  useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
 import type { SheinStudioBatchDetail, SheinStudioSavedBatch } from "@/lib/types/shein-studio";
@@ -200,5 +202,99 @@ describe("projectItemizedBatchDetail", () => {
       updatedAt: "2026-06-22T04:00:00.000Z",
     });
     expect(result.detail.batch.tenantId).toBe("tenant-detail-new");
+  });
+});
+
+describe("useSheinStudioItemizedBatchContext", () => {
+  it("returns undefined until both active batch id and detail are available", () => {
+    const { result } = renderHook(() =>
+      useSheinStudioItemizedBatchContext({
+        activeBatchId: "",
+        activeSelection: undefined,
+        artworkModel: "openai",
+        currentActiveBatch: buildCurrentBatch(),
+        generationJobs: [],
+        groupedImageMode: "shared_by_size",
+        groupedSelections: [],
+        groups: [],
+        imageStrategy: "ai_generated",
+        itemizedBatchDetail: buildCurrentDetail(),
+        persistedUpdatedAt: "",
+        productImageCount: "1",
+        productImagePrompt: "",
+        productImagePrompts: [],
+        prompt: "prompt",
+        renderSizeImagesWithSds: false,
+        selectedSdsImages: [],
+        setSavedBatches: vi.fn(),
+        sheinStoreId: "869",
+        styleCount: "1",
+        transparentBackground: false,
+        upsertSavedBatch: (current, savedBatch) => [savedBatch, ...current],
+        variationIntensity: "medium",
+        applyHydratedBatch: vi.fn(),
+      }),
+    );
+
+    expect(result.current.itemizedBatchContext).toBeUndefined();
+  });
+
+  it("builds itemized task context and applies created results", () => {
+    const setSavedBatches = vi.fn();
+    const applyHydratedBatch = vi.fn();
+    const { result } = renderHook(() =>
+      useSheinStudioItemizedBatchContext({
+        activeBatchId: "batch-1",
+        activeSelection: undefined,
+        artworkModel: "openai",
+        currentActiveBatch: buildCurrentBatch(),
+        generationJobs: [],
+        groupedImageMode: "shared_by_size",
+        groupedSelections: [],
+        groups: [],
+        imageStrategy: "ai_generated",
+        itemizedBatchDetail: buildCurrentDetail(),
+        persistedUpdatedAt: "2026-06-22T00:30:00.000Z",
+        productImageCount: "1",
+        productImagePrompt: "",
+        productImagePrompts: [],
+        prompt: "prompt",
+        renderSizeImagesWithSds: false,
+        selectedSdsImages: [],
+        setSavedBatches,
+        sheinStoreId: "869",
+        styleCount: "1",
+        transparentBackground: false,
+        upsertSavedBatch: (current, savedBatch) => [savedBatch, ...current],
+        variationIntensity: "medium",
+        applyHydratedBatch,
+      }),
+    );
+
+    expect(result.current.itemizedBatchContext).toMatchObject({
+      batchId: "batch-1",
+      tenantId: "tenant-detail",
+      detail: buildCurrentDetail(),
+    });
+
+    result.current.itemizedBatchContext?.onCreated(buildTaskCreationResult());
+
+    expect(setSavedBatches).toHaveBeenCalledWith(expect.any(Function));
+    const updater = setSavedBatches.mock.calls[0][0] as (
+      current: SheinStudioSavedBatch[],
+    ) => SheinStudioSavedBatch[];
+    expect(updater([])[0]).toMatchObject({
+      id: "batch-1",
+      createdTasks: [
+        { id: "task-created" },
+        { id: "task-reused" },
+      ],
+    });
+    expect(applyHydratedBatch).toHaveBeenCalledWith({
+      detail: expect.objectContaining({
+        createdTasks: [{ id: "task-created", title: "Created", designId: "design-1" }],
+      }),
+      savedBatch: expect.objectContaining({ id: "batch-1" }),
+    });
   });
 });

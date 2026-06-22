@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+
 import {
   flattenItemizedBatchDesigns,
   getApprovedItemizedBatchDesignIDs,
@@ -43,6 +45,13 @@ type ItemizedTaskCreationProjectionInput = {
   styleCount: string;
   transparentBackground: boolean;
   variationIntensity: SheinStudioVariationIntensity;
+};
+
+type ItemizedBatchTaskContext = {
+  batchId: string;
+  tenantId?: string;
+  detail: SheinStudioBatchDetail;
+  onCreated: (result: SheinStudioBatchTaskCreationResult) => void;
 };
 
 type ItemizedBatchDetailProjectionInput = Omit<
@@ -192,5 +201,123 @@ export function projectItemizedTaskCreationResult({
         currentActiveBatch?.updatedAt ||
         projected.savedBatch.updatedAt,
     },
+  };
+}
+
+type ItemizedBatchContextParams = Omit<
+  ItemizedTaskCreationProjectionInput,
+  "currentDetail" | "result"
+> & {
+  applyHydratedBatch: (batch: {
+    detail: SheinStudioBatchDetail;
+    savedBatch: SheinStudioSavedBatch;
+  }) => void;
+  itemizedBatchDetail?: SheinStudioBatchDetail | null;
+  setSavedBatches: (
+    updater: (current: SheinStudioSavedBatch[]) => SheinStudioSavedBatch[],
+  ) => void;
+  upsertSavedBatch: (
+    current: SheinStudioSavedBatch[],
+    savedBatch: SheinStudioSavedBatch,
+  ) => SheinStudioSavedBatch[];
+};
+
+export function useSheinStudioItemizedBatchContext({
+  activeBatchId,
+  activeSelection,
+  applyHydratedBatch,
+  artworkModel,
+  currentActiveBatch,
+  generationJobs,
+  groupedImageMode,
+  groupedSelections,
+  groups,
+  imageStrategy,
+  itemizedBatchDetail,
+  persistedUpdatedAt,
+  productImageCount,
+  productImagePrompt,
+  productImagePrompts,
+  prompt,
+  renderSizeImagesWithSds,
+  selectedSdsImages,
+  setSavedBatches,
+  sheinStoreId,
+  styleCount,
+  transparentBackground,
+  upsertSavedBatch,
+  variationIntensity,
+}: ItemizedBatchContextParams): {
+  itemizedBatchContext?: ItemizedBatchTaskContext;
+} {
+  const itemizedBatchContext = useMemo<ItemizedBatchTaskContext | undefined>(() => {
+    if (!activeBatchId || !itemizedBatchDetail) {
+      return undefined;
+    }
+    return {
+      batchId: activeBatchId,
+      tenantId: itemizedBatchDetail.batch.tenantId ?? currentActiveBatch?.tenantId,
+      detail: itemizedBatchDetail,
+      onCreated: (result) => {
+        const { detail, savedBatch } = projectItemizedTaskCreationResult({
+          activeBatchId,
+          activeSelection,
+          artworkModel,
+          currentActiveBatch,
+          currentDetail: itemizedBatchDetail,
+          generationJobs,
+          groupedImageMode,
+          groupedSelections,
+          groups,
+          imageStrategy,
+          persistedUpdatedAt,
+          productImageCount,
+          productImagePrompt,
+          productImagePrompts,
+          prompt,
+          renderSizeImagesWithSds,
+          result,
+          selectedSdsImages,
+          sheinStoreId,
+          styleCount,
+          transparentBackground,
+          variationIntensity,
+        });
+        setSavedBatches((current) => upsertSavedBatch(current, savedBatch));
+        applyHydratedBatch({
+          savedBatch,
+          detail,
+        });
+      },
+    };
+  }, [
+    activeBatchId,
+    activeSelection,
+    applyHydratedBatch,
+    artworkModel,
+    currentActiveBatch,
+    generationJobs,
+    groupedImageMode,
+    groupedSelections,
+    groups,
+    imageStrategy,
+    itemizedBatchDetail,
+    persistedUpdatedAt,
+    productImageCount,
+    productImagePrompt,
+    productImagePrompts,
+    prompt,
+    renderSizeImagesWithSds,
+    selectedSdsImages,
+    setSavedBatches,
+    sheinStoreId,
+    styleCount,
+    transparentBackground,
+    upsertSavedBatch,
+    variationIntensity,
+  ]);
+
+  return {
+    itemizedBatchContext,
   };
 }

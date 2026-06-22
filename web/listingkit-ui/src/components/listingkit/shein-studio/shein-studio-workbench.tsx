@@ -19,7 +19,7 @@ import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/she
 import { useSheinStudioQueueController } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import {
   projectItemizedBatchDetail,
-  projectItemizedTaskCreationResult,
+  useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
 import {
@@ -847,6 +847,33 @@ export function SheinStudioWorkbench({
     startBatchRun: startSheinStudioBatchRun,
     upsertSavedBatch,
   });
+  const { itemizedBatchContext } = useSheinStudioItemizedBatchContext({
+    activeBatchId,
+    activeSelection,
+    applyHydratedBatch: workbenchController.applyHydratedBatch,
+    artworkModel,
+    currentActiveBatch,
+    generationJobs,
+    groupedImageMode,
+    groupedSelections,
+    groups,
+    imageStrategy,
+    itemizedBatchDetail,
+    persistedUpdatedAt,
+    productImageCount,
+    productImagePrompt,
+    productImagePrompts,
+    prompt,
+    renderSizeImagesWithSds,
+    selectedSdsImages,
+    setSavedBatches: (updater) =>
+      workbenchController.setField("savedBatches", updater),
+    sheinStoreId,
+    styleCount,
+    transparentBackground,
+    upsertSavedBatch,
+    variationIntensity,
+  });
   const handlePromptChange = useCallback(
     (value: string) => {
       saveDedicatedBatchDraftSnapshot({
@@ -1116,47 +1143,7 @@ export function SheinStudioWorkbench({
       transparentBackground,
       variationIntensity,
       hasLocalWorkflowStateRef,
-      itemizedBatchContext:
-        activeBatchId && itemizedBatchDetail
-          ? {
-              batchId: activeBatchId,
-              tenantId: itemizedBatchDetail.batch.tenantId ?? currentActiveBatch?.tenantId,
-              detail: itemizedBatchDetail,
-              onCreated: (result) => {
-                const { detail, savedBatch } = projectItemizedTaskCreationResult({
-                  activeBatchId,
-                  activeSelection,
-                  artworkModel,
-                  currentActiveBatch,
-                  currentDetail: itemizedBatchDetail,
-                  generationJobs,
-                  groupedImageMode,
-                  groupedSelections,
-                  groups,
-                  imageStrategy,
-                  persistedUpdatedAt,
-                  productImageCount,
-                  productImagePrompt,
-                  productImagePrompts,
-                  prompt,
-                  renderSizeImagesWithSds,
-                  result,
-                  selectedSdsImages,
-                  sheinStoreId,
-                  styleCount,
-                  transparentBackground,
-                  variationIntensity,
-                });
-                workbenchController.setField("savedBatches", (current) =>
-                  upsertSavedBatch(current, savedBatch),
-                );
-                workbenchController.applyHydratedBatch({
-                  savedBatch,
-                  detail,
-                });
-              },
-            }
-          : undefined,
+      itemizedBatchContext,
       batchTraceContext: {
         batchId: traceBatchId || undefined,
         queueMode: batchQueueMode,
