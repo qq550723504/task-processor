@@ -53,7 +53,7 @@ func buildSheinStoreResolutionSummary(selection *sheinStoreSelection, task *Task
 	if matchedProfileID <= 0 {
 		matchedProfileID = selection.Profile.ID
 	}
-	return buildSheinStoreResolutionSummaryValue(
+	return sheinworkspace.BuildStoreResolutionSummary(
 		selection.Profile.StoreID,
 		firstNonEmpty(strings.TrimSpace(selection.Profile.Site), sheinPreviewSite(selection.Profile, task, preview)),
 		selection.Strategy,
@@ -64,10 +64,6 @@ func buildSheinStoreResolutionSummary(selection *sheinStoreSelection, task *Task
 		selection.Fallback,
 		resolvedAt,
 	)
-}
-
-func sheinStoreResolutionSummaryFromSnapshot(snapshot *SheinStoreResolutionSnapshot) *SheinStoreResolutionSummary {
-	return sheinStoreResolutionSummaryFromSnapshotValue(snapshot)
 }
 
 func sheinStoreResolutionSnapshotFromSelection(selection *sheinStoreSelection, task *Task, preview *ListingKitPreview) *SheinStoreResolutionSnapshot {

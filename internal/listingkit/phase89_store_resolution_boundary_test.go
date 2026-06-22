@@ -17,15 +17,20 @@ func TestSheinStoreResolutionBoundary(t *testing.T) {
 		t.Fatal("shein_store_resolution_presentation.go should call marketplace SHEIN workspace directly")
 	}
 
-	source := readNamedFunctionSource(t, "shein_store_resolution_presentation.go", "buildSheinStoreResolutionSummaryValue")
-	callNames := readNamedFunctionCallNames(t, "shein_store_resolution_presentation.go", "buildSheinStoreResolutionSummaryValue")
+	presentation := string(fileSrc)
+	assertSourceExcludesAll(t, presentation, []string{
+		"func buildSheinStoreResolutionSummaryValue(",
+		"return &SheinStoreResolutionSummary{",
+		"MatchedRuleKinds: append([]string(nil), matchedRuleKinds...)",
+	})
 
+	source := readNamedFunctionSource(t, "service_shein_store_resolution_preview_support_helper.go", "buildSheinStoreResolutionSummary")
+	callNames := readNamedFunctionCallNames(t, "service_shein_store_resolution_preview_support_helper.go", "buildSheinStoreResolutionSummary")
 	assertSourceContainsAll(t, source, []string{
 		"return sheinworkspace.BuildStoreResolutionSummary(",
 	})
 	assertSourceExcludesAll(t, source, []string{
 		"return &SheinStoreResolutionSummary{",
-		"MatchedRuleKinds: append([]string(nil), matchedRuleKinds...)",
 	})
 	assertFunctionCallsContainAll(t, callNames, []string{
 		"BuildStoreResolutionSummary",

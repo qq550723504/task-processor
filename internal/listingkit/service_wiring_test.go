@@ -2444,7 +2444,7 @@ func TestSheinResolutionCachePreviewHelpersLiveOutsideMainSheinPreviewBuilder(t 
 	}
 }
 
-func TestSheinStoreResolutionSummaryValueLivesOutsidePreviewContextBuilder(t *testing.T) {
+func TestSheinStoreResolutionSummaryCallsWorkspaceDirectly(t *testing.T) {
 	t.Parallel()
 
 	src, err := os.ReadFile("shein_store_resolution_presentation.go")
@@ -2454,7 +2454,6 @@ func TestSheinStoreResolutionSummaryValueLivesOutsidePreviewContextBuilder(t *te
 	content := string(src)
 
 	for _, needle := range []string{
-		"func buildSheinStoreResolutionSummaryValue(",
 		"return sheinworkspace.BuildStoreResolutionSummary(",
 		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
@@ -2462,12 +2461,18 @@ func TestSheinStoreResolutionSummaryValueLivesOutsidePreviewContextBuilder(t *te
 			t.Fatalf("shein_store_resolution_presentation.go should contain %q", needle)
 		}
 	}
+	if strings.Contains(content, "func buildSheinStoreResolutionSummaryValue(") {
+		t.Fatalf("shein_store_resolution_presentation.go should not keep %q", "func buildSheinStoreResolutionSummaryValue(")
+	}
 
 	previewSrc, err := os.ReadFile("service_shein_store_resolution_preview_support_helper.go")
 	if err != nil {
 		t.Fatalf("ReadFile(service_shein_store_resolution_preview_support_helper.go) error = %v", err)
 	}
 	previewContent := string(previewSrc)
+	if !strings.Contains(previewContent, "return sheinworkspace.BuildStoreResolutionSummary(") {
+		t.Fatalf("service_shein_store_resolution_preview_support_helper.go should call workspace summary builder directly")
+	}
 	if strings.Contains(previewContent, "return &SheinStoreResolutionSummary{") {
 		t.Fatalf("service_shein_store_resolution_preview_support_helper.go should not inline store resolution summary literals")
 	}
