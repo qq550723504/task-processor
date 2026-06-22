@@ -16,8 +16,8 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 	rootContent := string(rootSrc)
 
 	for _, needle := range []string{
-		"type SheinRepairValidationPreview = listingworkspace.RepairValidationPreview[RevisionFieldError]",
-		"type SheinRepairPatchPayload = listingworkspace.RepairPatchPayload",
+		"type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]",
+		"type SheinRepairPatchPayload = sheinworkspace.RepairPatchPayload",
 		"type sheinRepairRevisionBundle struct {",
 		"type sheinRepairArtifacts struct {",
 	} {
@@ -47,7 +47,7 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 	for _, needle := range []string{
 		"func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {",
 		"func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEditorRevisionSkeleton, request *ApplyRevisionRequest, validation *SheinRepairValidationPreview) sheinRepairArtifacts {",
-		"listingworkspace.CloneRepairPatchPayload(patch)",
+		"sheinworkspace.CloneRepairPatchPayload(patch)",
 		"func cloneSheinRepairValidationPreview(src *SheinRepairValidationPreview) *SheinRepairValidationPreview {",
 		"func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {",
 	} {
@@ -57,7 +57,7 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 	}
 	for _, needle := range []string{
 		"func cloneSheinRepairPatchPayload(payload *SheinRepairPatchPayload) *SheinRepairPatchPayload {",
-		"listingworkspace.CloneRepairPatchPayload(payload)",
+		"sheinworkspace.CloneRepairPatchPayload(payload)",
 	} {
 		if strings.Contains(supportContent, needle) {
 			t.Fatalf("shein_repair_clone_support.go should not keep patch clone wrapper %q", needle)

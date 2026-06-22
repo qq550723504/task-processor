@@ -1,9 +1,9 @@
 package listingkit
 
-import listingworkspace "task-processor/internal/listingkit/workspace/shein"
+import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
 func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayload) sheinRepairRevisionBundle {
-	seed := listingworkspace.BuildRepairRevisionSeed(action, payload)
+	seed := sheinworkspace.BuildRepairRevisionSeed(action, payload)
 	if seed.Input == nil || seed.Skeleton == nil {
 		return sheinRepairRevisionBundle{}
 	}
@@ -22,7 +22,7 @@ func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayl
 func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {
 	bundle := buildSheinRepairRevisionBundle(action, patch)
 	return sheinRepairArtifacts{
-		patch:      listingworkspace.CloneRepairPatchPayload(patch),
+		patch:      sheinworkspace.CloneRepairPatchPayload(patch),
 		skeleton:   bundle.skeleton,
 		request:    bundle.request,
 		validation: buildSheinRepairValidationPreview(pkg, editorSection, bundle.request, bundle.skeleton),
@@ -39,5 +39,5 @@ func buildSheinRepairValidationPreview(pkg *SheinPackage, editorSection string, 
 		valid = false
 		fieldErrors = append([]RevisionFieldError(nil), validationErr.Fields...)
 	}
-	return listingworkspace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)
+	return sheinworkspace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)
 }

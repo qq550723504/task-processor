@@ -16,8 +16,8 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 	rootContent := string(rootSrc)
 
 	for _, needle := range []string{
-		"type SheinRepairValidationPreview = listingworkspace.RepairValidationPreview[RevisionFieldError]",
-		"type SheinRepairPatchPayload = listingworkspace.RepairPatchPayload",
+		"type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]",
+		"type SheinRepairPatchPayload = sheinworkspace.RepairPatchPayload",
 		"type sheinRepairRevisionBundle struct {",
 		"type sheinRepairArtifacts struct {",
 	} {
@@ -45,8 +45,8 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 		"func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayload) sheinRepairRevisionBundle {",
 		"func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {",
 		"func buildSheinRepairValidationPreview(pkg *SheinPackage, editorSection string, revision *ApplyRevisionRequest, skeleton *SheinEditorRevisionSkeleton) *SheinRepairValidationPreview {",
-		"listingworkspace.BuildRepairRevisionSeed(action, payload)",
-		"listingworkspace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)",
+		"sheinworkspace.BuildRepairRevisionSeed(action, payload)",
+		"sheinworkspace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)",
 	} {
 		if !strings.Contains(revisionContent, needle) {
 			t.Fatalf("shein_repair_revision_support.go should contain %q", needle)
@@ -66,8 +66,8 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 		"func buildSheinRepairApplyRequest(action string, payload *SheinRepairPatchPayload) *ApplyRevisionRequest {",
 		"func buildSheinRepairRevisionInput(payload *SheinRepairPatchPayload) *SheinRevisionInput {",
 		"func buildSheinRepairReason(action string) string {",
-		"listingworkspace.BuildRepairRevisionInput(payload)",
-		"listingworkspace.BuildRepairReason(action)",
+		"sheinworkspace.BuildRepairRevisionInput(payload)",
+		"sheinworkspace.BuildRepairReason(action)",
 	} {
 		if strings.Contains(revisionContent, needle) {
 			t.Fatalf("shein_repair_revision_support.go should not keep unused repair revision wrapper %q", needle)

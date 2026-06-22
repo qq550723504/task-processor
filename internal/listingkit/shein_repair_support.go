@@ -1,11 +1,11 @@
 package listingkit
 
 import (
-	listingworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
-type SheinRepairValidationPreview = listingworkspace.RepairValidationPreview[RevisionFieldError]
-type SheinRepairPatchPayload = listingworkspace.RepairPatchPayload
+type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]
+type SheinRepairPatchPayload = sheinworkspace.RepairPatchPayload
 
 type sheinRepairRevisionBundle struct {
 	input    *SheinRevisionInput

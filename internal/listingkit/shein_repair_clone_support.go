@@ -1,6 +1,6 @@
 package listingkit
 
-import listingworkspace "task-processor/internal/listingkit/workspace/shein"
+import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
 func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {
 	if set == nil {
@@ -16,7 +16,7 @@ func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {
 
 func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEditorRevisionSkeleton, request *ApplyRevisionRequest, validation *SheinRepairValidationPreview) sheinRepairArtifacts {
 	return sheinRepairArtifacts{
-		patch:      listingworkspace.CloneRepairPatchPayload(patch),
+		patch:      sheinworkspace.CloneRepairPatchPayload(patch),
 		skeleton:   cloneSheinEditorRevisionSkeleton(skeleton),
 		request:    cloneApplyRevisionRequest(request),
 		validation: cloneSheinRepairValidationPreview(validation),

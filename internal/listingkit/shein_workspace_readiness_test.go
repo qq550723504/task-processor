@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheinrepair "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -1325,7 +1326,7 @@ func TestWorkspaceCloneRepairPatchPayloadDeepCopiesListingKitAlias(t *testing.T)
 		ReviewNotes: []string{"manual review"},
 	}
 
-	cloned := sheinworkspace.CloneRepairPatchPayload(payload)
+	cloned := sheinrepair.CloneRepairPatchPayload(payload)
 	if cloned == nil {
 		t.Fatal("CloneRepairPatchPayload() = nil, want clone")
 	}

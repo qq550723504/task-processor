@@ -9,6 +9,7 @@ type ReadinessReasonSpec = sheinmarketplace.ReadinessReasonSpec
 type ReadinessHintSpec = sheinmarketplace.ReadinessHintSpec
 type ReadinessGuidanceSpec = sheinmarketplace.ReadinessGuidanceSpec
 type PackageTemplateValidation = sheinmarketplace.PackageTemplateValidation
+type RepairPatchPayload = sheinmarketplace.RepairPatchPayload
 type SubmitTemplateReadinessInput = sheinmarketplace.SubmitTemplateReadinessInput
 type SubmitPayloadValidationReadinessInput = sheinmarketplace.SubmitPayloadValidationReadinessInput
 
