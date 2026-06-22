@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
 type RevisionFieldError = sheinworkspace.FieldError
