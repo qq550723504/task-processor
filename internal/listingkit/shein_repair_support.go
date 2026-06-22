@@ -6,5 +6,3 @@ import (
 
 type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]
 type SheinRepairPatchPayload = sheinworkspace.RepairPatchPayload
-
-type sheinRepairArtifacts = sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]

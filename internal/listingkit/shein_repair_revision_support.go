@@ -14,10 +14,10 @@ func buildSheinRepairApplyRequest(seed sheinworkspace.RepairRevisionSeed) *Apply
 	}
 }
 
-func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {
+func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview] {
 	seed := sheinworkspace.BuildRepairRevisionSeed(action, patch)
 	request := buildSheinRepairApplyRequest(seed)
-	return sheinRepairArtifacts{
+	return sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]{
 		Patch:      sheinworkspace.CloneRepairPatchPayload(patch),
 		Skeleton:   seed.Skeleton,
 		Request:    request,

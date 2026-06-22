@@ -18,7 +18,6 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 	for _, needle := range []string{
 		"type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]",
 		"type SheinRepairPatchPayload = sheinworkspace.RepairPatchPayload",
-		"type sheinRepairArtifacts = sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]",
 	} {
 		if !strings.Contains(rootContent, needle) {
 			t.Fatalf("shein_repair_support.go should contain %q", needle)
@@ -31,6 +30,7 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 		"func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEditorRevisionSkeleton, request *ApplyRevisionRequest, validation *SheinRepairValidationPreview) sheinRepairArtifacts {",
 		"func cloneSheinRepairValidationPreview(src *SheinRepairValidationPreview) *SheinRepairValidationPreview {",
 		"func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {",
+		"type sheinRepairArtifacts = sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]",
 	} {
 		if strings.Contains(rootContent, needle) {
 			t.Fatalf("shein_repair_support.go should delegate clone support helper %q", needle)
