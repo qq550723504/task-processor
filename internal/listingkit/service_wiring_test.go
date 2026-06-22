@@ -2568,6 +2568,7 @@ func TestSheinSourceProductSummaryHelperLivesOutsideMainSheinPreviewBuilder(t *t
 	for _, needle := range []string{
 		"func buildSheinSourceProductSummary(product *canonical.Product) *SheinSourceProductSummary {",
 		"return sheinworkspace.BuildSourceProductSummary(product)",
+		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
 		if !strings.Contains(sourceContent, needle) {
 			t.Fatalf("preview_builder_shein_source_product.go should contain %q", needle)

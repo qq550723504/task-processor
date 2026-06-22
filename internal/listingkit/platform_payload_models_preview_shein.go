@@ -67,4 +67,4 @@ type SheinFinalReviewImage = sheinmarketplace.FinalReviewImage
 type SheinResolutionCacheSummary = sheinmarketplace.ResolutionCacheSummary
 type SheinImageUploadPreflight = sheinmarketplace.ImageUploadPreflight
 
-type SheinSourceProductSummary = sheinworkspace.SourceProductSummary
+type SheinSourceProductSummary = sheinmarketplace.SourceProductSummary
