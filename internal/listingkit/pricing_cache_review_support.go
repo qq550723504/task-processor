@@ -10,32 +10,12 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
-func normalizePublishedSheinPricingReview(pkg *sheinpub.Package) *sheinpub.PricingReview {
-	return sheinpub.NormalizePublishedPricingReview(pkg)
-}
-
-func sheinPricingReviewApplicable(pkg *sheinpub.Package, review *sheinpub.PricingReview) bool {
-	return sheinpub.PricingReviewApplicable(pkg, review)
-}
-
 func mustMarshalSheinPricingReview(review *sheinpub.PricingReview) string {
 	data, err := json.Marshal(review)
 	if err != nil {
 		return ""
 	}
 	return string(data)
-}
-
-func decodeSheinPricingCacheEntry(entry *sheinpub.SheinResolutionCacheEntry) *sheinpub.PricingReview {
-	return sheinpub.DecodePricingCacheEntry(entry)
-}
-
-func reconcileSheinPricingCacheReview(pkg *sheinpub.Package, review *sheinpub.PricingReview) *sheinpub.PricingReview {
-	return sheinpub.ReconcilePricingCacheReview(pkg, review)
-}
-
-func cloneSheinPricingReview(review *sheinpub.PricingReview) *sheinpub.PricingReview {
-	return sheinpub.ClonePricingReview(review)
 }
 
 func attachPricingCacheInfo(

@@ -17,10 +17,10 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 	}
 	task.Result.Shein = sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
 	req := buildSheinPublishRequest(task.Request)
-	review := normalizePublishedSheinPricingReview(task.Result.Shein)
+	review := sheinpub.NormalizePublishedPricingReview(task.Result.Shein)
 	if review == nil {
 		review = buildSheinDraftBackedPricingReview(task.Result.Shein, s.currentSheinPricingRule(), nil)
-		review = normalizePublishedSheinPricingReview(&sheinpub.Package{
+		review = sheinpub.NormalizePublishedPricingReview(&sheinpub.Package{
 			DraftPayload: task.Result.Shein.DraftPayload,
 			Pricing:      review,
 		})
@@ -95,9 +95,9 @@ func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Pack
 		}, logrus.Fields{"reason": "no_entry"})
 		return nil
 	}
-	review := decodeSheinPricingCacheEntry(entry)
-	review = reconcileSheinPricingCacheReview(pkg, review)
-	if !sheinPricingReviewApplicable(pkg, review) {
+	review := sheinpub.DecodePricingCacheEntry(entry)
+	review = sheinpub.ReconcilePricingCacheReview(pkg, review)
+	if !sheinpub.PricingReviewApplicable(pkg, review) {
 		logPricingCacheEvent("miss", buildReq, pkg, &sheinpub.ResolutionCacheInfo{
 			Source:    cacheEntrySourceLabel(entry),
 			HitSource: pricingCacheHitSource(entry),

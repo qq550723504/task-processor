@@ -19,6 +19,10 @@ func TestPricingCacheSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {",
 		"func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Package) *sheinpub.PricingReview {",
 		"func (s *service) clearSheinPricingCache(req *sheinpub.BuildRequest, pkg *sheinpub.Package) error {",
+		"sheinpub.NormalizePublishedPricingReview(task.Result.Shein)",
+		"sheinpub.DecodePricingCacheEntry(entry)",
+		"sheinpub.ReconcilePricingCacheReview(pkg, review)",
+		"sheinpub.PricingReviewApplicable(pkg, review)",
 	} {
 		if !strings.Contains(homeContent, needle) {
 			t.Fatalf("pricing_cache_service.go should contain %q", needle)
@@ -45,12 +49,6 @@ func TestPricingCacheSupportFilesOwnHelperFamilies(t *testing.T) {
 	reviewContent := string(reviewSrc)
 
 	for _, needle := range []string{
-		"func normalizePublishedSheinPricingReview(pkg *sheinpub.Package) *sheinpub.PricingReview {",
-		"func sheinPricingReviewApplicable(pkg *sheinpub.Package, review *sheinpub.PricingReview) bool {",
-		"func cloneSheinPricingReview(review *sheinpub.PricingReview) *sheinpub.PricingReview {",
-		"return sheinpub.NormalizePublishedPricingReview(pkg)",
-		"return sheinpub.PricingReviewApplicable(pkg, review)",
-		"return sheinpub.ClonePricingReview(review)",
 		"func attachPricingCacheInfo(",
 		"func logPricingCacheEvent(event string, req *sheinpub.BuildRequest, pkg *sheinpub.Package, info *sheinpub.ResolutionCacheInfo, fields logrus.Fields) {",
 		"sheinpub.PricingShortKey(key)",
@@ -60,6 +58,17 @@ func TestPricingCacheSupportFilesOwnHelperFamilies(t *testing.T) {
 	} {
 		if !strings.Contains(reviewContent, needle) {
 			t.Fatalf("pricing_cache_review_support.go should contain %q", needle)
+		}
+	}
+	for _, forbidden := range []string{
+		"func normalizePublishedSheinPricingReview(",
+		"func sheinPricingReviewApplicable(",
+		"func decodeSheinPricingCacheEntry(",
+		"func reconcileSheinPricingCacheReview(",
+		"func cloneSheinPricingReview(",
+	} {
+		if strings.Contains(reviewContent, forbidden) {
+			t.Fatalf("pricing_cache_review_support.go should not keep publishing-owned wrapper %q", forbidden)
 		}
 	}
 
