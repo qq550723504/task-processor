@@ -42,18 +42,20 @@ func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 		}
 	}
 
-	styleSrc, err := os.ReadFile("shein_submit_sku_style_support.go")
+	assertFileAbsent(t, "shein_submit_sku_style_support.go")
+
+	normalizationSrc, err := os.ReadFile("shein_submit_sku_normalization.go")
 	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_sku_style_support.go) error = %v", err)
+		t.Fatalf("ReadFile(shein_submit_sku_normalization.go) error = %v", err)
 	}
-	styleContent := string(styleSrc)
+	normalizationContent := string(normalizationSrc)
 
 	for _, needle := range []string{
 		"func resolveStudioSubmitStyleSuffix(task *Task) string {",
 		"func sheinStudioStyleID(options *SheinStudioOptions) string {",
 	} {
-		if !strings.Contains(styleContent, needle) {
-			t.Fatalf("shein_submit_sku_style_support.go should contain %q", needle)
+		if !strings.Contains(normalizationContent, needle) {
+			t.Fatalf("shein_submit_sku_normalization.go should contain app adapter %q", needle)
 		}
 	}
 	for _, needle := range []string{
@@ -65,8 +67,8 @@ func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 		"func studioSubmitRequestDiscriminator(requestID string) string {",
 		"func combineStudioSubmitDiscriminators(values ...string) string {",
 	} {
-		if strings.Contains(styleContent, needle) {
-			t.Fatalf("shein_submit_sku_style_support.go should delegate style wrapper %q", needle)
+		if strings.Contains(normalizationContent, needle) {
+			t.Fatalf("shein_submit_sku_normalization.go should delegate style wrapper %q", needle)
 		}
 	}
 	for _, needle := range []string{
@@ -77,8 +79,8 @@ func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 		"b.WriteString(\"R\")",
 		"strings.Join(parts, \"-\")",
 	} {
-		if strings.Contains(styleContent, needle) {
-			t.Fatalf("shein_submit_sku_style_support.go should delegate style detail %q", needle)
+		if strings.Contains(normalizationContent, needle) {
+			t.Fatalf("shein_submit_sku_normalization.go should delegate style detail %q", needle)
 		}
 	}
 

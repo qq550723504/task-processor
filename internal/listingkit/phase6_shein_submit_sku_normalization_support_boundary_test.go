@@ -18,6 +18,10 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 	for _, needle := range []string{
 		"func normalizeSheinStudioSubmitSupplierSKUs(task *Task, pkg *sheinpub.Package, submitRequestID string) bool {",
 		"type sheinStudioSupplierSKURename = sheinpub.SupplierSKURename",
+		"func resolveStudioSubmitStyleSuffix(task *Task) string {",
+		"func sheinStudioStyleID(options *SheinStudioOptions) string {",
+		"func adaptSubmitVariantContext(sds *SDSSyncOptions) *sheinpub.SubmitVariantContext {",
+		"func adaptSubmitVariantOption(item *SDSSyncVariantOption) *sheinpub.SubmitVariantOption {",
 	} {
 		if !strings.Contains(homeContent, needle) {
 			t.Fatalf("shein_submit_sku_normalization.go should contain %q", needle)
@@ -37,20 +41,7 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 		}
 	}
 
-	variantSrc, err := os.ReadFile("shein_submit_sku_variant_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_sku_variant_support.go) error = %v", err)
-	}
-	variantContent := string(variantSrc)
-
-	for _, needle := range []string{
-		"func adaptSubmitVariantContext(sds *SDSSyncOptions) *sheinpub.SubmitVariantContext {",
-		"func adaptSubmitVariantOption(item *SDSSyncVariantOption) *sheinpub.SubmitVariantOption {",
-	} {
-		if !strings.Contains(variantContent, needle) {
-			t.Fatalf("shein_submit_sku_variant_support.go should contain %q", needle)
-		}
-	}
+	assertFileAbsent(t, "shein_submit_sku_variant_support.go")
 	for _, needle := range []string{
 		"func matchStudioSubmitVariantOption(",
 		"func resolveStudioSubmitBaseSKU(",
@@ -66,8 +57,8 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 		"styleSuffix := normalizeStyleIDSuffix(styleID)",
 		"studioVariantBaseSKUCounts",
 	} {
-		if strings.Contains(variantContent, needle) {
-			t.Fatalf("shein_submit_sku_variant_support.go should delegate variant detail %q", needle)
+		if strings.Contains(homeContent, needle) {
+			t.Fatalf("shein_submit_sku_normalization.go should delegate variant detail %q", needle)
 		}
 	}
 
@@ -106,20 +97,7 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 		}
 	}
 
-	styleSrc, err := os.ReadFile("shein_submit_sku_style_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_sku_style_support.go) error = %v", err)
-	}
-	styleContent := string(styleSrc)
-
-	for _, needle := range []string{
-		"func resolveStudioSubmitStyleSuffix(task *Task) string {",
-		"func sheinStudioStyleID(options *SheinStudioOptions) string {",
-	} {
-		if !strings.Contains(styleContent, needle) {
-			t.Fatalf("shein_submit_sku_style_support.go should contain %q", needle)
-		}
-	}
+	assertFileAbsent(t, "shein_submit_sku_style_support.go")
 	for _, needle := range []string{
 		"stopwords := map[string]bool",
 		"func combineStudioSubmitDiscriminators(values ...string) string {",
@@ -127,8 +105,8 @@ func TestSheinSubmitSKUNormalizationSupportFilesOwnHelperFamilies(t *testing.T) 
 		"tokenizeStudioStyleSuffixWords(value)",
 		"b.WriteString(\"R\")",
 	} {
-		if strings.Contains(styleContent, needle) {
-			t.Fatalf("shein_submit_sku_style_support.go should delegate style detail %q", needle)
+		if strings.Contains(homeContent, needle) {
+			t.Fatalf("shein_submit_sku_normalization.go should delegate style detail %q", needle)
 		}
 	}
 }
