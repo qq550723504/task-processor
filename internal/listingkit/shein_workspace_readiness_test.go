@@ -1251,17 +1251,17 @@ func TestBuildSheinRepairRevisionBundle(t *testing.T) {
 	}
 
 	bundle := buildSheinRepairRevisionBundle("确认类目", payload)
-	if bundle.input == nil || bundle.input.CategoryResolution == nil {
-		t.Fatalf("bundle input = %+v", bundle.input)
+	if bundle.Input == nil || bundle.Input.CategoryResolution == nil {
+		t.Fatalf("bundle input = %+v", bundle.Input)
 	}
-	if bundle.skeleton == nil || bundle.skeleton.Shein == nil || bundle.skeleton.Shein.CategoryResolution == nil {
-		t.Fatalf("bundle skeleton = %+v", bundle.skeleton)
+	if bundle.Skeleton == nil || bundle.Skeleton.Shein == nil || bundle.Skeleton.Shein.CategoryResolution == nil {
+		t.Fatalf("bundle skeleton = %+v", bundle.Skeleton)
 	}
-	if bundle.request == nil || bundle.request.Shein == nil || bundle.request.Shein.CategoryResolution == nil {
-		t.Fatalf("bundle request = %+v", bundle.request)
+	if bundle.Request == nil || bundle.Request.Shein == nil || bundle.Request.Shein.CategoryResolution == nil {
+		t.Fatalf("bundle request = %+v", bundle.Request)
 	}
-	if bundle.skeleton.Reason != "repair: 确认类目" || bundle.request.Reason != bundle.skeleton.Reason {
-		t.Fatalf("bundle reasons = skeleton:%+v request:%+v", bundle.skeleton, bundle.request)
+	if bundle.Skeleton.Reason != "repair: 确认类目" || bundle.Request.Reason != bundle.Skeleton.Reason {
+		t.Fatalf("bundle reasons = skeleton:%+v request:%+v", bundle.Skeleton, bundle.Request)
 	}
 }
 
@@ -1297,17 +1297,17 @@ func TestCloneSheinRepairArtifacts(t *testing.T) {
 	}
 
 	artifacts := cloneSheinRepairArtifacts(patch, skeleton, request, validation)
-	if artifacts.patch == nil || artifacts.patch.CategoryResolution == nil {
-		t.Fatalf("artifacts patch = %+v", artifacts.patch)
+	if artifacts.Patch == nil || artifacts.Patch.CategoryResolution == nil {
+		t.Fatalf("artifacts patch = %+v", artifacts.Patch)
 	}
-	if artifacts.skeleton == nil || artifacts.skeleton.Shein == nil {
-		t.Fatalf("artifacts skeleton = %+v", artifacts.skeleton)
+	if artifacts.Skeleton == nil || artifacts.Skeleton.Shein == nil {
+		t.Fatalf("artifacts skeleton = %+v", artifacts.Skeleton)
 	}
-	if artifacts.request == nil || artifacts.request.Shein == nil {
-		t.Fatalf("artifacts request = %+v", artifacts.request)
+	if artifacts.Request == nil || artifacts.Request.Shein == nil {
+		t.Fatalf("artifacts request = %+v", artifacts.Request)
 	}
-	if artifacts.validation == nil || !artifacts.validation.Valid {
-		t.Fatalf("artifacts validation = %+v", artifacts.validation)
+	if artifacts.Validation == nil || !artifacts.Validation.Valid {
+		t.Fatalf("artifacts validation = %+v", artifacts.Validation)
 	}
 }
 

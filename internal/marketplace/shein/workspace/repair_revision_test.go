@@ -126,6 +126,58 @@ func TestBuildRepairRevisionSeedSkipsEmptyPayload(t *testing.T) {
 	}
 }
 
+func TestRepairRevisionBundleCarriesAppRequest(t *testing.T) {
+	t.Parallel()
+
+	type input struct {
+		Value string
+	}
+	type skeleton struct {
+		Value string
+	}
+	type request struct {
+		Value string
+	}
+
+	bundle := RepairRevisionBundle[input, skeleton, request]{
+		Input:    &input{Value: "input"},
+		Skeleton: &skeleton{Value: "skeleton"},
+		Request:  &request{Value: "request"},
+	}
+
+	if bundle.Input.Value != "input" || bundle.Skeleton.Value != "skeleton" || bundle.Request.Value != "request" {
+		t.Fatalf("bundle = %+v, want input/skeleton/request", bundle)
+	}
+}
+
+func TestRepairArtifactsCarriesClonedArtifacts(t *testing.T) {
+	t.Parallel()
+
+	type patch struct {
+		Value string
+	}
+	type skeleton struct {
+		Value string
+	}
+	type request struct {
+		Value string
+	}
+	type validation struct {
+		Valid bool
+	}
+
+	artifacts := RepairArtifacts[patch, skeleton, request, validation]{
+		Patch:      &patch{Value: "patch"},
+		Skeleton:   &skeleton{Value: "skeleton"},
+		Request:    &request{Value: "request"},
+		Validation: &validation{Valid: true},
+	}
+
+	if artifacts.Patch.Value != "patch" || artifacts.Skeleton.Value != "skeleton" || artifacts.Request.Value != "request" || !artifacts.Validation.Valid {
+		t.Fatalf("artifacts = %+v, want repair artifacts", artifacts)
+	}
+}
+
 func TestBuildRepairReason(t *testing.T) {
 	t.Parallel()
 

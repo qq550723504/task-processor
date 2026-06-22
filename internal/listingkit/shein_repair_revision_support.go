@@ -8,9 +8,9 @@ func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayl
 		return sheinRepairRevisionBundle{}
 	}
 	return sheinRepairRevisionBundle{
-		input:    seed.Input,
-		skeleton: seed.Skeleton,
-		request: &ApplyRevisionRequest{
+		Input:    seed.Input,
+		Skeleton: seed.Skeleton,
+		Request: &ApplyRevisionRequest{
 			Platform: seed.Skeleton.Platform,
 			Actor:    seed.Skeleton.Actor,
 			Reason:   seed.Skeleton.Reason,
@@ -22,10 +22,10 @@ func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayl
 func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {
 	bundle := buildSheinRepairRevisionBundle(action, patch)
 	return sheinRepairArtifacts{
-		patch:      sheinworkspace.CloneRepairPatchPayload(patch),
-		skeleton:   bundle.skeleton,
-		request:    bundle.request,
-		validation: buildSheinRepairValidationPreview(pkg, editorSection, bundle.request, bundle.skeleton),
+		Patch:      sheinworkspace.CloneRepairPatchPayload(patch),
+		Skeleton:   bundle.Skeleton,
+		Request:    bundle.Request,
+		Validation: buildSheinRepairValidationPreview(pkg, editorSection, bundle.Request, bundle.Skeleton),
 	}
 }
 

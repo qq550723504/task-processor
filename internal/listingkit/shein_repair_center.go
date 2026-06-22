@@ -85,5 +85,5 @@ func cloneSheinRepairArtifactsForWorkspace(
 	validation *SheinRepairValidationPreview,
 ) (*SheinRepairPatchPayload, *SheinEditorRevisionSkeleton, *ApplyRevisionRequest, *SheinRepairValidationPreview) {
 	artifacts := cloneSheinRepairArtifacts(patch, skeleton, request, validation)
-	return artifacts.patch, artifacts.skeleton, artifacts.request, artifacts.validation
+	return artifacts.Patch, artifacts.Skeleton, artifacts.Request, artifacts.Validation
 }

@@ -21,6 +21,19 @@ type RepairRevisionSeed struct {
 	Skeleton *EditorRevisionSkeleton
 }
 
+type RepairRevisionBundle[I any, S any, Q any] struct {
+	Input    *I
+	Skeleton *S
+	Request  *Q
+}
+
+type RepairArtifacts[P any, S any, Q any, V any] struct {
+	Patch      *P
+	Skeleton   *S
+	Request    *Q
+	Validation *V
+}
+
 // CloneRepairPatchPayload returns a deep copy of repair patches before they are cached or reused.
 func CloneRepairPatchPayload(payload *RepairPatchPayload) *RepairPatchPayload {
 	if payload == nil {

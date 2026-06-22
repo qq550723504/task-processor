@@ -17,10 +17,10 @@ func buildSheinReadinessRepairHint(pkg *SheinPackage, action string, fieldPaths 
 		RevisionPath:  hint.RevisionPath,
 		Description:   hint.Description,
 		FieldPaths:    append([]string(nil), fieldPaths...),
-		Patch:         artifacts.patch,
-		Skeleton:      artifacts.skeleton,
-		Revision:      artifacts.request,
-		Validation:    artifacts.validation,
+		Patch:         artifacts.Patch,
+		Skeleton:      artifacts.Skeleton,
+		Revision:      artifacts.Request,
+		Validation:    artifacts.Validation,
 	}
 }
 
@@ -66,10 +66,10 @@ func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {
 			RevisionPath:  item.RevisionPath,
 			Description:   item.Description,
 			FieldPaths:    append([]string(nil), item.FieldPaths...),
-			Patch:         artifacts.patch,
-			Skeleton:      artifacts.skeleton,
-			Revision:      artifacts.request,
-			Validation:    artifacts.validation,
+			Patch:         artifacts.Patch,
+			Skeleton:      artifacts.Skeleton,
+			Revision:      artifacts.Request,
+			Validation:    artifacts.Validation,
 		})
 	}
 	return cloned

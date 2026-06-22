@@ -7,15 +7,6 @@ import (
 type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]
 type SheinRepairPatchPayload = sheinworkspace.RepairPatchPayload
 
-type sheinRepairRevisionBundle struct {
-	input    *SheinRevisionInput
-	skeleton *SheinEditorRevisionSkeleton
-	request  *ApplyRevisionRequest
-}
+type sheinRepairRevisionBundle = sheinworkspace.RepairRevisionBundle[SheinRevisionInput, SheinEditorRevisionSkeleton, ApplyRevisionRequest]
 
-type sheinRepairArtifacts struct {
-	patch      *SheinRepairPatchPayload
-	skeleton   *SheinEditorRevisionSkeleton
-	request    *ApplyRevisionRequest
-	validation *SheinRepairValidationPreview
-}
+type sheinRepairArtifacts = sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]

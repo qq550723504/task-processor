@@ -18,8 +18,8 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 	for _, needle := range []string{
 		"type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]",
 		"type SheinRepairPatchPayload = sheinworkspace.RepairPatchPayload",
-		"type sheinRepairRevisionBundle struct {",
-		"type sheinRepairArtifacts struct {",
+		"type sheinRepairRevisionBundle = sheinworkspace.RepairRevisionBundle[SheinRevisionInput, SheinEditorRevisionSkeleton, ApplyRevisionRequest]",
+		"type sheinRepairArtifacts = sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]",
 	} {
 		if !strings.Contains(rootContent, needle) {
 			t.Fatalf("shein_repair_support.go should contain %q", needle)
@@ -46,6 +46,8 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 		"func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {",
 		"func buildSheinRepairValidationPreview(pkg *SheinPackage, editorSection string, revision *ApplyRevisionRequest, skeleton *SheinEditorRevisionSkeleton) *SheinRepairValidationPreview {",
 		"sheinworkspace.BuildRepairRevisionSeed(action, payload)",
+		"Input:    seed.Input",
+		"Request: &ApplyRevisionRequest{",
 		"sheinworkspace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)",
 	} {
 		if !strings.Contains(revisionContent, needle) {
