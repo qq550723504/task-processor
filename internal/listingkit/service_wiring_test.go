@@ -2584,26 +2584,20 @@ func TestSheinPreviewWorkspaceOverviewHelperLivesOutsideMainSheinPreviewBuilder(
 	mainContent := string(mainSrc)
 	for _, needle := range []string{
 		"func buildSheinPreviewWorkspaceOverview(statusOverview *sheinworkspace.StatusOverview, submitState *sheinworkspace.SubmitStateInput, repairCenter *SheinRepairCenter) *sheinworkspace.WorkspaceOverview {",
-		"repairState := sheinworkspace.BuildRepairStateInput(repairCenter)",
-		"sheinworkspace.BuildWorkspaceOverview(statusOverview, submitState, repairState)",
 	} {
 		if strings.Contains(mainContent, needle) {
 			t.Fatalf("preview_builder_shein.go should not contain %q", needle)
 		}
 	}
 
-	overviewSrc, err := os.ReadFile("preview_builder_shein_workspace_overview.go")
-	if err != nil {
-		t.Fatalf("ReadFile(preview_builder_shein_workspace_overview.go) error = %v", err)
-	}
-	overviewContent := string(overviewSrc)
+	assertFileAbsent(t, "preview_builder_shein_workspace_overview.go")
+
 	for _, needle := range []string{
-		"func buildSheinPreviewWorkspaceOverview(statusOverview *sheinworkspace.StatusOverview, submitState *sheinworkspace.SubmitStateInput, repairCenter *SheinRepairCenter) *sheinworkspace.WorkspaceOverview {",
 		"repairState := sheinworkspace.BuildRepairStateInput(repairCenter)",
-		"return sheinworkspace.BuildWorkspaceOverview(statusOverview, submitState, repairState)",
+		"workspaceOverview: sheinworkspace.BuildWorkspaceOverview(statusOverview, submitState, repairState)",
 	} {
-		if !strings.Contains(overviewContent, needle) {
-			t.Fatalf("preview_builder_shein_workspace_overview.go should contain %q", needle)
+		if !strings.Contains(mainContent, needle) {
+			t.Fatalf("preview_builder_shein.go should contain %q", needle)
 		}
 	}
 }

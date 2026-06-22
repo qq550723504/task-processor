@@ -42,6 +42,7 @@ func buildSheinPreviewPayloadInput(
 	repairCenter := buildSheinRepairCenter(readiness, checklist)
 	submitState := projection.SubmitState
 	statusOverview := projection.StatusOverview
+	repairState := sheinworkspace.BuildRepairStateInput(repairCenter)
 	return sheinPreviewPayloadInput{
 		pkg:               pkg,
 		canonical:         canonical,
@@ -53,6 +54,6 @@ func buildSheinPreviewPayloadInput(
 		checklist:         checklist,
 		repairCenter:      repairCenter,
 		statusOverview:    statusOverview,
-		workspaceOverview: buildSheinPreviewWorkspaceOverview(statusOverview, submitState, repairCenter),
+		workspaceOverview: sheinworkspace.BuildWorkspaceOverview(statusOverview, submitState, repairState),
 	}
 }
