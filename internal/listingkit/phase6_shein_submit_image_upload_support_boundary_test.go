@@ -46,29 +46,18 @@ func TestSheinSubmitImageUploadSupportBoundary(t *testing.T) {
 		}
 	}
 
-	supportSrc, err := os.ReadFile("shein_submit_image_upload_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_image_upload_support.go) error = %v", err)
-	}
-	supportContent := string(supportSrc)
+	assertFileAbsent(t, "shein_submit_image_upload_support.go")
 
-	for _, needle := range []string{
-		"func uploadSheinImageInfo(info *sheinproduct.ImageInfo, uploader sheinimage.ImageAPI, uploaded map[string]string) (int, error) {",
-	} {
-		if !strings.Contains(supportContent, needle) {
-			t.Fatalf("shein_submit_image_upload_support.go should contain %q", needle)
-		}
+	publishingUploadSrc, err := os.ReadFile("../publishing/shein/submit_image_upload.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../publishing/shein/submit_image_upload.go) error = %v", err)
 	}
+	publishingUploadContent := string(publishingUploadSrc)
 	for _, needle := range []string{
-		"func collectSheinProductImageRefs(product *sheinproduct.Product) []sheinImageUploadRef {",
-		"func appendSheinImageInfoRefs(refs []sheinImageUploadRef, info *sheinproduct.ImageInfo) []sheinImageUploadRef {",
-		"func uploadSheinImageJobs(jobs map[string]sheinImageUploadJob, uploader sheinimage.ImageAPI, uploaded map[string]string) (int, error) {",
-		"func runSheinImageUploadJobs(jobs map[string]sheinImageUploadJob, uploader sheinimage.ImageAPI, uploaded map[string]string, existing map[string]string) (int, error) {",
-		"func uploadSingleSheinImage(job sheinImageUploadJob, uploader sheinimage.ImageAPI, existing map[string]string) (string, error) {",
-		"sheinSubmitImageUploadConcurrency",
+		"func UploadImageInfo(info *sheinproduct.ImageInfo, uploader sheinimage.ImageAPI, uploaded map[string]string, colorBlockBuilder ColorBlockBuilder) (int, error) {",
 	} {
-		if strings.Contains(supportContent, needle) {
-			t.Fatalf("shein_submit_image_upload_support.go should delegate upload policy detail %q", needle)
+		if !strings.Contains(publishingUploadContent, needle) {
+			t.Fatalf("publishing submit_image_upload.go should contain %q", needle)
 		}
 	}
 }

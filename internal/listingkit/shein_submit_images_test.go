@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -35,9 +36,9 @@ func TestUploadSheinImageInfoGeneratesColorBlockForSwatch(t *testing.T) {
 		}},
 	}
 	api := &stubSheinImageAPI{originalUpload: "https://img.shein.com/uploaded/swatch.jpg"}
-	count, err := uploadSheinImageInfo(info, api, map[string]string{})
+	count, err := sheinpub.UploadImageInfo(info, api, map[string]string{}, buildSheinColorBlockImageFromURL)
 	if err != nil {
-		t.Fatalf("uploadSheinImageInfo: %v", err)
+		t.Fatalf("UploadImageInfo: %v", err)
 	}
 	if count != 1 {
 		t.Fatalf("upload count = %d, want 1", count)
