@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildRecentBatchSummaryKeys,
   buildRecentBatchSaveInput,
   buildRecentBatchStoreUpdateInput,
+  projectRecentBatchSelectionState,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 
@@ -104,5 +106,32 @@ describe("buildRecentBatchStoreUpdateInput", () => {
     expect(input.groups?.[0]?.groupedSelections[0]?.sheinStoreId).toBe(
       "store-new",
     );
+  });
+});
+
+describe("projectRecentBatchSelectionState", () => {
+  it("keeps only visible summary keys and returns persisted batch ids", () => {
+    const projection = projectRecentBatchSelectionState({
+      rawSelectedRecentBatchSummaryIds: [
+        "batch:batch-1",
+        "local_draft:local-draft:group-1",
+        "batch:missing",
+        "local_draft:missing",
+      ],
+      validRecentBatchSummaryKeys: buildRecentBatchSummaryKeys([
+        { id: "batch-1", source: "batch" },
+        { id: "local-draft:group-1", source: "local_draft" },
+      ]),
+    });
+
+    expect([...projection.validRecentBatchSummaryKeys]).toEqual([
+      "batch:batch-1",
+      "local_draft:local-draft:group-1",
+    ]);
+    expect(projection.selectedRecentBatchSummaryIds).toEqual([
+      "batch:batch-1",
+      "local_draft:local-draft:group-1",
+    ]);
+    expect(projection.selectedPersistedRecentBatchIds).toEqual(["batch-1"]);
   });
 });

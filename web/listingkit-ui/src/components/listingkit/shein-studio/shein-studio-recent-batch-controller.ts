@@ -1,5 +1,44 @@
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 
+type RecentBatchSelectionSummary = {
+  id: string;
+  source: "batch" | "local_draft";
+};
+
+type RecentBatchSelectionProjectionParams = {
+  rawSelectedRecentBatchSummaryIds: string[];
+  validRecentBatchSummaryKeys: Set<string>;
+};
+
+export function buildRecentBatchSummaryKeys(
+  recentBatchSummaries: RecentBatchSelectionSummary[],
+): Set<string> {
+  return new Set(
+    recentBatchSummaries.map((summary) => `${summary.source}:${summary.id}`),
+  );
+}
+
+export function projectRecentBatchSelectionState({
+  rawSelectedRecentBatchSummaryIds,
+  validRecentBatchSummaryKeys,
+}: RecentBatchSelectionProjectionParams) {
+  const selectedRecentBatchSummaryIds =
+    rawSelectedRecentBatchSummaryIds.filter((key) =>
+      validRecentBatchSummaryKeys.has(key),
+    );
+  const selectedPersistedRecentBatchIds =
+    selectedRecentBatchSummaryIds.flatMap((key) => {
+      const [source, id] = key.split(":");
+      return source === "batch" && id ? [id] : [];
+    });
+
+  return {
+    selectedPersistedRecentBatchIds,
+    selectedRecentBatchSummaryIds,
+    validRecentBatchSummaryKeys,
+  };
+}
+
 export function buildRecentBatchSaveInput(
   batch: SheinStudioSavedBatch,
   overrides?: Partial<SheinStudioSavedBatch>,

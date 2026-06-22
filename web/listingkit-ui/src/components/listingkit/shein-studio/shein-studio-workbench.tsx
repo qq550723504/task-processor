@@ -21,8 +21,10 @@ import {
   useSheinStudioQueueController,
 } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import {
+  buildRecentBatchSummaryKeys,
   buildRecentBatchSaveInput,
   buildRecentBatchStoreUpdateInput,
+  projectRecentBatchSelectionState,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
@@ -529,19 +531,18 @@ export function SheinStudioWorkbench({
     selectedRecentBatchHydrations,
   ]);
   const validRecentBatchSummaryKeys = useMemo(
-    () =>
-      new Set(
-        recentBatchSummaries.map((summary) => `${summary.source}:${summary.id}`),
-      ),
+    () => buildRecentBatchSummaryKeys(recentBatchSummaries),
     [recentBatchSummaries],
   );
-  const selectedRecentBatchSummaryIds = useMemo(
-    () =>
-      rawSelectedRecentBatchSummaryIds.filter((key) =>
-        validRecentBatchSummaryKeys.has(key),
-      ),
-    [rawSelectedRecentBatchSummaryIds, validRecentBatchSummaryKeys],
-  );
+  const { selectedPersistedRecentBatchIds, selectedRecentBatchSummaryIds } =
+    useMemo(
+      () =>
+        projectRecentBatchSelectionState({
+          rawSelectedRecentBatchSummaryIds,
+          validRecentBatchSummaryKeys,
+        }),
+      [rawSelectedRecentBatchSummaryIds, validRecentBatchSummaryKeys],
+    );
   const setSelectedRecentBatchSummaryIds = useCallback(
     (value: string[] | ((current: string[]) => string[])) => {
       setRawSelectedRecentBatchSummaryIds((current) => {
@@ -550,14 +551,6 @@ export function SheinStudioWorkbench({
       });
     },
     [validRecentBatchSummaryKeys],
-  );
-  const selectedPersistedRecentBatchIds = useMemo(
-    () =>
-      selectedRecentBatchSummaryIds.flatMap((key) => {
-        const [source, id] = key.split(":");
-        return source === "batch" && id ? [id] : [];
-      }),
-    [selectedRecentBatchSummaryIds],
   );
   const isRecentBatchesHomepage = effectiveStep === "select";
   const {
