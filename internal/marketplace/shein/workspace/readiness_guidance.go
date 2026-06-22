@@ -28,6 +28,21 @@ type ReadinessGuidanceSpec struct {
 	Hints  []ReadinessHintSpec
 }
 
+type RepairHint[P any, S any, Q any, V any] struct {
+	Action        string   `json:"action,omitempty"`
+	Priority      string   `json:"priority,omitempty"`
+	Target        string   `json:"target,omitempty"`
+	EditorSection string   `json:"editor_section,omitempty"`
+	EditorFocus   []string `json:"editor_focus,omitempty"`
+	RevisionPath  string   `json:"revision_path,omitempty"`
+	Description   string   `json:"description,omitempty"`
+	FieldPaths    []string `json:"field_paths,omitempty"`
+	Patch         *P       `json:"patch,omitempty"`
+	Skeleton      *S       `json:"skeleton,omitempty"`
+	Revision      *Q       `json:"revision,omitempty"`
+	Validation    *V       `json:"validation,omitempty"`
+}
+
 func BuildReadinessReason(spec *ReadinessReasonSpec) *ReadinessReason {
 	if spec == nil {
 		return nil

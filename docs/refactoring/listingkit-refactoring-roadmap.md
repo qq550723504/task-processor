@@ -654,6 +654,7 @@ Follow-up deletion
 | SHEIN submit phase transition wrapper cleanup | migrated | direct/recovery phase 持久化路径直接调用 `internal/publishing/shein.AdvanceSubmitPhaseAndBuildEvent` 并注入统一 TTL；删除 ListingKit 中已无所有权的 phase transition/closeout 私有 wrapper，`shein_submit_state.go` 只保留 begin attempt TTL adapter。 |
 | SHEIN submit state adapter file cleanup | migrated | recovery lease 与测试 fixture 直接调用 `internal/publishing/shein.BeginSubmitAttempt` 并注入统一 TTL；删除 ListingKit 根包最后的 `shein_submit_state.go` adapter 和重复状态机测试。 |
 | SHEIN readiness reason ownership | migrated | readiness reason DTO 和 clone/build helper 迁入 `internal/marketplace/shein/workspace`；ListingKit 仅保留 API alias 与 repair hint/app revision 适配，提交 readiness guidance 不再在根包复制 reason 字段。 |
+| SHEIN repair hint DTO ownership | migrated | readiness repair hint JSON DTO 迁入 `internal/marketplace/shein/workspace` 的泛型 `RepairHint`；ListingKit 以 alias 绑定本地 revision request/validation 类型，只保留 artifact clone 和 app request 包装。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

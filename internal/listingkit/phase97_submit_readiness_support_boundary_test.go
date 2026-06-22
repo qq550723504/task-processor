@@ -36,6 +36,28 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 
+	typesSrc, err := os.ReadFile("shein_submit_readiness_types.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_submit_readiness_types.go) error = %v", err)
+	}
+	typesContent := string(typesSrc)
+	for _, needle := range []string{
+		"type SheinReadinessReason = sheinworkspace.ReadinessReason",
+		"type SheinRepairHint = sheinworkspace.RepairHint[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]",
+	} {
+		if !strings.Contains(typesContent, needle) {
+			t.Fatalf("shein_submit_readiness_types.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"type SheinReadinessReason struct {",
+		"type SheinRepairHint struct {",
+	} {
+		if strings.Contains(typesContent, needle) {
+			t.Fatalf("shein_submit_readiness_types.go should keep readiness DTOs in workspace, found %q", needle)
+		}
+	}
+
 	guidanceSrc, err := os.ReadFile("shein_submit_readiness_guidance_support.go")
 	if err != nil {
 		t.Fatalf("ReadFile(shein_submit_readiness_guidance_support.go) error = %v", err)

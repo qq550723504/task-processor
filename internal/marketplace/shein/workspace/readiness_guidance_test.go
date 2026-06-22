@@ -108,6 +108,45 @@ func TestCloneReadinessReasonReturnsIndependentCopy(t *testing.T) {
 	}
 }
 
+func TestRepairHintCarriesRevisionArtifacts(t *testing.T) {
+	t.Parallel()
+
+	type patch struct {
+		Value string `json:"value,omitempty"`
+	}
+	type skeleton struct {
+		Value string `json:"value,omitempty"`
+	}
+	type request struct {
+		Value string `json:"value,omitempty"`
+	}
+	type validation struct {
+		Valid bool `json:"valid,omitempty"`
+	}
+
+	hint := RepairHint[patch, skeleton, request, validation]{
+		Action:        "确认类目",
+		Priority:      "high",
+		Target:        "editor.category",
+		EditorSection: "category",
+		EditorFocus:   []string{"category_id"},
+		RevisionPath:  "shein.category_resolution",
+		Description:   "confirm category",
+		FieldPaths:    []string{"shein.category_resolution"},
+		Patch:         &patch{Value: "patch"},
+		Skeleton:      &skeleton{Value: "skeleton"},
+		Revision:      &request{Value: "request"},
+		Validation:    &validation{Valid: true},
+	}
+
+	if hint.Patch.Value != "patch" || hint.Skeleton.Value != "skeleton" || hint.Revision.Value != "request" || !hint.Validation.Valid {
+		t.Fatalf("hint = %+v, want revision artifacts", hint)
+	}
+	if len(hint.EditorFocus) != 1 || hint.EditorFocus[0] != "category_id" || len(hint.FieldPaths) != 1 {
+		t.Fatalf("hint paths = %+v/%+v, want focus and field paths", hint.EditorFocus, hint.FieldPaths)
+	}
+}
+
 func TestBuildReadinessGuidanceSpecMarketplaceManualNotesWarningCategory(t *testing.T) {
 	spec := BuildReadinessGuidanceSpec("manual_notes", true)
 	if spec == nil || spec.Reason == nil {
