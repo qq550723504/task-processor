@@ -84,6 +84,46 @@ function buildInFlightBatchDetail(
   };
 }
 
+function buildReviewReadyBatchDetail(): SheinStudioBatchDetail {
+  return {
+    batch: {
+      id: "batch-1",
+      status: "review_ready",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: 869,
+      createdAt: "2026-05-26T09:59:00.000Z",
+      updatedAt: "2026-05-26T10:00:00.000Z",
+    },
+    items: [
+      {
+        item: {
+          id: "item-1",
+          batchId: "batch-1",
+          targetGroupKey: "compat:fp-1",
+          status: "review_ready",
+          selectionCount: 1,
+          createdAt: "2026-05-26T09:59:00.000Z",
+          updatedAt: "2026-05-26T10:00:00.000Z",
+        },
+        designs: [
+          {
+            id: "design-1",
+            batchId: "batch-1",
+            itemId: "item-1",
+            sourceAttemptId: "attempt-1",
+            targetGroupKey: "compat:fp-1",
+            imageUrl: "https://example.com/design-1.png",
+            reviewStatus: "approved",
+            createdAt: "2026-05-26T09:59:30.000Z",
+            updatedAt: "2026-05-26T10:00:00.000Z",
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function renderTaskCreationAction(overrides: Partial<TaskCreationActionParams> = {}) {
   const params: TaskCreationActionParams = {
     activeSelection: selection,
@@ -298,5 +338,56 @@ describe("useSheinStudioTaskCreationAction", () => {
       ["design-1"],
       { allowPartialWhileGenerating: true },
     );
+  });
+
+  it("treats rejected-only batch task creation as a failure instead of navigating to tasks", async () => {
+    const reviewReadyDetail = buildReviewReadyBatchDetail();
+    createSheinStudioBatchTasks.mockResolvedValue({
+      ...reviewReadyDetail,
+      batch: {
+        ...reviewReadyDetail.batch,
+        status: "tasks_created",
+      },
+      createdTasks: [],
+      reusedTasks: [],
+      rejectedTasks: [
+        {
+          designId: "design-1",
+          itemId: "item-1",
+          selectionId: "selection-1",
+          compatibilityFingerprint: "fp-1",
+          reasonCode: "baseline_not_ready",
+          message: "baseline 还没准备好",
+          outcome: "rejected",
+        },
+      ],
+      failedTasks: [],
+    });
+    const navigateToStep = vi.fn();
+    const setCreatingError = vi.fn();
+    const setCreatingMessage = vi.fn();
+    const { result } = renderTaskCreationAction({
+      navigateToStep,
+      setCreatingError,
+      setCreatingMessage,
+      itemizedBatchContext: {
+        batchId: "batch-1",
+        detail: reviewReadyDetail,
+        onCreated: vi.fn(),
+      },
+    });
+
+    await act(async () => {
+      await result.current.handleCreateTasks();
+    });
+
+    expect(setCreatingError).toHaveBeenCalledWith(
+      expect.stringContaining("baseline 还没准备好"),
+    );
+    expect(setCreatingError).toHaveBeenCalledWith(
+      expect.stringContaining("部分任务被拒绝"),
+    );
+    expect(setCreatingMessage).toHaveBeenLastCalledWith("");
+    expect(navigateToStep).not.toHaveBeenCalledWith("tasks");
   });
 });
