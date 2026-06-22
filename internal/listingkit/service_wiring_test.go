@@ -286,33 +286,30 @@ func TestAdminCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 		"func (s *sheinAdminService) loadAdminTask(",
 		"func (s *sheinAdminService) loadAdminTaskPackage(",
 		"func (s *sheinAdminService) newSheinCategoryAPI(",
-		"func (s *sheinAdminService) applySheinFinalDraftUpdate(",
-		"func applySheinFinalDraftRequest(",
-		"func (s *sheinAdminService) clearSheinAdminResolutionKinds(",
-	} {
-		if strings.Contains(adminContent, needle) {
-			t.Fatalf("shein_admin_service.go should not contain %q after admin support split", needle)
-		}
-	}
-
-	adminSupportSrc, err := os.ReadFile("shein_admin_service_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_admin_service_support.go) error = %v", err)
-	}
-	adminSupportContent := string(adminSupportSrc)
-
-	for _, needle := range []string{
-		"func (s *sheinAdminService) loadAdminTask(",
-		"func (s *sheinAdminService) loadAdminTaskPackage(",
-		"func (s *sheinAdminService) newSheinCategoryAPI(",
 		"func applySheinAdminPricingReview(",
 		"func (s *sheinAdminService) applySheinFinalDraftUpdate(",
 		"func applySheinFinalDraftRequest(",
 		"func (s *sheinAdminService) clearSheinAdminResolutionKinds(",
 	} {
-		if !strings.Contains(adminSupportContent, needle) {
-			t.Fatalf("shein_admin_service_support.go should contain %q", needle)
+		if !strings.Contains(adminContent, needle) {
+			t.Fatalf("shein_admin_service.go should contain %q after admin support cleanup", needle)
 		}
+	}
+
+	for _, needle := range []string{
+		"sheinpub.ApplyFinalDraftUpdate(pkg, sheinpub.FinalDraftUpdate{",
+		"sheinpub.ApplyFinalImageDraft(pkg)",
+		"sheinworkspace.SearchCategoryCandidates(tree.Data, trimmedQuery)",
+	} {
+		if !strings.Contains(adminContent, needle) {
+			t.Fatalf("shein_admin_service.go should delegate via %q", needle)
+		}
+	}
+
+	if _, err := os.ReadFile("shein_admin_service_support.go"); err == nil {
+		t.Fatal("shein_admin_service_support.go should be removed after admin support cleanup")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(shein_admin_service_support.go) unexpected error = %v", err)
 	}
 }
 
@@ -2571,7 +2568,7 @@ func TestSheinSourceProductSummaryHelperLivesOutsideMainSheinPreviewBuilder(t *t
 	}
 	payloadContent := string(payloadSrc)
 	for _, needle := range []string{
-		"SourceProduct:     sheinworkspace.BuildSourceProductSummary(input.canonical),",
+		"SourceProduct:   sheinworkspace.BuildSourceProductSummary(input.canonical),",
 		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
 		if !strings.Contains(payloadContent, needle) {

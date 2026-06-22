@@ -292,7 +292,30 @@ func TestTaskDirectSubmissionServiceSubmitSheinTaskDirectCompletesExecutionFlow(
 		startedAt: now,
 	}
 	productAPI := &stubSheinProductAPI{}
-	submitProduct := &sheinproduct.Product{SupplierCode: "SKU-1"}
+	submitProduct := &sheinproduct.Product{
+		SupplierCode:          "SKU-1",
+		CategoryID:            100,
+		MultiLanguageNameList: []sheinproduct.LanguageContent{{Language: "en", Name: "Ready Product"}},
+		MultiLanguageDescList: []sheinproduct.LanguageContent{{Language: "en", Name: "Ready product description"}},
+		SKCList: []sheinproduct.SKC{{
+			SKUS: []sheinproduct.SKU{{
+				SupplierSKU: "SKU-1",
+				CostInfo: &sheinproduct.CostInfo{
+					CostPrice: "10.00",
+					Currency:  "USD",
+				},
+				PriceInfoList: []sheinproduct.PriceInfo{{
+					SubSite:   "US",
+					BasePrice: 19.99,
+					Currency:  "USD",
+				}},
+				StockInfoList: []sheinproduct.StockInfo{{
+					MerchantWarehouseCode: "DEFAULT",
+					InventoryNum:          10,
+				}},
+			}},
+		}},
+	}
 	expectedPreview := &ListingKitPreview{TaskID: task.ID}
 	var calls []string
 	var phases []string

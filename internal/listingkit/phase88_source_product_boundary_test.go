@@ -17,7 +17,7 @@ func TestSheinSourceProductBoundary(t *testing.T) {
 	}
 
 	assertSourceContainsAll(t, source, []string{
-		"SourceProduct:     sheinworkspace.BuildSourceProductSummary(input.canonical)",
+		"SourceProduct:   sheinworkspace.BuildSourceProductSummary(input.canonical)",
 	})
 	if !strings.Contains(string(fileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
 		t.Fatal("preview_builder_shein_payload.go should call marketplace SHEIN workspace directly")

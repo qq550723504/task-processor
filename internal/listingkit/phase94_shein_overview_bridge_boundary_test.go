@@ -17,7 +17,6 @@ func TestSheinOverviewBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 		"platform_payload_input_models.go",
 		"platform_payload_models_preview_shein.go",
 		"preview_builder_shein_payload.go",
-		"preview_builder_shein_workspace_overview.go",
 		"submit_readiness_projection_shein.go",
 		"task_contract.go",
 		"task_list_item_support.go",
@@ -44,6 +43,12 @@ func TestSheinOverviewBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 	taskListSource := readNamedFunctionSource(t, "task_list_item_support.go", "deriveSheinWorkQueue")
 	assertSourceContainsAll(t, taskListSource, []string{
 		"return sheinworkspace.BuildTaskWorkQueue(string(task.Status), workflowStatus, overview)",
+	})
+
+	previewSource := readNamedFunctionSource(t, "preview_builder_shein.go", "buildSheinPreviewPayloadInput")
+	assertSourceContainsAll(t, previewSource, []string{
+		"repairState := sheinworkspace.BuildRepairStateInput(repairCenter)",
+		"workspaceOverview: sheinworkspace.BuildWorkspaceOverview(statusOverview, submitState, repairState)",
 	})
 
 	taxonomySource := readNamedFunctionSource(t, "task_contract.go", "BuildTaskListTaxonomy")

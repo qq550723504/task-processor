@@ -55,7 +55,8 @@ func TestSheinSubmitReadinessProjectionBoundary(t *testing.T) {
 		assertFunctionCallsContainAll(t, inputCalls, []string{
 			"buildSheinSubmitReadinessProjectionWithPod",
 			"buildSheinRepairCenter",
-			"buildSheinPreviewWorkspaceOverview",
+			"BuildRepairStateInput",
+			"BuildWorkspaceOverview",
 		})
 	})
 

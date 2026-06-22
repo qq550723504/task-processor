@@ -7,7 +7,7 @@ func TestSheinFinalDraftSupportBoundary(t *testing.T) {
 
 	assertFileAbsent(t, "shein_final_draft.go")
 
-	adminSource := readTaskGenerationSourceFile(t, "shein_admin_service_support.go")
+	adminSource := readTaskGenerationSourceFile(t, "shein_admin_service.go")
 	submitNormalizeSource := readTaskGenerationSourceFile(t, "task_submission_execution_normalize.go")
 	assertSourceContainsAll(t, adminSource, []string{
 		"sheinpub.ApplyFinalImageDraft(pkg)",
