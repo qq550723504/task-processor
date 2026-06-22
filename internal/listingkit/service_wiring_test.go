@@ -2484,7 +2484,7 @@ func TestSheinPreviewPayloadAssemblerLivesOutsideMainSheinPreviewBuilder(t *test
 	for _, needle := range []string{
 		"type sheinPreviewPayloadBodyInput struct {",
 		"func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPreviewPayload {",
-		"Headline:          sheinDisplayTitle(pkg),",
+		"sheinDisplayTitle(pkg),",
 	} {
 		if strings.Contains(mainContent, needle) {
 			t.Fatalf("preview_builder_shein.go should not contain %q", needle)
@@ -2499,7 +2499,8 @@ func TestSheinPreviewPayloadAssemblerLivesOutsideMainSheinPreviewBuilder(t *test
 	for _, needle := range []string{
 		"type sheinPreviewPayloadBodyInput struct {",
 		"func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPreviewPayload {",
-		"Headline:          sheinDisplayTitle(pkg),",
+		"Headline:",
+		"sheinDisplayTitle(pkg),",
 		"ResolutionCache:   sheinworkspace.BuildResolutionCacheSummary(pkg),",
 		"FinalReview:       buildSheinFinalReviewPayload(pkg, input.canonical, input.readiness),",
 	} {
@@ -2675,22 +2676,22 @@ func TestSheinFinalReviewSKUHelpersLiveOutsideMainFinalReviewBuilder(t *testing.
 func TestSheinImageUploadPreviewHelpersLiveOutsideSubmitImageRuntime(t *testing.T) {
 	t.Parallel()
 
-	previewHelpersSrc, err := os.ReadFile("preview_builder_shein_image_upload.go")
-	if err != nil {
-		t.Fatalf("ReadFile(preview_builder_shein_image_upload.go) error = %v", err)
-	}
-	previewHelpersContent := string(previewHelpersSrc)
+	assertFileAbsent(t, "preview_builder_shein_image_upload.go")
 
+	payloadSrc, err := os.ReadFile("preview_builder_shein_payload.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_builder_shein_payload.go) error = %v", err)
+	}
+	payloadContent := string(payloadSrc)
 	for _, needle := range []string{
-		"func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPreflight {",
-		"return sheinworkspace.BuildImageUploadPreflight(",
+		"ImageUpload: sheinworkspace.BuildImageUploadPreflight(",
 		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 		"sheinpub.IsUploadedImageURL,",
 		"sheinImageUploadCache(pkg)[strings.TrimSpace(sourceURL)]",
 		"sheinpub.IsSDSImageURL,",
 	} {
-		if !strings.Contains(previewHelpersContent, needle) {
-			t.Fatalf("preview_builder_shein_image_upload.go should contain %q", needle)
+		if !strings.Contains(payloadContent, needle) {
+			t.Fatalf("preview_builder_shein_payload.go should contain %q", needle)
 		}
 	}
 

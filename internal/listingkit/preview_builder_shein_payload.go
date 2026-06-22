@@ -30,18 +30,26 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 	}
 	visualBase := buildPlatformVisualPresentationBase(pkg.ImageBundle, input.assetBundle, input.renderPreviews)
 	return &SheinPreviewPayload{
-		Headline:          sheinDisplayTitle(pkg),
-		BrandName:         pkg.BrandName,
-		CategoryPath:      append([]string(nil), pkg.CategoryPath...),
-		CategoryID:        pkg.CategoryID,
-		SourceProduct:     sheinworkspace.BuildSourceProductSummary(input.canonical),
-		NeedsReview:       input.needsReview,
-		Summary:           input.summary,
-		ReviewNotes:       append([]string(nil), pkg.ReviewNotes...),
-		Inspection:        pkg.Inspection,
-		SubmitReadiness:   input.readiness,
-		SubmitChecklist:   input.checklist,
-		ImageUpload:       buildSheinImageUploadPreflight(pkg),
+		Headline:        sheinDisplayTitle(pkg),
+		BrandName:       pkg.BrandName,
+		CategoryPath:    append([]string(nil), pkg.CategoryPath...),
+		CategoryID:      pkg.CategoryID,
+		SourceProduct:   sheinworkspace.BuildSourceProductSummary(input.canonical),
+		NeedsReview:     input.needsReview,
+		Summary:         input.summary,
+		ReviewNotes:     append([]string(nil), pkg.ReviewNotes...),
+		Inspection:      pkg.Inspection,
+		SubmitReadiness: input.readiness,
+		SubmitChecklist: input.checklist,
+		ImageUpload: sheinworkspace.BuildImageUploadPreflight(
+			pkg,
+			sheinpub.IsUploadedImageURL,
+			func(pkg *SheinPackage, sourceURL string) bool {
+				uploadedURL := strings.TrimSpace(sheinImageUploadCache(pkg)[strings.TrimSpace(sourceURL)])
+				return uploadedURL != "" && sheinpub.IsUploadedImageURL(uploadedURL)
+			},
+			sheinpub.IsSDSImageURL,
+		),
 		ResolutionCache:   sheinworkspace.BuildResolutionCacheSummary(pkg),
 		RepairCenter:      input.repairCenter,
 		StatusOverview:    input.statusOverview,

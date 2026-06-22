@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -168,7 +169,15 @@ func TestBuildSheinImageUploadPreflightCountsUniqueSDSImages(t *testing.T) {
 	task.Result.Shein.PreviewProduct.SKCList[0].ImageInfo = *sheinImageInfo(rendered)
 	task.Result.Shein.PreviewProduct.SKCList[0].SKUS[0].ImageInfo = sheinImageInfo(rendered[:1])
 
-	report := buildSheinImageUploadPreflight(task.Result.Shein)
+	report := sheinworkspace.BuildImageUploadPreflight(
+		task.Result.Shein,
+		sheinpub.IsUploadedImageURL,
+		func(pkg *SheinPackage, sourceURL string) bool {
+			uploadedURL := strings.TrimSpace(sheinImageUploadCache(pkg)[strings.TrimSpace(sourceURL)])
+			return uploadedURL != "" && sheinpub.IsUploadedImageURL(uploadedURL)
+		},
+		sheinpub.IsSDSImageURL,
+	)
 	if report == nil {
 		t.Fatal("expected image upload preflight")
 	}

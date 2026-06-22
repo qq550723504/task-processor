@@ -39,21 +39,21 @@ func TestSheinPreviewSupportBoundary(t *testing.T) {
 	t.Run("image upload preflight delegates aggregation to workspace", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "preview_builder_shein_image_upload.go", "buildSheinImageUploadPreflight")
-		callNames := readNamedFunctionCallNames(t, "preview_builder_shein_image_upload.go", "buildSheinImageUploadPreflight")
-		fileSource, err := os.ReadFile("preview_builder_shein_image_upload.go")
+		source := readNamedFunctionSource(t, "preview_builder_shein_payload.go", "buildSheinPreviewPayloadBody")
+		callNames := readNamedFunctionCallNames(t, "preview_builder_shein_payload.go", "buildSheinPreviewPayloadBody")
+		fileSource, err := os.ReadFile("preview_builder_shein_payload.go")
 		if err != nil {
-			t.Fatalf("ReadFile(preview_builder_shein_image_upload.go) error = %v", err)
+			t.Fatalf("ReadFile(preview_builder_shein_payload.go) error = %v", err)
 		}
 
 		assertSourceContainsAll(t, source, []string{
-			"return sheinworkspace.BuildImageUploadPreflight(",
+			"ImageUpload: sheinworkspace.BuildImageUploadPreflight(",
 			"sheinpub.IsUploadedImageURL,",
 			"sheinImageUploadCache(pkg)[strings.TrimSpace(sourceURL)]",
 			"sheinpub.IsSDSImageURL,",
 		})
 		if !strings.Contains(string(fileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
-			t.Fatal("preview_builder_shein_image_upload.go should call marketplace SHEIN workspace directly")
+			t.Fatal("preview_builder_shein_payload.go should call marketplace SHEIN workspace directly")
 		}
 		assertSourceExcludesAll(t, source, []string{
 			"collectSheinProductImageURLs(pkg.PreviewPayload)",
@@ -63,5 +63,6 @@ func TestSheinPreviewSupportBoundary(t *testing.T) {
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"BuildImageUploadPreflight",
 		})
+		assertFileAbsent(t, "preview_builder_shein_image_upload.go")
 	})
 }
