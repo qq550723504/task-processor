@@ -1,6 +1,6 @@
 package listingkit
 
-import sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
 func buildRevisionApplyResult(req *ApplyRevisionRequest, listingResult *ListingKitResult, appliedChanges *RevisionDiffPreview) *RevisionApplyResult {
 	if req == nil || listingResult == nil {

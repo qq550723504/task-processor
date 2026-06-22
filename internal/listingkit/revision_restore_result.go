@@ -1,6 +1,6 @@
 package listingkit
 
-import sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
 func buildRevisionRestoreResult(req *ApplyRevisionRequest, listingResult *ListingKitResult, appliedChanges *RevisionDiffPreview) *RevisionRestoreResult {
 	sourceRevisionID := revisionRestoreSourceID(req)
