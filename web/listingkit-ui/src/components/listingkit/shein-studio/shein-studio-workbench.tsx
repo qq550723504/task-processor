@@ -64,6 +64,14 @@ import {
   buildGroupedSDSBaselineHandoff,
   getSDSBaselineReasonMessage,
 } from "@/lib/shein-studio/sds-baseline-ui";
+import {
+  buildBatchQueueCompletionMessage,
+  buildBatchQueueResumeState,
+  getBatchQueueStartState,
+  resolveNextQueuedBatch,
+  resolveQueuedBatchStep,
+  type SheinStudioBatchQueueResumeState,
+} from "@/lib/shein-studio/batch-queue";
 import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
 import { resolveDedicatedBatchHydration } from "@/lib/shein-studio/batch-hydration";
@@ -378,12 +386,8 @@ export function SheinStudioWorkbench({
   const [rawSelectedRecentBatchSummaryIds, setRawSelectedRecentBatchSummaryIds] = useState<
     string[]
   >([]);
-  const [queueResumeState, setQueueResumeState] = useState<{
-    batchIds: string[];
-    mode: SheinStudioBatchQueueMode;
-    startIndex: number;
-    total: number;
-  } | null>(null);
+  const [queueResumeState, setQueueResumeState] =
+    useState<SheinStudioBatchQueueResumeState | null>(null);
   const [activeBatchRunId, setActiveBatchRunId] = useState("");
   const [isStartingDedicatedBatchRun, setIsStartingDedicatedBatchRun] = useState(false);
   const [batchRunError, setBatchRunError] = useState("");
@@ -697,16 +701,6 @@ export function SheinStudioWorkbench({
       cancelled = true;
     };
   }, [hydrateRecentBatchSelection, selectedPersistedRecentBatchIds]);
-  const queueCompletionMessage = useCallback(
-    (mode: SheinStudioBatchQueueMode, batchCount: number) => {
-      const actionLabel =
-        mode === "create_tasks" ? "创建任务处理" : "继续生成处理";
-      return batchCount > 0
-        ? `已完成这轮${actionLabel}，共处理 ${batchCount} 个已保存批次。首页勾选已保留，可继续调整或再次发起批量处理。`
-        : `当前没有可继续的已保存批次。首页勾选已保留，可重新检查后再发起批量处理。`;
-    },
-    [],
-  );
   const resumableQueueBatchIds = useMemo(
     () =>
       queueResumeState
@@ -1765,22 +1759,6 @@ export function SheinStudioWorkbench({
     setQueuedBatchIndex(0);
   }, [setBatchQueueMode, setQueuedBatchIds, setQueuedBatchIndex]);
 
-  const stepForQueuedBatch = useCallback(
-    (batch: SheinStudioSavedBatch, mode: SheinStudioBatchQueueMode) => {
-      if (batch.createdTasks.length > 0) {
-        return "tasks" as const;
-      }
-      if (batch.designs.length > 0) {
-        return "review" as const;
-      }
-      if (mode === "generate") {
-        return "generate" as const;
-      }
-      return "generate" as const;
-    },
-    [],
-  );
-
   const loadQueuedBatch = useCallback(
     async (
       batchIds: string[],
@@ -1810,9 +1788,12 @@ export function SheinStudioWorkbench({
         ) {
           return false;
         }
-        const batch =
-          hydratedBatch?.savedBatch ??
-          savedBatches.find((item) => item.id === batchId);
+        const queuedBatch = resolveNextQueuedBatch({
+          batchIds: [batchId],
+          savedBatches,
+          startIndex: 0,
+        });
+        const batch = hydratedBatch?.savedBatch ?? queuedBatch?.batch;
         if (!batch) {
           continue;
         }
@@ -1822,7 +1803,7 @@ export function SheinStudioWorkbench({
           handleLoadBatch(batch);
         }
         setQueuedBatchIndex(nextIndex);
-        setEffectiveStep(stepForQueuedBatch(batch, mode));
+        setEffectiveStep(resolveQueuedBatchStep(batch, mode));
         setQueueMessage("");
         return true;
       }
@@ -1830,7 +1811,7 @@ export function SheinStudioWorkbench({
       if (!options?.keepResumeState) {
         setQueueResumeState(null);
       }
-      setQueueMessage(queueCompletionMessage(mode, batchIds.length));
+      setQueueMessage(buildBatchQueueCompletionMessage(mode, batchIds.length));
       return false;
     },
     [
@@ -1838,14 +1819,12 @@ export function SheinStudioWorkbench({
       handleLoadBatch,
       handleLoadHydratedBatch,
       hydrateRecentBatchSelection,
-      queueCompletionMessage,
       savedBatches,
       selectedRecentBatchHydrations,
       setEffectiveStep,
       setQueueMessage,
       setQueuedBatchIndex,
       setQueueResumeState,
-      stepForQueuedBatch,
     ],
   );
 
@@ -1858,19 +1837,19 @@ export function SheinStudioWorkbench({
       const requestVersion = batchQueueRequestVersionRef.current + 1;
       batchQueueRequestVersionRef.current = requestVersion;
       recentBatchOpenRequestVersionRef.current += 1;
-      const validBatchIds = input.batchIds.filter((batchId) =>
-        savedBatches.some((item) => item.id === batchId),
-      );
+      const queueStartState = getBatchQueueStartState({
+        batchIds: input.batchIds,
+        savedBatches,
+        startIndex: input.startIndex,
+      });
+      const validBatchIds = queueStartState.batchIds;
       if (validBatchIds.length === 0) {
         clearBatchQueue();
         setQueueResumeState(null);
-        setQueueMessage(queueCompletionMessage(input.mode, 0));
+        setQueueMessage(buildBatchQueueCompletionMessage(input.mode, 0));
         return;
       }
-      const startIndex = Math.max(
-        0,
-        Math.min(input.startIndex ?? 0, validBatchIds.length - 1),
-      );
+      const startIndex = queueStartState.startIndex;
       setBatchQueueMode(input.mode);
       setQueuedBatchIds(validBatchIds);
       setQueuedBatchIndex(startIndex);
@@ -1888,7 +1867,6 @@ export function SheinStudioWorkbench({
       clearBatchQueue,
       hydrateRecentBatchSelection,
       loadQueuedBatch,
-      queueCompletionMessage,
       savedBatches,
       setBatchQueueMode,
       setQueueMessage,
@@ -1925,13 +1903,13 @@ export function SheinStudioWorkbench({
   );
 
   const handleExitBatchQueue = useCallback(() => {
-    if (batchQueueMode && queuedBatchIds.length > 0) {
-      setQueueResumeState({
-        batchIds: queuedBatchIds,
-        mode: batchQueueMode,
-        startIndex: queuedBatchIndex,
-        total: queuedBatchIds.length,
-      });
+    const resumeState = buildBatchQueueResumeState({
+      batchIds: queuedBatchIds,
+      mode: batchQueueMode,
+      startIndex: queuedBatchIndex,
+    });
+    if (resumeState) {
+      setQueueResumeState(resumeState);
       setQueueMessage("");
     }
     batchQueueRequestVersionRef.current += 1;
