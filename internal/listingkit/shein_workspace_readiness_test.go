@@ -1058,7 +1058,7 @@ func TestBuildSheinSubmitReadinessDoesNotBlockWhenOnlyImportantDisplayAttributes
 func TestBuildSheinSubmitChecklistGroupsChecks(t *testing.T) {
 	t.Parallel()
 
-	checklist := buildSheinSubmitChecklist(&SheinSubmitReadiness{
+	checklist := sheinworkspace.BuildSubmitChecklist(&SheinSubmitReadiness{
 		Checks: []SheinReadinessCheck{
 			{Key: "category", Label: "类目骨架", Status: "blocking"},
 			{Key: "request_draft", Label: "请求草稿", Status: "ready"},
@@ -1112,7 +1112,7 @@ func TestBuildSheinSubmitChecklistGroupsChecks(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, sheinworkspace.SubmitChecklistGroupForKey)
 	if checklist == nil {
 		t.Fatal("expected checklist")
 	}

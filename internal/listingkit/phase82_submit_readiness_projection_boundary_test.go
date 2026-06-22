@@ -250,7 +250,8 @@ func TestSheinSubmitReadinessProjectionBoundary(t *testing.T) {
 		assertSourceContainsAll(t, source, []string{
 			"readiness := buildSheinSubmitReadinessWithPod(pkg, pod)",
 			"projection := listingsubmission.BuildReadinessProjection(",
-			"BuildChecklist: buildSheinSubmitChecklist",
+			"BuildChecklist: func(readiness *SheinSubmitReadiness) *SheinSubmitChecklist {",
+			"return sheinworkspace.BuildSubmitChecklist(readiness, sheinworkspace.SubmitChecklistGroupForKey)",
 			"BuildSubmitState: func(readiness *SheinSubmitReadiness) *sheinworkspace.SubmitStateInput {",
 			"return sheinworkspace.BuildSubmitStateInput(readiness)",
 			"BuildStatusOverview: func(submitState *sheinworkspace.SubmitStateInput) *sheinworkspace.StatusOverview {",

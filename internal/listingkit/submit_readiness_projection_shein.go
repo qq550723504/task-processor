@@ -20,8 +20,10 @@ func buildSheinSubmitReadinessProjectionWithPod(pkg *SheinPackage, pod *PodExecu
 	readiness := buildSheinSubmitReadinessWithPod(pkg, pod)
 	projection := listingsubmission.BuildReadinessProjection(
 		listingsubmission.ReadinessProjectionInput[*SheinSubmitReadiness, *SheinSubmitChecklist, *sheinworkspace.SubmitStateInput, *sheinworkspace.StatusOverview]{
-			Readiness:      readiness,
-			BuildChecklist: buildSheinSubmitChecklist,
+			Readiness: readiness,
+			BuildChecklist: func(readiness *SheinSubmitReadiness) *SheinSubmitChecklist {
+				return sheinworkspace.BuildSubmitChecklist(readiness, sheinworkspace.SubmitChecklistGroupForKey)
+			},
 			BuildSubmitState: func(readiness *SheinSubmitReadiness) *sheinworkspace.SubmitStateInput {
 				return sheinworkspace.BuildSubmitStateInput(readiness)
 			},

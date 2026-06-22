@@ -8,7 +8,3 @@ type SheinReadinessItem = sheinworkspace.ReadinessItem[SheinReadinessReason, She
 type SheinReadinessCheck = sheinworkspace.ReadinessCheck[SheinReadinessReason, SheinRepairHint]
 type SheinSubmitChecklist = sheinworkspace.SubmitChecklist[SheinReadinessReason, SheinRepairHint]
 type SheinChecklistGroupItem = sheinworkspace.ChecklistGroupItem[SheinReadinessReason, SheinRepairHint]
-
-func buildSheinSubmitChecklist(readiness *SheinSubmitReadiness) *SheinSubmitChecklist {
-	return sheinworkspace.BuildSubmitChecklist(readiness, sheinworkspace.SubmitChecklistGroupForKey)
-}
