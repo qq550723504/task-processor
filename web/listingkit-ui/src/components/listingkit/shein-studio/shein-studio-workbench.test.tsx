@@ -13,7 +13,6 @@ import { saveSheinStudioGalleryHandoff } from "@/lib/shein-studio/gallery-handof
 
 const useQuery = vi.fn();
 const generateSheinStudioDesigns = vi.fn();
-const resumeSheinStudioDesignGeneration = vi.fn();
 const createSheinReviewTasks = vi.fn();
 const getSDSBaselineReadiness = vi.fn();
 const warmSDSBaselineForSelection = vi.fn();
@@ -245,8 +244,6 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
 
 vi.mock("@/lib/api/shein-studio", () => ({
   generateSheinStudioDesigns: (...args: unknown[]) => generateSheinStudioDesigns(...args),
-  resumeSheinStudioDesignGeneration: (...args: unknown[]) =>
-    resumeSheinStudioDesignGeneration(...args),
 }));
 
 vi.mock("@/lib/shein-studio/create-review-tasks", async () => {
@@ -454,7 +451,6 @@ describe("SheinStudioWorkbench", () => {
     lastGenerationPanelProps = null;
     useQuery.mockReturnValue({ data: undefined, error: null });
     generateSheinStudioDesigns.mockReset();
-    resumeSheinStudioDesignGeneration.mockReset();
     createSheinReviewTasks.mockReset();
     getSDSBaselineReadiness.mockReset();
     getSDSBaselineReadiness.mockResolvedValue({
@@ -3516,7 +3512,6 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "generate styles" })).toBeInTheDocument(),
     );
-    expect(resumeSheinStudioDesignGeneration).not.toHaveBeenCalled();
     expect(screen.queryByText("review grid: 1")).not.toBeInTheDocument();
     expect(saveSheinStudioDraftWithOptions).not.toHaveBeenCalled();
     expect(saveSheinStudioBatch).not.toHaveBeenCalled();
@@ -3547,7 +3542,6 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "generate styles" })).toBeInTheDocument(),
     );
-    expect(resumeSheinStudioDesignGeneration).not.toHaveBeenCalled();
     expect(screen.queryByText("review grid: 2")).not.toBeInTheDocument();
     expect(saveSheinStudioDraftWithOptions).not.toHaveBeenCalled();
     expect(saveSheinStudioBatch).not.toHaveBeenCalled();

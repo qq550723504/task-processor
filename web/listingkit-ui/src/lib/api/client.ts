@@ -1,13 +1,6 @@
 import { buildQueryString } from "@/lib/api/query-string";
 import { ApiError } from "@/lib/api/api-error";
 import {
-  buildAsyncJobResumeKey,
-  clearAsyncJobResumeEntry,
-  loadAsyncJobResumeEntry,
-  saveAsyncJobResumeEntry,
-} from "@/lib/api/async-job-resume";
-import {
-  AsyncJobNotFound,
   pollAsyncJob,
   type AsyncJobResponse,
 } from "@/lib/api/async-job";
@@ -144,53 +137,14 @@ export async function apiAsyncRequest<T>(
     asyncJobSessionId,
   }: Pick<RequestOptions, "body" | "timeoutMs" | "signal" | "onJobStarted" | "asyncJobSessionId"> = {},
 ): Promise<T> {
-  const resumeKey = buildAsyncJobResumeKey(path, body ?? {});
-  const resumed = loadAsyncJobResumeEntry(resumeKey);
-  let startedJobId = resumed?.jobId ?? "";
-  let resumedFromStorage = Boolean(startedJobId);
-
-  for (;;) {
-    if (!startedJobId) {
-      const backendJob = await startBackendAsyncJob<T>(
-        path,
-        body,
-        asyncJobSessionId,
-        signal,
-      );
-      startedJobId = backendJob.jobId;
-      onJobStarted?.(startedJobId);
-      saveAsyncJobResumeEntry(resumeKey, startedJobId, "backend");
-    }
-
-    try {
-      const result = await pollAsyncJob<T>(startedJobId, {
-        timeoutMs,
-        signal,
-        shouldStopOnNotFound: resumedFromStorage,
-        buildPollRequest: buildAsyncJobPollRequest,
-      });
-      clearAsyncJobResumeEntry(resumeKey);
-      return result;
-    } catch (error) {
-      if (error instanceof AsyncJobNotFound && resumedFromStorage) {
-        clearAsyncJobResumeEntry(resumeKey);
-        resumedFromStorage = false;
-        startedJobId = "";
-        continue;
-      }
-      if (error instanceof ApiError) {
-        clearAsyncJobResumeEntry(resumeKey);
-      }
-      throw error;
-    }
-  }
-}
-
-export async function apiResumeAsyncJob<T>(
-  jobId: string,
-  { timeoutMs = 3600000, signal }: Pick<RequestOptions, "timeoutMs" | "signal"> = {},
-): Promise<T> {
-  return pollAsyncJob<T>(jobId, {
+  const backendJob = await startBackendAsyncJob<T>(
+    path,
+    body,
+    asyncJobSessionId,
+    signal,
+  );
+  onJobStarted?.(backendJob.jobId);
+  return pollAsyncJob<T>(backendJob.jobId, {
     timeoutMs,
     signal,
     buildPollRequest: buildAsyncJobPollRequest,
