@@ -167,10 +167,8 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	for _, needle := range []string{
 		"func buildSheinSubmitReadinessChecks(pkg *SheinPackage, pod *PodExecutionSummary, action string, validation sheinBuildValidation) []sheinworkspace.ReadinessCheckSpec {",
 		"func appendSheinPodReadinessChecks(",
-		"func appendSheinTemplateReadinessChecks(",
-		"func appendSheinPayloadReadinessChecks(",
-		"return append(checks, sheinworkspace.BuildSubmitTemplateReadinessChecks(sheinworkspace.SubmitTemplateReadinessInput{",
-		"return append(checks, sheinworkspace.BuildSubmitPayloadReadinessChecks(pkg, action)...)",
+		"checks = append(checks, sheinworkspace.BuildSubmitTemplateReadinessChecks(sheinworkspace.SubmitTemplateReadinessInput{",
+		"checks = append(checks, sheinworkspace.BuildSubmitPayloadReadinessChecks(pkg, action)...)",
 		"sheinworkspace.BuildSubmitReadinessCheck(",
 	} {
 		if !strings.Contains(checksContent, needle) {
@@ -182,6 +180,8 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func sheinReadinessTaxonomyForKey(",
 		"func sheinSubmitReadinessFinalDraftReady(pkg *SheinPackage, action string) bool {",
 		"func sheinSubmitReadinessFinalReviewMessage(action string) string {",
+		"func appendSheinTemplateReadinessChecks(",
+		"func appendSheinPayloadReadinessChecks(",
 		"return sheinpub.FinalReviewReady(pkg, action)",
 		"return sheinpub.FinalReviewMessage(action)",
 	} {

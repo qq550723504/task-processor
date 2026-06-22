@@ -14,8 +14,16 @@ func buildSheinSubmitReadinessChecks(pkg *SheinPackage, pod *PodExecutionSummary
 		false,
 	))
 	checks = appendSheinPodReadinessChecks(checks, pod, action)
-	checks = appendSheinTemplateReadinessChecks(checks, validation)
-	checks = appendSheinPayloadReadinessChecks(checks, pkg, action)
+	checks = append(checks, sheinworkspace.BuildSubmitTemplateReadinessChecks(sheinworkspace.SubmitTemplateReadinessInput{
+		CategoryReady:        validation.categoryReady,
+		CategoryMessage:      validation.categoryMessage,
+		CategoryReviewReady:  validation.categoryReviewReady,
+		AttributeReady:       validation.attributeReady,
+		AttributeMessage:     validation.attributeMessage,
+		SaleAttributeReady:   validation.saleAttributeReady,
+		SaleAttributeMessage: validation.saleAttributeMessage,
+	})...)
+	checks = append(checks, sheinworkspace.BuildSubmitPayloadReadinessChecks(pkg, action)...)
 	checks = appendSheinBuildValidationChecks(checks, validation)
 	return checks
 }
@@ -38,20 +46,4 @@ func appendSheinPodReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, p
 		"处理 POD 平台结果",
 		action == "save_draft" || !podBlocked,
 	))
-}
-
-func appendSheinTemplateReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, validation sheinBuildValidation) []sheinworkspace.ReadinessCheckSpec {
-	return append(checks, sheinworkspace.BuildSubmitTemplateReadinessChecks(sheinworkspace.SubmitTemplateReadinessInput{
-		CategoryReady:        validation.categoryReady,
-		CategoryMessage:      validation.categoryMessage,
-		CategoryReviewReady:  validation.categoryReviewReady,
-		AttributeReady:       validation.attributeReady,
-		AttributeMessage:     validation.attributeMessage,
-		SaleAttributeReady:   validation.saleAttributeReady,
-		SaleAttributeMessage: validation.saleAttributeMessage,
-	})...)
-}
-
-func appendSheinPayloadReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, pkg *SheinPackage, action string) []sheinworkspace.ReadinessCheckSpec {
-	return append(checks, sheinworkspace.BuildSubmitPayloadReadinessChecks(pkg, action)...)
 }

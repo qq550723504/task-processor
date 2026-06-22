@@ -667,6 +667,7 @@ Follow-up deletion
 | SHEIN repair apply request wrapper cleanup | migrated | 删除单用 `buildSheinRepairApplyRequest` wrapper；repair artifact builder 直接把 workspace revision seed 包装为 app `ApplyRevisionRequest`。 |
 | SHEIN repair validation preview wrapper cleanup | migrated | 删除单用 `buildSheinRepairValidationPreview` wrapper；repair artifact builder 内联 app revision validation 并直接调用 workspace repair validation preview builder。 |
 | SHEIN repair revision support file cleanup | migrated | 删除只剩 repair artifact builder 的 `shein_repair_revision_support.go`；artifact builder 并入 readiness guidance support，作为 repair hint 组装的一部分。 |
+| SHEIN submit readiness append wrapper cleanup | migrated | 删除单用 `appendSheinTemplateReadinessChecks` / `appendSheinPayloadReadinessChecks` wrapper；checks builder 直接追加 workspace template/payload readiness checks，POD 本地规则保留独立 helper。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
