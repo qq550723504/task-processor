@@ -3,8 +3,8 @@ import { usePathname } from "next/navigation";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { buildSheinStudioSelectionKey } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
-import { normalizeDraft } from "@/lib/shein-studio/storage-shared";
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
+import { saveLocalSheinStudioDraftSnapshot } from "@/lib/shein-studio/local-draft-cache";
 import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
 import { buildSheinStudioStepHref } from "@/lib/shein-studio/navigation";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
@@ -12,7 +12,6 @@ import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
-  SheinStudioDraft,
   SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
@@ -28,6 +27,13 @@ import {
   saveSheinStudioBatch,
   saveSheinStudioDraftWithOptions,
 } from "@/lib/utils/shein-studio-batches";
+
+export {
+  clearLocalSheinStudioDraftSnapshot,
+  loadLocalSheinStudioDraftSnapshot,
+  loadLocalSheinStudioDraftSnapshotDetail,
+  saveLocalSheinStudioDraftSnapshot,
+} from "@/lib/shein-studio/local-draft-cache";
 
 type DraftOverrides = Partial<{
   designs: SheinStudioGeneratedDesign[];
@@ -80,8 +86,6 @@ type WorkbenchDraftState = {
 
 const DRAFT_SAVE_WARNING =
   "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。";
-const LOCAL_DRAFT_SNAPSHOT_KEY = "listingkit:shein-studio:recent-draft";
-
 function appendDraftSaveWarning(current: string) {
   if (current.includes(DRAFT_SAVE_WARNING)) {
     return current;
@@ -91,103 +95,6 @@ function appendDraftSaveWarning(current: string) {
 
 function clearDraftSaveWarning(current: string) {
   return current.replace(DRAFT_SAVE_WARNING, "").trim();
-}
-
-function canUseLocalDraftSnapshot() {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
-
-type LocalDraftSnapshotInput =
-  | ReturnType<typeof buildSheinStudioDraftInput>
-  | SheinStudioDraft
-  | null
-  | undefined;
-
-type LocalDraftSnapshotPayload = {
-  batchId?: string;
-  draft: SheinStudioDraft;
-};
-
-function parseLocalSheinStudioDraftSnapshot() {
-  if (!canUseLocalDraftSnapshot()) {
-    return null;
-  }
-  const raw = window.localStorage.getItem(LOCAL_DRAFT_SNAPSHOT_KEY);
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as {
-      batchId?: unknown;
-      draft?: unknown;
-    };
-    const normalizedDraft = normalizeDraft(
-      parsed && typeof parsed === "object" && "draft" in parsed
-        ? (parsed.draft as Partial<SheinStudioDraft> | null | undefined)
-        : (parsed as Partial<SheinStudioDraft> | null | undefined),
-    );
-    if (!normalizedDraft) {
-      return null;
-    }
-    return {
-      batchId: typeof parsed?.batchId === "string" ? parsed.batchId : undefined,
-      draft: normalizedDraft,
-    } satisfies LocalDraftSnapshotPayload;
-  } catch (error) {
-    console.warn(
-      "shein studio local draft snapshot parse failed",
-      error instanceof Error ? error.message : error,
-    );
-    return null;
-  }
-}
-
-export function loadLocalSheinStudioDraftSnapshot() {
-  return parseLocalSheinStudioDraftSnapshot()?.draft ?? null;
-}
-
-export function loadLocalSheinStudioDraftSnapshotDetail() {
-  return parseLocalSheinStudioDraftSnapshot();
-}
-
-export function saveLocalSheinStudioDraftSnapshot(
-  input: LocalDraftSnapshotInput,
-  options?: {
-    batchId?: string;
-  },
-) {
-  if (!canUseLocalDraftSnapshot() || !input) {
-    return;
-  }
-  const draft = normalizeDraft({
-    ...input,
-    updatedAt:
-      "updatedAt" in input && typeof input.updatedAt === "string"
-        ? input.updatedAt
-        : new Date().toISOString(),
-  } as Partial<SheinStudioDraft>);
-  if (!draft) {
-    return;
-  }
-  const payload = {
-    batchId: options?.batchId?.trim() || undefined,
-    draft,
-  };
-  try {
-    window.localStorage.setItem(LOCAL_DRAFT_SNAPSHOT_KEY, JSON.stringify(payload));
-  } catch (error) {
-    console.warn(
-      "shein studio local draft snapshot save failed",
-      error instanceof Error ? error.message : error,
-    );
-  }
-}
-
-export function clearLocalSheinStudioDraftSnapshot() {
-  if (!canUseLocalDraftSnapshot()) {
-    return;
-  }
-  window.localStorage.removeItem(LOCAL_DRAFT_SNAPSHOT_KEY);
 }
 
 export function useHydratedSDSVariantSelection(
