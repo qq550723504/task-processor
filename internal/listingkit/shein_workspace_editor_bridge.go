@@ -11,3 +11,7 @@ type SheinEditorProgress = sheinworkspace.EditorProgress
 type SheinEditorProgressSection = sheinworkspace.EditorProgressSection
 type SheinEditorDirtyHints = sheinworkspace.EditorDirtyHints
 type SheinEditorDirtyHintSection = sheinworkspace.EditorDirtyHintSection
+
+func buildSheinEditorProgress(pkg *SheinPackage, checklist *SheinSubmitChecklist) *SheinEditorProgress {
+	return sheinworkspace.BuildEditorProgress(pkg, sheinworkspace.ChecklistItemCount(checklist))
+}
