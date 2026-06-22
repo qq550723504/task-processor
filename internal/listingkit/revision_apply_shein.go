@@ -95,7 +95,7 @@ func normalizeSheinSaleAttributeState(pkg *sheinpub.Package) {
 	if pkg.DraftPayload == nil || len(pkg.DraftPayload.SKCList) == 0 {
 		return
 	}
-	if sheinSaleAttributesReadyForSubmit((*SheinPackage)(pkg)) {
+	if sheinpub.SaleAttributesReadyForSubmit(pkg) {
 		return
 	}
 	if pkg.SaleAttributeResolution.Status == "" || pkg.SaleAttributeResolution.Status == "resolved" {

@@ -39,41 +39,6 @@ func appendSheinBuildValidationChecks(checks []sheinworkspace.ReadinessCheckSpec
 	})...)
 }
 
-func sheinHasBlockingPendingAttributes(pkg *SheinPackage) bool {
-	return sheinpub.HasBlockingPendingAttributes(pkg)
-}
-
-func sheinCategoryReviewPending(pkg *SheinPackage) bool {
-	if pkg == nil || pkg.SaleAttributeResolution == nil {
-		return false
-	}
-	return pkg.SaleAttributeResolution.RecommendCategoryReview
-}
-
-func sheinSaleAttributeReviewPending(pkg *SheinPackage) bool {
-	return sheinpub.SaleAttributeReviewPending(pkg)
-}
-
-func sheinSaleAttributeStatusResolved(pkg *SheinPackage) bool {
-	return sheinpub.SaleAttributeStatusResolved(pkg)
-}
-
-func sheinSaleAttributesReadyForSubmit(pkg *SheinPackage) bool {
-	return sheinpub.SaleAttributesReadyForSubmit(pkg)
-}
-
-func sheinSaleAttributesReadinessFailureReasons(pkg *SheinPackage) []string {
-	return sheinpub.SaleAttributesReadinessFailureReasons(pkg)
-}
-
-func sheinResolvedSaleAttributeReady(attr *SheinResolvedSaleAttribute) bool {
-	return sheinpub.ResolvedSaleAttributeReady(attr)
-}
-
-func sheinResolvedSaleAttributeValueReady(attr SheinResolvedSaleAttribute) bool {
-	return sheinpub.ResolvedSaleAttributeValueReady(attr)
-}
-
 func validatePreparedSheinSubmitPayload(pkg *SheinPackage) error {
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.PreviewPayload == nil {

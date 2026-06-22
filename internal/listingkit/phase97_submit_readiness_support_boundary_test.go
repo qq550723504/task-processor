@@ -116,6 +116,20 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 			t.Fatalf("shein_build_validation.go should delegate payload validation check construction, found %q", needle)
 		}
 	}
+	for _, needle := range []string{
+		"func sheinHasBlockingPendingAttributes(",
+		"func sheinCategoryReviewPending(",
+		"func sheinSaleAttributeReviewPending(",
+		"func sheinSaleAttributeStatusResolved(",
+		"func sheinSaleAttributesReadyForSubmit(",
+		"func sheinSaleAttributesReadinessFailureReasons(",
+		"func sheinResolvedSaleAttributeReady(",
+		"func sheinResolvedSaleAttributeValueReady(",
+	} {
+		if strings.Contains(buildValidationContent, needle) {
+			t.Fatalf("shein_build_validation.go should not keep publishing-owned wrapper %q", needle)
+		}
+	}
 
 	checksSrc, err := os.ReadFile("shein_submit_readiness_checks_support.go")
 	if err != nil {
