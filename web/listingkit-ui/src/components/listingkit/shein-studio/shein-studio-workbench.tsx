@@ -17,7 +17,10 @@ import { useSheinStudioDedicatedBatchRunController } from "@/components/listingk
 import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
 import { useSheinStudioQueueController } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
-import { projectItemizedTaskCreationResult } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
+import {
+  projectItemizedBatchDetail,
+  projectItemizedTaskCreationResult,
+} from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
 import {
   clearLocalSheinStudioDraftSnapshot,
@@ -39,8 +42,6 @@ import {
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
   buildSheinStudioSelectionKey,
-  flattenItemizedBatchDesigns,
-  getApprovedItemizedBatchDesignIDs,
   getItemizedBatchPendingTaskDesignIDs,
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
@@ -1701,41 +1702,35 @@ export function SheinStudioWorkbench({
       if (!activeBatchId) {
         return false;
       }
-      const nextSavedBatch: SheinStudioSavedBatch = {
-        ...(currentActiveBatch ?? {}),
-        id: activeBatchId,
-        name: currentActiveBatch?.name ?? "未命名批次",
-        prompt,
-        styleCount,
-        variationIntensity,
+      const { savedBatch } = projectItemizedBatchDetail({
+        activeBatchId,
+        activeSelection,
+        artworkModel,
+        createdTasks: nextCreatedTasks,
+        currentActiveBatch,
+        detail: nextDetail,
+        generationJobs,
+        groupedImageMode,
+        groupedSelections,
+        groups,
+        imageStrategy,
+        persistedUpdatedAt,
         productImageCount,
         productImagePrompt,
         productImagePrompts,
-        artworkModel,
-        transparentBackground,
-        sheinStoreId,
-        imageStrategy,
-        groupedImageMode,
-        selectedSdsImages,
+        prompt,
         renderSizeImagesWithSds,
-        selection: activeSelection,
-        groupedSelections,
-        groups,
-        designs: flattenItemizedBatchDesigns(nextDetail),
-        selectedIds: getApprovedItemizedBatchDesignIDs(nextDetail),
-        createdTasks: nextCreatedTasks,
-        generationJobs,
-        draftUpdatedAt: currentActiveBatch?.draftUpdatedAt || persistedUpdatedAt,
-        updatedAt:
-          nextDetail.batch.updatedAt ||
-          currentActiveBatch?.updatedAt ||
-          persistedUpdatedAt,
-      };
+        selectedSdsImages,
+        sheinStoreId,
+        styleCount,
+        transparentBackground,
+        variationIntensity,
+      });
       workbenchController.setField("savedBatches", (current) =>
-        upsertSavedBatch(current, nextSavedBatch),
+        upsertSavedBatch(current, savedBatch),
       );
       workbenchController.applyHydratedBatch({
-        savedBatch: nextSavedBatch,
+        savedBatch,
         detail: nextDetail,
       });
       return true;

@@ -45,6 +45,76 @@ type ItemizedTaskCreationProjectionInput = {
   variationIntensity: SheinStudioVariationIntensity;
 };
 
+type ItemizedBatchDetailProjectionInput = Omit<
+  ItemizedTaskCreationProjectionInput,
+  "currentDetail" | "result"
+> & {
+  createdTasks: SheinStudioCreatedTask[];
+  detail: SheinStudioBatchDetail;
+};
+
+export function projectItemizedBatchDetail({
+  activeBatchId,
+  activeSelection,
+  artworkModel,
+  createdTasks,
+  currentActiveBatch,
+  detail,
+  generationJobs,
+  groupedImageMode,
+  groupedSelections,
+  groups,
+  imageStrategy,
+  persistedUpdatedAt,
+  productImageCount,
+  productImagePrompt,
+  productImagePrompts,
+  prompt,
+  renderSizeImagesWithSds,
+  selectedSdsImages,
+  sheinStoreId,
+  styleCount,
+  transparentBackground,
+  variationIntensity,
+}: ItemizedBatchDetailProjectionInput): {
+  detail: SheinStudioBatchDetail;
+  savedBatch: SheinStudioSavedBatch;
+} {
+  return {
+    detail,
+    savedBatch: {
+      ...(currentActiveBatch ?? {}),
+      id: activeBatchId,
+      name: currentActiveBatch?.name ?? "未命名批次",
+      prompt,
+      styleCount,
+      variationIntensity,
+      productImageCount,
+      productImagePrompt,
+      productImagePrompts,
+      artworkModel,
+      transparentBackground,
+      sheinStoreId,
+      imageStrategy,
+      groupedImageMode,
+      selectedSdsImages,
+      renderSizeImagesWithSds,
+      selection: activeSelection,
+      groupedSelections,
+      groups,
+      designs: flattenItemizedBatchDesigns(detail),
+      selectedIds: getApprovedItemizedBatchDesignIDs(detail),
+      createdTasks,
+      generationJobs,
+      draftUpdatedAt: currentActiveBatch?.draftUpdatedAt || persistedUpdatedAt,
+      updatedAt:
+        detail.batch.updatedAt ||
+        currentActiveBatch?.updatedAt ||
+        persistedUpdatedAt,
+    },
+  };
+}
+
 export function projectItemizedTaskCreationResult({
   activeBatchId,
   activeSelection,
@@ -85,41 +155,42 @@ export function projectItemizedTaskCreationResult({
     ...result.createdTasks,
     ...(result.reusedTasks ?? []),
   ];
+  const projected = projectItemizedBatchDetail({
+    activeBatchId,
+    activeSelection,
+    artworkModel,
+    createdTasks: availableTasks,
+    currentActiveBatch,
+    detail,
+    generationJobs: [],
+    groupedImageMode,
+    groupedSelections,
+    groups,
+    imageStrategy,
+    persistedUpdatedAt,
+    productImageCount,
+    productImagePrompt,
+    productImagePrompts,
+    prompt,
+    renderSizeImagesWithSds,
+    selectedSdsImages,
+    sheinStoreId,
+    styleCount,
+    transparentBackground,
+    variationIntensity,
+  });
   return {
     detail,
     savedBatch: {
-      ...(currentActiveBatch ?? {}),
-      id: activeBatchId,
+      ...projected.savedBatch,
       tenantId:
         result.batch.tenantId ??
+        projected.savedBatch.tenantId ??
         currentDetail.batch.tenantId ??
         currentActiveBatch?.tenantId,
-      name: currentActiveBatch?.name ?? "未命名批次",
-      prompt,
-      styleCount,
-      variationIntensity,
-      productImageCount,
-      productImagePrompt,
-      productImagePrompts,
-      artworkModel,
-      transparentBackground,
-      sheinStoreId,
-      imageStrategy,
-      groupedImageMode,
-      selectedSdsImages,
-      renderSizeImagesWithSds,
-      selection: activeSelection,
-      groupedSelections,
-      groups,
-      designs: flattenItemizedBatchDesigns(detail),
-      selectedIds: getApprovedItemizedBatchDesignIDs(detail),
-      createdTasks: availableTasks,
-      generationJobs: [],
-      draftUpdatedAt: currentActiveBatch?.draftUpdatedAt || persistedUpdatedAt,
       updatedAt:
         currentActiveBatch?.updatedAt ||
-        detail.batch.updatedAt ||
-        persistedUpdatedAt,
+        projected.savedBatch.updatedAt,
     },
   };
 }

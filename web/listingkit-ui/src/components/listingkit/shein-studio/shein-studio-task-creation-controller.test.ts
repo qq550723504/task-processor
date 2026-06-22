@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { projectItemizedTaskCreationResult } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
+import {
+  projectItemizedBatchDetail,
+  projectItemizedTaskCreationResult,
+} from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
 import type { SheinStudioBatchDetail, SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 
@@ -139,5 +142,63 @@ describe("projectItemizedTaskCreationResult", () => {
       draftUpdatedAt: "2026-06-22T01:00:00.000Z",
       updatedAt: "2026-06-22T02:00:00.000Z",
     });
+  });
+});
+
+describe("projectItemizedBatchDetail", () => {
+  it("projects a refreshed itemized detail while preserving requested tasks and generation jobs", () => {
+    const result = projectItemizedBatchDetail({
+      activeBatchId: "batch-1",
+      activeSelection: {
+        layerId: "layer-1",
+        parentProductId: 1,
+        productId: 10,
+        productName: "Tee",
+        prototypeGroupId: 20,
+        variantId: 100,
+        variantLabel: "Black / M",
+      },
+      artworkModel: "openai",
+      createdTasks: [{ id: "task-existing", title: "Existing", designId: "design-1" }],
+      currentActiveBatch: {
+        ...buildCurrentBatch(),
+        updatedAt: "",
+      },
+      detail: {
+        ...buildCurrentDetail(),
+        batch: {
+          ...buildCurrentDetail().batch,
+          tenantId: "tenant-detail-new",
+          updatedAt: "2026-06-22T04:00:00.000Z",
+        },
+        items: buildTaskCreationResult().items,
+      },
+      generationJobs: [{ jobId: "job-running", status: "running" }],
+      groupedImageMode: "shared_by_size",
+      groupedSelections: [],
+      groups: [],
+      imageStrategy: "ai_generated",
+      persistedUpdatedAt: "2026-06-22T00:30:00.000Z",
+      productImageCount: "2",
+      productImagePrompt: "product prompt",
+      productImagePrompts: [],
+      prompt: "new prompt",
+      renderSizeImagesWithSds: true,
+      selectedSdsImages: [],
+      sheinStoreId: "870",
+      styleCount: "2",
+      transparentBackground: true,
+      variationIntensity: "medium",
+    });
+
+    expect(result.savedBatch).toMatchObject({
+      id: "batch-1",
+      name: "Existing batch",
+      selectedIds: ["design-1"],
+      createdTasks: [{ id: "task-existing" }],
+      generationJobs: [{ jobId: "job-running" }],
+      updatedAt: "2026-06-22T04:00:00.000Z",
+    });
+    expect(result.detail.batch.tenantId).toBe("tenant-detail-new");
   });
 });
