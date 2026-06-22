@@ -21,12 +21,6 @@ type RepairRevisionSeed struct {
 	Skeleton *EditorRevisionSkeleton
 }
 
-type RepairRevisionBundle[I any, S any, Q any] struct {
-	Input    *I
-	Skeleton *S
-	Request  *Q
-}
-
 type RepairArtifacts[P any, S any, Q any, V any] struct {
 	Patch      *P
 	Skeleton   *S

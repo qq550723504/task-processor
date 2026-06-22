@@ -2,30 +2,26 @@ package listingkit
 
 import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
-func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayload) sheinRepairRevisionBundle {
-	seed := sheinworkspace.BuildRepairRevisionSeed(action, payload)
+func buildSheinRepairApplyRequest(seed sheinworkspace.RepairRevisionSeed) *ApplyRevisionRequest {
 	if seed.Input == nil || seed.Skeleton == nil {
-		return sheinRepairRevisionBundle{}
+		return nil
 	}
-	return sheinRepairRevisionBundle{
-		Input:    seed.Input,
-		Skeleton: seed.Skeleton,
-		Request: &ApplyRevisionRequest{
-			Platform: seed.Skeleton.Platform,
-			Actor:    seed.Skeleton.Actor,
-			Reason:   seed.Skeleton.Reason,
-			Shein:    sheinworkspace.CloneRevisionInput(seed.Skeleton.Shein),
-		},
+	return &ApplyRevisionRequest{
+		Platform: seed.Skeleton.Platform,
+		Actor:    seed.Skeleton.Actor,
+		Reason:   seed.Skeleton.Reason,
+		Shein:    sheinworkspace.CloneRevisionInput(seed.Skeleton.Shein),
 	}
 }
 
 func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {
-	bundle := buildSheinRepairRevisionBundle(action, patch)
+	seed := sheinworkspace.BuildRepairRevisionSeed(action, patch)
+	request := buildSheinRepairApplyRequest(seed)
 	return sheinRepairArtifacts{
 		Patch:      sheinworkspace.CloneRepairPatchPayload(patch),
-		Skeleton:   bundle.Skeleton,
-		Request:    bundle.Request,
-		Validation: buildSheinRepairValidationPreview(pkg, editorSection, bundle.Request, bundle.Skeleton),
+		Skeleton:   seed.Skeleton,
+		Request:    request,
+		Validation: buildSheinRepairValidationPreview(pkg, editorSection, request, seed.Skeleton),
 	}
 }
 

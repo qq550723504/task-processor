@@ -7,6 +7,4 @@ import (
 type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]
 type SheinRepairPatchPayload = sheinworkspace.RepairPatchPayload
 
-type sheinRepairRevisionBundle = sheinworkspace.RepairRevisionBundle[SheinRevisionInput, SheinEditorRevisionSkeleton, ApplyRevisionRequest]
-
 type sheinRepairArtifacts = sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]

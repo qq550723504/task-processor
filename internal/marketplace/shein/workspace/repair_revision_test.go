@@ -126,30 +126,6 @@ func TestBuildRepairRevisionSeedSkipsEmptyPayload(t *testing.T) {
 	}
 }
 
-func TestRepairRevisionBundleCarriesAppRequest(t *testing.T) {
-	t.Parallel()
-
-	type input struct {
-		Value string
-	}
-	type skeleton struct {
-		Value string
-	}
-	type request struct {
-		Value string
-	}
-
-	bundle := RepairRevisionBundle[input, skeleton, request]{
-		Input:    &input{Value: "input"},
-		Skeleton: &skeleton{Value: "skeleton"},
-		Request:  &request{Value: "request"},
-	}
-
-	if bundle.Input.Value != "input" || bundle.Skeleton.Value != "skeleton" || bundle.Request.Value != "request" {
-		t.Fatalf("bundle = %+v, want input/skeleton/request", bundle)
-	}
-}
-
 func TestRepairArtifactsCarriesClonedArtifacts(t *testing.T) {
 	t.Parallel()
 

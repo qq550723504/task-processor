@@ -18,7 +18,6 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 	for _, needle := range []string{
 		"type SheinRepairValidationPreview = sheinworkspace.RepairValidationPreview[RevisionFieldError]",
 		"type SheinRepairPatchPayload = sheinworkspace.RepairPatchPayload",
-		"type sheinRepairRevisionBundle = sheinworkspace.RepairRevisionBundle[SheinRevisionInput, SheinEditorRevisionSkeleton, ApplyRevisionRequest]",
 		"type sheinRepairArtifacts = sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]",
 	} {
 		if !strings.Contains(rootContent, needle) {

@@ -1237,7 +1237,7 @@ func TestBuildSheinReadinessRepairHint(t *testing.T) {
 	}
 }
 
-func TestBuildSheinRepairRevisionBundle(t *testing.T) {
+func TestBuildSheinRepairArtifactsBuildsRevisionRequest(t *testing.T) {
 	t.Parallel()
 
 	productTypeID := 901
@@ -1250,18 +1250,21 @@ func TestBuildSheinRepairRevisionBundle(t *testing.T) {
 		},
 	}
 
-	bundle := buildSheinRepairRevisionBundle("确认类目", payload)
-	if bundle.Input == nil || bundle.Input.CategoryResolution == nil {
-		t.Fatalf("bundle input = %+v", bundle.Input)
+	artifacts := buildSheinRepairArtifacts(nil, "确认类目", "category", payload)
+	if artifacts.Patch == nil || artifacts.Patch.CategoryResolution == nil {
+		t.Fatalf("artifacts patch = %+v", artifacts.Patch)
 	}
-	if bundle.Skeleton == nil || bundle.Skeleton.Shein == nil || bundle.Skeleton.Shein.CategoryResolution == nil {
-		t.Fatalf("bundle skeleton = %+v", bundle.Skeleton)
+	if artifacts.Skeleton == nil || artifacts.Skeleton.Shein == nil || artifacts.Skeleton.Shein.CategoryResolution == nil {
+		t.Fatalf("artifacts skeleton = %+v", artifacts.Skeleton)
 	}
-	if bundle.Request == nil || bundle.Request.Shein == nil || bundle.Request.Shein.CategoryResolution == nil {
-		t.Fatalf("bundle request = %+v", bundle.Request)
+	if artifacts.Request == nil || artifacts.Request.Shein == nil || artifacts.Request.Shein.CategoryResolution == nil {
+		t.Fatalf("artifacts request = %+v", artifacts.Request)
 	}
-	if bundle.Skeleton.Reason != "repair: 确认类目" || bundle.Request.Reason != bundle.Skeleton.Reason {
-		t.Fatalf("bundle reasons = skeleton:%+v request:%+v", bundle.Skeleton, bundle.Request)
+	if artifacts.Skeleton.Reason != "repair: 确认类目" || artifacts.Request.Reason != artifacts.Skeleton.Reason {
+		t.Fatalf("artifacts reasons = skeleton:%+v request:%+v", artifacts.Skeleton, artifacts.Request)
+	}
+	if artifacts.Validation == nil || !artifacts.Validation.Valid || artifacts.Validation.Status != "ready" {
+		t.Fatalf("artifacts validation = %+v, want ready validation preview", artifacts.Validation)
 	}
 }
 
