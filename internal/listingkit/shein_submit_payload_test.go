@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -29,7 +30,7 @@ func TestPrepareSheinProductForNewSubmitDefaultsShelfWay(t *testing.T) {
 		}},
 	}
 
-	prepareSheinProductForNewSubmit(product)
+	sheinpub.PrepareProductForNewSubmit(product)
 
 	if got := product.SKCList[0].ShelfWay; got != 1 {
 		t.Fatalf("shelf_way = %d, want 1", got)
@@ -53,7 +54,7 @@ func TestPrepareSheinProductForSubmitRepairsMissingSKUImageFromSKC(t *testing.T)
 		}},
 	}
 
-	prepareSheinProductForNewSubmit(product)
+	sheinpub.PrepareProductForNewSubmit(product)
 
 	got := product.SKCList[0].SKUS[0].ImageInfo
 	if got == nil || len(got.ImageInfoList) != 1 {
@@ -91,7 +92,7 @@ func TestPrepareSheinProductForSubmitTrimsSKUImagesToSingleImage(t *testing.T) {
 		}},
 	}
 
-	prepareSheinProductForNewSubmit(product)
+	sheinpub.PrepareProductForNewSubmit(product)
 
 	got := product.SKCList[0].SKUS[0].ImageInfo
 	if got == nil || len(got.ImageInfoList) != 1 {
@@ -118,7 +119,7 @@ func TestPrepareSheinProductForSubmitNormalizesSPUImagesForPublish(t *testing.T)
 		},
 	}
 
-	prepareSheinProductForNewSubmit(product)
+	sheinpub.PrepareProductForNewSubmit(product)
 
 	got := product.ImageInfo
 	if got == nil || len(got.ImageInfoList) != 4 {
@@ -152,7 +153,7 @@ func TestPrepareSheinProductForSubmitPopulatesSKCSiteDetailImages(t *testing.T) 
 		}},
 	}
 
-	prepareSheinProductForNewSubmit(product)
+	sheinpub.PrepareProductForNewSubmit(product)
 
 	got := product.SKCList[0].SiteDetailImageInfoList
 	if len(got) != 1 {
@@ -181,7 +182,7 @@ func TestPrepareSheinProductForSubmitNormalizesExtraAndSupplierCode(t *testing.T
 		}},
 	}
 
-	prepareSheinProductForNewSubmit(product)
+	sheinpub.PrepareProductForNewSubmit(product)
 
 	if strings.TrimSpace(product.PointKey) == "" {
 		t.Fatal("point_key is empty, want generated UUID for direct publish parity with shein-listing")
@@ -220,7 +221,7 @@ func TestPrepareSheinProductForNewSubmitSerializesPageStyleEmptyCollections(t *t
 		}},
 	}
 
-	prepareSheinProductForNewSubmit(product)
+	sheinpub.PrepareProductForNewSubmit(product)
 
 	data, err := json.Marshal(product)
 	if err != nil {

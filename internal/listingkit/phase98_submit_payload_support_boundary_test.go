@@ -9,21 +9,28 @@ import (
 func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 	t.Parallel()
 
-	homeSrc, err := os.ReadFile("shein_submit_payload.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_payload.go) error = %v", err)
-	}
-	homeContent := string(homeSrc)
+	assertFileAbsent(t, "shein_submit_payload.go")
 
+	settingsSrc, err := os.ReadFile("shein_settings.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_settings.go) error = %v", err)
+	}
+	settingsContent := string(settingsSrc)
 	for _, needle := range []string{
-		"func prepareSheinProductForNewSubmit(product *sheinproduct.Product) {",
-		"func prepareSheinProductForSubmit(product *sheinproduct.Product, settings SheinSettings) {",
 		"func sheinSubmitPayloadSettings(settings SheinSettings) sheinpub.SubmitPayloadSettings {",
+		"Site:          settings.Site",
+		"WarehouseCode: settings.WarehouseCode",
 	} {
-		if !strings.Contains(homeContent, needle) {
-			t.Fatalf("shein_submit_payload.go should contain %q", needle)
+		if !strings.Contains(settingsContent, needle) {
+			t.Fatalf("shein_settings.go should contain %q", needle)
 		}
 	}
+
+	homeSrc, err := os.ReadFile("task_submission_execution_product.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_execution_product.go) error = %v", err)
+	}
+	homeContent := string(homeSrc)
 
 	for _, needle := range []string{
 		"func ensureSheinSubmitSites(product *sheinproduct.Product, settings SheinSettings) {",
@@ -48,11 +55,10 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 	for _, needle := range []string{
-		"sheinpub.PrepareProductForNewSubmit(product)",
-		"sheinpub.PrepareProductForSubmit(product, sheinSubmitPayloadSettings(settings))",
+		"sheinpub.PrepareProductForSubmit(submitProduct, sheinSubmitPayloadSettings(s.resolveSubmitSettings(runtimeCtx, task)))",
 	} {
 		if !strings.Contains(homeContent, needle) {
-			t.Fatalf("shein_submit_payload.go should delegate submit product preparation via %q", needle)
+			t.Fatalf("task_submission_execution_product.go should delegate submit product preparation via %q", needle)
 		}
 	}
 	publishingNormalizeSrc, err := os.ReadFile("../publishing/shein/submit_payload_normalize.go")

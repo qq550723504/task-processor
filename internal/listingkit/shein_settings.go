@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/tenantbridge"
 )
 
@@ -45,4 +46,11 @@ func tenantIDInt64FromTask(task *Task) int64 {
 		return 0
 	}
 	return value
+}
+
+func sheinSubmitPayloadSettings(settings SheinSettings) sheinpub.SubmitPayloadSettings {
+	return sheinpub.SubmitPayloadSettings{
+		Site:          settings.Site,
+		WarehouseCode: settings.WarehouseCode,
+	}
 }

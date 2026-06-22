@@ -83,6 +83,6 @@ func validatePreparedSheinSubmitPayload(pkg *SheinPackage) error {
 	if err != nil {
 		return err
 	}
-	prepareSheinProductForNewSubmit(product)
+	sheinpub.PrepareProductForNewSubmit(product)
 	return sheinpub.ValidatePreparedProductPublishPayload(product)
 }

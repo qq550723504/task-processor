@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 
+	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -32,7 +33,7 @@ func finalizeSheinUploadedSubmitPayload(
 	in *SheinPreparedSubmitPayload,
 	resolveSettings func(context.Context, *Task) SheinSettings,
 ) *SheinPreparedSubmitPayload {
-	prepareSheinProductForSubmit(in.Product, resolveSettings(ctx, task))
+	sheinpub.PrepareProductForSubmit(in.Product, sheinSubmitPayloadSettings(resolveSettings(ctx, task)))
 	dumpSheinSubmitPayloadForDebug(taskID, action, requestID, "uploaded", in.Product)
 	return refreshSheinPreparedSubmitPayloadSnapshot(in)
 }
