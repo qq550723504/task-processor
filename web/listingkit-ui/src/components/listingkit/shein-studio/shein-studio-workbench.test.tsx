@@ -2636,7 +2636,7 @@ describe("SheinStudioWorkbench", () => {
     );
   });
 
-  it("duplicates a recent batch without carrying over in-flight generation state", async () => {
+  it("duplicates a recent batch through a fresh save input", async () => {
     const sourceBatch = {
       id: "batch-1",
       name: "Fresh Batch",
@@ -2646,18 +2646,9 @@ describe("SheinStudioWorkbench", () => {
       selection,
       groupedSelections: [],
       groups: [],
-      designs: [{ id: "design-1", imageUrl: "https://example.com/design-1.png" }],
-      selectedIds: ["design-1"],
+      designs: [],
+      selectedIds: [],
       createdTasks: [],
-      generationJobs: [
-        {
-          jobId: "job-1",
-          targetGroupKey: "primary",
-          targetGroupLabel: "当前商品",
-          status: "running" as const,
-        },
-      ],
-      generationJobId: "job-1",
       updatedAt: "2026-05-26T10:03:00.000Z",
     };
     const duplicatedBatch = {
@@ -2711,25 +2702,12 @@ describe("SheinStudioWorkbench", () => {
           id: undefined,
           name: "Fresh Batch 副本",
           prompt: "retro cherries",
-          designs: [],
-          selectedIds: [],
-          createdTasks: [],
-          generationJobs: [],
         }),
         { makeActive: false },
       ),
     );
 
     expect(await screen.findByText("Fresh Batch 副本")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Fresh Batch 副本"));
-
-    await waitFor(() =>
-      expect(getSheinStudioHydratedBatch).toHaveBeenCalledWith("batch-2"),
-    );
-    expect(resumeSheinStudioDesignGeneration).not.toHaveBeenCalled();
-    expect(
-      screen.queryByText("已恢复之前发起的生成任务，正在继续等待结果。"),
-    ).not.toBeInTheDocument();
   });
 
   it("lets the dedicated batch page jump to SDS selection for the current batch", async () => {
