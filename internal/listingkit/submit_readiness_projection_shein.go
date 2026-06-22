@@ -2,7 +2,7 @@ package listingkit
 
 import (
 	listingsubmission "task-processor/internal/listing/submission"
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
 type sheinSubmitReadinessProjection struct {

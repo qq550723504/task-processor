@@ -40,6 +40,6 @@ func TestSheinReadinessGuidanceBridgeCallsMarketplaceWorkspaceDirectly(t *testin
 
 	taskListSource := readNamedFunctionSource(t, "task_list_item_support.go", "sheinBlockingKeysWithPod")
 	assertSourceContainsAll(t, taskListSource, []string{
-		"return uniqueNonEmptyStrings(sheinreadiness.FindKeys(readiness.BlockingItems))",
+		"return uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.BlockingItems))",
 	})
 }

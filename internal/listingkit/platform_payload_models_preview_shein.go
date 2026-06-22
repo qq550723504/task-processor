@@ -1,8 +1,8 @@
 package listingkit
 
 import (
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
 	sheinmarketplace "task-processor/internal/marketplace/shein/workspace"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"

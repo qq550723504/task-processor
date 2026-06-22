@@ -3,8 +3,7 @@ package listingkit
 import (
 	"strings"
 
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
-	sheinreadiness "task-processor/internal/marketplace/shein/workspace"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -172,10 +171,10 @@ func applySheinTaskListFields(item *TaskListItem, task *Task, pkg *SheinPackage)
 		item.SheinStatusOverview = readinessProjection.StatusOverview
 		if readiness := readinessProjection.Readiness; readiness != nil {
 			if len(readiness.BlockingItems) > 0 {
-				item.SheinBlockingKeys = uniqueNonEmptyStrings(sheinreadiness.FindKeys(readiness.BlockingItems))
+				item.SheinBlockingKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.BlockingItems))
 			}
 			if len(readiness.WarningItems) > 0 {
-				item.SheinWarningKeys = uniqueNonEmptyStrings(sheinreadiness.FindKeys(readiness.WarningItems))
+				item.SheinWarningKeys = uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.WarningItems))
 			}
 		}
 	}
@@ -211,7 +210,7 @@ func sheinBlockingKeysWithPod(pkg *SheinPackage, pod *PodExecutionSummary) []str
 	if readiness == nil || len(readiness.BlockingItems) == 0 {
 		return nil
 	}
-	return uniqueNonEmptyStrings(sheinreadiness.FindKeys(readiness.BlockingItems))
+	return uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.BlockingItems))
 }
 
 func sheinWarningKeys(pkg *SheinPackage) []string {
@@ -227,7 +226,7 @@ func sheinWarningKeysWithPod(pkg *SheinPackage, pod *PodExecutionSummary) []stri
 	if readiness == nil || len(readiness.WarningItems) == 0 {
 		return nil
 	}
-	return uniqueNonEmptyStrings(sheinreadiness.FindKeys(readiness.WarningItems))
+	return uniqueNonEmptyStrings(sheinworkspace.FindKeys(readiness.WarningItems))
 }
 
 func deriveSheinWorkQueue(task *Task, workflowStatus string, overview *sheinworkspace.StatusOverview) string {
