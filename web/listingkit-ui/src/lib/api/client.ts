@@ -1,10 +1,16 @@
 import { buildQueryString } from "@/lib/api/query-string";
+import { ApiError } from "@/lib/api/api-error";
 import {
   buildAsyncJobResumeKey,
   clearAsyncJobResumeEntry,
   loadAsyncJobResumeEntry,
   saveAsyncJobResumeEntry,
 } from "@/lib/api/async-job-resume";
+import {
+  AsyncJobNotFound,
+  pollAsyncJob,
+  type AsyncJobResponse,
+} from "@/lib/api/async-job";
 import { fetchWithRetry } from "@/lib/api/fetch-retry";
 import {
   parseJsonResponse,
@@ -35,23 +41,7 @@ type FormRequestOptions = {
   formData: FormData;
 };
 
-type AsyncJobResponse<T> = {
-  job_id: string;
-  status: "running" | "succeeded" | "failed";
-  result?: T;
-  error?: string;
-  upstream_status?: number;
-};
-
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    public readonly status: number,
-    public readonly payload?: unknown,
-  ) {
-    super(message);
-  }
-}
+export { ApiError };
 
 function buildHeaders(
   path: string,
@@ -144,201 +134,67 @@ export async function apiRequest<T>(
   return payload as T;
 }
 
-function buildEmptyJsonError(status: number, fallbackMessage: string) {
-  return new ApiError(fallbackMessage, status, {
-    message: "Response body was empty",
-  });
-}
-
 export async function apiAsyncRequest<T>(
   path: string,
   {
     body,
     timeoutMs = 3600000,
+    signal,
     onJobStarted,
     asyncJobSessionId,
-  }: Pick<RequestOptions, "body" | "timeoutMs" | "onJobStarted" | "asyncJobSessionId"> = {},
+  }: Pick<RequestOptions, "body" | "timeoutMs" | "signal" | "onJobStarted" | "asyncJobSessionId"> = {},
 ): Promise<T> {
   const resumeKey = buildAsyncJobResumeKey(path, body ?? {});
   const resumed = loadAsyncJobResumeEntry(resumeKey);
   let startedJobId = resumed?.jobId ?? "";
   let resumedFromStorage = Boolean(startedJobId);
 
-  if (!startedJobId) {
-    const backendJob = await startBackendAsyncJob<T>(path, body, asyncJobSessionId);
-    startedJobId = backendJob.jobId;
-    onJobStarted?.(startedJobId);
-    saveAsyncJobResumeEntry(resumeKey, startedJobId, "backend");
-  }
-
-  const deadline = Date.now() + timeoutMs;
-  let lastPollError: ApiError | Error | undefined;
-  while (Date.now() < deadline) {
-    await sleep(2000);
-    try {
-      const response = await fetchWithRetry(
-        buildApiUrl(`/studio/async-jobs/${encodeURIComponent(startedJobId)}`),
-        {
-          headers: buildHeaders(`/studio/async-jobs/${encodeURIComponent(startedJobId)}`),
-          cache: "no-store",
-        },
-        { retries: 1, retryDelayMs: 1200 },
+  for (;;) {
+    if (!startedJobId) {
+      const backendJob = await startBackendAsyncJob<T>(
+        path,
+        body,
+        asyncJobSessionId,
+        signal,
       );
-      let payload: (AsyncJobResponse<T> & { message?: string }) | undefined;
-      try {
-        payload = await parseJsonResponse<AsyncJobResponse<T> & {
-          message?: string;
-        }>(response);
-      } catch (error) {
-        if (error instanceof ResponseJsonParseError) {
-          lastPollError = new ApiError(
-            "ListingKit async job poll returned invalid JSON",
-            response.status,
-            { message: error.message },
-          );
-          continue;
-        }
-        lastPollError = error instanceof Error ? error : new Error(String(error));
-        continue;
-      }
+      startedJobId = backendJob.jobId;
+      onJobStarted?.(startedJobId);
+      saveAsyncJobResumeEntry(resumeKey, startedJobId, "backend");
+    }
 
-      if (!payload) {
-        lastPollError = buildEmptyJsonError(
-          response.status,
-          `ListingKit async job poll returned empty response: ${response.status}`,
-        );
-        continue;
-      }
-      if (response.status === 404 && resumedFromStorage) {
+    try {
+      const result = await pollAsyncJob<T>(startedJobId, {
+        timeoutMs,
+        signal,
+        shouldStopOnNotFound: resumedFromStorage,
+        buildPollRequest: buildAsyncJobPollRequest,
+      });
+      clearAsyncJobResumeEntry(resumeKey);
+      return result;
+    } catch (error) {
+      if (error instanceof AsyncJobNotFound && resumedFromStorage) {
         clearAsyncJobResumeEntry(resumeKey);
         resumedFromStorage = false;
         startedJobId = "";
-        break;
-      }
-      if (!response.ok) {
-        lastPollError = new ApiError(
-          payload.message ?? `ListingKit async job poll failed: ${response.status}`,
-          response.status,
-          payload,
-        );
         continue;
       }
-      if (payload.status === "succeeded") {
-        clearAsyncJobResumeEntry(resumeKey);
-        return payload.result as T;
-      }
-      if (payload.status === "failed") {
-        clearAsyncJobResumeEntry(resumeKey);
-        const jobError = new ApiError(
-          payload.error ?? "ListingKit async job failed",
-          payload.upstream_status ?? 500,
-          payload,
-        );
-        throw jobError;
-      }
-      lastPollError = undefined;
-    } catch (error) {
       if (error instanceof ApiError) {
-        throw error;
+        clearAsyncJobResumeEntry(resumeKey);
       }
-      lastPollError = error instanceof Error ? error : new Error(String(error));
+      throw error;
     }
   }
-  if (!startedJobId) {
-    return apiAsyncRequest<T>(path, { body, timeoutMs });
-  }
-  if (lastPollError instanceof ApiError) {
-    throw lastPollError;
-  }
-  if (lastPollError) {
-    throw lastPollError;
-  }
-  throw new ApiError(
-    `ListingKit async job timed out after ${timeoutMs}ms`,
-    408,
-  );
 }
 
 export async function apiResumeAsyncJob<T>(
   jobId: string,
-  { timeoutMs = 3600000 }: Pick<RequestOptions, "timeoutMs"> = {},
+  { timeoutMs = 3600000, signal }: Pick<RequestOptions, "timeoutMs" | "signal"> = {},
 ): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  let lastPollError: ApiError | Error | undefined;
-
-  while (Date.now() < deadline) {
-    await sleep(2000);
-    try {
-      const response = await fetchWithRetry(
-        buildApiUrl(`/studio/async-jobs/${encodeURIComponent(jobId)}`),
-        {
-          headers: buildHeaders(`/studio/async-jobs/${encodeURIComponent(jobId)}`),
-          cache: "no-store",
-        },
-        { retries: 1, retryDelayMs: 1200 },
-      );
-      let payload: (AsyncJobResponse<T> & { message?: string }) | undefined;
-      try {
-        payload = await parseJsonResponse<AsyncJobResponse<T> & {
-          message?: string;
-        }>(response);
-      } catch (error) {
-        if (error instanceof ResponseJsonParseError) {
-          lastPollError = new ApiError(
-            "ListingKit async job poll returned invalid JSON",
-            response.status,
-            { message: error.message },
-          );
-          continue;
-        }
-        lastPollError = error instanceof Error ? error : new Error(String(error));
-        continue;
-      }
-
-      if (!payload) {
-        lastPollError = buildEmptyJsonError(
-          response.status,
-          `ListingKit async job poll returned empty response: ${response.status}`,
-        );
-        continue;
-      }
-      if (!response.ok) {
-        lastPollError = new ApiError(
-          payload.message ?? `ListingKit async job poll failed: ${response.status}`,
-          response.status,
-          payload,
-        );
-        continue;
-      }
-      if (payload.status === "succeeded") {
-        return payload.result as T;
-      }
-      if (payload.status === "failed") {
-        throw new ApiError(
-          payload.error ?? "ListingKit async job failed",
-          payload.upstream_status ?? 500,
-          payload,
-        );
-      }
-      lastPollError = undefined;
-    } catch (error) {
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      lastPollError = error instanceof Error ? error : new Error(String(error));
-    }
-  }
-
-  if (lastPollError instanceof ApiError) {
-    throw lastPollError;
-  }
-  if (lastPollError) {
-    throw lastPollError;
-  }
-  throw new ApiError(
-    `ListingKit async job timed out after ${timeoutMs}ms`,
-    408,
-  );
+  return pollAsyncJob<T>(jobId, {
+    timeoutMs,
+    signal,
+    buildPollRequest: buildAsyncJobPollRequest,
+  });
 }
 
 export async function apiFormRequest<T>(
@@ -364,11 +220,12 @@ export async function apiFormRequest<T>(
   return payload as T;
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function startBackendAsyncJob<T>(path: string, body: unknown, sessionId?: string) {
+async function startBackendAsyncJob<T>(
+  path: string,
+  body: unknown,
+  sessionId?: string,
+  signal?: AbortSignal,
+) {
   const response = await fetchWithRetry(
     buildApiUrl("/studio/async-jobs"),
     {
@@ -381,6 +238,7 @@ async function startBackendAsyncJob<T>(path: string, body: unknown, sessionId?: 
         }),
       ),
       body: JSON.stringify({ path, body, session_id: sessionId?.trim() || undefined }),
+      signal,
     },
     { retries: 0 },
   );
@@ -410,6 +268,17 @@ async function startBackendAsyncJob<T>(path: string, body: unknown, sessionId?: 
   }
 
   return { jobId: payload.job_id };
+}
+
+function buildAsyncJobPollRequest(jobId: string) {
+  const path = `/studio/async-jobs/${encodeURIComponent(jobId)}`;
+  return {
+    url: buildApiUrl(path),
+    init: {
+      headers: buildHeaders(path),
+      cache: "no-store" as const,
+    },
+  };
 }
 
 async function parseApiJsonResponse(response: Response) {
