@@ -37,10 +37,10 @@ func TestSheinRevisionBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 	source := readNamedFunctionSource(t, "shein_workspace_revision_bridge.go", "buildSheinEditorRevisionSkeleton")
 	assertSourceContainsAll(t, source, []string{
 		"return sheinworkspace.BuildEditorRevisionSkeleton(",
-		"buildSheinCategoryResolutionPatch(pkg)",
-		"buildSheinAttributeResolutionPatch(pkg)",
-		"buildSheinSaleAttributeResolutionPatch(pkg)",
-		"buildSheinEditorSKCPatches(pkg)",
+		"sheinworkspace.BuildCategoryResolutionPatch(pkg)",
+		"sheinworkspace.BuildAttributeResolutionPatch(pkg)",
+		"sheinworkspace.BuildSaleAttributeResolutionPatch(pkg)",
+		"sheinworkspace.BuildEditorSKCPatches(pkg)",
 	})
 
 	src, err := os.ReadFile("shein_workspace_revision_bridge.go")
@@ -52,6 +52,10 @@ func TestSheinRevisionBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 		"func buildSheinMinimalRevisionSkeleton(",
 		"func pruneSheinRevisionInput(",
 		"func isEmptySheinRevisionInput(",
+		"func buildSheinCategoryResolutionPatch(",
+		"func buildSheinAttributeResolutionPatch(",
+		"func buildSheinSaleAttributeResolutionPatch(",
+		"func buildSheinEditorSKCPatches(",
 	} {
 		if strings.Contains(content, forbidden) {
 			t.Fatalf("shein_workspace_revision_bridge.go should not keep unused revision wrapper %q", forbidden)

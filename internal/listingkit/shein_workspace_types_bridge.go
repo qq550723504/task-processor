@@ -38,19 +38,3 @@ type SheinEditorBasicsContext = sheinworkspace.EditorBasicsContext
 type SheinEditorCategoryContext = sheinworkspace.EditorCategoryContext
 type SheinEditorAttributeContext = sheinworkspace.EditorAttributeContext
 type SheinEditorSaleAttributeContext = sheinworkspace.EditorSaleAttributeContext
-
-func buildSheinCategoryResolutionPatch(pkg *SheinPackage) *SheinCategoryResolutionPatch {
-	return sheinworkspace.BuildCategoryResolutionPatch(pkg)
-}
-
-func buildSheinAttributeResolutionPatch(pkg *SheinPackage) *SheinAttributeResolutionPatch {
-	return sheinworkspace.BuildAttributeResolutionPatch(pkg)
-}
-
-func buildSheinSaleAttributeResolutionPatch(pkg *SheinPackage) *SheinSaleAttributeResolutionPatch {
-	return sheinworkspace.BuildSaleAttributeResolutionPatch(pkg)
-}
-
-func buildSheinEditorSKCPatches(pkg *SheinPackage) []SheinSKCRevisionPatch {
-	return sheinworkspace.BuildEditorSKCPatches(pkg)
-}

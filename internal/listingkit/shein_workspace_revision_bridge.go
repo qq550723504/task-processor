@@ -14,9 +14,9 @@ type SheinEditorRevisionSkeleton = sheinworkspace.EditorRevisionSkeleton
 func buildSheinEditorRevisionSkeleton(pkg *SheinPackage) *SheinEditorRevisionSkeleton {
 	return sheinworkspace.BuildEditorRevisionSkeleton(
 		pkg,
-		buildSheinCategoryResolutionPatch(pkg),
-		buildSheinAttributeResolutionPatch(pkg),
-		buildSheinSaleAttributeResolutionPatch(pkg),
-		buildSheinEditorSKCPatches(pkg),
+		sheinworkspace.BuildCategoryResolutionPatch(pkg),
+		sheinworkspace.BuildAttributeResolutionPatch(pkg),
+		sheinworkspace.BuildSaleAttributeResolutionPatch(pkg),
+		sheinworkspace.BuildEditorSKCPatches(pkg),
 	)
 }
