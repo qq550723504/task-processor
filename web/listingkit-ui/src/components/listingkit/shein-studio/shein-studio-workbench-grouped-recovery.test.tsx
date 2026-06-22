@@ -48,7 +48,6 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
 
 vi.mock("@/lib/api/shein-studio", () => ({
   generateSheinStudioDesigns: vi.fn(),
-  resumeSheinStudioDesignGeneration: vi.fn(),
 }));
 
 vi.mock("@/lib/shein-studio/create-review-tasks", async () => {

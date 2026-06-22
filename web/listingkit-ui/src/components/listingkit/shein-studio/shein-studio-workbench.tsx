@@ -1124,69 +1124,13 @@ export function SheinStudioWorkbench({
               );
               return saved;
             },
-            onGenerated: ({ savedBatch, detail }) => {
-              const nextSavedBatch: SheinStudioSavedBatch = {
-                ...(currentActiveBatch ?? {}),
-                ...savedBatch,
-                id: savedBatch.id,
-                name: savedBatch.name || currentActiveBatch?.name || "未命名批次",
-                prompt,
-                styleCount,
-                variationIntensity,
-                productImageCount,
-                productImagePrompt,
-                productImagePrompts,
-                artworkModel,
-                transparentBackground,
-                sheinStoreId,
-                imageStrategy,
-                groupedImageMode,
-                selectedSdsImages,
-                renderSizeImagesWithSds,
-                selection: activeSelection,
-                groupedSelections,
-                groups,
-                designs: flattenItemizedBatchDesigns(detail),
-                selectedIds: getApprovedItemizedBatchDesignIDs(detail),
-                createdTasks: [],
-                generationJobs: [],
-                draftUpdatedAt:
-                  savedBatch.draftUpdatedAt || savedBatch.updatedAt,
-                updatedAt: detail.batch.updatedAt,
-              };
-              setActiveBatchId(savedBatch.id);
-              setActiveSheinStudioBatchId(savedBatch.id);
-              workbenchController.setField("savedBatches", (current) =>
-                upsertSavedBatch(current, nextSavedBatch),
+            startGenerationRun: async (savedBatch) => {
+              setBatchRunError("");
+              const response = await startSheinStudioBatchRun(
+                [savedBatch.id],
+                "generate",
               );
-              workbenchController.applyHydratedBatch({
-                savedBatch: nextSavedBatch,
-                detail,
-              });
-            },
-            detail: itemizedBatchDetail,
-            recoverInFlightGeneration: async ({ batchId, error }) => {
-              const hydratedBatch = await getSheinStudioHydratedBatch(batchId);
-              if (
-                !hydratedBatch ||
-                !hasInFlightItemizedBatchGeneration(hydratedBatch.detail)
-              ) {
-                return false;
-              }
-              setActiveBatchId(batchId);
-              setActiveSheinStudioBatchId(batchId);
-              workbenchController.setField("savedBatches", (current) =>
-                upsertSavedBatch(current, hydratedBatch.savedBatch),
-              );
-              workbenchController.applyHydratedBatch(hydratedBatch);
-              workbenchController.setField("generationError", "");
-              workbenchController.setField(
-                "generationWarning",
-                `${
-                  error instanceof Error ? error.message : "当前批次生成请求超时。"
-                } 后台仍在继续生成，请等待结果刷新，不要重复点击“生成款式图”。`,
-              );
-              return true;
+              setActiveBatchRunId(response.run.id);
             },
           }
         : undefined,

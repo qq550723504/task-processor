@@ -13,7 +13,6 @@ import { saveSheinStudioGalleryHandoff } from "@/lib/shein-studio/gallery-handof
 
 const useQuery = vi.fn();
 const generateSheinStudioDesigns = vi.fn();
-const resumeSheinStudioDesignGeneration = vi.fn();
 const createSheinReviewTasks = vi.fn();
 const getSDSBaselineReadiness = vi.fn();
 const warmSDSBaselineForSelection = vi.fn();
@@ -245,8 +244,6 @@ vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", ()
 
 vi.mock("@/lib/api/shein-studio", () => ({
   generateSheinStudioDesigns: (...args: unknown[]) => generateSheinStudioDesigns(...args),
-  resumeSheinStudioDesignGeneration: (...args: unknown[]) =>
-    resumeSheinStudioDesignGeneration(...args),
 }));
 
 vi.mock("@/lib/shein-studio/create-review-tasks", async () => {
@@ -454,7 +451,6 @@ describe("SheinStudioWorkbench", () => {
     lastGenerationPanelProps = null;
     useQuery.mockReturnValue({ data: undefined, error: null });
     generateSheinStudioDesigns.mockReset();
-    resumeSheinStudioDesignGeneration.mockReset();
     createSheinReviewTasks.mockReset();
     getSDSBaselineReadiness.mockReset();
     getSDSBaselineReadiness.mockResolvedValue({
@@ -481,6 +477,12 @@ describe("SheinStudioWorkbench", () => {
     generateSheinStudioBatch.mockReset();
     retrySheinStudioBatchItems.mockReset();
     startSheinStudioBatchRun.mockReset();
+    startSheinStudioBatchRun.mockResolvedValue({
+      run: {
+        id: "run-default",
+      },
+      items: [],
+    });
     deleteSheinStudioBatch.mockResolvedValue(undefined);
     approveSheinStudioBatchDesigns.mockReset();
     createSheinStudioBatchTasks.mockReset();
@@ -1197,12 +1199,14 @@ describe("SheinStudioWorkbench", () => {
       ),
     );
     await waitFor(() =>
-      expect(generateSheinStudioBatch).toHaveBeenCalledWith("batch-1"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
     );
+    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(generateSheinStudioBatch).not.toHaveBeenCalled();
     expect(generateSheinStudioDesigns).not.toHaveBeenCalled();
   });
 
-  it("keeps homepage-generated batch task creation on batch endpoints after local review edits", async () => {
+  it("starts a backend batch run from a saved homepage batch", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
@@ -1365,30 +1369,11 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
-      expect(generateSheinStudioBatch).toHaveBeenCalledWith("batch-1"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
     );
-    await waitFor(() =>
-      expect(screen.getByText("approved styles: 1")).toBeInTheDocument(),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "toggle-design-2" }));
-    fireEvent.click(screen.getByRole("button", { name: "note-design-1" }));
-    await waitFor(() =>
-      expect(screen.getByText("approved styles: 2")).toBeInTheDocument(),
-    );
-    expect(approveSheinStudioBatchDesigns).toHaveBeenCalledWith("batch-1", [
-      "design-1",
-      "design-2",
-    ]);
-    fireEvent.click(screen.getByRole("button", { name: "create review tasks" }));
-
-    await waitFor(() =>
-      expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
-        "design-1",
-        "design-2",
-      ]),
-    );
-    expect(createSheinReviewTasks).not.toHaveBeenCalled();
+    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(generateSheinStudioBatch).not.toHaveBeenCalled();
+    expect(generateSheinStudioDesigns).not.toHaveBeenCalled();
   });
 
   it("does not reload the dedicated batch when editing the prompt", async () => {
@@ -1560,11 +1545,13 @@ describe("SheinStudioWorkbench", () => {
       ),
     );
     await waitFor(() =>
-      expect(generateSheinStudioBatch).toHaveBeenCalledWith("batch-1"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
     );
+    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
 
-  it("retries failed dedicated batch items when generate is clicked on a partially failed batch", async () => {
+  it("starts a backend batch run when generate is clicked on a partially failed batch", async () => {
     getSheinStudioHydratedBatch.mockResolvedValue(
       buildHydratedBatch(
         {
@@ -1637,10 +1624,10 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试失败批次" }));
 
     await waitFor(() =>
-      expect(retrySheinStudioBatchItems).toHaveBeenCalledWith("batch-1", [
-        "item-1",
-      ]),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
     );
+    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(retrySheinStudioBatchItems).not.toHaveBeenCalled();
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
 
@@ -2024,9 +2011,7 @@ describe("SheinStudioWorkbench", () => {
       name: "Retro Cherries",
       updatedAt: "2026-05-26T10:00:00.000Z",
     });
-    generateSheinStudioBatch.mockRejectedValue(
-      new Error("ListingKit API request failed: 504"),
-    );
+    startSheinStudioBatchRun.mockRejectedValue(new Error("run start failed"));
 
     render(
       <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
@@ -2039,17 +2024,15 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
-      expect(generateSheinStudioBatch).toHaveBeenCalledWith("batch-1"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
     );
+    expect(generateSheinStudioBatch).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(getSheinStudioHydratedBatch).toHaveBeenCalledTimes(3),
-    );
-    await waitFor(() =>
-      expect(screen.getByText("正在生成款式图")).toBeInTheDocument(),
+      expect(screen.getByText("run start failed")).toBeInTheDocument(),
     );
     expect(
       screen.getByRole("button", { name: "generate styles" }),
-    ).toBeDisabled();
+    ).not.toBeDisabled();
   });
 
   it("keeps the dedicated batch page busy when failed-item retry times out but hydration shows retry is still running", async () => {
@@ -2163,19 +2146,10 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试失败批次" }));
 
     await waitFor(() =>
-      expect(retrySheinStudioBatchItems).toHaveBeenCalledWith("batch-1", [
-        "item-1",
-      ]),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
     );
-    await waitFor(() =>
-      expect(getSheinStudioHydratedBatch).toHaveBeenCalledTimes(3),
-    );
-    await waitFor(() =>
-      expect(screen.getByText("正在生成款式图")).toBeInTheDocument(),
-    );
-    expect(
-      screen.getByRole("button", { name: "generate styles" }),
-    ).toBeDisabled();
+    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(retrySheinStudioBatchItems).not.toHaveBeenCalled();
   });
 
   it("retries a single failed batch item without retriggering the whole failed set", async () => {
@@ -3459,13 +3433,14 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-new"], "generate"),
     );
     expect(saveSheinStudioBatch).toHaveBeenCalledWith(
       expect.not.objectContaining({ id: expect.anything() }),
       undefined,
     );
-    expect(generateSheinStudioBatch).toHaveBeenCalledWith("batch-new");
+    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
 
   it("guards against leaving the page while style generation is running", async () => {
@@ -3516,7 +3491,6 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "generate styles" })).toBeInTheDocument(),
     );
-    expect(resumeSheinStudioDesignGeneration).not.toHaveBeenCalled();
     expect(screen.queryByText("review grid: 1")).not.toBeInTheDocument();
     expect(saveSheinStudioDraftWithOptions).not.toHaveBeenCalled();
     expect(saveSheinStudioBatch).not.toHaveBeenCalled();
@@ -3547,7 +3521,6 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "generate styles" })).toBeInTheDocument(),
     );
-    expect(resumeSheinStudioDesignGeneration).not.toHaveBeenCalled();
     expect(screen.queryByText("review grid: 2")).not.toBeInTheDocument();
     expect(saveSheinStudioDraftWithOptions).not.toHaveBeenCalled();
     expect(saveSheinStudioBatch).not.toHaveBeenCalled();
@@ -3571,11 +3544,16 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-unsaved"],
+        "generate",
+      ),
     );
+    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
 
-  it("keeps generated designs when parent step changes to review", async () => {
+  it("keeps batch run progress when parent step changes to review", async () => {
     loadSheinStudioDraft.mockResolvedValue(buildDraft());
     saveSheinStudioBatch.mockResolvedValue({
       ...buildHydratedBatch().savedBatch,
@@ -3594,9 +3572,7 @@ describe("SheinStudioWorkbench", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
-    await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
-    );
+    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
 
     loadSheinStudioDraft.mockResolvedValue(buildDraft({
       selectedIds: ["design-1"],
@@ -3606,9 +3582,7 @@ describe("SheinStudioWorkbench", () => {
       <SheinStudioWorkbench activeStep="review" selection={selection} />,
     );
 
-    await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
-    );
+    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
   });
 
   it("does not surface a draft-save warning after successful batch generation", async () => {
@@ -3629,8 +3603,9 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
     );
+    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
     expect(
       screen.queryByText(
         "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。",
