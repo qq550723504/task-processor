@@ -1611,10 +1611,13 @@ export function SheinStudioWorkbench({
     handleResumeBatchQueue,
   } = useSheinStudioQueueController({
     batchQueueMode,
+    currentQueuedBatchId,
+    effectiveStep,
     getBatchRunStartErrorMessage,
     hydrateBatchSelection: hydrateRecentBatchSelection,
     loadBatch: handleLoadBatch,
     loadHydratedBatch: handleLoadHydratedBatch,
+    promptInputRef,
     queueResumeState,
     queuedBatchIds,
     queuedBatchIndex,
@@ -1648,38 +1651,6 @@ export function SheinStudioWorkbench({
     setBatchRunError,
     startBatchRun: startSheinStudioBatchRun,
   });
-
-  useEffect(() => {
-    if (!batchQueueMode || !currentQueuedBatchId) {
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      if (batchQueueMode === "generate" || effectiveStep === "generate") {
-        document
-          .getElementById("shein-studio-generator")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-        const promptInput =
-          promptInputRef.current ??
-          (document.getElementById("prompt") as HTMLInputElement | HTMLTextAreaElement | null);
-        promptInput?.focus();
-        return;
-      }
-      if (effectiveStep === "review") {
-        document
-          .getElementById("shein-style-review")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-        return;
-      }
-      if (effectiveStep === "tasks") {
-        document
-          .getElementById("shein-created-tasks")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    }, 0);
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [batchQueueMode, currentQueuedBatchId, effectiveStep]);
 
   const applyItemizedBatchDetail = useCallback(
     (

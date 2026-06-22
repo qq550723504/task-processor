@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, type RefObject } from "react";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -22,6 +22,8 @@ type QueueRequestVersionRef = {
 
 type QueueControllerParams = {
   batchQueueMode: SheinStudioBatchQueueMode | null;
+  currentQueuedBatchId: string;
+  effectiveStep: SheinStudioStepKey;
   hydrateBatchSelection: (
     batchIds: string[],
   ) => Promise<Record<string, SheinStudioWorkbenchHydratedBatch>>;
@@ -35,6 +37,7 @@ type QueueControllerParams = {
   savedBatches: SheinStudioSavedBatch[];
   selectedRecentBatchHydrations: Record<string, SheinStudioWorkbenchHydratedBatch>;
   getBatchRunStartErrorMessage: (error: unknown) => string;
+  promptInputRef: RefObject<HTMLTextAreaElement | null>;
   setActiveBatchRunId: (value: string) => void;
   setBatchQueueMode: (value: SheinStudioBatchQueueMode | null) => void;
   setBatchRunError: (value: string) => void;
@@ -49,6 +52,8 @@ type QueueControllerParams = {
 
 export function useSheinStudioQueueController({
   batchQueueMode,
+  currentQueuedBatchId,
+  effectiveStep,
   getBatchRunStartErrorMessage,
   hydrateBatchSelection,
   loadBatch,
@@ -60,6 +65,7 @@ export function useSheinStudioQueueController({
   requestVersionRef,
   savedBatches,
   selectedRecentBatchHydrations,
+  promptInputRef,
   setActiveBatchRunId,
   setBatchQueueMode,
   setBatchRunError,
@@ -71,6 +77,38 @@ export function useSheinStudioQueueController({
   setSelectedRecentBatchSummaryIds,
   startBatchRun,
 }: QueueControllerParams) {
+  useEffect(() => {
+    if (!batchQueueMode || !currentQueuedBatchId) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      if (batchQueueMode === "generate" || effectiveStep === "generate") {
+        document
+          .getElementById("shein-studio-generator")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const promptInput =
+          promptInputRef.current ??
+          (document.getElementById("prompt") as HTMLInputElement | HTMLTextAreaElement | null);
+        promptInput?.focus();
+        return;
+      }
+      if (effectiveStep === "review") {
+        document
+          .getElementById("shein-style-review")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (effectiveStep === "tasks") {
+        document
+          .getElementById("shein-created-tasks")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [batchQueueMode, currentQueuedBatchId, effectiveStep, promptInputRef]);
+
   const getBatchQueueController = useCallback(
     () =>
       createBatchQueueController({

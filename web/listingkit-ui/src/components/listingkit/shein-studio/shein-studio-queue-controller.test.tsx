@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { createRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSheinStudioQueueController } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
@@ -42,6 +43,8 @@ describe("useSheinStudioQueueController", () => {
     return renderHook(() =>
       useSheinStudioQueueController({
         batchQueueMode: "generate",
+        currentQueuedBatchId: "batch-2",
+        effectiveStep: "generate",
         queuedBatchIds: ["batch-1", "batch-2"],
         queuedBatchIndex: 1,
         queueResumeState: {
@@ -68,6 +71,7 @@ describe("useSheinStudioQueueController", () => {
         setQueuedBatchIds,
         setQueuedBatchIndex,
         setSelectedRecentBatchSummaryIds,
+        promptInputRef: { current: null },
         startBatchRun,
         ...overrides,
       }),
@@ -142,5 +146,35 @@ describe("useSheinStudioQueueController", () => {
     expect(setSelectedRecentBatchSummaryIds).toHaveBeenCalledWith([]);
     expect(setQueueMessage).toHaveBeenCalledWith("");
     expect(setBatchQueueMode).not.toHaveBeenCalled();
+  });
+
+  it("scrolls and focuses the generator when a generate queue item becomes active", () => {
+    vi.useFakeTimers();
+    const generator = document.createElement("div");
+    generator.id = "shein-studio-generator";
+    generator.scrollIntoView = vi.fn();
+    document.body.appendChild(generator);
+    const input = document.createElement("textarea");
+    input.focus = vi.fn();
+    const promptInputRef = createRef<HTMLTextAreaElement>();
+    promptInputRef.current = input;
+
+    renderController({
+      batchQueueMode: "generate",
+      currentQueuedBatchId: "batch-1",
+      effectiveStep: "generate",
+      promptInputRef,
+    });
+
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(generator.scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "start",
+    });
+    expect(input.focus).toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
