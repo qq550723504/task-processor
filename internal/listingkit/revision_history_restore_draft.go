@@ -3,7 +3,7 @@ package listingkit
 import (
 	"fmt"
 
-	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
 func buildRevisionHistoryRestoreDraft(record *ListingKitRevisionRecord) *SheinEditorRevisionSkeleton {
