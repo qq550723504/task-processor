@@ -505,7 +505,7 @@ func TestApplyDefaultSheinPricingRemapsCachedManualOverrideToCurrentSKU(t *testi
 		},
 	}
 
-	key := sheinPricingCacheKey(buildSheinPublishRequest(req), fresh, svc.(*service).currentSheinPricingRule())
+	key := sheinpub.PricingCacheKey(buildSheinPublishRequest(req), fresh, svc.(*service).currentSheinPricingRule())
 	if key == "" {
 		t.Fatal("pricing cache key is empty")
 	}
@@ -535,10 +535,10 @@ func TestApplyDefaultSheinPricingRemapsCachedManualOverrideToCurrentSKU(t *testi
 		StoreID:        "869",
 		CacheKind:      sheinpub.ResolutionCacheKindPricing,
 		CacheKey:       key,
-		ShortKey:       sheinPricingShortKey(key),
+		ShortKey:       sheinpub.PricingShortKey(key),
 		Source:         "manual_cache",
 		Manual:         true,
-		SourceIdentity: sheinPricingSourceIdentity(fresh),
+		SourceIdentity: sheinpub.PricingSourceIdentity(fresh),
 		ResolutionJSON: mustMarshalSheinPricingReview(cachedReview),
 	}); err != nil {
 		t.Fatalf("save cache: %v", err)
@@ -680,8 +680,8 @@ func TestSheinPricingCacheKeyUsesStableSDSIdentifiers(t *testing.T) {
 		},
 	}
 
-	firstKey := sheinPricingCacheKey(req, first, sheinpub.PricingRule{})
-	secondKey := sheinPricingCacheKey(req, second, sheinpub.PricingRule{})
+	firstKey := sheinpub.PricingCacheKey(req, first, sheinpub.PricingRule{})
+	secondKey := sheinpub.PricingCacheKey(req, second, sheinpub.PricingRule{})
 	if firstKey == "" || secondKey == "" {
 		t.Fatalf("pricing cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
 	}
@@ -735,8 +735,8 @@ func TestSheinPricingCacheKeyIgnoresDecoratedSubmitSupplierSKUsForSDS(t *testing
 		},
 	}
 
-	firstKey := sheinPricingCacheKey(req, first, sheinpub.PricingRule{})
-	secondKey := sheinPricingCacheKey(req, second, sheinpub.PricingRule{})
+	firstKey := sheinpub.PricingCacheKey(req, first, sheinpub.PricingRule{})
+	secondKey := sheinpub.PricingCacheKey(req, second, sheinpub.PricingRule{})
 	if firstKey == "" || secondKey == "" {
 		t.Fatalf("pricing cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
 	}
@@ -801,8 +801,8 @@ func TestSheinPricingCacheKeyNormalizesLegacyCNYDraftCurrency(t *testing.T) {
 		},
 	}
 
-	firstKey := sheinPricingCacheKey(req, first, rule)
-	secondKey := sheinPricingCacheKey(req, second, rule)
+	firstKey := sheinpub.PricingCacheKey(req, first, rule)
+	secondKey := sheinpub.PricingCacheKey(req, second, rule)
 	if firstKey == "" || secondKey == "" {
 		t.Fatalf("pricing cache keys should not be empty: first=%q second=%q", firstKey, secondKey)
 	}

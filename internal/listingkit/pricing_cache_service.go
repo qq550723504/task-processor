@@ -28,7 +28,7 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 	if req == nil || task.Result.Shein == nil || review == nil || !review.Ready {
 		return
 	}
-	key := sheinPricingCacheKey(req, task.Result.Shein, s.currentSheinPricingRule())
+	key := sheinpub.PricingCacheKey(req, task.Result.Shein, s.currentSheinPricingRule())
 	if key == "" {
 		return
 	}
@@ -36,21 +36,21 @@ func (s *service) rememberSheinSubmittedPricing(task *Task, action string) {
 	attachPricingCacheInfo(review, "manual_cache", key, true, sheinpub.ResolutionCacheHitSourcePublishRemembered, "stored", 0, &now)
 	task.Result.Shein.Pricing = review
 	_ = cacheStore.SaveResolutionCache(context.Background(), &sheinpub.SheinResolutionCacheEntry{
-		StoreID:        sheinPricingStoreID(req),
+		StoreID:        sheinpub.PricingStoreID(req),
 		CacheKind:      sheinpub.ResolutionCacheKindPricing,
 		CacheKey:       key,
-		ShortKey:       sheinPricingShortKey(key),
+		ShortKey:       sheinpub.PricingShortKey(key),
 		Source:         "manual_cache",
 		Manual:         true,
-		SourceIdentity: sheinPricingSourceIdentity(task.Result.Shein),
+		SourceIdentity: sheinpub.PricingSourceIdentity(task.Result.Shein),
 		ResolutionJSON: mustMarshalSheinPricingReview(review),
 		UpdatedAt:      now,
 		CreatedAt:      now,
 	})
 	logPricingCacheEvent("store", req, task.Result.Shein, review.Cache, logrus.Fields{
 		"cache_kind":         sheinpub.ResolutionCacheKindPricing,
-		"product_identities": strings.Join(sheinPricingProductIdentity(task.Result.Shein), ","),
-		"sku_facts":          strings.Join(sortedSheinPricingSKUFacts(task.Result.Shein, s.currentSheinPricingRule()), ","),
+		"product_identities": strings.Join(sheinpub.PricingProductIdentity(task.Result.Shein), ","),
+		"sku_facts":          strings.Join(sheinpub.SortedPricingSKUFacts(task.Result.Shein, s.currentSheinPricingRule()), ","),
 	})
 }
 
@@ -70,16 +70,16 @@ func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Pack
 		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "no_resolution_cache_store"})
 		return nil
 	}
-	key := sheinPricingCacheKey(buildReq, pkg, s.currentSheinPricingRule())
+	key := sheinpub.PricingCacheKey(buildReq, pkg, s.currentSheinPricingRule())
 	if key == "" {
 		logPricingCacheEvent("skip", buildReq, pkg, nil, logrus.Fields{"reason": "empty_cache_key"})
 		return nil
 	}
-	entry, err := cacheStore.GetResolutionCache(context.Background(), sheinpub.ResolutionCacheKindPricing, sheinPricingStoreID(buildReq), key)
+	entry, err := cacheStore.GetResolutionCache(context.Background(), sheinpub.ResolutionCacheKindPricing, sheinpub.PricingStoreID(buildReq), key)
 	if err != nil {
 		logPricingCacheEvent("error", buildReq, pkg, &sheinpub.ResolutionCacheInfo{
 			CacheKey:  key,
-			ShortKey:  sheinPricingShortKey(key),
+			ShortKey:  sheinpub.PricingShortKey(key),
 			Clearable: key != "",
 		}, logrus.Fields{
 			"reason": "store_error",
@@ -90,7 +90,7 @@ func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Pack
 	if entry == nil {
 		logPricingCacheEvent("miss", buildReq, pkg, &sheinpub.ResolutionCacheInfo{
 			CacheKey:  key,
-			ShortKey:  sheinPricingShortKey(key),
+			ShortKey:  sheinpub.PricingShortKey(key),
 			Clearable: key != "",
 		}, logrus.Fields{"reason": "no_entry"})
 		return nil
@@ -102,7 +102,7 @@ func (s *service) loadSheinPricingCache(req *GenerateRequest, pkg *sheinpub.Pack
 			Source:    cacheEntrySourceLabel(entry),
 			HitSource: pricingCacheHitSource(entry),
 			CacheKey:  entry.CacheKey,
-			ShortKey:  sheinPricingShortKey(entry.CacheKey),
+			ShortKey:  sheinpub.PricingShortKey(entry.CacheKey),
 			HitCount:  entry.HitCount,
 			Manual:    entry.Manual,
 			Clearable: entry.CacheKey != "",
@@ -122,12 +122,12 @@ func (s *service) clearSheinPricingCache(req *sheinpub.BuildRequest, pkg *sheinp
 	if s == nil || cacheStore == nil {
 		return nil
 	}
-	key := sheinPricingCacheKey(req, pkg, s.currentSheinPricingRule())
+	key := sheinpub.PricingCacheKey(req, pkg, s.currentSheinPricingRule())
 	if key == "" {
 		return nil
 	}
 	if pkg != nil && pkg.Pricing != nil {
 		pkg.Pricing.Cache = nil
 	}
-	return cacheStore.DeleteResolutionCache(context.Background(), sheinpub.ResolutionCacheKindPricing, sheinPricingStoreID(req), key)
+	return cacheStore.DeleteResolutionCache(context.Background(), sheinpub.ResolutionCacheKindPricing, sheinpub.PricingStoreID(req), key)
 }

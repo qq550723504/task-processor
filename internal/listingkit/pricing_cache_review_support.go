@@ -56,7 +56,7 @@ func attachPricingCacheInfo(
 		Source:    source,
 		HitSource: hitSource,
 		CacheKey:  key,
-		ShortKey:  sheinPricingShortKey(key),
+		ShortKey:  sheinpub.PricingShortKey(key),
 		HitCount:  hitCount,
 		Manual:    manual,
 		Clearable: key != "",
@@ -99,7 +99,7 @@ func logPricingCacheEvent(event string, req *sheinpub.BuildRequest, pkg *sheinpu
 	log := logrus.WithFields(logrus.Fields{
 		"component": "listingkit/pricing_cache",
 		"event":     event,
-		"store_id":  sheinPricingStoreID(req),
+		"store_id":  sheinpub.PricingStoreID(req),
 		"category_id": func() int {
 			if pkg == nil {
 				return 0
@@ -110,13 +110,13 @@ func logPricingCacheEvent(event string, req *sheinpub.BuildRequest, pkg *sheinpu
 			if pkg == nil {
 				return ""
 			}
-			return strings.Join(sheinPricingProductIdentity(pkg), ",")
+			return strings.Join(sheinpub.PricingProductIdentity(pkg), ",")
 		}(),
 		"sku_facts": func() string {
 			if pkg == nil {
 				return ""
 			}
-			return strings.Join(sortedSheinPricingSKUFacts(pkg, sheinpub.PricingRule{}), ",")
+			return strings.Join(sheinpub.SortedPricingSKUFacts(pkg, sheinpub.PricingRule{}), ",")
 		}(),
 	})
 	for key, value := range fields {

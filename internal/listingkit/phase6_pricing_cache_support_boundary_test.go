@@ -36,24 +36,7 @@ func TestPricingCacheSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 
-	keySrc, err := os.ReadFile("pricing_cache_key_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(pricing_cache_key_support.go) error = %v", err)
-	}
-	keyContent := string(keySrc)
-
-	for _, needle := range []string{
-		"func sheinPricingCacheKey(req *sheinpub.BuildRequest, pkg *sheinpub.Package, rule sheinpub.PricingRule) string {",
-		"return sheinpub.PricingCacheKey(req, pkg, rule)",
-		"return sheinpub.SortedPricingSKUFacts(pkg, rule)",
-		"return sheinpub.PricingSKUFacts(pkg, rule)",
-		"return sheinpub.PricingSKUAlias(value)",
-		"return sheinpub.PricingStoreID(req)",
-	} {
-		if !strings.Contains(keyContent, needle) {
-			t.Fatalf("pricing_cache_key_support.go should contain %q", needle)
-		}
-	}
+	assertFileAbsent(t, "pricing_cache_key_support.go")
 
 	reviewSrc, err := os.ReadFile("pricing_cache_review_support.go")
 	if err != nil {
@@ -70,6 +53,10 @@ func TestPricingCacheSupportFilesOwnHelperFamilies(t *testing.T) {
 		"return sheinpub.ClonePricingReview(review)",
 		"func attachPricingCacheInfo(",
 		"func logPricingCacheEvent(event string, req *sheinpub.BuildRequest, pkg *sheinpub.Package, info *sheinpub.ResolutionCacheInfo, fields logrus.Fields) {",
+		"sheinpub.PricingShortKey(key)",
+		"sheinpub.PricingStoreID(req)",
+		"sheinpub.PricingProductIdentity(pkg)",
+		"sheinpub.SortedPricingSKUFacts(pkg, sheinpub.PricingRule{})",
 	} {
 		if !strings.Contains(reviewContent, needle) {
 			t.Fatalf("pricing_cache_review_support.go should contain %q", needle)
