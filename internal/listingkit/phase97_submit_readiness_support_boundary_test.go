@@ -65,9 +65,8 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	guidanceContent := string(guidanceSrc)
 
 	for _, needle := range []string{
-		"func buildSheinReadinessReason(spec *sheinworkspace.ReadinessReasonSpec) *SheinReadinessReason {",
-		"return sheinworkspace.BuildReadinessReason(spec)",
 		"func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []string, suggestedAction string, warningOnly bool) sheinReadinessGuidance {",
+		"reason: sheinworkspace.BuildReadinessReason(spec.Reason)",
 		"patch := sheinworkspace.BuildReadinessPatchPayload(pkg, key)",
 		"func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {",
 	} {
@@ -80,6 +79,8 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"cloned := *reason",
 		"func buildSheinReadinessPatchPayload(pkg *SheinPackage, key string) *SheinRepairPatchPayload {",
 		"return sheinworkspace.BuildReadinessPatchPayload(pkg, key)",
+		"func buildSheinReadinessReason(spec *sheinworkspace.ReadinessReasonSpec) *SheinReadinessReason {",
+		"func cloneSheinReadinessReason(reason *SheinReadinessReason) *SheinReadinessReason {",
 	} {
 		if strings.Contains(guidanceContent, needle) {
 			t.Fatalf("shein_submit_readiness_guidance_support.go should not keep patch payload wrapper %q", needle)

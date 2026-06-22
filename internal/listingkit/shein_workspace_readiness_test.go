@@ -1148,22 +1148,6 @@ func TestBuildSheinSubmitChecklistGroupsChecks(t *testing.T) {
 	}
 }
 
-func TestBuildSheinReadinessReason(t *testing.T) {
-	t.Parallel()
-
-	reason := buildSheinReadinessReason(&sheinworkspace.ReadinessReasonSpec{
-		Code:     "category_unresolved",
-		Category: "classification",
-		Summary:  "missing category",
-	})
-	if reason == nil {
-		t.Fatal("expected reason")
-	}
-	if reason.Code != "category_unresolved" || reason.Category != "classification" || reason.Summary != "missing category" {
-		t.Fatalf("reason = %+v", reason)
-	}
-}
-
 func TestWorkspaceBuildReadinessPatchPayloadSupportsListingKitAlias(t *testing.T) {
 	t.Parallel()
 

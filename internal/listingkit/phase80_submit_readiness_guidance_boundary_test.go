@@ -16,7 +16,7 @@ func TestSheinSubmitReadinessGuidanceBoundary(t *testing.T) {
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)",
-			"Reason:      cloneSheinReadinessReason(guidance.reason)",
+			"Reason:      sheinworkspace.CloneReadinessReason(guidance.reason)",
 			"RepairHints: cloneSheinRepairHints(guidance.repairHints)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
@@ -35,7 +35,7 @@ func TestSheinSubmitReadinessGuidanceBoundary(t *testing.T) {
 		})
 		assertSourceExcludesAll(t, source, []string{
 			"guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)",
-			"Reason:      cloneSheinReadinessReason(guidance.reason)",
+			"Reason:      sheinworkspace.CloneReadinessReason(guidance.reason)",
 			"RepairHints: cloneSheinRepairHints(guidance.repairHints)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
@@ -51,12 +51,12 @@ func TestSheinSubmitReadinessGuidanceBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, source, []string{
 			"guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)",
-			"Reason:      cloneSheinReadinessReason(guidance.reason)",
+			"Reason:      sheinworkspace.CloneReadinessReason(guidance.reason)",
 			"RepairHints: cloneSheinRepairHints(guidance.repairHints)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"buildSheinReadinessGuidance",
-			"cloneSheinReadinessReason",
+			"CloneReadinessReason",
 			"cloneSheinRepairHints",
 		})
 	})

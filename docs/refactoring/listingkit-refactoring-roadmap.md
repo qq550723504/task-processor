@@ -660,6 +660,7 @@ Follow-up deletion
 | Shared image set clone ownership | migrated | `common.ImageSet` 深拷贝 helper 迁入 `internal/publishing/common`；ListingKit revision restore 和 SHEIN workspace image clone 均复用 `common.CloneImageSet`，删除根包 editor image set clone helper。 |
 | SHEIN repair validation wrapper cleanup | migrated | 删除 ListingKit 中单行 `cloneSheinRepairValidationPreview` wrapper；repair artifact clone 直接调用 `internal/marketplace/shein/workspace.CloneRepairValidationPreview`。 |
 | SHEIN repair clone support file cleanup | migrated | 删除只剩 artifact clone tuple 的 `shein_repair_clone_support.go`；repair center 与 readiness hint clone 直接组合 workspace clone helper 和 app request clone。 |
+| SHEIN readiness reason wrapper cleanup | migrated | 删除 ListingKit 中单行 `buildSheinReadinessReason` / `cloneSheinReadinessReason` wrapper；readiness guidance resolver 与 repair center 直接调用 `internal/marketplace/shein/workspace` 的 reason builder/clone helper。 |
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

@@ -8,7 +8,7 @@ func buildSheinRepairCenter(readiness *SheinSubmitReadiness, checklist *SheinSub
 		checklist,
 		sheinRepairHintAccessors(),
 		sheinworkspace.RepairCenterFromReadinessOptions[SheinReadinessReason, SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]{
-			CloneReason:    cloneSheinReadinessReason,
+			CloneReason:    sheinworkspace.CloneReadinessReason,
 			CloneArtifacts: cloneSheinRepairArtifactsForWorkspace,
 			ValidationValid: func(validation *SheinRepairValidationPreview) bool {
 				return validation != nil && validation.Valid

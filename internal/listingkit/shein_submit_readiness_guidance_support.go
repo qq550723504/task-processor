@@ -2,10 +2,6 @@ package listingkit
 
 import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
-func buildSheinReadinessReason(spec *sheinworkspace.ReadinessReasonSpec) *SheinReadinessReason {
-	return sheinworkspace.BuildReadinessReason(spec)
-}
-
 func buildSheinReadinessRepairHint(pkg *SheinPackage, action string, fieldPaths []string, hint sheinworkspace.ReadinessHintSpec, patch *SheinRepairPatchPayload) SheinRepairHint {
 	artifacts := buildSheinRepairArtifacts(pkg, action, hint.EditorSection, patch)
 	return SheinRepairHint{
@@ -31,7 +27,7 @@ func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []str
 	}
 
 	guidance := sheinReadinessGuidance{
-		reason: buildSheinReadinessReason(spec.Reason),
+		reason: sheinworkspace.BuildReadinessReason(spec.Reason),
 	}
 	patch := sheinworkspace.BuildReadinessPatchPayload(pkg, key)
 	for _, hint := range spec.Hints {
@@ -44,10 +40,6 @@ func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []str
 		))
 	}
 	return guidance
-}
-
-func cloneSheinReadinessReason(reason *SheinReadinessReason) *SheinReadinessReason {
-	return sheinworkspace.CloneReadinessReason(reason)
 }
 
 func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {
