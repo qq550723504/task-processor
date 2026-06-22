@@ -14,6 +14,7 @@ import { SheinStudioGroupedSelectionPanel } from "@/components/listingkit/shein-
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
 import { useSheinStudioDedicatedBatchRunController } from "@/components/listingkit/shein-studio/shein-studio-dedicated-batch-run-controller";
+import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
 import { useSheinStudioQueueController } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
@@ -822,6 +823,28 @@ export function SheinStudioWorkbench({
     },
     [buildDraftInput, initialBatchId],
   );
+  const { batchGenerationContext } = useSheinStudioBatchGenerationContext({
+    activeBatchId,
+    buildDraftInput,
+    createdTasks,
+    currentGenerationJobId: currentActiveBatch?.generationJobId ?? "",
+    designs,
+    enabled: Boolean(activeSelection?.variantId),
+    generationError,
+    generationJobs,
+    getHydratedBatch: getSheinStudioHydratedBatch,
+    initialBatchId,
+    saveBatch: saveSheinStudioBatch,
+    selectedIds,
+    setActiveBatchId,
+    setActiveBatchRunId,
+    setActiveSavedBatchId: setActiveSheinStudioBatchId,
+    setBatchRunError,
+    setSavedBatches: (updater) =>
+      workbenchController.setField("savedBatches", updater),
+    startBatchRun: startSheinStudioBatchRun,
+    upsertSavedBatch,
+  });
   const handlePromptChange = useCallback(
     (value: string) => {
       saveDedicatedBatchDraftSnapshot({
@@ -1085,55 +1108,7 @@ export function SheinStudioWorkbench({
       activeSelectionBaselineStatus: activeSelectionBaseline.status,
       activeSelectionBaselineReason,
       workbench: workbenchController,
-      batchGenerationContext: activeSelection?.variantId
-        ? {
-            ensureBatch: async () => {
-              const currentBatchId = activeBatchId || initialBatchId || "";
-              const latestHydratedBatch =
-                currentBatchId && initialBatchId
-                  ? await getSheinStudioHydratedBatch(currentBatchId).catch(
-                      () => null,
-                    )
-                  : null;
-              const saved = await saveSheinStudioBatch(
-                {
-                  ...buildDraftInput({
-                    designs,
-                    selectedIds,
-                    createdTasks,
-                    generationJobs,
-                    generationError,
-                    generationJobId: currentActiveBatch?.generationJobId ?? "",
-                  }),
-                  ...(currentBatchId ? { id: currentBatchId } : {}),
-                  updatedAt:
-                    latestHydratedBatch?.detail.batch.draftUpdatedAt ||
-                    latestHydratedBatch?.savedBatch.draftUpdatedAt ||
-                    latestHydratedBatch?.savedBatch.updatedAt ||
-                    buildDraftInput().updatedAt,
-                },
-                currentBatchId ? { makeActive: false } : undefined,
-              );
-              if (!saved) {
-                return null;
-              }
-              setActiveBatchId(saved.id);
-              setActiveSheinStudioBatchId(saved.id);
-              workbenchController.setField("savedBatches", (current) =>
-                upsertSavedBatch(current, saved),
-              );
-              return saved;
-            },
-            startGenerationRun: async (savedBatch) => {
-              setBatchRunError("");
-              const response = await startSheinStudioBatchRun(
-                [savedBatch.id],
-                "generate",
-              );
-              setActiveBatchRunId(response.run.id);
-            },
-          }
-        : undefined,
+      batchGenerationContext,
       sheinStoreId,
       styleCount,
       transparentBackground,
