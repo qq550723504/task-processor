@@ -50,7 +50,7 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 		"sheinworkspace.CloneRepairPatchPayload(patch)",
 		"Patch:      sheinworkspace.CloneRepairPatchPayload(patch)",
 		"func cloneSheinRepairValidationPreview(src *SheinRepairValidationPreview) *SheinRepairValidationPreview {",
-		"func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {",
+		"return sheinworkspace.CloneRepairValidationPreview(src)",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("shein_repair_clone_support.go should contain %q", needle)
@@ -58,6 +58,8 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 	}
 	for _, needle := range []string{
 		"func cloneSheinRepairPatchPayload(payload *SheinRepairPatchPayload) *SheinRepairPatchPayload {",
+		"func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {",
+		"RevisionDiffPreview:         cloneRevisionDiffPreview(src.RevisionDiffPreview)",
 		"sheinworkspace.CloneRepairPatchPayload(payload)",
 	} {
 		if strings.Contains(supportContent, needle) {

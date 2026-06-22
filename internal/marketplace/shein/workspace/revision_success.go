@@ -470,11 +470,5 @@ func cloneSuccessSummaryCard(src *SuccessSummaryCard) *SuccessSummaryCard {
 }
 
 func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {
-	if src == nil {
-		return nil
-	}
-	return &RevisionDiffPreview{
-		ChangeCount: src.ChangeCount,
-		Changes:     append([]RevisionFieldChange(nil), src.Changes...),
-	}
+	return CloneRevisionDiffPreview(src)
 }

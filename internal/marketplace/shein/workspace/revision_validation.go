@@ -23,6 +23,32 @@ type RepairValidationPreview[FieldError any] struct {
 	SaleAttributePreviewEffects []EditorEffect       `json:"sale_attribute_preview_effects,omitempty"`
 }
 
+func CloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {
+	if src == nil {
+		return nil
+	}
+	return &RevisionDiffPreview{
+		ChangeCount: src.ChangeCount,
+		Changes:     append([]RevisionFieldChange(nil), src.Changes...),
+	}
+}
+
+func CloneRepairValidationPreview[FieldError any](src *RepairValidationPreview[FieldError]) *RepairValidationPreview[FieldError] {
+	if src == nil {
+		return nil
+	}
+	return &RepairValidationPreview[FieldError]{
+		Valid:                       src.Valid,
+		Status:                      src.Status,
+		FieldErrors:                 append([]FieldError(nil), src.FieldErrors...),
+		RevisionDiffPreview:         CloneRevisionDiffPreview(src.RevisionDiffPreview),
+		AffectedSections:            append([]string(nil), src.AffectedSections...),
+		CategoryPreviewEffects:      append([]EditorEffect(nil), src.CategoryPreviewEffects...),
+		AttributePreviewEffects:     append([]EditorEffect(nil), src.AttributePreviewEffects...),
+		SaleAttributePreviewEffects: append([]EditorEffect(nil), src.SaleAttributePreviewEffects...),
+	}
+}
+
 func BuildValidationPayload[RestorePreview any](pkg *sheinpub.Package, restorePreview *RestorePreview) *ValidationPayload[RestorePreview] {
 	if pkg == nil {
 		return nil
