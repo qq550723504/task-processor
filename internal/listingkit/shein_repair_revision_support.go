@@ -2,21 +2,17 @@ package listingkit
 
 import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
-func buildSheinRepairApplyRequest(seed sheinworkspace.RepairRevisionSeed) *ApplyRevisionRequest {
-	if seed.Input == nil || seed.Skeleton == nil {
-		return nil
-	}
-	return &ApplyRevisionRequest{
-		Platform: seed.Skeleton.Platform,
-		Actor:    seed.Skeleton.Actor,
-		Reason:   seed.Skeleton.Reason,
-		Shein:    sheinworkspace.CloneRevisionInput(seed.Skeleton.Shein),
-	}
-}
-
 func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview] {
 	seed := sheinworkspace.BuildRepairRevisionSeed(action, patch)
-	request := buildSheinRepairApplyRequest(seed)
+	var request *ApplyRevisionRequest
+	if seed.Input != nil && seed.Skeleton != nil {
+		request = &ApplyRevisionRequest{
+			Platform: seed.Skeleton.Platform,
+			Actor:    seed.Skeleton.Actor,
+			Reason:   seed.Skeleton.Reason,
+			Shein:    sheinworkspace.CloneRevisionInput(seed.Skeleton.Shein),
+		}
+	}
 	return sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]{
 		Patch:      sheinworkspace.CloneRepairPatchPayload(patch),
 		Skeleton:   seed.Skeleton,
