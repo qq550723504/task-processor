@@ -23,17 +23,7 @@ type PollAsyncJobOptions = {
   signal?: AbortSignal;
   intervalMs?: number;
   buildPollRequest: (jobId: string) => AsyncJobPollRequest;
-  shouldStopOnNotFound?: boolean;
 };
-
-export class AsyncJobNotFound extends Error {
-  constructor(
-    public readonly jobId: string,
-    public readonly payload?: unknown,
-  ) {
-    super(`ListingKit async job was not found: ${jobId}`);
-  }
-}
 
 export async function pollAsyncJob<T>(
   jobId: string,
@@ -42,7 +32,6 @@ export async function pollAsyncJob<T>(
     signal,
     intervalMs = 2000,
     buildPollRequest,
-    shouldStopOnNotFound = false,
   }: PollAsyncJobOptions,
 ): Promise<T> {
   throwIfAborted(signal);
@@ -90,9 +79,6 @@ export async function pollAsyncJob<T>(
         );
         continue;
       }
-      if (response.status === 404 && shouldStopOnNotFound) {
-        throw new AsyncJobNotFound(jobId, payload);
-      }
       if (!response.ok) {
         lastPollError = new ApiError(
           payload.message ?? `ListingKit async job poll failed: ${response.status}`,
@@ -114,9 +100,6 @@ export async function pollAsyncJob<T>(
       lastPollError = undefined;
     } catch (error) {
       throwIfAborted(signal);
-      if (error instanceof AsyncJobNotFound) {
-        throw error;
-      }
       if (error instanceof ApiError) {
         throw error;
       }
