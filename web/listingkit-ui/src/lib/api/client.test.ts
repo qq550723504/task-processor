@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { apiAsyncRequest, apiRequest } from "@/lib/api/client";
+import { apiAsyncRequest, apiRequest, apiResumeAsyncJob } from "@/lib/api/client";
 import { buildAsyncJobResumeKey, saveAsyncJobResumeEntry } from "@/lib/api/async-job-resume";
 
 describe("apiAsyncRequest", () => {
@@ -201,6 +201,123 @@ describe("apiAsyncRequest", () => {
 
     await assertion;
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("restarts stale stored jobs without losing session or start callbacks", async () => {
+    const key = buildAsyncJobResumeKey("/studio/designs", { prompt: "flag" });
+    saveAsyncJobResumeEntry(key, "job-stale", "backend");
+    const onJobStarted = vi.fn();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "job not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-new", status: "running" }), {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-new",
+            status: "succeeded",
+            result: { images: [{ id: "fresh" }] },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const promise = apiAsyncRequest<{ images: Array<{ id: string }> }>(
+      "/studio/designs",
+      {
+        body: { prompt: "flag" },
+        timeoutMs: 20_000,
+        asyncJobSessionId: "session-1",
+        onJobStarted,
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(4_200);
+
+    await expect(promise).resolves.toEqual({
+      images: [{ id: "fresh" }],
+    });
+    expect(onJobStarted).toHaveBeenCalledWith("job-new");
+    const restartBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(restartBody).toEqual({
+      path: "/studio/designs",
+      body: { prompt: "flag" },
+      session_id: "session-1",
+    });
+  });
+});
+
+describe("apiResumeAsyncJob", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("polls a resumed job until it succeeds", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-1", status: "running" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-1",
+            status: "succeeded",
+            result: { ok: true },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const promise = apiResumeAsyncJob<{ ok: boolean }>("job-1", {
+      timeoutMs: 20_000,
+    });
+
+    await vi.advanceTimersByTimeAsync(4_200);
+
+    await expect(promise).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not poll when the resume signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled"));
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      apiResumeAsyncJob("job-1", {
+        timeoutMs: 20_000,
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("cancelled");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

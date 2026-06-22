@@ -3,8 +3,14 @@ import { usePathname } from "next/navigation";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { buildSheinStudioSelectionKey } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
-import { normalizeDraft } from "@/lib/shein-studio/storage-shared";
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
+import {
+  type DraftSaveOptions,
+  getSheinStudioAutosaveDelayMs,
+  persistSheinStudioDraft,
+  runSheinStudioDraftAutosave,
+} from "@/lib/shein-studio/draft-persistence";
+import { saveLocalSheinStudioDraftSnapshot } from "@/lib/shein-studio/local-draft-cache";
 import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
 import { buildSheinStudioStepHref } from "@/lib/shein-studio/navigation";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
@@ -12,7 +18,6 @@ import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
-  SheinStudioDraft,
   SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
@@ -29,6 +34,13 @@ import {
   saveSheinStudioDraftWithOptions,
 } from "@/lib/utils/shein-studio-batches";
 
+export {
+  clearLocalSheinStudioDraftSnapshot,
+  loadLocalSheinStudioDraftSnapshot,
+  loadLocalSheinStudioDraftSnapshotDetail,
+  saveLocalSheinStudioDraftSnapshot,
+} from "@/lib/shein-studio/local-draft-cache";
+
 type DraftOverrides = Partial<{
   designs: SheinStudioGeneratedDesign[];
   groups: SheinStudioGroupedWorkspace[];
@@ -38,13 +50,6 @@ type DraftOverrides = Partial<{
   generationError: string;
   generationJobId: string;
 }>;
-
-type DraftSaveOptions = {
-  navigationTriggered?: boolean;
-  source?: string;
-  signal?: AbortSignal;
-  warnOnFailure?: boolean;
-};
 
 type WorkbenchDraftState = {
   activeSelection?: SDSProductVariantSelection;
@@ -77,118 +82,6 @@ type WorkbenchDraftState = {
   transparentBackground: boolean;
   variationIntensity: SheinStudioVariationIntensity;
 };
-
-const DRAFT_SAVE_WARNING =
-  "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。";
-const LOCAL_DRAFT_SNAPSHOT_KEY = "listingkit:shein-studio:recent-draft";
-
-function appendDraftSaveWarning(current: string) {
-  if (current.includes(DRAFT_SAVE_WARNING)) {
-    return current;
-  }
-  return current ? `${current} ${DRAFT_SAVE_WARNING}` : DRAFT_SAVE_WARNING;
-}
-
-function clearDraftSaveWarning(current: string) {
-  return current.replace(DRAFT_SAVE_WARNING, "").trim();
-}
-
-function canUseLocalDraftSnapshot() {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
-
-type LocalDraftSnapshotInput =
-  | ReturnType<typeof buildSheinStudioDraftInput>
-  | SheinStudioDraft
-  | null
-  | undefined;
-
-type LocalDraftSnapshotPayload = {
-  batchId?: string;
-  draft: SheinStudioDraft;
-};
-
-function parseLocalSheinStudioDraftSnapshot() {
-  if (!canUseLocalDraftSnapshot()) {
-    return null;
-  }
-  const raw = window.localStorage.getItem(LOCAL_DRAFT_SNAPSHOT_KEY);
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as {
-      batchId?: unknown;
-      draft?: unknown;
-    };
-    const normalizedDraft = normalizeDraft(
-      parsed && typeof parsed === "object" && "draft" in parsed
-        ? (parsed.draft as Partial<SheinStudioDraft> | null | undefined)
-        : (parsed as Partial<SheinStudioDraft> | null | undefined),
-    );
-    if (!normalizedDraft) {
-      return null;
-    }
-    return {
-      batchId: typeof parsed?.batchId === "string" ? parsed.batchId : undefined,
-      draft: normalizedDraft,
-    } satisfies LocalDraftSnapshotPayload;
-  } catch (error) {
-    console.warn(
-      "shein studio local draft snapshot parse failed",
-      error instanceof Error ? error.message : error,
-    );
-    return null;
-  }
-}
-
-export function loadLocalSheinStudioDraftSnapshot() {
-  return parseLocalSheinStudioDraftSnapshot()?.draft ?? null;
-}
-
-export function loadLocalSheinStudioDraftSnapshotDetail() {
-  return parseLocalSheinStudioDraftSnapshot();
-}
-
-export function saveLocalSheinStudioDraftSnapshot(
-  input: LocalDraftSnapshotInput,
-  options?: {
-    batchId?: string;
-  },
-) {
-  if (!canUseLocalDraftSnapshot() || !input) {
-    return;
-  }
-  const draft = normalizeDraft({
-    ...input,
-    updatedAt:
-      "updatedAt" in input && typeof input.updatedAt === "string"
-        ? input.updatedAt
-        : new Date().toISOString(),
-  } as Partial<SheinStudioDraft>);
-  if (!draft) {
-    return;
-  }
-  const payload = {
-    batchId: options?.batchId?.trim() || undefined,
-    draft,
-  };
-  try {
-    window.localStorage.setItem(LOCAL_DRAFT_SNAPSHOT_KEY, JSON.stringify(payload));
-  } catch (error) {
-    console.warn(
-      "shein studio local draft snapshot save failed",
-      error instanceof Error ? error.message : error,
-    );
-  }
-}
-
-export function clearLocalSheinStudioDraftSnapshot() {
-  if (!canUseLocalDraftSnapshot()) {
-    return;
-  }
-  window.localStorage.removeItem(LOCAL_DRAFT_SNAPSHOT_KEY);
-}
 
 export function useHydratedSDSVariantSelection(
   selection?: SDSProductVariantSelection,
@@ -278,7 +171,7 @@ export function useSheinStudioDraftPersistence(
   const autosaveFingerprintRef = useRef("");
   const activeBatchId = options?.activeBatchId?.trim() || "";
   const persistenceEnabled = options?.persistenceEnabled ?? true;
-  const autosaveDelayMs = activeBatchId ? 250 : 1200;
+  const autosaveDelayMs = getSheinStudioAutosaveDelayMs(activeBatchId);
 
   const buildDraftInput = useCallback(
     (overrides?: DraftOverrides) =>
@@ -313,36 +206,16 @@ export function useSheinStudioDraftPersistence(
   const persistDraft = useCallback(
     async (overrides?: DraftOverrides, options?: DraftSaveOptions) => {
       const nextDraftInput = buildDraftInput(overrides);
-      saveLocalSheinStudioDraftSnapshot(nextDraftInput, {
-        batchId: activeBatchId,
+      return persistSheinStudioDraft({
+        activeBatchId,
+        draftInput: nextDraftInput,
+        options,
+        saveLocalSnapshot: saveLocalSheinStudioDraftSnapshot,
+        saveBatch: saveSheinStudioBatch,
+        saveDraft: saveSheinStudioDraftWithOptions,
+        setPersistedUpdatedAt: state.setPersistedUpdatedAt,
+        setDraftWarning: state.setDraftWarning,
       });
-      try {
-        const draft = activeBatchId
-          ? await saveSheinStudioBatch(
-              {
-                ...nextDraftInput,
-                id: activeBatchId,
-              },
-              { makeActive: false },
-            )
-          : await saveSheinStudioDraftWithOptions(nextDraftInput, options);
-        saveLocalSheinStudioDraftSnapshot(draft, {
-          batchId: activeBatchId,
-        });
-        if (draft?.updatedAt) {
-          state.setPersistedUpdatedAt(draft.updatedAt);
-        }
-        state.setDraftWarning((current) => clearDraftSaveWarning(current));
-        return draft;
-      } catch (error) {
-        if (options?.signal?.aborted) {
-          return null;
-        }
-        if (options?.warnOnFailure !== false) {
-          state.setDraftWarning((current) => appendDraftSaveWarning(current));
-        }
-        throw error;
-      }
     },
     [activeBatchId, buildDraftInput, state],
   );
@@ -359,38 +232,31 @@ export function useSheinStudioDraftPersistence(
   }, [activeBatchId, currentDraftInput, persistenceEnabled]);
 
   useEffect(() => {
-    if (!persistenceEnabled) {
-      return;
-    }
-    if (!activeBatchId && state.isLoadingWorkspace) {
-      return;
-    }
-    if (
-      state.isGenerating ||
-      state.isCreatingTasks ||
-      Boolean(state.regeneratingId)
-    ) {
-      return;
-    }
-
     const timer = window.setTimeout(() => {
-      const draftInput = currentDraftInput;
-      const fingerprint = JSON.stringify(draftInput);
-      if (autosaveFingerprintRef.current === fingerprint) {
-        return;
-      }
-
-      saveLocalSheinStudioDraftSnapshot(draftInput, {
-        batchId: activeBatchId,
+      runSheinStudioDraftAutosave({
+        activeBatchId,
+        draftInput: currentDraftInput,
+        fingerprintRef: autosaveFingerprintRef,
+        persistenceEnabled,
+        isLoadingWorkspace: state.isLoadingWorkspace,
+        isGenerating: state.isGenerating,
+        isCreatingTasks: state.isCreatingTasks,
+        regeneratingId: state.regeneratingId,
+        saveLocalSnapshot: saveLocalSheinStudioDraftSnapshot,
+        setDraftWarning: state.setDraftWarning,
       });
-      autosaveFingerprintRef.current = fingerprint;
-      state.setDraftWarning((current) => clearDraftSaveWarning(current));
     }, autosaveDelayMs);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activeBatchId, autosaveDelayMs, currentDraftInput, state]);
+  }, [
+    activeBatchId,
+    autosaveDelayMs,
+    currentDraftInput,
+    persistenceEnabled,
+    state,
+  ]);
 
   return {
     buildDraftInput,

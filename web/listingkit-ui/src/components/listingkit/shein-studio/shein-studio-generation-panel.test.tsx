@@ -10,6 +10,7 @@ import type {
   SheinStudioBatchStatusGroups,
   SheinStudioCreatedTask,
 } from "@/lib/types/shein-studio";
+import type { ComponentProps } from "react";
 
 vi.mock("@/components/listingkit/shein-studio/shein-created-tasks-list", () => ({
   SheinCreatedTasksList: () => <div>created tasks</div>,
@@ -40,12 +41,15 @@ vi.mock("next/image", () => ({
   },
 }));
 
-function renderPanel(options?: {
+function buildPanelProps(options?: {
   imageStrategy?: "ai_generated" | "sds_official" | "hybrid";
   availableSdsImages?: SheinStudioSelectableSDSImage[];
   generationNotice?: string;
   generateButtonLabel?: string;
   createdTasks?: SheinStudioCreatedTask[];
+  isGenerating?: boolean;
+  onRestorePrompt?: (value: string) => void;
+  prompt?: string;
   failedBatchItems?: SheinStudioBatchItem[];
   isRetryingFailedItems?: boolean;
   onRetryFailedItem?: (itemId: string) => void;
@@ -56,68 +60,78 @@ function renderPanel(options?: {
   storeRequiredMessage?: string;
   subscriptionBlockedMessage?: string;
   statusGroups?: SheinStudioBatchStatusGroups;
+  selectionReady?: boolean;
+  transparentBackground?: boolean;
 }) {
-  return render(
-    <SheinStudioGenerationPanel
-      availableSdsImages={options?.availableSdsImages ?? []}
-      artworkModel="nanobanana"
-      batchProductCount={4}
-      batchStoreLabel={
-        options?.storeRequiredMessage ? "未设置" : "SHEIN US 1 (shein-us-1 / NA / US)"
-      }
-      createdTasks={options?.createdTasks ?? []}
-      creatingError=""
-      creatingMessage=""
-      generationError=""
-      generationNotice={options?.generationNotice ?? ""}
-      failedBatchItems={options?.failedBatchItems ?? []}
-      groupedImageMode="shared_by_size"
-      imageStrategy={options?.imageStrategy ?? "ai_generated"}
-      isCreatingTasks={false}
-      isGenerating={false}
-      isRetryingFailedItems={options?.isRetryingFailedItems ?? false}
-      onCreateTasks={() => undefined}
-      onDeleteBatch={() => undefined}
-      onGenerate={() => undefined}
-      onLoadBatch={() => undefined}
-      onRetryFailedItem={options?.onRetryFailedItem}
-      onRestorePrompt={() => undefined}
-      onSaveBatch={() => undefined}
-      productImageCount="5"
-      productImagePrompt=""
-      productImagePrompts={[]}
-      prompt=""
-      promptHistory={options?.promptHistory ?? []}
-      promptInputRef={{ current: null }}
-      renderSizeImagesWithSds={true}
-      retryingFailedItemId={options?.retryingFailedItemId ?? ""}
-      reusedTasks={options?.reusedTasks ?? []}
-      saveMessage=""
-      savedBatches={[]}
-      selectedSdsImages={[]}
-      selectedStyleCount={0}
-      generateButtonLabel={options?.generateButtonLabel}
-      selectionReady={true}
-      statusGroups={options?.statusGroups}
-      storeRequiredMessage={options?.storeRequiredMessage ?? ""}
-      subscriptionBlockedMessage={options?.subscriptionBlockedMessage ?? ""}
-      variationIntensity="medium"
-      setArtworkModel={() => undefined}
-      setGroupedImageMode={() => undefined}
-      setImageStrategy={() => undefined}
-      setProductImageCount={() => undefined}
-      setProductImagePrompt={() => undefined}
-      setProductImagePrompts={() => undefined}
-      setPrompt={() => undefined}
-      setRenderSizeImagesWithSds={() => undefined}
-      setSelectedSdsImages={() => undefined}
-      setStyleCount={() => undefined}
-      setVariationIntensity={() => undefined}
-      setTransparentBackground={() => undefined}
-      styleCount={options?.styleCount ?? "1"}
-      transparentBackground={false}
-    />,
-  );
+  return {
+    form: {
+      availableSdsImages: options?.availableSdsImages ?? [],
+      artworkModel: "nanobanana",
+      groupedImageMode: "shared_by_size",
+      imageStrategy: options?.imageStrategy ?? "ai_generated",
+      productImageCount: "5",
+      productImagePrompt: options?.isGenerating ? "暖色背景" : "",
+      productImagePrompts: [],
+      prompt: options?.prompt ?? "",
+      promptHistory: options?.promptHistory ?? [],
+      promptInputRef: { current: null },
+      renderSizeImagesWithSds: true,
+      selectedSdsImages: [],
+      styleCount: options?.styleCount ?? "1",
+      transparentBackground: options?.transparentBackground ?? false,
+      variationIntensity: "medium",
+    },
+    status: {
+      batchProductCount: 4,
+      batchStoreLabel: options?.storeRequiredMessage
+        ? "未设置"
+        : "SHEIN US 1 (shein-us-1 / NA / US)",
+      createdTasks: options?.createdTasks ?? [],
+      creatingError: "",
+      creatingMessage: "",
+      failedBatchItems: options?.failedBatchItems ?? [],
+      generationError: "",
+      generationNotice: options?.generationNotice ?? "",
+      isCreatingTasks: false,
+      isGenerating: options?.isGenerating ?? false,
+      isRetryingFailedItems: options?.isRetryingFailedItems ?? false,
+      retryingFailedItemId: options?.retryingFailedItemId ?? "",
+      reusedTasks: options?.reusedTasks ?? [],
+      saveMessage: "",
+      savedBatches: [],
+      selectedStyleCount: 0,
+      generateButtonLabel: options?.generateButtonLabel,
+      selectionReady: options?.selectionReady ?? true,
+      statusGroups: options?.statusGroups,
+      storeRequiredMessage: options?.storeRequiredMessage ?? "",
+      subscriptionBlockedMessage: options?.subscriptionBlockedMessage ?? "",
+    },
+    actions: {
+      onCreateTasks: () => undefined,
+      onDeleteBatch: () => undefined,
+      onGenerate: () => undefined,
+      onLoadBatch: () => undefined,
+      onRetryFailedItem: options?.onRetryFailedItem,
+      onRestorePrompt: options?.onRestorePrompt ?? (() => undefined),
+      onSaveBatch: () => undefined,
+      setArtworkModel: () => undefined,
+      setGroupedImageMode: () => undefined,
+      setImageStrategy: () => undefined,
+      setProductImageCount: () => undefined,
+      setProductImagePrompt: () => undefined,
+      setProductImagePrompts: () => undefined,
+      setPrompt: () => undefined,
+      setRenderSizeImagesWithSds: () => undefined,
+      setSelectedSdsImages: () => undefined,
+      setStyleCount: () => undefined,
+      setTransparentBackground: () => undefined,
+      setVariationIntensity: () => undefined,
+    },
+  } satisfies ComponentProps<typeof SheinStudioGenerationPanel>;
+}
+
+function renderPanel(options?: Parameters<typeof buildPanelProps>[0]) {
+  return render(<SheinStudioGenerationPanel {...buildPanelProps(options)} />);
 }
 
 describe("SheinStudioGenerationPanel", () => {
@@ -164,51 +178,7 @@ describe("SheinStudioGenerationPanel", () => {
 
     rerender(
       <SheinStudioGenerationPanel
-        availableSdsImages={[]}
-        artworkModel="nanobanana"
-        createdTasks={[]}
-        creatingError=""
-        creatingMessage=""
-        generationError=""
-        groupedImageMode="shared_by_size"
-        imageStrategy="sds_official"
-        isCreatingTasks={false}
-        isGenerating={false}
-        onCreateTasks={() => undefined}
-        onDeleteBatch={() => undefined}
-        onGenerate={() => undefined}
-        onLoadBatch={() => undefined}
-        onRestorePrompt={() => undefined}
-        onSaveBatch={() => undefined}
-        productImageCount="5"
-        productImagePrompt=""
-        productImagePrompts={[]}
-        prompt=""
-        promptHistory={[]}
-        promptInputRef={{ current: null }}
-        renderSizeImagesWithSds={true}
-        saveMessage=""
-        savedBatches={[]}
-        selectedSdsImages={[]}
-        selectedStyleCount={0}
-        selectionReady={true}
-        storeRequiredMessage=""
-        subscriptionBlockedMessage=""
-        variationIntensity="medium"
-        setArtworkModel={() => undefined}
-        setGroupedImageMode={() => undefined}
-        setImageStrategy={() => undefined}
-        setProductImageCount={() => undefined}
-        setProductImagePrompt={() => undefined}
-        setProductImagePrompts={() => undefined}
-        setPrompt={() => undefined}
-        setRenderSizeImagesWithSds={() => undefined}
-        setSelectedSdsImages={() => undefined}
-        setStyleCount={() => undefined}
-        setVariationIntensity={() => undefined}
-        setTransparentBackground={() => undefined}
-        styleCount="1"
-        transparentBackground={false}
+        {...buildPanelProps({ imageStrategy: "sds_official" })}
       />,
     );
 
@@ -228,51 +198,7 @@ describe("SheinStudioGenerationPanel", () => {
   it("shows a single next-step callout when product selection is still missing", () => {
     render(
       <SheinStudioGenerationPanel
-        availableSdsImages={[]}
-        artworkModel="nanobanana"
-        createdTasks={[]}
-        creatingError=""
-        creatingMessage=""
-        generationError=""
-        groupedImageMode="shared_by_size"
-        imageStrategy="ai_generated"
-        isCreatingTasks={false}
-        isGenerating={false}
-        onCreateTasks={() => undefined}
-        onDeleteBatch={() => undefined}
-        onGenerate={() => undefined}
-        onLoadBatch={() => undefined}
-        onRestorePrompt={() => undefined}
-        onSaveBatch={() => undefined}
-        productImageCount="5"
-        productImagePrompt=""
-        productImagePrompts={[]}
-        prompt=""
-        promptHistory={[]}
-        promptInputRef={{ current: null }}
-        renderSizeImagesWithSds={true}
-        saveMessage=""
-        savedBatches={[]}
-        selectedSdsImages={[]}
-        selectedStyleCount={0}
-        selectionReady={false}
-        storeRequiredMessage=""
-        subscriptionBlockedMessage=""
-        variationIntensity="medium"
-        setArtworkModel={() => undefined}
-        setGroupedImageMode={() => undefined}
-        setImageStrategy={() => undefined}
-        setProductImageCount={() => undefined}
-        setProductImagePrompt={() => undefined}
-        setProductImagePrompts={() => undefined}
-        setPrompt={() => undefined}
-        setRenderSizeImagesWithSds={() => undefined}
-        setSelectedSdsImages={() => undefined}
-        setStyleCount={() => undefined}
-        setVariationIntensity={() => undefined}
-        setTransparentBackground={() => undefined}
-        styleCount="1"
-        transparentBackground={false}
+        {...buildPanelProps({ selectionReady: false })}
       />,
     );
 
@@ -300,57 +226,17 @@ describe("SheinStudioGenerationPanel", () => {
 
     render(
       <SheinStudioGenerationPanel
-        availableSdsImages={[]}
-        artworkModel="nanobanana"
-        createdTasks={[]}
-        creatingError=""
-        creatingMessage=""
-        generationError=""
-        groupedImageMode="shared_by_size"
-        imageStrategy="ai_generated"
-        isCreatingTasks={false}
-        isGenerating={false}
-        onCreateTasks={() => undefined}
-        onDeleteBatch={() => undefined}
-        onGenerate={() => undefined}
-        onLoadBatch={() => undefined}
-        onRestorePrompt={restorePrompt}
-        onSaveBatch={() => undefined}
-        productImageCount="5"
-        productImagePrompt=""
-        productImagePrompts={[]}
-        prompt="current prompt"
-        promptHistory={[
+        {...buildPanelProps({
+          onRestorePrompt: restorePrompt,
+          prompt: "current prompt",
+          promptHistory: [
           {
             prompt: "prompt old",
             groupedImageMode: "shared_by_size",
             createdAt: "2026-05-26T01:00:00.000Z",
           },
-        ]}
-        promptInputRef={{ current: null }}
-        renderSizeImagesWithSds={true}
-        saveMessage=""
-        savedBatches={[]}
-        selectedSdsImages={[]}
-        selectedStyleCount={0}
-        selectionReady={true}
-        storeRequiredMessage=""
-        subscriptionBlockedMessage=""
-        variationIntensity="medium"
-        setArtworkModel={() => undefined}
-        setGroupedImageMode={() => undefined}
-        setImageStrategy={() => undefined}
-        setProductImageCount={() => undefined}
-        setProductImagePrompt={() => undefined}
-        setProductImagePrompts={() => undefined}
-        setPrompt={() => undefined}
-        setRenderSizeImagesWithSds={() => undefined}
-        setSelectedSdsImages={() => undefined}
-        setStyleCount={() => undefined}
-        setVariationIntensity={() => undefined}
-        setTransparentBackground={() => undefined}
-        styleCount="1"
-        transparentBackground={false}
+          ],
+        })}
       />,
     );
 
@@ -596,51 +482,12 @@ describe("SheinStudioGenerationPanel", () => {
   it("locks only artwork-generation fields while a style generation is in progress", () => {
     render(
       <SheinStudioGenerationPanel
-        availableSdsImages={[]}
-        artworkModel="nanobanana"
-        createdTasks={[]}
-        creatingError=""
-        creatingMessage=""
-        generationError=""
-        groupedImageMode="shared_by_size"
-        imageStrategy="ai_generated"
-        isCreatingTasks={false}
-        isGenerating={true}
-        onCreateTasks={() => undefined}
-        onDeleteBatch={() => undefined}
-        onGenerate={() => undefined}
-        onLoadBatch={() => undefined}
-        onRestorePrompt={() => undefined}
-        onSaveBatch={() => undefined}
-        productImageCount="5"
-        productImagePrompt="暖色背景"
-        productImagePrompts={[]}
-        prompt="美国国旗主题"
-        promptHistory={[]}
-        promptInputRef={{ current: null }}
-        renderSizeImagesWithSds={true}
-        saveMessage=""
-        savedBatches={[]}
-        selectedSdsImages={[]}
-        selectedStyleCount={0}
-        selectionReady={true}
-        storeRequiredMessage=""
-        subscriptionBlockedMessage=""
-        variationIntensity="medium"
-        setArtworkModel={() => undefined}
-        setGroupedImageMode={() => undefined}
-        setImageStrategy={() => undefined}
-        setProductImageCount={() => undefined}
-        setProductImagePrompt={() => undefined}
-        setProductImagePrompts={() => undefined}
-        setPrompt={() => undefined}
-        setRenderSizeImagesWithSds={() => undefined}
-        setSelectedSdsImages={() => undefined}
-        setStyleCount={() => undefined}
-        setVariationIntensity={() => undefined}
-        setTransparentBackground={() => undefined}
-        styleCount="2"
-        transparentBackground={true}
+        {...buildPanelProps({
+          isGenerating: true,
+          prompt: "美国国旗主题",
+          styleCount: "2",
+          transparentBackground: true,
+        })}
       />,
     );
 

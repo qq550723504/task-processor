@@ -224,6 +224,53 @@ func TestApplySDSSyncMetadataToCanonicalPromotesRenderedMockupsToCanonicalImages
 	}
 }
 
+func TestApplySDSSyncMetadataToCanonicalPromotesSDSIdentityAttributes(t *testing.T) {
+	product := &canonical.Product{
+		Variants: []canonical.Variant{
+			{
+				SKU: "MG8014070001-B6C753EB",
+				Attributes: map[string]canonical.Attribute{
+					"source_sds_sku": {Value: "MG8014070001"},
+				},
+			},
+			{
+				SKU: "MG8014070002-B6C753EB",
+				Attributes: map[string]canonical.Attribute{
+					"source_sds_sku": {Value: "MG8014070002"},
+				},
+			},
+		},
+	}
+
+	changed := applySDSSyncMetadataToCanonical(product, &SDSSyncSummary{
+		ProductSKU:   "MG8014070",
+		VariantSKU:   "MG8014070001",
+		VariantSize:  "40x60cm",
+		VariantColor: "white",
+	}, nil)
+
+	if !changed {
+		t.Fatal("changed = false, want true")
+	}
+	if product.Attributes == nil {
+		t.Fatal("attributes = nil")
+	}
+	for key, want := range map[string]string{
+		"sku":           "MG8014070",
+		"product_sku":   "MG8014070",
+		"variant_sku":   "MG8014070001",
+		"variant_size":  "40x60cm",
+		"variant_color": "white",
+	} {
+		if got := product.Attributes[key].Value; got != want {
+			t.Fatalf("attribute %s = %q, want %q", key, got, want)
+		}
+	}
+	if got := product.FieldTraces["attributes"].Sources[0].Detail; got != "SDS design product identity" {
+		t.Fatalf("attributes trace detail = %q", got)
+	}
+}
+
 func TestRunStandardProductWorkflowUsesSDSBaselineBeforeProductEnrich(t *testing.T) {
 	t.Parallel()
 
