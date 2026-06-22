@@ -27,4 +27,20 @@ func TestSheinEditorBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 	assertSourceContainsAll(t, progressSource, []string{
 		"return sheinworkspace.BuildEditorProgress(pkg, sheinworkspace.ChecklistItemCount(checklist))",
 	})
+
+	for _, forbidden := range []string{
+		"func buildSheinCategoryRecommendationMeta(",
+		"func buildSheinAttributeRecommendationMeta(",
+		"func buildSheinSaleRecommendationMeta(",
+		"func buildSheinAttributeSuggestions(",
+		"func buildSheinSaleCandidateSuggestions(",
+		"func buildSheinCategoryEffects(",
+		"func buildSheinAttributeEffects(",
+		"func buildSheinSaleAttributeEffects(",
+		"func buildSheinEditorDirtyHints(",
+	} {
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("shein_workspace_editor_bridge.go should not keep unused editor wrapper %q", forbidden)
+		}
+	}
 }
