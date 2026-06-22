@@ -48,14 +48,6 @@ func buildRevisionHistoryRestoreReason(record *ListingKitRevisionRecord) string 
 	return "restore from revision history"
 }
 
-func cloneSheinEditorRevisionSkeleton(src *SheinEditorRevisionSkeleton) *SheinEditorRevisionSkeleton {
-	return sheinworkspace.CloneEditorRevisionSkeleton(src)
-}
-
-func cloneHistorySheinRevisionInput(src *SheinRevisionInput) *SheinRevisionInput {
-	return sheinworkspace.CloneRevisionInput(src)
-}
-
 func cloneHistoryStringPointer(src *string) *string {
 	if src == nil {
 		return nil

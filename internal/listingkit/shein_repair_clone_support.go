@@ -17,7 +17,7 @@ func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {
 func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEditorRevisionSkeleton, request *ApplyRevisionRequest, validation *SheinRepairValidationPreview) sheinRepairArtifacts {
 	return sheinRepairArtifacts{
 		patch:      sheinworkspace.CloneRepairPatchPayload(patch),
-		skeleton:   cloneSheinEditorRevisionSkeleton(skeleton),
+		skeleton:   sheinworkspace.CloneEditorRevisionSkeleton(skeleton),
 		request:    cloneApplyRevisionRequest(request),
 		validation: cloneSheinRepairValidationPreview(validation),
 	}

@@ -36,7 +36,7 @@ func cloneApplyRevisionRequest(req *ApplyRevisionRequest) *ApplyRevisionRequest 
 		Reason:                req.Reason,
 		RestoreFromRevisionID: req.RestoreFromRevisionID,
 		Amazon:                cloneAmazonRevisionInput(req.Amazon),
-		Shein:                 cloneHistorySheinRevisionInput(req.Shein),
+		Shein:                 sheinworkspace.CloneRevisionInput(req.Shein),
 		Temu:                  cloneTemuRevisionInput(req.Temu),
 		Walmart:               cloneWalmartRevisionInput(req.Walmart),
 	}

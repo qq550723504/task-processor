@@ -52,6 +52,8 @@ func TestSheinRevisionBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 	for _, forbidden := range []string{
 		"func buildSheinEditorRevisionSkeleton(",
 		"func buildSheinMinimalRevisionSkeleton(",
+		"func cloneSheinEditorRevisionSkeleton(",
+		"func cloneHistorySheinRevisionInput(",
 		"func pruneSheinRevisionInput(",
 		"func isEmptySheinRevisionInput(",
 		"func buildSheinCategoryResolutionPatch(",

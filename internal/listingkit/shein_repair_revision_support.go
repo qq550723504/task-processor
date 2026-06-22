@@ -14,7 +14,7 @@ func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayl
 			Platform: seed.Skeleton.Platform,
 			Actor:    seed.Skeleton.Actor,
 			Reason:   seed.Skeleton.Reason,
-			Shein:    cloneHistorySheinRevisionInput(seed.Skeleton.Shein),
+			Shein:    sheinworkspace.CloneRevisionInput(seed.Skeleton.Shein),
 		},
 	}
 }
