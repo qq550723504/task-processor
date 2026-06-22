@@ -3970,46 +3970,6 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.queryByText("review grid: 1")).not.toBeInTheDocument();
   });
 
-  it("enters tasks view after task creation even when draft save fails", async () => {
-    loadSheinStudioDraft.mockResolvedValue({
-      prompt: "retro cherries",
-      styleCount: "1",
-      productImageCount: "5",
-      productImagePrompt: "",
-      productImagePrompts: [],
-      artworkModel: "nanobanana",
-      transparentBackground: false,
-      sheinStoreId: "1",
-      imageStrategy: "ai_generated",
-      renderSizeImagesWithSds: true,
-      selectionVariantId: 100,
-      selection,
-      designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
-      selectedIds: ["design-1"],
-      createdTasks: [],
-      updatedAt: "2026-04-29T00:00:00.000Z",
-    });
-    createSheinReviewTasks.mockResolvedValue([
-      { id: "task-1", title: "Task 1", designId: "design-1" },
-    ]);
-
-    render(<SheinStudioWorkbench activeStep="review" selection={selection} />);
-
-    await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "create review tasks" }));
-
-    await waitFor(() =>
-      expect(screen.getByText("created tasks: 1")).toBeInTheDocument(),
-    );
-    expect(
-      screen.getByText(
-        "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。",
-      ),
-    ).toBeInTheDocument();
-  });
-
   it("does not surface a draft-save warning after successful batch generation", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",

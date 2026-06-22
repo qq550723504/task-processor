@@ -449,4 +449,51 @@ describe("useSheinStudioTaskCreationAction", () => {
     expect(createGroupedSheinReviewTasks).not.toHaveBeenCalled();
     expect(navigateToStep).not.toHaveBeenCalled();
   });
+
+  it("enters tasks view after standalone task creation even when draft persistence fails", async () => {
+    createSheinReviewTasks.mockResolvedValue([
+      { id: "task-1", title: "Task 1", designId: "design-1" },
+    ]);
+    const navigateToStep = vi.fn();
+    const persistDraft = vi.fn().mockRejectedValue(new Error("draft save failed"));
+    const setCreatedTasks = vi.fn();
+    const setCreatingError = vi.fn();
+    const { result } = renderTaskCreationAction({
+      itemizedBatchContext: undefined,
+      navigateToStep,
+      persistDraft,
+      setCreatedTasks,
+      setCreatingError,
+    });
+
+    await act(async () => {
+      await result.current.handleCreateTasks();
+    });
+
+    expect(createSheinReviewTasks).toHaveBeenCalledWith(
+      expect.objectContaining({
+        approvedDesigns: [
+          { id: "design-1", imageUrl: "https://example.com/design-1.png" },
+        ],
+        prompt: "retro cherries",
+        sheinStoreId: "869",
+      }),
+    );
+    expect(setCreatedTasks).toHaveBeenCalledWith([
+      { id: "task-1", title: "Task 1", designId: "design-1" },
+    ]);
+    expect(navigateToStep).toHaveBeenCalledWith("tasks");
+    expect(persistDraft).toHaveBeenCalledWith(
+      {
+        createdTasks: [
+          { id: "task-1", title: "Task 1", designId: "design-1" },
+        ],
+      },
+      {
+        navigationTriggered: true,
+        source: "task_creation_success",
+      },
+    );
+    expect(setCreatingError).not.toHaveBeenCalledWith("draft save failed");
+  });
 });
