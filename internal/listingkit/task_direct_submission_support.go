@@ -19,10 +19,12 @@ func newSheinDirectSubmitFlowRunner(s *taskDirectSubmissionService) *submissiond
 			PreValidate:    sheinpub.SubmissionPhasePreValidate,
 			SubmitRemote:   sheinpub.SubmissionPhaseSubmitRemote,
 		},
-		BuildProductAPI:  s.loadDirectSubmitProductAPI,
-		PersistPhase:     s.persistDirectSubmitPhase,
-		PrepareProduct:   s.prepareDirectSubmitProduct,
-		NeedsImageUpload: sheinDirectSubmitNeedsImageUpload,
+		BuildProductAPI: s.loadDirectSubmitProductAPI,
+		PersistPhase:    s.persistDirectSubmitPhase,
+		PrepareProduct:  s.prepareDirectSubmitProduct,
+		NeedsImageUpload: func(product *sheinproduct.Product) bool {
+			return sheinpub.ProductPendingImageUploadCount(product) > 0
+		},
 		UploadImages:     s.uploadPendingDirectSubmitImages,
 		PreValidate:      s.preValidateDirectSubmitProduct,
 		SubmitRemote:     s.completeDirectRemoteSubmit,
@@ -79,10 +81,6 @@ func (s *taskDirectSubmissionService) prepareDirectSubmitProduct(ctx context.Con
 		return nil, err
 	}
 	return preparedPayload.Product, nil
-}
-
-func sheinDirectSubmitNeedsImageUpload(submitProduct *sheinproduct.Product) bool {
-	return sheinpub.ProductPendingImageUploadCount(submitProduct) > 0
 }
 
 func (s *taskDirectSubmissionService) uploadPendingDirectSubmitImages(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product, opts submissiondomain.DirectSubmitFlowOptions) error {

@@ -3677,9 +3677,10 @@ func TestTaskDirectSubmissionSupportUsesSubmissionDomainRunner(t *testing.T) {
 		"return submissiondomain.NewDirectSubmitFlowService(",
 		"func newSheinDirectSubmitPayloadStages(s *taskDirectSubmissionService) *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot] {",
 		"return submissiondomain.NewPayloadStageService(",
-		"BuildProductAPI:  s.loadDirectSubmitProductAPI,",
-		"PersistPhase:     s.persistDirectSubmitPhase,",
-		"PrepareProduct:   s.prepareDirectSubmitProduct,",
+		"BuildProductAPI: s.loadDirectSubmitProductAPI,",
+		"PersistPhase:    s.persistDirectSubmitPhase,",
+		"PrepareProduct:  s.prepareDirectSubmitProduct,",
+		"return sheinpub.ProductPendingImageUploadCount(product) > 0",
 		"UploadImages:     s.uploadPendingDirectSubmitImages,",
 		"PreValidate:      s.preValidateDirectSubmitProduct,",
 		"SubmitRemote:     s.completeDirectRemoteSubmit,",
@@ -3691,6 +3692,9 @@ func TestTaskDirectSubmissionSupportUsesSubmissionDomainRunner(t *testing.T) {
 	}
 	if strings.Contains(content, "s.preValidateSheinSubmitProduct(") {
 		t.Fatal("task_direct_submission_support.go should call SHEIN publishing pre-validation directly")
+	}
+	if strings.Contains(content, "func sheinDirectSubmitNeedsImageUpload(") {
+		t.Fatal("task_direct_submission_support.go should not keep a direct submit image upload wrapper")
 	}
 }
 
