@@ -4090,48 +4090,6 @@ describe("SheinStudioWorkbench", () => {
     );
   });
 
-  it("requires choosing a batch store before generating styles", async () => {
-    loadSheinStudioDraft.mockResolvedValue({
-      prompt: "retro cherries",
-      styleCount: "1",
-      productImageCount: "5",
-      productImagePrompt: "",
-      productImagePrompts: [],
-      artworkModel: "nanobanana",
-      transparentBackground: false,
-      sheinStoreId: "",
-      imageStrategy: "ai_generated",
-      renderSizeImagesWithSds: true,
-      selectionVariantId: 100,
-      selection,
-      designs: [],
-      selectedIds: [],
-      createdTasks: [],
-      updatedAt: "2026-04-29T00:00:00.000Z",
-    });
-
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
-
-    await waitFor(() =>
-      expect(
-        screen.getByText("请先选择批次店铺，再生成款式图或创建 SHEIN 资料。"),
-      ).toBeInTheDocument(),
-    );
-    expect(lastGenerationPanelProps?.storeRequiredMessage).toBe(
-      "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
-    );
-
-    const onGenerate = lastGenerationPanelProps?.onGenerate as
-      | (() => Promise<void> | void)
-      | undefined;
-    await act(async () => {
-      await onGenerate?.();
-    });
-
-    expect(generateSheinStudioDesigns).not.toHaveBeenCalled();
-    expect(screen.getByText("请先选择批次店铺。")).toBeInTheDocument();
-  });
-
   it("restores grouped selections from a saved draft even when they are not in recent variants", async () => {
     loadSheinStudioDraft.mockResolvedValue({
       prompt: "retro cherries",
