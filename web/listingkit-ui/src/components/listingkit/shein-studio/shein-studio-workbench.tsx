@@ -13,6 +13,7 @@ import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio
 import { SheinStudioGroupedSelectionPanel } from "@/components/listingkit/shein-studio/shein-studio-grouped-selection-panel";
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
+import { useSheinStudioDedicatedBatchRunController } from "@/components/listingkit/shein-studio/shein-studio-dedicated-batch-run-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
 import { useSheinStudioQueueController } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
@@ -385,7 +386,6 @@ export function SheinStudioWorkbench({
   const [queueResumeState, setQueueResumeState] =
     useState<SheinStudioBatchQueueResumeState | null>(null);
   const [activeBatchRunId, setActiveBatchRunId] = useState("");
-  const [isStartingDedicatedBatchRun, setIsStartingDedicatedBatchRun] = useState(false);
   const [batchRunError, setBatchRunError] = useState("");
   const [selectedRecentBatchHydrations, setSelectedRecentBatchHydrations] = useState<
     Record<string, SheinStudioWorkbenchHydratedBatch>
@@ -1694,37 +1694,20 @@ export function SheinStudioWorkbench({
     startBatchRun: startSheinStudioBatchRun,
   });
 
-  const handleReturnFromDedicatedBatchRun = useCallback(() => {
-    setActiveBatchRunId("");
-    void refreshSavedBatches();
-    if (!initialBatchId) {
-      return;
-    }
-    void getSheinStudioHydratedBatch(initialBatchId).then((hydratedBatch) => {
-      if (!hydratedBatch) {
-        return;
-      }
-      handleLoadHydratedBatchRef.current(hydratedBatch);
-    });
-  }, [initialBatchId, refreshSavedBatches]);
-
-  const handleStartDedicatedBatchRun = useCallback(() => {
-    if (!initialBatchId) {
-      return;
-    }
-    setBatchRunError("");
-    setIsStartingDedicatedBatchRun(true);
-    void startSheinStudioBatchRun([initialBatchId], "generate")
-      .then((response) => {
-        setActiveBatchRunId(response.run.id);
-      })
-      .catch((error) => {
-        setBatchRunError(getBatchRunStartErrorMessage(error));
-      })
-      .finally(() => {
-        setIsStartingDedicatedBatchRun(false);
-      });
-  }, [initialBatchId]);
+  const {
+    handleReturnFromDedicatedBatchRun,
+    handleStartDedicatedBatchRun,
+    isStartingDedicatedBatchRun,
+  } = useSheinStudioDedicatedBatchRunController({
+    getBatchRunStartErrorMessage,
+    getHydratedBatch: getSheinStudioHydratedBatch,
+    initialBatchId,
+    loadHydratedBatch: handleLoadHydratedBatch,
+    refreshSavedBatches,
+    setActiveBatchRunId,
+    setBatchRunError,
+    startBatchRun: startSheinStudioBatchRun,
+  });
 
   useEffect(() => {
     if (!batchQueueMode || !currentQueuedBatchId) {
