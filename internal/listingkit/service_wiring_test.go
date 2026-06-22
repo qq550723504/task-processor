@@ -2427,18 +2427,19 @@ func TestSheinResolutionCachePreviewHelpersLiveOutsideMainSheinPreviewBuilder(t 
 		}
 	}
 
-	cacheSrc, err := os.ReadFile("preview_builder_shein_resolution_cache.go")
+	assertFileAbsent(t, "preview_builder_shein_resolution_cache.go")
+
+	payloadSrc, err := os.ReadFile("preview_builder_shein_payload.go")
 	if err != nil {
-		t.Fatalf("ReadFile(preview_builder_shein_resolution_cache.go) error = %v", err)
+		t.Fatalf("ReadFile(preview_builder_shein_payload.go) error = %v", err)
 	}
-	cacheContent := string(cacheSrc)
+	payloadContent := string(payloadSrc)
 	for _, needle := range []string{
-		"func buildSheinResolutionCacheSummary(pkg *SheinPackage) *SheinResolutionCacheSummary {",
-		"return sheinworkspace.BuildResolutionCacheSummary(pkg)",
+		"ResolutionCache:   sheinworkspace.BuildResolutionCacheSummary(pkg),",
 		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
-		if !strings.Contains(cacheContent, needle) {
-			t.Fatalf("preview_builder_shein_resolution_cache.go should contain %q", needle)
+		if !strings.Contains(payloadContent, needle) {
+			t.Fatalf("preview_builder_shein_payload.go should contain %q", needle)
 		}
 	}
 }
@@ -2484,7 +2485,6 @@ func TestSheinPreviewPayloadAssemblerLivesOutsideMainSheinPreviewBuilder(t *test
 		"type sheinPreviewPayloadBodyInput struct {",
 		"func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPreviewPayload {",
 		"Headline:          sheinDisplayTitle(pkg),",
-		"ResolutionCache:   buildSheinResolutionCacheSummary(pkg),",
 	} {
 		if strings.Contains(mainContent, needle) {
 			t.Fatalf("preview_builder_shein.go should not contain %q", needle)
@@ -2500,7 +2500,7 @@ func TestSheinPreviewPayloadAssemblerLivesOutsideMainSheinPreviewBuilder(t *test
 		"type sheinPreviewPayloadBodyInput struct {",
 		"func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPreviewPayload {",
 		"Headline:          sheinDisplayTitle(pkg),",
-		"ResolutionCache:   buildSheinResolutionCacheSummary(pkg),",
+		"ResolutionCache:   sheinworkspace.BuildResolutionCacheSummary(pkg),",
 		"FinalReview:       buildSheinFinalReviewPayload(pkg, input.canonical, input.readiness),",
 	} {
 		if !strings.Contains(payloadContent, needle) {
@@ -2527,18 +2527,15 @@ func TestSheinPreviewReviewSummaryHelperLivesOutsideMainSheinPreviewBuilder(t *t
 		}
 	}
 
-	reviewSummarySrc, err := os.ReadFile("preview_builder_shein_review_summary.go")
-	if err != nil {
-		t.Fatalf("ReadFile(preview_builder_shein_review_summary.go) error = %v", err)
-	}
-	reviewSummaryContent := string(reviewSummarySrc)
+	assertFileAbsent(t, "preview_builder_shein_review_summary.go")
+
+	mainContent = string(mainSrc)
 	for _, needle := range []string{
-		"func buildSheinPreviewReviewSummary(pkg *SheinPackage) (bool, []string) {",
-		"return sheinworkspace.BuildPreviewReviewSummary(pkg)",
+		"needsReview, summary := sheinworkspace.BuildPreviewReviewSummary(pkg)",
 		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
 	} {
-		if !strings.Contains(reviewSummaryContent, needle) {
-			t.Fatalf("preview_builder_shein_review_summary.go should contain %q", needle)
+		if !strings.Contains(mainContent, needle) {
+			t.Fatalf("preview_builder_shein.go should contain %q", needle)
 		}
 	}
 }

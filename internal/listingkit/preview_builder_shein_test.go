@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"task-processor/internal/catalog/canonical"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -35,7 +36,7 @@ func TestBuildSheinSourceProductSummary(t *testing.T) {
 func TestBuildSheinPreviewReviewSummary(t *testing.T) {
 	t.Parallel()
 
-	needsReview, summary := buildSheinPreviewReviewSummary(&SheinPackage{
+	needsReview, summary := sheinworkspace.BuildPreviewReviewSummary(&SheinPackage{
 		ReviewNotes: []string{"缺少类目", "缺少类目"},
 		Inspection: &sheinpub.Inspection{
 			NeedsReview: true,

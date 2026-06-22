@@ -3,6 +3,7 @@ package listingkit
 import (
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog/canonical"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -34,7 +35,7 @@ func buildSheinPreviewPayloadInput(
 	renderPreviews *PlatformAssetRenderPreviews,
 ) sheinPreviewPayloadInput {
 	sheinpub.NormalizePackageSemanticFields(pkg)
-	needsReview, summary := buildSheinPreviewReviewSummary(pkg)
+	needsReview, summary := sheinworkspace.BuildPreviewReviewSummary(pkg)
 	projection := buildSheinSubmitReadinessProjectionWithPod(pkg, pod)
 	readiness := projection.Readiness
 	checklist := projection.Checklist

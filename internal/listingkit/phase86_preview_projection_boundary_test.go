@@ -12,18 +12,18 @@ func TestSheinPreviewProjectionBoundary(t *testing.T) {
 	t.Run("preview review summary delegates to workspace", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "preview_builder_shein_review_summary.go", "buildSheinPreviewReviewSummary")
-		callNames := readNamedFunctionCallNames(t, "preview_builder_shein_review_summary.go", "buildSheinPreviewReviewSummary")
-		fileSource, err := os.ReadFile("preview_builder_shein_review_summary.go")
+		source := readNamedFunctionSource(t, "preview_builder_shein.go", "buildSheinPreviewPayloadInput")
+		callNames := readNamedFunctionCallNames(t, "preview_builder_shein.go", "buildSheinPreviewPayloadInput")
+		fileSource, err := os.ReadFile("preview_builder_shein.go")
 		if err != nil {
-			t.Fatalf("ReadFile(preview_builder_shein_review_summary.go) error = %v", err)
+			t.Fatalf("ReadFile(preview_builder_shein.go) error = %v", err)
 		}
 
 		assertSourceContainsAll(t, source, []string{
-			"return sheinworkspace.BuildPreviewReviewSummary(pkg)",
+			"needsReview, summary := sheinworkspace.BuildPreviewReviewSummary(pkg)",
 		})
 		if !strings.Contains(string(fileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
-			t.Fatal("preview_builder_shein_review_summary.go should call marketplace SHEIN workspace directly")
+			t.Fatal("preview_builder_shein.go should call marketplace SHEIN workspace directly")
 		}
 		assertSourceExcludesAll(t, source, []string{
 			"pkg.ReviewNotes",
@@ -33,6 +33,7 @@ func TestSheinPreviewProjectionBoundary(t *testing.T) {
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"BuildPreviewReviewSummary",
 		})
+		assertFileAbsent(t, "preview_builder_shein_review_summary.go")
 	})
 
 	t.Run("final review image and sku projection delegates to workspace", func(t *testing.T) {

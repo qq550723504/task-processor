@@ -42,7 +42,7 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 		SubmitReadiness:   input.readiness,
 		SubmitChecklist:   input.checklist,
 		ImageUpload:       buildSheinImageUploadPreflight(pkg),
-		ResolutionCache:   buildSheinResolutionCacheSummary(pkg),
+		ResolutionCache:   sheinworkspace.BuildResolutionCacheSummary(pkg),
 		RepairCenter:      input.repairCenter,
 		StatusOverview:    input.statusOverview,
 		WorkspaceOverview: input.workspaceOverview,

@@ -12,18 +12,18 @@ func TestSheinPreviewSupportBoundary(t *testing.T) {
 	t.Run("resolution cache summary delegates to workspace", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "preview_builder_shein_resolution_cache.go", "buildSheinResolutionCacheSummary")
-		callNames := readNamedFunctionCallNames(t, "preview_builder_shein_resolution_cache.go", "buildSheinResolutionCacheSummary")
-		fileSource, err := os.ReadFile("preview_builder_shein_resolution_cache.go")
+		source := readNamedFunctionSource(t, "preview_builder_shein_payload.go", "buildSheinPreviewPayloadBody")
+		callNames := readNamedFunctionCallNames(t, "preview_builder_shein_payload.go", "buildSheinPreviewPayloadBody")
+		fileSource, err := os.ReadFile("preview_builder_shein_payload.go")
 		if err != nil {
-			t.Fatalf("ReadFile(preview_builder_shein_resolution_cache.go) error = %v", err)
+			t.Fatalf("ReadFile(preview_builder_shein_payload.go) error = %v", err)
 		}
 
 		assertSourceContainsAll(t, source, []string{
-			"return sheinworkspace.BuildResolutionCacheSummary(pkg)",
+			"ResolutionCache:   sheinworkspace.BuildResolutionCacheSummary(pkg)",
 		})
 		if !strings.Contains(string(fileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
-			t.Fatal("preview_builder_shein_resolution_cache.go should call marketplace SHEIN workspace directly")
+			t.Fatal("preview_builder_shein_payload.go should call marketplace SHEIN workspace directly")
 		}
 		assertSourceExcludesAll(t, source, []string{
 			"enrichCategoryResolutionCacheInfo(",
@@ -33,6 +33,7 @@ func TestSheinPreviewSupportBoundary(t *testing.T) {
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"BuildResolutionCacheSummary",
 		})
+		assertFileAbsent(t, "preview_builder_shein_resolution_cache.go")
 	})
 
 	t.Run("image upload preflight delegates aggregation to workspace", func(t *testing.T) {
