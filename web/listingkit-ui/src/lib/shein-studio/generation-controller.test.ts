@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildGenerationPromptHistoryGroups,
+  executeStandaloneGeneration,
   mergeGeneratedDesignCollections,
   mergeGeneratedSelectedIds,
   resolveGenerationStartValidation,
@@ -227,5 +228,79 @@ describe("SHEIN Studio generation controller", () => {
       },
       { id: "design-2", imageUrl: "other.png" },
     ]);
+  });
+
+  it("executes standalone grouped generation and persists successful results", async () => {
+    const setField = vi.fn();
+    const persistDraft = vi.fn().mockResolvedValue(undefined);
+    const navigateToStep = vi.fn();
+    const generateDesigns = vi.fn().mockResolvedValue({
+      images: [{ id: "design-1", imageUrl: "generated.png" }],
+      warnings: ["soft warning"],
+    });
+    const localWorkflowStateRef = { current: false };
+    const groups = [buildGroup()];
+
+    const result = await executeStandaloneGeneration({
+      activeGroupId: "group-1",
+      activeSelection: {
+        ...selection,
+        printableWidth: 300,
+        printableHeight: 400,
+      },
+      artworkModel: "gpt-image-1",
+      generateDesigns,
+      generationJobs: [],
+      groupedImageMode: "shared_by_size",
+      groupedSelections: [],
+      groups,
+      hasLocalWorkflowStateRef: localWorkflowStateRef,
+      navigateToStep,
+      persistDraft,
+      prompt: " summer flowers ",
+      setField,
+      styleCount: "1",
+      transparentBackground: false,
+      variationIntensity: "medium",
+    });
+
+    expect(result.designs).toEqual([
+      {
+        id: "design-1",
+        imageUrl: "generated.png",
+        targetGroupKey: expect.any(String),
+        targetGroupLabel: expect.any(String),
+      },
+    ]);
+    expect(generateDesigns).toHaveBeenCalledWith(
+      expect.objectContaining({
+        count: 1,
+        printableWidth: 300,
+        printableHeight: 400,
+        prompt: expect.stringContaining("summer flowers"),
+      }),
+      expect.objectContaining({ onJobStarted: expect.any(Function) }),
+    );
+    expect(setField).toHaveBeenCalledWith("designs", result.designs);
+    expect(setField).toHaveBeenCalledWith("selectedIds", ["design-1"]);
+    expect(setField).toHaveBeenCalledWith("generationJobs", []);
+    expect(setField).toHaveBeenCalledWith(
+      "generationWarning",
+      "soft warning",
+    );
+    expect(navigateToStep).toHaveBeenCalledWith("review");
+    expect(persistDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        designs: result.designs,
+        selectedIds: ["design-1"],
+        createdTasks: [],
+        generationJobs: [],
+      }),
+      expect.objectContaining({
+        navigationTriggered: true,
+        source: "generate_success",
+      }),
+    );
+    expect(localWorkflowStateRef.current).toBe(true);
   });
 });
