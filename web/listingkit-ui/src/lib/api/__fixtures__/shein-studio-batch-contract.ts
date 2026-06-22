@@ -1,3 +1,5 @@
+import type { UpsertSheinStudioBatchDraftInput } from "@/lib/api/shein-studio-batch-drafts";
+
 export const sheinStudioBatchTaskCreationContractFixture = {
   response: {
     batch: {
@@ -354,3 +356,77 @@ export const sheinStudioBatchListContractFixture = {
     },
   ],
 } as const;
+
+export const sheinStudioBatchUpsertContractFixture = {
+  input: {
+    prompt: "retro botanical clock",
+    styleCount: "2",
+    variationIntensity: "medium",
+    productImageCount: "5",
+    productImagePrompt: "",
+    productImagePrompts: [],
+    artworkModel: "nanobanana",
+    transparentBackground: false,
+    sheinStoreId: "869",
+    imageStrategy: "ai_generated",
+    groupedImageMode: "shared_by_size",
+    selectedSdsImages: [],
+    renderSizeImagesWithSds: true,
+    legacyCompatibilitySnapshot: {
+      designs: [
+        {
+          id: "design-1",
+          imageUrl: "https://cdn.example.com/design-1.png",
+          prompt: "legacy prompt",
+        },
+      ],
+      selectedIds: ["design-1"],
+      createdTasks: [
+        {
+          id: "task-1",
+          title: "Create task",
+          designId: "design-1",
+        },
+      ],
+      generationJobs: [{ jobId: "job-1", status: "running" }],
+      generationError: "legacy-error",
+      generationJobId: "job-1",
+    },
+  } satisfies UpsertSheinStudioBatchDraftInput,
+  expectedBody: {
+    batch_name: "retro botanical clock",
+    prompt: "retro botanical clock",
+    style_count: "2",
+    variation_intensity: "medium",
+    product_image_count: "5",
+    product_image_prompt: "",
+    product_image_prompts: [],
+    artwork_model: "nanobanana",
+    image_strategy: "ai_generated",
+    grouped_image_mode: "shared_by_size",
+    selected_sds_images: [],
+    transparent_background: false,
+    render_size_images_with_sds: true,
+    shein_store_id: "869",
+    legacy_compatibility_snapshot: {
+      approved_design_ids: ["design-1"],
+      created_tasks: [
+        {
+          id: "task-1",
+          title: "Create task",
+          designId: "design-1",
+        },
+      ],
+      generation_error: "legacy-error",
+      generation_job_id: "job-1",
+      generation_jobs: [{ job_id: "job-1", status: "running" }],
+      designs: [
+        {
+          id: "design-1",
+          image_url: "https://cdn.example.com/design-1.png",
+          prompt: "legacy prompt",
+        },
+      ],
+    },
+  },
+};
