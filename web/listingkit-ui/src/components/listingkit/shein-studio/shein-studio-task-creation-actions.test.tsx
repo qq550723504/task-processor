@@ -191,6 +191,8 @@ describe("useSheinStudioTaskCreationAction", () => {
       ],
     });
 
+    const navigateToStep = vi.fn();
+    const onCreated = vi.fn();
     const setCreatedTasks = vi.fn();
     const { result } = renderHook(() =>
       useSheinStudioTaskCreationAction({
@@ -201,7 +203,7 @@ describe("useSheinStudioTaskCreationAction", () => {
         ],
         groupedImageMode: "shared_by_size",
         imageStrategy: "sds_official",
-        navigateToStep: vi.fn(),
+        navigateToStep,
         persistDraft: vi.fn().mockResolvedValue(undefined),
         productImageCount: "5",
         productImagePrompt: "",
@@ -271,7 +273,7 @@ describe("useSheinStudioTaskCreationAction", () => {
               },
             ],
           },
-          onCreated: vi.fn(),
+          onCreated,
         },
       }),
     );
@@ -288,6 +290,15 @@ describe("useSheinStudioTaskCreationAction", () => {
       { id: "task-1", title: "Task 1", designId: "design-1" },
       { id: "task-2", title: "Task 2", designId: "design-2" },
     ]);
+    expect(onCreated).toHaveBeenCalledWith(
+      expect.objectContaining({
+        createdTasks: [
+          { id: "task-1", title: "Task 1", designId: "design-1" },
+          { id: "task-2", title: "Task 2", designId: "design-2" },
+        ],
+      }),
+    );
+    expect(navigateToStep).toHaveBeenCalledWith("tasks");
   });
 
   it("confirms before creating tasks while the itemized batch is still generating", async () => {
