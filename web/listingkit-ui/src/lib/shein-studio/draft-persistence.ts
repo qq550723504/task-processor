@@ -32,6 +32,26 @@ type PersistSheinStudioDraftInput = {
   setDraftWarning: (value: (current: string) => string) => void;
 };
 
+type DraftFingerprintRef = {
+  current: string;
+};
+
+type RunSheinStudioDraftAutosaveInput = {
+  activeBatchId: string;
+  draftInput: SheinStudioSaveInput;
+  fingerprintRef: DraftFingerprintRef;
+  persistenceEnabled: boolean;
+  isLoadingWorkspace: boolean;
+  isGenerating: boolean;
+  isCreatingTasks: boolean;
+  regeneratingId: string;
+  saveLocalSnapshot: (
+    input: SheinStudioSaveInput,
+    options?: { batchId?: string },
+  ) => void;
+  setDraftWarning: (value: (current: string) => string) => void;
+};
+
 export function appendDraftSaveWarning(current: string) {
   if (current.includes(DRAFT_SAVE_WARNING)) {
     return current;
@@ -41,6 +61,45 @@ export function appendDraftSaveWarning(current: string) {
 
 export function clearDraftSaveWarning(current: string) {
   return current.replace(DRAFT_SAVE_WARNING, "").trim();
+}
+
+export function getSheinStudioAutosaveDelayMs(activeBatchId: string) {
+  return activeBatchId ? 250 : 1200;
+}
+
+export function runSheinStudioDraftAutosave({
+  activeBatchId,
+  draftInput,
+  fingerprintRef,
+  persistenceEnabled,
+  isLoadingWorkspace,
+  isGenerating,
+  isCreatingTasks,
+  regeneratingId,
+  saveLocalSnapshot,
+  setDraftWarning,
+}: RunSheinStudioDraftAutosaveInput) {
+  if (!persistenceEnabled) {
+    return false;
+  }
+  if (!activeBatchId && isLoadingWorkspace) {
+    return false;
+  }
+  if (isGenerating || isCreatingTasks || Boolean(regeneratingId)) {
+    return false;
+  }
+
+  const fingerprint = JSON.stringify(draftInput);
+  if (fingerprintRef.current === fingerprint) {
+    return false;
+  }
+
+  saveLocalSnapshot(draftInput, {
+    batchId: activeBatchId,
+  });
+  fingerprintRef.current = fingerprint;
+  setDraftWarning((current) => clearDraftSaveWarning(current));
+  return true;
 }
 
 export async function persistSheinStudioDraft({

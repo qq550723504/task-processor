@@ -5,9 +5,10 @@ import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/sh
 import { buildSheinStudioSelectionKey } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
 import {
-  clearDraftSaveWarning,
   type DraftSaveOptions,
+  getSheinStudioAutosaveDelayMs,
   persistSheinStudioDraft,
+  runSheinStudioDraftAutosave,
 } from "@/lib/shein-studio/draft-persistence";
 import { saveLocalSheinStudioDraftSnapshot } from "@/lib/shein-studio/local-draft-cache";
 import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
@@ -170,7 +171,7 @@ export function useSheinStudioDraftPersistence(
   const autosaveFingerprintRef = useRef("");
   const activeBatchId = options?.activeBatchId?.trim() || "";
   const persistenceEnabled = options?.persistenceEnabled ?? true;
-  const autosaveDelayMs = activeBatchId ? 250 : 1200;
+  const autosaveDelayMs = getSheinStudioAutosaveDelayMs(activeBatchId);
 
   const buildDraftInput = useCallback(
     (overrides?: DraftOverrides) =>
@@ -231,38 +232,31 @@ export function useSheinStudioDraftPersistence(
   }, [activeBatchId, currentDraftInput, persistenceEnabled]);
 
   useEffect(() => {
-    if (!persistenceEnabled) {
-      return;
-    }
-    if (!activeBatchId && state.isLoadingWorkspace) {
-      return;
-    }
-    if (
-      state.isGenerating ||
-      state.isCreatingTasks ||
-      Boolean(state.regeneratingId)
-    ) {
-      return;
-    }
-
     const timer = window.setTimeout(() => {
-      const draftInput = currentDraftInput;
-      const fingerprint = JSON.stringify(draftInput);
-      if (autosaveFingerprintRef.current === fingerprint) {
-        return;
-      }
-
-      saveLocalSheinStudioDraftSnapshot(draftInput, {
-        batchId: activeBatchId,
+      runSheinStudioDraftAutosave({
+        activeBatchId,
+        draftInput: currentDraftInput,
+        fingerprintRef: autosaveFingerprintRef,
+        persistenceEnabled,
+        isLoadingWorkspace: state.isLoadingWorkspace,
+        isGenerating: state.isGenerating,
+        isCreatingTasks: state.isCreatingTasks,
+        regeneratingId: state.regeneratingId,
+        saveLocalSnapshot: saveLocalSheinStudioDraftSnapshot,
+        setDraftWarning: state.setDraftWarning,
       });
-      autosaveFingerprintRef.current = fingerprint;
-      state.setDraftWarning((current) => clearDraftSaveWarning(current));
     }, autosaveDelayMs);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activeBatchId, autosaveDelayMs, currentDraftInput, state]);
+  }, [
+    activeBatchId,
+    autosaveDelayMs,
+    currentDraftInput,
+    persistenceEnabled,
+    state,
+  ]);
 
   return {
     buildDraftInput,

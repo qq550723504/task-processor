@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   appendDraftSaveWarning,
+  getSheinStudioAutosaveDelayMs,
+  runSheinStudioDraftAutosave,
   clearDraftSaveWarning,
   persistSheinStudioDraft,
 } from "@/lib/shein-studio/draft-persistence";
@@ -156,5 +158,106 @@ describe("SHEIN Studio draft persistence", () => {
     ).rejects.toBe(error);
 
     expect(quietWarning).not.toHaveBeenCalled();
+  });
+
+  it("uses a shorter autosave delay for active batch drafts", () => {
+    expect(getSheinStudioAutosaveDelayMs("batch-1")).toBe(250);
+    expect(getSheinStudioAutosaveDelayMs("")).toBe(1200);
+  });
+
+  it("skips autosave when persistence is disabled, workspace is loading, or work is busy", () => {
+    const saveLocalSnapshot = vi.fn();
+    const setDraftWarning = vi.fn();
+    const fingerprintRef = { current: "" };
+
+    for (const state of [
+      { persistenceEnabled: false },
+      { isLoadingWorkspace: true },
+      { isGenerating: true },
+      { isCreatingTasks: true },
+      { regeneratingId: "design-1" },
+    ]) {
+      expect(
+        runSheinStudioDraftAutosave({
+          activeBatchId: "",
+          draftInput: buildDraftInput(),
+          fingerprintRef,
+          persistenceEnabled: state.persistenceEnabled ?? true,
+          isLoadingWorkspace: Boolean(state.isLoadingWorkspace),
+          isGenerating: Boolean(state.isGenerating),
+          isCreatingTasks: Boolean(state.isCreatingTasks),
+          regeneratingId: state.regeneratingId ?? "",
+          saveLocalSnapshot,
+          setDraftWarning,
+        }),
+      ).toBe(false);
+    }
+
+    expect(saveLocalSnapshot).not.toHaveBeenCalled();
+    expect(setDraftWarning).not.toHaveBeenCalled();
+  });
+
+  it("autosaves changed drafts once and clears stale draft warnings", () => {
+    const draftInput = buildDraftInput({ prompt: "changed" });
+    const saveLocalSnapshot = vi.fn();
+    const setDraftWarning = vi.fn();
+    const fingerprintRef = { current: "" };
+
+    expect(
+      runSheinStudioDraftAutosave({
+        activeBatchId: "batch-1",
+        draftInput,
+        fingerprintRef,
+        persistenceEnabled: true,
+        isLoadingWorkspace: false,
+        isGenerating: false,
+        isCreatingTasks: false,
+        regeneratingId: "",
+        saveLocalSnapshot,
+        setDraftWarning,
+      }),
+    ).toBe(true);
+
+    expect(saveLocalSnapshot).toHaveBeenCalledWith(draftInput, {
+      batchId: "batch-1",
+    });
+    expect(setDraftWarning.mock.calls[0]?.[0](appendDraftSaveWarning(""))).toBe(
+      "",
+    );
+
+    expect(
+      runSheinStudioDraftAutosave({
+        activeBatchId: "batch-1",
+        draftInput,
+        fingerprintRef,
+        persistenceEnabled: true,
+        isLoadingWorkspace: false,
+        isGenerating: false,
+        isCreatingTasks: false,
+        regeneratingId: "",
+        saveLocalSnapshot,
+        setDraftWarning,
+      }),
+    ).toBe(false);
+    expect(saveLocalSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows active batch autosave while the workspace is loading", () => {
+    const saveLocalSnapshot = vi.fn();
+
+    expect(
+      runSheinStudioDraftAutosave({
+        activeBatchId: "batch-1",
+        draftInput: buildDraftInput(),
+        fingerprintRef: { current: "" },
+        persistenceEnabled: true,
+        isLoadingWorkspace: true,
+        isGenerating: false,
+        isCreatingTasks: false,
+        regeneratingId: "",
+        saveLocalSnapshot,
+        setDraftWarning: vi.fn(),
+      }),
+    ).toBe(true);
   });
 });
