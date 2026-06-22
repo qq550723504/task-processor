@@ -65,36 +65,25 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 
-	statusSrc, err := os.ReadFile("shein_submit_readiness_status_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_readiness_status_support.go) error = %v", err)
-	}
-	statusContent := string(statusSrc)
+	assertFileAbsent(t, "shein_submit_readiness_status_support.go")
 
+	publishingStatusSrc, err := os.ReadFile("../publishing/shein/submit_readiness_status.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../publishing/shein/submit_readiness_status.go) error = %v", err)
+	}
+	publishingStatusContent := string(publishingStatusSrc)
 	for _, needle := range []string{
-		"func sheinHasAnySKU(pkg *SheinPackage) bool {",
-		"func sheinFinalImagesReadyForAction(pkg *SheinPackage, action string) (bool, string) {",
-		"func sheinHasSubmitImage(pkg *SheinPackage) bool {",
-		"func sheinProductImageInfoHasImage(info *sheinproduct.ImageInfo) bool {",
-		"return sheinpub.HasAnySubmitSKU(pkg)",
-		"return sheinpub.FinalSubmitImagesReady(pkg, action)",
-		"return sheinpub.HasSubmitImage(pkg)",
-		"return sheinpub.ProductImageInfoHasImage(info)",
+		"func HasAnySubmitSKU(pkg *Package) bool {",
+		"func FinalSubmitImagesReady(pkg *Package, action string) (bool, string) {",
+		"func HasSubmitImage(pkg *Package) bool {",
+		"func ProductImageInfoHasImage(info *sheinproduct.ImageInfo) bool {",
+		"func SubmitPricingReady(pkg *Package) bool {",
 	} {
-		if !strings.Contains(statusContent, needle) {
-			t.Fatalf("shein_submit_readiness_status_support.go should contain %q", needle)
+		if !strings.Contains(publishingStatusContent, needle) {
+			t.Fatalf("publishing submit_readiness_status.go should contain %q", needle)
 		}
 	}
-	for _, needle := range []string{
-		"for _, skc := range pkg.DraftPayload.SKCList",
-		"parseMoney(",
-		"strings.TrimSpace(image.ImageURL)",
-	} {
-		if strings.Contains(statusContent, needle) {
-			t.Fatalf("shein_submit_readiness_status_support.go should delegate readiness status logic, found %q", needle)
-		}
-	}
-	if strings.Contains(statusContent, "func sheinSourceFactsReady(") {
+	if strings.Contains(publishingStatusContent, "func sheinSourceFactsReady(") {
 		t.Fatal("shein_submit_readiness_status_support.go should not keep a source-facts wrapper; call SHEIN workspace readiness from checks assembly")
 	}
 
