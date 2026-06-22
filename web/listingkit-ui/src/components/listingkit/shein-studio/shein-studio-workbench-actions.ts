@@ -3,12 +3,7 @@ import type { MutableRefObject, RefObject } from "react";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import { useSheinStudioTaskCreationAction } from "@/components/listingkit/shein-studio/shein-studio-task-creation-actions";
 import type { SheinStudioWorkbenchController } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
-import { hasInFlightItemizedBatchGeneration } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
-import {
-  generateSheinStudioBatch,
-  retrySheinStudioBatchItems,
-} from "@/lib/api/shein-studio-batches";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import {
   buildGroupedGenerationTargets,
@@ -68,15 +63,7 @@ type PersistDraft = (
 
 type BatchGenerationContext = {
   ensureBatch: () => Promise<SheinStudioSavedBatch | null>;
-  detail?: SheinStudioBatchDetail | null;
-  onGenerated: (result: {
-    savedBatch: SheinStudioSavedBatch;
-    detail: SheinStudioBatchDetail;
-  }) => void;
-  recoverInFlightGeneration?: (input: {
-    batchId: string;
-    error: unknown;
-  }) => Promise<boolean>;
+  startGenerationRun: (savedBatch: SheinStudioSavedBatch) => Promise<void>;
 };
 
 type UseSheinStudioDesignActionsParams = {
@@ -236,60 +223,21 @@ export function useSheinStudioDesignActions({
       workbench.setField("groups", nextGroups);
     }
 
-    let generatedBatchID = "";
     try {
       if (batchGenerationContext) {
         const savedBatch = await batchGenerationContext.ensureBatch();
         if (!savedBatch?.id) {
           throw new Error("当前批次保存失败，请稍后重试。");
         }
-        generatedBatchID = savedBatch.id;
         writeListingKitTraceContext({ batchId: savedBatch.id });
-        const failedItemIDs =
-          batchGenerationContext.detail?.items
-            .filter((entry) => entry.item.status === "failed")
-            .map((entry) => entry.item.id) ?? [];
-        const detail =
-          savedBatch.tenantId?.trim()
-            ? failedItemIDs.length > 0
-              ? await retrySheinStudioBatchItems(savedBatch.id, failedItemIDs, {
-                  tenantId: savedBatch.tenantId,
-                })
-              : await generateSheinStudioBatch(savedBatch.id, {
-                  tenantId: savedBatch.tenantId,
-                })
-            :
-          failedItemIDs.length > 0
-            ? await retrySheinStudioBatchItems(savedBatch.id, failedItemIDs)
-            : await generateSheinStudioBatch(savedBatch.id);
-        const generatedDesignCount = detail.items.reduce(
-          (count, entry) => count + entry.designs.length,
-          0,
-        );
-        if (
-          generatedDesignCount === 0 &&
-          !hasInFlightItemizedBatchGeneration(detail)
-        ) {
-          throw new Error(
-            "款式图生成完成，但没有返回任何图片。请重试一次；如果持续出现，说明上游生成链路返回了空结果。",
-          );
-        }
-        logListingKitTraceEvent("info", "studio batch generation completed", {
+        await batchGenerationContext.startGenerationRun(savedBatch);
+        logListingKitTraceEvent("info", "studio batch generation run started", {
           batchId: savedBatch.id,
-          designCount: generatedDesignCount,
         });
-        console.info("[shein-studio] generation succeeded", {
+        console.info("[shein-studio] batch generation run started", {
           batchId: savedBatch.id,
-          designCount: generatedDesignCount,
-          draftSaveStatus: "succeeded",
           selectionVariantId: generationSelection.variantId,
         });
-        hasLocalWorkflowStateRef.current = true;
-        batchGenerationContext.onGenerated({
-          savedBatch,
-          detail,
-        });
-        navigateToStep("review");
         return;
       }
 
@@ -351,16 +299,6 @@ export function useSheinStudioDesignActions({
         errorCount: generationResult.targetErrors.length,
       });
     } catch (error) {
-      if (
-        batchGenerationContext?.recoverInFlightGeneration &&
-        generatedBatchID &&
-        (await batchGenerationContext.recoverInFlightGeneration({
-          batchId: generatedBatchID,
-          error,
-        }))
-      ) {
-        return;
-      }
       const message = formatSubscriptionApiError(error);
       logListingKitTraceEvent("warn", "studio generation failed", {
         error: message,
