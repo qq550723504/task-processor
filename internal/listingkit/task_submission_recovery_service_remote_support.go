@@ -2,8 +2,9 @@ package listingkit
 
 import (
 	"context"
-	sheinpub "task-processor/internal/publishing/shein"
 	"time"
+
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func loadRecoveredSheinSubmissionReport(task *Task) (*SheinPackage, error) {
@@ -92,7 +93,7 @@ func (s *taskSubmissionRecoveryService) persistRecoveredRemoteRefreshPhase(_ con
 	if state == nil || state.completion.pkg == nil {
 		return ErrTaskResultUnavailable
 	}
-	sheinpub.AppendSubmissionEvent(state.completion.pkg, advanceSheinSubmitPhaseAndBuildEvent(state.completion.pkg, state.completion.taskID, state.completion.action, state.completion.requestID, sheinpub.SubmissionPhaseConfirmRemote, state.now))
+	sheinpub.AppendSubmissionEvent(state.completion.pkg, sheinpub.AdvanceSubmitPhaseAndBuildEvent(state.completion.pkg, state.completion.taskID, state.completion.action, state.completion.requestID, sheinpub.SubmissionPhaseConfirmRemote, state.now, sheinSubmitInFlightTTL))
 	return nil
 }
 

@@ -9,19 +9,3 @@ import (
 func beginSheinSubmitAttempt(pkg *SheinPackage, action, requestID, phase string, startedAt time.Time) *sheinpub.SubmissionRecord {
 	return sheinpub.BeginSubmitAttempt(pkg, action, requestID, phase, startedAt, sheinSubmitInFlightTTL)
 }
-
-func advanceSheinSubmitPhaseAndBuildEvent(pkg *SheinPackage, taskID, action, requestID, phase string, now time.Time) sheinpub.SubmissionEvent {
-	return sheinpub.AdvanceSubmitPhaseAndBuildEvent(pkg, taskID, action, requestID, phase, now, sheinSubmitInFlightTTL)
-}
-
-func advanceSheinSubmitPhaseAt(pkg *SheinPackage, action, requestID, phase string, now time.Time) {
-	sheinpub.AdvanceSubmitPhaseAt(pkg, action, requestID, phase, now, sheinSubmitInFlightTTL)
-}
-
-func completeSheinSubmitAttemptAt(pkg *SheinPackage, action, requestID string, response *sheinpub.SubmissionResponse, submitErr error, finishedAt time.Time) *sheinpub.SubmissionRecord {
-	return sheinpub.CompleteSubmitAttemptAt(pkg, action, requestID, response, submitErr, finishedAt)
-}
-
-func failSheinSubmitAttemptAt(pkg *SheinPackage, action, requestID, phase string, submitErr error, finishedAt time.Time) *sheinpub.SubmissionRecord {
-	return sheinpub.FailSubmitAttemptAt(pkg, action, requestID, phase, submitErr, finishedAt)
-}

@@ -75,7 +75,8 @@ func (s *taskSubmissionStateService) persistSheinDirectSubmitPhase(ctx context.C
 }
 
 func (s *taskSubmissionStateService) persistSheinSubmitPhase(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestID, phase string) error {
-	sheinpub.AppendSubmissionEvent(pkg, advanceSheinSubmitPhaseAndBuildEvent(pkg, taskID, action, requestID, phase, time.Now()))
+	now := time.Now()
+	sheinpub.AppendSubmissionEvent(pkg, sheinpub.AdvanceSubmitPhaseAndBuildEvent(pkg, taskID, action, requestID, phase, now, sheinSubmitInFlightTTL))
 	if result == nil {
 		return nil
 	}
