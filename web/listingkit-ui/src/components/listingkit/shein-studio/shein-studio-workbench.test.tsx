@@ -373,6 +373,47 @@ function buildHydratedBatch(
   };
 }
 
+function buildReviewReadyHydratedBatchDetail(
+  batchId = "batch-1",
+  updatedAt = "2026-05-26T10:05:00.000Z",
+) {
+  const { detail } = buildHydratedBatch();
+  return {
+    ...detail,
+    batch: {
+      ...detail.batch,
+      id: batchId,
+      updatedAt,
+    },
+    items: [
+      {
+        item: {
+          id: "item-1",
+          batchId,
+          targetGroupKey: "size:1000x1000",
+          status: "review_ready",
+          selectionCount: 1,
+          createdAt: "2026-05-26T09:59:00.000Z",
+          updatedAt,
+        },
+        designs: [
+          {
+            id: "design-1",
+            batchId,
+            itemId: "item-1",
+            sourceAttemptId: "attempt-1",
+            targetGroupKey: "size:1000x1000",
+            imageUrl: "https://example.com/design.png",
+            reviewStatus: "approved",
+            createdAt: "2026-05-26T10:04:00.000Z",
+            updatedAt,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error?: unknown) => void;
@@ -3401,40 +3442,9 @@ describe("SheinStudioWorkbench", () => {
       name: "新批次",
       updatedAt: "2026-05-26T10:04:00.000Z",
     });
-    generateSheinStudioBatch.mockResolvedValue({
-      ...buildHydratedBatch().detail,
-      batch: {
-        ...buildHydratedBatch().detail.batch,
-        id: "batch-new",
-        updatedAt: "2026-05-26T10:05:00.000Z",
-      },
-      items: [
-        {
-          item: {
-            id: "item-1",
-            batchId: "batch-new",
-            targetGroupKey: "size:1000x1000",
-            status: "review_ready",
-            selectionCount: 1,
-            createdAt: "2026-05-26T09:59:00.000Z",
-            updatedAt: "2026-05-26T10:05:00.000Z",
-          },
-          designs: [
-            {
-              id: "design-1",
-              batchId: "batch-new",
-              itemId: "item-1",
-              sourceAttemptId: "attempt-1",
-              targetGroupKey: "size:1000x1000",
-              imageUrl: "https://example.com/design.png",
-              reviewStatus: "approved",
-              createdAt: "2026-05-26T10:04:00.000Z",
-              updatedAt: "2026-05-26T10:05:00.000Z",
-            },
-          ],
-        },
-      ],
-    });
+    generateSheinStudioBatch.mockResolvedValue(
+      buildReviewReadyHydratedBatchDetail("batch-new"),
+    );
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
 
@@ -3611,40 +3621,9 @@ describe("SheinStudioWorkbench", () => {
       id: "batch-unsaved",
       updatedAt: "2026-05-26T10:04:00.000Z",
     });
-    generateSheinStudioBatch.mockResolvedValue({
-      ...buildHydratedBatch().detail,
-      batch: {
-        ...buildHydratedBatch().detail.batch,
-        id: "batch-unsaved",
-        updatedAt: "2026-05-26T10:05:00.000Z",
-      },
-      items: [
-        {
-          item: {
-            id: "item-1",
-            batchId: "batch-unsaved",
-            targetGroupKey: "size:1000x1000",
-            status: "review_ready",
-            selectionCount: 1,
-            createdAt: "2026-05-26T09:59:00.000Z",
-            updatedAt: "2026-05-26T10:05:00.000Z",
-          },
-          designs: [
-            {
-              id: "design-1",
-              batchId: "batch-unsaved",
-              itemId: "item-1",
-              sourceAttemptId: "attempt-1",
-              targetGroupKey: "size:1000x1000",
-              imageUrl: "https://example.com/design.png",
-              reviewStatus: "approved",
-              createdAt: "2026-05-26T10:04:00.000Z",
-              updatedAt: "2026-05-26T10:05:00.000Z",
-            },
-          ],
-        },
-      ],
-    });
+    generateSheinStudioBatch.mockResolvedValue(
+      buildReviewReadyHydratedBatchDetail("batch-unsaved"),
+    );
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
 
@@ -3680,39 +3659,9 @@ describe("SheinStudioWorkbench", () => {
       ...buildHydratedBatch().savedBatch,
       updatedAt: "2026-05-26T10:04:00.000Z",
     });
-    generateSheinStudioBatch.mockResolvedValue({
-      ...buildHydratedBatch().detail,
-      batch: {
-        ...buildHydratedBatch().detail.batch,
-        updatedAt: "2026-05-26T10:05:00.000Z",
-      },
-      items: [
-        {
-          item: {
-            id: "item-1",
-            batchId: "batch-1",
-            targetGroupKey: "size:1000x1000",
-            status: "review_ready",
-            selectionCount: 1,
-            createdAt: "2026-05-26T09:59:00.000Z",
-            updatedAt: "2026-05-26T10:05:00.000Z",
-          },
-          designs: [
-            {
-              id: "design-1",
-              batchId: "batch-1",
-              itemId: "item-1",
-              sourceAttemptId: "attempt-1",
-              targetGroupKey: "size:1000x1000",
-              imageUrl: "https://example.com/design.png",
-              reviewStatus: "approved",
-              createdAt: "2026-05-26T10:04:00.000Z",
-              updatedAt: "2026-05-26T10:05:00.000Z",
-            },
-          ],
-        },
-      ],
-    });
+    generateSheinStudioBatch.mockResolvedValue(
+      buildReviewReadyHydratedBatchDetail(),
+    );
 
     const rendered = render(
       <SheinStudioWorkbench activeStep="generate" selection={selection} />,
@@ -3778,39 +3727,9 @@ describe("SheinStudioWorkbench", () => {
       ...buildHydratedBatch().savedBatch,
       updatedAt: "2026-05-26T10:04:00.000Z",
     });
-    generateSheinStudioBatch.mockResolvedValue({
-      ...buildHydratedBatch().detail,
-      batch: {
-        ...buildHydratedBatch().detail.batch,
-        updatedAt: "2026-05-26T10:05:00.000Z",
-      },
-      items: [
-        {
-          item: {
-            id: "item-1",
-            batchId: "batch-1",
-            targetGroupKey: "size:1000x1000",
-            status: "review_ready",
-            selectionCount: 1,
-            createdAt: "2026-05-26T09:59:00.000Z",
-            updatedAt: "2026-05-26T10:05:00.000Z",
-          },
-          designs: [
-            {
-              id: "design-1",
-              batchId: "batch-1",
-              itemId: "item-1",
-              sourceAttemptId: "attempt-1",
-              targetGroupKey: "size:1000x1000",
-              imageUrl: "https://example.com/design.png",
-              reviewStatus: "approved",
-              createdAt: "2026-05-26T10:04:00.000Z",
-              updatedAt: "2026-05-26T10:05:00.000Z",
-            },
-          ],
-        },
-      ],
-    });
+    generateSheinStudioBatch.mockResolvedValue(
+      buildReviewReadyHydratedBatchDetail(),
+    );
 
     render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
 
