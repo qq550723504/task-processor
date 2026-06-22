@@ -15,9 +15,7 @@ func TestSheinSubmitReadinessGuidanceBoundary(t *testing.T) {
 			"buildSheinSubmitReadinessGuidanceResolver(pkg)",
 		})
 		assertSourceExcludesAll(t, source, []string{
-			"guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)",
-			"Reason:      sheinworkspace.CloneReadinessReason(guidance.reason)",
-			"RepairHints: cloneSheinRepairHints(guidance.repairHints)",
+			"return buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"buildSheinSubmitReadinessGuidanceResolver",
@@ -34,9 +32,7 @@ func TestSheinSubmitReadinessGuidanceBoundary(t *testing.T) {
 			"buildSheinSubmitReadinessGuidanceResolver(pkg)",
 		})
 		assertSourceExcludesAll(t, source, []string{
-			"guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)",
-			"Reason:      sheinworkspace.CloneReadinessReason(guidance.reason)",
-			"RepairHints: cloneSheinRepairHints(guidance.repairHints)",
+			"return buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"buildSheinSubmitReadinessGuidanceResolver",
@@ -50,14 +46,10 @@ func TestSheinSubmitReadinessGuidanceBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "shein_submit_readiness.go", "buildSheinSubmitReadinessGuidanceResolver")
 
 		assertSourceContainsAll(t, source, []string{
-			"guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)",
-			"Reason:      sheinworkspace.CloneReadinessReason(guidance.reason)",
-			"RepairHints: cloneSheinRepairHints(guidance.repairHints)",
+			"return buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"buildSheinReadinessGuidance",
-			"CloneReadinessReason",
-			"cloneSheinRepairHints",
 		})
 	})
 }

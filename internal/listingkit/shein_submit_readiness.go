@@ -53,11 +53,7 @@ func buildSheinSubmitReadinessGuidanceResolver(
 	pkg *SheinPackage,
 ) func(spec sheinworkspace.ReadinessCheckSpec) sheinworkspace.Guidance[SheinReadinessReason, SheinRepairHint] {
 	return func(spec sheinworkspace.ReadinessCheckSpec) sheinworkspace.Guidance[SheinReadinessReason, SheinRepairHint] {
-		guidance := buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)
-		return sheinworkspace.Guidance[SheinReadinessReason, SheinRepairHint]{
-			Reason:      sheinworkspace.CloneReadinessReason(guidance.reason),
-			RepairHints: cloneSheinRepairHints(guidance.repairHints),
-		}
+		return buildSheinReadinessGuidance(pkg, spec.Key, spec.FieldPaths, spec.SuggestedAction, spec.WarningOnly)
 	}
 }
 

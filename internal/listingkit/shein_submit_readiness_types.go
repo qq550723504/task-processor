@@ -11,8 +11,3 @@ type sheinSubmitReadinessSummaryShape struct {
 type SheinReadinessReason = sheinworkspace.ReadinessReason
 
 type SheinRepairHint = sheinworkspace.RepairHint[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]
-
-type sheinReadinessGuidance struct {
-	reason      *SheinReadinessReason
-	repairHints []SheinRepairHint
-}

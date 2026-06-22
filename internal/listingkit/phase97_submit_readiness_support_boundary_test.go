@@ -65,10 +65,9 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	guidanceContent := string(guidanceSrc)
 
 	for _, needle := range []string{
-		"func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []string, suggestedAction string, warningOnly bool) sheinReadinessGuidance {",
-		"reason: sheinworkspace.BuildReadinessReason(spec.Reason)",
+		"func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []string, suggestedAction string, warningOnly bool) sheinworkspace.Guidance[SheinReadinessReason, SheinRepairHint] {",
+		"Reason: sheinworkspace.BuildReadinessReason(spec.Reason)",
 		"patch := sheinworkspace.BuildReadinessPatchPayload(pkg, key)",
-		"func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {",
 	} {
 		if !strings.Contains(guidanceContent, needle) {
 			t.Fatalf("shein_submit_readiness_guidance_support.go should contain %q", needle)
@@ -81,6 +80,8 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"return sheinworkspace.BuildReadinessPatchPayload(pkg, key)",
 		"func buildSheinReadinessReason(spec *sheinworkspace.ReadinessReasonSpec) *SheinReadinessReason {",
 		"func cloneSheinReadinessReason(reason *SheinReadinessReason) *SheinReadinessReason {",
+		"func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {",
+		"type sheinReadinessGuidance struct {",
 	} {
 		if strings.Contains(guidanceContent, needle) {
 			t.Fatalf("shein_submit_readiness_guidance_support.go should not keep patch payload wrapper %q", needle)
