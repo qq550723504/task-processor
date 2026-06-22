@@ -3,6 +3,7 @@ package listingkit
 import (
 	"strings"
 
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -56,13 +57,13 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 		pkg.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), req.ResolvedAttributes...)
 	}
 	if req.CategoryResolution != nil {
-		applySheinCategoryResolutionPatch(pkg, req.CategoryResolution)
+		sheinworkspace.ApplyCategoryResolutionPatch(pkg, req.CategoryResolution)
 	}
 	if req.AttributeResolution != nil {
-		applySheinAttributeResolutionPatch(pkg, req.AttributeResolution)
+		sheinworkspace.ApplyAttributeResolutionPatch(pkg, req.AttributeResolution)
 	}
 	if req.SaleAttributeResolution != nil {
-		applySheinSaleAttributeResolutionPatch(pkg, req.SaleAttributeResolution)
+		sheinworkspace.ApplySaleAttributeResolutionPatch(pkg, req.SaleAttributeResolution)
 	}
 	if req.RequestDraft != nil {
 		draftCopy := *req.RequestDraft
@@ -73,7 +74,7 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 		sheinpub.ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
 	}
 	if req.SKCPatches != nil {
-		applySheinSKCRevisionPatches(pkg, req.SKCPatches)
+		sheinworkspace.ApplySKCRevisionPatches(pkg, req.SKCPatches)
 	}
 	if req.ReviewNotes != nil {
 		pkg.ReviewNotes = uniqueStrings(append([]string(nil), req.ReviewNotes...))

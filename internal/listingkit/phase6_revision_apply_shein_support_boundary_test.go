@@ -34,11 +34,16 @@ func TestRevisionApplySheinSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 
-	resolutionSrc, err := os.ReadFile("revision_apply_shein_resolution_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(revision_apply_shein_resolution_support.go) error = %v", err)
+	for _, needle := range []string{
+		"sheinworkspace.ApplyCategoryResolutionPatch(pkg, req.CategoryResolution)",
+		"sheinworkspace.ApplyAttributeResolutionPatch(pkg, req.AttributeResolution)",
+		"sheinworkspace.ApplySaleAttributeResolutionPatch(pkg, req.SaleAttributeResolution)",
+		"sheinworkspace.ApplySKCRevisionPatches(pkg, req.SKCPatches)",
+	} {
+		if !strings.Contains(homeContent, needle) {
+			t.Fatalf("revision_apply_shein.go should call workspace directly via %q", needle)
+		}
 	}
-	resolutionContent := string(resolutionSrc)
 
 	for _, needle := range []string{
 		"func applySheinCategoryResolutionPatch(pkg *sheinpub.Package, patch *SheinCategoryResolutionPatch) {",
@@ -48,33 +53,29 @@ func TestRevisionApplySheinSupportFilesOwnHelperFamilies(t *testing.T) {
 		"sheinworkspace.ApplyAttributeResolutionPatch(pkg, patch)",
 		"sheinworkspace.ApplySaleAttributeResolutionPatch(pkg, patch)",
 	} {
-		if !strings.Contains(resolutionContent, needle) {
-			t.Fatalf("revision_apply_shein_resolution_support.go should contain %q", needle)
+		if strings.Contains(homeContent, needle) {
+			t.Fatalf("revision_apply_shein.go should not keep resolution wrapper detail %q", needle)
 		}
 	}
-
-	skuSrc, err := os.ReadFile("revision_apply_shein_sku_support.go")
-	if err != nil {
-		t.Fatalf("ReadFile(revision_apply_shein_sku_support.go) error = %v", err)
-	}
-	skuContent := string(skuSrc)
+	assertFileAbsent(t, "revision_apply_shein_resolution_support.go")
 
 	for _, needle := range []string{
 		"func applySheinSKCRevisionPatches(pkg *sheinpub.Package, patches []SheinSKCRevisionPatch) {",
 		"sheinworkspace.ApplySKCRevisionPatches(pkg, patches)",
 	} {
-		if !strings.Contains(skuContent, needle) {
-			t.Fatalf("revision_apply_shein_sku_support.go should contain %q", needle)
+		if strings.Contains(homeContent, needle) {
+			t.Fatalf("revision_apply_shein.go should not keep SKC wrapper detail %q", needle)
 		}
 	}
 	for _, needle := range []string{
 		"func applySheinSKURevisionPatches(pkg *sheinpub.Package, draft *sheinpub.SKCRequestDraft, pkgSKC *sheinpub.SKCPackage, patches []SheinSKURevisionPatch) {",
 		"sheinworkspace.ApplySKURevisionPatches(pkg, draft, pkgSKC, patches)",
 	} {
-		if strings.Contains(skuContent, needle) {
-			t.Fatalf("revision_apply_shein_sku_support.go should not keep unused SKU wrapper %q", needle)
+		if strings.Contains(homeContent, needle) {
+			t.Fatalf("revision_apply_shein.go should not keep unused SKU wrapper %q", needle)
 		}
 	}
+	assertFileAbsent(t, "revision_apply_shein_sku_support.go")
 
 	workspaceSrc, err := os.ReadFile("../marketplace/shein/workspace/revision_apply_patch.go")
 	if err != nil {
