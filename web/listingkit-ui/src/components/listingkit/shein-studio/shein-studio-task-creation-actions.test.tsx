@@ -12,10 +12,18 @@ type TaskCreationActionParams = Parameters<
 >[0];
 
 const createSheinStudioBatchTasks = vi.fn();
+const createGroupedSheinReviewTasks = vi.fn();
+const createSheinReviewTasks = vi.fn();
 
 vi.mock("@/lib/api/shein-studio-batches", () => ({
   createSheinStudioBatchTasks: (...args: unknown[]) =>
     createSheinStudioBatchTasks(...args),
+}));
+
+vi.mock("@/lib/shein-studio/create-review-tasks", () => ({
+  createGroupedSheinReviewTasks: (...args: unknown[]) =>
+    createGroupedSheinReviewTasks(...args),
+  createSheinReviewTasks: (...args: unknown[]) => createSheinReviewTasks(...args),
 }));
 
 const selection = {
@@ -170,6 +178,8 @@ function renderTaskCreationAction(overrides: Partial<TaskCreationActionParams> =
 describe("useSheinStudioTaskCreationAction", () => {
   beforeEach(() => {
     createSheinStudioBatchTasks.mockReset();
+    createGroupedSheinReviewTasks.mockReset();
+    createSheinReviewTasks.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -400,5 +410,43 @@ describe("useSheinStudioTaskCreationAction", () => {
     );
     expect(setCreatingMessage).toHaveBeenLastCalledWith("");
     expect(navigateToStep).not.toHaveBeenCalledWith("tasks");
+  });
+
+  it("blocks standalone task creation when an imported gallery image ratio mismatches the SDS ratio", async () => {
+    const navigateToStep = vi.fn();
+    const setCreatingError = vi.fn();
+    const setGalleryRatioCheck = vi.fn();
+    const { result } = renderTaskCreationAction({
+      designs: [
+        {
+          id: "gallery-style-1",
+          imageUrl: "https://example.com/gallery-style.png",
+          role: "gallery",
+          sourceHeight: 1000,
+          sourceWidth: 1400,
+        },
+      ],
+      itemizedBatchContext: undefined,
+      navigateToStep,
+      selectedIds: ["gallery-style-1"],
+      setCreatingError,
+      setGalleryRatioCheck,
+    });
+
+    await act(async () => {
+      await result.current.handleCreateTasks();
+    });
+
+    expect(setGalleryRatioCheck).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "blocking",
+      }),
+    );
+    expect(setCreatingError).toHaveBeenCalledWith(
+      "图库图片比例与 SDS 款式比例差异过大，请换图或更换 SDS 款式。",
+    );
+    expect(createSheinReviewTasks).not.toHaveBeenCalled();
+    expect(createGroupedSheinReviewTasks).not.toHaveBeenCalled();
+    expect(navigateToStep).not.toHaveBeenCalled();
   });
 });

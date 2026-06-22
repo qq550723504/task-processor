@@ -4103,30 +4103,6 @@ describe("SheinStudioWorkbench", () => {
     );
   });
 
-  it("blocks task creation when an imported gallery image ratio mismatches the SDS ratio", async () => {
-    saveSheinStudioGalleryHandoff({
-      createdAt: new Date().toISOString(),
-      height: 1000,
-      id: "gallery-style-1",
-      imageUrl: "https://example.com/gallery-style.png",
-      source: "studio_saved",
-      title: "Gallery style",
-      width: 1400,
-    });
-
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
-
-    await waitFor(() =>
-      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "create review tasks" }));
-
-    expect(createSheinReviewTasks).not.toHaveBeenCalled();
-    expect(
-      screen.getByText("图库图片比例与 SDS 款式比例差异过大，请换图或更换 SDS 款式。"),
-    ).toBeInTheDocument();
-  });
-
   it("passes a Studio subscription gate message into the generation panel when the tenant is not entitled", async () => {
     useQuery.mockReturnValue({
       data: {
