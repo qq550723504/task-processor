@@ -2,6 +2,12 @@ package workspace
 
 import sheinpub "task-processor/internal/publishing/shein"
 
+type ReadinessReason struct {
+	Code     string `json:"code,omitempty"`
+	Category string `json:"category,omitempty"`
+	Summary  string `json:"summary,omitempty"`
+}
+
 type ReadinessReasonSpec struct {
 	Code     string
 	Category string
@@ -20,6 +26,25 @@ type ReadinessHintSpec struct {
 type ReadinessGuidanceSpec struct {
 	Reason *ReadinessReasonSpec
 	Hints  []ReadinessHintSpec
+}
+
+func BuildReadinessReason(spec *ReadinessReasonSpec) *ReadinessReason {
+	if spec == nil {
+		return nil
+	}
+	return &ReadinessReason{
+		Code:     spec.Code,
+		Category: spec.Category,
+		Summary:  spec.Summary,
+	}
+}
+
+func CloneReadinessReason(reason *ReadinessReason) *ReadinessReason {
+	if reason == nil {
+		return nil
+	}
+	cloned := *reason
+	return &cloned
 }
 
 // BuildReadinessPatchPayload builds the direct repair patch for a readiness key.

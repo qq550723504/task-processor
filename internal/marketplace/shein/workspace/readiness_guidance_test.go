@@ -64,6 +64,50 @@ func TestBuildReadinessGuidanceSpecMarketplace(t *testing.T) {
 	}
 }
 
+func TestBuildReadinessReasonClonesSpec(t *testing.T) {
+	t.Parallel()
+
+	spec := &ReadinessReasonSpec{
+		Code:     "category_review_pending",
+		Category: "classification",
+		Summary:  "review pending",
+	}
+
+	reason := BuildReadinessReason(spec)
+	if reason == nil {
+		t.Fatal("expected readiness reason")
+	}
+	if reason.Code != spec.Code || reason.Category != spec.Category || reason.Summary != spec.Summary {
+		t.Fatalf("reason = %+v, want spec values", reason)
+	}
+
+	spec.Code = "changed"
+	if reason.Code != "category_review_pending" {
+		t.Fatalf("reason code = %q, want cloned value", reason.Code)
+	}
+}
+
+func TestCloneReadinessReasonReturnsIndependentCopy(t *testing.T) {
+	t.Parallel()
+
+	original := &ReadinessReason{
+		Code:     "manual_review_pending",
+		Category: "manual_review",
+		Summary:  "manual notes",
+	}
+
+	cloned := CloneReadinessReason(original)
+	if cloned == nil {
+		t.Fatal("expected readiness reason clone")
+	}
+	if cloned == original {
+		t.Fatal("clone should not share pointer with original")
+	}
+	if cloned.Code != original.Code || cloned.Category != original.Category || cloned.Summary != original.Summary {
+		t.Fatalf("clone = %+v, want original values", cloned)
+	}
+}
+
 func TestBuildReadinessGuidanceSpecMarketplaceManualNotesWarningCategory(t *testing.T) {
 	spec := BuildReadinessGuidanceSpec("manual_notes", true)
 	if spec == nil || spec.Reason == nil {

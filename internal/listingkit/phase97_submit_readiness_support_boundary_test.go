@@ -44,6 +44,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 
 	for _, needle := range []string{
 		"func buildSheinReadinessReason(spec *sheinworkspace.ReadinessReasonSpec) *SheinReadinessReason {",
+		"return sheinworkspace.BuildReadinessReason(spec)",
 		"func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []string, suggestedAction string, warningOnly bool) sheinReadinessGuidance {",
 		"patch := sheinworkspace.BuildReadinessPatchPayload(pkg, key)",
 		"func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {",
@@ -53,6 +54,8 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 	for _, needle := range []string{
+		"&SheinReadinessReason{",
+		"cloned := *reason",
 		"func buildSheinReadinessPatchPayload(pkg *SheinPackage, key string) *SheinRepairPatchPayload {",
 		"return sheinworkspace.BuildReadinessPatchPayload(pkg, key)",
 	} {

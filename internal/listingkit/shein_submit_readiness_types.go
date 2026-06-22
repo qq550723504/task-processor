@@ -1,16 +1,14 @@
 package listingkit
 
+import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+
 type sheinSubmitReadinessSummaryShape struct {
 	blockingLabel       string
 	warningLabel        string
 	prependFirstBlocker bool
 }
 
-type SheinReadinessReason struct {
-	Code     string `json:"code,omitempty"`
-	Category string `json:"category,omitempty"`
-	Summary  string `json:"summary,omitempty"`
-}
+type SheinReadinessReason = sheinworkspace.ReadinessReason
 
 type SheinRepairHint struct {
 	Action        string                        `json:"action,omitempty"`

@@ -3,14 +3,7 @@ package listingkit
 import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
 func buildSheinReadinessReason(spec *sheinworkspace.ReadinessReasonSpec) *SheinReadinessReason {
-	if spec == nil {
-		return nil
-	}
-	return &SheinReadinessReason{
-		Code:     spec.Code,
-		Category: spec.Category,
-		Summary:  spec.Summary,
-	}
+	return sheinworkspace.BuildReadinessReason(spec)
 }
 
 func buildSheinReadinessRepairHint(pkg *SheinPackage, action string, fieldPaths []string, hint sheinworkspace.ReadinessHintSpec, patch *SheinRepairPatchPayload) SheinRepairHint {
@@ -54,11 +47,7 @@ func buildSheinReadinessGuidance(pkg *SheinPackage, key string, fieldPaths []str
 }
 
 func cloneSheinReadinessReason(reason *SheinReadinessReason) *SheinReadinessReason {
-	if reason == nil {
-		return nil
-	}
-	cloned := *reason
-	return &cloned
+	return sheinworkspace.CloneReadinessReason(reason)
 }
 
 func cloneSheinRepairHints(items []SheinRepairHint) []SheinRepairHint {

@@ -13,6 +13,7 @@ func TestSheinReadinessGuidanceBridgeCallsMarketplaceWorkspaceDirectly(t *testin
 
 	for _, path := range []string{
 		"shein_submit_readiness.go",
+		"shein_submit_readiness_types.go",
 		"shein_submit_readiness_checks_support.go",
 		"shein_submit_readiness_guidance_support.go",
 		"shein_build_validation.go",
