@@ -61,12 +61,18 @@ func TestRevisionApplySheinSupportFilesOwnHelperFamilies(t *testing.T) {
 
 	for _, needle := range []string{
 		"func applySheinSKCRevisionPatches(pkg *sheinpub.Package, patches []SheinSKCRevisionPatch) {",
-		"func applySheinSKURevisionPatches(pkg *sheinpub.Package, draft *sheinpub.SKCRequestDraft, pkgSKC *sheinpub.SKCPackage, patches []SheinSKURevisionPatch) {",
 		"sheinworkspace.ApplySKCRevisionPatches(pkg, patches)",
-		"sheinworkspace.ApplySKURevisionPatches(pkg, draft, pkgSKC, patches)",
 	} {
 		if !strings.Contains(skuContent, needle) {
 			t.Fatalf("revision_apply_shein_sku_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"func applySheinSKURevisionPatches(pkg *sheinpub.Package, draft *sheinpub.SKCRequestDraft, pkgSKC *sheinpub.SKCPackage, patches []SheinSKURevisionPatch) {",
+		"sheinworkspace.ApplySKURevisionPatches(pkg, draft, pkgSKC, patches)",
+	} {
+		if strings.Contains(skuContent, needle) {
+			t.Fatalf("revision_apply_shein_sku_support.go should not keep unused SKU wrapper %q", needle)
 		}
 	}
 

@@ -19,22 +19,6 @@ func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayl
 	}
 }
 
-func buildSheinRepairRevisionSkeleton(action string, payload *SheinRepairPatchPayload) *SheinEditorRevisionSkeleton {
-	return buildSheinRepairRevisionBundle(action, payload).skeleton
-}
-
-func buildSheinRepairApplyRequest(action string, payload *SheinRepairPatchPayload) *ApplyRevisionRequest {
-	return buildSheinRepairRevisionBundle(action, payload).request
-}
-
-func buildSheinRepairRevisionInput(payload *SheinRepairPatchPayload) *SheinRevisionInput {
-	return listingworkspace.BuildRepairRevisionInput(payload)
-}
-
-func buildSheinRepairReason(action string) string {
-	return listingworkspace.BuildRepairReason(action)
-}
-
 func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {
 	bundle := buildSheinRepairRevisionBundle(action, patch)
 	return sheinRepairArtifacts{
