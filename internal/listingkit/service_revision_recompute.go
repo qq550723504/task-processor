@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -65,7 +66,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	)
 	cookieNote := strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(buildReq.Context, task))
 	if cookieNote == "" {
-		stripSheinCookieUnavailableReviewNotes(task.Result.Shein)
+		sheinworkspace.StripCookieUnavailableReviewNotes(task.Result.Shein)
 	}
 	applySheinSaleAttributeReviewOverride(task.Result.Shein, req.Shein.SaleAttributeResolution)
 	normalizeSheinCategoryRefreshSaleAttributeState(task.Result.Shein)
@@ -97,7 +98,7 @@ func (s *service) refreshSheinAttributeDerivedState(task *Task, buildReq *sheinp
 	}
 	cookieNote := strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(buildReq.Context, task))
 	if cookieNote == "" {
-		stripSheinCookieUnavailableReviewNotes(pkg)
+		sheinworkspace.StripCookieUnavailableReviewNotes(pkg)
 	}
 	sheinpub.NormalizeListingCopy(buildReq.Context, pkg, task.Result.CanonicalProduct, buildReq.Language)
 	syncSheinDraftFromPackage(pkg)

@@ -3,6 +3,8 @@ package listingkit
 import (
 	"context"
 	"strings"
+
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
 func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, task *Task, preview *ListingKitPreview) {
@@ -12,7 +14,7 @@ func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, ta
 
 	pkg := *task.Result.Shein
 	pkg.ReviewNotes = append([]string(nil), task.Result.Shein.ReviewNotes...)
-	stripSheinCookieUnavailableReviewNotes(&pkg)
+	sheinworkspace.StripCookieUnavailableReviewNotes(&pkg)
 
 	note := s.resolveSheinCookieAvailabilityNote(ctx, task)
 	if strings.TrimSpace(note) != "" {

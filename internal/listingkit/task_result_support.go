@@ -9,6 +9,7 @@ import (
 
 	"task-processor/internal/catalog"
 	submissiondomain "task-processor/internal/listing/submission"
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
 func persistClassifiedTaskFailure(ctx context.Context, repo Repository, taskID string, errorMsg string, cause error) error {
@@ -103,7 +104,7 @@ func (s *service) refreshSheinTaskResultState(ctx context.Context, task *Task, r
 		return
 	}
 
-	stripSheinCookieUnavailableReviewNotes(result.Shein)
+	sheinworkspace.StripCookieUnavailableReviewNotes(result.Shein)
 	note := strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(ctx, task))
 	if note != "" {
 		refreshSheinReviewState(result.Shein, note)
@@ -114,7 +115,7 @@ func (s *service) refreshSheinTaskResultState(ctx context.Context, task *Task, r
 	if result.Summary == nil {
 		result.Summary = &GenerationSummary{}
 	}
-	result.Summary.Warnings = filterOutSheinCookieUnavailableReviewNotes(result.Summary.Warnings)
+	result.Summary.Warnings = sheinworkspace.FilterOutCookieUnavailableReviewNotes(result.Summary.Warnings)
 	result.Summary.NeedsReview = false
 	result.ReviewReasons = nil
 	result.WorkflowIssues = filterOutWorkflowIssuesByStage(result.WorkflowIssues, "shein_review")

@@ -12,7 +12,10 @@ const (
 )
 
 func applySheinInspectionReviewToSummary(result *ListingKitResult) {
-	reasons := sheinInspectionReviewReasons(result)
+	if result == nil {
+		return
+	}
+	reasons := sheinworkspace.InspectionReviewReasons(result.Shein)
 	if len(reasons) == 0 {
 		return
 	}
@@ -46,7 +49,7 @@ func addSheinReviewWorkflowIssues(result *ListingKitResult) {
 		return
 	}
 	recorder := newWorkflowRecorder(result)
-	cookieNotes := sheinCookieUnavailableReviewNotes(result.Shein)
+	cookieNotes := sheinworkspace.CookieUnavailableReviewNotes(result.Shein)
 	for _, note := range cookieNotes {
 		recorder.AddIssue(
 			WorkflowIssueSeverityBlocking,
@@ -61,19 +64,15 @@ func addSheinReviewWorkflowIssues(result *ListingKitResult) {
 	}
 }
 
-func sheinInspectionReviewReasons(result *ListingKitResult) []string {
+func sheinReviewIssueReasons(result *ListingKitResult) []string {
 	if result == nil {
 		return nil
 	}
-	return sheinworkspace.InspectionReviewReasons(result.Shein)
-}
-
-func sheinReviewIssueReasons(result *ListingKitResult) []string {
 	coverageWarning, coverageBlocked := sheinVariantImageCoverageStatus(result.Shein)
 	coverageWarning = strings.TrimSpace(coverageWarning)
 
 	filtered := make([]string, 0)
-	for _, reason := range sheinInspectionReviewReasons(result) {
+	for _, reason := range sheinworkspace.InspectionReviewReasons(result.Shein) {
 		if sheinworkspace.IsCookieUnavailableText(reason) {
 			continue
 		}
@@ -86,24 +85,4 @@ func sheinReviewIssueReasons(result *ListingKitResult) []string {
 		return nil
 	}
 	return filtered
-}
-
-func sheinCookieUnavailableReviewNotes(pkg *SheinPackage) []string {
-	return sheinworkspace.CookieUnavailableReviewNotes(pkg)
-}
-
-func stripSheinCookieUnavailableReviewNotes(pkg *SheinPackage) {
-	sheinworkspace.StripCookieUnavailableReviewNotes(pkg)
-}
-
-func filterOutSheinCookieUnavailableReviewNotes(notes []string) []string {
-	return sheinworkspace.FilterOutCookieUnavailableReviewNotes(notes)
-}
-
-func sheinCookieUnavailable(pkg *SheinPackage) bool {
-	return sheinworkspace.HasCookieUnavailableReviewNotes(pkg)
-}
-
-func isSheinCookieUnavailableText(value string) bool {
-	return sheinworkspace.IsCookieUnavailableText(value)
 }

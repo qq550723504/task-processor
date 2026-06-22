@@ -17,16 +17,17 @@ func TestSheinReviewStateBoundary(t *testing.T) {
 	}
 	assertFileAbsent(t, "workspace/shein/review_bridge.go")
 
-	t.Run("inspection review adapter delegates to workspace", func(t *testing.T) {
+	t.Run("inspection review flow calls workspace directly", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "workflow_review_state.go", "sheinInspectionReviewReasons")
-		callNames := readNamedFunctionCallNames(t, "workflow_review_state.go", "sheinInspectionReviewReasons")
+		source := readNamedFunctionSource(t, "workflow_review_state.go", "applySheinInspectionReviewToSummary")
+		callNames := readNamedFunctionCallNames(t, "workflow_review_state.go", "applySheinInspectionReviewToSummary")
 
 		assertSourceContainsAll(t, source, []string{
-			"return sheinworkspace.InspectionReviewReasons(result.Shein)",
+			"reasons := sheinworkspace.InspectionReviewReasons(result.Shein)",
 		})
 		assertSourceExcludesAll(t, source, []string{
+			"sheinInspectionReviewReasons(result)",
 			"result.Shein.Inspection.Summary",
 			"result.Shein.ReviewNotes",
 			"SHEIN 信息需要人工复核",
@@ -36,78 +37,36 @@ func TestSheinReviewStateBoundary(t *testing.T) {
 		})
 	})
 
-	t.Run("cookie review adapters delegate to workspace", func(t *testing.T) {
+	t.Run("cookie review flow calls workspace directly", func(t *testing.T) {
 		t.Parallel()
 
-		cases := []struct {
-			name        string
-			fn          string
-			wantSource  []string
-			excludeText []string
-			wantCalls   []string
-		}{
-			{
-				name:       "collect notes",
-				fn:         "sheinCookieUnavailableReviewNotes",
-				wantSource: []string{"return sheinworkspace.CookieUnavailableReviewNotes(pkg)"},
-				excludeText: []string{
-					"pkg.CategoryResolution.ReviewNotes",
-					"pkg.AttributeResolution.ReviewNotes",
-					"pkg.SaleAttributeResolution.ReviewNotes",
-				},
-				wantCalls: []string{"CookieUnavailableReviewNotes"},
-			},
-			{
-				name:       "strip notes",
-				fn:         "stripSheinCookieUnavailableReviewNotes",
-				wantSource: []string{"sheinworkspace.StripCookieUnavailableReviewNotes(pkg)"},
-				excludeText: []string{
-					"pkg.ReviewNotes = filterOutSheinCookieUnavailableReviewNotes(pkg.ReviewNotes)",
-				},
-				wantCalls: []string{"StripCookieUnavailableReviewNotes"},
-			},
-			{
-				name:       "filter notes",
-				fn:         "filterOutSheinCookieUnavailableReviewNotes",
-				wantSource: []string{"return sheinworkspace.FilterOutCookieUnavailableReviewNotes(notes)"},
-				excludeText: []string{
-					"for _, note := range notes",
-				},
-				wantCalls: []string{"FilterOutCookieUnavailableReviewNotes"},
-			},
-			{
-				name:       "availability check",
-				fn:         "sheinCookieUnavailable",
-				wantSource: []string{"return sheinworkspace.HasCookieUnavailableReviewNotes(pkg)"},
-				excludeText: []string{
-					"len(sheinCookieUnavailableReviewNotes(pkg)) > 0",
-				},
-				wantCalls: []string{"HasCookieUnavailableReviewNotes"},
-			},
-			{
-				name:       "text classifier",
-				fn:         "isSheinCookieUnavailableText",
-				wantSource: []string{"return sheinworkspace.IsCookieUnavailableText(value)"},
-				excludeText: []string{
-					`strings.Contains(text, "cookie 不可用")`,
-					`strings.Contains(text, "店铺 cookie")`,
-				},
-				wantCalls: []string{"IsCookieUnavailableText"},
-			},
-		}
+		workflowContent := string(fileSource)
+		assertSourceContainsAll(t, workflowContent, []string{
+			"cookieNotes := sheinworkspace.CookieUnavailableReviewNotes(result.Shein)",
+			"sheinworkspace.IsCookieUnavailableText(reason)",
+		})
+		assertSourceExcludesAll(t, workflowContent, []string{
+			"func sheinCookieUnavailableReviewNotes(",
+			"func stripSheinCookieUnavailableReviewNotes(",
+			"func filterOutSheinCookieUnavailableReviewNotes(",
+			"func sheinCookieUnavailable(",
+			"func isSheinCookieUnavailableText(",
+			"pkg.CategoryResolution.ReviewNotes",
+			"pkg.AttributeResolution.ReviewNotes",
+			"pkg.SaleAttributeResolution.ReviewNotes",
+			`strings.Contains(text, "cookie 不可用")`,
+			`strings.Contains(text, "店铺 cookie")`,
+		})
 
-		for _, tc := range cases {
-			tc := tc
-			t.Run(tc.name, func(t *testing.T) {
-				t.Parallel()
+		taskResultSource := readNamedFunctionSource(t, "task_result_support.go", "refreshSheinTaskResultState")
+		assertSourceContainsAll(t, taskResultSource, []string{
+			"sheinworkspace.StripCookieUnavailableReviewNotes(result.Shein)",
+			"result.Summary.Warnings = sheinworkspace.FilterOutCookieUnavailableReviewNotes(result.Summary.Warnings)",
+		})
 
-				source := readNamedFunctionSource(t, "workflow_review_state.go", tc.fn)
-				callNames := readNamedFunctionCallNames(t, "workflow_review_state.go", tc.fn)
-
-				assertSourceContainsAll(t, source, tc.wantSource)
-				assertSourceExcludesAll(t, source, tc.excludeText)
-				assertFunctionCallsContainAll(t, callNames, tc.wantCalls)
-			})
-		}
+		readinessSource := readNamedFunctionSource(t, "shein_submit_readiness_checks_support.go", "buildSheinSubmitReadinessChecks")
+		assertSourceContainsAll(t, readinessSource, []string{
+			"!sheinworkspace.HasCookieUnavailableReviewNotes(pkg)",
+		})
 	})
 }

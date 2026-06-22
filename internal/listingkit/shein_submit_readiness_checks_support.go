@@ -7,7 +7,7 @@ func buildSheinSubmitReadinessChecks(pkg *SheinPackage, pod *PodExecutionSummary
 	checks = append(checks, sheinworkspace.BuildSubmitReadinessCheck(
 		sheinCookieUnavailableIssueCode,
 		"SHEIN 店铺登录",
-		!sheinCookieUnavailable(pkg),
+		!sheinworkspace.HasCookieUnavailableReviewNotes(pkg),
 		"SHEIN 店铺 cookie 不可用。标准商品和 SDS 图片仍可继续使用，但 SHEIN 平台在线类目、属性解析和提交已在平台阶段受阻，请先重新登录店铺后再继续。",
 		[]string{"shein.review_notes", "shein.category_resolution.review_notes", "shein.attribute_resolution.review_notes", "shein.sale_attribute_resolution.review_notes"},
 		"重新登录 SHEIN 店铺",
