@@ -1,36 +1,35 @@
-// Adapter-only bridge. Keep domain rules in internal/marketplace/shein/workspace.
 package listingkit
 
-import listingworkspace "task-processor/internal/listingkit/workspace/shein"
+import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
 func buildSheinInspection(pkg *SheinPackage) *SheinInspection {
-	return listingworkspace.BuildInspection(pkg)
+	return sheinworkspace.BuildInspection(pkg)
 }
 
 func buildSheinCategoryPayload(pkg *SheinPackage) *SheinInspectionCategoryPayload {
-	return listingworkspace.BuildCategoryPayload(pkg)
+	return sheinworkspace.BuildCategoryPayload(pkg)
 }
 
 func buildSheinAttributePayload(pkg *SheinPackage) *SheinInspectionAttributePayload {
-	return listingworkspace.BuildAttributePayload(pkg)
+	return sheinworkspace.BuildAttributePayload(pkg)
 }
 
 func buildSheinSaleAttributePayload(pkg *SheinPackage) *SheinInspectionSaleAttributePayload {
-	return listingworkspace.BuildSaleAttributePayload(pkg)
+	return sheinworkspace.BuildSaleAttributePayload(pkg)
 }
 
 func filterManualSheinReviewNotes(notes []string) []string {
-	return listingworkspace.FilterManualReviewNotes(notes)
+	return sheinworkspace.FilterManualReviewNotes(notes)
 }
 
 func isSheinCategoryResolved(pkg *SheinPackage) bool {
-	return listingworkspace.IsCategoryResolved(pkg)
+	return sheinworkspace.IsCategoryResolved(pkg)
 }
 
 func isSheinAttributeResolved(pkg *SheinPackage) bool {
-	return listingworkspace.IsAttributeResolved(pkg)
+	return sheinworkspace.IsAttributeResolved(pkg)
 }
 
 func isSheinSaleAttributeResolved(pkg *SheinPackage) bool {
-	return listingworkspace.IsSaleAttributeResolved(pkg)
+	return sheinworkspace.IsSaleAttributeResolved(pkg)
 }

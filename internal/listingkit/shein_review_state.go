@@ -1,6 +1,6 @@
 package listingkit
 
-import sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 
 func refreshSheinReviewState(pkg *SheinPackage, extraNotes ...string) {
 	if pkg == nil {
