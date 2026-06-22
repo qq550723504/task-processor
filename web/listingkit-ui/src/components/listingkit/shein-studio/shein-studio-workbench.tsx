@@ -66,6 +66,11 @@ import {
 } from "@/lib/shein-studio/sds-baseline-ui";
 import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
+import {
+  pickLocalArrayValue,
+  pickLocalStringValue,
+  shouldUseLocalDraftOverRemote,
+} from "@/lib/shein-studio/local-remote-conflict-policy";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import {
   clearListingKitTraceContext,
@@ -120,32 +125,6 @@ function getBatchRunStartErrorMessage(error: unknown) {
     return error.message;
   }
   return "这轮批量生成没有成功启动，请稍后重试。";
-}
-
-function isLocalSnapshotNewerThanBatch(
-  snapshotUpdatedAt: string | undefined,
-  batchUpdatedAt: string | undefined,
-) {
-  const snapshotTime = Date.parse(snapshotUpdatedAt ?? "");
-  const batchTime = Date.parse(batchUpdatedAt ?? "");
-  if (!Number.isFinite(snapshotTime) || !Number.isFinite(batchTime)) {
-    return false;
-  }
-  return snapshotTime > batchTime;
-}
-
-function pickLocalStringValue(
-  localValue: string | undefined,
-  remoteValue: string | undefined,
-) {
-  return localValue?.trim() ? localValue : (remoteValue ?? "");
-}
-
-function pickLocalArrayValue<T>(
-  localValue: T[] | undefined,
-  remoteValue: T[] | undefined,
-) {
-  return ((localValue?.length ?? 0) > 0 ? localValue : (remoteValue ?? [])) as T[];
 }
 
 function mergeDedicatedBatchWithLocalSnapshot(
@@ -1407,11 +1386,12 @@ export function SheinStudioWorkbench({
         const localSnapshot = loadLocalSheinStudioDraftSnapshotDetail();
         const batchWithLocalSnapshot: SheinStudioWorkbenchHydratedBatch =
           localSnapshot?.batchId === batchId &&
-          isLocalSnapshotNewerThanBatch(
-            localSnapshot.draft.updatedAt,
-            hydratedBatch.savedBatch.draftUpdatedAt ??
+          shouldUseLocalDraftOverRemote({
+            localUpdatedAt: localSnapshot.draft.updatedAt,
+            remoteUpdatedAt:
+              hydratedBatch.savedBatch.draftUpdatedAt ??
               hydratedBatch.savedBatch.updatedAt,
-          )
+          })
             ? mergeDedicatedBatchWithLocalSnapshot(
                 batchId,
                 hydratedBatch,
