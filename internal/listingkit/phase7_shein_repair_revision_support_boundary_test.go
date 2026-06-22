@@ -41,11 +41,10 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 
 	for _, needle := range []string{
 		"func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview] {",
-		"func buildSheinRepairValidationPreview(pkg *SheinPackage, editorSection string, revision *ApplyRevisionRequest, skeleton *SheinEditorRevisionSkeleton) *SheinRepairValidationPreview {",
 		"sheinworkspace.BuildRepairRevisionSeed(action, patch)",
 		"request = &ApplyRevisionRequest{",
+		"validation = sheinworkspace.BuildRepairValidationPreview(pkg, editorSection, seed.Skeleton, valid, fieldErrors)",
 		"return sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]{",
-		"sheinworkspace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)",
 	} {
 		if !strings.Contains(revisionContent, needle) {
 			t.Fatalf("shein_repair_revision_support.go should contain %q", needle)
@@ -65,6 +64,7 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 		"func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayload) sheinRepairRevisionBundle {",
 		"func buildSheinRepairApplyRequest(seed sheinworkspace.RepairRevisionSeed) *ApplyRevisionRequest {",
 		"func buildSheinRepairApplyRequest(action string, payload *SheinRepairPatchPayload) *ApplyRevisionRequest {",
+		"func buildSheinRepairValidationPreview(pkg *SheinPackage, editorSection string, revision *ApplyRevisionRequest, skeleton *SheinEditorRevisionSkeleton) *SheinRepairValidationPreview {",
 		"func buildSheinRepairRevisionInput(payload *SheinRepairPatchPayload) *SheinRevisionInput {",
 		"func buildSheinRepairReason(action string) string {",
 		"type sheinRepairArtifacts = sheinworkspace.RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]",
