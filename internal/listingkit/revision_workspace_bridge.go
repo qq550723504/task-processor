@@ -1,6 +1,9 @@
 package listingkit
 
-import sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+import (
+	sheinworkspace "task-processor/internal/listingkit/workspace/shein"
+	sheindiff "task-processor/internal/marketplace/shein/workspace"
+)
 
 type RevisionHistoryNavigation = sheinworkspace.HistoryNavigation
 type RevisionHistoryRestoreContext = sheinworkspace.HistoryRestoreContext
@@ -90,7 +93,7 @@ func buildRevisionRestorePreviewFromDetail(detail *ListingKitRevisionHistoryDeta
 			CompareTo:         "current",
 			CompareRevisionID: "current",
 			RelationLabel:     "当前版本",
-			DiffPreview:       sheinworkspace.BuildRevisionDiffPreviewFromInput(detail.RestorePayload.Core.Draft),
+			DiffPreview:       sheindiff.BuildRevisionDiffPreviewFromInput(detail.RestorePayload.Core.Draft),
 		}
 	}
 	return sheinworkspace.RebuildRestorePreviewPayload(detail.RestorePayload, compare)
