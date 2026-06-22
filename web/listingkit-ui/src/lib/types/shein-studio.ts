@@ -1,37 +1,23 @@
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
+import type {
+  SheinStudioArtworkModel,
+  SheinStudioGeneratedDesign,
+  SheinStudioGenerationJob,
+  SheinStudioVariationIntensity,
+} from "@/lib/types/shein-studio-generation";
 import type { SheinStudioCreatedTask } from "@/lib/types/shein-studio-task";
 
 export type * from "@/lib/types/shein-studio-batch";
+export type * from "@/lib/types/shein-studio-generation";
 export type * from "@/lib/types/shein-studio-recent-batch";
 export type * from "@/lib/types/shein-studio-task";
-
-export type SheinStudioGeneratedDesign = {
-  id: string;
-  dataUrl?: string;
-  imageUrl?: string;
-  prompt?: string;
-  productImageUrls?: string[];
-  sourceWidth?: number;
-  sourceHeight?: number;
-  revisedPrompt?: string;
-  imageModel?: SheinStudioArtworkModel | string;
-  transparentBackground?: boolean;
-  variationIntensity?: SheinStudioVariationIntensity;
-  role?: string;
-  roleLabel?: string;
-  reviewNote?: string;
-  targetGroupKey?: string;
-  targetGroupLabel?: string;
-};
 
 export type SheinStudioImageStrategy =
   | "ai_generated"
   | "sds_official"
   | "hybrid";
 
-export type SheinStudioArtworkModel = string;
-export type SheinStudioVariationIntensity = "light" | "medium" | "strong";
 export type SheinStudioGroupedImageMode = "shared_by_size" | "per_product";
 export type SheinStudioBatchQueueMode = "generate" | "create_tasks";
 
@@ -51,18 +37,6 @@ export type SheinStudioSelectedSDSImage = {
   imageUrl: string;
   variantSku?: string;
   color?: string;
-};
-
-export type SheinStudioGenerationJobStatus =
-  | "running"
-  | "succeeded"
-  | "failed";
-
-export type SheinStudioGenerationJob = {
-  jobId: string;
-  targetGroupKey?: string;
-  targetGroupLabel?: string;
-  status: SheinStudioGenerationJobStatus;
 };
 
 export type SDSGroupedPromptHistoryEntry = {
@@ -140,27 +114,6 @@ export type SheinStudioPersistedBatchView = {
 };
 
 export type SheinStudioPersistedDraft = SheinStudioPersistedBatchView;
-
-export type SheinStudioGenerateRequest = {
-  prompt: string;
-  count: number;
-  variationIntensity?: SheinStudioVariationIntensity;
-  printableWidth?: number;
-  printableHeight?: number;
-  productReferenceImageUrls?: string[];
-  imageModel?: string;
-  transparentBackground?: boolean;
-};
-
-export type SheinStudioGenerateResponse = {
-  prompt: string;
-  printableWidth?: number;
-  printableHeight?: number;
-  imageModel?: SheinStudioArtworkModel | string;
-  transparentBackground?: boolean;
-  images: SheinStudioGeneratedDesign[];
-  warnings?: string[];
-};
 
 export type SheinStudioSavedBatch = {
   id: string;
