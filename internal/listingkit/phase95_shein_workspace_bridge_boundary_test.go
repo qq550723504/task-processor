@@ -22,11 +22,13 @@ func TestSheinWorkspaceBridgePackageRemoved(t *testing.T) {
 		`sheinpub "task-processor/internal/publishing/shein"`,
 		"type SheinPackage = sheinpub.Package",
 		"type SheinEditorContext = sheinworkspace.EditorContext",
-		"return sheinworkspace.BuildEditorContext(pkg)",
 	} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("shein_workspace_types_bridge.go should contain %q", want)
 		}
+	}
+	if strings.Contains(content, "func buildSheinEditorContext(") {
+		t.Fatal("shein_workspace_types_bridge.go should not keep editor context wrapper")
 	}
 	if strings.Contains(content, `task-processor/internal/listingkit/workspace/shein`) {
 		t.Fatal("shein_workspace_types_bridge.go should not import ListingKit SHEIN workspace bridge")

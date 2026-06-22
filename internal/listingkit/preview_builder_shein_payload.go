@@ -46,7 +46,7 @@ func buildSheinPreviewPayloadBody(input sheinPreviewPayloadBodyInput) *SheinPrev
 		RepairCenter:      input.repairCenter,
 		StatusOverview:    input.statusOverview,
 		WorkspaceOverview: input.workspaceOverview,
-		EditorContext:     buildSheinEditorContext(pkg),
+		EditorContext:     sheinworkspace.BuildEditorContext(pkg),
 		ImageBundle:       visualBase.imageBundle,
 		RenderPreviews:    visualBase.renderPreviews,
 		ScenePresets:      visualBase.scenePresets,

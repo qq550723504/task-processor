@@ -116,7 +116,7 @@ func buildRevisionHistorySnapshot(platform string, result *ListingKitResult) *Sh
 		if result.Shein == nil {
 			return nil
 		}
-		return buildSheinEditorContext(result.Shein)
+		return sheinworkspace.BuildEditorContext(result.Shein)
 	default:
 		return nil
 	}

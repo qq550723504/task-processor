@@ -1,5 +1,7 @@
 package listingkit
 
+import sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+
 import "testing"
 
 func TestBuildSheinEditorContextIncludesSuggestedPatches(t *testing.T) {
@@ -78,7 +80,7 @@ func TestBuildSheinEditorContextIncludesSuggestedPatches(t *testing.T) {
 		},
 	}
 
-	context := buildSheinEditorContext(pkg)
+	context := sheinworkspace.BuildEditorContext(pkg)
 	if context == nil {
 		t.Fatal("expected editor context")
 	}

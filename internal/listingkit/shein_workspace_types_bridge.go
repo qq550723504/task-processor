@@ -39,10 +39,6 @@ type SheinEditorCategoryContext = sheinworkspace.EditorCategoryContext
 type SheinEditorAttributeContext = sheinworkspace.EditorAttributeContext
 type SheinEditorSaleAttributeContext = sheinworkspace.EditorSaleAttributeContext
 
-func buildSheinEditorContext(pkg *SheinPackage) *SheinEditorContext {
-	return sheinworkspace.BuildEditorContext(pkg)
-}
-
 func buildSheinCategoryResolutionPatch(pkg *SheinPackage) *SheinCategoryResolutionPatch {
 	return sheinworkspace.BuildCategoryResolutionPatch(pkg)
 }
