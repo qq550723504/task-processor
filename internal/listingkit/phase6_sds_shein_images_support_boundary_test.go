@@ -13,6 +13,9 @@ func TestSDSSheinImagesSupportBoundary(t *testing.T) {
 		"func applySDSTemplateImagesToSheinWithResult(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string, options *SDSSyncOptions) bool {",
 		"func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string, options *SDSSyncOptions) bool {",
 		"func hasSDSVariantOptionMockups(options *SDSSyncOptions) bool {",
+		"func imageSetFromSDSVariantOption(item SDSSyncVariantOption, sourceImages []string) *common.ImageSet {",
+		"func imageSetFromSelectedSDSImages(items []SheinStudioSelectedSDSImage, sourceImages []string) *common.ImageSet {",
+		"func normalizeSelectedSDSImages(input []SheinStudioSelectedSDSImage) []SheinStudioSelectedSDSImage {",
 		"sheinpub.ResolveSDSImagesForSKC(pkg, skcIndex, bySKU, byColor)",
 		"sheinpub.ImageSetFromSDSMockups(summary.MockupImageURLs, sourceImages)",
 		"sheinpub.NormalizeSDSImageKey(summary.VariantColor)",
@@ -21,23 +24,11 @@ func TestSDSSheinImagesSupportBoundary(t *testing.T) {
 		"func resolveSDSImagesForSKC(pkg *sheinpub.Package, index int, bySKU map[string]*common.ImageSet, byColor map[string]*common.ImageSet) *common.ImageSet {",
 		"func sdsSKUCandidatesFromRequestSKC(skc *sheinpub.SKCRequestDraft) []string {",
 		"func imageSetFromSDSMockups(mockups []string, sourceImages []string) *common.ImageSet {",
-		"func normalizeSelectedSDSImages(input []SheinStudioSelectedSDSImage) []SheinStudioSelectedSDSImage {",
 		"func normalizeSDSColorKey(value string) string {",
 	})
 
-	supportSource := readTaskGenerationSourceFile(t, "sds_shein_images_support.go")
-	assertSourceContainsAll(t, supportSource, []string{
-		"func imageSetFromSDSVariantOption(item SDSSyncVariantOption, sourceImages []string) *common.ImageSet {",
-		"return sheinpub.ImageSetFromSDSMockups(mockups, sourceImages)",
-		"func imageSetFromSelectedSDSImages(items []SheinStudioSelectedSDSImage, sourceImages []string) *common.ImageSet {",
-		"func normalizeSelectedSDSImages(input []SheinStudioSelectedSDSImage) []SheinStudioSelectedSDSImage {",
-	})
-	assertSourceExcludesAll(t, supportSource, []string{
-		"func applySelectedSDSImagesToShein(pkg *sheinpub.Package, req *GenerateRequest, sourceImages []string) bool {",
-		"func applySDSOfficialImagesToShein(pkg *sheinpub.Package, _ *GenerateRequest, summary *SDSSyncSummary, options *SDSSyncOptions) bool {",
-		"func applySDSTemplateImagesToSheinWithResult(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string, options *SDSSyncOptions) bool {",
-		"func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyncSummary, sourceImages []string, options *SDSSyncOptions) bool {",
-		"func sdsSKUCandidatesFromRequestSKC(skc *sheinpub.SKCRequestDraft) []string {",
+	assertFileAbsent(t, "sds_shein_images_support.go")
+	assertSourceExcludesAll(t, rootSource, []string{
 		"func registerSDSVariantImageSet(",
 		"func firstSDSImageSet(",
 		"func resolveSDSImagesForSKC(",
