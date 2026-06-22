@@ -46,14 +46,21 @@ func TestSheinRepairCloneSupportBoundary(t *testing.T) {
 
 	for _, needle := range []string{
 		"func clonePlatformImageSetForEditor(set *PlatformImageSet) *PlatformImageSet {",
-		"func cloneSheinRepairPatchPayload(payload *SheinRepairPatchPayload) *SheinRepairPatchPayload {",
-		"listingworkspace.CloneRepairPatchPayload(payload)",
 		"func cloneSheinRepairArtifacts(patch *SheinRepairPatchPayload, skeleton *SheinEditorRevisionSkeleton, request *ApplyRevisionRequest, validation *SheinRepairValidationPreview) sheinRepairArtifacts {",
+		"listingworkspace.CloneRepairPatchPayload(patch)",
 		"func cloneSheinRepairValidationPreview(src *SheinRepairValidationPreview) *SheinRepairValidationPreview {",
 		"func cloneRevisionDiffPreview(src *RevisionDiffPreview) *RevisionDiffPreview {",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("shein_repair_clone_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"func cloneSheinRepairPatchPayload(payload *SheinRepairPatchPayload) *SheinRepairPatchPayload {",
+		"listingworkspace.CloneRepairPatchPayload(payload)",
+	} {
+		if strings.Contains(supportContent, needle) {
+			t.Fatalf("shein_repair_clone_support.go should not keep patch clone wrapper %q", needle)
 		}
 	}
 }

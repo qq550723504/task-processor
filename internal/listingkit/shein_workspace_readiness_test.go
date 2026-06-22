@@ -1311,7 +1311,7 @@ func TestCloneSheinRepairArtifacts(t *testing.T) {
 	}
 }
 
-func TestCloneSheinRepairPatchPayload(t *testing.T) {
+func TestWorkspaceCloneRepairPatchPayloadDeepCopiesListingKitAlias(t *testing.T) {
 	t.Parallel()
 
 	categoryID := 3001
@@ -1325,9 +1325,9 @@ func TestCloneSheinRepairPatchPayload(t *testing.T) {
 		ReviewNotes: []string{"manual review"},
 	}
 
-	cloned := cloneSheinRepairPatchPayload(payload)
+	cloned := sheinworkspace.CloneRepairPatchPayload(payload)
 	if cloned == nil {
-		t.Fatal("cloneSheinRepairPatchPayload() = nil, want clone")
+		t.Fatal("CloneRepairPatchPayload() = nil, want clone")
 	}
 	if cloned.CategoryResolution == nil || cloned.CategoryResolution.CategoryID == nil || *cloned.CategoryResolution.CategoryID != 3001 {
 		t.Fatalf("category resolution = %+v", cloned.CategoryResolution)

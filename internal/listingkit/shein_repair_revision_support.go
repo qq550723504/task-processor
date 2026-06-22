@@ -22,7 +22,7 @@ func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayl
 func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {
 	bundle := buildSheinRepairRevisionBundle(action, patch)
 	return sheinRepairArtifacts{
-		patch:      cloneSheinRepairPatchPayload(patch),
+		patch:      listingworkspace.CloneRepairPatchPayload(patch),
 		skeleton:   bundle.skeleton,
 		request:    bundle.request,
 		validation: buildSheinRepairValidationPreview(pkg, editorSection, bundle.request, bundle.skeleton),
