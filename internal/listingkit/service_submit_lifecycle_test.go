@@ -1138,7 +1138,7 @@ func TestSubmitTaskReturnsCurrentPreviewForSameInFlightIdempotencyKey(t *testing
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "in-flight-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "in-flight-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -1182,7 +1182,7 @@ func TestSubmitTaskBlocksDifferentIdempotencyKeyWhileSubmitInFlight(t *testing.T
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "in-flight-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "in-flight-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -1601,7 +1601,7 @@ func TestSubmitTaskAllowsNewAttemptWhenInFlightAttemptIsStale(t *testing.T) {
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-sheinSubmitInFlightTTL - time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "stale-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "stale-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}

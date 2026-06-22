@@ -60,7 +60,7 @@ func TestTaskSubmissionStateServicePersistSuccessfulSheinDirectResponsePersistsR
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "req-success", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "req-success", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestTaskSubmissionStateServiceFinishSheinDirectSubmitAttemptReturnsSubmitEr
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-2 * time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "req-finish", sheinpub.SubmissionPhasePersistResult, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "req-finish", sheinpub.SubmissionPhasePersistResult, startedAt, sheinSubmitInFlightTTL)
 	response := &sheinpub.SubmissionResponse{
 		Code:    "0",
 		Message: "success",
@@ -181,7 +181,7 @@ func TestTaskSubmissionStateServiceRecordSheinSubmissionFailureForStatePersistsR
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "req-failure", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "req-failure", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}

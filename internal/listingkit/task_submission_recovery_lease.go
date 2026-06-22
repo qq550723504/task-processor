@@ -86,7 +86,7 @@ func beginNewSheinSubmitLease(task *Task, pkg *SheinPackage, taskID, action, req
 	if task == nil || task.Result == nil || pkg == nil {
 		return
 	}
-	beginSheinSubmitAttempt(pkg, action, requestID, sheinpub.SubmissionPhaseValidate, startedAt)
+	sheinpub.BeginSubmitAttempt(pkg, action, requestID, sheinpub.SubmissionPhaseValidate, startedAt, sheinSubmitInFlightTTL)
 	event := sheinpub.BuildSubmissionPhaseEvent(taskID, action, sheinpub.SubmissionPhaseValidate, sheinpub.SubmissionStatusRunning, requestID, startedAt, "", nil)
 	sheinpub.AppendSubmissionEvent(pkg, event)
 	task.Result.UpdatedAt = startedAt

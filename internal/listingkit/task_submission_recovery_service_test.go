@@ -47,7 +47,7 @@ func TestTaskSubmissionRecoveryServiceBeginSheinSubmitLeaseReturnsRecoverRemoteW
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-sheinSubmitInFlightTTL - time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-remote-123", sheinpub.SubmissionPhasePrepareProduct, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "recover-remote-123", sheinpub.SubmissionPhasePrepareProduct, startedAt, sheinSubmitInFlightTTL)
 	task.Result.Shein.Submission.Publish = &sheinpub.SubmissionRecord{
 		Action:       "publish",
 		RequestID:    "recover-remote-123",
@@ -81,7 +81,7 @@ func TestTaskSubmissionRecoveryServiceBeginSheinSubmitLeaseReturnsSubmitInProgre
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "in-flight-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "in-flight-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestTaskSubmissionRecoveryServiceAcquireSheinSubmitTaskRecoversRemotePrevie
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-3 * time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-preview-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "recover-preview-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	response := &sheinpub.SubmissionResponse{
 		Code:    "0",
 		Message: "accepted",
@@ -446,7 +446,7 @@ func TestTaskSubmissionRecoveryServiceClearSheinSubmitLeaseAfterStartFailureMark
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "start-fail-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "start-fail-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -491,7 +491,7 @@ func TestTaskSubmissionRecoveryServiceHandleSheinWorkflowStartFailureReturnsOrig
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "workflow-start-fail-123", sheinpub.SubmissionPhaseValidate, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "workflow-start-fail-123", sheinpub.SubmissionPhaseValidate, startedAt, sheinSubmitInFlightTTL)
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -558,7 +558,7 @@ func TestTaskSubmissionRecoveryServiceClearSheinSubmitLeaseClearsInFlightState(t
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "clear-lease-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "clear-lease-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -588,7 +588,7 @@ func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitLocallyFinalizesRecovere
 
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-2 * time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-local-123", sheinpub.SubmissionPhasePersistResult, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "recover-local-123", sheinpub.SubmissionPhasePersistResult, startedAt, sheinSubmitInFlightTTL)
 	response := &sheinpub.SubmissionResponse{
 		Code:    "0",
 		Message: "success",
@@ -676,7 +676,7 @@ func TestBuildRecoveredSheinRemoteStateCopiesSupplierCodeIntoRecoverySnapshot(t 
 
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-2 * time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-snapshot-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "recover-snapshot-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	task.Result.Shein.Submission.Publish.SupplierCode = "SUP-snapshot"
 
 	state, err := buildRecoveredSheinRemoteState(task, "publish")
@@ -704,7 +704,7 @@ func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitViaRemoteConfirmationFin
 
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-3 * time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-remote-ok-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "recover-remote-ok-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	response := &sheinpub.SubmissionResponse{
 		Code:    "0",
 		Message: "success",
@@ -834,7 +834,7 @@ func TestTaskSubmissionRecoveryServicePersistSheinRecoveredRemoteFailurePersists
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-4 * time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-remote-fail-123", sheinpub.SubmissionPhaseConfirmRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "recover-remote-fail-123", sheinpub.SubmissionPhaseConfirmRemote, startedAt, sheinSubmitInFlightTTL)
 	response := &sheinpub.SubmissionResponse{
 		Code:    "0",
 		Message: "success",
@@ -887,7 +887,7 @@ func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitRemoteUsesLocalRecoveryF
 
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-2 * time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-route-local-123", sheinpub.SubmissionPhasePersistResult, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "recover-route-local-123", sheinpub.SubmissionPhasePersistResult, startedAt, sheinSubmitInFlightTTL)
 	response := &sheinpub.SubmissionResponse{
 		Code:    "0",
 		Message: "success",
@@ -948,7 +948,7 @@ func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitRemoteUsesRemoteConfirma
 
 	task := makeReadySheinTask()
 	startedAt := time.Now().Add(-3 * time.Minute)
-	beginSheinSubmitAttempt(task.Result.Shein, "publish", "recover-route-remote-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt)
+	sheinpub.BeginSubmitAttempt(task.Result.Shein, "publish", "recover-route-remote-123", sheinpub.SubmissionPhaseSubmitRemote, startedAt, sheinSubmitInFlightTTL)
 	response := &sheinpub.SubmissionResponse{
 		Code:    "0",
 		Message: "accepted",

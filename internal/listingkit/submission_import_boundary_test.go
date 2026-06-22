@@ -12,7 +12,7 @@ func TestRetiredListingKitSubmissionPackageStaysAbsent(t *testing.T) {
 
 	retiredDir := filepath.Join("..", "..", "internal", "listingkit", "submission")
 	if _, err := os.Stat(retiredDir); err == nil {
-		t.Fatalf("internal/listingkit/submission directory still exists; keep SHEIN transition sequencing in shein_submit_state.go")
+		t.Fatalf("internal/listingkit/submission directory still exists; keep SHEIN transition sequencing in internal/publishing/shein")
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("stat %s: %v", retiredDir, err)
 	}
