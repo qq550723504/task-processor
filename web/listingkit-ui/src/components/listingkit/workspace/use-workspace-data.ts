@@ -3,6 +3,9 @@ import { useMemo } from "react";
 import { collectSheinPreviewImageGroups } from "@/components/listingkit/shein/shein-preview-image";
 import type { SheinFlowStep } from "@/components/listingkit/shein/shein-flow-nav";
 import {
+  projectSheinReadinessActions,
+} from "@/components/listingkit/shein/shein-workspace-actions";
+import {
   deriveWorkspacePreviewSuggestion,
 } from "@/components/listingkit/workspace/workspace-preview-routing";
 import { resolveWorkspaceScenePreset } from "@/components/listingkit/workspace/workspace-scene-preset";
@@ -26,85 +29,6 @@ import { useListingKitPreview } from "@/lib/query/use-preview";
 import { useReviewPreview } from "@/lib/query/use-review-preview";
 import { useReviewSession } from "@/lib/query/use-review-session";
 import { useListingKitTaskResult } from "@/lib/query/use-task-result";
-import type { ResolvedActionSummary } from "@/lib/types/listingkit";
-
-export function buildSheinBlockingActionSummary({
-  cookieBlocked,
-  categoryBlocked,
-  attributeBlocked,
-  saleAttributeBlocked,
-  authFreshnessBlocked = false,
-  categoryFreshnessBlocked = false,
-  attributeFreshnessBlocked = false,
-  saleAttributeFreshnessBlocked = false,
-}: {
-  cookieBlocked: boolean;
-  categoryBlocked: boolean;
-  attributeBlocked: boolean;
-  saleAttributeBlocked: boolean;
-  authFreshnessBlocked?: boolean;
-  categoryFreshnessBlocked?: boolean;
-  attributeFreshnessBlocked?: boolean;
-  saleAttributeFreshnessBlocked?: boolean;
-}): ResolvedActionSummary | undefined {
-  if (cookieBlocked || authFreshnessBlocked) {
-    return {
-      title: "重新登录店铺",
-      summary: "先重新登录当前 SHEIN 店铺，恢复在线类目、属性和销售属性能力后再继续提交。",
-      cta_kind: "review",
-      action_key: "shein_online_auth",
-    };
-  }
-  if (categoryFreshnessBlocked) {
-    return {
-      title: "刷新类目模板",
-      summary: "当前 SHEIN 类目模板已经变化，先重新拉取类目结果并同步后续属性映射，再继续提交。",
-      cta_kind: "review",
-      action_key: "shein_category_template_freshness",
-    };
-  }
-  if (attributeFreshnessBlocked) {
-    return {
-      title: "刷新普通属性",
-      summary: "当前 SHEIN 普通属性模板已经变化，先重新生成并确认普通属性，再继续最终确认和提交。",
-      cta_kind: "review",
-      action_key: "shein_attribute_template_freshness",
-    };
-  }
-  if (saleAttributeFreshnessBlocked) {
-    return {
-      title: "刷新销售属性",
-      summary: "当前 SHEIN 销售属性模板已经变化，先重新生成并确认颜色、尺寸等销售属性映射，再继续提交。",
-      cta_kind: "review",
-      action_key: "shein_sale_attribute_freshness",
-    };
-  }
-  if (attributeBlocked) {
-    return {
-      title: "确认普通属性",
-      summary: "先补齐 SHEIN 模板要求的普通属性，再继续最终确认和提交。",
-      cta_kind: "review",
-      action_key: "attributes",
-    };
-  }
-  if (saleAttributeBlocked) {
-    return {
-      title: "确认销售属性",
-      summary: "先确认颜色、尺寸等销售属性映射，再继续最终确认和提交。",
-      cta_kind: "review",
-      action_key: "sale_attributes",
-    };
-  }
-  if (categoryBlocked) {
-    return {
-      title: "确认类目",
-      summary: "先确认 SHEIN 类目和类目模板，再继续最终确认和提交。",
-      cta_kind: "review",
-      action_key: "category",
-    };
-  }
-  return undefined;
-}
 
 export function useWorkspaceData({
   taskId,
@@ -197,35 +121,13 @@ export function useWorkspaceData({
     showSheinCategoryReview ||
     showSheinAttributeReview ||
     showSheinSaleAttributeReview;
-  const sheinBlockingKeys = new Set(
-    sheinPreviewPayload?.submit_readiness?.blocking_items?.map((item) => item.key) ?? [],
+  const sheinReadinessProjection = projectSheinReadinessActions(
+    sheinPreviewPayload?.submit_readiness?.blocking_items,
   );
-  const sheinAuthFreshnessBlocked = sheinBlockingKeys.has("shein_online_auth");
-  const sheinCookieBlocked =
-    sheinBlockingKeys.has("shein_cookie_unavailable") || sheinAuthFreshnessBlocked;
-  const sheinCategoryFreshnessBlocked = sheinBlockingKeys.has(
-    "shein_category_template_freshness",
-  );
-  const sheinAttributeFreshnessBlocked = sheinBlockingKeys.has(
-    "shein_attribute_template_freshness",
-  );
-  const sheinSaleAttributeFreshnessBlocked =
-    sheinBlockingKeys.has("shein_sale_attribute_freshness") ||
-    sheinBlockingKeys.has("shein_sale_attribute_template_freshness");
-  const sheinCategoryBlocked =
-    sheinCategoryFreshnessBlocked ||
-    sheinBlockingKeys.has("category") ||
-    sheinBlockingKeys.has("category_review");
-  const sheinAttributeBlocked =
-    sheinAttributeFreshnessBlocked ||
-    sheinBlockingKeys.has("attributes") ||
-    sheinBlockingKeys.has("attribute_review");
-  const sheinSaleAttributeBlocked =
-    sheinSaleAttributeFreshnessBlocked ||
-    sheinBlockingKeys.has("sale_attributes") ||
-    sheinBlockingKeys.has("variants");
-  const sheinPreviewBlocked =
-    sheinBlockingKeys.has("images") || sheinBlockingKeys.has("preview_product");
+  const sheinCategoryBlocked = sheinReadinessProjection.categoryBlocked;
+  const sheinAttributeBlocked = sheinReadinessProjection.attributeBlocked;
+  const sheinSaleAttributeBlocked = sheinReadinessProjection.saleAttributeBlocked;
+  const sheinPreviewBlocked = sheinReadinessProjection.previewBlocked;
   const sheinReadyStatus = sheinPreviewPayload?.submit_readiness?.status;
   const isSheinFinalReviewMode =
     selectedPlatform === "shein" &&
@@ -234,16 +136,8 @@ export function useWorkspaceData({
     selectedPlatform === "shein" &&
     !isSheinFinalReviewMode &&
     (sheinCategoryBlocked || sheinAttributeBlocked || sheinSaleAttributeBlocked);
-  const sheinBlockingActionSummary = buildSheinBlockingActionSummary({
-    cookieBlocked: sheinCookieBlocked,
-    categoryBlocked: sheinCategoryBlocked,
-    attributeBlocked: sheinAttributeBlocked,
-    saleAttributeBlocked: sheinSaleAttributeBlocked,
-    authFreshnessBlocked: sheinAuthFreshnessBlocked,
-    categoryFreshnessBlocked: sheinCategoryFreshnessBlocked,
-    attributeFreshnessBlocked: sheinAttributeFreshnessBlocked,
-    saleAttributeFreshnessBlocked: sheinSaleAttributeFreshnessBlocked,
-  });
+  const sheinBlockingActionSummary =
+    sheinReadinessProjection.blockingActionSummary;
   const effectiveResolvedActionSummary =
     selectedPlatform === "shein" && sheinBlockingActionSummary
       ? sheinBlockingActionSummary
