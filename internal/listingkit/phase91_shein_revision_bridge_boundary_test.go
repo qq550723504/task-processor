@@ -42,4 +42,19 @@ func TestSheinRevisionBridgeCallsMarketplaceWorkspaceDirectly(t *testing.T) {
 		"buildSheinSaleAttributeResolutionPatch(pkg)",
 		"buildSheinEditorSKCPatches(pkg)",
 	})
+
+	src, err := os.ReadFile("shein_workspace_revision_bridge.go")
+	if err != nil {
+		t.Fatalf("ReadFile(shein_workspace_revision_bridge.go) error = %v", err)
+	}
+	content := string(src)
+	for _, forbidden := range []string{
+		"func buildSheinMinimalRevisionSkeleton(",
+		"func pruneSheinRevisionInput(",
+		"func isEmptySheinRevisionInput(",
+	} {
+		if strings.Contains(content, forbidden) {
+			t.Fatalf("shein_workspace_revision_bridge.go should not keep unused revision wrapper %q", forbidden)
+		}
+	}
 }

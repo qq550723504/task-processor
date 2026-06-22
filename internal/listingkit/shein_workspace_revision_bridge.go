@@ -20,15 +20,3 @@ func buildSheinEditorRevisionSkeleton(pkg *SheinPackage) *SheinEditorRevisionSke
 		buildSheinEditorSKCPatches(pkg),
 	)
 }
-
-func buildSheinMinimalRevisionSkeleton(pkg *SheinPackage) *SheinEditorRevisionSkeleton {
-	return sheinworkspace.BuildMinimalRevisionSkeleton(buildSheinEditorRevisionSkeleton(pkg))
-}
-
-func pruneSheinRevisionInput(input *SheinRevisionInput) *SheinRevisionInput {
-	return sheinworkspace.PruneRevisionInput(input)
-}
-
-func isEmptySheinRevisionInput(input *SheinRevisionInput) bool {
-	return sheinworkspace.IsEmptyRevisionInput(input)
-}
