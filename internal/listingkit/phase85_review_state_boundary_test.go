@@ -64,7 +64,7 @@ func TestSheinReviewStateBoundary(t *testing.T) {
 			"result.Summary.Warnings = sheinworkspace.FilterOutCookieUnavailableReviewNotes(result.Summary.Warnings)",
 		})
 
-		readinessSource := readNamedFunctionSource(t, "shein_submit_readiness_checks_support.go", "buildSheinSubmitReadinessChecks")
+		readinessSource := readNamedFunctionSource(t, "shein_submit_readiness.go", "buildSheinSubmitReadinessChecks")
 		assertSourceContainsAll(t, readinessSource, []string{
 			"!sheinworkspace.HasCookieUnavailableReviewNotes(pkg)",
 		})

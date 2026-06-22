@@ -29,7 +29,6 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func buildSheinReadinessGuidance(",
 		"func sheinHasSubmitImage(pkg *SheinPackage) bool {",
 		"func sheinFinalImagesReadyForAction(pkg *SheinPackage, action string) (bool, string) {",
-		"func buildSheinSubmitReadinessChecks(",
 	} {
 		if strings.Contains(homeContent, needle) {
 			t.Fatalf("shein_submit_readiness.go should delegate helper seam %q", needle)
@@ -158,9 +157,9 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		}
 	}
 
-	checksSrc, err := os.ReadFile("shein_submit_readiness_checks_support.go")
+	checksSrc, err := os.ReadFile("shein_submit_readiness.go")
 	if err != nil {
-		t.Fatalf("ReadFile(shein_submit_readiness_checks_support.go) error = %v", err)
+		t.Fatalf("ReadFile(shein_submit_readiness.go) error = %v", err)
 	}
 	checksContent := string(checksSrc)
 
@@ -172,7 +171,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"sheinworkspace.BuildSubmitReadinessCheck(",
 	} {
 		if !strings.Contains(checksContent, needle) {
-			t.Fatalf("shein_submit_readiness_checks_support.go should contain %q", needle)
+			t.Fatalf("shein_submit_readiness.go should contain %q", needle)
 		}
 	}
 	for _, needle := range []string{
@@ -186,7 +185,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"return sheinpub.FinalReviewMessage(action)",
 	} {
 		if strings.Contains(checksContent, needle) {
-			t.Fatalf("shein_submit_readiness_checks_support.go should not keep readiness wrapper %q", needle)
+			t.Fatalf("shein_submit_readiness.go should not keep readiness wrapper %q", needle)
 		}
 	}
 	for _, needle := range []string{
@@ -199,9 +198,10 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		`"sale_attributes",`,
 	} {
 		if strings.Contains(checksContent, needle) {
-			t.Fatalf("shein_submit_readiness_checks_support.go should delegate check construction, found %q", needle)
+			t.Fatalf("shein_submit_readiness.go should delegate check construction, found %q", needle)
 		}
 	}
+	assertFileAbsent(t, "shein_submit_readiness_checks_support.go")
 
 	workspacePayloadSrc, err := os.ReadFile("../marketplace/shein/workspace/submit_payload_readiness_checks.go")
 	if err != nil {
