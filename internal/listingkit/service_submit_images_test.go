@@ -281,7 +281,7 @@ func TestSubmitTaskReusesSheinImageUploadCache(t *testing.T) {
 		t.Fatalf("get task: %v", err)
 	}
 	cache := saved.Result.Shein.FinalDraft.SheinImageUploadCache
-	if cache[sourceImage] == "" || !isSheinUploadedImageURL(cache[sourceImage]) {
+	if cache[sourceImage] == "" || !sheinpub.IsUploadedImageURL(cache[sourceImage]) {
 		t.Fatalf("upload cache = %+v, want shein uploaded url for source", cache)
 	}
 }

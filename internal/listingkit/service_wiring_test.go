@@ -2697,9 +2697,9 @@ func TestSheinImageUploadPreviewHelpersLiveOutsideSubmitImageRuntime(t *testing.
 		"func buildSheinImageUploadPreflight(pkg *SheinPackage) *SheinImageUploadPreflight {",
 		"return sheinworkspace.BuildImageUploadPreflight(",
 		`sheinworkspace "task-processor/internal/marketplace/shein/workspace"`,
-		"isSheinUploadedImageURL,",
-		"sheinImageUploadCacheHit,",
-		"isSDSImageURL,",
+		"sheinpub.IsUploadedImageURL,",
+		"sheinImageUploadCache(pkg)[strings.TrimSpace(sourceURL)]",
+		"sheinpub.IsSDSImageURL,",
 	} {
 		if !strings.Contains(previewHelpersContent, needle) {
 			t.Fatalf("preview_builder_shein_image_upload.go should contain %q", needle)

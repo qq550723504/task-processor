@@ -82,7 +82,7 @@ func (s *taskDirectSubmissionService) prepareDirectSubmitProduct(ctx context.Con
 }
 
 func sheinDirectSubmitNeedsImageUpload(submitProduct *sheinproduct.Product) bool {
-	return sheinProductPendingImageUploadCount(submitProduct) > 0
+	return sheinpub.ProductPendingImageUploadCount(submitProduct) > 0
 }
 
 func (s *taskDirectSubmissionService) uploadPendingDirectSubmitImages(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, submitProduct *sheinproduct.Product, opts submissiondomain.DirectSubmitFlowOptions) error {

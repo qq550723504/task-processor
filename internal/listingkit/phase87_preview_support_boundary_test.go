@@ -47,9 +47,9 @@ func TestSheinPreviewSupportBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, source, []string{
 			"return sheinworkspace.BuildImageUploadPreflight(",
-			"isSheinUploadedImageURL,",
-			"sheinImageUploadCacheHit,",
-			"isSDSImageURL,",
+			"sheinpub.IsUploadedImageURL,",
+			"sheinImageUploadCache(pkg)[strings.TrimSpace(sourceURL)]",
+			"sheinpub.IsSDSImageURL,",
 		})
 		if !strings.Contains(string(fileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
 			t.Fatal("preview_builder_shein_image_upload.go should call marketplace SHEIN workspace directly")

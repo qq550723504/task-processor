@@ -16,17 +16,8 @@ func TestSheinSubmitImageUploadSupportBoundary(t *testing.T) {
 	rootContent := string(rootSrc)
 
 	for _, needle := range []string{
-		"func cloneSheinProductForSubmit(product *sheinproduct.Product) (*sheinproduct.Product, error) {",
-		"func sheinProductImageURLCount(product *sheinproduct.Product) int {",
-		"func sheinProductPendingImageUploadCount(product *sheinproduct.Product) int {",
-		"func sheinImageInfoURLCount(info *sheinproduct.ImageInfo) int {",
-		"func sheinImageInfoPendingUploadCount(info *sheinproduct.ImageInfo) int {",
 		"func uploadSheinProductImages(product *sheinproduct.Product, uploader sheinimage.ImageAPI, cached map[string]string) (int, map[string]string, error) {",
-		"func isSheinUploadedImageURL(url string) bool {",
-		"func isSDSImageURL(url string) bool {",
 		"func sheinImageUploadCache(pkg *SheinPackage) map[string]string {",
-		"func sheinImageUploadCacheHit(pkg *SheinPackage, sourceURL string) bool {",
-		"func cloneSheinImageUploadCache(input map[string]string) map[string]string {",
 	} {
 		if !strings.Contains(rootContent, needle) {
 			t.Fatalf("shein_submit_images.go should contain %q", needle)
@@ -40,6 +31,15 @@ func TestSheinSubmitImageUploadSupportBoundary(t *testing.T) {
 		"func runSheinImageUploadJobs(jobs map[string]sheinImageUploadJob, uploader sheinimage.ImageAPI, uploaded map[string]string, existing map[string]string) (int, error) {",
 		"func uploadSingleSheinImage(job sheinImageUploadJob, uploader sheinimage.ImageAPI, existing map[string]string) (string, error) {",
 		"func uploadSheinImageInfo(info *sheinproduct.ImageInfo, uploader sheinimage.ImageAPI, uploaded map[string]string) (int, error) {",
+		"func cloneSheinProductForSubmit(",
+		"func sheinProductImageURLCount(",
+		"func sheinProductPendingImageUploadCount(",
+		"func sheinImageInfoURLCount(",
+		"func sheinImageInfoPendingUploadCount(",
+		"func isSheinUploadedImageURL(",
+		"func isSDSImageURL(",
+		"func sheinImageUploadCacheHit(",
+		"func cloneSheinImageUploadCache(",
 	} {
 		if strings.Contains(rootContent, needle) {
 			t.Fatalf("shein_submit_images.go should delegate upload support helper %q", needle)

@@ -15,7 +15,7 @@ func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.C
 		return nil, err
 	}
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	submitProduct, err := cloneSheinProductForSubmit(pkg.PreviewPayload)
+	submitProduct, err := sheinpub.CloneProductForSubmit(pkg.PreviewPayload)
 	if err != nil {
 		return nil, err
 	}

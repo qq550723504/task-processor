@@ -44,7 +44,7 @@ func validatePreparedSheinSubmitPayload(pkg *SheinPackage) error {
 	if pkg == nil || pkg.PreviewPayload == nil {
 		return nil
 	}
-	product, err := cloneSheinProductForSubmit(pkg.PreviewPayload)
+	product, err := sheinpub.CloneProductForSubmit(pkg.PreviewPayload)
 	if err != nil {
 		return err
 	}

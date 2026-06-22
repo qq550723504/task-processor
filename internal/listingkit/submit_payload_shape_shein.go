@@ -14,7 +14,7 @@ func newSheinPreparedSubmitPayload(taskID string, action string, requestID strin
 		Action:           action,
 		RequestID:        requestID,
 		Product:          product,
-		NeedsImageUpload: sheinProductPendingImageUploadCount(product) > 0,
+		NeedsImageUpload: sheinpub.ProductPendingImageUploadCount(product) > 0,
 		Snapshot:         snapshot,
 	}
 }
