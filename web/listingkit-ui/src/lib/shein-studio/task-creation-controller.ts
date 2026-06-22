@@ -13,6 +13,7 @@ import type {
 import type {
   GroupedSheinTaskCreationWarning,
 } from "@/lib/shein-studio/create-review-tasks";
+import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
 
 type TaskCreationGroupSelection = {
   selection: SDSProductVariantSelection;
@@ -96,6 +97,33 @@ type ExecuteStandaloneTaskCreationInput = {
 type ExecuteStandaloneTaskCreationResult = {
   availableTasks: SheinStudioCreatedTask[];
   warnings: GroupedSheinTaskCreationWarning[];
+};
+
+type CreateBatchTasksOptions = {
+  tenantId?: string;
+  allowPartialWhileGenerating?: boolean;
+};
+
+type ExecuteItemizedBatchTaskCreationInput = {
+  allowPartialWhileGenerating: boolean;
+  approvedDesignIds: string[];
+  batchId: string;
+  createBatchTasks: (
+    batchId: string,
+    approvedDesignIds: string[],
+    options?: CreateBatchTasksOptions,
+  ) => Promise<SheinStudioBatchTaskCreationResult>;
+  onCreated: (result: SheinStudioBatchTaskCreationResult) => void;
+  tenantId?: string;
+};
+
+type ExecuteItemizedBatchTaskCreationResult = {
+  created: SheinStudioCreatedTask[];
+  reused: SheinStudioCreatedTask[];
+  rejected: SheinStudioRejectedTask[];
+  failed: SheinStudioFailedTask[];
+  keepCreatingState: boolean;
+  rawResult: SheinStudioBatchTaskCreationResult;
 };
 
 export function resolveTaskCreationStartValidation({
@@ -295,4 +323,34 @@ export async function executeStandaloneTaskCreation({
   }
 
   return { availableTasks: created, warnings };
+}
+
+export async function executeItemizedBatchTaskCreation({
+  allowPartialWhileGenerating,
+  approvedDesignIds,
+  batchId,
+  createBatchTasks,
+  onCreated,
+  tenantId,
+}: ExecuteItemizedBatchTaskCreationInput): Promise<ExecuteItemizedBatchTaskCreationResult> {
+  const trimmedTenantId = tenantId?.trim();
+  const requestOptions = {
+    ...(trimmedTenantId ? { tenantId: trimmedTenantId } : {}),
+    ...(allowPartialWhileGenerating
+      ? { allowPartialWhileGenerating: true }
+      : {}),
+  };
+  const result =
+    Object.keys(requestOptions).length > 0
+      ? await createBatchTasks(batchId, approvedDesignIds, requestOptions)
+      : await createBatchTasks(batchId, approvedDesignIds);
+  onCreated(result);
+  return {
+    created: result.createdTasks,
+    reused: result.reusedTasks ?? [],
+    rejected: result.rejectedTasks ?? [],
+    failed: result.failedTasks ?? [],
+    keepCreatingState: result.batch.status === "tasks_creating",
+    rawResult: result,
+  };
 }

@@ -18,6 +18,7 @@ import {
 } from "@/lib/shein-studio/create-review-tasks";
 import {
   buildBatchTaskCreationFailureSummary,
+  executeItemizedBatchTaskCreation,
   executeStandaloneTaskCreation,
   resolveTaskCreationStartValidation,
 } from "@/lib/shein-studio/task-creation-controller";
@@ -177,31 +178,19 @@ export function useSheinStudioTaskCreationAction({
       let batchTaskRejections: SheinStudioRejectedTask[] = [];
 
       if (itemizedBatchContext) {
-        const batchTenantId = itemizedBatchContext.tenantId?.trim();
-        const approvedDesignIds = approvedDesignIdsForTaskCreation;
-        const requestOptions = {
-          ...(batchTenantId ? { tenantId: batchTenantId } : {}),
-          ...(allowPartialWhileGenerating
-            ? { allowPartialWhileGenerating: true }
-            : {}),
-        };
-        const hasRequestOptions = Object.keys(requestOptions).length > 0;
-        const result = hasRequestOptions
-          ? await createSheinStudioBatchTasks(
-              itemizedBatchContext.batchId,
-              approvedDesignIds,
-              requestOptions,
-            )
-          : await createSheinStudioBatchTasks(
-              itemizedBatchContext.batchId,
-              approvedDesignIds,
-            );
-        created = result.createdTasks;
-        reused = result.reusedTasks ?? [];
-        batchTaskRejections = result.rejectedTasks ?? [];
-        batchTaskFailures = result.failedTasks ?? [];
-        itemizedBatchContext.onCreated(result);
-        keepCreatingState = result.batch.status === "tasks_creating";
+        const result = await executeItemizedBatchTaskCreation({
+          allowPartialWhileGenerating,
+          approvedDesignIds: approvedDesignIdsForTaskCreation,
+          batchId: itemizedBatchContext.batchId,
+          createBatchTasks: createSheinStudioBatchTasks,
+          onCreated: itemizedBatchContext.onCreated,
+          tenantId: itemizedBatchContext.tenantId,
+        });
+        created = result.created;
+        reused = result.reused;
+        batchTaskRejections = result.rejected;
+        batchTaskFailures = result.failed;
+        keepCreatingState = result.keepCreatingState;
         if (keepCreatingState) {
           setCreatingMessage("已开始在后台创建 SHEIN 资料，可离开当前页面，结果会自动刷新。");
           setCreatingWarning("");

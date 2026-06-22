@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildBatchTaskCreationFailureSummary,
   buildGroupedTaskCreationWarningSummary,
+  executeItemizedBatchTaskCreation,
   executeStandaloneTaskCreation,
   groupTaskCreationSelectionsByStore,
   resolveTaskCreationStartValidation,
@@ -212,5 +213,68 @@ describe("SHEIN Studio task creation controller", () => {
       { navigationTriggered: true, source: "task_creation_success" },
     );
     expect(localWorkflowStateRef.current).toBe(true);
+  });
+
+  it("executes itemized batch task creation with tenant and partial options", async () => {
+    const resultPayload = {
+      batch: {
+        id: "batch-1",
+        status: "tasks_creating",
+      },
+      createdTasks: [
+        {
+          id: "task-1",
+          designId: "design-1",
+          title: "Task 1",
+        },
+      ],
+      reusedTasks: [
+        {
+          id: "task-2",
+          designId: "design-2",
+          title: "Task 2",
+        },
+      ],
+      rejectedTasks: [
+        {
+          designId: "design-3",
+          title: "Rejected design",
+          message: "not eligible",
+        },
+      ],
+      failedTasks: [
+        {
+          designId: "design-4",
+          title: "Failed design",
+          message: "backend failed",
+        },
+      ],
+    };
+    const createBatchTasks = vi.fn().mockResolvedValue(resultPayload);
+    const onCreated = vi.fn();
+
+    const result = await executeItemizedBatchTaskCreation({
+      allowPartialWhileGenerating: true,
+      approvedDesignIds: ["design-1", "design-2"],
+      batchId: "batch-1",
+      createBatchTasks,
+      onCreated,
+      tenantId: " tenant-1 ",
+    });
+
+    expect(createBatchTasks).toHaveBeenCalledWith(
+      "batch-1",
+      ["design-1", "design-2"],
+      { tenantId: "tenant-1", allowPartialWhileGenerating: true },
+    );
+    expect(onCreated).toHaveBeenCalledWith(resultPayload);
+    expect(result).toEqual({
+      created: resultPayload.createdTasks,
+      reused: resultPayload.reusedTasks,
+      rejected: resultPayload.rejectedTasks,
+      failed: resultPayload.failedTasks,
+      keepCreatingState: true,
+      rawResult: resultPayload,
+    });
   });
 });
