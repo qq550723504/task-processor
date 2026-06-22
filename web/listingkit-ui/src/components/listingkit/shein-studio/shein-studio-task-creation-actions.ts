@@ -17,6 +17,12 @@ import {
   type GroupedSheinTaskCreationWarning,
   createSheinReviewTasks,
 } from "@/lib/shein-studio/create-review-tasks";
+import {
+  buildBatchTaskCreationFailureSummary,
+  buildGroupedTaskCreationWarningSummary,
+  groupTaskCreationSelectionsByStore,
+  resolveTaskCreationStartValidation,
+} from "@/lib/shein-studio/task-creation-controller";
 import { useToast } from "@/components/providers/toast-provider";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
@@ -111,18 +117,6 @@ export function useSheinStudioTaskCreationAction({
   const toast = useToast();
 
   async function handleCreateTasks() {
-    if (!activeSelection?.variantId) {
-      setCreatingError("请先选择 SDS 变体。");
-      setCreatingWarning("");
-      toast.error("无法创建 SHEIN 资料", "请先选择 SDS 变体。");
-      return;
-    }
-    if (!sheinStoreId.trim()) {
-      setCreatingError("请先选择批次店铺。");
-      setCreatingWarning("");
-      toast.error("无法创建 SHEIN 资料", "请先选择批次店铺。");
-      return;
-    }
     const approvedDesignIdsForTaskCreation = itemizedBatchContext
       ? getApprovedItemizedBatchDesignIDs(itemizedBatchContext.detail)
       : selectedIds;
@@ -133,10 +127,19 @@ export function useSheinStudioTaskCreationAction({
     const approved = candidateDesigns.filter((design) =>
       approvedDesignIDSet.has(design.id),
     );
-    if (approved.length === 0) {
-      setCreatingError("请至少批准 1 个款式后再创建 SHEIN 任务。");
+    const startValidation = resolveTaskCreationStartValidation({
+      activeSelection,
+      approvedCount: approved.length,
+      sheinStoreId,
+    });
+    if (startValidation) {
+      setCreatingError(startValidation.error);
       setCreatingWarning("");
-      toast.error("无法创建 SHEIN 资料", "请至少批准 1 个款式后再创建 SHEIN 任务。");
+      toast.error("无法创建 SHEIN 资料", startValidation.error);
+      return;
+    }
+    const taskCreationSelection = activeSelection;
+    if (!taskCreationSelection) {
       return;
     }
     let allowPartialWhileGenerating = false;
@@ -228,7 +231,7 @@ export function useSheinStudioTaskCreationAction({
               sheinStoreId,
               selections: [
                 {
-                  selection: activeSelection,
+                  selection: taskCreationSelection,
                   baselineStatus: activeSelectionBaselineStatus,
                   baselineReason: activeSelectionBaselineReason,
                   eligible: true,
@@ -236,17 +239,19 @@ export function useSheinStudioTaskCreationAction({
               ],
               approvedDesigns: approved,
             },
-            ...groupSelectionsByStore(groupedSelections).map((group) => ({
-              sheinStoreId: group.sheinStoreId,
-              selections: group.items.map((item) => ({
-                selection: item.selection,
-                baselineStatus: item.baselineStatus,
-                baselineReason: item.baselineReason,
-                eligible: item.eligible,
-                eligibilityReason: item.eligibilityReason,
-              })),
-              approvedDesigns: approved,
-            })),
+            ...groupTaskCreationSelectionsByStore(groupedSelections).map(
+              (group) => ({
+                sheinStoreId: group.sheinStoreId,
+                selections: group.items.map((item) => ({
+                  selection: item.selection,
+                  baselineStatus: item.baselineStatus,
+                  baselineReason: item.baselineReason,
+                  eligible: item.eligible,
+                  eligibilityReason: item.eligibilityReason,
+                })),
+                approvedDesigns: approved,
+              }),
+            ),
           ],
         });
         created = result.created;
@@ -261,7 +266,7 @@ export function useSheinStudioTaskCreationAction({
           productImagePrompt,
           productImagePrompts,
           renderSizeImagesWithSds,
-          selection: activeSelection,
+          selection: taskCreationSelection,
           approvedDesigns: approved,
           onProgress: setCreatingMessage,
         });
@@ -338,65 +343,4 @@ export function useSheinStudioTaskCreationAction({
 
 function buildInFlightTaskCreationConfirmation(approvedCount: number) {
   return `当前批次仍有图片正在生成。本次只会为当前已批准的 ${approvedCount} 个款式创建 SHEIN 资料，剩余图片生成完成并批准后需要再次创建。是否继续？`;
-}
-
-function buildBatchTaskCreationFailureSummary(
-  failedTasks: SheinStudioFailedTask[],
-  rejectedTasks: SheinStudioRejectedTask[] = [],
-) {
-  if (failedTasks.length === 0 && rejectedTasks.length === 0) {
-    return "";
-  }
-  const rejectedPreview = rejectedTasks
-    .slice(0, 3)
-    .map((task) => `${task.title?.trim() || task.designId}: ${task.reasonCode ? `${task.reasonCode} · ` : ""}${task.message ?? "候选不满足创建条件"}`)
-    .join("；");
-  const failedPreview = failedTasks
-    .slice(0, Math.max(0, 3 - rejectedTasks.length))
-    .map((task) => `${task.title}: ${task.reasonCode ? `${task.reasonCode} · ` : ""}${task.message}`)
-    .join("；");
-  const preview = [rejectedPreview, failedPreview].filter(Boolean).join("；");
-  const total = rejectedTasks.length + failedTasks.length;
-  const suffix = total > 3 ? ` 等 ${total} 个任务` : "";
-  if (failedTasks.length === 0) {
-    return `部分任务被拒绝：${preview}${suffix}`;
-  }
-  if (rejectedTasks.length === 0) {
-    return `部分任务创建失败：${preview}${suffix}`;
-  }
-  return `部分任务被拒绝或创建失败：${preview}${suffix}`;
-}
-
-function buildGroupedTaskCreationWarningSummary(
-  warnings: GroupedSheinTaskCreationWarning[],
-) {
-  if (warnings.length === 0) {
-    return "";
-  }
-  const labels = warnings.map((warning) => warning.label.trim()).filter(Boolean);
-  const preview = labels.slice(0, 5).join("、");
-  const suffix =
-    labels.length > 5
-      ? ` 等 ${labels.length} 款商品`
-      : labels.length > 1
-        ? ` 共 ${labels.length} 款商品`
-        : "";
-  return `有 ${warnings.length} 款商品因为没有匹配到自己的款式图而被跳过：${preview}${suffix}。这些商品不会创建错误任务，你可以回到生成区补图后再重试。`;
-}
-
-function groupSelectionsByStore(items: GroupedSDSSelectionEligibility[]) {
-  const byStore = new Map<
-    string,
-    { sheinStoreId: string; items: GroupedSDSSelectionEligibility[] }
-  >();
-  for (const item of items) {
-    const key = item.sheinStoreId.trim();
-    const existing = byStore.get(key);
-    if (existing) {
-      existing.items.push(item);
-      continue;
-    }
-    byStore.set(key, { sheinStoreId: key, items: [item] });
-  }
-  return [...byStore.values()];
 }
