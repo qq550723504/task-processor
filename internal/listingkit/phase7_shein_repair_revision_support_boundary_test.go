@@ -44,7 +44,9 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 	for _, needle := range []string{
 		"func buildSheinRepairRevisionBundle(action string, payload *SheinRepairPatchPayload) sheinRepairRevisionBundle {",
 		"func buildSheinRepairArtifacts(pkg *SheinPackage, action string, editorSection string, patch *SheinRepairPatchPayload) sheinRepairArtifacts {",
+		"func buildSheinRepairValidationPreview(pkg *SheinPackage, editorSection string, revision *ApplyRevisionRequest, skeleton *SheinEditorRevisionSkeleton) *SheinRepairValidationPreview {",
 		"listingworkspace.BuildRepairRevisionSeed(action, payload)",
+		"listingworkspace.BuildRepairValidationPreview(pkg, editorSection, skeleton, valid, fieldErrors)",
 	} {
 		if !strings.Contains(revisionContent, needle) {
 			t.Fatalf("shein_repair_revision_support.go should contain %q", needle)
@@ -71,4 +73,5 @@ func TestSheinRepairRevisionSupportBoundary(t *testing.T) {
 			t.Fatalf("shein_repair_revision_support.go should not keep unused repair revision wrapper %q", needle)
 		}
 	}
+	assertFileAbsent(t, "shein_repair_validation_support.go")
 }
