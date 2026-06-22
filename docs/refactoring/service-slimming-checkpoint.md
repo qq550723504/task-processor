@@ -42,9 +42,9 @@ internal/listingkit/service_admin_collaborators.go       // admin collaborator a
 internal/listingkit/service_admin_wiring_support.go      // admin collaborator wiring plus config assembly helpers
 internal/listingkit/service_ai_client_settings_entrypoints.go // AI client settings entrypoints
 internal/listingkit/service_child_task_retry_logic.go    // child task retry logic
-internal/listingkit/service_shein_category_search_entrypoint.go // SHEIN category search entrypoint
 internal/listingkit/service_shein_category_api_helpers.go   // SHEIN category/attribute API helpers
-internal/listingkit/service_shein_category_search_support.go // SHEIN category search support
+internal/listingkit/service_shein_settings_entrypoints.go // SHEIN settings and category search facade delegates
+internal/marketplace/shein/workspace/category_search.go // SHEIN category search ranking and projection rules
 internal/listingkit/service_shein_store_resolution_support.go // SHEIN store-resolution support
 internal/listingkit/service_shein_cookie_preview_helper.go  // SHEIN cookie preview helper
 internal/listingkit/service_shein_cookie_availability_note_helper.go // SHEIN cookie availability note helper
@@ -54,7 +54,6 @@ internal/listingkit/service_shein_pricing_preview_entrypoint.go // SHEIN pricing
 internal/listingkit/service_shein_resolution_cache_clear_entrypoint.go // SHEIN resolution cache clear entrypoint
 internal/listingkit/service_shein_submission_event_listing_entrypoint.go // SHEIN submission event listing entrypoint
 internal/listingkit/service_shein_store_selection_resolvers.go // SHEIN store selection helpers
-internal/listingkit/service_shein_settings_entrypoints.go // SHEIN settings entrypoints
 internal/listingkit/service_shein_store_settings_entrypoints.go // SHEIN store settings entrypoints
 internal/listingkit/service_process_entry.go             // process entry logic
 internal/listingkit/service_process_review_helper.go     // process review helper

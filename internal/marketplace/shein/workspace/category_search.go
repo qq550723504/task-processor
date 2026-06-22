@@ -1,4 +1,4 @@
-package listingkit
+package workspace
 
 import (
 	"sort"
@@ -7,15 +7,25 @@ import (
 	sheincategory "task-processor/internal/shein/api/category"
 )
 
-const maxSheinCategorySearchResults = 20
+const maxCategorySearchResults = 20
 
-type sheinCategorySearchMatch struct {
-	candidate SheinCategorySearchCandidate
+type CategorySearchCandidate struct {
+	CategoryID     int
+	CategoryIDList []int
+	CategoryPath   []string
+	ProductTypeID  int
+	TopCategoryID  int
+	Source         string
+	MatchReason    string
+}
+
+type categorySearchMatch struct {
+	candidate CategorySearchCandidate
 	score     int
 }
 
-func searchSheinCategoryCandidates(nodes []sheincategory.CategoryTreeNode, query string) []SheinCategorySearchCandidate {
-	matches := make([]sheinCategorySearchMatch, 0)
+func SearchCategoryCandidates(nodes []sheincategory.CategoryTreeNode, query string) []CategorySearchCandidate {
+	matches := make([]categorySearchMatch, 0)
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 	tokens := strings.Fields(normalizedQuery)
 
@@ -24,13 +34,13 @@ func searchSheinCategoryCandidates(nodes []sheincategory.CategoryTreeNode, query
 		currentPathNames := append(append([]string(nil), pathNames...), strings.TrimSpace(node.CategoryName))
 		currentPathIDs := append(append([]int(nil), pathIDs...), node.CategoryID)
 		if node.LastCategory || len(node.Children) == 0 {
-			if score, ok := sheinCategoryMatchScore(currentPathNames, normalizedQuery, tokens); ok {
+			if score, ok := categoryMatchScore(currentPathNames, normalizedQuery, tokens); ok {
 				topCategoryID := 0
 				if len(currentPathIDs) > 0 {
 					topCategoryID = currentPathIDs[0]
 				}
-				matches = append(matches, sheinCategorySearchMatch{
-					candidate: SheinCategorySearchCandidate{
+				matches = append(matches, categorySearchMatch{
+					candidate: CategorySearchCandidate{
 						CategoryID:     node.CategoryID,
 						CategoryIDList: currentPathIDs,
 						CategoryPath:   currentPathNames,
@@ -63,18 +73,18 @@ func searchSheinCategoryCandidates(nodes []sheincategory.CategoryTreeNode, query
 		return strings.Join(matches[i].candidate.CategoryPath, " > ") < strings.Join(matches[j].candidate.CategoryPath, " > ")
 	})
 
-	if len(matches) > maxSheinCategorySearchResults {
-		matches = matches[:maxSheinCategorySearchResults]
+	if len(matches) > maxCategorySearchResults {
+		matches = matches[:maxCategorySearchResults]
 	}
 
-	items := make([]SheinCategorySearchCandidate, 0, len(matches))
+	items := make([]CategorySearchCandidate, 0, len(matches))
 	for _, match := range matches {
 		items = append(items, match.candidate)
 	}
 	return items
 }
 
-func sheinCategoryMatchScore(path []string, normalizedQuery string, tokens []string) (int, bool) {
+func categoryMatchScore(path []string, normalizedQuery string, tokens []string) (int, bool) {
 	if len(path) == 0 {
 		return 0, false
 	}

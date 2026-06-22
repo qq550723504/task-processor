@@ -1,4 +1,4 @@
-package listingkit
+package workspace
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 	sheincategory "task-processor/internal/shein/api/category"
 )
 
-func TestSearchSheinCategoryCandidatesMatchesLeafAndPath(t *testing.T) {
+func TestSearchCategoryCandidatesMatchesLeafAndPath(t *testing.T) {
 	t.Parallel()
 
 	tree := []sheincategory.CategoryTreeNode{
@@ -32,7 +32,7 @@ func TestSearchSheinCategoryCandidatesMatchesLeafAndPath(t *testing.T) {
 		},
 	}
 
-	results := searchSheinCategoryCandidates(tree, "sleep mask")
+	results := SearchCategoryCandidates(tree, "sleep mask")
 	if len(results) != 1 {
 		t.Fatalf("result count = %d, want 1", len(results))
 	}
@@ -47,7 +47,7 @@ func TestSearchSheinCategoryCandidatesMatchesLeafAndPath(t *testing.T) {
 	}
 }
 
-func TestSearchSheinCategoryCandidatesPrefersBetterLeafMatch(t *testing.T) {
+func TestSearchCategoryCandidatesPrefersBetterLeafMatch(t *testing.T) {
 	t.Parallel()
 
 	tree := []sheincategory.CategoryTreeNode{
@@ -61,7 +61,7 @@ func TestSearchSheinCategoryCandidatesPrefersBetterLeafMatch(t *testing.T) {
 		},
 	}
 
-	results := searchSheinCategoryCandidates(tree, "sports")
+	results := SearchCategoryCandidates(tree, "sports")
 	if len(results) < 2 {
 		t.Fatalf("result count = %d, want at least 2", len(results))
 	}

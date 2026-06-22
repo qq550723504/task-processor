@@ -2748,32 +2748,38 @@ func TestSheinSettingsEntrypointsFileOwnsCategorySearchDelegate(t *testing.T) {
 		t.Fatalf("ReadFile(service_shein_category_search.go) unexpected error = %v", err)
 	}
 
-	categorySrc, err := os.ReadFile("service_shein_category_search_support.go")
+	if _, err := os.ReadFile("service_shein_category_search_support.go"); err == nil {
+		t.Fatal("service_shein_category_search_support.go should be removed after category search ranking moved to SHEIN workspace")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(service_shein_category_search_support.go) unexpected error = %v", err)
+	}
+
+	adminSrc, err := os.ReadFile("shein_admin_service.go")
 	if err != nil {
-		t.Fatalf("ReadFile(service_shein_category_search_support.go) error = %v", err)
+		t.Fatalf("ReadFile(shein_admin_service.go) error = %v", err)
 	}
-	categoryContent := string(categorySrc)
-
-	if strings.Contains(categoryContent, "func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {") {
-		t.Fatalf("service_shein_category_search_support.go should not contain %q", "func (s *service) SearchSheinCategories(ctx context.Context, taskID string, query string) (*SheinCategorySearchResult, error) {")
-	}
-
+	adminContent := string(adminSrc)
 	for _, needle := range []string{
-		"func (s *service) buildSheinAttributeAPI(ctx context.Context, task *Task) (sheinpub.AttributeAPI, error) {",
-		"func (s *service) buildSheinCategoryAPI(ctx context.Context, task *Task) (sheincategory.CategoryAPI, error) {",
+		"sheinworkspace.SearchCategoryCandidates(tree.Data, trimmedQuery)",
+		"func buildSheinCategorySearchCandidates(items []sheinworkspace.CategorySearchCandidate) []SheinCategorySearchCandidate {",
 	} {
-		if strings.Contains(categoryContent, needle) {
-			t.Fatalf("service_shein_category_search_support.go should not contain %q after facade split", needle)
+		if !strings.Contains(adminContent, needle) {
+			t.Fatalf("shein_admin_service.go should contain %q", needle)
 		}
 	}
 
+	workspaceSrc, err := os.ReadFile("../marketplace/shein/workspace/category_search.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../marketplace/shein/workspace/category_search.go) error = %v", err)
+	}
+	workspaceContent := string(workspaceSrc)
 	for _, needle := range []string{
-		"type sheinCategorySearchMatch struct {",
-		"func searchSheinCategoryCandidates(nodes []sheincategory.CategoryTreeNode, query string) []SheinCategorySearchCandidate {",
-		"func sheinCategoryMatchScore(path []string, normalizedQuery string, tokens []string) (int, bool) {",
+		"type CategorySearchCandidate struct {",
+		"func SearchCategoryCandidates(nodes []sheincategory.CategoryTreeNode, query string) []CategorySearchCandidate {",
+		"func categoryMatchScore(path []string, normalizedQuery string, tokens []string) (int, bool) {",
 	} {
-		if !strings.Contains(categoryContent, needle) {
-			t.Fatalf("service_shein_category_search_support.go should keep %q", needle)
+		if !strings.Contains(workspaceContent, needle) {
+			t.Fatalf("workspace category search should contain %q", needle)
 		}
 	}
 }

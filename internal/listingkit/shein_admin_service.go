@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinclient "task-processor/internal/shein/client"
 )
@@ -104,8 +105,27 @@ func (s *sheinAdminService) SearchSheinCategories(ctx context.Context, taskID st
 	return &SheinCategorySearchResult{
 		TaskID: taskID,
 		Query:  trimmedQuery,
-		Items:  searchSheinCategoryCandidates(tree.Data, trimmedQuery),
+		Items:  buildSheinCategorySearchCandidates(sheinworkspace.SearchCategoryCandidates(tree.Data, trimmedQuery)),
 	}, nil
+}
+
+func buildSheinCategorySearchCandidates(items []sheinworkspace.CategorySearchCandidate) []SheinCategorySearchCandidate {
+	if len(items) == 0 {
+		return nil
+	}
+	result := make([]SheinCategorySearchCandidate, 0, len(items))
+	for _, item := range items {
+		result = append(result, SheinCategorySearchCandidate{
+			CategoryID:     item.CategoryID,
+			CategoryIDList: append([]int(nil), item.CategoryIDList...),
+			CategoryPath:   append([]string(nil), item.CategoryPath...),
+			ProductTypeID:  item.ProductTypeID,
+			TopCategoryID:  item.TopCategoryID,
+			Source:         item.Source,
+			MatchReason:    item.MatchReason,
+		})
+	}
+	return result
 }
 
 func (s *sheinAdminService) GetSubmissionEvents(ctx context.Context, taskID string) (*SheinSubmissionEventPage, error) {
