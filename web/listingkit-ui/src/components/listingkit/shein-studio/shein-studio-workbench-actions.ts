@@ -17,6 +17,15 @@ import {
   buildGroupedGenerationTargets,
   resolveDesignTargetKey,
 } from "@/lib/shein-studio/grouped-image-mode";
+import {
+  buildGenerationPromptHistoryGroups,
+  mergeGeneratedDesignCollections,
+  mergeGeneratedSelectedIds,
+  replaceRegeneratedDesign,
+  resolveGenerationStartValidation,
+  resolveRegenerationStartValidation,
+  withGenerationTargetMetadata,
+} from "@/lib/shein-studio/generation-controller";
 import { parsePositiveInt } from "@/lib/shein-studio/create-review-tasks";
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
 import {
@@ -30,7 +39,6 @@ import type {
 } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
-  SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
   SheinStudioBatchDetail,
   SheinStudioBatchQueueMode,
@@ -180,81 +188,25 @@ export function useSheinStudioDesignActions({
     itemizedBatchContext,
   });
 
-  function buildNextPromptHistoryGroups() {
-    const trimmedPrompt = prompt.trim();
-    if (!trimmedPrompt || !activeGroupId) {
-      return groups;
-    }
-    const historyEntry: SDSGroupedPromptHistoryEntry = {
-      prompt: trimmedPrompt,
-      groupedImageMode,
-      createdAt: new Date().toISOString(),
-    };
-    return groups.map((group) => {
-      if (group.id !== activeGroupId) {
-        return group;
-      }
-      const newest = group.promptHistory[0];
-      const promptHistory =
-        newest?.prompt === historyEntry.prompt &&
-        newest?.groupedImageMode === historyEntry.groupedImageMode
-          ? group.promptHistory
-          : [historyEntry, ...group.promptHistory].slice(0, 5);
-      return {
-        ...group,
-        currentPrompt: trimmedPrompt,
-        promptHistory,
-        updatedAt: historyEntry.createdAt,
-      };
-    });
-  }
-
-  function withTargetMetadata(
-    images: SheinStudioGeneratedDesign[],
-    target: { key: string; label?: string },
-  ) {
-    return images.map((image) => ({
-      ...image,
-      targetGroupKey: target.key,
-      targetGroupLabel: target.label,
-    }));
-  }
-
-  function mergeDesignCollections(
-    currentDesigns: SheinStudioGeneratedDesign[],
-    incomingDesigns: SheinStudioGeneratedDesign[],
-  ) {
-    const nextByID = new Map(currentDesigns.map((design) => [design.id, design]));
-    for (const design of incomingDesigns) {
-      nextByID.set(design.id, design);
-    }
-    return Array.from(nextByID.values());
-  }
-
-  function mergeSelectedIDs(currentIDs: string[], designs: SheinStudioGeneratedDesign[]) {
-    const next = new Set(currentIDs);
-    for (const design of designs) {
-      next.add(design.id);
-    }
-    return Array.from(next);
-  }
-
   async function handleGenerate() {
-    if (!activeSelection?.variantId) {
-      workbench.setField("generationError", "请先选择 SDS 变体。");
+    const startValidation = resolveGenerationStartValidation({
+      activeSelection,
+      prompt,
+      sheinStoreId,
+    });
+    if (startValidation) {
+      workbench.setField("generationError", startValidation.error);
+      if (startValidation.focusPrompt) {
+        promptInputRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+        promptInputRef.current?.focus();
+      }
       return;
     }
-    if (!sheinStoreId.trim()) {
-      workbench.setField("generationError", "请先选择批次店铺。");
-      return;
-    }
-    if (!prompt.trim()) {
-      workbench.setField("generationError", "请先填写主题提示词。");
-      promptInputRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-      promptInputRef.current?.focus();
+    const generationSelection = activeSelection;
+    if (!generationSelection) {
       return;
     }
 
@@ -275,11 +227,16 @@ export function useSheinStudioDesignActions({
     });
     logListingKitTraceEvent("info", "studio generation started", {
       promptLength: prompt.trim().length,
-      selectionVariantId: activeSelection.variantId,
+      selectionVariantId: generationSelection.variantId,
       styleCount,
       traceContext,
     });
-    const nextGroups = buildNextPromptHistoryGroups();
+    const nextGroups = buildGenerationPromptHistoryGroups({
+      activeGroupId,
+      groupedImageMode,
+      groups,
+      prompt,
+    });
     if (nextGroups !== groups) {
       workbench.setField("groups", nextGroups);
     }
@@ -330,7 +287,7 @@ export function useSheinStudioDesignActions({
           batchId: savedBatch.id,
           designCount: generatedDesignCount,
           draftSaveStatus: "succeeded",
-          selectionVariantId: activeSelection.variantId,
+          selectionVariantId: generationSelection.variantId,
         });
         hasLocalWorkflowStateRef.current = true;
         batchGenerationContext.onGenerated({
@@ -345,7 +302,7 @@ export function useSheinStudioDesignActions({
         throw new Error("当前工作台尚未连接到批次生成链路，请刷新后重试。");
       }
       const targets = buildGroupedGenerationTargets({
-        activeSelection,
+        activeSelection: generationSelection,
         groupedSelections: groupedSelections
           .filter((item) => item.eligible)
           .map((item) => item.selection),
@@ -427,7 +384,7 @@ export function useSheinStudioDesignActions({
               },
             },
           );
-          const nextImages = withTargetMetadata(response.images, target);
+          const nextImages = withGenerationTargetMetadata(response.images, target);
           const targetJobIndex = nextGenerationJobs.findIndex(
             (job) => job.targetGroupKey === target.key,
           );
@@ -444,8 +401,14 @@ export function useSheinStudioDesignActions({
             aggregatedWarnings.push(...response.warnings);
           }
           if (nextImages.length > 0) {
-            accumulatedDesigns = mergeDesignCollections(accumulatedDesigns, nextImages);
-            accumulatedSelectedIDs = mergeSelectedIDs(accumulatedSelectedIDs, nextImages);
+            accumulatedDesigns = mergeGeneratedDesignCollections(
+              accumulatedDesigns,
+              nextImages,
+            );
+            accumulatedSelectedIDs = mergeGeneratedSelectedIds(
+              accumulatedSelectedIDs,
+              nextImages,
+            );
             hasLocalWorkflowStateRef.current = true;
             workbench.setField("designs", accumulatedDesigns);
             workbench.setField("selectedIds", accumulatedSelectedIDs);
@@ -491,7 +454,7 @@ export function useSheinStudioDesignActions({
       console.info("[shein-studio] generation succeeded", {
         designCount: accumulatedDesigns.length,
         draftSaveStatus: "pending",
-        selectionVariantId: activeSelection.variantId,
+        selectionVariantId: generationSelection.variantId,
       });
       logListingKitTraceEvent("info", "studio generation completed", {
         designCount: accumulatedDesigns.length,
@@ -549,17 +512,23 @@ export function useSheinStudioDesignActions({
   }
 
   async function handleRegenerate(designId: string) {
-    if (!activeSelection?.variantId) {
-      workbench.setField("generationError", "请先选择 SDS 变体。");
+    const startValidation = resolveRegenerationStartValidation({
+      activeSelection,
+      prompt,
+    });
+    if (startValidation) {
+      workbench.setField("generationError", startValidation.error);
+      if (startValidation.focusPrompt) {
+        promptInputRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+        promptInputRef.current?.focus();
+      }
       return;
     }
-    if (!prompt.trim()) {
-      workbench.setField("generationError", "请先填写主题提示词。");
-      promptInputRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-      promptInputRef.current?.focus();
+    const regenerationSelection = activeSelection;
+    if (!regenerationSelection) {
       return;
     }
 
@@ -573,16 +542,21 @@ export function useSheinStudioDesignActions({
     });
     logListingKitTraceEvent("info", "studio regenerate started", {
       designId,
-      selectionVariantId: activeSelection.variantId,
+      selectionVariantId: regenerationSelection.variantId,
     });
-    const nextGroups = buildNextPromptHistoryGroups();
+    const nextGroups = buildGenerationPromptHistoryGroups({
+      activeGroupId,
+      groupedImageMode,
+      groups,
+      prompt,
+    });
     if (nextGroups !== groups) {
       workbench.setField("groups", nextGroups);
     }
 
     try {
       const targets = buildGroupedGenerationTargets({
-        activeSelection,
+        activeSelection: regenerationSelection,
         groupedSelections: groupedSelections
           .filter((item) => item.eligible)
           .map((item) => item.selection),
@@ -595,7 +569,7 @@ export function useSheinStudioDesignActions({
           resolveDesignTargetKey(currentDesign, item.selection, groupedImageMode) ===
             item.key,
       );
-      const targetSelection = target?.selection ?? activeSelection;
+      const targetSelection = target?.selection ?? regenerationSelection;
       const response = await generateSheinStudioDesigns(
         buildSheinStudioGenerateRequest({
           prompt: prompt.trim(),
@@ -615,27 +589,17 @@ export function useSheinStudioDesignActions({
       }
 
       hasLocalWorkflowStateRef.current = true;
-      const nextDesigns = designs.map((design) =>
-        design.id === designId
-          ? {
-              ...replacement,
-              id: designId,
-              targetGroupKey: design.targetGroupKey,
-              targetGroupLabel: design.targetGroupLabel,
-            }
-          : design,
-      );
+      const nextDesigns = replaceRegeneratedDesign({
+        designId,
+        designs,
+        replacement,
+      });
       workbench.setField("designs", (current) =>
-        current.map((design) =>
-          design.id === designId
-            ? {
-                ...replacement,
-                id: designId,
-                targetGroupKey: design.targetGroupKey,
-                targetGroupLabel: design.targetGroupLabel,
-              }
-            : design,
-        ),
+        replaceRegeneratedDesign({
+          designId,
+          designs: current,
+          replacement,
+        }),
       );
       const nextSelectedIds = selectedIds.includes(designId)
         ? selectedIds
