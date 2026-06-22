@@ -1,9 +1,21 @@
 package listingkit
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 func TestSheinReviewStateBoundary(t *testing.T) {
 	t.Parallel()
+	fileSource, err := os.ReadFile("workflow_review_state.go")
+	if err != nil {
+		t.Fatalf("ReadFile(workflow_review_state.go) error = %v", err)
+	}
+	if !strings.Contains(string(fileSource), `sheinworkspace "task-processor/internal/marketplace/shein/workspace"`) {
+		t.Fatal("workflow_review_state.go should call marketplace SHEIN workspace directly")
+	}
+	assertFileAbsent(t, "workspace/shein/review_bridge.go")
 
 	t.Run("inspection review adapter delegates to workspace", func(t *testing.T) {
 		t.Parallel()
