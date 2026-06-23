@@ -698,6 +698,7 @@ func importTaskToDTO(task *listingadmin.ImportTask) *api.ProductImportTaskRespDT
 		Priority:        task.Priority,
 		CreateTime:      timeToUnixMillis(task.CreateTime),
 		UpdateTime:      timeToUnixMillis(task.UpdateTime),
+		PublishedTime:   timeToUnixMillis(task.PublishedTime),
 		StatusKey:       meta.Key,
 		StatusName:      meta.Name,
 		CanonicalStatus: meta.Canonical,
@@ -1496,25 +1497,26 @@ func (p *LocalDataProvider) GetLatestInventoryRecord(platform, productID, region
 }
 
 type localImportTaskRow struct {
-	ID            int64     `gorm:"column:id"`
-	TenantID      int64     `gorm:"column:tenant_id"`
-	StoreID       int64     `gorm:"column:store_id"`
-	Platform      string    `gorm:"column:platform"`
-	Region        string    `gorm:"column:region"`
-	CategoryID    int64     `gorm:"column:category_id"`
-	ProductID     string    `gorm:"column:product_id"`
-	Status        int16     `gorm:"column:status"`
-	ErrorMessage  string    `gorm:"column:error_message"`
-	ReasonCode    string    `gorm:"column:reason_code"`
-	Stage         string    `gorm:"column:stage"`
-	RetryCount    int       `gorm:"column:retry_count"`
-	MaxRetryCount int       `gorm:"column:max_retry_count"`
-	Remark        string    `gorm:"column:remark"`
-	Priority      int       `gorm:"column:priority"`
-	CreateTime    time.Time `gorm:"column:create_time"`
-	UpdateTime    time.Time `gorm:"column:update_time"`
-	Creator       string    `gorm:"column:creator"`
-	Updater       string    `gorm:"column:updater"`
+	ID            int64      `gorm:"column:id"`
+	TenantID      int64      `gorm:"column:tenant_id"`
+	StoreID       int64      `gorm:"column:store_id"`
+	Platform      string     `gorm:"column:platform"`
+	Region        string     `gorm:"column:region"`
+	CategoryID    int64      `gorm:"column:category_id"`
+	ProductID     string     `gorm:"column:product_id"`
+	Status        int16      `gorm:"column:status"`
+	ErrorMessage  string     `gorm:"column:error_message"`
+	ReasonCode    string     `gorm:"column:reason_code"`
+	Stage         string     `gorm:"column:stage"`
+	RetryCount    int        `gorm:"column:retry_count"`
+	MaxRetryCount int        `gorm:"column:max_retry_count"`
+	Remark        string     `gorm:"column:remark"`
+	Priority      int        `gorm:"column:priority"`
+	CreateTime    time.Time  `gorm:"column:create_time"`
+	UpdateTime    time.Time  `gorm:"column:update_time"`
+	PublishedTime *time.Time `gorm:"column:published_time"`
+	Creator       string     `gorm:"column:creator"`
+	Updater       string     `gorm:"column:updater"`
 }
 
 func (r localImportTaskRow) toDTO() api.ProductImportTaskRespDTO {
@@ -1537,6 +1539,7 @@ func (r localImportTaskRow) toDTO() api.ProductImportTaskRespDTO {
 		Priority:        r.Priority,
 		CreateTime:      r.CreateTime.UnixMilli(),
 		UpdateTime:      r.UpdateTime.UnixMilli(),
+		PublishedTime:   timeToUnixMillis(r.PublishedTime),
 		Creator:         r.Creator,
 		Updater:         r.Updater,
 		StatusKey:       meta.Key,

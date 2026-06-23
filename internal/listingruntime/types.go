@@ -14,6 +14,7 @@ type ImportTask struct {
 	MaxRetryCount   int
 	Priority        int
 	CreateTime      int64
+	PublishedTime   int64
 	Creator         string
 	StatusKey       string
 	CanonicalStatus string

@@ -19,6 +19,7 @@ type ProductImportTaskRespDTO struct {
 	Priority        int    `json:"priority"`
 	CreateTime      int64  `json:"createTime"`
 	UpdateTime      int64  `json:"updateTime"`
+	PublishedTime   int64  `json:"publishedTime"`
 	Creator         string `json:"creator"`
 	Updater         string `json:"updater"`
 	StatusKey       string `json:"statusKey"`

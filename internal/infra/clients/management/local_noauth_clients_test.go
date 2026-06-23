@@ -282,6 +282,7 @@ func newSQLiteProvider(t *testing.T) *LocalDataProvider {
 			create_time DATETIME,
 			updated_by TEXT,
 			update_time DATETIME,
+			published_time DATETIME,
 			creator TEXT,
 			updater TEXT,
 			deleted INTEGER DEFAULT 0
@@ -1202,6 +1203,43 @@ func TestImportTaskAPIClient_LocalProvider(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "管理端拒绝更新任务状态") {
 		t.Fatalf("UpdateTaskStatus() mismatch error = %v", err)
+	}
+}
+
+func TestImportTaskAPIClient_LocalProviderReturnsPublishedTime(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	now := time.Now()
+	publishedAt := now.Add(2 * time.Minute)
+	row := localImportTaskRow{
+		ID:            11,
+		TenantID:      10,
+		StoreID:       976,
+		Platform:      "shein",
+		Region:        "us",
+		ProductID:     "draft-product",
+		Status:        model.TaskStatusDraft.Int16(),
+		Priority:      10,
+		CreateTime:    now,
+		UpdateTime:    publishedAt,
+		PublishedTime: &publishedAt,
+	}
+	if err := provider.db.Table("listing_product_import_task").Create(&row).Error; err != nil {
+		t.Fatalf("seed import task: %v", err)
+	}
+
+	client := &ImportTaskAPIClient{
+		ManagementAPIClient: NewManagementAPIClientWithBaseURL("http://127.0.0.1:1"),
+		localDataProvider:   provider,
+	}
+	task, err := client.GetTaskByID(row.ID)
+	if err != nil {
+		t.Fatalf("GetTaskByID() error = %v", err)
+	}
+	if task == nil {
+		t.Fatal("GetTaskByID() = nil, want task")
+	}
+	if task.PublishedTime != publishedAt.UnixMilli() {
+		t.Fatalf("PublishedTime = %d, want %d", task.PublishedTime, publishedAt.UnixMilli())
 	}
 }
 

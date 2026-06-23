@@ -402,6 +402,7 @@ func runtimeImportTaskFromManagement(task managementapi.ProductImportTaskRespDTO
 		MaxRetryCount:   task.MaxRetryCount,
 		Priority:        task.Priority,
 		CreateTime:      task.CreateTime,
+		PublishedTime:   task.PublishedTime,
 		Creator:         task.Creator,
 		StatusKey:       task.StatusKey,
 		CanonicalStatus: task.CanonicalStatus,
