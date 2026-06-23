@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,8 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingruntime"
+	"task-processor/internal/model"
 	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
@@ -39,6 +42,44 @@ type stubProcessorWithManagement struct {
 
 func (s *stubProcessorWithManagement) GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
 	return s.runtime
+}
+
+type stubRuntimeWithImportTask struct {
+	task    *listingruntime.ImportTask
+	status  *taskstatus.TaskStatusSnapshot
+	updates int
+}
+
+func (s *stubRuntimeWithImportTask) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error {
+	if s.task == nil {
+		return fmt.Errorf("task not found")
+	}
+	if req.ExpectedCurrentStatus != nil && s.task.Status != *req.ExpectedCurrentStatus {
+		return fmt.Errorf("Management API error 409")
+	}
+	s.updates++
+	s.task.Status = req.Status
+	return nil
+}
+
+func (s *stubRuntimeWithImportTask) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error) {
+	if s.status != nil {
+		return s.status, nil
+	}
+	return &taskstatus.TaskStatusSnapshot{
+		TaskID:          taskID,
+		Status:          "PROCESSING",
+		StatusKey:       "PROCESSING",
+		CanonicalStatus: "processing",
+	}, nil
+}
+
+func (s *stubRuntimeWithImportTask) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
+	if s.task == nil || s.task.ID != taskID {
+		return nil, fmt.Errorf("task %d not found", taskID)
+	}
+	taskCopy := *s.task
+	return &taskCopy, nil
 }
 
 type stubStoreAPI struct {
@@ -282,6 +323,135 @@ func TestTaskHandlerHandleMessage_StopsWhenClaimRejected(t *testing.T) {
 	}
 	if processor.processCalls != 0 {
 		t.Fatalf("expected processor not to be called when claim is rejected, got %d calls", processor.processCalls)
+	}
+}
+
+func TestTaskHandlerHandleMessage_ReloadsTaskFromRuntimeBeforeParsingLegacyPayload(t *testing.T) {
+	autoListingEnabled := true
+	runtime := &stubRuntimeWithImportTask{
+		task: &listingruntime.ImportTask{
+			ID:         7812010,
+			TenantID:   286,
+			StoreID:    846,
+			Platform:   "shein",
+			Region:     "US",
+			ProductID:  "B0BGPRQ6N9",
+			Status:     model.TaskStatusQueued.Int16(),
+			RetryCount: 0,
+			Priority:   10,
+			CreateTime: 1710000000000,
+		},
+	}
+	processor := &stubProcessorWithManagement{runtime: runtime}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "shein",
+		Processor: processor,
+		StoreAPI: &stubStoreAPI{
+			store: &managementapi.StoreRespDTO{
+				ID:                846,
+				Name:              "enabled-store",
+				Status:            storeStatusEnabled,
+				EnableAutoListing: &autoListingEnabled,
+			},
+		},
+		Logger: logrus.New(),
+	})
+
+	msg := &rabbitmq.Message{
+		ID:   "msg-legacy-created-at",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":         float64(7812010),
+			"tenantId":       float64(286),
+			"storeId":        float64(846),
+			"sourcePlatform": "amazon",
+			"targetPlatform": "shein",
+			"region":         "US",
+			"productId":      "B0OLDPAYLOAD",
+			"priority":       float64(10),
+			"retryCount":     float64(0),
+			"maxRetryCount":  float64(3),
+			"createdAt":      "58429-01-24 23:20:12",
+			"status":         "queued",
+		},
+	}
+
+	if err := handler.HandleMessage(context.Background(), msg); err != nil {
+		t.Fatalf("expected runtime-loaded task to process despite legacy payload, got %v", err)
+	}
+	if processor.processCalls != 1 {
+		t.Fatalf("expected processor to be called once, got %d", processor.processCalls)
+	}
+	if runtime.updates != 1 {
+		t.Fatalf("expected one claim update, got %d", runtime.updates)
+	}
+}
+
+func TestTaskHandlerHandleMessage_DiscardsRuntimeProcessingTask(t *testing.T) {
+	autoListingEnabled := true
+	runtime := &stubRuntimeWithImportTask{
+		task: &listingruntime.ImportTask{
+			ID:         7812011,
+			TenantID:   286,
+			StoreID:    846,
+			Platform:   "shein",
+			Region:     "US",
+			ProductID:  "B0BGPRQ6N9",
+			Status:     model.TaskStatusProcessing.Int16(),
+			RetryCount: 0,
+			Priority:   10,
+			CreateTime: 1710000000000,
+		},
+	}
+	processor := &stubProcessorWithManagement{runtime: runtime}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "shein",
+		Processor: processor,
+		StoreAPI: &stubStoreAPI{
+			store: &managementapi.StoreRespDTO{
+				ID:                846,
+				Name:              "enabled-store",
+				Status:            storeStatusEnabled,
+				EnableAutoListing: &autoListingEnabled,
+			},
+		},
+		Logger: logrus.New(),
+	})
+
+	msg := &rabbitmq.Message{
+		ID:   "msg-processing",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":         float64(7812011),
+			"tenantId":       float64(286),
+			"storeId":        float64(846),
+			"sourcePlatform": "amazon",
+			"targetPlatform": "shein",
+			"region":         "US",
+			"productId":      "B0BGPRQ6N9",
+			"priority":       float64(10),
+			"retryCount":     float64(0),
+			"maxRetryCount":  float64(3),
+			"status":         "queued",
+		},
+	}
+
+	err := handler.HandleMessage(context.Background(), msg)
+	if err == nil {
+		t.Fatal("expected processing task message to be discarded")
+	}
+	type discardable interface {
+		ShouldDiscard() bool
+	}
+	var discardErr discardable
+	if !errors.As(err, &discardErr) || !discardErr.ShouldDiscard() {
+		t.Fatalf("expected discardable error, got %v", err)
+	}
+	if processor.processCalls != 0 {
+		t.Fatalf("expected processor not to be called, got %d calls", processor.processCalls)
+	}
+	if runtime.updates != 0 {
+		t.Fatalf("expected no claim update, got %d", runtime.updates)
 	}
 }
 

@@ -173,6 +173,28 @@ func (cm *ClientManager) GetPendingRuntimeTasks(maxTasks int, userID int64, stor
 	return tasks, nil
 }
 
+func (cm *ClientManager) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
+	if cm == nil {
+		return nil, fmt.Errorf("management client is not initialized")
+	}
+
+	importTaskClient := cm.GetImportTaskClient()
+	if importTaskClient == nil {
+		return nil, fmt.Errorf("import task client is not initialized")
+	}
+
+	item, err := importTaskClient.GetTaskByID(taskID)
+	if err != nil {
+		return nil, err
+	}
+	if item == nil {
+		return nil, fmt.Errorf("import task %d not found", taskID)
+	}
+
+	task := runtimeImportTaskFromManagement(*item)
+	return &task, nil
+}
+
 func (cm *ClientManager) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error {
 	if cm == nil {
 		return fmt.Errorf("management client is not initialized")
@@ -377,6 +399,7 @@ func runtimeImportTaskFromManagement(task managementapi.ProductImportTaskRespDTO
 		Status:          task.Status,
 		ErrorMessage:    task.ErrorMessage,
 		RetryCount:      task.RetryCount,
+		MaxRetryCount:   task.MaxRetryCount,
 		Priority:        task.Priority,
 		CreateTime:      task.CreateTime,
 		Creator:         task.Creator,

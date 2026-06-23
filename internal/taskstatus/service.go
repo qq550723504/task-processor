@@ -73,3 +73,10 @@ func (r managementRuntime) GetTaskStatus(taskID int64) (*TaskStatusSnapshot, err
 	}
 	return taskRPCClient.GetTaskStatus(taskID)
 }
+
+func (r managementRuntime) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
+	if r.client == nil {
+		return nil, fmt.Errorf("management client is not initialized")
+	}
+	return r.client.GetRuntimeImportTask(taskID)
+}

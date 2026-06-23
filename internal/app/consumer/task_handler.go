@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/strx"
 	"task-processor/internal/taskstatus"
@@ -44,6 +45,10 @@ type TaskHandler struct {
 
 type managementClientProvider interface {
 	GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC
+}
+
+type importTaskRuntime interface {
+	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
 }
 
 type staleTaskMessageError struct {
@@ -229,7 +234,10 @@ func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
 		}
 	}
 	if task.Status == model.TaskStatusProcessing.Int16() {
-		return nil
+		return eth.discardStaleTask(task, "already_processing")
+	}
+	if status, err := model.ParseTaskStatus(task.Status); err == nil && status.IsTerminal() {
+		return eth.discardStaleTask(task, "terminal_status")
 	}
 
 	provider, ok := eth.processor.(managementClientProvider)
@@ -274,6 +282,38 @@ func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
 	}
 
 	return fmt.Errorf("claim task %d as processing failed: %w", task.ID, lastErr)
+}
+
+func (eth *TaskHandler) discardStaleTask(task *model.Task, reason string) error {
+	currentStatus := "0"
+	if task != nil {
+		currentStatus = fmt.Sprintf("%d", task.Status)
+		if parsed, err := model.ParseTaskStatus(task.Status); err == nil {
+			currentStatus = parsed.String()
+		}
+	}
+
+	taskID := int64(0)
+	messageStatus := int16(0)
+	if task != nil {
+		taskID = task.ID
+		messageStatus = task.Status
+	}
+
+	eth.logger.WithFields(logrus.Fields{
+		"task_id":        taskID,
+		"message_status": messageStatus,
+		"current_status": currentStatus,
+		"reason":         reason,
+	}).Info("discarding stale task message before processing")
+
+	return &staleTaskMessageError{
+		taskID:           taskID,
+		messageStatus:    messageStatus,
+		currentStatus:    currentStatus,
+		currentStatusKey: reason,
+		reason:           reason,
+	}
 }
 
 func (eth *TaskHandler) resolveClaimFailure(runtime taskstatus.RuntimeWithTaskRPC, task *model.Task, expectedStatus int16, claimErr error) error {
@@ -340,6 +380,17 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 	// 提取嵌套的 payload（如果存在）
 	originalPayload := eth.extractNestedPayload(domainMsg)
 
+	if taskID, ok := eth.adapter.ExtractTaskID(domainMsg); ok {
+		if task, err := eth.loadTaskFromRuntime(taskID); err == nil && task != nil {
+			return task, originalPayload, nil
+		} else if err != nil {
+			eth.logger.WithError(err).WithFields(logrus.Fields{
+				"task_id":    taskID,
+				"message_id": msg.ID,
+			}).Debug("task runtime reload unavailable; falling back to message payload")
+		}
+	}
+
 	// 转换为任务对象
 	task, err := eth.adapter.MessageToTask(domainMsg)
 	if err != nil {
@@ -357,6 +408,56 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 	}
 
 	return task, originalPayload, nil
+}
+
+func (eth *TaskHandler) loadTaskFromRuntime(taskID int64) (*model.Task, error) {
+	provider, ok := eth.processor.(managementClientProvider)
+	if !ok {
+		return nil, fmt.Errorf("processor does not expose task status runtime")
+	}
+
+	runtime := provider.GetTaskStatusRuntime()
+	if runtime == nil {
+		return nil, fmt.Errorf("task status runtime is not initialized")
+	}
+
+	taskRuntime, ok := runtime.(importTaskRuntime)
+	if !ok {
+		return nil, fmt.Errorf("task runtime does not support import task lookup")
+	}
+
+	task, err := taskRuntime.GetRuntimeImportTask(taskID)
+	if err != nil {
+		return nil, err
+	}
+	if task == nil {
+		return nil, fmt.Errorf("import task %d not found", taskID)
+	}
+
+	return modelTaskFromRuntime(task), nil
+}
+
+func modelTaskFromRuntime(task *listingruntime.ImportTask) *model.Task {
+	if task == nil {
+		return nil
+	}
+	return &model.Task{
+		ID:            task.ID,
+		TenantID:      task.TenantID,
+		StoreID:       task.StoreID,
+		Platform:      task.Platform,
+		Region:        task.Region,
+		CategoryID:    task.CategoryID,
+		ProductID:     task.ProductID,
+		Status:        task.Status,
+		ErrorMessage:  task.ErrorMessage,
+		RetryCount:    task.RetryCount,
+		Priority:      task.Priority,
+		CreateTime:    task.CreateTime,
+		UpdateTime:    task.CreateTime,
+		Creator:       task.Creator,
+		MaxRetryCount: task.MaxRetryCount,
+	}
 }
 
 // extractNestedPayload 提取嵌套的 payload（分布式爬虫消息格式）

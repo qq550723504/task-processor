@@ -131,6 +131,57 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 	return task, nil
 }
 
+func (a *MessageAdapter) ExtractTaskID(msg *Message) (int64, bool) {
+	if msg == nil {
+		return 0, false
+	}
+
+	payload := msg.Payload
+	if nestedPayload, ok := payload["payload"].(map[string]any); ok {
+		payload = nestedPayload
+	}
+
+	for _, key := range []string{"taskId", "taskID", "id"} {
+		raw, ok := payload[key]
+		if !ok {
+			continue
+		}
+		if id, ok := parseTaskIDValue(raw); ok && id > 0 {
+			return id, true
+		}
+	}
+
+	if id, ok := parseTaskIDValue(msg.ID); ok && id > 0 {
+		return id, true
+	}
+
+	return 0, false
+}
+
+func parseTaskIDValue(raw any) (int64, bool) {
+	switch value := raw.(type) {
+	case int64:
+		return value, true
+	case int:
+		return int64(value), true
+	case int32:
+		return int64(value), true
+	case float64:
+		return int64(value), true
+	case float32:
+		return int64(value), true
+	case json.Number:
+		id, err := value.Int64()
+		return id, err == nil
+	case string:
+		var id int64
+		if _, err := fmt.Sscanf(value, "%d", &id); err == nil {
+			return id, true
+		}
+	}
+	return 0, false
+}
+
 // TaskToMessage 将任务对象转换为消息
 func (a *MessageAdapter) TaskToMessage(task *model.Task) (*TaskMessage, error) {
 	if task == nil {

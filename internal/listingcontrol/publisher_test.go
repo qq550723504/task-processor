@@ -87,13 +87,8 @@ func TestDispatchPublisherPublishesTaskMessageToStoreQueue(t *testing.T) {
 	}
 
 	assertJSONValue(t, payload, "taskId", "12345")
-	assertJSONValue(t, payload, "tenantId", float64(88))
-	assertJSONValue(t, payload, "storeId", float64(976))
-	assertJSONValue(t, payload, "sourcePlatform", "amazon")
-	assertJSONValue(t, payload, "targetPlatform", "shein")
-	assertJSONValue(t, payload, "productId", "B0CONTROL")
-	if _, ok := payload["status"]; !ok {
-		t.Fatal("expected payload to contain status")
+	if len(payload) != 1 {
+		t.Fatalf("expected minimal task-id payload, got %+v", payload)
 	}
 
 	if dispatch.Queue != "shein.tasks.store.976" {

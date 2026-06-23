@@ -57,17 +57,15 @@ func (p *DispatchPublisher) PublishTask(ctx context.Context, task *model.Task) (
 		adapter = taskapp.NewMessageAdapter()
 	}
 
-	taskMsg, err := adapter.TaskToMessage(task)
-	if err != nil {
-		return PublishedDispatch{}, fmt.Errorf("convert task to dispatch message: %w", err)
-	}
-	body, err := json.Marshal(taskMsg)
+	messageID := strconv.FormatInt(task.ID, 10)
+	body, err := json.Marshal(map[string]string{
+		"taskId": messageID,
+	})
 	if err != nil {
 		return PublishedDispatch{}, fmt.Errorf("marshal dispatch message: %w", err)
 	}
 
 	queue := rabbitmq.GetStoreQueueName(p.platform, task.StoreID)
-	messageID := strconv.FormatInt(task.ID, 10)
 	priority := adapter.CalculatePriority(task.Priority)
 	publishing := amqp.Publishing{
 		ContentType:  "application/json",

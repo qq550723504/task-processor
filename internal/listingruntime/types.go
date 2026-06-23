@@ -11,6 +11,7 @@ type ImportTask struct {
 	Status          int16
 	ErrorMessage    string
 	RetryCount      int
+	MaxRetryCount   int
 	Priority        int
 	CreateTime      int64
 	Creator         string
