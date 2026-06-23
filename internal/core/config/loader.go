@@ -244,6 +244,19 @@ func NewDefaultConfig() *Config {
 			ProductEnrichMockLLM: false,
 		},
 		ListingKit: ListingKitConfig{},
+		ListingControlPlane: ListingControlPlaneConfig{
+			Enabled:               false,
+			Platform:              "shein",
+			LeaderLockKey:         "listing:control-plane:leader:shein",
+			LeaderLockTTL:         30 * time.Second,
+			ScanInterval:          5 * time.Second,
+			BatchSize:             500,
+			PerStoreBurst:         1,
+			MaxQueuedPerStore:     0,
+			DryRun:                false,
+			EnableLegacyQuotaKeys: false,
+			QuotaKeyTTLGrace:      0,
+		},
 		Platforms: PlatformsConfig{
 			Temu: PlatformConfig{
 				Enabled:          false,

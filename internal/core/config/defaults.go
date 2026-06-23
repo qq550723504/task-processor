@@ -47,12 +47,29 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("listingkit.zitadel.allowedUsernames", defaults.ListingKit.Zitadel.AllowedUsernames)
 	v.SetDefault("listingkit.zitadel.allowedRoles", defaults.ListingKit.Zitadel.AllowedRoles)
 
+	setListingControlPlaneDefaults(v, defaults)
 	setBrowserDefaults(v, defaults)
 	setAmazonDefaults(v, defaults)
 	setProductImageDefaults(v, defaults)
 	setUpdaterDefaults(v, defaults)
 	setPlatformDefaults(v, defaults)
 	setRabbitMQDefaults(v, defaults)
+}
+
+func setListingControlPlaneDefaults(v *viper.Viper, defaults *Config) {
+	lcp := defaults.ListingControlPlane
+
+	v.SetDefault("listingControlPlane.enabled", lcp.Enabled)
+	v.SetDefault("listingControlPlane.platform", lcp.Platform)
+	v.SetDefault("listingControlPlane.leaderLockKey", lcp.LeaderLockKey)
+	v.SetDefault("listingControlPlane.leaderLockTTL", lcp.LeaderLockTTL)
+	v.SetDefault("listingControlPlane.scanInterval", lcp.ScanInterval)
+	v.SetDefault("listingControlPlane.batchSize", lcp.BatchSize)
+	v.SetDefault("listingControlPlane.perStoreBurst", lcp.PerStoreBurst)
+	v.SetDefault("listingControlPlane.maxQueuedPerStore", lcp.MaxQueuedPerStore)
+	v.SetDefault("listingControlPlane.dryRun", lcp.DryRun)
+	v.SetDefault("listingControlPlane.enableLegacyQuotaKeys", lcp.EnableLegacyQuotaKeys)
+	v.SetDefault("listingControlPlane.quotaKeyTTLGrace", lcp.QuotaKeyTTLGrace)
 }
 
 func setProductImageDefaults(v *viper.Viper, defaults *Config) {
