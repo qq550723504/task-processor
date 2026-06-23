@@ -2,8 +2,11 @@ package management
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1122,6 +1125,48 @@ func TestListingLocalProviderMissesDoNotFallbackToManagementHTTP(t *testing.T) {
 	}
 	if count != nil {
 		t.Fatalf("GetDailyListingCount() = %+v, want nil without local redis", count)
+	}
+
+	importTaskClient := &ImportTaskAPIClient{ManagementAPIClient: baseClient, localDataProvider: provider}
+	tasks, err := importTaskClient.GetPendingAndRetryTasks(10, 1, []int64{976})
+	if err != nil {
+		t.Fatalf("GetPendingAndRetryTasks() error = %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("GetPendingAndRetryTasks() = %+v, want empty local result", tasks)
+	}
+	err = importTaskClient.UpdateTaskStatus(&api.ProductImportTaskUpdateReqDTO{
+		ID:     987654321,
+		Status: model.TaskStatusProcessing.Int16(),
+	})
+	if err == nil || !strings.Contains(err.Error(), "本地任务状态未更新") {
+		t.Fatalf("UpdateTaskStatus() missing local task error = %v", err)
+	}
+}
+
+func TestOperationStrategyClientLocalMissDoesNotFallbackToManagementHTTP(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+
+	client := &OperationStrategyClient{
+		ManagementAPIClient: NewManagementAPIClientWithBaseURL(server.URL),
+		localDataProvider:   provider,
+	}
+	client.SetUserToken("test-token", "1")
+	strategy, err := client.GetOperationStrategyByStoreId(976)
+	if err != nil {
+		t.Fatalf("GetOperationStrategyByStoreId() error = %v", err)
+	}
+	if strategy != nil {
+		t.Fatalf("GetOperationStrategyByStoreId() = %+v, want nil local miss", strategy)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("management HTTP calls = %d, want 0", calls.Load())
 	}
 }
 

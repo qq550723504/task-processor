@@ -18,10 +18,8 @@ type OperationStrategyClient struct {
 
 // GetOperationStrategyByStoreId 根据店铺ID获取策略
 func (c *OperationStrategyClient) GetOperationStrategyByStoreId(storeId int64) (*api.OperationStrategyDTO, error) {
-	if c.localDataProvider != nil {
-		if strategy, err := c.localDataProvider.GetOperationStrategyByStoreID(storeId); err != nil || strategy != nil {
-			return strategy, err
-		}
+	if c.localDataProvider != nil && c.localDataProvider.HasDB() {
+		return c.localDataProvider.GetOperationStrategyByStoreID(storeId)
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/operation-strategy/get-by-store?storeId=%d", c.baseURL, storeId)
 

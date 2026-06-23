@@ -27,9 +27,11 @@ func (m *ImportTaskAPIClient) GetTaskByID(taskID int64) (*api.ProductImportTaskR
 func (m *ImportTaskAPIClient) GetPendingAndRetryTasks(limit int, userId int64, storeIds []int64) ([]api.ProductImportTaskRespDTO, error) {
 	logger.GetGlobalLogger("infra/clients").Warn("[GetPendingAndRetryTasks] legacy polling API is deprecated; prefer RabbitMQ-driven task dispatch")
 	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
-		if tasks, handled, err := m.localDataProvider.GetPendingAndRetryTasks(limit, userId, storeIds); err != nil || handled {
+		tasks, handled, err := m.localDataProvider.GetPendingAndRetryTasks(limit, userId, storeIds)
+		if err != nil || handled {
 			return tasks, err
 		}
+		return nil, fmt.Errorf("本地导入任务仓库未配置，无法查询待处理任务")
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/import-task/list-pending-and-retry?limit=%d", m.baseURL, limit)
 
@@ -92,6 +94,8 @@ func (m *ImportTaskAPIClient) UpdateTaskStatus(req *api.ProductImportTaskUpdateR
 		if handled {
 			return nil
 		}
+		return fmt.Errorf("本地任务状态未更新: taskId=%d, status=%d, expectedCurrentStatus=%v",
+			req.ID, req.Status, req.ExpectedCurrentStatus)
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/import-task/update-status", m.baseURL)
 
