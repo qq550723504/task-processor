@@ -1,7 +1,50 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { SheinStudioGroupedSelectionPanel } from "@/components/listingkit/shein-studio/shein-studio-grouped-selection-panel";
+import {
+  evaluateGroupedSelectionCompatibility,
+  SheinStudioGroupedSelectionPanel,
+} from "@/components/listingkit/shein-studio/shein-studio-grouped-selection-panel";
+
+const activeSelection = {
+  productId: 1,
+  parentProductId: 1,
+  variantId: 100,
+  prototypeGroupId: 200,
+  layerId: "layer-1",
+  productName: "tee",
+  variantLabel: "M / black",
+};
+
+describe("evaluateGroupedSelectionCompatibility", () => {
+  it("rejects candidates when selection details are missing", () => {
+    expect(evaluateGroupedSelectionCompatibility(undefined, activeSelection)).toEqual({
+      compatible: false,
+      reason: "缺少 SDS 选择信息，暂时无法加入分组。",
+    });
+  });
+
+  it("rejects the active selection as a duplicate", () => {
+    expect(
+      evaluateGroupedSelectionCompatibility(activeSelection, activeSelection),
+    ).toEqual({
+      compatible: false,
+      reason: "这个商品已经在当前批次里，无需重复加入。",
+    });
+  });
+
+  it("accepts a different variant candidate", () => {
+    expect(
+      evaluateGroupedSelectionCompatibility(activeSelection, {
+        ...activeSelection,
+        variantId: 101,
+      }),
+    ).toEqual({
+      compatible: true,
+      reason: "",
+    });
+  });
+});
 
 describe("SheinStudioGroupedSelectionPanel", () => {
   it("shows store name instead of ambiguous site-only labels", () => {

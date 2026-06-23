@@ -10,7 +10,10 @@ import { SheinStudioBatchRunProgress } from "@/components/listingkit/shein-studi
 import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/shein-studio-busy-overlay";
 import { BatchStoreSettings } from "@/components/listingkit/shein-studio/shein-studio-generation-form-sections";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
-import { SheinStudioGroupedSelectionPanel } from "@/components/listingkit/shein-studio/shein-studio-grouped-selection-panel";
+import {
+  evaluateGroupedSelectionCompatibility,
+  SheinStudioGroupedSelectionPanel,
+} from "@/components/listingkit/shein-studio/shein-studio-grouped-selection-panel";
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
 import { useSheinStudioDedicatedBatchRunController } from "@/components/listingkit/shein-studio/shein-studio-dedicated-batch-run-controller";
@@ -2140,17 +2143,4 @@ export function SheinStudioWorkbench({
       )}
     </section>
   );
-}
-
-function evaluateGroupedSelectionCompatibility(
-  activeSelection?: SDSProductVariantSelection,
-  candidate?: SDSProductVariantSelection,
-) {
-  if (!activeSelection?.variantId || !candidate?.variantId) {
-    return { compatible: false, reason: "缺少 SDS 选择信息，暂时无法加入分组。" };
-  }
-  if (activeSelection.variantId === candidate.variantId) {
-    return { compatible: false, reason: "这个商品已经在当前批次里，无需重复加入。" };
-  }
-  return { compatible: true, reason: "" };
 }

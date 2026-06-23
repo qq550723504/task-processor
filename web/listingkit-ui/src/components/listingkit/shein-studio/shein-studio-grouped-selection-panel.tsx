@@ -21,6 +21,19 @@ import type { ListingKitStoreProfile } from "@/lib/types/listingkit";
 type StoreOption = Pick<ListingKitStoreProfile, "store_id" | "store" | "site">;
 type GroupedStoreFilter = "all" | "following_current" | "current_store" | "cross_store";
 
+export function evaluateGroupedSelectionCompatibility(
+  activeSelection?: SDSProductVariantSelection,
+  candidate?: SDSProductVariantSelection,
+) {
+  if (!activeSelection?.variantId || !candidate?.variantId) {
+    return { compatible: false, reason: "缺少 SDS 选择信息，暂时无法加入分组。" };
+  }
+  if (activeSelection.variantId === candidate.variantId) {
+    return { compatible: false, reason: "这个商品已经在当前批次里，无需重复加入。" };
+  }
+  return { compatible: true, reason: "" };
+}
+
 export function SheinStudioGroupedSelectionPanel({
   activeSelection,
   activeSelectionBaselineAction,
