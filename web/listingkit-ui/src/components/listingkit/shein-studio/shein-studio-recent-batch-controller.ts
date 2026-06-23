@@ -1,4 +1,5 @@
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
+import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 
 type RecentBatchSelectionSummary = {
   id: string;
@@ -8,6 +9,11 @@ type RecentBatchSelectionSummary = {
 type RecentBatchSelectionProjectionParams = {
   rawSelectedRecentBatchSummaryIds: string[];
   validRecentBatchSummaryKeys: Set<string>;
+};
+
+type FreshRecentBatchHydrationParams = {
+  cachedHydratedBatch?: SheinStudioWorkbenchHydratedBatch | null;
+  savedBatch: SheinStudioSavedBatch;
 };
 
 export function buildRecentBatchSummaryKey(
@@ -30,6 +36,20 @@ export function removeRecentBatchSummarySelection(
 ): string[] {
   const key = buildRecentBatchSummaryKey(summary);
   return current.filter((item) => item !== key);
+}
+
+export function selectFreshRecentBatchHydration({
+  cachedHydratedBatch,
+  savedBatch,
+}: FreshRecentBatchHydrationParams): SheinStudioWorkbenchHydratedBatch | null {
+  if (
+    cachedHydratedBatch &&
+    Date.parse(cachedHydratedBatch.savedBatch.updatedAt) >=
+      Date.parse(savedBatch.updatedAt)
+  ) {
+    return cachedHydratedBatch;
+  }
+  return null;
 }
 
 export function projectRecentBatchSelectionState({

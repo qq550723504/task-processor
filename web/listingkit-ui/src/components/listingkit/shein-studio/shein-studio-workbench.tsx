@@ -32,6 +32,7 @@ import {
   buildRecentBatchStoreUpdateInput,
   projectRecentBatchSelectionState,
   removeRecentBatchSummarySelection,
+  selectFreshRecentBatchHydration,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
@@ -1399,12 +1400,12 @@ export function SheinStudioWorkbench({
         return null;
       }
       const cachedHydratedBatch = selectedRecentBatchHydrations[batchId];
-      if (
-        cachedHydratedBatch &&
-        Date.parse(cachedHydratedBatch.savedBatch.updatedAt) >=
-          Date.parse(savedBatch.updatedAt)
-      ) {
-        return cachedHydratedBatch.savedBatch;
+      const freshHydratedBatch = selectFreshRecentBatchHydration({
+        cachedHydratedBatch,
+        savedBatch,
+      });
+      if (freshHydratedBatch) {
+        return freshHydratedBatch.savedBatch;
       }
       try {
         const hydratedBatch = await getSheinStudioHydratedBatch(batchId);

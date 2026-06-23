@@ -7,7 +7,9 @@ import {
   buildRecentBatchStoreUpdateInput,
   projectRecentBatchSelectionState,
   removeRecentBatchSummarySelection,
+  selectFreshRecentBatchHydration,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
+import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 
 const selection = {
@@ -35,6 +37,15 @@ function buildBatch(
     updatedAt: "2026-06-20T00:00:00.000Z",
     ...overrides,
   };
+}
+
+function buildHydratedBatch(
+  savedBatch: SheinStudioSavedBatch,
+): SheinStudioWorkbenchHydratedBatch {
+  return {
+    savedBatch,
+    detail: {},
+  } as SheinStudioWorkbenchHydratedBatch;
 }
 
 describe("buildRecentBatchSaveInput", () => {
@@ -163,5 +174,33 @@ describe("removeRecentBatchSummarySelection", () => {
         summary,
       ),
     ).toEqual(["batch:batch-1", "local_draft:other"]);
+  });
+});
+
+describe("selectFreshRecentBatchHydration", () => {
+  it("keeps a cached hydration when it is at least as fresh as the saved batch", () => {
+    const savedBatch = buildBatch({
+      updatedAt: "2026-06-20T00:00:00.000Z",
+    });
+    const cachedHydratedBatch = buildHydratedBatch(
+      buildBatch({ updatedAt: "2026-06-21T00:00:00.000Z" }),
+    );
+
+    expect(
+      selectFreshRecentBatchHydration({ cachedHydratedBatch, savedBatch }),
+    ).toBe(cachedHydratedBatch);
+  });
+
+  it("ignores a stale cached hydration", () => {
+    const savedBatch = buildBatch({
+      updatedAt: "2026-06-21T00:00:00.000Z",
+    });
+    const cachedHydratedBatch = buildHydratedBatch(
+      buildBatch({ updatedAt: "2026-06-20T00:00:00.000Z" }),
+    );
+
+    expect(
+      selectFreshRecentBatchHydration({ cachedHydratedBatch, savedBatch }),
+    ).toBeNull();
   });
 });
