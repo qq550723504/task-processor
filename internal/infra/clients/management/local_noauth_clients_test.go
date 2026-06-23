@@ -1064,6 +1064,65 @@ func TestListingLocalProviderMissesDoNotFallbackToManagementHTTP(t *testing.T) {
 	if exists {
 		t.Fatal("CheckProductExists() = true, want false local miss")
 	}
+
+	filterClient := &FilterRuleAPIClient{ManagementAPIClient: baseClient, localDataProvider: provider}
+	filterRules, err := filterClient.GetFilterRule(&api.FilterRuleReqDTO{TenantID: 1, StoreID: 976, CategoryID: 123})
+	if err != nil {
+		t.Fatalf("GetFilterRule() error = %v", err)
+	}
+	if filterRules == nil || len(*filterRules) != 0 {
+		t.Fatalf("GetFilterRule() = %+v, want empty local result", filterRules)
+	}
+
+	storeID := int64(976)
+	pricingClient := &PricingRuleAPIClient{ManagementAPIClient: baseClient, localDataProvider: provider}
+	pricingRules, err := pricingClient.GetPricingRule(&api.PricingRuleReqDTO{StoreID: &storeID})
+	if err != nil {
+		t.Fatalf("GetPricingRule() error = %v", err)
+	}
+	if len(pricingRules) != 0 {
+		t.Fatalf("GetPricingRule() = %+v, want empty local result", pricingRules)
+	}
+
+	productClient := &ProductDataAPIClient{ManagementAPIClient: baseClient, localDataProvider: provider}
+	products, err := productClient.ListByStore("shein", 1, 976, nil)
+	if err != nil {
+		t.Fatalf("ListByStore() error = %v", err)
+	}
+	if len(products) != 0 {
+		t.Fatalf("ListByStore() = %+v, want empty local result", products)
+	}
+	page, err := productClient.PageProductDataByStore(&api.ProductDataListByStorePageReqDTO{
+		Platform: "shein",
+		TenantID: 1,
+		StoreID:  976,
+		PageNo:   1,
+		PageSize: 20,
+	})
+	if err != nil {
+		t.Fatalf("PageProductDataByStore() error = %v", err)
+	}
+	if page == nil || len(page.List) != 0 || page.Total != 0 {
+		t.Fatalf("PageProductDataByStore() = %+v, want empty local page", page)
+	}
+
+	inventoryClient := &InventoryRecordAPIClient{ManagementAPIClient: baseClient, localDataProvider: provider}
+	inventory, err := inventoryClient.GetLatestInventoryRecord("shein", "missing-inventory", "us")
+	if err != nil {
+		t.Fatalf("GetLatestInventoryRecord() error = %v", err)
+	}
+	if inventory != nil {
+		t.Fatalf("GetLatestInventoryRecord() = %+v, want nil local miss", inventory)
+	}
+
+	dailyClient := &DailyListingCountAPIClient{ManagementAPIClient: baseClient, localDataProvider: provider}
+	count, err := dailyClient.GetDailyListingCount(1, 976, 0, "2026-06-24")
+	if err != nil {
+		t.Fatalf("GetDailyListingCount() error = %v", err)
+	}
+	if count != nil {
+		t.Fatalf("GetDailyListingCount() = %+v, want nil without local redis", count)
+	}
 }
 
 func TestProductImportMappingAPIClient_LocalProvider(t *testing.T) {

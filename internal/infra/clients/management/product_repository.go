@@ -20,7 +20,7 @@ func (c *ProductDataAPIClient) BatchCreateOrUpdate(req *api.ProductDataBatchSave
 	if req == nil || len(req.Products) == 0 {
 		return 0, nil
 	}
-	if c.localDataProvider != nil {
+	if c.localDataProvider != nil && c.localDataProvider.HasDB() {
 		return c.localDataProvider.BatchCreateOrUpdateProductData(req)
 	}
 
@@ -151,10 +151,8 @@ type ProductListResponse struct {
 
 // ListByStore 查询店铺的所有产品数据
 func (c *ProductDataAPIClient) ListByStore(platform string, tenantID, storeID int64, shelfStatus *int) ([]*api.ProductDataDTO, error) {
-	if c.localDataProvider != nil {
-		if products, err := c.localDataProvider.ListProductDataByStore(platform, tenantID, storeID, shelfStatus); err != nil || products != nil {
-			return products, err
-		}
+	if c.localDataProvider != nil && c.localDataProvider.HasDB() {
+		return c.localDataProvider.ListProductDataByStore(platform, tenantID, storeID, shelfStatus)
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/product-data/list-by-store", c.baseURL)
 
@@ -216,7 +214,7 @@ func (c *ProductDataAPIClient) ListByStore(platform string, tenantID, storeID in
 
 // BatchUpdateAttributes 批量更新产品属性
 func (c *ProductDataAPIClient) BatchUpdateAttributes(req *api.ProductDataBatchUpdateAttributesReqDTO) (int, error) {
-	if c.localDataProvider != nil {
+	if c.localDataProvider != nil && c.localDataProvider.HasDB() {
 		return c.localDataProvider.BatchUpdateProductAttributes(req)
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/product-data/batch-update-attributes", c.baseURL)
@@ -258,10 +256,8 @@ func convertToProductAttributesItems(items []api.ProductAttributesItemDTO) []map
 
 // PageProductDataByStore 分页查询店铺产品数据
 func (c *ProductDataAPIClient) PageProductDataByStore(req *api.ProductDataListByStorePageReqDTO) (*api.PageResult[*api.ProductDataRespDTO], error) {
-	if c.localDataProvider != nil {
-		if page, err := c.localDataProvider.PageProductDataByStore(req); err != nil || page != nil {
-			return page, err
-		}
+	if c.localDataProvider != nil && c.localDataProvider.HasDB() {
+		return c.localDataProvider.PageProductDataByStore(req)
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/product-data/page-by-store", c.baseURL)
 

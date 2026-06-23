@@ -15,10 +15,7 @@ type InventoryRecordAPIClient struct {
 // CreateInventoryRecord 创建库存记录
 func (m *InventoryRecordAPIClient) CreateInventoryRecord(req *api.InventoryRecordCreateReqDTO) (int64, error) {
 	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
-		id, err := m.localDataProvider.CreateInventoryRecord(req)
-		if err != nil || id > 0 {
-			return id, err
-		}
+		return m.localDataProvider.CreateInventoryRecord(req)
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/inventory-record/create", m.baseURL)
 	id, err := getTypedResult[int64](m.ManagementAPIClient, http.MethodPost, url, req)
@@ -31,9 +28,11 @@ func (m *InventoryRecordAPIClient) CreateInventoryRecord(req *api.InventoryRecor
 // GetLatestInventoryRecord 获取最新的库存记录
 func (m *InventoryRecordAPIClient) GetLatestInventoryRecord(platform, productId, region string) (*api.InventoryRecordRespDTO, error) {
 	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
-		if record, found, err := m.localDataProvider.GetLatestInventoryRecord(platform, productId, region); err != nil || found {
+		record, found, err := m.localDataProvider.GetLatestInventoryRecord(platform, productId, region)
+		if err != nil || found {
 			return record, err
 		}
+		return nil, nil
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/inventory-record/get-latest", m.baseURL)
 

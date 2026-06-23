@@ -15,9 +15,7 @@ type DailyListingCountAPIClient struct {
 // GetDailyListingCount 获取每日上架数量
 func (c *DailyListingCountAPIClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*api.DailyListingCountRespDTO, error) {
 	if c.localDataProvider != nil {
-		if resp, err := c.localDataProvider.GetDailyListingCount(tenantID, storeID, userID, date); err != nil || resp != nil {
-			return resp, err
-		}
+		return c.localDataProvider.GetDailyListingCount(tenantID, storeID, userID, date)
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/store/get-daily-listing-count", c.baseURL)
 
