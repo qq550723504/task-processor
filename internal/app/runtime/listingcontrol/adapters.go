@@ -123,28 +123,61 @@ func (r *redisStringRuntime) Close() error {
 }
 
 type rabbitQueueDepthSource struct {
-	channel  queueInspector
-	platform string
+	inspectQueue queueInspectFunc
+	declarer     storeQueueDeclarer
+	platform     string
 }
 
-type queueInspector interface {
-	QueueInspect(name string) (amqp.Queue, error)
+type queueInspectFunc func(name string) (amqp.Queue, error)
+
+type storeQueueDeclarer interface {
+	DeclareQueue(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) error
+	BindQueue(queueName, routingKey, exchangeName string, noWait bool, args amqp.Table) error
 }
 
-func newRabbitQueueDepthSource(channel queueInspector, platform string) rabbitQueueDepthSource {
+func newRabbitQueueDepthSource(inspectQueue queueInspectFunc, declarer storeQueueDeclarer, platform string) rabbitQueueDepthSource {
 	return rabbitQueueDepthSource{
-		channel:  channel,
-		platform: platform,
+		inspectQueue: inspectQueue,
+		declarer:     declarer,
+		platform:     platform,
 	}
 }
 
 func (s rabbitQueueDepthSource) QueueDepth(ctx context.Context, tenantID, storeID int64) (int64, error) {
-	if s.channel == nil {
+	if s.inspectQueue == nil {
 		return 0, errors.New("RabbitMQ queue inspector is not configured")
 	}
-	queue, err := s.channel.QueueInspect(rabbitmq.GetStoreQueueName(s.platform, storeID))
+	queue, err := s.inspectQueue(rabbitmq.GetStoreQueueName(s.platform, storeID))
 	if err != nil {
+		if isAMQPNotFound(err) {
+			if err := s.declareStoreQueue(storeID); err != nil {
+				return 0, err
+			}
+			return 0, nil
+		}
 		return 0, err
 	}
 	return int64(queue.Messages), nil
+}
+
+func (s rabbitQueueDepthSource) declareStoreQueue(storeID int64) error {
+	if s.declarer == nil {
+		return errors.New("RabbitMQ queue declarer is not configured")
+	}
+	for _, q := range rabbitmq.GetStoreQueueDeclareConfigs(s.platform, storeID) {
+		if err := s.declarer.DeclareQueue(q.Name, q.Durable, q.AutoDelete, q.Exclusive, q.NoWait, q.Args); err != nil {
+			return fmt.Errorf("declare store queue %s: %w", q.Name, err)
+		}
+	}
+	for _, b := range rabbitmq.GetStoreQueueBindingConfigs(s.platform, storeID) {
+		if err := s.declarer.BindQueue(b.QueueName, b.RoutingKey, b.ExchangeName, b.NoWait, b.Args); err != nil {
+			return fmt.Errorf("bind store queue %s: %w", b.QueueName, err)
+		}
+	}
+	return nil
+}
+
+func isAMQPNotFound(err error) bool {
+	var amqpErr *amqp.Error
+	return errors.As(err, &amqpErr) && amqpErr.Code == 404
 }

@@ -291,10 +291,9 @@ func recoveryConfig(cfg *config.Config, repo controllib.RecoveryRepository) cont
 }
 
 type realRabbitRuntime struct {
-	manager        *rabbitmq.ConnectionManager
-	client         *rabbitmq.Client
-	publisher      *amqp.Channel
-	queueInspector *amqp.Channel
+	manager   *rabbitmq.ConnectionManager
+	client    *rabbitmq.Client
+	publisher *amqp.Channel
 }
 
 func openRabbitRuntime(ctx context.Context, cfg *config.RabbitMQConfig, logger *logrus.Logger) (*realRabbitRuntime, error) {
@@ -316,17 +315,10 @@ func openRabbitRuntime(ctx context.Context, cfg *config.RabbitMQConfig, logger *
 		_ = manager.Close()
 		return nil, err
 	}
-	inspector, err := manager.CreateChannel()
-	if err != nil {
-		_ = publisher.Close()
-		_ = manager.Close()
-		return nil, err
-	}
 	return &realRabbitRuntime{
-		manager:        manager,
-		client:         client,
-		publisher:      publisher,
-		queueInspector: inspector,
+		manager:   manager,
+		client:    client,
+		publisher: publisher,
 	}, nil
 }
 
@@ -335,7 +327,19 @@ func (r *realRabbitRuntime) Publisher() controllib.AMQPPublisher {
 }
 
 func (r *realRabbitRuntime) QueueDepthSource(platform string) controllib.QueueDepthSource {
-	return newRabbitQueueDepthSource(r.queueInspector, platform)
+	return newRabbitQueueDepthSource(r.inspectQueue, r.client, platform)
+}
+
+func (r *realRabbitRuntime) inspectQueue(name string) (amqp.Queue, error) {
+	if r == nil || r.manager == nil {
+		return amqp.Queue{}, errors.New("RabbitMQ connection manager is not configured")
+	}
+	channel, err := r.manager.CreateChannel()
+	if err != nil {
+		return amqp.Queue{}, err
+	}
+	defer channel.Close()
+	return channel.QueueInspect(name)
 }
 
 func (r *realRabbitRuntime) Close() error {
@@ -345,9 +349,6 @@ func (r *realRabbitRuntime) Close() error {
 	var err error
 	if r.publisher != nil {
 		err = errors.Join(err, r.publisher.Close())
-	}
-	if r.queueInspector != nil {
-		err = errors.Join(err, r.queueInspector.Close())
 	}
 	if r.client != nil {
 		err = errors.Join(err, r.client.Close())

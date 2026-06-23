@@ -12,6 +12,7 @@ import (
 
 	controllib "task-processor/internal/listingcontrol"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -130,6 +131,54 @@ func TestDirectStoreSourceMapsListingStoreRowsWithoutOwnerScope(t *testing.T) {
 	}
 }
 
+func TestRabbitQueueDepthSourceDeclaresMissingStoreQueueAndReturnsZero(t *testing.T) {
+	declarer := &fakeStoreQueueDeclarer{}
+	source := newRabbitQueueDepthSource(
+		func(name string) (amqp.Queue, error) {
+			if name != "shein.tasks.store.100" {
+				t.Fatalf("unexpected inspected queue name: %s", name)
+			}
+			return amqp.Queue{}, &amqp.Error{Code: 404, Reason: "NOT_FOUND - no queue"}
+		},
+		declarer,
+		"shein",
+	)
+
+	depth, err := source.QueueDepth(context.Background(), 10, 100)
+	if err != nil {
+		t.Fatalf("QueueDepth returned error: %v", err)
+	}
+	if depth != 0 {
+		t.Fatalf("expected missing queue depth 0, got %d", depth)
+	}
+	if !reflect.DeepEqual(declarer.declared, []string{"shein.tasks.store.100"}) {
+		t.Fatalf("declared queues = %v", declarer.declared)
+	}
+	if !reflect.DeepEqual(declarer.bound, []string{"shein.tasks.store.100|shein.tasks.store.100|tasks.exchange"}) {
+		t.Fatalf("bound queues = %v", declarer.bound)
+	}
+}
+
+func TestRabbitQueueDepthSourceReturnsDeclarationErrorForMissingStoreQueue(t *testing.T) {
+	declarationErr := errors.New("declare failed")
+	declarer := &fakeStoreQueueDeclarer{declareErr: declarationErr}
+	source := newRabbitQueueDepthSource(
+		func(name string) (amqp.Queue, error) {
+			return amqp.Queue{}, &amqp.Error{Code: 404, Reason: "NOT_FOUND - no queue"}
+		},
+		declarer,
+		"shein",
+	)
+
+	_, err := source.QueueDepth(context.Background(), 10, 100)
+	if !errors.Is(err, declarationErr) {
+		t.Fatalf("expected declaration error, got %v", err)
+	}
+	if len(declarer.bound) != 0 {
+		t.Fatalf("queue should not be bound after declaration failure: %v", declarer.bound)
+	}
+}
+
 func TestControlPlaneServiceRunsRecoveryBeforeDispatchAndStopsOnContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -187,6 +236,29 @@ func (f *fakeOnceRunner) run(order *[]string) func(context.Context) (controllib.
 		*order = append(*order, f.name)
 		return controllib.RecoverySummary{}, nil
 	}
+}
+
+type fakeStoreQueueDeclarer struct {
+	declared   []string
+	bound      []string
+	declareErr error
+	bindErr    error
+}
+
+func (f *fakeStoreQueueDeclarer) DeclareQueue(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) error {
+	if f.declareErr != nil {
+		return f.declareErr
+	}
+	f.declared = append(f.declared, name)
+	return nil
+}
+
+func (f *fakeStoreQueueDeclarer) BindQueue(queueName, routingKey, exchangeName string, noWait bool, args amqp.Table) error {
+	if f.bindErr != nil {
+		return f.bindErr
+	}
+	f.bound = append(f.bound, queueName+"|"+routingKey+"|"+exchangeName)
+	return nil
 }
 
 type fakeRuntimeDeps struct {
