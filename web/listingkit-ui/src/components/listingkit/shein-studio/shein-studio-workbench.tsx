@@ -31,6 +31,7 @@ import {
   buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchSaveInput,
   projectRecentBatchSelectionState,
+  projectRecentBatchTargetStep,
   removeRecentBatchSummarySelection,
   selectRecentBatchBulkDeleteFailure,
   resolveRecentBatchForMutation as resolveRecentBatchForMutationTarget,
@@ -1306,19 +1307,6 @@ export function SheinStudioWorkbench({
     workbenchController,
   ]);
 
-  const stepForRecentBatchAction = useCallback(
-    (action?: "generate" | "review" | "tasks"): SheinStudioStepKey => {
-      if (action === "tasks") {
-        return "tasks";
-      }
-      if (action === "review") {
-        return "review";
-      }
-      return "generate";
-    },
-    [],
-  );
-
   const handleSelectRecentBatchSummary = useCallback(
     (
       summary: (typeof recentBatchSummaries)[number],
@@ -1326,7 +1314,7 @@ export function SheinStudioWorkbench({
     ) => {
       const requestVersion = recentBatchOpenRequestVersionRef.current + 1;
       recentBatchOpenRequestVersionRef.current = requestVersion;
-      const targetStep = stepForRecentBatchAction(action);
+      const targetStep = projectRecentBatchTargetStep(action);
       if (summary.source === "local_draft" && localDraftSnapshot) {
         const recovery = projectLocalDraftRecovery({
           draft: localDraftSnapshot,
@@ -1381,7 +1369,6 @@ export function SheinStudioWorkbench({
       localDraftSnapshot,
       savedBatches,
       setEffectiveStep,
-      stepForRecentBatchAction,
       workbenchController,
     ],
   );

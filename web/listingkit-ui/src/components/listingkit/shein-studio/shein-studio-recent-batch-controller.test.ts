@@ -7,6 +7,7 @@ import {
   buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchStoreUpdateInput,
   projectRecentBatchSelectionState,
+  projectRecentBatchTargetStep,
   removeRecentBatchSummarySelection,
   resolveRecentBatchForMutation,
   selectFreshRecentBatchHydration,
@@ -177,6 +178,15 @@ describe("projectRecentBatchSelectionState", () => {
     });
 
     expect(projection.selectedPersistedRecentBatchIds).toEqual(["batch:1"]);
+  });
+});
+
+describe("projectRecentBatchTargetStep", () => {
+  it("maps recent batch actions to workbench steps", () => {
+    expect(projectRecentBatchTargetStep()).toBe("generate");
+    expect(projectRecentBatchTargetStep("generate")).toBe("generate");
+    expect(projectRecentBatchTargetStep("review")).toBe("review");
+    expect(projectRecentBatchTargetStep("tasks")).toBe("tasks");
   });
 });
 

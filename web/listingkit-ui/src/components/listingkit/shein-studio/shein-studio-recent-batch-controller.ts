@@ -6,6 +6,8 @@ type RecentBatchSelectionSummary = {
   source: "batch" | "local_draft";
 };
 
+type RecentBatchAction = "generate" | "review" | "tasks";
+
 type RecentBatchSelectionProjectionParams = {
   rawSelectedRecentBatchSummaryIds: string[];
   validRecentBatchSummaryKeys: Set<string>;
@@ -49,6 +51,18 @@ export function removeRecentBatchSummarySelection(
 ): string[] {
   const key = buildRecentBatchSummaryKey(summary);
   return current.filter((item) => item !== key);
+}
+
+export function projectRecentBatchTargetStep(
+  action?: RecentBatchAction,
+): "generate" | "review" | "tasks" {
+  if (action === "tasks") {
+    return "tasks";
+  }
+  if (action === "review") {
+    return "review";
+  }
+  return "generate";
 }
 
 export function selectFreshRecentBatchHydration({
