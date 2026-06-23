@@ -36,11 +36,12 @@ type rabbitRuntime interface {
 }
 
 type runtimeDependencies struct {
-	LoadConfig   func(configPath string, logger *logrus.Logger) (*config.Config, error)
-	OpenDB       func(ctx context.Context, cfg databaseConfig) (dbHandle, error)
-	CloseDB      func(cfg databaseConfig, db dbHandle) error
-	OpenRedis    func(ctx context.Context, cfg redisConfig) (redisRuntime, error)
-	OpenRabbitMQ func(ctx context.Context, cfg rabbitConfig, logger *logrus.Logger) (rabbitRuntime, error)
+	LoadConfig        func(configPath string, logger *logrus.Logger) (*config.Config, error)
+	OpenDB            func(ctx context.Context, cfg databaseConfig) (dbHandle, error)
+	CloseDB           func(cfg databaseConfig, db dbHandle) error
+	MigrateImportTask func(db dbHandle) error
+	OpenRedis         func(ctx context.Context, cfg redisConfig) (redisRuntime, error)
+	OpenRabbitMQ      func(ctx context.Context, cfg rabbitConfig, logger *logrus.Logger) (rabbitRuntime, error)
 }
 
 func defaultRuntimeDependencies() runtimeDependencies {
@@ -50,6 +51,9 @@ func defaultRuntimeDependencies() runtimeDependencies {
 			return database.NewSharedDatabaseFromConfig(cfg)
 		},
 		CloseDB: database.CloseSharedDatabase,
+		MigrateImportTask: func(db dbHandle) error {
+			return listingadmin.AutoMigrateImportTaskRepository(db)
+		},
 		OpenRedis: func(ctx context.Context, cfg redisConfig) (redisRuntime, error) {
 			return newRedisStringRuntime(cfg)
 		},
@@ -72,6 +76,9 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	}
 	if deps.CloseDB == nil {
 		deps.CloseDB = defaultRuntimeDependencies().CloseDB
+	}
+	if deps.MigrateImportTask == nil {
+		deps.MigrateImportTask = defaultRuntimeDependencies().MigrateImportTask
 	}
 	if deps.OpenRedis == nil {
 		deps.OpenRedis = defaultRuntimeDependencies().OpenRedis
@@ -116,6 +123,9 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 			logger.WithError(err).Warn("close shared database failed")
 		}
 	}()
+	if err := deps.MigrateImportTask(db); err != nil {
+		return fmt.Errorf("migrate import task repository: %w", err)
+	}
 
 	redisRT, err := deps.OpenRedis(ctx, cfg.Redis)
 	if err != nil {

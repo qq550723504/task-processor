@@ -85,6 +85,46 @@ listingControlPlane:
 	}
 }
 
+func TestRunMigratesImportTaskSchemaBeforeConnectingRedisAndRabbitMQ(t *testing.T) {
+	configPath := writeRuntimeConfig(t, `
+openai:
+  apiKey: "test-key"
+management:
+  clientSecret: "test-secret"
+database:
+  host: "postgres"
+  port: 5432
+  user: "postgres"
+  database: "ruoyi-vue-pro"
+redis:
+  host: "redis"
+  port: 6379
+rabbitmq:
+  enabled: true
+  url: "amqp://guest:guest@rabbitmq:5672/"
+listingControlPlane:
+  enabled: true
+`)
+	deps := newFakeRuntimeDeps()
+	migrationErr := errors.New("migration failed")
+	var migrated bool
+	deps.MigrateImportTask = func(db dbHandle) error {
+		migrated = true
+		return migrationErr
+	}
+
+	err := runWithDependencies(context.Background(), Options{Config: configPath, LogLevel: "error"}, deps.runtimeDependencies)
+	if !errors.Is(err, migrationErr) {
+		t.Fatalf("expected migration error, got %v", err)
+	}
+	if !deps.dbOpened || !migrated {
+		t.Fatalf("expected DB open and migration before failure: dbOpened=%v migrated=%v", deps.dbOpened, migrated)
+	}
+	if deps.redisOpened || deps.rabbitConnected {
+		t.Fatalf("redis/rabbit should not initialize after migration failure: %+v", deps)
+	}
+}
+
 func TestDirectStoreSourceMapsListingStoreRowsWithoutOwnerScope(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
