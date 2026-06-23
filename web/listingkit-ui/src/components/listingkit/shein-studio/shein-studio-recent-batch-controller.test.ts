@@ -4,10 +4,12 @@ import {
   buildRecentBatchSummaryKey,
   buildRecentBatchSummaryKeys,
   buildRecentBatchSaveInput,
+  buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchStoreUpdateInput,
   projectRecentBatchSelectionState,
   removeRecentBatchSummarySelection,
   selectFreshRecentBatchHydration,
+  selectRecentBatchBulkDeleteFailure,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
@@ -122,6 +124,23 @@ describe("buildRecentBatchStoreUpdateInput", () => {
   });
 });
 
+describe("buildRecentBatchBulkStoreUpdateInputs", () => {
+  it("projects every selected batch into a store update save input", () => {
+    const inputs = buildRecentBatchBulkStoreUpdateInputs(
+      [
+        buildBatch({ id: "batch-1", sheinStoreId: "store-old" }),
+        buildBatch({ id: "batch-2", sheinStoreId: "store-old" }),
+      ],
+      "store-new",
+    );
+
+    expect(inputs).toEqual([
+      expect.objectContaining({ id: "batch-1", sheinStoreId: "store-new" }),
+      expect.objectContaining({ id: "batch-2", sheinStoreId: "store-new" }),
+    ]);
+  });
+});
+
 describe("projectRecentBatchSelectionState", () => {
   it("keeps only visible summary keys and returns persisted batch ids", () => {
     const projection = projectRecentBatchSelectionState({
@@ -202,5 +221,26 @@ describe("selectFreshRecentBatchHydration", () => {
     expect(
       selectFreshRecentBatchHydration({ cachedHydratedBatch, savedBatch }),
     ).toBeNull();
+  });
+});
+
+describe("selectRecentBatchBulkDeleteFailure", () => {
+  it("ignores missing studio session delete failures", () => {
+    const results: PromiseSettledResult<void>[] = [
+      { status: "rejected", reason: new Error("studio session not found") },
+      { status: "fulfilled", value: undefined },
+    ];
+
+    expect(selectRecentBatchBulkDeleteFailure(results)).toBeNull();
+  });
+
+  it("returns the first non-missing delete failure", () => {
+    const failure = new Error("network failed");
+    const results: PromiseSettledResult<void>[] = [
+      { status: "rejected", reason: new Error("studio session not found") },
+      { status: "rejected", reason: failure },
+    ];
+
+    expect(selectRecentBatchBulkDeleteFailure(results)).toBe(failure);
   });
 });

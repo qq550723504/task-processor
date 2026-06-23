@@ -141,3 +141,25 @@ export function buildRecentBatchStoreUpdateInput(
     })),
   });
 }
+
+export function buildRecentBatchBulkStoreUpdateInputs(
+  batches: SheinStudioSavedBatch[],
+  storeId: string,
+) {
+  return batches.map((batch) => buildRecentBatchStoreUpdateInput(batch, storeId));
+}
+
+function isMissingRecentBatchDeleteError(error: unknown) {
+  return error instanceof Error && /studio session not found/i.test(error.message);
+}
+
+export function selectRecentBatchBulkDeleteFailure(
+  results: PromiseSettledResult<unknown>[],
+): unknown | null {
+  const failed = results.find(
+    (result) =>
+      result.status === "rejected" &&
+      !isMissingRecentBatchDeleteError(result.reason),
+  );
+  return failed?.status === "rejected" ? failed.reason : null;
+}

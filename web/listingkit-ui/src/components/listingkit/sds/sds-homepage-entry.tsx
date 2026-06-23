@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { SheinStudioBatchRunProgress } from "@/components/listingkit/shein-studio/shein-studio-batch-run-progress";
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
+import { selectRecentBatchBulkDeleteFailure } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
 import { startSheinStudioBatchRun } from "@/lib/api/shein-studio-batch-runs";
@@ -69,10 +70,6 @@ function buildSummaryRoute(
   }
   const step = stepForSummaryAction(summary, action);
   return `/listing-kits/sds/new?step=${step}`;
-}
-
-function isMissingStudioBatchDeleteError(error: unknown) {
-  return error instanceof Error && /studio session not found/i.test(error.message);
 }
 
 function isRecentBatchRejectedError(error: unknown) {
@@ -355,13 +352,9 @@ export function SdsHomepageEntry() {
         summaryIds.map((summaryId) => deleteSheinStudioBatch(summaryId)),
       );
       await refreshSummaries();
-      const failed = results.find(
-        (result) =>
-          result.status === "rejected" &&
-          !isMissingStudioBatchDeleteError(result.reason),
-      );
-      if (failed?.status === "rejected") {
-        throw failed.reason;
+      const failure = selectRecentBatchBulkDeleteFailure(results);
+      if (failure) {
+        throw failure;
       }
     },
     [refreshSummaries],

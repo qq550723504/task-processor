@@ -28,11 +28,12 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import {
   buildRecentBatchSummaryKeys,
+  buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchSaveInput,
-  buildRecentBatchStoreUpdateInput,
   projectRecentBatchSelectionState,
   removeRecentBatchSummarySelection,
   selectFreshRecentBatchHydration,
+  selectRecentBatchBulkDeleteFailure,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
@@ -129,10 +130,6 @@ type SheinStudioWorkbenchProps = {
   initialBatchId?: string;
   selection?: SDSProductVariantSelection;
 };
-
-function isMissingStudioBatchDeleteError(error: unknown) {
-  return error instanceof Error && /studio session not found/i.test(error.message);
-}
 
 function getBatchRunStartErrorMessage(error: unknown) {
   if (error instanceof ApiError && error.status === 404) {
@@ -1483,13 +1480,9 @@ export function SheinStudioWorkbench({
       const results = await Promise.allSettled(
         summaryIds.map((summaryId) => handleDeleteBatch(summaryId)),
       );
-      const failed = results.find(
-        (result) =>
-          result.status === "rejected" &&
-          !isMissingStudioBatchDeleteError(result.reason),
-      );
-      if (failed?.status === "rejected") {
-        throw failed.reason;
+      const failure = selectRecentBatchBulkDeleteFailure(results);
+      if (failure) {
+        throw failure;
       }
     },
     [handleDeleteBatch],
@@ -1504,11 +1497,8 @@ export function SheinStudioWorkbench({
         return;
       }
       await Promise.all(
-        targets.map((batch) =>
-          saveSheinStudioBatch(
-            buildRecentBatchStoreUpdateInput(batch, storeId),
-            { makeActive: false },
-          ),
+        buildRecentBatchBulkStoreUpdateInputs(targets, storeId).map((input) =>
+          saveSheinStudioBatch(input, { makeActive: false }),
         ),
       );
       await refreshSavedBatches();
