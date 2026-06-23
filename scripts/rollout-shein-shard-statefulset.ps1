@@ -25,7 +25,7 @@ function Invoke-Step {
 
     Write-Host ""
     Write-Host $Title -ForegroundColor Yellow
-    & $Action
+    . $Action
 }
 
 function Get-JsonPathValue {
@@ -44,9 +44,27 @@ function Get-JsonPathValue {
 function Set-Partition {
     param([int]$Partition)
 
-    kubectl -n $Namespace patch "statefulset/$StatefulSetName" --type merge -p "{""spec"":{""updateStrategy"":{""type"":""RollingUpdate"",""rollingUpdate"":{""partition"":$Partition}}}}"
-    if ($LASTEXITCODE -ne 0) {
-        throw "failed to patch partition=$Partition"
+    $patch = @{
+        spec = @{
+            updateStrategy = @{
+                type = "RollingUpdate"
+                rollingUpdate = @{
+                    partition = $Partition
+                }
+            }
+        }
+    } | ConvertTo-Json -Depth 6 -Compress
+
+    $patchFile = [System.IO.Path]::GetTempFileName()
+    try {
+        Set-Content -LiteralPath $patchFile -Value $patch -Encoding UTF8
+        kubectl -n $Namespace patch "statefulset/$StatefulSetName" --type merge --patch-file $patchFile
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to patch partition=$Partition"
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $patchFile -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -92,7 +110,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 
 $replicas = [int](Get-JsonPathValue -Resource "statefulset/$StatefulSetName" -JsonPath "{.spec.replicas}")
 if ($replicas -le 0) {
-    throw "invalid replicas for $StatefulSetName: $replicas"
+    throw "invalid replicas for ${StatefulSetName}: $replicas"
 }
 if ($BatchSize -le 0) {
     throw "BatchSize must be > 0"
@@ -112,22 +130,22 @@ Invoke-Step "[2/4] Updating StatefulSet image..." {
     }
 }
 
-$updateRevision = ""
+$script:updateRevision = ""
 Invoke-Step "[3/4] Reading update revision..." {
     $deadline = (Get-Date).AddSeconds(60)
     while ((Get-Date) -lt $deadline) {
-        $updateRevision = Get-JsonPathValue -Resource "statefulset/$StatefulSetName" -JsonPath "{.status.updateRevision}"
-        if (-not [string]::IsNullOrWhiteSpace($updateRevision)) {
+        $script:updateRevision = Get-JsonPathValue -Resource "statefulset/$StatefulSetName" -JsonPath "{.status.updateRevision}"
+        if (-not [string]::IsNullOrWhiteSpace($script:updateRevision)) {
             break
         }
         Start-Sleep -Seconds 2
     }
 
-    if ([string]::IsNullOrWhiteSpace($updateRevision)) {
+    if ([string]::IsNullOrWhiteSpace($script:updateRevision)) {
         throw "failed to resolve updateRevision"
     }
 
-    Write-Host "updateRevision=$updateRevision" -ForegroundColor Green
+    Write-Host "updateRevision=$script:updateRevision" -ForegroundColor Green
 }
 
 Invoke-Step "[4/4] Rolling out batches..." {
@@ -140,7 +158,7 @@ Invoke-Step "[4/4] Rolling out batches..." {
 
         Write-Host "Updating ordinals: $($batchOrdinals -join ', ') with partition=$partition" -ForegroundColor Cyan
         Set-Partition -Partition $partition
-        Wait-BatchReady -Ordinals $batchOrdinals -ExpectedRevision $updateRevision
+        Wait-BatchReady -Ordinals $batchOrdinals -ExpectedRevision $script:updateRevision
     }
 }
 
