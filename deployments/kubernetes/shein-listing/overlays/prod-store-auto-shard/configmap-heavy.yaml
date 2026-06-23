@@ -171,8 +171,8 @@ data:
         proxies: []
       concurrencyControl:
         enabled: true
-        maxInFlight: 3
-        maxWaiting: 30
+        maxInFlight: 6
+        maxWaiting: 60
         acquireTimeoutSeconds: 60
       remoteAPI:
         enabled: false

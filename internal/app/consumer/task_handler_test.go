@@ -205,6 +205,49 @@ func TestTaskHandlerHandleMessage_ProcessesEnabledStore(t *testing.T) {
 	}
 }
 
+func TestTaskHandlerHandleMessage_SkipsAutoListingDisabledStore(t *testing.T) {
+	autoListingDisabled := false
+	processor := &stubProcessor{}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "shein",
+		Processor: processor,
+		StoreAPI: &stubStoreAPI{
+			store: &managementapi.StoreRespDTO{
+				ID:                424,
+				Name:              "status-enabled-store",
+				Status:            storeStatusEnabled,
+				EnableAutoListing: &autoListingDisabled,
+			},
+		},
+		Logger: logrus.New(),
+	})
+
+	msg := &rabbitmq.Message{
+		ID:   "msg-status-enabled-auto-disabled",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":         float64(1003),
+			"tenantId":       float64(246),
+			"storeId":        float64(424),
+			"sourcePlatform": "amazon",
+			"targetPlatform": "shein",
+			"region":         "US",
+			"productId":      "B0STATUS0",
+			"priority":       float64(5),
+			"retryCount":     float64(0),
+			"maxRetryCount":  float64(3),
+			"status":         "queued",
+		},
+	}
+
+	if err := handler.HandleMessage(context.Background(), msg); err != nil {
+		t.Fatalf("expected auto-listing-disabled store message to be skipped without error, got %v", err)
+	}
+	if processor.processCalls != 0 {
+		t.Fatalf("expected processor not to be called, got %d calls", processor.processCalls)
+	}
+}
+
 func TestTaskHandlerHandleMessage_ClaimsQueuedTaskBeforeProcessing(t *testing.T) {
 	autoListingEnabled := true
 	var updateCalls int32
