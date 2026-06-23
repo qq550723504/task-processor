@@ -3,6 +3,7 @@ import { useCallback } from "react";
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
 import { saveLocalSheinStudioDraftSnapshot } from "@/lib/shein-studio/local-draft-cache";
 import { mergeSheinStudioDraftState } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import type { SheinStudioWorkbenchController } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
@@ -46,6 +47,13 @@ type DedicatedDraftPersistenceParams = {
 
 type LocalDraftRecoveryParams = {
   draft: SheinStudioDraft;
+};
+
+type LocalDraftRecovery = ReturnType<typeof projectLocalDraftRecovery>;
+
+type ApplyLocalDraftRecoveryParams = {
+  recovery: LocalDraftRecovery;
+  workbench: Pick<SheinStudioWorkbenchController, "applyDraft" | "setField">;
 };
 
 type DraftPersistenceProjectionParams = {
@@ -179,6 +187,18 @@ export function projectLocalDraftRecovery({ draft }: LocalDraftRecoveryParams) {
       generationError: draftState.generationError,
     },
   };
+}
+
+export function applyLocalDraftRecoveryToWorkbench({
+  recovery,
+  workbench,
+}: ApplyLocalDraftRecoveryParams) {
+  workbench.applyDraft(recovery.applyDraftInput);
+  workbench.setField("designs", recovery.resultFields.designs);
+  workbench.setField("selectedIds", recovery.resultFields.selectedIds);
+  workbench.setField("createdTasks", recovery.resultFields.createdTasks);
+  workbench.setField("generationJobs", recovery.resultFields.generationJobs);
+  workbench.setField("generationError", recovery.resultFields.generationError);
 }
 
 export function resetDedicatedBatchPromptOverrides() {

@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  applyLocalDraftRecoveryToWorkbench,
   buildSheinStudioDraftPersistenceState,
   projectLocalDraftRecovery,
   resetDedicatedBatchPromptOverrides,
@@ -211,5 +212,62 @@ describe("projectLocalDraftRecovery", () => {
       selectedIds: ["design-1"],
     });
     expect(recovery.hasCustomizedSdsSelection).toBe(true);
+  });
+});
+
+describe("applyLocalDraftRecoveryToWorkbench", () => {
+  it("applies draft input and result-backed fields to the workbench", () => {
+    const recovery = projectLocalDraftRecovery({
+      draft: {
+        prompt: "local prompt",
+        promptMode: "raw",
+        styleCount: "3",
+        sheinStoreId: "store-1",
+        createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+        designs: [{ id: "design-1" }],
+        generationError: "warning",
+        generationJobs: [{ jobId: "job-1", status: "running" }],
+        groups: [],
+        groupedSelections: [],
+        selectedIds: ["design-1"],
+        updatedAt: "2026-06-24T00:00:00.000Z",
+      },
+    });
+    const workbench = {
+      applyDraft: vi.fn(),
+      setField: vi.fn(),
+    };
+
+    applyLocalDraftRecoveryToWorkbench({
+      recovery,
+      workbench,
+    });
+
+    expect(workbench.applyDraft).toHaveBeenCalledWith(recovery.applyDraftInput);
+    expect(workbench.setField).toHaveBeenNthCalledWith(
+      1,
+      "designs",
+      recovery.resultFields.designs,
+    );
+    expect(workbench.setField).toHaveBeenNthCalledWith(
+      2,
+      "selectedIds",
+      recovery.resultFields.selectedIds,
+    );
+    expect(workbench.setField).toHaveBeenNthCalledWith(
+      3,
+      "createdTasks",
+      recovery.resultFields.createdTasks,
+    );
+    expect(workbench.setField).toHaveBeenNthCalledWith(
+      4,
+      "generationJobs",
+      recovery.resultFields.generationJobs,
+    );
+    expect(workbench.setField).toHaveBeenNthCalledWith(
+      5,
+      "generationError",
+      recovery.resultFields.generationError,
+    );
   });
 });

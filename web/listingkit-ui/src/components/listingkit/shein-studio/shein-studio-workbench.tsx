@@ -17,6 +17,7 @@ import { useSheinStudioDedicatedBatchRunController } from "@/components/listingk
 import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
 import {
+  applyLocalDraftRecoveryToWorkbench,
   buildSheinStudioDraftPersistenceState,
   projectLocalDraftRecovery,
   resetDedicatedBatchPromptOverrides,
@@ -1323,21 +1324,10 @@ export function SheinStudioWorkbench({
         hasLocalWorkflowStateRef.current = true;
         hasCustomizedSdsSelectionRef.current =
           recovery.hasCustomizedSdsSelection;
-        workbenchController.applyDraft(recovery.applyDraftInput);
-        workbenchController.setField("designs", recovery.resultFields.designs);
-        workbenchController.setField("selectedIds", recovery.resultFields.selectedIds);
-        workbenchController.setField(
-          "createdTasks",
-          recovery.resultFields.createdTasks,
-        );
-        workbenchController.setField(
-          "generationJobs",
-          recovery.resultFields.generationJobs,
-        );
-        workbenchController.setField(
-          "generationError",
-          recovery.resultFields.generationError,
-        );
+        applyLocalDraftRecoveryToWorkbench({
+          recovery,
+          workbench: workbenchController,
+        });
         setEffectiveStep(targetStep);
         return;
       }
