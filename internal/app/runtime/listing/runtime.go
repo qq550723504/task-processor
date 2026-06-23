@@ -61,6 +61,9 @@ func Run(ctx context.Context, opts Options) error {
 	if err := processorRegistry.RegisterPlatforms(ctx, serviceManager, platform); err != nil {
 		return fmt.Errorf("register %s processor failed: %w", displayName, err)
 	}
+	if err := validateListingLocalRuntime(platform, processorRegistry.GetManagementClient(), logger); err != nil {
+		return err
+	}
 
 	runtimeContext := processorRegistry.RuntimeContext(serviceManager, bootstrap.BuildSchedulerDependencies)
 	if err := module.ConfigureListingRuntime(ctx, runtimeContext); err != nil {
@@ -116,6 +119,9 @@ func runDebugTask(
 	}
 	if err := module.ConfigureListingRuntime(ctx, rt); err != nil {
 		return fmt.Errorf("configure %s debug runtime failed: %w", displayName, err)
+	}
+	if err := validateListingLocalRuntime(platform, resources.ManagementClient, logger); err != nil {
+		return err
 	}
 
 	registrar := &debugProcessorRegistrar{}
