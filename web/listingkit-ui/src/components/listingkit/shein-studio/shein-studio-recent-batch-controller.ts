@@ -63,6 +63,15 @@ export function buildRecentBatchSummaryKeys(
   );
 }
 
+export function upsertRecentSavedBatch(
+  batches: SheinStudioSavedBatch[],
+  nextBatch: SheinStudioSavedBatch,
+) {
+  return [nextBatch, ...batches.filter((batch) => batch.id !== nextBatch.id)].sort(
+    (left, right) => right.updatedAt.localeCompare(left.updatedAt),
+  );
+}
+
 export function removeRecentBatchSummarySelection(
   current: string[],
   summary: RecentBatchSelectionSummary,

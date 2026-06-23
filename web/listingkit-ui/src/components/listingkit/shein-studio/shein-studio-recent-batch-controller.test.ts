@@ -13,6 +13,7 @@ import {
   resolveRecentBatchForMutation,
   selectFreshRecentBatchHydration,
   selectRecentBatchBulkDeleteFailure,
+  upsertRecentSavedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
@@ -73,6 +74,44 @@ describe("buildRecentBatchSaveInput", () => {
       generationJobId: "job-1",
       updatedAt: "2026-06-21T00:00:00.000Z",
     });
+  });
+});
+
+describe("upsertRecentSavedBatch", () => {
+  it("replaces an existing batch and keeps newest batches first", () => {
+    const current = [
+      buildBatch({
+        id: "batch-old",
+        name: "Old",
+        updatedAt: "2026-06-20T00:00:00.000Z",
+      }),
+      buildBatch({
+        id: "batch-newer",
+        name: "Newer",
+        updatedAt: "2026-06-22T00:00:00.000Z",
+      }),
+      buildBatch({
+        id: "batch-1",
+        name: "Original",
+        updatedAt: "2026-06-21T00:00:00.000Z",
+      }),
+    ];
+
+    const result = upsertRecentSavedBatch(
+      current,
+      buildBatch({
+        id: "batch-1",
+        name: "Updated",
+        updatedAt: "2026-06-23T00:00:00.000Z",
+      }),
+    );
+
+    expect(result.map((batch) => batch.id)).toEqual([
+      "batch-1",
+      "batch-newer",
+      "batch-old",
+    ]);
+    expect(result[0]?.name).toBe("Updated");
   });
 });
 

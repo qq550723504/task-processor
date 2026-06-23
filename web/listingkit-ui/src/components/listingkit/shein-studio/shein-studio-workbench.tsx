@@ -37,6 +37,7 @@ import {
   resolveRecentBatchSelectionTarget,
   selectRecentBatchBulkDeleteFailure,
   resolveRecentBatchForMutation as resolveRecentBatchForMutationTarget,
+  upsertRecentSavedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
@@ -142,15 +143,6 @@ function getBatchRunStartErrorMessage(error: unknown) {
     return error.message;
   }
   return "这轮批量生成没有成功启动，请稍后重试。";
-}
-
-function upsertSavedBatch(
-  batches: SheinStudioSavedBatch[],
-  nextBatch: SheinStudioSavedBatch,
-) {
-  return [nextBatch, ...batches.filter((batch) => batch.id !== nextBatch.id)].sort(
-    (left, right) => right.updatedAt.localeCompare(left.updatedAt),
-  );
 }
 
 export { resetDedicatedBatchPromptOverrides };
@@ -825,7 +817,7 @@ export function SheinStudioWorkbench({
     setSavedBatches: (updater) =>
       workbenchController.setField("savedBatches", updater),
     startBatchRun: startSheinStudioBatchRun,
-    upsertSavedBatch,
+    upsertSavedBatch: upsertRecentSavedBatch,
   });
   const { itemizedBatchContext } = useSheinStudioItemizedBatchContext({
     activeBatchId,
@@ -851,7 +843,7 @@ export function SheinStudioWorkbench({
     sheinStoreId,
     styleCount,
     transparentBackground,
-    upsertSavedBatch,
+    upsertSavedBatch: upsertRecentSavedBatch,
     variationIntensity,
   });
   const handlePromptChange = useCallback(
@@ -1555,7 +1547,7 @@ export function SheinStudioWorkbench({
         variationIntensity,
       });
       workbenchController.setField("savedBatches", (current) =>
-        upsertSavedBatch(current, savedBatch),
+        upsertRecentSavedBatch(current, savedBatch),
       );
       workbenchController.applyHydratedBatch({
         savedBatch,
