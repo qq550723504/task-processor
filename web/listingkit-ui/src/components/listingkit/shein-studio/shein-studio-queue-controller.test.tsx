@@ -3,9 +3,11 @@ import { createRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getBatchRunStartErrorMessage,
   projectSheinStudioQueueState,
   useSheinStudioQueueController,
 } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
+import { ApiError } from "@/lib/api/client";
 import type { SheinStudioBatchQueueResumeState } from "@/lib/shein-studio/batch-queue";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 
@@ -22,6 +24,26 @@ function buildBatch(id: string): SheinStudioSavedBatch {
     updatedAt: "2026-06-22T00:00:00.000Z",
   };
 }
+
+describe("getBatchRunStartErrorMessage", () => {
+  it("explains missing batch run targets", () => {
+    expect(
+      getBatchRunStartErrorMessage(new ApiError("missing", 404, {})),
+    ).toBe("这轮批量生成里有批次已经不存在了。请先刷新最近批次列表，再重新选择。");
+  });
+
+  it("uses the error message when available", () => {
+    expect(getBatchRunStartErrorMessage(new Error("backend failed"))).toBe(
+      "backend failed",
+    );
+  });
+
+  it("falls back to a generic start failure message", () => {
+    expect(getBatchRunStartErrorMessage("failed")).toBe(
+      "这轮批量生成没有成功启动，请稍后重试。",
+    );
+  });
+});
 
 describe("useSheinStudioQueueController", () => {
   const startBatchRun = vi.fn();

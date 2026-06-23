@@ -24,6 +24,7 @@ import {
   useSheinStudioDedicatedDraftPersistence,
 } from "@/components/listingkit/shein-studio/shein-studio-persistence-controller";
 import {
+  getBatchRunStartErrorMessage,
   projectSheinStudioQueueState,
   useSheinStudioQueueController,
 } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
@@ -100,7 +101,6 @@ import {
   clearListingKitTraceContext,
   writeListingKitTraceContext,
 } from "@/lib/listingkit/request-trace";
-import { ApiError } from "@/lib/api/client";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
 import { startSheinStudioBatchRun } from "@/lib/api/shein-studio-batch-runs";
@@ -134,16 +134,6 @@ type SheinStudioWorkbenchProps = {
   initialBatchId?: string;
   selection?: SDSProductVariantSelection;
 };
-
-function getBatchRunStartErrorMessage(error: unknown) {
-  if (error instanceof ApiError && error.status === 404) {
-    return "这轮批量生成里有批次已经不存在了。请先刷新最近批次列表，再重新选择。";
-  }
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-  return "这轮批量生成没有成功启动，请稍后重试。";
-}
 
 export { resetDedicatedBatchPromptOverrides };
 
