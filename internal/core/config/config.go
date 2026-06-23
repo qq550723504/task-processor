@@ -424,6 +424,12 @@ func knownEnvBindings() map[string]envBinding {
 		"listingControlPlane.batchSize": {
 			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_BATCH_SIZE",
 		},
+		"listingControlPlane.perStoreBurst": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_PER_STORE_BURST",
+		},
+		"listingControlPlane.maxQueuedPerStore": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_MAX_QUEUED_PER_STORE",
+		},
 		"listingControlPlane.dryRun": {
 			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_DRY_RUN",
 		},

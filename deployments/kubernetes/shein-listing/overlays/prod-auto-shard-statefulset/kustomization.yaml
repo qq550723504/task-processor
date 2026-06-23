@@ -8,3 +8,4 @@ resources:
   - headless-service.yaml
   - statefulset.yaml
   - ownership-controller.yaml
+  - listing-control-plane.yaml

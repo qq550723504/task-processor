@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shein-listing-control-plane
+  namespace: task-processor
+  labels:
+    app: shein-listing-control-plane
+    shein-listing-role: control-plane
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: shein-listing-control-plane
+  template:
+    metadata:
+      labels:
+        app: shein-listing-control-plane
+        shein-listing-role: control-plane
+        shard-mode: auto
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/agent
+                    operator: In
+                    values: ["true"]
+      containers:
+        - name: listing-control-plane
+          image: xuwei190/task-processor-shein-listing:9078f71b-brandblank-20260623-1336
+          imagePullPolicy: IfNotPresent
+          command: ["/app/listing-control-plane"]
+          args:
+            - -config
+            - /app/config/config-shein-listing.yaml
+            - -log-level
+            - info
+          ports:
+            - name: http
+              containerPort: 8081
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+            - name: TASK_PROCESSOR_ENV
+              value: prod
+            - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_ENABLED
+              value: "true"
+            - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_PLATFORM
+              value: shein
+            - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_DRY_RUN
+              value: "true"
+            - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_BATCH_SIZE
+              value: "500"
+            - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_SCAN_INTERVAL
+              value: "5s"
+            - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED
+              value: "true"
+            - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_TIMEOUT_MINUTES
+              value: "30"
+            - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_RECOVERY_LIMIT
+              value: "100"
+            - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED
+              value: "true"
+            - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_TIMEOUT_MINUTES
+              value: "120"
+            - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_RECOVERY_LIMIT
+              value: "500"
+            - name: TASK_PROCESSOR_REDIS_DB
+              value: "9"
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT
+              value: "8081"
+          envFrom:
+            - secretRef:
+                name: shein-listing-secret
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "768Mi"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config/config-shein-listing.yaml
+              subPath: config-shein-listing.yaml
+      volumes:
+        - name: app-config
+          configMap:
+            name: shein-listing-config-heavy

@@ -152,11 +152,17 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 		DryRun:        controlCfg.DryRun,
 	})
 
+	status := NewStatusTracker(time.Now())
+	if err := startStatusServer(ctx, cfg.RabbitMQ.Node.HealthCheckPort, status, logger); err != nil {
+		return err
+	}
+
 	service := controlPlaneService{
 		Recovery:     recovery.RunOnce,
 		Dispatch:     scheduler.DispatchOnce,
 		ScanInterval: controlCfg.ScanInterval,
 		Logger:       logger,
+		Status:       status,
 	}
 	return service.Run(ctx)
 }
@@ -183,6 +189,7 @@ type controlPlaneService struct {
 	Dispatch     func(context.Context) (controllib.DispatchSummary, error)
 	ScanInterval time.Duration
 	Logger       *logrus.Logger
+	Status       *StatusTracker
 }
 
 func (s controlPlaneService) Run(ctx context.Context) error {
@@ -197,11 +204,11 @@ func (s controlPlaneService) Run(ctx context.Context) error {
 		interval = 5 * time.Second
 	}
 
-	if err := s.runOnce(ctx); err != nil {
-		return err
-	}
 	if ctx.Err() != nil {
 		return nil
+	}
+	if err := s.runOnce(ctx); err != nil && s.Logger != nil {
+		s.Logger.WithError(err).Warn("listing control-plane cycle failed")
 	}
 
 	ticker := time.NewTicker(interval)
@@ -212,21 +219,33 @@ func (s controlPlaneService) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if err := s.runOnce(ctx); err != nil {
-				return err
+			if err := s.runOnce(ctx); err != nil && s.Logger != nil {
+				s.Logger.WithError(err).Warn("listing control-plane cycle failed")
 			}
 		}
 	}
 }
 
 func (s controlPlaneService) runOnce(ctx context.Context) error {
+	if s.Status != nil {
+		s.Status.BeginCycle(time.Now())
+	}
 	recoverySummary, err := s.Recovery(ctx)
 	if err != nil {
+		if s.Status != nil {
+			s.Status.RecordError(err, time.Now())
+		}
 		return err
 	}
 	dispatchSummary, err := s.Dispatch(ctx)
 	if err != nil {
+		if s.Status != nil {
+			s.Status.RecordError(err, time.Now())
+		}
 		return err
+	}
+	if s.Status != nil {
+		s.Status.RecordSuccess(recoverySummary, dispatchSummary, time.Now())
 	}
 	if s.Logger != nil {
 		s.Logger.WithFields(logrus.Fields{

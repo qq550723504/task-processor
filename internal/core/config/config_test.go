@@ -289,6 +289,8 @@ func TestLoadFromBytesAppliesListingControlPlaneEnvOverrides(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_PLATFORM", "temu")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_SCAN_INTERVAL", "12s")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_BATCH_SIZE", "75")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_PER_STORE_BURST", "3")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_MAX_QUEUED_PER_STORE", "9")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_DRY_RUN", "true")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_ENABLE_LEGACY_QUOTA_KEYS", "true")
 
@@ -299,6 +301,8 @@ func TestLoadFromBytesAppliesListingControlPlaneEnvOverrides(t *testing.T) {
 	assert.Equal(t, "temu", cfg.ListingControlPlane.Platform)
 	assert.Equal(t, 12*time.Second, cfg.ListingControlPlane.ScanInterval)
 	assert.Equal(t, 75, cfg.ListingControlPlane.BatchSize)
+	assert.Equal(t, 3, cfg.ListingControlPlane.PerStoreBurst)
+	assert.Equal(t, 9, cfg.ListingControlPlane.MaxQueuedPerStore)
 	assert.True(t, cfg.ListingControlPlane.DryRun)
 	assert.True(t, cfg.ListingControlPlane.EnableLegacyQuotaKeys)
 }

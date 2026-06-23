@@ -81,6 +81,10 @@ spec:
               value: "25"
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES
               value: shein-listing-shard-0,shein-listing-shard-1,shein-listing-shard-2,shein-listing-shard-3,shein-listing-shard-4,shein-listing-shard-5,shein-listing-shard-6,shein-listing-shard-7
+            - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED
+              value: "false"
+            - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED
+              value: "false"
             - name: TASK_PROCESSOR_REDIS_DB
               value: "9"
             - name: TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT

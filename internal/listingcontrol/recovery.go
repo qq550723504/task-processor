@@ -37,12 +37,12 @@ type RecoveryConfig struct {
 }
 
 type RecoverySummary struct {
-	ProcessingCandidates  int
-	ProcessingRecovered   int
-	ProcessingTaskIDs     []int64
-	StaleQueuedCandidates int
-	StaleQueuedRecovered  int
-	StaleQueuedTaskIDs    []int64
+	ProcessingCandidates  int     `json:"processingCandidates"`
+	ProcessingRecovered   int     `json:"processingRecovered"`
+	ProcessingTaskIDs     []int64 `json:"processingTaskIds,omitempty"`
+	StaleQueuedCandidates int     `json:"staleQueuedCandidates"`
+	StaleQueuedRecovered  int     `json:"staleQueuedRecovered"`
+	StaleQueuedTaskIDs    []int64 `json:"staleQueuedTaskIds,omitempty"`
 }
 
 type RecoveryCoordinator struct {

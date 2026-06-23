@@ -24,6 +24,8 @@ param(
     [switch]$SequentialRollout,
     [switch]$UseShardStatefulSet,
     [string]$ShardStatefulSetName = "shein-listing-shard",
+    [string]$OwnershipControllerDeploymentName = "shein-listing-ownership-controller",
+    [string]$ControlPlaneDeploymentName = "shein-listing-control-plane",
     [int]$ShardBatchSize = 4
 )
 
@@ -118,16 +120,28 @@ Write-Host "  Shard StatefulSet mode: $UseShardStatefulSet" -ForegroundColor Cya
 if ($UseShardStatefulSet) {
     Write-Host "  Shard StatefulSet: $ShardStatefulSetName" -ForegroundColor Cyan
     Write-Host "  Shard batch size: $ShardBatchSize" -ForegroundColor Cyan
+    Write-Host "  Ownership controller: $OwnershipControllerDeploymentName" -ForegroundColor Cyan
+    Write-Host "  Control plane: $ControlPlaneDeploymentName" -ForegroundColor Cyan
 }
 Write-Host "========================================" -ForegroundColor Cyan
 
 if (-not $SkipTests) {
     Invoke-Step "[1/7] Running targeted tests..." {
+        $previousGoWork = $env:GOWORK
+        $env:GOWORK = "off"
+        try {
         go test ./internal/app/consumer/...
         if ($LASTEXITCODE -ne 0) { throw "go test ./internal/app/consumer/... failed" }
 
         go test ./cmd/shein-listing/...
         if ($LASTEXITCODE -ne 0) { throw "go test ./cmd/shein-listing/... failed" }
+
+        go test ./internal/listingcontrol ./internal/app/runtime/listingcontrol
+        if ($LASTEXITCODE -ne 0) { throw "go test ./internal/listingcontrol ./internal/app/runtime/listingcontrol failed" }
+        }
+        finally {
+            $env:GOWORK = $previousGoWork
+        }
     }
 }
 
@@ -171,6 +185,12 @@ Invoke-Step "[6/7] Updating workloads..." {
         if (-not (Test-Path $ShardRolloutScript)) {
             throw "shard rollout script not found: $ShardRolloutScript"
         }
+        kubectl -n $Namespace set image deployment/$OwnershipControllerDeploymentName "shein-listing=$FullImage"
+        if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for deployment/$OwnershipControllerDeploymentName" }
+
+        kubectl -n $Namespace set image deployment/$ControlPlaneDeploymentName "listing-control-plane=$FullImage"
+        if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for deployment/$ControlPlaneDeploymentName" }
+
         & $ShardRolloutScript -Namespace $Namespace -StatefulSetName $ShardStatefulSetName -ContainerName "shein-listing" -Image $FullImage -BatchSize $ShardBatchSize
         if ($LASTEXITCODE -ne 0) { throw "shard StatefulSet rollout failed" }
     } else {
@@ -183,8 +203,17 @@ Invoke-Step "[6/7] Updating workloads..." {
 
 Invoke-Step "[7/7] Waiting for rollouts..." {
     if ($UseShardStatefulSet) {
+        kubectl -n $Namespace rollout status deployment/$OwnershipControllerDeploymentName --timeout=5m
+        if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed for deployment/$OwnershipControllerDeploymentName" }
+
+        kubectl -n $Namespace rollout status deployment/$ControlPlaneDeploymentName --timeout=5m
+        if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed for deployment/$ControlPlaneDeploymentName" }
+
         kubectl -n $Namespace get pods -l "app=$ShardStatefulSetName" -o wide
         if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed for app=$ShardStatefulSetName" }
+
+        kubectl -n $Namespace get pods -l "app=$ControlPlaneDeploymentName" -o wide
+        if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed for app=$ControlPlaneDeploymentName" }
     } else {
         if ($SequentialRollout) {
             foreach ($deploymentName in $DeploymentNames) {

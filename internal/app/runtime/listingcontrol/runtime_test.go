@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"reflect"
 	"strings"
@@ -190,9 +192,19 @@ func TestControlPlaneServiceRunsRecoveryBeforeDispatchAndStopsOnContext(t *testi
 		Dispatch: func(ctx context.Context) (controllib.DispatchSummary, error) {
 			order = append(order, "dispatch")
 			cancel()
-			return controllib.DispatchSummary{}, nil
+			return controllib.DispatchSummary{
+				Candidates: 1,
+				Dispatched: 1,
+				Decisions: []controllib.DispatchDecision{{
+					TenantID: 10,
+					StoreID:  976,
+					Action:   controllib.DispatchActionDispatched,
+					Capacity: 4,
+				}},
+			}, nil
 		},
 		ScanInterval: time.Hour,
+		Status:       NewStatusTracker(time.Date(2026, 6, 23, 1, 0, 0, 0, time.UTC)),
 	}
 
 	if err := service.Run(ctx); err != nil {
@@ -201,14 +213,25 @@ func TestControlPlaneServiceRunsRecoveryBeforeDispatchAndStopsOnContext(t *testi
 	if !reflect.DeepEqual(order, []string{"recovery", "dispatch"}) {
 		t.Fatalf("execution order = %v", order)
 	}
+	snapshot := service.Status.Snapshot()
+	if !snapshot.Ready || snapshot.Status != "ok" || snapshot.Dispatch.Dispatched != 1 {
+		t.Fatalf("unexpected status snapshot after success: %+v", snapshot)
+	}
+	if len(snapshot.Stores) != 1 || snapshot.Stores[0].StoreID != 976 || snapshot.Stores[0].Capacity != 4 {
+		t.Fatalf("unexpected store status: %+v", snapshot.Stores)
+	}
 }
 
 func TestControlPlaneServiceDoesNotDispatchAfterRecoveryError(t *testing.T) {
 	recoveryErr := errors.New("recovery failed")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	var order []string
 	service := controlPlaneService{
 		Recovery: func(ctx context.Context) (controllib.RecoverySummary, error) {
 			order = append(order, "recovery")
+			cancel()
 			return controllib.RecoverySummary{}, recoveryErr
 		},
 		Dispatch: func(ctx context.Context) (controllib.DispatchSummary, error) {
@@ -216,14 +239,83 @@ func TestControlPlaneServiceDoesNotDispatchAfterRecoveryError(t *testing.T) {
 			return controllib.DispatchSummary{}, nil
 		},
 		ScanInterval: time.Hour,
+		Status:       NewStatusTracker(time.Now()),
 	}
 
-	err := service.Run(context.Background())
-	if !errors.Is(err, recoveryErr) {
-		t.Fatalf("expected recovery error, got %v", err)
+	if err := service.Run(ctx); err != nil {
+		t.Fatalf("service Run returned error: %v", err)
 	}
 	if !reflect.DeepEqual(order, []string{"recovery"}) {
 		t.Fatalf("execution order = %v", order)
+	}
+	snapshot := service.Status.Snapshot()
+	if snapshot.Ready || snapshot.Status != "error" || snapshot.LastError != recoveryErr.Error() || snapshot.ConsecutiveErrors != 1 {
+		t.Fatalf("unexpected status snapshot after error: %+v", snapshot)
+	}
+}
+
+func TestControlPlaneServiceSkipsFirstCycleWhenContextAlreadyCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var called bool
+	service := controlPlaneService{
+		Recovery: func(ctx context.Context) (controllib.RecoverySummary, error) {
+			called = true
+			return controllib.RecoverySummary{}, nil
+		},
+		Dispatch: func(ctx context.Context) (controllib.DispatchSummary, error) {
+			called = true
+			return controllib.DispatchSummary{}, nil
+		},
+	}
+
+	if err := service.Run(ctx); err != nil {
+		t.Fatalf("service Run returned error: %v", err)
+	}
+	if called {
+		t.Fatal("service should not run a cycle after context cancellation")
+	}
+}
+
+func TestStatusHandlerReadinessAndSummary(t *testing.T) {
+	tracker := NewStatusTracker(time.Date(2026, 6, 23, 1, 0, 0, 0, time.UTC))
+	handler := newStatusHandler(tracker)
+
+	readyBefore := httptest.NewRecorder()
+	handler.ServeHTTP(readyBefore, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	if readyBefore.Code != http.StatusServiceUnavailable {
+		t.Fatalf("ready before success status = %d", readyBefore.Code)
+	}
+
+	tracker.RecordSuccess(controllib.RecoverySummary{
+		ProcessingRecovered: 2,
+	}, controllib.DispatchSummary{
+		Candidates: 2,
+		Skipped:    1,
+		Failed:     1,
+		Decisions: []controllib.DispatchDecision{
+			{TenantID: 10, StoreID: 976, Action: controllib.DispatchActionSkipped, Reason: controllib.ReasonNoCapacity, Capacity: 4, Queued: 4},
+			{TenantID: 10, StoreID: 1030, Action: controllib.DispatchActionFailed, Reason: "publish dispatch: failed"},
+		},
+	}, time.Date(2026, 6, 23, 1, 1, 0, 0, time.UTC))
+
+	statusResponse := httptest.NewRecorder()
+	handler.ServeHTTP(statusResponse, httptest.NewRequest(http.MethodGet, "/status", nil))
+	if statusResponse.Code != http.StatusOK {
+		t.Fatalf("status response code = %d", statusResponse.Code)
+	}
+	body := statusResponse.Body.String()
+	for _, want := range []string{`"ready":true`, `"no_capacity":1`, `"storeId":976`, `"processingRecovered":2`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("status body missing %s: %s", want, body)
+		}
+	}
+
+	readyAfter := httptest.NewRecorder()
+	handler.ServeHTTP(readyAfter, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	if readyAfter.Code != http.StatusOK {
+		t.Fatalf("ready after success status = %d", readyAfter.Code)
 	}
 }
 
