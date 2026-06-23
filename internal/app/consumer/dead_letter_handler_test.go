@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
+	"task-processor/internal/taskstatus"
 )
 
 type stubDeadLetterRuntime struct {
-	status  *managementapi.TaskStatusRespDTO
+	status  *taskstatus.TaskStatusSnapshot
 	updates []*listingruntime.TaskStatusUpdate
 }
 
@@ -21,13 +21,13 @@ func (s *stubDeadLetterRuntime) UpdateRuntimeTaskStatus(req *listingruntime.Task
 	return nil
 }
 
-func (s *stubDeadLetterRuntime) GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error) {
+func (s *stubDeadLetterRuntime) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error) {
 	return s.status, nil
 }
 
 func TestDeadLetterHandlerRecordsRabbitMQDeathHeaders(t *testing.T) {
 	runtime := &stubDeadLetterRuntime{
-		status: &managementapi.TaskStatusRespDTO{
+		status: &taskstatus.TaskStatusSnapshot{
 			TaskID:          8189411,
 			StatusKey:       "QUEUED",
 			CanonicalStatus: "pending",
@@ -74,7 +74,7 @@ func TestDeadLetterHandlerRecordsRabbitMQDeathHeaders(t *testing.T) {
 
 func TestDeadLetterHandlerDoesNotOverwriteTerminalTask(t *testing.T) {
 	runtime := &stubDeadLetterRuntime{
-		status: &managementapi.TaskStatusRespDTO{
+		status: &taskstatus.TaskStatusSnapshot{
 			TaskID:          8189416,
 			StatusKey:       "TERMINATED",
 			CanonicalStatus: "failed",

@@ -12,6 +12,7 @@ import (
 type ImportTaskStatusClient = apptaskstatus.ImportTaskStatusClient
 type UpdateInput = apptaskstatus.UpdateInput
 type Service = apptaskstatus.Service
+type TaskStatusSnapshot = managementapi.TaskStatusRespDTO
 
 type RuntimeTaskStatusUpdater interface {
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
@@ -19,7 +20,7 @@ type RuntimeTaskStatusUpdater interface {
 
 type RuntimeWithTaskRPC interface {
 	RuntimeTaskStatusUpdater
-	GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error)
+	GetTaskStatus(taskID int64) (*TaskStatusSnapshot, error)
 }
 
 func NewService(component string, clientProvider func() ImportTaskStatusClient) *Service {
@@ -62,7 +63,7 @@ func (r managementRuntime) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatu
 	return r.client.UpdateRuntimeTaskStatus(req)
 }
 
-func (r managementRuntime) GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error) {
+func (r managementRuntime) GetTaskStatus(taskID int64) (*TaskStatusSnapshot, error) {
 	if r.client == nil {
 		return nil, fmt.Errorf("management client is not initialized")
 	}

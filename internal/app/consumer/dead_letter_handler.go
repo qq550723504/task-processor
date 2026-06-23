@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
 	"task-processor/internal/taskstatus"
@@ -222,7 +221,7 @@ func stringFromAny(value any) string {
 	}
 }
 
-func isTerminalTaskStatus(status *managementapi.TaskStatusRespDTO) bool {
+func isTerminalTaskStatus(status *taskstatus.TaskStatusSnapshot) bool {
 	if status == nil {
 		return false
 	}
