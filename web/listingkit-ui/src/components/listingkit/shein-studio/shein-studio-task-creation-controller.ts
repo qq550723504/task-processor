@@ -69,6 +69,12 @@ type ItemizedTaskCreationProgressInput = {
   isCreatingTasks: boolean;
 };
 
+type ItemizedTaskRecoveryStateInput = {
+  detail?: SheinStudioBatchDetail | null;
+  generationInFlight: boolean;
+  pendingTaskDesignIds: string[];
+};
+
 type ItemizedFailedRetryRequestInput = {
   activeBatchId: string;
   currentActiveBatch?: Partial<SheinStudioSavedBatch> | null;
@@ -184,6 +190,34 @@ export function projectItemizedTaskCreationProgress({
       title: "SHEIN 资料创建完成",
       type: "success",
     },
+  };
+}
+
+export function projectItemizedTaskRecoveryState({
+  detail,
+  generationInFlight,
+  pendingTaskDesignIds,
+}: ItemizedTaskRecoveryStateInput): {
+  dedicatedGenerateButtonLabel: string;
+  hasRetryableFailedItems: boolean;
+  retryableFailedItemCount: number;
+  shouldPrioritizeTaskCreationRecovery: boolean;
+} {
+  const retryableFailedItemCount =
+    detail?.items.filter((entry) => entry.item.status === "failed").length ?? 0;
+  const hasRetryableFailedItems =
+    retryableFailedItemCount > 0 &&
+    (detail?.batch.status === "partially_failed" || detail?.batch.status === "failed");
+
+  return {
+    dedicatedGenerateButtonLabel:
+      hasRetryableFailedItems && retryableFailedItemCount > 0
+        ? `重试失败款式 ${retryableFailedItemCount} 个`
+        : "继续生成剩余款式",
+    hasRetryableFailedItems,
+    retryableFailedItemCount,
+    shouldPrioritizeTaskCreationRecovery:
+      pendingTaskDesignIds.length > 0 && !hasRetryableFailedItems && !generationInFlight,
   };
 }
 

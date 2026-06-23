@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   projectItemizedBatchDetail,
   projectItemizedFailedRetryRequest,
+  projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgress,
   projectItemizedTaskCreationResult,
   useSheinStudioItemizedBatchContext,
@@ -306,6 +307,92 @@ describe("projectItemizedTaskCreationProgress", () => {
         type: "error",
       },
     });
+  });
+});
+
+describe("projectItemizedTaskRecoveryState", () => {
+  it("prioritizes retrying failed items for failed itemized batches", () => {
+    expect(
+      projectItemizedTaskRecoveryState({
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            status: "partially_failed",
+          },
+          items: [
+            {
+              item: {
+                id: "item-failed-1",
+                batchId: "batch-1",
+                status: "failed",
+                targetGroupKey: "group-1",
+                selectionCount: 1,
+                createdAt: "2026-06-22T00:00:00.000Z",
+                updatedAt: "2026-06-22T00:00:00.000Z",
+              },
+              designs: [],
+            },
+            {
+              item: {
+                id: "item-failed-2",
+                batchId: "batch-1",
+                status: "failed",
+                targetGroupKey: "group-2",
+                selectionCount: 1,
+                createdAt: "2026-06-22T00:00:00.000Z",
+                updatedAt: "2026-06-22T00:00:00.000Z",
+              },
+              designs: [],
+            },
+            {
+              item: {
+                id: "item-ready",
+                batchId: "batch-1",
+                status: "review_ready",
+                targetGroupKey: "group-3",
+                selectionCount: 1,
+                createdAt: "2026-06-22T00:00:00.000Z",
+                updatedAt: "2026-06-22T00:00:00.000Z",
+              },
+              designs: [],
+            },
+          ],
+        },
+        generationInFlight: false,
+        pendingTaskDesignIds: ["design-pending"],
+      }),
+    ).toEqual({
+      dedicatedGenerateButtonLabel: "重试失败款式 2 个",
+      hasRetryableFailedItems: true,
+      retryableFailedItemCount: 2,
+      shouldPrioritizeTaskCreationRecovery: false,
+    });
+  });
+
+  it("prioritizes continuing pending task creation when no failed items are retryable", () => {
+    expect(
+      projectItemizedTaskRecoveryState({
+        detail: buildCurrentDetail(),
+        generationInFlight: false,
+        pendingTaskDesignIds: ["design-pending"],
+      }),
+    ).toEqual({
+      dedicatedGenerateButtonLabel: "继续生成剩余款式",
+      hasRetryableFailedItems: false,
+      retryableFailedItemCount: 0,
+      shouldPrioritizeTaskCreationRecovery: true,
+    });
+  });
+
+  it("does not prioritize task recovery while itemized generation is in flight", () => {
+    expect(
+      projectItemizedTaskRecoveryState({
+        detail: buildCurrentDetail(),
+        generationInFlight: true,
+        pendingTaskDesignIds: ["design-pending"],
+      }).shouldPrioritizeTaskCreationRecovery,
+    ).toBe(false);
   });
 });
 

@@ -49,6 +49,7 @@ import {
 import {
   projectItemizedBatchDetail,
   projectItemizedFailedRetryRequest,
+  projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgress,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
@@ -1675,20 +1676,16 @@ export function SheinStudioWorkbench({
     isGenerating: effectiveIsGenerating,
     regeneratingId,
   });
-  const retryableFailedItemCount =
-    itemizedBatchDetail?.items.filter((entry) => entry.item.status === "failed").length ?? 0;
-  const hasRetryableFailedItems =
-    retryableFailedItemCount > 0 &&
-    (itemizedBatchDetail?.batch.status === "partially_failed" ||
-      itemizedBatchDetail?.batch.status === "failed");
-  const shouldPrioritizeTaskCreationRecovery =
-    pendingItemizedTaskDesignIDs.length > 0 &&
-    !hasRetryableFailedItems &&
-    !itemizedBatchGenerationInFlight;
-  const dedicatedGenerateButtonLabel =
-    hasRetryableFailedItems && retryableFailedItemCount > 0
-      ? `重试失败款式 ${retryableFailedItemCount} 个`
-      : "继续生成剩余款式";
+  const {
+    dedicatedGenerateButtonLabel,
+    hasRetryableFailedItems,
+    retryableFailedItemCount,
+    shouldPrioritizeTaskCreationRecovery,
+  } = projectItemizedTaskRecoveryState({
+    detail: itemizedBatchDetail,
+    generationInFlight: itemizedBatchGenerationInFlight,
+    pendingTaskDesignIds: pendingItemizedTaskDesignIDs,
+  });
   useSheinStudioPendingNavigationGuard({
     enabled: Boolean(effectiveIsGenerating || regeneratingId),
     message:
