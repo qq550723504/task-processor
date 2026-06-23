@@ -1,7 +1,10 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
+import {
+  projectBaselineWarmupFeedback,
+  useSheinStudioBatchGenerationContext,
+} from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
 
@@ -18,6 +21,52 @@ function buildSavedBatch(id = "batch-1"): SheinStudioSavedBatch {
     updatedAt: "2026-06-22T00:00:00.000Z",
   };
 }
+
+describe("projectBaselineWarmupFeedback", () => {
+  it("announces ready baseline warmup without follow-up action", () => {
+    expect(
+      projectBaselineWarmupFeedback({
+        status: "ready",
+        reason: "",
+      }),
+    ).toEqual({
+      action: null,
+      message: "这款 SDS 商品的 baseline 已通过校验，现在可以继续加入 grouped 批量上品。",
+    });
+  });
+
+  it("uses the cached baseline fallback message when no reason is available", () => {
+    expect(
+      projectBaselineWarmupFeedback({
+        status: "baseline_cached",
+        reason: "",
+        reasonCode: "",
+      }),
+    ).toEqual({
+      action: {
+        intent: "warm_baseline",
+        label: "继续 baseline 校验",
+      },
+      message: "这款 SDS 商品已经完成 baseline 缓存，当前没有更多校验结果。可以继续使用，必要时再手动复查。",
+    });
+  });
+
+  it("uses handoff action metadata for blocked baseline warmup", () => {
+    expect(
+      projectBaselineWarmupFeedback({
+        status: "blocked",
+        reason: "",
+        reasonCode: "login_missing_credentials",
+      }),
+    ).toEqual({
+      action: {
+        intent: "open_sds_login",
+        label: "去处理 SDS 登录",
+      },
+      message: "当前 SDS 登录缺少 access token。",
+    });
+  });
+});
 
 describe("useSheinStudioBatchGenerationContext", () => {
   const buildDraftInput = vi.fn();

@@ -1,6 +1,11 @@
 import { useMemo } from "react";
 
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import {
+  buildGroupedSDSBaselineHandoff,
+  getSDSBaselineReasonMessage,
+} from "@/lib/shein-studio/sds-baseline-ui";
+import type { SDSBaselineReadiness } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
@@ -27,6 +32,14 @@ type BuildDraftInputOverrides = Partial<{
   generationError: string;
   generationJobId: string;
 }>;
+
+type BaselineWarmupFeedback = {
+  action: {
+    intent: "focus_generate" | "open_sds_login" | "warm_baseline";
+    label: string;
+  } | null;
+  message: string;
+};
 
 type BatchGenerationContextParams = {
   activeBatchId?: string;
@@ -59,6 +72,35 @@ type BatchGenerationContextParams = {
     savedBatch: SheinStudioSavedBatch,
   ) => SheinStudioSavedBatch[];
 };
+
+export function projectBaselineWarmupFeedback(
+  readiness: Pick<SDSBaselineReadiness, "reason" | "reasonCode" | "status">,
+): BaselineWarmupFeedback {
+  const handoff = buildGroupedSDSBaselineHandoff({
+    status: readiness.status,
+    reason: readiness.reason,
+    reasonCode: readiness.reasonCode,
+  });
+  return {
+    action:
+      handoff?.action && handoff.actionLabel
+        ? {
+            intent: handoff.action,
+            label: handoff.actionLabel,
+          }
+        : null,
+    message:
+      readiness.status === "ready"
+        ? "这款 SDS 商品的 baseline 已通过校验，现在可以继续加入 grouped 批量上品。"
+        : readiness.status === "baseline_cached" &&
+            !readiness.reason?.trim() &&
+            !readiness.reasonCode?.trim()
+          ? "这款 SDS 商品已经完成 baseline 缓存，当前没有更多校验结果。可以继续使用，必要时再手动复查。"
+          : readiness.reason ||
+            getSDSBaselineReasonMessage(readiness.reasonCode) ||
+            "baseline 预热与校验已发起，请稍后再试。",
+  };
+}
 
 function defaultUpsertSavedBatch(
   current: SheinStudioSavedBatch[],

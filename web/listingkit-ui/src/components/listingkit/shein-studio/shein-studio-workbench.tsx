@@ -14,7 +14,10 @@ import { SheinStudioGroupedSelectionPanel } from "@/components/listingkit/shein-
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
 import { useSheinStudioDedicatedBatchRunController } from "@/components/listingkit/shein-studio/shein-studio-dedicated-batch-run-controller";
-import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
+import {
+  projectBaselineWarmupFeedback,
+  useSheinStudioBatchGenerationContext,
+} from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
 import {
   applyLocalDraftRecoveryToWorkbench,
@@ -892,32 +895,9 @@ export function SheinStudioWorkbench({
           baselineKey: readiness.baselineKey,
         },
       });
-      setWorkbenchField(
-        "generationWarning",
-        readiness.status === "ready"
-          ? "这款 SDS 商品的 baseline 已通过校验，现在可以继续加入 grouped 批量上品。"
-          : readiness.status === "baseline_cached" &&
-              !readiness.reason?.trim() &&
-              !readiness.reasonCode?.trim()
-            ? "这款 SDS 商品已经完成 baseline 缓存，当前没有更多校验结果。可以继续使用，必要时再手动复查。"
-          : readiness.reason ||
-            getSDSBaselineReasonMessage(readiness.reasonCode) ||
-            "baseline 预热与校验已发起，请稍后再试。",
-      );
-      const handoff = buildGroupedSDSBaselineHandoff({
-        status: readiness.status,
-        reason: readiness.reason,
-        reasonCode: readiness.reasonCode,
-      });
-      setWorkbenchField(
-        "generationWarningAction",
-        handoff?.action && handoff.actionLabel
-          ? {
-              intent: handoff.action,
-              label: handoff.actionLabel,
-            }
-          : null,
-      );
+      const feedback = projectBaselineWarmupFeedback(readiness);
+      setWorkbenchField("generationWarning", feedback.message);
+      setWorkbenchField("generationWarningAction", feedback.action);
     } catch (error) {
       setWorkbenchField(
         "generationWarning",
