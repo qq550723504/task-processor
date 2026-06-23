@@ -110,17 +110,20 @@ func (s *QuotaService) checkStructured(ctx context.Context, key, value string) (
 		result.Reason = ReasonQuotaStale
 		return result, nil
 	}
-	if strings.TrimSpace(decoded.ExpiresAt) != "" {
-		expiresAt, err := time.Parse(time.RFC3339, decoded.ExpiresAt)
-		if err != nil {
-			result.Blocked = true
-			result.Reason = ReasonQuotaInvalid
-			return result, fmt.Errorf("%w: structured quota %s expiresAt: %v", ErrQuotaInvalid, key, err)
-		}
-		if !expiresAt.After(time.Now()) {
-			result.Reason = ReasonQuotaStale
-			return result, nil
-		}
+	expiresAtValue := strings.TrimSpace(decoded.ExpiresAt)
+	if expiresAtValue == "" {
+		result.Reason = ReasonQuotaStale
+		return result, nil
+	}
+	expiresAt, err := time.Parse(time.RFC3339, expiresAtValue)
+	if err != nil {
+		result.Blocked = true
+		result.Reason = ReasonQuotaInvalid
+		return result, fmt.Errorf("%w: structured quota %s expiresAt: %v", ErrQuotaInvalid, key, err)
+	}
+	if !expiresAt.After(time.Now()) {
+		result.Reason = ReasonQuotaStale
+		return result, nil
 	}
 	if decoded.Remaining <= 0 {
 		result.Blocked = true

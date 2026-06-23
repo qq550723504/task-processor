@@ -78,6 +78,53 @@ func TestQuotaStructuredExpiredExpiresAtIsIgnored(t *testing.T) {
 	}
 }
 
+func TestQuotaStructuredMissingOrBlankExpiresAtIsIgnored(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{
+			name:  "missing",
+			value: `{"remaining":0,"source":"manual","updatedAt":"2026-06-23T00:00:00Z"}`,
+		},
+		{
+			name:  "blank",
+			value: `{"remaining":0,"source":"manual","updatedAt":"2026-06-23T00:00:00Z","expiresAt":"  "}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runtime := newFakeStringRuntime()
+			runtime.set("listing:remaining:quota:v2:10:20", tt.value, 2*time.Hour)
+
+			result, err := NewQuotaService(runtime, QuotaConfig{}).Check(context.Background(), 10, 20)
+			if err != nil {
+				t.Fatalf("Check returned error: %v", err)
+			}
+
+			if result.Blocked {
+				t.Fatalf("expected missing/blank expiresAt structured quota to be ignored, got reason %q", result.Reason)
+			}
+			if result.Reason != ReasonQuotaStale {
+				t.Fatalf("expected %q, got %q", ReasonQuotaStale, result.Reason)
+			}
+			if result.Remaining != 0 {
+				t.Fatalf("expected remaining 0, got %d", result.Remaining)
+			}
+			if result.Key != "listing:remaining:quota:v2:10:20" {
+				t.Fatalf("expected structured key, got %q", result.Key)
+			}
+			if result.TTL != 2*time.Hour {
+				t.Fatalf("expected TTL 2h, got %v", result.TTL)
+			}
+			if result.Source != "manual" {
+				t.Fatalf("expected source manual, got %q", result.Source)
+			}
+		})
+	}
+}
+
 func TestQuotaMalformedStructuredReturnsInvalidError(t *testing.T) {
 	runtime := newFakeStringRuntime()
 	runtime.set("listing:remaining:quota:v2:10:20", `{bad json`, time.Minute)
