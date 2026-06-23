@@ -97,6 +97,7 @@ func (s *Scheduler) DispatchOnce(ctx context.Context) (DispatchSummary, error) {
 	for key, item := range byStore {
 		localQueued[key] = item.Queued
 	}
+	usedClaimTokens := make(map[string]struct{}, len(candidates))
 
 	for _, candidate := range candidates {
 		decision := newDecision(candidate)
@@ -137,7 +138,8 @@ func (s *Scheduler) DispatchOnce(ctx context.Context) (DispatchSummary, error) {
 			continue
 		}
 
-		token := s.newClaimToken(candidate.ID)
+		token := uniqueClaimToken(s.newClaimToken(candidate.ID), candidate.ID, usedClaimTokens)
+		usedClaimTokens[token] = struct{}{}
 		claimed, err := s.repo.ClaimForDispatch(ctx, listingadmin.DispatchClaim{
 			TaskID:         candidate.ID,
 			PreviousStatus: candidate.Status,
@@ -267,6 +269,8 @@ func importTaskToModelTask(task listingadmin.ImportTask) *model.Task {
 		Priority:       task.Priority,
 		CreateTime:     timePtrToMillis(task.CreateTime),
 		UpdateTime:     timePtrToMillis(task.UpdateTime),
+		Creator:        task.Creator,
+		Updater:        task.Updater,
 	}
 	if task.StoreID != nil {
 		out.StoreID = *task.StoreID
@@ -291,6 +295,21 @@ func timePtrToMillis(value *time.Time) int64 {
 		return 0
 	}
 	return value.UnixMilli()
+}
+
+func uniqueClaimToken(token string, taskID int64, used map[string]struct{}) string {
+	if used == nil {
+		return token
+	}
+	if _, exists := used[token]; !exists {
+		return token
+	}
+	for suffix := 1; ; suffix++ {
+		candidate := fmt.Sprintf("%s-%d-%d", token, taskID, suffix)
+		if _, exists := used[candidate]; !exists {
+			return candidate
+		}
+	}
 }
 
 type defaultClaimTokenGenerator struct{}

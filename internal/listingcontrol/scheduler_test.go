@@ -22,7 +22,7 @@ func TestSchedulerDispatchesReadyStoreToStoreQueue(t *testing.T) {
 	}}, publisher, SchedulerConfig{
 		ClaimTokenPrefix: "test",
 	})
-	scheduler.TokenGenerator = fixedTokenGenerator{tokens: []string{"test-claim-1"}}
+	scheduler.TokenGenerator = &fixedTokenGenerator{tokens: []string{"test-claim-1"}}
 
 	summary, err := scheduler.DispatchOnce(ctx)
 	if err != nil {
@@ -56,6 +56,9 @@ func TestSchedulerDispatchesReadyStoreToStoreQueue(t *testing.T) {
 	}
 	if published.ErrorMessage != "previous error" {
 		t.Fatalf("published error message = %q, want previous error", published.ErrorMessage)
+	}
+	if published.Creator != "creator-1" || published.Updater != "updater-1" {
+		t.Fatalf("published creator/updater = %q/%q, want creator-1/updater-1", published.Creator, published.Updater)
 	}
 	if len(summary.Decisions) != 1 {
 		t.Fatalf("decisions = %d, want 1", len(summary.Decisions))
@@ -142,7 +145,7 @@ func TestSchedulerRollsBackClaimWhenPublishFails(t *testing.T) {
 	scheduler := NewScheduler(repo, fakeReadinessProvider{readiness: []StoreReadiness{
 		readyStore(10, 976, "node-a", 2, 0),
 	}}, publisher, SchedulerConfig{})
-	scheduler.TokenGenerator = fixedTokenGenerator{tokens: []string{"rollback-token"}}
+	scheduler.TokenGenerator = &fixedTokenGenerator{tokens: []string{"rollback-token"}}
 
 	summary, err := scheduler.DispatchOnce(context.Background())
 	if err != nil {
@@ -168,6 +171,117 @@ func TestSchedulerRollsBackClaimWhenPublishFails(t *testing.T) {
 	}
 	if rollback.processingNode != "rollback-token" {
 		t.Fatalf("rollback processing node = %q, want claim token", rollback.processingNode)
+	}
+}
+
+func TestSchedulerSkipsClaimConflictWithoutPublishing(t *testing.T) {
+	repo := newFakeDispatchRepo([]listingadmin.ImportTask{
+		testImportTask(107, 10, 976, model.TaskStatusCrawled.Int16()),
+	})
+	repo.claimOK = false
+	publisher := &fakeTaskPublisher{}
+	scheduler := NewScheduler(repo, fakeReadinessProvider{readiness: []StoreReadiness{
+		readyStore(10, 976, "node-a", 2, 0),
+	}}, publisher, SchedulerConfig{})
+
+	summary, err := scheduler.DispatchOnce(context.Background())
+	if err != nil {
+		t.Fatalf("DispatchOnce returned error: %v", err)
+	}
+
+	assertSingleSkippedDecision(t, summary, 107, ReasonClaimConflict)
+	if len(repo.claims) != 1 {
+		t.Fatalf("claims = %d, want 1", len(repo.claims))
+	}
+	if len(publisher.tasks) != 0 {
+		t.Fatalf("published tasks = %d, want 0", len(publisher.tasks))
+	}
+}
+
+func TestSchedulerReportsClaimErrorWithoutPublishing(t *testing.T) {
+	claimErr := errors.New("database timeout")
+	repo := newFakeDispatchRepo([]listingadmin.ImportTask{
+		testImportTask(108, 10, 976, model.TaskStatusPending.Int16()),
+	})
+	repo.claimErr = claimErr
+	publisher := &fakeTaskPublisher{}
+	scheduler := NewScheduler(repo, fakeReadinessProvider{readiness: []StoreReadiness{
+		readyStore(10, 976, "node-a", 2, 0),
+	}}, publisher, SchedulerConfig{})
+
+	summary, err := scheduler.DispatchOnce(context.Background())
+	if err != nil {
+		t.Fatalf("DispatchOnce returned error: %v", err)
+	}
+
+	if summary.Candidates != 1 || summary.Dispatched != 0 || summary.Skipped != 0 || summary.Failed != 1 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+	if len(summary.Decisions) != 1 {
+		t.Fatalf("decisions = %d, want 1", len(summary.Decisions))
+	}
+	decision := summary.Decisions[0]
+	if decision.Action != DispatchActionFailed || !strings.Contains(decision.Reason, "claim dispatch") || !strings.Contains(decision.Reason, claimErr.Error()) {
+		t.Fatalf("unexpected decision: %+v", decision)
+	}
+	if len(publisher.tasks) != 0 {
+		t.Fatalf("published tasks = %d, want 0", len(publisher.tasks))
+	}
+}
+
+func TestSchedulerReportsRollbackErrorAfterPublishFailure(t *testing.T) {
+	publishErr := errors.New("rabbit unavailable")
+	rollbackErr := errors.New("rollback write failed")
+	repo := newFakeDispatchRepo([]listingadmin.ImportTask{
+		testImportTask(109, 10, 976, model.TaskStatusCrawled.Int16()),
+	})
+	repo.rollbackErr = rollbackErr
+	publisher := &fakeTaskPublisher{err: publishErr}
+	scheduler := NewScheduler(repo, fakeReadinessProvider{readiness: []StoreReadiness{
+		readyStore(10, 976, "node-a", 2, 0),
+	}}, publisher, SchedulerConfig{})
+
+	summary, err := scheduler.DispatchOnce(context.Background())
+	if err != nil {
+		t.Fatalf("DispatchOnce returned error: %v", err)
+	}
+
+	if summary.Failed != 1 || len(summary.Decisions) != 1 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+	decision := summary.Decisions[0]
+	if decision.Action != DispatchActionFailed {
+		t.Fatalf("decision action = %q, want failed", decision.Action)
+	}
+	if !strings.Contains(decision.Reason, publishErr.Error()) || !strings.Contains(decision.Reason, "rollback dispatch") || !strings.Contains(decision.Reason, rollbackErr.Error()) {
+		t.Fatalf("decision reason = %q, want publish and rollback errors", decision.Reason)
+	}
+	if len(repo.rollbacks) != 1 {
+		t.Fatalf("rollbacks = %d, want 1", len(repo.rollbacks))
+	}
+}
+
+func TestSchedulerUsesUniqueClaimTokensAcrossDispatchPass(t *testing.T) {
+	repo := newFakeDispatchRepo([]listingadmin.ImportTask{
+		testImportTask(110, 10, 976, model.TaskStatusCrawled.Int16()),
+		testImportTask(111, 10, 977, model.TaskStatusCrawled.Int16()),
+	})
+	scheduler := NewScheduler(repo, fakeReadinessProvider{readiness: []StoreReadiness{
+		readyStore(10, 976, "node-a", 2, 0),
+		readyStore(10, 977, "node-b", 2, 0),
+	}}, &fakeTaskPublisher{}, SchedulerConfig{})
+	scheduler.TokenGenerator = &fixedTokenGenerator{tokens: []string{"duplicate-token", "duplicate-token"}}
+
+	summary, err := scheduler.DispatchOnce(context.Background())
+	if err != nil {
+		t.Fatalf("DispatchOnce returned error: %v", err)
+	}
+
+	if summary.Dispatched != 2 || len(repo.claims) != 2 {
+		t.Fatalf("unexpected summary/claims: summary=%+v claims=%+v", summary, repo.claims)
+	}
+	if repo.claims[0].ProcessingNode == repo.claims[1].ProcessingNode {
+		t.Fatalf("claim tokens should be unique in one dispatch pass: %+v", repo.claims)
 	}
 }
 
@@ -248,14 +362,18 @@ func testImportTask(id, tenantID, storeID int64, status int16) listingadmin.Impo
 		Priority:       4,
 		CreateTime:     &now,
 		UpdateTime:     &now,
+		Creator:        "creator-1",
+		Updater:        "updater-1",
 	}
 }
 
 type fakeDispatchRepo struct {
-	candidates []listingadmin.ImportTask
-	claims     []listingadmin.DispatchClaim
-	rollbacks  []fakeRollback
-	claimOK    bool
+	candidates  []listingadmin.ImportTask
+	claims      []listingadmin.DispatchClaim
+	rollbacks   []fakeRollback
+	claimOK     bool
+	claimErr    error
+	rollbackErr error
 }
 
 func newFakeDispatchRepo(candidates []listingadmin.ImportTask) *fakeDispatchRepo {
@@ -268,6 +386,9 @@ func (f *fakeDispatchRepo) ListDispatchCandidatesFair(ctx context.Context, req l
 
 func (f *fakeDispatchRepo) ClaimForDispatch(ctx context.Context, claim listingadmin.DispatchClaim) (bool, error) {
 	f.claims = append(f.claims, claim)
+	if f.claimErr != nil {
+		return false, f.claimErr
+	}
 	return f.claimOK, nil
 }
 
@@ -278,7 +399,7 @@ func (f *fakeDispatchRepo) RollbackDispatch(ctx context.Context, taskID int64, p
 		processingNode: processingNode,
 		reason:         reason,
 	})
-	return nil
+	return f.rollbackErr
 }
 
 type fakeRollback struct {
@@ -317,11 +438,17 @@ func (f *fakeTaskPublisher) PublishTask(ctx context.Context, task *model.Task) (
 
 type fixedTokenGenerator struct {
 	tokens []string
+	index  int
 }
 
-func (f fixedTokenGenerator) NewClaimToken(prefix string, taskID int64) string {
+func (f *fixedTokenGenerator) NewClaimToken(prefix string, taskID int64) string {
 	if len(f.tokens) == 0 {
 		return prefix + "-token"
 	}
-	return f.tokens[0]
+	if f.index >= len(f.tokens) {
+		return f.tokens[len(f.tokens)-1]
+	}
+	token := f.tokens[f.index]
+	f.index++
+	return token
 }

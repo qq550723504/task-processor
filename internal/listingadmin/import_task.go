@@ -29,6 +29,8 @@ type ImportTask struct {
 	MaxRetryCount  int        `json:"maxRetryCount"`
 	Remark         string     `json:"remark,omitempty"`
 	Priority       int        `json:"priority"`
+	Creator        string     `json:"creator,omitempty"`
+	Updater        string     `json:"updater,omitempty"`
 	CreateTime     *time.Time `json:"createTime,omitempty"`
 	UpdateTime     *time.Time `json:"updateTime,omitempty"`
 }

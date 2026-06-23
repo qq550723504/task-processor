@@ -24,6 +24,8 @@ func (t listingProductImportTask) toImportTask() ImportTask {
 		MaxRetryCount:  t.MaxRetryCount,
 		Remark:         t.Remark,
 		Priority:       t.Priority,
+		Creator:        t.Creator,
+		Updater:        t.Updater,
 		CreateTime:     t.CreateTime,
 		UpdateTime:     t.UpdateTime,
 	}
@@ -61,6 +63,8 @@ func listingProductImportTaskFromImportTask(task ImportTask) listingProductImpor
 		MaxRetryCount:  task.MaxRetryCount,
 		Remark:         strings.TrimSpace(task.Remark),
 		Priority:       task.Priority,
+		Creator:        strings.TrimSpace(task.Creator),
+		Updater:        strings.TrimSpace(task.Updater),
 	}
 }
 

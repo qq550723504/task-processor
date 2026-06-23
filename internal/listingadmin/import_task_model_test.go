@@ -64,6 +64,8 @@ func TestListingProductImportTaskConversionPreservesPointersAndDefaults(t *testi
 		MaxRetryCount:  4,
 		Remark:         " note ",
 		Priority:       9,
+		Creator:        " creator-1 ",
+		Updater:        " updater-1 ",
 	}
 
 	row := listingProductImportTaskFromImportTask(task)
@@ -72,6 +74,9 @@ func TestListingProductImportTaskConversionPreservesPointersAndDefaults(t *testi
 	}
 	if row.Platform != "Amazon" || row.Region != "US" || row.ProductID != "B001" {
 		t.Fatalf("trimmed row = %+v, want trimmed platform/region/productID", row)
+	}
+	if row.Creator != "creator-1" || row.Updater != "updater-1" {
+		t.Fatalf("row creator/updater = %q/%q, want creator-1/updater-1", row.Creator, row.Updater)
 	}
 
 	converted := row.toImportTask()
@@ -83,5 +88,8 @@ func TestListingProductImportTaskConversionPreservesPointersAndDefaults(t *testi
 	}
 	if converted.TargetPlatform != "SHEIN" || converted.ErrorMessage != "bad" || converted.Remark != "note" {
 		t.Fatalf("converted = %+v, want trimmed values preserved", converted)
+	}
+	if converted.Creator != "creator-1" || converted.Updater != "updater-1" {
+		t.Fatalf("converted creator/updater = %q/%q, want creator-1/updater-1", converted.Creator, converted.Updater)
 	}
 }
