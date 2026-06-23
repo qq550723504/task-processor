@@ -151,6 +151,58 @@ func TestGormImportTaskRepositoryLifecycleHelpers(t *testing.T) {
 	}
 }
 
+func TestGormImportTaskRepositoryUpdateDraftSetsPublishedTime(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingProductImportTask{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	now := time.Now().Add(-5 * time.Minute)
+	row := listingProductImportTask{
+		ID:         11,
+		TenantID:   10,
+		StoreID:    976,
+		Platform:   "shein",
+		Region:     "us",
+		ProductID:  "draft-product",
+		Status:     model.TaskStatusProcessing.Int16(),
+		Priority:   10,
+		CreateTime: &now,
+		UpdateTime: &now,
+		Deleted:    0,
+	}
+	if err := db.Table("listing_product_import_task").Create(&row).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+
+	expected := model.TaskStatusProcessing.Int16()
+	repo := NewGormImportTaskRepository(db)
+	handled, err := repo.UpdateImportTaskStatus(context.Background(), &api.ProductImportTaskUpdateReqDTO{
+		ID:                    row.ID,
+		Status:                model.TaskStatusDraft.Int16(),
+		ExpectedCurrentStatus: &expected,
+	})
+	if err != nil || !handled {
+		t.Fatalf("UpdateImportTaskStatus() handled=%v err=%v", handled, err)
+	}
+
+	var updated listingProductImportTask
+	if err := db.Table("listing_product_import_task").Where("id = ?", row.ID).Take(&updated).Error; err != nil {
+		t.Fatalf("load updated row: %v", err)
+	}
+	if updated.Status != model.TaskStatusDraft.Int16() {
+		t.Fatalf("status = %d, want draft", updated.Status)
+	}
+	if updated.PublishedTime == nil {
+		t.Fatal("published_time is nil, want set when moving to draft")
+	}
+}
+
 func TestGormImportTaskRepositoryRecoversTimedOutProcessingTasks(t *testing.T) {
 	t.Parallel()
 

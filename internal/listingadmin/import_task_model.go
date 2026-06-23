@@ -28,6 +28,7 @@ func (t listingProductImportTask) toImportTask() ImportTask {
 		Updater:        t.Updater,
 		CreateTime:     t.CreateTime,
 		UpdateTime:     t.UpdateTime,
+		PublishedTime:  t.PublishedTime,
 	}
 }
 

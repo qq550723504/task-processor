@@ -481,13 +481,17 @@ func (r *GormImportTaskRepository) UpdateImportTaskStatus(ctx context.Context, r
 			}
 		}
 	}
+	now := time.Now()
 	updates := map[string]any{
 		"status":        req.Status,
 		"error_message": req.ErrorMessage,
 		"reason_code":   req.ReasonCode,
 		"stage":         req.Stage,
 		"remark":        req.Remark,
-		"update_time":   time.Now(),
+		"update_time":   now,
+	}
+	if shouldSetImportTaskPublishedTime(row, req.Status) {
+		updates["published_time"] = now
 	}
 	if req.RetryCount != nil {
 		updates["retry_count"] = *req.RetryCount
@@ -508,4 +512,23 @@ func (r *GormImportTaskRepository) UpdateImportTaskStatus(ctx context.Context, r
 		return true, res.Error
 	}
 	return res.RowsAffected > 0, nil
+}
+
+func shouldSetImportTaskPublishedTime(row listingProductImportTask, targetStatus int16) bool {
+	if row.PublishedTime != nil {
+		return false
+	}
+	if isImportTaskCompletedStatus(row.Status) {
+		return false
+	}
+	return isImportTaskCompletedStatus(targetStatus)
+}
+
+func isImportTaskCompletedStatus(status int16) bool {
+	switch status {
+	case model.TaskStatusPublished.Int16(), model.TaskStatusDraft.Int16():
+		return true
+	default:
+		return false
+	}
 }

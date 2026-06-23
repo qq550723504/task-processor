@@ -33,6 +33,7 @@ type ImportTask struct {
 	Updater        string     `json:"updater,omitempty"`
 	CreateTime     *time.Time `json:"createTime,omitempty"`
 	UpdateTime     *time.Time `json:"updateTime,omitempty"`
+	PublishedTime  *time.Time `json:"publishedTime,omitempty"`
 }
 
 type ImportTaskQuery struct {
@@ -132,6 +133,7 @@ type listingProductImportTask struct {
 	Updater        string     `gorm:"column:updater"`
 	UpdatedBy      string     `gorm:"column:updated_by;type:varchar(128)"`
 	UpdateTime     *time.Time `gorm:"column:update_time;autoUpdateTime"`
+	PublishedTime  *time.Time `gorm:"column:published_time"`
 	Deleted        int16      `gorm:"column:deleted;not null;default:0;index"`
 }
 
