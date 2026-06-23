@@ -17,6 +17,10 @@ import { useSheinStudioDedicatedBatchRunController } from "@/components/listingk
 import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
 import {
+  resetDedicatedBatchPromptOverrides,
+  useSheinStudioDedicatedDraftPersistence,
+} from "@/components/listingkit/shein-studio/shein-studio-persistence-controller";
+import {
   projectSheinStudioQueueState,
   useSheinStudioQueueController,
 } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
@@ -35,7 +39,6 @@ import {
   clearLocalSheinStudioDraftSnapshot,
   useHydratedSDSVariantSelection,
   loadLocalSheinStudioDraftSnapshotDetail,
-  saveLocalSheinStudioDraftSnapshot,
   useSheinStudioPendingNavigationGuard,
   useSheinStudioDraftPersistence,
   useSheinStudioStepNavigation,
@@ -124,8 +127,6 @@ type SheinStudioWorkbenchProps = {
   selection?: SDSProductVariantSelection;
 };
 
-const dedicatedBatchPromptOverrides = new Map<string, string>();
-
 function isMissingStudioBatchDeleteError(error: unknown) {
   return error instanceof Error && /studio session not found/i.test(error.message);
 }
@@ -149,9 +150,7 @@ function upsertSavedBatch(
   );
 }
 
-export function resetDedicatedBatchPromptOverrides() {
-  dedicatedBatchPromptOverrides.clear();
-}
+export { resetDedicatedBatchPromptOverrides };
 
 export function SheinStudioWorkbench({
   activeStep = "generate",
@@ -789,46 +788,20 @@ export function SheinStudioWorkbench({
       persistenceEnabled: !initialBatchId || isDedicatedBatchLoaded,
     },
   );
-  const buildResultBackedDraftInput = useCallback(
-    () =>
-      buildDraftInput({
-        designs,
-        selectedIds,
-        createdTasks,
-        generationJobs,
-        generationError,
-        generationJobId: currentActiveBatch?.generationJobId ?? "",
-      }),
-    [
-      buildDraftInput,
-      createdTasks,
-      currentActiveBatch?.generationJobId,
-      designs,
-      generationError,
-      generationJobs,
-      selectedIds,
-    ],
-  );
-  const saveDedicatedBatchDraftSnapshot = useCallback(
-    (overrides?: Partial<ReturnType<typeof buildDraftInput>>) => {
-      if (!initialBatchId) {
-        return;
-      }
-      if (typeof overrides?.prompt === "string") {
-        dedicatedBatchPromptOverrides.set(initialBatchId, overrides.prompt);
-      }
-      saveLocalSheinStudioDraftSnapshot(
-        {
-          ...buildDraftInput(),
-          ...overrides,
-        },
-        {
-          batchId: initialBatchId,
-        },
-      );
-    },
-    [buildDraftInput, initialBatchId],
-  );
+  const {
+    buildResultBackedDraftInput,
+    promptOverride: dedicatedBatchPromptOverride,
+    saveDedicatedBatchDraftSnapshot,
+  } = useSheinStudioDedicatedDraftPersistence({
+    buildDraftInput,
+    createdTasks,
+    currentGenerationJobId: currentActiveBatch?.generationJobId ?? "",
+    designs,
+    generationError,
+    generationJobs,
+    initialBatchId,
+    selectedIds,
+  });
   const { batchGenerationContext } = useSheinStudioBatchGenerationContext({
     activeBatchId,
     buildDraftInput,
@@ -1192,9 +1165,7 @@ export function SheinStudioWorkbench({
     getHydratedBatch: getSheinStudioHydratedBatch,
     loadLocalSnapshot: loadLocalSheinStudioDraftSnapshotDetail,
     loadHydratedBatch: handleLoadHydratedBatch,
-    promptOverride: initialBatchId
-      ? dedicatedBatchPromptOverrides.get(initialBatchId)
-      : undefined,
+    promptOverride: dedicatedBatchPromptOverride,
     setGenerationError: setDedicatedBatchGenerationError,
     setLoaded: setIsDedicatedBatchLoaded,
     setQueueMessage,
