@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -128,6 +129,127 @@ func (r *GormImportTaskRepository) ListPendingAndRetryTasks(ctx context.Context,
 		items = append(items, row.toImportTask())
 	}
 	return items, nil
+}
+
+func (r *GormImportTaskRepository) ListDispatchCandidatesFair(ctx context.Context, req DispatchCandidateRequest) ([]ImportTask, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("import task repository database is not configured")
+	}
+	if req.Limit <= 0 {
+		req.Limit = 20
+	}
+	if req.PerStoreLimit <= 0 {
+		req.PerStoreLimit = 1
+	}
+	statuses := []int16{
+		model.TaskStatusPending.Int16(),
+		model.TaskStatusCrawled.Int16(),
+		model.TaskStatusPendingRetry.Int16(),
+	}
+	platform := strings.TrimSpace(req.Platform)
+	ranked := r.db.WithContext(ctx).
+		Table("listing_product_import_task AS t").
+		Select(`t.*, row_number() over (
+			partition by t.tenant_id, t.store_id
+			order by t.priority desc, t.update_time asc, t.id asc
+		) as rn`).
+		Where("t.deleted = 0").
+		Where("COALESCE(NULLIF(t.target_platform, ''), t.platform) = ?", platform).
+		Where("t.status IN ?", statuses).
+		Where("t.store_id IS NOT NULL")
+	if len(req.ExcludedStoreIDs) > 0 {
+		ranked = ranked.Where("t.store_id NOT IN ?", req.ExcludedStoreIDs)
+	}
+
+	var rows []listingProductImportTask
+	err := r.db.WithContext(ctx).
+		Table("(?) AS ranked", ranked).
+		Where("ranked.rn <= ?", req.PerStoreLimit).
+		Order("ranked.rn asc, ranked.priority desc, ranked.update_time asc, ranked.id asc").
+		Limit(req.Limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	items := make([]ImportTask, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, row.toImportTask())
+	}
+	return items, nil
+}
+
+func (r *GormImportTaskRepository) ClaimForDispatch(ctx context.Context, claim DispatchClaim) (bool, error) {
+	if r == nil || r.db == nil {
+		return false, errors.New("import task repository database is not configured")
+	}
+	res := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("id = ?", claim.TaskID).
+		Where("status = ?", claim.PreviousStatus).
+		Where("deleted = 0").
+		Updates(map[string]any{
+			"status":          model.TaskStatusQueued.Int16(),
+			"processing_node": strings.TrimSpace(claim.ProcessingNode),
+			"error_message":   nil,
+			"reason_code":     nil,
+			"remark":          strings.TrimSpace(claim.Remark),
+			"update_time":     time.Now(),
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
+}
+
+func (r *GormImportTaskRepository) RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, reason string) error {
+	if r == nil || r.db == nil {
+		return errors.New("import task repository database is not configured")
+	}
+	trimmedReason := strings.TrimSpace(reason)
+	if trimmedReason == "" {
+		trimmedReason = "Dispatch rollback"
+	}
+	return r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("id = ?", taskID).
+		Where("status = ?", model.TaskStatusQueued.Int16()).
+		Where("deleted = 0").
+		Updates(map[string]any{
+			"status":          previousStatus,
+			"processing_node": "",
+			"error_message":   trimmedReason,
+			"remark":          trimmedReason,
+			"update_time":     time.Now(),
+		}).Error
+}
+
+func (r *GormImportTaskRepository) CountQueuedByStore(ctx context.Context, platform string, storeIDs []int64) (map[int64]int64, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("import task repository database is not configured")
+	}
+	type storeCount struct {
+		StoreID int64
+		Count   int64
+	}
+	query := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Select("store_id, count(*) as count").
+		Where("deleted = 0").
+		Where("status = ?", model.TaskStatusQueued.Int16()).
+		Where("COALESCE(NULLIF(target_platform, ''), platform) = ?", strings.TrimSpace(platform)).
+		Group("store_id")
+	if len(storeIDs) > 0 {
+		query = query.Where("store_id IN ?", storeIDs)
+	}
+	var rows []storeCount
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	counts := make(map[int64]int64, len(rows))
+	for _, row := range rows {
+		counts[row.StoreID] = row.Count
+	}
+	return counts, nil
 }
 
 func (r *GormImportTaskRepository) CountTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time) (int64, error) {

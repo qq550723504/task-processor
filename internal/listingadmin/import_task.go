@@ -21,6 +21,7 @@ type ImportTask struct {
 	CategoryID     *int64     `json:"categoryId,omitempty"`
 	ProductID      string     `json:"productId"`
 	Status         int16      `json:"status"`
+	ProcessingNode string     `json:"processingNode,omitempty"`
 	ErrorMessage   string     `json:"errorMessage,omitempty"`
 	ReasonCode     string     `json:"reasonCode,omitempty"`
 	Stage          string     `json:"stage,omitempty"`
@@ -52,11 +53,29 @@ type ImportTaskPage struct {
 	PageSize int          `json:"page_size"`
 }
 
+type DispatchCandidateRequest struct {
+	Platform         string
+	Limit            int
+	PerStoreLimit    int
+	ExcludedStoreIDs []int64
+}
+
+type DispatchClaim struct {
+	TaskID         int64
+	PreviousStatus int16
+	ProcessingNode string
+	Remark         string
+}
+
 type ImportTaskRepository interface {
 	ListImportTasks(ctx context.Context, query ImportTaskQuery) (*ImportTaskPage, error)
 	BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) ([]ImportTask, error)
 	GetImportTaskByID(ctx context.Context, id int64) (*ImportTask, error)
 	ListPendingAndRetryTasks(ctx context.Context, limit int, tenantID int64, storeIDs []int64) ([]ImportTask, error)
+	ListDispatchCandidatesFair(ctx context.Context, req DispatchCandidateRequest) ([]ImportTask, error)
+	ClaimForDispatch(ctx context.Context, claim DispatchClaim) (bool, error)
+	RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, reason string) error
+	CountQueuedByStore(ctx context.Context, platform string, storeIDs []int64) (map[int64]int64, error)
 	CountTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time) (int64, error)
 	ListTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time, limit int) ([]ImportTask, error)
 	RecoverTimedOutProcessingTasks(ctx context.Context, ids []int64, recovery ProcessingTimeoutRecovery) (int, error)
@@ -95,6 +114,7 @@ type listingProductImportTask struct {
 	CategoryID     int64      `gorm:"column:category_id;not null;index"`
 	ProductID      string     `gorm:"column:product_id;not null;index"`
 	Status         int16      `gorm:"column:status;not null;default:0;index"`
+	ProcessingNode string     `gorm:"column:processing_node"`
 	ErrorMessage   string     `gorm:"column:error_message"`
 	ReasonCode     string     `gorm:"column:reason_code"`
 	Stage          string     `gorm:"column:stage"`
