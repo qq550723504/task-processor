@@ -6,5 +6,3 @@ namespace: task-processor
 resources:
   - configmap-lite.yaml
   - configmap-heavy.yaml
-  - daemonset-lite.yaml
-  - daemonset-heavy.yaml
