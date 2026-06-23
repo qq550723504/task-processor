@@ -188,3 +188,75 @@ func TestGormRawJSONDataRepositorySupportsSchemaWithoutTenantID(t *testing.T) {
 		t.Fatalf("UpsertRawJSONData(update without tenant_id column) metadata = %+v", updated)
 	}
 }
+
+func TestGormRawJSONDataRepositorySupportsProductionLegacySchema(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.Exec(`CREATE TABLE listing_raw_json_data (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		product_id TEXT NOT NULL,
+		platform TEXT NOT NULL,
+		region TEXT,
+		raw_json_data TEXT,
+		status INTEGER DEFAULT 0,
+		creator TEXT DEFAULT '',
+		create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updater TEXT DEFAULT '',
+		update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		deleted INTEGER NOT NULL DEFAULT 0
+	)`).Error; err != nil {
+		t.Fatalf("create legacy raw json data table: %v", err)
+	}
+	if err := db.Exec(`CREATE UNIQUE INDEX uk_listing_raw_json_data_product_region
+		ON listing_raw_json_data(platform, product_id, region)
+		WHERE deleted = 0`).Error; err != nil {
+		t.Fatalf("create legacy raw json data unique index: %v", err)
+	}
+
+	repo := NewGormRawJSONDataRepository(db)
+	created, err := repo.UpsertRawJSONData(context.Background(), &RawJSONData{
+		TenantID:     322,
+		StoreID:      976,
+		ImportTaskID: 123,
+		Platform:     "amazon",
+		ProductID:    "B0LEGACY",
+		Region:       "us",
+		CategoryID:   456,
+		RawJSONData:  `{"source":"created"}`,
+		Creator:      "tester",
+	})
+	if err != nil {
+		t.Fatalf("UpsertRawJSONData(create legacy schema) error = %v", err)
+	}
+	if created == nil || created.ID <= 0 || created.RawJSONData != `{"source":"created"}` {
+		t.Fatalf("UpsertRawJSONData(create legacy schema) = %+v", created)
+	}
+	if created.StoreID != 0 || created.ImportTaskID != 0 || created.CategoryID != 0 {
+		t.Fatalf("legacy schema metadata should be absent, got %+v", created)
+	}
+
+	updated, err := repo.UpsertRawJSONData(context.Background(), &RawJSONData{
+		TenantID:     322,
+		StoreID:      976,
+		ImportTaskID: 124,
+		Platform:     "amazon",
+		ProductID:    "B0LEGACY",
+		Region:       "us",
+		CategoryID:   457,
+		RawJSONData:  `{"source":"updated"}`,
+		Updater:      "tester2",
+	})
+	if err != nil {
+		t.Fatalf("UpsertRawJSONData(update legacy schema) error = %v", err)
+	}
+	if updated == nil || updated.ID != created.ID || updated.RawJSONData != `{"source":"updated"}` {
+		t.Fatalf("UpsertRawJSONData(update legacy schema) = %+v", updated)
+	}
+	if updated.StoreID != 0 || updated.ImportTaskID != 0 || updated.CategoryID != 0 {
+		t.Fatalf("legacy schema metadata should still be absent, got %+v", updated)
+	}
+}

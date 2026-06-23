@@ -3,12 +3,19 @@ package listingadmin
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
 )
 
-type GormRawJSONDataRepository struct{ db *gorm.DB }
+type GormRawJSONDataRepository struct {
+	db *gorm.DB
+
+	columnsOnce sync.Once
+	columns     map[string]bool
+	columnsErr  error
+}
 
 func NewGormRawJSONDataRepository(db *gorm.DB) *GormRawJSONDataRepository {
 	return &GormRawJSONDataRepository{db: db}
@@ -40,6 +47,10 @@ func (r *GormRawJSONDataRepository) UpsertRawJSONData(ctx context.Context, recor
 	if record == nil {
 		return nil, nil
 	}
+	columns, err := r.tableColumns()
+	if err != nil {
+		return nil, err
+	}
 	if existing, err := r.GetLatestRawJSONData(ctx, record.Platform, record.ProductID, record.Region); err != nil {
 		return nil, err
 	} else if existing != nil {
@@ -47,21 +58,21 @@ func (r *GormRawJSONDataRepository) UpsertRawJSONData(ctx context.Context, recor
 			"raw_json_data": record.RawJSONData,
 			"update_time":   time.Now(),
 		}
-		if record.StoreID > 0 {
+		if columns["store_id"] && record.StoreID > 0 {
 			updates["store_id"] = record.StoreID
 		}
-		if record.ImportTaskID > 0 {
+		if columns["import_task_id"] && record.ImportTaskID > 0 {
 			updates["import_task_id"] = record.ImportTaskID
 		}
-		if record.CategoryID > 0 {
+		if columns["category_id"] && record.CategoryID > 0 {
 			updates["category_id"] = record.CategoryID
 		}
-		if record.Creator != "" {
+		if columns["creator"] && record.Creator != "" {
 			updates["creator"] = record.Creator
 		}
-		if record.Updater != "" {
+		if columns["updater"] && record.Updater != "" {
 			updates["updater"] = record.Updater
-		} else if record.Creator != "" {
+		} else if columns["updater"] && record.Creator != "" {
 			updates["updater"] = record.Creator
 		}
 		if err := r.db.WithContext(ctx).Table((listingRawJSONData{}).TableName()).Where("id = ?", existing.ID).Updates(updates).Error; err != nil {
@@ -70,23 +81,72 @@ func (r *GormRawJSONDataRepository) UpsertRawJSONData(ctx context.Context, recor
 		return r.GetLatestRawJSONData(ctx, record.Platform, record.ProductID, record.Region)
 	}
 
-	row := listingRawJSONDataFromRawJSONData(record)
-	if row.Status == 0 {
-		row.Status = 0
-	}
-	if row.Creator != "" && row.Updater == "" {
-		row.Updater = row.Creator
-	}
 	now := time.Now()
-	if row.CreateTime == nil {
-		row.CreateTime = &now
+	createTime := record.CreateTime
+	if createTime == nil {
+		createTime = &now
 	}
-	if row.UpdateTime == nil {
-		row.UpdateTime = &now
+	updateTime := record.UpdateTime
+	if updateTime == nil {
+		updateTime = &now
 	}
-	if err := r.db.WithContext(ctx).Table(row.TableName()).Create(&row).Error; err != nil {
+	values := map[string]any{
+		"platform":      record.Platform,
+		"product_id":    record.ProductID,
+		"region":        record.Region,
+		"raw_json_data": record.RawJSONData,
+		"status":        record.Status,
+		"create_time":   createTime,
+		"update_time":   updateTime,
+		"deleted":       0,
+	}
+	if columns["store_id"] && record.StoreID > 0 {
+		values["store_id"] = record.StoreID
+	}
+	if columns["import_task_id"] && record.ImportTaskID > 0 {
+		values["import_task_id"] = record.ImportTaskID
+	}
+	if columns["category_id"] && record.CategoryID > 0 {
+		values["category_id"] = record.CategoryID
+	}
+	if columns["creator"] && record.Creator != "" {
+		values["creator"] = record.Creator
+		if columns["updater"] && record.Updater == "" {
+			values["updater"] = record.Creator
+		}
+	}
+	if columns["updater"] && record.Updater != "" {
+		values["updater"] = record.Updater
+	}
+	if err := r.db.WithContext(ctx).Table((listingRawJSONData{}).TableName()).Create(values).Error; err != nil {
 		return nil, err
 	}
-	created := row.toRawJSONData()
-	return &created, nil
+	return r.GetLatestRawJSONData(ctx, record.Platform, record.ProductID, record.Region)
+}
+
+func (r *GormRawJSONDataRepository) tableColumns() (map[string]bool, error) {
+	r.columnsOnce.Do(func() {
+		table := (listingRawJSONData{}).TableName()
+		columns := map[string]bool{}
+		for _, column := range []string{
+			"id",
+			"store_id",
+			"import_task_id",
+			"platform",
+			"product_id",
+			"region",
+			"category_id",
+			"raw_json_data",
+			"status",
+			"creator",
+			"updater",
+			"create_time",
+			"update_time",
+			"deleted",
+		} {
+			columns[column] = r.db.Migrator().HasColumn(table, column)
+		}
+		r.columns = columns
+	})
+	return r.columns, r.columnsErr
 }
