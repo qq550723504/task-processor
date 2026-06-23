@@ -48,6 +48,7 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
+  projectItemizedTaskCreationProgress,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
@@ -1177,92 +1178,36 @@ export function SheinStudioWorkbench({
     if (!itemizedBatchDetail) {
       return;
     }
-    const failedTasks = itemizedBatchDetail.failedTasks ?? [];
-    const rejectedTasks = itemizedBatchDetail.rejectedTasks ?? [];
-    const reusedBatchTasks = itemizedBatchDetail.reusedTasks ?? [];
-    const createdBatchTasks = itemizedBatchDetail.createdTasks ?? [];
-    const availableBatchTasks = [...createdBatchTasks, ...reusedBatchTasks];
-    const completionSignature = `${itemizedBatchDetail.batch.id}:${itemizedBatchDetail.batch.status}:${createdBatchTasks.length}:${reusedBatchTasks.length}:${rejectedTasks.length}:${failedTasks.length}`;
-    if (itemizedBatchDetail.batch.status === "tasks_creating") {
+    const progress = projectItemizedTaskCreationProgress({
+      creatingMessage,
+      detail: itemizedBatchDetail,
+      isCreatingTasks,
+    });
+    if (progress.kind === "unchanged") {
+      return;
+    }
+    if (progress.kind === "creating") {
       workbenchController.setField("isCreatingTasks", true);
-      if (!creatingMessage.trim()) {
+      if (progress.creatingMessage) {
         workbenchController.setField(
           "creatingMessage",
-          "已开始在后台创建 SHEIN 资料，可离开当前页面，结果会自动刷新。",
+          progress.creatingMessage,
         );
       }
-      if (taskCreationToastSignatureRef.current !== completionSignature) {
-        taskCreationToastSignatureRef.current = completionSignature;
+      if (taskCreationToastSignatureRef.current !== progress.completionSignature) {
+        taskCreationToastSignatureRef.current = progress.completionSignature;
       }
-      return;
-    }
-    if (!isCreatingTasks) {
-      return;
-    }
-    if (itemizedBatchDetail.batch.status !== "tasks_created") {
       return;
     }
     workbenchController.setField("isCreatingTasks", false);
-    if (failedTasks.length > 0 || rejectedTasks.length > 0) {
-      const rejectedPreview = rejectedTasks
-        .slice(0, 3)
-        .map(
-          (task) =>
-            `${task.title?.trim() || task.designId}: ${
-              task.reasonCode ? `${task.reasonCode} · ` : ""
-            }${task.message ?? "候选不满足创建条件"}`,
-        )
-        .join("；");
-      const failedPreview = failedTasks
-        .slice(0, Math.max(0, 3 - rejectedTasks.length))
-        .map(
-          (task) =>
-            `${task.title}: ${task.reasonCode ? `${task.reasonCode} · ` : ""}${
-              task.message
-            }`,
-        )
-        .join("；");
-      const preview = [rejectedPreview, failedPreview].filter(Boolean).join("；");
-      const blockedCount = failedTasks.length + rejectedTasks.length;
-      const suffix =
-        blockedCount > 3
-          ? ` 等 ${blockedCount} 个任务`
-          : "";
-      workbenchController.setField(
-        "creatingWarning",
-        `部分任务被拒绝或创建失败：${preview}${suffix}`,
-      );
-      workbenchController.setField(
-        "creatingMessage",
-        availableBatchTasks.length > 0
-          ? `后台已完成创建：可处理 ${availableBatchTasks.length} 个，拒绝 ${rejectedTasks.length} 个，失败 ${failedTasks.length} 个。`
-          : "后台任务创建已结束，但本次没有成功创建任务。",
-      );
-      if (taskCreationToastSignatureRef.current !== completionSignature) {
-        taskCreationToastSignatureRef.current = completionSignature;
-        if (availableBatchTasks.length > 0) {
-          toast.warning(
-            "SHEIN 资料已部分创建",
-            `可处理 ${availableBatchTasks.length} 个，拒绝 ${rejectedTasks.length} 个，失败 ${failedTasks.length} 个。`,
-            8000,
-          );
-        } else {
-          toast.error("SHEIN 资料创建失败", "本次没有成功创建任务。", 8000);
-        }
-      }
-      return;
-    }
-    workbenchController.setField("creatingWarning", "");
-    workbenchController.setField(
-      "creatingMessage",
-      `后台已完成创建，共生成或复用 ${availableBatchTasks.length} 个 SHEIN 任务。`,
-    );
-    if (taskCreationToastSignatureRef.current !== completionSignature) {
-      taskCreationToastSignatureRef.current = completionSignature;
-      toast.success(
-        "SHEIN 资料创建完成",
-        `共生成或复用 ${availableBatchTasks.length} 个任务。`,
-        7000,
+    workbenchController.setField("creatingWarning", progress.creatingWarning);
+    workbenchController.setField("creatingMessage", progress.creatingMessage);
+    if (taskCreationToastSignatureRef.current !== progress.completionSignature) {
+      taskCreationToastSignatureRef.current = progress.completionSignature;
+      toast[progress.toast.type](
+        progress.toast.title,
+        progress.toast.message,
+        progress.toast.duration,
       );
     }
   }, [

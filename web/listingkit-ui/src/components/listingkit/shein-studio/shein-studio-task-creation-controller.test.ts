@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   projectItemizedBatchDetail,
+  projectItemizedTaskCreationProgress,
   projectItemizedTaskCreationResult,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
@@ -202,6 +203,108 @@ describe("projectItemizedBatchDetail", () => {
       updatedAt: "2026-06-22T04:00:00.000Z",
     });
     expect(result.detail.batch.tenantId).toBe("tenant-detail-new");
+  });
+});
+
+describe("projectItemizedTaskCreationProgress", () => {
+  it("projects in-flight task creation state", () => {
+    expect(
+      projectItemizedTaskCreationProgress({
+        creatingMessage: "",
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            status: "tasks_creating",
+          },
+        },
+        isCreatingTasks: false,
+      }),
+    ).toEqual({
+      completionSignature: "batch-1:tasks_creating:0:0:0:0",
+      creatingMessage: "已开始在后台创建 SHEIN 资料，可离开当前页面，结果会自动刷新。",
+      isCreatingTasks: true,
+      kind: "creating",
+    });
+  });
+
+  it("projects successful task creation completion feedback", () => {
+    expect(
+      projectItemizedTaskCreationProgress({
+        creatingMessage: "creating",
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            status: "tasks_created",
+          },
+          createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+          reusedTasks: [{ id: "task-2", title: "Task 2", designId: "design-2" }],
+          failedTasks: [],
+          rejectedTasks: [],
+        },
+        isCreatingTasks: true,
+      }),
+    ).toEqual({
+      completionSignature: "batch-1:tasks_created:1:1:0:0",
+      creatingMessage: "后台已完成创建，共生成或复用 2 个 SHEIN 任务。",
+      creatingWarning: "",
+      isCreatingTasks: false,
+      kind: "completed",
+      toast: {
+        duration: 7000,
+        message: "共生成或复用 2 个任务。",
+        title: "SHEIN 资料创建完成",
+        type: "success",
+      },
+    });
+  });
+
+  it("projects blocked task creation completion feedback", () => {
+    expect(
+      projectItemizedTaskCreationProgress({
+        creatingMessage: "creating",
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            status: "tasks_created",
+          },
+          createdTasks: [],
+          reusedTasks: [],
+          rejectedTasks: [
+            {
+              designId: "design-1",
+              message: "bad image",
+              reasonCode: "image_invalid",
+              title: "Rejected",
+            },
+          ],
+          failedTasks: [
+            {
+              designId: "design-2",
+              message: "network",
+              reasonCode: "timeout",
+              title: "Failed",
+            },
+          ],
+        },
+        isCreatingTasks: true,
+      }),
+    ).toEqual({
+      completionSignature: "batch-1:tasks_created:0:0:1:1",
+      creatingMessage: "后台任务创建已结束，但本次没有成功创建任务。",
+      creatingWarning:
+        "部分任务被拒绝或创建失败：Rejected: image_invalid · bad image；Failed: timeout · network",
+      isCreatingTasks: false,
+      kind: "completed",
+      toast: {
+        duration: 8000,
+        message: "本次没有成功创建任务。",
+        title: "SHEIN 资料创建失败",
+        type: "error",
+      },
+    });
   });
 });
 

@@ -63,6 +63,123 @@ type ItemizedBatchDetailProjectionInput = Omit<
   detail: SheinStudioBatchDetail;
 };
 
+type ItemizedTaskCreationProgressInput = {
+  creatingMessage: string;
+  detail: SheinStudioBatchDetail;
+  isCreatingTasks: boolean;
+};
+
+type ItemizedTaskCreationProgress =
+  | {
+      completionSignature: string;
+      creatingMessage?: string;
+      isCreatingTasks: true;
+      kind: "creating";
+    }
+  | {
+      completionSignature: string;
+      creatingMessage: string;
+      creatingWarning: string;
+      isCreatingTasks: false;
+      kind: "completed";
+      toast: {
+        duration: number;
+        message: string;
+        title: string;
+        type: "error" | "success" | "warning";
+      };
+    }
+  | {
+      kind: "unchanged";
+    };
+
+export function projectItemizedTaskCreationProgress({
+  creatingMessage,
+  detail,
+  isCreatingTasks,
+}: ItemizedTaskCreationProgressInput): ItemizedTaskCreationProgress {
+  const failedTasks = detail.failedTasks ?? [];
+  const rejectedTasks = detail.rejectedTasks ?? [];
+  const reusedBatchTasks = detail.reusedTasks ?? [];
+  const createdBatchTasks = detail.createdTasks ?? [];
+  const availableBatchTasks = [...createdBatchTasks, ...reusedBatchTasks];
+  const completionSignature = `${detail.batch.id}:${detail.batch.status}:${createdBatchTasks.length}:${reusedBatchTasks.length}:${rejectedTasks.length}:${failedTasks.length}`;
+
+  if (detail.batch.status === "tasks_creating") {
+    return {
+      completionSignature,
+      creatingMessage: creatingMessage.trim()
+        ? undefined
+        : "已开始在后台创建 SHEIN 资料，可离开当前页面，结果会自动刷新。",
+      isCreatingTasks: true,
+      kind: "creating",
+    };
+  }
+  if (!isCreatingTasks || detail.batch.status !== "tasks_created") {
+    return { kind: "unchanged" };
+  }
+  if (failedTasks.length > 0 || rejectedTasks.length > 0) {
+    const rejectedPreview = rejectedTasks
+      .slice(0, 3)
+      .map(
+        (task) =>
+          `${task.title?.trim() || task.designId}: ${
+            task.reasonCode ? `${task.reasonCode} · ` : ""
+          }${task.message ?? "候选不满足创建条件"}`,
+      )
+      .join("；");
+    const failedPreview = failedTasks
+      .slice(0, Math.max(0, 3 - rejectedTasks.length))
+      .map(
+        (task) =>
+          `${task.title}: ${task.reasonCode ? `${task.reasonCode} · ` : ""}${
+            task.message
+          }`,
+      )
+      .join("；");
+    const preview = [rejectedPreview, failedPreview].filter(Boolean).join("；");
+    const blockedCount = failedTasks.length + rejectedTasks.length;
+    const suffix = blockedCount > 3 ? ` 等 ${blockedCount} 个任务` : "";
+    return {
+      completionSignature,
+      creatingMessage:
+        availableBatchTasks.length > 0
+          ? `后台已完成创建：可处理 ${availableBatchTasks.length} 个，拒绝 ${rejectedTasks.length} 个，失败 ${failedTasks.length} 个。`
+          : "后台任务创建已结束，但本次没有成功创建任务。",
+      creatingWarning: `部分任务被拒绝或创建失败：${preview}${suffix}`,
+      isCreatingTasks: false,
+      kind: "completed",
+      toast:
+        availableBatchTasks.length > 0
+          ? {
+              duration: 8000,
+              message: `可处理 ${availableBatchTasks.length} 个，拒绝 ${rejectedTasks.length} 个，失败 ${failedTasks.length} 个。`,
+              title: "SHEIN 资料已部分创建",
+              type: "warning",
+            }
+          : {
+              duration: 8000,
+              message: "本次没有成功创建任务。",
+              title: "SHEIN 资料创建失败",
+              type: "error",
+            },
+    };
+  }
+  return {
+    completionSignature,
+    creatingMessage: `后台已完成创建，共生成或复用 ${availableBatchTasks.length} 个 SHEIN 任务。`,
+    creatingWarning: "",
+    isCreatingTasks: false,
+    kind: "completed",
+    toast: {
+      duration: 7000,
+      message: `共生成或复用 ${availableBatchTasks.length} 个任务。`,
+      title: "SHEIN 资料创建完成",
+      type: "success",
+    },
+  };
+}
+
 export function projectItemizedBatchDetail({
   activeBatchId,
   activeSelection,
