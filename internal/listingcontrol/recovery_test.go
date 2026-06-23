@@ -151,7 +151,84 @@ func TestRecoveryCoordinatorDoesNotRecoverWhenNoIDsAreListed(t *testing.T) {
 	}
 }
 
-func TestRecoveryCoordinatorReturnsRepositoryErrorWithPartialSummary(t *testing.T) {
+func TestRecoveryCoordinatorDoesNotRecoverStaleQueuedWhenNoIDsAreListed(t *testing.T) {
+	repo := &fakeRecoveryRepository{
+		staleQueuedCount: 6,
+	}
+	coordinator := NewRecoveryCoordinator(RecoveryConfig{
+		Enabled:            true,
+		StaleQueuedEnabled: true,
+		Repository:         repo,
+	})
+
+	summary, err := coordinator.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("RunOnce returned error: %v", err)
+	}
+	if summary.StaleQueuedCandidates != 6 || summary.StaleQueuedRecovered != 0 || len(summary.StaleQueuedTaskIDs) != 0 {
+		t.Fatalf("summary = %+v, want stale queued candidates only", summary)
+	}
+	if repo.recoverStaleCalls != 0 {
+		t.Fatalf("recover stale queued calls = %d, want 0", repo.recoverStaleCalls)
+	}
+}
+
+func TestRecoveryCoordinatorReturnsProcessingCountError(t *testing.T) {
+	countErr := errors.New("count processing failed")
+	repo := &fakeRecoveryRepository{
+		countProcessingErr: countErr,
+	}
+	coordinator := NewRecoveryCoordinator(RecoveryConfig{
+		Enabled:                  true,
+		ProcessingTimeoutEnabled: true,
+		StaleQueuedEnabled:       true,
+		Repository:               repo,
+	})
+
+	summary, err := coordinator.RunOnce(context.Background())
+	if err == nil {
+		t.Fatal("RunOnce returned nil error, want repository error")
+	}
+	if !errors.Is(err, countErr) || !strings.Contains(err.Error(), "count timed out processing tasks") {
+		t.Fatalf("error = %v, want wrapped count error", err)
+	}
+	if !reflect.DeepEqual(summary, RecoverySummary{}) {
+		t.Fatalf("summary = %+v, want zero summary", summary)
+	}
+	if repo.listProcessingCalls != 0 || repo.recoverProcessingCalls != 0 || repo.countStaleCalls != 0 {
+		t.Fatalf("calls list/recover/stale = %d/%d/%d, want 0/0/0 after processing count error", repo.listProcessingCalls, repo.recoverProcessingCalls, repo.countStaleCalls)
+	}
+}
+
+func TestRecoveryCoordinatorReturnsProcessingListErrorWithPartialSummary(t *testing.T) {
+	listErr := errors.New("list processing failed")
+	repo := &fakeRecoveryRepository{
+		processingCount:   4,
+		listProcessingErr: listErr,
+	}
+	coordinator := NewRecoveryCoordinator(RecoveryConfig{
+		Enabled:                  true,
+		ProcessingTimeoutEnabled: true,
+		StaleQueuedEnabled:       true,
+		Repository:               repo,
+	})
+
+	summary, err := coordinator.RunOnce(context.Background())
+	if err == nil {
+		t.Fatal("RunOnce returned nil error, want repository error")
+	}
+	if !errors.Is(err, listErr) || !strings.Contains(err.Error(), "list timed out processing tasks") {
+		t.Fatalf("error = %v, want wrapped list error", err)
+	}
+	if summary.ProcessingCandidates != 4 || summary.ProcessingRecovered != 0 || len(summary.ProcessingTaskIDs) != 0 {
+		t.Fatalf("partial summary = %+v, want processing candidates only", summary)
+	}
+	if repo.recoverProcessingCalls != 0 || repo.countStaleCalls != 0 {
+		t.Fatalf("calls recover/stale = %d/%d, want 0/0 after processing list error", repo.recoverProcessingCalls, repo.countStaleCalls)
+	}
+}
+
+func TestRecoveryCoordinatorReturnsProcessingRecoverErrorWithPartialSummary(t *testing.T) {
 	recoverErr := errors.New("recover failed")
 	repo := &fakeRecoveryRepository{
 		processingCount: 4,
@@ -179,6 +256,108 @@ func TestRecoveryCoordinatorReturnsRepositoryErrorWithPartialSummary(t *testing.
 	}
 	if repo.countStaleCalls != 0 {
 		t.Fatalf("stale queued calls = %d, want 0 after processing error", repo.countStaleCalls)
+	}
+}
+
+func TestRecoveryCoordinatorReturnsStaleQueuedCountErrorWithPartialSummary(t *testing.T) {
+	countErr := errors.New("count stale failed")
+	repo := &fakeRecoveryRepository{
+		processingCount:     1,
+		processingTasks:     []listingadmin.ImportTask{{ID: 801}},
+		processingRecovered: 1,
+		countStaleErr:       countErr,
+	}
+	coordinator := NewRecoveryCoordinator(RecoveryConfig{
+		Enabled:                  true,
+		ProcessingTimeoutEnabled: true,
+		StaleQueuedEnabled:       true,
+		Repository:               repo,
+	})
+
+	summary, err := coordinator.RunOnce(context.Background())
+	if err == nil {
+		t.Fatal("RunOnce returned nil error, want repository error")
+	}
+	if !errors.Is(err, countErr) || !strings.Contains(err.Error(), "count stale queued tasks") {
+		t.Fatalf("error = %v, want wrapped stale queued count error", err)
+	}
+	if summary.ProcessingCandidates != 1 || summary.ProcessingRecovered != 1 || !reflect.DeepEqual(summary.ProcessingTaskIDs, []int64{801}) {
+		t.Fatalf("partial summary = %+v, want completed processing recovery preserved", summary)
+	}
+	if summary.StaleQueuedCandidates != 0 || summary.StaleQueuedRecovered != 0 || len(summary.StaleQueuedTaskIDs) != 0 {
+		t.Fatalf("stale queued summary = %+v, want zero after count error", summary)
+	}
+	if repo.listStaleCalls != 0 || repo.recoverStaleCalls != 0 {
+		t.Fatalf("stale queued calls list/recover = %d/%d, want 0/0 after count error", repo.listStaleCalls, repo.recoverStaleCalls)
+	}
+}
+
+func TestRecoveryCoordinatorReturnsStaleQueuedListErrorWithPartialSummary(t *testing.T) {
+	listErr := errors.New("list stale failed")
+	repo := &fakeRecoveryRepository{
+		processingCount:     1,
+		processingTasks:     []listingadmin.ImportTask{{ID: 901}},
+		processingRecovered: 1,
+		staleQueuedCount:    8,
+		listStaleErr:        listErr,
+	}
+	coordinator := NewRecoveryCoordinator(RecoveryConfig{
+		Enabled:                  true,
+		ProcessingTimeoutEnabled: true,
+		StaleQueuedEnabled:       true,
+		Repository:               repo,
+	})
+
+	summary, err := coordinator.RunOnce(context.Background())
+	if err == nil {
+		t.Fatal("RunOnce returned nil error, want repository error")
+	}
+	if !errors.Is(err, listErr) || !strings.Contains(err.Error(), "list stale queued tasks") {
+		t.Fatalf("error = %v, want wrapped stale queued list error", err)
+	}
+	if summary.ProcessingCandidates != 1 || summary.ProcessingRecovered != 1 || !reflect.DeepEqual(summary.ProcessingTaskIDs, []int64{901}) {
+		t.Fatalf("partial summary = %+v, want completed processing recovery preserved", summary)
+	}
+	if summary.StaleQueuedCandidates != 8 || summary.StaleQueuedRecovered != 0 || len(summary.StaleQueuedTaskIDs) != 0 {
+		t.Fatalf("stale queued partial summary = %+v, want candidates only", summary)
+	}
+	if repo.recoverStaleCalls != 0 {
+		t.Fatalf("recover stale queued calls = %d, want 0 after list error", repo.recoverStaleCalls)
+	}
+}
+
+func TestRecoveryCoordinatorReturnsStaleQueuedRecoverErrorWithPartialSummary(t *testing.T) {
+	recoverErr := errors.New("recover stale failed")
+	repo := &fakeRecoveryRepository{
+		processingCount:     1,
+		processingTasks:     []listingadmin.ImportTask{{ID: 1001}},
+		processingRecovered: 1,
+		staleQueuedCount:    2,
+		staleQueuedTasks: []listingadmin.ImportTask{
+			{ID: 1101},
+			{ID: 1102},
+		},
+		recoverStaleErr: recoverErr,
+	}
+	coordinator := NewRecoveryCoordinator(RecoveryConfig{
+		Enabled:                  true,
+		ProcessingTimeoutEnabled: true,
+		StaleQueuedEnabled:       true,
+		Repository:               repo,
+	})
+
+	summary, err := coordinator.RunOnce(context.Background())
+	if err == nil {
+		t.Fatal("RunOnce returned nil error, want repository error")
+	}
+	if !errors.Is(err, recoverErr) || !strings.Contains(err.Error(), "recover stale queued tasks") {
+		t.Fatalf("error = %v, want wrapped stale queued recover error", err)
+	}
+	if summary.ProcessingCandidates != 1 || summary.ProcessingRecovered != 1 || !reflect.DeepEqual(summary.ProcessingTaskIDs, []int64{1001}) {
+		t.Fatalf("partial summary = %+v, want completed processing recovery preserved", summary)
+	}
+	if summary.StaleQueuedCandidates != 2 || summary.StaleQueuedRecovered != 0 || !reflect.DeepEqual(summary.StaleQueuedTaskIDs, []int64{1101, 1102}) {
+		t.Fatalf("stale queued partial summary = %+v, want candidates and IDs preserved", summary)
 	}
 }
 
