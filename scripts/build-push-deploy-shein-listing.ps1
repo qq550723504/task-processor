@@ -26,6 +26,7 @@ param(
     [string]$ShardStatefulSetName = "shein-listing-shard",
     [string]$OwnershipControllerDeploymentName = "shein-listing-ownership-controller",
     [string]$ControlPlaneDeploymentName = "shein-listing-control-plane",
+    [switch]$UpdateControlPlane,
     [int]$ShardBatchSize = 4
 )
 
@@ -34,6 +35,7 @@ $ErrorActionPreference = "Stop"
 $ImageName = "task-processor-shein-listing"
 $Dockerfile = "deployments/docker/Dockerfile.listing"
 $ShardRolloutScript = Join-Path $PSScriptRoot "rollout-shein-shard-statefulset.ps1"
+$ExistingControlPlaneImage = ""
 
 if ($Fast) {
     $SkipTests = $true
@@ -122,6 +124,7 @@ if ($UseShardStatefulSet) {
     Write-Host "  Shard batch size: $ShardBatchSize" -ForegroundColor Cyan
     Write-Host "  Ownership controller: $OwnershipControllerDeploymentName" -ForegroundColor Cyan
     Write-Host "  Control plane: $ControlPlaneDeploymentName" -ForegroundColor Cyan
+    Write-Host "  Update control plane: $UpdateControlPlane" -ForegroundColor Cyan
 }
 Write-Host "========================================" -ForegroundColor Cyan
 
@@ -175,8 +178,20 @@ if ($PublishLatest) {
 
 if (-not $SkipApply) {
     Invoke-Step "[5/7] Applying Kubernetes manifests..." {
+        if ($UseShardStatefulSet -and -not $UpdateControlPlane) {
+            $ExistingControlPlaneImage = kubectl -n $Namespace get "deployment/$ControlPlaneDeploymentName" -o "jsonpath={.spec.template.spec.containers[?(@.name=='listing-control-plane')].image}" 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                $ExistingControlPlaneImage = ""
+            }
+        }
+
         kubectl apply -k $OverlayPath
         if ($LASTEXITCODE -ne 0) { throw "kubectl apply -k $OverlayPath failed" }
+
+        if ($UseShardStatefulSet -and -not $UpdateControlPlane -and -not [string]::IsNullOrWhiteSpace($ExistingControlPlaneImage)) {
+            kubectl -n $Namespace set image "deployment/$ControlPlaneDeploymentName" "listing-control-plane=$ExistingControlPlaneImage"
+            if ($LASTEXITCODE -ne 0) { throw "failed to restore existing control-plane image after apply" }
+        }
     }
 }
 
@@ -188,8 +203,10 @@ Invoke-Step "[6/7] Updating workloads..." {
         kubectl -n $Namespace set image deployment/$OwnershipControllerDeploymentName "shein-listing=$FullImage"
         if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for deployment/$OwnershipControllerDeploymentName" }
 
-        kubectl -n $Namespace set image deployment/$ControlPlaneDeploymentName "listing-control-plane=$FullImage"
-        if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for deployment/$ControlPlaneDeploymentName" }
+        if ($UpdateControlPlane) {
+            kubectl -n $Namespace set image deployment/$ControlPlaneDeploymentName "listing-control-plane=$FullImage"
+            if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for deployment/$ControlPlaneDeploymentName" }
+        }
 
         & $ShardRolloutScript -Namespace $Namespace -StatefulSetName $ShardStatefulSetName -ContainerName "shein-listing" -Image $FullImage -BatchSize $ShardBatchSize
         if ($LASTEXITCODE -ne 0) { throw "shard StatefulSet rollout failed" }
@@ -206,8 +223,10 @@ Invoke-Step "[7/7] Waiting for rollouts..." {
         kubectl -n $Namespace rollout status deployment/$OwnershipControllerDeploymentName --timeout=5m
         if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed for deployment/$OwnershipControllerDeploymentName" }
 
-        kubectl -n $Namespace rollout status deployment/$ControlPlaneDeploymentName --timeout=5m
-        if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed for deployment/$ControlPlaneDeploymentName" }
+        if ($UpdateControlPlane) {
+            kubectl -n $Namespace rollout status deployment/$ControlPlaneDeploymentName --timeout=5m
+            if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed for deployment/$ControlPlaneDeploymentName" }
+        }
 
         kubectl -n $Namespace get pods -l "app=$ShardStatefulSetName" -o wide
         if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed for app=$ShardStatefulSetName" }

@@ -22,11 +22,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux go build \
         -ldflags="-s -w" \
         -o listing-service \
-        "${SERVICE_CMD}" \
-    && CGO_ENABLED=0 GOOS=linux go build \
-        -ldflags="-s -w" \
-        -o listing-control-plane \
-        ./cmd/listing-control-plane
+        "${SERVICE_CMD}"
 
 FROM ${RUNTIME_BASE_IMAGE}
 
@@ -39,12 +35,10 @@ WORKDIR /app
 RUN mkdir -p /app/logs /app/tmp /app/chrome /opt/fingerprint-chrome
 
 COPY --from=builder /app/listing-service /app/listing-service
-COPY --from=builder /app/listing-control-plane /app/listing-control-plane
 COPY --from=builder /app/config ./config
 COPY --from=builder /app/prompts ./prompts
 
 RUN chmod +x /app/listing-service
-RUN chmod +x /app/listing-control-plane
 
 EXPOSE 8081 8082
 

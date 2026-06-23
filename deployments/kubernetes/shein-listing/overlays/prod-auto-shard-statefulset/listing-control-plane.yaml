@@ -29,7 +29,7 @@ spec:
                     values: ["true"]
       containers:
         - name: listing-control-plane
-          image: xuwei190/task-processor-shein-listing:9078f71b-brandblank-20260623-1336
+          image: xuwei190/task-processor-listing-control-plane:latest
           imagePullPolicy: IfNotPresent
           command: ["/app/listing-control-plane"]
           args:
