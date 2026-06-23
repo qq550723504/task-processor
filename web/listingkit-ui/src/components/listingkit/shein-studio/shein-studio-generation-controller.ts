@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { upsertRecentSavedBatch } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
   buildGroupedSDSBaselineHandoff,
@@ -102,15 +103,6 @@ export function projectBaselineWarmupFeedback(
   };
 }
 
-function defaultUpsertSavedBatch(
-  current: SheinStudioSavedBatch[],
-  savedBatch: SheinStudioSavedBatch,
-) {
-  return [savedBatch, ...current.filter((batch) => batch.id !== savedBatch.id)].sort(
-    (left, right) => right.updatedAt.localeCompare(left.updatedAt),
-  );
-}
-
 export function useSheinStudioBatchGenerationContext({
   activeBatchId,
   buildDraftInput,
@@ -130,7 +122,7 @@ export function useSheinStudioBatchGenerationContext({
   setBatchRunError,
   setSavedBatches,
   startBatchRun,
-  upsertSavedBatch = defaultUpsertSavedBatch,
+  upsertSavedBatch = upsertRecentSavedBatch,
 }: BatchGenerationContextParams): {
   batchGenerationContext?: BatchGenerationContext;
 } {
