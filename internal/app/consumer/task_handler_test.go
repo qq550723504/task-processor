@@ -24,12 +24,16 @@ import (
 
 type stubProcessor struct {
 	processCalls int
+	onProcess    func()
 }
 
 func (s *stubProcessor) Start(ctx context.Context) error { return nil }
 
 func (s *stubProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
 	s.processCalls++
+	if s.onProcess != nil {
+		s.onProcess()
+	}
 	return nil
 }
 
@@ -306,6 +310,144 @@ func TestTaskHandlerHandleMessage_ClaimsQueuedTaskBeforeProcessing(t *testing.T)
 	}
 	if atomic.LoadInt32(&updateCalls) != 1 {
 		t.Fatalf("expected one claim update call, got %d", atomic.LoadInt32(&updateCalls))
+	}
+}
+
+func TestTaskHandlerHandleMessageWithAck_AcksAfterClaimBeforeProcessing(t *testing.T) {
+	autoListingEnabled := true
+	var updateCalls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rpc-api/listing/import-task/update-status" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		atomic.AddInt32(&updateCalls, 1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":true}`))
+	}))
+	defer server.Close()
+
+	clientMgr := management.NewClientManager(&config.ManagementConfig{BaseURL: server.URL})
+	clientMgr.GetClient()
+	clientMgr.SetUserToken("token", "1")
+
+	var acked atomic.Bool
+	var processSawAck atomic.Bool
+	processor := &stubProcessorWithManagement{
+		stubProcessor: stubProcessor{onProcess: func() {
+			processSawAck.Store(acked.Load())
+		}},
+		runtime: taskstatus.NewManagementRuntime(clientMgr),
+	}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "shein",
+		Processor: processor,
+		StoreAPI: &stubStoreAPI{
+			store: &managementapi.StoreRespDTO{
+				ID:                846,
+				Name:              "enabled-store",
+				Status:            storeStatusEnabled,
+				EnableAutoListing: &autoListingEnabled,
+			},
+		},
+		Logger: logrus.New(),
+	})
+
+	msg := &rabbitmq.Message{
+		ID:   "msg-early-ack-claim",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":         float64(7812021),
+			"tenantId":       float64(286),
+			"storeId":        float64(846),
+			"sourcePlatform": "amazon",
+			"targetPlatform": "shein",
+			"region":         "US",
+			"productId":      "B0BGPRQ6N9",
+			"priority":       float64(10),
+			"retryCount":     float64(0),
+			"maxRetryCount":  float64(3),
+			"status":         "queued",
+		},
+	}
+
+	if err := handler.HandleMessageWithAck(context.Background(), msg, func() error {
+		if atomic.LoadInt32(&updateCalls) != 1 {
+			t.Fatalf("expected claim before ack, got %d claim calls", atomic.LoadInt32(&updateCalls))
+		}
+		acked.Store(true)
+		return nil
+	}); err != nil {
+		t.Fatalf("expected early-acked message to process, got %v", err)
+	}
+	if processor.processCalls != 1 {
+		t.Fatalf("expected processor to be called once, got %d calls", processor.processCalls)
+	}
+	if !processSawAck.Load() {
+		t.Fatal("expected processor to start after RabbitMQ ack")
+	}
+}
+
+func TestTaskHandlerHandleMessageWithAck_StopsWhenAckFails(t *testing.T) {
+	autoListingEnabled := true
+	var updateCalls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rpc-api/listing/import-task/update-status" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		atomic.AddInt32(&updateCalls, 1)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":true}`))
+	}))
+	defer server.Close()
+
+	clientMgr := management.NewClientManager(&config.ManagementConfig{BaseURL: server.URL})
+	clientMgr.GetClient()
+	clientMgr.SetUserToken("token", "1")
+
+	processor := &stubProcessorWithManagement{runtime: taskstatus.NewManagementRuntime(clientMgr)}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "shein",
+		Processor: processor,
+		StoreAPI: &stubStoreAPI{
+			store: &managementapi.StoreRespDTO{
+				ID:                846,
+				Name:              "enabled-store",
+				Status:            storeStatusEnabled,
+				EnableAutoListing: &autoListingEnabled,
+			},
+		},
+		Logger: logrus.New(),
+	})
+
+	msg := &rabbitmq.Message{
+		ID:   "msg-early-ack-fails",
+		Type: "task",
+		Payload: map[string]any{
+			"taskId":         float64(7812022),
+			"tenantId":       float64(286),
+			"storeId":        float64(846),
+			"sourcePlatform": "amazon",
+			"targetPlatform": "shein",
+			"region":         "US",
+			"productId":      "B0BGPRQ6N9",
+			"priority":       float64(10),
+			"retryCount":     float64(0),
+			"maxRetryCount":  float64(3),
+			"status":         "queued",
+		},
+	}
+
+	err := handler.HandleMessageWithAck(context.Background(), msg, func() error {
+		return errors.New("ack channel closed")
+	})
+	if err == nil {
+		t.Fatal("expected ack error to stop processing")
+	}
+	if processor.processCalls != 0 {
+		t.Fatalf("expected processor not to run after ack failure, got %d calls", processor.processCalls)
+	}
+	if atomic.LoadInt32(&updateCalls) != 1 {
+		t.Fatalf("expected claim attempt before ack failure, got %d", atomic.LoadInt32(&updateCalls))
 	}
 }
 

@@ -101,6 +101,16 @@ func NewTaskHandler(cfg TaskHandlerConfig) *TaskHandler {
 
 // HandleMessage 处理消息并上报结果(支持去重和店铺亲和性)
 func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message) error {
+	return eth.handleMessage(ctx, msg, nil)
+}
+
+// HandleMessageWithAck claims the remote task, acknowledges RabbitMQ, then runs
+// the long listing workflow under DB status recovery.
+func (eth *TaskHandler) HandleMessageWithAck(ctx context.Context, msg *rabbitmq.Message, ack func() error) error {
+	return eth.handleMessage(ctx, msg, ack)
+}
+
+func (eth *TaskHandler) handleMessage(ctx context.Context, msg *rabbitmq.Message, ackAfterClaim func() error) error {
 	startTime := time.Now()
 	eth.logger.Debugf("[%s] 开始处理任务消息: ID=%s", eth.platform, msg.ID)
 
@@ -141,6 +151,11 @@ func (eth *TaskHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Message
 	// 4.1 在真正执行前先 claim 远端任务状态，避免成功结果回写时仍停留在 queued。
 	if err = eth.claimTaskStatus(task); err != nil {
 		return err
+	}
+	if ackAfterClaim != nil {
+		if err = ackAfterClaim(); err != nil {
+			return fmt.Errorf("ack message after claiming task %d: %w", task.ID, err)
+		}
 	}
 
 	eth.logger.Infof("[%s] 处理任务: ID=%d, ProductID=%s, Priority=%d, TargetPlatform=%s, SourcePlatform=%s",

@@ -14,6 +14,13 @@ type MessageHandler interface {
 	HandleMessage(ctx context.Context, msg *Message) error
 }
 
+// EarlyAckMessageHandler lets a handler acknowledge the RabbitMQ delivery
+// after it has durably claimed ownership, before running long business work.
+type EarlyAckMessageHandler interface {
+	MessageHandler
+	HandleMessageWithAck(ctx context.Context, msg *Message, ack func() error) error
+}
+
 // parseDeliveryMessage 解析投递消息
 func parseDeliveryMessage(delivery amqp.Delivery) (*Message, error) {
 	msg := &Message{

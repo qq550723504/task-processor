@@ -1,6 +1,8 @@
 package rabbitmq
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -70,6 +72,7 @@ func (e stubDiscardableError) ShouldDiscard() bool {
 
 type stubAcknowledger struct {
 	acked    bool
+	ackCount int
 	nacked   bool
 	rejected bool
 	requeue  bool
@@ -77,6 +80,7 @@ type stubAcknowledger struct {
 
 func (a *stubAcknowledger) Ack(_ uint64, _ bool) error {
 	a.acked = true
+	a.ackCount++
 	return nil
 }
 
@@ -118,6 +122,90 @@ func TestQueueConsumerHandleProcessError_DiscardableMessageIsAckedWithoutCollect
 	}
 	if got := len(qc.errorCollector.GetErrors()); got != 0 {
 		t.Fatalf("expected discardable message not to be collected as error, got %d", got)
+	}
+	state := qc.stateManager.GetStateInfo()
+	if state.SuccessCount != 1 || state.FailureCount != 0 {
+		t.Fatalf("unexpected state counts: success=%d failure=%d", state.SuccessCount, state.FailureCount)
+	}
+}
+
+type earlyAckHandler struct {
+	err error
+}
+
+type nonRetryableTestError struct {
+	message string
+}
+
+func (e nonRetryableTestError) Error() string { return e.message }
+func (e nonRetryableTestError) IsRetryable() bool {
+	return false
+}
+
+func (h *earlyAckHandler) HandleMessage(context.Context, *Message) error {
+	return nonRetryableTestError{message: "legacy handler should not be called"}
+}
+
+func (h *earlyAckHandler) HandleMessageWithAck(_ context.Context, _ *Message, ack func() error) error {
+	if err := ack(); err != nil {
+		return err
+	}
+	return h.err
+}
+
+func TestQueueConsumerProcessMessage_DoesNotNackPostAckFailure(t *testing.T) {
+	ack := &stubAcknowledger{}
+	qc := &QueueConsumer{
+		queueName:      "shein.tasks.store.976",
+		handler:        &earlyAckHandler{err: errors.New("publish failed after claim")},
+		logger:         logDiscardLogger(),
+		stateManager:   NewConsumerStateManager(),
+		errorCollector: NewErrorCollector(10),
+	}
+
+	qc.processMessage(amqp.Delivery{
+		Acknowledger: ack,
+		DeliveryTag:  1,
+		MessageId:    "msg-early-ack-failure",
+		Type:         "task",
+		Body:         []byte(`{"taskId":7812001}`),
+	})
+
+	if ack.ackCount != 1 {
+		t.Fatalf("expected one early ack, got %d", ack.ackCount)
+	}
+	if ack.nacked || ack.rejected {
+		t.Fatal("post-ack processing failure must not nack or reject the RabbitMQ delivery")
+	}
+	state := qc.stateManager.GetStateInfo()
+	if state.SuccessCount != 0 || state.FailureCount != 1 {
+		t.Fatalf("unexpected state counts: success=%d failure=%d", state.SuccessCount, state.FailureCount)
+	}
+}
+
+func TestQueueConsumerProcessMessage_DoesNotDoubleAckAfterEarlyAckSuccess(t *testing.T) {
+	ack := &stubAcknowledger{}
+	qc := &QueueConsumer{
+		queueName:      "shein.tasks.store.976",
+		handler:        &earlyAckHandler{},
+		logger:         logDiscardLogger(),
+		stateManager:   NewConsumerStateManager(),
+		errorCollector: NewErrorCollector(10),
+	}
+
+	qc.processMessage(amqp.Delivery{
+		Acknowledger: ack,
+		DeliveryTag:  1,
+		MessageId:    "msg-early-ack-success",
+		Type:         "task",
+		Body:         []byte(`{"taskId":7812002}`),
+	})
+
+	if ack.ackCount != 1 {
+		t.Fatalf("expected one ack, got %d", ack.ackCount)
+	}
+	if ack.nacked || ack.rejected {
+		t.Fatal("successful early-acked delivery must not be nacked or rejected")
 	}
 	state := qc.stateManager.GetStateInfo()
 	if state.SuccessCount != 1 || state.FailureCount != 0 {

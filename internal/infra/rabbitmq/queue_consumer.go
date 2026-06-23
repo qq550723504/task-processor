@@ -105,9 +105,29 @@ func (qc *QueueConsumer) processMessage(delivery amqp.Delivery) {
 	qc.logger.Debugf("开始处理消息: ID=%s, Queue=%s", msg.ID, qc.queueName)
 
 	// 2. 处理消息
-	err = qc.handleMessage(msg)
+	acked := false
+	err = qc.handleMessage(msg, func() error {
+		if acked {
+			return nil
+		}
+		if ackErr := delivery.Ack(false); ackErr != nil {
+			return ackErr
+		}
+		acked = true
+		return nil
+	})
 	if err != nil {
+		if acked {
+			qc.handlePostAckProcessError(msg, err)
+			return
+		}
 		qc.handleProcessError(delivery, msg, err)
+		return
+	}
+	if acked {
+		qc.stateManager.IncrementMessageCount(true)
+		qc.logger.Infof("消息处理成功: ID=%s, Queue=%s, Duration=%v",
+			msg.ID, qc.queueName, time.Since(startTime))
 		return
 	}
 
@@ -169,7 +189,10 @@ func (qc *QueueConsumer) parseMessage(delivery amqp.Delivery) (*Message, error) 
 }
 
 // handleMessage 处理消息业务逻辑
-func (qc *QueueConsumer) handleMessage(msg *Message) error {
+func (qc *QueueConsumer) handleMessage(msg *Message, ack func() error) error {
+	if handler, ok := qc.handler.(EarlyAckMessageHandler); ok {
+		return handler.HandleMessageWithAck(qc.ctx, msg, ack)
+	}
 	return qc.handler.HandleMessage(qc.ctx, msg)
 }
 
@@ -208,6 +231,12 @@ func (qc *QueueConsumer) handleProcessError(delivery amqp.Delivery, msg *Message
 	} else {
 		qc.sendToDeadLetter(delivery, msg, err)
 	}
+}
+
+func (qc *QueueConsumer) handlePostAckProcessError(msg *Message, err error) {
+	qc.logger.Errorf("提前确认后的消息处理失败: ID=%s, Queue=%s, Error=%v", msg.ID, qc.queueName, err)
+	qc.errorCollector.Collect(ErrorTypeMessage, qc.queueName, msg.ID, err, "提前确认后的消息处理失败")
+	qc.stateManager.IncrementMessageCount(false)
 }
 
 func (qc *QueueConsumer) discardMessage(delivery amqp.Delivery, msg *Message, err error) {
