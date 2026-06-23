@@ -26,10 +26,28 @@ type ResolveRecentBatchForMutationParams = {
   ) => void;
   loadHydratedBatch: (
     batchId: string,
-  ) => Promise<SheinStudioWorkbenchHydratedBatch>;
+  ) => Promise<SheinStudioWorkbenchHydratedBatch | null>;
   savedBatches: SheinStudioSavedBatch[];
   selectedRecentBatchHydrations: Record<string, SheinStudioWorkbenchHydratedBatch>;
 };
+
+type ResolveRecentBatchSelectionTargetParams = {
+  loadHydratedBatch: (
+    batchId: string,
+  ) => Promise<SheinStudioWorkbenchHydratedBatch | null>;
+  savedBatches: SheinStudioSavedBatch[];
+  summary: RecentBatchSelectionSummary;
+};
+
+type RecentBatchSelectionTarget =
+  | {
+      hydratedBatch: SheinStudioWorkbenchHydratedBatch;
+      kind: "hydrated";
+    }
+  | {
+      batch: SheinStudioSavedBatch;
+      kind: "saved";
+    };
 
 export function buildRecentBatchSummaryKey(
   summary: RecentBatchSelectionSummary,
@@ -99,10 +117,45 @@ export async function resolveRecentBatchForMutation({
   }
   try {
     const hydratedBatch = await loadHydratedBatch(batchId);
+    if (!hydratedBatch) {
+      return savedBatch;
+    }
     cacheHydratedBatch(batchId, hydratedBatch);
     return hydratedBatch.savedBatch;
   } catch {
     return savedBatch;
+  }
+}
+
+export async function resolveRecentBatchSelectionTarget({
+  loadHydratedBatch,
+  savedBatches,
+  summary,
+}: ResolveRecentBatchSelectionTargetParams): Promise<RecentBatchSelectionTarget | null> {
+  if (summary.source !== "batch") {
+    return null;
+  }
+  const batch = savedBatches.find((item) => item.id === summary.id);
+  if (!batch) {
+    return null;
+  }
+  try {
+    const hydratedBatch = await loadHydratedBatch(summary.id);
+    if (!hydratedBatch) {
+      return {
+        batch,
+        kind: "saved",
+      };
+    }
+    return {
+      hydratedBatch,
+      kind: "hydrated",
+    };
+  } catch {
+    return {
+      batch,
+      kind: "saved",
+    };
   }
 }
 

@@ -33,6 +33,7 @@ import {
   projectRecentBatchSelectionState,
   projectRecentBatchTargetStep,
   removeRecentBatchSummarySelection,
+  resolveRecentBatchSelectionTarget,
   selectRecentBatchBulkDeleteFailure,
   resolveRecentBatchForMutation as resolveRecentBatchForMutationTarget,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
@@ -1340,22 +1341,22 @@ export function SheinStudioWorkbench({
         setEffectiveStep(targetStep);
         return;
       }
-      const batch = savedBatches.find((item) => item.id === summary.id);
-      if (!batch) {
-        return;
-      }
       void (async () => {
-        try {
-          const hydratedBatch = await getSheinStudioHydratedBatch(summary.id);
-          if (recentBatchOpenRequestVersionRef.current !== requestVersion) {
-            return;
-          }
-          handleLoadHydratedBatch(hydratedBatch);
-        } catch {
-          if (recentBatchOpenRequestVersionRef.current !== requestVersion) {
-            return;
-          }
-          handleLoadBatch(batch);
+        const target = await resolveRecentBatchSelectionTarget({
+          loadHydratedBatch: getSheinStudioHydratedBatch,
+          savedBatches,
+          summary,
+        });
+        if (
+          !target ||
+          recentBatchOpenRequestVersionRef.current !== requestVersion
+        ) {
+          return;
+        }
+        if (target.kind === "hydrated") {
+          handleLoadHydratedBatch(target.hydratedBatch);
+        } else {
+          handleLoadBatch(target.batch);
         }
         if (recentBatchOpenRequestVersionRef.current !== requestVersion) {
           return;

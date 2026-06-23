@@ -8,6 +8,7 @@ import {
   buildRecentBatchStoreUpdateInput,
   projectRecentBatchSelectionState,
   projectRecentBatchTargetStep,
+  resolveRecentBatchSelectionTarget,
   removeRecentBatchSummarySelection,
   resolveRecentBatchForMutation,
   selectFreshRecentBatchHydration,
@@ -304,6 +305,78 @@ describe("resolveRecentBatchForMutation", () => {
         cacheHydratedBatch: vi.fn(),
       }),
     ).resolves.toBe(savedBatch);
+  });
+
+  it("falls back to the saved batch when mutation hydration returns null", async () => {
+    const savedBatch = buildBatch({ id: "batch-1" });
+
+    await expect(
+      resolveRecentBatchForMutation({
+        batchId: "batch-1",
+        savedBatches: [savedBatch],
+        selectedRecentBatchHydrations: {},
+        loadHydratedBatch: vi.fn().mockResolvedValue(null),
+        cacheHydratedBatch: vi.fn(),
+      }),
+    ).resolves.toBe(savedBatch);
+  });
+});
+
+describe("resolveRecentBatchSelectionTarget", () => {
+  it("returns hydrated batch detail for a persisted recent batch", async () => {
+    const savedBatch = buildBatch({ id: "batch-1" });
+    const hydratedBatch = buildHydratedBatch(savedBatch);
+
+    await expect(
+      resolveRecentBatchSelectionTarget({
+        summary: { id: "batch-1", source: "batch" },
+        savedBatches: [savedBatch],
+        loadHydratedBatch: vi.fn().mockResolvedValue(hydratedBatch),
+      }),
+    ).resolves.toEqual({
+      kind: "hydrated",
+      hydratedBatch,
+    });
+  });
+
+  it("falls back to the saved batch when hydration fails", async () => {
+    const savedBatch = buildBatch({ id: "batch-1" });
+
+    await expect(
+      resolveRecentBatchSelectionTarget({
+        summary: { id: "batch-1", source: "batch" },
+        savedBatches: [savedBatch],
+        loadHydratedBatch: vi.fn().mockRejectedValue(new Error("offline")),
+      }),
+    ).resolves.toEqual({
+      batch: savedBatch,
+      kind: "saved",
+    });
+  });
+
+  it("falls back to the saved batch when hydration returns null", async () => {
+    const savedBatch = buildBatch({ id: "batch-1" });
+
+    await expect(
+      resolveRecentBatchSelectionTarget({
+        summary: { id: "batch-1", source: "batch" },
+        savedBatches: [savedBatch],
+        loadHydratedBatch: vi.fn().mockResolvedValue(null),
+      }),
+    ).resolves.toEqual({
+      batch: savedBatch,
+      kind: "saved",
+    });
+  });
+
+  it("returns null when the summary has no saved batch target", async () => {
+    await expect(
+      resolveRecentBatchSelectionTarget({
+        summary: { id: "local-draft:group-1", source: "local_draft" },
+        savedBatches: [],
+        loadHydratedBatch: vi.fn(),
+      }),
+    ).resolves.toBeNull();
   });
 });
 
