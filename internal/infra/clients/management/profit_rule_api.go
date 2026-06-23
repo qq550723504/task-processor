@@ -14,10 +14,8 @@ type ProfitRuleAPIClient struct {
 
 // GetProfitRule 获取利润规则
 func (m *ProfitRuleAPIClient) GetProfitRule(req *api.ProfitRuleReqDTO) (*api.ProfitRuleRespDTO, error) {
-	if m.localDataProvider != nil {
-		if rule, err := m.localDataProvider.GetProfitRule(req); err != nil || rule != nil {
-			return rule, err
-		}
+	if m.localDataProvider != nil && m.localDataProvider.HasDB() {
+		return m.localDataProvider.GetProfitRule(req)
 	}
 	url := fmt.Sprintf("%s/rpc-api/listing/profit-rule/get?tenantId=%d&storeId=%d", m.baseURL, req.TenantID, req.StoreID)
 

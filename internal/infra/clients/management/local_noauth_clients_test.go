@@ -1008,6 +1008,64 @@ func TestLocalDataProviderGetRawJSONDataSupportsSmallintDeletedColumn(t *testing
 	}
 }
 
+func TestListingLocalProviderMissesDoNotFallbackToManagementHTTP(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	baseClient := NewManagementAPIClientWithBaseURL("http://127.0.0.1:1")
+
+	rawClient := &RawJsonDataAPIClient{ManagementAPIClient: baseClient, localDataProvider: provider}
+	raw, err := rawClient.GetRawJsonDataAnyFreshness(&api.RawJsonDataReqDTO{
+		Platform:  "amazon",
+		ProductID: "missing-raw",
+		Region:    "us",
+	})
+	if err != nil {
+		t.Fatalf("GetRawJsonDataAnyFreshness() error = %v", err)
+	}
+	if raw != nil {
+		t.Fatalf("GetRawJsonDataAnyFreshness() = %+v, want nil local miss", raw)
+	}
+
+	profitClient := &ProfitRuleAPIClient{ManagementAPIClient: baseClient, localDataProvider: provider}
+	profitRule, err := profitClient.GetProfitRule(&api.ProfitRuleReqDTO{TenantID: 1, StoreID: 976})
+	if err != nil {
+		t.Fatalf("GetProfitRule() error = %v", err)
+	}
+	if profitRule != nil {
+		t.Fatalf("GetProfitRule() = %+v, want nil local miss", profitRule)
+	}
+
+	mappingClient := &ProductImportMappingAPIClient{ManagementAPIClient: baseClient, localDataProvider: provider}
+	byTaskAndSKU, err := mappingClient.GetProductImportMappingByTaskAndSku(123, "missing-sku")
+	if err != nil {
+		t.Fatalf("GetProductImportMappingByTaskAndSku() error = %v", err)
+	}
+	if byTaskAndSKU != nil {
+		t.Fatalf("GetProductImportMappingByTaskAndSku() = %+v, want nil local miss", byTaskAndSKU)
+	}
+	byPlatformAndStore, err := mappingClient.GetProductImportMappingByPlatformProductIdAndStore(&api.ProductImportMappingGetByPlatformProductIdAndStoreReqDTO{
+		PlatformProductId: "missing-platform-product",
+		StoreId:           976,
+	})
+	if err != nil {
+		t.Fatalf("GetProductImportMappingByPlatformProductIdAndStore() error = %v", err)
+	}
+	if byPlatformAndStore != nil {
+		t.Fatalf("GetProductImportMappingByPlatformProductIdAndStore() = %+v, want nil local miss", byPlatformAndStore)
+	}
+	exists, err := mappingClient.CheckProductExists(&api.ProductImportMappingCheckReqDTO{
+		StoreId:   976,
+		Platform:  "shein",
+		Region:    "us",
+		ProductId: "missing-product",
+	})
+	if err != nil {
+		t.Fatalf("CheckProductExists() error = %v", err)
+	}
+	if exists {
+		t.Fatal("CheckProductExists() = true, want false local miss")
+	}
+}
+
 func TestProductImportMappingAPIClient_LocalProvider(t *testing.T) {
 	provider := newSQLiteProvider(t)
 	client := &ProductImportMappingAPIClient{
