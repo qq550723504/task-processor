@@ -74,7 +74,7 @@ type ImportTaskRepository interface {
 	ListPendingAndRetryTasks(ctx context.Context, limit int, tenantID int64, storeIDs []int64) ([]ImportTask, error)
 	ListDispatchCandidatesFair(ctx context.Context, req DispatchCandidateRequest) ([]ImportTask, error)
 	ClaimForDispatch(ctx context.Context, claim DispatchClaim) (bool, error)
-	RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, reason string) error
+	RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, processingNode, reason string) error
 	CountQueuedByStore(ctx context.Context, platform string, storeIDs []int64) (map[int64]int64, error)
 	CountTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time) (int64, error)
 	ListTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time, limit int) ([]ImportTask, error)

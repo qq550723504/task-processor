@@ -24,7 +24,16 @@ func AutoMigrateImportTaskRepository(db *gorm.DB) error {
 	if db == nil {
 		return errors.New("database is not configured")
 	}
-	return ensureOwnerAuditColumns(db, (listingProductImportTask{}).TableName())
+	table := (listingProductImportTask{}).TableName()
+	if err := ensureOwnerAuditColumns(db, table); err != nil {
+		return err
+	}
+	if !db.Migrator().HasColumn(table, "processing_node") {
+		if err := db.Exec(fmt.Sprintf(`ALTER TABLE "%s" ADD COLUMN "processing_node" varchar(128)`, table)).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *GormImportTaskRepository) ListImportTasks(ctx context.Context, query ImportTaskQuery) (*ImportTaskPage, error) {
@@ -147,6 +156,9 @@ func (r *GormImportTaskRepository) ListDispatchCandidatesFair(ctx context.Contex
 		model.TaskStatusPendingRetry.Int16(),
 	}
 	platform := strings.TrimSpace(req.Platform)
+	if platform == "" {
+		return []ImportTask{}, nil
+	}
 	ranked := r.db.WithContext(ctx).
 		Table("listing_product_import_task AS t").
 		Select(`t.*, row_number() over (
@@ -201,18 +213,20 @@ func (r *GormImportTaskRepository) ClaimForDispatch(ctx context.Context, claim D
 	return res.RowsAffected == 1, nil
 }
 
-func (r *GormImportTaskRepository) RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, reason string) error {
+func (r *GormImportTaskRepository) RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, processingNode, reason string) error {
 	if r == nil || r.db == nil {
 		return errors.New("import task repository database is not configured")
 	}
+	trimmedProcessingNode := strings.TrimSpace(processingNode)
 	trimmedReason := strings.TrimSpace(reason)
 	if trimmedReason == "" {
 		trimmedReason = "Dispatch rollback"
 	}
-	return r.db.WithContext(ctx).
+	res := r.db.WithContext(ctx).
 		Table("listing_product_import_task").
 		Where("id = ?", taskID).
 		Where("status = ?", model.TaskStatusQueued.Int16()).
+		Where("processing_node = ?", trimmedProcessingNode).
 		Where("deleted = 0").
 		Updates(map[string]any{
 			"status":          previousStatus,
@@ -220,12 +234,23 @@ func (r *GormImportTaskRepository) RollbackDispatch(ctx context.Context, taskID 
 			"error_message":   trimmedReason,
 			"remark":          trimmedReason,
 			"update_time":     time.Now(),
-		}).Error
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrImportTaskNotFound
+	}
+	return nil
 }
 
 func (r *GormImportTaskRepository) CountQueuedByStore(ctx context.Context, platform string, storeIDs []int64) (map[int64]int64, error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("import task repository database is not configured")
+	}
+	trimmedPlatform := strings.TrimSpace(platform)
+	if trimmedPlatform == "" {
+		return map[int64]int64{}, nil
 	}
 	type storeCount struct {
 		StoreID int64
@@ -236,7 +261,7 @@ func (r *GormImportTaskRepository) CountQueuedByStore(ctx context.Context, platf
 		Select("store_id, count(*) as count").
 		Where("deleted = 0").
 		Where("status = ?", model.TaskStatusQueued.Int16()).
-		Where("COALESCE(target_platform, platform) = ?", strings.TrimSpace(platform)).
+		Where("COALESCE(target_platform, platform) = ?", trimmedPlatform).
 		Group("store_id")
 	if len(storeIDs) > 0 {
 		query = query.Where("store_id IN ?", storeIDs)

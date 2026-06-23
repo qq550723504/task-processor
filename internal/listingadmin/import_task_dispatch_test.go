@@ -2,6 +2,7 @@ package listingadmin
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -10,6 +11,25 @@ import (
 	_ "modernc.org/sqlite"
 	"task-processor/internal/model"
 )
+
+type legacyImportTaskWithoutProcessingNode struct {
+	ID          int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	TenantID    int64  `gorm:"column:tenant_id"`
+	OwnerUserID string `gorm:"column:owner_user_id"`
+	StoreID     int64  `gorm:"column:store_id"`
+	Platform    string `gorm:"column:platform"`
+	Region      string `gorm:"column:region"`
+	CategoryID  int64  `gorm:"column:category_id"`
+	ProductID   string `gorm:"column:product_id"`
+	Status      int16  `gorm:"column:status"`
+	Deleted     int16  `gorm:"column:deleted"`
+	CreatedBy   string `gorm:"column:created_by"`
+	UpdatedBy   string `gorm:"column:updated_by"`
+}
+
+func (legacyImportTaskWithoutProcessingNode) TableName() string {
+	return "listing_product_import_task"
+}
 
 func TestListDispatchCandidatesFairAlternatesStoresBeforeSecondTask(t *testing.T) {
 	t.Parallel()
@@ -103,7 +123,7 @@ func TestRollbackDispatchRestoresPreviousStatusWithVisibleReason(t *testing.T) {
 	})
 
 	repo := NewGormImportTaskRepository(db)
-	if err := repo.RollbackDispatch(context.Background(), 21, model.TaskStatusCrawled.Int16(), "RabbitMQ publish failed"); err != nil {
+	if err := repo.RollbackDispatch(context.Background(), 21, model.TaskStatusCrawled.Int16(), "node-a", "RabbitMQ publish failed"); err != nil {
 		t.Fatalf("RollbackDispatch() error = %v", err)
 	}
 
@@ -113,6 +133,44 @@ func TestRollbackDispatchRestoresPreviousStatusWithVisibleReason(t *testing.T) {
 	}
 	if row.Status != model.TaskStatusCrawled.Int16() || row.ErrorMessage != "RabbitMQ publish failed" || row.Remark != "RabbitMQ publish failed" || row.ProcessingNode != "" {
 		t.Fatalf("rolled back row = %+v, want previous status with visible reason and cleared node", row)
+	}
+}
+
+func TestRollbackDispatchReturnsNotFoundWhenNoQueuedRowRestored(t *testing.T) {
+	t.Parallel()
+
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{ID: 22, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "not-queued", Status: model.TaskStatusPending.Int16(), ProcessingNode: "node-a", Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	if err := repo.RollbackDispatch(context.Background(), 22, model.TaskStatusCrawled.Int16(), "node-a", "publish failed"); !errors.Is(err, ErrImportTaskNotFound) {
+		t.Fatalf("RollbackDispatch() error = %v, want ErrImportTaskNotFound", err)
+	}
+}
+
+func TestRollbackDispatchRejectsStaleProcessingNode(t *testing.T) {
+	t.Parallel()
+
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{ID: 23, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "reclaimed", Status: model.TaskStatusQueued.Int16(), ProcessingNode: "node-b", ErrorMessage: "new claim", Remark: "new claim", Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	if err := repo.RollbackDispatch(context.Background(), 23, model.TaskStatusPending.Int16(), "node-a", "stale publish failed"); !errors.Is(err, ErrImportTaskNotFound) {
+		t.Fatalf("RollbackDispatch(stale node) error = %v, want ErrImportTaskNotFound", err)
+	}
+
+	var row listingProductImportTask
+	if err := db.Table("listing_product_import_task").Where("id = ?", int64(23)).Take(&row).Error; err != nil {
+		t.Fatalf("load stale rollback row: %v", err)
+	}
+	if row.Status != model.TaskStatusQueued.Int16() || row.ProcessingNode != "node-b" || row.ErrorMessage != "new claim" || row.Remark != "new claim" {
+		t.Fatalf("stale rollback row = %+v, want newer queued claim unchanged", row)
 	}
 }
 
@@ -144,6 +202,61 @@ func TestCountQueuedByStoreGroupsAcrossTenantsForPlatform(t *testing.T) {
 	}
 	if _, ok := counts[400]; ok {
 		t.Fatalf("counts includes store 400: %v, want empty target platform omitted", counts)
+	}
+}
+
+func TestDispatchQueriesReturnEmptyForBlankPlatform(t *testing.T) {
+	t.Parallel()
+
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{ID: 41, TenantID: 10, StoreID: 100, Platform: "", Region: "us", ProductID: "blank-candidate", Status: model.TaskStatusPending.Int16(), Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
+		{ID: 42, TenantID: 10, StoreID: 100, Platform: "", Region: "us", ProductID: "blank-queued", Status: model.TaskStatusQueued.Int16(), Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
+	})
+	setNullTargetPlatforms(t, db, 41, 42)
+
+	repo := NewGormImportTaskRepository(db)
+	candidates, err := repo.ListDispatchCandidatesFair(context.Background(), DispatchCandidateRequest{
+		Platform:      "  ",
+		Limit:         10,
+		PerStoreLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("ListDispatchCandidatesFair(blank platform) error = %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("ListDispatchCandidatesFair(blank platform) len = %d, want 0", len(candidates))
+	}
+
+	counts, err := repo.CountQueuedByStore(context.Background(), "  ", []int64{100})
+	if err != nil {
+		t.Fatalf("CountQueuedByStore(blank platform) error = %v", err)
+	}
+	if len(counts) != 0 {
+		t.Fatalf("CountQueuedByStore(blank platform) = %v, want empty map", counts)
+	}
+}
+
+func TestAutoMigrateImportTaskRepositoryEnsuresProcessingNodeColumn(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&legacyImportTaskWithoutProcessingNode{}); err != nil {
+		t.Fatalf("migrate legacy import task: %v", err)
+	}
+	if db.Migrator().HasColumn("listing_product_import_task", "processing_node") {
+		t.Fatal("legacy table unexpectedly has processing_node before migration")
+	}
+
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
+	}
+	if !db.Migrator().HasColumn("listing_product_import_task", "processing_node") {
+		t.Fatal("processing_node column missing after migration")
 	}
 }
 
