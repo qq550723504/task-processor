@@ -218,6 +218,7 @@ type processorRuntimeSource interface {
 	GetProfitRuleClient() *management.ProfitRuleAPIClient
 	GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error)
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
+	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
 	DeleteSheinStoreCookie(storeID int64) (bool, error)
 	GetImageDownloader() *management.ImageDownloader
 	SetRuntimeStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error)
@@ -418,6 +419,13 @@ func (r managementProcessorRuntime) UpdateRuntimeTaskStatus(req *listingruntime.
 		return nil
 	}
 	return r.source.UpdateRuntimeTaskStatus(req)
+}
+
+func (r managementProcessorRuntime) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
+	if r.source == nil {
+		return nil, nil
+	}
+	return r.source.GetRuntimeImportTask(taskID)
 }
 
 func (r managementProcessorRuntime) DeleteSheinStoreCookie(storeID int64) (bool, error) {

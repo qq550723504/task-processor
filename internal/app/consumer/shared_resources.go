@@ -51,6 +51,7 @@ type ProcessorRuntime interface {
 	GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository
 	GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
+	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
 	GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error)
 	DeleteSheinStoreCookie(storeID int64) (bool, error)
 	GetImageDownloader() *management.ImageDownloader

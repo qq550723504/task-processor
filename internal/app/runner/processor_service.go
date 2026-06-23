@@ -39,6 +39,7 @@ type processorRuntimeProvider interface {
 	DeleteSheinStoreCookie(storeID int64) (bool, error)
 	SetRuntimeStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error)
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
+	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
 	GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error)
 	GetImageDownloader() *management.ImageDownloader
 	RuntimePublishedProductExists(ctx context.Context, storeID int64, platform, region, productID string) (bool, error)
