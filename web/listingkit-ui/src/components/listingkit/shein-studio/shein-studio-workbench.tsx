@@ -32,8 +32,8 @@ import {
   buildRecentBatchSaveInput,
   projectRecentBatchSelectionState,
   removeRecentBatchSummarySelection,
-  selectFreshRecentBatchHydration,
   selectRecentBatchBulkDeleteFailure,
+  resolveRecentBatchForMutation as resolveRecentBatchForMutationTarget,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
@@ -1391,30 +1391,19 @@ export function SheinStudioWorkbench({
   }, [workbenchController]);
 
   const resolveRecentBatchForMutation = useCallback(
-    async (batchId: string) => {
-      const savedBatch = savedBatches.find((item) => item.id === batchId);
-      if (!savedBatch) {
-        return null;
-      }
-      const cachedHydratedBatch = selectedRecentBatchHydrations[batchId];
-      const freshHydratedBatch = selectFreshRecentBatchHydration({
-        cachedHydratedBatch,
-        savedBatch,
-      });
-      if (freshHydratedBatch) {
-        return freshHydratedBatch.savedBatch;
-      }
-      try {
-        const hydratedBatch = await getSheinStudioHydratedBatch(batchId);
-        setSelectedRecentBatchHydrations((current) => ({
-          ...current,
-          [batchId]: hydratedBatch,
-        }));
-        return hydratedBatch.savedBatch;
-      } catch {
-        return savedBatch;
-      }
-    },
+    (batchId: string) =>
+      resolveRecentBatchForMutationTarget({
+        batchId,
+        cacheHydratedBatch: (targetBatchId, hydratedBatch) => {
+          setSelectedRecentBatchHydrations((current) => ({
+            ...current,
+            [targetBatchId]: hydratedBatch,
+          }));
+        },
+        loadHydratedBatch: getSheinStudioHydratedBatch,
+        savedBatches,
+        selectedRecentBatchHydrations,
+      }),
     [savedBatches, selectedRecentBatchHydrations],
   );
 

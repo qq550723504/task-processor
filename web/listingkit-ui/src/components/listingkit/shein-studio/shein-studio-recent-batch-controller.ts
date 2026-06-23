@@ -16,6 +16,19 @@ type FreshRecentBatchHydrationParams = {
   savedBatch: SheinStudioSavedBatch;
 };
 
+type ResolveRecentBatchForMutationParams = {
+  batchId: string;
+  cacheHydratedBatch: (
+    batchId: string,
+    hydratedBatch: SheinStudioWorkbenchHydratedBatch,
+  ) => void;
+  loadHydratedBatch: (
+    batchId: string,
+  ) => Promise<SheinStudioWorkbenchHydratedBatch>;
+  savedBatches: SheinStudioSavedBatch[];
+  selectedRecentBatchHydrations: Record<string, SheinStudioWorkbenchHydratedBatch>;
+};
+
 export function buildRecentBatchSummaryKey(
   summary: RecentBatchSelectionSummary,
 ): string {
@@ -50,6 +63,33 @@ export function selectFreshRecentBatchHydration({
     return cachedHydratedBatch;
   }
   return null;
+}
+
+export async function resolveRecentBatchForMutation({
+  batchId,
+  cacheHydratedBatch,
+  loadHydratedBatch,
+  savedBatches,
+  selectedRecentBatchHydrations,
+}: ResolveRecentBatchForMutationParams): Promise<SheinStudioSavedBatch | null> {
+  const savedBatch = savedBatches.find((item) => item.id === batchId);
+  if (!savedBatch) {
+    return null;
+  }
+  const freshHydratedBatch = selectFreshRecentBatchHydration({
+    cachedHydratedBatch: selectedRecentBatchHydrations[batchId],
+    savedBatch,
+  });
+  if (freshHydratedBatch) {
+    return freshHydratedBatch.savedBatch;
+  }
+  try {
+    const hydratedBatch = await loadHydratedBatch(batchId);
+    cacheHydratedBatch(batchId, hydratedBatch);
+    return hydratedBatch.savedBatch;
+  } catch {
+    return savedBatch;
+  }
 }
 
 export function projectRecentBatchSelectionState({

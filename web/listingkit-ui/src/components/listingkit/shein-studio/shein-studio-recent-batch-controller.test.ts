@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   buildRecentBatchSummaryKey,
@@ -8,6 +8,7 @@ import {
   buildRecentBatchStoreUpdateInput,
   projectRecentBatchSelectionState,
   removeRecentBatchSummarySelection,
+  resolveRecentBatchForMutation,
   selectFreshRecentBatchHydration,
   selectRecentBatchBulkDeleteFailure,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
@@ -221,6 +222,78 @@ describe("selectFreshRecentBatchHydration", () => {
     expect(
       selectFreshRecentBatchHydration({ cachedHydratedBatch, savedBatch }),
     ).toBeNull();
+  });
+});
+
+describe("resolveRecentBatchForMutation", () => {
+  it("returns a fresh cached hydration without loading remote detail", async () => {
+    const savedBatch = buildBatch({
+      id: "batch-1",
+      updatedAt: "2026-06-20T00:00:00.000Z",
+    });
+    const cachedHydratedBatch = buildHydratedBatch(
+      buildBatch({
+        id: "batch-1",
+        updatedAt: "2026-06-21T00:00:00.000Z",
+      }),
+    );
+    const loadHydratedBatch = vi.fn();
+    const cacheHydratedBatch = vi.fn();
+
+    await expect(
+      resolveRecentBatchForMutation({
+        batchId: "batch-1",
+        savedBatches: [savedBatch],
+        selectedRecentBatchHydrations: {
+          "batch-1": cachedHydratedBatch,
+        },
+        loadHydratedBatch,
+        cacheHydratedBatch,
+      }),
+    ).resolves.toBe(cachedHydratedBatch.savedBatch);
+    expect(loadHydratedBatch).not.toHaveBeenCalled();
+    expect(cacheHydratedBatch).not.toHaveBeenCalled();
+  });
+
+  it("loads and caches hydrated batch detail when the cache is stale", async () => {
+    const savedBatch = buildBatch({
+      id: "batch-1",
+      updatedAt: "2026-06-21T00:00:00.000Z",
+    });
+    const hydratedBatch = buildHydratedBatch(
+      buildBatch({
+        id: "batch-1",
+        updatedAt: "2026-06-22T00:00:00.000Z",
+      }),
+    );
+    const loadHydratedBatch = vi.fn().mockResolvedValue(hydratedBatch);
+    const cacheHydratedBatch = vi.fn();
+
+    await expect(
+      resolveRecentBatchForMutation({
+        batchId: "batch-1",
+        savedBatches: [savedBatch],
+        selectedRecentBatchHydrations: {},
+        loadHydratedBatch,
+        cacheHydratedBatch,
+      }),
+    ).resolves.toBe(hydratedBatch.savedBatch);
+    expect(loadHydratedBatch).toHaveBeenCalledWith("batch-1");
+    expect(cacheHydratedBatch).toHaveBeenCalledWith("batch-1", hydratedBatch);
+  });
+
+  it("falls back to the saved batch when hydration fails", async () => {
+    const savedBatch = buildBatch({ id: "batch-1" });
+
+    await expect(
+      resolveRecentBatchForMutation({
+        batchId: "batch-1",
+        savedBatches: [savedBatch],
+        selectedRecentBatchHydrations: {},
+        loadHydratedBatch: vi.fn().mockRejectedValue(new Error("offline")),
+        cacheHydratedBatch: vi.fn(),
+      }),
+    ).resolves.toBe(savedBatch);
   });
 });
 
