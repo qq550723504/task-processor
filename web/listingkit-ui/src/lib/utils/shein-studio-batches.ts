@@ -296,6 +296,7 @@ export async function saveSheinStudioBatch(
       expectedUpdatedAt,
       name: input.name?.trim() || undefined,
       prompt: input.prompt,
+      promptMode: input.promptMode,
       styleCount: input.styleCount,
       variationIntensity: input.variationIntensity,
       productImageCount: input.productImageCount,
@@ -408,6 +409,7 @@ function projectItemizedBatchSavedBatchCompatibility(
 ) {
   return {
     prompt: detail.batch.prompt.trim(),
+    promptMode: detail.batch.promptMode ?? "managed",
     styleCount: detail.batch.styleCount.trim(),
     variationIntensity: detail.batch.variationIntensity,
     artworkModel: detail.batch.artworkModel,

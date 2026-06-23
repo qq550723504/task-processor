@@ -4,6 +4,7 @@ import type {
   SheinStudioArtworkModel,
   SheinStudioGeneratedDesign,
   SheinStudioGenerationJob,
+  SheinStudioPromptMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio-generation";
 import type { SheinStudioCreatedTask } from "@/lib/types/shein-studio-task";
@@ -55,6 +56,7 @@ export type SheinStudioGroupedWorkspace = {
   primarySelection: SDSProductVariantSelection;
   groupedSelections: GroupedSDSSelectionEligibility[];
   styleCount?: string;
+  promptMode?: SheinStudioPromptMode;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   groupedImageMode?: SheinStudioGroupedImageMode;
@@ -84,6 +86,7 @@ export type SheinStudioPersistedGroupedWorkspace = Omit<
 
 export type SheinStudioPersistedBatchView = {
   prompt: string;
+  promptMode?: SheinStudioPromptMode;
   styleCount: string;
   variationIntensity?: SheinStudioVariationIntensity;
   productImageCount?: string;
@@ -115,6 +118,7 @@ export type SheinStudioSavedBatch = {
   tenantId?: string;
   name: string;
   prompt: string;
+  promptMode?: SheinStudioPromptMode;
   styleCount: string;
   variationIntensity?: SheinStudioVariationIntensity;
   productImageCount?: string;
@@ -146,6 +150,7 @@ export type SheinStudioSavedBatch = {
 
 export type SheinStudioDraft = {
   prompt: string;
+  promptMode?: SheinStudioPromptMode;
   styleCount: string;
   variationIntensity?: SheinStudioVariationIntensity;
   productImageCount?: string;

@@ -21,7 +21,7 @@ type studioDesignAsyncSubmitResponse struct {
 
 func (s *taskStudioMediaService) generateStudioDesignSiblingThemes(ctx context.Context, req *StudioDesignRequest, count int) ([]string, error) {
 	baseTheme := strings.TrimSpace(req.Prompt)
-	if count <= 1 || baseTheme == "" {
+	if count <= 1 || baseTheme == "" || isStudioRawPromptMode(req.PromptMode) {
 		return buildFallbackStudioDesignThemes(baseTheme, count), nil
 	}
 	if s.promptDiversifier == nil {

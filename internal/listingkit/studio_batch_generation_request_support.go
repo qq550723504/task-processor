@@ -17,6 +17,7 @@ func buildStudioBatchItemDesignRequest(batch *StudioBatchRecord, item StudioBatc
 	selection := firstStudioBatchItemSelection(batch, item)
 	return &StudioDesignRequest{
 		Prompt:                strings.TrimSpace(batch.Prompt),
+		PromptMode:            strings.TrimSpace(batch.PromptMode),
 		Count:                 parseStudioBatchRunStyleCount(strings.TrimSpace(batch.StyleCount)),
 		VariationIntensity:    strings.TrimSpace(batch.VariationIntensity),
 		PrintableWidth:        selection.PrintableWidth,

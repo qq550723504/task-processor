@@ -25,6 +25,7 @@ type TaskCreationGroupSelection = {
 
 type StandaloneCreateTasksInput = {
   prompt: string;
+  promptMode?: "managed" | "raw";
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   selectedSdsImages?: SheinStudioSelectedSDSImage[];
@@ -39,6 +40,7 @@ type StandaloneCreateTasksInput = {
 
 type StandaloneCreateGroupedTasksInput = {
   prompt: string;
+  promptMode?: "managed" | "raw";
   imageStrategy?: SheinStudioImageStrategy;
   groupedImageMode?: SheinStudioGroupedImageMode;
   selectedSdsImages?: SheinStudioSelectedSDSImage[];
@@ -86,6 +88,7 @@ type ExecuteStandaloneTaskCreationInput = {
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
   prompt: string;
+  promptMode?: "managed" | "raw";
   renderSizeImagesWithSds: boolean;
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   setCreatedTasks: (value: SheinStudioCreatedTask[]) => void;
@@ -237,6 +240,7 @@ export async function executeStandaloneTaskCreation({
   productImagePrompt,
   productImagePrompts,
   prompt,
+  promptMode,
   renderSizeImagesWithSds,
   selectedSdsImages,
   setCreatedTasks,
@@ -250,6 +254,7 @@ export async function executeStandaloneTaskCreation({
   if (groupedSelections.length > 0) {
     const result = await createGroupedTasks({
       prompt,
+      promptMode,
       groupedImageMode,
       imageStrategy,
       selectedSdsImages,
@@ -289,6 +294,7 @@ export async function executeStandaloneTaskCreation({
   } else {
     created = await createTasks({
       prompt,
+      promptMode,
       sheinStoreId,
       imageStrategy,
       selectedSdsImages,

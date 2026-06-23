@@ -61,6 +61,7 @@ func isStudioSessionGenerationMetadataOnlyUpdate(req *UpdateStudioSessionRequest
 		return false
 	}
 	return req.Prompt == nil &&
+		req.PromptMode == nil &&
 		req.StyleCount == nil &&
 		req.VariationIntensity == nil &&
 		req.ProductImageCount == nil &&
@@ -88,6 +89,7 @@ func isStudioSessionReviewTaskMetadataOnlyUpdate(req *UpdateStudioSessionRequest
 	}
 	return req.Status == nil &&
 		req.Prompt == nil &&
+		req.PromptMode == nil &&
 		req.StyleCount == nil &&
 		req.VariationIntensity == nil &&
 		req.ProductImageCount == nil &&

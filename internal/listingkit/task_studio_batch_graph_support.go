@@ -116,6 +116,7 @@ func buildStudioBatchRecordFromSessionDraft(session *SheinStudioSession, now tim
 		ID:                    session.ID,
 		Status:                StudioBatchStatusGenerating,
 		Prompt:                session.Prompt,
+		PromptMode:            strings.TrimSpace(session.PromptMode),
 		GroupedImageMode:      strings.TrimSpace(session.GroupedImageMode),
 		Selection:             session.Selection,
 		GroupedSelections:     append(SheinStudioGroupedSelectionList(nil), session.GroupedSelections...),

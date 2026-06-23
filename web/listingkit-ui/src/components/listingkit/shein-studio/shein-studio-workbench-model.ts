@@ -52,6 +52,7 @@ export function pickActiveSheinStudioGroup(
 export function projectGroupToWorkbench(group: SheinStudioGroupedWorkspace) {
   return {
     prompt: group.currentPrompt,
+    promptMode: group.promptMode ?? "managed",
     styleCount: group.styleCount ?? "1",
     variationIntensity:
       group.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
@@ -114,6 +115,7 @@ function projectItemizedBatchCompatibilityFields(
     selectedIds: getApprovedItemizedBatchDesignIDs(detail),
     selection: detail.batch.selection,
     prompt: detail.batch.prompt,
+    promptMode: detail.batch.promptMode ?? "managed",
     styleCount: detail.batch.styleCount || "1",
     variationIntensity: detail.batch.variationIntensity,
     artworkModel: detail.batch.artworkModel,
@@ -229,6 +231,7 @@ export function projectSavedBatchToWorkbench(savedBatch: SheinStudioSavedBatch) 
   return {
     selection: savedBatch.selection,
     prompt: savedBatch.prompt,
+    promptMode: savedBatch.promptMode ?? "managed",
     styleCount: savedBatch.styleCount || "1",
     variationIntensity:
       savedBatch.variationIntensity ?? DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
@@ -357,9 +360,11 @@ export function projectWorkbenchStateToSavedBatch({
   generationJobs,
   updatedAt,
   name = "",
+  promptMode,
 }: {
   id: string;
   prompt: string;
+  promptMode?: "managed" | "raw";
   styleCount: string;
   variationIntensity: SheinStudioVariationIntensity;
   productImageCount: string;
@@ -382,10 +387,12 @@ export function projectWorkbenchStateToSavedBatch({
   updatedAt: string;
   name?: string;
 }): SheinStudioSavedBatch {
+  const normalizedPromptMode = promptMode ?? "managed";
   return {
     id,
     name,
     prompt,
+    promptMode: normalizedPromptMode,
     styleCount,
     variationIntensity,
     productImageCount,
@@ -537,6 +544,7 @@ export function mergeSheinStudioDraftState({
 
   return {
     prompt: draft?.prompt || galleryPrompt || "",
+    promptMode: draft?.promptMode ?? "managed",
     selection: draft?.selection,
     styleCount: draft?.styleCount ?? "1",
     variationIntensity:

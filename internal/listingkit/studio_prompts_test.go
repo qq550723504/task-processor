@@ -113,6 +113,9 @@ func TestStudioDesignPromptRendersWithoutTransparencyInstructions(t *testing.T) 
 	for _, required := range []string{
 		"customized-product",
 		"target print area: 1000 by 600 pixels",
+		"mandatory print size requirement",
+		"preserve this exact 1000:600 aspect ratio",
+		"do not output a square design unless the requested print area is square",
 		"product color variants",
 		"generate only the flat artwork/design",
 	} {
@@ -158,6 +161,44 @@ func TestStudioDesignPromptIncludesTransparencyInstructionsWhenRequested(t *test
 	} {
 		if !strings.Contains(lower, required) {
 			t.Fatalf("prompt missing %q:\n%s", required, text)
+		}
+	}
+}
+
+func TestStudioDesignRawPromptKeepsUserPromptAndPrintAreaOnly(t *testing.T) {
+	text := buildStudioDesignPrompt(&StudioDesignRequest{
+		Prompt:          "minimal dog badge, no extra styling",
+		PromptMode:      "raw",
+		PrintableWidth:  1000,
+		PrintableHeight: 600,
+		ProductReferenceImageURLs: []string{
+			"https://example.com/black-shirt.jpg",
+		},
+		TransparentBackground: true,
+	})
+	lower := strings.ToLower(text)
+
+	for _, required := range []string{
+		"minimal dog badge, no extra styling",
+		"target print area: 1000 by 600 pixels",
+		"mandatory print size requirement",
+		"preserve this exact 1000:600 aspect ratio",
+		"do not output a square design unless the requested print area is square",
+	} {
+		if !strings.Contains(lower, required) {
+			t.Fatalf("prompt missing %q:\n%s", required, text)
+		}
+	}
+	for _, forbidden := range []string{
+		"create a single print-ready graphic",
+		"customized-product",
+		"product color variants",
+		"true transparent background",
+		"alpha channel",
+		"do not simulate transparency",
+	} {
+		if strings.Contains(lower, forbidden) {
+			t.Fatalf("raw prompt contains managed template phrase %q:\n%s", forbidden, text)
 		}
 	}
 }
@@ -544,6 +585,30 @@ func TestStudioProductImagePromptRendersManagedTemplate(t *testing.T) {
 	} {
 		if !strings.Contains(strings.ToLower(text), required) {
 			t.Fatalf("prompt missing %q:\n%s", required, text)
+		}
+	}
+}
+
+func TestStudioProductImageRawPromptBypassesManagedTemplate(t *testing.T) {
+	text := buildStudioProductImagePrompt(&StudioProductImageRequest{
+		Prompt:     "use exactly this marketplace photo prompt",
+		PromptMode: "raw",
+	}, defaultStudioProductImageRoles[0], 1, 3)
+	lower := strings.ToLower(text)
+
+	if !strings.Contains(lower, "use exactly this marketplace photo prompt") {
+		t.Fatalf("raw product image prompt missing user prompt:\n%s", text)
+	}
+	for _, forbidden := range []string{
+		"amazon-compliant",
+		"approved pod artwork",
+		"image role:",
+		"role goal:",
+		"composition guidance:",
+		"main image",
+	} {
+		if strings.Contains(lower, forbidden) {
+			t.Fatalf("raw product image prompt contains managed phrase %q:\n%s", forbidden, text)
 		}
 	}
 }

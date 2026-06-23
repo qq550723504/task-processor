@@ -40,6 +40,7 @@ export async function generateSheinStudioDesigns(
   }>("/studio/designs", {
     body: {
       prompt: body.prompt,
+      prompt_mode: body.promptMode,
       count: body.count,
       variation_intensity: body.variationIntensity,
       printable_width: body.printableWidth,
@@ -82,6 +83,7 @@ export async function generateSheinStudioDesigns(
 
 export async function generateSheinStudioProductImages(body: {
   prompt: string;
+  promptMode?: SheinStudioGenerateRequest["promptMode"];
   productName?: string;
   categoryPath?: string[];
   styleName?: string;
@@ -105,6 +107,7 @@ export async function generateSheinStudioProductImages(body: {
   }>("/studio/product-images", {
     body: {
       prompt: body.prompt,
+      prompt_mode: body.promptMode,
       product_name: body.productName,
       category_path: body.categoryPath,
       style_name: body.styleName,

@@ -20,6 +20,7 @@ import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
 type BuildSheinStudioDraftInputArgs = {
   updatedAt?: string;
   prompt: string;
+  promptMode?: "managed" | "raw";
   styleCount: string;
   variationIntensity: SheinStudioVariationIntensity;
   productImageCount: string;
@@ -69,6 +70,7 @@ function toPersistedGroupedWorkspace(
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item)),
     styleCount: group.styleCount,
+    promptMode: group.promptMode,
     sheinStoreId: group.sheinStoreId,
     imageStrategy: group.imageStrategy,
     groupedImageMode: group.groupedImageMode,
@@ -148,6 +150,7 @@ export function buildSheinStudioDraftInput(
   return {
     updatedAt: args.updatedAt,
     prompt: args.prompt,
+    promptMode: args.promptMode,
     styleCount: args.styleCount,
     variationIntensity: args.variationIntensity,
     productImageCount: args.productImageCount,

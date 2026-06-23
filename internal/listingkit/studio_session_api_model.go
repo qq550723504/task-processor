@@ -14,6 +14,7 @@ type UpdateStudioSessionRequest struct {
 	Status                  *SheinStudioSessionStatus       `json:"status,omitempty"`
 	ExpectedUpdatedAt       *string                         `json:"expected_updated_at,omitempty"`
 	Prompt                  *string                         `json:"prompt,omitempty"`
+	PromptMode              *string                         `json:"prompt_mode,omitempty"`
 	StyleCount              *string                         `json:"style_count,omitempty"`
 	VariationIntensity      *string                         `json:"variation_intensity,omitempty"`
 	ProductImageCount       *string                         `json:"product_image_count,omitempty"`

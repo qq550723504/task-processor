@@ -52,6 +52,7 @@ export function buildRecentBatchSaveInput(
       batch.updatedAt,
     name: overrides?.name ?? batch.name,
     prompt: overrides?.prompt ?? batch.prompt,
+    promptMode: overrides?.promptMode ?? batch.promptMode,
     styleCount: overrides?.styleCount ?? batch.styleCount,
     variationIntensity:
       overrides?.variationIntensity ?? batch.variationIntensity,

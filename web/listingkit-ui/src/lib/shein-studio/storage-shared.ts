@@ -131,6 +131,10 @@ export function normalizeVariationIntensity(
     : DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY;
 }
 
+export function normalizePromptMode(value: unknown) {
+  return value === "raw" ? "raw" : "managed";
+}
+
 export function isGeneratedDesign(item: unknown): item is SheinStudioGeneratedDesign {
   return (
     !!item &&
@@ -395,6 +399,7 @@ function normalizeGroupedWorkspace(
     selectedSdsImages: normalizeSelectedImages(candidate.selectedSdsImages),
     renderSizeImagesWithSds: candidate.renderSizeImagesWithSds ?? true,
     currentPrompt: candidate.currentPrompt,
+    promptMode: normalizePromptMode(candidate.promptMode),
     promptHistory: normalizePromptHistory(candidate.promptHistory),
     productImageCount:
       typeof candidate.productImageCount === "string"
@@ -471,6 +476,7 @@ function buildLegacyGroupedWorkspace(
       selectedSdsImages: normalizeSelectedImages(raw.selectedSdsImages),
       renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
       currentPrompt: prompt,
+      promptMode: normalizePromptMode(raw.promptMode),
       promptHistory: [],
       productImageCount:
         typeof raw.productImageCount === "string"
@@ -505,6 +511,7 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
 
   return {
     prompt: typeof raw.prompt === "string" ? raw.prompt : "",
+    promptMode: normalizePromptMode(raw.promptMode),
     styleCount: raw.styleCount ?? "4",
     variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
@@ -585,6 +592,7 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     tenantId: typeof raw.tenantId === "string" ? raw.tenantId : undefined,
     name: raw.name,
     prompt: raw.prompt ?? "",
+    promptMode: normalizePromptMode(raw.promptMode),
     styleCount: raw.styleCount ?? "4",
     variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,

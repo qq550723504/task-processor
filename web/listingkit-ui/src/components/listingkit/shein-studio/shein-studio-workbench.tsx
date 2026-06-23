@@ -276,6 +276,8 @@ export function SheinStudioWorkbench({
       ) => setWorkbenchField("groupedSelections", value),
       setPrompt: (value: SheinStudioWorkbenchStateUpdater<"prompt">) =>
         setWorkbenchField("prompt", value),
+      setPromptMode: (value: SheinStudioWorkbenchStateUpdater<"promptMode">) =>
+        setWorkbenchField("promptMode", value),
       setQueueMessage: (
         value: SheinStudioWorkbenchStateUpdater<"queueMessage">,
       ) => setWorkbenchField("queueMessage", value),
@@ -338,6 +340,7 @@ export function SheinStudioWorkbench({
     productImagePrompts,
     persistedUpdatedAt,
     prompt,
+    promptMode,
     queueMessage,
     regeneratingId,
     renderSizeImagesWithSds,
@@ -369,6 +372,7 @@ export function SheinStudioWorkbench({
     setProductImagePrompt,
     setProductImagePrompts,
     setPrompt,
+    setPromptMode,
     setQueueMessage,
     setQueuedBatchIds,
     setQueuedBatchIndex,
@@ -591,6 +595,7 @@ export function SheinStudioWorkbench({
       return projectWorkbenchStateToSavedBatch({
         id: resolvedBatchId,
         prompt,
+        promptMode,
         styleCount,
         variationIntensity,
         productImageCount,
@@ -630,6 +635,7 @@ export function SheinStudioWorkbench({
       productImagePrompt,
       productImagePrompts,
       prompt,
+      promptMode,
       renderSizeImagesWithSds,
       savedBatches,
       selectedIds,
@@ -730,6 +736,7 @@ export function SheinStudioWorkbench({
       productImagePrompts,
       persistedUpdatedAt,
       prompt,
+      promptMode,
       regeneratingId,
       renderSizeImagesWithSds,
       groupedSelections,
@@ -761,6 +768,7 @@ export function SheinStudioWorkbench({
       productImagePrompts,
       persistedUpdatedAt,
       prompt,
+      promptMode,
       regeneratingId,
       renderSizeImagesWithSds,
       groupedSelections,
@@ -1124,6 +1132,7 @@ export function SheinStudioWorkbench({
       productImagePrompt,
       productImagePrompts,
       prompt,
+      promptMode,
       promptInputRef,
       renderSizeImagesWithSds,
       selectedIds,
@@ -1356,6 +1365,7 @@ export function SheinStudioWorkbench({
           draftState.hasCustomizedSdsSelection;
         workbenchController.applyDraft({
           prompt: draftState.prompt,
+          promptMode: draftState.promptMode,
           styleCount: draftState.styleCount,
           variationIntensity: draftState.variationIntensity,
           productImageCount: draftState.productImageCount,
@@ -2129,6 +2139,7 @@ export function SheinStudioWorkbench({
                   setProductImagePrompt,
                   setProductImagePrompts,
                   setPrompt: handlePromptChange,
+                  setPromptMode,
                   setRenderSizeImagesWithSds,
                   setSelectedSdsImages: (value) => {
                     hasCustomizedSdsSelectionRef.current = true;
@@ -2147,6 +2158,7 @@ export function SheinStudioWorkbench({
                   productImagePrompt,
                   productImagePrompts,
                   prompt,
+                  promptMode,
                   promptHistory: activeGroupPromptHistory,
                   promptInputRef,
                   renderSizeImagesWithSds,

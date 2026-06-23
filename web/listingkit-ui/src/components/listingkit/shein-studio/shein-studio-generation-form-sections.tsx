@@ -29,12 +29,14 @@ export function ArtworkGenerationSettings({
   disabled,
   groupedImageMode,
   prompt,
+  promptMode,
   promptHistory,
   promptInputRef,
   restorePrompt,
   setArtworkModel,
   setGroupedImageMode,
   setPrompt,
+  setPromptMode,
   setStyleCount,
   setTransparentBackground,
   setVariationIntensity,
@@ -47,12 +49,14 @@ export function ArtworkGenerationSettings({
   disabled?: boolean;
   groupedImageMode: SheinStudioGroupedImageMode;
   prompt: string;
+  promptMode: "managed" | "raw";
   promptHistory: SDSGroupedPromptHistoryEntry[];
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   restorePrompt: (value: string) => void;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
   setGroupedImageMode: (value: SheinStudioGroupedImageMode) => void;
   setPrompt: (value: string) => void;
+  setPromptMode: (value: "managed" | "raw") => void;
   setStyleCount: (value: string) => void;
   setTransparentBackground: (value: boolean) => void;
   setVariationIntensity: (value: SheinStudioVariationIntensity) => void;
@@ -102,6 +106,17 @@ export function ArtworkGenerationSettings({
             </div>
           </div>
         ) : null}
+      </Label>
+      <Label className="space-y-2">
+        <span className="text-sm font-medium text-foreground">提示词模式</span>
+        <Select
+          disabled={disabled}
+          onChange={(event) => setPromptMode(event.target.value as "managed" | "raw")}
+          value={promptMode}
+        >
+          <option value="managed">ListingKit 优化</option>
+          <option value="raw">完全使用我的提示词</option>
+        </Select>
       </Label>
       <NumberInput
         disabled={disabled}

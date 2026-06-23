@@ -48,6 +48,9 @@ func studioProductImageConcurrencyLimit(imageCount int) int {
 }
 
 func buildStudioProductImagePrompt(req *StudioProductImageRequest, role studioProductImageRole, imageIndex int, imageTotal int) string {
+	if isStudioRawPromptMode(req.PromptMode) {
+		return buildRawStudioProductImagePrompt(req, role)
+	}
 	categoryPath := strings.Join(req.CategoryPath, " > ")
 	userInstruction := studioProductImageUserInstruction(req, role)
 	fallback := strings.TrimSpace(`Create Amazon-compliant ecommerce product images.
@@ -91,6 +94,24 @@ Requirements: square 1:1 image, clean marketplace composition, product remains t
 		return renderPromptFallback(fallback, vars)
 	}
 	return strings.TrimSpace(rendered)
+}
+
+func buildRawStudioProductImagePrompt(req *StudioProductImageRequest, role studioProductImageRole) string {
+	if req == nil {
+		return ""
+	}
+	for _, item := range req.ImagePrompts {
+		if !strings.EqualFold(strings.TrimSpace(item.Role), strings.TrimSpace(role.Key)) {
+			continue
+		}
+		if prompt := strings.TrimSpace(item.Prompt); prompt != "" {
+			return prompt
+		}
+	}
+	if customPrompt := strings.TrimSpace(req.CustomPrompt); customPrompt != "" {
+		return customPrompt
+	}
+	return strings.TrimSpace(req.Prompt)
 }
 
 func studioProductImageUserInstruction(req *StudioProductImageRequest, role studioProductImageRole) string {

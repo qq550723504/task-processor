@@ -27,6 +27,7 @@ type SheinStudioVariantImageSet struct {
 
 type StudioProductImageRequest struct {
 	Prompt                    string                     `json:"prompt,omitempty"`
+	PromptMode                string                     `json:"prompt_mode,omitempty"`
 	ProductName               string                     `json:"product_name,omitempty"`
 	CategoryPath              []string                   `json:"category_path,omitempty"`
 	StyleName                 string                     `json:"style_name,omitempty"`
@@ -65,6 +66,7 @@ type StudioGeneratedImage struct {
 
 type StudioDesignRequest struct {
 	Prompt                    string   `json:"prompt,omitempty"`
+	PromptMode                string   `json:"prompt_mode,omitempty"`
 	Count                     int      `json:"count,omitempty"`
 	VariationIntensity        string   `json:"variation_intensity,omitempty"`
 	PrintableWidth            int      `json:"printable_width,omitempty"`
