@@ -25,8 +25,10 @@ func TestListDispatchCandidatesFairAlternatesStoresBeforeSecondTask(t *testing.T
 		{ID: 3, TenantID: 10, StoreID: 200, Platform: "legacy", TargetPlatform: "shein", Region: "us", ProductID: "s200-high", Status: model.TaskStatusCrawled.Int16(), Priority: 70, CreateTime: &newest, UpdateTime: &newest, Deleted: 0},
 		{ID: 4, TenantID: 10, StoreID: 300, Platform: "amazon", Region: "us", ProductID: "wrong-platform", Status: model.TaskStatusPending.Int16(), Priority: 100, CreateTime: &oldest, UpdateTime: &oldest, Deleted: 0},
 		{ID: 5, TenantID: 10, StoreID: 400, Platform: "shein", Region: "us", ProductID: "excluded", Status: model.TaskStatusPending.Int16(), Priority: 100, CreateTime: &oldest, UpdateTime: &oldest, Deleted: 0},
+		{ID: 6, TenantID: 10, StoreID: 500, Platform: "shein", TargetPlatform: "", Region: "us", ProductID: "empty-target-platform", Status: model.TaskStatusPending.Int16(), Priority: 100, CreateTime: &oldest, UpdateTime: &oldest, Deleted: 0},
 	}
 	seedDispatchTasks(t, db, rows)
+	setNullTargetPlatforms(t, db, 1, 2, 4, 5)
 
 	repo := NewGormImportTaskRepository(db)
 	tasks, err := repo.ListDispatchCandidatesFair(context.Background(), DispatchCandidateRequest{
@@ -125,10 +127,12 @@ func TestCountQueuedByStoreGroupsAcrossTenantsForPlatform(t *testing.T) {
 		{ID: 33, TenantID: 10, StoreID: 200, Platform: "shein", Region: "us", ProductID: "queued-c", Status: model.TaskStatusQueued.Int16(), Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
 		{ID: 34, TenantID: 10, StoreID: 200, Platform: "shein", Region: "us", ProductID: "pending", Status: model.TaskStatusPending.Int16(), Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
 		{ID: 35, TenantID: 10, StoreID: 300, Platform: "amazon", Region: "us", ProductID: "wrong-platform", Status: model.TaskStatusQueued.Int16(), Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
+		{ID: 36, TenantID: 10, StoreID: 400, Platform: "shein", TargetPlatform: "", Region: "us", ProductID: "empty-target-platform", Status: model.TaskStatusQueued.Int16(), Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
 	})
+	setNullTargetPlatforms(t, db, 31, 33, 34, 35)
 
 	repo := NewGormImportTaskRepository(db)
-	counts, err := repo.CountQueuedByStore(context.Background(), "shein", []int64{100, 200, 300})
+	counts, err := repo.CountQueuedByStore(context.Background(), "shein", []int64{100, 200, 300, 400})
 	if err != nil {
 		t.Fatalf("CountQueuedByStore() error = %v", err)
 	}
@@ -137,6 +141,9 @@ func TestCountQueuedByStoreGroupsAcrossTenantsForPlatform(t *testing.T) {
 	}
 	if _, ok := counts[300]; ok {
 		t.Fatalf("counts includes store 300: %v, want wrong platform omitted", counts)
+	}
+	if _, ok := counts[400]; ok {
+		t.Fatalf("counts includes store 400: %v, want empty target platform omitted", counts)
 	}
 }
 
@@ -158,6 +165,13 @@ func seedDispatchTasks(t *testing.T, db *gorm.DB, rows []listingProductImportTas
 		if err := db.Table("listing_product_import_task").Create(&row).Error; err != nil {
 			t.Fatalf("seed row %d: %v", row.ID, err)
 		}
+	}
+}
+
+func setNullTargetPlatforms(t *testing.T, db *gorm.DB, ids ...int64) {
+	t.Helper()
+	if err := db.Table("listing_product_import_task").Where("id IN ?", ids).Update("target_platform", nil).Error; err != nil {
+		t.Fatalf("set null target platforms: %v", err)
 	}
 }
 
