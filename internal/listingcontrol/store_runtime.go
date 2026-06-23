@@ -12,13 +12,14 @@ const (
 
 	QueueModeStoreDedicated = "store-dedicated"
 
-	ReasonDispatchable        = ""
-	ReasonStoreDisabled       = "store_disabled"
-	ReasonAutoListingDisabled = "auto_listing_disabled"
-	ReasonQueueNotDedicated   = "queue_not_dedicated"
-	ReasonNoLiveOwner         = "no_live_owner"
-	ReasonStorePaused         = "store_paused"
-	ReasonNoCapacity          = "no_capacity"
+	ReasonDispatchable          = ""
+	ReasonStoreDisabled         = "store_disabled"
+	ReasonAutoListingDisabled   = "auto_listing_disabled"
+	ReasonQueueNotDedicated     = "queue_not_dedicated"
+	ReasonNoLiveOwner           = "no_live_owner"
+	ReasonStorePaused           = "store_paused"
+	ReasonNoCapacity            = "no_capacity"
+	ReasonQueueDepthUnavailable = "queue_depth_unavailable"
 )
 
 type StoreSource interface {
@@ -42,13 +43,15 @@ type StoreRuntimeConfig struct {
 	MaxQueuedPerStore     int
 	OwnerBrowserPoolSize  int
 	EnableLegacyQuotaKeys bool
+	QueueDepthSource      QueueDepthSource
 }
 
 type StoreRuntime struct {
-	stores  StoreSource
-	runtime StringRuntime
-	quota   *QuotaService
-	config  StoreRuntimeConfig
+	stores     StoreSource
+	runtime    StringRuntime
+	queueDepth QueueDepthSource
+	quota      *QuotaService
+	config     StoreRuntimeConfig
 }
 
 type StoreReadiness struct {
@@ -64,9 +67,16 @@ type StoreReadiness struct {
 }
 
 func NewStoreRuntime(stores StoreSource, runtime StringRuntime, config StoreRuntimeConfig) *StoreRuntime {
+	queueDepthSource := config.QueueDepthSource
+	if queueDepthSource == nil {
+		if source, ok := runtime.(QueueDepthSource); ok {
+			queueDepthSource = source
+		}
+	}
 	return &StoreRuntime{
-		stores:  stores,
-		runtime: runtime,
+		stores:     stores,
+		runtime:    runtime,
+		queueDepth: queueDepthSource,
 		quota: NewQuotaService(runtime, QuotaConfig{
 			EnableLegacyQuotaKeys: config.EnableLegacyQuotaKeys,
 		}),
@@ -100,9 +110,11 @@ func (s *StoreRuntime) ListReadiness(ctx context.Context, platform string) ([]St
 			continue
 		}
 
-		item.Queued, err = queueDepth(ctx, s.runtime, item.Store.TenantID, item.Store.StoreID)
+		item.Queued, err = queueDepth(ctx, s.queueDepth, item.Store.TenantID, item.Store.StoreID)
 		if err != nil {
-			return nil, err
+			item.Reason = ReasonQueueDepthUnavailable
+			item.Dispatchable = false
+			continue
 		}
 		item.Quota, err = s.quota.Check(ctx, item.Store.TenantID, item.Store.StoreID)
 		if err != nil {
@@ -184,10 +196,9 @@ func getString(ctx context.Context, runtime StringRuntime, key string) (string, 
 	return value, nil
 }
 
-func queueDepth(ctx context.Context, runtime StringRuntime, tenantID, storeID int64) (int64, error) {
-	source, ok := runtime.(QueueDepthSource)
-	if !ok {
-		return 0, nil
+func queueDepth(ctx context.Context, source QueueDepthSource, tenantID, storeID int64) (int64, error) {
+	if source == nil {
+		return 0, errors.New("queue depth source unavailable")
 	}
 	return source.QueueDepth(ctx, tenantID, storeID)
 }

@@ -18,6 +18,7 @@ var (
 const (
 	ReasonQuotaExhausted = "quota_exhausted"
 	ReasonQuotaInvalid   = "quota_invalid"
+	ReasonQuotaStale     = "quota_stale"
 
 	QuotaSourceLegacy = "legacy"
 )
@@ -104,6 +105,22 @@ func (s *QuotaService) checkStructured(ctx context.Context, key, value string) (
 		Key:       key,
 		TTL:       ttl,
 		Source:    decoded.Source,
+	}
+	if ttl <= 0 {
+		result.Reason = ReasonQuotaStale
+		return result, nil
+	}
+	if strings.TrimSpace(decoded.ExpiresAt) != "" {
+		expiresAt, err := time.Parse(time.RFC3339, decoded.ExpiresAt)
+		if err != nil {
+			result.Blocked = true
+			result.Reason = ReasonQuotaInvalid
+			return result, fmt.Errorf("%w: structured quota %s expiresAt: %v", ErrQuotaInvalid, key, err)
+		}
+		if !expiresAt.After(time.Now()) {
+			result.Reason = ReasonQuotaStale
+			return result, nil
+		}
 	}
 	if decoded.Remaining <= 0 {
 		result.Blocked = true

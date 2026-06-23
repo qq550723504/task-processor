@@ -213,6 +213,140 @@ func TestStoreRuntimeCapacityUsesOwnerStoreCountAndBrowserPool(t *testing.T) {
 	}
 }
 
+func TestStoreRuntimeQueueDepthUnavailableIsNonDispatchable(t *testing.T) {
+	auto := true
+	runtime := newFakeRuntimeWithoutQueueDepth()
+	runtime.set("listing:queue:mode:10:20", "store-dedicated", 0)
+	runtime.set("listing:queue:owner:10:20", "node-a", 0)
+
+	service := NewStoreRuntime(fakeStoreSource{stores: []StoreSnapshot{{
+		TenantID:          10,
+		StoreID:           20,
+		Platform:          "shein",
+		Status:            StoreStatusEnabled,
+		EnableAutoListing: &auto,
+	}}}, runtime, StoreRuntimeConfig{
+		MaxQueuedPerStore:    10,
+		OwnerBrowserPoolSize: 2,
+	})
+
+	readiness, err := service.ListReadiness(context.Background(), "shein")
+	if err != nil {
+		t.Fatalf("ListReadiness returned error: %v", err)
+	}
+	if len(readiness) != 1 {
+		t.Fatalf("expected 1 readiness, got %d", len(readiness))
+	}
+	if readiness[0].Dispatchable {
+		t.Fatal("expected missing queue depth source to be non-dispatchable")
+	}
+	if readiness[0].Reason != ReasonQueueDepthUnavailable {
+		t.Fatalf("expected %q, got %q", ReasonQueueDepthUnavailable, readiness[0].Reason)
+	}
+}
+
+func TestStoreRuntimeQueueDepthErrorIsNonDispatchable(t *testing.T) {
+	auto := true
+	runtime := newFakeStringRuntime()
+	runtime.set("listing:queue:mode:10:20", "store-dedicated", 0)
+	runtime.set("listing:queue:owner:10:20", "node-a", 0)
+	runtime.queueDepthErr = errors.New("redis unavailable")
+
+	service := NewStoreRuntime(fakeStoreSource{stores: []StoreSnapshot{{
+		TenantID:          10,
+		StoreID:           20,
+		Platform:          "shein",
+		Status:            StoreStatusEnabled,
+		EnableAutoListing: &auto,
+	}}}, runtime, StoreRuntimeConfig{
+		MaxQueuedPerStore:    10,
+		OwnerBrowserPoolSize: 2,
+	})
+
+	readiness, err := service.ListReadiness(context.Background(), "shein")
+	if err != nil {
+		t.Fatalf("ListReadiness returned error: %v", err)
+	}
+	if len(readiness) != 1 {
+		t.Fatalf("expected 1 readiness, got %d", len(readiness))
+	}
+	if readiness[0].Dispatchable {
+		t.Fatal("expected queue depth error to be non-dispatchable")
+	}
+	if readiness[0].Reason != ReasonQueueDepthUnavailable {
+		t.Fatalf("expected %q, got %q", ReasonQueueDepthUnavailable, readiness[0].Reason)
+	}
+}
+
+func TestStoreRuntimeNoCapacityWhenQueuedReachesCapacity(t *testing.T) {
+	auto := true
+	runtime := newFakeStringRuntime()
+	runtime.set("listing:queue:mode:10:20", "store-dedicated", 0)
+	runtime.set("listing:queue:owner:10:20", "node-a", 0)
+	runtime.queueDepth = 2
+
+	service := NewStoreRuntime(fakeStoreSource{stores: []StoreSnapshot{{
+		TenantID:          10,
+		StoreID:           20,
+		Platform:          "shein",
+		Status:            StoreStatusEnabled,
+		EnableAutoListing: &auto,
+	}}}, runtime, StoreRuntimeConfig{
+		MaxQueuedPerStore:    2,
+		OwnerBrowserPoolSize: 4,
+	})
+
+	readiness, err := service.ListReadiness(context.Background(), "shein")
+	if err != nil {
+		t.Fatalf("ListReadiness returned error: %v", err)
+	}
+	if readiness[0].Dispatchable {
+		t.Fatal("expected queued store at capacity to be non-dispatchable")
+	}
+	if readiness[0].Reason != ReasonNoCapacity {
+		t.Fatalf("expected %q, got %q", ReasonNoCapacity, readiness[0].Reason)
+	}
+	if readiness[0].Capacity != 2 {
+		t.Fatalf("expected capacity 2, got %d", readiness[0].Capacity)
+	}
+	if readiness[0].Queued != 2 {
+		t.Fatalf("expected queued 2, got %d", readiness[0].Queued)
+	}
+}
+
+func TestStoreRuntimeMaxQueuedPerStoreNonPositiveUsesOwnerCapacity(t *testing.T) {
+	auto := true
+	runtime := newFakeStringRuntime()
+	runtime.set("listing:queue:mode:10:20", "store-dedicated", 0)
+	runtime.set("listing:queue:owner:10:20", "node-a", 0)
+	runtime.queueDepth = 3
+
+	service := NewStoreRuntime(fakeStoreSource{stores: []StoreSnapshot{{
+		TenantID:          10,
+		StoreID:           20,
+		Platform:          "shein",
+		Status:            StoreStatusEnabled,
+		EnableAutoListing: &auto,
+	}}}, runtime, StoreRuntimeConfig{
+		MaxQueuedPerStore:    0,
+		OwnerBrowserPoolSize: 4,
+	})
+
+	readiness, err := service.ListReadiness(context.Background(), "shein")
+	if err != nil {
+		t.Fatalf("ListReadiness returned error: %v", err)
+	}
+	if len(readiness) != 1 {
+		t.Fatalf("expected 1 readiness, got %d", len(readiness))
+	}
+	if !readiness[0].Dispatchable {
+		t.Fatalf("expected owner capacity to allow dispatch, got reason %q", readiness[0].Reason)
+	}
+	if readiness[0].Capacity != 4 {
+		t.Fatalf("expected owner capacity 4, got %d", readiness[0].Capacity)
+	}
+}
+
 func singleReadiness(t *testing.T, store StoreSnapshot) StoreReadiness {
 	t.Helper()
 	runtime := newFakeStringRuntime()
@@ -250,7 +384,9 @@ func (f fakeStoreSource) ListEnabledAutoListingStores(ctx context.Context, platf
 }
 
 type fakeStringRuntime struct {
-	values map[string]fakeRuntimeValue
+	values        map[string]fakeRuntimeValue
+	queueDepth    int64
+	queueDepthErr error
 }
 
 type fakeRuntimeValue struct {
@@ -288,7 +424,43 @@ func (f *fakeStringRuntime) TTL(ctx context.Context, key string) (time.Duration,
 }
 
 func (f *fakeStringRuntime) QueueDepth(ctx context.Context, tenantID, storeID int64) (int64, error) {
-	return 0, nil
+	if f.queueDepthErr != nil {
+		return 0, f.queueDepthErr
+	}
+	return f.queueDepth, nil
+}
+
+type fakeRuntimeWithoutQueueDepth struct {
+	values map[string]fakeRuntimeValue
+}
+
+func newFakeRuntimeWithoutQueueDepth() *fakeRuntimeWithoutQueueDepth {
+	return &fakeRuntimeWithoutQueueDepth{values: make(map[string]fakeRuntimeValue)}
+}
+
+func (f *fakeRuntimeWithoutQueueDepth) set(key, value string, ttl time.Duration) {
+	f.values[key] = fakeRuntimeValue{value: value, ttl: ttl}
+}
+
+func (f *fakeRuntimeWithoutQueueDepth) Get(ctx context.Context, key string) (string, error) {
+	value, ok := f.values[key]
+	if !ok {
+		return "", ErrRuntimeKeyNotFound
+	}
+	return value.value, nil
+}
+
+func (f *fakeRuntimeWithoutQueueDepth) Exists(ctx context.Context, key string) (bool, error) {
+	_, ok := f.values[key]
+	return ok, nil
+}
+
+func (f *fakeRuntimeWithoutQueueDepth) TTL(ctx context.Context, key string) (time.Duration, error) {
+	value, ok := f.values[key]
+	if !ok {
+		return 0, ErrRuntimeKeyNotFound
+	}
+	return value.ttl, nil
 }
 
 func requireQuotaInvalid(t *testing.T, err error) {

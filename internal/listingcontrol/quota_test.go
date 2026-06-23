@@ -8,7 +8,7 @@ import (
 
 func TestQuotaStructuredRemainingZeroBlocks(t *testing.T) {
 	runtime := newFakeStringRuntime()
-	runtime.set("listing:remaining:quota:v2:10:20", `{"remaining":0,"source":"manual","updatedAt":"2026-06-23T00:00:00Z","expiresAt":"2026-06-24T00:00:00Z"}`, 2*time.Hour)
+	runtime.set("listing:remaining:quota:v2:10:20", `{"remaining":0,"source":"manual","updatedAt":"2026-06-23T00:00:00Z","expiresAt":"2099-06-24T00:00:00Z"}`, 2*time.Hour)
 
 	result, err := NewQuotaService(runtime, QuotaConfig{}).Check(context.Background(), 10, 20)
 	if err != nil {
@@ -32,6 +32,49 @@ func TestQuotaStructuredRemainingZeroBlocks(t *testing.T) {
 	}
 	if result.Source != "manual" {
 		t.Fatalf("expected source manual, got %q", result.Source)
+	}
+}
+
+func TestQuotaStructuredNoTTLIsIgnored(t *testing.T) {
+	runtime := newFakeStringRuntime()
+	runtime.set("listing:remaining:quota:v2:10:20", `{"remaining":0,"source":"manual","updatedAt":"2026-06-23T00:00:00Z","expiresAt":"2099-06-24T00:00:00Z"}`, -1)
+
+	result, err := NewQuotaService(runtime, QuotaConfig{}).Check(context.Background(), 10, 20)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if result.Blocked {
+		t.Fatalf("expected no-TTL structured quota to be ignored, got reason %q", result.Reason)
+	}
+	if result.Reason != ReasonQuotaStale {
+		t.Fatalf("expected %q, got %q", ReasonQuotaStale, result.Reason)
+	}
+	if result.Key != "listing:remaining:quota:v2:10:20" {
+		t.Fatalf("expected structured key, got %q", result.Key)
+	}
+	if result.TTL != -1 {
+		t.Fatalf("expected no-TTL marker -1, got %v", result.TTL)
+	}
+}
+
+func TestQuotaStructuredExpiredExpiresAtIsIgnored(t *testing.T) {
+	runtime := newFakeStringRuntime()
+	runtime.set("listing:remaining:quota:v2:10:20", `{"remaining":0,"source":"manual","updatedAt":"2026-06-23T00:00:00Z","expiresAt":"2020-06-24T00:00:00Z"}`, 2*time.Hour)
+
+	result, err := NewQuotaService(runtime, QuotaConfig{}).Check(context.Background(), 10, 20)
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+
+	if result.Blocked {
+		t.Fatalf("expected expired structured quota to be ignored, got reason %q", result.Reason)
+	}
+	if result.Reason != ReasonQuotaStale {
+		t.Fatalf("expected %q, got %q", ReasonQuotaStale, result.Reason)
+	}
+	if result.TTL != 2*time.Hour {
+		t.Fatalf("expected TTL 2h, got %v", result.TTL)
 	}
 }
 
