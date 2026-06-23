@@ -48,6 +48,7 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
+  projectItemizedFailedRetryRequest,
   projectItemizedTaskCreationProgress,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
@@ -1623,13 +1624,13 @@ export function SheinStudioWorkbench({
   }
 
   async function handleRetryFailedItem(itemId: string) {
-    if (!activeBatchId || !itemizedBatchDetail) {
-      return;
-    }
-    const failedEntry = itemizedBatchDetail.items.find(
-      (entry) => entry.item.id === itemId && entry.item.status === "failed",
-    );
-    if (!failedEntry) {
+    const retryRequest = projectItemizedFailedRetryRequest({
+      activeBatchId,
+      currentActiveBatch,
+      detail: itemizedBatchDetail,
+      itemId,
+    });
+    if (!retryRequest) {
       return;
     }
 
@@ -1640,14 +1641,18 @@ export function SheinStudioWorkbench({
     workbenchController.setField("creatingWarning", "");
 
     try {
-      const batchTenantId =
-        itemizedBatchDetail.batch.tenantId?.trim() ??
-        currentActiveBatch?.tenantId?.trim();
-      const nextDetail = batchTenantId
-        ? await retrySheinStudioBatchItems(activeBatchId, [itemId], {
-            tenantId: batchTenantId,
-          })
-        : await retrySheinStudioBatchItems(activeBatchId, [itemId]);
+      const nextDetail = retryRequest.tenantId
+        ? await retrySheinStudioBatchItems(
+            retryRequest.batchId,
+            retryRequest.itemIds,
+            {
+              tenantId: retryRequest.tenantId,
+            },
+          )
+        : await retrySheinStudioBatchItems(
+            retryRequest.batchId,
+            retryRequest.itemIds,
+          );
       applyItemizedBatchDetail(nextDetail);
       if (
         nextDetail.batch.status === "generating" ||

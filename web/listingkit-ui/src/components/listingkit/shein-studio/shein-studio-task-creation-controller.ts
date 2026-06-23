@@ -69,6 +69,13 @@ type ItemizedTaskCreationProgressInput = {
   isCreatingTasks: boolean;
 };
 
+type ItemizedFailedRetryRequestInput = {
+  activeBatchId: string;
+  currentActiveBatch?: Partial<SheinStudioSavedBatch> | null;
+  detail?: SheinStudioBatchDetail | null;
+  itemId: string;
+};
+
 type ItemizedTaskCreationProgress =
   | {
       completionSignature: string;
@@ -177,6 +184,34 @@ export function projectItemizedTaskCreationProgress({
       title: "SHEIN 资料创建完成",
       type: "success",
     },
+  };
+}
+
+export function projectItemizedFailedRetryRequest({
+  activeBatchId,
+  currentActiveBatch,
+  detail,
+  itemId,
+}: ItemizedFailedRetryRequestInput): {
+  batchId: string;
+  itemIds: string[];
+  tenantId?: string;
+} | null {
+  if (!activeBatchId || !detail) {
+    return null;
+  }
+  const failedEntry = detail.items.find(
+    (entry) => entry.item.id === itemId && entry.item.status === "failed",
+  );
+  if (!failedEntry) {
+    return null;
+  }
+  const tenantId =
+    detail.batch.tenantId?.trim() || currentActiveBatch?.tenantId?.trim();
+  return {
+    batchId: activeBatchId,
+    itemIds: [itemId],
+    tenantId: tenantId || undefined,
   };
 }
 

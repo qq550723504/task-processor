@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   projectItemizedBatchDetail,
+  projectItemizedFailedRetryRequest,
   projectItemizedTaskCreationProgress,
   projectItemizedTaskCreationResult,
   useSheinStudioItemizedBatchContext,
@@ -304,6 +305,77 @@ describe("projectItemizedTaskCreationProgress", () => {
         title: "SHEIN 资料创建失败",
         type: "error",
       },
+    });
+  });
+});
+
+describe("projectItemizedFailedRetryRequest", () => {
+  it("returns null without an active batch or detail", () => {
+    expect(
+      projectItemizedFailedRetryRequest({
+        activeBatchId: "",
+        currentActiveBatch: buildCurrentBatch(),
+        detail: buildCurrentDetail(),
+        itemId: "item-1",
+      }),
+    ).toBeNull();
+    expect(
+      projectItemizedFailedRetryRequest({
+        activeBatchId: "batch-1",
+        currentActiveBatch: buildCurrentBatch(),
+        detail: null,
+        itemId: "item-1",
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when the item is not failed", () => {
+    expect(
+      projectItemizedFailedRetryRequest({
+        activeBatchId: "batch-1",
+        currentActiveBatch: buildCurrentBatch(),
+        detail: buildCurrentDetail(),
+        itemId: "item-1",
+      }),
+    ).toBeNull();
+  });
+
+  it("projects retry request for a failed item and prefers detail tenant id", () => {
+    expect(
+      projectItemizedFailedRetryRequest({
+        activeBatchId: "batch-1",
+        currentActiveBatch: {
+          ...buildCurrentBatch(),
+          tenantId: "tenant-active",
+        },
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            tenantId: "tenant-detail",
+          },
+          items: [
+            {
+              item: {
+                id: "item-1",
+                batchId: "batch-1",
+                status: "failed",
+                targetGroupKey: "group-1",
+                targetGroupLabel: "Group 1",
+                selectionCount: 1,
+                createdAt: "2026-06-22T00:00:00.000Z",
+                updatedAt: "2026-06-22T00:00:00.000Z",
+              },
+              designs: [],
+            },
+          ],
+        },
+        itemId: "item-1",
+      }),
+    ).toEqual({
+      batchId: "batch-1",
+      itemIds: ["item-1"],
+      tenantId: "tenant-detail",
     });
   });
 });
