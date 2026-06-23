@@ -18,6 +18,7 @@ import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/sh
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
 import {
   buildSheinStudioDraftPersistenceState,
+  projectLocalDraftRecovery,
   resetDedicatedBatchPromptOverrides,
   useSheinStudioDedicatedDraftPersistence,
 } from "@/components/listingkit/shein-studio/shein-studio-persistence-controller";
@@ -58,7 +59,6 @@ import {
   getItemizedBatchPendingTaskDesignIDs,
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
-  mergeSheinStudioDraftState,
   projectWorkbenchStateToSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
@@ -1329,35 +1329,27 @@ export function SheinStudioWorkbench({
       recentBatchOpenRequestVersionRef.current = requestVersion;
       const targetStep = stepForRecentBatchAction(action);
       if (summary.source === "local_draft" && localDraftSnapshot) {
-        const draftState = mergeSheinStudioDraftState({
+        const recovery = projectLocalDraftRecovery({
           draft: localDraftSnapshot,
         });
         hasLocalWorkflowStateRef.current = true;
         hasCustomizedSdsSelectionRef.current =
-          draftState.hasCustomizedSdsSelection;
-        workbenchController.applyDraft({
-          prompt: draftState.prompt,
-          promptMode: draftState.promptMode,
-          styleCount: draftState.styleCount,
-          variationIntensity: draftState.variationIntensity,
-          productImageCount: draftState.productImageCount,
-          productImagePrompt: draftState.productImagePrompt,
-          productImagePrompts: draftState.productImagePrompts,
-          artworkModel: draftState.artworkModel,
-          transparentBackground: draftState.transparentBackground,
-          sheinStoreId: draftState.sheinStoreId,
-          imageStrategy: draftState.imageStrategy,
-          groupedImageMode: draftState.groupedImageMode,
-          selectedSdsImages: draftState.selectedSdsImages,
-          groups: draftState.groups,
-          groupedSelections: draftState.groupedSelections,
-          renderSizeImagesWithSds: draftState.renderSizeImagesWithSds,
-        });
-        workbenchController.setField("designs", draftState.designs);
-        workbenchController.setField("selectedIds", draftState.selectedIds);
-        workbenchController.setField("createdTasks", draftState.createdTasks);
-        workbenchController.setField("generationJobs", draftState.generationJobs);
-        workbenchController.setField("generationError", draftState.generationError);
+          recovery.hasCustomizedSdsSelection;
+        workbenchController.applyDraft(recovery.applyDraftInput);
+        workbenchController.setField("designs", recovery.resultFields.designs);
+        workbenchController.setField("selectedIds", recovery.resultFields.selectedIds);
+        workbenchController.setField(
+          "createdTasks",
+          recovery.resultFields.createdTasks,
+        );
+        workbenchController.setField(
+          "generationJobs",
+          recovery.resultFields.generationJobs,
+        );
+        workbenchController.setField(
+          "generationError",
+          recovery.resultFields.generationError,
+        );
         setEffectiveStep(targetStep);
         return;
       }

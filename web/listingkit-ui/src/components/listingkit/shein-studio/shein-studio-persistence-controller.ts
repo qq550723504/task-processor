@@ -2,6 +2,7 @@ import { useCallback } from "react";
 
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
 import { saveLocalSheinStudioDraftSnapshot } from "@/lib/shein-studio/local-draft-cache";
+import { mergeSheinStudioDraftState } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type {
   SheinStudioArtworkModel,
   SheinStudioCreatedTask,
@@ -13,6 +14,7 @@ import type {
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
   SheinStudioVariationIntensity,
+  SheinStudioDraft,
 } from "@/lib/types/shein-studio";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
@@ -40,6 +42,10 @@ type DedicatedDraftPersistenceParams = {
   initialBatchId?: string;
   saveLocalSnapshot?: typeof saveLocalSheinStudioDraftSnapshot;
   selectedIds: string[];
+};
+
+type LocalDraftRecoveryParams = {
+  draft: SheinStudioDraft;
 };
 
 type DraftPersistenceProjectionParams = {
@@ -140,6 +146,38 @@ export function buildSheinStudioDraftPersistenceState({
     styleCount,
     transparentBackground,
     variationIntensity,
+  };
+}
+
+export function projectLocalDraftRecovery({ draft }: LocalDraftRecoveryParams) {
+  const draftState = mergeSheinStudioDraftState({ draft });
+  return {
+    applyDraftInput: {
+      prompt: draftState.prompt,
+      promptMode: draftState.promptMode,
+      styleCount: draftState.styleCount,
+      variationIntensity: draftState.variationIntensity,
+      productImageCount: draftState.productImageCount,
+      productImagePrompt: draftState.productImagePrompt,
+      productImagePrompts: draftState.productImagePrompts,
+      artworkModel: draftState.artworkModel,
+      transparentBackground: draftState.transparentBackground,
+      sheinStoreId: draftState.sheinStoreId,
+      imageStrategy: draftState.imageStrategy,
+      groupedImageMode: draftState.groupedImageMode,
+      selectedSdsImages: draftState.selectedSdsImages,
+      groups: draftState.groups,
+      groupedSelections: draftState.groupedSelections,
+      renderSizeImagesWithSds: draftState.renderSizeImagesWithSds,
+    },
+    hasCustomizedSdsSelection: draftState.hasCustomizedSdsSelection,
+    resultFields: {
+      designs: draftState.designs,
+      selectedIds: draftState.selectedIds,
+      createdTasks: draftState.createdTasks,
+      generationJobs: draftState.generationJobs,
+      generationError: draftState.generationError,
+    },
   };
 }
 

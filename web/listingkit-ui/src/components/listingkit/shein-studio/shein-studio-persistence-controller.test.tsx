@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   buildSheinStudioDraftPersistenceState,
+  projectLocalDraftRecovery,
   resetDedicatedBatchPromptOverrides,
   useSheinStudioDedicatedDraftPersistence,
 } from "@/components/listingkit/shein-studio/shein-studio-persistence-controller";
@@ -165,5 +166,50 @@ describe("buildSheinStudioDraftPersistenceState", () => {
     });
     expect(state.setDraftWarning).toBe(setDraftWarning);
     expect(state.setPersistedUpdatedAt).toBe(setPersistedUpdatedAt);
+  });
+});
+
+describe("projectLocalDraftRecovery", () => {
+  it("projects a recoverable local draft into workbench draft and result fields", () => {
+    const recovery = projectLocalDraftRecovery({
+      draft: {
+        prompt: "local prompt",
+        promptMode: "raw",
+        styleCount: "3",
+        sheinStoreId: "store-1",
+        imageStrategy: "hybrid",
+        groupedImageMode: "shared_by_size",
+        selectedSdsImages: [{ imageUrl: "https://example.test/size.jpg" }],
+        renderSizeImagesWithSds: true,
+        designs: [{ id: "design-1" }],
+        selectedIds: ["design-1"],
+        createdTasks: [
+          { id: "task-1", title: "Task 1", designId: "design-1" },
+        ],
+        generationJobs: [{ jobId: "job-1", status: "running" }],
+        generationError: "warning",
+        groups: [],
+        groupedSelections: [],
+        updatedAt: "2026-06-24T00:00:00.000Z",
+      },
+    });
+
+    expect(recovery.applyDraftInput).toEqual(
+      expect.objectContaining({
+        prompt: "local prompt",
+        promptMode: "raw",
+        selectedSdsImages: [{ imageUrl: "https://example.test/size.jpg" }],
+        sheinStoreId: "store-1",
+        styleCount: "3",
+      }),
+    );
+    expect(recovery.resultFields).toEqual({
+      createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+      designs: [{ id: "design-1" }],
+      generationError: "warning",
+      generationJobs: [{ jobId: "job-1", status: "running" }],
+      selectedIds: ["design-1"],
+    });
+    expect(recovery.hasCustomizedSdsSelection).toBe(true);
   });
 });
