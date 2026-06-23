@@ -347,12 +347,16 @@ func (r *GormImportTaskRepository) RecoverTimedOutProcessingTasks(ctx context.Co
 	if remark == "" {
 		remark = fmt.Sprintf("Recovered after processing timeout watchdog (%d minutes)", timeoutMinutes)
 	}
+	timeoutBefore := recovery.TimeoutBefore
+	if timeoutBefore.IsZero() {
+		timeoutBefore = time.Now().Add(-time.Duration(timeoutMinutes) * time.Minute)
+	}
 	res := r.db.WithContext(ctx).
 		Table("listing_product_import_task").
 		Where("deleted = 0").
 		Where("id IN ?", ids).
 		Where("status = ?", model.TaskStatusProcessing.Int16()).
-		Where("update_time < ?", time.Now().Add(-time.Duration(timeoutMinutes)*time.Minute)).
+		Where("update_time < ?", timeoutBefore).
 		Updates(map[string]any{
 			"status":        model.TaskStatusPendingRetry.Int16(),
 			"error_message": recovery.ErrorMessage,
@@ -421,12 +425,16 @@ func (r *GormImportTaskRepository) RecoverStaleQueuedTasks(ctx context.Context, 
 	if remark == "" {
 		remark = fmt.Sprintf("Recovered from stale queued state by scheduler watchdog (%d minutes)", timeoutMinutes)
 	}
+	timeoutBefore := recovery.TimeoutBefore
+	if timeoutBefore.IsZero() {
+		timeoutBefore = time.Now().Add(-time.Duration(timeoutMinutes) * time.Minute)
+	}
 	res := r.db.WithContext(ctx).
 		Table("listing_product_import_task").
 		Where("deleted = 0").
 		Where("id IN ?", ids).
 		Where("status = ?", model.TaskStatusQueued.Int16()).
-		Where("update_time < ?", time.Now().Add(-time.Duration(timeoutMinutes)*time.Minute)).
+		Where("update_time < ?", timeoutBefore).
 		Updates(map[string]any{
 			"status":          model.TaskStatusPending.Int16(),
 			"processing_node": "",

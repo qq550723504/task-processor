@@ -216,6 +216,52 @@ func TestGormImportTaskRepositoryRecoversTimedOutProcessingTasks(t *testing.T) {
 	}
 }
 
+func TestGormImportTaskRepositoryRecoverTimedOutProcessingTasksUsesExplicitCutoff(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingProductImportTask{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	now := time.Now()
+	listedByCoordinator := now.Add(-15 * time.Minute)
+	explicitCutoff := now.Add(-10 * time.Minute)
+	row := listingProductImportTask{
+		ID:         151,
+		TenantID:   10,
+		StoreID:    976,
+		Platform:   "shein",
+		Region:     "us",
+		ProductID:  "listed-by-injected-clock",
+		Status:     model.TaskStatusProcessing.Int16(),
+		Priority:   10,
+		CreateTime: &listedByCoordinator,
+		UpdateTime: &listedByCoordinator,
+		Deleted:    0,
+	}
+	if err := db.Table("listing_product_import_task").Create(&row).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+
+	repo := NewGormImportTaskRepository(db)
+	recovered, err := repo.RecoverTimedOutProcessingTasks(context.Background(), []int64{151}, ProcessingTimeoutRecovery{
+		TimeoutMinutes: 30,
+		TimeoutBefore:  explicitCutoff,
+		ReasonCode:     "PROCESSING_TIMEOUT",
+		Stage:          "processing_timeout_recovery",
+	})
+	if err != nil {
+		t.Fatalf("RecoverTimedOutProcessingTasks() error = %v", err)
+	}
+	if recovered != 1 {
+		t.Fatalf("recovered = %d, want 1 using explicit cutoff", recovered)
+	}
+}
+
 func TestGormImportTaskRepositoryRecoversStaleQueuedTasks(t *testing.T) {
 	t.Parallel()
 
@@ -278,5 +324,52 @@ func TestGormImportTaskRepositoryRecoversStaleQueuedTasks(t *testing.T) {
 	}
 	if task == nil || task.Status != model.TaskStatusQueued.Int16() || task.ProcessingNode != "dispatch-token-202" {
 		t.Fatalf("fresh queued task = %+v, want still queued with processing node preserved", task)
+	}
+}
+
+func TestGormImportTaskRepositoryRecoverStaleQueuedTasksUsesExplicitCutoff(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingProductImportTask{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	now := time.Now()
+	listedByCoordinator := now.Add(-60 * time.Minute)
+	explicitCutoff := now.Add(-30 * time.Minute)
+	row := listingProductImportTask{
+		ID:             251,
+		TenantID:       10,
+		StoreID:        976,
+		Platform:       "shein",
+		Region:         "us",
+		ProductID:      "queued-by-injected-clock",
+		Status:         model.TaskStatusQueued.Int16(),
+		ProcessingNode: "dispatch-token-251",
+		Priority:       10,
+		CreateTime:     &listedByCoordinator,
+		UpdateTime:     &listedByCoordinator,
+		Deleted:        0,
+	}
+	if err := db.Table("listing_product_import_task").Create(&row).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+
+	repo := NewGormImportTaskRepository(db)
+	recovered, err := repo.RecoverStaleQueuedTasks(context.Background(), []int64{251}, StaleQueuedRecovery{
+		TimeoutMinutes: 120,
+		TimeoutBefore:  explicitCutoff,
+		ReasonCode:     "STALE_QUEUED",
+		Stage:          "queued_timeout_recovery",
+	})
+	if err != nil {
+		t.Fatalf("RecoverStaleQueuedTasks() error = %v", err)
+	}
+	if recovered != 1 {
+		t.Fatalf("recovered = %d, want 1 using explicit cutoff", recovered)
 	}
 }

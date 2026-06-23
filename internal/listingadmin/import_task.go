@@ -90,6 +90,7 @@ type ImportTaskRepository interface {
 
 type ProcessingTimeoutRecovery struct {
 	TimeoutMinutes int
+	TimeoutBefore  time.Time
 	ErrorMessage   string
 	ReasonCode     string
 	Stage          string
@@ -98,6 +99,7 @@ type ProcessingTimeoutRecovery struct {
 
 type StaleQueuedRecovery struct {
 	TimeoutMinutes int
+	TimeoutBefore  time.Time
 	ErrorMessage   string
 	ReasonCode     string
 	Stage          string

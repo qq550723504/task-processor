@@ -71,6 +71,7 @@ func TestRecoveryCoordinatorProcessingTimeoutCountsListsAndRecoversSelectedTasks
 	}
 	wantRemark := "Recovered after processing timeout by listing control plane (45 minutes)"
 	if repo.processingRecovery.TimeoutMinutes != 45 ||
+		!repo.processingRecovery.TimeoutBefore.Equal(now.Add(-45*time.Minute)) ||
 		repo.processingRecovery.ErrorMessage != "Task processing lease expired, recovered by listing control plane" ||
 		repo.processingRecovery.ReasonCode != "PROCESSING_TIMEOUT" ||
 		repo.processingRecovery.Stage != "processing_timeout_recovery" ||
@@ -121,6 +122,7 @@ func TestRecoveryCoordinatorStaleQueuedCountsListsAndRecoversSelectedTasks(t *te
 	}
 	wantRemark := "Recovered from stale queued state by listing control plane (90 minutes)"
 	if repo.staleRecovery.TimeoutMinutes != 90 ||
+		!repo.staleRecovery.TimeoutBefore.Equal(now.Add(-90*time.Minute)) ||
 		repo.staleRecovery.ErrorMessage != "Task stayed queued too long, recovered by listing control plane" ||
 		repo.staleRecovery.ReasonCode != "STALE_QUEUED" ||
 		repo.staleRecovery.Stage != "queued_timeout_recovery" ||
@@ -442,11 +444,17 @@ func TestRecoveryCoordinatorAppliesDefaultMinutesAndLimits(t *testing.T) {
 	if repo.processingRecovery.TimeoutMinutes != 30 {
 		t.Fatalf("processing recovery timeout = %d, want 30", repo.processingRecovery.TimeoutMinutes)
 	}
+	if !repo.processingRecovery.TimeoutBefore.Equal(now.Add(-30 * time.Minute)) {
+		t.Fatalf("processing recovery cutoff = %v, want now-30m", repo.processingRecovery.TimeoutBefore)
+	}
 	if repo.listStaleLimit != 500 || !repo.listStaleBefore.Equal(now.Add(-120*time.Minute)) {
 		t.Fatalf("stale before=%v limit=%d, want now-120m limit 500", repo.listStaleBefore, repo.listStaleLimit)
 	}
 	if repo.staleRecovery.TimeoutMinutes != 120 {
 		t.Fatalf("stale recovery timeout = %d, want 120", repo.staleRecovery.TimeoutMinutes)
+	}
+	if !repo.staleRecovery.TimeoutBefore.Equal(now.Add(-120 * time.Minute)) {
+		t.Fatalf("stale recovery cutoff = %v, want now-120m", repo.staleRecovery.TimeoutBefore)
 	}
 }
 

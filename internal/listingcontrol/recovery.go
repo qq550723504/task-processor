@@ -109,6 +109,7 @@ func (c *RecoveryCoordinator) recoverProcessingTimeout(ctx context.Context, now 
 
 	recovered, err := cfg.Repository.RecoverTimedOutProcessingTasks(ctx, summary.ProcessingTaskIDs, listingadmin.ProcessingTimeoutRecovery{
 		TimeoutMinutes: cfg.ProcessingTimeoutMinutes,
+		TimeoutBefore:  timeoutBefore,
 		ErrorMessage:   "Task processing lease expired, recovered by listing control plane",
 		ReasonCode:     "PROCESSING_TIMEOUT",
 		Stage:          "processing_timeout_recovery",
@@ -142,6 +143,7 @@ func (c *RecoveryCoordinator) recoverStaleQueued(ctx context.Context, now time.T
 
 	recovered, err := cfg.Repository.RecoverStaleQueuedTasks(ctx, summary.StaleQueuedTaskIDs, listingadmin.StaleQueuedRecovery{
 		TimeoutMinutes: cfg.StaleQueuedTimeoutMinutes,
+		TimeoutBefore:  timeoutBefore,
 		ErrorMessage:   "Task stayed queued too long, recovered by listing control plane",
 		ReasonCode:     "STALE_QUEUED",
 		Stage:          "queued_timeout_recovery",
