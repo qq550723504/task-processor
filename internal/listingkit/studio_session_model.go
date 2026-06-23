@@ -51,6 +51,7 @@ type SheinStudioSession struct {
 	SelectedVariantIDs      SheinStudioInt64List              `json:"selected_variant_ids,omitempty" gorm:"type:text"`
 	Selection               SheinStudioSelectionSnapshot      `json:"selection,omitempty" gorm:"type:text"`
 	Prompt                  string                            `json:"prompt,omitempty" gorm:"type:text"`
+	PromptMode              string                            `json:"prompt_mode,omitempty" gorm:"type:varchar(16)"`
 	StyleCount              string                            `json:"style_count,omitempty" gorm:"type:varchar(32)"`
 	VariationIntensity      string                            `json:"variation_intensity,omitempty" gorm:"type:varchar(16)"`
 	ProductImageCount       string                            `json:"product_image_count,omitempty" gorm:"type:varchar(32)"`

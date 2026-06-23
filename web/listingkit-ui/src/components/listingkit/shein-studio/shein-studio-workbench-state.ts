@@ -27,6 +27,7 @@ import type {
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
+  SheinStudioPromptMode,
   SheinStudioSavedBatch,
   SheinStudioSelectedSDSImage,
   SheinStudioVariationIntensity,
@@ -35,6 +36,7 @@ import type {
 export type SheinStudioWorkbenchState = {
   selection?: SDSProductVariantSelection;
   prompt: string;
+  promptMode: SheinStudioPromptMode;
   styleCount: string;
   variationIntensity: SheinStudioVariationIntensity;
   productImageCount: string;
@@ -90,6 +92,7 @@ export type SheinStudioWorkbenchStateUpdater<
 export type SheinStudioWorkbenchDraftPatch = Partial<Pick<
   SheinStudioWorkbenchState,
   | "prompt"
+  | "promptMode"
   | "selection"
   | "styleCount"
   | "variationIntensity"
@@ -149,6 +152,7 @@ export type SheinStudioWorkbenchAction =
 export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchState {
   return {
     prompt: "",
+    promptMode: "managed",
     selection: undefined,
     styleCount: "1",
     variationIntensity: DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,

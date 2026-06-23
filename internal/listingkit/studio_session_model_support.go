@@ -95,6 +95,7 @@ type UpsertStudioBatchRequest struct {
 	ExpectedUpdatedAt       string                          `json:"expected_updated_at,omitempty"`
 	BatchName               string                          `json:"batch_name,omitempty"`
 	Prompt                  string                          `json:"prompt"`
+	PromptMode              string                          `json:"prompt_mode,omitempty"`
 	StyleCount              string                          `json:"style_count,omitempty"`
 	VariationIntensity      string                          `json:"variation_intensity,omitempty"`
 	ProductImageCount       string                          `json:"product_image_count,omitempty"`
@@ -120,6 +121,7 @@ type SheinStudioBatchListItem struct {
 	BatchName               string                          `json:"batch_name,omitempty"`
 	Status                  string                          `json:"status,omitempty"`
 	Prompt                  string                          `json:"prompt,omitempty"`
+	PromptMode              string                          `json:"prompt_mode,omitempty"`
 	StyleCount              string                          `json:"style_count,omitempty"`
 	VariationIntensity      string                          `json:"variation_intensity,omitempty"`
 	ProductImageCount       string                          `json:"product_image_count,omitempty"`

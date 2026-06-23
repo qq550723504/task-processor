@@ -108,6 +108,15 @@ func (r *TaskProcessorRegistry) GetAllHandlers() map[string]rabbitmq.MessageHand
 	return handlers
 }
 
+func (r *TaskProcessorRegistry) GetAllProcessors() map[string]worker.Processor {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	processors := make(map[string]worker.Processor, len(r.processors))
+	maps.Copy(processors, r.processors)
+	return processors
+}
+
 // GetQueueName returns the queue name for a platform.
 func (r *TaskProcessorRegistry) GetQueueName(platform string) string {
 	return apptask.NewMessageAdapter().GetQueueName(platform)

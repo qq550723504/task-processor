@@ -57,8 +57,30 @@ type ImportTaskRepository interface {
 	BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) ([]ImportTask, error)
 	GetImportTaskByID(ctx context.Context, id int64) (*ImportTask, error)
 	ListPendingAndRetryTasks(ctx context.Context, limit int, tenantID int64, storeIDs []int64) ([]ImportTask, error)
+	CountTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time) (int64, error)
+	ListTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time, limit int) ([]ImportTask, error)
+	RecoverTimedOutProcessingTasks(ctx context.Context, ids []int64, recovery ProcessingTimeoutRecovery) (int, error)
+	CountStaleQueuedTasks(ctx context.Context, timeoutBefore time.Time) (int64, error)
+	ListStaleQueuedTasks(ctx context.Context, timeoutBefore time.Time, limit int) ([]ImportTask, error)
+	RecoverStaleQueuedTasks(ctx context.Context, ids []int64, recovery StaleQueuedRecovery) (int, error)
 	UpdateImportTaskStatus(ctx context.Context, req *api.ProductImportTaskUpdateReqDTO) (bool, error)
 	DeleteImportTask(ctx context.Context, tenantID, id int64) error
+}
+
+type ProcessingTimeoutRecovery struct {
+	TimeoutMinutes int
+	ErrorMessage   string
+	ReasonCode     string
+	Stage          string
+	Remark         string
+}
+
+type StaleQueuedRecovery struct {
+	TimeoutMinutes int
+	ErrorMessage   string
+	ReasonCode     string
+	Stage          string
+	Remark         string
 }
 
 type listingProductImportTask struct {

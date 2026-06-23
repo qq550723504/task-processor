@@ -48,6 +48,7 @@ type ApprovedDesignSelectionInput =
 
 type CreateGroupedSheinReviewTasksInput = {
   prompt: string;
+  promptMode?: "managed" | "raw";
   imageStrategy?: SheinStudioImageStrategy;
   groupedImageMode?: SheinStudioGroupedImageMode;
   selectedSdsImages?: SheinStudioSelectedSDSImage[];
@@ -245,6 +246,7 @@ export function resolveApprovedSheinStudioReviewDesigns(
 
 export async function createSheinReviewTasks(input: {
   prompt: string;
+  promptMode?: "managed" | "raw";
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   selectedSdsImages?: SheinStudioSelectedSDSImage[];
@@ -263,6 +265,7 @@ export async function createSheinReviewTasks(input: {
     productImagePrompt,
     productImagePrompts,
     prompt,
+    promptMode,
     renderSizeImagesWithSds = true,
     selection,
     sheinStoreId,
@@ -312,6 +315,7 @@ export async function createSheinReviewTasks(input: {
       );
       const generatedProductImages = await generateSheinStudioProductImages({
         prompt: prompt.trim(),
+        promptMode,
         productName: sdsMetadata.product_name ?? selection.productName,
         categoryPath: sdsMetadata.category_path,
         styleName,
@@ -351,6 +355,7 @@ export async function createSheinReviewTasks(input: {
           );
           const generatedVariantImages = await generateSheinStudioProductImages({
             prompt: prompt.trim(),
+            promptMode,
             productName: sdsMetadata.product_name ?? selection.productName,
             categoryPath: sdsMetadata.category_path,
             styleName: `${styleName} ${colorLabel}`,
@@ -476,6 +481,7 @@ export async function createGroupedSheinReviewTasks(
 
       const tasks = await createReviewTasks({
         prompt: input.prompt,
+        promptMode: input.promptMode,
         sheinStoreId: group.sheinStoreId,
         imageStrategy: input.imageStrategy,
         selectedSdsImages: input.selectedSdsImages,

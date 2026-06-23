@@ -64,6 +64,7 @@ export function useSheinStudioTaskCreationAction({
   productImagePrompt,
   productImagePrompts,
   prompt,
+  promptMode,
   renderSizeImagesWithSds,
   selectedIds,
   selectedSdsImages,
@@ -90,6 +91,7 @@ export function useSheinStudioTaskCreationAction({
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
   prompt: string;
+  promptMode?: "managed" | "raw";
   renderSizeImagesWithSds: boolean;
   selectedIds: string[];
   selectedSdsImages: SheinStudioSelectedSDSImage[];
@@ -219,6 +221,7 @@ export function useSheinStudioTaskCreationAction({
           productImagePrompt,
           productImagePrompts,
           prompt,
+          promptMode,
           renderSizeImagesWithSds,
           selectedSdsImages,
           setCreatedTasks,

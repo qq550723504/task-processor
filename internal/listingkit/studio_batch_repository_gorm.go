@@ -85,6 +85,7 @@ func (r *GormStudioBatchRepository) ReplaceStudioBatchGenerationGraph(ctx contex
 				Updates(map[string]any{
 					"status":                 batchRow.Status,
 					"prompt":                 batchRow.Prompt,
+					"prompt_mode":            batchRow.PromptMode,
 					"grouped_image_mode":     batchRow.GroupedImageMode,
 					"selection":              batchRow.Selection,
 					"grouped_selections":     batchRow.GroupedSelections,

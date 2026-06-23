@@ -43,6 +43,7 @@ type StudioBatchDraftRecordResponse = {
   status?: StudioBatchDraftStatus;
   selection?: Record<string, unknown>;
   prompt?: string;
+  prompt_mode?: "managed" | "raw";
   style_count?: string;
   variation_intensity?: SheinStudioVariationIntensity;
   product_image_count?: string;
@@ -110,6 +111,7 @@ type StudioBatchListResponse = {
     batch_name?: string;
     status?: StudioBatchDraftStatus;
     prompt?: string;
+    prompt_mode?: "managed" | "raw";
     style_count?: string;
     variation_intensity?: SheinStudioVariationIntensity;
     product_image_count?: string;
@@ -194,6 +196,7 @@ export async function upsertSheinStudioBatchDraft(
         expected_updated_at: input.expectedUpdatedAt,
         batch_name: batchName,
         prompt: input.prompt,
+        prompt_mode: input.promptMode,
         style_count: input.styleCount,
         variation_intensity: input.variationIntensity,
         product_image_count: input.productImageCount,
@@ -306,6 +309,7 @@ export function mapStudioBatchDraftDetailToDraft(
 
   return normalizeDraft({
     prompt: detail.batch.prompt ?? "",
+    promptMode: detail.batch.prompt_mode ?? "managed",
     styleCount: detail.batch.style_count ?? "1",
     variationIntensity: detail.batch.variation_intensity ?? "medium",
     productImageCount: detail.batch.product_image_count ?? "5",
@@ -438,6 +442,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     tenantId: item.tenant_id?.trim() || undefined,
     name: item.batch_name ?? deriveBatchName(item.prompt ?? ""),
     prompt: item.prompt ?? "",
+    promptMode: item.prompt_mode ?? "managed",
     styleCount: item.style_count ?? "1",
     variationIntensity: item.variation_intensity ?? "medium",
     productImageCount: item.product_image_count ?? "5",
@@ -640,6 +645,7 @@ function groupedWorkspaceToPayload(group: SheinStudioPersistedGroupedWorkspace) 
     selected_sds_images: group.selectedSdsImages,
     render_size_images_with_sds: group.renderSizeImagesWithSds,
     current_prompt: group.currentPrompt,
+    prompt_mode: group.promptMode,
     prompt_history: group.promptHistory.map((entry) => ({
       prompt: entry.prompt,
       grouped_image_mode: entry.groupedImageMode,
@@ -996,6 +1002,10 @@ function normalizeGroupsResponse(
         id,
         name,
         currentPrompt,
+        promptMode:
+          group.prompt_mode === "raw" || group.promptMode === "raw"
+            ? "raw"
+            : "managed",
         promptHistory: normalizePromptHistoryResponse(
           (group.prompt_history ?? group.promptHistory) as Array<Record<string, unknown>> | undefined,
         ),

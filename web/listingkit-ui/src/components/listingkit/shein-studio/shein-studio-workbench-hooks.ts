@@ -69,6 +69,7 @@ type WorkbenchDraftState = {
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
   prompt: string;
+  promptMode: "managed" | "raw";
   regeneratingId: string;
   renderSizeImagesWithSds: boolean;
   groupedSelections: GroupedSDSSelectionEligibility[];
@@ -178,6 +179,7 @@ export function useSheinStudioDraftPersistence(
       buildSheinStudioDraftInput({
         updatedAt: state.persistedUpdatedAt,
         prompt: state.prompt,
+        promptMode: state.promptMode,
         styleCount: state.styleCount,
         variationIntensity: state.variationIntensity,
         productImageCount: state.productImageCount,

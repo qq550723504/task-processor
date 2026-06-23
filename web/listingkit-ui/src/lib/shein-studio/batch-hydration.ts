@@ -65,6 +65,7 @@ function mergeDedicatedBatchWithLocalSnapshot(
       ...savedBatch,
       prompt:
         promptOverride ?? pickLocalStringValue(localDraft.prompt, savedBatch.prompt),
+      promptMode: localDraft.promptMode ?? savedBatch.promptMode,
       styleCount: pickLocalStringValue(localDraft.styleCount, savedBatch.styleCount),
       variationIntensity:
         localDraft.variationIntensity ?? savedBatch.variationIntensity,

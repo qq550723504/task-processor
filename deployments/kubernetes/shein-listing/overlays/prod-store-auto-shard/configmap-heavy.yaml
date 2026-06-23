@@ -16,10 +16,10 @@ data:
       timeout: 1800
 
     worker:
-      concurrency: 3
+      concurrency: 6
       bufferSize: 30
       taskInterval: 50
-      maxFetchPerCycle: 3
+      maxFetchPerCycle: 6
       queueThreshold: 75
       cleanupInterval: 1800
       taskTimeout: 2400
@@ -44,7 +44,7 @@ data:
       enabled: true
       headless: true
       browserPath: "/opt/fingerprint-chrome/chrome-144/chrome"
-      poolSize: 4
+      poolSize: 8
       viewportWidth: 1920
       viewportHeight: 1080
       proxyServer: ""
@@ -63,17 +63,17 @@ data:
       reconnectInterval: "5s"
       maxReconnectTries: 10
       consumer:
-        prefetchCount: 3
+        prefetchCount: 6
         prefetchSize: 0
         retryDelay: "5s"
         maxRetries: 3
         queues:
           - name: "shein.tasks.store.*"
             priority: 8
-            prefetch: 3
+            prefetch: 6
       node:
         role: "task"
-        maxConcurrency: 3
+        maxConcurrency: 6
         useStoreQueues: true
         ownedStores: []
         ownedBuckets: []
@@ -82,11 +82,13 @@ data:
         metricsPort: 8082
       autoShard:
         enabled: true
+        role: worker
         platform: shein
         interval: 1800
         pageSize: 200
         lockKey: listing:queue:auto-shard:lock
         lockTTL: "25s"
+        targetStoresPerNode: 3
         candidateNodes:
           - ser014109001694-18a1fb88
           - ser040603662398-d8519de1

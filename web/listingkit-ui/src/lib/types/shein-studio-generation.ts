@@ -18,6 +18,7 @@ export type SheinStudioGeneratedDesign = {
 };
 
 export type SheinStudioArtworkModel = string;
+export type SheinStudioPromptMode = "managed" | "raw";
 export type SheinStudioVariationIntensity = "light" | "medium" | "strong";
 
 export type SheinStudioGenerationJobStatus =
@@ -34,6 +35,7 @@ export type SheinStudioGenerationJob = {
 
 export type SheinStudioGenerateRequest = {
   prompt: string;
+  promptMode?: SheinStudioPromptMode;
   count: number;
   variationIntensity?: SheinStudioVariationIntensity;
   printableWidth?: number;

@@ -68,7 +68,7 @@ func (r *Resolver) ResolveForProductBrand(_ context.Context, cfg Config, product
 	if resolved := findByName(resp.Info.Data, productBrand); resolved != nil {
 		return resolved, nil
 	}
-	return nil, sherr.NewNonRetryableError("product brand was not found in SHEIN authorized brand list", nil)
+	return nil, nil
 }
 
 func (r *Resolver) queryBrandList() (*sheinproduct.BrandListResponse, error) {

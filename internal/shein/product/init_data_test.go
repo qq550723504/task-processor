@@ -118,6 +118,38 @@ func TestInitProductDataHandler_ResolvesAuthorizedBrandBeforeSettingBrandCode(t 
 	}
 }
 
+func TestInitProductDataHandlerContinuesWithoutBrandCodeWhenProductBrandNotAuthorized(t *testing.T) {
+	handler := NewInitProductDataHandler()
+	ctx := &sheinctx.TaskContext{
+		RuntimeState: sheinctx.RuntimeState{
+			Context: context.Background(),
+			StoreInfo: &listingruntime.StoreInfo{
+				EnableBrandAuthorization: boolPtr(true),
+			},
+		},
+		ProductState: sheinctx.ProductState{
+			AmazonProduct: &model.Product{Brand: "Nike"},
+		},
+	}
+	resolver := &stubAuthorizedBrandResolver{}
+
+	if err := ensureAuthorizedBrandResolvedWithResolver(ctx, authorizedbrand.ConfigFromStore(ctx.StoreInfo), resolver); err != nil {
+		t.Fatalf("ensureAuthorizedBrandResolvedWithResolver() error = %v", err)
+	}
+	if ctx.AuthorizedBrand != nil {
+		t.Fatalf("AuthorizedBrand = %+v, want nil", ctx.AuthorizedBrand)
+	}
+	if err := handler.Handle(ctx); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	if ctx.ProductData == nil {
+		t.Fatal("ProductData = nil, want initialized product")
+	}
+	if ctx.ProductData.BrandCode != nil {
+		t.Fatalf("ProductData.BrandCode = %#v, want nil", ctx.ProductData.BrandCode)
+	}
+}
+
 func TestEnsureAuthorizedBrandResolvedWithResolver_SkipsWhenAmazonBrandEmpty(t *testing.T) {
 	ctx := sheinctx.NewTaskContext(context.Background(), &model.Task{StoreID: 1})
 	ctx.StoreInfo = &listingruntime.StoreInfo{

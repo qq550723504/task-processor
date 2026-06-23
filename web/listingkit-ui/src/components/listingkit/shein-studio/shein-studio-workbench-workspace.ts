@@ -119,6 +119,7 @@ export function useSheinStudioWorkspaceLoader({
             draftState.hasCustomizedSdsSelection;
           workbench.applyDraft({
             prompt: draftState.prompt,
+            promptMode: draftState.promptMode,
             selection: draftState.selection,
             styleCount: draftState.styleCount,
             variationIntensity: draftState.variationIntensity,

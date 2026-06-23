@@ -22,6 +22,12 @@ func parseDeliveryMessage(delivery amqp.Delivery) (*Message, error) {
 		Timestamp: delivery.Timestamp.Unix(),
 		Priority:  delivery.Priority,
 	}
+	if delivery.Headers != nil {
+		msg.Headers = make(map[string]any, len(delivery.Headers))
+		for key, value := range delivery.Headers {
+			msg.Headers[key] = value
+		}
+	}
 
 	// 解析消息体为 Payload
 	if len(delivery.Body) > 0 {
@@ -33,11 +39,11 @@ func parseDeliveryMessage(delivery amqp.Delivery) (*Message, error) {
 	}
 
 	// 从Headers中获取重试信息
-	if delivery.Headers != nil {
-		if retryCount, ok := delivery.Headers["retry_count"].(int32); ok {
+	if msg.Headers != nil {
+		if retryCount, ok := msg.Headers["retry_count"].(int32); ok {
 			msg.RetryCount = int(retryCount)
 		}
-		if maxRetries, ok := delivery.Headers["max_retries"].(int32); ok {
+		if maxRetries, ok := msg.Headers["max_retries"].(int32); ok {
 			msg.MaxRetries = int(maxRetries)
 		}
 	}

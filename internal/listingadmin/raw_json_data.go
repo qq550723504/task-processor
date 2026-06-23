@@ -32,7 +32,6 @@ type RawJSONDataRepository interface {
 
 type listingRawJSONData struct {
 	ID           int64      `gorm:"column:id;primaryKey;autoIncrement"`
-	TenantID     int64      `gorm:"column:tenant_id"`
 	StoreID      int64      `gorm:"column:store_id"`
 	ImportTaskID int64      `gorm:"column:import_task_id"`
 	Platform     string     `gorm:"column:platform;not null;index:idx_raw_json_lookup,priority:1"`
@@ -55,7 +54,6 @@ func (listingRawJSONData) TableName() string {
 func (r listingRawJSONData) toRawJSONData() RawJSONData {
 	return RawJSONData{
 		ID:           r.ID,
-		TenantID:     r.TenantID,
 		StoreID:      r.StoreID,
 		ImportTaskID: r.ImportTaskID,
 		Platform:     r.Platform,
@@ -77,7 +75,6 @@ func listingRawJSONDataFromRawJSONData(record *RawJSONData) listingRawJSONData {
 	}
 	return listingRawJSONData{
 		ID:           record.ID,
-		TenantID:     record.TenantID,
 		StoreID:      record.StoreID,
 		ImportTaskID: record.ImportTaskID,
 		Platform:     record.Platform,

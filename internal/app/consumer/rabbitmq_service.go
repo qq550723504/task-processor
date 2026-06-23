@@ -15,6 +15,7 @@ import (
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )
@@ -173,6 +174,12 @@ func (s *RabbitMQService) SetQueueConfigs(configs []config.QueueConfig) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
+	if s.isOwnershipCoordinator() {
+		s.consumer.SetQueueConfigs(nil)
+		s.logger.Info("auto-shard coordinator role skips RabbitMQ consumer queue configs")
+		return
+	}
+
 	configs = s.filterQueueConfigsByRole(configs)
 
 	// 转换为内部类型
@@ -202,13 +209,20 @@ func (s *RabbitMQService) Start(ctx context.Context) error {
 	if err := s.initializeQueueTopology(); err != nil {
 		return err
 	}
-	if err := s.startConsumers(); err != nil {
-		return err
+
+	if s.shouldRunRabbitMQConsumers() {
+		if err := s.startConsumers(); err != nil {
+			return err
+		}
 	}
 
 	s.markStarted()
-	s.startConsumerGuard()
-	s.startStoreAssignmentSync()
+	if s.shouldRunRabbitMQConsumers() {
+		s.startConsumerGuard()
+	}
+	if !s.isOwnershipCoordinator() {
+		s.startStoreAssignmentSync()
+	}
 	s.logger.Info("RabbitMQ服务启动完成")
 	return nil
 }
@@ -228,6 +242,10 @@ func (s *RabbitMQService) startInfrastructure() error {
 
 func (s *RabbitMQService) handleReconnect() error {
 	s.logger.Info("连接恢复，重新初始化队列和重启消费者...")
+	if s.isOwnershipCoordinator() && !s.shouldRunRabbitMQConsumers() {
+		s.logger.Info("auto-shard coordinator role skips RabbitMQ consumer restart")
+		return nil
+	}
 
 	if err := s.initializer.InitializeAll(); err != nil {
 		s.logger.Errorf("重连后初始化队列失败: %v", err)
@@ -243,6 +261,20 @@ func (s *RabbitMQService) handleReconnect() error {
 }
 
 func (s *RabbitMQService) initializeQueueTopology() error {
+	if s.isOwnershipCoordinator() {
+		if !s.shouldRunRabbitMQConsumers() {
+			s.consumer.ReplaceHandlers(nil)
+			s.logger.Info("auto-shard coordinator role skips RabbitMQ business topology initialization")
+			return nil
+		}
+		if err := s.initializer.InitializeAll(); err != nil {
+			return fmt.Errorf("初始化RabbitMQ系统队列失败: %w", err)
+		}
+		s.registerMessageHandlers()
+		s.logger.Info("auto-shard coordinator initialized RabbitMQ dead-letter topology only")
+		return nil
+	}
+
 	if err := s.initializer.InitializeAll(); err != nil {
 		return fmt.Errorf("初始化RabbitMQ队列失败: %w", err)
 	}
@@ -265,6 +297,10 @@ func (s *RabbitMQService) initializeQueueTopology() error {
 }
 
 func (s *RabbitMQService) initializeTaskQueues() error {
+	if s.isOwnershipCoordinator() {
+		s.logger.Info("auto-shard coordinator role skips task queue initialization")
+		return nil
+	}
 	if !s.config.Node.HandlesTaskWork() {
 		return nil
 	}
@@ -290,6 +326,10 @@ func (s *RabbitMQService) initializeTaskQueues() error {
 }
 
 func (s *RabbitMQService) initializeCrawlerQueues() error {
+	if s.isOwnershipCoordinator() {
+		s.logger.Info("auto-shard coordinator role skips crawler queue initialization")
+		return nil
+	}
 	if !s.config.Node.HandlesCrawlerWork() || len(s.config.Node.Regions) == 0 {
 		return nil
 	}
@@ -353,11 +393,32 @@ func waitForRetry(ctx context.Context, delay time.Duration) error {
 
 // registerMessageHandlers 注册消息处理器
 func (s *RabbitMQService) registerMessageHandlers() {
+	if s.isOwnershipCoordinator() && !s.shouldRunRabbitMQConsumers() {
+		s.consumer.ReplaceHandlers(nil)
+		s.logger.Info("auto-shard coordinator role skips RabbitMQ message handlers")
+		return
+	}
 	s.consumer.ReplaceHandlers(s.buildQueueHandlers())
 }
 
 func (s *RabbitMQService) buildQueueHandlers() map[string]rabbitmq.MessageHandler {
 	return newQueueHandlerBuilder(s).build()
+}
+
+func (s *RabbitMQService) resolveTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
+	if s == nil || s.processorRegistry == nil {
+		return nil
+	}
+	for _, processor := range s.processorRegistry.GetAllProcessors() {
+		provider, ok := processor.(managementClientProvider)
+		if !ok {
+			continue
+		}
+		if runtime := provider.GetTaskStatusRuntime(); runtime != nil {
+			return runtime
+		}
+	}
+	return nil
 }
 
 func (s *RabbitMQService) sharedBucketsForPlatform(platform string) []int {
@@ -404,6 +465,9 @@ func (s *RabbitMQService) filterQueueConfigsByRole(configs []config.QueueConfig)
 	if len(configs) == 0 {
 		return configs
 	}
+	if s.isOwnershipCoordinator() {
+		return nil
+	}
 
 	filtered := make([]config.QueueConfig, 0, len(configs))
 	for _, cfg := range configs {
@@ -415,6 +479,9 @@ func (s *RabbitMQService) filterQueueConfigsByRole(configs []config.QueueConfig)
 }
 
 func (s *RabbitMQService) shouldUseQueueConfig(name string) bool {
+	if s.isOwnershipCoordinator() {
+		return false
+	}
 	isCrawlerQueue := strings.Contains(strings.ToLower(name), ".crawler")
 	if isCrawlerQueue {
 		return s.config.Node.HandlesCrawlerWork()
@@ -520,7 +587,7 @@ func (s *RabbitMQService) markStarted() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.started = true
-	s.consumerActive = true
+	s.consumerActive = s.shouldRunRabbitMQConsumers()
 }
 
 func (s *RabbitMQService) statsStateSnapshot() serviceStatsState {
@@ -737,4 +804,18 @@ func (s *RabbitMQService) GetClient() *rabbitmq.Client {
 // GetConsumer 获取消息消费者
 func (s *RabbitMQService) GetConsumer() *rabbitmq.MessageConsumer {
 	return s.consumer
+}
+
+func (s *RabbitMQService) isOwnershipCoordinator() bool {
+	return s != nil && s.config != nil && s.config.AutoShard.IsCoordinator()
+}
+
+func (s *RabbitMQService) shouldRunRabbitMQConsumers() bool {
+	if s == nil || s.config == nil {
+		return false
+	}
+	if !s.isOwnershipCoordinator() {
+		return true
+	}
+	return s.config.DeadLetter.Enabled
 }

@@ -146,6 +146,9 @@ func applyListingStudioSessionGeneralMetadataPatch(session *SheinStudioSession, 
 	if req.Prompt != nil {
 		session.Prompt = *req.Prompt
 	}
+	if req.PromptMode != nil {
+		session.PromptMode = *req.PromptMode
+	}
 	if req.StyleCount != nil {
 		session.StyleCount = *req.StyleCount
 	}

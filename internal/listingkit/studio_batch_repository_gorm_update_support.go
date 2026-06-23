@@ -104,6 +104,7 @@ func (r *GormStudioBatchRepository) UpdateStudioBatch(ctx context.Context, batch
 		Updates(map[string]any{
 			"status":                 row.Status,
 			"prompt":                 row.Prompt,
+			"prompt_mode":            row.PromptMode,
 			"grouped_image_mode":     row.GroupedImageMode,
 			"selection":              row.Selection,
 			"grouped_selections":     row.GroupedSelections,

@@ -15,6 +15,7 @@ import (
 
 const maxStudioDesignCount = 10
 const studioDesignTransparentModel = "gpt-image-2"
+const studioPromptModeRaw = "raw"
 const (
 	studioVariationLight  = "light"
 	studioVariationMedium = "medium"
@@ -26,9 +27,12 @@ func buildStudioDesignPrompt(req *StudioDesignRequest) string {
 }
 
 func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) string {
+	if isStudioRawPromptMode(req.PromptMode) {
+		return buildRawStudioDesignPrompt(req, theme)
+	}
 	printableHint := ""
 	if req.PrintableWidth > 0 && req.PrintableHeight > 0 {
-		printableHint = fmt.Sprintf("Target print area: %d by %d pixels.", req.PrintableWidth, req.PrintableHeight)
+		printableHint = studioDesignPrintableHint(req.PrintableWidth, req.PrintableHeight)
 	}
 	referenceHint := ""
 	if len(studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)) > 0 {
@@ -53,6 +57,34 @@ func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) st
 		return renderPromptFallback(fallback, vars)
 	}
 	return strings.TrimSpace(rendered)
+}
+
+func isStudioRawPromptMode(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(value), studioPromptModeRaw)
+}
+
+func buildRawStudioDesignPrompt(req *StudioDesignRequest, theme string) string {
+	parts := make([]string, 0, 2)
+	if promptText := strings.TrimSpace(theme); promptText != "" {
+		parts = append(parts, promptText)
+	}
+	if req != nil && req.PrintableWidth > 0 && req.PrintableHeight > 0 {
+		parts = append(parts, studioDesignPrintableHint(req.PrintableWidth, req.PrintableHeight))
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+func studioDesignPrintableHint(width int, height int) string {
+	if width <= 0 || height <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		"Mandatory print size requirement: target print area: %d by %d pixels. Preserve this exact %d:%d aspect ratio. Compose the artwork for this requested print area and do not output a square design unless the requested print area is square.",
+		width,
+		height,
+		width,
+		height,
+	)
 }
 
 func normalizeStudioVariationIntensity(value string) string {

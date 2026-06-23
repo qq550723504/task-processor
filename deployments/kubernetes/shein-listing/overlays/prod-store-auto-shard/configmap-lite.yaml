@@ -82,6 +82,7 @@ data:
         metricsPort: 8082
       autoShard:
         enabled: true
+        role: worker
         platform: shein
         interval: 1800
         pageSize: 200

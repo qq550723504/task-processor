@@ -150,3 +150,133 @@ func TestGormImportTaskRepositoryLifecycleHelpers(t *testing.T) {
 		t.Fatalf("updated task = %+v, want processing", task)
 	}
 }
+
+func TestGormImportTaskRepositoryRecoversTimedOutProcessingTasks(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingProductImportTask{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	now := time.Now()
+	expired := now.Add(-45 * time.Minute)
+	fresh := now.Add(-5 * time.Minute)
+	rows := []listingProductImportTask{
+		{ID: 101, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "expired", Status: model.TaskStatusProcessing.Int16(), Priority: 10, CreateTime: &expired, UpdateTime: &expired, Deleted: 0},
+		{ID: 102, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "fresh", Status: model.TaskStatusProcessing.Int16(), Priority: 10, CreateTime: &fresh, UpdateTime: &fresh, Deleted: 0},
+		{ID: 103, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "queued", Status: model.TaskStatusQueued.Int16(), Priority: 10, CreateTime: &expired, UpdateTime: &expired, Deleted: 0},
+	}
+	for _, row := range rows {
+		if err := db.Table("listing_product_import_task").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	repo := NewGormImportTaskRepository(db)
+	candidates, err := repo.ListTimedOutProcessingTasks(context.Background(), now.Add(-30*time.Minute), 10)
+	if err != nil {
+		t.Fatalf("ListTimedOutProcessingTasks() error = %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].ID != 101 {
+		t.Fatalf("candidates = %+v, want only expired processing task", candidates)
+	}
+
+	recovered, err := repo.RecoverTimedOutProcessingTasks(context.Background(), []int64{101, 102, 103}, ProcessingTimeoutRecovery{
+		TimeoutMinutes: 30,
+		ErrorMessage:   "Task processing lease expired, recovered by management watchdog",
+		ReasonCode:     "PROCESSING_TIMEOUT",
+		Stage:          "processing_timeout_recovery",
+		Remark:         "Recovered after processing timeout watchdog (30 minutes)",
+	})
+	if err != nil {
+		t.Fatalf("RecoverTimedOutProcessingTasks() error = %v", err)
+	}
+	if recovered != 1 {
+		t.Fatalf("recovered = %d, want 1", recovered)
+	}
+
+	task, err := repo.GetImportTaskByID(context.Background(), 101)
+	if err != nil {
+		t.Fatalf("GetImportTaskByID(expired) error = %v", err)
+	}
+	if task == nil || task.Status != model.TaskStatusPendingRetry.Int16() || task.ReasonCode != "PROCESSING_TIMEOUT" || task.Stage != "processing_timeout_recovery" {
+		t.Fatalf("expired task = %+v, want recovered retry with structured reason", task)
+	}
+
+	task, err = repo.GetImportTaskByID(context.Background(), 102)
+	if err != nil {
+		t.Fatalf("GetImportTaskByID(fresh) error = %v", err)
+	}
+	if task == nil || task.Status != model.TaskStatusProcessing.Int16() {
+		t.Fatalf("fresh task = %+v, want still processing", task)
+	}
+}
+
+func TestGormImportTaskRepositoryRecoversStaleQueuedTasks(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingProductImportTask{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	now := time.Now()
+	expired := now.Add(-3 * time.Hour)
+	fresh := now.Add(-5 * time.Minute)
+	rows := []listingProductImportTask{
+		{ID: 201, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "expired-queued", Status: model.TaskStatusQueued.Int16(), Priority: 10, CreateTime: &expired, UpdateTime: &expired, Deleted: 0},
+		{ID: 202, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "fresh-queued", Status: model.TaskStatusQueued.Int16(), Priority: 10, CreateTime: &fresh, UpdateTime: &fresh, Deleted: 0},
+		{ID: 203, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "processing", Status: model.TaskStatusProcessing.Int16(), Priority: 10, CreateTime: &expired, UpdateTime: &expired, Deleted: 0},
+	}
+	for _, row := range rows {
+		if err := db.Table("listing_product_import_task").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	repo := NewGormImportTaskRepository(db)
+	candidates, err := repo.ListStaleQueuedTasks(context.Background(), now.Add(-120*time.Minute), 10)
+	if err != nil {
+		t.Fatalf("ListStaleQueuedTasks() error = %v", err)
+	}
+	if len(candidates) != 1 || candidates[0].ID != 201 {
+		t.Fatalf("candidates = %+v, want only expired queued task", candidates)
+	}
+
+	recovered, err := repo.RecoverStaleQueuedTasks(context.Background(), []int64{201, 202, 203}, StaleQueuedRecovery{
+		TimeoutMinutes: 120,
+		ErrorMessage:   "Task stayed queued too long, recovered by scheduler watchdog",
+		ReasonCode:     "STALE_QUEUED",
+		Stage:          "queued_timeout_recovery",
+		Remark:         "Recovered from stale queued state by scheduler watchdog (120 minutes)",
+	})
+	if err != nil {
+		t.Fatalf("RecoverStaleQueuedTasks() error = %v", err)
+	}
+	if recovered != 1 {
+		t.Fatalf("recovered = %d, want 1", recovered)
+	}
+
+	task, err := repo.GetImportTaskByID(context.Background(), 201)
+	if err != nil {
+		t.Fatalf("GetImportTaskByID(expired queued) error = %v", err)
+	}
+	if task == nil || task.Status != model.TaskStatusPending.Int16() || task.ReasonCode != "STALE_QUEUED" || task.Stage != "queued_timeout_recovery" {
+		t.Fatalf("expired queued task = %+v, want recovered pending with structured reason", task)
+	}
+
+	task, err = repo.GetImportTaskByID(context.Background(), 202)
+	if err != nil {
+		t.Fatalf("GetImportTaskByID(fresh queued) error = %v", err)
+	}
+	if task == nil || task.Status != model.TaskStatusQueued.Int16() {
+		t.Fatalf("fresh queued task = %+v, want still queued", task)
+	}
+}

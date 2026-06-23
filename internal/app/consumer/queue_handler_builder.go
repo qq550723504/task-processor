@@ -19,13 +19,16 @@ func (b *queueHandlerBuilder) build() map[string]rabbitmq.MessageHandler {
 	handlers := b.service.processorRegistry.GetAllHandlers()
 	queueHandlers := make(map[string]rabbitmq.MessageHandler)
 
-	for platform, handler := range handlers {
-		if b.isCrawlerPlatform(platform) {
-			b.registerCrawlerHandlers(queueHandlers, platform, handler)
-			continue
+	if !b.service.isOwnershipCoordinator() {
+		for platform, handler := range handlers {
+			if b.isCrawlerPlatform(platform) {
+				b.registerCrawlerHandlers(queueHandlers, platform, handler)
+				continue
+			}
+			b.registerTaskHandlers(queueHandlers, platform, handler)
 		}
-		b.registerTaskHandlers(queueHandlers, platform, handler)
 	}
+	b.registerDeadLetterHandler(queueHandlers)
 
 	if len(handlers) == 0 {
 		b.service.logger.Warn("没有注册任何消息处理器")
@@ -95,4 +98,24 @@ func (b *queueHandlerBuilder) registerSharedPlatformHandlers(queueHandlers map[s
 	}
 
 	b.service.logger.Infof("注册处理器（平台共享队列）: 平台=%s", platform)
+}
+
+func (b *queueHandlerBuilder) registerDeadLetterHandler(queueHandlers map[string]rabbitmq.MessageHandler) {
+	if !b.service.config.DeadLetter.Enabled {
+		return
+	}
+	runtime := b.service.resolveTaskStatusRuntime()
+	if runtime == nil {
+		b.service.logger.Warn("跳过死信处理器注册: 未找到任务状态 runtime")
+		return
+	}
+	queueName := strings.TrimSpace(b.service.config.DeadLetter.QueueName)
+	if queueName == "" {
+		queueName = defaultDLQQueueName
+	}
+	queueHandlers[queueName] = NewDeadLetterHandler(DeadLetterHandlerConfig{
+		Runtime: runtime,
+		Logger:  b.service.logger,
+	})
+	b.service.logger.Infof("注册死信处理器: queue=%s", queueName)
 }

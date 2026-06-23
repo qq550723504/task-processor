@@ -65,27 +65,44 @@ func (Module) ConfigureListingRuntime(ctx context.Context, rt consumer.PlatformR
 
 	configureScheduler(rt)
 	configureStoreGuard(rt)
+	configureTaskRecoveryWatchdogs(rt)
 
 	cfg := rt.Config
 	if cfg == nil {
 		return nil
 	}
 
-	if cfg.RabbitMQ.Node.UseStoreQueues && len(cfg.RabbitMQ.Node.OwnedStores) == 0 && cfg.Redis != nil {
+	if shouldEnableDynamicStoreAssignment(cfg) {
 		if err := consumer.EnableDynamicStoreAssignment(cfg, rt.Logger, rt.ServiceManager); err != nil {
 			return err
 		}
-	} else if cfg.RabbitMQ.Node.UseStoreQueues && len(cfg.RabbitMQ.Node.OwnedStores) > 0 {
+	} else if cfg.RabbitMQ != nil && cfg.RabbitMQ.Node.UseStoreQueues && len(cfg.RabbitMQ.Node.OwnedStores) > 0 {
 		rt.Logger.Infof("static store assignment enabled: nodeID=%s, ownedStores=%v", cfg.RabbitMQ.Node.NodeID, cfg.RabbitMQ.Node.OwnedStores)
 	}
 
-	if cfg.RabbitMQ.AutoShard.Enabled {
+	if shouldConfigureAutoShard(cfg) {
 		if err := configureAutoShard(rt); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func shouldEnableDynamicStoreAssignment(cfg *config.Config) bool {
+	if cfg == nil || cfg.RabbitMQ == nil {
+		return false
+	}
+	return cfg.RabbitMQ.Node.UseStoreQueues &&
+		len(cfg.RabbitMQ.Node.OwnedStores) == 0 &&
+		cfg.Redis != nil &&
+		(!cfg.RabbitMQ.AutoShard.Enabled || cfg.RabbitMQ.AutoShard.IsWorker())
+}
+
+func shouldConfigureAutoShard(cfg *config.Config) bool {
+	return cfg != nil &&
+		cfg.RabbitMQ != nil &&
+		cfg.RabbitMQ.AutoShard.IsCoordinator()
 }
 
 func initPrompts(ctx context.Context, rt consumer.PlatformRuntimeContext) error {
@@ -146,6 +163,74 @@ func configureScheduler(rt consumer.PlatformRuntimeContext) {
 		cfg.Platforms.Shein.AutoPricing.Enabled,
 		cfg.Platforms.Shein.AutoPricing.Interval,
 		cfg.Platforms.Shein.AutoPricing.BatchSize,
+	)
+}
+
+func configureTaskRecoveryWatchdogs(rt consumer.PlatformRuntimeContext) {
+	cfg := rt.Config
+	if cfg == nil || cfg.RabbitMQ == nil || rt.ServiceManager == nil {
+		return
+	}
+	if !cfg.RabbitMQ.AutoShard.IsCoordinator() {
+		return
+	}
+	if !cfg.RabbitMQ.ProcessingTimeout.Enabled && !cfg.RabbitMQ.StaleQueued.Enabled {
+		return
+	}
+	if rt.ManagementClient == nil {
+		rt.Logger.Warn("task recovery watchdog is enabled but management client is unavailable")
+		return
+	}
+	repo := rt.ManagementClient.GetLocalImportTaskRepository()
+	if repo == nil {
+		rt.Logger.Warn("task recovery watchdog is enabled but local import task repository is unavailable")
+		return
+	}
+	configureProcessingTimeoutWatchdog(rt, repo)
+	configureStaleQueuedWatchdog(rt, repo)
+}
+
+func configureProcessingTimeoutWatchdog(rt consumer.PlatformRuntimeContext, repo consumer.ProcessingTimeoutRepository) {
+	cfg := rt.Config
+	if cfg == nil || cfg.RabbitMQ == nil || rt.ServiceManager == nil || !cfg.RabbitMQ.ProcessingTimeout.Enabled {
+		return
+	}
+	watchdog := consumer.NewProcessingTimeoutWatchdog(consumer.ProcessingTimeoutWatchdogConfig{
+		Enabled:        cfg.RabbitMQ.ProcessingTimeout.Enabled,
+		Interval:       cfg.RabbitMQ.ProcessingTimeout.Interval,
+		TimeoutMinutes: cfg.RabbitMQ.ProcessingTimeout.TimeoutMinutes,
+		RecoveryLimit:  cfg.RabbitMQ.ProcessingTimeout.RecoveryLimit,
+		Repository:     repo,
+		Logger:         rt.Logger,
+	})
+	rt.ServiceManager.SetProcessingTimeoutWatchdog(watchdog)
+	rt.Logger.Infof(
+		"processing timeout watchdog enabled: interval=%s timeoutMinutes=%d recoveryLimit=%d",
+		cfg.RabbitMQ.ProcessingTimeout.Interval,
+		cfg.RabbitMQ.ProcessingTimeout.TimeoutMinutes,
+		cfg.RabbitMQ.ProcessingTimeout.RecoveryLimit,
+	)
+}
+
+func configureStaleQueuedWatchdog(rt consumer.PlatformRuntimeContext, repo consumer.StaleQueuedRepository) {
+	cfg := rt.Config
+	if cfg == nil || cfg.RabbitMQ == nil || rt.ServiceManager == nil || !cfg.RabbitMQ.StaleQueued.Enabled {
+		return
+	}
+	watchdog := consumer.NewStaleQueuedWatchdog(consumer.StaleQueuedWatchdogConfig{
+		Enabled:        cfg.RabbitMQ.StaleQueued.Enabled,
+		Interval:       cfg.RabbitMQ.StaleQueued.Interval,
+		TimeoutMinutes: cfg.RabbitMQ.StaleQueued.TimeoutMinutes,
+		RecoveryLimit:  cfg.RabbitMQ.StaleQueued.RecoveryLimit,
+		Repository:     repo,
+		Logger:         rt.Logger,
+	})
+	rt.ServiceManager.SetStaleQueuedWatchdog(watchdog)
+	rt.Logger.Infof(
+		"stale queued watchdog enabled: interval=%s timeoutMinutes=%d recoveryLimit=%d",
+		cfg.RabbitMQ.StaleQueued.Interval,
+		cfg.RabbitMQ.StaleQueued.TimeoutMinutes,
+		cfg.RabbitMQ.StaleQueued.RecoveryLimit,
 	)
 }
 

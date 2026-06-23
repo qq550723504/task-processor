@@ -1,27 +1,37 @@
 package config
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 const (
 	NodeRoleTask    = "task"
 	NodeRoleCrawler = "crawler"
 	NodeRoleHybrid  = "hybrid"
+
+	AutoShardRoleCoordinator = "coordinator"
+	AutoShardRoleWorker      = "worker"
+	AutoShardRoleDisabled    = "disabled"
 )
 
 // RabbitMQConfig RabbitMQ完整配置
 type RabbitMQConfig struct {
-	Enabled           bool                   `yaml:"enabled"`           // 是否启用RabbitMQ分布式爬虫
-	URL               string                 `yaml:"url"`               // RabbitMQ连接URL
-	ReconnectInterval time.Duration          `yaml:"reconnectInterval"` // 重连间隔
-	MaxReconnectTries int                    `yaml:"maxReconnectTries"` // 最大重连次数
-	ConfigPath        string                 `yaml:"configPath"`        // RabbitMQ详细配置文件路径（统一管理）
-	Consumer          RabbitMQConsumerConfig `yaml:"consumer"`          // 消费者配置
-	ResultReporter    ResultReporterConfig   `yaml:"resultReporter"`    // 结果上报器配置
-	LoadMonitor       LoadMonitorConfig      `yaml:"loadMonitor"`       // 负载监控配置
-	Node              NodeConfig             `yaml:"node"`              // 节点配置
-	AutoShard         AutoShardConfig        `yaml:"autoShard"`         // 自动分片配置
-	Deduplicator      DeduplicatorConfig     `yaml:"deduplicator"`      // 去重器配置
-	StoreAPI          StoreAPIConfig         `yaml:"storeAPI"`          // 店铺API配置
+	Enabled           bool                    `yaml:"enabled"`                   // 是否启用RabbitMQ分布式爬虫
+	URL               string                  `yaml:"url"`                       // RabbitMQ连接URL
+	ReconnectInterval time.Duration           `yaml:"reconnectInterval"`         // 重连间隔
+	MaxReconnectTries int                     `yaml:"maxReconnectTries"`         // 最大重连次数
+	ConfigPath        string                  `yaml:"configPath"`                // RabbitMQ详细配置文件路径（统一管理）
+	Consumer          RabbitMQConsumerConfig  `yaml:"consumer"`                  // 消费者配置
+	ResultReporter    ResultReporterConfig    `yaml:"resultReporter"`            // 结果上报器配置
+	LoadMonitor       LoadMonitorConfig       `yaml:"loadMonitor"`               // 负载监控配置
+	Node              NodeConfig              `yaml:"node"`                      // 节点配置
+	AutoShard         AutoShardConfig         `yaml:"autoShard"`                 // 自动分片配置
+	DeadLetter        DeadLetterConfig        `yaml:"deadLetter"`                // 死信处理配置
+	ProcessingTimeout ProcessingTimeoutConfig `yaml:"processingTimeoutWatchdog"` // processing 超时恢复配置
+	StaleQueued       StaleQueuedConfig       `yaml:"staleQueuedWatchdog"`       // queued 超时恢复配置
+	Deduplicator      DeduplicatorConfig      `yaml:"deduplicator"`              // 去重器配置
+	StoreAPI          StoreAPIConfig          `yaml:"storeAPI"`                  // 店铺API配置
 }
 
 // RabbitMQConsumerConfig 消费者配置
@@ -38,6 +48,28 @@ type QueueConfig struct {
 	Name     string `yaml:"name"`     // 队列名称
 	Priority int    `yaml:"priority"` // 队列优先级（10=高，5=中，1=低）
 	Prefetch int    `yaml:"prefetch"` // 预取数量
+}
+
+// DeadLetterConfig controls whether this process consumes RabbitMQ dead letters.
+type DeadLetterConfig struct {
+	Enabled   bool   `yaml:"enabled"`   // 是否启用 Go 侧 DLQ 消费
+	QueueName string `yaml:"queueName"` // DLQ 队列名，默认 tasks.dlq
+}
+
+// ProcessingTimeoutConfig controls the Go-side processing timeout watchdog.
+type ProcessingTimeoutConfig struct {
+	Enabled        bool          `yaml:"enabled"`         // 是否启用 processing 超时恢复
+	Interval       time.Duration `yaml:"intervalSeconds"` // 扫描间隔，秒
+	TimeoutMinutes int           `yaml:"timeoutMinutes"`  // 超时阈值，分钟
+	RecoveryLimit  int           `yaml:"recoveryLimit"`   // 单轮恢复上限
+}
+
+// StaleQueuedConfig controls the Go-side stale queued watchdog.
+type StaleQueuedConfig struct {
+	Enabled        bool          `yaml:"enabled"`         // 是否启用 queued 超时恢复
+	Interval       time.Duration `yaml:"intervalSeconds"` // 扫描间隔，秒
+	TimeoutMinutes int           `yaml:"timeoutMinutes"`  // 超时阈值，分钟
+	RecoveryLimit  int           `yaml:"recoveryLimit"`   // 单轮恢复上限
 }
 
 // ResultReporterConfig 结果上报器配置
@@ -74,14 +106,49 @@ type NodeConfig struct {
 
 // AutoShardConfig controls automatic store-to-node assignment for dedicated store queues.
 type AutoShardConfig struct {
-	Enabled        bool           `yaml:"enabled"`        // 是否启用自动分片
-	Platform       string         `yaml:"platform"`       // 目标平台，默认 shein
-	Interval       time.Duration  `yaml:"interval"`       // 自动分片刷新间隔
-	PageSize       int            `yaml:"pageSize"`       // 分页拉取店铺大小
-	LockKey        string         `yaml:"lockKey"`        // Redis 分布式锁 key
-	LockTTL        time.Duration  `yaml:"lockTTL"`        // Redis 分布式锁 TTL
-	CandidateNodes []string       `yaml:"candidateNodes"` // 可分配的节点列表
-	NodeWeights    map[string]int `yaml:"nodeWeights"`    // 节点权重，未配置默认为 1
+	Enabled             bool           `yaml:"enabled"`                  // 是否启用自动分片
+	Role                string         `yaml:"role" mapstructure:"role"` // 自动分片角色：coordinator | worker | disabled
+	Platform            string         `yaml:"platform"`                 // 目标平台，默认 shein
+	Interval            time.Duration  `yaml:"interval"`                 // 自动分片刷新间隔
+	PageSize            int            `yaml:"pageSize"`                 // 分页拉取店铺大小
+	LockKey             string         `yaml:"lockKey"`                  // Redis 分布式锁 key
+	LockTTL             time.Duration  `yaml:"lockTTL"`                  // Redis 分布式锁 TTL
+	CandidateNodes      []string       `yaml:"candidateNodes"`           // 可分配的节点列表
+	TargetStoresPerNode int            `yaml:"targetStoresPerNode"`      // 每个节点期望承载的启用上架店铺数，未配置时使用全部候选节点
+	NodeWeights         map[string]int `yaml:"nodeWeights"`              // 节点权重，未配置默认为 1
+}
+
+// EffectiveRole returns the normalized auto-shard runtime role.
+func (c AutoShardConfig) EffectiveRole() string {
+	if !c.Enabled {
+		return AutoShardRoleDisabled
+	}
+
+	role := strings.ToLower(strings.TrimSpace(c.Role))
+	if role == "" {
+		return AutoShardRoleCoordinator
+	}
+	return role
+}
+
+// HasValidRole reports whether the configured auto-shard role is supported.
+func (c AutoShardConfig) HasValidRole() bool {
+	switch c.EffectiveRole() {
+	case AutoShardRoleCoordinator, AutoShardRoleWorker, AutoShardRoleDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsCoordinator reports whether this process should coordinate auto-shard assignments.
+func (c AutoShardConfig) IsCoordinator() bool {
+	return c.EffectiveRole() == AutoShardRoleCoordinator
+}
+
+// IsWorker reports whether this process participates as an auto-shard worker.
+func (c AutoShardConfig) IsWorker() bool {
+	return c.EffectiveRole() == AutoShardRoleWorker
 }
 
 // NormalizedRole returns the effective node role, defaulting to hybrid for backward compatibility.

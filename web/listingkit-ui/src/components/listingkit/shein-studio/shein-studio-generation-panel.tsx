@@ -40,6 +40,7 @@ export type SheinStudioGenerationFormModel = {
   renderSizeImagesWithSds: boolean;
   transparentBackground: boolean;
   prompt: string;
+  promptMode: "managed" | "raw";
   promptHistory: SDSGroupedPromptHistoryEntry[];
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   selectedSdsImages: SheinStudioSelectedSDSImage[];
@@ -90,6 +91,7 @@ export type SheinStudioGenerationActions = {
   setProductImagePrompt: (value: string) => void;
   setProductImagePrompts: (value: SheinStudioProductImagePrompt[]) => void;
   setPrompt: (value: string) => void;
+  setPromptMode: (value: "managed" | "raw") => void;
   onRestorePrompt: (value: string) => void;
   setRenderSizeImagesWithSds: (value: boolean) => void;
   setStyleCount: (value: string) => void;
@@ -115,6 +117,7 @@ export function SheinStudioGenerationPanel({
     productImagePrompt,
     productImagePrompts,
     prompt,
+    promptMode,
     promptHistory,
     promptInputRef,
     renderSizeImagesWithSds,
@@ -165,6 +168,7 @@ export function SheinStudioGenerationPanel({
     setProductImagePrompt,
     setProductImagePrompts,
     setPrompt,
+    setPromptMode,
     setRenderSizeImagesWithSds,
     setSelectedSdsImages,
     setStyleCount,
@@ -273,12 +277,14 @@ export function SheinStudioGenerationPanel({
           disabled={isGenerating}
           groupedImageMode={groupedImageMode}
           prompt={prompt}
+          promptMode={promptMode}
           promptHistory={promptHistory}
           promptInputRef={promptInputRef}
           restorePrompt={onRestorePrompt}
           setArtworkModel={setArtworkModel}
           setGroupedImageMode={setGroupedImageMode}
           setPrompt={setPrompt}
+          setPromptMode={setPromptMode}
           setStyleCount={setStyleCount}
           setTransparentBackground={setTransparentBackground}
           setVariationIntensity={setVariationIntensity}

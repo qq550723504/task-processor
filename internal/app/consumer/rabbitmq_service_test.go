@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )
@@ -107,6 +109,201 @@ func TestRabbitMQServiceFilterQueueConfigsByRole(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRabbitMQServiceCoordinatorRoleSkipsConsumerQueues(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:           config.NodeRoleTask,
+			UseStoreQueues: true,
+		},
+		AutoShard: config.AutoShardConfig{
+			Enabled: true,
+			Role:    config.AutoShardRoleCoordinator,
+		},
+	}, logrus.New())
+
+	source := []config.QueueConfig{
+		{Name: "shein.tasks.store.*"},
+		{Name: "shein.tasks"},
+		{Name: "amazon.crawler"},
+	}
+
+	filtered := svc.filterQueueConfigsByRole(source)
+	if len(filtered) != 0 {
+		t.Fatalf("expected coordinator to skip all queue configs, got %v", filtered)
+	}
+
+	svc.SetQueueConfigs(source)
+	svc.processorRegistry.RegisterProcessor("shein", noopProcessor{})
+	svc.processorRegistry.RegisterProcessor("amazon.crawler", noopProcessor{})
+	svc.registerMessageHandlers()
+
+	queueConfigs := reflect.ValueOf(svc.GetConsumer()).Elem().FieldByName("queueConfigs")
+	if queueConfigs.Len() != 0 {
+		t.Fatalf("expected coordinator to clear consumer queue configs, got %d", queueConfigs.Len())
+	}
+	if svc.GetConsumer().GetStateManager("shein.tasks") != nil {
+		t.Fatal("did not expect coordinator to register shared task handler")
+	}
+	if svc.GetConsumer().GetStateManager("shein.tasks.store.976") != nil {
+		t.Fatal("did not expect coordinator to register store task handler")
+	}
+	if svc.GetConsumer().GetStateManager("amazon.crawler") != nil {
+		t.Fatal("did not expect coordinator to register crawler handler")
+	}
+}
+
+func TestRabbitMQServiceCoordinatorRoleCanRunDeadLetterOnly(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:           config.NodeRoleTask,
+			UseStoreQueues: true,
+		},
+		AutoShard: config.AutoShardConfig{
+			Enabled: true,
+			Role:    config.AutoShardRoleCoordinator,
+		},
+		DeadLetter: config.DeadLetterConfig{
+			Enabled:   true,
+			QueueName: "tasks.dlq",
+		},
+	}, logrus.New())
+	svc.processorRegistry.RegisterProcessor("shein", processorWithDeadLetterRuntime{runtime: &stubDeadLetterRuntime{}})
+
+	svc.registerMessageHandlers()
+
+	if svc.GetConsumer().GetStateManager("tasks.dlq") == nil {
+		t.Fatal("expected coordinator to register dead-letter handler when enabled")
+	}
+	if svc.GetConsumer().GetStateManager("shein.tasks") != nil {
+		t.Fatal("did not expect coordinator to register business task handler")
+	}
+	if svc.GetConsumer().GetStateManager("shein.tasks.store.976") != nil {
+		t.Fatal("did not expect coordinator to register store task handler")
+	}
+}
+
+func TestServiceManagerRegistersProcessingTimeoutWatchdogWhenInjected(t *testing.T) {
+	sm, err := NewServiceManager(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+	if err != nil {
+		t.Fatalf("NewServiceManager() error = %v", err)
+	}
+	sm.SetProcessingTimeoutWatchdog(NewProcessingTimeoutWatchdog(ProcessingTimeoutWatchdogConfig{
+		Enabled:        false,
+		Interval:       time.Minute,
+		TimeoutMinutes: 30,
+		RecoveryLimit:  100,
+		Logger:         logrus.New(),
+	}))
+
+	components := sm.buildManagedComponents()
+	found := false
+	for _, component := range components {
+		if component.Name() == "processing-timeout-watchdog" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected processing timeout watchdog component to be registered")
+	}
+}
+
+func TestServiceManagerRegistersStaleQueuedWatchdogWhenInjected(t *testing.T) {
+	sm, err := NewServiceManager(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+	if err != nil {
+		t.Fatalf("NewServiceManager() error = %v", err)
+	}
+	sm.SetStaleQueuedWatchdog(NewStaleQueuedWatchdog(StaleQueuedWatchdogConfig{
+		Enabled:        false,
+		Interval:       time.Minute,
+		TimeoutMinutes: 120,
+		RecoveryLimit:  500,
+		Logger:         logrus.New(),
+	}))
+
+	components := sm.buildManagedComponents()
+	found := false
+	for _, component := range components {
+		if component.Name() == "stale-queued-watchdog" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("expected stale queued watchdog component to be registered")
+	}
+}
+
+func TestRabbitMQServiceCoordinatorRoleSkipsBusinessTopologyInitialization(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:           config.NodeRoleTask,
+			UseStoreQueues: true,
+		},
+		AutoShard: config.AutoShardConfig{
+			Enabled: true,
+			Role:    config.AutoShardRoleCoordinator,
+		},
+	}, logrus.New())
+	svc.SetStoreAssignmentProvider(stubStoreAssignmentProvider{stores: []int64{976}})
+	svc.processorRegistry.RegisterProcessor("shein", noopProcessor{})
+	svc.processorRegistry.RegisterProcessor("amazon.crawler", noopProcessor{})
+
+	if err := svc.initializeQueueTopology(); err != nil {
+		t.Fatalf("initializeQueueTopology() error = %v", err)
+	}
+
+	if unhealthy := svc.GetUnhealthyRequiredQueues(); len(unhealthy) != 0 {
+		t.Fatalf("expected coordinator to have no required consumer queues, got %v", unhealthy)
+	}
+	if svc.GetConsumer().GetStateManager("shein.tasks.store.976") != nil {
+		t.Fatal("did not expect coordinator topology init to register store task handler")
+	}
+	if svc.GetConsumer().GetStateManager("amazon.crawler") != nil {
+		t.Fatal("did not expect coordinator topology init to register crawler handler")
+	}
+}
+
+func TestRabbitMQServiceCoordinatorRoleSkipsDirectStoreAssignmentSync(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role:           config.NodeRoleTask,
+			UseStoreQueues: true,
+			NodeID:         "shein-listing-ownership-controller",
+		},
+		AutoShard: config.AutoShardConfig{
+			Enabled: true,
+			Role:    config.AutoShardRoleCoordinator,
+		},
+	}, logrus.New())
+	svc.SetStoreAssignmentProvider(stubStoreAssignmentProvider{stores: []int64{976}})
+	svc.processorRegistry.RegisterProcessor("shein", noopProcessor{})
+
+	svc.syncInitialStoreAssignments(context.Background())
+
+	state := svc.routingStateSnapshot()
+	if len(state.ownedStores) != 0 {
+		t.Fatalf("expected coordinator to skip assignment sync, got owned stores %v", state.ownedStores)
+	}
+	if svc.GetConsumer().GetStateManager("shein.tasks.store.976") != nil {
+		t.Fatal("did not expect coordinator assignment sync to register store task handler")
 	}
 }
 
@@ -519,6 +716,48 @@ func TestQueueHandlerBuilderDetectsCrawlerPlatforms(t *testing.T) {
 	if builder.isCrawlerPlatform("shein") {
 		t.Fatal("did not expect shein to be detected as crawler platform")
 	}
+}
+
+func TestQueueHandlerBuilderRegistersDeadLetterHandlerWhenEnabled(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+		DeadLetter: config.DeadLetterConfig{
+			Enabled:   true,
+			QueueName: "tasks.dlq",
+		},
+	}, logrus.New())
+	svc.processorRegistry.RegisterProcessor("shein", processorWithDeadLetterRuntime{runtime: &stubDeadLetterRuntime{}})
+
+	handlers := newQueueHandlerBuilder(svc).build()
+	if handlers["tasks.dlq"] == nil {
+		t.Fatal("expected tasks.dlq handler to be registered when dead letter handling is enabled")
+	}
+}
+
+func TestQueueHandlerBuilderSkipsDeadLetterHandlerByDefault(t *testing.T) {
+	svc := NewRabbitMQService(&config.RabbitMQConfig{
+		URL: "amqp://guest:guest@localhost:5672/",
+		Node: config.NodeConfig{
+			Role: config.NodeRoleTask,
+		},
+	}, logrus.New())
+
+	handlers := newQueueHandlerBuilder(svc).build()
+	if handlers["tasks.dlq"] != nil {
+		t.Fatal("did not expect tasks.dlq handler to be registered by default")
+	}
+}
+
+type processorWithDeadLetterRuntime struct {
+	noopProcessor
+	runtime taskstatus.RuntimeWithTaskRPC
+}
+
+func (p processorWithDeadLetterRuntime) GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
+	return p.runtime
 }
 
 func TestRabbitMQServiceInitializeCrawlerQueuesSkipsEmptyRegions(t *testing.T) {

@@ -38,6 +38,7 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED", "true")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_PLATFORM", "shein")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES", "shein-store-a, shein-store-b")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_TARGET_STORES_PER_NODE", "3")
 	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY", "image-key")
 	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL", "https://image.example.test/v1")
 	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE", "nanobanana")
@@ -58,6 +59,7 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	assert.True(t, v.GetBool("rabbitmq.autoShard.enabled"))
 	assert.Equal(t, "shein", v.GetString("rabbitmq.autoShard.platform"))
 	assert.Equal(t, []string{"shein-store-a", "shein-store-b"}, getStringSlice(v, "rabbitmq.autoShard.candidateNodes"))
+	assert.Equal(t, 3, v.GetInt("rabbitmq.autoShard.targetStoresPerNode"))
 	assert.Equal(t, 18081, v.GetInt("rabbitmq.node.healthCheckPort"))
 	assert.Equal(t, 19090, v.GetInt("rabbitmq.node.metricsPort"))
 	assert.Equal(t, "image-key", v.GetString("openai.clients.image.apiKey"))
@@ -108,6 +110,34 @@ func TestNewViper_BindsDatabaseEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "db.example", v.GetString("database.host"))
 	assert.Equal(t, 30432, v.GetInt("database.port"))
 	assert.Equal(t, "legacy-db", v.GetString("database.database"))
+}
+
+func TestNewViperBindsProcessingTimeoutWatchdogEnvironmentVariables(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_INTERVAL_SECONDS", "300")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_TIMEOUT_MINUTES", "30")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_RECOVERY_LIMIT", "100")
+
+	v := newViper()
+
+	assert.True(t, v.GetBool("rabbitmq.processingTimeoutWatchdog.enabled"))
+	assert.Equal(t, 300, v.GetInt("rabbitmq.processingTimeoutWatchdog.intervalSeconds"))
+	assert.Equal(t, 30, v.GetInt("rabbitmq.processingTimeoutWatchdog.timeoutMinutes"))
+	assert.Equal(t, 100, v.GetInt("rabbitmq.processingTimeoutWatchdog.recoveryLimit"))
+}
+
+func TestNewViperBindsStaleQueuedWatchdogEnvironmentVariables(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_INTERVAL_SECONDS", "300")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_TIMEOUT_MINUTES", "120")
+	t.Setenv("TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_RECOVERY_LIMIT", "500")
+
+	v := newViper()
+
+	assert.True(t, v.GetBool("rabbitmq.staleQueuedWatchdog.enabled"))
+	assert.Equal(t, 300, v.GetInt("rabbitmq.staleQueuedWatchdog.intervalSeconds"))
+	assert.Equal(t, 120, v.GetInt("rabbitmq.staleQueuedWatchdog.timeoutMinutes"))
+	assert.Equal(t, 500, v.GetInt("rabbitmq.staleQueuedWatchdog.recoveryLimit"))
 }
 
 func TestNewViper_BindsRedisEnvironmentVariables(t *testing.T) {

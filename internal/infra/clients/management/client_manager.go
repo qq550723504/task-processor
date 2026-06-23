@@ -440,6 +440,16 @@ func (cm *ClientManager) GetLocalProductImportMappingRepository() *listingadmin.
 	return provider.productImportMappingRepository()
 }
 
+func (cm *ClientManager) GetLocalImportTaskRepository() *listingadmin.GormImportTaskRepository {
+	cm.mutex.RLock()
+	provider := cm.localDataProvider
+	cm.mutex.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider.importTaskRepository()
+}
+
 func (cm *ClientManager) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
 	cm.mutex.RLock()
 	provider := cm.localDataProvider

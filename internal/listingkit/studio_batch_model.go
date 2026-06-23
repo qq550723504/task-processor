@@ -52,6 +52,7 @@ type StudioBatchRecord struct {
 	UserID                string                          `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
 	Status                StudioBatchStatus               `json:"status" gorm:"type:varchar(32);index;not null"`
 	Prompt                string                          `json:"prompt,omitempty" gorm:"type:text"`
+	PromptMode            string                          `json:"prompt_mode,omitempty" gorm:"type:varchar(16)"`
 	GroupedImageMode      string                          `json:"grouped_image_mode,omitempty" gorm:"type:varchar(32)"`
 	Selection             SheinStudioSelectionSnapshot    `json:"selection,omitempty" gorm:"type:text"`
 	GroupedSelections     SheinStudioGroupedSelectionList `json:"grouped_selections,omitempty" gorm:"type:text"`

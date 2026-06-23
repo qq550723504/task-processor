@@ -355,6 +355,10 @@ func knownEnvBindings() map[string]envBinding {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED",
 			Deprecated: []string{"RABBITMQ_AUTO_SHARD_ENABLED"},
 		},
+		"rabbitmq.autoShard.role": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ROLE",
+			Deprecated: []string{"RABBITMQ_AUTO_SHARD_ROLE"},
+		},
 		"rabbitmq.autoShard.platform": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_PLATFORM",
 			Deprecated: []string{"RABBITMQ_AUTO_SHARD_PLATFORM"},
@@ -378,6 +382,50 @@ func knownEnvBindings() map[string]envBinding {
 		"rabbitmq.autoShard.candidateNodes": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES",
 			Deprecated: []string{"RABBITMQ_AUTO_SHARD_CANDIDATE_NODES"},
+		},
+		"rabbitmq.autoShard.targetStoresPerNode": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_TARGET_STORES_PER_NODE",
+			Deprecated: []string{"RABBITMQ_AUTO_SHARD_TARGET_STORES_PER_NODE"},
+		},
+		"rabbitmq.deadLetter.enabled": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_DEAD_LETTER_ENABLED",
+			Deprecated: []string{"RABBITMQ_DEAD_LETTER_ENABLED"},
+		},
+		"rabbitmq.deadLetter.queueName": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_DEAD_LETTER_QUEUE_NAME",
+			Deprecated: []string{"RABBITMQ_DEAD_LETTER_QUEUE_NAME"},
+		},
+		"rabbitmq.processingTimeoutWatchdog.enabled": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED",
+			Deprecated: []string{"RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED"},
+		},
+		"rabbitmq.processingTimeoutWatchdog.intervalSeconds": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_INTERVAL_SECONDS",
+			Deprecated: []string{"RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_INTERVAL_SECONDS"},
+		},
+		"rabbitmq.processingTimeoutWatchdog.timeoutMinutes": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_TIMEOUT_MINUTES",
+			Deprecated: []string{"RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_TIMEOUT_MINUTES"},
+		},
+		"rabbitmq.processingTimeoutWatchdog.recoveryLimit": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_RECOVERY_LIMIT",
+			Deprecated: []string{"RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_RECOVERY_LIMIT"},
+		},
+		"rabbitmq.staleQueuedWatchdog.enabled": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED",
+			Deprecated: []string{"RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED"},
+		},
+		"rabbitmq.staleQueuedWatchdog.intervalSeconds": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_INTERVAL_SECONDS",
+			Deprecated: []string{"RABBITMQ_STALE_QUEUED_WATCHDOG_INTERVAL_SECONDS"},
+		},
+		"rabbitmq.staleQueuedWatchdog.timeoutMinutes": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_TIMEOUT_MINUTES",
+			Deprecated: []string{"RABBITMQ_STALE_QUEUED_WATCHDOG_TIMEOUT_MINUTES"},
+		},
+		"rabbitmq.staleQueuedWatchdog.recoveryLimit": {
+			Primary:    "TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_RECOVERY_LIMIT",
+			Deprecated: []string{"RABBITMQ_STALE_QUEUED_WATCHDOG_RECOVERY_LIMIT"},
 		},
 		"rabbitmq.node.healthCheckPort": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT",

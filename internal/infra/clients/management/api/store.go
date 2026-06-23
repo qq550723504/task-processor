@@ -22,6 +22,7 @@ type StoreRespDTO struct {
 	Suffix                   string              `json:"suffix"`
 	Proxy                    string              `json:"proxy"`
 	EnableAutoListing        *bool               `json:"enableAutoListing,omitempty"`
+	DedicatedQueueEnabled    *bool               `json:"dedicatedQueueEnabled,omitempty"`
 	EnableAutoLogin          *bool               `json:"enableAutoLogin,omitempty"`
 	EnableDraft              *bool               `json:"enableDraft,omitempty"`
 	EnableAutoPrice          *bool               `json:"enableAutoPrice,omitempty"`

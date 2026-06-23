@@ -57,6 +57,132 @@ func TestConfigureTenantPromptStoreAttachesStoreToGlobalRegistry(t *testing.T) {
 	require.Equal(t, "tenant prompt", got)
 }
 
+func TestShouldEnableDynamicStoreAssignmentForWorkerRole(t *testing.T) {
+	tests := []struct {
+		name      string
+		autoShard config.AutoShardConfig
+		want      bool
+	}{
+		{
+			name:      "legacy auto shard disabled can use dynamic assignment",
+			autoShard: config.AutoShardConfig{Enabled: false},
+			want:      true,
+		},
+		{
+			name:      "worker role uses dynamic assignment",
+			autoShard: config.AutoShardConfig{Enabled: true, Role: config.AutoShardRoleWorker},
+			want:      true,
+		},
+		{
+			name:      "empty enabled role defaults coordinator and skips dynamic assignment",
+			autoShard: config.AutoShardConfig{Enabled: true},
+			want:      false,
+		},
+		{
+			name:      "coordinator role skips dynamic assignment",
+			autoShard: config.AutoShardConfig{Enabled: true, Role: config.AutoShardRoleCoordinator},
+			want:      false,
+		},
+		{
+			name:      "disabled role skips dynamic assignment",
+			autoShard: config.AutoShardConfig{Enabled: true, Role: config.AutoShardRoleDisabled},
+			want:      false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				RabbitMQ: &config.RabbitMQConfig{
+					Node: config.NodeConfig{
+						UseStoreQueues: true,
+					},
+					AutoShard: tt.autoShard,
+				},
+				Redis: &config.RedisConfig{},
+			}
+
+			require.Equal(t, tt.want, shouldEnableDynamicStoreAssignment(cfg))
+		})
+	}
+}
+
+func TestShouldConfigureAutoShardOnlyForCoordinatorRole(t *testing.T) {
+	tests := []struct {
+		name string
+		role string
+		want bool
+	}{
+		{
+			name: "coordinator",
+			role: config.AutoShardRoleCoordinator,
+			want: true,
+		},
+		{
+			name: "worker",
+			role: config.AutoShardRoleWorker,
+			want: false,
+		},
+		{
+			name: "disabled",
+			role: config.AutoShardRoleDisabled,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				RabbitMQ: &config.RabbitMQConfig{
+					AutoShard: config.AutoShardConfig{
+						Enabled: true,
+						Role:    tt.role,
+					},
+				},
+			}
+
+			require.Equal(t, tt.want, shouldConfigureAutoShard(cfg))
+		})
+	}
+}
+
+func TestCoordinatorRoleDoesNotUseDynamicStoreAssignment(t *testing.T) {
+	cfg := &config.Config{
+		RabbitMQ: &config.RabbitMQConfig{
+			Node: config.NodeConfig{
+				UseStoreQueues: true,
+			},
+			AutoShard: config.AutoShardConfig{
+				Enabled: true,
+				Role:    config.AutoShardRoleCoordinator,
+			},
+		},
+		Redis: &config.RedisConfig{},
+	}
+
+	require.False(t, shouldEnableDynamicStoreAssignment(cfg))
+	require.True(t, shouldConfigureAutoShard(cfg))
+}
+
+func TestDedicatedStaticStoreDoesNotUseDynamicAssignment(t *testing.T) {
+	cfg := &config.Config{
+		RabbitMQ: &config.RabbitMQConfig{
+			Node: config.NodeConfig{
+				UseStoreQueues: true,
+				OwnedStores:    []int64{976},
+			},
+			AutoShard: config.AutoShardConfig{
+				Enabled: false,
+				Role:    config.AutoShardRoleDisabled,
+			},
+		},
+		Redis: &config.RedisConfig{},
+	}
+
+	require.False(t, shouldEnableDynamicStoreAssignment(cfg))
+	require.False(t, shouldConfigureAutoShard(cfg))
+}
+
 func consumerTestRuntimeContext(cfg *config.Config) consumer.PlatformRuntimeContext {
 	return consumer.PlatformRuntimeContext{
 		Config: cfg,

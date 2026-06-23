@@ -6,6 +6,7 @@ import type {
 } from "@/lib/types/shein-studio-draft";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioPromptMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio-generation";
 import type {
@@ -62,6 +63,7 @@ export type SheinStudioBatchRecord = {
   tenantId?: string;
   status: SheinStudioBatchStatus;
   prompt: string;
+  promptMode?: SheinStudioPromptMode;
   styleCount: string;
   sheinStoreId: number;
   variationIntensity?: SheinStudioVariationIntensity;

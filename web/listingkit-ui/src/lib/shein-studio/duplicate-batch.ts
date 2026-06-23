@@ -23,6 +23,7 @@ export function buildDuplicatedSheinStudioBatchInput(
     id: undefined,
     name: `${batch.name} 副本`,
     prompt: batch.prompt,
+    promptMode: batch.promptMode,
     styleCount: batch.styleCount,
     variationIntensity: batch.variationIntensity,
     productImageCount: batch.productImageCount,

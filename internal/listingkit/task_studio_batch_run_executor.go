@@ -477,6 +477,7 @@ func buildStudioBatchRunDesignRequest(session *SheinStudioSession) *StudioDesign
 	}
 	return &StudioDesignRequest{
 		Prompt:                    session.Prompt,
+		PromptMode:                session.PromptMode,
 		Count:                     parseStudioBatchRunStyleCount(session.StyleCount),
 		VariationIntensity:        session.VariationIntensity,
 		PrintableWidth:            session.PrintableWidth,

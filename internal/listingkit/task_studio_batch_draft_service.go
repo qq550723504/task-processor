@@ -129,6 +129,7 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	session.SelectedVariantIDs = append(SheinStudioInt64List(nil), normalizedReq.Selection.SelectedVariantIDs...)
 	session.Selection = SheinStudioSelectionSnapshot(*normalizedReq.Selection)
 	session.Prompt = normalizedReq.Prompt
+	session.PromptMode = strings.TrimSpace(normalizedReq.PromptMode)
 	session.StyleCount = normalizedReq.StyleCount
 	session.VariationIntensity = normalizedReq.VariationIntensity
 	session.ProductImageCount = normalizedReq.ProductImageCount

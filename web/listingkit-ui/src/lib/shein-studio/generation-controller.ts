@@ -59,6 +59,7 @@ type ExecuteStandaloneGenerationInput = {
   navigateToStep: (step: "review") => void;
   persistDraft: GenerationPersistDraft;
   prompt: string;
+  promptMode?: SheinStudioGenerateRequest["promptMode"];
   setField: GenerationSetField;
   styleCount: string;
   transparentBackground: boolean;
@@ -230,6 +231,7 @@ export async function executeStandaloneGeneration({
   navigateToStep,
   persistDraft,
   prompt,
+  promptMode,
   setField,
   styleCount,
   transparentBackground,
@@ -294,6 +296,7 @@ export async function executeStandaloneGeneration({
       const response = await generateDesigns(
         buildSheinStudioGenerateRequest({
           prompt: prompt.trim(),
+          promptMode,
           variationIntensity,
           printableWidth: target.selection.printableWidth,
           printableHeight: target.selection.printableHeight,
@@ -429,6 +432,7 @@ export async function executeStandaloneGeneration({
 export function buildSheinStudioGenerateRequest({
   artworkModel,
   prompt,
+  promptMode,
   printableHeight,
   printableWidth,
   productReferenceImageUrls,
@@ -438,6 +442,7 @@ export function buildSheinStudioGenerateRequest({
 }: {
   artworkModel: SheinStudioArtworkModel;
   prompt: string;
+  promptMode?: SheinStudioGenerateRequest["promptMode"];
   printableHeight?: number;
   printableWidth?: number;
   productReferenceImageUrls?: string[];
@@ -453,6 +458,7 @@ export function buildSheinStudioGenerateRequest({
   });
   return {
     prompt: normalizedPrompt,
+    promptMode,
     count: styleCount,
     variationIntensity,
     printableWidth,

@@ -22,6 +22,7 @@ type Message struct {
 	ID         string         `json:"id"`
 	Type       string         `json:"type"`
 	Payload    map[string]any `json:"payload"`
+	Headers    map[string]any `json:"headers,omitempty"`
 	Priority   uint8          `json:"priority"`
 	Timestamp  int64          `json:"timestamp"`
 	RetryCount int            `json:"retry_count"`

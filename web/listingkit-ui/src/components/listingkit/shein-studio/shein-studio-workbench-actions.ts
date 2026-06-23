@@ -34,6 +34,7 @@ import type {
   SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
+  SheinStudioGenerateRequest,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedImageMode,
   SheinStudioGroupedWorkspace,
@@ -80,6 +81,7 @@ type UseSheinStudioDesignActionsParams = {
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
   prompt: string;
+  promptMode?: SheinStudioGenerateRequest["promptMode"];
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
   renderSizeImagesWithSds: boolean;
   selectedIds: string[];
@@ -123,6 +125,7 @@ export function useSheinStudioDesignActions({
   productImagePrompt,
   productImagePrompts,
   prompt,
+  promptMode,
   promptInputRef,
   renderSizeImagesWithSds,
   selectedIds,
@@ -152,6 +155,7 @@ export function useSheinStudioDesignActions({
     productImagePrompt,
     productImagePrompts,
     prompt,
+    promptMode,
     renderSizeImagesWithSds,
     selectedIds,
     selectedSdsImages,
@@ -375,6 +379,7 @@ export function useSheinStudioDesignActions({
       const response = await generateSheinStudioDesigns(
         buildSheinStudioGenerateRequest({
           prompt: prompt.trim(),
+          promptMode,
           variationIntensity,
           printableWidth: targetSelection?.printableWidth,
           printableHeight: targetSelection?.printableHeight,
