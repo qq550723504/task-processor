@@ -17,6 +17,7 @@ import { useSheinStudioDedicatedBatchRunController } from "@/components/listingk
 import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
 import {
+  buildSheinStudioDraftPersistenceState,
   resetDedicatedBatchPromptOverrides,
   useSheinStudioDedicatedDraftPersistence,
 } from "@/components/listingkit/shein-studio/shein-studio-persistence-controller";
@@ -716,29 +717,29 @@ export function SheinStudioWorkbench({
     selectedIds,
   });
   const draftPersistenceState = useMemo(
-    () => ({
+    () => buildSheinStudioDraftPersistenceState({
       activeSelection,
       artworkModel,
       createdTasks,
+      currentGenerationJobId: currentActiveBatch?.generationJobId,
       designs,
       generationError,
-      generationJobId: currentActiveBatch?.generationJobId,
       generationJobs,
       groups,
       groupedImageMode,
+      groupedSelections,
       imageStrategy,
       isCreatingTasks,
       isGenerating,
       isLoadingWorkspace,
+      persistedUpdatedAt,
       productImageCount,
       productImagePrompt,
       productImagePrompts,
-      persistedUpdatedAt,
       prompt,
       promptMode,
       regeneratingId,
       renderSizeImagesWithSds,
-      groupedSelections,
       selectedIds,
       selectedSdsImages,
       setDraftWarning,

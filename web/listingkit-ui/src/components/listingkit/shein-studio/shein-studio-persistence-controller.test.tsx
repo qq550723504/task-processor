@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  buildSheinStudioDraftPersistenceState,
   resetDedicatedBatchPromptOverrides,
   useSheinStudioDedicatedDraftPersistence,
 } from "@/components/listingkit/shein-studio/shein-studio-persistence-controller";
@@ -105,5 +106,64 @@ describe("useSheinStudioDedicatedDraftPersistence", () => {
         selectedIds: ["design-1"],
       }),
     );
+  });
+});
+
+describe("buildSheinStudioDraftPersistenceState", () => {
+  it("projects workbench values into draft persistence state", () => {
+    const setDraftWarning = vi.fn();
+    const setPersistedUpdatedAt = vi.fn();
+
+    const state = buildSheinStudioDraftPersistenceState({
+      activeSelection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      artworkModel: "model-a",
+      createdTasks: [],
+      currentGenerationJobId: "job-1",
+      designs: [{ id: "design-1" }],
+      generationError: "",
+      generationJobs: [{ jobId: "job-1", status: "running" }],
+      groups: [],
+      groupedImageMode: "shared_by_size",
+      groupedSelections: [],
+      imageStrategy: "hybrid",
+      isCreatingTasks: false,
+      isGenerating: true,
+      isLoadingWorkspace: false,
+      persistedUpdatedAt: "2026-06-24T00:00:00.000Z",
+      productImageCount: "1",
+      productImagePrompt: "image prompt",
+      productImagePrompts: [],
+      prompt: "prompt",
+      promptMode: "managed",
+      regeneratingId: "",
+      renderSizeImagesWithSds: true,
+      selectedIds: ["design-1"],
+      selectedSdsImages: [],
+      setDraftWarning,
+      setPersistedUpdatedAt,
+      sheinStoreId: "store-1",
+      styleCount: "2",
+      transparentBackground: false,
+      variationIntensity: "medium",
+    });
+
+    expect(state).toMatchObject({
+      artworkModel: "model-a",
+      generationJobId: "job-1",
+      isGenerating: true,
+      prompt: "prompt",
+      selectedIds: ["design-1"],
+      sheinStoreId: "store-1",
+    });
+    expect(state.setDraftWarning).toBe(setDraftWarning);
+    expect(state.setPersistedUpdatedAt).toBe(setPersistedUpdatedAt);
   });
 });
