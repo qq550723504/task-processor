@@ -54,6 +54,9 @@ func TestSchedulerDispatchesReadyStoreToStoreQueue(t *testing.T) {
 	if published.Platform != "shein" || published.SourcePlatform != "amazon" {
 		t.Fatalf("published wrong platforms: %+v", published)
 	}
+	if published.ErrorMessage != "previous error" {
+		t.Fatalf("published error message = %q, want previous error", published.ErrorMessage)
+	}
 	if len(summary.Decisions) != 1 {
 		t.Fatalf("decisions = %d, want 1", len(summary.Decisions))
 	}
@@ -238,6 +241,7 @@ func testImportTask(id, tenantID, storeID int64, status int16) listingadmin.Impo
 		CategoryID:     &categoryID,
 		ProductID:      "B0TEST",
 		Status:         status,
+		ErrorMessage:   "previous error",
 		RetryCount:     1,
 		MaxRetryCount:  3,
 		Remark:         "remark",

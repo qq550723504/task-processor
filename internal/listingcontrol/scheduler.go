@@ -260,6 +260,7 @@ func importTaskToModelTask(task listingadmin.ImportTask) *model.Task {
 		Region:         task.Region,
 		ProductID:      task.ProductID,
 		Status:         task.Status,
+		ErrorMessage:   task.ErrorMessage,
 		RetryCount:     task.RetryCount,
 		MaxRetryCount:  task.MaxRetryCount,
 		Remark:         task.Remark,
