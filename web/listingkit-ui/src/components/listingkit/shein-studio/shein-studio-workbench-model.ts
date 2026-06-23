@@ -182,6 +182,53 @@ export function getApprovedItemizedBatchDesignIDs(
   );
 }
 
+export function toggleItemizedBatchDesignApproval(
+  detail: SheinStudioBatchDetail,
+  designId: string,
+): SheinStudioBatchDetail {
+  return {
+    ...detail,
+    items: detail.items.map((entry) => ({
+      ...entry,
+      designs: entry.designs.map((design) =>
+        design.id !== designId
+          ? design
+          : {
+              ...design,
+              reviewStatus:
+                design.reviewStatus === "approved" ? "unreviewed" : "approved",
+            },
+      ),
+    })),
+  };
+}
+
+export function updateItemizedBatchDesignReviewNote(
+  detail: SheinStudioBatchDetail,
+  designId: string,
+  note: string,
+): SheinStudioBatchDetail {
+  return {
+    ...detail,
+    items: detail.items.map((entry) => ({
+      ...entry,
+      designs: entry.designs.map((design) =>
+        design.id === designId ? { ...design, reviewNote: note } : design,
+      ),
+    })),
+  };
+}
+
+export function updateFlatDesignReviewNote(
+  designs: SheinStudioGeneratedDesign[],
+  designId: string,
+  note: string,
+) {
+  return designs.map((design) =>
+    design.id === designId ? { ...design, reviewNote: note } : design,
+  );
+}
+
 export function getItemizedBatchPendingTaskDesignIDs(
   detail?: SheinStudioBatchDetail | null,
 ) {

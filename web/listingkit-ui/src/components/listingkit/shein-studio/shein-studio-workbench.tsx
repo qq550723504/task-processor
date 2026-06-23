@@ -79,6 +79,9 @@ import {
   projectWorkbenchStateToSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
+  toggleItemizedBatchDesignApproval,
+  updateFlatDesignReviewNote,
+  updateItemizedBatchDesignReviewNote,
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
@@ -1526,23 +1529,9 @@ export function SheinStudioWorkbench({
         : [...selectedIds, designId];
       const previousDetail = itemizedBatchDetail;
       if (
-        !applyOptimisticItemizedBatchDetail((detail) => ({
-          ...detail,
-          items: detail.items.map((entry) => ({
-            ...entry,
-            designs: entry.designs.map((design) =>
-              design.id !== designId
-                ? design
-                : {
-                    ...design,
-                    reviewStatus:
-                      design.reviewStatus === "approved"
-                        ? "unreviewed"
-                        : "approved",
-                  },
-            ),
-          })),
-        }))
+        !applyOptimisticItemizedBatchDetail((detail) =>
+          toggleItemizedBatchDesignApproval(detail, designId),
+        )
       ) {
         return;
       }
@@ -1576,23 +1565,9 @@ export function SheinStudioWorkbench({
       return;
     }
     if (
-      applyOptimisticItemizedBatchDetail((detail) => ({
-        ...detail,
-        items: detail.items.map((entry) => ({
-          ...entry,
-          designs: entry.designs.map((design) =>
-            design.id !== designId
-              ? design
-              : {
-                  ...design,
-                  reviewStatus:
-                    design.reviewStatus === "approved"
-                      ? "unreviewed"
-                      : "approved",
-                },
-          ),
-        })),
-      }))
+      applyOptimisticItemizedBatchDetail((detail) =>
+        toggleItemizedBatchDesignApproval(detail, designId),
+      )
     ) {
       return;
     }
@@ -1605,23 +1580,13 @@ export function SheinStudioWorkbench({
 
   function handleNoteChange(designId: string, note: string) {
     if (
-      applyOptimisticItemizedBatchDetail((detail) => ({
-        ...detail,
-        items: detail.items.map((entry) => ({
-          ...entry,
-          designs: entry.designs.map((design) =>
-            design.id === designId ? { ...design, reviewNote: note } : design,
-          ),
-        })),
-      }))
+      applyOptimisticItemizedBatchDetail((detail) =>
+        updateItemizedBatchDesignReviewNote(detail, designId, note),
+      )
     ) {
       return;
     }
-    setDesigns((current) =>
-      current.map((design) =>
-        design.id === designId ? { ...design, reviewNote: note } : design,
-      ),
-    );
+    setDesigns((current) => updateFlatDesignReviewNote(current, designId, note));
   }
 
   async function handleRetryFailedItem(itemId: string) {

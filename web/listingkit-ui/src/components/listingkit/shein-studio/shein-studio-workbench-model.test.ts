@@ -14,6 +14,9 @@ import {
   projectWorkbenchStateToSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
+  toggleItemizedBatchDesignApproval,
+  updateFlatDesignReviewNote,
+  updateItemizedBatchDesignReviewNote,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 
 describe("shein studio workbench model", () => {
@@ -337,6 +340,127 @@ describe("shein studio workbench model", () => {
     });
 
     expect(pendingDesignIds).toEqual(["design-2"]);
+  });
+
+  it("toggles approval for one itemized batch design", () => {
+    const detail = {
+      batch: {
+        id: "batch-1",
+        status: "review_ready" as const,
+        prompt: "itemized prompt",
+        styleCount: "1",
+        sheinStoreId: 869,
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:10:00Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "group-1",
+            status: "review_ready" as const,
+            selectionCount: 1,
+            createdAt: "2026-06-01T10:00:00Z",
+            updatedAt: "2026-06-01T10:10:00Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "group-1",
+              imageUrl: "https://example.com/design-1.png",
+              reviewStatus: "approved" as const,
+              createdAt: "2026-06-01T10:00:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+            {
+              id: "design-2",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-2",
+              targetGroupKey: "group-1",
+              imageUrl: "https://example.com/design-2.png",
+              reviewStatus: "unreviewed" as const,
+              createdAt: "2026-06-01T10:01:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+          ],
+        },
+      ],
+    };
+
+    const next = toggleItemizedBatchDesignApproval(detail, "design-1");
+
+    expect(next.items[0]?.designs.map((design) => design.reviewStatus)).toEqual([
+      "unreviewed",
+      "unreviewed",
+    ]);
+    expect(detail.items[0]?.designs[0]?.reviewStatus).toBe("approved");
+  });
+
+  it("updates review notes for itemized and flat designs", () => {
+    const detail = {
+      batch: {
+        id: "batch-1",
+        status: "review_ready" as const,
+        prompt: "itemized prompt",
+        styleCount: "1",
+        sheinStoreId: 869,
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:10:00Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "group-1",
+            status: "review_ready" as const,
+            selectionCount: 1,
+            createdAt: "2026-06-01T10:00:00Z",
+            updatedAt: "2026-06-01T10:10:00Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "group-1",
+              imageUrl: "https://example.com/design-1.png",
+              reviewStatus: "approved" as const,
+              createdAt: "2026-06-01T10:00:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(
+      updateItemizedBatchDesignReviewNote(detail, "design-1", "needs crop").items[0]
+        ?.designs[0]?.reviewNote,
+    ).toBe("needs crop");
+    expect(
+      updateFlatDesignReviewNote(
+        [
+          { id: "design-1", imageUrl: "https://example.com/1.png" },
+          { id: "design-2", imageUrl: "https://example.com/2.png", reviewNote: "keep" },
+        ],
+        "design-1",
+        "needs crop",
+      ),
+    ).toEqual([
+      {
+        id: "design-1",
+        imageUrl: "https://example.com/1.png",
+        reviewNote: "needs crop",
+      },
+      { id: "design-2", imageUrl: "https://example.com/2.png", reviewNote: "keep" },
+    ]);
   });
 
   it("projects saved-batch compatibility snapshots before hydration", () => {
