@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1.7
+
+FROM golang:1.26-alpine AS builder
+
+RUN apk add --no-cache git
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+COPY . .
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
+        -ldflags="-s -w" \
+        -o listing-control-plane \
+        ./cmd/listing-control-plane
+
+FROM alpine:3.22
+
+RUN apk add --no-cache ca-certificates tzdata
+
+ENV TZ=Asia/Shanghai
+
+WORKDIR /app
+
+RUN mkdir -p /app/logs /app/tmp
+
+COPY --from=builder /app/listing-control-plane /app/listing-control-plane
+COPY --from=builder /app/config ./config
+
+RUN chmod +x /app/listing-control-plane
+
+EXPOSE 8081
+
+CMD ["/app/listing-control-plane", "-config", "config/config-prod.yaml", "-log-level", "info"]

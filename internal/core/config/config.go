@@ -24,23 +24,24 @@ var (
 )
 
 type Config struct {
-	Logging      LoggingConfig      `yaml:"logging"`
-	Processor    ProcessorConfig    `yaml:"processor"`
-	Worker       WorkerConfig       `yaml:"worker"`
-	OpenAI       OpenAIConfig       `yaml:"openai"`
-	Management   ManagementConfig   `yaml:"management"`
-	Browser      BrowserConfig      `yaml:"browser"`
-	Amazon       AmazonConfig       `yaml:"amazon"`
-	RabbitMQ     *RabbitMQConfig    `yaml:"rabbitmq"`
-	Updater      UpdaterConfig      `yaml:"updater"`
-	Platforms    PlatformsConfig    `yaml:"platforms"`
-	Watermark    *watermark.Config  `yaml:"watermark"`
-	ProductImage ProductImageConfig `yaml:"productimage"`
-	Database     *DatabaseConfig    `yaml:"database"`
-	Redis        *RedisConfig       `yaml:"redis"`
-	Prompts      PromptsConfig      `yaml:"prompts"`
-	Debug        DebugConfig        `yaml:"debug"`
-	ListingKit   ListingKitConfig   `yaml:"listingkit"`
+	Logging             LoggingConfig             `yaml:"logging"`
+	Processor           ProcessorConfig           `yaml:"processor"`
+	Worker              WorkerConfig              `yaml:"worker"`
+	OpenAI              OpenAIConfig              `yaml:"openai"`
+	Management          ManagementConfig          `yaml:"management"`
+	Browser             BrowserConfig             `yaml:"browser"`
+	Amazon              AmazonConfig              `yaml:"amazon"`
+	RabbitMQ            *RabbitMQConfig           `yaml:"rabbitmq"`
+	Updater             UpdaterConfig             `yaml:"updater"`
+	Platforms           PlatformsConfig           `yaml:"platforms"`
+	Watermark           *watermark.Config         `yaml:"watermark"`
+	ProductImage        ProductImageConfig        `yaml:"productimage"`
+	Database            *DatabaseConfig           `yaml:"database"`
+	Redis               *RedisConfig              `yaml:"redis"`
+	Prompts             PromptsConfig             `yaml:"prompts"`
+	Debug               DebugConfig               `yaml:"debug"`
+	ListingKit          ListingKitConfig          `yaml:"listingkit"`
+	ListingControlPlane ListingControlPlaneConfig `yaml:"listingControlPlane"`
 }
 
 type DebugConfig struct {
@@ -410,6 +411,30 @@ func knownEnvBindings() map[string]envBinding {
 		"rabbitmq.processingTimeoutWatchdog.recoveryLimit": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_RECOVERY_LIMIT",
 			Deprecated: []string{"RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_RECOVERY_LIMIT"},
+		},
+		"listingControlPlane.enabled": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_ENABLED",
+		},
+		"listingControlPlane.platform": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_PLATFORM",
+		},
+		"listingControlPlane.scanInterval": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_SCAN_INTERVAL",
+		},
+		"listingControlPlane.batchSize": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_BATCH_SIZE",
+		},
+		"listingControlPlane.perStoreBurst": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_PER_STORE_BURST",
+		},
+		"listingControlPlane.maxQueuedPerStore": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_MAX_QUEUED_PER_STORE",
+		},
+		"listingControlPlane.dryRun": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_DRY_RUN",
+		},
+		"listingControlPlane.enableLegacyQuotaKeys": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_ENABLE_LEGACY_QUOTA_KEYS",
 		},
 		"rabbitmq.staleQueuedWatchdog.enabled": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED",

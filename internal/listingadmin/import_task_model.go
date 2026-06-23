@@ -16,6 +16,7 @@ func (t listingProductImportTask) toImportTask() ImportTask {
 		CategoryID:     &categoryID,
 		ProductID:      t.ProductID,
 		Status:         t.Status,
+		ProcessingNode: t.ProcessingNode,
 		ErrorMessage:   t.ErrorMessage,
 		ReasonCode:     t.ReasonCode,
 		Stage:          t.Stage,
@@ -23,6 +24,8 @@ func (t listingProductImportTask) toImportTask() ImportTask {
 		MaxRetryCount:  t.MaxRetryCount,
 		Remark:         t.Remark,
 		Priority:       t.Priority,
+		Creator:        t.Creator,
+		Updater:        t.Updater,
 		CreateTime:     t.CreateTime,
 		UpdateTime:     t.UpdateTime,
 	}
@@ -52,6 +55,7 @@ func listingProductImportTaskFromImportTask(task ImportTask) listingProductImpor
 		CategoryID:     categoryID,
 		ProductID:      strings.TrimSpace(task.ProductID),
 		Status:         task.Status,
+		ProcessingNode: strings.TrimSpace(task.ProcessingNode),
 		ErrorMessage:   strings.TrimSpace(task.ErrorMessage),
 		ReasonCode:     strings.TrimSpace(task.ReasonCode),
 		Stage:          strings.TrimSpace(task.Stage),
@@ -59,6 +63,8 @@ func listingProductImportTaskFromImportTask(task ImportTask) listingProductImpor
 		MaxRetryCount:  task.MaxRetryCount,
 		Remark:         strings.TrimSpace(task.Remark),
 		Priority:       task.Priority,
+		Creator:        strings.TrimSpace(task.Creator),
+		Updater:        strings.TrimSpace(task.Updater),
 	}
 }
 

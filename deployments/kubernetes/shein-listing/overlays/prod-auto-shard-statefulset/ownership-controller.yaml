@@ -79,7 +79,7 @@ spec:
             - name: TASK_PROCESSOR_RABBITMQ_DEAD_LETTER_QUEUE_NAME
               value: tasks.dlq
             - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED
-              value: "true"
+              value: "false"
             - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_INTERVAL_SECONDS
               value: "300"
             - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_TIMEOUT_MINUTES
@@ -87,7 +87,7 @@ spec:
             - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_RECOVERY_LIMIT
               value: "100"
             - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED
-              value: "true"
+              value: "false"
             - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_INTERVAL_SECONDS
               value: "300"
             - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_TIMEOUT_MINUTES

@@ -2,6 +2,7 @@ package config
 
 import (
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -82,6 +83,23 @@ func TestPlatformFetchModeDefaults(t *testing.T) {
 
 	assert.Equal(t, "auto", v.GetString("platforms.temu.fetchMode"))
 	assert.Equal(t, "auto", v.GetString("platforms.shein.fetchMode"))
+}
+
+func TestListingControlPlaneConfigDefaults(t *testing.T) {
+	v := viper.New()
+	setDefaults(v)
+
+	assert.False(t, v.GetBool("listingControlPlane.enabled"))
+	assert.Equal(t, "shein", v.GetString("listingControlPlane.platform"))
+	assert.Equal(t, "listing:control-plane:leader:shein", v.GetString("listingControlPlane.leaderLockKey"))
+	assert.Equal(t, 30*time.Second, v.GetDuration("listingControlPlane.leaderLockTTL"))
+	assert.Equal(t, 5*time.Second, v.GetDuration("listingControlPlane.scanInterval"))
+	assert.Equal(t, 500, v.GetInt("listingControlPlane.batchSize"))
+	assert.Equal(t, 1, v.GetInt("listingControlPlane.perStoreBurst"))
+	assert.Equal(t, 0, v.GetInt("listingControlPlane.maxQueuedPerStore"))
+	assert.False(t, v.GetBool("listingControlPlane.dryRun"))
+	assert.False(t, v.GetBool("listingControlPlane.enableLegacyQuotaKeys"))
+	assert.Equal(t, time.Duration(0), v.GetDuration("listingControlPlane.quotaKeyTTLGrace"))
 }
 
 func TestConfigBuild(t *testing.T) {
@@ -228,6 +246,65 @@ func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 	assert.Equal(t, []string{"user-a", "user-b"}, cfg.ListingKit.Zitadel.AllowedUserIDs)
 	assert.Equal(t, []string{"alice", "bob"}, cfg.ListingKit.Zitadel.AllowedUsernames)
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
+}
+
+func TestLoadFromBytesIncludesListingControlPlaneConfig(t *testing.T) {
+	cfg, err := LoadFromBytes([]byte(`
+openai:
+  apiKey: "test-key"
+management:
+  clientSecret: "test-secret"
+listingControlPlane:
+  enabled: true
+  platform: temu
+  leaderLockKey: "listing:control-plane:leader:temu"
+  leaderLockTTL: 45s
+  scanInterval: 10s
+  batchSize: 250
+  perStoreBurst: 2
+  maxQueuedPerStore: 8
+  dryRun: true
+  enableLegacyQuotaKeys: true
+  quotaKeyTTLGrace: 1m
+`))
+	require.NoError(t, err)
+
+	assert.True(t, cfg.ListingControlPlane.Enabled)
+	assert.Equal(t, "temu", cfg.ListingControlPlane.Platform)
+	assert.Equal(t, "listing:control-plane:leader:temu", cfg.ListingControlPlane.LeaderLockKey)
+	assert.Equal(t, 45*time.Second, cfg.ListingControlPlane.LeaderLockTTL)
+	assert.Equal(t, 10*time.Second, cfg.ListingControlPlane.ScanInterval)
+	assert.Equal(t, 250, cfg.ListingControlPlane.BatchSize)
+	assert.Equal(t, 2, cfg.ListingControlPlane.PerStoreBurst)
+	assert.Equal(t, 8, cfg.ListingControlPlane.MaxQueuedPerStore)
+	assert.True(t, cfg.ListingControlPlane.DryRun)
+	assert.True(t, cfg.ListingControlPlane.EnableLegacyQuotaKeys)
+	assert.Equal(t, time.Minute, cfg.ListingControlPlane.QuotaKeyTTLGrace)
+}
+
+func TestLoadFromBytesAppliesListingControlPlaneEnvOverrides(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "test-key")
+	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_PLATFORM", "temu")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_SCAN_INTERVAL", "12s")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_BATCH_SIZE", "75")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_PER_STORE_BURST", "3")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_MAX_QUEUED_PER_STORE", "9")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_DRY_RUN", "true")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_ENABLE_LEGACY_QUOTA_KEYS", "true")
+
+	cfg, err := LoadFromBytes(nil)
+	require.NoError(t, err)
+
+	assert.True(t, cfg.ListingControlPlane.Enabled)
+	assert.Equal(t, "temu", cfg.ListingControlPlane.Platform)
+	assert.Equal(t, 12*time.Second, cfg.ListingControlPlane.ScanInterval)
+	assert.Equal(t, 75, cfg.ListingControlPlane.BatchSize)
+	assert.Equal(t, 3, cfg.ListingControlPlane.PerStoreBurst)
+	assert.Equal(t, 9, cfg.ListingControlPlane.MaxQueuedPerStore)
+	assert.True(t, cfg.ListingControlPlane.DryRun)
+	assert.True(t, cfg.ListingControlPlane.EnableLegacyQuotaKeys)
 }
 
 func TestConfigValidation(t *testing.T) {
