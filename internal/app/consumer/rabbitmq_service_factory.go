@@ -25,6 +25,9 @@ func applyRabbitMQServiceDefaults(cfg *config.RabbitMQConfig) {
 	if cfg.Consumer.MaxRetries == 0 {
 		cfg.Consumer.MaxRetries = 3
 	}
+	if cfg.DeadLetter.QueueName == "" {
+		cfg.DeadLetter.QueueName = defaultDLQQueueName
+	}
 }
 
 func newRabbitMQConnectionManager(cfg *config.RabbitMQConfig, logger *logrus.Logger) *rabbitmq.ConnectionManager {

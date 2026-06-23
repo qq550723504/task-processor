@@ -47,9 +47,6 @@ func (r *GormRawJSONDataRepository) UpsertRawJSONData(ctx context.Context, recor
 			"raw_json_data": record.RawJSONData,
 			"update_time":   time.Now(),
 		}
-		if record.TenantID > 0 {
-			updates["tenant_id"] = record.TenantID
-		}
 		if record.StoreID > 0 {
 			updates["store_id"] = record.StoreID
 		}

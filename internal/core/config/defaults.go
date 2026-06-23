@@ -1,6 +1,10 @@
 package config
 
-import "github.com/spf13/viper"
+import (
+	"time"
+
+	"github.com/spf13/viper"
+)
 
 func setDefaults(v *viper.Viper) {
 	defaults := NewDefaultConfig()
@@ -175,6 +179,43 @@ func setRabbitMQDefaults(v *viper.Viper, defaults *Config) {
 	v.SetDefault("rabbitmq.node.healthCheckPort", r.Node.HealthCheckPort)
 	v.SetDefault("rabbitmq.node.metricsPort", r.Node.MetricsPort)
 	v.SetDefault("rabbitmq.node.logLevel", r.Node.LogLevel)
+	v.SetDefault("rabbitmq.deadLetter.enabled", r.DeadLetter.Enabled)
+	v.SetDefault("rabbitmq.deadLetter.queueName", firstNonEmptyString(r.DeadLetter.QueueName, "tasks.dlq"))
+	v.SetDefault("rabbitmq.processingTimeoutWatchdog.enabled", r.ProcessingTimeout.Enabled)
+	v.SetDefault("rabbitmq.processingTimeoutWatchdog.intervalSeconds", int(firstPositiveDuration(r.ProcessingTimeout.Interval, 5*time.Minute).Seconds()))
+	v.SetDefault("rabbitmq.processingTimeoutWatchdog.timeoutMinutes", firstPositiveInt(r.ProcessingTimeout.TimeoutMinutes, 30))
+	v.SetDefault("rabbitmq.processingTimeoutWatchdog.recoveryLimit", firstPositiveInt(r.ProcessingTimeout.RecoveryLimit, 100))
+	v.SetDefault("rabbitmq.staleQueuedWatchdog.enabled", r.StaleQueued.Enabled)
+	v.SetDefault("rabbitmq.staleQueuedWatchdog.intervalSeconds", int(firstPositiveDuration(r.StaleQueued.Interval, 5*time.Minute).Seconds()))
+	v.SetDefault("rabbitmq.staleQueuedWatchdog.timeoutMinutes", firstPositiveInt(r.StaleQueued.TimeoutMinutes, 120))
+	v.SetDefault("rabbitmq.staleQueuedWatchdog.recoveryLimit", firstPositiveInt(r.StaleQueued.RecoveryLimit, 500))
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func firstPositiveInt(values ...int) int {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func firstPositiveDuration(values ...time.Duration) time.Duration {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func setPlatformDefaults(v *viper.Viper, defaults *Config) {

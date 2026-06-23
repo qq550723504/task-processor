@@ -1,28 +1,22 @@
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
-  name: shein-listing-shard
+  name: shein-listing-ownership-controller
   namespace: task-processor
   labels:
-    app: shein-listing-shard
-    shein-listing-role: service
+    app: shein-listing-ownership-controller
+    shein-listing-role: ownership-controller
 spec:
-  serviceName: shein-listing-shard-headless
-  replicas: 8
-  podManagementPolicy: Parallel
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      partition: 0
+  replicas: 1
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app: shein-listing-shard
+      app: shein-listing-ownership-controller
   template:
     metadata:
       labels:
-        app: shein-listing-shard
-        shein-listing-role: service
+        app: shein-listing-ownership-controller
+        shein-listing-role: ownership-controller
         shard-mode: auto
     spec:
       affinity:
@@ -57,18 +51,15 @@ spec:
             - name: TASK_PROCESSOR_ENV
               value: prod
             - name: TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID
-              valueFrom:
-                fieldRef:
-                  apiVersion: v1
-                  fieldPath: metadata.name
+              value: shein-listing-ownership-controller
             - name: TASK_PROCESSOR_RABBITMQ_NODE_ROLE
               value: task
             - name: TASK_PROCESSOR_RABBITMQ_NODE_USE_STORE_QUEUES
-              value: "true"
+              value: "false"
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED
               value: "true"
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ROLE
-              value: worker
+              value: coordinator
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_PLATFORM
               value: shein
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_INTERVAL
@@ -81,6 +72,28 @@ spec:
               value: "25"
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES
               value: shein-listing-shard-0,shein-listing-shard-1,shein-listing-shard-2,shein-listing-shard-3,shein-listing-shard-4,shein-listing-shard-5,shein-listing-shard-6,shein-listing-shard-7
+            - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_TARGET_STORES_PER_NODE
+              value: "3"
+            - name: TASK_PROCESSOR_RABBITMQ_DEAD_LETTER_ENABLED
+              value: "true"
+            - name: TASK_PROCESSOR_RABBITMQ_DEAD_LETTER_QUEUE_NAME
+              value: tasks.dlq
+            - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED
+              value: "true"
+            - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_INTERVAL_SECONDS
+              value: "300"
+            - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_TIMEOUT_MINUTES
+              value: "30"
+            - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_RECOVERY_LIMIT
+              value: "100"
+            - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED
+              value: "true"
+            - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_INTERVAL_SECONDS
+              value: "300"
+            - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_TIMEOUT_MINUTES
+              value: "120"
+            - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_RECOVERY_LIMIT
+              value: "500"
             - name: TASK_PROCESSOR_REDIS_DB
               value: "9"
             - name: TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT

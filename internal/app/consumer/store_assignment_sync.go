@@ -30,6 +30,9 @@ func newStoreAssignmentSyncCoordinator(service *RabbitMQService) *storeAssignmen
 }
 
 func (c *storeAssignmentSyncCoordinator) shouldRun(state storeAssignmentSyncState) bool {
+	if c == nil || c.service == nil || c.service.isOwnershipCoordinator() {
+		return false
+	}
 	return state.useStoreQueues && state.provider != nil && strings.TrimSpace(state.nodeID) != "" && state.ctx != nil
 }
 

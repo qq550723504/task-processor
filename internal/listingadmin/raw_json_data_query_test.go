@@ -121,3 +121,70 @@ func TestGormRawJSONDataRepositoryCreatesNewRow(t *testing.T) {
 		t.Fatalf("UpsertRawJSONData(create) metadata = %+v", created)
 	}
 }
+
+func TestGormRawJSONDataRepositorySupportsSchemaWithoutTenantID(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.Exec(`CREATE TABLE listing_raw_json_data (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		store_id INTEGER,
+		import_task_id INTEGER,
+		platform TEXT NOT NULL,
+		product_id TEXT NOT NULL,
+		region TEXT NOT NULL,
+		category_id INTEGER,
+		raw_json_data TEXT,
+		status INTEGER NOT NULL DEFAULT 0,
+		creator TEXT,
+		updater TEXT,
+		create_time DATETIME,
+		update_time DATETIME,
+		deleted INTEGER NOT NULL DEFAULT 0
+	)`).Error; err != nil {
+		t.Fatalf("create raw json data table: %v", err)
+	}
+
+	repo := NewGormRawJSONDataRepository(db)
+	created, err := repo.UpsertRawJSONData(context.Background(), &RawJSONData{
+		TenantID:     322,
+		StoreID:      976,
+		ImportTaskID: 123,
+		Platform:     "amazon",
+		ProductID:    "B0NOtenant",
+		Region:       "us",
+		CategoryID:   456,
+		RawJSONData:  `{"source":"created"}`,
+		Creator:      "tester",
+	})
+	if err != nil {
+		t.Fatalf("UpsertRawJSONData(create without tenant_id column) error = %v", err)
+	}
+	if created == nil || created.ID <= 0 {
+		t.Fatalf("UpsertRawJSONData(create without tenant_id column) = %+v", created)
+	}
+
+	updated, err := repo.UpsertRawJSONData(context.Background(), &RawJSONData{
+		TenantID:     322,
+		StoreID:      976,
+		ImportTaskID: 124,
+		Platform:     "amazon",
+		ProductID:    "B0NOtenant",
+		Region:       "us",
+		CategoryID:   457,
+		RawJSONData:  `{"source":"updated"}`,
+		Creator:      "tester",
+	})
+	if err != nil {
+		t.Fatalf("UpsertRawJSONData(update without tenant_id column) error = %v", err)
+	}
+	if updated == nil || updated.ID != created.ID || updated.RawJSONData != `{"source":"updated"}` {
+		t.Fatalf("UpsertRawJSONData(update without tenant_id column) = %+v", updated)
+	}
+	if updated.ImportTaskID != 124 || updated.StoreID != 976 || updated.CategoryID != 457 {
+		t.Fatalf("UpsertRawJSONData(update without tenant_id column) metadata = %+v", updated)
+	}
+}

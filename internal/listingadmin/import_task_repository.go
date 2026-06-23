@@ -130,6 +130,154 @@ func (r *GormImportTaskRepository) ListPendingAndRetryTasks(ctx context.Context,
 	return items, nil
 }
 
+func (r *GormImportTaskRepository) CountTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, errors.New("import task repository database is not configured")
+	}
+	var count int64
+	err := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("deleted = 0").
+		Where("status = ?", model.TaskStatusProcessing.Int16()).
+		Where("update_time < ?", timeoutBefore).
+		Count(&count).Error
+	return count, err
+}
+
+func (r *GormImportTaskRepository) ListTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time, limit int) ([]ImportTask, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("import task repository database is not configured")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	var rows []listingProductImportTask
+	if err := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("deleted = 0").
+		Where("status = ?", model.TaskStatusProcessing.Int16()).
+		Where("update_time < ?", timeoutBefore).
+		Order("update_time asc, id asc").
+		Limit(limit).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	items := make([]ImportTask, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, row.toImportTask())
+	}
+	return items, nil
+}
+
+func (r *GormImportTaskRepository) RecoverTimedOutProcessingTasks(ctx context.Context, ids []int64, recovery ProcessingTimeoutRecovery) (int, error) {
+	if r == nil || r.db == nil {
+		return 0, errors.New("import task repository database is not configured")
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	timeoutMinutes := recovery.TimeoutMinutes
+	if timeoutMinutes <= 0 {
+		timeoutMinutes = 30
+	}
+	remark := recovery.Remark
+	if remark == "" {
+		remark = fmt.Sprintf("Recovered after processing timeout watchdog (%d minutes)", timeoutMinutes)
+	}
+	res := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("deleted = 0").
+		Where("id IN ?", ids).
+		Where("status = ?", model.TaskStatusProcessing.Int16()).
+		Where("update_time < ?", time.Now().Add(-time.Duration(timeoutMinutes)*time.Minute)).
+		Updates(map[string]any{
+			"status":        model.TaskStatusPendingRetry.Int16(),
+			"error_message": recovery.ErrorMessage,
+			"reason_code":   recovery.ReasonCode,
+			"stage":         recovery.Stage,
+			"remark":        remark,
+			"update_time":   time.Now(),
+		})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return int(res.RowsAffected), nil
+}
+
+func (r *GormImportTaskRepository) CountStaleQueuedTasks(ctx context.Context, timeoutBefore time.Time) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, errors.New("import task repository database is not configured")
+	}
+	var count int64
+	err := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("deleted = 0").
+		Where("status = ?", model.TaskStatusQueued.Int16()).
+		Where("update_time < ?", timeoutBefore).
+		Count(&count).Error
+	return count, err
+}
+
+func (r *GormImportTaskRepository) ListStaleQueuedTasks(ctx context.Context, timeoutBefore time.Time, limit int) ([]ImportTask, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("import task repository database is not configured")
+	}
+	if limit <= 0 {
+		limit = 500
+	}
+	var rows []listingProductImportTask
+	if err := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("deleted = 0").
+		Where("status = ?", model.TaskStatusQueued.Int16()).
+		Where("update_time < ?", timeoutBefore).
+		Order("update_time asc, id asc").
+		Limit(limit).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	items := make([]ImportTask, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, row.toImportTask())
+	}
+	return items, nil
+}
+
+func (r *GormImportTaskRepository) RecoverStaleQueuedTasks(ctx context.Context, ids []int64, recovery StaleQueuedRecovery) (int, error) {
+	if r == nil || r.db == nil {
+		return 0, errors.New("import task repository database is not configured")
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	timeoutMinutes := recovery.TimeoutMinutes
+	if timeoutMinutes <= 0 {
+		timeoutMinutes = 120
+	}
+	remark := recovery.Remark
+	if remark == "" {
+		remark = fmt.Sprintf("Recovered from stale queued state by scheduler watchdog (%d minutes)", timeoutMinutes)
+	}
+	res := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("deleted = 0").
+		Where("id IN ?", ids).
+		Where("status = ?", model.TaskStatusQueued.Int16()).
+		Where("update_time < ?", time.Now().Add(-time.Duration(timeoutMinutes)*time.Minute)).
+		Updates(map[string]any{
+			"status":        model.TaskStatusPending.Int16(),
+			"error_message": recovery.ErrorMessage,
+			"reason_code":   recovery.ReasonCode,
+			"stage":         recovery.Stage,
+			"remark":        remark,
+			"update_time":   time.Now(),
+		})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return int(res.RowsAffected), nil
+}
+
 func (r *GormImportTaskRepository) UpdateImportTaskStatus(ctx context.Context, req *api.ProductImportTaskUpdateReqDTO) (bool, error) {
 	if r == nil || r.db == nil {
 		return false, errors.New("import task repository database is not configured")

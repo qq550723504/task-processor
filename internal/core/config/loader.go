@@ -344,6 +344,22 @@ func NewDefaultConfig() *Config {
 				LogLevel:        "info",
 				ShutdownTimeout: 30 * time.Second,
 			},
+			DeadLetter: DeadLetterConfig{
+				Enabled:   false,
+				QueueName: "tasks.dlq",
+			},
+			ProcessingTimeout: ProcessingTimeoutConfig{
+				Enabled:        false,
+				Interval:       5 * time.Minute,
+				TimeoutMinutes: 30,
+				RecoveryLimit:  100,
+			},
+			StaleQueued: StaleQueuedConfig{
+				Enabled:        false,
+				Interval:       5 * time.Minute,
+				TimeoutMinutes: 120,
+				RecoveryLimit:  500,
+			},
 		},
 	}
 }

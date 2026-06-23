@@ -245,6 +245,7 @@ type localListingStore struct {
 	EnableAutoLogin          *bool      `gorm:"column:enable_auto_login"`
 	EnableDraft              *bool      `gorm:"column:enable_draft"`
 	EnableAutoPrice          *bool      `gorm:"column:enable_auto_price"`
+	DedicatedQueueEnabled    *bool      `gorm:"column:dedicated_queue_enabled"`
 	EnableRebargain          *bool      `gorm:"column:enable_rebargain"`
 	EnableBrandAuthorization *bool      `gorm:"column:enable_brand_authorization"`
 	AuthorizedBrandCode      string     `gorm:"column:authorized_brand_code"`
@@ -282,6 +283,7 @@ func (s localListingStore) toDTO() *api.StoreRespDTO {
 		EnableAutoLogin:          s.EnableAutoLogin,
 		EnableDraft:              s.EnableDraft,
 		EnableAutoPrice:          s.EnableAutoPrice,
+		DedicatedQueueEnabled:    s.DedicatedQueueEnabled,
 		EnableRebargain:          s.EnableRebargain,
 		EnableBrandAuthorization: s.EnableBrandAuthorization,
 		AuthorizedBrandCode:      s.AuthorizedBrandCode,
@@ -321,6 +323,7 @@ func storeToDTO(store *listingadmin.Store) *api.StoreRespDTO {
 		EnableAutoLogin:          store.EnableAutoLogin,
 		EnableDraft:              store.EnableDraft,
 		EnableAutoPrice:          store.EnableAutoPrice,
+		DedicatedQueueEnabled:    store.DedicatedQueueEnabled,
 		EnableRebargain:          store.EnableRebargain,
 		EnableBrandAuthorization: store.EnableBrandAuthorization,
 		AuthorizedBrandCode:      store.AuthorizedBrandCode,

@@ -73,11 +73,18 @@ func ValidateRabbitMQConfig(rabbitmq *RabbitMQConfig) []error {
 		}
 	}
 	if rabbitmq.AutoShard.Enabled {
-		if len(rabbitmq.AutoShard.CandidateNodes) == 0 {
+		if !rabbitmq.AutoShard.HasValidRole() {
+			errors = append(errors, &ValidationError{
+				Field:   "rabbitmq.autoShard.role",
+				Message: "RabbitMQ autoShard role must be one of coordinator, worker, disabled",
+				Hint:    "set rabbitmq.autoShard.role in YAML or export TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ROLE",
+			})
+		}
+		if rabbitmq.AutoShard.IsCoordinator() && len(rabbitmq.AutoShard.CandidateNodes) == 0 {
 			errors = append(errors, &ValidationError{
 				Field:   "rabbitmq.autoShard.candidateNodes",
-				Message: "RabbitMQ autoShard candidateNodes cannot be empty when auto sharding is enabled",
-				Hint:    "set rabbitmq.autoShard.candidateNodes to a list like [shein-listing-store-a, shein-listing-store-b]",
+				Message: "RabbitMQ autoShard candidateNodes cannot be empty when auto sharding coordinator is enabled",
+				Hint:    "set rabbitmq.autoShard.candidateNodes for coordinator role to a list like [shein-listing-store-a, shein-listing-store-b]",
 			})
 		}
 		if rabbitmq.AutoShard.Interval <= 0 {

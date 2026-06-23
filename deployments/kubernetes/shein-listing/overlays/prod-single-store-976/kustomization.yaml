@@ -4,7 +4,4 @@ kind: Kustomization
 namespace: task-processor
 
 resources:
-  - service.yaml
-  - headless-service.yaml
-  - statefulset.yaml
-  - ownership-controller.yaml
+  - deployment.yaml

@@ -88,6 +88,28 @@ func TestListingDTOsAcceptJavaListingModuleFields(t *testing.T) {
 	})
 }
 
+func TestStoreRespDTOPreservesDedicatedQueueEnabledJSON(t *testing.T) {
+	var dto StoreRespDTO
+	if err := json.Unmarshal([]byte(`{"id":976,"dedicatedQueueEnabled":true}`), &dto); err != nil {
+		t.Fatalf("unmarshal StoreRespDTO: %v", err)
+	}
+	if dto.DedicatedQueueEnabled == nil || !*dto.DedicatedQueueEnabled {
+		t.Fatalf("StoreRespDTO.DedicatedQueueEnabled = %#v, want true", dto.DedicatedQueueEnabled)
+	}
+
+	payload, err := json.Marshal(dto)
+	if err != nil {
+		t.Fatalf("marshal StoreRespDTO: %v", err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		t.Fatalf("unmarshal marshaled StoreRespDTO: %v", err)
+	}
+	if raw["dedicatedQueueEnabled"] != true {
+		t.Fatalf("StoreRespDTO json dedicatedQueueEnabled = %#v, payload %s", raw["dedicatedQueueEnabled"], payload)
+	}
+}
+
 func TestRawJsonDataResponseIncludesTaskID(t *testing.T) {
 	var dto RawJsonDataRespDTO
 	if err := json.Unmarshal([]byte(`{"id":1,"taskId":99}`), &dto); err != nil {

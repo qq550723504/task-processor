@@ -19,6 +19,14 @@
       "tier": "heavy",
       "ownerNodeId": "ser804638640694-b480450e",
       "excludeNode": "ser804638640694-b480450e"
+    },
+    {
+      "storeId": 976,
+      "enabled": true,
+      "tier": "heavy",
+      "ownerNodeId": "dedicated-store-976",
+      "image": "xuwei190/task-processor-shein-listing:e67b5cab-latest-20260622",
+      "configMapName": "shein-listing-config-heavy"
     }
   ]
 }

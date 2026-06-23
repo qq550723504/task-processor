@@ -232,6 +232,7 @@ func (c *AutoShardCoordinator) reconcile(ctx context.Context) (map[string]any, e
 	}
 	queueBacklogs := c.loadStoreQueueBacklogs(ctx, stores)
 	assignments := c.buildAssignments(stores, queueBacklogs, currentManaged)
+	activeCandidateNodes := c.activeCandidateNodes(len(stores))
 
 	nodeMembers := make(map[string][]string, len(c.cfg.CandidateNodes))
 	nodeBacklogs := make(map[string]int, len(c.cfg.CandidateNodes))
@@ -275,10 +276,12 @@ func (c *AutoShardCoordinator) reconcile(ctx context.Context) (map[string]any, e
 	}
 
 	summary := map[string]any{
-		"managed_store_count": len(stores),
-		"candidate_nodes":     len(c.cfg.CandidateNodes),
-		"cleaned_store_count": cleaned,
-		"queue_backlog_total": queueBacklogTotal,
+		"managed_store_count":    len(stores),
+		"candidate_nodes":        len(c.cfg.CandidateNodes),
+		"active_candidate_nodes": len(activeCandidateNodes),
+		"target_stores_per_node": c.cfg.TargetStoresPerNode,
+		"cleaned_store_count":    cleaned,
+		"queue_backlog_total":    queueBacklogTotal,
 	}
 	for nodeID, members := range nodeMembers {
 		summary["node_"+nodeID] = len(members)
@@ -314,6 +317,9 @@ func (c *AutoShardCoordinator) listEligibleStores(ctx context.Context) ([]*api.S
 				continue
 			}
 			if store.EnableAutoListing == nil || !*store.EnableAutoListing {
+				continue
+			}
+			if store.DedicatedQueueEnabled != nil && *store.DedicatedQueueEnabled {
 				continue
 			}
 			result = append(result, store)
@@ -359,8 +365,9 @@ func (c *AutoShardCoordinator) buildAssignments(
 		return assignments
 	}
 
-	nodeLoads := make([]*autoShardNodeLoad, 0, len(c.cfg.CandidateNodes))
-	for _, nodeID := range c.cfg.CandidateNodes {
+	activeCandidateNodes := c.activeCandidateNodes(len(stores))
+	nodeLoads := make([]*autoShardNodeLoad, 0, len(activeCandidateNodes))
+	for _, nodeID := range activeCandidateNodes {
 		nodeLoads = append(nodeLoads, &autoShardNodeLoad{
 			nodeID: nodeID,
 			weight: normalizeNodeWeight(c.cfg.NodeWeights[nodeID]),
@@ -377,7 +384,7 @@ func (c *AutoShardCoordinator) buildAssignments(
 			store:        store,
 			backlog:      queueBacklogs[store.ID],
 			currentOwner: currentOwner,
-			stableOwner:  pickCandidateNode(c.cfg.CandidateNodes, store.TenantID, store.ID),
+			stableOwner:  pickCandidateNode(activeCandidateNodes, store.TenantID, store.ID),
 		})
 	}
 	slices.SortFunc(storeLoads, func(a, b autoShardStoreLoad) int {
@@ -406,6 +413,27 @@ func (c *AutoShardCoordinator) buildAssignments(
 		nodeLoad.storeCount++
 	}
 	return assignments
+}
+
+func (c *AutoShardCoordinator) activeCandidateNodes(storeCount int) []string {
+	if len(c.cfg.CandidateNodes) == 0 {
+		return nil
+	}
+	targetStoresPerNode := c.cfg.TargetStoresPerNode
+	if targetStoresPerNode <= 0 {
+		return append([]string(nil), c.cfg.CandidateNodes...)
+	}
+	if storeCount <= 0 {
+		return nil
+	}
+	activeCount := (storeCount + targetStoresPerNode - 1) / targetStoresPerNode
+	if activeCount < 1 {
+		activeCount = 1
+	}
+	if activeCount > len(c.cfg.CandidateNodes) {
+		activeCount = len(c.cfg.CandidateNodes)
+	}
+	return append([]string(nil), c.cfg.CandidateNodes[:activeCount]...)
 }
 
 func (c *AutoShardCoordinator) loadStoreQueueBacklogs(ctx context.Context, stores []*api.StoreRespDTO) map[int64]int {

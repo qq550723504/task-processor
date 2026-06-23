@@ -178,6 +178,26 @@ func TestResolveForProductBrand_ReturnsNilWhenProductBrandEmpty(t *testing.T) {
 	}
 }
 
+func TestResolveForProductBrand_ReturnsNilWhenProductBrandNotAuthorized(t *testing.T) {
+	resolver := NewResolver(&stubProductAPI{
+		brandResp: brandListResponse(
+			sheinproduct.BrandItem{BrandCode: "2wex9", BrandName: "Skechers", BrandNameEn: "Skechers"},
+		),
+	})
+
+	got, err := resolver.ResolveForProductBrand(context.Background(), Config{
+		Enabled: true,
+		Code:    "2wex9",
+		Name:    "Skechers",
+	}, "Nike")
+	if err != nil {
+		t.Fatalf("ResolveForProductBrand() error = %v, want nil", err)
+	}
+	if got != nil {
+		t.Fatalf("ResolveForProductBrand() = %+v, want nil", got)
+	}
+}
+
 func brandListResponse(items ...sheinproduct.BrandItem) *sheinproduct.BrandListResponse {
 	resp := &sheinproduct.BrandListResponse{}
 	resp.Info.Data = items

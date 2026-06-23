@@ -21,13 +21,15 @@ import (
 // ServiceManager 编排 messaging 包内所有子服务的生命周期。
 // 它不持有子服务的具体类型，而是通过 lifecycle.LifecycleManager 统一管理。
 type ServiceManager struct {
-	config           *config.RabbitMQConfig
-	logger           *logrus.Logger
-	lifecycleMgr     lifecycle.LifecycleManager
-	shutdownCoord    *ShutdownCoordinator
-	rabbitmqService  *RabbitMQService // 保留引用，用于 RegisterProcessor / GetClient
-	schedulerService SchedulerService // 可选，由外部通过 SetSchedulerService 注入
-	autoShardService AutoShardService // 可选，用于自动分片配置
+	config                    *config.RabbitMQConfig
+	logger                    *logrus.Logger
+	lifecycleMgr              lifecycle.LifecycleManager
+	shutdownCoord             *ShutdownCoordinator
+	rabbitmqService           *RabbitMQService // 保留引用，用于 RegisterProcessor / GetClient
+	schedulerService          SchedulerService // 可选，由外部通过 SetSchedulerService 注入
+	autoShardService          AutoShardService // 可选，用于自动分片配置
+	processingTimeoutWatchdog SchedulerService // 可选，用于 processing 超时恢复
+	staleQueuedWatchdog       SchedulerService // 可选，用于 queued 超时恢复
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -60,6 +62,20 @@ func (sm *ServiceManager) SetSchedulerService(svc SchedulerService) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.schedulerService = svc
+}
+
+// SetProcessingTimeoutWatchdog injects the control-plane watchdog for recovering stale processing tasks.
+func (sm *ServiceManager) SetProcessingTimeoutWatchdog(svc SchedulerService) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.processingTimeoutWatchdog = svc
+}
+
+// SetStaleQueuedWatchdog injects the control-plane watchdog for recovering stale queued tasks.
+func (sm *ServiceManager) SetStaleQueuedWatchdog(svc SchedulerService) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.staleQueuedWatchdog = svc
 }
 
 // RegisterProcessor 注册任务处理器，必须在 Start 之前调用。
@@ -137,6 +153,14 @@ func (sm *ServiceManager) buildManagedComponents() []lifecycle.Component {
 	if sm.schedulerService != nil {
 		components = append(components, newSchedulerComponent(sm.schedulerService))
 		sm.logger.Info("调度服务已注入，将随服务管理器启动")
+	}
+	if sm.processingTimeoutWatchdog != nil {
+		components = append(components, newProcessingTimeoutWatchdogComponent(sm.processingTimeoutWatchdog))
+		sm.logger.Info("processing 超时恢复 watchdog 已注入，将随服务管理器启动")
+	}
+	if sm.staleQueuedWatchdog != nil {
+		components = append(components, newStaleQueuedWatchdogComponent(sm.staleQueuedWatchdog))
+		sm.logger.Info("queued 超时恢复 watchdog 已注入，将随服务管理器启动")
 	}
 
 	return components

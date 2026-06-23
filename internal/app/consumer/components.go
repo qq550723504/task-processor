@@ -195,3 +195,53 @@ func (c *schedulerComponent) Stop(ctx context.Context) error {
 	defer c.SetRunning(false)
 	return c.svc.Stop(ctx)
 }
+
+type processingTimeoutWatchdogComponent struct {
+	*lifecycle.BaseComponent
+	svc SchedulerService
+}
+
+func newProcessingTimeoutWatchdogComponent(svc SchedulerService) lifecycle.Component {
+	return &processingTimeoutWatchdogComponent{
+		BaseComponent: lifecycle.NewBaseComponent("processing-timeout-watchdog", []string{"reporter"}, 19),
+		svc:           svc,
+	}
+}
+
+func (c *processingTimeoutWatchdogComponent) Start(ctx context.Context) error {
+	if err := c.svc.Start(ctx); err != nil {
+		return err
+	}
+	c.SetRunning(true)
+	return nil
+}
+
+func (c *processingTimeoutWatchdogComponent) Stop(ctx context.Context) error {
+	defer c.SetRunning(false)
+	return c.svc.Stop(ctx)
+}
+
+type staleQueuedWatchdogComponent struct {
+	*lifecycle.BaseComponent
+	svc SchedulerService
+}
+
+func newStaleQueuedWatchdogComponent(svc SchedulerService) lifecycle.Component {
+	return &staleQueuedWatchdogComponent{
+		BaseComponent: lifecycle.NewBaseComponent("stale-queued-watchdog", []string{"reporter"}, 19),
+		svc:           svc,
+	}
+}
+
+func (c *staleQueuedWatchdogComponent) Start(ctx context.Context) error {
+	if err := c.svc.Start(ctx); err != nil {
+		return err
+	}
+	c.SetRunning(true)
+	return nil
+}
+
+func (c *staleQueuedWatchdogComponent) Stop(ctx context.Context) error {
+	defer c.SetRunning(false)
+	return c.svc.Stop(ctx)
+}

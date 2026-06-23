@@ -376,6 +376,51 @@ func TestLocalDataProviderGetStoreMapsListingStoreMetadata(t *testing.T) {
 	}
 }
 
+func TestLocalDataProviderPageStoresMapsDedicatedQueueEnabled(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	if err := provider.db.Table("listing_store").Create(map[string]any{
+		"id":                      976,
+		"tenant_id":               322,
+		"store_id":                "SHEIN-US-976",
+		"name":                    "Dedicated Shein",
+		"platform":                "shein",
+		"region":                  "us",
+		"status":                  0,
+		"enable_auto_listing":     true,
+		"dedicated_queue_enabled": true,
+	}).Error; err != nil {
+		t.Fatalf("seed listing_store: %v", err)
+	}
+
+	page, err := provider.PageStores(&api.StorePageReqDTO{
+		TenantID: 322,
+		Platform: "shein",
+		PageNo:   1,
+		PageSize: 20,
+	})
+	if err != nil {
+		t.Fatalf("PageStores() error = %v", err)
+	}
+	if page == nil || len(page.List) != 1 {
+		t.Fatalf("PageStores() returned page %#v, want one store", page)
+	}
+	got := page.List[0].DedicatedQueueEnabled
+	if got == nil || !*got {
+		t.Fatalf("PageStores()[0].DedicatedQueueEnabled = %#v, want true", got)
+	}
+}
+
+func TestStoreToDTOMapsDedicatedQueueEnabled(t *testing.T) {
+	enabled := true
+	dto := storeToDTO(&listingadmin.Store{ID: 976, DedicatedQueueEnabled: &enabled})
+	if dto == nil {
+		t.Fatal("storeToDTO() returned nil")
+	}
+	if dto.DedicatedQueueEnabled == nil || !*dto.DedicatedQueueEnabled {
+		t.Fatalf("storeToDTO().DedicatedQueueEnabled = %#v, want true", dto.DedicatedQueueEnabled)
+	}
+}
+
 func TestLocalDataProviderGetFilterRuleResolvesScopedFallbacks(t *testing.T) {
 	provider := newSQLiteProvider(t)
 	rows := []map[string]any{

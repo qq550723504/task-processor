@@ -49,6 +49,8 @@ __AFFINITY_BLOCK__
               value: "__STORE_ID__"
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED
               value: "false"
+            - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ROLE
+              value: disabled
             - name: TASK_PROCESSOR_REDIS_DB
               value: "9"
             - name: TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT
