@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 
@@ -1240,6 +1242,158 @@ func TestImportTaskAPIClient_LocalProviderReturnsPublishedTime(t *testing.T) {
 	}
 	if task.PublishedTime != publishedAt.UnixMilli() {
 		t.Fatalf("PublishedTime = %d, want %d", task.PublishedTime, publishedAt.UnixMilli())
+	}
+}
+
+func TestClientManagerRuntimeUsesLocalProviderWhenManagementHTTPUnavailable(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	redisServer, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	t.Cleanup(redisServer.Close)
+	provider.redis = goredis.NewClient(&goredis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = provider.redis.Close() })
+
+	now := time.Now()
+	enableAutoListing := true
+	enableDraft := true
+	dailyLimit := 300
+	store := localListingStore{
+		ID:                976,
+		TenantID:          322,
+		StoreID:           "976",
+		Name:              "SHEIN 976",
+		Username:          "store-976",
+		Platform:          "shein",
+		Region:            "us",
+		Status:            0,
+		EnableAutoListing: &enableAutoListing,
+		EnableDraft:       &enableDraft,
+		DailyLimit:        &dailyLimit,
+		DailyLimitType:    "SPU",
+		CreateTime:        &now,
+	}
+	if err := provider.db.Table("listing_store").Create(&store).Error; err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	seed := localImportTaskRow{
+		ID:            21,
+		TenantID:      322,
+		StoreID:       976,
+		Platform:      "shein",
+		Region:        "us",
+		ProductID:     "runtime-product",
+		Status:        model.TaskStatusProcessing.Int16(),
+		Priority:      10,
+		CreateTime:    now,
+		UpdateTime:    now,
+		MaxRetryCount: 3,
+	}
+	if err := provider.db.Table("listing_product_import_task").Create(&seed).Error; err != nil {
+		t.Fatalf("seed import task: %v", err)
+	}
+
+	manager := NewClientManager(&config.ManagementConfig{BaseURL: "http://127.0.0.1:1"})
+	manager.SetLocalDataProvider(provider)
+
+	storeInfo, err := manager.GetRuntimeStoreService().GetStore(store.ID)
+	if err != nil {
+		t.Fatalf("GetRuntimeStoreService().GetStore() error = %v", err)
+	}
+	if storeInfo == nil || storeInfo.ID != store.ID || storeInfo.EnableAutoListing == nil || !*storeInfo.EnableAutoListing {
+		t.Fatalf("GetRuntimeStoreService().GetStore() = %+v, want enabled store", storeInfo)
+	}
+
+	dailyClient := manager.GetDailyListingCountClient()
+	date := "2026-06-24"
+	quota, err := dailyClient.TryConsumeDailyQuota(&api.TryConsumeDailyQuotaReqDTO{
+		TenantID:  seed.TenantID,
+		StoreID:   seed.StoreID,
+		Date:      date,
+		Increment: 2,
+		Limit:     int64(dailyLimit),
+	})
+	if err != nil {
+		t.Fatalf("TryConsumeDailyQuota() error = %v", err)
+	}
+	if quota == nil || !quota.Allowed || quota.NewCount != 2 {
+		t.Fatalf("TryConsumeDailyQuota() = %+v, want allowed count 2", quota)
+	}
+	rolledBack, err := dailyClient.RollbackDailyQuota(&api.RollbackDailyQuotaReqDTO{
+		TenantID:  seed.TenantID,
+		StoreID:   seed.StoreID,
+		Date:      date,
+		Decrement: 1,
+	})
+	if err != nil {
+		t.Fatalf("RollbackDailyQuota() error = %v", err)
+	}
+	if rolledBack != 1 {
+		t.Fatalf("RollbackDailyQuota() = %d, want 1", rolledBack)
+	}
+
+	task, err := manager.GetRuntimeImportTask(seed.ID)
+	if err != nil {
+		t.Fatalf("GetRuntimeImportTask() error = %v", err)
+	}
+	if task == nil || task.ID != seed.ID || task.ProductID != seed.ProductID {
+		t.Fatalf("GetRuntimeImportTask() = %+v, want seeded task", task)
+	}
+
+	expected := model.TaskStatusProcessing.Int16()
+	if err := manager.UpdateRuntimeTaskStatus(&listingruntime.TaskStatusUpdate{
+		ID:                    seed.ID,
+		Status:                model.TaskStatusDraft.Int16(),
+		ExpectedCurrentStatus: &expected,
+	}); err != nil {
+		t.Fatalf("UpdateRuntimeTaskStatus() error = %v", err)
+	}
+	var updated localImportTaskRow
+	if err := provider.db.Table("listing_product_import_task").Where("id = ?", seed.ID).Take(&updated).Error; err != nil {
+		t.Fatalf("reload import task: %v", err)
+	}
+	if updated.Status != model.TaskStatusDraft.Int16() {
+		t.Fatalf("updated status = %d, want draft", updated.Status)
+	}
+	if updated.PublishedTime == nil {
+		t.Fatal("published_time is nil, want local status update to set completion time")
+	}
+
+	sku := "SKU-976"
+	platformProductID := "SPU-976"
+	mappingStatus := model.TaskStatusPublished.Int16()
+	mappingID, err := manager.CreateRuntimeProductImportMapping(context.Background(), &listingruntime.ProductImportMappingUpsert{
+		TenantID:          seed.TenantID,
+		ImportTaskID:      seed.ID,
+		StoreID:           seed.StoreID,
+		Platform:          seed.Platform,
+		Region:            seed.Region,
+		ProductID:         seed.ProductID,
+		SKU:               &sku,
+		PlatformProductID: &platformProductID,
+		Status:            &mappingStatus,
+	})
+	if err != nil {
+		t.Fatalf("CreateRuntimeProductImportMapping() error = %v", err)
+	}
+	if mappingID == 0 {
+		t.Fatal("CreateRuntimeProductImportMapping() id = 0, want local row id")
+	}
+
+	mapping, err := manager.FindRuntimeProductImportMappingByTaskAndSKU(context.Background(), seed.ID, sku)
+	if err != nil {
+		t.Fatalf("FindRuntimeProductImportMappingByTaskAndSKU() error = %v", err)
+	}
+	if mapping == nil || mapping.PlatformProductID == nil || *mapping.PlatformProductID != platformProductID {
+		t.Fatalf("FindRuntimeProductImportMappingByTaskAndSKU() = %+v, want platform product id %s", mapping, platformProductID)
+	}
+	exists, err := manager.RuntimePublishedProductExists(context.Background(), seed.StoreID, seed.Platform, seed.Region, seed.ProductID)
+	if err != nil {
+		t.Fatalf("RuntimePublishedProductExists() error = %v", err)
+	}
+	if !exists {
+		t.Fatal("RuntimePublishedProductExists() = false, want true")
 	}
 }
 
