@@ -50,7 +50,7 @@ spec:
             - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_PLATFORM
               value: shein
             - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_DRY_RUN
-              value: "true"
+              value: "false"
             - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_BATCH_SIZE
               value: "500"
             - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_SCAN_INTERVAL
