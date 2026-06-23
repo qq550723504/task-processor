@@ -4,6 +4,7 @@ import {
   flattenItemizedBatchDesigns,
   getApprovedItemizedBatchDesignIDs,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import { upsertRecentSavedBatch } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
@@ -216,7 +217,7 @@ type ItemizedBatchContextParams = Omit<
   setSavedBatches: (
     updater: (current: SheinStudioSavedBatch[]) => SheinStudioSavedBatch[],
   ) => void;
-  upsertSavedBatch: (
+  upsertSavedBatch?: (
     current: SheinStudioSavedBatch[],
     savedBatch: SheinStudioSavedBatch,
   ) => SheinStudioSavedBatch[];
@@ -245,7 +246,7 @@ export function useSheinStudioItemizedBatchContext({
   sheinStoreId,
   styleCount,
   transparentBackground,
-  upsertSavedBatch,
+  upsertSavedBatch = upsertRecentSavedBatch,
   variationIntensity,
 }: ItemizedBatchContextParams): {
   itemizedBatchContext?: ItemizedBatchTaskContext;

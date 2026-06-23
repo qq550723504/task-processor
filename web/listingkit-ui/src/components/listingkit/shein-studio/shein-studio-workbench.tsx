@@ -839,7 +839,6 @@ export function SheinStudioWorkbench({
     sheinStoreId,
     styleCount,
     transparentBackground,
-    upsertSavedBatch: upsertRecentSavedBatch,
     variationIntensity,
   });
   const handlePromptChange = useCallback(

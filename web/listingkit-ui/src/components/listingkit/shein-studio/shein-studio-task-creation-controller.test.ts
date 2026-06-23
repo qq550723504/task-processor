@@ -297,4 +297,50 @@ describe("useSheinStudioItemizedBatchContext", () => {
       savedBatch: expect.objectContaining({ id: "batch-1" }),
     });
   });
+
+  it("uses the shared recent batch upsert behavior by default", () => {
+    const setSavedBatches = vi.fn();
+    const { result } = renderHook(() =>
+      useSheinStudioItemizedBatchContext({
+        activeBatchId: "batch-1",
+        activeSelection: undefined,
+        artworkModel: "openai",
+        currentActiveBatch: buildCurrentBatch(),
+        generationJobs: [],
+        groupedImageMode: "shared_by_size",
+        groupedSelections: [],
+        groups: [],
+        imageStrategy: "ai_generated",
+        itemizedBatchDetail: buildCurrentDetail(),
+        persistedUpdatedAt: "2026-06-22T00:30:00.000Z",
+        productImageCount: "1",
+        productImagePrompt: "",
+        productImagePrompts: [],
+        prompt: "prompt",
+        renderSizeImagesWithSds: false,
+        selectedSdsImages: [],
+        setSavedBatches,
+        sheinStoreId: "869",
+        styleCount: "1",
+        transparentBackground: false,
+        variationIntensity: "medium",
+        applyHydratedBatch: vi.fn(),
+      }),
+    );
+
+    result.current.itemizedBatchContext?.onCreated(buildTaskCreationResult());
+
+    const updater = setSavedBatches.mock.calls[0][0] as (
+      current: SheinStudioSavedBatch[],
+    ) => SheinStudioSavedBatch[];
+    expect(
+      updater([
+        {
+          ...buildCurrentBatch(),
+          id: "newer-batch",
+          updatedAt: "2026-06-23T00:00:00.000Z",
+        },
+      ]).map((batch) => batch.id),
+    ).toEqual(["newer-batch", "batch-1"]);
+  });
 });
