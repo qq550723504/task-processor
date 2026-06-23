@@ -31,6 +31,7 @@ import {
   buildRecentBatchSaveInput,
   buildRecentBatchStoreUpdateInput,
   projectRecentBatchSelectionState,
+  removeRecentBatchSummarySelection,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
@@ -1461,7 +1462,7 @@ export function SheinStudioWorkbench({
         clearLocalSheinStudioDraftSnapshot();
         setLocalDraftSnapshotDetail(null);
         setRawSelectedRecentBatchSummaryIds((current) =>
-          current.filter((key) => key !== `${summary.source}:${summary.id}`),
+          removeRecentBatchSummarySelection(current, summary),
         );
         return;
       }

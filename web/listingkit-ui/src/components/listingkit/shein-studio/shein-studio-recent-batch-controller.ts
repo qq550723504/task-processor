@@ -10,12 +10,26 @@ type RecentBatchSelectionProjectionParams = {
   validRecentBatchSummaryKeys: Set<string>;
 };
 
+export function buildRecentBatchSummaryKey(
+  summary: RecentBatchSelectionSummary,
+): string {
+  return `${summary.source}:${summary.id}`;
+}
+
 export function buildRecentBatchSummaryKeys(
   recentBatchSummaries: RecentBatchSelectionSummary[],
 ): Set<string> {
   return new Set(
-    recentBatchSummaries.map((summary) => `${summary.source}:${summary.id}`),
+    recentBatchSummaries.map((summary) => buildRecentBatchSummaryKey(summary)),
   );
+}
+
+export function removeRecentBatchSummarySelection(
+  current: string[],
+  summary: RecentBatchSelectionSummary,
+): string[] {
+  const key = buildRecentBatchSummaryKey(summary);
+  return current.filter((item) => item !== key);
 }
 
 export function projectRecentBatchSelectionState({
@@ -28,8 +42,10 @@ export function projectRecentBatchSelectionState({
     );
   const selectedPersistedRecentBatchIds =
     selectedRecentBatchSummaryIds.flatMap((key) => {
-      const [source, id] = key.split(":");
-      return source === "batch" && id ? [id] : [];
+      const batchPrefix = "batch:";
+      return key.startsWith(batchPrefix)
+        ? [key.slice(batchPrefix.length)]
+        : [];
     });
 
   return {

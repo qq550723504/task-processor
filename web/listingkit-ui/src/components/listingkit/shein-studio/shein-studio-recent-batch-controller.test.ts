@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildRecentBatchSummaryKey,
   buildRecentBatchSummaryKeys,
   buildRecentBatchSaveInput,
   buildRecentBatchStoreUpdateInput,
   projectRecentBatchSelectionState,
+  removeRecentBatchSummarySelection,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 
@@ -133,5 +135,33 @@ describe("projectRecentBatchSelectionState", () => {
       "local_draft:local-draft:group-1",
     ]);
     expect(projection.selectedPersistedRecentBatchIds).toEqual(["batch-1"]);
+  });
+
+  it("keeps batch ids with colons intact", () => {
+    const projection = projectRecentBatchSelectionState({
+      rawSelectedRecentBatchSummaryIds: ["batch:batch:1"],
+      validRecentBatchSummaryKeys: buildRecentBatchSummaryKeys([
+        { id: "batch:1", source: "batch" },
+      ]),
+    });
+
+    expect(projection.selectedPersistedRecentBatchIds).toEqual(["batch:1"]);
+  });
+});
+
+describe("removeRecentBatchSummarySelection", () => {
+  it("removes the selected summary key without knowing its source format", () => {
+    const summary = { id: "local-draft:group-1", source: "local_draft" } as const;
+
+    expect(
+      removeRecentBatchSummarySelection(
+        [
+          "batch:batch-1",
+          buildRecentBatchSummaryKey(summary),
+          "local_draft:other",
+        ],
+        summary,
+      ),
+    ).toEqual(["batch:batch-1", "local_draft:other"]);
   });
 });
