@@ -194,6 +194,13 @@ func (r *GormImportTaskRepository) ClaimForDispatch(ctx context.Context, claim D
 	if r == nil || r.db == nil {
 		return false, errors.New("import task repository database is not configured")
 	}
+	processingNode := strings.TrimSpace(claim.ProcessingNode)
+	if processingNode == "" {
+		return false, errors.New("dispatch claim processing node is required")
+	}
+	if !isDispatchableImportTaskStatus(claim.PreviousStatus) {
+		return false, fmt.Errorf("dispatch claim previous status %d is not dispatchable", claim.PreviousStatus)
+	}
 	res := r.db.WithContext(ctx).
 		Table("listing_product_import_task").
 		Where("id = ?", claim.TaskID).
@@ -201,7 +208,7 @@ func (r *GormImportTaskRepository) ClaimForDispatch(ctx context.Context, claim D
 		Where("deleted = 0").
 		Updates(map[string]any{
 			"status":          model.TaskStatusQueued.Int16(),
-			"processing_node": strings.TrimSpace(claim.ProcessingNode),
+			"processing_node": processingNode,
 			"error_message":   nil,
 			"reason_code":     nil,
 			"remark":          strings.TrimSpace(claim.Remark),
@@ -211,6 +218,15 @@ func (r *GormImportTaskRepository) ClaimForDispatch(ctx context.Context, claim D
 		return false, res.Error
 	}
 	return res.RowsAffected == 1, nil
+}
+
+func isDispatchableImportTaskStatus(status int16) bool {
+	switch status {
+	case model.TaskStatusPending.Int16(), model.TaskStatusCrawled.Int16(), model.TaskStatusPendingRetry.Int16():
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *GormImportTaskRepository) RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, processingNode, reason string) error {
@@ -412,12 +428,13 @@ func (r *GormImportTaskRepository) RecoverStaleQueuedTasks(ctx context.Context, 
 		Where("status = ?", model.TaskStatusQueued.Int16()).
 		Where("update_time < ?", time.Now().Add(-time.Duration(timeoutMinutes)*time.Minute)).
 		Updates(map[string]any{
-			"status":        model.TaskStatusPending.Int16(),
-			"error_message": recovery.ErrorMessage,
-			"reason_code":   recovery.ReasonCode,
-			"stage":         recovery.Stage,
-			"remark":        remark,
-			"update_time":   time.Now(),
+			"status":          model.TaskStatusPending.Int16(),
+			"processing_node": "",
+			"error_message":   recovery.ErrorMessage,
+			"reason_code":     recovery.ReasonCode,
+			"stage":           recovery.Stage,
+			"remark":          remark,
+			"update_time":     time.Now(),
 		})
 	if res.Error != nil {
 		return 0, res.Error

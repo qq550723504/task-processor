@@ -113,6 +113,70 @@ func TestClaimForDispatchSucceedsOnlyFromExpectedStatus(t *testing.T) {
 	}
 }
 
+func TestClaimForDispatchRejectsBlankProcessingNode(t *testing.T) {
+	t.Parallel()
+
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{ID: 12, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "blank-node", Status: model.TaskStatusPending.Int16(), Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	claimed, err := repo.ClaimForDispatch(context.Background(), DispatchClaim{
+		TaskID:         12,
+		PreviousStatus: model.TaskStatusPending.Int16(),
+		ProcessingNode: "  ",
+		Remark:         "dispatching to queue",
+	})
+	if err == nil {
+		t.Fatal("ClaimForDispatch(blank processing node) error = nil, want error")
+	}
+	if claimed {
+		t.Fatal("ClaimForDispatch(blank processing node) = true, want false")
+	}
+
+	var row listingProductImportTask
+	if err := db.Table("listing_product_import_task").Where("id = ?", int64(12)).Take(&row).Error; err != nil {
+		t.Fatalf("load rejected claim row: %v", err)
+	}
+	if row.Status != model.TaskStatusPending.Int16() || row.ProcessingNode != "" || row.Remark != "" {
+		t.Fatalf("rejected claim row = %+v, want unchanged pending row", row)
+	}
+}
+
+func TestClaimForDispatchRejectsInvalidPreviousStatus(t *testing.T) {
+	t.Parallel()
+
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{ID: 13, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "invalid-status", Status: model.TaskStatusPublished.Int16(), Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	claimed, err := repo.ClaimForDispatch(context.Background(), DispatchClaim{
+		TaskID:         13,
+		PreviousStatus: model.TaskStatusPublished.Int16(),
+		ProcessingNode: "node-a",
+		Remark:         "dispatching to queue",
+	})
+	if err == nil {
+		t.Fatal("ClaimForDispatch(invalid previous status) error = nil, want error")
+	}
+	if claimed {
+		t.Fatal("ClaimForDispatch(invalid previous status) = true, want false")
+	}
+
+	var row listingProductImportTask
+	if err := db.Table("listing_product_import_task").Where("id = ?", int64(13)).Take(&row).Error; err != nil {
+		t.Fatalf("load invalid status claim row: %v", err)
+	}
+	if row.Status != model.TaskStatusPublished.Int16() || row.ProcessingNode != "" || row.Remark != "" {
+		t.Fatalf("invalid status claim row = %+v, want unchanged published row", row)
+	}
+}
+
 func TestRollbackDispatchRestoresPreviousStatusWithVisibleReason(t *testing.T) {
 	t.Parallel()
 
@@ -258,6 +322,20 @@ func TestAutoMigrateImportTaskRepositoryEnsuresProcessingNodeColumn(t *testing.T
 	if !db.Migrator().HasColumn("listing_product_import_task", "processing_node") {
 		t.Fatal("processing_node column missing after migration")
 	}
+	columnTypes, err := db.Migrator().ColumnTypes("listing_product_import_task")
+	if err != nil {
+		t.Fatalf("load column types: %v", err)
+	}
+	for _, columnType := range columnTypes {
+		if columnType.Name() != "processing_node" {
+			continue
+		}
+		if length, ok := columnType.Length(); !ok || length < 128 {
+			t.Fatalf("processing_node length = %d, %v; want at least 128", length, ok)
+		}
+		return
+	}
+	t.Fatal("processing_node column type metadata missing after migration")
 }
 
 func newImportTaskDispatchTestDB(t *testing.T) *gorm.DB {

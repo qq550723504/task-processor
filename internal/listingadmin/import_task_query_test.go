@@ -231,8 +231,8 @@ func TestGormImportTaskRepositoryRecoversStaleQueuedTasks(t *testing.T) {
 	expired := now.Add(-3 * time.Hour)
 	fresh := now.Add(-5 * time.Minute)
 	rows := []listingProductImportTask{
-		{ID: 201, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "expired-queued", Status: model.TaskStatusQueued.Int16(), Priority: 10, CreateTime: &expired, UpdateTime: &expired, Deleted: 0},
-		{ID: 202, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "fresh-queued", Status: model.TaskStatusQueued.Int16(), Priority: 10, CreateTime: &fresh, UpdateTime: &fresh, Deleted: 0},
+		{ID: 201, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "expired-queued", Status: model.TaskStatusQueued.Int16(), ProcessingNode: "dispatch-token-201", Priority: 10, CreateTime: &expired, UpdateTime: &expired, Deleted: 0},
+		{ID: 202, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "fresh-queued", Status: model.TaskStatusQueued.Int16(), ProcessingNode: "dispatch-token-202", Priority: 10, CreateTime: &fresh, UpdateTime: &fresh, Deleted: 0},
 		{ID: 203, TenantID: 10, StoreID: 976, Platform: "shein", Region: "us", ProductID: "processing", Status: model.TaskStatusProcessing.Int16(), Priority: 10, CreateTime: &expired, UpdateTime: &expired, Deleted: 0},
 	}
 	for _, row := range rows {
@@ -268,15 +268,15 @@ func TestGormImportTaskRepositoryRecoversStaleQueuedTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetImportTaskByID(expired queued) error = %v", err)
 	}
-	if task == nil || task.Status != model.TaskStatusPending.Int16() || task.ReasonCode != "STALE_QUEUED" || task.Stage != "queued_timeout_recovery" {
-		t.Fatalf("expired queued task = %+v, want recovered pending with structured reason", task)
+	if task == nil || task.Status != model.TaskStatusPending.Int16() || task.ProcessingNode != "" || task.ReasonCode != "STALE_QUEUED" || task.Stage != "queued_timeout_recovery" {
+		t.Fatalf("expired queued task = %+v, want recovered pending with cleared processing node and structured reason", task)
 	}
 
 	task, err = repo.GetImportTaskByID(context.Background(), 202)
 	if err != nil {
 		t.Fatalf("GetImportTaskByID(fresh queued) error = %v", err)
 	}
-	if task == nil || task.Status != model.TaskStatusQueued.Int16() {
-		t.Fatalf("fresh queued task = %+v, want still queued", task)
+	if task == nil || task.Status != model.TaskStatusQueued.Int16() || task.ProcessingNode != "dispatch-token-202" {
+		t.Fatalf("fresh queued task = %+v, want still queued with processing node preserved", task)
 	}
 }
