@@ -76,6 +76,13 @@ type ItemizedTaskRecoveryStateInput = {
   pendingTaskDesignIds: string[];
 };
 
+type ItemizedDesignApprovalRequestInput = {
+  activeBatchId: string;
+  currentActiveBatch?: Partial<SheinStudioSavedBatch> | null;
+  detail?: SheinStudioBatchDetail | null;
+  selectedIds: string[];
+};
+
 type ItemizedFailedRetryRequestInput = {
   activeBatchId: string;
   currentActiveBatch?: Partial<SheinStudioSavedBatch> | null;
@@ -249,6 +256,28 @@ export function projectItemizedTaskCreationProgressEffects({
     },
     kind: "apply",
     toast: isNewCompletion ? progress.toast : undefined,
+  };
+}
+
+export function projectItemizedDesignApprovalRequest({
+  activeBatchId,
+  currentActiveBatch,
+  detail,
+  selectedIds,
+}: ItemizedDesignApprovalRequestInput): {
+  batchId: string;
+  selectedIds: string[];
+  tenantId?: string;
+} | null {
+  if (!activeBatchId || !detail) {
+    return null;
+  }
+  const tenantId =
+    detail.batch.tenantId?.trim() ?? currentActiveBatch?.tenantId?.trim();
+  return {
+    batchId: activeBatchId,
+    selectedIds,
+    tenantId: tenantId || undefined,
   };
 }
 

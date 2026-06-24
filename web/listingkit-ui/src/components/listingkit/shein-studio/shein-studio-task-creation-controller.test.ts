@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   projectItemizedBatchDetail,
+  projectItemizedDesignApprovalRequest,
   projectItemizedFailedRetryRequest,
   projectItemizedFailedRetryStep,
   projectItemizedTaskCreationProgressEffects,
@@ -207,6 +208,99 @@ describe("projectItemizedBatchDetail", () => {
       updatedAt: "2026-06-22T04:00:00.000Z",
     });
     expect(result.detail.batch.tenantId).toBe("tenant-detail-new");
+  });
+});
+
+describe("projectItemizedDesignApprovalRequest", () => {
+  it("returns null without an active batch or itemized detail", () => {
+    expect(
+      projectItemizedDesignApprovalRequest({
+        activeBatchId: "",
+        currentActiveBatch: buildCurrentBatch(),
+        detail: buildCurrentDetail(),
+        selectedIds: ["design-1"],
+      }),
+    ).toBeNull();
+    expect(
+      projectItemizedDesignApprovalRequest({
+        activeBatchId: "batch-1",
+        currentActiveBatch: buildCurrentBatch(),
+        detail: null,
+        selectedIds: ["design-1"],
+      }),
+    ).toBeNull();
+  });
+
+  it("projects an approval request and prefers detail tenant id", () => {
+    expect(
+      projectItemizedDesignApprovalRequest({
+        activeBatchId: "batch-1",
+        currentActiveBatch: {
+          ...buildCurrentBatch(),
+          tenantId: "tenant-active",
+        },
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            tenantId: "tenant-detail",
+          },
+        },
+        selectedIds: ["design-1"],
+      }),
+    ).toEqual({
+      batchId: "batch-1",
+      selectedIds: ["design-1"],
+      tenantId: "tenant-detail",
+    });
+  });
+
+  it("falls back to active batch tenant id when detail tenant is absent", () => {
+    expect(
+      projectItemizedDesignApprovalRequest({
+        activeBatchId: "batch-1",
+        currentActiveBatch: {
+          ...buildCurrentBatch(),
+          tenantId: "tenant-active",
+        },
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            tenantId: undefined,
+          },
+        },
+        selectedIds: ["design-1"],
+      }),
+    ).toEqual({
+      batchId: "batch-1",
+      selectedIds: ["design-1"],
+      tenantId: "tenant-active",
+    });
+  });
+
+  it("omits blank detail tenants without falling back", () => {
+    expect(
+      projectItemizedDesignApprovalRequest({
+        activeBatchId: "batch-1",
+        currentActiveBatch: {
+          ...buildCurrentBatch(),
+          tenantId: "tenant-active",
+        },
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            tenantId: " ",
+          },
+        },
+        selectedIds: ["design-1"],
+      }),
+    ).toEqual({
+      batchId: "batch-1",
+      selectedIds: ["design-1"],
+      tenantId: undefined,
+    });
   });
 });
 

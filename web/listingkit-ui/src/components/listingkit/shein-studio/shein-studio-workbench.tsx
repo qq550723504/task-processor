@@ -54,6 +54,7 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
+  projectItemizedDesignApprovalRequest,
   projectItemizedFailedRetryRequest,
   projectItemizedFailedRetryStep,
   projectItemizedTaskRecoveryState,
@@ -1456,18 +1457,24 @@ export function SheinStudioWorkbench({
       }
       void (async () => {
         try {
-          const batchTenantId =
-            itemizedBatchDetail.batch.tenantId?.trim() ??
-            currentActiveBatch?.tenantId?.trim();
-          const nextDetail = batchTenantId
+          const approvalRequest = projectItemizedDesignApprovalRequest({
+            activeBatchId,
+            currentActiveBatch,
+            detail: itemizedBatchDetail,
+            selectedIds: nextSelectedIds,
+          });
+          if (!approvalRequest) {
+            return;
+          }
+          const nextDetail = approvalRequest.tenantId
             ? await approveSheinStudioBatchDesigns(
-                activeBatchId,
-                nextSelectedIds,
-                { tenantId: batchTenantId },
+                approvalRequest.batchId,
+                approvalRequest.selectedIds,
+                { tenantId: approvalRequest.tenantId },
               )
             : await approveSheinStudioBatchDesigns(
-                activeBatchId,
-                nextSelectedIds,
+                approvalRequest.batchId,
+                approvalRequest.selectedIds,
               );
           workbenchController.setField("creatingWarning", "");
           if (nextDetail) {
