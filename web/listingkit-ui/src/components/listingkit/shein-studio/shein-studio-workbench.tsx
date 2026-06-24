@@ -58,6 +58,7 @@ import {
   projectItemizedFailedRetryRequest,
   projectItemizedFailedRetryStep,
   projectItemizedReviewNoteUpdate,
+  projectItemizedSelectionToggle,
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskCreationProgress,
@@ -98,8 +99,6 @@ import {
   resolveCurrentSheinStudioSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
-  toggleSelectedDesignId,
-  toggleItemizedBatchDesignApproval,
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
@@ -1383,34 +1382,16 @@ export function SheinStudioWorkbench({
     ],
   );
 
-  const applyOptimisticItemizedBatchDetail = useCallback(
-    (
-      updater: (
-        detail: NonNullable<typeof itemizedBatchDetail>,
-      ) => NonNullable<typeof itemizedBatchDetail>,
-    ) => {
-      if (!activeBatchId || !itemizedBatchDetail) {
-        return false;
-      }
-      const nextDetail = updater(itemizedBatchDetail);
-      return applyItemizedBatchDetail(nextDetail);
-    },
-    [
-      activeBatchId,
-      applyItemizedBatchDetail,
-      itemizedBatchDetail,
-    ],
-  );
-
   function toggleSelection(designId: string) {
-    if (activeBatchId && itemizedBatchDetail) {
-      const nextSelectedIds = toggleSelectedDesignId(selectedIds, designId);
+    const toggle = projectItemizedSelectionToggle({
+      activeBatchId,
+      detail: itemizedBatchDetail,
+      designId,
+      selectedIds,
+    });
+    if (toggle.kind === "itemized") {
       const previousDetail = itemizedBatchDetail;
-      if (
-        !applyOptimisticItemizedBatchDetail((detail) =>
-          toggleItemizedBatchDesignApproval(detail, designId),
-        )
-      ) {
+      if (!applyItemizedBatchDetail(toggle.detail) || !previousDetail) {
         return;
       }
       void (async () => {
@@ -1419,8 +1400,8 @@ export function SheinStudioWorkbench({
             activeBatchId,
             approveDesigns: approveSheinStudioBatchDesigns,
             currentActiveBatch,
-            detail: itemizedBatchDetail,
-            selectedIds: nextSelectedIds,
+            detail: previousDetail,
+            selectedIds: toggle.selectedIds,
           });
           workbenchController.setField("creatingWarning", "");
           if (nextDetail) {
@@ -1436,14 +1417,14 @@ export function SheinStudioWorkbench({
       })();
       return;
     }
-    if (
-      applyOptimisticItemizedBatchDetail((detail) =>
-        toggleItemizedBatchDesignApproval(detail, designId),
-      )
-    ) {
-      return;
-    }
-    setSelectedIds((current) => toggleSelectedDesignId(current, designId));
+    setSelectedIds((current) =>
+      projectItemizedSelectionToggle({
+        activeBatchId: "",
+        detail: null,
+        designId,
+        selectedIds: current,
+      }).selectedIds,
+    );
   }
 
   function handleNoteChange(designId: string, note: string) {

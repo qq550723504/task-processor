@@ -4,6 +4,8 @@ import {
   flattenItemizedBatchDesigns,
   getApprovedItemizedBatchDesignIDs,
   hasInFlightItemizedBatchGeneration,
+  toggleItemizedBatchDesignApproval,
+  toggleSelectedDesignId,
   updateFlatDesignReviewNote,
   updateItemizedBatchDesignReviewNote,
   type SheinStudioWorkbenchHydratedBatch,
@@ -93,6 +95,13 @@ type ItemizedReviewNoteUpdateInput = {
   detail?: SheinStudioBatchDetail | null;
   designId: string;
   note: string;
+};
+
+type ItemizedSelectionToggleInput = {
+  activeBatchId: string;
+  detail?: SheinStudioBatchDetail | null;
+  designId: string;
+  selectedIds: string[];
 };
 
 type ItemizedDesignApprovalRunnerInput = ItemizedDesignApprovalRequestInput & {
@@ -340,6 +349,35 @@ export function projectItemizedReviewNoteUpdate({
   return {
     designs: updateFlatDesignReviewNote(designs, designId, note),
     kind: "flat",
+  };
+}
+
+export function projectItemizedSelectionToggle({
+  activeBatchId,
+  detail,
+  designId,
+  selectedIds,
+}: ItemizedSelectionToggleInput):
+  | {
+      detail: SheinStudioBatchDetail;
+      kind: "itemized";
+      selectedIds: string[];
+    }
+  | {
+      kind: "flat";
+      selectedIds: string[];
+    } {
+  const nextSelectedIds = toggleSelectedDesignId(selectedIds, designId);
+  if (activeBatchId && detail) {
+    return {
+      detail: toggleItemizedBatchDesignApproval(detail, designId),
+      kind: "itemized",
+      selectedIds: nextSelectedIds,
+    };
+  }
+  return {
+    kind: "flat",
+    selectedIds: nextSelectedIds,
   };
 }
 

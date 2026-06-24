@@ -7,6 +7,7 @@ import {
   projectItemizedFailedRetryRequest,
   projectItemizedFailedRetryStep,
   projectItemizedReviewNoteUpdate,
+  projectItemizedSelectionToggle,
   projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgress,
@@ -272,6 +273,53 @@ describe("projectItemizedReviewNoteUpdate", () => {
         { id: "design-2" },
       ],
       kind: "flat",
+    });
+  });
+});
+
+describe("projectItemizedSelectionToggle", () => {
+  it("toggles itemized design approval and returns selected ids for persistence", () => {
+    const detail = {
+      ...buildCurrentDetail(),
+      items: buildTaskCreationResult().items,
+    };
+
+    const toggle = projectItemizedSelectionToggle({
+      activeBatchId: "batch-1",
+      detail,
+      designId: "design-1",
+      selectedIds: [],
+    });
+
+    expect(toggle).toMatchObject({
+      kind: "itemized",
+      selectedIds: ["design-1"],
+      detail: {
+        items: [
+          {
+            designs: [
+              {
+                id: "design-1",
+                reviewStatus: "unreviewed",
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("toggles flat selected ids when no active itemized batch exists", () => {
+    expect(
+      projectItemizedSelectionToggle({
+        activeBatchId: "",
+        detail: null,
+        designId: "design-1",
+        selectedIds: ["design-1", "design-2"],
+      }),
+    ).toEqual({
+      kind: "flat",
+      selectedIds: ["design-2"],
     });
   });
 });
