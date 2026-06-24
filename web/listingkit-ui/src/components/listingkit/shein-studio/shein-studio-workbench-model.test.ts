@@ -11,6 +11,7 @@ import {
   projectGroupToWorkbench,
   projectHydratedBatchToWorkbench,
   projectSavedBatchToWorkbench,
+  resolveCurrentSheinStudioSavedBatch,
   projectWorkbenchStateToSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
@@ -653,6 +654,64 @@ describe("shein studio workbench model", () => {
       prompt: "current prompt",
       selectedIds: ["design-1"],
       updatedAt: "2026-06-01T10:10:00Z",
+    });
+  });
+
+  it("resolves the current saved batch before falling back to workbench state", () => {
+    const savedBatch = {
+      id: "batch-1",
+      name: "Saved Batch",
+      prompt: "saved prompt",
+      styleCount: "1",
+      sheinStoreId: "869",
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-06-01T10:00:00Z",
+    };
+    const fallback = {
+      prompt: "current prompt",
+      styleCount: "2",
+      variationIntensity: "strong" as const,
+      productImageCount: "6",
+      productImagePrompt: "hero shot",
+      productImagePrompts: [],
+      artworkModel: "nanobanana" as const,
+      transparentBackground: true,
+      sheinStoreId: "869",
+      imageStrategy: "ai_generated" as const,
+      groupedImageMode: "per_product" as const,
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selection: undefined,
+      groupedSelections: [],
+      groups: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      generationJobs: [],
+      updatedAt: "2026-06-01T10:10:00Z",
+    };
+
+    expect(
+      resolveCurrentSheinStudioSavedBatch({
+        activeBatchId: "batch-1",
+        fallback,
+        initialBatchId: "",
+        savedBatches: [savedBatch],
+      }),
+    ).toBe(savedBatch);
+    expect(
+      resolveCurrentSheinStudioSavedBatch({
+        activeBatchId: "",
+        fallback,
+        initialBatchId: "batch-2",
+        savedBatches: [savedBatch],
+      }),
+    ).toMatchObject({
+      id: "batch-2",
+      prompt: "current prompt",
+      styleCount: "2",
     });
   });
 

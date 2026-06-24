@@ -383,6 +383,33 @@ export function projectHydratedBatchToWorkbench(
   };
 }
 
+type WorkbenchSavedBatchProjectionInput = {
+  id: string;
+  prompt: string;
+  promptMode?: "managed" | "raw";
+  styleCount: string;
+  variationIntensity: SheinStudioVariationIntensity;
+  productImageCount: string;
+  productImagePrompt: string;
+  productImagePrompts: SheinStudioProductImagePrompt[];
+  artworkModel: SheinStudioArtworkModel;
+  transparentBackground: boolean;
+  sheinStoreId: string;
+  imageStrategy: SheinStudioImageStrategy;
+  groupedImageMode: SheinStudioGroupedImageMode;
+  selectedSdsImages: SheinStudioSelectedSDSImage[];
+  renderSizeImagesWithSds: boolean;
+  selection?: SDSProductVariantSelection;
+  groupedSelections: GroupedSDSSelectionEligibility[];
+  groups: SheinStudioGroupedWorkspace[];
+  designs: SheinStudioGeneratedDesign[];
+  selectedIds: string[];
+  createdTasks: SheinStudioCreatedTask[];
+  generationJobs: SheinStudioGenerationJob[];
+  updatedAt: string;
+  name?: string;
+};
+
 export function projectWorkbenchStateToSavedBatch({
   id,
   prompt,
@@ -408,32 +435,7 @@ export function projectWorkbenchStateToSavedBatch({
   updatedAt,
   name = "",
   promptMode,
-}: {
-  id: string;
-  prompt: string;
-  promptMode?: "managed" | "raw";
-  styleCount: string;
-  variationIntensity: SheinStudioVariationIntensity;
-  productImageCount: string;
-  productImagePrompt: string;
-  productImagePrompts: SheinStudioProductImagePrompt[];
-  artworkModel: SheinStudioArtworkModel;
-  transparentBackground: boolean;
-  sheinStoreId: string;
-  imageStrategy: SheinStudioImageStrategy;
-  groupedImageMode: SheinStudioGroupedImageMode;
-  selectedSdsImages: SheinStudioSelectedSDSImage[];
-  renderSizeImagesWithSds: boolean;
-  selection?: SDSProductVariantSelection;
-  groupedSelections: GroupedSDSSelectionEligibility[];
-  groups: SheinStudioGroupedWorkspace[];
-  designs: SheinStudioGeneratedDesign[];
-  selectedIds: string[];
-  createdTasks: SheinStudioCreatedTask[];
-  generationJobs: SheinStudioGenerationJob[];
-  updatedAt: string;
-  name?: string;
-}): SheinStudioSavedBatch {
+}: WorkbenchSavedBatchProjectionInput): SheinStudioSavedBatch {
   const normalizedPromptMode = promptMode ?? "managed";
   return {
     id,
@@ -461,6 +463,30 @@ export function projectWorkbenchStateToSavedBatch({
     generationJobs,
     updatedAt,
   };
+}
+
+export function resolveCurrentSheinStudioSavedBatch({
+  activeBatchId,
+  fallback,
+  initialBatchId,
+  savedBatches,
+}: {
+  activeBatchId: string;
+  fallback: Omit<WorkbenchSavedBatchProjectionInput, "id">;
+  initialBatchId?: string;
+  savedBatches: SheinStudioSavedBatch[];
+}): SheinStudioSavedBatch | null {
+  const resolvedBatchId = activeBatchId || initialBatchId || "";
+  if (!resolvedBatchId) {
+    return null;
+  }
+  return (
+    savedBatches.find((item) => item.id === resolvedBatchId) ??
+    projectWorkbenchStateToSavedBatch({
+      ...fallback,
+      id: resolvedBatchId,
+    })
+  );
 }
 
 export function evaluateImportedGalleryDesigns(

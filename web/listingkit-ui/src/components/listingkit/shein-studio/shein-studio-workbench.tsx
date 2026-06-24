@@ -82,7 +82,7 @@ import {
   getItemizedBatchPendingTaskDesignIDs,
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
-  projectWorkbenchStateToSavedBatch,
+  resolveCurrentSheinStudioSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
   toggleItemizedBatchDesignApproval,
@@ -578,41 +578,36 @@ export function SheinStudioWorkbench({
   );
   const traceBatchId = currentQueuedBatchId || activeBatchId || initialBatchId || "";
   const currentActiveBatch = useMemo(
-    () => {
-      const resolvedBatchId = activeBatchId || initialBatchId || "";
-      if (!resolvedBatchId) {
-        return null;
-      }
-      const matched = savedBatches.find((item) => item.id === resolvedBatchId);
-      if (matched) {
-        return matched;
-      }
-      return projectWorkbenchStateToSavedBatch({
-        id: resolvedBatchId,
-        prompt,
-        promptMode,
-        styleCount,
-        variationIntensity,
-        productImageCount,
-        productImagePrompt,
-        productImagePrompts,
-        artworkModel,
-        transparentBackground,
-        sheinStoreId,
-        imageStrategy,
-        groupedImageMode,
-        selectedSdsImages,
-        renderSizeImagesWithSds,
-        selection: loadedSelection,
-        groupedSelections,
-        groups,
-        designs,
-        selectedIds,
-        createdTasks,
-        generationJobs,
-        updatedAt: persistedUpdatedAt,
-      });
-    },
+    () =>
+      resolveCurrentSheinStudioSavedBatch({
+        activeBatchId,
+        fallback: {
+          artworkModel,
+          createdTasks,
+          designs,
+          generationJobs,
+          groupedImageMode,
+          groupedSelections,
+          groups,
+          imageStrategy,
+          productImageCount,
+          productImagePrompt,
+          productImagePrompts,
+          prompt,
+          promptMode,
+          renderSizeImagesWithSds,
+          selectedIds,
+          selectedSdsImages,
+          selection: loadedSelection,
+          sheinStoreId,
+          styleCount,
+          transparentBackground,
+          updatedAt: persistedUpdatedAt,
+          variationIntensity,
+        },
+        initialBatchId,
+        savedBatches,
+      }),
     [
       activeBatchId,
       artworkModel,
