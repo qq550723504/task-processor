@@ -72,11 +72,11 @@ spec:
                 name: shein-listing-secret
           resources:
             requests:
-              cpu: "1"
-              memory: "2500Mi"
-            limits:
-              cpu: "3"
+              cpu: "2"
               memory: "5Gi"
+            limits:
+              cpu: "6"
+              memory: "10Gi"
           readinessProbe:
             httpGet:
               path: /ready
