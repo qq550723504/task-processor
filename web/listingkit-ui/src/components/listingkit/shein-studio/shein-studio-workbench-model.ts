@@ -89,6 +89,16 @@ export function selectActiveGroupPromptHistory({
   return groups.find((group) => group.id === activeGroupId)?.promptHistory ?? [];
 }
 
+export function selectActiveGroupPrimarySelection({
+  activeGroupId,
+  groups,
+}: {
+  activeGroupId: string;
+  groups: SheinStudioGroupedWorkspace[];
+}) {
+  return groups.find((group) => group.id === activeGroupId)?.primarySelection;
+}
+
 export function projectGroupToWorkbench(group: SheinStudioGroupedWorkspace) {
   return {
     prompt: group.currentPrompt,

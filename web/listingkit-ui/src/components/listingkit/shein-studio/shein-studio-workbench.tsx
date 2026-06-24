@@ -99,6 +99,7 @@ import {
   projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
   selectActiveGroupPromptHistory,
+  selectActiveGroupPrimarySelection,
   selectCurrentDedicatedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
@@ -262,7 +263,10 @@ export function SheinStudioWorkbench({
   const directSelection = useHydratedSDSVariantSelection(selection);
   const loadedBatchSelection = useHydratedSDSVariantSelection(loadedSelection);
   const activeGroupSelection = useHydratedSDSVariantSelection(
-    groups.find((group) => group.id === activeGroupId)?.primarySelection,
+    selectActiveGroupPrimarySelection({
+      activeGroupId,
+      groups,
+    }),
   );
   const activeSelection =
     directSelection ?? activeGroupSelection ?? loadedBatchSelection;
