@@ -681,3 +681,23 @@ ListingKit root 最终 ownership closeout；
 - `docs/superpowers/plans/2026-06-23-go-listing-control-plane.md`
 - `docs/product/validation/runs/2026-06-21-shein-sds-batch-production-closure.md`
 - `docs/product/validation/runs/2026-06-21-shein-sds-batch-production-closure-regression.md`
+
+### 2026-06-24 production validation: active deletion takeover
+
+- Deployed xuwei190/task-processor-listing-control-plane:f1f8a06a and verified rollout succeeded.
+- Deleted the active control-plane pod to validate leader failover behavior.
+- Replacement pod shein-listing-control-plane-6446d7f79f-xj2pc acquired the Redis leader lock after the 30s TTL window.
+- /ready confirmed eady=true, isLeader=true, consecutiveErrors=0.
+- Dispatch resumed with a healthy observed cycle: dispatchCandidates=10, dispatched=1, skipped=9, ailed=0.
+
+Status: leader active deletion takeover is production-validated. Remaining production validation focus: operator task-list reason visibility and rollback rehearsal.
+
+### 2026-06-24 operator task-list reason visibility
+
+- Added the admin import-task list "dispatch reason" column so operators can see persisted dispatch delay causes from the task row.
+- The UI displays easonCode, stage, and the persisted rrorMessage/emark message for delayed tasks.
+- The frontend API schema now accepts both camelCase and snake_case variants for delay fields (easonCode/eason_code, rrorMessage/rror_message) to keep the operator view robust across backend serializers.
+- Focused frontend test passed: 
+pm test -- import-task-admin-page.test.tsx.
+
+Status: task-list operator reason visibility is code-validated. Production UI deployment remains the next integration step if this app is served from a separately deployed frontend artifact.

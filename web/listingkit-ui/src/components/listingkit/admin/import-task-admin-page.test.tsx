@@ -26,6 +26,9 @@ describe("ImportTaskAdminPage", () => {
           categoryId: 22,
           productId: "B001",
           status: 0,
+          reason_code: "no_capacity",
+          stage: "dispatch",
+          error_message: "Dispatch delayed: no_capacity",
           retryCount: 0,
           maxRetryCount: 3,
           priority: 8,
@@ -53,5 +56,10 @@ describe("ImportTaskAdminPage", () => {
     });
     expect(screen.getAllByText("SHEIN US").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Amazon").length).toBeGreaterThan(0);
+    expect(screen.getByText("no_capacity")).toBeInTheDocument();
+    expect(screen.getByText("dispatch")).toBeInTheDocument();
+    expect(
+      screen.getByText("Dispatch delayed: no_capacity"),
+    ).toBeInTheDocument();
   });
 });

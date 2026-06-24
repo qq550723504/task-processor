@@ -177,6 +177,7 @@ export function ImportTaskAdminPage() {
                   <TableHead className="px-4 py-3">平台</TableHead>
                   <TableHead className="px-4 py-3">地区</TableHead>
                   <TableHead className="px-4 py-3">状态</TableHead>
+                  <TableHead className="px-4 py-3">调度原因</TableHead>
                   <TableHead className="px-4 py-3">重试</TableHead>
                   <TableHead className="px-4 py-3">优先级</TableHead>
                   <TableHead className="px-4 py-3 text-right">操作</TableHead>
@@ -185,13 +186,13 @@ export function ImportTaskAdminPage() {
               <TableBody className="divide-y divide-zinc-100">
                 {loading ? (
                   <TableRow>
-                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={9}>
                       加载中...
                     </TableCell>
                   </TableRow>
                 ) : tasks.length === 0 ? (
                   <TableRow>
-                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={9}>
                       暂无导入任务
                     </TableCell>
                   </TableRow>
@@ -219,6 +220,9 @@ export function ImportTaskAdminPage() {
                         <Badge className="rounded-full px-2 py-1 text-xs" variant="neutral">
                           {STATUS_TEXT[task.status] ?? `状态 ${task.status}`}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-72 px-4 py-3 text-zinc-700">
+                        <ImportTaskDelayReason task={task} />
                       </TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">
                         {task.retryCount ?? 0}/{task.maxRetryCount ?? 3}
@@ -328,6 +332,56 @@ export function ImportTaskAdminPage() {
       </section>
     </div>
   );
+}
+
+function ImportTaskDelayReason({ task }: { task: ListingImportTask }) {
+  const reasonCode = firstText(
+    task.reasonCode,
+    (task as { reason_code?: unknown }).reason_code,
+  );
+  const stage = firstText(task.stage);
+  const message = firstText(
+    task.errorMessage,
+    (task as { error_message?: unknown }).error_message,
+    task.remark,
+  );
+
+  if (!reasonCode && !stage && !message) {
+    return <span className="text-zinc-400">-</span>;
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {reasonCode ? (
+          <Badge className="rounded-full px-2 py-1 text-xs" variant="secondary">
+            {reasonCode}
+          </Badge>
+        ) : null}
+        {stage ? (
+          <span className="font-mono text-xs text-zinc-500">{stage}</span>
+        ) : null}
+      </div>
+      {message ? (
+        <div className="line-clamp-2 text-xs leading-5 text-zinc-500">
+          {message}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmed = value.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return "";
 }
 
 function storeName(
