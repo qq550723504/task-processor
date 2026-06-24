@@ -48,6 +48,7 @@ func TestSDSRetirementCreateRunRefreshesSheinProductsAndPersistsMatches(t *testi
 		},
 	}
 	shein := &sdsRetirementSheinSyncStub{
+		supportsImmediateRefresh: true,
 		products: []SheinSyncedProductRecord{
 			{ID: 11, SupplierCode: "MG8006905001", ShelfStatus: "ON_SHELF", BusinessModel: 7, SPUName: "spu", SKCName: "skc", SKCCode: "skc-1"},
 			{ID: 12, SupplierCode: "OTHER", ShelfStatus: "ON_SHELF", BusinessModel: 9},
@@ -103,7 +104,8 @@ func TestSDSRetirementGetAndUpdateSelectionUseRepository(t *testing.T) {
 	}
 
 	service := NewSDSRetirementService(repo, nil, nil)
-	detail, err := service.GetSDSRetirementRun(context.Background(), "run-1")
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	detail, err := service.GetSDSRetirementRun(ctx, "run-1")
 	if err != nil {
 		t.Fatalf("GetSDSRetirementRun() error = %v", err)
 	}
@@ -111,7 +113,7 @@ func TestSDSRetirementGetAndUpdateSelectionUseRepository(t *testing.T) {
 		t.Fatalf("detail = %#v", detail)
 	}
 
-	updated, err := service.UpdateSDSRetirementSelection(context.Background(), "run-1", &UpdateSDSRetirementSelectionRequest{
+	updated, err := service.UpdateSDSRetirementSelection(ctx, "run-1", &UpdateSDSRetirementSelectionRequest{
 		Items: []SDSRetirementItemSelectionUpdate{{ItemID: "item-1", Selected: false, SiteSelection: `["us"]`}},
 	})
 	if err != nil {
@@ -158,21 +160,246 @@ func TestSDSRetirementCreateRunRejectsNonNumericTenantForSheinRefresh(t *testing
 	}
 }
 
+func TestSDSRetirementCreateRunScopesTaskDiscoveryToResolvedTenant(t *testing.T) {
+	repo := &sdsRetirementServiceRepoStub{
+		listTasksByTenant: map[string][]Task{
+			"18": {{
+				ID: "task-tenant-a",
+				Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+					ParentProductID:  238915,
+					PrototypeGroupID: 28345,
+					VariantID:        238916,
+				}}},
+				Result: &ListingKitResult{
+					CanonicalProduct: &canonical.Product{
+						Variants: []canonical.Variant{{
+							Attributes: map[string]canonical.Attribute{
+								"source_sds_sku": {Value: "MG8006905001"},
+							},
+						}},
+					},
+				},
+			}},
+		},
+	}
+	shein := &sdsRetirementSheinSyncStub{
+		supportsImmediateRefresh: true,
+		products: []SheinSyncedProductRecord{
+			{ID: 11, SupplierCode: "MG8006905001", ShelfStatus: "ON_SHELF"},
+		},
+	}
+
+	service := NewSDSRetirementService(repo, nil, shein)
+	detail, err := service.CreateSDSRetirementRun(context.Background(), &CreateSDSRetirementRunRequest{
+		TenantID:         "18",
+		Platform:         "shein",
+		StoreID:          177,
+		ParentProductID:  238915,
+		PrototypeGroupID: 28345,
+		VariantID:        238916,
+	})
+	if err != nil {
+		t.Fatalf("CreateSDSRetirementRun() error = %v", err)
+	}
+	if len(repo.listTasksTenantIDs) == 0 || repo.listTasksTenantIDs[0] != "18" {
+		t.Fatalf("list task tenant ids = %#v, want 18", repo.listTasksTenantIDs)
+	}
+	if len(detail.Tasks) != 1 || detail.Tasks[0].ID != "task-tenant-a" {
+		t.Fatalf("tasks = %#v", detail.Tasks)
+	}
+	if len(detail.Items) != 1 || detail.Items[0].SyncedProductID != 11 {
+		t.Fatalf("items = %#v", detail.Items)
+	}
+}
+
+func TestSDSRetirementCreateRunPagesThroughAllTaskPages(t *testing.T) {
+	repo := &sdsRetirementServiceRepoStub{
+		listTasksPages: [][]Task{
+			make([]Task, 100),
+			{{
+				ID: "task-page-2",
+				Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+					ParentProductID:  238915,
+					PrototypeGroupID: 28345,
+					VariantID:        238916,
+				}}},
+				Result: &ListingKitResult{
+					CanonicalProduct: &canonical.Product{
+						Variants: []canonical.Variant{{
+							Attributes: map[string]canonical.Attribute{
+								"source_sds_sku": {Value: "MG8006905001"},
+							},
+						}},
+					},
+				},
+			}},
+		},
+	}
+	for i := range repo.listTasksPages[0] {
+		repo.listTasksPages[0][i] = Task{ID: "task-ignore"}
+	}
+	shein := &sdsRetirementSheinSyncStub{
+		supportsImmediateRefresh: true,
+		products: []SheinSyncedProductRecord{
+			{ID: 11, SupplierCode: "MG8006905001", ShelfStatus: "ON_SHELF"},
+		},
+	}
+
+	service := NewSDSRetirementService(repo, nil, shein)
+	detail, err := service.CreateSDSRetirementRun(WithTenantID(context.Background(), "18"), &CreateSDSRetirementRunRequest{
+		Platform:         "shein",
+		StoreID:          177,
+		ParentProductID:  238915,
+		PrototypeGroupID: 28345,
+		VariantID:        238916,
+	})
+	if err != nil {
+		t.Fatalf("CreateSDSRetirementRun() error = %v", err)
+	}
+	if len(repo.listTaskQueries) < 2 {
+		t.Fatalf("list task queries = %#v, want multiple pages", repo.listTaskQueries)
+	}
+	if len(detail.Tasks) != 1 || detail.Tasks[0].ID != "task-page-2" {
+		t.Fatalf("tasks = %#v", detail.Tasks)
+	}
+	if len(detail.Items) != 1 || detail.Items[0].SupplierCode != "MG8006905001" {
+		t.Fatalf("items = %#v", detail.Items)
+	}
+}
+
+func TestSDSRetirementCreateRunPagesThroughAllSyncedProducts(t *testing.T) {
+	repo := &sdsRetirementServiceRepoStub{
+		listTasks: []Task{{
+			ID: "task-1",
+			Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+				ParentProductID:  238915,
+				PrototypeGroupID: 28345,
+				VariantID:        238916,
+			}}},
+			Result: &ListingKitResult{
+				CanonicalProduct: &canonical.Product{
+					Variants: []canonical.Variant{{
+						Attributes: map[string]canonical.Attribute{
+							"source_sds_sku": {Value: "MG8006905001"},
+						},
+					}},
+				},
+			},
+		}},
+	}
+	shein := &sdsRetirementSheinSyncStub{
+		supportsImmediateRefresh: true,
+		productPages: [][]SheinSyncedProductRecord{
+			make([]SheinSyncedProductRecord, 100),
+			{{ID: 22, SupplierCode: "MG8006905001", ShelfStatus: "ON_SHELF"}},
+		},
+	}
+	for i := range shein.productPages[0] {
+		shein.productPages[0][i] = SheinSyncedProductRecord{ID: int64(i + 1), SupplierCode: "OTHER", ShelfStatus: "ON_SHELF"}
+	}
+
+	service := NewSDSRetirementService(repo, nil, shein)
+	detail, err := service.CreateSDSRetirementRun(WithTenantID(context.Background(), "18"), &CreateSDSRetirementRunRequest{
+		Platform:         "shein",
+		StoreID:          177,
+		ParentProductID:  238915,
+		PrototypeGroupID: 28345,
+		VariantID:        238916,
+	})
+	if err != nil {
+		t.Fatalf("CreateSDSRetirementRun() error = %v", err)
+	}
+	if len(shein.listQueries) < 2 {
+		t.Fatalf("list synced product queries = %#v, want multiple pages", shein.listQueries)
+	}
+	if len(detail.Items) != 1 || detail.Items[0].SyncedProductID != 22 {
+		t.Fatalf("items = %#v", detail.Items)
+	}
+}
+
+func TestSDSRetirementCreateRunRejectsAsyncOnlySheinRefresh(t *testing.T) {
+	repo := &sdsRetirementServiceRepoStub{
+		listTasks: []Task{{
+			ID: "task-1",
+			Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+				ParentProductID:  238915,
+				PrototypeGroupID: 28345,
+				VariantID:        238916,
+			}}},
+			Result: &ListingKitResult{
+				CanonicalProduct: &canonical.Product{
+					Variants: []canonical.Variant{{
+						Attributes: map[string]canonical.Attribute{
+							"source_sds_sku": {Value: "MG8006905001"},
+						},
+					}},
+				},
+			},
+		}},
+	}
+	shein := &sdsRetirementSheinSyncStub{
+		supportsImmediateRefresh: false,
+		products: []SheinSyncedProductRecord{
+			{ID: 11, SupplierCode: "MG8006905001", ShelfStatus: "ON_SHELF"},
+		},
+	}
+
+	service := NewSDSRetirementService(repo, nil, shein)
+	_, err := service.CreateSDSRetirementRun(WithTenantID(context.Background(), "18"), &CreateSDSRetirementRunRequest{
+		Platform:         "shein",
+		StoreID:          177,
+		ParentProductID:  238915,
+		PrototypeGroupID: 28345,
+		VariantID:        238916,
+	})
+	if err == nil || !strings.Contains(err.Error(), "cannot guarantee refreshed SHEIN preview data") {
+		t.Fatalf("error = %v, want async refresh safety error", err)
+	}
+	if repo.createdRun != nil {
+		t.Fatalf("created run = %#v, want none", repo.createdRun)
+	}
+}
+
 type sdsRetirementServiceRepoStub struct {
-	listTasks    []Task
-	listErr      error
-	createdRun   *SDSRetirementRunRecord
-	createdItems []SDSRetirementItemRecord
-	storedRun    *SDSRetirementRunRecord
-	storedItems  []SDSRetirementItemRecord
-	updatedItems []SDSRetirementItemSelectionUpdate
+	listTasks          []Task
+	listTasksPages     [][]Task
+	listTasksByTenant  map[string][]Task
+	listErr            error
+	listTaskQueries    []TaskListQuery
+	listTasksTenantIDs []string
+	createdRun         *SDSRetirementRunRecord
+	createdItems       []SDSRetirementItemRecord
+	storedRun          *SDSRetirementRunRecord
+	storedItems        []SDSRetirementItemRecord
+	updatedItems       []SDSRetirementItemSelectionUpdate
 }
 
 func (s *sdsRetirementServiceRepoStub) CreateTask(context.Context, *Task) error { return nil }
 func (s *sdsRetirementServiceRepoStub) GetTask(context.Context, string) (*Task, error) {
 	return nil, nil
 }
-func (s *sdsRetirementServiceRepoStub) ListTasks(context.Context, *TaskListQuery) ([]Task, int64, error) {
+func (s *sdsRetirementServiceRepoStub) ListTasks(ctx context.Context, query *TaskListQuery) ([]Task, int64, error) {
+	if query != nil {
+		s.listTaskQueries = append(s.listTaskQueries, *query)
+	}
+	s.listTasksTenantIDs = append(s.listTasksTenantIDs, TenantIDFromContext(ctx))
+	if s.listErr != nil {
+		return nil, 0, s.listErr
+	}
+	if len(s.listTasksPages) > 0 {
+		page := 1
+		if query != nil && query.Page > 0 {
+			page = query.Page
+		}
+		if page > len(s.listTasksPages) {
+			return []Task{}, int64(s.totalListTasks()), nil
+		}
+		return append([]Task(nil), s.listTasksPages[page-1]...), int64(s.totalListTasks()), nil
+	}
+	if len(s.listTasksByTenant) > 0 {
+		tasks := s.listTasksByTenant[TenantIDFromContext(ctx)]
+		return append([]Task(nil), tasks...), int64(len(tasks)), nil
+	}
 	return append([]Task(nil), s.listTasks...), int64(len(s.listTasks)), s.listErr
 }
 func (s *sdsRetirementServiceRepoStub) MarkProcessing(context.Context, string) error { return nil }
@@ -239,6 +466,14 @@ func (s *sdsRetirementServiceRepoStub) MarkSyncedProductOffShelf(context.Context
 	return nil
 }
 
+func (s *sdsRetirementServiceRepoStub) totalListTasks() int {
+	total := 0
+	for _, page := range s.listTasksPages {
+		total += len(page)
+	}
+	return total
+}
+
 type sdsRetirementBaselineStub struct {
 	readiness *SDSBaselineReadiness
 }
@@ -281,10 +516,13 @@ func (s *sdsRetirementBaselineStub) RefreshSubmissionStatus(context.Context, str
 }
 
 type sdsRetirementSheinSyncStub struct {
-	syncTenantID int64
-	syncStoreID  int64
-	syncTrigger  SheinSyncTriggerMode
-	products     []SheinSyncedProductRecord
+	syncTenantID             int64
+	syncStoreID              int64
+	syncTrigger              SheinSyncTriggerMode
+	supportsImmediateRefresh bool
+	products                 []SheinSyncedProductRecord
+	productPages             [][]SheinSyncedProductRecord
+	listQueries              []SheinSyncedProductQuery
 }
 
 func (s *sdsRetirementSheinSyncStub) SyncSheinOnShelfProducts(_ context.Context, tenantID, storeID int64, triggerMode SheinSyncTriggerMode) (*SheinSyncJobRecord, error) {
@@ -293,9 +531,34 @@ func (s *sdsRetirementSheinSyncStub) SyncSheinOnShelfProducts(_ context.Context,
 	s.syncTrigger = triggerMode
 	return &SheinSyncJobRecord{}, nil
 }
-func (s *sdsRetirementSheinSyncStub) ListSyncedProducts(context.Context, *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error) {
+func (s *sdsRetirementSheinSyncStub) ListSyncedProducts(_ context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error) {
+	if query != nil {
+		s.listQueries = append(s.listQueries, *query)
+	}
+	if len(s.productPages) > 0 {
+		page := 1
+		if query != nil && query.Page > 0 {
+			page = query.Page
+		}
+		if page > len(s.productPages) {
+			return []SheinSyncedProductRecord{}, int64(s.totalProducts()), nil
+		}
+		return append([]SheinSyncedProductRecord(nil), s.productPages[page-1]...), int64(s.totalProducts()), nil
+	}
 	return append([]SheinSyncedProductRecord(nil), s.products...), int64(len(s.products)), nil
 }
 func (s *sdsRetirementSheinSyncStub) UpdateManualCostPrice(context.Context, int64, *float64) error {
 	return nil
+}
+
+func (s *sdsRetirementSheinSyncStub) SupportsImmediateRefresh() bool {
+	return s.supportsImmediateRefresh
+}
+
+func (s *sdsRetirementSheinSyncStub) totalProducts() int {
+	total := 0
+	for _, page := range s.productPages {
+		total += len(page)
+	}
+	return total
 }

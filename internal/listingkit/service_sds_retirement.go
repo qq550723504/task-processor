@@ -10,6 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	sdsRetirementTaskDiscoveryPageSize    = 100
+	sdsRetirementSyncedProductPageSize    = 100
+	sdsRetirementAsyncRefreshSafetyReason = "cannot guarantee refreshed SHEIN preview data with async-only sync service"
+)
+
 type sdsRetirementService struct {
 	repo             Repository
 	baselineService  TaskLifecycleService
@@ -53,6 +59,7 @@ func (s *sdsRetirementService) CreateSDSRetirementRun(ctx context.Context, req *
 	if tenantID == "" {
 		tenantID = strings.TrimSpace(TenantIDFromContext(ctx))
 	}
+	ctx = WithTenantID(ctx, tenantID)
 	readiness := s.sdsBaselineReadiness(ctx, tenantID, req)
 	tasks, err := s.listSDSRetirementTasks(ctx, identity, strings.TrimSpace(req.SourceTaskID))
 	if err != nil {
@@ -108,6 +115,9 @@ func (s *sdsRetirementService) GetSDSRetirementRun(ctx context.Context, runID st
 	if !ok {
 		return nil, fmt.Errorf("SDS retirement repository is unavailable")
 	}
+	if err := requireSDSRetirementTenantScope(ctx); err != nil {
+		return nil, err
+	}
 	run, items, err := repo.GetSDSRetirementRun(ctx, strings.TrimSpace(runID))
 	if err != nil {
 		return nil, err
@@ -122,6 +132,9 @@ func (s *sdsRetirementService) UpdateSDSRetirementSelection(ctx context.Context,
 	repo, ok := s.repo.(SDSRetirementRepository)
 	if !ok {
 		return nil, fmt.Errorf("SDS retirement repository is unavailable")
+	}
+	if err := requireSDSRetirementTenantScope(ctx); err != nil {
+		return nil, err
 	}
 	run, _, err := repo.GetSDSRetirementRun(ctx, strings.TrimSpace(runID))
 	if err != nil {
@@ -167,17 +180,26 @@ func (s *sdsRetirementService) listSDSRetirementTasks(ctx context.Context, ident
 	if s == nil || s.repo == nil {
 		return nil, fmt.Errorf("listing task repository is unavailable")
 	}
-	tasks, _, err := s.repo.ListTasks(ctx, &TaskListQuery{Page: 1, PageSize: 1000, Platform: "shein"})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Task, 0, len(tasks))
-	for i := range tasks {
-		if sourceTaskID != "" && tasks[i].ID != sourceTaskID {
-			continue
+	out := make([]Task, 0)
+	for page := 1; ; page++ {
+		tasks, total, err := s.repo.ListTasks(ctx, &TaskListQuery{
+			Page:     page,
+			PageSize: sdsRetirementTaskDiscoveryPageSize,
+			Platform: "shein",
+		})
+		if err != nil {
+			return nil, err
 		}
-		if sdsRetirementTaskMatchesIdentity(&tasks[i], identity) {
-			out = append(out, tasks[i])
+		for i := range tasks {
+			if sourceTaskID != "" && tasks[i].ID != sourceTaskID {
+				continue
+			}
+			if sdsRetirementTaskMatchesIdentity(&tasks[i], identity) {
+				out = append(out, tasks[i])
+			}
+		}
+		if len(tasks) == 0 || int64(page*sdsRetirementTaskDiscoveryPageSize) >= total {
+			break
 		}
 	}
 	return out, nil
@@ -196,49 +218,57 @@ func (s *sdsRetirementService) buildSDSRetirementItems(ctx context.Context, tena
 	if err != nil {
 		return nil, err
 	}
+	if !sdsRetirementSupportsImmediateRefresh(s.sheinSyncService) {
+		return nil, fmt.Errorf("%s", sdsRetirementAsyncRefreshSafetyReason)
+	}
 
 	if _, err := s.sheinSyncService.SyncSheinOnShelfProducts(ctx, tenantIDInt64, storeID, SheinSyncTriggerModeManual); err != nil {
 		return nil, err
 	}
 	active := true
-	products, _, err := s.sheinSyncService.ListSyncedProducts(ctx, &SheinSyncedProductQuery{
-		TenantID: tenantIDInt64,
-		StoreID:  storeID,
-		IsActive: &active,
-		Page:     1,
-		PageSize: 1000,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]SDSRetirementItemRecord, 0, len(products))
-	for _, product := range products {
-		if strings.TrimSpace(product.ShelfStatus) != "ON_SHELF" {
-			continue
-		}
-		supplierCode := strings.TrimSpace(product.SupplierCode)
-		if supplierCode == "" {
-			continue
-		}
-		if _, ok := sourceSKUSet[supplierCode]; !ok {
-			continue
-		}
-		items = append(items, SDSRetirementItemRecord{
-			ID:                uuid.NewString(),
-			TenantID:          tenantID,
-			Platform:          "shein",
-			StoreID:           storeID,
-			SyncedProductID:   product.ID,
-			SPUName:           product.SPUName,
-			SKCName:           product.SKCName,
-			SKCCode:           product.SKCCode,
-			SupplierCode:      supplierCode,
-			BusinessModel:     product.BusinessModel,
-			ShelfStatusBefore: product.ShelfStatus,
-			Selected:          true,
-			Status:            SDSRetirementItemStatusSelected,
+	items := make([]SDSRetirementItemRecord, 0)
+	for page := 1; ; page++ {
+		products, total, err := s.sheinSyncService.ListSyncedProducts(ctx, &SheinSyncedProductQuery{
+			TenantID: tenantIDInt64,
+			StoreID:  storeID,
+			IsActive: &active,
+			Page:     page,
+			PageSize: sdsRetirementSyncedProductPageSize,
 		})
+		if err != nil {
+			return nil, err
+		}
+
+		for _, product := range products {
+			if strings.TrimSpace(product.ShelfStatus) != "ON_SHELF" {
+				continue
+			}
+			supplierCode := strings.TrimSpace(product.SupplierCode)
+			if supplierCode == "" {
+				continue
+			}
+			if _, ok := sourceSKUSet[supplierCode]; !ok {
+				continue
+			}
+			items = append(items, SDSRetirementItemRecord{
+				ID:                uuid.NewString(),
+				TenantID:          tenantID,
+				Platform:          "shein",
+				StoreID:           storeID,
+				SyncedProductID:   product.ID,
+				SPUName:           product.SPUName,
+				SKCName:           product.SKCName,
+				SKCCode:           product.SKCCode,
+				SupplierCode:      supplierCode,
+				BusinessModel:     product.BusinessModel,
+				ShelfStatusBefore: product.ShelfStatus,
+				Selected:          true,
+				Status:            SDSRetirementItemStatusSelected,
+			})
+		}
+		if len(products) == 0 || int64(page*sdsRetirementSyncedProductPageSize) >= total {
+			break
+		}
 	}
 	return items, nil
 }
@@ -271,4 +301,23 @@ func parseSDSRetirementTenantID(value string) (int64, error) {
 		return 0, fmt.Errorf("tenant id must be numeric")
 	}
 	return parsed, nil
+}
+
+type sdsRetirementImmediateRefreshAware interface {
+	SupportsImmediateRefresh() bool
+}
+
+func sdsRetirementSupportsImmediateRefresh(service SheinSyncService) bool {
+	aware, ok := service.(sdsRetirementImmediateRefreshAware)
+	if !ok {
+		return true
+	}
+	return aware.SupportsImmediateRefresh()
+}
+
+func requireSDSRetirementTenantScope(ctx context.Context) error {
+	if strings.TrimSpace(TenantIDFromContext(ctx)) == "" {
+		return fmt.Errorf("tenant scope is required")
+	}
+	return nil
 }

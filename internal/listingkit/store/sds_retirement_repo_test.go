@@ -31,7 +31,7 @@ func newSDSRetirementRepoHarness(t *testing.T) (*taskRepository, *gorm.DB) {
 
 func TestSDSRetirementRepositoryCreatesAndLoadsRunWithItems(t *testing.T) {
 	repo, _ := newSDSRetirementRepoHarness(t)
-	ctx := context.Background()
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
 	run := &listingkit.SDSRetirementRunRecord{
 		ID:               "run-1",
 		TenantID:         "tenant-a",
@@ -68,6 +68,32 @@ func TestSDSRetirementRepositoryCreatesAndLoadsRunWithItems(t *testing.T) {
 	}
 	if len(gotItems) != 1 || gotItems[0].SKCName != "SKC-1" || !gotItems[0].Selected {
 		t.Fatalf("items = %+v", gotItems)
+	}
+}
+
+func TestSDSRetirementRepositoryGetRunHonorsTenantScope(t *testing.T) {
+	repo, _ := newSDSRetirementRepoHarness(t)
+	ctxA := listingkit.WithTenantID(context.Background(), "tenant-a")
+	ctxB := listingkit.WithTenantID(context.Background(), "tenant-b")
+	run := &listingkit.SDSRetirementRunRecord{
+		ID:       "run-tenant-a",
+		TenantID: "tenant-a",
+		Platform: "shein",
+		StoreID:  177,
+		Status:   listingkit.SDSRetirementRunStatusReady,
+	}
+	if err := repo.CreateSDSRetirementRun(ctxA, run, []listingkit.SDSRetirementItemRecord{{
+		ID:       "item-tenant-a",
+		TenantID: "tenant-a",
+		Platform: "shein",
+		StoreID:  177,
+		Status:   listingkit.SDSRetirementItemStatusSelected,
+	}}); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	if _, _, err := repo.GetSDSRetirementRun(ctxB, run.ID); !errors.Is(err, listingkit.ErrTaskNotFound) {
+		t.Fatalf("GetSDSRetirementRun() error = %v, want ErrTaskNotFound for foreign tenant", err)
 	}
 }
 
@@ -154,7 +180,7 @@ func TestSDSRetirementRepositoryUpdatesItemsAndSavesExecution(t *testing.T) {
 
 func TestSDSRetirementRepositoryUpdateItemsReturnsDomainNotFound(t *testing.T) {
 	repo, _ := newSDSRetirementRepoHarness(t)
-	ctx := context.Background()
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
 	run := &listingkit.SDSRetirementRunRecord{
 		ID:       "run-missing-item",
 		TenantID: "tenant-a",
@@ -173,6 +199,47 @@ func TestSDSRetirementRepositoryUpdateItemsReturnsDomainNotFound(t *testing.T) {
 	}})
 	if !errors.Is(err, listingkit.ErrTaskNotFound) {
 		t.Fatalf("UpdateSDSRetirementItems error = %v, want ErrTaskNotFound", err)
+	}
+}
+
+func TestSDSRetirementRepositoryUpdateItemsHonorsTenantScope(t *testing.T) {
+	repo, _ := newSDSRetirementRepoHarness(t)
+	ctxA := listingkit.WithTenantID(context.Background(), "tenant-a")
+	ctxB := listingkit.WithTenantID(context.Background(), "tenant-b")
+	run := &listingkit.SDSRetirementRunRecord{
+		ID:       "run-scope-update",
+		TenantID: "tenant-a",
+		Platform: "shein",
+		StoreID:  177,
+		Status:   listingkit.SDSRetirementRunStatusReady,
+	}
+	items := []listingkit.SDSRetirementItemRecord{{
+		ID:       "item-scope-update",
+		TenantID: "tenant-a",
+		Platform: "shein",
+		StoreID:  177,
+		Selected: true,
+		Status:   listingkit.SDSRetirementItemStatusSelected,
+	}}
+	if err := repo.CreateSDSRetirementRun(ctxA, run, items); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	err := repo.UpdateSDSRetirementItems(ctxB, run.ID, []listingkit.SDSRetirementItemSelectionUpdate{{
+		ItemID:        "item-scope-update",
+		Selected:      false,
+		SiteSelection: `[{"site_abbr":"US","store_type":1}]`,
+	}})
+	if !errors.Is(err, listingkit.ErrTaskNotFound) {
+		t.Fatalf("UpdateSDSRetirementItems() error = %v, want ErrTaskNotFound for foreign tenant", err)
+	}
+
+	gotRun, gotItems, err := repo.GetSDSRetirementRun(ctxA, run.ID)
+	if err != nil {
+		t.Fatalf("GetSDSRetirementRun() error = %v", err)
+	}
+	if gotRun == nil || len(gotItems) != 1 || !gotItems[0].Selected {
+		t.Fatalf("run/items after foreign update = %#v %#v", gotRun, gotItems)
 	}
 }
 

@@ -55,6 +55,10 @@ func (s *asyncSheinSyncService) UpdateManualCostPrice(ctx context.Context, produ
 	return s.sync.UpdateManualCostPrice(ctx, productID, manualCostPrice)
 }
 
+func (s *asyncSheinSyncService) SupportsImmediateRefresh() bool {
+	return false
+}
+
 func detachedSheinSyncContext(ctx context.Context) context.Context {
 	detached := tenantctx.WithTenantID(context.Background(), tenantctx.TenantIDFromContext(ctx))
 	return openaiclient.WithIdentity(detached, openaiclient.IdentityFromContext(ctx))

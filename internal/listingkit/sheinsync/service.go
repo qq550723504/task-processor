@@ -15,6 +15,10 @@ type SheinSyncService interface {
 	UpdateManualCostPrice(ctx context.Context, productID int64, manualCostPrice *float64) error
 }
 
+type SheinSyncImmediateRefreshAware interface {
+	SupportsImmediateRefresh() bool
+}
+
 type sheinSyncService struct {
 	repo              SheinSyncRepository
 	productAPI        sheinproduct.ProductAPI
@@ -25,6 +29,10 @@ type sheinSyncService struct {
 
 func NewSheinSyncService(repo SheinSyncRepository, productAPI sheinproduct.ProductAPI, costResolver SheinCostResolver) SheinSyncService {
 	return newSheinSyncService(repo, productAPI, nil, costResolver)
+}
+
+func (s *sheinSyncService) SupportsImmediateRefresh() bool {
+	return true
 }
 
 func newSheinSyncService(repo SheinSyncRepository, productAPI sheinproduct.ProductAPI, productAPIBuilder SheinSyncProductAPIBuilder, costResolver SheinCostResolver) *sheinSyncService {
