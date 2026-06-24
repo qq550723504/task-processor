@@ -88,3 +88,26 @@ type SDSRetirementItemSelectionUpdate struct {
 	Selected      bool   `json:"selected"`
 	SiteSelection string `json:"site_selection,omitempty"`
 }
+
+type CreateSDSRetirementRunRequest struct {
+	TenantID           string  `json:"tenant_id,omitempty"`
+	Platform           string  `json:"platform"`
+	StoreID            int64   `json:"store_id"`
+	ParentProductID    int64   `json:"parent_product_id"`
+	PrototypeGroupID   int64   `json:"prototype_group_id"`
+	VariantID          int64   `json:"variant_id"`
+	SelectedVariantIDs []int64 `json:"selected_variant_ids,omitempty"`
+	SourceTaskID       string  `json:"source_task_id,omitempty"`
+	CreatedBy          string  `json:"created_by,omitempty"`
+}
+
+type SDSRetirementRunDetail struct {
+	Run    SDSRetirementRunRecord    `json:"run"`
+	Items  []SDSRetirementItemRecord `json:"items"`
+	Tasks  []Task                    `json:"tasks,omitempty"`
+	Reason string                    `json:"reason,omitempty"`
+}
+
+type UpdateSDSRetirementSelectionRequest struct {
+	Items []SDSRetirementItemSelectionUpdate `json:"items"`
+}
