@@ -1629,6 +1629,76 @@ func TestTaskRPCAPIClient_LocalProvider(t *testing.T) {
 	}
 }
 
+func TestTaskRPCAPIClientLocalMissesDoNotFallbackToManagementHTTP(t *testing.T) {
+	provider := newSQLiteProvider(t)
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+
+	client := &TaskRPCAPIClient{
+		ManagementAPIClient: NewManagementAPIClientWithBaseURL(server.URL),
+		localProvider:       NewLocalTaskRPCProvider(provider),
+	}
+	client.SetUserToken("test-token", "1")
+
+	if _, err := client.SubmitTask(nil); err == nil || !strings.Contains(err.Error(), "本地任务提交未处理") {
+		t.Fatalf("SubmitTask(nil) error = %v", err)
+	}
+	if _, err := client.SubmitUrgentTask(nil); err == nil || !strings.Contains(err.Error(), "本地紧急任务提交未处理") {
+		t.Fatalf("SubmitUrgentTask(nil) error = %v", err)
+	}
+	if _, err := client.SubmitBatchTasks(nil); err == nil || !strings.Contains(err.Error(), "本地批量任务提交未处理") {
+		t.Fatalf("SubmitBatchTasks(nil) error = %v", err)
+	}
+
+	status, err := client.GetTaskStatus(987654321)
+	if err != nil {
+		t.Fatalf("GetTaskStatus(missing) error = %v", err)
+	}
+	if status != nil {
+		t.Fatalf("GetTaskStatus(missing) = %+v, want nil local miss", status)
+	}
+
+	cancelResp, err := client.CancelTask(987654321)
+	if err != nil {
+		t.Fatalf("CancelTask(missing) error = %v", err)
+	}
+	if cancelResp == nil || cancelResp.Success || !strings.Contains(cancelResp.ErrorMessage, "本地任务不存在") {
+		t.Fatalf("CancelTask(missing) = %+v, want local not-found action", cancelResp)
+	}
+
+	retryResp, err := client.RetryTask(987654321)
+	if err != nil {
+		t.Fatalf("RetryTask(missing) error = %v", err)
+	}
+	if retryResp == nil || retryResp.Success || !strings.Contains(retryResp.ErrorMessage, "本地任务不存在") {
+		t.Fatalf("RetryTask(missing) = %+v, want local not-found action", retryResp)
+	}
+
+	statuses, err := client.GetBatchTaskStatus([]int64{987654321})
+	if err != nil {
+		t.Fatalf("GetBatchTaskStatus(missing) error = %v", err)
+	}
+	if len(statuses) != 0 {
+		t.Fatalf("GetBatchTaskStatus(missing) = %+v, want empty local result", statuses)
+	}
+
+	stats, err := client.GetQueueStats()
+	if err != nil {
+		t.Fatalf("GetQueueStats() error = %v", err)
+	}
+	if !strings.Contains(stats, `"source":"local-db"`) {
+		t.Fatalf("GetQueueStats() = %s", stats)
+	}
+
+	if calls.Load() != 0 {
+		t.Fatalf("management HTTP calls = %d, want 0", calls.Load())
+	}
+}
+
 func TestImportTaskAPIClient_GetTaskByID_LocalProvider(t *testing.T) {
 	provider := newSQLiteProvider(t)
 	row := localImportTaskRow{
