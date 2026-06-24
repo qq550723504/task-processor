@@ -1,4 +1,9 @@
-import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
+import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
+import type {
+  SheinStudioDraft,
+  SheinStudioRecentBatchSummary,
+  SheinStudioSavedBatch,
+} from "@/lib/types/shein-studio";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 
 type RecentBatchSelectionSummary = {
@@ -11,6 +16,13 @@ type RecentBatchAction = "generate" | "review" | "tasks";
 type RecentBatchSelectionProjectionParams = {
   rawSelectedRecentBatchSummaryIds: string[];
   validRecentBatchSummaryKeys: Set<string>;
+};
+
+type RecentBatchSummariesProjectionParams = {
+  draft?: SheinStudioDraft | null;
+  draftBatchId?: string;
+  savedBatches: SheinStudioSavedBatch[];
+  selectedRecentBatchHydrations: RecentBatchHydrationMap;
 };
 
 type FreshRecentBatchHydrationParams = {
@@ -121,6 +133,28 @@ export function mergeRecentBatchHydrations(
     ...current,
     ...Object.fromEntries(entries),
   };
+}
+
+export function projectRecentBatchSummaries({
+  draft,
+  draftBatchId,
+  savedBatches,
+  selectedRecentBatchHydrations,
+}: RecentBatchSummariesProjectionParams): SheinStudioRecentBatchSummary[] {
+  const baseSummaries = buildRecentBatchSummaries(savedBatches, {
+    draft,
+    draftBatchId,
+  });
+  return baseSummaries.map((summary) => {
+    if (summary.source !== "batch") {
+      return summary;
+    }
+    const hydratedBatch = selectedRecentBatchHydrations[summary.id];
+    if (!hydratedBatch) {
+      return summary;
+    }
+    return buildRecentBatchSummaries([hydratedBatch.savedBatch])[0] ?? summary;
+  });
 }
 
 export async function resolveRecentBatchForMutation({

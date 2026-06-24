@@ -39,6 +39,7 @@ import {
   buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchSaveInput,
   mergeRecentBatchHydrations,
+  projectRecentBatchSummaries,
   projectRecentBatchSelectionState,
   projectRecentBatchTargetStep,
   removeRecentBatchSummarySelection,
@@ -112,7 +113,6 @@ import {
   type SheinStudioBatchQueueResumeState,
 } from "@/lib/shein-studio/batch-queue";
 import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
-import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import {
   clearListingKitTraceContext,
@@ -514,27 +514,21 @@ export function SheinStudioWorkbench({
     [activeGroupId, groups],
   );
   const localDraftSnapshot = localDraftSnapshotDetail?.draft ?? null;
-  const recentBatchSummaries = useMemo(() => {
-    const baseSummaries = buildRecentBatchSummaries(savedBatches, {
-      draft: localDraftSnapshot,
-      draftBatchId: localDraftSnapshotDetail?.batchId,
-    });
-    return baseSummaries.map((summary) => {
-      if (summary.source !== "batch") {
-        return summary;
-      }
-      const hydratedBatch = selectedRecentBatchHydrations[summary.id];
-      if (!hydratedBatch) {
-        return summary;
-      }
-      return buildRecentBatchSummaries([hydratedBatch.savedBatch])[0] ?? summary;
-    });
-  }, [
-    localDraftSnapshot,
-    localDraftSnapshotDetail?.batchId,
-    savedBatches,
-    selectedRecentBatchHydrations,
-  ]);
+  const recentBatchSummaries = useMemo(
+    () =>
+      projectRecentBatchSummaries({
+        draft: localDraftSnapshot,
+        draftBatchId: localDraftSnapshotDetail?.batchId,
+        savedBatches,
+        selectedRecentBatchHydrations,
+      }),
+    [
+      localDraftSnapshot,
+      localDraftSnapshotDetail?.batchId,
+      savedBatches,
+      selectedRecentBatchHydrations,
+    ],
+  );
   const validRecentBatchSummaryKeys = useMemo(
     () => buildRecentBatchSummaryKeys(recentBatchSummaries),
     [recentBatchSummaries],

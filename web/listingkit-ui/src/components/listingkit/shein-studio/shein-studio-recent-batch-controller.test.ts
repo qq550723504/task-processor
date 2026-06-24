@@ -7,6 +7,7 @@ import {
   buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchStoreUpdateInput,
   mergeRecentBatchHydrations,
+  projectRecentBatchSummaries,
   projectRecentBatchSelectionState,
   projectRecentBatchTargetStep,
   resolveRecentBatchSelectionTarget,
@@ -292,6 +293,41 @@ describe("mergeRecentBatchHydrations", () => {
     ).toEqual({
       "batch-old": existing,
       "batch-new": next,
+    });
+  });
+});
+
+describe("projectRecentBatchSummaries", () => {
+  it("overlays hydrated saved batch summaries over stale saved batches", () => {
+    const hydratedBatch = buildHydratedBatch(
+      buildBatch({
+        id: "batch-1",
+        name: "Hydrated batch",
+        prompt: "hydrated prompt",
+        updatedAt: "2026-06-22T00:00:00.000Z",
+      }),
+    );
+
+    const summaries = projectRecentBatchSummaries({
+      draft: null,
+      draftBatchId: undefined,
+      savedBatches: [
+        buildBatch({
+          id: "batch-1",
+          name: "Stale batch",
+          prompt: "stale prompt",
+          updatedAt: "2026-06-21T00:00:00.000Z",
+        }),
+      ],
+      selectedRecentBatchHydrations: {
+        "batch-1": hydratedBatch,
+      },
+    });
+
+    expect(summaries[0]).toMatchObject({
+      id: "batch-1",
+      promptPreview: "hydrated prompt",
+      title: "Hydrated batch",
     });
   });
 });
