@@ -60,6 +60,7 @@ import {
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskCreationProgress,
+  runItemizedDesignApproval,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import {
@@ -1457,25 +1458,13 @@ export function SheinStudioWorkbench({
       }
       void (async () => {
         try {
-          const approvalRequest = projectItemizedDesignApprovalRequest({
+          const nextDetail = await runItemizedDesignApproval({
             activeBatchId,
+            approveDesigns: approveSheinStudioBatchDesigns,
             currentActiveBatch,
             detail: itemizedBatchDetail,
             selectedIds: nextSelectedIds,
           });
-          if (!approvalRequest) {
-            return;
-          }
-          const nextDetail = approvalRequest.tenantId
-            ? await approveSheinStudioBatchDesigns(
-                approvalRequest.batchId,
-                approvalRequest.selectedIds,
-                { tenantId: approvalRequest.tenantId },
-              )
-            : await approveSheinStudioBatchDesigns(
-                approvalRequest.batchId,
-                approvalRequest.selectedIds,
-              );
           workbenchController.setField("creatingWarning", "");
           if (nextDetail) {
             applyItemizedBatchDetail(nextDetail);

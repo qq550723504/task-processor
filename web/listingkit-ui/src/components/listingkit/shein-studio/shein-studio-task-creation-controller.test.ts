@@ -10,6 +10,7 @@ import {
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgress,
   projectItemizedTaskCreationResult,
+  runItemizedDesignApproval,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
@@ -300,6 +301,72 @@ describe("projectItemizedDesignApprovalRequest", () => {
       batchId: "batch-1",
       selectedIds: ["design-1"],
       tenantId: undefined,
+    });
+  });
+});
+
+describe("runItemizedDesignApproval", () => {
+  it("does nothing when the approval request cannot be projected", async () => {
+    const approveDesigns = vi.fn();
+
+    await expect(
+      runItemizedDesignApproval({
+        activeBatchId: "",
+        approveDesigns,
+        currentActiveBatch: buildCurrentBatch(),
+        detail: buildCurrentDetail(),
+        selectedIds: ["design-1"],
+      }),
+    ).resolves.toBeNull();
+    expect(approveDesigns).not.toHaveBeenCalled();
+  });
+
+  it("approves selected designs without tenant options when no tenant is available", async () => {
+    const nextDetail = buildCurrentDetail();
+    const approveDesigns = vi.fn().mockResolvedValue(nextDetail);
+
+    await expect(
+      runItemizedDesignApproval({
+        activeBatchId: "batch-1",
+        approveDesigns,
+        currentActiveBatch: {
+          ...buildCurrentBatch(),
+          tenantId: undefined,
+        },
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            tenantId: undefined,
+          },
+        },
+        selectedIds: ["design-1"],
+      }),
+    ).resolves.toBe(nextDetail);
+    expect(approveDesigns).toHaveBeenCalledWith("batch-1", ["design-1"]);
+  });
+
+  it("passes tenant options when the approval request has a tenant", async () => {
+    const nextDetail = buildCurrentDetail();
+    const approveDesigns = vi.fn().mockResolvedValue(nextDetail);
+
+    await expect(
+      runItemizedDesignApproval({
+        activeBatchId: "batch-1",
+        approveDesigns,
+        currentActiveBatch: buildCurrentBatch(),
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            tenantId: "tenant-detail",
+          },
+        },
+        selectedIds: ["design-1"],
+      }),
+    ).resolves.toBe(nextDetail);
+    expect(approveDesigns).toHaveBeenCalledWith("batch-1", ["design-1"], {
+      tenantId: "tenant-detail",
     });
   });
 });

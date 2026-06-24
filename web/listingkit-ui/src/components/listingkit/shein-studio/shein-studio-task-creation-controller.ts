@@ -83,6 +83,14 @@ type ItemizedDesignApprovalRequestInput = {
   selectedIds: string[];
 };
 
+type ItemizedDesignApprovalRunnerInput = ItemizedDesignApprovalRequestInput & {
+  approveDesigns: (
+    batchId: string,
+    selectedIds: string[],
+    options?: { tenantId?: string },
+  ) => Promise<SheinStudioBatchDetail | null>;
+};
+
 type ItemizedFailedRetryRequestInput = {
   activeBatchId: string;
   currentActiveBatch?: Partial<SheinStudioSavedBatch> | null;
@@ -279,6 +287,30 @@ export function projectItemizedDesignApprovalRequest({
     selectedIds,
     tenantId: tenantId || undefined,
   };
+}
+
+export async function runItemizedDesignApproval({
+  activeBatchId,
+  approveDesigns,
+  currentActiveBatch,
+  detail,
+  selectedIds,
+}: ItemizedDesignApprovalRunnerInput): Promise<SheinStudioBatchDetail | null> {
+  const approvalRequest = projectItemizedDesignApprovalRequest({
+    activeBatchId,
+    currentActiveBatch,
+    detail,
+    selectedIds,
+  });
+  if (!approvalRequest) {
+    return null;
+  }
+  if (approvalRequest.tenantId) {
+    return approveDesigns(approvalRequest.batchId, approvalRequest.selectedIds, {
+      tenantId: approvalRequest.tenantId,
+    });
+  }
+  return approveDesigns(approvalRequest.batchId, approvalRequest.selectedIds);
 }
 
 export function projectItemizedTaskRecoveryState({
