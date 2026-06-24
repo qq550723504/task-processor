@@ -64,6 +64,8 @@ type ResolveRecentBatchMutationTargetsParams = {
   resolveBatch: (batchId: string) => Promise<SheinStudioSavedBatch | null>;
 };
 
+type RecentBatchDeleteRunner = (batchId: string) => Promise<unknown>;
+
 type RecentBatchSelectionTarget =
   | {
       hydratedBatch: SheinStudioWorkbenchHydratedBatch;
@@ -352,4 +354,20 @@ export function selectRecentBatchBulkDeleteFailure(
       !isMissingRecentBatchDeleteError(result.reason),
   );
   return failed?.status === "rejected" ? failed.reason : null;
+}
+
+export async function runRecentBatchBulkDelete(
+  summaryIds: string[],
+  deleteBatch: RecentBatchDeleteRunner,
+) {
+  if (summaryIds.length === 0) {
+    return;
+  }
+  const results = await Promise.allSettled(
+    summaryIds.map((summaryId) => deleteBatch(summaryId)),
+  );
+  const failure = selectRecentBatchBulkDeleteFailure(results);
+  if (failure) {
+    throw failure;
+  }
 }

@@ -47,7 +47,7 @@ import {
   removeRecentBatchSummarySelection,
   resolveRecentBatchSelectionTarget,
   resolveRecentBatchMutationTargets,
-  selectRecentBatchBulkDeleteFailure,
+  runRecentBatchBulkDelete,
   resolveRecentBatchForMutation as resolveRecentBatchForMutationTarget,
   upsertRecentSavedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
@@ -1319,16 +1319,7 @@ export function SheinStudioWorkbench({
 
   const handleBulkDeleteRecentBatchSummaries = useCallback(
     async (summaryIds: string[]) => {
-      if (summaryIds.length === 0) {
-        return;
-      }
-      const results = await Promise.allSettled(
-        summaryIds.map((summaryId) => handleDeleteBatch(summaryId)),
-      );
-      const failure = selectRecentBatchBulkDeleteFailure(results);
-      if (failure) {
-        throw failure;
-      }
+      await runRecentBatchBulkDelete(summaryIds, handleDeleteBatch);
     },
     [handleDeleteBatch],
   );

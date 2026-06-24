@@ -11,6 +11,7 @@ import {
   projectRecentBatchSummaries,
   projectRecentBatchSelectionState,
   projectRecentBatchTargetStep,
+  runRecentBatchBulkDelete,
   resolveRecentBatchSelectionTarget,
   removeRecentBatchSummarySelection,
   resolveRecentBatchForMutation,
@@ -536,5 +537,39 @@ describe("selectRecentBatchBulkDeleteFailure", () => {
     ];
 
     expect(selectRecentBatchBulkDeleteFailure(results)).toBe(failure);
+  });
+});
+
+describe("runRecentBatchBulkDelete", () => {
+  it("does nothing when no summary ids are selected", async () => {
+    const deleteBatch = vi.fn();
+
+    await runRecentBatchBulkDelete([], deleteBatch);
+
+    expect(deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it("ignores missing batch delete failures", async () => {
+    const deleteBatch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("studio session not found"))
+      .mockResolvedValueOnce(undefined);
+
+    await expect(
+      runRecentBatchBulkDelete(["batch-missing", "batch-2"], deleteBatch),
+    ).resolves.toBeUndefined();
+    expect(deleteBatch).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws the first non-missing delete failure", async () => {
+    const failure = new Error("network failed");
+    const deleteBatch = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("studio session not found"))
+      .mockRejectedValueOnce(failure);
+
+    await expect(
+      runRecentBatchBulkDelete(["batch-missing", "batch-failed"], deleteBatch),
+    ).rejects.toBe(failure);
   });
 });
