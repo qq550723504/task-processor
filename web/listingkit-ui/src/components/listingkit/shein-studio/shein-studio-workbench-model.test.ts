@@ -10,6 +10,7 @@ import {
   pickActiveSheinStudioGroup,
   projectGroupToWorkbench,
   projectHydratedBatchToWorkbench,
+  projectDefaultSelectedSDSImages,
   projectSavedBatchToWorkbench,
   resolveCurrentSheinStudioSavedBatch,
   projectWorkbenchStateToSavedBatch,
@@ -713,6 +714,60 @@ describe("shein studio workbench model", () => {
       prompt: "current prompt",
       styleCount: "2",
     });
+  });
+
+  it("projects default SDS image selection for hybrid generation", () => {
+    expect(
+      projectDefaultSelectedSDSImages({
+        availableSdsImages: [
+          {
+            imageUrl: "https://img.ltwebstatic.com/images3_spmp/2026/01/01/mockup.jpg",
+            kind: "mockup",
+            label: "Mockup",
+          },
+          {
+            imageUrl: "https://example.com/size-reference.jpg",
+            kind: "size_reference",
+            label: "Size",
+          },
+        ],
+        currentSelectedSdsImages: [],
+        hasCustomizedSdsSelection: false,
+        imageStrategy: "hybrid",
+        renderSizeImagesWithSds: true,
+      }),
+    ).toEqual([
+      {
+        imageUrl: "https://img.ltwebstatic.com/images3_spmp/2026/01/01/mockup.jpg",
+        color: undefined,
+        variantSku: undefined,
+      },
+      {
+        imageUrl: "https://example.com/size-reference.jpg",
+        color: undefined,
+        variantSku: undefined,
+      },
+    ]);
+  });
+
+  it("does not replace customized SDS image selection", () => {
+    expect(
+      projectDefaultSelectedSDSImages({
+        availableSdsImages: [
+          {
+            imageUrl: "https://img.ltwebstatic.com/images3_spmp/2026/01/01/mockup.jpg",
+            kind: "mockup",
+            label: "Mockup",
+          },
+        ],
+        currentSelectedSdsImages: [
+          { imageUrl: "https://example.com/custom.jpg" },
+        ],
+        hasCustomizedSdsSelection: true,
+        imageStrategy: "hybrid",
+        renderSizeImagesWithSds: true,
+      }),
+    ).toBeNull();
   });
 
   it("returns the create-task disabled reason from the first blocking condition", () => {

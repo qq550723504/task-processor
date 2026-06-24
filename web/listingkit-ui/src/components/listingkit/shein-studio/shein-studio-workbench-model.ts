@@ -30,6 +30,10 @@ import type {
   SheinStudioSelectedSDSImage,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
+import {
+  buildDefaultSelectedSDSImages,
+  type SheinStudioSelectableSDSImage,
+} from "@/lib/shein-studio/sds-selectable-images";
 
 export const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
 
@@ -487,6 +491,33 @@ export function resolveCurrentSheinStudioSavedBatch({
       id: resolvedBatchId,
     })
   );
+}
+
+export function projectDefaultSelectedSDSImages({
+  availableSdsImages,
+  currentSelectedSdsImages,
+  hasCustomizedSdsSelection,
+  imageStrategy,
+  renderSizeImagesWithSds,
+}: {
+  availableSdsImages: SheinStudioSelectableSDSImage[];
+  currentSelectedSdsImages: SheinStudioSelectedSDSImage[];
+  hasCustomizedSdsSelection: boolean;
+  imageStrategy: SheinStudioImageStrategy;
+  renderSizeImagesWithSds: boolean;
+}): SheinStudioSelectedSDSImage[] | null {
+  if (imageStrategy !== "hybrid" && imageStrategy !== "sds_official") {
+    return null;
+  }
+  if (hasCustomizedSdsSelection) {
+    return null;
+  }
+  const nextDefaults = buildDefaultSelectedSDSImages(availableSdsImages, {
+    includeSizeReferenceImages: renderSizeImagesWithSds,
+  });
+  return JSON.stringify(currentSelectedSdsImages) === JSON.stringify(nextDefaults)
+    ? null
+    : nextDefaults;
 }
 
 export function evaluateImportedGalleryDesigns(

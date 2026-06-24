@@ -83,6 +83,7 @@ import {
   getItemizedBatchPendingTaskDesignIDs,
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
+  projectDefaultSelectedSDSImages,
   resolveCurrentSheinStudioSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
@@ -103,7 +104,6 @@ import {
   type SheinStudioWorkbenchStateUpdater,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import {
-  buildDefaultSelectedSDSImages,
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
 import {
@@ -993,26 +993,22 @@ export function SheinStudioWorkbench({
   });
 
   useEffect(() => {
-    if (imageStrategy !== "hybrid" && imageStrategy !== "sds_official") {
-      return;
-    }
-    if (hasCustomizedSdsSelectionRef.current) {
-      return;
-    }
-
-    const nextDefaults = buildDefaultSelectedSDSImages(availableSdsImages, {
-      includeSizeReferenceImages: renderSizeImagesWithSds,
+    const nextDefaults = projectDefaultSelectedSDSImages({
+      availableSdsImages,
+      currentSelectedSdsImages: selectedSdsImages,
+      hasCustomizedSdsSelection: hasCustomizedSdsSelectionRef.current,
+      imageStrategy,
+      renderSizeImagesWithSds,
     });
-    const currentSelection = JSON.stringify(selectedSdsImages);
-    const defaultSelection = JSON.stringify(nextDefaults);
-    if (currentSelection !== defaultSelection) {
-      const timer = window.setTimeout(() => {
-        setSelectedSdsImages(nextDefaults);
-      }, 0);
-      return () => {
-        window.clearTimeout(timer);
-      };
+    if (!nextDefaults) {
+      return;
     }
+    const timer = window.setTimeout(() => {
+      setSelectedSdsImages(nextDefaults);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [
     availableSdsImages,
     imageStrategy,
