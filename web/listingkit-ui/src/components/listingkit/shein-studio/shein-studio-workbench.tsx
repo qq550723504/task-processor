@@ -340,6 +340,7 @@ export function SheinStudioWorkbench({
     currentStoreLabel,
     effectiveCurrentStoreId,
     recentBatchStoreOptions,
+    storeRequiredMessage,
   } = useMemo(
     () =>
       projectSheinStudioStoreSelectionState({
@@ -348,9 +349,6 @@ export function SheinStudioWorkbench({
       }),
     [enabledProfiles, sheinStoreId],
   );
-  const storeRequiredMessage = effectiveCurrentStoreId
-    ? ""
-    : "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。";
   const activeGroupPromptHistory = useMemo(
     () =>
       selectActiveGroupPromptHistory({

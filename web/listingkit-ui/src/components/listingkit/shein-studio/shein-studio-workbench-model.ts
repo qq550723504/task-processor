@@ -61,6 +61,9 @@ export function projectSheinStudioStoreSelectionState({
       id: String(profile.store_id),
       label: formatSheinStoreOptionLabel(profile),
     })),
+    storeRequiredMessage: effectiveCurrentStoreId
+      ? ""
+      : "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
   };
 }
 

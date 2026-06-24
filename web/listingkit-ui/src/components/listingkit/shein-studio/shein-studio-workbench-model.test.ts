@@ -63,23 +63,34 @@ describe("shein studio workbench model", () => {
           label: "Backup (99 / UK)",
         },
       ],
+      storeRequiredMessage: "",
     });
   });
 
   it("returns an empty current store label when the selected store is missing", () => {
+    const projection = projectSheinStudioStoreSelectionState({
+      currentStoreId: "missing",
+      enabledProfiles: [
+        {
+          name: "Main",
+          store_id: 42,
+          storeId: "42",
+          site: "US",
+        },
+      ],
+    });
+
+    expect(projection.currentStoreLabel).toBe("");
+    expect(projection.storeRequiredMessage).toBe("");
+  });
+
+  it("projects a store required message when no store is selected", () => {
     expect(
       projectSheinStudioStoreSelectionState({
-        currentStoreId: "missing",
-        enabledProfiles: [
-          {
-            name: "Main",
-            store_id: 42,
-            storeId: "42",
-            site: "US",
-          },
-        ],
-      }).currentStoreLabel,
-    ).toBe("");
+        currentStoreId: "",
+        enabledProfiles: [],
+      }).storeRequiredMessage,
+    ).toBe("请先选择批次店铺，再生成款式图或创建 SHEIN 资料。");
   });
 
   it("allows Studio generation before subscription data is loaded", () => {
