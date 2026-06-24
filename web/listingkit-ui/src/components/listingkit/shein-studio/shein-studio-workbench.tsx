@@ -44,6 +44,7 @@ import {
   projectRecentBatchSummaries,
   projectRecentBatchSelectionState,
   projectRecentBatchSelectionUpdate,
+  refreshRecentSavedBatches,
   renameRecentBatchSummary,
   removeRecentBatchSummarySelection,
   resolveRecentBatchHydrationEntries,
@@ -1181,7 +1182,12 @@ export function SheinStudioWorkbench({
   );
 
   const refreshSavedBatches = useCallback(async () => {
-    workbenchController.setField("savedBatches", await listSheinStudioBatches());
+    await refreshRecentSavedBatches({
+      listBatches: listSheinStudioBatches,
+      setSavedBatches: (batches) => {
+        workbenchController.setField("savedBatches", batches);
+      },
+    });
   }, [workbenchController]);
 
   const resolveRecentBatchForMutation = useCallback(

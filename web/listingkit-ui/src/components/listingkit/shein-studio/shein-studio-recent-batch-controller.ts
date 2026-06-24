@@ -106,6 +106,11 @@ type RecentBatchMutationSave = (
   options?: { makeActive?: boolean },
 ) => Promise<unknown>;
 
+type RefreshRecentSavedBatchesParams = {
+  listBatches: () => Promise<SheinStudioSavedBatch[]>;
+  setSavedBatches: (batches: SheinStudioSavedBatch[]) => void;
+};
+
 type RenameRecentBatchSummaryParams = {
   name: string;
   refreshSavedBatches: () => Promise<unknown>;
@@ -167,6 +172,15 @@ export function upsertRecentSavedBatch(
   return [nextBatch, ...batches.filter((batch) => batch.id !== nextBatch.id)].sort(
     (left, right) => right.updatedAt.localeCompare(left.updatedAt),
   );
+}
+
+export async function refreshRecentSavedBatches({
+  listBatches,
+  setSavedBatches,
+}: RefreshRecentSavedBatchesParams) {
+  const batches = await listBatches();
+  setSavedBatches(batches);
+  return batches;
 }
 
 export function removeRecentBatchSummarySelection(

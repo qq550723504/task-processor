@@ -16,6 +16,7 @@ import {
   renameRecentBatchSummary,
   runRecentBatchBulkDelete,
   runRecentBatchBulkStoreUpdate,
+  refreshRecentSavedBatches,
   resolveRecentBatchSelectionTarget,
   removeRecentBatchSummarySelection,
   resolveRecentBatchHydrationEntries,
@@ -246,6 +247,22 @@ describe("upsertRecentSavedBatch", () => {
       "batch-old",
     ]);
     expect(result[0]?.name).toBe("Updated");
+  });
+});
+
+describe("refreshRecentSavedBatches", () => {
+  it("loads saved batches and applies them through the setter", async () => {
+    const batches = [buildBatch({ id: "batch-1" }), buildBatch({ id: "batch-2" })];
+    const listBatches = vi.fn().mockResolvedValue(batches);
+    const setSavedBatches = vi.fn();
+
+    await expect(
+      refreshRecentSavedBatches({
+        listBatches,
+        setSavedBatches,
+      }),
+    ).resolves.toBe(batches);
+    expect(setSavedBatches).toHaveBeenCalledWith(batches);
   });
 });
 
