@@ -15,6 +15,7 @@ import {
   projectRecentBatchTargetStep,
   renameRecentBatchSummary,
   runRecentBatchBulkDelete,
+  runRecentBatchBulkStoreUpdate,
   resolveRecentBatchSelectionTarget,
   removeRecentBatchSummarySelection,
   resolveRecentBatchForMutation,
@@ -311,6 +312,55 @@ describe("buildRecentBatchBulkStoreUpdateInputs", () => {
       expect.objectContaining({ id: "batch-1", sheinStoreId: "store-new" }),
       expect.objectContaining({ id: "batch-2", sheinStoreId: "store-new" }),
     ]);
+  });
+});
+
+describe("runRecentBatchBulkStoreUpdate", () => {
+  it("does not save or refresh when no selected targets resolve", async () => {
+    const resolveBatch = vi.fn().mockResolvedValue(null);
+    const saveBatch = vi.fn();
+    const refreshSavedBatches = vi.fn();
+
+    await runRecentBatchBulkStoreUpdate({
+      batchIds: ["missing"],
+      refreshSavedBatches,
+      resolveBatch,
+      saveBatch,
+      storeId: "store-new",
+    });
+
+    expect(resolveBatch).toHaveBeenCalledWith("missing");
+    expect(saveBatch).not.toHaveBeenCalled();
+    expect(refreshSavedBatches).not.toHaveBeenCalled();
+  });
+
+  it("saves resolved batches with the new store and refreshes batches", async () => {
+    const resolveBatch = vi.fn(async (batchId: string) =>
+      buildBatch({ id: batchId, sheinStoreId: "store-old" }),
+    );
+    const saveBatch = vi.fn().mockResolvedValue(undefined);
+    const refreshSavedBatches = vi.fn().mockResolvedValue(undefined);
+
+    await runRecentBatchBulkStoreUpdate({
+      batchIds: ["batch-1", "batch-2"],
+      refreshSavedBatches,
+      resolveBatch,
+      saveBatch,
+      storeId: "store-new",
+    });
+
+    expect(saveBatch).toHaveBeenCalledTimes(2);
+    expect(saveBatch).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: "batch-1", sheinStoreId: "store-new" }),
+      { makeActive: false },
+    );
+    expect(saveBatch).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ id: "batch-2", sheinStoreId: "store-new" }),
+      { makeActive: false },
+    );
+    expect(refreshSavedBatches).toHaveBeenCalled();
   });
 });
 

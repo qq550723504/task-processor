@@ -37,7 +37,6 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import {
   buildRecentBatchSummaryKeys,
-  buildRecentBatchBulkStoreUpdateInputs,
   deleteRecentBatchSummary,
   duplicateRecentBatchSummary,
   mergeRecentBatchHydrations,
@@ -48,8 +47,8 @@ import {
   renameRecentBatchSummary,
   removeRecentBatchSummarySelection,
   resolveRecentBatchSelectionTarget,
-  resolveRecentBatchMutationTargets,
   runRecentBatchBulkDelete,
+  runRecentBatchBulkStoreUpdate,
   resolveRecentBatchForMutation as resolveRecentBatchForMutationTarget,
   upsertRecentSavedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
@@ -1317,19 +1316,13 @@ export function SheinStudioWorkbench({
 
   const handleBulkUpdateRecentBatchStore = useCallback(
     async (summaryIds: string[], storeId: string) => {
-      const targets = await resolveRecentBatchMutationTargets({
+      await runRecentBatchBulkStoreUpdate({
         batchIds: summaryIds,
+        refreshSavedBatches,
         resolveBatch: resolveRecentBatchForMutation,
+        saveBatch: saveSheinStudioBatch,
+        storeId,
       });
-      if (targets.length === 0) {
-        return;
-      }
-      await Promise.all(
-        buildRecentBatchBulkStoreUpdateInputs(targets, storeId).map((input) =>
-          saveSheinStudioBatch(input, { makeActive: false }),
-        ),
-      );
-      await refreshSavedBatches();
     },
     [refreshSavedBatches, resolveRecentBatchForMutation],
   );

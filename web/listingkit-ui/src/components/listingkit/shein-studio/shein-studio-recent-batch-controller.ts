@@ -95,6 +95,14 @@ type DeleteRecentBatchSummaryParams = {
   summary: RecentBatchSelectionSummary;
 };
 
+type RunRecentBatchBulkStoreUpdateParams = {
+  batchIds: string[];
+  refreshSavedBatches: () => Promise<unknown>;
+  resolveBatch: (batchId: string) => Promise<SheinStudioSavedBatch | null>;
+  saveBatch: RecentBatchMutationSave;
+  storeId: string;
+};
+
 type RecentBatchSelectionTarget =
   | {
       hydratedBatch: SheinStudioWorkbenchHydratedBatch;
@@ -424,6 +432,28 @@ export function buildRecentBatchBulkStoreUpdateInputs(
   storeId: string,
 ) {
   return batches.map((batch) => buildRecentBatchStoreUpdateInput(batch, storeId));
+}
+
+export async function runRecentBatchBulkStoreUpdate({
+  batchIds,
+  refreshSavedBatches,
+  resolveBatch,
+  saveBatch,
+  storeId,
+}: RunRecentBatchBulkStoreUpdateParams) {
+  const targets = await resolveRecentBatchMutationTargets({
+    batchIds,
+    resolveBatch,
+  });
+  if (targets.length === 0) {
+    return;
+  }
+  await Promise.all(
+    buildRecentBatchBulkStoreUpdateInputs(targets, storeId).map((input) =>
+      saveBatch(input, { makeActive: false }),
+    ),
+  );
+  await refreshSavedBatches();
 }
 
 function isMissingRecentBatchDeleteError(error: unknown) {
