@@ -3,8 +3,8 @@
 ## 文档状态
 
 - 状态：Active
-- 更新日期：2026-06-20
-- 参考基线：`master` 近期 SDS/SHEIN 批次与提交实现
+- 更新日期：2026-06-24
+- 参考基线：`master` commit `4829df08677a8b21960bfef59c702c3dc5027a2e`
 - 适用对象：技术负责人、后端、前端、QA、代码审查者
 
 ## 1. 重构目标
@@ -672,6 +672,15 @@ Follow-up deletion
 | SHEIN submit readiness guidance support file cleanup | migrated | 删除只剩 guidance/hint assembly 的 `shein_submit_readiness_guidance_support.go`；repair hint artifact 组装和 guidance resolver helper 归并回 `shein_submit_readiness.go`。 |
 | SHEIN admin service support file cleanup | migrated | 删除只剩 admin service 私有 helper 的 `shein_admin_service_support.go`；task/package 加载、category API、final draft 后续编排与 resolution cache 清理归并回 `shein_admin_service.go`，final draft 写入和类目搜索规则继续委托 publishing/workspace。 |
 
+2026-06-23/24 Control Plane 与 Management retirement 记录：
+
+| 对象 | 状态 | 证据 |
+| --- | --- | --- |
+| Go Listing Control Plane 代码路径 | code landed, production hardening open | `cmd/listing-control-plane`、`internal/listingcontrol`、`internal/app/runtime/listingcontrol`、`scripts/build-push-deploy-listing-control-plane.ps1` 和 `deployments/kubernetes/shein-listing/overlays/prod-auto-shard-statefulset/listing-control-plane.yaml` 已落库；当前缺口集中在 leader lock、持久 dispatch reason、daily limit capacity 和真实 rollout/rollback 验证。 |
+| Control Plane 实施计划状态 | closeout snapshot added | `docs/superpowers/plans/2026-06-23-go-listing-control-plane.md` 已补充 2026-06-24 closeout，明确哪些是代码完成、哪些还只是待生产验证，避免原始 checklist 与代码状态继续漂移。 |
+| Management Client runtime retirement | in progress | `internal/app/runtime/listing/local_runtime_health.go` 已从具体 `management.ClientManager` 改为 `listingLocalRuntimeValidator` 小接口；`internal/infra/clients/management/local_listing_runtime_health.go` 暂时提供 `ValidateLocalListingRuntimeFields` 适配方法。下一步仍需继续拆出 `ImportTaskLoader`、`StoreProvider`、`PricingRuleProvider`、`ProductDataProvider` 和 `TaskStatusWriter` 等 runtime-owned ports。 |
+| ListingKit 重构进展快照 | added | `docs/refactoring/listingkit-refactoring-progress-2026-06-24.md` 记录当前后半程状态、核心缺口、两周执行建议和不建议继续做的工作。该文件是 active snapshot，不替代 roadmap 和长期架构文档。 |
+
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
 ## 14. 完成定义
@@ -695,6 +704,9 @@ ListingKit 根包主要承担 facade 和 orchestration；
 - `docs/architecture/next-steps.md`
 - `docs/refactoring/project-wide-refactoring-plan.md`
 - `docs/refactoring/listingkit-boundary-checkpoint.md`
+- `docs/refactoring/listingkit-refactoring-progress-2026-06-24.md`
 - `docs/product/listingkit-next-execution-plan.md`
 - `docs/superpowers/specs/2026-06-20-listingkit-sds-batch-production-closure-requirements.md`
 - `docs/superpowers/plans/2026-06-20-listingkit-sds-batch-production-closure.md`
+- `docs/superpowers/specs/2026-06-23-go-listing-control-plane-design.md`
+- `docs/superpowers/plans/2026-06-23-go-listing-control-plane.md`

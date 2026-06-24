@@ -141,10 +141,10 @@ Current direct dependency hotspots are:
   - `internal/app/httpapi` still imports `management` in runtime dependency
     methods and SHEIN module test seams; these should stay narrow while HTTP
     assembly data access moves toward in-repository database/repository access
-  - `internal/app/runtime/listing` still imports `management` in debug task
-    runner seams; these should remain explicit runtime retirement seams while
-    listing runtime data access moves toward in-repository database/repository
-    access
+  - `internal/app/runtime/listing` now keeps local runtime health validation
+    behind a package-local validator interface; concrete `management` usage
+    remains only in debug task runner/runtime assembly seams and should keep
+    moving toward in-repository database/repository access
   - `internal/app/taskstatus` still imports `management` in task status service
     seams; these should remain explicit retirement seams while task-status data
     access moves toward in-repository database/repository access
@@ -281,6 +281,12 @@ When adding new behavior that needs a remote service:
 
 Good next slices are small seams where a local interface can replace concrete
 adapter types without changing business behavior:
+
+2026-06-24 update: `internal/app/runtime/listing/local_runtime_health.go`
+no longer imports `internal/infra/clients/management` directly. The temporary
+adapter is `ClientManager.ValidateLocalListingRuntimeFields`, which keeps the
+concrete management report type out of listing runtime while the remaining
+runtime-owned ports are extracted.
 
 1. ListingKit AI settings and studio media generation seams currently importing
    `internal/infra/clients/openai`. The HTTPAPI runtime/bootstrap seam is now
