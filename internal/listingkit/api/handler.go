@@ -14,6 +14,7 @@ type handler struct {
 	taskRecoveryService        listingkit.TaskRecoveryService
 	taskRequeueService         listingkit.TaskRequeueService
 	sdsBaselineWarmService     listingkit.SDSBaselineWarmService
+	sdsRetirementService       listingkit.SDSRetirementService
 	generationTaskService      listingkit.GenerationTaskService
 	childTaskRetryService      childTaskRetryService
 	studioMediaService         listingkit.StudioMediaService
@@ -247,6 +248,12 @@ func WithChildTaskRetryService(service childTaskRetryService) HandlerOption {
 func WithSDSBaselineWarmService(service listingkit.SDSBaselineWarmService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.sdsBaselineWarmService = service
+	})
+}
+
+func WithSDSRetirementService(service listingkit.SDSRetirementService) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.sdsRetirementService = service
 	})
 }
 

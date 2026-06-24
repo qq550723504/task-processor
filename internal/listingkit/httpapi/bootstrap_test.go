@@ -534,6 +534,25 @@ func TestBuildHandlerOptionsWiresSDSBaselineWarmService(t *testing.T) {
 	}
 }
 
+func TestBuildHandlerOptionsWiresSDSRetirementService(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap_module_service.go")
+	if err != nil {
+		t.Fatalf("read bootstrap_module_service.go: %v", err)
+	}
+	content := string(src)
+	if !strings.Contains(content, "listingkitapi.WithSDSRetirementService(") {
+		t.Fatal("buildHandlerOptions should wire SDS retirement service into the HTTP handler")
+	}
+	if !strings.Contains(content, "listingkit.NewSDSRetirementService(") {
+		t.Fatal("buildHandlerOptions should bootstrap SDS retirement service from runtime dependencies")
+	}
+	if !strings.Contains(content, "runtime.taskRepository") || !strings.Contains(content, "runtime.service") || !strings.Contains(content, "runtime.sheinSyncService") {
+		t.Fatal("buildHandlerOptions should build SDS retirement service from task repository, runtime service, and shein sync service")
+	}
+}
+
 func TestNewSubmitModuleInputScopesBuildServiceDependencies(t *testing.T) {
 	t.Parallel()
 
@@ -1372,6 +1391,34 @@ func TestBuildModuleWiresStudioBatchRunServiceIntoHandler(t *testing.T) {
 
 	if resp.Code == http.StatusNotImplemented {
 		t.Fatalf("expected studio batch run handler to be wired, got 501 body=%s", resp.Body.String())
+	}
+}
+
+func TestBuildModuleWiresSDSRetirementServiceIntoHandler(t *testing.T) {
+	t.Parallel()
+
+	module, err := BuildModule(BuildModuleInput{
+		ServiceInput: buildSuccessfulServiceInputFixture(),
+	})
+	if err != nil {
+		t.Fatalf("build module: %v", err)
+	}
+
+	engine := gin.New()
+	engine.POST("/api/v1/listing-kits/sds/retirements", module.Handler.CreateSDSRetirementRun)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/listing-kits/sds/retirements",
+		strings.NewReader(`{"platform":"shein","store_id":2001,"parent_product_id":9001,"prototype_group_id":7001,"variant_id":101}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code == http.StatusNotImplemented {
+		t.Fatalf("expected SDS retirement handler to be wired, got 501 body=%s", resp.Body.String())
 	}
 }
 

@@ -23,6 +23,11 @@ func (taskOnlyRouteHandler) GenerateListingKit(c *gin.Context)               {}
 func (taskOnlyRouteHandler) ListTasks(c *gin.Context)                        {}
 func (taskOnlyRouteHandler) GetSDSBaselineReadiness(c *gin.Context)          {}
 func (taskOnlyRouteHandler) WarmSDSBaseline(c *gin.Context)                  {}
+func (taskOnlyRouteHandler) CreateSDSRetirementRun(c *gin.Context)           {}
+func (taskOnlyRouteHandler) GetSDSRetirementRun(c *gin.Context)              {}
+func (taskOnlyRouteHandler) UpdateSDSRetirementSelection(c *gin.Context)     {}
+func (taskOnlyRouteHandler) ConfirmSDSRetirementRun(c *gin.Context)          {}
+func (taskOnlyRouteHandler) RetrySDSRetirementRun(c *gin.Context)            {}
 func (taskOnlyRouteHandler) UploadListingKitImages(c *gin.Context)           {}
 func (taskOnlyRouteHandler) GetUploadedListingKitImage(c *gin.Context)       {}
 func (taskOnlyRouteHandler) DeleteUploadedListingKitImage(c *gin.Context)    {}

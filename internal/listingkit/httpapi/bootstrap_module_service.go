@@ -143,6 +143,13 @@ func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOp
 		listingkitapi.WithGenerationTaskService(runtime.service),
 		listingkitapi.WithChildTaskRetryService(runtime.service),
 		listingkitapi.WithSDSBaselineWarmService(runtime.service),
+		listingkitapi.WithSDSRetirementService(
+			listingkit.NewSDSRetirementService(
+				runtime.taskRepository,
+				runtime.service,
+				runtime.sheinSyncService,
+			),
+		),
 		listingkitapi.WithStoreAdminService(runtime.service),
 		listingkitapi.WithSettingsHandlerService(runtime.service),
 		listingkitapi.WithStudioMediaService(runtime.service),
