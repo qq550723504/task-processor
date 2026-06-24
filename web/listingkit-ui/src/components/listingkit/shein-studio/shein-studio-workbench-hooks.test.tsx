@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   useSheinStudioActiveBatchScope,
   useSheinStudioCurrentBatchSelection,
+  useSheinStudioStoreSelection,
   useSheinStudioWorkbenchTraceContext,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import { buildInitialSheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
@@ -138,5 +139,39 @@ describe("useSheinStudioCurrentBatchSelection", () => {
       styleCount: "3",
     });
     expect(result.current.currentDedicatedBatch).toBeNull();
+  });
+});
+
+describe("useSheinStudioStoreSelection", () => {
+  it("projects current store labels and recent batch store options", () => {
+    const { result } = renderHook(() =>
+      useSheinStudioStoreSelection({
+        currentStoreId: " 42 ",
+        enabledProfiles: [
+          {
+            name: "Main",
+            store_id: 42,
+            storeId: "42",
+            site: "US",
+          },
+          {
+            name: "Backup",
+            store_id: 99,
+            storeId: "99",
+            site: "UK",
+          },
+        ],
+      }),
+    );
+
+    expect(result.current).toEqual({
+      currentStoreLabel: "Main (42 / US)",
+      effectiveCurrentStoreId: "42",
+      recentBatchStoreOptions: [
+        { id: "42", label: "Main (42 / US)" },
+        { id: "99", label: "Backup (99 / UK)" },
+      ],
+      storeRequiredMessage: "",
+    });
   });
 });

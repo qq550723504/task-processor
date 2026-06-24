@@ -6,6 +6,7 @@ import {
   buildSheinStudioSelectionKey,
   projectWorkbenchStateFallback,
   projectWorkbenchTraceContext,
+  projectSheinStudioStoreSelectionState,
   resolveCurrentSheinStudioSavedBatch,
   selectCurrentDedicatedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -36,6 +37,7 @@ import type {
   SheinStudioSavedBatch,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
+import type { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 import {
@@ -187,6 +189,23 @@ export function useSheinStudioCurrentBatchSelection({
     currentActiveBatch,
     currentDedicatedBatch,
   };
+}
+
+export function useSheinStudioStoreSelection({
+  currentStoreId,
+  enabledProfiles,
+}: {
+  currentStoreId: string;
+  enabledProfiles: Array<Parameters<typeof formatSheinStoreOptionLabel>[0]>;
+}) {
+  return useMemo(
+    () =>
+      projectSheinStudioStoreSelectionState({
+        currentStoreId,
+        enabledProfiles,
+      }),
+    [currentStoreId, enabledProfiles],
+  );
 }
 
 export function useHydratedSDSVariantSelection(
