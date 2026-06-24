@@ -111,3 +111,7 @@ type SDSRetirementRunDetail struct {
 type UpdateSDSRetirementSelectionRequest struct {
 	Items []SDSRetirementItemSelectionUpdate `json:"items"`
 }
+
+type ConfirmSDSRetirementRunRequest struct {
+	ConfirmedBy string `json:"confirmed_by,omitempty"`
+}

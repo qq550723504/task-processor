@@ -46,6 +46,8 @@ type SDSRetirementService interface {
 	CreateSDSRetirementRun(ctx context.Context, req *CreateSDSRetirementRunRequest) (*SDSRetirementRunDetail, error)
 	GetSDSRetirementRun(ctx context.Context, runID string) (*SDSRetirementRunDetail, error)
 	UpdateSDSRetirementSelection(ctx context.Context, runID string, req *UpdateSDSRetirementSelectionRequest) (*SDSRetirementRunDetail, error)
+	ConfirmSDSRetirementRun(ctx context.Context, runID string, req *ConfirmSDSRetirementRunRequest) (*SDSRetirementRunDetail, error)
+	RetrySDSRetirementRun(ctx context.Context, runID string) (*SDSRetirementRunDetail, error)
 }
 
 type GenerationTaskService interface {

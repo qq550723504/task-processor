@@ -124,6 +124,30 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 	require.JSONEq(t, `{"total":999,"available":321}`, rows[0].InventorySnapshot)
 }
 
+func TestSheinSyncServiceResolveProductAPIReturnsConfiguredRuntimeAPI(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	productAPI := &sheinSyncServiceProductAPIStub{}
+	service := NewSheinSyncService(repo, productAPI, nil)
+
+	resolved, err := service.ResolveProductAPI(context.Background(), 77)
+	require.NoError(t, err)
+	require.Same(t, productAPI, resolved)
+}
+
+func TestSheinSyncServiceResolveProductAPIUsesBuilderWhenConfigured(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	productAPI := &sheinSyncServiceProductAPIStub{}
+	service := NewSheinSyncServiceWithBuilder(repo, sheinSyncProductAPIBuilderStub{productAPI: productAPI}, nil)
+
+	resolved, err := service.ResolveProductAPI(context.Background(), 88)
+	require.NoError(t, err)
+	require.Same(t, productAPI, resolved)
+}
+
 func TestSyncSheinOnShelfProductsManualOverrideWinsOverAutoCost(t *testing.T) {
 	t.Parallel()
 

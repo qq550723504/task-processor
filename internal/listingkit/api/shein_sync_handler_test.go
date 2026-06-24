@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/store"
+	sheinproduct "task-processor/internal/shein/api/product"
 	"task-processor/internal/tenantbridge"
 )
 
@@ -63,6 +64,10 @@ func (s *stubSheinSyncHandlerService) UpdateManualCostPrice(ctx context.Context,
 	s.updateCostID = productID
 	s.updateCost = manualCostPrice
 	return s.updateCostErr
+}
+
+func (s *stubSheinSyncHandlerService) ResolveProductAPI(context.Context, int64) (sheinproduct.ProductAPI, error) {
+	return nil, nil
 }
 
 type stubSheinCandidateHandlerService struct{}
