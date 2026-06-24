@@ -4,8 +4,12 @@ import { usePathname } from "next/navigation";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
   buildSheinStudioSelectionKey,
+  projectWorkbenchStateFallback,
   projectWorkbenchTraceContext,
+  resolveCurrentSheinStudioSavedBatch,
+  selectCurrentDedicatedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import type { SheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
 import {
   type DraftSaveOptions,
@@ -29,6 +33,7 @@ import type {
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
+  SheinStudioSavedBatch,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
@@ -146,6 +151,42 @@ export function useSheinStudioWorkbenchTraceContext({
       }),
     [batchQueueMode, queuedBatchIds, queuedBatchIndex, traceBatchId],
   );
+}
+
+export function useSheinStudioCurrentBatchSelection({
+  activeBatchId,
+  initialBatchId,
+  savedBatches,
+  workbenchState,
+}: {
+  activeBatchId: string;
+  initialBatchId?: string;
+  savedBatches: SheinStudioSavedBatch[];
+  workbenchState: SheinStudioWorkbenchState;
+}) {
+  const currentActiveBatch = useMemo(
+    () =>
+      resolveCurrentSheinStudioSavedBatch({
+        activeBatchId,
+        fallback: projectWorkbenchStateFallback(workbenchState),
+        initialBatchId,
+        savedBatches,
+      }),
+    [activeBatchId, initialBatchId, savedBatches, workbenchState],
+  );
+  const currentDedicatedBatch = useMemo(
+    () =>
+      selectCurrentDedicatedBatch({
+        currentActiveBatch,
+        initialBatchId,
+      }),
+    [currentActiveBatch, initialBatchId],
+  );
+
+  return {
+    currentActiveBatch,
+    currentDedicatedBatch,
+  };
 }
 
 export function useHydratedSDSVariantSelection(

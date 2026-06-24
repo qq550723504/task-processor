@@ -76,6 +76,7 @@ import {
   useHydratedSDSVariantSelection,
   loadLocalSheinStudioDraftSnapshotDetail,
   useSheinStudioActiveBatchScope,
+  useSheinStudioCurrentBatchSelection,
   useSheinStudioWorkbenchTraceContext,
   useSheinStudioPendingNavigationGuard,
   useSheinStudioDraftPersistence,
@@ -97,11 +98,8 @@ import {
   projectDefaultSelectedSDSImages,
   projectSheinStudioStoreSelectionState,
   projectStudioSubscriptionGate,
-  projectWorkbenchStateFallback,
-  resolveCurrentSheinStudioSavedBatch,
   selectActiveGroupPromptHistory,
   selectActiveGroupPrimarySelection,
-  selectCurrentDedicatedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
   type SheinStudioWorkbenchHydratedBatch,
@@ -405,29 +403,13 @@ export function SheinStudioWorkbench({
     queuedBatchIds,
     queuedBatchIndex,
   });
-  const currentActiveBatch = useMemo(
-    () =>
-      resolveCurrentSheinStudioSavedBatch({
-        activeBatchId,
-        fallback: projectWorkbenchStateFallback(workbenchState),
-        initialBatchId,
-        savedBatches,
-      }),
-    [
+  const { currentActiveBatch, currentDedicatedBatch } =
+    useSheinStudioCurrentBatchSelection({
       activeBatchId,
       initialBatchId,
       savedBatches,
       workbenchState,
-    ],
-  );
-  const currentDedicatedBatch = useMemo(
-    () =>
-      selectCurrentDedicatedBatch({
-        currentActiveBatch,
-        initialBatchId,
-      }),
-    [currentActiveBatch, initialBatchId],
-  );
+    });
   const hydrateRecentBatchSelection = useCallback(
     async (batchIds: string[]) => {
       const hydratedEntries = await resolveRecentBatchHydrationEntries({

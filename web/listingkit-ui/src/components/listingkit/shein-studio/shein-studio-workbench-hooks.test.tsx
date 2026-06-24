@@ -3,8 +3,28 @@ import { describe, expect, it } from "vitest";
 
 import {
   useSheinStudioActiveBatchScope,
+  useSheinStudioCurrentBatchSelection,
   useSheinStudioWorkbenchTraceContext,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
+import { buildInitialSheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
+import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
+
+function buildSavedBatch(
+  overrides: Partial<SheinStudioSavedBatch> = {},
+): SheinStudioSavedBatch {
+  return {
+    id: "batch-1",
+    name: "Saved batch",
+    prompt: "saved prompt",
+    styleCount: "1",
+    sheinStoreId: "869",
+    designs: [],
+    selectedIds: [],
+    createdTasks: [],
+    updatedAt: "2026-06-20T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 describe("useSheinStudioActiveBatchScope", () => {
   it("keeps the dedicated route batch id as the active batch", () => {
@@ -78,5 +98,45 @@ describe("useSheinStudioWorkbenchTraceContext", () => {
     rerender({ currentQueuedBatchId: "" });
 
     expect(result.current.batchId).toBe("batch-active");
+  });
+});
+
+describe("useSheinStudioCurrentBatchSelection", () => {
+  it("selects the current saved batch and dedicated route batch", () => {
+    const savedBatch = buildSavedBatch({ id: "batch-route" });
+    const { result } = renderHook(() =>
+      useSheinStudioCurrentBatchSelection({
+        activeBatchId: "",
+        initialBatchId: "batch-route",
+        savedBatches: [savedBatch],
+        workbenchState: buildInitialSheinStudioWorkbenchState(),
+      }),
+    );
+
+    expect(result.current.currentActiveBatch).toBe(savedBatch);
+    expect(result.current.currentDedicatedBatch).toBe(savedBatch);
+  });
+
+  it("falls back to workbench state when the active batch has not been saved", () => {
+    const workbenchState = {
+      ...buildInitialSheinStudioWorkbenchState(),
+      prompt: "draft prompt",
+      styleCount: "3",
+    };
+    const { result } = renderHook(() =>
+      useSheinStudioCurrentBatchSelection({
+        activeBatchId: "batch-local",
+        initialBatchId: undefined,
+        savedBatches: [],
+        workbenchState,
+      }),
+    );
+
+    expect(result.current.currentActiveBatch).toMatchObject({
+      id: "batch-local",
+      prompt: "draft prompt",
+      styleCount: "3",
+    });
+    expect(result.current.currentDedicatedBatch).toBeNull();
   });
 });
