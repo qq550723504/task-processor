@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -58,6 +58,24 @@ function buildSiteSelectionValue(items: RetirementSiteSelection[]) {
   return JSON.stringify(items);
 }
 
+function buildSiteKey(site: RetirementSiteSelection) {
+  return `${site.site_abbr ?? ""}:${site.store_type ?? ""}`;
+}
+
+function mergeSiteSelections(...groups: RetirementSiteSelection[][]) {
+  const merged = new Map<string, RetirementSiteSelection>();
+  groups.flat().forEach((site) => {
+    merged.set(buildSiteKey(site), site);
+  });
+  return Array.from(merged.values());
+}
+
+function buildCandidateSitesByItem(items: SDSRetirementItem[]) {
+  return Object.fromEntries(
+    items.map((item) => [item.id, parseSiteSelection(item.site_selection)]),
+  );
+}
+
 function itemCanChange(item: SDSRetirementItem) {
   return item.status === "pending" || item.status === "selected";
 }
@@ -90,6 +108,34 @@ export function SDSRetirementPanel({
   onConfirm,
 }: Props) {
   const [acknowledged, setAcknowledged] = useState(false);
+  const [candidateSiteState, setCandidateSiteState] = useState<{
+    runId: string;
+    byItemId: Record<string, RetirementSiteSelection[]>;
+  }>(() => ({
+    runId: detail.run.id,
+    byItemId: buildCandidateSitesByItem(detail.items),
+  }));
+
+  useEffect(() => {
+    setCandidateSiteState((current) => {
+      const nextCandidates = buildCandidateSitesByItem(detail.items);
+      if (current.runId !== detail.run.id) {
+        return {
+          runId: detail.run.id,
+          byItemId: nextCandidates,
+        };
+      }
+      return {
+        runId: current.runId,
+        byItemId: Object.fromEntries(
+          detail.items.map((item) => [
+            item.id,
+            mergeSiteSelections(current.byItemId[item.id] ?? [], nextCandidates[item.id] ?? []),
+          ]),
+        ),
+      };
+    });
+  }, [detail.items, detail.run.id]);
 
   const selectedCount = useMemo(
     () =>
@@ -104,6 +150,10 @@ export function SDSRetirementPanel({
 
   const canConfirm =
     acknowledged && selectedCount > 0 && detail.run.status === "ready" && !isExecuting;
+
+  function getCandidateSites(item: SDSRetirementItem) {
+    return candidateSiteState.byItemId[item.id] ?? parseSiteSelection(item.site_selection);
+  }
 
   function toggleItem(item: SDSRetirementItem, selected: boolean) {
     onSelectionChange([
@@ -136,7 +186,7 @@ export function SDSRetirementPanel({
     onSelectionChange([
       {
         item_id: item.id,
-        selected: nextSites.length > 0 && item.selected,
+        selected: nextSites.length > 0,
         site_selection: buildSiteSelectionValue(nextSites),
       },
     ]);
@@ -153,7 +203,8 @@ export function SDSRetirementPanel({
 
       <div className="space-y-2">
         {detail.items.map((item) => {
-          const siteSelections = parseSiteSelection(item.site_selection);
+          const siteSelections = getCandidateSites(item);
+          const selectedSites = parseSiteSelection(item.site_selection);
           const editable = itemCanChange(item) && !isExecuting;
           return (
             <div
@@ -190,7 +241,9 @@ export function SDSRetirementPanel({
                       >
                         <Checkbox
                           aria-label={`${item.skc_name || item.id} ${label}`}
-                          checked
+                          checked={selectedSites.some(
+                            (candidate) => buildSiteKey(candidate) === buildSiteKey(site),
+                          )}
                           disabled={!editable}
                           onChange={(event) =>
                             toggleSite(item, site, event.currentTarget.checked)

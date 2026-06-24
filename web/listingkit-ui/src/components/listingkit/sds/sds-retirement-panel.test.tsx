@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SDSRetirementPanel } from "@/components/listingkit/sds/sds-retirement-panel";
-import type { SDSRetirementRunDetail } from "@/lib/types/sds-retirement";
+import type {
+  SDSRetirementRunDetail,
+  SDSRetirementSelectionUpdate,
+} from "@/lib/types/sds-retirement";
 
 const detail: SDSRetirementRunDetail = {
   run: {
@@ -32,6 +36,42 @@ const detail: SDSRetirementRunDetail = {
   ],
 };
 
+function PanelHarness({
+  initialDetail = detail,
+  onSelectionChange = vi.fn(),
+}: {
+  initialDetail?: SDSRetirementRunDetail;
+  onSelectionChange?: (items: SDSRetirementSelectionUpdate[]) => void;
+}) {
+  const [currentDetail, setCurrentDetail] = useState(initialDetail);
+
+  return (
+    <SDSRetirementPanel
+      detail={currentDetail}
+      isExecuting={false}
+      onConfirm={() => undefined}
+      onSelectionChange={(items) => {
+        onSelectionChange(items);
+        setCurrentDetail((current) => ({
+          ...current,
+          items: current.items.map((item) => {
+            const update = items.find((candidate) => candidate.item_id === item.id);
+            if (!update) {
+              return item;
+            }
+            return {
+              ...item,
+              selected: update.selected,
+              site_selection: update.site_selection,
+              status: update.selected ? "selected" : "pending",
+            };
+          }),
+        }));
+      }}
+    />
+  );
+}
+
 describe("SDSRetirementPanel", () => {
   it("renders selected SKCs and asks for explicit acknowledgement before confirm", () => {
     const onSelectionChange = vi.fn();
@@ -59,5 +99,56 @@ describe("SDSRetirementPanel", () => {
     fireEvent.click(button);
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps candidate sites renderable so a site can be unchecked and rechecked", () => {
+    const onSelectionChange = vi.fn();
+    const detailWithTwoSites: SDSRetirementRunDetail = {
+      ...detail,
+      items: [
+        {
+          ...detail.items[0],
+          site_selection: JSON.stringify([
+            { site_abbr: "US", store_type: 1 },
+            { site_abbr: "CA", store_type: 1 },
+          ]),
+        },
+      ],
+    };
+
+    render(
+      <PanelHarness
+        initialDetail={detailWithTwoSites}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    const usSite = screen.getByLabelText("SKC-1 US");
+    expect(usSite).toBeChecked();
+
+    fireEvent.click(usSite);
+
+    expect(onSelectionChange).toHaveBeenLastCalledWith([
+      {
+        item_id: "item-1",
+        selected: true,
+        site_selection: JSON.stringify([{ site_abbr: "CA", store_type: 1 }]),
+      },
+    ]);
+    expect(screen.getByLabelText("SKC-1 US")).not.toBeChecked();
+
+    fireEvent.click(screen.getByLabelText("SKC-1 US"));
+
+    expect(onSelectionChange).toHaveBeenLastCalledWith([
+      {
+        item_id: "item-1",
+        selected: true,
+        site_selection: JSON.stringify([
+          { site_abbr: "CA", store_type: 1 },
+          { site_abbr: "US", store_type: 1 },
+        ]),
+      },
+    ]);
+    expect(screen.getByLabelText("SKC-1 US")).toBeChecked();
   });
 });
