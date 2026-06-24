@@ -2,6 +2,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  projectActiveSelectionBaselineState,
   projectBaselineWarmupFeedback,
   useSheinStudioBatchGenerationContext,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
@@ -64,6 +65,60 @@ describe("projectBaselineWarmupFeedback", () => {
         label: "去处理 SDS 登录",
       },
       message: "当前 SDS 登录缺少 access token。",
+    });
+  });
+});
+
+describe("projectActiveSelectionBaselineState", () => {
+  it("projects a missing active baseline while readiness is loading", () => {
+    expect(
+      projectActiveSelectionBaselineState({
+        activeGroupedSelectionID: "selection-1",
+        hasActiveSelection: true,
+        baselineStatuses: {},
+      }),
+    ).toEqual({
+      baseline: {
+        status: "missing",
+        reason: "正在检查 baseline 状态...",
+        reasonCode: undefined,
+      },
+      handoff: null,
+      reason: "正在检查 baseline 状态...",
+      resolvedBaseline: undefined,
+    });
+  });
+
+  it("projects resolved active baseline reason and handoff action", () => {
+    expect(
+      projectActiveSelectionBaselineState({
+        activeGroupedSelectionID: "selection-1",
+        hasActiveSelection: true,
+        baselineStatuses: {
+          "selection-1": {
+            status: "blocked",
+            reason: "",
+            reasonCode: "login_missing_credentials",
+          },
+        },
+      }),
+    ).toEqual({
+      baseline: {
+        status: "blocked",
+        reason: "",
+        reasonCode: "login_missing_credentials",
+      },
+      handoff: {
+        action: "open_sds_login",
+        actionLabel: "去处理 SDS 登录",
+        message: "当前 SDS 登录缺少 access token。",
+      },
+      reason: "当前 SDS 登录缺少 access token。",
+      resolvedBaseline: {
+        status: "blocked",
+        reason: "",
+        reasonCode: "login_missing_credentials",
+      },
     });
   });
 });

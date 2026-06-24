@@ -7,6 +7,7 @@ import {
   getSDSBaselineReasonMessage,
 } from "@/lib/shein-studio/sds-baseline-ui";
 import type { SDSBaselineReadiness } from "@/lib/types/sds-baseline";
+import type { SDSBaselineStatus } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
@@ -40,6 +41,13 @@ type BaselineWarmupFeedback = {
     label: string;
   } | null;
   message: string;
+};
+
+type ActiveSelectionBaseline = {
+  baselineKey?: string;
+  reason: string;
+  reasonCode?: string;
+  status: SDSBaselineStatus;
 };
 
 type BatchGenerationContextParams = {
@@ -100,6 +108,39 @@ export function projectBaselineWarmupFeedback(
           : readiness.reason ||
             getSDSBaselineReasonMessage(readiness.reasonCode) ||
             "baseline 预热与校验已发起，请稍后再试。",
+  };
+}
+
+export function projectActiveSelectionBaselineState({
+  activeGroupedSelectionID,
+  baselineStatuses,
+  hasActiveSelection,
+}: {
+  activeGroupedSelectionID: string;
+  baselineStatuses: Record<string, ActiveSelectionBaseline>;
+  hasActiveSelection: boolean;
+}) {
+  const resolvedBaseline = activeGroupedSelectionID
+    ? baselineStatuses[activeGroupedSelectionID]
+    : undefined;
+  const baseline = resolvedBaseline ?? {
+    status: "missing" as SDSBaselineStatus,
+    reasonCode: undefined,
+    reason: hasActiveSelection ? "正在检查 baseline 状态..." : "",
+  };
+  const reason = baseline.reason || getSDSBaselineReasonMessage(baseline.reasonCode);
+  const handoff = resolvedBaseline
+    ? buildGroupedSDSBaselineHandoff({
+        status: resolvedBaseline.status,
+        reason: resolvedBaseline.reason,
+        reasonCode: resolvedBaseline.reasonCode,
+      })
+    : null;
+  return {
+    baseline,
+    handoff,
+    reason,
+    resolvedBaseline,
   };
 }
 

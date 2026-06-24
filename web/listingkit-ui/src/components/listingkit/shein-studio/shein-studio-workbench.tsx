@@ -18,6 +18,7 @@ import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
 import { useSheinStudioDedicatedBatchRunController } from "@/components/listingkit/shein-studio/shein-studio-dedicated-batch-run-controller";
 import {
+  projectActiveSelectionBaselineState,
   projectBaselineWarmupFeedback,
   useSheinStudioBatchGenerationContext,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
@@ -106,10 +107,6 @@ import {
 import {
   buildSelectableSDSImages,
 } from "@/lib/shein-studio/sds-selectable-images";
-import {
-  buildGroupedSDSBaselineHandoff,
-  getSDSBaselineReasonMessage,
-} from "@/lib/shein-studio/sds-baseline-ui";
 import {
   type SheinStudioBatchQueueResumeState,
 } from "@/lib/shein-studio/batch-queue";
@@ -463,27 +460,19 @@ export function SheinStudioWorkbench({
   } = summarizeSheinStudioSelection(activeSelection);
   const availableSdsImages = buildSelectableSDSImages(activeSelection);
   const activeGroupedSelectionID = buildGroupedSDSSelectionID(activeSelection);
-  const resolvedActiveSelectionBaseline = activeGroupedSelectionID
-    ? baselineStatuses[activeGroupedSelectionID]
-    : undefined;
-  const activeSelectionBaseline = baselineStatuses[activeGroupedSelectionID] ?? {
-    status: "missing" as SDSBaselineStatus,
-    reasonCode: undefined,
-    reason: activeSelection?.variantId ? "正在检查 baseline 状态..." : "",
-  };
-  const activeSelectionBaselineReason =
-    activeSelectionBaseline.reason ||
-    getSDSBaselineReasonMessage(activeSelectionBaseline.reasonCode);
-  const activeSelectionBaselineHandoff = useMemo(() => {
-    if (!resolvedActiveSelectionBaseline) {
-      return null;
-    }
-    return buildGroupedSDSBaselineHandoff({
-      status: resolvedActiveSelectionBaseline.status,
-      reason: resolvedActiveSelectionBaseline.reason,
-      reasonCode: resolvedActiveSelectionBaseline.reasonCode,
-    });
-  }, [resolvedActiveSelectionBaseline]);
+  const {
+    baseline: activeSelectionBaseline,
+    handoff: activeSelectionBaselineHandoff,
+    reason: activeSelectionBaselineReason,
+  } = useMemo(
+    () =>
+      projectActiveSelectionBaselineState({
+        activeGroupedSelectionID,
+        baselineStatuses,
+        hasActiveSelection: Boolean(activeSelection?.variantId),
+      }),
+    [activeGroupedSelectionID, activeSelection?.variantId, baselineStatuses],
+  );
   const studioAccessAllowed =
     subscriptionQuery.data?.entitlements?.find(
       (view) => view.module.code === "studio",
