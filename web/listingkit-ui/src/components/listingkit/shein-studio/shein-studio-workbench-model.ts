@@ -25,6 +25,7 @@ import type {
   SheinStudioGenerationJob,
   SheinStudioImageStrategy,
   SheinStudioArtworkModel,
+  SheinStudioBatchQueueMode,
   SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
   SheinStudioSelectedSDSImage,
@@ -518,6 +519,25 @@ export function projectDefaultSelectedSDSImages({
   return JSON.stringify(currentSelectedSdsImages) === JSON.stringify(nextDefaults)
     ? null
     : nextDefaults;
+}
+
+export function projectWorkbenchTraceContext({
+  batchQueueMode,
+  queuedBatchIds,
+  queuedBatchIndex,
+  traceBatchId,
+}: {
+  batchQueueMode: SheinStudioBatchQueueMode | null;
+  queuedBatchIds: string[];
+  queuedBatchIndex: number;
+  traceBatchId: string;
+}) {
+  return {
+    batchId: traceBatchId || undefined,
+    queueMode: batchQueueMode ?? undefined,
+    queueIndex: batchQueueMode ? queuedBatchIndex + 1 : undefined,
+    queueTotal: batchQueueMode ? queuedBatchIds.length : undefined,
+  };
 }
 
 export function evaluateImportedGalleryDesigns(

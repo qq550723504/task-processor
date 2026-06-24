@@ -85,6 +85,7 @@ import {
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
+  projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
@@ -1007,15 +1008,17 @@ export function SheinStudioWorkbench({
   ]);
 
   useEffect(() => {
-    writeListingKitTraceContext({
-      batchId: traceBatchId || undefined,
-      queueMode: batchQueueMode ?? undefined,
-      queueIndex: batchQueueMode ? queuedBatchIndex + 1 : undefined,
-      queueTotal: batchQueueMode ? queuedBatchIds.length : undefined,
-    });
+    writeListingKitTraceContext(
+      projectWorkbenchTraceContext({
+        batchQueueMode,
+        queuedBatchIds,
+        queuedBatchIndex,
+        traceBatchId,
+      }),
+    );
   }, [
     batchQueueMode,
-    queuedBatchIds.length,
+    queuedBatchIds,
     queuedBatchIndex,
     traceBatchId,
   ]);
@@ -1056,12 +1059,12 @@ export function SheinStudioWorkbench({
       variationIntensity,
       hasLocalWorkflowStateRef,
       itemizedBatchContext,
-      batchTraceContext: {
-        batchId: traceBatchId || undefined,
-        queueMode: batchQueueMode,
-        queueIndex: batchQueueMode ? queuedBatchIndex + 1 : undefined,
-        queueTotal: batchQueueMode ? queuedBatchIds.length : undefined,
-      },
+      batchTraceContext: projectWorkbenchTraceContext({
+        batchQueueMode,
+        queuedBatchIds,
+        queuedBatchIndex,
+        traceBatchId,
+      }),
     });
 
   const {

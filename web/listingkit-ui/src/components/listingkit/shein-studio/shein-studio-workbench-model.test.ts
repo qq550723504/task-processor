@@ -12,6 +12,7 @@ import {
   projectHydratedBatchToWorkbench,
   projectDefaultSelectedSDSImages,
   projectSavedBatchToWorkbench,
+  projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
   projectWorkbenchStateToSavedBatch,
   sheinStudioBusyMessage,
@@ -768,6 +769,38 @@ describe("shein studio workbench model", () => {
         renderSizeImagesWithSds: true,
       }),
     ).toBeNull();
+  });
+
+  it("projects trace context with one-based queue positions", () => {
+    expect(
+      projectWorkbenchTraceContext({
+        batchQueueMode: "generate",
+        queuedBatchIds: ["batch-1", "batch-2"],
+        queuedBatchIndex: 1,
+        traceBatchId: "batch-2",
+      }),
+    ).toEqual({
+      batchId: "batch-2",
+      queueMode: "generate",
+      queueIndex: 2,
+      queueTotal: 2,
+    });
+  });
+
+  it("omits queue trace fields outside queue mode", () => {
+    expect(
+      projectWorkbenchTraceContext({
+        batchQueueMode: null,
+        queuedBatchIds: ["batch-1"],
+        queuedBatchIndex: 0,
+        traceBatchId: "",
+      }),
+    ).toEqual({
+      batchId: undefined,
+      queueMode: undefined,
+      queueIndex: undefined,
+      queueTotal: undefined,
+    });
   });
 
   it("returns the create-task disabled reason from the first blocking condition", () => {
