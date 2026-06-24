@@ -46,6 +46,31 @@ func TestReleaseRotatesInstanceAfterMaxUses(t *testing.T) {
 	}
 }
 
+func TestReleaseKeepsProxyUntilInstanceRebuildThreshold(t *testing.T) {
+	mockManager := &rotationMockInstanceManager{}
+	bp := &BrowserPool{
+		config: &config.Config{Amazon: config.AmazonConfig{
+			ProxyPool: config.AmazonProxyPoolConfig{Enabled: true},
+		}},
+		poolConfig:      &BrowserPoolConfig{MaxInstanceUses: 3},
+		available:       make(chan *BrowserInstance, 1),
+		instanceManager: mockManager,
+	}
+
+	instance := &BrowserInstance{ID: 1, UsageCount: 1, InUse: true, CurrentProxy: "http://127.0.0.1:31001"}
+	bp.Release(instance)
+
+	if len(mockManager.recreated) != 0 {
+		t.Fatalf("expected no rebuild before max uses, got %d", len(mockManager.recreated))
+	}
+	if len(bp.available) != 1 {
+		t.Fatalf("instance should return to pool before rebuild threshold, available=%d", len(bp.available))
+	}
+	if instance.CurrentProxy != "http://127.0.0.1:31001" {
+		t.Fatalf("proxy changed before rebuild: %q", instance.CurrentProxy)
+	}
+}
+
 func TestReleaseWithErrorRotatesInstanceAfterMaxUsesWhenErrorIsNotSerious(t *testing.T) {
 	mockManager := &rotationMockInstanceManager{}
 	bp := &BrowserPool{

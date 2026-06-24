@@ -64,6 +64,7 @@ type AmazonProxyPoolConfig struct {
 	Enabled                bool     `yaml:"enabled"`
 	Strategy               string   `yaml:"strategy"`
 	FailureCooldownSeconds int      `yaml:"failureCooldownSeconds"`
+	ProxyFile              string   `yaml:"proxyFile"`
 	Proxies                []string `yaml:"proxies"`
 }
 

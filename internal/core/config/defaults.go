@@ -152,6 +152,7 @@ func setAmazonDefaults(v *viper.Viper, defaults *Config) {
 	v.SetDefault("amazon.proxyPool.enabled", a.ProxyPool.Enabled)
 	v.SetDefault("amazon.proxyPool.strategy", a.ProxyPool.Strategy)
 	v.SetDefault("amazon.proxyPool.failureCooldownSeconds", a.ProxyPool.FailureCooldownSeconds)
+	v.SetDefault("amazon.proxyPool.proxyFile", a.ProxyPool.ProxyFile)
 	v.SetDefault("amazon.proxyPool.proxies", a.ProxyPool.Proxies)
 	v.SetDefault("amazon.concurrencyControl.enabled", a.ConcurrencyControl.Enabled)
 	v.SetDefault("amazon.concurrencyControl.maxInFlight", a.ConcurrencyControl.MaxInFlight)

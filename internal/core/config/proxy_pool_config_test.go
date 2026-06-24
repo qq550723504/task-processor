@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -64,5 +66,55 @@ func TestValidateAmazonConfigRejectsEnabledProxyPoolWithoutProxies(t *testing.T)
 	}
 	if !found {
 		t.Fatalf("expected proxy pool proxy-list validation error, got: %v", errs)
+	}
+}
+
+func TestLoadFromBytesLoadsAmazonProxyPoolFromFile(t *testing.T) {
+	proxyFile := filepath.Join(t.TempDir(), "proxies.txt")
+	if err := os.WriteFile(proxyFile, []byte(`
+# local crawler proxies
+http://127.0.0.1:31001
+http://127.0.0.1:31002
+http://127.0.0.1:31001
+
+`), 0o600); err != nil {
+		t.Fatalf("write proxy file: %v", err)
+	}
+
+	cfg, err := LoadFromBytes([]byte(`
+management:
+  clientSecret: test-secret
+  scopes: [user.read]
+openai:
+  apiKey: test-key
+  model: test-model
+  baseURL: https://example.com/v1
+  timeout: 30
+amazon:
+  enabled: true
+  dataFreshnessDays: 7
+  crawlTimeout: 120
+  proxyPool:
+    enabled: true
+    strategy: round_robin
+    failureCooldownSeconds: 300
+    proxyFile: ` + proxyFile + `
+    proxies:
+      - http://127.0.0.1:31000
+`))
+	if err != nil {
+		t.Fatalf("expected config to load, got error: %v", err)
+	}
+
+	if cfg.Amazon.ProxyPool.ProxyFile != proxyFile {
+		t.Fatalf("proxy file = %q, want %q", cfg.Amazon.ProxyPool.ProxyFile, proxyFile)
+	}
+	want := []string{
+		"http://127.0.0.1:31000",
+		"http://127.0.0.1:31001",
+		"http://127.0.0.1:31002",
+	}
+	if strings.Join(cfg.Amazon.ProxyPool.Proxies, ",") != strings.Join(want, ",") {
+		t.Fatalf("proxies = %#v, want %#v", cfg.Amazon.ProxyPool.Proxies, want)
 	}
 }

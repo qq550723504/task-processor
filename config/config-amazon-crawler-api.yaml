@@ -56,8 +56,9 @@ amazon:
     validationRetryMaxAttempts: 2
   proxyPool:
     enabled: false
-    strategy: "round_robin"
+    strategy: "round_robin" # round_robin or health_aware
     failureCooldownSeconds: 300
+    proxyFile: "" # one proxy URL per line, e.g. http://127.0.0.1:31001
     proxies: []
   concurrencyControl:
     enabled: false

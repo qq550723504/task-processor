@@ -132,7 +132,11 @@ func BuildConfig(v *viper.Viper) *Config {
 				Enabled:                v.GetBool("amazon.proxyPool.enabled"),
 				Strategy:               v.GetString("amazon.proxyPool.strategy"),
 				FailureCooldownSeconds: v.GetInt("amazon.proxyPool.failureCooldownSeconds"),
-				Proxies:                v.GetStringSlice("amazon.proxyPool.proxies"),
+				ProxyFile:              v.GetString("amazon.proxyPool.proxyFile"),
+				Proxies: uniqueStringList(
+					getStringSlice(v, "amazon.proxyPool.proxies"),
+					readLineList(v.GetString("amazon.proxyPool.proxyFile")),
+				),
 			},
 			ConcurrencyControl: AmazonConcurrencyControlConfig{
 				Enabled:               v.GetBool("amazon.concurrencyControl.enabled"),
