@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -17,14 +19,29 @@ type appLogger interface {
 }
 
 type debugTaskLoader interface {
-	GetTaskByID(taskID int64) (*managementapi.ProductImportTaskRespDTO, error)
+	GetTaskByID(ctx context.Context, taskID int64) (*managementapi.ProductImportTaskRespDTO, error)
+}
+
+type listingAdminDebugTaskLoader struct {
+	repo listingadmin.ImportTaskRepository
+}
+
+func (l listingAdminDebugTaskLoader) GetTaskByID(ctx context.Context, taskID int64) (*managementapi.ProductImportTaskRespDTO, error) {
+	if l.repo == nil {
+		return nil, fmt.Errorf("local import task repository is not configured")
+	}
+	task, err := l.repo.GetImportTaskByID(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	return listingAdminImportTaskToDebugDTO(task), nil
 }
 
 type staticDebugTaskLoader struct {
 	task *managementapi.ProductImportTaskRespDTO
 }
 
-func (l staticDebugTaskLoader) GetTaskByID(_ int64) (*managementapi.ProductImportTaskRespDTO, error) {
+func (l staticDebugTaskLoader) GetTaskByID(_ context.Context, _ int64) (*managementapi.ProductImportTaskRespDTO, error) {
 	return l.task, nil
 }
 
@@ -43,7 +60,7 @@ func (r debugTaskRunner) run(ctx context.Context, taskID int64) error {
 		return fmt.Errorf("%s debug task loader is not available", r.displayName)
 	}
 
-	taskDTO, err := r.taskLoader.GetTaskByID(taskID)
+	taskDTO, err := r.taskLoader.GetTaskByID(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("load debug task %d: %w", taskID, err)
 	}
@@ -101,6 +118,48 @@ func buildDebugModelTask(taskDTO *managementapi.ProductImportTaskRespDTO) model.
 		Creator:       taskDTO.Creator,
 		Updater:       taskDTO.Updater,
 	}
+}
+
+func listingAdminImportTaskToDebugDTO(task *listingadmin.ImportTask) *managementapi.ProductImportTaskRespDTO {
+	if task == nil {
+		return nil
+	}
+	return &managementapi.ProductImportTaskRespDTO{
+		ID:            task.ID,
+		TenantID:      task.TenantID,
+		StoreID:       int64FromPtr(task.StoreID),
+		Platform:      task.Platform,
+		Region:        task.Region,
+		CategoryID:    int64FromPtr(task.CategoryID),
+		ProductID:     task.ProductID,
+		Status:        task.Status,
+		ErrorMessage:  task.ErrorMessage,
+		ReasonCode:    task.ReasonCode,
+		Stage:         task.Stage,
+		RetryCount:    task.RetryCount,
+		MaxRetryCount: task.MaxRetryCount,
+		Remark:        task.Remark,
+		Priority:      task.Priority,
+		CreateTime:    timeToUnixMillis(task.CreateTime),
+		UpdateTime:    timeToUnixMillis(task.UpdateTime),
+		PublishedTime: timeToUnixMillis(task.PublishedTime),
+		Creator:       task.Creator,
+		Updater:       task.Updater,
+	}
+}
+
+func int64FromPtr(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func timeToUnixMillis(value *time.Time) int64 {
+	if value == nil {
+		return 0
+	}
+	return value.UnixMilli()
 }
 
 func buildDebugWorkerJob(task model.Task) (worker.WorkerJob, error) {

@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 )
 
@@ -68,6 +70,51 @@ func TestBuildDebugWorkerJobBuildsDirectProcessorPayload(t *testing.T) {
 	}
 	if decoded.ID != task.ID || decoded.ProductID != task.ProductID {
 		t.Fatalf("decoded task = %+v, want %+v", decoded, task)
+	}
+}
+
+func TestListingAdminImportTaskToDebugDTOMapsLocalTask(t *testing.T) {
+	storeID := int64(3002)
+	categoryID := int64(4003)
+	createTime := time.UnixMilli(111)
+	updateTime := time.UnixMilli(222)
+	publishedTime := time.UnixMilli(333)
+	task := &listingadmin.ImportTask{
+		ID:            8189311,
+		TenantID:      2001,
+		StoreID:       &storeID,
+		Platform:      "shein",
+		Region:        "US",
+		CategoryID:    &categoryID,
+		ProductID:     "B0F17JCXFJ",
+		Status:        2,
+		ErrorMessage:  "old error",
+		ReasonCode:    "dispatch_failed",
+		Stage:         "dispatch",
+		RetryCount:    1,
+		MaxRetryCount: 3,
+		Remark:        "variant",
+		Priority:      5,
+		CreateTime:    &createTime,
+		UpdateTime:    &updateTime,
+		PublishedTime: &publishedTime,
+		Creator:       "tester",
+		Updater:       "tester2",
+	}
+
+	dto := listingAdminImportTaskToDebugDTO(task)
+
+	if dto.ID != task.ID || dto.TenantID != task.TenantID || dto.StoreID != storeID {
+		t.Fatalf("dto identity = %+v, want local task identity", dto)
+	}
+	if dto.CategoryID != categoryID || dto.ProductID != task.ProductID || dto.Platform != task.Platform {
+		t.Fatalf("dto routing = %+v, want local task routing", dto)
+	}
+	if dto.CreateTime != 111 || dto.UpdateTime != 222 || dto.PublishedTime != 333 {
+		t.Fatalf("dto times = %+v, want unix millis", dto)
+	}
+	if dto.ReasonCode != task.ReasonCode || dto.Stage != task.Stage || dto.Creator != task.Creator || dto.Updater != task.Updater {
+		t.Fatalf("dto metadata = %+v, want local task metadata", dto)
 	}
 }
 

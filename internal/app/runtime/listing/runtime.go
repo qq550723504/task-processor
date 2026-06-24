@@ -8,6 +8,8 @@ import (
 	"task-processor/internal/app/bootstrap"
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/database"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/appenv"
 	"task-processor/internal/platformbase"
 
@@ -124,6 +126,22 @@ func runDebugTask(
 		return err
 	}
 
+	db, err := database.NewSharedDatabaseFromConfig(cfg.Database)
+	if err != nil {
+		return fmt.Errorf("initialize local debug task repository database: %w", err)
+	}
+	defer func() {
+		if err := database.CloseSharedDatabase(cfg.Database, db); err != nil {
+			logger.WithError(err).Warn("close debug task repository database failed")
+		}
+	}()
+	if err := listingadmin.AutoMigrateImportTaskRepository(db); err != nil {
+		return fmt.Errorf("migrate local debug task repository: %w", err)
+	}
+	taskLoader := listingAdminDebugTaskLoader{
+		repo: listingadmin.NewGormImportTaskRepository(db),
+	}
+
 	registrar := &debugProcessorRegistrar{}
 	if err := module.RegisterConsumer(ctx, rt, registrar); err != nil {
 		return fmt.Errorf("register %s debug processor failed: %w", displayName, err)
@@ -132,14 +150,10 @@ func runDebugTask(
 		return fmt.Errorf("%s debug processor is not available", displayName)
 	}
 
-	taskDTO, err := resources.ManagementClient.GetImportTaskClient().GetTaskByID(taskID)
-	if err != nil {
-		return fmt.Errorf("load debug task %d: %w", taskID, err)
-	}
 	runner := debugTaskRunner{
 		displayName: displayName,
 		logger:      logger,
-		taskLoader:  staticDebugTaskLoader{task: taskDTO},
+		taskLoader:  taskLoader,
 		processor:   registrar.processor,
 	}
 	return runner.run(ctx, taskID)

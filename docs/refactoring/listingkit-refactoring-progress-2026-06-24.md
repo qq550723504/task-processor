@@ -756,3 +756,11 @@ Recommended next track:
 - Added dedicated failed-reason and skipped-reason panels with quick filters for event-table drilldown.
 
 Status: observability/reporting UI follow-up is code-complete. Frontend test/build and production publication remain deferred until an explicit validation/deployment window.
+
+### 2026-06-24 Management Client retirement follow-up: debug task lookup
+
+- Moved listing runtime debug single-task lookup away from `ManagementClient.GetImportTaskClient().GetTaskByID`.
+- Debug mode now builds a local `listingadmin.ImportTaskRepository` from the configured database and adapts the local task row into the existing direct processor payload.
+- The larger `PlatformRuntimeContext.ManagementClient` and `SharedResources.ManagementClient` shells remain for compatibility and should be retired in later, narrower port extractions.
+
+Status: debug task lookup no longer uses Management Client as the task fact source. Validation and commit remain deferred until the next explicit check.
