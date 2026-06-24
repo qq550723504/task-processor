@@ -99,6 +99,7 @@ import {
   projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
   selectActiveGroupPromptHistory,
+  selectCurrentDedicatedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
   type SheinStudioWorkbenchHydratedBatch,
@@ -459,9 +460,10 @@ export function SheinStudioWorkbench({
   );
   const currentDedicatedBatch = useMemo(
     () =>
-      initialBatchId && currentActiveBatch?.id === initialBatchId
-        ? currentActiveBatch
-        : null,
+      selectCurrentDedicatedBatch({
+        currentActiveBatch,
+        initialBatchId,
+      }),
     [currentActiveBatch, initialBatchId],
   );
   const hydrateRecentBatchSelection = useCallback(

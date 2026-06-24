@@ -15,6 +15,7 @@ import {
   projectWorkbenchStateFallback,
   projectSavedBatchToWorkbench,
   selectActiveGroupPromptHistory,
+  selectCurrentDedicatedBatch,
   projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
   projectWorkbenchStateToSavedBatch,
@@ -898,6 +899,39 @@ describe("shein studio workbench model", () => {
       prompt: "current prompt",
       styleCount: "2",
     });
+  });
+
+  it("selects only the active batch that belongs to the dedicated route", () => {
+    const batch = {
+      id: "batch-1",
+      name: "Batch 1",
+      prompt: "prompt",
+      styleCount: "1",
+      sheinStoreId: "869",
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-06-01T10:00:00Z",
+    };
+
+    expect(
+      selectCurrentDedicatedBatch({
+        currentActiveBatch: batch,
+        initialBatchId: "batch-1",
+      }),
+    ).toBe(batch);
+    expect(
+      selectCurrentDedicatedBatch({
+        currentActiveBatch: batch,
+        initialBatchId: "batch-2",
+      }),
+    ).toBeNull();
+    expect(
+      selectCurrentDedicatedBatch({
+        currentActiveBatch: batch,
+        initialBatchId: undefined,
+      }),
+    ).toBeNull();
   });
 
   it("projects default SDS image selection for hybrid generation", () => {

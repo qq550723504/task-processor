@@ -564,6 +564,18 @@ export function resolveCurrentSheinStudioSavedBatch({
   );
 }
 
+export function selectCurrentDedicatedBatch({
+  currentActiveBatch,
+  initialBatchId,
+}: {
+  currentActiveBatch: SheinStudioSavedBatch | null;
+  initialBatchId?: string;
+}) {
+  return initialBatchId && currentActiveBatch?.id === initialBatchId
+    ? currentActiveBatch
+    : null;
+}
+
 export function projectDefaultSelectedSDSImages({
   availableSdsImages,
   currentSelectedSdsImages,
