@@ -101,6 +101,7 @@ func (h *PublishProductHandler) SaveDraftProduct(ctx *shein.TaskContext) (*produ
 	}
 
 	response, _, err := input.ProductAPI.SaveDraftProduct(input.ProductData)
+	ctx.SetSheinResponse(response)
 	if err != nil {
 		return nil, err
 	}

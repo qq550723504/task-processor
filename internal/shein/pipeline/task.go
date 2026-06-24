@@ -74,7 +74,7 @@ func (h *TaskHandler) ProcessTask(ctx context.Context, task model.Task, p *Pipel
 		return err
 	}
 
-	h.handleSuccess(task)
+	h.handleSuccess(taskCtx)
 	return nil
 }
 
@@ -243,21 +243,36 @@ func (h *TaskHandler) handleError(taskCtx *sheincontext.TaskContext, err error) 
 	}
 }
 
-func (h *TaskHandler) handleSuccess(task model.Task) {
+func (h *TaskHandler) handleSuccess(taskCtx *sheincontext.TaskContext) {
+	if taskCtx == nil || taskCtx.Task == nil {
+		logger.GetGlobalLogger("shein/pipeline").Warn("task completed but task context is unavailable")
+		return
+	}
+
+	task := *taskCtx.Task
+	targetStatus := successStatusForTaskContext(taskCtx)
 	statusUpdater := NewTaskStatusUpdater(h.processor)
-	statusUpdater.UpdateTaskStatusAsyncWithTask(&task, model.TaskStatusPublished, "")
+	statusUpdater.UpdateTaskStatusAsyncWithTask(&task, targetStatus, "")
 	metrics.GlobalTaskMetrics().IncrementCompleted()
-	metrics.GlobalSheinMetrics().IncrementPublishedForStore(task.TenantID, task.StoreID)
+	metrics.GlobalSheinMetrics().IncrementHandledStatusForStore(task.TenantID, task.StoreID, targetStatus)
 
 	logger.GetGlobalLogger("shein/pipeline").Infof(
-		"task completed: id=%d, tenant_id=%d, store_id=%d, product_id=%s, target_platform=%s, source_platform=%s",
+		"task completed: id=%d, tenant_id=%d, store_id=%d, product_id=%s, status=%s, target_platform=%s, source_platform=%s",
 		task.ID,
 		task.TenantID,
 		task.StoreID,
 		task.ProductID,
+		targetStatus.String(),
 		task.Platform,
 		task.GetSourcePlatformOrDefault(),
 	)
+}
+
+func successStatusForTaskContext(taskCtx *sheincontext.TaskContext) model.TaskStatus {
+	if taskCtx != nil && taskCtx.StoreInfo != nil && taskCtx.StoreInfo.EnableDraft != nil && *taskCtx.StoreInfo.EnableDraft {
+		return model.TaskStatusDraft
+	}
+	return model.TaskStatusPublished
 }
 
 func (h *TaskHandler) handleHandledStatus(task model.Task, handledErr *shein.TaskHandledError) {
