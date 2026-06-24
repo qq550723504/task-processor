@@ -38,6 +38,7 @@ import {
   buildRecentBatchSummaryKeys,
   buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchSaveInput,
+  mergeRecentBatchHydrations,
   projectRecentBatchSelectionState,
   projectRecentBatchTargetStep,
   removeRecentBatchSummarySelection,
@@ -683,10 +684,9 @@ export function SheinStudioWorkbench({
           entry != null,
       );
       if (hydratedEntries.length > 0) {
-        setSelectedRecentBatchHydrations((current) => ({
-          ...current,
-          ...Object.fromEntries(hydratedEntries),
-        }));
+        setSelectedRecentBatchHydrations((current) =>
+          mergeRecentBatchHydrations(current, hydratedEntries),
+        );
       }
       return Object.fromEntries(hydratedEntries) as Record<
         string,
@@ -1291,10 +1291,9 @@ export function SheinStudioWorkbench({
       resolveRecentBatchForMutationTarget({
         batchId,
         cacheHydratedBatch: (targetBatchId, hydratedBatch) => {
-          setSelectedRecentBatchHydrations((current) => ({
-            ...current,
-            [targetBatchId]: hydratedBatch,
-          }));
+          setSelectedRecentBatchHydrations((current) =>
+            mergeRecentBatchHydrations(current, [[targetBatchId, hydratedBatch]]),
+          );
         },
         loadHydratedBatch: getSheinStudioHydratedBatch,
         savedBatches,

@@ -18,6 +18,8 @@ type FreshRecentBatchHydrationParams = {
   savedBatch: SheinStudioSavedBatch;
 };
 
+type RecentBatchHydrationMap = Record<string, SheinStudioWorkbenchHydratedBatch>;
+
 type ResolveRecentBatchForMutationParams = {
   batchId: string;
   cacheHydratedBatch: (
@@ -109,6 +111,16 @@ export function selectFreshRecentBatchHydration({
     return cachedHydratedBatch;
   }
   return null;
+}
+
+export function mergeRecentBatchHydrations(
+  current: RecentBatchHydrationMap,
+  entries: Iterable<readonly [string, SheinStudioWorkbenchHydratedBatch]>,
+): RecentBatchHydrationMap {
+  return {
+    ...current,
+    ...Object.fromEntries(entries),
+  };
 }
 
 export async function resolveRecentBatchForMutation({

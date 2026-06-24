@@ -6,6 +6,7 @@ import {
   buildRecentBatchSaveInput,
   buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchStoreUpdateInput,
+  mergeRecentBatchHydrations,
   projectRecentBatchSelectionState,
   projectRecentBatchTargetStep,
   resolveRecentBatchSelectionTarget,
@@ -273,6 +274,25 @@ describe("selectFreshRecentBatchHydration", () => {
     expect(
       selectFreshRecentBatchHydration({ cachedHydratedBatch, savedBatch }),
     ).toBeNull();
+  });
+});
+
+describe("mergeRecentBatchHydrations", () => {
+  it("adds hydrated batch entries without dropping existing cache", () => {
+    const existing = buildHydratedBatch(buildBatch({ id: "batch-old" }));
+    const next = buildHydratedBatch(buildBatch({ id: "batch-new" }));
+
+    expect(
+      mergeRecentBatchHydrations(
+        {
+          "batch-old": existing,
+        },
+        [["batch-new", next]],
+      ),
+    ).toEqual({
+      "batch-old": existing,
+      "batch-new": next,
+    });
   });
 });
 
