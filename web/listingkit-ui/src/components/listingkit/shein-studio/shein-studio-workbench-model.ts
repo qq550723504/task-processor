@@ -234,6 +234,12 @@ export function updateFlatDesignReviewNote(
   );
 }
 
+export function toggleSelectedDesignId(selectedIds: string[], designId: string) {
+  return selectedIds.includes(designId)
+    ? selectedIds.filter((item) => item !== designId)
+    : [...selectedIds, designId];
+}
+
 export function getItemizedBatchPendingTaskDesignIDs(
   detail?: SheinStudioBatchDetail | null,
 ) {

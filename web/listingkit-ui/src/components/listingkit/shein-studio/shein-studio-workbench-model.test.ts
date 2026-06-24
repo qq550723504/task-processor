@@ -17,6 +17,7 @@ import {
   projectWorkbenchStateToSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
+  toggleSelectedDesignId,
   toggleItemizedBatchDesignApproval,
   updateFlatDesignReviewNote,
   updateItemizedBatchDesignReviewNote,
@@ -463,6 +464,16 @@ describe("shein studio workbench model", () => {
         reviewNote: "needs crop",
       },
       { id: "design-2", imageUrl: "https://example.com/2.png", reviewNote: "keep" },
+    ]);
+  });
+
+  it("toggles selected design ids", () => {
+    expect(toggleSelectedDesignId(["design-1", "design-2"], "design-1")).toEqual([
+      "design-2",
+    ]);
+    expect(toggleSelectedDesignId(["design-1"], "design-2")).toEqual([
+      "design-1",
+      "design-2",
     ]);
   });
 

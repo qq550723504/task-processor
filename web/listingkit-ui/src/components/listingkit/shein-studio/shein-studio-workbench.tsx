@@ -89,6 +89,7 @@ import {
   resolveCurrentSheinStudioSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
+  toggleSelectedDesignId,
   toggleItemizedBatchDesignApproval,
   updateFlatDesignReviewNote,
   updateItemizedBatchDesignReviewNote,
@@ -1488,9 +1489,7 @@ export function SheinStudioWorkbench({
 
   function toggleSelection(designId: string) {
     if (activeBatchId && itemizedBatchDetail) {
-      const nextSelectedIds = selectedIds.includes(designId)
-        ? selectedIds.filter((item) => item !== designId)
-        : [...selectedIds, designId];
+      const nextSelectedIds = toggleSelectedDesignId(selectedIds, designId);
       const previousDetail = itemizedBatchDetail;
       if (
         !applyOptimisticItemizedBatchDetail((detail) =>
@@ -1535,11 +1534,7 @@ export function SheinStudioWorkbench({
     ) {
       return;
     }
-    setSelectedIds((current) =>
-      current.includes(designId)
-        ? current.filter((item) => item !== designId)
-        : [...current, designId],
-    );
+    setSelectedIds((current) => toggleSelectedDesignId(current, designId));
   }
 
   function handleNoteChange(designId: string, note: string) {
