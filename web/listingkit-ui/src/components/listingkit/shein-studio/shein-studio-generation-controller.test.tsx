@@ -2,6 +2,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  applyBaselineWarmupResult,
   projectActiveSelectionBaselineState,
   projectBaselineWarmupFeedback,
   resolveBaselineReadinessEntries,
@@ -255,6 +256,68 @@ describe("runBaselineWarmup", () => {
     ).resolves.toEqual({
       warning: "warm failed",
     });
+  });
+});
+
+describe("applyBaselineWarmupResult", () => {
+  it("applies refreshed statuses and feedback when warmup returns readiness", () => {
+    const setBaselineStatuses = vi.fn();
+    const setGenerationWarning = vi.fn();
+    const setGenerationWarningAction = vi.fn();
+
+    applyBaselineWarmupResult({
+      result: {
+        baselineStatuses: {
+          "selection-1": {
+            reason: "",
+            reasonCode: "",
+            status: "ready",
+          },
+        },
+        feedback: {
+          action: {
+            intent: "warm_baseline",
+            label: "继续 baseline 校验",
+          },
+          message: "ready",
+        },
+      },
+      setBaselineStatuses,
+      setGenerationWarning,
+      setGenerationWarningAction,
+    });
+
+    expect(setBaselineStatuses).toHaveBeenCalledWith({
+      "selection-1": {
+        reason: "",
+        reasonCode: "",
+        status: "ready",
+      },
+    });
+    expect(setGenerationWarning).toHaveBeenCalledWith("ready");
+    expect(setGenerationWarningAction).toHaveBeenCalledWith({
+      intent: "warm_baseline",
+      label: "继续 baseline 校验",
+    });
+  });
+
+  it("applies warning-only warmup failures without changing statuses", () => {
+    const setBaselineStatuses = vi.fn();
+    const setGenerationWarning = vi.fn();
+    const setGenerationWarningAction = vi.fn();
+
+    applyBaselineWarmupResult({
+      result: {
+        warning: "warmup failed",
+      },
+      setBaselineStatuses,
+      setGenerationWarning,
+      setGenerationWarningAction,
+    });
+
+    expect(setBaselineStatuses).not.toHaveBeenCalled();
+    expect(setGenerationWarning).toHaveBeenCalledWith("warmup failed");
+    expect(setGenerationWarningAction).not.toHaveBeenCalled();
   });
 });
 

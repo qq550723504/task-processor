@@ -18,6 +18,7 @@ import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
 import { useSheinStudioDedicatedBatchRunController } from "@/components/listingkit/shein-studio/shein-studio-dedicated-batch-run-controller";
 import {
+  applyBaselineWarmupResult,
   projectActiveSelectionBaselineState,
   resolveBaselineReadinessEntries,
   runBaselineWarmup,
@@ -692,13 +693,14 @@ export function SheinStudioWorkbench({
       baselineStatuses,
       warmBaseline: warmSDSBaselineForSelection,
     });
-    if (result && "baselineStatuses" in result) {
-      setBaselineStatuses(result.baselineStatuses);
-      workbenchController.setField("generationWarning", result.feedback.message);
-      workbenchController.setField("generationWarningAction", result.feedback.action);
-    } else if (result) {
-      workbenchController.setField("generationWarning", result.warning);
-    }
+    applyBaselineWarmupResult({
+      result,
+      setBaselineStatuses,
+      setGenerationWarning: (message) =>
+        workbenchController.setField("generationWarning", message),
+      setGenerationWarningAction: (action) =>
+        workbenchController.setField("generationWarningAction", action),
+    });
     setIsExecutingWarningAction(false);
   }, [
     activeSelection,

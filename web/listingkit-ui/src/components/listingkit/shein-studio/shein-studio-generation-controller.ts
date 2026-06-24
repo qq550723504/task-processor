@@ -73,6 +73,17 @@ type BaselineWarmupRunnerParams = {
   ) => Promise<SDSBaselineReadiness>;
 };
 
+type BaselineWarmupResult = Awaited<ReturnType<typeof runBaselineWarmup>>;
+
+type ApplyBaselineWarmupResultParams = {
+  result: BaselineWarmupResult;
+  setBaselineStatuses: (
+    statuses: Record<string, ActiveSelectionBaseline>,
+  ) => void;
+  setGenerationWarning: (message: string) => void;
+  setGenerationWarningAction: (action: BaselineWarmupFeedback["action"]) => void;
+};
+
 type BatchGenerationContextParams = {
   activeBatchId?: string;
   buildDraftInput: (overrides?: BuildDraftInputOverrides) => SheinStudioSaveInput;
@@ -245,6 +256,24 @@ export async function runBaselineWarmup({
         error instanceof Error ? error.message : "baseline 预热失败。",
     };
   }
+}
+
+export function applyBaselineWarmupResult({
+  result,
+  setBaselineStatuses,
+  setGenerationWarning,
+  setGenerationWarningAction,
+}: ApplyBaselineWarmupResultParams) {
+  if (!result) {
+    return;
+  }
+  if ("baselineStatuses" in result) {
+    setBaselineStatuses(result.baselineStatuses);
+    setGenerationWarning(result.feedback.message);
+    setGenerationWarningAction(result.feedback.action);
+    return;
+  }
+  setGenerationWarning(result.warning);
 }
 
 export function useSheinStudioBatchGenerationContext({
