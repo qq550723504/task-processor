@@ -1,3 +1,4 @@
+import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -25,6 +26,7 @@ import {
   selectFreshRecentBatchHydration,
   selectRecentBatchBulkDeleteFailure,
   runRecentBatchSummarySelection,
+  useRecentBatchSummarySelection,
   upsertRecentSavedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -440,6 +442,48 @@ describe("projectRecentBatchSelectionUpdate", () => {
         validRecentBatchSummaryKeys: new Set(["batch:batch-1"]),
       }),
     ).toEqual(["batch:batch-1"]);
+  });
+});
+
+describe("useRecentBatchSummarySelection", () => {
+  it("projects visible selections and filters updates through the same key set", () => {
+    const rawSelections = [
+      "batch:batch-1",
+      "batch:missing",
+      "local_draft:local-draft",
+    ];
+    let nextSelections: string[] = [];
+    const { result } = renderHook(() =>
+      useRecentBatchSummarySelection({
+        rawSelectedRecentBatchSummaryIds: rawSelections,
+        recentBatchSummaries: [
+          { id: "batch-1", source: "batch" },
+          { id: "local-draft", source: "local_draft" },
+        ],
+        setRawSelectedRecentBatchSummaryIds: (value) => {
+          nextSelections =
+            typeof value === "function" ? value(rawSelections) : value;
+        },
+      }),
+    );
+
+    expect(result.current.selectedRecentBatchSummaryIds).toEqual([
+      "batch:batch-1",
+      "local_draft:local-draft",
+    ]);
+    expect(result.current.selectedPersistedRecentBatchIds).toEqual(["batch-1"]);
+
+    act(() => {
+      result.current.setSelectedRecentBatchSummaryIds((current) => [
+        ...current,
+        "batch:missing",
+      ]);
+    });
+
+    expect(nextSelections).toEqual([
+      "batch:batch-1",
+      "local_draft:local-draft",
+    ]);
   });
 });
 

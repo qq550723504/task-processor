@@ -1,3 +1,5 @@
+import { useCallback, useMemo } from "react";
+
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
 import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import type {
@@ -18,6 +20,14 @@ type RecentBatchAction = "generate" | "review" | "tasks";
 type RecentBatchSelectionProjectionParams = {
   rawSelectedRecentBatchSummaryIds: string[];
   validRecentBatchSummaryKeys: Set<string>;
+};
+
+type RecentBatchSummarySelectionHookParams = {
+  rawSelectedRecentBatchSummaryIds: string[];
+  recentBatchSummaries: RecentBatchSelectionSummary[];
+  setRawSelectedRecentBatchSummaryIds: (
+    value: string[] | ((current: string[]) => string[]),
+  ) => void;
 };
 
 type RecentBatchStep = "generate" | "review" | "tasks";
@@ -198,6 +208,42 @@ export function projectRecentBatchSelectionUpdate({
 }: RecentBatchSelectionUpdateParams): string[] {
   const next = typeof value === "function" ? value(current) : value;
   return next.filter((key) => validRecentBatchSummaryKeys.has(key));
+}
+
+export function useRecentBatchSummarySelection({
+  rawSelectedRecentBatchSummaryIds,
+  recentBatchSummaries,
+  setRawSelectedRecentBatchSummaryIds,
+}: RecentBatchSummarySelectionHookParams) {
+  const validRecentBatchSummaryKeys = useMemo(
+    () => buildRecentBatchSummaryKeys(recentBatchSummaries),
+    [recentBatchSummaries],
+  );
+  const selectionState = useMemo(
+    () =>
+      projectRecentBatchSelectionState({
+        rawSelectedRecentBatchSummaryIds,
+        validRecentBatchSummaryKeys,
+      }),
+    [rawSelectedRecentBatchSummaryIds, validRecentBatchSummaryKeys],
+  );
+  const setSelectedRecentBatchSummaryIds = useCallback(
+    (value: string[] | ((current: string[]) => string[])) => {
+      setRawSelectedRecentBatchSummaryIds((current) =>
+        projectRecentBatchSelectionUpdate({
+          current,
+          value,
+          validRecentBatchSummaryKeys,
+        }),
+      );
+    },
+    [setRawSelectedRecentBatchSummaryIds, validRecentBatchSummaryKeys],
+  );
+
+  return {
+    ...selectionState,
+    setSelectedRecentBatchSummaryIds,
+  };
 }
 
 export function projectRecentBatchTargetStep(

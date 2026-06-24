@@ -37,13 +37,10 @@ import {
   useSheinStudioQueueController,
 } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import {
-  buildRecentBatchSummaryKeys,
   deleteRecentBatchSummary,
   duplicateRecentBatchSummary,
   mergeRecentBatchHydrations,
   projectRecentBatchSummaries,
-  projectRecentBatchSelectionState,
-  projectRecentBatchSelectionUpdate,
   refreshRecentSavedBatches,
   renameRecentBatchSummary,
   removeRecentBatchSummarySelection,
@@ -53,6 +50,7 @@ import {
   runRecentBatchSummarySelection,
   resolveRecentBatchForMutation as resolveRecentBatchForMutationTarget,
   upsertRecentSavedBatch,
+  useRecentBatchSummarySelection,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
@@ -400,31 +398,15 @@ export function SheinStudioWorkbench({
       selectedRecentBatchHydrations,
     ],
   );
-  const validRecentBatchSummaryKeys = useMemo(
-    () => buildRecentBatchSummaryKeys(recentBatchSummaries),
-    [recentBatchSummaries],
-  );
-  const { selectedPersistedRecentBatchIds, selectedRecentBatchSummaryIds } =
-    useMemo(
-      () =>
-        projectRecentBatchSelectionState({
-          rawSelectedRecentBatchSummaryIds,
-          validRecentBatchSummaryKeys,
-        }),
-      [rawSelectedRecentBatchSummaryIds, validRecentBatchSummaryKeys],
-    );
-  const setSelectedRecentBatchSummaryIds = useCallback(
-    (value: string[] | ((current: string[]) => string[])) => {
-      setRawSelectedRecentBatchSummaryIds((current) =>
-        projectRecentBatchSelectionUpdate({
-          current,
-          value,
-          validRecentBatchSummaryKeys,
-        }),
-      );
-    },
-    [validRecentBatchSummaryKeys],
-  );
+  const {
+    selectedPersistedRecentBatchIds,
+    selectedRecentBatchSummaryIds,
+    setSelectedRecentBatchSummaryIds,
+  } = useRecentBatchSummarySelection({
+    rawSelectedRecentBatchSummaryIds,
+    recentBatchSummaries,
+    setRawSelectedRecentBatchSummaryIds,
+  });
   const isRecentBatchesHomepage = effectiveStep === "select";
   const {
     batchQueueGuidance,
