@@ -262,6 +262,120 @@ func TestControlPlaneServiceRunsRecoveryBeforeDispatchAndStopsOnContext(t *testi
 	}
 }
 
+func TestControlPlaneServiceSkipsCycleWhenLeaderLockIsHeldElsewhere(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var called bool
+	lock := &fakeLeaderLock{
+		snapshot: LeaderSnapshot{
+			Key:      "listing:control-plane:leader:shein",
+			Owner:    "other-node",
+			IsLeader: false,
+		},
+	}
+	service := controlPlaneService{
+		LeaderLock: lock,
+		Recovery: func(ctx context.Context) (controllib.RecoverySummary, error) {
+			called = true
+			return controllib.RecoverySummary{}, nil
+		},
+		Dispatch: func(ctx context.Context) (controllib.DispatchSummary, error) {
+			called = true
+			return controllib.DispatchSummary{}, nil
+		},
+		ScanInterval: time.Hour,
+		Status:       NewStatusTracker(time.Date(2026, 6, 24, 1, 0, 0, 0, time.UTC)),
+	}
+
+	if err := service.runOnce(ctx); err != nil {
+		t.Fatalf("runOnce returned error: %v", err)
+	}
+	if called {
+		t.Fatal("recovery/dispatch should not run when another instance holds the leader lock")
+	}
+	if lock.acquireCalls != 1 {
+		t.Fatalf("leader lock acquire calls = %d, want 1", lock.acquireCalls)
+	}
+	snapshot := service.Status.Snapshot()
+	if snapshot.Ready || snapshot.Status != "standby" || snapshot.Leader.IsLeader || snapshot.Leader.Owner != "other-node" {
+		t.Fatalf("unexpected standby status: %+v", snapshot)
+	}
+}
+
+func TestControlPlaneServiceRecordsLeaderWhenLockAcquired(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	lock := &fakeLeaderLock{
+		acquired: true,
+		snapshot: LeaderSnapshot{
+			Key:      "listing:control-plane:leader:shein",
+			Owner:    "node-a",
+			IsLeader: true,
+		},
+	}
+	service := controlPlaneService{
+		LeaderLock: lock,
+		Recovery: func(ctx context.Context) (controllib.RecoverySummary, error) {
+			return controllib.RecoverySummary{}, nil
+		},
+		Dispatch: func(ctx context.Context) (controllib.DispatchSummary, error) {
+			return controllib.DispatchSummary{Dispatched: 1}, nil
+		},
+		ScanInterval: time.Hour,
+		Status:       NewStatusTracker(time.Date(2026, 6, 24, 1, 0, 0, 0, time.UTC)),
+	}
+
+	if err := service.runOnce(ctx); err != nil {
+		t.Fatalf("runOnce returned error: %v", err)
+	}
+	snapshot := service.Status.Snapshot()
+	if !snapshot.Ready || snapshot.Status != "ok" || !snapshot.Leader.IsLeader || snapshot.Leader.Owner != "node-a" {
+		t.Fatalf("unexpected leader status: %+v", snapshot)
+	}
+}
+
+func TestControlPlaneServiceRenewsLeaderLockDuringLongCycle(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	renewed := make(chan struct{}, 1)
+	lock := &fakeLeaderLock{
+		acquired: true,
+		snapshot: LeaderSnapshot{
+			Key:      "listing:control-plane:leader:shein",
+			Owner:    "node-a",
+			IsLeader: true,
+		},
+		renewed: renewed,
+	}
+	service := controlPlaneService{
+		LeaderLock:          lock,
+		LeaderRenewInterval: 10 * time.Millisecond,
+		Recovery: func(ctx context.Context) (controllib.RecoverySummary, error) {
+			return controllib.RecoverySummary{}, nil
+		},
+		Dispatch: func(ctx context.Context) (controllib.DispatchSummary, error) {
+			select {
+			case <-renewed:
+				return controllib.DispatchSummary{Dispatched: 1}, nil
+			case <-ctx.Done():
+				return controllib.DispatchSummary{}, ctx.Err()
+			}
+		},
+		ScanInterval: time.Hour,
+		Status:       NewStatusTracker(time.Date(2026, 6, 24, 1, 0, 0, 0, time.UTC)),
+	}
+
+	if err := service.runOnce(ctx); err != nil {
+		t.Fatalf("runOnce returned error: %v", err)
+	}
+	if lock.acquireCalls < 2 {
+		t.Fatalf("leader lock acquire calls = %d, want renewal during cycle", lock.acquireCalls)
+	}
+}
+
 func TestControlPlaneServiceDoesNotDispatchAfterRecoveryError(t *testing.T) {
 	recoveryErr := errors.New("recovery failed")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -368,6 +482,25 @@ func (f *fakeOnceRunner) run(order *[]string) func(context.Context) (controllib.
 		*order = append(*order, f.name)
 		return controllib.RecoverySummary{}, nil
 	}
+}
+
+type fakeLeaderLock struct {
+	acquired     bool
+	snapshot     LeaderSnapshot
+	acquireErr   error
+	acquireCalls int
+	renewed      chan<- struct{}
+}
+
+func (f *fakeLeaderLock) Acquire(ctx context.Context) (LeaderSnapshot, bool, error) {
+	f.acquireCalls++
+	if f.acquireCalls > 1 && f.renewed != nil {
+		select {
+		case f.renewed <- struct{}{}:
+		default:
+		}
+	}
+	return f.snapshot, f.acquired, f.acquireErr
 }
 
 type fakeStoreQueueDeclarer struct {

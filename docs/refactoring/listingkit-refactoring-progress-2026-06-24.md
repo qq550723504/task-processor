@@ -252,7 +252,7 @@ health check 通过窄接口而不是直接绑定具体 Management Client 类型
 
 ## 4. 当前仍然存在的核心缺口
 
-## 4.1 Control Plane 还缺少多实例唯一执行保护
+## 4.1 Control Plane 多实例唯一执行保护已进入代码验证期
 
 `ListingControlPlaneConfig` 已包含：
 
@@ -261,29 +261,16 @@ LeaderLockKey
 LeaderLockTTL
 ```
 
-但静态审查当前 `internal/listingcontrol` 和 runtime 路径，尚未看到 leader lock 被真正用于 scheduler cycle。
+`internal/app/runtime/listingcontrol` 已将 Redis leader lease 接入 scheduler cycle：每轮 recovery/dispatch 前先获取或续租 leader lock，未获取到 lease 的实例进入 standby，不执行 recovery/dispatch。
 
-当前生产 Deployment 使用一个副本，因此短期可工作；但配置和设计都声称后续可以多副本运行，代码必须补充以下二选一：
-
-### 方案 A：实现 leader lock
+当前生产 Deployment 仍建议保持一个副本，直到完成双实例 rollout 验证。剩余验证重点是：
 
 ```text
-每轮 scan 前获取 Redis lease
-周期内续租
-失去 lease 立即停止 claim
-进程退出释放或等待 TTL
-状态接口显示 leader identity
+两个 control-plane pod 同时启动时，只有 leader 执行 scan/dispatch/recovery
+standby pod 的 /status 暴露 leader owner
+leader pod 重启或 lease 过期后，standby 能在下轮获得 lease
+旧 worker watchdog 保持关闭，recovery owner 不重复
 ```
-
-### 方案 B：明确永久单副本契约
-
-```text
-删除或停用未实现的 LeaderLock 配置
-启动时检测 replicas/owner 约束
-文档明确不支持多实例
-```
-
-推荐方案 A。
 
 ## 4.2 Skip / delay reason 仍然不是持久业务事实
 

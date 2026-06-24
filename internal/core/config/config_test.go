@@ -287,6 +287,8 @@ func TestLoadFromBytesAppliesListingControlPlaneEnvOverrides(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_ENABLED", "true")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_PLATFORM", "temu")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_LEADER_LOCK_KEY", "listing:control-plane:leader:temu")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_LEADER_LOCK_TTL", "45s")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_SCAN_INTERVAL", "12s")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_BATCH_SIZE", "75")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_PER_STORE_BURST", "3")
@@ -299,6 +301,8 @@ func TestLoadFromBytesAppliesListingControlPlaneEnvOverrides(t *testing.T) {
 
 	assert.True(t, cfg.ListingControlPlane.Enabled)
 	assert.Equal(t, "temu", cfg.ListingControlPlane.Platform)
+	assert.Equal(t, "listing:control-plane:leader:temu", cfg.ListingControlPlane.LeaderLockKey)
+	assert.Equal(t, 45*time.Second, cfg.ListingControlPlane.LeaderLockTTL)
 	assert.Equal(t, 12*time.Second, cfg.ListingControlPlane.ScanInterval)
 	assert.Equal(t, 75, cfg.ListingControlPlane.BatchSize)
 	assert.Equal(t, 3, cfg.ListingControlPlane.PerStoreBurst)

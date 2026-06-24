@@ -418,6 +418,12 @@ func knownEnvBindings() map[string]envBinding {
 		"listingControlPlane.platform": {
 			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_PLATFORM",
 		},
+		"listingControlPlane.leaderLockKey": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_LEADER_LOCK_KEY",
+		},
+		"listingControlPlane.leaderLockTTL": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_LEADER_LOCK_TTL",
+		},
 		"listingControlPlane.scanInterval": {
 			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_SCAN_INTERVAL",
 		},

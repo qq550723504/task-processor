@@ -26,6 +26,7 @@ type dbHandle = *gorm.DB
 
 type redisRuntime interface {
 	controllib.StringRuntime
+	leaderLockRuntime
 	Close() error
 }
 
@@ -168,11 +169,13 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	}
 
 	service := controlPlaneService{
-		Recovery:     recovery.RunOnce,
-		Dispatch:     scheduler.DispatchOnce,
-		ScanInterval: controlCfg.ScanInterval,
-		Logger:       logger,
-		Status:       status,
+		Recovery:            recovery.RunOnce,
+		Dispatch:            scheduler.DispatchOnce,
+		LeaderLock:          newRedisLeaderLock(redisRT, resolveLeaderLockKey(controlCfg, platform), resolveLeaderOwner(cfg), leaderLockTTL(controlCfg)),
+		LeaderRenewInterval: leaderRenewInterval(controlCfg),
+		ScanInterval:        controlCfg.ScanInterval,
+		Logger:              logger,
+		Status:              status,
 	}
 	return service.Run(ctx)
 }
@@ -195,11 +198,17 @@ func validateRuntimeConfig(cfg *config.Config) error {
 }
 
 type controlPlaneService struct {
-	Recovery     func(context.Context) (controllib.RecoverySummary, error)
-	Dispatch     func(context.Context) (controllib.DispatchSummary, error)
-	ScanInterval time.Duration
-	Logger       *logrus.Logger
-	Status       *StatusTracker
+	Recovery            func(context.Context) (controllib.RecoverySummary, error)
+	Dispatch            func(context.Context) (controllib.DispatchSummary, error)
+	LeaderLock          leaderLock
+	LeaderRenewInterval time.Duration
+	ScanInterval        time.Duration
+	Logger              *logrus.Logger
+	Status              *StatusTracker
+}
+
+type leaderLock interface {
+	Acquire(context.Context) (LeaderSnapshot, bool, error)
 }
 
 func (s controlPlaneService) Run(ctx context.Context) error {
@@ -240,14 +249,50 @@ func (s controlPlaneService) runOnce(ctx context.Context) error {
 	if s.Status != nil {
 		s.Status.BeginCycle(time.Now())
 	}
-	recoverySummary, err := s.Recovery(ctx)
+	cycleCtx := ctx
+	stopRenewal := func() {}
+	if s.LeaderLock != nil {
+		leader, acquired, err := s.LeaderLock.Acquire(ctx)
+		if err != nil {
+			if s.Status != nil {
+				s.Status.RecordError(err, time.Now())
+			}
+			return err
+		}
+		if !acquired {
+			if s.Status != nil {
+				s.Status.RecordStandby(leader, time.Now())
+			}
+			if s.Logger != nil {
+				s.Logger.WithFields(logrus.Fields{
+					"leaderKey":   leader.Key,
+					"leaderOwner": leader.Owner,
+				}).Info("listing control-plane standby; leader lock is held by another instance")
+			}
+			return nil
+		}
+		if s.Status != nil {
+			s.Status.RecordLeader(leader)
+		}
+		var cancel context.CancelFunc
+		cycleCtx, cancel = context.WithCancel(ctx)
+		done := make(chan struct{})
+		stopRenewal = func() {
+			close(done)
+			cancel()
+		}
+		go s.renewLeaderUntilDone(cycleCtx, done, cancel)
+	}
+	defer stopRenewal()
+
+	recoverySummary, err := s.Recovery(cycleCtx)
 	if err != nil {
 		if s.Status != nil {
 			s.Status.RecordError(err, time.Now())
 		}
 		return err
 	}
-	dispatchSummary, err := s.Dispatch(ctx)
+	dispatchSummary, err := s.Dispatch(cycleCtx)
 	if err != nil {
 		if s.Status != nil {
 			s.Status.RecordError(err, time.Now())
@@ -268,6 +313,52 @@ func (s controlPlaneService) runOnce(ctx context.Context) error {
 		}).Info("listing control-plane cycle completed")
 	}
 	return nil
+}
+
+func (s controlPlaneService) renewLeaderUntilDone(ctx context.Context, done <-chan struct{}, cancel context.CancelFunc) {
+	interval := s.LeaderRenewInterval
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-done:
+			return
+		case <-ticker.C:
+			leader, acquired, err := s.LeaderLock.Acquire(ctx)
+			if err != nil {
+				if s.Status != nil {
+					s.Status.RecordError(err, time.Now())
+				}
+				if s.Logger != nil {
+					s.Logger.WithError(err).Warn("listing control-plane leader lock renewal failed")
+				}
+				cancel()
+				return
+			}
+			if !acquired {
+				if s.Status != nil {
+					s.Status.RecordStandby(leader, time.Now())
+				}
+				if s.Logger != nil {
+					s.Logger.WithFields(logrus.Fields{
+						"leaderKey":   leader.Key,
+						"leaderOwner": leader.Owner,
+					}).Warn("listing control-plane leader lock lost")
+				}
+				cancel()
+				return
+			}
+			if s.Status != nil {
+				s.Status.RecordLeader(leader)
+			}
+		}
+	}
 }
 
 func applyLoggingConfigFromConfig(log *logrus.Logger, cfg *config.Config) error {

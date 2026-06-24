@@ -19,17 +19,17 @@ This section records the implementation state after the first Go control-plane p
 | Area | Status | Evidence |
 | --- | --- | --- |
 | Control-plane command and runtime | code complete | `cmd/listing-control-plane`, `internal/app/runtime/listingcontrol` |
-| Config and deployment wiring | code complete | `internal/core/config/type_listing_control_plane.go`, `scripts/build-push-deploy-listing-control-plane.ps1`, `deployments/docker/Dockerfile.listing-control-plane`, `deployments/kubernetes/shein-listing/overlays/prod-auto-shard-statefulset/listing-control-plane.yaml` |
+| Config and deployment wiring | code complete | `internal/core/config/type_listing_control_plane.go`, `scripts/build-push-deploy-listing-control-plane.ps1`, `deployments/docker/Dockerfile.listing-control-plane`, `deployments/kubernetes/shein-listing/overlays/prod-auto-shard-statefulset/listing-control-plane.yaml`; leader lock env and pod-name owner identity are explicit in the deployment. |
 | Dispatch repository and RabbitMQ publisher | code complete | `internal/listingadmin` dispatch operations and `internal/listingcontrol/publisher.go` |
 | Store runtime and quota handling | code complete, business capacity incomplete | `internal/listingcontrol/store_runtime.go`, `internal/listingcontrol/quota.go`; structured quota handling exists, but complete daily completed / daily limit capacity is still a P0 gap. |
-| Scheduler, recovery, status endpoint | code complete | `internal/listingcontrol/scheduler.go`, `internal/listingcontrol/recovery.go`, `internal/app/runtime/listingcontrol/status.go` |
+| Scheduler, recovery, status endpoint | code complete | `internal/listingcontrol/scheduler.go`, `internal/listingcontrol/recovery.go`, `internal/app/runtime/listingcontrol/status.go`; `/status` and `/ready` include `leader` snapshot with owner and lease status. |
 
 ### Not yet production-closed
 
 | Question | Current answer |
 | --- | --- |
 | Is Go the only scheduler owner? | Not yet documented as fully cut over. Java scheduler shutdown still needs rollout evidence. |
-| Is multi-instance execution safe? | Not yet. `LeaderLockKey` / `LeaderLockTTL` exist as desired config, but leader lock remains a P0 implementation gap. Current deployment should be treated as single replica unless and until lock behavior is implemented and verified. |
+| Is multi-instance execution safe? | Code-level leader lease is implemented with Redis and exposed in status. Current deployment should still stay at one replica until a two-instance rollout test confirms only the leader runs recovery/dispatch. |
 | Are skip/delay reasons durable business facts? | Not yet. Runtime decisions are observable through status/log summaries, but dispatch skip/delay reason persistence on tasks still needs implementation. |
 | Is daily limit fully part of capacity? | Not yet. Store queue capacity and structured quota exist; daily completed / in-flight / store daily limit must be unified before production completion. |
 | Is there exactly one recovery owner? | Needs rollout confirmation. The control plane has recovery coordination; old worker watchdogs must remain disabled in the control-plane deployment before claiming single ownership. |
@@ -40,7 +40,7 @@ This section records the implementation state after the first Go control-plane p
 
 - The runtime command landed as `cmd/listing-control-plane`, matching the control-plane name rather than the earlier `cmd/listing-scheduler` candidate.
 - Deployment files landed under `deployments/...` and `scripts/build-push-deploy-listing-control-plane.ps1`, not the earlier `deploy/...` examples.
-- Status/readiness is exposed through `internal/app/runtime/listingcontrol/status.go`; it currently reports runtime summaries, not a leader identity.
+- Status/readiness is exposed through `internal/app/runtime/listingcontrol/status.go`; it reports runtime summaries and leader identity/lease state.
 - Remaining work should focus on production hardening rather than adding another scheduler shape.
 
 ## Context

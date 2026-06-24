@@ -21,6 +21,7 @@ type ControlPlaneStatus struct {
 	Status             string                     `json:"status"`
 	Ready              bool                       `json:"ready"`
 	StartedAt          time.Time                  `json:"startedAt"`
+	Leader             LeaderSnapshot             `json:"leader"`
 	LastCycleStartedAt *time.Time                 `json:"lastCycleStartedAt,omitempty"`
 	LastCycleAt        *time.Time                 `json:"lastCycleAt,omitempty"`
 	LastError          string                     `json:"lastError,omitempty"`
@@ -30,6 +31,15 @@ type ControlPlaneStatus struct {
 	SkippedByReason    map[string]int             `json:"skippedByReason,omitempty"`
 	FailedByReason     map[string]int             `json:"failedByReason,omitempty"`
 	Stores             []ControlPlaneStoreStatus  `json:"stores,omitempty"`
+}
+
+type LeaderSnapshot struct {
+	Key        string     `json:"key,omitempty"`
+	Owner      string     `json:"owner,omitempty"`
+	IsLeader   bool       `json:"isLeader"`
+	TTL        string     `json:"ttl,omitempty"`
+	AcquiredAt *time.Time `json:"acquiredAt,omitempty"`
+	RenewedAt  *time.Time `json:"renewedAt,omitempty"`
 }
 
 type ControlPlaneStoreStatus struct {
@@ -91,6 +101,31 @@ func (t *StatusTracker) RecordSuccess(recovery controllib.RecoverySummary, dispa
 	t.status.SkippedByReason = countReasons(dispatch.Decisions, controllib.DispatchActionSkipped, controllib.DispatchActionDryRun)
 	t.status.FailedByReason = countReasons(dispatch.Decisions, controllib.DispatchActionFailed)
 	t.status.Stores = storeStatuses(dispatch.Decisions)
+}
+
+func (t *StatusTracker) RecordLeader(snapshot LeaderSnapshot) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.status.Leader = snapshot
+}
+
+func (t *StatusTracker) RecordStandby(snapshot LeaderSnapshot, now time.Time) {
+	if t == nil {
+		return
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.status.Status = "standby"
+	t.status.Ready = false
+	t.status.LastCycleAt = timePtr(now)
+	t.status.LastError = ""
+	t.status.Leader = snapshot
 }
 
 func (t *StatusTracker) RecordError(err error, now time.Time) {

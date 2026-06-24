@@ -49,6 +49,10 @@ spec:
               value: "true"
             - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_PLATFORM
               value: shein
+            - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_LEADER_LOCK_KEY
+              value: listing:control-plane:leader:shein
+            - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_LEADER_LOCK_TTL
+              value: 30s
             - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_DRY_RUN
               value: "false"
             - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_BATCH_SIZE
@@ -69,6 +73,10 @@ spec:
               value: "500"
             - name: TASK_PROCESSOR_REDIS_DB
               value: "9"
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: TASK_PROCESSOR_RABBITMQ_NODE_HEALTH_CHECK_PORT
               value: "8081"
           envFrom:

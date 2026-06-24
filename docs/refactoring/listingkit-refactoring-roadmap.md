@@ -676,7 +676,7 @@ Follow-up deletion
 
 | 对象 | 状态 | 证据 |
 | --- | --- | --- |
-| Go Listing Control Plane 代码路径 | code landed, production hardening open | `cmd/listing-control-plane`、`internal/listingcontrol`、`internal/app/runtime/listingcontrol`、`scripts/build-push-deploy-listing-control-plane.ps1` 和 `deployments/kubernetes/shein-listing/overlays/prod-auto-shard-statefulset/listing-control-plane.yaml` 已落库；当前缺口集中在 leader lock、持久 dispatch reason、daily limit capacity 和真实 rollout/rollback 验证。 |
+| Go Listing Control Plane 代码路径 | code landed, production hardening open | `cmd/listing-control-plane`、`internal/listingcontrol`、`internal/app/runtime/listingcontrol`、`scripts/build-push-deploy-listing-control-plane.ps1` 和 `deployments/kubernetes/shein-listing/overlays/prod-auto-shard-statefulset/listing-control-plane.yaml` 已落库；Redis leader lease 已接入 control-plane cycle 和 status 输出，当前缺口集中在双实例 rollout 验证、持久 dispatch reason、daily limit capacity 和真实 rollback 验证。 |
 | Control Plane 实施计划状态 | closeout snapshot added | `docs/superpowers/plans/2026-06-23-go-listing-control-plane.md` 已补充 2026-06-24 closeout，明确哪些是代码完成、哪些还只是待生产验证，避免原始 checklist 与代码状态继续漂移。 |
 | Management Client runtime retirement | in progress | `internal/app/runtime/listing/local_runtime_health.go` 已从具体 `management.ClientManager` 改为 `listingLocalRuntimeValidator` 小接口；`internal/infra/clients/management/local_listing_runtime_health.go` 暂时提供 `ValidateLocalListingRuntimeFields` 适配方法。下一步仍需继续拆出 `ImportTaskLoader`、`StoreProvider`、`PricingRuleProvider`、`ProductDataProvider` 和 `TaskStatusWriter` 等 runtime-owned ports。 |
 | ListingKit 重构进展快照 | added | `docs/refactoring/listingkit-refactoring-progress-2026-06-24.md` 记录当前后半程状态、核心缺口、两周执行建议和不建议继续做的工作。该文件是 active snapshot，不替代 roadmap 和长期架构文档。 |

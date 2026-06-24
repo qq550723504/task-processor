@@ -115,11 +115,55 @@ func (r *redisStringRuntime) TTL(ctx context.Context, key string) (time.Duration
 	return ttl, nil
 }
 
+func (r *redisStringRuntime) AcquireLeaderLock(ctx context.Context, key, owner string, ttl time.Duration) (string, bool, error) {
+	result, err := r.client.Eval(ctx, acquireLeaderLockScript, []string{key}, owner, leaderLockTTLMilliseconds(ttl)).Result()
+	if err != nil {
+		return "", false, err
+	}
+	values, ok := result.([]any)
+	if !ok || len(values) != 2 {
+		return "", false, fmt.Errorf("unexpected Redis leader lock response: %v", result)
+	}
+	acquired, err := redisScriptBool(values[0])
+	if err != nil {
+		return "", false, err
+	}
+	currentOwner, ok := values[1].(string)
+	if !ok {
+		return "", false, fmt.Errorf("unexpected Redis leader lock owner response: %v", values[1])
+	}
+	return currentOwner, acquired, nil
+}
+
 func (r *redisStringRuntime) Close() error {
 	if r == nil || r.client == nil {
 		return nil
 	}
 	return r.client.Close()
+}
+
+const acquireLeaderLockScript = `
+local current = redis.call("GET", KEYS[1])
+if not current then
+	redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[2])
+	return {1, ARGV[1]}
+end
+if current == ARGV[1] then
+	redis.call("PEXPIRE", KEYS[1], ARGV[2])
+	return {1, current}
+end
+return {0, current}
+`
+
+func redisScriptBool(value any) (bool, error) {
+	switch v := value.(type) {
+	case int64:
+		return v == 1, nil
+	case int:
+		return v == 1, nil
+	default:
+		return false, fmt.Errorf("unexpected Redis leader lock acquired response: %v", value)
+	}
 }
 
 type rabbitQueueDepthSource struct {
