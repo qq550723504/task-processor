@@ -14,7 +14,7 @@ Files changed:
 - `internal/listingkit/store/shein_sync_repo_test.go`
 
 Commit hash(es):
-- `51d3cc20`
+- `284c450b`
 
 Tests run and exact results:
 - `$env:GOWORK='off'; go test ./internal/listingkit/store -run 'TestSDSRetirementRepository' -count=1` -> `ok  	task-processor/internal/listingkit/store	0.326s`
@@ -33,3 +33,23 @@ Self-review notes:
 
 Concerns:
 - None.
+
+---
+
+Fix status: DONE
+
+Fix summary:
+- Scoped `SaveSDSRetirementExecution` item persistence to `run_id + id` and reject foreign-run items with `listingkit.ErrTaskNotFound`, so one run can no longer overwrite another run's item row by primary key alone.
+- Normalized `UpdateSDSRetirementItems` zero-row updates to return `listingkit.ErrTaskNotFound` instead of leaking raw `gorm.ErrRecordNotFound`.
+- Added repository coverage for both review findings, including a regression test proving a foreign item is refused and left unmodified.
+
+Files changed:
+- `internal/listingkit/store/sds_retirement_repo.go`
+- `internal/listingkit/store/sds_retirement_repo_test.go`
+
+Commit hash(es):
+- `76f46ec9`
+
+Covering tests run and exact output:
+- `$env:GOWORK='off'; go test ./internal/listingkit/store -run 'TestSDSRetirementRepository(UpdateItemsReturnsDomainNotFound|SaveExecutionRejectsItemFromAnotherRun)' -count=1` -> `ok  	task-processor/internal/listingkit/store	0.406s`
+- `$env:GOWORK='off'; go test ./internal/listingkit/store -run 'TestSDSRetirementRepository' -count=1` -> `ok  	task-processor/internal/listingkit/store	0.423s`
