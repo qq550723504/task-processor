@@ -135,7 +135,7 @@ func (r *GormDispatchEventRepository) GetDispatchEventSummary(ctx context.Contex
 		}
 	}
 
-	var reasonRows []DispatchEventReasonCount
+	reasonRows := make([]DispatchEventReasonCount, 0)
 	if err := base.
 		Where("reason_code <> ''").
 		Select("reason_code, action, count(*) as count").
@@ -145,7 +145,7 @@ func (r *GormDispatchEventRepository) GetDispatchEventSummary(ctx context.Contex
 		return nil, err
 	}
 
-	var blockerRows []DispatchEventStoreBlocker
+	blockerRows := make([]DispatchEventStoreBlocker, 0)
 	if err := base.
 		Where("action = ?", "skipped").
 		Select(`tenant_id, store_id, reason_code, count(*) as count,

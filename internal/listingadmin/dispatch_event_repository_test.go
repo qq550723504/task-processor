@@ -2,6 +2,8 @@ package listingadmin
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -75,6 +77,42 @@ func TestDispatchEventSummaryAggregatesActionsReasonsAndStoreBlockers(t *testing
 	}
 	if topBlocker.DailyLimit != 500 || topBlocker.MaxQueued != 8 || topBlocker.OwnerNode != "node-a" {
 		t.Fatalf("top blocker capacity fields = %+v, want daily limit 500 max queued 8 owner node-a", topBlocker)
+	}
+}
+
+func TestDispatchEventSummaryReturnsEmptyArraysWhenNoRowsMatch(t *testing.T) {
+	t.Parallel()
+
+	db := newDispatchEventRepositoryTestDB(t)
+	now := time.Date(2026, 6, 24, 15, 0, 0, 0, time.UTC)
+	repo := NewGormDispatchEventRepository(db)
+
+	summary, err := repo.GetDispatchEventSummary(context.Background(), DispatchEventQuery{
+		TenantID: 10,
+		Platform: "shein",
+		From:     now.Add(-time.Hour),
+		To:       now,
+	})
+	if err != nil {
+		t.Fatalf("GetDispatchEventSummary() error = %v", err)
+	}
+	if summary.Total != 0 || summary.Dispatched != 0 || summary.Skipped != 0 || summary.Failed != 0 {
+		t.Fatalf("summary counts = total:%d dispatched:%d skipped:%d failed:%d, want zeros", summary.Total, summary.Dispatched, summary.Skipped, summary.Failed)
+	}
+	if summary.ReasonCounts == nil {
+		t.Fatalf("reason counts is nil, want empty slice")
+	}
+	if summary.StoreBlockers == nil {
+		t.Fatalf("store blockers is nil, want empty slice")
+	}
+
+	payload, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal summary: %v", err)
+	}
+	body := string(payload)
+	if !strings.Contains(body, `"reasonCounts":[]`) || !strings.Contains(body, `"storeBlockers":[]`) {
+		t.Fatalf("summary json = %s, want empty arrays for reasonCounts/storeBlockers", body)
 	}
 }
 
