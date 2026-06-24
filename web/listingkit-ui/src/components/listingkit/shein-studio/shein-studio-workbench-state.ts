@@ -209,6 +209,115 @@ export function setSheinStudioWorkbenchField<
   } as Extract<SheinStudioWorkbenchAction, { field: K }>;
 }
 
+type SheinStudioWorkbenchSetField = SheinStudioWorkbenchController["setField"];
+
+export function buildSheinStudioWorkbenchSetters(
+  setField: SheinStudioWorkbenchSetField,
+) {
+  return {
+    setArtworkModel: (value: SheinStudioWorkbenchStateUpdater<"artworkModel">) =>
+      setField("artworkModel", value),
+    setCreatedTasks: (value: SheinStudioWorkbenchStateUpdater<"createdTasks">) =>
+      setField("createdTasks", value),
+    setCreatingError: (value: SheinStudioWorkbenchStateUpdater<"creatingError">) =>
+      setField("creatingError", value),
+    setCreatingWarning: (
+      value: SheinStudioWorkbenchStateUpdater<"creatingWarning">,
+    ) => setField("creatingWarning", value),
+    setCreatingMessage: (
+      value: SheinStudioWorkbenchStateUpdater<"creatingMessage">,
+    ) => setField("creatingMessage", value),
+    setDesigns: (value: SheinStudioWorkbenchStateUpdater<"designs">) =>
+      setField("designs", value),
+    setDraftWarning: (value: SheinStudioWorkbenchStateUpdater<"draftWarning">) =>
+      setField("draftWarning", value),
+    setGalleryRatioCheck: (
+      value: SheinStudioWorkbenchStateUpdater<"galleryRatioCheck">,
+    ) => setField("galleryRatioCheck", value),
+    setGenerationError: (
+      value: SheinStudioWorkbenchStateUpdater<"generationError">,
+    ) => setField("generationError", value),
+    setGenerationWarning: (
+      value: SheinStudioWorkbenchStateUpdater<"generationWarning">,
+    ) => setField("generationWarning", value),
+    setGenerationWarningAction: (
+      value: SheinStudioWorkbenchStateUpdater<"generationWarningAction">,
+    ) => setField("generationWarningAction", value),
+    setGroupedImageMode: (
+      value: SheinStudioWorkbenchStateUpdater<"groupedImageMode">,
+    ) => setField("groupedImageMode", value),
+    setImageStrategy: (value: SheinStudioWorkbenchStateUpdater<"imageStrategy">) =>
+      setField("imageStrategy", value),
+    setIsCreatingTasks: (
+      value: SheinStudioWorkbenchStateUpdater<"isCreatingTasks">,
+    ) => setField("isCreatingTasks", value),
+    setIsGenerating: (value: SheinStudioWorkbenchStateUpdater<"isGenerating">) =>
+      setField("isGenerating", value),
+    setIsLoadingWorkspace: (
+      value: SheinStudioWorkbenchStateUpdater<"isLoadingWorkspace">,
+    ) => setField("isLoadingWorkspace", value),
+    setProductImageCount: (
+      value: SheinStudioWorkbenchStateUpdater<"productImageCount">,
+    ) => setField("productImageCount", value),
+    setProductImagePrompt: (
+      value: SheinStudioWorkbenchStateUpdater<"productImagePrompt">,
+    ) => setField("productImagePrompt", value),
+    setProductImagePrompts: (
+      value: SheinStudioWorkbenchStateUpdater<"productImagePrompts">,
+    ) => setField("productImagePrompts", value),
+    setPersistedUpdatedAt: (
+      value: SheinStudioWorkbenchStateUpdater<"persistedUpdatedAt">,
+    ) => setField("persistedUpdatedAt", value),
+    setBatchQueueMode: (
+      value: SheinStudioWorkbenchStateUpdater<"batchQueueMode">,
+    ) => setField("batchQueueMode", value),
+    setGroupedSelections: (
+      value: SheinStudioWorkbenchStateUpdater<"groupedSelections">,
+    ) => setField("groupedSelections", value),
+    setPrompt: (value: SheinStudioWorkbenchStateUpdater<"prompt">) =>
+      setField("prompt", value),
+    setPromptMode: (value: SheinStudioWorkbenchStateUpdater<"promptMode">) =>
+      setField("promptMode", value),
+    setQueueMessage: (value: SheinStudioWorkbenchStateUpdater<"queueMessage">) =>
+      setField("queueMessage", value),
+    setQueuedBatchIds: (
+      value: SheinStudioWorkbenchStateUpdater<"queuedBatchIds">,
+    ) => setField("queuedBatchIds", value),
+    setQueuedBatchIndex: (
+      value: SheinStudioWorkbenchStateUpdater<"queuedBatchIndex">,
+    ) => setField("queuedBatchIndex", value),
+    setRegeneratingId: (
+      value: SheinStudioWorkbenchStateUpdater<"regeneratingId">,
+    ) => setField("regeneratingId", value),
+    setRenderSizeImagesWithSds: (
+      value: SheinStudioWorkbenchStateUpdater<"renderSizeImagesWithSds">,
+    ) => setField("renderSizeImagesWithSds", value),
+    setSavedBatches: (value: SheinStudioWorkbenchStateUpdater<"savedBatches">) =>
+      setField("savedBatches", value),
+    setSaveMessage: (value: SheinStudioWorkbenchStateUpdater<"saveMessage">) =>
+      setField("saveMessage", value),
+    setSelectedIds: (value: SheinStudioWorkbenchStateUpdater<"selectedIds">) =>
+      setField("selectedIds", value),
+    setSelectedSdsImages: (
+      value: SheinStudioWorkbenchStateUpdater<"selectedSdsImages">,
+    ) => setField("selectedSdsImages", value),
+    setSheinStoreId: (value: SheinStudioWorkbenchStateUpdater<"sheinStoreId">) =>
+      setField("sheinStoreId", value),
+    setStyleCount: (value: SheinStudioWorkbenchStateUpdater<"styleCount">) =>
+      setField("styleCount", value),
+    setTransparentBackground: (
+      value: SheinStudioWorkbenchStateUpdater<"transparentBackground">,
+    ) => setField("transparentBackground", value),
+    setVariationIntensity: (
+      value: SheinStudioWorkbenchStateUpdater<"variationIntensity">,
+    ) => setField("variationIntensity", value),
+  };
+}
+
+export type SheinStudioWorkbenchSetters = ReturnType<
+  typeof buildSheinStudioWorkbenchSetters
+>;
+
 export function applySheinStudioWorkbenchDraft(
   draft: SheinStudioWorkbenchDraftPatch,
 ): SheinStudioWorkbenchAction {

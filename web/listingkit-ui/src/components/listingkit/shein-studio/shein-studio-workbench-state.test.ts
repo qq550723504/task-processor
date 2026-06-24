@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   applySheinStudioWorkbenchBatch,
   applySheinStudioWorkbenchDraft,
   applySheinStudioWorkbenchHydratedBatch,
   buildInitialSheinStudioWorkbenchState,
+  buildSheinStudioWorkbenchSetters,
   selectSheinStudioWorkbenchGroup,
   setSheinStudioWorkbenchField,
   sheinStudioWorkbenchReducer,
@@ -37,6 +38,33 @@ describe("buildInitialSheinStudioWorkbenchState", () => {
       styleCount: "1",
       transparentBackground: false,
       renderSizeImagesWithSds: true,
+    });
+  });
+});
+
+describe("buildSheinStudioWorkbenchSetters", () => {
+  it("maps workbench setter names to reducer fields", () => {
+    const setField = vi.fn();
+    const setters = buildSheinStudioWorkbenchSetters(setField);
+    const appendSelection = (current: string[]) => [...current, "design-1"];
+
+    setters.setPrompt("prompt");
+    setters.setSelectedIds(appendSelection);
+    setters.setGenerationWarningAction({
+      intent: "warm_baseline",
+      label: "Warm baseline",
+    });
+
+    expect(setField).toHaveBeenCalledTimes(3);
+    expect(setField).toHaveBeenNthCalledWith(1, "prompt", "prompt");
+    expect(setField).toHaveBeenNthCalledWith(
+      2,
+      "selectedIds",
+      appendSelection,
+    );
+    expect(setField).toHaveBeenNthCalledWith(3, "generationWarningAction", {
+      intent: "warm_baseline",
+      label: "Warm baseline",
     });
   });
 });
