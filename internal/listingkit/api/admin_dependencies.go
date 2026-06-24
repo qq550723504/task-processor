@@ -58,7 +58,7 @@ func WithStoreStatisticsRepository(repo listingadmin.StoreStatisticsRepository) 
 
 func WithDispatchEventRepository(repo listingadmin.DispatchEventRepository) HandlerOption {
 	return withAdminDependency(repo, func(repo listingadmin.DispatchEventRepository, admin *adminHandlers) {
-		admin.dispatchEventHandler = listingadmin.NewDispatchEventHandler(repo)
+		admin.dispatchEventRepository = repo
 	})
 }
 

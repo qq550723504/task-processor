@@ -1,4 +1,4 @@
-package listingadmin
+package api
 
 import (
 	"context"
@@ -10,38 +10,40 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingadmin"
 )
 
 type fakeDispatchEventRepository struct {
-	summaryQuery DispatchEventQuery
-	listQuery    DispatchEventQuery
+	summaryQuery listingadmin.DispatchEventQuery
+	listQuery    listingadmin.DispatchEventQuery
 	summaryErr   error
 	listErr      error
 }
 
-func (f *fakeDispatchEventRepository) GetDispatchEventSummary(_ context.Context, query DispatchEventQuery) (*DispatchEventSummary, error) {
+func (f *fakeDispatchEventRepository) GetDispatchEventSummary(_ context.Context, query listingadmin.DispatchEventQuery) (*listingadmin.DispatchEventSummary, error) {
 	f.summaryQuery = query
 	if f.summaryErr != nil {
 		return nil, f.summaryErr
 	}
-	return &DispatchEventSummary{
-		Window:     DispatchEventWindow{From: query.From, To: query.To},
+	return &listingadmin.DispatchEventSummary{
+		Window:     listingadmin.DispatchEventWindow{From: query.From, To: query.To},
 		Total:      3,
 		Dispatched: 1,
 		Skipped:    2,
-		ReasonCounts: []DispatchEventReasonCount{
+		ReasonCounts: []listingadmin.DispatchEventReasonCount{
 			{ReasonCode: "no_capacity", Action: "skipped", Count: 2},
 		},
 	}, nil
 }
 
-func (f *fakeDispatchEventRepository) ListDispatchEvents(_ context.Context, query DispatchEventQuery) (*DispatchEventPage, error) {
+func (f *fakeDispatchEventRepository) ListDispatchEvents(_ context.Context, query listingadmin.DispatchEventQuery) (*listingadmin.DispatchEventPage, error) {
 	f.listQuery = query
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
-	return &DispatchEventPage{
-		Items: []DispatchEventItem{
+	return &listingadmin.DispatchEventPage{
+		Items: []listingadmin.DispatchEventItem{
 			{ID: 1, TaskID: 101, TenantID: query.TenantID, StoreID: 976, Action: "skipped", ReasonCode: "no_capacity"},
 		},
 		Total:    1,
@@ -54,8 +56,7 @@ func (f *fakeDispatchEventRepository) ListDispatchEvents(_ context.Context, quer
 
 func TestDispatchEventHandlerSummaryUsesDefaultWindowAndRequestTenant(t *testing.T) {
 	repo := &fakeDispatchEventRepository{}
-	now := time.Date(2026, 6, 24, 15, 0, 0, 0, time.UTC)
-	router := newDispatchEventHandlerTestRouter(repo, now)
+	router := newDispatchEventHandlerTestRouter(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/dispatch-events/summary", nil)
 	req.Header.Set("X-Tenant-ID", "246")
@@ -68,15 +69,17 @@ func TestDispatchEventHandlerSummaryUsesDefaultWindowAndRequestTenant(t *testing
 	if repo.summaryQuery.TenantID != 246 {
 		t.Fatalf("tenant id = %d, want request tenant 246", repo.summaryQuery.TenantID)
 	}
-	if !repo.summaryQuery.From.Equal(now.Add(-time.Hour)) || !repo.summaryQuery.To.Equal(now) {
-		t.Fatalf("window = %s - %s, want previous hour ending now", repo.summaryQuery.From, repo.summaryQuery.To)
+	if repo.summaryQuery.From.IsZero() || repo.summaryQuery.To.IsZero() {
+		t.Fatalf("window = %s - %s, want default window", repo.summaryQuery.From, repo.summaryQuery.To)
+	}
+	if repo.summaryQuery.To.Sub(repo.summaryQuery.From) != time.Hour {
+		t.Fatalf("window duration = %s, want 1h", repo.summaryQuery.To.Sub(repo.summaryQuery.From))
 	}
 }
 
 func TestDispatchEventHandlerListParsesFiltersAndPagination(t *testing.T) {
 	repo := &fakeDispatchEventRepository{}
-	now := time.Date(2026, 6, 24, 16, 0, 0, 0, time.UTC)
-	router := newDispatchEventHandlerTestRouter(repo, now)
+	router := newDispatchEventHandlerTestRouter(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/dispatch-events?platform=shein&tenantId=246&storeId=976&action=skipped&reasonCode=no_capacity&from=2026-06-24T14:00:00Z&to=2026-06-24T15:00:00Z&page=3&page_size=25", nil)
 	req.Header.Set("X-Tenant-ID", "246")
@@ -105,7 +108,6 @@ func TestDispatchEventHandlerListParsesFiltersAndPagination(t *testing.T) {
 }
 
 func TestDispatchEventHandlerCompletesSingleSidedWindows(t *testing.T) {
-	now := time.Date(2026, 6, 24, 16, 0, 0, 0, time.UTC)
 	cases := []struct {
 		name     string
 		path     string
@@ -129,8 +131,9 @@ func TestDispatchEventHandlerCompletesSingleSidedWindows(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &fakeDispatchEventRepository{}
-			router := newDispatchEventHandlerTestRouter(repo, now)
+			router := newDispatchEventHandlerTestRouter(repo)
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Header.Set("X-Tenant-ID", "246")
 			resp := httptest.NewRecorder()
 			router.ServeHTTP(resp, req)
 
@@ -163,8 +166,9 @@ func TestDispatchEventHandlerRejectsInvalidQueryParams(t *testing.T) {
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &fakeDispatchEventRepository{}
-			router := newDispatchEventHandlerTestRouter(repo, time.Date(2026, 6, 24, 16, 0, 0, 0, time.UTC))
+			router := newDispatchEventHandlerTestRouter(repo)
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Header.Set("X-Tenant-ID", "246")
 			resp := httptest.NewRecorder()
 			router.ServeHTTP(resp, req)
 
@@ -180,10 +184,7 @@ func TestDispatchEventHandlerRejectsInvalidQueryParams(t *testing.T) {
 
 func TestDispatchEventHandlerRequiresRequestTenantScope(t *testing.T) {
 	repo := &fakeDispatchEventRepository{}
-	handler := NewDispatchEventHandler(repo)
-	handler.now = func() time.Time { return time.Date(2026, 6, 24, 16, 0, 0, 0, time.UTC) }
-	router := gin.New()
-	router.GET("/dispatch-events", handler.ListDispatchEvents)
+	router := newDispatchEventHandlerTestRouter(repo)
 
 	req := httptest.NewRequest(http.MethodGet, "/dispatch-events?tenantId=246", nil)
 	resp := httptest.NewRecorder()
@@ -218,8 +219,9 @@ func TestDispatchEventHandlerReturnsInternalErrorForRepositoryFailures(t *testin
 
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			router := newDispatchEventHandlerTestRouter(tt.repo, time.Date(2026, 6, 24, 16, 0, 0, 0, time.UTC))
+			router := newDispatchEventHandlerTestRouter(tt.repo)
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req.Header.Set("X-Tenant-ID", "246")
 			resp := httptest.NewRecorder()
 			router.ServeHTTP(resp, req)
 
@@ -233,18 +235,12 @@ func TestDispatchEventHandlerReturnsInternalErrorForRepositoryFailures(t *testin
 	}
 }
 
-func newDispatchEventHandlerTestRouter(repo *fakeDispatchEventRepository, now time.Time) *gin.Engine {
+func newDispatchEventHandlerTestRouter(repo *fakeDispatchEventRepository) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	handler := NewDispatchEventHandler(repo)
-	handler.now = func() time.Time { return now }
+	h := &handler{}
+	WithDispatchEventRepository(repo)(h)
 	router := gin.New()
-	router.Use(func(c *gin.Context) {
-		if c.GetHeader("X-Tenant-ID") == "" {
-			c.Request.Header.Set("X-Tenant-ID", "246")
-		}
-		c.Next()
-	})
-	router.GET("/dispatch-events/summary", handler.GetDispatchEventSummary)
-	router.GET("/dispatch-events", handler.ListDispatchEvents)
+	router.GET("/dispatch-events/summary", h.GetAdminDispatchEventSummary)
+	router.GET("/dispatch-events", h.ListAdminDispatchEvents)
 	return router
 }

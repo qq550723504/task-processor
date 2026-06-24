@@ -34,10 +34,10 @@ type handler struct {
 }
 
 type storeAdminHandlers struct {
-	storeHandler           *listingadmin.StoreHandler
-	storeStatisticsHandler *listingadmin.StoreStatisticsHandler
-	dispatchEventHandler   *listingadmin.DispatchEventHandler
-	importTaskHandler      *listingadmin.ImportTaskHandler
+	storeHandler            *listingadmin.StoreHandler
+	storeStatisticsHandler  *listingadmin.StoreStatisticsHandler
+	dispatchEventRepository listingadmin.DispatchEventRepository
+	importTaskHandler       *listingadmin.ImportTaskHandler
 }
 
 type catalogAdminHandlers struct {

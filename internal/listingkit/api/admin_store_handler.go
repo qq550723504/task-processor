@@ -77,17 +77,17 @@ func (h *handler) ListAdminStoreStatistics(c *gin.Context) {
 }
 
 func (h *handler) GetAdminDispatchEventSummary(c *gin.Context) {
-	if !h.requireDispatchEventHandler(c) {
+	if !h.requireDispatchEventRepository(c) {
 		return
 	}
-	h.dispatchEventHandler.GetDispatchEventSummary(c)
+	h.getAdminDispatchEventSummary(c)
 }
 
 func (h *handler) ListAdminDispatchEvents(c *gin.Context) {
-	if !h.requireDispatchEventHandler(c) {
+	if !h.requireDispatchEventRepository(c) {
 		return
 	}
-	h.dispatchEventHandler.ListDispatchEvents(c)
+	h.listAdminDispatchEvents(c)
 }
 
 func (h *handler) ListDeletedAdminStores(c *gin.Context) {
@@ -149,8 +149,8 @@ func (h *handler) requireStoreStatisticsHandler(c *gin.Context) bool {
 	return false
 }
 
-func (h *handler) requireDispatchEventHandler(c *gin.Context) bool {
-	if h.dispatchEventHandler != nil {
+func (h *handler) requireDispatchEventRepository(c *gin.Context) bool {
+	if h.dispatchEventRepository != nil {
 		return true
 	}
 	c.JSON(http.StatusServiceUnavailable, gin.H{
