@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useReducer } from "react";
 
 import { upsertRecentSavedBatch } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -63,6 +63,13 @@ type ResolveBaselineReadinessEntriesParams = {
     request: SDSBaselineReadinessRequest,
   ) => Promise<SDSBaselineReadiness>;
   selections: SDSProductVariantSelection[];
+};
+
+type ActiveSelectionBaselineStatusesParams = {
+  activeSelection?: SDSProductVariantSelection;
+  getReadiness: (
+    request: SDSBaselineReadinessRequest,
+  ) => Promise<SDSBaselineReadiness>;
 };
 
 type BaselineWarmupRunnerParams = {
@@ -216,6 +223,47 @@ export async function resolveBaselineReadinessEntries({
       }
     }),
   );
+}
+
+export function useActiveSelectionBaselineStatuses({
+  activeSelection,
+  getReadiness,
+}: ActiveSelectionBaselineStatusesParams) {
+  const [baselineStatuses, setBaselineStatuses] = useReducer(
+    (
+      _current: Record<string, ActiveSelectionBaseline>,
+      next: Record<string, ActiveSelectionBaseline>,
+    ) => next,
+    {},
+  );
+
+  useEffect(() => {
+    const selections = activeSelection?.variantId ? [activeSelection] : [];
+    if (selections.length === 0) {
+      setBaselineStatuses({});
+      return;
+    }
+
+    let cancelled = false;
+    void resolveBaselineReadinessEntries({
+      getReadiness,
+      selections,
+    }).then((entries) => {
+      if (cancelled) {
+        return;
+      }
+      setBaselineStatuses(Object.fromEntries(entries));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSelection, getReadiness]);
+
+  return {
+    baselineStatuses,
+    setBaselineStatuses,
+  };
 }
 
 export async function runBaselineWarmup({

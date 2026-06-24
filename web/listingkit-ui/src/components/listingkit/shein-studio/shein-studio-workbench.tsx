@@ -20,8 +20,8 @@ import { useSheinStudioDedicatedBatchRunController } from "@/components/listingk
 import {
   applyBaselineWarmupResult,
   projectActiveSelectionBaselineState,
-  resolveBaselineReadinessEntries,
   runBaselineWarmup,
+  useActiveSelectionBaselineStatuses,
   useSheinStudioBatchGenerationContext,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
@@ -285,29 +285,11 @@ export function SheinStudioWorkbench({
   const recentBatchOpenRequestVersionRef = useRef(0);
   const batchQueueRequestVersionRef = useRef(0);
   const taskCreationToastSignatureRef = useRef("");
-  const [baselineStatuses, setBaselineStatuses] = useReducer(
-    (
-      _current: Record<
-        string,
-        {
-          status: SDSBaselineStatus;
-          reason: string;
-          reasonCode?: string;
-          baselineKey?: string;
-        }
-      >,
-      next: Record<
-        string,
-        {
-          status: SDSBaselineStatus;
-          reason: string;
-          reasonCode?: string;
-          baselineKey?: string;
-        }
-      >,
-    ) => next,
-    {},
-  );
+  const { baselineStatuses, setBaselineStatuses } =
+    useActiveSelectionBaselineStatuses({
+      activeSelection,
+      getReadiness: getSDSBaselineReadiness,
+    });
   useEffect(() => {
     if (!initialBatchId) {
       return;
@@ -707,29 +689,6 @@ export function SheinStudioWorkbench({
     baselineStatuses,
     workbenchController,
   ]);
-
-  useEffect(() => {
-    const selections = activeSelection?.variantId ? [activeSelection] : [];
-    if (selections.length === 0) {
-      setBaselineStatuses({});
-      return;
-    }
-
-    let cancelled = false;
-    void resolveBaselineReadinessEntries({
-      getReadiness: getSDSBaselineReadiness,
-      selections,
-    }).then((entries) => {
-      if (cancelled) {
-        return;
-      }
-      setBaselineStatuses(Object.fromEntries(entries));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeSelection]);
 
   useEffect(() => {
     setGroupedSelections((current) =>

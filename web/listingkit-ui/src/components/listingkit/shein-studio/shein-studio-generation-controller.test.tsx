@@ -7,6 +7,7 @@ import {
   projectBaselineWarmupFeedback,
   resolveBaselineReadinessEntries,
   runBaselineWarmup,
+  useActiveSelectionBaselineStatuses,
   useSheinStudioBatchGenerationContext,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
@@ -186,6 +187,44 @@ describe("resolveBaselineReadinessEntries", () => {
         },
       ],
     ]);
+  });
+});
+
+describe("useActiveSelectionBaselineStatuses", () => {
+  it("loads readiness for the active selection and clears it when no variant is active", async () => {
+    const getReadiness = vi.fn().mockResolvedValue({
+      baselineKey: "baseline-1",
+      reason: "ready",
+      reasonCode: "ok",
+      status: "ready",
+    });
+    type HookProps = { activeSelection: typeof selection | undefined };
+    const initialProps: HookProps = { activeSelection: selection };
+    const { result, rerender } = renderHook(
+      ({ activeSelection }: HookProps) =>
+        useActiveSelectionBaselineStatuses({
+          activeSelection,
+          getReadiness,
+        }),
+      {
+        initialProps,
+      },
+    );
+
+    await waitFor(() =>
+      expect(result.current.baselineStatuses).toEqual({
+        "1:20:100:layer-1:100,101": {
+          baselineKey: "baseline-1",
+          reason: "ready",
+          reasonCode: "ok",
+          status: "ready",
+        },
+      }),
+    );
+
+    rerender({ activeSelection: undefined });
+
+    expect(result.current.baselineStatuses).toEqual({});
   });
 });
 
