@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -60,6 +62,7 @@ func (s *sheinCandidateService) RefreshCandidates(ctx context.Context, tenantID,
 	if err != nil {
 		return nil, err
 	}
+	products = applySheinCandidateSharedSDSCosts(products)
 
 	activityKey := buildSheinActivityKey(activityType, tenantID, storeID)
 	existingCandidates, err := s.listExistingCandidates(ctx, tenantID, storeID, activityType, activityKey)
@@ -248,8 +251,12 @@ func buildSheinCandidateRecord(product SheinSyncedProductRecord, activityType, a
 		EffectiveCostPrice: cloneSheinSyncFloat64(product.EffectiveCostPrice),
 		PriceSnapshot:      product.PriceSnapshot,
 		InventorySnapshot:  product.InventorySnapshot,
-		ReviewStatus:       SheinCandidateReviewStatusPendingReview,
-		AutoModeEligible:   false,
+		CalculatedProfitRate: calculateSheinCandidateProfitRate(
+			product.EffectiveCostPrice,
+			product.PriceSnapshot,
+		),
+		ReviewStatus:     SheinCandidateReviewStatusPendingReview,
+		AutoModeEligible: false,
 	}
 
 	switch {
@@ -264,6 +271,88 @@ func buildSheinCandidateRecord(product SheinSyncedProductRecord, activityType, a
 	}
 
 	return record
+}
+
+func applySheinCandidateSharedSDSCosts(products []SheinSyncedProductRecord) []SheinSyncedProductRecord {
+	if len(products) == 0 {
+		return products
+	}
+
+	groupCosts := make(map[string]float64)
+	for _, product := range products {
+		key := sheinCandidateSDSCostGroupKey(product)
+		if key == "" || product.EffectiveCostPrice == nil {
+			continue
+		}
+		cost := *product.EffectiveCostPrice
+		if existing, ok := groupCosts[key]; !ok || cost > existing {
+			groupCosts[key] = cost
+		}
+	}
+	if len(groupCosts) == 0 {
+		return products
+	}
+
+	out := make([]SheinSyncedProductRecord, len(products))
+	copy(out, products)
+	for i := range out {
+		key := sheinCandidateSDSCostGroupKey(out[i])
+		if key == "" {
+			continue
+		}
+		if cost, ok := groupCosts[key]; ok {
+			out[i].EffectiveCostPrice = sheinFloat64Ptr(cost)
+		}
+	}
+	return out
+}
+
+func sheinCandidateSDSCostGroupKey(product SheinSyncedProductRecord) string {
+	supplierCode := strings.TrimSpace(product.SupplierCode)
+	if supplierCode == "" {
+		return ""
+	}
+	if suffix, ok := sheinCandidateSDSStyleSuffix(supplierCode); ok {
+		return "style:" + suffix
+	}
+	return "supplier:" + supplierCode
+}
+
+func sheinCandidateSDSStyleSuffix(supplierCode string) (string, bool) {
+	idx := strings.LastIndex(supplierCode, "-")
+	if idx < 0 || idx == len(supplierCode)-1 {
+		return "", false
+	}
+	suffix := strings.ToUpper(strings.TrimSpace(supplierCode[idx+1:]))
+	if len(suffix) != 8 {
+		return "", false
+	}
+	for _, r := range suffix {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			continue
+		default:
+			return "", false
+		}
+	}
+	return suffix, true
+}
+
+func calculateSheinCandidateProfitRate(costPrice *float64, priceSnapshot string) *float64 {
+	if costPrice == nil || strings.TrimSpace(priceSnapshot) == "" {
+		return nil
+	}
+	var payload struct {
+		SalePrice float64 `json:"sale_price"`
+	}
+	if err := json.Unmarshal([]byte(priceSnapshot), &payload); err != nil {
+		return nil
+	}
+	if payload.SalePrice <= 0 {
+		return nil
+	}
+	profitRate := (payload.SalePrice - *costPrice) / payload.SalePrice
+	return sheinFloat64Ptr(profitRate)
 }
 
 func buildSheinActivityKey(activityType string, tenantID, storeID int64) string {

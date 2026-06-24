@@ -147,6 +147,139 @@ func TestSheinCandidateServiceRefreshCandidatesPersistsPendingReviewEligibleCand
 	require.Equal(t, firstCandidate.CandidateVersion, candidates[0].CandidateVersion)
 }
 
+func TestSheinCandidateServiceRefreshCandidatesUsesSharedSDSCostForSameSupplierCode(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinCandidateRepoStub([]SheinSyncedProductRecord{
+		{
+			ID:                 101,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "canvas-a",
+			SupplierCode:       "MG8006905001-B3195DA6",
+			ShelfStatus:        "ON_SHELF",
+			ManualCostPrice:    float64Ptr(46.8),
+			AutoCostPrice:      float64Ptr(39.9),
+			EffectiveCostPrice: float64Ptr(46.8),
+			CostPriceSource:    SheinCostPriceSourceManual,
+			PriceSnapshot:      `{"sale_price":78}`,
+			InventorySnapshot:  `{"available":9}`,
+			IsActive:           true,
+		},
+		{
+			ID:                 102,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "canvas-b",
+			SupplierCode:       " MG8006905001-B3195DA6 ",
+			ShelfStatus:        "ON_SHELF",
+			AutoCostPrice:      float64Ptr(41.2),
+			EffectiveCostPrice: float64Ptr(41.2),
+			CostPriceSource:    SheinCostPriceSourceAuto,
+			PriceSnapshot:      `{"sale_price":80}`,
+			InventorySnapshot:  `{"available":11}`,
+			IsActive:           true,
+		},
+	})
+
+	service := NewSheinCandidateService(repo)
+
+	result, err := service.RefreshCandidates(context.Background(), 11, 22, "PROMOTION")
+	require.NoError(t, err)
+	require.Equal(t, 2, result.EligibleCount)
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 2)
+	require.Equal(t, "canvas-a", candidates[0].SKCName)
+	require.Equal(t, "canvas-b", candidates[1].SKCName)
+	require.NotNil(t, candidates[0].EffectiveCostPrice)
+	require.NotNil(t, candidates[1].EffectiveCostPrice)
+	require.Equal(t, 46.8, *candidates[0].EffectiveCostPrice)
+	require.Equal(t, 46.8, *candidates[1].EffectiveCostPrice)
+}
+
+func TestSheinCandidateServiceRefreshCandidatesCalculatesProfitRateFromSharedSDSCost(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinCandidateRepoStub([]SheinSyncedProductRecord{
+		{
+			ID:                 201,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "group-cost-source",
+			SupplierCode:       "MG8006905002-B3195DA6",
+			ShelfStatus:        "ON_SHELF",
+			EffectiveCostPrice: float64Ptr(30),
+			PriceSnapshot:      `{"sale_price":60}`,
+			InventorySnapshot:  `{"available":5}`,
+			IsActive:           true,
+		},
+		{
+			ID:                 202,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "group-cost-target",
+			SupplierCode:       "MG8006905002-B3195DA6",
+			ShelfStatus:        "ON_SHELF",
+			EffectiveCostPrice: float64Ptr(20),
+			PriceSnapshot:      `{"sale_price":100}`,
+			InventorySnapshot:  `{"available":6}`,
+			IsActive:           true,
+		},
+	})
+
+	service := NewSheinCandidateService(repo)
+
+	_, err := service.RefreshCandidates(context.Background(), 11, 22, "PROMOTION")
+	require.NoError(t, err)
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 2)
+	require.NotNil(t, candidates[1].CalculatedProfitRate)
+	require.Equal(t, 0.7, *candidates[1].CalculatedProfitRate)
+}
+
+func TestSheinCandidateServiceRefreshCandidatesUsesSharedSDSCostForSameStyleSuffix(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinCandidateRepoStub([]SheinSyncedProductRecord{
+		{
+			ID:                 301,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "canvas-large",
+			SupplierCode:       "MG8006905001-B3195DA6",
+			ShelfStatus:        "ON_SHELF",
+			EffectiveCostPrice: float64Ptr(46.8),
+			PriceSnapshot:      `{"sale_price":90}`,
+			InventorySnapshot:  `{"available":8}`,
+			IsActive:           true,
+		},
+		{
+			ID:                 302,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "canvas-small",
+			SupplierCode:       "MG8006905002-B3195DA6",
+			ShelfStatus:        "ON_SHELF",
+			EffectiveCostPrice: float64Ptr(39.1),
+			PriceSnapshot:      `{"sale_price":88}`,
+			InventorySnapshot:  `{"available":7}`,
+			IsActive:           true,
+		},
+	})
+
+	service := NewSheinCandidateService(repo)
+
+	_, err := service.RefreshCandidates(context.Background(), 11, 22, "PROMOTION")
+	require.NoError(t, err)
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 2)
+	require.Equal(t, 46.8, *candidates[0].EffectiveCostPrice)
+	require.Equal(t, 46.8, *candidates[1].EffectiveCostPrice)
+}
+
 func TestSheinCandidateServiceRefreshCandidatesMarksNonOnShelfRowsIneligibleAndIgnoresInactiveRows(t *testing.T) {
 	t.Parallel()
 

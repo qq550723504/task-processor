@@ -310,6 +310,8 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 	require.Equal(t, int64(22), bridge.calls[0].Strategy.StoreID)
 	require.Len(t, bridge.calls[0].Products, 2)
 	require.Equal(t, []string{"skc-approved", "skc-filtered"}, sheinPromotionBridgeSKCs(bridge.calls[0].Products))
+	require.Equal(t, 12.5, bridge.calls[0].Products[0].SupplyPrice)
+	require.Equal(t, 13.5, bridge.calls[0].Products[1].SupplyPrice)
 	require.Len(t, results, 2)
 	require.True(t, results[0].Success)
 	require.Equal(t, int64(1), results[0].CandidateID)

@@ -158,11 +158,20 @@ func buildPromotionCandidateProduct(candidate SheinActivityEnrollmentCandidate) 
 	}
 
 	product := marketing.SkcInfo{
-		Skc:               candidate.SKCName,
-		Stock:             stock,
-		SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: price, Currency: currency, IsAvailable: true}},
+		Skc:                 candidate.SKCName,
+		Stock:               stock,
+		SupplyPrice:         sheinActivityCandidateCostValue(candidate.EffectiveCostPrice),
+		SupplyPriceCurrency: currency,
+		SitePriceInfoList:   []marketing.SitePriceInfo{{SalePrice: price, Currency: currency, IsAvailable: true}},
 	}
 	return product, true
+}
+
+func sheinActivityCandidateCostValue(value *float64) float64 {
+	if value == nil {
+		return 0
+	}
+	return *value
 }
 
 func buildPromotionEnrollmentResults(
