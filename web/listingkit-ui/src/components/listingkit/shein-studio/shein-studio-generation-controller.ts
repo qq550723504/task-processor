@@ -65,6 +65,14 @@ type ResolveBaselineReadinessEntriesParams = {
   selections: SDSProductVariantSelection[];
 };
 
+type BaselineWarmupRunnerParams = {
+  activeSelection?: SDSProductVariantSelection;
+  baselineStatuses: Record<string, ActiveSelectionBaseline>;
+  warmBaseline: (
+    selection: SDSProductVariantSelection,
+  ) => Promise<SDSBaselineReadiness>;
+};
+
 type BatchGenerationContextParams = {
   activeBatchId?: string;
   buildDraftInput: (overrides?: BuildDraftInputOverrides) => SheinStudioSaveInput;
@@ -197,6 +205,46 @@ export async function resolveBaselineReadinessEntries({
       }
     }),
   );
+}
+
+export async function runBaselineWarmup({
+  activeSelection,
+  baselineStatuses,
+  warmBaseline,
+}: BaselineWarmupRunnerParams): Promise<
+  | {
+      baselineStatuses: Record<string, ActiveSelectionBaseline>;
+      feedback: BaselineWarmupFeedback;
+    }
+  | {
+      warning: string;
+    }
+  | null
+> {
+  if (!activeSelection?.variantId) {
+    return null;
+  }
+  const activeSelectionId = buildGroupedSDSSelectionID(activeSelection);
+  try {
+    const readiness = await warmBaseline(activeSelection);
+    return {
+      baselineStatuses: {
+        ...baselineStatuses,
+        [activeSelectionId]: {
+          status: readiness.status,
+          reason: readiness.reason ?? "",
+          reasonCode: readiness.reasonCode,
+          baselineKey: readiness.baselineKey,
+        },
+      },
+      feedback: projectBaselineWarmupFeedback(readiness),
+    };
+  } catch (error) {
+    return {
+      warning:
+        error instanceof Error ? error.message : "baseline 预热失败。",
+    };
+  }
 }
 
 export function useSheinStudioBatchGenerationContext({

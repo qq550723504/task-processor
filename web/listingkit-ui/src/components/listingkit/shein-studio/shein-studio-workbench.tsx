@@ -19,8 +19,8 @@ import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein
 import { useSheinStudioDedicatedBatchRunController } from "@/components/listingkit/shein-studio/shein-studio-dedicated-batch-run-controller";
 import {
   projectActiveSelectionBaselineState,
-  projectBaselineWarmupFeedback,
   resolveBaselineReadinessEntries,
+  runBaselineWarmup,
   useSheinStudioBatchGenerationContext,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
@@ -863,31 +863,21 @@ export function SheinStudioWorkbench({
     if (!activeSelection?.variantId) {
       return;
     }
-    const activeSelectionId = buildGroupedSDSSelectionID(activeSelection);
     setIsExecutingWarningAction(true);
     setWorkbenchField("generationError", "");
-    try {
-      const readiness = await warmSDSBaselineForSelection(activeSelection);
-      setBaselineStatuses({
-        ...baselineStatuses,
-        [activeSelectionId]: {
-          status: readiness.status,
-          reason: readiness.reason ?? "",
-          reasonCode: readiness.reasonCode,
-          baselineKey: readiness.baselineKey,
-        },
-      });
-      const feedback = projectBaselineWarmupFeedback(readiness);
-      setWorkbenchField("generationWarning", feedback.message);
-      setWorkbenchField("generationWarningAction", feedback.action);
-    } catch (error) {
-      setWorkbenchField(
-        "generationWarning",
-        error instanceof Error ? error.message : "baseline 预热失败。",
-      );
-    } finally {
-      setIsExecutingWarningAction(false);
+    const result = await runBaselineWarmup({
+      activeSelection,
+      baselineStatuses,
+      warmBaseline: warmSDSBaselineForSelection,
+    });
+    if (result && "baselineStatuses" in result) {
+      setBaselineStatuses(result.baselineStatuses);
+      setWorkbenchField("generationWarning", result.feedback.message);
+      setWorkbenchField("generationWarningAction", result.feedback.action);
+    } else if (result) {
+      setWorkbenchField("generationWarning", result.warning);
     }
+    setIsExecutingWarningAction(false);
   }, [
     activeSelection,
     baselineStatuses,

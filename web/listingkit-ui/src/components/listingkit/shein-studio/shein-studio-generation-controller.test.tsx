@@ -5,6 +5,7 @@ import {
   projectActiveSelectionBaselineState,
   projectBaselineWarmupFeedback,
   resolveBaselineReadinessEntries,
+  runBaselineWarmup,
   useSheinStudioBatchGenerationContext,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
@@ -184,6 +185,76 @@ describe("resolveBaselineReadinessEntries", () => {
         },
       ],
     ]);
+  });
+});
+
+describe("runBaselineWarmup", () => {
+  it("returns null when there is no active variant", async () => {
+    const warmBaseline = vi.fn();
+
+    await expect(
+      runBaselineWarmup({
+        activeSelection: undefined,
+        baselineStatuses: {},
+        warmBaseline,
+      }),
+    ).resolves.toBeNull();
+    expect(warmBaseline).not.toHaveBeenCalled();
+  });
+
+  it("warms the active selection baseline and projects feedback", async () => {
+    const warmBaseline = vi.fn().mockResolvedValue({
+      baselineKey: "baseline-1",
+      reason: "",
+      reasonCode: "",
+      status: "ready",
+    });
+
+    await expect(
+      runBaselineWarmup({
+        activeSelection: selection,
+        baselineStatuses: {
+          existing: {
+            reason: "existing",
+            reasonCode: undefined,
+            status: "missing",
+          },
+        },
+        warmBaseline,
+      }),
+    ).resolves.toEqual({
+      baselineStatuses: {
+        existing: {
+          reason: "existing",
+          reasonCode: undefined,
+          status: "missing",
+        },
+        "1:20:100:layer-1:100,101": {
+          baselineKey: "baseline-1",
+          reason: "",
+          reasonCode: "",
+          status: "ready",
+        },
+      },
+      feedback: {
+        action: null,
+        message:
+          "这款 SDS 商品的 baseline 已通过校验，现在可以继续加入 grouped 批量上品。",
+      },
+    });
+    expect(warmBaseline).toHaveBeenCalledWith(selection);
+  });
+
+  it("returns warning feedback when warmup fails", async () => {
+    await expect(
+      runBaselineWarmup({
+        activeSelection: selection,
+        baselineStatuses: {},
+        warmBaseline: vi.fn().mockRejectedValue(new Error("warm failed")),
+      }),
+    ).resolves.toEqual({
+      warning: "warm failed",
+    });
   });
 });
 
