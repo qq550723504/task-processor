@@ -161,8 +161,6 @@ error_message：
 
 ## QA 失败样例清单
 
-详细执行步骤见 [`../validation/listingkit-qa-failure-samples.md`](../validation/listingkit-qa-failure-samples.md)。
-
 | 样例 | 触发方式 | 期望页面表现 | 期望恢复动作 |
 | --- | --- | --- | --- |
 | 图片上传失败 | 使用失效图片 URL 或模拟图片接口失败 | 显示图片区失败和可重试入口 | 替换图片或重试失败项 |
