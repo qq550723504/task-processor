@@ -573,6 +573,21 @@ export function SheinStudioWorkbench({
     ],
   );
   const traceBatchId = currentQueuedBatchId || activeBatchId || initialBatchId || "";
+  const batchTraceContext = useMemo(
+    () =>
+      projectWorkbenchTraceContext({
+        batchQueueMode,
+        queuedBatchIds,
+        queuedBatchIndex,
+        traceBatchId,
+      }),
+    [
+      batchQueueMode,
+      queuedBatchIds,
+      queuedBatchIndex,
+      traceBatchId,
+    ],
+  );
   const currentActiveBatch = useMemo(
     () =>
       resolveCurrentSheinStudioSavedBatch({
@@ -950,20 +965,8 @@ export function SheinStudioWorkbench({
   ]);
 
   useEffect(() => {
-    writeListingKitTraceContext(
-      projectWorkbenchTraceContext({
-        batchQueueMode,
-        queuedBatchIds,
-        queuedBatchIndex,
-        traceBatchId,
-      }),
-    );
-  }, [
-    batchQueueMode,
-    queuedBatchIds,
-    queuedBatchIndex,
-    traceBatchId,
-  ]);
+    writeListingKitTraceContext(batchTraceContext);
+  }, [batchTraceContext]);
 
   useEffect(() => () => {
     clearListingKitTraceContext();
@@ -1001,12 +1004,7 @@ export function SheinStudioWorkbench({
       variationIntensity,
       hasLocalWorkflowStateRef,
       itemizedBatchContext,
-      batchTraceContext: projectWorkbenchTraceContext({
-        batchQueueMode,
-        queuedBatchIds,
-        queuedBatchIndex,
-        traceBatchId,
-      }),
+      batchTraceContext,
     });
 
   const {
