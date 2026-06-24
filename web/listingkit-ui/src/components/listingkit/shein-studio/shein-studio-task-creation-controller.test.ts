@@ -6,6 +6,7 @@ import {
   projectItemizedDesignApprovalRequest,
   projectItemizedFailedRetryRequest,
   projectItemizedFailedRetryStep,
+  projectItemizedReviewNoteUpdate,
   projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgress,
@@ -221,6 +222,57 @@ describe("projectItemizedBatchDetail", () => {
       updatedAt: "2026-06-22T04:00:00.000Z",
     });
     expect(result.detail.batch.tenantId).toBe("tenant-detail-new");
+  });
+});
+
+describe("projectItemizedReviewNoteUpdate", () => {
+  it("updates itemized detail review notes when an active itemized batch exists", () => {
+    const detail = {
+      ...buildCurrentDetail(),
+      items: buildTaskCreationResult().items,
+    };
+
+    const update = projectItemizedReviewNoteUpdate({
+      activeBatchId: "batch-1",
+      designs: [],
+      detail,
+      designId: "design-1",
+      note: "needs crop",
+    });
+
+    expect(update).toMatchObject({
+      kind: "itemized",
+      detail: {
+        items: [
+          {
+            designs: [
+              {
+                id: "design-1",
+                reviewNote: "needs crop",
+              },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("updates flat designs when no active itemized batch exists", () => {
+    const update = projectItemizedReviewNoteUpdate({
+      activeBatchId: "",
+      designs: [{ id: "design-1" }, { id: "design-2" }],
+      detail: buildCurrentDetail(),
+      designId: "design-1",
+      note: "needs crop",
+    });
+
+    expect(update).toEqual({
+      designs: [
+        { id: "design-1", reviewNote: "needs crop" },
+        { id: "design-2" },
+      ],
+      kind: "flat",
+    });
   });
 });
 

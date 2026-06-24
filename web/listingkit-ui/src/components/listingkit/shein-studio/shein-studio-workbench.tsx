@@ -57,6 +57,7 @@ import {
   projectItemizedBatchDetail,
   projectItemizedFailedRetryRequest,
   projectItemizedFailedRetryStep,
+  projectItemizedReviewNoteUpdate,
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskCreationProgress,
@@ -98,8 +99,6 @@ import {
   summarizeSheinStudioSelection,
   toggleSelectedDesignId,
   toggleItemizedBatchDesignApproval,
-  updateFlatDesignReviewNote,
-  updateItemizedBatchDesignReviewNote,
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
@@ -1451,14 +1450,27 @@ export function SheinStudioWorkbench({
   }
 
   function handleNoteChange(designId: string, note: string) {
-    if (
-      applyOptimisticItemizedBatchDetail((detail) =>
-        updateItemizedBatchDesignReviewNote(detail, designId, note),
-      )
-    ) {
+    const update = projectItemizedReviewNoteUpdate({
+      activeBatchId,
+      designs,
+      detail: itemizedBatchDetail,
+      designId,
+      note,
+    });
+    if (update.kind === "itemized") {
+      applyItemizedBatchDetail(update.detail);
       return;
     }
-    setDesigns((current) => updateFlatDesignReviewNote(current, designId, note));
+    setDesigns((current) => {
+      const flatUpdate = projectItemizedReviewNoteUpdate({
+        activeBatchId: "",
+        designs: current,
+        detail: null,
+        designId,
+        note,
+      });
+      return flatUpdate.kind === "flat" ? flatUpdate.designs : current;
+    });
   }
 
   async function handleRetryFailedItem(itemId: string) {

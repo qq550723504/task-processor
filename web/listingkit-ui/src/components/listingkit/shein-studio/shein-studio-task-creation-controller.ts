@@ -4,6 +4,8 @@ import {
   flattenItemizedBatchDesigns,
   getApprovedItemizedBatchDesignIDs,
   hasInFlightItemizedBatchGeneration,
+  updateFlatDesignReviewNote,
+  updateItemizedBatchDesignReviewNote,
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { upsertRecentSavedBatch } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
@@ -15,6 +17,7 @@ import type {
   SheinStudioBatchDetail,
   SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
+  SheinStudioGeneratedDesign,
   SheinStudioGenerationJob,
   SheinStudioGroupedImageMode,
   SheinStudioGroupedWorkspace,
@@ -82,6 +85,14 @@ type ItemizedDesignApprovalRequestInput = {
   currentActiveBatch?: Partial<SheinStudioSavedBatch> | null;
   detail?: SheinStudioBatchDetail | null;
   selectedIds: string[];
+};
+
+type ItemizedReviewNoteUpdateInput = {
+  activeBatchId: string;
+  designs: SheinStudioGeneratedDesign[];
+  detail?: SheinStudioBatchDetail | null;
+  designId: string;
+  note: string;
 };
 
 type ItemizedDesignApprovalRunnerInput = ItemizedDesignApprovalRequestInput & {
@@ -302,6 +313,33 @@ export function projectItemizedDesignApprovalRequest({
     batchId: activeBatchId,
     selectedIds,
     tenantId: tenantId || undefined,
+  };
+}
+
+export function projectItemizedReviewNoteUpdate({
+  activeBatchId,
+  designs,
+  detail,
+  designId,
+  note,
+}: ItemizedReviewNoteUpdateInput):
+  | {
+      detail: SheinStudioBatchDetail;
+      kind: "itemized";
+    }
+  | {
+      designs: SheinStudioGeneratedDesign[];
+      kind: "flat";
+    } {
+  if (activeBatchId && detail) {
+    return {
+      detail: updateItemizedBatchDesignReviewNote(detail, designId, note),
+      kind: "itemized",
+    };
+  }
+  return {
+    designs: updateFlatDesignReviewNote(designs, designId, note),
+    kind: "flat",
   };
 }
 
