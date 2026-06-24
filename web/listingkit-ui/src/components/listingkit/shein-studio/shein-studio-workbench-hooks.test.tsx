@@ -5,6 +5,7 @@ import {
   useSheinStudioActiveBatchScope,
   useSheinStudioActiveGroupPromptHistory,
   useSheinStudioActiveGroupPrimarySelection,
+  useSheinStudioActiveSelectionBaselineState,
   useSheinStudioActiveSelectionSummary,
   useSheinStudioBusyMessage,
   useSheinStudioCreateActionDisabledReason,
@@ -321,6 +322,28 @@ describe("useSheinStudioActiveSelectionSummary", () => {
     expect(result.current.selectedColorCount).toBe(1);
     expect(result.current.selectedSizeCount).toBe(2);
     expect(result.current.selectedVariants).toBe(activeSelection.variants);
+  });
+});
+
+describe("useSheinStudioActiveSelectionBaselineState", () => {
+  it("projects resolved baseline reason and handoff", () => {
+    const { result } = renderHook(() =>
+      useSheinStudioActiveSelectionBaselineState({
+        activeGroupedSelectionID: "selection-1",
+        baselineStatuses: {
+          "selection-1": {
+            status: "blocked",
+            reason: "",
+            reasonCode: "login_missing_credentials",
+          },
+        },
+        hasActiveSelection: true,
+      }),
+    );
+
+    expect(result.current.baseline.status).toBe("blocked");
+    expect(result.current.reason).toBe("当前 SDS 登录缺少 access token。");
+    expect(result.current.handoff?.action).toBe("open_sds_login");
   });
 });
 

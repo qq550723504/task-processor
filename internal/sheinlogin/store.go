@@ -18,6 +18,7 @@ const (
 	verifyCodePrefix      = "shein:verify_code"
 	verifyCodeQueuePrefix = "shein:verify_code_queue"
 	verifyWaitPrefix      = "shein:wait_verify_code"
+	autoVerifyCodePrefix  = "shein:auto_verify_code_count"
 	lastLoginTimePrefix   = "shein:last_login_time"
 	lastFailurePrefix     = "shein:last_failure"
 )
@@ -121,6 +122,26 @@ func (s *RedisStore) CancelVerifyWait(ctx context.Context, tenantID, storeID int
 func (s *RedisStore) IsWaitingVerifyCode(ctx context.Context, tenantID, storeID int64) (bool, error) {
 	n, err := s.client.Exists(ctx, verifyWaitKey(tenantID, storeID)).Result()
 	return n > 0, err
+}
+
+func (s *RedisStore) AutoVerifyCodeSendCount(ctx context.Context, tenantID, storeID int64, day time.Time) (int64, error) {
+	raw, err := s.client.Get(ctx, autoVerifyCodeCountKey(tenantID, storeID, day)).Int64()
+	if err == goredis.Nil {
+		return 0, nil
+	}
+	return raw, err
+}
+
+func (s *RedisStore) RecordAutoVerifyCodeSent(ctx context.Context, tenantID, storeID int64, day time.Time) (int64, error) {
+	key := autoVerifyCodeCountKey(tenantID, storeID, day)
+	count, err := s.client.Incr(ctx, key).Result()
+	if err != nil {
+		return 0, err
+	}
+	if count == 1 {
+		_ = s.client.ExpireAt(ctx, key, nextLocalMidnight(day)).Err()
+	}
+	return count, nil
 }
 
 func (s *RedisStore) SubmitVerifyCode(ctx context.Context, tenantID, storeID int64, code string, ttl time.Duration) error {
@@ -252,6 +273,10 @@ func verifyCodeKey(tenantID, storeID int64) string {
 func verifyWaitKey(tenantID, storeID int64) string {
 	return fmt.Sprintf("%s:%d:%d", verifyWaitPrefix, tenantID, storeID)
 }
+func autoVerifyCodeCountKey(tenantID, storeID int64, day time.Time) string {
+	localDay := day.In(sheinLoginLocalLocation())
+	return fmt.Sprintf("%s:%d:%d:%s", autoVerifyCodePrefix, tenantID, storeID, localDay.Format("20060102"))
+}
 func verifyCodeQueueKey(tenantID, storeID int64) string {
 	return fmt.Sprintf("%s:%d:%d", verifyCodeQueuePrefix, tenantID, storeID)
 }
@@ -260,4 +285,18 @@ func lastLoginKey(tenantID, storeID int64) string {
 }
 func lastFailureKey(tenantID, storeID int64) string {
 	return fmt.Sprintf("%s:%d:%d", lastFailurePrefix, tenantID, storeID)
+}
+
+func nextLocalMidnight(day time.Time) time.Time {
+	local := day.In(sheinLoginLocalLocation())
+	y, m, d := local.Date()
+	return time.Date(y, m, d+1, 0, 0, 0, 0, local.Location())
+}
+
+func sheinLoginLocalLocation() *time.Location {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		return time.Local
+	}
+	return loc
 }

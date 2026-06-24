@@ -178,6 +178,30 @@ func TestServiceLoginStoresVerifySessionWhenVerificationRequired(t *testing.T) {
 	}
 }
 
+func TestServiceForceLoginLimitsAutomaticVerifyCodesPerDay(t *testing.T) {
+	auto := &stubAutomation{
+		result:  &AutomationResult{WaitingForVerifyCode: true, ErrorCode: "VERIFY_CODE_REQUIRED", ErrorMessage: "wait"},
+		session: &stubVerifySession{},
+	}
+	svc := newTestService(t, auto)
+	ctx := context.Background()
+
+	for i := 0; i < 2; i++ {
+		err := svc.ForceLogin(ctx, 1, 2)
+		if err == nil || !strings.Contains(err.Error(), "wait") {
+			t.Fatalf("force login %d error = %v, want verify wait error", i+1, err)
+		}
+	}
+
+	err := svc.ForceLogin(ctx, 1, 2)
+	if err == nil || !strings.Contains(err.Error(), "今天自动验证码已达到 2 次") {
+		t.Fatalf("third force login error = %v, want daily limit", err)
+	}
+	if auto.calls != 2 {
+		t.Fatalf("automation calls = %d, want 2", auto.calls)
+	}
+}
+
 func TestServiceSubmitVerifyCodeCompletesStoredSession(t *testing.T) {
 	session := &stubVerifySession{
 		result: &AutomationResult{

@@ -32,6 +32,8 @@ import {
   useUpdateSheinSyncedProductCost,
 } from "@/lib/query/use-shein-enrollment";
 
+const SHEIN_ENROLLMENT_PAGE_SIZE = 100;
+
 export function SheinEnrollmentStoreWorkbench({
   initialActivityType,
   initialTab,
@@ -46,23 +48,31 @@ export function SheinEnrollmentStoreWorkbench({
     parseSheinActivityType(initialActivityType),
   );
   const [productKeyword, setProductKeyword] = useState("");
+  const [productsPage, setProductsPage] = useState(1);
+  const [costsPage, setCostsPage] = useState(1);
+  const [candidatesPage, setCandidatesPage] = useState(1);
+  const [runsPage, setRunsPage] = useState(1);
   const summary = useSheinEnrollmentStoreSummary(storeId, {
     activity_type: activityType,
   });
 
   const products = useSheinSyncedProducts(storeId, {
     skc_name: productKeyword || undefined,
-    page: 1,
-    page_size: 100,
+    page: productsPage,
+    page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
+  });
+  const costProducts = useSheinSyncedProducts(storeId, {
+    page: costsPage,
+    page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
   });
   const candidates = useSheinActivityCandidates(storeId, {
     activity_type: activityType,
-    page: 1,
-    page_size: 100,
+    page: candidatesPage,
+    page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
   });
   const sdsCostGroups = useSheinSDSCostGroups(storeId, {
     page: 1,
-    page_size: 100,
+    page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
   });
   const syncMutation = useTriggerSheinStoreSync(storeId);
   const refreshMutation = useRefreshSheinActivityCandidates(storeId);
@@ -72,8 +82,8 @@ export function SheinEnrollmentStoreWorkbench({
   const enrollMutation = useExecuteSheinActivityEnrollment(storeId);
   const runs = useSheinActivityEnrollmentRuns(storeId, {
     activity_type: activityType,
-    page: 1,
-    page_size: 100,
+    page: runsPage,
+    page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
   });
 
   return (
@@ -88,7 +98,11 @@ export function SheinEnrollmentStoreWorkbench({
 
       <SheinEnrollmentStoreHeader
         activityType={activityType}
-        onActivityTypeChange={setActivityType}
+        onActivityTypeChange={(nextActivityType) => {
+          setActivityType(nextActivityType);
+          setCandidatesPage(1);
+          setRunsPage(1);
+        }}
         onRefreshCandidates={() =>
           void refreshMutation.mutateAsync({ activity_type: activityType })
         }
@@ -118,7 +132,10 @@ export function SheinEnrollmentStoreWorkbench({
         <section className="space-y-4">
           <input
             className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-sm"
-            onChange={(event) => setProductKeyword(event.target.value)}
+            onChange={(event) => {
+              setProductKeyword(event.target.value);
+              setProductsPage(1);
+            }}
             placeholder="按 SKC 搜索同步商品"
             value={productKeyword}
           />
@@ -126,65 +143,137 @@ export function SheinEnrollmentStoreWorkbench({
             isLoading={products.isLoading}
             items={products.data?.items ?? []}
           />
+          <SheinEnrollmentPagination
+            onPageChange={setProductsPage}
+            page={productsPage}
+            pageSize={SHEIN_ENROLLMENT_PAGE_SIZE}
+            total={products.data?.total ?? products.data?.items?.length ?? 0}
+          />
         </section>
       ) : null}
 
       {tab === "costs" ? (
-        <SheinCostPriceTable
-          groups={sdsCostGroups.data?.items ?? []}
-          items={products.data?.items ?? []}
-          onSave={(target, manualCostPrice) =>
-            saveSheinCostTarget(
-              target,
-              manualCostPrice,
-              updateCostMutation.mutateAsync,
-              updateGroupCostMutation.mutateAsync,
-            )
-          }
-          saving={updateCostMutation.isPending || updateGroupCostMutation.isPending}
-        />
+        <section className="space-y-4">
+          <SheinCostPriceTable
+            groups={sdsCostGroups.data?.items ?? []}
+            items={costProducts.data?.items ?? []}
+            onSave={(target, manualCostPrice) =>
+              saveSheinCostTarget(
+                target,
+                manualCostPrice,
+                updateCostMutation.mutateAsync,
+                updateGroupCostMutation.mutateAsync,
+              )
+            }
+            saving={updateCostMutation.isPending || updateGroupCostMutation.isPending}
+          />
+          <SheinEnrollmentPagination
+            onPageChange={setCostsPage}
+            page={costsPage}
+            pageSize={SHEIN_ENROLLMENT_PAGE_SIZE}
+            total={costProducts.data?.total ?? costProducts.data?.items?.length ?? 0}
+          />
+        </section>
       ) : null}
 
       {tab === "candidates" ? (
-        <SheinCandidatesTable
-          enrolling={enrollMutation.isPending}
-          items={candidates.data?.items ?? []}
-          onApprove={(candidateId) =>
-            reviewMutation.mutateAsync({
-              candidateId,
-              input: {
-                store_id: storeId,
-                review_status: "approved",
-              },
-            }).then(() => undefined)
-          }
-          onEnroll={(candidateIds, activityKey) =>
-            enrollMutation.mutateAsync({
-              activity_type: activityType,
-              activity_key: activityKey || undefined,
-              trigger_mode: "manual_confirmed",
-              candidate_ids: candidateIds,
-            }).then(() => undefined)
-          }
-          onReject={(candidateId) =>
-            reviewMutation.mutateAsync({
-              candidateId,
-              input: {
-                store_id: storeId,
-                review_status: "rejected",
-              },
-            }).then(() => undefined)
-          }
-        />
+        <section className="space-y-4">
+          <SheinCandidatesTable
+            enrolling={enrollMutation.isPending}
+            items={candidates.data?.items ?? []}
+            key={`${activityType}:${candidatesPage}`}
+            onApprove={(candidateId) =>
+              reviewMutation.mutateAsync({
+                candidateId,
+                input: {
+                  store_id: storeId,
+                  review_status: "approved",
+                },
+              }).then(() => undefined)
+            }
+            onEnroll={(candidateIds, activityKey) =>
+              enrollMutation.mutateAsync({
+                activity_type: activityType,
+                activity_key: activityKey || undefined,
+                trigger_mode: "manual_confirmed",
+                candidate_ids: candidateIds,
+              }).then(() => undefined)
+            }
+            onReject={(candidateId) =>
+              reviewMutation.mutateAsync({
+                candidateId,
+                input: {
+                  store_id: storeId,
+                  review_status: "rejected",
+                },
+              }).then(() => undefined)
+            }
+          />
+          <SheinEnrollmentPagination
+            onPageChange={setCandidatesPage}
+            page={candidatesPage}
+            pageSize={SHEIN_ENROLLMENT_PAGE_SIZE}
+            total={candidates.data?.total ?? candidates.data?.items?.length ?? 0}
+          />
+        </section>
       ) : null}
 
       {tab === "runs" ? (
-        <SheinEnrollmentRunsTable
-          isLoading={runs.isLoading}
-          items={runs.data?.items ?? []}
-        />
+        <section className="space-y-4">
+          <SheinEnrollmentRunsTable
+            isLoading={runs.isLoading}
+            items={runs.data?.items ?? []}
+          />
+          <SheinEnrollmentPagination
+            onPageChange={setRunsPage}
+            page={runsPage}
+            pageSize={SHEIN_ENROLLMENT_PAGE_SIZE}
+            total={runs.data?.total ?? runs.data?.items?.length ?? 0}
+          />
+        </section>
       ) : null}
     </ListingKitPageShell>
+  );
+}
+
+function SheinEnrollmentPagination({
+  onPageChange,
+  page,
+  pageSize,
+  total,
+}: {
+  onPageChange: (page: number) => void;
+  page: number;
+  pageSize: number;
+  total: number;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(Math.max(page, 1), totalPages);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        第 {currentPage} / {totalPages} 页 · 共 {total} 条
+      </div>
+      <div className="flex gap-2">
+        <button
+          className="h-9 rounded-lg border border-zinc-200 px-3 text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={currentPage <= 1}
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          type="button"
+        >
+          上一页
+        </button>
+        <button
+          className="h-9 rounded-lg border border-zinc-200 px-3 text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={currentPage >= totalPages}
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          type="button"
+        >
+          下一页
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SheinEnrollmentStoreWorkbench } from "@/components/listingkit/shein-enrollment/shein-enrollment-store-workbench";
@@ -50,13 +50,19 @@ function resolvedMutation() {
 function renderWorkbench({
   initialTab,
   products = [],
+  productTotal,
   candidates = [],
+  candidateTotal,
   sdsCostGroups = [],
+  runTotal,
 }: {
   initialTab?: string;
   products?: Array<Record<string, unknown>>;
+  productTotal?: number;
   candidates?: Array<Record<string, unknown>>;
+  candidateTotal?: number;
   sdsCostGroups?: Array<Record<string, unknown>>;
+  runTotal?: number;
 }) {
   mocks.useSheinEnrollmentStoreSummary.mockReturnValue({
     data: {
@@ -70,7 +76,7 @@ function renderWorkbench({
     },
   });
   mocks.useSheinSyncedProducts.mockReturnValue({
-    data: { items: products },
+    data: { items: products, total: productTotal ?? products.length },
     isLoading: false,
   });
   mocks.useSheinSDSCostGroups.mockReturnValue({
@@ -78,11 +84,11 @@ function renderWorkbench({
     isLoading: false,
   });
   mocks.useSheinActivityCandidates.mockReturnValue({
-    data: { items: candidates },
+    data: { items: candidates, total: candidateTotal ?? candidates.length },
     isLoading: false,
   });
   mocks.useSheinActivityEnrollmentRuns.mockReturnValue({
-    data: { items: [] },
+    data: { items: [], total: runTotal ?? 0 },
     isLoading: false,
   });
   mocks.useTriggerSheinStoreSync.mockReturnValue(resolvedMutation());
@@ -160,6 +166,30 @@ describe("SheinEnrollmentStoreWorkbench", () => {
 
     expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
     expect(screen.getByText(/售价 \$29.99/)).toBeInTheDocument();
+  });
+
+  it("paginates candidates with backend page parameters", async () => {
+    renderWorkbench({
+      initialTab: "candidates",
+      candidateTotal: 101,
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-18",
+          review_status: "pending_review",
+        },
+      ],
+    });
+
+    expect(await screen.findByText("第 1 / 2 页 · 共 101 条")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+
+    expect(mocks.useSheinActivityCandidates).toHaveBeenLastCalledWith(12, {
+      activity_type: "PROMOTION",
+      page: 2,
+      page_size: 100,
+    });
   });
 
   it("groups SDS products in the cost tab", async () => {

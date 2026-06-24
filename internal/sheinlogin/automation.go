@@ -255,7 +255,7 @@ func buildAutomationBrowserConfig(account Account, cfg AutomationConfig) *shared
 		BrowserPath:                    strings.TrimSpace(cfg.BrowserPath),
 		ChromeVersion:                  chromeVersion,
 		ChromeDownloadDir:              strings.TrimSpace(cfg.ChromeDownloadDir),
-		ProxyServer:                    strings.TrimSpace(account.Proxy),
+		ProxyServer:                    automationProxyServer(account),
 		ViewportWidth:                  defaultViewport(cfg.ViewportWidth, 1440),
 		ViewportHeight:                 defaultViewport(cfg.ViewportHeight, 900),
 		UserAgent:                      fmt.Sprintf("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/%s Safari/537.36", chromeBrandVersion),
@@ -278,6 +278,23 @@ func buildAutomationBrowserConfig(account Account, cfg AutomationConfig) *shared
 		managerCfg.StealthProvider = sharedbrowser.StealthProviderCloakBrowser
 	}
 	return managerCfg
+}
+
+func automationProxyServer(account Account) string {
+	if shouldIgnoreStoreProxy() {
+		return ""
+	}
+	return strings.TrimSpace(account.Proxy)
+}
+
+func shouldIgnoreStoreProxy() bool {
+	value := strings.TrimSpace(os.Getenv("TASK_PROCESSOR_SHEIN_IGNORE_STORE_PROXY"))
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func buildAutomationFingerprint(account Account, cfg *sharedbrowser.BrowserConfig) *sharedbrowser.FingerprintConfig {

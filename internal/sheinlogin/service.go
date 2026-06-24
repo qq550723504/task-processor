@@ -51,6 +51,8 @@ type StoreSyncClient interface {
 
 var sheinLoginServiceLogger = logger.GetGlobalLogger("sheinlogin_service")
 
+const maxAutomaticVerifyCodesPerDay = 2
+
 func NewService(cfg config.LoginServiceConfig, redisCfg config.RedisConfig, browserCfg config.BrowserConfig, provider AccountProvider) (*Service, error) {
 	store, err := NewRedisStore(redisCfg)
 	if err != nil {
@@ -313,9 +315,21 @@ func (s *Service) Login(ctx context.Context, tenantID int64, storeID int64, req 
 }
 
 func (s *Service) ForceLogin(ctx context.Context, tenantID int64, storeID int64) error {
+	day := time.Now().In(sheinLoginLocalLocation())
+	if count, err := s.store.AutoVerifyCodeSendCount(ctx, tenantID, storeID, day); err != nil {
+		return err
+	} else if count >= maxAutomaticVerifyCodesPerDay {
+		return fmt.Errorf("今天自动验证码已达到 %d 次，请手动登录处理", maxAutomaticVerifyCodesPerDay)
+	}
+
 	result, err := s.Login(ctx, tenantID, storeID, LoginRequest{ForceLogin: true})
 	if err != nil {
 		return err
+	}
+	if result != nil && result.WaitingForVerifyCode {
+		if _, err := s.store.RecordAutoVerifyCodeSent(ctx, tenantID, storeID, day); err != nil {
+			return err
+		}
 	}
 	if result == nil || !result.Success {
 		return fmt.Errorf("shein login failed: %s", result.Message)

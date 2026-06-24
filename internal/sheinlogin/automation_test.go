@@ -26,6 +26,20 @@ func TestBuildAutomationBrowserConfigEnablesCloakBrowserMode(t *testing.T) {
 	}
 }
 
+func TestBuildAutomationBrowserConfigCanIgnoreStoreProxy(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_SHEIN_IGNORE_STORE_PROXY", "1")
+	account := Account{
+		StoreID: 869,
+		Proxy:   "http://10.42.0.1:31069",
+	}
+
+	managerCfg := buildAutomationBrowserConfig(account, AutomationConfig{})
+
+	if got := managerCfg.ProxyServer; got != "" {
+		t.Fatalf("ProxyServer = %q, want empty when proxy ignored", got)
+	}
+}
+
 func TestBuildAutomationBrowserConfigKeepsDefaultModeForNonCloakBrowser(t *testing.T) {
 	account := Account{StoreID: 869}
 	cfg := AutomationConfig{
