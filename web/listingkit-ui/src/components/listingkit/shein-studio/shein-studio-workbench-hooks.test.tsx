@@ -8,9 +8,11 @@ import {
   useSheinStudioActiveSelectionSummary,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
+  useSheinStudioSubscriptionGate,
   useSheinStudioWorkbenchTraceContext,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import { buildInitialSheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
+import type { SubscriptionSummary } from "@/lib/api/subscription";
 import type {
   SheinStudioGroupedWorkspace,
   SheinStudioSavedBatch,
@@ -282,5 +284,33 @@ describe("useSheinStudioActiveSelectionSummary", () => {
     expect(result.current.selectedColorCount).toBe(1);
     expect(result.current.selectedSizeCount).toBe(2);
     expect(result.current.selectedVariants).toBe(activeSelection.variants);
+  });
+});
+
+describe("useSheinStudioSubscriptionGate", () => {
+  it("blocks Studio access when the subscription denies the studio module", () => {
+    const subscription: SubscriptionSummary = {
+      tenant_id: "tenant-1",
+      modules: [],
+      entitlements: [
+        {
+          module: {
+            code: "studio",
+            name: "Studio",
+            sort_order: 1,
+            active: true,
+          },
+          usage: [],
+          allowed: false,
+        },
+      ],
+    };
+
+    const { result } = renderHook(() =>
+      useSheinStudioSubscriptionGate(subscription),
+    );
+
+    expect(result.current.studioAccessAllowed).toBe(false);
+    expect(result.current.subscriptionBlockedMessage).toContain("Studio");
   });
 });

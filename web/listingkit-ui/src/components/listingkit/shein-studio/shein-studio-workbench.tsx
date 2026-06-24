@@ -81,6 +81,7 @@ import {
   useSheinStudioActiveSelectionSummary,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
+  useSheinStudioSubscriptionGate,
   useSheinStudioWorkbenchTraceContext,
   useSheinStudioPendingNavigationGuard,
   useSheinStudioDraftPersistence,
@@ -99,7 +100,6 @@ import {
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
-  projectStudioSubscriptionGate,
   sheinStudioBusyMessage,
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -330,10 +330,8 @@ export function SheinStudioWorkbench({
       }),
     [activeGroupedSelectionID, activeSelection?.variantId, baselineStatuses],
   );
-  const { studioAccessAllowed, subscriptionBlockedMessage } = useMemo(
-    () => projectStudioSubscriptionGate(subscriptionQuery.data),
-    [subscriptionQuery.data],
-  );
+  const { studioAccessAllowed, subscriptionBlockedMessage } =
+    useSheinStudioSubscriptionGate(subscriptionQuery.data);
   const {
     currentStoreLabel,
     effectiveCurrentStoreId,

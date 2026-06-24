@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
   buildSheinStudioSelectionKey,
+  projectStudioSubscriptionGate,
   projectWorkbenchStateFallback,
   projectWorkbenchTraceContext,
   projectSheinStudioStoreSelectionState,
@@ -47,6 +48,7 @@ import {
   saveSheinStudioBatch,
   saveSheinStudioDraftWithOptions,
 } from "@/lib/utils/shein-studio-batches";
+import type { SubscriptionSummary } from "@/lib/api/subscription";
 
 export {
   clearLocalSheinStudioDraftSnapshot,
@@ -254,6 +256,15 @@ export function useSheinStudioActiveSelectionSummary(
       ...summarizeSheinStudioSelection(activeSelection),
     }),
     [activeSelection],
+  );
+}
+
+export function useSheinStudioSubscriptionGate(
+  subscription?: SubscriptionSummary,
+) {
+  return useMemo(
+    () => projectStudioSubscriptionGate(subscription),
+    [subscription],
   );
 }
 
