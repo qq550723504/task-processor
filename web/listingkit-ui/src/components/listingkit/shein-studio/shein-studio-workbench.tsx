@@ -38,12 +38,12 @@ import {
 import {
   buildRecentBatchSummaryKeys,
   buildRecentBatchBulkStoreUpdateInputs,
-  buildRecentBatchSaveInput,
   mergeRecentBatchHydrations,
   projectRecentBatchSummaries,
   projectRecentBatchSelectionState,
   projectRecentBatchSelectionUpdate,
   projectRecentBatchTargetStep,
+  renameRecentBatchSummary,
   removeRecentBatchSummarySelection,
   resolveRecentBatchSelectionTarget,
   resolveRecentBatchMutationTargets,
@@ -1265,18 +1265,13 @@ export function SheinStudioWorkbench({
 
   const handleRenameRecentBatchSummary = useCallback(
     async (summary: (typeof recentBatchSummaries)[number], name: string) => {
-      if (summary.source !== "batch") {
-        return;
-      }
-      const batch = await resolveRecentBatchForMutation(summary.id);
-      if (!batch) {
-        return;
-      }
-      await saveSheinStudioBatch(
-        buildRecentBatchSaveInput(batch, { name }),
-        { makeActive: false },
-      );
-      await refreshSavedBatches();
+      await renameRecentBatchSummary({
+        name,
+        refreshSavedBatches,
+        resolveBatch: resolveRecentBatchForMutation,
+        saveBatch: saveSheinStudioBatch,
+        summary,
+      });
     },
     [refreshSavedBatches, resolveRecentBatchForMutation],
   );

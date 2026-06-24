@@ -11,6 +11,7 @@ import {
   projectRecentBatchSummaries,
   projectRecentBatchSelectionState,
   projectRecentBatchTargetStep,
+  renameRecentBatchSummary,
   runRecentBatchBulkDelete,
   resolveRecentBatchSelectionTarget,
   removeRecentBatchSummarySelection,
@@ -79,6 +80,48 @@ describe("buildRecentBatchSaveInput", () => {
       generationJobId: "job-1",
       updatedAt: "2026-06-21T00:00:00.000Z",
     });
+  });
+});
+
+describe("renameRecentBatchSummary", () => {
+  it("does nothing for non-persisted summaries", async () => {
+    const resolveBatch = vi.fn();
+    const saveBatch = vi.fn();
+    const refreshSavedBatches = vi.fn();
+
+    await renameRecentBatchSummary({
+      name: "Renamed",
+      refreshSavedBatches,
+      resolveBatch,
+      saveBatch,
+      summary: { id: "local-draft", source: "local_draft" },
+    });
+
+    expect(resolveBatch).not.toHaveBeenCalled();
+    expect(saveBatch).not.toHaveBeenCalled();
+    expect(refreshSavedBatches).not.toHaveBeenCalled();
+  });
+
+  it("saves a renamed persisted summary and refreshes batches", async () => {
+    const batch = buildBatch({ id: "batch-1", name: "Old" });
+    const resolveBatch = vi.fn().mockResolvedValue(batch);
+    const saveBatch = vi.fn().mockResolvedValue(null);
+    const refreshSavedBatches = vi.fn().mockResolvedValue(undefined);
+
+    await renameRecentBatchSummary({
+      name: "Renamed",
+      refreshSavedBatches,
+      resolveBatch,
+      saveBatch,
+      summary: { id: "batch-1", source: "batch" },
+    });
+
+    expect(resolveBatch).toHaveBeenCalledWith("batch-1");
+    expect(saveBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "batch-1", name: "Renamed" }),
+      { makeActive: false },
+    );
+    expect(refreshSavedBatches).toHaveBeenCalled();
   });
 });
 

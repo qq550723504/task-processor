@@ -66,6 +66,21 @@ type ResolveRecentBatchMutationTargetsParams = {
 
 type RecentBatchDeleteRunner = (batchId: string) => Promise<unknown>;
 
+type RecentBatchMutationSaveInput = ReturnType<typeof buildRecentBatchSaveInput>;
+
+type RecentBatchMutationSave = (
+  input: RecentBatchMutationSaveInput,
+  options?: { makeActive?: boolean },
+) => Promise<unknown>;
+
+type RenameRecentBatchSummaryParams = {
+  name: string;
+  refreshSavedBatches: () => Promise<unknown>;
+  resolveBatch: (batchId: string) => Promise<SheinStudioSavedBatch | null>;
+  saveBatch: RecentBatchMutationSave;
+  summary: RecentBatchSelectionSummary;
+};
+
 type RecentBatchSelectionTarget =
   | {
       hydratedBatch: SheinStudioWorkbenchHydratedBatch;
@@ -311,6 +326,26 @@ export function buildRecentBatchSaveInput(
     generationError: overrides?.generationError ?? batch.generationError,
     generationJobId: overrides?.generationJobId ?? batch.generationJobId,
   };
+}
+
+export async function renameRecentBatchSummary({
+  name,
+  refreshSavedBatches,
+  resolveBatch,
+  saveBatch,
+  summary,
+}: RenameRecentBatchSummaryParams) {
+  if (summary.source !== "batch") {
+    return;
+  }
+  const batch = await resolveBatch(summary.id);
+  if (!batch) {
+    return;
+  }
+  await saveBatch(buildRecentBatchSaveInput(batch, { name }), {
+    makeActive: false,
+  });
+  await refreshSavedBatches();
 }
 
 export function buildRecentBatchStoreUpdateInput(
