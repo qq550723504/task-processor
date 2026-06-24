@@ -18,6 +18,7 @@ import {
   runRecentBatchBulkStoreUpdate,
   resolveRecentBatchSelectionTarget,
   removeRecentBatchSummarySelection,
+  resolveRecentBatchHydrationEntries,
   resolveRecentBatchForMutation,
   resolveRecentBatchMutationTargets,
   selectFreshRecentBatchHydration,
@@ -577,6 +578,69 @@ describe("mergeRecentBatchHydrations", () => {
       "batch-old": existing,
       "batch-new": next,
     });
+  });
+});
+
+describe("resolveRecentBatchHydrationEntries", () => {
+  it("returns matching cached hydrations without loading detail", async () => {
+    const savedBatch = buildBatch({
+      id: "batch-1",
+      updatedAt: "2026-06-21T00:00:00.000Z",
+    });
+    const cachedHydratedBatch = buildHydratedBatch(savedBatch);
+    const loadHydratedBatch = vi.fn();
+
+    await expect(
+      resolveRecentBatchHydrationEntries({
+        batchIds: ["batch-1"],
+        loadHydratedBatch,
+        pendingHydrationRequests: new Map(),
+        savedBatches: [savedBatch],
+        selectedRecentBatchHydrations: {
+          "batch-1": cachedHydratedBatch,
+        },
+      }),
+    ).resolves.toEqual([["batch-1", cachedHydratedBatch]]);
+    expect(loadHydratedBatch).not.toHaveBeenCalled();
+  });
+
+  it("coalesces pending hydration requests for the same batch", async () => {
+    const savedBatch = buildBatch({ id: "batch-1" });
+    const hydratedBatch = buildHydratedBatch(savedBatch);
+    const loadHydratedBatch = vi.fn().mockResolvedValue(hydratedBatch);
+    const pendingHydrationRequests = new Map<
+      string,
+      Promise<SheinStudioWorkbenchHydratedBatch | null>
+    >();
+
+    await expect(
+      resolveRecentBatchHydrationEntries({
+        batchIds: ["batch-1", "batch-1"],
+        loadHydratedBatch,
+        pendingHydrationRequests,
+        savedBatches: [savedBatch],
+        selectedRecentBatchHydrations: {},
+      }),
+    ).resolves.toEqual([
+      ["batch-1", hydratedBatch],
+      ["batch-1", hydratedBatch],
+    ]);
+    expect(loadHydratedBatch).toHaveBeenCalledTimes(1);
+    expect(pendingHydrationRequests.size).toBe(0);
+  });
+
+  it("skips missing batches and failed hydration loads", async () => {
+    const savedBatch = buildBatch({ id: "batch-1" });
+
+    await expect(
+      resolveRecentBatchHydrationEntries({
+        batchIds: ["missing", "batch-1"],
+        loadHydratedBatch: vi.fn().mockRejectedValue(new Error("offline")),
+        pendingHydrationRequests: new Map(),
+        savedBatches: [savedBatch],
+        selectedRecentBatchHydrations: {},
+      }),
+    ).resolves.toEqual([]);
   });
 });
 

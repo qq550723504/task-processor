@@ -45,6 +45,7 @@ import {
   projectRecentBatchSelectionUpdate,
   renameRecentBatchSummary,
   removeRecentBatchSummarySelection,
+  resolveRecentBatchHydrationEntries,
   runRecentBatchBulkDelete,
   runRecentBatchBulkStoreUpdate,
   runRecentBatchSummarySelection,
@@ -640,33 +641,13 @@ export function SheinStudioWorkbench({
   );
   const hydrateRecentBatchSelection = useCallback(
     async (batchIds: string[]) => {
-      const nextEntries = await Promise.all(
-        batchIds.map(async (batchId) => {
-          const batch = savedBatches.find((item) => item.id === batchId);
-          if (!batch) {
-            return null;
-          }
-          const cached = selectedRecentBatchHydrations[batchId];
-          if (cached && cached.savedBatch.updatedAt === batch.updatedAt) {
-            return [batchId, cached] as const;
-          }
-          let pending = selectedRecentBatchHydrationRequestsRef.current.get(batchId);
-          if (!pending) {
-            pending = getSheinStudioHydratedBatch(batchId)
-              .catch(() => null)
-              .finally(() => {
-                selectedRecentBatchHydrationRequestsRef.current.delete(batchId);
-              });
-            selectedRecentBatchHydrationRequestsRef.current.set(batchId, pending);
-          }
-          const hydratedBatch = await pending;
-          return hydratedBatch ? ([batchId, hydratedBatch] as const) : null;
-        }),
-      );
-      const hydratedEntries = nextEntries.filter(
-        (entry): entry is readonly [string, SheinStudioWorkbenchHydratedBatch] =>
-          entry != null,
-      );
+      const hydratedEntries = await resolveRecentBatchHydrationEntries({
+        batchIds,
+        loadHydratedBatch: getSheinStudioHydratedBatch,
+        pendingHydrationRequests: selectedRecentBatchHydrationRequestsRef.current,
+        savedBatches,
+        selectedRecentBatchHydrations,
+      });
       if (hydratedEntries.length > 0) {
         setSelectedRecentBatchHydrations((current) =>
           mergeRecentBatchHydrations(current, hydratedEntries),

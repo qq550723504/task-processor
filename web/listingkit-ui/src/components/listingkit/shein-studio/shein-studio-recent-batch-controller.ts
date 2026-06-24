@@ -42,6 +42,21 @@ type FreshRecentBatchHydrationParams = {
 
 type RecentBatchHydrationMap = Record<string, SheinStudioWorkbenchHydratedBatch>;
 
+type RecentBatchHydrationRequestMap = Map<
+  string,
+  Promise<SheinStudioWorkbenchHydratedBatch | null>
+>;
+
+type ResolveRecentBatchHydrationEntriesParams = {
+  batchIds: string[];
+  loadHydratedBatch: (
+    batchId: string,
+  ) => Promise<SheinStudioWorkbenchHydratedBatch | null>;
+  pendingHydrationRequests: RecentBatchHydrationRequestMap;
+  savedBatches: SheinStudioSavedBatch[];
+  selectedRecentBatchHydrations: RecentBatchHydrationMap;
+};
+
 type ResolveRecentBatchForMutationParams = {
   batchId: string;
   cacheHydratedBatch: (
@@ -205,6 +220,44 @@ export function mergeRecentBatchHydrations(
     ...current,
     ...Object.fromEntries(entries),
   };
+}
+
+export async function resolveRecentBatchHydrationEntries({
+  batchIds,
+  loadHydratedBatch,
+  pendingHydrationRequests,
+  savedBatches,
+  selectedRecentBatchHydrations,
+}: ResolveRecentBatchHydrationEntriesParams): Promise<
+  Array<readonly [string, SheinStudioWorkbenchHydratedBatch]>
+> {
+  const nextEntries = await Promise.all(
+    batchIds.map(async (batchId) => {
+      const batch = savedBatches.find((item) => item.id === batchId);
+      if (!batch) {
+        return null;
+      }
+      const cached = selectedRecentBatchHydrations[batchId];
+      if (cached && cached.savedBatch.updatedAt === batch.updatedAt) {
+        return [batchId, cached] as const;
+      }
+      let pending = pendingHydrationRequests.get(batchId);
+      if (!pending) {
+        pending = loadHydratedBatch(batchId)
+          .catch(() => null)
+          .finally(() => {
+            pendingHydrationRequests.delete(batchId);
+          });
+        pendingHydrationRequests.set(batchId, pending);
+      }
+      const hydratedBatch = await pending;
+      return hydratedBatch ? ([batchId, hydratedBatch] as const) : null;
+    }),
+  );
+  return nextEntries.filter(
+    (entry): entry is readonly [string, SheinStudioWorkbenchHydratedBatch] =>
+      entry != null,
+  );
 }
 
 export function projectRecentBatchSummaries({
