@@ -74,6 +74,7 @@ import {
   clearLocalSheinStudioDraftSnapshot,
   useHydratedSDSVariantSelection,
   loadLocalSheinStudioDraftSnapshotDetail,
+  useSheinStudioActiveBatchScope,
   useSheinStudioPendingNavigationGuard,
   useSheinStudioDraftPersistence,
   useSheinStudioStepNavigation,
@@ -160,10 +161,10 @@ export function SheinStudioWorkbench({
   const toast = useToast();
   const router = useRouter();
   const selectionVariantId = selection?.variantId ?? null;
-  const [activeBatchScope, setActiveBatchScope] = useState(() => ({
-    batchId: initialBatchId ?? "",
+  const { activeBatchId, setActiveBatchId } = useSheinStudioActiveBatchScope({
+    initialBatchId,
     selectionVariantId,
-  }));
+  });
   const [isDedicatedBatchLoaded, setIsDedicatedBatchLoaded] = useState(
     () => !initialBatchId,
   );
@@ -175,19 +176,6 @@ export function SheinStudioWorkbench({
     undefined,
     buildInitialSheinStudioWorkbenchState,
   );
-  const setActiveBatchId = useCallback(
-    (batchId: string) => {
-      setActiveBatchScope({
-        batchId,
-        selectionVariantId,
-      });
-    },
-    [selectionVariantId],
-  );
-  const activeBatchId = initialBatchId ??
-    (activeBatchScope.selectionVariantId === selectionVariantId
-      ? activeBatchScope.batchId
-      : "");
   const workbenchController = useMemo(
     () => buildSheinStudioWorkbenchController(dispatchWorkbenchState),
     [],

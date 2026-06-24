@@ -84,6 +84,38 @@ type WorkbenchDraftState = {
   variationIntensity: SheinStudioVariationIntensity;
 };
 
+export function useSheinStudioActiveBatchScope({
+  initialBatchId,
+  selectionVariantId,
+}: {
+  initialBatchId?: string;
+  selectionVariantId: number | null;
+}) {
+  const [activeBatchScope, setActiveBatchScope] = useState(() => ({
+    batchId: initialBatchId ?? "",
+    selectionVariantId,
+  }));
+  const setActiveBatchId = useCallback(
+    (batchId: string) => {
+      setActiveBatchScope({
+        batchId,
+        selectionVariantId,
+      });
+    },
+    [selectionVariantId],
+  );
+  const activeBatchId =
+    initialBatchId ??
+    (activeBatchScope.selectionVariantId === selectionVariantId
+      ? activeBatchScope.batchId
+      : "");
+
+  return {
+    activeBatchId,
+    setActiveBatchId,
+  };
+}
+
 export function useHydratedSDSVariantSelection(
   selection?: SDSProductVariantSelection,
 ) {
