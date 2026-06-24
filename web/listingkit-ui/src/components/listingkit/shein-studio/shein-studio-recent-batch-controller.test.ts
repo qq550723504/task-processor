@@ -6,6 +6,7 @@ import {
   buildRecentBatchSaveInput,
   buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchStoreUpdateInput,
+  deleteRecentBatchSummary,
   duplicateRecentBatchSummary,
   mergeRecentBatchHydrations,
   projectRecentBatchSelectionUpdate,
@@ -165,6 +166,45 @@ describe("duplicateRecentBatchSummary", () => {
       { makeActive: false },
     );
     expect(refreshSavedBatches).toHaveBeenCalled();
+  });
+});
+
+describe("deleteRecentBatchSummary", () => {
+  it("clears local draft state and selection for non-persisted summaries", async () => {
+    const clearLocalDraft = vi.fn();
+    const deleteBatch = vi.fn();
+    const removeSelection = vi.fn();
+
+    await deleteRecentBatchSummary({
+      clearLocalDraft,
+      deleteBatch,
+      removeSelection,
+      summary: { id: "local-draft", source: "local_draft" },
+    });
+
+    expect(clearLocalDraft).toHaveBeenCalled();
+    expect(removeSelection).toHaveBeenCalledWith({
+      id: "local-draft",
+      source: "local_draft",
+    });
+    expect(deleteBatch).not.toHaveBeenCalled();
+  });
+
+  it("deletes persisted summaries through the batch delete runner", async () => {
+    const clearLocalDraft = vi.fn();
+    const deleteBatch = vi.fn().mockResolvedValue(undefined);
+    const removeSelection = vi.fn();
+
+    await deleteRecentBatchSummary({
+      clearLocalDraft,
+      deleteBatch,
+      removeSelection,
+      summary: { id: "batch-1", source: "batch" },
+    });
+
+    expect(deleteBatch).toHaveBeenCalledWith("batch-1");
+    expect(clearLocalDraft).not.toHaveBeenCalled();
+    expect(removeSelection).not.toHaveBeenCalled();
   });
 });
 

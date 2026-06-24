@@ -38,6 +38,7 @@ import {
 import {
   buildRecentBatchSummaryKeys,
   buildRecentBatchBulkStoreUpdateInputs,
+  deleteRecentBatchSummary,
   duplicateRecentBatchSummary,
   mergeRecentBatchHydrations,
   projectRecentBatchSummaries,
@@ -1290,18 +1291,19 @@ export function SheinStudioWorkbench({
 
   const handleDeleteRecentBatchSummary = useCallback(
     async (summary: (typeof recentBatchSummaries)[number]) => {
-      if (summary.source === "local_draft") {
-        clearLocalSheinStudioDraftSnapshot();
-        setLocalDraftSnapshotDetail(null);
-        setRawSelectedRecentBatchSummaryIds((current) =>
-          removeRecentBatchSummarySelection(current, summary),
-        );
-        return;
-      }
-      if (summary.source !== "batch") {
-        return;
-      }
-      await handleDeleteBatch(summary.id);
+      await deleteRecentBatchSummary({
+        clearLocalDraft: () => {
+          clearLocalSheinStudioDraftSnapshot();
+          setLocalDraftSnapshotDetail(null);
+        },
+        deleteBatch: handleDeleteBatch,
+        removeSelection: (summary) => {
+          setRawSelectedRecentBatchSummaryIds((current) =>
+            removeRecentBatchSummarySelection(current, summary),
+          );
+        },
+        summary,
+      });
     },
     [handleDeleteBatch],
   );

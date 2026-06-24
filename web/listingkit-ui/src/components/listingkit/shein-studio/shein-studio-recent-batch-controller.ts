@@ -88,6 +88,13 @@ type DuplicateRecentBatchSummaryParams = {
   summary: RecentBatchSelectionSummary;
 };
 
+type DeleteRecentBatchSummaryParams = {
+  clearLocalDraft: () => void;
+  deleteBatch: RecentBatchDeleteRunner;
+  removeSelection: (summary: RecentBatchSelectionSummary) => void;
+  summary: RecentBatchSelectionSummary;
+};
+
 type RecentBatchSelectionTarget =
   | {
       hydratedBatch: SheinStudioWorkbenchHydratedBatch;
@@ -372,6 +379,23 @@ export async function duplicateRecentBatchSummary({
     makeActive: false,
   });
   await refreshSavedBatches();
+}
+
+export async function deleteRecentBatchSummary({
+  clearLocalDraft,
+  deleteBatch,
+  removeSelection,
+  summary,
+}: DeleteRecentBatchSummaryParams) {
+  if (summary.source === "local_draft") {
+    clearLocalDraft();
+    removeSelection(summary);
+    return;
+  }
+  if (summary.source !== "batch") {
+    return;
+  }
+  await deleteBatch(summary.id);
 }
 
 export function buildRecentBatchStoreUpdateInput(
