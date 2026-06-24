@@ -29,7 +29,7 @@ This section records the implementation state after the first Go control-plane p
 | Question | Current answer |
 | --- | --- |
 | Is Go the only scheduler owner? | Not yet documented as fully cut over. Java scheduler shutdown still needs rollout evidence. |
-| Is multi-instance execution safe? | Code-level leader lease is implemented with Redis and exposed in status. Current deployment should still stay at one replica until a two-instance rollout test confirms only the leader runs recovery/dispatch. |
+| Is multi-instance execution safe? | Yes for duplicate execution prevention. `docs/product/validation/runs/2026-06-24-listing-control-plane-leader-rollout.md` validated a temporary two-replica rollout: one pod ran as leader and dispatched, the other stayed `standby`, Kubernetes-ready, and did not run recovery/dispatch. Production was returned to one replica after the validation. |
 | Are skip/delay reasons durable business facts? | Not yet. Runtime decisions are observable through status/log summaries, but dispatch skip/delay reason persistence on tasks still needs implementation. |
 | Is daily limit fully part of capacity? | Not yet. Store queue capacity and structured quota exist; daily completed / in-flight / store daily limit must be unified before production completion. |
 | Is there exactly one recovery owner? | Needs rollout confirmation. The control plane has recovery coordination; old worker watchdogs must remain disabled in the control-plane deployment before claiming single ownership. |
@@ -41,6 +41,7 @@ This section records the implementation state after the first Go control-plane p
 - The runtime command landed as `cmd/listing-control-plane`, matching the control-plane name rather than the earlier `cmd/listing-scheduler` candidate.
 - Deployment files landed under `deployments/...` and `scripts/build-push-deploy-listing-control-plane.ps1`, not the earlier `deploy/...` examples.
 - Status/readiness is exposed through `internal/app/runtime/listingcontrol/status.go`; it reports runtime summaries and leader identity/lease state.
+- A two-replica Kubernetes rollout on 2026-06-24 confirmed leader/standby behavior. Standby is intentionally ready because it is a healthy HA state, not a failed scheduler.
 - Remaining work should focus on production hardening rather than adding another scheduler shape.
 
 ## Context

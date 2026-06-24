@@ -252,7 +252,7 @@ health check 通过窄接口而不是直接绑定具体 Management Client 类型
 
 ## 4. 当前仍然存在的核心缺口
 
-## 4.1 Control Plane 多实例唯一执行保护已进入代码验证期
+## 4.1 Control Plane 多实例唯一执行保护已通过 rollout 验证
 
 `ListingControlPlaneConfig` 已包含：
 
@@ -263,12 +263,25 @@ LeaderLockTTL
 
 `internal/app/runtime/listingcontrol` 已将 Redis leader lease 接入 scheduler cycle：每轮 recovery/dispatch 前先获取或续租 leader lock，未获取到 lease 的实例进入 standby，不执行 recovery/dispatch。
 
-当前生产 Deployment 仍建议保持一个副本，直到完成双实例 rollout 验证。剩余验证重点是：
+2026-06-24 已完成一次临时双实例 rollout 验证，记录见：
+
+```text
+docs/product/validation/runs/2026-06-24-listing-control-plane-leader-rollout.md
+```
+
+验证结果：
 
 ```text
 两个 control-plane pod 同时启动时，只有 leader 执行 scan/dispatch/recovery
 standby pod 的 /status 暴露 leader owner
-leader pod 重启或 lease 过期后，standby 能在下轮获得 lease
+standby pod 保持 Kubernetes ready，但 dispatch/recovery 为 0
+双实例 rollout 成功完成，验证后生产恢复为 1 副本
+```
+
+剩余验证重点是：
+
+```text
+主动删除 leader pod 后，standby 能在下轮获得 lease
 旧 worker watchdog 保持关闭，recovery owner 不重复
 ```
 
@@ -464,7 +477,7 @@ store 976 / 1030 等真实店铺的验证结果；
 按顺序完成：
 
 ```text
-1. leader lock 或明确单副本硬约束
+1. leader lock 已实现并通过临时双实例 rollout 验证
 2. 持久化 dispatch skip/delay reason
 3. daily limit / in-flight / quota capacity 统一
 4. recovery owner 去重和回滚验证
@@ -547,8 +560,9 @@ ListingKit root ownership checkpoint 更新。
 
 ```text
 Day 1-2
-- 实现 leader lock
-- 状态接口暴露 leader identity 和 lease
+- leader lock 已实现
+- 状态接口已暴露 leader identity 和 lease
+- 双实例 rollout 已验证 leader/standby，不再重复 dispatch/recovery
 
 Day 3
 - 持久化 skip/delay reason
@@ -623,7 +637,6 @@ SHEIN publishing/workspace 规则大部分已有 owner；
 当前未满足：
 
 ```text
-Control Plane 多实例唯一执行；
 dispatch reason 持久事实；
 完整 daily limit capacity；
 Management Client 从 runtime 类型边界退休；
