@@ -11,6 +11,7 @@ import {
   selectActiveGroupPromptHistory,
   selectActiveGroupPrimarySelection,
   selectCurrentDedicatedBatch,
+  summarizeSheinStudioSelection,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type { SheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
@@ -241,6 +242,18 @@ export function useSheinStudioActiveGroupPrimarySelection({
         groups,
       }),
     [activeGroupId, groups],
+  );
+}
+
+export function useSheinStudioActiveSelectionSummary(
+  activeSelection?: SDSProductVariantSelection,
+) {
+  return useMemo(
+    () => ({
+      activeSelectionKey: buildSheinStudioSelectionKey(activeSelection),
+      ...summarizeSheinStudioSelection(activeSelection),
+    }),
+    [activeSelection],
   );
 }
 

@@ -78,6 +78,7 @@ import {
   useSheinStudioActiveBatchScope,
   useSheinStudioActiveGroupPrimarySelection,
   useSheinStudioActiveGroupPromptHistory,
+  useSheinStudioActiveSelectionSummary,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
   useSheinStudioWorkbenchTraceContext,
@@ -95,13 +96,11 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-sections";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
-  buildSheinStudioSelectionKey,
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
   projectStudioSubscriptionGate,
   sheinStudioBusyMessage,
-  summarizeSheinStudioSelection,
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
@@ -309,13 +308,13 @@ export function SheinStudioWorkbench({
     navigateToStep,
     setEffectiveStep,
   } = useSheinStudioStepNavigation(activeStep);
-  const activeSelectionKey = buildSheinStudioSelectionKey(activeSelection);
   const {
+    activeSelectionKey,
     printableAreaLabel,
     selectedColorCount,
     selectedSizeCount,
     selectedVariants,
-  } = summarizeSheinStudioSelection(activeSelection);
+  } = useSheinStudioActiveSelectionSummary(activeSelection);
   const availableSdsImages = buildSelectableSDSImages(activeSelection);
   const activeGroupedSelectionID = buildGroupedSDSSelectionID(activeSelection);
   const {

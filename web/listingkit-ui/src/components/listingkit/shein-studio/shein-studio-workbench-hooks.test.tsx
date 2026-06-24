@@ -5,6 +5,7 @@ import {
   useSheinStudioActiveBatchScope,
   useSheinStudioActiveGroupPromptHistory,
   useSheinStudioActiveGroupPrimarySelection,
+  useSheinStudioActiveSelectionSummary,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
   useSheinStudioWorkbenchTraceContext,
@@ -257,5 +258,29 @@ describe("useSheinStudioActiveGroupPrimarySelection", () => {
     );
 
     expect(result.current).toBe(activeSelection);
+  });
+});
+
+describe("useSheinStudioActiveSelectionSummary", () => {
+  it("derives the selection key and display summary", () => {
+    const activeSelection = {
+      ...selection,
+      printableWidth: 120,
+      printableHeight: 160,
+      variants: [
+        { variantId: 100, size: "M", color: "black" },
+        { variantId: 101, size: "L", color: "black" },
+      ],
+    };
+
+    const { result } = renderHook(() =>
+      useSheinStudioActiveSelectionSummary(activeSelection),
+    );
+
+    expect(result.current.activeSelectionKey).toContain('"variantId":100');
+    expect(result.current.printableAreaLabel).toBe("120 × 160px");
+    expect(result.current.selectedColorCount).toBe(1);
+    expect(result.current.selectedSizeCount).toBe(2);
+    expect(result.current.selectedVariants).toBe(activeSelection.variants);
   });
 });
