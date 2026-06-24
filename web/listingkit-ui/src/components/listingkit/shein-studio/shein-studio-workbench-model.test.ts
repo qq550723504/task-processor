@@ -12,6 +12,7 @@ import {
   projectHydratedBatchToWorkbench,
   projectDefaultSelectedSDSImages,
   projectSheinStudioStoreSelectionState,
+  projectWorkbenchStateFallback,
   projectSavedBatchToWorkbench,
   selectActiveGroupPromptHistory,
   projectWorkbenchTraceContext,
@@ -24,6 +25,7 @@ import {
   updateFlatDesignReviewNote,
   updateItemizedBatchDesignReviewNote,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import { buildInitialSheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 
 describe("shein studio workbench model", () => {
   it("projects current store label and recent batch store options", () => {
@@ -808,6 +810,34 @@ describe("shein studio workbench model", () => {
       name: "",
       prompt: "current prompt",
       selectedIds: ["design-1"],
+      updatedAt: "2026-06-01T10:10:00Z",
+    });
+  });
+
+  it("projects full workbench state into the current saved-batch fallback input", () => {
+    const selection = {
+      productId: 1,
+      parentProductId: 1,
+      variantId: 101,
+      prototypeGroupId: 200,
+      layerId: "layer-2",
+      productName: "hoodie",
+      variantLabel: "L / white",
+    };
+    const state = {
+      ...buildInitialSheinStudioWorkbenchState(),
+      prompt: "current prompt",
+      styleCount: "2",
+      selectedIds: ["design-1"],
+      selection,
+      persistedUpdatedAt: "2026-06-01T10:10:00Z",
+    };
+
+    expect(projectWorkbenchStateFallback(state)).toMatchObject({
+      prompt: "current prompt",
+      selectedIds: ["design-1"],
+      selection,
+      styleCount: "2",
       updatedAt: "2026-06-01T10:10:00Z",
     });
   });

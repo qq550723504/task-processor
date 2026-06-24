@@ -36,6 +36,7 @@ import {
   buildDefaultSelectedSDSImages,
   type SheinStudioSelectableSDSImage,
 } from "@/lib/shein-studio/sds-selectable-images";
+import type { SheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 
 export const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
 
@@ -507,6 +508,35 @@ export function projectWorkbenchStateToSavedBatch({
     createdTasks,
     generationJobs,
     updatedAt,
+  };
+}
+
+export function projectWorkbenchStateFallback(
+  state: SheinStudioWorkbenchState,
+): Omit<WorkbenchSavedBatchProjectionInput, "id"> {
+  return {
+    artworkModel: state.artworkModel,
+    createdTasks: state.createdTasks,
+    designs: state.designs,
+    generationJobs: state.generationJobs,
+    groupedImageMode: state.groupedImageMode,
+    groupedSelections: state.groupedSelections,
+    groups: state.groups,
+    imageStrategy: state.imageStrategy,
+    productImageCount: state.productImageCount,
+    productImagePrompt: state.productImagePrompt,
+    productImagePrompts: state.productImagePrompts,
+    prompt: state.prompt,
+    promptMode: state.promptMode,
+    renderSizeImagesWithSds: state.renderSizeImagesWithSds,
+    selectedIds: state.selectedIds,
+    selectedSdsImages: state.selectedSdsImages,
+    selection: state.selection,
+    sheinStoreId: state.sheinStoreId,
+    styleCount: state.styleCount,
+    transparentBackground: state.transparentBackground,
+    updatedAt: state.persistedUpdatedAt,
+    variationIntensity: state.variationIntensity,
   };
 }
 
