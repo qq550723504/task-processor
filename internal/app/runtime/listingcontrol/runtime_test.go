@@ -298,7 +298,7 @@ func TestControlPlaneServiceSkipsCycleWhenLeaderLockIsHeldElsewhere(t *testing.T
 		t.Fatalf("leader lock acquire calls = %d, want 1", lock.acquireCalls)
 	}
 	snapshot := service.Status.Snapshot()
-	if snapshot.Ready || snapshot.Status != "standby" || snapshot.Leader.IsLeader || snapshot.Leader.Owner != "other-node" {
+	if !snapshot.Ready || snapshot.Status != "standby" || snapshot.Leader.IsLeader || snapshot.Leader.Owner != "other-node" {
 		t.Fatalf("unexpected standby status: %+v", snapshot)
 	}
 }
@@ -470,6 +470,18 @@ func TestStatusHandlerReadinessAndSummary(t *testing.T) {
 	handler.ServeHTTP(readyAfter, httptest.NewRequest(http.MethodGet, "/ready", nil))
 	if readyAfter.Code != http.StatusOK {
 		t.Fatalf("ready after success status = %d", readyAfter.Code)
+	}
+
+	tracker.RecordStandby(LeaderSnapshot{
+		Key:      "listing:control-plane:leader:shein",
+		Owner:    "other-node",
+		IsLeader: false,
+	}, time.Date(2026, 6, 23, 1, 2, 0, 0, time.UTC))
+
+	readyStandby := httptest.NewRecorder()
+	handler.ServeHTTP(readyStandby, httptest.NewRequest(http.MethodGet, "/ready", nil))
+	if readyStandby.Code != http.StatusOK {
+		t.Fatalf("ready during standby status = %d", readyStandby.Code)
 	}
 }
 

@@ -122,7 +122,7 @@ func (t *StatusTracker) RecordStandby(snapshot LeaderSnapshot, now time.Time) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.status.Status = "standby"
-	t.status.Ready = false
+	t.status.Ready = true
 	t.status.LastCycleAt = timePtr(now)
 	t.status.LastError = ""
 	t.status.Leader = snapshot
