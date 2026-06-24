@@ -53,7 +53,10 @@ import {
   projectItemizedTaskCreationProgress,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
-import { useSheinStudioDesignActions } from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
+import {
+  clearWorkbenchTaskRecoveryAlerts,
+  useSheinStudioDesignActions,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench-actions";
 import {
   clearLocalSheinStudioDraftSnapshot,
   useHydratedSDSVariantSelection,
@@ -1601,10 +1604,7 @@ export function SheinStudioWorkbench({
     }
 
     setRetryingFailedItemId(itemId);
-    workbenchController.setField("generationError", "");
-    workbenchController.setField("generationWarning", "");
-    workbenchController.setField("creatingError", "");
-    workbenchController.setField("creatingWarning", "");
+    clearWorkbenchTaskRecoveryAlerts(workbenchController);
 
     try {
       const nextDetail = retryRequest.tenantId
