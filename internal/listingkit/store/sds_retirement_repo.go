@@ -152,7 +152,7 @@ func (r *taskRepository) MarkSyncedProductOffShelf(ctx context.Context, syncedPr
 func applySDSRetirementRunScope(db *gorm.DB, ctx context.Context) *gorm.DB {
 	tenantID, ok := tenantctx.TenantScopeFromContext(ctx)
 	if !ok {
-		return db
+		return db.Where("1 = 0")
 	}
 	if tenantID == tenantctx.DefaultTenantID {
 		return db.Where("(tenant_id = ? OR tenant_id = '' OR tenant_id IS NULL)", tenantID)

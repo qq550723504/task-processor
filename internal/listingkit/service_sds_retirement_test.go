@@ -127,6 +127,40 @@ func TestSDSRetirementGetAndUpdateSelectionUseRepository(t *testing.T) {
 	}
 }
 
+func TestSDSRetirementGetRunRequiresExplicitTenantScope(t *testing.T) {
+	repo := &sdsRetirementServiceRepoStub{
+		storedRun: &SDSRetirementRunRecord{
+			ID:       "run-1",
+			Platform: "shein",
+			Status:   SDSRetirementRunStatusReady,
+		},
+	}
+
+	service := NewSDSRetirementService(repo, nil, nil)
+	_, err := service.GetSDSRetirementRun(context.Background(), "run-1")
+	if err == nil || !strings.Contains(err.Error(), "tenant scope is required") {
+		t.Fatalf("GetSDSRetirementRun() error = %v, want tenant scope error", err)
+	}
+}
+
+func TestSDSRetirementUpdateSelectionRequiresExplicitTenantScope(t *testing.T) {
+	repo := &sdsRetirementServiceRepoStub{
+		storedRun: &SDSRetirementRunRecord{
+			ID:       "run-1",
+			Platform: "shein",
+			Status:   SDSRetirementRunStatusReady,
+		},
+	}
+
+	service := NewSDSRetirementService(repo, nil, nil)
+	_, err := service.UpdateSDSRetirementSelection(context.Background(), "run-1", &UpdateSDSRetirementSelectionRequest{
+		Items: []SDSRetirementItemSelectionUpdate{{ItemID: "item-1", Selected: false}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "tenant scope is required") {
+		t.Fatalf("UpdateSDSRetirementSelection() error = %v, want tenant scope error", err)
+	}
+}
+
 func TestSDSRetirementCreateRunRejectsNonNumericTenantForSheinRefresh(t *testing.T) {
 	repo := &sdsRetirementServiceRepoStub{
 		listTasks: []Task{{

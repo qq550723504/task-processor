@@ -316,7 +316,8 @@ func sdsRetirementSupportsImmediateRefresh(service SheinSyncService) bool {
 }
 
 func requireSDSRetirementTenantScope(ctx context.Context) error {
-	if strings.TrimSpace(TenantIDFromContext(ctx)) == "" {
+	tenantID, ok := TenantScopeFromContext(ctx)
+	if !ok || strings.TrimSpace(tenantID) == "" {
 		return fmt.Errorf("tenant scope is required")
 	}
 	return nil

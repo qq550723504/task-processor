@@ -97,6 +97,25 @@ func TestSDSRetirementRepositoryGetRunHonorsTenantScope(t *testing.T) {
 	}
 }
 
+func TestSDSRetirementRepositoryGetRunRequiresExplicitTenantScope(t *testing.T) {
+	repo, _ := newSDSRetirementRepoHarness(t)
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	run := &listingkit.SDSRetirementRunRecord{
+		ID:       "run-tenant-a",
+		TenantID: "tenant-a",
+		Platform: "shein",
+		StoreID:  177,
+		Status:   listingkit.SDSRetirementRunStatusReady,
+	}
+	if err := repo.CreateSDSRetirementRun(ctx, run, nil); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	if _, _, err := repo.GetSDSRetirementRun(context.Background(), run.ID); !errors.Is(err, listingkit.ErrTaskNotFound) {
+		t.Fatalf("GetSDSRetirementRun() error = %v, want ErrTaskNotFound without tenant scope", err)
+	}
+}
+
 func TestSDSRetirementRepositoryMarksSyncedProductOffShelfAfterSuccess(t *testing.T) {
 	repo, db := newSDSRetirementRepoHarness(t)
 	ctx := context.Background()
@@ -240,6 +259,38 @@ func TestSDSRetirementRepositoryUpdateItemsHonorsTenantScope(t *testing.T) {
 	}
 	if gotRun == nil || len(gotItems) != 1 || !gotItems[0].Selected {
 		t.Fatalf("run/items after foreign update = %#v %#v", gotRun, gotItems)
+	}
+}
+
+func TestSDSRetirementRepositoryUpdateItemsRequiresExplicitTenantScope(t *testing.T) {
+	repo, _ := newSDSRetirementRepoHarness(t)
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	run := &listingkit.SDSRetirementRunRecord{
+		ID:       "run-scope-update",
+		TenantID: "tenant-a",
+		Platform: "shein",
+		StoreID:  177,
+		Status:   listingkit.SDSRetirementRunStatusReady,
+	}
+	items := []listingkit.SDSRetirementItemRecord{{
+		ID:       "item-scope-update",
+		TenantID: "tenant-a",
+		Platform: "shein",
+		StoreID:  177,
+		Selected: true,
+		Status:   listingkit.SDSRetirementItemStatusSelected,
+	}}
+	if err := repo.CreateSDSRetirementRun(ctx, run, items); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+
+	err := repo.UpdateSDSRetirementItems(context.Background(), run.ID, []listingkit.SDSRetirementItemSelectionUpdate{{
+		ItemID:        "item-scope-update",
+		Selected:      false,
+		SiteSelection: `[{"site_abbr":"US","store_type":1}]`,
+	}})
+	if !errors.Is(err, listingkit.ErrTaskNotFound) {
+		t.Fatalf("UpdateSDSRetirementItems() error = %v, want ErrTaskNotFound without tenant scope", err)
 	}
 }
 
