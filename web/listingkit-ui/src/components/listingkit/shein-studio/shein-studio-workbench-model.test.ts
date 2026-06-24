@@ -11,6 +11,7 @@ import {
   projectGroupToWorkbench,
   projectHydratedBatchToWorkbench,
   projectDefaultSelectedSDSImages,
+  projectSheinStudioStoreSelectionState,
   projectSavedBatchToWorkbench,
   projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
@@ -24,6 +25,57 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 
 describe("shein studio workbench model", () => {
+  it("projects current store label and recent batch store options", () => {
+    expect(
+      projectSheinStudioStoreSelectionState({
+        currentStoreId: " 42 ",
+        enabledProfiles: [
+          {
+            name: "Main",
+            store_id: 42,
+            storeId: "42",
+            site: "US",
+          },
+          {
+            name: "Backup",
+            store_id: 99,
+            storeId: "99",
+            site: "UK",
+          },
+        ],
+      }),
+    ).toEqual({
+      currentStoreLabel: "Main (42 / US)",
+      effectiveCurrentStoreId: "42",
+      recentBatchStoreOptions: [
+        {
+          id: "42",
+          label: "Main (42 / US)",
+        },
+        {
+          id: "99",
+          label: "Backup (99 / UK)",
+        },
+      ],
+    });
+  });
+
+  it("returns an empty current store label when the selected store is missing", () => {
+    expect(
+      projectSheinStudioStoreSelectionState({
+        currentStoreId: "missing",
+        enabledProfiles: [
+          {
+            name: "Main",
+            store_id: 42,
+            storeId: "42",
+            site: "US",
+          },
+        ],
+      }).currentStoreLabel,
+    ).toBe("");
+  });
+
   it("summarizes explicit SDS variants before falling back to selected ids", () => {
     const summary = summarizeSheinStudioSelection({
       productId: 1,

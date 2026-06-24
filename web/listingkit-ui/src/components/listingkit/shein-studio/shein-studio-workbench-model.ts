@@ -2,6 +2,7 @@ import {
   evaluateSDSRatioMatch,
   type SDSRatioMatch,
 } from "@/lib/shein-studio/gallery-handoff";
+import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import {
@@ -37,6 +38,29 @@ import {
 } from "@/lib/shein-studio/sds-selectable-images";
 
 export const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
+
+type SheinStoreOptionProjectionInput = {
+  currentStoreId?: string | null;
+  enabledProfiles: Array<Parameters<typeof formatSheinStoreOptionLabel>[0]>;
+};
+
+export function projectSheinStudioStoreSelectionState({
+  currentStoreId,
+  enabledProfiles,
+}: SheinStoreOptionProjectionInput) {
+  const effectiveCurrentStoreId = (currentStoreId ?? "").trim();
+  const matched = enabledProfiles.find(
+    (item) => String(item.store_id) === effectiveCurrentStoreId,
+  );
+  return {
+    currentStoreLabel: matched ? formatSheinStoreOptionLabel(matched) : "",
+    effectiveCurrentStoreId,
+    recentBatchStoreOptions: enabledProfiles.map((profile) => ({
+      id: String(profile.store_id),
+      label: formatSheinStoreOptionLabel(profile),
+    })),
+  };
+}
 
 export function pickActiveSheinStudioGroup(
   groups: SheinStudioGroupedWorkspace[],

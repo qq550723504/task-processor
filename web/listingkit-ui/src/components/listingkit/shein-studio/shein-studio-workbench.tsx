@@ -93,6 +93,7 @@ import {
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
+  projectSheinStudioStoreSelectionState,
   projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
   sheinStudioBusyMessage,
@@ -118,7 +119,6 @@ import {
 import {
   type SheinStudioBatchQueueResumeState,
 } from "@/lib/shein-studio/batch-queue";
-import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import {
   clearListingKitTraceContext,
   writeListingKitTraceContext,
@@ -488,24 +488,21 @@ export function SheinStudioWorkbench({
     subscriptionQuery.data && !studioAccessAllowed
       ? "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。"
       : "";
-  const effectiveCurrentStoreId = (sheinStoreId ?? "").trim();
+  const {
+    currentStoreLabel,
+    effectiveCurrentStoreId,
+    recentBatchStoreOptions,
+  } = useMemo(
+    () =>
+      projectSheinStudioStoreSelectionState({
+        currentStoreId: sheinStoreId,
+        enabledProfiles,
+      }),
+    [enabledProfiles, sheinStoreId],
+  );
   const storeRequiredMessage = effectiveCurrentStoreId
     ? ""
     : "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。";
-  const currentStoreLabel = useMemo(() => {
-    const matched = enabledProfiles.find(
-      (item) => String(item.store_id) === effectiveCurrentStoreId,
-    );
-    return matched ? formatSheinStoreOptionLabel(matched) : "";
-  }, [effectiveCurrentStoreId, enabledProfiles]);
-  const recentBatchStoreOptions = useMemo(
-    () =>
-      enabledProfiles.map((profile) => ({
-        id: String(profile.store_id),
-        label: formatSheinStoreOptionLabel(profile),
-      })),
-    [enabledProfiles],
-  );
   const activeGroupPromptHistory = useMemo(
     () => groups.find((group) => group.id === activeGroupId)?.promptHistory ?? [],
     [activeGroupId, groups],
