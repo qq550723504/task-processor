@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
+import { projectSheinStudioQueueState } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import {
   buildSheinStudioSelectionKey,
   getSheinStudioCreateActionDisabledReason,
@@ -46,6 +47,7 @@ import type {
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import type { SheinStudioBatchDetail } from "@/lib/types/shein-studio-batch";
+import type { SheinStudioBatchQueueResumeState } from "@/lib/shein-studio/batch-queue";
 import type { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
@@ -162,6 +164,42 @@ export function useSheinStudioWorkbenchTraceContext({
         traceBatchId,
       }),
     [batchQueueMode, queuedBatchIds, queuedBatchIndex, traceBatchId],
+  );
+}
+
+export function useSheinStudioQueueState({
+  batchQueueMode,
+  effectiveStep,
+  queueResumeState,
+  queuedBatchIds,
+  queuedBatchIndex,
+  savedBatches,
+}: {
+  batchQueueMode: SheinStudioBatchQueueMode | null;
+  effectiveStep: SheinStudioStepKey;
+  queueResumeState: SheinStudioBatchQueueResumeState | null;
+  queuedBatchIds: string[];
+  queuedBatchIndex: number;
+  savedBatches: SheinStudioSavedBatch[];
+}) {
+  return useMemo(
+    () =>
+      projectSheinStudioQueueState({
+        batchQueueMode,
+        effectiveStep,
+        queueResumeState,
+        queuedBatchIds,
+        queuedBatchIndex,
+        savedBatches,
+      }),
+    [
+      batchQueueMode,
+      effectiveStep,
+      queueResumeState,
+      queuedBatchIds,
+      queuedBatchIndex,
+      savedBatches,
+    ],
   );
 }
 

@@ -10,6 +10,7 @@ import {
   useSheinStudioCreateActionDisabledReason,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioItemizedGenerationInFlight,
+  useSheinStudioQueueState,
   useSheinStudioStoreSelection,
   useSheinStudioSubscriptionGate,
   useSheinStudioWorkbenchTraceContext,
@@ -140,6 +141,38 @@ describe("useSheinStudioWorkbenchTraceContext", () => {
     rerender({ currentQueuedBatchId: "" });
 
     expect(result.current.batchId).toBe("batch-active");
+  });
+});
+
+describe("useSheinStudioQueueState", () => {
+  it("selects the current queued batch and filters resumable batch ids", () => {
+    const savedBatches = [
+      buildSavedBatch({ id: "batch-1" }),
+      buildSavedBatch({ id: "batch-2" }),
+    ];
+    const { result } = renderHook(() =>
+      useSheinStudioQueueState({
+        batchQueueMode: "create_tasks",
+        effectiveStep: "review",
+        queueResumeState: {
+          batchIds: ["batch-1", "missing", "batch-2"],
+          mode: "create_tasks",
+          startIndex: 0,
+          total: 3,
+        },
+        queuedBatchIds: ["batch-1", "batch-2"],
+        queuedBatchIndex: 1,
+        savedBatches,
+      }),
+    );
+
+    expect(result.current.currentQueuedBatchId).toBe("batch-2");
+    expect(result.current.currentQueuedBatch).toBe(savedBatches[1]);
+    expect(result.current.resumableQueueBatchIds).toEqual([
+      "batch-1",
+      "batch-2",
+    ]);
+    expect(result.current.batchQueueGuidance).toContain("审核区");
   });
 });
 

@@ -33,7 +33,6 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-persistence-controller";
 import {
   getBatchRunStartErrorMessage,
-  projectSheinStudioQueueState,
   useSheinStudioQueueController,
 } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import {
@@ -83,6 +82,7 @@ import {
   useSheinStudioCreateActionDisabledReason,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioItemizedGenerationInFlight,
+  useSheinStudioQueueState,
   useSheinStudioStoreSelection,
   useSheinStudioSubscriptionGate,
   useSheinStudioWorkbenchTraceContext,
@@ -366,25 +366,14 @@ export function SheinStudioWorkbench({
     currentQueuedBatch,
     currentQueuedBatchId,
     resumableQueueBatchIds,
-  } = useMemo(
-    () =>
-      projectSheinStudioQueueState({
-        batchQueueMode,
-        effectiveStep,
-        queueResumeState,
-        queuedBatchIds,
-        queuedBatchIndex,
-        savedBatches,
-      }),
-    [
-      batchQueueMode,
-      effectiveStep,
-      queueResumeState,
-      queuedBatchIds,
-      queuedBatchIndex,
-      savedBatches,
-    ],
-  );
+  } = useSheinStudioQueueState({
+    batchQueueMode,
+    effectiveStep,
+    queueResumeState,
+    queuedBatchIds,
+    queuedBatchIndex,
+    savedBatches,
+  });
   const batchTraceContext = useSheinStudioWorkbenchTraceContext({
     activeBatchId,
     batchQueueMode,
