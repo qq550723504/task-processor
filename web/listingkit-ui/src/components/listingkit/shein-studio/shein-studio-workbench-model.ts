@@ -14,6 +14,7 @@ import {
 } from "@/lib/shein-studio/storage-shared";
 import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
 export { buildSheinStudioGenerateRequest } from "@/lib/shein-studio/generation-controller";
+import type { SubscriptionSummary } from "@/lib/api/subscription";
 import type {
   SheinStudioBatchDetail,
   SheinStudioBatchItemStatus,
@@ -60,6 +61,21 @@ export function projectSheinStudioStoreSelectionState({
       id: String(profile.store_id),
       label: formatSheinStoreOptionLabel(profile),
     })),
+  };
+}
+
+export function projectStudioSubscriptionGate(
+  subscription?: SubscriptionSummary,
+) {
+  const studioAccessAllowed =
+    subscription?.entitlements?.find((view) => view.module.code === "studio")
+      ?.allowed ?? true;
+  return {
+    studioAccessAllowed,
+    subscriptionBlockedMessage:
+      subscription && !studioAccessAllowed
+        ? "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。"
+        : "",
   };
 }
 

@@ -95,6 +95,7 @@ import {
   hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
   projectSheinStudioStoreSelectionState,
+  projectStudioSubscriptionGate,
   projectWorkbenchStateFallback,
   projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
@@ -331,14 +332,10 @@ export function SheinStudioWorkbench({
       }),
     [activeGroupedSelectionID, activeSelection?.variantId, baselineStatuses],
   );
-  const studioAccessAllowed =
-    subscriptionQuery.data?.entitlements?.find(
-      (view) => view.module.code === "studio",
-    )?.allowed ?? true;
-  const subscriptionBlockedMessage =
-    subscriptionQuery.data && !studioAccessAllowed
-      ? "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。"
-      : "";
+  const { studioAccessAllowed, subscriptionBlockedMessage } = useMemo(
+    () => projectStudioSubscriptionGate(subscriptionQuery.data),
+    [subscriptionQuery.data],
+  );
   const {
     currentStoreLabel,
     effectiveCurrentStoreId,

@@ -12,6 +12,7 @@ import {
   projectHydratedBatchToWorkbench,
   projectDefaultSelectedSDSImages,
   projectSheinStudioStoreSelectionState,
+  projectStudioSubscriptionGate,
   projectWorkbenchStateFallback,
   projectSavedBatchToWorkbench,
   selectActiveGroupPromptHistory,
@@ -79,6 +80,72 @@ describe("shein studio workbench model", () => {
         ],
       }).currentStoreLabel,
     ).toBe("");
+  });
+
+  it("allows Studio generation before subscription data is loaded", () => {
+    expect(projectStudioSubscriptionGate(undefined)).toEqual({
+      studioAccessAllowed: true,
+      subscriptionBlockedMessage: "",
+    });
+  });
+
+  it("projects a Studio subscription block message when the entitlement is denied", () => {
+    expect(
+      projectStudioSubscriptionGate({
+        tenant_id: "tenant-1",
+        modules: [],
+        entitlements: [
+          {
+            module: {
+              code: "studio",
+              name: "Studio",
+              sort_order: 1,
+              active: true,
+            },
+            allowed: false,
+            usage: [],
+          },
+        ],
+      }),
+    ).toEqual({
+      studioAccessAllowed: false,
+      subscriptionBlockedMessage:
+        "当前租户未开通 Studio 模块。请在“当前租户订阅”里开通 Studio，或切换到已开通的租户后再生成款式图。",
+    });
+  });
+
+  it("allows Studio generation when the entitlement is missing or allowed", () => {
+    expect(
+      projectStudioSubscriptionGate({
+        tenant_id: "tenant-1",
+        modules: [],
+        entitlements: [],
+      }),
+    ).toEqual({
+      studioAccessAllowed: true,
+      subscriptionBlockedMessage: "",
+    });
+    expect(
+      projectStudioSubscriptionGate({
+        tenant_id: "tenant-1",
+        modules: [],
+        entitlements: [
+          {
+            module: {
+              code: "studio",
+              name: "Studio",
+              sort_order: 1,
+              active: true,
+            },
+            allowed: true,
+            usage: [],
+          },
+        ],
+      }),
+    ).toEqual({
+      studioAccessAllowed: true,
+      subscriptionBlockedMessage: "",
+    });
   });
 
   it("summarizes explicit SDS variants before falling back to selected ids", () => {
