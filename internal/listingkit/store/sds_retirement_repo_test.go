@@ -144,7 +144,7 @@ func TestSDSRetirementRepositoryMarksSyncedProductOffShelfAfterSuccess(t *testin
 
 func TestSDSRetirementRepositoryUpdatesItemsAndSavesExecution(t *testing.T) {
 	repo, _ := newSDSRetirementRepoHarness(t)
-	ctx := context.Background()
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
 	run := &listingkit.SDSRetirementRunRecord{
 		ID:       "run-2",
 		TenantID: "tenant-a",
@@ -296,7 +296,7 @@ func TestSDSRetirementRepositoryUpdateItemsRequiresExplicitTenantScope(t *testin
 
 func TestSDSRetirementRepositorySaveExecutionRejectsItemFromAnotherRun(t *testing.T) {
 	repo, _ := newSDSRetirementRepoHarness(t)
-	ctx := context.Background()
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
 
 	runA := &listingkit.SDSRetirementRunRecord{
 		ID:       "run-a",
