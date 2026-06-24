@@ -11,7 +11,7 @@ import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/she
 import { BatchStoreSettings } from "@/components/listingkit/shein-studio/shein-studio-generation-form-sections";
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import {
-  evaluateGroupedSelectionCompatibility,
+  projectGroupedSelectionBaselineEligibility,
   SheinStudioGroupedSelectionPanel,
 } from "@/components/listingkit/shein-studio/shein-studio-grouped-selection-panel";
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
@@ -972,31 +972,10 @@ export function SheinStudioWorkbench({
 
   useEffect(() => {
     setGroupedSelections((current) =>
-      current.map((item) => {
-        const baseline = baselineStatuses[item.selectionId] ?? {
-          status: item.baselineStatus,
-          reasonCode: undefined,
-          reason: item.baselineReason,
-          baselineKey: item.baselineKey,
-        };
-        const baselineReason =
-          baseline.reason || getSDSBaselineReasonMessage(baseline.reasonCode);
-        const compatibility = evaluateGroupedSelectionCompatibility(
-          activeSelection,
-          item.selection,
-        );
-        return {
-          ...item,
-          baselineKey: baseline.baselineKey,
-          baselineStatus: baseline.status,
-          baselineReason: baselineReason,
-          baselineReasonCode: baseline.reasonCode,
-          eligible: baseline.status === "ready" && compatibility.compatible,
-          eligibilityReason:
-            baseline.status !== "ready"
-              ? baselineReason || "只有通过 baseline 校验的 SDS 商品才能加入分组。"
-              : compatibility.reason,
-        };
+      projectGroupedSelectionBaselineEligibility({
+        activeSelection,
+        baselineStatuses,
+        groupedSelections: current,
       }),
     );
   }, [activeSelection, baselineStatuses, setGroupedSelections]);

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   evaluateGroupedSelectionCompatibility,
+  projectGroupedSelectionBaselineEligibility,
   SheinStudioGroupedSelectionPanel,
 } from "@/components/listingkit/shein-studio/shein-studio-grouped-selection-panel";
 
@@ -42,6 +43,72 @@ describe("evaluateGroupedSelectionCompatibility", () => {
     ).toEqual({
       compatible: true,
       reason: "",
+    });
+  });
+});
+
+describe("projectGroupedSelectionBaselineEligibility", () => {
+  it("marks a ready compatible grouped selection as eligible", () => {
+    expect(
+      projectGroupedSelectionBaselineEligibility({
+        activeSelection,
+        baselineStatuses: {
+          "selection-1": {
+            status: "ready",
+            reason: "",
+            reasonCode: undefined,
+            baselineKey: "baseline-1",
+          },
+        },
+        groupedSelections: [
+          {
+            selectionId: "selection-1",
+            selection: {
+              ...activeSelection,
+              variantId: 101,
+            },
+            baselineStatus: "missing",
+            baselineReason: "",
+            sheinStoreId: "",
+            eligible: false,
+          },
+        ],
+      })[0],
+    ).toMatchObject({
+      baselineKey: "baseline-1",
+      baselineStatus: "ready",
+      eligible: true,
+      eligibilityReason: "",
+    });
+  });
+
+  it("uses the baseline failure reason before compatibility reasons", () => {
+    expect(
+      projectGroupedSelectionBaselineEligibility({
+        activeSelection,
+        baselineStatuses: {
+          "selection-1": {
+            status: "failed",
+            reason: "baseline missing",
+            reasonCode: undefined,
+          },
+        },
+        groupedSelections: [
+          {
+            selectionId: "selection-1",
+            selection: activeSelection,
+            baselineStatus: "missing",
+            baselineReason: "",
+            sheinStoreId: "",
+            eligible: true,
+          },
+        ],
+      })[0],
+    ).toMatchObject({
+      baselineStatus: "failed",
+      baselineReason: "baseline missing",
+      eligible: false,
+      eligibilityReason: "baseline missing",
     });
   });
 });
