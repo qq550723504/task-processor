@@ -20,6 +20,7 @@ import { useSheinStudioDedicatedBatchRunController } from "@/components/listingk
 import {
   projectActiveSelectionBaselineState,
   projectBaselineWarmupFeedback,
+  resolveBaselineReadinessEntries,
   useSheinStudioBatchGenerationContext,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
@@ -901,40 +902,10 @@ export function SheinStudioWorkbench({
     }
 
     let cancelled = false;
-    void Promise.all(
-      selections.map(async (item) => {
-        const selectionId = buildGroupedSDSSelectionID(item);
-        try {
-          const readiness = await getSDSBaselineReadiness({
-            parentProductId: item.parentProductId,
-            prototypeGroupId: item.prototypeGroupId,
-            variantId: item.variantId,
-            selectedVariantIds: item.selectedVariantIds,
-          });
-          return [
-            selectionId,
-            {
-              status: readiness.status,
-              reason: readiness.reason ?? "",
-              reasonCode: readiness.reasonCode,
-              baselineKey: readiness.baselineKey,
-            },
-          ] as const;
-        } catch (error) {
-          return [
-            selectionId,
-            {
-              status: "failed" as SDSBaselineStatus,
-              reasonCode: undefined,
-              reason:
-                error instanceof Error
-                  ? error.message
-                  : "读取 SDS baseline 状态失败。",
-            },
-          ] as const;
-        }
-      }),
-    ).then((entries) => {
+    void resolveBaselineReadinessEntries({
+      getReadiness: getSDSBaselineReadiness,
+      selections,
+    }).then((entries) => {
       if (cancelled) {
         return;
       }

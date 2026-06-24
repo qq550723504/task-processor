@@ -6,8 +6,14 @@ import {
   buildGroupedSDSBaselineHandoff,
   getSDSBaselineReasonMessage,
 } from "@/lib/shein-studio/sds-baseline-ui";
-import type { SDSBaselineReadiness } from "@/lib/types/sds-baseline";
-import type { SDSBaselineStatus } from "@/lib/types/sds-baseline";
+import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import {
+  buildGroupedSDSSelectionID,
+  type GroupedSDSSelectionEligibility,
+  type SDSBaselineReadiness,
+  type SDSBaselineReadinessRequest,
+  type SDSBaselineStatus,
+} from "@/lib/types/sds-baseline";
 import type {
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
@@ -48,6 +54,15 @@ type ActiveSelectionBaseline = {
   reason: string;
   reasonCode?: string;
   status: SDSBaselineStatus;
+};
+
+type BaselineReadinessEntry = readonly [string, ActiveSelectionBaseline];
+
+type ResolveBaselineReadinessEntriesParams = {
+  getReadiness: (
+    request: SDSBaselineReadinessRequest,
+  ) => Promise<SDSBaselineReadiness>;
+  selections: SDSProductVariantSelection[];
 };
 
 type BatchGenerationContextParams = {
@@ -142,6 +157,46 @@ export function projectActiveSelectionBaselineState({
     reason,
     resolvedBaseline,
   };
+}
+
+export async function resolveBaselineReadinessEntries({
+  getReadiness,
+  selections,
+}: ResolveBaselineReadinessEntriesParams): Promise<BaselineReadinessEntry[]> {
+  return Promise.all(
+    selections.map(async (item) => {
+      const selectionId = buildGroupedSDSSelectionID(item);
+      try {
+        const readiness = await getReadiness({
+          parentProductId: item.parentProductId,
+          prototypeGroupId: item.prototypeGroupId,
+          variantId: item.variantId,
+          selectedVariantIds: item.selectedVariantIds,
+        });
+        return [
+          selectionId,
+          {
+            status: readiness.status,
+            reason: readiness.reason ?? "",
+            reasonCode: readiness.reasonCode,
+            baselineKey: readiness.baselineKey,
+          },
+        ] as const;
+      } catch (error) {
+        return [
+          selectionId,
+          {
+            status: "failed" as SDSBaselineStatus,
+            reasonCode: undefined,
+            reason:
+              error instanceof Error
+                ? error.message
+                : "读取 SDS baseline 状态失败。",
+          },
+        ] as const;
+      }
+    }),
+  );
 }
 
 export function useSheinStudioBatchGenerationContext({

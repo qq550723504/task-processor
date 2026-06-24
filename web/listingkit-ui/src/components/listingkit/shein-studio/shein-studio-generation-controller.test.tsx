@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   projectActiveSelectionBaselineState,
   projectBaselineWarmupFeedback,
+  resolveBaselineReadinessEntries,
   useSheinStudioBatchGenerationContext,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
@@ -22,6 +23,17 @@ function buildSavedBatch(id = "batch-1"): SheinStudioSavedBatch {
     updatedAt: "2026-06-22T00:00:00.000Z",
   };
 }
+
+const selection = {
+  layerId: "layer-1",
+  parentProductId: 1,
+  productId: 10,
+  productName: "Tee",
+  prototypeGroupId: 20,
+  selectedVariantIds: [100, 101],
+  variantId: 100,
+  variantLabel: "Black / M",
+};
 
 describe("projectBaselineWarmupFeedback", () => {
   it("announces ready baseline warmup without follow-up action", () => {
@@ -120,6 +132,58 @@ describe("projectActiveSelectionBaselineState", () => {
         reasonCode: "login_missing_credentials",
       },
     });
+  });
+});
+
+describe("resolveBaselineReadinessEntries", () => {
+  it("maps selection readiness responses to baseline status entries", async () => {
+    const getReadiness = vi.fn().mockResolvedValue({
+      baselineKey: "baseline-1",
+      reason: "ready",
+      reasonCode: "ok",
+      status: "ready",
+    });
+
+    await expect(
+      resolveBaselineReadinessEntries({
+        getReadiness,
+        selections: [selection],
+      }),
+    ).resolves.toEqual([
+      [
+        "1:20:100:layer-1:100,101",
+        {
+          baselineKey: "baseline-1",
+          reason: "ready",
+          reasonCode: "ok",
+          status: "ready",
+        },
+      ],
+    ]);
+    expect(getReadiness).toHaveBeenCalledWith({
+      parentProductId: 1,
+      prototypeGroupId: 20,
+      selectedVariantIds: [100, 101],
+      variantId: 100,
+    });
+  });
+
+  it("maps readiness failures to failed baseline status entries", async () => {
+    await expect(
+      resolveBaselineReadinessEntries({
+        getReadiness: vi.fn().mockRejectedValue(new Error("offline")),
+        selections: [selection],
+      }),
+    ).resolves.toEqual([
+      [
+        "1:20:100:layer-1:100,101",
+        {
+          reason: "offline",
+          reasonCode: undefined,
+          status: "failed",
+        },
+      ],
+    ]);
   });
 });
 
