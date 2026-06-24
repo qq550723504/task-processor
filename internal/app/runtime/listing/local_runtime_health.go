@@ -7,16 +7,16 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type listingLocalRuntimeValidator interface {
+type ListingRuntimeHealthValidator interface {
 	ValidateLocalListingRuntimeFields() (map[string]bool, error)
 }
 
-func validateListingLocalRuntime(platform string, validator listingLocalRuntimeValidator, logger *logrus.Logger) error {
+func ValidateListingRuntimeHealth(platform string, validator ListingRuntimeHealthValidator, logger *logrus.Logger) error {
 	if !strings.EqualFold(strings.TrimSpace(platform), "shein") {
 		return nil
 	}
 	if validator == nil {
-		return fmt.Errorf("SHEIN listing local runtime is not ready: management client is not initialized")
+		return fmt.Errorf("SHEIN listing local runtime is not ready: health validator is not configured")
 	}
 
 	fields, err := validator.ValidateLocalListingRuntimeFields()

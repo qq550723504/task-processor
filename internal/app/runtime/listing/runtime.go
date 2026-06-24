@@ -63,7 +63,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err := processorRegistry.RegisterPlatforms(ctx, serviceManager, platform); err != nil {
 		return fmt.Errorf("register %s processor failed: %w", displayName, err)
 	}
-	if err := validateListingLocalRuntime(platform, processorRegistry.GetManagementClient(), logger); err != nil {
+	if err := ValidateListingRuntimeHealth(platform, processorRegistry.GetListingRuntimeHealthValidator(), logger); err != nil {
 		return err
 	}
 
@@ -122,7 +122,7 @@ func runDebugTask(
 	if err := module.ConfigureListingRuntime(ctx, rt); err != nil {
 		return fmt.Errorf("configure %s debug runtime failed: %w", displayName, err)
 	}
-	if err := validateListingLocalRuntime(platform, resources.ManagementClient, logger); err != nil {
+	if err := ValidateListingRuntimeHealth(platform, resources.ListingRuntimeHealthValidator(), logger); err != nil {
 		return err
 	}
 

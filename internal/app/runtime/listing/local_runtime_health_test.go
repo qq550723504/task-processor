@@ -17,23 +17,36 @@ func (s stubListingLocalRuntimeValidator) ValidateLocalListingRuntimeFields() (m
 	return s.fields, s.err
 }
 
-func TestValidateListingLocalRuntimeRequiresSheinLocalRuntime(t *testing.T) {
+func TestValidateListingRuntimeHealthRequiresSheinLocalRuntime(t *testing.T) {
 	validator := stubListingLocalRuntimeValidator{
 		fields: map[string]bool{"ready": false},
 		err:    errors.New("local runtime unavailable"),
 	}
 
-	err := validateListingLocalRuntime("shein", validator, logrus.New())
+	err := ValidateListingRuntimeHealth("shein", validator, logrus.New())
 	if err == nil {
-		t.Fatal("validateListingLocalRuntime() error = nil, want local runtime error")
+		t.Fatal("ValidateListingRuntimeHealth() error = nil, want local runtime error")
 	}
 	if !strings.Contains(err.Error(), "SHEIN listing local runtime is not ready") {
 		t.Fatalf("error = %v, want SHEIN local runtime message", err)
 	}
 }
 
-func TestValidateListingLocalRuntimeSkipsOtherPlatforms(t *testing.T) {
-	if err := validateListingLocalRuntime("temu", nil, logrus.New()); err != nil {
-		t.Fatalf("validateListingLocalRuntime(temu) error = %v", err)
+func TestValidateListingRuntimeHealthSkipsOtherPlatforms(t *testing.T) {
+	if err := ValidateListingRuntimeHealth("temu", nil, logrus.New()); err != nil {
+		t.Fatalf("ValidateListingRuntimeHealth(temu) error = %v", err)
+	}
+}
+
+func TestValidateListingRuntimeHealthReportsMissingValidator(t *testing.T) {
+	err := ValidateListingRuntimeHealth("shein", nil, logrus.New())
+	if err == nil {
+		t.Fatal("ValidateListingRuntimeHealth() error = nil, want missing validator error")
+	}
+	if strings.Contains(err.Error(), "management client") {
+		t.Fatalf("error = %v, should not expose Management Client as the runtime health dependency", err)
+	}
+	if !strings.Contains(err.Error(), "health validator is not configured") {
+		t.Fatalf("error = %v, want health validator message", err)
 	}
 }

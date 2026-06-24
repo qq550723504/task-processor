@@ -63,6 +63,10 @@ type ProcessorRuntime interface {
 	GetRuntimeStorePauseStatusDetail(storeID int64) (*listingruntime.StorePauseStatusDetail, error)
 }
 
+type ListingRuntimeHealthValidator interface {
+	ValidateLocalListingRuntimeFields() (map[string]bool, error)
+}
+
 type SharedResources struct {
 	ManagementClient        *management.ClientManager
 	RawJSONDataClient       product.RawJsonDataClient
@@ -72,6 +76,13 @@ type SharedResources struct {
 	ProcessorRuntime        ProcessorRuntime
 	CrawlSource             runner.CrawlSource
 	ProductFetcher          appfetcher.ProductFetcher
+}
+
+func (r *SharedResources) ListingRuntimeHealthValidator() ListingRuntimeHealthValidator {
+	if r == nil {
+		return nil
+	}
+	return r.ManagementClient
 }
 
 type SharedResourceProvider func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*SharedResources, error)

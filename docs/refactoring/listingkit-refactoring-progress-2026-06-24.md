@@ -764,3 +764,12 @@ Status: observability/reporting UI follow-up is code-complete. Frontend test/bui
 - The larger `PlatformRuntimeContext.ManagementClient` and `SharedResources.ManagementClient` shells remain for compatibility and should be retired in later, narrower port extractions.
 
 Status: debug task lookup no longer uses Management Client as the task fact source. Validation and commit remain deferred until the next explicit check.
+
+### 2026-06-24 Management Client retirement follow-up: runtime health validator
+
+- Promoted listing runtime health checking to the runtime-owned `ListingRuntimeHealthValidator` port.
+- Replaced the internal `validateListingLocalRuntime` helper with `ValidateListingRuntimeHealth`, so callers depend on health validation capability rather than a concrete Management Client concept.
+- Added registry/shared-resource health-validator accessors so listing runtime no longer calls `GetManagementClient()` for health checks.
+- Updated the missing-validator error to report a missing health validator instead of a missing management client.
+
+Status: health validation no longer exposes Management Client as its semantic dependency. The remaining compatibility shell is `PlatformRuntimeContext.ManagementClient` / `SharedResources.ManagementClient`, which should be split by Store/Product/Pricing/Task ports in later steps.
