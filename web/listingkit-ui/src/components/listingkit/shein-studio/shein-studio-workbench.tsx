@@ -76,6 +76,7 @@ import {
   useHydratedSDSVariantSelection,
   loadLocalSheinStudioDraftSnapshotDetail,
   useSheinStudioActiveBatchScope,
+  useSheinStudioActiveGroupPromptHistory,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
   useSheinStudioWorkbenchTraceContext,
@@ -98,7 +99,6 @@ import {
   hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
   projectStudioSubscriptionGate,
-  selectActiveGroupPromptHistory,
   selectActiveGroupPrimarySelection,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
@@ -343,14 +343,10 @@ export function SheinStudioWorkbench({
     currentStoreId: sheinStoreId,
     enabledProfiles,
   });
-  const activeGroupPromptHistory = useMemo(
-    () =>
-      selectActiveGroupPromptHistory({
-        activeGroupId,
-        groups,
-      }),
-    [activeGroupId, groups],
-  );
+  const activeGroupPromptHistory = useSheinStudioActiveGroupPromptHistory({
+    activeGroupId,
+    groups,
+  });
   const localDraftSnapshot = localDraftSnapshotDetail?.draft ?? null;
   const recentBatchSummaries = useRecentBatchSummaries({
     localDraftSnapshotDetail,

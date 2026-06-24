@@ -3,12 +3,26 @@ import { describe, expect, it } from "vitest";
 
 import {
   useSheinStudioActiveBatchScope,
+  useSheinStudioActiveGroupPromptHistory,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
   useSheinStudioWorkbenchTraceContext,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import { buildInitialSheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
-import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
+import type {
+  SheinStudioGroupedWorkspace,
+  SheinStudioSavedBatch,
+} from "@/lib/types/shein-studio";
+
+const selection = {
+  productId: 1,
+  parentProductId: 1,
+  variantId: 100,
+  prototypeGroupId: 200,
+  layerId: "layer-1",
+  productName: "tee",
+  variantLabel: "M / black",
+};
 
 function buildSavedBatch(
   overrides: Partial<SheinStudioSavedBatch> = {},
@@ -19,6 +33,25 @@ function buildSavedBatch(
     prompt: "saved prompt",
     styleCount: "1",
     sheinStoreId: "869",
+    designs: [],
+    selectedIds: [],
+    createdTasks: [],
+    updatedAt: "2026-06-20T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function buildGroup(
+  overrides: Partial<SheinStudioGroupedWorkspace> = {},
+): SheinStudioGroupedWorkspace {
+  return {
+    id: "group-1",
+    name: "Group 1",
+    primarySelection: selection,
+    groupedSelections: [],
+    sheinStoreId: "869",
+    currentPrompt: "current prompt",
+    promptHistory: [],
     designs: [],
     selectedIds: [],
     createdTasks: [],
@@ -173,5 +206,31 @@ describe("useSheinStudioStoreSelection", () => {
       ],
       storeRequiredMessage: "",
     });
+  });
+});
+
+describe("useSheinStudioActiveGroupPromptHistory", () => {
+  it("returns prompt history for the selected group only", () => {
+    const promptHistory: SheinStudioGroupedWorkspace["promptHistory"] = [
+      {
+        prompt: "first prompt",
+        groupedImageMode: "shared_by_size",
+        createdAt: "2026-06-20T00:00:00.000Z",
+      },
+    ];
+    const { result } = renderHook(() =>
+      useSheinStudioActiveGroupPromptHistory({
+        activeGroupId: "group-2",
+        groups: [
+          buildGroup({ id: "group-1" }),
+          buildGroup({
+            id: "group-2",
+            promptHistory,
+          }),
+        ],
+      }),
+    );
+
+    expect(result.current).toBe(promptHistory);
   });
 });
