@@ -9,12 +9,14 @@ import {
   useSheinStudioBusyMessage,
   useSheinStudioCreateActionDisabledReason,
   useSheinStudioCurrentBatchSelection,
+  useSheinStudioItemizedGenerationInFlight,
   useSheinStudioStoreSelection,
   useSheinStudioSubscriptionGate,
   useSheinStudioWorkbenchTraceContext,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import { buildInitialSheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import type { SubscriptionSummary } from "@/lib/api/subscription";
+import type { SheinStudioBatchDetail } from "@/lib/types/shein-studio-batch";
 import type {
   SheinStudioGroupedWorkspace,
   SheinStudioSavedBatch,
@@ -345,5 +347,28 @@ describe("useSheinStudioBusyMessage", () => {
     );
 
     expect(result.current).toBe("正在生成款式图");
+  });
+});
+
+describe("useSheinStudioItemizedGenerationInFlight", () => {
+  it("detects a generating itemized batch", () => {
+    const detail: SheinStudioBatchDetail = {
+      batch: {
+        id: "batch-1",
+        status: "generating",
+        prompt: "prompt",
+        styleCount: "1",
+        sheinStoreId: 42,
+        createdAt: "2026-06-20T00:00:00.000Z",
+        updatedAt: "2026-06-20T00:00:00.000Z",
+      },
+      items: [],
+    };
+
+    const { result } = renderHook(() =>
+      useSheinStudioItemizedGenerationInFlight(detail),
+    );
+
+    expect(result.current).toBe(true);
   });
 });

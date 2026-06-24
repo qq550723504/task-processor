@@ -5,6 +5,7 @@ import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/sh
 import {
   buildSheinStudioSelectionKey,
   getSheinStudioCreateActionDisabledReason,
+  hasInFlightItemizedBatchGeneration,
   projectStudioSubscriptionGate,
   projectWorkbenchStateFallback,
   projectWorkbenchTraceContext,
@@ -44,6 +45,7 @@ import type {
   SheinStudioSavedBatch,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
+import type { SheinStudioBatchDetail } from "@/lib/types/shein-studio-batch";
 import type { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
@@ -309,6 +311,12 @@ export function useSheinStudioBusyMessage({
       }),
     [isCreatingTasks, isGenerating, regeneratingId],
   );
+}
+
+export function useSheinStudioItemizedGenerationInFlight(
+  detail?: SheinStudioBatchDetail | null,
+) {
+  return useMemo(() => hasInFlightItemizedBatchGeneration(detail), [detail]);
 }
 
 export function useHydratedSDSVariantSelection(

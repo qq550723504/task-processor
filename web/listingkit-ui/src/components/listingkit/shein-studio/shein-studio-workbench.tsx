@@ -82,6 +82,7 @@ import {
   useSheinStudioBusyMessage,
   useSheinStudioCreateActionDisabledReason,
   useSheinStudioCurrentBatchSelection,
+  useSheinStudioItemizedGenerationInFlight,
   useSheinStudioStoreSelection,
   useSheinStudioSubscriptionGate,
   useSheinStudioWorkbenchTraceContext,
@@ -99,7 +100,6 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-sections";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
-  hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -760,9 +760,8 @@ export function SheinStudioWorkbench({
     setQueueMessage,
   });
 
-  const itemizedBatchGenerationInFlight = hasInFlightItemizedBatchGeneration(
-    itemizedBatchDetail,
-  );
+  const itemizedBatchGenerationInFlight =
+    useSheinStudioItemizedGenerationInFlight(itemizedBatchDetail);
   const pendingItemizedTaskDesignIDs =
     usePendingItemizedTaskDesignIds(itemizedBatchDetail);
   const effectiveIsGenerating = isGenerating || itemizedBatchGenerationInFlight;
