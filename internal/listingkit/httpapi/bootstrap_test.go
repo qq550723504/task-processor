@@ -548,8 +548,8 @@ func TestBuildHandlerOptionsWiresSDSRetirementService(t *testing.T) {
 	if !strings.Contains(content, "listingkit.NewSDSRetirementService(") {
 		t.Fatal("buildHandlerOptions should bootstrap SDS retirement service from runtime dependencies")
 	}
-	if !strings.Contains(content, "runtime.taskRepository") || !strings.Contains(content, "runtime.service") || !strings.Contains(content, "runtime.sheinSyncService") {
-		t.Fatal("buildHandlerOptions should build SDS retirement service from task repository, runtime service, and shein sync service")
+	if !strings.Contains(content, "runtime.taskRepository") || !strings.Contains(content, "runtime.service") || !strings.Contains(content, "runtime.sdsRetirementSheinSyncService") {
+		t.Fatal("buildHandlerOptions should build SDS retirement service from task repository, runtime service, and immediate SHEIN sync service")
 	}
 }
 
@@ -1093,6 +1093,15 @@ func TestBuildServiceAssemblesRuntimeDependenciesFromRegistrars(t *testing.T) {
 	if bundle.runtime.sheinSyncService == nil {
 		t.Fatal("expected runtime shein sync service to be wired")
 	}
+	if supportsImmediateRefresh(bundle.runtime.sheinSyncService) {
+		t.Fatal("expected public SHEIN sync runtime service to remain async-only")
+	}
+	if bundle.runtime.sdsRetirementSheinSyncService == nil {
+		t.Fatal("expected SDS retirement SHEIN sync service to be wired")
+	}
+	if !supportsImmediateRefresh(bundle.runtime.sdsRetirementSheinSyncService) {
+		t.Fatal("expected SDS retirement SHEIN sync service to support immediate refresh")
+	}
 	if bundle.runtime.sheinCandidateService == nil {
 		t.Fatal("expected runtime shein candidate service to be wired")
 	}
@@ -1102,6 +1111,43 @@ func TestBuildServiceAssemblesRuntimeDependenciesFromRegistrars(t *testing.T) {
 	if bundle.TemporalWorkerService == nil {
 		t.Fatal("expected temporal worker service to be exposed")
 	}
+}
+
+func TestBuildSheinSyncRuntimeServicesKeepsAsyncSyncAndImmediateRetirementRefresh(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	repositories := &builtRepositories{
+		storeRepository:     &listingadmin.GormStoreRepository{},
+		sheinSyncRepository: listingkitstore.NewMemSheinSyncRepository(),
+	}
+
+	runtimeServices, err := buildSheinSyncRuntimeServices(input, repositories, &closerStack{})
+	if err != nil {
+		t.Fatalf("buildSheinSyncRuntimeServices: %v", err)
+	}
+	if runtimeServices.syncService == nil {
+		t.Fatal("expected public SHEIN sync service")
+	}
+	if supportsImmediateRefresh(runtimeServices.syncService) {
+		t.Fatal("expected public SHEIN sync service to remain async-only")
+	}
+	if runtimeServices.sdsRetirementSyncService == nil {
+		t.Fatal("expected SDS retirement SHEIN sync service")
+	}
+	if !supportsImmediateRefresh(runtimeServices.sdsRetirementSyncService) {
+		t.Fatal("expected SDS retirement SHEIN sync service to support immediate refresh")
+	}
+}
+
+func supportsImmediateRefresh(service listingkit.SheinSyncService) bool {
+	aware, ok := service.(interface {
+		SupportsImmediateRefresh() bool
+	})
+	if !ok {
+		return true
+	}
+	return aware.SupportsImmediateRefresh()
 }
 
 func TestBuildServiceRuntimeAssemblesBundleFromRegistrars(t *testing.T) {
