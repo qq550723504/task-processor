@@ -39,6 +39,11 @@ type ResolveRecentBatchSelectionTargetParams = {
   summary: RecentBatchSelectionSummary;
 };
 
+type ResolveRecentBatchMutationTargetsParams = {
+  batchIds: string[];
+  resolveBatch: (batchId: string) => Promise<SheinStudioSavedBatch | null>;
+};
+
 type RecentBatchSelectionTarget =
   | {
       hydratedBatch: SheinStudioWorkbenchHydratedBatch;
@@ -134,6 +139,14 @@ export async function resolveRecentBatchForMutation({
   } catch {
     return savedBatch;
   }
+}
+
+export async function resolveRecentBatchMutationTargets({
+  batchIds,
+  resolveBatch,
+}: ResolveRecentBatchMutationTargetsParams): Promise<SheinStudioSavedBatch[]> {
+  const targets = await Promise.all(batchIds.map((batchId) => resolveBatch(batchId)));
+  return targets.filter((batch): batch is SheinStudioSavedBatch => batch != null);
 }
 
 export async function resolveRecentBatchSelectionTarget({

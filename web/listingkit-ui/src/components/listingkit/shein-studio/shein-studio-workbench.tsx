@@ -42,6 +42,7 @@ import {
   projectRecentBatchTargetStep,
   removeRecentBatchSummarySelection,
   resolveRecentBatchSelectionTarget,
+  resolveRecentBatchMutationTargets,
   selectRecentBatchBulkDeleteFailure,
   resolveRecentBatchForMutation as resolveRecentBatchForMutationTarget,
   upsertRecentSavedBatch,
@@ -1374,9 +1375,10 @@ export function SheinStudioWorkbench({
 
   const handleBulkUpdateRecentBatchStore = useCallback(
     async (summaryIds: string[], storeId: string) => {
-      const targets = (
-        await Promise.all(summaryIds.map((summaryId) => resolveRecentBatchForMutation(summaryId)))
-      ).filter((batch): batch is SheinStudioSavedBatch => batch != null);
+      const targets = await resolveRecentBatchMutationTargets({
+        batchIds: summaryIds,
+        resolveBatch: resolveRecentBatchForMutation,
+      });
       if (targets.length === 0) {
         return;
       }

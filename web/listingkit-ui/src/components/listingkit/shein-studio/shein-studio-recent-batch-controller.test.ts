@@ -11,6 +11,7 @@ import {
   resolveRecentBatchSelectionTarget,
   removeRecentBatchSummarySelection,
   resolveRecentBatchForMutation,
+  resolveRecentBatchMutationTargets,
   selectFreshRecentBatchHydration,
   selectRecentBatchBulkDeleteFailure,
   upsertRecentSavedBatch,
@@ -358,6 +359,25 @@ describe("resolveRecentBatchForMutation", () => {
         cacheHydratedBatch: vi.fn(),
       }),
     ).resolves.toBe(savedBatch);
+  });
+});
+
+describe("resolveRecentBatchMutationTargets", () => {
+  it("resolves selected batches in order and skips missing targets", async () => {
+    const resolveBatch = vi.fn(async (batchId: string) =>
+      batchId === "missing" ? null : buildBatch({ id: batchId }),
+    );
+
+    await expect(
+      resolveRecentBatchMutationTargets({
+        batchIds: ["batch-1", "missing", "batch-2"],
+        resolveBatch,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: "batch-1" }),
+      expect.objectContaining({ id: "batch-2" }),
+    ]);
+    expect(resolveBatch).toHaveBeenCalledTimes(3);
   });
 });
 
