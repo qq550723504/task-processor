@@ -130,7 +130,7 @@ func TestSDSRetirementRepositoryMarksSyncedProductOffShelfAfterSuccess(t *testin
 		t.Fatalf("create synced product: %v", err)
 	}
 	now := time.Date(2026, 6, 24, 12, 0, 0, 0, time.UTC)
-	if err := repo.MarkSyncedProductOffShelf(ctx, row.ID, now); err != nil {
+	if err := repo.MarkSyncedProductOffShelf(ctx, row.TenantID, row.StoreID, row.ID, now); err != nil {
 		t.Fatalf("mark off shelf: %v", err)
 	}
 	var got listingkit.SheinSyncedProductRecord
@@ -139,6 +139,39 @@ func TestSDSRetirementRepositoryMarksSyncedProductOffShelfAfterSuccess(t *testin
 	}
 	if got.ShelfStatus != "OFF_SHELF" || got.IsActive {
 		t.Fatalf("synced product = %+v", got)
+	}
+}
+
+func TestSDSRetirementRepositoryMarkSyncedProductOffShelfHonorsTenantAndStoreScope(t *testing.T) {
+	repo, db := newSDSRetirementRepoHarness(t)
+	ctx := context.Background()
+	row := listingkit.SheinSyncedProductRecord{
+		TenantID:    1,
+		StoreID:     177,
+		SKCName:     "SKC-1",
+		ShelfStatus: "ON_SHELF",
+		IsActive:    true,
+	}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatalf("create synced product: %v", err)
+	}
+	now := time.Date(2026, 6, 24, 12, 0, 0, 0, time.UTC)
+
+	err := repo.MarkSyncedProductOffShelf(ctx, 2, row.StoreID, row.ID, now)
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("mark off shelf error = %v, want not found for wrong tenant scope", err)
+	}
+
+	var got listingkit.SheinSyncedProductRecord
+	if err := db.First(&got, row.ID).Error; err != nil {
+		t.Fatalf("reload synced product: %v", err)
+	}
+	if got.ShelfStatus != "ON_SHELF" || !got.IsActive {
+		t.Fatalf("synced product mutated despite wrong tenant scope: %+v", got)
+	}
+
+	if err := repo.MarkSyncedProductOffShelf(ctx, row.TenantID, 999, row.ID, now); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("mark off shelf error = %v, want not found for wrong store scope", err)
 	}
 }
 

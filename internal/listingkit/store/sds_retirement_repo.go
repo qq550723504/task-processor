@@ -124,7 +124,13 @@ func (r *taskRepository) SaveSDSRetirementExecution(ctx context.Context, run *li
 	})
 }
 
-func (r *taskRepository) MarkSyncedProductOffShelf(ctx context.Context, syncedProductID int64, now time.Time) error {
+func (r *taskRepository) MarkSyncedProductOffShelf(ctx context.Context, tenantID, storeID, syncedProductID int64, now time.Time) error {
+	if tenantID <= 0 {
+		return fmt.Errorf("tenant id must be positive")
+	}
+	if storeID <= 0 {
+		return fmt.Errorf("store id must be positive")
+	}
 	if syncedProductID <= 0 {
 		return fmt.Errorf("synced product id must be positive")
 	}
@@ -133,7 +139,7 @@ func (r *taskRepository) MarkSyncedProductOffShelf(ctx context.Context, syncedPr
 	}
 	result := r.db.WithContext(ctx).
 		Model(&listingkit.SheinSyncedProductRecord{}).
-		Where("id = ?", syncedProductID).
+		Where("id = ? AND tenant_id = ? AND store_id = ?", syncedProductID, tenantID, storeID).
 		Updates(map[string]any{
 			"shelf_status": "OFF_SHELF",
 			"is_active":    false,

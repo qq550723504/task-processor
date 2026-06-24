@@ -109,13 +109,28 @@ func TestSDSRetirementRunHandlersRejectMissingExplicitTenantScope(t *testing.T) 
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name        string
-		method      string
-		path        string
-		body        string
-		register    func(*gin.Engine, *handler)
+		name         string
+		method       string
+		path         string
+		body         string
+		register     func(*gin.Engine, *handler)
 		assertNotRun func(*testing.T, *stubSDSRetirementHandlerService)
 	}{
+		{
+			name:   "create",
+			method: http.MethodPost,
+			path:   "/api/v1/listing-kits/sds/retirements",
+			body:   `{"platform":"shein","store_id":177,"parent_product_id":1,"prototype_group_id":2,"variant_id":3}`,
+			register: func(router *gin.Engine, h *handler) {
+				router.POST("/api/v1/listing-kits/sds/retirements", h.CreateSDSRetirementRun)
+			},
+			assertNotRun: func(t *testing.T, svc *stubSDSRetirementHandlerService) {
+				t.Helper()
+				if svc.createCtx != nil || svc.createReq != nil {
+					t.Fatalf("expected create service not to run")
+				}
+			},
+		},
 		{
 			name:   "get",
 			method: http.MethodGet,

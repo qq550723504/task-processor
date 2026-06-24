@@ -59,3 +59,49 @@ func buildSDSRetirementShelfRequest(item SDSRetirementItemRecord, businessModel 
 		}},
 	}, nil
 }
+
+func buildSDSRetirementDefaultSiteSelection(tasks []Task) string {
+	site := ""
+	for i := range tasks {
+		if tasks[i].Request == nil {
+			continue
+		}
+		// Use the same request-country defaults that normal SHEIN payload assembly
+		// uses; the synced product cache currently does not expose per-SKC sites.
+		for _, candidate := range defaultPlatformSites(tasks[i].Request) {
+			if normalized := normalizeSDSRetirementSiteAbbr(candidate.MainSite); normalized != "" {
+				site = normalized
+				break
+			}
+			for _, subSite := range candidate.SubSites {
+				if normalized := normalizeSDSRetirementSiteAbbr(subSite); normalized != "" {
+					site = normalized
+					break
+				}
+			}
+			if site != "" {
+				break
+			}
+		}
+		if site != "" {
+			break
+		}
+	}
+	if site == "" {
+		site = "US"
+	}
+	encoded, err := json.Marshal([]sheinproduct.SubSite{{SiteAbbr: site, StoreType: 1}})
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
+func normalizeSDSRetirementSiteAbbr(value string) string {
+	site := strings.TrimSpace(value)
+	if site == "" {
+		return ""
+	}
+	site = strings.TrimPrefix(strings.ToLower(site), "shein-")
+	return strings.ToUpper(site)
+}

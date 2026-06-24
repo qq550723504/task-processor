@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   confirmSDSRetirementRun,
   createSDSRetirementRun,
+  getSDSRetirementRun,
+  retrySDSRetirementRun,
   updateSDSRetirementSelection,
 } from "@/lib/api/sds-retirement";
 
@@ -32,6 +34,8 @@ describe("sds retirement api helpers", () => {
       },
     ]);
     await confirmSDSRetirementRun("run-1");
+    await getSDSRetirementRun("run-1");
+    await retrySDSRetirementRun("run-1");
 
     expect(apiRequest.mock.calls).toEqual([
       [
@@ -65,6 +69,19 @@ describe("sds retirement api helpers", () => {
       ],
       [
         "/sds/retirements/run-1/confirm",
+        {
+          method: "POST",
+          body: {},
+        },
+      ],
+      [
+        "/sds/retirements/run-1",
+        {
+          method: "GET",
+        },
+      ],
+      [
+        "/sds/retirements/run-1/retry",
         {
           method: "POST",
           body: {},

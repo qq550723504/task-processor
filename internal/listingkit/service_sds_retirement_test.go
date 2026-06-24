@@ -22,12 +22,14 @@ func TestSDSRetirementBuildItemsRejectsMissingSourceSKUs(t *testing.T) {
 func TestSDSRetirementCreateRunRefreshesSheinProductsAndPersistsMatches(t *testing.T) {
 	repo := &sdsRetirementServiceRepoStub{
 		listTasks: []Task{{
-			ID: "task-1",
-			Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
-				ParentProductID:  238915,
-				PrototypeGroupID: 28345,
-				VariantID:        238916,
-			}}},
+			Request: &GenerateRequest{
+				Country: "US",
+				Options: &GenerateOptions{SDS: &SDSSyncOptions{
+					ParentProductID:  238915,
+					PrototypeGroupID: 28345,
+					VariantID:        238916,
+				}},
+			},
 			Result: &ListingKitResult{
 				CanonicalProduct: &canonical.Product{
 					Variants: []canonical.Variant{{
@@ -82,8 +84,227 @@ func TestSDSRetirementCreateRunRefreshesSheinProductsAndPersistsMatches(t *testi
 	if detail.Items[0].Platform != "shein" || detail.Items[0].SyncedProductID != 11 || detail.Items[0].BusinessModel != 7 {
 		t.Fatalf("item = %#v", detail.Items[0])
 	}
+	if detail.Items[0].SiteSelection != `[{"site_abbr":"US","store_type":1}]` {
+		t.Fatalf("site selection = %q, want default US selection", detail.Items[0].SiteSelection)
+	}
 	if repo.createdRun == nil || len(repo.createdItems) != 1 {
 		t.Fatalf("created run/items = %#v %#v", repo.createdRun, repo.createdItems)
+	}
+}
+
+func TestSDSRetirementCreateRunFallsBackToUSSiteSelectionWhenSourceCountryMissing(t *testing.T) {
+	repo := &sdsRetirementServiceRepoStub{
+		listTasks: []Task{{
+			ID: "task-1",
+			Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+				ParentProductID:  238915,
+				PrototypeGroupID: 28345,
+				VariantID:        238916,
+			}}},
+			Result: &ListingKitResult{
+				CanonicalProduct: &canonical.Product{
+					Variants: []canonical.Variant{{
+						Attributes: map[string]canonical.Attribute{
+							"source_sds_sku": {Value: "MG8006905001"},
+						},
+					}},
+				},
+			},
+		}},
+	}
+	baseline := &sdsRetirementBaselineStub{
+		readiness: &SDSBaselineReadiness{
+			Status:           SDSBaselineStatusReady,
+			ValidationStatus: SDSBaselineValidationStatusReady,
+			ReasonCode:       "ready",
+			Reason:           "baseline cached",
+		},
+	}
+	shein := &sdsRetirementSheinSyncStub{
+		supportsImmediateRefresh: true,
+		products: []SheinSyncedProductRecord{
+			{ID: 11, SupplierCode: "MG8006905001", ShelfStatus: "ON_SHELF", BusinessModel: 7, SPUName: "spu", SKCName: "skc", SKCCode: "skc-1"},
+			{ID: 12, SupplierCode: "OTHER", ShelfStatus: "ON_SHELF", BusinessModel: 9},
+		},
+	}
+
+	service := NewSDSRetirementService(repo, baseline, shein)
+	detail, err := service.CreateSDSRetirementRun(WithTenantID(context.Background(), "18"), &CreateSDSRetirementRunRequest{
+		Platform:         "SHEIN",
+		StoreID:          177,
+		ParentProductID:  238915,
+		PrototypeGroupID: 28345,
+		VariantID:        238916,
+		CreatedBy:        "tester",
+	})
+	if err != nil {
+		t.Fatalf("CreateSDSRetirementRun() error = %v", err)
+	}
+	if len(detail.Items) != 1 {
+		t.Fatalf("items = %#v", detail.Items)
+	}
+	if detail.Items[0].SiteSelection != `[{"site_abbr":"US","store_type":1}]` {
+		t.Fatalf("site selection = %q, want defensible US fallback", detail.Items[0].SiteSelection)
+	}
+}
+
+func TestSDSRetirementDiscoveredItemsConfirmWithoutManualSiteSelection(t *testing.T) {
+	createRepo := &sdsRetirementServiceRepoStub{
+		listTasks: []Task{{
+			ID: "task-1",
+			Request: &GenerateRequest{
+				Country: "US",
+				Options: &GenerateOptions{SDS: &SDSSyncOptions{
+					ParentProductID:  238915,
+					PrototypeGroupID: 28345,
+					VariantID:        238916,
+					Variants:         []SDSSyncVariantOption{{VariantID: 3001}},
+				}},
+			},
+			Result: &ListingKitResult{
+				CanonicalProduct: &canonical.Product{
+					Variants: []canonical.Variant{{
+						Attributes: map[string]canonical.Attribute{
+							"source_sds_sku": {Value: "MG8006905001"},
+						},
+					}},
+				},
+			},
+		}},
+	}
+	createShein := &sdsRetirementSheinSyncStub{
+		supportsImmediateRefresh: true,
+		products: []SheinSyncedProductRecord{{
+			ID:            11,
+			TenantID:      18,
+			StoreID:       177,
+			SupplierCode:  "MG8006905001",
+			ShelfStatus:   "ON_SHELF",
+			BusinessModel: 7,
+			SPUName:       "SPU-1",
+			SKCName:       "SKC-1",
+		}},
+	}
+	createService := NewSDSRetirementService(createRepo, nil, createShein)
+	detail, err := createService.CreateSDSRetirementRun(WithTenantID(context.Background(), "18"), &CreateSDSRetirementRunRequest{
+		Platform:           "shein",
+		StoreID:            177,
+		ParentProductID:    238915,
+		PrototypeGroupID:   28345,
+		VariantID:          238916,
+		SelectedVariantIDs: []int64{3001},
+	})
+	if err != nil {
+		t.Fatalf("CreateSDSRetirementRun() error = %v", err)
+	}
+	if len(detail.Items) != 1 || detail.Items[0].SiteSelection == "" {
+		t.Fatalf("created items = %#v, want populated site selection", detail.Items)
+	}
+
+	productAPI := &sdsRetirementProductAPIStub{}
+	executeRepo := &sdsRetirementExecutionRepoStub{
+		storedRun:   &detail.Run,
+		storedItems: detail.Items,
+	}
+	executeShein := &sdsRetirementExecutionSheinSyncStub{
+		supportsImmediateRefresh: true,
+		productAPI:               productAPI,
+		products: []SheinSyncedProductRecord{{
+			ID:            11,
+			TenantID:      18,
+			StoreID:       177,
+			SPUName:       "SPU-1",
+			SKCName:       "SKC-1",
+			SupplierCode:  "MG8006905001",
+			BusinessModel: 7,
+			ShelfStatus:   "ON_SHELF",
+			IsActive:      true,
+		}},
+	}
+	executeService := NewSDSRetirementService(executeRepo, nil, executeShein)
+	confirmed, err := executeService.ConfirmSDSRetirementRun(WithTenantID(context.Background(), "18"), detail.Run.ID, &ConfirmSDSRetirementRunRequest{
+		ConfirmedBy: "operator",
+	})
+	if err != nil {
+		t.Fatalf("ConfirmSDSRetirementRun() error = %v", err)
+	}
+	if confirmed.Run.Status != SDSRetirementRunStatusSucceeded {
+		t.Fatalf("confirmed run = %#v", confirmed.Run)
+	}
+	if len(productAPI.offShelfRequests) != 1 {
+		t.Fatalf("offshelf calls = %d, want 1", len(productAPI.offShelfRequests))
+	}
+	if sites := productAPI.offShelfRequests[0].SkcSiteInfos[0].OffSubSites; len(sites) != 1 || sites[0].SiteAbbr != "US" {
+		t.Fatalf("offshelf sites = %+v, want discovered US selection", sites)
+	}
+}
+
+func TestSDSRetirementCreateRunDoesNotCrossMatchDifferentSelectedVariantSets(t *testing.T) {
+	repo := &sdsRetirementServiceRepoStub{
+		listTasks: []Task{
+			{
+				ID: "task-selected-3001",
+				Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+					ParentProductID:  238915,
+					PrototypeGroupID: 28345,
+					VariantID:        238916,
+					Variants:         []SDSSyncVariantOption{{VariantID: 3001}},
+				}}},
+				Result: &ListingKitResult{
+					CanonicalProduct: &canonical.Product{
+						Variants: []canonical.Variant{{
+							Attributes: map[string]canonical.Attribute{
+								"source_sds_sku": {Value: "SKU-3001"},
+							},
+						}},
+					},
+				},
+			},
+			{
+				ID: "task-selected-3002",
+				Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+					ParentProductID:  238915,
+					PrototypeGroupID: 28345,
+					VariantID:        238916,
+					Variants:         []SDSSyncVariantOption{{VariantID: 3002}},
+				}}},
+				Result: &ListingKitResult{
+					CanonicalProduct: &canonical.Product{
+						Variants: []canonical.Variant{{
+							Attributes: map[string]canonical.Attribute{
+								"source_sds_sku": {Value: "SKU-3002"},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	shein := &sdsRetirementSheinSyncStub{
+		supportsImmediateRefresh: true,
+		products: []SheinSyncedProductRecord{
+			{ID: 11, SupplierCode: "SKU-3001", ShelfStatus: "ON_SHELF", BusinessModel: 7, SPUName: "spu", SKCName: "skc-3001"},
+			{ID: 12, SupplierCode: "SKU-3002", ShelfStatus: "ON_SHELF", BusinessModel: 7, SPUName: "spu", SKCName: "skc-3002"},
+		},
+	}
+	service := NewSDSRetirementService(repo, nil, shein)
+
+	detail, err := service.CreateSDSRetirementRun(WithTenantID(context.Background(), "18"), &CreateSDSRetirementRunRequest{
+		Platform:           "shein",
+		StoreID:            177,
+		ParentProductID:    238915,
+		PrototypeGroupID:   28345,
+		VariantID:          238916,
+		SelectedVariantIDs: []int64{3002},
+	})
+	if err != nil {
+		t.Fatalf("CreateSDSRetirementRun() error = %v", err)
+	}
+	if len(detail.Tasks) != 1 || detail.Tasks[0].ID != "task-selected-3002" {
+		t.Fatalf("matched tasks = %#v", detail.Tasks)
+	}
+	if len(detail.Items) != 1 || detail.Items[0].SupplierCode != "SKU-3002" {
+		t.Fatalf("items = %#v, want only selected variant SKU", detail.Items)
 	}
 }
 
@@ -496,7 +717,7 @@ func (s *sdsRetirementServiceRepoStub) UpdateSDSRetirementItems(_ context.Contex
 func (s *sdsRetirementServiceRepoStub) SaveSDSRetirementExecution(context.Context, *SDSRetirementRunRecord, []SDSRetirementItemRecord) error {
 	return nil
 }
-func (s *sdsRetirementServiceRepoStub) MarkSyncedProductOffShelf(context.Context, int64, time.Time) error {
+func (s *sdsRetirementServiceRepoStub) MarkSyncedProductOffShelf(context.Context, int64, int64, int64, time.Time) error {
 	return nil
 }
 

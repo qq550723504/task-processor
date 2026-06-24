@@ -72,7 +72,7 @@ type SDSRetirementRepository interface {
 	GetSDSRetirementRun(ctx context.Context, runID string) (*SDSRetirementRunRecord, []SDSRetirementItemRecord, error)
 	UpdateSDSRetirementItems(ctx context.Context, runID string, updates []SDSRetirementItemSelectionUpdate) error
 	SaveSDSRetirementExecution(ctx context.Context, run *SDSRetirementRunRecord, items []SDSRetirementItemRecord) error
-	MarkSyncedProductOffShelf(ctx context.Context, syncedProductID int64, now time.Time) error
+	MarkSyncedProductOffShelf(ctx context.Context, tenantID, storeID, syncedProductID int64, now time.Time) error
 }
 
 type Assembler interface {

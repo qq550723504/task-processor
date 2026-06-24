@@ -19,9 +19,14 @@ func (h *handler) CreateSDSRetirementRun(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	req.TenantID = requestTenantID(c, req.TenantID)
+	tenantID, ok := requestExplicitTenantID(c, req.TenantID)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "tenant_id is required"})
+		return
+	}
+	req.TenantID = tenantID
 
-	detail, err := h.sdsRetirementService.CreateSDSRetirementRun(requestContext(c, req.TenantID), &req)
+	detail, err := h.sdsRetirementService.CreateSDSRetirementRun(requestContext(c, tenantID), &req)
 	respondSDSRetirement(c, detail, err)
 }
 

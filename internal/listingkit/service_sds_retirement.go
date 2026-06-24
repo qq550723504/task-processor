@@ -226,6 +226,7 @@ func (s *sdsRetirementService) buildSDSRetirementItems(ctx context.Context, tena
 		return nil, err
 	}
 	active := true
+	defaultSiteSelection := buildSDSRetirementDefaultSiteSelection(tasks)
 	items := make([]SDSRetirementItemRecord, 0)
 	for page := 1; ; page++ {
 		products, total, err := s.sheinSyncService.ListSyncedProducts(ctx, &SheinSyncedProductQuery{
@@ -263,6 +264,7 @@ func (s *sdsRetirementService) buildSDSRetirementItems(ctx context.Context, tena
 				BusinessModel:     product.BusinessModel,
 				ShelfStatusBefore: product.ShelfStatus,
 				Selected:          true,
+				SiteSelection:     defaultSiteSelection,
 				Status:            SDSRetirementItemStatusSelected,
 			})
 		}

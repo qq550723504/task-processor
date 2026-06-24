@@ -11,10 +11,40 @@ func TestSDSRetirementTaskMatchesIdentityFromRequestOptions(t *testing.T) {
 		ParentProductID:  238915,
 		PrototypeGroupID: 28345,
 		VariantID:        238916,
+		Variants: []SDSSyncVariantOption{
+			{VariantID: 3002},
+			{VariantID: 3001},
+		},
 	}}}}
-	identity := SDSBaselineIdentity{ParentProductID: 238915, PrototypeGroupID: 28345, VariantID: 238916}
+	identity := SDSBaselineIdentity{
+		ParentProductID:    238915,
+		PrototypeGroupID:   28345,
+		VariantID:          238916,
+		SelectedVariantIDs: []int64{3001, 3002},
+	}
 	if !sdsRetirementTaskMatchesIdentity(&task, identity) {
 		t.Fatal("expected task to match SDS identity")
+	}
+}
+
+func TestSDSRetirementTaskMatchingRequiresSelectedVariantIdentity(t *testing.T) {
+	task := Task{Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+		ParentProductID:  238915,
+		PrototypeGroupID: 28345,
+		VariantID:        238916,
+		Variants: []SDSSyncVariantOption{
+			{VariantID: 3001},
+		},
+	}}}}
+	identity := SDSBaselineIdentity{
+		ParentProductID:    238915,
+		PrototypeGroupID:   28345,
+		VariantID:          238916,
+		SelectedVariantIDs: []int64{3002},
+	}
+
+	if sdsRetirementTaskMatchesIdentity(&task, identity) {
+		t.Fatal("expected different selected variant sets not to match")
 	}
 }
 

@@ -11,10 +11,25 @@ func sdsRetirementTaskMatchesIdentity(task *Task, identity SDSBaselineIdentity) 
 	if task == nil || task.Request == nil || task.Request.Options == nil || task.Request.Options.SDS == nil {
 		return false
 	}
-	options := task.Request.Options.SDS
-	return options.ParentProductID == identity.ParentProductID &&
-		options.PrototypeGroupID == identity.PrototypeGroupID &&
-		options.VariantID == identity.VariantID
+	taskIdentity := sdsBaselineIdentityFromOptions(task.Request.Options.SDS)
+	expected := identity
+	expected.SelectedVariantIDs = normalizedSDSBaselineVariantIDs(expected.SelectedVariantIDs)
+	return taskIdentity.ParentProductID == expected.ParentProductID &&
+		taskIdentity.PrototypeGroupID == expected.PrototypeGroupID &&
+		taskIdentity.VariantID == expected.VariantID &&
+		sdsRetirementInt64SlicesEqual(taskIdentity.SelectedVariantIDs, expected.SelectedVariantIDs)
+}
+
+func sdsRetirementInt64SlicesEqual(left, right []int64) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func sdsRetirementSourceSKUSet(values []string) map[string]struct{} {

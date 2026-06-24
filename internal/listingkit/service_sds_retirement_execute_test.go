@@ -343,7 +343,7 @@ func TestSDSRetirementRetryRunExecutesOnlyFailedItems(t *testing.T) {
 	}
 }
 
-func TestSDSRetirementConfirmRunFailsWhenMarkSyncedProductOffShelfFails(t *testing.T) {
+func TestSDSRetirementConfirmRunTreatsMarkSyncedProductOffShelfFailureAsWarning(t *testing.T) {
 	repo := &sdsRetirementExecutionRepoStub{
 		storedRun: &SDSRetirementRunRecord{
 			ID:       "run-mark-fail",
@@ -394,16 +394,16 @@ func TestSDSRetirementConfirmRunFailsWhenMarkSyncedProductOffShelfFails(t *testi
 	if len(productAPI.offShelfRequests) != 1 {
 		t.Fatalf("offshelf calls = %d, want 1", len(productAPI.offShelfRequests))
 	}
-	if detail.Run.Status != SDSRetirementRunStatusFailed {
+	if detail.Run.Status != SDSRetirementRunStatusSucceeded {
 		t.Fatalf("run = %#v", detail.Run)
 	}
-	if detail.Items[0].Status != SDSRetirementItemStatusFailed {
+	if detail.Items[0].Status != SDSRetirementItemStatusSucceeded {
 		t.Fatalf("item = %#v", detail.Items[0])
 	}
 	if !strings.Contains(detail.Items[0].Error, "update local synced state") {
 		t.Fatalf("item error = %q, want mark failure", detail.Items[0].Error)
 	}
-	if repo.savedRun == nil || repo.savedRun.Status != SDSRetirementRunStatusFailed {
+	if repo.savedRun == nil || repo.savedRun.Status != SDSRetirementRunStatusSucceeded {
 		t.Fatalf("saved run = %#v", repo.savedRun)
 	}
 }
@@ -519,13 +519,19 @@ func TestSDSRetirementConfirmRunRejectsAsyncOnlyRefresh(t *testing.T) {
 }
 
 type sdsRetirementExecutionRepoStub struct {
-	storedRun          *SDSRetirementRunRecord
-	storedItems        []SDSRetirementItemRecord
-	savedRun           *SDSRetirementRunRecord
-	savedItems         []SDSRetirementItemRecord
-	markedOffShelfIDs  []int64
-	markedOffShelfTime []time.Time
-	markOffShelfErr    error
+	storedRun            *SDSRetirementRunRecord
+	storedItems          []SDSRetirementItemRecord
+	savedRun             *SDSRetirementRunRecord
+	savedItems           []SDSRetirementItemRecord
+	markedOffShelfScopes []sdsRetirementMarkedOffShelfScope
+	markedOffShelfIDs    []int64
+	markedOffShelfTime   []time.Time
+	markOffShelfErr      error
+}
+
+type sdsRetirementMarkedOffShelfScope struct {
+	tenantID int64
+	storeID  int64
 }
 
 func (s *sdsRetirementExecutionRepoStub) CreateTask(context.Context, *Task) error { return nil }
@@ -583,7 +589,8 @@ func (s *sdsRetirementExecutionRepoStub) SaveSDSRetirementExecution(_ context.Co
 	s.savedItems = append([]SDSRetirementItemRecord(nil), items...)
 	return nil
 }
-func (s *sdsRetirementExecutionRepoStub) MarkSyncedProductOffShelf(_ context.Context, syncedProductID int64, now time.Time) error {
+func (s *sdsRetirementExecutionRepoStub) MarkSyncedProductOffShelf(_ context.Context, tenantID, storeID, syncedProductID int64, now time.Time) error {
+	s.markedOffShelfScopes = append(s.markedOffShelfScopes, sdsRetirementMarkedOffShelfScope{tenantID: tenantID, storeID: storeID})
 	s.markedOffShelfIDs = append(s.markedOffShelfIDs, syncedProductID)
 	s.markedOffShelfTime = append(s.markedOffShelfTime, now)
 	return s.markOffShelfErr

@@ -153,16 +153,11 @@ func (s *sdsRetirementService) executeSDSRetirementRun(ctx context.Context, runI
 
 		finishedAt := time.Now().UTC()
 		if item.SyncedProductID > 0 {
-			if err := repo.MarkSyncedProductOffShelf(ctx, item.SyncedProductID, finishedAt); err != nil {
-				item.Status = SDSRetirementItemStatusFailed
-				item.Error = err.Error()
-				item.FinishedAt = &finishedAt
-				failureCount++
-				continue
+			if err := repo.MarkSyncedProductOffShelf(ctx, tenantID, run.StoreID, item.SyncedProductID, finishedAt); err != nil {
+				item.Error = fmt.Sprintf("remote OffShelf succeeded; local synced product cache update failed: %v", err)
 			}
 		}
 		item.Status = SDSRetirementItemStatusSucceeded
-		item.Error = ""
 		item.FinishedAt = &finishedAt
 		successCount++
 	}
