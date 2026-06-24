@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -51,6 +52,17 @@ func TestSDSRetirementConfirmRunExecutesSelectedItemsAfterRefresh(t *testing.T) 
 	shein := &sdsRetirementExecutionSheinSyncStub{
 		supportsImmediateRefresh: true,
 		productAPI:               productAPI,
+		products: []SheinSyncedProductRecord{{
+			ID:            11,
+			TenantID:      18,
+			StoreID:       177,
+			SPUName:       "SPU-1",
+			SKCName:       "SKC-1",
+			SupplierCode:  "SUP-1",
+			BusinessModel: 2,
+			ShelfStatus:   "ON_SHELF",
+			IsActive:      true,
+		}},
 	}
 	productAPI.events = &shein.events
 	service := NewSDSRetirementService(repo, nil, shein)
@@ -108,6 +120,142 @@ func TestSDSRetirementConfirmRunExecutesSelectedItemsAfterRefresh(t *testing.T) 
 	}
 }
 
+func TestSDSRetirementConfirmRunUsesRefreshedSyncedProductData(t *testing.T) {
+	repo := &sdsRetirementExecutionRepoStub{
+		storedRun: &SDSRetirementRunRecord{
+			ID:       "run-refresh",
+			TenantID: "18",
+			Platform: "shein",
+			StoreID:  177,
+			Status:   SDSRetirementRunStatusReady,
+		},
+		storedItems: []SDSRetirementItemRecord{{
+			ID:                "item-1",
+			RunID:             "run-refresh",
+			TenantID:          "18",
+			Platform:          "shein",
+			StoreID:           177,
+			SyncedProductID:   11,
+			SPUName:           "STALE-SPU",
+			SKCName:           "STALE-SKC",
+			SupplierCode:      "STALE-SUP",
+			BusinessModel:     2,
+			ShelfStatusBefore: "ON_SHELF",
+			Selected:          true,
+			SiteSelection:     `[{"site_abbr":"US","store_type":1}]`,
+			Status:            SDSRetirementItemStatusSelected,
+		}},
+	}
+	productAPI := &sdsRetirementProductAPIStub{}
+	shein := &sdsRetirementExecutionSheinSyncStub{
+		supportsImmediateRefresh: true,
+		productAPI:               productAPI,
+		products: []SheinSyncedProductRecord{{
+			ID:            11,
+			TenantID:      18,
+			StoreID:       177,
+			SPUName:       "FRESH-SPU",
+			SKCName:       "FRESH-SKC",
+			SKCCode:       "FRESH-CODE",
+			SupplierCode:  "FRESH-SUP",
+			BusinessModel: 9,
+			ShelfStatus:   "ON_SHELF",
+			IsActive:      true,
+		}},
+	}
+	service := NewSDSRetirementService(repo, nil, shein)
+
+	detail, err := service.ConfirmSDSRetirementRun(WithTenantID(context.Background(), "18"), "run-refresh", &ConfirmSDSRetirementRunRequest{
+		ConfirmedBy: "operator",
+	})
+	if err != nil {
+		t.Fatalf("ConfirmSDSRetirementRun() error = %v", err)
+	}
+	if len(productAPI.offShelfRequests) != 1 {
+		t.Fatalf("offshelf calls = %d, want 1", len(productAPI.offShelfRequests))
+	}
+	req := productAPI.offShelfRequests[0]
+	if req.SpuName != "FRESH-SPU" {
+		t.Fatalf("request spu = %q, want refreshed value", req.SpuName)
+	}
+	if len(req.SkcSiteInfos) != 1 || req.SkcSiteInfos[0].SkcName != "FRESH-SKC" || req.SkcSiteInfos[0].BusinessModel != 9 {
+		t.Fatalf("request skc info = %+v", req.SkcSiteInfos)
+	}
+	if detail.Items[0].SPUName != "FRESH-SPU" || detail.Items[0].SKCName != "FRESH-SKC" || detail.Items[0].SupplierCode != "FRESH-SUP" {
+		t.Fatalf("item = %#v", detail.Items[0])
+	}
+	if detail.Items[0].BusinessModel != 9 || detail.Items[0].ShelfStatusBefore != "ON_SHELF" {
+		t.Fatalf("item refreshed metadata = %#v", detail.Items[0])
+	}
+}
+
+func TestSDSRetirementConfirmRunSkipsItemsNoLongerOnShelfAfterRefresh(t *testing.T) {
+	repo := &sdsRetirementExecutionRepoStub{
+		storedRun: &SDSRetirementRunRecord{
+			ID:       "run-off-shelf",
+			TenantID: "18",
+			Platform: "shein",
+			StoreID:  177,
+			Status:   SDSRetirementRunStatusReady,
+		},
+		storedItems: []SDSRetirementItemRecord{{
+			ID:                "item-1",
+			RunID:             "run-off-shelf",
+			TenantID:          "18",
+			Platform:          "shein",
+			StoreID:           177,
+			SyncedProductID:   11,
+			SPUName:           "SPU-1",
+			SKCName:           "SKC-1",
+			SupplierCode:      "SUP-1",
+			BusinessModel:     2,
+			ShelfStatusBefore: "ON_SHELF",
+			Selected:          true,
+			SiteSelection:     `[{"site_abbr":"US","store_type":1}]`,
+			Status:            SDSRetirementItemStatusSelected,
+		}},
+	}
+	productAPI := &sdsRetirementProductAPIStub{}
+	shein := &sdsRetirementExecutionSheinSyncStub{
+		supportsImmediateRefresh: true,
+		productAPI:               productAPI,
+		products: []SheinSyncedProductRecord{{
+			ID:            11,
+			TenantID:      18,
+			StoreID:       177,
+			SPUName:       "SPU-1",
+			SKCName:       "SKC-1",
+			SupplierCode:  "SUP-1",
+			BusinessModel: 7,
+			ShelfStatus:   "OFF_SHELF",
+			IsActive:      false,
+		}},
+	}
+	service := NewSDSRetirementService(repo, nil, shein)
+
+	detail, err := service.ConfirmSDSRetirementRun(WithTenantID(context.Background(), "18"), "run-off-shelf", &ConfirmSDSRetirementRunRequest{
+		ConfirmedBy: "operator",
+	})
+	if err != nil {
+		t.Fatalf("ConfirmSDSRetirementRun() error = %v", err)
+	}
+	if len(productAPI.offShelfRequests) != 0 {
+		t.Fatalf("offshelf calls = %d, want 0", len(productAPI.offShelfRequests))
+	}
+	if detail.Run.Status != SDSRetirementRunStatusSucceeded {
+		t.Fatalf("run = %#v", detail.Run)
+	}
+	if detail.Items[0].Status != SDSRetirementItemStatusSucceededAlreadyOffShelf {
+		t.Fatalf("item status = %q, want already off shelf", detail.Items[0].Status)
+	}
+	if detail.Items[0].BusinessModel != 7 || detail.Items[0].ShelfStatusBefore != "OFF_SHELF" {
+		t.Fatalf("item refreshed metadata = %#v", detail.Items[0])
+	}
+	if len(repo.markedOffShelfIDs) != 0 {
+		t.Fatalf("marked offshelf ids = %#v, want none", repo.markedOffShelfIDs)
+	}
+}
+
 func TestSDSRetirementRetryRunExecutesOnlyFailedItems(t *testing.T) {
 	repo := &sdsRetirementExecutionRepoStub{
 		storedRun: &SDSRetirementRunRecord{
@@ -152,6 +300,30 @@ func TestSDSRetirementRetryRunExecutesOnlyFailedItems(t *testing.T) {
 	shein := &sdsRetirementExecutionSheinSyncStub{
 		supportsImmediateRefresh: true,
 		productAPI:               productAPI,
+		products: []SheinSyncedProductRecord{
+			{
+				ID:            21,
+				TenantID:      18,
+				StoreID:       177,
+				SPUName:       "SPU-1",
+				SKCName:       "SKC-1",
+				SupplierCode:  "SUP-1",
+				BusinessModel: 4,
+				ShelfStatus:   "ON_SHELF",
+				IsActive:      true,
+			},
+			{
+				ID:            22,
+				TenantID:      18,
+				StoreID:       177,
+				SPUName:       "SPU-2",
+				SKCName:       "SKC-2",
+				SupplierCode:  "SUP-2",
+				BusinessModel: 4,
+				ShelfStatus:   "ON_SHELF",
+				IsActive:      true,
+			},
+		},
 	}
 	productAPI.events = &shein.events
 	service := NewSDSRetirementService(repo, nil, shein)
@@ -168,6 +340,129 @@ func TestSDSRetirementRetryRunExecutesOnlyFailedItems(t *testing.T) {
 	}
 	if detail.Items[0].Status != SDSRetirementItemStatusSucceeded || detail.Items[1].Status != SDSRetirementItemStatusSucceeded {
 		t.Fatalf("items = %#v", detail.Items)
+	}
+}
+
+func TestSDSRetirementConfirmRunFailsWhenMarkSyncedProductOffShelfFails(t *testing.T) {
+	repo := &sdsRetirementExecutionRepoStub{
+		storedRun: &SDSRetirementRunRecord{
+			ID:       "run-mark-fail",
+			TenantID: "18",
+			Platform: "shein",
+			StoreID:  177,
+			Status:   SDSRetirementRunStatusReady,
+		},
+		storedItems: []SDSRetirementItemRecord{{
+			ID:              "item-1",
+			RunID:           "run-mark-fail",
+			TenantID:        "18",
+			Platform:        "shein",
+			StoreID:         177,
+			SyncedProductID: 11,
+			SPUName:         "SPU-1",
+			SKCName:         "SKC-1",
+			BusinessModel:   2,
+			Selected:        true,
+			SiteSelection:   `[{"site_abbr":"US","store_type":1}]`,
+			Status:          SDSRetirementItemStatusSelected,
+		}},
+		markOffShelfErr: fmt.Errorf("update local synced state"),
+	}
+	productAPI := &sdsRetirementProductAPIStub{}
+	shein := &sdsRetirementExecutionSheinSyncStub{
+		supportsImmediateRefresh: true,
+		productAPI:               productAPI,
+		products: []SheinSyncedProductRecord{{
+			ID:            11,
+			TenantID:      18,
+			StoreID:       177,
+			SPUName:       "SPU-1",
+			SKCName:       "SKC-1",
+			BusinessModel: 2,
+			ShelfStatus:   "ON_SHELF",
+			IsActive:      true,
+		}},
+	}
+	service := NewSDSRetirementService(repo, nil, shein)
+
+	detail, err := service.ConfirmSDSRetirementRun(WithTenantID(context.Background(), "18"), "run-mark-fail", &ConfirmSDSRetirementRunRequest{
+		ConfirmedBy: "operator",
+	})
+	if err != nil {
+		t.Fatalf("ConfirmSDSRetirementRun() error = %v", err)
+	}
+	if len(productAPI.offShelfRequests) != 1 {
+		t.Fatalf("offshelf calls = %d, want 1", len(productAPI.offShelfRequests))
+	}
+	if detail.Run.Status != SDSRetirementRunStatusFailed {
+		t.Fatalf("run = %#v", detail.Run)
+	}
+	if detail.Items[0].Status != SDSRetirementItemStatusFailed {
+		t.Fatalf("item = %#v", detail.Items[0])
+	}
+	if !strings.Contains(detail.Items[0].Error, "update local synced state") {
+		t.Fatalf("item error = %q, want mark failure", detail.Items[0].Error)
+	}
+	if repo.savedRun == nil || repo.savedRun.Status != SDSRetirementRunStatusFailed {
+		t.Fatalf("saved run = %#v", repo.savedRun)
+	}
+}
+
+func TestSDSRetirementRetryRunReplacesStaleReasonWhenAllItemsFail(t *testing.T) {
+	repo := &sdsRetirementExecutionRepoStub{
+		storedRun: &SDSRetirementRunRecord{
+			ID:       "run-retry-fail",
+			TenantID: "18",
+			Platform: "shein",
+			StoreID:  177,
+			Status:   SDSRetirementRunStatusFailed,
+			Reason:   "stale retry reason",
+		},
+		storedItems: []SDSRetirementItemRecord{{
+			ID:              "item-1",
+			RunID:           "run-retry-fail",
+			TenantID:        "18",
+			Platform:        "shein",
+			StoreID:         177,
+			SyncedProductID: 11,
+			SPUName:         "SPU-1",
+			SKCName:         "SKC-1",
+			BusinessModel:   2,
+			Selected:        true,
+			SiteSelection:   `[{"site_abbr":"US","store_type":1}]`,
+			Status:          SDSRetirementItemStatusFailed,
+			Error:           "previous failure",
+		}},
+	}
+	productAPI := &sdsRetirementProductAPIStub{offShelfErr: fmt.Errorf("shein rejected request")}
+	shein := &sdsRetirementExecutionSheinSyncStub{
+		supportsImmediateRefresh: true,
+		productAPI:               productAPI,
+		products: []SheinSyncedProductRecord{{
+			ID:            11,
+			TenantID:      18,
+			StoreID:       177,
+			SPUName:       "SPU-1",
+			SKCName:       "SKC-1",
+			BusinessModel: 2,
+			ShelfStatus:   "ON_SHELF",
+			IsActive:      true,
+		}},
+	}
+	service := NewSDSRetirementService(repo, nil, shein)
+
+	detail, err := service.RetrySDSRetirementRun(WithTenantID(context.Background(), "18"), "run-retry-fail")
+	if err != nil {
+		t.Fatalf("RetrySDSRetirementRun() error = %v", err)
+	}
+	if detail.Run.Status != SDSRetirementRunStatusFailed {
+		t.Fatalf("run = %#v", detail.Run)
+	}
+	if detail.Run.Reason == "stale retry reason" {
+		t.Fatalf("run reason preserved stale value: %#v", detail.Run)
+	}
+	if detail.Run.Reason != "All selected SDS retirement items failed." {
+		t.Fatalf("run reason = %q, want fresh all-failed reason", detail.Run.Reason)
 	}
 }
 
@@ -230,6 +525,7 @@ type sdsRetirementExecutionRepoStub struct {
 	savedItems         []SDSRetirementItemRecord
 	markedOffShelfIDs  []int64
 	markedOffShelfTime []time.Time
+	markOffShelfErr    error
 }
 
 func (s *sdsRetirementExecutionRepoStub) CreateTask(context.Context, *Task) error { return nil }
@@ -290,7 +586,7 @@ func (s *sdsRetirementExecutionRepoStub) SaveSDSRetirementExecution(_ context.Co
 func (s *sdsRetirementExecutionRepoStub) MarkSyncedProductOffShelf(_ context.Context, syncedProductID int64, now time.Time) error {
 	s.markedOffShelfIDs = append(s.markedOffShelfIDs, syncedProductID)
 	s.markedOffShelfTime = append(s.markedOffShelfTime, now)
-	return nil
+	return s.markOffShelfErr
 }
 
 type sdsRetirementExecutionSheinSyncStub struct {
@@ -303,6 +599,8 @@ type sdsRetirementExecutionSheinSyncStub struct {
 	resolveErr               error
 	syncErr                  error
 	events                   []string
+	products                 []SheinSyncedProductRecord
+	listQueries              []SheinSyncedProductQuery
 }
 
 func (s *sdsRetirementExecutionSheinSyncStub) SyncSheinOnShelfProducts(_ context.Context, tenantID, storeID int64, triggerMode SheinSyncTriggerMode) (*SheinSyncJobRecord, error) {
@@ -316,8 +614,11 @@ func (s *sdsRetirementExecutionSheinSyncStub) SyncSheinOnShelfProducts(_ context
 	return &SheinSyncJobRecord{}, nil
 }
 
-func (s *sdsRetirementExecutionSheinSyncStub) ListSyncedProducts(context.Context, *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error) {
-	return nil, 0, nil
+func (s *sdsRetirementExecutionSheinSyncStub) ListSyncedProducts(_ context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error) {
+	if query != nil {
+		s.listQueries = append(s.listQueries, *query)
+	}
+	return append([]SheinSyncedProductRecord(nil), s.products...), int64(len(s.products)), nil
 }
 
 func (s *sdsRetirementExecutionSheinSyncStub) UpdateManualCostPrice(context.Context, int64, *float64) error {

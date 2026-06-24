@@ -58,14 +58,18 @@ func (s *sdsRetirementService) executeSDSRetirementRun(ctx context.Context, runI
 	if _, err := s.sheinSyncService.SyncSheinOnShelfProducts(ctx, tenantID, run.StoreID, SheinSyncTriggerModeManual); err != nil {
 		return nil, err
 	}
+	currentProducts, err := s.listCurrentSyncedProductsByID(ctx, tenantID, run.StoreID)
+	if err != nil {
+		return nil, err
+	}
 	apiResolver, ok := s.sheinSyncService.(SheinProductAPIResolver)
 	if !ok {
 		return nil, fmt.Errorf("SHEIN product API resolver is unavailable")
 	}
-	productAPI, err := apiResolver.ResolveProductAPI(ctx, run.StoreID)
-	if err != nil {
-		return nil, err
-	}
+	var (
+		productAPI         sheinproduct.ProductAPI
+		productAPIResolved bool
+	)
 
 	now := time.Now().UTC()
 	run.Status = SDSRetirementRunStatusRunning
@@ -96,6 +100,34 @@ func (s *sdsRetirementService) executeSDSRetirementRun(ctx context.Context, runI
 		item.StartedAt = &startedAt
 		item.FinishedAt = nil
 		item.Error = ""
+		item.RequestSnapshot = ""
+
+		currentProduct, refreshErr := sdsRetirementCurrentProductForItem(*item, currentProducts)
+		if refreshErr != nil {
+			finishedAt := time.Now().UTC()
+			item.Status = SDSRetirementItemStatusFailed
+			item.Error = refreshErr.Error()
+			item.FinishedAt = &finishedAt
+			failureCount++
+			continue
+		}
+		applySDSRetirementCurrentProduct(item, currentProduct)
+		if !strings.EqualFold(strings.TrimSpace(item.ShelfStatusBefore), "ON_SHELF") {
+			finishedAt := time.Now().UTC()
+			item.Status = SDSRetirementItemStatusSucceededAlreadyOffShelf
+			item.Error = ""
+			item.FinishedAt = &finishedAt
+			successCount++
+			continue
+		}
+
+		if !productAPIResolved {
+			productAPI, err = apiResolver.ResolveProductAPI(ctx, run.StoreID)
+			if err != nil {
+				return nil, err
+			}
+			productAPIResolved = true
+		}
 
 		request, buildErr := buildSDSRetirementShelfRequest(*item, item.BusinessModel)
 		if buildErr != nil {
@@ -120,12 +152,18 @@ func (s *sdsRetirementService) executeSDSRetirementRun(ctx context.Context, runI
 		}
 
 		finishedAt := time.Now().UTC()
+		if item.SyncedProductID > 0 {
+			if err := repo.MarkSyncedProductOffShelf(ctx, item.SyncedProductID, finishedAt); err != nil {
+				item.Status = SDSRetirementItemStatusFailed
+				item.Error = err.Error()
+				item.FinishedAt = &finishedAt
+				failureCount++
+				continue
+			}
+		}
 		item.Status = SDSRetirementItemStatusSucceeded
 		item.Error = ""
 		item.FinishedAt = &finishedAt
-		if item.SyncedProductID > 0 {
-			_ = repo.MarkSyncedProductOffShelf(ctx, item.SyncedProductID, finishedAt)
-		}
 		successCount++
 	}
 
@@ -143,12 +181,61 @@ func (s *sdsRetirementService) executeSDSRetirementRun(ctx context.Context, runI
 		run.Reason = ""
 	default:
 		run.Status = SDSRetirementRunStatusFailed
+		run.Reason = "All selected SDS retirement items failed."
 	}
 
 	if err := repo.SaveSDSRetirementExecution(ctx, run, items); err != nil {
 		return nil, err
 	}
 	return &SDSRetirementRunDetail{Run: *run, Items: items}, nil
+}
+
+func (s *sdsRetirementService) listCurrentSyncedProductsByID(ctx context.Context, tenantID, storeID int64) (map[int64]SheinSyncedProductRecord, error) {
+	if s == nil || s.sheinSyncService == nil {
+		return nil, fmt.Errorf("SHEIN sync service is unavailable")
+	}
+	productsByID := make(map[int64]SheinSyncedProductRecord)
+	for page := 1; ; page++ {
+		rows, total, err := s.sheinSyncService.ListSyncedProducts(ctx, &SheinSyncedProductQuery{
+			TenantID: tenantID,
+			StoreID:  storeID,
+			Page:     page,
+			PageSize: sdsRetirementSyncedProductPageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			productsByID[row.ID] = row
+		}
+		if len(rows) == 0 || int64(page*sdsRetirementSyncedProductPageSize) >= total {
+			break
+		}
+	}
+	return productsByID, nil
+}
+
+func sdsRetirementCurrentProductForItem(item SDSRetirementItemRecord, productsByID map[int64]SheinSyncedProductRecord) (SheinSyncedProductRecord, error) {
+	if item.SyncedProductID <= 0 {
+		return SheinSyncedProductRecord{}, fmt.Errorf("synced product id is required for item %s", item.ID)
+	}
+	product, ok := productsByID[item.SyncedProductID]
+	if !ok {
+		return SheinSyncedProductRecord{}, fmt.Errorf("refreshed synced product %d not found for item %s", item.SyncedProductID, item.ID)
+	}
+	return product, nil
+}
+
+func applySDSRetirementCurrentProduct(item *SDSRetirementItemRecord, product SheinSyncedProductRecord) {
+	if item == nil {
+		return
+	}
+	item.SPUName = product.SPUName
+	item.SKCName = product.SKCName
+	item.SKCCode = product.SKCCode
+	item.SupplierCode = strings.TrimSpace(product.SupplierCode)
+	item.BusinessModel = product.BusinessModel
+	item.ShelfStatusBefore = strings.TrimSpace(product.ShelfStatus)
 }
 
 func parseSDSRetirementExecutionTenantID(ctx context.Context, run *SDSRetirementRunRecord) (int64, error) {
