@@ -10,10 +10,17 @@ import {
   pickActiveSheinStudioGroup,
   projectGroupToWorkbench,
   projectHydratedBatchToWorkbench,
+  projectDefaultSelectedSDSImages,
   projectSavedBatchToWorkbench,
+  projectWorkbenchTraceContext,
+  resolveCurrentSheinStudioSavedBatch,
   projectWorkbenchStateToSavedBatch,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
+  toggleSelectedDesignId,
+  toggleItemizedBatchDesignApproval,
+  updateFlatDesignReviewNote,
+  updateItemizedBatchDesignReviewNote,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 
 describe("shein studio workbench model", () => {
@@ -339,6 +346,137 @@ describe("shein studio workbench model", () => {
     expect(pendingDesignIds).toEqual(["design-2"]);
   });
 
+  it("toggles approval for one itemized batch design", () => {
+    const detail = {
+      batch: {
+        id: "batch-1",
+        status: "review_ready" as const,
+        prompt: "itemized prompt",
+        styleCount: "1",
+        sheinStoreId: 869,
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:10:00Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "group-1",
+            status: "review_ready" as const,
+            selectionCount: 1,
+            createdAt: "2026-06-01T10:00:00Z",
+            updatedAt: "2026-06-01T10:10:00Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "group-1",
+              imageUrl: "https://example.com/design-1.png",
+              reviewStatus: "approved" as const,
+              createdAt: "2026-06-01T10:00:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+            {
+              id: "design-2",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-2",
+              targetGroupKey: "group-1",
+              imageUrl: "https://example.com/design-2.png",
+              reviewStatus: "unreviewed" as const,
+              createdAt: "2026-06-01T10:01:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+          ],
+        },
+      ],
+    };
+
+    const next = toggleItemizedBatchDesignApproval(detail, "design-1");
+
+    expect(next.items[0]?.designs.map((design) => design.reviewStatus)).toEqual([
+      "unreviewed",
+      "unreviewed",
+    ]);
+    expect(detail.items[0]?.designs[0]?.reviewStatus).toBe("approved");
+  });
+
+  it("updates review notes for itemized and flat designs", () => {
+    const detail = {
+      batch: {
+        id: "batch-1",
+        status: "review_ready" as const,
+        prompt: "itemized prompt",
+        styleCount: "1",
+        sheinStoreId: 869,
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:10:00Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "group-1",
+            status: "review_ready" as const,
+            selectionCount: 1,
+            createdAt: "2026-06-01T10:00:00Z",
+            updatedAt: "2026-06-01T10:10:00Z",
+          },
+          designs: [
+            {
+              id: "design-1",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "group-1",
+              imageUrl: "https://example.com/design-1.png",
+              reviewStatus: "approved" as const,
+              createdAt: "2026-06-01T10:00:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(
+      updateItemizedBatchDesignReviewNote(detail, "design-1", "needs crop").items[0]
+        ?.designs[0]?.reviewNote,
+    ).toBe("needs crop");
+    expect(
+      updateFlatDesignReviewNote(
+        [
+          { id: "design-1", imageUrl: "https://example.com/1.png" },
+          { id: "design-2", imageUrl: "https://example.com/2.png", reviewNote: "keep" },
+        ],
+        "design-1",
+        "needs crop",
+      ),
+    ).toEqual([
+      {
+        id: "design-1",
+        imageUrl: "https://example.com/1.png",
+        reviewNote: "needs crop",
+      },
+      { id: "design-2", imageUrl: "https://example.com/2.png", reviewNote: "keep" },
+    ]);
+  });
+
+  it("toggles selected design ids", () => {
+    expect(toggleSelectedDesignId(["design-1", "design-2"], "design-1")).toEqual([
+      "design-2",
+    ]);
+    expect(toggleSelectedDesignId(["design-1"], "design-2")).toEqual([
+      "design-1",
+      "design-2",
+    ]);
+  });
+
   it("projects saved-batch compatibility snapshots before hydration", () => {
     const projection = projectSavedBatchToWorkbench({
       id: "batch-1",
@@ -529,6 +667,150 @@ describe("shein studio workbench model", () => {
       prompt: "current prompt",
       selectedIds: ["design-1"],
       updatedAt: "2026-06-01T10:10:00Z",
+    });
+  });
+
+  it("resolves the current saved batch before falling back to workbench state", () => {
+    const savedBatch = {
+      id: "batch-1",
+      name: "Saved Batch",
+      prompt: "saved prompt",
+      styleCount: "1",
+      sheinStoreId: "869",
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-06-01T10:00:00Z",
+    };
+    const fallback = {
+      prompt: "current prompt",
+      styleCount: "2",
+      variationIntensity: "strong" as const,
+      productImageCount: "6",
+      productImagePrompt: "hero shot",
+      productImagePrompts: [],
+      artworkModel: "nanobanana" as const,
+      transparentBackground: true,
+      sheinStoreId: "869",
+      imageStrategy: "ai_generated" as const,
+      groupedImageMode: "per_product" as const,
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selection: undefined,
+      groupedSelections: [],
+      groups: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      generationJobs: [],
+      updatedAt: "2026-06-01T10:10:00Z",
+    };
+
+    expect(
+      resolveCurrentSheinStudioSavedBatch({
+        activeBatchId: "batch-1",
+        fallback,
+        initialBatchId: "",
+        savedBatches: [savedBatch],
+      }),
+    ).toBe(savedBatch);
+    expect(
+      resolveCurrentSheinStudioSavedBatch({
+        activeBatchId: "",
+        fallback,
+        initialBatchId: "batch-2",
+        savedBatches: [savedBatch],
+      }),
+    ).toMatchObject({
+      id: "batch-2",
+      prompt: "current prompt",
+      styleCount: "2",
+    });
+  });
+
+  it("projects default SDS image selection for hybrid generation", () => {
+    expect(
+      projectDefaultSelectedSDSImages({
+        availableSdsImages: [
+          {
+            imageUrl: "https://img.ltwebstatic.com/images3_spmp/2026/01/01/mockup.jpg",
+            kind: "mockup",
+            label: "Mockup",
+          },
+          {
+            imageUrl: "https://example.com/size-reference.jpg",
+            kind: "size_reference",
+            label: "Size",
+          },
+        ],
+        currentSelectedSdsImages: [],
+        hasCustomizedSdsSelection: false,
+        imageStrategy: "hybrid",
+        renderSizeImagesWithSds: true,
+      }),
+    ).toEqual([
+      {
+        imageUrl: "https://img.ltwebstatic.com/images3_spmp/2026/01/01/mockup.jpg",
+        color: undefined,
+        variantSku: undefined,
+      },
+      {
+        imageUrl: "https://example.com/size-reference.jpg",
+        color: undefined,
+        variantSku: undefined,
+      },
+    ]);
+  });
+
+  it("does not replace customized SDS image selection", () => {
+    expect(
+      projectDefaultSelectedSDSImages({
+        availableSdsImages: [
+          {
+            imageUrl: "https://img.ltwebstatic.com/images3_spmp/2026/01/01/mockup.jpg",
+            kind: "mockup",
+            label: "Mockup",
+          },
+        ],
+        currentSelectedSdsImages: [
+          { imageUrl: "https://example.com/custom.jpg" },
+        ],
+        hasCustomizedSdsSelection: true,
+        imageStrategy: "hybrid",
+        renderSizeImagesWithSds: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("projects trace context with one-based queue positions", () => {
+    expect(
+      projectWorkbenchTraceContext({
+        batchQueueMode: "generate",
+        queuedBatchIds: ["batch-1", "batch-2"],
+        queuedBatchIndex: 1,
+        traceBatchId: "batch-2",
+      }),
+    ).toEqual({
+      batchId: "batch-2",
+      queueMode: "generate",
+      queueIndex: 2,
+      queueTotal: 2,
+    });
+  });
+
+  it("omits queue trace fields outside queue mode", () => {
+    expect(
+      projectWorkbenchTraceContext({
+        batchQueueMode: null,
+        queuedBatchIds: ["batch-1"],
+        queuedBatchIndex: 0,
+        traceBatchId: "",
+      }),
+    ).toEqual({
+      batchId: undefined,
+      queueMode: undefined,
+      queueIndex: undefined,
+      queueTotal: undefined,
     });
   });
 

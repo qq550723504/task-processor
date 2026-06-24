@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { SheinStudioBatchRunProgress } from "@/components/listingkit/shein-studio/shein-studio-batch-run-progress";
 import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein-studio/shein-studio-recent-batches-dashboard";
+import { getBatchRunStartErrorMessage } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
+import { selectRecentBatchBulkDeleteFailure } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/client";
 import { startSheinStudioBatchRun } from "@/lib/api/shein-studio-batch-runs";
@@ -71,10 +73,6 @@ function buildSummaryRoute(
   return `/listing-kits/sds/new?step=${step}`;
 }
 
-function isMissingStudioBatchDeleteError(error: unknown) {
-  return error instanceof Error && /studio session not found/i.test(error.message);
-}
-
 function isRecentBatchRejectedError(error: unknown) {
   if (error instanceof ApiError) {
     return error.status === 401 || error.status === 403;
@@ -104,16 +102,6 @@ function getRecentBatchErrorMessage(error: unknown) {
     return "最近批次接口这次请求被拒绝了。既然其他页面正常，这更像是这个接口自己的鉴权或会话透传有问题，请重试；如果持续失败，再单独排查这个接口。";
   }
   return "最近批次这次没有成功加载出来，请重试；如果持续失败，再检查登录态或后端服务。";
-}
-
-function getBatchRunStartErrorMessage(error: unknown) {
-  if (error instanceof ApiError && error.status === 404) {
-    return "这轮批量生成里有批次已经不存在了。请先刷新最近批次列表，再重新选择。";
-  }
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-  return "这轮批量生成没有成功启动，请稍后重试。";
 }
 
 export function SdsHomepageEntry() {
@@ -355,13 +343,9 @@ export function SdsHomepageEntry() {
         summaryIds.map((summaryId) => deleteSheinStudioBatch(summaryId)),
       );
       await refreshSummaries();
-      const failed = results.find(
-        (result) =>
-          result.status === "rejected" &&
-          !isMissingStudioBatchDeleteError(result.reason),
-      );
-      if (failed?.status === "rejected") {
-        throw failed.reason;
+      const failure = selectRecentBatchBulkDeleteFailure(results);
+      if (failure) {
+        throw failure;
       }
     },
     [refreshSummaries],

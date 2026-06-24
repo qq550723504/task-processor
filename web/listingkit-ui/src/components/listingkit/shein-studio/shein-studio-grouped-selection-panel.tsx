@@ -14,12 +14,70 @@ import type {
 import {
   getSDSBaselineStatusBadgeVariant,
   getSDSBaselineStatusLabel,
+  getSDSBaselineReasonMessage,
 } from "@/lib/shein-studio/sds-baseline-ui";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { ListingKitStoreProfile } from "@/lib/types/listingkit";
 
 type StoreOption = Pick<ListingKitStoreProfile, "store_id" | "store" | "site">;
 type GroupedStoreFilter = "all" | "following_current" | "current_store" | "cross_store";
+
+type GroupedSelectionBaselineStatus = {
+  baselineKey?: string;
+  reason: string;
+  reasonCode?: string;
+  status: SDSBaselineStatus;
+};
+
+export function evaluateGroupedSelectionCompatibility(
+  activeSelection?: SDSProductVariantSelection,
+  candidate?: SDSProductVariantSelection,
+) {
+  if (!activeSelection?.variantId || !candidate?.variantId) {
+    return { compatible: false, reason: "缺少 SDS 选择信息，暂时无法加入分组。" };
+  }
+  if (activeSelection.variantId === candidate.variantId) {
+    return { compatible: false, reason: "这个商品已经在当前批次里，无需重复加入。" };
+  }
+  return { compatible: true, reason: "" };
+}
+
+export function projectGroupedSelectionBaselineEligibility({
+  activeSelection,
+  baselineStatuses,
+  groupedSelections,
+}: {
+  activeSelection?: SDSProductVariantSelection;
+  baselineStatuses: Record<string, GroupedSelectionBaselineStatus>;
+  groupedSelections: GroupedSDSSelectionEligibility[];
+}): GroupedSDSSelectionEligibility[] {
+  return groupedSelections.map((item) => {
+    const baseline = baselineStatuses[item.selectionId] ?? {
+      baselineKey: item.baselineKey,
+      reason: item.baselineReason,
+      reasonCode: undefined,
+      status: item.baselineStatus,
+    };
+    const baselineReason =
+      baseline.reason || getSDSBaselineReasonMessage(baseline.reasonCode);
+    const compatibility = evaluateGroupedSelectionCompatibility(
+      activeSelection,
+      item.selection,
+    );
+    return {
+      ...item,
+      baselineKey: baseline.baselineKey,
+      baselineStatus: baseline.status,
+      baselineReason,
+      baselineReasonCode: baseline.reasonCode,
+      eligible: baseline.status === "ready" && compatibility.compatible,
+      eligibilityReason:
+        baseline.status !== "ready"
+          ? baselineReason || "只有通过 baseline 校验的 SDS 商品才能加入分组。"
+          : compatibility.reason,
+    };
+  });
+}
 
 export function SheinStudioGroupedSelectionPanel({
   activeSelection,

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { buildRecentBatchSummaryKey } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   dispatchSheinStudioRecentBatchesRecommendation,
   SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT,
@@ -268,7 +269,7 @@ export function SheinStudioRecentBatchesDashboard({
 
   useEffect(() => {
     const validKeys = new Set(
-      summaries.map((summary) => `${summary.source}:${summary.id}`),
+      summaries.map((summary) => buildRecentBatchSummaryKey(summary)),
     );
     setSelectedSummaryIds((current) =>
       current.every((key) => validKeys.has(key))
@@ -281,7 +282,10 @@ export function SheinStudioRecentBatchesDashboard({
   const summaryById = useMemo(
     () =>
       new Map<string, SheinStudioRecentBatchSummary>(
-        summaries.map((summary) => [`${summary.source}:${summary.id}`, summary]),
+        summaries.map((summary) => [
+          buildRecentBatchSummaryKey(summary),
+          summary,
+        ]),
       ),
     [summaries],
   );
@@ -419,7 +423,7 @@ export function SheinStudioRecentBatchesDashboard({
   }, [selectedPersistedBatches]);
 
   function toggleSelection(summary: SheinStudioRecentBatchSummary) {
-    const key = `${summary.source}:${summary.id}`;
+    const key = buildRecentBatchSummaryKey(summary);
     setBulkQueueFeedback("");
     setSelectedSummaryIds((current) =>
       current.includes(key)
@@ -429,7 +433,7 @@ export function SheinStudioRecentBatchesDashboard({
   }
 
   function beginRename(summary: SheinStudioRecentBatchSummary) {
-    setEditingSummaryId(`${summary.source}:${summary.id}`);
+    setEditingSummaryId(buildRecentBatchSummaryKey(summary));
     setDraftName(summary.title);
   }
 
@@ -482,7 +486,7 @@ export function SheinStudioRecentBatchesDashboard({
     setBulkQueueFeedback("");
     setPreviousSelectedSummaryIds(selectedSummaryIds);
     setSelectedSummaryIds(
-      summariesToKeep.map((summary) => `${summary.source}:${summary.id}`),
+      summariesToKeep.map((summary) => buildRecentBatchSummaryKey(summary)),
     );
   }
 
@@ -1267,7 +1271,7 @@ function primaryActionForSummary(summary: SheinStudioRecentBatchSummary): {
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {filteredSummaries.map((summary) => {
-            const summaryKey = `${summary.source}:${summary.id}`;
+            const summaryKey = buildRecentBatchSummaryKey(summary);
             const isSelected = selectedSummaryIds.includes(summaryKey);
             const isEditing = editingSummaryId === summaryKey;
             const hasDesigns = summary.designCount > 0;

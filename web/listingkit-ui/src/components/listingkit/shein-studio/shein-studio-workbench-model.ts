@@ -25,11 +25,16 @@ import type {
   SheinStudioGenerationJob,
   SheinStudioImageStrategy,
   SheinStudioArtworkModel,
+  SheinStudioBatchQueueMode,
   SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
   SheinStudioSelectedSDSImage,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
+import {
+  buildDefaultSelectedSDSImages,
+  type SheinStudioSelectableSDSImage,
+} from "@/lib/shein-studio/sds-selectable-images";
 
 export const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
 
@@ -180,6 +185,59 @@ export function getApprovedItemizedBatchDesignIDs(
       .filter((design) => design.reviewStatus === "approved")
       .map((design) => design.id),
   );
+}
+
+export function toggleItemizedBatchDesignApproval(
+  detail: SheinStudioBatchDetail,
+  designId: string,
+): SheinStudioBatchDetail {
+  return {
+    ...detail,
+    items: detail.items.map((entry) => ({
+      ...entry,
+      designs: entry.designs.map((design) =>
+        design.id !== designId
+          ? design
+          : {
+              ...design,
+              reviewStatus:
+                design.reviewStatus === "approved" ? "unreviewed" : "approved",
+            },
+      ),
+    })),
+  };
+}
+
+export function updateItemizedBatchDesignReviewNote(
+  detail: SheinStudioBatchDetail,
+  designId: string,
+  note: string,
+): SheinStudioBatchDetail {
+  return {
+    ...detail,
+    items: detail.items.map((entry) => ({
+      ...entry,
+      designs: entry.designs.map((design) =>
+        design.id === designId ? { ...design, reviewNote: note } : design,
+      ),
+    })),
+  };
+}
+
+export function updateFlatDesignReviewNote(
+  designs: SheinStudioGeneratedDesign[],
+  designId: string,
+  note: string,
+) {
+  return designs.map((design) =>
+    design.id === designId ? { ...design, reviewNote: note } : design,
+  );
+}
+
+export function toggleSelectedDesignId(selectedIds: string[], designId: string) {
+  return selectedIds.includes(designId)
+    ? selectedIds.filter((item) => item !== designId)
+    : [...selectedIds, designId];
 }
 
 export function getItemizedBatchPendingTaskDesignIDs(
@@ -336,6 +394,33 @@ export function projectHydratedBatchToWorkbench(
   };
 }
 
+type WorkbenchSavedBatchProjectionInput = {
+  id: string;
+  prompt: string;
+  promptMode?: "managed" | "raw";
+  styleCount: string;
+  variationIntensity: SheinStudioVariationIntensity;
+  productImageCount: string;
+  productImagePrompt: string;
+  productImagePrompts: SheinStudioProductImagePrompt[];
+  artworkModel: SheinStudioArtworkModel;
+  transparentBackground: boolean;
+  sheinStoreId: string;
+  imageStrategy: SheinStudioImageStrategy;
+  groupedImageMode: SheinStudioGroupedImageMode;
+  selectedSdsImages: SheinStudioSelectedSDSImage[];
+  renderSizeImagesWithSds: boolean;
+  selection?: SDSProductVariantSelection;
+  groupedSelections: GroupedSDSSelectionEligibility[];
+  groups: SheinStudioGroupedWorkspace[];
+  designs: SheinStudioGeneratedDesign[];
+  selectedIds: string[];
+  createdTasks: SheinStudioCreatedTask[];
+  generationJobs: SheinStudioGenerationJob[];
+  updatedAt: string;
+  name?: string;
+};
+
 export function projectWorkbenchStateToSavedBatch({
   id,
   prompt,
@@ -361,32 +446,7 @@ export function projectWorkbenchStateToSavedBatch({
   updatedAt,
   name = "",
   promptMode,
-}: {
-  id: string;
-  prompt: string;
-  promptMode?: "managed" | "raw";
-  styleCount: string;
-  variationIntensity: SheinStudioVariationIntensity;
-  productImageCount: string;
-  productImagePrompt: string;
-  productImagePrompts: SheinStudioProductImagePrompt[];
-  artworkModel: SheinStudioArtworkModel;
-  transparentBackground: boolean;
-  sheinStoreId: string;
-  imageStrategy: SheinStudioImageStrategy;
-  groupedImageMode: SheinStudioGroupedImageMode;
-  selectedSdsImages: SheinStudioSelectedSDSImage[];
-  renderSizeImagesWithSds: boolean;
-  selection?: SDSProductVariantSelection;
-  groupedSelections: GroupedSDSSelectionEligibility[];
-  groups: SheinStudioGroupedWorkspace[];
-  designs: SheinStudioGeneratedDesign[];
-  selectedIds: string[];
-  createdTasks: SheinStudioCreatedTask[];
-  generationJobs: SheinStudioGenerationJob[];
-  updatedAt: string;
-  name?: string;
-}): SheinStudioSavedBatch {
+}: WorkbenchSavedBatchProjectionInput): SheinStudioSavedBatch {
   const normalizedPromptMode = promptMode ?? "managed";
   return {
     id,
@@ -413,6 +473,76 @@ export function projectWorkbenchStateToSavedBatch({
     createdTasks,
     generationJobs,
     updatedAt,
+  };
+}
+
+export function resolveCurrentSheinStudioSavedBatch({
+  activeBatchId,
+  fallback,
+  initialBatchId,
+  savedBatches,
+}: {
+  activeBatchId: string;
+  fallback: Omit<WorkbenchSavedBatchProjectionInput, "id">;
+  initialBatchId?: string;
+  savedBatches: SheinStudioSavedBatch[];
+}): SheinStudioSavedBatch | null {
+  const resolvedBatchId = activeBatchId || initialBatchId || "";
+  if (!resolvedBatchId) {
+    return null;
+  }
+  return (
+    savedBatches.find((item) => item.id === resolvedBatchId) ??
+    projectWorkbenchStateToSavedBatch({
+      ...fallback,
+      id: resolvedBatchId,
+    })
+  );
+}
+
+export function projectDefaultSelectedSDSImages({
+  availableSdsImages,
+  currentSelectedSdsImages,
+  hasCustomizedSdsSelection,
+  imageStrategy,
+  renderSizeImagesWithSds,
+}: {
+  availableSdsImages: SheinStudioSelectableSDSImage[];
+  currentSelectedSdsImages: SheinStudioSelectedSDSImage[];
+  hasCustomizedSdsSelection: boolean;
+  imageStrategy: SheinStudioImageStrategy;
+  renderSizeImagesWithSds: boolean;
+}): SheinStudioSelectedSDSImage[] | null {
+  if (imageStrategy !== "hybrid" && imageStrategy !== "sds_official") {
+    return null;
+  }
+  if (hasCustomizedSdsSelection) {
+    return null;
+  }
+  const nextDefaults = buildDefaultSelectedSDSImages(availableSdsImages, {
+    includeSizeReferenceImages: renderSizeImagesWithSds,
+  });
+  return JSON.stringify(currentSelectedSdsImages) === JSON.stringify(nextDefaults)
+    ? null
+    : nextDefaults;
+}
+
+export function projectWorkbenchTraceContext({
+  batchQueueMode,
+  queuedBatchIds,
+  queuedBatchIndex,
+  traceBatchId,
+}: {
+  batchQueueMode: SheinStudioBatchQueueMode | null;
+  queuedBatchIds: string[];
+  queuedBatchIndex: number;
+  traceBatchId: string;
+}) {
+  return {
+    batchId: traceBatchId || undefined,
+    queueMode: batchQueueMode ?? undefined,
+    queueIndex: batchQueueMode ? queuedBatchIndex + 1 : undefined,
+    queueTotal: batchQueueMode ? queuedBatchIds.length : undefined,
   };
 }
 

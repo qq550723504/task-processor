@@ -1,7 +1,12 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useSheinStudioBatchGenerationContext } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
+import {
+  projectActiveSelectionBaselineState,
+  projectBaselineWarmupFeedback,
+  resolveBaselineReadinessEntries,
+  useSheinStudioBatchGenerationContext,
+} from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
 
@@ -18,6 +23,169 @@ function buildSavedBatch(id = "batch-1"): SheinStudioSavedBatch {
     updatedAt: "2026-06-22T00:00:00.000Z",
   };
 }
+
+const selection = {
+  layerId: "layer-1",
+  parentProductId: 1,
+  productId: 10,
+  productName: "Tee",
+  prototypeGroupId: 20,
+  selectedVariantIds: [100, 101],
+  variantId: 100,
+  variantLabel: "Black / M",
+};
+
+describe("projectBaselineWarmupFeedback", () => {
+  it("announces ready baseline warmup without follow-up action", () => {
+    expect(
+      projectBaselineWarmupFeedback({
+        status: "ready",
+        reason: "",
+      }),
+    ).toEqual({
+      action: null,
+      message: "这款 SDS 商品的 baseline 已通过校验，现在可以继续加入 grouped 批量上品。",
+    });
+  });
+
+  it("uses the cached baseline fallback message when no reason is available", () => {
+    expect(
+      projectBaselineWarmupFeedback({
+        status: "baseline_cached",
+        reason: "",
+        reasonCode: "",
+      }),
+    ).toEqual({
+      action: {
+        intent: "warm_baseline",
+        label: "继续 baseline 校验",
+      },
+      message: "这款 SDS 商品已经完成 baseline 缓存，当前没有更多校验结果。可以继续使用，必要时再手动复查。",
+    });
+  });
+
+  it("uses handoff action metadata for blocked baseline warmup", () => {
+    expect(
+      projectBaselineWarmupFeedback({
+        status: "blocked",
+        reason: "",
+        reasonCode: "login_missing_credentials",
+      }),
+    ).toEqual({
+      action: {
+        intent: "open_sds_login",
+        label: "去处理 SDS 登录",
+      },
+      message: "当前 SDS 登录缺少 access token。",
+    });
+  });
+});
+
+describe("projectActiveSelectionBaselineState", () => {
+  it("projects a missing active baseline while readiness is loading", () => {
+    expect(
+      projectActiveSelectionBaselineState({
+        activeGroupedSelectionID: "selection-1",
+        hasActiveSelection: true,
+        baselineStatuses: {},
+      }),
+    ).toEqual({
+      baseline: {
+        status: "missing",
+        reason: "正在检查 baseline 状态...",
+        reasonCode: undefined,
+      },
+      handoff: null,
+      reason: "正在检查 baseline 状态...",
+      resolvedBaseline: undefined,
+    });
+  });
+
+  it("projects resolved active baseline reason and handoff action", () => {
+    expect(
+      projectActiveSelectionBaselineState({
+        activeGroupedSelectionID: "selection-1",
+        hasActiveSelection: true,
+        baselineStatuses: {
+          "selection-1": {
+            status: "blocked",
+            reason: "",
+            reasonCode: "login_missing_credentials",
+          },
+        },
+      }),
+    ).toEqual({
+      baseline: {
+        status: "blocked",
+        reason: "",
+        reasonCode: "login_missing_credentials",
+      },
+      handoff: {
+        action: "open_sds_login",
+        actionLabel: "去处理 SDS 登录",
+        message: "当前 SDS 登录缺少 access token。",
+      },
+      reason: "当前 SDS 登录缺少 access token。",
+      resolvedBaseline: {
+        status: "blocked",
+        reason: "",
+        reasonCode: "login_missing_credentials",
+      },
+    });
+  });
+});
+
+describe("resolveBaselineReadinessEntries", () => {
+  it("maps selection readiness responses to baseline status entries", async () => {
+    const getReadiness = vi.fn().mockResolvedValue({
+      baselineKey: "baseline-1",
+      reason: "ready",
+      reasonCode: "ok",
+      status: "ready",
+    });
+
+    await expect(
+      resolveBaselineReadinessEntries({
+        getReadiness,
+        selections: [selection],
+      }),
+    ).resolves.toEqual([
+      [
+        "1:20:100:layer-1:100,101",
+        {
+          baselineKey: "baseline-1",
+          reason: "ready",
+          reasonCode: "ok",
+          status: "ready",
+        },
+      ],
+    ]);
+    expect(getReadiness).toHaveBeenCalledWith({
+      parentProductId: 1,
+      prototypeGroupId: 20,
+      selectedVariantIds: [100, 101],
+      variantId: 100,
+    });
+  });
+
+  it("maps readiness failures to failed baseline status entries", async () => {
+    await expect(
+      resolveBaselineReadinessEntries({
+        getReadiness: vi.fn().mockRejectedValue(new Error("offline")),
+        selections: [selection],
+      }),
+    ).resolves.toEqual([
+      [
+        "1:20:100:layer-1:100,101",
+        {
+          reason: "offline",
+          reasonCode: undefined,
+          status: "failed",
+        },
+      ],
+    ]);
+  });
+});
 
 describe("useSheinStudioBatchGenerationContext", () => {
   const buildDraftInput = vi.fn();

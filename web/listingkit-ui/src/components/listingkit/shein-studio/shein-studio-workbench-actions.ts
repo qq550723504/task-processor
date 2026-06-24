@@ -67,6 +67,20 @@ type BatchGenerationContext = {
   startGenerationRun: (savedBatch: SheinStudioSavedBatch) => Promise<void>;
 };
 
+type WorkbenchTaskRecoveryAlertsController = Pick<
+  SheinStudioWorkbenchController,
+  "setField"
+>;
+
+export function clearWorkbenchTaskRecoveryAlerts(
+  workbench: WorkbenchTaskRecoveryAlertsController,
+) {
+  workbench.setField("generationError", "");
+  workbench.setField("generationWarning", "");
+  workbench.setField("creatingError", "");
+  workbench.setField("creatingWarning", "");
+}
+
 type UseSheinStudioDesignActionsParams = {
   activeGroupId: string;
   activeSelection?: SDSProductVariantSelection;

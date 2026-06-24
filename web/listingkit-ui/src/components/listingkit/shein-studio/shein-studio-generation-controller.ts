@@ -1,6 +1,19 @@
 import { useMemo } from "react";
 
+import { upsertRecentSavedBatch } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import {
+  buildGroupedSDSBaselineHandoff,
+  getSDSBaselineReasonMessage,
+} from "@/lib/shein-studio/sds-baseline-ui";
+import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import {
+  buildGroupedSDSSelectionID,
+  type GroupedSDSSelectionEligibility,
+  type SDSBaselineReadiness,
+  type SDSBaselineReadinessRequest,
+  type SDSBaselineStatus,
+} from "@/lib/types/sds-baseline";
 import type {
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
@@ -27,6 +40,30 @@ type BuildDraftInputOverrides = Partial<{
   generationError: string;
   generationJobId: string;
 }>;
+
+type BaselineWarmupFeedback = {
+  action: {
+    intent: "focus_generate" | "open_sds_login" | "warm_baseline";
+    label: string;
+  } | null;
+  message: string;
+};
+
+type ActiveSelectionBaseline = {
+  baselineKey?: string;
+  reason: string;
+  reasonCode?: string;
+  status: SDSBaselineStatus;
+};
+
+type BaselineReadinessEntry = readonly [string, ActiveSelectionBaseline];
+
+type ResolveBaselineReadinessEntriesParams = {
+  getReadiness: (
+    request: SDSBaselineReadinessRequest,
+  ) => Promise<SDSBaselineReadiness>;
+  selections: SDSProductVariantSelection[];
+};
 
 type BatchGenerationContextParams = {
   activeBatchId?: string;
@@ -60,12 +97,105 @@ type BatchGenerationContextParams = {
   ) => SheinStudioSavedBatch[];
 };
 
-function defaultUpsertSavedBatch(
-  current: SheinStudioSavedBatch[],
-  savedBatch: SheinStudioSavedBatch,
-) {
-  return [savedBatch, ...current.filter((batch) => batch.id !== savedBatch.id)].sort(
-    (left, right) => right.updatedAt.localeCompare(left.updatedAt),
+export function projectBaselineWarmupFeedback(
+  readiness: Pick<SDSBaselineReadiness, "reason" | "reasonCode" | "status">,
+): BaselineWarmupFeedback {
+  const handoff = buildGroupedSDSBaselineHandoff({
+    status: readiness.status,
+    reason: readiness.reason,
+    reasonCode: readiness.reasonCode,
+  });
+  return {
+    action:
+      handoff?.action && handoff.actionLabel
+        ? {
+            intent: handoff.action,
+            label: handoff.actionLabel,
+          }
+        : null,
+    message:
+      readiness.status === "ready"
+        ? "这款 SDS 商品的 baseline 已通过校验，现在可以继续加入 grouped 批量上品。"
+        : readiness.status === "baseline_cached" &&
+            !readiness.reason?.trim() &&
+            !readiness.reasonCode?.trim()
+          ? "这款 SDS 商品已经完成 baseline 缓存，当前没有更多校验结果。可以继续使用，必要时再手动复查。"
+          : readiness.reason ||
+            getSDSBaselineReasonMessage(readiness.reasonCode) ||
+            "baseline 预热与校验已发起，请稍后再试。",
+  };
+}
+
+export function projectActiveSelectionBaselineState({
+  activeGroupedSelectionID,
+  baselineStatuses,
+  hasActiveSelection,
+}: {
+  activeGroupedSelectionID: string;
+  baselineStatuses: Record<string, ActiveSelectionBaseline>;
+  hasActiveSelection: boolean;
+}) {
+  const resolvedBaseline = activeGroupedSelectionID
+    ? baselineStatuses[activeGroupedSelectionID]
+    : undefined;
+  const baseline = resolvedBaseline ?? {
+    status: "missing" as SDSBaselineStatus,
+    reasonCode: undefined,
+    reason: hasActiveSelection ? "正在检查 baseline 状态..." : "",
+  };
+  const reason = baseline.reason || getSDSBaselineReasonMessage(baseline.reasonCode);
+  const handoff = resolvedBaseline
+    ? buildGroupedSDSBaselineHandoff({
+        status: resolvedBaseline.status,
+        reason: resolvedBaseline.reason,
+        reasonCode: resolvedBaseline.reasonCode,
+      })
+    : null;
+  return {
+    baseline,
+    handoff,
+    reason,
+    resolvedBaseline,
+  };
+}
+
+export async function resolveBaselineReadinessEntries({
+  getReadiness,
+  selections,
+}: ResolveBaselineReadinessEntriesParams): Promise<BaselineReadinessEntry[]> {
+  return Promise.all(
+    selections.map(async (item) => {
+      const selectionId = buildGroupedSDSSelectionID(item);
+      try {
+        const readiness = await getReadiness({
+          parentProductId: item.parentProductId,
+          prototypeGroupId: item.prototypeGroupId,
+          variantId: item.variantId,
+          selectedVariantIds: item.selectedVariantIds,
+        });
+        return [
+          selectionId,
+          {
+            status: readiness.status,
+            reason: readiness.reason ?? "",
+            reasonCode: readiness.reasonCode,
+            baselineKey: readiness.baselineKey,
+          },
+        ] as const;
+      } catch (error) {
+        return [
+          selectionId,
+          {
+            status: "failed" as SDSBaselineStatus,
+            reasonCode: undefined,
+            reason:
+              error instanceof Error
+                ? error.message
+                : "读取 SDS baseline 状态失败。",
+          },
+        ] as const;
+      }
+    }),
   );
 }
 
@@ -88,7 +218,7 @@ export function useSheinStudioBatchGenerationContext({
   setBatchRunError,
   setSavedBatches,
   startBatchRun,
-  upsertSavedBatch = defaultUpsertSavedBatch,
+  upsertSavedBatch = upsertRecentSavedBatch,
 }: BatchGenerationContextParams): {
   batchGenerationContext?: BatchGenerationContext;
 } {

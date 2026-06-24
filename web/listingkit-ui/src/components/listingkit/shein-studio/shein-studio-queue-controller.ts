@@ -2,6 +2,7 @@ import { useCallback, useEffect, type RefObject } from "react";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import { ApiError } from "@/lib/api/client";
 import {
   createBatchQueueController,
   type SheinStudioBatchQueueResumeState,
@@ -58,6 +59,16 @@ type QueueProjectionParams = {
   queuedBatchIndex: number;
   savedBatches: SheinStudioSavedBatch[];
 };
+
+export function getBatchRunStartErrorMessage(error: unknown) {
+  if (error instanceof ApiError && error.status === 404) {
+    return "这轮批量生成里有批次已经不存在了。请先刷新最近批次列表，再重新选择。";
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "这轮批量生成没有成功启动，请稍后重试。";
+}
 
 export function projectSheinStudioQueueState({
   batchQueueMode,
