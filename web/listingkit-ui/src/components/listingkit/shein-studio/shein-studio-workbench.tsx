@@ -43,12 +43,11 @@ import {
   projectRecentBatchSummaries,
   projectRecentBatchSelectionState,
   projectRecentBatchSelectionUpdate,
-  projectRecentBatchTargetStep,
   renameRecentBatchSummary,
   removeRecentBatchSummarySelection,
-  resolveRecentBatchSelectionTarget,
   runRecentBatchBulkDelete,
   runRecentBatchBulkStoreUpdate,
+  runRecentBatchSummarySelection,
   resolveRecentBatchForMutation as resolveRecentBatchForMutationTarget,
   upsertRecentSavedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
@@ -1194,45 +1193,38 @@ export function SheinStudioWorkbench({
       summary: (typeof recentBatchSummaries)[number],
       action?: "generate" | "review" | "tasks",
     ) => {
-      const requestVersion = recentBatchOpenRequestVersionRef.current + 1;
-      recentBatchOpenRequestVersionRef.current = requestVersion;
-      const targetStep = projectRecentBatchTargetStep(action);
-      if (summary.source === "local_draft" && localDraftSnapshot) {
-        const recovery = projectLocalDraftRecovery({
-          draft: localDraftSnapshot,
-        });
-        hasLocalWorkflowStateRef.current = true;
-        hasCustomizedSdsSelectionRef.current =
-          recovery.hasCustomizedSdsSelection;
-        applyLocalDraftRecoveryToWorkbench({
-          recovery,
-          workbench: workbenchController,
-        });
-        setEffectiveStep(targetStep);
-        return;
-      }
-      void (async () => {
-        const target = await resolveRecentBatchSelectionTarget({
-          loadHydratedBatch: getSheinStudioHydratedBatch,
-          savedBatches,
-          summary,
-        });
-        if (
-          !target ||
-          recentBatchOpenRequestVersionRef.current !== requestVersion
-        ) {
-          return;
-        }
-        if (target.kind === "hydrated") {
-          handleLoadHydratedBatch(target.hydratedBatch);
-        } else {
-          handleLoadBatch(target.batch);
-        }
-        if (recentBatchOpenRequestVersionRef.current !== requestVersion) {
-          return;
-        }
-        setEffectiveStep(targetStep);
-      })();
+      void runRecentBatchSummarySelection({
+        action,
+        advanceRequestVersion: () => {
+          const requestVersion = recentBatchOpenRequestVersionRef.current + 1;
+          recentBatchOpenRequestVersionRef.current = requestVersion;
+          return requestVersion;
+        },
+        getCurrentRequestVersion: () => recentBatchOpenRequestVersionRef.current,
+        hasLocalDraft: Boolean(localDraftSnapshot),
+        loadHydratedBatch: getSheinStudioHydratedBatch,
+        openHydratedBatch: handleLoadHydratedBatch,
+        openLocalDraft: (targetStep) => {
+          if (!localDraftSnapshot) {
+            return;
+          }
+          const recovery = projectLocalDraftRecovery({
+            draft: localDraftSnapshot,
+          });
+          hasLocalWorkflowStateRef.current = true;
+          hasCustomizedSdsSelectionRef.current =
+            recovery.hasCustomizedSdsSelection;
+          applyLocalDraftRecoveryToWorkbench({
+            recovery,
+            workbench: workbenchController,
+          });
+          setEffectiveStep(targetStep);
+        },
+        openSavedBatch: handleLoadBatch,
+        savedBatches,
+        setEffectiveStep,
+        summary,
+      });
     },
     [
       handleLoadHydratedBatch,

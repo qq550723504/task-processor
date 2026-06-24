@@ -20,6 +20,8 @@ type RecentBatchSelectionProjectionParams = {
   validRecentBatchSummaryKeys: Set<string>;
 };
 
+type RecentBatchStep = "generate" | "review" | "tasks";
+
 type RecentBatchSelectionUpdateParams = {
   current: string[];
   value: string[] | ((current: string[]) => string[]);
@@ -58,6 +60,22 @@ type ResolveRecentBatchSelectionTargetParams = {
     batchId: string,
   ) => Promise<SheinStudioWorkbenchHydratedBatch | null>;
   savedBatches: SheinStudioSavedBatch[];
+  summary: RecentBatchSelectionSummary;
+};
+
+type RunRecentBatchSummarySelectionParams = {
+  action?: RecentBatchAction;
+  advanceRequestVersion: () => number;
+  getCurrentRequestVersion: () => number;
+  hasLocalDraft: boolean;
+  loadHydratedBatch: (
+    batchId: string,
+  ) => Promise<SheinStudioWorkbenchHydratedBatch | null>;
+  openHydratedBatch: (hydratedBatch: SheinStudioWorkbenchHydratedBatch) => void;
+  openLocalDraft: (targetStep: RecentBatchStep) => void;
+  openSavedBatch: (batch: SheinStudioSavedBatch) => void;
+  savedBatches: SheinStudioSavedBatch[];
+  setEffectiveStep: (step: RecentBatchStep) => void;
   summary: RecentBatchSelectionSummary;
 };
 
@@ -155,7 +173,7 @@ export function projectRecentBatchSelectionUpdate({
 
 export function projectRecentBatchTargetStep(
   action?: RecentBatchAction,
-): "generate" | "review" | "tasks" {
+): RecentBatchStep {
   if (action === "tasks") {
     return "tasks";
   }
@@ -279,6 +297,44 @@ export async function resolveRecentBatchSelectionTarget({
       kind: "saved",
     };
   }
+}
+
+export async function runRecentBatchSummarySelection({
+  action,
+  advanceRequestVersion,
+  getCurrentRequestVersion,
+  hasLocalDraft,
+  loadHydratedBatch,
+  openHydratedBatch,
+  openLocalDraft,
+  openSavedBatch,
+  savedBatches,
+  setEffectiveStep,
+  summary,
+}: RunRecentBatchSummarySelectionParams) {
+  const requestVersion = advanceRequestVersion();
+  const targetStep = projectRecentBatchTargetStep(action);
+  if (summary.source === "local_draft" && hasLocalDraft) {
+    openLocalDraft(targetStep);
+    return;
+  }
+  const target = await resolveRecentBatchSelectionTarget({
+    loadHydratedBatch,
+    savedBatches,
+    summary,
+  });
+  if (!target || getCurrentRequestVersion() !== requestVersion) {
+    return;
+  }
+  if (target.kind === "hydrated") {
+    openHydratedBatch(target.hydratedBatch);
+  } else {
+    openSavedBatch(target.batch);
+  }
+  if (getCurrentRequestVersion() !== requestVersion) {
+    return;
+  }
+  setEffectiveStep(targetStep);
 }
 
 export function projectRecentBatchSelectionState({

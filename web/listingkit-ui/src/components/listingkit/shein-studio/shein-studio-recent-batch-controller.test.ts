@@ -22,6 +22,7 @@ import {
   resolveRecentBatchMutationTargets,
   selectFreshRecentBatchHydration,
   selectRecentBatchBulkDeleteFailure,
+  runRecentBatchSummarySelection,
   upsertRecentSavedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -430,6 +431,88 @@ describe("projectRecentBatchTargetStep", () => {
     expect(projectRecentBatchTargetStep("generate")).toBe("generate");
     expect(projectRecentBatchTargetStep("review")).toBe("review");
     expect(projectRecentBatchTargetStep("tasks")).toBe("tasks");
+  });
+});
+
+describe("runRecentBatchSummarySelection", () => {
+  it("opens a local draft summary without loading persisted batch detail", async () => {
+    const openLocalDraft = vi.fn();
+    const loadHydratedBatch = vi.fn();
+    let requestVersion = 0;
+
+    await runRecentBatchSummarySelection({
+      action: "review",
+      advanceRequestVersion: () => {
+        requestVersion += 1;
+        return requestVersion;
+      },
+      getCurrentRequestVersion: () => requestVersion,
+      hasLocalDraft: true,
+      loadHydratedBatch,
+      openHydratedBatch: vi.fn(),
+      openLocalDraft,
+      openSavedBatch: vi.fn(),
+      savedBatches: [],
+      setEffectiveStep: vi.fn(),
+      summary: { id: "local-draft", source: "local_draft" },
+    });
+
+    expect(openLocalDraft).toHaveBeenCalledWith("review");
+    expect(loadHydratedBatch).not.toHaveBeenCalled();
+  });
+
+  it("loads a persisted summary and switches to the requested step", async () => {
+    const batch = buildBatch({ id: "batch-1" });
+    const hydratedBatch = buildHydratedBatch(batch);
+    const openHydratedBatch = vi.fn();
+    const setEffectiveStep = vi.fn();
+    let requestVersion = 0;
+
+    await runRecentBatchSummarySelection({
+      action: "tasks",
+      advanceRequestVersion: () => {
+        requestVersion += 1;
+        return requestVersion;
+      },
+      getCurrentRequestVersion: () => requestVersion,
+      hasLocalDraft: false,
+      loadHydratedBatch: vi.fn().mockResolvedValue(hydratedBatch),
+      openHydratedBatch,
+      openLocalDraft: vi.fn(),
+      openSavedBatch: vi.fn(),
+      savedBatches: [batch],
+      setEffectiveStep,
+      summary: { id: "batch-1", source: "batch" },
+    });
+
+    expect(openHydratedBatch).toHaveBeenCalledWith(hydratedBatch);
+    expect(setEffectiveStep).toHaveBeenCalledWith("tasks");
+  });
+
+  it("ignores stale persisted summary loads", async () => {
+    const batch = buildBatch({ id: "batch-1" });
+    const openSavedBatch = vi.fn();
+    const setEffectiveStep = vi.fn();
+    let requestVersion = 0;
+
+    await runRecentBatchSummarySelection({
+      advanceRequestVersion: () => {
+        requestVersion += 1;
+        return requestVersion;
+      },
+      getCurrentRequestVersion: () => requestVersion + 1,
+      hasLocalDraft: false,
+      loadHydratedBatch: vi.fn().mockResolvedValue(null),
+      openHydratedBatch: vi.fn(),
+      openLocalDraft: vi.fn(),
+      openSavedBatch,
+      savedBatches: [batch],
+      setEffectiveStep,
+      summary: { id: "batch-1", source: "batch" },
+    });
+
+    expect(openSavedBatch).not.toHaveBeenCalled();
+    expect(setEffectiveStep).not.toHaveBeenCalled();
   });
 });
 
