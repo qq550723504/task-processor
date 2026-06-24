@@ -6,6 +6,7 @@ import {
   buildRecentBatchSaveInput,
   buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchStoreUpdateInput,
+  duplicateRecentBatchSummary,
   mergeRecentBatchHydrations,
   projectRecentBatchSelectionUpdate,
   projectRecentBatchSummaries,
@@ -119,6 +120,48 @@ describe("renameRecentBatchSummary", () => {
     expect(resolveBatch).toHaveBeenCalledWith("batch-1");
     expect(saveBatch).toHaveBeenCalledWith(
       expect.objectContaining({ id: "batch-1", name: "Renamed" }),
+      { makeActive: false },
+    );
+    expect(refreshSavedBatches).toHaveBeenCalled();
+  });
+});
+
+describe("duplicateRecentBatchSummary", () => {
+  it("does nothing for non-persisted summaries", async () => {
+    const resolveBatch = vi.fn();
+    const saveBatch = vi.fn();
+    const refreshSavedBatches = vi.fn();
+
+    await duplicateRecentBatchSummary({
+      refreshSavedBatches,
+      resolveBatch,
+      saveBatch,
+      summary: { id: "local-draft", source: "local_draft" },
+    });
+
+    expect(resolveBatch).not.toHaveBeenCalled();
+    expect(saveBatch).not.toHaveBeenCalled();
+    expect(refreshSavedBatches).not.toHaveBeenCalled();
+  });
+
+  it("duplicates a persisted summary and refreshes batches", async () => {
+    const batch = buildBatch({ id: "batch-1", name: "Original" });
+    const resolveBatch = vi.fn().mockResolvedValue(batch);
+    const saveBatch = vi.fn().mockResolvedValue(null);
+    const refreshSavedBatches = vi.fn().mockResolvedValue(undefined);
+
+    await duplicateRecentBatchSummary({
+      refreshSavedBatches,
+      resolveBatch,
+      saveBatch,
+      summary: { id: "batch-1", source: "batch" },
+    });
+
+    expect(resolveBatch).toHaveBeenCalledWith("batch-1");
+    expect(saveBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: expect.stringContaining("Original"),
+      }),
       { makeActive: false },
     );
     expect(refreshSavedBatches).toHaveBeenCalled();

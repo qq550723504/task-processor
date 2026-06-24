@@ -38,6 +38,7 @@ import {
 import {
   buildRecentBatchSummaryKeys,
   buildRecentBatchBulkStoreUpdateInputs,
+  duplicateRecentBatchSummary,
   mergeRecentBatchHydrations,
   projectRecentBatchSummaries,
   projectRecentBatchSelectionState,
@@ -112,7 +113,6 @@ import {
 import {
   type SheinStudioBatchQueueResumeState,
 } from "@/lib/shein-studio/batch-queue";
-import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
 import {
   clearListingKitTraceContext,
@@ -1278,18 +1278,12 @@ export function SheinStudioWorkbench({
 
   const handleDuplicateRecentBatchSummary = useCallback(
     async (summary: (typeof recentBatchSummaries)[number]) => {
-      if (summary.source !== "batch") {
-        return;
-      }
-      const batch = await resolveRecentBatchForMutation(summary.id);
-      if (!batch) {
-        return;
-      }
-      await saveSheinStudioBatch(
-        buildDuplicatedSheinStudioBatchInput(batch),
-        { makeActive: false },
-      );
-      await refreshSavedBatches();
+      await duplicateRecentBatchSummary({
+        refreshSavedBatches,
+        resolveBatch: resolveRecentBatchForMutation,
+        saveBatch: saveSheinStudioBatch,
+        summary,
+      });
     },
     [refreshSavedBatches, resolveRecentBatchForMutation],
   );

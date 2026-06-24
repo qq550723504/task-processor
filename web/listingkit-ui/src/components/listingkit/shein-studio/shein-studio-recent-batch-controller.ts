@@ -1,9 +1,11 @@
 import { buildRecentBatchSummaries } from "@/lib/shein-studio/recent-batch-summaries";
+import { buildDuplicatedSheinStudioBatchInput } from "@/lib/shein-studio/duplicate-batch";
 import type {
   SheinStudioDraft,
   SheinStudioRecentBatchSummary,
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
+import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 
 type RecentBatchSelectionSummary = {
@@ -66,15 +68,20 @@ type ResolveRecentBatchMutationTargetsParams = {
 
 type RecentBatchDeleteRunner = (batchId: string) => Promise<unknown>;
 
-type RecentBatchMutationSaveInput = ReturnType<typeof buildRecentBatchSaveInput>;
-
 type RecentBatchMutationSave = (
-  input: RecentBatchMutationSaveInput,
+  input: SheinStudioSaveInput,
   options?: { makeActive?: boolean },
 ) => Promise<unknown>;
 
 type RenameRecentBatchSummaryParams = {
   name: string;
+  refreshSavedBatches: () => Promise<unknown>;
+  resolveBatch: (batchId: string) => Promise<SheinStudioSavedBatch | null>;
+  saveBatch: RecentBatchMutationSave;
+  summary: RecentBatchSelectionSummary;
+};
+
+type DuplicateRecentBatchSummaryParams = {
   refreshSavedBatches: () => Promise<unknown>;
   resolveBatch: (batchId: string) => Promise<SheinStudioSavedBatch | null>;
   saveBatch: RecentBatchMutationSave;
@@ -343,6 +350,25 @@ export async function renameRecentBatchSummary({
     return;
   }
   await saveBatch(buildRecentBatchSaveInput(batch, { name }), {
+    makeActive: false,
+  });
+  await refreshSavedBatches();
+}
+
+export async function duplicateRecentBatchSummary({
+  refreshSavedBatches,
+  resolveBatch,
+  saveBatch,
+  summary,
+}: DuplicateRecentBatchSummaryParams) {
+  if (summary.source !== "batch") {
+    return;
+  }
+  const batch = await resolveBatch(summary.id);
+  if (!batch) {
+    return;
+  }
+  await saveBatch(buildDuplicatedSheinStudioBatchInput(batch), {
     makeActive: false,
   });
   await refreshSavedBatches();
