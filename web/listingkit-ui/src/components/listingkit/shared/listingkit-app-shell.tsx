@@ -141,6 +141,13 @@ const OPERATIONS_NAV_ITEMS = [
         match: "prefix",
         requiredRoles: MENU_ROLES.operator,
       },
+      {
+        label: "调度事件",
+        href: "/listing-kits/admin/dispatch-events",
+        icon: ListChecks,
+        match: "prefix",
+        requiredRoles: MENU_ROLES.operator,
+      },
     ],
   },
   {
