@@ -12,6 +12,7 @@ func buildAdminRepositories(input BuildServiceInput, closers *closerStack) (*bui
 	return &builtAdminRepositories{
 		storeRepository:                   catalog.storeRepository,
 		storeStatisticsRepository:         catalog.storeStatisticsRepository,
+		dispatchEventRepository:           catalog.dispatchEventRepository,
 		importTaskRepository:              catalog.importTaskRepository,
 		filterRuleRepository:              rules.filterRuleRepository,
 		profitRuleRepository:              rules.profitRuleRepository,
@@ -37,6 +38,10 @@ func buildAdminCatalogRepositories(input BuildServiceInput, closers *closerStack
 	if err != nil {
 		return nil, err
 	}
+	dispatchEventRepository, err := buildNamedWithClosers("admin.dispatch_event", repoBuilders.DispatchEvent, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
 	importTaskRepository, err := buildNamedWithClosers("admin.import_task", repoBuilders.ImportTask, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
@@ -57,6 +62,7 @@ func buildAdminCatalogRepositories(input BuildServiceInput, closers *closerStack
 	return &adminCatalogRepositories{
 		storeRepository:                storeRepository,
 		storeStatisticsRepository:      storeStatisticsRepository,
+		dispatchEventRepository:        dispatchEventRepository,
 		importTaskRepository:           importTaskRepository,
 		productImportMappingRepository: productImportMappingRepository,
 		categoryRepository:             categoryRepository,

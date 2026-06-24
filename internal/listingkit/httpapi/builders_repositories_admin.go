@@ -21,6 +21,13 @@ func BuildListingAdminStoreStatisticsRepository(cfg *config.Config, logger *logr
 	})
 }
 
+func BuildListingAdminDispatchEventRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.DispatchEventRepository, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminDispatchEventRepository, func(logger *logrus.Logger) (listingadmin.DispatchEventRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit dispatch event admin API disabled")
+		return nil, nil, nil
+	})
+}
+
 func BuildListingAdminImportTaskRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error) {
 	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminImportTaskRepository, func(logger *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error) {
 		logger.Warn("database not configured, ListingKit import task admin API disabled")

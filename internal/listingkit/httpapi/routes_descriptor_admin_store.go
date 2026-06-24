@@ -20,6 +20,8 @@ func appendAdminStoreRouteDescriptors(routes []httproute.Descriptor, handler Adm
 		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/admin/stores/:id/permanent", Module: "listing-kit-admin", Handler: handler.PermanentlyDeleteAdminStore},
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/admin/stores/:id/extend-validity", Module: "listing-kit-admin", Handler: handler.ExtendAdminStoreValidity},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/store-statistics", Module: "listing-kit-admin", Handler: handler.ListAdminStoreStatistics},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/dispatch-events/summary", Module: "listing-kit-admin", Handler: handler.GetAdminDispatchEventSummary},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/dispatch-events", Module: "listing-kit-admin", Handler: handler.ListAdminDispatchEvents},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/import-tasks", Module: "listing-kit-admin", Handler: handler.ListAdminImportTasks},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/admin/import-tasks/batch", Module: "listing-kit-admin", Handler: handler.BatchCreateAdminImportTasks},
 		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/listing-kits/admin/import-tasks/:id", Module: "listing-kit-admin", Handler: handler.DeleteAdminImportTask},

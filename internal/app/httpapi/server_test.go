@@ -328,6 +328,14 @@ func (s *stubListingKitHandler) ListAdminStoreStatistics(c *gin.Context) {
 	c.JSON(http.StatusOK, []any{})
 }
 
+func (s *stubListingKitHandler) GetAdminDispatchEventSummary(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{})
+}
+
+func (s *stubListingKitHandler) ListAdminDispatchEvents(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
 func (s *stubListingKitHandler) ListDeletedAdminStores(c *gin.Context) {
 	s.listDeletedAdminStoresCalled = true
 	c.JSON(http.StatusOK, []any{})

@@ -20,6 +20,7 @@ func buildRuntimeSupportRepositories() BuildServiceRepositories {
 		Admin: AdminRepositoryBuilders{
 			Store:                   BuildListingAdminStoreRepository,
 			StoreStatistics:         BuildListingAdminStoreStatisticsRepository,
+			DispatchEvent:           BuildListingAdminDispatchEventRepository,
 			ImportTask:              BuildListingAdminImportTaskRepository,
 			FilterRule:              BuildListingAdminFilterRuleRepository,
 			ProfitRule:              BuildListingAdminProfitRuleRepository,

@@ -23,6 +23,14 @@ func newDBListingAdminStoreStatisticsRepository(cfg *config.DatabaseConfig, logg
 	return listingadmin.NewGormStoreStatisticsRepository(db), closer, nil
 }
 
+func newDBListingAdminDispatchEventRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingadmin.DispatchEventRepository, func() error, error) {
+	db, closer, err := openListingKitRepositoryDB(cfg, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	return listingadmin.NewGormDispatchEventRepository(db), closer, nil
+}
+
 func newDBListingAdminImportTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingadmin.ImportTaskRepository, func() error, error) {
 	db, closer, err := openListingKitRepositoryDB(cfg, logger)
 	if err != nil {

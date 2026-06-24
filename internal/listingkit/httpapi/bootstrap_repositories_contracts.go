@@ -18,6 +18,7 @@ type builtRepositories struct {
 	sheinSyncRepository               listingkit.SheinSyncRepository
 	storeRepository                   listingadmin.StoreRepository
 	storeStatisticsRepository         listingadmin.StoreStatisticsRepository
+	dispatchEventRepository           listingadmin.DispatchEventRepository
 	importTaskRepository              listingadmin.ImportTaskRepository
 	filterRuleRepository              listingadmin.FilterRuleRepository
 	profitRuleRepository              listingadmin.ProfitRuleRepository
@@ -81,6 +82,7 @@ type lateCoreRepositoryDependencies struct {
 type builtAdminRepositories struct {
 	storeRepository                   listingadmin.StoreRepository
 	storeStatisticsRepository         listingadmin.StoreStatisticsRepository
+	dispatchEventRepository           listingadmin.DispatchEventRepository
 	importTaskRepository              listingadmin.ImportTaskRepository
 	filterRuleRepository              listingadmin.FilterRuleRepository
 	profitRuleRepository              listingadmin.ProfitRuleRepository
@@ -97,6 +99,7 @@ type builtAdminRepositories struct {
 type adminCatalogRepositories struct {
 	storeRepository                listingadmin.StoreRepository
 	storeStatisticsRepository      listingadmin.StoreStatisticsRepository
+	dispatchEventRepository        listingadmin.DispatchEventRepository
 	importTaskRepository           listingadmin.ImportTaskRepository
 	productImportMappingRepository listingadmin.ProductImportMappingRepository
 	categoryRepository             listingadmin.CategoryRepository

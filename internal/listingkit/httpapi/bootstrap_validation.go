@@ -41,6 +41,8 @@ func (b AdminRepositoryBuilders) Validate() error {
 		return fmt.Errorf("admin repository builder store is required")
 	case b.StoreStatistics == nil:
 		return fmt.Errorf("admin repository builder store statistics is required")
+	case b.DispatchEvent == nil:
+		return fmt.Errorf("admin repository builder dispatch event is required")
 	case b.ImportTask == nil:
 		return fmt.Errorf("admin repository builder import task is required")
 	case b.FilterRule == nil:

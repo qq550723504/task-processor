@@ -110,6 +110,7 @@ func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleServ
 		StudioAsyncJobRepository:        repositories.studioAsyncJobRepository,
 		StoreRepository:                 repositories.storeRepository,
 		StoreStatisticsRepository:       repositories.storeStatisticsRepository,
+		DispatchEventRepository:         repositories.dispatchEventRepository,
 		ImportTaskRepository:            repositories.importTaskRepository,
 		FilterRuleRepository:            repositories.filterRuleRepository,
 		ProfitRuleRepository:            repositories.profitRuleRepository,

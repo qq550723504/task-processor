@@ -196,6 +196,8 @@ func (stubRouteHandler) UpdateAdminStoreStatus(*gin.Context)                    
 func (stubRouteHandler) DeleteAdminStore(*gin.Context)                            {}
 func (stubRouteHandler) ListSimpleAdminStores(*gin.Context)                       {}
 func (stubRouteHandler) ListAdminStoreStatistics(*gin.Context)                    {}
+func (stubRouteHandler) GetAdminDispatchEventSummary(*gin.Context)                {}
+func (stubRouteHandler) ListAdminDispatchEvents(*gin.Context)                     {}
 func (stubRouteHandler) ListDeletedAdminStores(*gin.Context)                      {}
 func (stubRouteHandler) RestoreAdminStore(*gin.Context)                           {}
 func (stubRouteHandler) PermanentlyDeleteAdminStore(*gin.Context)                 {}

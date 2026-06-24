@@ -76,6 +76,20 @@ func (h *handler) ListAdminStoreStatistics(c *gin.Context) {
 	h.storeStatisticsHandler.ListStoreStatistics(c)
 }
 
+func (h *handler) GetAdminDispatchEventSummary(c *gin.Context) {
+	if !h.requireDispatchEventHandler(c) {
+		return
+	}
+	h.dispatchEventHandler.GetDispatchEventSummary(c)
+}
+
+func (h *handler) ListAdminDispatchEvents(c *gin.Context) {
+	if !h.requireDispatchEventHandler(c) {
+		return
+	}
+	h.dispatchEventHandler.ListDispatchEvents(c)
+}
+
 func (h *handler) ListDeletedAdminStores(c *gin.Context) {
 	if !h.requireStoreHandler(c) {
 		return
@@ -131,6 +145,17 @@ func (h *handler) requireStoreStatisticsHandler(c *gin.Context) bool {
 	c.JSON(http.StatusServiceUnavailable, gin.H{
 		"error":   "store_statistics_repository_unavailable",
 		"message": "ListingKit store statistics repository is not configured",
+	})
+	return false
+}
+
+func (h *handler) requireDispatchEventHandler(c *gin.Context) bool {
+	if h.dispatchEventHandler != nil {
+		return true
+	}
+	c.JSON(http.StatusServiceUnavailable, gin.H{
+		"error":   "dispatch_event_repository_unavailable",
+		"message": "ListingKit dispatch event repository is not configured",
 	})
 	return false
 }

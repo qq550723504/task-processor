@@ -33,6 +33,7 @@ type ServiceBundle struct {
 	StudioAsyncJobRepository        listingkit.StudioAsyncJobRepository
 	StoreRepository                 listingadmin.StoreRepository
 	StoreStatisticsRepository       listingadmin.StoreStatisticsRepository
+	DispatchEventRepository         listingadmin.DispatchEventRepository
 	ImportTaskRepository            listingadmin.ImportTaskRepository
 	FilterRuleRepository            listingadmin.FilterRuleRepository
 	ProfitRuleRepository            listingadmin.ProfitRuleRepository
@@ -95,6 +96,7 @@ type BuildModuleInput struct {
 type AdminRepositoryBuilders struct {
 	Store                   func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error)
 	StoreStatistics         func(*config.Config, *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error)
+	DispatchEvent           func(*config.Config, *logrus.Logger) (listingadmin.DispatchEventRepository, []func() error, error)
 	ImportTask              func(*config.Config, *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error)
 	FilterRule              func(*config.Config, *logrus.Logger) (listingadmin.FilterRuleRepository, []func() error, error)
 	ProfitRule              func(*config.Config, *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error)
