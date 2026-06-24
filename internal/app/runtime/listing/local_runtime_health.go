@@ -4,26 +4,28 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/infra/clients/management"
-
 	"github.com/sirupsen/logrus"
 )
 
-func validateListingLocalRuntime(platform string, client *management.ClientManager, logger *logrus.Logger) error {
+type listingLocalRuntimeValidator interface {
+	ValidateLocalListingRuntimeFields() (map[string]bool, error)
+}
+
+func validateListingLocalRuntime(platform string, validator listingLocalRuntimeValidator, logger *logrus.Logger) error {
 	if !strings.EqualFold(strings.TrimSpace(platform), "shein") {
 		return nil
 	}
-	if client == nil {
+	if validator == nil {
 		return fmt.Errorf("SHEIN listing local runtime is not ready: management client is not initialized")
 	}
 
-	report, err := client.ValidateLocalListingRuntime()
+	fields, err := validator.ValidateLocalListingRuntimeFields()
 	if logger != nil {
-		fields := logrus.Fields{}
-		for key, value := range report.Fields() {
-			fields[key] = value
+		logFields := logrus.Fields{}
+		for key, value := range fields {
+			logFields[key] = value
 		}
-		entry := logger.WithFields(fields)
+		entry := logger.WithFields(logFields)
 		if err != nil {
 			entry.WithError(err).Error("SHEIN listing local runtime check failed")
 		} else {

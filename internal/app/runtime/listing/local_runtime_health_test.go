@@ -1,19 +1,29 @@
 package listing
 
 import (
+	"errors"
 	"strings"
 	"testing"
-
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )
 
-func TestValidateListingLocalRuntimeRequiresSheinLocalRuntime(t *testing.T) {
-	client := management.NewClientManager(&config.ManagementConfig{BaseURL: "http://127.0.0.1:1"})
+type stubListingLocalRuntimeValidator struct {
+	fields map[string]bool
+	err    error
+}
 
-	err := validateListingLocalRuntime("shein", client, logrus.New())
+func (s stubListingLocalRuntimeValidator) ValidateLocalListingRuntimeFields() (map[string]bool, error) {
+	return s.fields, s.err
+}
+
+func TestValidateListingLocalRuntimeRequiresSheinLocalRuntime(t *testing.T) {
+	validator := stubListingLocalRuntimeValidator{
+		fields: map[string]bool{"ready": false},
+		err:    errors.New("local runtime unavailable"),
+	}
+
+	err := validateListingLocalRuntime("shein", validator, logrus.New())
 	if err == nil {
 		t.Fatal("validateListingLocalRuntime() error = nil, want local runtime error")
 	}
