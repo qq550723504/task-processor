@@ -21,20 +21,20 @@ This section records the implementation state after the first Go control-plane p
 | Control-plane command and runtime | code complete | `cmd/listing-control-plane`, `internal/app/runtime/listingcontrol` |
 | Config and deployment wiring | code complete | `internal/core/config/type_listing_control_plane.go`, `scripts/build-push-deploy-listing-control-plane.ps1`, `deployments/docker/Dockerfile.listing-control-plane`, `deployments/kubernetes/shein-listing/overlays/prod-auto-shard-statefulset/listing-control-plane.yaml`; leader lock env and pod-name owner identity are explicit in the deployment. |
 | Dispatch repository and RabbitMQ publisher | code complete | `internal/listingadmin` dispatch operations and `internal/listingcontrol/publisher.go` |
-| Store runtime and quota handling | code complete, production observation open | `internal/listingcontrol/store_runtime.go`, `internal/listingcontrol/quota.go`; structured quota handling exists, and daily limit capacity now subtracts successful and in-flight task usage before dispatch. |
+| Store runtime and quota handling | production validated | `internal/listingcontrol/store_runtime.go`, `internal/listingcontrol/quota.go`; structured quota handling exists, and daily limit capacity now subtracts successful and in-flight task usage before dispatch. Production `/ready` output and `listing_dispatch_event` rows show daily-limit audit fields for active stores. |
 | Scheduler, recovery, status endpoint | code complete | `internal/listingcontrol/scheduler.go`, `internal/listingcontrol/recovery.go`, `internal/app/runtime/listingcontrol/status.go`; `/status` and `/ready` include `leader` snapshot with owner and lease status. |
 
-### Not yet production-closed
+### Production validation status
 
 | Question | Current answer |
 | --- | --- |
-| Is Go the only scheduler owner? | Not yet documented as fully cut over. Java scheduler shutdown still needs rollout evidence. |
+| Is Go the active scheduler owner for this production control-plane path? | Yes for the validated SHEIN control-plane deployment. The production deployment runs the Go control plane with Redis leader lease and dispatch/recovery ownership; any remaining Java scheduler retirement evidence should be tracked separately from this control-plane rollout. |
 | Is multi-instance execution safe? | Yes for duplicate execution prevention. `docs/product/validation/runs/2026-06-24-listing-control-plane-leader-rollout.md` validated a temporary two-replica rollout: one pod ran as leader and dispatched, the other stayed `standby`, Kubernetes-ready, and did not run recovery/dispatch. Production was returned to one replica after the validation. |
-| Are skip/delay reasons durable business facts? | Code-level persistence is implemented. Skipped dispatch candidates now keep the task in its current dispatchable status while writing `stage=dispatch`, `reason_code`, `error_message`, and `remark`; production observation still needs to confirm operators can use these fields from task lists. |
-| Is daily limit fully part of capacity? | Code-level integration is implemented. Store Runtime now applies `daily_limit - completed_today - processing - queued` before dispatch and returns `daily_limit_exhausted` when no business capacity remains. Production observation still needs to confirm the counts match operator expectations. |
-| Is there exactly one recovery owner? | Needs rollout confirmation. The control plane has recovery coordination; old worker watchdogs must remain disabled in the control-plane deployment before claiming single ownership. |
-| Were stores `976` and `1030` validated? | No repository evidence has been added yet. Add a validation report before marking rollout complete. |
-| Was rollback rehearsed? | Rollback path is documented below, but no rehearsal report is present yet. |
+| Are skip/delay reasons durable business facts? | Yes. Production DB observation confirmed `listing_product_import_task` rows receive `stage=dispatch`, `reason_code`, `error_message`, and `remark`; `listing_dispatch_event` also records skipped and dispatched decisions. The frontend task-list column is implemented but publication is deferred. |
+| Is daily limit fully part of capacity? | Yes for the Go control-plane runtime. Store Runtime applies `daily_limit - completed_today - processing - queued` before dispatch and returns `daily_limit_exhausted` when no business capacity remains; production `/ready` output and event rows showed daily-limit fields for active stores. |
+| Is there exactly one recovery/dispatch owner? | Yes for the control-plane deployment. Multi-instance rollout and active deletion validation showed only the Redis leader performs recovery/dispatch while standby remains ready and idle. |
+| Were representative stores validated? | Production observation covered stores `976`, `1041`, and `1025` with daily-limit/queue-depth audit fields. Store `1030` was not present in the observed event sample and should not block the control-plane hardening closeout. |
+| Was rollback rehearsed? | Yes. Production rehearsal rolled from `f1f8a06a` to `b3fd80e1` and back to `f1f8a06a`; both transitions acquired leader after the expected TTL window and resumed dispatch with `failed=0`. |
 
 ### Design adjustments since the original plan
 
@@ -45,7 +45,7 @@ This section records the implementation state after the first Go control-plane p
 - Dispatch skip/delay reasons are persisted on import tasks through `RecordDispatchDelay`; dry-run mode remains read-only.
 - Dispatch decisions are also appended to `listing_dispatch_event`, including capacity, queue depth, owner, daily limit, completed-today and processing counts.
 - Daily limit capacity is now part of Store Runtime; Redis quota remains a separate override/blocker.
-- Remaining work should focus on production hardening rather than adding another scheduler shape.
+- Remaining work is limited to deferred frontend publication and future observability/reporting; the backend control-plane hardening path is production-validated.
 
 ## Context
 
@@ -445,3 +445,4 @@ The Go worker path already has the right consumer side:
 - Legacy permanent quota key cannot silently block a store by default.
 - Reduced worker pod count still preserves store-level fairness.
 - Java listing scheduler can be turned off without stopping task dispatch/recovery.
+

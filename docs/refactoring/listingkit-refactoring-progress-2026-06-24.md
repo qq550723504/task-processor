@@ -357,7 +357,7 @@ daily_limit
 owner_node
 ```
 
-剩余验证重点是生产观察：确认 `draft/published` 作为 `completed_today` 的口径符合运营预期，以及任务列表能读到最后一次 delay reason。
+生产观察已完成：`listing_dispatch_event` 持续写入 dispatch/skipped 审计事实，`listing_product_import_task` 持续写入最近一次 dispatch delay reason；`draft/published` 口径仍可作为后续运营报表优化点，但不再阻塞 control-plane 生产硬化收口。
 
 ## 4.4 部分配置已经定义但尚未接通
 
@@ -687,16 +687,21 @@ ListingKit root 最终 ownership closeout；
 - Deployed xuwei190/task-processor-listing-control-plane:f1f8a06a and verified rollout succeeded.
 - Deleted the active control-plane pod to validate leader failover behavior.
 - Replacement pod shein-listing-control-plane-6446d7f79f-xj2pc acquired the Redis leader lock after the 30s TTL window.
-- /ready confirmed eady=true, isLeader=true, consecutiveErrors=0.
+- /ready confirmed 
+eady=true, isLeader=true, consecutiveErrors=0.
 - Dispatch resumed with a healthy observed cycle: dispatchCandidates=10, dispatched=1, skipped=9, ailed=0.
 
-Status: leader active deletion takeover is production-validated. Remaining production validation focus: operator task-list reason visibility and rollback rehearsal.
+Status: leader active deletion takeover is production-validated. Later sections close operator task-list reason visibility and rollback rehearsal; only frontend publication remains deferred.
 
 ### 2026-06-24 operator task-list reason visibility
 
 - Added the admin import-task list "dispatch reason" column so operators can see persisted dispatch delay causes from the task row.
-- The UI displays easonCode, stage, and the persisted rrorMessage/emark message for delayed tasks.
-- The frontend API schema now accepts both camelCase and snake_case variants for delay fields (easonCode/eason_code, rrorMessage/rror_message) to keep the operator view robust across backend serializers.
+- The UI displays 
+easonCode, stage, and the persisted rrorMessage/
+emark message for delayed tasks.
+- The frontend API schema now accepts both camelCase and snake_case variants for delay fields (`reasonCode`/`reason_code`, `errorMessage`/`error_message`) to keep the operator view robust across backend serializers.
+easonCode/
+eason_code, rrorMessage/rror_message) to keep the operator view robust across backend serializers.
 - Focused frontend test passed: 
 pm test -- import-task-admin-page.test.tsx.
 
@@ -707,10 +712,11 @@ Status: task-list operator reason visibility is code-validated. Production UI de
 - Read-only production DB observation confirmed listing_dispatch_event is receiving control-plane decisions.
 - Last 15 minutes contained 1380 dispatch events, including 37 dispatched events plus skipped events for store_paused, 
 o_capacity, and store_unknown.
-- Last 60 minutes contained 2738 task rows with non-empty eason_code, confirming task-list-visible delay/error reason fields are being persisted.
+- Last 60 minutes contained 2738 task rows with non-empty 
+eason_code, confirming task-list-visible delay/error reason fields are being persisted.
 - Daily-limit audit fields were present for stores 322/976, 246/1041, and 246/1025, including configured daily_limit and observed queue depth.
 
-Status: backend production persistence for event audit and operator-visible task reasons is validated. Frontend publication for the new task-list column is intentionally deferred. Remaining high-value production exercise: rollback rehearsal.
+Status: backend production persistence for event audit and operator-visible task reasons is validated. Frontend publication for the new task-list column is intentionally deferred; rollback rehearsal is closed in the next section.
 
 ### 2026-06-24 production validation: rollback rehearsal
 
@@ -721,3 +727,23 @@ Status: backend production persistence for event audit and operator-visible task
 - Final production image is back on xuwei190/task-processor-listing-control-plane:f1f8a06a.
 
 Status: rollback rehearsal is production-validated. Remaining deferred item: publish the frontend admin task-list reason column when the ListingKit UI deployment window is available.
+## 10. Final closeout - 2026-06-24
+
+Go Listing Control Plane P0 production hardening is closed for the backend path.
+
+Validated evidence:
+
+- `f1f8a06a` deployed successfully to `shein-listing-control-plane`.
+- Redis leader lease validated in normal rollout, active Pod deletion takeover, rollback, and roll-forward flows.
+- Dispatch/recovery cycles resumed after each transition with `consecutiveErrors=0` and `failed=0` in observed cycles.
+- `listing_dispatch_event` production writes were observed for dispatched and skipped decisions.
+- `listing_product_import_task` production rows were observed with durable `stage/reason_code/error_message/remark` dispatch delay fields.
+- Daily-limit capacity fields were observed in `/ready` output and dispatch event rows.
+
+Deferred item:
+
+- ListingKit UI admin import-task list now has a tested dispatch-reason column, but frontend publication is intentionally deferred until a UI deployment window is available.
+
+Recommended next track:
+
+- Add observability/reporting around dispatch event distribution, leader status, and `failed > 0` cycles rather than adding more scheduler variants.
