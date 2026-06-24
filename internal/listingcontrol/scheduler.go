@@ -17,6 +17,7 @@ import (
 type DispatchTaskRepository interface {
 	ListDispatchCandidatesFair(ctx context.Context, req listingadmin.DispatchCandidateRequest) ([]listingadmin.ImportTask, error)
 	ClaimForDispatch(ctx context.Context, claim listingadmin.DispatchClaim) (bool, error)
+	RecordDispatchDelay(ctx context.Context, delay listingadmin.DispatchDelay) (bool, error)
 	RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, processingNode, reason string) error
 }
 
@@ -105,14 +106,14 @@ func (s *Scheduler) DispatchOnce(ctx context.Context) (DispatchSummary, error) {
 		if !ok {
 			decision.Action = DispatchActionSkipped
 			decision.Reason = ReasonStoreMissing
-			summary.addDecision(decision)
+			s.addSkippedDecision(ctx, &summary, candidate, decision)
 			continue
 		}
 		ready, ok := byStore[key]
 		if !ok {
 			decision.Action = DispatchActionSkipped
 			decision.Reason = ReasonStoreUnknown
-			summary.addDecision(decision)
+			s.addSkippedDecision(ctx, &summary, candidate, decision)
 			continue
 		}
 		decision.OwnerNode = ready.OwnerNode
@@ -123,13 +124,13 @@ func (s *Scheduler) DispatchOnce(ctx context.Context) (DispatchSummary, error) {
 		if !ready.Dispatchable {
 			decision.Action = DispatchActionSkipped
 			decision.Reason = ready.Reason
-			summary.addDecision(decision)
+			s.addSkippedDecision(ctx, &summary, candidate, decision)
 			continue
 		}
 		if ready.Capacity <= 0 || localQueued[key] >= int64(ready.Capacity) {
 			decision.Action = DispatchActionSkipped
 			decision.Reason = ReasonNoCapacity
-			summary.addDecision(decision)
+			s.addSkippedDecision(ctx, &summary, candidate, decision)
 			continue
 		}
 		if s.config.DryRun {
@@ -155,7 +156,7 @@ func (s *Scheduler) DispatchOnce(ctx context.Context) (DispatchSummary, error) {
 		if !claimed {
 			decision.Action = DispatchActionSkipped
 			decision.Reason = ReasonClaimConflict
-			summary.addDecision(decision)
+			s.addSkippedDecision(ctx, &summary, candidate, decision)
 			continue
 		}
 
@@ -220,6 +221,46 @@ func (s *DispatchSummary) addDecision(decision DispatchDecision) {
 	default:
 		s.Skipped++
 	}
+}
+
+func (s *Scheduler) addSkippedDecision(ctx context.Context, summary *DispatchSummary, task listingadmin.ImportTask, decision DispatchDecision) {
+	if err := s.recordDispatchDelay(ctx, task, decision); err != nil {
+		decision.Action = DispatchActionFailed
+		decision.Reason = appendDispatchReason(decision.Reason, fmt.Sprintf("record dispatch delay: %v", err))
+	}
+	summary.addDecision(decision)
+}
+
+func (s *Scheduler) recordDispatchDelay(ctx context.Context, task listingadmin.ImportTask, decision DispatchDecision) error {
+	if s == nil || s.config.DryRun || decision.Action != DispatchActionSkipped {
+		return nil
+	}
+	reason := strings.TrimSpace(decision.Reason)
+	if reason == "" {
+		reason = "dispatch_delayed"
+	}
+	message := fmt.Sprintf("Dispatch delayed: %s", reason)
+	_, err := s.repo.RecordDispatchDelay(ctx, listingadmin.DispatchDelay{
+		TaskID:        task.ID,
+		CurrentStatus: task.Status,
+		ReasonCode:    reason,
+		Stage:         "dispatch",
+		ErrorMessage:  message,
+		Remark:        message,
+	})
+	return err
+}
+
+func appendDispatchReason(base, extra string) string {
+	base = strings.TrimSpace(base)
+	extra = strings.TrimSpace(extra)
+	if base == "" {
+		return extra
+	}
+	if extra == "" {
+		return base
+	}
+	return base + "; " + extra
 }
 
 type storeKey struct {

@@ -229,6 +229,47 @@ func isDispatchableImportTaskStatus(status int16) bool {
 	}
 }
 
+func (r *GormImportTaskRepository) RecordDispatchDelay(ctx context.Context, delay DispatchDelay) (bool, error) {
+	if r == nil || r.db == nil {
+		return false, errors.New("import task repository database is not configured")
+	}
+	if !isDispatchableImportTaskStatus(delay.CurrentStatus) {
+		return false, fmt.Errorf("dispatch delay current status %d is not dispatchable", delay.CurrentStatus)
+	}
+	reasonCode := strings.TrimSpace(delay.ReasonCode)
+	if reasonCode == "" {
+		reasonCode = "dispatch_delayed"
+	}
+	stage := strings.TrimSpace(delay.Stage)
+	if stage == "" {
+		stage = "dispatch"
+	}
+	message := strings.TrimSpace(delay.ErrorMessage)
+	if message == "" {
+		message = fmt.Sprintf("Dispatch delayed: %s", reasonCode)
+	}
+	remark := strings.TrimSpace(delay.Remark)
+	if remark == "" {
+		remark = message
+	}
+	res := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("id = ?", delay.TaskID).
+		Where("status = ?", delay.CurrentStatus).
+		Where("deleted = 0").
+		Updates(map[string]any{
+			"error_message": message,
+			"reason_code":   reasonCode,
+			"stage":         stage,
+			"remark":        remark,
+			"update_time":   time.Now(),
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
+}
+
 func (r *GormImportTaskRepository) RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, processingNode, reason string) error {
 	if r == nil || r.db == nil {
 		return errors.New("import task repository database is not configured")

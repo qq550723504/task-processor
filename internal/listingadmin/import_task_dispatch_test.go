@@ -238,6 +238,43 @@ func TestRollbackDispatchRejectsStaleProcessingNode(t *testing.T) {
 	}
 }
 
+func TestRecordDispatchDelayPersistsVisibleReasonWithoutChangingStatus(t *testing.T) {
+	t.Parallel()
+
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{ID: 24, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "delayed", Status: model.TaskStatusPending.Int16(), ProcessingNode: "", ErrorMessage: "old error", ReasonCode: "OLD", Stage: "old_stage", Remark: "old remark", Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	updated, err := repo.RecordDispatchDelay(context.Background(), DispatchDelay{
+		TaskID:        24,
+		CurrentStatus: model.TaskStatusPending.Int16(),
+		ReasonCode:    "no_capacity",
+		Stage:         "dispatch",
+		ErrorMessage:  "Dispatch delayed: no_capacity",
+		Remark:        "Dispatch delayed: no_capacity",
+	})
+	if err != nil {
+		t.Fatalf("RecordDispatchDelay() error = %v", err)
+	}
+	if !updated {
+		t.Fatal("RecordDispatchDelay() = false, want true")
+	}
+
+	var row listingProductImportTask
+	if err := db.Table("listing_product_import_task").Where("id = ?", int64(24)).Take(&row).Error; err != nil {
+		t.Fatalf("load delayed row: %v", err)
+	}
+	if row.Status != model.TaskStatusPending.Int16() || row.ProcessingNode != "" {
+		t.Fatalf("delayed row changed lifecycle fields: %+v", row)
+	}
+	if row.ReasonCode != "no_capacity" || row.Stage != "dispatch" || row.ErrorMessage != "Dispatch delayed: no_capacity" || row.Remark != "Dispatch delayed: no_capacity" {
+		t.Fatalf("delayed row = %+v, want persisted dispatch reason", row)
+	}
+}
+
 func TestCountQueuedByStoreGroupsAcrossTenantsForPlatform(t *testing.T) {
 	t.Parallel()
 

@@ -70,6 +70,15 @@ type DispatchClaim struct {
 	Remark         string
 }
 
+type DispatchDelay struct {
+	TaskID        int64
+	CurrentStatus int16
+	ReasonCode    string
+	Stage         string
+	ErrorMessage  string
+	Remark        string
+}
+
 type ImportTaskRepository interface {
 	ListImportTasks(ctx context.Context, query ImportTaskQuery) (*ImportTaskPage, error)
 	BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) ([]ImportTask, error)
@@ -77,6 +86,7 @@ type ImportTaskRepository interface {
 	ListPendingAndRetryTasks(ctx context.Context, limit int, tenantID int64, storeIDs []int64) ([]ImportTask, error)
 	ListDispatchCandidatesFair(ctx context.Context, req DispatchCandidateRequest) ([]ImportTask, error)
 	ClaimForDispatch(ctx context.Context, claim DispatchClaim) (bool, error)
+	RecordDispatchDelay(ctx context.Context, delay DispatchDelay) (bool, error)
 	RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, processingNode, reason string) error
 	CountQueuedByStore(ctx context.Context, platform string, storeIDs []int64) (map[int64]int64, error)
 	CountTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time) (int64, error)

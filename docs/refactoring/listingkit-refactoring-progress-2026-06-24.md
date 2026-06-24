@@ -285,9 +285,9 @@ standby pod 保持 Kubernetes ready，但 dispatch/recovery 为 0
 旧 worker watchdog 保持关闭，recovery owner 不重复
 ```
 
-## 4.2 Skip / delay reason 仍然不是持久业务事实
+## 4.2 Skip / delay reason 已完成代码层持久化
 
-Control Plane 当前会在 `DispatchSummary.Decisions` 和 `/status` 中展示 skip reason，但 scheduler 对以下情况通常只生成内存 decision：
+Control Plane 现在仍会在 `DispatchSummary.Decisions` 和 `/status` 中展示 skip reason，同时 scheduler 对以下情况会把 delay reason 写回 import task：
 
 ```text
 store disabled
@@ -298,21 +298,24 @@ no capacity
 queue depth unavailable
 ```
 
-如果进程重启，历史原因消失；运营仍可能看到长期 Pending 任务，却无法从任务本身解释为什么没有调度。
-
-下一步应增加：
+写入字段为：
 
 ```text
-reason_code
 stage = dispatch
-remark / error_message
-last_dispatch_checked_at
-next_dispatch_after（可选）
+reason_code = <skip reason>
+error_message = Dispatch delayed: <skip reason>
+remark = Dispatch delayed: <skip reason>
 ```
 
-或者新增 append-only task event。
+任务状态保持 pending / pending_retry / crawled 等原 dispatchable 状态，不会因为“暂不可调度”被改成失败。dry-run 模式仍保持只读。
 
-至少要保证“长期 Pending 的最后一次 delay reason”可以被任务列表和运营接口读取。
+剩余验证重点是：
+
+```text
+任务列表和运营接口能直接显示最近一次 dispatch delay reason
+长期 Pending 任务重启后仍保留最后一次 delay reason
+必要时再补 last_dispatch_checked_at / next_dispatch_after
+```
 
 ## 4.3 Daily limit 仍未完整进入 Store Runtime
 
@@ -478,7 +481,7 @@ store 976 / 1030 等真实店铺的验证结果；
 
 ```text
 1. leader lock 已实现并通过临时双实例 rollout 验证
-2. 持久化 dispatch skip/delay reason
+2. 持久化 dispatch skip/delay reason 已完成代码层落地
 3. daily limit / in-flight / quota capacity 统一
 4. recovery owner 去重和回滚验证
 5. status endpoint 增加 leader、last success、配置生效状态
@@ -565,8 +568,8 @@ Day 1-2
 - 双实例 rollout 已验证 leader/standby，不再重复 dispatch/recovery
 
 Day 3
-- 持久化 skip/delay reason
-- 任务列表可查询最近调度原因
+- 持久化 skip/delay reason 已完成
+- 任务列表可查询最近调度原因仍需生产观察确认
 
 Day 4
 - 接入 daily limit / in-flight capacity
@@ -637,7 +640,6 @@ SHEIN publishing/workspace 规则大部分已有 owner；
 当前未满足：
 
 ```text
-dispatch reason 持久事实；
 完整 daily limit capacity；
 Management Client 从 runtime 类型边界退休；
 后端全仓 CI 和关键 race 门禁；
