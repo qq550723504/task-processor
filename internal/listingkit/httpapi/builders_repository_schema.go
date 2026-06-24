@@ -120,6 +120,9 @@ func runListingKitRepositoryAutoMigrations(db *gorm.DB) error {
 	if err := listingkitstore.AutoMigrateSheinSyncRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit shein sync repository: %w", err)
 	}
+	if err := db.AutoMigrate(&listingkit.SDSRetirementRunRecord{}, &listingkit.SDSRetirementItemRecord{}); err != nil {
+		return fmt.Errorf("migrate listingkit sds retirement repository: %w", err)
+	}
 	if err := listingkit.AutoMigrateUploadedImageRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit uploaded image repository: %w", err)
 	}

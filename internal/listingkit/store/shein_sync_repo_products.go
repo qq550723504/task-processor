@@ -133,6 +133,7 @@ func sheinSyncedProductAssignments(row listingkit.SheinSyncedProductRecord) map[
 		"product_name_multi":   row.ProductNameMulti,
 		"main_image_url":       row.MainImageURL,
 		"sale_name":            row.SaleName,
+		"business_model":       row.BusinessModel,
 		"shelf_status":         row.ShelfStatus,
 		"publish_time":         row.PublishTime,
 		"first_shelf_time":     row.FirstShelfTime,

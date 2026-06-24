@@ -30,7 +30,7 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 		PublishTime:      "2026-06-01 08:30:00",
 		FirstShelfTime:   "2026-06-01 09:00:00",
 		SkcInfoList: []sheinproduct.SkcInfoItem{
-			{SkcName: "skc-1", SkcCode: "SKC001", SaleName: "Red", SupplierCode: "SUP-1", MainImageThumbnailURL: "https://img/1.jpg"},
+			{SkcName: "skc-1", SkcCode: "SKC001", SaleName: "Red", SupplierCode: "SUP-1", MainImageThumbnailURL: "https://img/1.jpg", BusinessModel: 7},
 			{SkcName: "skc-2", SkcCode: "SKC002", SaleName: "Blue", SupplierCode: "SUP-2", MainImageThumbnailURL: "https://img/2.jpg"},
 		},
 	})
@@ -116,6 +116,7 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 	require.Len(t, rows, 3)
 	require.Equal(t, "skc-1", rows[0].SKCName)
 	require.True(t, rows[0].IsActive)
+	require.Equal(t, 7, rows[0].BusinessModel)
 	require.Equal(t, "USD", rows[0].Currency)
 	require.NotNil(t, rows[0].PublishTime)
 	require.NotNil(t, rows[0].FirstShelfTime)
