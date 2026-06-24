@@ -79,6 +79,7 @@ import {
   useSheinStudioActiveGroupPrimarySelection,
   useSheinStudioActiveGroupPromptHistory,
   useSheinStudioActiveSelectionSummary,
+  useSheinStudioBusyMessage,
   useSheinStudioCreateActionDisabledReason,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
@@ -100,7 +101,6 @@ import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/sh
 import {
   hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
-  sheinStudioBusyMessage,
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
@@ -1204,7 +1204,7 @@ export function SheinStudioWorkbench({
     }
   }
 
-  const busyMessage = sheinStudioBusyMessage({
+  const busyMessage = useSheinStudioBusyMessage({
     isCreatingTasks,
     isGenerating: effectiveIsGenerating,
     regeneratingId,

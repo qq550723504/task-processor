@@ -13,6 +13,7 @@ import {
   selectActiveGroupPromptHistory,
   selectActiveGroupPrimarySelection,
   selectCurrentDedicatedBatch,
+  sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type { SheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
@@ -287,6 +288,26 @@ export function useSheinStudioCreateActionDisabledReason({
         selection,
       }),
     [galleryRatioCheck, selectedIds, selection],
+  );
+}
+
+export function useSheinStudioBusyMessage({
+  isCreatingTasks,
+  isGenerating,
+  regeneratingId,
+}: {
+  isCreatingTasks: boolean;
+  isGenerating: boolean;
+  regeneratingId?: string;
+}) {
+  return useMemo(
+    () =>
+      sheinStudioBusyMessage({
+        isCreatingTasks,
+        isGenerating,
+        regeneratingId,
+      }),
+    [isCreatingTasks, isGenerating, regeneratingId],
   );
 }
 

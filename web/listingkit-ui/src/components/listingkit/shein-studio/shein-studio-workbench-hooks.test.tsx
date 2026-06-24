@@ -6,6 +6,7 @@ import {
   useSheinStudioActiveGroupPromptHistory,
   useSheinStudioActiveGroupPrimarySelection,
   useSheinStudioActiveSelectionSummary,
+  useSheinStudioBusyMessage,
   useSheinStudioCreateActionDisabledReason,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
@@ -330,5 +331,19 @@ describe("useSheinStudioCreateActionDisabledReason", () => {
     );
 
     expect(result.current).toBe("图片比例不符合 SDS 模板");
+  });
+});
+
+describe("useSheinStudioBusyMessage", () => {
+  it("returns the generation busy message while generation is in flight", () => {
+    const { result } = renderHook(() =>
+      useSheinStudioBusyMessage({
+        isCreatingTasks: false,
+        isGenerating: true,
+        regeneratingId: "design-1",
+      }),
+    );
+
+    expect(result.current).toBe("正在生成款式图");
   });
 });
