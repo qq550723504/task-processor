@@ -79,6 +79,28 @@ type DispatchDelay struct {
 	Remark        string
 }
 
+type DailyDispatchUsage struct {
+	Completed  int
+	Processing int
+	Queued     int
+}
+
+type DispatchEvent struct {
+	TaskID         int64
+	TenantID       int64
+	StoreID        int64
+	Platform       string
+	Action         string
+	ReasonCode     string
+	Stage          string
+	Capacity       int
+	Queued         int64
+	Processing     int
+	CompletedToday int
+	DailyLimit     int
+	OwnerNode      string
+}
+
 type ImportTaskRepository interface {
 	ListImportTasks(ctx context.Context, query ImportTaskQuery) (*ImportTaskPage, error)
 	BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) ([]ImportTask, error)
@@ -87,6 +109,8 @@ type ImportTaskRepository interface {
 	ListDispatchCandidatesFair(ctx context.Context, req DispatchCandidateRequest) ([]ImportTask, error)
 	ClaimForDispatch(ctx context.Context, claim DispatchClaim) (bool, error)
 	RecordDispatchDelay(ctx context.Context, delay DispatchDelay) (bool, error)
+	CountDailyDispatchUsage(ctx context.Context, platform string, tenantID, storeID int64, day time.Time) (DailyDispatchUsage, error)
+	RecordDispatchEvent(ctx context.Context, event DispatchEvent) error
 	RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, processingNode, reason string) error
 	CountQueuedByStore(ctx context.Context, platform string, storeIDs []int64) (map[int64]int64, error)
 	CountTimedOutProcessingTasks(ctx context.Context, timeoutBefore time.Time) (int64, error)
@@ -149,4 +173,26 @@ type listingProductImportTask struct {
 
 func (listingProductImportTask) TableName() string {
 	return "listing_product_import_task"
+}
+
+type listingDispatchEvent struct {
+	ID             int64      `gorm:"column:id;primaryKey;autoIncrement"`
+	TaskID         int64      `gorm:"column:task_id;index"`
+	TenantID       int64      `gorm:"column:tenant_id;index"`
+	StoreID        int64      `gorm:"column:store_id;index"`
+	Platform       string     `gorm:"column:platform;index"`
+	Action         string     `gorm:"column:action;index"`
+	ReasonCode     string     `gorm:"column:reason_code;index"`
+	Stage          string     `gorm:"column:stage"`
+	Capacity       int        `gorm:"column:capacity"`
+	Queued         int64      `gorm:"column:queued"`
+	Processing     int        `gorm:"column:processing"`
+	CompletedToday int        `gorm:"column:completed_today"`
+	DailyLimit     int        `gorm:"column:daily_limit"`
+	OwnerNode      string     `gorm:"column:owner_node"`
+	CreatedAt      *time.Time `gorm:"column:created_at;autoCreateTime"`
+}
+
+func (listingDispatchEvent) TableName() string {
+	return "listing_dispatch_event"
 }

@@ -70,6 +70,9 @@ func TestSchedulerDispatchesReadyStoreToStoreQueue(t *testing.T) {
 	if decision.OwnerNode != "node-a" || decision.Capacity != 3 || decision.Queued != 0 {
 		t.Fatalf("decision lost readiness details: %+v", decision)
 	}
+	if len(repo.events) != 1 || repo.events[0].Action != DispatchActionDispatched || repo.events[0].TaskID != 101 {
+		t.Fatalf("dispatch events = %+v, want dispatched event for task 101", repo.events)
+	}
 }
 
 func TestSchedulerSkipsDisabledStore(t *testing.T) {
@@ -91,6 +94,7 @@ func TestSchedulerSkipsDisabledStore(t *testing.T) {
 		t.Fatalf("claims = %d, want 0", len(repo.claims))
 	}
 	assertSingleDispatchDelay(t, repo, 102, model.TaskStatusPending.Int16(), ReasonStoreDisabled)
+	assertSingleDispatchEvent(t, repo, 102, DispatchActionSkipped, ReasonStoreDisabled)
 }
 
 func TestSchedulerSkipsStoreWithoutOwner(t *testing.T) {
@@ -137,6 +141,7 @@ func TestSchedulerSkipsQuotaExhaustedWithoutClaiming(t *testing.T) {
 		t.Fatalf("claims = %d, want 0", len(repo.claims))
 	}
 	assertSingleDispatchDelay(t, repo, 104, model.TaskStatusPendingRetry.Int16(), ReasonQuotaExhausted)
+	assertSingleDispatchEvent(t, repo, 104, DispatchActionSkipped, ReasonQuotaExhausted)
 }
 
 func TestSchedulerRollsBackClaimWhenPublishFails(t *testing.T) {
@@ -312,6 +317,9 @@ func TestSchedulerDryRunReportsDecisionsWithoutClaimOrPublish(t *testing.T) {
 	if len(repo.delays) != 0 {
 		t.Fatalf("dry-run dispatch delays = %d, want 0", len(repo.delays))
 	}
+	if len(repo.events) != 0 {
+		t.Fatalf("dry-run dispatch events = %d, want 0", len(repo.events))
+	}
 	if len(publisher.tasks) != 0 {
 		t.Fatalf("published tasks = %d, want 0", len(publisher.tasks))
 	}
@@ -352,6 +360,17 @@ func assertSingleDispatchDelay(t *testing.T, repo *fakeDispatchRepo, taskID int6
 	}
 	if !strings.Contains(delay.ErrorMessage, reason) || !strings.Contains(delay.Remark, reason) {
 		t.Fatalf("dispatch delay message/remark = %q/%q, want reason %q", delay.ErrorMessage, delay.Remark, reason)
+	}
+}
+
+func assertSingleDispatchEvent(t *testing.T, repo *fakeDispatchRepo, taskID int64, action, reason string) {
+	t.Helper()
+	if len(repo.events) != 1 {
+		t.Fatalf("dispatch events = %d, want 1", len(repo.events))
+	}
+	event := repo.events[0]
+	if event.TaskID != taskID || event.Action != action || event.ReasonCode != reason || event.Stage != "dispatch" {
+		t.Fatalf("unexpected dispatch event: %+v", event)
 	}
 }
 
@@ -396,6 +415,7 @@ type fakeDispatchRepo struct {
 	claims      []listingadmin.DispatchClaim
 	rollbacks   []fakeRollback
 	delays      []listingadmin.DispatchDelay
+	events      []listingadmin.DispatchEvent
 	claimOK     bool
 	claimErr    error
 	rollbackErr error
@@ -430,6 +450,11 @@ func (f *fakeDispatchRepo) RollbackDispatch(ctx context.Context, taskID int64, p
 func (f *fakeDispatchRepo) RecordDispatchDelay(ctx context.Context, delay listingadmin.DispatchDelay) (bool, error) {
 	f.delays = append(f.delays, delay)
 	return true, nil
+}
+
+func (f *fakeDispatchRepo) RecordDispatchEvent(ctx context.Context, event listingadmin.DispatchEvent) error {
+	f.events = append(f.events, event)
+	return nil
 }
 
 type fakeRollback struct {

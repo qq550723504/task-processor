@@ -12,15 +12,20 @@ const (
 )
 
 type DispatchDecision struct {
-	TaskID    int64  `json:"taskId"`
-	TenantID  int64  `json:"tenantId"`
-	StoreID   int64  `json:"storeId"`
-	Action    string `json:"action"`
-	Queue     string `json:"queue,omitempty"`
-	Reason    string `json:"reason,omitempty"`
-	OwnerNode string `json:"ownerNode,omitempty"`
-	Capacity  int    `json:"capacity"`
-	Queued    int64  `json:"queued"`
+	TaskID          int64  `json:"taskId"`
+	TenantID        int64  `json:"tenantId"`
+	StoreID         int64  `json:"storeId"`
+	Action          string `json:"action"`
+	Queue           string `json:"queue,omitempty"`
+	Reason          string `json:"reason,omitempty"`
+	OwnerNode       string `json:"ownerNode,omitempty"`
+	Capacity        int    `json:"capacity"`
+	Queued          int64  `json:"queued"`
+	DailyLimit      int    `json:"dailyLimit,omitempty"`
+	DailyRemaining  int    `json:"dailyRemaining,omitempty"`
+	DailyCompleted  int    `json:"dailyCompleted,omitempty"`
+	DailyProcessing int    `json:"dailyProcessing,omitempty"`
+	DailyQueued     int    `json:"dailyQueued,omitempty"`
 }
 
 type DispatchSummary struct {

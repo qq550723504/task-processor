@@ -33,7 +33,7 @@ func AutoMigrateImportTaskRepository(db *gorm.DB) error {
 			return err
 		}
 	}
-	return nil
+	return db.AutoMigrate(&listingDispatchEvent{})
 }
 
 func (r *GormImportTaskRepository) ListImportTasks(ctx context.Context, query ImportTaskQuery) (*ImportTaskPage, error) {
@@ -268,6 +268,82 @@ func (r *GormImportTaskRepository) RecordDispatchDelay(ctx context.Context, dela
 		return false, res.Error
 	}
 	return res.RowsAffected == 1, nil
+}
+
+func (r *GormImportTaskRepository) CountDailyDispatchUsage(ctx context.Context, platform string, tenantID, storeID int64, day time.Time) (DailyDispatchUsage, error) {
+	if r == nil || r.db == nil {
+		return DailyDispatchUsage{}, errors.New("import task repository database is not configured")
+	}
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		return DailyDispatchUsage{}, nil
+	}
+	if day.IsZero() {
+		day = time.Now()
+	}
+	start := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
+	end := start.AddDate(0, 0, 1)
+	var rows []struct {
+		Status int16
+		Count  int64
+	}
+	err := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Select("status, count(*) as count").
+		Where("deleted = 0").
+		Where("tenant_id = ? AND store_id = ?", tenantID, storeID).
+		Where("COALESCE(NULLIF(target_platform, ''), platform) = ?", platform).
+		Where("create_time >= ? AND create_time < ?", start, end).
+		Where("status IN ?", []int16{
+			model.TaskStatusProcessing.Int16(),
+			model.TaskStatusRepublishing.Int16(),
+			model.TaskStatusResuming.Int16(),
+			model.TaskStatusQueued.Int16(),
+			model.TaskStatusPublished.Int16(),
+			model.TaskStatusDraft.Int16(),
+		}).
+		Group("status").
+		Scan(&rows).Error
+	if err != nil {
+		return DailyDispatchUsage{}, err
+	}
+	var usage DailyDispatchUsage
+	for _, row := range rows {
+		switch row.Status {
+		case model.TaskStatusPublished.Int16(), model.TaskStatusDraft.Int16():
+			usage.Completed += int(row.Count)
+		case model.TaskStatusProcessing.Int16(), model.TaskStatusRepublishing.Int16(), model.TaskStatusResuming.Int16():
+			usage.Processing += int(row.Count)
+		case model.TaskStatusQueued.Int16():
+			usage.Queued += int(row.Count)
+		}
+	}
+	return usage, nil
+}
+
+func (r *GormImportTaskRepository) RecordDispatchEvent(ctx context.Context, event DispatchEvent) error {
+	if r == nil || r.db == nil {
+		return errors.New("import task repository database is not configured")
+	}
+	row := listingDispatchEvent{
+		TaskID:         event.TaskID,
+		TenantID:       event.TenantID,
+		StoreID:        event.StoreID,
+		Platform:       strings.TrimSpace(event.Platform),
+		Action:         strings.TrimSpace(event.Action),
+		ReasonCode:     strings.TrimSpace(event.ReasonCode),
+		Stage:          strings.TrimSpace(event.Stage),
+		Capacity:       event.Capacity,
+		Queued:         event.Queued,
+		Processing:     event.Processing,
+		CompletedToday: event.CompletedToday,
+		DailyLimit:     event.DailyLimit,
+		OwnerNode:      strings.TrimSpace(event.OwnerNode),
+	}
+	if row.Stage == "" {
+		row.Stage = "dispatch"
+	}
+	return r.db.WithContext(ctx).Table(row.TableName()).Create(&row).Error
 }
 
 func (r *GormImportTaskRepository) RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, processingNode, reason string) error {

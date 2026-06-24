@@ -18,6 +18,7 @@ type DispatchTaskRepository interface {
 	ListDispatchCandidatesFair(ctx context.Context, req listingadmin.DispatchCandidateRequest) ([]listingadmin.ImportTask, error)
 	ClaimForDispatch(ctx context.Context, claim listingadmin.DispatchClaim) (bool, error)
 	RecordDispatchDelay(ctx context.Context, delay listingadmin.DispatchDelay) (bool, error)
+	RecordDispatchEvent(ctx context.Context, event listingadmin.DispatchEvent) error
 	RollbackDispatch(ctx context.Context, taskID int64, previousStatus int16, processingNode, reason string) error
 }
 
@@ -120,6 +121,11 @@ func (s *Scheduler) DispatchOnce(ctx context.Context) (DispatchSummary, error) {
 		decision.Capacity = ready.Capacity
 		decision.Queued = localQueued[key]
 		decision.Queue = rabbitmq.GetStoreQueueName(s.config.Platform, key.storeID)
+		decision.DailyLimit = ready.DailyLimit
+		decision.DailyRemaining = ready.DailyRemaining
+		decision.DailyCompleted = ready.DailyCompleted
+		decision.DailyProcessing = ready.DailyProcessing
+		decision.DailyQueued = ready.DailyQueued
 
 		if !ready.Dispatchable {
 			decision.Action = DispatchActionSkipped
@@ -178,6 +184,7 @@ func (s *Scheduler) DispatchOnce(ctx context.Context) (DispatchSummary, error) {
 			decision.Queue = published.Queue
 		}
 		decision.Action = DispatchActionDispatched
+		s.recordDispatchEvent(ctx, candidate, decision)
 		summary.addDecision(decision)
 		localQueued[key]++
 	}
@@ -228,6 +235,7 @@ func (s *Scheduler) addSkippedDecision(ctx context.Context, summary *DispatchSum
 		decision.Action = DispatchActionFailed
 		decision.Reason = appendDispatchReason(decision.Reason, fmt.Sprintf("record dispatch delay: %v", err))
 	}
+	s.recordDispatchEvent(ctx, task, decision)
 	summary.addDecision(decision)
 }
 
@@ -249,6 +257,27 @@ func (s *Scheduler) recordDispatchDelay(ctx context.Context, task listingadmin.I
 		Remark:        message,
 	})
 	return err
+}
+
+func (s *Scheduler) recordDispatchEvent(ctx context.Context, task listingadmin.ImportTask, decision DispatchDecision) {
+	if s == nil || s.config.DryRun {
+		return
+	}
+	_ = s.repo.RecordDispatchEvent(ctx, listingadmin.DispatchEvent{
+		TaskID:         task.ID,
+		TenantID:       task.TenantID,
+		StoreID:        decision.StoreID,
+		Platform:       s.config.Platform,
+		Action:         decision.Action,
+		ReasonCode:     decision.Reason,
+		Stage:          "dispatch",
+		Capacity:       decision.Capacity,
+		Queued:         decision.Queued,
+		Processing:     decision.DailyProcessing,
+		CompletedToday: decision.DailyCompleted,
+		DailyLimit:     decision.DailyLimit,
+		OwnerNode:      decision.OwnerNode,
+	})
 }
 
 func appendDispatchReason(base, extra string) string {

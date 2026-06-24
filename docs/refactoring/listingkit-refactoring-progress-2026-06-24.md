@@ -317,9 +317,9 @@ remark = Dispatch delayed: <skip reason>
 必要时再补 last_dispatch_checked_at / next_dispatch_after
 ```
 
-## 4.3 Daily limit 仍未完整进入 Store Runtime
+## 4.3 Daily limit 已进入 Store Runtime 容量计算
 
-Control Plane 设计要求同时考虑：
+Control Plane 现在的 Store Runtime 容量计算已经同时考虑：
 
 ```text
 daily completed count
@@ -329,21 +329,35 @@ external remaining quota
 queue depth
 ```
 
-当前 `StoreRuntime` 主要检查：
+当前语义：
 
 ```text
-store enabled
-auto listing enabled
-queue mode
-live owner
-pause key
-queue depth
-structured quota
+runtime_capacity = min(owner_browser_capacity, maxQueuedPerStore)
+daily_remaining = daily_limit - completed_today - processing - queued
+capacity = min(runtime_capacity, daily_remaining)
 ```
 
-尚未看到完整 daily completed / daily limit 进入 capacity 公式。
+当 `daily_remaining <= 0` 时，Store Runtime 返回：
 
-因此当前 capacity 更接近“浏览器和队列容量”，还不是完整业务配额容量。
+```text
+reason = daily_limit_exhausted
+capacity = 0
+```
+
+调度决策同时追加到 `listing_dispatch_event`，记录：
+
+```text
+action
+reason_code
+capacity
+queued
+processing
+completed_today
+daily_limit
+owner_node
+```
+
+剩余验证重点是生产观察：确认 `draft/published` 作为 `completed_today` 的口径符合运营预期，以及任务列表能读到最后一次 delay reason。
 
 ## 4.4 部分配置已经定义但尚未接通
 
@@ -482,7 +496,7 @@ store 976 / 1030 等真实店铺的验证结果；
 ```text
 1. leader lock 已实现并通过临时双实例 rollout 验证
 2. 持久化 dispatch skip/delay reason 已完成代码层落地
-3. daily limit / in-flight / quota capacity 统一
+3. daily limit / in-flight / quota capacity 已完成代码层统一
 4. recovery owner 去重和回滚验证
 5. status endpoint 增加 leader、last success、配置生效状态
 6. 真实店铺 dispatch / consume / recovery 验收报告
@@ -572,8 +586,9 @@ Day 3
 - 任务列表可查询最近调度原因仍需生产观察确认
 
 Day 4
-- 接入 daily limit / in-flight capacity
-- 清理未生效配置
+- daily limit / in-flight capacity 已接入 Store Runtime
+- dispatch event 审计表已新增
+- 清理未生效配置仍待处理
 
 Day 5
 - 跑 claim、publish rollback、双实例和 recovery 并发测试
@@ -640,7 +655,6 @@ SHEIN publishing/workspace 规则大部分已有 owner；
 当前未满足：
 
 ```text
-完整 daily limit capacity；
 Management Client 从 runtime 类型边界退休；
 后端全仓 CI 和关键 race 门禁；
 ListingKit root 最终 ownership closeout；

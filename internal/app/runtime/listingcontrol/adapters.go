@@ -21,12 +21,14 @@ type directStoreSource struct {
 }
 
 type listingStoreSnapshotRow struct {
-	ID                int64 `gorm:"column:id"`
-	TenantID          int64 `gorm:"column:tenant_id"`
-	Platform          string
-	Status            int
+	ID                int64  `gorm:"column:id"`
+	TenantID          int64  `gorm:"column:tenant_id"`
+	Platform          string `gorm:"column:platform"`
+	Status            int    `gorm:"column:status"`
 	EnableAutoListing *bool  `gorm:"column:enable_auto_listing"`
 	Name              string `gorm:"column:name"`
+	DailyLimit        *int   `gorm:"column:daily_limit"`
+	DailyLimitType    string `gorm:"column:daily_limit_type"`
 }
 
 func NewDirectStoreSource(db *gorm.DB) controllib.StoreSource {
@@ -46,7 +48,6 @@ func (s directStoreSource) ListEnabledAutoListingStores(ctx context.Context, pla
 	var rows []listingStoreSnapshotRow
 	if err := s.db.WithContext(ctx).
 		Table("listing_store").
-		Select("id, tenant_id, platform, status, enable_auto_listing, name").
 		Where("deleted = ?", 0).
 		Where("LOWER(platform) = ?", platform).
 		Order("id ASC").
@@ -63,6 +64,8 @@ func (s directStoreSource) ListEnabledAutoListingStores(ctx context.Context, pla
 			Status:            row.Status,
 			EnableAutoListing: row.EnableAutoListing,
 			Name:              row.Name,
+			DailyLimit:        row.DailyLimit,
+			DailyLimitType:    row.DailyLimitType,
 		})
 	}
 	return stores, nil

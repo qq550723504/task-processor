@@ -154,6 +154,7 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 		OwnerBrowserPoolSize:  ownerBrowserPoolSize(cfg),
 		EnableLegacyQuotaKeys: controlCfg.EnableLegacyQuotaKeys,
 		QueueDepthSource:      rabbitRT.QueueDepthSource(platform),
+		DailyUsageSource:      repo,
 	})
 	recovery := controllib.NewRecoveryCoordinator(recoveryConfig(cfg, repo))
 	scheduler := controllib.NewScheduler(repo, storeRuntime, controllib.NewDispatchPublisher(rabbitRT.Publisher(), platform), controllib.SchedulerConfig{

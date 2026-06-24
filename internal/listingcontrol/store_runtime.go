@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+
+	"task-processor/internal/listingadmin"
 )
 
 const (
@@ -20,6 +23,7 @@ const (
 	ReasonStorePaused           = "store_paused"
 	ReasonNoCapacity            = "no_capacity"
 	ReasonQueueDepthUnavailable = "queue_depth_unavailable"
+	ReasonDailyLimitExhausted   = "daily_limit_exhausted"
 )
 
 type StoreSource interface {
@@ -33,6 +37,8 @@ type StoreSnapshot struct {
 	Status            int
 	EnableAutoListing *bool
 	Name              string
+	DailyLimit        *int
+	DailyLimitType    string
 }
 
 type QueueDepthSource interface {
@@ -44,26 +50,39 @@ type StoreRuntimeConfig struct {
 	OwnerBrowserPoolSize  int
 	EnableLegacyQuotaKeys bool
 	QueueDepthSource      QueueDepthSource
+	DailyUsageSource      DailyUsageSource
+}
+
+type DailyDispatchUsage = listingadmin.DailyDispatchUsage
+
+type DailyUsageSource interface {
+	CountDailyDispatchUsage(ctx context.Context, platform string, tenantID, storeID int64, day time.Time) (DailyDispatchUsage, error)
 }
 
 type StoreRuntime struct {
 	stores     StoreSource
 	runtime    StringRuntime
 	queueDepth QueueDepthSource
+	dailyUsage DailyUsageSource
 	quota      *QuotaService
 	config     StoreRuntimeConfig
 }
 
 type StoreReadiness struct {
-	Store        StoreSnapshot
-	Dispatchable bool
-	Reason       string
-	OwnerNode    string
-	Mode         string
-	Paused       bool
-	Capacity     int
-	Queued       int64
-	Quota        QuotaResult
+	Store           StoreSnapshot
+	Dispatchable    bool
+	Reason          string
+	OwnerNode       string
+	Mode            string
+	Paused          bool
+	Capacity        int
+	Queued          int64
+	Quota           QuotaResult
+	DailyLimit      int
+	DailyRemaining  int
+	DailyCompleted  int
+	DailyProcessing int
+	DailyQueued     int
 }
 
 func NewStoreRuntime(stores StoreSource, runtime StringRuntime, config StoreRuntimeConfig) *StoreRuntime {
@@ -77,6 +96,7 @@ func NewStoreRuntime(stores StoreSource, runtime StringRuntime, config StoreRunt
 		stores:     stores,
 		runtime:    runtime,
 		queueDepth: queueDepthSource,
+		dailyUsage: config.DailyUsageSource,
 		quota: NewQuotaService(runtime, QuotaConfig{
 			EnableLegacyQuotaKeys: config.EnableLegacyQuotaKeys,
 		}),
@@ -130,6 +150,13 @@ func (s *StoreRuntime) ListReadiness(ctx context.Context, platform string) ([]St
 			item.Dispatchable = false
 			continue
 		}
+		if err := s.applyDailyCapacity(ctx, item); err != nil {
+			return nil, err
+		}
+		if item.Reason == ReasonDailyLimitExhausted {
+			item.Dispatchable = false
+			continue
+		}
 		if item.Queued >= int64(item.Capacity) {
 			item.Reason = ReasonNoCapacity
 			item.Dispatchable = false
@@ -139,6 +166,37 @@ func (s *StoreRuntime) ListReadiness(ctx context.Context, platform string) ([]St
 	}
 
 	return readiness, nil
+}
+
+func (s *StoreRuntime) applyDailyCapacity(ctx context.Context, item *StoreReadiness) error {
+	if item == nil || item.Store.DailyLimit == nil || *item.Store.DailyLimit <= 0 {
+		return nil
+	}
+	item.DailyLimit = *item.Store.DailyLimit
+	if s.dailyUsage == nil {
+		return nil
+	}
+	usage, err := s.dailyUsage.CountDailyDispatchUsage(ctx, item.Store.Platform, item.Store.TenantID, item.Store.StoreID, time.Now())
+	if err != nil {
+		return err
+	}
+	item.DailyCompleted = usage.Completed
+	item.DailyProcessing = usage.Processing
+	item.DailyQueued = usage.Queued
+	remaining := item.DailyLimit - usage.Completed - usage.Processing - usage.Queued
+	if remaining < 0 {
+		remaining = 0
+	}
+	item.DailyRemaining = remaining
+	if remaining <= 0 {
+		item.Capacity = 0
+		item.Reason = ReasonDailyLimitExhausted
+		return nil
+	}
+	if remaining < item.Capacity {
+		item.Capacity = remaining
+	}
+	return nil
 }
 
 func (s *StoreRuntime) evaluateBase(ctx context.Context, store StoreSnapshot) (StoreReadiness, error) {

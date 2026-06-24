@@ -314,6 +314,81 @@ func TestStoreRuntimeNoCapacityWhenQueuedReachesCapacity(t *testing.T) {
 	}
 }
 
+func TestStoreRuntimeDailyLimitReducesCapacityBySuccessfulAndInFlightUsage(t *testing.T) {
+	auto := true
+	limit := 5
+	runtime := newFakeStringRuntime()
+	runtime.set("listing:queue:mode:10:20", "store-dedicated", 0)
+	runtime.set("listing:queue:owner:10:20", "node-a", 0)
+	runtime.queueDepth = 0
+	usage := &fakeDailyUsageSource{counts: DailyDispatchUsage{Completed: 2, Processing: 1, Queued: 1}}
+
+	service := NewStoreRuntime(fakeStoreSource{stores: []StoreSnapshot{{
+		TenantID:          10,
+		StoreID:           20,
+		Platform:          "shein",
+		Status:            StoreStatusEnabled,
+		EnableAutoListing: &auto,
+		DailyLimit:        &limit,
+	}}}, runtime, StoreRuntimeConfig{
+		MaxQueuedPerStore:    10,
+		OwnerBrowserPoolSize: 5,
+		DailyUsageSource:     usage,
+	})
+
+	readiness, err := service.ListReadiness(context.Background(), "shein")
+	if err != nil {
+		t.Fatalf("ListReadiness returned error: %v", err)
+	}
+	got := readiness[0]
+	if !got.Dispatchable {
+		t.Fatalf("expected daily remaining capacity to allow dispatch, got reason %q", got.Reason)
+	}
+	if got.Capacity != 1 || got.DailyRemaining != 1 {
+		t.Fatalf("capacity=%d dailyRemaining=%d, want 1/1", got.Capacity, got.DailyRemaining)
+	}
+	if got.DailyCompleted != 2 || got.DailyProcessing != 1 || got.DailyQueued != 1 || got.DailyLimit != 5 {
+		t.Fatalf("daily fields = %+v", got)
+	}
+}
+
+func TestStoreRuntimeDailyLimitExhaustedIsNonDispatchable(t *testing.T) {
+	auto := true
+	limit := 3
+	runtime := newFakeStringRuntime()
+	runtime.set("listing:queue:mode:10:20", "store-dedicated", 0)
+	runtime.set("listing:queue:owner:10:20", "node-a", 0)
+	usage := &fakeDailyUsageSource{counts: DailyDispatchUsage{Completed: 2, Processing: 1, Queued: 0}}
+
+	service := NewStoreRuntime(fakeStoreSource{stores: []StoreSnapshot{{
+		TenantID:          10,
+		StoreID:           20,
+		Platform:          "shein",
+		Status:            StoreStatusEnabled,
+		EnableAutoListing: &auto,
+		DailyLimit:        &limit,
+	}}}, runtime, StoreRuntimeConfig{
+		MaxQueuedPerStore:    10,
+		OwnerBrowserPoolSize: 5,
+		DailyUsageSource:     usage,
+	})
+
+	readiness, err := service.ListReadiness(context.Background(), "shein")
+	if err != nil {
+		t.Fatalf("ListReadiness returned error: %v", err)
+	}
+	got := readiness[0]
+	if got.Dispatchable {
+		t.Fatal("expected exhausted daily limit store to be non-dispatchable")
+	}
+	if got.Reason != ReasonDailyLimitExhausted {
+		t.Fatalf("expected %q, got %q", ReasonDailyLimitExhausted, got.Reason)
+	}
+	if got.Capacity != 0 || got.DailyRemaining != 0 {
+		t.Fatalf("capacity=%d dailyRemaining=%d, want 0/0", got.Capacity, got.DailyRemaining)
+	}
+}
+
 func TestStoreRuntimeMaxQueuedPerStoreNonPositiveUsesOwnerCapacity(t *testing.T) {
 	auto := true
 	runtime := newFakeStringRuntime()
@@ -468,4 +543,16 @@ func requireQuotaInvalid(t *testing.T, err error) {
 	if !errors.Is(err, ErrQuotaInvalid) {
 		t.Fatalf("expected ErrQuotaInvalid, got %v", err)
 	}
+}
+
+type fakeDailyUsageSource struct {
+	counts DailyDispatchUsage
+	err    error
+}
+
+func (f *fakeDailyUsageSource) CountDailyDispatchUsage(ctx context.Context, platform string, tenantID, storeID int64, day time.Time) (DailyDispatchUsage, error) {
+	if f.err != nil {
+		return DailyDispatchUsage{}, f.err
+	}
+	return f.counts, nil
 }

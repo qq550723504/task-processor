@@ -21,7 +21,7 @@ This section records the implementation state after the first Go control-plane p
 | Control-plane command and runtime | code complete | `cmd/listing-control-plane`, `internal/app/runtime/listingcontrol` |
 | Config and deployment wiring | code complete | `internal/core/config/type_listing_control_plane.go`, `scripts/build-push-deploy-listing-control-plane.ps1`, `deployments/docker/Dockerfile.listing-control-plane`, `deployments/kubernetes/shein-listing/overlays/prod-auto-shard-statefulset/listing-control-plane.yaml`; leader lock env and pod-name owner identity are explicit in the deployment. |
 | Dispatch repository and RabbitMQ publisher | code complete | `internal/listingadmin` dispatch operations and `internal/listingcontrol/publisher.go` |
-| Store runtime and quota handling | code complete, business capacity incomplete | `internal/listingcontrol/store_runtime.go`, `internal/listingcontrol/quota.go`; structured quota handling exists, but complete daily completed / daily limit capacity is still a P0 gap. |
+| Store runtime and quota handling | code complete, production observation open | `internal/listingcontrol/store_runtime.go`, `internal/listingcontrol/quota.go`; structured quota handling exists, and daily limit capacity now subtracts successful and in-flight task usage before dispatch. |
 | Scheduler, recovery, status endpoint | code complete | `internal/listingcontrol/scheduler.go`, `internal/listingcontrol/recovery.go`, `internal/app/runtime/listingcontrol/status.go`; `/status` and `/ready` include `leader` snapshot with owner and lease status. |
 
 ### Not yet production-closed
@@ -31,7 +31,7 @@ This section records the implementation state after the first Go control-plane p
 | Is Go the only scheduler owner? | Not yet documented as fully cut over. Java scheduler shutdown still needs rollout evidence. |
 | Is multi-instance execution safe? | Yes for duplicate execution prevention. `docs/product/validation/runs/2026-06-24-listing-control-plane-leader-rollout.md` validated a temporary two-replica rollout: one pod ran as leader and dispatched, the other stayed `standby`, Kubernetes-ready, and did not run recovery/dispatch. Production was returned to one replica after the validation. |
 | Are skip/delay reasons durable business facts? | Code-level persistence is implemented. Skipped dispatch candidates now keep the task in its current dispatchable status while writing `stage=dispatch`, `reason_code`, `error_message`, and `remark`; production observation still needs to confirm operators can use these fields from task lists. |
-| Is daily limit fully part of capacity? | Not yet. Store queue capacity and structured quota exist; daily completed / in-flight / store daily limit must be unified before production completion. |
+| Is daily limit fully part of capacity? | Code-level integration is implemented. Store Runtime now applies `daily_limit - completed_today - processing - queued` before dispatch and returns `daily_limit_exhausted` when no business capacity remains. Production observation still needs to confirm the counts match operator expectations. |
 | Is there exactly one recovery owner? | Needs rollout confirmation. The control plane has recovery coordination; old worker watchdogs must remain disabled in the control-plane deployment before claiming single ownership. |
 | Were stores `976` and `1030` validated? | No repository evidence has been added yet. Add a validation report before marking rollout complete. |
 | Was rollback rehearsed? | Rollback path is documented below, but no rehearsal report is present yet. |
@@ -43,6 +43,8 @@ This section records the implementation state after the first Go control-plane p
 - Status/readiness is exposed through `internal/app/runtime/listingcontrol/status.go`; it reports runtime summaries and leader identity/lease state.
 - A two-replica Kubernetes rollout on 2026-06-24 confirmed leader/standby behavior. Standby is intentionally ready because it is a healthy HA state, not a failed scheduler.
 - Dispatch skip/delay reasons are persisted on import tasks through `RecordDispatchDelay`; dry-run mode remains read-only.
+- Dispatch decisions are also appended to `listing_dispatch_event`, including capacity, queue depth, owner, daily limit, completed-today and processing counts.
+- Daily limit capacity is now part of Store Runtime; Redis quota remains a separate override/blocker.
 - Remaining work should focus on production hardening rather than adding another scheduler shape.
 
 ## Context

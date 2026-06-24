@@ -275,6 +275,66 @@ func TestRecordDispatchDelayPersistsVisibleReasonWithoutChangingStatus(t *testin
 	}
 }
 
+func TestCountDailyDispatchUsageCountsSuccessfulAndInFlightTasks(t *testing.T) {
+	t.Parallel()
+
+	db := newImportTaskDispatchTestDB(t)
+	day := time.Date(2026, 6, 24, 12, 0, 0, 0, time.UTC)
+	yesterday := day.AddDate(0, 0, -1)
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{ID: 25, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "published", Status: model.TaskStatusPublished.Int16(), Priority: 10, CreateTime: &day, UpdateTime: &day, Deleted: 0},
+		{ID: 26, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "draft", Status: model.TaskStatusDraft.Int16(), Priority: 10, CreateTime: &day, UpdateTime: &day, Deleted: 0},
+		{ID: 27, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "processing", Status: model.TaskStatusProcessing.Int16(), Priority: 10, CreateTime: &day, UpdateTime: &day, Deleted: 0},
+		{ID: 28, TenantID: 10, StoreID: 100, Platform: "legacy", TargetPlatform: "shein", Region: "us", ProductID: "queued", Status: model.TaskStatusQueued.Int16(), Priority: 10, CreateTime: &day, UpdateTime: &day, Deleted: 0},
+		{ID: 29, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "old", Status: model.TaskStatusPublished.Int16(), Priority: 10, CreateTime: &yesterday, UpdateTime: &yesterday, Deleted: 0},
+		{ID: 30, TenantID: 10, StoreID: 200, Platform: "shein", Region: "us", ProductID: "other-store", Status: model.TaskStatusDraft.Int16(), Priority: 10, CreateTime: &day, UpdateTime: &day, Deleted: 0},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	counts, err := repo.CountDailyDispatchUsage(context.Background(), "shein", 10, 100, day)
+	if err != nil {
+		t.Fatalf("CountDailyDispatchUsage() error = %v", err)
+	}
+	if counts.Completed != 2 || counts.Processing != 1 || counts.Queued != 1 {
+		t.Fatalf("daily usage = %+v, want completed=2 processing=1 queued=1", counts)
+	}
+}
+
+func TestRecordDispatchEventPersistsAuditFact(t *testing.T) {
+	t.Parallel()
+
+	db := newImportTaskDispatchTestDB(t)
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
+	}
+	repo := NewGormImportTaskRepository(db)
+	if err := repo.RecordDispatchEvent(context.Background(), DispatchEvent{
+		TaskID:         31,
+		TenantID:       10,
+		StoreID:        100,
+		Platform:       "shein",
+		Action:         "skipped",
+		ReasonCode:     "daily_limit_exhausted",
+		Stage:          "dispatch",
+		Capacity:       0,
+		Queued:         2,
+		Processing:     1,
+		CompletedToday: 7,
+		DailyLimit:     10,
+		OwnerNode:      "node-a",
+	}); err != nil {
+		t.Fatalf("RecordDispatchEvent() error = %v", err)
+	}
+
+	var row listingDispatchEvent
+	if err := db.Table("listing_dispatch_event").Where("task_id = ?", int64(31)).Take(&row).Error; err != nil {
+		t.Fatalf("load dispatch event: %v", err)
+	}
+	if row.Action != "skipped" || row.ReasonCode != "daily_limit_exhausted" || row.CompletedToday != 7 || row.Processing != 1 || row.DailyLimit != 10 || row.OwnerNode != "node-a" {
+		t.Fatalf("dispatch event = %+v, want persisted audit fact", row)
+	}
+}
+
 func TestCountQueuedByStoreGroupsAcrossTenantsForPlatform(t *testing.T) {
 	t.Parallel()
 
