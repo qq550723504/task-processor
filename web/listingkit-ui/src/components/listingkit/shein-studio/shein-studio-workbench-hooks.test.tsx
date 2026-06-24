@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   useSheinStudioActiveBatchScope,
   useSheinStudioActiveGroupPromptHistory,
+  useSheinStudioActiveGroupPrimarySelection,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
   useSheinStudioWorkbenchTraceContext,
@@ -232,5 +233,29 @@ describe("useSheinStudioActiveGroupPromptHistory", () => {
     );
 
     expect(result.current).toBe(promptHistory);
+  });
+});
+
+describe("useSheinStudioActiveGroupPrimarySelection", () => {
+  it("returns the primary selection for the active group", () => {
+    const activeSelection = {
+      ...selection,
+      variantId: 202,
+      productName: "hoodie",
+    };
+    const { result } = renderHook(() =>
+      useSheinStudioActiveGroupPrimarySelection({
+        activeGroupId: "group-2",
+        groups: [
+          buildGroup({ id: "group-1" }),
+          buildGroup({
+            id: "group-2",
+            primarySelection: activeSelection,
+          }),
+        ],
+      }),
+    );
+
+    expect(result.current).toBe(activeSelection);
   });
 });

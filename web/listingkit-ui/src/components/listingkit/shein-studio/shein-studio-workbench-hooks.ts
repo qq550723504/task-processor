@@ -9,6 +9,7 @@ import {
   projectSheinStudioStoreSelectionState,
   resolveCurrentSheinStudioSavedBatch,
   selectActiveGroupPromptHistory,
+  selectActiveGroupPrimarySelection,
   selectCurrentDedicatedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type { SheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
@@ -219,6 +220,23 @@ export function useSheinStudioActiveGroupPromptHistory({
   return useMemo(
     () =>
       selectActiveGroupPromptHistory({
+        activeGroupId,
+        groups,
+      }),
+    [activeGroupId, groups],
+  );
+}
+
+export function useSheinStudioActiveGroupPrimarySelection({
+  activeGroupId,
+  groups,
+}: {
+  activeGroupId: string;
+  groups: SheinStudioGroupedWorkspace[];
+}) {
+  return useMemo(
+    () =>
+      selectActiveGroupPrimarySelection({
         activeGroupId,
         groups,
       }),

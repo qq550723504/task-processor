@@ -76,6 +76,7 @@ import {
   useHydratedSDSVariantSelection,
   loadLocalSheinStudioDraftSnapshotDetail,
   useSheinStudioActiveBatchScope,
+  useSheinStudioActiveGroupPrimarySelection,
   useSheinStudioActiveGroupPromptHistory,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
@@ -99,7 +100,6 @@ import {
   hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
   projectStudioSubscriptionGate,
-  selectActiveGroupPrimarySelection,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
   type SheinStudioWorkbenchHydratedBatch,
@@ -261,11 +261,12 @@ export function SheinStudioWorkbench({
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const directSelection = useHydratedSDSVariantSelection(selection);
   const loadedBatchSelection = useHydratedSDSVariantSelection(loadedSelection);
+  const activeGroupPrimarySelection = useSheinStudioActiveGroupPrimarySelection({
+    activeGroupId,
+    groups,
+  });
   const activeGroupSelection = useHydratedSDSVariantSelection(
-    selectActiveGroupPrimarySelection({
-      activeGroupId,
-      groups,
-    }),
+    activeGroupPrimarySelection,
   );
   const activeSelection =
     directSelection ?? activeGroupSelection ?? loadedBatchSelection;
