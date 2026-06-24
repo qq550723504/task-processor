@@ -40,7 +40,6 @@ import {
   deleteRecentBatchSummary,
   duplicateRecentBatchSummary,
   mergeRecentBatchHydrations,
-  projectRecentBatchSummaries,
   refreshRecentSavedBatches,
   renameRecentBatchSummary,
   removeRecentBatchSummarySelection,
@@ -50,6 +49,7 @@ import {
   runRecentBatchSummarySelection,
   resolveRecentBatchForMutation as resolveRecentBatchForMutationTarget,
   upsertRecentSavedBatch,
+  useRecentBatchSummaries,
   useRecentBatchSummarySelection,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
@@ -358,21 +358,11 @@ export function SheinStudioWorkbench({
     [activeGroupId, groups],
   );
   const localDraftSnapshot = localDraftSnapshotDetail?.draft ?? null;
-  const recentBatchSummaries = useMemo(
-    () =>
-      projectRecentBatchSummaries({
-        draft: localDraftSnapshot,
-        draftBatchId: localDraftSnapshotDetail?.batchId,
-        savedBatches,
-        selectedRecentBatchHydrations,
-      }),
-    [
-      localDraftSnapshot,
-      localDraftSnapshotDetail?.batchId,
-      savedBatches,
-      selectedRecentBatchHydrations,
-    ],
-  );
+  const recentBatchSummaries = useRecentBatchSummaries({
+    localDraftSnapshotDetail,
+    savedBatches,
+    selectedRecentBatchHydrations,
+  });
   const {
     selectedPersistedRecentBatchIds,
     selectedRecentBatchSummaryIds,

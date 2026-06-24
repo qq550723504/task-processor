@@ -26,11 +26,15 @@ import {
   selectFreshRecentBatchHydration,
   selectRecentBatchBulkDeleteFailure,
   runRecentBatchSummarySelection,
+  useRecentBatchSummaries,
   useRecentBatchSummarySelection,
   upsertRecentSavedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
-import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
+import type {
+  SheinStudioDraft,
+  SheinStudioSavedBatch,
+} from "@/lib/types/shein-studio";
 
 const selection = {
   productId: 1,
@@ -735,6 +739,77 @@ describe("projectRecentBatchSummaries", () => {
     expect(summaries[0]).toMatchObject({
       id: "batch-1",
       promptPreview: "hydrated prompt",
+      title: "Hydrated batch",
+    });
+  });
+});
+
+describe("useRecentBatchSummaries", () => {
+  it("projects local draft and hydrated saved batch summaries from workbench inputs", () => {
+    const hydratedBatch = buildHydratedBatch(
+      buildBatch({
+        id: "batch-1",
+        name: "Hydrated batch",
+        prompt: "hydrated prompt",
+        updatedAt: "2026-06-22T00:00:00.000Z",
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useRecentBatchSummaries({
+        localDraftSnapshotDetail: {
+          batchId: "local-draft",
+          draft: {
+            groups: [
+              {
+                id: "group-1",
+                name: "Local draft",
+                primarySelection: selection,
+                groupedSelections: [],
+                sheinStoreId: "store-draft",
+                currentPrompt: "draft prompt",
+                promptHistory: [],
+                designs: [],
+                selectedIds: [],
+                createdTasks: [],
+                updatedAt: "2026-06-23T00:00:00.000Z",
+              },
+            ],
+            prompt: "draft prompt",
+            styleCount: "2",
+            sheinStoreId: "store-draft",
+            designs: [],
+            selectedIds: [],
+            createdTasks: [],
+            updatedAt: "2026-06-23T00:00:00.000Z",
+          } satisfies SheinStudioDraft,
+        },
+        savedBatches: [
+          buildBatch({
+            id: "batch-1",
+            name: "Stale batch",
+            prompt: "stale prompt",
+            updatedAt: "2026-06-21T00:00:00.000Z",
+          }),
+        ],
+        selectedRecentBatchHydrations: {
+          "batch-1": hydratedBatch,
+        },
+      }),
+    );
+
+    expect(result.current.map((summary) => summary.id)).toEqual([
+      "local-draft:group-1",
+      "batch-1",
+    ]);
+    expect(result.current[0]).toMatchObject({
+      promptPreview: "draft prompt",
+      source: "local_draft",
+      title: "Local draft",
+    });
+    expect(result.current[1]).toMatchObject({
+      promptPreview: "hydrated prompt",
+      source: "batch",
       title: "Hydrated batch",
     });
   });

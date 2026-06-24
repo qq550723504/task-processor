@@ -45,6 +45,15 @@ type RecentBatchSummariesProjectionParams = {
   selectedRecentBatchHydrations: RecentBatchHydrationMap;
 };
 
+type RecentBatchSummariesHookParams = {
+  localDraftSnapshotDetail?: {
+    batchId?: string;
+    draft?: SheinStudioDraft | null;
+  } | null;
+  savedBatches: SheinStudioSavedBatch[];
+  selectedRecentBatchHydrations: RecentBatchHydrationMap;
+};
+
 type FreshRecentBatchHydrationParams = {
   cachedHydratedBatch?: SheinStudioWorkbenchHydratedBatch | null;
   savedBatch: SheinStudioSavedBatch;
@@ -340,6 +349,28 @@ export function projectRecentBatchSummaries({
     }
     return buildRecentBatchSummaries([hydratedBatch.savedBatch])[0] ?? summary;
   });
+}
+
+export function useRecentBatchSummaries({
+  localDraftSnapshotDetail,
+  savedBatches,
+  selectedRecentBatchHydrations,
+}: RecentBatchSummariesHookParams): SheinStudioRecentBatchSummary[] {
+  return useMemo(
+    () =>
+      projectRecentBatchSummaries({
+        draft: localDraftSnapshotDetail?.draft ?? null,
+        draftBatchId: localDraftSnapshotDetail?.batchId,
+        savedBatches,
+        selectedRecentBatchHydrations,
+      }),
+    [
+      localDraftSnapshotDetail?.batchId,
+      localDraftSnapshotDetail?.draft,
+      savedBatches,
+      selectedRecentBatchHydrations,
+    ],
+  );
 }
 
 export async function resolveRecentBatchForMutation({
