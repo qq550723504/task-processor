@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -27,20 +28,36 @@ func detachedRequestContext(c *gin.Context, candidates ...string) context.Contex
 }
 
 func requestTenantID(c *gin.Context, candidates ...string) string {
+	if tenantID, ok := requestExplicitTenantID(c, candidates...); ok {
+		return tenantID
+	}
+	return listingkit.DefaultTenantID
+}
+
+func requestExplicitTenantID(c *gin.Context, candidates ...string) (string, bool) {
 	for _, candidate := range candidates {
 		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
-			return trimmed
+			return trimmed, true
 		}
 	}
 	for _, header := range []string{"X-Tenant-ID", "X-Tenant-Id", "X-Tenant", "tenant-id"} {
 		if value := strings.TrimSpace(c.GetHeader(header)); value != "" {
-			return value
+			return value, true
 		}
 	}
 	if value := strings.TrimSpace(c.Query("tenant_id")); value != "" {
-		return value
+		return value, true
 	}
-	return listingkit.DefaultTenantID
+	return "", false
+}
+
+func requireExplicitRequestContext(c *gin.Context, candidates ...string) (context.Context, bool) {
+	tenantID, ok := requestExplicitTenantID(c, candidates...)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "tenant_id is required"})
+		return nil, false
+	}
+	return requestContext(c, tenantID), true
 }
 
 func requestUserID(c *gin.Context) string {

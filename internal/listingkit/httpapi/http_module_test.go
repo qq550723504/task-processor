@@ -28,6 +28,10 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.Contains(t, keys, "GET /api/v1/listing-kits/settings-health")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/tasks/requeue")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements")
+	require.Contains(t, keys, "GET /api/v1/listing-kits/sds/retirements/:run_id")
+	require.Contains(t, keys, "PATCH /api/v1/listing-kits/sds/retirements/:run_id/items")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements/:run_id/confirm")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements/:run_id/retry")
 	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
 }
 

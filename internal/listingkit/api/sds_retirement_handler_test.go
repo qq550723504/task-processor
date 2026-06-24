@@ -103,6 +103,114 @@ func TestCreateSDSRetirementRunBindsRequestAndTenantScope(t *testing.T) {
 	}
 }
 
+func TestSDSRetirementRunHandlersRejectMissingExplicitTenantScope(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name        string
+		method      string
+		path        string
+		body        string
+		register    func(*gin.Engine, *handler)
+		assertNotRun func(*testing.T, *stubSDSRetirementHandlerService)
+	}{
+		{
+			name:   "get",
+			method: http.MethodGet,
+			path:   "/api/v1/listing-kits/sds/retirements/run-missing",
+			register: func(router *gin.Engine, h *handler) {
+				router.GET("/api/v1/listing-kits/sds/retirements/:run_id", h.GetSDSRetirementRun)
+			},
+			assertNotRun: func(t *testing.T, svc *stubSDSRetirementHandlerService) {
+				t.Helper()
+				if svc.getCtx != nil {
+					t.Fatalf("expected get service not to run")
+				}
+			},
+		},
+		{
+			name:   "update",
+			method: http.MethodPatch,
+			path:   "/api/v1/listing-kits/sds/retirements/run-missing/items",
+			body:   `{"items":[{"item_id":"item-1","selected":false}]}`,
+			register: func(router *gin.Engine, h *handler) {
+				router.PATCH("/api/v1/listing-kits/sds/retirements/:run_id/items", h.UpdateSDSRetirementSelection)
+			},
+			assertNotRun: func(t *testing.T, svc *stubSDSRetirementHandlerService) {
+				t.Helper()
+				if svc.updateCtx != nil || svc.updateReq != nil {
+					t.Fatalf("expected update service not to run")
+				}
+			},
+		},
+		{
+			name:   "confirm",
+			method: http.MethodPost,
+			path:   "/api/v1/listing-kits/sds/retirements/run-missing/confirm",
+			body:   `{"confirmed_by":"operator-confirm"}`,
+			register: func(router *gin.Engine, h *handler) {
+				router.POST("/api/v1/listing-kits/sds/retirements/:run_id/confirm", h.ConfirmSDSRetirementRun)
+			},
+			assertNotRun: func(t *testing.T, svc *stubSDSRetirementHandlerService) {
+				t.Helper()
+				if svc.confirmCtx != nil || svc.confirmReq != nil {
+					t.Fatalf("expected confirm service not to run")
+				}
+			},
+		},
+		{
+			name:   "retry",
+			method: http.MethodPost,
+			path:   "/api/v1/listing-kits/sds/retirements/run-missing/retry",
+			register: func(router *gin.Engine, h *handler) {
+				router.POST("/api/v1/listing-kits/sds/retirements/:run_id/retry", h.RetrySDSRetirementRun)
+			},
+			assertNotRun: func(t *testing.T, svc *stubSDSRetirementHandlerService) {
+				t.Helper()
+				if svc.retryCtx != nil {
+					t.Fatalf("expected retry service not to run")
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			svc := &stubSDSRetirementHandlerService{
+				detail: &listingkit.SDSRetirementRunDetail{
+					Run: listingkit.SDSRetirementRunRecord{ID: "run-missing", Platform: "shein", Status: listingkit.SDSRetirementRunStatusReady},
+				},
+			}
+			h, err := NewHandler(&stubHandlerCoreService{}, WithSDSRetirementService(svc))
+			if err != nil {
+				t.Fatalf("new handler: %v", err)
+			}
+
+			router := gin.New()
+			tt.register(router, h)
+
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			if tt.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, req)
+
+			if resp.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 body=%s", resp.Code, resp.Body.String())
+			}
+			if !strings.Contains(resp.Body.String(), "tenant") {
+				t.Fatalf("body = %s, want tenant error", resp.Body.String())
+			}
+			tt.assertNotRun(t, svc)
+		})
+	}
+}
+
 func TestGetSDSRetirementRunUsesTenantScopedContext(t *testing.T) {
 	t.Parallel()
 

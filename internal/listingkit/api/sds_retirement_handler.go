@@ -31,7 +31,12 @@ func (h *handler) GetSDSRetirementRun(c *gin.Context) {
 		return
 	}
 
-	detail, err := h.sdsRetirementService.GetSDSRetirementRun(requestContext(c), c.Param("run_id"))
+	ctx, ok := requireExplicitRequestContext(c)
+	if !ok {
+		return
+	}
+
+	detail, err := h.sdsRetirementService.GetSDSRetirementRun(ctx, c.Param("run_id"))
 	respondSDSRetirement(c, detail, err)
 }
 
@@ -47,7 +52,12 @@ func (h *handler) UpdateSDSRetirementSelection(c *gin.Context) {
 		return
 	}
 
-	detail, err := h.sdsRetirementService.UpdateSDSRetirementSelection(requestContext(c), c.Param("run_id"), &req)
+	ctx, ok := requireExplicitRequestContext(c)
+	if !ok {
+		return
+	}
+
+	detail, err := h.sdsRetirementService.UpdateSDSRetirementSelection(ctx, c.Param("run_id"), &req)
 	respondSDSRetirement(c, detail, err)
 }
 
@@ -60,7 +70,12 @@ func (h *handler) ConfirmSDSRetirementRun(c *gin.Context) {
 	var req listingkit.ConfirmSDSRetirementRunRequest
 	_ = c.ShouldBindJSON(&req)
 
-	detail, err := h.sdsRetirementService.ConfirmSDSRetirementRun(requestContext(c), c.Param("run_id"), &req)
+	ctx, ok := requireExplicitRequestContext(c)
+	if !ok {
+		return
+	}
+
+	detail, err := h.sdsRetirementService.ConfirmSDSRetirementRun(ctx, c.Param("run_id"), &req)
 	respondSDSRetirement(c, detail, err)
 }
 
@@ -70,7 +85,12 @@ func (h *handler) RetrySDSRetirementRun(c *gin.Context) {
 		return
 	}
 
-	detail, err := h.sdsRetirementService.RetrySDSRetirementRun(requestContext(c), c.Param("run_id"))
+	ctx, ok := requireExplicitRequestContext(c)
+	if !ok {
+		return
+	}
+
+	detail, err := h.sdsRetirementService.RetrySDSRetirementRun(ctx, c.Param("run_id"))
 	respondSDSRetirement(c, detail, err)
 }
 
