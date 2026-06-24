@@ -41,6 +41,7 @@ import {
   mergeRecentBatchHydrations,
   projectRecentBatchSummaries,
   projectRecentBatchSelectionState,
+  projectRecentBatchSelectionUpdate,
   projectRecentBatchTargetStep,
   removeRecentBatchSummarySelection,
   resolveRecentBatchSelectionTarget,
@@ -544,10 +545,13 @@ export function SheinStudioWorkbench({
     );
   const setSelectedRecentBatchSummaryIds = useCallback(
     (value: string[] | ((current: string[]) => string[])) => {
-      setRawSelectedRecentBatchSummaryIds((current) => {
-        const next = typeof value === "function" ? value(current) : value;
-        return next.filter((key) => validRecentBatchSummaryKeys.has(key));
-      });
+      setRawSelectedRecentBatchSummaryIds((current) =>
+        projectRecentBatchSelectionUpdate({
+          current,
+          value,
+          validRecentBatchSummaryKeys,
+        }),
+      );
     },
     [validRecentBatchSummaryKeys],
   );

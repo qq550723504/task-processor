@@ -18,6 +18,12 @@ type RecentBatchSelectionProjectionParams = {
   validRecentBatchSummaryKeys: Set<string>;
 };
 
+type RecentBatchSelectionUpdateParams = {
+  current: string[];
+  value: string[] | ((current: string[]) => string[]);
+  validRecentBatchSummaryKeys: Set<string>;
+};
+
 type RecentBatchSummariesProjectionParams = {
   draft?: SheinStudioDraft | null;
   draftBatchId?: string;
@@ -97,6 +103,15 @@ export function removeRecentBatchSummarySelection(
 ): string[] {
   const key = buildRecentBatchSummaryKey(summary);
   return current.filter((item) => item !== key);
+}
+
+export function projectRecentBatchSelectionUpdate({
+  current,
+  value,
+  validRecentBatchSummaryKeys,
+}: RecentBatchSelectionUpdateParams): string[] {
+  const next = typeof value === "function" ? value(current) : value;
+  return next.filter((key) => validRecentBatchSummaryKeys.has(key));
 }
 
 export function projectRecentBatchTargetStep(

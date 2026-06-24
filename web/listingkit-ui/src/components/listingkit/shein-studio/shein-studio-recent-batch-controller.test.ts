@@ -7,6 +7,7 @@ import {
   buildRecentBatchBulkStoreUpdateInputs,
   buildRecentBatchStoreUpdateInput,
   mergeRecentBatchHydrations,
+  projectRecentBatchSelectionUpdate,
   projectRecentBatchSummaries,
   projectRecentBatchSelectionState,
   projectRecentBatchTargetStep,
@@ -221,6 +222,28 @@ describe("projectRecentBatchSelectionState", () => {
     });
 
     expect(projection.selectedPersistedRecentBatchIds).toEqual(["batch:1"]);
+  });
+});
+
+describe("projectRecentBatchSelectionUpdate", () => {
+  it("filters direct selection updates to visible summary keys", () => {
+    expect(
+      projectRecentBatchSelectionUpdate({
+        current: [],
+        value: ["batch:batch-1", "batch:missing"],
+        validRecentBatchSummaryKeys: new Set(["batch:batch-1"]),
+      }),
+    ).toEqual(["batch:batch-1"]);
+  });
+
+  it("filters functional selection updates to visible summary keys", () => {
+    expect(
+      projectRecentBatchSelectionUpdate({
+        current: ["batch:batch-1"],
+        value: (current) => [...current, "local_draft:missing"],
+        validRecentBatchSummaryKeys: new Set(["batch:batch-1"]),
+      }),
+    ).toEqual(["batch:batch-1"]);
   });
 });
 
