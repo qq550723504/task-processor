@@ -103,16 +103,10 @@ import {
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
-  applySheinStudioWorkbenchBatch,
-  applySheinStudioWorkbenchDraft,
-  applySheinStudioWorkbenchHydratedBatch,
   buildInitialSheinStudioWorkbenchState,
+  buildSheinStudioWorkbenchController,
   buildSheinStudioWorkbenchSetters,
-  selectSheinStudioWorkbenchGroup,
-  setSheinStudioWorkbenchField,
   sheinStudioWorkbenchReducer,
-  type SheinStudioWorkbenchState,
-  type SheinStudioWorkbenchStateUpdater,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import {
   buildSelectableSDSImages,
@@ -196,33 +190,13 @@ export function SheinStudioWorkbench({
     (activeBatchScope.selectionVariantId === selectionVariantId
       ? activeBatchScope.batchId
       : "");
-  const setWorkbenchField = useCallback(
-    <K extends keyof SheinStudioWorkbenchState>(
-      field: K,
-      value: SheinStudioWorkbenchStateUpdater<K>,
-    ) => {
-      dispatchWorkbenchState(setSheinStudioWorkbenchField(field, value));
-    },
+  const workbenchController = useMemo(
+    () => buildSheinStudioWorkbenchController(dispatchWorkbenchState),
     [],
   );
-  const workbenchController = useMemo(
-    () => ({
-      applyBatch: (batch: Parameters<typeof applySheinStudioWorkbenchBatch>[0]) =>
-        dispatchWorkbenchState(applySheinStudioWorkbenchBatch(batch)),
-      applyHydratedBatch: (
-        batch: Parameters<typeof applySheinStudioWorkbenchHydratedBatch>[0],
-      ) => dispatchWorkbenchState(applySheinStudioWorkbenchHydratedBatch(batch)),
-      applyDraft: (draft: Parameters<typeof applySheinStudioWorkbenchDraft>[0]) =>
-        dispatchWorkbenchState(applySheinStudioWorkbenchDraft(draft)),
-      selectGroup: (groupId: string) =>
-        dispatchWorkbenchState(selectSheinStudioWorkbenchGroup(groupId)),
-      setField: setWorkbenchField,
-    }),
-    [setWorkbenchField],
-  );
   const workbenchSetters = useMemo(
-    () => buildSheinStudioWorkbenchSetters(setWorkbenchField),
-    [setWorkbenchField],
+    () => buildSheinStudioWorkbenchSetters(workbenchController.setField),
+    [workbenchController],
   );
   const {
     activeGroupId,
@@ -778,7 +752,7 @@ export function SheinStudioWorkbench({
       return;
     }
     setIsExecutingWarningAction(true);
-    setWorkbenchField("generationError", "");
+    workbenchController.setField("generationError", "");
     const result = await runBaselineWarmup({
       activeSelection,
       baselineStatuses,
@@ -786,16 +760,16 @@ export function SheinStudioWorkbench({
     });
     if (result && "baselineStatuses" in result) {
       setBaselineStatuses(result.baselineStatuses);
-      setWorkbenchField("generationWarning", result.feedback.message);
-      setWorkbenchField("generationWarningAction", result.feedback.action);
+      workbenchController.setField("generationWarning", result.feedback.message);
+      workbenchController.setField("generationWarningAction", result.feedback.action);
     } else if (result) {
-      setWorkbenchField("generationWarning", result.warning);
+      workbenchController.setField("generationWarning", result.warning);
     }
     setIsExecutingWarningAction(false);
   }, [
     activeSelection,
     baselineStatuses,
-    setWorkbenchField,
+    workbenchController,
   ]);
 
   useEffect(() => {

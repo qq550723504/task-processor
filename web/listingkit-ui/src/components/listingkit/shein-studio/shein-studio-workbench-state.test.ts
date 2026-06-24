@@ -5,6 +5,7 @@ import {
   applySheinStudioWorkbenchDraft,
   applySheinStudioWorkbenchHydratedBatch,
   buildInitialSheinStudioWorkbenchState,
+  buildSheinStudioWorkbenchController,
   buildSheinStudioWorkbenchSetters,
   selectSheinStudioWorkbenchGroup,
   setSheinStudioWorkbenchField,
@@ -65,6 +66,27 @@ describe("buildSheinStudioWorkbenchSetters", () => {
     expect(setField).toHaveBeenNthCalledWith(3, "generationWarningAction", {
       intent: "warm_baseline",
       label: "Warm baseline",
+    });
+  });
+});
+
+describe("buildSheinStudioWorkbenchController", () => {
+  it("dispatches reducer actions for controller methods", () => {
+    const dispatch = vi.fn();
+    const controller = buildSheinStudioWorkbenchController(dispatch);
+
+    controller.setField("prompt", "next prompt");
+    controller.selectGroup("group-1");
+
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenNthCalledWith(1, {
+      type: "set-field",
+      field: "prompt",
+      value: "next prompt",
+    });
+    expect(dispatch).toHaveBeenNthCalledWith(2, {
+      type: "select-group",
+      groupId: "group-1",
     });
   });
 });

@@ -354,6 +354,25 @@ export function selectSheinStudioWorkbenchGroup(
   };
 }
 
+type SheinStudioWorkbenchDispatch = (
+  action: SheinStudioWorkbenchAction,
+) => void;
+
+export function buildSheinStudioWorkbenchController(
+  dispatch: SheinStudioWorkbenchDispatch,
+): SheinStudioWorkbenchController {
+  return {
+    applyBatch: (batch) => dispatch(applySheinStudioWorkbenchBatch(batch)),
+    applyHydratedBatch: (batch) =>
+      dispatch(applySheinStudioWorkbenchHydratedBatch(batch)),
+    applyDraft: (draft) => dispatch(applySheinStudioWorkbenchDraft(draft)),
+    selectGroup: (groupId) =>
+      dispatch(selectSheinStudioWorkbenchGroup(groupId)),
+    setField: (field, value) =>
+      dispatch(setSheinStudioWorkbenchField(field, value)),
+  };
+}
+
 const ACTIVE_GROUP_SYNC_FIELDS = new Set<keyof SheinStudioWorkbenchState>([
   "prompt",
   "styleCount",
