@@ -107,6 +107,26 @@ type ItemizedTaskCreationProgress =
       kind: "unchanged";
     };
 
+type ItemizedTaskCreationProgressEffectsInput = {
+  currentCompletionSignature: string;
+  progress: ItemizedTaskCreationProgress;
+};
+
+type ItemizedTaskCreationProgressEffects =
+  | {
+      kind: "unchanged";
+    }
+  | {
+      completionSignature?: string;
+      fields: {
+        creatingMessage?: string;
+        creatingWarning?: string;
+        isCreatingTasks: boolean;
+      };
+      kind: "apply";
+      toast?: Extract<ItemizedTaskCreationProgress, { kind: "completed" }>["toast"];
+    };
+
 export function projectItemizedTaskCreationProgress({
   creatingMessage,
   detail,
@@ -191,6 +211,44 @@ export function projectItemizedTaskCreationProgress({
       title: "SHEIN 资料创建完成",
       type: "success",
     },
+  };
+}
+
+export function projectItemizedTaskCreationProgressEffects({
+  currentCompletionSignature,
+  progress,
+}: ItemizedTaskCreationProgressEffectsInput): ItemizedTaskCreationProgressEffects {
+  if (progress.kind === "unchanged") {
+    return { kind: "unchanged" };
+  }
+  if (progress.kind === "creating") {
+    return {
+      completionSignature:
+        currentCompletionSignature !== progress.completionSignature
+          ? progress.completionSignature
+          : undefined,
+      fields: {
+        ...(progress.creatingMessage
+          ? { creatingMessage: progress.creatingMessage }
+          : {}),
+        isCreatingTasks: true,
+      },
+      kind: "apply",
+    };
+  }
+  const isNewCompletion =
+    currentCompletionSignature !== progress.completionSignature;
+  return {
+    completionSignature: isNewCompletion
+      ? progress.completionSignature
+      : undefined,
+    fields: {
+      creatingMessage: progress.creatingMessage,
+      creatingWarning: progress.creatingWarning,
+      isCreatingTasks: false,
+    },
+    kind: "apply",
+    toast: isNewCompletion ? progress.toast : undefined,
   };
 }
 

@@ -57,6 +57,7 @@ import {
   projectItemizedFailedRetryRequest,
   projectItemizedFailedRetryStep,
   projectItemizedTaskRecoveryState,
+  projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskCreationProgress,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
@@ -1134,31 +1135,37 @@ export function SheinStudioWorkbench({
       detail: itemizedBatchDetail,
       isCreatingTasks,
     });
-    if (progress.kind === "unchanged") {
+    const effects = projectItemizedTaskCreationProgressEffects({
+      currentCompletionSignature: taskCreationToastSignatureRef.current,
+      progress,
+    });
+    if (effects.kind === "unchanged") {
       return;
     }
-    if (progress.kind === "creating") {
-      workbenchController.setField("isCreatingTasks", true);
-      if (progress.creatingMessage) {
-        workbenchController.setField(
-          "creatingMessage",
-          progress.creatingMessage,
-        );
-      }
-      if (taskCreationToastSignatureRef.current !== progress.completionSignature) {
-        taskCreationToastSignatureRef.current = progress.completionSignature;
-      }
-      return;
+    workbenchController.setField(
+      "isCreatingTasks",
+      effects.fields.isCreatingTasks,
+    );
+    if (typeof effects.fields.creatingWarning === "string") {
+      workbenchController.setField(
+        "creatingWarning",
+        effects.fields.creatingWarning,
+      );
     }
-    workbenchController.setField("isCreatingTasks", false);
-    workbenchController.setField("creatingWarning", progress.creatingWarning);
-    workbenchController.setField("creatingMessage", progress.creatingMessage);
-    if (taskCreationToastSignatureRef.current !== progress.completionSignature) {
-      taskCreationToastSignatureRef.current = progress.completionSignature;
-      toast[progress.toast.type](
-        progress.toast.title,
-        progress.toast.message,
-        progress.toast.duration,
+    if (typeof effects.fields.creatingMessage === "string") {
+      workbenchController.setField(
+        "creatingMessage",
+        effects.fields.creatingMessage,
+      );
+    }
+    if (effects.completionSignature) {
+      taskCreationToastSignatureRef.current = effects.completionSignature;
+    }
+    if (effects.toast) {
+      toast[effects.toast.type](
+        effects.toast.title,
+        effects.toast.message,
+        effects.toast.duration,
       );
     }
   }, [

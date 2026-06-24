@@ -5,6 +5,7 @@ import {
   projectItemizedBatchDetail,
   projectItemizedFailedRetryRequest,
   projectItemizedFailedRetryStep,
+  projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgress,
   projectItemizedTaskCreationResult,
@@ -307,6 +308,83 @@ describe("projectItemizedTaskCreationProgress", () => {
         title: "SHEIN 资料创建失败",
         type: "error",
       },
+    });
+  });
+});
+
+describe("projectItemizedTaskCreationProgressEffects", () => {
+  it("does not apply effects for unchanged progress", () => {
+    expect(
+      projectItemizedTaskCreationProgressEffects({
+        currentCompletionSignature: "batch-1:draft:0:0:0:0",
+        progress: { kind: "unchanged" },
+      }),
+    ).toEqual({ kind: "unchanged" });
+  });
+
+  it("starts creation and records the completion signature without a toast", () => {
+    expect(
+      projectItemizedTaskCreationProgressEffects({
+        currentCompletionSignature: "",
+        progress: {
+          completionSignature: "batch-1:tasks_creating:0:0:0:0",
+          creatingMessage: "creating",
+          isCreatingTasks: true,
+          kind: "creating",
+        },
+      }),
+    ).toEqual({
+      completionSignature: "batch-1:tasks_creating:0:0:0:0",
+      fields: {
+        creatingMessage: "creating",
+        isCreatingTasks: true,
+      },
+      kind: "apply",
+    });
+  });
+
+  it("completes creation and emits a toast only for a new signature", () => {
+    const progress = {
+      completionSignature: "batch-1:tasks_created:1:0:0:0",
+      creatingMessage: "done",
+      creatingWarning: "",
+      isCreatingTasks: false as const,
+      kind: "completed" as const,
+      toast: {
+        duration: 7000,
+        message: "created",
+        title: "done",
+        type: "success" as const,
+      },
+    };
+
+    expect(
+      projectItemizedTaskCreationProgressEffects({
+        currentCompletionSignature: "",
+        progress,
+      }),
+    ).toEqual({
+      completionSignature: "batch-1:tasks_created:1:0:0:0",
+      fields: {
+        creatingMessage: "done",
+        creatingWarning: "",
+        isCreatingTasks: false,
+      },
+      kind: "apply",
+      toast: progress.toast,
+    });
+    expect(
+      projectItemizedTaskCreationProgressEffects({
+        currentCompletionSignature: "batch-1:tasks_created:1:0:0:0",
+        progress,
+      }),
+    ).toEqual({
+      fields: {
+        creatingMessage: "done",
+        creatingWarning: "",
+        isCreatingTasks: false,
+      },
+      kind: "apply",
     });
   });
 });
