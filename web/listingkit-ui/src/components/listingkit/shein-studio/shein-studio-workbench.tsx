@@ -54,13 +54,13 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import {
   projectItemizedBatchDetail,
-  projectItemizedDesignApprovalRequest,
   projectItemizedFailedRetryRequest,
   projectItemizedFailedRetryStep,
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskCreationProgress,
   runItemizedDesignApproval,
+  runItemizedFailedRetry,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import {
@@ -1515,18 +1515,16 @@ export function SheinStudioWorkbench({
     clearWorkbenchTaskRecoveryAlerts(workbenchController);
 
     try {
-      const nextDetail = retryRequest.tenantId
-        ? await retrySheinStudioBatchItems(
-            retryRequest.batchId,
-            retryRequest.itemIds,
-            {
-              tenantId: retryRequest.tenantId,
-            },
-          )
-        : await retrySheinStudioBatchItems(
-            retryRequest.batchId,
-            retryRequest.itemIds,
-          );
+      const nextDetail = await runItemizedFailedRetry({
+        activeBatchId,
+        currentActiveBatch,
+        detail: itemizedBatchDetail,
+        itemId,
+        retryItems: retrySheinStudioBatchItems,
+      });
+      if (!nextDetail) {
+        return;
+      }
       applyItemizedBatchDetail(nextDetail);
       const nextStep = projectItemizedFailedRetryStep(nextDetail);
       if (nextStep) {

@@ -98,6 +98,14 @@ type ItemizedFailedRetryRequestInput = {
   itemId: string;
 };
 
+type ItemizedFailedRetryRunnerInput = ItemizedFailedRetryRequestInput & {
+  retryItems: (
+    batchId: string,
+    itemIds: string[],
+    options?: { tenantId?: string },
+  ) => Promise<SheinStudioBatchDetail>;
+};
+
 type ItemizedTaskCreationProgress =
   | {
       completionSignature: string;
@@ -367,6 +375,30 @@ export function projectItemizedFailedRetryRequest({
     itemIds: [itemId],
     tenantId: tenantId || undefined,
   };
+}
+
+export async function runItemizedFailedRetry({
+  activeBatchId,
+  currentActiveBatch,
+  detail,
+  itemId,
+  retryItems,
+}: ItemizedFailedRetryRunnerInput): Promise<SheinStudioBatchDetail | null> {
+  const retryRequest = projectItemizedFailedRetryRequest({
+    activeBatchId,
+    currentActiveBatch,
+    detail,
+    itemId,
+  });
+  if (!retryRequest) {
+    return null;
+  }
+  if (retryRequest.tenantId) {
+    return retryItems(retryRequest.batchId, retryRequest.itemIds, {
+      tenantId: retryRequest.tenantId,
+    });
+  }
+  return retryItems(retryRequest.batchId, retryRequest.itemIds);
 }
 
 export function projectItemizedFailedRetryStep(

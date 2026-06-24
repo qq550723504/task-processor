@@ -11,6 +11,7 @@ import {
   projectItemizedTaskCreationProgress,
   projectItemizedTaskCreationResult,
   runItemizedDesignApproval,
+  runItemizedFailedRetry,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
@@ -702,6 +703,97 @@ describe("projectItemizedFailedRetryRequest", () => {
     ).toEqual({
       batchId: "batch-1",
       itemIds: ["item-1"],
+      tenantId: "tenant-detail",
+    });
+  });
+});
+
+describe("runItemizedFailedRetry", () => {
+  it("does nothing when the retry request cannot be projected", async () => {
+    const retryItems = vi.fn();
+
+    await expect(
+      runItemizedFailedRetry({
+        activeBatchId: "",
+        currentActiveBatch: buildCurrentBatch(),
+        detail: buildCurrentDetail(),
+        itemId: "item-1",
+        retryItems,
+      }),
+    ).resolves.toBeNull();
+    expect(retryItems).not.toHaveBeenCalled();
+  });
+
+  it("retries the failed item without tenant options when no tenant is available", async () => {
+    const detail = {
+      ...buildCurrentDetail(),
+      batch: {
+        ...buildCurrentDetail().batch,
+        tenantId: undefined,
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            status: "failed" as const,
+            targetGroupKey: "group-1",
+            selectionCount: 1,
+            createdAt: "2026-06-22T00:00:00.000Z",
+            updatedAt: "2026-06-22T00:00:00.000Z",
+          },
+          designs: [],
+        },
+      ],
+    };
+    const retryItems = vi.fn().mockResolvedValue(detail);
+
+    await expect(
+      runItemizedFailedRetry({
+        activeBatchId: "batch-1",
+        currentActiveBatch: { ...buildCurrentBatch(), tenantId: undefined },
+        detail,
+        itemId: "item-1",
+        retryItems,
+      }),
+    ).resolves.toBe(detail);
+    expect(retryItems).toHaveBeenCalledWith("batch-1", ["item-1"]);
+  });
+
+  it("passes tenant options when retrying a failed item with tenant context", async () => {
+    const detail = {
+      ...buildCurrentDetail(),
+      batch: {
+        ...buildCurrentDetail().batch,
+        tenantId: "tenant-detail",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            status: "failed" as const,
+            targetGroupKey: "group-1",
+            selectionCount: 1,
+            createdAt: "2026-06-22T00:00:00.000Z",
+            updatedAt: "2026-06-22T00:00:00.000Z",
+          },
+          designs: [],
+        },
+      ],
+    };
+    const retryItems = vi.fn().mockResolvedValue(detail);
+
+    await expect(
+      runItemizedFailedRetry({
+        activeBatchId: "batch-1",
+        currentActiveBatch: buildCurrentBatch(),
+        detail,
+        itemId: "item-1",
+        retryItems,
+      }),
+    ).resolves.toBe(detail);
+    expect(retryItems).toHaveBeenCalledWith("batch-1", ["item-1"], {
       tenantId: "tenant-detail",
     });
   });
