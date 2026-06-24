@@ -14,6 +14,14 @@ type SheinSyncedProductQuery struct {
 	PageSize int
 }
 
+type SheinSDSCostGroupQuery struct {
+	TenantID  int64
+	StoreID   int64
+	GroupKeys []string
+	Page      int
+	PageSize  int
+}
+
 type SheinSyncJobQuery struct {
 	TenantID    int64
 	StoreID     int64

@@ -159,6 +159,8 @@ func (stubRouteHandler) TriggerSheinStoreSync(*gin.Context)                     
 func (stubRouteHandler) GetSheinEnrollmentStoreSummary(*gin.Context)              {}
 func (stubRouteHandler) ListSheinSyncedProducts(*gin.Context)                     {}
 func (stubRouteHandler) UpdateSheinSyncedProductCost(*gin.Context)                {}
+func (stubRouteHandler) ListSheinSDSCostGroups(*gin.Context)                      {}
+func (stubRouteHandler) UpdateSheinSDSCostGroup(*gin.Context)                     {}
 func (stubRouteHandler) RefreshSheinActivityCandidates(*gin.Context)              {}
 func (stubRouteHandler) ListSheinActivityCandidates(*gin.Context)                 {}
 func (stubRouteHandler) ReviewSheinActivityCandidate(*gin.Context)                {}

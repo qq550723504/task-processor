@@ -10,7 +10,10 @@ import {
   sheinEnrollmentTabLabel,
 } from "@/components/listingkit/shein-enrollment/shein-enrollment-model";
 import { SheinCandidatesTable } from "@/components/listingkit/shein-enrollment/shein-candidates-table";
-import { SheinCostPriceTable } from "@/components/listingkit/shein-enrollment/shein-cost-price-table";
+import {
+  SheinCostPriceTable,
+  type SheinCostPriceSaveTarget,
+} from "@/components/listingkit/shein-enrollment/shein-cost-price-table";
 import { SheinEnrollmentRunsTable } from "@/components/listingkit/shein-enrollment/shein-enrollment-runs-table";
 import { SheinEnrollmentStoreHeader } from "@/components/listingkit/shein-enrollment/shein-enrollment-store-header";
 import { SheinSyncedProductsTable } from "@/components/listingkit/shein-enrollment/shein-synced-products-table";
@@ -22,8 +25,10 @@ import {
   useSheinActivityCandidates,
   useSheinActivityEnrollmentRuns,
   useSheinEnrollmentStoreSummary,
+  useSheinSDSCostGroups,
   useSheinSyncedProducts,
   useTriggerSheinStoreSync,
+  useUpdateSheinSDSCostGroup,
   useUpdateSheinSyncedProductCost,
 } from "@/lib/query/use-shein-enrollment";
 
@@ -55,9 +60,14 @@ export function SheinEnrollmentStoreWorkbench({
     page: 1,
     page_size: 100,
   });
+  const sdsCostGroups = useSheinSDSCostGroups(storeId, {
+    page: 1,
+    page_size: 100,
+  });
   const syncMutation = useTriggerSheinStoreSync(storeId);
   const refreshMutation = useRefreshSheinActivityCandidates(storeId);
   const updateCostMutation = useUpdateSheinSyncedProductCost(storeId);
+  const updateGroupCostMutation = useUpdateSheinSDSCostGroup(storeId);
   const reviewMutation = useReviewSheinActivityCandidate(storeId);
   const enrollMutation = useExecuteSheinActivityEnrollment(storeId);
   const runs = useSheinActivityEnrollmentRuns(storeId, {
@@ -121,14 +131,17 @@ export function SheinEnrollmentStoreWorkbench({
 
       {tab === "costs" ? (
         <SheinCostPriceTable
+          groups={sdsCostGroups.data?.items ?? []}
           items={products.data?.items ?? []}
-          onSave={(productId, manualCostPrice) =>
-            updateCostMutation.mutateAsync({
-              productId,
-              manual_cost_price: manualCostPrice,
-            }).then(() => undefined)
+          onSave={(target, manualCostPrice) =>
+            saveSheinCostTarget(
+              target,
+              manualCostPrice,
+              updateCostMutation.mutateAsync,
+              updateGroupCostMutation.mutateAsync,
+            )
           }
-          saving={updateCostMutation.isPending}
+          saving={updateCostMutation.isPending || updateGroupCostMutation.isPending}
         />
       ) : null}
 
@@ -173,4 +186,30 @@ export function SheinEnrollmentStoreWorkbench({
       ) : null}
     </ListingKitPageShell>
   );
+}
+
+function saveSheinCostTarget(
+  target: SheinCostPriceSaveTarget,
+  manualCostPrice: number | null,
+  updateProductCost: (input: {
+    productId: number;
+    manual_cost_price?: number | null;
+  }) => Promise<unknown>,
+  updateGroupCost: (input: {
+    groupKey: string;
+    group_label?: string;
+    manual_cost_price?: number | null;
+  }) => Promise<unknown>,
+) {
+  if (target.groupKey.startsWith("product:") && target.productId) {
+    return updateProductCost({
+      productId: target.productId,
+      manual_cost_price: manualCostPrice,
+    }).then(() => undefined);
+  }
+  return updateGroupCost({
+    groupKey: target.groupKey,
+    group_label: target.groupLabel,
+    manual_cost_price: manualCostPrice,
+  }).then(() => undefined);
 }

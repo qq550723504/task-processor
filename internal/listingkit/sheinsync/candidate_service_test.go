@@ -280,6 +280,54 @@ func TestSheinCandidateServiceRefreshCandidatesUsesSharedSDSCostForSameStyleSuff
 	require.Equal(t, 46.8, *candidates[1].EffectiveCostPrice)
 }
 
+func TestSheinCandidateServiceRefreshCandidatesUsesSDSCostGroupOverride(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinCandidateRepoStub([]SheinSyncedProductRecord{
+		{
+			ID:                 401,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "canvas-large",
+			SupplierCode:       "MG8006905001-B3195DA6",
+			ShelfStatus:        "ON_SHELF",
+			EffectiveCostPrice: float64Ptr(46.8),
+			PriceSnapshot:      `{"sale_price":100}`,
+			InventorySnapshot:  `{"available":8}`,
+			IsActive:           true,
+		},
+		{
+			ID:                 402,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "canvas-small",
+			SupplierCode:       "MG8006905002-B3195DA6",
+			ShelfStatus:        "ON_SHELF",
+			EffectiveCostPrice: float64Ptr(39.1),
+			PriceSnapshot:      `{"sale_price":80}`,
+			InventorySnapshot:  `{"available":7}`,
+			IsActive:           true,
+		},
+	})
+	repo.seedSDSCostGroup(SheinSDSCostGroupRecord{
+		TenantID:        11,
+		StoreID:         22,
+		GroupKey:        "style:B3195DA6",
+		ManualCostPrice: float64Ptr(50),
+	})
+
+	service := NewSheinCandidateService(repo)
+
+	_, err := service.RefreshCandidates(context.Background(), 11, 22, "PROMOTION")
+	require.NoError(t, err)
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 2)
+	require.Equal(t, 50.0, *candidates[0].EffectiveCostPrice)
+	require.Equal(t, 50.0, *candidates[1].EffectiveCostPrice)
+	require.Equal(t, 0.375, *candidates[1].CalculatedProfitRate)
+}
+
 func TestSheinCandidateServiceRefreshCandidatesMarksNonOnShelfRowsIneligibleAndIgnoresInactiveRows(t *testing.T) {
 	t.Parallel()
 
@@ -501,6 +549,7 @@ type sheinCandidateRepoStub struct {
 	products   []SheinSyncedProductRecord
 	queries    []*SheinSyncedProductQuery
 	candidates map[string]SheinActivityCandidateRecord
+	sdsGroups  map[string]SheinSDSCostGroupRecord
 }
 
 func newSheinCandidateRepoStub(products []SheinSyncedProductRecord) *sheinCandidateRepoStub {
@@ -511,6 +560,7 @@ func newSheinCandidateRepoStub(products []SheinSyncedProductRecord) *sheinCandid
 	return &sheinCandidateRepoStub{
 		products:   cloned,
 		candidates: make(map[string]SheinActivityCandidateRecord),
+		sdsGroups:  make(map[string]SheinSDSCostGroupRecord),
 	}
 }
 
@@ -623,6 +673,31 @@ func (r *sheinCandidateRepoStub) ListCandidates(_ context.Context, query *SheinA
 	return items[start:end], total, nil
 }
 
+func (r *sheinCandidateRepoStub) ListSDSCostGroups(_ context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	items := make([]SheinSDSCostGroupRecord, 0, len(r.sdsGroups))
+	for _, row := range r.sdsGroups {
+		if query != nil {
+			if query.TenantID > 0 && row.TenantID != query.TenantID {
+				continue
+			}
+			if query.StoreID > 0 && row.StoreID != query.StoreID {
+				continue
+			}
+			if len(query.GroupKeys) > 0 && !containsSheinCandidateGroupKey(query.GroupKeys, row.GroupKey) {
+				continue
+			}
+		}
+		items = append(items, row)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].GroupKey < items[j].GroupKey
+	})
+	return items, int64(len(items)), nil
+}
+
 func (r *sheinCandidateRepoStub) savedCandidates() []SheinActivityCandidateRecord {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -637,12 +712,28 @@ func (r *sheinCandidateRepoStub) savedCandidates() []SheinActivityCandidateRecor
 	return items
 }
 
+func (r *sheinCandidateRepoStub) seedSDSCostGroup(record SheinSDSCostGroupRecord) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.sdsGroups[record.GroupKey] = record
+}
+
 func (r *sheinCandidateRepoStub) seedCandidate(record SheinActivityCandidateRecord) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	key := fmt.Sprintf("%d|%d|%s|%s|%s|%s", record.TenantID, record.StoreID, record.ActivityType, record.ActivityKey, record.SKCName, record.CandidateVersion)
 	r.candidates[key] = cloneSheinCandidateTestCandidate(record)
+}
+
+func containsSheinCandidateGroupKey(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func cloneSheinCandidateTestProduct(row SheinSyncedProductRecord) SheinSyncedProductRecord {

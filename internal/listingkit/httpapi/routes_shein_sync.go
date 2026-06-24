@@ -8,6 +8,8 @@ type sheinSyncRouteHandler interface {
 	GetSheinEnrollmentStoreSummary(c *gin.Context)
 	ListSheinSyncedProducts(c *gin.Context)
 	UpdateSheinSyncedProductCost(c *gin.Context)
+	ListSheinSDSCostGroups(c *gin.Context)
+	UpdateSheinSDSCostGroup(c *gin.Context)
 	RefreshSheinActivityCandidates(c *gin.Context)
 	ListSheinActivityCandidates(c *gin.Context)
 	ReviewSheinActivityCandidate(c *gin.Context)

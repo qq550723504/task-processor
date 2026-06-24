@@ -63,6 +63,10 @@ func (s *sheinCandidateService) RefreshCandidates(ctx context.Context, tenantID,
 		return nil, err
 	}
 	products = applySheinCandidateSharedSDSCosts(products)
+	products, err = s.applySDSCostGroupOverrides(ctx, tenantID, storeID, products)
+	if err != nil {
+		return nil, err
+	}
 
 	activityKey := buildSheinActivityKey(activityType, tenantID, storeID)
 	existingCandidates, err := s.listExistingCandidates(ctx, tenantID, storeID, activityType, activityKey)
@@ -303,6 +307,69 @@ func applySheinCandidateSharedSDSCosts(products []SheinSyncedProductRecord) []Sh
 		if cost, ok := groupCosts[key]; ok {
 			out[i].EffectiveCostPrice = sheinFloat64Ptr(cost)
 		}
+	}
+	return out
+}
+
+type sheinCandidateSDSCostGroupReader interface {
+	ListSDSCostGroups(ctx context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error)
+}
+
+func (s *sheinCandidateService) applySDSCostGroupOverrides(ctx context.Context, tenantID, storeID int64, products []SheinSyncedProductRecord) ([]SheinSyncedProductRecord, error) {
+	reader, ok := s.repo.(sheinCandidateSDSCostGroupReader)
+	if !ok || len(products) == 0 {
+		return products, nil
+	}
+
+	groupKeys := sheinCandidateSDSCostGroupKeys(products)
+	if len(groupKeys) == 0 {
+		return products, nil
+	}
+	groups, _, err := reader.ListSDSCostGroups(ctx, &SheinSDSCostGroupQuery{
+		TenantID:  tenantID,
+		StoreID:   storeID,
+		GroupKeys: groupKeys,
+		Page:      1,
+		PageSize:  len(groupKeys),
+	})
+	if err != nil {
+		return nil, err
+	}
+	overrides := make(map[string]float64, len(groups))
+	for _, group := range groups {
+		if group.ManualCostPrice == nil {
+			continue
+		}
+		overrides[group.GroupKey] = *group.ManualCostPrice
+	}
+	if len(overrides) == 0 {
+		return products, nil
+	}
+
+	out := make([]SheinSyncedProductRecord, len(products))
+	copy(out, products)
+	for i := range out {
+		key := sheinCandidateSDSCostGroupKey(out[i])
+		if cost, ok := overrides[key]; ok {
+			out[i].EffectiveCostPrice = sheinFloat64Ptr(cost)
+		}
+	}
+	return out, nil
+}
+
+func sheinCandidateSDSCostGroupKeys(products []SheinSyncedProductRecord) []string {
+	out := make([]string, 0, len(products))
+	seen := map[string]struct{}{}
+	for _, product := range products {
+		key := sheinCandidateSDSCostGroupKey(product)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
 	}
 	return out
 }

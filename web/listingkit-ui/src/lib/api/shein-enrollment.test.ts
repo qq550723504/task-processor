@@ -7,10 +7,12 @@ import {
   getSheinActivityEnrollmentRuns,
   getSheinEnrollmentDashboard,
   getSheinEnrollmentStoreSummary,
+  getSheinSDSCostGroups,
   getSheinSyncedProducts,
   refreshSheinActivityCandidates,
   reviewSheinActivityCandidate,
   triggerSheinStoreSync,
+  updateSheinSDSCostGroup,
   updateSheinSyncedProductCost,
 } from "@/lib/api/shein-enrollment";
 
@@ -69,6 +71,11 @@ describe("shein enrollment api", () => {
       page_size: 50,
     });
     await updateSheinSyncedProductCost(88, { manual_cost_price: 19.5 });
+    await getSheinSDSCostGroups(12, { page: 1, page_size: 100 });
+    await updateSheinSDSCostGroup(12, "style:B3195DA6", {
+      group_label: "B3195DA6",
+      manual_cost_price: 46.8,
+    });
 
     expect(mockedApiRequest).toHaveBeenNthCalledWith(
       1,
@@ -96,6 +103,21 @@ describe("shein enrollment api", () => {
       {
         method: "PATCH",
         body: { manual_cost_price: 19.5 },
+      },
+    );
+    expect(mockedApiRequest).toHaveBeenNthCalledWith(
+      4,
+      "/shein-sync/stores/12/sds-cost-groups",
+      {
+        query: { page: 1, page_size: 100 },
+      },
+    );
+    expect(mockedApiRequest).toHaveBeenNthCalledWith(
+      5,
+      "/shein-sync/stores/12/sds-cost-groups/style%3AB3195DA6/cost",
+      {
+        method: "PATCH",
+        body: { group_label: "B3195DA6", manual_cost_price: 46.8 },
       },
     );
   });

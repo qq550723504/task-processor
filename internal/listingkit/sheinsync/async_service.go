@@ -55,6 +55,14 @@ func (s *asyncSheinSyncService) UpdateManualCostPrice(ctx context.Context, produ
 	return s.sync.UpdateManualCostPrice(ctx, productID, manualCostPrice)
 }
 
+func (s *asyncSheinSyncService) ListSDSCostGroups(ctx context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error) {
+	return s.sync.ListSDSCostGroups(ctx, query)
+}
+
+func (s *asyncSheinSyncService) UpdateSDSCostGroupManualCost(ctx context.Context, tenantID, storeID int64, groupKey, groupLabel string, manualCostPrice *float64) (*SheinSDSCostGroupRecord, error) {
+	return s.sync.UpdateSDSCostGroupManualCost(ctx, tenantID, storeID, groupKey, groupLabel, manualCostPrice)
+}
+
 func (s *asyncSheinSyncService) SupportsImmediateRefresh() bool {
 	return false
 }

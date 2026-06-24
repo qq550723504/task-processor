@@ -17,6 +17,7 @@ type MemSheinSyncRepository struct {
 	candidates      map[string]listingkit.SheinActivityCandidateRecord
 	enrollmentRuns  map[int64]listingkit.SheinActivityEnrollmentRunRecord
 	enrollmentItems map[string]listingkit.SheinActivityEnrollmentItemRecord
+	sdsCostGroups   map[string]listingkit.SheinSDSCostGroupRecord
 }
 
 func NewMemSheinSyncRepository() listingkit.SheinSyncRepository {
@@ -30,5 +31,6 @@ func NewMemSheinSyncRepository() listingkit.SheinSyncRepository {
 		candidates:      make(map[string]listingkit.SheinActivityCandidateRecord),
 		enrollmentRuns:  make(map[int64]listingkit.SheinActivityEnrollmentRunRecord),
 		enrollmentItems: make(map[string]listingkit.SheinActivityEnrollmentItemRecord),
+		sdsCostGroups:   make(map[string]listingkit.SheinSDSCostGroupRecord),
 	}
 }

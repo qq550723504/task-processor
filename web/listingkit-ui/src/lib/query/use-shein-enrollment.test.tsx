@@ -10,18 +10,22 @@ import {
   useSheinActivityEnrollmentRuns,
   useSheinEnrollmentDashboard,
   useSheinEnrollmentStoreSummary,
+  useSheinSDSCostGroups,
   useSheinSyncedProducts,
   useTriggerSheinStoreSync,
+  useUpdateSheinSDSCostGroup,
   useUpdateSheinSyncedProductCost,
 } from "@/lib/query/use-shein-enrollment";
 
 const mocks = vi.hoisted(() => ({
   getSheinEnrollmentDashboard: vi.fn(),
   getSheinEnrollmentStoreSummary: vi.fn(),
+  getSheinSDSCostGroups: vi.fn(),
   getSheinSyncedProducts: vi.fn(),
   getSheinActivityCandidates: vi.fn(),
   getSheinActivityEnrollmentRuns: vi.fn(),
   triggerSheinStoreSync: vi.fn(),
+  updateSheinSDSCostGroup: vi.fn(),
   updateSheinSyncedProductCost: vi.fn(),
   refreshSheinActivityCandidates: vi.fn(),
   reviewSheinActivityCandidate: vi.fn(),
@@ -33,6 +37,8 @@ vi.mock("@/lib/api/shein-enrollment", () => ({
     mocks.getSheinEnrollmentDashboard(...args),
   getSheinEnrollmentStoreSummary: (...args: unknown[]) =>
     mocks.getSheinEnrollmentStoreSummary(...args),
+  getSheinSDSCostGroups: (...args: unknown[]) =>
+    mocks.getSheinSDSCostGroups(...args),
   getSheinSyncedProducts: (...args: unknown[]) =>
     mocks.getSheinSyncedProducts(...args),
   getSheinActivityCandidates: (...args: unknown[]) =>
@@ -41,6 +47,8 @@ vi.mock("@/lib/api/shein-enrollment", () => ({
     mocks.getSheinActivityEnrollmentRuns(...args),
   triggerSheinStoreSync: (...args: unknown[]) =>
     mocks.triggerSheinStoreSync(...args),
+  updateSheinSDSCostGroup: (...args: unknown[]) =>
+    mocks.updateSheinSDSCostGroup(...args),
   updateSheinSyncedProductCost: (...args: unknown[]) =>
     mocks.updateSheinSyncedProductCost(...args),
   refreshSheinActivityCandidates: (...args: unknown[]) =>
@@ -66,6 +74,7 @@ describe("use-shein-enrollment", () => {
     });
     mocks.getSheinEnrollmentDashboard.mockResolvedValue({ items: [], total: 0 });
     mocks.getSheinEnrollmentStoreSummary.mockResolvedValue({ summary: { store_id: 5 } });
+    mocks.getSheinSDSCostGroups.mockResolvedValue({ items: [], total: 0 });
     mocks.getSheinSyncedProducts.mockResolvedValue({ items: [], total: 0 });
     mocks.getSheinActivityCandidates.mockResolvedValue({ items: [], total: 0 });
     mocks.getSheinActivityEnrollmentRuns.mockResolvedValue({ items: [], total: 0 });
@@ -84,6 +93,14 @@ describe("use-shein-enrollment", () => {
           skc_name: "dress",
           page: 1,
           page_size: 20,
+        }),
+      { wrapper: createWrapper(client) },
+    );
+    const { result: sdsCostGroups } = renderHook(
+      () =>
+        useSheinSDSCostGroups(5, {
+          page: 1,
+          page_size: 100,
         }),
       { wrapper: createWrapper(client) },
     );
@@ -109,6 +126,7 @@ describe("use-shein-enrollment", () => {
     await waitFor(() => expect(dashboard.current.isSuccess).toBe(true));
     await waitFor(() => expect(summary.current.isSuccess).toBe(true));
     await waitFor(() => expect(products.current.isSuccess).toBe(true));
+    await waitFor(() => expect(sdsCostGroups.current.isSuccess).toBe(true));
     await waitFor(() => expect(candidates.current.isSuccess).toBe(true));
     await waitFor(() => expect(runs.current.isSuccess).toBe(true));
 
@@ -122,6 +140,10 @@ describe("use-shein-enrollment", () => {
       skc_name: "dress",
       page: 1,
       page_size: 20,
+    });
+    expect(mocks.getSheinSDSCostGroups).toHaveBeenCalledWith(5, {
+      page: 1,
+      page_size: 100,
     });
     expect(mocks.getSheinActivityCandidates).toHaveBeenCalledWith(5, {
       activity_type: "flash_sale",
@@ -183,6 +205,9 @@ describe("use-shein-enrollment", () => {
       id: 8,
       manual_cost_price: 12.5,
     });
+    mocks.updateSheinSDSCostGroup.mockResolvedValue({
+      group: { group_key: "style:B3195DA6", manual_cost_price: 46.8 },
+    });
     mocks.reviewSheinActivityCandidate.mockResolvedValue({
       candidate: { id: 21, review_status: "approved" },
     });
@@ -192,6 +217,10 @@ describe("use-shein-enrollment", () => {
 
     const { result: updateCost } = renderHook(
       () => useUpdateSheinSyncedProductCost(5),
+      { wrapper: createWrapper(client) },
+    );
+    const { result: updateGroupCost } = renderHook(
+      () => useUpdateSheinSDSCostGroup(5),
       { wrapper: createWrapper(client) },
     );
     const { result: reviewCandidate } = renderHook(
@@ -206,6 +235,11 @@ describe("use-shein-enrollment", () => {
     await updateCost.current.mutateAsync({
       productId: 8,
       manual_cost_price: 12.5,
+    });
+    await updateGroupCost.current.mutateAsync({
+      groupKey: "style:B3195DA6",
+      group_label: "B3195DA6",
+      manual_cost_price: 46.8,
     });
     await reviewCandidate.current.mutateAsync({
       candidateId: 21,
@@ -223,6 +257,10 @@ describe("use-shein-enrollment", () => {
     expect(mocks.updateSheinSyncedProductCost).toHaveBeenCalledWith(8, {
       manual_cost_price: 12.5,
     });
+    expect(mocks.updateSheinSDSCostGroup).toHaveBeenCalledWith(5, "style:B3195DA6", {
+      group_label: "B3195DA6",
+      manual_cost_price: 46.8,
+    });
     expect(mocks.reviewSheinActivityCandidate).toHaveBeenCalledWith(21, {
       store_id: 5,
       review_status: "approved",
@@ -233,7 +271,7 @@ describe("use-shein-enrollment", () => {
       trigger_mode: "manual_confirmed",
     });
     await waitFor(() =>
-      expect(invalidateQueries).toHaveBeenCalledTimes(3),
+      expect(invalidateQueries).toHaveBeenCalledTimes(4),
     );
     expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
       queryKey: ["listingkit", "shein-enrollment", 5],
@@ -242,6 +280,9 @@ describe("use-shein-enrollment", () => {
       queryKey: ["listingkit", "shein-enrollment", 5],
     });
     expect(invalidateQueries).toHaveBeenNthCalledWith(3, {
+      queryKey: ["listingkit", "shein-enrollment", 5],
+    });
+    expect(invalidateQueries).toHaveBeenNthCalledWith(4, {
       queryKey: ["listingkit", "shein-enrollment", 5],
     });
   });

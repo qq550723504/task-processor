@@ -13,11 +13,15 @@ import type {
   SheinExecuteEnrollmentInput,
   SheinRefreshCandidatesInput,
   SheinReviewActivityCandidateInput,
+  SheinSDSCostGroupListResponse,
+  SheinSDSCostGroupQuery,
   SheinSyncedProductListResponse,
   SheinSyncedProductQuery,
   SheinSyncTriggerMode,
+  SheinUpdateSDSCostGroupInput,
   SheinUpdateSyncedProductCostInput,
   TriggerSheinStoreSyncResponse,
+  UpdateSheinSDSCostGroupResponse,
 } from "@/lib/types/listingkit/shein-enrollment";
 
 export async function getSheinEnrollmentDashboard(
@@ -71,6 +75,32 @@ export async function updateSheinSyncedProductCost(
 ): Promise<{ id?: number; manual_cost_price?: number | null }> {
   return apiRequest<{ id?: number; manual_cost_price?: number | null }>(
     `/shein-sync/products/${productId}/cost`,
+    {
+      method: "PATCH",
+      body: input,
+    },
+  );
+}
+
+export async function getSheinSDSCostGroups(
+  storeId: number,
+  query: SheinSDSCostGroupQuery = {},
+): Promise<SheinSDSCostGroupListResponse> {
+  return apiRequest<SheinSDSCostGroupListResponse>(
+    `/shein-sync/stores/${storeId}/sds-cost-groups`,
+    {
+      query,
+    },
+  );
+}
+
+export async function updateSheinSDSCostGroup(
+  storeId: number,
+  groupKey: string,
+  input: SheinUpdateSDSCostGroupInput,
+): Promise<UpdateSheinSDSCostGroupResponse> {
+  return apiRequest<UpdateSheinSDSCostGroupResponse>(
+    `/shein-sync/stores/${storeId}/sds-cost-groups/${encodeURIComponent(groupKey)}/cost`,
     {
       method: "PATCH",
       body: input,

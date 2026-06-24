@@ -1130,6 +1130,61 @@ func TestSheinSyncRepositorySaveCandidatesAllowsSupersedingOlderVersions(t *test
 	}
 }
 
+func TestSheinSyncRepositoryUpsertsAndListsSDSCostGroups(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		t.Run(harness.name, func(t *testing.T) {
+			ctx := context.Background()
+			repo := harness.repo
+			cost := 46.8
+			updated := 50.0
+
+			groupRepo, ok := repo.(interface {
+				UpsertSDSCostGroup(ctx context.Context, record *listingkit.SheinSDSCostGroupRecord) error
+				ListSDSCostGroups(ctx context.Context, query *listingkit.SheinSDSCostGroupQuery) ([]listingkit.SheinSDSCostGroupRecord, int64, error)
+			})
+			if !ok {
+				t.Fatalf("%s repo does not implement SDS cost groups", harness.name)
+			}
+
+			if err := groupRepo.UpsertSDSCostGroup(ctx, &listingkit.SheinSDSCostGroupRecord{
+				TenantID:        11,
+				StoreID:         22,
+				GroupKey:        "style:B3195DA6",
+				GroupLabel:      "B3195DA6",
+				ManualCostPrice: &cost,
+			}); err != nil {
+				t.Fatalf("upsert SDS cost group: %v", err)
+			}
+			if err := groupRepo.UpsertSDSCostGroup(ctx, &listingkit.SheinSDSCostGroupRecord{
+				TenantID:        11,
+				StoreID:         22,
+				GroupKey:        "style:B3195DA6",
+				GroupLabel:      "B3195DA6",
+				ManualCostPrice: &updated,
+			}); err != nil {
+				t.Fatalf("update SDS cost group: %v", err)
+			}
+
+			rows, total, err := groupRepo.ListSDSCostGroups(ctx, &listingkit.SheinSDSCostGroupQuery{
+				TenantID:  11,
+				StoreID:   22,
+				GroupKeys: []string{"style:B3195DA6"},
+			})
+			if err != nil {
+				t.Fatalf("list SDS cost groups: %v", err)
+			}
+			if total != 1 || len(rows) != 1 {
+				t.Fatalf("groups total=%d len=%d, want 1", total, len(rows))
+			}
+			if rows[0].ManualCostPrice == nil || *rows[0].ManualCostPrice != updated {
+				t.Fatalf("manual cost = %+v, want %.1f", rows[0].ManualCostPrice, updated)
+			}
+		})
+	}
+}
+
 func sheinSyncRepositoryHarnesses(t *testing.T) []sheinSyncRepositoryHarness {
 	t.Helper()
 

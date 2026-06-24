@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -98,6 +99,60 @@ func (s *sheinSyncService) UpdateManualCostPrice(ctx context.Context, productID 
 		return err
 	}
 	return s.repo.UpdateManualCostPrice(ctx, productID, manualCostPrice)
+}
+
+type sheinSDSCostGroupRepository interface {
+	UpsertSDSCostGroup(ctx context.Context, record *SheinSDSCostGroupRecord) error
+	ListSDSCostGroups(ctx context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error)
+}
+
+func (s *sheinSyncService) ListSDSCostGroups(ctx context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error) {
+	if err := s.validateDependencies(); err != nil {
+		return nil, 0, err
+	}
+	repo, ok := s.repo.(sheinSDSCostGroupRepository)
+	if !ok {
+		return nil, 0, fmt.Errorf("SHEIN SDS cost group repository is unavailable")
+	}
+	return repo.ListSDSCostGroups(ctx, query)
+}
+
+func (s *sheinSyncService) UpdateSDSCostGroupManualCost(ctx context.Context, tenantID, storeID int64, groupKey, groupLabel string, manualCostPrice *float64) (*SheinSDSCostGroupRecord, error) {
+	if err := s.validateDependencies(); err != nil {
+		return nil, err
+	}
+	repo, ok := s.repo.(sheinSDSCostGroupRepository)
+	if !ok {
+		return nil, fmt.Errorf("SHEIN SDS cost group repository is unavailable")
+	}
+	groupKey = strings.TrimSpace(groupKey)
+	if groupKey == "" {
+		return nil, fmt.Errorf("SHEIN SDS cost group key is required")
+	}
+	row := &SheinSDSCostGroupRecord{
+		TenantID:        tenantID,
+		StoreID:         storeID,
+		GroupKey:        groupKey,
+		GroupLabel:      strings.TrimSpace(groupLabel),
+		ManualCostPrice: cloneSheinSyncFloat64(manualCostPrice),
+	}
+	if err := repo.UpsertSDSCostGroup(ctx, row); err != nil {
+		return nil, err
+	}
+	rows, _, err := repo.ListSDSCostGroups(ctx, &SheinSDSCostGroupQuery{
+		TenantID:  tenantID,
+		StoreID:   storeID,
+		GroupKeys: []string{groupKey},
+		Page:      1,
+		PageSize:  1,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return row, nil
+	}
+	return &rows[0], nil
 }
 
 func (s *sheinSyncService) listExistingProducts(ctx context.Context, tenantID, storeID int64) (map[string]SheinSyncedProductRecord, error) {

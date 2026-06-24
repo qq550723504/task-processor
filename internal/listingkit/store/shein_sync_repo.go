@@ -17,6 +17,7 @@ func NewSheinSyncRepository(db *gorm.DB) listingkit.SheinSyncRepository {
 func AutoMigrateSheinSyncRepository(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&listingkit.SheinSyncedProductRecord{},
+		&listingkit.SheinSDSCostGroupRecord{},
 		&listingkit.SheinSyncJobRecord{},
 		&listingkit.SheinActivityCandidateRecord{},
 		&listingkit.SheinActivityEnrollmentRunRecord{},

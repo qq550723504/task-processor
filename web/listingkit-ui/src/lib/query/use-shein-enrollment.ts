@@ -8,10 +8,12 @@ import {
   getSheinActivityEnrollmentRuns,
   getSheinEnrollmentDashboard,
   getSheinEnrollmentStoreSummary,
+  getSheinSDSCostGroups,
   getSheinSyncedProducts,
   refreshSheinActivityCandidates,
   reviewSheinActivityCandidate,
   triggerSheinStoreSync,
+  updateSheinSDSCostGroup,
   updateSheinSyncedProductCost,
 } from "@/lib/api/shein-enrollment";
 import { listingKitKeys } from "@/lib/query/keys";
@@ -22,6 +24,7 @@ import type {
   SheinExecuteEnrollmentInput,
   SheinRefreshCandidatesInput,
   SheinReviewActivityCandidateInput,
+  SheinSDSCostGroupQuery,
   SheinSyncedProductQuery,
   SheinSyncTriggerMode,
 } from "@/lib/types/listingkit/shein-enrollment";
@@ -53,6 +56,17 @@ export function useSheinSyncedProducts(
   return useQuery({
     queryKey: listingKitKeys.sheinEnrollmentProducts(storeId, query),
     queryFn: () => getSheinSyncedProducts(storeId, query),
+    enabled: Number.isFinite(storeId) && storeId > 0,
+  });
+}
+
+export function useSheinSDSCostGroups(
+  storeId: number,
+  query: SheinSDSCostGroupQuery,
+) {
+  return useQuery({
+    queryKey: listingKitKeys.sheinEnrollmentSDSCostGroups(storeId, query),
+    queryFn: () => getSheinSDSCostGroups(storeId, query),
     enabled: Number.isFinite(storeId) && storeId > 0,
   });
 }
@@ -102,6 +116,30 @@ export function useUpdateSheinSyncedProductCost(storeId: number) {
       productId: number;
       manual_cost_price?: number | null;
     }) => updateSheinSyncedProductCost(productId, { manual_cost_price }),
+    onSuccess: async () => {
+      await client.invalidateQueries({
+        queryKey: listingKitKeys.sheinEnrollmentStoreScope(storeId),
+      });
+    },
+  });
+}
+
+export function useUpdateSheinSDSCostGroup(storeId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      groupKey,
+      group_label,
+      manual_cost_price,
+    }: {
+      groupKey: string;
+      group_label?: string;
+      manual_cost_price?: number | null;
+    }) =>
+      updateSheinSDSCostGroup(storeId, groupKey, {
+        group_label,
+        manual_cost_price,
+      }),
     onSuccess: async () => {
       await client.invalidateQueries({
         queryKey: listingKitKeys.sheinEnrollmentStoreScope(storeId),

@@ -80,11 +80,13 @@ const (
 )
 
 type SheinSyncedProductRecord = sheinsync.SheinSyncedProductRecord
+type SheinSDSCostGroupRecord = sheinsync.SheinSDSCostGroupRecord
 type SheinSyncJobRecord = sheinsync.SheinSyncJobRecord
 type SheinActivityCandidateRecord = sheinsync.SheinActivityCandidateRecord
 type SheinActivityEnrollmentRunRecord = sheinsync.SheinActivityEnrollmentRunRecord
 type SheinActivityEnrollmentItemRecord = sheinsync.SheinActivityEnrollmentItemRecord
 type SheinSyncedProductQuery = sheinsync.SheinSyncedProductQuery
+type SheinSDSCostGroupQuery = sheinsync.SheinSDSCostGroupQuery
 type SheinSyncJobQuery = sheinsync.SheinSyncJobQuery
 type SheinActivityCandidateQuery = sheinsync.SheinActivityCandidateQuery
 type SheinEnrollmentRunQuery = sheinsync.SheinEnrollmentRunQuery

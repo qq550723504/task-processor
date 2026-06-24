@@ -17,6 +17,16 @@ type updateSheinSyncedProductCostRequest struct {
 	ManualCostPrice *float64 `json:"manual_cost_price"`
 }
 
+type listSheinSDSCostGroupsQuery struct {
+	Page     int `form:"page"`
+	PageSize int `form:"page_size"`
+}
+
+type updateSheinSDSCostGroupRequest struct {
+	GroupLabel      string   `json:"group_label"`
+	ManualCostPrice *float64 `json:"manual_cost_price"`
+}
+
 type refreshSheinActivityCandidatesRequest struct {
 	ActivityType string `json:"activity_type"`
 }

@@ -6,11 +6,13 @@ import { SheinEnrollmentStoreWorkbench } from "@/components/listingkit/shein-enr
 
 const mocks = vi.hoisted(() => ({
   useSheinEnrollmentStoreSummary: vi.fn(),
+  useSheinSDSCostGroups: vi.fn(),
   useSheinSyncedProducts: vi.fn(),
   useSheinActivityCandidates: vi.fn(),
   useSheinActivityEnrollmentRuns: vi.fn(),
   useTriggerSheinStoreSync: vi.fn(),
   useRefreshSheinActivityCandidates: vi.fn(),
+  useUpdateSheinSDSCostGroup: vi.fn(),
   useUpdateSheinSyncedProductCost: vi.fn(),
   useReviewSheinActivityCandidate: vi.fn(),
   useExecuteSheinActivityEnrollment: vi.fn(),
@@ -19,6 +21,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/query/use-shein-enrollment", () => ({
   useSheinEnrollmentStoreSummary: (...args: unknown[]) =>
     mocks.useSheinEnrollmentStoreSummary(...args),
+  useSheinSDSCostGroups: (...args: unknown[]) =>
+    mocks.useSheinSDSCostGroups(...args),
   useSheinSyncedProducts: (...args: unknown[]) => mocks.useSheinSyncedProducts(...args),
   useSheinActivityCandidates: (...args: unknown[]) => mocks.useSheinActivityCandidates(...args),
   useSheinActivityEnrollmentRuns: (...args: unknown[]) =>
@@ -26,6 +30,8 @@ vi.mock("@/lib/query/use-shein-enrollment", () => ({
   useTriggerSheinStoreSync: (...args: unknown[]) => mocks.useTriggerSheinStoreSync(...args),
   useRefreshSheinActivityCandidates: (...args: unknown[]) =>
     mocks.useRefreshSheinActivityCandidates(...args),
+  useUpdateSheinSDSCostGroup: (...args: unknown[]) =>
+    mocks.useUpdateSheinSDSCostGroup(...args),
   useUpdateSheinSyncedProductCost: (...args: unknown[]) =>
     mocks.useUpdateSheinSyncedProductCost(...args),
   useReviewSheinActivityCandidate: (...args: unknown[]) =>
@@ -45,10 +51,12 @@ function renderWorkbench({
   initialTab,
   products = [],
   candidates = [],
+  sdsCostGroups = [],
 }: {
   initialTab?: string;
   products?: Array<Record<string, unknown>>;
   candidates?: Array<Record<string, unknown>>;
+  sdsCostGroups?: Array<Record<string, unknown>>;
 }) {
   mocks.useSheinEnrollmentStoreSummary.mockReturnValue({
     data: {
@@ -65,6 +73,10 @@ function renderWorkbench({
     data: { items: products },
     isLoading: false,
   });
+  mocks.useSheinSDSCostGroups.mockReturnValue({
+    data: { items: sdsCostGroups },
+    isLoading: false,
+  });
   mocks.useSheinActivityCandidates.mockReturnValue({
     data: { items: candidates },
     isLoading: false,
@@ -75,6 +87,7 @@ function renderWorkbench({
   });
   mocks.useTriggerSheinStoreSync.mockReturnValue(resolvedMutation());
   mocks.useRefreshSheinActivityCandidates.mockReturnValue(resolvedMutation());
+  mocks.useUpdateSheinSDSCostGroup.mockReturnValue(resolvedMutation());
   mocks.useUpdateSheinSyncedProductCost.mockReturnValue(resolvedMutation());
   mocks.useReviewSheinActivityCandidate.mockReturnValue(resolvedMutation());
   mocks.useExecuteSheinActivityEnrollment.mockReturnValue(resolvedMutation());
@@ -147,5 +160,37 @@ describe("SheinEnrollmentStoreWorkbench", () => {
 
     expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
     expect(screen.getByText(/售价 \$29.99/)).toBeInTheDocument();
+  });
+
+  it("groups SDS products in the cost tab", async () => {
+    renderWorkbench({
+      initialTab: "costs",
+      products: [
+        {
+          id: 8,
+          skc_name: "SKC-A",
+          supplier_code: "MG8006905001-B3195DA6",
+          auto_cost_price: 39.1,
+          effective_cost_price: 39.1,
+        },
+        {
+          id: 9,
+          skc_name: "SKC-B",
+          supplier_code: "MG8006905002-B3195DA6",
+          auto_cost_price: 46.8,
+          effective_cost_price: 46.8,
+        },
+      ],
+      sdsCostGroups: [
+        {
+          group_key: "style:B3195DA6",
+          group_label: "B3195DA6",
+          manual_cost_price: 50,
+        },
+      ],
+    });
+
+    expect(await screen.findByText("B3195DA6 · 2 个商品")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("50")).toBeInTheDocument();
   });
 });

@@ -60,6 +60,16 @@ export type SheinUpdateSyncedProductCostInput = {
   manual_cost_price?: number | null;
 };
 
+export type SheinSDSCostGroupQuery = {
+  page?: number;
+  page_size?: number;
+};
+
+export type SheinUpdateSDSCostGroupInput = {
+  group_label?: string;
+  manual_cost_price?: number | null;
+};
+
 export type SheinSyncedProductRecord = {
   id?: number;
   tenant_id?: number;
@@ -95,6 +105,26 @@ export type SheinSyncedProductRecord = {
 export type SheinSyncedProductListResponse = {
   items?: SheinSyncedProductRecord[];
   total?: number;
+};
+
+export type SheinSDSCostGroupRecord = {
+  id?: number;
+  tenant_id?: number;
+  store_id?: number;
+  group_key?: string;
+  group_label?: string;
+  manual_cost_price?: number | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type SheinSDSCostGroupListResponse = {
+  items?: SheinSDSCostGroupRecord[];
+  total?: number;
+};
+
+export type UpdateSheinSDSCostGroupResponse = {
+  group?: SheinSDSCostGroupRecord;
 };
 
 export type SheinSyncJobRecord = {
