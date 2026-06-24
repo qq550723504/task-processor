@@ -711,3 +711,13 @@ o_capacity, and store_unknown.
 - Daily-limit audit fields were present for stores 322/976, 246/1041, and 246/1025, including configured daily_limit and observed queue depth.
 
 Status: backend production persistence for event audit and operator-visible task reasons is validated. Frontend publication for the new task-list column is intentionally deferred. Remaining high-value production exercise: rollback rehearsal.
+
+### 2026-06-24 production validation: rollback rehearsal
+
+- Rolled shein-listing-control-plane from current image 1f8a06a back to previous known-good image 3fd80e1.
+- Rollback pod became ready, acquired the Redis leader lock after the expected TTL window, and resumed dispatch with consecutiveErrors=0.
+- Rolled forward again to 1f8a06a.
+- Final pod became ready, acquired leader ownership, and resumed dispatch with dispatchCandidates=10, dispatched=1, skipped=9, ailed=0.
+- Final production image is back on xuwei190/task-processor-listing-control-plane:f1f8a06a.
+
+Status: rollback rehearsal is production-validated. Remaining deferred item: publish the frontend admin task-list reason column when the ListingKit UI deployment window is available.
