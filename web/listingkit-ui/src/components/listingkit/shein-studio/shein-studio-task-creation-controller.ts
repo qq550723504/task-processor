@@ -4,6 +4,7 @@ import {
   flattenItemizedBatchDesigns,
   getApprovedItemizedBatchDesignIDs,
   hasInFlightItemizedBatchGeneration,
+  type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { upsertRecentSavedBatch } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
@@ -104,6 +105,13 @@ type ItemizedFailedRetryRunnerInput = ItemizedFailedRetryRequestInput & {
     itemIds: string[],
     options?: { tenantId?: string },
   ) => Promise<SheinStudioBatchDetail>;
+};
+
+type ItemizedGenerationPollBatchInput = {
+  activeBatchId: string;
+  getHydratedBatch: (
+    batchId: string,
+  ) => Promise<SheinStudioWorkbenchHydratedBatch | null>;
 };
 
 type ItemizedTaskCreationProgress =
@@ -399,6 +407,17 @@ export async function runItemizedFailedRetry({
     });
   }
   return retryItems(retryRequest.batchId, retryRequest.itemIds);
+}
+
+export async function loadItemizedGenerationPollBatch({
+  activeBatchId,
+  getHydratedBatch,
+}: ItemizedGenerationPollBatchInput): Promise<SheinStudioWorkbenchHydratedBatch | null> {
+  try {
+    return await getHydratedBatch(activeBatchId);
+  } catch {
+    return null;
+  }
 }
 
 export function projectItemizedFailedRetryStep(

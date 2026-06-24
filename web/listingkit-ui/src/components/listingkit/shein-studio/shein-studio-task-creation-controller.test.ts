@@ -12,8 +12,10 @@ import {
   projectItemizedTaskCreationResult,
   runItemizedDesignApproval,
   runItemizedFailedRetry,
+  loadItemizedGenerationPollBatch,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
+import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
 import type { SheinStudioBatchDetail, SheinStudioSavedBatch } from "@/lib/types/shein-studio";
 
@@ -47,6 +49,15 @@ function buildCurrentDetail(): SheinStudioBatchDetail {
       updatedAt: "2026-06-22T02:00:00.000Z",
     },
     items: [],
+  };
+}
+
+function buildHydratedBatch(
+  savedBatch: SheinStudioSavedBatch = buildCurrentBatch(),
+): SheinStudioWorkbenchHydratedBatch {
+  return {
+    detail: buildCurrentDetail(),
+    savedBatch,
   };
 }
 
@@ -796,6 +807,30 @@ describe("runItemizedFailedRetry", () => {
     expect(retryItems).toHaveBeenCalledWith("batch-1", ["item-1"], {
       tenantId: "tenant-detail",
     });
+  });
+});
+
+describe("loadItemizedGenerationPollBatch", () => {
+  it("loads the hydrated batch for the active batch id", async () => {
+    const hydratedBatch = buildHydratedBatch();
+    const getHydratedBatch = vi.fn().mockResolvedValue(hydratedBatch);
+
+    await expect(
+      loadItemizedGenerationPollBatch({
+        activeBatchId: "batch-1",
+        getHydratedBatch,
+      }),
+    ).resolves.toBe(hydratedBatch);
+    expect(getHydratedBatch).toHaveBeenCalledWith("batch-1");
+  });
+
+  it("returns null when polling the hydrated batch fails", async () => {
+    await expect(
+      loadItemizedGenerationPollBatch({
+        activeBatchId: "batch-1",
+        getHydratedBatch: vi.fn().mockRejectedValue(new Error("offline")),
+      }),
+    ).resolves.toBeNull();
   });
 });
 

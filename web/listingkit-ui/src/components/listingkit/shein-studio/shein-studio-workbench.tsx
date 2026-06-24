@@ -59,6 +59,7 @@ import {
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskCreationProgress,
+  loadItemizedGenerationPollBatch,
   runItemizedDesignApproval,
   runItemizedFailedRetry,
   useSheinStudioItemizedBatchContext,
@@ -1110,15 +1111,14 @@ export function SheinStudioWorkbench({
     let cancelled = false;
     const timer = window.setInterval(() => {
       void (async () => {
-        try {
-          const hydratedBatch = await getSheinStudioHydratedBatch(activeBatchId);
-          if (cancelled || !hydratedBatch) {
-            return;
-          }
-          handleLoadHydratedBatchRef.current(hydratedBatch);
-        } catch {
-          // Keep the current in-flight state and try again on the next interval.
+        const hydratedBatch = await loadItemizedGenerationPollBatch({
+          activeBatchId,
+          getHydratedBatch: getSheinStudioHydratedBatch,
+        });
+        if (cancelled || !hydratedBatch) {
+          return;
         }
+        handleLoadHydratedBatchRef.current(hydratedBatch);
       })();
     }, 5_000);
 
