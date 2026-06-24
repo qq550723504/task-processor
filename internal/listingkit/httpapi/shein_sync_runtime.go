@@ -5,9 +5,10 @@ import (
 )
 
 type sheinSyncRuntimeServices struct {
-	syncService       listingkit.SheinSyncService
-	candidateService  listingkit.SheinCandidateService
-	enrollmentService listingkit.SheinEnrollmentService
+	syncService              listingkit.SheinSyncService
+	sdsRetirementSyncService listingkit.SheinSyncService
+	candidateService         listingkit.SheinCandidateService
+	enrollmentService        listingkit.SheinEnrollmentService
 }
 
 func buildSheinSyncRuntimeServices(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (sheinSyncRuntimeServices, error) {
@@ -17,6 +18,7 @@ func buildSheinSyncRuntimeServices(input BuildServiceInput, repositories *builtR
 
 	productAPIBuilder := input.Hooks.SheinProductAPIBuilderFactory(repositories.storeRepository)
 	syncService := listingkit.NewAsyncSheinSyncServiceWithBuilder(repositories.sheinSyncRepository, productAPIBuilder, nil)
+	sdsRetirementSyncService := listingkit.NewSheinSyncServiceWithBuilder(repositories.sheinSyncRepository, productAPIBuilder, nil)
 	candidateService := listingkit.NewSheinCandidateService(repositories.sheinSyncRepository)
 
 	strategyProvider, err := buildSheinPromotionStrategyProvider(repositories)
@@ -27,8 +29,9 @@ func buildSheinSyncRuntimeServices(input BuildServiceInput, repositories *builtR
 	enrollmentService := listingkit.NewSheinEnrollmentService(repositories.sheinSyncRepository, enrollmentAdapter)
 
 	return sheinSyncRuntimeServices{
-		syncService:       syncService,
-		candidateService:  candidateService,
-		enrollmentService: enrollmentService,
+		syncService:              syncService,
+		sdsRetirementSyncService: sdsRetirementSyncService,
+		candidateService:         candidateService,
+		enrollmentService:        enrollmentService,
 	}, nil
 }

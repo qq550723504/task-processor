@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 type stubSheinSchedulerSyncService struct {
@@ -31,6 +33,10 @@ func (s *stubSheinSchedulerSyncService) ListSyncedProducts(context.Context, *She
 
 func (s *stubSheinSchedulerSyncService) UpdateManualCostPrice(context.Context, int64, *float64) error {
 	return nil
+}
+
+func (s *stubSheinSchedulerSyncService) ResolveProductAPI(context.Context, int64) (sheinproduct.ProductAPI, error) {
+	return nil, nil
 }
 
 type stubSheinSchedulerCandidateService struct {

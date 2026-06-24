@@ -42,6 +42,14 @@ type SDSBaselineWarmService interface {
 	WarmSDSBaseline(ctx context.Context, req *WarmSDSBaselineRequest) (*SDSBaselineReadiness, error)
 }
 
+type SDSRetirementService interface {
+	CreateSDSRetirementRun(ctx context.Context, req *CreateSDSRetirementRunRequest) (*SDSRetirementRunDetail, error)
+	GetSDSRetirementRun(ctx context.Context, runID string) (*SDSRetirementRunDetail, error)
+	UpdateSDSRetirementSelection(ctx context.Context, runID string, req *UpdateSDSRetirementSelectionRequest) (*SDSRetirementRunDetail, error)
+	ConfirmSDSRetirementRun(ctx context.Context, runID string, req *ConfirmSDSRetirementRunRequest) (*SDSRetirementRunDetail, error)
+	RetrySDSRetirementRun(ctx context.Context, runID string) (*SDSRetirementRunDetail, error)
+}
+
 type GenerationTaskService interface {
 	GetTaskGenerationTasks(ctx context.Context, taskID string, query *GenerationTaskQuery) (*GenerationTaskPage, error)
 	GetTaskGenerationQueue(ctx context.Context, taskID string, query *GenerationQueueQuery) (*GenerationQueuePage, error)

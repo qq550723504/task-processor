@@ -106,6 +106,18 @@ func TestAsyncSheinSyncServiceWithBuilderResolvesCostsUsingRuntimeProductAPI(t *
 	}, 3*time.Second, 20*time.Millisecond)
 }
 
+func TestAsyncSheinSyncServiceResolveProductAPIDelegatesToRuntimeService(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	productAPI := &blockingSheinSyncProductAPIStub{}
+	service := NewAsyncSheinSyncService(repo, productAPI, nil)
+
+	resolved, err := service.ResolveProductAPI(context.Background(), 66)
+	require.NoError(t, err)
+	require.Same(t, productAPI, resolved)
+}
+
 type blockingSheinSyncProductAPIStub struct {
 	release  chan struct{}
 	response *sheinproduct.ProductListResponse

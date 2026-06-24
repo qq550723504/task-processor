@@ -67,6 +67,14 @@ type SDSBaselineCacheRepository interface {
 	SaveSDSBaselineCache(ctx context.Context, entry *SDSBaselineCacheEntry) error
 }
 
+type SDSRetirementRepository interface {
+	CreateSDSRetirementRun(ctx context.Context, run *SDSRetirementRunRecord, items []SDSRetirementItemRecord) error
+	GetSDSRetirementRun(ctx context.Context, runID string) (*SDSRetirementRunRecord, []SDSRetirementItemRecord, error)
+	UpdateSDSRetirementItems(ctx context.Context, runID string, updates []SDSRetirementItemSelectionUpdate) error
+	SaveSDSRetirementExecution(ctx context.Context, run *SDSRetirementRunRecord, items []SDSRetirementItemRecord) error
+	MarkSyncedProductOffShelf(ctx context.Context, tenantID, storeID, syncedProductID int64, now time.Time) error
+}
+
 type Assembler interface {
 	Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult
 }

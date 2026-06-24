@@ -33,19 +33,21 @@ func TestSheinSyncRepositoryUpsertSyncedProductsByStoreAndSKC(t *testing.T) {
 			now := time.Date(2026, 6, 4, 9, 0, 0, 0, time.UTC)
 
 			first := &listingkit.SheinSyncedProductRecord{
-				TenantID:    1,
-				StoreID:     101,
-				SKCName:     "skc-1",
-				ShelfStatus: "ON_SHELF",
-				IsActive:    true,
-				LastSyncAt:  &now,
-				CreatedAt:   now,
-				UpdatedAt:   now,
+				TenantID:      1,
+				StoreID:       101,
+				SKCName:       "skc-1",
+				BusinessModel: 7,
+				ShelfStatus:   "ON_SHELF",
+				IsActive:      true,
+				LastSyncAt:    &now,
+				CreatedAt:     now,
+				UpdatedAt:     now,
 			}
 			second := &listingkit.SheinSyncedProductRecord{
 				TenantID:      1,
 				StoreID:       101,
 				SKCName:       "skc-1",
+				BusinessModel: 7,
 				ShelfStatus:   "OFF_SHELF",
 				AutoCostPrice: float64Ptr(12.5),
 				IsActive:      false,
@@ -85,6 +87,9 @@ func TestSheinSyncRepositoryUpsertSyncedProductsByStoreAndSKC(t *testing.T) {
 			}
 			if items[0].EffectiveCostPrice == nil || *items[0].EffectiveCostPrice != 12.5 {
 				t.Fatalf("effective cost = %v, want 12.5", items[0].EffectiveCostPrice)
+			}
+			if items[0].BusinessModel != 7 {
+				t.Fatalf("business model = %d, want 7", items[0].BusinessModel)
 			}
 		})
 	}

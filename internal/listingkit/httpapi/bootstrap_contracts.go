@@ -51,15 +51,16 @@ type ServiceBundle struct {
 }
 
 type serviceBundleRuntime struct {
-	temporalWorkerService  TemporalWorkerService
-	taskRepository         listingkit.Repository
-	service                moduleService
-	sheinSyncRepository    listingkit.SheinSyncRepository
-	sheinSyncService       listingkit.SheinSyncService
-	sheinCandidateService  listingkit.SheinCandidateService
-	sheinEnrollmentService listingkit.SheinEnrollmentService
-	handlerDependencies    listingkitapi.HandlerDependencies
-	closers                []func() error
+	temporalWorkerService         TemporalWorkerService
+	taskRepository                listingkit.Repository
+	service                       moduleService
+	sheinSyncRepository           listingkit.SheinSyncRepository
+	sheinSyncService              listingkit.SheinSyncService
+	sdsRetirementSheinSyncService listingkit.SheinSyncService
+	sheinCandidateService         listingkit.SheinCandidateService
+	sheinEnrollmentService        listingkit.SheinEnrollmentService
+	handlerDependencies           listingkitapi.HandlerDependencies
+	closers                       []func() error
 }
 
 type TemporalWorkerService interface {

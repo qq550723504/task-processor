@@ -30,6 +30,7 @@ func buildSyncedProductRecord(
 		ProductNameMulti: product.ProductNameMulti,
 		MainImageURL:     skc.MainImageThumbnailURL,
 		SaleName:         skc.SaleName,
+		BusinessModel:    skc.BusinessModel,
 		ShelfStatus:      product.ShelfStatus,
 		PublishTime:      publishTime,
 		FirstShelfTime:   firstShelfTime,

@@ -27,6 +27,11 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.Contains(t, keys, "POST /api/v1/listing-kits/generate")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/settings-health")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/tasks/requeue")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements")
+	require.Contains(t, keys, "GET /api/v1/listing-kits/sds/retirements/:run_id")
+	require.Contains(t, keys, "PATCH /api/v1/listing-kits/sds/retirements/:run_id/items")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements/:run_id/confirm")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements/:run_id/retry")
 	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
 }
 
@@ -111,6 +116,11 @@ func (stubRouteHandler) GenerateListingKit(*gin.Context)                        
 func (stubRouteHandler) ListTasks(*gin.Context)                                   {}
 func (stubRouteHandler) GetSDSBaselineReadiness(*gin.Context)                     {}
 func (stubRouteHandler) WarmSDSBaseline(*gin.Context)                             {}
+func (stubRouteHandler) CreateSDSRetirementRun(*gin.Context)                      {}
+func (stubRouteHandler) GetSDSRetirementRun(*gin.Context)                         {}
+func (stubRouteHandler) UpdateSDSRetirementSelection(*gin.Context)                {}
+func (stubRouteHandler) ConfirmSDSRetirementRun(*gin.Context)                     {}
+func (stubRouteHandler) RetrySDSRetirementRun(*gin.Context)                       {}
 func (stubRouteHandler) UploadListingKitImages(*gin.Context)                      {}
 func (stubRouteHandler) GetUploadedListingKitImage(*gin.Context)                  {}
 func (stubRouteHandler) DeleteUploadedListingKitImage(*gin.Context)               {}

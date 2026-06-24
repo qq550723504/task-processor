@@ -534,6 +534,25 @@ func TestBuildHandlerOptionsWiresSDSBaselineWarmService(t *testing.T) {
 	}
 }
 
+func TestBuildHandlerOptionsWiresSDSRetirementService(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("bootstrap_module_service.go")
+	if err != nil {
+		t.Fatalf("read bootstrap_module_service.go: %v", err)
+	}
+	content := string(src)
+	if !strings.Contains(content, "listingkitapi.WithSDSRetirementService(") {
+		t.Fatal("buildHandlerOptions should wire SDS retirement service into the HTTP handler")
+	}
+	if !strings.Contains(content, "listingkit.NewSDSRetirementService(") {
+		t.Fatal("buildHandlerOptions should bootstrap SDS retirement service from runtime dependencies")
+	}
+	if !strings.Contains(content, "runtime.taskRepository") || !strings.Contains(content, "runtime.service") || !strings.Contains(content, "runtime.sdsRetirementSheinSyncService") {
+		t.Fatal("buildHandlerOptions should build SDS retirement service from task repository, runtime service, and immediate SHEIN sync service")
+	}
+}
+
 func TestNewSubmitModuleInputScopesBuildServiceDependencies(t *testing.T) {
 	t.Parallel()
 
@@ -1074,6 +1093,15 @@ func TestBuildServiceAssemblesRuntimeDependenciesFromRegistrars(t *testing.T) {
 	if bundle.runtime.sheinSyncService == nil {
 		t.Fatal("expected runtime shein sync service to be wired")
 	}
+	if supportsImmediateRefresh(bundle.runtime.sheinSyncService) {
+		t.Fatal("expected public SHEIN sync runtime service to remain async-only")
+	}
+	if bundle.runtime.sdsRetirementSheinSyncService == nil {
+		t.Fatal("expected SDS retirement SHEIN sync service to be wired")
+	}
+	if !supportsImmediateRefresh(bundle.runtime.sdsRetirementSheinSyncService) {
+		t.Fatal("expected SDS retirement SHEIN sync service to support immediate refresh")
+	}
 	if bundle.runtime.sheinCandidateService == nil {
 		t.Fatal("expected runtime shein candidate service to be wired")
 	}
@@ -1083,6 +1111,43 @@ func TestBuildServiceAssemblesRuntimeDependenciesFromRegistrars(t *testing.T) {
 	if bundle.TemporalWorkerService == nil {
 		t.Fatal("expected temporal worker service to be exposed")
 	}
+}
+
+func TestBuildSheinSyncRuntimeServicesKeepsAsyncSyncAndImmediateRetirementRefresh(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	repositories := &builtRepositories{
+		storeRepository:     &listingadmin.GormStoreRepository{},
+		sheinSyncRepository: listingkitstore.NewMemSheinSyncRepository(),
+	}
+
+	runtimeServices, err := buildSheinSyncRuntimeServices(input, repositories, &closerStack{})
+	if err != nil {
+		t.Fatalf("buildSheinSyncRuntimeServices: %v", err)
+	}
+	if runtimeServices.syncService == nil {
+		t.Fatal("expected public SHEIN sync service")
+	}
+	if supportsImmediateRefresh(runtimeServices.syncService) {
+		t.Fatal("expected public SHEIN sync service to remain async-only")
+	}
+	if runtimeServices.sdsRetirementSyncService == nil {
+		t.Fatal("expected SDS retirement SHEIN sync service")
+	}
+	if !supportsImmediateRefresh(runtimeServices.sdsRetirementSyncService) {
+		t.Fatal("expected SDS retirement SHEIN sync service to support immediate refresh")
+	}
+}
+
+func supportsImmediateRefresh(service listingkit.SheinSyncService) bool {
+	aware, ok := service.(interface {
+		SupportsImmediateRefresh() bool
+	})
+	if !ok {
+		return true
+	}
+	return aware.SupportsImmediateRefresh()
 }
 
 func TestBuildServiceRuntimeAssemblesBundleFromRegistrars(t *testing.T) {
@@ -1372,6 +1437,34 @@ func TestBuildModuleWiresStudioBatchRunServiceIntoHandler(t *testing.T) {
 
 	if resp.Code == http.StatusNotImplemented {
 		t.Fatalf("expected studio batch run handler to be wired, got 501 body=%s", resp.Body.String())
+	}
+}
+
+func TestBuildModuleWiresSDSRetirementServiceIntoHandler(t *testing.T) {
+	t.Parallel()
+
+	module, err := BuildModule(BuildModuleInput{
+		ServiceInput: buildSuccessfulServiceInputFixture(),
+	})
+	if err != nil {
+		t.Fatalf("build module: %v", err)
+	}
+
+	engine := gin.New()
+	engine.POST("/api/v1/listing-kits/sds/retirements", module.Handler.CreateSDSRetirementRun)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/listing-kits/sds/retirements",
+		strings.NewReader(`{"platform":"shein","store_id":2001,"parent_product_id":9001,"prototype_group_id":7001,"variant_id":101}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code == http.StatusNotImplemented {
+		t.Fatalf("expected SDS retirement handler to be wired, got 501 body=%s", resp.Body.String())
 	}
 }
 

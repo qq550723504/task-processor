@@ -12,6 +12,9 @@ const setActiveSheinStudioBatchId = vi.fn();
 const getSDSBaselineReadiness = vi.fn();
 const warmSDSBaselineForSelection = vi.fn();
 const saveSDSGroupedCandidateHandoff = vi.fn();
+const createSDSRetirementRun = vi.fn();
+const updateSDSRetirementSelection = vi.fn();
+const confirmSDSRetirementRun = vi.fn();
 let currentSearchParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
@@ -113,6 +116,13 @@ vi.mock("@/lib/utils/sds-grouped-candidate-handoff", () => ({
     saveSDSGroupedCandidateHandoff(...args),
 }));
 
+vi.mock("@/lib/api/sds-retirement", () => ({
+  createSDSRetirementRun: (...args: unknown[]) => createSDSRetirementRun(...args),
+  updateSDSRetirementSelection: (...args: unknown[]) =>
+    updateSDSRetirementSelection(...args),
+  confirmSDSRetirementRun: (...args: unknown[]) => confirmSDSRetirementRun(...args),
+}));
+
 vi.mock("@/components/listingkit/sds/sds-product-browser-filters", () => ({
   SDSProductBrowserFilters: () => <div>filters</div>,
 }));
@@ -187,11 +197,68 @@ describe("SDSProductBrowser", () => {
     getSDSBaselineReadiness.mockReset();
     warmSDSBaselineForSelection.mockReset();
     saveSDSGroupedCandidateHandoff.mockReset();
+    createSDSRetirementRun.mockReset();
+    updateSDSRetirementSelection.mockReset();
+    confirmSDSRetirementRun.mockReset();
     currentSearchParams = new URLSearchParams();
     getSDSBaselineReadiness.mockResolvedValue({
       status: "ready",
       reason: "",
     });
+    updateSDSRetirementSelection.mockImplementation(async (runId, items) => ({
+      run: {
+        id: runId,
+        tenant_id: "tenant-a",
+        platform: "shein",
+        store_id: 869,
+        parent_product_id: 101,
+        prototype_group_id: 301,
+        variant_id: 201,
+        status: "ready",
+        reason_code: "product_detail_check_failed",
+        reason: "SDS product detail check failed: 产品已下架",
+      },
+      items: [
+        {
+          id: "item-1",
+          run_id: runId,
+          platform: "shein",
+          store_id: 869,
+          spu_name: "Placemat",
+          skc_name: items[0]?.selected ? "SKC-1" : "SKC-1",
+          selected: items[0]?.selected ?? true,
+          site_selection: '[{"site_abbr":"US","store_type":1}]',
+          status: items[0]?.selected ? "selected" : "pending",
+        },
+      ],
+    }));
+    confirmSDSRetirementRun.mockImplementation(async (runId) => ({
+      run: {
+        id: runId,
+        tenant_id: "tenant-a",
+        platform: "shein",
+        store_id: 869,
+        parent_product_id: 101,
+        prototype_group_id: 301,
+        variant_id: 201,
+        status: "running",
+        reason_code: "product_detail_check_failed",
+        reason: "SDS product detail check failed: 产品已下架",
+      },
+      items: [
+        {
+          id: "item-1",
+          run_id: runId,
+          platform: "shein",
+          store_id: 869,
+          spu_name: "Placemat",
+          skc_name: "SKC-1",
+          selected: true,
+          site_selection: '[{"site_abbr":"US","store_type":1}]',
+          status: "running",
+        },
+      ],
+    }));
   });
 
   it("creates a batch and routes to the dedicated batch page on the /new route", async () => {
@@ -663,5 +730,315 @@ describe("SDSProductBrowser", () => {
     expect(
       await screen.findByText("已加入 1 款商品到批次 TEST1，可以继续选下一款。"),
     ).toBeInTheDocument();
+  });
+
+  it("opens the retirement review flow when SHEIN reports the SDS product is already off shelf", async () => {
+    currentSearchParams = new URLSearchParams("targetBatchId=batch-1");
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "TEST1",
+        prompt: "retro cherries",
+        styleCount: "1",
+        groupedSelections: [],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+      },
+    ]);
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "TEST1",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      variationIntensity: "medium",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "",
+      transparentBackground: false,
+      imageStrategy: "sds_official",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selection: {
+        productId: 101,
+        parentProductId: 101,
+        variantId: 201,
+        prototypeGroupId: 301,
+        layerId: "layer-a",
+        productName: "Placemat",
+        variantLabel: "40x30cm · White",
+      },
+      groupedSelections: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-28T12:00:00Z",
+    });
+    getSDSBaselineReadiness.mockResolvedValue({
+      status: "blocked",
+      reason: "SDS product detail check failed: 产品已下架",
+      reasonCode: "product_detail_check_failed",
+    });
+    createSDSRetirementRun.mockResolvedValue({
+      run: {
+        id: "run-1",
+        tenant_id: "tenant-a",
+        platform: "shein",
+        store_id: 869,
+        parent_product_id: 101,
+        prototype_group_id: 301,
+        variant_id: 201,
+        status: "ready",
+        reason_code: "product_detail_check_failed",
+        reason: "SDS product detail check failed: 产品已下架",
+      },
+      items: [
+        {
+          id: "item-1",
+          run_id: "run-1",
+          platform: "shein",
+          store_id: 869,
+          spu_name: "Placemat",
+          skc_name: "SKC-1",
+          selected: true,
+          site_selection:
+            '[{"site_abbr":"US","store_type":1},{"site_abbr":"CA","store_type":1}]',
+          status: "selected",
+        },
+      ],
+    });
+
+    render(<SDSProductBrowser />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open variants" }));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "add selected variants to current batch",
+      }),
+    );
+
+    expect(await screen.findByText("SDS 底版下架处置")).toBeInTheDocument();
+    expect(createSDSRetirementRun).toHaveBeenCalledWith({
+      platform: "shein",
+      store_id: 869,
+      parent_product_id: 101,
+      prototype_group_id: 301,
+      variant_id: 201,
+      selected_variant_ids: [201],
+    });
+
+    const confirmButton = screen.getByRole("button", { name: /确认下架/ });
+    expect(confirmButton).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText(/我确认所选 SHEIN 商品将执行下架操作/));
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(confirmSDSRetirementRun).toHaveBeenCalledWith("run-1");
+    });
+  });
+
+  it("updates retirement selection when an item is deselected", async () => {
+    currentSearchParams = new URLSearchParams("targetBatchId=batch-1");
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "TEST1",
+        prompt: "retro cherries",
+        styleCount: "1",
+        groupedSelections: [],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+      },
+    ]);
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "TEST1",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      variationIntensity: "medium",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "",
+      transparentBackground: false,
+      imageStrategy: "sds_official",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selection: {
+        productId: 101,
+        parentProductId: 101,
+        variantId: 201,
+        prototypeGroupId: 301,
+        layerId: "layer-a",
+        productName: "Placemat",
+        variantLabel: "40x30cm · White",
+      },
+      groupedSelections: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-28T12:00:00Z",
+    });
+    getSDSBaselineReadiness.mockResolvedValue({
+      status: "blocked",
+      reason: "SDS product detail check failed: 产品已下架",
+      reasonCode: "product_detail_check_failed",
+    });
+    createSDSRetirementRun.mockResolvedValue({
+      run: {
+        id: "run-1",
+        tenant_id: "tenant-a",
+        platform: "shein",
+        store_id: 869,
+        parent_product_id: 101,
+        prototype_group_id: 301,
+        variant_id: 201,
+        status: "ready",
+        reason_code: "product_detail_check_failed",
+        reason: "SDS product detail check failed: 产品已下架",
+      },
+      items: [
+        {
+          id: "item-1",
+          run_id: "run-1",
+          platform: "shein",
+          store_id: 869,
+          spu_name: "Placemat",
+          skc_name: "SKC-1",
+          selected: true,
+          site_selection:
+            '[{"site_abbr":"US","store_type":1},{"site_abbr":"CA","store_type":1}]',
+          status: "selected",
+        },
+      ],
+    });
+
+    render(<SDSProductBrowser />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open variants" }));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "add selected variants to current batch",
+      }),
+    );
+    fireEvent.click(await screen.findByLabelText("SKC-1"));
+
+    await waitFor(() =>
+      expect(updateSDSRetirementSelection).toHaveBeenCalledWith("run-1", [
+        {
+          item_id: "item-1",
+          selected: false,
+          site_selection:
+            '[{"site_abbr":"US","store_type":1},{"site_abbr":"CA","store_type":1}]',
+        },
+      ]),
+    );
+  });
+
+  it("updates retirement selection when a site toggle changes before confirm", async () => {
+    currentSearchParams = new URLSearchParams("targetBatchId=batch-1");
+    listSheinStudioBatches.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "TEST1",
+        prompt: "retro cherries",
+        styleCount: "1",
+        groupedSelections: [],
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+      },
+    ]);
+    getSheinStudioBatch.mockResolvedValue({
+      id: "batch-1",
+      name: "TEST1",
+      prompt: "retro cherries",
+      styleCount: "1",
+      sheinStoreId: "869",
+      variationIntensity: "medium",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "",
+      transparentBackground: false,
+      imageStrategy: "sds_official",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      selection: {
+        productId: 101,
+        parentProductId: 101,
+        variantId: 201,
+        prototypeGroupId: 301,
+        layerId: "layer-a",
+        productName: "Placemat",
+        variantLabel: "40x30cm · White",
+      },
+      groupedSelections: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-05-28T12:00:00Z",
+    });
+    getSDSBaselineReadiness.mockResolvedValue({
+      status: "blocked",
+      reason: "SDS product detail check failed: 产品已下架",
+      reasonCode: "product_detail_check_failed",
+    });
+    createSDSRetirementRun.mockResolvedValue({
+      run: {
+        id: "run-1",
+        tenant_id: "tenant-a",
+        platform: "shein",
+        store_id: 869,
+        parent_product_id: 101,
+        prototype_group_id: 301,
+        variant_id: 201,
+        status: "ready",
+        reason_code: "product_detail_check_failed",
+        reason: "SDS product detail check failed: 产品已下架",
+      },
+      items: [
+        {
+          id: "item-1",
+          run_id: "run-1",
+          platform: "shein",
+          store_id: 869,
+          spu_name: "Placemat",
+          skc_name: "SKC-1",
+          selected: true,
+          site_selection:
+            '[{"site_abbr":"US","store_type":1},{"site_abbr":"CA","store_type":1}]',
+          status: "selected",
+        },
+      ],
+    });
+
+    render(<SDSProductBrowser />);
+
+    fireEvent.click(screen.getByRole("button", { name: "open variants" }));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "add selected variants to current batch",
+      }),
+    );
+    fireEvent.click(await screen.findByLabelText("SKC-1 US"));
+
+    await waitFor(() =>
+      expect(updateSDSRetirementSelection).toHaveBeenCalledWith("run-1", [
+        {
+          item_id: "item-1",
+          selected: true,
+          site_selection: '[{"site_abbr":"CA","store_type":1}]',
+        },
+      ]),
+    );
   });
 });

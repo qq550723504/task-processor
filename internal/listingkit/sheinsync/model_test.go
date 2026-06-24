@@ -147,6 +147,17 @@ func TestSheinSyncedProductRecordUsesCompositeUniqueKey(t *testing.T) {
 	require.Equal(t, "SKCName", uniqueKey.Fields[2].Field.Name)
 }
 
+func TestSheinSyncedProductRecordCarriesBusinessModel(t *testing.T) {
+	t.Parallel()
+
+	parsed, err := schema.Parse(&SheinSyncedProductRecord{}, &sync.Map{}, schema.NamingStrategy{})
+	require.NoError(t, err)
+
+	field := parsed.LookUpField("BusinessModel")
+	require.NotNil(t, field)
+	require.Equal(t, "business_model", field.DBName)
+}
+
 func TestSheinActivityCandidateRecordUsesTenantScopedUniqueKey(t *testing.T) {
 	t.Parallel()
 

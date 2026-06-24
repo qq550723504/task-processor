@@ -16,6 +16,7 @@ type SheinSyncedProductRecord struct {
 	ProductNameMulti   string               `json:"product_name_multi,omitempty" gorm:"type:text"`
 	MainImageURL       string               `json:"main_image_url,omitempty" gorm:"type:text"`
 	SaleName           string               `json:"sale_name,omitempty" gorm:"type:varchar(255)"`
+	BusinessModel      int                  `json:"business_model,omitempty"`
 	ShelfStatus        string               `json:"shelf_status,omitempty" gorm:"type:varchar(64);index"`
 	PublishTime        *time.Time           `json:"publish_time,omitempty"`
 	FirstShelfTime     *time.Time           `json:"first_shelf_time,omitempty"`

@@ -10,9 +10,15 @@ import { Select } from "@/components/ui/select";
 import { SDSPagination } from "@/components/listingkit/sds/sds-pagination";
 import { SDSProductCard } from "@/components/listingkit/sds/sds-product-card";
 import { SDSProductBrowserFilters } from "@/components/listingkit/sds/sds-product-browser-filters";
+import { SDSRetirementPanel } from "@/components/listingkit/sds/sds-retirement-panel";
 import { SDSRecentVariants } from "@/components/listingkit/sds/sds-recent-variants";
 import { SDSSelectionSummary } from "@/components/listingkit/sds/sds-selection-summary";
 import { SDSVariantPicker } from "@/components/listingkit/sds/sds-variant-picker";
+import {
+  confirmSDSRetirementRun,
+  createSDSRetirementRun,
+  updateSDSRetirementSelection,
+} from "@/lib/api/sds-retirement";
 import {
   getSDSBaselineReadiness,
   warmSDSBaselineForSelection,
@@ -27,6 +33,10 @@ import type { SDSProductVariant, SDSProductVariantSelection } from "@/lib/types/
 import {
   buildGroupedSDSSelectionID,
 } from "@/lib/types/sds-baseline";
+import type {
+  SDSRetirementRunDetail,
+  SDSRetirementSelectionUpdate,
+} from "@/lib/types/sds-retirement";
 import {
   buildGroupedSDSBaselineHandoff,
   getSDSBaselineReasonMessage,
@@ -58,6 +68,11 @@ const EMPTY_TARGET_BATCH_FLOW_STATE: TargetBatchFlowState = {
   blockedSelection: null,
 };
 
+function parsePositiveInt(value: string | number | undefined) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export function SDSProductBrowser({
   initialKeyword = "",
   initialPage = 1,
@@ -74,6 +89,11 @@ export function SDSProductBrowser({
   const [pickerProductId, setPickerProductId] = useState<number | undefined>();
   const [isAddingToTargetBatch, setIsAddingToTargetBatch] = useState(false);
   const [isWarmingBlockedBaseline, setIsWarmingBlockedBaseline] = useState(false);
+  const [retirementDetail, setRetirementDetail] = useState<SDSRetirementRunDetail | null>(null);
+  const [retirementError, setRetirementError] = useState("");
+  const [isLoadingRetirementPreview, setIsLoadingRetirementPreview] = useState(false);
+  const [isSavingRetirementSelection, setIsSavingRetirementSelection] = useState(false);
+  const [isConfirmingRetirement, setIsConfirmingRetirement] = useState(false);
   const [targetBatchFlowStateByBatchId, setTargetBatchFlowStateByBatchId] = useState<
     Record<string, TargetBatchFlowState>
   >({});
@@ -168,6 +188,14 @@ export function SDSProductBrowser({
       ...current,
       [batchId]: updater(current[batchId] ?? EMPTY_TARGET_BATCH_FLOW_STATE),
     }));
+  }
+
+  function resetRetirementFlow() {
+    setRetirementDetail(null);
+    setRetirementError("");
+    setIsLoadingRetirementPreview(false);
+    setIsSavingRetirementSelection(false);
+    setIsConfirmingRetirement(false);
   }
 
   async function refreshRecentBatches(options?: { preserveCurrentOnError?: boolean }) {
@@ -280,6 +308,7 @@ export function SDSProductBrowser({
   }
 
   function openVariantPicker(productId: number) {
+    resetRetirementFlow();
     updateTargetBatchFlowState(targetBatchId, (current) => ({
       ...current,
       error: "",
@@ -327,6 +356,82 @@ export function SDSProductBrowser({
     applySelection(selection);
   }
 
+  async function openRetirementReview(
+    selection: SDSProductVariantSelection,
+    storeId: number,
+  ) {
+    if (storeId <= 0) {
+      handoffBlockedGroupedSelection(
+        selection,
+        "SHEIN 店铺信息缺失，暂时无法生成下架候选。",
+      );
+      return;
+    }
+    setRetirementError("");
+    setIsLoadingRetirementPreview(true);
+    try {
+      const detail = await createSDSRetirementRun({
+        platform: "shein",
+        store_id: storeId,
+        parent_product_id: selection.parentProductId,
+        prototype_group_id: selection.prototypeGroupId,
+        variant_id: selection.variantId,
+        selected_variant_ids: selection.selectedVariantIds,
+      });
+      setPickerProductId(undefined);
+      setRetirementDetail(detail);
+      updateTargetBatchFlowState(targetBatchId, (current) => ({
+        ...current,
+        feedback: "",
+        error: "",
+        blockedSelection: null,
+      }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "读取 SHEIN 下架候选失败。";
+      setRetirementError(message);
+      handoffBlockedGroupedSelection(selection, message);
+    } finally {
+      setIsLoadingRetirementPreview(false);
+    }
+  }
+
+  async function handleRetirementSelectionChange(items: SDSRetirementSelectionUpdate[]) {
+    if (!retirementDetail?.run.id || items.length === 0) {
+      return;
+    }
+    setRetirementError("");
+    setIsSavingRetirementSelection(true);
+    try {
+      const detail = await updateSDSRetirementSelection(retirementDetail.run.id, items);
+      setRetirementDetail(detail);
+    } catch (error) {
+      setRetirementError(
+        error instanceof Error ? error.message : "更新下架选择失败，请重试。",
+      );
+    } finally {
+      setIsSavingRetirementSelection(false);
+    }
+  }
+
+  async function handleRetirementConfirm() {
+    if (!retirementDetail?.run.id) {
+      return;
+    }
+    setRetirementError("");
+    setIsConfirmingRetirement(true);
+    try {
+      const detail = await confirmSDSRetirementRun(retirementDetail.run.id);
+      setRetirementDetail(detail);
+    } catch (error) {
+      setRetirementError(
+        error instanceof Error ? error.message : "提交下架任务失败，请重试。",
+      );
+    } finally {
+      setIsConfirmingRetirement(false);
+    }
+  }
+
   async function handleWarmBlockedBaseline() {
     if (!blockedBaselineSelection || !effectiveTargetBatchId) {
       return;
@@ -372,6 +477,7 @@ export function SDSProductBrowser({
   async function withGroupedBaselineGate(
     selection: SDSProductVariantSelection,
     onReady: () => Promise<void>,
+    options?: { retirementStoreId?: number },
   ) {
     try {
       const readiness = await getSDSBaselineReadiness({
@@ -381,7 +487,15 @@ export function SDSProductBrowser({
         selectedVariantIds: selection.selectedVariantIds,
       });
       if (readiness.status === "ready") {
+        resetRetirementFlow();
         await onReady();
+        return;
+      }
+      if (
+        readiness.reasonCode === "product_detail_check_failed" &&
+        (options?.retirementStoreId ?? 0) > 0
+      ) {
+        await openRetirementReview(selection, options?.retirementStoreId ?? 0);
         return;
       }
       const handoff = buildGroupedSDSBaselineHandoff({
@@ -498,7 +612,9 @@ export function SDSProductBrowser({
       if (options?.skipBaselineGate) {
         await persistSelection();
       } else {
-        await withGroupedBaselineGate(selection, persistSelection);
+        await withGroupedBaselineGate(selection, persistSelection, {
+          retirementStoreId: parsePositiveInt(target.sheinStoreId),
+        });
       }
     } catch (error) {
       updateTargetBatchFlowState(targetBatchId, (current) => ({
@@ -530,6 +646,8 @@ export function SDSProductBrowser({
         setCurrentTargetBatch(saved.id);
         router.push(`/listing-kits/sds/batches/${saved.id}`);
       }
+    }, {
+      retirementStoreId: 0,
     });
   }
 
@@ -728,6 +846,25 @@ export function SDSProductBrowser({
             : undefined
           }
         />
+
+        {isLoadingRetirementPreview ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            正在读取 SHEIN 下架候选...
+          </div>
+        ) : null}
+        {retirementError ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            {retirementError}
+          </div>
+        ) : null}
+        {retirementDetail ? (
+          <SDSRetirementPanel
+            detail={retirementDetail}
+            isExecuting={isSavingRetirementSelection || isConfirmingRetirement}
+            onConfirm={() => void handleRetirementConfirm()}
+            onSelectionChange={(items) => void handleRetirementSelectionChange(items)}
+          />
+        ) : null}
 
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3 px-1">

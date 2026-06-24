@@ -43,3 +43,32 @@ func TestRequestContextIgnoresLegacyLoginUserHeader(t *testing.T) {
 		t.Fatalf("user id = %q, want empty", got)
 	}
 }
+
+func TestRequestExplicitTenantIDRejectsMissingTenant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	req, err := http.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Request = req
+
+	if got, ok := requestExplicitTenantID(c); ok || got != "" {
+		t.Fatalf("tenant id = %q ok=%v, want empty false", got, ok)
+	}
+}
+
+func TestRequestExplicitTenantIDAcceptsExplicitDefaultTenant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	req, err := http.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Tenant-ID", "default")
+	c.Request = req
+
+	if got, ok := requestExplicitTenantID(c); !ok || got != "default" {
+		t.Fatalf("tenant id = %q ok=%v, want default true", got, ok)
+	}
+}

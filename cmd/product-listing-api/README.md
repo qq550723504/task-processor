@@ -823,3 +823,18 @@ go run ./cmd/product-listing-api \
 3. 再接 `whiteBackground`
 4. 再验证 `publisher`
 5. 最后验证 `needs_review -> approve/reject/retry` 闭环
+
+### SDS 底版失效下架处置
+
+当 SDS 返回产品下架、设计面不可用、或 baseline readiness 为 `product_detail_check_failed` 时，
+ListingKit 会允许用户创建 SDS retirement run。
+
+流程：
+
+1. 系统按 SDS `parent_product_id`、`prototype_group_id`、`variant_id` 生成处置单。
+2. 系统刷新 SHEIN 当前在架商品并生成待下架 SKC/站点清单。
+3. 用户确认 SKC 和站点。
+4. 系统调用 SHEIN `OffShelf`。
+5. 成功后本地同步台账标记为 `OFF_SHELF` 且 `is_active=false`。
+
+不会后台自动下架；真实下架必须由用户确认。
