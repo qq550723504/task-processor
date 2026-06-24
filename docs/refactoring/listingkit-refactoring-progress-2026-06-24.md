@@ -701,3 +701,13 @@ Status: leader active deletion takeover is production-validated. Remaining produ
 pm test -- import-task-admin-page.test.tsx.
 
 Status: task-list operator reason visibility is code-validated. Production UI deployment remains the next integration step if this app is served from a separately deployed frontend artifact.
+
+### 2026-06-24 production validation: dispatch event and task reason persistence
+
+- Read-only production DB observation confirmed listing_dispatch_event is receiving control-plane decisions.
+- Last 15 minutes contained 1380 dispatch events, including 37 dispatched events plus skipped events for store_paused, 
+o_capacity, and store_unknown.
+- Last 60 minutes contained 2738 task rows with non-empty eason_code, confirming task-list-visible delay/error reason fields are being persisted.
+- Daily-limit audit fields were present for stores 322/976, 246/1041, and 246/1025, including configured daily_limit and observed queue depth.
+
+Status: backend production persistence for event audit and operator-visible task reasons is validated. Frontend publication for the new task-list column is intentionally deferred. Remaining high-value production exercise: rollback rehearsal.
