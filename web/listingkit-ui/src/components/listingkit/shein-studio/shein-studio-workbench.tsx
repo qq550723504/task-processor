@@ -97,6 +97,7 @@ import {
   projectSheinStudioStoreSelectionState,
   projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
+  selectActiveGroupPromptHistory,
   sheinStudioBusyMessage,
   summarizeSheinStudioSelection,
   type SheinStudioWorkbenchHydratedBatch,
@@ -367,7 +368,11 @@ export function SheinStudioWorkbench({
     ? ""
     : "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。";
   const activeGroupPromptHistory = useMemo(
-    () => groups.find((group) => group.id === activeGroupId)?.promptHistory ?? [],
+    () =>
+      selectActiveGroupPromptHistory({
+        activeGroupId,
+        groups,
+      }),
     [activeGroupId, groups],
   );
   const localDraftSnapshot = localDraftSnapshotDetail?.draft ?? null;

@@ -78,6 +78,16 @@ export function pickActiveSheinStudioGroup(
   return [...groups].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
 }
 
+export function selectActiveGroupPromptHistory({
+  activeGroupId,
+  groups,
+}: {
+  activeGroupId: string;
+  groups: SheinStudioGroupedWorkspace[];
+}) {
+  return groups.find((group) => group.id === activeGroupId)?.promptHistory ?? [];
+}
+
 export function projectGroupToWorkbench(group: SheinStudioGroupedWorkspace) {
   return {
     prompt: group.currentPrompt,

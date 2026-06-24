@@ -13,6 +13,7 @@ import {
   projectDefaultSelectedSDSImages,
   projectSheinStudioStoreSelectionState,
   projectSavedBatchToWorkbench,
+  selectActiveGroupPromptHistory,
   projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
   projectWorkbenchStateToSavedBatch,
@@ -216,6 +217,95 @@ describe("shein studio workbench model", () => {
     ]);
 
     expect(group?.id).toBe("group-2");
+  });
+
+  it("selects prompt history for the active group", () => {
+    const history = [
+      {
+        prompt: "historic prompt",
+        groupedImageMode: "per_product" as const,
+        createdAt: "2026-06-01T00:00:00Z",
+      },
+    ];
+
+    expect(
+      selectActiveGroupPromptHistory({
+        activeGroupId: "group-2",
+        groups: [
+          {
+            id: "group-1",
+            name: "Group 1",
+            currentPrompt: "prompt a",
+            promptHistory: [],
+            primarySelection: {
+              productId: 1,
+              parentProductId: 1,
+              variantId: 100,
+              prototypeGroupId: 200,
+              layerId: "layer-1",
+              productName: "tee",
+              variantLabel: "M / black",
+            },
+            groupedSelections: [],
+            sheinStoreId: "42",
+            imageStrategy: "hybrid",
+            groupedImageMode: "shared_by_size",
+            selectedSdsImages: [],
+            renderSizeImagesWithSds: true,
+            productImageCount: "5",
+            productImagePrompt: "",
+            productImagePrompts: [],
+            artworkModel: "",
+            transparentBackground: false,
+            variationIntensity: "medium",
+            designs: [],
+            selectedIds: [],
+            createdTasks: [],
+            updatedAt: "2026-05-26T00:00:00Z",
+          },
+          {
+            id: "group-2",
+            name: "Group 2",
+            currentPrompt: "prompt b",
+            promptHistory: history,
+            primarySelection: {
+              productId: 1,
+              parentProductId: 1,
+              variantId: 101,
+              prototypeGroupId: 200,
+              layerId: "layer-2",
+              productName: "hoodie",
+              variantLabel: "L / white",
+            },
+            groupedSelections: [],
+            sheinStoreId: "88",
+            imageStrategy: "sds_official",
+            groupedImageMode: "per_product",
+            selectedSdsImages: [],
+            renderSizeImagesWithSds: false,
+            productImageCount: "3",
+            productImagePrompt: "product prompt",
+            productImagePrompts: [],
+            artworkModel: "",
+            transparentBackground: true,
+            variationIntensity: "strong",
+            designs: [],
+            selectedIds: [],
+            createdTasks: [],
+            updatedAt: "2026-05-26T01:00:00Z",
+          },
+        ],
+      }),
+    ).toBe(history);
+  });
+
+  it("returns an empty prompt history when the active group is missing", () => {
+    expect(
+      selectActiveGroupPromptHistory({
+        activeGroupId: "missing",
+        groups: [],
+      }),
+    ).toEqual([]);
   });
 
   it("projects a group into workbench editor fields", () => {
