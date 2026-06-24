@@ -76,6 +76,7 @@ import {
   useHydratedSDSVariantSelection,
   loadLocalSheinStudioDraftSnapshotDetail,
   useSheinStudioActiveBatchScope,
+  useSheinStudioWorkbenchTraceContext,
   useSheinStudioPendingNavigationGuard,
   useSheinStudioDraftPersistence,
   useSheinStudioStepNavigation,
@@ -97,7 +98,6 @@ import {
   projectSheinStudioStoreSelectionState,
   projectStudioSubscriptionGate,
   projectWorkbenchStateFallback,
-  projectWorkbenchTraceContext,
   resolveCurrentSheinStudioSavedBatch,
   selectActiveGroupPromptHistory,
   selectActiveGroupPrimarySelection,
@@ -397,22 +397,14 @@ export function SheinStudioWorkbench({
       savedBatches,
     ],
   );
-  const traceBatchId = currentQueuedBatchId || activeBatchId || initialBatchId || "";
-  const batchTraceContext = useMemo(
-    () =>
-      projectWorkbenchTraceContext({
-        batchQueueMode,
-        queuedBatchIds,
-        queuedBatchIndex,
-        traceBatchId,
-      }),
-    [
-      batchQueueMode,
-      queuedBatchIds,
-      queuedBatchIndex,
-      traceBatchId,
-    ],
-  );
+  const batchTraceContext = useSheinStudioWorkbenchTraceContext({
+    activeBatchId,
+    batchQueueMode,
+    currentQueuedBatchId,
+    initialBatchId,
+    queuedBatchIds,
+    queuedBatchIndex,
+  });
   const currentActiveBatch = useMemo(
     () =>
       resolveCurrentSheinStudioSavedBatch({

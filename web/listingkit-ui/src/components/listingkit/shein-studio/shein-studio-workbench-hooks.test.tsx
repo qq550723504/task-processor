@@ -1,7 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { useSheinStudioActiveBatchScope } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
+import {
+  useSheinStudioActiveBatchScope,
+  useSheinStudioWorkbenchTraceContext,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 
 describe("useSheinStudioActiveBatchScope", () => {
   it("keeps the dedicated route batch id as the active batch", () => {
@@ -39,5 +42,41 @@ describe("useSheinStudioActiveBatchScope", () => {
     rerender({ selectionVariantId: 202 });
 
     expect(result.current.activeBatchId).toBe("");
+  });
+});
+
+describe("useSheinStudioWorkbenchTraceContext", () => {
+  it("projects trace context with queued batch taking priority over active and route batches", () => {
+    const { result, rerender } = renderHook(
+      ({
+        currentQueuedBatchId,
+      }: {
+        currentQueuedBatchId: string;
+      }) =>
+        useSheinStudioWorkbenchTraceContext({
+          activeBatchId: "batch-active",
+          batchQueueMode: "generate",
+          currentQueuedBatchId,
+          initialBatchId: "batch-route",
+          queuedBatchIds: ["batch-queued-1", "batch-queued-2"],
+          queuedBatchIndex: 1,
+        }),
+      {
+        initialProps: {
+          currentQueuedBatchId: "batch-queued-2",
+        },
+      },
+    );
+
+    expect(result.current).toEqual({
+      batchId: "batch-queued-2",
+      queueIndex: 2,
+      queueMode: "generate",
+      queueTotal: 2,
+    });
+
+    rerender({ currentQueuedBatchId: "" });
+
+    expect(result.current.batchId).toBe("batch-active");
   });
 });

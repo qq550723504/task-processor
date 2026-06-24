@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
-import { buildSheinStudioSelectionKey } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+import {
+  buildSheinStudioSelectionKey,
+  projectWorkbenchTraceContext,
+} from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { buildSheinStudioDraftInput } from "@/lib/shein-studio/draft-input";
 import {
   type DraftSaveOptions,
@@ -17,6 +20,7 @@ import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
@@ -114,6 +118,34 @@ export function useSheinStudioActiveBatchScope({
     activeBatchId,
     setActiveBatchId,
   };
+}
+
+export function useSheinStudioWorkbenchTraceContext({
+  activeBatchId,
+  batchQueueMode,
+  currentQueuedBatchId,
+  initialBatchId,
+  queuedBatchIds,
+  queuedBatchIndex,
+}: {
+  activeBatchId: string;
+  batchQueueMode: SheinStudioBatchQueueMode | null;
+  currentQueuedBatchId: string;
+  initialBatchId?: string;
+  queuedBatchIds: string[];
+  queuedBatchIndex: number;
+}) {
+  const traceBatchId = currentQueuedBatchId || activeBatchId || initialBatchId || "";
+  return useMemo(
+    () =>
+      projectWorkbenchTraceContext({
+        batchQueueMode,
+        queuedBatchIds,
+        queuedBatchIndex,
+        traceBatchId,
+      }),
+    [batchQueueMode, queuedBatchIds, queuedBatchIndex, traceBatchId],
+  );
 }
 
 export function useHydratedSDSVariantSelection(
