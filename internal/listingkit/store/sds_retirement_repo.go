@@ -63,7 +63,7 @@ func (r *taskRepository) UpdateSDSRetirementItems(ctx context.Context, runID str
 				return result.Error
 			}
 			if result.RowsAffected == 0 {
-				return gorm.ErrRecordNotFound
+				return listingkit.ErrTaskNotFound
 			}
 		}
 		return nil
@@ -79,8 +79,19 @@ func (r *taskRepository) SaveSDSRetirementExecution(ctx context.Context, run *li
 			return err
 		}
 		for i := range items {
-			if err := tx.Save(&items[i]).Error; err != nil {
-				return err
+			if items[i].RunID != run.ID {
+				return listingkit.ErrTaskNotFound
+			}
+			result := tx.Model(&listingkit.SDSRetirementItemRecord{}).
+				Where("run_id = ? AND id = ?", run.ID, items[i].ID).
+				Select("*").
+				Omit("created_at").
+				Updates(&items[i])
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected == 0 {
+				return listingkit.ErrTaskNotFound
 			}
 		}
 		return nil
