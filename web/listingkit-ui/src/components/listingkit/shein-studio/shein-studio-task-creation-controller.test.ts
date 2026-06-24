@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   projectItemizedBatchDetail,
   projectItemizedFailedRetryRequest,
+  projectItemizedFailedRetryStep,
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgress,
   projectItemizedTaskCreationResult,
@@ -464,6 +465,54 @@ describe("projectItemizedFailedRetryRequest", () => {
       itemIds: ["item-1"],
       tenantId: "tenant-detail",
     });
+  });
+});
+
+describe("projectItemizedFailedRetryStep", () => {
+  it("returns generate while the retry result is still generating", () => {
+    expect(
+      projectItemizedFailedRetryStep({
+        ...buildCurrentDetail(),
+        batch: {
+          ...buildCurrentDetail().batch,
+          status: "generating",
+        },
+      }),
+    ).toBe("generate");
+  });
+
+  it("returns generate while any retry item is still in flight", () => {
+    expect(
+      projectItemizedFailedRetryStep({
+        ...buildCurrentDetail(),
+        items: [
+          {
+            item: {
+              id: "item-1",
+              batchId: "batch-1",
+              status: "awaiting_materialization",
+              targetGroupKey: "group-1",
+              selectionCount: 1,
+              createdAt: "2026-06-22T00:00:00.000Z",
+              updatedAt: "2026-06-22T00:00:00.000Z",
+            },
+            designs: [],
+          },
+        ],
+      }),
+    ).toBe("generate");
+  });
+
+  it("does not switch steps after retry settles outside generation", () => {
+    expect(
+      projectItemizedFailedRetryStep({
+        ...buildCurrentDetail(),
+        batch: {
+          ...buildCurrentDetail().batch,
+          status: "partially_failed",
+        },
+      }),
+    ).toBeNull();
   });
 });
 

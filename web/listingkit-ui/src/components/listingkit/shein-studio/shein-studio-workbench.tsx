@@ -55,6 +55,7 @@ import {
 import {
   projectItemizedBatchDetail,
   projectItemizedFailedRetryRequest,
+  projectItemizedFailedRetryStep,
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgress,
   useSheinStudioItemizedBatchContext,
@@ -1551,11 +1552,9 @@ export function SheinStudioWorkbench({
             retryRequest.itemIds,
           );
       applyItemizedBatchDetail(nextDetail);
-      if (
-        nextDetail.batch.status === "generating" ||
-        hasInFlightItemizedBatchGeneration(nextDetail)
-      ) {
-        setEffectiveStep("generate");
+      const nextStep = projectItemizedFailedRetryStep(nextDetail);
+      if (nextStep) {
+        setEffectiveStep(nextStep);
       }
     } catch (error) {
       workbenchController.setField(

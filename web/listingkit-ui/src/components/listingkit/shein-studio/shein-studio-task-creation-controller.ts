@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import {
   flattenItemizedBatchDesigns,
   getApprovedItemizedBatchDesignIDs,
+  hasInFlightItemizedBatchGeneration,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import { upsertRecentSavedBatch } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
@@ -247,6 +248,18 @@ export function projectItemizedFailedRetryRequest({
     itemIds: [itemId],
     tenantId: tenantId || undefined,
   };
+}
+
+export function projectItemizedFailedRetryStep(
+  detail: SheinStudioBatchDetail,
+): "generate" | null {
+  if (
+    detail.batch.status === "generating" ||
+    hasInFlightItemizedBatchGeneration(detail)
+  ) {
+    return "generate";
+  }
+  return null;
 }
 
 export function projectItemizedBatchDetail({
