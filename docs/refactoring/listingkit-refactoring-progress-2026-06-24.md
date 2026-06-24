@@ -747,3 +747,12 @@ Deferred item:
 Recommended next track:
 
 - Add observability/reporting around dispatch event distribution, leader status, and `failed > 0` cycles rather than adding more scheduler variants.
+
+### 2026-06-24 dispatch event observability UI follow-up
+
+- Enhanced the ListingKit admin dispatch-events page so operators can distinguish healthy dispatch flow from delayed or failed cycles without reading raw event rows first.
+- Added summary-card percentages for dispatched/skipped/failed events in the active window.
+- Added a destructive warning when `failed > 0`, including the top failed reason when available.
+- Added dedicated failed-reason and skipped-reason panels with quick filters for event-table drilldown.
+
+Status: observability/reporting UI follow-up is code-complete. Frontend test/build and production publication remain deferred until an explicit validation/deployment window.

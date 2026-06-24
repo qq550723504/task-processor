@@ -84,6 +84,16 @@ export function DispatchEventsAdminPage() {
   const events = eventPage?.items ?? [];
   const total = eventPage?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalSummaryEvents = summary?.total ?? 0;
+  const dispatchedPercent = percentage(summary?.dispatched ?? 0, totalSummaryEvents);
+  const skippedPercent = percentage(summary?.skipped ?? 0, totalSummaryEvents);
+  const failedPercent = percentage(summary?.failed ?? 0, totalSummaryEvents);
+  const failedReasons =
+    summary?.reasonCounts.filter((item) => item.action === "failed") ?? [];
+  const skippedReasons =
+    summary?.reasonCounts.filter((item) => item.action === "skipped") ?? [];
+  const topFailedReason = failedReasons[0];
+  const topSkippedReason = skippedReasons[0];
   const loading =
     summaryQuery.isLoading ||
     summaryQuery.isFetching ||
@@ -112,6 +122,13 @@ export function DispatchEventsAdminPage() {
   function handlePageSizeChange(value: string) {
     setPage(1);
     setPageSize(Number(value));
+  }
+
+  function applyQuickAction(action: FilterState["action"]) {
+    const nextFilters = { ...appliedFilters, action };
+    setFilters(nextFilters);
+    setAppliedFilters(nextFilters);
+    setPage(1);
   }
 
   return (
@@ -197,11 +214,61 @@ export function DispatchEventsAdminPage() {
         ) : null}
       </section>
 
+      {summary && summary.failed > 0 ? (
+        <Alert variant="destructive">
+          <AlertDescription>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                最近窗口出现 {summary.failed} 次 failed 调度事件
+                {topFailedReason
+                  ? `，最高频原因是 ${topFailedReason.reasonCode}（${topFailedReason.count} 次）`
+                  : ""}
+                。建议优先查看失败事件和后端日志。
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => applyQuickAction("failed")}
+              >
+                只看失败
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="总事件" value={summary?.total ?? 0} />
-        <MetricCard label="已派发" value={summary?.dispatched ?? 0} />
-        <MetricCard label="已跳过" value={summary?.skipped ?? 0} />
-        <MetricCard label="失败" value={summary?.failed ?? 0} />
+        <MetricCard
+          label="总事件"
+          value={totalSummaryEvents}
+          detail={formatWindow(summary?.window.from, summary?.window.to)}
+        />
+        <MetricCard
+          label="已派发"
+          value={summary?.dispatched ?? 0}
+          detail={`${dispatchedPercent}% of window`}
+          tone="good"
+        />
+        <MetricCard
+          label="已跳过"
+          value={summary?.skipped ?? 0}
+          detail={
+            topSkippedReason
+              ? `${skippedPercent}% · ${topSkippedReason.reasonCode}`
+              : `${skippedPercent}% of window`
+          }
+          tone={summary && summary.skipped > 0 ? "warn" : "neutral"}
+        />
+        <MetricCard
+          label="失败"
+          value={summary?.failed ?? 0}
+          detail={
+            topFailedReason
+              ? `${failedPercent}% · ${topFailedReason.reasonCode}`
+              : `${failedPercent}% of window`
+          }
+          tone={summary && summary.failed > 0 ? "danger" : "neutral"}
+        />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.75fr)]">
@@ -304,6 +371,54 @@ export function DispatchEventsAdminPage() {
                 </div>
               ))}
             </div>
+          )}
+        </Panel>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <Panel
+          title="失败原因 Top"
+          description="failed > 0 时优先排查这里"
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => applyQuickAction("failed")}
+              disabled={loading}
+            >
+              筛选失败
+            </Button>
+          }
+        >
+          {loading && !summary ? (
+            <EmptyState>加载中...</EmptyState>
+          ) : failedReasons.length === 0 ? (
+            <EmptyState>当前窗口暂无 failed 事件</EmptyState>
+          ) : (
+            <ReasonList items={failedReasons} total={summary?.failed ?? 0} />
+          )}
+        </Panel>
+
+        <Panel
+          title="跳过原因 Top"
+          description="用于解释 pending 任务为什么暂未调度"
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => applyQuickAction("skipped")}
+              disabled={loading}
+            >
+              筛选跳过
+            </Button>
+          }
+        >
+          {loading && !summary ? (
+            <EmptyState>加载中...</EmptyState>
+          ) : skippedReasons.length === 0 ? (
+            <EmptyState>当前窗口暂无 skipped 事件</EmptyState>
+          ) : (
+            <ReasonList items={skippedReasons} total={summary?.skipped ?? 0} />
           )}
         </Panel>
       </section>
@@ -517,18 +632,44 @@ function formatTime(value: string) {
   });
 }
 
+function percentage(value: number, total: number) {
+  if (total <= 0) {
+    return 0;
+  }
+  return Math.round((value / total) * 100);
+}
+
 function displayText(value: string | undefined, fallback: string) {
   return value?.trim() || fallback;
 }
 
-function MetricCard({ label, value }: { label: string; value: number }) {
+function MetricCard({
+  label,
+  value,
+  detail,
+  tone = "neutral",
+}: {
+  label: string;
+  value: number;
+  detail?: string;
+  tone?: "neutral" | "good" | "warn" | "danger";
+}) {
+  const toneClass =
+    tone === "good"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+      : tone === "warn"
+        ? "border-amber-200 bg-amber-50 text-amber-950"
+        : tone === "danger"
+          ? "border-rose-200 bg-rose-50 text-rose-950"
+          : "border-zinc-200 bg-white text-zinc-950";
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-zinc-500">
+    <div className={`rounded-lg border p-4 shadow-sm ${toneClass}`}>
+      <div className="mb-2 flex items-center gap-2 text-xs font-medium opacity-70">
         <BarChart3 className="size-4" />
         {label}
       </div>
-      <div className="text-2xl font-semibold text-zinc-950">{value}</div>
+      <div className="text-2xl font-semibold">{value}</div>
+      {detail ? <div className="mt-1 text-xs opacity-70">{detail}</div> : null}
     </div>
   );
 }
@@ -536,19 +677,62 @@ function MetricCard({ label, value }: { label: string; value: number }) {
 function Panel({
   title,
   description,
+  action,
   children,
 }: {
   title: string;
   description: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm">
-      <div className="mb-3">
-        <h2 className="text-base font-semibold text-zinc-950">{title}</h2>
-        <p className="mt-1 text-xs text-zinc-500">{description}</p>
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-zinc-950">{title}</h2>
+          <p className="mt-1 text-xs text-zinc-500">{description}</p>
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
       </div>
       {children}
+    </div>
+  );
+}
+
+function ReasonList({
+  items,
+  total,
+}: {
+  items: Array<{ reasonCode: string; action: string; count: number }>;
+  total: number;
+}) {
+  return (
+    <div className="space-y-2">
+      {items.map((item) => {
+        const percent = percentage(item.count, total);
+        return (
+          <div
+            key={`${item.action}:${item.reasonCode}`}
+            className="rounded-md border border-zinc-100 p-3"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <Badge className="rounded-full px-2 py-1 text-xs" variant="neutral">
+                {displayText(item.reasonCode, "<empty>")}
+              </Badge>
+              <div className="text-right">
+                <div className="font-semibold text-zinc-950">{item.count}</div>
+                <div className="text-xs text-zinc-500">{percent}%</div>
+              </div>
+            </div>
+            <div className="mt-2 h-2 rounded-full bg-zinc-100">
+              <div
+                className="h-2 rounded-full bg-zinc-950"
+                style={{ width: `${Math.min(100, percent)}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
