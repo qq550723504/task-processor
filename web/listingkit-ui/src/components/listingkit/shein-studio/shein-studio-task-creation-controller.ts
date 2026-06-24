@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import {
   flattenItemizedBatchDesigns,
   getApprovedItemizedBatchDesignIDs,
+  getItemizedBatchPendingTaskDesignIDs,
   hasInFlightItemizedBatchGeneration,
   toggleItemizedBatchDesignApproval,
   toggleSelectedDesignId,
@@ -568,6 +569,12 @@ export function projectItemizedBatchDetail({
         persistedUpdatedAt,
     },
   };
+}
+
+export function usePendingItemizedTaskDesignIds(
+  detail?: SheinStudioBatchDetail | null,
+) {
+  return useMemo(() => getItemizedBatchPendingTaskDesignIDs(detail), [detail]);
 }
 
 export function projectItemizedTaskCreationResult({

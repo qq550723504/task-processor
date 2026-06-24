@@ -15,6 +15,7 @@ import {
   runItemizedDesignApproval,
   runItemizedFailedRetry,
   loadItemizedGenerationPollBatch,
+  usePendingItemizedTaskDesignIds,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -165,6 +166,36 @@ describe("projectItemizedTaskCreationResult", () => {
       draftUpdatedAt: "2026-06-22T01:00:00.000Z",
       updatedAt: "2026-06-22T02:00:00.000Z",
     });
+  });
+});
+
+describe("usePendingItemizedTaskDesignIds", () => {
+  it("memoizes approved itemized designs that do not have tasks yet", () => {
+    const result = buildTaskCreationResult();
+    const detail: SheinStudioBatchDetail = {
+      ...buildCurrentDetail(),
+      items: [
+        {
+          ...result.items[0],
+          designs: [
+            ...result.items[0].designs,
+            {
+              ...result.items[0].designs[0],
+              id: "design-2",
+              reviewStatus: "approved",
+            },
+          ],
+        },
+      ],
+      createdTasks: [{ id: "task-created", title: "Created", designId: "design-1" }],
+      reusedTasks: [],
+    };
+
+    const { result: hookResult } = renderHook(() =>
+      usePendingItemizedTaskDesignIds(detail),
+    );
+
+    expect(hookResult.current).toEqual(["design-2"]);
   });
 });
 

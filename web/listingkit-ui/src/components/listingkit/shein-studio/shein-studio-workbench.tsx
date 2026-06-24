@@ -64,6 +64,7 @@ import {
   loadItemizedGenerationPollBatch,
   runItemizedDesignApproval,
   runItemizedFailedRetry,
+  usePendingItemizedTaskDesignIds,
   useSheinStudioItemizedBatchContext,
 } from "@/components/listingkit/shein-studio/shein-studio-task-creation-controller";
 import {
@@ -90,7 +91,6 @@ import {
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
   buildSheinStudioSelectionKey,
-  getItemizedBatchPendingTaskDesignIDs,
   getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
@@ -799,10 +799,8 @@ export function SheinStudioWorkbench({
   const itemizedBatchGenerationInFlight = hasInFlightItemizedBatchGeneration(
     itemizedBatchDetail,
   );
-  const pendingItemizedTaskDesignIDs = useMemo(
-    () => getItemizedBatchPendingTaskDesignIDs(itemizedBatchDetail),
-    [itemizedBatchDetail],
-  );
+  const pendingItemizedTaskDesignIDs =
+    usePendingItemizedTaskDesignIds(itemizedBatchDetail);
   const effectiveIsGenerating = isGenerating || itemizedBatchGenerationInFlight;
 
   useEffect(() => {
