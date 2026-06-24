@@ -6,6 +6,7 @@ import {
   useSheinStudioActiveGroupPromptHistory,
   useSheinStudioActiveGroupPrimarySelection,
   useSheinStudioActiveSelectionSummary,
+  useSheinStudioCreateActionDisabledReason,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
   useSheinStudioSubscriptionGate,
@@ -312,5 +313,22 @@ describe("useSheinStudioSubscriptionGate", () => {
 
     expect(result.current.studioAccessAllowed).toBe(false);
     expect(result.current.subscriptionBlockedMessage).toContain("Studio");
+  });
+});
+
+describe("useSheinStudioCreateActionDisabledReason", () => {
+  it("returns a blocking gallery ratio message before selected style checks", () => {
+    const { result } = renderHook(() =>
+      useSheinStudioCreateActionDisabledReason({
+        galleryRatioCheck: {
+          status: "blocking",
+          message: "图片比例不符合 SDS 模板",
+        },
+        selectedIds: [],
+        selection,
+      }),
+    );
+
+    expect(result.current).toBe("图片比例不符合 SDS 模板");
   });
 });

@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
   buildSheinStudioSelectionKey,
+  getSheinStudioCreateActionDisabledReason,
   projectStudioSubscriptionGate,
   projectWorkbenchStateFallback,
   projectWorkbenchTraceContext,
@@ -26,6 +27,7 @@ import { saveLocalSheinStudioDraftSnapshot } from "@/lib/shein-studio/local-draf
 import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
 import { buildSheinStudioStepHref } from "@/lib/shein-studio/navigation";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import type { SDSRatioMatch } from "@/lib/shein-studio/gallery-handoff";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
@@ -265,6 +267,26 @@ export function useSheinStudioSubscriptionGate(
   return useMemo(
     () => projectStudioSubscriptionGate(subscription),
     [subscription],
+  );
+}
+
+export function useSheinStudioCreateActionDisabledReason({
+  galleryRatioCheck,
+  selectedIds,
+  selection,
+}: {
+  galleryRatioCheck?: SDSRatioMatch | null;
+  selectedIds: string[];
+  selection?: SDSProductVariantSelection;
+}) {
+  return useMemo(
+    () =>
+      getSheinStudioCreateActionDisabledReason({
+        galleryRatioCheck,
+        selectedIds,
+        selection,
+      }),
+    [galleryRatioCheck, selectedIds, selection],
   );
 }
 

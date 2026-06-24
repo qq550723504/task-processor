@@ -79,6 +79,7 @@ import {
   useSheinStudioActiveGroupPrimarySelection,
   useSheinStudioActiveGroupPromptHistory,
   useSheinStudioActiveSelectionSummary,
+  useSheinStudioCreateActionDisabledReason,
   useSheinStudioCurrentBatchSelection,
   useSheinStudioStoreSelection,
   useSheinStudioSubscriptionGate,
@@ -97,7 +98,6 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-sections";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
-  getSheinStudioCreateActionDisabledReason,
   hasInFlightItemizedBatchGeneration,
   projectDefaultSelectedSDSImages,
   sheinStudioBusyMessage,
@@ -437,10 +437,10 @@ export function SheinStudioWorkbench({
       cancelled = true;
     };
   }, [hydrateRecentBatchSelection, selectedPersistedRecentBatchIds]);
-  const createActionDisabledReason = getSheinStudioCreateActionDisabledReason({
-    selection: activeSelection,
+  const createActionDisabledReason = useSheinStudioCreateActionDisabledReason({
     galleryRatioCheck,
     selectedIds,
+    selection: activeSelection,
   });
   const draftPersistenceState = useMemo(
     () => buildSheinStudioDraftPersistenceState({
