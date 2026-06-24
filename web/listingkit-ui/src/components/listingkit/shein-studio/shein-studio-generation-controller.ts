@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 
 import { upsertRecentSavedBatch } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -89,6 +89,20 @@ type ApplyBaselineWarmupResultParams = {
   ) => void;
   setGenerationWarning: (message: string) => void;
   setGenerationWarningAction: (action: BaselineWarmupFeedback["action"]) => void;
+};
+
+type BaselineWarmupActionParams = {
+  activeSelection?: SDSProductVariantSelection;
+  baselineStatuses: Record<string, ActiveSelectionBaseline>;
+  setBaselineStatuses: (
+    statuses: Record<string, ActiveSelectionBaseline>,
+  ) => void;
+  setGenerationError: (message: string) => void;
+  setGenerationWarning: (message: string) => void;
+  setGenerationWarningAction: (action: BaselineWarmupFeedback["action"]) => void;
+  warmBaseline: (
+    selection: SDSProductVariantSelection,
+  ) => Promise<SDSBaselineReadiness>;
 };
 
 type BatchGenerationContextParams = {
@@ -322,6 +336,50 @@ export function applyBaselineWarmupResult({
     return;
   }
   setGenerationWarning(result.warning);
+}
+
+export function useBaselineWarmupAction({
+  activeSelection,
+  baselineStatuses,
+  setBaselineStatuses,
+  setGenerationError,
+  setGenerationWarning,
+  setGenerationWarningAction,
+  warmBaseline,
+}: BaselineWarmupActionParams) {
+  const [isExecutingWarningAction, setIsExecutingWarningAction] = useState(false);
+  const handleWarmBaselineAction = useCallback(async () => {
+    if (!activeSelection?.variantId) {
+      return;
+    }
+    setIsExecutingWarningAction(true);
+    setGenerationError("");
+    const result = await runBaselineWarmup({
+      activeSelection,
+      baselineStatuses,
+      warmBaseline,
+    });
+    applyBaselineWarmupResult({
+      result,
+      setBaselineStatuses,
+      setGenerationWarning,
+      setGenerationWarningAction,
+    });
+    setIsExecutingWarningAction(false);
+  }, [
+    activeSelection,
+    baselineStatuses,
+    setBaselineStatuses,
+    setGenerationError,
+    setGenerationWarning,
+    setGenerationWarningAction,
+    warmBaseline,
+  ]);
+
+  return {
+    handleWarmBaselineAction,
+    isExecutingWarningAction,
+  };
 }
 
 export function useSheinStudioBatchGenerationContext({

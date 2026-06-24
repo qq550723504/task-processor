@@ -18,10 +18,9 @@ import { SheinStudioRecentBatchesDashboard } from "@/components/listingkit/shein
 import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein-studio-tasks-step";
 import { useSheinStudioDedicatedBatchRunController } from "@/components/listingkit/shein-studio/shein-studio-dedicated-batch-run-controller";
 import {
-  applyBaselineWarmupResult,
   projectActiveSelectionBaselineState,
-  runBaselineWarmup,
   useActiveSelectionBaselineStatuses,
+  useBaselineWarmupAction,
   useSheinStudioBatchGenerationContext,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { useSheinStudioInitialBatchHydration } from "@/components/listingkit/shein-studio/shein-studio-hydration-controller";
@@ -267,7 +266,6 @@ export function SheinStudioWorkbench({
   );
   const activeSelection =
     directSelection ?? activeGroupSelection ?? loadedBatchSelection;
-  const [isExecutingWarningAction, setIsExecutingWarningAction] = useState(false);
   const [retryingFailedItemId, setRetryingFailedItemId] = useState("");
   const [rawSelectedRecentBatchSummaryIds, setRawSelectedRecentBatchSummaryIds] = useState<
     string[]
@@ -664,31 +662,19 @@ export function SheinStudioWorkbench({
     }
   }, [focusGenerateStep, generationWarningAction?.intent, openSDSLoginStep]);
 
-  const handleWarmBaselineAction = useCallback(async () => {
-    if (!activeSelection?.variantId) {
-      return;
-    }
-    setIsExecutingWarningAction(true);
-    workbenchController.setField("generationError", "");
-    const result = await runBaselineWarmup({
+  const { handleWarmBaselineAction, isExecutingWarningAction } =
+    useBaselineWarmupAction({
       activeSelection,
       baselineStatuses,
-      warmBaseline: warmSDSBaselineForSelection,
-    });
-    applyBaselineWarmupResult({
-      result,
       setBaselineStatuses,
+      setGenerationError: (message) =>
+        workbenchController.setField("generationError", message),
       setGenerationWarning: (message) =>
         workbenchController.setField("generationWarning", message),
       setGenerationWarningAction: (action) =>
         workbenchController.setField("generationWarningAction", action),
+      warmBaseline: warmSDSBaselineForSelection,
     });
-    setIsExecutingWarningAction(false);
-  }, [
-    activeSelection,
-    baselineStatuses,
-    workbenchController,
-  ]);
 
   useEffect(() => {
     setGroupedSelections((current) =>

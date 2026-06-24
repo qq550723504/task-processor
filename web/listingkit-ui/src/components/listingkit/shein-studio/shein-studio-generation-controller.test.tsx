@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,6 +8,7 @@ import {
   resolveBaselineReadinessEntries,
   runBaselineWarmup,
   useActiveSelectionBaselineStatuses,
+  useBaselineWarmupAction,
   useSheinStudioBatchGenerationContext,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import type { SheinStudioSavedBatch } from "@/lib/types/shein-studio";
@@ -357,6 +358,53 @@ describe("applyBaselineWarmupResult", () => {
     expect(setBaselineStatuses).not.toHaveBeenCalled();
     expect(setGenerationWarning).toHaveBeenCalledWith("warmup failed");
     expect(setGenerationWarningAction).not.toHaveBeenCalled();
+  });
+});
+
+describe("useBaselineWarmupAction", () => {
+  it("clears generation errors, warms baseline, and applies feedback", async () => {
+    const setBaselineStatuses = vi.fn();
+    const setGenerationError = vi.fn();
+    const setGenerationWarning = vi.fn();
+    const setGenerationWarningAction = vi.fn();
+    const warmBaseline = vi.fn().mockResolvedValue({
+      baselineKey: "baseline-1",
+      reason: "",
+      reasonCode: "",
+      status: "ready",
+    });
+
+    const { result } = renderHook(() =>
+      useBaselineWarmupAction({
+        activeSelection: selection,
+        baselineStatuses: {},
+        setBaselineStatuses,
+        setGenerationError,
+        setGenerationWarning,
+        setGenerationWarningAction,
+        warmBaseline,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleWarmBaselineAction();
+    });
+
+    expect(setGenerationError).toHaveBeenCalledWith("");
+    expect(warmBaseline).toHaveBeenCalledWith(selection);
+    expect(setBaselineStatuses).toHaveBeenCalledWith({
+      "1:20:100:layer-1:100,101": {
+        baselineKey: "baseline-1",
+        reason: "",
+        reasonCode: "",
+        status: "ready",
+      },
+    });
+    expect(setGenerationWarning).toHaveBeenCalledWith(
+      "这款 SDS 商品的 baseline 已通过校验，现在可以继续加入 grouped 批量上品。",
+    );
+    expect(setGenerationWarningAction).toHaveBeenCalledWith(null);
+    expect(result.current.isExecutingWarningAction).toBe(false);
   });
 });
 
