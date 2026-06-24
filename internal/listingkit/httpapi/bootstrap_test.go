@@ -81,6 +81,9 @@ func buildServiceInputFixture() BuildServiceInput {
 				StoreStatistics: func(*config.Config, *logrus.Logger) (listingadmin.StoreStatisticsRepository, []func() error, error) {
 					return nil, nil, nil
 				},
+				DispatchEvent: func(*config.Config, *logrus.Logger) (listingadmin.DispatchEventRepository, []func() error, error) {
+					return nil, nil, nil
+				},
 				ImportTask: func(*config.Config, *logrus.Logger) (listingadmin.ImportTaskRepository, []func() error, error) {
 					return nil, nil, nil
 				},

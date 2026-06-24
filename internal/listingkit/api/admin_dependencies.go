@@ -6,6 +6,7 @@ func withStoreAdminDependencies(deps AdminHandlerDependencies) HandlerOption {
 	options := []HandlerOption{
 		WithStoreRepository(deps.StoreRepository),
 		WithStoreStatisticsRepository(deps.StoreStatisticsRepository),
+		WithDispatchEventRepository(deps.DispatchEventRepository),
 		WithImportTaskRepository(deps.ImportTaskRepository),
 	}
 	return func(h *handler) {
@@ -52,6 +53,12 @@ func WithStoreRepository(repo listingadmin.StoreRepository) HandlerOption {
 func WithStoreStatisticsRepository(repo listingadmin.StoreStatisticsRepository) HandlerOption {
 	return withAdminDependency(repo, func(repo listingadmin.StoreStatisticsRepository, admin *adminHandlers) {
 		admin.storeStatisticsHandler = listingadmin.NewStoreStatisticsHandler(repo)
+	})
+}
+
+func WithDispatchEventRepository(repo listingadmin.DispatchEventRepository) HandlerOption {
+	return withAdminDependency(repo, func(repo listingadmin.DispatchEventRepository, admin *adminHandlers) {
+		admin.dispatchEventRepository = repo
 	})
 }
 

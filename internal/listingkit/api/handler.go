@@ -34,9 +34,10 @@ type handler struct {
 }
 
 type storeAdminHandlers struct {
-	storeHandler           *listingadmin.StoreHandler
-	storeStatisticsHandler *listingadmin.StoreStatisticsHandler
-	importTaskHandler      *listingadmin.ImportTaskHandler
+	storeHandler            *listingadmin.StoreHandler
+	storeStatisticsHandler  *listingadmin.StoreStatisticsHandler
+	dispatchEventRepository listingadmin.DispatchEventRepository
+	importTaskHandler       *listingadmin.ImportTaskHandler
 }
 
 type catalogAdminHandlers struct {
@@ -111,6 +112,7 @@ type HandlerOption func(*handler)
 type AdminHandlerDependencies struct {
 	StoreRepository                   listingadmin.StoreRepository
 	StoreStatisticsRepository         listingadmin.StoreStatisticsRepository
+	DispatchEventRepository           listingadmin.DispatchEventRepository
 	ImportTaskRepository              listingadmin.ImportTaskRepository
 	FilterRuleRepository              listingadmin.FilterRuleRepository
 	ProfitRuleRepository              listingadmin.ProfitRuleRepository

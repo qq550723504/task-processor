@@ -10,9 +10,10 @@ import (
 
 func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 	allowed := map[string]struct{}{
-		"product-listing-api": {},
-		"shein-listing":       {},
-		"temu-listing":        {},
+		"listing-control-plane": {},
+		"product-listing-api":   {},
+		"shein-listing":         {},
+		"temu-listing":          {},
 	}
 
 	for _, line := range trackedFiles(t, "cmd") {

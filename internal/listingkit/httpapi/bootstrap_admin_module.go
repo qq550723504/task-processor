@@ -8,6 +8,7 @@ import (
 type adminModuleInput struct {
 	StoreRepository                   listingadmin.StoreRepository
 	StoreStatisticsRepository         listingadmin.StoreStatisticsRepository
+	DispatchEventRepository           listingadmin.DispatchEventRepository
 	ImportTaskRepository              listingadmin.ImportTaskRepository
 	FilterRuleRepository              listingadmin.FilterRuleRepository
 	ProfitRuleRepository              listingadmin.ProfitRuleRepository
@@ -29,6 +30,7 @@ func newAdminModuleInput(repos *builtRepositories) adminModuleInput {
 	return adminModuleInput{
 		StoreRepository:                   repos.storeRepository,
 		StoreStatisticsRepository:         repos.storeStatisticsRepository,
+		DispatchEventRepository:           repos.dispatchEventRepository,
 		ImportTaskRepository:              repos.importTaskRepository,
 		FilterRuleRepository:              repos.filterRuleRepository,
 		ProfitRuleRepository:              repos.profitRuleRepository,
@@ -48,6 +50,7 @@ func buildAdminModule(in adminModuleInput) adminModule {
 		handlerDependencies: listingkitapi.AdminHandlerDependencies{
 			StoreRepository:                   in.StoreRepository,
 			StoreStatisticsRepository:         in.StoreStatisticsRepository,
+			DispatchEventRepository:           in.DispatchEventRepository,
 			ImportTaskRepository:              in.ImportTaskRepository,
 			FilterRuleRepository:              in.FilterRuleRepository,
 			ProfitRuleRepository:              in.ProfitRuleRepository,

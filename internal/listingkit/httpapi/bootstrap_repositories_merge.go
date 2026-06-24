@@ -31,6 +31,7 @@ func applyAdminRepositories(repos *builtRepositories, admin *builtAdminRepositor
 	}
 	repos.storeRepository = admin.storeRepository
 	repos.storeStatisticsRepository = admin.storeStatisticsRepository
+	repos.dispatchEventRepository = admin.dispatchEventRepository
 	repos.importTaskRepository = admin.importTaskRepository
 	repos.filterRuleRepository = admin.filterRuleRepository
 	repos.profitRuleRepository = admin.profitRuleRepository
