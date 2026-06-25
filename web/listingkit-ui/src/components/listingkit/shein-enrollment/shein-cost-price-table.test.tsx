@@ -166,31 +166,38 @@ describe("SheinCostPriceTable", () => {
     expect(screen.getByText("POD 价 ¥18.80")).toBeInTheDocument();
   });
 
-  it("groups SDS products in the cost tab", async () => {
+  it("groups products by POD SDS source code even when SHEIN style suffix differs", async () => {
     mockSourceMetadataFetch([
       {
-        source_code: "MG8006905001",
-        title: "同底版商品",
+        source_code: "XB0608021001",
+        title: "皮革多功能钱包",
       },
-    ]);
+    ], "XB0608021001");
 
     renderCostPriceTable({
+      group: {
+        group_key: "style:DA578653",
+        group_label: "DA578653",
+        manual_cost_price: 43.3,
+      },
       items: [
         {
           id: 8,
-          skc_name: "SKC-A",
-          supplier_code: "MG8006905001-B3195DA6",
+          skc_name: "sg260604223794143925005",
+          supplier_code: "XB0608021001-DA578653",
         },
         {
           id: 9,
-          skc_name: "SKC-B",
-          supplier_code: "MG8006905002-B3195DA6",
+          skc_name: "sg260603162031320517713",
+          supplier_code: "XB0608021001-DE93508C",
         },
       ],
     });
 
-    expect(await screen.findByText("B3195DA6 · 2 个商品")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("50")).toBeInTheDocument();
+    expect(await screen.findByText("XB0608021001 · 2 个商品")).toBeInTheDocument();
+    expect(screen.queryByText("DA578653 · 1 个商品")).not.toBeInTheDocument();
+    expect(screen.queryByText("DE93508C · 1 个商品")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("43.3")).toBeInTheDocument();
   });
 
   it("does not prefill or display automatic cost when no manual cost is maintained", async () => {
@@ -201,7 +208,7 @@ describe("SheinCostPriceTable", () => {
       shipmentArea: "US",
     });
 
-    const input = screen.getByLabelText("成本价 B3195DA6");
+    const input = screen.getByLabelText("成本价 MG8006905001");
     expect(input).toHaveValue("");
     expect(screen.queryByText(/自动\/当前成本/)).not.toBeInTheDocument();
     expect(screen.queryByText("POD 价 ¥39.10")).not.toBeInTheDocument();
@@ -251,7 +258,7 @@ describe("SheinCostPriceTable", () => {
 
     renderCostPriceTable({ onSave });
 
-    fireEvent.change(screen.getByLabelText("成本价 B3195DA6"), {
+    fireEvent.change(screen.getByLabelText("成本价 MG8006905001"), {
       target: { value: "45.6" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存成本价" }));
@@ -259,8 +266,8 @@ describe("SheinCostPriceTable", () => {
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith(
         {
-          groupKey: "style:B3195DA6",
-          groupLabel: "B3195DA6",
+          groupKey: "source:MG8006905001",
+          groupLabel: "MG8006905001",
           productId: undefined,
         },
         45.6,

@@ -217,35 +217,37 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
   });
 
-  it("groups SDS products in the cost tab", async () => {
+  it("groups cost rows by POD SDS source code in the cost tab", async () => {
     renderWorkbench({
       initialTab: "costs",
       products: [
         {
           id: 8,
-          skc_name: "SKC-A",
-          supplier_code: "MG8006905001-B3195DA6",
+          skc_name: "sg260604223794143925005",
+          supplier_code: "XB0608021001-DA578653",
           auto_cost_price: 39.1,
           effective_cost_price: 39.1,
         },
         {
           id: 9,
-          skc_name: "SKC-B",
-          supplier_code: "MG8006905002-B3195DA6",
+          skc_name: "sg260603162031320517713",
+          supplier_code: "XB0608021001-DE93508C",
           auto_cost_price: 46.8,
           effective_cost_price: 46.8,
         },
       ],
       sdsCostGroups: [
         {
-          group_key: "style:B3195DA6",
-          group_label: "B3195DA6",
+          group_key: "style:DA578653",
+          group_label: "DA578653",
           manual_cost_price: 50,
         },
       ],
     });
 
-    expect(await screen.findByText("B3195DA6 · 2 个商品")).toBeInTheDocument();
+    expect(await screen.findByText("XB0608021001 · 2 个商品")).toBeInTheDocument();
+    expect(screen.queryByText("DA578653 · 1 个商品")).not.toBeInTheDocument();
+    expect(screen.queryByText("DE93508C · 1 个商品")).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("50")).toBeInTheDocument();
   });
 

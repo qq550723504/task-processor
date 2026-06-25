@@ -23,6 +23,7 @@ export type SheinCostPriceSaveTarget = {
 type SheinCostGroupRow = {
   groupKey: string;
   groupLabel: string;
+  legacyGroupKeys: string[];
   productId?: number;
   products: SheinSyncedProductRecord[];
   sourceSDSCodes: string[];
@@ -276,10 +277,11 @@ export function buildSheinCostGroupRows(
       {
         groupKey: identity.groupKey,
         groupLabel: identity.groupLabel,
+        legacyGroupKeys: identity.legacyGroupKeys,
         productId: identity.productId,
         products: [],
         sourceSDSCodes: [],
-        manualCostPrice: groupByKey.get(identity.groupKey)?.manual_cost_price,
+        manualCostPrice: findSheinCostGroupRecord(groupByKey, identity)?.manual_cost_price,
         fallbackCostPrice: null,
       };
     row.products.push(item);
@@ -316,24 +318,48 @@ function sheinSourceSDSCode(supplierCode?: string | null) {
 function sheinCostGroupIdentity(item: SheinSyncedProductRecord) {
   const supplierCode = item.supplier_code?.trim() ?? "";
   if (supplierCode) {
+    const sourceSDSCode = sheinSourceSDSCode(supplierCode);
     const suffix = sheinSDSStyleSuffix(supplierCode);
+    if (sourceSDSCode) {
+      return {
+        groupKey: `source:${sourceSDSCode}`,
+        groupLabel: sourceSDSCode,
+        legacyGroupKeys: [
+          suffix ? `style:${suffix}` : "",
+          `supplier:${supplierCode}`,
+        ].filter(Boolean),
+      };
+    }
     if (suffix) {
       return {
         groupKey: `style:${suffix}`,
         groupLabel: suffix,
+        legacyGroupKeys: [],
       };
     }
     return {
       groupKey: `supplier:${supplierCode}`,
       groupLabel: supplierCode,
+      legacyGroupKeys: [],
     };
   }
   const productId = item.id ?? 0;
   return {
     groupKey: `product:${productId}`,
     groupLabel: item.skc_name || item.skc_code || `商品 ${productId}`,
+    legacyGroupKeys: [],
     productId,
   };
+}
+
+function findSheinCostGroupRecord(
+  groupByKey: Map<string, SheinSDSCostGroupRecord>,
+  identity: ReturnType<typeof sheinCostGroupIdentity>,
+) {
+  return (
+    groupByKey.get(identity.groupKey) ??
+    identity.legacyGroupKeys.map((key) => groupByKey.get(key)).find(Boolean)
+  );
 }
 
 function sheinSDSStyleSuffix(supplierCode: string) {
