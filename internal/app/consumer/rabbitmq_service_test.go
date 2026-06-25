@@ -25,6 +25,14 @@ func (noopRabbitHandler) HandleMessage(_ context.Context, _ *rabbitmq.Message) e
 	return nil
 }
 
+type staticBrokerConsumerInspector struct {
+	count int
+}
+
+func (i staticBrokerConsumerInspector) BrokerConsumerCount(string) (int, error) {
+	return i.count, nil
+}
+
 type noopProcessor struct{}
 
 func (noopProcessor) Start(_ context.Context) error { return nil }
@@ -510,6 +518,7 @@ func TestRabbitMQServiceReportsUnhealthyRequiredConsumers(t *testing.T) {
 
 	svc.GetConsumer().RegisterHandler("shein.tasks", noopRabbitHandler{})
 	svc.GetConsumer().RegisterHandler("amazon.tasks", noopRabbitHandler{})
+	svc.GetConsumer().SetBrokerConsumerInspector(staticBrokerConsumerInspector{count: 1})
 
 	if svc.HasHealthyRequiredConsumers() {
 		t.Fatal("expected registered queues without running consumers to be unhealthy")

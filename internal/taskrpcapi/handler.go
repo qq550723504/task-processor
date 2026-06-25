@@ -6,15 +6,13 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-
-	api "task-processor/internal/listingadmin"
 )
 
 // Client defines the task RPC methods used by the HTTP handler.
 type Client interface {
-	GetTaskStatus(taskID int64) (*api.TaskStatusRespDTO, error)
-	RetryTask(taskID int64) (*api.TaskActionRespDTO, error)
-	CancelTask(taskID int64) (*api.TaskActionRespDTO, error)
+	GetTaskStatus(taskID int64) (*TaskStatusRespDTO, error)
+	RetryTask(taskID int64) (*TaskActionRespDTO, error)
+	CancelTask(taskID int64) (*TaskActionRespDTO, error)
 	GetQueueStats() (string, error)
 }
 
