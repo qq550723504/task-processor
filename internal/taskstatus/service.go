@@ -27,43 +27,43 @@ func NewService(component string, clientProvider func() ImportTaskStatusClient) 
 	return apptaskstatus.NewService(component, clientProvider)
 }
 
-type managementClientAdapter struct {
+type runtimeTaskStatusAdapter struct {
 	client RuntimeTaskStatusUpdater
 }
 
-type managementRuntime struct {
+type managementTaskStatusRuntime struct {
 	client *management.ClientManager
 }
 
-func NewManagementClientAdapter(client RuntimeTaskStatusUpdater) ImportTaskStatusClient {
+func NewRuntimeTaskStatusAdapter(client RuntimeTaskStatusUpdater) ImportTaskStatusClient {
 	if client == nil {
 		return nil
 	}
-	return managementClientAdapter{client: client}
+	return runtimeTaskStatusAdapter{client: client}
 }
 
-func NewManagementRuntime(client *management.ClientManager) RuntimeWithTaskRPC {
+func NewManagementTaskStatusRuntime(client *management.ClientManager) RuntimeWithTaskRPC {
 	if client == nil {
 		return nil
 	}
-	return managementRuntime{client: client}
+	return managementTaskStatusRuntime{client: client}
 }
 
-func (a managementClientAdapter) UpdateTaskStatus(req *listingruntime.TaskStatusUpdate) error {
+func (a runtimeTaskStatusAdapter) UpdateTaskStatus(req *listingruntime.TaskStatusUpdate) error {
 	if a.client == nil {
-		return fmt.Errorf("management client is not initialized")
+		return fmt.Errorf("task status runtime is not initialized")
 	}
 	return a.client.UpdateRuntimeTaskStatus(req)
 }
 
-func (r managementRuntime) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error {
+func (r managementTaskStatusRuntime) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error {
 	if r.client == nil {
 		return fmt.Errorf("management client is not initialized")
 	}
 	return r.client.UpdateRuntimeTaskStatus(req)
 }
 
-func (r managementRuntime) GetTaskStatus(taskID int64) (*TaskStatusSnapshot, error) {
+func (r managementTaskStatusRuntime) GetTaskStatus(taskID int64) (*TaskStatusSnapshot, error) {
 	if r.client == nil {
 		return nil, fmt.Errorf("management client is not initialized")
 	}
@@ -74,7 +74,7 @@ func (r managementRuntime) GetTaskStatus(taskID int64) (*TaskStatusSnapshot, err
 	return taskRPCClient.GetTaskStatus(taskID)
 }
 
-func (r managementRuntime) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
+func (r managementTaskStatusRuntime) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
 	if r.client == nil {
 		return nil, fmt.Errorf("management client is not initialized")
 	}

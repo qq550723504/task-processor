@@ -9,6 +9,12 @@ It complements the project-wide refactoring authority:
 
 When implementing broad refactoring, use these rules unless a newer ADR or refactoring document explicitly supersedes them.
 
+## How To Use This Document
+
+Use this document as the default repository-wide entrypoint for package ownership and dependency direction decisions. Start here before adding new code, moving code, or accepting a new package dependency.
+
+Specialized architecture documents can narrow a boundary for one area, such as HTTP API assembly or listing preview behavior. If a specialized document seems broader or conflicts with this file, treat the narrower rule as the active rule and update both documents before widening the boundary.
+
 ## 1. Architecture Style
 
 The project should remain a modular monolith until package boundaries are stable.
@@ -216,11 +222,12 @@ Use this table when adding new code:
 
 | New code type | Preferred home |
 | --- | --- |
-| API route registration | `internal/app/httpapi` |
+| API route registration | owning module `internal/*/httpapi` first; `internal/app/httpapi` only for shared runtime aggregation |
 | Request parsing / response writing | `internal/listingkit/api` or API package owned by the module |
 | Task lifecycle | `internal/listingkit/task` during migration |
 | Workflow orchestration | `internal/listingkit/workflow` during migration |
-| Preview aggregation | `internal/listingkit/preview` during migration |
+| Platform-neutral preview rules | `internal/listing/preview`; see `listing-preview-boundaries.md` |
+| Legacy preview facade / task-result aggregation | `internal/listingkit` during migration |
 | Export aggregation | `internal/listingkit/export` during migration |
 | Revision/history facade | `internal/listingkit/revision` during migration |
 | Submission state / retry / recovery | `internal/listing/submission` target; use `internal/listingkit/submission` only as a temporary compatibility bridge during migration |
@@ -247,7 +254,141 @@ Before merging a refactoring or feature PR, check:
 - Are behavior-preserving moves separated from feature changes?
 - Were relevant tests run?
 
-## 8. Immediate Enforcement
+## 8. Current Enforcement
+
+The active import-boundary tests in `tests/import_boundaries_test.go` and architecture document tests in `tests/architecture_docs_test.go` are the executable version of this document. When this list changes, update this document in the same change so future refactors can find the enforced boundary from one place.
+
+- `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
+- `TestBusinessDomainsDoNotImportAppHTTPAPI`
+- `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
+- `TestListingKitSubdomainsDoNotImportRootFacade`
+- `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`
+- `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly`
+- `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain`
+- `TestListingKitDoesNotImportLegacySheinRuntime`
+- `TestListingKitDoesNotImportSheinAPIRoot`
+- `TestListingKitNonAPISheinImportsStayAllowlisted`
+- `TestListingKitAmazonListingImportsStayAllowlisted`
+- `TestCatalogDoesNotDependOnProductEnrichAliases`
+- `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases`
+- `TestSheinPipelineDoesNotImportListingKitFacade`
+- `TestSheinSubmitPrepDoesNotImportListingKitTenantContext`
+- `TestListingKitRootSheinHelpersStayAllowlisted`
+- `TestListingKitRootServiceSubmitFilesStayAllowlisted`
+- `TestListingKitRootTaskSubmissionFilesStayAllowlisted`
+- `TestListingKitRootServiceGenerationFilesStayAllowlisted`
+- `TestListingKitRootGenerationFilesStayAllowlisted`
+- `TestListingPreviewPackageStaysPlatformNeutral`
+- `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
+- `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
+- `TestProductImageExternalClientImportsStayAllowlisted`
+- `TestAmazonExternalClientImportsStayAllowlisted`
+- `TestSheinBridgeExternalClientImportsStayAllowlisted`
+- `TestSheinManagementClientImportsStayAllowlisted`
+- `TestSheinOpenAIImportsStayAllowlisted`
+- `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted`
+- `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted`
+- `TestListingKitRootOpenAIImportsStayAllowlisted`
+- `TestListingKitRootDoesNotImportManagementAPI`
+- `TestListingKitSupportFileStaysRetired`
+- `TestPublishingSheinSubmitPrepUsesOnlySensitiveWordAdapter`
+- `TestTEMUSyncAndPricingManagementImportsStayAllowlisted`
+- `TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted`
+- `TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted`
+- `TestTEMUOpenAIImportsStayAllowlisted`
+- `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
+- `TestPublishingSheinOpenAIImportsStayAllowlisted`
+- `TestPublishingSheinManagedAPIImportsStayAllowlisted`
+- `TestPublishingSheinManagedManagementImportsStayAllowlisted`
+- `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
+- `TestPublishingCommonUsesCanonicalPackage`
+- `TestPublishingCommonDoesNotImportPlatformImplementations`
+- `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
+- `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`
+- `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted`
+- `TestAppHTTPAPIListingKitSupportImportsStayAllowlisted`
+- `TestAppHTTPAPIListingKitRootImportsStayAllowlisted`
+- `TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted`
+- `TestAppHTTPAPIModuleBuildersStayAllowlisted`
+- `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted`
+- `TestHTTPAPITypesDoesNotOwnRunOptions`
+- `TestHTTPAPIModulesFileDoesNotOwnFeatureBuildWrappers`
+- `TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration`
+- `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
+- `TestHTTPAPIModulesFileDoesNotOwnWorkerRuntimeSupport`
+- `TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport`
+- `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
+- `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly`
+- `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
+- `TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes`
+- `TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes`
+- `TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
+- `TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
+- `TestFeatureModuleBuilderContractsReturnLocalModuleAliases`
+- `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
+- `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts`
+- `TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly`
+- `TestHTTPAPIModulesFileDoesNotOwnListingKitSDSRuntimeSupportHook`
+- `TestHTTPAPICompositionBuilderDoesNotOwnProductImageRuntimeInputs`
+- `TestHTTPAPICompositionBuilderDoesNotOwnAmazonListingRuntimeInput`
+- `TestHTTPAPICompositionBuilderDoesNotOwnListingKitRuntimeInput`
+- `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsPromptRuntimeAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated`
+- `TestHTTPAPIRuntimeKeepsPathResolutionDedicated`
+- `TestHTTPAPIRuntimeKeepsConfigLoadingDedicated`
+- `TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated`
+- `TestHTTPAPIAdaptersKeepTaskRepositoryAssemblyDedicated`
+- `TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated`
+- `TestBootstrapKeepsTaskRepositoryAssemblyInDedicatedFile`
+- `TestBootstrapKeepsModelProviderAssemblyInDedicatedFile`
+- `TestBootstrapKeepsLLMScorerAssemblyInDedicatedFile`
+- `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
+- `TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile`
+- `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
+- `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
+- `TestPlatformRegistrationPackagesStayThin`
+- `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
+- `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
+- `TestAppBootstrapManagementClientImportsStayAllowlisted`
+- `TestAppTaskManagementClientImportsStayAllowlisted`
+- `TestAppRunnerManagementClientImportsStayAllowlisted`
+- `TestAppConsumerManagementClientImportsStayAllowlisted`
+- `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
+- `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
+- `TestAppTaskStatusManagementClientImportsStayAllowlisted`
+- `TestPlatformTaskManagementClientImportsStayAllowlisted`
+- `TestStateManagementClientImportsStayAllowlisted`
+- `TestPlatformBaseManagementClientImportsStayAllowlisted`
+- `TestProcessorManagementClientImportsStayAllowlisted`
+- `TestTaskRPCAPIManagementClientImportsStayAllowlisted`
+- `TestSDSClientManagementClientImportsStayAllowlisted`
+- `TestSheinLoginBootstrapManagementClientImportsStayAllowlisted`
+- `TestSheinLoginServiceManagementClientImportsStayAllowlisted`
+- `TestSheinLoginManagedManagementClientImportsStayAllowlisted`
+- `TestSharedPricingManagementClientImportsStayAllowlisted`
+- `TestListingKitHTTPAPIManagementClientImportsStayAllowlisted`
+- `TestCmdPackagesDoNotImportAppCompatibilityLayers`
+- `TestInternalPackagesDoNotImportAppProcessorCompatibilityLayer`
+- `TestInternalPackagesDoNotImportAppStateCompatibilityLayer`
+- `TestAppProcessorCompatibilityLayerIsRetired`
+- `TestAppStateCompatibilityLayerIsRetired`
+- `TestInfraProductCrawlerAdapterIsRetired`
+- `TestAppCrawlerFetcherCompatibilityLayerIsRetired`
+- `TestInfrastructurePackagesDoNotImportBusinessDomains`
+- `TestBusinessImplementationPackagesDoNotImportGinDirectly`
+- `TestPlatformProcessorRegistryDoesNotExposeManagementClient`
+- `TestAppConsumerTaskStatusRuntimeProviderIsNotNamedManagementClient`
+- `TestAppConsumerDoesNotUseManagementNamedTaskStatusAdapter`
+- `TestTaskStatusAdapterCallersUseRuntimeNamedConstructor`
+- `TestTaskStatusPackageDoesNotExposeManagementNamedAdapter`
+- `TestAmazonTaskStatusUpdatesUseTaskStatusRuntime`
+- `TestAmazonAuthPauseUsesStoreAPIPort`
+- `TestAmazonServicesUseStoreAPIPort`
+- `TestTaskStatusPackageDoesNotExposeBroadManagementRuntimeConstructor`
+
+## 9. Immediate Enforcement
 
 Use `scripts/analyze-project-deps.ps1` to generate a dependency baseline and flag likely boundary violations.
 

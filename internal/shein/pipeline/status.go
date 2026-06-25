@@ -88,7 +88,7 @@ func (u *TaskStatusUpdater) updateTaskStatusWithMode(taskID string, task *model.
 	}
 
 	statusService := taskstatus.NewService("shein/pipeline", func() taskstatus.ImportTaskStatusClient {
-		return taskstatus.NewManagementClientAdapter(u.processor.GetTaskStatusRuntime())
+		return taskstatus.NewRuntimeTaskStatusAdapter(u.processor.GetTaskStatusRuntime())
 	})
 
 	if sync {

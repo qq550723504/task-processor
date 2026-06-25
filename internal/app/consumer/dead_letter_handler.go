@@ -71,7 +71,7 @@ func (h *DeadLetterHandler) HandleMessage(ctx context.Context, msg *rabbitmq.Mes
 
 	retryCount := extractOptionalInt(msg.Payload, "retryCount")
 	statusService := taskstatus.NewService("app/consumer/dead_letter", func() taskstatus.ImportTaskStatusClient {
-		return taskstatus.NewManagementClientAdapter(h.runtime)
+		return taskstatus.NewRuntimeTaskStatusAdapter(h.runtime)
 	})
 	return statusService.UpdateSyncWithInput(taskstatus.UpdateInput{
 		TaskID:       taskID,

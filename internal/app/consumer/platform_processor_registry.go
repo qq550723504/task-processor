@@ -296,7 +296,3 @@ func (r *PlatformProcessorRegistry) GetSharedProductFetcher() appfetcher.Product
 func (r *PlatformProcessorRegistry) GetListingRuntimeHealthValidator() ListingRuntimeHealthValidator {
 	return r.managementClient
 }
-
-func (r *PlatformProcessorRegistry) GetManagementClient() *management.ClientManager {
-	return r.managementClient
-}

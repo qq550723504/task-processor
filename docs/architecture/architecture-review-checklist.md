@@ -164,6 +164,15 @@ At minimum, structural review should consider representative guards such as:
 - `TestAppTaskManagementClientImportsStayAllowlisted`
 - `TestAppRunnerManagementClientImportsStayAllowlisted`
 - `TestAppConsumerManagementClientImportsStayAllowlisted`
+- `TestPlatformProcessorRegistryDoesNotExposeManagementClient`
+- `TestAppConsumerTaskStatusRuntimeProviderIsNotNamedManagementClient`
+- `TestAppConsumerDoesNotUseManagementNamedTaskStatusAdapter`
+- `TestTaskStatusAdapterCallersUseRuntimeNamedConstructor`
+- `TestTaskStatusPackageDoesNotExposeManagementNamedAdapter`
+- `TestAmazonTaskStatusUpdatesUseTaskStatusRuntime`
+- `TestAmazonAuthPauseUsesStoreAPIPort`
+- `TestAmazonServicesUseStoreAPIPort`
+- `TestTaskStatusPackageDoesNotExposeBroadManagementRuntimeConstructor`
 - `TestAppBootstrapManagementClientImportsStayAllowlisted`
 - `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
 - `TestAppRuntimeListingManagementClientImportsStayAllowlisted`

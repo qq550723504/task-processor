@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/resilience"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
@@ -39,10 +38,6 @@ type Service struct {
 	maxRetries     int
 }
 
-type managementClientAdapter struct {
-	client *management.ClientManager
-}
-
 func NewService(component string, clientProvider func() ImportTaskStatusClient) *Service {
 	log := logger.GetGlobalLogger("app/taskstatus").WithField("component", component)
 
@@ -52,20 +47,6 @@ func NewService(component string, clientProvider func() ImportTaskStatusClient) 
 		clientProvider: clientProvider,
 		maxRetries:     3,
 	}
-}
-
-func NewManagementClientAdapter(client *management.ClientManager) ImportTaskStatusClient {
-	if client == nil {
-		return nil
-	}
-	return managementClientAdapter{client: client}
-}
-
-func (a managementClientAdapter) UpdateTaskStatus(req *listingruntime.TaskStatusUpdate) error {
-	if a.client == nil {
-		return fmt.Errorf("management client is not initialized")
-	}
-	return a.client.UpdateRuntimeTaskStatus(req)
 }
 
 func (s *Service) UpdateSync(taskID int64, status model.TaskStatus, errorMsg string) error {

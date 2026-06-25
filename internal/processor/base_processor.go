@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/worker"
+	managementapi "task-processor/internal/ports/managementapi"
 	"task-processor/internal/state"
 	"task-processor/internal/taskstatus"
 
@@ -80,11 +81,18 @@ func (bp *BaseProcessor) GetManagementClient() *management.ClientManager {
 	return bp.managementClient
 }
 
+func (bp *BaseProcessor) GetStoreAPI() managementapi.StoreAPI {
+	if bp == nil || bp.managementClient == nil {
+		return nil
+	}
+	return bp.managementClient.GetStoreClient()
+}
+
 func (bp *BaseProcessor) GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
 	if bp == nil || bp.managementClient == nil {
 		return nil
 	}
-	return taskstatus.NewManagementRuntime(bp.managementClient)
+	return taskstatus.NewManagementTaskStatusRuntime(bp.managementClient)
 }
 
 func (bp *BaseProcessor) GetMemoryManager() *state.MemoryManager {

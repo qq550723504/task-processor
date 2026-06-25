@@ -43,7 +43,7 @@ type TaskHandler struct {
 	deduplicator   *apptask.DeduplicationManager
 }
 
-type managementClientProvider interface {
+type taskStatusRuntimeProvider interface {
 	GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC
 }
 
@@ -255,7 +255,7 @@ func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
 		return eth.discardStaleTask(task, "terminal_status")
 	}
 
-	provider, ok := eth.processor.(managementClientProvider)
+	provider, ok := eth.processor.(taskStatusRuntimeProvider)
 	if !ok {
 		eth.logger.Debugf("[%s] processor does not expose task status runtime, skip remote claim: ID=%d, Status=%d",
 			eth.platform, task.ID, task.Status)
@@ -268,7 +268,7 @@ func (eth *TaskHandler) claimTaskStatus(task *model.Task) error {
 	}
 
 	statusService := taskstatus.NewService("app/consumer", func() taskstatus.ImportTaskStatusClient {
-		return taskstatus.NewManagementClientAdapter(runtime)
+		return taskstatus.NewRuntimeTaskStatusAdapter(runtime)
 	})
 	expectedStatuses := []int16{task.Status}
 	if shouldRetryClaimFromQueued(task.Status) {
@@ -426,7 +426,7 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 }
 
 func (eth *TaskHandler) loadTaskFromRuntime(taskID int64) (*model.Task, error) {
-	provider, ok := eth.processor.(managementClientProvider)
+	provider, ok := eth.processor.(taskStatusRuntimeProvider)
 	if !ok {
 		return nil, fmt.Errorf("processor does not expose task status runtime")
 	}

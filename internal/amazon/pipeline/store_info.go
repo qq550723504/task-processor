@@ -31,8 +31,8 @@ func (h *StoreInfoHandler) Handle(ctx context.Context, taskContext *model.TaskCo
 		return err
 	}
 
-	if h.services == nil || h.services.ManagementClient == nil {
-		h.GetLogger().Warn("管理客户端未初始化，使用兜底店铺信息")
+	if h.services == nil || h.services.StoreAPI == nil {
+		h.GetLogger().Warn("店铺 API 未初始化，使用兜底店铺信息")
 		storeInfo := map[string]any{
 			"store_id": storeID,
 			"name":     "Amazon Store",
@@ -41,18 +41,7 @@ func (h *StoreInfoHandler) Handle(ctx context.Context, taskContext *model.TaskCo
 		taskContext.SetResult("store_info", storeInfo)
 		return nil
 	}
-	storeClient := h.services.ManagementClient.GetStoreClient()
-	if storeClient == nil {
-		h.GetLogger().Warn("店铺客户端未初始化，使用兜底店铺信息")
-		storeInfo := map[string]any{
-			"store_id": storeID,
-			"name":     "Amazon Store",
-			"status":   "active",
-		}
-		taskContext.SetResult("store_info", storeInfo)
-		return nil
-	}
-	storeResp, err := storeClient.GetStore(storeID)
+	storeResp, err := h.services.StoreAPI.GetStore(storeID)
 	if err != nil {
 		return err
 	}

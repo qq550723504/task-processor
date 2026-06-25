@@ -91,8 +91,8 @@ Current direct dependency hotspots are:
     database/repository access by marketplace slice, not one large adapter
     rewrite
 - `internal/amazon`
-  - current `management` coupling is concentrated in context/DTO seams and
-    tests, while `openai` coupling is isolated to the current processor and
+  - current `management` coupling is concentrated in DTO seams and tests,
+    while `openai` coupling is isolated to the current processor and
     LLM adapter path
   - direct external client imports are guarded by
     `TestAmazonExternalClientImportsStayAllowlisted`
@@ -145,9 +145,9 @@ Current direct dependency hotspots are:
     behind a package-local validator interface; concrete `management` usage
     remains only in debug task runner/runtime assembly seams and should keep
     moving toward in-repository database/repository access
-  - `internal/app/taskstatus` still imports `management` in task status service
-    seams; these should remain explicit retirement seams while task-status data
-    access moves toward in-repository database/repository access
+  - `internal/app/taskstatus` no longer imports `management` directly; concrete
+    runtime adapters live outside the app task-status service while the service
+    keeps only the task-status update contract
   - ProductImage model/default provider assembly seams in `internal/app/httpapi`
     are guarded by
     `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
@@ -168,7 +168,7 @@ Current direct dependency hotspots are:
     `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
   - `internal/app/runtime/listing` management retirement seams are guarded by
     `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
-  - `internal/app/taskstatus` management retirement seams are guarded by
+  - `internal/app/taskstatus` management import retirement is guarded by
     `TestAppTaskStatusManagementClientImportsStayAllowlisted`
 - `internal/platformtask`
   - current platform task helpers still import `management` in product sync,

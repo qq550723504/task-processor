@@ -261,7 +261,7 @@ func (h *TaskHandler) updateTaskStatusSyncWithInput(input taskstatus.UpdateInput
 		if runtime == nil {
 			return nil
 		}
-		return taskstatus.NewManagementClientAdapter(runtime)
+		return taskstatus.NewRuntimeTaskStatusAdapter(runtime)
 	})
 
 	if err := statusService.TransitionSyncWithInput(model.TaskStatusProcessing, input); err != nil {

@@ -925,6 +925,236 @@ func TestAppConsumerManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestPlatformProcessorRegistryDoesNotExposeManagementClient(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv == nil || fn.Name == nil || fn.Name.Name != "GetManagementClient" {
+			continue
+		}
+		if len(fn.Recv.List) == 0 {
+			continue
+		}
+		star, ok := fn.Recv.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			continue
+		}
+		ident, ok := star.X.(*ast.Ident)
+		if ok && ident.Name == "PlatformProcessorRegistry" {
+			t.Fatalf("%s exposes PlatformProcessorRegistry.GetManagementClient; expose narrower runtime-owned ports instead", path)
+		}
+	}
+}
+
+func TestAppConsumerTaskStatusRuntimeProviderIsNotNamedManagementClient(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "consumer")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		file, err := parser.ParseFile(token.NewFileSet(), path, facts.source, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		for _, decl := range file.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gen.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if ok && typeSpec.Name.Name == "managementClientProvider" {
+					t.Fatalf("%s defines managementClientProvider; name task status runtime ports after the capability they expose", path)
+				}
+			}
+		}
+	}
+}
+
+func TestAppConsumerDoesNotUseManagementNamedTaskStatusAdapter(t *testing.T) {
+	root := filepath.Join("..", "internal", "app", "consumer")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		file, err := parser.ParseFile(token.NewFileSet(), path, facts.source, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil || selector.Sel.Name != "NewManagementClientAdapter" {
+				return true
+			}
+			ident, ok := selector.X.(*ast.Ident)
+			if ok && ident.Name == "taskstatus" {
+				t.Fatalf("%s calls taskstatus.NewManagementClientAdapter; use a runtime task status adapter in app/consumer", path)
+			}
+			return true
+		})
+	}
+}
+
+func TestTaskStatusAdapterCallersUseRuntimeNamedConstructor(t *testing.T) {
+	root := filepath.Join("..", "internal")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "taskstatus", "service.go")):        {},
+		filepath.Clean(filepath.Join(root, "app", "taskstatus", "service.go")): {},
+	}
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, facts.source, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil || selector.Sel.Name != "NewManagementClientAdapter" {
+				return true
+			}
+			ident, ok := selector.X.(*ast.Ident)
+			if ok && ident.Name == "taskstatus" {
+				t.Fatalf("%s calls taskstatus.NewManagementClientAdapter; use NewRuntimeTaskStatusAdapter outside compatibility wrappers", path)
+			}
+			return true
+		})
+	}
+}
+
+func TestTaskStatusPackageDoesNotExposeManagementNamedAdapter(t *testing.T) {
+	path := filepath.Join("..", "internal", "taskstatus", "service.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if ok && fn.Name != nil && fn.Name.Name == "NewManagementClientAdapter" {
+			t.Fatalf("%s exposes NewManagementClientAdapter; expose runtime-named task status adapters instead", path)
+		}
+	}
+}
+
+func TestTaskStatusPackageDoesNotExposeBroadManagementRuntimeConstructor(t *testing.T) {
+	path := filepath.Join("..", "internal", "taskstatus", "service.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if ok && fn.Name != nil && fn.Name.Name == "NewManagementRuntime" {
+			t.Fatalf("%s exposes NewManagementRuntime; use task-status-specific runtime constructor names", path)
+		}
+	}
+}
+
+func TestAmazonTaskStatusUpdatesUseTaskStatusRuntime(t *testing.T) {
+	path := filepath.Join("..", "internal", "amazon", "task_status.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name == nil || fn.Name.Name != "updateTaskStatusSyncWithInput" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil || selector.Sel.Name != "GetManagementClient" {
+				return true
+			}
+			t.Fatalf("%s updateTaskStatusSyncWithInput calls GetManagementClient; use GetTaskStatusRuntime for task status updates", path)
+			return true
+		})
+	}
+}
+
+func TestAmazonAuthPauseUsesStoreAPIPort(t *testing.T) {
+	path := filepath.Join("..", "internal", "amazon", "task_status.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name == nil || fn.Name.Name != "pauseStoreForAuthentication" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil || selector.Sel.Name != "GetManagementClient" {
+				return true
+			}
+			t.Fatalf("%s pauseStoreForAuthentication calls GetManagementClient; use a store API port for auth pause updates", path)
+			return true
+		})
+	}
+}
+
+func TestAmazonServicesUseStoreAPIPort(t *testing.T) {
+	path := filepath.Join("..", "internal", "amazon", "model", "context.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		switch typed := decl.(type) {
+		case *ast.GenDecl:
+			for _, spec := range typed.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok || typeSpec.Name == nil || typeSpec.Name.Name != "Services" {
+					continue
+				}
+				structType, ok := typeSpec.Type.(*ast.StructType)
+				if !ok || structType.Fields == nil {
+					continue
+				}
+				for _, field := range structType.Fields.List {
+					for _, name := range field.Names {
+						if name.Name == "ManagementClient" {
+							t.Fatalf("%s Services exposes ManagementClient; expose StoreAPI for store reads and pause updates", path)
+						}
+					}
+				}
+			}
+		case *ast.FuncDecl:
+			if typed.Name != nil && typed.Name.Name == "SetManagementClient" {
+				t.Fatalf("%s exposes SetManagementClient; use SetStoreAPI so Amazon services depend on the store port", path)
+			}
+		}
+	}
+}
+
 func TestAppBootstrapManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "bootstrap")
 	allowedFiles := map[string]struct{}{
@@ -1280,7 +1510,6 @@ func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "amazon")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "llm", "openai_llm_client.go")):     {},
-		filepath.Clean(filepath.Join(root, "model", "context.go")):             {},
 		filepath.Clean(filepath.Join(root, "model", "task_context.go")):        {},
 		filepath.Clean(filepath.Join(root, "pipeline", "daily_limit_test.go")): {},
 		filepath.Clean(filepath.Join(root, "processor.go")):                    {},
@@ -1544,10 +1773,7 @@ func TestAppRuntimeListingManagementClientImportsStayAllowlisted(t *testing.T) {
 
 func TestAppTaskStatusManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "taskstatus")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "service.go")):      {},
-		filepath.Clean(filepath.Join(root, "service_test.go")): {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {

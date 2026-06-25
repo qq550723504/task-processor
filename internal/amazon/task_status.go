@@ -95,11 +95,11 @@ func (p *Processor) handleTaskSuccess(task *model.Task, taskContext *amazonModel
 
 func (p *Processor) updateTaskStatusSyncWithInput(input taskstatus.UpdateInput) {
 	statusService := taskstatus.NewService("amazon/processor", func() taskstatus.ImportTaskStatusClient {
-		managementClient := p.GetManagementClient()
-		if managementClient == nil {
+		runtime := p.GetTaskStatusRuntime()
+		if runtime == nil {
 			return nil
 		}
-		return taskstatus.NewManagementClientAdapter(managementClient)
+		return taskstatus.NewRuntimeTaskStatusAdapter(runtime)
 	})
 
 	if err := statusService.TransitionSyncWithInput(model.TaskStatusProcessing, input); err != nil {
@@ -124,11 +124,7 @@ func (p *Processor) pauseStoreForAuthentication(task *model.Task) {
 		)
 	}
 
-	managementClient := p.GetManagementClient()
-	if managementClient == nil {
-		return
-	}
-	storeClient := managementClient.GetStoreClient()
+	storeClient := p.GetStoreAPI()
 	if storeClient == nil {
 		return
 	}

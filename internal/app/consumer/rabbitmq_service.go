@@ -410,7 +410,7 @@ func (s *RabbitMQService) resolveTaskStatusRuntime() taskstatus.RuntimeWithTaskR
 		return nil
 	}
 	for _, processor := range s.processorRegistry.GetAllProcessors() {
-		provider, ok := processor.(managementClientProvider)
+		provider, ok := processor.(taskStatusRuntimeProvider)
 		if !ok {
 			continue
 		}

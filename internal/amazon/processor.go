@@ -39,7 +39,7 @@ func NewProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger
 
 	// 创建服务容器
 	services := amazonModel.NewServices()
-	services.SetManagementClient(baseProcessor.GetManagementClient())
+	services.SetStoreAPI(baseProcessor.GetStoreAPI())
 	services.SetMemoryManager(baseProcessor.GetMemoryManager())
 
 	// 创建 API 客户端

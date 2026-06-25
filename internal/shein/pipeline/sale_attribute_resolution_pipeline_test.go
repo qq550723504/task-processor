@@ -52,7 +52,7 @@ func newSheinPipelineTestProcessor(cfg *config.Config, productFetcher fetcher.Pr
 	return &SheinProcessor{
 		BaseProcessor:     base,
 		managementClient:  clientMgr,
-		taskStatusRuntime: taskstatus.NewManagementRuntime(clientMgr),
+		taskStatusRuntime: taskstatus.NewManagementTaskStatusRuntime(clientMgr),
 		imageDownloader:   clientMgr.GetImageDownloader(),
 		productFetcher:    productFetcher,
 	}
