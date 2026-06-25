@@ -3,6 +3,8 @@ package listingadmin
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -177,6 +179,43 @@ func TestClaimForDispatchRejectsInvalidPreviousStatus(t *testing.T) {
 	}
 }
 
+func TestConcurrentClaimForDispatchOnlyOneWorkerWins(t *testing.T) {
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{ID: 14, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "concurrent-claim", Status: model.TaskStatusPending.Int16(), Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	var successes atomic.Int32
+	runConcurrently(t, 8, func(worker int) {
+		claimed, err := repo.ClaimForDispatch(context.Background(), DispatchClaim{
+			TaskID:         14,
+			PreviousStatus: model.TaskStatusPending.Int16(),
+			ProcessingNode: "node-" + string(rune('a'+worker)),
+			Remark:         "dispatching concurrently",
+		})
+		if err != nil {
+			t.Errorf("ClaimForDispatch(worker=%d) error = %v", worker, err)
+			return
+		}
+		if claimed {
+			successes.Add(1)
+		}
+	})
+
+	if successes.Load() != 1 {
+		t.Fatalf("successful claims = %d, want 1", successes.Load())
+	}
+	var row listingProductImportTask
+	if err := db.Table("listing_product_import_task").Where("id = ?", int64(14)).Take(&row).Error; err != nil {
+		t.Fatalf("load concurrently claimed row: %v", err)
+	}
+	if row.Status != model.TaskStatusQueued.Int16() || row.ProcessingNode == "" || row.Remark != "dispatching concurrently" {
+		t.Fatalf("concurrently claimed row = %+v, want queued with winning processing node", row)
+	}
+}
+
 func TestRollbackDispatchRestoresPreviousStatusWithVisibleReason(t *testing.T) {
 	t.Parallel()
 
@@ -200,6 +239,40 @@ func TestRollbackDispatchRestoresPreviousStatusWithVisibleReason(t *testing.T) {
 	}
 }
 
+func TestConcurrentRollbackDispatchOnlyOriginalQueuedClaimIsRestoredOnce(t *testing.T) {
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{ID: 25, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "concurrent-rollback", Status: model.TaskStatusQueued.Int16(), ProcessingNode: "node-a", Priority: 10, CreateTime: &now, UpdateTime: &now, Deleted: 0},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	var restored atomic.Int32
+	var notFound atomic.Int32
+	runConcurrently(t, 8, func(worker int) {
+		err := repo.RollbackDispatch(context.Background(), 25, model.TaskStatusCrawled.Int16(), "node-a", "publish failed")
+		switch {
+		case err == nil:
+			restored.Add(1)
+		case errors.Is(err, ErrImportTaskNotFound):
+			notFound.Add(1)
+		default:
+			t.Errorf("RollbackDispatch(worker=%d) error = %v", worker, err)
+		}
+	})
+
+	if restored.Load() != 1 || notFound.Load() != 7 {
+		t.Fatalf("rollback results restored=%d notFound=%d, want 1/7", restored.Load(), notFound.Load())
+	}
+	var row listingProductImportTask
+	if err := db.Table("listing_product_import_task").Where("id = ?", int64(25)).Take(&row).Error; err != nil {
+		t.Fatalf("load concurrently rolled back row: %v", err)
+	}
+	if row.Status != model.TaskStatusCrawled.Int16() || row.ProcessingNode != "" || row.ErrorMessage != "publish failed" {
+		t.Fatalf("concurrently rolled back row = %+v, want restored crawled row with cleared node", row)
+	}
+}
+
 func TestRollbackDispatchReturnsNotFoundWhenNoQueuedRowRestored(t *testing.T) {
 	t.Parallel()
 
@@ -212,6 +285,65 @@ func TestRollbackDispatchReturnsNotFoundWhenNoQueuedRowRestored(t *testing.T) {
 	repo := NewGormImportTaskRepository(db)
 	if err := repo.RollbackDispatch(context.Background(), 22, model.TaskStatusCrawled.Int16(), "node-a", "publish failed"); !errors.Is(err, ErrImportTaskNotFound) {
 		t.Fatalf("RollbackDispatch() error = %v, want ErrImportTaskNotFound", err)
+	}
+}
+
+func TestConcurrentRecoveryOnlyUpdatesStillEligibleRowsOnce(t *testing.T) {
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	expired := now.Add(-3 * time.Hour)
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{ID: 26, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "processing-timeout", Status: model.TaskStatusProcessing.Int16(), ProcessingNode: "worker-a", Priority: 10, CreateTime: &expired, UpdateTime: &expired, Deleted: 0},
+		{ID: 27, TenantID: 10, StoreID: 100, Platform: "shein", Region: "us", ProductID: "stale-queued", Status: model.TaskStatusQueued.Int16(), ProcessingNode: "dispatch-token", Priority: 10, CreateTime: &expired, UpdateTime: &expired, Deleted: 0},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	var processingRecovered atomic.Int32
+	var queuedRecovered atomic.Int32
+	runConcurrently(t, 8, func(worker int) {
+		recovered, err := repo.RecoverTimedOutProcessingTasks(context.Background(), []int64{26}, ProcessingTimeoutRecovery{
+			TimeoutMinutes: 30,
+			TimeoutBefore:  now.Add(-30 * time.Minute),
+			ErrorMessage:   "Task processing lease expired, recovered by listing control plane",
+			ReasonCode:     "PROCESSING_TIMEOUT",
+			Stage:          "processing_timeout_recovery",
+		})
+		if err != nil {
+			t.Errorf("RecoverTimedOutProcessingTasks(worker=%d) error = %v", worker, err)
+			return
+		}
+		processingRecovered.Add(int32(recovered))
+
+		recovered, err = repo.RecoverStaleQueuedTasks(context.Background(), []int64{27}, StaleQueuedRecovery{
+			TimeoutMinutes: 120,
+			TimeoutBefore:  now.Add(-120 * time.Minute),
+			ErrorMessage:   "Task stayed queued too long, recovered by listing control plane",
+			ReasonCode:     "STALE_QUEUED",
+			Stage:          "queued_timeout_recovery",
+		})
+		if err != nil {
+			t.Errorf("RecoverStaleQueuedTasks(worker=%d) error = %v", worker, err)
+			return
+		}
+		queuedRecovered.Add(int32(recovered))
+	})
+
+	if processingRecovered.Load() != 1 || queuedRecovered.Load() != 1 {
+		t.Fatalf("recovered processing=%d queued=%d, want 1/1", processingRecovered.Load(), queuedRecovered.Load())
+	}
+	processingTask, err := repo.GetImportTaskByID(context.Background(), 26)
+	if err != nil {
+		t.Fatalf("GetImportTaskByID(processing) error = %v", err)
+	}
+	if processingTask == nil || processingTask.Status != model.TaskStatusPendingRetry.Int16() || processingTask.ReasonCode != "PROCESSING_TIMEOUT" {
+		t.Fatalf("processing task = %+v, want one recovered pending_retry row", processingTask)
+	}
+	queuedTask, err := repo.GetImportTaskByID(context.Background(), 27)
+	if err != nil {
+		t.Fatalf("GetImportTaskByID(queued) error = %v", err)
+	}
+	if queuedTask == nil || queuedTask.Status != model.TaskStatusPending.Int16() || queuedTask.ProcessingNode != "" || queuedTask.ReasonCode != "STALE_QUEUED" {
+		t.Fatalf("queued task = %+v, want one recovered pending row with cleared node", queuedTask)
 	}
 }
 
@@ -444,7 +576,29 @@ func newImportTaskDispatchTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&listingProductImportTask{}); err != nil {
 		t.Fatalf("migrate import task: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("load sqlite handle: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
 	return db
+}
+
+func runConcurrently(t *testing.T, workers int, fn func(worker int)) {
+	t.Helper()
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	wg.Add(workers)
+	for worker := 0; worker < workers; worker++ {
+		worker := worker
+		go func() {
+			defer wg.Done()
+			<-start
+			fn(worker)
+		}()
+	}
+	close(start)
+	wg.Wait()
 }
 
 func seedDispatchTasks(t *testing.T, db *gorm.DB, rows []listingProductImportTask) {

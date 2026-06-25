@@ -525,7 +525,7 @@ publish 失败和 stale task 能安全恢复。
 ```text
 1. 后端 CI 改为 go test ./... -count=1（已接入 GitHub Actions）
 2. listingcontrol 增加 race test（runtime leader 并发门禁已接入 GitHub Actions）
-3. claim / rollback / recovery 增加并发集成测试
+3. claim / rollback / recovery 增加并发集成测试（repository 级门禁已接入 GitHub Actions race step）
 4. cmd/listing-control-plane 和 cmd/shein-listing 都执行 build（已接入 GitHub Actions）
 5. architecture guard tests 固定进入 CI（已随 go test ./... -count=1 接入）
 ```
