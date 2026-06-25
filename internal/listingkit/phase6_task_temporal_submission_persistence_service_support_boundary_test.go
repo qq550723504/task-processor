@@ -24,16 +24,16 @@ func TestTaskTemporalSubmissionPersistenceServiceSupportBoundary(t *testing.T) {
 	supportSource := readTaskGenerationSourceFile(t, "task_temporal_submission_persistence_service_support.go")
 	assertSourceContainsAll(t, supportSource, []string{
 		"func (s *taskTemporalSubmissionPersistenceService) loadSheinSubmitPersistenceState(",
-		"func (s *taskTemporalSubmissionPersistenceService) loadSheinPublishTaskState(",
 		"func (s *taskTemporalSubmissionPersistenceService) persistTemporalSuccessResultAndPhase(",
 		"func (s *taskTemporalSubmissionPersistenceService) completeTemporalSubmitAttempt(",
-		"func (s *taskTemporalSubmissionPersistenceService) recordTemporalFailureState(",
 		"func (s *taskTemporalSubmissionPersistenceService) finishSheinTemporalRemoteRefreshSuccess(",
 	})
 	assertSourceExcludesAll(t, supportSource, []string{
 		"func newTaskTemporalSubmissionPersistenceService(",
 		"func (s *taskTemporalSubmissionPersistenceService) PersistSheinPublishSuccess(",
 		"func (s *taskTemporalSubmissionPersistenceService) PersistSheinPublishFailure(",
+		"func (s *taskTemporalSubmissionPersistenceService) loadSheinPublishTaskState(",
+		"func (s *taskTemporalSubmissionPersistenceService) recordTemporalFailureState(",
 		"service.resultRunner = submissiondomain.NewResultPersistenceService(",
 	})
 }

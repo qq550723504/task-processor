@@ -41,8 +41,18 @@ func newTaskTemporalSubmissionRefreshService(config taskTemporalSubmissionRefres
 		BuildRequest: service.buildTemporalRemoteRefreshRequest,
 		Execute:      service.refreshSheinSubmitRemoteStatus,
 		RecordEvent:  service.recordTemporalRemoteRefreshEvent,
-		FinishError:  service.finishTemporalRemoteRefreshError,
-		FinishOK:     service.finishTemporalRemoteRefreshSuccess,
+		FinishError: func(ctx context.Context, state *sheinTemporalRemoteRefreshState, remoteErr error) (*SheinRefreshRemoteStatusResult, error) {
+			if service.persistence == nil {
+				return nil, nil
+			}
+			return nil, service.persistence.finishSheinTemporalRemoteRefreshFailure(ctx, state, remoteErr)
+		},
+		FinishOK: func(ctx context.Context, state *sheinTemporalRemoteRefreshState) (*SheinRefreshRemoteStatusResult, error) {
+			if service.persistence == nil {
+				return nil, nil
+			}
+			return service.persistence.finishSheinTemporalRemoteRefreshSuccess(ctx, state)
+		},
 	})
 	return service
 }
@@ -95,18 +105,4 @@ func (s *taskTemporalSubmissionRefreshService) recordTemporalRemoteRefreshEvent(
 		return
 	}
 	sheinpub.AppendSubmissionEvent(state.completion.pkg, *event)
-}
-
-func (s *taskTemporalSubmissionRefreshService) finishTemporalRemoteRefreshError(ctx context.Context, state *sheinTemporalRemoteRefreshState, remoteErr error) (*SheinRefreshRemoteStatusResult, error) {
-	if s.persistence == nil {
-		return nil, nil
-	}
-	return nil, s.persistence.finishSheinTemporalRemoteRefreshFailure(ctx, state, remoteErr)
-}
-
-func (s *taskTemporalSubmissionRefreshService) finishTemporalRemoteRefreshSuccess(ctx context.Context, state *sheinTemporalRemoteRefreshState) (*SheinRefreshRemoteStatusResult, error) {
-	if s.persistence == nil {
-		return nil, nil
-	}
-	return s.persistence.finishSheinTemporalRemoteRefreshSuccess(ctx, state)
 }

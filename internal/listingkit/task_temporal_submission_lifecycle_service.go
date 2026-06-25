@@ -78,7 +78,7 @@ func (s *taskTemporalSubmissionLifecycleService) startSheinPublishWorkflowAttemp
 		return s.getTaskPreview(ctx, taskID, "shein")
 	}
 	if listingsubmission.IsReplayOfStartedSubmit(err, opts.requestID) {
-		return s.buildSheinWorkflowReplayPreview(ctx, task)
+		return buildTaskPreviewFromTask(ctx, task, "shein", s.getTaskPreview)
 	}
 	if s.handleWorkflowStartFailure == nil {
 		return nil, err
@@ -101,7 +101,7 @@ func (s *taskTemporalSubmissionLifecycleService) BeginSheinPublishAttempt(ctx co
 }
 
 func (s *taskTemporalSubmissionLifecycleService) ValidateSheinPublishReadiness(ctx context.Context, in SheinPublishAttemptInput) error {
-	state, err := s.loadSheinPreparedPublishState(ctx, in)
+	state, err := loadSheinTemporalPreparedPublishState(ctx, in, s.loadSheinPublishTask, s.normalizeSheinSubmitPackage)
 	if err != nil {
 		return err
 	}
@@ -138,18 +138,4 @@ func buildTaskPreviewFromTask(ctx context.Context, task *Task, platform string, 
 		return getTaskPreview(ctx, task.ID, platform)
 	}
 	return nil, ErrTaskResultUnavailable
-}
-
-func (s *taskTemporalSubmissionLifecycleService) buildSheinWorkflowReplayPreview(ctx context.Context, task *Task) (*ListingKitPreview, error) {
-	if task == nil {
-		return nil, ErrTaskResultUnavailable
-	}
-	return buildTaskPreviewFromTask(ctx, task, "shein", s.getTaskPreview)
-}
-
-func (s *taskTemporalSubmissionLifecycleService) loadSheinPublishTaskState(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {
-	if s.loadSheinPublishTask == nil {
-		return nil, nil, fmt.Errorf("shein publish task loader is not configured")
-	}
-	return s.loadSheinPublishTask(ctx, taskID)
 }

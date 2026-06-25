@@ -3196,6 +3196,15 @@ func TestSubmitIdentityHelperFileOwnsTaskIdentityContextHelper(t *testing.T) {
 	if strings.Contains(executionContent, "func (s *taskSubmissionExecutionService) resolveSheinSubmitRuntime(ctx context.Context, task *Task) (context.Context, int64, error) {") {
 		t.Fatalf("task_submission_execution_service.go should not keep thin submit-runtime wrapper; call resolveSheinStoreRuntime directly")
 	}
+
+	imageExecutionSrc, err := os.ReadFile("task_submission_execution_images.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_execution_images.go) error = %v", err)
+	}
+	imageExecutionContent := string(imageExecutionSrc)
+	if strings.Contains(imageExecutionContent, "func (s *taskSubmissionExecutionService) resolveSheinImageUploadRuntime(ctx context.Context, task *Task) (context.Context, int64, error) {") {
+		t.Fatalf("task_submission_execution_images.go should not keep thin image-upload runtime wrapper; call resolveSheinStoreRuntime directly")
+	}
 }
 
 func TestProcessEntryFileOwnsRootEntry(t *testing.T) {
@@ -3683,17 +3692,32 @@ func TestTaskDirectSubmissionSupportUsesSubmissionDomainRunner(t *testing.T) {
 		"func newSheinDirectSubmitPayloadStages(s *taskDirectSubmissionService) *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot] {",
 		"return submissiondomain.NewPayloadStageService(",
 		"BuildProductAPI: s.loadDirectSubmitProductAPI,",
-		"PersistPhase:    s.persistDirectSubmitPhase,",
-		"PrepareProduct:  s.prepareDirectSubmitProduct,",
+		"PersistPhase: func(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts submissiondomain.DirectSubmitFlowOptions, phase string) error {",
+		"return s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, sheinDirectSubmitOptions{",
+		"startedAt: opts.StartedAt,",
+		"PrepareProduct: s.prepareDirectSubmitProduct,",
 		"return sheinpub.ProductPendingImageUploadCount(product) > 0",
 		"UploadImages:     s.uploadPendingDirectSubmitImages,",
 		"PreValidate:      s.preValidateDirectSubmitProduct,",
 		"SubmitRemote:     s.completeDirectRemoteSubmit,",
+		"PersistPhase: func(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], phase string) error {",
+		"return s.persistSheinDirectSubmitPhase(ctx, in.TaskID, in.Task, in.Package, sheinDirectSubmitOptions{",
+		"PersistSnapshot: func(_ context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], snapshot *sheinpub.SubmitSnapshot) error {",
+		"sheinpub.SetSubmissionSnapshot(in.Package, in.Action, in.RequestID, snapshot)",
 		"sheinpub.PreValidateSubmitProductWithOptions(product, !sheinpub.SecondarySaleAttributeRequired(in.Package))",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("task_direct_submission_support.go should contain %q", needle)
 		}
+	}
+	if strings.Contains(content, "func (s *taskDirectSubmissionService) persistDirectSubmitPayloadPhase(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], phase string) error {") {
+		t.Fatal("task_direct_submission_support.go should not keep thin direct payload phase wrapper")
+	}
+	if strings.Contains(content, "func (s *taskDirectSubmissionService) persistDirectSubmitPhase(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts submissiondomain.DirectSubmitFlowOptions, phase string) error {") {
+		t.Fatal("task_direct_submission_support.go should not keep thin direct flow phase wrapper")
+	}
+	if strings.Contains(content, "func (s *taskDirectSubmissionService) persistDirectSubmitSnapshot(_ context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], snapshot *sheinpub.SubmitSnapshot) error {") {
+		t.Fatal("task_direct_submission_support.go should not keep thin direct payload snapshot wrapper")
 	}
 	if strings.Contains(content, "s.preValidateSheinSubmitProduct(") {
 		t.Fatal("task_direct_submission_support.go should call SHEIN publishing pre-validation directly")
@@ -3715,16 +3739,30 @@ func TestTaskTemporalSubmissionPayloadUsesSubmissionDomainRunner(t *testing.T) {
 	for _, needle := range []string{
 		"func newSheinTemporalSubmitPayloadStages(s *taskTemporalSubmissionFlowService) *submissiondomain.PayloadStageService[*Task, *SheinPackage, *sheinproduct.Product, *sheinpub.SubmitSnapshot] {",
 		"return submissiondomain.NewPayloadStageService(",
-		"PersistPhase:           s.persistTemporalSubmitPayloadPhase,",
-		"PreparePayload:         s.prepareTemporalSubmitPayload,",
-		"PersistSnapshot:        s.persistTemporalSubmitPayloadSnapshot,",
-		"UploadImages:           s.uploadTemporalSubmitPayloadImages,",
-		"FinalizeUploaded:       s.finalizeTemporalSubmitPayload,",
-		"PreValidate:            s.preValidateTemporalSubmitPayload,",
+		"PersistPhase: func(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], phase string) error {",
+		"return s.persistSheinSubmitPhase(ctx, in.TaskID, in.Task.Result, in.Package, in.Action, in.RequestID, phase)",
+		"PreparePayload: s.prepareTemporalSubmitPayload,",
+		"PersistSnapshot: func(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], snapshot *sheinpub.SubmitSnapshot) error {",
+		"if s.persistence == nil {",
+		"return s.persistence.persistSheinSubmitSnapshot(ctx, in.TaskID, in.Task.Result, in.Package, in.Action, in.RequestID, snapshot)",
+		"UploadImages: func(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], product *sheinproduct.Product) error {",
+		"return s.uploadSheinSubmitImages(ctx, in.Task, in.Package, product)",
+		"FinalizeUploaded: s.finalizeTemporalSubmitPayload,",
+		"PreValidate: func(_ context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], product *sheinproduct.Product) error {",
 		"return sheinpub.PreValidateSubmitProductWithOptions(product, !sheinpub.SecondarySaleAttributeRequired(in.Package))",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("task_temporal_submission_payload_support.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"func (s *taskTemporalSubmissionFlowService) persistTemporalSubmitPayloadPhase(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], phase string) error {",
+		"func (s *taskTemporalSubmissionFlowService) persistTemporalSubmitPayloadSnapshot(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], snapshot *sheinpub.SubmitSnapshot) error {",
+		"func (s *taskTemporalSubmissionFlowService) uploadTemporalSubmitPayloadImages(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], product *sheinproduct.Product) error {",
+		"func (s *taskTemporalSubmissionFlowService) preValidateTemporalSubmitPayload(_ context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], product *sheinproduct.Product) error {",
+	} {
+		if strings.Contains(supportContent, needle) {
+			t.Fatalf("task_temporal_submission_payload_support.go should not keep thin payload callback wrapper %q", needle)
 		}
 	}
 	if strings.Contains(supportContent, "s.preValidateSheinSubmitProduct(") {
@@ -3985,19 +4023,27 @@ func TestTaskSubmissionFailurePersistenceUsesSubmissionDomainRunner(t *testing.T
 		}
 	}
 
-	temporalSrc, err := os.ReadFile("task_temporal_submission_persistence_service_support.go")
+	temporalRootSrc, err := os.ReadFile("task_temporal_submission_persistence_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_persistence_service.go) error = %v", err)
+	}
+	temporalSupportSrc, err := os.ReadFile("task_temporal_submission_persistence_service_support.go")
 	if err != nil {
 		t.Fatalf("ReadFile(task_temporal_submission_persistence_service_support.go) error = %v", err)
 	}
-	temporalContent := string(temporalSrc)
+	temporalContent := string(temporalRootSrc) + "\n" + string(temporalSupportSrc)
 
 	for _, needle := range []string{
 		"return s.resultRunner.PersistFailure(ctx, submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]{",
-		"func (s *taskTemporalSubmissionPersistenceService) recordTemporalFailureState(",
+		"recordTemporalFailureState := func(ctx context.Context, in submissiondomain.FailurePersistenceInput[*ListingKitResult, *SheinPackage]) error {",
+		"return service.recordSheinSubmissionFailureForState(ctx, in.TaskID, in.Result, in.Package, in.Action, in.RequestID, in.Phase, in.Err)",
 	} {
 		if !strings.Contains(temporalContent, needle) {
-			t.Fatalf("task_temporal_submission_persistence_service_support.go should contain %q", needle)
+			t.Fatalf("temporal persistence sources should contain %q", needle)
 		}
+	}
+	if strings.Contains(temporalContent, "func (s *taskTemporalSubmissionPersistenceService) recordTemporalFailureState(") {
+		t.Fatal("task_temporal_submission_persistence_service_support.go should not keep thin temporal failure-state wrapper")
 	}
 }
 

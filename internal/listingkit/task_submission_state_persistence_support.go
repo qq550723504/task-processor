@@ -32,10 +32,6 @@ func (s *taskSubmissionStateService) completeDirectSubmitAttempt(in submissiondo
 	sheinpub.AppendSubmissionEvent(in.Package, event)
 }
 
-func (s *taskSubmissionStateService) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {
-	return s.recordSheinSubmissionFailureForState(ctx, taskID, result, pkg, action, "", "", submitErr)
-}
-
 func (s *taskSubmissionStateService) recordSheinSubmissionFailureForState(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestedID, phase string, submitErr error) error {
 	if s.failureRunner != nil {
 		return s.failureRunner.PersistFailure(ctx, submissiondomain.FailurePersistenceInput[*ListingKitResult, *SheinPackage]{
@@ -93,7 +89,7 @@ func (s *taskSubmissionStateService) failSheinDirectSubmit(ctx context.Context, 
 	if task == nil {
 		return submitErr
 	}
-	if saveErr := s.recordSheinSubmissionFailure(ctx, taskID, task.Result, pkg, action, submitErr); saveErr != nil {
+	if saveErr := s.recordSheinSubmissionFailureForState(ctx, taskID, task.Result, pkg, action, "", "", submitErr); saveErr != nil {
 		return saveErr
 	}
 	return submitErr

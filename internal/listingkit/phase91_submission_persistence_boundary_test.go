@@ -24,12 +24,18 @@ func TestSheinSubmissionPersistenceBoundary(t *testing.T) {
 		"sheinpub.ApplySubmissionPersistenceInput(",
 	})
 
-	directSource := readNamedFunctionSource(t, "task_direct_submission_support.go", "persistDirectSubmitSnapshot")
+	directSource := readNamedFunctionSource(t, "task_direct_submission_support.go", "newSheinDirectSubmitPayloadStages")
 	assertSourceContainsAll(t, directSource, []string{
+		"PersistSnapshot: func(_ context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], snapshot *sheinpub.SubmitSnapshot) error {",
 		"sheinpub.SetSubmissionSnapshot(",
 	})
 	assertSourceExcludesAll(t, directSource, []string{
+		"PersistSnapshot:        s.persistDirectSubmitSnapshot,",
 		"setSheinSubmitSnapshot(",
+	})
+	directSupportSource := readTaskGenerationSourceFile(t, "task_direct_submission_support.go")
+	assertSourceExcludesAll(t, directSupportSource, []string{
+		"func (s *taskDirectSubmissionService) persistDirectSubmitSnapshot(_ context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], snapshot *sheinpub.SubmitSnapshot) error {",
 	})
 
 	stateSource := readNamedFunctionSource(t, "task_submission_state_service.go", "persistSuccessfulSheinDirectResponse")

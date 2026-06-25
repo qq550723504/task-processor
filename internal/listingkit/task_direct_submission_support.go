@@ -20,8 +20,14 @@ func newSheinDirectSubmitFlowRunner(s *taskDirectSubmissionService) *submissiond
 			SubmitRemote:   sheinpub.SubmissionPhaseSubmitRemote,
 		},
 		BuildProductAPI: s.loadDirectSubmitProductAPI,
-		PersistPhase:    s.persistDirectSubmitPhase,
-		PrepareProduct:  s.prepareDirectSubmitProduct,
+		PersistPhase: func(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts submissiondomain.DirectSubmitFlowOptions, phase string) error {
+			return s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, sheinDirectSubmitOptions{
+				action:    opts.Action,
+				requestID: opts.RequestID,
+				startedAt: opts.StartedAt,
+			}, phase)
+		},
+		PrepareProduct: s.prepareDirectSubmitProduct,
 		NeedsImageUpload: func(product *sheinproduct.Product) bool {
 			return sheinpub.ProductPendingImageUploadCount(product) > 0
 		},
@@ -42,9 +48,19 @@ func newSheinDirectSubmitPayloadStages(s *taskDirectSubmissionService) *submissi
 			UploadImages:   sheinpub.SubmissionPhaseUploadImages,
 			PreValidate:    sheinpub.SubmissionPhasePreValidate,
 		},
-		PersistPhase:           s.persistDirectSubmitPayloadPhase,
-		PreparePayload:         s.prepareDirectSubmitPayload,
-		PersistSnapshot:        s.persistDirectSubmitSnapshot,
+		PersistPhase: func(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], phase string) error {
+			return s.persistSheinDirectSubmitPhase(ctx, in.TaskID, in.Task, in.Package, sheinDirectSubmitOptions{
+				action:    in.Action,
+				requestID: in.RequestID,
+			}, phase)
+		},
+		PreparePayload: s.prepareDirectSubmitPayload,
+		PersistSnapshot: func(_ context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], snapshot *sheinpub.SubmitSnapshot) error {
+			if snapshot != nil {
+				sheinpub.SetSubmissionSnapshot(in.Package, in.Action, in.RequestID, snapshot)
+			}
+			return nil
+		},
 		RequirePreparedPayload: requireSubmissionPreparedPayload,
 		UploadImages:           s.uploadDirectSubmitPayloadImages,
 		FinalizeUploaded:       s.finalizeDirectSubmitPayload,
@@ -65,14 +81,6 @@ func (s *taskDirectSubmissionService) loadDirectSubmitProductAPI(ctx context.Con
 		return nil, s.failDirectSubmit(ctx, taskID, task, pkg, opts.Action, err)
 	}
 	return productAPI, nil
-}
-
-func (s *taskDirectSubmissionService) persistDirectSubmitPhase(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts submissiondomain.DirectSubmitFlowOptions, phase string) error {
-	return s.persistSheinDirectSubmitPhase(ctx, taskID, task, pkg, sheinDirectSubmitOptions{
-		action:    opts.Action,
-		requestID: opts.RequestID,
-		startedAt: opts.StartedAt,
-	}, phase)
 }
 
 func (s *taskDirectSubmissionService) prepareDirectSubmitProduct(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts submissiondomain.DirectSubmitFlowOptions) (*sheinproduct.Product, error) {
@@ -154,26 +162,12 @@ func (s *taskDirectSubmissionService) buildDirectSubmitTaskPreview(ctx context.C
 	return s.buildTaskPreview(ctx, task, platform)
 }
 
-func (s *taskDirectSubmissionService) persistDirectSubmitPayloadPhase(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], phase string) error {
-	return s.persistSheinDirectSubmitPhase(ctx, in.TaskID, in.Task, in.Package, sheinDirectSubmitOptions{
-		action:    in.Action,
-		requestID: in.RequestID,
-	}, phase)
-}
-
 func (s *taskDirectSubmissionService) prepareDirectSubmitPayload(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage]) (*submissiondomain.PreparedPayload[*sheinproduct.Product, *sheinpub.SubmitSnapshot], error) {
 	preparedPayload, err := prepareSheinSubmitPayloadProduct(ctx, in.TaskID, in.Action, in.RequestID, in.Task, in.Package, s.prepareSheinSubmitProduct)
 	if err != nil {
 		return nil, s.failDirectSubmit(ctx, in.TaskID, in.Task, in.Package, in.Action, err)
 	}
 	return adaptListingKitPreparedPayload(preparedPayload), nil
-}
-
-func (s *taskDirectSubmissionService) persistDirectSubmitSnapshot(_ context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], snapshot *sheinpub.SubmitSnapshot) error {
-	if snapshot != nil {
-		sheinpub.SetSubmissionSnapshot(in.Package, in.Action, in.RequestID, snapshot)
-	}
-	return nil
 }
 
 func (s *taskDirectSubmissionService) uploadDirectSubmitPayloadImages(ctx context.Context, in submissiondomain.PayloadStageContext[*Task, *SheinPackage], product *sheinproduct.Product) error {

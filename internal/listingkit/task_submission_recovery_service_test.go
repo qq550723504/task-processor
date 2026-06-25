@@ -690,12 +690,26 @@ func TestBuildRecoveredSheinRemoteStateCopiesSupplierCodeIntoRecoverySnapshot(t 
 		t.Fatalf("state.selection.SupplierCode = %q, want SUP-snapshot", state.selection.SupplierCode)
 	}
 
-	refreshState := buildRecoveredSheinRemoteRefreshState(state)
-	if refreshState == nil {
-		t.Fatal("refresh state = nil, want remote refresh execution state")
+	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
+		buildSheinSubmitProductAPI: func(_ context.Context, gotTask *Task) (sheinproduct.ProductAPI, error) {
+			if gotTask != task {
+				t.Fatalf("build api task = %+v, want original task", gotTask)
+			}
+			return stubSheinProductAPI{}, nil
+		},
+	})
+	request, err := recovery.buildRecoveredRemoteRefreshRequest(context.Background(), state)
+	if err != nil {
+		t.Fatalf("buildRecoveredRemoteRefreshRequest() err = %v", err)
 	}
-	if refreshState.supplierCode != "SUP-snapshot" {
-		t.Fatalf("refresh state supplier code = %q, want SUP-snapshot", refreshState.supplierCode)
+	if request == nil {
+		t.Fatal("request = nil, want remote refresh request")
+	}
+	if request.supplierCode != "SUP-snapshot" {
+		t.Fatalf("request supplier code = %q, want SUP-snapshot", request.supplierCode)
+	}
+	if request.task != task || request.taskID != task.ID {
+		t.Fatalf("request task/taskID = %+v/%q, want original task/%q", request.task, request.taskID, task.ID)
 	}
 }
 

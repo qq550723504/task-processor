@@ -46,13 +46,6 @@ func buildRecoveredSheinRemoteState(task *Task, action string) (*sheinRecoveredR
 	}, nil
 }
 
-func buildRecoveredSheinRemoteRefreshState(state *sheinRecoveredRemoteState) *sheinRemoteRefreshExecutionState {
-	if state == nil {
-		return nil
-	}
-	return newSheinRemoteRefreshExecutionState(state.completion, state.selection.SupplierCode, state.now)
-}
-
 func (s *taskSubmissionRecoveryService) persistSheinRecoveredRemoteFailure(ctx context.Context, state *sheinRecoveredRemoteState, remoteErr error) error {
 	if state == nil {
 		return remoteErr
@@ -105,7 +98,7 @@ func (s *taskSubmissionRecoveryService) buildRecoveredRemoteRefreshRequest(ctx c
 	if err != nil {
 		return nil, err
 	}
-	return buildSheinRemoteRefreshRequest(productAPI, buildRecoveredSheinRemoteRefreshState(state)), nil
+	return buildSheinRemoteRefreshRequest(productAPI, newSheinRemoteRefreshExecutionState(state.completion, state.selection.SupplierCode, state.now)), nil
 }
 
 func (s *taskSubmissionRecoveryService) recordRecoveredRemoteRefreshEvent(state *sheinRecoveredRemoteState, event *sheinpub.SubmissionEvent) {
@@ -113,12 +106,4 @@ func (s *taskSubmissionRecoveryService) recordRecoveredRemoteRefreshEvent(state 
 		return
 	}
 	sheinpub.AppendSubmissionEvent(state.completion.pkg, *event)
-}
-
-func (s *taskSubmissionRecoveryService) finishRecoveredRemoteRefreshError(ctx context.Context, state *sheinRecoveredRemoteState, remoteErr error) (*ListingKitPreview, error) {
-	return nil, s.persistSheinRecoveredRemoteFailure(ctx, state, remoteErr)
-}
-
-func (s *taskSubmissionRecoveryService) finishRecoveredRemoteRefreshSuccess(ctx context.Context, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
-	return s.completeSheinRecoveredRemoteSuccess(ctx, state)
 }

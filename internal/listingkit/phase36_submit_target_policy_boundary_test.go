@@ -50,4 +50,10 @@ func TestSubmitTargetPolicyBoundary(t *testing.T) {
 	if !strings.Contains(lifecycleContent, "listingsubmission.IsReplayOfStartedSubmit(err, opts.requestID)") {
 		t.Fatal("task_temporal_submission_lifecycle_service.go should call internal/listing/submission replay policy directly")
 	}
+	if !strings.Contains(lifecycleContent, `return buildTaskPreviewFromTask(ctx, task, "shein", s.getTaskPreview)`) {
+		t.Fatal("task_temporal_submission_lifecycle_service.go should build replay preview through the shared task-preview helper directly")
+	}
+	if strings.Contains(lifecycleContent, "func (s *taskTemporalSubmissionLifecycleService) buildSheinWorkflowReplayPreview(ctx context.Context, task *Task) (*ListingKitPreview, error) {") {
+		t.Fatal("task_temporal_submission_lifecycle_service.go should not keep a thin workflow replay preview wrapper")
+	}
 }

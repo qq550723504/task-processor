@@ -2,7 +2,6 @@ package listingkit
 
 import (
 	"context"
-	"fmt"
 
 	submissiondomain "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -63,15 +62,8 @@ func newTaskTemporalSubmissionFlowService(config taskTemporalSubmissionFlowServi
 	return service
 }
 
-func (s *taskTemporalSubmissionFlowService) loadSheinPublishTaskState(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {
-	if s.loadSheinPublishTask == nil {
-		return nil, nil, fmt.Errorf("shein publish task loader is not configured")
-	}
-	return s.loadSheinPublishTask(ctx, taskID)
-}
-
 func (s *taskTemporalSubmissionFlowService) PrepareSheinPublishPayload(ctx context.Context, in SheinPublishAttemptInput) (*SheinPreparedSubmitPayload, error) {
-	state, err := s.loadSheinPreparedPublishState(ctx, in)
+	state, err := loadSheinTemporalPreparedPublishState(ctx, in, s.loadSheinPublishTask, s.normalizeSheinSubmitPackage)
 	if err != nil {
 		return nil, err
 	}

@@ -16,7 +16,6 @@ func TestSheinSubmitImageUploadSupportBoundary(t *testing.T) {
 	rootContent := string(rootSrc)
 
 	for _, needle := range []string{
-		"func uploadSheinProductImages(product *sheinproduct.Product, uploader sheinimage.ImageAPI, cached map[string]string) (int, map[string]string, error) {",
 		"func sheinImageUploadCache(pkg *SheinPackage) map[string]string {",
 	} {
 		if !strings.Contains(rootContent, needle) {
@@ -25,6 +24,7 @@ func TestSheinSubmitImageUploadSupportBoundary(t *testing.T) {
 	}
 
 	for _, needle := range []string{
+		"func uploadSheinProductImages(product *sheinproduct.Product, uploader sheinimage.ImageAPI, cached map[string]string) (int, map[string]string, error) {",
 		"func collectSheinProductImageRefs(product *sheinproduct.Product) []sheinImageUploadRef {",
 		"func appendSheinImageInfoRefs(refs []sheinImageUploadRef, info *sheinproduct.ImageInfo) []sheinImageUploadRef {",
 		"func uploadSheinImageJobs(jobs map[string]sheinImageUploadJob, uploader sheinimage.ImageAPI, uploaded map[string]string) (int, error) {",

@@ -1,6 +1,10 @@
 package listingkit
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 func TestSheinTemporalSubmissionFlowBoundary(t *testing.T) {
 	t.Parallel()
@@ -30,11 +34,21 @@ func TestSheinTemporalSubmissionFlowBoundary(t *testing.T) {
 		"s.remoteSubmitter.Submit(",
 		"s.persistSheinSubmitPhase(",
 	})
+	flowServiceSrc, err := os.ReadFile("task_temporal_submission_flow_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_flow_service.go) error = %v", err)
+	}
+	assertSourceExcludesAll(t, string(flowServiceSrc), []string{
+		"func (s *taskTemporalSubmissionFlowService) loadSheinPublishTaskState(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {",
+	})
 
 	prepareSource := readNamedFunctionSource(t, "task_temporal_submission_flow_service.go", "PrepareSheinPublishPayload")
 	assertSourceContainsAll(t, prepareSource, []string{
-		"s.loadSheinPreparedPublishState(",
+		"loadSheinTemporalPreparedPublishState(ctx, in, s.loadSheinPublishTask, s.normalizeSheinSubmitPackage)",
 		"buildSheinTemporalSubmissionPayloadStageContext(state.execution)",
+	})
+	assertSourceExcludesAll(t, prepareSource, []string{
+		"s.loadSheinPublishTaskState",
 	})
 
 	uploadSource := readNamedFunctionSource(t, "task_temporal_submission_flow_service.go", "UploadSheinPublishImages")
@@ -48,4 +62,20 @@ func TestSheinTemporalSubmissionFlowBoundary(t *testing.T) {
 		"s.loadSheinPreparedPayloadState(",
 		"s.payloadStages.PreValidate(",
 	})
+
+	stateSupportSrc, err := os.ReadFile("task_temporal_submission_flow_state_support.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_flow_state_support.go) error = %v", err)
+	}
+	stateSupportContent := string(stateSupportSrc)
+	for _, needle := range []string{
+		"func (s *taskTemporalSubmissionFlowService) loadSheinPublishExecutionState(ctx context.Context, taskID, action, requestID string) (*sheinTemporalPublishExecutionState, error) {",
+		"func (s *taskTemporalSubmissionLifecycleService) loadSheinPublishExecutionState(ctx context.Context, taskID, action, requestID string) (*sheinTemporalPublishExecutionState, error) {",
+		"func (s *taskTemporalSubmissionFlowService) loadSheinPreparedPublishState(ctx context.Context, in SheinPublishAttemptInput) (*sheinTemporalPreparedPublishState, error) {",
+		"func (s *taskTemporalSubmissionLifecycleService) loadSheinPreparedPublishState(ctx context.Context, in SheinPublishAttemptInput) (*sheinTemporalPreparedPublishState, error) {",
+	} {
+		if strings.Contains(stateSupportContent, needle) {
+			t.Fatalf("task_temporal_submission_flow_state_support.go should not keep unused temporal state wrapper %q; call shared state loaders directly from entrypoints", needle)
+		}
+	}
 }

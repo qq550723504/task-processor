@@ -12,7 +12,10 @@ import (
 )
 
 func (s *taskTemporalSubmissionPersistenceService) loadSheinSubmitPersistenceState(ctx context.Context, taskID, action, requestID, supplierCode string, response *sheinpub.SubmissionResponse, snapshot *sheinpub.SubmitSnapshot, phase, errorMessage string) (*sheinTemporalSubmissionPersistenceState, error) {
-	task, pkg, err := s.loadSheinPublishTaskState(ctx, taskID)
+	if s == nil || s.loadSheinPublishTask == nil {
+		return nil, errors.New("shein publish task loader is not configured")
+	}
+	task, pkg, err := s.loadSheinPublishTask(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -29,13 +32,6 @@ func (s *taskTemporalSubmissionPersistenceService) loadSheinSubmitPersistenceSta
 		phase:        phase,
 		errorMessage: errorMessage,
 	}, nil
-}
-
-func (s *taskTemporalSubmissionPersistenceService) loadSheinPublishTaskState(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {
-	if s == nil || s.loadSheinPublishTask == nil {
-		return nil, nil, errors.New("shein publish task loader is not configured")
-	}
-	return s.loadSheinPublishTask(ctx, taskID)
 }
 
 func (s *taskTemporalSubmissionPersistenceService) persistSheinSubmitSnapshot(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestID string, snapshot *sheinpub.SubmitSnapshot) error {
@@ -171,11 +167,4 @@ func confirmedTemporalRemoteRefreshResponse(response *sheinpub.SubmissionRespons
 		Success: true,
 		Message: sheinmarketpub.ConfirmedSubmissionMessage(action),
 	}
-}
-
-func (s *taskTemporalSubmissionPersistenceService) recordTemporalFailureState(ctx context.Context, in submissiondomain.FailurePersistenceInput[*ListingKitResult, *SheinPackage]) error {
-	if s.recordSheinSubmissionFailureForState == nil {
-		return nil
-	}
-	return s.recordSheinSubmissionFailureForState(ctx, in.TaskID, in.Result, in.Package, in.Action, in.RequestID, in.Phase, in.Err)
 }

@@ -75,22 +75,6 @@ func loadSheinTemporalPreparedPublishState(
 	}, nil
 }
 
-func (s *taskTemporalSubmissionFlowService) loadSheinPublishExecutionState(ctx context.Context, taskID, action, requestID string) (*sheinTemporalPublishExecutionState, error) {
-	return loadSheinTemporalPublishExecutionState(ctx, taskID, action, requestID, s.loadSheinPublishTaskState)
-}
-
-func (s *taskTemporalSubmissionLifecycleService) loadSheinPublishExecutionState(ctx context.Context, taskID, action, requestID string) (*sheinTemporalPublishExecutionState, error) {
-	return loadSheinTemporalPublishExecutionState(ctx, taskID, action, requestID, s.loadSheinPublishTaskState)
-}
-
-func (s *taskTemporalSubmissionFlowService) loadSheinPreparedPublishState(ctx context.Context, in SheinPublishAttemptInput) (*sheinTemporalPreparedPublishState, error) {
-	return loadSheinTemporalPreparedPublishState(ctx, in, s.loadSheinPublishTaskState, s.normalizeSheinSubmitPackage)
-}
-
-func (s *taskTemporalSubmissionLifecycleService) loadSheinPreparedPublishState(ctx context.Context, in SheinPublishAttemptInput) (*sheinTemporalPreparedPublishState, error) {
-	return loadSheinTemporalPreparedPublishState(ctx, in, s.loadSheinPublishTaskState, s.normalizeSheinSubmitPackage)
-}
-
 func loadSheinTemporalPreparedPayloadState(
 	ctx context.Context,
 	in *SheinPreparedSubmitPayload,
@@ -112,7 +96,7 @@ func loadSheinTemporalPreparedPayloadState(
 }
 
 func (s *taskTemporalSubmissionFlowService) loadSheinPreparedPayloadState(ctx context.Context, in *SheinPreparedSubmitPayload) (*sheinTemporalPreparedPayloadState, error) {
-	return loadSheinTemporalPreparedPayloadState(ctx, in, s.loadSheinPublishTaskState)
+	return loadSheinTemporalPreparedPayloadState(ctx, in, s.loadSheinPublishTask)
 }
 
 func buildSheinTemporalSubmissionPayloadStageContext(state *sheinTemporalPublishExecutionState) submissiondomain.PayloadStageContext[*Task, *SheinPackage] {

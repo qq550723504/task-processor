@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"task-processor/internal/listingkit/core"
 	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
@@ -46,19 +45,6 @@ func (s *taskSubmissionRecoveryService) shouldRecoverLocally(state *sheinRecover
 	)
 }
 
-func (s *taskSubmissionRecoveryService) beginSheinSubmitLeaseWithoutStartTime(ctx context.Context, taskID, action, requestID string) (*Task, error) {
-	startedAt, _ := ctx.Value(sheinSubmitStartedAtContextKey{}).(time.Time)
-	return s.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
-}
-
-func (s *taskSubmissionRecoveryService) buildSheinReplayPreview(ctx context.Context, task *Task) (*ListingKitPreview, error) {
-	return s.buildTaskPreview(ctx, task, "shein")
-}
-
-func (s *taskSubmissionRecoveryService) buildMissingPackageAcquireError(error) error {
-	return fmt.Errorf("%w: shein preview payload is not available", ErrSubmitBlocked)
-}
-
 func (s *taskSubmissionRecoveryService) recordWorkflowStartFailure(ctx context.Context, in sheinWorkflowStartFailureInput) error {
 	var result *ListingKitResult
 	var pkg *SheinPackage
@@ -81,8 +67,4 @@ func (s *taskSubmissionRecoveryService) recordWorkflowStartFailure(ctx context.C
 		sheinpub.SubmissionPhaseValidate,
 		in.startErr,
 	)
-}
-
-func (s *taskSubmissionRecoveryService) clearWorkflowStartFailure(ctx context.Context, in sheinWorkflowStartFailureInput) error {
-	return s.clearSheinSubmitLeaseAfterStartFailure(ctx, in.taskID, in.action, in.requestID, in.startErr)
 }

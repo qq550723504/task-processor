@@ -41,14 +41,21 @@ func TestSheinTemporalSubmissionRefreshBoundary(t *testing.T) {
 		"buildSheinRemoteRefreshRequest(",
 	})
 
-	failureSource := readNamedFunctionSource(t, "task_temporal_submission_refresh_service.go", "finishTemporalRemoteRefreshError")
-	assertSourceContainsAll(t, failureSource, []string{
-		"finishSheinTemporalRemoteRefreshFailure(",
+	runnerSource := readNamedFunctionSource(t, "task_temporal_submission_refresh_service.go", "newTaskTemporalSubmissionRefreshService")
+	assertSourceContainsAll(t, runnerSource, []string{
+		"FinishError: func(ctx context.Context, state *sheinTemporalRemoteRefreshState, remoteErr error) (*SheinRefreshRemoteStatusResult, error) {",
+		"return nil, service.persistence.finishSheinTemporalRemoteRefreshFailure(ctx, state, remoteErr)",
+		"FinishOK: func(ctx context.Context, state *sheinTemporalRemoteRefreshState) (*SheinRefreshRemoteStatusResult, error) {",
+		"return service.persistence.finishSheinTemporalRemoteRefreshSuccess(ctx, state)",
 	})
-
-	successSource := readNamedFunctionSource(t, "task_temporal_submission_refresh_service.go", "finishTemporalRemoteRefreshSuccess")
-	assertSourceContainsAll(t, successSource, []string{
-		"finishSheinTemporalRemoteRefreshSuccess(",
+	assertSourceExcludesAll(t, runnerSource, []string{
+		"FinishError:  service.finishTemporalRemoteRefreshError,",
+		"FinishOK:     service.finishTemporalRemoteRefreshSuccess,",
+	})
+	refreshFileSource := readTaskGenerationSourceFile(t, "task_temporal_submission_refresh_service.go")
+	assertSourceExcludesAll(t, refreshFileSource, []string{
+		"func (s *taskTemporalSubmissionRefreshService) finishTemporalRemoteRefreshError(ctx context.Context, state *sheinTemporalRemoteRefreshState, remoteErr error) (*SheinRefreshRemoteStatusResult, error) {",
+		"func (s *taskTemporalSubmissionRefreshService) finishTemporalRemoteRefreshSuccess(ctx context.Context, state *sheinTemporalRemoteRefreshState) (*SheinRefreshRemoteStatusResult, error) {",
 	})
 
 	persistenceSuccessSource := readNamedFunctionSource(t, "task_temporal_submission_persistence_service_support.go", "finishSheinTemporalRemoteRefreshSuccess")

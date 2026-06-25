@@ -1,6 +1,9 @@
 package listingkit
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestSheinTemporalSubmissionLifecycleBoundary(t *testing.T) {
 	t.Parallel()
@@ -25,8 +28,18 @@ func TestSheinTemporalSubmissionLifecycleBoundary(t *testing.T) {
 
 	lifecycleSource := readNamedFunctionSource(t, "task_temporal_submission_lifecycle_service.go", "ValidateSheinPublishReadiness")
 	assertSourceContainsAll(t, lifecycleSource, []string{
-		"s.loadSheinPreparedPublishState(",
+		"loadSheinTemporalPreparedPublishState(ctx, in, s.loadSheinPublishTask, s.normalizeSheinSubmitPackage)",
 		"buildSheinSubmitReadinessWithPodForAction(",
 		"validateSheinSubmitReadinessGates(",
+	})
+	assertSourceExcludesAll(t, lifecycleSource, []string{
+		"s.loadSheinPublishTaskState",
+	})
+	lifecycleServiceSrc, err := os.ReadFile("task_temporal_submission_lifecycle_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_temporal_submission_lifecycle_service.go) error = %v", err)
+	}
+	assertSourceExcludesAll(t, string(lifecycleServiceSrc), []string{
+		"func (s *taskTemporalSubmissionLifecycleService) loadSheinPublishTaskState(ctx context.Context, taskID string) (*Task, *SheinPackage, error) {",
 	})
 }

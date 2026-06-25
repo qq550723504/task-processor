@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	submissiondomain "task-processor/internal/listing/submission"
@@ -67,8 +68,10 @@ func newTaskSubmissionRecoveryService(config taskSubmissionRecoveryServiceConfig
 		BuildRequest: service.buildRecoveredRemoteRefreshRequest,
 		Execute:      service.refreshSheinSubmitRemoteStatus,
 		RecordEvent:  service.recordRecoveredRemoteRefreshEvent,
-		FinishError:  service.finishRecoveredRemoteRefreshError,
-		FinishOK:     service.finishRecoveredRemoteRefreshSuccess,
+		FinishError: func(ctx context.Context, state *sheinRecoveredRemoteState, remoteErr error) (*ListingKitPreview, error) {
+			return nil, service.persistSheinRecoveredRemoteFailure(ctx, state, remoteErr)
+		},
+		FinishOK: service.completeSheinRecoveredRemoteSuccess,
 	})
 	service.recoveryRouteRunner = submissiondomain.NewRecoveryRouteService(submissiondomain.RecoveryRouteServiceConfig[sheinRecoveredRemoteState, ListingKitPreview]{
 		UseLocal:      service.shouldRecoverLocally,
@@ -76,17 +79,26 @@ func newTaskSubmissionRecoveryService(config taskSubmissionRecoveryServiceConfig
 		RecoverRemote: service.recoverSheinSubmitViaRemoteConfirmation,
 	})
 	service.leaseAcquireRunner = submissiondomain.NewLeaseAcquireService(submissiondomain.LeaseAcquireServiceConfig[Task, ListingKitPreview]{
-		BeginLease:         service.beginSheinSubmitLeaseWithoutStartTime,
-		IsReplayExisting:   func(err error) bool { return errors.Is(err, errSheinSubmitReplayExisting) },
-		IsRecoverRemote:    func(err error) bool { return errors.Is(err, errSheinSubmitRecoverRemote) },
-		IsMissingPackage:   func(err error) bool { return errors.Is(err, errSheinSubmitMissingPackage) },
-		BuildReplayPreview: service.buildSheinReplayPreview,
-		RecoverRemote:      service.recoverSheinSubmitRemote,
-		BuildMissingPkgErr: service.buildMissingPackageAcquireError,
+		BeginLease: func(ctx context.Context, taskID, action, requestID string) (*Task, error) {
+			startedAt, _ := ctx.Value(sheinSubmitStartedAtContextKey{}).(time.Time)
+			return service.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)
+		},
+		IsReplayExisting: func(err error) bool { return errors.Is(err, errSheinSubmitReplayExisting) },
+		IsRecoverRemote:  func(err error) bool { return errors.Is(err, errSheinSubmitRecoverRemote) },
+		IsMissingPackage: func(err error) bool { return errors.Is(err, errSheinSubmitMissingPackage) },
+		BuildReplayPreview: func(ctx context.Context, task *Task) (*ListingKitPreview, error) {
+			return service.buildTaskPreview(ctx, task, "shein")
+		},
+		RecoverRemote: service.recoverSheinSubmitRemote,
+		BuildMissingPkgErr: func(error) error {
+			return fmt.Errorf("%w: shein preview payload is not available", ErrSubmitBlocked)
+		},
 	})
 	service.startFailureRunner = submissiondomain.NewStartFailureService(submissiondomain.StartFailureServiceConfig[sheinWorkflowStartFailureInput]{
 		RecordFailure: service.recordWorkflowStartFailure,
-		ClearFailure:  service.clearWorkflowStartFailure,
+		ClearFailure: func(ctx context.Context, in sheinWorkflowStartFailureInput) error {
+			return service.clearSheinSubmitLeaseAfterStartFailure(ctx, in.taskID, in.action, in.requestID, in.startErr)
+		},
 		OriginalError: func(in sheinWorkflowStartFailureInput) error { return in.startErr },
 	})
 	return service
@@ -132,11 +144,7 @@ func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
-	return s.executeRecoveredSheinSubmitRoute(ctx, recoveredState)
-}
-
-func (s *taskSubmissionRecoveryService) executeRecoveredSheinSubmitRoute(ctx context.Context, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
-	return s.recoveryRouteRunner.Recover(ctx, state)
+	return s.recoveryRouteRunner.Recover(ctx, recoveredState)
 }
 
 type sheinSubmitStartedAtContextKey struct{}

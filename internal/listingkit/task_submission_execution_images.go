@@ -14,7 +14,7 @@ func (s *taskSubmissionExecutionService) uploadSheinSubmitImages(ctx context.Con
 	if s.sheinImageAPIBuilder == nil {
 		return fmt.Errorf("shein image upload api builder is not configured")
 	}
-	runtimeCtx, storeID, err := s.resolveSheinImageUploadRuntime(ctx, task)
+	runtimeCtx, storeID, err := s.resolveSheinStoreRuntime(ctx, task, "image upload")
 	if err != nil {
 		return err
 	}
@@ -22,16 +22,12 @@ func (s *taskSubmissionExecutionService) uploadSheinSubmitImages(ctx context.Con
 	if err != nil {
 		return err
 	}
-	_, uploadCache, err := uploadSheinProductImages(submitProduct, imageAPI, sheinImageUploadCache(pkg))
+	_, uploadCache, err := sheinpub.UploadProductImages(submitProduct, imageAPI, sheinImageUploadCache(pkg), buildSheinColorBlockImageFromURL)
 	if err != nil {
 		return err
 	}
 	sheinpub.ApplyImageUploadCache(pkg, uploadCache, time.Now())
 	return nil
-}
-
-func (s *taskSubmissionExecutionService) resolveSheinImageUploadRuntime(ctx context.Context, task *Task) (context.Context, int64, error) {
-	return s.resolveSheinStoreRuntime(ctx, task, "image upload")
 }
 
 func (s *taskSubmissionExecutionService) buildSheinImageUploadAPI(ctx context.Context, storeID int64) (sheinimage.ImageAPI, error) {

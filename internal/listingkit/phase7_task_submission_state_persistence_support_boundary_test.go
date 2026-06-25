@@ -30,7 +30,6 @@ func TestTaskSubmissionStatePersistenceSupportBoundary(t *testing.T) {
 	for _, needle := range []string{
 		"func (s *taskSubmissionStateService) finishSheinDirectSubmitAttempt(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, response *sheinpub.SubmissionResponse, responseErr error) error {",
 		"func (s *taskSubmissionStateService) completeDirectSubmitAttempt(",
-		"func (s *taskSubmissionStateService) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {",
 		"func (s *taskSubmissionStateService) recordSheinSubmissionFailureForState(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestedID, phase string, submitErr error) error {",
 		"func (s *taskSubmissionStateService) prepareDirectFailurePersistence(",
 		"func (s *taskSubmissionStateService) persistDirectSuccessFallback(",
@@ -52,7 +51,6 @@ func TestTaskSubmissionStatePersistenceSupportBoundary(t *testing.T) {
 	for _, needle := range []string{
 		"func (s *taskSubmissionStateService) finishSheinDirectSubmitAttempt(ctx context.Context, taskID string, task *Task, pkg *SheinPackage, opts sheinDirectSubmitOptions, response *sheinpub.SubmissionResponse, responseErr error) error {",
 		"func (s *taskSubmissionStateService) completeDirectSubmitAttempt(",
-		"func (s *taskSubmissionStateService) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {",
 		"func (s *taskSubmissionStateService) recordSheinSubmissionFailureForState(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action, requestedID, phase string, submitErr error) error {",
 		"func (s *taskSubmissionStateService) prepareDirectFailurePersistence(",
 		"func (s *taskSubmissionStateService) persistDirectSuccessFallback(",
@@ -63,5 +61,8 @@ func TestTaskSubmissionStatePersistenceSupportBoundary(t *testing.T) {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("task_submission_state_persistence_support.go should contain %q", needle)
 		}
+	}
+	if strings.Contains(supportContent, "func (s *taskSubmissionStateService) recordSheinSubmissionFailure(ctx context.Context, taskID string, result *ListingKitResult, pkg *SheinPackage, action string, submitErr error) error {") {
+		t.Fatal("task_submission_state_persistence_support.go should not keep thin submission failure wrapper; call recordSheinSubmissionFailureForState directly")
 	}
 }

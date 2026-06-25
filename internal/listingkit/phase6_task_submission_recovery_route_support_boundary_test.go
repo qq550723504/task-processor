@@ -21,7 +21,7 @@ func TestTaskSubmissionRecoveryRouteSupportBoundary(t *testing.T) {
 		"func (s *taskSubmissionRecoveryService) mutateTaskResult(ctx context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {",
 		"func (s *taskSubmissionRecoveryService) handleSheinWorkflowStartFailure(ctx context.Context, taskID string, task *Task, opts sheinWorkflowSubmitOptions, startErr error) error {",
 		"func (s *taskSubmissionRecoveryService) recoverSheinSubmitRemote(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {",
-		"func (s *taskSubmissionRecoveryService) executeRecoveredSheinSubmitRoute(ctx context.Context, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {",
+		"return s.recoveryRouteRunner.Recover(ctx, recoveredState)",
 		"type sheinSubmitStartedAtContextKey struct{}",
 	} {
 		if !strings.Contains(serviceContent, needle) {
@@ -33,11 +33,8 @@ func TestTaskSubmissionRecoveryRouteSupportBoundary(t *testing.T) {
 		"func (s *taskSubmissionRecoveryService) recoverSheinSubmitLocally(ctx context.Context, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {",
 		"func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(ctx context.Context, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {",
 		"func (s *taskSubmissionRecoveryService) shouldRecoverLocally(state *sheinRecoveredRemoteState) bool {",
-		"func (s *taskSubmissionRecoveryService) beginSheinSubmitLeaseWithoutStartTime(ctx context.Context, taskID, action, requestID string) (*Task, error) {",
-		"func (s *taskSubmissionRecoveryService) buildSheinReplayPreview(ctx context.Context, task *Task) (*ListingKitPreview, error) {",
-		"func (s *taskSubmissionRecoveryService) buildMissingPackageAcquireError(error) error {",
 		"func (s *taskSubmissionRecoveryService) recordWorkflowStartFailure(ctx context.Context, in sheinWorkflowStartFailureInput) error {",
-		"func (s *taskSubmissionRecoveryService) clearWorkflowStartFailure(ctx context.Context, in sheinWorkflowStartFailureInput) error {",
+		"func (s *taskSubmissionRecoveryService) executeRecoveredSheinSubmitRoute(ctx context.Context, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {",
 	} {
 		if strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_submission_recovery_service.go should delegate route support helper %q", needle)
@@ -54,14 +51,13 @@ func TestTaskSubmissionRecoveryRouteSupportBoundary(t *testing.T) {
 		"func (s *taskSubmissionRecoveryService) recoverSheinSubmitLocally(ctx context.Context, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {",
 		"func (s *taskSubmissionRecoveryService) recoverSheinSubmitViaRemoteConfirmation(ctx context.Context, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {",
 		"func (s *taskSubmissionRecoveryService) shouldRecoverLocally(state *sheinRecoveredRemoteState) bool {",
-		"func (s *taskSubmissionRecoveryService) beginSheinSubmitLeaseWithoutStartTime(ctx context.Context, taskID, action, requestID string) (*Task, error) {",
-		"func (s *taskSubmissionRecoveryService) buildSheinReplayPreview(ctx context.Context, task *Task) (*ListingKitPreview, error) {",
-		"func (s *taskSubmissionRecoveryService) buildMissingPackageAcquireError(error) error {",
 		"func (s *taskSubmissionRecoveryService) recordWorkflowStartFailure(ctx context.Context, in sheinWorkflowStartFailureInput) error {",
-		"func (s *taskSubmissionRecoveryService) clearWorkflowStartFailure(ctx context.Context, in sheinWorkflowStartFailureInput) error {",
 	} {
 		if !strings.Contains(supportContent, needle) {
 			t.Fatalf("task_submission_recovery_service_route_support.go should contain %q", needle)
 		}
+	}
+	if strings.Contains(supportContent, "func (s *taskSubmissionRecoveryService) beginSheinSubmitLeaseWithoutStartTime(ctx context.Context, taskID, action, requestID string) (*Task, error) {") {
+		t.Fatal("task_submission_recovery_service_route_support.go should not keep thin lease-start wrapper; wire BeginLease inline")
 	}
 }

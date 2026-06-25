@@ -77,9 +77,9 @@ func TestUploadSheinProductImagesDeduplicatesSharedURLs(t *testing.T) {
 		},
 	}
 
-	count, cache, err := uploadSheinProductImages(product, api, nil)
+	count, cache, err := sheinpub.UploadProductImages(product, api, nil, buildSheinColorBlockImageFromURL)
 	if err != nil {
-		t.Fatalf("uploadSheinProductImages: %v", err)
+		t.Fatalf("UploadProductImages: %v", err)
 	}
 	if count != 1 {
 		t.Fatalf("upload count = %d, want 1 unique upload", count)

@@ -18,20 +18,24 @@ func TestSheinSubmissionRecoveryAcquireBoundary(t *testing.T) {
 		"buildTaskPreview(",
 	})
 
-	beginSource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "beginSheinSubmitLeaseWithoutStartTime")
-	assertSourceContainsAll(t, beginSource, []string{
-		"ctx.Value(sheinSubmitStartedAtContextKey{})",
-		"beginSheinSubmitLease(",
+	serviceSource := readNamedFunctionSource(t, "task_submission_recovery_service.go", "newTaskSubmissionRecoveryService")
+	assertSourceContainsAll(t, serviceSource, []string{
+		"BeginLease: func(ctx context.Context, taskID, action, requestID string) (*Task, error) {",
+		"startedAt, _ := ctx.Value(sheinSubmitStartedAtContextKey{}).(time.Time)",
+		"return service.beginSheinSubmitLease(ctx, taskID, action, requestID, startedAt)",
+		"BuildReplayPreview: func(ctx context.Context, task *Task) (*ListingKitPreview, error) {",
+		"return service.buildTaskPreview(ctx, task, \"shein\")",
+		"BuildMissingPkgErr: func(error) error {",
+		"return fmt.Errorf(\"%w: shein preview payload is not available\", ErrSubmitBlocked)",
+	})
+	assertSourceExcludesAll(t, serviceSource, []string{
+		"BeginLease:       service.beginSheinSubmitLeaseWithoutStartTime,",
 	})
 
-	replaySource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "buildSheinReplayPreview")
-	assertSourceContainsAll(t, replaySource, []string{
-		"s.buildTaskPreview(ctx, task, \"shein\")",
-	})
-
-	missingSource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "buildMissingPackageAcquireError")
-	assertSourceContainsAll(t, missingSource, []string{
-		"ErrSubmitBlocked",
-		"shein preview payload is not available",
+	routeSupportSource := readTaskGenerationSourceFile(t, "task_submission_recovery_service_route_support.go")
+	assertSourceExcludesAll(t, routeSupportSource, []string{
+		"func (s *taskSubmissionRecoveryService) beginSheinSubmitLeaseWithoutStartTime(ctx context.Context, taskID, action, requestID string) (*Task, error) {",
+		"func (s *taskSubmissionRecoveryService) buildSheinReplayPreview(ctx context.Context, task *Task) (*ListingKitPreview, error) {",
+		"func (s *taskSubmissionRecoveryService) buildMissingPackageAcquireError(error) error {",
 	})
 }
