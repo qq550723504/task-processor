@@ -359,9 +359,9 @@ owner_node
 
 生产观察已完成：`listing_dispatch_event` 持续写入 dispatch/skipped 审计事实，`listing_product_import_task` 持续写入最近一次 dispatch delay reason；`draft/published` 口径仍可作为后续运营报表优化点，但不再阻塞 control-plane 生产硬化收口。
 
-## 4.4 部分配置已经定义但尚未接通
+## 4.4 Control Plane 配置生效状态已在 `/status` 暴露
 
-以下字段目前需要逐一确认是否真正生效：
+以下字段目前已经在 `/status` 的 `config` 快照中暴露解析后的运行状态：
 
 ```text
 LeaderLockKey
@@ -369,7 +369,15 @@ LeaderLockTTL
 QuotaKeyTTLGrace
 ```
 
-未接通的配置不能长期保留为“看起来支持”的能力。
+当前代码层语义：
+
+```text
+LeaderLockKey / LeaderLockTTL = active
+QuotaKeyTTLGrace = reserved
+```
+
+也就是说，leader lock 配置已经接通；`QuotaKeyTTLGrace` 仍是保留配置，
+`/status` 不会把它展示成已生效能力。
 
 处理原则：
 
@@ -498,7 +506,7 @@ store 976 / 1030 等真实店铺的验证结果；
 2. 持久化 dispatch skip/delay reason 已完成代码层落地
 3. daily limit / in-flight / quota capacity 已完成代码层统一
 4. recovery owner 去重和回滚验证
-5. status endpoint 增加 leader、last success、配置生效状态
+5. status endpoint 增加 leader、last success、配置生效状态（代码层已完成，待生产验证）
 6. 真实店铺 dispatch / consume / recovery 验收报告
 ```
 

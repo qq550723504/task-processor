@@ -485,6 +485,58 @@ func TestStatusHandlerReadinessAndSummary(t *testing.T) {
 	}
 }
 
+func TestStatusHandlerReportsLeaderLastSuccessAndConfigState(t *testing.T) {
+	startedAt := time.Date(2026, 6, 24, 1, 0, 0, 0, time.UTC)
+	successAt := time.Date(2026, 6, 24, 1, 1, 0, 0, time.UTC)
+	standbyAt := time.Date(2026, 6, 24, 1, 2, 0, 0, time.UTC)
+	tracker := NewStatusTracker(startedAt)
+	tracker.RecordConfig(ControlPlaneConfigStatus{
+		Platform: "shein",
+		LeaderLock: ControlPlaneConfigFieldStatus{
+			Value:     "listing:control-plane:leader:shein",
+			Effective: true,
+			Status:    "active",
+		},
+		QuotaKeyTTLGrace: ControlPlaneConfigFieldStatus{
+			Value:     "1m0s",
+			Effective: false,
+			Status:    "reserved",
+		},
+	})
+	tracker.RecordLeader(LeaderSnapshot{
+		Key:      "listing:control-plane:leader:shein",
+		Owner:    "node-a",
+		IsLeader: true,
+		TTL:      "30s",
+	})
+	tracker.RecordSuccess(controllib.RecoverySummary{}, controllib.DispatchSummary{Dispatched: 1}, successAt)
+	tracker.RecordStandby(LeaderSnapshot{
+		Key:      "listing:control-plane:leader:shein",
+		Owner:    "node-b",
+		IsLeader: false,
+		TTL:      "30s",
+	}, standbyAt)
+
+	statusResponse := httptest.NewRecorder()
+	newStatusHandler(tracker).ServeHTTP(statusResponse, httptest.NewRequest(http.MethodGet, "/status", nil))
+	if statusResponse.Code != http.StatusOK {
+		t.Fatalf("status response code = %d", statusResponse.Code)
+	}
+	body := statusResponse.Body.String()
+	for _, want := range []string{
+		`"status":"standby"`,
+		`"lastSuccessfulCycleAt":"2026-06-24T01:01:00Z"`,
+		`"owner":"node-b"`,
+		`"platform":"shein"`,
+		`"leaderLock":{"value":"listing:control-plane:leader:shein","effective":true,"status":"active"}`,
+		`"quotaKeyTTLGrace":{"value":"1m0s","effective":false,"status":"reserved"}`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("status body missing %s: %s", want, body)
+		}
+	}
+}
+
 type fakeOnceRunner struct {
 	name string
 }

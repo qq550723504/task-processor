@@ -165,6 +165,7 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	})
 
 	status := NewStatusTracker(time.Now())
+	status.RecordConfig(controlPlaneConfigStatus(controlCfg, platform))
 	if err := startStatusServer(ctx, cfg.RabbitMQ.Node.HealthCheckPort, status, logger); err != nil {
 		return err
 	}

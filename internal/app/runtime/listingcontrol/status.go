@@ -18,19 +18,21 @@ import (
 )
 
 type ControlPlaneStatus struct {
-	Status             string                     `json:"status"`
-	Ready              bool                       `json:"ready"`
-	StartedAt          time.Time                  `json:"startedAt"`
-	Leader             LeaderSnapshot             `json:"leader"`
-	LastCycleStartedAt *time.Time                 `json:"lastCycleStartedAt,omitempty"`
-	LastCycleAt        *time.Time                 `json:"lastCycleAt,omitempty"`
-	LastError          string                     `json:"lastError,omitempty"`
-	ConsecutiveErrors  int                        `json:"consecutiveErrors"`
-	Recovery           controllib.RecoverySummary `json:"recovery"`
-	Dispatch           controllib.DispatchSummary `json:"dispatch"`
-	SkippedByReason    map[string]int             `json:"skippedByReason,omitempty"`
-	FailedByReason     map[string]int             `json:"failedByReason,omitempty"`
-	Stores             []ControlPlaneStoreStatus  `json:"stores,omitempty"`
+	Status                string                     `json:"status"`
+	Ready                 bool                       `json:"ready"`
+	StartedAt             time.Time                  `json:"startedAt"`
+	Leader                LeaderSnapshot             `json:"leader"`
+	Config                *ControlPlaneConfigStatus  `json:"config,omitempty"`
+	LastCycleStartedAt    *time.Time                 `json:"lastCycleStartedAt,omitempty"`
+	LastCycleAt           *time.Time                 `json:"lastCycleAt,omitempty"`
+	LastSuccessfulCycleAt *time.Time                 `json:"lastSuccessfulCycleAt,omitempty"`
+	LastError             string                     `json:"lastError,omitempty"`
+	ConsecutiveErrors     int                        `json:"consecutiveErrors"`
+	Recovery              controllib.RecoverySummary `json:"recovery"`
+	Dispatch              controllib.DispatchSummary `json:"dispatch"`
+	SkippedByReason       map[string]int             `json:"skippedByReason,omitempty"`
+	FailedByReason        map[string]int             `json:"failedByReason,omitempty"`
+	Stores                []ControlPlaneStoreStatus  `json:"stores,omitempty"`
 }
 
 type LeaderSnapshot struct {
@@ -40,6 +42,22 @@ type LeaderSnapshot struct {
 	TTL        string     `json:"ttl,omitempty"`
 	AcquiredAt *time.Time `json:"acquiredAt,omitempty"`
 	RenewedAt  *time.Time `json:"renewedAt,omitempty"`
+}
+
+// ControlPlaneConfigStatus reports whether key control-plane settings are active.
+type ControlPlaneConfigStatus struct {
+	Platform         string                        `json:"platform"`
+	DryRun           bool                          `json:"dryRun"`
+	LeaderLock       ControlPlaneConfigFieldStatus `json:"leaderLock"`
+	LeaderLockTTL    ControlPlaneConfigFieldStatus `json:"leaderLockTTL"`
+	QuotaKeyTTLGrace ControlPlaneConfigFieldStatus `json:"quotaKeyTTLGrace"`
+}
+
+// ControlPlaneConfigFieldStatus describes one setting's resolved value and runtime support state.
+type ControlPlaneConfigFieldStatus struct {
+	Value     string `json:"value,omitempty"`
+	Effective bool   `json:"effective"`
+	Status    string `json:"status"`
 }
 
 type ControlPlaneStoreStatus struct {
@@ -94,6 +112,7 @@ func (t *StatusTracker) RecordSuccess(recovery controllib.RecoverySummary, dispa
 	t.status.Status = "ok"
 	t.status.Ready = true
 	t.status.LastCycleAt = timePtr(now)
+	t.status.LastSuccessfulCycleAt = timePtr(now)
 	t.status.LastError = ""
 	t.status.ConsecutiveErrors = 0
 	t.status.Recovery = recovery
@@ -110,6 +129,15 @@ func (t *StatusTracker) RecordLeader(snapshot LeaderSnapshot) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.status.Leader = snapshot
+}
+
+func (t *StatusTracker) RecordConfig(config ControlPlaneConfigStatus) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.status.Config = &config
 }
 
 func (t *StatusTracker) RecordStandby(snapshot LeaderSnapshot, now time.Time) {
@@ -151,6 +179,10 @@ func (t *StatusTracker) Snapshot() ControlPlaneStatus {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	out := t.status
+	if t.status.Config != nil {
+		config := *t.status.Config
+		out.Config = &config
+	}
 	out.SkippedByReason = cloneStringIntMap(t.status.SkippedByReason)
 	out.FailedByReason = cloneStringIntMap(t.status.FailedByReason)
 	out.Stores = append([]ControlPlaneStoreStatus(nil), t.status.Stores...)
