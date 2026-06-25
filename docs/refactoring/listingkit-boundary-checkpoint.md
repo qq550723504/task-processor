@@ -210,6 +210,7 @@ Completed submission slices:
 - generic source-facts, enqueue-retry, response-error, and in-flight TTL primitives now live in `internal/listing/submission`; direct service/readiness/requeue/remote-submit callsites use the new package directly, while `internal/listingkit/submission` remains for SHEIN-specific event/state adaptation.
 - generic requeue task-id normalization now lives in `internal/listing/submission`; `internal/listingkit` no longer keeps a duplicate trim/dedupe helper for requeue requests.
 - generic `SubmitInProgressError` ownership now lives in `internal/listing/submission`; direct API/service/Temporal callsites use the new package, while `internal/listingkit/submission` stays a compatibility shell for SHEIN-specific submission helpers.
+- zero-call submit target adapter wrapper has been removed from root `internal/listingkit`; the remaining submit target adapter is the service-owned default-action bridge into `internal/listing/submission`.
 - SHEIN remote record classification rules now live in `internal/marketplace/shein/publishing`; `internal/listingkit` keeps remote lookup orchestration and submission-state mutation only.
 - SHEIN remote confirmation fallback/default-confirmed policy now lives in `internal/marketplace/shein/publishing`; `internal/listingkit` keeps refresh/recovery orchestration only.
 - SHEIN remote record selection rules now live in `internal/marketplace/shein/publishing`; `internal/listingkit` no longer decides preferred SPU match vs latest-create-time fallback after remote record queries.

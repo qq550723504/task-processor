@@ -35,6 +35,9 @@ func TestSubmitTargetPolicyBoundary(t *testing.T) {
 	if !strings.Contains(contractsContent, needle) {
 		t.Fatalf("service_submit_contracts.go should contain %q", needle)
 	}
+	if strings.Contains(contractsContent, "func normalizeSubmitTarget(req *SubmitTaskRequest)") {
+		t.Fatal("service_submit_contracts.go should not keep the zero-call normalizeSubmitTarget wrapper; use normalizeSubmitTargetWithDefault at the service adapter")
+	}
 	if strings.Contains(contractsContent, "func shouldReplayStartedTemporalSubmit(") {
 		t.Fatal("service_submit_contracts.go should not keep a root replay wrapper; call internal/listing/submission directly")
 	}

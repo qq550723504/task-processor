@@ -20,10 +20,6 @@ type sheinDirectSubmitOptions struct {
 	startedAt time.Time
 }
 
-func normalizeSubmitTarget(req *SubmitTaskRequest) (platform string, action string, err error) {
-	return normalizeSubmitTargetWithDefault(req, "")
-}
-
 func normalizeSubmitTargetWithDefault(req *SubmitTaskRequest, defaultAction string) (platform string, action string, err error) {
 	requestedPlatform := ""
 	requestedAction := ""
