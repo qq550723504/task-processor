@@ -845,6 +845,22 @@ Follow-up deletion
 16. 收口 Workspace readiness/action projection
 ```
 
+### 13.1 2026-06-25 执行记录
+
+| 项 | 状态 | 证据 |
+| --- | --- | --- |
+| frontend CI 增加 `npm test` | 已完成 | `.github/workflows/ci.yml` 的 frontend job 已执行 `npm run lint`、`npm run typecheck`、`npm test`、`npm run build`。 |
+| lint/typecheck/test/build baseline | 已完成 | `web/listingkit-ui` 本地验证已覆盖 lint、typecheck、全量 Vitest 和 Next build。 |
+| async-job polling core | 已完成 | `src/lib/api/async-job.ts` 提供 `startAsyncJob`、`pollAsyncJob`、`resumeAsyncJob`、`resumeOrRestartAsyncJob`，`apiAsyncRequest` 通过该 facade 编排启动和轮询。 |
+| resume 404 restart 上下文传递 | 已完成 | `src/lib/api/async-job.test.ts` 覆盖 missing resumed job 后 restart，并验证 `sessionId` 与 `onJobStarted` 不丢失。 |
+| local draft cache | 已完成 | `src/lib/shein-studio/local-draft-cache.ts` 是本地 snapshot 读写边界，并有独立测试。 |
+| local/remote conflict policy | 已完成 | `src/lib/shein-studio/local-remote-conflict-policy.ts` 和 `batch-hydration.ts` 明确 local/remote/saving/save_failed/conflict 判定与 dedicated batch 合并规则。 |
+| hydration / persistence / generation / task creation controller | 已完成第一轮 | Workbench 已通过独立 controller/model 文件承载 hydration、persistence、generation、task creation 的核心投影和测试；后续新增能力应继续落在这些边界内。 |
+| queue controller | 已完成第一轮 | `useSheinStudioQueueState` 与相关 queue projection 已从 Workbench 主体拆出并测试。 |
+| giant workbench test 拆分 | 已完成第一轮 | `shein-studio-workbench-test-harness.tsx` 承载 mock/fixture/reset setup，主测试文件不再继续容纳这批 harness 代码。 |
+| Studio batch API contract | 已完成第一轮 | `shein-studio-batches.ts`、`shein-studio-batch-drafts.ts`、`shein-studio-batch-draft-schema.ts` 与 `__fixtures__/shein-studio-batch-contract.ts` 覆盖 batch detail、task creation、draft detail/list/upsert contract。 |
+| Workspace readiness/action projection | 已完成第一轮 | `shein-workspace-actions.ts` 集中 SHEIN readiness/action fallback projection，`use-workspace-data.ts` 只消费 projection 并组装 view model。 |
+
 ## 14. 第一批建议 PR
 
 ### PR 1：前端测试进入 CI
