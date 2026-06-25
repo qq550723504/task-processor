@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/product"
+	"task-processor/internal/taskstatus"
 	temupricingruntime "task-processor/internal/temu/pricing"
 	temusyncruntime "task-processor/internal/temu/sync"
 
@@ -40,7 +41,7 @@ type processorRuntimeProvider interface {
 	SetRuntimeStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error)
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
 	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
-	GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error)
+	GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error)
 	GetImageDownloader() *management.ImageDownloader
 	RuntimePublishedProductExists(ctx context.Context, storeID int64, platform, region, productID string) (bool, error)
 	FindRuntimeProductImportMappingByTaskAndSKU(ctx context.Context, importTaskID int64, sku string) (*listingruntime.ProductImportMapping, error)

@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/product"
+	"task-processor/internal/taskstatus"
 	temupricingruntime "task-processor/internal/temu/pricing"
 	temusyncruntime "task-processor/internal/temu/sync"
 
@@ -52,7 +53,7 @@ type ProcessorRuntime interface {
 	GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
 	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
-	GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error)
+	GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error)
 	DeleteSheinStoreCookie(storeID int64) (bool, error)
 	GetImageDownloader() *management.ImageDownloader
 	SetRuntimeStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error)

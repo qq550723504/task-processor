@@ -54,6 +54,18 @@ type ImportTaskPage struct {
 	PageSize int          `json:"page_size"`
 }
 
+type ImportTaskStatusUpdate struct {
+	ID                    int64
+	Status                int16
+	ErrorMessage          string
+	ReasonCode            string
+	Stage                 string
+	Remark                string
+	ExpectedCurrentStatus *int16
+	RetryCount            *int
+	Priority              *int
+}
+
 type DispatchCandidateRequest struct {
 	Platform         string
 	Limit            int
@@ -117,7 +129,7 @@ type ImportTaskRepository interface {
 	CountStaleQueuedTasks(ctx context.Context, timeoutBefore time.Time) (int64, error)
 	ListStaleQueuedTasks(ctx context.Context, timeoutBefore time.Time, limit int) ([]ImportTask, error)
 	RecoverStaleQueuedTasks(ctx context.Context, ids []int64, recovery StaleQueuedRecovery) (int, error)
-	UpdateImportTaskStatus(ctx context.Context, req *ProductImportTaskUpdateReqDTO) (bool, error)
+	UpdateImportTaskStatus(ctx context.Context, req *ImportTaskStatusUpdate) (bool, error)
 	DeleteImportTask(ctx context.Context, tenantID, id int64) error
 }
 

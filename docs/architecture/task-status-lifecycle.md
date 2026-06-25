@@ -90,7 +90,8 @@ claim 约束：
 
 职责：
 
-- 统一构造 `ProductImportTaskUpdateReqDTO`
+- 统一构造本地 runtime task status update command；只有 management API adapter
+  负责转换成 `ProductImportTaskUpdateReqDTO`
 - 统一重试
 - 统一同步/异步更新
 - 统一校验状态流转

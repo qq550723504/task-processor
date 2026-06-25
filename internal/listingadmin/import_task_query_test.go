@@ -132,7 +132,7 @@ func TestGormImportTaskRepositoryLifecycleHelpers(t *testing.T) {
 	}
 
 	expected := model.TaskStatusPending.Int16()
-	handled, err := repo.UpdateImportTaskStatus(context.Background(), &ProductImportTaskUpdateReqDTO{
+	handled, err := repo.UpdateImportTaskStatus(context.Background(), &ImportTaskStatusUpdate{
 		ID:                    1,
 		Status:                model.TaskStatusProcessing.Int16(),
 		ExpectedCurrentStatus: &expected,
@@ -181,7 +181,7 @@ func TestGormImportTaskRepositoryUpdateDraftSetsPublishedTime(t *testing.T) {
 
 	expected := model.TaskStatusProcessing.Int16()
 	repo := NewGormImportTaskRepository(db)
-	handled, err := repo.UpdateImportTaskStatus(context.Background(), &ProductImportTaskUpdateReqDTO{
+	handled, err := repo.UpdateImportTaskStatus(context.Background(), &ImportTaskStatusUpdate{
 		ID:                    row.ID,
 		Status:                model.TaskStatusDraft.Int16(),
 		ExpectedCurrentStatus: &expected,

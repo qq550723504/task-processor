@@ -3,7 +3,6 @@ package management
 import (
 	"fmt"
 
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/taskstatus"
 )
@@ -30,15 +29,7 @@ func (r taskStatusRuntime) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSn
 	if r.client == nil {
 		return nil, fmt.Errorf("task status runtime is not initialized")
 	}
-	taskRPCClient := r.client.GetTaskRPCClient()
-	if taskRPCClient == nil {
-		return nil, fmt.Errorf("task rpc client is not initialized")
-	}
-	status, err := taskRPCClient.GetTaskStatus(taskID)
-	if err != nil || status == nil {
-		return nil, err
-	}
-	return managementapi.TaskStatusSnapshotFromDTO(status), nil
+	return r.client.GetTaskStatus(taskID)
 }
 
 func (r taskStatusRuntime) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {

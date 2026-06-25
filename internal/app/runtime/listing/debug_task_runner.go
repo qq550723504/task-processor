@@ -8,7 +8,6 @@ import (
 
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 
 	"github.com/sirupsen/logrus"
@@ -19,14 +18,14 @@ type appLogger interface {
 }
 
 type debugTaskLoader interface {
-	GetTaskByID(ctx context.Context, taskID int64) (*managementapi.ProductImportTaskRespDTO, error)
+	GetTaskByID(ctx context.Context, taskID int64) (*model.Task, error)
 }
 
 type listingAdminDebugTaskLoader struct {
 	repo listingadmin.ImportTaskRepository
 }
 
-func (l listingAdminDebugTaskLoader) GetTaskByID(ctx context.Context, taskID int64) (*managementapi.ProductImportTaskRespDTO, error) {
+func (l listingAdminDebugTaskLoader) GetTaskByID(ctx context.Context, taskID int64) (*model.Task, error) {
 	if l.repo == nil {
 		return nil, fmt.Errorf("local import task repository is not configured")
 	}
@@ -34,14 +33,14 @@ func (l listingAdminDebugTaskLoader) GetTaskByID(ctx context.Context, taskID int
 	if err != nil {
 		return nil, err
 	}
-	return listingAdminImportTaskToDebugDTO(task), nil
+	return listingAdminImportTaskToDebugModelTask(task), nil
 }
 
 type staticDebugTaskLoader struct {
-	task *managementapi.ProductImportTaskRespDTO
+	task *model.Task
 }
 
-func (l staticDebugTaskLoader) GetTaskByID(_ context.Context, _ int64) (*managementapi.ProductImportTaskRespDTO, error) {
+func (l staticDebugTaskLoader) GetTaskByID(_ context.Context, _ int64) (*model.Task, error) {
 	return l.task, nil
 }
 
@@ -60,15 +59,14 @@ func (r debugTaskRunner) run(ctx context.Context, taskID int64) error {
 		return fmt.Errorf("%s debug task loader is not available", r.displayName)
 	}
 
-	taskDTO, err := r.taskLoader.GetTaskByID(ctx, taskID)
+	task, err := r.taskLoader.GetTaskByID(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("load debug task %d: %w", taskID, err)
 	}
-	if taskDTO == nil {
+	if task == nil {
 		return fmt.Errorf("debug task %d not found", taskID)
 	}
 
-	task := buildDebugModelTask(taskDTO)
 	r.logger.Infof(
 		"running %s debug task directly: taskID=%d, productID=%s, storeID=%d",
 		r.displayName,
@@ -82,7 +80,7 @@ func (r debugTaskRunner) run(ctx context.Context, taskID int64) error {
 	}
 	defer r.processor.Close(ctx)
 
-	job, err := buildDebugWorkerJob(task)
+	job, err := buildDebugWorkerJob(*task)
 	if err != nil {
 		return fmt.Errorf("marshal debug task: %w", err)
 	}
@@ -94,37 +92,11 @@ func (r debugTaskRunner) run(ctx context.Context, taskID int64) error {
 	return nil
 }
 
-func buildDebugModelTask(taskDTO *managementapi.ProductImportTaskRespDTO) model.Task {
-	if taskDTO == nil {
-		return model.Task{}
-	}
-
-	return model.Task{
-		ID:            taskDTO.ID,
-		TenantID:      taskDTO.TenantID,
-		StoreID:       taskDTO.StoreID,
-		Platform:      taskDTO.Platform,
-		Region:        taskDTO.Region,
-		CategoryID:    taskDTO.CategoryID,
-		ProductID:     taskDTO.ProductID,
-		Status:        taskDTO.Status,
-		ErrorMessage:  taskDTO.ErrorMessage,
-		RetryCount:    taskDTO.RetryCount,
-		MaxRetryCount: taskDTO.MaxRetryCount,
-		Remark:        taskDTO.Remark,
-		Priority:      taskDTO.Priority,
-		CreateTime:    taskDTO.CreateTime,
-		UpdateTime:    taskDTO.UpdateTime,
-		Creator:       taskDTO.Creator,
-		Updater:       taskDTO.Updater,
-	}
-}
-
-func listingAdminImportTaskToDebugDTO(task *listingadmin.ImportTask) *managementapi.ProductImportTaskRespDTO {
+func listingAdminImportTaskToDebugModelTask(task *listingadmin.ImportTask) *model.Task {
 	if task == nil {
 		return nil
 	}
-	return &managementapi.ProductImportTaskRespDTO{
+	return &model.Task{
 		ID:            task.ID,
 		TenantID:      task.TenantID,
 		StoreID:       int64FromPtr(task.StoreID),
@@ -134,15 +106,12 @@ func listingAdminImportTaskToDebugDTO(task *listingadmin.ImportTask) *management
 		ProductID:     task.ProductID,
 		Status:        task.Status,
 		ErrorMessage:  task.ErrorMessage,
-		ReasonCode:    task.ReasonCode,
-		Stage:         task.Stage,
 		RetryCount:    task.RetryCount,
 		MaxRetryCount: task.MaxRetryCount,
 		Remark:        task.Remark,
 		Priority:      task.Priority,
 		CreateTime:    timeToUnixMillis(task.CreateTime),
 		UpdateTime:    timeToUnixMillis(task.UpdateTime),
-		PublishedTime: timeToUnixMillis(task.PublishedTime),
 		Creator:       task.Creator,
 		Updater:       task.Updater,
 	}

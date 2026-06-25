@@ -18,6 +18,7 @@ import (
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/product"
 	"task-processor/internal/prompt"
+	"task-processor/internal/taskstatus"
 	temupricingruntime "task-processor/internal/temu/pricing"
 	temusyncruntime "task-processor/internal/temu/sync"
 
@@ -216,7 +217,7 @@ type processorRuntimeSource interface {
 	GetFilterRuleClient() *management.FilterRuleAPIClient
 	GetDailyListingCountClient() *management.DailyListingCountAPIClient
 	GetProfitRuleClient() *management.ProfitRuleAPIClient
-	GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error)
+	GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error)
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
 	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
 	DeleteSheinStoreCookie(storeID int64) (bool, error)
@@ -407,7 +408,7 @@ func (r managementProcessorRuntime) GetLocalProfitRuleRepository() *listingadmin
 	return r.source.GetLocalProfitRuleRepository()
 }
 
-func (r managementProcessorRuntime) GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error) {
+func (r managementProcessorRuntime) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error) {
 	if r.source == nil {
 		return nil, nil
 	}

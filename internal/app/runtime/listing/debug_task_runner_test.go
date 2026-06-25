@@ -9,18 +9,21 @@ import (
 
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 )
 
-func TestBuildDebugModelTaskMapsImportTaskDTO(t *testing.T) {
-	dto := &managementapi.ProductImportTaskRespDTO{
+func TestListingAdminImportTaskToDebugModelTaskMapsLocalTask(t *testing.T) {
+	storeID := int64(3002)
+	categoryID := int64(4003)
+	createTime := time.UnixMilli(111)
+	updateTime := time.UnixMilli(222)
+	task := &listingadmin.ImportTask{
 		ID:            8189311,
 		TenantID:      2001,
-		StoreID:       3002,
+		StoreID:       &storeID,
 		Platform:      "shein",
 		Region:        "US",
-		CategoryID:    4003,
+		CategoryID:    &categoryID,
 		ProductID:     "B0F17JCXFJ",
 		Status:        2,
 		ErrorMessage:  "old error",
@@ -28,22 +31,25 @@ func TestBuildDebugModelTaskMapsImportTaskDTO(t *testing.T) {
 		MaxRetryCount: 3,
 		Remark:        "variant",
 		Priority:      5,
-		CreateTime:    111,
-		UpdateTime:    222,
+		CreateTime:    &createTime,
+		UpdateTime:    &updateTime,
 		Creator:       "tester",
 		Updater:       "tester2",
 	}
 
-	task := buildDebugModelTask(dto)
+	modelTask := listingAdminImportTaskToDebugModelTask(task)
 
-	if task.ID != dto.ID || task.TenantID != dto.TenantID || task.StoreID != dto.StoreID {
-		t.Fatalf("task identity = %+v, want dto identity %+v", task, dto)
+	if modelTask.ID != task.ID || modelTask.TenantID != task.TenantID || modelTask.StoreID != storeID {
+		t.Fatalf("task identity = %+v, want local task identity", modelTask)
 	}
-	if task.ProductID != dto.ProductID || task.Platform != dto.Platform || task.Region != dto.Region {
-		t.Fatalf("task routing = %+v, want dto routing %+v", task, dto)
+	if modelTask.CategoryID != categoryID || modelTask.ProductID != task.ProductID || modelTask.Platform != task.Platform {
+		t.Fatalf("task routing = %+v, want local task routing", modelTask)
 	}
-	if task.ErrorMessage != dto.ErrorMessage || task.Remark != dto.Remark || task.Updater != dto.Updater {
-		t.Fatalf("task metadata = %+v, want dto metadata %+v", task, dto)
+	if modelTask.CreateTime != 111 || modelTask.UpdateTime != 222 {
+		t.Fatalf("task times = %+v, want unix millis", modelTask)
+	}
+	if modelTask.ErrorMessage != task.ErrorMessage || modelTask.Remark != task.Remark || modelTask.Updater != task.Updater {
+		t.Fatalf("task metadata = %+v, want local task metadata", modelTask)
 	}
 }
 
@@ -73,57 +79,12 @@ func TestBuildDebugWorkerJobBuildsDirectProcessorPayload(t *testing.T) {
 	}
 }
 
-func TestListingAdminImportTaskToDebugDTOMapsLocalTask(t *testing.T) {
-	storeID := int64(3002)
-	categoryID := int64(4003)
-	createTime := time.UnixMilli(111)
-	updateTime := time.UnixMilli(222)
-	publishedTime := time.UnixMilli(333)
-	task := &listingadmin.ImportTask{
-		ID:            8189311,
-		TenantID:      2001,
-		StoreID:       &storeID,
-		Platform:      "shein",
-		Region:        "US",
-		CategoryID:    &categoryID,
-		ProductID:     "B0F17JCXFJ",
-		Status:        2,
-		ErrorMessage:  "old error",
-		ReasonCode:    "dispatch_failed",
-		Stage:         "dispatch",
-		RetryCount:    1,
-		MaxRetryCount: 3,
-		Remark:        "variant",
-		Priority:      5,
-		CreateTime:    &createTime,
-		UpdateTime:    &updateTime,
-		PublishedTime: &publishedTime,
-		Creator:       "tester",
-		Updater:       "tester2",
-	}
-
-	dto := listingAdminImportTaskToDebugDTO(task)
-
-	if dto.ID != task.ID || dto.TenantID != task.TenantID || dto.StoreID != storeID {
-		t.Fatalf("dto identity = %+v, want local task identity", dto)
-	}
-	if dto.CategoryID != categoryID || dto.ProductID != task.ProductID || dto.Platform != task.Platform {
-		t.Fatalf("dto routing = %+v, want local task routing", dto)
-	}
-	if dto.CreateTime != 111 || dto.UpdateTime != 222 || dto.PublishedTime != 333 {
-		t.Fatalf("dto times = %+v, want unix millis", dto)
-	}
-	if dto.ReasonCode != task.ReasonCode || dto.Stage != task.Stage || dto.Creator != task.Creator || dto.Updater != task.Updater {
-		t.Fatalf("dto metadata = %+v, want local task metadata", dto)
-	}
-}
-
 func TestDebugTaskRunnerRunStartsProcessesAndCloses(t *testing.T) {
 	processor := &stubDebugTaskProcessor{}
 	runner := debugTaskRunner{
 		displayName: "SHEIN",
 		logger:      stubDebugLogger{},
-		taskLoader: staticDebugTaskLoader{task: &managementapi.ProductImportTaskRespDTO{
+		taskLoader: staticDebugTaskLoader{task: &model.Task{
 			ID:        8189311,
 			TenantID:  2001,
 			StoreID:   3002,
@@ -163,7 +124,7 @@ func TestDebugTaskRunnerRunPropagatesProcessorFailure(t *testing.T) {
 	runner := debugTaskRunner{
 		displayName: "SHEIN",
 		logger:      stubDebugLogger{},
-		taskLoader: staticDebugTaskLoader{task: &managementapi.ProductImportTaskRespDTO{
+		taskLoader: staticDebugTaskLoader{task: &model.Task{
 			ID:        8189311,
 			TenantID:  2001,
 			StoreID:   3002,

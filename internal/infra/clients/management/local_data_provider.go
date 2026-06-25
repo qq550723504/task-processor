@@ -1583,7 +1583,24 @@ func (p *LocalDataProvider) UpdateImportTaskStatus(req *api.ProductImportTaskUpd
 	if repo == nil || req == nil {
 		return false, nil
 	}
-	return repo.UpdateImportTaskStatus(context.Background(), req)
+	return repo.UpdateImportTaskStatus(context.Background(), importTaskStatusUpdateFromDTO(req))
+}
+
+func importTaskStatusUpdateFromDTO(req *api.ProductImportTaskUpdateReqDTO) *listingadmin.ImportTaskStatusUpdate {
+	if req == nil {
+		return nil
+	}
+	return &listingadmin.ImportTaskStatusUpdate{
+		ID:                    req.ID,
+		Status:                req.Status,
+		ErrorMessage:          req.ErrorMessage,
+		ReasonCode:            req.ReasonCode,
+		Stage:                 req.Stage,
+		Remark:                req.Remark,
+		ExpectedCurrentStatus: req.ExpectedCurrentStatus,
+		RetryCount:            req.RetryCount,
+		Priority:              req.Priority,
+	}
 }
 
 func ptrTime(ts time.Time) *time.Time {

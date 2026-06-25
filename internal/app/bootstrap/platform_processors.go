@@ -105,5 +105,5 @@ func (a sheinDependencyRuntimeAdapter) GetTaskStatus(taskID int64) (*taskstatus.
 	if err != nil || status == nil {
 		return nil, err
 	}
-	return managementapi.TaskStatusSnapshotFromDTO(status), nil
+	return status, nil
 }

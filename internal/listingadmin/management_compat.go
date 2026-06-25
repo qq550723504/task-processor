@@ -1,9 +1,6 @@
 package listingadmin
 
-import (
-	original "task-processor/internal/infra/clients/management/api"
-	"task-processor/internal/taskstatus"
-)
+import original "task-processor/internal/infra/clients/management/api"
 
 type StoreAPI = original.StoreAPI
 type StoreRespDTO = original.StoreRespDTO
@@ -30,9 +27,6 @@ type ProductImportMappingCheckReqDTO = original.ProductImportMappingCheckReqDTO
 type ProductImportMappingRespDTO = original.ProductImportMappingRespDTO
 type ProductImportMappingGetBySkuReqDTO = original.ProductImportMappingGetBySkuReqDTO
 
-type ProductImportTaskRespDTO = original.ProductImportTaskRespDTO
-type ProductImportTaskUpdateReqDTO = original.ProductImportTaskUpdateReqDTO
-
 type InventoryRecordAPI = original.InventoryRecordAPI
 type ProductDataAPI = original.ProductDataAPI
 type ProductDataDTO = original.ProductDataDTO
@@ -43,9 +37,6 @@ type ProductDataBatchUpdateAttributesReqDTO = original.ProductDataBatchUpdateAtt
 type ProductDataListByStorePageReqDTO = original.ProductDataListByStorePageReqDTO
 type ProductDataRespDTO = original.ProductDataRespDTO
 type InventoryRecordCreateReqDTO = original.InventoryRecordCreateReqDTO
-
-type TaskStatusRespDTO = original.TaskStatusRespDTO
-type TaskActionRespDTO = original.TaskActionRespDTO
 
 type DailyListingCountAPI = original.DailyListingCountAPI
 type DailyListingCountSetReqDTO = original.DailyListingCountSetReqDTO
@@ -63,31 +54,3 @@ const (
 	ShelfStatusRejected  = original.ShelfStatusRejected
 	ShelfStatusDeleted   = original.ShelfStatusDeleted
 )
-
-func TaskStatusSnapshotFromDTO(status *TaskStatusRespDTO) *taskstatus.TaskStatusSnapshot {
-	if status == nil {
-		return nil
-	}
-	return &taskstatus.TaskStatusSnapshot{
-		TaskID:           status.TaskID,
-		Status:           status.Status,
-		StatusKey:        status.StatusKey,
-		StatusName:       status.StatusName,
-		CanonicalStatus:  status.CanonicalStatus,
-		Platform:         status.Platform,
-		Region:           status.Region,
-		TaskType:         status.TaskType,
-		Priority:         status.Priority,
-		RetryCount:       status.RetryCount,
-		MaxRetries:       status.MaxRetries,
-		ProcessingTimeMs: status.ProcessingTimeMs,
-		QueueName:        status.QueueName,
-		ProcessingNode:   status.ProcessingNode,
-		ProgressPercent:  status.ProgressPercent,
-		Result:           status.Result,
-		ErrorMessage:     status.ErrorMessage,
-		ErrorStack:       status.ErrorStack,
-		ExecutionLogs:    status.ExecutionLogs,
-		TaskDetails:      status.TaskDetails,
-	}
-}

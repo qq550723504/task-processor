@@ -178,6 +178,11 @@ At minimum, structural review should consider representative guards such as:
 - `TestTaskStatusRuntimeErrorsUseCapabilityNames`
 - `TestTaskStatusPackageDoesNotImportManagementClient`
 - `TestPortsManagementAPIPackageIsRetired`
+- `TestListingAdminCompatibilityDoesNotExposeTaskStatusAdapters`
+- `TestListingAdminCompatibilityDoesNotExposeImportTaskUpdateDTO`
+- `TestListingAdminCompatibilityDoesNotExposeImportTaskResponseDTO`
+- `TestListingRuntimeDebugTaskLoaderUsesLocalTaskModel`
+- `TestAppTaskStatusDTOAdapterIsRetired`
 - `TestAmazonTaskStatusUpdatesUseTaskStatusRuntime`
 - `TestAmazonAuthPauseUsesStoreAPIPort`
 - `TestAmazonServicesUseStoreAPIPort`

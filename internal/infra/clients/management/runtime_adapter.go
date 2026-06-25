@@ -10,6 +10,7 @@ import (
 	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	"task-processor/internal/taskstatus"
 )
 
 const runtimeStoreDiscoveryPageSize = 200
@@ -221,7 +222,7 @@ func (cm *ClientManager) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusU
 	return importTaskClient.UpdateTaskStatus(updateReq)
 }
 
-func (cm *ClientManager) GetTaskStatus(taskID int64) (*managementapi.TaskStatusRespDTO, error) {
+func (cm *ClientManager) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error) {
 	if cm == nil {
 		return nil, fmt.Errorf("management client is not initialized")
 	}
@@ -229,7 +230,11 @@ func (cm *ClientManager) GetTaskStatus(taskID int64) (*managementapi.TaskStatusR
 	if taskRPCClient == nil {
 		return nil, fmt.Errorf("task rpc client is not initialized")
 	}
-	return taskRPCClient.GetTaskStatus(taskID)
+	status, err := taskRPCClient.GetTaskStatus(taskID)
+	if err != nil || status == nil {
+		return nil, err
+	}
+	return taskStatusSnapshotFromDTO(status), nil
 }
 
 func (cm *ClientManager) RuntimePublishedProductExists(ctx context.Context, storeID int64, platform, region, productID string) (bool, error) {

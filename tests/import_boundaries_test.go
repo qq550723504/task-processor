@@ -30,6 +30,64 @@ func TestPortsManagementAPIPackageIsRetired(t *testing.T) {
 	}
 }
 
+func TestListingAdminCompatibilityDoesNotExposeTaskStatusAdapters(t *testing.T) {
+	path := filepath.Join("..", "internal", "listingadmin", "management_compat.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "TaskStatusSnapshotFromDTO") {
+		t.Fatalf("%s exposes TaskStatusSnapshotFromDTO; keep task status DTO conversion in runtime adapters", path)
+	}
+	for _, dto := range []string{"TaskStatusRespDTO", "TaskActionRespDTO"} {
+		if strings.Contains(string(content), dto) {
+			t.Fatalf("%s exposes %s; keep task RPC DTOs in management/taskrpc API adapters", path, dto)
+		}
+	}
+}
+
+func TestListingAdminCompatibilityDoesNotExposeImportTaskUpdateDTO(t *testing.T) {
+	path := filepath.Join("..", "internal", "listingadmin", "management_compat.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "ProductImportTaskUpdateReqDTO") {
+		t.Fatalf("%s exposes ProductImportTaskUpdateReqDTO; keep import task status updates on local listingadmin commands", path)
+	}
+}
+
+func TestListingAdminCompatibilityDoesNotExposeImportTaskResponseDTO(t *testing.T) {
+	path := filepath.Join("..", "internal", "listingadmin", "management_compat.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "ProductImportTaskRespDTO") {
+		t.Fatalf("%s exposes ProductImportTaskRespDTO; keep import task reads on local listingadmin models", path)
+	}
+}
+
+func TestListingRuntimeDebugTaskLoaderUsesLocalTaskModel(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "runtime", "listing", "debug_task_runner.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "ProductImportTaskRespDTO") {
+		t.Fatalf("%s uses ProductImportTaskRespDTO; keep debug task loading on local listingadmin/model types", path)
+	}
+}
+
+func TestAppTaskStatusDTOAdapterIsRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "taskstatusdto")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; keep management task status DTO conversion in the management adapter", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+}
+
 func TestListingKitDoesNotImportSheinAPIRoot(t *testing.T) {
 	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
 		`"task-processor/internal/shein/api"`,
