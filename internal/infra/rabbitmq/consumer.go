@@ -3,8 +3,10 @@ package rabbitmq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -15,11 +17,12 @@ import (
 
 // MessageConsumer 消息消费者管理器
 type MessageConsumer struct {
-	client    *Client
-	logger    *logrus.Logger
-	handlers  map[string]MessageHandler // queue -> handler
-	consumers map[string]*QueueConsumer // queue -> consumer
-	mutex     sync.RWMutex
+	client                  *Client
+	logger                  *logrus.Logger
+	handlers                map[string]MessageHandler // queue -> handler
+	consumers               map[string]*QueueConsumer // queue -> consumer
+	brokerConsumerInspector BrokerConsumerInspector
+	mutex                   sync.RWMutex
 
 	// 生命周期管理
 	ctx    context.Context
@@ -36,22 +39,40 @@ type MessageConsumer struct {
 	errorCollector *ErrorCollector
 }
 
+// BrokerConsumerInspector checks the broker-visible consumer count for a queue.
+type BrokerConsumerInspector interface {
+	BrokerConsumerCount(queueName string) (int, error)
+}
+
 // NewMessageConsumer 创建消息消费者管理器
 func NewMessageConsumer(client *Client, config ConsumerConfig, logger *logrus.Logger) *MessageConsumer {
 	// 设置默认值
 	config.SetDefaults()
 
-	return &MessageConsumer{
-		client:         client,
-		logger:         logger,
-		handlers:       make(map[string]MessageHandler),
-		consumers:      make(map[string]*QueueConsumer),
-		config:         config,
-		queueConfigs:   []QueueConfig{},
-		workTokens:     newWorkTokenBucket(config.MaxConcurrency),
-		stateManager:   make(map[string]*ConsumerStateManager),
-		errorCollector: NewErrorCollector(1000),
+	var inspector BrokerConsumerInspector
+	if client != nil {
+		inspector = amqpBrokerConsumerInspector{client: client}
 	}
+
+	return &MessageConsumer{
+		client:                  client,
+		logger:                  logger,
+		handlers:                make(map[string]MessageHandler),
+		consumers:               make(map[string]*QueueConsumer),
+		brokerConsumerInspector: inspector,
+		config:                  config,
+		queueConfigs:            []QueueConfig{},
+		workTokens:              newWorkTokenBucket(config.MaxConcurrency),
+		stateManager:            make(map[string]*ConsumerStateManager),
+		errorCollector:          NewErrorCollector(1000),
+	}
+}
+
+// SetBrokerConsumerInspector overrides the broker consumer inspector for tests or alternate transports.
+func (mc *MessageConsumer) SetBrokerConsumerInspector(inspector BrokerConsumerInspector) {
+	mc.mutex.Lock()
+	defer mc.mutex.Unlock()
+	mc.brokerConsumerInspector = inspector
 }
 
 // SetQueueConfigs 设置队列配置
@@ -429,36 +450,34 @@ func (mc *MessageConsumer) GetQueueStats() map[string]any {
 
 // HasHealthyRequiredConsumers 返回已注册队列是否都有健康消费者。
 func (mc *MessageConsumer) HasHealthyRequiredConsumers() bool {
-	mc.mutex.RLock()
-	defer mc.mutex.RUnlock()
-
-	if len(mc.handlers) == 0 {
-		return true
-	}
-
-	for queueName := range mc.handlers {
-		sm, exists := mc.stateManager[queueName]
-		if !exists || !sm.IsHealthy() {
-			return false
-		}
-	}
-
-	return true
+	return len(mc.GetUnhealthyRequiredQueues()) == 0
 }
 
 // GetUnhealthyRequiredQueues 返回当前不健康或缺失的已注册队列。
 func (mc *MessageConsumer) GetUnhealthyRequiredQueues() []string {
 	mc.mutex.RLock()
-	defer mc.mutex.RUnlock()
+	queueStates := make(map[string]*ConsumerStateManager, len(mc.handlers))
+	for queueName := range mc.handlers {
+		queueStates[queueName] = mc.stateManager[queueName]
+	}
+	inspector := mc.brokerConsumerInspector
+	mc.mutex.RUnlock()
 
 	var queues []string
-	for queueName := range mc.handlers {
-		sm, exists := mc.stateManager[queueName]
-		if !exists || !sm.IsHealthy() {
+	for queueName, sm := range queueStates {
+		if sm == nil || !sm.IsHealthy() {
+			queues = append(queues, queueName)
+			continue
+		}
+		if inspector == nil {
+			continue
+		}
+		consumers, err := inspector.BrokerConsumerCount(queueName)
+		if err != nil || consumers <= 0 {
 			queues = append(queues, queueName)
 		}
 	}
-
+	sort.Strings(queues)
 	return queues
 }
 
@@ -472,4 +491,25 @@ func (mc *MessageConsumer) GetStateManager(queueName string) *ConsumerStateManag
 // GetErrorCollector 获取错误收集器
 func (mc *MessageConsumer) GetErrorCollector() *ErrorCollector {
 	return mc.errorCollector
+}
+
+type amqpBrokerConsumerInspector struct {
+	client *Client
+}
+
+func (i amqpBrokerConsumerInspector) BrokerConsumerCount(queueName string) (int, error) {
+	if i.client == nil || i.client.connManager == nil {
+		return 0, errors.New("rabbitmq client is not initialized")
+	}
+	channel, err := i.client.connManager.CreateChannel()
+	if err != nil {
+		return 0, fmt.Errorf("create inspect channel: %w", err)
+	}
+	defer channel.Close()
+
+	queue, err := channel.QueueInspect(queueName)
+	if err != nil {
+		return 0, fmt.Errorf("inspect queue %s: %w", queueName, err)
+	}
+	return queue.Consumers, nil
 }

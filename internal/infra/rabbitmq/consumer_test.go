@@ -93,3 +93,33 @@ func TestCreateQueueConsumerSharesGlobalConcurrencyLimiter(t *testing.T) {
 		t.Fatal("expected queue consumer to share message consumer work token bucket")
 	}
 }
+
+func TestRequiredConsumerHealthUsesBrokerConsumerCount(t *testing.T) {
+	logger := logrus.New()
+	mc := NewMessageConsumer(nil, ConsumerConfig{PrefetchCount: 1}, logger)
+	mc.RegisterHandler("shein.tasks.store.976", noopHandler{})
+	mc.GetStateManager("shein.tasks.store.976").SetState(ConsumerStateRunning, "shein.tasks.store.976")
+	mc.SetBrokerConsumerInspector(fakeBrokerConsumerInspector{
+		counts: map[string]int{"shein.tasks.store.976": 0},
+	})
+
+	if mc.HasHealthyRequiredConsumers() {
+		t.Fatal("expected broker consumer count 0 to make required consumer unhealthy")
+	}
+	unhealthy := mc.GetUnhealthyRequiredQueues()
+	if len(unhealthy) != 1 || unhealthy[0] != "shein.tasks.store.976" {
+		t.Fatalf("unhealthy queues = %#v, want shein.tasks.store.976", unhealthy)
+	}
+}
+
+type fakeBrokerConsumerInspector struct {
+	counts map[string]int
+	err    error
+}
+
+func (f fakeBrokerConsumerInspector) BrokerConsumerCount(queueName string) (int, error) {
+	if f.err != nil {
+		return 0, f.err
+	}
+	return f.counts[queueName], nil
+}

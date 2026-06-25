@@ -50,6 +50,8 @@ type Scheduler struct {
 	TokenGenerator ClaimTokenGenerator
 }
 
+const dispatchCandidateScanMultiplier = 10
+
 func NewScheduler(repo DispatchTaskRepository, readiness StoreReadinessProvider, publisher TaskPublisher, config SchedulerConfig) *Scheduler {
 	return &Scheduler{
 		repo:           repo,
@@ -85,108 +87,131 @@ func (s *Scheduler) DispatchOnce(ctx context.Context) (DispatchSummary, error) {
 	}
 	byStore := readinessByStore(readiness)
 
-	candidates, err := s.repo.ListDispatchCandidatesFair(ctx, listingadmin.DispatchCandidateRequest{
-		Platform:      s.config.Platform,
-		Limit:         s.config.BatchSize,
-		PerStoreLimit: s.config.PerStoreLimit,
-	})
-	if err != nil {
-		return summary, fmt.Errorf("list dispatch candidates: %w", err)
-	}
-	summary.Candidates = len(candidates)
-
 	localQueued := make(map[storeKey]int64, len(byStore))
 	for key, item := range byStore {
 		localQueued[key] = item.Queued
 	}
-	usedClaimTokens := make(map[string]struct{}, len(candidates))
+	usedClaimTokens := make(map[string]struct{}, s.config.BatchSize)
+	excludedStoreIDs := make(map[int64]struct{})
+	maxCandidates := s.config.BatchSize * dispatchCandidateScanMultiplier
 
-	for _, candidate := range candidates {
-		decision := newDecision(candidate)
-		key, ok := candidateStoreKey(candidate)
-		if !ok {
-			decision.Action = DispatchActionSkipped
-			decision.Reason = ReasonStoreMissing
-			s.addSkippedDecision(ctx, &summary, candidate, decision)
-			continue
+	for summary.Candidates < maxCandidates && summary.Dispatched < s.config.BatchSize {
+		limit := s.config.BatchSize
+		if remaining := maxCandidates - summary.Candidates; remaining < limit {
+			limit = remaining
 		}
-		ready, ok := byStore[key]
-		if !ok {
-			decision.Action = DispatchActionSkipped
-			decision.Reason = ReasonStoreUnknown
-			s.addSkippedDecision(ctx, &summary, candidate, decision)
-			continue
-		}
-		decision.OwnerNode = ready.OwnerNode
-		decision.Capacity = ready.Capacity
-		decision.Queued = localQueued[key]
-		decision.Queue = rabbitmq.GetStoreQueueName(s.config.Platform, key.storeID)
-		decision.DailyLimit = ready.DailyLimit
-		decision.DailyRemaining = ready.DailyRemaining
-		decision.DailyCompleted = ready.DailyCompleted
-		decision.DailyProcessing = ready.DailyProcessing
-		decision.DailyQueued = ready.DailyQueued
-
-		if !ready.Dispatchable {
-			decision.Action = DispatchActionSkipped
-			decision.Reason = ready.Reason
-			s.addSkippedDecision(ctx, &summary, candidate, decision)
-			continue
-		}
-		if ready.Capacity <= 0 || localQueued[key] >= int64(ready.Capacity) {
-			decision.Action = DispatchActionSkipped
-			decision.Reason = ReasonNoCapacity
-			s.addSkippedDecision(ctx, &summary, candidate, decision)
-			continue
-		}
-		if s.config.DryRun {
-			decision.Action = DispatchActionDryRun
-			summary.addDecision(decision)
-			continue
-		}
-
-		token := uniqueClaimToken(s.newClaimToken(candidate.ID), candidate.ID, usedClaimTokens)
-		usedClaimTokens[token] = struct{}{}
-		claimed, err := s.repo.ClaimForDispatch(ctx, listingadmin.DispatchClaim{
-			TaskID:         candidate.ID,
-			PreviousStatus: candidate.Status,
-			ProcessingNode: token,
-			Remark:         "Dispatch queued by listing control-plane scheduler",
+		candidates, err := s.repo.ListDispatchCandidatesFair(ctx, listingadmin.DispatchCandidateRequest{
+			Platform:         s.config.Platform,
+			Limit:            limit,
+			PerStoreLimit:    s.config.PerStoreLimit,
+			ExcludedStoreIDs: storeIDList(excludedStoreIDs),
 		})
 		if err != nil {
-			decision.Action = DispatchActionFailed
-			decision.Reason = fmt.Sprintf("claim dispatch: %v", err)
-			summary.addDecision(decision)
-			continue
+			return summary, fmt.Errorf("list dispatch candidates: %w", err)
 		}
-		if !claimed {
-			decision.Action = DispatchActionSkipped
-			decision.Reason = ReasonClaimConflict
-			s.addSkippedDecision(ctx, &summary, candidate, decision)
-			continue
+		if len(candidates) == 0 {
+			break
 		}
+		summary.Candidates += len(candidates)
 
-		task := importTaskToModelTask(candidate)
-		task.Status = model.TaskStatusQueued.Int16()
-		published, err := s.publisher.PublishTask(ctx, task)
-		if err != nil {
-			reason := fmt.Sprintf("publish dispatch: %v", err)
-			if rollbackErr := s.repo.RollbackDispatch(ctx, candidate.ID, candidate.Status, token, reason); rollbackErr != nil {
-				reason = fmt.Sprintf("%s; rollback dispatch: %v", reason, rollbackErr)
+		excludedCountBefore := len(excludedStoreIDs)
+		for _, candidate := range candidates {
+			decision := newDecision(candidate)
+			key, ok := candidateStoreKey(candidate)
+			if !ok {
+				decision.Action = DispatchActionSkipped
+				decision.Reason = ReasonStoreMissing
+				s.addSkippedDecision(ctx, &summary, candidate, decision)
+				continue
 			}
-			decision.Action = DispatchActionFailed
-			decision.Reason = reason
-			summary.addDecision(decision)
-			continue
-		}
+			ready, ok := byStore[key]
+			if !ok {
+				decision.Action = DispatchActionSkipped
+				decision.Reason = ReasonStoreUnknown
+				s.addSkippedDecision(ctx, &summary, candidate, decision)
+				excludedStoreIDs[key.storeID] = struct{}{}
+				continue
+			}
+			decision.OwnerNode = ready.OwnerNode
+			decision.Capacity = ready.Capacity
+			decision.Queued = localQueued[key]
+			decision.Queue = rabbitmq.GetStoreQueueName(s.config.Platform, key.storeID)
+			decision.DailyLimit = ready.DailyLimit
+			decision.DailyRemaining = ready.DailyRemaining
+			decision.DailyCompleted = ready.DailyCompleted
+			decision.DailyProcessing = ready.DailyProcessing
+			decision.DailyQueued = ready.DailyQueued
 
-		if strings.TrimSpace(published.Queue) != "" {
-			decision.Queue = published.Queue
+			if !ready.Dispatchable {
+				decision.Action = DispatchActionSkipped
+				decision.Reason = ready.Reason
+				s.addSkippedDecision(ctx, &summary, candidate, decision)
+				excludedStoreIDs[key.storeID] = struct{}{}
+				continue
+			}
+			if ready.Capacity <= 0 || localQueued[key] >= int64(ready.Capacity) {
+				decision.Action = DispatchActionSkipped
+				decision.Reason = ReasonNoCapacity
+				s.addSkippedDecision(ctx, &summary, candidate, decision)
+				excludedStoreIDs[key.storeID] = struct{}{}
+				continue
+			}
+			if s.config.DryRun {
+				decision.Action = DispatchActionDryRun
+				summary.addDecision(decision)
+				continue
+			}
+
+			token := uniqueClaimToken(s.newClaimToken(candidate.ID), candidate.ID, usedClaimTokens)
+			usedClaimTokens[token] = struct{}{}
+			claimed, err := s.repo.ClaimForDispatch(ctx, listingadmin.DispatchClaim{
+				TaskID:         candidate.ID,
+				PreviousStatus: candidate.Status,
+				ProcessingNode: token,
+				Remark:         "Dispatch queued by listing control-plane scheduler",
+			})
+			if err != nil {
+				decision.Action = DispatchActionFailed
+				decision.Reason = fmt.Sprintf("claim dispatch: %v", err)
+				summary.addDecision(decision)
+				continue
+			}
+			if !claimed {
+				decision.Action = DispatchActionSkipped
+				decision.Reason = ReasonClaimConflict
+				s.addSkippedDecision(ctx, &summary, candidate, decision)
+				continue
+			}
+
+			task := importTaskToModelTask(candidate)
+			task.Status = model.TaskStatusQueued.Int16()
+			published, err := s.publisher.PublishTask(ctx, task)
+			if err != nil {
+				reason := fmt.Sprintf("publish dispatch: %v", err)
+				if rollbackErr := s.repo.RollbackDispatch(ctx, candidate.ID, candidate.Status, token, reason); rollbackErr != nil {
+					reason = fmt.Sprintf("%s; rollback dispatch: %v", reason, rollbackErr)
+				}
+				decision.Action = DispatchActionFailed
+				decision.Reason = reason
+				summary.addDecision(decision)
+				continue
+			}
+
+			if strings.TrimSpace(published.Queue) != "" {
+				decision.Queue = published.Queue
+			}
+			decision.Action = DispatchActionDispatched
+			s.recordDispatchEvent(ctx, candidate, decision)
+			summary.addDecision(decision)
+			localQueued[key]++
+
+			if summary.Dispatched >= s.config.BatchSize {
+				break
+			}
 		}
-		decision.Action = DispatchActionDispatched
-		s.recordDispatchEvent(ctx, candidate, decision)
-		summary.addDecision(decision)
-		localQueued[key]++
+		if len(candidates) < limit || len(excludedStoreIDs) == excludedCountBefore {
+			break
+		}
 	}
 
 	return summary, nil
@@ -290,6 +315,17 @@ func appendDispatchReason(base, extra string) string {
 		return base
 	}
 	return base + "; " + extra
+}
+
+func storeIDList(ids map[int64]struct{}) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	out := make([]int64, 0, len(ids))
+	for id := range ids {
+		out = append(out, id)
+	}
+	return out
 }
 
 type storeKey struct {

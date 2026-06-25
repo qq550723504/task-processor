@@ -332,6 +332,48 @@ func TestSchedulerDryRunReportsDecisionsWithoutClaimOrPublish(t *testing.T) {
 	}
 }
 
+func TestSchedulerContinuesScanningAfterBlockedStores(t *testing.T) {
+	blocked := make([]listingadmin.ImportTask, 0, 10)
+	readiness := make([]StoreReadiness, 0, 11)
+	for i := int64(0); i < 10; i++ {
+		storeID := int64(900 + i)
+		blocked = append(blocked, testImportTask(200+i, 10, storeID, model.TaskStatusPending.Int16()))
+		readiness = append(readiness, StoreReadiness{
+			Store:        StoreSnapshot{TenantID: 10, StoreID: storeID, Platform: "shein", Status: StoreStatusEnabled},
+			Dispatchable: false,
+			Reason:       ReasonStorePaused,
+			OwnerNode:    "node-paused",
+			Capacity:     1,
+		})
+	}
+	ready := testImportTask(300, 10, 976, model.TaskStatusPending.Int16())
+	repo := newFakeDispatchRepo(append(blocked, ready))
+	readiness = append(readiness, readyStore(10, 976, "node-ready", 2, 0))
+	scheduler := NewScheduler(repo, fakeReadinessProvider{readiness: readiness}, &fakeTaskPublisher{}, SchedulerConfig{
+		BatchSize:        10,
+		ClaimTokenPrefix: "test",
+	})
+	scheduler.TokenGenerator = &fixedTokenGenerator{tokens: []string{"ready-token"}}
+
+	summary, err := scheduler.DispatchOnce(context.Background())
+	if err != nil {
+		t.Fatalf("DispatchOnce returned error: %v", err)
+	}
+
+	if summary.Dispatched != 1 {
+		t.Fatalf("dispatched = %d, want 1 after scanning past blocked stores; summary=%+v", summary.Dispatched, summary)
+	}
+	if len(repo.requests) < 2 {
+		t.Fatalf("candidate requests = %d, want follow-up scan with excluded blocked stores", len(repo.requests))
+	}
+	if len(repo.requests[1].ExcludedStoreIDs) != len(blocked) {
+		t.Fatalf("second request excluded stores = %v, want %d blocked stores", repo.requests[1].ExcludedStoreIDs, len(blocked))
+	}
+	if len(repo.claims) != 1 || repo.claims[0].TaskID != 300 {
+		t.Fatalf("claims = %+v, want ready task 300", repo.claims)
+	}
+}
+
 func assertSingleSkippedDecision(t *testing.T, summary DispatchSummary, taskID int64, reason string) {
 	t.Helper()
 	if summary.Candidates != 1 || summary.Dispatched != 0 || summary.Skipped != 1 || summary.Failed != 0 {
@@ -412,6 +454,7 @@ func testImportTask(id, tenantID, storeID int64, status int16) listingadmin.Impo
 
 type fakeDispatchRepo struct {
 	candidates  []listingadmin.ImportTask
+	requests    []listingadmin.DispatchCandidateRequest
 	claims      []listingadmin.DispatchClaim
 	rollbacks   []fakeRollback
 	delays      []listingadmin.DispatchDelay
@@ -426,7 +469,28 @@ func newFakeDispatchRepo(candidates []listingadmin.ImportTask) *fakeDispatchRepo
 }
 
 func (f *fakeDispatchRepo) ListDispatchCandidatesFair(ctx context.Context, req listingadmin.DispatchCandidateRequest) ([]listingadmin.ImportTask, error) {
-	return f.candidates, nil
+	f.requests = append(f.requests, req)
+	excluded := make(map[int64]struct{}, len(req.ExcludedStoreIDs))
+	for _, storeID := range req.ExcludedStoreIDs {
+		excluded[storeID] = struct{}{}
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = len(f.candidates)
+	}
+	out := make([]listingadmin.ImportTask, 0, limit)
+	for _, candidate := range f.candidates {
+		if candidate.StoreID != nil {
+			if _, ok := excluded[*candidate.StoreID]; ok {
+				continue
+			}
+		}
+		out = append(out, candidate)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeDispatchRepo) ClaimForDispatch(ctx context.Context, claim listingadmin.DispatchClaim) (bool, error) {
