@@ -86,6 +86,92 @@ func TestTaskLifecycleServiceListTasksIncludesSummaryWhenRequested(t *testing.T)
 	}
 }
 
+func TestTaskLifecycleServiceListTasksIncludesSDSSourceMetadata(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	task := makeTaskListFixture("task-sds", now, SheinWorkflowStatusPendingConfirmation, "")
+	task.Request.Options = &GenerateOptions{SDS: &SDSSyncOptions{
+		ProductName:     "SDS 方形挂钟",
+		ProductSKU:      "MG8006905",
+		VariantSKU:      "MG8006905001",
+		VariantColor:    "白色",
+		VariantSize:     "25x25cm",
+		VariantPrice:    16.6,
+		ParentProductID: 238915,
+		VariantID:       238916,
+	}}
+	repo := &stubTaskListRepo{tasks: []Task{task}}
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo: repo,
+	})
+
+	page, err := lifecycle.ListTasks(context.Background(), &TaskListQuery{
+		Page:     1,
+		PageSize: 10,
+		Platform: "shein",
+	})
+	if err != nil {
+		t.Fatalf("ListTasks() error = %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("page items = %+v, want 1 item", page.Items)
+	}
+	item := page.Items[0]
+	if item.ProductName != "SDS 方形挂钟" || item.SourceProductSKU != "MG8006905" || item.SourceVariantSKU != "MG8006905001" {
+		t.Fatalf("item SDS source fields = %+v, want source title and SKUs", item)
+	}
+	if item.SourceVariantPrice != 16.6 {
+		t.Fatalf("source variant price = %v, want 16.6", item.SourceVariantPrice)
+	}
+	if item.VariantLabel != "白色 25x25cm MG8006905001" {
+		t.Fatalf("variant label = %q, want SDS variant label", item.VariantLabel)
+	}
+}
+
+func TestTaskLifecycleServiceListTasksUsesSDSVariantOptionsWhenTopLevelSKUIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	task := makeTaskListFixture("task-sds-variant", now, SheinWorkflowStatusPendingConfirmation, "")
+	task.Request.Options = &GenerateOptions{SDS: &SDSSyncOptions{
+		ProductName: "方形双层腰包 -（单图多拼可选）",
+		Variants: []SDSSyncVariantOption{{
+			VariantID:  133065,
+			VariantSKU: "XB0610007001",
+			Color:      "white",
+			Size:       "16x23cm",
+			Price:      34.5,
+		}},
+	}}
+	repo := &stubTaskListRepo{tasks: []Task{task}}
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo: repo,
+	})
+
+	page, err := lifecycle.ListTasks(context.Background(), &TaskListQuery{
+		Page:     1,
+		PageSize: 10,
+		Platform: "shein",
+	})
+	if err != nil {
+		t.Fatalf("ListTasks() error = %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("page items = %+v, want 1 item", page.Items)
+	}
+	item := page.Items[0]
+	if item.SourceVariantSKU != "XB0610007001" {
+		t.Fatalf("source variant sku = %q, want variant option SKU", item.SourceVariantSKU)
+	}
+	if item.SourceVariantPrice != 34.5 {
+		t.Fatalf("source variant price = %v, want variant option price", item.SourceVariantPrice)
+	}
+	if item.VariantLabel != "white 16x23cm XB0610007001" {
+		t.Fatalf("variant label = %q, want variant option label", item.VariantLabel)
+	}
+}
+
 func TestTaskLifecycleServiceGetSDSBaselineReadinessUsesConfiguredService(t *testing.T) {
 	t.Parallel()
 

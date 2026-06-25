@@ -18,7 +18,7 @@ const productVariantSchema = z
 const productSummarySchema = z
   .object({
     id: z.coerce.number().int(),
-    name: z.string(),
+    name: z.string().nullish().default("").transform((value) => value ?? ""),
     categories: z
       .array(
         z

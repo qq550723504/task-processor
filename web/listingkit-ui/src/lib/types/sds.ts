@@ -113,9 +113,16 @@ export type SDSSubproducts = {
 
 export type SDSProductSummary = {
   id: number;
+  parent_id?: number;
+  parentSku?: string;
   name: string;
+  product_name?: string;
+  productName?: string;
+  product_name_multi?: string;
   sku?: string;
   english_name?: string;
+  declaration_name?: string;
+  declaration_english_name?: string;
   blankDesignUrl?: string;
   img_url?: string;
   min_price?: number;

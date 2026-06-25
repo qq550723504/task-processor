@@ -123,6 +123,51 @@ func TestProductDetailUnmarshalRealFields(t *testing.T) {
 	}
 }
 
+func TestProductSummaryPreservesAlternativeTitleFields(t *testing.T) {
+	t.Parallel()
+
+	payload := []byte(`{
+		"id": 89763,
+		"name": null,
+		"product_name": "SDS product_name 标题",
+		"productName": "SDS productName 标题",
+		"product_name_multi": "SDS product_name_multi 标题",
+		"sku": "XB0610007"
+	}`)
+
+	var summary ProductSummary
+	if err := json.Unmarshal(payload, &summary); err != nil {
+		t.Fatalf("unmarshal summary: %v", err)
+	}
+	if summary.ProductName != "SDS product_name 标题" {
+		t.Fatalf("product_name = %q", summary.ProductName)
+	}
+	if summary.ProductNameCamel != "SDS productName 标题" {
+		t.Fatalf("productName = %q", summary.ProductNameCamel)
+	}
+	if summary.ProductNameMulti != "SDS product_name_multi 标题" {
+		t.Fatalf("product_name_multi = %q", summary.ProductNameMulti)
+	}
+
+	out, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal summary: %v", err)
+	}
+	var encoded map[string]any
+	if err := json.Unmarshal(out, &encoded); err != nil {
+		t.Fatalf("unmarshal encoded summary: %v", err)
+	}
+	if encoded["product_name"] != "SDS product_name 标题" {
+		t.Fatalf("encoded product_name = %v", encoded["product_name"])
+	}
+	if encoded["productName"] != "SDS productName 标题" {
+		t.Fatalf("encoded productName = %v", encoded["productName"])
+	}
+	if encoded["product_name_multi"] != "SDS product_name_multi 标题" {
+		t.Fatalf("encoded product_name_multi = %v", encoded["product_name_multi"])
+	}
+}
+
 func TestProductDetailUnmarshalNumericDesignPrototypeID(t *testing.T) {
 	t.Parallel()
 

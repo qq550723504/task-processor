@@ -40,6 +40,34 @@ describe("SDS product response schemas", () => {
     ).resolves.toMatchObject({ id: 100, name: "T-shirt" });
   });
 
+  it("keeps alternative SDS title fields when name is null", async () => {
+    await expect(
+      parseSDSProductListResponse(
+        jsonResponse({
+          items: [
+            {
+              id: 100,
+              name: null,
+              product_name: "SDS product_name 标题",
+              productName: "SDS productName 标题",
+              product_name_multi: "SDS product_name_multi 标题",
+            },
+          ],
+        }),
+      ),
+    ).resolves.toMatchObject({
+      items: [
+        {
+          id: 100,
+          name: "",
+          product_name: "SDS product_name 标题",
+          productName: "SDS productName 标题",
+          product_name_multi: "SDS product_name_multi 标题",
+        },
+      ],
+    });
+  });
+
   it("parses shipment areas and categories", async () => {
     await expect(
       parseSDSShipmentAreasResponse(

@@ -45,6 +45,21 @@ const taskListItemSchema = z
     image_count: z.coerce.number().optional(),
     source_type: z.string().optional(),
     product_name: z.string().optional(),
+    source_product_sku: z.string().optional(),
+    source_variant_sku: z.string().optional(),
+    source_variant_price: z.coerce.number().optional(),
+    source_variants: z
+      .array(
+        z
+          .object({
+            variant_sku: z.string().optional(),
+            size: z.string().optional(),
+            color: z.string().optional(),
+            price: z.coerce.number().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
     variant_label: z.string().optional(),
     sds_sync_status: z.string().optional(),
     shein_workflow_status: z.string().optional(),

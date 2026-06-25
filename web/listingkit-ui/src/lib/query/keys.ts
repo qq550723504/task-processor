@@ -13,6 +13,7 @@ export type SDSProductsKeyQuery = {
   sortType?: string;
   weightBand?: string;
   cycleBand?: string;
+  preciseSearch?: boolean;
 };
 
 export const listingKitKeys = {

@@ -44,6 +44,9 @@ type ProductSummary struct {
 	ID                          int64               `json:"id"`
 	ParentID                    int64               `json:"parent_id"`
 	Name                        string              `json:"name"`
+	ProductName                 string              `json:"product_name"`
+	ProductNameCamel            string              `json:"productName"`
+	ProductNameMulti            string              `json:"product_name_multi"`
 	SKU                         string              `json:"sku"`
 	ParentSKU                   string              `json:"parentSku"`
 	EnglishName                 string              `json:"english_name"`

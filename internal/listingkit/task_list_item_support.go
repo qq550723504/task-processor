@@ -105,14 +105,32 @@ func applyTaskListRequestFields(item *TaskListItem, task *Task) {
 		item.Title = task.Request.ProductURL
 	}
 	if task.Request.Options != nil && task.Request.Options.SDS != nil {
-		item.ProductName = task.Request.Options.SDS.ProductName
+		sds := task.Request.Options.SDS
+		item.ProductName = sds.ProductName
+		item.SourceProductSKU = strings.TrimSpace(sds.ProductSKU)
+		item.SourceVariantSKU = strings.TrimSpace(sds.VariantSKU)
+		item.SourceVariantPrice = sds.VariantPrice
+		item.SourceVariants = taskListSourceVariants(sds)
+		if item.SourceVariantSKU == "" && len(item.SourceVariants) > 0 {
+			item.SourceVariantSKU = item.SourceVariants[0].VariantSKU
+		}
+		if item.SourceVariantPrice == 0 && len(item.SourceVariants) > 0 {
+			item.SourceVariantPrice = item.SourceVariants[0].Price
+		}
 		item.VariantLabel = strings.TrimSpace(strings.Join([]string{
-			task.Request.Options.SDS.VariantColor,
-			task.Request.Options.SDS.VariantSize,
-			task.Request.Options.SDS.VariantSKU,
+			sds.VariantColor,
+			sds.VariantSize,
+			sds.VariantSKU,
 		}, " "))
+		if item.VariantLabel == "" && len(item.SourceVariants) > 0 {
+			item.VariantLabel = strings.TrimSpace(strings.Join([]string{
+				item.SourceVariants[0].Color,
+				item.SourceVariants[0].Size,
+				item.SourceVariants[0].VariantSKU,
+			}, " "))
+		}
 		if item.Title == "" {
-			item.Title = task.Request.Options.SDS.ProductName
+			item.Title = sds.ProductName
 		}
 	}
 	if task.Request.SheinStoreID > 0 {
@@ -121,6 +139,26 @@ func applyTaskListRequestFields(item *TaskListItem, task *Task) {
 	if site := strings.TrimSpace(task.Request.Country); site != "" {
 		item.SheinStoreSite = site
 	}
+}
+
+func taskListSourceVariants(sds *SDSSyncOptions) []TaskListSourceVariant {
+	if sds == nil || len(sds.Variants) == 0 {
+		return nil
+	}
+	out := make([]TaskListSourceVariant, 0, len(sds.Variants))
+	for _, variant := range sds.Variants {
+		item := TaskListSourceVariant{
+			VariantSKU: strings.TrimSpace(variant.VariantSKU),
+			Size:       strings.TrimSpace(variant.Size),
+			Color:      strings.TrimSpace(variant.Color),
+			Price:      variant.Price,
+		}
+		if item.VariantSKU == "" && item.Size == "" && item.Color == "" && item.Price == 0 {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func applyTaskListStoreSnapshot(item *TaskListItem, task *Task) {

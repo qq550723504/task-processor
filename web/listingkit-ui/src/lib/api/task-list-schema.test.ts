@@ -42,4 +42,51 @@ describe("task list schema", () => {
       ],
     });
   });
+
+  it("parses SDS source metadata fields", () => {
+    expect(
+      parseTaskListResponse({
+        page: 1,
+        page_size: 20,
+        total: 1,
+        items: [
+          {
+            task_id: "task-sds",
+            product_name: "SDS 方形挂钟",
+            source_product_sku: "MG8006905",
+            source_variant_sku: "MG8006905001",
+            source_variant_price: "16.6",
+            source_variants: [
+              {
+                variant_sku: "XB0610007001",
+                price: "34.5",
+                color: "white",
+                size: "16x23cm",
+              },
+            ],
+            variant_label: "白色 25x25cm MG8006905001",
+          },
+        ],
+      }),
+    ).toMatchObject({
+      items: [
+        {
+          task_id: "task-sds",
+          product_name: "SDS 方形挂钟",
+          source_product_sku: "MG8006905",
+          source_variant_sku: "MG8006905001",
+          source_variant_price: 16.6,
+          source_variants: [
+            {
+              variant_sku: "XB0610007001",
+              price: 34.5,
+              color: "white",
+              size: "16x23cm",
+            },
+          ],
+          variant_label: "白色 25x25cm MG8006905001",
+        },
+      ],
+    });
+  });
 });

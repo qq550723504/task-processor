@@ -23,6 +23,7 @@ type ListQuery = {
   sortType?: string;
   weightBand?: string;
   cycleBand?: string;
+  preciseSearch?: boolean;
 };
 
 function buildSearch(query?: ListQuery) {
@@ -59,6 +60,9 @@ function buildSearch(query?: ListQuery) {
   }
   if (query?.cycleBand?.trim()) {
     params.set("cycleBand", query.cycleBand.trim());
+  }
+  if (query?.preciseSearch !== undefined) {
+    params.set("preciseSearch", query.preciseSearch ? "1" : "0");
   }
   const suffix = params.toString();
   return suffix ? `?${suffix}` : "";

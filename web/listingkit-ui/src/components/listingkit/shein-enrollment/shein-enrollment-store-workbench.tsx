@@ -167,6 +167,7 @@ export function SheinEnrollmentStoreWorkbench({
               )
             }
             saving={updateCostMutation.isPending || updateGroupCostMutation.isPending}
+            shipmentArea={summary.data?.summary?.region}
           />
           <SheinEnrollmentPagination
             onPageChange={setCostsPage}

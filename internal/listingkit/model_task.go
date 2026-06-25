@@ -93,13 +93,24 @@ type TaskListLifecycleFields struct {
 }
 
 type TaskListDisplayFields struct {
-	Platforms     []string `json:"platforms,omitempty"`
-	Title         string   `json:"title,omitempty"`
-	ImageCount    int      `json:"image_count"`
-	SourceType    string   `json:"source_type,omitempty"`
-	ProductName   string   `json:"product_name,omitempty"`
-	VariantLabel  string   `json:"variant_label,omitempty"`
-	SDSSyncStatus string   `json:"sds_sync_status,omitempty"`
+	Platforms          []string                `json:"platforms,omitempty"`
+	Title              string                  `json:"title,omitempty"`
+	ImageCount         int                     `json:"image_count"`
+	SourceType         string                  `json:"source_type,omitempty"`
+	ProductName        string                  `json:"product_name,omitempty"`
+	SourceProductSKU   string                  `json:"source_product_sku,omitempty"`
+	SourceVariantSKU   string                  `json:"source_variant_sku,omitempty"`
+	SourceVariantPrice float64                 `json:"source_variant_price,omitempty"`
+	SourceVariants     []TaskListSourceVariant `json:"source_variants,omitempty"`
+	VariantLabel       string                  `json:"variant_label,omitempty"`
+	SDSSyncStatus      string                  `json:"sds_sync_status,omitempty"`
+}
+
+type TaskListSourceVariant struct {
+	VariantSKU string  `json:"variant_sku,omitempty"`
+	Size       string  `json:"size,omitempty"`
+	Color      string  `json:"color,omitempty"`
+	Price      float64 `json:"price,omitempty"`
 }
 
 type SheinSubmissionStatusFields struct {

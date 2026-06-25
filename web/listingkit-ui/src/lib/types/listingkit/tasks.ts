@@ -186,6 +186,15 @@ export type ListingKitTaskListItem = {
   image_count?: number;
   source_type?: string;
   product_name?: string;
+  source_product_sku?: string;
+  source_variant_sku?: string;
+  source_variant_price?: number;
+  source_variants?: Array<{
+    variant_sku?: string;
+    size?: string;
+    color?: string;
+    price?: number;
+  }>;
   variant_label?: string;
   sds_sync_status?: string;
   shein_workflow_status?: string;
