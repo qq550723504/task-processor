@@ -148,6 +148,29 @@ func TestSheinSyncServiceResolveProductAPIUsesBuilderWhenConfigured(t *testing.T
 	require.Same(t, productAPI, resolved)
 }
 
+func TestSyncSheinOnShelfProductsRewordsRuntimeOfflineParsingFallback(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	service := NewSheinSyncServiceWithBuilder(repo, sheinSyncProductAPIBuilderStub{
+		fallback: "SHEIN 店铺 cookie 不可用，已降级为离线解析",
+	}, nil)
+
+	job, err := service.SyncSheinOnShelfProducts(context.Background(), 7, 88, SheinSyncTriggerModeManual)
+	require.Nil(t, job)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "SHEIN 店铺 cookie 不可用，无法同步 SHEIN 商品")
+	require.NotContains(t, err.Error(), "离线解析")
+
+	jobs, total, err := repo.ListSyncJobs(context.Background(), &SheinSyncJobQuery{TenantID: 7, StoreID: 88, Page: 1, PageSize: 10})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, jobs, 1)
+	require.Equal(t, SheinSyncJobStatusFailed, jobs[0].Status)
+	require.Contains(t, jobs[0].ErrorSummary, "无法同步 SHEIN 商品")
+	require.NotContains(t, jobs[0].ErrorSummary, "离线解析")
+}
+
 func TestSyncSheinOnShelfProductsManualOverrideWinsOverAutoCost(t *testing.T) {
 	t.Parallel()
 

@@ -318,12 +318,23 @@ func (s *sheinSyncService) resolveProductAPI(ctx context.Context, storeID int64)
 	}
 	productAPI, fallback := s.productAPIBuilder.BuildProductAPI(ctx, storeID)
 	if productAPI == nil {
-		if fallback == "" {
-			fallback = "product API builder returned nil"
-		}
-		return nil, fmt.Errorf("SHEIN sync unavailable: %s", fallback)
+		return nil, fmt.Errorf("SHEIN sync unavailable: %s", sheinSyncProductAPIFallbackMessage(fallback))
 	}
 	return productAPI, nil
+}
+
+func sheinSyncProductAPIFallbackMessage(fallback string) string {
+	fallback = strings.TrimSpace(fallback)
+	if fallback == "" {
+		return "product API builder returned nil"
+	}
+	if strings.Contains(fallback, "已降级为离线解析") {
+		return "SHEIN 店铺 cookie 不可用，无法同步 SHEIN 商品；请先完成店铺登录或验证码"
+	}
+	if strings.Contains(fallback, "在线解析") {
+		return strings.ReplaceAll(fallback, "在线解析", "商品同步")
+	}
+	return fallback
 }
 
 func (s *sheinSyncService) resolveCostResolver(productAPI sheinproduct.ProductAPI) SheinCostResolver {

@@ -20,6 +20,7 @@ import { listingKitKeys } from "@/lib/query/keys";
 import type {
   SheinActivityCandidateQuery,
   SheinEnrollmentRunQuery,
+  SheinEnrollmentStoreSummaryResponse,
   SheinEnrollmentSummaryQuery,
   SheinExecuteEnrollmentInput,
   SheinRefreshCandidatesInput,
@@ -28,6 +29,16 @@ import type {
   SheinSyncedProductQuery,
   SheinSyncTriggerMode,
 } from "@/lib/types/listingkit/shein-enrollment";
+
+const SHEIN_SYNC_SUMMARY_REFETCH_INTERVAL_MS = 2_000;
+
+export function shouldPollSheinSyncSummary(
+  data?: SheinEnrollmentStoreSummaryResponse,
+) {
+  const status =
+    data?.summary?.last_sync_job?.status || data?.summary?.last_sync_status || "";
+  return status === "pending" || status === "running";
+}
 
 export function useSheinEnrollmentDashboard(
   query: SheinEnrollmentSummaryQuery,
@@ -46,6 +57,11 @@ export function useSheinEnrollmentStoreSummary(
     queryKey: listingKitKeys.sheinEnrollmentStoreSummary(storeId, query),
     queryFn: () => getSheinEnrollmentStoreSummary(storeId, query),
     enabled: Number.isFinite(storeId) && storeId > 0,
+    refetchInterval: (queryState) =>
+      shouldPollSheinSyncSummary(queryState.state.data)
+        ? SHEIN_SYNC_SUMMARY_REFETCH_INTERVAL_MS
+        : false,
+    refetchOnWindowFocus: true,
   });
 }
 

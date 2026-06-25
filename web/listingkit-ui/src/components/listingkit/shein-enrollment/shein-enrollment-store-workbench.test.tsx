@@ -53,6 +53,7 @@ function renderWorkbench({
   productTotal,
   candidates = [],
   candidateTotal,
+  summary,
   sdsCostGroups = [],
   runTotal,
 }: {
@@ -61,6 +62,7 @@ function renderWorkbench({
   productTotal?: number;
   candidates?: Array<Record<string, unknown>>;
   candidateTotal?: number;
+  summary?: Record<string, unknown>;
   sdsCostGroups?: Array<Record<string, unknown>>;
   runTotal?: number;
 }) {
@@ -72,6 +74,7 @@ function renderWorkbench({
         store_username: "shein-us",
         platform: "SHEIN",
         region: "US",
+        ...summary,
       },
     },
   });
@@ -166,6 +169,22 @@ describe("SheinEnrollmentStoreWorkbench", () => {
 
     expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
     expect(screen.getByText(/售价 \$29.99/)).toBeInTheDocument();
+  });
+
+  it("shows the latest async sync failure from the store summary", async () => {
+    renderWorkbench({
+      initialTab: "candidates",
+      summary: {
+        last_sync_status: "failed",
+        last_sync_job: {
+          status: "failed",
+          error_summary: "shein login failed: 登录等待验证码",
+        },
+      },
+    });
+
+    expect(await screen.findByText("最近同步失败")).toBeInTheDocument();
+    expect(screen.getByText("shein login failed: 登录等待验证码")).toBeInTheDocument();
   });
 
   it("paginates candidates with backend page parameters", async () => {

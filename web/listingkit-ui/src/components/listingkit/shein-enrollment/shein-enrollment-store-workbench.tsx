@@ -109,6 +109,7 @@ export function SheinEnrollmentStoreWorkbench({
         onSync={() => void syncMutation.mutateAsync({ trigger_mode: "manual" })}
         refreshPending={refreshMutation.isPending}
         summary={summary.data?.summary}
+        syncError={syncMutation.error}
         syncPending={syncMutation.isPending}
       />
 

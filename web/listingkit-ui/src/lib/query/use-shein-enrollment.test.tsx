@@ -15,6 +15,7 @@ import {
   useTriggerSheinStoreSync,
   useUpdateSheinSDSCostGroup,
   useUpdateSheinSyncedProductCost,
+  shouldPollSheinSyncSummary,
 } from "@/lib/query/use-shein-enrollment";
 
 const mocks = vi.hoisted(() => ({
@@ -191,6 +192,63 @@ describe("use-shein-enrollment", () => {
     expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
       queryKey: ["listingkit", "shein-enrollment", 5],
     });
+  });
+
+  it("polls store summary while the latest sync job is still running", async () => {
+    mocks.getSheinEnrollmentStoreSummary.mockReset();
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    mocks.getSheinEnrollmentStoreSummary
+      .mockResolvedValueOnce({
+        summary: {
+          store_id: 5,
+          last_sync_status: "running",
+          last_sync_job: { status: "running" },
+        },
+      })
+      .mockResolvedValueOnce({
+        summary: {
+          store_id: 5,
+          last_sync_status: "failed",
+          last_sync_job: {
+            status: "failed",
+            error_summary: "shein login failed: 登录等待验证码",
+          },
+        },
+      });
+
+    const { result } = renderHook(
+      () => useSheinEnrollmentStoreSummary(5, { activity_type: "PROMOTION" }),
+      { wrapper: createWrapper(client) },
+    );
+
+    await waitFor(() =>
+      expect(result.current.data?.summary?.last_sync_status).toBe("running"),
+    );
+
+    await waitFor(
+      () =>
+        expect(result.current.data?.summary?.last_sync_job?.error_summary).toBe(
+          "shein login failed: 登录等待验证码",
+        ),
+      { timeout: 3_500 },
+    );
+    expect(mocks.getSheinEnrollmentStoreSummary).toHaveBeenCalledTimes(2);
+  }, 5_000);
+
+  it("only polls SHEIN sync summaries while the latest job is non-terminal", () => {
+    expect(shouldPollSheinSyncSummary({ summary: { last_sync_status: "pending" } })).toBe(true);
+    expect(
+      shouldPollSheinSyncSummary({
+        summary: { last_sync_job: { status: "running" } },
+      }),
+    ).toBe(true);
+    expect(shouldPollSheinSyncSummary({ summary: { last_sync_status: "failed" } })).toBe(false);
+    expect(shouldPollSheinSyncSummary({ summary: { last_sync_status: "succeeded" } })).toBe(false);
   });
 
   it("invalidates store-scoped queries after cost update, candidate review, and enrollment execution", async () => {

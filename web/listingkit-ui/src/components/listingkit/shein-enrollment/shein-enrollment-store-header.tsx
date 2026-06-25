@@ -13,6 +13,7 @@ export function SheinEnrollmentStoreHeader({
   onSync,
   refreshPending,
   summary,
+  syncError,
   syncPending,
 }: {
   activityType: string;
@@ -21,6 +22,7 @@ export function SheinEnrollmentStoreHeader({
   onSync: () => void;
   refreshPending: boolean;
   summary?: SheinEnrollmentStoreSummary;
+  syncError?: unknown;
   syncPending: boolean;
 }) {
   const storeIDLabel =
@@ -28,6 +30,18 @@ export function SheinEnrollmentStoreHeader({
   const storeName =
     summary?.store_name ||
     (summary?.store_id !== undefined ? `店铺 ${String(summary.store_id)}` : "店铺");
+  const latestSyncStatus =
+    summary?.last_sync_job?.status || summary?.last_sync_status || "";
+  const latestSyncError =
+    latestSyncStatus === "failed"
+      ? summary?.last_sync_job?.error_summary?.trim()
+      : "";
+  const syncRequestError = formatSheinEnrollmentError(syncError);
+  const visibleSyncError = syncRequestError || latestSyncError;
+  const syncStatusLabel = formatSheinSyncStatus(latestSyncStatus);
+  const syncErrorTitle = syncRequestError ? "同步请求失败" : "最近同步失败";
+  const syncIsRunning =
+    syncPending || latestSyncStatus === "pending" || latestSyncStatus === "running";
 
   return (
     <section className="rounded-3xl border border-zinc-200 bg-[linear-gradient(135deg,#fff9ec_0%,#ffffff_75%)] p-6 shadow-sm">
@@ -99,9 +113,26 @@ export function SheinEnrollmentStoreHeader({
             </Select>
           </label>
           <div className="space-y-1 text-xs text-zinc-500">
-            <div>最近同步：{summary?.last_sync_at || "-"}</div>
+            <div>
+              最近同步：{summary?.last_sync_at || "-"}
+              {syncStatusLabel ? ` · ${syncStatusLabel}` : ""}
+            </div>
             <div>最近报名：{summary?.last_enrollment_at || "-"}</div>
           </div>
+          {syncIsRunning && !visibleSyncError ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+              同步任务执行中，页面会自动刷新同步结果。
+            </div>
+          ) : null}
+          {visibleSyncError ? (
+            <div
+              className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs leading-5 text-red-700"
+              role="alert"
+            >
+              <div className="font-semibold text-red-800">{syncErrorTitle}</div>
+              <div className="mt-1 whitespace-pre-wrap break-words">{visibleSyncError}</div>
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button
               className="rounded-xl"
@@ -128,4 +159,28 @@ export function SheinEnrollmentStoreHeader({
       </div>
     </section>
   );
+}
+
+function formatSheinSyncStatus(status: string) {
+  const labels: Record<string, string> = {
+    pending: "等待同步",
+    running: "同步中",
+    succeeded: "同步成功",
+    partially_succeeded: "部分成功",
+    failed: "同步失败",
+  };
+  return labels[status] ?? status;
+}
+
+function formatSheinEnrollmentError(error: unknown) {
+  if (!error) {
+    return "";
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  return "同步请求失败，请稍后重试。";
 }
