@@ -11,7 +11,6 @@ import (
 	"task-processor/internal/processor"
 	domainproduct "task-processor/internal/product"
 	"task-processor/internal/state"
-	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )
@@ -52,7 +51,7 @@ func newSheinPipelineTestProcessor(cfg *config.Config, productFetcher fetcher.Pr
 	return &SheinProcessor{
 		BaseProcessor:     base,
 		managementClient:  clientMgr,
-		taskStatusRuntime: taskstatus.NewManagementTaskStatusRuntime(clientMgr),
+		taskStatusRuntime: management.NewTaskStatusRuntime(clientMgr),
 		imageDownloader:   clientMgr.GetImageDownloader(),
 		productFetcher:    productFetcher,
 	}

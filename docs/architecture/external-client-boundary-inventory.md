@@ -124,9 +124,9 @@ Current direct dependency hotspots are:
 - `internal/app`
   - expected to construct concrete clients, but should avoid leaking concrete
     client types into business-facing contracts when a narrower port is enough
-  - `internal/app/task` still imports `management` in task source, dispatch,
-    claim, and fetcher seams; these are task-framework retirement seams and new
-    task data access should move toward in-repository database/repository access
+  - `internal/app/task` no longer imports `management`; task polling, dispatch
+    guard, store dispatch, listing-count reads, and status updates are held
+    behind task-local runtime capabilities
   - `internal/app/runner` still imports `management` in scheduler, processor,
     and health-check runtime assembly seams; these should stay narrow while
     runtime data access moves toward in-repository database/repository access
@@ -148,11 +148,14 @@ Current direct dependency hotspots are:
   - `internal/app/taskstatus` no longer imports `management` directly; concrete
     runtime adapters live outside the app task-status service while the service
     keeps only the task-status update contract
+  - `internal/taskstatus` no longer imports `management` directly; concrete
+    `ClientManager` task-status adapters live in `internal/infra/clients/management`
   - ProductImage model/default provider assembly seams in `internal/app/httpapi`
     are guarded by
     `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
-  - `internal/app/task` management retirement seams are guarded by
-    `TestAppTaskManagementClientImportsStayAllowlisted`
+  - `internal/app/task` is guarded by an empty
+    `TestAppTaskManagementClientImportsStayAllowlisted` allowlist plus
+    task-local capability-name guards
   - `internal/app/runner` management retirement seams are guarded by
     `TestAppRunnerManagementClientImportsStayAllowlisted`
   - `internal/app/consumer` management retirement seams are guarded by

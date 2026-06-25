@@ -28,7 +28,28 @@ func (f *TaskFetcher) pendingRuntimeTaskSource() pendingRuntimeTaskSource {
 	if f.pendingTaskSource != nil {
 		return f.pendingTaskSource
 	}
-	return f.managementClient
+	return nil
+}
+
+func (f *TaskFetcher) dailyListingCountReader() dailyListingCountReader {
+	if f == nil {
+		return nil
+	}
+	return f.listingCountReader
+}
+
+func (f *TaskFetcher) storeDispatchRuntime() storeDispatchRuntime {
+	if f == nil {
+		return nil
+	}
+	return f.storeRuntime
+}
+
+func (f *TaskFetcher) runtimeTaskStatusUpdater() runtimeTaskStatusUpdater {
+	if f == nil {
+		return nil
+	}
+	return f.taskStatusUpdater
 }
 
 // fetchTasksFromAPI fetches candidate tasks from the pending task source.
@@ -56,7 +77,7 @@ func toImportTaskRecord(apiTask listingruntime.ImportTask) ImportTaskRecord {
 	}
 }
 
-// getStoreInfo loads store information from the management client.
+// getStoreInfo loads store information from the store runtime.
 func toStoreInfo(storeDTO *listingruntime.StoreInfo) *StoreInfo {
 	if storeDTO == nil {
 		return nil
@@ -125,11 +146,12 @@ func (f *TaskFetcher) newTaskStatusService(component string) *taskstatus.Service
 	}
 
 	return taskstatus.NewService(component, func() taskstatus.ImportTaskStatusClient {
-		if f == nil || f.managementClient == nil {
+		updater := f.runtimeTaskStatusUpdater()
+		if updater == nil {
 			return nil
 		}
 		return runtimeImportTaskStatusClient{
-			updateFn: f.managementClient.UpdateRuntimeTaskStatus,
+			updateFn: updater.UpdateRuntimeTaskStatus,
 		}
 	})
 }

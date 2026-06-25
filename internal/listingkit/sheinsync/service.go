@@ -7,7 +7,7 @@ import (
 )
 
 const sheinSyncPageSize = 100
-const sheinSyncCostResolutionConcurrency = 8
+const sheinSyncCostResolutionConcurrency = 1
 
 type SheinSyncService interface {
 	SyncSheinOnShelfProducts(ctx context.Context, tenantID, storeID int64, triggerMode SheinSyncTriggerMode) (*SheinSyncJobRecord, error)

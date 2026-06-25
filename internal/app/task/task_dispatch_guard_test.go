@@ -1,14 +1,8 @@
 package task
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
-
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
 )
 
 type stubGuardStoreClient struct {
@@ -19,6 +13,18 @@ type stubGuardStoreClient struct {
 	pauseErr       error
 	pauseDetailErr error
 	setPauseCalls  []bool
+}
+
+type stubDailyListingCountReader struct {
+	count *DailyListingCount
+	err   error
+}
+
+func (s stubDailyListingCountReader) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*DailyListingCount, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.count, nil
 }
 
 func (s *stubGuardStoreClient) GetStore(storeID int64) (*StoreInfo, error) {
@@ -116,24 +122,6 @@ func TestTaskDispatchGuardCheckPauseStatusError(t *testing.T) {
 
 func TestTaskDispatchGuardCheckResumesStaleQuotaPause(t *testing.T) {
 	limit := 5
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rpc-api/listing/store/get-daily-listing-count" {
-			http.NotFound(w, r)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"code": 0,
-			"data": 2,
-		})
-	}))
-	defer server.Close()
-
-	clientMgr := management.NewClientManager(&config.ManagementConfig{BaseURL: server.URL})
-	clientMgr.GetClient()
-	clientMgr.SetUserToken("test-token", "1")
-
 	storeClient := &stubGuardStoreClient{
 		store:  &StoreInfo{ID: 7, TenantID: 246, Platform: "shein", Name: "quota-shop", DailyLimit: &limit},
 		paused: true,
@@ -143,7 +131,7 @@ func TestTaskDispatchGuardCheckResumesStaleQuotaPause(t *testing.T) {
 			Reason:    "quota_limit",
 		},
 	}
-	fetcher := &TaskFetcher{managementClient: clientMgr}
+	fetcher := &TaskFetcher{listingCountReader: stubDailyListingCountReader{count: &DailyListingCount{Count: 2}}}
 	guard := NewTaskDispatchGuard(fetcher, storeClient)
 
 	storeInfo, isPaused, err := guard.Check(&ImportTaskRecord{
@@ -168,15 +156,6 @@ func TestTaskDispatchGuardCheckResumesStaleQuotaPause(t *testing.T) {
 
 func TestTaskDispatchGuardCheckKeepsPausedWhenQuotaCountQueryFails(t *testing.T) {
 	limit := 5
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "boom", http.StatusInternalServerError)
-	}))
-	defer server.Close()
-
-	clientMgr := management.NewClientManager(&config.ManagementConfig{BaseURL: server.URL})
-	clientMgr.GetClient()
-	clientMgr.SetUserToken("test-token", "1")
-
 	storeClient := &stubGuardStoreClient{
 		store:  &StoreInfo{ID: 8, TenantID: 246, Platform: "shein", Name: "quota-shop", DailyLimit: &limit},
 		paused: true,
@@ -185,7 +164,7 @@ func TestTaskDispatchGuardCheckKeepsPausedWhenQuotaCountQueryFails(t *testing.T)
 			PauseType: "quota_limit",
 		},
 	}
-	fetcher := &TaskFetcher{managementClient: clientMgr}
+	fetcher := &TaskFetcher{listingCountReader: stubDailyListingCountReader{err: fmt.Errorf("boom")}}
 	guard := NewTaskDispatchGuard(fetcher, storeClient)
 
 	storeInfo, isPaused, err := guard.Check(&ImportTaskRecord{

@@ -269,7 +269,7 @@ func TestTaskHandlerHandleMessage_ClaimsQueuedTaskBeforeProcessing(t *testing.T)
 	clientMgr.GetClient()
 	clientMgr.SetUserToken("token", "1")
 
-	processor := &stubProcessorWithManagement{runtime: taskstatus.NewManagementTaskStatusRuntime(clientMgr)}
+	processor := &stubProcessorWithManagement{runtime: management.NewTaskStatusRuntime(clientMgr)}
 	handler := NewTaskHandler(TaskHandlerConfig{
 		Platform:  "shein",
 		Processor: processor,
@@ -336,7 +336,7 @@ func TestTaskHandlerHandleMessageWithAck_AcksAfterClaimBeforeProcessing(t *testi
 		stubProcessor: stubProcessor{onProcess: func() {
 			processSawAck.Store(acked.Load())
 		}},
-		runtime: taskstatus.NewManagementTaskStatusRuntime(clientMgr),
+		runtime: management.NewTaskStatusRuntime(clientMgr),
 	}
 	handler := NewTaskHandler(TaskHandlerConfig{
 		Platform:  "shein",
@@ -404,7 +404,7 @@ func TestTaskHandlerHandleMessageWithAck_StopsWhenAckFails(t *testing.T) {
 	clientMgr.GetClient()
 	clientMgr.SetUserToken("token", "1")
 
-	processor := &stubProcessorWithManagement{runtime: taskstatus.NewManagementTaskStatusRuntime(clientMgr)}
+	processor := &stubProcessorWithManagement{runtime: management.NewTaskStatusRuntime(clientMgr)}
 	handler := NewTaskHandler(TaskHandlerConfig{
 		Platform:  "shein",
 		Processor: processor,
@@ -470,7 +470,7 @@ func TestTaskHandlerHandleMessage_StopsWhenClaimRejected(t *testing.T) {
 	clientMgr.GetClient()
 	clientMgr.SetUserToken("token", "1")
 
-	processor := &stubProcessorWithManagement{runtime: taskstatus.NewManagementTaskStatusRuntime(clientMgr)}
+	processor := &stubProcessorWithManagement{runtime: management.NewTaskStatusRuntime(clientMgr)}
 	handler := NewTaskHandler(TaskHandlerConfig{
 		Platform:  "shein",
 		Processor: processor,

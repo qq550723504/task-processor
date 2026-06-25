@@ -353,6 +353,10 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestAppBootstrapManagementClientImportsStayAllowlisted`
 - `TestAppTaskManagementClientImportsStayAllowlisted`
+- `TestAppTaskFetcherDoesNotStoreManagementClient`
+- `TestAppTaskDispatchGuardUsesCapabilityNames`
+- `TestAppTaskDispatcherUsesCapabilityNames`
+- `TestAppTaskStatusUpdatesUseCapabilityNames`
 - `TestAppRunnerManagementClientImportsStayAllowlisted`
 - `TestAppConsumerManagementClientImportsStayAllowlisted`
 - `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
@@ -385,6 +389,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestTaskStatusAdapterCallersUseRuntimeNamedConstructor`
 - `TestTaskStatusPackageDoesNotExposeManagementNamedAdapter`
 - `TestTaskStatusRuntimeErrorsUseCapabilityNames`
+- `TestTaskStatusPackageDoesNotImportManagementClient`
 - `TestAmazonTaskStatusUpdatesUseTaskStatusRuntime`
 - `TestAmazonAuthPauseUsesStoreAPIPort`
 - `TestAmazonServicesUseStoreAPIPort`

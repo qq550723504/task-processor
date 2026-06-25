@@ -336,6 +336,52 @@ func TestSyncSheinOnShelfProductsMarksMissingSKCsInactive(t *testing.T) {
 	require.Equal(t, "skc-1", activeRows[0].SKCName)
 }
 
+func TestSyncSheinOnShelfProductsContinuesWhenCostPriceForbidden(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	productAPI := &sheinSyncServiceProductAPIStub{
+		listResponses: []*sheinproduct.ProductListResponse{
+			makeProductListResponse([]sheinproduct.ProductListItem{
+				{
+					SpuName:          "g2606161328066702",
+					ProductNameMulti: "Product One",
+					ShelfStatus:      "ON_SHELF",
+					SkcInfoList: []sheinproduct.SkcInfoItem{
+						{SkcName: "skc-1", SupplierCode: "SUP-1"},
+					},
+				},
+			}, 1),
+		},
+		queryCostPriceErr: errors.New("API错误 [403]: Forbidden"),
+	}
+	costResolver := &sheinProductCostResolver{
+		productAPI:  productAPI,
+		retryDelays: []time.Duration{0, 0},
+		sleep:       func(context.Context, time.Duration) error { return nil },
+	}
+	service := NewSheinSyncService(repo, productAPI, costResolver)
+
+	job, err := service.SyncSheinOnShelfProducts(context.Background(), 7, 88, SheinSyncTriggerModeManual)
+	require.NoError(t, err)
+	require.NotNil(t, job)
+	require.Equal(t, SheinSyncJobStatusSucceeded, job.Status)
+	require.Equal(t, 1, job.FetchedCount)
+
+	rows, total, err := repo.ListSyncedProducts(context.Background(), &SheinSyncedProductQuery{
+		TenantID: 7,
+		StoreID:  88,
+		Page:     1,
+		PageSize: 10,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, rows, 1)
+	require.Equal(t, "skc-1", rows[0].SKCName)
+	require.Nil(t, rows[0].AutoCostPrice)
+	require.Nil(t, rows[0].EffectiveCostPrice)
+}
+
 func TestSyncSheinOnShelfProductsMarksJobFailedWhenListProductsFails(t *testing.T) {
 	t.Parallel()
 
@@ -415,7 +461,7 @@ func TestSheinCostResolverReturnsClearErrorWhenQueryCostPriceResponseIsNil(t *te
 	require.ErrorContains(t, err, "returned nil response")
 }
 
-func TestSyncSheinOnShelfProductsResolvesCostsConcurrentlyWithinPage(t *testing.T) {
+func TestSyncSheinOnShelfProductsResolvesCostsSeriallyWithinPage(t *testing.T) {
 	t.Parallel()
 
 	repo := newSheinSyncServiceRepoStub()
@@ -459,8 +505,11 @@ func TestSyncSheinOnShelfProductsResolvesCostsConcurrentlyWithinPage(t *testing.
 	}()
 
 	require.Eventually(t, func() bool {
-		return costResolver.startedCount() == 3
+		return costResolver.startedCount() == 1
 	}, time.Second, 10*time.Millisecond)
+	require.Never(t, func() bool {
+		return costResolver.startedCount() > 1
+	}, 100*time.Millisecond, 10*time.Millisecond)
 
 	costResolver.releaseAll()
 
@@ -468,7 +517,7 @@ func TestSyncSheinOnShelfProductsResolvesCostsConcurrentlyWithinPage(t *testing.
 	case err := <-done:
 		require.NoError(t, err)
 	case <-time.After(2 * time.Second):
-		t.Fatal("sync did not finish after releasing concurrent cost resolver")
+		t.Fatal("sync did not finish after releasing cost resolver")
 	}
 }
 

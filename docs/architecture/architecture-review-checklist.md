@@ -163,6 +163,11 @@ At minimum, structural review should consider representative guards such as:
 - `TestSheinOpenAIImportsStayAllowlisted`
 - `TestAppTaskManagementClientImportsStayAllowlisted`
 - `TestAppTaskPollingSourceUsesCapabilityNames`
+- `TestAppTaskFetcherDoesNotStoreManagementClient`
+- `TestAppTaskInterfacesDoNotExposeLegacyClientProviders`
+- `TestAppTaskDispatchGuardUsesCapabilityNames`
+- `TestAppTaskDispatcherUsesCapabilityNames`
+- `TestAppTaskStatusUpdatesUseCapabilityNames`
 - `TestAppRunnerManagementClientImportsStayAllowlisted`
 - `TestAppConsumerManagementClientImportsStayAllowlisted`
 - `TestPlatformProcessorRegistryDoesNotExposeManagementClient`
@@ -171,6 +176,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestTaskStatusAdapterCallersUseRuntimeNamedConstructor`
 - `TestTaskStatusPackageDoesNotExposeManagementNamedAdapter`
 - `TestTaskStatusRuntimeErrorsUseCapabilityNames`
+- `TestTaskStatusPackageDoesNotImportManagementClient`
 - `TestAmazonTaskStatusUpdatesUseTaskStatusRuntime`
 - `TestAmazonAuthPauseUsesStoreAPIPort`
 - `TestAmazonServicesUseStoreAPIPort`
@@ -193,6 +199,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestStateManagementClientImportsStayAllowlisted`
 - `TestPlatformBaseManagementClientImportsStayAllowlisted`
 - `TestProcessorManagementClientImportsStayAllowlisted`
+- `TestBaseProcessorDoesNotExposeManagementClient`
 - `TestTaskRPCAPIManagementClientImportsStayAllowlisted`
 - `TestSDSClientManagementClientImportsStayAllowlisted`
 - `TestSheinLoginBootstrapManagementClientImportsStayAllowlisted`

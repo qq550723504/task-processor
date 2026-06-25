@@ -7,20 +7,12 @@ import (
 	"task-processor/internal/pkg/timex"
 )
 
-type storePauseStatusReader interface {
-	GetStorePauseStatus(storeID int64) (bool, error)
-}
-
-type storePauseStatusWriter interface {
-	SetStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error)
-}
-
 type TaskDispatchGuard struct {
 	fetcher     *TaskFetcher
-	storeClient any
+	storeClient storeDispatchRuntime
 }
 
-func NewTaskDispatchGuard(fetcher *TaskFetcher, storeClient any) *TaskDispatchGuard {
+func NewTaskDispatchGuard(fetcher *TaskFetcher, storeClient storeDispatchRuntime) *TaskDispatchGuard {
 	return &TaskDispatchGuard{
 		fetcher:     fetcher,
 		storeClient: storeClient,
@@ -37,12 +29,11 @@ func (g *TaskDispatchGuard) Check(task *ImportTaskRecord) (*StoreInfo, bool, err
 		return nil, false, err
 	}
 
-	pauseReader, ok := g.storeClient.(storePauseStatusReader)
-	if !ok {
-		return nil, false, fmt.Errorf("store client does not support pause status check: %T", g.storeClient)
+	if g.storeClient == nil {
+		return nil, false, fmt.Errorf("store dispatch runtime is not initialized")
 	}
 
-	isPaused, err := pauseReader.GetStorePauseStatus(task.StoreID)
+	isPaused, err := g.storeClient.GetStorePauseStatus(task.StoreID)
 	if err != nil {
 		logger.GetGlobalLogger("app/task").Warnf("获取店铺 %d 暂停状态失败: %v，跳过任务", task.StoreID, err)
 		return nil, false, err
@@ -62,23 +53,14 @@ func (g *TaskDispatchGuard) Check(task *ImportTaskRecord) (*StoreInfo, bool, err
 }
 
 func (g *TaskDispatchGuard) tryResumeStaleQuotaPause(task *ImportTaskRecord, storeInfo *StoreInfo) bool {
-	if g == nil || g.fetcher == nil || g.fetcher.managementClient == nil || task == nil || storeInfo == nil {
+	if g == nil || g.fetcher == nil || task == nil || storeInfo == nil {
 		return false
 	}
 	if storeInfo.DailyLimit == nil || *storeInfo.DailyLimit <= 0 {
 		return false
 	}
 
-	pauseReader, ok := g.storeClient.(storePauseStatusDetailReader)
-	if !ok {
-		return false
-	}
-	pauseWriter, ok := g.storeClient.(storePauseStatusWriter)
-	if !ok {
-		return false
-	}
-
-	pauseDetail, err := pauseReader.GetStorePauseStatusDetail(task.StoreID)
+	pauseDetail, err := g.storeClient.GetStorePauseStatusDetail(task.StoreID)
 	if err != nil {
 		logger.GetGlobalLogger("app/task").Warnf("获取店铺 %d 暂停详情失败，保留暂停状态: %v", task.StoreID, err)
 		return false
@@ -87,13 +69,13 @@ func (g *TaskDispatchGuard) tryResumeStaleQuotaPause(task *ImportTaskRecord, sto
 		return false
 	}
 
-	countClient := g.fetcher.managementClient.GetDailyListingCountClient()
-	if countClient == nil {
+	countReader := g.fetcher.dailyListingCountReader()
+	if countReader == nil {
 		return false
 	}
 
 	currentDate := timex.NowDate()
-	dailyCount, err := countClient.GetDailyListingCount(task.TenantID, task.StoreID, task.TenantID, currentDate)
+	dailyCount, err := countReader.GetDailyListingCount(task.TenantID, task.StoreID, task.TenantID, currentDate)
 	if err != nil {
 		logger.GetGlobalLogger("app/task").Warnf("获取店铺 %d 当日上品计数失败，保留暂停状态: %v", task.StoreID, err)
 		return false
@@ -106,7 +88,7 @@ func (g *TaskDispatchGuard) tryResumeStaleQuotaPause(task *ImportTaskRecord, sto
 		return false
 	}
 
-	success, err := pauseWriter.SetStorePauseStatus(task.StoreID, false, "")
+	success, err := g.storeClient.SetStorePauseStatus(task.StoreID, false, "")
 	if err != nil {
 		logger.GetGlobalLogger("app/task").Warnf("恢复店铺 %d 配额暂停失败，保留暂停状态: %v", task.StoreID, err)
 		return false

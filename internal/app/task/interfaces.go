@@ -18,32 +18,31 @@ type TaskSubmitter interface {
 	GetQueueStats() worker.QueueStats
 }
 
-// ManagementClientProvider 管理客户端提供者接口
-type ManagementClientProvider interface {
-	// GetImportTaskClient 获取导入任务API客户端
-	GetImportTaskClient() ImportTaskClient
-	// GetStoreClient 获取店铺API客户端
-	GetStoreClient() StoreClient
-}
-
-// ImportTaskClient 导入任务API客户端接口
-type ImportTaskClient interface {
-	// GetPendingAndRetryTasks 获取待处理和重试任务
-	GetPendingAndRetryTasks(maxTasks int, userID int64, storeIDs []int64) ([]listingruntime.ImportTask, error)
-	// UpdateTaskStatus 更新任务状态
-	UpdateTaskStatus(taskID int64, status int16, errorMessage string) error
-}
-
 type pendingRuntimeTaskSource interface {
 	GetPendingRuntimeTasks(maxTasks int, userID int64, storeIDs []int64) ([]listingruntime.ImportTask, error)
+}
+
+type DailyListingCount struct {
+	Count int64
+}
+
+type dailyListingCountReader interface {
+	GetDailyListingCount(tenantID, storeID, userID int64, date string) (*DailyListingCount, error)
+}
+
+type runtimeTaskStatusUpdater interface {
+	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
+}
+
+type storeDispatchRuntime interface {
+	StoreClient
+	GetStorePauseStatus(storeID int64) (bool, error)
+	GetStorePauseStatusDetail(storeID int64) (*listingruntime.StorePauseStatusDetail, error)
+	SetStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error)
 }
 
 // StoreClient 店铺API客户端接口
 type StoreClient interface {
 	// GetStore 获取店铺信息
 	GetStore(storeID int64) (*listingruntime.StoreInfo, error)
-}
-
-type storePauseStatusDetailReader interface {
-	GetStorePauseStatusDetail(storeID int64) (*listingruntime.StorePauseStatusDetail, error)
 }

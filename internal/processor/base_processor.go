@@ -77,10 +77,6 @@ func (bp *BaseProcessor) GetConfig() *config.Config {
 	return bp.config
 }
 
-func (bp *BaseProcessor) GetManagementClient() *management.ClientManager {
-	return bp.managementClient
-}
-
 func (bp *BaseProcessor) GetStoreAPI() managementapi.StoreAPI {
 	if bp == nil || bp.managementClient == nil {
 		return nil
@@ -92,7 +88,7 @@ func (bp *BaseProcessor) GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
 	if bp == nil || bp.managementClient == nil {
 		return nil
 	}
-	return taskstatus.NewManagementTaskStatusRuntime(bp.managementClient)
+	return management.NewTaskStatusRuntime(bp.managementClient)
 }
 
 func (bp *BaseProcessor) GetMemoryManager() *state.MemoryManager {

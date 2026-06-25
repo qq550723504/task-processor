@@ -99,8 +99,8 @@ func (f *TaskFetcher) dispatchTasks(ctx context.Context, tasks []ImportTaskRecor
 	claimService := NewTaskClaimService(f)
 	taskDispatcher := NewTaskDispatcher(f)
 
-	storeClient := f.managementClient.GetRuntimeStoreService()
-	dispatchGuard := NewTaskDispatchGuard(f, storeClient)
+	storeRuntime := f.storeDispatchRuntime()
+	dispatchGuard := NewTaskDispatchGuard(f, storeRuntime)
 
 	for i := range tasks {
 		task := &tasks[i]

@@ -265,12 +265,19 @@ func (b *BaseAPIClient) isAuthFailureError(err error) bool {
 		}
 	}
 	if ok := errors.As(err, &apiErr); ok {
+		if apiErr.StatusCode == http.StatusForbidden && isCostPriceEndpoint(apiErr.URL) {
+			return false
+		}
 		if apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden || apiErr.StatusCode == http.StatusFound {
 			return true
 		}
 		return isSheinAuthFailurePayload("", apiErr.Message)
 	}
 	return true
+}
+
+func isCostPriceEndpoint(requestURL string) bool {
+	return strings.Contains(requestURL, GetQueryCostPriceEndpoint())
 }
 
 func (b *BaseAPIClient) responseIndicatesAuthExpired(resp *req.Response, result any) bool {

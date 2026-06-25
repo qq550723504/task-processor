@@ -825,20 +825,7 @@ func TestListingKitHTTPAPIManagementClientImportsStayAllowlisted(t *testing.T) {
 
 func TestAppTaskManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "task")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "claim_journal_test.go")):       {},
-		filepath.Clean(filepath.Join(root, "dispatcher.go")):               {},
-		filepath.Clean(filepath.Join(root, "fetcher.go")):                  {},
-		filepath.Clean(filepath.Join(root, "fetcher_utils.go")):            {},
-		filepath.Clean(filepath.Join(root, "interfaces.go")):               {},
-		filepath.Clean(filepath.Join(root, "task_claim_service.go")):       {},
-		filepath.Clean(filepath.Join(root, "task_claim_service_test.go")):  {},
-		filepath.Clean(filepath.Join(root, "task_dispatch_guard.go")):      {},
-		filepath.Clean(filepath.Join(root, "task_dispatch_guard_test.go")): {},
-		filepath.Clean(filepath.Join(root, "task_dispatcher.go")):          {},
-		filepath.Clean(filepath.Join(root, "task_dispatcher_test.go")):     {},
-		filepath.Clean(filepath.Join(root, "task_source.go")):              {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -1016,6 +1003,7 @@ func TestAppTaskPollingSourceUsesCapabilityNames(t *testing.T) {
 		},
 		filepath.Join("..", "internal", "app", "task", "fetcher_utils.go"): {
 			"fetches candidate tasks from management",
+			"return f.managementClient",
 		},
 	}
 
@@ -1028,6 +1016,109 @@ func TestAppTaskPollingSourceUsesCapabilityNames(t *testing.T) {
 			if strings.Contains(string(content), phrase) {
 				t.Fatalf("%s mentions %q; use pending task source names for legacy polling dependencies", path, phrase)
 			}
+		}
+	}
+}
+
+func TestAppTaskFetcherDoesNotStoreManagementClient(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "task", "fetcher.go")
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || typeSpec.Name == nil || typeSpec.Name.Name != "TaskFetcher" {
+				continue
+			}
+			structType, ok := typeSpec.Type.(*ast.StructType)
+			if !ok || structType.Fields == nil {
+				continue
+			}
+			for _, field := range structType.Fields.List {
+				for _, name := range field.Names {
+					if name.Name == "managementClient" {
+						t.Fatalf("%s stores managementClient on TaskFetcher; store narrower task runtime capabilities instead", path)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestAppTaskInterfacesDoNotExposeLegacyClientProviders(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "task", "interfaces.go")
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	legacyTypes := map[string]struct{}{
+		"ManagementClientProvider": {},
+		"ImportTaskClient":         {},
+	}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.TYPE {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || typeSpec.Name == nil {
+				continue
+			}
+			if _, ok := legacyTypes[typeSpec.Name.Name]; ok {
+				t.Fatalf("%s exposes %s; inject narrower task runtime capabilities instead", path, typeSpec.Name.Name)
+			}
+		}
+	}
+}
+
+func TestAppTaskDispatchGuardUsesCapabilityNames(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "task", "task_dispatch_guard.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"fetcher.managementClient",
+		"GetDailyListingCountClient",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; inject dispatch guard runtime capabilities instead", path, phrase)
+		}
+	}
+}
+
+func TestAppTaskDispatcherUsesCapabilityNames(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "task", "dispatcher.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "managementClient.GetRuntimeStoreService") {
+		t.Fatalf("%s reaches into managementClient for store dispatch; inject store dispatch runtime capability instead", path)
+	}
+}
+
+func TestAppTaskStatusUpdatesUseCapabilityNames(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "task", "fetcher_utils.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"f == nil || f.managementClient == nil",
+		"f.managementClient.UpdateRuntimeTaskStatus",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; use runtime task status updater capability instead", path, phrase)
 		}
 	}
 }
@@ -1106,6 +1197,39 @@ func TestTaskStatusRuntimeErrorsUseCapabilityNames(t *testing.T) {
 	}
 	if strings.Contains(string(content), "management client is not initialized") {
 		t.Fatalf("%s mentions management client initialization; use task status runtime names for task status dependencies", path)
+	}
+}
+
+func TestTaskStatusPackageDoesNotImportManagementClient(t *testing.T) {
+	root := filepath.Join("..", "internal", "taskstatus")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		for quotedImport := range facts.imports {
+			importPath := strings.Trim(quotedImport, `"`)
+			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+				t.Fatalf("%s imports %s; keep taskstatus package on task-status runtime ports", path, importPath)
+			}
+		}
+	}
+}
+
+func TestBaseProcessorDoesNotExposeManagementClient(t *testing.T) {
+	path := filepath.Join("..", "internal", "processor", "base_processor.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv == nil || fn.Name == nil || fn.Name.Name != "GetManagementClient" {
+			continue
+		}
+		t.Fatalf("%s exposes BaseProcessor.GetManagementClient; expose narrower runtime-owned ports instead", path)
 	}
 }
 

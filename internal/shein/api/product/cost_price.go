@@ -1,5 +1,13 @@
 package product
 
+import (
+	"errors"
+	"net/http"
+	"strings"
+
+	sheinapi "task-processor/internal/shein/api"
+)
+
 // CostPriceQueryRequest 成本价格查询请求（半托店铺）
 type CostPriceQueryRequest struct {
 	SpuName     string   `json:"spu_name"`
@@ -71,4 +79,15 @@ type CostPrice struct {
 type ChangeCostReason struct {
 	ReasonContent string `json:"reason_content"`
 	ReasonFlag    int    `json:"reason_flag"`
+}
+
+func IsCostPriceUnavailable(err error) bool {
+	var apiErr *sheinapi.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode == http.StatusForbidden
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "api错误 [403]") ||
+		strings.Contains(message, "forbidden") ||
+		strings.Contains(message, "无权限")
 }

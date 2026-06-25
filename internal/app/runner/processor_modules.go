@@ -10,6 +10,7 @@ import (
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/shein/pipeline"
+	"task-processor/internal/taskstatus"
 	"task-processor/internal/temu"
 )
 
@@ -126,6 +127,38 @@ func (a sheinDependencyRuntimeAdapter) GetImageDownloader() interface {
 		return nil
 	}
 	return a.processorRuntimeProvider.GetImageDownloader()
+}
+
+func (a sheinDependencyRuntimeAdapter) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error) {
+	if a.processorRuntimeProvider == nil {
+		return nil, nil
+	}
+	status, err := a.processorRuntimeProvider.GetTaskStatus(taskID)
+	if err != nil || status == nil {
+		return nil, err
+	}
+	return &taskstatus.TaskStatusSnapshot{
+		TaskID:           status.TaskID,
+		Status:           status.Status,
+		StatusKey:        status.StatusKey,
+		StatusName:       status.StatusName,
+		CanonicalStatus:  status.CanonicalStatus,
+		Platform:         status.Platform,
+		Region:           status.Region,
+		TaskType:         status.TaskType,
+		Priority:         status.Priority,
+		RetryCount:       status.RetryCount,
+		MaxRetries:       status.MaxRetries,
+		ProcessingTimeMs: status.ProcessingTimeMs,
+		QueueName:        status.QueueName,
+		ProcessingNode:   status.ProcessingNode,
+		ProgressPercent:  status.ProgressPercent,
+		Result:           status.Result,
+		ErrorMessage:     status.ErrorMessage,
+		ErrorStack:       status.ErrorStack,
+		ExecutionLogs:    status.ExecutionLogs,
+		TaskDetails:      status.TaskDetails,
+	}, nil
 }
 
 func buildRuntimeProductFetcher(cfg *config.Config, s *processorServiceImpl, platform string) (appfetcher.ProductFetcher, error) {

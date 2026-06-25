@@ -60,6 +60,36 @@ func TestBaseAPIClientRefreshesAuthOnBusinessAuthExpired(t *testing.T) {
 	}
 }
 
+func TestBaseAPIClientDoesNotRefreshAuthOnCostPriceForbidden(t *testing.T) {
+	t.Parallel()
+
+	var refreshCalls int
+	var requestCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCalls++
+		http.Error(w, "cost price forbidden", http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	baseClient := NewBaseAPIClient(server.URL, 227, 870, req.C())
+	baseClient.SetAuthRefreshFunc(func() error {
+		refreshCalls++
+		return nil
+	})
+
+	var result api.APIResponse
+	err := baseClient.APIRequest(http.MethodPost, server.URL+GetQueryCostPriceEndpoint(), map[string]any{"ok": true}, &result)
+	if err == nil {
+		t.Fatal("APIRequest() error = nil, want forbidden error")
+	}
+	if refreshCalls != 0 {
+		t.Fatalf("refreshCalls = %d, want 0", refreshCalls)
+	}
+	if requestCalls != 1 {
+		t.Fatalf("requestCalls = %d, want 1", requestCalls)
+	}
+}
+
 func jsonEncode(w http.ResponseWriter, value any) error {
 	w.Header().Set("Content-Type", "application/json")
 	return json.NewEncoder(w).Encode(value)

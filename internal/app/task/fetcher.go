@@ -12,7 +12,6 @@ import (
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,8 +19,10 @@ import (
 type TaskFetcher struct {
 	*lifecycle.BaseComponent
 	config               *config.Config
-	managementClient     *management.ClientManager
 	pendingTaskSource    pendingRuntimeTaskSource
+	listingCountReader   dailyListingCountReader
+	storeRuntime         storeDispatchRuntime
+	taskStatusUpdater    runtimeTaskStatusUpdater
 	submitters           map[string]TaskSubmitter
 	interval             time.Duration
 	processingTasks      map[string]time.Time
@@ -38,9 +39,16 @@ type TaskFetcher struct {
 	monitorService *MonitorService
 }
 
+type TaskFetcherDependencies struct {
+	PendingTaskSource  pendingRuntimeTaskSource
+	ListingCountReader dailyListingCountReader
+	StoreRuntime       storeDispatchRuntime
+	TaskStatusUpdater  runtimeTaskStatusUpdater
+}
+
 func NewUnifiedTaskFetcher(
 	cfg *config.Config,
-	managementClient *management.ClientManager,
+	deps TaskFetcherDependencies,
 	submitters map[string]TaskSubmitter,
 	logger *logrus.Logger,
 ) *TaskFetcher {
@@ -50,15 +58,17 @@ func NewUnifiedTaskFetcher(
 	}
 
 	fetcher := &TaskFetcher{
-		BaseComponent:     lifecycle.NewBaseComponent("TaskFetcher", []string{}, 50),
-		config:            cfg,
-		managementClient:  managementClient,
-		pendingTaskSource: managementClient,
-		submitters:        submitters,
-		interval:          interval,
-		processingTasks:   make(map[string]time.Time),
-		logger:            logger,
-		claimJournal:      NewClaimJournal(""),
+		BaseComponent:      lifecycle.NewBaseComponent("TaskFetcher", []string{}, 50),
+		config:             cfg,
+		pendingTaskSource:  deps.PendingTaskSource,
+		listingCountReader: deps.ListingCountReader,
+		storeRuntime:       deps.StoreRuntime,
+		taskStatusUpdater:  deps.TaskStatusUpdater,
+		submitters:         submitters,
+		interval:           interval,
+		processingTasks:    make(map[string]time.Time),
+		logger:             logger,
+		claimJournal:       NewClaimJournal(""),
 	}
 
 	fetcher.cleanupService = NewCleanupService(fetcher, cfg)
