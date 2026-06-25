@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pollAsyncJob } from "@/lib/api/async-job";
+import {
+  pollAsyncJob,
+  resumeOrRestartAsyncJob,
+  startAsyncJob,
+} from "@/lib/api/async-job";
 
 function buildPollRequest(jobId: string) {
   return {
@@ -8,6 +12,24 @@ function buildPollRequest(jobId: string) {
     init: {
       headers: new Headers({ Accept: "application/json" }),
       cache: "no-store" as const,
+    },
+  };
+}
+
+function buildStartRequest(input: { path: string; body: unknown; sessionId?: string }) {
+  return {
+    url: "/api/listing-kits/studio/async-jobs",
+    init: {
+      method: "POST",
+      headers: new Headers({
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      }),
+      body: JSON.stringify({
+        path: input.path,
+        body: input.body,
+        session_id: input.sessionId,
+      }),
     },
   };
 }
@@ -130,5 +152,160 @@ describe("pollAsyncJob", () => {
       }),
     ).rejects.toThrow("cancelled");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("startAsyncJob", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("starts a backend async job through the provided request builder", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ job_id: "job-new", status: "running" }), {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      startAsyncJob({
+        input: {
+          path: "/studio/designs",
+          body: { prompt: "flag" },
+          sessionId: "session-1",
+        },
+        buildStartRequest,
+      }),
+    ).resolves.toEqual({ jobId: "job-new" });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/studio/async-jobs",
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      path: "/studio/designs",
+      body: { prompt: "flag" },
+      session_id: "session-1",
+    });
+  });
+});
+
+describe("resumeOrRestartAsyncJob", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("resumes an existing job without starting a replacement", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          job_id: "job-existing",
+          status: "succeeded",
+          result: { ok: true },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const promise = resumeOrRestartAsyncJob<
+      { ok: boolean },
+      { path: string; body: unknown; sessionId?: string }
+    >(
+      { path: "/studio/designs", body: { prompt: "flag" } },
+      {
+        jobId: "job-existing",
+        timeoutMs: 10_000,
+        buildStartRequest,
+        buildPollRequest,
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(2_100);
+
+    await expect(promise).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/studio/async-jobs/job-existing",
+    );
+  });
+
+  it("restarts a missing resumed job without losing session or start callback context", async () => {
+    const onJobStarted = vi.fn();
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "missing job" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ job_id: "job-restarted", status: "running" }), {
+          status: 202,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            job_id: "job-restarted",
+            status: "succeeded",
+            result: { ok: true },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const promise = resumeOrRestartAsyncJob<
+      { ok: boolean },
+      { path: string; body: unknown; sessionId?: string }
+    >(
+      {
+        path: "/studio/designs",
+        body: { prompt: "flag" },
+        sessionId: "session-1",
+      },
+      {
+        jobId: "job-missing",
+        timeoutMs: 10_000,
+        onJobStarted,
+        buildStartRequest,
+        buildPollRequest,
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(4_300);
+
+    await expect(promise).resolves.toEqual({ ok: true });
+    expect(onJobStarted).toHaveBeenCalledWith("job-restarted");
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/listing-kits/studio/async-jobs/job-missing",
+      "/api/listing-kits/studio/async-jobs",
+      "/api/listing-kits/studio/async-jobs/job-restarted",
+    ]);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      path: "/studio/designs",
+      body: { prompt: "flag" },
+      session_id: "session-1",
+    });
   });
 });

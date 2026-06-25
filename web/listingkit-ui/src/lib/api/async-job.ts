@@ -13,17 +13,84 @@ export type AsyncJobResponse<T> = {
   upstream_status?: number;
 };
 
+export type AsyncJobStartResult = {
+  jobId: string;
+};
+
+type AsyncJobStartRequest = {
+  url: string;
+  init: RequestInit;
+};
+
 type AsyncJobPollRequest = {
   url: string;
   init: RequestInit;
+};
+
+type StartAsyncJobOptions<TInput> = {
+  input: TInput;
+  signal?: AbortSignal;
+  buildStartRequest: (input: TInput) => AsyncJobStartRequest;
 };
 
 type PollAsyncJobOptions = {
   timeoutMs: number;
   signal?: AbortSignal;
   intervalMs?: number;
+  terminalPollStatuses?: number[];
   buildPollRequest: (jobId: string) => AsyncJobPollRequest;
 };
+
+type ResumeOrRestartAsyncJobOptions<TInput> = Omit<
+  StartAsyncJobOptions<TInput>,
+  "input"
+> &
+  PollAsyncJobOptions & {
+    jobId?: string;
+    onJobStarted?: (jobId: string) => void;
+  };
+
+export async function startAsyncJob<TInput>({
+  input,
+  signal,
+  buildStartRequest,
+}: StartAsyncJobOptions<TInput>): Promise<AsyncJobStartResult> {
+  const { url, init } = buildStartRequest(input);
+  const response = await fetchWithRetry(
+    url,
+    {
+      ...init,
+      signal,
+    },
+    { retries: 0 },
+  );
+
+  let payload: (AsyncJobResponse<unknown> & { message?: string }) | undefined;
+  try {
+    payload = await parseJsonResponse<AsyncJobResponse<unknown> & {
+      message?: string;
+    }>(response);
+  } catch (error) {
+    if (error instanceof ResponseJsonParseError) {
+      throw new ApiError(
+        "ListingKit backend async job start returned invalid JSON",
+        response.status,
+        { message: error.message },
+      );
+    }
+    throw error;
+  }
+
+  if (!response.ok || !payload?.job_id) {
+    throw new ApiError(
+      payload?.message ?? `ListingKit backend async job start failed: ${response.status}`,
+      response.status,
+      payload,
+    );
+  }
+
+  return { jobId: payload.job_id };
+}
 
 export async function pollAsyncJob<T>(
   jobId: string,
@@ -31,6 +98,7 @@ export async function pollAsyncJob<T>(
     timeoutMs,
     signal,
     intervalMs = 2000,
+    terminalPollStatuses = [],
     buildPollRequest,
   }: PollAsyncJobOptions,
 ): Promise<T> {
@@ -85,6 +153,9 @@ export async function pollAsyncJob<T>(
           response.status,
           payload,
         );
+        if (terminalPollStatuses.includes(response.status)) {
+          throw lastPollError;
+        }
         continue;
       }
       if (payload.status === "succeeded") {
@@ -117,6 +188,56 @@ export async function pollAsyncJob<T>(
     `ListingKit async job timed out after ${timeoutMs}ms`,
     408,
   );
+}
+
+export async function resumeAsyncJob<T>(
+  jobId: string,
+  options: PollAsyncJobOptions,
+): Promise<T> {
+  return pollAsyncJob<T>(jobId, options);
+}
+
+export async function resumeOrRestartAsyncJob<T, TInput>(
+  input: TInput,
+  {
+    jobId,
+    onJobStarted,
+    timeoutMs,
+    signal,
+    intervalMs,
+    buildPollRequest,
+    buildStartRequest,
+  }: ResumeOrRestartAsyncJobOptions<TInput>,
+): Promise<T> {
+  const normalizedJobId = jobId?.trim();
+  if (normalizedJobId) {
+    try {
+      return await resumeAsyncJob<T>(normalizedJobId, {
+        timeoutMs,
+        signal,
+        intervalMs,
+        terminalPollStatuses: [404],
+        buildPollRequest,
+      });
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 404) {
+        throw error;
+      }
+    }
+  }
+
+  const started = await startAsyncJob({
+    input,
+    signal,
+    buildStartRequest,
+  });
+  onJobStarted?.(started.jobId);
+  return pollAsyncJob<T>(started.jobId, {
+    timeoutMs,
+    signal,
+    intervalMs,
+    buildPollRequest,
+  });
 }
 
 function sleep(ms: number, signal?: AbortSignal) {

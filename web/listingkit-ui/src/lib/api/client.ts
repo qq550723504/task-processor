@@ -1,10 +1,8 @@
 import { buildQueryString } from "@/lib/api/query-string";
 import { ApiError } from "@/lib/api/api-error";
 import {
-  pollAsyncJob,
-  type AsyncJobResponse,
+  resumeOrRestartAsyncJob,
 } from "@/lib/api/async-job";
-import { fetchWithRetry } from "@/lib/api/fetch-retry";
 import {
   parseJsonResponse,
   ResponseJsonParseError,
@@ -137,18 +135,58 @@ export async function apiAsyncRequest<T>(
     asyncJobSessionId,
   }: Pick<RequestOptions, "body" | "timeoutMs" | "signal" | "onJobStarted" | "asyncJobSessionId"> = {},
 ): Promise<T> {
-  const backendJob = await startBackendAsyncJob<T>(
-    path,
-    body,
-    asyncJobSessionId,
-    signal,
+  return resumeOrRestartAsyncJob<T, BackendAsyncJobInput>(
+    {
+      path,
+      body,
+      sessionId: asyncJobSessionId,
+    },
+    {
+      timeoutMs,
+      signal,
+      onJobStarted,
+      buildStartRequest: buildAsyncJobStartRequest,
+      buildPollRequest: buildAsyncJobPollRequest,
+    },
   );
-  onJobStarted?.(backendJob.jobId);
-  return pollAsyncJob<T>(backendJob.jobId, {
-    timeoutMs,
-    signal,
-    buildPollRequest: buildAsyncJobPollRequest,
-  });
+}
+
+type BackendAsyncJobInput = {
+  path: string;
+  body: unknown;
+  sessionId?: string;
+};
+
+function buildAsyncJobStartRequest({
+  path,
+  body,
+  sessionId,
+}: BackendAsyncJobInput) {
+  return {
+    url: buildApiUrl("/studio/async-jobs"),
+    init: {
+      method: "POST",
+      headers: buildHeaders(
+        "/studio/async-jobs",
+        null,
+        new Headers({
+          "Content-Type": "application/json",
+        }),
+      ),
+      body: JSON.stringify({ path, body, session_id: sessionId?.trim() || undefined }),
+    },
+  };
+}
+
+function buildAsyncJobPollRequest(jobId: string) {
+  const path = `/studio/async-jobs/${encodeURIComponent(jobId)}`;
+  return {
+    url: buildApiUrl(path),
+    init: {
+      headers: buildHeaders(path),
+      cache: "no-store" as const,
+    },
+  };
 }
 
 export async function apiFormRequest<T>(
@@ -172,67 +210,6 @@ export async function apiFormRequest<T>(
   }
 
   return payload as T;
-}
-
-async function startBackendAsyncJob<T>(
-  path: string,
-  body: unknown,
-  sessionId?: string,
-  signal?: AbortSignal,
-) {
-  const response = await fetchWithRetry(
-    buildApiUrl("/studio/async-jobs"),
-    {
-      method: "POST",
-      headers: buildHeaders(
-        "/studio/async-jobs",
-        null,
-        new Headers({
-          "Content-Type": "application/json",
-        }),
-      ),
-      body: JSON.stringify({ path, body, session_id: sessionId?.trim() || undefined }),
-      signal,
-    },
-    { retries: 0 },
-  );
-
-  let payload: (AsyncJobResponse<T> & { message?: string }) | undefined;
-  try {
-    payload = await parseJsonResponse<AsyncJobResponse<T> & {
-      message?: string;
-    }>(response);
-  } catch (error) {
-    if (error instanceof ResponseJsonParseError) {
-      throw new ApiError(
-        "ListingKit backend async job start returned invalid JSON",
-        response.status,
-        { message: error.message },
-      );
-    }
-    throw error;
-  }
-
-  if (!response.ok || !payload?.job_id) {
-    throw new ApiError(
-      payload?.message ?? `ListingKit backend async job start failed: ${response.status}`,
-      response.status,
-      payload,
-    );
-  }
-
-  return { jobId: payload.job_id };
-}
-
-function buildAsyncJobPollRequest(jobId: string) {
-  const path = `/studio/async-jobs/${encodeURIComponent(jobId)}`;
-  return {
-    url: buildApiUrl(path),
-    init: {
-      headers: buildHeaders(path),
-      cache: "no-store" as const,
-    },
-  };
 }
 
 async function parseApiJsonResponse(response: Response) {
