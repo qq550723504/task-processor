@@ -130,6 +130,7 @@ export type SheinSourceSDSMetadataRecord = {
   variant_sku?: string;
   price?: number;
   variant_label?: string;
+  image_url?: string;
 };
 
 export type SheinSourceSDSMetadataResponse = {

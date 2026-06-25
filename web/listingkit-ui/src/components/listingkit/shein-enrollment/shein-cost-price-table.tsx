@@ -1,14 +1,14 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
+import { ImagePreviewDialog } from "@/components/listingkit/shein/shein-data-image-gallery-dialog";
+import type { SheinPreviewImage } from "@/components/listingkit/shein/shein-preview-image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getSDSProductDetail, getSDSProducts } from "@/lib/api/sds-products";
 import { getSheinSourceSDSMetadata } from "@/lib/api/shein-enrollment";
-import { listingKitKeys } from "@/lib/query/keys";
-import type { SDSProductSummary, SDSProductVariant } from "@/lib/types/sds";
 import type {
   SheinSDSCostGroupRecord,
   SheinSyncedProductRecord,
@@ -49,122 +49,23 @@ export function SheinCostPriceTable({
   storeId: number;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const sourceShipmentArea = shipmentArea.trim() || "US";
+  const [activeImage, setActiveImage] = useState<SheinPreviewImage | null>(null);
   const rows = useMemo(() => buildSheinCostGroupRows(items, groups), [items, groups]);
   const sourceSDSCodes = useMemo(
     () => Array.from(new Set(rows.flatMap((row) => row.sourceSDSCodes))).sort(),
     [rows],
   );
-  const sourceProductSearches = useMemo(
-    () =>
-      sourceSDSCodes.flatMap((sourceCode) =>
-        sdsSourceSearchKeywords(sourceCode).map((keyword) => ({
-          keyword,
-          sourceCode,
-        })),
-      ),
-    [sourceSDSCodes],
-  );
-  const sourceProductQueries = useQueries({
-    queries: sourceProductSearches.map(({ keyword, sourceCode }) => ({
-      queryKey: listingKitKeys.sdsProducts({
-        keyword,
-        page: 1,
-        size: 1,
-        shipmentArea: sourceShipmentArea,
-        preciseSearch: true,
-      }),
-      queryFn: () =>
-        getSDSProducts({
-          keyword,
-          page: 1,
-          size: 1,
-          shipmentArea: sourceShipmentArea,
-          preciseSearch: true,
-        }),
-      enabled: sourceCode.length > 0,
-      staleTime: 10 * 60 * 1000,
-    })),
-  });
-  const sourceListProductsByCode = useMemo(() => {
-    const result = new Map<string, SheinCostSourceProductInfo>();
-    sourceProductQueries.forEach((query, index) => {
-      const sourceCode = sourceProductSearches[index]?.sourceCode;
-      if (!sourceCode) {
-        return;
-      }
-      const product = resolveSDSSourceProduct(sourceCode, query.data?.items);
-      const current = result.get(sourceCode);
-      if (product && shouldUseSDSSourceProduct(product, current)) {
-        result.set(sourceCode, product);
-      }
-    });
-    return result;
-  }, [sourceProductQueries, sourceProductSearches]);
-  const sourceProductIDsByCode = useMemo(() => {
-    const result = new Map<string, number>();
-    sourceListProductsByCode.forEach((product, sourceCode) => {
-      const productId = sdsSourceDetailProductID(product);
-      if (productId > 0) {
-        result.set(sourceCode, productId);
-      }
-    });
-    return result;
-  }, [sourceListProductsByCode]);
-  const sourceProductDetailQueries = useQueries({
-    queries: sourceSDSCodes.map((sourceCode) => {
-      const productId = sourceProductIDsByCode.get(sourceCode) ?? 0;
-      return {
-        queryKey: listingKitKeys.sdsProductDetail(productId),
-        queryFn: () => getSDSProductDetail(productId),
-        enabled: productId > 0,
-        staleTime: 10 * 60 * 1000,
-      };
-    }),
-  });
-  const sourceProductsByCode = useMemo(() => {
-    const result = new Map<string, SheinCostSourceProductInfo>();
-    sourceSDSCodes.forEach((sourceCode, index) => {
-      if (!sourceCode) {
-        return;
-      }
-      const detailProduct = sourceProductDetailQueries[index]?.data;
-      const listProduct = sourceListProductsByCode.get(sourceCode);
-      const detailSourceProduct = resolveSDSSourceProduct(
-        sourceCode,
-        detailProduct ? [detailProduct] : undefined,
-      );
-      const product = mergeSDSSourceProductInfo(detailSourceProduct, listProduct);
-      if (product) {
-        result.set(sourceCode, product);
-      }
-    });
-    return result;
-  }, [sourceListProductsByCode, sourceProductDetailQueries, sourceSDSCodes]);
-  const sourceLookupsSettled =
-    sourceProductQueries.every((query) => !query.isFetching) &&
-    sourceProductDetailQueries.every((query) => !query.isFetching);
-  const missingSourceTaskMetadataCodes = useMemo(
-    () =>
-      sourceSDSCodes.filter(
-        (sourceCode) => !formatSDSSourceTitle(sourceProductsByCode.get(sourceCode)),
-      ),
-    [sourceProductsByCode, sourceSDSCodes],
-  );
   const sourceTaskMetadataQuery = useQuery({
     queryKey: [
       "listingkit",
       "shein-enrollment",
-      "source-sds-task-metadata-v4",
+      "source-sds-task-metadata-v5",
       storeId,
-      missingSourceTaskMetadataCodes,
+      sourceSDSCodes,
     ],
     queryFn: () =>
-      getSheinSourceTaskMetadata(storeId, missingSourceTaskMetadataCodes),
-    enabled:
-      storeId > 0 &&
-      sourceLookupsSettled &&
-      missingSourceTaskMetadataCodes.length > 0,
+      getSheinSourceTaskMetadata(storeId, sourceSDSCodes),
+    enabled: storeId > 0 && sourceSDSCodes.length > 0,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -189,10 +90,18 @@ export function SheinCostPriceTable({
           row={row}
           saving={saving}
           shipmentArea={shipmentArea}
+          onPreviewImage={setActiveImage}
           sourceTaskMetadataByCode={sourceTaskMetadataQuery.data}
-          sourceProductsByCode={sourceProductsByCode}
         />
       ))}
+      <ImagePreviewDialog
+        activeImage={activeImage}
+        activeImageCanRegenerate={false}
+        canRegenerate={false}
+        onClose={() => setActiveImage(null)}
+        regenerationPrompt=""
+        setRegenerationPrompt={() => undefined}
+      />
     </div>
   );
 }
@@ -204,8 +113,8 @@ function SheinCostPriceRow({
   row,
   saving,
   shipmentArea,
+  onPreviewImage,
   sourceTaskMetadataByCode,
-  sourceProductsByCode,
 }: {
   draft?: string;
   onDraftChange: (value: string) => void;
@@ -216,10 +125,10 @@ function SheinCostPriceRow({
   row: SheinCostGroupRow;
   saving: boolean;
   shipmentArea: string;
+  onPreviewImage: (image: SheinPreviewImage) => void;
   sourceTaskMetadataByCode?: Map<string, SheinCostSourceTaskMetadata>;
-  sourceProductsByCode: Map<string, SheinCostSourceProductInfo>;
 }) {
-  const value = draft ?? String(row.manualCostPrice ?? row.fallbackCostPrice ?? "");
+  const value = draft ?? String(row.manualCostPrice ?? "");
   const parsedCost = parseSheinCostDraft(value);
 
   return (
@@ -231,18 +140,14 @@ function SheinCostPriceRow({
         <p className="mt-1 text-xs text-zinc-500">
           {row.products.map((item) => item.skc_name || item.skc_code || "-").join(" / ")}
         </p>
-        <p className="mt-1 text-xs text-zinc-500">
-          自动/当前成本 {row.fallbackCostPrice ?? "-"}
-        </p>
         {row.sourceSDSCodes.length > 0 ? (
           <div className="mt-2 grid gap-1 text-xs text-zinc-600">
             {row.sourceSDSCodes.slice(0, 3).map((sourceCode) => (
               <SheinCostSourceProduct
-                fallbackPrice={row.fallbackCostPrice}
                 fallbackShipmentArea={shipmentArea}
                 key={sourceCode}
                 metadata={sourceTaskMetadataByCode?.get(normalizeSourceCode(sourceCode))}
-                product={sourceProductsByCode.get(sourceCode)}
+                onPreviewImage={onPreviewImage}
                 sourceCode={sourceCode}
               />
             ))}
@@ -281,33 +186,72 @@ function SheinCostPriceRow({
 }
 
 function SheinCostSourceProduct({
-  fallbackPrice,
   fallbackShipmentArea,
   metadata,
-  product,
+  onPreviewImage,
   sourceCode,
 }: {
-  fallbackPrice?: number | null;
   fallbackShipmentArea?: string;
   metadata?: SheinCostSourceTaskMetadata;
-  product?: SheinCostSourceProductInfo;
+  onPreviewImage: (image: SheinPreviewImage) => void;
   sourceCode: string;
 }) {
-  const title = formatSDSSourceTitle(product) || metadata?.title || "";
-  const price = formatSDSSourcePrice(product, metadata?.price ?? fallbackPrice);
-  const shipmentArea = formatSDSSourceShipmentArea(product, fallbackShipmentArea);
-  const variantLabel = formatSDSSourceVariant(product?.variant) || metadata?.variantLabel || "";
+  const title = metadata?.title || "";
+  const price = formatSDSSourcePrice(metadata?.price);
+  const shipmentArea = fallbackShipmentArea?.trim() || "";
+  const variantLabel = metadata?.variantLabel || "";
+  const imageURL = metadata?.imageURL || "";
+  const imageLabel = `${title || sourceCode}首图`;
 
   return (
-    <div className="rounded-md bg-zinc-50 px-2 py-1">
-      <div className="font-medium text-zinc-800">
-        {title || "来源 POD/SDS 商品"}
-      </div>
-      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-zinc-500">
-        <span>POD/SDS: {sourceCode}</span>
-        {variantLabel ? <span>变体 {variantLabel}</span> : null}
-        {price ? <span>POD 价 {price}</span> : null}
-        {shipmentArea ? <span>发货地 {shipmentArea}</span> : null}
+    <div className="flex gap-2 rounded-md bg-zinc-50 px-2 py-1">
+      {imageURL ? (
+        <div className="group relative h-12 w-12 shrink-0">
+          <button
+            aria-label={`查看${imageLabel}`}
+            className="h-12 w-12 cursor-zoom-in overflow-hidden rounded border border-zinc-200 bg-white transition hover:border-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950 focus-visible:ring-offset-2"
+            onClick={() =>
+              onPreviewImage({
+                id: `source-sds:${sourceCode}`,
+                label: imageLabel,
+                url: imageURL,
+              })
+            }
+            type="button"
+          >
+            <Image
+              alt={`${title || sourceCode} 首图`}
+              className="h-full w-full object-cover"
+              height={48}
+              loading="lazy"
+              src={imageURL}
+              unoptimized
+              width={48}
+            />
+          </button>
+          <div className="pointer-events-none absolute left-0 top-14 z-30 hidden h-60 w-60 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-xl group-hover:block group-focus-within:block sm:left-14 sm:top-1/2 sm:-translate-y-1/2">
+            <Image
+              alt={`${title || sourceCode} 悬浮预览`}
+              className="h-full w-full object-contain"
+              height={240}
+              loading="lazy"
+              src={imageURL}
+              unoptimized
+              width={240}
+            />
+          </div>
+        </div>
+      ) : null}
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-medium text-zinc-800">
+          {title || "来源 POD/SDS 商品"}
+        </div>
+        <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-zinc-500">
+          <span>POD/SDS: {sourceCode}</span>
+          {variantLabel ? <span>变体 {variantLabel}</span> : null}
+          {price ? <span>POD 价 {price}</span> : null}
+          {shipmentArea ? <span>发货地 {shipmentArea}</span> : null}
+        </div>
       </div>
     </div>
   );
@@ -369,19 +313,6 @@ function sheinSourceSDSCode(supplierCode?: string | null) {
   return normalized;
 }
 
-function sdsSourceSearchKeywords(sourceCode: string) {
-  const normalized = sourceCode.trim();
-  const parentSKU = sdsParentSKUCandidate(normalized);
-  return Array.from(new Set([normalized, parentSKU].filter(Boolean)));
-}
-
-function sdsParentSKUCandidate(sourceCode: string) {
-  if (sourceCode.length <= 3 || !/\d{3}$/.test(sourceCode)) {
-    return "";
-  }
-  return sourceCode.slice(0, -3);
-}
-
 function sheinCostGroupIdentity(item: SheinSyncedProductRecord) {
   const supplierCode = item.supplier_code?.trim() ?? "";
   if (supplierCode) {
@@ -423,17 +354,13 @@ function maxNullableNumber(values: Array<number | null | undefined>) {
   return out;
 }
 
-type SheinCostSourceProductInfo = {
-  product: SDSProductSummary;
-  variant?: SDSProductVariant;
-};
-
 type SheinCostSourceTaskMetadata = {
   title: string;
   productSKU: string;
   variantSKU: string;
   price?: number;
   variantLabel: string;
+  imageURL: string;
 };
 
 async function getSheinSourceTaskMetadata(storeId: number, sourceCodes: string[]) {
@@ -451,6 +378,7 @@ async function getSheinSourceTaskMetadata(storeId: number, sourceCodes: string[]
       variantSKU: item.variant_sku?.trim() ?? "",
       price: item.price,
       variantLabel: item.variant_label?.trim() ?? "",
+      imageURL: item.image_url?.trim() ?? "",
     };
     const keys = [
       normalizeSourceCode(item.source_code),
@@ -470,96 +398,7 @@ function normalizeSourceCode(value?: string | null) {
   return value?.trim().toUpperCase() ?? "";
 }
 
-function resolveSDSSourceProduct(
-  sourceCode: string,
-  items?: SDSProductSummary[],
-): SheinCostSourceProductInfo | undefined {
-  if (!items || items.length === 0) {
-    return undefined;
-  }
-  const normalizedSourceCode = sourceCode.trim().toUpperCase();
-  for (const item of items) {
-    const variant = item.subproducts?.items?.find(
-      (candidate) => candidate.sku?.trim().toUpperCase() === normalizedSourceCode,
-    );
-    if (variant) {
-      return { product: item, variant };
-    }
-  }
-  const product =
-    items.find((item) => item.sku?.trim().toUpperCase() === normalizedSourceCode) ??
-    items[0];
-  return product ? { product } : undefined;
-}
-
-function sdsSourceDetailProductID(product?: SheinCostSourceProductInfo) {
-  return product?.product.parent_id || product?.variant?.parent_id || product?.product.id || 0;
-}
-
-function shouldUseSDSSourceProduct(
-  candidate: SheinCostSourceProductInfo,
-  current?: SheinCostSourceProductInfo,
-) {
-  if (!current) {
-    return true;
-  }
-  const candidateTitle = formatSDSSourceTitle(candidate);
-  const currentTitle = formatSDSSourceTitle(current);
-  if (candidateTitle && !currentTitle) {
-    return true;
-  }
-  return false;
-}
-
-function mergeSDSSourceProductInfo(
-  detail?: SheinCostSourceProductInfo,
-  list?: SheinCostSourceProductInfo,
-) {
-  if (!detail) {
-    return list;
-  }
-  if (!list || formatSDSSourceTitle(detail) || !formatSDSSourceTitle(list)) {
-    return detail;
-  }
-  return {
-    ...detail,
-    product: {
-      ...detail.product,
-      name: detail.product.name || list.product.name,
-      product_name: detail.product.product_name || list.product.product_name,
-      productName: detail.product.productName || list.product.productName,
-      product_name_multi: detail.product.product_name_multi || list.product.product_name_multi,
-      declaration_name: detail.product.declaration_name || list.product.declaration_name,
-      english_name: detail.product.english_name || list.product.english_name,
-      declaration_english_name:
-        detail.product.declaration_english_name || list.product.declaration_english_name,
-    },
-  };
-}
-
-function formatSDSSourceTitle(product?: SheinCostSourceProductInfo) {
-  const item = product?.product;
-  return (
-    item?.name?.trim() ||
-    item?.product_name?.trim() ||
-    item?.productName?.trim() ||
-    item?.product_name_multi?.trim() ||
-    item?.declaration_name?.trim() ||
-    item?.english_name?.trim() ||
-    item?.declaration_english_name?.trim() ||
-    ""
-  );
-}
-
-function formatSDSSourcePrice(
-  product?: SheinCostSourceProductInfo,
-  fallbackPrice?: number | null,
-) {
-  const price =
-    product?.variant?.currentPrice ??
-    product?.product.currentPrice ??
-    product?.product.min_price ??
-    fallbackPrice;
+function formatSDSSourcePrice(price?: number | null) {
   if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) {
     return "";
   }
@@ -570,23 +409,6 @@ function formatSDSSourcePrice(
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(price);
-}
-
-function formatSDSSourceShipmentArea(
-  product?: SheinCostSourceProductInfo,
-  fallbackShipmentArea?: string,
-) {
-  const area = product?.variant?.issuingBayArea ?? product?.product.issuingBayArea;
-  const name = area?.name?.trim() ?? "";
-  const countryCode = area?.countryCode?.trim() ?? "";
-  return [name, countryCode].filter(Boolean).join(" ") || fallbackShipmentArea?.trim() || "";
-}
-
-function formatSDSSourceVariant(variant?: SDSProductVariant) {
-  if (!variant) {
-    return "";
-  }
-  return [variant.color_name?.trim(), variant.size?.trim()].filter(Boolean).join(" / ");
 }
 
 function parseSheinCostDraft(value: string): { invalid: boolean; value: number | null } {

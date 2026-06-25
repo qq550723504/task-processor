@@ -125,6 +125,7 @@ type SheinSourceSDSMetadataRecord struct {
 	VariantSKU   string  `json:"variant_sku,omitempty"`
 	Price        float64 `json:"price,omitempty"`
 	VariantLabel string  `json:"variant_label,omitempty"`
+	ImageURL     string  `json:"image_url,omitempty"`
 }
 
 type SheinSubmissionStatusFields struct {

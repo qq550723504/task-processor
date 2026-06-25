@@ -32,6 +32,10 @@ import type {
 
 const SHEIN_SYNC_SUMMARY_REFETCH_INTERVAL_MS = 2_000;
 
+type QueryOptions = {
+  enabled?: boolean;
+};
+
 export function shouldPollSheinSyncSummary(
   data?: SheinEnrollmentStoreSummaryResponse,
 ) {
@@ -68,44 +72,52 @@ export function useSheinEnrollmentStoreSummary(
 export function useSheinSyncedProducts(
   storeId: number,
   query: SheinSyncedProductQuery,
+  options: QueryOptions = {},
 ) {
   return useQuery({
     queryKey: listingKitKeys.sheinEnrollmentProducts(storeId, query),
     queryFn: () => getSheinSyncedProducts(storeId, query),
-    enabled: Number.isFinite(storeId) && storeId > 0,
+    enabled: options.enabled !== false && Number.isFinite(storeId) && storeId > 0,
   });
 }
 
 export function useSheinSDSCostGroups(
   storeId: number,
   query: SheinSDSCostGroupQuery,
+  options: QueryOptions = {},
 ) {
   return useQuery({
     queryKey: listingKitKeys.sheinEnrollmentSDSCostGroups(storeId, query),
     queryFn: () => getSheinSDSCostGroups(storeId, query),
-    enabled: Number.isFinite(storeId) && storeId > 0,
+    enabled: options.enabled !== false && Number.isFinite(storeId) && storeId > 0,
   });
 }
 
 export function useSheinActivityCandidates(
   storeId: number,
   query: SheinActivityCandidateQuery,
+  options: QueryOptions = {},
 ) {
   return useQuery({
     queryKey: listingKitKeys.sheinEnrollmentCandidates(storeId, query),
     queryFn: () => getSheinActivityCandidates(storeId, query),
-    enabled: Number.isFinite(storeId) && storeId > 0 && query.activity_type.trim().length > 0,
+    enabled:
+      options.enabled !== false &&
+      Number.isFinite(storeId) &&
+      storeId > 0 &&
+      query.activity_type.trim().length > 0,
   });
 }
 
 export function useSheinActivityEnrollmentRuns(
   storeId: number,
   query: SheinEnrollmentRunQuery,
+  options: QueryOptions = {},
 ) {
   return useQuery({
     queryKey: listingKitKeys.sheinEnrollmentRuns(storeId, query),
     queryFn: () => getSheinActivityEnrollmentRuns(storeId, query),
-    enabled: Number.isFinite(storeId) && storeId > 0,
+    enabled: options.enabled !== false && Number.isFinite(storeId) && storeId > 0,
   });
 }
 

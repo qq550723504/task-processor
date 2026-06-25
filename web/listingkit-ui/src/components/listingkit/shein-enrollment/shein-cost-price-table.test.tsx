@@ -1,11 +1,27 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { SheinCostPriceTable } from "@/components/listingkit/shein-enrollment/shein-cost-price-table";
+import {
+  SheinCostPriceTable,
+  type SheinCostPriceSaveTarget,
+} from "@/components/listingkit/shein-enrollment/shein-cost-price-table";
+
+vi.mock("next/image", () => ({
+  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img alt={props.alt ?? ""} {...props} />
+  ),
+}));
 
 function renderCostPriceTable(options?: {
+  group?: Record<string, unknown>;
   item?: Record<string, unknown>;
+  items?: Array<Record<string, unknown>>;
+  onSave?: (
+    target: SheinCostPriceSaveTarget,
+    manualCostPrice: number | null,
+  ) => Promise<void>;
   shipmentArea?: string;
 }) {
   const client = new QueryClient({
@@ -22,19 +38,22 @@ function renderCostPriceTable(options?: {
             group_key: "style:B3195DA6",
             group_label: "B3195DA6",
             manual_cost_price: 50,
+            ...options?.group,
           },
         ]}
-        items={[
-          {
-            id: 8,
-            skc_name: "SKC-A",
-            supplier_code: "MG8006905001-B3195DA6",
-            auto_cost_price: 39.1,
-            effective_cost_price: 39.1,
-            ...options?.item,
-          },
-        ]}
-        onSave={vi.fn()}
+        items={
+          options?.items ?? [
+            {
+              id: 8,
+              skc_name: "SKC-A",
+              supplier_code: "MG8006905001-B3195DA6",
+              auto_cost_price: 39.1,
+              effective_cost_price: 39.1,
+              ...options?.item,
+            },
+          ]
+        }
+        onSave={options?.onSave ?? vi.fn()}
         saving={false}
         shipmentArea={options?.shipmentArea}
         storeId={870}
@@ -43,577 +62,209 @@ function renderCostPriceTable(options?: {
   );
 }
 
-describe("SheinCostPriceTable", () => {
-  it("shows POD SDS source product information for grouped cost rows", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          items: [
-            {
-              id: 238915,
-              name: "带刻度方形挂钟",
-              sku: "MG8006905001",
-              currentPrice: 18.8,
-              issuingBayArea: { name: "美国直发", countryCode: "US" },
-            },
-          ],
-          totalCount: 1,
-        }),
-        {
+function mockSourceMetadataFetch(
+  items: Array<Record<string, unknown>>,
+  expectedSourceCodes = "MG8006905001",
+) {
+  const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
+    const url = String(input);
+    if (
+      url ===
+      `/api/listing-kits/shein-sync/stores/870/source-sds-metadata?source_codes=${expectedSourceCodes}`
+    ) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ items }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
-        },
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderCostPriceTable();
-
-    expect(await screen.findByText("带刻度方形挂钟")).toBeInTheDocument();
-    expect(screen.getByText("POD/SDS: MG8006905001")).toBeInTheDocument();
-    expect(screen.getByText("POD 价 ¥18.80")).toBeInTheDocument();
-    expect(screen.getByText("发货地 美国直发 US")).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/sds/products?keyword=MG8006905001&page=1&size=1&shipmentArea=US&preciseSearch=1",
-        expect.objectContaining({ method: "GET" }),
-      );
-    });
-  });
-
-  it("shows price and shipment area from the matched POD SDS variant", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          items: [
-            {
-              id: 238915,
-              name: "方形挂钟",
-              sku: "MG8006905",
-              subproducts: {
-                items: [
-                  {
-                    id: 238916,
-                    sku: "MG8006905001",
-                    color_name: "白色",
-                    size: "25x25cm",
-                    currentPrice: 16.6,
-                    issuingBayArea: { name: "美国直发", countryCode: "US" },
-                  },
-                ],
-              },
-            },
-          ],
-          totalCount: 1,
         }),
-        {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        },
-      ),
-    );
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderCostPriceTable();
-
-    expect(await screen.findByText("方形挂钟")).toBeInTheDocument();
-    expect(screen.getByText("变体 白色 / 25x25cm")).toBeInTheDocument();
-    expect(screen.getByText("POD 价 ¥16.60")).toBeInTheDocument();
-    expect(screen.getByText("发货地 美国直发 US")).toBeInTheDocument();
-  });
-
-  it("loads SDS product detail when the list response omits variant price and shipment area", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
-      const url = String(input);
-      if (url === "/api/sds/products/238915") {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 238915,
-              name: "方形挂钟",
-              sku: "MG8006905",
-              subproducts: {
-                items: [
-                  {
-                    id: 238916,
-                    sku: "MG8006905001",
-                    color_name: "白色",
-                    size: "25x25cm",
-                    currentPrice: 16.6,
-                    issuingBayArea: { name: "美国直发", countryCode: "US" },
-                  },
-                ],
-              },
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            items: [
-              {
-                id: 238915,
-                name: "方形挂钟",
-                sku: "MG8006905",
-              },
-            ],
-            totalCount: 1,
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
       );
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderCostPriceTable();
-
-    expect(await screen.findByText("POD 价 ¥16.60")).toBeInTheDocument();
-    expect(screen.getByText("变体 白色 / 25x25cm")).toBeInTheDocument();
-    expect(screen.getByText("发货地 美国直发 US")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/sds/products/238915",
-        expect.objectContaining({ method: "GET" }),
-      );
-    });
-  });
-
-  it("uses precise SDS SKU search and loads parent detail for a matched child SKU", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
-      const url = String(input);
-      if (url === "/api/sds/products/238915") {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 238915,
-              name: "方形挂钟",
-              sku: "XB0610007",
-              subproducts: {
-                items: [
-                  {
-                    id: 238916,
-                    parent_id: 238915,
-                    sku: "MG8006905001",
-                    color_name: "白色",
-                    size: "25x25cm",
-                    currentPrice: 16.6,
-                    issuingBayArea: { name: "美国直发", countryCode: "US" },
-                  },
-                ],
-              },
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            items: [
-              {
-                id: 238916,
-                parent_id: 238915,
-                name: "方形挂钟 子SKU",
-                sku: "MG8006905001",
-              },
-            ],
-            totalCount: 1,
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          },
-        ),
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderCostPriceTable();
-
-    expect(await screen.findByText("POD 价 ¥16.60")).toBeInTheDocument();
-    expect(screen.getByText("发货地 美国直发 US")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/sds/products?keyword=MG8006905001&page=1&size=1&shipmentArea=US&preciseSearch=1",
-        expect.objectContaining({ method: "GET" }),
-      );
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/sds/products/238915",
-        expect.objectContaining({ method: "GET" }),
-      );
-    });
-  });
-
-  it("falls back to synced cost and store shipment area when SDS product details are unavailable", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+    }
+    return Promise.resolve(
       new Response(JSON.stringify({ items: [], totalCount: 0 }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderCostPriceTable({ shipmentArea: "US" });
-
-    expect(await screen.findByText("POD 价 ¥39.10")).toBeInTheDocument();
-    expect(screen.getByText("发货地 US")).toBeInTheDocument();
-    expect(screen.getByText("来源 POD/SDS 商品")).toBeInTheDocument();
-    expect(screen.queryByText("标题 SKC-A")).not.toBeInTheDocument();
   });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
 
-  it("falls back to ListingKit task SDS title when the live SDS source product is unavailable", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
-      const url = String(input);
-      if (
-        url ===
-        "/api/listing-kits/shein-sync/stores/870/source-sds-metadata?source_codes=MG8006905001"
-      ) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              items: [
-                {
-                  source_code: "MG8006905001",
-                  title: "历史 SDS 带刻度方形挂钟",
-                  product_sku: "MG8006905",
-                  variant_sku: "MG8006905001",
-                  price: 16.6,
-                  variant_label: "白色 25x25cm MG8006905001",
-                },
-              ],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify({ items: [], totalCount: 0 }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
+describe("SheinCostPriceTable", () => {
+  it("loads POD SDS source information through the batched metadata endpoint", async () => {
+    const fetchMock = mockSourceMetadataFetch([
+      {
+        source_code: "MG8006905001",
+        title: "批量 SDS 方形挂钟",
+        variant_sku: "MG8006905001",
+        price: 16.6,
+        variant_label: "白色 / 25x25cm",
+        image_url: "https://cdn.sdspod.com/mockup/clock.jpg",
+      },
+    ]);
 
-    renderCostPriceTable({ shipmentArea: "US" });
+    renderCostPriceTable();
 
-    expect(await screen.findByText("历史 SDS 带刻度方形挂钟")).toBeInTheDocument();
-    expect(screen.queryByText("标题 历史 SDS 带刻度方形挂钟")).not.toBeInTheDocument();
-    expect(screen.getByText("变体 白色 25x25cm MG8006905001")).toBeInTheDocument();
+    expect(await screen.findByText("批量 SDS 方形挂钟")).toBeInTheDocument();
+    expect(screen.getByAltText("批量 SDS 方形挂钟 首图")).toHaveAttribute(
+      "src",
+      "https://cdn.sdspod.com/mockup/clock.jpg",
+    );
+    expect(screen.getByText("POD/SDS: MG8006905001")).toBeInTheDocument();
+    expect(screen.getByText("变体 白色 / 25x25cm")).toBeInTheDocument();
     expect(screen.getByText("POD 价 ¥16.60")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/listing-kits/shein-sync/stores/870/source-sds-metadata?source_codes=MG8006905001",
-        expect.objectContaining({ method: "GET" }),
-      );
-    });
+    expect(screen.getByText("发货地 US")).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/sds/products")),
+    ).toBe(false);
   });
 
-  it("matches ListingKit task SDS title from source variants when top-level source SKU is empty", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
-      const url = String(input);
-      if (
-        url ===
-        "/api/listing-kits/shein-sync/stores/870/source-sds-metadata?source_codes=XB0610007001"
-      ) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              items: [
-                {
-                  source_code: "XB0610007001",
-                  title: "方形双层腰包 -（单图多拼可选）",
-                  product_sku: "",
-                  variant_sku: "XB0610007001",
-                  price: 34.5,
-                  variant_label: "white / 16x23cm",
-                },
-              ],
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify({ items: [], totalCount: 0 }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
+  it("opens a larger preview when the POD SDS source image is clicked", async () => {
+    mockSourceMetadataFetch([
+      {
+        source_code: "MG8006905001",
+        title: "批量 SDS 方形挂钟",
+        variant_sku: "MG8006905001",
+        image_url: "https://cdn.sdspod.com/mockup/clock.jpg",
+      },
+    ]);
+
+    renderCostPriceTable();
+
+    const imageButton = await screen.findByRole("button", {
+      name: "查看批量 SDS 方形挂钟首图",
     });
-    vi.stubGlobal("fetch", fetchMock);
+    const hoverPreview = screen.getByAltText("批量 SDS 方形挂钟 悬浮预览");
+    expect(imageButton).toHaveClass("cursor-zoom-in");
+    expect(hoverPreview.parentElement).toHaveClass("group-hover:block");
+
+    fireEvent.click(imageButton);
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 图片预览")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "批量 SDS 方形挂钟首图" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("matches metadata by source, variant, or product SKU", async () => {
+    mockSourceMetadataFetch([
+      {
+        source_code: "",
+        title: "产品 SKU 匹配标题",
+        product_sku: "MG8006905001",
+        variant_sku: "",
+        price: 18.8,
+      },
+    ]);
+
+    renderCostPriceTable();
+
+    expect(await screen.findByText("产品 SKU 匹配标题")).toBeInTheDocument();
+    expect(screen.getByText("POD 价 ¥18.80")).toBeInTheDocument();
+  });
+
+  it("groups SDS products in the cost tab", async () => {
+    mockSourceMetadataFetch([
+      {
+        source_code: "MG8006905001",
+        title: "同底版商品",
+      },
+    ]);
 
     renderCostPriceTable({
-      item: { supplier_code: "XB0610007001-01584EB6" },
+      items: [
+        {
+          id: 8,
+          skc_name: "SKC-A",
+          supplier_code: "MG8006905001-B3195DA6",
+        },
+        {
+          id: 9,
+          skc_name: "SKC-B",
+          supplier_code: "MG8006905002-B3195DA6",
+        },
+      ],
+    });
+
+    expect(await screen.findByText("B3195DA6 · 2 个商品")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("50")).toBeInTheDocument();
+  });
+
+  it("does not prefill or display automatic cost when no manual cost is maintained", async () => {
+    mockSourceMetadataFetch([]);
+
+    renderCostPriceTable({
+      group: { manual_cost_price: null },
       shipmentArea: "US",
     });
 
-    expect(await screen.findByText("方形双层腰包 -（单图多拼可选）")).toBeInTheDocument();
-    expect(screen.getByText("变体 white / 16x23cm")).toBeInTheDocument();
-    expect(screen.getByText("POD 价 ¥34.50")).toBeInTheDocument();
+    const input = screen.getByLabelText("成本价 B3195DA6");
+    expect(input).toHaveValue("");
+    expect(screen.queryByText(/自动\/当前成本/)).not.toBeInTheDocument();
+    expect(screen.queryByText("POD 价 ¥39.10")).not.toBeInTheDocument();
+    expect(await screen.findByText("发货地 US")).toBeInTheDocument();
   });
 
-  it("searches SDS source products in the store shipment area", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ items: [], totalCount: 0 }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+  it("falls back to source code and store shipment area when source metadata is unavailable", async () => {
+    mockSourceMetadataFetch([]);
 
-    renderCostPriceTable({ shipmentArea: "DE" });
+    renderCostPriceTable({ shipmentArea: "US" });
 
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        "/api/sds/products?keyword=MG8006905001&page=1&size=1&shipmentArea=DE&preciseSearch=1",
-        expect.objectContaining({ method: "GET" }),
-      );
-    });
+    expect(await screen.findByText("来源 POD/SDS 商品")).toBeInTheDocument();
+    expect(screen.getByText("POD/SDS: MG8006905001")).toBeInTheDocument();
+    expect(screen.getByText("发货地 US")).toBeInTheDocument();
+    expect(screen.queryByText("POD 价 ¥39.10")).not.toBeInTheDocument();
   });
 
-  it("loads the SDS product title by parent SKU when variant SKU search has no result", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
-      const url = String(input);
-      if (
-        url ===
-        "/api/sds/products?keyword=MG8006905&page=1&size=1&shipmentArea=US&preciseSearch=1"
-      ) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              items: [
-                {
-                  id: 238915,
-                  name: "SDS 带刻度方形挂钟",
-                  sku: "MG8006905",
-                  subproducts: {
-                    items: [
-                      {
-                        id: 238916,
-                        parent_id: 238915,
-                        sku: "MG8006905001",
-                        currentPrice: 16.6,
-                        issuingBayArea: { name: "美国直发", countryCode: "US" },
-                      },
-                    ],
-                  },
-                },
-              ],
-              totalCount: 1,
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-      if (
-        url ===
-        "/api/sds/products?keyword=MG8006905001&page=1&size=1&shipmentArea=US&preciseSearch=1"
-      ) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              items: [
-                {
-                  id: 238916,
-                  name: "",
-                  sku: "MG8006905001",
-                },
-              ],
-              totalCount: 1,
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify({ items: [], totalCount: 0 }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
+  it("requests all visible source SDS codes in one metadata call", async () => {
+    const fetchMock = mockSourceMetadataFetch([], "MG8006905001,MG8006905002");
 
     renderCostPriceTable({
-      item: {
-        product_name_multi: "POD 带刻度方形挂钟",
-      },
+      items: [
+        {
+          id: 8,
+          skc_name: "SKC-A",
+          supplier_code: "MG8006905001-B3195DA6",
+        },
+        {
+          id: 9,
+          skc_name: "SKC-B",
+          supplier_code: "MG8006905002-B3195DA6",
+        },
+      ],
     });
 
-    expect(await screen.findByText("SDS 带刻度方形挂钟")).toBeInTheDocument();
-    expect(screen.queryByText("标题 SDS 带刻度方形挂钟")).not.toBeInTheDocument();
-    expect(screen.queryByText("标题 POD 带刻度方形挂钟")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/sds/products?keyword=MG8006905&page=1&size=1&shipmentArea=US&preciseSearch=1",
+        "/api/listing-kits/shein-sync/stores/870/source-sds-metadata?source_codes=MG8006905001%2CMG8006905002",
         expect.objectContaining({ method: "GET" }),
       );
     });
   });
 
-  it("uses SDS product_name as title when the SDS response omits name", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
-      const url = String(input);
-      if (
-        url ===
-        "/api/sds/products?keyword=MG8006905&page=1&size=1&shipmentArea=US&preciseSearch=1"
-      ) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              items: [
-                {
-                  id: 238915,
-                  product_name: "SDS product_name 标题",
-                  sku: "MG8006905",
-                },
-              ],
-              totalCount: 1,
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify({ items: [], totalCount: 0 }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
+  it("saves manual group cost from the input", async () => {
+    mockSourceMetadataFetch([]);
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    renderCostPriceTable({ onSave });
+
+    fireEvent.change(screen.getByLabelText("成本价 B3195DA6"), {
+      target: { value: "45.6" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存成本价" }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        {
+          groupKey: "style:B3195DA6",
+          groupLabel: "B3195DA6",
+          productId: undefined,
+        },
+        45.6,
       );
     });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderCostPriceTable();
-
-    expect(await screen.findByText("SDS product_name 标题")).toBeInTheDocument();
-    expect(screen.queryByText("标题 SDS product_name 标题")).not.toBeInTheDocument();
-  });
-
-  it("uses SDS product_name_multi as title when name is null", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
-      const url = String(input);
-      if (
-        url ===
-        "/api/sds/products?keyword=MG8006905&page=1&size=1&shipmentArea=US&preciseSearch=1"
-      ) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              items: [
-                {
-                  id: 238915,
-                  name: null,
-                  product_name_multi: "SDS product_name_multi 标题",
-                  sku: "MG8006905",
-                },
-              ],
-              totalCount: 1,
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify({ items: [], totalCount: 0 }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderCostPriceTable();
-
-    expect(await screen.findByText("SDS product_name_multi 标题")).toBeInTheDocument();
-    expect(screen.queryByText("标题 SDS product_name_multi 标题")).not.toBeInTheDocument();
-  });
-
-  it("keeps the list SDS title when detail response has an empty title", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
-      const url = String(input);
-      if (url === "/api/sds/products/238915") {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              id: 238915,
-              name: "",
-              sku: "MG8006905",
-              currentPrice: 18.8,
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-      if (
-        url ===
-        "/api/sds/products?keyword=MG8006905&page=1&size=1&shipmentArea=US&preciseSearch=1"
-      ) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              items: [
-                {
-                  id: 238915,
-                  product_name: "SDS 列表标题",
-                  sku: "MG8006905",
-                },
-              ],
-              totalCount: 1,
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            },
-          ),
-        );
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify({ items: [], totalCount: 0 }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }),
-      );
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    renderCostPriceTable();
-
-    expect(await screen.findByText("SDS 列表标题")).toBeInTheDocument();
-    expect(screen.queryByText("标题 SDS 列表标题")).not.toBeInTheDocument();
-    expect(screen.getByText("POD 价 ¥18.80")).toBeInTheDocument();
   });
 });

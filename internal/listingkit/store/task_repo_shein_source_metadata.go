@@ -202,6 +202,7 @@ func sheinSourceSDSMetadataRecords(sds *listingkit.SDSSyncOptions) []listingkit.
 	}
 	title := firstNonEmptyString(sds.ProductName, sds.ProductEnglishName)
 	productSKU := strings.TrimSpace(sds.ProductSKU)
+	productImageURL := firstSheinSourceSDSImageURL(sds.MockupImageURLs, sds.BlankDesignURL, sds.TemplateImageURL)
 	records := make([]listingkit.SheinSourceSDSMetadataRecord, 0, len(sds.Variants)+1)
 	if strings.TrimSpace(sds.VariantSKU) != "" || productSKU != "" {
 		records = append(records, listingkit.SheinSourceSDSMetadataRecord{
@@ -210,6 +211,7 @@ func sheinSourceSDSMetadataRecords(sds *listingkit.SDSSyncOptions) []listingkit.
 			VariantSKU:   strings.TrimSpace(sds.VariantSKU),
 			Price:        sds.VariantPrice,
 			VariantLabel: sheinSourceSDSVariantLabel(sds.VariantColor, sds.VariantSize, sds.VariantSKU),
+			ImageURL:     productImageURL,
 		})
 	}
 	for _, variant := range sds.Variants {
@@ -222,9 +224,32 @@ func sheinSourceSDSMetadataRecords(sds *listingkit.SDSSyncOptions) []listingkit.
 			VariantSKU:   strings.TrimSpace(variant.VariantSKU),
 			Price:        variant.Price,
 			VariantLabel: sheinSourceSDSVariantLabel(variant.Color, variant.Size, ""),
+			ImageURL: firstSheinSourceSDSImageURL(
+				[]string{variant.MockupImageURL},
+				variant.MockupImageURLs,
+				[]string{productImageURL, variant.BlankDesignURL, variant.TemplateImageURL},
+			),
 		})
 	}
 	return records
+}
+
+func firstSheinSourceSDSImageURL(groups ...any) string {
+	for _, group := range groups {
+		switch value := group.(type) {
+		case string:
+			if trimmed := strings.TrimSpace(value); trimmed != "" {
+				return trimmed
+			}
+		case []string:
+			for _, item := range value {
+				if trimmed := strings.TrimSpace(item); trimmed != "" {
+					return trimmed
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func sheinSourceSDSVariantLabel(parts ...string) string {

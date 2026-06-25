@@ -52,39 +52,63 @@ export function SheinEnrollmentStoreWorkbench({
   const [costsPage, setCostsPage] = useState(1);
   const [candidatesPage, setCandidatesPage] = useState(1);
   const [runsPage, setRunsPage] = useState(1);
+  const productsTabActive = tab === "products";
+  const costsTabActive = tab === "costs";
+  const candidatesTabActive = tab === "candidates";
+  const runsTabActive = tab === "runs";
   const summary = useSheinEnrollmentStoreSummary(storeId, {
     activity_type: activityType,
   });
 
-  const products = useSheinSyncedProducts(storeId, {
-    skc_name: productKeyword || undefined,
-    page: productsPage,
-    page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
-  });
-  const costProducts = useSheinSyncedProducts(storeId, {
-    page: costsPage,
-    page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
-  });
-  const candidates = useSheinActivityCandidates(storeId, {
-    activity_type: activityType,
-    page: candidatesPage,
-    page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
-  });
-  const sdsCostGroups = useSheinSDSCostGroups(storeId, {
-    page: 1,
-    page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
-  });
+  const products = useSheinSyncedProducts(
+    storeId,
+    {
+      skc_name: productKeyword || undefined,
+      page: productsPage,
+      page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
+    },
+    { enabled: productsTabActive },
+  );
+  const costProducts = useSheinSyncedProducts(
+    storeId,
+    {
+      page: costsPage,
+      page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
+    },
+    { enabled: costsTabActive },
+  );
+  const candidates = useSheinActivityCandidates(
+    storeId,
+    {
+      activity_type: activityType,
+      page: candidatesPage,
+      page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
+    },
+    { enabled: candidatesTabActive },
+  );
+  const sdsCostGroups = useSheinSDSCostGroups(
+    storeId,
+    {
+      page: costsPage,
+      page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
+    },
+    { enabled: costsTabActive },
+  );
   const syncMutation = useTriggerSheinStoreSync(storeId);
   const refreshMutation = useRefreshSheinActivityCandidates(storeId);
   const updateCostMutation = useUpdateSheinSyncedProductCost(storeId);
   const updateGroupCostMutation = useUpdateSheinSDSCostGroup(storeId);
   const reviewMutation = useReviewSheinActivityCandidate(storeId);
   const enrollMutation = useExecuteSheinActivityEnrollment(storeId);
-  const runs = useSheinActivityEnrollmentRuns(storeId, {
-    activity_type: activityType,
-    page: runsPage,
-    page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
-  });
+  const runs = useSheinActivityEnrollmentRuns(
+    storeId,
+    {
+      activity_type: activityType,
+      page: runsPage,
+      page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
+    },
+    { enabled: runsTabActive },
+  );
 
   return (
     <ListingKitPageShell backgroundClassName="overflow-hidden rounded-lg bg-zinc-50" contentClassName="gap-5 px-4 py-4 sm:px-6 sm:py-6">

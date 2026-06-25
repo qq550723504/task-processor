@@ -499,10 +499,11 @@ func TestTaskRepositoryListSheinSourceSDSMetadataMatchesSameUserAcrossLegacyTena
 				ProductName: "方形双层腰包 -（单图多拼可选）",
 				ProductSKU:  "",
 				Variants: []listingkit.SDSSyncVariantOption{{
-					VariantSKU: "XB0610007001",
-					Price:      34.5,
-					Color:      "white",
-					Size:       "16x23cm",
+					VariantSKU:      "XB0610007001",
+					Price:           34.5,
+					Color:           "white",
+					Size:            "16x23cm",
+					MockupImageURLs: []string{"https://cdn.sdspod.com/mockup/waist-bag.jpg"},
 				}},
 			}},
 		},
@@ -532,6 +533,9 @@ func TestTaskRepositoryListSheinSourceSDSMetadataMatchesSameUserAcrossLegacyTena
 	}
 	if items[0].Price != 34.5 || items[0].VariantLabel != "white / 16x23cm" {
 		t.Fatalf("variant metadata = %+v, want price and label", items[0])
+	}
+	if items[0].ImageURL != "https://cdn.sdspod.com/mockup/waist-bag.jpg" {
+		t.Fatalf("image url = %q, want variant mockup image", items[0].ImageURL)
 	}
 }
 

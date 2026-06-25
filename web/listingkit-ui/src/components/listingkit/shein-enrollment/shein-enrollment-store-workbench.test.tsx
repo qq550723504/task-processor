@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SheinEnrollmentStoreWorkbench } from "@/components/listingkit/shein-enrollment/shein-enrollment-store-workbench";
 
@@ -39,6 +39,10 @@ vi.mock("@/lib/query/use-shein-enrollment", () => ({
   useExecuteSheinActivityEnrollment: (...args: unknown[]) =>
     mocks.useExecuteSheinActivityEnrollment(...args),
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function resolvedMutation() {
   return {
@@ -208,6 +212,8 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       activity_type: "PROMOTION",
       page: 2,
       page_size: 100,
+    }, {
+      enabled: true,
     });
   });
 
@@ -241,5 +247,65 @@ describe("SheinEnrollmentStoreWorkbench", () => {
 
     expect(await screen.findByText("B3195DA6 · 2 个商品")).toBeInTheDocument();
     expect(screen.getByDisplayValue("50")).toBeInTheDocument();
+  });
+
+  it("only enables backend queries needed by the active costs tab", async () => {
+    renderWorkbench({
+      initialTab: "costs",
+      products: [
+        {
+          id: 8,
+          skc_name: "SKC-A",
+          supplier_code: "MG8006905001-B3195DA6",
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(mocks.useSheinSyncedProducts).toHaveBeenNthCalledWith(
+      1,
+      12,
+      {
+        skc_name: undefined,
+        page: 1,
+        page_size: 100,
+      },
+      { enabled: false },
+    );
+    expect(mocks.useSheinSyncedProducts).toHaveBeenNthCalledWith(
+      2,
+      12,
+      {
+        page: 1,
+        page_size: 100,
+      },
+      { enabled: true },
+    );
+    expect(mocks.useSheinSDSCostGroups).toHaveBeenCalledWith(
+      12,
+      {
+        page: 1,
+        page_size: 100,
+      },
+      { enabled: true },
+    );
+    expect(mocks.useSheinActivityCandidates).toHaveBeenCalledWith(
+      12,
+      {
+        activity_type: "PROMOTION",
+        page: 1,
+        page_size: 100,
+      },
+      { enabled: false },
+    );
+    expect(mocks.useSheinActivityEnrollmentRuns).toHaveBeenCalledWith(
+      12,
+      {
+        activity_type: "PROMOTION",
+        page: 1,
+        page_size: 100,
+      },
+      { enabled: false },
+    );
   });
 });

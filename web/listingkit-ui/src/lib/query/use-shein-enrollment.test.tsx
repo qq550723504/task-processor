@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   useExecuteSheinActivityEnrollment,
@@ -59,6 +59,10 @@ vi.mock("@/lib/api/shein-enrollment", () => ({
   executeSheinActivityEnrollment: (...args: unknown[]) =>
     mocks.executeSheinActivityEnrollment(...args),
 }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function createWrapper(client: QueryClient) {
   const Wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -156,6 +160,70 @@ describe("use-shein-enrollment", () => {
       page: 1,
       page_size: 20,
     });
+  });
+
+  it("does not fetch tab-scoped store data when disabled", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    renderHook(
+      () =>
+        useSheinSyncedProducts(
+          5,
+          {
+            page: 1,
+            page_size: 20,
+          },
+          { enabled: false },
+        ),
+      { wrapper: createWrapper(client) },
+    );
+    renderHook(
+      () =>
+        useSheinSDSCostGroups(
+          5,
+          {
+            page: 1,
+            page_size: 20,
+          },
+          { enabled: false },
+        ),
+      { wrapper: createWrapper(client) },
+    );
+    renderHook(
+      () =>
+        useSheinActivityCandidates(
+          5,
+          {
+            activity_type: "PROMOTION",
+            page: 1,
+            page_size: 20,
+          },
+          { enabled: false },
+        ),
+      { wrapper: createWrapper(client) },
+    );
+    renderHook(
+      () =>
+        useSheinActivityEnrollmentRuns(
+          5,
+          {
+            activity_type: "PROMOTION",
+            page: 1,
+            page_size: 20,
+          },
+          { enabled: false },
+        ),
+      { wrapper: createWrapper(client) },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mocks.getSheinSyncedProducts).not.toHaveBeenCalled();
+    expect(mocks.getSheinSDSCostGroups).not.toHaveBeenCalled();
+    expect(mocks.getSheinActivityCandidates).not.toHaveBeenCalled();
+    expect(mocks.getSheinActivityEnrollmentRuns).not.toHaveBeenCalled();
   });
 
   it("invalidates store-scoped shein enrollment queries after sync and refresh", async () => {
