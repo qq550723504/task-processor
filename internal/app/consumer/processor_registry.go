@@ -7,7 +7,7 @@ import (
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
-	api "task-processor/internal/ports/managementapi"
+	api "task-processor/internal/listingadmin"
 
 	"github.com/sirupsen/logrus"
 )

@@ -9,7 +9,6 @@ import (
 
 	"gorm.io/gorm"
 	"task-processor/internal/model"
-	api "task-processor/internal/ports/managementapi"
 )
 
 type GormImportTaskRepository struct {
@@ -567,7 +566,7 @@ func (r *GormImportTaskRepository) RecoverStaleQueuedTasks(ctx context.Context, 
 	return int(res.RowsAffected), nil
 }
 
-func (r *GormImportTaskRepository) UpdateImportTaskStatus(ctx context.Context, req *api.ProductImportTaskUpdateReqDTO) (bool, error) {
+func (r *GormImportTaskRepository) UpdateImportTaskStatus(ctx context.Context, req *ProductImportTaskUpdateReqDTO) (bool, error) {
 	if r == nil || r.db == nil {
 		return false, errors.New("import task repository database is not configured")
 	}

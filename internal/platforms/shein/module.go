@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	"task-processor/internal/ports/managementapi"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/taskstatus"

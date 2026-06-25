@@ -8,8 +8,8 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/rabbitmq"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/ports"
-	managementapi "task-processor/internal/ports/managementapi"
 	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
 

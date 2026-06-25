@@ -1,7 +1,7 @@
 // Package model 提供Amazon任务上下文模型
 package model
 
-import "task-processor/internal/ports/managementapi"
+import managementapi "task-processor/internal/listingadmin"
 
 // TaskContext Amazon任务上下文
 type TaskContext struct {

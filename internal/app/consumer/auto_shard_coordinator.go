@@ -14,7 +14,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/redisclient"
-	api "task-processor/internal/ports/managementapi"
+	api "task-processor/internal/listingadmin"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"

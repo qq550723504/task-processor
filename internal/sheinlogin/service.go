@@ -13,7 +13,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/ports/managementapi"
+	managementapi "task-processor/internal/listingadmin"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 	sheinclient "task-processor/internal/shein/client"

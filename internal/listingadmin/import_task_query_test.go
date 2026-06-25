@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 	"task-processor/internal/model"
-	api "task-processor/internal/ports/managementapi"
 )
 
 func TestFindImportTaskRowsUsesRequestOwnerScope(t *testing.T) {
@@ -133,7 +132,7 @@ func TestGormImportTaskRepositoryLifecycleHelpers(t *testing.T) {
 	}
 
 	expected := model.TaskStatusPending.Int16()
-	handled, err := repo.UpdateImportTaskStatus(context.Background(), &api.ProductImportTaskUpdateReqDTO{
+	handled, err := repo.UpdateImportTaskStatus(context.Background(), &ProductImportTaskUpdateReqDTO{
 		ID:                    1,
 		Status:                model.TaskStatusProcessing.Int16(),
 		ExpectedCurrentStatus: &expected,
@@ -182,7 +181,7 @@ func TestGormImportTaskRepositoryUpdateDraftSetsPublishedTime(t *testing.T) {
 
 	expected := model.TaskStatusProcessing.Int16()
 	repo := NewGormImportTaskRepository(db)
-	handled, err := repo.UpdateImportTaskStatus(context.Background(), &api.ProductImportTaskUpdateReqDTO{
+	handled, err := repo.UpdateImportTaskStatus(context.Background(), &ProductImportTaskUpdateReqDTO{
 		ID:                    row.ID,
 		Status:                model.TaskStatusDraft.Int16(),
 		ExpectedCurrentStatus: &expected,

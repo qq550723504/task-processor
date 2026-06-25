@@ -2,8 +2,8 @@ package sync
 
 import (
 	"task-processor/internal/listingadmin"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
-	managementapi "task-processor/internal/ports/managementapi"
 	"task-processor/internal/product"
 )
 

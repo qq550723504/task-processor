@@ -5,10 +5,10 @@ import (
 	"strings"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
+	api "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/skugen"
-	api "task-processor/internal/ports/managementapi"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/handlerbase"

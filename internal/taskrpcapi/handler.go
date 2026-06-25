@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	api "task-processor/internal/ports/managementapi"
+	api "task-processor/internal/listingadmin"
 )
 
 // Client defines the task RPC methods used by the HTTP handler.

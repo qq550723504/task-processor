@@ -2,8 +2,8 @@
 package sync
 
 import (
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/types"
-	managementapi "task-processor/internal/ports/managementapi"
 )
 
 type TemuInventoryProductSnapshot struct {

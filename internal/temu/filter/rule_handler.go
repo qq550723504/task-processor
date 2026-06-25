@@ -3,9 +3,9 @@ package filter
 
 import (
 	"fmt"
+	api "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
-	api "task-processor/internal/ports/managementapi"
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/product"
 	"task-processor/internal/temu/rules"

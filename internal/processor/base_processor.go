@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/worker"
-	managementapi "task-processor/internal/ports/managementapi"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/state"
 	"task-processor/internal/taskstatus"
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	api "task-processor/internal/ports/managementapi"
+	api "task-processor/internal/listingadmin"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

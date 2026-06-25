@@ -3,7 +3,7 @@ package client
 
 import (
 	"net/http"
-	managementapi "task-processor/internal/ports/managementapi"
+	managementapi "task-processor/internal/listingadmin"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"

@@ -3,7 +3,7 @@ package model
 
 import (
 	"task-processor/internal/amazon/api"
-	managementapi "task-processor/internal/ports/managementapi"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/state"
 )
 

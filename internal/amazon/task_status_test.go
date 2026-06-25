@@ -9,8 +9,8 @@ import (
 	amazonModel "task-processor/internal/amazon/model"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
-	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/state"
 
 	"github.com/sirupsen/logrus"

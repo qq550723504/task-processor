@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/jsonx"
-	managementapi "task-processor/internal/ports/managementapi"
 	temuinventory "task-processor/internal/temu/api/inventory"
 
 	"github.com/sirupsen/logrus"

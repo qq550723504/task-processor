@@ -10,7 +10,7 @@ import (
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/ports/managementapi"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"

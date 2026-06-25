@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"task-processor/internal/listingadmin"
+	api "task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/types"
-	api "task-processor/internal/ports/managementapi"
 	temuproduct "task-processor/internal/temu/api/product"
 
 	"github.com/sirupsen/logrus"

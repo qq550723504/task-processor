@@ -18,6 +18,18 @@ func TestListingKitDoesNotImportLegacySheinRuntime(t *testing.T) {
 	}, nil)
 }
 
+func TestPortsManagementAPIPackageIsRetired(t *testing.T) {
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/ports/managementapi"`]; ok {
+			t.Fatalf("%s imports retired managementapi compatibility package; use listingadmin/local runtime types instead", path)
+		}
+	}
+}
+
 func TestListingKitDoesNotImportSheinAPIRoot(t *testing.T) {
 	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
 		`"task-processor/internal/shein/api"`,
@@ -1263,20 +1275,26 @@ func TestAppAssemblyUsesManagementAPIPortAliases(t *testing.T) {
 			t.Fatalf("load %s: file facts missing", path)
 		}
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases in assembly interfaces", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types in assembly interfaces", path)
 		}
 	}
 }
 
 func TestListingAdminUsesManagementAPIPortAliases(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingadmin")
+	allowedFiles := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "management_compat.go")): {},
+	}
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for path, facts := range index.files {
+		if pathAllowed(path, allowedFiles) {
+			continue
+		}
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases for compatibility DTOs", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types for compatibility DTOs", path)
 		}
 	}
 }
@@ -1297,7 +1315,7 @@ func TestStateAndTaskRPCUseManagementAPIPortAliases(t *testing.T) {
 			t.Fatalf("load %s: file facts missing", path)
 		}
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1394,7 +1412,7 @@ func TestAmazonUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1509,7 +1527,7 @@ func TestTemuContextUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1530,7 +1548,7 @@ func TestTemuRootUsesManagementAPIPortAliases(t *testing.T) {
 			t.Fatalf("load %s: file facts missing", path)
 		}
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1543,7 +1561,7 @@ func TestTemuFilterUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1556,7 +1574,7 @@ func TestTemuRulesUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1569,7 +1587,7 @@ func TestTemuHandlerBaseUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1582,7 +1600,7 @@ func TestTemuStoreUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1595,7 +1613,7 @@ func TestTemuSkuUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1608,7 +1626,7 @@ func TestTemuProductUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1621,7 +1639,7 @@ func TestTemuPricingUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1634,7 +1652,7 @@ func TestTemuSyncUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -1647,7 +1665,7 @@ func TestTemuAPIClientUsesManagementAPIPortAliases(t *testing.T) {
 	}
 	for path, facts := range index.files {
 		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 		}
 	}
 }
@@ -2624,7 +2642,7 @@ func TestSheinLoginUsesManagementAPIPortAliases(t *testing.T) {
 		}
 		for path, facts := range index.files {
 			if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
-				t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+				t.Fatalf("%s imports concrete management API DTOs; use listingadmin/local runtime types", path)
 			}
 		}
 	}

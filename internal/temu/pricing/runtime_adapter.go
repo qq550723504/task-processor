@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"task-processor/internal/listingadmin"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
-	managementapi "task-processor/internal/ports/managementapi"
 )
 
 type runtime interface {

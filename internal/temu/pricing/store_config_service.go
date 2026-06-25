@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"task-processor/internal/listingadmin"
-	api "task-processor/internal/ports/managementapi"
+	api "task-processor/internal/listingadmin"
 
 	"task-processor/internal/core/logger"
 

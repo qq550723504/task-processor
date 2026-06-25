@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"time"
-
-	api "task-processor/internal/ports/managementapi"
 )
 
 var ErrImportTaskNotFound = errors.New("import task not found")
@@ -119,7 +117,7 @@ type ImportTaskRepository interface {
 	CountStaleQueuedTasks(ctx context.Context, timeoutBefore time.Time) (int64, error)
 	ListStaleQueuedTasks(ctx context.Context, timeoutBefore time.Time, limit int) ([]ImportTask, error)
 	RecoverStaleQueuedTasks(ctx context.Context, ids []int64, recovery StaleQueuedRecovery) (int, error)
-	UpdateImportTaskStatus(ctx context.Context, req *api.ProductImportTaskUpdateReqDTO) (bool, error)
+	UpdateImportTaskStatus(ctx context.Context, req *ProductImportTaskUpdateReqDTO) (bool, error)
 	DeleteImportTask(ctx context.Context, tenantID, id int64) error
 }
 

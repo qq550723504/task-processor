@@ -1,4 +1,4 @@
-package managementapi
+package listingadmin
 
 import (
 	original "task-processor/internal/infra/clients/management/api"

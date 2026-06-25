@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/clients/management"
-	api "task-processor/internal/ports/managementapi"
+	api "task-processor/internal/listingadmin"
 )
 
 type DailyCountClientProvider interface {

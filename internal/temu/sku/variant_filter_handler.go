@@ -2,8 +2,8 @@ package sku
 
 import (
 	"fmt"
+	api "task-processor/internal/listingadmin"
 	"task-processor/internal/pipeline"
-	api "task-processor/internal/ports/managementapi"
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/filter"
 

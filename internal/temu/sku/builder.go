@@ -4,8 +4,8 @@ package sku
 import (
 	"fmt"
 	"task-processor/internal/infra/clients/openai"
+	api "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
-	api "task-processor/internal/ports/managementapi"
 	temuapi "task-processor/internal/temu/api"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"

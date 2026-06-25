@@ -4,10 +4,10 @@ package temu
 import (
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/openai"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/pipeline"
 	commonPipeline "task-processor/internal/pipeline"
 	commonHandlers "task-processor/internal/pipeline/handlers"
-	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/state"
 	"task-processor/internal/temu/category"
 	"task-processor/internal/temu/filter"

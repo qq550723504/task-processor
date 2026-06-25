@@ -3,8 +3,8 @@ package pricing
 
 import (
 	"context"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
-	managementapi "task-processor/internal/ports/managementapi"
 	temupricing "task-processor/internal/temu/api/pricing"
 )
 

@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"task-processor/internal/listingadmin"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
-	managementapi "task-processor/internal/ports/managementapi"
 	domainproduct "task-processor/internal/product"
 	temuclient "task-processor/internal/temu/api/client"
 	temupricingruntime "task-processor/internal/temu/pricing"

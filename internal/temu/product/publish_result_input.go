@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/ptr"
-	managementapi "task-processor/internal/ports/managementapi"
 	pkgproduct "task-processor/internal/product"
 	temuapi "task-processor/internal/temu/api"
 	models "task-processor/internal/temu/api/product"

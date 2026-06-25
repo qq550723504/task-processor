@@ -2,7 +2,7 @@
 package pricing
 
 import (
-	api "task-processor/internal/ports/managementapi"
+	api "task-processor/internal/listingadmin"
 
 	"github.com/sirupsen/logrus"
 )

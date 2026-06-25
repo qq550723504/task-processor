@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
-	managementapi "task-processor/internal/ports/managementapi"
 	"task-processor/internal/temu/api"
 	temupricing "task-processor/internal/temu/api/pricing"
 	"task-processor/internal/temu/pricing"

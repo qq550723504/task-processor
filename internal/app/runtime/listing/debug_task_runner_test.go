@@ -9,8 +9,8 @@ import (
 
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
-	"task-processor/internal/ports/managementapi"
 )
 
 func TestBuildDebugModelTaskMapsImportTaskDTO(t *testing.T) {

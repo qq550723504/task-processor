@@ -4,7 +4,7 @@ package client
 import (
 	"fmt"
 	"net/http"
-	api "task-processor/internal/ports/managementapi"
+	api "task-processor/internal/listingadmin"
 
 	"task-processor/internal/core/logger"
 

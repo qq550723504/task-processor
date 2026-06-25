@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/ports/managementapi"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/sheinlogin"
 )
 

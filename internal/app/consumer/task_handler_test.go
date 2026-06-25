@@ -14,9 +14,9 @@ import (
 	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
-	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"

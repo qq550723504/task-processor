@@ -4,11 +4,11 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
 	"task-processor/internal/pkg/timex"
-	managementapi "task-processor/internal/ports/managementapi"
 	"task-processor/internal/product"
 	"time"
 

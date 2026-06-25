@@ -13,7 +13,7 @@ import (
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	goredis "github.com/redis/go-redis/v9"
-	"task-processor/internal/ports/managementapi"
+	managementapi "task-processor/internal/listingadmin"
 	sheinclient "task-processor/internal/shein/client"
 )
 

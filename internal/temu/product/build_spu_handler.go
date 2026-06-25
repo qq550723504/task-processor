@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	openaiClient "task-processor/internal/infra/clients/openai"
-	api "task-processor/internal/ports/managementapi"
+	api "task-processor/internal/listingadmin"
 	"task-processor/internal/temu/ai"
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/handlerbase"

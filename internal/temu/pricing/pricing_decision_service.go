@@ -10,8 +10,8 @@ import (
 
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
-	managementapi "task-processor/internal/ports/managementapi"
 	temupricing "task-processor/internal/temu/api/pricing"
 
 	"task-processor/internal/core/logger"

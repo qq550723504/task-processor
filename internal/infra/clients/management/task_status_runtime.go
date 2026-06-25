@@ -3,8 +3,8 @@ package management
 import (
 	"fmt"
 
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
-	managementapi "task-processor/internal/ports/managementapi"
 	"task-processor/internal/taskstatus"
 )
 

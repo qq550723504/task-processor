@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/ports/managementapi"
+	managementapi "task-processor/internal/listingadmin"
 
 	"github.com/sirupsen/logrus"
 )
