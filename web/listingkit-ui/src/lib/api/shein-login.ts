@@ -35,7 +35,7 @@ export function loginSheinAccount(storeID: number) {
   return request(`/accounts/${storeID}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ force_login: true }),
+    body: JSON.stringify({ force_login: true, headless: false }),
   });
 }
 
