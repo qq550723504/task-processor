@@ -117,3 +117,17 @@ func (s *taskLifecycleService) ListTasks(ctx context.Context, query *TaskListQue
 		Items:    items,
 	}, nil
 }
+
+func (s *taskLifecycleService) ListSheinSourceSDSMetadata(ctx context.Context, query *SheinSourceSDSMetadataQuery) ([]SheinSourceSDSMetadataRecord, error) {
+	if query == nil {
+		return []SheinSourceSDSMetadataRecord{}, nil
+	}
+	if query.StoreID <= 0 {
+		return []SheinSourceSDSMetadataRecord{}, nil
+	}
+	source, ok := s.repo.(SheinSourceSDSMetadataSource)
+	if !ok {
+		return nil, fmt.Errorf("shein source SDS metadata source is not configured")
+	}
+	return source.ListSheinSourceSDSMetadata(ctx, query)
+}

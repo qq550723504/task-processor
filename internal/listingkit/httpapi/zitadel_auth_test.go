@@ -231,6 +231,65 @@ func TestListingKitZitadelAuthMapsVerifiedIdentityToHeaders(t *testing.T) {
 	}
 }
 
+func TestListingKitZitadelAuthPrefersBusinessUserIDOverSubject(t *testing.T) {
+	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"authorization_endpoint": r.Host + "/oauth/v2/authorize",
+				"token_endpoint":         r.Host + "/oauth/v2/token",
+				"introspection_endpoint": zitadelURL(r) + "/oauth/v2/introspect",
+			})
+		case "/oauth/v2/introspect":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"active":                                true,
+				"sub":                                   "zitadel-subject-42",
+				"user_id":                               "373211204509761704",
+				"urn:zitadel:iam:user:resourceowner:id": "org-286",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{
+			IssuerURL: zitadel.URL,
+			ClientID:  "listingkit-client",
+			Required:  true,
+		},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{
+		{
+			Method: http.MethodGet,
+			Path:   "/api/v1/listing-kits/tasks",
+			Module: "listing-kit",
+			Handler: func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"user_id": c.GetHeader("X-User-ID")})
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["user_id"] != "373211204509761704" {
+		t.Fatalf("user_id = %q, want business user_id from ZITADEL introspection", body["user_id"])
+	}
+}
+
 func TestListingKitZitadelAuthOverwritesCallerSuppliedIdentityHeaders(t *testing.T) {
 	var introspectionToken string
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

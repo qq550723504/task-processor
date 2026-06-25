@@ -26,6 +26,10 @@ func (s *service) ListTasks(ctx context.Context, query *TaskListQuery) (*TaskLis
 	return s.taskLifecycleOrDefault().ListTasks(ctx, query)
 }
 
+func (s *service) ListSheinSourceSDSMetadata(ctx context.Context, query *SheinSourceSDSMetadataQuery) ([]SheinSourceSDSMetadataRecord, error) {
+	return s.taskLifecycleOrDefault().ListSheinSourceSDSMetadata(ctx, query)
+}
+
 func (s *service) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {
 	return s.taskLifecycleOrDefault().GetSDSBaselineReadiness(ctx, query)
 }

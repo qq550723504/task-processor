@@ -82,6 +82,31 @@ func (r *MemTaskRepository) ListTaskSummaryTasks(ctx context.Context, query *lis
 	return r.collectFilteredTasksLocked(ctx, query), nil
 }
 
+func (r *MemTaskRepository) ListSheinSourceSDSMetadata(ctx context.Context, query *listingkit.SheinSourceSDSMetadataQuery) ([]listingkit.SheinSourceSDSMetadataRecord, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	targets := normalizedSheinSourceSDSTargets(query)
+	if query == nil || query.StoreID <= 0 || len(targets) == 0 {
+		return []listingkit.SheinSourceSDSMetadataRecord{}, nil
+	}
+	tasks := make([]listingkit.Task, 0, len(r.tasks))
+	for _, task := range r.tasks {
+		if !taskVisibleToUser(ctx, task) {
+			continue
+		}
+		if listingkit.RequestUserIDFromContext(ctx) == "" && !matchesTenantScope(ctx, task.TenantID) {
+			continue
+		}
+		copied := *task
+		tasks = append(tasks, copied)
+	}
+	sort.SliceStable(tasks, func(i, j int) bool {
+		return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
+	})
+	return collectSheinSourceSDSMetadata(tasks, query.StoreID, targets), nil
+}
+
 func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

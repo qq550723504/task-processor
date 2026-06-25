@@ -4,6 +4,7 @@ import {
   authorizeZitadelIdentity,
   getZitadelAuthOptions,
   readZitadelIdentityFromSession,
+  verifyZitadelAccessToken,
 } from "@/lib/server/zitadel-auth";
 
 describe("getZitadelAuthOptions", () => {
@@ -53,6 +54,51 @@ describe("authorizeZitadelIdentity", () => {
       authorized: false,
       required: true,
       reason: "ZITADEL identity is not allowed to access ListingKit",
+    });
+  });
+});
+
+describe("verifyZitadelAccessToken", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("prefers the business user_id over the ZITADEL subject", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            active: true,
+            sub: "zitadel-subject-42",
+            user_id: "373211204509761704",
+            "urn:zitadel:iam:user:resourceowner:id": "org-286",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(
+      verifyZitadelAccessToken(
+        "access-token-1",
+        {
+          issuerUrl: "https://issuer.example.com",
+          clientId: "client-1",
+          scopes: "openid profile",
+        },
+        {
+          authorization_endpoint:
+            "https://issuer.example.com/oauth/v2/authorize",
+          token_endpoint: "https://issuer.example.com/oauth/v2/token",
+          introspection_endpoint:
+            "https://issuer.example.com/oauth/v2/introspect",
+        },
+      ),
+    ).resolves.toMatchObject({
+      tenantId: "org-286",
+      userId: "373211204509761704",
+      userType: "zitadel",
     });
   });
 });

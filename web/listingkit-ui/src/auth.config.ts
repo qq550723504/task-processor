@@ -165,6 +165,7 @@ export function buildAuthConfig(): NextAuthConfig {
               preferredUsername:
                 asString(profile?.preferred_username) ||
                 asString(profile?.username),
+              businessUserId: asString(profile?.user_id),
               subject: asString(profile?.sub),
               resourceOwnerId: asString(
                 profile?.["urn:zitadel:iam:user:resourceowner:id"],
@@ -327,6 +328,7 @@ function extractIdentityFromTokenPayload(
   return extractIdentity({
     preferredUsername:
       asString(payload.preferred_username) || asString(payload.username),
+    businessUserId: asString(payload.user_id),
     subject: asString(payload.sub),
     resourceOwnerId: asString(
       payload["urn:zitadel:iam:user:resourceowner:id"],
@@ -337,13 +339,14 @@ function extractIdentityFromTokenPayload(
 
 function extractIdentity(input: {
   preferredUsername?: string;
+  businessUserId?: string;
   subject?: string;
   resourceOwnerId?: string;
   roles?: string[];
 }) {
   return {
     tenantId: input.resourceOwnerId,
-    userId: input.subject ?? input.preferredUsername,
+    userId: input.businessUserId ?? input.subject ?? input.preferredUsername,
     username: input.preferredUsername,
     userType: "zitadel",
     roles: input.roles ?? [],

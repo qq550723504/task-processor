@@ -37,6 +37,7 @@ function renderCostPriceTable(options?: {
         onSave={vi.fn()}
         saving={false}
         shipmentArea={options?.shipmentArea}
+        storeId={870}
       />
     </QueryClientProvider>,
   );
@@ -275,20 +276,20 @@ describe("SheinCostPriceTable", () => {
   it("falls back to ListingKit task SDS title when the live SDS source product is unavailable", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
       const url = String(input);
-      if (url.startsWith("/api/listing-kits/tasks?")) {
+      if (
+        url ===
+        "/api/listing-kits/shein-sync/stores/870/source-sds-metadata?source_codes=MG8006905001"
+      ) {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              page: 1,
-              page_size: 100,
-              total: 1,
               items: [
                 {
-                  task_id: "task-sds",
-                  product_name: "历史 SDS 带刻度方形挂钟",
-                  source_product_sku: "MG8006905",
-                  source_variant_sku: "MG8006905001",
-                  source_variant_price: 16.6,
+                  source_code: "MG8006905001",
+                  title: "历史 SDS 带刻度方形挂钟",
+                  product_sku: "MG8006905",
+                  variant_sku: "MG8006905001",
+                  price: 16.6,
                   variant_label: "白色 25x25cm MG8006905001",
                 },
               ],
@@ -312,12 +313,12 @@ describe("SheinCostPriceTable", () => {
     renderCostPriceTable({ shipmentArea: "US" });
 
     expect(await screen.findByText("历史 SDS 带刻度方形挂钟")).toBeInTheDocument();
-    expect(screen.getByText("标题 历史 SDS 带刻度方形挂钟")).toBeInTheDocument();
+    expect(screen.queryByText("标题 历史 SDS 带刻度方形挂钟")).not.toBeInTheDocument();
     expect(screen.getByText("变体 白色 25x25cm MG8006905001")).toBeInTheDocument();
     expect(screen.getByText("POD 价 ¥16.60")).toBeInTheDocument();
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/listing-kits/tasks?page=1&page_size=100&platform=shein",
+        "/api/listing-kits/shein-sync/stores/870/source-sds-metadata?source_codes=MG8006905001",
         expect.objectContaining({ method: "GET" }),
       );
     });
@@ -326,27 +327,21 @@ describe("SheinCostPriceTable", () => {
   it("matches ListingKit task SDS title from source variants when top-level source SKU is empty", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockImplementation((input) => {
       const url = String(input);
-      if (url.startsWith("/api/listing-kits/tasks?")) {
+      if (
+        url ===
+        "/api/listing-kits/shein-sync/stores/870/source-sds-metadata?source_codes=XB0610007001"
+      ) {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              page: 1,
-              page_size: 100,
-              total: 1,
               items: [
                 {
-                  task_id: "task-sds",
-                  product_name: "方形双层腰包 -（单图多拼可选）",
-                  source_product_sku: "",
-                  source_variant_sku: "",
-                  source_variants: [
-                    {
-                      variant_sku: "XB0610007001",
-                      price: 34.5,
-                      color: "white",
-                      size: "16x23cm",
-                    },
-                  ],
+                  source_code: "XB0610007001",
+                  title: "方形双层腰包 -（单图多拼可选）",
+                  product_sku: "",
+                  variant_sku: "XB0610007001",
+                  price: 34.5,
+                  variant_label: "white / 16x23cm",
                 },
               ],
             }),
@@ -471,7 +466,7 @@ describe("SheinCostPriceTable", () => {
     });
 
     expect(await screen.findByText("SDS 带刻度方形挂钟")).toBeInTheDocument();
-    expect(screen.getByText("标题 SDS 带刻度方形挂钟")).toBeInTheDocument();
+    expect(screen.queryByText("标题 SDS 带刻度方形挂钟")).not.toBeInTheDocument();
     expect(screen.queryByText("标题 POD 带刻度方形挂钟")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -519,7 +514,7 @@ describe("SheinCostPriceTable", () => {
     renderCostPriceTable();
 
     expect(await screen.findByText("SDS product_name 标题")).toBeInTheDocument();
-    expect(screen.getByText("标题 SDS product_name 标题")).toBeInTheDocument();
+    expect(screen.queryByText("标题 SDS product_name 标题")).not.toBeInTheDocument();
   });
 
   it("uses SDS product_name_multi as title when name is null", async () => {
@@ -561,7 +556,7 @@ describe("SheinCostPriceTable", () => {
     renderCostPriceTable();
 
     expect(await screen.findByText("SDS product_name_multi 标题")).toBeInTheDocument();
-    expect(screen.getByText("标题 SDS product_name_multi 标题")).toBeInTheDocument();
+    expect(screen.queryByText("标题 SDS product_name_multi 标题")).not.toBeInTheDocument();
   });
 
   it("keeps the list SDS title when detail response has an empty title", async () => {
@@ -618,7 +613,7 @@ describe("SheinCostPriceTable", () => {
     renderCostPriceTable();
 
     expect(await screen.findByText("SDS 列表标题")).toBeInTheDocument();
-    expect(screen.getByText("标题 SDS 列表标题")).toBeInTheDocument();
+    expect(screen.queryByText("标题 SDS 列表标题")).not.toBeInTheDocument();
     expect(screen.getByText("POD 价 ¥18.80")).toBeInTheDocument();
   });
 });

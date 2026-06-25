@@ -113,6 +113,20 @@ type TaskListSourceVariant struct {
 	Price      float64 `json:"price,omitempty"`
 }
 
+type SheinSourceSDSMetadataQuery struct {
+	StoreID     int64    `json:"store_id,omitempty"`
+	SourceCodes []string `json:"source_codes,omitempty"`
+}
+
+type SheinSourceSDSMetadataRecord struct {
+	SourceCode   string  `json:"source_code,omitempty"`
+	Title        string  `json:"title,omitempty"`
+	ProductSKU   string  `json:"product_sku,omitempty"`
+	VariantSKU   string  `json:"variant_sku,omitempty"`
+	Price        float64 `json:"price,omitempty"`
+	VariantLabel string  `json:"variant_label,omitempty"`
+}
+
 type SheinSubmissionStatusFields struct {
 	SheinWorkflowStatus         string `json:"shein_workflow_status,omitempty"`
 	SheinLatestSubmissionStatus string `json:"shein_latest_submission_status,omitempty"`

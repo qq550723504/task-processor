@@ -150,7 +150,7 @@ export async function verifyZitadelAccessToken(
 
   return {
     tenantId: payload["urn:zitadel:iam:user:resourceowner:id"],
-    userId: payload.sub ?? payload.user_id ?? payload.username,
+    userId: payload.user_id ?? payload.sub ?? payload.username,
     username: payload.username,
     userType: "zitadel",
     roles: parseZitadelRoles(payload),

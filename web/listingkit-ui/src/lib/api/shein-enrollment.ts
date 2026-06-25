@@ -15,6 +15,7 @@ import type {
   SheinReviewActivityCandidateInput,
   SheinSDSCostGroupListResponse,
   SheinSDSCostGroupQuery,
+  SheinSourceSDSMetadataResponse,
   SheinSyncedProductListResponse,
   SheinSyncedProductQuery,
   SheinSyncTriggerMode,
@@ -90,6 +91,20 @@ export async function getSheinSDSCostGroups(
     `/shein-sync/stores/${storeId}/sds-cost-groups`,
     {
       query,
+    },
+  );
+}
+
+export async function getSheinSourceSDSMetadata(
+  storeId: number,
+  sourceCodes: string[],
+): Promise<SheinSourceSDSMetadataResponse> {
+  return apiRequest<SheinSourceSDSMetadataResponse>(
+    `/shein-sync/stores/${storeId}/source-sds-metadata`,
+    {
+      query: {
+        source_codes: sourceCodes.join(","),
+      },
     },
   );
 }

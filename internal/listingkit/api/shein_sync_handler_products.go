@@ -19,6 +19,10 @@ type sheinSDSCostGroupHandlerService interface {
 	UpdateSDSCostGroupManualCost(ctx context.Context, tenantID, storeID int64, groupKey, groupLabel string, manualCostPrice *float64) (*listingkit.SheinSDSCostGroupRecord, error)
 }
 
+type sheinSourceSDSMetadataHandlerService interface {
+	ListSheinSourceSDSMetadata(ctx context.Context, query *listingkit.SheinSourceSDSMetadataQuery) ([]listingkit.SheinSourceSDSMetadataRecord, error)
+}
+
 func (h *handler) TriggerSheinStoreSync(c *gin.Context) {
 	if h.sheinSyncService == nil {
 		c.JSON(http.StatusNotImplemented, gin.H{"error": "shein_sync_unavailable", "message": "SHEIN sync service is not configured"})
@@ -143,6 +147,34 @@ func (h *handler) ListSheinSDSCostGroups(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": total})
 }
 
+func (h *handler) ListSheinSourceSDSMetadata(c *gin.Context) {
+	service, ok := h.taskLifecycleService.(sheinSourceSDSMetadataHandlerService)
+	if !ok {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "shein_source_sds_metadata_unavailable", "message": "SHEIN source SDS metadata service is not configured"})
+		return
+	}
+
+	storeID, _, ctx, ok := parseSheinScopedRequest(c)
+	if !ok {
+		return
+	}
+
+	sourceCodes := parseSheinSourceSDSMetadataCodes(c)
+	if len(sourceCodes) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "source_codes is required"})
+		return
+	}
+	items, err := service.ListSheinSourceSDSMetadata(ctx, &listingkit.SheinSourceSDSMetadataQuery{
+		StoreID:     storeID,
+		SourceCodes: sourceCodes,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_source_sds_metadata_list_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
 func (h *handler) UpdateSheinSDSCostGroup(c *gin.Context) {
 	service, ok := h.sheinSyncService.(sheinSDSCostGroupHandlerService)
 	if !ok {
@@ -171,4 +203,27 @@ func (h *handler) UpdateSheinSDSCostGroup(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"group": group})
+}
+
+func parseSheinSourceSDSMetadataCodes(c *gin.Context) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, 16)
+	for _, value := range append(c.QueryArray("source_codes"), c.QueryArray("source_code")...) {
+		for _, part := range strings.Split(value, ",") {
+			code := strings.TrimSpace(part)
+			if code == "" {
+				continue
+			}
+			key := strings.ToUpper(code)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, code)
+			if len(out) >= 100 {
+				return out
+			}
+		}
+	}
+	return out
 }

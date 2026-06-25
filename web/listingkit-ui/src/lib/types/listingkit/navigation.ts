@@ -38,6 +38,7 @@ export type QueueQuery = {
   sort_order?: string;
   kind?: string;
   user_id?: string;
+  source_codes?: string;
 };
 
 export type NavigationDispatchPlanStep = {

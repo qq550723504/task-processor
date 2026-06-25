@@ -44,7 +44,7 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 		c.Request.Header.Set("X-Tenant-ID", identity.ResourceID)
 		c.Request.Header.Set("tenant-id", identity.ResourceID)
 	}
-	if userID := firstNonEmptyZitadelValue(identity.Subject, identity.UserID, identity.Username); userID != "" {
+	if userID := firstNonEmptyZitadelValue(identity.UserID, identity.Subject, identity.Username); userID != "" {
 		c.Request.Header.Set("X-User-ID", userID)
 		c.Request.Header.Set("X-User-Type", "zitadel")
 	}

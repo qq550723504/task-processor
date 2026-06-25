@@ -5,11 +5,10 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getListingKitTasks } from "@/lib/api/task-list";
 import { getSDSProductDetail, getSDSProducts } from "@/lib/api/sds-products";
+import { getSheinSourceSDSMetadata } from "@/lib/api/shein-enrollment";
 import { listingKitKeys } from "@/lib/query/keys";
 import type { SDSProductSummary, SDSProductVariant } from "@/lib/types/sds";
-import type { ListingKitTaskListItem } from "@/lib/types/listingkit";
 import type {
   SheinSDSCostGroupRecord,
   SheinSyncedProductRecord,
@@ -37,6 +36,7 @@ export function SheinCostPriceTable({
   onSave,
   saving,
   shipmentArea = "US",
+  storeId,
 }: {
   groups: SheinSDSCostGroupRecord[];
   items: SheinSyncedProductRecord[];
@@ -46,6 +46,7 @@ export function SheinCostPriceTable({
   ) => Promise<void>;
   saving: boolean;
   shipmentArea?: string;
+  storeId: number;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const sourceShipmentArea = shipmentArea.trim() || "US";
@@ -154,11 +155,16 @@ export function SheinCostPriceTable({
     queryKey: [
       "listingkit",
       "shein-enrollment",
-      "source-sds-task-metadata",
+      "source-sds-task-metadata-v4",
+      storeId,
       missingSourceTaskMetadataCodes,
     ],
-    queryFn: () => getSheinSourceTaskMetadata(missingSourceTaskMetadataCodes),
-    enabled: sourceLookupsSettled && missingSourceTaskMetadataCodes.length > 0,
+    queryFn: () =>
+      getSheinSourceTaskMetadata(storeId, missingSourceTaskMetadataCodes),
+    enabled:
+      storeId > 0 &&
+      sourceLookupsSettled &&
+      missingSourceTaskMetadataCodes.length > 0,
     staleTime: 10 * 60 * 1000,
   });
 
@@ -298,7 +304,6 @@ function SheinCostSourceProduct({
         {title || "来源 POD/SDS 商品"}
       </div>
       <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 text-zinc-500">
-        {title ? <span>标题 {title}</span> : null}
         <span>POD/SDS: {sourceCode}</span>
         {variantLabel ? <span>变体 {variantLabel}</span> : null}
         {price ? <span>POD 价 {price}</span> : null}
@@ -431,89 +436,34 @@ type SheinCostSourceTaskMetadata = {
   variantLabel: string;
 };
 
-async function getSheinSourceTaskMetadata(sourceCodes: string[]) {
+async function getSheinSourceTaskMetadata(storeId: number, sourceCodes: string[]) {
   const targets = new Set(sourceCodes.map(normalizeSourceCode).filter(Boolean));
   const result = new Map<string, SheinCostSourceTaskMetadata>();
-  if (targets.size === 0) {
+  if (storeId <= 0 || targets.size === 0) {
     return result;
   }
 
-  const pageSize = 100;
-  for (let page = 1; page <= 20 && result.size < targets.size; page += 1) {
-    let taskPage;
-    try {
-      taskPage = await getListingKitTasks({
-        platform: "shein",
-        page,
-        page_size: pageSize,
-      });
-    } catch {
-      break;
-    }
-    for (const item of taskPage.items ?? []) {
-      for (const metadata of sourceTaskMetadataCandidates(item)) {
-        const keys = [
-          normalizeSourceCode(metadata.variantSKU),
-          normalizeSourceCode(metadata.productSKU),
-        ].filter(Boolean);
-        for (const key of keys) {
-          if (targets.has(key) && metadata.title && !result.has(key)) {
-            result.set(key, metadata);
-          }
-        }
+  const response = await getSheinSourceSDSMetadata(storeId, Array.from(targets));
+  for (const item of response.items ?? []) {
+    const metadata: SheinCostSourceTaskMetadata = {
+      title: item.title?.trim() ?? "",
+      productSKU: item.product_sku?.trim() ?? "",
+      variantSKU: item.variant_sku?.trim() ?? "",
+      price: item.price,
+      variantLabel: item.variant_label?.trim() ?? "",
+    };
+    const keys = [
+      normalizeSourceCode(item.source_code),
+      normalizeSourceCode(metadata.variantSKU),
+      normalizeSourceCode(metadata.productSKU),
+    ].filter(Boolean);
+    for (const key of keys) {
+      if (targets.has(key) && metadata.title && !result.has(key)) {
+        result.set(key, metadata);
       }
-    }
-    if ((taskPage.items ?? []).length === 0 || page * pageSize >= taskPage.total) {
-      break;
     }
   }
   return result;
-}
-
-function sourceTaskMetadataCandidates(
-  item: ListingKitTaskListItem,
-): SheinCostSourceTaskMetadata[] {
-  const productSKU = item.source_product_sku?.trim() ?? "";
-  const variantSKU = item.source_variant_sku?.trim() ?? "";
-  const title = item.product_name?.trim() || item.title?.trim() || "";
-  if (!title || (!productSKU && !variantSKU)) {
-    return sourceVariantTaskMetadataCandidates(item, title, productSKU);
-  }
-  const candidates = [
-    {
-      title,
-      productSKU,
-      variantSKU,
-      price: item.source_variant_price,
-      variantLabel: item.variant_label?.trim() ?? "",
-    },
-  ];
-  return candidates.concat(sourceVariantTaskMetadataCandidates(item, title, productSKU));
-}
-
-function sourceVariantTaskMetadataCandidates(
-  item: ListingKitTaskListItem,
-  title: string,
-  productSKU: string,
-): SheinCostSourceTaskMetadata[] {
-  const out: SheinCostSourceTaskMetadata[] = [];
-  for (const variant of item.source_variants ?? []) {
-    const variantSKU = variant.variant_sku?.trim() ?? "";
-    if (!title || !variantSKU) {
-      continue;
-    }
-    out.push({
-      title,
-      productSKU,
-      variantSKU,
-      price: variant.price ?? item.source_variant_price,
-      variantLabel:
-        [variant.color?.trim(), variant.size?.trim()].filter(Boolean).join(" / ") ||
-        item.variant_label?.trim() ||
-        "",
-    });
-  }
-  return out;
 }
 
 function normalizeSourceCode(value?: string | null) {

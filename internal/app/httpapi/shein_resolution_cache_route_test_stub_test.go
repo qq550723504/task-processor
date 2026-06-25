@@ -18,6 +18,8 @@ func (h *stubListingKitHandler) RetrySDSRetirementRun(c *gin.Context) {}
 
 func (h *stubListingKitHandler) ListSheinSDSCostGroups(c *gin.Context) {}
 
+func (h *stubListingKitHandler) ListSheinSourceSDSMetadata(c *gin.Context) {}
+
 func (h *stubListingKitHandler) UpdateSheinSDSCostGroup(c *gin.Context) {}
 
 func (h *stubListingKitHandler) CreateStudioBatchRun(c *gin.Context) {}

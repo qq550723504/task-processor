@@ -466,6 +466,224 @@ func TestTaskRepositoryPlatformAdminBypassesOwnerScope(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryListSheinSourceSDSMetadataMatchesSameUserAcrossLegacyTenantMapping(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(true))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	source, ok := repo.(interface {
+		ListSheinSourceSDSMetadata(ctx context.Context, query *listingkit.SheinSourceSDSMetadataQuery) ([]listingkit.SheinSourceSDSMetadataRecord, error)
+	})
+	if !ok {
+		t.Fatal("task repo does not expose ListSheinSourceSDSMetadata")
+	}
+
+	createCtx := listingkit.WithTenantID(context.Background(), "373211199677923496")
+	sourceTask := &listingkit.Task{
+		ID:       "task-source-sds",
+		TenantID: "373211199677923496",
+		UserID:   "373211204509761704",
+		Status:   listingkit.TaskStatusCompleted,
+		Request: &listingkit.GenerateRequest{
+			UserID:       "373211204509761704",
+			Platforms:    []string{"shein"},
+			SheinStoreID: 870,
+			Options: &listingkit.GenerateOptions{SDS: &listingkit.SDSSyncOptions{
+				ProductName: "方形双层腰包 -（单图多拼可选）",
+				ProductSKU:  "",
+				Variants: []listingkit.SDSSyncVariantOption{{
+					VariantSKU: "XB0610007001",
+					Price:      34.5,
+					Color:      "white",
+					Size:       "16x23cm",
+				}},
+			}},
+		},
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := repo.CreateTask(createCtx, sourceTask); err != nil {
+		t.Fatalf("create source task: %v", err)
+	}
+
+	requestCtx := openaiclient.WithIdentity(
+		listingkit.WithTenantID(context.Background(), "227"),
+		openaiclient.Identity{TenantID: "227", UserID: "373211204509761704"},
+	)
+	items, err := source.ListSheinSourceSDSMetadata(requestCtx, &listingkit.SheinSourceSDSMetadataQuery{
+		StoreID:     870,
+		SourceCodes: []string{"XB0610007001"},
+	})
+	if err != nil {
+		t.Fatalf("ListSheinSourceSDSMetadata error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("len(items) = %d, want 1: %+v", len(items), items)
+	}
+	if items[0].SourceCode != "XB0610007001" || items[0].Title != "方形双层腰包 -（单图多拼可选）" {
+		t.Fatalf("metadata = %+v, want source code and SDS title", items[0])
+	}
+	if items[0].Price != 34.5 || items[0].VariantLabel != "white / 16x23cm" {
+		t.Fatalf("variant metadata = %+v, want price and label", items[0])
+	}
+}
+
+func TestTaskRepositoryListSheinSourceSDSMetadataUsesRequestUserWhenOwnerScopeDisabled(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(false))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	source, ok := repo.(interface {
+		ListSheinSourceSDSMetadata(ctx context.Context, query *listingkit.SheinSourceSDSMetadataQuery) ([]listingkit.SheinSourceSDSMetadataRecord, error)
+	})
+	if !ok {
+		t.Fatal("task repo does not expose ListSheinSourceSDSMetadata")
+	}
+
+	createCtx := listingkit.WithTenantID(context.Background(), "373211199677923496")
+	sourceTask := &listingkit.Task{
+		ID:       "task-source-sds-owner-scope-off",
+		TenantID: "373211199677923496",
+		UserID:   "373211204509761704",
+		Status:   listingkit.TaskStatusCompleted,
+		Request: &listingkit.GenerateRequest{
+			UserID:       "373211204509761704",
+			Platforms:    []string{"shein"},
+			SheinStoreID: 870,
+			Options: &listingkit.GenerateOptions{SDS: &listingkit.SDSSyncOptions{
+				ProductName: "三折钱包",
+				Variants: []listingkit.SDSSyncVariantOption{{
+					VariantSKU: "XB0608018002",
+					Price:      22.5,
+					Color:      "black",
+				}},
+			}},
+		},
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := repo.CreateTask(createCtx, sourceTask); err != nil {
+		t.Fatalf("create source task: %v", err)
+	}
+
+	requestCtx := openaiclient.WithIdentity(
+		listingkit.WithTenantID(context.Background(), "227"),
+		openaiclient.Identity{TenantID: "227", UserID: "373211204509761704"},
+	)
+	items, err := source.ListSheinSourceSDSMetadata(requestCtx, &listingkit.SheinSourceSDSMetadataQuery{
+		StoreID:     870,
+		SourceCodes: []string{"XB0608018002"},
+	})
+	if err != nil {
+		t.Fatalf("ListSheinSourceSDSMetadata error = %v", err)
+	}
+	if len(items) != 1 || items[0].Title != "三折钱包" {
+		t.Fatalf("items = %+v, want title across tenant by request user", items)
+	}
+}
+
+func TestTaskRepositoryListSheinSourceSDSMetadataFallsBackToStoreSourceWhenZitadelSubjectCannotMatchLegacyUser(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(false))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	source, ok := repo.(interface {
+		ListSheinSourceSDSMetadata(ctx context.Context, query *listingkit.SheinSourceSDSMetadataQuery) ([]listingkit.SheinSourceSDSMetadataRecord, error)
+	})
+	if !ok {
+		t.Fatal("task repo does not expose ListSheinSourceSDSMetadata")
+	}
+
+	createCtx := listingkit.WithTenantID(context.Background(), "373211199677923496")
+	sourceTask := &listingkit.Task{
+		ID:       "task-source-sds-zitadel-subject-fallback",
+		TenantID: "373211199677923496",
+		UserID:   "373211204509761704",
+		Status:   listingkit.TaskStatusCompleted,
+		Request: &listingkit.GenerateRequest{
+			UserID:       "373211204509761704",
+			Platforms:    []string{"shein"},
+			SheinStoreID: 870,
+			Options: &listingkit.GenerateOptions{SDS: &listingkit.SDSSyncOptions{
+				ProductName: "方形双层腰包 -（单图多拼可选）",
+				Variants: []listingkit.SDSSyncVariantOption{{
+					VariantSKU: "XB0610007001",
+					Price:      34.5,
+					Color:      "white",
+					Size:       "16x23cm",
+				}},
+			}},
+		},
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	otherStoreTask := &listingkit.Task{
+		ID:       "task-source-sds-other-store",
+		TenantID: "373211199677923496",
+		UserID:   "other-user",
+		Status:   listingkit.TaskStatusCompleted,
+		Request: &listingkit.GenerateRequest{
+			UserID:       "other-user",
+			Platforms:    []string{"shein"},
+			SheinStoreID: 871,
+			Options: &listingkit.GenerateOptions{SDS: &listingkit.SDSSyncOptions{
+				ProductName: "其他店铺标题",
+				Variants: []listingkit.SDSSyncVariantOption{{
+					VariantSKU: "XB0610007001",
+					Price:      99,
+				}},
+			}},
+		},
+		CreatedAt: time.Now().UTC().Add(time.Minute),
+		UpdatedAt: time.Now().UTC().Add(time.Minute),
+	}
+	for _, task := range []*listingkit.Task{sourceTask, otherStoreTask} {
+		if err := repo.CreateTask(createCtx, task); err != nil {
+			t.Fatalf("create source task %s: %v", task.ID, err)
+		}
+	}
+
+	requestCtx := openaiclient.WithIdentity(
+		listingkit.WithTenantID(context.Background(), "227"),
+		openaiclient.Identity{TenantID: "227", UserID: "zitadel-subject-42"},
+	)
+	requestCtx = listingkit.WithRequestRoles(requestCtx, []string{"listingkit_admin"})
+	items, err := source.ListSheinSourceSDSMetadata(requestCtx, &listingkit.SheinSourceSDSMetadataQuery{
+		StoreID:     870,
+		SourceCodes: []string{"XB0610007001"},
+	})
+	if err != nil {
+		t.Fatalf("ListSheinSourceSDSMetadata error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("len(items) = %d, want 1: %+v", len(items), items)
+	}
+	if items[0].Title != "方形双层腰包 -（单图多拼可选）" || items[0].Price != 34.5 {
+		t.Fatalf("items = %+v, want same-store historical SDS metadata", items)
+	}
+}
+
 func makeTaskRepoFixture(id string, createdAt time.Time, platforms []string, sheinWorkflow string, blockerKey string) *listingkit.Task {
 	task := &listingkit.Task{
 		ID:        id,

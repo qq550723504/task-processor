@@ -94,6 +94,7 @@ func TestAppendRouteDescriptorsIncludesSheinSyncRoutes(t *testing.T) {
 	require.Contains(t, keys, "POST /api/v1/listing-kits/shein-sync/stores/:store_id/sync")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/shein-sync/stores/:store_id/summary")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/shein-sync/stores/:store_id/products")
+	require.Contains(t, keys, "GET /api/v1/listing-kits/shein-sync/stores/:store_id/source-sds-metadata")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/shein-sync/stores/:store_id/enrollments")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/shein-sync/stores/:store_id/enrollment-runs")
 }
@@ -160,6 +161,7 @@ func (stubRouteHandler) GetSheinEnrollmentStoreSummary(*gin.Context)            
 func (stubRouteHandler) ListSheinSyncedProducts(*gin.Context)                     {}
 func (stubRouteHandler) UpdateSheinSyncedProductCost(*gin.Context)                {}
 func (stubRouteHandler) ListSheinSDSCostGroups(*gin.Context)                      {}
+func (stubRouteHandler) ListSheinSourceSDSMetadata(*gin.Context)                  {}
 func (stubRouteHandler) UpdateSheinSDSCostGroup(*gin.Context)                     {}
 func (stubRouteHandler) RefreshSheinActivityCandidates(*gin.Context)              {}
 func (stubRouteHandler) ListSheinActivityCandidates(*gin.Context)                 {}

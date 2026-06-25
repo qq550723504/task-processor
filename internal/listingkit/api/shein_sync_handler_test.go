@@ -94,6 +94,20 @@ func (stubSheinEnrollmentHandlerService) ExecuteAutoSheinActivityEnrollment(cont
 	return nil, nil
 }
 
+type stubSourceMetadataHandlerCoreService struct {
+	stubHandlerCoreService
+	ctx   context.Context
+	query *listingkit.SheinSourceSDSMetadataQuery
+	items []listingkit.SheinSourceSDSMetadataRecord
+	err   error
+}
+
+func (s *stubSourceMetadataHandlerCoreService) ListSheinSourceSDSMetadata(ctx context.Context, query *listingkit.SheinSourceSDSMetadataQuery) ([]listingkit.SheinSourceSDSMetadataRecord, error) {
+	s.ctx = ctx
+	s.query = query
+	return s.items, s.err
+}
+
 type stubSheinSummaryStoreRepository struct {
 	stores []listingadmin.Store
 }
@@ -549,6 +563,60 @@ func TestListSheinActivityEnrollmentRunsReturnsStoreRuns(t *testing.T) {
 	}
 	if body.Items[0].Status != listingkit.SheinEnrollmentRunStatusSucceeded {
 		t.Fatalf("first run status = %q, want succeeded", body.Items[0].Status)
+	}
+}
+
+func TestListSheinSourceSDSMetadataReturnsHistoricalTaskMetadata(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	core := &stubSourceMetadataHandlerCoreService{
+		items: []listingkit.SheinSourceSDSMetadataRecord{{
+			SourceCode:   "XB0610007001",
+			Title:        "方形双层腰包 -（单图多拼可选）",
+			VariantSKU:   "XB0610007001",
+			Price:        34.5,
+			VariantLabel: "white / 16x23cm",
+		}},
+	}
+	h, err := NewHandler(
+		core,
+		WithSheinSyncServices(&stubSheinSyncHandlerService{}, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/shein-sync/stores/:store_id/source-sds-metadata", h.ListSheinSourceSDSMetadata)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/shein-sync/stores/870/source-sds-metadata?source_codes=XB0610007001", nil)
+	req.Header.Set("X-Tenant-ID", "227")
+	req.Header.Set("X-User-ID", "373211204509761704")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+	if core.query == nil || core.query.StoreID != 870 || len(core.query.SourceCodes) != 1 || core.query.SourceCodes[0] != "XB0610007001" {
+		t.Fatalf("query = %+v, want store and source code", core.query)
+	}
+	if got := listingkit.TenantIDFromContext(core.ctx); got != "227" {
+		t.Fatalf("tenant in ctx = %q, want 227", got)
+	}
+	if got := listingkit.RequestUserIDFromContext(core.ctx); got != "373211204509761704" {
+		t.Fatalf("user in ctx = %q, want request user", got)
+	}
+
+	var body struct {
+		Items []listingkit.SheinSourceSDSMetadataRecord `json:"items"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if len(body.Items) != 1 || body.Items[0].Title != "方形双层腰包 -（单图多拼可选）" {
+		t.Fatalf("items = %+v, want source title", body.Items)
 	}
 }
 

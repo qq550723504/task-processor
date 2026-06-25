@@ -54,6 +54,10 @@ type TaskListSummarySource interface {
 	ListTaskSummaryTasks(ctx context.Context, query *TaskListQuery) ([]Task, error)
 }
 
+type SheinSourceSDSMetadataSource interface {
+	ListSheinSourceSDSMetadata(ctx context.Context, query *SheinSourceSDSMetadataQuery) ([]SheinSourceSDSMetadataRecord, error)
+}
+
 type CanonicalProductCacheRepository interface {
 	GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error)
 	SaveCanonicalProductCache(ctx context.Context, fingerprint string, product *canonical.Product, sourceTaskID string) error
