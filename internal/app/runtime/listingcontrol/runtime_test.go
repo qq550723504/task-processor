@@ -9,6 +9,8 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -376,6 +378,64 @@ func TestControlPlaneServiceRenewsLeaderLockDuringLongCycle(t *testing.T) {
 	}
 }
 
+func TestControlPlaneServiceConcurrentInstancesShareLeaderLock(t *testing.T) {
+	ctx := context.Background()
+	lockState := &sharedLeaderLockState{}
+	start := make(chan struct{})
+	ready := make(chan struct{}, 2)
+	errs := make(chan error, 2)
+	var recoveryCalls atomic.Int32
+	var dispatchCalls atomic.Int32
+
+	statusA := NewStatusTracker(time.Date(2026, 6, 24, 1, 0, 0, 0, time.UTC))
+	statusB := NewStatusTracker(time.Date(2026, 6, 24, 1, 0, 0, 0, time.UTC))
+	runInstance := func(owner string, status *StatusTracker) {
+		ready <- struct{}{}
+		<-start
+		service := controlPlaneService{
+			LeaderLock: sharedLeaderLock{
+				state: lockState,
+				key:   "listing:control-plane:leader:shein",
+				owner: owner,
+			},
+			Recovery: func(ctx context.Context) (controllib.RecoverySummary, error) {
+				recoveryCalls.Add(1)
+				return controllib.RecoverySummary{ProcessingRecovered: 1}, nil
+			},
+			Dispatch: func(ctx context.Context) (controllib.DispatchSummary, error) {
+				dispatchCalls.Add(1)
+				return controllib.DispatchSummary{Dispatched: 1}, nil
+			},
+			ScanInterval: time.Hour,
+			Status:       status,
+		}
+		errs <- service.runOnce(ctx)
+	}
+
+	go runInstance("node-a", statusA)
+	go runInstance("node-b", statusB)
+	<-ready
+	<-ready
+	close(start)
+	for i := 0; i < 2; i++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("runOnce returned error: %v", err)
+		}
+	}
+
+	if recoveryCalls.Load() != 1 || dispatchCalls.Load() != 1 {
+		t.Fatalf("concurrent instances ran recovery/dispatch more than once: recovery=%d dispatch=%d", recoveryCalls.Load(), dispatchCalls.Load())
+	}
+	snapshotA := statusA.Snapshot()
+	snapshotB := statusB.Snapshot()
+	if sameStatusCount(snapshotA, snapshotB, "ok") != 1 || sameStatusCount(snapshotA, snapshotB, "standby") != 1 {
+		t.Fatalf("expected one leader cycle and one standby cycle: a=%+v b=%+v", snapshotA, snapshotB)
+	}
+	if snapshotA.Leader.Owner == "" || snapshotA.Leader.Owner != snapshotB.Leader.Owner {
+		t.Fatalf("instances disagree on leader owner: a=%+v b=%+v", snapshotA.Leader, snapshotB.Leader)
+	}
+}
+
 func TestControlPlaneServiceDoesNotDispatchAfterRecoveryError(t *testing.T) {
 	recoveryErr := errors.New("recovery failed")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -565,6 +625,44 @@ func (f *fakeLeaderLock) Acquire(ctx context.Context) (LeaderSnapshot, bool, err
 		}
 	}
 	return f.snapshot, f.acquired, f.acquireErr
+}
+
+type sharedLeaderLockState struct {
+	mu    sync.Mutex
+	owner string
+}
+
+type sharedLeaderLock struct {
+	state *sharedLeaderLockState
+	key   string
+	owner string
+}
+
+func (l sharedLeaderLock) Acquire(ctx context.Context) (LeaderSnapshot, bool, error) {
+	l.state.mu.Lock()
+	defer l.state.mu.Unlock()
+	acquired := false
+	if l.state.owner == "" || l.state.owner == l.owner {
+		l.state.owner = l.owner
+		acquired = true
+	}
+	return LeaderSnapshot{
+		Key:      l.key,
+		Owner:    l.state.owner,
+		IsLeader: acquired,
+		TTL:      "30s",
+	}, acquired, nil
+}
+
+func sameStatusCount(first, second ControlPlaneStatus, status string) int {
+	count := 0
+	if first.Status == status {
+		count++
+	}
+	if second.Status == status {
+		count++
+	}
+	return count
 }
 
 type fakeStoreQueueDeclarer struct {

@@ -70,10 +70,18 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Run ListingKit backend tests
+      - name: Run backend tests
         run: |
-          go test ./cmd/product-listing-api ./internal/app/httpapi ./internal/crawler/alibaba1688 ./internal/listingkit ./internal/listingadmin ./internal/promptmgmt ./internal/listingsubscription
-          go test ./tests/...
+          go test ./... -count=1
+
+      - name: Run listing control-plane race tests
+        run: |
+          go test -race ./internal/app/runtime/listingcontrol -run TestControlPlaneService -count=1
+
+      - name: Build runtime commands
+        run: |
+          go build ./cmd/listing-control-plane
+          go build ./cmd/shein-listing
 
   frontend:
     name: Frontend Checks
