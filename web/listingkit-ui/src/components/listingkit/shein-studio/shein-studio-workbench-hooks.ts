@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
+import { projectActiveSelectionBaselineState } from "@/components/listingkit/shein-studio/shein-studio-generation-controller";
 import { projectSheinStudioQueueState } from "@/components/listingkit/shein-studio/shein-studio-queue-controller";
 import {
   buildSheinStudioSelectionKey,
@@ -49,6 +50,7 @@ import type {
 import type { SheinStudioBatchDetail } from "@/lib/types/shein-studio-batch";
 import type { SheinStudioBatchQueueResumeState } from "@/lib/shein-studio/batch-queue";
 import type { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-label";
+import type { SDSBaselineStatus } from "@/lib/types/sds-baseline";
 import { replaceBrowserHistory } from "@/lib/utils/browser-history";
 import { useLiveSearchParams } from "@/lib/utils/live-search-params";
 import {
@@ -299,6 +301,34 @@ export function useSheinStudioActiveSelectionSummary(
       ...summarizeSheinStudioSelection(activeSelection),
     }),
     [activeSelection],
+  );
+}
+
+export function useSheinStudioActiveSelectionBaselineState({
+  activeGroupedSelectionID,
+  baselineStatuses,
+  hasActiveSelection,
+}: {
+  activeGroupedSelectionID: string;
+  baselineStatuses: Record<
+    string,
+    {
+      baselineKey?: string;
+      reason: string;
+      reasonCode?: string;
+      status: SDSBaselineStatus;
+    }
+  >;
+  hasActiveSelection: boolean;
+}) {
+  return useMemo(
+    () =>
+      projectActiveSelectionBaselineState({
+        activeGroupedSelectionID,
+        baselineStatuses,
+        hasActiveSelection,
+      }),
+    [activeGroupedSelectionID, baselineStatuses, hasActiveSelection],
   );
 }
 

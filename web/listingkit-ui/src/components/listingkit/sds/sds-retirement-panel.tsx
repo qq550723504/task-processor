@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -116,26 +116,21 @@ export function SDSRetirementPanel({
     byItemId: buildCandidateSitesByItem(detail.items),
   }));
 
-  useEffect(() => {
-    setCandidateSiteState((current) => {
-      const nextCandidates = buildCandidateSitesByItem(detail.items);
-      if (current.runId !== detail.run.id) {
-        return {
-          runId: detail.run.id,
-          byItemId: nextCandidates,
-        };
-      }
-      return {
-        runId: current.runId,
-        byItemId: Object.fromEntries(
-          detail.items.map((item) => [
-            item.id,
-            mergeSiteSelections(current.byItemId[item.id] ?? [], nextCandidates[item.id] ?? []),
-          ]),
+  const candidateSitesByItem = useMemo(() => {
+    const nextCandidates = buildCandidateSitesByItem(detail.items);
+    if (candidateSiteState.runId !== detail.run.id) {
+      return nextCandidates;
+    }
+    return Object.fromEntries(
+      detail.items.map((item) => [
+        item.id,
+        mergeSiteSelections(
+          candidateSiteState.byItemId[item.id] ?? [],
+          nextCandidates[item.id] ?? [],
         ),
-      };
-    });
-  }, [detail.items, detail.run.id]);
+      ]),
+    );
+  }, [candidateSiteState, detail.items, detail.run.id]);
 
   const selectedCount = useMemo(
     () =>
@@ -152,7 +147,7 @@ export function SDSRetirementPanel({
     acknowledged && selectedCount > 0 && detail.run.status === "ready" && !isExecuting;
 
   function getCandidateSites(item: SDSRetirementItem) {
-    return candidateSiteState.byItemId[item.id] ?? parseSiteSelection(item.site_selection);
+    return candidateSitesByItem[item.id] ?? parseSiteSelection(item.site_selection);
   }
 
   function toggleItem(item: SDSRetirementItem, selected: boolean) {
@@ -170,6 +165,10 @@ export function SDSRetirementPanel({
     site: RetirementSiteSelection,
     selected: boolean,
   ) {
+    setCandidateSiteState({
+      runId: detail.run.id,
+      byItemId: candidateSitesByItem,
+    });
     const currentSites = parseSiteSelection(item.site_selection);
     const nextSites = selected
       ? [
