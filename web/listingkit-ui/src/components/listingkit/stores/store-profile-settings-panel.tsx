@@ -55,6 +55,8 @@ type StoreOption = {
   region?: string;
 };
 
+const EMPTY_STORE_PROFILES: ListingKitStoreProfile[] = [];
+
 const DEFAULT_FORM: StoreProfileForm = {
   store_id: "",
   enabled: true,
@@ -102,7 +104,7 @@ export function StoreProfileSettingsPanel() {
     enabled: canLoadWarehouses,
   });
 
-  const items = profiles.data ?? [];
+  const items = profiles.data ?? EMPTY_STORE_PROFILES;
   const sheinStores = useMemo(() => {
     const byID = new Map<number, StoreOption>();
     for (const item of storeOptionsQuery.data?.items ?? []) {

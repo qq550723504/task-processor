@@ -53,7 +53,7 @@ function renderEventKey(event: SheinSubmissionEvent, index: number) {
     .join("::");
 }
 
-function TimelineEventCard({ event, index }: { event: SheinSubmissionEvent; index: number }) {
+function TimelineEventCard({ event }: { event: SheinSubmissionEvent }) {
   return (
     <article className="rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -175,7 +175,7 @@ export function SheinSubmissionTimeline({
       </div>
       <div className="space-y-2">
         {(primaryEvents.length ? primaryEvents : events).slice(0, 8).map((event, index) => (
-          <TimelineEventCard event={event} index={index} key={renderEventKey(event, index)} />
+          <TimelineEventCard event={event} key={renderEventKey(event, index)} />
         ))}
       </div>
       {advancedEvents.length ? (
@@ -185,7 +185,7 @@ export function SheinSubmissionTimeline({
           </summary>
           <div className="mt-2 space-y-2">
             {advancedEvents.slice(0, 8).map((event, index) => (
-              <TimelineEventCard event={event} index={index} key={renderEventKey(event, index)} />
+              <TimelineEventCard event={event} key={renderEventKey(event, index)} />
             ))}
           </div>
         </details>

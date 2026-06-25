@@ -10,6 +10,8 @@ import type { ListingKitRevisionRecord } from "@/lib/types/listingkit";
 
 type RevisionHistoryViewFilter = "all" | "refresh" | "other";
 
+const EMPTY_REVISION_HISTORY: ListingKitRevisionRecord[] = [];
+
 function formatRevisionTime(value?: string) {
   if (!value) {
     return "";
@@ -101,7 +103,7 @@ export function TaskRevisionHistoryPanel({
   defaultCollapsed?: boolean;
 }) {
   const historyQuery = useTaskRevisionHistory(taskId, { limit: 5 });
-  const items = historyQuery.data?.items ?? [];
+  const items = historyQuery.data?.items ?? EMPTY_REVISION_HISTORY;
   const [manualSelectedRevisionId, setManualSelectedRevisionId] = useState<string>("");
   const [isExpanded, setIsExpanded] = useState(!defaultCollapsed);
   const [viewFilter, setViewFilter] = useState<RevisionHistoryViewFilter>("all");

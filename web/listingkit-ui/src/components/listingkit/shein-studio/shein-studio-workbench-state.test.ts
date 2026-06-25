@@ -18,7 +18,6 @@ import {
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
   DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
 } from "@/lib/shein-studio/storage-shared";
-import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
 
 describe("buildInitialSheinStudioWorkbenchState", () => {
   it("centralizes the default values used by the workbench", () => {

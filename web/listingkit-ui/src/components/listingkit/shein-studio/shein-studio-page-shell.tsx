@@ -16,7 +16,6 @@ import {
   parseSheinStudioStep,
 } from "@/lib/shein-studio/url-state";
 import {
-  dispatchSheinStudioSectionFocus,
   resolveSheinStudioSectionFocusAction,
   SHEIN_STUDIO_SECTION_FOCUS_EVENT,
   type SheinStudioSectionFocusDetail,
@@ -24,7 +23,6 @@ import {
 } from "@/lib/shein-studio/section-highlight";
 import {
   dispatchSheinStudioRecentBatchesFocus,
-  SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT,
   SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT,
   type SheinStudioRecentBatchesRecommendationDetail,
 } from "@/lib/shein-studio/recent-batches-focus";

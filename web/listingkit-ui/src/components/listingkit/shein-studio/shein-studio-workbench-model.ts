@@ -825,5 +825,8 @@ export function sheinStudioBusyMessage({
   if (regeneratingId) {
     return "正在重新生成图片";
   }
+  if (isCreatingTasks) {
+    return "正在创建 SHEIN 任务";
+  }
   return "";
 }

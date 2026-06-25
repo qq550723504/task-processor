@@ -18,7 +18,6 @@ import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
   SheinStudioBatchDetail,
-  SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
   SheinStudioGeneratedDesign,
   SheinStudioGenerationJob,
@@ -583,7 +582,6 @@ export function projectItemizedTaskCreationResult({
   artworkModel,
   currentActiveBatch,
   currentDetail,
-  generationJobs,
   groupedImageMode,
   groupedSelections,
   groups,

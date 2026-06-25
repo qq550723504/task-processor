@@ -8,9 +8,7 @@ import { buildRecentBatchSummaryKey } from "@/components/listingkit/shein-studio
 import {
   dispatchSheinStudioRecentBatchesRecommendation,
   SHEIN_STUDIO_RECENT_BATCHES_FOCUS_EVENT,
-  SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT,
   type SheinStudioRecentBatchesFocusDetail,
-  type SheinStudioRecentBatchesRecommendationDetail,
 } from "@/lib/shein-studio/recent-batches-focus";
 import { getSDSBaselineReasonShortLabel } from "@/lib/shein-studio/sds-baseline-ui";
 import type { SheinStudioRecentBatchSummary } from "@/lib/types/shein-studio";

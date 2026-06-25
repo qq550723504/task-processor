@@ -115,7 +115,6 @@ export function SheinStudioGroupedSelectionPanel({
   selectedVariantCount: number;
   storeOptions: StoreOption[];
 }) {
-  const selectedIDs = new Set(groupedSelections.map((item) => item.selectionId));
   const [activeStoreFilter, setActiveStoreFilter] = useState<GroupedStoreFilter>("all");
   const [bulkStoreId, setBulkStoreId] = useState("");
   const [bulkUpdateFeedback, setBulkUpdateFeedback] = useState("");

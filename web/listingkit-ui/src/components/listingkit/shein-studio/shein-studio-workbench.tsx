@@ -139,13 +139,8 @@ import {
 import {
   buildGroupedSDSSelectionID,
   countSelectionsWithPrimary,
-  type SDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
-import type {
-  SheinStudioBatchQueueMode,
-  SheinStudioSavedBatch,
-} from "@/lib/types/shein-studio";
 
 type SheinStudioWorkbenchProps = {
   activeStep?: SheinStudioStepKey;
@@ -330,7 +325,7 @@ export function SheinStudioWorkbench({
       }),
     [activeGroupedSelectionID, activeSelection?.variantId, baselineStatuses],
   );
-  const { studioAccessAllowed, subscriptionBlockedMessage } =
+  const { subscriptionBlockedMessage } =
     useSheinStudioSubscriptionGate(subscriptionQuery.data);
   const {
     currentStoreLabel,

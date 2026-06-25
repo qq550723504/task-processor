@@ -9,7 +9,6 @@ import {
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
   buildGroupedSDSSelectionID,
-  type GroupedSDSSelectionEligibility,
   type SDSBaselineReadiness,
   type SDSBaselineReadinessRequest,
   type SDSBaselineStatus,

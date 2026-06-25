@@ -12,22 +12,14 @@ import {
 } from "@/lib/shein-studio/storage-shared";
 import { enqueueSheinStudioSave } from "@/lib/shein-studio/save-queue";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
-import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
-  SheinStudioArtworkModel,
   SheinStudioBatchDetail,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
-  SheinStudioGroupedImageMode,
-  SheinStudioImageStrategy,
   SheinStudioLegacyCompatibilitySnapshot,
   SheinStudioPersistedBatchView,
-  SheinStudioPersistedGroupedWorkspace,
-  SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
-  SheinStudioSelectedSDSImage,
-  SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
 const ACTIVE_BATCH_STORAGE_KEY = "listingkit:shein-studio:active-batch-id";
@@ -48,12 +40,6 @@ export type SheinStudioSaveInput = Omit<
 
 type SaveBatchOptions = {
   makeActive?: boolean;
-};
-
-type SaveDraftOptions = {
-  navigationTriggered?: boolean;
-  source?: string;
-  signal?: AbortSignal;
 };
 
 export type SheinStudioHydratedBatch = {
@@ -206,10 +192,7 @@ export async function saveSheinStudioDraft(input: SheinStudioSaveInput) {
   return saveSheinStudioDraftWithOptions(input);
 }
 
-export async function saveSheinStudioDraftWithOptions(
-  input: SheinStudioSaveInput,
-  _options?: SaveDraftOptions,
-) {
+export async function saveSheinStudioDraftWithOptions(input: SheinStudioSaveInput) {
   return enqueueSheinStudioSave(buildSheinStudioSaveQueueKey(input), async () => {
     if (!input.selection?.variantId) {
       return null;

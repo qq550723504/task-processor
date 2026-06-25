@@ -84,7 +84,6 @@ export function GenerationMessages({
   saveMessage,
   selectedStyleCount,
   selectionReady,
-  storeRequiredMessage,
   subscriptionBlockedMessage,
 }: {
   creatingError: string;

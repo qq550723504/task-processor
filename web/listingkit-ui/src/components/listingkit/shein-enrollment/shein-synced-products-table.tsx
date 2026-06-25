@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- SDS image hosts are tenant data outside fixed Next image remote patterns. */
 import {
   formatInventorySummary,
   formatProductTimes,

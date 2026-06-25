@@ -285,17 +285,6 @@ export function PlatformSubscriptionPage() {
     });
   }
 
-  function handleLimitKeyRename(oldKey: string, nextKey: string) {
-    const normalizedKey = nextKey.trim();
-    const nextDraft = { ...limitDraft };
-    const currentValue = nextDraft[oldKey];
-    delete nextDraft[oldKey];
-    if (normalizedKey) {
-      nextDraft[normalizedKey] = currentValue;
-    }
-    updateLimitDraft(nextDraft);
-  }
-
   function handleAddLimitMetric() {
     const normalizedKey = newLimitKey.trim();
     if (!normalizedKey || normalizedKey in limitDraft) {

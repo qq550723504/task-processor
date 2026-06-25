@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { SheinStudioPageShell } from "@/components/listingkit/shein-studio/shein-studio-page-shell";
 import { dispatchSheinStudioRecentBatchesRecommendation } from "@/lib/shein-studio/recent-batches-focus";
 import { SHEIN_STUDIO_RECENT_BATCHES_RECOMMENDATION_EVENT } from "@/lib/shein-studio/recent-batches-focus";
-import { dispatchSheinStudioSectionFocus, SHEIN_STUDIO_SECTION_FOCUS_EVENT } from "@/lib/shein-studio/section-highlight";
+import { dispatchSheinStudioSectionFocus } from "@/lib/shein-studio/section-highlight";
 
 const push = vi.fn();
 
