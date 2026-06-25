@@ -34,10 +34,10 @@ func NewCookieManager(storeID int64, storeRuntime StoreRuntime) *CookieManager {
 func (cm *CookieManager) LoadCookies() ([]*http.Cookie, error) {
 	cm.logger.WithField("storeID", cm.storeID).Debug("尝试从管理系统加载Cookie")
 
-	// 检查管理系统客户端是否可用
+	// 检查店铺运行时是否可用
 	if cm.storeRuntime == nil {
-		cm.logger.Error("管理系统客户端为空")
-		return nil, fmt.Errorf("管理系统客户端为空")
+		cm.logger.Error("店铺运行时为空")
+		return nil, fmt.Errorf("店铺运行时为空")
 	}
 
 	// 从管理系统获取Cookie字符串
@@ -169,7 +169,7 @@ func (cm *CookieManager) TestConnection() error {
 	cm.logger.Debug("测试管理系统连接")
 
 	if cm.storeRuntime == nil {
-		return fmt.Errorf("管理系统客户端为空")
+		return fmt.Errorf("店铺运行时为空")
 	}
 
 	// 尝试获取store信息来测试连接

@@ -34,6 +34,10 @@ type ImportTaskClient interface {
 	UpdateTaskStatus(taskID int64, status int16, errorMessage string) error
 }
 
+type pendingRuntimeTaskSource interface {
+	GetPendingRuntimeTasks(maxTasks int, userID int64, storeIDs []int64) ([]listingruntime.ImportTask, error)
+}
+
 // StoreClient 店铺API客户端接口
 type StoreClient interface {
 	// GetStore 获取店铺信息

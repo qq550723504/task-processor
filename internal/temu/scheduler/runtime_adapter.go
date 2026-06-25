@@ -22,11 +22,11 @@ type runtime interface {
 	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
 	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
-	PricingRuntime() temupricingruntime.ManagementRuntime
+	PricingRuntime() temupricingruntime.PricingRuntime
 	SyncRuntime() schedulerservice.ServiceRuntime
 }
 
-type ManagementRuntime = runtime
+type SchedulerRuntime = runtime
 
 type runtimeSource interface {
 	temuclient.StoreRuntime
@@ -43,77 +43,77 @@ type runtimeSource interface {
 	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
 }
 
-type managementRuntime struct {
+type schedulerRuntime struct {
 	source runtimeSource
 }
 
-func NewManagementRuntime(source runtimeSource) ManagementRuntime {
+func NewSchedulerRuntime(source runtimeSource) SchedulerRuntime {
 	if source == nil {
 		return nil
 	}
-	return managementRuntime{source: source}
+	return schedulerRuntime{source: source}
 }
 
-func (r managementRuntime) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error) {
+func (r schedulerRuntime) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error) {
 	if r.source == nil {
 		return nil, nil
 	}
 	return r.source.GetAutoPricingStoreConfig(ctx, storeID)
 }
 
-func (r managementRuntime) GetRawJsonDataAdapter() domainproduct.RawJsonDataClient {
+func (r schedulerRuntime) GetRawJsonDataAdapter() domainproduct.RawJsonDataClient {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetRawJsonDataAdapter()
 }
 
-func (r managementRuntime) GetStoreAPI() managementapi.StoreAPI {
+func (r schedulerRuntime) GetStoreAPI() managementapi.StoreAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetStoreAPI()
 }
 
-func (r managementRuntime) GetPricingRuleClient() managementapi.PricingRuleAPI {
+func (r schedulerRuntime) GetPricingRuleClient() managementapi.PricingRuleAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetPricingRuleClient()
 }
 
-func (r managementRuntime) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
+func (r schedulerRuntime) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalPricingRuleRepository()
 }
 
-func (r managementRuntime) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
+func (r schedulerRuntime) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetProductImportMappingAPI()
 }
 
-func (r managementRuntime) GetInventoryRecordAPI() managementapi.InventoryRecordAPI {
+func (r schedulerRuntime) GetInventoryRecordAPI() managementapi.InventoryRecordAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetInventoryRecordAPI()
 }
 
-func (r managementRuntime) GetLocalProductDataRepository() listingadmin.ProductDataRepository {
+func (r schedulerRuntime) GetLocalProductDataRepository() listingadmin.ProductDataRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalProductDataRepository()
 }
 
-func (r managementRuntime) PricingRuntime() temupricingruntime.ManagementRuntime {
-	return temupricingruntime.NewManagementRuntime(r.source)
+func (r schedulerRuntime) PricingRuntime() temupricingruntime.PricingRuntime {
+	return temupricingruntime.NewPricingRuntime(r.source)
 }
 
-func (r managementRuntime) SyncRuntime() schedulerservice.ServiceRuntime {
+func (r schedulerRuntime) SyncRuntime() schedulerservice.ServiceRuntime {
 	return schedulerservice.NewServiceRuntime(r.source)
 }

@@ -38,7 +38,7 @@ func NewSchedulerServiceWithDependencies(
 ) SchedulerService {
 	return &schedulerServiceImpl{
 		logger:              logger,
-		storeRuntime:        schedulerStoreRuntimeAdapter{client: runtimeProvider},
+		storeRuntime:        schedulerStoreRuntimeAdapter{runtime: runtimeProvider},
 		config:              cfg,
 		rabbitmqClient:      rabbitmqClient,
 		temuFactoryCreator:  deps.TemuFactoryCreator,

@@ -44,7 +44,7 @@ func TestGetProductImportMappingPrefersRepository(t *testing.T) {
 			},
 		},
 		logger:  logrus.NewEntry(logrus.New()),
-		runtime: NewManagementRuntime(stubPricingRuntimeSource{}),
+		runtime: NewPricingRuntime(stubPricingRuntimeSource{}),
 	}
 
 	mapping, err := service.GetProductImportMapping("SKU-1", 8)

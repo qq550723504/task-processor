@@ -222,14 +222,14 @@ func (s *schedulerServiceImpl) createStoreTask(
 }
 
 type schedulerStoreRuntimeAdapter struct {
-	client SchedulerRuntimeProvider
+	runtime SchedulerRuntimeProvider
 }
 
 func (a schedulerStoreRuntimeAdapter) GetStore(storeID int64) (*listingruntime.StoreInfo, error) {
-	if a.client == nil {
-		return nil, fmt.Errorf("management client is not initialized")
+	if a.runtime == nil {
+		return nil, fmt.Errorf("scheduler runtime is not initialized")
 	}
-	storeService := a.client.GetRuntimeStoreService()
+	storeService := a.runtime.GetRuntimeStoreService()
 	if storeService == nil {
 		return nil, fmt.Errorf("runtime store service is not initialized")
 	}
@@ -237,8 +237,8 @@ func (a schedulerStoreRuntimeAdapter) GetStore(storeID int64) (*listingruntime.S
 }
 
 func (a schedulerStoreRuntimeAdapter) ListAutoPricingStoreIDs(ctx context.Context, platformName string) ([]int64, error) {
-	if a.client == nil {
-		return nil, fmt.Errorf("management client is not initialized")
+	if a.runtime == nil {
+		return nil, fmt.Errorf("scheduler runtime is not initialized")
 	}
-	return a.client.ListRuntimeAutoPricingStoreIDs(ctx, platformName)
+	return a.runtime.ListRuntimeAutoPricingStoreIDs(ctx, platformName)
 }

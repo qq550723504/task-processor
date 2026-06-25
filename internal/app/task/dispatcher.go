@@ -11,8 +11,8 @@ import (
 
 // fetchAndDispatchTasks pulls tasks from management and dispatches them to platform workers.
 func (f *TaskFetcher) fetchAndDispatchTasks(ctx context.Context) {
-	if f.managementClient == nil {
-		logger.GetGlobalLogger("app/task").Debug("管理客户端为空，跳过任务获取")
+	if f.pendingRuntimeTaskSource() == nil {
+		logger.GetGlobalLogger("app/task").Debug("任务源为空，跳过任务获取")
 		return
 	}
 

@@ -45,7 +45,7 @@ func (s *PricingDataService) GetPricingRules(storeID int64) ([]api.PricingRuleRe
 	if s.pricingRuleRepo != nil {
 		rules, err := s.pricingRuleRepo.ListByStoreID(context.Background(), storeID)
 		if err != nil {
-			s.logger.WithError(err).Warnf("通过本地仓储获取核价规则失败: storeID=%d，回退 management client", storeID)
+			s.logger.WithError(err).Warnf("通过本地仓储获取核价规则失败: storeID=%d，回退远程核价规则接口", storeID)
 		} else {
 			items := make([]api.PricingRuleRespDTO, 0, len(rules))
 			for i := range rules {
@@ -58,7 +58,7 @@ func (s *PricingDataService) GetPricingRules(storeID int64) ([]api.PricingRuleRe
 	}
 
 	if s.runtime == nil {
-		return nil, fmt.Errorf("管理客户端未初始化")
+		return nil, fmt.Errorf("核价运行时未初始化")
 	}
 
 	pricingRuleClient := s.runtime.GetPricingRuleClient()
@@ -92,7 +92,7 @@ func (s *PricingDataService) GetProductImportMapping(skuSN string, storeID int64
 	}
 
 	if s.runtime == nil {
-		return nil, fmt.Errorf("管理客户端未初始化")
+		return nil, fmt.Errorf("核价运行时未初始化")
 	}
 
 	if s.mappingRepo != nil {
@@ -101,7 +101,7 @@ func (s *PricingDataService) GetProductImportMapping(skuSN string, storeID int64
 			StoreID: &storeID,
 		})
 		if err != nil {
-			s.logger.WithError(err).Warnf("通过本地仓储获取产品导入映射失败: sku=%s, storeID=%d，回退 management client", skuSN, storeID)
+			s.logger.WithError(err).Warnf("通过本地仓储获取产品导入映射失败: sku=%s, storeID=%d，回退远程产品导入映射接口", skuSN, storeID)
 		} else if mapping != nil {
 			dto := productImportMappingDTOFromListingMapping(mapping)
 			s.logger.Debugf("成功通过本地仓储获取产品导入映射: sku=%s, productID=%s", skuSN, dto.ProductId)

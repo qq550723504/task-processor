@@ -305,8 +305,8 @@ func (r managementSchedulerFactoryRuntime) GetLocalProductDataRepository() listi
 	return r.source.GetLocalProductDataRepository()
 }
 
-func (r managementSchedulerFactoryRuntime) PricingRuntime() temupricingruntime.ManagementRuntime {
-	return temupricingruntime.NewManagementRuntime(r)
+func (r managementSchedulerFactoryRuntime) PricingRuntime() temupricingruntime.PricingRuntime {
+	return temupricingruntime.NewPricingRuntime(r)
 }
 
 func (r managementSchedulerFactoryRuntime) SyncRuntime() temusyncruntime.ServiceRuntime {

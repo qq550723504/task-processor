@@ -9,7 +9,7 @@ import (
 )
 
 type dependencyRuntime interface {
-	managementRuntime
+	processorRuntime
 	state.DailyCountClientProvider
 }
 
@@ -25,7 +25,7 @@ func BuildDependencies(
 	}
 
 	return Dependencies{
-		ManagementRuntime: runtime,
+		ProcessorRuntime:  runtime,
 		TaskStatusRuntime: runtime,
 		MemoryManager:     mem,
 		ProductFetcher:    productFetcher,

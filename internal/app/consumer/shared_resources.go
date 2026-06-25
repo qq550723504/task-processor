@@ -30,7 +30,7 @@ type SchedulerFactoryRuntime interface {
 	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
 	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
-	PricingRuntime() temupricingruntime.ManagementRuntime
+	PricingRuntime() temupricingruntime.PricingRuntime
 	SyncRuntime() temusyncruntime.ServiceRuntime
 	GetRuntimeStoreService() listingruntime.StoreService
 	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)

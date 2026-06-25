@@ -109,9 +109,9 @@ func (s *processorServiceImpl) initializeMonitoring(cfg *config.Config) {
 func (s *processorServiceImpl) registerHealthChecks(cfg *config.Config) {
 	s.healthChecker.RegisterCheck(&ConfigHealthCheck{config: cfg})
 
-	if s.managementClient != nil {
-		s.healthChecker.RegisterCheck(&ManagementClientHealthCheck{
-			client: s.managementClient,
+	if s.processorRuntime != nil {
+		s.healthChecker.RegisterCheck(&ProcessorRuntimeHealthCheck{
+			runtime: s.processorRuntime,
 		})
 	}
 

@@ -1005,6 +1005,33 @@ func TestAppConsumerDoesNotUseManagementNamedTaskStatusAdapter(t *testing.T) {
 	}
 }
 
+func TestAppTaskPollingSourceUsesCapabilityNames(t *testing.T) {
+	checks := map[string][]string{
+		filepath.Join("..", "internal", "app", "task", "task_source.go"): {
+			"management client is not initialized",
+			"s.fetcher.managementClient",
+		},
+		filepath.Join("..", "internal", "app", "task", "dispatcher.go"): {
+			"管理客户端为空，跳过任务获取",
+		},
+		filepath.Join("..", "internal", "app", "task", "fetcher_utils.go"): {
+			"fetches candidate tasks from management",
+		},
+	}
+
+	for path, phrases := range checks {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range phrases {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; use pending task source names for legacy polling dependencies", path, phrase)
+			}
+		}
+	}
+}
+
 func TestTaskStatusAdapterCallersUseRuntimeNamedConstructor(t *testing.T) {
 	root := filepath.Join("..", "internal")
 	allowedFiles := map[string]struct{}{
@@ -1068,6 +1095,17 @@ func TestTaskStatusPackageDoesNotExposeBroadManagementRuntimeConstructor(t *test
 		if ok && fn.Name != nil && fn.Name.Name == "NewManagementRuntime" {
 			t.Fatalf("%s exposes NewManagementRuntime; use task-status-specific runtime constructor names", path)
 		}
+	}
+}
+
+func TestTaskStatusRuntimeErrorsUseCapabilityNames(t *testing.T) {
+	path := filepath.Join("..", "internal", "taskstatus", "service.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "management client is not initialized") {
+		t.Fatalf("%s mentions management client initialization; use task status runtime names for task status dependencies", path)
 	}
 }
 
@@ -1152,6 +1190,230 @@ func TestAmazonServicesUseStoreAPIPort(t *testing.T) {
 				t.Fatalf("%s exposes SetManagementClient; use SetStoreAPI so Amazon services depend on the store port", path)
 			}
 		}
+	}
+}
+
+func TestTemuPricingRuntimeUsesCapabilityNames(t *testing.T) {
+	path := filepath.Join("..", "internal", "temu", "pricing", "runtime_adapter.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		switch typed := decl.(type) {
+		case *ast.GenDecl:
+			for _, spec := range typed.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok || typeSpec.Name == nil {
+					continue
+				}
+				if typeSpec.Name.Name == "ManagementRuntime" {
+					t.Fatalf("%s exposes ManagementRuntime; use pricing runtime names for TEMU pricing ports", path)
+				}
+			}
+		case *ast.FuncDecl:
+			if typed.Name != nil && typed.Name.Name == "NewManagementRuntime" {
+				t.Fatalf("%s exposes NewManagementRuntime; use NewPricingRuntime for TEMU pricing ports", path)
+			}
+		}
+	}
+}
+
+func TestTemuSchedulerRuntimeUsesCapabilityNames(t *testing.T) {
+	path := filepath.Join("..", "internal", "temu", "scheduler", "runtime_adapter.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		switch typed := decl.(type) {
+		case *ast.GenDecl:
+			for _, spec := range typed.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok || typeSpec.Name == nil {
+					continue
+				}
+				if typeSpec.Name.Name == "ManagementRuntime" || typeSpec.Name.Name == "managementRuntime" {
+					t.Fatalf("%s exposes ManagementRuntime; use scheduler runtime names for TEMU scheduler ports", path)
+				}
+			}
+		case *ast.FuncDecl:
+			if typed.Name != nil && typed.Name.Name == "NewManagementRuntime" {
+				t.Fatalf("%s exposes NewManagementRuntime; use NewSchedulerRuntime for TEMU scheduler ports", path)
+			}
+		}
+	}
+}
+
+func TestTemuSyncRuntimeUsesCapabilityNames(t *testing.T) {
+	path := filepath.Join("..", "internal", "temu", "sync", "runtime_adapter.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || typeSpec.Name == nil {
+				continue
+			}
+			if typeSpec.Name.Name == "managementRuntime" {
+				t.Fatalf("%s defines managementRuntime; use service runtime names for TEMU sync ports", path)
+			}
+		}
+	}
+}
+
+func TestTemuRuntimeErrorsUseCapabilityNames(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "temu", "api", "client", "auth_pause_handler.go"),
+		filepath.Join("..", "internal", "temu", "api", "client", "client.go"),
+		filepath.Join("..", "internal", "temu", "api", "client", "cookie_manager.go"),
+		filepath.Join("..", "internal", "temu", "pricing", "pricing_data_service.go"),
+		filepath.Join("..", "internal", "temu", "pricing", "store_config_service.go"),
+	}
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range []string{"管理客户端未初始化", "管理客户端为空", "管理系统客户端为空"} {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; use store/pricing/service runtime names for TEMU runtime dependencies", path, phrase)
+			}
+		}
+	}
+}
+
+func TestTemuPricingFallbackLogsUseCapabilityNames(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "temu", "pricing", "pricing_data_service.go"),
+		filepath.Join("..", "internal", "temu", "pricing", "store_config_service.go"),
+	}
+
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if strings.Contains(string(content), "management client") {
+			t.Fatalf("%s mentions management client in fallback logs; use pricing/store capability names", path)
+		}
+	}
+}
+
+func TestTemuSyncFallbackLogsUseCapabilityNames(t *testing.T) {
+	path := filepath.Join("..", "internal", "temu", "sync", "inventory_sync_helper.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "management client") {
+		t.Fatalf("%s mentions management client in fallback logs; use inventory/store capability names", path)
+	}
+}
+
+func TestAppRunnerSchedulerStoreRuntimeUsesCapabilityNames(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "runner", "scheduler_task_starter.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	for _, phrase := range []string{
+		"management client is not initialized",
+		"client SchedulerRuntimeProvider",
+		"schedulerStoreRuntimeAdapter{client:",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; use scheduler runtime names for scheduler store runtime dependencies", path, phrase)
+		}
+	}
+}
+
+func TestAppRunnerProcessorLifecycleUsesRuntimeNames(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "runner", "processor_lifecycle.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"s.managementClient == nil",
+		"管理客户端未注入",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; gate processor startup on processor runtime dependencies", path, phrase)
+		}
+	}
+}
+
+func TestAppRunnerHealthChecksUseRuntimeNames(t *testing.T) {
+	checks := map[string][]string{
+		filepath.Join("..", "internal", "app", "runner", "health_checks.go"): {
+			"ManagementClientHealthCheck",
+			"management_client",
+			"管理客户端未初始化",
+		},
+		filepath.Join("..", "internal", "app", "runner", "processor_service_impl.go"): {
+			"ManagementClientHealthCheck",
+		},
+	}
+
+	for path, phrases := range checks {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range phrases {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; name runner health checks after runtime dependencies", path, phrase)
+			}
+		}
+	}
+}
+
+func TestTemuProcessorRuntimeUsesCapabilityNames(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "temu", "processor.go"),
+		filepath.Join("..", "internal", "temu", "dependencies_builder.go"),
+	}
+
+	for _, path := range paths {
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+
+		ast.Inspect(file, func(node ast.Node) bool {
+			switch typed := node.(type) {
+			case *ast.TypeSpec:
+				if typed.Name != nil && typed.Name.Name == "managementRuntime" {
+					t.Fatalf("%s defines managementRuntime; use processor runtime names for TEMU processor ports", path)
+				}
+			case *ast.Field:
+				for _, name := range typed.Names {
+					if name.Name == "ManagementRuntime" || name.Name == "managementRuntime" {
+						t.Fatalf("%s exposes %s; use processor runtime names for TEMU processor ports", path, name.Name)
+					}
+				}
+			case *ast.KeyValueExpr:
+				if key, ok := typed.Key.(*ast.Ident); ok && key.Name == "ManagementRuntime" {
+					t.Fatalf("%s assigns ManagementRuntime; use ProcessorRuntime for TEMU processor dependencies", path)
+				}
+			}
+			return true
+		})
 	}
 }
 

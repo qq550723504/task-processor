@@ -21,7 +21,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type managementRuntime interface {
+type processorRuntime interface {
 	temuclient.StoreRuntime
 	taskstatus.RuntimeTaskStatusUpdater
 	GetFilterRuleClient() *management.FilterRuleAPIClient
@@ -30,7 +30,7 @@ type managementRuntime interface {
 }
 
 type Dependencies struct {
-	ManagementRuntime managementRuntime
+	ProcessorRuntime  processorRuntime
 	TaskStatusRuntime taskstatus.RuntimeTaskStatusUpdater
 	MemoryManager     *state.MemoryManager
 	ProductFetcher    appfetcher.ProductFetcher
@@ -39,7 +39,7 @@ type Dependencies struct {
 
 type TemuProcessor struct {
 	*processor.BaseProcessor
-	managementRuntime managementRuntime
+	processorRuntime  processorRuntime
 	taskStatusRuntime taskstatus.RuntimeTaskStatusUpdater
 	productFetcher    appfetcher.ProductFetcher
 	rabbitmqClient    *rabbitmq.Client
@@ -50,9 +50,9 @@ type TemuProcessor struct {
 func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *logrus.Logger, deps Dependencies) (*TemuProcessor, error) {
 	log := logger.GetGlobalLogger("temu_processor").WithField(logger.FieldPlatform, "temu")
 
-	if deps.ManagementRuntime == nil {
-		log.Error("ManagementRuntime is required")
-		return nil, fmt.Errorf("managementRuntime is required")
+	if deps.ProcessorRuntime == nil {
+		log.Error("ProcessorRuntime is required")
+		return nil, fmt.Errorf("processorRuntime is required")
 	}
 	if deps.TaskStatusRuntime == nil {
 		log.Error("TaskStatusRuntime is required")
@@ -82,7 +82,7 @@ func NewTemuProcessor(ctx context.Context, cfg *config.Config, loggerInstance *l
 
 	p := &TemuProcessor{
 		BaseProcessor:     baseProcessor,
-		managementRuntime: deps.ManagementRuntime,
+		processorRuntime:  deps.ProcessorRuntime,
 		taskStatusRuntime: deps.TaskStatusRuntime,
 		productFetcher:    deps.ProductFetcher,
 		rabbitmqClient:    deps.RabbitMQClient,
@@ -159,35 +159,35 @@ func (p *TemuProcessor) GetStoreRuntime() temuclient.StoreRuntime {
 	if p == nil {
 		return nil
 	}
-	return p.managementRuntime
+	return p.processorRuntime
 }
 
 func (p *TemuProcessor) GetStoreClient() managementapi.StoreAPI {
-	if p == nil || p.managementRuntime == nil {
+	if p == nil || p.processorRuntime == nil {
 		return nil
 	}
-	return p.managementRuntime.GetStoreAPI()
+	return p.processorRuntime.GetStoreAPI()
 }
 
 func (p *TemuProcessor) GetFilterRuleClient() managementapi.FilterRuleAPI {
-	if p == nil || p.managementRuntime == nil {
+	if p == nil || p.processorRuntime == nil {
 		return nil
 	}
-	return p.managementRuntime.GetFilterRuleClient()
+	return p.processorRuntime.GetFilterRuleClient()
 }
 
 func (p *TemuProcessor) GetProductImportMappingClient() managementapi.ProductImportMappingAPI {
-	if p == nil || p.managementRuntime == nil {
+	if p == nil || p.processorRuntime == nil {
 		return nil
 	}
-	return p.managementRuntime.GetProductImportMappingClient()
+	return p.processorRuntime.GetProductImportMappingClient()
 }
 
 func (p *TemuProcessor) GetProfitRuleClient() managementapi.ProfitRuleAPI {
-	if p == nil || p.managementRuntime == nil {
+	if p == nil || p.processorRuntime == nil {
 		return nil
 	}
-	return p.managementRuntime.GetProfitRuleClient()
+	return p.processorRuntime.GetProfitRuleClient()
 }
 
 func (p *TemuProcessor) Close(ctx context.Context) {

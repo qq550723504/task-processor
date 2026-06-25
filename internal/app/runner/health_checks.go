@@ -7,7 +7,6 @@ import (
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
-	"task-processor/internal/infra/clients/management"
 )
 
 // ConfigHealthCheck 验证关键配置项是否合法。
@@ -30,16 +29,16 @@ func (c *ConfigHealthCheck) Check(_ context.Context) error {
 	return nil
 }
 
-// ManagementClientHealthCheck 验证管理客户端是否已初始化。
-type ManagementClientHealthCheck struct {
-	client *management.ClientManager
+// ProcessorRuntimeHealthCheck 验证处理器运行时是否已初始化。
+type ProcessorRuntimeHealthCheck struct {
+	runtime processorRuntimeProvider
 }
 
-func (m *ManagementClientHealthCheck) Name() string { return "management_client" }
+func (p *ProcessorRuntimeHealthCheck) Name() string { return "processor_runtime" }
 
-func (m *ManagementClientHealthCheck) Check(_ context.Context) error {
-	if m.client == nil {
-		return errors.New(errors.ErrCodeExternalAPI, "管理客户端未初始化")
+func (p *ProcessorRuntimeHealthCheck) Check(_ context.Context) error {
+	if p.runtime == nil {
+		return errors.New(errors.ErrCodeExternalAPI, "处理器运行时未初始化")
 	}
 	return nil
 }

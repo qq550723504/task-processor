@@ -58,14 +58,14 @@ func (a runtimeTaskStatusAdapter) UpdateTaskStatus(req *listingruntime.TaskStatu
 
 func (r managementTaskStatusRuntime) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error {
 	if r.client == nil {
-		return fmt.Errorf("management client is not initialized")
+		return fmt.Errorf("task status runtime is not initialized")
 	}
 	return r.client.UpdateRuntimeTaskStatus(req)
 }
 
 func (r managementTaskStatusRuntime) GetTaskStatus(taskID int64) (*TaskStatusSnapshot, error) {
 	if r.client == nil {
-		return nil, fmt.Errorf("management client is not initialized")
+		return nil, fmt.Errorf("task status runtime is not initialized")
 	}
 	taskRPCClient := r.client.GetTaskRPCClient()
 	if taskRPCClient == nil {
@@ -76,7 +76,7 @@ func (r managementTaskStatusRuntime) GetTaskStatus(taskID int64) (*TaskStatusSna
 
 func (r managementTaskStatusRuntime) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
 	if r.client == nil {
-		return nil, fmt.Errorf("management client is not initialized")
+		return nil, fmt.Errorf("task status runtime is not initialized")
 	}
 	return r.client.GetRuntimeImportTask(taskID)
 }

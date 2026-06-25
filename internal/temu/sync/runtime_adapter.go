@@ -23,7 +23,7 @@ type runtimeSource interface {
 	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
 }
 
-type managementRuntime struct {
+type serviceRuntime struct {
 	source runtimeSource
 }
 
@@ -31,59 +31,59 @@ func NewServiceRuntime(source runtimeSource) ServiceRuntime {
 	if source == nil {
 		return nil
 	}
-	return managementRuntime{source: source}
+	return serviceRuntime{source: source}
 }
 
-func (r managementRuntime) GetProductDataClient(storeID int64) managementapi.ProductDataAPI {
+func (r serviceRuntime) GetProductDataClient(storeID int64) managementapi.ProductDataAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetProductDataClient(storeID)
 }
 
-func (r managementRuntime) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
+func (r serviceRuntime) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalStoreRepository()
 }
 
-func (r managementRuntime) GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
+func (r serviceRuntime) GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalProductImportMappingRepository()
 }
 
-func (r managementRuntime) GetLocalProductDataRepository() listingadmin.ProductDataRepository {
+func (r serviceRuntime) GetLocalProductDataRepository() listingadmin.ProductDataRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalProductDataRepository()
 }
 
-func (r managementRuntime) GetStoreAPI() managementapi.StoreAPI {
+func (r serviceRuntime) GetStoreAPI() managementapi.StoreAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetStoreAPI()
 }
 
-func (r managementRuntime) GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error) {
+func (r serviceRuntime) GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error) {
 	if r.source == nil {
 		return nil, nil
 	}
 	return r.source.GetRuntimeOperationStrategy(storeID)
 }
 
-func (r managementRuntime) GetRawJsonDataAdapter() product.RawJsonDataClient {
+func (r serviceRuntime) GetRawJsonDataAdapter() product.RawJsonDataClient {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetRawJsonDataAdapter()
 }
 
-func (r managementRuntime) GetInventoryRecordAPI() managementapi.InventoryRecordAPI {
+func (r serviceRuntime) GetInventoryRecordAPI() managementapi.InventoryRecordAPI {
 	if r.source == nil {
 		return nil
 	}

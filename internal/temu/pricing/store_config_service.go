@@ -39,13 +39,13 @@ func NewStoreConfigService(storeID int64, runtime runtime) (StoreConfigProvider,
 // loadStoreConfig 加载店铺配置
 func (s *StoreConfigService) loadStoreConfig(runtime runtime) error {
 	if runtime == nil {
-		return fmt.Errorf("管理客户端为空")
+		return fmt.Errorf("核价运行时为空")
 	}
 
 	if repo := runtime.GetLocalStoreRepository(); repo != nil {
 		store, err := repo.FindStoreByID(context.Background(), s.storeID)
 		if err != nil {
-			s.logger.WithError(err).Warn("通过本地仓储获取店铺配置失败，回退 management client")
+			s.logger.WithError(err).Warn("通过本地仓储获取店铺配置失败，回退远程店铺接口")
 		} else if store != nil {
 			s.storeConfig = storeConfigDTOFromListingStore(store)
 			s.logger.Infof("店铺配置通过本地仓储加载成功: 重新议价=%v, 价格类型=%s, 核价拒绝策略=%s",

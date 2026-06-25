@@ -24,9 +24,9 @@ func (s *processorServiceImpl) StartProcessors(ctx context.Context, cfg *config.
 	// 创建上下文
 	s.ctx, s.cancel = context.WithCancel(ctx)
 
-	// 验证依赖注入的资源
-	if s.managementClient == nil {
-		return errors.New(errors.ErrCodeSystem, "管理客户端未注入")
+	// 验证处理器运行时资源
+	if s.processorRuntime == nil {
+		return errors.New(errors.ErrCodeSystem, "处理器运行时未注入")
 	}
 
 	if err := s.startProcessingComponents(ctx, cfg); err != nil {

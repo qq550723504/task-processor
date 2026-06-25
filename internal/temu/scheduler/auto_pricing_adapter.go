@@ -21,14 +21,14 @@ import (
 // Temu平台的特点是一次性完成获取、决策和提交的完整流程
 type TemuAutoPricingAdapter struct {
 	autoPricingService *pricing.AutoPricingService
-	runtime            pricing.ManagementRuntime
+	runtime            pricing.PricingRuntime
 	logger             *logrus.Entry
 }
 
 // NewTemuAutoPricingAdapter 创建Temu自动核价适配器
 func NewTemuAutoPricingAdapter(
 	apiClient api.APIClientInterface,
-	runtime pricing.ManagementRuntime,
+	runtime pricing.PricingRuntime,
 ) *TemuAutoPricingAdapter {
 	return &TemuAutoPricingAdapter{
 		autoPricingService: pricing.NewAutoPricingService(apiClient),

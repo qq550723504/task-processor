@@ -52,47 +52,47 @@ type TemuTaskFactory struct {
 }
 
 func NewTemuTaskFactory(
-	managementRuntime ManagementRuntime,
+	schedulerRuntime SchedulerRuntime,
 	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) *TemuTaskFactory {
 	return NewTemuTaskFactoryWithDependencies(
-		managementRuntime,
+		schedulerRuntime,
 		crawlSource,
 		amazonConfig,
 		monitorConfig,
 		rabbitmqClient,
 		Dependencies{
-			ClientManager:  client.NewAPIClientManager(managementRuntime),
+			ClientManager:  client.NewAPIClientManager(schedulerRuntime),
 			FetcherBuilder: platformbase.NewDefaultProductFetcherBuilder(),
 		},
 	)
 }
 
 func NewTemuTaskFactoryWithFetcherBuilder(
-	managementRuntime ManagementRuntime,
+	schedulerRuntime SchedulerRuntime,
 	fetcherBuilder platformbase.ProductFetcherBuilder,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) *TemuTaskFactory {
 	return NewTemuTaskFactoryWithDependencies(
-		managementRuntime,
+		schedulerRuntime,
 		nil,
 		amazonConfig,
 		monitorConfig,
 		rabbitmqClient,
 		Dependencies{
-			ClientManager:  client.NewAPIClientManager(managementRuntime),
+			ClientManager:  client.NewAPIClientManager(schedulerRuntime),
 			FetcherBuilder: fetcherBuilder,
 		},
 	)
 }
 
 func NewTemuTaskFactoryWithDependencies(
-	managementRuntime ManagementRuntime,
+	schedulerRuntime SchedulerRuntime,
 	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
@@ -100,7 +100,7 @@ func NewTemuTaskFactoryWithDependencies(
 	deps Dependencies,
 ) *TemuTaskFactory {
 	_ = crawlSource
-	runtime := managementRuntime
+	runtime := schedulerRuntime
 	if runtime == nil {
 		return nil
 	}

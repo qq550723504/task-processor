@@ -21,7 +21,17 @@ func (c runtimeImportTaskStatusClient) UpdateTaskStatus(req *listingruntime.Task
 	return c.updateFn(req)
 }
 
-// fetchTasksFromAPI fetches candidate tasks from management.
+func (f *TaskFetcher) pendingRuntimeTaskSource() pendingRuntimeTaskSource {
+	if f == nil {
+		return nil
+	}
+	if f.pendingTaskSource != nil {
+		return f.pendingTaskSource
+	}
+	return f.managementClient
+}
+
+// fetchTasksFromAPI fetches candidate tasks from the pending task source.
 func (f *TaskFetcher) fetchTasksFromAPI(maxTasks int) ([]ImportTaskRecord, error) {
 	return NewTaskSource(f).FetchPendingTasks(maxTasks)
 }

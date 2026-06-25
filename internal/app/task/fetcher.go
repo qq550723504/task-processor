@@ -21,6 +21,7 @@ type TaskFetcher struct {
 	*lifecycle.BaseComponent
 	config               *config.Config
 	managementClient     *management.ClientManager
+	pendingTaskSource    pendingRuntimeTaskSource
 	submitters           map[string]TaskSubmitter
 	interval             time.Duration
 	processingTasks      map[string]time.Time
@@ -49,14 +50,15 @@ func NewUnifiedTaskFetcher(
 	}
 
 	fetcher := &TaskFetcher{
-		BaseComponent:    lifecycle.NewBaseComponent("TaskFetcher", []string{}, 50),
-		config:           cfg,
-		managementClient: managementClient,
-		submitters:       submitters,
-		interval:         interval,
-		processingTasks:  make(map[string]time.Time),
-		logger:           logger,
-		claimJournal:     NewClaimJournal(""),
+		BaseComponent:     lifecycle.NewBaseComponent("TaskFetcher", []string{}, 50),
+		config:            cfg,
+		managementClient:  managementClient,
+		pendingTaskSource: managementClient,
+		submitters:        submitters,
+		interval:          interval,
+		processingTasks:   make(map[string]time.Time),
+		logger:            logger,
+		claimJournal:      NewClaimJournal(""),
 	}
 
 	fetcher.cleanupService = NewCleanupService(fetcher, cfg)

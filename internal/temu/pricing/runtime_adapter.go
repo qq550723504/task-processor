@@ -28,57 +28,57 @@ type runtimeSource interface {
 	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
 }
 
-type ManagementRuntime struct {
+type PricingRuntime struct {
 	source runtimeSource
 }
 
-func NewManagementRuntime(source runtimeSource) ManagementRuntime {
-	return ManagementRuntime{source: source}
+func NewPricingRuntime(source runtimeSource) PricingRuntime {
+	return PricingRuntime{source: source}
 }
 
-func (r ManagementRuntime) GetStoreAPI() managementapi.StoreAPI {
+func (r PricingRuntime) GetStoreAPI() managementapi.StoreAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetStoreAPI()
 }
 
-func (r ManagementRuntime) GetPricingRuleClient() managementapi.PricingRuleAPI {
+func (r PricingRuntime) GetPricingRuleClient() managementapi.PricingRuleAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetPricingRuleClient()
 }
 
-func (r ManagementRuntime) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
+func (r PricingRuntime) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetProductImportMappingAPI()
 }
 
-func (r ManagementRuntime) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
+func (r PricingRuntime) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalStoreRepository()
 }
 
-func (r ManagementRuntime) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
+func (r PricingRuntime) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalPricingRuleRepository()
 }
 
-func (r ManagementRuntime) GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
+func (r PricingRuntime) GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalProductImportMappingRepository()
 }
 
-func (r ManagementRuntime) GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error) {
+func (r PricingRuntime) GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error) {
 	if r.source == nil {
 		return nil, nil
 	}

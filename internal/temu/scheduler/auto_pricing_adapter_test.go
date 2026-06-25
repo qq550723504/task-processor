@@ -25,10 +25,10 @@ func (m *MockTemuAPIClient) GetStoreID() int64 {
 
 // MockTemuAutoPricingService 模拟Temu自动核价服务
 type MockTemuAutoPricingService struct {
-	AutoProcessPendingPricesWithRulesFunc func(runtime pricing.ManagementRuntime) (*temupricing.Statistics, error)
+	AutoProcessPendingPricesWithRulesFunc func(runtime pricing.PricingRuntime) (*temupricing.Statistics, error)
 }
 
-func (m *MockTemuAutoPricingService) AutoProcessPendingPricesWithRules(runtime pricing.ManagementRuntime) (*temupricing.Statistics, error) {
+func (m *MockTemuAutoPricingService) AutoProcessPendingPricesWithRules(runtime pricing.PricingRuntime) (*temupricing.Statistics, error) {
 	if m.AutoProcessPendingPricesWithRulesFunc != nil {
 		return m.AutoProcessPendingPricesWithRulesFunc(runtime)
 	}
@@ -38,7 +38,7 @@ func (m *MockTemuAutoPricingService) AutoProcessPendingPricesWithRules(runtime p
 func TestNewTemuAutoPricingAdapter(t *testing.T) {
 	mockAPIClient := &MockTemuAPIClient{storeID: 100}
 
-	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(stubAutoPricingRuntimeSource{}))
+	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewPricingRuntime(stubAutoPricingRuntimeSource{}))
 
 	if adapter == nil {
 		t.Fatal("NewTemuAutoPricingAdapter returned nil")
@@ -48,7 +48,7 @@ func TestNewTemuAutoPricingAdapter(t *testing.T) {
 func TestTemuAutoPricingAdapter_FetchPendingPriceProducts(t *testing.T) {
 	mockAPIClient := &MockTemuAPIClient{storeID: 100}
 
-	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(stubAutoPricingRuntimeSource{}))
+	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewPricingRuntime(stubAutoPricingRuntimeSource{}))
 	ctx := context.Background()
 
 	// Temu平台的实现返回空切片
@@ -66,7 +66,7 @@ func TestTemuAutoPricingAdapter_FetchPendingPriceProducts(t *testing.T) {
 func TestTemuAutoPricingAdapter_ApplyPricingRules(t *testing.T) {
 	mockAPIClient := &MockTemuAPIClient{storeID: 100}
 
-	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewManagementRuntime(stubAutoPricingRuntimeSource{}))
+	adapter := NewTemuAutoPricingAdapter(mockAPIClient, pricing.NewPricingRuntime(stubAutoPricingRuntimeSource{}))
 	ctx := context.Background()
 
 	mockProducts := []any{"product1", "product2"}

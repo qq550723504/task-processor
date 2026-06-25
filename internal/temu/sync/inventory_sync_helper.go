@@ -175,7 +175,7 @@ func (s *inventorySyncServiceImpl) getStoreInfo(ctx context.Context, storeID int
 	if s.storeRepo != nil {
 		store, err := s.storeRepo.FindStoreByID(ctx, storeID)
 		if err != nil {
-			s.logger.WithError(err).WithField("store_id", storeID).Warn("通过本地仓储获取TEMU店铺信息失败，回退 management client")
+			s.logger.WithError(err).WithField("store_id", storeID).Warn("通过本地仓储获取TEMU店铺信息失败，回退远程店铺接口")
 		} else if store != nil {
 			return temuStoreDTOFromListingStore(store), nil
 		}

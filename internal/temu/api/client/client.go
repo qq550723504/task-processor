@@ -82,7 +82,7 @@ func NewAPIClient(storeID int64, storeRuntime StoreRuntime) *APIClient {
 // initializeMallID 初始化时处理MallID设置逻辑
 func (c *APIClient) initializeMallID(storeRuntime StoreRuntime) {
 	if storeRuntime == nil {
-		c.logger.Warn("管理客户端为空，跳过MallID初始化")
+		c.logger.Warn("店铺运行时为空，跳过MallID初始化")
 		return
 	}
 

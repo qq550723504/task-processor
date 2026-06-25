@@ -59,7 +59,7 @@ type schedulerFactoryRuntimeProvider interface {
 	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
 	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
-	PricingRuntime() temupricingruntime.ManagementRuntime
+	PricingRuntime() temupricingruntime.PricingRuntime
 	SyncRuntime() temusyncruntime.ServiceRuntime
 	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
 	GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository
