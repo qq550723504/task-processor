@@ -157,6 +157,12 @@ func TestListingKitRootDoesNotImportManagementAPI(t *testing.T) {
 	}
 }
 
+func TestListingKitProductionDoesNotImportMarketplaceSheinPublishing(t *testing.T) {
+	assertNoProductionBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
+		`"task-processor/internal/marketplace/shein/publishing"`,
+	}, nil)
+}
+
 func TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit", "sheinsync")
 	allowedFiles := map[string]struct{}{
@@ -3282,6 +3288,25 @@ func assertNoBannedImports(t *testing.T, root string, bannedImports []string, al
 		for _, banned := range bannedImports {
 			if _, ok := facts.imports[banned]; ok {
 				t.Errorf("%s imports banned boundary package %s", path, banned)
+			}
+		}
+	}
+}
+
+func assertNoProductionBannedImports(t *testing.T, root string, bannedImports []string, allowedFiles map[string]struct{}) {
+	t.Helper()
+
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") || pathAllowed(path, allowedFiles) {
+			continue
+		}
+		for _, banned := range bannedImports {
+			if _, ok := facts.imports[banned]; ok {
+				t.Errorf("%s imports banned production boundary package %s", path, banned)
 			}
 		}
 	}
