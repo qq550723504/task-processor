@@ -44,23 +44,15 @@ func (s *taskSubmissionExecutionService) buildSheinSubmitProductAPI(ctx context.
 	if s.sheinProductAPIBuilder == nil {
 		return nil, fmt.Errorf("shein product api builder is not configured")
 	}
-	runtimeCtx, storeID, err := s.resolveSheinSubmitRuntime(ctx, task)
+	runtimeCtx, storeID, err := s.resolveSheinStoreRuntime(ctx, task, "submit")
 	if err != nil {
 		return nil, err
 	}
 	return s.buildSheinSubmitProductAPIForStore(runtimeCtx, storeID)
 }
 
-func (s *taskSubmissionExecutionService) resolveSheinSubmitRuntime(ctx context.Context, task *Task) (context.Context, int64, error) {
-	return s.resolveSheinStoreRuntime(ctx, task, "submit")
-}
-
-func (s *taskSubmissionExecutionService) resolveSheinSubmitContext(ctx context.Context, task *Task) (context.Context, error) {
-	return withSheinSubmitTaskIdentity(ctx, task)
-}
-
 func (s *taskSubmissionExecutionService) resolveSheinStoreRuntime(ctx context.Context, task *Task, action string) (context.Context, int64, error) {
-	runtimeCtx, err := s.resolveSheinSubmitContext(ctx, task)
+	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
 	if err != nil {
 		return nil, 0, err
 	}

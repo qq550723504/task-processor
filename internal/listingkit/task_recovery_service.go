@@ -97,11 +97,11 @@ func (w taskRecoveryRunnerWiring) markRecoveredBatch(ctx context.Context, taskID
 }
 
 func (w taskRecoveryRunnerWiring) submitRecoveredNow(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, taskID string, current *Task) error {
-	return w.svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), taskID, current.RetryableBlock, w.svc.currentTime())
+	return w.svc.submitRecoveredTask(ctx, submit, taskID, current.RetryableBlock, w.svc.currentTime())
 }
 
 func (w taskRecoveryRunnerWiring) submitRecoveredBatch(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, task Task, recoverAt time.Time) error {
-	return w.svc.submitRecoveredTask(ctx, taskRecoverySubmitterFunc(submit), task.ID, task.RetryableBlock, recoverAt)
+	return w.svc.submitRecoveredTask(ctx, submit, task.ID, task.RetryableBlock, recoverAt)
 }
 
 func (w taskRecoveryRunnerWiring) taskID(task Task) string {
@@ -146,8 +146,8 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 	return s.recoveryBatch.RecoverBatch(ctx, request)
 }
 
-func (s *taskRecoveryService) submitRecoveredTask(ctx context.Context, submitter TaskSubmitter, taskID string, previousBlock *RetryableBlock, recoveredAt time.Time) error {
-	if submitter == nil {
+func (s *taskRecoveryService) submitRecoveredTask(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, taskID string, previousBlock *RetryableBlock, recoveredAt time.Time) error {
+	if submit == nil {
 		return ErrTaskRecoveryUnavailable
 	}
 	return submissiondomain.SubmitRecoveredWithRetryablePersistence(submissiondomain.RecoveredSubmitPersistenceRequest{
@@ -155,7 +155,7 @@ func (s *taskRecoveryService) submitRecoveredTask(ctx context.Context, submitter
 		PreviousBlock:        adaptRetryableBlockState(previousBlock),
 		RecoveredAt:          recoveredAt,
 		DefaultRecoveryScope: submissiondomain.RetryableRecoveryScopeTask,
-		Submit:               submitter.Submit,
+		Submit:               submit,
 		MarkBlockedRetryable: func(block *submissiondomain.RetryableBlockState, errorMsg string) error {
 			return markTaskBlockedRetryableState(ctx, s.repo, taskID, block, errorMsg)
 		},

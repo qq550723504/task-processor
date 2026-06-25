@@ -1003,12 +1003,14 @@ func TestTaskRequeueServiceUsesSubmissionDomainRunner(t *testing.T) {
 	}
 	adapterContent := string(adapterSrc)
 	for _, needle := range []string{
-		`type taskRequeueSubmitterFunc func(taskID string) error`,
 		`func adaptSubmissionDomainRequeueResult(result *submissiondomain.RequeueResult) *RequeuePendingTasksResult {`,
 	} {
 		if !strings.Contains(adapterContent, needle) {
 			t.Fatalf("task_requeue_adapter.go should contain %q", needle)
 		}
+	}
+	if strings.Contains(adapterContent, `type taskRequeueSubmitterFunc func(taskID string) error`) {
+		t.Fatalf("task_requeue_adapter.go should not keep unused submitter adapter %q; use submissiondomain.RequeueSubmitFunc directly", `type taskRequeueSubmitterFunc func(taskID string) error`)
 	}
 }
 
@@ -1052,17 +1054,10 @@ func TestTaskRecoveryServiceUsesSubmissionDomainRunner(t *testing.T) {
 		}
 	}
 
-	adapterSrc, err := os.ReadFile("task_recovery_adapter.go")
-	if err != nil {
-		t.Fatalf("ReadFile(task_recovery_adapter.go) error = %v", err)
-	}
-	adapterContent := string(adapterSrc)
-	for _, needle := range []string{
-		`type taskRecoverySubmitterFunc func(taskID string) error`,
-	} {
-		if !strings.Contains(adapterContent, needle) {
-			t.Fatalf("task_recovery_adapter.go should contain %q", needle)
-		}
+	if _, err := os.ReadFile("task_recovery_adapter.go"); err == nil {
+		t.Fatal("task_recovery_adapter.go should be removed after recovery submit callbacks use submissiondomain.RecoverySubmitFunc directly")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(task_recovery_adapter.go) unexpected error = %v", err)
 	}
 }
 
@@ -1081,6 +1076,7 @@ func TestTaskRecoverySubmitRecoveredDelegatesRetryablePersistenceSkeleton(t *tes
 		"RestoreDurability: func(errorMsg string, submitErr error, persistErr error) error {",
 	})
 	assertSourceExcludesAll(t, source, []string{
+		"taskRecoverySubmitterFunc(",
 		"if err := submitter.Submit(taskID); err != nil {",
 		"if block, ok := classifyRetryableTaskFailure(err); ok {",
 		"updated := s.buildReblockedTask(previousBlock, block, recoveredAt)",
@@ -3187,6 +3183,18 @@ func TestSubmitIdentityHelperFileOwnsTaskIdentityContextHelper(t *testing.T) {
 		t.Fatal("service_submit_runtime_context.go should be removed after submit identity helper rename")
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("ReadFile(service_submit_runtime_context.go) unexpected error = %v", err)
+	}
+
+	executionSrc, err := os.ReadFile("task_submission_execution_service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(task_submission_execution_service.go) error = %v", err)
+	}
+	executionContent := string(executionSrc)
+	if strings.Contains(executionContent, "func (s *taskSubmissionExecutionService) resolveSheinSubmitContext(ctx context.Context, task *Task) (context.Context, error) {") {
+		t.Fatalf("task_submission_execution_service.go should not keep thin submit-context wrapper; call withSheinSubmitTaskIdentity directly")
+	}
+	if strings.Contains(executionContent, "func (s *taskSubmissionExecutionService) resolveSheinSubmitRuntime(ctx context.Context, task *Task) (context.Context, int64, error) {") {
+		t.Fatalf("task_submission_execution_service.go should not keep thin submit-runtime wrapper; call resolveSheinStoreRuntime directly")
 	}
 }
 

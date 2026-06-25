@@ -18,12 +18,6 @@ type sheinSubmissionRefreshMutationRequest struct {
 	confirmation *sheinRemoteConfirmation
 }
 
-type sheinSubmissionRefreshValidationRequest struct {
-	task      *Task
-	action    string
-	requestID string
-}
-
 func (s *taskSubmissionRefreshService) persistSheinSubmissionRefreshResult(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation) (*Task, error) {
 	request, err := buildSubmissionRefreshMutationRequest(taskID, refreshState, confirmation)
 	if err != nil {
@@ -70,74 +64,26 @@ func appendSubmissionRefreshMutationEvents(pkg *SheinPackage, request *sheinSubm
 }
 
 func validateSubmissionRefreshMutation(task *Task, action, requestID string) (*SheinPackage, error) {
-	request := buildSubmissionRefreshValidationRequest(task, action, requestID)
-	pkg, err := loadSubmissionRefreshMutationPackage(request.task)
+	pkg, err := loadSubmissionRefreshTaskPackage(task)
 	if err != nil {
 		return nil, err
 	}
 	selection := sheinpub.ResolveSubmissionRefreshSelection(pkg)
-	if !submissiondomain.RefreshActionMatches(selection.Action, request.action) {
+	if !submissiondomain.RefreshActionMatches(selection.Action, action) {
 		return nil, buildSubmissionRefreshChangedError()
 	}
-	record := sheinpub.SubmissionRecordForAction(pkg.SubmissionState, request.action)
-	if record == nil || !submissiondomain.RefreshRequestMatches(record.RequestID, request.requestID) {
+	record := sheinpub.SubmissionRecordForAction(pkg.SubmissionState, action)
+	if record == nil || !submissiondomain.RefreshRequestMatches(record.RequestID, requestID) {
 		return nil, buildSubmissionRefreshChangedError()
 	}
 	return pkg, nil
-}
-
-func buildSubmissionRefreshValidationRequest(task *Task, action, requestID string) *sheinSubmissionRefreshValidationRequest {
-	return &sheinSubmissionRefreshValidationRequest{
-		task:      task,
-		action:    action,
-		requestID: requestID,
-	}
-}
-
-func loadSubmissionRefreshMutationPackage(task *Task) (*SheinPackage, error) {
-	return loadSubmissionRefreshTaskPackage(task)
 }
 
 func loadSubmissionRefreshTaskPackage(task *Task) (*SheinPackage, error) {
 	if task == nil || task.Result == nil {
 		return nil, buildSubmissionRefreshUnavailableError()
 	}
-	pkg, err := loadSubmissionRefreshPackageState(task.Result.Shein)
-	if err != nil {
-		return nil, err
-	}
-	return pkg, nil
-}
-
-func validateSubmissionRefreshAction(pkg *SheinPackage, action string) error {
-	var ok bool
-	pkg, ok = sheinpub.SubmissionStatePackage(pkg)
-	if !ok {
-		return buildSubmissionRefreshUnavailableError()
-	}
-	selection := sheinpub.ResolveSubmissionRefreshSelection(pkg)
-	if !submissiondomain.RefreshActionMatches(selection.Action, action) {
-		return buildSubmissionRefreshChangedError()
-	}
-	return nil
-}
-
-func validateSubmissionRefreshRequest(pkg *SheinPackage, action, requestID string) error {
-	var ok bool
-	pkg, ok = sheinpub.SubmissionStatePackage(pkg)
-	if !ok {
-		return buildSubmissionRefreshUnavailableError()
-	}
-	record := sheinpub.SubmissionRecordForAction(pkg.SubmissionState, action)
-	if record == nil || !submissiondomain.RefreshRequestMatches(record.RequestID, requestID) {
-		return buildSubmissionRefreshChangedError()
-	}
-	return nil
-}
-
-func loadSubmissionRefreshPackageState(pkg *SheinPackage) (*SheinPackage, error) {
-	var ok bool
-	pkg, ok = sheinpub.SubmissionStatePackage(pkg)
+	pkg, ok := sheinpub.SubmissionStatePackage(task.Result.Shein)
 	if !ok {
 		return nil, buildSubmissionRefreshUnavailableError()
 	}

@@ -505,27 +505,21 @@ func TestLoadSubmissionRefreshTaskPackageRejectsMissingSubmissionState(t *testin
 	}
 }
 
-func TestLoadSubmissionRefreshMutationPackageUsesSharedTaskPackageLoader(t *testing.T) {
+func TestValidateSubmissionRefreshMutationRejectsMissingSubmissionState(t *testing.T) {
 	t.Parallel()
 
 	task := makeReadySheinTask()
-	now := time.Now()
-	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
-		LastAction: "publish",
-		Publish: &sheinpub.SubmissionRecord{
-			Action:       "publish",
-			RequestID:    "refresh-123",
-			SupplierCode: "SKC-1",
-			StartedAt:    now,
-		},
-	}
+	task.Result.Shein.Submission = nil
 
-	pkg, err := loadSubmissionRefreshMutationPackage(task)
-	if err != nil {
-		t.Fatalf("loadSubmissionRefreshMutationPackage() error = %v", err)
+	pkg, err := validateSubmissionRefreshMutation(task, "publish", "refresh-123")
+	if err == nil {
+		t.Fatal("err = nil, want validation error")
 	}
-	if pkg == nil || pkg.SubmissionState == nil {
-		t.Fatalf("pkg = %+v, want submission state", pkg)
+	if pkg != nil {
+		t.Fatalf("pkg = %+v, want nil", pkg)
+	}
+	if !errors.Is(err, ErrSubmitBlocked) {
+		t.Fatalf("error = %v, want ErrSubmitBlocked", err)
 	}
 }
 
@@ -945,22 +939,27 @@ func TestBuildSubmissionRefreshMutationRequestMapsStateAndConfirmation(t *testin
 	}
 }
 
-func TestBuildSubmissionRefreshValidationRequestMapsFields(t *testing.T) {
+func TestValidateSubmissionRefreshMutationAcceptsMatchingActionAndRequest(t *testing.T) {
 	t.Parallel()
 
 	task := makeReadySheinTask()
-	request := buildSubmissionRefreshValidationRequest(task, "publish", "refresh-123")
-	if request == nil {
-		t.Fatal("request = nil")
+	now := time.Now().Add(-time.Minute)
+	task.Result.Shein.Submission = &sheinpub.SubmissionReport{
+		LastAction: "publish",
+		Publish: &sheinpub.SubmissionRecord{
+			Action:       "publish",
+			RequestID:    "refresh-123",
+			SupplierCode: "SKC-1",
+			StartedAt:    now,
+		},
 	}
-	if request.task != task {
-		t.Fatalf("task = %+v, want original task", request.task)
+
+	pkg, err := validateSubmissionRefreshMutation(task, "publish", "refresh-123")
+	if err != nil {
+		t.Fatalf("validateSubmissionRefreshMutation() error = %v", err)
 	}
-	if request.action != "publish" {
-		t.Fatalf("action = %q, want publish", request.action)
-	}
-	if request.requestID != "refresh-123" {
-		t.Fatalf("requestID = %q, want refresh-123", request.requestID)
+	if pkg == nil || pkg.SubmissionState == nil {
+		t.Fatalf("pkg = %+v, want submission state", pkg)
 	}
 }
 
@@ -1047,21 +1046,6 @@ func TestValidateSubmissionRefreshMutationRejectsMissingTaskResult(t *testing.T)
 	task := &Task{ID: "task-no-result"}
 
 	_, err := validateSubmissionRefreshMutation(task, "publish", "refresh-123")
-	if err == nil {
-		t.Fatal("err = nil, want validation error")
-	}
-	if !errors.Is(err, ErrSubmitBlocked) {
-		t.Fatalf("error = %v, want ErrSubmitBlocked", err)
-	}
-	if !apperrors.IsCode(err, apperrors.ErrCodeValidation) {
-		t.Fatalf("error code = %q, want %q", apperrors.GetCode(err), apperrors.ErrCodeValidation)
-	}
-}
-
-func TestValidateSubmissionRefreshActionRejectsMissingSubmissionState(t *testing.T) {
-	t.Parallel()
-
-	err := validateSubmissionRefreshAction(&SheinPackage{}, "publish")
 	if err == nil {
 		t.Fatal("err = nil, want validation error")
 	}

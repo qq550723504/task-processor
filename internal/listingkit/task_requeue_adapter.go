@@ -2,10 +2,6 @@ package listingkit
 
 import submissiondomain "task-processor/internal/listing/submission"
 
-type taskRequeueSubmitterFunc func(taskID string) error
-
-func (f taskRequeueSubmitterFunc) Submit(taskID string) error { return f(taskID) }
-
 func adaptSubmissionDomainRequeueResult(result *submissiondomain.RequeueResult) *RequeuePendingTasksResult {
 	if result == nil {
 		return nil
