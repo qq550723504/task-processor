@@ -7,9 +7,9 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/fetcher"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/ports"
+	managementapi "task-processor/internal/ports/managementapi"
 	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
 

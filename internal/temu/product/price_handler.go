@@ -5,9 +5,9 @@ import (
 	"math"
 	"math/rand"
 
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
+	api "task-processor/internal/ports/managementapi"
 	pkgproduct "task-processor/internal/product"
 	temucontext "task-processor/internal/temu/context"
 

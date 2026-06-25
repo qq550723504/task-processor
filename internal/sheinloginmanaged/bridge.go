@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/sheinlogin"
 )
 

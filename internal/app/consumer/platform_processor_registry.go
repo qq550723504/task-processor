@@ -9,8 +9,8 @@ import (
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"

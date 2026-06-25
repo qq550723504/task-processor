@@ -2,9 +2,9 @@ package product
 
 import (
 	"fmt"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
+	api "task-processor/internal/ports/managementapi"
 
 	"task-processor/internal/core/logger"
 

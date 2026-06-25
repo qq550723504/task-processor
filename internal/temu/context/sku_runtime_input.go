@@ -3,7 +3,7 @@ package context
 import (
 	"fmt"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/ports/managementapi"
 )
 
 type SKUBuildRuntime struct {

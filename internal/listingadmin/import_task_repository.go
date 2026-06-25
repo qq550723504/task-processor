@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
+	api "task-processor/internal/ports/managementapi"
 )
 
 type GormImportTaskRepository struct {

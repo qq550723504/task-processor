@@ -3,8 +3,8 @@ package product
 import (
 	"fmt"
 
-	"task-processor/internal/infra/clients/management/api"
 	openaiClient "task-processor/internal/infra/clients/openai"
+	api "task-processor/internal/ports/managementapi"
 	"task-processor/internal/temu/ai"
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/handlerbase"

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
+	"task-processor/internal/ports/managementapi"
 
 	"github.com/sirupsen/logrus"
 )

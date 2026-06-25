@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/infra/clients/management/api"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/pkg/skugen"
+	api "task-processor/internal/ports/managementapi"
 	models "task-processor/internal/temu/api/product"
 	temucontext "task-processor/internal/temu/context"
 	"task-processor/internal/temu/handlerbase"

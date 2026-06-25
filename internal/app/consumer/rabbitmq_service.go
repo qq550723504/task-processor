@@ -12,9 +12,9 @@ import (
 
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	api "task-processor/internal/ports/managementapi"
 	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"

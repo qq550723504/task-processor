@@ -4,8 +4,8 @@ package handlerbase
 import (
 	"fmt"
 
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
+	api "task-processor/internal/ports/managementapi"
 	productpkg "task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"

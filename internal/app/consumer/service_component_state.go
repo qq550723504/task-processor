@@ -2,7 +2,7 @@ package consumer
 
 import (
 	apptask "task-processor/internal/app/task"
-	"task-processor/internal/infra/clients/management/api"
+	api "task-processor/internal/ports/managementapi"
 )
 
 func (s *RabbitMQService) applyComponentDependencies(

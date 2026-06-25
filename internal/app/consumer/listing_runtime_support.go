@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management/api"
+	api "task-processor/internal/ports/managementapi"
 
 	"github.com/sirupsen/logrus"
 )

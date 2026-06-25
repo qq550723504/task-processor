@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/redisclient"
+	api "task-processor/internal/ports/managementapi"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"

@@ -11,7 +11,7 @@ import (
 	amazonmodel "task-processor/internal/amazon/model"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
+	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/state"
 )
 

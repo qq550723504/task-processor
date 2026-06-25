@@ -12,11 +12,11 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/clients/management"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
+	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"

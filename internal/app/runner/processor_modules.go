@@ -137,28 +137,7 @@ func (a sheinDependencyRuntimeAdapter) GetTaskStatus(taskID int64) (*taskstatus.
 	if err != nil || status == nil {
 		return nil, err
 	}
-	return &taskstatus.TaskStatusSnapshot{
-		TaskID:           status.TaskID,
-		Status:           status.Status,
-		StatusKey:        status.StatusKey,
-		StatusName:       status.StatusName,
-		CanonicalStatus:  status.CanonicalStatus,
-		Platform:         status.Platform,
-		Region:           status.Region,
-		TaskType:         status.TaskType,
-		Priority:         status.Priority,
-		RetryCount:       status.RetryCount,
-		MaxRetries:       status.MaxRetries,
-		ProcessingTimeMs: status.ProcessingTimeMs,
-		QueueName:        status.QueueName,
-		ProcessingNode:   status.ProcessingNode,
-		ProgressPercent:  status.ProgressPercent,
-		Result:           status.Result,
-		ErrorMessage:     status.ErrorMessage,
-		ErrorStack:       status.ErrorStack,
-		ExecutionLogs:    status.ExecutionLogs,
-		TaskDetails:      status.TaskDetails,
-	}, nil
+	return managementapi.TaskStatusSnapshotFromDTO(status), nil
 }
 
 func buildRuntimeProductFetcher(cfg *config.Config, s *processorServiceImpl, platform string) (appfetcher.ProductFetcher, error) {

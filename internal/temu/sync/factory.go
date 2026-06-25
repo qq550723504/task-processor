@@ -2,7 +2,7 @@
 package sync
 
 import (
-	managementapi "task-processor/internal/infra/clients/management/api"
+	managementapi "task-processor/internal/ports/managementapi"
 	temuproduct "task-processor/internal/temu/api/product"
 	temuquery "task-processor/internal/temu/api/query"
 )

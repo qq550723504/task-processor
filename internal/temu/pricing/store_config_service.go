@@ -4,8 +4,8 @@ package pricing
 import (
 	"context"
 	"fmt"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/listingadmin"
+	api "task-processor/internal/ports/managementapi"
 
 	"task-processor/internal/core/logger"
 

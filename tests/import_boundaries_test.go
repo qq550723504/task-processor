@@ -1233,6 +1233,75 @@ func TestBaseProcessorDoesNotExposeManagementClient(t *testing.T) {
 	}
 }
 
+func TestAppAssemblyUsesManagementAPIPortAliases(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "app", "runner", "processor_service.go"),
+		filepath.Join("..", "internal", "app", "bootstrap", "resources", "shared_resources.go"),
+		filepath.Join("..", "internal", "app", "consumer", "shared_resources.go"),
+		filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go"),
+		filepath.Join("..", "internal", "app", "consumer", "auto_shard_coordinator.go"),
+		filepath.Join("..", "internal", "app", "consumer", "listing_runtime_support.go"),
+		filepath.Join("..", "internal", "app", "consumer", "processor_registry.go"),
+		filepath.Join("..", "internal", "app", "consumer", "rabbitmq_service.go"),
+		filepath.Join("..", "internal", "app", "consumer", "service_component_state.go"),
+		filepath.Join("..", "internal", "app", "consumer", "service_manager.go"),
+		filepath.Join("..", "internal", "app", "consumer", "task_handler.go"),
+		filepath.Join("..", "internal", "app", "consumer", "auto_shard_coordinator_test.go"),
+		filepath.Join("..", "internal", "app", "consumer", "rabbitmq_service_test.go"),
+		filepath.Join("..", "internal", "app", "consumer", "task_handler_test.go"),
+		filepath.Join("..", "internal", "app", "runtime", "listing", "debug_task_runner.go"),
+		filepath.Join("..", "internal", "app", "runtime", "listing", "debug_task_runner_test.go"),
+	}
+	for _, path := range paths {
+		path = filepath.Clean(path)
+		index, err := loadGoFileIndex(filepath.Dir(path), "")
+		if err != nil {
+			t.Fatalf("load %s: %v", path, err)
+		}
+		facts, ok := index.files[path]
+		if !ok {
+			t.Fatalf("load %s: file facts missing", path)
+		}
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases in assembly interfaces", path)
+		}
+	}
+}
+
+func TestListingAdminUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingadmin")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases for compatibility DTOs", path)
+		}
+	}
+}
+
+func TestStateAndTaskRPCUseManagementAPIPortAliases(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "state", "daily_count_manager.go"),
+		filepath.Join("..", "internal", "taskrpcapi", "handler.go"),
+	}
+	for _, path := range paths {
+		path = filepath.Clean(path)
+		index, err := loadGoFileIndex(filepath.Dir(path), "")
+		if err != nil {
+			t.Fatalf("load %s: %v", path, err)
+		}
+		facts, ok := index.files[path]
+		if !ok {
+			t.Fatalf("load %s: file facts missing", path)
+		}
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
 func TestAmazonTaskStatusUpdatesUseTaskStatusRuntime(t *testing.T) {
 	path := filepath.Join("..", "internal", "amazon", "task_status.go")
 	fset := token.NewFileSet()
@@ -1313,6 +1382,19 @@ func TestAmazonServicesUseStoreAPIPort(t *testing.T) {
 			if typed.Name != nil && typed.Name.Name == "SetManagementClient" {
 				t.Fatalf("%s exposes SetManagementClient; use SetStoreAPI so Amazon services depend on the store port", path)
 			}
+		}
+	}
+}
+
+func TestAmazonUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "amazon")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
 		}
 	}
 }
@@ -1415,6 +1497,157 @@ func TestTemuRuntimeErrorsUseCapabilityNames(t *testing.T) {
 			if strings.Contains(string(content), phrase) {
 				t.Fatalf("%s mentions %q; use store/pricing/service runtime names for TEMU runtime dependencies", path, phrase)
 			}
+		}
+	}
+}
+
+func TestTemuContextUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu", "context")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
+func TestTemuRootUsesManagementAPIPortAliases(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "temu", "processor.go"),
+		filepath.Join("..", "internal", "temu", "pipeline_registry.go"),
+	}
+	for _, path := range paths {
+		path = filepath.Clean(path)
+		index, err := loadGoFileIndex(filepath.Dir(path), "")
+		if err != nil {
+			t.Fatalf("load %s: %v", path, err)
+		}
+		facts, ok := index.files[path]
+		if !ok {
+			t.Fatalf("load %s: file facts missing", path)
+		}
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
+func TestTemuFilterUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu", "filter")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
+func TestTemuRulesUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu", "rules")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
+func TestTemuHandlerBaseUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu", "handlerbase")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
+func TestTemuStoreUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu", "store")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
+func TestTemuSkuUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu", "sku")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
+func TestTemuProductUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu", "product")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
+func TestTemuPricingUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu", "pricing")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
+func TestTemuSyncUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu", "sync")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+		}
+	}
+}
+
+func TestTemuAPIClientUsesManagementAPIPortAliases(t *testing.T) {
+	root := filepath.Join("..", "internal", "temu", "api", "client")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+			t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
 		}
 	}
 }
@@ -1896,7 +2129,6 @@ func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "amazon")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "llm", "openai_llm_client.go")):     {},
-		filepath.Clean(filepath.Join(root, "model", "task_context.go")):        {},
 		filepath.Clean(filepath.Join(root, "pipeline", "daily_limit_test.go")): {},
 		filepath.Clean(filepath.Join(root, "processor.go")):                    {},
 		filepath.Clean(filepath.Join(root, "task_status_test.go")):             {},
@@ -2287,7 +2519,6 @@ func TestTaskRPCAPIManagementClientImportsStayAllowlisted(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "build.go")):      {},
 		filepath.Clean(filepath.Join(root, "build_test.go")): {},
-		filepath.Clean(filepath.Join(root, "handler.go")):    {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
@@ -2360,8 +2591,7 @@ func TestSheinLoginBootstrapManagementClientImportsStayAllowlisted(t *testing.T)
 func TestSheinLoginManagedManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "sheinloginmanaged")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "accounts_test.go")): {},
-		filepath.Clean(filepath.Join(root, "bridge.go")):        {},
+		filepath.Clean(filepath.Join(root, "bridge.go")): {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
@@ -2382,13 +2612,29 @@ func TestSheinLoginManagedManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestSheinLoginUsesManagementAPIPortAliases(t *testing.T) {
+	roots := []string{
+		filepath.Join("..", "internal", "sheinlogin"),
+		filepath.Join("..", "internal", "sheinloginmanaged"),
+	}
+	for _, root := range roots {
+		index, err := loadGoFileIndex(root, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for path, facts := range index.files {
+			if _, ok := facts.imports[`"task-processor/internal/infra/clients/management/api"`]; ok {
+				t.Fatalf("%s imports concrete management API DTOs; use internal/ports/managementapi aliases", path)
+			}
+		}
+	}
+}
+
 func TestSheinLoginServiceManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "sheinlogin")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "bootstrap", "build.go")):      {},
 		filepath.Clean(filepath.Join(root, "bootstrap", "build_test.go")): {},
-		filepath.Clean(filepath.Join(root, "service.go")):                 {},
-		filepath.Clean(filepath.Join(root, "service_test.go")):            {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
@@ -2544,14 +2790,8 @@ func TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join("..", "internal", "temu", "api", "client", "cookie_manager.go")):    {},
 		filepath.Clean(filepath.Join("..", "internal", "temu", "api", "client", "manager.go")):           {},
 		filepath.Clean(filepath.Join("..", "internal", "temu", "bulkrelist", "bulk_relist_entry.go")):    {},
-		filepath.Clean(filepath.Join("..", "internal", "temu", "context", "sku_runtime_input.go")):       {},
-		filepath.Clean(filepath.Join("..", "internal", "temu", "context", "temu_context.go")):            {},
-		filepath.Clean(filepath.Join("..", "internal", "temu", "filter", "rule_handler.go")):             {},
-		filepath.Clean(filepath.Join("..", "internal", "temu", "filter", "rule_manager.go")):             {},
 		filepath.Clean(filepath.Join("..", "internal", "temu", "handlerbase", "fulfillment_checker.go")): {},
 		filepath.Clean(filepath.Join("..", "internal", "temu", "processor.go")):                          {},
-		filepath.Clean(filepath.Join("..", "internal", "temu", "rules", "rule_validator.go")):            {},
-		filepath.Clean(filepath.Join("..", "internal", "temu", "rules", "rule_validator_test.go")):       {},
 	}
 
 	for _, root := range []string{

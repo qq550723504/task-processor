@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/shein/pipeline"
+	"task-processor/internal/taskstatus"
 	"task-processor/internal/temu"
 
 	"github.com/sirupsen/logrus"
@@ -94,4 +95,15 @@ func (a sheinDependencyRuntimeAdapter) GetImageDownloader() interface {
 		return nil
 	}
 	return a.ProcessorRuntime.GetImageDownloader()
+}
+
+func (a sheinDependencyRuntimeAdapter) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error) {
+	if a.ProcessorRuntime == nil {
+		return nil, nil
+	}
+	status, err := a.ProcessorRuntime.GetTaskStatus(taskID)
+	if err != nil || status == nil {
+		return nil, err
+	}
+	return managementapi.TaskStatusSnapshotFromDTO(status), nil
 }

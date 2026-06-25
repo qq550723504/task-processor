@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/pipeline"
+	api "task-processor/internal/ports/managementapi"
 	temucontext "task-processor/internal/temu/context"
 
 	"github.com/sirupsen/logrus"

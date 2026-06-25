@@ -4,7 +4,7 @@ package client
 import (
 	"fmt"
 	"net/http"
-	"task-processor/internal/infra/clients/management/api"
+	api "task-processor/internal/ports/managementapi"
 
 	"task-processor/internal/core/logger"
 

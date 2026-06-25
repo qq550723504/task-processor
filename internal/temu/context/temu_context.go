@@ -3,10 +3,10 @@ package context
 import (
 	"context"
 
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/ports"
+	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/state"
 	"task-processor/internal/temu/api"
 	temutemplate "task-processor/internal/temu/api/template"

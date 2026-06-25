@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"task-processor/internal/infra/clients/management/api"
+	api "task-processor/internal/ports/managementapi"
 )
 
 var ErrImportTaskNotFound = errors.New("import task not found")

@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	managementapi "task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/ports/managementapi"
 	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"

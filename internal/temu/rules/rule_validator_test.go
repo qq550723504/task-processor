@@ -2,8 +2,8 @@
 package rules
 
 import (
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
+	api "task-processor/internal/ports/managementapi"
 	"testing"
 
 	"github.com/sirupsen/logrus"
