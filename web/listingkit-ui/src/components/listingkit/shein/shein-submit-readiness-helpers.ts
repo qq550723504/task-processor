@@ -278,6 +278,7 @@ export function cacheUpdatedLabel(value?: string) {
     minute: "2-digit",
     second: "2-digit",
     hour12: false,
+    timeZone: "Asia/Shanghai",
   }).format(date);
 }
 
