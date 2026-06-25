@@ -7,7 +7,6 @@ import (
 	"time"
 
 	submissiondomain "task-processor/internal/listing/submission"
-	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -141,7 +140,7 @@ func (s *taskTemporalSubmissionPersistenceService) finishSheinTemporalRemoteRefr
 	if state == nil || state.completion.task == nil || state.completion.pkg == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	response := confirmedTemporalRemoteRefreshResponse(state.completion.response, state.completion.action)
+	response := sheinpub.ResolveConfirmedRemoteRefreshResponse(state.completion.response, state.completion.action)
 	if _, err := persistSheinRemoteCompletionSuccess(ctx, &state.completion, response, s.rememberSheinSubmitted, s.persistSuccessfulSheinSubmission); err != nil {
 		return nil, err
 	}
@@ -156,15 +155,4 @@ func (s *taskTemporalSubmissionPersistenceService) finishSheinTemporalRemoteRefr
 		RequestID:    state.completion.requestID,
 		RemoteStatus: remoteStatus,
 	}, nil
-}
-
-func confirmedTemporalRemoteRefreshResponse(response *sheinpub.SubmissionResponse, action string) *sheinpub.SubmissionResponse {
-	if response != nil {
-		return response
-	}
-	return &sheinpub.SubmissionResponse{
-		Code:    "0",
-		Success: true,
-		Message: sheinmarketpub.ConfirmedSubmissionMessage(action),
-	}
 }

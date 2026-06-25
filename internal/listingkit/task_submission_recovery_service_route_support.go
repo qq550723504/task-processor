@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"task-processor/internal/listingkit/core"
-	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -38,11 +37,7 @@ func (s *taskSubmissionRecoveryService) shouldRecoverLocally(state *sheinRecover
 	if state == nil || state.completion.response == nil {
 		return false
 	}
-	return sheinmarketpub.ResponseAcceptedForAction(
-		state.completion.action,
-		state.completion.response.Success,
-		state.completion.response.Code,
-	)
+	return sheinpub.RemoteSubmissionResponseAccepted(state.completion.action, state.completion.response)
 }
 
 func (s *taskSubmissionRecoveryService) recordWorkflowStartFailure(ctx context.Context, in sheinWorkflowStartFailureInput) error {

@@ -553,6 +553,153 @@ func TestBuildSubmissionRemoteLookupInputs(t *testing.T) {
 	}
 }
 
+func TestBuildSubmissionRefreshRemoteLookupInputsUsesRefreshDefaults(t *testing.T) {
+	t.Parallel()
+
+	pkg := &Package{
+		SubmissionState: &SubmissionReport{
+			Publish: &SubmissionRecord{
+				Action: "publish",
+				Result: &SubmissionResponse{Success: true, SPUName: "SPU-PUBLISH"},
+			},
+		},
+		PreviewPayload: &sheinproduct.Product{SupplierCode: "PKG-SKC-1"},
+	}
+
+	inputs := BuildSubmissionRefreshRemoteLookupInputs(pkg, "publish", "SUPPLIER-ROOT")
+	if !inputs.DefaultConfirmed {
+		t.Fatal("DefaultConfirmed = false, want true for accepted publish")
+	}
+	if inputs.FallbackMessage != "" {
+		t.Fatalf("FallbackMessage = %q, want empty so refresh resolve can apply its own fallback", inputs.FallbackMessage)
+	}
+	if inputs.SPUName != "SPU-PUBLISH" {
+		t.Fatalf("SPUName = %q, want SPU-PUBLISH", inputs.SPUName)
+	}
+	if len(inputs.LookupCodes) == 0 {
+		t.Fatal("LookupCodes = empty, want collected supplier codes")
+	}
+}
+
+func TestBuildSubmissionRecoveryRemoteLookupInputsUsesRecoveryFallback(t *testing.T) {
+	t.Parallel()
+
+	pkg := &Package{
+		SubmissionState: &SubmissionReport{
+			Publish: &SubmissionRecord{
+				Action: "publish",
+				Result: &SubmissionResponse{Success: true, SPUName: "SPU-PUBLISH"},
+			},
+		},
+		PreviewPayload: &sheinproduct.Product{SupplierCode: "PKG-SKC-1"},
+	}
+
+	inputs := BuildSubmissionRecoveryRemoteLookupInputs(pkg, "publish", "SUPPLIER-ROOT")
+	if !inputs.DefaultConfirmed {
+		t.Fatal("DefaultConfirmed = false, want true for accepted publish")
+	}
+	if inputs.FallbackMessage != "SHEIN accepted publish request; remote record not yet visible" {
+		t.Fatalf("FallbackMessage = %q, want recovery refresh fallback", inputs.FallbackMessage)
+	}
+	if inputs.SPUName != "SPU-PUBLISH" {
+		t.Fatalf("SPUName = %q, want SPU-PUBLISH", inputs.SPUName)
+	}
+	if len(inputs.LookupCodes) == 0 {
+		t.Fatal("LookupCodes = empty, want collected supplier codes")
+	}
+}
+
+func TestResolveSubmissionRemoteRefreshFallbackMessage(t *testing.T) {
+	t.Parallel()
+
+	if got := ResolveSubmissionRemoteRefreshFallbackMessage("save_draft", false, " custom fallback "); got != "custom fallback" {
+		t.Fatalf("custom fallback = %q, want custom fallback", got)
+	}
+	if got := ResolveSubmissionRemoteRefreshFallbackMessage("publish", true, ""); got != "SHEIN accepted publish request; remote record not yet visible" {
+		t.Fatalf("default fallback = %q, want accepted publish refresh fallback", got)
+	}
+}
+
+func TestRemoteSubmissionResponseAcceptedAdaptsResponsePolicy(t *testing.T) {
+	t.Parallel()
+
+	if !RemoteSubmissionResponseAccepted("publish", &SubmissionResponse{Success: true}) {
+		t.Fatal("publish success response should be accepted")
+	}
+	if !RemoteSubmissionResponseAccepted("save_draft", &SubmissionResponse{Code: "0"}) {
+		t.Fatal("save_draft code=0 response should be accepted")
+	}
+	if RemoteSubmissionResponseAccepted("publish", &SubmissionResponse{Code: "0"}) {
+		t.Fatal("publish code=0 without success should not be accepted")
+	}
+	if RemoteSubmissionResponseAccepted("publish", nil) {
+		t.Fatal("nil response should not be accepted")
+	}
+}
+
+func TestResolveConfirmedRemoteRefreshResponse(t *testing.T) {
+	t.Parallel()
+
+	existing := &SubmissionResponse{Code: "existing", Message: "already there"}
+	if got := ResolveConfirmedRemoteRefreshResponse(existing, "publish"); got != existing {
+		t.Fatalf("existing response = %+v, want same pointer", got)
+	}
+
+	fallback := ResolveConfirmedRemoteRefreshResponse(nil, "save_draft")
+	if fallback == nil || fallback.Code != "0" || !fallback.Success {
+		t.Fatalf("fallback = %+v, want successful response", fallback)
+	}
+	if fallback.Message != "save draft confirmed by remote check" {
+		t.Fatalf("fallback message = %q, want save_draft confirmation", fallback.Message)
+	}
+}
+
+func TestBuildSubmissionConfirmRemoteUpdateFromResolutionUsesRecord(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, 6, 14, 19, 15, 0, 0, time.UTC)
+	record := &sheinproduct.RecordItem{
+		RecordID:   "record-1",
+		SpuName:    "SPU-1",
+		State:      4,
+		AuditState: 5,
+	}
+	update, err := BuildSubmissionConfirmRemoteUpdateFromResolution("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
+		Record: record,
+	})
+	if err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+	if update.RemoteStatus != SubmissionRemoteStatusConfirmed || update.Record != record {
+		t.Fatalf("update = %+v, want confirmed record update", update)
+	}
+	if update.Event == nil || update.Event.RemoteRecordID != "record-1" {
+		t.Fatalf("event = %+v, want remote record id", update.Event)
+	}
+}
+
+func TestBuildSubmissionConfirmRemoteUpdateFromResolutionKeepsRecordErrorOperational(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, 6, 14, 19, 15, 0, 0, time.UTC)
+	update, err := BuildSubmissionConfirmRemoteUpdateFromResolution("task-1", "publish", "req-1", startedAt, SubmissionRemoteResolution{
+		RecordErr:       errors.New("remote query failed"),
+		FallbackMessage: "fallback pending",
+	})
+	if err != nil {
+		t.Fatalf("err = %v, want nil so caller persists pending remote state", err)
+	}
+	if update.RemoteStatus != SubmissionRemoteStatusPending {
+		t.Fatalf("RemoteStatus = %q, want pending", update.RemoteStatus)
+	}
+	if update.Message != "remote query failed" {
+		t.Fatalf("Message = %q, want operational record error", update.Message)
+	}
+	if update.Event == nil || update.Event.Detail != "fallback pending" {
+		t.Fatalf("event = %+v, want fallback detail event", update.Event)
+	}
+}
+
 func TestBuildSubmissionMissingSupplierCodeRemoteUpdate(t *testing.T) {
 	t.Parallel()
 

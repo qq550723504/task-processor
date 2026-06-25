@@ -220,7 +220,7 @@ func TestBuildSubmissionRefreshRemoteInputsPreservesCurrentFallbackBehavior(t *t
 		},
 	}
 
-	inputs := buildSubmissionRefreshRemoteInputs(task.Result.Shein, "publish", "SKC-1")
+	inputs := sheinpub.BuildSubmissionRefreshRemoteLookupInputs(task.Result.Shein, "publish", "SKC-1")
 	if !inputs.DefaultConfirmed {
 		t.Fatal("defaultConfirmed = false, want true")
 	}
@@ -303,7 +303,7 @@ func TestNewSubmissionRefreshStateMapsInputs(t *testing.T) {
 	startedAt := time.Now()
 	productAPI := stubSheinProductAPI{}
 	otherAPI := stubSheinOtherAPI{}
-	state := newSubmissionRefreshState(task, "publish", "refresh-123", startedAt, productAPI, otherAPI, sheinSubmissionRefreshRemoteInputs{
+	state := newSubmissionRefreshState(task, "publish", "refresh-123", startedAt, productAPI, otherAPI, sheinpub.SubmissionRemoteLookupInputs{
 		LookupCodes:      []string{"SKC-1", "SKU-1"},
 		SPUName:          "SPU-PUBLISH",
 		DefaultConfirmed: true,
@@ -744,9 +744,9 @@ func TestTaskSubmissionServiceResolveSubmissionRefreshConfirmationPassesRequestF
 	productAPI := stubSheinProductAPI{}
 	otherAPI := stubSheinOtherAPI{}
 	startedAt := time.Now()
-	expected := &sheinRemoteConfirmation{Message: "resolved"}
+	expected := &sheinpub.SubmissionConfirmRemoteUpdate{Message: "resolved"}
 	submitter := newTaskSubmissionRefreshService(taskSubmissionRefreshServiceConfig{
-		resolveRemoteStatus: func(request *sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error) {
+		resolveRemoteStatus: func(request *sheinRemoteStatusRequest) (*sheinpub.SubmissionConfirmRemoteUpdate, error) {
 			if request.productAPI == nil {
 				t.Fatal("productAPI = nil, want assigned api")
 			}
@@ -817,7 +817,7 @@ func TestApplySubmissionRefreshConfirmationAppliesEventParts(t *testing.T) {
 		},
 	}
 
-	confirmation := &sheinRemoteConfirmation{
+	confirmation := &sheinpub.SubmissionConfirmRemoteUpdate{
 		RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
 		Record: &sheinproduct.RecordItem{
 			RecordID:     "record-123",
@@ -874,7 +874,7 @@ func TestApplySubmissionRefreshConfirmationWithoutEventSetsRemoteRecordOnly(t *t
 		},
 	}
 
-	applySubmissionRefreshConfirmation(task.Result.Shein, "publish", "refresh-apply-record", &sheinRemoteConfirmation{
+	applySubmissionRefreshConfirmation(task.Result.Shein, "publish", "refresh-apply-record", &sheinpub.SubmissionConfirmRemoteUpdate{
 		RemoteStatus: sheinpub.SubmissionRemoteStatusPending,
 		Record: &sheinproduct.RecordItem{
 			RecordID:     "record-only",
@@ -905,7 +905,7 @@ func TestBuildSubmissionRefreshMutationRequestMapsStateAndConfirmation(t *testin
 	t.Parallel()
 
 	startedAt := time.Now().Add(-time.Minute)
-	confirmation := &sheinRemoteConfirmation{
+	confirmation := &sheinpub.SubmissionConfirmRemoteUpdate{
 		RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
 		Message:      "confirmed remotely",
 	}
@@ -978,7 +978,7 @@ func TestApplySubmissionRefreshMutationAppendsRunningEventBeforeConfirmation(t *
 			StartedAt:    startedAt,
 		},
 	}
-	confirmation := &sheinRemoteConfirmation{
+	confirmation := &sheinpub.SubmissionConfirmRemoteUpdate{
 		RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
 		Record: &sheinproduct.RecordItem{
 			RecordID:     "record-123",

@@ -15,10 +15,10 @@ type sheinSubmissionRefreshMutationRequest struct {
 	action       string
 	requestID    string
 	startedAt    time.Time
-	confirmation *sheinRemoteConfirmation
+	confirmation *sheinpub.SubmissionConfirmRemoteUpdate
 }
 
-func (s *taskSubmissionRefreshService) persistSheinSubmissionRefreshResult(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation) (*Task, error) {
+func (s *taskSubmissionRefreshService) persistSheinSubmissionRefreshResult(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinpub.SubmissionConfirmRemoteUpdate) (*Task, error) {
 	request, err := buildSubmissionRefreshMutationRequest(taskID, refreshState, confirmation)
 	if err != nil {
 		return nil, err
@@ -28,7 +28,7 @@ func (s *taskSubmissionRefreshService) persistSheinSubmissionRefreshResult(ctx c
 	})
 }
 
-func buildSubmissionRefreshMutationRequest(taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinRemoteConfirmation) (*sheinSubmissionRefreshMutationRequest, error) {
+func buildSubmissionRefreshMutationRequest(taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinpub.SubmissionConfirmRemoteUpdate) (*sheinSubmissionRefreshMutationRequest, error) {
 	remoteRequest, err := buildSheinRemoteStatusRequest(taskID, refreshState)
 	if err != nil {
 		return nil, err
@@ -98,7 +98,7 @@ func buildSubmissionRefreshChangedError() error {
 	return apperrors.Wrap(core.ErrSubmitInProgress, apperrors.ErrCodeTaskProcessing, "shein submission changed during refresh")
 }
 
-func applySubmissionRefreshConfirmation(pkg *SheinPackage, action, requestID string, confirmation *sheinRemoteConfirmation) {
+func applySubmissionRefreshConfirmation(pkg *SheinPackage, action, requestID string, confirmation *sheinpub.SubmissionConfirmRemoteUpdate) {
 	if pkg == nil || confirmation == nil {
 		return
 	}

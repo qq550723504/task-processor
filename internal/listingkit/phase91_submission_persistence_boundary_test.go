@@ -46,11 +46,17 @@ func TestSheinSubmissionPersistenceBoundary(t *testing.T) {
 		"setSheinSubmitRemoteResponse(",
 	})
 
-	remoteRefreshSource := readNamedFunctionSource(t, "task_temporal_submission_persistence_service_support.go", "confirmedTemporalRemoteRefreshResponse")
+	remoteRefreshSource := readNamedFunctionSource(t, "task_temporal_submission_persistence_service_support.go", "finishSheinTemporalRemoteRefreshSuccess")
 	assertSourceContainsAll(t, remoteRefreshSource, []string{
-		"sheinmarketpub.ConfirmedSubmissionMessage(",
+		"sheinpub.ResolveConfirmedRemoteRefreshResponse(",
 	})
 	assertSourceExcludesAll(t, remoteRefreshSource, []string{
+		"confirmedTemporalRemoteRefreshResponse(",
+		"sheinmarketpub.ConfirmedSubmissionMessage(",
 		"sheinpub.ConfirmedSubmissionResponse(",
+	})
+	remoteRefreshFileSource := readTaskGenerationSourceFile(t, "task_temporal_submission_persistence_service_support.go")
+	assertSourceExcludesAll(t, remoteRefreshFileSource, []string{
+		"func confirmedTemporalRemoteRefreshResponse(",
 	})
 }

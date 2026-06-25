@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -54,22 +53,14 @@ func (s *taskSubmissionRecoveryService) refreshSheinSubmitRemoteStatus(ctx conte
 	return confirmation.Event, err
 }
 
-type sheinRemoteRefreshState = sheinpub.SubmissionRemoteLookupInputs
-
-func buildSheinRemoteRefreshState(pkg *SheinPackage, action, supplierCode string) sheinRemoteRefreshState {
-	policy := sheinmarketpub.BuildRemoteConfirmationPolicy(action, sheinpub.RemotePublishAccepted(pkg, action))
-	return sheinpub.BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, policy.RefreshFallbackMessage)
-}
-
 func newSheinRemoteStatusRequest(
-	task *Task,
 	taskID string,
 	action string,
 	requestID string,
 	startedAt time.Time,
 	productAPI sheinproduct.ProductAPI,
 	otherAPI sheinother.OtherAPI,
-	remoteInputs sheinRemoteRefreshState,
+	remoteInputs sheinpub.SubmissionRemoteLookupInputs,
 ) *sheinRemoteStatusRequest {
 	return &sheinRemoteStatusRequest{
 		productAPI:       productAPI,
@@ -85,20 +76,11 @@ func newSheinRemoteStatusRequest(
 	}
 }
 
-func copySheinRemoteStatusRequest(taskID string, request *sheinRemoteStatusRequest) (*sheinRemoteStatusRequest, error) {
-	if request == nil {
-		return nil, errors.New("submit remote status request is not configured")
-	}
-	copyRequest := *request
-	copyRequest.taskID = taskID
-	return &copyRequest, nil
-}
-
 func (s *taskSubmissionRecoveryService) buildSheinRemoteStatusRequest(ctx context.Context, request *sheinRemoteRefreshRequest) (*sheinRemoteStatusRequest, *sheinpub.SubmissionEvent) {
 	if request == nil {
 		return nil, nil
 	}
-	remoteInputs := buildSheinRemoteRefreshState(request.pkg, request.action, request.supplierCode)
+	remoteInputs := sheinpub.BuildSubmissionRecoveryRemoteLookupInputs(request.pkg, request.action, request.supplierCode)
 	if len(remoteInputs.LookupCodes) == 0 {
 		return nil, sheinpub.ApplySubmissionMissingSupplierCodeRemoteUpdate(request.pkg, request.taskID, request.action, request.requestID, request.startedAt, remoteInputs.DefaultConfirmed)
 	}
@@ -107,7 +89,6 @@ func (s *taskSubmissionRecoveryService) buildSheinRemoteStatusRequest(ctx contex
 		otherAPI, _ = s.buildSheinSubmitOtherAPI(ctx, request.task)
 	}
 	return newSheinRemoteStatusRequest(
-		request.task,
 		request.taskID,
 		request.action,
 		request.requestID,
@@ -118,14 +99,14 @@ func (s *taskSubmissionRecoveryService) buildSheinRemoteStatusRequest(ctx contex
 	), nil
 }
 
-func (s *taskSubmissionRecoveryService) resolveRemoteStatus(request *sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error) {
+func (s *taskSubmissionRecoveryService) resolveRemoteStatus(request *sheinRemoteStatusRequest) (*sheinpub.SubmissionConfirmRemoteUpdate, error) {
 	if s.resolveRemoteStatusCallback == nil {
 		return nil, errors.New("submit remote status resolution is not configured")
 	}
 	return s.resolveRemoteStatusCallback(request)
 }
 
-func resolveSheinSubmitRemoteStatus(request *sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error) {
+func resolveSheinSubmitRemoteStatus(request *sheinRemoteStatusRequest) (*sheinpub.SubmissionConfirmRemoteUpdate, error) {
 	if request == nil {
 		return nil, errors.New("submit remote status request is not configured")
 	}
@@ -139,32 +120,9 @@ func resolveSheinSubmitRemoteStatus(request *sheinRemoteStatusRequest) (*sheinRe
 		request.fallbackMessage,
 		logSheinBatchCheckOnWayResponse,
 	)
-	decision := sheinmarketpub.ResolveRemoteConfirmationDecision(request.action, sheinmarketpub.RemoteConfirmationResolution{
-		DefaultConfirmed:   resolution.DefaultConfirmed,
-		FallbackMessage:    resolution.FallbackMessage,
-		OnWayDocument:      resolution.OnWayDocument,
-		Record:             resolution.Record,
-		RecordErr:          resolution.RecordErr,
-		InventoryConfirmed: resolution.InventoryConfirmed,
-		SPUName:            strings.TrimSpace(sheinmarketpub.ResolveRemoteResolutionSPUName(resolution.OnWayDocument, resolution.Record, resolution.SPUName)),
-	})
-	if resolution.Record != nil && resolution.RecordErr == nil {
-		update := sheinpub.BuildSubmissionConfirmRemoteUpdateForRecord(request.taskID, request.action, decision.Status, request.requestID, request.startedAt, decision.Detail, decision.Err, resolution.Record)
-		return &update, decision.Err
-	}
-	update := sheinpub.BuildSubmissionConfirmRemoteUpdate(request.taskID, request.action, decision.Status, request.requestID, request.startedAt, decision.Detail, decision.Err)
-	update.Message = sheinmarketpub.ResolveRemoteConfirmationUpdateMessage(decision, sheinmarketpub.RemoteConfirmationResolution{
-		DefaultConfirmed: resolution.DefaultConfirmed,
-		Record:           resolution.Record,
-		RecordErr:        resolution.RecordErr,
-	})
-	if resolution.RecordErr != nil {
-		return &update, nil
-	}
-	return &update, decision.Err
+	update, err := sheinpub.BuildSubmissionConfirmRemoteUpdateFromResolution(request.taskID, request.action, request.requestID, request.startedAt, resolution)
+	return &update, err
 }
-
-type sheinRemoteConfirmation = sheinpub.SubmissionConfirmRemoteUpdate
 
 func logSheinBatchCheckOnWayResponse(expectedSPUName string, resp *sheinother.BatchCheckOnWayResponse, err error) {
 	fields := logrus.Fields{

@@ -6,13 +6,10 @@ import (
 
 	apperrors "task-processor/internal/core/errors"
 	submissiondomain "task-processor/internal/listing/submission"
-	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
-
-type sheinSubmissionRefreshRemoteInputs = sheinpub.SubmissionRemoteLookupInputs
 
 func (s *taskSubmissionRefreshService) loadSubmissionRefreshInputs(ctx context.Context, taskID string, task *Task, pkg *SheinPackage) (*sheinpub.SubmissionRefreshSelection, sheinproduct.ProductAPI, error) {
 	selection, err := loadSubmissionRefreshSelection(pkg)
@@ -71,22 +68,17 @@ func buildSubmissionRefreshRequest(pkg *SheinPackage, selection *sheinpub.Submis
 	return sheinpub.SubmissionRefreshRequest{
 		Action:       selection.Action,
 		RequestID:    requestID,
-		RemoteInputs: buildSubmissionRefreshRemoteInputs(pkg, selection.Action, selection.SupplierCode),
+		RemoteInputs: sheinpub.BuildSubmissionRefreshRemoteLookupInputs(pkg, selection.Action, selection.SupplierCode),
 	}
 }
 
-func buildSubmissionRefreshRemoteInputs(pkg *SheinPackage, action, supplierCode string) sheinSubmissionRefreshRemoteInputs {
-	policy := sheinmarketpub.BuildRemoteConfirmationPolicy(action, sheinpub.RemotePublishAccepted(pkg, action))
-	return sheinpub.BuildSubmissionRemoteLookupInputs(pkg, action, supplierCode, policy.DefaultConfirmed, "")
-}
-
-func newSubmissionRefreshState(task *Task, action, requestID string, startedAt time.Time, productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, remoteInputs sheinSubmissionRefreshRemoteInputs) *sheinSubmissionRefreshState {
+func newSubmissionRefreshState(task *Task, action, requestID string, startedAt time.Time, productAPI sheinproduct.ProductAPI, otherAPI sheinother.OtherAPI, remoteInputs sheinpub.SubmissionRemoteLookupInputs) *sheinSubmissionRefreshState {
 	taskID := ""
 	if task != nil {
 		taskID = task.ID
 	}
 	return &sheinSubmissionRefreshState{
 		task:          task,
-		remoteRequest: newSheinRemoteStatusRequest(task, taskID, action, requestID, startedAt, productAPI, otherAPI, remoteInputs),
+		remoteRequest: newSheinRemoteStatusRequest(taskID, action, requestID, startedAt, productAPI, otherAPI, remoteInputs),
 	}
 }

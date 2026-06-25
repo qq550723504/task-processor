@@ -20,7 +20,7 @@ type taskSubmissionRecoveryServiceConfig struct {
 	rememberSheinSubmitted      func(*Task, string)
 	persistSuccessfulSubmission func(context.Context, string, *Task, string) error
 	recordSubmissionFailure     func(context.Context, string, *ListingKitResult, *SheinPackage, string, string, string, error) error
-	resolveRemoteStatusCallback func(*sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error)
+	resolveRemoteStatusCallback func(*sheinRemoteStatusRequest) (*sheinpub.SubmissionConfirmRemoteUpdate, error)
 }
 
 type taskSubmissionRecoveryService struct {
@@ -31,7 +31,7 @@ type taskSubmissionRecoveryService struct {
 	rememberSheinSubmitted      func(*Task, string)
 	persistSuccessfulSubmission func(context.Context, string, *Task, string) error
 	recordSubmissionFailure     func(context.Context, string, *ListingKitResult, *SheinPackage, string, string, string, error) error
-	resolveRemoteStatusCallback func(*sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error)
+	resolveRemoteStatusCallback func(*sheinRemoteStatusRequest) (*sheinpub.SubmissionConfirmRemoteUpdate, error)
 	leaseAcquireRunner          *submissiondomain.LeaseAcquireService[Task, ListingKitPreview]
 	startFailureRunner          *submissiondomain.StartFailureService[sheinWorkflowStartFailureInput]
 	recoveryRouteRunner         *submissiondomain.RecoveryRouteService[sheinRecoveredRemoteState, ListingKitPreview]

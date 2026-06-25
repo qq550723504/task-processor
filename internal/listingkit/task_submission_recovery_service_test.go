@@ -218,9 +218,9 @@ func TestTaskSubmissionRecoveryServiceAcquireSheinSubmitTaskRecoversRemotePrevie
 			}
 			return stubSheinProductAPI{}, nil
 		},
-		resolveRemoteStatusCallback: func(request *sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error) {
+		resolveRemoteStatusCallback: func(request *sheinRemoteStatusRequest) (*sheinpub.SubmissionConfirmRemoteUpdate, error) {
 			event := sheinpub.BuildSubmissionConfirmRemoteEvent(task.ID, "publish", sheinpub.SubmissionRemoteStatusConfirmed, request.requestID, request.startedAt, "remote confirmed", nil)
-			return &sheinRemoteConfirmation{
+			return &sheinpub.SubmissionConfirmRemoteUpdate{
 				RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
 				Record: &sheinproduct.RecordItem{
 					RecordID:     "record-recover-preview",
@@ -375,12 +375,12 @@ func TestTaskSubmissionRecoveryServiceRefreshSheinSubmitRemoteStatusAppliesResol
 	var gotDefaultConfirmed bool
 	var gotSPUName string
 	recovery := newTaskSubmissionRecoveryService(taskSubmissionRecoveryServiceConfig{
-		resolveRemoteStatusCallback: func(request *sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error) {
+		resolveRemoteStatusCallback: func(request *sheinRemoteStatusRequest) (*sheinpub.SubmissionConfirmRemoteUpdate, error) {
 			gotLookupCodes = append([]string(nil), request.lookupCodes...)
 			gotDefaultConfirmed = request.defaultConfirmed
 			gotSPUName = request.spuName
 			event := sheinpub.BuildSubmissionConfirmRemoteEvent(request.taskID, request.action, sheinpub.SubmissionRemoteStatusConfirmed, request.requestID, request.startedAt, "resolved by callback", nil)
-			return &sheinRemoteConfirmation{
+			return &sheinpub.SubmissionConfirmRemoteUpdate{
 				RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
 				Record: &sheinproduct.RecordItem{
 					RecordID:     "record-123",
@@ -744,7 +744,7 @@ func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitViaRemoteConfirmationFin
 			}
 			return productAPI, nil
 		},
-		resolveRemoteStatusCallback: func(request *sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error) {
+		resolveRemoteStatusCallback: func(request *sheinRemoteStatusRequest) (*sheinpub.SubmissionConfirmRemoteUpdate, error) {
 			calls = append(calls, "resolve_remote")
 			if request.productAPI == nil {
 				t.Fatal("product api = nil, want built api")
@@ -768,7 +768,7 @@ func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitViaRemoteConfirmationFin
 				t.Fatalf("resolve start/task = %v/%q, want non-zero/%q", request.startedAt, request.taskID, task.ID)
 			}
 			event := sheinpub.BuildSubmissionConfirmRemoteEvent(task.ID, "publish", sheinpub.SubmissionRemoteStatusConfirmed, "recover-remote-ok-123", request.startedAt, "remote confirmed", nil)
-			return &sheinRemoteConfirmation{
+			return &sheinpub.SubmissionConfirmRemoteUpdate{
 				RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
 				Record: &sheinproduct.RecordItem{
 					RecordID:     "record-remote-ok",
@@ -982,13 +982,13 @@ func TestTaskSubmissionRecoveryServiceRecoverSheinSubmitRemoteUsesRemoteConfirma
 			}
 			return stubSheinProductAPI{}, nil
 		},
-		resolveRemoteStatusCallback: func(request *sheinRemoteStatusRequest) (*sheinRemoteConfirmation, error) {
+		resolveRemoteStatusCallback: func(request *sheinRemoteStatusRequest) (*sheinpub.SubmissionConfirmRemoteUpdate, error) {
 			calls = append(calls, "resolve_remote")
 			if request.action != "publish" || request.requestID != "recover-route-remote-123" {
 				t.Fatalf("resolve args = %q/%q, want publish/recover-route-remote-123", request.action, request.requestID)
 			}
 			event := sheinpub.BuildSubmissionConfirmRemoteEvent(task.ID, "publish", sheinpub.SubmissionRemoteStatusConfirmed, request.requestID, request.startedAt, "remote confirmed", nil)
-			return &sheinRemoteConfirmation{
+			return &sheinpub.SubmissionConfirmRemoteUpdate{
 				RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
 				Record: &sheinproduct.RecordItem{
 					RecordID:     "record-route-remote",

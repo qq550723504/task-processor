@@ -18,9 +18,10 @@ func TestSheinSubmissionRecoveryBoundary(t *testing.T) {
 
 	localRouteSource := readNamedFunctionSource(t, "task_submission_recovery_service_route_support.go", "shouldRecoverLocally")
 	assertSourceContainsAll(t, localRouteSource, []string{
-		"sheinmarketpub.ResponseAcceptedForAction(",
+		"sheinpub.RemoteSubmissionResponseAccepted(",
 	})
 	assertSourceExcludesAll(t, localRouteSource, []string{
+		"sheinmarketpub.ResponseAcceptedForAction(",
 		"sheinpub.SubmissionResponseAcceptedForAction(",
 	})
 

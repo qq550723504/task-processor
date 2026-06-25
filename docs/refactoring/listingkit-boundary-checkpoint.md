@@ -356,6 +356,14 @@ Completed submission slices:
 - obsolete recovered remote-refresh success wrapper has been removed; remote-refresh runner configuration now calls `completeSheinRecoveredRemoteSuccess` directly for the OK path.
 - obsolete recovered remote-refresh error wrapper has been removed; remote-refresh runner configuration now supplies the failure persistence callback inline.
 - obsolete recovered remote-refresh state wrapper has been removed; recovered refresh request building now adapts recovered state directly into the shared remote-refresh request helper.
+- obsolete root-side remote-confirmation type alias has been removed; refresh/recovery callsites now use `internal/publishing/shein.SubmissionConfirmRemoteUpdate` directly.
+- obsolete root-side remote-lookup input aliases have been removed; refresh and recovery remote-status request construction now use `internal/publishing/shein.SubmissionRemoteLookupInputs` directly.
+- obsolete root-side remote-status request copy helper has been removed; refresh validation now copies its stored request inline before applying the current task id.
+- refresh/recovery remote-lookup policy selection now lives in `internal/publishing/shein`; root `internal/listingkit` no longer keeps duplicate remote lookup helper wrappers around marketplace publishing policy and SHEIN lookup DTO construction.
+- confirm-remote resolution-to-update assembly now lives in `internal/publishing/shein`; root `internal/listingkit` no longer maps marketplace remote-confirmation decisions into SHEIN update/event DTOs inline.
+- refresh remote fallback-message selection now lives in `internal/publishing/shein`; root `internal/listingkit` refresh service no longer imports marketplace publishing policy for that DTO field.
+- recovered-submit local-route response acceptance now lives in `internal/publishing/shein`; root `internal/listingkit` no longer adapts SHEIN response fields directly into marketplace publishing policy.
+- Temporal remote-refresh confirmed-response fallback now lives in `internal/publishing/shein`; root `internal/listingkit` persistence support no longer builds action-specific confirmed responses inline.
 - root task recovery no longer keeps a dedicated reblock builder after recovered-submit persistence extraction; manual-pause/max-attempt reblock policy is exercised through `internal/listing/submission` and root state adapters only.
 - SHEIN task-list projection now reuses one shared submission projection snapshot for status and remote summary fields, so `internal/listingkit` no longer rebuilds the same normalized package/readiness/projection state twice in one task-list item assembly.
 - SHEIN task-list readiness state now also reuses one shared readiness projection snapshot for blocker keys, warning keys, and status overview fields, so the task-list item assembly no longer rebuilds identical readiness/checklist/status state through three helper paths.
