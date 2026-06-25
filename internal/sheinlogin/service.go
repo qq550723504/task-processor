@@ -132,7 +132,15 @@ func (s *Service) Status(ctx context.Context, tenantID int64, storeID int64) (*A
 		return nil, err
 	}
 	if s.loadSession(account.StoreID) != nil {
-		waiting = true
+		if !waiting {
+			s.clearSession(account.StoreID)
+			lastFailure = verifyCodeWaitExpiredFailureSummary(lastFailure, account)
+			_ = s.store.RecordLastFailure(ctx, account.TenantID, account.StoreID, lastFailure, 30*24*time.Hour)
+		} else if lastFailure == nil || !lastFailure.WaitingForVerifyCode {
+			lastFailure = verifyCodeFailureSummary(account)
+		}
+	}
+	if waiting {
 		if lastFailure == nil || !lastFailure.WaitingForVerifyCode {
 			lastFailure = verifyCodeFailureSummary(account)
 		}
@@ -401,6 +409,24 @@ func verifyCodeFailureSummary(account *Account) *FailureSummary {
 		URL:                  loginURLForAccount(*account),
 		Title:                "SHEIN全球商家中心",
 	}
+}
+
+func verifyCodeWaitExpiredFailureSummary(summary *FailureSummary, account *Account) *FailureSummary {
+	expired := verifyCodeFailureSummary(account)
+	if summary != nil {
+		copySummary := *summary
+		expired = &copySummary
+	}
+	expired.ErrorCode = "VERIFY_CODE_WAIT_EXPIRED"
+	expired.ErrorMessage = "验证码等待已超时，请重新发起登录"
+	expired.PageState = "verification_timeout"
+	expired.ActionKey = "retry_login"
+	expired.ActionMessage = "验证码等待已超时，请重新发起登录"
+	expired.WaitingForVerifyCode = false
+	if strings.TrimSpace(expired.Stage) == "" {
+		expired.Stage = "wait_login"
+	}
+	return expired
 }
 
 func runResultFailureSummary(runResult *AutomationResult) *FailureSummary {

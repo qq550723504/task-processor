@@ -178,6 +178,41 @@ func TestServiceLoginStoresVerifySessionWhenVerificationRequired(t *testing.T) {
 	}
 }
 
+func TestServiceStatusClearsExpiredVerifySession(t *testing.T) {
+	session := &stubVerifySession{}
+	auto := &stubAutomation{
+		result:  &AutomationResult{WaitingForVerifyCode: true, ErrorCode: "VERIFY_CODE_REQUIRED", ErrorMessage: "wait"},
+		session: session,
+	}
+	svc := newTestService(t, auto)
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if _, err := svc.store.CancelVerifyWait(context.Background(), 1, 2); err != nil {
+		t.Fatalf("expire verify wait: %v", err)
+	}
+
+	status, err := svc.Status(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if status.WaitingForVerifyCode {
+		t.Fatalf("expected expired verify wait to stop waiting: %+v", status)
+	}
+	if status.LastFailure == nil || status.LastFailure.WaitingForVerifyCode {
+		t.Fatalf("expected expired verify failure summary in status: %+v", status)
+	}
+	if status.RecommendedAction.Key != "retry_login" {
+		t.Fatalf("recommended action = %+v, want retry_login", status.RecommendedAction)
+	}
+	if svc.loadSession(2) != nil {
+		t.Fatal("expected expired verify session to be cleared")
+	}
+	if session.closed != 1 {
+		t.Fatalf("session closed = %d, want 1", session.closed)
+	}
+}
+
 func TestServiceForceLoginLimitsAutomaticVerifyCodesPerDay(t *testing.T) {
 	auto := &stubAutomation{
 		result:  &AutomationResult{WaitingForVerifyCode: true, ErrorCode: "VERIFY_CODE_REQUIRED", ErrorMessage: "wait"},
