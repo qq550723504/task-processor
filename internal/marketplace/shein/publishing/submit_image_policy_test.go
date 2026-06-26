@@ -37,3 +37,22 @@ func TestImageURLClassifiersRecognizeUploadedAndSDSHosts(t *testing.T) {
 		t.Fatal("IsSDSImageURL(uploaded image) = true, want false")
 	}
 }
+
+func TestCloneImageUploadCacheKeepsOnlyUploadedEntries(t *testing.T) {
+	t.Parallel()
+
+	cloned := CloneImageUploadCache(map[string]string{
+		" https://cdn.example.com/source.jpg ": " https://img.shein.com/uploaded.jpg ",
+		"https://cdn.example.com/bad.jpg":      "https://cdn.example.com/not-uploaded.jpg",
+		"":                                     "https://img.shein.com/empty-key.jpg",
+	})
+	if len(cloned) != 1 || cloned["https://cdn.example.com/source.jpg"] != "https://img.shein.com/uploaded.jpg" {
+		t.Fatalf("CloneImageUploadCache() = %#v, want only normalized uploaded cache entry", cloned)
+	}
+
+	empty := CloneImageUploadCache(nil)
+	if len(empty) != 0 {
+		t.Fatalf("CloneImageUploadCache(nil) = %#v, want empty map", empty)
+	}
+	empty["source"] = "uploaded"
+}

@@ -69,6 +69,7 @@ func TestSheinSubmitImageUploadSupportBoundary(t *testing.T) {
 	for _, needle := range []string{
 		"sheinmarketpub.IsUploadedImageURL(url)",
 		"sheinmarketpub.IsSDSImageURL(url)",
+		"sheinmarketpub.CloneImageUploadCache(input)",
 	} {
 		if !strings.Contains(publishingPolicyContent, needle) {
 			t.Fatalf("publishing submit_image_policy.go should contain %q", needle)
@@ -77,9 +78,10 @@ func TestSheinSubmitImageUploadSupportBoundary(t *testing.T) {
 	for _, needle := range []string{
 		`strings.Contains(value, "shein.com")`,
 		`strings.Contains(value, "sdspod.com")`,
+		"for sourceURL, uploadedURL := range input",
 	} {
 		if strings.Contains(publishingPolicyContent, needle) {
-			t.Fatalf("publishing submit_image_policy.go should delegate URL classification instead of keeping %q", needle)
+			t.Fatalf("publishing submit_image_policy.go should delegate image URL/cache policy instead of keeping %q", needle)
 		}
 	}
 }
