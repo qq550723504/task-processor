@@ -21,12 +21,12 @@ func (s *taskTemporalSubmissionPersistenceService) loadSheinSubmitPersistenceSta
 	sheinpub.ApplySubmissionPersistenceInput(pkg, action, requestID, supplierCode, response, snapshot)
 	return &sheinTemporalSubmissionPersistenceState{
 		completion: sheinRemoteCompletionState{
-			taskID:    taskID,
-			task:      task,
-			pkg:       pkg,
-			action:    action,
-			requestID: requestID,
-			response:  response,
+			TaskID:    taskID,
+			Task:      task,
+			Package:   pkg,
+			Action:    action,
+			RequestID: requestID,
+			Response:  response,
 		},
 		phase:        phase,
 		errorMessage: errorMessage,
@@ -46,19 +46,19 @@ func (s *taskTemporalSubmissionPersistenceService) persistSheinSubmitSnapshot(ct
 }
 
 func (s *taskTemporalSubmissionPersistenceService) persistSheinTemporalSubmissionSuccess(ctx context.Context, state *sheinTemporalSubmissionPersistenceState) error {
-	if state == nil || state.completion.task == nil || state.completion.pkg == nil {
+	if state == nil || state.completion.Task == nil || state.completion.Package == nil {
 		return ErrTaskResultUnavailable
 	}
-	state.completion.startedAt = sheinpub.SubmissionStartedAt(state.completion.pkg, state.completion.action, state.completion.requestID, time.Now())
+	state.completion.StartedAt = sheinpub.SubmissionStartedAt(state.completion.Package, state.completion.Action, state.completion.RequestID, time.Now())
 	return s.resultRunner.PersistSuccess(ctx, submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]{
-		TaskID:    state.completion.taskID,
-		Task:      state.completion.task,
-		Result:    state.completion.task.Result,
-		Package:   state.completion.pkg,
-		Action:    state.completion.action,
-		RequestID: state.completion.requestID,
-		Response:  state.completion.response,
-		StartedAt: state.completion.startedAt,
+		TaskID:    state.completion.TaskID,
+		Task:      state.completion.Task,
+		Result:    state.completion.Task.Result,
+		Package:   state.completion.Package,
+		Action:    state.completion.Action,
+		RequestID: state.completion.RequestID,
+		Response:  state.completion.Response,
+		StartedAt: state.completion.StartedAt,
 	})
 }
 
@@ -85,15 +85,15 @@ func (s *taskTemporalSubmissionPersistenceService) persistSheinTemporalSubmissio
 		return nil
 	}
 	var result *ListingKitResult
-	if state.completion.task != nil {
-		result = state.completion.task.Result
+	if state.completion.Task != nil {
+		result = state.completion.Task.Result
 	}
 	return s.resultRunner.PersistFailure(ctx, submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]{
-		TaskID:    state.completion.taskID,
+		TaskID:    state.completion.TaskID,
 		Result:    result,
-		Package:   state.completion.pkg,
-		Action:    state.completion.action,
-		RequestID: state.completion.requestID,
+		Package:   state.completion.Package,
+		Action:    state.completion.Action,
+		RequestID: state.completion.RequestID,
 		Phase:     state.phase,
 		Err:       errors.New(strings.TrimSpace(state.errorMessage)),
 	})
@@ -133,26 +133,26 @@ func (s *taskTemporalSubmissionPersistenceService) finishSheinTemporalRemoteRefr
 	if state == nil {
 		return remoteErr
 	}
-	return persistSheinRemoteCompletionFailure(ctx, s.saveTaskResult, &state.completion, sheinpub.SubmissionPhaseConfirmRemote, remoteErr)
+	return persistSheinRemoteCompletionFailure(ctx, s.saveTaskResult, &state.Completion, sheinpub.SubmissionPhaseConfirmRemote, remoteErr)
 }
 
 func (s *taskTemporalSubmissionPersistenceService) finishSheinTemporalRemoteRefreshSuccess(ctx context.Context, state *sheinTemporalRemoteRefreshState) (*SheinRefreshRemoteStatusResult, error) {
-	if state == nil || state.completion.task == nil || state.completion.pkg == nil {
+	if state == nil || state.Completion.Task == nil || state.Completion.Package == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	response := sheinpub.ResolveConfirmedRemoteRefreshResponse(state.completion.response, state.completion.action)
-	if _, err := persistSheinRemoteCompletionSuccess(ctx, &state.completion, response, s.rememberSheinSubmitted, s.persistSuccessfulSheinSubmission); err != nil {
+	response := sheinpub.ResolveConfirmedRemoteRefreshResponse(state.Completion.Response, state.Completion.Action)
+	if _, err := persistSheinRemoteCompletionSuccess(ctx, &state.Completion, response, s.rememberSheinSubmitted, s.persistSuccessfulSheinSubmission); err != nil {
 		return nil, err
 	}
 
 	remoteStatus := ""
-	if pkg, ok := sheinpub.SubmissionStatePackage(state.completion.pkg); ok && pkg.SubmissionState != nil {
+	if pkg, ok := sheinpub.SubmissionStatePackage(state.Completion.Package); ok && pkg.SubmissionState != nil {
 		remoteStatus = pkg.SubmissionState.RemoteStatus
 	}
 	return &SheinRefreshRemoteStatusResult{
-		TaskID:       state.completion.taskID,
-		Action:       state.completion.action,
-		RequestID:    state.completion.requestID,
+		TaskID:       state.Completion.TaskID,
+		Action:       state.Completion.Action,
+		RequestID:    state.Completion.RequestID,
 		RemoteStatus: remoteStatus,
 	}, nil
 }

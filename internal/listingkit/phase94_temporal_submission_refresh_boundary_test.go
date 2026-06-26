@@ -23,10 +23,12 @@ func TestSheinTemporalSubmissionRefreshBoundary(t *testing.T) {
 
 	stateSource := readNamedFunctionSource(t, "task_temporal_submission_refresh_service.go", "buildSheinTemporalRemoteRefreshState")
 	assertSourceContainsAll(t, stateSource, []string{
+		"submissiondomain.NewRemoteRefreshExecutionState(",
 		"sheinpub.SubmissionStartedAt(",
 		"sheinpub.SubmissionResponseForAction(",
 	})
 	assertSourceExcludesAll(t, stateSource, []string{
+		"newSheinRemoteRefreshExecutionState(",
 		"sheinpub.ResolveSubmissionRemoteRefreshSelection(",
 	})
 

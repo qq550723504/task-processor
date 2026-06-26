@@ -71,29 +71,29 @@ func (s *taskTemporalSubmissionRefreshService) RefreshSheinPublishRemoteStatus(c
 
 func buildSheinTemporalRemoteRefreshState(task *Task, pkg *SheinPackage, in SheinRefreshRemoteStatusInput, fallbackStartedAt time.Time) *sheinTemporalRemoteRefreshState {
 	startedAt := sheinpub.SubmissionStartedAt(pkg, in.Action, in.RequestID, fallbackStartedAt)
-	return newSheinRemoteRefreshExecutionState(sheinRemoteCompletionState{
-		taskID:    in.TaskID,
-		task:      task,
-		pkg:       pkg,
-		action:    in.Action,
-		requestID: in.RequestID,
-		startedAt: startedAt,
-		response:  sheinpub.SubmissionResponseForAction(pkg, in.Action),
+	return submissiondomain.NewRemoteRefreshExecutionState(sheinRemoteCompletionState{
+		TaskID:    in.TaskID,
+		Task:      task,
+		Package:   pkg,
+		Action:    in.Action,
+		RequestID: in.RequestID,
+		StartedAt: startedAt,
+		Response:  sheinpub.SubmissionResponseForAction(pkg, in.Action),
 	}, in.SupplierCode, startedAt)
 }
 
 func (s *taskTemporalSubmissionRefreshService) persistTemporalRemoteRefreshPhase(ctx context.Context, state *sheinTemporalRemoteRefreshState) error {
-	if state == nil || state.completion.task == nil || state.completion.pkg == nil {
+	if state == nil || state.Completion.Task == nil || state.Completion.Package == nil {
 		return ErrTaskResultUnavailable
 	}
-	return s.persistSheinSubmitPhase(ctx, state.completion.taskID, state.completion.task.Result, state.completion.pkg, state.completion.action, state.completion.requestID, sheinpub.SubmissionPhaseConfirmRemote)
+	return s.persistSheinSubmitPhase(ctx, state.Completion.TaskID, state.Completion.Task.Result, state.Completion.Package, state.Completion.Action, state.Completion.RequestID, sheinpub.SubmissionPhaseConfirmRemote)
 }
 
 func (s *taskTemporalSubmissionRefreshService) buildTemporalRemoteRefreshRequest(ctx context.Context, state *sheinTemporalRemoteRefreshState) (*sheinRemoteRefreshRequest, error) {
-	if state == nil || state.completion.task == nil {
+	if state == nil || state.Completion.Task == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	productAPI, err := s.buildSheinSubmitProductAPI(ctx, state.completion.task)
+	productAPI, err := s.buildSheinSubmitProductAPI(ctx, state.Completion.Task)
 	if err != nil {
 		return nil, err
 	}
@@ -101,8 +101,8 @@ func (s *taskTemporalSubmissionRefreshService) buildTemporalRemoteRefreshRequest
 }
 
 func (s *taskTemporalSubmissionRefreshService) recordTemporalRemoteRefreshEvent(state *sheinTemporalRemoteRefreshState, event *sheinpub.SubmissionEvent) {
-	if state == nil || state.completion.pkg == nil || event == nil {
+	if state == nil || state.Completion.Package == nil || event == nil {
 		return
 	}
-	sheinpub.AppendSubmissionEvent(state.completion.pkg, *event)
+	sheinpub.AppendSubmissionEvent(state.Completion.Package, *event)
 }

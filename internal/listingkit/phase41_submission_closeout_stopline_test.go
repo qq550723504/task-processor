@@ -30,12 +30,24 @@ func TestSubmissionCloseoutStopLineBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "task_temporal_submission_persistence_service_support.go", "persistSheinTemporalSubmissionSuccess")
 
 		assertSourceContainsAll(t, source, []string{
-			"state.completion.startedAt = sheinpub.SubmissionStartedAt(",
+			"state.completion.StartedAt = sheinpub.SubmissionStartedAt(",
 			"return s.resultRunner.PersistSuccess(ctx, submissiondomain.ResultPersistenceInput[*Task, *ListingKitResult, *SheinPackage, *sheinpub.SubmissionResponse]{",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"SubmissionStartedAt",
 			"PersistSuccess",
+		})
+	})
+
+	t.Run("remote_completion_state_uses_submission_domain_carrier", func(t *testing.T) {
+		t.Parallel()
+
+		source := readTaskGenerationSourceFile(t, "task_submission_remote_completion_support.go")
+		assertSourceContainsAll(t, source, []string{
+			"type sheinRemoteCompletionState = submissiondomain.RemoteCompletionState[*Task, *SheinPackage, *sheinpub.SubmissionResponse]",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"type sheinRemoteCompletionState struct {",
 		})
 	})
 }

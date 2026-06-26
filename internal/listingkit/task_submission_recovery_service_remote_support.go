@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	submissiondomain "task-processor/internal/listing/submission"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -33,13 +34,13 @@ func buildRecoveredSheinRemoteState(task *Task, action string) (*sheinRecoveredR
 	}
 	return &sheinRecoveredRemoteState{
 		completion: sheinRemoteCompletionState{
-			taskID:    taskID,
-			task:      task,
-			pkg:       pkg,
-			action:    action,
-			requestID: selection.RequestID,
-			startedAt: selection.StartedAt,
-			response:  selection.Response,
+			TaskID:    taskID,
+			Task:      task,
+			Package:   pkg,
+			Action:    action,
+			RequestID: selection.RequestID,
+			StartedAt: selection.StartedAt,
+			Response:  selection.Response,
 		},
 		selection: selection,
 		now:       time.Now(),
@@ -54,17 +55,17 @@ func (s *taskSubmissionRecoveryService) persistSheinRecoveredRemoteFailure(ctx c
 }
 
 func (s *taskSubmissionRecoveryService) completeSheinRecoveredRemoteSuccess(ctx context.Context, state *sheinRecoveredRemoteState) (*ListingKitPreview, error) {
-	if state == nil || state.completion.task == nil || state.completion.pkg == nil {
+	if state == nil || state.completion.Task == nil || state.completion.Package == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	record, err := persistSheinRemoteCompletionSuccess(ctx, &state.completion, state.completion.response, s.rememberSheinSubmitted, s.persistSuccessfulSubmission)
+	record, err := persistSheinRemoteCompletionSuccess(ctx, &state.completion, state.completion.Response, s.rememberSheinSubmitted, s.persistSuccessfulSubmission)
 	if err != nil {
 		return nil, err
 	}
 	if state.selection.Record != nil && record != nil && record.Result == nil {
 		record.Status = sheinpub.SubmissionStatusSuccess
 	}
-	return s.buildTaskPreview(ctx, state.completion.task, "shein")
+	return s.buildTaskPreview(ctx, state.completion.Task, "shein")
 }
 
 func (s *taskSubmissionRecoveryService) finalizeRecoveredSheinSubmission(ctx context.Context, task *Task, action string) (*ListingKitPreview, error) {
@@ -83,27 +84,27 @@ func (s *taskSubmissionRecoveryService) finalizeRecoveredSheinSubmission(ctx con
 }
 
 func (s *taskSubmissionRecoveryService) persistRecoveredRemoteRefreshPhase(_ context.Context, state *sheinRecoveredRemoteState) error {
-	if state == nil || state.completion.pkg == nil {
+	if state == nil || state.completion.Package == nil {
 		return ErrTaskResultUnavailable
 	}
-	sheinpub.AppendSubmissionEvent(state.completion.pkg, sheinpub.AdvanceSubmitPhaseAndBuildEvent(state.completion.pkg, state.completion.taskID, state.completion.action, state.completion.requestID, sheinpub.SubmissionPhaseConfirmRemote, state.now, sheinSubmitInFlightTTL))
+	sheinpub.AppendSubmissionEvent(state.completion.Package, sheinpub.AdvanceSubmitPhaseAndBuildEvent(state.completion.Package, state.completion.TaskID, state.completion.Action, state.completion.RequestID, sheinpub.SubmissionPhaseConfirmRemote, state.now, sheinSubmitInFlightTTL))
 	return nil
 }
 
 func (s *taskSubmissionRecoveryService) buildRecoveredRemoteRefreshRequest(ctx context.Context, state *sheinRecoveredRemoteState) (*sheinRemoteRefreshRequest, error) {
-	if state == nil || state.completion.task == nil {
+	if state == nil || state.completion.Task == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	productAPI, err := s.buildSheinSubmitProductAPI(ctx, state.completion.task)
+	productAPI, err := s.buildSheinSubmitProductAPI(ctx, state.completion.Task)
 	if err != nil {
 		return nil, err
 	}
-	return buildSheinRemoteRefreshRequest(productAPI, newSheinRemoteRefreshExecutionState(state.completion, state.selection.SupplierCode, state.now)), nil
+	return buildSheinRemoteRefreshRequest(productAPI, submissiondomain.NewRemoteRefreshExecutionState(state.completion, state.selection.SupplierCode, state.now)), nil
 }
 
 func (s *taskSubmissionRecoveryService) recordRecoveredRemoteRefreshEvent(state *sheinRecoveredRemoteState, event *sheinpub.SubmissionEvent) {
-	if state == nil || state.completion.pkg == nil || event == nil {
+	if state == nil || state.completion.Package == nil || event == nil {
 		return
 	}
-	sheinpub.AppendSubmissionEvent(state.completion.pkg, *event)
+	sheinpub.AppendSubmissionEvent(state.completion.Package, *event)
 }
