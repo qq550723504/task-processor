@@ -5,6 +5,7 @@ import (
 	"time"
 
 	listingsubmission "task-processor/internal/listing/submission"
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -15,7 +16,11 @@ type SubmitRemoteExecutor func(sheinproduct.ProductAPI, string, *sheinproduct.Pr
 
 // RetrySensitiveWordSubmit cleans validation-reported sensitive words and retries a failed publish submit.
 func RetrySensitiveWordSubmit(ctx context.Context, taskID string, pkg *Package, action string, requestID string, productAPI sheinproduct.ProductAPI, submitProduct *sheinproduct.Product, response *SubmissionResponse, responseErr error, execute SubmitRemoteExecutor) (*SubmissionResponse, error, bool) {
-	if action != listingsubmission.SubmitActionPublish || response == nil || responseErr == nil || len(response.ValidationNotes) == 0 || execute == nil {
+	validationNoteCount := 0
+	if response != nil {
+		validationNoteCount = len(response.ValidationNotes)
+	}
+	if !sheinmarketpub.ShouldRetrySensitiveWordSubmit(action, response != nil, responseErr != nil, validationNoteCount, execute != nil) {
 		return response, responseErr, false
 	}
 	if !RetrySensitiveWordCleanup(ctx, submitProduct, response.ValidationNotes) {

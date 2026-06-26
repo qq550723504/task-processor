@@ -16,6 +16,7 @@ Current stable ownership includes:
 - action-aware remote response acceptance rules for publish/save-draft flows,
 - confirmed remote-check response wording for publish and save-draft flows,
 - submit phase default detail wording for publish/save-draft event assembly,
+- sensitive-word retry eligibility for publish failures with validation notes,
 - remote response parsing rules for on-way documents, record-query success handling, and inventory confirmation.
 - recovered-submit local-recovery acceptance rules for publish/save-draft responses.
 - recovery remote-lookup confirmation policy selection for publish/save-draft responses.

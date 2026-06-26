@@ -38,4 +38,16 @@ func TestSheinSubmitRetryWiringCallsPublishingDirectly(t *testing.T) {
 			}
 		})
 	}
+
+	src, err := os.ReadFile("../publishing/shein/submit_sensitive_retry.go")
+	if err != nil {
+		t.Fatalf("ReadFile(submit_sensitive_retry.go) error = %v", err)
+	}
+	content := string(src)
+	if !strings.Contains(content, "sheinmarketpub.ShouldRetrySensitiveWordSubmit(") {
+		t.Fatal("sensitive-word retry eligibility should live in marketplace publishing policy")
+	}
+	if strings.Contains(content, "action != listingsubmission.SubmitActionPublish || response == nil || responseErr == nil") {
+		t.Fatal("sensitive-word retry eligibility should not remain inline in legacy publishing orchestration")
+	}
 }
