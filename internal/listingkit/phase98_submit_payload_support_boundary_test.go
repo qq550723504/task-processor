@@ -138,10 +138,20 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 	publishingPolicyContent := string(publishingPolicySrc)
 	for _, needle := range []string{
 		"func DeriveSubmitProductSupplierCode(product *sheinproduct.Product) string {",
+		"sheinmarketpub.DeriveSubmitSupplierCode(product.SupplierCode, supplierSKUs)",
 		"func ValidateProductPublishPayload(product *sheinproduct.Product) error {",
 	} {
 		if !strings.Contains(publishingPolicyContent, needle) {
 			t.Fatalf("publishing submit_payload_policy.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"func deriveSubmitSupplierCodeFromSKU(",
+		"func normalizeSubmitStyleSuffix(",
+		"func looksLikeRawBaseSupplierCode(",
+	} {
+		if strings.Contains(publishingPolicyContent, needle) {
+			t.Fatalf("publishing submit_payload_policy.go should delegate supplier-code string policy instead of keeping %q", needle)
 		}
 	}
 }

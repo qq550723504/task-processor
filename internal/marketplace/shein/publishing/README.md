@@ -19,6 +19,7 @@ Current stable ownership includes:
 - sensitive-word retry eligibility for publish failures with validation notes,
 - preferred warehouse-code selection for submit payload defaults,
 - submit weight unit conversion, rounding, and bound-clamping,
+- submit supplier-code derivation from product and SKU identifiers,
 - remote response parsing rules for on-way documents, record-query success handling, and inventory confirmation.
 - recovered-submit local-recovery acceptance rules for publish/save-draft responses.
 - recovery remote-lookup confirmation policy selection for publish/save-draft responses.
