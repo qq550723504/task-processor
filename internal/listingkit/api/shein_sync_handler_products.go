@@ -16,6 +16,7 @@ import (
 
 type sheinSDSCostGroupHandlerService interface {
 	ListSDSCostGroups(ctx context.Context, query *listingkit.SheinSDSCostGroupQuery) ([]listingkit.SheinSDSCostGroupRecord, int64, error)
+	ListSourceSDSCostGroups(ctx context.Context, query *listingkit.SheinSourceSDSCostGroupQuery) ([]listingkit.SheinSourceSDSCostGroupRecord, int64, error)
 	UpdateSDSCostGroupManualCost(ctx context.Context, tenantID, storeID int64, groupKey, groupLabel string, manualCostPrice *float64) (*listingkit.SheinSDSCostGroupRecord, error)
 }
 
@@ -142,6 +143,36 @@ func (h *handler) ListSheinSDSCostGroups(c *gin.Context) {
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_sds_cost_groups_list_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": total})
+}
+
+func (h *handler) ListSheinSourceSDSCostGroups(c *gin.Context) {
+	service, ok := h.sheinSyncService.(sheinSDSCostGroupHandlerService)
+	if !ok {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "shein_source_sds_cost_groups_unavailable", "message": "SHEIN source SDS cost group service is not configured"})
+		return
+	}
+
+	storeID, tenantID, ctx, ok := parseSheinScopedRequest(c)
+	if !ok {
+		return
+	}
+
+	var query listSheinSDSCostGroupsQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	items, total, err := service.ListSourceSDSCostGroups(ctx, &listingkit.SheinSourceSDSCostGroupQuery{
+		TenantID: tenantID,
+		StoreID:  storeID,
+		Page:     query.Page,
+		PageSize: query.PageSize,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_source_sds_cost_groups_list_failed", "message": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": total})

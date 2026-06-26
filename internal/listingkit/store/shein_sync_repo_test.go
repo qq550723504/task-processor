@@ -1185,6 +1185,87 @@ func TestSheinSyncRepositoryUpsertsAndListsSDSCostGroups(t *testing.T) {
 	}
 }
 
+func TestSheinSyncRepositoryListsSourceSDSCostGroupsFromSyncedProducts(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		t.Run(harness.name, func(t *testing.T) {
+			ctx := context.Background()
+			repo := harness.repo
+			legacyCost := 43.3
+
+			sourceRepo, ok := repo.(interface {
+				UpsertSyncedProducts(ctx context.Context, records []*listingkit.SheinSyncedProductRecord) error
+				UpsertSDSCostGroup(ctx context.Context, record *listingkit.SheinSDSCostGroupRecord) error
+				ListSourceSDSCostGroups(ctx context.Context, query *listingkit.SheinSourceSDSCostGroupQuery) ([]listingkit.SheinSourceSDSCostGroupRecord, int64, error)
+			})
+			if !ok {
+				t.Fatalf("%s repo does not implement source SDS cost groups", harness.name)
+			}
+
+			if err := sourceRepo.UpsertSyncedProducts(ctx, []*listingkit.SheinSyncedProductRecord{
+				{
+					TenantID:     11,
+					StoreID:      22,
+					SKCName:      "sg260604223794143925005",
+					SupplierCode: "XB0608021001-DA578653",
+					IsActive:     true,
+				},
+				{
+					TenantID:     11,
+					StoreID:      22,
+					SKCName:      "sg260603162031320517713",
+					SupplierCode: "XB0608021001-DE93508C",
+					IsActive:     true,
+				},
+				{
+					TenantID:     11,
+					StoreID:      22,
+					SKCName:      "sg-other",
+					SupplierCode: "XB0608021002-0199A07E",
+					IsActive:     true,
+				},
+			}); err != nil {
+				t.Fatalf("seed synced products: %v", err)
+			}
+			if err := sourceRepo.UpsertSDSCostGroup(ctx, &listingkit.SheinSDSCostGroupRecord{
+				TenantID:        11,
+				StoreID:         22,
+				GroupKey:        "style:DA578653",
+				GroupLabel:      "DA578653",
+				ManualCostPrice: &legacyCost,
+			}); err != nil {
+				t.Fatalf("seed legacy SDS cost group: %v", err)
+			}
+
+			rows, total, err := sourceRepo.ListSourceSDSCostGroups(ctx, &listingkit.SheinSourceSDSCostGroupQuery{
+				TenantID: 11,
+				StoreID:  22,
+				Page:     1,
+				PageSize: 10,
+			})
+			if err != nil {
+				t.Fatalf("list source SDS cost groups: %v", err)
+			}
+			if total != 2 || len(rows) != 2 {
+				t.Fatalf("groups total=%d len=%d, want 2", total, len(rows))
+			}
+			if rows[0].GroupKey != "source:XB0608021001" {
+				t.Fatalf("first group key = %q, want source:XB0608021001", rows[0].GroupKey)
+			}
+			if rows[0].ProductCount != 2 {
+				t.Fatalf("first product count = %d, want 2", rows[0].ProductCount)
+			}
+			if rows[0].ManualCostPrice == nil || *rows[0].ManualCostPrice != legacyCost {
+				t.Fatalf("first manual cost = %+v, want %.1f", rows[0].ManualCostPrice, legacyCost)
+			}
+			if len(rows[0].Products) != 2 {
+				t.Fatalf("first sample products len = %d, want 2", len(rows[0].Products))
+			}
+		})
+	}
+}
+
 func sheinSyncRepositoryHarnesses(t *testing.T) []sheinSyncRepositoryHarness {
 	t.Helper()
 

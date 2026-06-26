@@ -15,6 +15,7 @@ import type {
   SheinReviewActivityCandidateInput,
   SheinSDSCostGroupListResponse,
   SheinSDSCostGroupQuery,
+  SheinSourceSDSCostGroupListResponse,
   SheinSourceSDSMetadataResponse,
   SheinSyncedProductListResponse,
   SheinSyncedProductQuery,
@@ -89,6 +90,18 @@ export async function getSheinSDSCostGroups(
 ): Promise<SheinSDSCostGroupListResponse> {
   return apiRequest<SheinSDSCostGroupListResponse>(
     `/shein-sync/stores/${storeId}/sds-cost-groups`,
+    {
+      query,
+    },
+  );
+}
+
+export async function getSheinSourceSDSCostGroups(
+  storeId: number,
+  query: SheinSDSCostGroupQuery = {},
+): Promise<SheinSourceSDSCostGroupListResponse> {
+  return apiRequest<SheinSourceSDSCostGroupListResponse>(
+    `/shein-sync/stores/${storeId}/source-sds-cost-groups`,
     {
       query,
     },

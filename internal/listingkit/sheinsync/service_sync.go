@@ -106,6 +106,10 @@ type sheinSDSCostGroupRepository interface {
 	ListSDSCostGroups(ctx context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error)
 }
 
+type sheinSourceSDSCostGroupRepository interface {
+	ListSourceSDSCostGroups(ctx context.Context, query *SheinSourceSDSCostGroupQuery) ([]SheinSourceSDSCostGroupRecord, int64, error)
+}
+
 func (s *sheinSyncService) ListSDSCostGroups(ctx context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error) {
 	if err := s.validateDependencies(); err != nil {
 		return nil, 0, err
@@ -115,6 +119,17 @@ func (s *sheinSyncService) ListSDSCostGroups(ctx context.Context, query *SheinSD
 		return nil, 0, fmt.Errorf("SHEIN SDS cost group repository is unavailable")
 	}
 	return repo.ListSDSCostGroups(ctx, query)
+}
+
+func (s *sheinSyncService) ListSourceSDSCostGroups(ctx context.Context, query *SheinSourceSDSCostGroupQuery) ([]SheinSourceSDSCostGroupRecord, int64, error) {
+	if err := s.validateDependencies(); err != nil {
+		return nil, 0, err
+	}
+	repo, ok := s.repo.(sheinSourceSDSCostGroupRepository)
+	if !ok {
+		return nil, 0, fmt.Errorf("SHEIN source SDS cost group repository is unavailable")
+	}
+	return repo.ListSourceSDSCostGroups(ctx, query)
 }
 
 func (s *sheinSyncService) UpdateSDSCostGroupManualCost(ctx context.Context, tenantID, storeID int64, groupKey, groupLabel string, manualCostPrice *float64) (*SheinSDSCostGroupRecord, error) {

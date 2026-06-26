@@ -918,6 +918,10 @@ func (s *stubListingKitHandler) UpdateSheinSyncedProductCost(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
 }
 
+func (s *stubListingKitHandler) ListSheinSourceSDSCostGroups(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
 func (s *stubListingKitHandler) RefreshSheinActivityCandidates(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"result": gin.H{"eligible_count": 0}})
 }

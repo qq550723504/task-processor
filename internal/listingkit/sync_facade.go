@@ -81,12 +81,14 @@ const (
 
 type SheinSyncedProductRecord = sheinsync.SheinSyncedProductRecord
 type SheinSDSCostGroupRecord = sheinsync.SheinSDSCostGroupRecord
+type SheinSourceSDSCostGroupRecord = sheinsync.SheinSourceSDSCostGroupRecord
 type SheinSyncJobRecord = sheinsync.SheinSyncJobRecord
 type SheinActivityCandidateRecord = sheinsync.SheinActivityCandidateRecord
 type SheinActivityEnrollmentRunRecord = sheinsync.SheinActivityEnrollmentRunRecord
 type SheinActivityEnrollmentItemRecord = sheinsync.SheinActivityEnrollmentItemRecord
 type SheinSyncedProductQuery = sheinsync.SheinSyncedProductQuery
 type SheinSDSCostGroupQuery = sheinsync.SheinSDSCostGroupQuery
+type SheinSourceSDSCostGroupQuery = sheinsync.SheinSourceSDSCostGroupQuery
 type SheinSyncJobQuery = sheinsync.SheinSyncJobQuery
 type SheinActivityCandidateQuery = sheinsync.SheinActivityCandidateQuery
 type SheinEnrollmentRunQuery = sheinsync.SheinEnrollmentRunQuery
@@ -112,6 +114,10 @@ type SheinEnrollmentScheduler = sheinsync.SheinEnrollmentScheduler
 
 func ApplyEffectiveCostPrice(record *SheinSyncedProductRecord) {
 	sheinsync.ApplyEffectiveCostPrice(record)
+}
+
+func ResolveSheinSDSCostGroupIdentity(record SheinSyncedProductRecord) sheinsync.SheinSDSCostGroupIdentity {
+	return sheinsync.ResolveSheinSDSCostGroupIdentity(record)
 }
 
 func NewSheinCostResolver(productAPI sheinproduct.ProductAPI) SheinCostResolver {

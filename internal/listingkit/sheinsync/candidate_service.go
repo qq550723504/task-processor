@@ -335,12 +335,32 @@ func (s *sheinCandidateService) applySDSCostGroupOverrides(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	overrides := make(map[string]float64, len(groups))
+	fetchedCosts := make(map[string]float64, len(groups))
 	for _, group := range groups {
 		if group.ManualCostPrice == nil {
 			continue
 		}
-		overrides[group.GroupKey] = *group.ManualCostPrice
+		fetchedCosts[group.GroupKey] = *group.ManualCostPrice
+	}
+	if len(fetchedCosts) == 0 {
+		return products, nil
+	}
+	overrides := make(map[string]float64)
+	for _, product := range products {
+		identity := ResolveSheinSDSCostGroupIdentity(product)
+		if identity.GroupKey == "" {
+			continue
+		}
+		if cost, ok := fetchedCosts[identity.GroupKey]; ok {
+			overrides[identity.GroupKey] = cost
+			continue
+		}
+		for _, legacyKey := range identity.LegacyGroupKeys {
+			if cost, ok := fetchedCosts[legacyKey]; ok {
+				overrides[identity.GroupKey] = cost
+				break
+			}
+		}
 	}
 	if len(overrides) == 0 {
 		return products, nil
@@ -361,48 +381,32 @@ func sheinCandidateSDSCostGroupKeys(products []SheinSyncedProductRecord) []strin
 	out := make([]string, 0, len(products))
 	seen := map[string]struct{}{}
 	for _, product := range products {
-		key := sheinCandidateSDSCostGroupKey(product)
-		if key == "" {
-			continue
+		for _, key := range sheinCandidateSDSCostGroupKeysForProduct(product) {
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, key)
 		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, key)
 	}
 	return out
 }
 
 func sheinCandidateSDSCostGroupKey(product SheinSyncedProductRecord) string {
-	supplierCode := strings.TrimSpace(product.SupplierCode)
-	if supplierCode == "" {
-		return ""
-	}
-	if suffix, ok := sheinCandidateSDSStyleSuffix(supplierCode); ok {
-		return "style:" + suffix
-	}
-	return "supplier:" + supplierCode
+	return ResolveSheinSDSCostGroupIdentity(product).GroupKey
 }
 
-func sheinCandidateSDSStyleSuffix(supplierCode string) (string, bool) {
-	idx := strings.LastIndex(supplierCode, "-")
-	if idx < 0 || idx == len(supplierCode)-1 {
-		return "", false
+func sheinCandidateSDSCostGroupKeysForProduct(product SheinSyncedProductRecord) []string {
+	identity := ResolveSheinSDSCostGroupIdentity(product)
+	if identity.GroupKey == "" {
+		return nil
 	}
-	suffix := strings.ToUpper(strings.TrimSpace(supplierCode[idx+1:]))
-	if len(suffix) != 8 {
-		return "", false
-	}
-	for _, r := range suffix {
-		switch {
-		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-			continue
-		default:
-			return "", false
-		}
-	}
-	return suffix, true
+	keys := []string{identity.GroupKey}
+	keys = append(keys, identity.LegacyGroupKeys...)
+	return keys
 }
 
 func calculateSheinCandidateProfitRate(costPrice *float64, priceSnapshot string) *float64 {

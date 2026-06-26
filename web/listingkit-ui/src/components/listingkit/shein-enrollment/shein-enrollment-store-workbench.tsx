@@ -26,6 +26,7 @@ import {
   useSheinActivityEnrollmentRuns,
   useSheinEnrollmentStoreSummary,
   useSheinSDSCostGroups,
+  useSheinSourceSDSCostGroups,
   useSheinSyncedProducts,
   useTriggerSheinStoreSync,
   useUpdateSheinSDSCostGroup,
@@ -75,7 +76,7 @@ export function SheinEnrollmentStoreWorkbench({
       page: costsPage,
       page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
     },
-    { enabled: costsTabActive },
+    { enabled: false },
   );
   const candidates = useSheinActivityCandidates(
     storeId,
@@ -87,6 +88,14 @@ export function SheinEnrollmentStoreWorkbench({
     { enabled: candidatesTabActive },
   );
   const sdsCostGroups = useSheinSDSCostGroups(
+    storeId,
+    {
+      page: costsPage,
+      page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
+    },
+    { enabled: false },
+  );
+  const sourceSDSCostGroups = useSheinSourceSDSCostGroups(
     storeId,
     {
       page: costsPage,
@@ -192,13 +201,18 @@ export function SheinEnrollmentStoreWorkbench({
             }
             saving={updateCostMutation.isPending || updateGroupCostMutation.isPending}
             shipmentArea={summary.data?.summary?.region}
+            sourceGroups={sourceSDSCostGroups.data?.items ?? []}
             storeId={storeId}
           />
           <SheinEnrollmentPagination
             onPageChange={setCostsPage}
             page={costsPage}
             pageSize={SHEIN_ENROLLMENT_PAGE_SIZE}
-            total={costProducts.data?.total ?? costProducts.data?.items?.length ?? 0}
+            total={
+              sourceSDSCostGroups.data?.total ??
+              sourceSDSCostGroups.data?.items?.length ??
+              0
+            }
           />
         </section>
       ) : null}

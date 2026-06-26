@@ -9,6 +9,7 @@ import {
   getSheinEnrollmentDashboard,
   getSheinEnrollmentStoreSummary,
   getSheinSDSCostGroups,
+  getSheinSourceSDSCostGroups,
   getSheinSyncedProducts,
   refreshSheinActivityCandidates,
   reviewSheinActivityCandidate,
@@ -89,6 +90,18 @@ export function useSheinSDSCostGroups(
   return useQuery({
     queryKey: listingKitKeys.sheinEnrollmentSDSCostGroups(storeId, query),
     queryFn: () => getSheinSDSCostGroups(storeId, query),
+    enabled: options.enabled !== false && Number.isFinite(storeId) && storeId > 0,
+  });
+}
+
+export function useSheinSourceSDSCostGroups(
+  storeId: number,
+  query: SheinSDSCostGroupQuery,
+  options: QueryOptions = {},
+) {
+  return useQuery({
+    queryKey: listingKitKeys.sheinEnrollmentSourceSDSCostGroups(storeId, query),
+    queryFn: () => getSheinSourceSDSCostGroups(storeId, query),
     enabled: options.enabled !== false && Number.isFinite(storeId) && storeId > 0,
   });
 }

@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { getSheinSourceSDSMetadata } from "@/lib/api/shein-enrollment";
 import type {
   SheinSDSCostGroupRecord,
+  SheinSourceSDSCostGroupRecord,
   SheinSyncedProductRecord,
 } from "@/lib/types/listingkit/shein-enrollment";
 
@@ -25,6 +26,7 @@ type SheinCostGroupRow = {
   groupLabel: string;
   legacyGroupKeys: string[];
   productId?: number;
+  productCount: number;
   products: SheinSyncedProductRecord[];
   sourceSDSCodes: string[];
   manualCostPrice?: number | null;
@@ -37,6 +39,7 @@ export function SheinCostPriceTable({
   onSave,
   saving,
   shipmentArea = "US",
+  sourceGroups,
   storeId,
 }: {
   groups: SheinSDSCostGroupRecord[];
@@ -47,11 +50,18 @@ export function SheinCostPriceTable({
   ) => Promise<void>;
   saving: boolean;
   shipmentArea?: string;
+  sourceGroups?: SheinSourceSDSCostGroupRecord[];
   storeId: number;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [activeImage, setActiveImage] = useState<SheinPreviewImage | null>(null);
-  const rows = useMemo(() => buildSheinCostGroupRows(items, groups), [items, groups]);
+  const rows = useMemo(
+    () =>
+      sourceGroups
+        ? buildSheinCostGroupRowsFromSourceGroups(sourceGroups)
+        : buildSheinCostGroupRows(items, groups),
+    [groups, items, sourceGroups],
+  );
   const sourceSDSCodes = useMemo(
     () => Array.from(new Set(rows.flatMap((row) => row.sourceSDSCodes))).sort(),
     [rows],
@@ -136,7 +146,7 @@ function SheinCostPriceRow({
     <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-4 lg:flex-row lg:items-center">
       <div className="min-w-0 flex-1">
         <p className="font-medium text-zinc-950">
-          {row.groupLabel} · {row.products.length} 个商品
+          {row.groupLabel} · {row.productCount} 个商品
         </p>
         <p className="mt-1 text-xs text-zinc-500">
           {row.products.map((item) => item.skc_name || item.skc_code || "-").join(" / ")}
@@ -279,12 +289,14 @@ export function buildSheinCostGroupRows(
         groupLabel: identity.groupLabel,
         legacyGroupKeys: identity.legacyGroupKeys,
         productId: identity.productId,
+        productCount: 0,
         products: [],
         sourceSDSCodes: [],
         manualCostPrice: findSheinCostGroupRecord(groupByKey, identity)?.manual_cost_price,
         fallbackCostPrice: null,
       };
     row.products.push(item);
+    row.productCount = row.products.length;
     const sourceSDSCode = sheinSourceSDSCode(item.supplier_code);
     if (sourceSDSCode && !row.sourceSDSCodes.includes(sourceSDSCode)) {
       row.sourceSDSCodes.push(sourceSDSCode);
@@ -301,6 +313,29 @@ export function buildSheinCostGroupRows(
   return Array.from(rowsByKey.values()).sort((a, b) =>
     a.groupLabel.localeCompare(b.groupLabel),
   );
+}
+
+export function buildSheinCostGroupRowsFromSourceGroups(
+  sourceGroups: SheinSourceSDSCostGroupRecord[],
+): SheinCostGroupRow[] {
+  return sourceGroups
+    .map((group) => {
+      const sourceCode = group.source_code?.trim() || group.group_label?.trim() || "";
+      const groupKey = group.group_key?.trim() || (sourceCode ? `source:${sourceCode}` : "");
+      const groupLabel = group.group_label?.trim() || sourceCode || groupKey;
+      return {
+        groupKey,
+        groupLabel,
+        legacyGroupKeys: group.legacy_group_keys ?? [],
+        productCount: group.product_count ?? group.products?.length ?? 0,
+        products: group.products ?? [],
+        sourceSDSCodes: sourceCode ? [sourceCode] : [],
+        manualCostPrice: group.manual_cost_price,
+        fallbackCostPrice: null,
+      };
+    })
+    .filter((row) => row.groupKey && row.groupLabel)
+    .sort((a, b) => a.groupLabel.localeCompare(b.groupLabel));
 }
 
 function sheinSourceSDSCode(supplierCode?: string | null) {

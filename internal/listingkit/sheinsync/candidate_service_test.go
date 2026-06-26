@@ -239,7 +239,7 @@ func TestSheinCandidateServiceRefreshCandidatesCalculatesProfitRateFromSharedSDS
 	require.Equal(t, 0.7, *candidates[1].CalculatedProfitRate)
 }
 
-func TestSheinCandidateServiceRefreshCandidatesUsesSharedSDSCostForSameStyleSuffix(t *testing.T) {
+func TestSheinCandidateServiceRefreshCandidatesUsesSharedSDSCostForSameSourceSDS(t *testing.T) {
 	t.Parallel()
 
 	repo := newSheinCandidateRepoStub([]SheinSyncedProductRecord{
@@ -260,7 +260,7 @@ func TestSheinCandidateServiceRefreshCandidatesUsesSharedSDSCostForSameStyleSuff
 			TenantID:           11,
 			StoreID:            22,
 			SKCName:            "canvas-small",
-			SupplierCode:       "MG8006905002-B3195DA6",
+			SupplierCode:       "MG8006905001-C3195DA6",
 			ShelfStatus:        "ON_SHELF",
 			EffectiveCostPrice: float64Ptr(39.1),
 			PriceSnapshot:      `{"sale_price":88}`,
@@ -278,6 +278,47 @@ func TestSheinCandidateServiceRefreshCandidatesUsesSharedSDSCostForSameStyleSuff
 	require.Len(t, candidates, 2)
 	require.Equal(t, 46.8, *candidates[0].EffectiveCostPrice)
 	require.Equal(t, 46.8, *candidates[1].EffectiveCostPrice)
+}
+
+func TestSheinCandidateServiceRefreshCandidatesDoesNotShareSDSCostAcrossSourcesWithSameStyleSuffix(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinCandidateRepoStub([]SheinSyncedProductRecord{
+		{
+			ID:                 311,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "canvas-large",
+			SupplierCode:       "MG8006905001-B3195DA6",
+			ShelfStatus:        "ON_SHELF",
+			EffectiveCostPrice: float64Ptr(46.8),
+			PriceSnapshot:      `{"sale_price":90}`,
+			InventorySnapshot:  `{"available":8}`,
+			IsActive:           true,
+		},
+		{
+			ID:                 312,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "canvas-small",
+			SupplierCode:       "MG8006905002-B3195DA6",
+			ShelfStatus:        "ON_SHELF",
+			EffectiveCostPrice: float64Ptr(39.1),
+			PriceSnapshot:      `{"sale_price":88}`,
+			InventorySnapshot:  `{"available":7}`,
+			IsActive:           true,
+		},
+	})
+
+	service := NewSheinCandidateService(repo)
+
+	_, err := service.RefreshCandidates(context.Background(), 11, 22, "PROMOTION")
+	require.NoError(t, err)
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 2)
+	require.Equal(t, 46.8, *candidates[0].EffectiveCostPrice)
+	require.Equal(t, 39.1, *candidates[1].EffectiveCostPrice)
 }
 
 func TestSheinCandidateServiceRefreshCandidatesUsesSDSCostGroupOverride(t *testing.T) {
@@ -301,7 +342,7 @@ func TestSheinCandidateServiceRefreshCandidatesUsesSDSCostGroupOverride(t *testi
 			TenantID:           11,
 			StoreID:            22,
 			SKCName:            "canvas-small",
-			SupplierCode:       "MG8006905002-B3195DA6",
+			SupplierCode:       "MG8006905001-C3195DA6",
 			ShelfStatus:        "ON_SHELF",
 			EffectiveCostPrice: float64Ptr(39.1),
 			PriceSnapshot:      `{"sale_price":80}`,

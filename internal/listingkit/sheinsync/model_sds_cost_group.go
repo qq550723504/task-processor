@@ -16,3 +16,13 @@ type SheinSDSCostGroupRecord struct {
 func (SheinSDSCostGroupRecord) TableName() string {
 	return "listingkit_shein_sds_cost_groups"
 }
+
+type SheinSourceSDSCostGroupRecord struct {
+	GroupKey        string                     `json:"group_key"`
+	GroupLabel      string                     `json:"group_label"`
+	SourceCode      string                     `json:"source_code"`
+	LegacyGroupKeys []string                   `json:"legacy_group_keys,omitempty"`
+	ProductCount    int64                      `json:"product_count"`
+	Products        []SheinSyncedProductRecord `json:"products,omitempty"`
+	ManualCostPrice *float64                   `json:"manual_cost_price,omitempty"`
+}

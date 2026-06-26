@@ -7,6 +7,7 @@ import { SheinEnrollmentStoreWorkbench } from "@/components/listingkit/shein-enr
 const mocks = vi.hoisted(() => ({
   useSheinEnrollmentStoreSummary: vi.fn(),
   useSheinSDSCostGroups: vi.fn(),
+  useSheinSourceSDSCostGroups: vi.fn(),
   useSheinSyncedProducts: vi.fn(),
   useSheinActivityCandidates: vi.fn(),
   useSheinActivityEnrollmentRuns: vi.fn(),
@@ -23,6 +24,8 @@ vi.mock("@/lib/query/use-shein-enrollment", () => ({
     mocks.useSheinEnrollmentStoreSummary(...args),
   useSheinSDSCostGroups: (...args: unknown[]) =>
     mocks.useSheinSDSCostGroups(...args),
+  useSheinSourceSDSCostGroups: (...args: unknown[]) =>
+    mocks.useSheinSourceSDSCostGroups(...args),
   useSheinSyncedProducts: (...args: unknown[]) => mocks.useSheinSyncedProducts(...args),
   useSheinActivityCandidates: (...args: unknown[]) => mocks.useSheinActivityCandidates(...args),
   useSheinActivityEnrollmentRuns: (...args: unknown[]) =>
@@ -59,6 +62,7 @@ function renderWorkbench({
   candidateTotal,
   summary,
   sdsCostGroups = [],
+  sourceSDSCostGroups = [],
   runTotal,
 }: {
   initialTab?: string;
@@ -68,6 +72,7 @@ function renderWorkbench({
   candidateTotal?: number;
   summary?: Record<string, unknown>;
   sdsCostGroups?: Array<Record<string, unknown>>;
+  sourceSDSCostGroups?: Array<Record<string, unknown>>;
   runTotal?: number;
 }) {
   mocks.useSheinEnrollmentStoreSummary.mockReturnValue({
@@ -88,6 +93,10 @@ function renderWorkbench({
   });
   mocks.useSheinSDSCostGroups.mockReturnValue({
     data: { items: sdsCostGroups },
+    isLoading: false,
+  });
+  mocks.useSheinSourceSDSCostGroups.mockReturnValue({
+    data: { items: sourceSDSCostGroups, total: sourceSDSCostGroups.length },
     isLoading: false,
   });
   mocks.useSheinActivityCandidates.mockReturnValue({
@@ -217,37 +226,35 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
   });
 
-  it("groups cost rows by POD SDS source code in the cost tab", async () => {
+  it("renders cost rows from source POD SDS groups in the cost tab", async () => {
     renderWorkbench({
       initialTab: "costs",
-      products: [
+      sourceSDSCostGroups: [
         {
-          id: 8,
-          skc_name: "sg260604223794143925005",
-          supplier_code: "XB0608021001-DA578653",
-          auto_cost_price: 39.1,
-          effective_cost_price: 39.1,
-        },
-        {
-          id: 9,
-          skc_name: "sg260603162031320517713",
-          supplier_code: "XB0608021001-DE93508C",
-          auto_cost_price: 46.8,
-          effective_cost_price: 46.8,
-        },
-      ],
-      sdsCostGroups: [
-        {
-          group_key: "style:DA578653",
-          group_label: "DA578653",
+          group_key: "source:XB0608021001",
+          group_label: "XB0608021001",
+          source_code: "XB0608021001",
+          product_count: 2,
           manual_cost_price: 50,
+          products: [
+            {
+              id: 8,
+              skc_name: "sg260604223794143925005",
+              supplier_code: "XB0608021001-DA578653",
+            },
+            {
+              id: 9,
+              skc_name: "sg260603162031320517713",
+              supplier_code: "XB0608021001-DE93508C",
+            },
+          ],
         },
       ],
     });
 
     expect(await screen.findByText("XB0608021001 · 2 个商品")).toBeInTheDocument();
-    expect(screen.queryByText("DA578653 · 1 个商品")).not.toBeInTheDocument();
-    expect(screen.queryByText("DE93508C · 1 个商品")).not.toBeInTheDocument();
+    expect(screen.getByText(/sg260604223794143925005/)).toBeInTheDocument();
+    expect(screen.getByText(/sg260603162031320517713/)).toBeInTheDocument();
     expect(screen.getByDisplayValue("50")).toBeInTheDocument();
   });
 
@@ -281,6 +288,14 @@ describe("SheinEnrollmentStoreWorkbench", () => {
         page: 1,
         page_size: 100,
       },
+      { enabled: false },
+    );
+    expect(mocks.useSheinSourceSDSCostGroups).toHaveBeenCalledWith(
+      12,
+      {
+        page: 1,
+        page_size: 100,
+      },
       { enabled: true },
     );
     expect(mocks.useSheinSDSCostGroups).toHaveBeenCalledWith(
@@ -289,7 +304,7 @@ describe("SheinEnrollmentStoreWorkbench", () => {
         page: 1,
         page_size: 100,
       },
-      { enabled: true },
+      { enabled: false },
     );
     expect(mocks.useSheinActivityCandidates).toHaveBeenCalledWith(
       12,

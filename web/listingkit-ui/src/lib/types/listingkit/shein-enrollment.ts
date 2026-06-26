@@ -123,6 +123,21 @@ export type SheinSDSCostGroupListResponse = {
   total?: number;
 };
 
+export type SheinSourceSDSCostGroupRecord = {
+  group_key?: string;
+  group_label?: string;
+  source_code?: string;
+  legacy_group_keys?: string[];
+  product_count?: number;
+  products?: SheinSyncedProductRecord[];
+  manual_cost_price?: number | null;
+};
+
+export type SheinSourceSDSCostGroupListResponse = {
+  items?: SheinSourceSDSCostGroupRecord[];
+  total?: number;
+};
+
 export type SheinSourceSDSMetadataRecord = {
   source_code?: string;
   title?: string;

@@ -22,6 +22,13 @@ type SheinSDSCostGroupQuery struct {
 	PageSize  int
 }
 
+type SheinSourceSDSCostGroupQuery struct {
+	TenantID int64
+	StoreID  int64
+	Page     int
+	PageSize int
+}
+
 type SheinSyncJobQuery struct {
 	TenantID    int64
 	StoreID     int64
