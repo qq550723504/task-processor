@@ -122,6 +122,7 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func NormalizeSubmitImages(product *sheinproduct.Product) {",
 		"func NormalizeSubmitSKUImages(skc *sheinproduct.SKC) {",
 		"func NormalizeSubmitGalleryImages(images []sheinproduct.ImageDetail, includeColorBlock bool) []sheinproduct.ImageDetail {",
+		"return sheinmarketpub.NormalizeSubmitGalleryImages(images, includeColorBlock)",
 		"func DedupeImagesByURL(images []sheinproduct.ImageDetail) []sheinproduct.ImageDetail {",
 		"return sheinmarketpub.DedupeImagesByURL(images)",
 		"return sheinmarketpub.NormalizeSubmitSKUImageDetail(image)",
