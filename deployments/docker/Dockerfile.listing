@@ -28,11 +28,11 @@ FROM ${RUNTIME_BASE_IMAGE}
 
 ENV TZ=Asia/Shanghai
 ENV FINGERPRINT_CHROME_VERSION=144
-ENV FINGERPRINT_CHROME_DIR=/opt/fingerprint-chrome
+ENV FINGERPRINT_CHROME_DIR=/app/chrome
 
 WORKDIR /app
 
-RUN mkdir -p /app/logs /app/tmp /app/chrome /opt/fingerprint-chrome
+RUN mkdir -p /app/logs /app/tmp /app/chrome
 
 COPY --from=builder /app/listing-service /app/listing-service
 COPY --from=builder /app/config ./config

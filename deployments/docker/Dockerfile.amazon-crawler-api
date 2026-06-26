@@ -44,14 +44,14 @@ WORKDIR /app
 
 ENV TZ=Asia/Shanghai
 ENV FINGERPRINT_CHROME_VERSION=144
-ENV FINGERPRINT_CHROME_DIR=/opt/fingerprint-chrome
+ENV FINGERPRINT_CHROME_DIR=/app/chrome
 
 COPY --from=builder /app/playwright-installer /usr/local/bin/playwright-installer
 COPY --from=builder /app/fingerprint-browser-installer /usr/local/bin/fingerprint-browser-installer
 
 RUN chmod +x /usr/local/bin/playwright-installer && \
     chmod +x /usr/local/bin/fingerprint-browser-installer && \
-    mkdir -p /app/logs /app/tmp /app/chrome /opt/fingerprint-chrome && \
+    mkdir -p /app/logs /app/tmp /app/chrome && \
     /usr/local/bin/playwright-installer && \
     /usr/local/bin/fingerprint-browser-installer
 

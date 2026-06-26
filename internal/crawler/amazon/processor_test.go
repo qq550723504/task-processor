@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	amazonbrowser "task-processor/internal/crawler/amazon/browser"
 	"task-processor/internal/model"
 )
 
@@ -77,5 +78,31 @@ func TestAmazonProcessorPoolStatsIncludesInitError(t *testing.T) {
 	}
 	if stats["browser_pool_init_error"] != "初始化浏览器池失败: chromium launch failed" {
 		t.Fatalf("unexpected browser_pool_init_error: %#v", stats["browser_pool_init_error"])
+	}
+}
+
+func TestAmazonProcessorEnsureReadyRetriesInitError(t *testing.T) {
+	ap := &AmazonProcessor{
+		initErr: errors.New("初始化浏览器池失败: browser target closed"),
+	}
+	retried := false
+	ap.retryInit = func(ctx context.Context) error {
+		retried = true
+		ap.mu.Lock()
+		defer ap.mu.Unlock()
+		ap.initErr = nil
+		ap.browserPool = &amazonbrowser.BrowserPool{}
+		ap.poolManager = &amazonbrowser.PoolManager{}
+		return nil
+	}
+
+	if err := ap.ensureReady(context.Background()); err != nil {
+		t.Fatalf("expected retry to recover processor, got %v", err)
+	}
+	if !retried {
+		t.Fatal("expected init retry to run")
+	}
+	if ap.initErr != nil {
+		t.Fatalf("expected init error to be cleared, got %v", ap.initErr)
 	}
 }

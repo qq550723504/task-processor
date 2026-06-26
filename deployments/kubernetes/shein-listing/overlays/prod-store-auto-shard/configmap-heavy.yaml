@@ -43,7 +43,7 @@ data:
     browser:
       enabled: true
       headless: true
-      browserPath: "/opt/fingerprint-chrome/chrome-144/chrome"
+      browserPath: "/app/chrome/chrome-144/chrome"
       poolSize: 8
       viewportWidth: 1920
       viewportHeight: 1080

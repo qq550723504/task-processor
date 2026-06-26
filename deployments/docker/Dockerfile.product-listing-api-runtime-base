@@ -32,7 +32,7 @@ WORKDIR /app
 
 ENV TZ=Asia/Shanghai
 ENV FINGERPRINT_CHROME_VERSION=144
-ENV FINGERPRINT_CHROME_DIR=/opt/fingerprint-chrome
+ENV FINGERPRINT_CHROME_DIR=/app/chrome
 ENV FINGERPRINT_CHROME_DOWNLOAD_TIMEOUT=30m
 
 COPY --from=installer-builder /out/playwright-installer /usr/local/bin/playwright-installer
@@ -49,4 +49,4 @@ RUN apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https
     /usr/local/bin/playwright-installer && \
     /usr/local/bin/fingerprint-browser-installer && \
     fc-cache -f && \
-    mkdir -p /app/logs /app/tmp /app/chrome /opt/fingerprint-chrome
+    mkdir -p /app/logs /app/tmp /app/chrome

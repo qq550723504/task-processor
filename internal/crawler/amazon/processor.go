@@ -25,9 +25,11 @@ type AmazonProcessor struct {
 	timeoutManager       *TimeoutManager
 	qualityMetrics       *qualityMetrics
 	initErr              error
+	initMu               sync.Mutex
+	retryInit            func(context.Context) error
 	shutdownOnce         sync.Once    // 确保只关闭一次
 	closed               bool         // 标记是否已关闭
-	mu                   sync.RWMutex // 保护 closed 字段
+	mu                   sync.RWMutex // 保护状态字段
 }
 
 const defaultAmazonBrowserPoolSize = 3
@@ -39,9 +41,7 @@ func effectiveBrowserPoolSize(cfg *config.Config) int {
 	return defaultAmazonBrowserPoolSize
 }
 
-// NewAmazonProcessor 使用全局配置创建Amazon处理器
-func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
-	// 创建浏览器池配置
+func newAmazonBrowserPoolConfig(cfg *config.Config) *browser.BrowserPoolConfig {
 	poolConfig := browser.DefaultBrowserPoolConfig()
 	poolConfig.Size = effectiveBrowserPoolSize(cfg)
 
@@ -66,28 +66,36 @@ func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
 		configuredSize = cfg.Browser.PoolSize
 	}
 	logger.GetGlobalLogger("crawler/amazon").Infof("创建Amazon处理器，浏览器池大小: %d (配置值: %d)", poolConfig.Size, configuredSize)
+	return poolConfig
+}
+
+func initializeAmazonBrowserPool(cfg *config.Config) (*browser.BrowserPool, *browser.PoolManager, error) {
+	poolConfig := newAmazonBrowserPoolConfig(cfg)
 	browserPool := browser.NewBrowserPool(cfg, poolConfig)
 
+	if err := browserPool.Initialize(); err != nil {
+		logger.GetGlobalLogger("crawler/amazon").Errorf("初始化浏览器池失败: %v", err)
+		return browserPool, nil, newProcessorUnavailableError(fmt.Sprintf("初始化浏览器池失败: %v", err), err)
+	}
+
+	logger.GetGlobalLogger("crawler/amazon").Info("浏览器池初始化成功")
+	return browserPool, browser.NewPoolManager(browserPool), nil
+}
+
+// NewAmazonProcessor 使用全局配置创建Amazon处理器
+func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
 	// 创建辅助组件（需要在浏览器池初始化前创建，因为池管理器需要它们）
 	urlHelper := NewURLHelper()
 	productChecker := NewProductChecker()
 
-	var poolManager *browser.PoolManager
-	var initErr error
-	if err := browserPool.Initialize(); err != nil {
-		logger.GetGlobalLogger("crawler/amazon").Errorf("初始化浏览器池失败: %v", err)
-		initErr = newProcessorUnavailableError(fmt.Sprintf("初始化浏览器池失败: %v", err), err)
-	} else {
-		logger.GetGlobalLogger("crawler/amazon").Info("浏览器池初始化成功")
-		poolManager = browser.NewPoolManager(browserPool)
-	}
+	browserPool, poolManager, initErr := initializeAmazonBrowserPool(cfg)
 
 	batchProcessor := NewBatchProcessor()
 	timeoutManager := NewTimeoutManager(5 * time.Minute) // 默认5分钟超时
 	failureArtifactStore := NewFailureArtifactStore(cfg)
 	qualityMetrics := newQualityMetrics()
 
-	return &AmazonProcessor{
+	processor := &AmazonProcessor{
 		browserPool:          browserPool,
 		poolManager:          poolManager,
 		config:               cfg,
@@ -101,6 +109,8 @@ func NewAmazonProcessor(cfg *config.Config) *AmazonProcessor {
 		initErr:              initErr,
 		closed:               false,
 	}
+	processor.retryInit = processor.retryInitialize
+	return processor
 }
 
 // Process 处理Amazon产品页面
@@ -110,24 +120,83 @@ func (ap *AmazonProcessor) Process(url string, zipcode string) (*model.Product, 
 
 // ProcessWithContext 处理Amazon产品页面（支持 context 传递）
 func (ap *AmazonProcessor) ProcessWithContext(ctx context.Context, url string, zipcode string) (*model.Product, error) {
-	// 检查处理器是否已关闭
-	ap.mu.RLock()
-	if ap.closed {
-		ap.mu.RUnlock()
-		return nil, fmt.Errorf("Amazon处理器已关闭")
-	}
-	ap.mu.RUnlock()
-
-	if ap.initErr != nil {
-		return nil, ap.initErr
+	if err := ap.ensureReady(ctx); err != nil {
+		return nil, err
 	}
 
 	logger.GetGlobalLogger("crawler/amazon").Infof("开始处理Amazon产品: %s", url)
 
-	if ap.poolManager == nil {
-		return nil, newProcessorUnavailableError("Amazon处理器不可用: 浏览器池管理器未初始化", nil)
-	}
 	return ap.processWithPoolManager(ctx, url, zipcode)
+}
+
+func (ap *AmazonProcessor) ensureReady(ctx context.Context) error {
+	ap.mu.RLock()
+	if ap.closed {
+		ap.mu.RUnlock()
+		return fmt.Errorf("Amazon处理器已关闭")
+	}
+	needsRetry := ap.initErr != nil
+	retryInit := ap.retryInit
+	ap.mu.RUnlock()
+
+	if needsRetry && retryInit != nil {
+		ap.initMu.Lock()
+		defer ap.initMu.Unlock()
+
+		ap.mu.RLock()
+		stillNeedsRetry := ap.initErr != nil
+		ap.mu.RUnlock()
+
+		if stillNeedsRetry {
+			if err := retryInit(ctx); err != nil {
+				return err
+			}
+		}
+	}
+
+	ap.mu.RLock()
+	defer ap.mu.RUnlock()
+	if ap.closed {
+		return fmt.Errorf("Amazon处理器已关闭")
+	}
+	if ap.initErr != nil {
+		return ap.initErr
+	}
+	if ap.poolManager == nil {
+		return newProcessorUnavailableError("Amazon处理器不可用: 浏览器池管理器未初始化", nil)
+	}
+	return nil
+}
+
+func (ap *AmazonProcessor) retryInitialize(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	logger.GetGlobalLogger("crawler/amazon").Warn("浏览器池初始化曾失败，尝试重新初始化")
+	browserPool, poolManager, initErr := initializeAmazonBrowserPool(ap.config)
+	if initErr != nil {
+		ap.mu.Lock()
+		ap.browserPool = browserPool
+		ap.poolManager = nil
+		ap.initErr = initErr
+		ap.mu.Unlock()
+		return initErr
+	}
+
+	ap.mu.Lock()
+	oldPool := ap.browserPool
+	ap.browserPool = browserPool
+	ap.poolManager = poolManager
+	ap.initErr = nil
+	ap.mu.Unlock()
+
+	if oldPool != nil && oldPool != browserPool {
+		oldPool.Shutdown()
+	}
+	return nil
 }
 
 // processWithPoolManager 使用池管理器处理
@@ -203,10 +272,10 @@ func (ap *AmazonProcessor) ProcessBatchWithContext(ctx context.Context, requests
 	logger.GetGlobalLogger("crawler/amazon").Infof("开始批量处理 %d 个Amazon产品", len(requests))
 	startTime := time.Now()
 
-	if ap.initErr != nil {
+	if err := ap.ensureReady(ctx); err != nil {
 		results := make([]model.ProductResult, len(requests))
 		for i := range requests {
-			results[i] = model.ProductResult{Error: ap.initErr}
+			results[i] = model.ProductResult{Error: err}
 		}
 		return results
 	}
