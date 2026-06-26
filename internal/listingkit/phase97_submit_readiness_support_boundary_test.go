@@ -111,6 +111,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func HasSubmitImage(pkg *Package) bool {",
 		"func ProductImageInfoHasImage(info *sheinproduct.ImageInfo) bool {",
 		"func SubmitPricingReady(pkg *Package) bool {",
+		"sheinmarketpub.FinalSubmitImagesRequireSKC(action)",
 		"sheinmarketpub.FinalReviewRequired(action)",
 	} {
 		if !strings.Contains(publishingStatusContent, needle) {
@@ -125,6 +126,9 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	}
 	if strings.Contains(publishingStatusContent, `strings.EqualFold(strings.TrimSpace(action), "save_draft")`) {
 		t.Fatal("publishing submit_readiness_status.go should not keep final-review action policy; use marketplace SHEIN publishing policy")
+	}
+	if strings.Contains(publishingStatusContent, `action == "save_draft"`) {
+		t.Fatal("publishing submit_readiness_status.go should not keep final image action policy; use marketplace SHEIN publishing policy")
 	}
 	assertFileAbsent(t, "workspace/shein/source_facts_bridge.go")
 

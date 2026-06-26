@@ -35,7 +35,6 @@ func FinalSubmitImagesReady(pkg *Package, action string) (bool, string) {
 	if pkg == nil || pkg.FinalSubmissionDraft == nil {
 		return true, "旧任务未启用最终图片确认，按兼容路径处理"
 	}
-	action = strings.ToLower(strings.TrimSpace(action))
 	main := strings.TrimSpace(pkg.FinalSubmissionDraft.MainImageURL)
 	if main == "" && pkg.DraftPayload != nil && pkg.DraftPayload.ImageInfo != nil {
 		main = strings.TrimSpace(pkg.DraftPayload.ImageInfo.MainImage)
@@ -46,7 +45,7 @@ func FinalSubmitImagesReady(pkg *Package, action string) (bool, string) {
 	if !HasFinalGalleryImage(pkg) {
 		return false, "最终图库为空，提交前至少需要一张图库图片"
 	}
-	if action == "save_draft" {
+	if !sheinmarketpub.FinalSubmitImagesRequireSKC(action) {
 		return true, "草稿保存图片已具备主图和图库；色块图、SKC 图和尺寸图会在正式发布前严格校验"
 	}
 	if !HasSKCImage(pkg) {
