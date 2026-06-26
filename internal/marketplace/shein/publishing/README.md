@@ -21,6 +21,7 @@ Current stable ownership includes:
 - submit weight unit conversion, rounding, and bound-clamping,
 - submit supplier-code derivation from product and SKU identifiers,
 - submit image URL classification plus upload-cache normalization for uploaded SHEIN hosts and SDS source hosts,
+- submit payload image URL de-duplication rules,
 - remote response parsing rules for on-way documents, record-query success handling, and inventory confirmation.
 - recovered-submit local-recovery acceptance rules for publish/save-draft responses.
 - recovery remote-lookup confirmation policy selection for publish/save-draft responses.
