@@ -144,6 +144,8 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func DeriveSubmitProductSupplierCode(product *sheinproduct.Product) string {",
 		"sheinmarketpub.DeriveSubmitSupplierCode(product.SupplierCode, supplierSKUs)",
 		"func ValidateProductPublishPayload(product *sheinproduct.Product) error {",
+		"return sheinmarketpub.ValidateProductPublishPayload(product)",
+		"return sheinmarketpub.ValidatePreparedProductPublishPayload(product)",
 	} {
 		if !strings.Contains(publishingPolicyContent, needle) {
 			t.Fatalf("publishing submit_payload_policy.go should contain %q", needle)
@@ -153,6 +155,8 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func deriveSubmitSupplierCodeFromSKU(",
 		"func normalizeSubmitStyleSuffix(",
 		"func looksLikeRawBaseSupplierCode(",
+		"return fmt.Errorf(\"SHEIN publish payload is empty\")",
+		"strings.TrimSpace(sku.Length)",
 	} {
 		if strings.Contains(publishingPolicyContent, needle) {
 			t.Fatalf("publishing submit_payload_policy.go should delegate supplier-code string policy instead of keeping %q", needle)
