@@ -681,6 +681,12 @@ Follow-up deletion
 | Management Client runtime retirement | in progress | `internal/app/runtime/listing/local_runtime_health.go` 已从具体 `management.ClientManager` 改为 `listingLocalRuntimeValidator` 小接口；`internal/infra/clients/management/local_listing_runtime_health.go` 暂时提供 `ValidateLocalListingRuntimeFields` 适配方法。下一步仍需继续拆出 `ImportTaskLoader`、`StoreProvider`、`PricingRuleProvider`、`ProductDataProvider` 和 `TaskStatusWriter` 等 runtime-owned ports。 |
 | ListingKit 重构进展快照 | added | `docs/refactoring/listingkit-refactoring-progress-2026-06-24.md` 记录当前后半程状态、核心缺口、两周执行建议和不建议继续做的工作。该文件是 active snapshot，不替代 roadmap 和长期架构文档。 |
 
+2026-06-26 执行对齐：
+
+- 本 roadmap 仍是 ListingKit 重构方向的主来源；`docs/refactoring/listingkit-boundary-checkpoint.md` 记录小步提交、临时 stop line 和 guard-backed seam 状态。
+- 当前执行线先继续 SHEIN marketplace publishing / submission 边界收口，尤其是把稳定的 SHEIN 发布规则迁入 `internal/marketplace/shein/publishing`，并让 `internal/publishing/shein` 只保留兼容模型、状态 mutation 和远端副作用编排。
+- Management Client runtime retirement 仍是长期目标，但当前不与 SHEIN publishing 边界收口混线推进；除非明确回到 management retirement 计划，否则后续切片不应新增或整理 management API 适配层。
+
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 
 ## 14. 完成定义

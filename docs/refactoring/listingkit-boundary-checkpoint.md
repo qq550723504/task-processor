@@ -8,6 +8,8 @@ This checkpoint records the current small-loop refactor state so the next phase 
 
 This wave was intentionally not a broad migration. It tightened existing target packages, added guardrails, and moved only small orchestration seams that already had stable behavior.
 
+Use `docs/refactoring/listingkit-refactoring-roadmap.md` as the directional source of truth. This checkpoint records guard-backed micro-slices and stop lines for the current execution wave; it does not restart the paused Management Client retirement line unless that roadmap stream is explicitly selected again.
+
 ## Completed Seams
 
 ### `internal/listing/studio`
