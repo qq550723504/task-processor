@@ -85,3 +85,24 @@ func TestNormalizeSubmitGalleryImagesAddsSquareAndOptionalColorBlock(t *testing.
 		t.Fatalf("color block URL = %q, want explicit color source", normalized[3].ImageURL)
 	}
 }
+
+func TestBuildSubmitSiteDetailImageInfoListPrefersDetailImages(t *testing.T) {
+	t.Parallel()
+
+	items := BuildSubmitSiteDetailImageInfoList([]sheinproduct.ImageDetail{
+		{ImageType: 1, ImageURL: "https://img.example.com/main.jpg"},
+		{ImageType: 2, ImageURL: "https://img.example.com/detail-1.jpg"},
+		{ImageType: 2, ImageURL: "https://img.example.com/detail-2.jpg"},
+		{ImageType: 5, ImageURL: "https://img.example.com/square.jpg"},
+	})
+
+	if len(items) != 1 || len(items[0].ImageInfoList) != 2 {
+		t.Fatalf("site detail image info = %+v, want two detail images", items)
+	}
+	if items[0].ImageInfoList[0].ImageURL != "https://img.example.com/detail-1.jpg" || items[0].ImageInfoList[0].ImageSort != 1 {
+		t.Fatalf("first detail image = %+v, want detail-1 sort 1", items[0].ImageInfoList[0])
+	}
+	if items[0].ImageInfoList[1].ImageURL != "https://img.example.com/detail-2.jpg" || items[0].ImageInfoList[1].ImageSort != 2 {
+		t.Fatalf("second detail image = %+v, want detail-2 sort 2", items[0].ImageInfoList[1])
+	}
+}
