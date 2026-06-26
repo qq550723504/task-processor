@@ -18,11 +18,26 @@ func (SheinSDSCostGroupRecord) TableName() string {
 }
 
 type SheinSourceSDSCostGroupRecord struct {
+	GroupKey        string                             `json:"group_key"`
+	GroupLabel      string                             `json:"group_label"`
+	SourceCode      string                             `json:"source_code"`
+	SKUCodes        []string                           `json:"sku_codes,omitempty"`
+	SKUGroups       []SheinSourceSDSSKUCostGroupRecord `json:"sku_groups,omitempty"`
+	LegacyGroupKeys []string                           `json:"legacy_group_keys,omitempty"`
+	ProductCount    int64                              `json:"product_count"`
+	Products        []SheinSyncedProductRecord         `json:"products,omitempty"`
+	ManualCostPrice *float64                           `json:"manual_cost_price,omitempty"`
+}
+
+type SheinSourceSDSSKUCostGroupRecord struct {
 	GroupKey        string                     `json:"group_key"`
 	GroupLabel      string                     `json:"group_label"`
 	SourceCode      string                     `json:"source_code"`
-	LegacyGroupKeys []string                   `json:"legacy_group_keys,omitempty"`
-	ProductCount    int64                      `json:"product_count"`
+	SKUCode         string                     `json:"sku_code"`
+	VariantLabel    string                     `json:"variant_label,omitempty"`
+	SKUCodes        []string                   `json:"sku_codes,omitempty"`
+	ProductCount    int64                      `json:"product_count,omitempty"`
 	Products        []SheinSyncedProductRecord `json:"products,omitempty"`
+	LegacyGroupKeys []string                   `json:"legacy_group_keys,omitempty"`
 	ManualCostPrice *float64                   `json:"manual_cost_price,omitempty"`
 }

@@ -128,6 +128,11 @@ func buildSheinSourceSDSCostGroupRows(products []listingkit.SheinSyncedProductRe
 			row.LegacyGroupKeys = appendMissingSheinSourceSDSGroupKeys(row.LegacyGroupKeys, identity.LegacyGroupKeys)
 		}
 		row.ProductCount++
+		row.SKUCodes = appendMissingSheinSourceSDSGroupKeys(row.SKUCodes, listingkit.SheinSyncedProductSKUCodes(product))
+		variantIdentity := listingkit.ResolveSheinSDSVariantCostGroupIdentity(product)
+		if variantIdentity.GroupKey != "" {
+			row.SKUGroups = appendSheinSourceSDSVariantGroupProduct(row.SKUGroups, variantIdentity, product)
+		}
 		if len(row.Products) < 5 {
 			row.Products = append(row.Products, product)
 		}
@@ -141,10 +146,32 @@ func buildSheinSourceSDSCostGroupRows(products []listingkit.SheinSyncedProductRe
 			keySeen[key] = struct{}{}
 			allKeys = append(allKeys, key)
 		}
+		if variantIdentity.GroupKey != "" {
+			for _, key := range append([]string{variantIdentity.GroupKey}, variantIdentity.LegacyGroupKeys...) {
+				if key == "" {
+					continue
+				}
+				if _, ok := keySeen[key]; ok {
+					continue
+				}
+				keySeen[key] = struct{}{}
+				allKeys = append(allKeys, key)
+			}
+		}
 	}
 
 	rows := make([]listingkit.SheinSourceSDSCostGroupRecord, 0, len(rowsByKey))
 	for _, row := range rowsByKey {
+		sort.Strings(row.SKUCodes)
+		for i := range row.SKUGroups {
+			sort.Strings(row.SKUGroups[i].SKUCodes)
+		}
+		sort.Slice(row.SKUGroups, func(i, j int) bool {
+			if row.SKUGroups[i].VariantLabel != row.SKUGroups[j].VariantLabel {
+				return row.SKUGroups[i].VariantLabel < row.SKUGroups[j].VariantLabel
+			}
+			return row.SKUGroups[i].GroupKey < row.SKUGroups[j].GroupKey
+		})
 		rows = append(rows, *row)
 	}
 	sort.Slice(rows, func(i, j int) bool {
@@ -174,16 +201,59 @@ func appendMissingSheinSourceSDSGroupKeys(existing []string, next []string) []st
 	return existing
 }
 
+func appendSheinSourceSDSVariantGroupProduct(
+	existing []listingkit.SheinSourceSDSSKUCostGroupRecord,
+	identity listingkit.SheinSDSCostGroupIdentity,
+	product listingkit.SheinSyncedProductRecord,
+) []listingkit.SheinSourceSDSSKUCostGroupRecord {
+	if identity.GroupKey == "" || identity.VariantLabel == "" {
+		return existing
+	}
+	for i := range existing {
+		if existing[i].GroupKey == identity.GroupKey {
+			existing[i].ProductCount++
+			existing[i].SKUCodes = appendMissingSheinSourceSDSGroupKeys(existing[i].SKUCodes, listingkit.SheinSyncedProductSKUCodes(product))
+			if len(existing[i].Products) < 5 {
+				existing[i].Products = append(existing[i].Products, product)
+			}
+			return existing
+		}
+	}
+	return append(existing, listingkit.SheinSourceSDSSKUCostGroupRecord{
+		GroupKey:        identity.GroupKey,
+		GroupLabel:      identity.GroupLabel,
+		SourceCode:      identity.SourceCode,
+		SKUCode:         identity.SKUCode,
+		VariantLabel:    identity.VariantLabel,
+		SKUCodes:        listingkit.SheinSyncedProductSKUCodes(product),
+		ProductCount:    1,
+		Products:        []listingkit.SheinSyncedProductRecord{product},
+		LegacyGroupKeys: append([]string(nil), identity.LegacyGroupKeys...),
+	})
+}
+
 func applySheinSourceSDSManualCosts(rows []listingkit.SheinSourceSDSCostGroupRecord, costs map[string]*float64) {
 	for i := range rows {
 		if cost, ok := costs[rows[i].GroupKey]; ok {
 			rows[i].ManualCostPrice = cloneFloat64Ptr(cost)
-			continue
+		} else {
+			for _, legacyKey := range rows[i].LegacyGroupKeys {
+				if cost, ok := costs[legacyKey]; ok {
+					rows[i].ManualCostPrice = cloneFloat64Ptr(cost)
+					break
+				}
+			}
 		}
-		for _, legacyKey := range rows[i].LegacyGroupKeys {
-			if cost, ok := costs[legacyKey]; ok {
-				rows[i].ManualCostPrice = cloneFloat64Ptr(cost)
-				break
+		for j := range rows[i].SKUGroups {
+			if cost, ok := costs[rows[i].SKUGroups[j].GroupKey]; ok {
+				rows[i].SKUGroups[j].ManualCostPrice = cloneFloat64Ptr(cost)
+				continue
+			}
+			for _, legacyKey := range rows[i].SKUGroups[j].LegacyGroupKeys {
+				if cost, ok := costs[legacyKey]; ok {
+					rows[i].SKUGroups[j].ManualCostPrice = cloneFloat64Ptr(cost)
+					break
+				}
 			}
 		}
 	}

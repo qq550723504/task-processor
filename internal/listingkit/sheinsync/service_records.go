@@ -42,6 +42,13 @@ func buildSyncedProductRecord(
 }
 
 func buildSheinSiteSnapshot(product sheinproduct.ProductListItem, skc sheinproduct.SkcInfoItem) string {
+	skuCodes := make([]string, 0, len(skc.SkuInfo))
+	for _, sku := range skc.SkuInfo {
+		if sku.SkuCode == "" {
+			continue
+		}
+		skuCodes = append(skuCodes, sku.SkuCode)
+	}
 	payload := map[string]any{
 		"spu_name":           product.SpuName,
 		"spu_code":           product.SpuCode,
@@ -53,6 +60,7 @@ func buildSheinSiteSnapshot(product sheinproduct.ProductListItem, skc sheinprodu
 		"skc_code":           skc.SkcCode,
 		"sale_name":          skc.SaleName,
 		"supplier_code":      skc.SupplierCode,
+		"sku_codes":          skuCodes,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {

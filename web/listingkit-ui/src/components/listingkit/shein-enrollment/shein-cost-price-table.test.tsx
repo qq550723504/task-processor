@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -23,6 +23,7 @@ function renderCostPriceTable(options?: {
     manualCostPrice: number | null,
   ) => Promise<void>;
   shipmentArea?: string;
+  sourceGroups?: Array<Record<string, unknown>>;
 }) {
   const client = new QueryClient({
     defaultOptions: {
@@ -56,6 +57,7 @@ function renderCostPriceTable(options?: {
         onSave={options?.onSave ?? vi.fn()}
         saving={false}
         shipmentArea={options?.shipmentArea}
+        sourceGroups={options?.sourceGroups}
         storeId={870}
       />
     </QueryClientProvider>,
@@ -271,6 +273,83 @@ describe("SheinCostPriceTable", () => {
           productId: undefined,
         },
         45.6,
+      );
+    });
+  });
+
+  it("edits each source product variant once in the child table", async () => {
+    mockSourceMetadataFetch([], "XB0603003001");
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    renderCostPriceTable({
+      onSave,
+      sourceGroups: [
+        {
+          group_key: "source:XB0603003001",
+          group_label: "XB0603003001",
+          source_code: "XB0603003001",
+          sku_codes: ["SKU-BLACK-S", "SKU-BLACK-M"],
+          sku_groups: [
+            {
+              group_key: "source:XB0603003001:variant:WHITE-12",
+              group_label: "XB0603003001 / white / 12*18cm",
+              source_code: "XB0603003001",
+              sku_code: "white / 12*18cm",
+              variant_label: "white / 12*18cm",
+              sku_codes: ["SKU-BLACK-M", "SKU-BLACK-S", "SKU-BLACK-L"],
+              product_count: 10,
+              manual_cost_price: 31.2,
+            },
+            {
+              group_key: "source:XB0603003001:variant:WHITE-15",
+              group_label: "XB0603003001 / white / 15*20cm",
+              source_code: "XB0603003001",
+              sku_code: "white / 15*20cm",
+              variant_label: "white / 15*20cm",
+              sku_codes: ["SKU-WHITE-15-A", "SKU-WHITE-15-B"],
+              product_count: 8,
+              manual_cost_price: 29.8,
+            },
+          ],
+          product_count: 18,
+          products: [
+            {
+              id: 18,
+              skc_name: "sh260603194059486654294",
+              supplier_code: "XB0603003001-181EB5DF",
+              sale_name: "white / 12*18cm",
+              site_snapshot: `{"sku_codes":["SKU-BLACK-S","SKU-BLACK-M","SKU-BLACK-L"]}`,
+            },
+          ],
+          manual_cost_price: 31.2,
+        },
+      ],
+    });
+
+    expect(await screen.findByText("XB0603003001 · 18 个商品")).toBeInTheDocument();
+    const detailTable = screen.getByRole("table", { name: "XB0603003001 明细" });
+    expect(detailTable).toBeInTheDocument();
+    expect(within(detailTable).getAllByRole("textbox")).toHaveLength(2);
+    expect(within(detailTable).getByText("white / 12*18cm")).toBeInTheDocument();
+    expect(within(detailTable).getByText("white / 15*20cm")).toBeInTheDocument();
+    expect(within(detailTable).getByText("10 个商品")).toBeInTheDocument();
+    expect(within(detailTable).getByText("8 个商品")).toBeInTheDocument();
+    expect(within(detailTable).queryByText("sh260603194059486654294 / sh260603194059486654294")).not.toBeInTheDocument();
+    expect(within(detailTable).getByText("SKU-BLACK-L / SKU-BLACK-M / SKU-BLACK-S")).toBeInTheDocument();
+    expect(screen.queryByLabelText("成本价 XB0603003001")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("成本价 XB0603003001 / white / 12*18cm"), {
+      target: { value: "34.5" },
+    });
+    fireEvent.click(within(detailTable).getAllByRole("button", { name: "保存" })[0]);
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith(
+        {
+          groupKey: "source:XB0603003001:variant:WHITE-12",
+          groupLabel: "XB0603003001 / white / 12*18cm",
+        },
+        34.5,
       );
     });
   });

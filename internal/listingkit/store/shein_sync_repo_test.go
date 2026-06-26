@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"reflect"
 	"sort"
 	"testing"
 	"time"
@@ -1261,6 +1262,126 @@ func TestSheinSyncRepositoryListsSourceSDSCostGroupsFromSyncedProducts(t *testin
 			}
 			if len(rows[0].Products) != 2 {
 				t.Fatalf("first sample products len = %d, want 2", len(rows[0].Products))
+			}
+		})
+	}
+}
+
+func TestSheinSyncRepositoryListsSourceSDSCostGroupWithVariantDetailsForMultiVariantProduct(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		t.Run(harness.name, func(t *testing.T) {
+			ctx := context.Background()
+			repo := harness.repo
+			sourceCost := 43.3
+			variantCost := 51.2
+
+			sourceRepo, ok := repo.(interface {
+				UpsertSyncedProducts(ctx context.Context, records []*listingkit.SheinSyncedProductRecord) error
+				UpsertSDSCostGroup(ctx context.Context, record *listingkit.SheinSDSCostGroupRecord) error
+				ListSourceSDSCostGroups(ctx context.Context, query *listingkit.SheinSourceSDSCostGroupQuery) ([]listingkit.SheinSourceSDSCostGroupRecord, int64, error)
+			})
+			if !ok {
+				t.Fatalf("%s repo does not implement source SDS cost groups", harness.name)
+			}
+
+			products := []*listingkit.SheinSyncedProductRecord{
+				{
+					TenantID:     11,
+					StoreID:      22,
+					SKCName:      "sh260603194059486654294",
+					SupplierCode: "XB0603003001-181EB5DF",
+					SaleName:     "white / 12*18cm",
+					SiteSnapshot: `{"sku_codes":["sku-white-12-a","sku-white-12-b"]}`,
+					IsActive:     true,
+				},
+				{
+					TenantID:     11,
+					StoreID:      22,
+					SKCName:      "sh260529213967065725887",
+					SupplierCode: "XB0603003001-3D8E8A5E",
+					SaleName:     "white / 12*18cm",
+					SiteSnapshot: `{"sku_codes":["sku-white-12-c"]}`,
+					IsActive:     true,
+				},
+				{
+					TenantID:     11,
+					StoreID:      22,
+					SKCName:      "sh260530154184491978710",
+					SupplierCode: "XB0603003001-3EB52499",
+					SaleName:     "white / 15*20cm",
+					SiteSnapshot: `{"sku_codes":["sku-white-15-a"]}`,
+					IsActive:     true,
+				},
+			}
+			if err := sourceRepo.UpsertSyncedProducts(ctx, products); err != nil {
+				t.Fatalf("seed synced products: %v", err)
+			}
+			if err := sourceRepo.UpsertSDSCostGroup(ctx, &listingkit.SheinSDSCostGroupRecord{
+				TenantID:        11,
+				StoreID:         22,
+				GroupKey:        "source:XB0603003001",
+				GroupLabel:      "XB0603003001",
+				ManualCostPrice: &sourceCost,
+			}); err != nil {
+				t.Fatalf("seed source SDS cost group: %v", err)
+			}
+			variantIdentity := listingkit.ResolveSheinSDSVariantCostGroupIdentity(*products[0])
+			if err := sourceRepo.UpsertSDSCostGroup(ctx, &listingkit.SheinSDSCostGroupRecord{
+				TenantID:        11,
+				StoreID:         22,
+				GroupKey:        variantIdentity.GroupKey,
+				GroupLabel:      variantIdentity.GroupLabel,
+				ManualCostPrice: &variantCost,
+			}); err != nil {
+				t.Fatalf("seed source SDS variant cost group: %v", err)
+			}
+
+			rows, total, err := sourceRepo.ListSourceSDSCostGroups(ctx, &listingkit.SheinSourceSDSCostGroupQuery{
+				TenantID: 11,
+				StoreID:  22,
+				Page:     1,
+				PageSize: 10,
+			})
+			if err != nil {
+				t.Fatalf("list source SDS cost groups: %v", err)
+			}
+			if total != 1 || len(rows) != 1 {
+				t.Fatalf("groups total=%d len=%d, want 1", total, len(rows))
+			}
+			if rows[0].GroupKey != "source:XB0603003001" {
+				t.Fatalf("group key = %q, want source:XB0603003001", rows[0].GroupKey)
+			}
+			if got, want := rows[0].SKUCodes, []string{"SKU-WHITE-12-A", "SKU-WHITE-12-B", "SKU-WHITE-12-C", "SKU-WHITE-15-A"}; !reflect.DeepEqual(got, want) {
+				t.Fatalf("sku codes = %#v, want %#v", got, want)
+			}
+			if len(rows[0].SKUGroups) != 2 {
+				t.Fatalf("variant groups len = %d, want 2", len(rows[0].SKUGroups))
+			}
+			if rows[0].SKUGroups[0].VariantLabel != "white / 12*18cm" {
+				t.Fatalf("first variant label = %q", rows[0].SKUGroups[0].VariantLabel)
+			}
+			if rows[0].SKUGroups[0].ProductCount != 2 {
+				t.Fatalf("first variant product count = %d, want 2", rows[0].SKUGroups[0].ProductCount)
+			}
+			if got, want := rows[0].SKUGroups[0].SKUCodes, []string{"SKU-WHITE-12-A", "SKU-WHITE-12-B", "SKU-WHITE-12-C"}; !reflect.DeepEqual(got, want) {
+				t.Fatalf("first variant sku codes = %#v, want %#v", got, want)
+			}
+			if rows[0].SKUGroups[0].ManualCostPrice == nil || *rows[0].SKUGroups[0].ManualCostPrice != variantCost {
+				t.Fatalf("first variant manual cost = %+v, want %.1f", rows[0].SKUGroups[0].ManualCostPrice, variantCost)
+			}
+			if rows[0].SKUGroups[1].VariantLabel != "white / 15*20cm" {
+				t.Fatalf("second variant label = %q", rows[0].SKUGroups[1].VariantLabel)
+			}
+			if rows[0].SKUGroups[1].ProductCount != 1 {
+				t.Fatalf("second variant product count = %d, want 1", rows[0].SKUGroups[1].ProductCount)
+			}
+			if rows[0].SKUGroups[1].ManualCostPrice == nil || *rows[0].SKUGroups[1].ManualCostPrice != sourceCost {
+				t.Fatalf("second variant manual cost = %+v, want fallback %.1f", rows[0].SKUGroups[1].ManualCostPrice, sourceCost)
+			}
+			if rows[0].ManualCostPrice == nil || *rows[0].ManualCostPrice != sourceCost {
+				t.Fatalf("manual cost = %+v, want %.1f", rows[0].ManualCostPrice, sourceCost)
 			}
 		})
 	}

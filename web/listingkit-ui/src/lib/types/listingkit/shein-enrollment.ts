@@ -127,9 +127,24 @@ export type SheinSourceSDSCostGroupRecord = {
   group_key?: string;
   group_label?: string;
   source_code?: string;
+  sku_codes?: string[];
+  sku_groups?: SheinSourceSDSSKUCostGroupRecord[];
   legacy_group_keys?: string[];
   product_count?: number;
   products?: SheinSyncedProductRecord[];
+  manual_cost_price?: number | null;
+};
+
+export type SheinSourceSDSSKUCostGroupRecord = {
+  group_key?: string;
+  group_label?: string;
+  source_code?: string;
+  sku_code?: string;
+  variant_label?: string;
+  sku_codes?: string[];
+  product_count?: number;
+  products?: SheinSyncedProductRecord[];
+  legacy_group_keys?: string[];
   manual_cost_price?: number | null;
 };
 

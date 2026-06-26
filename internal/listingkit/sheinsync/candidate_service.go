@@ -345,32 +345,41 @@ func (s *sheinCandidateService) applySDSCostGroupOverrides(ctx context.Context, 
 	if len(fetchedCosts) == 0 {
 		return products, nil
 	}
-	overrides := make(map[string]float64)
-	for _, product := range products {
+	groupOverrides := make(map[string]float64)
+	productOverrides := make(map[int]float64)
+	for index, product := range products {
+		if cost, ok := sheinCandidateVariantCostGroupOverride(product, fetchedCosts); ok {
+			productOverrides[index] = cost
+			continue
+		}
 		identity := ResolveSheinSDSCostGroupIdentity(product)
 		if identity.GroupKey == "" {
 			continue
 		}
 		if cost, ok := fetchedCosts[identity.GroupKey]; ok {
-			overrides[identity.GroupKey] = cost
+			groupOverrides[identity.GroupKey] = cost
 			continue
 		}
 		for _, legacyKey := range identity.LegacyGroupKeys {
 			if cost, ok := fetchedCosts[legacyKey]; ok {
-				overrides[identity.GroupKey] = cost
+				groupOverrides[identity.GroupKey] = cost
 				break
 			}
 		}
 	}
-	if len(overrides) == 0 {
+	if len(productOverrides) == 0 && len(groupOverrides) == 0 {
 		return products, nil
 	}
 
 	out := make([]SheinSyncedProductRecord, len(products))
 	copy(out, products)
 	for i := range out {
+		if cost, ok := productOverrides[i]; ok {
+			out[i].EffectiveCostPrice = sheinFloat64Ptr(cost)
+			continue
+		}
 		key := sheinCandidateSDSCostGroupKey(out[i])
-		if cost, ok := overrides[key]; ok {
+		if cost, ok := groupOverrides[key]; ok {
 			out[i].EffectiveCostPrice = sheinFloat64Ptr(cost)
 		}
 	}
@@ -404,9 +413,30 @@ func sheinCandidateSDSCostGroupKeysForProduct(product SheinSyncedProductRecord) 
 	if identity.GroupKey == "" {
 		return nil
 	}
-	keys := []string{identity.GroupKey}
+	keys := make([]string, 0, 2+len(identity.LegacyGroupKeys)+len(SheinSyncedProductSKUCodes(product)))
+	if variantIdentity := ResolveSheinSDSVariantCostGroupIdentity(product); variantIdentity.GroupKey != "" {
+		keys = append(keys, variantIdentity.GroupKey)
+		keys = append(keys, variantIdentity.LegacyGroupKeys...)
+	}
+	keys = append(keys, identity.GroupKey)
 	keys = append(keys, identity.LegacyGroupKeys...)
 	return keys
+}
+
+func sheinCandidateVariantCostGroupOverride(product SheinSyncedProductRecord, fetchedCosts map[string]float64) (float64, bool) {
+	identity := ResolveSheinSDSVariantCostGroupIdentity(product)
+	if identity.GroupKey == "" {
+		return 0, false
+	}
+	if cost, ok := fetchedCosts[identity.GroupKey]; ok {
+		return cost, true
+	}
+	for _, legacyKey := range identity.LegacyGroupKeys {
+		if cost, ok := fetchedCosts[legacyKey]; ok {
+			return cost, true
+		}
+	}
+	return 0, false
 }
 
 func calculateSheinCandidateProfitRate(costPrice *float64, priceSnapshot string) *float64 {

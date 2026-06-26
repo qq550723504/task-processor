@@ -82,6 +82,8 @@ const (
 type SheinSyncedProductRecord = sheinsync.SheinSyncedProductRecord
 type SheinSDSCostGroupRecord = sheinsync.SheinSDSCostGroupRecord
 type SheinSourceSDSCostGroupRecord = sheinsync.SheinSourceSDSCostGroupRecord
+type SheinSourceSDSSKUCostGroupRecord = sheinsync.SheinSourceSDSSKUCostGroupRecord
+type SheinSDSCostGroupIdentity = sheinsync.SheinSDSCostGroupIdentity
 type SheinSyncJobRecord = sheinsync.SheinSyncJobRecord
 type SheinActivityCandidateRecord = sheinsync.SheinActivityCandidateRecord
 type SheinActivityEnrollmentRunRecord = sheinsync.SheinActivityEnrollmentRunRecord
@@ -118,6 +120,18 @@ func ApplyEffectiveCostPrice(record *SheinSyncedProductRecord) {
 
 func ResolveSheinSDSCostGroupIdentity(record SheinSyncedProductRecord) sheinsync.SheinSDSCostGroupIdentity {
 	return sheinsync.ResolveSheinSDSCostGroupIdentity(record)
+}
+
+func ResolveSheinSDSSKUCostGroupIdentities(record SheinSyncedProductRecord) []sheinsync.SheinSDSCostGroupIdentity {
+	return sheinsync.ResolveSheinSDSSKUCostGroupIdentities(record)
+}
+
+func ResolveSheinSDSVariantCostGroupIdentity(record SheinSyncedProductRecord) sheinsync.SheinSDSCostGroupIdentity {
+	return sheinsync.ResolveSheinSDSVariantCostGroupIdentity(record)
+}
+
+func SheinSyncedProductSKUCodes(record SheinSyncedProductRecord) []string {
+	return sheinsync.SheinSyncedProductSKUCodes(record)
 }
 
 func NewSheinCostResolver(productAPI sheinproduct.ProductAPI) SheinCostResolver {

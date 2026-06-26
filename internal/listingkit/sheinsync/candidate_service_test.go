@@ -369,6 +369,61 @@ func TestSheinCandidateServiceRefreshCandidatesUsesSDSCostGroupOverride(t *testi
 	require.Equal(t, 0.375, *candidates[1].CalculatedProfitRate)
 }
 
+func TestSheinCandidateServiceRefreshCandidatesUsesSourceVariantCostGroupOverride(t *testing.T) {
+	t.Parallel()
+
+	product := SheinSyncedProductRecord{
+		ID:                 405,
+		TenantID:           11,
+		StoreID:            22,
+		SKCName:            "sh260603194059486654294",
+		SupplierCode:       "XB0603003001-181EB5DF",
+		SaleName:           "white / 12*18cm",
+		ShelfStatus:        "ON_SHELF",
+		EffectiveCostPrice: float64Ptr(30),
+		PriceSnapshot:      `{"sale_price":100}`,
+		InventorySnapshot:  `{"available":8}`,
+		SiteSnapshot:       `{"sku_codes":["sku-white-12-a","sku-white-12-b"]}`,
+		IsActive:           true,
+	}
+	repo := newSheinCandidateRepoStub([]SheinSyncedProductRecord{
+		product,
+		{
+			ID:                 406,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "sh260529213967065725887",
+			SupplierCode:       "XB0603003001-3D8E8A5E",
+			SaleName:           "white / 12*18cm",
+			ShelfStatus:        "ON_SHELF",
+			EffectiveCostPrice: float64Ptr(30),
+			PriceSnapshot:      `{"sale_price":100}`,
+			InventorySnapshot:  `{"available":8}`,
+			SiteSnapshot:       `{"sku_codes":["sku-white-12-c"]}`,
+			IsActive:           true,
+		},
+	})
+	variantIdentity := ResolveSheinSDSVariantCostGroupIdentity(product)
+	repo.seedSDSCostGroup(SheinSDSCostGroupRecord{
+		TenantID:        11,
+		StoreID:         22,
+		GroupKey:        variantIdentity.GroupKey,
+		ManualCostPrice: float64Ptr(55),
+	})
+
+	service := NewSheinCandidateService(repo)
+
+	_, err := service.RefreshCandidates(context.Background(), 11, 22, "PROMOTION")
+	require.NoError(t, err)
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 2)
+	require.Equal(t, 55.0, *candidates[0].EffectiveCostPrice)
+	require.Equal(t, 0.45, *candidates[0].CalculatedProfitRate)
+	require.Equal(t, 55.0, *candidates[1].EffectiveCostPrice)
+	require.Equal(t, 0.45, *candidates[1].CalculatedProfitRate)
+}
+
 func TestSheinCandidateServiceRefreshCandidatesMarksNonOnShelfRowsIneligibleAndIgnoresInactiveRows(t *testing.T) {
 	t.Parallel()
 
