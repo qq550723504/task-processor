@@ -1,7 +1,6 @@
 package shein
 
 import (
-	"math"
 	"strings"
 
 	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
@@ -106,17 +105,7 @@ func NormalizeSubmitWeight(sku *sheinproduct.SKU) {
 	if sku == nil {
 		return
 	}
-	weight := convertSubmitWeightToGrams(sku.Weight, sku.WeightUnit)
-	if weight <= 0 {
-		weight = minSubmitWeightGrams
-	}
-	if weight < minSubmitWeightGrams {
-		weight = minSubmitWeightGrams
-	}
-	if weight > maxSubmitWeightGrams {
-		weight = maxSubmitWeightGrams
-	}
-	sku.Weight = roundSubmitWeightGrams(weight)
+	sku.Weight = sheinmarketpub.NormalizeSubmitWeightGrams(sku.Weight, sku.WeightUnit)
 	sku.WeightUnit = "g"
 }
 
@@ -188,28 +177,4 @@ func ensureSubmitDimensions(sku *sheinproduct.SKU) {
 		sku.WeightUnit = "g"
 	}
 	NormalizeSubmitWeight(sku)
-}
-
-func convertSubmitWeightToGrams(value float64, unit string) float64 {
-	if value <= 0 {
-		return 0
-	}
-	switch strings.ToLower(strings.TrimSpace(unit)) {
-	case "", "g", "gram", "grams":
-		return value
-	case "kg", "kilogram", "kilograms":
-		return value * 1000
-	case "lb", "lbs", "pound", "pounds":
-		return value * 453.59237
-	case "oz", "ounce", "ounces":
-		return value * 28.349523125
-	case "mg", "milligram", "milligrams":
-		return value / 1000
-	default:
-		return value
-	}
-}
-
-func roundSubmitWeightGrams(value float64) float64 {
-	return math.Round(value*100) / 100
 }

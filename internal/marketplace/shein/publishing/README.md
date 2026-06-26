@@ -18,6 +18,7 @@ Current stable ownership includes:
 - submit phase default detail wording for publish/save-draft event assembly,
 - sensitive-word retry eligibility for publish failures with validation notes,
 - preferred warehouse-code selection for submit payload defaults,
+- submit weight unit conversion, rounding, and bound-clamping,
 - remote response parsing rules for on-way documents, record-query success handling, and inventory confirmation.
 - recovered-submit local-recovery acceptance rules for publish/save-draft responses.
 - recovery remote-lookup confirmation policy selection for publish/save-draft responses.

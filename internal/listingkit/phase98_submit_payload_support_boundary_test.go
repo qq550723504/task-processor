@@ -96,6 +96,7 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func EnsureSubmitSites(product *sheinproduct.Product, settings SubmitPayloadSettings) {",
 		"func EnsureSubmitSKUs(product *sheinproduct.Product, settings SubmitPayloadSettings) {",
 		"func NormalizeSubmitWeight(sku *sheinproduct.SKU) {",
+		"sheinmarketpub.NormalizeSubmitWeightGrams(sku.Weight, sku.WeightUnit)",
 		"func SubmitPreferredWarehouseCode(settings SubmitPayloadSettings) string {",
 		"sheinmarketpub.SubmitPreferredWarehouseCode(settings.WarehouseCode)",
 	} {
@@ -105,6 +106,9 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 	}
 	if strings.Contains(publishingSiteContent, "for _, item := range strings.Split(settings.WarehouseCode") {
 		t.Fatal("publishing submit_site_sku_policy.go should delegate warehouse CSV selection to marketplace publishing policy")
+	}
+	if strings.Contains(publishingSiteContent, "func convertSubmitWeightToGrams(") {
+		t.Fatal("publishing submit_site_sku_policy.go should delegate weight conversion to marketplace publishing policy")
 	}
 
 	assertFileAbsent(t, "shein_submit_payload_image_support.go")
