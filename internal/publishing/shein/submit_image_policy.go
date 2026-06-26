@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -79,15 +80,11 @@ func ImageInfoPendingUploadCount(info *sheinproduct.ImageInfo) int {
 }
 
 func IsUploadedImageURL(url string) bool {
-	value := strings.ToLower(strings.TrimSpace(url))
-	return strings.Contains(value, "shein.com") ||
-		strings.Contains(value, "sheinimg.com") ||
-		strings.Contains(value, "ltwebstatic.com")
+	return sheinmarketpub.IsUploadedImageURL(url)
 }
 
 func IsSDSImageURL(url string) bool {
-	value := strings.ToLower(strings.TrimSpace(url))
-	return strings.Contains(value, "sdspod.com") || strings.Contains(value, "sdsdiy.com")
+	return sheinmarketpub.IsSDSImageURL(url)
 }
 
 func CloneImageUploadCache(input map[string]string) map[string]string {

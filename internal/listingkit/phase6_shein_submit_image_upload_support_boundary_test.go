@@ -60,4 +60,26 @@ func TestSheinSubmitImageUploadSupportBoundary(t *testing.T) {
 			t.Fatalf("publishing submit_image_upload.go should contain %q", needle)
 		}
 	}
+
+	publishingPolicySrc, err := os.ReadFile("../publishing/shein/submit_image_policy.go")
+	if err != nil {
+		t.Fatalf("ReadFile(../publishing/shein/submit_image_policy.go) error = %v", err)
+	}
+	publishingPolicyContent := string(publishingPolicySrc)
+	for _, needle := range []string{
+		"sheinmarketpub.IsUploadedImageURL(url)",
+		"sheinmarketpub.IsSDSImageURL(url)",
+	} {
+		if !strings.Contains(publishingPolicyContent, needle) {
+			t.Fatalf("publishing submit_image_policy.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		`strings.Contains(value, "shein.com")`,
+		`strings.Contains(value, "sdspod.com")`,
+	} {
+		if strings.Contains(publishingPolicyContent, needle) {
+			t.Fatalf("publishing submit_image_policy.go should delegate URL classification instead of keeping %q", needle)
+		}
+	}
 }
