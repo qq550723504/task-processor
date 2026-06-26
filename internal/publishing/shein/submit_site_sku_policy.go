@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheinstore "task-processor/internal/shein/store"
 )
@@ -97,13 +98,7 @@ func EnsureSubmitSKUs(product *sheinproduct.Product, settings SubmitPayloadSetti
 
 // SubmitPreferredWarehouseCode returns the first configured warehouse code or the SHEIN default sentinel.
 func SubmitPreferredWarehouseCode(settings SubmitPayloadSettings) string {
-	for _, item := range strings.Split(settings.WarehouseCode, ",") {
-		value := strings.TrimSpace(item)
-		if value != "" {
-			return value
-		}
-	}
-	return defaultSubmitWarehouseCode
+	return sheinmarketpub.SubmitPreferredWarehouseCode(settings.WarehouseCode)
 }
 
 // NormalizeSubmitWeight converts SKU weight to grams and clamps it to SHEIN submit bounds.

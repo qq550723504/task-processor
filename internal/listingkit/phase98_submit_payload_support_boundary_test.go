@@ -97,10 +97,14 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func EnsureSubmitSKUs(product *sheinproduct.Product, settings SubmitPayloadSettings) {",
 		"func NormalizeSubmitWeight(sku *sheinproduct.SKU) {",
 		"func SubmitPreferredWarehouseCode(settings SubmitPayloadSettings) string {",
+		"sheinmarketpub.SubmitPreferredWarehouseCode(settings.WarehouseCode)",
 	} {
 		if !strings.Contains(publishingSiteContent, needle) {
 			t.Fatalf("publishing submit_site_sku_policy.go should contain %q", needle)
 		}
+	}
+	if strings.Contains(publishingSiteContent, "for _, item := range strings.Split(settings.WarehouseCode") {
+		t.Fatal("publishing submit_site_sku_policy.go should delegate warehouse CSV selection to marketplace publishing policy")
 	}
 
 	assertFileAbsent(t, "shein_submit_payload_image_support.go")
