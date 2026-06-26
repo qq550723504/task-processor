@@ -91,15 +91,34 @@ func TestSheinSubmitSKUStyleSupportBoundary(t *testing.T) {
 	publishingStyleContent := string(publishingStyleSrc)
 	for _, needle := range []string{
 		"func LooksLikeSubmitRequestToken(token string) bool {",
+		"return sheinmarketpub.LooksLikeSubmitRequestToken(token)",
 		"func LooksLikeSubmitTaskToken(token string) bool {",
+		"return sheinmarketpub.LooksLikeSubmitTaskToken(token)",
 		"func DeriveSubmitStyleSuffix(values ...string) string {",
+		"return sheinmarketpub.DeriveSubmitStyleSuffix(values...)",
 		"func TokenizeStyleSuffixWords(value string) []string {",
+		"return sheinmarketpub.TokenizeStyleSuffixWords(value)",
 		"func SubmitTaskDiscriminator(taskID string) string {",
+		"return sheinmarketpub.SubmitTaskDiscriminator(taskID)",
 		"func SubmitRequestDiscriminator(requestID string) string {",
+		"return sheinmarketpub.SubmitRequestDiscriminator(requestID)",
 		"func CombineSubmitDiscriminators(values ...string) string {",
+		"return sheinmarketpub.CombineSubmitDiscriminators(values...)",
 	} {
 		if !strings.Contains(publishingStyleContent, needle) {
 			t.Fatalf("publishing submit_sku_style.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"stopwords := map[string]bool",
+		"token = strings.TrimSpace(strings.ToUpper(token))",
+		"var builder strings.Builder",
+		"b.WriteString(\"T\")",
+		"b.WriteString(\"R\")",
+		"strings.Join(parts, \"-\")",
+	} {
+		if strings.Contains(publishingStyleContent, needle) {
+			t.Fatalf("publishing submit_sku_style.go should delegate style detail %q", needle)
 		}
 	}
 }
