@@ -20,3 +20,16 @@ func DedupeImagesByURL(images []sheinproduct.ImageDetail) []sheinproduct.ImageDe
 	}
 	return result
 }
+
+// NormalizeSubmitSKUImageDetail normalizes one SKU image detail for SHEIN submit.
+func NormalizeSubmitSKUImageDetail(image sheinproduct.ImageDetail) sheinproduct.ImageDetail {
+	image.ImageType = 1
+	image.ImageSort = 1
+	image.MarketingMainImage = false
+	image.SizeImgFlag = false
+	image.TransformCVSizeImage = false
+	if image.PSTypes == nil {
+		image.PSTypes = []string{}
+	}
+	return image
+}

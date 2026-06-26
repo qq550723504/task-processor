@@ -124,6 +124,7 @@ func TestSheinSubmitPayloadSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func NormalizeSubmitGalleryImages(images []sheinproduct.ImageDetail, includeColorBlock bool) []sheinproduct.ImageDetail {",
 		"func DedupeImagesByURL(images []sheinproduct.ImageDetail) []sheinproduct.ImageDetail {",
 		"return sheinmarketpub.DedupeImagesByURL(images)",
+		"return sheinmarketpub.NormalizeSubmitSKUImageDetail(image)",
 	} {
 		if !strings.Contains(publishingImageContent, needle) {
 			t.Fatalf("publishing submit_payload_images.go should contain %q", needle)

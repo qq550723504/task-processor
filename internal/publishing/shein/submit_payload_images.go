@@ -73,15 +73,7 @@ func NormalizeSubmitSKUImages(skc *sheinproduct.SKC) {
 
 // NormalizeSubmitSKUImageDetail normalizes one SKU image detail for SHEIN submit.
 func NormalizeSubmitSKUImageDetail(image sheinproduct.ImageDetail) sheinproduct.ImageDetail {
-	image.ImageType = 1
-	image.ImageSort = 1
-	image.MarketingMainImage = false
-	image.SizeImgFlag = false
-	image.TransformCVSizeImage = false
-	if image.PSTypes == nil {
-		image.PSTypes = []string{}
-	}
-	return image
+	return sheinmarketpub.NormalizeSubmitSKUImageDetail(image)
 }
 
 // NormalizeSubmitSKCImages normalizes SKC gallery and site detail images for SHEIN submit.

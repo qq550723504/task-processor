@@ -27,3 +27,26 @@ func TestDedupeImagesByURLKeepsFirstNonEmptyURL(t *testing.T) {
 		t.Fatalf("second image = %+v, want first detail image preserved", got[1])
 	}
 }
+
+func TestNormalizeSubmitSKUImageDetailResetsSubmitFields(t *testing.T) {
+	t.Parallel()
+
+	image := NormalizeSubmitSKUImageDetail(sheinproduct.ImageDetail{
+		ImageURL:             "https://img.example.com/sku.jpg",
+		ImageType:            6,
+		ImageSort:            9,
+		MarketingMainImage:   true,
+		SizeImgFlag:          true,
+		TransformCVSizeImage: true,
+	})
+
+	if image.ImageType != 1 || image.ImageSort != 1 {
+		t.Fatalf("image type/sort = %d/%d, want 1/1", image.ImageType, image.ImageSort)
+	}
+	if image.MarketingMainImage || image.SizeImgFlag || image.TransformCVSizeImage {
+		t.Fatalf("submit flags = %+v, want disabled", image)
+	}
+	if image.PSTypes == nil {
+		t.Fatal("PSTypes nil, want empty slice")
+	}
+}
