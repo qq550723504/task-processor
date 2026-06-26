@@ -1,6 +1,9 @@
 package workspace
 
-import sheinpub "task-processor/internal/publishing/shein"
+import (
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
+	sheinpub "task-processor/internal/publishing/shein"
+)
 
 // BuildSubmitPayloadReadinessChecks builds SHEIN payload readiness checks from package state.
 func BuildSubmitPayloadReadinessChecks(pkg *sheinpub.Package, action string) []ReadinessCheckSpec {
@@ -86,7 +89,7 @@ func BuildSubmitPayloadReadinessChecks(pkg *sheinpub.Package, action string) []R
 		"final_review",
 		"最终确认",
 		sheinpub.FinalReviewReady(pkg, action),
-		sheinpub.FinalReviewMessage(action),
+		sheinmarketpub.FinalReviewMessage(action),
 		[]string{"shein.final_draft", "shein.final_review"},
 		"最终确认",
 		false,

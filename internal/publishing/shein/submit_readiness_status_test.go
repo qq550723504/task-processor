@@ -95,9 +95,6 @@ func TestFinalReviewReadyAllowsSaveDraft(t *testing.T) {
 	if !FinalReviewReady(pkg, " save_draft ") {
 		t.Fatal("FinalReviewReady(save_draft) = false, want true")
 	}
-	if got := FinalReviewMessage("save_draft"); got == "" || got == FinalReviewMessage("publish") {
-		t.Fatalf("FinalReviewMessage(save_draft) = %q, want draft-specific message", got)
-	}
 }
 
 func TestHasSubmitImageChecksPackageDraftAndPreviewImages(t *testing.T) {

@@ -111,6 +111,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func HasSubmitImage(pkg *Package) bool {",
 		"func ProductImageInfoHasImage(info *sheinproduct.ImageInfo) bool {",
 		"func SubmitPricingReady(pkg *Package) bool {",
+		"sheinmarketpub.FinalReviewRequired(action)",
 	} {
 		if !strings.Contains(publishingStatusContent, needle) {
 			t.Fatalf("publishing submit_readiness_status.go should contain %q", needle)
@@ -118,6 +119,12 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	}
 	if strings.Contains(publishingStatusContent, "func sheinSourceFactsReady(") {
 		t.Fatal("shein_submit_readiness_status_support.go should not keep a source-facts wrapper; call SHEIN workspace readiness from checks assembly")
+	}
+	if strings.Contains(publishingStatusContent, "func FinalReviewMessage(action string) string {") {
+		t.Fatal("publishing submit_readiness_status.go should not keep final-review message policy; use marketplace SHEIN publishing policy")
+	}
+	if strings.Contains(publishingStatusContent, `strings.EqualFold(strings.TrimSpace(action), "save_draft")`) {
+		t.Fatal("publishing submit_readiness_status.go should not keep final-review action policy; use marketplace SHEIN publishing policy")
 	}
 	assertFileAbsent(t, "workspace/shein/source_facts_bridge.go")
 
@@ -210,6 +217,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	workspacePayloadContent := string(workspacePayloadSrc)
 	for _, needle := range []string{
 		"func BuildSubmitPayloadReadinessChecks(pkg *sheinpub.Package, action string) []ReadinessCheckSpec {",
+		"sheinmarketpub.FinalReviewMessage(action)",
 		"checks = append(checks, BuildManualNotesReadinessCheck(pkg))",
 		"checks = append(checks, BuildSourceFactsReadinessCheck(pkg))",
 	} {
