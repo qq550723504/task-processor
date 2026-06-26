@@ -27,6 +27,10 @@ func TestSheinFinalDraftSupportBoundary(t *testing.T) {
 		"func ReorderFinalDraftProductImages(info *sheinproduct.ImageInfo, order []string, main string, deleted map[string]struct{}, roles map[string]string) {",
 		"func NormalizeImageRoleOverrides(input map[string]string) map[string]string {",
 	})
+	finalDraftSubmitSource := readTaskGenerationSourceFile(t, "../publishing/shein/final_draft_submit.go")
+	assertSourceContainsAll(t, finalDraftSubmitSource, []string{
+		"sheinmarketpub.NormalizeFinalDraftSubmitMode(update.SubmitMode)",
+	})
 	assertSourceExcludesAll(t, adminSource+submitNormalizeSource, []string{
 		"for _, image := range pkg.FinalSubmissionDraft.DeletedImageURLs",
 		"pkg.DraftPayload.ImageInfo.Gallery = images",
@@ -36,5 +40,9 @@ func TestSheinFinalDraftSupportBoundary(t *testing.T) {
 		"func sheinRequestDraftSKCByIndexOrCode(draft *sheinpub.RequestDraft, index int, supplierCode string) *sheinpub.SKCRequestDraft {",
 		"func reorderSheinProductImages(info *sheinproduct.ImageInfo, order []string, main string, deleted map[string]struct{}, roles map[string]string) {",
 		"func normalizeImageRoleOverrides(input map[string]string) map[string]string {",
+	})
+	assertSourceExcludesAll(t, finalDraftSubmitSource, []string{
+		`mode == "publish" || mode == "save_draft"`,
+		"strings.ToLower(strings.TrimSpace(update.SubmitMode))",
 	})
 }

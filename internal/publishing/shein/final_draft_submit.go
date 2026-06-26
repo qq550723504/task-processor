@@ -3,6 +3,8 @@ package shein
 import (
 	"strings"
 	"time"
+
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 )
 
 // FinalDraftUpdate describes admin/user edits to a SHEIN final submission draft.
@@ -30,8 +32,7 @@ func ApplyFinalDraftUpdate(pkg *Package, update FinalDraftUpdate, now time.Time)
 	}
 	draft := pkg.FinalSubmissionDraft
 	if update.SubmitMode != "" {
-		mode := strings.ToLower(strings.TrimSpace(update.SubmitMode))
-		if mode == "publish" || mode == "save_draft" {
+		if mode := sheinmarketpub.NormalizeFinalDraftSubmitMode(update.SubmitMode); mode != "" {
 			draft.SubmitMode = mode
 		}
 	}
