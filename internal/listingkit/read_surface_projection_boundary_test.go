@@ -63,14 +63,13 @@ func TestReadSurfaceProjectionBoundary(t *testing.T) {
 		assertSourceContainsAll(t, source, []string{
 			"domainProjection := previewdomain.BuildResultProjection(previewdomain.ResultProjectionInput{",
 			"Preview: base,",
+			"return adaptPreviewDomainResultProjection(domainProjection, readProjection, task.Result.RevisionHistory)",
+		})
+		assertSourceExcludesAll(t, source, []string{
 			"attachment: listingKitPreviewProjectionAttachment{",
 			"catalog:             adaptPreviewDomainCatalog(domainProjection.Attachment)",
 			"assets:              adaptPreviewDomainAssets(domainProjection.Attachment)",
 			"assetInventory:      adaptPreviewDomainAssetInventory(domainProjection.Attachment)",
-			"assetRenderPreviews: readProjection.AssetRenderPreviews",
-			"platformPreviews:    readProjection.PlatformAssetRenderPreviews",
-			"generationQueue:     readProjection.AssetGenerationQueue",
-			"generationOverview:  readProjection.AssetGenerationOverview",
 		})
 		assertSourceContainsAll(t, applySource, []string{
 			"preview.Catalog = projection.attachment.catalog",

@@ -39,21 +39,7 @@ func buildListingKitPreviewProjection(task *Task, selectedPlatform string) listi
 	domainProjection := previewdomain.BuildResultProjection(previewdomain.ResultProjectionInput{
 		Preview: base,
 	})
-	return listingKitPreviewProjection{
-		overview:    adaptPreviewDomainHeaderWithLegacyPlatformCards(domainProjection.Overview, readProjection.PlatformCards),
-		needsReview: domainProjection.NeedsReview,
-		attachment: listingKitPreviewProjectionAttachment{
-			catalog:             adaptPreviewDomainCatalog(domainProjection.Attachment),
-			assets:              adaptPreviewDomainAssets(domainProjection.Attachment),
-			assetInventory:      adaptPreviewDomainAssetInventory(domainProjection.Attachment),
-			assetRenderPreviews: readProjection.AssetRenderPreviews,
-			platformPreviews:    readProjection.PlatformAssetRenderPreviews,
-			generationQueue:     readProjection.AssetGenerationQueue,
-			generationOverview:  readProjection.AssetGenerationOverview,
-		},
-		revisionMeta:    adaptPreviewDomainRevisionHistoryMeta(domainProjection.RevisionHistoryMeta),
-		revisionHistory: buildRevisionHistoryPreviewItems(task.Result.RevisionHistory),
-	}
+	return adaptPreviewDomainResultProjection(domainProjection, readProjection, task.Result.RevisionHistory)
 }
 
 func applyListingKitPreviewProjection(preview *ListingKitPreview, projection listingKitPreviewProjection) {
