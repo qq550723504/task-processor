@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useState } from "react";
 
 import {
+  isSheinActivityStrategyReady,
+  SheinActivityStrategyCard,
+} from "@/components/listingkit/shein-enrollment/shein-activity-strategy-card";
+import {
   parseSheinActivityType,
   parseSheinEnrollmentTab,
   SHEIN_ENROLLMENT_TABS,
@@ -20,6 +24,7 @@ import { SheinSyncedProductsTable } from "@/components/listingkit/shein-enrollme
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
 import {
   useExecuteSheinActivityEnrollment,
+  useSheinActivityStrategy,
   useRefreshSheinActivityCandidates,
   useReviewSheinActivityCandidate,
   useSheinActivityCandidates,
@@ -30,6 +35,7 @@ import {
   useSheinSyncedProducts,
   useSyncSheinSourceSDSProduct,
   useTriggerSheinStoreSync,
+  useUpdateSheinActivityStrategy,
   useUpdateSheinSDSCostGroup,
   useUpdateSheinSyncedProductCost,
 } from "@/lib/query/use-shein-enrollment";
@@ -61,6 +67,7 @@ export function SheinEnrollmentStoreWorkbench({
   const summary = useSheinEnrollmentStoreSummary(storeId, {
     activity_type: activityType,
   });
+  const activityStrategy = useSheinActivityStrategy(storeId);
 
   const products = useSheinSyncedProducts(
     storeId,
@@ -107,6 +114,7 @@ export function SheinEnrollmentStoreWorkbench({
   const syncMutation = useTriggerSheinStoreSync(storeId);
   const syncSourceProductMutation = useSyncSheinSourceSDSProduct(storeId);
   const refreshMutation = useRefreshSheinActivityCandidates(storeId);
+  const updateActivityStrategyMutation = useUpdateSheinActivityStrategy(storeId);
   const updateCostMutation = useUpdateSheinSyncedProductCost(storeId);
   const updateGroupCostMutation = useUpdateSheinSDSCostGroup(storeId);
   const reviewMutation = useReviewSheinActivityCandidate(storeId);
@@ -120,6 +128,7 @@ export function SheinEnrollmentStoreWorkbench({
     },
     { enabled: runsTabActive },
   );
+  const activityStrategyReady = isSheinActivityStrategyReady(activityStrategy.data);
 
   return (
     <ListingKitPageShell backgroundClassName="overflow-hidden rounded-lg bg-zinc-50" contentClassName="gap-5 px-4 py-4 sm:px-6 sm:py-6">
@@ -225,7 +234,19 @@ export function SheinEnrollmentStoreWorkbench({
 
       {tab === "candidates" ? (
         <section className="space-y-4">
+          <SheinActivityStrategyCard
+            configured={activityStrategy.data?.configured}
+            onSave={(input) =>
+              updateActivityStrategyMutation.mutateAsync(input).then(() => undefined)
+            }
+            saving={updateActivityStrategyMutation.isPending}
+            strategy={activityStrategy.data?.strategy}
+          />
           <SheinCandidatesTable
+            enrollmentDisabled={!activityStrategyReady}
+            enrollmentDisabledReason={
+              activityStrategyReady ? undefined : "先完善活动报名设置"
+            }
             enrolling={enrollMutation.isPending}
             items={candidates.data?.items ?? []}
             key={`${activityType}:${candidatesPage}`}

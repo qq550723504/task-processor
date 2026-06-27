@@ -38,6 +38,8 @@ export const listingKitKeys = {
       "summary",
       compactQueryKeyObject(query),
     ] as const,
+  sheinActivityStrategy: (storeId: number) =>
+    ["listingkit", "shein-enrollment", storeId, "activity-strategy"] as const,
   sheinEnrollmentProducts: (
     storeId: number,
     query: {

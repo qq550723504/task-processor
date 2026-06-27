@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   executeSheinActivityEnrollment,
+  getSheinActivityStrategy,
   getSheinActivityCandidates,
   getSheinActivityEnrollmentRuns,
   getSheinEnrollmentDashboard,
@@ -15,6 +16,7 @@ import {
   reviewSheinActivityCandidate,
   syncSheinSourceSDSProduct,
   triggerSheinStoreSync,
+  updateSheinActivityStrategy,
   updateSheinSDSCostGroup,
   updateSheinSyncedProductCost,
 } from "@/lib/api/shein-enrollment";
@@ -30,6 +32,7 @@ import type {
   SheinSDSCostGroupQuery,
   SheinSyncedProductQuery,
   SheinSyncTriggerMode,
+  SheinUpdateActivityStrategyInput,
 } from "@/lib/types/listingkit/shein-enrollment";
 
 const SHEIN_SYNC_SUMMARY_REFETCH_INTERVAL_MS = 2_000;
@@ -68,6 +71,14 @@ export function useSheinEnrollmentStoreSummary(
         ? SHEIN_SYNC_SUMMARY_REFETCH_INTERVAL_MS
         : false,
     refetchOnWindowFocus: true,
+  });
+}
+
+export function useSheinActivityStrategy(storeId: number) {
+  return useQuery({
+    queryKey: listingKitKeys.sheinActivityStrategy(storeId),
+    queryFn: () => getSheinActivityStrategy(storeId),
+    enabled: Number.isFinite(storeId) && storeId > 0,
   });
 }
 
@@ -153,6 +164,19 @@ export function useSyncSheinSourceSDSProduct(storeId: number) {
   return useMutation({
     mutationFn: (sourceCode: string) =>
       syncSheinSourceSDSProduct(storeId, sourceCode),
+    onSuccess: async () => {
+      await client.invalidateQueries({
+        queryKey: listingKitKeys.sheinEnrollmentStoreScope(storeId),
+      });
+    },
+  });
+}
+
+export function useUpdateSheinActivityStrategy(storeId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SheinUpdateActivityStrategyInput) =>
+      updateSheinActivityStrategy(storeId, input),
     onSuccess: async () => {
       await client.invalidateQueries({
         queryKey: listingKitKeys.sheinEnrollmentStoreScope(storeId),

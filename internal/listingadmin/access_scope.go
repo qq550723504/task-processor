@@ -6,8 +6,9 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"task-processor/internal/authz"
 	"gorm.io/gorm"
+	"task-processor/internal/authz"
+	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 type requestUserIDContextKey struct{}
@@ -53,7 +54,7 @@ func requestUserIDFromContext(ctx context.Context) string {
 	if value, ok := ctx.Value(requestUserIDContextKey{}).(string); ok {
 		return requestUserIDHeader(value)
 	}
-	return ""
+	return requestUserIDHeader(openaiclient.IdentityFromContext(ctx).UserID)
 }
 
 func withRequestIdentity(ctx context.Context, userID string, roles []string) context.Context {

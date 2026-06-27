@@ -69,6 +69,7 @@ type OperationStrategyRepository interface {
 	ListOperationStrategies(ctx context.Context, query OperationStrategyQuery) (*OperationStrategyPage, error)
 	GetOperationStrategy(ctx context.Context, tenantID, id int64) (*OperationStrategy, error)
 	GetLatestByStoreID(ctx context.Context, storeID int64) (*OperationStrategy, error)
+	GetActiveActivityStrategy(ctx context.Context, tenantID, storeID int64, platform, activityType string) (*OperationStrategy, error)
 	CreateOperationStrategy(ctx context.Context, strategy *OperationStrategy) (*OperationStrategy, error)
 	UpdateOperationStrategy(ctx context.Context, strategy *OperationStrategy) (*OperationStrategy, error)
 	UpdateOperationStrategyStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*OperationStrategy, error)

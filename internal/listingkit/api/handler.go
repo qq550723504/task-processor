@@ -10,25 +10,26 @@ import (
 )
 
 type handler struct {
-	taskLifecycleService       listingkit.TaskLifecycleService
-	taskRecoveryService        listingkit.TaskRecoveryService
-	taskRequeueService         listingkit.TaskRequeueService
-	sdsBaselineWarmService     listingkit.SDSBaselineWarmService
-	sdsRetirementService       listingkit.SDSRetirementService
-	generationTaskService      listingkit.GenerationTaskService
-	childTaskRetryService      childTaskRetryService
-	studioMediaService         listingkit.StudioMediaService
-	studioBatchRunService      studioBatchRunHandlerService
-	studioSessionService       studioSessionAsyncJobService
-	uploadedImageDeleteService uploadedImageDeleteService
-	storeAdminService          storeAdminHandlerService
-	storeRepository            listingadmin.StoreRepository
-	sheinSyncService           listingkit.SheinSyncService
-	sheinCandidateService      listingkit.SheinCandidateService
-	sheinEnrollmentService     listingkit.SheinEnrollmentService
-	sheinSyncRepository        listingkit.SheinSyncRepository
-	studioAsyncJobs            studioAsyncJobStoreService
-	initErr                    error
+	taskLifecycleService        listingkit.TaskLifecycleService
+	taskRecoveryService         listingkit.TaskRecoveryService
+	taskRequeueService          listingkit.TaskRequeueService
+	sdsBaselineWarmService      listingkit.SDSBaselineWarmService
+	sdsRetirementService        listingkit.SDSRetirementService
+	generationTaskService       listingkit.GenerationTaskService
+	childTaskRetryService       childTaskRetryService
+	studioMediaService          listingkit.StudioMediaService
+	studioBatchRunService       studioBatchRunHandlerService
+	studioSessionService        studioSessionAsyncJobService
+	uploadedImageDeleteService  uploadedImageDeleteService
+	storeAdminService           storeAdminHandlerService
+	storeRepository             listingadmin.StoreRepository
+	sheinSyncService            listingkit.SheinSyncService
+	sheinCandidateService       listingkit.SheinCandidateService
+	sheinEnrollmentService      listingkit.SheinEnrollmentService
+	sheinSyncRepository         listingkit.SheinSyncRepository
+	operationStrategyRepository listingadmin.OperationStrategyRepository
+	studioAsyncJobs             studioAsyncJobStoreService
+	initErr                     error
 	adminHandlers
 	subscriptionDependencies
 	settingsService settingsNamespaceService

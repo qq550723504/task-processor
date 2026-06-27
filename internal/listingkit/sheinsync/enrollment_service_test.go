@@ -320,6 +320,40 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 	require.ErrorContains(t, errors.New(results[1].ErrorMessage), "filtered")
 }
 
+func TestSheinActivityAdapterRejectsInvalidPromotionDiscountStrategy(t *testing.T) {
+	t.Parallel()
+
+	strategyProvider := &sheinPromotionStrategyProviderStub{
+		strategy: NewSheinPromotionStrategy(SheinPromotionStrategyInput{
+			StoreID:              22,
+			ActivityPriceMode:    "DISCOUNT",
+			ActivityDiscountRate: 0,
+			ActivityStockRatio:   0.5,
+		}),
+	}
+	bridge := &sheinPromotionBridgeStub{}
+	adapter := newSheinActivityAdapter(strategyProvider, bridge)
+
+	results, err := adapter.EnrollCandidates(
+		context.Background(),
+		22,
+		"PROMOTION",
+		"PROMOTION:11:22",
+		[]SheinActivityEnrollmentCandidate{
+			{
+				CandidateID:       1,
+				SKCName:           "skc-approved",
+				PriceSnapshot:     `{"sale_price":29.9,"currency":"USD"}`,
+				InventorySnapshot: `{"available":10}`,
+			},
+		},
+	)
+
+	require.ErrorContains(t, err, "activity discount rate must be between 0 and 1")
+	require.Empty(t, results)
+	require.Empty(t, bridge.calls)
+}
+
 type sheinEnrollmentRepoStub struct {
 	mu                   sync.Mutex
 	nextRunID            int64

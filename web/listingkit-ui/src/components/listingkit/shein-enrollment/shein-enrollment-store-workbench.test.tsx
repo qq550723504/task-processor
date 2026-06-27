@@ -6,6 +6,7 @@ import { SheinEnrollmentStoreWorkbench } from "@/components/listingkit/shein-enr
 
 const mocks = vi.hoisted(() => ({
   useSheinEnrollmentStoreSummary: vi.fn(),
+  useSheinActivityStrategy: vi.fn(),
   useSheinSDSCostGroups: vi.fn(),
   useSheinSourceSDSCostGroups: vi.fn(),
   useSheinSyncedProducts: vi.fn(),
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   useTriggerSheinStoreSync: vi.fn(),
   useSyncSheinSourceSDSProduct: vi.fn(),
   useRefreshSheinActivityCandidates: vi.fn(),
+  useUpdateSheinActivityStrategy: vi.fn(),
   useUpdateSheinSDSCostGroup: vi.fn(),
   useUpdateSheinSyncedProductCost: vi.fn(),
   useReviewSheinActivityCandidate: vi.fn(),
@@ -23,6 +25,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/query/use-shein-enrollment", () => ({
   useSheinEnrollmentStoreSummary: (...args: unknown[]) =>
     mocks.useSheinEnrollmentStoreSummary(...args),
+  useSheinActivityStrategy: (...args: unknown[]) =>
+    mocks.useSheinActivityStrategy(...args),
   useSheinSDSCostGroups: (...args: unknown[]) =>
     mocks.useSheinSDSCostGroups(...args),
   useSheinSourceSDSCostGroups: (...args: unknown[]) =>
@@ -36,6 +40,8 @@ vi.mock("@/lib/query/use-shein-enrollment", () => ({
     mocks.useSyncSheinSourceSDSProduct(...args),
   useRefreshSheinActivityCandidates: (...args: unknown[]) =>
     mocks.useRefreshSheinActivityCandidates(...args),
+  useUpdateSheinActivityStrategy: (...args: unknown[]) =>
+    mocks.useUpdateSheinActivityStrategy(...args),
   useUpdateSheinSDSCostGroup: (...args: unknown[]) =>
     mocks.useUpdateSheinSDSCostGroup(...args),
   useUpdateSheinSyncedProductCost: (...args: unknown[]) =>
@@ -64,6 +70,8 @@ function renderWorkbench({
   candidates = [],
   candidateTotal,
   summary,
+  activityStrategyResponse,
+  updateStrategyMutation,
   sdsCostGroups = [],
   sourceSDSCostGroups = [],
   runTotal,
@@ -75,6 +83,8 @@ function renderWorkbench({
   candidates?: Array<Record<string, unknown>>;
   candidateTotal?: number;
   summary?: Record<string, unknown>;
+  activityStrategyResponse?: Record<string, unknown>;
+  updateStrategyMutation?: ReturnType<typeof resolvedMutation>;
   sdsCostGroups?: Array<Record<string, unknown>>;
   sourceSDSCostGroups?: Array<Record<string, unknown>>;
   runTotal?: number;
@@ -108,6 +118,19 @@ function renderWorkbench({
     data: { items: candidates, total: candidateTotal ?? candidates.length },
     isLoading: false,
   });
+  mocks.useSheinActivityStrategy.mockReturnValue({
+    data: activityStrategyResponse ?? {
+      configured: true,
+      strategy: {
+        activity_price_mode: "DISCOUNT",
+        activity_discount_rate: 0.2,
+        activity_stock_ratio: 0.5,
+        activity_min_profit_rate: 0.15,
+        fixed_price_adjustment: 0,
+      },
+    },
+    isLoading: false,
+  });
   mocks.useSheinActivityEnrollmentRuns.mockReturnValue({
     data: { items: [], total: runTotal ?? 0 },
     isLoading: false,
@@ -115,6 +138,9 @@ function renderWorkbench({
   mocks.useTriggerSheinStoreSync.mockReturnValue(resolvedMutation());
   mocks.useSyncSheinSourceSDSProduct.mockReturnValue(syncSourceMutation ?? resolvedMutation());
   mocks.useRefreshSheinActivityCandidates.mockReturnValue(resolvedMutation());
+  mocks.useUpdateSheinActivityStrategy.mockReturnValue(
+    updateStrategyMutation ?? resolvedMutation(),
+  );
   mocks.useUpdateSheinSDSCostGroup.mockReturnValue(resolvedMutation());
   mocks.useUpdateSheinSyncedProductCost.mockReturnValue(resolvedMutation());
   mocks.useReviewSheinActivityCandidate.mockReturnValue(resolvedMutation());
@@ -188,6 +214,60 @@ describe("SheinEnrollmentStoreWorkbench", () => {
 
     expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
     expect(screen.getByText(/售价 \$29.99/)).toBeInTheDocument();
+  });
+
+  it("requires activity strategy before manual enrollment", async () => {
+    renderWorkbench({
+      initialTab: "candidates",
+      activityStrategyResponse: { configured: false, strategy: null },
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-18",
+          review_status: "approved",
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("选择 SKC-18"));
+
+    expect(screen.getByRole("button", { name: "报名活动" })).toBeDisabled();
+    expect(screen.getByText("先完善活动报名设置")).toBeInTheDocument();
+  });
+
+  it("saves activity strategy from the candidates tab", async () => {
+    const updateStrategyMutation = resolvedMutation();
+    renderWorkbench({
+      initialTab: "candidates",
+      activityStrategyResponse: { configured: false, strategy: null },
+      updateStrategyMutation,
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("spinbutton", { name: "折扣率" }), {
+      target: { value: "0.18" },
+    });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "活动库存比例" }), {
+      target: { value: "0.4" },
+    });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "最低利润率" }), {
+      target: { value: "0.15" },
+    });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "固定调价" }), {
+      target: { value: "1.2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存活动设置" }));
+
+    expect(updateStrategyMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_price_mode: "DISCOUNT",
+      activity_discount_rate: 0.18,
+      activity_stock_ratio: 0.4,
+      activity_min_profit_rate: 0.15,
+      fixed_price_adjustment: 1.2,
+    });
   });
 
   it("shows the latest async sync failure from the store summary", async () => {

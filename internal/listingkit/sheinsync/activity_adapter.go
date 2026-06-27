@@ -105,6 +105,9 @@ func (a *sheinActivityAdapter) enrollPromotionCandidates(
 	if strategy == nil {
 		return nil, fmt.Errorf("SHEIN promotion strategy is required")
 	}
+	if err := strategy.ValidateForPromotionEnrollment(); err != nil {
+		return nil, err
+	}
 
 	products := make([]marketing.SkcInfo, 0, len(candidates))
 	productBySKC := make(map[string]marketing.SkcInfo, len(candidates))

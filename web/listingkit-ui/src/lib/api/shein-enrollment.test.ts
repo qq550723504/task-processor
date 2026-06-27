@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiRequest } from "@/lib/api/client";
 import {
   executeSheinActivityEnrollment,
+  getSheinActivityStrategy,
   getSheinActivityCandidates,
   getSheinActivityEnrollmentRuns,
   getSheinEnrollmentDashboard,
@@ -14,6 +15,7 @@ import {
   reviewSheinActivityCandidate,
   syncSheinSourceSDSProduct,
   triggerSheinStoreSync,
+  updateSheinActivityStrategy,
   updateSheinSDSCostGroup,
   updateSheinSyncedProductCost,
 } from "@/lib/api/shein-enrollment";
@@ -226,6 +228,37 @@ describe("shein enrollment api", () => {
           activity_key: "flash_sale#12",
           page: 1,
           page_size: 20,
+        },
+      },
+    );
+  });
+
+  it("routes activity strategy APIs through store scoped shein sync endpoints", async () => {
+    await getSheinActivityStrategy(12);
+    await updateSheinActivityStrategy(12, {
+      activity_price_mode: "DISCOUNT",
+      activity_discount_rate: 0.18,
+      activity_stock_ratio: 0.4,
+      activity_min_profit_rate: 0.15,
+      fixed_price_adjustment: 1.2,
+    });
+
+    expect(mockedApiRequest).toHaveBeenNthCalledWith(
+      1,
+      "/shein-sync/stores/12/activity-strategy",
+      {},
+    );
+    expect(mockedApiRequest).toHaveBeenNthCalledWith(
+      2,
+      "/shein-sync/stores/12/activity-strategy",
+      {
+        method: "PATCH",
+        body: {
+          activity_price_mode: "DISCOUNT",
+          activity_discount_rate: 0.18,
+          activity_stock_ratio: 0.4,
+          activity_min_profit_rate: 0.15,
+          fixed_price_adjustment: 1.2,
         },
       },
     );

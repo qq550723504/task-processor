@@ -151,3 +151,36 @@ func (r *GormOperationStrategyRepository) GetLatestByStoreID(ctx context.Context
 	strategy := row.toOperationStrategy()
 	return &strategy, nil
 }
+
+func (r *GormOperationStrategyRepository) GetActiveActivityStrategy(ctx context.Context, tenantID, storeID int64, platform, activityType string) (*OperationStrategy, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("operation strategy repository database is not configured")
+	}
+	platform = strings.TrimSpace(platform)
+	activityType = strings.TrimSpace(activityType)
+	if tenantID <= 0 || storeID <= 0 || platform == "" || activityType == "" {
+		return nil, nil
+	}
+
+	var row listingOperationStrategy
+	err := applyOwnerScope(
+		r.db.WithContext(ctx).
+			Table("listing_operation_strategy").
+			Where("tenant_id = ? AND store_id = ? AND platform = ? AND status = 0 AND activity_enabled = 1 AND activity_type = ? AND deleted = 0",
+				tenantID,
+				storeID,
+				platform,
+				activityType,
+			),
+		ctx,
+		"owner_user_id",
+	).Order("id desc").Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	strategy := row.toOperationStrategy()
+	return &strategy, nil
+}

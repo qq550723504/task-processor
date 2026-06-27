@@ -5,6 +5,7 @@ import type {
   ReviewSheinActivityCandidateResponse,
   SheinActivityCandidateListResponse,
   SheinActivityCandidateQuery,
+  SheinActivityStrategyResponse,
   SheinEnrollmentDashboardResponse,
   SheinEnrollmentRunListResponse,
   SheinEnrollmentRunQuery,
@@ -22,6 +23,7 @@ import type {
   SheinSyncTriggerMode,
   SheinUpdateSDSCostGroupInput,
   SheinUpdateSyncedProductCostInput,
+  SheinUpdateActivityStrategyInput,
   SyncSheinSourceSDSProductResponse,
   TriggerSheinStoreSyncResponse,
   UpdateSheinSDSCostGroupResponse,
@@ -80,6 +82,28 @@ export async function getSheinEnrollmentStoreSummary(
     `/shein-sync/stores/${storeId}/summary`,
     {
       query,
+    },
+  );
+}
+
+export async function getSheinActivityStrategy(
+  storeId: number,
+): Promise<SheinActivityStrategyResponse> {
+  return apiRequest<SheinActivityStrategyResponse>(
+    `/shein-sync/stores/${storeId}/activity-strategy`,
+    {},
+  );
+}
+
+export async function updateSheinActivityStrategy(
+  storeId: number,
+  input: SheinUpdateActivityStrategyInput,
+): Promise<SheinActivityStrategyResponse> {
+  return apiRequest<SheinActivityStrategyResponse>(
+    `/shein-sync/stores/${storeId}/activity-strategy`,
+    {
+      method: "PATCH",
+      body: input,
     },
   );
 }

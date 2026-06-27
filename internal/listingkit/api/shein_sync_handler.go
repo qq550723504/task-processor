@@ -53,3 +53,23 @@ type executeSheinActivityEnrollmentRequest struct {
 	TriggerMode  listingkit.SheinEnrollmentRunTriggerMode `json:"trigger_mode"`
 	CandidateIDs []int64                                  `json:"candidate_ids"`
 }
+
+type updateSheinActivityStrategyRequest struct {
+	ActivityPriceMode     string   `json:"activity_price_mode"`
+	ActivityDiscountRate  *float64 `json:"activity_discount_rate"`
+	ActivityStockRatio    *float64 `json:"activity_stock_ratio"`
+	ActivityMinProfitRate *float64 `json:"activity_min_profit_rate"`
+	FixedPriceAdjustment  *float64 `json:"fixed_price_adjustment"`
+}
+
+type sheinActivityStrategyResponse struct {
+	ID                    int64   `json:"id,omitempty"`
+	TenantID              int64   `json:"tenant_id"`
+	StoreID               int64   `json:"store_id"`
+	ActivityType          string  `json:"activity_type"`
+	ActivityPriceMode     string  `json:"activity_price_mode"`
+	ActivityDiscountRate  float64 `json:"activity_discount_rate"`
+	ActivityStockRatio    float64 `json:"activity_stock_ratio"`
+	ActivityMinProfitRate float64 `json:"activity_min_profit_rate"`
+	FixedPriceAdjustment  float64 `json:"fixed_price_adjustment"`
+}

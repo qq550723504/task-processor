@@ -87,8 +87,12 @@ func WithPricingRuleRepository(repo listingadmin.PricingRuleRepository) HandlerO
 }
 
 func WithOperationStrategyRepository(repo listingadmin.OperationStrategyRepository) HandlerOption {
-	return withAdminDependency(repo, func(repo listingadmin.OperationStrategyRepository, admin *adminHandlers) {
-		admin.operationStrategyHandler = listingadmin.NewOperationStrategyHandler(repo)
+	return withHandlerState(func(h *handler) {
+		if repo == nil {
+			return
+		}
+		h.operationStrategyRepository = repo
+		h.adminHandlers.operationStrategyHandler = listingadmin.NewOperationStrategyHandler(repo)
 	})
 }
 

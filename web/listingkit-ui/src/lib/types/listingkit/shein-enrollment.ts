@@ -56,6 +56,33 @@ export type SheinRefreshCandidatesInput = {
   activity_type: string;
 };
 
+export type SheinActivityPriceMode = "DISCOUNT" | "PROFIT";
+
+export type SheinActivityStrategyRecord = {
+  id?: number;
+  tenant_id?: number;
+  store_id?: number;
+  activity_type?: string;
+  activity_price_mode?: SheinActivityPriceMode | string;
+  activity_discount_rate?: number;
+  activity_stock_ratio?: number;
+  activity_min_profit_rate?: number;
+  fixed_price_adjustment?: number;
+};
+
+export type SheinActivityStrategyResponse = {
+  configured?: boolean;
+  strategy?: SheinActivityStrategyRecord | null;
+};
+
+export type SheinUpdateActivityStrategyInput = {
+  activity_price_mode: SheinActivityPriceMode;
+  activity_discount_rate?: number;
+  activity_stock_ratio: number;
+  activity_min_profit_rate?: number;
+  fixed_price_adjustment?: number;
+};
+
 export type SheinUpdateSyncedProductCostInput = {
   manual_cost_price?: number | null;
 };

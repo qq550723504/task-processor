@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
@@ -305,6 +308,107 @@ func TestSyncSheinSourceSDSProductReturnsSyncedCount(t *testing.T) {
 	}
 	if body.SourceCode != "XB0603003001" || body.SyncedCount != 18 {
 		t.Fatalf("body = %+v, want source code and synced count", body)
+	}
+}
+
+func TestGetSheinActivityStrategyReturnsConfiguredPromotionStrategy(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	repo := newSheinActivityStrategyTestRepository(t)
+	discountRate := 0.22
+	stockRatio := 0.45
+	_, err := repo.CreateOperationStrategy(context.Background(), &listingadmin.OperationStrategy{
+		TenantID:             18,
+		StoreID:              2001,
+		Name:                 "SHEIN 活动报名",
+		Platform:             "SHEIN",
+		Status:               0,
+		ActivityEnabled:      true,
+		ActivityType:         "PROMOTION",
+		ActivityPriceMode:    "DISCOUNT",
+		ActivityDiscountRate: &discountRate,
+		ActivityStockRatio:   &stockRatio,
+	})
+	if err != nil {
+		t.Fatalf("seed strategy: %v", err)
+	}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithOperationStrategyRepository(repo))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/shein-sync/stores/:store_id/activity-strategy", h.GetSheinActivityStrategy)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/shein-sync/stores/2001/activity-strategy", nil)
+	req.Header.Set("X-Tenant-ID", "18")
+	req.Header.Set("X-User-ID", "shein-ops")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+	var body struct {
+		Configured bool `json:"configured"`
+		Strategy   struct {
+			StoreID              int64   `json:"store_id"`
+			ActivityType         string  `json:"activity_type"`
+			ActivityPriceMode    string  `json:"activity_price_mode"`
+			ActivityDiscountRate float64 `json:"activity_discount_rate"`
+			ActivityStockRatio   float64 `json:"activity_stock_ratio"`
+		} `json:"strategy"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if !body.Configured || body.Strategy.StoreID != 2001 || body.Strategy.ActivityType != "PROMOTION" {
+		t.Fatalf("body = %+v, want configured promotion strategy", body)
+	}
+	if body.Strategy.ActivityDiscountRate != 0.22 || body.Strategy.ActivityStockRatio != 0.45 {
+		t.Fatalf("strategy rates = discount:%v stock:%v, want 0.22/0.45", body.Strategy.ActivityDiscountRate, body.Strategy.ActivityStockRatio)
+	}
+}
+
+func TestUpdateSheinActivityStrategyCreatesStorePromotionStrategy(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	repo := newSheinActivityStrategyTestRepository(t)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithOperationStrategyRepository(repo))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.PATCH("/api/v1/listing-kits/shein-sync/stores/:store_id/activity-strategy", h.UpdateSheinActivityStrategy)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/listing-kits/shein-sync/stores/2001/activity-strategy", strings.NewReader(`{
+		"activity_price_mode":"DISCOUNT",
+		"activity_discount_rate":0.18,
+		"activity_stock_ratio":0.4,
+		"activity_min_profit_rate":0.15,
+		"fixed_price_adjustment":1.2
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	req.Header.Set("X-User-ID", "shein-ops")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+	strategy, err := repo.GetActiveActivityStrategy(context.Background(), 18, 2001, "SHEIN", "PROMOTION")
+	if err != nil {
+		t.Fatalf("load strategy: %v", err)
+	}
+	if strategy == nil || strategy.Name != "SHEIN 活动报名" || !strategy.ActivityEnabled || strategy.ActivityType != "PROMOTION" {
+		t.Fatalf("strategy = %+v, want active SHEIN promotion strategy", strategy)
+	}
+	if strategy.ActivityDiscountRate == nil || *strategy.ActivityDiscountRate != 0.18 {
+		t.Fatalf("discount rate = %v, want 0.18", strategy.ActivityDiscountRate)
 	}
 }
 
@@ -681,3 +785,62 @@ func sheinTimePtr(v time.Time) *time.Time {
 func float64Ptr(v float64) *float64 {
 	return &v
 }
+
+func newSheinActivityStrategyTestRepository(t *testing.T) *listingadmin.GormOperationStrategyRepository {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&sheinActivityStrategyTestRow{}); err != nil {
+		t.Fatalf("migrate listing_operation_strategy: %v", err)
+	}
+	return listingadmin.NewGormOperationStrategyRepository(db)
+}
+
+type sheinActivityStrategyTestRow struct {
+	ID                           int64      `gorm:"column:id;primaryKey;autoIncrement"`
+	TenantID                     int64      `gorm:"column:tenant_id;not null;index"`
+	OwnerUserID                  string     `gorm:"column:owner_user_id;type:varchar(128);index"`
+	StoreID                      int64      `gorm:"column:store_id;not null;index"`
+	Name                         string     `gorm:"column:name;not null"`
+	Platform                     string     `gorm:"column:platform;not null;index"`
+	Status                       int16      `gorm:"column:status;not null;default:0;index"`
+	StockChangeThreshold         int        `gorm:"column:stock_change_threshold"`
+	StockChangeAction            string     `gorm:"column:stock_change_action"`
+	OutOfStockAction             string     `gorm:"column:out_of_stock_action"`
+	MinProfitRate                float64    `gorm:"column:min_profit_rate"`
+	LowProfitAction              string     `gorm:"column:low_profit_action"`
+	PriceUpdateMultiplier        float64    `gorm:"column:price_update_multiplier"`
+	FixedPriceAdjustment         float64    `gorm:"column:fixed_price_adjustment"`
+	StockUpdateRatio             float64    `gorm:"column:stock_update_ratio"`
+	Remark                       string     `gorm:"column:remark"`
+	ActivityEnabled              int16      `gorm:"column:activity_enabled;not null;default:0"`
+	ActivityType                 string     `gorm:"column:activity_type"`
+	ActivityDiscountRate         float64    `gorm:"column:activity_discount_rate"`
+	ActivityStockRatio           float64    `gorm:"column:activity_stock_ratio"`
+	PromotionRatio               float64    `gorm:"column:promotion_ratio"`
+	ActivityMinProfitRate        float64    `gorm:"column:activity_min_profit_rate"`
+	ActivityPriceMode            string     `gorm:"column:activity_price_mode"`
+	TimeLimitedDiscountRate      float64    `gorm:"column:time_limited_discount_rate"`
+	TimeLimitedMinProfitRate     float64    `gorm:"column:time_limited_min_profit_rate"`
+	TimeLimitedPriceMode         string     `gorm:"column:time_limited_price_mode"`
+	TimeLimitedUserLimit         bool       `gorm:"column:time_limited_user_limit"`
+	TimeLimitedUserLimitNum      int        `gorm:"column:time_limited_user_limit_num"`
+	TimeLimitedStockLimit        bool       `gorm:"column:time_limited_stock_limit"`
+	TimeLimitedStockLimitPercent int        `gorm:"column:time_limited_stock_limit_percent"`
+	PriceIncreaseThreshold       float64    `gorm:"column:price_increase_threshold"`
+	PriceDecreaseThreshold       float64    `gorm:"column:price_decrease_threshold"`
+	PriceIncreaseAction          string     `gorm:"column:price_increase_action"`
+	PriceDecreaseAction          string     `gorm:"column:price_decrease_action"`
+	RestoreStockAmount           int        `gorm:"column:restore_stock_amount"`
+	Creator                      string     `gorm:"column:creator"`
+	CreatedBy                    string     `gorm:"column:created_by;type:varchar(128)"`
+	CreateTime                   *time.Time `gorm:"column:create_time;autoCreateTime"`
+	Updater                      string     `gorm:"column:updater"`
+	UpdatedBy                    string     `gorm:"column:updated_by;type:varchar(128)"`
+	UpdateTime                   *time.Time `gorm:"column:update_time;autoUpdateTime"`
+	Deleted                      int16      `gorm:"column:deleted;not null;default:0;index"`
+}
+
+func (sheinActivityStrategyTestRow) TableName() string { return "listing_operation_strategy" }

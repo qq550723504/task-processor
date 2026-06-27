@@ -8,12 +8,16 @@ import { Input } from "@/components/ui/input";
 import type { SheinActivityCandidateRecord } from "@/lib/types/listingkit/shein-enrollment";
 
 export function SheinCandidatesTable({
+  enrollmentDisabled,
+  enrollmentDisabledReason,
   enrolling,
   items,
   onApprove,
   onEnroll,
   onReject,
 }: {
+  enrollmentDisabled?: boolean;
+  enrollmentDisabledReason?: string;
   enrolling: boolean;
   items: SheinActivityCandidateRecord[];
   onApprove: (candidateId: number) => Promise<void>;
@@ -35,12 +39,15 @@ export function SheinCandidatesTable({
           value={activityKey}
         />
         <Button
-          disabled={enrolling || selectedIds.length === 0}
+          disabled={enrolling || selectedIds.length === 0 || enrollmentDisabled}
           onClick={() => void onEnroll(selectedIds, activityKey.trim())}
           type="button"
         >
           {enrolling ? "报名中..." : "报名活动"}
         </Button>
+        {enrollmentDisabled && enrollmentDisabledReason ? (
+          <span className="text-xs text-amber-700">{enrollmentDisabledReason}</span>
+        ) : null}
       </div>
 
       {items.length === 0 ? (
