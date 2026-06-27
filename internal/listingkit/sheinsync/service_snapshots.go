@@ -8,10 +8,11 @@ import (
 )
 
 type sheinProductSnapshots struct {
-	priceSnapshot     string
-	inventorySnapshot string
-	priceLoaded       bool
-	inventoryLoaded   bool
+	priceSnapshot         string
+	inventorySnapshot     string
+	inventorySKUInfoBySKC map[string][]sheinSiteSnapshotSKUInfo
+	priceLoaded           bool
+	inventoryLoaded       bool
 }
 
 func (s *sheinSyncService) fetchSupplementalSnapshots(
@@ -32,9 +33,39 @@ func (s *sheinSyncService) fetchSupplementalSnapshots(
 	if inventoryResp, err := productAPI.QueryInventory(product.SpuName); err == nil {
 		snapshots.inventoryLoaded = true
 		snapshots.inventorySnapshot = buildSheinInventorySnapshot(inventoryResp, product)
+		snapshots.inventorySKUInfoBySKC = buildSheinInventorySKUInfoBySKC(inventoryResp)
 	}
 
 	return snapshots
+}
+
+func buildSheinInventorySKUInfoBySKC(
+	response *sheinproduct.InventoryQueryResponse,
+) map[string][]sheinSiteSnapshotSKUInfo {
+	if response == nil {
+		return nil
+	}
+	out := make(map[string][]sheinSiteSnapshotSKUInfo, len(response.Info.SkcInfo))
+	for _, skcInventory := range response.Info.SkcInfo {
+		if skcInventory.SkcName == "" {
+			continue
+		}
+		items := make([]sheinSiteSnapshotSKUInfo, 0, len(skcInventory.SkuInfo))
+		for _, skuInventory := range skcInventory.SkuInfo {
+			if skuInventory.SkuCode == "" {
+				continue
+			}
+			items = append(items, sheinSiteSnapshotSKUInfo{
+				SKUCode:      skuInventory.SkuCode,
+				VariantLabel: sheinInventorySKUVariantLabel(skuInventory.SaleNameInfo),
+				SaleNameInfo: sheinSiteSnapshotSaleNameInfoFromInventory(skuInventory.SaleNameInfo),
+			})
+		}
+		if len(items) > 0 {
+			out[skcInventory.SkcName] = items
+		}
+	}
+	return out
 }
 
 func buildSheinPriceSnapshot(

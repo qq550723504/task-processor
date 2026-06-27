@@ -5,6 +5,7 @@ import "github.com/gin-gonic/gin"
 type sheinSyncRouteHandler interface {
 	ListSheinEnrollmentDashboard(c *gin.Context)
 	TriggerSheinStoreSync(c *gin.Context)
+	SyncSheinSourceSDSProduct(c *gin.Context)
 	GetSheinEnrollmentStoreSummary(c *gin.Context)
 	ListSheinSyncedProducts(c *gin.Context)
 	UpdateSheinSyncedProductCost(c *gin.Context)

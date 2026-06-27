@@ -22,6 +22,7 @@ import type {
   SheinSyncTriggerMode,
   SheinUpdateSDSCostGroupInput,
   SheinUpdateSyncedProductCostInput,
+  SyncSheinSourceSDSProductResponse,
   TriggerSheinStoreSyncResponse,
   UpdateSheinSDSCostGroupResponse,
 } from "@/lib/types/listingkit/shein-enrollment";
@@ -43,6 +44,18 @@ export async function triggerSheinStoreSync(
     {
       method: "POST",
       body: input,
+    },
+  );
+}
+
+export async function syncSheinSourceSDSProduct(
+  storeId: number,
+  sourceCode: string,
+): Promise<SyncSheinSourceSDSProductResponse> {
+  return apiRequest<SyncSheinSourceSDSProductResponse>(
+    `/shein-sync/stores/${storeId}/source-sds-products/${encodeURIComponent(sourceCode)}/sync`,
+    {
+      method: "POST",
     },
   );
 }

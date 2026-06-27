@@ -1292,8 +1292,8 @@ func TestSheinSyncRepositoryListsSourceSDSCostGroupWithVariantDetailsForMultiVar
 					StoreID:      22,
 					SKCName:      "sh260603194059486654294",
 					SupplierCode: "XB0603003001-181EB5DF",
-					SaleName:     "white / 12*18cm",
-					SiteSnapshot: `{"sku_codes":["sku-white-12-a","sku-white-12-b"]}`,
+					SaleName:     "多色",
+					SiteSnapshot: `{"sku_info":[{"sku_code":"sku-color-a-12","supplier_sku":"XB0603003001-V381-TF7E6627E-RB6679CE2-7192C992"},{"sku_code":"sku-color-a-20","supplier_sku":"XB0603003002-V382-TF7E6627E-RB6679CE2-7192C992"}]}`,
 					IsActive:     true,
 				},
 				{
@@ -1301,8 +1301,8 @@ func TestSheinSyncRepositoryListsSourceSDSCostGroupWithVariantDetailsForMultiVar
 					StoreID:      22,
 					SKCName:      "sh260529213967065725887",
 					SupplierCode: "XB0603003001-3D8E8A5E",
-					SaleName:     "white / 12*18cm",
-					SiteSnapshot: `{"sku_codes":["sku-white-12-c"]}`,
+					SaleName:     "白色",
+					SiteSnapshot: `{"sku_info":[{"sku_code":"sku-white-12","supplier_sku":"XB0603003001-V381-TF7E6627E-RB6679CE2-7192C992"},{"sku_code":"sku-white-20","supplier_sku":"XB0603003002-V382-TF7E6627E-RB6679CE2-7192C992"}]}`,
 					IsActive:     true,
 				},
 				{
@@ -1310,8 +1310,8 @@ func TestSheinSyncRepositoryListsSourceSDSCostGroupWithVariantDetailsForMultiVar
 					StoreID:      22,
 					SKCName:      "sh260530154184491978710",
 					SupplierCode: "XB0603003001-3EB52499",
-					SaleName:     "white / 15*20cm",
-					SiteSnapshot: `{"sku_codes":["sku-white-15-a"]}`,
+					SaleName:     "White",
+					SiteSnapshot: `{"sku_info":[{"sku_code":"sku-en-12","supplier_sku":"XB0603003001-V381-TF7E6627E-RB6679CE2-7192C992"}]}`,
 					IsActive:     true,
 				},
 			}
@@ -1353,29 +1353,29 @@ func TestSheinSyncRepositoryListsSourceSDSCostGroupWithVariantDetailsForMultiVar
 			if rows[0].GroupKey != "source:XB0603003001" {
 				t.Fatalf("group key = %q, want source:XB0603003001", rows[0].GroupKey)
 			}
-			if got, want := rows[0].SKUCodes, []string{"SKU-WHITE-12-A", "SKU-WHITE-12-B", "SKU-WHITE-12-C", "SKU-WHITE-15-A"}; !reflect.DeepEqual(got, want) {
+			if got, want := rows[0].SKUCodes, []string{"SKU-COLOR-A-12", "SKU-COLOR-A-20", "SKU-EN-12", "SKU-WHITE-12", "SKU-WHITE-20"}; !reflect.DeepEqual(got, want) {
 				t.Fatalf("sku codes = %#v, want %#v", got, want)
 			}
 			if len(rows[0].SKUGroups) != 2 {
 				t.Fatalf("variant groups len = %d, want 2", len(rows[0].SKUGroups))
 			}
-			if rows[0].SKUGroups[0].VariantLabel != "white / 12*18cm" {
+			if rows[0].SKUGroups[0].VariantLabel != "XB0603003001" {
 				t.Fatalf("first variant label = %q", rows[0].SKUGroups[0].VariantLabel)
 			}
-			if rows[0].SKUGroups[0].ProductCount != 2 {
-				t.Fatalf("first variant product count = %d, want 2", rows[0].SKUGroups[0].ProductCount)
+			if rows[0].SKUGroups[0].ProductCount != 3 {
+				t.Fatalf("first variant product count = %d, want 3", rows[0].SKUGroups[0].ProductCount)
 			}
-			if got, want := rows[0].SKUGroups[0].SKUCodes, []string{"SKU-WHITE-12-A", "SKU-WHITE-12-B", "SKU-WHITE-12-C"}; !reflect.DeepEqual(got, want) {
+			if got, want := rows[0].SKUGroups[0].SKUCodes, []string{"SKU-COLOR-A-12", "SKU-EN-12", "SKU-WHITE-12"}; !reflect.DeepEqual(got, want) {
 				t.Fatalf("first variant sku codes = %#v, want %#v", got, want)
 			}
 			if rows[0].SKUGroups[0].ManualCostPrice == nil || *rows[0].SKUGroups[0].ManualCostPrice != variantCost {
 				t.Fatalf("first variant manual cost = %+v, want %.1f", rows[0].SKUGroups[0].ManualCostPrice, variantCost)
 			}
-			if rows[0].SKUGroups[1].VariantLabel != "white / 15*20cm" {
+			if rows[0].SKUGroups[1].VariantLabel != "XB0603003002" {
 				t.Fatalf("second variant label = %q", rows[0].SKUGroups[1].VariantLabel)
 			}
-			if rows[0].SKUGroups[1].ProductCount != 1 {
-				t.Fatalf("second variant product count = %d, want 1", rows[0].SKUGroups[1].ProductCount)
+			if rows[0].SKUGroups[1].ProductCount != 2 {
+				t.Fatalf("second variant product count = %d, want 2", rows[0].SKUGroups[1].ProductCount)
 			}
 			if rows[0].SKUGroups[1].ManualCostPrice == nil || *rows[0].SKUGroups[1].ManualCostPrice != sourceCost {
 				t.Fatalf("second variant manual cost = %+v, want fallback %.1f", rows[0].SKUGroups[1].ManualCostPrice, sourceCost)

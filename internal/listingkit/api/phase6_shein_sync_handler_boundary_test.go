@@ -35,6 +35,7 @@ func TestSheinSyncHandlerFilesOwnSeparatedFamilies(t *testing.T) {
 
 	assertSheinSyncHandlerContainsAll(t, productsFile,
 		"func (h *handler) TriggerSheinStoreSync(",
+		"func (h *handler) SyncSheinSourceSDSProduct(",
 		"func (h *handler) ListSheinSyncedProducts(",
 		"func (h *handler) UpdateSheinSyncedProductCost(",
 	)

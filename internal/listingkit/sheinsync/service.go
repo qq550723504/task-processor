@@ -11,6 +11,7 @@ const sheinSyncCostResolutionConcurrency = 1
 
 type SheinSyncService interface {
 	SyncSheinOnShelfProducts(ctx context.Context, tenantID, storeID int64, triggerMode SheinSyncTriggerMode) (*SheinSyncJobRecord, error)
+	SyncSheinSourceSDSProduct(ctx context.Context, tenantID, storeID int64, sourceCode string) (int, error)
 	ListSyncedProducts(ctx context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error)
 	UpdateManualCostPrice(ctx context.Context, productID int64, manualCostPrice *float64) error
 	ResolveProductAPI(ctx context.Context, storeID int64) (sheinproduct.ProductAPI, error)

@@ -38,6 +38,8 @@ type stubSheinSyncHandlerService struct {
 	syncTenantID  int64
 	syncStoreID   int64
 	syncTrigger   listingkit.SheinSyncTriggerMode
+	sourceCode    string
+	sourceCount   int
 	listCtx       context.Context
 	listQuery     *listingkit.SheinSyncedProductQuery
 	updateCostCtx context.Context
@@ -51,6 +53,14 @@ func (s *stubSheinSyncHandlerService) SyncSheinOnShelfProducts(ctx context.Conte
 	s.syncStoreID = storeID
 	s.syncTrigger = triggerMode
 	return s.job, s.syncErr
+}
+
+func (s *stubSheinSyncHandlerService) SyncSheinSourceSDSProduct(ctx context.Context, tenantID, storeID int64, sourceCode string) (int, error) {
+	s.syncCtx = ctx
+	s.syncTenantID = tenantID
+	s.syncStoreID = storeID
+	s.sourceCode = sourceCode
+	return s.sourceCount, s.syncErr
 }
 
 func (s *stubSheinSyncHandlerService) ListSyncedProducts(ctx context.Context, query *listingkit.SheinSyncedProductQuery) ([]listingkit.SheinSyncedProductRecord, int64, error) {
@@ -251,6 +261,50 @@ func TestTriggerSheinStoreSyncRejectsNonNumericTenantID(t *testing.T) {
 
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestSyncSheinSourceSDSProductReturnsSyncedCount(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	syncSvc := &stubSheinSyncHandlerService{sourceCount: 18}
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithSheinSyncServices(syncSvc, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/shein-sync/stores/:store_id/source-sds-products/:source_code/sync", h.SyncSheinSourceSDSProduct)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/shein-sync/stores/870/source-sds-products/XB0603003001/sync", nil)
+	req.Header.Set("X-Tenant-ID", "227")
+	req.Header.Set("X-User-ID", "373211204509761704")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+	if syncSvc.syncTenantID != 227 || syncSvc.syncStoreID != 870 || syncSvc.sourceCode != "XB0603003001" {
+		t.Fatalf("sync target = tenant:%d store:%d source:%q, want tenant:227 store:870 source:XB0603003001", syncSvc.syncTenantID, syncSvc.syncStoreID, syncSvc.sourceCode)
+	}
+	if got := listingkit.TenantIDFromContext(syncSvc.syncCtx); got != "227" {
+		t.Fatalf("tenant in ctx = %q, want 227", got)
+	}
+
+	var body struct {
+		SourceCode  string `json:"source_code"`
+		SyncedCount int    `json:"synced_count"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if body.SourceCode != "XB0603003001" || body.SyncedCount != 18 {
+		t.Fatalf("body = %+v, want source code and synced count", body)
 	}
 }
 

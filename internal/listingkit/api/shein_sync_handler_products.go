@@ -52,6 +52,30 @@ func (h *handler) TriggerSheinStoreSync(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"job": job})
 }
 
+func (h *handler) SyncSheinSourceSDSProduct(c *gin.Context) {
+	if h.sheinSyncService == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "shein_sync_unavailable", "message": "SHEIN sync service is not configured"})
+		return
+	}
+
+	storeID, tenantID, ctx, ok := parseSheinScopedRequest(c)
+	if !ok {
+		return
+	}
+	sourceCode, err := url.PathUnescape(strings.TrimSpace(c.Param("source_code")))
+	if err != nil || strings.TrimSpace(sourceCode) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "source_code is required"})
+		return
+	}
+
+	syncedCount, err := h.sheinSyncService.SyncSheinSourceSDSProduct(ctx, tenantID, storeID, sourceCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_source_sds_product_sync_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"source_code": sourceCode, "synced_count": syncedCount})
+}
+
 func (h *handler) ListSheinSyncedProducts(c *gin.Context) {
 	if h.sheinSyncService == nil {
 		c.JSON(http.StatusNotImplemented, gin.H{"error": "shein_sync_unavailable", "message": "SHEIN sync service is not configured"})

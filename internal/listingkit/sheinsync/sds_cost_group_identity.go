@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"sort"
 	"strings"
 )
 
@@ -13,6 +14,7 @@ type SheinSDSCostGroupIdentity struct {
 	SourceCode      string
 	SKUCode         string
 	VariantLabel    string
+	SKUCodes        []string
 	LegacyGroupKeys []string
 }
 
@@ -76,33 +78,90 @@ func ResolveSheinSDSSKUCostGroupIdentities(product SheinSyncedProductRecord) []S
 }
 
 func ResolveSheinSDSVariantCostGroupIdentity(product SheinSyncedProductRecord) SheinSDSCostGroupIdentity {
+	identities := ResolveSheinSDSVariantCostGroupIdentities(product)
+	if len(identities) > 0 {
+		return identities[0]
+	}
+	return SheinSDSCostGroupIdentity{}
+}
+
+func ResolveSheinSDSVariantCostGroupIdentities(product SheinSyncedProductRecord) []SheinSDSCostGroupIdentity {
 	base := ResolveSheinSDSCostGroupIdentity(product)
 	if base.GroupKey == "" || base.SourceCode == "" {
-		return SheinSDSCostGroupIdentity{}
+		return nil
 	}
 
-	variantLabel := sheinSyncedProductVariantLabel(product)
-	if variantLabel == "" {
-		return SheinSDSCostGroupIdentity{}
+	skuInfos := SheinSyncedProductSKUInfos(product)
+	variants := make(map[string][]string)
+	for _, skuInfo := range skuInfos {
+		variantCode := sheinSourceVariantCodeFromSupplierSKU(skuInfo.SupplierSKU)
+		if variantCode == "" {
+			continue
+		}
+		variants[variantCode] = appendMissingString(variants[variantCode], skuInfo.SKUCode)
+	}
+	if len(variants) == 0 {
+		for _, skuInfo := range skuInfos {
+			variantLabel := strings.TrimSpace(skuInfo.VariantLabel)
+			if variantLabel == "" {
+				continue
+			}
+			variants[variantLabel] = appendMissingString(variants[variantLabel], skuInfo.SKUCode)
+		}
+	}
+	if len(variants) == 0 {
+		variantLabel := sheinSyncedProductVariantLabel(product)
+		if variantLabel == "" {
+			return nil
+		}
+		variants[variantLabel] = SheinSyncedProductSKUCodes(product)
 	}
 
-	legacyKeys := make([]string, 0, len(base.LegacyGroupKeys)+1+len(SheinSyncedProductSKUCodes(product)))
-	legacyKeys = append(legacyKeys, base.GroupKey)
-	legacyKeys = append(legacyKeys, base.LegacyGroupKeys...)
-	for _, skuCode := range SheinSyncedProductSKUCodes(product) {
-		legacyKeys = append(legacyKeys, base.GroupKey+":sku:"+skuCode)
+	out := make([]SheinSDSCostGroupIdentity, 0, len(variants))
+	for variantLabel, skuCodes := range variants {
+		legacyKeys := make([]string, 0, len(base.LegacyGroupKeys)+1+len(skuCodes))
+		legacyKeys = append(legacyKeys, base.GroupKey)
+		legacyKeys = append(legacyKeys, base.LegacyGroupKeys...)
+		for _, skuCode := range skuCodes {
+			if skuCode != "" {
+				legacyKeys = append(legacyKeys, base.GroupKey+":sku:"+skuCode)
+			}
+		}
+		out = append(out, SheinSDSCostGroupIdentity{
+			GroupKey:        base.GroupKey + ":variant:" + sheinSDSVariantKeySuffix(variantLabel),
+			GroupLabel:      base.GroupLabel + " / " + variantLabel,
+			SourceCode:      base.SourceCode,
+			SKUCode:         variantLabel,
+			VariantLabel:    variantLabel,
+			SKUCodes:        append([]string(nil), skuCodes...),
+			LegacyGroupKeys: legacyKeys,
+		})
 	}
-	return SheinSDSCostGroupIdentity{
-		GroupKey:        base.GroupKey + ":variant:" + sheinSDSVariantKeySuffix(variantLabel),
-		GroupLabel:      base.GroupLabel + " / " + variantLabel,
-		SourceCode:      base.SourceCode,
-		SKUCode:         variantLabel,
-		VariantLabel:    variantLabel,
-		LegacyGroupKeys: legacyKeys,
-	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].VariantLabel != out[j].VariantLabel {
+			return out[i].VariantLabel < out[j].VariantLabel
+		}
+		return out[i].GroupKey < out[j].GroupKey
+	})
+	return out
 }
 
 func SheinSyncedProductSKUCodes(product SheinSyncedProductRecord) []string {
+	skuInfos := SheinSyncedProductSKUInfos(product)
+	out := make([]string, 0, len(skuInfos))
+	for _, skuInfo := range skuInfos {
+		out = appendMissingString(out, skuInfo.SKUCode)
+	}
+	return out
+}
+
+type SheinSyncedProductSKUInfo struct {
+	SKUCode      string
+	SupplierSKU  string
+	VariantLabel string
+}
+
+func SheinSyncedProductSKUInfos(product SheinSyncedProductRecord) []SheinSyncedProductSKUInfo {
 	if strings.TrimSpace(product.SiteSnapshot) == "" {
 		return nil
 	}
@@ -110,31 +169,38 @@ func SheinSyncedProductSKUCodes(product SheinSyncedProductRecord) []string {
 	var payload struct {
 		SKUCodes []string `json:"sku_codes"`
 		SKUInfo  []struct {
-			SKUCode string `json:"sku_code"`
+			SKUCode      string `json:"sku_code"`
+			SupplierSKU  string `json:"supplier_sku"`
+			VariantLabel string `json:"variant_label"`
 		} `json:"sku_info"`
 	}
 	if err := json.Unmarshal([]byte(product.SiteSnapshot), &payload); err != nil {
 		return nil
 	}
 
-	out := make([]string, 0, len(payload.SKUCodes)+len(payload.SKUInfo))
+	out := make([]SheinSyncedProductSKUInfo, 0, len(payload.SKUCodes)+len(payload.SKUInfo))
 	seen := map[string]struct{}{}
-	appendCode := func(value string) {
-		code := strings.ToUpper(strings.TrimSpace(value))
-		if code == "" {
+	appendInfo := func(skuCode, supplierSKU, variantLabel string) {
+		info := SheinSyncedProductSKUInfo{
+			SKUCode:      strings.ToUpper(strings.TrimSpace(skuCode)),
+			SupplierSKU:  strings.ToUpper(strings.TrimSpace(supplierSKU)),
+			VariantLabel: strings.TrimSpace(variantLabel),
+		}
+		if info.SKUCode == "" && info.SupplierSKU == "" && info.VariantLabel == "" {
 			return
 		}
-		if _, ok := seen[code]; ok {
+		key := info.SKUCode + "\x00" + info.SupplierSKU + "\x00" + strings.ToUpper(info.VariantLabel)
+		if _, ok := seen[key]; ok {
 			return
 		}
-		seen[code] = struct{}{}
-		out = append(out, code)
+		seen[key] = struct{}{}
+		out = append(out, info)
 	}
 	for _, code := range payload.SKUCodes {
-		appendCode(code)
+		appendInfo(code, "", "")
 	}
 	for _, sku := range payload.SKUInfo {
-		appendCode(sku.SKUCode)
+		appendInfo(sku.SKUCode, sku.SupplierSKU, sku.VariantLabel)
 	}
 	return out
 }
@@ -158,8 +224,51 @@ func sheinSyncedProductVariantLabel(product SheinSyncedProductRecord) string {
 
 func sheinSDSVariantKeySuffix(label string) string {
 	normalized := strings.ToUpper(strings.Join(strings.Fields(strings.TrimSpace(label)), " "))
+	if normalized != "" && sheinSDSVariantKeySafe(normalized) {
+		return normalized
+	}
 	sum := sha1.Sum([]byte(normalized))
 	return strings.ToUpper(hex.EncodeToString(sum[:])[:12])
+}
+
+func sheinSDSVariantKeySafe(value string) bool {
+	if len(value) > 48 {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// sheinSourceVariantCodeFromSupplierSKU recovers the SDS variant product code used by cost metadata.
+func sheinSourceVariantCodeFromSupplierSKU(value string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(value))
+	if normalized == "" {
+		return ""
+	}
+	if idx := strings.Index(normalized, "-"); idx > 0 {
+		return strings.TrimSpace(normalized[:idx])
+	}
+	return normalized
+}
+
+func appendMissingString(existing []string, value string) []string {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if value == "" {
+		return existing
+	}
+	for _, item := range existing {
+		if item == value {
+			return existing
+		}
+	}
+	return append(existing, value)
 }
 
 func sheinSourceSDSCode(supplierCode string) string {

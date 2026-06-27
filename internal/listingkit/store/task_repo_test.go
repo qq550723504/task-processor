@@ -539,6 +539,158 @@ func TestTaskRepositoryListSheinSourceSDSMetadataMatchesSameUserAcrossLegacyTena
 	}
 }
 
+func TestTaskRepositoryListSheinSourceSDSMetadataExpandsProductSKUToSiblingVariants(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(false))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	source, ok := repo.(interface {
+		ListSheinSourceSDSMetadata(ctx context.Context, query *listingkit.SheinSourceSDSMetadataQuery) ([]listingkit.SheinSourceSDSMetadataRecord, error)
+	})
+	if !ok {
+		t.Fatal("task repo does not expose ListSheinSourceSDSMetadata")
+	}
+
+	createCtx := listingkit.WithTenantID(context.Background(), "373211199677923496")
+	sourceTask := &listingkit.Task{
+		ID:       "task-source-sds-sibling-variants",
+		TenantID: "373211199677923496",
+		UserID:   "373211204509761704",
+		Status:   listingkit.TaskStatusCompleted,
+		Request: &listingkit.GenerateRequest{
+			UserID:       "373211204509761704",
+			Platforms:    []string{"shein"},
+			SheinStoreID: 870,
+			Options: &listingkit.GenerateOptions{SDS: &listingkit.SDSSyncOptions{
+				ProductName:  "帆布拉绳收纳袋双面印刷",
+				ProductSKU:   "XB0603003001",
+				VariantSKU:   "XB0603003001",
+				VariantSize:  "12*18cm",
+				VariantPrice: 8.81,
+				Variants: []listingkit.SDSSyncVariantOption{{
+					VariantSKU: "XB0603003002",
+					Size:       "20*25cm",
+					Price:      9.64,
+				}},
+			}},
+		},
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	if err := repo.CreateTask(createCtx, sourceTask); err != nil {
+		t.Fatalf("create source task: %v", err)
+	}
+
+	items, err := source.ListSheinSourceSDSMetadata(context.Background(), &listingkit.SheinSourceSDSMetadataQuery{
+		StoreID:     870,
+		SourceCodes: []string{"XB0603003001"},
+	})
+	if err != nil {
+		t.Fatalf("ListSheinSourceSDSMetadata error = %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("len(items) = %d, want 2: %+v", len(items), items)
+	}
+	if items[0].SourceCode != "XB0603003001" || items[0].VariantLabel != "12*18cm" || items[0].Price != 8.81 {
+		t.Fatalf("first metadata = %+v, want 12*18cm variant", items[0])
+	}
+	if items[1].SourceCode != "XB0603003002" || items[1].VariantLabel != "20*25cm" || items[1].Price != 9.64 {
+		t.Fatalf("second metadata = %+v, want 20*25cm sibling variant", items[1])
+	}
+}
+
+func TestTaskRepositoryListSheinSourceSDSMetadataExpandsSeparateVariantTasksByFamily(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(false))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	source, ok := repo.(interface {
+		ListSheinSourceSDSMetadata(ctx context.Context, query *listingkit.SheinSourceSDSMetadataQuery) ([]listingkit.SheinSourceSDSMetadataRecord, error)
+	})
+	if !ok {
+		t.Fatal("task repo does not expose ListSheinSourceSDSMetadata")
+	}
+
+	createCtx := listingkit.WithTenantID(context.Background(), "373211199677923496")
+	for _, task := range []*listingkit.Task{
+		{
+			ID:       "task-source-sds-family-12",
+			TenantID: "373211199677923496",
+			UserID:   "373211204509761704",
+			Status:   listingkit.TaskStatusCompleted,
+			Request: &listingkit.GenerateRequest{
+				UserID:       "373211204509761704",
+				Platforms:    []string{"shein"},
+				SheinStoreID: 870,
+				Options: &listingkit.GenerateOptions{SDS: &listingkit.SDSSyncOptions{
+					ProductName:  "帆布拉绳收纳袋双面印刷",
+					VariantSKU:   "XB0603003001",
+					VariantColor: "white",
+					VariantSize:  "12*18cm",
+					VariantPrice: 8.81,
+				}},
+			},
+			CreatedAt: time.Now().UTC().Add(-time.Minute),
+			UpdatedAt: time.Now().UTC().Add(-time.Minute),
+		},
+		{
+			ID:       "task-source-sds-family-20",
+			TenantID: "373211199677923496",
+			UserID:   "373211204509761704",
+			Status:   listingkit.TaskStatusCompleted,
+			Request: &listingkit.GenerateRequest{
+				UserID:       "373211204509761704",
+				Platforms:    []string{"shein"},
+				SheinStoreID: 870,
+				Options: &listingkit.GenerateOptions{SDS: &listingkit.SDSSyncOptions{
+					ProductName:  "帆布拉绳收纳袋双面印刷",
+					VariantSKU:   "XB0603003002",
+					VariantColor: "white",
+					VariantSize:  "20*25cm",
+					VariantPrice: 9.64,
+				}},
+			},
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
+	} {
+		if err := repo.CreateTask(createCtx, task); err != nil {
+			t.Fatalf("create source task %s: %v", task.ID, err)
+		}
+	}
+
+	items, err := source.ListSheinSourceSDSMetadata(context.Background(), &listingkit.SheinSourceSDSMetadataQuery{
+		StoreID:     870,
+		SourceCodes: []string{"XB0603003001"},
+	})
+	if err != nil {
+		t.Fatalf("ListSheinSourceSDSMetadata error = %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("len(items) = %d, want 2: %+v", len(items), items)
+	}
+	if items[0].SourceCode != "XB0603003001" || items[0].VariantLabel != "white / 12*18cm" || items[0].Price != 8.81 {
+		t.Fatalf("first metadata = %+v, want 12*18cm family variant", items[0])
+	}
+	if items[1].SourceCode != "XB0603003002" || items[1].VariantLabel != "white / 20*25cm" || items[1].Price != 9.64 {
+		t.Fatalf("second metadata = %+v, want 20*25cm family variant", items[1])
+	}
+}
+
 func TestTaskRepositoryListSheinSourceSDSMetadataUsesRequestUserWhenOwnerScopeDisabled(t *testing.T) {
 	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(false))
 

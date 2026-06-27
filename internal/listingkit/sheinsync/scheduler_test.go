@@ -27,6 +27,10 @@ func (s *stubSheinSchedulerSyncService) SyncSheinOnShelfProducts(_ context.Conte
 	return s.job, s.err
 }
 
+func (s *stubSheinSchedulerSyncService) SyncSheinSourceSDSProduct(context.Context, int64, int64, string) (int, error) {
+	return 0, nil
+}
+
 func (s *stubSheinSchedulerSyncService) ListSyncedProducts(context.Context, *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error) {
 	return nil, 0, nil
 }

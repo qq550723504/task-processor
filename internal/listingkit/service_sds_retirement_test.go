@@ -786,6 +786,9 @@ func (s *sdsRetirementSheinSyncStub) SyncSheinOnShelfProducts(_ context.Context,
 	s.syncTrigger = triggerMode
 	return &SheinSyncJobRecord{}, nil
 }
+func (s *sdsRetirementSheinSyncStub) SyncSheinSourceSDSProduct(context.Context, int64, int64, string) (int, error) {
+	return 0, nil
+}
 func (s *sdsRetirementSheinSyncStub) ListSyncedProducts(_ context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error) {
 	if query != nil {
 		s.listQueries = append(s.listQueries, *query)

@@ -13,6 +13,7 @@ import {
   getSheinSyncedProducts,
   refreshSheinActivityCandidates,
   reviewSheinActivityCandidate,
+  syncSheinSourceSDSProduct,
   triggerSheinStoreSync,
   updateSheinSDSCostGroup,
   updateSheinSyncedProductCost,
@@ -139,6 +140,19 @@ export function useTriggerSheinStoreSync(storeId: number) {
   return useMutation({
     mutationFn: (input: { trigger_mode?: SheinSyncTriggerMode } = {}) =>
       triggerSheinStoreSync(storeId, input),
+    onSuccess: async () => {
+      await client.invalidateQueries({
+        queryKey: listingKitKeys.sheinEnrollmentStoreScope(storeId),
+      });
+    },
+  });
+}
+
+export function useSyncSheinSourceSDSProduct(storeId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (sourceCode: string) =>
+      syncSheinSourceSDSProduct(storeId, sourceCode),
     onSuccess: async () => {
       await client.invalidateQueries({
         queryKey: listingKitKeys.sheinEnrollmentStoreScope(storeId),

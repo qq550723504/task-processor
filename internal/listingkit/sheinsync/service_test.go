@@ -76,8 +76,20 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 				SkuInfo: []sheinproduct.SkuInventory{
 					{
 						SkuCode: "SKU001",
+						SaleNameInfo: []sheinproduct.SkuSaleNameInfo{
+							{SaleAttrName: "尺寸", SaleName: "12*18cm"},
+						},
 						InventoryInfo: []sheinproduct.WarehouseInventory{
 							{InventoryQuantity: 999, UsableInventory: 321},
+						},
+					},
+					{
+						SkuCode: "SKU002",
+						SaleNameInfo: []sheinproduct.SkuSaleNameInfo{
+							{SaleAttrName: "尺寸", SaleName: "20*25cm"},
+						},
+						InventoryInfo: []sheinproduct.WarehouseInventory{
+							{InventoryQuantity: 111, UsableInventory: 22},
 						},
 					},
 				},
@@ -121,7 +133,151 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 	require.NotNil(t, rows[0].PublishTime)
 	require.NotNil(t, rows[0].FirstShelfTime)
 	require.JSONEq(t, `{"sale_price":34.17,"currency":"USD","sub_site":""}`, rows[0].PriceSnapshot)
-	require.JSONEq(t, `{"total":999,"available":321}`, rows[0].InventorySnapshot)
+	require.JSONEq(t, `{"total":1110,"available":343}`, rows[0].InventorySnapshot)
+	require.JSONEq(t, `{
+		"spu_name":"spu-1",
+		"spu_code":"SPU001",
+		"shelf_status":"ON_SHELF",
+		"publish_time":"2026-06-01 08:30:00",
+		"first_shelf_time":"2026-06-01 09:00:00",
+		"product_name_multi":"Product One",
+		"skc_name":"skc-1",
+		"skc_code":"SKC001",
+		"sale_name":"Red",
+		"supplier_code":"SUP-1",
+		"sku_codes":["SKU001","SKU002"],
+		"sku_info":[
+			{"sku_code":"SKU001","variant_label":"12*18cm","sale_name_info":[{"sale_attr_name":"尺寸","sale_name":"12*18cm"}]},
+			{"sku_code":"SKU002","variant_label":"20*25cm","sale_name_info":[{"sale_attr_name":"尺寸","sale_name":"20*25cm"}]}
+		]
+	}`, rows[0].SiteSnapshot)
+}
+
+func TestSyncSheinSourceSDSProductRefreshesOnlyMatchingSourceProducts(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	repo.seedProduct(SheinSyncedProductRecord{
+		TenantID:           11,
+		StoreID:            22,
+		SPUName:            "spu-1",
+		SPUCode:            "SPU001",
+		SKCName:            "skc-1",
+		SKCCode:            "SKC001",
+		SupplierCode:       "XB0603003001-181EB5DF",
+		ProductNameMulti:   "Old Product",
+		ManualCostPrice:    float64Ptr(31.2),
+		EffectiveCostPrice: float64Ptr(31.2),
+		CostPriceSource:    SheinCostPriceSourceManual,
+		IsActive:           true,
+		SiteSnapshot:       `{"sku_codes":["OLD-SKU"]}`,
+	})
+	repo.seedProduct(SheinSyncedProductRecord{
+		TenantID:     11,
+		StoreID:      22,
+		SPUName:      "spu-2",
+		SKCName:      "skc-2",
+		SupplierCode: "OTHER0603001-181EB5DF",
+		IsActive:     true,
+		SiteSnapshot: `{"sku_codes":["OTHER-SKU"]}`,
+	})
+	productAPI := &sheinSyncServiceProductAPIStub{
+		listResponses: []*sheinproduct.ProductListResponse{
+			makeProductListResponse([]sheinproduct.ProductListItem{
+				{
+					SpuName:          "spu-1",
+					SpuCode:          "SPU001",
+					ProductNameMulti: "Fresh Product",
+					ShelfStatus:      "ON_SHELF",
+					SkcInfoList: []sheinproduct.SkcInfoItem{
+						{
+							SkcName:      "skc-1",
+							SkcCode:      "SKC001",
+							SaleName:     "多色",
+							SupplierCode: "XB0603003001-181EB5DF",
+							SkuInfo: []sheinproduct.SkuInfo{
+								{SkuCode: "SKU001", SupplierSKU: "XB0603003001-V381-TF7E6627E-RB6679CE2-7192C992"},
+								{SkuCode: "SKU002", SupplierSKU: "XB0603003002-V382-TF7E6627E-RB6679CE2-7192C992"},
+							},
+						},
+						{
+							SkcName:      "skc-other",
+							SupplierCode: "XB0603999999-181EB5DF",
+						},
+					},
+				},
+				{
+					SpuName: "spu-2",
+					SkcInfoList: []sheinproduct.SkcInfoItem{{
+						SkcName:      "skc-2",
+						SupplierCode: "OTHER0603001-181EB5DF",
+					}},
+				},
+			}, 2),
+		},
+		queryInventoryResp: makeInventoryQueryResponse([]sheinproduct.SkcInventory{
+			{
+				SkcName: "skc-1",
+				SkuInfo: []sheinproduct.SkuInventory{
+					{
+						SkuCode: "SKU001",
+						SaleNameInfo: []sheinproduct.SkuSaleNameInfo{
+							{SaleAttrName: "颜色", SaleName: "white"},
+							{SaleAttrName: "尺寸", SaleName: "12*18cm"},
+						},
+					},
+					{
+						SkuCode: "SKU002",
+						SaleNameInfo: []sheinproduct.SkuSaleNameInfo{
+							{SaleAttrName: "颜色", SaleName: "white"},
+							{SaleAttrName: "尺寸", SaleName: "20*25cm"},
+						},
+					},
+				},
+			},
+		}),
+	}
+	costResolver := &sheinSyncServiceCostResolverStub{
+		autoCosts: map[string]resolvedSheinCost{
+			"spu-1|skc-1": {CostPrice: float64Ptr(12.5), Currency: "USD"},
+		},
+	}
+	service := NewSheinSyncService(repo, productAPI, costResolver)
+
+	syncedCount, err := service.SyncSheinSourceSDSProduct(context.Background(), 11, 22, "XB0603003001")
+	require.NoError(t, err)
+	require.Equal(t, 1, syncedCount)
+	require.Len(t, productAPI.listCalls, 1)
+	require.Equal(t, "ON_SHELF", productAPI.listCalls[0].request.ShelfType)
+
+	rows, total, err := repo.ListSyncedProducts(context.Background(), &SheinSyncedProductQuery{TenantID: 11, StoreID: 22, Page: 1, PageSize: 10})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Len(t, rows, 2)
+	require.Equal(t, "skc-1", rows[0].SKCName)
+	require.NotNil(t, rows[0].ManualCostPrice)
+	require.Equal(t, 31.2, *rows[0].ManualCostPrice)
+	require.NotNil(t, rows[0].AutoCostPrice)
+	require.Equal(t, 12.5, *rows[0].AutoCostPrice)
+	require.Equal(t, SheinCostPriceSourceManual, rows[0].CostPriceSource)
+	require.JSONEq(t, `{
+		"spu_name":"spu-1",
+		"spu_code":"SPU001",
+		"shelf_status":"ON_SHELF",
+		"publish_time":"",
+		"first_shelf_time":"",
+		"product_name_multi":"Fresh Product",
+		"skc_name":"skc-1",
+		"skc_code":"SKC001",
+		"sale_name":"多色",
+		"supplier_code":"XB0603003001-181EB5DF",
+		"sku_codes":["SKU001","SKU002"],
+		"sku_info":[
+			{"sku_code":"SKU001","supplier_sku":"XB0603003001-V381-TF7E6627E-RB6679CE2-7192C992","variant_label":"12*18cm","sale_name_info":[{"sale_attr_name":"颜色","sale_name":"white"},{"sale_attr_name":"尺寸","sale_name":"12*18cm"}]},
+			{"sku_code":"SKU002","supplier_sku":"XB0603003002-V382-TF7E6627E-RB6679CE2-7192C992","variant_label":"20*25cm","sale_name_info":[{"sale_attr_name":"颜色","sale_name":"white"},{"sale_attr_name":"尺寸","sale_name":"20*25cm"}]}
+		]
+	}`, rows[0].SiteSnapshot)
+	require.Equal(t, "OTHER-SKU", SheinSyncedProductSKUCodes(rows[1])[0])
 }
 
 func TestSheinSyncServiceResolveProductAPIReturnsConfiguredRuntimeAPI(t *testing.T) {

@@ -104,7 +104,7 @@ func (r *MemTaskRepository) ListSheinSourceSDSMetadata(ctx context.Context, quer
 	sort.SliceStable(tasks, func(i, j int) bool {
 		return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
 	})
-	return collectSheinSourceSDSMetadata(tasks, query.StoreID, targets), nil
+	return collectSheinSourceSDSMetadata(tasks, query.StoreID, targets, sheinSourceSDSFamilyPrefixes(targets)), nil
 }
 
 func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) error {

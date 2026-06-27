@@ -94,6 +94,36 @@ func (s *sheinSyncService) ListSyncedProducts(ctx context.Context, query *SheinS
 	return s.repo.ListSyncedProducts(ctx, query)
 }
 
+func (s *sheinSyncService) SyncSheinSourceSDSProduct(ctx context.Context, tenantID, storeID int64, sourceCode string) (int, error) {
+	if err := s.validateDependencies(); err != nil {
+		return 0, err
+	}
+	sourceCode = strings.TrimSpace(sourceCode)
+	if sourceCode == "" {
+		return 0, fmt.Errorf("SHEIN source SDS code is required")
+	}
+
+	existingProducts, err := s.listExistingProducts(ctx, tenantID, storeID)
+	if err != nil {
+		return 0, fmt.Errorf("list existing synced products: %w", err)
+	}
+	productAPI, err := s.resolveProductAPI(ctx, storeID)
+	if err != nil {
+		return 0, err
+	}
+	records, err := s.fetchSourceSDSProducts(ctx, tenantID, storeID, sourceCode, existingProducts, productAPI, s.resolveCostResolver(productAPI))
+	if err != nil {
+		return 0, err
+	}
+	if len(records) == 0 {
+		return 0, nil
+	}
+	if err := s.repo.UpsertSyncedProducts(ctx, records); err != nil {
+		return 0, fmt.Errorf("persist synced source SDS products: %w", err)
+	}
+	return len(records), nil
+}
+
 func (s *sheinSyncService) UpdateManualCostPrice(ctx context.Context, productID int64, manualCostPrice *float64) error {
 	if err := s.validateDependencies(); err != nil {
 		return err
@@ -250,7 +280,7 @@ func (s *sheinSyncService) fetchOnShelfProducts(
 					continue
 				}
 
-				record := buildSyncedProductRecord(tenantID, storeID, product, skc)
+				record := buildSyncedProductRecord(tenantID, storeID, product, skc, snapshots)
 				if existing, ok := existingProducts[skc.SkcName]; ok {
 					record.ID = existing.ID
 					record.ManualCostPrice = cloneSheinSyncFloat64(existing.ManualCostPrice)
@@ -294,6 +324,105 @@ func (s *sheinSyncService) fetchOnShelfProducts(
 	}
 
 	return records, activeSKCNames, len(records), nil
+}
+
+func (s *sheinSyncService) fetchSourceSDSProducts(
+	ctx context.Context,
+	tenantID, storeID int64,
+	sourceCode string,
+	existingProducts map[string]SheinSyncedProductRecord,
+	productAPI sheinproduct.ProductAPI,
+	costResolver SheinCostResolver,
+) ([]*SheinSyncedProductRecord, error) {
+	records := make([]*SheinSyncedProductRecord, 0)
+	page := 1
+
+	for {
+		response, err := productAPI.ListProducts(page, s.pageSize, &sheinproduct.ProductListRequest{
+			Language:  "en",
+			ShelfType: "ON_SHELF",
+			SortType:  1,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("list SHEIN on-shelf products page %d: %w", page, err)
+		}
+		if response == nil {
+			return nil, fmt.Errorf("list SHEIN on-shelf products page %d returned nil response", page)
+		}
+
+		for _, product := range response.Info.Data {
+			filteredProduct := filterSheinProductListItemBySourceSDSCode(product, sourceCode)
+			if len(filteredProduct.SkcInfoList) == 0 {
+				continue
+			}
+			resolvedCosts, err := costResolver.ResolveAutoCosts(ctx, filteredProduct)
+			if err != nil {
+				return nil, fmt.Errorf("resolve SHEIN cost price for source SDS %s spu %s: %w", sourceCode, product.SpuName, err)
+			}
+			snapshots := s.fetchSupplementalSnapshots(ctx, productAPI, filteredProduct)
+			for _, skc := range filteredProduct.SkcInfoList {
+				if skc.SkcName == "" {
+					continue
+				}
+				record := buildSyncedProductRecord(tenantID, storeID, filteredProduct, skc, snapshots)
+				if existing, ok := existingProducts[skc.SkcName]; ok {
+					applyExistingSheinSyncedProduct(record, existing, snapshots)
+				}
+				if resolved, ok := resolvedCosts[skc.SkcName]; ok {
+					record.AutoCostPrice = cloneSheinSyncFloat64(resolved.CostPrice)
+					if resolved.Currency != "" {
+						record.Currency = resolved.Currency
+					}
+				}
+				if snapshots.priceLoaded {
+					record.PriceSnapshot = snapshots.priceSnapshot
+				}
+				if snapshots.inventoryLoaded {
+					record.InventorySnapshot = snapshots.inventorySnapshot
+				}
+				ApplyEffectiveCostPrice(record)
+				records = append(records, record)
+			}
+		}
+
+		if len(response.Info.Data) == 0 || len(response.Info.Data) < s.pageSize || int64(page*s.pageSize) >= int64(response.Info.Meta.Count) {
+			break
+		}
+		page++
+	}
+
+	return records, nil
+}
+
+func filterSheinProductListItemBySourceSDSCode(product sheinproduct.ProductListItem, sourceCode string) sheinproduct.ProductListItem {
+	filtered := product
+	filtered.SkcInfoList = make([]sheinproduct.SkcInfoItem, 0, len(product.SkcInfoList))
+	for _, skc := range product.SkcInfoList {
+		if !strings.EqualFold(sheinSourceSDSCode(skc.SupplierCode), strings.TrimSpace(sourceCode)) {
+			continue
+		}
+		filtered.SkcInfoList = append(filtered.SkcInfoList, skc)
+	}
+	return filtered
+}
+
+func applyExistingSheinSyncedProduct(record *SheinSyncedProductRecord, existing SheinSyncedProductRecord, snapshots sheinProductSnapshots) {
+	if record == nil {
+		return
+	}
+	record.ID = existing.ID
+	record.ManualCostPrice = cloneSheinSyncFloat64(existing.ManualCostPrice)
+	record.AutoCostPrice = cloneSheinSyncFloat64(existing.AutoCostPrice)
+	record.CreatedAt = existing.CreatedAt
+	if existing.Currency != "" {
+		record.Currency = existing.Currency
+	}
+	if !snapshots.priceLoaded {
+		record.PriceSnapshot = existing.PriceSnapshot
+	}
+	if !snapshots.inventoryLoaded {
+		record.InventorySnapshot = existing.InventorySnapshot
+	}
 }
 
 func (s *sheinSyncService) failSyncJob(ctx context.Context, job *SheinSyncJobRecord, syncErr error) error {

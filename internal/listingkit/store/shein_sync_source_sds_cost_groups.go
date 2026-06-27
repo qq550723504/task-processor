@@ -129,8 +129,8 @@ func buildSheinSourceSDSCostGroupRows(products []listingkit.SheinSyncedProductRe
 		}
 		row.ProductCount++
 		row.SKUCodes = appendMissingSheinSourceSDSGroupKeys(row.SKUCodes, listingkit.SheinSyncedProductSKUCodes(product))
-		variantIdentity := listingkit.ResolveSheinSDSVariantCostGroupIdentity(product)
-		if variantIdentity.GroupKey != "" {
+		variantIdentities := listingkit.ResolveSheinSDSVariantCostGroupIdentities(product)
+		for _, variantIdentity := range variantIdentities {
 			row.SKUGroups = appendSheinSourceSDSVariantGroupProduct(row.SKUGroups, variantIdentity, product)
 		}
 		if len(row.Products) < 5 {
@@ -146,7 +146,7 @@ func buildSheinSourceSDSCostGroupRows(products []listingkit.SheinSyncedProductRe
 			keySeen[key] = struct{}{}
 			allKeys = append(allKeys, key)
 		}
-		if variantIdentity.GroupKey != "" {
+		for _, variantIdentity := range variantIdentities {
 			for _, key := range append([]string{variantIdentity.GroupKey}, variantIdentity.LegacyGroupKeys...) {
 				if key == "" {
 					continue
@@ -212,7 +212,7 @@ func appendSheinSourceSDSVariantGroupProduct(
 	for i := range existing {
 		if existing[i].GroupKey == identity.GroupKey {
 			existing[i].ProductCount++
-			existing[i].SKUCodes = appendMissingSheinSourceSDSGroupKeys(existing[i].SKUCodes, listingkit.SheinSyncedProductSKUCodes(product))
+			existing[i].SKUCodes = appendMissingSheinSourceSDSGroupKeys(existing[i].SKUCodes, sheinSourceSDSVariantSKUCodes(identity, product))
 			if len(existing[i].Products) < 5 {
 				existing[i].Products = append(existing[i].Products, product)
 			}
@@ -225,11 +225,18 @@ func appendSheinSourceSDSVariantGroupProduct(
 		SourceCode:      identity.SourceCode,
 		SKUCode:         identity.SKUCode,
 		VariantLabel:    identity.VariantLabel,
-		SKUCodes:        listingkit.SheinSyncedProductSKUCodes(product),
+		SKUCodes:        sheinSourceSDSVariantSKUCodes(identity, product),
 		ProductCount:    1,
 		Products:        []listingkit.SheinSyncedProductRecord{product},
 		LegacyGroupKeys: append([]string(nil), identity.LegacyGroupKeys...),
 	})
+}
+
+func sheinSourceSDSVariantSKUCodes(identity listingkit.SheinSDSCostGroupIdentity, product listingkit.SheinSyncedProductRecord) []string {
+	if len(identity.SKUCodes) > 0 {
+		return append([]string(nil), identity.SKUCodes...)
+	}
+	return listingkit.SheinSyncedProductSKUCodes(product)
 }
 
 func applySheinSourceSDSManualCosts(rows []listingkit.SheinSourceSDSCostGroupRecord, costs map[string]*float64) {

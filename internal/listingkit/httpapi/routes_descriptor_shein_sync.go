@@ -10,6 +10,7 @@ func appendSheinSyncRouteDescriptors(routes []httproute.Descriptor, handler shei
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/dashboard", Module: "listing-kit", Handler: handler.ListSheinEnrollmentDashboard},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/sync", Module: "listing-kit", Handler: handler.TriggerSheinStoreSync},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/source-sds-products/:source_code/sync", Module: "listing-kit", Handler: handler.SyncSheinSourceSDSProduct},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/summary", Module: "listing-kit", Handler: handler.GetSheinEnrollmentStoreSummary},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/products", Module: "listing-kit", Handler: handler.ListSheinSyncedProducts},
 		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/shein-sync/products/:id/cost", Module: "listing-kit", Handler: handler.UpdateSheinSyncedProductCost},

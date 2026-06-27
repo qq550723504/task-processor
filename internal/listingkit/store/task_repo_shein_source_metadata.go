@@ -16,6 +16,7 @@ func (r *taskRepository) ListSheinSourceSDSMetadata(ctx context.Context, query *
 	if query == nil || query.StoreID <= 0 || len(targets) == 0 {
 		return []listingkit.SheinSourceSDSMetadataRecord{}, nil
 	}
+	targetFamilies := sheinSourceSDSFamilyPrefixes(targets)
 
 	db := applySheinSourceSDSMetadataAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx)
 	db = applySheinSourceSDSMetadataStoreScope(db, query.StoreID)
@@ -28,14 +29,16 @@ func (r *taskRepository) ListSheinSourceSDSMetadata(ctx context.Context, query *
 		Find(&tasks).Error; err != nil {
 		return nil, err
 	}
-	items := collectSheinSourceSDSMetadata(tasks, query.StoreID, targets)
+	items := collectSheinSourceSDSMetadata(tasks, query.StoreID, targets, targetFamilies)
 	missingTargets := missingSheinSourceSDSTargets(targets, items)
-	if len(missingTargets) == 0 {
+	if len(missingTargets) == 0 && len(targetFamilies) == 0 {
 		return items, nil
 	}
 
 	fallbackDB := applySheinSourceSDSMetadataStoreScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), query.StoreID)
-	fallbackDB = applySheinSourceSDSMetadataTargetScope(fallbackDB, missingTargets)
+	if len(targetFamilies) == 0 {
+		fallbackDB = applySheinSourceSDSMetadataTargetScope(fallbackDB, missingTargets)
+	}
 	var fallbackTasks []listingkit.Task
 	if err := fallbackDB.Select("id", "tenant_id", "user_id", "request", "created_at").
 		Order("created_at DESC").
@@ -43,7 +46,11 @@ func (r *taskRepository) ListSheinSourceSDSMetadata(ctx context.Context, query *
 		Find(&fallbackTasks).Error; err != nil {
 		return nil, err
 	}
-	return mergeSheinSourceSDSMetadata(items, collectSheinSourceSDSMetadata(fallbackTasks, query.StoreID, missingTargets), targets), nil
+	return mergeSheinSourceSDSMetadata(
+		items,
+		collectSheinSourceSDSMetadata(fallbackTasks, query.StoreID, targets, targetFamilies),
+		targets,
+	), nil
 }
 
 func applySheinSourceSDSMetadataAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {
@@ -127,38 +134,121 @@ func normalizedSheinSourceSDSTargets(query *listingkit.SheinSourceSDSMetadataQue
 	return targets
 }
 
-func collectSheinSourceSDSMetadata(tasks []listingkit.Task, storeID int64, targets map[string]string) []listingkit.SheinSourceSDSMetadataRecord {
+func sheinSourceSDSFamilyPrefixes(targets map[string]string) map[string]string {
+	families := map[string]string{}
+	for _, code := range targets {
+		if family := sheinSourceSDSFamilyPrefix(code); family != "" {
+			families[family] = family
+		}
+	}
+	return families
+}
+
+func sheinSourceSDSFamilyPrefix(value string) string {
+	code := normalizeSheinSourceSDSCode(value)
+	if len(code) <= 4 {
+		return ""
+	}
+	for _, r := range code[len(code)-4:] {
+		if r < '0' || r > '9' {
+			return ""
+		}
+	}
+	return code[:len(code)-4]
+}
+
+func collectSheinSourceSDSMetadata(
+	tasks []listingkit.Task,
+	storeID int64,
+	targets map[string]string,
+	targetFamilies map[string]string,
+) []listingkit.SheinSourceSDSMetadataRecord {
 	found := map[string]listingkit.SheinSourceSDSMetadataRecord{}
 	for i := range tasks {
 		req := tasks[i].Request
 		if req == nil || req.SheinStoreID != storeID || req.Options == nil || req.Options.SDS == nil {
 			continue
 		}
-		for _, record := range sheinSourceSDSMetadataRecords(req.Options.SDS) {
+		records := sheinSourceSDSMetadataRecords(req.Options.SDS)
+		matched := false
+		for _, record := range records {
 			for _, key := range []string{record.VariantSKU, record.ProductSKU} {
-				targetCode, ok := targets[normalizeSheinSourceSDSCode(key)]
-				if !ok {
-					continue
+				if sheinSourceSDSMetadataMatchesTarget(key, targets, targetFamilies) {
+					matched = true
+					break
 				}
-				if _, exists := found[targetCode]; exists {
-					continue
-				}
-				record.SourceCode = targetCode
-				found[targetCode] = record
+			}
+			if matched {
+				break
 			}
 		}
-		if len(found) >= len(targets) {
+		if !matched {
+			continue
+		}
+		for _, record := range records {
+			sourceCode := sheinSourceSDSMetadataSourceCode(record)
+			if sourceCode == "" {
+				continue
+			}
+			if _, exists := found[sourceCode]; exists {
+				continue
+			}
+			record.SourceCode = sourceCode
+			found[sourceCode] = record
+		}
+		if sheinSourceSDSMetadataCoversTargets(found, targets) {
 			break
 		}
 	}
 
 	out := make([]listingkit.SheinSourceSDSMetadataRecord, 0, len(found))
-	for _, sourceCode := range sortedSheinSourceSDSTargetCodes(targets) {
+	for _, sourceCode := range sortedSheinSourceSDSMetadataCodes(found) {
 		if record, ok := found[sourceCode]; ok {
 			out = append(out, record)
 		}
 	}
 	return out
+}
+
+func sheinSourceSDSMetadataMatchesTarget(
+	value string,
+	targets map[string]string,
+	targetFamilies map[string]string,
+) bool {
+	code := normalizeSheinSourceSDSCode(value)
+	if code == "" {
+		return false
+	}
+	if _, ok := targets[code]; ok {
+		return true
+	}
+	for family := range targetFamilies {
+		if strings.HasPrefix(code, family) {
+			return true
+		}
+	}
+	return false
+}
+
+func sheinSourceSDSMetadataSourceCode(record listingkit.SheinSourceSDSMetadataRecord) string {
+	for _, value := range []string{record.VariantSKU, record.SourceCode, record.ProductSKU} {
+		if code := normalizeSheinSourceSDSCode(value); code != "" {
+			return code
+		}
+	}
+	return ""
+}
+
+func sheinSourceSDSMetadataCoversTargets(
+	found map[string]listingkit.SheinSourceSDSMetadataRecord,
+	targets map[string]string,
+) bool {
+	for target := range targets {
+		if _, ok := found[target]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func missingSheinSourceSDSTargets(targets map[string]string, items []listingkit.SheinSourceSDSMetadataRecord) map[string]string {
@@ -188,7 +278,7 @@ func mergeSheinSourceSDSMetadata(primary, fallback []listingkit.SheinSourceSDSMe
 		}
 	}
 	out := make([]listingkit.SheinSourceSDSMetadataRecord, 0, len(records))
-	for _, sourceCode := range sortedSheinSourceSDSTargetCodes(targets) {
+	for _, sourceCode := range sortedSheinSourceSDSMetadataCodes(records) {
 		if record, ok := records[sourceCode]; ok {
 			out = append(out, record)
 		}
@@ -210,7 +300,7 @@ func sheinSourceSDSMetadataRecords(sds *listingkit.SDSSyncOptions) []listingkit.
 			ProductSKU:   productSKU,
 			VariantSKU:   strings.TrimSpace(sds.VariantSKU),
 			Price:        sds.VariantPrice,
-			VariantLabel: sheinSourceSDSVariantLabel(sds.VariantColor, sds.VariantSize, sds.VariantSKU),
+			VariantLabel: sheinSourceSDSVariantLabelWithFallback(sds.VariantSKU, sds.VariantColor, sds.VariantSize),
 			ImageURL:     productImageURL,
 		})
 	}
@@ -262,9 +352,25 @@ func sheinSourceSDSVariantLabel(parts ...string) string {
 	return strings.Join(labels, " / ")
 }
 
+func sheinSourceSDSVariantLabelWithFallback(fallback string, parts ...string) string {
+	if label := sheinSourceSDSVariantLabel(parts...); label != "" {
+		return label
+	}
+	return strings.TrimSpace(fallback)
+}
+
 func sortedSheinSourceSDSTargetCodes(targets map[string]string) []string {
 	out := make([]string, 0, len(targets))
 	for _, sourceCode := range targets {
+		out = append(out, sourceCode)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedSheinSourceSDSMetadataCodes(records map[string]listingkit.SheinSourceSDSMetadataRecord) []string {
+	out := make([]string, 0, len(records))
+	for sourceCode := range records {
 		out = append(out, sourceCode)
 	}
 	sort.Strings(out)

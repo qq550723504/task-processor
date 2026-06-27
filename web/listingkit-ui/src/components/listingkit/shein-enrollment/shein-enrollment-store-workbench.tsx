@@ -28,6 +28,7 @@ import {
   useSheinSDSCostGroups,
   useSheinSourceSDSCostGroups,
   useSheinSyncedProducts,
+  useSyncSheinSourceSDSProduct,
   useTriggerSheinStoreSync,
   useUpdateSheinSDSCostGroup,
   useUpdateSheinSyncedProductCost,
@@ -104,6 +105,7 @@ export function SheinEnrollmentStoreWorkbench({
     { enabled: costsTabActive },
   );
   const syncMutation = useTriggerSheinStoreSync(storeId);
+  const syncSourceProductMutation = useSyncSheinSourceSDSProduct(storeId);
   const refreshMutation = useRefreshSheinActivityCandidates(storeId);
   const updateCostMutation = useUpdateSheinSyncedProductCost(storeId);
   const updateGroupCostMutation = useUpdateSheinSDSCostGroup(storeId);
@@ -199,10 +201,14 @@ export function SheinEnrollmentStoreWorkbench({
                 updateGroupCostMutation.mutateAsync,
               )
             }
+            onSyncSourceSDSProduct={(sourceCode) =>
+              syncSourceProductMutation.mutateAsync(sourceCode).then(() => undefined)
+            }
             saving={updateCostMutation.isPending || updateGroupCostMutation.isPending}
             shipmentArea={summary.data?.summary?.region}
             sourceGroups={sourceSDSCostGroups.data?.items ?? []}
             storeId={storeId}
+            syncingSourceCode={syncSourceProductMutation.variables}
           />
           <SheinEnrollmentPagination
             onPageChange={setCostsPage}

@@ -414,7 +414,7 @@ func sheinCandidateSDSCostGroupKeysForProduct(product SheinSyncedProductRecord) 
 		return nil
 	}
 	keys := make([]string, 0, 2+len(identity.LegacyGroupKeys)+len(SheinSyncedProductSKUCodes(product)))
-	if variantIdentity := ResolveSheinSDSVariantCostGroupIdentity(product); variantIdentity.GroupKey != "" {
+	for _, variantIdentity := range ResolveSheinSDSVariantCostGroupIdentities(product) {
 		keys = append(keys, variantIdentity.GroupKey)
 		keys = append(keys, variantIdentity.LegacyGroupKeys...)
 	}
@@ -424,19 +424,29 @@ func sheinCandidateSDSCostGroupKeysForProduct(product SheinSyncedProductRecord) 
 }
 
 func sheinCandidateVariantCostGroupOverride(product SheinSyncedProductRecord, fetchedCosts map[string]float64) (float64, bool) {
-	identity := ResolveSheinSDSVariantCostGroupIdentity(product)
-	if identity.GroupKey == "" {
-		return 0, false
-	}
-	if cost, ok := fetchedCosts[identity.GroupKey]; ok {
-		return cost, true
-	}
-	for _, legacyKey := range identity.LegacyGroupKeys {
-		if cost, ok := fetchedCosts[legacyKey]; ok {
-			return cost, true
+	var (
+		maxCost float64
+		found   bool
+	)
+	for _, identity := range ResolveSheinSDSVariantCostGroupIdentities(product) {
+		if cost, ok := fetchedCosts[identity.GroupKey]; ok {
+			if !found || cost > maxCost {
+				maxCost = cost
+				found = true
+			}
+			continue
+		}
+		for _, legacyKey := range identity.LegacyGroupKeys {
+			if cost, ok := fetchedCosts[legacyKey]; ok {
+				if !found || cost > maxCost {
+					maxCost = cost
+					found = true
+				}
+				break
+			}
 		}
 	}
-	return 0, false
+	return maxCost, found
 }
 
 func calculateSheinCandidateProfitRate(costPrice *float64, priceSnapshot string) *float64 {

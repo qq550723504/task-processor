@@ -50,10 +50,12 @@ export function SheinCostPriceTable({
   groups,
   items,
   onSave,
+  onSyncSourceSDSProduct,
   saving,
   shipmentArea = "US",
   sourceGroups,
   storeId,
+  syncingSourceCode,
 }: {
   groups: SheinSDSCostGroupRecord[];
   items: SheinSyncedProductRecord[];
@@ -61,10 +63,12 @@ export function SheinCostPriceTable({
     target: SheinCostPriceSaveTarget,
     manualCostPrice: number | null,
   ) => Promise<void>;
+  onSyncSourceSDSProduct?: (sourceCode: string) => Promise<void>;
   saving: boolean;
   shipmentArea?: string;
   sourceGroups?: SheinSourceSDSCostGroupRecord[];
   storeId: number;
+  syncingSourceCode?: string;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [activeImage, setActiveImage] = useState<SheinPreviewImage | null>(null);
@@ -76,14 +80,24 @@ export function SheinCostPriceTable({
     [groups, items, sourceGroups],
   );
   const sourceSDSCodes = useMemo(
-    () => Array.from(new Set(rows.flatMap((row) => row.sourceSDSCodes))).sort(),
+    () =>
+      Array.from(
+        new Set(
+          rows.flatMap((row) => [
+            ...row.sourceSDSCodes,
+            ...row.skuGroups
+              .map((skuGroup) => skuGroup.skuCode)
+              .filter(isLikelySourceSDSCode),
+          ]),
+        ),
+      ).sort(),
     [rows],
   );
   const sourceTaskMetadataQuery = useQuery({
     queryKey: [
       "listingkit",
       "shein-enrollment",
-      "source-sds-task-metadata-v5",
+      "source-sds-task-metadata-v6",
       storeId,
       sourceSDSCodes,
     ],
@@ -92,15 +106,24 @@ export function SheinCostPriceTable({
     enabled: storeId > 0 && sourceSDSCodes.length > 0,
     staleTime: 10 * 60 * 1000,
   });
+  const displayRows = useMemo(
+    () =>
+      rows.map((row) =>
+        simplifySourceSDSVariantGroups(
+          applySourceSDSMetadataSKUGroups(row, sourceTaskMetadataQuery.data),
+        ),
+      ),
+    [rows, sourceTaskMetadataQuery.data],
+  );
 
   return (
     <div className="grid gap-3">
-      {rows.length === 0 ? (
+      {displayRows.length === 0 ? (
         <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-6 text-sm text-zinc-500">
           当前没有可维护成本价的同步商品。
         </div>
       ) : null}
-      {rows.map((row) => (
+      {displayRows.map((row) => (
         <SheinCostPriceRow
           drafts={drafts}
           key={row.groupKey}
@@ -111,11 +134,13 @@ export function SheinCostPriceTable({
             }))
           }
           onSave={onSave}
+          onSyncSourceSDSProduct={onSyncSourceSDSProduct}
           row={row}
           saving={saving}
           shipmentArea={shipmentArea}
           onPreviewImage={setActiveImage}
           sourceTaskMetadataByCode={sourceTaskMetadataQuery.data}
+          syncingSourceCode={syncingSourceCode}
         />
       ))}
       <ImagePreviewDialog
@@ -134,11 +159,13 @@ function SheinCostPriceRow({
   drafts,
   onDraftChange,
   onSave,
+  onSyncSourceSDSProduct,
   row,
   saving,
   shipmentArea,
   onPreviewImage,
   sourceTaskMetadataByCode,
+  syncingSourceCode,
 }: {
   drafts: Record<string, string>;
   onDraftChange: (key: string, value: string) => void;
@@ -146,23 +173,44 @@ function SheinCostPriceRow({
     target: SheinCostPriceSaveTarget,
     manualCostPrice: number | null,
   ) => Promise<void>;
+  onSyncSourceSDSProduct?: (sourceCode: string) => Promise<void>;
   row: SheinCostGroupRow;
   saving: boolean;
   shipmentArea: string;
   onPreviewImage: (image: SheinPreviewImage) => void;
   sourceTaskMetadataByCode?: Map<string, SheinCostSourceTaskMetadata>;
+  syncingSourceCode?: string;
 }) {
   const usesSKUCosts = row.skuGroups.length > 0;
   const value = drafts[row.groupKey] ?? String(row.manualCostPrice ?? "");
   const parsedCost = parseSheinCostDraft(value);
+  const syncSourceCode = row.sourceSDSCodes[0] ?? "";
+  const syncing = Boolean(
+    syncSourceCode &&
+      normalizeSourceCode(syncingSourceCode) === normalizeSourceCode(syncSourceCode),
+  );
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-zinc-950">
-            {row.groupLabel} · {row.productCount} 个商品
-          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <p className="font-medium text-zinc-950">
+              {row.groupLabel} · {row.productCount} 个商品
+            </p>
+            {syncSourceCode && onSyncSourceSDSProduct ? (
+              <Button
+                aria-label={`同步该产品 ${syncSourceCode}`}
+                className="h-8 w-fit px-3 text-xs"
+                disabled={syncing}
+                onClick={() => void onSyncSourceSDSProduct(syncSourceCode)}
+                type="button"
+                variant="outline"
+              >
+                {syncing ? "同步中..." : "同步该产品"}
+              </Button>
+            ) : null}
+          </div>
           <p className="mt-1 text-xs text-zinc-500">
             {row.products.map((item) => item.skc_name || item.skc_code || "-").join(" / ")}
           </p>
@@ -218,6 +266,7 @@ function SheinCostPriceRow({
         onSave={onSave}
         row={row}
         saving={saving}
+        sourceTaskMetadataByCode={sourceTaskMetadataByCode}
       />
     </div>
   );
@@ -229,6 +278,7 @@ function SheinCostVariantDetailTable({
   onSave,
   row,
   saving,
+  sourceTaskMetadataByCode,
 }: {
   drafts: Record<string, string>;
   onDraftChange: (key: string, value: string) => void;
@@ -238,6 +288,7 @@ function SheinCostVariantDetailTable({
   ) => Promise<void>;
   row: SheinCostGroupRow;
   saving: boolean;
+  sourceTaskMetadataByCode?: Map<string, SheinCostSourceTaskMetadata>;
 }) {
   const details = row.products.slice(0, 5).map((product) => {
     const skuCodes = sheinSyncedProductSKUCodes(product);
@@ -277,6 +328,7 @@ function SheinCostVariantDetailTable({
               row={row}
               saving={saving}
               skuGroup={skuGroup}
+              sourceTaskMetadata={sourceTaskMetadataByCode?.get(normalizeSourceCode(skuGroup.skuCode))}
             />
           )) : details.map((detail) => (
             <tr key={detail.key}>
@@ -311,6 +363,7 @@ function SheinCostSKUDetailRow({
   row,
   saving,
   skuGroup,
+  sourceTaskMetadata,
 }: {
   draft?: string;
   onDraftChange: (value: string) => void;
@@ -321,13 +374,24 @@ function SheinCostSKUDetailRow({
   row: SheinCostGroupRow;
   saving: boolean;
   skuGroup: SheinCostSKUGroup;
+  sourceTaskMetadata?: SheinCostSourceTaskMetadata;
 }) {
   const value = draft ?? String(skuGroup.manualCostPrice ?? "");
   const parsedCost = parseSheinCostDraft(value);
-  const variantLabel = skuGroup.variantLabel || skuGroup.skuCode || skuGroup.groupLabel;
+  const variantLabel = formatSDSVariantDisplayLabel(
+    sourceTaskMetadata?.variantLabel || skuGroup.variantLabel || skuGroup.skuCode || skuGroup.groupLabel,
+  );
+  const sourcePrice = formatSDSSourcePrice(sourceTaskMetadata?.price);
   return (
     <tr>
-      <td className="px-3 py-2 font-medium text-zinc-900">{variantLabel}</td>
+      <td className="px-3 py-2">
+        <div className="font-medium text-zinc-900">{variantLabel}</div>
+        {sourcePrice ? (
+          <div className="mt-0.5 text-zinc-500">
+            POD/SDS: {skuGroup.skuCode} · POD 价 {sourcePrice}
+          </div>
+        ) : null}
+      </td>
       <td className="px-3 py-2">{skuGroup.productCount > 0 ? `${skuGroup.productCount} 个商品` : "-"}</td>
       <td className="px-3 py-2">{formatSheinSKUCodes(skuGroup.skuCodes)}</td>
       <td className="px-3 py-2">
@@ -374,7 +438,7 @@ function SheinCostSourceProduct({
   const title = metadata?.title || "";
   const price = formatSDSSourcePrice(metadata?.price);
   const shipmentArea = fallbackShipmentArea?.trim() || "";
-  const variantLabel = metadata?.variantLabel || "";
+  const variantLabel = formatSDSVariantDisplayLabel(metadata?.variantLabel || "");
   const imageURL = metadata?.imageURL || "";
   const imageLabel = `${title || sourceCode}首图`;
 
@@ -685,6 +749,7 @@ function formatSheinSKUCodes(skuCodes: string[]) {
 }
 
 type SheinCostSourceTaskMetadata = {
+  sourceCode: string;
   title: string;
   productSKU: string;
   variantSKU: string;
@@ -703,6 +768,7 @@ async function getSheinSourceTaskMetadata(storeId: number, sourceCodes: string[]
   const response = await getSheinSourceSDSMetadata(storeId, Array.from(targets));
   for (const item of response.items ?? []) {
     const metadata: SheinCostSourceTaskMetadata = {
+      sourceCode: item.source_code?.trim() ?? "",
       title: item.title?.trim() ?? "",
       productSKU: item.product_sku?.trim() ?? "",
       variantSKU: item.variant_sku?.trim() ?? "",
@@ -710,22 +776,117 @@ async function getSheinSourceTaskMetadata(storeId: number, sourceCodes: string[]
       variantLabel: item.variant_label?.trim() ?? "",
       imageURL: item.image_url?.trim() ?? "",
     };
-    const keys = [
-      normalizeSourceCode(item.source_code),
-      normalizeSourceCode(metadata.variantSKU),
-      normalizeSourceCode(metadata.productSKU),
-    ].filter(Boolean);
-    for (const key of keys) {
-      if (targets.has(key) && metadata.title && !result.has(key)) {
+    for (const key of [metadata.sourceCode, metadata.variantSKU].map(normalizeSourceCode).filter(Boolean)) {
+      if (metadata.title && !result.has(key)) {
         result.set(key, metadata);
       }
+    }
+    const productKey = normalizeSourceCode(metadata.productSKU);
+    if (productKey && targets.has(productKey) && metadata.title && !result.has(productKey)) {
+      result.set(productKey, metadata);
     }
   }
   return result;
 }
 
+function applySourceSDSMetadataSKUGroups(
+  row: SheinCostGroupRow,
+  sourceTaskMetadataByCode?: Map<string, SheinCostSourceTaskMetadata>,
+) {
+  if (!sourceTaskMetadataByCode || row.sourceSDSCodes.length === 0) {
+    return row;
+  }
+  const sourceCodes = new Set(row.sourceSDSCodes.map(normalizeSourceCode).filter(Boolean));
+  const variants = uniqueSheinSourceMetadata(Array.from(sourceTaskMetadataByCode.values()))
+    .filter((metadata) => {
+      const sourceCode = normalizeSourceCode(metadata.sourceCode || metadata.variantSKU);
+      const productSKU = normalizeSourceCode(metadata.productSKU);
+      return sourceCodes.has(sourceCode) || sourceCodes.has(productSKU);
+    })
+    .sort((a, b) =>
+      normalizeSourceCode(a.sourceCode || a.variantSKU).localeCompare(
+        normalizeSourceCode(b.sourceCode || b.variantSKU),
+      ),
+    );
+  if (variants.length <= 1) {
+    return row;
+  }
+  return {
+    ...row,
+    skuGroups: variants.map((metadata) => {
+      const sourceCode = normalizeSourceCode(metadata.sourceCode || metadata.variantSKU || metadata.productSKU);
+      const existing = row.skuGroups.find((skuGroup) => normalizeSourceCode(skuGroup.skuCode) === sourceCode);
+      return {
+        groupKey: existing?.groupKey || `${row.groupKey}:variant:${sourceCode}`,
+        groupLabel: existing?.groupLabel || `${row.groupLabel} / ${sourceCode}`,
+        skuCode: sourceCode,
+        variantLabel: metadata.variantLabel || sourceCode,
+        skuCodes: existing?.skuCodes ?? [],
+        productCount: existing?.productCount && existing.skuCode === sourceCode ? existing.productCount : row.productCount,
+        products: existing?.products ?? [],
+        manualCostPrice: existing?.manualCostPrice ?? (row.skuGroups.length === 0 ? row.manualCostPrice : undefined),
+      };
+    }),
+  };
+}
+
+function uniqueSheinSourceMetadata(items: SheinCostSourceTaskMetadata[]) {
+  const seen = new Set<string>();
+  const out: SheinCostSourceTaskMetadata[] = [];
+  for (const item of items) {
+    const key = normalizeSourceCode(item.sourceCode || item.variantSKU || item.productSKU);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+function simplifySourceSDSVariantGroups(row: SheinCostGroupRow) {
+  if (row.skuGroups.length <= 1) {
+    return row;
+  }
+  const sizeGroups = row.skuGroups.filter((skuGroup) =>
+    isLikelySDSSizeVariant(
+      skuGroup.variantLabel || skuGroup.skuCode || skuGroup.groupLabel,
+    ),
+  );
+  if (sizeGroups.length === 0 || sizeGroups.length === row.skuGroups.length) {
+    return row;
+  }
+  return {
+    ...row,
+    skuGroups: sizeGroups,
+  };
+}
+
+function isLikelySDSSizeVariant(value?: string | null) {
+  const normalized = value?.trim().toLowerCase() ?? "";
+  if (!normalized) {
+    return false;
+  }
+  return (
+    /\d+\s*[*x×]\s*\d+/.test(normalized) ||
+    /\d+(?:\.\d+)?\s*(?:cm|mm|inch|in|英寸|厘米|毫米)\b/.test(normalized)
+  );
+}
+
+function isLikelySourceSDSCode(value?: string | null) {
+  return /^[A-Z]{1,4}\d{6,}/i.test(value?.trim() ?? "");
+}
+
 function normalizeSourceCode(value?: string | null) {
   return value?.trim().toUpperCase() ?? "";
+}
+
+function formatSDSVariantDisplayLabel(value?: string | null) {
+  const label = value?.trim() ?? "";
+  if (!label.includes("/")) {
+    return label;
+  }
+  return label.split("/").map((part) => part.trim()).filter(Boolean).at(-1) ?? label;
 }
 
 function formatSDSSourcePrice(price?: number | null) {

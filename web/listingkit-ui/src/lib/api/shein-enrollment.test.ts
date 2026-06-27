@@ -12,6 +12,7 @@ import {
   getSheinSyncedProducts,
   refreshSheinActivityCandidates,
   reviewSheinActivityCandidate,
+  syncSheinSourceSDSProduct,
   triggerSheinStoreSync,
   updateSheinSDSCostGroup,
   updateSheinSyncedProductCost,
@@ -74,6 +75,7 @@ describe("shein enrollment api", () => {
     await updateSheinSyncedProductCost(88, { manual_cost_price: 19.5 });
     await getSheinSDSCostGroups(12, { page: 1, page_size: 100 });
     await getSheinSourceSDSMetadata(12, ["XB0610007001", "XB0608018002"]);
+    await syncSheinSourceSDSProduct(12, "XB0603003001");
     await updateSheinSDSCostGroup(12, "style:B3195DA6", {
       group_label: "B3195DA6",
       manual_cost_price: 46.8,
@@ -123,6 +125,13 @@ describe("shein enrollment api", () => {
     );
     expect(mockedApiRequest).toHaveBeenNthCalledWith(
       6,
+      "/shein-sync/stores/12/source-sds-products/XB0603003001/sync",
+      {
+        method: "POST",
+      },
+    );
+    expect(mockedApiRequest).toHaveBeenNthCalledWith(
+      7,
       "/shein-sync/stores/12/sds-cost-groups/style%3AB3195DA6/cost",
       {
         method: "PATCH",

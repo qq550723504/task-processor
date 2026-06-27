@@ -22,8 +22,10 @@ function renderCostPriceTable(options?: {
     target: SheinCostPriceSaveTarget,
     manualCostPrice: number | null,
   ) => Promise<void>;
+  onSyncSourceSDSProduct?: (sourceCode: string) => Promise<void>;
   shipmentArea?: string;
   sourceGroups?: Array<Record<string, unknown>>;
+  syncingSourceCode?: string;
 }) {
   const client = new QueryClient({
     defaultOptions: {
@@ -55,10 +57,12 @@ function renderCostPriceTable(options?: {
           ]
         }
         onSave={options?.onSave ?? vi.fn()}
+        onSyncSourceSDSProduct={options?.onSyncSourceSDSProduct}
         saving={false}
         shipmentArea={options?.shipmentArea}
         sourceGroups={options?.sourceGroups}
         storeId={870}
+        syncingSourceCode={options?.syncingSourceCode}
       />
     </QueryClientProvider>,
   );
@@ -113,7 +117,7 @@ describe("SheinCostPriceTable", () => {
       "https://cdn.sdspod.com/mockup/clock.jpg",
     );
     expect(screen.getByText("POD/SDS: MG8006905001")).toBeInTheDocument();
-    expect(screen.getByText("变体 白色 / 25x25cm")).toBeInTheDocument();
+    expect(screen.getByText("变体 25x25cm")).toBeInTheDocument();
     expect(screen.getByText("POD 价 ¥16.60")).toBeInTheDocument();
     expect(screen.getByText("发货地 US")).toBeInTheDocument();
     expect(
@@ -277,8 +281,38 @@ describe("SheinCostPriceTable", () => {
     });
   });
 
+  it("syncs one source product from the cost card action", async () => {
+    mockSourceMetadataFetch([]);
+    const onSyncSourceSDSProduct = vi.fn().mockResolvedValue(undefined);
+
+    renderCostPriceTable({ onSyncSourceSDSProduct });
+
+    fireEvent.click(await screen.findByRole("button", { name: "同步该产品 MG8006905001" }));
+
+    await waitFor(() => {
+      expect(onSyncSourceSDSProduct).toHaveBeenCalledWith("MG8006905001");
+    });
+  });
+
   it("edits each source product variant once in the child table", async () => {
-    mockSourceMetadataFetch([], "XB0603003001");
+    mockSourceMetadataFetch([
+      {
+        source_code: "XB0603003001",
+        title: "帆布拉绳收纳袋双面印刷",
+        product_sku: "XB0603003001",
+        variant_sku: "XB0603003001",
+        variant_label: "white / 12*18cm",
+        price: 8.81,
+      },
+      {
+        source_code: "XB0603003002",
+        title: "帆布拉绳收纳袋双面印刷",
+        product_sku: "XB0603003001",
+        variant_sku: "XB0603003002",
+        variant_label: "white / 20*25cm",
+        price: 9.64,
+      },
+    ], "XB0603003001");
     const onSave = vi.fn().mockResolvedValue(undefined);
 
     renderCostPriceTable({
@@ -291,24 +325,34 @@ describe("SheinCostPriceTable", () => {
           sku_codes: ["SKU-BLACK-S", "SKU-BLACK-M"],
           sku_groups: [
             {
-              group_key: "source:XB0603003001:variant:WHITE-12",
-              group_label: "XB0603003001 / white / 12*18cm",
+              group_key: "source:XB0603003001:variant:WHITE",
+              group_label: "XB0603003001 / White",
               source_code: "XB0603003001",
-              sku_code: "white / 12*18cm",
-              variant_label: "white / 12*18cm",
-              sku_codes: ["SKU-BLACK-M", "SKU-BLACK-S", "SKU-BLACK-L"],
-              product_count: 10,
+              sku_code: "White",
+              variant_label: "White",
+              sku_codes: ["SKU-WHITE"],
+              product_count: 1,
               manual_cost_price: 31.2,
             },
             {
-              group_key: "source:XB0603003001:variant:WHITE-15",
-              group_label: "XB0603003001 / white / 15*20cm",
+              group_key: "source:XB0603003001:variant:MULTI",
+              group_label: "XB0603003001 / 多色",
               source_code: "XB0603003001",
-              sku_code: "white / 15*20cm",
-              variant_label: "white / 15*20cm",
-              sku_codes: ["SKU-WHITE-15-A", "SKU-WHITE-15-B"],
-              product_count: 8,
+              sku_code: "多色",
+              variant_label: "多色",
+              sku_codes: ["SKU-COLOR-A", "SKU-COLOR-B"],
+              product_count: 10,
               manual_cost_price: 29.8,
+            },
+            {
+              group_key: "source:XB0603003001:variant:WHITE-CN",
+              group_label: "XB0603003001 / 白色",
+              source_code: "XB0603003001",
+              sku_code: "白色",
+              variant_label: "白色",
+              sku_codes: ["SKU-CN-WHITE"],
+              product_count: 7,
+              manual_cost_price: 30.1,
             },
           ],
           product_count: 18,
@@ -317,7 +361,7 @@ describe("SheinCostPriceTable", () => {
               id: 18,
               skc_name: "sh260603194059486654294",
               supplier_code: "XB0603003001-181EB5DF",
-              sale_name: "white / 12*18cm",
+              sale_name: "多色",
               site_snapshot: `{"sku_codes":["SKU-BLACK-S","SKU-BLACK-M","SKU-BLACK-L"]}`,
             },
           ],
@@ -329,16 +373,22 @@ describe("SheinCostPriceTable", () => {
     expect(await screen.findByText("XB0603003001 · 18 个商品")).toBeInTheDocument();
     const detailTable = screen.getByRole("table", { name: "XB0603003001 明细" });
     expect(detailTable).toBeInTheDocument();
+    expect(await within(detailTable).findByText("12*18cm")).toBeInTheDocument();
     expect(within(detailTable).getAllByRole("textbox")).toHaveLength(2);
-    expect(within(detailTable).getByText("white / 12*18cm")).toBeInTheDocument();
-    expect(within(detailTable).getByText("white / 15*20cm")).toBeInTheDocument();
-    expect(within(detailTable).getByText("10 个商品")).toBeInTheDocument();
-    expect(within(detailTable).getByText("8 个商品")).toBeInTheDocument();
+    expect(within(detailTable).getByText("20*25cm")).toBeInTheDocument();
+    expect(within(detailTable).queryByText("white / 12*18cm")).not.toBeInTheDocument();
+    expect(within(detailTable).queryByText("white / 20*25cm")).not.toBeInTheDocument();
+    expect(detailTable).toHaveTextContent("POD/SDS: XB0603003001 · POD 价 ¥8.81");
+    expect(detailTable).toHaveTextContent("POD/SDS: XB0603003002 · POD 价 ¥9.64");
+    expect(within(detailTable).getAllByText("18 个商品")).toHaveLength(2);
+    expect(within(detailTable).queryByText("White")).not.toBeInTheDocument();
+    expect(within(detailTable).queryByText("多色")).not.toBeInTheDocument();
+    expect(within(detailTable).queryByText("白色")).not.toBeInTheDocument();
     expect(within(detailTable).queryByText("sh260603194059486654294 / sh260603194059486654294")).not.toBeInTheDocument();
-    expect(within(detailTable).getByText("SKU-BLACK-L / SKU-BLACK-M / SKU-BLACK-S")).toBeInTheDocument();
+    expect(within(detailTable).queryByText("SKU-COLOR-A / SKU-COLOR-B")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("成本价 XB0603003001")).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("成本价 XB0603003001 / white / 12*18cm"), {
+    fireEvent.change(screen.getByLabelText("成本价 XB0603003001 / XB0603003001"), {
       target: { value: "34.5" },
     });
     fireEvent.click(within(detailTable).getAllByRole("button", { name: "保存" })[0]);
@@ -346,11 +396,98 @@ describe("SheinCostPriceTable", () => {
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith(
         {
-          groupKey: "source:XB0603003001:variant:WHITE-12",
-          groupLabel: "XB0603003001 / white / 12*18cm",
+          groupKey: "source:XB0603003001:variant:XB0603003001",
+          groupLabel: "XB0603003001 / XB0603003001",
         },
         34.5,
       );
     });
+  });
+
+  it("hides SHEIN color groups when SDS size variants are available", async () => {
+    mockSourceMetadataFetch([
+      {
+        source_code: "XB0603003001",
+        title: "帆布拉绳收纳袋双面印刷",
+        product_sku: "XB0603003001",
+        variant_sku: "XB0603003001",
+        variant_label: "white / 12*18cm",
+        price: 8.81,
+      },
+    ], "XB0603003001");
+
+    renderCostPriceTable({
+      sourceGroups: [
+        {
+          group_key: "source:XB0603003001",
+          group_label: "XB0603003001",
+          source_code: "XB0603003001",
+          sku_groups: [
+            {
+              group_key: "source:XB0603003001:variant:12*18CM",
+              group_label: "XB0603003001 / 12*18cm",
+              source_code: "XB0603003001",
+              sku_code: "12*18cm",
+              variant_label: "12*18cm",
+              sku_codes: ["SKU-SIZE-12"],
+              product_count: 6,
+            },
+            {
+              group_key: "source:XB0603003001:variant:20*25CM",
+              group_label: "XB0603003001 / 20*25cm",
+              source_code: "XB0603003001",
+              sku_code: "20*25cm",
+              variant_label: "20*25cm",
+              sku_codes: ["SKU-SIZE-20"],
+              product_count: 6,
+            },
+            {
+              group_key: "source:XB0603003001:variant:WHITE",
+              group_label: "XB0603003001 / White",
+              source_code: "XB0603003001",
+              sku_code: "White",
+              variant_label: "White",
+              sku_codes: ["SKU-WHITE"],
+              product_count: 1,
+            },
+            {
+              group_key: "source:XB0603003001:variant:MULTI",
+              group_label: "XB0603003001 / 多色",
+              source_code: "XB0603003001",
+              sku_code: "多色",
+              variant_label: "多色",
+              sku_codes: ["SKU-MULTI"],
+              product_count: 9,
+            },
+            {
+              group_key: "source:XB0603003001:variant:WHITE-CN",
+              group_label: "XB0603003001 / 白色",
+              source_code: "XB0603003001",
+              sku_code: "白色",
+              variant_label: "白色",
+              sku_codes: ["SKU-WHITE-CN"],
+              product_count: 2,
+            },
+          ],
+          product_count: 18,
+          products: [
+            {
+              id: 18,
+              skc_name: "sh260603194059486654294",
+              supplier_code: "XB0603003001-181EB5DF",
+            },
+          ],
+        },
+      ],
+    });
+
+    const detailTable = await screen.findByRole("table", { name: "XB0603003001 明细" });
+
+    expect(within(detailTable).getAllByRole("textbox")).toHaveLength(2);
+    expect(within(detailTable).getByText("12*18cm")).toBeInTheDocument();
+    expect(within(detailTable).getByText("20*25cm")).toBeInTheDocument();
+    expect(within(detailTable).queryByText("White")).not.toBeInTheDocument();
+    expect(within(detailTable).queryByText("多色")).not.toBeInTheDocument();
+    expect(within(detailTable).queryByText("白色")).not.toBeInTheDocument();
   });
 });

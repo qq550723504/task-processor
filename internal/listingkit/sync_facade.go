@@ -130,6 +130,10 @@ func ResolveSheinSDSVariantCostGroupIdentity(record SheinSyncedProductRecord) sh
 	return sheinsync.ResolveSheinSDSVariantCostGroupIdentity(record)
 }
 
+func ResolveSheinSDSVariantCostGroupIdentities(record SheinSyncedProductRecord) []sheinsync.SheinSDSCostGroupIdentity {
+	return sheinsync.ResolveSheinSDSVariantCostGroupIdentities(record)
+}
+
 func SheinSyncedProductSKUCodes(record SheinSyncedProductRecord) []string {
 	return sheinsync.SheinSyncedProductSKUCodes(record)
 }

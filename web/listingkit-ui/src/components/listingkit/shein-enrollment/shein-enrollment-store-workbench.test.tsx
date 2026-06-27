@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   useSheinActivityCandidates: vi.fn(),
   useSheinActivityEnrollmentRuns: vi.fn(),
   useTriggerSheinStoreSync: vi.fn(),
+  useSyncSheinSourceSDSProduct: vi.fn(),
   useRefreshSheinActivityCandidates: vi.fn(),
   useUpdateSheinSDSCostGroup: vi.fn(),
   useUpdateSheinSyncedProductCost: vi.fn(),
@@ -31,6 +32,8 @@ vi.mock("@/lib/query/use-shein-enrollment", () => ({
   useSheinActivityEnrollmentRuns: (...args: unknown[]) =>
     mocks.useSheinActivityEnrollmentRuns(...args),
   useTriggerSheinStoreSync: (...args: unknown[]) => mocks.useTriggerSheinStoreSync(...args),
+  useSyncSheinSourceSDSProduct: (...args: unknown[]) =>
+    mocks.useSyncSheinSourceSDSProduct(...args),
   useRefreshSheinActivityCandidates: (...args: unknown[]) =>
     mocks.useRefreshSheinActivityCandidates(...args),
   useUpdateSheinSDSCostGroup: (...args: unknown[]) =>
@@ -64,6 +67,7 @@ function renderWorkbench({
   sdsCostGroups = [],
   sourceSDSCostGroups = [],
   runTotal,
+  syncSourceMutation,
 }: {
   initialTab?: string;
   products?: Array<Record<string, unknown>>;
@@ -74,6 +78,7 @@ function renderWorkbench({
   sdsCostGroups?: Array<Record<string, unknown>>;
   sourceSDSCostGroups?: Array<Record<string, unknown>>;
   runTotal?: number;
+  syncSourceMutation?: ReturnType<typeof resolvedMutation>;
 }) {
   mocks.useSheinEnrollmentStoreSummary.mockReturnValue({
     data: {
@@ -108,6 +113,7 @@ function renderWorkbench({
     isLoading: false,
   });
   mocks.useTriggerSheinStoreSync.mockReturnValue(resolvedMutation());
+  mocks.useSyncSheinSourceSDSProduct.mockReturnValue(syncSourceMutation ?? resolvedMutation());
   mocks.useRefreshSheinActivityCandidates.mockReturnValue(resolvedMutation());
   mocks.useUpdateSheinSDSCostGroup.mockReturnValue(resolvedMutation());
   mocks.useUpdateSheinSyncedProductCost.mockReturnValue(resolvedMutation());
@@ -227,8 +233,11 @@ describe("SheinEnrollmentStoreWorkbench", () => {
   });
 
   it("renders cost rows from source POD SDS groups in the cost tab", async () => {
+    const syncSourceMutation = resolvedMutation();
+    mocks.useSyncSheinSourceSDSProduct.mockReturnValue(syncSourceMutation);
     renderWorkbench({
       initialTab: "costs",
+      syncSourceMutation,
       sourceSDSCostGroups: [
         {
           group_key: "source:XB0608021001",
@@ -253,9 +262,13 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
 
     expect(await screen.findByText("XB0608021001 · 2 个商品")).toBeInTheDocument();
-    expect(screen.getByText(/sg260604223794143925005/)).toBeInTheDocument();
-    expect(screen.getByText(/sg260603162031320517713/)).toBeInTheDocument();
+    expect(screen.getAllByText(/sg260604223794143925005/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/sg260603162031320517713/).length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue("50")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "同步该产品 XB0608021001" }));
+
+    expect(syncSourceMutation.mutateAsync).toHaveBeenCalledWith("XB0608021001");
   });
 
   it("only enables backend queries needed by the active costs tab", async () => {

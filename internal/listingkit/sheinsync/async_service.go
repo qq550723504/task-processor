@@ -51,6 +51,13 @@ func (s *asyncSheinSyncService) ListSyncedProducts(ctx context.Context, query *S
 	return s.sync.ListSyncedProducts(ctx, query)
 }
 
+func (s *asyncSheinSyncService) SyncSheinSourceSDSProduct(ctx context.Context, tenantID, storeID int64, sourceCode string) (int, error) {
+	if s == nil || s.sync == nil {
+		return 0, fmt.Errorf("SHEIN sync service is required")
+	}
+	return s.sync.SyncSheinSourceSDSProduct(ctx, tenantID, storeID, sourceCode)
+}
+
 func (s *asyncSheinSyncService) UpdateManualCostPrice(ctx context.Context, productID int64, manualCostPrice *float64) error {
 	return s.sync.UpdateManualCostPrice(ctx, productID, manualCostPrice)
 }

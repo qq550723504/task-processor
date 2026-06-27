@@ -199,6 +199,11 @@ export type TriggerSheinStoreSyncResponse = {
   job?: SheinSyncJobRecord;
 };
 
+export type SyncSheinSourceSDSProductResponse = {
+  source_code?: string;
+  synced_count?: number;
+};
+
 export type SheinActivityCandidateRecord = {
   id?: number;
   tenant_id?: number;

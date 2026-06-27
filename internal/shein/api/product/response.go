@@ -208,7 +208,8 @@ type SkcInfoItem struct {
 
 // SkuInfo SKU 信息项
 type SkuInfo struct {
-	SkuCode string `json:"sku_code"`
+	SkuCode     string `json:"sku_code"`
+	SupplierSKU string `json:"supplier_sku"`
 }
 
 // PreValidResult 预验证结果
