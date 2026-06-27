@@ -2,13 +2,9 @@ package validation
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	shein "task-processor/internal/shein"
@@ -16,31 +12,47 @@ import (
 	"task-processor/internal/state"
 )
 
+type fakeDailyCountProvider struct {
+	client *fakeDailyCountClient
+}
+
+func (p fakeDailyCountProvider) GetDailyListingCountClient() managementapi.DailyListingCountAPI {
+	return p.client
+}
+
+type fakeDailyCountClient struct {
+	reservation *managementapi.TryConsumeDailyQuotaRespDTO
+}
+
+func (c *fakeDailyCountClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*managementapi.DailyListingCountRespDTO, error) {
+	return &managementapi.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date}, nil
+}
+
+func (c *fakeDailyCountClient) SetDailyListingCount(*managementapi.DailyListingCountSetReqDTO) error {
+	return nil
+}
+
+func (c *fakeDailyCountClient) TryConsumeDailyQuota(*managementapi.TryConsumeDailyQuotaReqDTO) (*managementapi.TryConsumeDailyQuotaRespDTO, error) {
+	return c.reservation, nil
+}
+
+func (c *fakeDailyCountClient) RollbackDailyQuota(*managementapi.RollbackDailyQuotaReqDTO) (int64, error) {
+	return 0, nil
+}
+
+func (c *fakeDailyCountClient) SetRemainingListingQuota(int64, int64, int) (bool, error) {
+	return true, nil
+}
+
 func TestCheckDailyLimitHandlerReturnsPausedHandledErrorWhenLimitReached(t *testing.T) {
 	limit := 5
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rpc-api/listing/store/try-consume-daily-quota" {
-			http.NotFound(w, r)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"data": map[string]any{
-				"allowed":      false,
-				"newCount":     5,
-				"remaining":    0,
-				"reachedLimit": true,
-			},
-		})
-	}))
-	defer server.Close()
-
-	clientMgr := management.NewClientManager(&config.ManagementConfig{BaseURL: server.URL})
-	clientMgr.GetClient()
-	clientMgr.SetUserToken("test-token", "1")
-
-	mem := state.NewMemoryManager(context.Background(), clientMgr)
+	countClient := &fakeDailyCountClient{reservation: &managementapi.TryConsumeDailyQuotaRespDTO{
+		Allowed:      false,
+		NewCount:     5,
+		Remaining:    0,
+		ReachedLimit: true,
+	}}
+	mem := state.NewMemoryManager(context.Background(), fakeDailyCountProvider{client: countClient})
 
 	ctx := &sheinctx.TaskContext{
 		RuntimeState: sheinctx.RuntimeState{

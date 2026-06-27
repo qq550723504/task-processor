@@ -217,7 +217,6 @@ func TestBuildSDSClientConfigUsesAuthBootstrapFromConfig(t *testing.T) {
 					StaticOutToken:          "out-token",
 					StaticMerchantID:        12345,
 					StaticCookie:            "cookie=value",
-					ManagementStoreID:       67890,
 					LoginDomainName:         "www.sdsdiy.com",
 					LoginVerifyCaptchaParam: "captcha-param",
 					LoginExtraInfo:          "{\"risk\":1}",
@@ -239,9 +238,6 @@ func TestBuildSDSClientConfigUsesAuthBootstrapFromConfig(t *testing.T) {
 	if clientCfg.AuthBootstrap.StaticCookie != "cookie=value" {
 		t.Fatalf("cookie = %q", clientCfg.AuthBootstrap.StaticCookie)
 	}
-	if clientCfg.AuthBootstrap.ManagementStoreID != 67890 {
-		t.Fatalf("management store id = %d", clientCfg.AuthBootstrap.ManagementStoreID)
-	}
 	if clientCfg.AuthBootstrap.LoginDomainName != "www.sdsdiy.com" {
 		t.Fatalf("domain name = %q", clientCfg.AuthBootstrap.LoginDomainName)
 	}
@@ -250,20 +246,5 @@ func TestBuildSDSClientConfigUsesAuthBootstrapFromConfig(t *testing.T) {
 	}
 	if clientCfg.AuthBootstrap.LoginExtraInfo != "{\"risk\":1}" {
 		t.Fatalf("extra info = %q", clientCfg.AuthBootstrap.LoginExtraInfo)
-	}
-	if clientCfg.Management == nil {
-		t.Fatal("expected management config to be propagated")
-	}
-	if clientCfg.Management.BaseURL != "https://api.example.test" {
-		t.Fatalf("management base url = %q", clientCfg.Management.BaseURL)
-	}
-	if clientCfg.Management.ClientID != "client-id" {
-		t.Fatalf("management client id = %q", clientCfg.Management.ClientID)
-	}
-	if clientCfg.Management.ClientSecret != "client-secret" {
-		t.Fatalf("management client secret = %q", clientCfg.Management.ClientSecret)
-	}
-	if clientCfg.Management.TenantID != "286" {
-		t.Fatalf("management tenant id = %q", clientCfg.Management.TenantID)
 	}
 }

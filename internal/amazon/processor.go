@@ -31,10 +31,9 @@ type Processor struct {
 func NewProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger) *Processor {
 	// 创建基础处理器
 	baseProcessor := processor.NewBaseProcessor(ctx, &processor.BaseProcessorConfig{
-		Config:           cfg,
-		ManagementClient: nil, // Amazon处理器可能不需要管理客户端
-		Logger:           logger,
-		Platform:         "Amazon",
+		Config:   cfg,
+		Logger:   logger,
+		Platform: "Amazon",
 	})
 
 	// 创建服务容器

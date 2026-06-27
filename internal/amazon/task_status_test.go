@@ -1,20 +1,62 @@
 package amazon
 
 import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	amazonModel "task-processor/internal/amazon/model"
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
 	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/state"
 
 	"github.com/sirupsen/logrus"
 )
+
+type fakeDailyCountProvider struct {
+	client *fakeDailyCountClient
+}
+
+func (p fakeDailyCountProvider) GetDailyListingCountClient() managementapi.DailyListingCountAPI {
+	return p.client
+}
+
+type fakeDailyCountClient struct {
+	count int64
+}
+
+func (c *fakeDailyCountClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*managementapi.DailyListingCountRespDTO, error) {
+	return &managementapi.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date, Count: c.count}, nil
+}
+
+func (c *fakeDailyCountClient) SetDailyListingCount(req *managementapi.DailyListingCountSetReqDTO) error {
+	c.count = req.Count
+	return nil
+}
+
+func (c *fakeDailyCountClient) TryConsumeDailyQuota(req *managementapi.TryConsumeDailyQuotaReqDTO) (*managementapi.TryConsumeDailyQuotaRespDTO, error) {
+	next := c.count + req.Increment
+	allowed := next <= req.Limit
+	if allowed {
+		c.count = next
+	}
+	return &managementapi.TryConsumeDailyQuotaRespDTO{
+		Allowed:      allowed,
+		NewCount:     c.count,
+		Remaining:    req.Limit - c.count,
+		ReachedLimit: c.count >= req.Limit,
+	}, nil
+}
+
+func (c *fakeDailyCountClient) RollbackDailyQuota(req *managementapi.RollbackDailyQuotaReqDTO) (int64, error) {
+	c.count -= req.Decrement
+	if c.count < 0 {
+		c.count = 0
+	}
+	return c.count, nil
+}
+
+func (c *fakeDailyCountClient) SetRemainingListingQuota(int64, int64, int) (bool, error) {
+	return true, nil
+}
 
 func TestParseTaskStatusMetadata(t *testing.T) {
 	reasonCode, stage := parseTaskStatusMetadata("NONRETRYABLE: [stage:check_daily_limit] [DAILY_LIMIT_REACHED] limit reached")
@@ -48,40 +90,7 @@ func TestIsAmazonRetryableTaskError(t *testing.T) {
 }
 
 func TestRecordAmazonDailyListingCountWithoutDailyLimit(t *testing.T) {
-	var count int64
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
-		switch r.URL.Path {
-		case "/rpc-api/listing/store/get-daily-listing-count":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code": 0,
-				"data": count,
-			})
-		case "/rpc-api/listing/store/set-daily-listing-count":
-			var req struct {
-				Count int64 `json:"count"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode request: %v", err)
-			}
-			count = req.Count
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code": 0,
-				"data": 0,
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	clientMgr := management.NewClientManager(&config.ManagementConfig{
-		BaseURL: server.URL,
-	})
-	clientMgr.GetClient()
-	clientMgr.SetUserToken("test-token", "1")
+	countClient := &fakeDailyCountClient{}
 
 	recordAmazonDailyListingCount(
 		&model.Task{
@@ -95,13 +104,13 @@ func TestRecordAmazonDailyListingCountWithoutDailyLimit(t *testing.T) {
 			},
 		},
 		&state.MemoryManager{
-			DailyCountManager: state.NewDailyCountManager(clientMgr),
+			DailyCountManager: state.NewDailyCountManager(fakeDailyCountProvider{client: countClient}),
 		},
 		logrus.New(),
 	)
 
-	if count != 1 {
-		t.Fatalf("expected daily listing count 1 without daily limit, got %d", count)
+	if countClient.count != 1 {
+		t.Fatalf("expected daily listing count 1 without daily limit, got %d", countClient.count)
 	}
 }
 

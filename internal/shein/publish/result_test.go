@@ -1,18 +1,47 @@
 package publish
 
 import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
+	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	sheinproduct "task-processor/internal/shein/api/product"
 	"task-processor/internal/state"
 )
+
+type fakeDailyCountProvider struct {
+	client *fakeDailyCountClient
+}
+
+func (p fakeDailyCountProvider) GetDailyListingCountClient() managementapi.DailyListingCountAPI {
+	return p.client
+}
+
+type fakeDailyCountClient struct {
+	count int64
+}
+
+func (c *fakeDailyCountClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*managementapi.DailyListingCountRespDTO, error) {
+	return &managementapi.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date, Count: c.count}, nil
+}
+
+func (c *fakeDailyCountClient) SetDailyListingCount(req *managementapi.DailyListingCountSetReqDTO) error {
+	c.count = req.Count
+	return nil
+}
+
+func (c *fakeDailyCountClient) TryConsumeDailyQuota(req *managementapi.TryConsumeDailyQuotaReqDTO) (*managementapi.TryConsumeDailyQuotaRespDTO, error) {
+	return &managementapi.TryConsumeDailyQuotaRespDTO{Allowed: true, NewCount: c.count + req.Increment}, nil
+}
+
+func (c *fakeDailyCountClient) RollbackDailyQuota(req *managementapi.RollbackDailyQuotaReqDTO) (int64, error) {
+	return c.count - req.Decrement, nil
+}
+
+func (c *fakeDailyCountClient) SetRemainingListingQuota(int64, int64, int) (bool, error) {
+	return true, nil
+}
 
 func TestSavePublishResultCalculateIncrementUsesStoreLimitType(t *testing.T) {
 	handler := NewSavePublishResultHandler()
@@ -48,40 +77,7 @@ func TestSavePublishResultCalculateIncrementUsesStoreLimitType(t *testing.T) {
 }
 
 func TestSavePublishResultRecordDailyListingCountWithoutDailyLimit(t *testing.T) {
-	var count int64
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
-		switch r.URL.Path {
-		case "/rpc-api/listing/store/get-daily-listing-count":
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code": 0,
-				"data": count,
-			})
-		case "/rpc-api/listing/store/set-daily-listing-count":
-			var req struct {
-				Count int64 `json:"count"`
-			}
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				t.Fatalf("decode request: %v", err)
-			}
-			count = req.Count
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"code": 0,
-				"data": 0,
-			})
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-
-	clientMgr := management.NewClientManager(&config.ManagementConfig{
-		BaseURL: server.URL,
-	})
-	clientMgr.GetClient()
-	clientMgr.SetUserToken("test-token", "1")
+	countClient := &fakeDailyCountClient{}
 
 	handler := NewSavePublishResultHandler()
 	input := &PublishResultInput{
@@ -90,7 +86,7 @@ func TestSavePublishResultRecordDailyListingCountWithoutDailyLimit(t *testing.T)
 			StoreID:  2,
 		},
 		MemoryManager: &state.MemoryManager{
-			DailyCountManager: state.NewDailyCountManager(clientMgr),
+			DailyCountManager: state.NewDailyCountManager(fakeDailyCountProvider{client: countClient}),
 		},
 		StoreInfo: &listingruntime.StoreInfo{
 			ID:             2,
@@ -113,7 +109,7 @@ func TestSavePublishResultRecordDailyListingCountWithoutDailyLimit(t *testing.T)
 
 	handler.recordDailyListingCount(nil, input)
 
-	if count != 2 {
-		t.Fatalf("expected daily listing count 2 without daily limit, got %d", count)
+	if countClient.count != 2 {
+		t.Fatalf("expected daily listing count 2 without daily limit, got %d", countClient.count)
 	}
 }

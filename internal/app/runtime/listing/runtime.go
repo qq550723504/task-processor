@@ -108,21 +108,21 @@ func runDebugTask(
 	}
 
 	rt := consumer.PlatformRuntimeContext{
-		Config:                  cfg,
-		Logger:                  logger,
-		ManagementClient:        resources.ManagementClient,
-		RawJSONDataClient:       resources.RawJSONDataClient,
-		StoreAPI:                resources.StoreAPI,
-		SchedulerRuntime:        resources.SchedulerRuntime,
-		SchedulerFactoryRuntime: resources.SchedulerFactoryRuntime,
-		ProcessorRuntime:        resources.ProcessorRuntime,
-		CrawlSource:             resources.CrawlSource,
-		ProductFetcher:          resources.ProductFetcher,
+		Config:                             cfg,
+		Logger:                             logger,
+		ListingRuntimeImportTaskRepository: resources.ListingRuntimeImportTaskRepository,
+		RawJSONDataClient:                  resources.RawJSONDataClient,
+		StoreAPI:                           resources.StoreAPI,
+		SchedulerRuntime:                   resources.SchedulerRuntime,
+		SchedulerFactoryRuntime:            resources.SchedulerFactoryRuntime,
+		ProcessorRuntime:                   resources.ProcessorRuntime,
+		CrawlSource:                        resources.CrawlSource,
+		ProductFetcher:                     resources.ProductFetcher,
 	}
 	if err := module.ConfigureListingRuntime(ctx, rt); err != nil {
 		return fmt.Errorf("configure %s debug runtime failed: %w", displayName, err)
 	}
-	if err := ValidateListingRuntimeHealth(platform, resources.ListingRuntimeHealthValidator(), logger); err != nil {
+	if err := ValidateListingRuntimeHealth(platform, resources.ListingRuntimeHealthValidator, logger); err != nil {
 		return err
 	}
 

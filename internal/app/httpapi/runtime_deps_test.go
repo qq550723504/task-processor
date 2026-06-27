@@ -9,9 +9,7 @@ import (
 	miniredis "github.com/alicebob/miniredis/v2"
 	"github.com/sirupsen/logrus"
 
-	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/listingkit"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
@@ -25,28 +23,6 @@ import (
 	"task-processor/internal/sdslogin"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 )
-
-func TestRuntimeDepsManagementClientReturnsSharedClient(t *testing.T) {
-	client := management.NewClientManager(nil)
-	deps := &runtimeDeps{
-		shared: &sharedRuntimeDeps{
-			sharedResources: &appbootstrap.SharedResources{
-				ManagementClient: client,
-			},
-		},
-	}
-
-	if got := deps.managementClient(); got != client {
-		t.Fatalf("management client = %p, want %p", got, client)
-	}
-}
-
-func TestRuntimeDepsManagementClientHandlesNilDeps(t *testing.T) {
-	var deps *runtimeDeps
-	if deps.managementClient() != nil {
-		t.Fatal("expected nil management client for nil deps")
-	}
-}
 
 func TestRuntimeDepsListingKitSupportHandlesNilDeps(t *testing.T) {
 	var deps *runtimeDeps

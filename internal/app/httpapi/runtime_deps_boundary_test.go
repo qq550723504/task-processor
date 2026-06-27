@@ -127,7 +127,6 @@ func TestHTTPAPIAdaptersKeepPromptStoreAssemblyDedicated(t *testing.T) {
 func TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated(t *testing.T) {
 	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
 	for _, marker := range []string{
-		"func (d *runtimeDeps) managementClient(",
 		"func (d *runtimeDeps) ensureListingKitSupport(",
 		"func (d *runtimeDeps) addClosers(",
 		"func (d *runtimeDeps) attachProductModule(",
@@ -142,8 +141,10 @@ func TestHTTPAPIRuntimeKeepsRuntimeDepsMethodsDedicated(t *testing.T) {
 	}
 
 	methodsSource := readHTTPAPIBoundaryFile(t, "runtime_deps_methods.go")
+	if strings.Contains(methodsSource, "func (d *runtimeDeps) managementClient(") {
+		t.Fatal("runtime_deps_methods.go should not reintroduce runtimeDeps.managementClient")
+	}
 	for _, marker := range []string{
-		"func (d *runtimeDeps) managementClient(",
 		"func (d *runtimeDeps) ensureListingKitSupport(",
 		"func (d *runtimeDeps) addClosers(",
 		"func (d *runtimeDeps) attachProductModule(",

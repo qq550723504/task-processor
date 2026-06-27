@@ -1,4 +1,4 @@
-package management
+package local
 
 import (
 	"context"
@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/pkg/types"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -147,12 +147,20 @@ func (p *LocalDataProvider) storeRepository() *listingadmin.GormStoreRepository 
 	return p.storeRepo
 }
 
+func (p *LocalDataProvider) StoreRepository() *listingadmin.GormStoreRepository {
+	return p.storeRepository()
+}
+
 func (p *LocalDataProvider) filterRuleRepository() *listingadmin.GormFilterRuleRepository {
 	if p == nil {
 		return nil
 	}
 	p.initRepositories()
 	return p.filterRuleRepo
+}
+
+func (p *LocalDataProvider) FilterRuleRepository() *listingadmin.GormFilterRuleRepository {
+	return p.filterRuleRepository()
 }
 
 func (p *LocalDataProvider) profitRuleRepository() *listingadmin.GormProfitRuleRepository {
@@ -163,12 +171,20 @@ func (p *LocalDataProvider) profitRuleRepository() *listingadmin.GormProfitRuleR
 	return p.profitRuleRepo
 }
 
+func (p *LocalDataProvider) ProfitRuleRepository() *listingadmin.GormProfitRuleRepository {
+	return p.profitRuleRepository()
+}
+
 func (p *LocalDataProvider) operationStrategyRepository() *listingadmin.GormOperationStrategyRepository {
 	if p == nil {
 		return nil
 	}
 	p.initRepositories()
 	return p.operationStrategyRepo
+}
+
+func (p *LocalDataProvider) OperationStrategyRepository() *listingadmin.GormOperationStrategyRepository {
+	return p.operationStrategyRepository()
 }
 
 func (p *LocalDataProvider) pricingRuleRepository() *listingadmin.GormPricingRuleRepository {
@@ -179,12 +195,20 @@ func (p *LocalDataProvider) pricingRuleRepository() *listingadmin.GormPricingRul
 	return p.pricingRuleRepo
 }
 
+func (p *LocalDataProvider) PricingRuleRepository() *listingadmin.GormPricingRuleRepository {
+	return p.pricingRuleRepository()
+}
+
 func (p *LocalDataProvider) productImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
 	if p == nil {
 		return nil
 	}
 	p.initRepositories()
 	return p.productImportMappingRepo
+}
+
+func (p *LocalDataProvider) ProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
+	return p.productImportMappingRepository()
 }
 
 func (p *LocalDataProvider) productDataRepository() *listingadmin.GormProductDataRepository {
@@ -207,6 +231,10 @@ func (p *LocalDataProvider) inventoryRecordRepository() *listingadmin.GormInvent
 	return p.inventoryRecordRepo
 }
 
+func (p *LocalDataProvider) InventoryRecordRepository() *listingadmin.GormInventoryRecordRepository {
+	return p.inventoryRecordRepository()
+}
+
 func (p *LocalDataProvider) rawJSONDataRepository() *listingadmin.GormRawJSONDataRepository {
 	if p == nil {
 		return nil
@@ -215,12 +243,20 @@ func (p *LocalDataProvider) rawJSONDataRepository() *listingadmin.GormRawJSONDat
 	return p.rawJSONDataRepo
 }
 
+func (p *LocalDataProvider) RawJSONDataRepository() *listingadmin.GormRawJSONDataRepository {
+	return p.rawJSONDataRepository()
+}
+
 func (p *LocalDataProvider) importTaskRepository() *listingadmin.GormImportTaskRepository {
 	if p == nil {
 		return nil
 	}
 	p.initRepositories()
 	return p.importTaskRepo
+}
+
+func (p *LocalDataProvider) ImportTaskRepository() *listingadmin.GormImportTaskRepository {
+	return p.importTaskRepository()
 }
 
 type localListingStore struct {
@@ -260,8 +296,8 @@ type localListingStore struct {
 	Creator                  string     `gorm:"column:creator"`
 }
 
-func (s localListingStore) toDTO() *api.StoreRespDTO {
-	return &api.StoreRespDTO{
+func (s localListingStore) toDTO() *listingadmin.StoreRespDTO {
+	return &listingadmin.StoreRespDTO{
 		ID:                       s.ID,
 		TenantID:                 s.TenantID,
 		StoreID:                  s.StoreID,
@@ -297,11 +333,11 @@ func (s localListingStore) toDTO() *api.StoreRespDTO {
 	}
 }
 
-func storeToDTO(store *listingadmin.Store) *api.StoreRespDTO {
+func storeToDTO(store *listingadmin.Store) *listingadmin.StoreRespDTO {
 	if store == nil {
 		return nil
 	}
-	return &api.StoreRespDTO{
+	return &listingadmin.StoreRespDTO{
 		ID:                       store.ID,
 		TenantID:                 store.TenantID,
 		StoreID:                  store.StoreID,
@@ -337,8 +373,8 @@ func storeToDTO(store *listingadmin.Store) *api.StoreRespDTO {
 	}
 }
 
-func filterRuleToDTO(rule listingadmin.FilterRule) api.FilterRuleRespDTO {
-	dto := api.FilterRuleRespDTO{
+func filterRuleToDTO(rule listingadmin.FilterRule) listingadmin.FilterRuleRespDTO {
+	dto := listingadmin.FilterRuleRespDTO{
 		ID:              rule.ID,
 		Name:            rule.Name,
 		RuleCode:        rule.RuleCode,
@@ -365,11 +401,11 @@ func filterRuleToDTO(rule listingadmin.FilterRule) api.FilterRuleRespDTO {
 	return dto
 }
 
-func profitRuleToDTO(rule *listingadmin.ProfitRule) api.ProfitRuleRespDTO {
+func profitRuleToDTO(rule *listingadmin.ProfitRule) listingadmin.ProfitRuleRespDTO {
 	if rule == nil {
-		return api.ProfitRuleRespDTO{}
+		return listingadmin.ProfitRuleRespDTO{}
 	}
-	return api.ProfitRuleRespDTO{
+	return listingadmin.ProfitRuleRespDTO{
 		ID:                      rule.ID,
 		Name:                    rule.Name,
 		RuleCode:                rule.RuleCode,
@@ -385,11 +421,11 @@ func profitRuleToDTO(rule *listingadmin.ProfitRule) api.ProfitRuleRespDTO {
 	}
 }
 
-func operationStrategyToDTO(strategy *listingadmin.OperationStrategy) *api.OperationStrategyDTO {
+func operationStrategyToDTO(strategy *listingadmin.OperationStrategy) *listingadmin.OperationStrategyDTO {
 	if strategy == nil {
 		return nil
 	}
-	return &api.OperationStrategyDTO{
+	return &listingadmin.OperationStrategyDTO{
 		ID:                           strategy.ID,
 		TenantID:                     strategy.TenantID,
 		StoreID:                      strategy.StoreID,
@@ -428,8 +464,8 @@ func operationStrategyToDTO(strategy *listingadmin.OperationStrategy) *api.Opera
 	}
 }
 
-func pricingRuleToDTO(rule listingadmin.PricingRule) api.PricingRuleRespDTO {
-	dto := api.PricingRuleRespDTO{
+func pricingRuleToDTO(rule listingadmin.PricingRule) listingadmin.PricingRuleRespDTO {
+	dto := listingadmin.PricingRuleRespDTO{
 		ID:         rule.ID,
 		Name:       rule.Name,
 		RuleCode:   rule.RuleCode,
@@ -459,11 +495,11 @@ func pricingRuleToDTO(rule listingadmin.PricingRule) api.PricingRuleRespDTO {
 	return dto
 }
 
-func productImportMappingToDTO(mapping *listingadmin.ProductImportMapping) *api.ProductImportMappingRespDTO {
+func productImportMappingToDTO(mapping *listingadmin.ProductImportMapping) *listingadmin.ProductImportMappingRespDTO {
 	if mapping == nil {
 		return nil
 	}
-	dto := &api.ProductImportMappingRespDTO{
+	dto := &listingadmin.ProductImportMappingRespDTO{
 		ID:                      mapping.ID,
 		ImportTaskId:            mapping.ImportTaskID,
 		StoreId:                 mapping.StoreID,
@@ -500,7 +536,7 @@ func productImportMappingToDTO(mapping *listingadmin.ProductImportMapping) *api.
 	return dto
 }
 
-func productImportMappingFromCreateReq(req *api.ProductImportMappingCreateReqDTO) *listingadmin.ProductImportMapping {
+func productImportMappingFromCreateReq(req *listingadmin.ProductImportMappingCreateReqDTO) *listingadmin.ProductImportMapping {
 	if req == nil {
 		return nil
 	}
@@ -542,11 +578,11 @@ func productImportMappingFromCreateReq(req *api.ProductImportMappingCreateReqDTO
 	return mapping
 }
 
-func productDataToDTO(product *listingadmin.ProductData) *api.ProductDataDTO {
+func productDataToDTO(product *listingadmin.ProductData) *listingadmin.ProductDataDTO {
 	if product == nil {
 		return nil
 	}
-	return &api.ProductDataDTO{
+	return &listingadmin.ProductDataDTO{
 		ID:                product.ID,
 		Source:            product.Source,
 		ImportTaskID:      int64FromPtr(product.ImportTaskID),
@@ -583,7 +619,7 @@ func productDataToDTO(product *listingadmin.ProductData) *api.ProductDataDTO {
 	}
 }
 
-func productDataFromBatchItem(req *api.ProductDataBatchSaveReqDTO, product api.ProductDataItemDTO) listingadmin.ProductData {
+func productDataFromBatchItem(req *listingadmin.ProductDataBatchSaveReqDTO, product listingadmin.ProductDataItemDTO) listingadmin.ProductData {
 	item := listingadmin.ProductData{
 		TenantID:          req.TenantID,
 		StoreID:           ptrInt64(req.StoreID),
@@ -627,7 +663,7 @@ func productDataFromBatchItem(req *api.ProductDataBatchSaveReqDTO, product api.P
 	return item
 }
 
-func productDataFromAttributesItem(platform string, tenantID, storeID int64, product api.ProductAttributesItemDTO) listingadmin.ProductData {
+func productDataFromAttributesItem(platform string, tenantID, storeID int64, product listingadmin.ProductAttributesItemDTO) listingadmin.ProductData {
 	return listingadmin.ProductData{
 		TenantID:          tenantID,
 		StoreID:           ptrInt64(storeID),
@@ -637,11 +673,11 @@ func productDataFromAttributesItem(platform string, tenantID, storeID int64, pro
 	}
 }
 
-func inventoryRecordToDTO(record *listingadmin.InventoryRecord) *api.InventoryRecordRespDTO {
+func inventoryRecordToDTO(record *listingadmin.InventoryRecord) *listingadmin.InventoryRecordRespDTO {
 	if record == nil {
 		return nil
 	}
-	return &api.InventoryRecordRespDTO{
+	return &listingadmin.InventoryRecordRespDTO{
 		ID:                 record.ID,
 		Platform:           record.Platform,
 		ProductId:          record.ProductID,
@@ -659,11 +695,11 @@ func inventoryRecordToDTO(record *listingadmin.InventoryRecord) *api.InventoryRe
 	}
 }
 
-func rawJSONDataToDTO(record *listingadmin.RawJSONData) *api.RawJsonDataRespDTO {
+func rawJSONDataToDTO(record *listingadmin.RawJSONData) *listingadmin.RawJsonDataRespDTO {
 	if record == nil {
 		return nil
 	}
-	return &api.RawJsonDataRespDTO{
+	return &listingadmin.RawJsonDataRespDTO{
 		ID:          record.ID,
 		TaskID:      record.ImportTaskID,
 		Platform:    record.Platform,
@@ -675,12 +711,12 @@ func rawJSONDataToDTO(record *listingadmin.RawJSONData) *api.RawJsonDataRespDTO 
 	}
 }
 
-func importTaskToDTO(task *listingadmin.ImportTask) *api.ProductImportTaskRespDTO {
+func importTaskToRuntime(task *listingadmin.ImportTask) *listingruntime.ImportTask {
 	if task == nil {
 		return nil
 	}
 	meta := localTaskStatusMetadata(task.Status)
-	return &api.ProductImportTaskRespDTO{
+	return &listingruntime.ImportTask{
 		ID:              task.ID,
 		TenantID:        task.TenantID,
 		StoreID:         int64FromPtr(task.StoreID),
@@ -690,17 +726,12 @@ func importTaskToDTO(task *listingadmin.ImportTask) *api.ProductImportTaskRespDT
 		ProductID:       task.ProductID,
 		Status:          task.Status,
 		ErrorMessage:    task.ErrorMessage,
-		ReasonCode:      task.ReasonCode,
-		Stage:           task.Stage,
 		RetryCount:      task.RetryCount,
 		MaxRetryCount:   task.MaxRetryCount,
-		Remark:          task.Remark,
 		Priority:        task.Priority,
 		CreateTime:      timeToUnixMillis(task.CreateTime),
-		UpdateTime:      timeToUnixMillis(task.UpdateTime),
 		PublishedTime:   timeToUnixMillis(task.PublishedTime),
 		StatusKey:       meta.Key,
-		StatusName:      meta.Name,
 		CanonicalStatus: meta.Canonical,
 	}
 }
@@ -808,7 +839,7 @@ func flexibleStringValue(value *time.Time) types.FlexibleString {
 	return types.FlexibleString(value.Format(time.RFC3339))
 }
 
-func (p *LocalDataProvider) GetStore(id int64) (*api.StoreRespDTO, error) {
+func (p *LocalDataProvider) GetStore(id int64) (*listingadmin.StoreRespDTO, error) {
 	repo := p.storeRepository()
 	if repo == nil {
 		return nil, nil
@@ -833,7 +864,7 @@ func (p *LocalDataProvider) GetStore(id int64) (*api.StoreRespDTO, error) {
 	return storeToDTO(store), nil
 }
 
-func (p *LocalDataProvider) PageStores(req *api.StorePageReqDTO) (*api.PageResult[*api.StoreRespDTO], error) {
+func (p *LocalDataProvider) PageStores(req *listingadmin.StorePageReqDTO) (*listingadmin.PageResult[*listingadmin.StoreRespDTO], error) {
 	repo := p.storeRepository()
 	if repo == nil {
 		return nil, nil
@@ -853,12 +884,12 @@ func (p *LocalDataProvider) PageStores(req *api.StorePageReqDTO) (*api.PageResul
 	if page == nil {
 		return nil, nil
 	}
-	items := make([]*api.StoreRespDTO, 0, len(page.Items))
+	items := make([]*listingadmin.StoreRespDTO, 0, len(page.Items))
 	for i := range page.Items {
 		store := page.Items[i]
 		items = append(items, storeToDTO(&store))
 	}
-	return &api.PageResult[*api.StoreRespDTO]{List: items, Total: page.Total, PageNo: page.Page, PageSize: page.PageSize}, nil
+	return &listingadmin.PageResult[*listingadmin.StoreRespDTO]{List: items, Total: page.Total, PageNo: page.Page, PageSize: page.PageSize}, nil
 }
 
 func (p *LocalDataProvider) UpdateStoreID(id int64, storeID string) (bool, error) {
@@ -924,7 +955,7 @@ func (p *LocalDataProvider) GetStorePauseStatus(id int64) (bool, error) {
 	return detail.Paused, nil
 }
 
-func (p *LocalDataProvider) GetStorePauseStatusDetail(id int64) (*api.StorePauseStatusRespDTO, error) {
+func (p *LocalDataProvider) GetStorePauseStatusDetail(id int64) (*listingadmin.StorePauseStatusRespDTO, error) {
 	if p == nil || p.redis == nil || p.db == nil {
 		return nil, nil
 	}
@@ -935,13 +966,13 @@ func (p *LocalDataProvider) GetStorePauseStatusDetail(id int64) (*api.StorePause
 	key := fmt.Sprintf("listing:task:pause:%s:%d:%d", strings.ToLower(store.Platform), store.TenantID, store.ID)
 	val, err := p.redis.Get(context.Background(), key).Result()
 	if err == goredis.Nil {
-		return &api.StorePauseStatusRespDTO{}, nil
+		return &listingadmin.StorePauseStatusRespDTO{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	ttl, _ := p.redis.TTL(context.Background(), key).Result()
-	return &api.StorePauseStatusRespDTO{
+	return &listingadmin.StorePauseStatusRespDTO{
 		Paused:     true,
 		Reason:     val,
 		TTLSeconds: int64(ttl.Seconds()),
@@ -1004,7 +1035,7 @@ type localOperationStrategy struct {
 	CreateTime                   *time.Time `gorm:"column:create_time"`
 }
 
-func (p *LocalDataProvider) GetOperationStrategyByStoreID(storeID int64) (*api.OperationStrategyDTO, error) {
+func (p *LocalDataProvider) GetOperationStrategyByStoreID(storeID int64) (*listingadmin.OperationStrategyDTO, error) {
 	repo := p.operationStrategyRepository()
 	if repo == nil {
 		return nil, nil
@@ -1016,7 +1047,7 @@ func (p *LocalDataProvider) GetOperationStrategyByStoreID(storeID int64) (*api.O
 	return operationStrategyToDTO(strategy), nil
 }
 
-func (p *LocalDataProvider) GetFilterRule(req *api.FilterRuleReqDTO) (*[]api.FilterRuleRespDTO, error) {
+func (p *LocalDataProvider) GetFilterRule(req *listingadmin.FilterRuleReqDTO) (*[]listingadmin.FilterRuleRespDTO, error) {
 	repo := p.filterRuleRepository()
 	if repo == nil || req == nil {
 		return nil, nil
@@ -1025,14 +1056,14 @@ func (p *LocalDataProvider) GetFilterRule(req *api.FilterRuleReqDTO) (*[]api.Fil
 	if err != nil {
 		return nil, err
 	}
-	rows := make([]api.FilterRuleRespDTO, 0, len(items))
+	rows := make([]listingadmin.FilterRuleRespDTO, 0, len(items))
 	for _, item := range items {
 		rows = append(rows, filterRuleToDTO(item))
 	}
 	return &rows, nil
 }
 
-func (p *LocalDataProvider) GetProfitRule(req *api.ProfitRuleReqDTO) (*api.ProfitRuleRespDTO, error) {
+func (p *LocalDataProvider) GetProfitRule(req *listingadmin.ProfitRuleReqDTO) (*listingadmin.ProfitRuleRespDTO, error) {
 	repo := p.profitRuleRepository()
 	if repo == nil || req == nil {
 		return nil, nil
@@ -1045,7 +1076,7 @@ func (p *LocalDataProvider) GetProfitRule(req *api.ProfitRuleReqDTO) (*api.Profi
 	return &dto, nil
 }
 
-func (p *LocalDataProvider) GetPricingRule(req *api.PricingRuleReqDTO) ([]api.PricingRuleRespDTO, error) {
+func (p *LocalDataProvider) GetPricingRule(req *listingadmin.PricingRuleReqDTO) ([]listingadmin.PricingRuleRespDTO, error) {
 	repo := p.pricingRuleRepository()
 	if repo == nil || req == nil || req.StoreID == nil {
 		return nil, nil
@@ -1054,14 +1085,14 @@ func (p *LocalDataProvider) GetPricingRule(req *api.PricingRuleReqDTO) ([]api.Pr
 	if err != nil {
 		return nil, err
 	}
-	rows := make([]api.PricingRuleRespDTO, 0, len(items))
+	rows := make([]listingadmin.PricingRuleRespDTO, 0, len(items))
 	for _, item := range items {
 		rows = append(rows, pricingRuleToDTO(item))
 	}
 	return rows, nil
 }
 
-func (p *LocalDataProvider) GetRawJSONData(req *api.RawJsonDataReqDTO) (*api.RawJsonDataRespDTO, error) {
+func (p *LocalDataProvider) GetRawJSONData(req *listingadmin.RawJsonDataReqDTO) (*listingadmin.RawJsonDataRespDTO, error) {
 	repo := p.rawJSONDataRepository()
 	if repo == nil || req == nil {
 		return nil, nil
@@ -1073,7 +1104,11 @@ func (p *LocalDataProvider) GetRawJSONData(req *api.RawJsonDataReqDTO) (*api.Raw
 	return rawJSONDataToDTO(record), nil
 }
 
-func (p *LocalDataProvider) CreateRawJSONData(req *api.RawJsonDataCreateReqDTO) (int64, error) {
+func (p *LocalDataProvider) GetRawJsonData(req *listingadmin.RawJsonDataReqDTO) (*listingadmin.RawJsonDataRespDTO, error) {
+	return p.GetRawJSONData(req)
+}
+
+func (p *LocalDataProvider) CreateRawJSONData(req *listingadmin.RawJsonDataCreateReqDTO) (int64, error) {
 	repo := p.rawJSONDataRepository()
 	if repo == nil || req == nil {
 		return 0, nil
@@ -1096,23 +1131,27 @@ func (p *LocalDataProvider) CreateRawJSONData(req *api.RawJsonDataCreateReqDTO) 
 	return record.ID, nil
 }
 
-func (p *LocalDataProvider) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*api.DailyListingCountRespDTO, error) {
+func (p *LocalDataProvider) CreateRawJsonData(req *listingadmin.RawJsonDataCreateReqDTO) (int64, error) {
+	return p.CreateRawJSONData(req)
+}
+
+func (p *LocalDataProvider) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*listingadmin.DailyListingCountRespDTO, error) {
 	if p == nil || p.redis == nil {
 		return nil, nil
 	}
 	key := fmt.Sprintf("listing:daily:count:%d:%d:%s", tenantID, storeID, date)
 	val, err := p.redis.Get(context.Background(), key).Result()
 	if err == goredis.Nil {
-		return &api.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date, Count: 0}, nil
+		return &listingadmin.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date, Count: 0}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	count, _ := strconv.ParseInt(val, 10, 64)
-	return &api.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date, Count: count}, nil
+	return &listingadmin.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date, Count: count}, nil
 }
 
-func (p *LocalDataProvider) SetDailyListingCount(req *api.DailyListingCountSetReqDTO) error {
+func (p *LocalDataProvider) SetDailyListingCount(req *listingadmin.DailyListingCountSetReqDTO) error {
 	if p == nil || p.redis == nil || req == nil {
 		return nil
 	}
@@ -1120,7 +1159,7 @@ func (p *LocalDataProvider) SetDailyListingCount(req *api.DailyListingCountSetRe
 	return p.redis.Set(context.Background(), key, strconv.FormatInt(req.Count, 10), localDailyCountTTL).Err()
 }
 
-func (p *LocalDataProvider) TryConsumeDailyQuota(req *api.TryConsumeDailyQuotaReqDTO) (*api.TryConsumeDailyQuotaRespDTO, error) {
+func (p *LocalDataProvider) TryConsumeDailyQuota(req *listingadmin.TryConsumeDailyQuotaReqDTO) (*listingadmin.TryConsumeDailyQuotaRespDTO, error) {
 	if p == nil || p.redis == nil || req == nil {
 		return nil, nil
 	}
@@ -1134,19 +1173,19 @@ func (p *LocalDataProvider) TryConsumeDailyQuota(req *api.TryConsumeDailyQuotaRe
 		if remaining < 0 {
 			remaining = 0
 		}
-		return &api.TryConsumeDailyQuotaRespDTO{Allowed: false, NewCount: currentResp.Count, Remaining: remaining, ReachedLimit: currentResp.Count >= req.Limit}, nil
+		return &listingadmin.TryConsumeDailyQuotaRespDTO{Allowed: false, NewCount: currentResp.Count, Remaining: remaining, ReachedLimit: currentResp.Count >= req.Limit}, nil
 	}
-	if err := p.SetDailyListingCount(&api.DailyListingCountSetReqDTO{TenantID: req.TenantID, StoreID: req.StoreID, UserID: req.UserID, Date: req.Date, Count: next}); err != nil {
+	if err := p.SetDailyListingCount(&listingadmin.DailyListingCountSetReqDTO{TenantID: req.TenantID, StoreID: req.StoreID, UserID: req.UserID, Date: req.Date, Count: next}); err != nil {
 		return nil, err
 	}
 	remaining := req.Limit - next
 	if remaining < 0 {
 		remaining = 0
 	}
-	return &api.TryConsumeDailyQuotaRespDTO{Allowed: true, NewCount: next, Remaining: remaining, ReachedLimit: next >= req.Limit}, nil
+	return &listingadmin.TryConsumeDailyQuotaRespDTO{Allowed: true, NewCount: next, Remaining: remaining, ReachedLimit: next >= req.Limit}, nil
 }
 
-func (p *LocalDataProvider) RollbackDailyQuota(req *api.RollbackDailyQuotaReqDTO) (int64, error) {
+func (p *LocalDataProvider) RollbackDailyQuota(req *listingadmin.RollbackDailyQuotaReqDTO) (int64, error) {
 	if p == nil || p.redis == nil || req == nil {
 		return 0, nil
 	}
@@ -1158,7 +1197,7 @@ func (p *LocalDataProvider) RollbackDailyQuota(req *api.RollbackDailyQuotaReqDTO
 	if next < 0 {
 		next = 0
 	}
-	return next, p.SetDailyListingCount(&api.DailyListingCountSetReqDTO{TenantID: req.TenantID, StoreID: req.StoreID, UserID: req.UserID, Date: req.Date, Count: next})
+	return next, p.SetDailyListingCount(&listingadmin.DailyListingCountSetReqDTO{TenantID: req.TenantID, StoreID: req.StoreID, UserID: req.UserID, Date: req.Date, Count: next})
 }
 
 func (p *LocalDataProvider) SetRemainingListingQuota(tenantID, storeID int64, quota int) (bool, error) {
@@ -1170,7 +1209,7 @@ func (p *LocalDataProvider) SetRemainingListingQuota(tenantID, storeID int64, qu
 	return err == nil, err
 }
 
-func (p *LocalDataProvider) ListProductDataByStore(platform string, tenantID, storeID int64, shelfStatus *int) ([]*api.ProductDataDTO, error) {
+func (p *LocalDataProvider) ListProductDataByStore(platform string, tenantID, storeID int64, shelfStatus *int) ([]*listingadmin.ProductDataDTO, error) {
 	repo := p.productDataRepository()
 	if repo == nil {
 		return nil, nil
@@ -1192,14 +1231,14 @@ func (p *LocalDataProvider) ListProductDataByStore(platform string, tenantID, st
 	if page == nil {
 		return nil, nil
 	}
-	items := make([]*api.ProductDataDTO, 0, len(page.Items))
+	items := make([]*listingadmin.ProductDataDTO, 0, len(page.Items))
 	for i := range page.Items {
 		items = append(items, productDataToDTO(&page.Items[i]))
 	}
 	return items, nil
 }
 
-func (p *LocalDataProvider) PageProductDataByStore(req *api.ProductDataListByStorePageReqDTO) (*api.PageResult[*api.ProductDataRespDTO], error) {
+func (p *LocalDataProvider) PageProductDataByStore(req *listingadmin.ProductDataListByStorePageReqDTO) (*listingadmin.PageResult[*listingadmin.ProductDataRespDTO], error) {
 	repo := p.productDataRepository()
 	if repo == nil || req == nil {
 		return nil, nil
@@ -1228,14 +1267,14 @@ func (p *LocalDataProvider) PageProductDataByStore(req *api.ProductDataListBySto
 	if page == nil {
 		return nil, nil
 	}
-	items := make([]*api.ProductDataRespDTO, 0, len(page.Items))
+	items := make([]*listingadmin.ProductDataRespDTO, 0, len(page.Items))
 	for i := range page.Items {
-		items = append(items, &api.ProductDataRespDTO{ProductDataDTO: productDataToDTO(&page.Items[i])})
+		items = append(items, &listingadmin.ProductDataRespDTO{ProductDataDTO: productDataToDTO(&page.Items[i])})
 	}
-	return &api.PageResult[*api.ProductDataRespDTO]{List: items, Total: page.Total, PageNo: page.Page, PageSize: page.PageSize}, nil
+	return &listingadmin.PageResult[*listingadmin.ProductDataRespDTO]{List: items, Total: page.Total, PageNo: page.Page, PageSize: page.PageSize}, nil
 }
 
-func (p *LocalDataProvider) BatchCreateOrUpdateProductData(req *api.ProductDataBatchSaveReqDTO) (int, error) {
+func (p *LocalDataProvider) BatchCreateOrUpdateProductData(req *listingadmin.ProductDataBatchSaveReqDTO) (int, error) {
 	repo := p.productDataRepository()
 	if repo == nil || req == nil {
 		return 0, nil
@@ -1247,7 +1286,7 @@ func (p *LocalDataProvider) BatchCreateOrUpdateProductData(req *api.ProductDataB
 	return repo.UpsertProductDataBatch(context.Background(), items)
 }
 
-func (p *LocalDataProvider) BatchUpdateProductAttributes(req *api.ProductDataBatchUpdateAttributesReqDTO) (int, error) {
+func (p *LocalDataProvider) BatchUpdateProductAttributes(req *listingadmin.ProductDataBatchUpdateAttributesReqDTO) (int, error) {
 	repo := p.productDataRepository()
 	if repo == nil || req == nil {
 		return 0, nil
@@ -1302,8 +1341,8 @@ func formatOptionalFloat(raw *float64) *string {
 	return &value
 }
 
-func (r localProductImportMappingRow) toDTO() *api.ProductImportMappingRespDTO {
-	return &api.ProductImportMappingRespDTO{
+func (r localProductImportMappingRow) toDTO() *listingadmin.ProductImportMappingRespDTO {
+	return &listingadmin.ProductImportMappingRespDTO{
 		ID:                      r.ID,
 		ImportTaskId:            r.ImportTaskID,
 		StoreId:                 r.StoreID,
@@ -1327,7 +1366,7 @@ func (r localProductImportMappingRow) toDTO() *api.ProductImportMappingRespDTO {
 	}
 }
 
-func (p *LocalDataProvider) CreateProductImportMapping(req *api.ProductImportMappingCreateReqDTO) (int64, error) {
+func (p *LocalDataProvider) CreateProductImportMapping(req *listingadmin.ProductImportMappingCreateReqDTO) (int64, error) {
 	repo := p.productImportMappingRepository()
 	if repo == nil || req == nil {
 		return 0, nil
@@ -1339,7 +1378,7 @@ func (p *LocalDataProvider) CreateProductImportMapping(req *api.ProductImportMap
 	return created.ID, nil
 }
 
-func (p *LocalDataProvider) UpdateProductImportMapping(req *api.ProductImportMappingCreateReqDTO) (bool, error) {
+func (p *LocalDataProvider) UpdateProductImportMapping(req *listingadmin.ProductImportMappingCreateReqDTO) (bool, error) {
 	repo := p.productImportMappingRepository()
 	if repo == nil || req == nil {
 		return false, nil
@@ -1352,19 +1391,19 @@ func (p *LocalDataProvider) UpdateProductImportMapping(req *api.ProductImportMap
 	return updated != nil, err
 }
 
-func (p *LocalDataProvider) GetProductImportMappingByPlatformProductID(platformProductID string) (*api.ProductImportMappingRespDTO, bool, error) {
+func (p *LocalDataProvider) GetProductImportMappingByPlatformProductID(platformProductID string) (*listingadmin.ProductImportMappingRespDTO, bool, error) {
 	return p.findProductImportMapping("platform_product_id = ?", platformProductID)
 }
 
-func (p *LocalDataProvider) GetProductImportMappingByTaskAndSKU(importTaskID int64, sku string) (*api.ProductImportMappingRespDTO, bool, error) {
+func (p *LocalDataProvider) GetProductImportMappingByTaskAndSKU(importTaskID int64, sku string) (*listingadmin.ProductImportMappingRespDTO, bool, error) {
 	return p.findProductImportMapping("import_task_id = ? AND sku = ?", importTaskID, sku)
 }
 
-func (p *LocalDataProvider) GetProductImportMappingBySKU(sku string, storeID int64) (*api.ProductImportMappingRespDTO, bool, error) {
+func (p *LocalDataProvider) GetProductImportMappingBySKU(sku string, storeID int64) (*listingadmin.ProductImportMappingRespDTO, bool, error) {
 	return p.findProductImportMapping("sku = ? AND store_id = ?", sku, storeID)
 }
 
-func (p *LocalDataProvider) GetProductImportMappingByPlatformProductIDAndStore(platformProductID string, storeID int64) (*api.ProductImportMappingRespDTO, bool, error) {
+func (p *LocalDataProvider) GetProductImportMappingByPlatformProductIDAndStore(platformProductID string, storeID int64) (*listingadmin.ProductImportMappingRespDTO, bool, error) {
 	return p.findProductImportMapping("platform_product_id = ? AND store_id = ?", platformProductID, storeID)
 }
 
@@ -1428,7 +1467,7 @@ func productImportMappingQueryFromLegacyCondition(query string, args ...any) *li
 	return result
 }
 
-func (p *LocalDataProvider) findProductImportMapping(query string, args ...any) (*api.ProductImportMappingRespDTO, bool, error) {
+func (p *LocalDataProvider) findProductImportMapping(query string, args ...any) (*listingadmin.ProductImportMappingRespDTO, bool, error) {
 	repo := p.productImportMappingRepository()
 	if repo == nil {
 		return nil, false, nil
@@ -1447,7 +1486,7 @@ func (p *LocalDataProvider) findProductImportMapping(query string, args ...any) 
 	return productImportMappingToDTO(mapping), true, nil
 }
 
-func (p *LocalDataProvider) CheckProductExists(req *api.ProductImportMappingCheckReqDTO) (bool, bool, error) {
+func (p *LocalDataProvider) CheckProductExists(req *listingadmin.ProductImportMappingCheckReqDTO) (bool, bool, error) {
 	repo := p.productImportMappingRepository()
 	if repo == nil || req == nil {
 		return false, false, nil
@@ -1456,7 +1495,7 @@ func (p *LocalDataProvider) CheckProductExists(req *api.ProductImportMappingChec
 	return exists, true, err
 }
 
-func (p *LocalDataProvider) CreateInventoryRecord(req *api.InventoryRecordCreateReqDTO) (int64, error) {
+func (p *LocalDataProvider) CreateInventoryRecord(req *listingadmin.InventoryRecordCreateReqDTO) (int64, error) {
 	repo := p.inventoryRecordRepository()
 	if repo == nil || req == nil {
 		return 0, nil
@@ -1481,7 +1520,7 @@ func (p *LocalDataProvider) CreateInventoryRecord(req *api.InventoryRecordCreate
 	return record.ID, nil
 }
 
-func (p *LocalDataProvider) GetLatestInventoryRecord(platform, productID, region string) (*api.InventoryRecordRespDTO, bool, error) {
+func (p *LocalDataProvider) GetLatestInventoryRecord(platform, productID, region string) (*listingadmin.InventoryRecordRespDTO, bool, error) {
 	repo := p.inventoryRecordRepository()
 	if repo == nil {
 		return nil, false, nil
@@ -1519,9 +1558,9 @@ type localImportTaskRow struct {
 	Updater       string     `gorm:"column:updater"`
 }
 
-func (r localImportTaskRow) toDTO() api.ProductImportTaskRespDTO {
+func (r localImportTaskRow) toRuntimeTask() listingruntime.ImportTask {
 	meta := localTaskStatusMetadata(r.Status)
-	return api.ProductImportTaskRespDTO{
+	return listingruntime.ImportTask{
 		ID:              r.ID,
 		TenantID:        r.TenantID,
 		StoreID:         r.StoreID,
@@ -1531,24 +1570,18 @@ func (r localImportTaskRow) toDTO() api.ProductImportTaskRespDTO {
 		ProductID:       r.ProductID,
 		Status:          r.Status,
 		ErrorMessage:    r.ErrorMessage,
-		ReasonCode:      r.ReasonCode,
-		Stage:           r.Stage,
 		RetryCount:      r.RetryCount,
 		MaxRetryCount:   r.MaxRetryCount,
-		Remark:          r.Remark,
 		Priority:        r.Priority,
 		CreateTime:      r.CreateTime.UnixMilli(),
-		UpdateTime:      r.UpdateTime.UnixMilli(),
 		PublishedTime:   timeToUnixMillis(r.PublishedTime),
 		Creator:         r.Creator,
-		Updater:         r.Updater,
 		StatusKey:       meta.Key,
-		StatusName:      meta.Name,
 		CanonicalStatus: meta.Canonical,
 	}
 }
 
-func (p *LocalDataProvider) GetPendingAndRetryTasks(limit int, userID int64, storeIDs []int64) ([]api.ProductImportTaskRespDTO, bool, error) {
+func (p *LocalDataProvider) GetPendingAndRetryTasks(limit int, userID int64, storeIDs []int64) ([]listingruntime.ImportTask, bool, error) {
 	repo := p.importTaskRepository()
 	if repo == nil {
 		return nil, false, nil
@@ -1557,16 +1590,16 @@ func (p *LocalDataProvider) GetPendingAndRetryTasks(limit int, userID int64, sto
 	if err != nil {
 		return nil, true, err
 	}
-	result := make([]api.ProductImportTaskRespDTO, 0, len(tasks))
+	result := make([]listingruntime.ImportTask, 0, len(tasks))
 	for i := range tasks {
-		if dto := importTaskToDTO(&tasks[i]); dto != nil {
-			result = append(result, *dto)
+		if runtimeTask := importTaskToRuntime(&tasks[i]); runtimeTask != nil {
+			result = append(result, *runtimeTask)
 		}
 	}
 	return result, true, nil
 }
 
-func (p *LocalDataProvider) GetImportTaskByID(taskID int64) (*api.ProductImportTaskRespDTO, bool, error) {
+func (p *LocalDataProvider) GetImportTaskByID(taskID int64) (*listingruntime.ImportTask, bool, error) {
 	repo := p.importTaskRepository()
 	if repo == nil || taskID <= 0 {
 		return nil, false, nil
@@ -1575,32 +1608,15 @@ func (p *LocalDataProvider) GetImportTaskByID(taskID int64) (*api.ProductImportT
 	if err != nil {
 		return nil, true, err
 	}
-	return importTaskToDTO(task), true, nil
+	return importTaskToRuntime(task), true, nil
 }
 
-func (p *LocalDataProvider) UpdateImportTaskStatus(req *api.ProductImportTaskUpdateReqDTO) (bool, error) {
+func (p *LocalDataProvider) UpdateImportTaskStatus(req *listingadmin.ImportTaskStatusUpdate) (bool, error) {
 	repo := p.importTaskRepository()
 	if repo == nil || req == nil {
 		return false, nil
 	}
-	return repo.UpdateImportTaskStatus(context.Background(), importTaskStatusUpdateFromDTO(req))
-}
-
-func importTaskStatusUpdateFromDTO(req *api.ProductImportTaskUpdateReqDTO) *listingadmin.ImportTaskStatusUpdate {
-	if req == nil {
-		return nil
-	}
-	return &listingadmin.ImportTaskStatusUpdate{
-		ID:                    req.ID,
-		Status:                req.Status,
-		ErrorMessage:          req.ErrorMessage,
-		ReasonCode:            req.ReasonCode,
-		Stage:                 req.Stage,
-		Remark:                req.Remark,
-		ExpectedCurrentStatus: req.ExpectedCurrentStatus,
-		RetryCount:            req.RetryCount,
-		Priority:              req.Priority,
-	}
+	return repo.UpdateImportTaskStatus(context.Background(), req)
 }
 
 func ptrTime(ts time.Time) *time.Time {

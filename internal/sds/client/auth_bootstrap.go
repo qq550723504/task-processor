@@ -12,10 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/auth"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/pkg/jsonx"
 )
 
@@ -48,19 +45,6 @@ func (c *Client) bootstrapAuth(ctx context.Context, force bool) (bool, error) {
 		if c.hasUsableAuthState() {
 			return true, nil
 		}
-	}
-
-	material, err := c.loadManagementBootstrap()
-	if err != nil {
-		return appliedAny, err
-	}
-	if material != nil {
-		if c.applyBootstrapMaterial(material) {
-			appliedAny = true
-		}
-	}
-	if c.hasUsableAuthState() && (!force || appliedAny) {
-		return true, nil
 	}
 
 	beforeLoginService := captureAuthSnapshot(c)
@@ -106,7 +90,7 @@ func (c *Client) bootstrapAuth(ctx context.Context, force bool) (bool, error) {
 		return true, nil
 	}
 
-	loginReq, ok := c.resolveLoginBootstrap(material)
+	loginReq, ok := c.resolveLoginBootstrap(nil)
 	if ok {
 		if _, err := c.Login(ctx, loginReq); err != nil {
 			return appliedAny, fmt.Errorf("bootstrap sds login from %s: %w", loginReq.Username, err)
@@ -357,39 +341,6 @@ func (c *Client) applyBootstrapMaterial(material *bootstrapMaterial) bool {
 	return applied
 }
 
-func (c *Client) loadManagementBootstrap() (*bootstrapMaterial, error) {
-	storeID := c.config.AuthBootstrap.ManagementStoreID
-	if storeID <= 0 {
-		return nil, nil
-	}
-
-	mgr, err := newManagementClientFromConfig(c.config.Management)
-	if err != nil {
-		return nil, err
-	}
-	storeClient := mgr.GetStoreClient()
-	store, err := storeClient.GetStore(storeID)
-	if err != nil {
-		return nil, fmt.Errorf("load SDS management store %d: %w", storeID, err)
-	}
-
-	material := &bootstrapMaterial{
-		username: strings.TrimSpace(store.Username),
-		password: strings.TrimSpace(store.Password),
-		source:   "management-store",
-	}
-
-	cookieStr, err := storeClient.GetStoreCookie(storeID)
-	if err != nil {
-		return nil, fmt.Errorf("load SDS store cookie %d: %w", storeID, err)
-	}
-	if strings.TrimSpace(cookieStr) != "" {
-		material.cookies = ParseFlexibleCookieInput(cookieStr, ".sdsdiy.com")
-	}
-
-	return material, nil
-}
-
 type loginServiceBootstrapResponse struct {
 	Success bool `json:"success"`
 	Data    struct {
@@ -524,36 +475,6 @@ func (c *Client) loadLoginServiceBootstrap(ctx context.Context) (*bootstrapMater
 	}
 
 	return material, nil
-}
-
-func newManagementClientFromConfig(cfg *config.ManagementConfig) (*management.ClientManager, error) {
-	if cfg == nil {
-		return nil, fmt.Errorf("management config is nil")
-	}
-
-	baseURL := strings.TrimSpace(cfg.BaseURL)
-	clientID := strings.TrimSpace(cfg.ClientID)
-	clientSecret := strings.TrimSpace(cfg.ClientSecret)
-	tenantID := strings.TrimSpace(cfg.TenantID)
-	if tenantID == "" {
-		tenantID = "1"
-	}
-
-	if baseURL == "" || clientID == "" || clientSecret == "" {
-		return nil, fmt.Errorf("management config is incomplete")
-	}
-
-	log := logger.GetGlobalLogger("sds/client/bootstrap")
-	authClient := auth.NewClientCredentialsAuthClient(baseURL, clientID, clientSecret, tenantID, log.Logger)
-	accessToken, err := authClient.GetAccessToken()
-	if err != nil {
-		return nil, fmt.Errorf("get management access token: %w", err)
-	}
-
-	mgr := management.NewClientManager(&config.ManagementConfig{BaseURL: baseURL})
-	baseClient := mgr.GetClient()
-	baseClient.SetUserToken(accessToken, tenantID)
-	return mgr, nil
 }
 
 func parseLoginServiceCookieExpires(value any) time.Time {

@@ -4,9 +4,9 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingadmin"
+	managementapi "task-processor/internal/listingadmin"
 	sheinclient "task-processor/internal/shein/client"
 	"task-processor/internal/sheinlogin"
 	sheinloginmanaged "task-processor/internal/sheinloginmanaged"
@@ -16,7 +16,7 @@ type AccountRepositoryBuilder func(cfg *config.Config, logger *logrus.Logger) (l
 
 type BuildInput struct {
 	Config                   *config.Config
-	ManagementClient         *management.ClientManager
+	StoreAPI                 managementapi.StoreAPI
 	AccountRepositoryBuilder AccountRepositoryBuilder
 }
 
@@ -28,7 +28,7 @@ type BuildResult struct {
 }
 
 func BuildHandler(input BuildInput) (*BuildResult, error) {
-	if input.Config == nil || input.ManagementClient == nil {
+	if input.Config == nil {
 		return nil, nil
 	}
 
@@ -55,8 +55,10 @@ func BuildHandler(input BuildInput) (*BuildResult, error) {
 		return nil, err
 	}
 	svc.ConfigureRuntimeSheinAPIClients()
-	svc.ConfigureStoreSyncClientFactory(sheinloginmanaged.NewStoreSyncClientFactory(input.ManagementClient))
-	svc.ConfigureDuplicateStoreLookup(sheinloginmanaged.NewDuplicateStoreLookup(input.ManagementClient))
+	if input.StoreAPI != nil {
+		svc.ConfigureStoreSyncClientFactory(sheinloginmanaged.NewStoreSyncClientFactoryWithStoreAPI(input.StoreAPI))
+		svc.ConfigureDuplicateStoreLookup(sheinloginmanaged.NewDuplicateStoreLookupWithStoreAPI(input.StoreAPI))
+	}
 	sheinclient.ConfigureLocalLoginRefresher(svc)
 	handler := sheinlogin.NewHandler(svc)
 

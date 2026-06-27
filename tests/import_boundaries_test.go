@@ -31,7 +31,7 @@ func TestPortsManagementAPIPackageIsRetired(t *testing.T) {
 }
 
 func TestListingAdminCompatibilityDoesNotExposeTaskStatusAdapters(t *testing.T) {
-	path := filepath.Join("..", "internal", "listingadmin", "management_compat.go")
+	path := filepath.Join("..", "internal", "listingadmin", "management_api_types.go")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -47,7 +47,7 @@ func TestListingAdminCompatibilityDoesNotExposeTaskStatusAdapters(t *testing.T) 
 }
 
 func TestListingAdminCompatibilityDoesNotExposeImportTaskUpdateDTO(t *testing.T) {
-	path := filepath.Join("..", "internal", "listingadmin", "management_compat.go")
+	path := filepath.Join("..", "internal", "listingadmin", "management_api_types.go")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -58,7 +58,7 @@ func TestListingAdminCompatibilityDoesNotExposeImportTaskUpdateDTO(t *testing.T)
 }
 
 func TestListingAdminCompatibilityDoesNotExposeImportTaskResponseDTO(t *testing.T) {
-	path := filepath.Join("..", "internal", "listingadmin", "management_compat.go")
+	path := filepath.Join("..", "internal", "listingadmin", "management_api_types.go")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -345,13 +345,7 @@ func TestPublishingSheinManagedAPIImportsStayAllowlisted(t *testing.T) {
 
 func TestPublishingSheinManagedManagementImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "publishing", "sheinmanaged")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "api_builders.go")):            {},
-		filepath.Clean(filepath.Join(root, "api_factory.go")):             {},
-		filepath.Clean(filepath.Join(root, "attribute_resolver.go")):      {},
-		filepath.Clean(filepath.Join(root, "category_resolver.go")):       {},
-		filepath.Clean(filepath.Join(root, "sale_attribute_resolver.go")): {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -1015,6 +1009,75 @@ func TestPlatformProcessorRegistryDoesNotExposeManagementClient(t *testing.T) {
 	}
 }
 
+func TestAppConsumerRuntimeBoundariesDoNotCarryManagementClient(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "shared_resources.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || typeSpec.Name == nil {
+				continue
+			}
+			if typeSpec.Name.Name != "SharedResources" && typeSpec.Name.Name != "PlatformRuntimeContext" {
+				continue
+			}
+			st, ok := typeSpec.Type.(*ast.StructType)
+			if !ok || st.Fields == nil {
+				continue
+			}
+			for _, field := range st.Fields.List {
+				for _, name := range field.Names {
+					if name.Name == "ManagementClient" {
+						t.Fatalf("%s exposes %s.ManagementClient; pass narrower runtime-owned ports instead", path, typeSpec.Name.Name)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestPlatformProcessorRegistryDoesNotStoreManagementClient(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || typeSpec.Name == nil || typeSpec.Name.Name != "PlatformProcessorRegistry" {
+				continue
+			}
+			st, ok := typeSpec.Type.(*ast.StructType)
+			if !ok || st.Fields == nil {
+				continue
+			}
+			for _, field := range st.Fields.List {
+				for _, name := range field.Names {
+					if name.Name == "managementClient" {
+						t.Fatalf("%s stores PlatformProcessorRegistry.managementClient; store narrower runtime-owned ports instead", path)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestAppConsumerTaskStatusRuntimeProviderIsNotNamedManagementClient(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "consumer")
 	index, err := loadGoFileIndex(root, "")
@@ -1300,12 +1363,49 @@ func TestBaseProcessorDoesNotExposeManagementClient(t *testing.T) {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 
-	for _, decl := range file.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Recv == nil || fn.Name == nil || fn.Name.Name != "GetManagementClient" {
-			continue
+	for _, imp := range file.Imports {
+		importPath := strings.Trim(imp.Path.Value, `"`)
+		if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
+			t.Fatalf("%s imports %s; BaseProcessor must only expose explicitly injected runtime ports after ManagementClient retirement", path, importPath)
 		}
-		t.Fatalf("%s exposes BaseProcessor.GetManagementClient; expose narrower runtime-owned ports instead", path)
+	}
+
+	for _, decl := range file.Decls {
+		switch typedDecl := decl.(type) {
+		case *ast.FuncDecl:
+			if typedDecl.Recv != nil && typedDecl.Name != nil && typedDecl.Name.Name == "GetManagementClient" {
+				t.Fatalf("%s exposes BaseProcessor.GetManagementClient; expose narrower runtime-owned ports instead", path)
+			}
+		case *ast.GenDecl:
+			for _, spec := range typedDecl.Specs {
+				typeSpec, ok := spec.(*ast.TypeSpec)
+				if !ok || typeSpec.Name == nil {
+					continue
+				}
+				if typeSpec.Name.Name != "BaseProcessor" && typeSpec.Name.Name != "BaseProcessorConfig" {
+					continue
+				}
+				structType, ok := typeSpec.Type.(*ast.StructType)
+				if !ok {
+					continue
+				}
+				for _, field := range structType.Fields.List {
+					for _, name := range field.Names {
+						if strings.EqualFold(name.Name, "managementClient") {
+							t.Fatalf("%s %s exposes %s; inject StoreAPI/TaskStatusRuntime/DailyCountClientProvider ports instead", path, typeSpec.Name.Name, name.Name)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	source, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(source), "management.New") {
+		t.Fatalf("%s constructs management clients; BaseProcessor must not revive retired ManagementClient service", path)
 	}
 }
 
@@ -1859,10 +1959,9 @@ func TestTemuProcessorRuntimeUsesCapabilityNames(t *testing.T) {
 func TestAppBootstrapManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "bootstrap")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "app.go")):                           {},
-		filepath.Clean(filepath.Join(root, "scheduler_factories.go")):           {},
-		filepath.Clean(filepath.Join(root, "resources", "shared_resources.go")): {},
-		filepath.Clean(filepath.Join(root, "schedulers", "dependencies.go")):    {},
+		filepath.Clean(filepath.Join(root, "app.go")):                        {},
+		filepath.Clean(filepath.Join(root, "scheduler_factories.go")):        {},
+		filepath.Clean(filepath.Join(root, "schedulers", "dependencies.go")): {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
@@ -1881,6 +1980,12 @@ func TestAppBootstrapManagementClientImportsStayAllowlisted(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestListingRuntimeLocalDoesNotImportManagementClient(t *testing.T) {
+	assertNoBannedImports(t, filepath.Join("..", "internal", "listingruntime", "local"), []string{
+		`"task-processor/internal/infra/clients/management"`,
+	}, nil)
 }
 
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {
@@ -2210,10 +2315,8 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "amazon")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "llm", "openai_llm_client.go")):     {},
-		filepath.Clean(filepath.Join(root, "pipeline", "daily_limit_test.go")): {},
-		filepath.Clean(filepath.Join(root, "processor.go")):                    {},
-		filepath.Clean(filepath.Join(root, "task_status_test.go")):             {},
+		filepath.Clean(filepath.Join(root, "llm", "openai_llm_client.go")): {},
+		filepath.Clean(filepath.Join(root, "processor.go")):                {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
@@ -2264,74 +2367,70 @@ func TestSheinBridgeExternalClientImportsStayAllowlisted(t *testing.T) {
 func TestSheinManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "shein")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "activity", "mixed.go")):                                   {},
-		filepath.Clean(filepath.Join(root, "activity", "product_data_helper.go")):                     {},
-		filepath.Clean(filepath.Join(root, "activity", "profit.go")):                                  {},
-		filepath.Clean(filepath.Join(root, "activity", "registration.go")):                            {},
-		filepath.Clean(filepath.Join(root, "activity", "registration_config.go")):                     {},
-		filepath.Clean(filepath.Join(root, "activity", "time_limited.go")):                            {},
-		filepath.Clean(filepath.Join(root, "addresscopy", "service.go")):                              {},
-		filepath.Clean(filepath.Join(root, "api", "image", "client.go")):                              {},
-		filepath.Clean(filepath.Join(root, "api", "image", "client_test.go")):                         {},
-		filepath.Clean(filepath.Join(root, "authorizedbrand", "context_test.go")):                     {},
-		filepath.Clean(filepath.Join(root, "authorizedbrand", "types.go")):                            {},
-		filepath.Clean(filepath.Join(root, "context", "context.go")):                                  {},
-		filepath.Clean(filepath.Join(root, "inventory", "api.go")):                                    {},
-		filepath.Clean(filepath.Join(root, "inventory", "change_checker.go")):                         {},
-		filepath.Clean(filepath.Join(root, "inventory", "cost_calculator.go")):                        {},
-		filepath.Clean(filepath.Join(root, "inventory", "monitor.go")):                                {},
-		filepath.Clean(filepath.Join(root, "inventory", "price_strategy.go")):                         {},
-		filepath.Clean(filepath.Join(root, "inventory", "record.go")):                                 {},
-		filepath.Clean(filepath.Join(root, "inventory", "strategy.go")):                               {},
-		filepath.Clean(filepath.Join(root, "inventory", "sync.go")):                                   {},
-		filepath.Clean(filepath.Join(root, "inventory", "types.go")):                                  {},
-		filepath.Clean(filepath.Join(root, "managedclient", "api_client_test.go")):                    {},
-		filepath.Clean(filepath.Join(root, "managedclient", "bridge.go")):                             {},
-		filepath.Clean(filepath.Join(root, "managedclient", "manager.go")):                            {},
-		filepath.Clean(filepath.Join(root, "mapping", "builder.go")):                                  {},
-		filepath.Clean(filepath.Join(root, "mapping", "service.go")):                                  {},
-		filepath.Clean(filepath.Join(root, "mapping", "strategies.go")):                               {},
-		filepath.Clean(filepath.Join(root, "mapping", "strategies_test.go")):                          {},
-		filepath.Clean(filepath.Join(root, "mapping", "types.go")):                                    {},
-		filepath.Clean(filepath.Join(root, "models.go")):                                              {},
-		filepath.Clean(filepath.Join(root, "pipeline", "processor.go")):                               {},
-		filepath.Clean(filepath.Join(root, "pipeline", "sale_attribute_resolution_pipeline_test.go")): {},
-		filepath.Clean(filepath.Join(root, "pipeline", "task.go")):                                    {},
-		filepath.Clean(filepath.Join(root, "pipeline", "task_authorized_brand_test.go")):              {},
-		filepath.Clean(filepath.Join(root, "pricing", "auto_pricing.go")):                             {},
-		filepath.Clean(filepath.Join(root, "pricing", "calculator.go")):                               {},
-		filepath.Clean(filepath.Join(root, "pricing", "calculator_test.go")):                          {},
-		filepath.Clean(filepath.Join(root, "pricing", "pricing_calculator.go")):                       {},
-		filepath.Clean(filepath.Join(root, "pricing", "pricing_evaluator.go")):                        {},
-		filepath.Clean(filepath.Join(root, "product", "skc", "skc_build_input.go")):                   {},
-		filepath.Clean(filepath.Join(root, "product", "skc", "variant_runtime_test.go")):              {},
-		filepath.Clean(filepath.Join(root, "product", "sku", "sku_runtime_input.go")):                 {},
-		filepath.Clean(filepath.Join(root, "product", "sku", "strategy_test.go")):                     {},
-		filepath.Clean(filepath.Join(root, "productsync", "product_sync.go")):                         {},
-		filepath.Clean(filepath.Join(root, "productsync", "product_sync_enricher.go")):                {},
-		filepath.Clean(filepath.Join(root, "productsync", "product_sync_types.go")):                   {},
-		filepath.Clean(filepath.Join(root, "publish", "checker.go")):                                  {},
-		filepath.Clean(filepath.Join(root, "publish", "exists_check.go")):                             {},
-		filepath.Clean(filepath.Join(root, "publish", "handler.go")):                                  {},
-		filepath.Clean(filepath.Join(root, "publish", "handler_test.go")):                             {},
-		filepath.Clean(filepath.Join(root, "publish", "mapping_helper.go")):                           {},
-		filepath.Clean(filepath.Join(root, "publish", "publish_input.go")):                            {},
-		filepath.Clean(filepath.Join(root, "publish", "result_test.go")):                              {},
-		filepath.Clean(filepath.Join(root, "scheduler", "activity_task.go")):                          {},
-		filepath.Clean(filepath.Join(root, "scheduler", "factory.go")):                                {},
-		filepath.Clean(filepath.Join(root, "scheduler", "inventory_sync_adapter.go")):                 {},
-		filepath.Clean(filepath.Join(root, "scheduler", "inventory_sync_adapter_test.go")):            {},
-		filepath.Clean(filepath.Join(root, "scheduler", "inventory_task.go")):                         {},
-		filepath.Clean(filepath.Join(root, "scheduler", "pricing_task.go")):                           {},
-		filepath.Clean(filepath.Join(root, "scheduler", "product_sync_adapter.go")):                   {},
-		filepath.Clean(filepath.Join(root, "scheduler", "product_sync_adapter_test.go")):              {},
-		filepath.Clean(filepath.Join(root, "scheduler", "product_task.go")):                           {},
-		filepath.Clean(filepath.Join(root, "store", "store_id.go")):                                   {},
-		filepath.Clean(filepath.Join(root, "store", "store_info.go")):                                 {},
-		filepath.Clean(filepath.Join(root, "store", "store_info_test.go")):                            {},
-		filepath.Clean(filepath.Join(root, "validation", "daily_limit_test.go")):                      {},
-		filepath.Clean(filepath.Join(root, "validation", "get_rule.go")):                              {},
-		filepath.Clean(filepath.Join(root, "validation", "reapply_filter.go")):                        {},
+		filepath.Clean(filepath.Join(root, "activity", "mixed.go")):                        {},
+		filepath.Clean(filepath.Join(root, "activity", "product_data_helper.go")):          {},
+		filepath.Clean(filepath.Join(root, "activity", "profit.go")):                       {},
+		filepath.Clean(filepath.Join(root, "activity", "registration.go")):                 {},
+		filepath.Clean(filepath.Join(root, "activity", "registration_config.go")):          {},
+		filepath.Clean(filepath.Join(root, "activity", "time_limited.go")):                 {},
+		filepath.Clean(filepath.Join(root, "addresscopy", "service.go")):                   {},
+		filepath.Clean(filepath.Join(root, "api", "image", "client.go")):                   {},
+		filepath.Clean(filepath.Join(root, "authorizedbrand", "context_test.go")):          {},
+		filepath.Clean(filepath.Join(root, "authorizedbrand", "types.go")):                 {},
+		filepath.Clean(filepath.Join(root, "context", "context.go")):                       {},
+		filepath.Clean(filepath.Join(root, "inventory", "api.go")):                         {},
+		filepath.Clean(filepath.Join(root, "inventory", "change_checker.go")):              {},
+		filepath.Clean(filepath.Join(root, "inventory", "cost_calculator.go")):             {},
+		filepath.Clean(filepath.Join(root, "inventory", "monitor.go")):                     {},
+		filepath.Clean(filepath.Join(root, "inventory", "price_strategy.go")):              {},
+		filepath.Clean(filepath.Join(root, "inventory", "record.go")):                      {},
+		filepath.Clean(filepath.Join(root, "inventory", "strategy.go")):                    {},
+		filepath.Clean(filepath.Join(root, "inventory", "sync.go")):                        {},
+		filepath.Clean(filepath.Join(root, "inventory", "types.go")):                       {},
+		filepath.Clean(filepath.Join(root, "managedclient", "api_client_test.go")):         {},
+		filepath.Clean(filepath.Join(root, "managedclient", "bridge.go")):                  {},
+		filepath.Clean(filepath.Join(root, "managedclient", "manager.go")):                 {},
+		filepath.Clean(filepath.Join(root, "mapping", "builder.go")):                       {},
+		filepath.Clean(filepath.Join(root, "mapping", "service.go")):                       {},
+		filepath.Clean(filepath.Join(root, "mapping", "strategies.go")):                    {},
+		filepath.Clean(filepath.Join(root, "mapping", "strategies_test.go")):               {},
+		filepath.Clean(filepath.Join(root, "mapping", "types.go")):                         {},
+		filepath.Clean(filepath.Join(root, "models.go")):                                   {},
+		filepath.Clean(filepath.Join(root, "pipeline", "processor.go")):                    {},
+		filepath.Clean(filepath.Join(root, "pipeline", "task.go")):                         {},
+		filepath.Clean(filepath.Join(root, "pipeline", "task_authorized_brand_test.go")):   {},
+		filepath.Clean(filepath.Join(root, "pricing", "auto_pricing.go")):                  {},
+		filepath.Clean(filepath.Join(root, "pricing", "calculator.go")):                    {},
+		filepath.Clean(filepath.Join(root, "pricing", "calculator_test.go")):               {},
+		filepath.Clean(filepath.Join(root, "pricing", "pricing_calculator.go")):            {},
+		filepath.Clean(filepath.Join(root, "pricing", "pricing_evaluator.go")):             {},
+		filepath.Clean(filepath.Join(root, "product", "skc", "skc_build_input.go")):        {},
+		filepath.Clean(filepath.Join(root, "product", "skc", "variant_runtime_test.go")):   {},
+		filepath.Clean(filepath.Join(root, "product", "sku", "sku_runtime_input.go")):      {},
+		filepath.Clean(filepath.Join(root, "product", "sku", "strategy_test.go")):          {},
+		filepath.Clean(filepath.Join(root, "productsync", "product_sync.go")):              {},
+		filepath.Clean(filepath.Join(root, "productsync", "product_sync_enricher.go")):     {},
+		filepath.Clean(filepath.Join(root, "productsync", "product_sync_types.go")):        {},
+		filepath.Clean(filepath.Join(root, "publish", "checker.go")):                       {},
+		filepath.Clean(filepath.Join(root, "publish", "exists_check.go")):                  {},
+		filepath.Clean(filepath.Join(root, "publish", "handler.go")):                       {},
+		filepath.Clean(filepath.Join(root, "publish", "handler_test.go")):                  {},
+		filepath.Clean(filepath.Join(root, "publish", "mapping_helper.go")):                {},
+		filepath.Clean(filepath.Join(root, "publish", "publish_input.go")):                 {},
+		filepath.Clean(filepath.Join(root, "scheduler", "activity_task.go")):               {},
+		filepath.Clean(filepath.Join(root, "scheduler", "factory.go")):                     {},
+		filepath.Clean(filepath.Join(root, "scheduler", "inventory_sync_adapter.go")):      {},
+		filepath.Clean(filepath.Join(root, "scheduler", "inventory_sync_adapter_test.go")): {},
+		filepath.Clean(filepath.Join(root, "scheduler", "inventory_task.go")):              {},
+		filepath.Clean(filepath.Join(root, "scheduler", "pricing_task.go")):                {},
+		filepath.Clean(filepath.Join(root, "scheduler", "product_sync_adapter.go")):        {},
+		filepath.Clean(filepath.Join(root, "scheduler", "product_sync_adapter_test.go")):   {},
+		filepath.Clean(filepath.Join(root, "scheduler", "product_task.go")):                {},
+		filepath.Clean(filepath.Join(root, "store", "store_id.go")):                        {},
+		filepath.Clean(filepath.Join(root, "store", "store_info.go")):                      {},
+		filepath.Clean(filepath.Join(root, "store", "store_info_test.go")):                 {},
+		filepath.Clean(filepath.Join(root, "validation", "get_rule.go")):                   {},
+		filepath.Clean(filepath.Join(root, "validation", "reapply_filter.go")):             {},
 	}
 
 	index, err := loadGoFileIndex(root, "")
@@ -2347,6 +2446,26 @@ func TestSheinManagementClientImportsStayAllowlisted(t *testing.T) {
 			importPath := strings.Trim(quotedImport, `"`)
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
 				t.Errorf("%s imports %s; keep SHEIN concrete management client dependencies limited to current inventory, scheduler, publish, validation, activity, mapping, and product seams", path, importPath)
+			}
+		}
+	}
+}
+
+func TestSheinPipelineRuntimeDependenciesDoNotUseManagementClientNames(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "shein", "pipeline", "processor.go"),
+		filepath.Join("..", "internal", "shein", "pipeline", "dependencies_builder.go"),
+	}
+	banned := []string{"ManagementClient", "managementClient"}
+
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, token := range banned {
+			if strings.Contains(string(content), token) {
+				t.Fatalf("%s contains %s; name SHEIN runtime dependencies after the capability, not the retired Management Client", path, token)
 			}
 		}
 	}
@@ -2524,11 +2643,7 @@ func TestPlatformTaskManagementClientImportsStayAllowlisted(t *testing.T) {
 
 func TestStateManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "state")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "daily_count_manager.go")):      {},
-		filepath.Clean(filepath.Join(root, "daily_count_manager_test.go")): {},
-		filepath.Clean(filepath.Join(root, "manager.go")):                  {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -2574,9 +2689,6 @@ func TestPlatformBaseManagementClientImportsStayAllowlisted(t *testing.T) {
 
 func TestProcessorManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "processor")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "base_processor.go")): {},
-	}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -2584,13 +2696,10 @@ func TestProcessorManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 
 	for path, facts := range index.files {
-		if pathAllowed(path, allowedFiles) {
-			continue
-		}
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
-				t.Errorf("%s imports %s; keep processor management dependencies limited to current processor retirement seams and prefer in-repository database/repository access for new processor data", path, importPath)
+				t.Errorf("%s imports %s; keep processor free of concrete management clients and inject narrower runtime-owned ports instead", path, importPath)
 			}
 		}
 	}
@@ -2598,10 +2707,7 @@ func TestProcessorManagementClientImportsStayAllowlisted(t *testing.T) {
 
 func TestTaskRPCAPIManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "taskrpcapi")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "build.go")):      {},
-		filepath.Clean(filepath.Join(root, "build_test.go")): {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -2623,9 +2729,7 @@ func TestTaskRPCAPIManagementClientImportsStayAllowlisted(t *testing.T) {
 
 func TestSDSClientManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "sds", "client")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "auth_bootstrap.go")): {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -2647,10 +2751,7 @@ func TestSDSClientManagementClientImportsStayAllowlisted(t *testing.T) {
 
 func TestSheinLoginBootstrapManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "sheinlogin", "bootstrap")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "build.go")):      {},
-		filepath.Clean(filepath.Join(root, "build_test.go")): {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -2672,9 +2773,7 @@ func TestSheinLoginBootstrapManagementClientImportsStayAllowlisted(t *testing.T)
 
 func TestSheinLoginManagedManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "sheinloginmanaged")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "bridge.go")): {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -2714,10 +2813,7 @@ func TestSheinLoginUsesManagementAPIPortAliases(t *testing.T) {
 
 func TestSheinLoginServiceManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "sheinlogin")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "bootstrap", "build.go")):      {},
-		filepath.Clean(filepath.Join(root, "bootstrap", "build_test.go")): {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -2739,9 +2835,7 @@ func TestSheinLoginServiceManagementClientImportsStayAllowlisted(t *testing.T) {
 
 func TestSharedPricingManagementClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "pricing")
-	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "cost_calculator.go")): {},
-	}
+	allowedFiles := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {

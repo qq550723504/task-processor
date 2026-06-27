@@ -387,9 +387,9 @@ QuotaKeyTTLGrace = reserved
 不要让运维误以为配置已经生效。
 ```
 
-## 4.5 Management Client 仍然是 runtime 聚合壳
+## 4.5 Management Client runtime 聚合壳正在退场
 
-虽然本地数据已经停止 fallback，但以下结构仍以 Management Client 为聚合对象：
+2026-06-24 时，本地数据已经停止 fallback，但以下结构仍以 Management Client 为聚合对象：
 
 ```text
 PlatformProcessorRegistry.managementClient
@@ -401,13 +401,26 @@ runDebugTask 中的 ManagementClient task lookup
 这意味着：
 
 - 业务数据已经本地化；
-- 类型和装配所有权还没有本地化。
+- 类型和装配所有权当时还没有本地化。
 
-下一步应把能力拆成 runtime-owned ports，例如：
+2026-06-26 follow-up 已移除这些 runtime/consumer 边界里的宽客户端字段：
+
+```text
+PlatformProcessorRegistry.managementClient
+PlatformRuntimeContext.ManagementClient
+SharedResources.ManagementClient
+```
+
+当前边界改由以下 runtime-owned ports 承载：
 
 ```text
 ListingRuntimeHealthValidator
-ImportTaskLoader
+ListingRuntimeImportTaskRepository
+```
+
+下一步继续把剩余 bootstrap 兼容能力拆成 runtime-owned ports，例如：
+
+```text
 StoreProvider
 PricingRuleProvider
 ProductDataProvider
@@ -418,8 +431,7 @@ TaskStatusWriter
 
 ```text
 GetManagementClient()
-PlatformRuntimeContext.ManagementClient
-debug runtime 对 Management Client 的直接读取
+bootstrap 层对 Store/Product/Pricing/Task 能力的宽客户端适配
 ```
 
 ## 4.6 `internal/listingkit` 仍然很大，但不能继续机械拆分
@@ -769,7 +781,7 @@ Status: observability/reporting UI follow-up is code-complete. Frontend test/bui
 
 - Moved listing runtime debug single-task lookup away from `ManagementClient.GetImportTaskClient().GetTaskByID`.
 - Debug mode now builds a local `listingadmin.ImportTaskRepository` from the configured database and adapts the local task row into the existing direct processor payload.
-- The larger `PlatformRuntimeContext.ManagementClient` and `SharedResources.ManagementClient` shells remain for compatibility and should be retired in later, narrower port extractions.
+- At this checkpoint, the larger `PlatformRuntimeContext.ManagementClient` and `SharedResources.ManagementClient` shells still remained for compatibility; they were retired from the runtime/consumer boundary in the 2026-06-26 follow-up below.
 
 Status: debug task lookup no longer uses Management Client as the task fact source. Validation and commit remain deferred until the next explicit check.
 
@@ -780,4 +792,93 @@ Status: debug task lookup no longer uses Management Client as the task fact sour
 - Added registry/shared-resource health-validator accessors so listing runtime no longer calls `GetManagementClient()` for health checks.
 - Updated the missing-validator error to report a missing health validator instead of a missing management client.
 
-Status: health validation no longer exposes Management Client as its semantic dependency. The remaining compatibility shell is `PlatformRuntimeContext.ManagementClient` / `SharedResources.ManagementClient`, which should be split by Store/Product/Pricing/Task ports in later steps.
+Status at this checkpoint: health validation no longer exposes Management Client as its semantic dependency. At that point, `PlatformRuntimeContext.ManagementClient` / `SharedResources.ManagementClient` still remained and were retired in the 2026-06-26 follow-up below.
+
+### 2026-06-26 Management Client retirement follow-up: runtime context shutdown
+
+- Removed `ManagementClient` from consumer `SharedResources` and `PlatformRuntimeContext`.
+- Removed `PlatformProcessorRegistry.managementClient`; the registry now stores `ListingRuntimeHealthValidator` and `ListingRuntimeImportTaskRepository` ports.
+- Changed SHEIN task recovery watchdog setup to consume the injected local import-task repository port instead of reaching through `rt.ManagementClient`.
+- Added boundary tests that fail if consumer runtime boundaries start carrying `ManagementClient` fields again.
+
+Status: listing runtime/consumer boundaries no longer carry a broad Management Client. Bootstrap still adapts the legacy client into named ports while Store/Product/Pricing/Task capabilities are retired in later slices.
+
+### 2026-06-26 Management Client retirement follow-up: SHEIN pipeline naming
+
+- Renamed SHEIN pipeline dependency wiring from `ManagementClient` / `managementClient` to `RuntimeRepository` / `runtimeRepository`.
+- Added a boundary guard so SHEIN pipeline runtime dependencies cannot reintroduce Management Client naming while the old service is being removed.
+
+Status: SHEIN processor dependencies now describe the capability they need instead of the retired service name. The next removal point is still bootstrap/runtime provider construction.
+
+### 2026-06-26 Management Client retirement follow-up: bootstrap construction shutdown
+
+- Removed `SharedResources.ManagementClient` from bootstrap shared-resource assembly.
+- `BuildSharedResources` now constructs `management.LocalDataProvider` and `management.LocalRuntime` directly, wiring store, pricing, product-data, raw-JSON, daily-quota, import-task repository, and health-validator capabilities from the local DB/Redis provider.
+- `NewProcessorServiceWithCreators` no longer accepts or stores a broad Management Client.
+- Runner, consumer, state daily-count, and TEMU processor contracts now use `listingadmin` API ports instead of concrete `management.*APIClient` return types.
+- HTTP API shared runtime no longer obtains a Management Client from shared resources; the task-RPC module is skipped when no provider is available rather than panicking on a typed nil.
+- Added `TestBuildSharedResourcesDoesNotConstructManagementClient` to guard the startup construction path against reintroducing `management.NewClientManager`.
+
+Status: bootstrap shared resources no longer construct or carry `ClientManager`. Remaining retirement work is in explicit legacy seams such as HTTP login/task-RPC, processor base, SDS/SHEIN login bootstrap, and marketplace-specific compatibility paths.
+
+### 2026-06-27 Management Client retirement follow-up: legacy HTTP/login/taskRPC/processor shutdown
+
+- Removed the HTTP runtime `runtimeDeps.managementClient()` hook; HTTP task-RPC assembly now uses local runtime status only.
+- Removed `taskrpcapi`'s `ClientProvider` / `GetTaskRPCClient` dependency on Management Client. Task RPC health reports the local runtime source, and retry/cancel/status lookups now return explicit retired/unavailable semantics instead of reaching for the old service.
+- Removed `ManagementClient` from SHEIN login bootstrap input. Login bootstrap and `sheinloginmanaged` now consume the `listingadmin.StoreAPI` port directly for store sync and duplicate-store lookup.
+- Removed legacy `sheinloginmanaged` constructors that accepted `*management.ClientManager`; only store-port and factory-port constructors remain.
+- Removed `BaseProcessor`'s direct `management.ClientManager` import, field, config field, self-construction path, and task-status adapter construction. The base processor now only holds explicitly injected `StoreAPI`, `TaskStatusRuntime`, and `DailyCountClientProvider` ports.
+- Tightened import-boundary guards so `internal/processor`, `internal/taskrpcapi`, `internal/sheinlogin/bootstrap`, `internal/sheinlogin`, and `internal/sheinloginmanaged` cannot reintroduce Management Client imports through the retired seams.
+
+Status: the explicit HTTP task-RPC/login and processor-base seams no longer revive or carry Management Client. Remaining Management Client retirement work is now concentrated in older marketplace compatibility packages and still-documented adapter hotspots such as pricing, platformbase, platformtask, TEMU, SHEIN legacy marketplace code, and Amazon DTO/test seams.
+
+### 2026-06-27 Management Client retirement follow-up: SDS auth bootstrap shutdown
+
+- Removed SDS client bootstrap's Management Client fallback. `ManagementStoreID`, `TASK_PROCESSOR_SDS_MANAGEMENT_STORE_ID`, and the internal `newManagementClientFromConfig` path are retired.
+- SDS auth bootstrap now supports local files, static credentials, SDS login-service state, and direct account login; it no longer calls management store/cookie endpoints.
+- Tightened `TestSDSClientManagementClientImportsStayAllowlisted` to an empty allowlist so `internal/sds/client` cannot reintroduce Management Client imports.
+
+Status: SDS auth bootstrap no longer revives Management Client. Remaining Management Client retirement work is now concentrated in older marketplace compatibility packages and still-documented adapter hotspots such as pricing, platformbase, platformtask, TEMU, SHEIN legacy marketplace code, and Amazon DTO/test seams.
+
+### 2026-06-27 Management Client retirement follow-up: managed publishing bridge shutdown
+
+- Removed Management Client imports from `internal/publishing/sheinmanaged`.
+- Retired the legacy online managed-runtime API factory in that package; it now returns offline fallback notes instead of constructing runtime clients from Management Client.
+- Tightened `TestPublishingSheinManagedManagementImportsStayAllowlisted` to an empty allowlist.
+
+Status: managed publishing bridge no longer revives Management Client. Remaining Management Client retirement work is now concentrated in pricing, platformbase, platformtask, TEMU, SHEIN legacy marketplace code, and Amazon DTO/test seams.
+
+### 2026-06-27 Management Client retirement follow-up: bootstrap local runtime entrypoint
+
+- Added `internal/listingruntime/local` as the neutral entrypoint for local provider/runtime construction.
+- Changed `internal/app/bootstrap/resources` to use that entrypoint instead of importing `internal/infra/clients/management` directly.
+- Moved the local runtime implementation used by bootstrap into `internal/listingruntime/local`, including local data provider, runtime adapters, SHEIN cookie provider, raw-JSON adapter, task-status adapter, and local health validation.
+- Tightened the bootstrap guard so `resources/shared_resources.go` is no longer allowlisted for management imports, and added `TestListingRuntimeLocalDoesNotImportManagementClient` to keep the new local runtime package from depending on the old client service package.
+
+Status: app bootstrap and `internal/listingruntime/local` no longer import the management adapter package directly. The old `internal/infra/clients/management` local files remain for legacy compatibility/tests, but the bootstrap runtime path now goes through the neutral local runtime package.
+
+### 2026-06-27 Management Client retirement follow-up: test and guard cleanup
+
+- Removed remaining non-guard test imports of the root `internal/infra/clients/management` package from Amazon, SHEIN, state, and app consumer tests.
+- Replaced test-only `ClientManager` construction with narrow fakes for daily-count and task-status runtime capabilities.
+- Tightened Amazon, SHEIN, state, and shared-pricing import guards so those tests cannot reintroduce the root Management Client service package.
+- Added missing daily-count response aliases to `internal/listingadmin` so tests can implement the narrow daily-count port without importing the management client package.
+
+Status: outside the management package itself, root `internal/infra/clients/management` imports are now limited to string-based boundary assertions. Remaining retirement work is the broader DTO/api compatibility layer and legacy production seams that still import `internal/infra/clients/management/api`.
+
+### 2026-06-27 Management Client retirement follow-up: listingadmin DTO ownership
+
+- Replaced `internal/listingadmin`'s old `management/api` type-alias bridge with local DTO/API type definitions for store, rule, product-data, product-import-mapping, inventory, raw-JSON, image, daily-count, and operation-strategy contracts.
+- Moved the local task-RPC DTO/API contract to `internal/taskrpcapi`, and switched local import-task reads/updates to `listingruntime.ImportTask` plus `listingadmin.ImportTaskStatusUpdate` instead of legacy management DTOs.
+- Switched `internal/listingruntime/local` off `internal/infra/clients/management/api`; the local runtime now consumes `listingadmin`, `taskrpcapi`, and `listingruntime` contracts directly.
+- Verified the local runtime guard and the tightened Amazon/SHEIN/state/app-consumer/shared-pricing import-boundary guards after the migration.
+
+Status: `internal/listingruntime/local` and `internal/listingadmin` no longer import the old `management/api` package, and `listingadmin` does not expose task-status or import-task legacy DTOs. Outside `internal/infra/clients/management` itself, remaining `management/api` references are string-based boundary assertions; the old service package can now be isolated behind its own package boundary before deletion.
+
+### 2026-06-27 Management Client retirement follow-up: package deletion
+
+- Deleted the retired `internal/infra/clients/management` package after all external production/test imports were removed.
+- Kept boundary tests that refer to the old import path as string-only assertions so the retired package path cannot be reintroduced.
+- Historical design/baseline docs may still mention the old package path, but no Go package remains at that location.
+
+Status: Management Client no longer exists as a Go package in the repo. Runtime paths now go through `internal/listingruntime/local`, `internal/listingadmin`, and `internal/taskrpcapi` contracts instead of the retired service package.

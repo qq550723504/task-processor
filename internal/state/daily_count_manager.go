@@ -5,12 +5,11 @@ import (
 	"sync"
 
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management"
 	api "task-processor/internal/listingadmin"
 )
 
 type DailyCountClientProvider interface {
-	GetDailyListingCountClient() *management.DailyListingCountAPIClient
+	GetDailyListingCountClient() api.DailyListingCountAPI
 }
 
 // DailyCountInfo 每日计数信息

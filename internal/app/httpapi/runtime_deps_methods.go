@@ -1,22 +1,5 @@
 package httpapi
 
-import (
-	"task-processor/internal/infra/clients/management"
-)
-
-func (d *runtimeDeps) managementClient() *management.ClientManager {
-	if d == nil {
-		return nil
-	}
-	if d.shared == nil {
-		return nil
-	}
-	if d.shared.sharedResources == nil {
-		return nil
-	}
-	return d.shared.sharedResources.ManagementClient
-}
-
 func (d *runtimeDeps) ensureListingKitSupport() *listingKitSupport {
 	if d == nil {
 		return nil

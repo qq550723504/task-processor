@@ -11,7 +11,6 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/product"
 	"task-processor/internal/shein/pipeline"
@@ -23,7 +22,6 @@ import (
 type appServices struct {
 	cfg               *config.Config
 	authClient        *auth.ClientCredentialsAuthClient
-	managementClient  *management.ClientManager
 	rawJSONDataClient product.RawJsonDataClient
 	processorRuntime  consumer.ProcessorRuntime
 	amazonCrawler     runner.CrawlSource
@@ -153,7 +151,6 @@ func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources *boot
 	return &appServices{
 		cfg:               cfg,
 		authClient:        resources.AuthClient,
-		managementClient:  resources.ManagementClient,
 		rawJSONDataClient: resources.RawJSONDataClient,
 		processorRuntime:  resources.ProcessorRuntime,
 		amazonCrawler:     resources.AmazonCrawler,
@@ -166,7 +163,6 @@ func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources *boot
 func buildProcessorService(logger *logrus.Logger, resources *bootstrapresources.SharedResources) runner.ProcessorService {
 	return runner.NewProcessorServiceWithCreators(
 		logger,
-		resources.ManagementClient,
 		resources.RawJSONDataClient,
 		resources.ProcessorRuntime,
 		resources.SchedulerRuntime,

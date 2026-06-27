@@ -6,7 +6,6 @@ import (
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
@@ -23,10 +22,9 @@ import (
 
 type SchedulerFactoryRuntime interface {
 	runner.SchedulerRuntimeProvider
-	GetStoreClient() *management.StoreAPIClient
+	GetStoreAPI() managementapi.StoreAPI
 	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
 	GetRawJsonDataAdapter() product.RawJsonDataClient
-	GetStoreAPI() managementapi.StoreAPI
 	GetPricingRuleClient() managementapi.PricingRuleAPI
 	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
 	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
@@ -45,17 +43,19 @@ type SchedulerFactoryRuntime interface {
 
 type ProcessorRuntime interface {
 	SchedulerFactoryRuntime
-	GetDailyListingCountClient() *management.DailyListingCountAPIClient
-	GetFilterRuleClient() *management.FilterRuleAPIClient
-	GetProductImportMappingClient() *management.ProductImportMappingAPIClient
-	GetProfitRuleClient() *management.ProfitRuleAPIClient
+	GetDailyListingCountClient() managementapi.DailyListingCountAPI
+	GetFilterRuleClient() managementapi.FilterRuleAPI
+	GetProductImportMappingClient() managementapi.ProductImportMappingAPI
+	GetProfitRuleClient() managementapi.ProfitRuleAPI
 	GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository
 	GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
 	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
 	GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error)
 	DeleteSheinStoreCookie(storeID int64) (bool, error)
-	GetImageDownloader() *management.ImageDownloader
+	GetImageDownloader() interface {
+		DownloadImage(url string) ([]byte, error)
+	}
 	SetRuntimeStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error)
 	RuntimePublishedProductExists(ctx context.Context, storeID int64, platform, region, productID string) (bool, error)
 	FindRuntimeProductImportMappingByTaskAndSKU(ctx context.Context, importTaskID int64, sku string) (*listingruntime.ProductImportMapping, error)
@@ -68,22 +68,21 @@ type ListingRuntimeHealthValidator interface {
 	ValidateLocalListingRuntimeFields() (map[string]bool, error)
 }
 
-type SharedResources struct {
-	ManagementClient        *management.ClientManager
-	RawJSONDataClient       product.RawJsonDataClient
-	StoreAPI                managementapi.StoreAPI
-	SchedulerRuntime        runner.SchedulerRuntimeProvider
-	SchedulerFactoryRuntime SchedulerFactoryRuntime
-	ProcessorRuntime        ProcessorRuntime
-	CrawlSource             runner.CrawlSource
-	ProductFetcher          appfetcher.ProductFetcher
+type ListingRuntimeImportTaskRepository interface {
+	ProcessingTimeoutRepository
+	StaleQueuedRepository
 }
 
-func (r *SharedResources) ListingRuntimeHealthValidator() ListingRuntimeHealthValidator {
-	if r == nil {
-		return nil
-	}
-	return r.ManagementClient
+type SharedResources struct {
+	ListingRuntimeHealthValidator      ListingRuntimeHealthValidator
+	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
+	RawJSONDataClient                  product.RawJsonDataClient
+	StoreAPI                           managementapi.StoreAPI
+	SchedulerRuntime                   runner.SchedulerRuntimeProvider
+	SchedulerFactoryRuntime            SchedulerFactoryRuntime
+	ProcessorRuntime                   ProcessorRuntime
+	CrawlSource                        runner.CrawlSource
+	ProductFetcher                     appfetcher.ProductFetcher
 }
 
 type SharedResourceProvider func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*SharedResources, error)
@@ -96,19 +95,19 @@ type SchedulerDependenciesBuilder func(
 ) runner.SchedulerDependencies
 
 type PlatformRuntimeContext struct {
-	Config                  *config.Config
-	Logger                  *logrus.Logger
-	ManagementClient        *management.ClientManager
-	RawJSONDataClient       product.RawJsonDataClient
-	StoreAPI                managementapi.StoreAPI
-	SchedulerRuntime        runner.SchedulerRuntimeProvider
-	SchedulerFactoryRuntime SchedulerFactoryRuntime
-	ProcessorRuntime        ProcessorRuntime
-	CrawlSource             runner.CrawlSource
-	ProductFetcher          appfetcher.ProductFetcher
-	RabbitMQClient          *rabbitmq.Client
-	ServiceManager          *ServiceManager
-	SchedulerBuilder        SchedulerDependenciesBuilder
+	Config                             *config.Config
+	Logger                             *logrus.Logger
+	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
+	RawJSONDataClient                  product.RawJsonDataClient
+	StoreAPI                           managementapi.StoreAPI
+	SchedulerRuntime                   runner.SchedulerRuntimeProvider
+	SchedulerFactoryRuntime            SchedulerFactoryRuntime
+	ProcessorRuntime                   ProcessorRuntime
+	CrawlSource                        runner.CrawlSource
+	ProductFetcher                     appfetcher.ProductFetcher
+	RabbitMQClient                     *rabbitmq.Client
+	ServiceManager                     *ServiceManager
+	SchedulerBuilder                   SchedulerDependenciesBuilder
 }
 
 type PlatformModule interface {

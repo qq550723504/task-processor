@@ -2,18 +2,10 @@ package taskrpcapi
 
 import (
 	"testing"
-
-	managementclient "task-processor/internal/infra/clients/management"
 )
 
-type stubClientProvider struct {
-	client *managementclient.TaskRPCAPIClient
-}
-
-func (p stubClientProvider) GetTaskRPCClient() *managementclient.TaskRPCAPIClient { return p.client }
-
-func TestBuildHandlerReturnsNilWithoutProvider(t *testing.T) {
-	handler, err := BuildHandler(nil, nil)
+func TestBuildHandlerReturnsNilWithoutLocalStatusProvider(t *testing.T) {
+	handler, err := BuildHandler(nil)
 	if err != nil {
 		t.Fatalf("BuildHandler() error = %v", err)
 	}
@@ -22,8 +14,10 @@ func TestBuildHandlerReturnsNilWithoutProvider(t *testing.T) {
 	}
 }
 
-func TestBuildHandlerBuildsFromProvider(t *testing.T) {
-	handler, err := BuildHandler(stubClientProvider{client: &managementclient.TaskRPCAPIClient{}}, nil)
+func TestBuildHandlerBuildsFromLocalStatusProvider(t *testing.T) {
+	handler, err := BuildHandler(func() map[string]any {
+		return map[string]any{"status": "ok"}
+	})
 	if err != nil {
 		t.Fatalf("BuildHandler() error = %v", err)
 	}
@@ -33,7 +27,9 @@ func TestBuildHandlerBuildsFromProvider(t *testing.T) {
 }
 
 func TestBuildModuleBuildsHandlerAndModule(t *testing.T) {
-	result, err := BuildModule(stubClientProvider{client: &managementclient.TaskRPCAPIClient{}}, nil)
+	result, err := BuildModule(func() map[string]any {
+		return map[string]any{"status": "ok"}
+	})
 	if err != nil {
 		t.Fatalf("BuildModule() error = %v", err)
 	}

@@ -1,6 +1,8 @@
 package resources
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -8,6 +10,21 @@ import (
 
 	"task-processor/internal/core/config"
 )
+
+func TestBuildSharedResourcesDoesNotConstructManagementClient(t *testing.T) {
+	content, err := os.ReadFile("shared_resources.go")
+	require.NoError(t, err)
+
+	for _, token := range []string{
+		`"task-processor/internal/infra/clients/management"`,
+		"ManagementClient        *management.ClientManager",
+		"management.NewClientManager",
+		"newConfiguredManagementClient",
+	} {
+		require.NotContains(t, string(content), token)
+	}
+	require.False(t, strings.Contains(string(content), "managementClient:"))
+}
 
 func TestBuildSharedResources_AllowsMissingManagementAuth(t *testing.T) {
 	logger := logrus.New()
@@ -30,7 +47,8 @@ func TestBuildSharedResources_AllowsMissingManagementAuth(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resources)
 	require.Nil(t, resources.AuthClient)
-	require.NotNil(t, resources.ManagementClient)
+	require.Nil(t, resources.ProcessorRuntime)
+	require.Nil(t, resources.ListingRuntimeHealthValidator)
 }
 
 func TestBuildSharedResources_SkipManagementAuth(t *testing.T) {
@@ -54,5 +72,6 @@ func TestBuildSharedResources_SkipManagementAuth(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resources)
 	require.Nil(t, resources.AuthClient)
-	require.NotNil(t, resources.ManagementClient)
+	require.Nil(t, resources.ProcessorRuntime)
+	require.Nil(t, resources.ListingRuntimeHealthValidator)
 }

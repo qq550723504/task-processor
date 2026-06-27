@@ -6,11 +6,13 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/processor"
 	domainproduct "task-processor/internal/product"
 	"task-processor/internal/state"
+	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )
@@ -39,10 +41,83 @@ func (stubPipelineProductFetcher) GetStats() map[string]any {
 
 var _ fetcher.ProductFetcher = (*stubPipelineProductFetcher)(nil)
 
+type stubPipelineRuntime struct{}
+
+func (stubPipelineRuntime) RuntimePublishedProductExists(context.Context, int64, string, string, string) (bool, error) {
+	return false, nil
+}
+
+func (stubPipelineRuntime) FindRuntimeProductImportMappingByTaskAndSKU(context.Context, int64, string) (*listingruntime.ProductImportMapping, error) {
+	return nil, nil
+}
+
+func (stubPipelineRuntime) CreateRuntimeProductImportMapping(context.Context, *listingruntime.ProductImportMappingUpsert) (int64, error) {
+	return 0, nil
+}
+
+func (stubPipelineRuntime) UpdateRuntimeProductImportMapping(context.Context, *listingruntime.ProductImportMappingUpsert) error {
+	return nil
+}
+
+func (stubPipelineRuntime) GetRuntimeStorePauseStatusDetail(int64) (*listingruntime.StorePauseStatusDetail, error) {
+	return nil, nil
+}
+
+func (stubPipelineRuntime) GetRuntimeStoreService() listingruntime.StoreService {
+	return nil
+}
+
+func (stubPipelineRuntime) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
+	return nil
+}
+
+func (stubPipelineRuntime) GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository {
+	return nil
+}
+
+func (stubPipelineRuntime) GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository {
+	return nil
+}
+
+func (stubPipelineRuntime) GetSheinCookie(int64) (string, int64, error) {
+	return "", 0, nil
+}
+
+func (stubPipelineRuntime) GetSheinStoreCookie(int64) (string, error) {
+	return "", nil
+}
+
+func (stubPipelineRuntime) DeleteSheinStoreCookie(int64) (bool, error) {
+	return false, nil
+}
+
+func (stubPipelineRuntime) SetRuntimeStorePauseStatus(int64, bool, string) (bool, error) {
+	return false, nil
+}
+
+func (stubPipelineRuntime) UpdateRuntimeTaskStatus(*listingruntime.TaskStatusUpdate) error {
+	return nil
+}
+
+type stubPipelineTaskStatusRuntime struct{}
+
+func (stubPipelineTaskStatusRuntime) UpdateRuntimeTaskStatus(*listingruntime.TaskStatusUpdate) error {
+	return nil
+}
+
+func (stubPipelineTaskStatusRuntime) GetTaskStatus(int64) (*taskstatus.TaskStatusSnapshot, error) {
+	return nil, nil
+}
+
+type stubPipelineImageDownloader struct{}
+
+func (stubPipelineImageDownloader) DownloadImage(string) ([]byte, error) {
+	return nil, nil
+}
+
 func newSheinPipelineTestProcessor(cfg *config.Config, productFetcher fetcher.ProductFetcher) *SheinProcessor {
-	clientMgr := management.NewClientManager(&cfg.Management)
-	mem := state.NewMemoryManager(context.Background(), clientMgr)
-	mem.ShopPauseManager.SetStoreClient(clientMgr.GetStoreClient())
+	runtime := stubPipelineRuntime{}
+	mem := state.NewMemoryManager(context.Background(), nil)
 	base := processor.NewBaseProcessorWithMemoryManager(&processor.BaseProcessorConfig{
 		Config:   cfg,
 		Logger:   logrus.New(),
@@ -50,9 +125,9 @@ func newSheinPipelineTestProcessor(cfg *config.Config, productFetcher fetcher.Pr
 	}, mem)
 	return &SheinProcessor{
 		BaseProcessor:     base,
-		managementClient:  clientMgr,
-		taskStatusRuntime: management.NewTaskStatusRuntime(clientMgr),
-		imageDownloader:   clientMgr.GetImageDownloader(),
+		runtimeRepository: runtime,
+		taskStatusRuntime: stubPipelineTaskStatusRuntime{},
+		imageDownloader:   stubPipelineImageDownloader{},
 		productFetcher:    productFetcher,
 	}
 }

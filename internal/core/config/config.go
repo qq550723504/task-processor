@@ -641,9 +641,6 @@ func knownEnvBindings() map[string]envBinding {
 		"platforms.sds.authBootstrap.loginExtraInfo": {
 			Primary: "TASK_PROCESSOR_SDS_EXTRA_INFO",
 		},
-		"platforms.sds.authBootstrap.managementStoreID": {
-			Primary: "TASK_PROCESSOR_SDS_MANAGEMENT_STORE_ID",
-		},
 		"debug.productEnrichMockLLM": {
 			Primary: "TASK_PROCESSOR_PRODUCTENRICH_MOCK_LLM",
 		},

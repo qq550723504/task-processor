@@ -7,7 +7,6 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	managementapi "task-processor/internal/listingadmin"
@@ -24,9 +23,9 @@ import (
 type processorRuntime interface {
 	temuclient.StoreRuntime
 	taskstatus.RuntimeTaskStatusUpdater
-	GetFilterRuleClient() *management.FilterRuleAPIClient
-	GetProductImportMappingClient() *management.ProductImportMappingAPIClient
-	GetProfitRuleClient() *management.ProfitRuleAPIClient
+	GetFilterRuleClient() managementapi.FilterRuleAPI
+	GetProductImportMappingClient() managementapi.ProductImportMappingAPI
+	GetProfitRuleClient() managementapi.ProfitRuleAPI
 }
 
 type Dependencies struct {

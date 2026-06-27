@@ -39,7 +39,7 @@ func BuildDependencies(
 	}
 
 	return Dependencies{
-		ManagementClient:  runtime,
+		RuntimeRepository: runtime,
 		TaskStatusRuntime: runtime,
 		MemoryManager:     mem,
 		ImageDownloader:   imageDownloader,

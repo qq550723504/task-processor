@@ -7,7 +7,6 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
 	managementapi "task-processor/internal/listingadmin"
@@ -26,11 +25,11 @@ type CrawlSource = ports.CrawlSource
 type rawJSONDataClientProvider = product.RawJsonDataClient
 
 type processorRuntimeProvider interface {
-	GetDailyListingCountClient() *management.DailyListingCountAPIClient
-	GetStoreClient() *management.StoreAPIClient
-	GetFilterRuleClient() *management.FilterRuleAPIClient
-	GetProductImportMappingClient() *management.ProductImportMappingAPIClient
-	GetProfitRuleClient() *management.ProfitRuleAPIClient
+	GetDailyListingCountClient() managementapi.DailyListingCountAPI
+	GetStoreAPI() managementapi.StoreAPI
+	GetFilterRuleClient() managementapi.FilterRuleAPI
+	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
+	GetProfitRuleClient() managementapi.ProfitRuleAPI
 	GetRuntimeStoreService() listingruntime.StoreService
 	GetLocalStoreRepository() *listingadmin.GormStoreRepository
 	GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository
@@ -42,7 +41,9 @@ type processorRuntimeProvider interface {
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
 	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
 	GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error)
-	GetImageDownloader() *management.ImageDownloader
+	GetImageDownloader() interface {
+		DownloadImage(url string) ([]byte, error)
+	}
 	RuntimePublishedProductExists(ctx context.Context, storeID int64, platform, region, productID string) (bool, error)
 	FindRuntimeProductImportMappingByTaskAndSKU(ctx context.Context, importTaskID int64, sku string) (*listingruntime.ProductImportMapping, error)
 	CreateRuntimeProductImportMapping(ctx context.Context, req *listingruntime.ProductImportMappingUpsert) (int64, error)
@@ -52,10 +53,9 @@ type processorRuntimeProvider interface {
 
 type schedulerFactoryRuntimeProvider interface {
 	SchedulerRuntimeProvider
-	GetStoreClient() *management.StoreAPIClient
+	GetStoreAPI() managementapi.StoreAPI
 	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
 	GetRawJsonDataAdapter() product.RawJsonDataClient
-	GetStoreAPI() managementapi.StoreAPI
 	GetPricingRuleClient() managementapi.PricingRuleAPI
 	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
 	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
@@ -79,7 +79,6 @@ type ProcessorService interface {
 
 func NewProcessorServiceWithCreators(
 	logger *logrus.Logger,
-	managementClient *management.ClientManager,
 	rawJSONDataClient product.RawJsonDataClient,
 	processorRuntime processorRuntimeProvider,
 	schedulerRuntime SchedulerRuntimeProvider,
@@ -93,7 +92,6 @@ func NewProcessorServiceWithCreators(
 	return &processorServiceImpl{
 		logger:                  logger,
 		lifecycleManager:        lifecycle.NewLifecycleManager(logger),
-		managementClient:        managementClient,
 		rawJSONDataClient:       rawJSONDataClient,
 		processorRuntime:        processorRuntime,
 		schedulerRuntime:        schedulerRuntime,

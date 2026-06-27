@@ -71,7 +71,6 @@ type SDSAuthBootstrapConfig struct {
 	LoginDomainName         string `mapstructure:"loginDomainName" yaml:"loginDomainName"`
 	LoginVerifyCaptchaParam string `mapstructure:"loginVerifyCaptchaParam" yaml:"loginVerifyCaptchaParam"`
 	LoginExtraInfo          string `mapstructure:"loginExtraInfo" yaml:"loginExtraInfo"`
-	ManagementStoreID       int64  `mapstructure:"managementStoreID" yaml:"managementStoreID"`
 }
 
 type LoginServiceConfig struct {

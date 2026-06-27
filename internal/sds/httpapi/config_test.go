@@ -67,7 +67,6 @@ func TestBuildClientConfigUsesAuthBootstrapFromConfig(t *testing.T) {
 					StaticOutToken:          "out-token",
 					StaticMerchantID:        12345,
 					StaticCookie:            "cookie=value",
-					ManagementStoreID:       67890,
 					LoginDomainName:         "www.sdsdiy.com",
 					LoginVerifyCaptchaParam: "captcha-param",
 					LoginExtraInfo:          "{\"risk\":1}",
@@ -88,9 +87,6 @@ func TestBuildClientConfigUsesAuthBootstrapFromConfig(t *testing.T) {
 	}
 	if clientCfg.AuthBootstrap.StaticCookie != "cookie=value" {
 		t.Fatalf("cookie = %q", clientCfg.AuthBootstrap.StaticCookie)
-	}
-	if clientCfg.AuthBootstrap.ManagementStoreID != 67890 {
-		t.Fatalf("management store id = %d", clientCfg.AuthBootstrap.ManagementStoreID)
 	}
 	if clientCfg.AuthBootstrap.LoginDomainName != "www.sdsdiy.com" {
 		t.Fatalf("domain name = %q", clientCfg.AuthBootstrap.LoginDomainName)

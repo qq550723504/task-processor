@@ -90,7 +90,6 @@ func BuildSDSAuthBootstrapConfig(v *viper.Viper, prefix string) SDSAuthBootstrap
 		LoginDomainName:         v.GetString(prefix + ".loginDomainName"),
 		LoginVerifyCaptchaParam: v.GetString(prefix + ".loginVerifyCaptchaParam"),
 		LoginExtraInfo:          v.GetString(prefix + ".loginExtraInfo"),
-		ManagementStoreID:       v.GetInt64(prefix + ".managementStoreID"),
 	}
 }
 

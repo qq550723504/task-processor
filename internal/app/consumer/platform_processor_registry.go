@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/product"
@@ -23,20 +22,21 @@ type processorRegistration struct {
 }
 
 type PlatformProcessorRegistry struct {
-	config                  *config.Config
-	logger                  *logrus.Logger
-	managementClient        *management.ClientManager
-	rawJSONDataClient       product.RawJsonDataClient
-	storeAPI                managementapi.StoreAPI
-	schedulerRuntime        runner.SchedulerRuntimeProvider
-	schedulerFactoryRuntime SchedulerFactoryRuntime
-	processorRuntime        ProcessorRuntime
-	sharedCrawlSource       runner.CrawlSource
-	sharedProductFetcher    appfetcher.ProductFetcher
-	rabbitmqClient          *rabbitmq.Client
-	enabledPlatforms        []string
-	sharedResourceProvider  SharedResourceProvider
-	platformModules         []PlatformModule
+	config                             *config.Config
+	logger                             *logrus.Logger
+	listingRuntimeHealthValidator      ListingRuntimeHealthValidator
+	listingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
+	rawJSONDataClient                  product.RawJsonDataClient
+	storeAPI                           managementapi.StoreAPI
+	schedulerRuntime                   runner.SchedulerRuntimeProvider
+	schedulerFactoryRuntime            SchedulerFactoryRuntime
+	processorRuntime                   ProcessorRuntime
+	sharedCrawlSource                  runner.CrawlSource
+	sharedProductFetcher               appfetcher.ProductFetcher
+	rabbitmqClient                     *rabbitmq.Client
+	enabledPlatforms                   []string
+	sharedResourceProvider             SharedResourceProvider
+	platformModules                    []PlatformModule
 }
 
 func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr string, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
@@ -91,7 +91,8 @@ func (r *PlatformProcessorRegistry) initializeSharedResources(needsAmazon bool) 
 		return err
 	}
 
-	r.managementClient = resources.ManagementClient
+	r.listingRuntimeHealthValidator = resources.ListingRuntimeHealthValidator
+	r.listingRuntimeImportTaskRepository = resources.ListingRuntimeImportTaskRepository
 	r.rawJSONDataClient = resources.RawJSONDataClient
 	r.storeAPI = resources.StoreAPI
 	r.schedulerRuntime = resources.SchedulerRuntime
@@ -151,19 +152,19 @@ func (r *PlatformProcessorRegistry) runtimeContext(
 	schedulerBuilder SchedulerDependenciesBuilder,
 ) PlatformRuntimeContext {
 	return PlatformRuntimeContext{
-		Config:                  r.config,
-		Logger:                  r.logger,
-		ManagementClient:        r.managementClient,
-		RawJSONDataClient:       r.rawJSONDataClient,
-		StoreAPI:                r.storeAPI,
-		SchedulerRuntime:        r.schedulerRuntime,
-		SchedulerFactoryRuntime: r.schedulerFactoryRuntime,
-		ProcessorRuntime:        r.processorRuntime,
-		CrawlSource:             r.sharedCrawlSource,
-		ProductFetcher:          r.sharedProductFetcher,
-		RabbitMQClient:          r.rabbitmqClient,
-		ServiceManager:          serviceManager,
-		SchedulerBuilder:        schedulerBuilder,
+		Config:                             r.config,
+		Logger:                             r.logger,
+		ListingRuntimeImportTaskRepository: r.listingRuntimeImportTaskRepository,
+		RawJSONDataClient:                  r.rawJSONDataClient,
+		StoreAPI:                           r.storeAPI,
+		SchedulerRuntime:                   r.schedulerRuntime,
+		SchedulerFactoryRuntime:            r.schedulerFactoryRuntime,
+		ProcessorRuntime:                   r.processorRuntime,
+		CrawlSource:                        r.sharedCrawlSource,
+		ProductFetcher:                     r.sharedProductFetcher,
+		RabbitMQClient:                     r.rabbitmqClient,
+		ServiceManager:                     serviceManager,
+		SchedulerBuilder:                   schedulerBuilder,
 	}
 }
 
@@ -294,5 +295,5 @@ func (r *PlatformProcessorRegistry) GetSharedProductFetcher() appfetcher.Product
 }
 
 func (r *PlatformProcessorRegistry) GetListingRuntimeHealthValidator() ListingRuntimeHealthValidator {
-	return r.managementClient
+	return r.listingRuntimeHealthValidator
 }
