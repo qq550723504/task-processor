@@ -253,9 +253,6 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     fireEvent.change(screen.getByRole("spinbutton", { name: "活动库存比例" }), {
       target: { value: "0.4" },
     });
-    fireEvent.change(screen.getByRole("spinbutton", { name: "最低利润率" }), {
-      target: { value: "0.15" },
-    });
     fireEvent.change(screen.getByRole("spinbutton", { name: "固定调价" }), {
       target: { value: "1.2" },
     });
@@ -265,8 +262,40 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       activity_price_mode: "DISCOUNT",
       activity_discount_rate: 0.18,
       activity_stock_ratio: 0.4,
-      activity_min_profit_rate: 0.15,
       fixed_price_adjustment: 1.2,
+    });
+  });
+
+  it("shows only mode-specific activity strategy fields", async () => {
+    const updateStrategyMutation = resolvedMutation();
+    renderWorkbench({
+      initialTab: "candidates",
+      activityStrategyResponse: { configured: false, strategy: null },
+      updateStrategyMutation,
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "折扣率" })).toBeInTheDocument();
+    expect(screen.queryByRole("spinbutton", { name: "最低利润率" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "按利润" }));
+
+    expect(screen.queryByRole("spinbutton", { name: "折扣率" })).not.toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "最低利润率" })).toBeInTheDocument();
+
+    const minProfitInput = screen.getByRole("spinbutton", { name: "最低利润率" });
+    expect(minProfitInput).toHaveAttribute("min", "0");
+
+    fireEvent.change(minProfitInput, {
+      target: { value: "0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存活动设置" }));
+
+    expect(updateStrategyMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_price_mode: "PROFIT",
+      activity_stock_ratio: 0.5,
+      activity_min_profit_rate: 0,
+      fixed_price_adjustment: 0,
     });
   });
 

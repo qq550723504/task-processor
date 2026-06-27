@@ -354,6 +354,44 @@ func TestSheinActivityAdapterRejectsInvalidPromotionDiscountStrategy(t *testing.
 	require.Empty(t, bridge.calls)
 }
 
+func TestSheinActivityAdapterAllowsZeroPromotionMinProfitRate(t *testing.T) {
+	t.Parallel()
+
+	strategyProvider := &sheinPromotionStrategyProviderStub{
+		strategy: NewSheinPromotionStrategy(SheinPromotionStrategyInput{
+			StoreID:               22,
+			ActivityPriceMode:     "PROFIT",
+			ActivityStockRatio:    0.5,
+			ActivityMinProfitRate: 0,
+		}),
+	}
+	bridge := &sheinPromotionBridgeStub{
+		result: &SheinPromotionRegistrationResult{
+			Response: &marketing.SaveConfigResponse{Code: "0", Msg: "ok"},
+		},
+	}
+	adapter := newSheinActivityAdapter(strategyProvider, bridge)
+
+	results, err := adapter.EnrollCandidates(
+		context.Background(),
+		22,
+		"PROMOTION",
+		"PROMOTION:11:22",
+		[]SheinActivityEnrollmentCandidate{
+			{
+				CandidateID:       1,
+				SKCName:           "skc-approved",
+				PriceSnapshot:     `{"sale_price":29.9,"currency":"USD"}`,
+				InventorySnapshot: `{"available":10}`,
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Len(t, bridge.calls, 1)
+	require.Len(t, results, 1)
+}
+
 type sheinEnrollmentRepoStub struct {
 	mu                   sync.Mutex
 	nextRunID            int64

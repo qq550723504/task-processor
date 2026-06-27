@@ -100,25 +100,47 @@ function SheinActivityStrategyForm({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <label className="text-xs font-medium text-zinc-600">
-            折扣率
-            <Input
-              aria-label="折扣率"
-              className="mt-1"
-              max="0.99"
-              min="0.01"
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  activity_discount_rate: event.target.value,
-                }))
-              }
-              step="0.01"
-              type="number"
-              value={form.activity_discount_rate}
-            />
-          </label>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {form.activity_price_mode === "DISCOUNT" ? (
+            <label className="text-xs font-medium text-zinc-600">
+              折扣率
+              <Input
+                aria-label="折扣率"
+                className="mt-1"
+                max="0.99"
+                min="0.01"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    activity_discount_rate: event.target.value,
+                  }))
+                }
+                step="0.01"
+                type="number"
+                value={form.activity_discount_rate}
+              />
+            </label>
+          ) : null}
+          {form.activity_price_mode === "PROFIT" ? (
+            <label className="text-xs font-medium text-zinc-600">
+              最低利润率
+              <Input
+                aria-label="最低利润率"
+                className="mt-1"
+                max="0.99"
+                min="0"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    activity_min_profit_rate: event.target.value,
+                  }))
+                }
+                step="0.01"
+                type="number"
+                value={form.activity_min_profit_rate}
+              />
+            </label>
+          ) : null}
           <label className="text-xs font-medium text-zinc-600">
             活动库存比例
             <Input
@@ -135,24 +157,6 @@ function SheinActivityStrategyForm({
               step="0.01"
               type="number"
               value={form.activity_stock_ratio}
-            />
-          </label>
-          <label className="text-xs font-medium text-zinc-600">
-            最低利润率
-            <Input
-              aria-label="最低利润率"
-              className="mt-1"
-              max="0.99"
-              min="0.01"
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  activity_min_profit_rate: event.target.value,
-                }))
-              }
-              step="0.01"
-              type="number"
-              value={form.activity_min_profit_rate}
             />
           </label>
           <label className="text-xs font-medium text-zinc-600">
@@ -240,13 +244,17 @@ function activityStrategyFormKey(strategy?: SheinActivityStrategyRecord | null) 
 }
 
 function formToInput(form: ActivityStrategyForm): SheinUpdateActivityStrategyInput {
-  return {
+  const input: SheinUpdateActivityStrategyInput = {
     activity_price_mode: form.activity_price_mode,
-    activity_discount_rate: parseDecimal(form.activity_discount_rate),
     activity_stock_ratio: parseDecimal(form.activity_stock_ratio) ?? 0,
-    activity_min_profit_rate: parseDecimal(form.activity_min_profit_rate),
     fixed_price_adjustment: parseDecimal(form.fixed_price_adjustment) ?? 0,
   };
+  if (form.activity_price_mode === "DISCOUNT") {
+    input.activity_discount_rate = parseDecimal(form.activity_discount_rate);
+  } else {
+    input.activity_min_profit_rate = parseDecimal(form.activity_min_profit_rate);
+  }
+  return input;
 }
 
 function isActivityStrategyInputValid(input: SheinUpdateActivityStrategyInput) {
@@ -256,7 +264,7 @@ function isActivityStrategyInputValid(input: SheinUpdateActivityStrategyInput) {
   if (input.activity_price_mode === "DISCOUNT") {
     return withinRatio(input.activity_discount_rate, false);
   }
-  return withinRatio(input.activity_min_profit_rate, false);
+  return withinProfitFloor(input.activity_min_profit_rate);
 }
 
 function withinRatio(value: number | undefined, allowOne: boolean) {
@@ -264,6 +272,10 @@ function withinRatio(value: number | undefined, allowOne: boolean) {
     return false;
   }
   return allowOne ? value <= 1 : value < 1;
+}
+
+function withinProfitFloor(value: number | undefined) {
+  return typeof value === "number" && !Number.isNaN(value) && value >= 0 && value < 1;
 }
 
 function parseDecimal(value: string) {

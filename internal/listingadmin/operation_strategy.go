@@ -72,6 +72,7 @@ type OperationStrategyRepository interface {
 	GetActiveActivityStrategy(ctx context.Context, tenantID, storeID int64, platform, activityType string) (*OperationStrategy, error)
 	CreateOperationStrategy(ctx context.Context, strategy *OperationStrategy) (*OperationStrategy, error)
 	UpdateOperationStrategy(ctx context.Context, strategy *OperationStrategy) (*OperationStrategy, error)
+	SaveActivityStrategy(ctx context.Context, strategy *OperationStrategy) (*OperationStrategy, error)
 	UpdateOperationStrategyStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*OperationStrategy, error)
 	DeleteOperationStrategy(ctx context.Context, tenantID, id int64) error
 }

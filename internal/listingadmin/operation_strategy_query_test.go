@@ -149,3 +149,40 @@ func TestGormOperationStrategyRepositoryGetActiveActivityStrategyFiltersEnrollme
 		t.Fatalf("GetActiveActivityStrategy() = %+v, want correct scoped strategy", got)
 	}
 }
+
+func TestGormOperationStrategyRepositoryPreservesZeroActivityMinProfitRate(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingOperationStrategy{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	row := listingOperationStrategy{
+		TenantID:              101,
+		StoreID:               21,
+		Name:                  "profit-floor",
+		Platform:              "SHEIN",
+		Status:                0,
+		Deleted:               0,
+		ActivityEnabled:       1,
+		ActivityType:          "PROMOTION",
+		ActivityPriceMode:     "PROFIT",
+		ActivityStockRatio:    0.5,
+		ActivityMinProfitRate: 0,
+	}
+	if err := db.Table("listing_operation_strategy").Create(&row).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+
+	repo := NewGormOperationStrategyRepository(db)
+	got, err := repo.GetActiveActivityStrategy(context.Background(), 101, 21, "SHEIN", "PROMOTION")
+	if err != nil {
+		t.Fatalf("GetActiveActivityStrategy() error = %v", err)
+	}
+	if got == nil || got.ActivityMinProfitRate == nil || *got.ActivityMinProfitRate != 0 {
+		t.Fatalf("GetActiveActivityStrategy() = %+v, want explicit zero min profit rate", got)
+	}
+}

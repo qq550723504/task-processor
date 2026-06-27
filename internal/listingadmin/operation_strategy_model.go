@@ -23,7 +23,7 @@ func (s listingOperationStrategy) toOperationStrategy() OperationStrategy {
 		ActivityDiscountRate:         floatPtrIfPositive(s.ActivityDiscountRate),
 		ActivityStockRatio:           floatPtrIfPositive(s.ActivityStockRatio),
 		PromotionRatio:               floatPtrIfPositive(s.PromotionRatio),
-		ActivityMinProfitRate:        floatPtrIfPositive(s.ActivityMinProfitRate),
+		ActivityMinProfitRate:        activityProfitRatePtr(s.ActivityPriceMode, s.ActivityMinProfitRate),
 		ActivityPriceMode:            s.ActivityPriceMode,
 		TimeLimitedDiscountRate:      floatPtrIfPositive(s.TimeLimitedDiscountRate),
 		TimeLimitedMinProfitRate:     floatPtrIfPositive(s.TimeLimitedMinProfitRate),
@@ -104,4 +104,14 @@ func boolToInt16(value bool) int16 {
 		return 1
 	}
 	return 0
+}
+
+func activityProfitRatePtr(priceMode string, value float64) *float64 {
+	if strings.ToUpper(strings.TrimSpace(priceMode)) != "PROFIT" {
+		return floatPtrIfPositive(value)
+	}
+	if value < 0 || value >= 1 {
+		return nil
+	}
+	return &value
 }

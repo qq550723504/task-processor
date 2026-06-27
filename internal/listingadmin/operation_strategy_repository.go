@@ -108,6 +108,42 @@ func (r *GormOperationStrategyRepository) UpdateOperationStrategy(ctx context.Co
 	return r.GetOperationStrategy(ctx, row.TenantID, row.ID)
 }
 
+func (r *GormOperationStrategyRepository) SaveActivityStrategy(ctx context.Context, strategy *OperationStrategy) (*OperationStrategy, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("operation strategy repository database is not configured")
+	}
+	row := listingOperationStrategyFromOperationStrategy(strategy)
+	values := map[string]any{
+		"tenant_id":                row.TenantID,
+		"store_id":                 row.StoreID,
+		"name":                     row.Name,
+		"platform":                 row.Platform,
+		"status":                   row.Status,
+		"activity_enabled":         row.ActivityEnabled,
+		"activity_type":            row.ActivityType,
+		"activity_discount_rate":   nullableFloat64(strategy.ActivityDiscountRate),
+		"activity_stock_ratio":     nullableFloat64(strategy.ActivityStockRatio),
+		"activity_min_profit_rate": nullableFloat64(strategy.ActivityMinProfitRate),
+		"activity_price_mode":      row.ActivityPriceMode,
+		"fixed_price_adjustment":   nullableFloat64(strategy.FixedPriceAdjustment),
+	}
+	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+		values["owner_user_id"] = ownerUserID
+	}
+	if row.ID <= 0 {
+		values["deleted"] = 0
+		if err := r.db.WithContext(ctx).Table("listing_operation_strategy").Create(values).Error; err != nil {
+			return nil, err
+		}
+		return r.GetActiveActivityStrategy(ctx, row.TenantID, row.StoreID, row.Platform, row.ActivityType)
+	}
+	delete(values, "tenant_id")
+	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_operation_strategy"), row.TenantID, row.ID, "owner_user_id", values, ErrOperationStrategyNotFound); err != nil {
+		return nil, err
+	}
+	return r.GetOperationStrategy(ctx, row.TenantID, row.ID)
+}
+
 func (r *GormOperationStrategyRepository) UpdateOperationStrategyStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*OperationStrategy, error) {
 	updates := map[string]any{"status": status}
 	if strings.TrimSpace(remark) != "" {
@@ -150,6 +186,13 @@ func (r *GormOperationStrategyRepository) GetLatestByStoreID(ctx context.Context
 	}
 	strategy := row.toOperationStrategy()
 	return &strategy, nil
+}
+
+func nullableFloat64(value *float64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func (r *GormOperationStrategyRepository) GetActiveActivityStrategy(ctx context.Context, tenantID, storeID int64, platform, activityType string) (*OperationStrategy, error) {

@@ -61,9 +61,9 @@ func (h *handler) UpdateSheinActivityStrategy(c *gin.Context) {
 	}
 	strategy := buildSheinActivityOperationStrategy(tenantID, storeID, existing, req)
 	if existing == nil {
-		strategy, err = h.operationStrategyRepository.CreateOperationStrategy(ctx, strategy)
+		strategy, err = h.operationStrategyRepository.SaveActivityStrategy(ctx, strategy)
 	} else {
-		strategy, err = h.operationStrategyRepository.UpdateOperationStrategy(ctx, strategy)
+		strategy, err = h.operationStrategyRepository.SaveActivityStrategy(ctx, strategy)
 	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_activity_strategy_update_failed", "message": err.Error()})
@@ -89,7 +89,7 @@ func validateSheinActivityStrategyRequest(req updateSheinActivityStrategyRequest
 			return errors.New("activity_discount_rate must be between 0 and 1")
 		}
 	case "PROFIT":
-		if req.ActivityMinProfitRate == nil || *req.ActivityMinProfitRate <= 0 || *req.ActivityMinProfitRate >= 1 {
+		if req.ActivityMinProfitRate == nil || *req.ActivityMinProfitRate < 0 || *req.ActivityMinProfitRate >= 1 {
 			return errors.New("activity_min_profit_rate must be between 0 and 1")
 		}
 	default:

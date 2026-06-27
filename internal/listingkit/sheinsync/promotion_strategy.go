@@ -50,7 +50,7 @@ func (s *SheinPromotionStrategy) ValidateForPromotionEnrollment() error {
 			return fmt.Errorf("SHEIN promotion strategy activity discount rate must be between 0 and 1")
 		}
 	case "PROFIT":
-		if s.ActivityMinProfitRate <= 0 || s.ActivityMinProfitRate >= 1 {
+		if s.ActivityMinProfitRate < 0 || s.ActivityMinProfitRate >= 1 {
 			return fmt.Errorf("SHEIN promotion strategy activity minimum profit rate must be between 0 and 1")
 		}
 	default:

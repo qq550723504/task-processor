@@ -412,6 +412,116 @@ func TestUpdateSheinActivityStrategyCreatesStorePromotionStrategy(t *testing.T) 
 	}
 }
 
+func TestUpdateSheinActivityStrategyAllowsZeroProfitFloor(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	repo := newSheinActivityStrategyTestRepository(t)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithOperationStrategyRepository(repo))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.PATCH("/api/v1/listing-kits/shein-sync/stores/:store_id/activity-strategy", h.UpdateSheinActivityStrategy)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/listing-kits/shein-sync/stores/2001/activity-strategy", strings.NewReader(`{
+		"activity_price_mode":"PROFIT",
+		"activity_stock_ratio":0.4,
+		"activity_min_profit_rate":0,
+		"fixed_price_adjustment":0
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	req.Header.Set("X-User-ID", "shein-ops")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+	strategy, err := repo.GetActiveActivityStrategy(context.Background(), 18, 2001, "SHEIN", "PROMOTION")
+	if err != nil {
+		t.Fatalf("load strategy: %v", err)
+	}
+	if strategy == nil || strategy.ActivityMinProfitRate == nil || *strategy.ActivityMinProfitRate != 0 {
+		t.Fatalf("min profit rate = %v, want 0", strategy)
+	}
+}
+
+func TestUpdateSheinActivityStrategyUpdatesLegacySchemaWithoutUnrelatedColumns(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.Exec(`
+CREATE TABLE listing_operation_strategy (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	tenant_id INTEGER NOT NULL,
+	owner_user_id TEXT,
+	store_id INTEGER NOT NULL,
+	name TEXT NOT NULL,
+	platform TEXT NOT NULL,
+	status INTEGER NOT NULL DEFAULT 0,
+	activity_enabled INTEGER NOT NULL DEFAULT 0,
+	activity_type TEXT,
+	activity_discount_rate REAL,
+	activity_stock_ratio REAL,
+	activity_min_profit_rate REAL,
+	activity_price_mode TEXT,
+	fixed_price_adjustment REAL,
+	deleted INTEGER NOT NULL DEFAULT 0
+)`).Error; err != nil {
+		t.Fatalf("create legacy strategy table: %v", err)
+	}
+	if err := db.Exec(`
+INSERT INTO listing_operation_strategy
+	(tenant_id, owner_user_id, store_id, name, platform, status, activity_enabled, activity_type, activity_discount_rate, activity_stock_ratio, activity_price_mode, deleted)
+VALUES
+	(18, 'shein-ops', 2001, 'SHEIN 活动报名', 'SHEIN', 0, 1, 'PROMOTION', 0.2, 0.5, 'DISCOUNT', 0)
+`).Error; err != nil {
+		t.Fatalf("seed legacy strategy: %v", err)
+	}
+	repo := listingadmin.NewGormOperationStrategyRepository(db)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithOperationStrategyRepository(repo))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.PATCH("/api/v1/listing-kits/shein-sync/stores/:store_id/activity-strategy", h.UpdateSheinActivityStrategy)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/listing-kits/shein-sync/stores/2001/activity-strategy", strings.NewReader(`{
+		"activity_price_mode":"DISCOUNT",
+		"activity_discount_rate":0.18,
+		"activity_stock_ratio":0.4,
+		"fixed_price_adjustment":1.2
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	req.Header.Set("X-User-ID", "shein-ops")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+	var row struct {
+		ActivityDiscountRate float64 `gorm:"column:activity_discount_rate"`
+		ActivityStockRatio   float64 `gorm:"column:activity_stock_ratio"`
+		FixedPriceAdjustment float64 `gorm:"column:fixed_price_adjustment"`
+	}
+	if err := db.Table("listing_operation_strategy").Where("tenant_id = ? AND store_id = ?", 18, 2001).Take(&row).Error; err != nil {
+		t.Fatalf("load updated strategy: %v", err)
+	}
+	if row.ActivityDiscountRate != 0.18 || row.ActivityStockRatio != 0.4 || row.FixedPriceAdjustment != 1.2 {
+		t.Fatalf("row = %+v, want updated activity fields", row)
+	}
+}
+
 func TestListSheinEnrollmentDashboardReturnsAggregatedStats(t *testing.T) {
 	t.Parallel()
 
