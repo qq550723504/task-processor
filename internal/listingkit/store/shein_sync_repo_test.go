@@ -705,6 +705,122 @@ func TestSheinSyncRepositorySaveEnrollmentItemsPreservesRunHistory(t *testing.T)
 	}
 }
 
+func TestSheinSyncRepositoryListCandidatesIncludesLatestFailedEnrollmentError(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		harness := harness
+		t.Run(harness.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			if err := harness.repo.SaveCandidates(ctx, []*listingkit.SheinActivityCandidateRecord{
+				{
+					TenantID:          1,
+					StoreID:           101,
+					SyncedProductID:   11,
+					ActivityType:      "PROMOTION",
+					ActivityKey:       "PROMO-1",
+					SKCName:           "skc-failed",
+					CandidateVersion:  "v1",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusFailed,
+				},
+			}); err != nil {
+				t.Fatalf("seed failed candidate: %v", err)
+			}
+
+			candidates, total, err := harness.listCandidates(ctx, &listingkit.SheinActivityCandidateQuery{
+				TenantID:     1,
+				StoreID:      101,
+				ActivityType: "PROMOTION",
+				Page:         1,
+				PageSize:     10,
+			})
+			if err != nil {
+				t.Fatalf("list candidates before items: %v", err)
+			}
+			if total != 1 || len(candidates) != 1 {
+				t.Fatalf("candidate count total=%d len=%d, want 1", total, len(candidates))
+			}
+			candidateID := candidates[0].ID
+
+			firstRun := &listingkit.SheinActivityEnrollmentRunRecord{
+				TenantID:     1,
+				StoreID:      101,
+				ActivityType: "PROMOTION",
+				ActivityKey:  "PROMO-1",
+				TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+				Status:       listingkit.SheinEnrollmentRunStatusFailed,
+			}
+			secondRun := &listingkit.SheinActivityEnrollmentRunRecord{
+				TenantID:     1,
+				StoreID:      101,
+				ActivityType: "PROMOTION",
+				ActivityKey:  "PROMO-1",
+				TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+				Status:       listingkit.SheinEnrollmentRunStatusFailed,
+			}
+			if err := harness.repo.CreateEnrollmentRun(ctx, firstRun); err != nil {
+				t.Fatalf("create first run: %v", err)
+			}
+			if err := harness.repo.CreateEnrollmentRun(ctx, secondRun); err != nil {
+				t.Fatalf("create second run: %v", err)
+			}
+			saveItems := harness.repo.(interface {
+				SaveEnrollmentItems(ctx context.Context, items []*listingkit.SheinActivityEnrollmentItemRecord) error
+			})
+			if err := saveItems.SaveEnrollmentItems(ctx, []*listingkit.SheinActivityEnrollmentItemRecord{
+				{
+					RunID:            firstRun.ID,
+					CandidateID:      candidateID,
+					StoreID:          101,
+					ActivityKey:      "PROMO-1",
+					CandidateVersion: "v1",
+					SyncedProductID:  11,
+					SKCName:          "skc-failed",
+					Status:           listingkit.SheinEnrollmentItemStatusFailed,
+					ErrorMessage:     "first failure",
+				},
+			}); err != nil {
+				t.Fatalf("save first failed item: %v", err)
+			}
+			if err := saveItems.SaveEnrollmentItems(ctx, []*listingkit.SheinActivityEnrollmentItemRecord{
+				{
+					RunID:            secondRun.ID,
+					CandidateID:      candidateID,
+					StoreID:          101,
+					ActivityKey:      "PROMO-1",
+					CandidateVersion: "v1",
+					SyncedProductID:  11,
+					SKCName:          "skc-failed",
+					Status:           listingkit.SheinEnrollmentItemStatusFailed,
+					ErrorMessage:     "latest SHEIN rejection",
+				},
+			}); err != nil {
+				t.Fatalf("save latest failed item: %v", err)
+			}
+
+			candidates, total, err = harness.listCandidates(ctx, &listingkit.SheinActivityCandidateQuery{
+				TenantID:     1,
+				StoreID:      101,
+				ActivityType: "PROMOTION",
+				Page:         1,
+				PageSize:     10,
+			})
+			if err != nil {
+				t.Fatalf("list candidates after failed items: %v", err)
+			}
+			if total != 1 || len(candidates) != 1 {
+				t.Fatalf("candidate count after items total=%d len=%d, want 1", total, len(candidates))
+			}
+			if candidates[0].LastEnrollmentError != "latest SHEIN rejection" {
+				t.Fatalf("last enrollment error = %q, want latest SHEIN rejection", candidates[0].LastEnrollmentError)
+			}
+		})
+	}
+}
+
 func TestSheinSyncRepositoryListEnrollmentRunsSupportsFilteringAndPagination(t *testing.T) {
 	t.Parallel()
 

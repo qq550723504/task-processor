@@ -47,6 +47,10 @@ func (s *sheinEnrollmentService) ExecuteSheinActivityEnrollment(
 	if err != nil {
 		return nil, err
 	}
+	candidates, err = s.refreshCandidateCostOverrides(ctx, tenantID, storeID, candidates)
+	if err != nil {
+		return nil, err
+	}
 
 	startedAt := time.Now().UTC()
 	run := &SheinActivityEnrollmentRunRecord{
@@ -63,22 +67,28 @@ func (s *sheinEnrollmentService) ExecuteSheinActivityEnrollment(
 		return nil, err
 	}
 
-	executable, duplicateResults := filterExecutableSheinCandidates(candidates)
+	executable, duplicateResults, nonExecutableResults := filterExecutableSheinCandidates(candidates, triggerMode)
 	results, adapterErr := s.executeCandidates(ctx, storeID, activityType, activityKey, executable)
-	resultByCandidateID := mapSheinEnrollmentResults(executable, results, adapterErr)
+	candidateResultByID := mapSheinEnrollmentResults(executable, results, adapterErr)
 	for candidateID, result := range duplicateResults {
-		resultByCandidateID[candidateID] = result
+		candidateResultByID[candidateID] = result
 	}
-	items := buildSheinEnrollmentItems(run.ID, storeID, candidates, resultByCandidateID)
-	mutatedCandidates := buildSheinEnrollmentCandidateUpdates(candidates, resultByCandidateID)
+	itemResultByID := cloneSheinEnrollmentResultMap(candidateResultByID)
+	for candidateID, result := range nonExecutableResults {
+		itemResultByID[candidateID] = result
+	}
+	items := buildSheinEnrollmentItems(run.ID, storeID, candidates, itemResultByID)
+	mutatedCandidates := buildSheinEnrollmentCandidateUpdates(candidates, candidateResultByID)
 
 	run.SubmittedCount = len(executable)
-	run.SucceededCount, run.FailedCount = countSheinEnrollmentOutcomes(resultByCandidateID)
-	run.Status = deriveSheinEnrollmentRunStatus(run.SubmittedCount, run.SucceededCount, run.FailedCount, adapterErr)
+	run.SucceededCount, run.FailedCount = countSheinEnrollmentOutcomes(itemResultByID)
+	run.Status = deriveSheinEnrollmentRunStatus(run.CandidateCount, run.SubmittedCount, run.SucceededCount, run.FailedCount, adapterErr)
 	finishedAt := time.Now().UTC()
 	run.FinishedAt = &finishedAt
 	if adapterErr != nil {
 		run.ErrorSummary = adapterErr.Error()
+	} else if run.CandidateCount > 0 && run.SubmittedCount == 0 {
+		run.ErrorSummary = "no executable SHEIN enrollment candidates"
 	}
 
 	persistErr := s.persistEnrollmentOutcome(ctx, run, items, mutatedCandidates)

@@ -4,6 +4,7 @@ package activity
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"task-processor/internal/listingruntime"
@@ -154,7 +155,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 	config TimeLimitedDiscountConfig,
 	goods []marketing.PromotionGoodsData,
 	calcResp *marketing.CalculateSupplyPriceResponse,
-) *marketing.CreateActivityRequest {
+) (*marketing.CreateActivityRequest, []string, map[string]string) {
 	// 构建SKC到计算结果的映射,方便快速查找
 	skcPriceMap := make(map[string]*marketing.SkcCalculationResult)
 	for i := range calcResp.Info {
@@ -162,6 +163,8 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 	}
 
 	costAndStockList := make([]marketing.CostAndStockInfo, 0, len(goods))
+	filterReasons := make([]string, 0)
+	filterReasonBySKC := make(map[string]string)
 
 	// 【调试代码】记录已添加的商品数量
 	addedCount := 0
@@ -199,6 +202,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		// 检查是否已参加其他活动
 		if g.ErrorCode != "" {
 			s.logger.Warnf("商品 %s 已参加其他活动(活动: %v),跳过该商品", g.Skc, g.ErrorCode)
+			filterReasons = appendPromotionFilterReasonForSKC(filterReasons, filterReasonBySKC, g.Skc, fmt.Sprintf("商品 %s 已参加其他活动 %s", g.Skc, g.ErrorCode))
 			skippedByActivity++
 			continue
 		}
@@ -207,6 +211,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		minStockRequired := 15
 		if g.InventoryNum < minStockRequired {
 			s.logger.Warnf("商品 %s 库存不足(%d < %d),跳过该商品", g.Skc, g.InventoryNum, minStockRequired)
+			filterReasons = appendPromotionFilterReasonForSKC(filterReasons, filterReasonBySKC, g.Skc, fmt.Sprintf("商品 %s 库存不足(%d < %d)", g.Skc, g.InventoryNum, minStockRequired))
 			skippedByStock++
 			continue
 		}
@@ -214,6 +219,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		// 额外检查平台的库存要求
 		if g.CheckStock != nil && g.InventoryNum < g.CheckStock.MinStock {
 			s.logger.Warnf("商品 %s 库存不足(%d < 平台要求%d),跳过该商品", g.Skc, g.InventoryNum, g.CheckStock.MinStock)
+			filterReasons = appendPromotionFilterReasonForSKC(filterReasons, filterReasonBySKC, g.Skc, fmt.Sprintf("商品 %s 库存不足(%d < 平台要求%d)", g.Skc, g.InventoryNum, g.CheckStock.MinStock))
 			skippedByPlatform++
 			continue
 		}
@@ -222,6 +228,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		skcCalcResult, exists := skcPriceMap[g.Skc]
 		if !exists {
 			s.logger.Warnf("商品 %s 未找到价格计算结果,跳过", g.Skc)
+			filterReasons = appendPromotionFilterReasonForSKC(filterReasons, filterReasonBySKC, g.Skc, fmt.Sprintf("商品 %s 未找到价格计算结果", g.Skc))
 			skippedByPriceCalc++
 			continue
 		}
@@ -262,6 +269,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		if g.CheckStock != nil {
 			if stockNum < g.CheckStock.MinStock {
 				s.logger.Warnf("商品 %s 活动库存(%d)低于平台最低要求(%d),跳过该商品", g.Skc, stockNum, g.CheckStock.MinStock)
+				filterReasons = appendPromotionFilterReasonForSKC(filterReasons, filterReasonBySKC, g.Skc, fmt.Sprintf("商品 %s 活动库存(%d)低于平台最低要求(%d)", g.Skc, stockNum, g.CheckStock.MinStock))
 				skippedByActivityStock++
 				continue
 			}
@@ -275,6 +283,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		// 取所有SKU中的最小活动价作为SKC级别的代表价格
 		if len(skcCalcResult.SkuInfoList) == 0 {
 			s.logger.Warnf("商品 %s 没有SKU价格信息,跳过", g.Skc)
+			filterReasons = appendPromotionFilterReasonForSKC(filterReasons, filterReasonBySKC, g.Skc, fmt.Sprintf("商品 %s 没有SKU价格信息", g.Skc))
 			skippedByPriceInfo++
 			continue
 		}
@@ -291,6 +300,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 			actualDiscountRate := activityPrice / g.USSupplyPrice
 			s.logger.Warnf("商品 %s 折扣不足(活动价:%.2f, 原价:%.2f, 折扣率:%.2f%%, 要求<%.2f%%),跳过该商品",
 				g.Skc, activityPrice, g.USSupplyPrice, actualDiscountRate*100, maxDiscountRate*100)
+			filterReasons = appendPromotionFilterReasonForSKC(filterReasons, filterReasonBySKC, g.Skc, fmt.Sprintf("商品 %s 折扣不足(活动价 %.2f, 原价 %.2f, 要求低于原价 %.0f%%)", g.Skc, activityPrice, g.USSupplyPrice, maxDiscountRate*100))
 			skippedByDiscount++
 			continue
 		}
@@ -349,7 +359,33 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		},
 		AddCostAndStockInfoList: costAndStockList,
 		PricingType:             config.PricingType,
+	}, filterReasons, filterReasonBySKC
+}
+
+const maxPromotionFilterReasons = 10
+
+func appendPromotionFilterReason(reasons []string, reason string) []string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" || len(reasons) >= maxPromotionFilterReasons {
+		return reasons
 	}
+	return append(reasons, reason)
+}
+
+func appendPromotionFilterReasonForSKC(reasons []string, reasonBySKC map[string]string, skc, reason string) []string {
+	reason = strings.TrimSpace(reason)
+	skc = strings.TrimSpace(skc)
+	if skc != "" && reason != "" {
+		reasonBySKC[skc] = reason
+	}
+	return appendPromotionFilterReason(reasons, reason)
+}
+
+func noAvailablePromotionProductsError(reasons []string) error {
+	if len(reasons) == 0 {
+		return ErrNoAvailableProducts
+	}
+	return fmt.Errorf("%w: %s", ErrNoAvailableProducts, strings.Join(reasons, "；"))
 }
 
 // checkCreateResult 检查创建结果
@@ -436,12 +472,12 @@ func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
 	}
 
 	// 7. 构建活动创建请求
-	createReq := s.buildCreateActivityRequest(config, allGoods, calcResp)
+	createReq, filterReasons, _ := s.buildCreateActivityRequest(config, allGoods, calcResp)
 
 	// 检查是否有符合条件的商品
 	if len(createReq.AddCostAndStockInfoList) == 0 {
 		s.logger.Warn("没有符合条件的商品可以参加活动")
-		return 0, ErrNoAvailableProducts
+		return 0, noAvailablePromotionProductsError(filterReasons)
 	}
 
 	s.logger.Infof("准备创建活动，包含 %d 个商品", len(createReq.AddCostAndStockInfoList))

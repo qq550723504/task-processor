@@ -70,7 +70,42 @@ func (r *GormSheinSyncRepository) ListCandidates(ctx context.Context, query *lis
 		Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
+	if err := r.attachLatestFailedEnrollmentErrors(ctx, rows); err != nil {
+		return nil, 0, err
+	}
 	return rows, total, nil
+}
+
+func (r *GormSheinSyncRepository) attachLatestFailedEnrollmentErrors(ctx context.Context, rows []listingkit.SheinActivityCandidateRecord) error {
+	candidateIDs := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		if row.ID <= 0 || row.ReviewStatus != listingkit.SheinCandidateReviewStatusFailed {
+			continue
+		}
+		candidateIDs = append(candidateIDs, row.ID)
+	}
+	if len(candidateIDs) == 0 {
+		return nil
+	}
+
+	var items []listingkit.SheinActivityEnrollmentItemRecord
+	if err := r.db.WithContext(ctx).
+		Where("candidate_id IN ? AND status = ? AND error_message <> ''", candidateIDs, listingkit.SheinEnrollmentItemStatusFailed).
+		Order("candidate_id ASC, updated_at DESC, id DESC").
+		Find(&items).Error; err != nil {
+		return err
+	}
+	errorsByCandidate := make(map[int64]string, len(items))
+	for _, item := range items {
+		if _, exists := errorsByCandidate[item.CandidateID]; exists {
+			continue
+		}
+		errorsByCandidate[item.CandidateID] = item.ErrorMessage
+	}
+	for i := range rows {
+		rows[i].LastEnrollmentError = errorsByCandidate[rows[i].ID]
+	}
+	return nil
 }
 
 func (r *GormSheinSyncRepository) CreateEnrollmentRun(ctx context.Context, run *listingkit.SheinActivityEnrollmentRunRecord) error {

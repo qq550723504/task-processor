@@ -145,8 +145,8 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 ) []marketing.ActivityConfig {
 	configList := make([]marketing.ActivityConfig, 0, len(products))
 
-	// 确保利润率在有效范围内
-	if minProfitRate <= 0 || minProfitRate >= 1 {
+	// 确保利润率在有效范围内，0 表示允许不保留最低利润。
+	if minProfitRate < 0 || minProfitRate >= 1 {
 		minProfitRate = 0.15 // 默认15%利润率
 	}
 
@@ -297,6 +297,110 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 		successCount, skippedNoAttributes, skippedInsufficientProfit, minProfitRate*100, maxProductsPerActivity)
 
 	return configList
+}
+
+func (s *activityRegistrationServiceImpl) buildActivityConfigsFromProvidedProducts(
+	products []marketing.SkcInfo,
+	strategy *listingruntime.OperationStrategy,
+	priceMode string,
+) []marketing.ActivityConfig {
+	if strategy == nil || len(products) == 0 {
+		return nil
+	}
+
+	configList := make([]marketing.ActivityConfig, 0, len(products))
+	for _, product := range products {
+		if product.IsConfigured || product.Skc == "" {
+			continue
+		}
+		if product.Stock <= 0 {
+			s.logger.Warnf("产品 [%s] 预留库存为0，跳过", product.Skc)
+			continue
+		}
+
+		dropRate, ok := s.dropRateFromProvidedProduct(product, strategy, priceMode)
+		if !ok {
+			continue
+		}
+		actStock := s.calculateActivityStock(product.Stock, strategy.ActivityStockRatio)
+		if actStock <= 0 {
+			s.logger.Warnf("产品 [%s] 活动库存为0，跳过", product.Skc)
+			continue
+		}
+
+		configList = append(configList, marketing.ActivityConfig{
+			Skc:               product.Skc,
+			ActStock:          actStock,
+			DropRate:          dropRate,
+			ReservedActStock:  product.Stock,
+			SitePriceInfoList: []marketing.ActivitySitePriceInfo{},
+		})
+	}
+	if len(configList) > 0 {
+		s.logger.Infof("使用候选商品快照构建活动配置完成 - 成功: %d", len(configList))
+	}
+	return configList
+}
+
+func (s *activityRegistrationServiceImpl) dropRateFromProvidedProduct(
+	product marketing.SkcInfo,
+	strategy *listingruntime.OperationStrategy,
+	priceMode string,
+) (int, bool) {
+	salePrice := firstAvailablePromotionSalePrice(product.SitePriceInfoList)
+	if salePrice <= 0 {
+		s.logger.Warnf("产品 [%s] 没有站点价格信息，跳过", product.Skc)
+		return 0, false
+	}
+
+	if priceMode == "PROFIT" {
+		minProfitRate := strategy.ActivityMinProfitRate
+		if minProfitRate < 0 || minProfitRate >= 1 {
+			minProfitRate = 0.15
+		}
+		if product.SupplyPrice <= 0 {
+			s.logger.Warnf("产品 [%s] 供货成本价为空，跳过", product.Skc)
+			return 0, false
+		}
+		activityPrice := calculatePriceByProfit(salePrice, product.SupplyPrice, minProfitRate, strategy.FixedPriceAdjustment)
+		if activityPrice <= 0 {
+			minPrice := product.SupplyPrice/(1-minProfitRate) + strategy.FixedPriceAdjustment
+			s.logger.Warnf("产品 [%s] 利润率不足 (原价: %.2f, 成本: %.2f, 最低售价: %.2f, 固定调整: %.2f, 要求利润率: %.2f%%)，跳过",
+				product.Skc, salePrice, product.SupplyPrice, minPrice, strategy.FixedPriceAdjustment, minProfitRate*100)
+			return 0, false
+		}
+		discountRate := (salePrice - activityPrice) / salePrice
+		return ValidateDropRate(int(discountRate*100), discountRate, s.logger), true
+	}
+
+	discountRate := strategy.ActivityDiscountRate
+	dropRate := CalculateDropRateFromDiscount(discountRate, s.logger)
+	if product.SupplyPrice > 0 {
+		profitMargin := (salePrice - product.SupplyPrice) / product.SupplyPrice
+		if profitMargin < discountRate {
+			s.logger.WithField("skc", product.Skc).Info("产品利润率不足，无法支持降价，已过滤")
+			return 0, false
+		}
+	}
+	return dropRate, true
+}
+
+func firstAvailablePromotionSalePrice(items []marketing.SitePriceInfo) float64 {
+	for _, item := range items {
+		if item.SalePrice <= 0 {
+			continue
+		}
+		if !item.IsAvailable {
+			continue
+		}
+		return item.SalePrice
+	}
+	for _, item := range items {
+		if item.SalePrice > 0 {
+			return item.SalePrice
+		}
+	}
+	return 0
 }
 
 // calculateEquivalentDropRate 计算等效的降价百分比

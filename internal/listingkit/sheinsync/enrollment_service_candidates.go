@@ -94,13 +94,99 @@ func (s *sheinEnrollmentService) listCandidatesByPage(
 	return items, nil
 }
 
-func filterExecutableSheinCandidates(candidates []SheinActivityCandidateRecord) ([]SheinActivityCandidateRecord, map[int64]SheinActivityEnrollmentResult) {
+type sheinEnrollmentSyncedProductReader interface {
+	ListSyncedProducts(ctx context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error)
+}
+
+func (s *sheinEnrollmentService) refreshCandidateCostOverrides(
+	ctx context.Context,
+	tenantID, storeID int64,
+	candidates []SheinActivityCandidateRecord,
+) ([]SheinActivityCandidateRecord, error) {
+	if len(candidates) == 0 {
+		return candidates, nil
+	}
+	productReader, ok := s.repo.(sheinEnrollmentSyncedProductReader)
+	if !ok {
+		return candidates, nil
+	}
+
+	active := true
+	products := make([]SheinSyncedProductRecord, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.SKCName == "" {
+			continue
+		}
+		rows, _, err := productReader.ListSyncedProducts(ctx, &SheinSyncedProductQuery{
+			TenantID: tenantID,
+			StoreID:  storeID,
+			SKCName:  candidate.SKCName,
+			IsActive: &active,
+			Page:     1,
+			PageSize: 1,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		products = append(products, rows[0])
+	}
+	if len(products) == 0 {
+		return candidates, nil
+	}
+
+	if groupReader, ok := s.repo.(sheinCandidateSDSCostGroupReader); ok {
+		var err error
+		products, err = applySheinSDSCostGroupOverrides(ctx, groupReader, tenantID, storeID, products)
+		if err != nil {
+			return nil, err
+		}
+	}
+	productBySKC := make(map[string]SheinSyncedProductRecord, len(products))
+	for _, product := range products {
+		if product.SKCName == "" || product.EffectiveCostPrice == nil {
+			continue
+		}
+		productBySKC[product.SKCName] = product
+	}
+	if len(productBySKC) == 0 {
+		return candidates, nil
+	}
+
+	out := make([]SheinActivityCandidateRecord, len(candidates))
+	copy(out, candidates)
+	for i := range out {
+		product, ok := productBySKC[out[i].SKCName]
+		if !ok {
+			continue
+		}
+		out[i].EffectiveCostPrice = cloneSheinSyncFloat64(product.EffectiveCostPrice)
+		out[i].CalculatedProfitRate = calculateSheinCandidateProfitRate(out[i].EffectiveCostPrice, out[i].PriceSnapshot)
+	}
+	return out, nil
+}
+
+func filterExecutableSheinCandidates(
+	candidates []SheinActivityCandidateRecord,
+	triggerMode SheinEnrollmentRunTriggerMode,
+) ([]SheinActivityCandidateRecord, map[int64]SheinActivityEnrollmentResult, map[int64]SheinActivityEnrollmentResult) {
 	filtered := make([]SheinActivityCandidateRecord, 0, len(candidates))
 	duplicateResults := make(map[int64]SheinActivityEnrollmentResult)
+	nonExecutableResults := make(map[int64]SheinActivityEnrollmentResult)
 	executableBySKC := make(map[string]int64)
 	for _, candidate := range candidates {
-		if candidate.ReviewStatus != SheinCandidateReviewStatusApproved &&
-			candidate.ReviewStatus != SheinCandidateReviewStatusAutoQueued {
+		if !isExecutableSheinCandidate(candidate, triggerMode) {
+			nonExecutableResults[candidate.ID] = SheinActivityEnrollmentResult{
+				CandidateID: candidate.ID,
+				Success:     false,
+				ErrorMessage: fmt.Sprintf(
+					"candidate review status %s is not executable for trigger mode %s",
+					candidate.ReviewStatus,
+					triggerMode,
+				),
+			}
 			continue
 		}
 		if existingCandidateID, exists := executableBySKC[candidate.SKCName]; exists {
@@ -114,7 +200,18 @@ func filterExecutableSheinCandidates(candidates []SheinActivityCandidateRecord) 
 		executableBySKC[candidate.SKCName] = candidate.ID
 		filtered = append(filtered, candidate)
 	}
-	return filtered, duplicateResults
+	return filtered, duplicateResults, nonExecutableResults
+}
+
+func isExecutableSheinCandidate(candidate SheinActivityCandidateRecord, triggerMode SheinEnrollmentRunTriggerMode) bool {
+	switch candidate.ReviewStatus {
+	case SheinCandidateReviewStatusApproved, SheinCandidateReviewStatusAutoQueued:
+		return true
+	case SheinCandidateReviewStatusPendingReview:
+		return triggerMode == SheinEnrollmentRunTriggerModeManualConfirmed
+	default:
+		return false
+	}
 }
 
 func uniqueSheinEnrollmentIDs(ids []int64) []int64 {

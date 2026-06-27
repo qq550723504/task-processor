@@ -254,6 +254,7 @@ export type SheinActivityCandidateRecord = {
     | "enrolled"
     | "failed"
     | string;
+  last_enrollment_error?: string;
   auto_mode_eligible?: boolean;
   selected_for_run?: boolean;
   created_at?: string;

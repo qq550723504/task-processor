@@ -250,15 +250,6 @@ export function SheinEnrollmentStoreWorkbench({
             enrolling={enrollMutation.isPending}
             items={candidates.data?.items ?? []}
             key={`${activityType}:${candidatesPage}`}
-            onApprove={(candidateId) =>
-              reviewMutation.mutateAsync({
-                candidateId,
-                input: {
-                  store_id: storeId,
-                  review_status: "approved",
-                },
-              }).then(() => undefined)
-            }
             onEnroll={(candidateIds, activityKey) =>
               enrollMutation.mutateAsync({
                 activity_type: activityType,

@@ -194,10 +194,114 @@ func (s *sheinSyncService) UpdateSDSCostGroupManualCost(ctx context.Context, ten
 	if err != nil {
 		return nil, err
 	}
+	if err := s.refreshCandidateCostsForSDSCostGroup(ctx, repo, tenantID, storeID, groupKey); err != nil {
+		return nil, err
+	}
 	if len(rows) == 0 {
 		return row, nil
 	}
 	return &rows[0], nil
+}
+
+func (s *sheinSyncService) refreshCandidateCostsForSDSCostGroup(
+	ctx context.Context,
+	groupReader sheinCandidateSDSCostGroupReader,
+	tenantID, storeID int64,
+	groupKey string,
+) error {
+	products, err := s.listProductsForSDSCostGroup(ctx, tenantID, storeID, groupKey)
+	if err != nil {
+		return err
+	}
+	if len(products) == 0 {
+		return nil
+	}
+	products, err = applySheinSDSCostGroupOverrides(ctx, groupReader, tenantID, storeID, products)
+	if err != nil {
+		return err
+	}
+
+	updates := make([]*SheinActivityCandidateRecord, 0, len(products))
+	for _, product := range products {
+		if product.SKCName == "" || product.EffectiveCostPrice == nil {
+			continue
+		}
+		candidates, err := s.listCandidatesForSyncedProduct(ctx, tenantID, storeID, product.SKCName)
+		if err != nil {
+			return err
+		}
+		for _, candidate := range candidates {
+			row := candidate
+			row.EffectiveCostPrice = cloneSheinSyncFloat64(product.EffectiveCostPrice)
+			row.CalculatedProfitRate = calculateSheinCandidateProfitRate(row.EffectiveCostPrice, row.PriceSnapshot)
+			updates = append(updates, &row)
+		}
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	return s.repo.SaveCandidates(ctx, updates)
+}
+
+func (s *sheinSyncService) listProductsForSDSCostGroup(ctx context.Context, tenantID, storeID int64, groupKey string) ([]SheinSyncedProductRecord, error) {
+	page := 1
+	active := true
+	items := make([]SheinSyncedProductRecord, 0)
+	for {
+		rows, total, err := s.repo.ListSyncedProducts(ctx, &SheinSyncedProductQuery{
+			TenantID: tenantID,
+			StoreID:  storeID,
+			IsActive: &active,
+			Page:     page,
+			PageSize: s.pageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			if !sheinSyncedProductHasSDSCostGroupKey(row, groupKey) {
+				continue
+			}
+			items = append(items, row)
+		}
+		if len(rows) == 0 || int64(page*s.pageSize) >= total {
+			break
+		}
+		page++
+	}
+	return items, nil
+}
+
+func (s *sheinSyncService) listCandidatesForSyncedProduct(ctx context.Context, tenantID, storeID int64, skcName string) ([]SheinActivityCandidateRecord, error) {
+	page := 1
+	items := make([]SheinActivityCandidateRecord, 0)
+	for {
+		rows, total, err := s.repo.ListCandidates(ctx, &SheinActivityCandidateQuery{
+			TenantID: tenantID,
+			StoreID:  storeID,
+			SKCName:  skcName,
+			Page:     page,
+			PageSize: s.pageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, rows...)
+		if len(rows) == 0 || int64(page*s.pageSize) >= total {
+			break
+		}
+		page++
+	}
+	return items, nil
+}
+
+func sheinSyncedProductHasSDSCostGroupKey(product SheinSyncedProductRecord, groupKey string) bool {
+	for _, key := range sheinCandidateSDSCostGroupKeysForProduct(product) {
+		if key == groupKey {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *sheinSyncService) listExistingProducts(ctx context.Context, tenantID, storeID int64) (map[string]SheinSyncedProductRecord, error) {

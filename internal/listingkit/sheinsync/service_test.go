@@ -677,12 +677,68 @@ func TestSyncSheinOnShelfProductsResolvesCostsSeriallyWithinPage(t *testing.T) {
 	}
 }
 
+func TestUpdateSDSCostGroupManualCostRefreshesRelatedCandidateCosts(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	repo.seedProduct(SheinSyncedProductRecord{
+		ID:                 301,
+		TenantID:           227,
+		StoreID:            870,
+		SKCName:            "sg260524164927164214023",
+		SupplierCode:       "XB0608035002-AB885FBF",
+		EffectiveCostPrice: float64Ptr(25.99),
+		IsActive:           true,
+	})
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                   804,
+		TenantID:             227,
+		StoreID:              870,
+		SyncedProductID:      301,
+		ActivityType:         "PROMOTION",
+		ActivityKey:          "PROMOTION:227:870",
+		SKCName:              "sg260524164927164214023",
+		CandidateVersion:     "v1",
+		EffectiveCostPrice:   float64Ptr(47.52),
+		PriceSnapshot:        `{"currency":"USD","sale_price":29.9}`,
+		CalculatedProfitRate: float64Ptr(-0.5892976588628764),
+		EligibilityStatus:    SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:         SheinCandidateReviewStatusPendingReview,
+	})
+	service := NewSheinSyncService(repo, &sheinSyncServiceProductAPIStub{}, &sheinSyncServiceCostResolverStub{})
+
+	group, err := service.(interface {
+		UpdateSDSCostGroupManualCost(context.Context, int64, int64, string, string, *float64) (*SheinSDSCostGroupRecord, error)
+	}).UpdateSDSCostGroupManualCost(context.Background(), 227, 870, "source:XB0608035002", "XB0608035002", float64Ptr(21.99))
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.NotNil(t, group.ManualCostPrice)
+	require.Equal(t, 21.99, *group.ManualCostPrice)
+
+	candidates, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID: 227,
+		StoreID:  870,
+		SKCName:  "sg260524164927164214023",
+	})
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.NotNil(t, candidates[0].EffectiveCostPrice)
+	require.Equal(t, 21.99, *candidates[0].EffectiveCostPrice)
+	require.NotNil(t, candidates[0].CalculatedProfitRate)
+	require.InEpsilon(t, 0.264548494983278, *candidates[0].CalculatedProfitRate, 0.0000000001)
+	require.Equal(t, SheinCandidateReviewStatusPendingReview, candidates[0].ReviewStatus)
+}
+
 type sheinSyncServiceRepoStub struct {
-	mu       sync.RWMutex
-	nextID   int64
-	nextJob  int64
-	products map[string]SheinSyncedProductRecord
-	jobs     map[int64]SheinSyncJobRecord
+	mu            sync.RWMutex
+	nextID        int64
+	nextCandidate int64
+	nextJob       int64
+	products      map[string]SheinSyncedProductRecord
+	candidates    map[int64]SheinActivityCandidateRecord
+	sdsCostGroups map[string]SheinSDSCostGroupRecord
+	jobs          map[int64]SheinSyncJobRecord
 
 	saveFailedJobErr error
 }
@@ -736,10 +792,13 @@ func (r *blockingConcurrentCostResolver) releaseAll() {
 
 func newSheinSyncServiceRepoStub() *sheinSyncServiceRepoStub {
 	return &sheinSyncServiceRepoStub{
-		nextID:   1,
-		nextJob:  1,
-		products: make(map[string]SheinSyncedProductRecord),
-		jobs:     make(map[int64]SheinSyncJobRecord),
+		nextID:        1,
+		nextCandidate: 1,
+		nextJob:       1,
+		products:      make(map[string]SheinSyncedProductRecord),
+		candidates:    make(map[int64]SheinActivityCandidateRecord),
+		sdsCostGroups: make(map[string]SheinSDSCostGroupRecord),
+		jobs:          make(map[int64]SheinSyncJobRecord),
 	}
 }
 
@@ -752,6 +811,17 @@ func (r *sheinSyncServiceRepoStub) seedProduct(record SheinSyncedProductRecord) 
 		r.nextID++
 	}
 	r.products[r.productKey(record.TenantID, record.StoreID, record.SKCName)] = cloneServiceTestProduct(record)
+}
+
+func (r *sheinSyncServiceRepoStub) seedCandidate(record SheinActivityCandidateRecord) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if record.ID == 0 {
+		record.ID = r.nextCandidate
+		r.nextCandidate++
+	}
+	r.candidates[record.ID] = cloneServiceTestCandidate(record)
 }
 
 func (r *sheinSyncServiceRepoStub) UpsertSyncedProducts(_ context.Context, records []*SheinSyncedProductRecord) error {
@@ -842,6 +912,44 @@ func (r *sheinSyncServiceRepoStub) UpdateManualCostPrice(_ context.Context, prod
 	return gorm.ErrRecordNotFound
 }
 
+func (r *sheinSyncServiceRepoStub) UpsertSDSCostGroup(_ context.Context, record *SheinSDSCostGroupRecord) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if record == nil {
+		return nil
+	}
+	row := cloneServiceTestSDSCostGroup(*record)
+	key := r.sdsCostGroupKey(row.TenantID, row.StoreID, row.GroupKey)
+	r.sdsCostGroups[key] = row
+	return nil
+}
+
+func (r *sheinSyncServiceRepoStub) ListSDSCostGroups(_ context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	items := make([]SheinSDSCostGroupRecord, 0, len(r.sdsCostGroups))
+	for _, row := range r.sdsCostGroups {
+		if query != nil {
+			if query.TenantID > 0 && row.TenantID != query.TenantID {
+				continue
+			}
+			if query.StoreID > 0 && row.StoreID != query.StoreID {
+				continue
+			}
+			if len(query.GroupKeys) > 0 && !containsServiceTestString(query.GroupKeys, row.GroupKey) {
+				continue
+			}
+		}
+		items = append(items, cloneServiceTestSDSCostGroup(row))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].GroupKey < items[j].GroupKey
+	})
+	return items, int64(len(items)), nil
+}
+
 func (r *sheinSyncServiceRepoStub) MarkMissingSyncedProductsInactive(_ context.Context, tenantID, storeID int64, activeSKCNames []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -908,7 +1016,58 @@ func (r *sheinSyncServiceRepoStub) ListSyncJobs(_ context.Context, query *SheinS
 	return items, int64(len(items)), nil
 }
 
-func (r *sheinSyncServiceRepoStub) SaveCandidates(_ context.Context, _ []*SheinActivityCandidateRecord) error {
+func (r *sheinSyncServiceRepoStub) ListCandidates(_ context.Context, query *SheinActivityCandidateQuery) ([]SheinActivityCandidateRecord, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	items := make([]SheinActivityCandidateRecord, 0, len(r.candidates))
+	for _, row := range r.candidates {
+		if query != nil {
+			if query.TenantID > 0 && row.TenantID != query.TenantID {
+				continue
+			}
+			if query.StoreID > 0 && row.StoreID != query.StoreID {
+				continue
+			}
+			if query.ActivityType != "" && row.ActivityType != query.ActivityType {
+				continue
+			}
+			if query.ActivityKey != "" && row.ActivityKey != query.ActivityKey {
+				continue
+			}
+			if query.SKCName != "" && row.SKCName != query.SKCName {
+				continue
+			}
+			if query.CandidateVersion != "" && row.CandidateVersion != query.CandidateVersion {
+				continue
+			}
+			if len(query.CandidateIDs) > 0 && !containsServiceTestID(query.CandidateIDs, row.ID) {
+				continue
+			}
+		}
+		items = append(items, cloneServiceTestCandidate(row))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID < items[j].ID
+	})
+	return items, int64(len(items)), nil
+}
+
+func (r *sheinSyncServiceRepoStub) SaveCandidates(_ context.Context, records []*SheinActivityCandidateRecord) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, record := range records {
+		if record == nil {
+			continue
+		}
+		row := cloneServiceTestCandidate(*record)
+		if row.ID == 0 {
+			row.ID = r.nextCandidate
+			r.nextCandidate++
+		}
+		r.candidates[row.ID] = row
+	}
 	return nil
 }
 
@@ -930,6 +1089,10 @@ func (r *sheinSyncServiceRepoStub) SaveEnrollmentItems(_ context.Context, _ []*S
 
 func (r *sheinSyncServiceRepoStub) productKey(tenantID, storeID int64, skcName string) string {
 	return fmt.Sprintf("%d|%d|%s", tenantID, storeID, skcName)
+}
+
+func (r *sheinSyncServiceRepoStub) sdsCostGroupKey(tenantID, storeID int64, groupKey string) string {
+	return fmt.Sprintf("%d|%d|%s", tenantID, storeID, groupKey)
 }
 
 type sheinSyncServiceProductAPIStub struct {
@@ -1090,12 +1253,41 @@ func cloneServiceTestProduct(row SheinSyncedProductRecord) SheinSyncedProductRec
 	return row
 }
 
+func cloneServiceTestCandidate(row SheinActivityCandidateRecord) SheinActivityCandidateRecord {
+	row.EffectiveCostPrice = cloneServiceTestFloat64(row.EffectiveCostPrice)
+	row.CalculatedProfitRate = cloneServiceTestFloat64(row.CalculatedProfitRate)
+	return row
+}
+
+func cloneServiceTestSDSCostGroup(row SheinSDSCostGroupRecord) SheinSDSCostGroupRecord {
+	row.ManualCostPrice = cloneServiceTestFloat64(row.ManualCostPrice)
+	return row
+}
+
 func cloneServiceTestFloat64(v *float64) *float64 {
 	if v == nil {
 		return nil
 	}
 	copied := *v
 	return &copied
+}
+
+func containsServiceTestString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func containsServiceTestID(values []int64, target int64) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func cloneServiceTestTime(v *time.Time) *time.Time {

@@ -52,8 +52,11 @@ type activityMappingFinder interface {
 }
 
 type PromotionRegistrationResult struct {
-	Request  *marketing.SaveConfigRequest
-	Response *marketing.SaveConfigResponse
+	Request          *marketing.SaveConfigRequest
+	Response         *marketing.SaveConfigResponse
+	ActivityRequest  *marketing.CreateActivityRequest
+	ActivityResponse *marketing.CreateActivityResponse
+	FilterReasons    map[string]string
 }
 
 func (r *PromotionRegistrationResult) GetRequest() *marketing.SaveConfigRequest {
@@ -172,11 +175,11 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 	activityKey string,
 	products []marketing.SkcInfo,
 ) (*PromotionRegistrationResult, error) {
-	_ = ctx
-	_ = activityKey
-
 	if len(products) == 0 {
 		return &PromotionRegistrationResult{}, nil
+	}
+	if activityKey != "" {
+		return s.createPromotionActivityFromProducts(ctx, strategy, activityKey, products)
 	}
 
 	// 2. 根据定价模式构建活动配置
@@ -195,6 +198,9 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 		dropRate := CalculateDropRateFromDiscount(strategy.ActivityDiscountRate, s.logger)
 		s.logger.Debugf("使用折扣率: %d%%", dropRate)
 		configList = s.buildActivityConfigsWithStrategy(products, dropRate, strategy.ActivityStockRatio, strategy.StoreID)
+	}
+	if len(configList) == 0 {
+		configList = s.buildActivityConfigsFromProvidedProducts(products, strategy, priceMode)
 	}
 
 	if len(configList) == 0 {

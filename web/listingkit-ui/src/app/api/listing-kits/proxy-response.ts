@@ -9,6 +9,7 @@ export const PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS = 60_000;
 export const PROXY_STUDIO_UPSTREAM_TIMEOUT_MS = 60_000;
 export const PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS = 120_000;
+export const PROXY_SHEIN_ENROLLMENT_EXECUTE_UPSTREAM_TIMEOUT_MS = 180_000;
 
 export function resolveListingKitProxyTimeoutMs(
   method: string,
@@ -73,6 +74,15 @@ export function resolveListingKitProxyTimeoutMs(
     path[1] === "dashboard"
   ) {
     return PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS;
+  }
+  if (
+    method.toUpperCase() === "POST" &&
+    path.length === 4 &&
+    path[0] === "shein-sync" &&
+    path[1] === "stores" &&
+    path[3] === "enrollments"
+  ) {
+    return PROXY_SHEIN_ENROLLMENT_EXECUTE_UPSTREAM_TIMEOUT_MS;
   }
   if (
     method.toUpperCase() === "GET" &&

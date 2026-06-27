@@ -317,10 +317,21 @@ type sheinCandidateSDSCostGroupReader interface {
 
 func (s *sheinCandidateService) applySDSCostGroupOverrides(ctx context.Context, tenantID, storeID int64, products []SheinSyncedProductRecord) ([]SheinSyncedProductRecord, error) {
 	reader, ok := s.repo.(sheinCandidateSDSCostGroupReader)
-	if !ok || len(products) == 0 {
+	if !ok {
 		return products, nil
 	}
+	return applySheinSDSCostGroupOverrides(ctx, reader, tenantID, storeID, products)
+}
 
+func applySheinSDSCostGroupOverrides(
+	ctx context.Context,
+	reader sheinCandidateSDSCostGroupReader,
+	tenantID, storeID int64,
+	products []SheinSyncedProductRecord,
+) ([]SheinSyncedProductRecord, error) {
+	if reader == nil || len(products) == 0 {
+		return products, nil
+	}
 	groupKeys := sheinCandidateSDSCostGroupKeys(products)
 	if len(groupKeys) == 0 {
 		return products, nil

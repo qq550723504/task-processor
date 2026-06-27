@@ -648,8 +648,6 @@ func TestListSheinEnrollmentDashboardReturnsAggregatedStats(t *testing.T) {
 }
 
 func TestListSheinEnrollmentDashboardUsesLegacyTenantMapping(t *testing.T) {
-	t.Parallel()
-
 	restore := tenantbridge.ConfigureLegacyTenantResolver(stubLegacyTenantResolver{
 		mapping: map[string]int64{"373211199677923496": 227},
 	})
@@ -707,8 +705,6 @@ func TestListSheinEnrollmentDashboardUsesLegacyTenantMapping(t *testing.T) {
 }
 
 func TestGetSheinEnrollmentStoreSummaryUsesLegacyTenantMapping(t *testing.T) {
-	t.Parallel()
-
 	restore := tenantbridge.ConfigureLegacyTenantResolver(stubLegacyTenantResolver{
 		mapping: map[string]int64{"373211199677923496": 227},
 	})

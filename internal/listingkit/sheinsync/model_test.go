@@ -73,10 +73,6 @@ func (sheinSyncRepositoryStub) SaveEnrollmentItems(_ context.Context, _ []*Shein
 	return nil
 }
 
-func (r *sheinSyncServiceRepoStub) ListCandidates(_ context.Context, _ *SheinActivityCandidateQuery) ([]SheinActivityCandidateRecord, int64, error) {
-	return nil, 0, nil
-}
-
 func TestApplyEffectiveCostPrice(t *testing.T) {
 	t.Parallel()
 

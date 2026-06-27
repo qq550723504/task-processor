@@ -81,7 +81,7 @@ func TestExecuteSheinActivityEnrollmentExecutesApprovedCandidatesAndUpdatesRunOu
 	require.Equal(t, 3, run.CandidateCount)
 	require.Equal(t, 2, run.SubmittedCount)
 	require.Equal(t, 1, run.SucceededCount)
-	require.Equal(t, 1, run.FailedCount)
+	require.Equal(t, 2, run.FailedCount)
 
 	require.Len(t, repo.createdRuns, 1)
 	require.Equal(t, SheinEnrollmentRunStatusRunning, repo.createdRuns[0].Status)
@@ -96,7 +96,7 @@ func TestExecuteSheinActivityEnrollmentExecutesApprovedCandidatesAndUpdatesRunOu
 	require.Equal(t, "PROMOTION:11:22", repo.updatedRuns[0].ActivityKey)
 	require.Equal(t, 2, repo.updatedRuns[0].SubmittedCount)
 	require.Equal(t, 1, repo.updatedRuns[0].SucceededCount)
-	require.Equal(t, 1, repo.updatedRuns[0].FailedCount)
+	require.Equal(t, 2, repo.updatedRuns[0].FailedCount)
 
 	require.Len(t, repo.listCandidateQueries, 1)
 	require.Equal(t, "PROMOTION:11:22", repo.listCandidateQueries[0].ActivityKey)
@@ -108,11 +108,14 @@ func TestExecuteSheinActivityEnrollmentExecutesApprovedCandidatesAndUpdatesRunOu
 	require.Equal(t, "PROMOTION:11:22", adapter.calls[0].ActivityKey)
 	require.Equal(t, []int64{1, 2}, sheinEnrollmentCandidateIDs(adapter.calls[0].Candidates))
 
-	require.Len(t, repo.savedItems, 2)
+	require.Len(t, repo.savedItems, 3)
 	require.Equal(t, SheinEnrollmentItemStatusSucceeded, repo.savedItems[0].Status)
 	require.Equal(t, int64(1), repo.savedItems[0].CandidateID)
 	require.Equal(t, SheinEnrollmentItemStatusFailed, repo.savedItems[1].Status)
 	require.Equal(t, int64(2), repo.savedItems[1].CandidateID)
+	require.Equal(t, SheinEnrollmentItemStatusFailed, repo.savedItems[2].Status)
+	require.Equal(t, int64(3), repo.savedItems[2].CandidateID)
+	require.Contains(t, repo.savedItems[2].ErrorMessage, "review status rejected is not executable")
 
 	candidates := repo.savedCandidates()
 	require.Len(t, candidates, 3)
@@ -255,6 +258,201 @@ func TestExecuteSheinActivityEnrollmentDeduplicatesExecutableCandidatesBySKC(t *
 	require.ErrorContains(t, errors.New(repo.savedItems[1].ErrorMessage), "duplicate executable candidate")
 }
 
+func TestExecuteSheinActivityEnrollmentManualConfirmedDoesNotRetryFailedCandidates(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                1,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "PROMOTION",
+			ActivityKey:       "PROMOTION:11:22",
+			SKCName:           "skc-failed",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusFailed,
+		},
+	})
+	adapter := &sheinEnrollmentAdapterStub{
+		results: []SheinActivityEnrollmentResult{{CandidateID: 1, Success: true}},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		11,
+		22,
+		"PROMOTION",
+		"PROMOTION:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusFailed, run.Status)
+	require.Equal(t, 1, run.CandidateCount)
+	require.Zero(t, run.SubmittedCount)
+	require.Equal(t, 1, run.FailedCount)
+	require.Empty(t, adapter.calls)
+	require.Len(t, repo.savedItems, 1)
+	require.Equal(t, SheinEnrollmentItemStatusFailed, repo.savedItems[0].Status)
+	require.Contains(t, repo.savedItems[0].ErrorMessage, "review status failed is not executable")
+	require.Equal(t, SheinCandidateReviewStatusFailed, repo.savedCandidates()[0].ReviewStatus)
+}
+
+func TestExecuteSheinActivityEnrollmentManualConfirmedSubmitsPendingReviewCandidates(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                1,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "PROMOTION",
+			ActivityKey:       "PROMOTION:11:22",
+			SKCName:           "skc-pending",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	adapter := &sheinEnrollmentAdapterStub{
+		results: []SheinActivityEnrollmentResult{{CandidateID: 1, Success: true}},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		11,
+		22,
+		"PROMOTION",
+		"PROMOTION:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusSucceeded, run.Status)
+	require.Equal(t, 1, run.CandidateCount)
+	require.Equal(t, 1, run.SubmittedCount)
+	require.Len(t, adapter.calls, 1)
+	require.Equal(t, []int64{1}, sheinEnrollmentCandidateIDs(adapter.calls[0].Candidates))
+	require.Equal(t, SheinCandidateReviewStatusEnrolled, repo.savedCandidates()[0].ReviewStatus)
+}
+
+func TestExecuteSheinActivityEnrollmentUsesLatestSDSCostGroupOverride(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                 1,
+			TenantID:           11,
+			StoreID:            22,
+			SyncedProductID:    101,
+			ActivityType:       "PROMOTION",
+			ActivityKey:        "PROMOTION:11:22",
+			SKCName:            "sg260618174087119533319",
+			CandidateVersion:   "v1",
+			EffectiveCostPrice: sheinEnrollmentFloat64Ptr(56.42),
+			PriceSnapshot:      `{"sale_price":64.9,"currency":"USD"}`,
+			InventorySnapshot:  `{"available":999,"total":999}`,
+			EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:       SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	repo.syncedProducts = []SheinSyncedProductRecord{
+		{
+			ID:                 101,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "sg260618174087119533319",
+			SupplierCode:       "XB0613000001-B1C5FD77",
+			EffectiveCostPrice: sheinEnrollmentFloat64Ptr(56.42),
+			PriceSnapshot:      `{"sale_price":64.9,"currency":"USD"}`,
+			InventorySnapshot:  `{"available":999,"total":999}`,
+			IsActive:           true,
+		},
+	}
+	repo.sdsGroups = map[string]SheinSDSCostGroupRecord{
+		"source:XB0613000001": {
+			TenantID:        11,
+			StoreID:         22,
+			GroupKey:        "source:XB0613000001",
+			GroupLabel:      "XB0613000001",
+			ManualCostPrice: sheinEnrollmentFloat64Ptr(29.99),
+		},
+	}
+	adapter := &sheinEnrollmentAdapterStub{
+		results: []SheinActivityEnrollmentResult{{CandidateID: 1, Success: true}},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		11,
+		22,
+		"PROMOTION",
+		"PROMOTION:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+		1,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusSucceeded, run.Status)
+	require.Len(t, adapter.calls, 1)
+	require.Len(t, adapter.calls[0].Candidates, 1)
+	require.NotNil(t, adapter.calls[0].Candidates[0].EffectiveCostPrice)
+	require.Equal(t, 29.99, *adapter.calls[0].Candidates[0].EffectiveCostPrice)
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 1)
+	require.Equal(t, SheinCandidateReviewStatusEnrolled, candidates[0].ReviewStatus)
+	require.NotNil(t, candidates[0].EffectiveCostPrice)
+	require.Equal(t, 29.99, *candidates[0].EffectiveCostPrice)
+}
+
+func TestExecuteSheinActivityEnrollmentMarksRunFailedWhenCandidatesExistButNoneExecutable(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                1,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "PROMOTION",
+			ActivityKey:       "PROMOTION:11:22",
+			SKCName:           "skc-rejected",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusRejected,
+		},
+	})
+	adapter := &sheinEnrollmentAdapterStub{}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		11,
+		22,
+		"PROMOTION",
+		"PROMOTION:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusFailed, run.Status)
+	require.Equal(t, 1, run.CandidateCount)
+	require.Zero(t, run.SubmittedCount)
+	require.Zero(t, run.SucceededCount)
+	require.Equal(t, 1, run.FailedCount)
+	require.Contains(t, run.ErrorSummary, "no executable SHEIN enrollment candidates")
+	require.Empty(t, adapter.calls)
+	require.Len(t, repo.savedItems, 1)
+	require.Equal(t, int64(1), repo.savedItems[0].CandidateID)
+	require.Equal(t, SheinEnrollmentItemStatusFailed, repo.savedItems[0].Status)
+	require.Contains(t, repo.savedItems[0].ErrorMessage, "review status rejected is not executable")
+	require.Equal(t, SheinCandidateReviewStatusRejected, repo.savedCandidates()[0].ReviewStatus)
+}
+
 func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *testing.T) {
 	t.Parallel()
 
@@ -270,10 +468,13 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 		result: &SheinPromotionRegistrationResult{
 			Request: &marketing.SaveConfigRequest{
 				ConfigList: []marketing.ActivityConfig{
-					{Skc: "skc-approved", ActStock: 5, DropRate: 20, ReservedActStock: 10},
+					{Skc: "skc-approved", ActStock: 5, ReservedActStock: 10, DropRate: 20},
 				},
 			},
 			Response: &marketing.SaveConfigResponse{Code: "0", Msg: "ok"},
+			FilterReasons: map[string]string{
+				"skc-filtered": "商品 skc-filtered 库存不足(8 < 15)",
+			},
 		},
 	}
 	adapter := newSheinActivityAdapter(strategyProvider, bridge)
@@ -306,7 +507,7 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 	)
 	require.NoError(t, err)
 	require.Len(t, bridge.calls, 1)
-	require.Equal(t, "PROMOTION:11:22", bridge.calls[0].ActivityKey)
+	require.Empty(t, bridge.calls[0].ActivityKey)
 	require.Equal(t, int64(22), bridge.calls[0].Strategy.StoreID)
 	require.Len(t, bridge.calls[0].Products, 2)
 	require.Equal(t, []string{"skc-approved", "skc-filtered"}, sheinPromotionBridgeSKCs(bridge.calls[0].Products))
@@ -317,7 +518,7 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 	require.Equal(t, int64(1), results[0].CandidateID)
 	require.False(t, results[1].Success)
 	require.Equal(t, int64(2), results[1].CandidateID)
-	require.ErrorContains(t, errors.New(results[1].ErrorMessage), "filtered")
+	require.Equal(t, "商品 skc-filtered 库存不足(8 < 15)", results[1].ErrorMessage)
 }
 
 func TestSheinActivityAdapterRejectsInvalidPromotionDiscountStrategy(t *testing.T) {
@@ -396,6 +597,8 @@ type sheinEnrollmentRepoStub struct {
 	mu                   sync.Mutex
 	nextRunID            int64
 	candidates           map[int64]SheinActivityCandidateRecord
+	syncedProducts       []SheinSyncedProductRecord
+	sdsGroups            map[string]SheinSDSCostGroupRecord
 	createdRuns          []SheinActivityEnrollmentRunRecord
 	updatedRuns          []SheinActivityEnrollmentRunRecord
 	savedItems           []SheinActivityEnrollmentItemRecord
@@ -464,6 +667,59 @@ func (r *sheinEnrollmentRepoStub) SaveCandidates(_ context.Context, records []*S
 		r.candidates[record.ID] = cloneSheinEnrollmentCandidate(*record)
 	}
 	return r.saveCandidatesErr
+}
+
+func (r *sheinEnrollmentRepoStub) ListSyncedProducts(_ context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	items := make([]SheinSyncedProductRecord, 0, len(r.syncedProducts))
+	for _, row := range r.syncedProducts {
+		if query != nil {
+			if query.TenantID > 0 && row.TenantID != query.TenantID {
+				continue
+			}
+			if query.StoreID > 0 && row.StoreID != query.StoreID {
+				continue
+			}
+			if query.SKCName != "" && row.SKCName != query.SKCName {
+				continue
+			}
+			if query.IsActive != nil && row.IsActive != *query.IsActive {
+				continue
+			}
+		}
+		items = append(items, cloneSheinEnrollmentSyncedProduct(row))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID < items[j].ID
+	})
+	return items, int64(len(items)), nil
+}
+
+func (r *sheinEnrollmentRepoStub) ListSDSCostGroups(_ context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	items := make([]SheinSDSCostGroupRecord, 0, len(r.sdsGroups))
+	for _, row := range r.sdsGroups {
+		if query != nil {
+			if query.TenantID > 0 && row.TenantID != query.TenantID {
+				continue
+			}
+			if query.StoreID > 0 && row.StoreID != query.StoreID {
+				continue
+			}
+			if len(query.GroupKeys) > 0 && !containsSheinEnrollmentString(query.GroupKeys, row.GroupKey) {
+				continue
+			}
+		}
+		items = append(items, cloneSheinEnrollmentSDSCostGroup(row))
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].GroupKey < items[j].GroupKey
+	})
+	return items, int64(len(items)), nil
 }
 
 func (r *sheinEnrollmentRepoStub) CreateEnrollmentRun(_ context.Context, run *SheinActivityEnrollmentRunRecord) error {
@@ -605,6 +861,18 @@ func cloneSheinEnrollmentCandidate(row SheinActivityCandidateRecord) SheinActivi
 	return row
 }
 
+func cloneSheinEnrollmentSyncedProduct(row SheinSyncedProductRecord) SheinSyncedProductRecord {
+	row.AutoCostPrice = cloneServiceTestFloat64(row.AutoCostPrice)
+	row.ManualCostPrice = cloneServiceTestFloat64(row.ManualCostPrice)
+	row.EffectiveCostPrice = cloneServiceTestFloat64(row.EffectiveCostPrice)
+	return row
+}
+
+func cloneSheinEnrollmentSDSCostGroup(row SheinSDSCostGroupRecord) SheinSDSCostGroupRecord {
+	row.ManualCostPrice = cloneServiceTestFloat64(row.ManualCostPrice)
+	return row
+}
+
 func sheinEnrollmentFloat64Ptr(v float64) *float64 {
 	return &v
 }
@@ -612,6 +880,15 @@ func sheinEnrollmentFloat64Ptr(v float64) *float64 {
 func containsSheinEnrollmentID(ids []int64, target int64) bool {
 	for _, id := range ids {
 		if id == target {
+			return true
+		}
+	}
+	return false
+}
+
+func containsSheinEnrollmentString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
 			return true
 		}
 	}

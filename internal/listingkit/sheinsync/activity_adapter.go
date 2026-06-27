@@ -123,7 +123,7 @@ func (a *sheinActivityAdapter) enrollPromotionCandidates(
 		return products[i].Skc < products[j].Skc
 	})
 
-	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy, activityKey, products)
+	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy, "", products)
 	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC), bridgeErr
 }
 
@@ -184,14 +184,23 @@ func buildPromotionEnrollmentResults(
 	productBySKC map[string]marketing.SkcInfo,
 ) []SheinActivityEnrollmentResult {
 	configured := make(map[string]struct{})
+	filterReasons := make(map[string]string)
 	requestPayload := ""
 	responsePayload := ""
 	if bridgeResult != nil {
-		requestPayload = marshalPromotionPayload(bridgeResult.Request)
-		responsePayload = marshalPromotionPayload(bridgeResult.Response)
+		requestPayload = marshalPromotionRequestPayload(bridgeResult)
+		responsePayload = marshalPromotionResponsePayload(bridgeResult)
+		for skc, reason := range bridgeResult.FilterReasons {
+			filterReasons[skc] = reason
+		}
 		if bridgeResult.Request != nil {
 			for _, config := range bridgeResult.Request.ConfigList {
 				configured[config.Skc] = struct{}{}
+			}
+		}
+		if bridgeResult.ActivityRequest != nil {
+			for _, item := range bridgeResult.ActivityRequest.AddCostAndStockInfoList {
+				configured[item.Skc] = struct{}{}
 			}
 		}
 	}
@@ -209,7 +218,9 @@ func buildPromotionEnrollmentResults(
 			continue
 		}
 		if _, ok := configured[candidate.SKCName]; !ok {
-			if bridgeErr != nil {
+			if reason := strings.TrimSpace(filterReasons[candidate.SKCName]); reason != "" {
+				result.ErrorMessage = reason
+			} else if bridgeErr != nil {
 				result.ErrorMessage = bridgeErr.Error()
 			} else {
 				result.ErrorMessage = "candidate filtered from promotion registration request"
@@ -264,4 +275,24 @@ func marshalPromotionPayload(v any) string {
 		return ""
 	}
 	return string(encoded)
+}
+
+func marshalPromotionRequestPayload(result *SheinPromotionRegistrationResult) string {
+	if result == nil {
+		return ""
+	}
+	if result.ActivityRequest != nil {
+		return marshalPromotionPayload(result.ActivityRequest)
+	}
+	return marshalPromotionPayload(result.Request)
+}
+
+func marshalPromotionResponsePayload(result *SheinPromotionRegistrationResult) string {
+	if result == nil {
+		return ""
+	}
+	if result.ActivityResponse != nil {
+		return marshalPromotionPayload(result.ActivityResponse)
+	}
+	return marshalPromotionPayload(result.Response)
 }

@@ -44,8 +44,11 @@ func (a legacyPromotionBridgeAdapter) RegisterPromotionProducts(ctx context.Cont
 		return nil, err
 	}
 	return &SheinPromotionRegistrationResult{
-		Request:  result.Request,
-		Response: result.Response,
+		Request:          result.Request,
+		Response:         result.Response,
+		ActivityRequest:  result.ActivityRequest,
+		ActivityResponse: result.ActivityResponse,
+		FilterReasons:    result.FilterReasons,
 	}, err
 }
 

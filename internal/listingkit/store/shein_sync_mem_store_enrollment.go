@@ -70,7 +70,39 @@ func (r *MemSheinSyncRepository) ListCandidates(_ context.Context, query *listin
 	if end > len(items) {
 		end = len(items)
 	}
-	return items[start:end], total, nil
+	pageItems := items[start:end]
+	r.attachLatestFailedEnrollmentErrorsLocked(pageItems)
+	return pageItems, total, nil
+}
+
+func (r *MemSheinSyncRepository) attachLatestFailedEnrollmentErrorsLocked(rows []listingkit.SheinActivityCandidateRecord) {
+	for i := range rows {
+		if rows[i].ID <= 0 || rows[i].ReviewStatus != listingkit.SheinCandidateReviewStatusFailed {
+			continue
+		}
+		var latest *listingkit.SheinActivityEnrollmentItemRecord
+		for _, item := range r.enrollmentItems {
+			if item.CandidateID != rows[i].ID ||
+				item.Status != listingkit.SheinEnrollmentItemStatusFailed ||
+				item.ErrorMessage == "" {
+				continue
+			}
+			item := item
+			if latest == nil || isNewerSheinEnrollmentItem(item, *latest) {
+				latest = &item
+			}
+		}
+		if latest != nil {
+			rows[i].LastEnrollmentError = latest.ErrorMessage
+		}
+	}
+}
+
+func isNewerSheinEnrollmentItem(left, right listingkit.SheinActivityEnrollmentItemRecord) bool {
+	if !left.UpdatedAt.Equal(right.UpdatedAt) {
+		return left.UpdatedAt.After(right.UpdatedAt)
+	}
+	return left.ID > right.ID
 }
 
 func (r *MemSheinSyncRepository) CreateEnrollmentRun(_ context.Context, run *listingkit.SheinActivityEnrollmentRunRecord) error {

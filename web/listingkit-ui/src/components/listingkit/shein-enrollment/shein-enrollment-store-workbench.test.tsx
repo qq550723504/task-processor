@@ -76,6 +76,7 @@ function renderWorkbench({
   sourceSDSCostGroups = [],
   runTotal,
   syncSourceMutation,
+  enrollMutation,
 }: {
   initialTab?: string;
   products?: Array<Record<string, unknown>>;
@@ -89,6 +90,7 @@ function renderWorkbench({
   sourceSDSCostGroups?: Array<Record<string, unknown>>;
   runTotal?: number;
   syncSourceMutation?: ReturnType<typeof resolvedMutation>;
+  enrollMutation?: ReturnType<typeof resolvedMutation>;
 }) {
   mocks.useSheinEnrollmentStoreSummary.mockReturnValue({
     data: {
@@ -144,7 +146,7 @@ function renderWorkbench({
   mocks.useUpdateSheinSDSCostGroup.mockReturnValue(resolvedMutation());
   mocks.useUpdateSheinSyncedProductCost.mockReturnValue(resolvedMutation());
   mocks.useReviewSheinActivityCandidate.mockReturnValue(resolvedMutation());
-  mocks.useExecuteSheinActivityEnrollment.mockReturnValue(resolvedMutation());
+  mocks.useExecuteSheinActivityEnrollment.mockReturnValue(enrollMutation ?? resolvedMutation());
 
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -214,6 +216,102 @@ describe("SheinEnrollmentStoreWorkbench", () => {
 
     expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
     expect(screen.getByText(/售价 \$29.99/)).toBeInTheDocument();
+  });
+
+  it("does not expose manual approval from the candidates table", async () => {
+    renderWorkbench({
+      initialTab: "candidates",
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-PENDING",
+          review_status: "pending_review",
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "驳回" })).toBeInTheDocument();
+  });
+
+  it("allows pending review candidates to be manually confirmed for enrollment", async () => {
+    const enrollMutation = resolvedMutation();
+    renderWorkbench({
+      initialTab: "candidates",
+      enrollMutation,
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-PENDING",
+          review_status: "pending_review",
+        },
+        {
+          id: 19,
+          skc_name: "SKC-REJECTED",
+          review_status: "rejected",
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+
+    expect(screen.getByLabelText("选择 SKC-PENDING")).not.toBeDisabled();
+    fireEvent.click(screen.getByLabelText("选择 SKC-PENDING"));
+    expect(screen.getByLabelText("选择 SKC-REJECTED")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "报名活动" }));
+
+    expect(enrollMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "PROMOTION",
+      activity_key: undefined,
+      trigger_mode: "manual_confirmed",
+      candidate_ids: [18],
+    });
+  });
+
+  it("selects all executable candidates on the current candidates page", async () => {
+    const enrollMutation = resolvedMutation();
+    renderWorkbench({
+      initialTab: "candidates",
+      enrollMutation,
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-PENDING",
+          review_status: "pending_review",
+        },
+        {
+          id: 19,
+          skc_name: "SKC-REJECTED",
+          review_status: "rejected",
+        },
+        {
+          id: 20,
+          skc_name: "SKC-FAILED",
+          review_status: "failed",
+          last_enrollment_error: "SHEIN rejected: current status can not enroll",
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "全选" }));
+    expect(screen.getByLabelText("选择 SKC-PENDING")).toBeChecked();
+    expect(screen.getByLabelText("选择 SKC-REJECTED")).not.toBeChecked();
+    expect(screen.getByLabelText("选择 SKC-REJECTED")).toBeDisabled();
+    expect(screen.getByLabelText("选择 SKC-FAILED")).not.toBeChecked();
+    expect(screen.getByLabelText("选择 SKC-FAILED")).toBeDisabled();
+    expect(screen.getByText(/SHEIN rejected: current status can not enroll/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "报名活动" }));
+
+    expect(enrollMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "PROMOTION",
+      activity_key: undefined,
+      trigger_mode: "manual_confirmed",
+      candidate_ids: [18],
+    });
   });
 
   it("requires activity strategy before manual enrollment", async () => {

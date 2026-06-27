@@ -16,6 +16,7 @@ import {
   PROXY_TASK_PREVIEW_UPSTREAM_TIMEOUT_MS,
   PROXY_REVISION_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS,
+  PROXY_SHEIN_ENROLLMENT_EXECUTE_UPSTREAM_TIMEOUT_MS,
   PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS,
   PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS,
   PROXY_STUDIO_UPSTREAM_TIMEOUT_MS,
@@ -72,6 +73,17 @@ describe("resolveListingKitProxyTimeoutMs", () => {
     expect(resolveListingKitProxyTimeoutMs("GET", ["shein-sync", "dashboard"])).toBe(
       PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS,
     );
+  });
+
+  it("extends the timeout for shein enrollment execution requests", () => {
+    expect(
+      resolveListingKitProxyTimeoutMs("POST", [
+        "shein-sync",
+        "stores",
+        "870",
+        "enrollments",
+      ]),
+    ).toBe(PROXY_SHEIN_ENROLLMENT_EXECUTE_UPSTREAM_TIMEOUT_MS);
   });
 
   it("extends the timeout for slow admin collection reads", () => {

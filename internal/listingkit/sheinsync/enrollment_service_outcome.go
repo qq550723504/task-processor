@@ -71,6 +71,14 @@ func mapSheinEnrollmentResults(
 	return mapped
 }
 
+func cloneSheinEnrollmentResultMap(source map[int64]SheinActivityEnrollmentResult) map[int64]SheinActivityEnrollmentResult {
+	copied := make(map[int64]SheinActivityEnrollmentResult, len(source))
+	for candidateID, result := range source {
+		copied[candidateID] = result
+	}
+	return copied
+}
+
 func buildSheinEnrollmentItems(
 	runID, storeID int64,
 	candidates []SheinActivityCandidateRecord,
@@ -137,9 +145,15 @@ func countSheinEnrollmentOutcomes(resultByCandidateID map[int64]SheinActivityEnr
 	return succeeded, failed
 }
 
-func deriveSheinEnrollmentRunStatus(submittedCount, succeededCount, failedCount int, adapterErr error) SheinEnrollmentRunStatus {
+func deriveSheinEnrollmentRunStatus(candidateCount, submittedCount, succeededCount, failedCount int, adapterErr error) SheinEnrollmentRunStatus {
 	switch {
 	case submittedCount == 0:
+		if candidateCount > 0 && failedCount == 0 {
+			return SheinEnrollmentRunStatusFailed
+		}
+		if failedCount > 0 {
+			return SheinEnrollmentRunStatusFailed
+		}
 		return SheinEnrollmentRunStatusSucceeded
 	case succeededCount > 0 && failedCount > 0:
 		return SheinEnrollmentRunStatusPartiallySucceeded
