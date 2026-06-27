@@ -11,7 +11,7 @@ import (
 	"task-processor/internal/core/config"
 )
 
-func TestBuildSharedResourcesDoesNotConstructManagementClient(t *testing.T) {
+func TestBuildSharedResourcesDoesNotConstructRetiredManagementService(t *testing.T) {
 	content, err := os.ReadFile("shared_resources.go")
 	require.NoError(t, err)
 

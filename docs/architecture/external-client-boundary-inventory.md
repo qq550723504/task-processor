@@ -53,7 +53,7 @@ Current direct dependency hotspots are:
   - `internal/listingkit/httpapi` AI runtime/bootstrap seams are guarded by
     `TestListingKitHTTPAPIExternalClientImportsStayAllowlisted`
   - `internal/listingkit/httpapi` management retirement seams are guarded by
-    `TestListingKitHTTPAPIManagementClientImportsStayAllowlisted`
+    `TestListingKitHTTPAPIRetiredManagementImportsStayBlocked`
   - `internal/listingkit/sheinsync` legacy promotion bridge seams are guarded by
     `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted`
 - `internal/publishing/shein`
@@ -82,7 +82,7 @@ Current direct dependency hotspots are:
   - direct `openai` coupling also remains in category, content, pipeline,
     product, submit-prep, and translate helpers
   - current direct management seams are guarded by
-    `TestSheinManagementClientImportsStayAllowlisted`
+    `TestSheinRetiredManagementImportsStayBlocked`
   - current direct OpenAI seams are guarded by
     `TestSheinOpenAIImportsStayAllowlisted`
   - cleanup should replace management calls with in-repository
@@ -151,28 +151,28 @@ Current direct dependency hotspots are:
     are guarded by
     `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
   - `internal/app/task` is guarded by an empty
-    `TestAppTaskManagementClientImportsStayAllowlisted` allowlist plus
+    `TestAppTaskRetiredManagementImportsStayBlocked` allowlist plus
     task-local capability-name guards
   - `internal/app/runner` management retirement seams are guarded by
-    `TestAppRunnerManagementClientImportsStayAllowlisted`
+    `TestAppRunnerRetiredManagementImportsStayBlocked`
   - `internal/app/consumer` management retirement seams are guarded by
-    `TestAppConsumerManagementClientImportsStayAllowlisted`
+    `TestAppConsumerRetiredManagementImportsStayBlocked`
   - `internal/app/bootstrap` management retirement seams are guarded by
-    `TestAppBootstrapManagementClientImportsStayAllowlisted`
+    `TestAppBootstrapRetiredManagementImportsStayBlocked`
   - `internal/listingruntime/local` is the local provider/runtime implementation
     package for bootstrap runtime assembly and is guarded by
-    `TestListingRuntimeLocalDoesNotImportManagementClient`
+    `TestListingRuntimeLocalDoesNotImportRetiredManagementPackage`
   - `internal/app/httpapi` management retirement seams are guarded by
-    `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
+    `TestAppHTTPAPIRetiredManagementImportsStayBlocked`
   - `internal/app/httpapi` OpenAI runtime state and adapter assembly seams are
     guarded by
     `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`,
     `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`, and
     `TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated`
   - `internal/app/runtime/listing` management retirement seams are guarded by
-    `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
+    `TestAppRuntimeListingRetiredManagementImportsStayBlocked`
   - `internal/app/taskstatus` management import retirement is guarded by
-    `TestAppTaskStatusManagementClientImportsStayAllowlisted`
+    `TestAppTaskStatusRetiredManagementImportsStayBlocked`
 - `internal/platformtask`
   - current platform task helpers still import `management` in product sync,
     inventory sync, and auto pricing task seams
@@ -180,7 +180,7 @@ Current direct dependency hotspots are:
     direction; future platform task data should use in-repository
     database/repository access
   - current direct management seams are guarded by
-    `TestPlatformTaskManagementClientImportsStayAllowlisted`
+    `TestPlatformTaskRetiredManagementImportsStayBlocked`
 - `internal/platformbase`
   - current platform base factory still imports `management` in the shared
     platform-factory seam
@@ -188,43 +188,43 @@ Current direct dependency hotspots are:
     direction; future platform factory data should use in-repository
     database/repository access
   - current direct management seam is guarded by
-    `TestPlatformBaseManagementClientImportsStayAllowlisted`
+    `TestPlatformBaseRetiredManagementImportsStayBlocked`
 - `internal/processor`
   - processor base no longer imports, stores, or constructs Management Client;
     it exposes only explicitly injected StoreAPI, TaskStatusRuntime, and
     DailyCountClientProvider ports
   - the empty direct-management guard is
-    `TestProcessorManagementClientImportsStayAllowlisted`
+    `TestProcessorRetiredManagementImportsStayBlocked`
 - `internal/taskrpcapi`
   - task RPC assembly no longer imports Management Client or accepts a
     `ClientProvider`; task status lookup and task actions return explicit
     retired/unavailable semantics while queue stats come from local runtime
     status
   - the empty direct-management guard is
-    `TestTaskRPCAPIManagementClientImportsStayAllowlisted`
+    `TestTaskRPCAPIRetiredManagementImportsStayBlocked`
 - `internal/sds/client`
   - SDS auth bootstrap no longer imports Management Client; static bootstrap,
     SDS login-service state, and direct account login remain the supported
     refresh sources
   - the empty direct-management guard is
-    `TestSDSClientManagementClientImportsStayAllowlisted`
+    `TestSDSClientRetiredManagementImportsStayBlocked`
 - `internal/sheinlogin/bootstrap`
   - SHEIN login bootstrap no longer accepts Management Client; store sync and
     duplicate-store lookup use the injected StoreAPI port
   - the empty direct-management guard is
-    `TestSheinLoginBootstrapManagementClientImportsStayAllowlisted`
+    `TestSheinLoginBootstrapRetiredManagementImportsStayBlocked`
 - `internal/sheinlogin`
   - SHEIN login service no longer has Management Client imports in the
     bootstrap path; future login service data should keep using package-local
     ports or in-repository data access
   - the empty direct-management guard is
-    `TestSheinLoginServiceManagementClientImportsStayAllowlisted`
+    `TestSheinLoginServiceRetiredManagementImportsStayBlocked`
 - `internal/sheinloginmanaged`
   - managed login bridge no longer imports Management Client; legacy
     `*management.ClientManager` constructors were removed in favor of
     store-port and factory-port constructors
   - the empty direct-management guard is
-    `TestSheinLoginManagedManagementClientImportsStayAllowlisted`
+    `TestSheinLoginManagedRetiredManagementImportsStayBlocked`
 - `internal/pricing`
   - current shared pricing helper still imports `management` in the cost-config
     lookup seam
@@ -232,7 +232,7 @@ Current direct dependency hotspots are:
     direction; future pricing config data should use in-repository
     database/repository access
   - current direct management seam is guarded by
-    `TestSharedPricingManagementClientImportsStayAllowlisted`
+    `TestSharedPricingRetiredManagementImportsStayBlocked`
 - `internal/state`
   - current state runtime helpers still import `management` in manager and
     daily-count seams
@@ -240,7 +240,7 @@ Current direct dependency hotspots are:
     direction; future state data should use in-repository database/repository
     access
   - current direct management seams are guarded by
-    `TestStateManagementClientImportsStayAllowlisted`
+    `TestStateRetiredManagementImportsStayBlocked`
 - `internal/productimage`
   - uses `openai` and `nanobanana` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with

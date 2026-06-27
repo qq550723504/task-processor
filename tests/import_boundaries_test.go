@@ -870,7 +870,7 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestListingKitHTTPAPIManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestListingKitHTTPAPIRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit", "httpapi")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "shein_sync_runtime_strategy_helpers.go")): {},
@@ -894,7 +894,7 @@ func TestListingKitHTTPAPIManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestAppTaskManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestAppTaskRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "task")
 	allowedFiles := map[string]struct{}{}
 
@@ -916,7 +916,7 @@ func TestAppTaskManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestAppRunnerManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestAppRunnerRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "runner")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "health_checks.go")):                  {},
@@ -947,7 +947,7 @@ func TestAppRunnerManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestAppConsumerManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestAppConsumerRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "consumer")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "auto_shard_coordinator.go")):      {},
@@ -983,7 +983,7 @@ func TestAppConsumerManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestPlatformProcessorRegistryDoesNotExposeManagementClient(t *testing.T) {
+func TestPlatformProcessorRegistryDoesNotExposeRetiredManagementService(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, 0)
@@ -1010,7 +1010,7 @@ func TestPlatformProcessorRegistryDoesNotExposeManagementClient(t *testing.T) {
 	}
 }
 
-func TestAppConsumerRuntimeBoundariesDoNotCarryManagementClient(t *testing.T) {
+func TestAppConsumerRuntimeBoundariesDoNotCarryRetiredManagementService(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "shared_resources.go")
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, 0)
@@ -1046,7 +1046,7 @@ func TestAppConsumerRuntimeBoundariesDoNotCarryManagementClient(t *testing.T) {
 	}
 }
 
-func TestPlatformProcessorRegistryDoesNotStoreManagementClient(t *testing.T) {
+func TestPlatformProcessorRegistryDoesNotStoreRetiredManagementService(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, 0)
@@ -1079,7 +1079,7 @@ func TestPlatformProcessorRegistryDoesNotStoreManagementClient(t *testing.T) {
 	}
 }
 
-func TestAppConsumerTaskStatusRuntimeProviderIsNotNamedManagementClient(t *testing.T) {
+func TestAppConsumerTaskStatusRuntimeProviderIsNotNamedRetiredManagementService(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "consumer")
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -1160,7 +1160,7 @@ func TestAppTaskPollingSourceUsesCapabilityNames(t *testing.T) {
 	}
 }
 
-func TestAppTaskFetcherDoesNotStoreManagementClient(t *testing.T) {
+func TestAppTaskFetcherDoesNotStoreRetiredManagementService(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "task", "fetcher.go")
 	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil {
@@ -1340,7 +1340,7 @@ func TestTaskStatusRuntimeErrorsUseCapabilityNames(t *testing.T) {
 	}
 }
 
-func TestTaskStatusPackageDoesNotImportManagementClient(t *testing.T) {
+func TestTaskStatusPackageDoesNotImportRetiredManagementPackage(t *testing.T) {
 	root := filepath.Join("..", "internal", "taskstatus")
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -1356,7 +1356,7 @@ func TestTaskStatusPackageDoesNotImportManagementClient(t *testing.T) {
 	}
 }
 
-func TestBaseProcessorDoesNotExposeManagementClient(t *testing.T) {
+func TestBaseProcessorDoesNotExposeRetiredManagementService(t *testing.T) {
 	path := filepath.Join("..", "internal", "processor", "base_processor.go")
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, 0)
@@ -1863,7 +1863,7 @@ func TestTemuSyncFallbackLogsUseCapabilityNames(t *testing.T) {
 	}
 }
 
-func TestRetiredManagementClientHotspotsUseCapabilityNames(t *testing.T) {
+func TestRetiredManagementServiceHotspotsUseCapabilityNames(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "sheinloginmanaged", "bridge.go"),
 		filepath.Join("..", "internal", "shein", "publish", "exists_check.go"),
@@ -2053,7 +2053,7 @@ func TestTemuProcessorRuntimeUsesCapabilityNames(t *testing.T) {
 	}
 }
 
-func TestAppBootstrapManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestAppBootstrapRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "bootstrap")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "app.go")):                        {},
@@ -2079,7 +2079,7 @@ func TestAppBootstrapManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestListingRuntimeLocalDoesNotImportManagementClient(t *testing.T) {
+func TestListingRuntimeLocalDoesNotImportRetiredManagementPackage(t *testing.T) {
 	assertNoBannedImports(t, filepath.Join("..", "internal", "listingruntime", "local"), []string{
 		`"task-processor/internal/infra/clients/management"`,
 	}, nil)
@@ -2461,7 +2461,7 @@ func TestSheinBridgeExternalClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestSheinManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestSheinRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "shein")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "activity", "mixed.go")):                        {},
@@ -2548,7 +2548,7 @@ func TestSheinManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestSheinPipelineRuntimeDependenciesDoNotUseManagementClientNames(t *testing.T) {
+func TestSheinPipelineRuntimeDependenciesDoNotUseRetiredManagementNames(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "shein", "pipeline", "processor.go"),
 		filepath.Join("..", "internal", "shein", "pipeline", "dependencies_builder.go"),
@@ -2636,7 +2636,7 @@ func TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted(t *testing.T
 	}
 }
 
-func TestAppHTTPAPIManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestAppHTTPAPIRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "modules_shein_test.go")):   {},
@@ -2662,7 +2662,7 @@ func TestAppHTTPAPIManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestAppRuntimeListingManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestAppRuntimeListingRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "runtime", "listing")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "debug_task_runner.go")):      {},
@@ -2687,7 +2687,7 @@ func TestAppRuntimeListingManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestAppTaskStatusManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestAppTaskStatusRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "taskstatus")
 	allowedFiles := map[string]struct{}{}
 
@@ -2709,7 +2709,7 @@ func TestAppTaskStatusManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestPlatformTaskManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestPlatformTaskRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "platformtask")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "auto_pricing_task.go")):        {},
@@ -2738,7 +2738,7 @@ func TestPlatformTaskManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestStateManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestStateRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "state")
 	allowedFiles := map[string]struct{}{}
 
@@ -2760,7 +2760,7 @@ func TestStateManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestPlatformBaseManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestPlatformBaseRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "platformbase")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "base_factory.go")): {},
@@ -2784,7 +2784,7 @@ func TestPlatformBaseManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestProcessorManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestProcessorRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "processor")
 
 	index, err := loadGoFileIndex(root, "")
@@ -2802,7 +2802,7 @@ func TestProcessorManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestTaskRPCAPIManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestTaskRPCAPIRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "taskrpcapi")
 	allowedFiles := map[string]struct{}{}
 
@@ -2824,7 +2824,7 @@ func TestTaskRPCAPIManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestSDSClientManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestSDSClientRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "sds", "client")
 	allowedFiles := map[string]struct{}{}
 
@@ -2846,7 +2846,7 @@ func TestSDSClientManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestSheinLoginBootstrapManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestSheinLoginBootstrapRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "sheinlogin", "bootstrap")
 	allowedFiles := map[string]struct{}{}
 
@@ -2868,7 +2868,7 @@ func TestSheinLoginBootstrapManagementClientImportsStayAllowlisted(t *testing.T)
 	}
 }
 
-func TestSheinLoginManagedManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestSheinLoginManagedRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "sheinloginmanaged")
 	allowedFiles := map[string]struct{}{}
 
@@ -2908,7 +2908,7 @@ func TestSheinLoginUsesManagementAPIPortAliases(t *testing.T) {
 	}
 }
 
-func TestSheinLoginServiceManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestSheinLoginServiceRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "sheinlogin")
 	allowedFiles := map[string]struct{}{}
 
@@ -2930,7 +2930,7 @@ func TestSheinLoginServiceManagementClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestSharedPricingManagementClientImportsStayAllowlisted(t *testing.T) {
+func TestSharedPricingRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "pricing")
 	allowedFiles := map[string]struct{}{}
 

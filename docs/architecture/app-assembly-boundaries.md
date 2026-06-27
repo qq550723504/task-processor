@@ -204,13 +204,13 @@ it is usually not worth it.
 App-layer assembly boundaries are guarded by:
 
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
-- `TestAppBootstrapManagementClientImportsStayAllowlisted`
-- `TestAppTaskManagementClientImportsStayAllowlisted`
-- `TestAppRunnerManagementClientImportsStayAllowlisted`
-- `TestAppConsumerManagementClientImportsStayAllowlisted`
-- `TestAppHTTPAPIManagementClientImportsStayAllowlisted`
-- `TestAppRuntimeListingManagementClientImportsStayAllowlisted`
-- `TestAppTaskStatusManagementClientImportsStayAllowlisted`
+- `TestAppBootstrapRetiredManagementImportsStayBlocked`
+- `TestAppTaskRetiredManagementImportsStayBlocked`
+- `TestAppRunnerRetiredManagementImportsStayBlocked`
+- `TestAppConsumerRetiredManagementImportsStayBlocked`
+- `TestAppHTTPAPIRetiredManagementImportsStayBlocked`
+- `TestAppRuntimeListingRetiredManagementImportsStayBlocked`
+- `TestAppTaskStatusRetiredManagementImportsStayBlocked`
 - `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
 - `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`

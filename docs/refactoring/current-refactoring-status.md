@@ -34,8 +34,8 @@ The current active work should focus on closeout and stabilization, not broad fe
 
 Required next work:
 
-1. Keep the listing runtime boundary free of `ManagementClient`; the retired `internal/infra/clients/management` package no longer exists as a Go package, and boundary tests keep the old import paths from being reintroduced.
-2. Keep bootstrap shared resources on the `internal/listingruntime/local` provider/runtime path; that package now owns the local runtime implementation used by bootstrap. HTTP task-RPC/login and processor-base seams use explicit ports or retired/unavailable behavior instead of reviving a broad Management Client.
+1. Keep the listing runtime boundary free of the retired management service; the retired `internal/infra/clients/management` package no longer exists as a Go package, and boundary tests keep the old import paths from being reintroduced.
+2. Keep bootstrap shared resources on the `internal/listingruntime/local` provider/runtime path; that package now owns the local runtime implementation used by bootstrap. HTTP task-RPC/login and processor-base seams use explicit ports or retired/unavailable behavior instead of reviving a broad retired management service.
 3. Keep `internal/listingkit` as orchestration, compatibility, DTO adaptation, persistence ordering, and API shell glue.
 4. Do not continue splitting files just because a helper can move.
 5. Keep every new migration tied to an explicit ownership reduction.
