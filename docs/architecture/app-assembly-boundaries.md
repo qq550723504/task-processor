@@ -222,7 +222,7 @@ This keeps business domains from depending directly on concrete
 transition seam is necessary, document the narrow exception and update the
 allowlist in the same change.
 
-The app-layer management client allowlists are retirement seams, not a long-term
+The app-layer retired management service import guards are retirement seams, not a long-term
 design target. `bootstrap`, `task`, `runner`, `consumer`, `httpapi`,
 `runtime/listing`, and `taskstatus` may still assemble current
 management-backed runtime dependencies, but new business data access should

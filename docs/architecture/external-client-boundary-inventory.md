@@ -71,7 +71,7 @@ Current direct dependency hotspots are:
     factories instead of spreading adapter types
   - current direct SHEIN API seams are guarded by
     `TestPublishingSheinManagedAPIImportsStayAllowlisted`
-  - managed-publishing helpers no longer import Management Client; the legacy
+  - managed-publishing helpers no longer import retired management service; the legacy
     online runtime factory is retired and the package falls back to offline
     publishing resolution when no runtime API is provided
   - the empty direct-management guard is
@@ -125,23 +125,23 @@ Current direct dependency hotspots are:
   - `internal/app/task` no longer imports `management`; task polling, dispatch
     guard, store dispatch, listing-count reads, and status updates are held
     behind task-local runtime capabilities
-  - `internal/app/runner` no longer stores a broad Management Client in the
+  - `internal/app/runner` no longer stores a broad retired management service in the
     processor service; remaining management references are limited to runtime
     port compatibility and tests while older processor seams are retired
-  - `internal/app/consumer` no longer carries a Management Client through shared
+  - `internal/app/consumer` no longer carries a retired management service through shared
     resources, platform runtime context, or the processor registry
   - `internal/app/bootstrap/resources` no longer constructs `ClientManager` or
     imports the management adapter package; shared runtime assembly now goes
     through the neutral `internal/listingruntime/local` entrypoint for local
     provider/runtime ports
-  - `internal/app/httpapi` no longer has a runtime `managementClient()` hook;
+  - `internal/app/httpapi` no longer has a runtime retired-management hook;
     login assembly uses the injected StoreAPI port and task-RPC assembly uses
     local runtime status / retired-unavailable semantics instead of the old
-    Management Client service
+    retired management service
   - `internal/app/runtime/listing` now keeps local runtime health validation
     behind a package-local validator interface; debug task lookup and SHEIN
     recovery watchdog setup use local repository ports instead of carrying a
-    concrete Management Client through runtime context
+    concrete retired management service through runtime context
   - `internal/app/taskstatus` no longer imports `management` directly; concrete
     runtime adapters live outside the app task-status service while the service
     keeps only the task-status update contract
@@ -190,37 +190,37 @@ Current direct dependency hotspots are:
   - current direct management seam is guarded by
     `TestPlatformBaseRetiredManagementImportsStayBlocked`
 - `internal/processor`
-  - processor base no longer imports, stores, or constructs Management Client;
+  - processor base no longer imports, stores, or constructs retired management service;
     it exposes only explicitly injected StoreAPI, TaskStatusRuntime, and
     DailyCountClientProvider ports
   - the empty direct-management guard is
     `TestProcessorRetiredManagementImportsStayBlocked`
 - `internal/taskrpcapi`
-  - task RPC assembly no longer imports Management Client or accepts a
+  - task RPC assembly no longer imports retired management service or accepts a
     `ClientProvider`; task status lookup and task actions return explicit
     retired/unavailable semantics while queue stats come from local runtime
     status
   - the empty direct-management guard is
     `TestTaskRPCAPIRetiredManagementImportsStayBlocked`
 - `internal/sds/client`
-  - SDS auth bootstrap no longer imports Management Client; static bootstrap,
+  - SDS auth bootstrap no longer imports retired management service; static bootstrap,
     SDS login-service state, and direct account login remain the supported
     refresh sources
   - the empty direct-management guard is
     `TestSDSClientRetiredManagementImportsStayBlocked`
 - `internal/sheinlogin/bootstrap`
-  - SHEIN login bootstrap no longer accepts Management Client; store sync and
+  - SHEIN login bootstrap no longer accepts retired management service; store sync and
     duplicate-store lookup use the injected StoreAPI port
   - the empty direct-management guard is
     `TestSheinLoginBootstrapRetiredManagementImportsStayBlocked`
 - `internal/sheinlogin`
-  - SHEIN login service no longer has Management Client imports in the
+  - SHEIN login service no longer has retired management service imports in the
     bootstrap path; future login service data should keep using package-local
     ports or in-repository data access
   - the empty direct-management guard is
     `TestSheinLoginServiceRetiredManagementImportsStayBlocked`
 - `internal/sheinloginmanaged`
-  - managed login bridge no longer imports Management Client; legacy
+  - managed login bridge no longer imports retired management service; legacy
     `*management.ClientManager` constructors were removed in favor of
     store-port and factory-port constructors
   - the empty direct-management guard is
@@ -280,7 +280,7 @@ concrete management report type out of listing runtime while the remaining
 runtime-owned ports are extracted.
 
 2026-06-26 update: consumer/runtime assembly no longer carries broad
-Management Client fields through `PlatformRuntimeContext`, consumer
+retired management service fields through `PlatformRuntimeContext`, consumer
 `SharedResources`, or `PlatformProcessorRegistry`. Bootstrap shared resources
 also no longer construct `ClientManager`; they build a local provider/runtime
 and expose named store, product, pricing, task, quota, repository, and health
@@ -290,7 +290,7 @@ Future work should continue retiring the remaining explicit legacy seams
 in pricing, platformbase, platformtask, and marketplace compatibility paths.
 
 2026-06-27 update: HTTP task-RPC/login, processor base, taskrpcapi, SHEIN login
-bootstrap, and sheinloginmanaged no longer import or accept Management Client.
+bootstrap, and sheinloginmanaged no longer import or accept retired management service.
 Their guards are now empty allowlists or explicit no-construction/name guards.
 App bootstrap shared resources also route local runtime construction through
 `internal/listingruntime/local` instead of importing the management adapter
@@ -312,7 +312,7 @@ and Amazon DTO/test seams.
    allowlisted to freeze current seams; future ListingKit cleanup should move
    this business data access to in-repository database/repository access rather
    than adding new management API call sites.
-3. `internal/publishing/sheinmanaged` no longer imports Management Client; the
+3. `internal/publishing/sheinmanaged` no longer imports retired management service; the
    managed runtime online factory is retired and the management guard is now an
    empty allowlist.
 4. SHEIN publishing attribute/category inference helpers currently importing
@@ -353,19 +353,19 @@ and Amazon DTO/test seams.
    should prefer in-repository database/repository access rather than adding new
    management API call sites.
 11. App runner scheduler, processor, and health-check assembly seams no longer
-   store a broad Management Client. Current imports are explicitly allowlisted
+   store a broad retired management service. Current imports are explicitly allowlisted
    only for remaining runtime compatibility seams; future runtime data access
    should prefer in-repository database/repository access rather than adding new
    management API call sites.
 12. App consumer processor registry, shared-resource, and platform runtime
-   seams no longer carry a broad Management Client. Remaining consumer imports
+   seams no longer carry a broad retired management service. Remaining consumer imports
    are explicit retirement seams and should not grow.
 13. App bootstrap shared-resource assembly now constructs local runtime ports
    directly instead of `ClientManager`. Remaining bootstrap management imports
    are explicit local-provider/runtime construction seams and should continue to
    shrink toward domain-owned packages.
 14. App HTTPAPI runtime dependency and SHEIN login/task-RPC assembly no longer
-   carry a Management Client hook. Keep the guard in place and route new
+   carry a retired management service hook. Keep the guard in place and route new
    HTTP-facing runtime data through local ports or in-repository repositories.
 15. App listing runtime debug task runner seams currently importing
    `internal/infra/clients/management`. Current imports are explicitly
@@ -392,16 +392,16 @@ and Amazon DTO/test seams.
    allowlisted to freeze current factory seam; future platform factory data
    should prefer in-repository database/repository access rather than adding new
    management API call sites.
-20. Processor base no longer imports or constructs Management Client. Keep new
+20. Processor base no longer imports or constructs retired management service. Keep new
    processor data behind explicitly injected StoreAPI, task-status, daily-count,
    or package-local ports.
-21. Task RPC build and handler seams no longer import Management Client. New
+21. Task RPC build and handler seams no longer import retired management service. New
    task RPC behavior should stay on local runtime status/repository ports rather
    than recreating the retired remote service.
-22. SDS auth bootstrap no longer imports Management Client. Static credentials,
+22. SDS auth bootstrap no longer imports retired management service. Static credentials,
    SDS login-service, and direct account login are the supported bootstrap
    sources.
-23. SHEIN login bootstrap no longer imports Management Client; store-facing
+23. SHEIN login bootstrap no longer imports retired management service; store-facing
    login data goes through the StoreAPI port.
 24. SHEIN managed-login bridge and account seams no longer import Management
    Client; new managed-login data should use store-port/factory-port

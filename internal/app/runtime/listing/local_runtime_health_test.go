@@ -44,7 +44,7 @@ func TestValidateListingRuntimeHealthReportsMissingValidator(t *testing.T) {
 		t.Fatal("ValidateListingRuntimeHealth() error = nil, want missing validator error")
 	}
 	if strings.Contains(err.Error(), "management client") {
-		t.Fatalf("error = %v, should not expose Management Client as the runtime health dependency", err)
+		t.Fatalf("error = %v, should not expose retired management service as the runtime health dependency", err)
 	}
 	if !strings.Contains(err.Error(), "health validator is not configured") {
 		t.Fatalf("error = %v, want health validator message", err)

@@ -91,7 +91,7 @@ Studio 已有 durable `batch -> item -> attempt -> design` 图，但任务归属
 
 ### 3.5 外部客户端需要稳定适配层
 
-SDS、SHEIN、AI、图片、对象存储和历史 management client 应通过小接口隐藏。核心业务不应依赖具体 SDK、HTTP payload 或浏览器实现。
+SDS、SHEIN、AI、图片、对象存储和历史 retired management service 应通过小接口隐藏。核心业务不应依赖具体 SDK、HTTP payload 或浏览器实现。
 
 ## 4. 目标模块地图
 
@@ -302,7 +302,7 @@ internal/asset/*
 
 逐步淘汰业务层对以下具体实现的直接依赖：
 
-- management client；
+- retired management service；
 - Gin context；
 - GORM transaction 细节；
 - 具体 AI SDK；
@@ -421,7 +421,7 @@ SHEIN publishing adapters
 
 交付：
 
-- management client 退休计划；
+- retired management service closeout plan；
 - repository 和 integration ports；
 - runtime 只做装配；
 - 旧 debug 或 compatibility 入口清理。
