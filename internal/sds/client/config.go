@@ -45,7 +45,6 @@ type Config struct {
 	Referer       string
 	CookieFile    string
 	AuthFile      string
-	Management    *coreconfig.ManagementConfig
 	LoginService  coreconfig.SDSLoginServiceConfig
 	AuthBootstrap AuthBootstrapConfig
 	Endpoints     EndpointSet
@@ -69,8 +68,6 @@ type AuthBootstrapConfig struct {
 	LoginDomainName         string
 	LoginVerifyCaptchaParam string
 	LoginExtraInfo          string
-
-	ManagementStoreID int64
 }
 
 func (c AuthBootstrapConfig) HasSource() bool {
@@ -81,8 +78,7 @@ func (c AuthBootstrapConfig) HasSource() bool {
 		strings.TrimSpace(c.StaticCookie) != "" ||
 		hasLoginService ||
 		strings.TrimSpace(c.LoginUsername) != "" ||
-		strings.TrimSpace(c.LoginPassword) != "" ||
-		c.ManagementStoreID > 0
+		strings.TrimSpace(c.LoginPassword) != ""
 }
 
 // DefaultConfig 返回默认配置。

@@ -10,7 +10,6 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/listingadmin"
 )
 
@@ -89,7 +88,6 @@ func TestBuildHandlerReturnsNilWithoutLocalStoreRepository(t *testing.T) {
 				},
 			},
 		},
-		ManagementClient: management.NewClientManager(&config.ManagementConfig{}),
 		AccountRepositoryBuilder: func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
 			return nil, nil, nil
 		},
@@ -125,7 +123,6 @@ func TestBuildHandlerReturnsHandlerAndClose(t *testing.T) {
 				},
 			},
 		},
-		ManagementClient: management.NewClientManager(&config.ManagementConfig{}),
 		AccountRepositoryBuilder: func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
 			return &stubStoreRepository{
 					items: []listingadmin.Store{{

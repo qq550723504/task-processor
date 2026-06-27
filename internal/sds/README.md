@@ -94,10 +94,11 @@
    - `TASK_PROCESSOR_SDS_OUT_ACCESS_TOKEN`
    - `TASK_PROCESSOR_SDS_MERCHANT_ID`
    - `TASK_PROCESSOR_SDS_COOKIE`
-3. management 店铺会话
-   - `TASK_PROCESSOR_SDS_MANAGEMENT_STORE_ID`
-   - 通过 management `store/get-cookie` 拉取 cookie
-   - 若 management 店铺记录带 `username/password`，会继续自动登录换取新 token
+3. SDS login-service 登录态
+   - `TASK_PROCESSOR_SDS_LOGIN_BASE_URL`
+   - `TASK_PROCESSOR_SDS_LOGIN_TENANT_ID`
+   - `TASK_PROCESSOR_SDS_LOGIN_IDENTIFIER`
+   - 可选：`TASK_PROCESSOR_SDS_LOGIN_SHARED_KEY`
 4. 应用配置注入的账号密码自动登录
    - `TASK_PROCESSOR_SDS_USERNAME`
    - `TASK_PROCESSOR_SDS_PASSWORD`

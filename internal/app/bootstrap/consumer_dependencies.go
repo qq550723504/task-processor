@@ -34,14 +34,15 @@ func BuildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies 
 			}
 
 			return &consumer.SharedResources{
-				ManagementClient:        resources.ManagementClient,
-				RawJSONDataClient:       resources.RawJSONDataClient,
-				StoreAPI:                resources.StoreAPI,
-				SchedulerRuntime:        resources.SchedulerRuntime,
-				SchedulerFactoryRuntime: resources.SchedulerFactoryRuntime,
-				ProcessorRuntime:        resources.ProcessorRuntime,
-				CrawlSource:             resources.AmazonCrawler,
-				ProductFetcher:          productFetcher,
+				ListingRuntimeHealthValidator:      resources.ListingRuntimeHealthValidator,
+				ListingRuntimeImportTaskRepository: resources.ImportTaskRepository,
+				RawJSONDataClient:                  resources.RawJSONDataClient,
+				StoreAPI:                           resources.StoreAPI,
+				SchedulerRuntime:                   resources.SchedulerRuntime,
+				SchedulerFactoryRuntime:            resources.SchedulerFactoryRuntime,
+				ProcessorRuntime:                   resources.ProcessorRuntime,
+				CrawlSource:                        resources.AmazonCrawler,
+				ProductFetcher:                     productFetcher,
 			}, nil
 		},
 	}

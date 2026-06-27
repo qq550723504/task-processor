@@ -2,13 +2,16 @@ package image
 
 import (
 	"testing"
-	"time"
-
-	"task-processor/internal/infra/clients/management"
 )
 
+type fakeImageDownloader struct{}
+
+func (fakeImageDownloader) DownloadImage(string) ([]byte, error) {
+	return nil, nil
+}
+
 func TestNewClientWithImageDownloaderUsesProvidedDownloader(t *testing.T) {
-	downloader := management.NewImageDownloader(3*time.Second, true)
+	downloader := fakeImageDownloader{}
 
 	client := NewClientWithImageDownloader(nil, downloader)
 

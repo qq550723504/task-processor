@@ -2,7 +2,7 @@
 
 > Status: active current-state document.
 >
-> Last reviewed: 2026-06-26.
+> Last reviewed: 2026-06-27.
 >
 > Scope: refactoring closeout, growth sequencing, and the current Now / Next / Later direction for Task Processor / ListingKit.
 
@@ -34,8 +34,8 @@ The current active work should focus on closeout and stabilization, not broad fe
 
 Required next work:
 
-1. Retire the remaining Management Client compatibility shell from listing runtime boundaries.
-2. Keep `PlatformRuntimeContext.ManagementClient` and `SharedResources.ManagementClient` on the explicit retirement path until store, product, pricing, task, and health capabilities are exposed through narrower runtime-owned ports.
+1. Keep the listing runtime boundary free of `ManagementClient`; `PlatformRuntimeContext` and consumer `SharedResources` now carry `ListingRuntimeHealthValidator` / `ListingRuntimeImportTaskRepository` ports instead of the broad client.
+2. Keep bootstrap shared resources on the `internal/listingruntime/local` provider/runtime path; that package now owns the local runtime implementation used by bootstrap and is guarded against importing the old Management Client service package. HTTP task-RPC/login and processor-base seams now use explicit ports or retired/unavailable behavior instead of reviving the broad Management Client.
 3. Keep `internal/listingkit` as orchestration, compatibility, DTO adaptation, persistence ordering, and API shell glue.
 4. Do not continue splitting files just because a helper can move.
 5. Keep every new migration tied to an explicit ownership reduction.

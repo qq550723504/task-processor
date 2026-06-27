@@ -13,7 +13,6 @@ func BuildClientConfig(cfg *config.Config) *sdsclient.Config {
 	if cfg == nil {
 		return clientCfg
 	}
-	clientCfg.Management = &cfg.Management
 	authBootstrap := cfg.Platforms.SDS.AuthBootstrap
 	if value := strings.TrimSpace(authBootstrap.StaticAccessToken); value != "" {
 		clientCfg.AuthBootstrap.StaticAccessToken = value
@@ -26,9 +25,6 @@ func BuildClientConfig(cfg *config.Config) *sdsclient.Config {
 	}
 	if value := strings.TrimSpace(authBootstrap.StaticCookie); value != "" {
 		clientCfg.AuthBootstrap.StaticCookie = value
-	}
-	if authBootstrap.ManagementStoreID > 0 {
-		clientCfg.AuthBootstrap.ManagementStoreID = authBootstrap.ManagementStoreID
 	}
 	if value := strings.TrimSpace(authBootstrap.LoginDomainName); value != "" {
 		clientCfg.AuthBootstrap.LoginDomainName = value

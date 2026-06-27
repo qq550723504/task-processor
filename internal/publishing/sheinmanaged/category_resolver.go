@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -15,7 +14,7 @@ type categoryResolver struct {
 	aiConfig sheinpub.CategoryAIConfig
 }
 
-func NewCategoryResolver(client *management.ClientManager, llmClient ...openaiclient.ChatCompleter) sheinpub.CategoryResolver {
+func NewCategoryResolver(llmClient ...openaiclient.ChatCompleter) sheinpub.CategoryResolver {
 	var aiConfig sheinpub.CategoryAIConfig
 	if len(llmClient) > 0 && llmClient[0] != nil {
 		aiConfig.Selector = newCategorySelectorAdapter(llmClient[0])
@@ -23,7 +22,7 @@ func NewCategoryResolver(client *management.ClientManager, llmClient ...openaicl
 	}
 	return &categoryResolver{
 		fallback: sheinpub.NewCategoryResolver(nil),
-		factory:  newAPIFactory(client),
+		factory:  newAPIFactory(),
 		aiConfig: aiConfig,
 	}
 }

@@ -20,7 +20,7 @@ type promptModuleBuilder func(store prompt.TenantPromptStore) *promptModuleResul
 
 type sdsModuleBuilder func(logger *logrus.Logger, cfg *config.Config) *sdsModuleResult
 
-type taskRPCModuleBuilder func(provider taskrpcapi.ClientProvider, localStatusProvider taskrpcapi.LocalStatusProvider) (*taskRPCModuleResult, error)
+type taskRPCModuleBuilder func(localStatusProvider taskrpcapi.LocalStatusProvider) (*taskRPCModuleResult, error)
 
 type supportFeatureSet struct {
 	promptModule  *promptModuleResult
@@ -45,7 +45,7 @@ func (b supportFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps, c
 		return features, err
 	}
 
-	taskRPCResult, err := b.buildTaskRPC(deps.managementClient(), runtimeBundle.localTaskHealthProvider())
+	taskRPCResult, err := b.buildTaskRPC(runtimeBundle.localTaskHealthProvider())
 	if err != nil {
 		return features, err
 	}
@@ -64,6 +64,6 @@ func buildSDSModuleResult(logger *logrus.Logger, cfg *config.Config) *sdsModuleR
 	return sdshttpapi.BuildModule(logger, cfg)
 }
 
-func buildTaskRPCModuleResult(provider taskrpcapi.ClientProvider, localStatusProvider taskrpcapi.LocalStatusProvider) (*taskRPCModuleResult, error) {
-	return taskrpcapi.BuildModule(provider, localStatusProvider)
+func buildTaskRPCModuleResult(localStatusProvider taskrpcapi.LocalStatusProvider) (*taskRPCModuleResult, error) {
+	return taskrpcapi.BuildModule(localStatusProvider)
 }

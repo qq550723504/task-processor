@@ -124,7 +124,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 			order = append(order, "prompt")
 			return &promptmgmtapi.BuildResult{}
 		},
-		buildTaskRPC: func(_ taskrpcapi.ClientProvider, provider taskrpcapi.LocalStatusProvider) (*taskrpcapi.BuildResult, error) {
+		buildTaskRPC: func(provider taskrpcapi.LocalStatusProvider) (*taskrpcapi.BuildResult, error) {
 			order = append(order, "taskrpc")
 			require.NotNil(t, provider)
 			snapshot := provider()

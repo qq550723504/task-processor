@@ -2,10 +2,8 @@ package processor
 
 import (
 	"context"
-	"strings"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/worker"
 	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/state"
@@ -16,60 +14,50 @@ import (
 
 // BaseProcessor 基础处理器结构
 type BaseProcessor struct {
-	config           *config.Config
-	managementClient *management.ClientManager
-	memoryManager    *state.MemoryManager
-	workerPool       worker.WorkerPool
-	logger           *logrus.Logger
-	platform         string
+	config            *config.Config
+	storeAPI          managementapi.StoreAPI
+	taskStatusRuntime taskstatus.RuntimeWithTaskRPC
+	memoryManager     *state.MemoryManager
+	workerPool        worker.WorkerPool
+	logger            *logrus.Logger
+	platform          string
 }
 
 // BaseProcessorConfig 基础处理器配置
 type BaseProcessorConfig struct {
-	Config           *config.Config
-	ManagementClient *management.ClientManager
-	Logger           *logrus.Logger
-	Platform         string
+	Config                   *config.Config
+	StoreAPI                 managementapi.StoreAPI
+	TaskStatusRuntime        taskstatus.RuntimeWithTaskRPC
+	DailyCountClientProvider state.DailyCountClientProvider
+	Logger                   *logrus.Logger
+	Platform                 string
 }
 
 // NewBaseProcessor 创建基础处理器
 func NewBaseProcessor(ctx context.Context, cfg *BaseProcessorConfig) *BaseProcessor {
-	managementClient := cfg.ManagementClient
-	if managementClient == nil {
-		managementClient = management.NewClientManager(&cfg.Config.Management)
-		managementClient.SetDataFreshnessDays(cfg.Config.Amazon.DataFreshnessDays)
-		if provider, err := management.NewLocalDataProvider(cfg.Config.Database, cfg.Config.Redis); err != nil {
-			cfg.Logger.WithError(err).Warn("failed to configure local management data provider")
-		} else if provider != nil {
-			managementClient.SetLocalDataProvider(provider)
-		}
-		cookieRedis := cfg.Config.EffectiveSheinCookieRedis()
-		if strings.TrimSpace(cookieRedis.Host) != "" {
-			if err := managementClient.SetSheinCookieRedisConfig(&cookieRedis); err != nil {
-				cfg.Logger.WithError(err).Warn("failed to configure SHEIN cookie Redis provider")
-			}
-		}
+	memoryManager := state.NewMemoryManager(ctx, cfg.DailyCountClientProvider)
+	if cfg.StoreAPI != nil {
+		memoryManager.ShopPauseManager.SetStoreClient(cfg.StoreAPI)
 	}
 
-	memoryManager := state.NewMemoryManager(ctx, managementClient)
-	storeClient := managementClient.GetStoreClient()
-	memoryManager.ShopPauseManager.SetStoreClient(storeClient)
-
 	return &BaseProcessor{
-		config:           cfg.Config,
-		managementClient: managementClient,
-		memoryManager:    memoryManager,
-		logger:           cfg.Logger,
-		platform:         cfg.Platform,
+		config:            cfg.Config,
+		storeAPI:          cfg.StoreAPI,
+		taskStatusRuntime: cfg.TaskStatusRuntime,
+		memoryManager:     memoryManager,
+		logger:            cfg.Logger,
+		platform:          cfg.Platform,
 	}
 }
 
 func NewBaseProcessorWithMemoryManager(cfg *BaseProcessorConfig, memoryManager *state.MemoryManager) *BaseProcessor {
 	return &BaseProcessor{
-		config:        cfg.Config,
-		memoryManager: memoryManager,
-		logger:        cfg.Logger,
-		platform:      cfg.Platform,
+		config:            cfg.Config,
+		storeAPI:          cfg.StoreAPI,
+		taskStatusRuntime: cfg.TaskStatusRuntime,
+		memoryManager:     memoryManager,
+		logger:            cfg.Logger,
+		platform:          cfg.Platform,
 	}
 }
 
@@ -78,17 +66,17 @@ func (bp *BaseProcessor) GetConfig() *config.Config {
 }
 
 func (bp *BaseProcessor) GetStoreAPI() managementapi.StoreAPI {
-	if bp == nil || bp.managementClient == nil {
+	if bp == nil {
 		return nil
 	}
-	return bp.managementClient.GetStoreClient()
+	return bp.storeAPI
 }
 
 func (bp *BaseProcessor) GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
-	if bp == nil || bp.managementClient == nil {
+	if bp == nil {
 		return nil
 	}
-	return management.NewTaskStatusRuntime(bp.managementClient)
+	return bp.taskStatusRuntime
 }
 
 func (bp *BaseProcessor) GetMemoryManager() *state.MemoryManager {

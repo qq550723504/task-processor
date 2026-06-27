@@ -1,7 +1,7 @@
-package management
+package local
 
 import (
-	"task-processor/internal/infra/clients/management/api"
+	api "task-processor/internal/taskrpcapi"
 	"task-processor/internal/taskstatus"
 )
 

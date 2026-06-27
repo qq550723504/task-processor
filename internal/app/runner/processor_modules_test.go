@@ -5,7 +5,7 @@ import (
 
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	"task-processor/internal/infra/clients/management"
+	"task-processor/internal/product"
 )
 
 func TestBuildRuntimeProductFetcherUsesPlatformFetchModeForShein(t *testing.T) {
@@ -18,9 +18,8 @@ func TestBuildRuntimeProductFetcherUsesPlatformFetchModeForShein(t *testing.T) {
 	cfg.Amazon.Enabled = false
 
 	service := &processorServiceImpl{
-		managementClient: management.NewClientManager(nil),
+		rawJSONDataClient: fakeRawJSONDataClient{},
 	}
-	service.rawJSONDataClient = service.managementClient.GetRawJsonDataAdapter()
 
 	fetcher, err := buildRuntimeProductFetcher(cfg, service, "shein")
 	if err != nil {
@@ -33,4 +32,14 @@ func TestBuildRuntimeProductFetcherUsesPlatformFetchModeForShein(t *testing.T) {
 	if _, ok := fetcher.(*appfetcher.DistributedProductFetcher); ok {
 		t.Fatal("buildRuntimeProductFetcher() returned distributed fetcher, want local fetcher")
 	}
+}
+
+type fakeRawJSONDataClient struct{}
+
+func (fakeRawJSONDataClient) GetRawJsonData(*product.RawJsonReq) (*product.RawJsonResp, error) {
+	return nil, nil
+}
+
+func (fakeRawJSONDataClient) CreateRawJsonData(*product.RawJsonCreateReq) (int64, error) {
+	return 0, nil
 }

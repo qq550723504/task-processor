@@ -9,12 +9,12 @@ import (
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/auth"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	crawleramazon "task-processor/internal/integration/crawler/amazon"
 	"task-processor/internal/listingadmin"
 	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
+	localruntime "task-processor/internal/listingruntime/local"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/product"
 	"task-processor/internal/prompt"
@@ -34,20 +34,16 @@ type SharedResourceOptions struct {
 
 // SharedResources groups dependencies that were previously assembled in multiple places.
 type SharedResources struct {
-	AuthClient              *auth.ClientCredentialsAuthClient
-	ManagementClient        *management.ClientManager
-	RawJSONDataClient       product.RawJsonDataClient
-	StoreAPI                managementapi.StoreAPI
-	SchedulerRuntime        runner.SchedulerRuntimeProvider
-	SchedulerFactoryRuntime consumer.SchedulerFactoryRuntime
-	ProcessorRuntime        consumer.ProcessorRuntime
-	AmazonCrawler           runner.CrawlSource
-	RabbitMQClient          *rabbitmq.Client
-}
-
-type managementRuntime struct {
-	authClient       *auth.ClientCredentialsAuthClient
-	managementClient *management.ClientManager
+	AuthClient                    *auth.ClientCredentialsAuthClient
+	ListingRuntimeHealthValidator consumer.ListingRuntimeHealthValidator
+	RawJSONDataClient             product.RawJsonDataClient
+	StoreAPI                      managementapi.StoreAPI
+	SchedulerRuntime              runner.SchedulerRuntimeProvider
+	SchedulerFactoryRuntime       consumer.SchedulerFactoryRuntime
+	ProcessorRuntime              consumer.ProcessorRuntime
+	ImportTaskRepository          consumer.ListingRuntimeImportTaskRepository
+	AmazonCrawler                 runner.CrawlSource
+	RabbitMQClient                *rabbitmq.Client
 }
 
 // InitializePrompts centralizes prompt registry initialization.
@@ -68,43 +64,44 @@ func InitializePrompts(ctx context.Context, cfg *config.Config, logger *logrus.L
 	return nil
 }
 
-// BuildSharedResources centralizes auth, management client, and optional crawler assembly.
+// BuildSharedResources centralizes local listing runtime and optional crawler assembly.
 func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options SharedResourceOptions) (*SharedResources, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	runtime := &managementRuntime{
-		managementClient: newConfiguredManagementClient(cfg, logger),
+	localProvider, err := localruntime.NewDataProvider(cfg.Database, cfg.Redis)
+	if err != nil {
+		return nil, fmt.Errorf("configure local listing runtime data provider: %w", err)
 	}
-	if !options.SkipManagementAuth {
-		var err error
-		runtime, err = buildManagementRuntime(cfg, logger)
-		if err != nil {
-			if !options.AllowMissingManagementAuth {
-				return nil, err
-			}
 
-			logger.WithError(err).Warn("management runtime unavailable, continuing without management client")
-			runtime = &managementRuntime{
-				managementClient: newConfiguredManagementClient(cfg, logger),
-			}
+	var cookieProvider localruntime.SheinCookieProvider
+	cookieRedis := cfg.EffectiveSheinCookieRedis()
+	if strings.TrimSpace(cookieRedis.Host) != "" {
+		if provider, err := localruntime.NewRedisSheinCookieProvider(&cookieRedis); err != nil {
+			logger.WithError(err).Warn("failed to configure SHEIN cookie Redis provider")
+		} else {
+			cookieProvider = provider
 		}
 	}
 
-	resources := &SharedResources{
-		AuthClient:       runtime.authClient,
-		ManagementClient: runtime.managementClient,
-	}
-	if runtime.managementClient != nil {
-		resources.RawJSONDataClient = runtime.managementClient.GetRawJsonDataAdapter()
-		resources.StoreAPI = runtime.managementClient.GetStoreClient()
-		resources.SchedulerRuntime = runtime.managementClient
-		resources.SchedulerFactoryRuntime = managementSchedulerFactoryRuntime{source: runtime.managementClient}
+	localRuntime := localruntime.NewRuntime(localProvider, localruntime.RuntimeOptions{
+		SheinCookieProvider:      cookieProvider,
+		ImageDownloadInsecureTLS: cfg.Management.HTTPClient.InsecureSkipVerify,
+	})
+
+	resources := &SharedResources{}
+	if localRuntime != nil {
+		resources.ListingRuntimeHealthValidator = localRuntime
+		resources.RawJSONDataClient = localruntime.NewRawJSONDataAdapter(localProvider)
+		resources.StoreAPI = localRuntime.GetStoreAPI()
+		resources.SchedulerRuntime = localRuntime
+		resources.SchedulerFactoryRuntime = managementSchedulerFactoryRuntime{source: localRuntime}
 		resources.ProcessorRuntime = managementProcessorRuntime{
-			managementSchedulerFactoryRuntime: managementSchedulerFactoryRuntime{source: runtime.managementClient},
-			source:                            runtime.managementClient,
+			managementSchedulerFactoryRuntime: managementSchedulerFactoryRuntime{source: localRuntime},
+			source:                            localRuntime,
 		}
+		resources.ImportTaskRepository = localProvider.ImportTaskRepository()
 	}
 
 	if cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled {
@@ -123,64 +120,9 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 	return resources, nil
 }
 
-func buildManagementRuntime(cfg *config.Config, logger *logrus.Logger) (*managementRuntime, error) {
-	tenantID := resolveTenantID(cfg)
-
-	authClient := auth.NewClientCredentialsAuthClient(
-		cfg.Management.BaseURL,
-		cfg.Management.ClientID,
-		cfg.Management.ClientSecret,
-		tenantID,
-		logger,
-	)
-
-	accessToken, err := authClient.GetAccessToken()
-	if err != nil {
-		return nil, fmt.Errorf("get access token: %w", err)
-	}
-
-	managementClient := newConfiguredManagementClient(cfg, logger)
-	managementClient.GetClient()
-	managementClient.SetUserToken(accessToken, tenantID)
-
-	return &managementRuntime{
-		authClient:       authClient,
-		managementClient: managementClient,
-	}, nil
-}
-
-func newConfiguredManagementClient(cfg *config.Config, logger *logrus.Logger) *management.ClientManager {
-	managementClient := management.NewClientManager(&cfg.Management)
-	managementClient.SetDataFreshnessDays(cfg.Amazon.DataFreshnessDays)
-
-	if provider, err := management.NewLocalDataProvider(cfg.Database, cfg.Redis); err != nil {
-		logger.WithError(err).Warn("failed to configure local management data provider")
-	} else if provider != nil {
-		managementClient.SetLocalDataProvider(provider)
-	}
-
-	cookieRedis := cfg.EffectiveSheinCookieRedis()
-	if strings.TrimSpace(cookieRedis.Host) != "" {
-		if err := managementClient.SetSheinCookieRedisConfig(&cookieRedis); err != nil {
-			logger.WithError(err).Warn("failed to configure SHEIN cookie Redis provider")
-		}
-	}
-
-	return managementClient
-}
-
 // BuildAmazonCrawler constructs the concrete Amazon crawler at the bootstrap edge.
 func BuildAmazonCrawler(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource {
 	return crawleramazon.NewLegacyCrawlSource(cfg, logger)
-}
-
-func resolveTenantID(cfg *config.Config) string {
-	tenantID := cfg.Management.TenantID
-	if tenantID == "" {
-		return "1"
-	}
-
-	return tenantID
 }
 
 type managementSchedulerFactoryRuntime struct {
@@ -195,13 +137,13 @@ type managementProcessorRuntime struct {
 type schedulerRuntimeSource interface {
 	GetRuntimeStoreService() listingruntime.StoreService
 	ListRuntimeAutoPricingStoreIDs(ctx context.Context, platform string) ([]int64, error)
-	GetStoreClient() *management.StoreAPIClient
+	GetStoreAPI() managementapi.StoreAPI
 	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
 	GetRawJsonDataAdapter() product.RawJsonDataClient
-	GetPricingRuleClient() *management.PricingRuleAPIClient
-	GetProductImportMappingClient() *management.ProductImportMappingAPIClient
-	GetInventoryRecordClient() *management.InventoryRecordAPIClient
-	GetProductDataClient(storeID int64) *management.ProductDataAPIClient
+	GetPricingRuleClient() managementapi.PricingRuleAPI
+	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
+	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
+	GetProductDataClient(storeID int64) managementapi.ProductDataAPI
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
 	GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository
 	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
@@ -214,14 +156,16 @@ type schedulerRuntimeSource interface {
 
 type processorRuntimeSource interface {
 	schedulerRuntimeSource
-	GetFilterRuleClient() *management.FilterRuleAPIClient
-	GetDailyListingCountClient() *management.DailyListingCountAPIClient
-	GetProfitRuleClient() *management.ProfitRuleAPIClient
+	GetFilterRuleClient() managementapi.FilterRuleAPI
+	GetDailyListingCountClient() managementapi.DailyListingCountAPI
+	GetProfitRuleClient() managementapi.ProfitRuleAPI
 	GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error)
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
 	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
 	DeleteSheinStoreCookie(storeID int64) (bool, error)
-	GetImageDownloader() *management.ImageDownloader
+	GetImageDownloader() interface {
+		DownloadImage(url string) ([]byte, error)
+	}
 	SetRuntimeStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error)
 	RuntimePublishedProductExists(ctx context.Context, storeID int64, platform, region, productID string) (bool, error)
 	FindRuntimeProductImportMappingByTaskAndSKU(ctx context.Context, importTaskID int64, sku string) (*listingruntime.ProductImportMapping, error)
@@ -246,13 +190,6 @@ func (r managementSchedulerFactoryRuntime) ListRuntimeAutoPricingStoreIDs(ctx co
 	return r.source.ListRuntimeAutoPricingStoreIDs(ctx, platform)
 }
 
-func (r managementSchedulerFactoryRuntime) GetStoreClient() *management.StoreAPIClient {
-	if r.source == nil {
-		return nil
-	}
-	return r.source.GetStoreClient()
-}
-
 func (r managementSchedulerFactoryRuntime) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error) {
 	if r.source == nil {
 		return nil, nil
@@ -268,7 +205,10 @@ func (r managementSchedulerFactoryRuntime) GetRawJsonDataAdapter() product.RawJs
 }
 
 func (r managementSchedulerFactoryRuntime) GetStoreAPI() managementapi.StoreAPI {
-	return r.GetStoreClient()
+	if r.source == nil {
+		return nil
+	}
+	return r.source.GetStoreAPI()
 }
 
 func (r managementSchedulerFactoryRuntime) GetPricingRuleClient() managementapi.PricingRuleAPI {
@@ -282,14 +222,14 @@ func (r managementSchedulerFactoryRuntime) GetProductImportMappingAPI() manageme
 	if r.source == nil {
 		return nil
 	}
-	return r.source.GetProductImportMappingClient()
+	return r.source.GetProductImportMappingAPI()
 }
 
 func (r managementSchedulerFactoryRuntime) GetInventoryRecordAPI() managementapi.InventoryRecordAPI {
 	if r.source == nil {
 		return nil
 	}
-	return r.source.GetInventoryRecordClient()
+	return r.source.GetInventoryRecordAPI()
 }
 
 func (r managementSchedulerFactoryRuntime) GetProductDataClient(storeID int64) managementapi.ProductDataAPI {
@@ -366,28 +306,28 @@ func (r managementSchedulerFactoryRuntime) GetSheinStoreCookie(storeID int64) (s
 	return r.source.GetSheinStoreCookie(storeID)
 }
 
-func (r managementProcessorRuntime) GetFilterRuleClient() *management.FilterRuleAPIClient {
+func (r managementProcessorRuntime) GetFilterRuleClient() managementapi.FilterRuleAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetFilterRuleClient()
 }
 
-func (r managementProcessorRuntime) GetDailyListingCountClient() *management.DailyListingCountAPIClient {
+func (r managementProcessorRuntime) GetDailyListingCountClient() managementapi.DailyListingCountAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetDailyListingCountClient()
 }
 
-func (r managementProcessorRuntime) GetProductImportMappingClient() *management.ProductImportMappingAPIClient {
+func (r managementProcessorRuntime) GetProductImportMappingClient() managementapi.ProductImportMappingAPI {
 	if r.source == nil {
 		return nil
 	}
-	return r.source.GetProductImportMappingClient()
+	return r.source.GetProductImportMappingAPI()
 }
 
-func (r managementProcessorRuntime) GetProfitRuleClient() *management.ProfitRuleAPIClient {
+func (r managementProcessorRuntime) GetProfitRuleClient() managementapi.ProfitRuleAPI {
 	if r.source == nil {
 		return nil
 	}
@@ -436,7 +376,9 @@ func (r managementProcessorRuntime) DeleteSheinStoreCookie(storeID int64) (bool,
 	return r.source.DeleteSheinStoreCookie(storeID)
 }
 
-func (r managementProcessorRuntime) GetImageDownloader() *management.ImageDownloader {
+func (r managementProcessorRuntime) GetImageDownloader() interface {
+	DownloadImage(url string) ([]byte, error)
+} {
 	if r.source == nil {
 		return nil
 	}

@@ -126,7 +126,7 @@ func (h *handler) GetHealth(c *gin.Context) {
 		"queueStats":   queueStats,
 		"localWorkers": localWorkers,
 		"errorMessage": errorMessage,
-		"source":       "management-task-rpc",
+		"source":       "local-task-runtime",
 	})
 }
 

@@ -38,7 +38,7 @@ type managementRuntime interface {
 }
 
 type Dependencies struct {
-	ManagementClient  managementRuntime
+	RuntimeRepository managementRuntime
 	TaskStatusRuntime taskstatus.RuntimeWithTaskRPC
 	MemoryManager     *state.MemoryManager
 	ImageDownloader   interface {
@@ -50,7 +50,7 @@ type Dependencies struct {
 
 type SheinProcessor struct {
 	*processor.BaseProcessor
-	managementClient  managementRuntime
+	runtimeRepository managementRuntime
 	taskStatusRuntime taskstatus.RuntimeWithTaskRPC
 	imageDownloader   interface {
 		DownloadImage(url string) ([]byte, error)
@@ -63,9 +63,9 @@ type SheinProcessor struct {
 }
 
 func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.Logger, deps Dependencies) (*SheinProcessor, error) {
-	if deps.ManagementClient == nil {
-		logger.Error("[SHEIN] ManagementClient is required")
-		return nil, fmt.Errorf("managementClient is required")
+	if deps.RuntimeRepository == nil {
+		logger.Error("[SHEIN] runtime repository is required")
+		return nil, fmt.Errorf("runtime repository is required")
 	}
 	if deps.ProductFetcher == nil {
 		logger.Error("[SHEIN] ProductFetcher is required")
@@ -98,7 +98,7 @@ func NewSheinProcessor(ctx context.Context, cfg *config.Config, logger *logrus.L
 
 	p := &SheinProcessor{
 		BaseProcessor:     baseProcessor,
-		managementClient:  deps.ManagementClient,
+		runtimeRepository: deps.RuntimeRepository,
 		taskStatusRuntime: deps.TaskStatusRuntime,
 		imageDownloader:   deps.ImageDownloader,
 		productFetcher:    deps.ProductFetcher,
@@ -156,7 +156,7 @@ func (p *SheinProcessor) GetRuntimeRepository() sheincontext.RuntimeRepository {
 	if p == nil {
 		return nil
 	}
-	return p.managementClient
+	return p.runtimeRepository
 }
 
 func (p *SheinProcessor) GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
@@ -167,63 +167,63 @@ func (p *SheinProcessor) GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
 }
 
 func (p *SheinProcessor) GetRuntimeStoreService() listingruntime.StoreService {
-	if p == nil || p.managementClient == nil {
+	if p == nil || p.runtimeRepository == nil {
 		return nil
 	}
-	return p.managementClient.GetRuntimeStoreService()
+	return p.runtimeRepository.GetRuntimeStoreService()
 }
 
 func (p *SheinProcessor) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
-	if p == nil || p.managementClient == nil {
+	if p == nil || p.runtimeRepository == nil {
 		return nil
 	}
-	return p.managementClient.GetLocalStoreRepository()
+	return p.runtimeRepository.GetLocalStoreRepository()
 }
 
 func (p *SheinProcessor) GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository {
-	if p == nil || p.managementClient == nil {
+	if p == nil || p.runtimeRepository == nil {
 		return nil
 	}
-	return p.managementClient.GetLocalFilterRuleRepository()
+	return p.runtimeRepository.GetLocalFilterRuleRepository()
 }
 
 func (p *SheinProcessor) GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository {
-	if p == nil || p.managementClient == nil {
+	if p == nil || p.runtimeRepository == nil {
 		return nil
 	}
-	return p.managementClient.GetLocalProfitRuleRepository()
+	return p.runtimeRepository.GetLocalProfitRuleRepository()
 }
 
 func (p *SheinProcessor) GetSheinCookie(storeID int64) (string, int64, error) {
-	if p == nil || p.managementClient == nil {
+	if p == nil || p.runtimeRepository == nil {
 		return "", 0, nil
 	}
-	return p.managementClient.GetSheinCookie(storeID)
+	return p.runtimeRepository.GetSheinCookie(storeID)
 }
 
 func (p *SheinProcessor) GetSheinStoreCookie(storeID int64) (string, error) {
-	if p == nil || p.managementClient == nil {
+	if p == nil || p.runtimeRepository == nil {
 		return "", nil
 	}
-	return p.managementClient.GetSheinStoreCookie(storeID)
+	return p.runtimeRepository.GetSheinStoreCookie(storeID)
 }
 
 func (p *SheinProcessor) DeleteSheinStoreCookie(storeID int64) (bool, error) {
-	if p == nil || p.managementClient == nil {
+	if p == nil || p.runtimeRepository == nil {
 		return false, nil
 	}
-	return p.managementClient.DeleteSheinStoreCookie(storeID)
+	return p.runtimeRepository.DeleteSheinStoreCookie(storeID)
 }
 
 func (p *SheinProcessor) SetRuntimeStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error) {
-	if p == nil || p.managementClient == nil {
+	if p == nil || p.runtimeRepository == nil {
 		return false, nil
 	}
-	return p.managementClient.SetRuntimeStorePauseStatus(storeID, pause, pauseType)
+	return p.runtimeRepository.SetRuntimeStorePauseStatus(storeID, pause, pauseType)
 }
 
 func (p *SheinProcessor) NewManagedAPIClientWithStoreInfo(storeID int64, storeInfo *listingruntime.StoreInfo) *sheinclient.APIClient {
-	if p == nil || p.managementClient == nil || storeID <= 0 {
+	if p == nil || p.runtimeRepository == nil || storeID <= 0 {
 		return nil
 	}
 	storeService := p.GetRuntimeStoreService()
@@ -238,7 +238,7 @@ func (p *SheinProcessor) NewManagedAPIClientWithStoreInfo(storeID int64, storeIn
 func (p *SheinProcessor) GetImageDownloader() interface {
 	DownloadImage(url string) ([]byte, error)
 } {
-	if p == nil || p.managementClient == nil {
+	if p == nil || p.runtimeRepository == nil {
 		return nil
 	}
 	return p.imageDownloader

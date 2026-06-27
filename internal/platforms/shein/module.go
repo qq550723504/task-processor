@@ -178,11 +178,7 @@ func configureTaskRecoveryWatchdogs(rt consumer.PlatformRuntimeContext) {
 	if !cfg.RabbitMQ.ProcessingTimeout.Enabled && !cfg.RabbitMQ.StaleQueued.Enabled {
 		return
 	}
-	if rt.ManagementClient == nil {
-		rt.Logger.Warn("task recovery watchdog is enabled but management client is unavailable")
-		return
-	}
-	repo := rt.ManagementClient.GetLocalImportTaskRepository()
+	repo := rt.ListingRuntimeImportTaskRepository
 	if repo == nil {
 		rt.Logger.Warn("task recovery watchdog is enabled but local import task repository is unavailable")
 		return

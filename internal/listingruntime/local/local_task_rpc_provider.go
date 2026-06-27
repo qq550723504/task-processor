@@ -1,13 +1,13 @@
-package management
+package local
 
 import (
 	"encoding/json"
 	"fmt"
 	"time"
 
-	"task-processor/internal/infra/clients/management/api"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
+	api "task-processor/internal/taskrpcapi"
 
 	"gorm.io/gorm"
 )

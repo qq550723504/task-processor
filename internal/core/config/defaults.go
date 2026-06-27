@@ -267,7 +267,6 @@ func setSDSDefaults(v *viper.Viper, p *SDSPlatformConfig) {
 	v.SetDefault("platforms.sds.authBootstrap.loginDomainName", p.AuthBootstrap.LoginDomainName)
 	v.SetDefault("platforms.sds.authBootstrap.loginVerifyCaptchaParam", p.AuthBootstrap.LoginVerifyCaptchaParam)
 	v.SetDefault("platforms.sds.authBootstrap.loginExtraInfo", p.AuthBootstrap.LoginExtraInfo)
-	v.SetDefault("platforms.sds.authBootstrap.managementStoreID", p.AuthBootstrap.ManagementStoreID)
 }
 
 func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {

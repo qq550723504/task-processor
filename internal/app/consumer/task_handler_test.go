@@ -4,14 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"sync/atomic"
 	"testing"
 
-	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	managementapi "task-processor/internal/listingadmin"
@@ -46,6 +42,31 @@ type stubProcessorWithManagement struct {
 
 func (s *stubProcessorWithManagement) GetTaskStatusRuntime() taskstatus.RuntimeWithTaskRPC {
 	return s.runtime
+}
+
+type stubClaimRuntime struct {
+	updateCalls *int32
+	updateErr   error
+	status      *taskstatus.TaskStatusSnapshot
+}
+
+func (s stubClaimRuntime) UpdateRuntimeTaskStatus(*listingruntime.TaskStatusUpdate) error {
+	if s.updateCalls != nil {
+		atomic.AddInt32(s.updateCalls, 1)
+	}
+	return s.updateErr
+}
+
+func (s stubClaimRuntime) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error) {
+	if s.status != nil {
+		return s.status, nil
+	}
+	return &taskstatus.TaskStatusSnapshot{
+		TaskID:          taskID,
+		Status:          "PROCESSING",
+		StatusKey:       "PROCESSING",
+		CanonicalStatus: "processing",
+	}, nil
 }
 
 type stubRuntimeWithImportTask struct {
@@ -255,21 +276,8 @@ func TestTaskHandlerHandleMessage_SkipsAutoListingDisabledStore(t *testing.T) {
 func TestTaskHandlerHandleMessage_ClaimsQueuedTaskBeforeProcessing(t *testing.T) {
 	autoListingEnabled := true
 	var updateCalls int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rpc-api/listing/import-task/update-status" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		atomic.AddInt32(&updateCalls, 1)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":true}`))
-	}))
-	defer server.Close()
 
-	clientMgr := management.NewClientManager(&config.ManagementConfig{BaseURL: server.URL})
-	clientMgr.GetClient()
-	clientMgr.SetUserToken("token", "1")
-
-	processor := &stubProcessorWithManagement{runtime: management.NewTaskStatusRuntime(clientMgr)}
+	processor := &stubProcessorWithManagement{runtime: stubClaimRuntime{updateCalls: &updateCalls}}
 	handler := NewTaskHandler(TaskHandlerConfig{
 		Platform:  "shein",
 		Processor: processor,
@@ -316,19 +324,6 @@ func TestTaskHandlerHandleMessage_ClaimsQueuedTaskBeforeProcessing(t *testing.T)
 func TestTaskHandlerHandleMessageWithAck_AcksAfterClaimBeforeProcessing(t *testing.T) {
 	autoListingEnabled := true
 	var updateCalls int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rpc-api/listing/import-task/update-status" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		atomic.AddInt32(&updateCalls, 1)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":true}`))
-	}))
-	defer server.Close()
-
-	clientMgr := management.NewClientManager(&config.ManagementConfig{BaseURL: server.URL})
-	clientMgr.GetClient()
-	clientMgr.SetUserToken("token", "1")
 
 	var acked atomic.Bool
 	var processSawAck atomic.Bool
@@ -336,7 +331,7 @@ func TestTaskHandlerHandleMessageWithAck_AcksAfterClaimBeforeProcessing(t *testi
 		stubProcessor: stubProcessor{onProcess: func() {
 			processSawAck.Store(acked.Load())
 		}},
-		runtime: management.NewTaskStatusRuntime(clientMgr),
+		runtime: stubClaimRuntime{updateCalls: &updateCalls},
 	}
 	handler := NewTaskHandler(TaskHandlerConfig{
 		Platform:  "shein",
@@ -390,21 +385,8 @@ func TestTaskHandlerHandleMessageWithAck_AcksAfterClaimBeforeProcessing(t *testi
 func TestTaskHandlerHandleMessageWithAck_StopsWhenAckFails(t *testing.T) {
 	autoListingEnabled := true
 	var updateCalls int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rpc-api/listing/import-task/update-status" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		atomic.AddInt32(&updateCalls, 1)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":true}`))
-	}))
-	defer server.Close()
 
-	clientMgr := management.NewClientManager(&config.ManagementConfig{BaseURL: server.URL})
-	clientMgr.GetClient()
-	clientMgr.SetUserToken("token", "1")
-
-	processor := &stubProcessorWithManagement{runtime: management.NewTaskStatusRuntime(clientMgr)}
+	processor := &stubProcessorWithManagement{runtime: stubClaimRuntime{updateCalls: &updateCalls}}
 	handler := NewTaskHandler(TaskHandlerConfig{
 		Platform:  "shein",
 		Processor: processor,
@@ -453,24 +435,16 @@ func TestTaskHandlerHandleMessageWithAck_StopsWhenAckFails(t *testing.T) {
 
 func TestTaskHandlerHandleMessage_StopsWhenClaimRejected(t *testing.T) {
 	autoListingEnabled := true
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/rpc-api/listing/import-task/update-status":
-			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":false}`))
-		case "/rpc-api/listing/task/status":
-			_, _ = w.Write([]byte(`{"code":0,"message":"ok","data":{"taskId":7812001,"status":"PROCESSING","statusKey":"PROCESSING","statusName":"处理中","canonicalStatus":"processing"}}`))
-		default:
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-	}))
-	defer server.Close()
-
-	clientMgr := management.NewClientManager(&config.ManagementConfig{BaseURL: server.URL})
-	clientMgr.GetClient()
-	clientMgr.SetUserToken("token", "1")
-
-	processor := &stubProcessorWithManagement{runtime: management.NewTaskStatusRuntime(clientMgr)}
+	processor := &stubProcessorWithManagement{runtime: stubClaimRuntime{
+		updateErr: errors.New("Management API error 409"),
+		status: &taskstatus.TaskStatusSnapshot{
+			TaskID:          7812001,
+			Status:          "PROCESSING",
+			StatusKey:       "PROCESSING",
+			StatusName:      "处理中",
+			CanonicalStatus: "processing",
+		},
+	}}
 	handler := NewTaskHandler(TaskHandlerConfig{
 		Platform:  "shein",
 		Processor: processor,

@@ -106,7 +106,18 @@ func (a temuDependencyRuntimeAdapter) GetStoreAPI() managementapi.StoreAPI {
 	if a.processorRuntimeProvider == nil {
 		return nil
 	}
-	return a.processorRuntimeProvider.GetStoreClient()
+	return a.processorRuntimeProvider.GetStoreAPI()
+}
+
+func (a temuDependencyRuntimeAdapter) GetStoreClient() managementapi.StoreAPI {
+	return a.GetStoreAPI()
+}
+
+func (a temuDependencyRuntimeAdapter) GetProductImportMappingClient() managementapi.ProductImportMappingAPI {
+	if a.processorRuntimeProvider == nil {
+		return nil
+	}
+	return a.processorRuntimeProvider.GetProductImportMappingAPI()
 }
 
 type sheinDependencyRuntimeAdapter struct {
@@ -117,7 +128,7 @@ func (a sheinDependencyRuntimeAdapter) GetStoreAPI() managementapi.StoreAPI {
 	if a.processorRuntimeProvider == nil {
 		return nil
 	}
-	return a.processorRuntimeProvider.GetStoreClient()
+	return a.processorRuntimeProvider.GetStoreAPI()
 }
 
 func (a sheinDependencyRuntimeAdapter) GetImageDownloader() interface {

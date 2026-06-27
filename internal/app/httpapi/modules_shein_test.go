@@ -5,7 +5,6 @@ import (
 
 	appbootstrap "task-processor/internal/app/bootstrap"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/clients/management"
 )
 
 func TestBuildSheinLoginModuleSkipsModuleWithoutLocalStoreRepository(t *testing.T) {
@@ -20,9 +19,7 @@ func TestBuildSheinLoginModuleSkipsModuleWithoutLocalStoreRepository(t *testing.
 					},
 				},
 			},
-			sharedResources: &appbootstrap.SharedResources{
-				ManagementClient: management.NewClientManager(&config.ManagementConfig{}),
-			},
+			sharedResources: &appbootstrap.SharedResources{},
 		},
 	})
 	if err != nil {

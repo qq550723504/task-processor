@@ -2,7 +2,6 @@ package sheinmanaged
 
 import (
 	"task-processor/internal/catalog/canonical"
-	"task-processor/internal/infra/clients/management"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -13,10 +12,14 @@ type saleAttributeResolver struct {
 	llm      openaiclient.ChatCompleter
 }
 
-func NewSaleAttributeResolver(client *management.ClientManager, llm openaiclient.ChatCompleter) sheinpub.SaleAttributeResolver {
+func NewSaleAttributeResolver(llmClients ...openaiclient.ChatCompleter) sheinpub.SaleAttributeResolver {
+	var llm openaiclient.ChatCompleter
+	if len(llmClients) > 0 {
+		llm = llmClients[0]
+	}
 	return &saleAttributeResolver{
 		fallback: sheinpub.NewSaleAttributeResolver(nil, llm),
-		factory:  newAPIFactory(client),
+		factory:  newAPIFactory(),
 		llm:      llm,
 	}
 }

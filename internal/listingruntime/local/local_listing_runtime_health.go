@@ -1,4 +1,4 @@
-package management
+package local
 
 import (
 	"errors"
@@ -37,20 +37,8 @@ func (r LocalListingRuntimeReport) Fields() map[string]bool {
 	}
 }
 
-func (cm *ClientManager) ValidateLocalListingRuntimeFields() (map[string]bool, error) {
-	report, err := cm.ValidateLocalListingRuntime()
-	return report.Fields(), err
-}
-
-func (cm *ClientManager) ValidateLocalListingRuntime() (LocalListingRuntimeReport, error) {
+func ValidateLocalListingRuntime(provider *LocalDataProvider) (LocalListingRuntimeReport, error) {
 	var report LocalListingRuntimeReport
-	if cm == nil {
-		return report, errors.New("management client is not initialized")
-	}
-
-	cm.mutex.RLock()
-	provider := cm.localDataProvider
-	cm.mutex.RUnlock()
 	if provider == nil {
 		return report, errors.New("local management data provider is not configured")
 	}
