@@ -75,7 +75,7 @@ Current direct dependency hotspots are:
     online runtime factory is retired and the package falls back to offline
     publishing resolution when no runtime API is provided
   - the empty direct-management guard is
-    `TestPublishingSheinManagedManagementImportsStayAllowlisted`
+    `TestPublishingSheinManagedRetiredManagementImportsStayBlocked`
 - `internal/shein`
   - broad `management` coupling across inventory, scheduler, publish,
     validation, activity, mapping, and product packages
@@ -108,15 +108,15 @@ Current direct dependency hotspots are:
   - broad `management` coupling in sync, pricing, product, store, and scheduler
     paths, plus `openai` coupling in AI, image, SKU, product, and pipeline helpers
   - `internal/temu/sync` and `internal/temu/pricing` management seams are guarded by
-    `TestTEMUSyncAndPricingManagementImportsStayAllowlisted`
+    `TestTEMUSyncAndPricingRetiredManagementImportsStayBlocked`
   - `internal/temu/product`, `internal/temu/store`, and `internal/temu/scheduler`
     management seams are guarded by
-    `TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted`
+    `TestTEMUProductStoreAndSchedulerRetiredManagementImportsStayBlocked`
   - `internal/temu/api/client`, `internal/temu/context`,
     `internal/temu/bulkrelist`, `internal/temu/filter`,
     `internal/temu/handlerbase`, `internal/temu/rules`, and the root
     `processor.go` runtime seam are guarded by
-    `TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted`
+    `TestTEMURuntimeAndBridgeRetiredManagementImportsStayBlocked`
   - TEMU OpenAI seams are guarded by `TestTEMUOpenAIImportsStayAllowlisted`
   - cleanup should begin at service constructors and package-local contracts
 - `internal/app`

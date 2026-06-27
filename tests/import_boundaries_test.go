@@ -344,7 +344,7 @@ func TestPublishingSheinManagedAPIImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestPublishingSheinManagedManagementImportsStayAllowlisted(t *testing.T) {
+func TestPublishingSheinManagedRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "publishing", "sheinmanaged")
 	allowedFiles := map[string]struct{}{}
 
@@ -1367,7 +1367,7 @@ func TestBaseProcessorDoesNotExposeRetiredManagementService(t *testing.T) {
 	for _, imp := range file.Imports {
 		importPath := strings.Trim(imp.Path.Value, `"`)
 		if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
-			t.Fatalf("%s imports %s; BaseProcessor must only expose explicitly injected runtime ports after ManagementClient retirement", path, importPath)
+			t.Fatalf("%s imports %s; BaseProcessor must only expose explicitly injected runtime ports after retired management service shutdown", path, importPath)
 		}
 	}
 
@@ -1406,7 +1406,7 @@ func TestBaseProcessorDoesNotExposeRetiredManagementService(t *testing.T) {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	if strings.Contains(string(source), "management.New") {
-		t.Fatalf("%s constructs management clients; BaseProcessor must not revive retired ManagementClient service", path)
+		t.Fatalf("%s constructs management clients; BaseProcessor must not revive retired management service", path)
 	}
 }
 
@@ -2542,7 +2542,7 @@ func TestSheinRetiredManagementImportsStayBlocked(t *testing.T) {
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
-				t.Errorf("%s imports %s; keep SHEIN concrete management client dependencies limited to current inventory, scheduler, publish, validation, activity, mapping, and product seams", path, importPath)
+				t.Errorf("%s imports %s; keep SHEIN retired management service dependencies limited to current inventory, scheduler, publish, validation, activity, mapping, and product seams", path, importPath)
 			}
 		}
 	}
@@ -2562,7 +2562,7 @@ func TestSheinPipelineRuntimeDependenciesDoNotUseRetiredManagementNames(t *testi
 		}
 		for _, token := range banned {
 			if strings.Contains(string(content), token) {
-				t.Fatalf("%s contains %s; name SHEIN runtime dependencies after the capability, not the retired Management Client", path, token)
+				t.Fatalf("%s contains %s; name SHEIN runtime dependencies after the capability, not the retired management service", path, token)
 			}
 		}
 	}
@@ -2796,7 +2796,7 @@ func TestProcessorRetiredManagementImportsStayBlocked(t *testing.T) {
 		for quotedImport := range facts.imports {
 			importPath := strings.Trim(quotedImport, `"`)
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
-				t.Errorf("%s imports %s; keep processor free of concrete management clients and inject narrower runtime-owned ports instead", path, importPath)
+				t.Errorf("%s imports %s; keep processor free of retired management services and inject narrower runtime-owned ports instead", path, importPath)
 			}
 		}
 	}
@@ -2952,7 +2952,7 @@ func TestSharedPricingRetiredManagementImportsStayBlocked(t *testing.T) {
 	}
 }
 
-func TestTEMUSyncAndPricingManagementImportsStayAllowlisted(t *testing.T) {
+func TestTEMUSyncAndPricingRetiredManagementImportsStayBlocked(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "temu", "pricing", "auto_pricing_service.go")):        {},
 		filepath.Clean(filepath.Join("..", "internal", "temu", "pricing", "interfaces.go")):                  {},
@@ -3000,7 +3000,7 @@ func TestTEMUSyncAndPricingManagementImportsStayAllowlisted(t *testing.T) {
 				for quotedImport := range facts.imports {
 					importPath := strings.Trim(quotedImport, `"`)
 					if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
-						t.Errorf("%s imports %s; keep TEMU concrete management client dependencies limited to current sync and pricing seams", path, importPath)
+						t.Errorf("%s imports %s; keep TEMU retired management service dependencies limited to current sync and pricing seams", path, importPath)
 					}
 				}
 			}
@@ -3008,7 +3008,7 @@ func TestTEMUSyncAndPricingManagementImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
-func TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted(t *testing.T) {
+func TestTEMUProductStoreAndSchedulerRetiredManagementImportsStayBlocked(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "temu", "product", "build_spu_handler.go")):           {},
 		filepath.Clean(filepath.Join("..", "internal", "temu", "product", "exists_check_handler.go")):        {},
@@ -3049,7 +3049,7 @@ func TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted(t *testing
 				for quotedImport := range facts.imports {
 					importPath := strings.Trim(quotedImport, `"`)
 					if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
-						t.Errorf("%s imports %s; keep TEMU concrete management client dependencies limited to current product, store, and scheduler seams", path, importPath)
+						t.Errorf("%s imports %s; keep TEMU retired management service dependencies limited to current product, store, and scheduler seams", path, importPath)
 					}
 				}
 			}
@@ -3057,7 +3057,7 @@ func TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted(t *testing
 	}
 }
 
-func TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted(t *testing.T) {
+func TestTEMURuntimeAndBridgeRetiredManagementImportsStayBlocked(t *testing.T) {
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join("..", "internal", "temu", "api", "client", "client.go")):            {},
 		filepath.Clean(filepath.Join("..", "internal", "temu", "api", "client", "cookie_manager.go")):    {},

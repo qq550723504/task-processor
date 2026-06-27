@@ -137,7 +137,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
 - `TestPublishingSheinNonAPISheinImportsStayAllowlisted`
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
-- `TestPublishingSheinManagedManagementImportsStayAllowlisted`
+- `TestPublishingSheinManagedRetiredManagementImportsStayBlocked`
 - `TestPublishingCommonUsesCanonicalPackage`
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestCmdContainsOnlyOfficialEntrypoints`
@@ -241,9 +241,9 @@ At minimum, structural review should consider representative guards such as:
 - `TestListingKitHTTPAPIRetiredManagementImportsStayBlocked`
 - `TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted`
 - `TestListingKitRootOpenAIImportsStayAllowlisted`
-- `TestTEMUSyncAndPricingManagementImportsStayAllowlisted`
-- `TestTEMUProductStoreAndSchedulerManagementImportsStayAllowlisted`
-- `TestTEMURuntimeAndBridgeManagementImportsStayAllowlisted`
+- `TestTEMUSyncAndPricingRetiredManagementImportsStayBlocked`
+- `TestTEMUProductStoreAndSchedulerRetiredManagementImportsStayBlocked`
+- `TestTEMURuntimeAndBridgeRetiredManagementImportsStayBlocked`
 - `TestTEMUOpenAIImportsStayAllowlisted`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
