@@ -95,10 +95,10 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		resources.RawJSONDataClient = localruntime.NewRawJSONDataAdapter(localProvider)
 		resources.StoreAPI = localRuntime.GetStoreAPI()
 		resources.SchedulerRuntime = localRuntime
-		resources.SchedulerFactoryRuntime = managementSchedulerFactoryRuntime{source: localRuntime}
-		resources.ProcessorRuntime = managementProcessorRuntime{
-			managementSchedulerFactoryRuntime: managementSchedulerFactoryRuntime{source: localRuntime},
-			source:                            localRuntime,
+		resources.SchedulerFactoryRuntime = localSchedulerFactoryRuntime{source: localRuntime}
+		resources.ProcessorRuntime = localProcessorRuntime{
+			localSchedulerFactoryRuntime: localSchedulerFactoryRuntime{source: localRuntime},
+			source:                       localRuntime,
 		}
 		resources.ImportTaskRepository = localProvider.ImportTaskRepository()
 	}
@@ -124,12 +124,12 @@ func BuildAmazonCrawler(cfg *config.Config, logger *logrus.Logger) runner.CrawlS
 	return crawleramazon.NewLegacyCrawlSource(cfg, logger)
 }
 
-type managementSchedulerFactoryRuntime struct {
+type localSchedulerFactoryRuntime struct {
 	source schedulerRuntimeSource
 }
 
-type managementProcessorRuntime struct {
-	managementSchedulerFactoryRuntime
+type localProcessorRuntime struct {
+	localSchedulerFactoryRuntime
 	source processorRuntimeSource
 }
 
@@ -175,207 +175,207 @@ type processorRuntimeSource interface {
 	GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository
 }
 
-func (r managementSchedulerFactoryRuntime) GetRuntimeStoreService() listingruntime.StoreService {
+func (r localSchedulerFactoryRuntime) GetRuntimeStoreService() listingruntime.StoreService {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetRuntimeStoreService()
 }
 
-func (r managementSchedulerFactoryRuntime) ListRuntimeAutoPricingStoreIDs(ctx context.Context, platform string) ([]int64, error) {
+func (r localSchedulerFactoryRuntime) ListRuntimeAutoPricingStoreIDs(ctx context.Context, platform string) ([]int64, error) {
 	if r.source == nil {
 		return nil, nil
 	}
 	return r.source.ListRuntimeAutoPricingStoreIDs(ctx, platform)
 }
 
-func (r managementSchedulerFactoryRuntime) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error) {
+func (r localSchedulerFactoryRuntime) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error) {
 	if r.source == nil {
 		return nil, nil
 	}
 	return r.source.GetAutoPricingStoreConfig(ctx, storeID)
 }
 
-func (r managementSchedulerFactoryRuntime) GetRawJsonDataAdapter() product.RawJsonDataClient {
+func (r localSchedulerFactoryRuntime) GetRawJsonDataAdapter() product.RawJsonDataClient {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetRawJsonDataAdapter()
 }
 
-func (r managementSchedulerFactoryRuntime) GetStoreAPI() listingadmin.StoreAPI {
+func (r localSchedulerFactoryRuntime) GetStoreAPI() listingadmin.StoreAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetStoreAPI()
 }
 
-func (r managementSchedulerFactoryRuntime) GetPricingRuleClient() listingadmin.PricingRuleAPI {
+func (r localSchedulerFactoryRuntime) GetPricingRuleClient() listingadmin.PricingRuleAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetPricingRuleClient()
 }
 
-func (r managementSchedulerFactoryRuntime) GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI {
+func (r localSchedulerFactoryRuntime) GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetProductImportMappingAPI()
 }
 
-func (r managementSchedulerFactoryRuntime) GetInventoryRecordAPI() listingadmin.InventoryRecordAPI {
+func (r localSchedulerFactoryRuntime) GetInventoryRecordAPI() listingadmin.InventoryRecordAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetInventoryRecordAPI()
 }
 
-func (r managementSchedulerFactoryRuntime) GetProductDataClient(storeID int64) listingadmin.ProductDataAPI {
+func (r localSchedulerFactoryRuntime) GetProductDataClient(storeID int64) listingadmin.ProductDataAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetProductDataClient(storeID)
 }
 
-func (r managementSchedulerFactoryRuntime) GetLocalProductDataRepository() listingadmin.ProductDataRepository {
+func (r localSchedulerFactoryRuntime) GetLocalProductDataRepository() listingadmin.ProductDataRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalProductDataRepository()
 }
 
-func (r managementSchedulerFactoryRuntime) PricingRuntime() temupricingruntime.PricingRuntime {
+func (r localSchedulerFactoryRuntime) PricingRuntime() temupricingruntime.PricingRuntime {
 	return temupricingruntime.NewPricingRuntime(r)
 }
 
-func (r managementSchedulerFactoryRuntime) SyncRuntime() temusyncruntime.ServiceRuntime {
+func (r localSchedulerFactoryRuntime) SyncRuntime() temusyncruntime.ServiceRuntime {
 	if r.source == nil {
 		return nil
 	}
 	return temusyncruntime.NewServiceRuntime(r)
 }
 
-func (r managementSchedulerFactoryRuntime) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
+func (r localSchedulerFactoryRuntime) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalPricingRuleRepository()
 }
 
-func (r managementSchedulerFactoryRuntime) GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error) {
+func (r localSchedulerFactoryRuntime) GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error) {
 	if r.source == nil {
 		return nil, nil
 	}
 	return r.source.GetRuntimeOperationStrategy(storeID)
 }
 
-func (r managementSchedulerFactoryRuntime) GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
+func (r localSchedulerFactoryRuntime) GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalProductImportMappingRepository()
 }
 
-func (r managementSchedulerFactoryRuntime) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
+func (r localSchedulerFactoryRuntime) GetLocalStoreRepository() *listingadmin.GormStoreRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalStoreRepository()
 }
 
-func (r managementSchedulerFactoryRuntime) GetLocalInventoryRecordRepository() *listingadmin.GormInventoryRecordRepository {
+func (r localSchedulerFactoryRuntime) GetLocalInventoryRecordRepository() *listingadmin.GormInventoryRecordRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalInventoryRecordRepository()
 }
 
-func (r managementSchedulerFactoryRuntime) GetSheinCookie(storeID int64) (string, int64, error) {
+func (r localSchedulerFactoryRuntime) GetSheinCookie(storeID int64) (string, int64, error) {
 	if r.source == nil {
 		return "", 0, nil
 	}
 	return r.source.GetSheinCookie(storeID)
 }
 
-func (r managementSchedulerFactoryRuntime) GetSheinStoreCookie(storeID int64) (string, error) {
+func (r localSchedulerFactoryRuntime) GetSheinStoreCookie(storeID int64) (string, error) {
 	if r.source == nil {
 		return "", nil
 	}
 	return r.source.GetSheinStoreCookie(storeID)
 }
 
-func (r managementProcessorRuntime) GetFilterRuleClient() listingadmin.FilterRuleAPI {
+func (r localProcessorRuntime) GetFilterRuleClient() listingadmin.FilterRuleAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetFilterRuleClient()
 }
 
-func (r managementProcessorRuntime) GetDailyListingCountClient() listingadmin.DailyListingCountAPI {
+func (r localProcessorRuntime) GetDailyListingCountClient() listingadmin.DailyListingCountAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetDailyListingCountClient()
 }
 
-func (r managementProcessorRuntime) GetProductImportMappingClient() listingadmin.ProductImportMappingAPI {
+func (r localProcessorRuntime) GetProductImportMappingClient() listingadmin.ProductImportMappingAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetProductImportMappingAPI()
 }
 
-func (r managementProcessorRuntime) GetProfitRuleClient() listingadmin.ProfitRuleAPI {
+func (r localProcessorRuntime) GetProfitRuleClient() listingadmin.ProfitRuleAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetProfitRuleClient()
 }
 
-func (r managementProcessorRuntime) GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository {
+func (r localProcessorRuntime) GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalFilterRuleRepository()
 }
 
-func (r managementProcessorRuntime) GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository {
+func (r localProcessorRuntime) GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetLocalProfitRuleRepository()
 }
 
-func (r managementProcessorRuntime) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error) {
+func (r localProcessorRuntime) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error) {
 	if r.source == nil {
 		return nil, nil
 	}
 	return r.source.GetTaskStatus(taskID)
 }
 
-func (r managementProcessorRuntime) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error {
+func (r localProcessorRuntime) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.UpdateRuntimeTaskStatus(req)
 }
 
-func (r managementProcessorRuntime) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
+func (r localProcessorRuntime) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
 	if r.source == nil {
 		return nil, nil
 	}
 	return r.source.GetRuntimeImportTask(taskID)
 }
 
-func (r managementProcessorRuntime) DeleteSheinStoreCookie(storeID int64) (bool, error) {
+func (r localProcessorRuntime) DeleteSheinStoreCookie(storeID int64) (bool, error) {
 	if r.source == nil {
 		return false, nil
 	}
 	return r.source.DeleteSheinStoreCookie(storeID)
 }
 
-func (r managementProcessorRuntime) GetImageDownloader() interface {
+func (r localProcessorRuntime) GetImageDownloader() interface {
 	DownloadImage(url string) ([]byte, error)
 } {
 	if r.source == nil {
@@ -384,42 +384,42 @@ func (r managementProcessorRuntime) GetImageDownloader() interface {
 	return r.source.GetImageDownloader()
 }
 
-func (r managementProcessorRuntime) SetRuntimeStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error) {
+func (r localProcessorRuntime) SetRuntimeStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error) {
 	if r.source == nil {
 		return false, nil
 	}
 	return r.source.SetRuntimeStorePauseStatus(storeID, pause, pauseType)
 }
 
-func (r managementProcessorRuntime) RuntimePublishedProductExists(ctx context.Context, storeID int64, platform, region, productID string) (bool, error) {
+func (r localProcessorRuntime) RuntimePublishedProductExists(ctx context.Context, storeID int64, platform, region, productID string) (bool, error) {
 	if r.source == nil {
 		return false, nil
 	}
 	return r.source.RuntimePublishedProductExists(ctx, storeID, platform, region, productID)
 }
 
-func (r managementProcessorRuntime) FindRuntimeProductImportMappingByTaskAndSKU(ctx context.Context, importTaskID int64, sku string) (*listingruntime.ProductImportMapping, error) {
+func (r localProcessorRuntime) FindRuntimeProductImportMappingByTaskAndSKU(ctx context.Context, importTaskID int64, sku string) (*listingruntime.ProductImportMapping, error) {
 	if r.source == nil {
 		return nil, nil
 	}
 	return r.source.FindRuntimeProductImportMappingByTaskAndSKU(ctx, importTaskID, sku)
 }
 
-func (r managementProcessorRuntime) CreateRuntimeProductImportMapping(ctx context.Context, req *listingruntime.ProductImportMappingUpsert) (int64, error) {
+func (r localProcessorRuntime) CreateRuntimeProductImportMapping(ctx context.Context, req *listingruntime.ProductImportMappingUpsert) (int64, error) {
 	if r.source == nil {
 		return 0, nil
 	}
 	return r.source.CreateRuntimeProductImportMapping(ctx, req)
 }
 
-func (r managementProcessorRuntime) UpdateRuntimeProductImportMapping(ctx context.Context, req *listingruntime.ProductImportMappingUpsert) error {
+func (r localProcessorRuntime) UpdateRuntimeProductImportMapping(ctx context.Context, req *listingruntime.ProductImportMappingUpsert) error {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.UpdateRuntimeProductImportMapping(ctx, req)
 }
 
-func (r managementProcessorRuntime) GetRuntimeStorePauseStatusDetail(storeID int64) (*listingruntime.StorePauseStatusDetail, error) {
+func (r localProcessorRuntime) GetRuntimeStorePauseStatusDetail(storeID int64) (*listingruntime.StorePauseStatusDetail, error) {
 	if r.source == nil {
 		return nil, nil
 	}

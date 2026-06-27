@@ -1914,6 +1914,10 @@ func TestRetiredManagementRuntimeNamingHotspotsUseCapabilityNames(t *testing.T) 
 		filepath.Join("..", "internal", "temu", "pricing", "pricing_decision_service.go"): {
 			"managementClient不能为空",
 		},
+		filepath.Join("..", "internal", "app", "bootstrap", "resources", "shared_resources.go"): {
+			"managementSchedulerFactoryRuntime",
+			"managementProcessorRuntime",
+		},
 	}
 
 	for path, phrases := range checks {
