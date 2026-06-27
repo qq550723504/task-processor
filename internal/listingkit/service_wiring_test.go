@@ -2260,12 +2260,20 @@ func TestTaskPreviewLogicFileOwnsPreviewBuilderHelper(t *testing.T) {
 		t.Fatalf("ReadFile(preview_result_projection.go) error = %v", err)
 	}
 	projectionContent := string(projectionSrc)
+	taskReadModelSrc, err := os.ReadFile("preview_task_read_model_adapter.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_task_read_model_adapter.go) error = %v", err)
+	}
+	taskReadModelContent := string(taskReadModelSrc)
 	for _, needle := range []string{
 		"previewdomain.BuildTaskReadModel(previewdomain.TaskReadModelInput{",
 		"RequestPlatforms: previewRequestPlatforms(task)",
 	} {
-		if !strings.Contains(projectionContent, needle) {
-			t.Fatalf("preview_result_projection.go should contain %q", needle)
+		if !strings.Contains(taskReadModelContent, needle) {
+			t.Fatalf("preview_task_read_model_adapter.go should contain %q", needle)
+		}
+		if strings.Contains(projectionContent, needle) {
+			t.Fatalf("preview_result_projection.go should not contain %q after task read-model adapter extraction", needle)
 		}
 	}
 
