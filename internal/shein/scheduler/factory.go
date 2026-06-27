@@ -26,7 +26,7 @@ import (
 )
 
 type schedulerRuntime interface {
-	platformbase.ManagementRuntime
+	platformbase.Runtime
 	platformtask.AutoPricingStoreConfigProvider
 	pricing.OperationStrategyProvider
 	GetRuntimeStoreService() listingruntime.StoreService
@@ -131,11 +131,11 @@ func NewSheinTaskFactoryWithDependencies(
 ) *SheinTaskFactory {
 	_ = crawlSource
 	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
-		Platform:          "SHEIN",
-		ManagementRuntime: runtimeProvider,
-		FetcherBuilder:    deps.FetcherBuilder,
-		AmazonConfig:      amazonConfig,
-		MonitorConfig:     monitorConfig,
+		Platform:       "SHEIN",
+		Runtime:        runtimeProvider,
+		FetcherBuilder: deps.FetcherBuilder,
+		AmazonConfig:   amazonConfig,
+		MonitorConfig:  monitorConfig,
 	})
 
 	factory := &SheinTaskFactory{
@@ -363,6 +363,6 @@ func (f *SheinTaskFactory) runtimeProvider() schedulerRuntime {
 	if f == nil || f.BaseFactory == nil {
 		return nil
 	}
-	runtimeProvider, _ := f.GetManagementRuntime().(schedulerRuntime)
+	runtimeProvider, _ := f.GetRuntime().(schedulerRuntime)
 	return runtimeProvider
 }

@@ -1894,6 +1894,9 @@ func TestRetiredManagementRuntimeNamingHotspotsUseCapabilityNames(t *testing.T) 
 		filepath.Join("..", "internal", "shein", "scheduler", "factory.go"): {
 			"type managementRuntime",
 			"managementClient",
+			"platformbase.ManagementRuntime",
+			"ManagementRuntime:",
+			"GetManagementRuntime",
 		},
 		filepath.Join("..", "internal", "shein", "scheduler", "runtime_adapter.go"): {
 			"ManagementRuntime",
@@ -1917,6 +1920,14 @@ func TestRetiredManagementRuntimeNamingHotspotsUseCapabilityNames(t *testing.T) 
 		filepath.Join("..", "internal", "app", "bootstrap", "resources", "shared_resources.go"): {
 			"managementSchedulerFactoryRuntime",
 			"managementProcessorRuntime",
+		},
+		filepath.Join("..", "internal", "platformbase", "base_factory.go"): {
+			"ManagementRuntime",
+			"GetManagementRuntime",
+		},
+		filepath.Join("..", "internal", "temu", "scheduler", "factory.go"): {
+			"ManagementRuntime:",
+			"GetManagementRuntime",
 		},
 	}
 

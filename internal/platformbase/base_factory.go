@@ -14,17 +14,17 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type ManagementRuntime interface {
+type Runtime interface {
 	GetRawJsonDataAdapter() domainproduct.RawJsonDataClient
 }
 
 // BaseFactoryConfig 基础工厂配置
 type BaseFactoryConfig struct {
-	Platform          string
-	ManagementRuntime ManagementRuntime
-	FetcherBuilder    ProductFetcherBuilder
-	AmazonConfig      *config.AmazonConfig
-	MonitorConfig     *config.MonitorConfig
+	Platform       string
+	Runtime        Runtime
+	FetcherBuilder ProductFetcherBuilder
+	AmazonConfig   *config.AmazonConfig
+	MonitorConfig  *config.MonitorConfig
 }
 
 // BaseFactory 基础工厂实现
@@ -60,8 +60,8 @@ func (f *BaseFactory) ValidateTaskType(taskType appscheduler.TaskType) error {
 	return fmt.Errorf("不支持的任务类型: %s, 支持的类型: %v", taskType, supportedTypes)
 }
 
-func (f *BaseFactory) GetManagementRuntime() ManagementRuntime {
-	return f.config.ManagementRuntime
+func (f *BaseFactory) GetRuntime() Runtime {
+	return f.config.Runtime
 }
 
 // GetFetcherBuilder 获取产品获取器构建器。
@@ -75,7 +75,7 @@ func (f *BaseFactory) GetFetcherBuilder() ProductFetcherBuilder {
 // BuildProductFetcher 构建统一产品获取器。
 func (f *BaseFactory) BuildProductFetcher(rabbitmqClient *rabbitmq.Client) (appfetcher.ProductFetcher, error) {
 	return f.GetFetcherBuilder().Build(
-		f.GetManagementRuntime().GetRawJsonDataAdapter(),
+		f.GetRuntime().GetRawJsonDataAdapter(),
 		f.GetAmazonConfig(),
 		nil,
 		rabbitmqClient,

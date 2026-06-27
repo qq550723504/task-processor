@@ -105,11 +105,11 @@ func NewTemuTaskFactoryWithDependencies(
 		return nil
 	}
 	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
-		Platform:          "TEMU",
-		ManagementRuntime: runtime,
-		FetcherBuilder:    deps.FetcherBuilder,
-		AmazonConfig:      amazonConfig,
-		MonitorConfig:     monitorConfig,
+		Platform:       "TEMU",
+		Runtime:        runtime,
+		FetcherBuilder: deps.FetcherBuilder,
+		AmazonConfig:   amazonConfig,
+		MonitorConfig:  monitorConfig,
 	})
 
 	factory := &TemuTaskFactory{
