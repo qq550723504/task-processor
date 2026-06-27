@@ -36,21 +36,22 @@ func buildListingKitPreviewProjection(task *Task, selectedPlatform string) listi
 	if base == nil {
 		return listingKitPreviewProjection{}
 	}
-	legacyBase := adaptPreviewDomainShell(base)
-	legacyBase.Overview = adaptPreviewDomainHeaderWithLegacyPlatformCards(base.Overview, readProjection.PlatformCards)
+	domainProjection := previewdomain.BuildResultProjection(previewdomain.ResultProjectionInput{
+		Preview: base,
+	})
 	return listingKitPreviewProjection{
-		overview:    legacyBase.Overview,
-		needsReview: legacyBase.NeedsReview,
+		overview:    adaptPreviewDomainHeaderWithLegacyPlatformCards(domainProjection.Overview, readProjection.PlatformCards),
+		needsReview: domainProjection.NeedsReview,
 		attachment: listingKitPreviewProjectionAttachment{
-			catalog:             legacyBase.Catalog,
-			assets:              legacyBase.Assets,
-			assetInventory:      legacyBase.AssetInventory,
+			catalog:             adaptPreviewDomainCatalog(domainProjection.Attachment),
+			assets:              adaptPreviewDomainAssets(domainProjection.Attachment),
+			assetInventory:      adaptPreviewDomainAssetInventory(domainProjection.Attachment),
 			assetRenderPreviews: readProjection.AssetRenderPreviews,
 			platformPreviews:    readProjection.PlatformAssetRenderPreviews,
 			generationQueue:     readProjection.AssetGenerationQueue,
 			generationOverview:  readProjection.AssetGenerationOverview,
 		},
-		revisionMeta:    legacyBase.RevisionHistoryMeta,
+		revisionMeta:    adaptPreviewDomainRevisionHistoryMeta(domainProjection.RevisionHistoryMeta),
 		revisionHistory: buildRevisionHistoryPreviewItems(task.Result.RevisionHistory),
 	}
 }
