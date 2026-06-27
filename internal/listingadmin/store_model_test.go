@@ -2,6 +2,7 @@ package listingadmin
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -152,6 +153,98 @@ func TestTakeStoreAccessRowRespectsDeletedState(t *testing.T) {
 	}
 	if loaded.Name != "deleted" {
 		t.Fatalf("loaded = %+v, want deleted row", loaded)
+	}
+}
+
+func TestGormStoreRepositoryGetStorePlatformAdminBypassesOwnerScope(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingStore{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	row := listingStore{
+		TenantID:    101,
+		OwnerUserID: "user-b",
+		Name:        "Owned by B",
+		Username:    "owner-b",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Deleted:     0,
+	}
+	if err := db.Table("listing_store").Create(&row).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+
+	repo := NewGormStoreRepository(db)
+	regularCtx := withRequestIdentity(context.Background(), "user-a", nil)
+	if _, err := repo.GetStore(regularCtx, 101, row.ID); !errors.Is(err, ErrStoreNotFound) {
+		t.Fatalf("regular user err = %v, want ErrStoreNotFound", err)
+	}
+
+	adminCtx := withRequestIdentity(context.Background(), "platform-admin", []string{"platform_admin"})
+	store, err := repo.GetStore(adminCtx, 101, row.ID)
+	if err != nil {
+		t.Fatalf("platform admin GetStore error = %v", err)
+	}
+	if store.ID != row.ID || store.OwnerUserID != "user-b" {
+		t.Fatalf("store = %+v, want owner user-b row", store)
+	}
+}
+
+func TestGormStoreRepositoryGetStoreAllowsLegacyUnownedStoreRead(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingStore{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	legacyRow := listingStore{
+		TenantID: 101,
+		Name:     "Legacy Store",
+		Username: "legacy",
+		Password: "secret",
+		Platform: "SHEIN",
+		ShopType: "semi",
+		Deleted:  0,
+		Creator:  "179",
+	}
+	otherOwnerRow := listingStore{
+		TenantID:    101,
+		OwnerUserID: "user-b",
+		Name:        "Owned by B",
+		Username:    "owner-b",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Deleted:     0,
+	}
+	for _, row := range []*listingStore{&legacyRow, &otherOwnerRow} {
+		if err := db.Table("listing_store").Create(row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+
+	repo := NewGormStoreRepository(db)
+	userCtx := withRequestIdentity(context.Background(), "user-a", nil)
+	store, err := repo.GetStore(userCtx, 101, legacyRow.ID)
+	if err != nil {
+		t.Fatalf("GetStore legacy unowned row error = %v", err)
+	}
+	if store.ID != legacyRow.ID || store.OwnerUserID != "179" {
+		t.Fatalf("store = %+v, want legacy row with creator fallback", store)
+	}
+	if _, err := repo.GetStore(userCtx, 101, otherOwnerRow.ID); !errors.Is(err, ErrStoreNotFound) {
+		t.Fatalf("other owner err = %v, want ErrStoreNotFound", err)
 	}
 }
 

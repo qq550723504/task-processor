@@ -1,12 +1,14 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
 
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 )
 
@@ -82,6 +84,10 @@ func (h *handler) GetSheinEnrollmentStoreSummary(c *gin.Context) {
 
 	store, err := h.storeRepository.GetStore(ctx, tenantID, storeID)
 	if err != nil {
+		if errors.Is(err, listingadmin.ErrStoreNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "store_not_found", "message": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_store_summary_failed", "message": err.Error()})
 		return
 	}

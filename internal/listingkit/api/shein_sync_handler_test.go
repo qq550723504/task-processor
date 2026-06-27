@@ -706,6 +706,97 @@ func TestListSheinEnrollmentDashboardUsesLegacyTenantMapping(t *testing.T) {
 	}
 }
 
+func TestGetSheinEnrollmentStoreSummaryUsesLegacyTenantMapping(t *testing.T) {
+	t.Parallel()
+
+	restore := tenantbridge.ConfigureLegacyTenantResolver(stubLegacyTenantResolver{
+		mapping: map[string]int64{"373211199677923496": 227},
+	})
+	t.Cleanup(restore)
+
+	gin.SetMode(gin.TestMode)
+	storeRepo := &stubSheinSummaryStoreRepository{
+		stores: []listingadmin.Store{
+			{
+				ID:       870,
+				TenantID: 227,
+				Name:     "US Store",
+				Username: "zone-us",
+				Platform: "SHEIN",
+				Region:   "US",
+			},
+		},
+	}
+	syncRepo := store.NewMemSheinSyncRepository()
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithStoreRepository(storeRepo),
+		WithSheinSyncRepository(syncRepo),
+		WithSheinSyncServices(&stubSheinSyncHandlerService{}, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/shein-sync/stores/:store_id/summary", h.GetSheinEnrollmentStoreSummary)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/shein-sync/stores/870/summary?activity_type=PROMOTION", nil)
+	req.Header.Set("X-Tenant-ID", "373211199677923496")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+
+	var body struct {
+		Summary listingkit.SheinEnrollmentStoreSummary `json:"summary"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if body.Summary.StoreID != 870 || body.Summary.ActivityType != "PROMOTION" {
+		t.Fatalf("summary = %+v, want mapped store 870 PROMOTION", body.Summary)
+	}
+}
+
+func TestGetSheinEnrollmentStoreSummaryReturnsNotFoundWhenStoreOutsideTenant(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	storeRepo := &stubSheinSummaryStoreRepository{
+		stores: []listingadmin.Store{
+			{ID: 870, TenantID: 227, Name: "US Store", Platform: "SHEIN"},
+		},
+	}
+	syncRepo := store.NewMemSheinSyncRepository()
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithStoreRepository(storeRepo),
+		WithSheinSyncRepository(syncRepo),
+		WithSheinSyncServices(&stubSheinSyncHandlerService{}, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/shein-sync/stores/:store_id/summary", h.GetSheinEnrollmentStoreSummary)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/shein-sync/stores/870/summary?activity_type=PROMOTION", nil)
+	req.Header.Set("X-Tenant-ID", "999")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404 body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "store_not_found") {
+		t.Fatalf("body = %s, want store_not_found", resp.Body.String())
+	}
+}
+
 func TestListSheinEnrollmentDashboardPreservesStoreOrder(t *testing.T) {
 	t.Parallel()
 

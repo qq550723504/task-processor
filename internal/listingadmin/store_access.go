@@ -8,14 +8,35 @@ import (
 )
 
 func storeAccessQuery(ctx context.Context, db *gorm.DB, tenantID int64) *gorm.DB {
-	return applyStoreAccessScope(db, StoreQuery{
-		TenantID:    tenantID,
-		OwnerUserID: requestUserIDFromContext(ctx),
-	})
+	if tenantID > 0 {
+		db = db.Where("tenant_id = ?", tenantID)
+	}
+	return applyOwnerScope(db, ctx, "owner_user_id")
+}
+
+func storeReadAccessQuery(ctx context.Context, db *gorm.DB, tenantID int64) *gorm.DB {
+	if tenantID > 0 {
+		db = db.Where("tenant_id = ?", tenantID)
+	}
+	return applyStoreReadOwnerScope(db, ctx)
+}
+
+func applyStoreReadOwnerScope(db *gorm.DB, ctx context.Context) *gorm.DB {
+	if db == nil || !ownerScopeEnabled() {
+		return db
+	}
+	if requestHasPlatformAdminAccess(ctx) {
+		return db
+	}
+	ownerUserID := requestUserIDFromContext(ctx)
+	if ownerUserID == "" {
+		return db
+	}
+	return db.Where("(owner_user_id = ? OR owner_user_id IS NULL OR owner_user_id = '')", ownerUserID)
 }
 
 func takeStoreAccessRow(ctx context.Context, db *gorm.DB, tenantID, id int64, deleted int16, row *listingStore) error {
-	err := storeAccessQuery(ctx, db, tenantID).Where("id = ? AND deleted = ?", id, deleted).Take(row).Error
+	err := storeReadAccessQuery(ctx, db, tenantID).Where("id = ? AND deleted = ?", id, deleted).Take(row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrStoreNotFound
 	}
