@@ -243,11 +243,17 @@ func TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated(t *testing.T) {
 		"func buildHTTPAPISharedResources(",
 		"appbootstrap.BuildSharedResources(",
 		"appbootstrap.SharedResourceOptions{",
-		"AllowMissingManagementAuth: true",
-		"SkipManagementAuth:         true",
 	} {
 		if !strings.Contains(sharedResourcesSource, marker) {
 			t.Fatalf("runtime_shared_resources.go missing %s", marker)
+		}
+	}
+	for _, marker := range []string{
+		"AllowMissingManagementAuth",
+		"SkipManagementAuth",
+	} {
+		if strings.Contains(sharedResourcesSource, marker) {
+			t.Fatalf("runtime_shared_resources.go mentions retired shared-resource option %s", marker)
 		}
 	}
 }

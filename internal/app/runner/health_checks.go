@@ -23,9 +23,6 @@ func (c *ConfigHealthCheck) Check(_ context.Context) error {
 	if c.config.Worker.Concurrency <= 0 {
 		return errors.New(errors.ErrCodeConfig, "工作池并发数配置无效")
 	}
-	if c.config.Management.BaseURL == "" {
-		return errors.New(errors.ErrCodeConfig, "管理系统URL未配置")
-	}
 	return nil
 }
 

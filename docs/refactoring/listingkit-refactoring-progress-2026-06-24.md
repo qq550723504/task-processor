@@ -882,3 +882,19 @@ Status: `internal/listingruntime/local` and `internal/listingadmin` no longer im
 - Historical design/baseline docs may still mention the old package path, but no Go package remains at that location.
 
 Status: Management Client no longer exists as a Go package in the repo. Runtime paths now go through `internal/listingruntime/local`, `internal/listingadmin`, and `internal/taskrpcapi` contracts instead of the retired service package.
+
+### 2026-06-27 Management Client retirement follow-up: bootstrap option cleanup
+
+- Removed the stale `AllowMissingManagementAuth` and `SkipManagementAuth` fields from `SharedResourceOptions`.
+- HTTP API shared-resource assembly now passes an empty shared-resource option struct instead of retired management-auth switches.
+- Tightened bootstrap and HTTP API boundary tests so these retired option names remain absent outside guard strings.
+
+Status: the package is already deleted, and shared-resource assembly no longer exposes no-op Management Auth compatibility switches.
+
+### 2026-06-27 Management Client retirement follow-up: retired service config gates
+
+- Stopped requiring retired Management service OAuth/endpoint fields in config validation.
+- Removed the Management service URL requirement from runner config health checks.
+- Changed startup/config debug logs to describe runtime store configuration instead of the retired Management service endpoint.
+
+Status: startup validation and health checks no longer block on credentials for the deleted Management Client service. The legacy `management.*` config keys remain only as compatibility storage for fields still consumed by local runtime paths, such as store IDs, user ID, and HTTP client options.

@@ -26,9 +26,7 @@ import (
 
 // SharedResourceOptions controls which shared runtime dependencies are built.
 type SharedResourceOptions struct {
-	NeedAmazonCrawler          bool
-	AllowMissingManagementAuth bool
-	SkipManagementAuth         bool
+	NeedAmazonCrawler bool
 }
 
 // SharedResources groups dependencies that were previously assembled in multiple places.

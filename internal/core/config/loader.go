@@ -43,7 +43,7 @@ func LoadConfigWithFallback(configPath string, logger *logrus.Logger) (*Config, 
 
 	if logger != nil {
 		logger.Infof("config loaded successfully")
-		logger.Debugf("   - Management.BaseURL: %s", cfg.Management.BaseURL)
+		logger.Debugf("   - RuntimeStore.StoreIDs: %v", cfg.Management.StoreIDs)
 		logger.Debugf("   - RabbitMQ.Enabled: %v", cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled)
 		if cfg.RabbitMQ != nil {
 			logger.Debugf("   - RabbitMQ.URL: %s", cfg.RabbitMQ.URL)

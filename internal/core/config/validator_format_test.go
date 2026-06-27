@@ -40,7 +40,7 @@ func TestValidateConfigWithError_UsesGroupedFormat(t *testing.T) {
 
 	err := ValidateConfigWithError(cfg)
 	if assert.Error(t, err) {
-		assert.Contains(t, err.Error(), "[Management]")
+		assert.NotContains(t, err.Error(), "[Management]")
 		assert.Contains(t, err.Error(), "[Worker]")
 	}
 }

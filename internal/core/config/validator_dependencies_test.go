@@ -79,6 +79,11 @@ func TestValidateRabbitMQConfig_EnabledRequiresCoreFields(t *testing.T) {
 	assert.NotEmpty(t, errors)
 }
 
+func TestValidateManagementConfigDoesNotRequireRetiredServiceCredentials(t *testing.T) {
+	errors := ValidateManagementConfig(&ManagementConfig{})
+	assert.Empty(t, errors)
+}
+
 func TestValidateConfig_CatchesDependencyErrors(t *testing.T) {
 	cfg := &Config{
 		Worker: WorkerConfig{

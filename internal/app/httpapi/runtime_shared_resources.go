@@ -10,10 +10,7 @@ import (
 )
 
 func buildHTTPAPISharedResources(cfg *config.Config, logger *logrus.Logger) (*appbootstrap.SharedResources, error) {
-	shared, err := appbootstrap.BuildSharedResources(cfg, logger, appbootstrap.SharedResourceOptions{
-		AllowMissingManagementAuth: true,
-		SkipManagementAuth:         true,
-	})
+	shared, err := appbootstrap.BuildSharedResources(cfg, logger, appbootstrap.SharedResourceOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("build shared resources: %w", err)
 	}

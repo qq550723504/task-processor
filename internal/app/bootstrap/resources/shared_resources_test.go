@@ -20,13 +20,15 @@ func TestBuildSharedResourcesDoesNotConstructRetiredManagementService(t *testing
 		"ManagementClient        *management.ClientManager",
 		"management.NewClientManager",
 		"newConfiguredManagementClient",
+		"AllowMissingManagementAuth",
+		"SkipManagementAuth",
 	} {
 		require.NotContains(t, string(content), token)
 	}
 	require.False(t, strings.Contains(string(content), "managementClient:"))
 }
 
-func TestBuildSharedResources_AllowsMissingManagementAuth(t *testing.T) {
+func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
@@ -41,34 +43,7 @@ func TestBuildSharedResources_AllowsMissingManagementAuth(t *testing.T) {
 		},
 	}
 
-	resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{
-		AllowMissingManagementAuth: true,
-	})
-	require.NoError(t, err)
-	require.NotNil(t, resources)
-	require.Nil(t, resources.AuthClient)
-	require.Nil(t, resources.ProcessorRuntime)
-	require.Nil(t, resources.ListingRuntimeHealthValidator)
-}
-
-func TestBuildSharedResources_SkipManagementAuth(t *testing.T) {
-	logger := logrus.New()
-	logger.SetLevel(logrus.FatalLevel)
-
-	cfg := &config.Config{
-		Management: config.ManagementConfig{
-			BaseURL:      "http://127.0.0.1:1",
-			ClientID:     "test-client",
-			ClientSecret: "",
-		},
-		Amazon: config.AmazonConfig{
-			DataFreshnessDays: 15,
-		},
-	}
-
-	resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{
-		SkipManagementAuth: true,
-	})
+	resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, resources)
 	require.Nil(t, resources.AuthClient)
