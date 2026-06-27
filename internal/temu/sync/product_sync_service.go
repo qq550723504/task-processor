@@ -244,7 +244,7 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 	s.logger.WithFields(logrus.Fields{
 		"total":   totalCount,
 		"success": successCount,
-		"path":    "management_client",
+		"path":    "runtime_repository",
 	}).Info("批量保存TEMU产品完成")
 
 	return successCount, nil

@@ -1929,6 +1929,18 @@ func TestRetiredManagementRuntimeNamingHotspotsUseCapabilityNames(t *testing.T) 
 			"ManagementRuntime:",
 			"GetManagementRuntime",
 		},
+		filepath.Join("..", "internal", "temu", "sync", "product_sync_service.go"): {
+			"management_client",
+		},
+		filepath.Join("..", "internal", "temu", "sync", "product_sync_repository_test.go"): {
+			"WithoutManagementClient",
+		},
+		filepath.Join("..", "internal", "shein", "productsync", "product_sync_repository_test.go"): {
+			"WithoutManagementClient",
+		},
+		filepath.Join("..", "internal", "pricing", "cost_calculator_test.go"): {
+			"managementClient",
+		},
 	}
 
 	for path, phrases := range checks {

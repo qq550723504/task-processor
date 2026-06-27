@@ -28,7 +28,7 @@ func TestNewCostCalculator(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 使用nil作为managementClient，因为默认配置不需要它
+			// 使用 nil 作为配置提供者，因为默认配置不需要它。
 			calc := NewCostCalculator(nil, logger, tt.enableDetailLog)
 			if calc == nil {
 				t.Error("NewCostCalculator 返回 nil")
@@ -43,7 +43,7 @@ func TestNewCostCalculator(t *testing.T) {
 // TestCalculateProductCost 测试产品成本计算
 func TestCalculateProductCost(t *testing.T) {
 	logger := logrus.NewEntry(logrus.New())
-	// 使用nil作为managementClient，测试默认配置
+	// 使用 nil 作为配置提供者，测试默认配置。
 	calc := NewCostCalculator(nil, logger, false)
 
 	tests := []struct {

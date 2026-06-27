@@ -55,7 +55,7 @@ VALUES (11, 22, 'S-11', 'repo-store', 'repo-user', '0', 'US', 'TEMU', 0, 0)`).Er
 	}
 }
 
-func TestGetMappingBySKUWithoutManagementClient(t *testing.T) {
+func TestGetMappingBySKUWithoutRemoteAPI(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open db: %v", err)

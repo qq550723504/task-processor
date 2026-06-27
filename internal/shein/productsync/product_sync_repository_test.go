@@ -55,7 +55,7 @@ VALUES (31, 41, 'S-31', 'repo-store', 'repo-user', '2', 'US', 'SHEIN', 0, 0)`).E
 	}
 }
 
-func TestGetMappingByPlatformProductIDWithoutManagementClient(t *testing.T) {
+func TestGetMappingByPlatformProductIDWithoutRemoteAPI(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -110,7 +110,9 @@ type failingRuntimeStoreService struct{}
 func (failingRuntimeStoreService) GetStore(int64) (*listingruntime.StoreInfo, error) {
 	return nil, context.Canceled
 }
-func (failingRuntimeStoreService) GetStorePauseStatus(int64) (bool, error) { return false, context.Canceled }
+func (failingRuntimeStoreService) GetStorePauseStatus(int64) (bool, error) {
+	return false, context.Canceled
+}
 func (failingRuntimeStoreService) GetStorePauseStatusDetail(int64) (*listingruntime.StorePauseStatusDetail, error) {
 	return nil, context.Canceled
 }
