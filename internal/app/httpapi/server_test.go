@@ -2215,7 +2215,6 @@ func TestBuildHTTPServerBundleFromModulesReturnsRouteBuildErrors(t *testing.T) {
 func TestBuildBootstrapBuildsServerFromRegisteredModules(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
-	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
 
 	bootstrap, err := buildBootstrap(logger, Options{

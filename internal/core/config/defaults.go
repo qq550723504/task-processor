@@ -27,13 +27,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("openai.baseURL", defaults.OpenAI.BaseURL)
 	v.SetDefault("openai.timeout", defaults.OpenAI.Timeout)
 
-	v.SetDefault("management.baseURL", defaults.Management.BaseURL)
-	v.SetDefault("management.clientID", defaults.Management.ClientID)
-	v.SetDefault("management.clientSecret", defaults.Management.ClientSecret)
-	v.SetDefault("management.tokenURL", defaults.Management.TokenURL)
-	v.SetDefault("management.scopes", defaults.Management.Scopes)
-	v.SetDefault("management.tenantID", defaults.Management.TenantID)
-	v.SetDefault("management.httpClient.insecureSkipVerify", defaults.Management.HTTPClient.InsecureSkipVerify)
 	v.SetDefault("debug.save_publish_json", defaults.Debug.SavePublishJSON)
 	v.SetDefault("debug.productEnrichMockLLM", defaults.Debug.ProductEnrichMockLLM)
 	v.SetDefault("listingkit.sheinSubmitDebugDumpDir", defaults.ListingKit.SheinSubmitDebugDumpDir)

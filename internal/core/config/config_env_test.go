@@ -24,8 +24,6 @@ func (s stubConfigSource) Watch(_ context.Context, _ func([]byte)) error { retur
 func (s stubConfigSource) Name() string { return s.name }
 
 func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
-	t.Setenv("TASK_PROCESSOR_MANAGEMENT_TENANT_ID", "tenant-123")
-	t.Setenv("TASK_PROCESSOR_MANAGEMENT_STORE_IDS", "101, 202,303")
 	t.Setenv("TASK_PROCESSOR_AMAZON_SPAPI_CLIENT_ID", "amzn-client")
 	t.Setenv("TASK_PROCESSOR_AMAZON_SPAPI_DEFAULT_MARKETPLACE", "ATVPDKIKX0DER")
 	t.Setenv("TASK_PROCESSOR_AMAZON_REMOTE_API_BASE_URL", "http://crawler.internal:8080")
@@ -47,8 +45,6 @@ func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 
 	v := newViper()
 
-	assert.Equal(t, "tenant-123", v.GetString("management.tenantID"))
-	assert.Equal(t, []int64{101, 202, 303}, getInt64Slice(v, "management.storeIDs"))
 	assert.Equal(t, "amzn-client", v.GetString("amazon.spapi.clientID"))
 	assert.Equal(t, "ATVPDKIKX0DER", v.GetString("amazon.spapi.defaultMarketplace"))
 	assert.Equal(t, "http://crawler.internal:8080", v.GetString("amazon.remoteAPI.baseURL"))
@@ -293,15 +289,12 @@ func TestLoadDotEnvFile_PopulatesUnsetEnvironmentVariables(t *testing.T) {
 
 	err := os.WriteFile(envPath, []byte(strings.Join([]string{
 		"# local development overrides",
-		"TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET=from-dotenv",
 		"TASK_PROCESSOR_OPENAI_API_KEY=dotenv-openai-key",
 		"export TASK_PROCESSOR_OPENAI_BASE_URL=https://example.test/v1",
 		"",
 	}, "\n")), 0o600)
 	require.NoError(t, err)
 
-	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "")
-	require.NoError(t, os.Unsetenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET"))
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "")
 	require.NoError(t, os.Unsetenv("TASK_PROCESSOR_OPENAI_API_KEY"))
 	t.Setenv("TASK_PROCESSOR_OPENAI_BASE_URL", "")
@@ -309,7 +302,6 @@ func TestLoadDotEnvFile_PopulatesUnsetEnvironmentVariables(t *testing.T) {
 
 	require.NoError(t, loadDotEnvFile(envPath))
 
-	assert.Equal(t, "from-dotenv", os.Getenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET"))
 	assert.Equal(t, "dotenv-openai-key", os.Getenv("TASK_PROCESSOR_OPENAI_API_KEY"))
 	assert.Equal(t, "https://example.test/v1", os.Getenv("TASK_PROCESSOR_OPENAI_BASE_URL"))
 }
@@ -329,17 +321,12 @@ func TestLoadDotEnvFile_DoesNotOverrideExistingEnvironmentVariables(t *testing.T
 }
 
 func TestLoadFromBytes_AppliesEnvironmentOverrides(t *testing.T) {
-	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "env-management-secret")
-	t.Setenv("TASK_PROCESSOR_MANAGEMENT_STORE_IDS", "11,22")
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "env-openai-key")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID", "store-shard-a")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_OWNED_STORES", "3001,3002")
 	t.Setenv("TASK_PROCESSOR_RABBITMQ_NODE_USE_STORE_QUEUES", "true")
 
 	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
-		"management:",
-		"  clientSecret: \"\"",
-		"  scopes: [\"user.read\"]",
 		"openai:",
 		"  apiKey: \"\"",
 		"  model: \"gemini-2.5-flash\"",
@@ -358,8 +345,6 @@ func TestLoadFromBytes_AppliesEnvironmentOverrides(t *testing.T) {
 	}, "\n")))
 	require.NoError(t, err)
 
-	assert.Equal(t, "env-management-secret", cfg.Management.ClientSecret)
-	assert.Equal(t, []int64{11, 22}, cfg.Management.StoreIDs)
 	assert.Equal(t, "env-openai-key", cfg.OpenAI.APIKey)
 	assert.Equal(t, "env-openai-key", cfg.OpenAI.ToClientConfigs()["vision"].APIKey)
 	assert.Equal(t, "store-shard-a", cfg.RabbitMQ.Node.NodeID)

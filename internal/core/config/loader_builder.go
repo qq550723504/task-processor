@@ -43,17 +43,6 @@ func BuildConfig(v *viper.Viper) *Config {
 			Timeout: v.GetInt("openai.timeout"),
 			Clients: buildOpenAIClients(v),
 		},
-		Management: ManagementConfig{
-			BaseURL:      v.GetString("management.baseURL"),
-			ClientID:     v.GetString("management.clientID"),
-			ClientSecret: v.GetString("management.clientSecret"),
-			TokenURL:     v.GetString("management.tokenURL"),
-			Scopes:       v.GetStringSlice("management.scopes"),
-			TenantID:     v.GetString("management.tenantID"),
-			UserID:       v.GetInt64("management.userID"),
-			StoreIDs:     getInt64Slice(v, "management.storeIDs"),
-			HTTPClient:   BuildHTTPClientConfig(v, "management.httpClient"),
-		},
 		Platforms: PlatformsConfig{
 			Temu:  BuildPlatformConfig(v, "platforms.temu"),
 			Shein: BuildPlatformConfig(v, "platforms.shein"),

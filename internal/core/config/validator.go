@@ -17,7 +17,6 @@ func ValidateConfig(c *Config) []error {
 		&c.Processor,
 		&c.Worker,
 		&c.OpenAI,
-		&c.Management,
 		&c.Browser,
 		&c.Amazon,
 		c.RabbitMQ,
@@ -100,8 +99,6 @@ func moduleFromField(field string) string {
 	switch {
 	case strings.HasPrefix(field, "openai."):
 		return "OpenAI"
-	case strings.HasPrefix(field, "management."):
-		return "Management"
 	case strings.HasPrefix(field, "browser."):
 		return "Browser"
 	case strings.HasPrefix(field, "amazon.spapi."):
@@ -127,28 +124,26 @@ func moduleFromField(field string) string {
 
 func validationModuleRank(module string) int {
 	switch module {
-	case "Management":
-		return 1
 	case "OpenAI":
-		return 2
+		return 1
 	case "Browser":
-		return 3
+		return 2
 	case "Amazon SP-API":
-		return 4
+		return 3
 	case "Amazon":
-		return 5
+		return 4
 	case "RabbitMQ":
-		return 6
+		return 5
 	case "Platforms.TEMU":
-		return 7
+		return 6
 	case "Platforms.SHEIN":
-		return 8
+		return 7
 	case "Platforms.1688":
-		return 9
+		return 8
 	case "Worker":
-		return 10
+		return 9
 	case "Processor":
-		return 11
+		return 10
 	default:
 		return 99
 	}

@@ -7,12 +7,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRuntimeSupportUsesListingKitOwnedDefaultStoreResolver(t *testing.T) {
+func TestRuntimeSupportDoesNotUseRetiredDefaultStoreResolver(t *testing.T) {
 	t.Parallel()
 
 	src, err := os.ReadFile("runtime_support_hooks.go")
 	require.NoError(t, err)
-	require.Contains(t, string(src), "DefaultSheinStoreIDResolver: listingkit.ResolveDefaultSheinStoreID,")
+	require.NotContains(t, string(src), "DefaultSheinStoreIDResolver")
+	require.NotContains(t, string(src), "ResolveDefaultSheinStoreID")
 }
 
 func TestHTTPAPIPackageDoesNotOwnDefaultStoreHeuristicFile(t *testing.T) {

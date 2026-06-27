@@ -43,7 +43,6 @@ func LoadConfigWithFallback(configPath string, logger *logrus.Logger) (*Config, 
 
 	if logger != nil {
 		logger.Infof("config loaded successfully")
-		logger.Debugf("   - RuntimeStore.StoreIDs: %v", cfg.Management.StoreIDs)
 		logger.Debugf("   - RabbitMQ.Enabled: %v", cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled)
 		if cfg.RabbitMQ != nil {
 			logger.Debugf("   - RabbitMQ.URL: %s", cfg.RabbitMQ.URL)
@@ -122,15 +121,6 @@ func NewDefaultConfig() *Config {
 			Model:   "gemini-2.0-flash",
 			BaseURL: "https://ai.linkcloudai.com/v1",
 			Timeout: 120,
-		},
-		Management: ManagementConfig{
-			BaseURL:      "https://api.shuomiai.com",
-			ClientID:     "go-listing",
-			ClientSecret: "",
-			TokenURL:     "https://api.shuomiai.com/admin-api/system/oauth2/token",
-			Scopes:       []string{"user.read"},
-			TenantID:     "1",
-			HTTPClient:   *DefaultHTTPClientConfig(),
 		},
 		Browser: BrowserConfig{
 			Enabled:        true,

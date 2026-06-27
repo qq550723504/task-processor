@@ -32,13 +32,6 @@ data:
       baseURL: "https://api.bltcy.ai/v1"
       timeout: 300
 
-    management:
-      baseURL: "http://management-api.default.svc.cluster.local:8080"
-      clientID: "go-listing"
-      clientSecret: ""
-      tokenURL: "http://management-api.default.svc.cluster.local:8080/admin-api/system/oauth2/token"
-      scopes: ["user.read"]
-      storeIDs: []
 
     browser:
       enabled: true

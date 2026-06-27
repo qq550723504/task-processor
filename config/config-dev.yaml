@@ -64,16 +64,6 @@ openai:
       timeout: 300
   
   # 请求池配置 - 更保守的设置
-# 管理API配置
-management:
-  baseURL: "https://api.shuomiai.com"
-  clientID: "go-listing"
-  clientSecret: ""
-  tokenURL: "https://api.shuomiai.com/admin-api/system/oauth2/token"
-  scopes: ["user.read"]
-  #tenantID: "1"  # 租户ID
-  #userID: 1      # 用户ID
-  storeIDs: [869] # 仅用于平台调度任务/legacy fallback，不再用于主上架消费链
 
 listingkit:
   sheinSubmitDebugDumpDir: ""

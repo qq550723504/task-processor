@@ -113,7 +113,6 @@ func TestConfigBuild(t *testing.T) {
 	v.Set("amazon.enabled", true)
 	v.Set("amazon.dataFreshnessDays", 10)
 	v.Set("platforms.shein.fetchMode", "local")
-	v.Set("management.httpClient.insecureSkipVerify", true)
 	v.Set("platforms.temu.httpClient.insecureSkipVerify", true)
 	v.Set("platforms.shein.loginService.tenantID", "1")
 	v.Set("platforms.shein.loginService.identifier", "869")
@@ -151,7 +150,6 @@ func TestConfigBuild(t *testing.T) {
 	assert.Equal(t, "mac_high_end", cfg.Browser.RandomConfig.PresetName)
 	assert.True(t, cfg.Amazon.Enabled)
 	assert.Equal(t, 10, cfg.Amazon.DataFreshnessDays)
-	assert.True(t, cfg.Management.HTTPClient.InsecureSkipVerify)
 	assert.True(t, cfg.Platforms.Temu.HTTPClient.InsecureSkipVerify)
 	assert.Equal(t, "local", cfg.Platforms.Shein.FetchMode)
 	assert.Equal(t, "1", cfg.Platforms.Shein.LoginService.TenantID)
@@ -252,8 +250,6 @@ func TestLoadFromBytesIncludesListingControlPlaneConfig(t *testing.T) {
 	cfg, err := LoadFromBytes([]byte(`
 openai:
   apiKey: "test-key"
-management:
-  clientSecret: "test-secret"
 listingControlPlane:
   enabled: true
   platform: temu
@@ -284,7 +280,6 @@ listingControlPlane:
 
 func TestLoadFromBytesAppliesListingControlPlaneEnvOverrides(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "test-key")
-	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_ENABLED", "true")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_PLATFORM", "temu")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_LEADER_LOCK_KEY", "listing:control-plane:leader:temu")
@@ -318,14 +313,6 @@ func TestConfigValidation(t *testing.T) {
 			BufferSize:       100,
 			TaskInterval:     60,
 			MaxFetchPerCycle: 5,
-		},
-		Management: ManagementConfig{
-			BaseURL:      "http://example.com",
-			ClientID:     "test-client",
-			ClientSecret: "test-secret",
-			TokenURL:     "http://example.com/token",
-			Scopes:       []string{"user.read"},
-			TenantID:     "1",
 		},
 		OpenAI: OpenAIConfig{
 			APIKey:  "test-key",
@@ -496,12 +483,6 @@ openai:
   model: "test-model"
   baseURL: "http://example.com/v1"
   timeout: 30
-management:
-  baseURL: "http://example.com"
-  clientID: "test-client"
-  clientSecret: "test-secret"
-  tokenURL: "http://example.com/token"
-  scopes: ["user.read"]
 `))
 	require.NoError(t, err)
 	require.NotNil(t, cfg.RabbitMQ)

@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"strconv"
 	"strings"
 
 	"task-processor/internal/core/config"
@@ -45,13 +44,9 @@ func BuildClientConfig(cfg *config.Config) *sdsclient.Config {
 	}
 	if value := strings.TrimSpace(loginService.TenantID); value != "" {
 		clientCfg.AuthBootstrap.LoginServiceTenantID = value
-	} else if value := strings.TrimSpace(cfg.Management.TenantID); value != "" {
-		clientCfg.AuthBootstrap.LoginServiceTenantID = value
 	}
 	if value := strings.TrimSpace(loginService.Identifier); value != "" {
 		clientCfg.AuthBootstrap.LoginServiceIdentifier = value
-	} else if len(cfg.Management.StoreIDs) > 0 && cfg.Management.StoreIDs[0] > 0 {
-		clientCfg.AuthBootstrap.LoginServiceIdentifier = strconv.FormatInt(cfg.Management.StoreIDs[0], 10)
 	}
 	if value := strings.TrimSpace(loginService.MerchantName); value != "" {
 		clientCfg.AuthBootstrap.LoginMerchantName = value

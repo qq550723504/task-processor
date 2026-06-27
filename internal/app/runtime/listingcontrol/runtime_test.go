@@ -49,8 +49,6 @@ func TestRunReturnsNilWhenDisabledWithoutInitializingDependencies(t *testing.T) 
 	configPath := writeRuntimeConfig(t, `
 openai:
   apiKey: "test-key"
-management:
-  clientSecret: "test-secret"
 listingControlPlane:
   enabled: false
 `)
@@ -68,8 +66,6 @@ func TestRunErrorsWhenEnabledAndRequiredConfigsMissing(t *testing.T) {
 	configPath := writeRuntimeConfig(t, `
 openai:
   apiKey: "test-key"
-management:
-  clientSecret: "test-secret"
 listingControlPlane:
   enabled: true
 `)
@@ -91,8 +87,6 @@ func TestRunMigratesImportTaskSchemaBeforeConnectingRedisAndRabbitMQ(t *testing.
 	configPath := writeRuntimeConfig(t, `
 openai:
   apiKey: "test-key"
-management:
-  clientSecret: "test-secret"
 database:
   host: "postgres"
   port: 5432

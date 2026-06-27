@@ -155,9 +155,8 @@ func buildServiceInputFixture() BuildServiceInput {
 			StudioImageGeneratorBuilder: func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
 				return nil
 			},
-			DefaultSheinStoreIDResolver: func([]int64) int64 { return 0 },
-			ConfigureZitadelAuth:        func(config.ListingKitZitadelConfig) {},
-			ConfigureAuthorization:      func([]string, []string) error { return nil },
+			ConfigureZitadelAuth:   func(config.ListingKitZitadelConfig) {},
+			ConfigureAuthorization: func([]string, []string) error { return nil },
 		},
 	}
 }
@@ -443,7 +442,6 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 			shein: submitSheinDependencies{
 				pricingPolicy:    sheinpub.PricingPolicy{},
 				apiClientFactory: apiFactory,
-				defaultStoreID:   903,
 			},
 		},
 	})
@@ -475,8 +473,8 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 	if cfg.Shein.SheinAPIClientFactory != apiFactory {
 		t.Fatal("expected shein api client factory to be mapped from submit module")
 	}
-	if cfg.Shein.SheinDefaultStoreID != 903 {
-		t.Fatalf("default shein store id = %d, want 903", cfg.Shein.SheinDefaultStoreID)
+	if cfg.Shein.SheinDefaultStoreID != 0 {
+		t.Fatalf("default shein store id = %d, want 0", cfg.Shein.SheinDefaultStoreID)
 	}
 }
 
@@ -838,7 +836,7 @@ func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	saleAttributeResolverBuilt := false
 
 	module := buildSubmitModule(submitModuleInput{
-		Config:            &config.Config{Management: config.ManagementConfig{StoreIDs: []int64{903}}},
+		Config:            &config.Config{},
 		Logger:            logrus.New(),
 		AICredentialStore: nil,
 		Hooks: submitModuleHooks{
@@ -902,12 +900,6 @@ func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 			StudioImageGeneratorBuilder: func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
 				return imageGenerator
 			},
-			DefaultSheinStoreIDResolver: func(ids []int64) int64 {
-				if !reflect.DeepEqual(ids, []int64{903}) {
-					t.Fatalf("store ids = %v, want [903]", ids)
-				}
-				return ids[0]
-			},
 		},
 		StoreRepository:      storeRepo,
 		ResolutionCacheStore: resolutionCache,
@@ -937,8 +929,8 @@ func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	if got := module.studio.imageGenerator.GetDefaultModel(); got != "studio-model" {
 		t.Fatalf("studio image generator default model = %q, want studio-model", got)
 	}
-	if module.shein.defaultStoreID != 903 {
-		t.Fatalf("default shein store id = %d, want 903", module.shein.defaultStoreID)
+	if module.shein.defaultStoreID != 0 {
+		t.Fatalf("default shein store id = %d, want 0", module.shein.defaultStoreID)
 	}
 	if module.assets.assembler == nil {
 		t.Fatal("expected assembler to be built from submit-scoped dependencies")
@@ -1006,19 +998,11 @@ func TestBuildSubmitModuleResolvesSubmitScopedHooks(t *testing.T) {
 
 	uploadStore := &httpapiStubImageUploadStore{}
 	module := buildSubmitModule(submitModuleInput{
-		Config: &config.Config{
-			Management: config.ManagementConfig{StoreIDs: []int64{701}},
-		},
+		Config: &config.Config{},
 		Logger: logrus.New(),
 		Hooks: submitModuleHooks{
 			ImageUploadStoreBuilder: func(*config.Config, *logrus.Logger) listingkit.ImageUploadStore {
 				return uploadStore
-			},
-			DefaultSheinStoreIDResolver: func(ids []int64) int64 {
-				if len(ids) == 1 {
-					return ids[0]
-				}
-				return 0
 			},
 		},
 	})
@@ -1026,8 +1010,8 @@ func TestBuildSubmitModuleResolvesSubmitScopedHooks(t *testing.T) {
 	if module.assets.imageUploadStore != uploadStore {
 		t.Fatal("expected submit image upload store to be built from scoped hooks")
 	}
-	if module.shein.defaultStoreID != 701 {
-		t.Fatalf("default shein store id = %d, want 701", module.shein.defaultStoreID)
+	if module.shein.defaultStoreID != 0 {
+		t.Fatalf("default shein store id = %d, want 0", module.shein.defaultStoreID)
 	}
 	if module.shein.contentOptimizer != nil {
 		t.Fatal("expected omitted shein optimizer hook to leave zero value output")

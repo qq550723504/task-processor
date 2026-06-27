@@ -33,11 +33,6 @@ func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T)
 	logger.SetLevel(logrus.FatalLevel)
 
 	cfg := &config.Config{
-		Management: config.ManagementConfig{
-			BaseURL:      "http://127.0.0.1:1",
-			ClientID:     "test-client",
-			ClientSecret: "bad-secret",
-		},
 		Amazon: config.AmazonConfig{
 			DataFreshnessDays: 15,
 		},

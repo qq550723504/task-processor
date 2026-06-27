@@ -103,8 +103,6 @@ func (a *ApplicationBootstrap) loadConfiguration(configPath string) error {
 	}
 	a.logger.Infof("browser config loaded: enabled=%v path=%s poolSize=%d",
 		cfg.Browser.Enabled, cfg.Browser.BrowserPath, cfg.Browser.PoolSize)
-	a.logger.Infof("runtime store config loaded: userID=%d storeIDs=%v",
-		cfg.Management.UserID, cfg.Management.StoreIDs)
 	return nil
 }
 

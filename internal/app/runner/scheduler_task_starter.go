@@ -97,7 +97,7 @@ func (s *schedulerServiceImpl) startTasksByType(
 	cfg *config.Config,
 ) int {
 	taskCount := 0
-	storeIDs := resolveStoreIDsForTask(platformName, taskType, cfg.Management.StoreIDs, s.storeRuntime, s.logger)
+	storeIDs := resolveStoreIDsForTask(platformName, taskType, s.storeRuntime, s.logger)
 
 	for _, storeID := range storeIDs {
 		if err := s.createStoreTask(platformName, storeID, taskType, interval); err != nil {
@@ -114,17 +114,11 @@ func (s *schedulerServiceImpl) startTasksByType(
 func resolveStoreIDsForTask(
 	platformName string,
 	taskType scheduler.TaskType,
-	configuredStoreIDs []int64,
 	storeRuntime schedulerStoreRuntime,
 	logger *logrus.Logger,
 ) []int64 {
-	if len(configuredStoreIDs) > 0 {
-		logger.Infof("%s平台调度任务使用 management.storeIDs 作为店铺白名单: %v", platformName, configuredStoreIDs)
-		return dedupeAndSortStoreIDs(configuredStoreIDs)
-	}
-
 	if taskType != scheduler.TaskTypePricing {
-		logger.Warnf("%s平台%s任务未配置 management.storeIDs，当前仅自动发现核价店铺，跳过动态建任务",
+		logger.Warnf("%s平台%s任务当前仅自动发现核价店铺，跳过动态建任务",
 			platformName, taskType)
 		return nil
 	}

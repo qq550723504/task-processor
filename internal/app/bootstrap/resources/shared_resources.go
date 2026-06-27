@@ -83,8 +83,7 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 	}
 
 	localRuntime := localruntime.NewRuntime(localProvider, localruntime.RuntimeOptions{
-		SheinCookieProvider:      cookieProvider,
-		ImageDownloadInsecureTLS: cfg.Management.HTTPClient.InsecureSkipVerify,
+		SheinCookieProvider: cookieProvider,
 	})
 
 	resources := &SharedResources{}

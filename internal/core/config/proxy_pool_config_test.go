@@ -9,9 +9,6 @@ import (
 
 func TestLoadFromBytesLoadsAmazonProxyPool(t *testing.T) {
 	cfg, err := LoadFromBytes([]byte(`
-management:
-  clientSecret: test-secret
-  scopes: [user.read]
 openai:
   apiKey: test-key
   model: test-model
@@ -82,9 +79,6 @@ http://127.0.0.1:31001
 	}
 
 	cfg, err := LoadFromBytes([]byte(`
-management:
-  clientSecret: test-secret
-  scopes: [user.read]
 openai:
   apiKey: test-key
   model: test-model

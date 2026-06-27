@@ -48,7 +48,6 @@ func TestRuntimeDepsListingKitSupportIsStable(t *testing.T) {
 func TestBuildRuntimeDepsInitializesSharedRuntimeWithoutFeatureState(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
-	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
 
 	deps, err := buildRuntimeDeps(logger, "../../../config/config-test.yaml")
@@ -198,7 +197,6 @@ func TestEnsureListingKitSheinCookieStoreCachesStoreAndRegistersCloser(t *testin
 func TestRuntimeDepsAttachBuiltFeatureModules(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
-	t.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
 
 	deps, err := buildRuntimeDeps(logger, "../../../config/config-test.yaml")

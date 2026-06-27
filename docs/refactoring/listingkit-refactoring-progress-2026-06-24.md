@@ -898,3 +898,12 @@ Status: the package is already deleted, and shared-resource assembly no longer e
 - Changed startup/config debug logs to describe runtime store configuration instead of the retired Management service endpoint.
 
 Status: startup validation and health checks no longer block on credentials for the deleted Management Client service. The legacy `management.*` config keys remain only as compatibility storage for fields still consumed by local runtime paths, such as store IDs, user ID, and HTTP client options.
+
+### 2026-06-27 Management Client retirement follow-up: retired config removal
+
+- Removed `ManagementConfig` and the `Config.Management` field from the application config model.
+- Removed `management.*` defaults, env bindings, validation wiring, sample YAML blocks, and Kubernetes secret/configmap entries.
+- Stopped using management store IDs as scheduler, SDS auth, or ListingKit default-store fallback input.
+- Removed the ListingKit default-store resolver hook because its only input was the retired management store ID config.
+
+Status: Management Client service configuration is no longer a runtime config surface. Store/task runtime paths now rely on local runtime discovery or explicit platform-specific config instead of `management.*` keys.

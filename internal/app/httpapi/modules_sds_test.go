@@ -158,15 +158,13 @@ func TestBuildSDSSyncServiceReturnsServiceWithAuthState(t *testing.T) {
 
 func TestBuildSDSClientConfigUsesLoginServiceFromConfig(t *testing.T) {
 	cfg := &config.Config{
-		Management: config.ManagementConfig{
-			TenantID: "286",
-			StoreIDs: []int64{869},
-		},
 		Platforms: config.PlatformsConfig{
 			SDS: config.SDSPlatformConfig{
 				LoginService: config.SDSLoginServiceConfig{
 					BaseURL:      "http://login:8000",
 					SharedKey:    "shared-key",
+					TenantID:     "286",
+					Identifier:   "869",
 					MerchantName: "merchant",
 					Username:     "tester",
 					Password:     "secret",
@@ -204,12 +202,6 @@ func TestBuildSDSClientConfigUsesLoginServiceFromConfig(t *testing.T) {
 
 func TestBuildSDSClientConfigUsesAuthBootstrapFromConfig(t *testing.T) {
 	cfg := &config.Config{
-		Management: config.ManagementConfig{
-			BaseURL:      "https://api.example.test",
-			ClientID:     "client-id",
-			ClientSecret: "client-secret",
-			TenantID:     "286",
-		},
 		Platforms: config.PlatformsConfig{
 			SDS: config.SDSPlatformConfig{
 				AuthBootstrap: config.SDSAuthBootstrapConfig{

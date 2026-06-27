@@ -79,11 +79,6 @@ func TestValidateRabbitMQConfig_EnabledRequiresCoreFields(t *testing.T) {
 	assert.NotEmpty(t, errors)
 }
 
-func TestValidateManagementConfigDoesNotRequireRetiredServiceCredentials(t *testing.T) {
-	errors := ValidateManagementConfig(&ManagementConfig{})
-	assert.Empty(t, errors)
-}
-
 func TestValidateConfig_CatchesDependencyErrors(t *testing.T) {
 	cfg := &Config{
 		Worker: WorkerConfig{
@@ -91,14 +86,6 @@ func TestValidateConfig_CatchesDependencyErrors(t *testing.T) {
 			BufferSize:       1,
 			TaskInterval:     1,
 			MaxFetchPerCycle: 1,
-		},
-		Management: ManagementConfig{
-			BaseURL:      "http://example.com",
-			ClientID:     "client",
-			ClientSecret: "secret",
-			TokenURL:     "http://example.com/token",
-			Scopes:       []string{"user.read"},
-			TenantID:     "1",
 		},
 		OpenAI: OpenAIConfig{
 			APIKey:  "key",

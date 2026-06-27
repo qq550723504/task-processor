@@ -23,7 +23,6 @@ type submitModuleHooks struct {
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
 	SheinAPIClientFactoryBuilder      func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory
 	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
-	DefaultSheinStoreIDResolver       func([]int64) int64
 }
 
 type submitModuleInput struct {
@@ -77,7 +76,6 @@ func newSubmitModuleHooks(hooks BuildServiceHooks) submitModuleHooks {
 		SheinTranslateAPIBuilderFactory:   hooks.SheinTranslateAPIBuilderFactory,
 		SheinAPIClientFactoryBuilder:      hooks.SheinAPIClientFactoryBuilder,
 		StudioImageGeneratorBuilder:       hooks.StudioImageGeneratorBuilder,
-		DefaultSheinStoreIDResolver:       hooks.DefaultSheinStoreIDResolver,
 	}
 }
 
@@ -148,11 +146,6 @@ func buildSubmitModule(in submitModuleInput) submitModule {
 		imageUploadStore = in.Hooks.ImageUploadStoreBuilder(in.Config, in.Logger)
 	}
 
-	var defaultSheinStoreID int64
-	if in.Hooks.DefaultSheinStoreIDResolver != nil && in.Config != nil {
-		defaultSheinStoreID = in.Hooks.DefaultSheinStoreIDResolver(in.Config.Management.StoreIDs)
-	}
-
 	var studioImageGenerator openaiclient.ImageGenerator
 	if in.Hooks.StudioImageGeneratorBuilder != nil {
 		studioImageGenerator = in.Hooks.StudioImageGeneratorBuilder(in.Config, in.AICredentialStore)
@@ -179,7 +172,6 @@ func buildSubmitModule(in submitModuleInput) submitModule {
 			translateAPIBuilder:   sheinTranslateAPIBuilder,
 			apiClientFactory:      sheinAPIClientFactory,
 			contentOptimizer:      sheinCategoryLLMClient,
-			defaultStoreID:        defaultSheinStoreID,
 		},
 		studio: submitStudioDependencies{
 			imageGenerator: adaptListingKitAIImageGenerator(studioImageGenerator),

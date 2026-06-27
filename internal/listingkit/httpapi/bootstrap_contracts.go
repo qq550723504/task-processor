@@ -146,7 +146,6 @@ type BuildServiceHooks struct {
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
 	SheinAPIClientFactoryBuilder      func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory
 	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
-	DefaultSheinStoreIDResolver       func([]int64) int64
 	ConfigureZitadelAuth              func(config.ListingKitZitadelConfig)
 	ConfigureAuthorization            func([]string, []string) error
 }

@@ -25,17 +25,10 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 
 	shutdownCh := make(chan os.Signal, 1)
 	port := 18084
-	// config-test.yaml 需要 management.clientSecret 与 openai.apiKey，测试注入环境变量避免编辑全局文件
-	oldClientSecret := os.Getenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET")
+	// config-test.yaml needs openai.apiKey; inject it for tests instead of editing the shared file.
 	oldOpenAIKey := os.Getenv("TASK_PROCESSOR_OPENAI_API_KEY")
-	os.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
 	os.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
 	defer func() {
-		if oldClientSecret == "" {
-			os.Unsetenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET")
-		} else {
-			os.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", oldClientSecret)
-		}
 		if oldOpenAIKey == "" {
 			os.Unsetenv("TASK_PROCESSOR_OPENAI_API_KEY")
 		} else {
@@ -159,16 +152,9 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 
 	shutdownCh := make(chan os.Signal, 1)
 	port := 18085
-	oldClientSecret := os.Getenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET")
 	oldOpenAIKey := os.Getenv("TASK_PROCESSOR_OPENAI_API_KEY")
-	os.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", "test-secret")
 	os.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
 	defer func() {
-		if oldClientSecret == "" {
-			os.Unsetenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET")
-		} else {
-			os.Setenv("TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET", oldClientSecret)
-		}
 		if oldOpenAIKey == "" {
 			os.Unsetenv("TASK_PROCESSOR_OPENAI_API_KEY")
 		} else {

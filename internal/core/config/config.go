@@ -28,7 +28,6 @@ type Config struct {
 	Processor           ProcessorConfig           `yaml:"processor"`
 	Worker              WorkerConfig              `yaml:"worker"`
 	OpenAI              OpenAIConfig              `yaml:"openai"`
-	Management          ManagementConfig          `yaml:"management"`
 	Browser             BrowserConfig             `yaml:"browser"`
 	Amazon              AmazonConfig              `yaml:"amazon"`
 	RabbitMQ            *RabbitMQConfig           `yaml:"rabbitmq"`
@@ -224,30 +223,6 @@ func bindKnownEnvs(v *viper.Viper) {
 
 func knownEnvBindings() map[string]envBinding {
 	return map[string]envBinding{
-		"management.baseURL": {
-			Primary:    "TASK_PROCESSOR_MANAGEMENT_BASE_URL",
-			Deprecated: []string{"MANAGEMENT_BASE_URL"},
-		},
-		"management.clientID": {
-			Primary:    "TASK_PROCESSOR_MANAGEMENT_CLIENT_ID",
-			Deprecated: []string{"MANAGEMENT_CLIENT_ID"},
-		},
-		"management.clientSecret": {
-			Primary:    "TASK_PROCESSOR_MANAGEMENT_CLIENT_SECRET",
-			Deprecated: []string{"MANAGEMENT_CLIENT_SECRET"},
-		},
-		"management.tokenURL": {
-			Primary:    "TASK_PROCESSOR_MANAGEMENT_TOKEN_URL",
-			Deprecated: []string{"MANAGEMENT_TOKEN_URL"},
-		},
-		"management.tenantID": {
-			Primary:    "TASK_PROCESSOR_MANAGEMENT_TENANT_ID",
-			Deprecated: []string{"MANAGEMENT_TENANT_ID"},
-		},
-		"management.storeIDs": {
-			Primary:    "TASK_PROCESSOR_MANAGEMENT_STORE_IDS",
-			Deprecated: []string{"MANAGEMENT_STORE_IDS"},
-		},
 		"openai.apiKey": {
 			Primary:    "TASK_PROCESSOR_OPENAI_API_KEY",
 			Deprecated: []string{"OPENAI_API_KEY"},

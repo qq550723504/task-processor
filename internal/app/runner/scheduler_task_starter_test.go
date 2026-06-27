@@ -26,24 +26,6 @@ func (s *stubSchedulerStoreRuntime) ListAutoPricingStoreIDs(ctx context.Context,
 	return s.listAutoPricingStoreIDsFunc(ctx, platformName)
 }
 
-func TestResolveStoreIDsForTaskUsesConfiguredWhitelist(t *testing.T) {
-	t.Parallel()
-
-	logger := logrus.New()
-	storeRuntime := &stubSchedulerStoreRuntime{}
-
-	storeIDs := resolveStoreIDsForTask("SHEIN", scheduler.TaskTypePricing, []int64{3, 1, 3, 2}, storeRuntime, logger)
-	expected := []int64{1, 2, 3}
-	if len(storeIDs) != len(expected) {
-		t.Fatalf("expected %d store IDs, got %d", len(expected), len(storeIDs))
-	}
-	for i := range expected {
-		if storeIDs[i] != expected[i] {
-			t.Fatalf("expected storeIDs[%d]=%d, got %d", i, expected[i], storeIDs[i])
-		}
-	}
-}
-
 func TestResolveStoreIDsForTaskDiscoversAutoPricingStores(t *testing.T) {
 	t.Parallel()
 
@@ -59,7 +41,7 @@ func TestResolveStoreIDsForTaskDiscoversAutoPricingStores(t *testing.T) {
 		},
 	}
 
-	storeIDs := resolveStoreIDsForTask("SHEIN", scheduler.TaskTypePricing, nil, storeRuntime, logger)
+	storeIDs := resolveStoreIDsForTask("SHEIN", scheduler.TaskTypePricing, storeRuntime, logger)
 	expected := []int64{8, 10}
 	if len(storeIDs) != len(expected) {
 		t.Fatalf("expected %d store IDs, got %d", len(expected), len(storeIDs))
@@ -85,7 +67,7 @@ func TestResolveStoreIDsForTaskSkipsDynamicDiscoveryForNonPricingTasks(t *testin
 		},
 	}
 
-	storeIDs := resolveStoreIDsForTask("TEMU", scheduler.TaskTypeInventory, nil, storeRuntime, logger)
+	storeIDs := resolveStoreIDsForTask("TEMU", scheduler.TaskTypeInventory, storeRuntime, logger)
 	if len(storeIDs) != 0 {
 		t.Fatalf("expected no store IDs, got %v", storeIDs)
 	}

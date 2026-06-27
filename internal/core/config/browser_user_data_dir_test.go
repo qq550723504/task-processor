@@ -19,9 +19,6 @@ func TestLoadFromBytes_AppliesBrowserUserDataDirEnvironmentOverride(t *testing.T
 	t.Setenv("TASK_PROCESSOR_BROWSER_USER_DATA_DIR", "./.local/tmp/browser-profiles/from-env")
 
 	cfg, err := LoadFromBytes([]byte(`
-management:
-  clientSecret: "test-secret"
-  scopes: ["user.read"]
 openai:
   apiKey: "test-key"
   model: "gemini-2.5-flash"

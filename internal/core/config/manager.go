@@ -108,7 +108,6 @@ func (m *managerImpl) Validate(cfg *Config) error {
 		&cfg.Processor,
 		&cfg.Worker,
 		&cfg.OpenAI,
-		&cfg.Management,
 		&cfg.Browser,
 		&cfg.Amazon,
 		cfg.RabbitMQ,
