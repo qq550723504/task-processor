@@ -35,7 +35,7 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRules(runtime runtime) 
 
 	// 参数校验
 	if runtime == nil {
-		return nil, fmt.Errorf("managementClient不能为空")
+		return nil, fmt.Errorf("pricing runtime cannot be nil")
 	}
 
 	// 使用基础决策服务
@@ -56,7 +56,7 @@ func (s *AutoPricingService) AutoProcessPendingPricesWithRulesAndAmazon(
 
 	// 参数校验
 	if runtime == nil {
-		return nil, fmt.Errorf("managementClient不能为空")
+		return nil, fmt.Errorf("pricing runtime cannot be nil")
 	}
 
 	s.logger.Warn("配置提供者为空，使用基础决策服务")

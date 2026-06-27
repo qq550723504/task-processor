@@ -24,7 +24,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type managementRuntime interface {
+type runtimeRepository interface {
 	sheincontext.RuntimeRepository
 	GetRuntimeStoreService() listingruntime.StoreService
 	GetLocalStoreRepository() *listingadmin.GormStoreRepository
@@ -38,7 +38,7 @@ type managementRuntime interface {
 }
 
 type Dependencies struct {
-	RuntimeRepository managementRuntime
+	RuntimeRepository runtimeRepository
 	TaskStatusRuntime taskstatus.RuntimeWithTaskRPC
 	MemoryManager     *state.MemoryManager
 	ImageDownloader   interface {
@@ -50,7 +50,7 @@ type Dependencies struct {
 
 type SheinProcessor struct {
 	*processor.BaseProcessor
-	runtimeRepository managementRuntime
+	runtimeRepository runtimeRepository
 	taskStatusRuntime taskstatus.RuntimeWithTaskRPC
 	imageDownloader   interface {
 		DownloadImage(url string) ([]byte, error)

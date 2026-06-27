@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"errors"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -1883,6 +1884,49 @@ func TestRetiredManagementClientHotspotsUseCapabilityNames(t *testing.T) {
 		} {
 			if strings.Contains(string(content), phrase) {
 				t.Fatalf("%s mentions %q; use store API/runtime repository capability names", path, phrase)
+			}
+		}
+	}
+}
+
+func TestRetiredManagementRuntimeNamingHotspotsUseCapabilityNames(t *testing.T) {
+	checks := map[string][]string{
+		filepath.Join("..", "internal", "shein", "scheduler", "factory.go"): {
+			"type managementRuntime",
+			"managementClient",
+		},
+		filepath.Join("..", "internal", "shein", "scheduler", "runtime_adapter.go"): {
+			"ManagementRuntime",
+			"NewManagementRuntime",
+		},
+		filepath.Join("..", "internal", "shein", "pipeline", "processor.go"): {
+			"type managementRuntime",
+		},
+		filepath.Join("..", "internal", "shein", "pipeline", "dependencies_builder.go"): {
+			"managementRuntime",
+		},
+		filepath.Join("..", "internal", "temu", "product", "submit_handler.go"): {
+			"management_api",
+		},
+		filepath.Join("..", "internal", "temu", "pricing", "auto_pricing_service.go"): {
+			"managementClient不能为空",
+		},
+		filepath.Join("..", "internal", "temu", "pricing", "pricing_decision_service.go"): {
+			"managementClient不能为空",
+		},
+	}
+
+	for path, phrases := range checks {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range phrases {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; use runtime/repository/listingadmin capability names", path, phrase)
 			}
 		}
 	}

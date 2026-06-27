@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"task-processor/internal/core/logger"
-	management_api "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/pipeline"
 	temuapi "task-processor/internal/temu/api"
 	temucontext "task-processor/internal/temu/context"
@@ -19,7 +19,7 @@ type ProductSubmitHandler struct {
 	*handlerbase.BaseTemuHandler
 	logger        *logrus.Entry
 	saveHandler   *ProductSaveHandler
-	mappingClient management_api.ProductImportMappingAPI
+	mappingClient listingadmin.ProductImportMappingAPI
 	errorAnalyzer *ProductSubmitErrorAnalyzer
 	utils         *ProductSubmitUtils
 	validator     *ProductSubmitValidator
@@ -27,7 +27,7 @@ type ProductSubmitHandler struct {
 }
 
 // NewProductSubmitHandler 创建新的产品提交处理器
-func NewProductSubmitHandler(mappingClient management_api.ProductImportMappingAPI) *ProductSubmitHandler {
+func NewProductSubmitHandler(mappingClient listingadmin.ProductImportMappingAPI) *ProductSubmitHandler {
 	log := logger.GetGlobalLogger("temu.handlers.product_submit")
 
 	validator := NewProductSubmitValidator(log)

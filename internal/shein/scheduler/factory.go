@@ -25,7 +25,7 @@ import (
 	"task-processor/internal/state"
 )
 
-type managementRuntime interface {
+type schedulerRuntime interface {
 	platformbase.ManagementRuntime
 	platformtask.AutoPricingStoreConfigProvider
 	pricing.OperationStrategyProvider
@@ -76,53 +76,53 @@ type SheinTaskFactory struct {
 }
 
 func NewSheinTaskFactory(
-	managementClient managementRuntime,
+	runtimeProvider schedulerRuntime,
 	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) *SheinTaskFactory {
 	cookieManager := state.NewCookieManager()
-	storeService := managementClient.GetRuntimeStoreService()
+	storeService := runtimeProvider.GetRuntimeStoreService()
 	return NewSheinTaskFactoryWithDependencies(
-		managementClient,
+		runtimeProvider,
 		crawlSource,
 		amazonConfig,
 		monitorConfig,
 		rabbitmqClient,
 		Dependencies{
 			CookieManager:  cookieManager,
-			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, sheinmanagedclient.NewRuntimeCookieProvider(managementClient, storeService), sheinmanagedclient.NewRuntimeStoreConfigProvider(storeService)),
+			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, sheinmanagedclient.NewRuntimeCookieProvider(runtimeProvider, storeService), sheinmanagedclient.NewRuntimeStoreConfigProvider(storeService)),
 			FetcherBuilder: platformbase.NewDefaultProductFetcherBuilder(),
 		},
 	)
 }
 
 func NewSheinTaskFactoryWithFetcherBuilder(
-	managementClient managementRuntime,
+	runtimeProvider schedulerRuntime,
 	fetcherBuilder platformbase.ProductFetcherBuilder,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
 	rabbitmqClient *rabbitmq.Client,
 ) *SheinTaskFactory {
 	cookieManager := state.NewCookieManager()
-	storeService := managementClient.GetRuntimeStoreService()
+	storeService := runtimeProvider.GetRuntimeStoreService()
 	return NewSheinTaskFactoryWithDependencies(
-		managementClient,
+		runtimeProvider,
 		nil,
 		amazonConfig,
 		monitorConfig,
 		rabbitmqClient,
 		Dependencies{
 			CookieManager:  cookieManager,
-			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, sheinmanagedclient.NewRuntimeCookieProvider(managementClient, storeService), sheinmanagedclient.NewRuntimeStoreConfigProvider(storeService)),
+			ClientManager:  sheinmanagedclient.NewClientManager(cookieManager, sheinmanagedclient.NewRuntimeCookieProvider(runtimeProvider, storeService), sheinmanagedclient.NewRuntimeStoreConfigProvider(storeService)),
 			FetcherBuilder: fetcherBuilder,
 		},
 	)
 }
 
 func NewSheinTaskFactoryWithDependencies(
-	managementClient managementRuntime,
+	runtimeProvider schedulerRuntime,
 	crawlSource ports.CrawlSource,
 	amazonConfig *config.AmazonConfig,
 	monitorConfig *config.MonitorConfig,
@@ -132,7 +132,7 @@ func NewSheinTaskFactoryWithDependencies(
 	_ = crawlSource
 	baseFactory := platformbase.NewBaseFactory(platformbase.BaseFactoryConfig{
 		Platform:          "SHEIN",
-		ManagementRuntime: managementClient,
+		ManagementRuntime: runtimeProvider,
 		FetcherBuilder:    deps.FetcherBuilder,
 		AmazonConfig:      amazonConfig,
 		MonitorConfig:     monitorConfig,
@@ -359,10 +359,10 @@ func (f *SheinTaskFactory) SupportedTaskTypes() []appscheduler.TaskType {
 	return f.BaseFactory.SupportedTaskTypes()
 }
 
-func (f *SheinTaskFactory) runtimeProvider() managementRuntime {
+func (f *SheinTaskFactory) runtimeProvider() schedulerRuntime {
 	if f == nil || f.BaseFactory == nil {
 		return nil
 	}
-	runtimeProvider, _ := f.GetManagementRuntime().(managementRuntime)
+	runtimeProvider, _ := f.GetManagementRuntime().(schedulerRuntime)
 	return runtimeProvider
 }

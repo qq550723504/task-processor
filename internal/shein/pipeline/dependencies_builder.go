@@ -11,7 +11,7 @@ import (
 )
 
 type dependencyRuntime interface {
-	managementRuntime
+	runtimeRepository
 	taskstatus.RuntimeWithTaskRPC
 	state.DailyCountClientProvider
 	GetStoreAPI() listingadmin.StoreAPI

@@ -98,7 +98,7 @@ func newPricingDecisionServiceWithConfig(
 	productFetcher appfetcher.ProductFetcher,
 ) (DecisionMaker, error) {
 	if runtime == nil {
-		return nil, errors.New("managementClient不能为空")
+		return nil, errors.New("pricing runtime cannot be nil")
 	}
 	if config == nil {
 		return nil, errors.New("config不能为空")

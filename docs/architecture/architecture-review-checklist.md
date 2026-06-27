@@ -209,6 +209,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestTemuPricingFallbackLogsUseCapabilityNames`
 - `TestTemuSyncFallbackLogsUseCapabilityNames`
 - `TestRetiredManagementClientHotspotsUseCapabilityNames`
+- `TestRetiredManagementRuntimeNamingHotspotsUseCapabilityNames`
 - `TestAppRunnerSchedulerStoreRuntimeUsesCapabilityNames`
 - `TestAppRunnerProcessorLifecycleUsesRuntimeNames`
 - `TestAppRunnerHealthChecksUseRuntimeNames`
