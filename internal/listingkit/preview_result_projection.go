@@ -1,7 +1,5 @@
 package listingkit
 
-import previewdomain "task-processor/internal/listing/preview"
-
 func buildListingKitPreviewProjection(task *Task, selectedPlatform string) listingKitPreviewProjection {
 	if task == nil || task.Result == nil {
 		return listingKitPreviewProjection{}
@@ -14,9 +12,7 @@ func buildListingKitPreviewProjection(task *Task, selectedPlatform string) listi
 	if base == nil {
 		return listingKitPreviewProjection{}
 	}
-	domainProjection := previewdomain.BuildResultProjection(previewdomain.ResultProjectionInput{
-		Preview: base,
-	})
+	domainProjection := buildPreviewDomainResultProjection(base)
 	return adaptPreviewDomainResultProjection(domainProjection, readProjection, task.Result.RevisionHistory)
 }
 

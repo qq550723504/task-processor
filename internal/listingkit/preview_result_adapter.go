@@ -24,6 +24,12 @@ type listingKitPreviewProjectionAttachment struct {
 	generationOverview  *AssetGenerationOverview
 }
 
+func buildPreviewDomainResultProjection(preview *previewdomain.Preview) previewdomain.ResultProjection {
+	return previewdomain.BuildResultProjection(previewdomain.ResultProjectionInput{
+		Preview: preview,
+	})
+}
+
 func adaptPreviewDomainResultProjection(
 	domainProjection previewdomain.ResultProjection,
 	readProjection *listingKitReadProjection,

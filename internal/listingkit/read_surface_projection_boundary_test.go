@@ -62,14 +62,15 @@ func TestReadSurfaceProjectionBoundary(t *testing.T) {
 			"attachment      listingKitPreviewProjectionAttachment",
 		})
 		assertSourceExcludesAll(t, fileSource, []string{
+			`previewdomain "task-processor/internal/listing/preview"`,
 			`"task-processor/internal/asset"`,
 			`"task-processor/internal/catalog"`,
+			"previewdomain.BuildResultProjection(previewdomain.ResultProjectionInput{",
 			"type listingKitPreviewProjection struct {",
 			"type listingKitPreviewProjectionAttachment struct {",
 		})
 		assertSourceContainsAll(t, source, []string{
-			"domainProjection := previewdomain.BuildResultProjection(previewdomain.ResultProjectionInput{",
-			"Preview: base,",
+			"domainProjection := buildPreviewDomainResultProjection(base)",
 			"return adaptPreviewDomainResultProjection(domainProjection, readProjection, task.Result.RevisionHistory)",
 		})
 		assertSourceExcludesAll(t, source, []string{
