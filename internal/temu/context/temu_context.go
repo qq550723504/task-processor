@@ -3,7 +3,7 @@ package context
 import (
 	"context"
 
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pipeline"
 	"task-processor/internal/ports"
@@ -23,7 +23,7 @@ type ProductState struct {
 	AmazonProduct *model.Product
 	Variants      []*model.Product
 	TemuProduct   *api.Product
-	StoreInfo     *managementapi.StoreRespDTO
+	StoreInfo     *listingadmin.StoreRespDTO
 }
 
 type TemplateState struct {
@@ -61,8 +61,8 @@ type VariantState struct {
 }
 
 type RuleState struct {
-	ProfitRule *managementapi.ProfitRuleRespDTO
-	FilterRule *managementapi.FilterRuleRespDTO
+	ProfitRule *listingadmin.ProfitRuleRespDTO
+	FilterRule *listingadmin.FilterRuleRespDTO
 }
 
 type TemuTaskContext struct {

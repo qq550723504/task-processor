@@ -3,7 +3,7 @@ package model
 
 import (
 	"task-processor/internal/amazon/api"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/state"
 )
 
@@ -13,7 +13,7 @@ type Services struct {
 	APIClient          *api.Client
 	ProductTypeCache   any // 使用any避免循环导入
 	ProductTypeService any // 产品类型推荐服务
-	StoreAPI           managementapi.StoreAPI
+	StoreAPI           listingadmin.StoreAPI
 	MemoryManager      *state.MemoryManager
 	LLMAttributeMapper any // LLM属性映射器
 }
@@ -39,7 +39,7 @@ func (s *Services) GetProductTypeCache() any {
 }
 
 // SetStoreAPI 设置店铺 API 端口
-func (s *Services) SetStoreAPI(storeAPI managementapi.StoreAPI) {
+func (s *Services) SetStoreAPI(storeAPI listingadmin.StoreAPI) {
 	s.StoreAPI = storeAPI
 }
 

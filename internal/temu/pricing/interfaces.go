@@ -3,7 +3,7 @@ package pricing
 
 import (
 	"context"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	temupricing "task-processor/internal/temu/api/pricing"
 )
@@ -17,11 +17,11 @@ type StoreConfigProvider interface {
 
 // ProductDataProvider 产品数据提供者接口
 type ProductDataProvider interface {
-	GetProductImportMapping(skuSN string, storeID int64) (*managementapi.ProductImportMappingRespDTO, error)
-	GetProductImportMappingBySku(skuSN string, storeID int64) (*managementapi.ProductImportMappingRespDTO, error)
-	GetPricingRules(storeID int64) ([]managementapi.PricingRuleRespDTO, error)
+	GetProductImportMapping(skuSN string, storeID int64) (*listingadmin.ProductImportMappingRespDTO, error)
+	GetProductImportMappingBySku(skuSN string, storeID int64) (*listingadmin.ProductImportMappingRespDTO, error)
+	GetPricingRules(storeID int64) ([]listingadmin.PricingRuleRespDTO, error)
 	CalculateOriginCostPriceWithAmazon(
-		mapping *managementapi.ProductImportMappingRespDTO,
+		mapping *listingadmin.ProductImportMappingRespDTO,
 		supplierPrice float64,
 		amazonProduct *model.Product,
 		useAmazonPrice bool,
@@ -31,8 +31,8 @@ type ProductDataProvider interface {
 
 // PriceCalculator 价格计算器接口
 type PriceCalculator interface {
-	GetDefaultPricingRules(originCostPrice float64, rules *[]managementapi.PricingRuleRespDTO) *managementapi.PricingRuleRespDTO
-	CalculateMinAcceptablePrice(originCostPrice float64, rule *managementapi.PricingRuleRespDTO) float64
+	GetDefaultPricingRules(originCostPrice float64, rules *[]listingadmin.PricingRuleRespDTO) *listingadmin.PricingRuleRespDTO
+	CalculateMinAcceptablePrice(originCostPrice float64, rule *listingadmin.PricingRuleRespDTO) float64
 }
 
 // ProductFetcher 产品获取器接口

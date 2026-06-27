@@ -6,7 +6,6 @@ import (
 	"task-processor/internal/core/config"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	sheinclient "task-processor/internal/shein/client"
 	"task-processor/internal/sheinlogin"
 	sheinloginmanaged "task-processor/internal/sheinloginmanaged"
@@ -16,7 +15,7 @@ type AccountRepositoryBuilder func(cfg *config.Config, logger *logrus.Logger) (l
 
 type BuildInput struct {
 	Config                   *config.Config
-	StoreAPI                 managementapi.StoreAPI
+	StoreAPI                 listingadmin.StoreAPI
 	AccountRepositoryBuilder AccountRepositoryBuilder
 }
 

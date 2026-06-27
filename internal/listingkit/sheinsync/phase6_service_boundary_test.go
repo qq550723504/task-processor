@@ -73,7 +73,7 @@ func TestSheinSyncActivityAdapterUsesLocalPromotionStrategyContract(t *testing.T
 	)
 	assertSheinSyncServiceNotContainsAny(t, activityFile,
 		`"task-processor/internal/infra/clients/management/api"`,
-		"managementapi.OperationStrategyDTO",
+		"OperationStrategyDTO",
 	)
 
 	strategyFile := readSheinSyncServiceFileContent(t, "promotion_strategy.go")
@@ -84,7 +84,7 @@ func TestSheinSyncActivityAdapterUsesLocalPromotionStrategyContract(t *testing.T
 	)
 	assertSheinSyncServiceNotContainsAny(t, strategyFile,
 		`"task-processor/internal/infra/clients/management/api"`,
-		"managementapi.OperationStrategyDTO",
+		"OperationStrategyDTO",
 	)
 }
 
@@ -113,7 +113,7 @@ func TestSheinSyncActivityAdapterUsesLocalPromotionBridgeContract(t *testing.T) 
 	)
 	assertSheinSyncServiceNotContainsAny(t, legacyAdapterFile,
 		`"task-processor/internal/infra/clients/management/api"`,
-		"managementapi.OperationStrategyDTO",
+		"OperationStrategyDTO",
 		"managementOperationStrategy()",
 	)
 }
@@ -125,7 +125,7 @@ func TestSheinSyncEnrollmentTestsUseLocalPromotionContracts(t *testing.T) {
 	assertSheinSyncServiceNotContainsAny(t, testFile,
 		`"task-processor/internal/infra/clients/management/api"`,
 		`"task-processor/internal/shein/activity"`,
-		"managementapi.OperationStrategyDTO",
+		"OperationStrategyDTO",
 		"activity.PromotionRegistrationResult",
 	)
 }

@@ -2,7 +2,7 @@
 package sync
 
 import (
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/types"
 )
 
@@ -45,7 +45,7 @@ type TemuInventoryProductSnapshot struct {
 	Deleted           bool
 }
 
-func temuInventoryProductSnapshotFromDTO(prod *managementapi.ProductDataDTO) *TemuInventoryProductSnapshot {
+func temuInventoryProductSnapshotFromDTO(prod *listingadmin.ProductDataDTO) *TemuInventoryProductSnapshot {
 	if prod == nil {
 		return nil
 	}
@@ -90,8 +90,8 @@ func temuInventoryProductSnapshotFromDTO(prod *managementapi.ProductDataDTO) *Te
 	}
 }
 
-func (prod *TemuInventoryProductSnapshot) toProductDataItemDTO() managementapi.ProductDataItemDTO {
-	return managementapi.ProductDataItemDTO{
+func (prod *TemuInventoryProductSnapshot) toProductDataItemDTO() listingadmin.ProductDataItemDTO {
+	return listingadmin.ProductDataItemDTO{
 		PlatformProductID:  prod.PlatformProductID,
 		ProductName:        prod.Title,
 		ProductSku:         prod.ProductID,
@@ -117,12 +117,12 @@ func (prod *TemuInventoryProductSnapshot) toProductDataItemDTO() managementapi.P
 	}
 }
 
-func (prod *TemuInventoryProductSnapshot) toBatchSaveReq() *managementapi.ProductDataBatchSaveReqDTO {
-	return &managementapi.ProductDataBatchSaveReqDTO{
+func (prod *TemuInventoryProductSnapshot) toBatchSaveReq() *listingadmin.ProductDataBatchSaveReqDTO {
+	return &listingadmin.ProductDataBatchSaveReqDTO{
 		Platform: prod.Platform,
 		TenantID: prod.TenantID,
 		Region:   prod.Region,
 		StoreID:  prod.StoreID,
-		Products: []managementapi.ProductDataItemDTO{prod.toProductDataItemDTO()},
+		Products: []listingadmin.ProductDataItemDTO{prod.toProductDataItemDTO()},
 	}
 }

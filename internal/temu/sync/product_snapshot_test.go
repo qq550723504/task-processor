@@ -3,7 +3,7 @@ package sync
 import (
 	"testing"
 
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/types"
 )
 
@@ -29,7 +29,7 @@ func TestTemuProductSnapshotToBatchSaveReq(t *testing.T) {
 		Attributes:        `{"a":1}`,
 		PlatformProductID: "goods-1",
 		PlatformStatus:    `{"shelf_status":"ON_SHELF"}`,
-		ShelfStatus:       managementapi.ShelfStatusOnShelf,
+		ShelfStatus:       listingadmin.ShelfStatusOnShelf,
 	}
 
 	item := snapshot.toProductDataItemDTO()
@@ -40,7 +40,7 @@ func TestTemuProductSnapshotToBatchSaveReq(t *testing.T) {
 		t.Fatalf("item price/stock mismatch: %#v", item)
 	}
 
-	req := snapshot.toBatchSaveReq([]managementapi.ProductDataItemDTO{item})
+	req := snapshot.toBatchSaveReq([]listingadmin.ProductDataItemDTO{item})
 	if req.Platform != "TEMU" || req.TenantID != snapshot.TenantID || req.StoreID != snapshot.StoreID || req.Region != snapshot.Region {
 		t.Fatalf("batch save request metadata mismatch: %#v", req)
 	}

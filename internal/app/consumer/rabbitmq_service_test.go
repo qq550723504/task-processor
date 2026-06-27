@@ -13,7 +13,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
@@ -46,7 +46,7 @@ type countingStoreAPI struct {
 	calls []int64
 }
 
-func (s *countingStoreAPI) GetStore(id int64) (*managementapi.StoreRespDTO, error) {
+func (s *countingStoreAPI) GetStore(id int64) (*listingadmin.StoreRespDTO, error) {
 	s.calls = append(s.calls, id)
 	return s.stubStoreAPI.GetStore(id)
 }
@@ -640,7 +640,7 @@ func TestRabbitMQServicePreloadOwnedStoreConfigsRequestsEachStore(t *testing.T) 
 
 	storeAPI := &countingStoreAPI{
 		stubStoreAPI: stubStoreAPI{
-			store: &managementapi.StoreRespDTO{ID: 1},
+			store: &listingadmin.StoreRespDTO{ID: 1},
 		},
 	}
 	svc.storeAPI = storeAPI

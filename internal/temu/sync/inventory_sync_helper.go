@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"task-processor/internal/core/logger"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	productpkg "task-processor/internal/product"
@@ -171,7 +171,7 @@ func (s *inventorySyncServiceImpl) enableDebugLogging() {
 	}
 }
 
-func (s *inventorySyncServiceImpl) getStoreInfo(ctx context.Context, storeID int64) (*managementapi.StoreRespDTO, error) {
+func (s *inventorySyncServiceImpl) getStoreInfo(ctx context.Context, storeID int64) (*listingadmin.StoreRespDTO, error) {
 	if s.storeRepo != nil {
 		store, err := s.storeRepo.FindStoreByID(ctx, storeID)
 		if err != nil {

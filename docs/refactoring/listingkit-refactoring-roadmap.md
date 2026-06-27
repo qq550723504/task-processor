@@ -678,14 +678,14 @@ Follow-up deletion
 | --- | --- | --- |
 | Go Listing Control Plane 代码路径 | production hardened | `cmd/listing-control-plane`、`internal/listingcontrol`、`internal/app/runtime/listingcontrol`、`scripts/build-push-deploy-listing-control-plane.ps1` 和 `deployments/kubernetes/shein-listing/overlays/prod-auto-shard-statefulset/listing-control-plane.yaml` 已落库并部署到生产镜像 `xuwei190/task-processor-listing-control-plane:f1f8a06a`。`docs/product/validation/runs/2026-06-24-listing-control-plane-leader-rollout.md` 已记录双实例 leader/standby rollout、active Pod 删除接管、dispatch event/task reason DB 观察，以及从 `f1f8a06a` 回滚到 `b3fd80e1` 再滚回 `f1f8a06a` 的 rollback rehearsal。dispatch skip/delay reason 已作为任务表业务事实和 `listing_dispatch_event` 审计事实生产验证；daily limit capacity 已接入 Store Runtime 并在 `/ready` 和事件表中观察到。唯一 deferred 项是 ListingKit UI 的 admin 任务列表“调度原因”列尚未发布。 |
 | Control Plane 实施计划状态 | production closeout updated | `docs/superpowers/plans/2026-06-23-go-listing-control-plane.md` 已补充 2026-06-24 closeout，明确哪些是代码完成、哪些还只是待生产验证，避免原始 checklist 与代码状态继续漂移。 |
-| Management Client runtime retirement | in progress | `internal/app/runtime/listing/local_runtime_health.go` 已从具体 `management.ClientManager` 改为 `listingLocalRuntimeValidator` 小接口；consumer/runtime 边界已移除 `PlatformRuntimeContext.ManagementClient`、`SharedResources.ManagementClient` 和 `PlatformProcessorRegistry.managementClient`，改由 `ListingRuntimeHealthValidator` 与 `ListingRuntimeImportTaskRepository` ports 承载。下一步仍需继续拆出 Store、Product、Pricing 和 Task capabilities，收缩 bootstrap 层的 Management Client 兼容适配。 |
+| Management Client runtime retirement | completed | `internal/infra/clients/management` 已作为 Go package 删除；bootstrap/runtime 路径改走 `internal/listingruntime/local`，consumer/runtime 边界改由 `ListingRuntimeHealthValidator`、`ListingRuntimeImportTaskRepository`、`listingadmin` 和 `taskrpcapi` contracts 承载。剩余工作不是恢复 management API 适配层，而是守住边界测试并继续做 runtime closeout / product-source normalization。 |
 | ListingKit 重构进展快照 | added | `docs/refactoring/listingkit-refactoring-progress-2026-06-24.md` 记录当前后半程状态、核心缺口、两周执行建议和不建议继续做的工作。该文件是 active snapshot，不替代 roadmap 和长期架构文档。 |
 
 2026-06-26 执行对齐：
 
 - 本 roadmap 仍是 ListingKit 重构方向的主来源；`docs/refactoring/listingkit-boundary-checkpoint.md` 记录小步提交、临时 stop line 和 guard-backed seam 状态。
 - 当前执行线先继续 SHEIN marketplace publishing / submission 边界收口，尤其是把稳定的 SHEIN 发布规则迁入 `internal/marketplace/shein/publishing`，并让 `internal/publishing/shein` 只保留兼容模型、状态 mutation 和远端副作用编排。
-- Management Client runtime retirement 仍是长期目标，但当前不与 SHEIN publishing 边界收口混线推进；除非明确回到 management retirement 计划，否则后续切片不应新增或整理 management API 适配层。
+- Management Client runtime retirement 已完成到 package deletion；后续切片不应新增或整理 management API 适配层，只允许维护边界 guard、历史文档说明和 runtime/product-source ownership 收口。
 
 在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
 

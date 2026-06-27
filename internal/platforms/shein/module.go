@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/taskstatus"
@@ -272,7 +272,7 @@ type sheinDependencyRuntimeAdapter struct {
 	consumer.ProcessorRuntime
 }
 
-func (a sheinDependencyRuntimeAdapter) GetStoreAPI() managementapi.StoreAPI {
+func (a sheinDependencyRuntimeAdapter) GetStoreAPI() listingadmin.StoreAPI {
 	if a.ProcessorRuntime == nil {
 		return nil
 	}

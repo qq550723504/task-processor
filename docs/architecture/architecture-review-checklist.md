@@ -208,6 +208,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestTemuAPIClientUsesManagementAPIPortAliases`
 - `TestTemuPricingFallbackLogsUseCapabilityNames`
 - `TestTemuSyncFallbackLogsUseCapabilityNames`
+- `TestRetiredManagementClientHotspotsUseCapabilityNames`
 - `TestAppRunnerSchedulerStoreRuntimeUsesCapabilityNames`
 - `TestAppRunnerProcessorLifecycleUsesRuntimeNames`
 - `TestAppRunnerHealthChecksUseRuntimeNames`

@@ -9,7 +9,6 @@ import (
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/product"
@@ -25,11 +24,11 @@ type CrawlSource = ports.CrawlSource
 type rawJSONDataClientProvider = product.RawJsonDataClient
 
 type processorRuntimeProvider interface {
-	GetDailyListingCountClient() managementapi.DailyListingCountAPI
-	GetStoreAPI() managementapi.StoreAPI
-	GetFilterRuleClient() managementapi.FilterRuleAPI
-	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
-	GetProfitRuleClient() managementapi.ProfitRuleAPI
+	GetDailyListingCountClient() listingadmin.DailyListingCountAPI
+	GetStoreAPI() listingadmin.StoreAPI
+	GetFilterRuleClient() listingadmin.FilterRuleAPI
+	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
+	GetProfitRuleClient() listingadmin.ProfitRuleAPI
 	GetRuntimeStoreService() listingruntime.StoreService
 	GetLocalStoreRepository() *listingadmin.GormStoreRepository
 	GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository
@@ -53,12 +52,12 @@ type processorRuntimeProvider interface {
 
 type schedulerFactoryRuntimeProvider interface {
 	SchedulerRuntimeProvider
-	GetStoreAPI() managementapi.StoreAPI
+	GetStoreAPI() listingadmin.StoreAPI
 	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
 	GetRawJsonDataAdapter() product.RawJsonDataClient
-	GetPricingRuleClient() managementapi.PricingRuleAPI
-	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
-	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
+	GetPricingRuleClient() listingadmin.PricingRuleAPI
+	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
+	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
 	PricingRuntime() temupricingruntime.PricingRuntime
 	SyncRuntime() temusyncruntime.ServiceRuntime

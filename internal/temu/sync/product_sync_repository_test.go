@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	temuquery "task-processor/internal/temu/api/query"
 
 	"github.com/sirupsen/logrus"
@@ -108,17 +107,17 @@ tenant_id, import_task_id, store_id, platform, region, product_id, sku, platform
 
 type failingStoreAPI struct{}
 
-func (failingStoreAPI) GetStore(int64) (*managementapi.StoreRespDTO, error) {
+func (failingStoreAPI) GetStore(int64) (*listingadmin.StoreRespDTO, error) {
 	return nil, context.Canceled
 }
-func (failingStoreAPI) PageStores(*managementapi.StorePageReqDTO) (*managementapi.PageResult[*managementapi.StoreRespDTO], error) {
+func (failingStoreAPI) PageStores(*listingadmin.StorePageReqDTO) (*listingadmin.PageResult[*listingadmin.StoreRespDTO], error) {
 	return nil, context.Canceled
 }
 func (failingStoreAPI) GetStoreCookie(int64) (string, error) { return "", context.Canceled }
-func (failingStoreAPI) UpdateStoreId(*managementapi.StoreIdUpdateReqDTO) (bool, error) {
+func (failingStoreAPI) UpdateStoreId(*listingadmin.StoreIdUpdateReqDTO) (bool, error) {
 	return false, context.Canceled
 }
-func (failingStoreAPI) UpdateStoreStatus(*managementapi.StoreStatusUpdateReqDTO) (bool, error) {
+func (failingStoreAPI) UpdateStoreStatus(*listingadmin.StoreStatusUpdateReqDTO) (bool, error) {
 	return false, context.Canceled
 }
 func (failingStoreAPI) DeleteStoreCookie(int64) (bool, error) { return false, context.Canceled }
@@ -126,9 +125,9 @@ func (failingStoreAPI) SetStorePauseStatus(int64, bool, string) (bool, error) {
 	return false, context.Canceled
 }
 func (failingStoreAPI) GetStorePauseStatus(int64) (bool, error) { return false, context.Canceled }
-func (failingStoreAPI) GetStorePauseStatusDetail(int64) (*managementapi.StorePauseStatusRespDTO, error) {
+func (failingStoreAPI) GetStorePauseStatusDetail(int64) (*listingadmin.StorePauseStatusRespDTO, error) {
 	return nil, context.Canceled
 }
 
-var _ managementapi.StoreAPI = failingStoreAPI{}
+var _ listingadmin.StoreAPI = failingStoreAPI{}
 var _ = temuquery.SkuQueryResponse{}

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/jsonx"
 	temuinventory "task-processor/internal/temu/api/inventory"
 
@@ -48,7 +48,7 @@ func (s *inventorySyncServiceImpl) delistProductViaTEMUAPI(
 	}
 
 	// 更新管理系统中的产品状态
-	prod.ShelfStatus = managementapi.ShelfStatusOffShelf
+	prod.ShelfStatus = listingadmin.ShelfStatusOffShelf
 	platformStatus := map[string]string{
 		"shelf_status": "OFF_SHELF",
 	}
@@ -134,7 +134,7 @@ func (s *inventorySyncServiceImpl) relistProductViaTEMUAPI(
 	}
 
 	// 更新管理系统中的产品状态
-	prod.ShelfStatus = managementapi.ShelfStatusOnShelf
+	prod.ShelfStatus = listingadmin.ShelfStatusOnShelf
 	platformStatus := map[string]string{
 		"shelf_status": "ON_SHELF",
 	}

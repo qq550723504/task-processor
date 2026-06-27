@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
 	domainproduct "task-processor/internal/product"
@@ -17,10 +16,10 @@ type runtime interface {
 	temuclient.StoreRuntime
 	platformtask.AutoPricingStoreConfigProvider
 	GetRawJsonDataAdapter() domainproduct.RawJsonDataClient
-	GetStoreAPI() managementapi.StoreAPI
-	GetPricingRuleClient() managementapi.PricingRuleAPI
-	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
-	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
+	GetStoreAPI() listingadmin.StoreAPI
+	GetPricingRuleClient() listingadmin.PricingRuleAPI
+	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
+	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
 	PricingRuntime() temupricingruntime.PricingRuntime
 	SyncRuntime() schedulerservice.ServiceRuntime
@@ -32,10 +31,10 @@ type runtimeSource interface {
 	temuclient.StoreRuntime
 	platformtask.AutoPricingStoreConfigProvider
 	GetRawJsonDataAdapter() domainproduct.RawJsonDataClient
-	GetPricingRuleClient() managementapi.PricingRuleAPI
-	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
-	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
-	GetProductDataClient(storeID int64) managementapi.ProductDataAPI
+	GetPricingRuleClient() listingadmin.PricingRuleAPI
+	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
+	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
+	GetProductDataClient(storeID int64) listingadmin.ProductDataAPI
 	GetLocalStoreRepository() *listingadmin.GormStoreRepository
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
 	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
@@ -68,14 +67,14 @@ func (r schedulerRuntime) GetRawJsonDataAdapter() domainproduct.RawJsonDataClien
 	return r.source.GetRawJsonDataAdapter()
 }
 
-func (r schedulerRuntime) GetStoreAPI() managementapi.StoreAPI {
+func (r schedulerRuntime) GetStoreAPI() listingadmin.StoreAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetStoreAPI()
 }
 
-func (r schedulerRuntime) GetPricingRuleClient() managementapi.PricingRuleAPI {
+func (r schedulerRuntime) GetPricingRuleClient() listingadmin.PricingRuleAPI {
 	if r.source == nil {
 		return nil
 	}
@@ -89,14 +88,14 @@ func (r schedulerRuntime) GetLocalPricingRuleRepository() *listingadmin.GormPric
 	return r.source.GetLocalPricingRuleRepository()
 }
 
-func (r schedulerRuntime) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
+func (r schedulerRuntime) GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetProductImportMappingAPI()
 }
 
-func (r schedulerRuntime) GetInventoryRecordAPI() managementapi.InventoryRecordAPI {
+func (r schedulerRuntime) GetInventoryRecordAPI() listingadmin.InventoryRecordAPI {
 	if r.source == nil {
 		return nil
 	}

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 
 	"github.com/sirupsen/logrus"
@@ -72,15 +71,15 @@ func (s stubProductImportMappingRepo) FindLatest(_ context.Context, _ listingadm
 	return s.mapping, nil
 }
 
-var _ = managementapi.PricingRuleRespDTO{}
+var _ = listingadmin.PricingRuleRespDTO{}
 
 type stubPricingRuntimeSource struct{}
 
-func (stubPricingRuntimeSource) GetStoreAPI() managementapi.StoreAPI { return nil }
+func (stubPricingRuntimeSource) GetStoreAPI() listingadmin.StoreAPI { return nil }
 
-func (stubPricingRuntimeSource) GetPricingRuleClient() managementapi.PricingRuleAPI { return nil }
+func (stubPricingRuntimeSource) GetPricingRuleClient() listingadmin.PricingRuleAPI { return nil }
 
-func (stubPricingRuntimeSource) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
+func (stubPricingRuntimeSource) GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI {
 	return nil
 }
 

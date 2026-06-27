@@ -9,7 +9,7 @@ import (
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/processor"
@@ -23,9 +23,9 @@ import (
 type processorRuntime interface {
 	temuclient.StoreRuntime
 	taskstatus.RuntimeTaskStatusUpdater
-	GetFilterRuleClient() managementapi.FilterRuleAPI
-	GetProductImportMappingClient() managementapi.ProductImportMappingAPI
-	GetProfitRuleClient() managementapi.ProfitRuleAPI
+	GetFilterRuleClient() listingadmin.FilterRuleAPI
+	GetProductImportMappingClient() listingadmin.ProductImportMappingAPI
+	GetProfitRuleClient() listingadmin.ProfitRuleAPI
 }
 
 type Dependencies struct {
@@ -161,28 +161,28 @@ func (p *TemuProcessor) GetStoreRuntime() temuclient.StoreRuntime {
 	return p.processorRuntime
 }
 
-func (p *TemuProcessor) GetStoreClient() managementapi.StoreAPI {
+func (p *TemuProcessor) GetStoreClient() listingadmin.StoreAPI {
 	if p == nil || p.processorRuntime == nil {
 		return nil
 	}
 	return p.processorRuntime.GetStoreAPI()
 }
 
-func (p *TemuProcessor) GetFilterRuleClient() managementapi.FilterRuleAPI {
+func (p *TemuProcessor) GetFilterRuleClient() listingadmin.FilterRuleAPI {
 	if p == nil || p.processorRuntime == nil {
 		return nil
 	}
 	return p.processorRuntime.GetFilterRuleClient()
 }
 
-func (p *TemuProcessor) GetProductImportMappingClient() managementapi.ProductImportMappingAPI {
+func (p *TemuProcessor) GetProductImportMappingClient() listingadmin.ProductImportMappingAPI {
 	if p == nil || p.processorRuntime == nil {
 		return nil
 	}
 	return p.processorRuntime.GetProductImportMappingClient()
 }
 
-func (p *TemuProcessor) GetProfitRuleClient() managementapi.ProfitRuleAPI {
+func (p *TemuProcessor) GetProfitRuleClient() listingadmin.ProfitRuleAPI {
 	if p == nil || p.processorRuntime == nil {
 		return nil
 	}

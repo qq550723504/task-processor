@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	amazonModel "task-processor/internal/amazon/model"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/state"
 
@@ -15,7 +15,7 @@ type fakeDailyCountProvider struct {
 	client *fakeDailyCountClient
 }
 
-func (p fakeDailyCountProvider) GetDailyListingCountClient() managementapi.DailyListingCountAPI {
+func (p fakeDailyCountProvider) GetDailyListingCountClient() listingadmin.DailyListingCountAPI {
 	return p.client
 }
 
@@ -23,22 +23,22 @@ type fakeDailyCountClient struct {
 	count int64
 }
 
-func (c *fakeDailyCountClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*managementapi.DailyListingCountRespDTO, error) {
-	return &managementapi.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date, Count: c.count}, nil
+func (c *fakeDailyCountClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*listingadmin.DailyListingCountRespDTO, error) {
+	return &listingadmin.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date, Count: c.count}, nil
 }
 
-func (c *fakeDailyCountClient) SetDailyListingCount(req *managementapi.DailyListingCountSetReqDTO) error {
+func (c *fakeDailyCountClient) SetDailyListingCount(req *listingadmin.DailyListingCountSetReqDTO) error {
 	c.count = req.Count
 	return nil
 }
 
-func (c *fakeDailyCountClient) TryConsumeDailyQuota(req *managementapi.TryConsumeDailyQuotaReqDTO) (*managementapi.TryConsumeDailyQuotaRespDTO, error) {
+func (c *fakeDailyCountClient) TryConsumeDailyQuota(req *listingadmin.TryConsumeDailyQuotaReqDTO) (*listingadmin.TryConsumeDailyQuotaRespDTO, error) {
 	next := c.count + req.Increment
 	allowed := next <= req.Limit
 	if allowed {
 		c.count = next
 	}
-	return &managementapi.TryConsumeDailyQuotaRespDTO{
+	return &listingadmin.TryConsumeDailyQuotaRespDTO{
 		Allowed:      allowed,
 		NewCount:     c.count,
 		Remaining:    req.Limit - c.count,
@@ -46,7 +46,7 @@ func (c *fakeDailyCountClient) TryConsumeDailyQuota(req *managementapi.TryConsum
 	}, nil
 }
 
-func (c *fakeDailyCountClient) RollbackDailyQuota(req *managementapi.RollbackDailyQuotaReqDTO) (int64, error) {
+func (c *fakeDailyCountClient) RollbackDailyQuota(req *listingadmin.RollbackDailyQuotaReqDTO) (int64, error) {
 	c.count -= req.Decrement
 	if c.count < 0 {
 		c.count = 0
@@ -98,7 +98,7 @@ func TestRecordAmazonDailyListingCountWithoutDailyLimit(t *testing.T) {
 			StoreID:  2,
 		},
 		&amazonModel.TaskContext{
-			StoreInfo: &managementapi.StoreRespDTO{
+			StoreInfo: &listingadmin.StoreRespDTO{
 				ID:             2,
 				DailyLimitType: "SPU",
 			},

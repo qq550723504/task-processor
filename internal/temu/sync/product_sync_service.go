@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	temuproduct "task-processor/internal/temu/api/product"
 	temuquery "task-processor/internal/temu/api/query"
 
@@ -16,7 +15,7 @@ import (
 )
 
 type productDataClientFactory interface {
-	GetProductDataClient(storeID int64) managementapi.ProductDataAPI
+	GetProductDataClient(storeID int64) listingadmin.ProductDataAPI
 }
 
 type productSyncRuntime interface {
@@ -31,8 +30,8 @@ type productSyncServiceImpl struct {
 	runtime         productSyncRuntime
 	productAPI      *temuproduct.API
 	skuQueryAPI     *temuquery.API
-	mappingClient   managementapi.ProductImportMappingAPI
-	storeAPI        managementapi.StoreAPI
+	mappingClient   listingadmin.ProductImportMappingAPI
+	storeAPI        listingadmin.StoreAPI
 	storeRepo       *listingadmin.GormStoreRepository
 	mappingRepo     *listingadmin.GormProductImportMappingRepository
 	productDataRepo listingadmin.ProductDataRepository
@@ -45,8 +44,8 @@ func NewProductSyncService(
 	runtime productSyncRuntime,
 	productAPI *temuproduct.API,
 	skuQueryAPI *temuquery.API,
-	mappingClient managementapi.ProductImportMappingAPI,
-	storeAPI managementapi.StoreAPI,
+	mappingClient listingadmin.ProductImportMappingAPI,
+	storeAPI listingadmin.StoreAPI,
 	config *ProductSyncConfig,
 ) ProductSyncService {
 	if config == nil {
@@ -221,7 +220,7 @@ func (s *productSyncServiceImpl) SaveProducts(ctx context.Context, productDataLi
 	}
 
 	// 转换为批量请求格式
-	products := make([]managementapi.ProductDataItemDTO, 0, totalCount)
+	products := make([]listingadmin.ProductDataItemDTO, 0, totalCount)
 	for _, productData := range productDataList {
 		// 检查上下文是否被取消
 		select {

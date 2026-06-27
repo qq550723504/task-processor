@@ -27,7 +27,7 @@ func TestForceRefreshCookiesUsesLocalLoginRefresher(t *testing.T) {
 	manager := NewCookieManager(456, nil, nil)
 	manager.resolvedTenantID = 123
 	if _, err := manager.ForceRefreshCookies(); err == nil {
-		t.Fatal("expected cookie load to fail without management client")
+		t.Fatal("expected cookie load to fail without a store cookie provider")
 	}
 	if stub.calls != 1 || stub.tenantID != 123 || stub.storeID != 456 {
 		t.Fatalf("unexpected refresher call: %+v", stub)

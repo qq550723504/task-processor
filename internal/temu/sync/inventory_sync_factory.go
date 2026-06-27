@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/rabbitmq"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/ports"
 	"task-processor/internal/product"
 	"task-processor/internal/temu/api/client"
@@ -25,7 +25,7 @@ type InventorySyncServiceFactory struct {
 type inventoryServiceFactoryRuntime interface {
 	inventorySyncRuntime
 	GetRawJsonDataAdapter() product.RawJsonDataClient
-	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
+	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
 }
 
 // NewInventorySyncServiceFactory 创建库存监控服务工厂

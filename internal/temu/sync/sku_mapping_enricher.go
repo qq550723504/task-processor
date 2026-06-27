@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	temuproduct "task-processor/internal/temu/api/product"
 	temuquery "task-processor/internal/temu/api/query"
 
@@ -100,7 +99,7 @@ func (s *productSyncServiceImpl) buildEnrichedMappingData(
 	return result, nil
 }
 
-func (s *productSyncServiceImpl) getMappingBySKU(ctx context.Context, sku string, storeID int64) (*managementapi.ProductImportMappingRespDTO, error) {
+func (s *productSyncServiceImpl) getMappingBySKU(ctx context.Context, sku string, storeID int64) (*listingadmin.ProductImportMappingRespDTO, error) {
 	if s.mappingRepo != nil {
 		mapping, err := s.mappingRepo.FindLatest(ctx, listingadmin.ProductImportMappingQuery{
 			SKU:     sku,
@@ -120,17 +119,17 @@ func (s *productSyncServiceImpl) getMappingBySKU(ctx context.Context, sku string
 	if s.mappingClient == nil {
 		return nil, nil
 	}
-	return s.mappingClient.GetProductImportMappingBySku(&managementapi.ProductImportMappingGetBySkuReqDTO{
+	return s.mappingClient.GetProductImportMappingBySku(&listingadmin.ProductImportMappingGetBySkuReqDTO{
 		Sku:     sku,
 		StoreId: storeID,
 	})
 }
 
-func temuProductImportMappingDTO(mapping *listingadmin.ProductImportMapping) *managementapi.ProductImportMappingRespDTO {
+func temuProductImportMappingDTO(mapping *listingadmin.ProductImportMapping) *listingadmin.ProductImportMappingRespDTO {
 	if mapping == nil {
 		return nil
 	}
-	return &managementapi.ProductImportMappingRespDTO{
+	return &listingadmin.ProductImportMappingRespDTO{
 		ID:           mapping.ID,
 		ImportTaskId: mapping.ImportTaskID,
 		StoreId:      mapping.StoreID,

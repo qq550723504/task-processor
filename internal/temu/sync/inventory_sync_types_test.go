@@ -3,12 +3,12 @@ package sync
 import (
 	"testing"
 
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/types"
 )
 
 func TestTemuInventoryProductSnapshotFromDTOAndBatchSaveReq(t *testing.T) {
-	dto := &managementapi.ProductDataDTO{
+	dto := &listingadmin.ProductDataDTO{
 		ID:                7,
 		StoreID:           11,
 		Platform:          "TEMU",
@@ -29,7 +29,7 @@ func TestTemuInventoryProductSnapshotFromDTOAndBatchSaveReq(t *testing.T) {
 		Attributes:        `{"a":1}`,
 		PlatformProductID: "goods-1",
 		PlatformStatus:    `{"shelf_status":"ON_SHELF"}`,
-		ShelfStatus:       managementapi.ShelfStatusOnShelf,
+		ShelfStatus:       listingadmin.ShelfStatusOnShelf,
 		TenantID:          17,
 	}
 

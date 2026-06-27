@@ -9,7 +9,7 @@ import (
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/rabbitmq"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/product"
 
 	"github.com/sirupsen/logrus"
@@ -27,7 +27,7 @@ type PlatformProcessorRegistry struct {
 	listingRuntimeHealthValidator      ListingRuntimeHealthValidator
 	listingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
 	rawJSONDataClient                  product.RawJsonDataClient
-	storeAPI                           managementapi.StoreAPI
+	storeAPI                           listingadmin.StoreAPI
 	schedulerRuntime                   runner.SchedulerRuntimeProvider
 	schedulerFactoryRuntime            SchedulerFactoryRuntime
 	processorRuntime                   ProcessorRuntime

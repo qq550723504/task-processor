@@ -41,7 +41,7 @@ func (h *MarkVariantPublishSuccessHandler) Handle(ctx *shein.TaskContext) error 
 		return err
 	}
 	if input.RuntimeRepository == nil {
-		h.logger.Warn("management client manager is nil, skip variant publish marking")
+		h.logger.Warn("runtime repository is nil, skip variant publish marking")
 		return nil
 	}
 

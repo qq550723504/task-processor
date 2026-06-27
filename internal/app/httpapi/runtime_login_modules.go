@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 	sheinclient "task-processor/internal/shein/client"
@@ -73,7 +73,7 @@ func buildSheinLoginModuleResult(deps *runtimeDeps) (*sheinLoginModuleResult, fu
 	return result, result.Close, nil
 }
 
-func sheinLoginStoreAPI(deps *runtimeDeps) managementapi.StoreAPI {
+func sheinLoginStoreAPI(deps *runtimeDeps) listingadmin.StoreAPI {
 	if deps == nil || deps.shared == nil || deps.shared.sharedResources == nil {
 		return nil
 	}

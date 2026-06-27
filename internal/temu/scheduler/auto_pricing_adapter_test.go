@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/temu/api"
@@ -85,9 +84,9 @@ func TestTemuAutoPricingAdapter_ApplyPricingRules(t *testing.T) {
 
 type stubAutoPricingRuntimeSource struct{}
 
-func (stubAutoPricingRuntimeSource) GetStoreAPI() managementapi.StoreAPI                { return nil }
-func (stubAutoPricingRuntimeSource) GetPricingRuleClient() managementapi.PricingRuleAPI { return nil }
-func (stubAutoPricingRuntimeSource) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
+func (stubAutoPricingRuntimeSource) GetStoreAPI() listingadmin.StoreAPI                { return nil }
+func (stubAutoPricingRuntimeSource) GetPricingRuleClient() listingadmin.PricingRuleAPI { return nil }
+func (stubAutoPricingRuntimeSource) GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI {
 	return nil
 }
 func (stubAutoPricingRuntimeSource) GetLocalStoreRepository() *listingadmin.GormStoreRepository {

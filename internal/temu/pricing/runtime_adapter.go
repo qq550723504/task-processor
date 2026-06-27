@@ -4,14 +4,13 @@ import (
 	"context"
 
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 )
 
 type runtime interface {
-	GetStoreAPI() managementapi.StoreAPI
-	GetPricingRuleClient() managementapi.PricingRuleAPI
-	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
+	GetStoreAPI() listingadmin.StoreAPI
+	GetPricingRuleClient() listingadmin.PricingRuleAPI
+	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
 	GetLocalStoreRepository() *listingadmin.GormStoreRepository
 	GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository
 	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
@@ -19,9 +18,9 @@ type runtime interface {
 }
 
 type runtimeSource interface {
-	GetStoreAPI() managementapi.StoreAPI
-	GetPricingRuleClient() managementapi.PricingRuleAPI
-	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
+	GetStoreAPI() listingadmin.StoreAPI
+	GetPricingRuleClient() listingadmin.PricingRuleAPI
+	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
 	GetLocalStoreRepository() *listingadmin.GormStoreRepository
 	GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository
 	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
@@ -36,21 +35,21 @@ func NewPricingRuntime(source runtimeSource) PricingRuntime {
 	return PricingRuntime{source: source}
 }
 
-func (r PricingRuntime) GetStoreAPI() managementapi.StoreAPI {
+func (r PricingRuntime) GetStoreAPI() listingadmin.StoreAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetStoreAPI()
 }
 
-func (r PricingRuntime) GetPricingRuleClient() managementapi.PricingRuleAPI {
+func (r PricingRuntime) GetPricingRuleClient() listingadmin.PricingRuleAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetPricingRuleClient()
 }
 
-func (r PricingRuntime) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
+func (r PricingRuntime) GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI {
 	if r.source == nil {
 		return nil
 	}

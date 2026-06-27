@@ -3,13 +3,13 @@ package context
 import (
 	"fmt"
 
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 )
 
 type SKUBuildRuntime struct {
 	TenantID   int64
 	StoreID    int64
-	StoreInfo  *managementapi.StoreRespDTO
+	StoreInfo  *listingadmin.StoreRespDTO
 	AsinSkuMap map[string]string
 }
 

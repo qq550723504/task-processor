@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/ptr"
 	pkgproduct "task-processor/internal/product"
@@ -18,9 +18,9 @@ type SavePublishResultInput struct {
 	SubmitResponse      *temuapi.SubmitResponse
 	Product             *models.Product
 	AmazonProduct       *model.Product
-	StoreInfo           *managementapi.StoreRespDTO
-	FilterRule          *managementapi.FilterRuleRespDTO
-	ProfitRule          *managementapi.ProfitRuleRespDTO
+	StoreInfo           *listingadmin.StoreRespDTO
+	FilterRule          *listingadmin.FilterRuleRespDTO
+	ProfitRule          *listingadmin.ProfitRuleRespDTO
 	AsinSkuMap          map[string]string
 	DailyQuotaReserved  bool
 	DailyQuotaDate      string
@@ -91,12 +91,12 @@ func (input *SavePublishResultInput) SubmitResponseLogFields(response string) ma
 	return fields
 }
 
-func (input *SavePublishResultInput) BuildImportMappingCreateReq(sku *models.Sku) *managementapi.ProductImportMappingCreateReqDTO {
+func (input *SavePublishResultInput) BuildImportMappingCreateReq(sku *models.Sku) *listingadmin.ProductImportMappingCreateReqDTO {
 	if input == nil || input.Task == nil || sku == nil {
 		return nil
 	}
 
-	return &managementapi.ProductImportMappingCreateReqDTO{
+	return &listingadmin.ProductImportMappingCreateReqDTO{
 		ImportTaskId: input.Task.ID,
 		TenantID:     input.Task.TenantID,
 		StoreId:      input.Task.StoreID,
@@ -110,7 +110,7 @@ func (input *SavePublishResultInput) BuildImportMappingCreateReq(sku *models.Sku
 
 func (input *SavePublishResultInput) ApplyImportMappingMetadata(
 	sku *models.Sku,
-	createReq *managementapi.ProductImportMappingCreateReqDTO,
+	createReq *listingadmin.ProductImportMappingCreateReqDTO,
 ) {
 	if input == nil || sku == nil || createReq == nil {
 		return

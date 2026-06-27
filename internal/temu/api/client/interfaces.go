@@ -3,14 +3,14 @@ package client
 
 import (
 	"net/http"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"
 )
 
 type StoreRuntime interface {
-	GetStoreAPI() managementapi.StoreAPI
+	GetStoreAPI() listingadmin.StoreAPI
 }
 
 // ClientAPI TEMU API客户端接口，用于解决循环依赖

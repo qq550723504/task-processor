@@ -10,7 +10,7 @@ import (
 
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	temupricing "task-processor/internal/temu/api/pricing"
 
@@ -62,10 +62,10 @@ type PricingContext struct {
 	GoodsName          string
 	SupplierPrice      float64
 	StoreID            int64
-	Mapping            *managementapi.ProductImportMappingRespDTO
+	Mapping            *listingadmin.ProductImportMappingRespDTO
 	AmazonProduct      *model.Product
 	OriginCostPrice    float64
-	PricingRule        *managementapi.PricingRuleRespDTO
+	PricingRule        *listingadmin.PricingRuleRespDTO
 	MinAcceptablePrice float64
 }
 

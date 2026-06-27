@@ -13,7 +13,7 @@ import (
 
 	miniredis "github.com/alicebob/miniredis/v2"
 	goredis "github.com/redis/go-redis/v9"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	sheinclient "task-processor/internal/shein/client"
 )
 
@@ -71,18 +71,18 @@ func (s *stubAutomation) StartLogin(context.Context, Account, AutomationConfig) 
 }
 
 type stubStoreClient struct {
-	updateStoreIDReq     *managementapi.StoreIdUpdateReqDTO
+	updateStoreIDReq     *listingadmin.StoreIdUpdateReqDTO
 	updateStoreIDErr     error
-	updateStoreStatusReq *managementapi.StoreStatusUpdateReqDTO
+	updateStoreStatusReq *listingadmin.StoreStatusUpdateReqDTO
 	updateStoreStatusErr error
 }
 
-func (s *stubStoreClient) UpdateStoreId(req *managementapi.StoreIdUpdateReqDTO) (bool, error) {
+func (s *stubStoreClient) UpdateStoreId(req *listingadmin.StoreIdUpdateReqDTO) (bool, error) {
 	s.updateStoreIDReq = req
 	return s.updateStoreIDErr == nil, s.updateStoreIDErr
 }
 
-func (s *stubStoreClient) UpdateStoreStatus(req *managementapi.StoreStatusUpdateReqDTO) (bool, error) {
+func (s *stubStoreClient) UpdateStoreStatus(req *listingadmin.StoreStatusUpdateReqDTO) (bool, error) {
 	s.updateStoreStatusReq = req
 	return s.updateStoreStatusErr == nil, s.updateStoreStatusErr
 }
@@ -311,7 +311,7 @@ func TestServiceLoginSyncsResolvedStoreIDWhenStoredValueIsEmpty(t *testing.T) {
 	svc.storeClientFor = func(int64) StoreSyncClient {
 		return storeClient
 	}
-	svc.findDuplicateStore = func(context.Context, Account, string) (*managementapi.StoreRespDTO, error) {
+	svc.findDuplicateStore = func(context.Context, Account, string) (*listingadmin.StoreRespDTO, error) {
 		return nil, nil
 	}
 
@@ -356,7 +356,7 @@ func TestServiceLoginDisablesStoreWhenResolvedStoreIDDiffers(t *testing.T) {
 	svc.storeClientFor = func(int64) StoreSyncClient {
 		return storeClient
 	}
-	svc.findDuplicateStore = func(context.Context, Account, string) (*managementapi.StoreRespDTO, error) {
+	svc.findDuplicateStore = func(context.Context, Account, string) (*listingadmin.StoreRespDTO, error) {
 		return nil, nil
 	}
 
@@ -419,8 +419,8 @@ func TestServiceLoginDisablesCurrentStoreWhenDuplicateStoreIDExists(t *testing.T
 	svc.storeClientFor = func(int64) StoreSyncClient {
 		return storeClient
 	}
-	svc.findDuplicateStore = func(context.Context, Account, string) (*managementapi.StoreRespDTO, error) {
-		return &managementapi.StoreRespDTO{
+	svc.findDuplicateStore = func(context.Context, Account, string) (*listingadmin.StoreRespDTO, error) {
+		return &listingadmin.StoreRespDTO{
 			ID:       99,
 			TenantID: 88,
 			Name:     "跨租户重复店铺",

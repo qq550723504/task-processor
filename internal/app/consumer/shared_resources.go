@@ -9,7 +9,6 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/product"
@@ -22,12 +21,12 @@ import (
 
 type SchedulerFactoryRuntime interface {
 	runner.SchedulerRuntimeProvider
-	GetStoreAPI() managementapi.StoreAPI
+	GetStoreAPI() listingadmin.StoreAPI
 	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
 	GetRawJsonDataAdapter() product.RawJsonDataClient
-	GetPricingRuleClient() managementapi.PricingRuleAPI
-	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
-	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
+	GetPricingRuleClient() listingadmin.PricingRuleAPI
+	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
+	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
 	PricingRuntime() temupricingruntime.PricingRuntime
 	SyncRuntime() temusyncruntime.ServiceRuntime
@@ -43,10 +42,10 @@ type SchedulerFactoryRuntime interface {
 
 type ProcessorRuntime interface {
 	SchedulerFactoryRuntime
-	GetDailyListingCountClient() managementapi.DailyListingCountAPI
-	GetFilterRuleClient() managementapi.FilterRuleAPI
-	GetProductImportMappingClient() managementapi.ProductImportMappingAPI
-	GetProfitRuleClient() managementapi.ProfitRuleAPI
+	GetDailyListingCountClient() listingadmin.DailyListingCountAPI
+	GetFilterRuleClient() listingadmin.FilterRuleAPI
+	GetProductImportMappingClient() listingadmin.ProductImportMappingAPI
+	GetProfitRuleClient() listingadmin.ProfitRuleAPI
 	GetLocalFilterRuleRepository() *listingadmin.GormFilterRuleRepository
 	GetLocalProfitRuleRepository() *listingadmin.GormProfitRuleRepository
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
@@ -77,7 +76,7 @@ type SharedResources struct {
 	ListingRuntimeHealthValidator      ListingRuntimeHealthValidator
 	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
 	RawJSONDataClient                  product.RawJsonDataClient
-	StoreAPI                           managementapi.StoreAPI
+	StoreAPI                           listingadmin.StoreAPI
 	SchedulerRuntime                   runner.SchedulerRuntimeProvider
 	SchedulerFactoryRuntime            SchedulerFactoryRuntime
 	ProcessorRuntime                   ProcessorRuntime
@@ -99,7 +98,7 @@ type PlatformRuntimeContext struct {
 	Logger                             *logrus.Logger
 	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
 	RawJSONDataClient                  product.RawJsonDataClient
-	StoreAPI                           managementapi.StoreAPI
+	StoreAPI                           listingadmin.StoreAPI
 	SchedulerRuntime                   runner.SchedulerRuntimeProvider
 	SchedulerFactoryRuntime            SchedulerFactoryRuntime
 	ProcessorRuntime                   ProcessorRuntime

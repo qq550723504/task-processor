@@ -4,7 +4,7 @@ package temu
 import (
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/clients/openai"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/pipeline"
 	commonPipeline "task-processor/internal/pipeline"
 	commonHandlers "task-processor/internal/pipeline/handlers"
@@ -24,10 +24,10 @@ type pipelineRuntime interface {
 	GetProductFetcher() appfetcher.ProductFetcher
 	GetMemoryManager() *state.MemoryManager
 	GetOpenAIClientConfig() *openai.ClientConfig
-	GetStoreClient() managementapi.StoreAPI
-	GetFilterRuleClient() managementapi.FilterRuleAPI
-	GetProductImportMappingClient() managementapi.ProductImportMappingAPI
-	GetProfitRuleClient() managementapi.ProfitRuleAPI
+	GetStoreClient() listingadmin.StoreAPI
+	GetFilterRuleClient() listingadmin.FilterRuleAPI
+	GetProductImportMappingClient() listingadmin.ProductImportMappingAPI
+	GetProfitRuleClient() listingadmin.ProfitRuleAPI
 }
 
 // HandlerRegistryEntry 处理器注册表条目

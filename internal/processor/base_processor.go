@@ -5,7 +5,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/worker"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/state"
 	"task-processor/internal/taskstatus"
 
@@ -15,7 +15,7 @@ import (
 // BaseProcessor 基础处理器结构
 type BaseProcessor struct {
 	config            *config.Config
-	storeAPI          managementapi.StoreAPI
+	storeAPI          listingadmin.StoreAPI
 	taskStatusRuntime taskstatus.RuntimeWithTaskRPC
 	memoryManager     *state.MemoryManager
 	workerPool        worker.WorkerPool
@@ -26,7 +26,7 @@ type BaseProcessor struct {
 // BaseProcessorConfig 基础处理器配置
 type BaseProcessorConfig struct {
 	Config                   *config.Config
-	StoreAPI                 managementapi.StoreAPI
+	StoreAPI                 listingadmin.StoreAPI
 	TaskStatusRuntime        taskstatus.RuntimeWithTaskRPC
 	DailyCountClientProvider state.DailyCountClientProvider
 	Logger                   *logrus.Logger
@@ -65,7 +65,7 @@ func (bp *BaseProcessor) GetConfig() *config.Config {
 	return bp.config
 }
 
-func (bp *BaseProcessor) GetStoreAPI() managementapi.StoreAPI {
+func (bp *BaseProcessor) GetStoreAPI() listingadmin.StoreAPI {
 	if bp == nil {
 		return nil
 	}

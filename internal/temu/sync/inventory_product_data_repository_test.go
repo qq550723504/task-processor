@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 
 	"github.com/sirupsen/logrus"
 )
@@ -108,4 +107,4 @@ func (s stubTemuInventoryStoreRepo) FindStoreByID(_ context.Context, _ int64) (*
 	return s.store, nil
 }
 
-var _ = managementapi.StoreRespDTO{}
+var _ = listingadmin.StoreRespDTO{}

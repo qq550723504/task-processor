@@ -1862,6 +1862,32 @@ func TestTemuSyncFallbackLogsUseCapabilityNames(t *testing.T) {
 	}
 }
 
+func TestRetiredManagementClientHotspotsUseCapabilityNames(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "sheinloginmanaged", "bridge.go"),
+		filepath.Join("..", "internal", "shein", "publish", "exists_check.go"),
+		filepath.Join("..", "internal", "shein", "publish", "variant_success.go"),
+		filepath.Join("..", "internal", "app", "consumer", "listing_runtime_support.go"),
+		filepath.Join("..", "internal", "shein", "client", "cookie_manager_local_test.go"),
+	}
+
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range []string{
+			"management client",
+			"management store client",
+			"managementapi",
+		} {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; use store API/runtime repository capability names", path, phrase)
+			}
+		}
+	}
+}
+
 func TestAppRunnerSchedulerStoreRuntimeUsesCapabilityNames(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "runner", "scheduler_task_starter.go")
 	content, err := os.ReadFile(path)

@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/sheinlogin"
 )
 
-type storeClientFactory func(tenantID int64) managementapi.StoreAPI
+type storeClientFactory func(tenantID int64) listingadmin.StoreAPI
 
 type AccountProvider struct {
 	storeClientForTenant storeClientFactory
@@ -66,12 +66,12 @@ func (p *AccountProvider) ListAccounts(ctx context.Context, tenantID int64) ([]s
 		return append([]sheinlogin.Account(nil), entry.items...), nil
 	}
 	if p.storeClientForTenant == nil {
-		return nil, fmt.Errorf("management client is nil")
+		return nil, fmt.Errorf("store client factory is nil")
 	}
 
 	storeClient := p.storeClientForTenant(tenantID)
 	if storeClient == nil {
-		return nil, fmt.Errorf("management store client is nil")
+		return nil, fmt.Errorf("store client is nil")
 	}
 
 	var (
@@ -80,7 +80,7 @@ func (p *AccountProvider) ListAccounts(ctx context.Context, tenantID int64) ([]s
 		items    []sheinlogin.Account
 	)
 	for {
-		page, err := storeClient.PageStores(&managementapi.StorePageReqDTO{
+		page, err := storeClient.PageStores(&listingadmin.StorePageReqDTO{
 			Platform: "SHEIN",
 			TenantID: tenantID,
 			PageNo:   pageNo,
@@ -116,19 +116,19 @@ func (p *AccountProvider) ListAccounts(ctx context.Context, tenantID int64) ([]s
 	return append([]sheinlogin.Account(nil), items...), nil
 }
 
-func NewStoreSyncClientFactoryWithStoreAPI(storeAPI managementapi.StoreAPI) func(tenantID int64) sheinlogin.StoreSyncClient {
+func NewStoreSyncClientFactoryWithStoreAPI(storeAPI listingadmin.StoreAPI) func(tenantID int64) sheinlogin.StoreSyncClient {
 	return func(tenantID int64) sheinlogin.StoreSyncClient {
 		return storeAPI
 	}
 }
 
-func NewDuplicateStoreLookupWithStoreAPI(storeAPI managementapi.StoreAPI) func(ctx context.Context, account sheinlogin.Account, actualStoreID string) (*managementapi.StoreRespDTO, error) {
-	return func(ctx context.Context, account sheinlogin.Account, actualStoreID string) (*managementapi.StoreRespDTO, error) {
+func NewDuplicateStoreLookupWithStoreAPI(storeAPI listingadmin.StoreAPI) func(ctx context.Context, account sheinlogin.Account, actualStoreID string) (*listingadmin.StoreRespDTO, error) {
+	return func(ctx context.Context, account sheinlogin.Account, actualStoreID string) (*listingadmin.StoreRespDTO, error) {
 		return findDuplicateStore(ctx, storeAPI, account, actualStoreID)
 	}
 }
 
-func findDuplicateStore(ctx context.Context, storeClient managementapi.StoreAPI, account sheinlogin.Account, actualStoreID string) (*managementapi.StoreRespDTO, error) {
+func findDuplicateStore(ctx context.Context, storeClient listingadmin.StoreAPI, account sheinlogin.Account, actualStoreID string) (*listingadmin.StoreRespDTO, error) {
 	if storeClient == nil || strings.TrimSpace(actualStoreID) == "" {
 		return nil, nil
 	}
@@ -136,7 +136,7 @@ func findDuplicateStore(ctx context.Context, storeClient managementapi.StoreAPI,
 	pageNo := 1
 	pageSize := 200
 	for {
-		page, err := storeClient.PageStores(&managementapi.StorePageReqDTO{
+		page, err := storeClient.PageStores(&listingadmin.StorePageReqDTO{
 			Platform: "SHEIN",
 			PageNo:   pageNo,
 			PageSize: pageSize,
@@ -165,7 +165,7 @@ func findDuplicateStore(ctx context.Context, storeClient managementapi.StoreAPI,
 	return nil, nil
 }
 
-func mapStoreToAccount(store *managementapi.StoreRespDTO) (sheinlogin.Account, bool) {
+func mapStoreToAccount(store *listingadmin.StoreRespDTO) (sheinlogin.Account, bool) {
 	if store == nil {
 		return sheinlogin.Account{}, false
 	}
@@ -188,7 +188,7 @@ func mapStoreToAccount(store *managementapi.StoreRespDTO) (sheinlogin.Account, b
 	}, true
 }
 
-func MapStoreToAccountForTest(store *managementapi.StoreRespDTO) (sheinlogin.Account, bool) {
+func MapStoreToAccountForTest(store *listingadmin.StoreRespDTO) (sheinlogin.Account, bool) {
 	return mapStoreToAccount(store)
 }
 

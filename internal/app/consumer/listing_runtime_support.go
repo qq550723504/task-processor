@@ -36,7 +36,7 @@ func ConfigureStaticStoreGuard(
 		return
 	}
 	if storeAPI == nil {
-		logger.Warn("management client unavailable; store dispatch guard is disabled")
+		logger.Warn("store API unavailable; store dispatch guard is disabled")
 		return
 	}
 

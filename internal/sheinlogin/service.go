@@ -13,7 +13,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	sheinother "task-processor/internal/shein/api/other"
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 	sheinclient "task-processor/internal/shein/client"
@@ -41,12 +41,12 @@ type Service struct {
 	sheinAPIClientFor  func(account Account) *sheinclient.APIClient
 	resolveStoreID     func(ctx context.Context, account Account) (int64, error)
 	storeClientFor     func(tenantID int64) StoreSyncClient
-	findDuplicateStore func(ctx context.Context, account Account, actualStoreID string) (*managementapi.StoreRespDTO, error)
+	findDuplicateStore func(ctx context.Context, account Account, actualStoreID string) (*listingadmin.StoreRespDTO, error)
 }
 
 type StoreSyncClient interface {
-	UpdateStoreId(req *managementapi.StoreIdUpdateReqDTO) (bool, error)
-	UpdateStoreStatus(req *managementapi.StoreStatusUpdateReqDTO) (bool, error)
+	UpdateStoreId(req *listingadmin.StoreIdUpdateReqDTO) (bool, error)
+	UpdateStoreStatus(req *listingadmin.StoreStatusUpdateReqDTO) (bool, error)
 }
 
 var sheinLoginServiceLogger = logger.GetGlobalLogger("sheinlogin_service")
@@ -696,7 +696,7 @@ func (s *Service) syncStoreIDAfterLogin(ctx context.Context, account Account) {
 		if duplicateStoreName == "" {
 			duplicateStoreName = "-"
 		}
-		if _, err := storeClient.UpdateStoreStatus(&managementapi.StoreStatusUpdateReqDTO{
+		if _, err := storeClient.UpdateStoreStatus(&listingadmin.StoreStatusUpdateReqDTO{
 			ID:     account.StoreID,
 			Status: 1,
 			Remark: fmt.Sprintf(
@@ -721,7 +721,7 @@ func (s *Service) syncStoreIDAfterLogin(ctx context.Context, account Account) {
 
 	recordedStoreID := strings.TrimSpace(account.StoreName)
 	if recordedStoreID == "" {
-		if _, err := storeClient.UpdateStoreId(&managementapi.StoreIdUpdateReqDTO{
+		if _, err := storeClient.UpdateStoreId(&listingadmin.StoreIdUpdateReqDTO{
 			ID:      account.StoreID,
 			StoreID: actualStoreIDText,
 		}); err != nil {
@@ -747,7 +747,7 @@ func (s *Service) syncStoreIDAfterLogin(ctx context.Context, account Account) {
 		return
 	}
 
-	if _, err := storeClient.UpdateStoreStatus(&managementapi.StoreStatusUpdateReqDTO{
+	if _, err := storeClient.UpdateStoreStatus(&listingadmin.StoreStatusUpdateReqDTO{
 		ID:     account.StoreID,
 		Status: 1,
 		Remark: fmt.Sprintf("自动登录识别到店铺ID不一致，已禁用：stored=%s actual=%s", recordedStoreID, actualStoreIDText),
@@ -800,7 +800,7 @@ func (s *Service) storeClient(tenantID int64) StoreSyncClient {
 	return nil
 }
 
-func (s *Service) lookupDuplicateStore(ctx context.Context, account Account, actualStoreID string) (*managementapi.StoreRespDTO, error) {
+func (s *Service) lookupDuplicateStore(ctx context.Context, account Account, actualStoreID string) (*listingadmin.StoreRespDTO, error) {
 	if s != nil && s.findDuplicateStore != nil {
 		return s.findDuplicateStore(ctx, account, actualStoreID)
 	}
@@ -831,7 +831,7 @@ func (s *Service) ConfigureStoreSyncClientFactory(factory func(tenantID int64) S
 	s.storeClientFor = factory
 }
 
-func (s *Service) ConfigureDuplicateStoreLookup(lookup func(ctx context.Context, account Account, actualStoreID string) (*managementapi.StoreRespDTO, error)) {
+func (s *Service) ConfigureDuplicateStoreLookup(lookup func(ctx context.Context, account Account, actualStoreID string) (*listingadmin.StoreRespDTO, error)) {
 	if s == nil {
 		return
 	}

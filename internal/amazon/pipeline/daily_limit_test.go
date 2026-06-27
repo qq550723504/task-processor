@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	amazonmodel "task-processor/internal/amazon/model"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/state"
 )
 
@@ -14,27 +14,27 @@ type fakeDailyCountProvider struct {
 	client *fakeDailyCountClient
 }
 
-func (p fakeDailyCountProvider) GetDailyListingCountClient() managementapi.DailyListingCountAPI {
+func (p fakeDailyCountProvider) GetDailyListingCountClient() listingadmin.DailyListingCountAPI {
 	return p.client
 }
 
 type fakeDailyCountClient struct {
-	reservation *managementapi.TryConsumeDailyQuotaRespDTO
+	reservation *listingadmin.TryConsumeDailyQuotaRespDTO
 }
 
-func (c *fakeDailyCountClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*managementapi.DailyListingCountRespDTO, error) {
-	return &managementapi.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date}, nil
+func (c *fakeDailyCountClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*listingadmin.DailyListingCountRespDTO, error) {
+	return &listingadmin.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date}, nil
 }
 
-func (c *fakeDailyCountClient) SetDailyListingCount(*managementapi.DailyListingCountSetReqDTO) error {
+func (c *fakeDailyCountClient) SetDailyListingCount(*listingadmin.DailyListingCountSetReqDTO) error {
 	return nil
 }
 
-func (c *fakeDailyCountClient) TryConsumeDailyQuota(*managementapi.TryConsumeDailyQuotaReqDTO) (*managementapi.TryConsumeDailyQuotaRespDTO, error) {
+func (c *fakeDailyCountClient) TryConsumeDailyQuota(*listingadmin.TryConsumeDailyQuotaReqDTO) (*listingadmin.TryConsumeDailyQuotaRespDTO, error) {
 	return c.reservation, nil
 }
 
-func (c *fakeDailyCountClient) RollbackDailyQuota(*managementapi.RollbackDailyQuotaReqDTO) (int64, error) {
+func (c *fakeDailyCountClient) RollbackDailyQuota(*listingadmin.RollbackDailyQuotaReqDTO) (int64, error) {
 	return 0, nil
 }
 
@@ -44,7 +44,7 @@ func (c *fakeDailyCountClient) SetRemainingListingQuota(int64, int64, int) (bool
 
 func TestDailyLimitHandlerReservesQuotaWhenUnderLimit(t *testing.T) {
 	limit := 5
-	countClient := &fakeDailyCountClient{reservation: &managementapi.TryConsumeDailyQuotaRespDTO{
+	countClient := &fakeDailyCountClient{reservation: &listingadmin.TryConsumeDailyQuotaRespDTO{
 		Allowed:      true,
 		NewCount:     3,
 		Remaining:    2,
@@ -56,7 +56,7 @@ func TestDailyLimitHandlerReservesQuotaWhenUnderLimit(t *testing.T) {
 			"tenantId": int64(1),
 			"storeId":  int64(2),
 		},
-		StoreInfo: &managementapi.StoreRespDTO{
+		StoreInfo: &listingadmin.StoreRespDTO{
 			ID:             2,
 			DailyLimit:     &limit,
 			DailyLimitType: "SPU",
@@ -79,7 +79,7 @@ func TestDailyLimitHandlerReservesQuotaWhenUnderLimit(t *testing.T) {
 
 func TestDailyLimitHandlerReturnsNonRetryableWhenLimitReached(t *testing.T) {
 	limit := 5
-	countClient := &fakeDailyCountClient{reservation: &managementapi.TryConsumeDailyQuotaRespDTO{
+	countClient := &fakeDailyCountClient{reservation: &listingadmin.TryConsumeDailyQuotaRespDTO{
 		Allowed:      false,
 		NewCount:     5,
 		Remaining:    0,
@@ -91,7 +91,7 @@ func TestDailyLimitHandlerReturnsNonRetryableWhenLimitReached(t *testing.T) {
 			"tenantId": int64(1),
 			"storeId":  int64(2),
 		},
-		StoreInfo: &managementapi.StoreRespDTO{
+		StoreInfo: &listingadmin.StoreRespDTO{
 			ID:             2,
 			DailyLimit:     &limit,
 			DailyLimitType: "SPU",

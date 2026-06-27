@@ -10,7 +10,7 @@ import (
 
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	"task-processor/internal/taskstatus"
@@ -108,25 +108,25 @@ func (s *stubRuntimeWithImportTask) GetRuntimeImportTask(taskID int64) (*listing
 }
 
 type stubStoreAPI struct {
-	store *managementapi.StoreRespDTO
+	store *listingadmin.StoreRespDTO
 	err   error
 }
 
-func (s *stubStoreAPI) GetStore(id int64) (*managementapi.StoreRespDTO, error) {
+func (s *stubStoreAPI) GetStore(id int64) (*listingadmin.StoreRespDTO, error) {
 	return s.store, s.err
 }
 
-func (s *stubStoreAPI) PageStores(req *managementapi.StorePageReqDTO) (*managementapi.PageResult[*managementapi.StoreRespDTO], error) {
-	return &managementapi.PageResult[*managementapi.StoreRespDTO]{}, nil
+func (s *stubStoreAPI) PageStores(req *listingadmin.StorePageReqDTO) (*listingadmin.PageResult[*listingadmin.StoreRespDTO], error) {
+	return &listingadmin.PageResult[*listingadmin.StoreRespDTO]{}, nil
 }
 
 func (s *stubStoreAPI) GetStoreCookie(id int64) (string, error) { return "", nil }
 
-func (s *stubStoreAPI) UpdateStoreId(req *managementapi.StoreIdUpdateReqDTO) (bool, error) {
+func (s *stubStoreAPI) UpdateStoreId(req *listingadmin.StoreIdUpdateReqDTO) (bool, error) {
 	return true, nil
 }
 
-func (s *stubStoreAPI) UpdateStoreStatus(req *managementapi.StoreStatusUpdateReqDTO) (bool, error) {
+func (s *stubStoreAPI) UpdateStoreStatus(req *listingadmin.StoreStatusUpdateReqDTO) (bool, error) {
 	return true, nil
 }
 
@@ -140,8 +140,8 @@ func (s *stubStoreAPI) GetStorePauseStatus(id int64) (bool, error) {
 	return false, nil
 }
 
-func (s *stubStoreAPI) GetStorePauseStatusDetail(id int64) (*managementapi.StorePauseStatusRespDTO, error) {
-	return &managementapi.StorePauseStatusRespDTO{}, nil
+func (s *stubStoreAPI) GetStorePauseStatusDetail(id int64) (*listingadmin.StorePauseStatusRespDTO, error) {
+	return &listingadmin.StorePauseStatusRespDTO{}, nil
 }
 
 func TestTaskHandlerHandleMessage_SkipsDisabledStore(t *testing.T) {
@@ -151,7 +151,7 @@ func TestTaskHandlerHandleMessage_SkipsDisabledStore(t *testing.T) {
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                68,
 				Name:              "disabled-store",
 				Status:            storeStatusDisabled,
@@ -194,7 +194,7 @@ func TestTaskHandlerHandleMessage_ProcessesEnabledStore(t *testing.T) {
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                177,
 				Name:              "enabled-store",
 				Status:            storeStatusEnabled,
@@ -237,7 +237,7 @@ func TestTaskHandlerHandleMessage_SkipsAutoListingDisabledStore(t *testing.T) {
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                424,
 				Name:              "status-enabled-store",
 				Status:            storeStatusEnabled,
@@ -282,7 +282,7 @@ func TestTaskHandlerHandleMessage_ClaimsQueuedTaskBeforeProcessing(t *testing.T)
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                846,
 				Name:              "enabled-store",
 				Status:            storeStatusEnabled,
@@ -337,7 +337,7 @@ func TestTaskHandlerHandleMessageWithAck_AcksAfterClaimBeforeProcessing(t *testi
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                846,
 				Name:              "enabled-store",
 				Status:            storeStatusEnabled,
@@ -391,7 +391,7 @@ func TestTaskHandlerHandleMessageWithAck_StopsWhenAckFails(t *testing.T) {
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                846,
 				Name:              "enabled-store",
 				Status:            storeStatusEnabled,
@@ -449,7 +449,7 @@ func TestTaskHandlerHandleMessage_StopsWhenClaimRejected(t *testing.T) {
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                846,
 				Name:              "enabled-store",
 				Status:            storeStatusEnabled,
@@ -506,7 +506,7 @@ func TestTaskHandlerHandleMessage_ReloadsTaskFromRuntimeBeforeParsingLegacyPaylo
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                846,
 				Name:              "enabled-store",
 				Status:            storeStatusEnabled,
@@ -567,7 +567,7 @@ func TestTaskHandlerHandleMessage_DiscardsRuntimeProcessingTask(t *testing.T) {
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                846,
 				Name:              "enabled-store",
 				Status:            storeStatusEnabled,
@@ -621,7 +621,7 @@ func TestTaskHandlerHandleMessage_DiscardsPausedMessageBeforeClaim(t *testing.T)
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                846,
 				Name:              "enabled-store",
 				Status:            storeStatusEnabled,
@@ -687,7 +687,7 @@ func TestTaskHandlerHandleMessage_DiscardsNonDebugASINBeforeProcessing(t *testin
 		Platform:  "shein",
 		Processor: processor,
 		StoreAPI: &stubStoreAPI{
-			store: &managementapi.StoreRespDTO{
+			store: &listingadmin.StoreRespDTO{
 				ID:                846,
 				Name:              "enabled-store",
 				Status:            storeStatusEnabled,

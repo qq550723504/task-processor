@@ -2,7 +2,7 @@
 package sync
 
 import (
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/types"
 )
 
@@ -45,8 +45,8 @@ type TemuProductSnapshot struct {
 	Deleted           bool
 }
 
-func (prod *TemuProductSnapshot) toProductDataItemDTO() managementapi.ProductDataItemDTO {
-	return managementapi.ProductDataItemDTO{
+func (prod *TemuProductSnapshot) toProductDataItemDTO() listingadmin.ProductDataItemDTO {
+	return listingadmin.ProductDataItemDTO{
 		PlatformProductID:  prod.PlatformProductID,
 		ProductName:        prod.Title,
 		ProductSku:         prod.ProductID,
@@ -72,8 +72,8 @@ func (prod *TemuProductSnapshot) toProductDataItemDTO() managementapi.ProductDat
 	}
 }
 
-func (prod *TemuProductSnapshot) toBatchSaveReq(items []managementapi.ProductDataItemDTO) *managementapi.ProductDataBatchSaveReqDTO {
-	return &managementapi.ProductDataBatchSaveReqDTO{
+func (prod *TemuProductSnapshot) toBatchSaveReq(items []listingadmin.ProductDataItemDTO) *listingadmin.ProductDataBatchSaveReqDTO {
+	return &listingadmin.ProductDataBatchSaveReqDTO{
 		Platform: prod.Platform,
 		TenantID: prod.TenantID,
 		Region:   prod.Region,

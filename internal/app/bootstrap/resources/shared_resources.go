@@ -12,7 +12,6 @@ import (
 	"task-processor/internal/infra/rabbitmq"
 	crawleramazon "task-processor/internal/integration/crawler/amazon"
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	localruntime "task-processor/internal/listingruntime/local"
 	platformtask "task-processor/internal/platformtask"
@@ -37,7 +36,7 @@ type SharedResources struct {
 	AuthClient                    *auth.ClientCredentialsAuthClient
 	ListingRuntimeHealthValidator consumer.ListingRuntimeHealthValidator
 	RawJSONDataClient             product.RawJsonDataClient
-	StoreAPI                      managementapi.StoreAPI
+	StoreAPI                      listingadmin.StoreAPI
 	SchedulerRuntime              runner.SchedulerRuntimeProvider
 	SchedulerFactoryRuntime       consumer.SchedulerFactoryRuntime
 	ProcessorRuntime              consumer.ProcessorRuntime
@@ -137,13 +136,13 @@ type managementProcessorRuntime struct {
 type schedulerRuntimeSource interface {
 	GetRuntimeStoreService() listingruntime.StoreService
 	ListRuntimeAutoPricingStoreIDs(ctx context.Context, platform string) ([]int64, error)
-	GetStoreAPI() managementapi.StoreAPI
+	GetStoreAPI() listingadmin.StoreAPI
 	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
 	GetRawJsonDataAdapter() product.RawJsonDataClient
-	GetPricingRuleClient() managementapi.PricingRuleAPI
-	GetProductImportMappingAPI() managementapi.ProductImportMappingAPI
-	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
-	GetProductDataClient(storeID int64) managementapi.ProductDataAPI
+	GetPricingRuleClient() listingadmin.PricingRuleAPI
+	GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI
+	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
+	GetProductDataClient(storeID int64) listingadmin.ProductDataAPI
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
 	GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository
 	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
@@ -156,9 +155,9 @@ type schedulerRuntimeSource interface {
 
 type processorRuntimeSource interface {
 	schedulerRuntimeSource
-	GetFilterRuleClient() managementapi.FilterRuleAPI
-	GetDailyListingCountClient() managementapi.DailyListingCountAPI
-	GetProfitRuleClient() managementapi.ProfitRuleAPI
+	GetFilterRuleClient() listingadmin.FilterRuleAPI
+	GetDailyListingCountClient() listingadmin.DailyListingCountAPI
+	GetProfitRuleClient() listingadmin.ProfitRuleAPI
 	GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSnapshot, error)
 	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
 	GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error)
@@ -204,35 +203,35 @@ func (r managementSchedulerFactoryRuntime) GetRawJsonDataAdapter() product.RawJs
 	return r.source.GetRawJsonDataAdapter()
 }
 
-func (r managementSchedulerFactoryRuntime) GetStoreAPI() managementapi.StoreAPI {
+func (r managementSchedulerFactoryRuntime) GetStoreAPI() listingadmin.StoreAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetStoreAPI()
 }
 
-func (r managementSchedulerFactoryRuntime) GetPricingRuleClient() managementapi.PricingRuleAPI {
+func (r managementSchedulerFactoryRuntime) GetPricingRuleClient() listingadmin.PricingRuleAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetPricingRuleClient()
 }
 
-func (r managementSchedulerFactoryRuntime) GetProductImportMappingAPI() managementapi.ProductImportMappingAPI {
+func (r managementSchedulerFactoryRuntime) GetProductImportMappingAPI() listingadmin.ProductImportMappingAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetProductImportMappingAPI()
 }
 
-func (r managementSchedulerFactoryRuntime) GetInventoryRecordAPI() managementapi.InventoryRecordAPI {
+func (r managementSchedulerFactoryRuntime) GetInventoryRecordAPI() listingadmin.InventoryRecordAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetInventoryRecordAPI()
 }
 
-func (r managementSchedulerFactoryRuntime) GetProductDataClient(storeID int64) managementapi.ProductDataAPI {
+func (r managementSchedulerFactoryRuntime) GetProductDataClient(storeID int64) listingadmin.ProductDataAPI {
 	if r.source == nil {
 		return nil
 	}
@@ -306,28 +305,28 @@ func (r managementSchedulerFactoryRuntime) GetSheinStoreCookie(storeID int64) (s
 	return r.source.GetSheinStoreCookie(storeID)
 }
 
-func (r managementProcessorRuntime) GetFilterRuleClient() managementapi.FilterRuleAPI {
+func (r managementProcessorRuntime) GetFilterRuleClient() listingadmin.FilterRuleAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetFilterRuleClient()
 }
 
-func (r managementProcessorRuntime) GetDailyListingCountClient() managementapi.DailyListingCountAPI {
+func (r managementProcessorRuntime) GetDailyListingCountClient() listingadmin.DailyListingCountAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetDailyListingCountClient()
 }
 
-func (r managementProcessorRuntime) GetProductImportMappingClient() managementapi.ProductImportMappingAPI {
+func (r managementProcessorRuntime) GetProductImportMappingClient() listingadmin.ProductImportMappingAPI {
 	if r.source == nil {
 		return nil
 	}
 	return r.source.GetProductImportMappingAPI()
 }
 
-func (r managementProcessorRuntime) GetProfitRuleClient() managementapi.ProfitRuleAPI {
+func (r managementProcessorRuntime) GetProfitRuleClient() listingadmin.ProfitRuleAPI {
 	if r.source == nil {
 		return nil
 	}

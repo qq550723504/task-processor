@@ -3,7 +3,7 @@ package publish
 import (
 	"testing"
 
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -14,7 +14,7 @@ type fakeDailyCountProvider struct {
 	client *fakeDailyCountClient
 }
 
-func (p fakeDailyCountProvider) GetDailyListingCountClient() managementapi.DailyListingCountAPI {
+func (p fakeDailyCountProvider) GetDailyListingCountClient() listingadmin.DailyListingCountAPI {
 	return p.client
 }
 
@@ -22,20 +22,20 @@ type fakeDailyCountClient struct {
 	count int64
 }
 
-func (c *fakeDailyCountClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*managementapi.DailyListingCountRespDTO, error) {
-	return &managementapi.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date, Count: c.count}, nil
+func (c *fakeDailyCountClient) GetDailyListingCount(tenantID, storeID, userID int64, date string) (*listingadmin.DailyListingCountRespDTO, error) {
+	return &listingadmin.DailyListingCountRespDTO{TenantID: tenantID, StoreID: storeID, UserID: userID, Date: date, Count: c.count}, nil
 }
 
-func (c *fakeDailyCountClient) SetDailyListingCount(req *managementapi.DailyListingCountSetReqDTO) error {
+func (c *fakeDailyCountClient) SetDailyListingCount(req *listingadmin.DailyListingCountSetReqDTO) error {
 	c.count = req.Count
 	return nil
 }
 
-func (c *fakeDailyCountClient) TryConsumeDailyQuota(req *managementapi.TryConsumeDailyQuotaReqDTO) (*managementapi.TryConsumeDailyQuotaRespDTO, error) {
-	return &managementapi.TryConsumeDailyQuotaRespDTO{Allowed: true, NewCount: c.count + req.Increment}, nil
+func (c *fakeDailyCountClient) TryConsumeDailyQuota(req *listingadmin.TryConsumeDailyQuotaReqDTO) (*listingadmin.TryConsumeDailyQuotaRespDTO, error) {
+	return &listingadmin.TryConsumeDailyQuotaRespDTO{Allowed: true, NewCount: c.count + req.Increment}, nil
 }
 
-func (c *fakeDailyCountClient) RollbackDailyQuota(req *managementapi.RollbackDailyQuotaReqDTO) (int64, error) {
+func (c *fakeDailyCountClient) RollbackDailyQuota(req *listingadmin.RollbackDailyQuotaReqDTO) (int64, error) {
 	return c.count - req.Decrement, nil
 }
 

@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/app/bootstrap/fetchers"
 	bootstrapprocessors "task-processor/internal/app/bootstrap/processors"
 	"task-processor/internal/app/consumer"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/taskstatus"
 	"task-processor/internal/temu"
@@ -81,7 +81,7 @@ type sheinDependencyRuntimeAdapter struct {
 	consumer.ProcessorRuntime
 }
 
-func (a sheinDependencyRuntimeAdapter) GetStoreAPI() managementapi.StoreAPI {
+func (a sheinDependencyRuntimeAdapter) GetStoreAPI() listingadmin.StoreAPI {
 	if a.ProcessorRuntime == nil {
 		return nil
 	}

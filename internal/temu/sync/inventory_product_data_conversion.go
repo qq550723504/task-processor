@@ -7,17 +7,16 @@ import (
 	"time"
 
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/pkg/types"
 )
 
-func (prod *TemuInventoryProductSnapshot) toBatchUpdateAttributesReq(attributes string) *managementapi.ProductDataBatchUpdateAttributesReqDTO {
-	return &managementapi.ProductDataBatchUpdateAttributesReqDTO{
+func (prod *TemuInventoryProductSnapshot) toBatchUpdateAttributesReq(attributes string) *listingadmin.ProductDataBatchUpdateAttributesReqDTO {
+	return &listingadmin.ProductDataBatchUpdateAttributesReqDTO{
 		Platform: prod.Platform,
 		TenantID: prod.TenantID,
 		StoreID:  prod.StoreID,
 		Region:   prod.Region,
-		Products: []managementapi.ProductAttributesItemDTO{{
+		Products: []listingadmin.ProductAttributesItemDTO{{
 			PlatformProductID: prod.PlatformProductID,
 			Attributes:        attributes,
 		}},

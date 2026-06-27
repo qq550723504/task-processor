@@ -4,7 +4,7 @@ package sync
 import (
 	"context"
 	"encoding/json"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/pkg/recovery"
@@ -97,7 +97,7 @@ func (s *inventorySyncServiceImpl) recordInventoryAndPrice(
 	}
 
 	// 创建库存记录
-	recordReq := &managementapi.InventoryRecordCreateReqDTO{
+	recordReq := &listingadmin.InventoryRecordCreateReqDTO{
 		Platform:           "Amazon",
 		ProductId:          productId,
 		Region:             region,

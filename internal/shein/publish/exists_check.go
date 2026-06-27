@@ -34,7 +34,7 @@ func (h *ProductExistsCheckHandler) Handle(ctx *shein.TaskContext) error {
 		return err
 	}
 	if input.RuntimeRepository == nil {
-		logger.GetGlobalLogger("shein/publish").Warn("management client manager is nil, skip existence check")
+		logger.GetGlobalLogger("shein/publish").Warn("runtime repository is nil, skip existence check")
 		return nil
 	}
 	if input.Task == nil {

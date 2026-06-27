@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/app/task"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/taskstatus"
 	"task-processor/internal/temu"
@@ -102,18 +102,18 @@ type temuDependencyRuntimeAdapter struct {
 	processorRuntimeProvider
 }
 
-func (a temuDependencyRuntimeAdapter) GetStoreAPI() managementapi.StoreAPI {
+func (a temuDependencyRuntimeAdapter) GetStoreAPI() listingadmin.StoreAPI {
 	if a.processorRuntimeProvider == nil {
 		return nil
 	}
 	return a.processorRuntimeProvider.GetStoreAPI()
 }
 
-func (a temuDependencyRuntimeAdapter) GetStoreClient() managementapi.StoreAPI {
+func (a temuDependencyRuntimeAdapter) GetStoreClient() listingadmin.StoreAPI {
 	return a.GetStoreAPI()
 }
 
-func (a temuDependencyRuntimeAdapter) GetProductImportMappingClient() managementapi.ProductImportMappingAPI {
+func (a temuDependencyRuntimeAdapter) GetProductImportMappingClient() listingadmin.ProductImportMappingAPI {
 	if a.processorRuntimeProvider == nil {
 		return nil
 	}
@@ -124,7 +124,7 @@ type sheinDependencyRuntimeAdapter struct {
 	processorRuntimeProvider
 }
 
-func (a sheinDependencyRuntimeAdapter) GetStoreAPI() managementapi.StoreAPI {
+func (a sheinDependencyRuntimeAdapter) GetStoreAPI() listingadmin.StoreAPI {
 	if a.processorRuntimeProvider == nil {
 		return nil
 	}

@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/sheinlogin"
 )
 
 func TestMapStoreToAccountFiltersAndMapsSheinStore(t *testing.T) {
-	store := &managementapi.StoreRespDTO{
+	store := &listingadmin.StoreRespDTO{
 		ID:       12,
 		TenantID: 34,
 		Platform: "SHEIN",
@@ -42,18 +42,18 @@ func TestMapStoreToAccountFiltersAndMapsSheinStore(t *testing.T) {
 }
 
 func TestManagementAccountProviderCachesByTenant(t *testing.T) {
-	accountProvider := NewAccountProviderWithStoreClientFactory(func(tenantID int64) managementapi.StoreAPI {
+	accountProvider := NewAccountProviderWithStoreClientFactory(func(tenantID int64) listingadmin.StoreAPI {
 		switch tenantID {
 		case 7:
-			return stubStoreAPI{page: &managementapi.PageResult[*managementapi.StoreRespDTO]{
-				List:     []*managementapi.StoreRespDTO{{ID: 101, TenantID: 7, Platform: "SHEIN", Username: "u1", Password: "p1", StoreID: "A"}},
+			return stubStoreAPI{page: &listingadmin.PageResult[*listingadmin.StoreRespDTO]{
+				List:     []*listingadmin.StoreRespDTO{{ID: 101, TenantID: 7, Platform: "SHEIN", Username: "u1", Password: "p1", StoreID: "A"}},
 				Total:    1,
 				PageNo:   1,
 				PageSize: 100,
 			}}
 		case 8:
-			return stubStoreAPI{page: &managementapi.PageResult[*managementapi.StoreRespDTO]{
-				List:     []*managementapi.StoreRespDTO{{ID: 102, TenantID: 8, Platform: "SHEIN", Username: "u2", Password: "p2", StoreID: "B"}},
+			return stubStoreAPI{page: &listingadmin.PageResult[*listingadmin.StoreRespDTO]{
+				List:     []*listingadmin.StoreRespDTO{{ID: 102, TenantID: 8, Platform: "SHEIN", Username: "u2", Password: "p2", StoreID: "B"}},
 				Total:    1,
 				PageNo:   1,
 				PageSize: 100,
@@ -96,12 +96,12 @@ func TestManagementAccountProviderCachesByTenant(t *testing.T) {
 }
 
 type stubStoreAPI struct {
-	page *managementapi.PageResult[*managementapi.StoreRespDTO]
+	page *listingadmin.PageResult[*listingadmin.StoreRespDTO]
 }
 
-func (s stubStoreAPI) GetStore(int64) (*managementapi.StoreRespDTO, error) { return nil, nil }
+func (s stubStoreAPI) GetStore(int64) (*listingadmin.StoreRespDTO, error) { return nil, nil }
 
-func (s stubStoreAPI) PageStores(req *managementapi.StorePageReqDTO) (*managementapi.PageResult[*managementapi.StoreRespDTO], error) {
+func (s stubStoreAPI) PageStores(req *listingadmin.StorePageReqDTO) (*listingadmin.PageResult[*listingadmin.StoreRespDTO], error) {
 	if req == nil || req.Platform != "SHEIN" {
 		return nil, nil
 	}
@@ -110,11 +110,11 @@ func (s stubStoreAPI) PageStores(req *managementapi.StorePageReqDTO) (*managemen
 
 func (s stubStoreAPI) GetStoreCookie(int64) (string, error) { return "", nil }
 
-func (s stubStoreAPI) UpdateStoreId(*managementapi.StoreIdUpdateReqDTO) (bool, error) {
+func (s stubStoreAPI) UpdateStoreId(*listingadmin.StoreIdUpdateReqDTO) (bool, error) {
 	return false, nil
 }
 
-func (s stubStoreAPI) UpdateStoreStatus(*managementapi.StoreStatusUpdateReqDTO) (bool, error) {
+func (s stubStoreAPI) UpdateStoreStatus(*listingadmin.StoreStatusUpdateReqDTO) (bool, error) {
 	return false, nil
 }
 
@@ -126,6 +126,6 @@ func (s stubStoreAPI) SetStorePauseStatus(int64, bool, string) (bool, error) {
 
 func (s stubStoreAPI) GetStorePauseStatus(int64) (bool, error) { return false, nil }
 
-func (s stubStoreAPI) GetStorePauseStatusDetail(int64) (*managementapi.StorePauseStatusRespDTO, error) {
+func (s stubStoreAPI) GetStorePauseStatusDetail(int64) (*listingadmin.StorePauseStatusRespDTO, error) {
 	return nil, nil
 }

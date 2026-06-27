@@ -2,7 +2,7 @@
 package sync
 
 import (
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	temuproduct "task-processor/internal/temu/api/product"
 	temuquery "task-processor/internal/temu/api/query"
 )
@@ -12,8 +12,8 @@ type ServiceFactory struct {
 	runtime       productSyncRuntime
 	productAPI    *temuproduct.API
 	skuQueryAPI   *temuquery.API
-	mappingClient managementapi.ProductImportMappingAPI
-	storeAPI      managementapi.StoreAPI
+	mappingClient listingadmin.ProductImportMappingAPI
+	storeAPI      listingadmin.StoreAPI
 }
 
 // NewServiceFactory 创建TEMU服务工厂
@@ -21,8 +21,8 @@ func NewServiceFactory(
 	runtime productSyncRuntime,
 	productAPI *temuproduct.API,
 	skuQueryAPI *temuquery.API,
-	mappingClient managementapi.ProductImportMappingAPI,
-	storeAPI managementapi.StoreAPI,
+	mappingClient listingadmin.ProductImportMappingAPI,
+	storeAPI listingadmin.StoreAPI,
 ) *ServiceFactory {
 	return &ServiceFactory{
 		runtime:       runtime,

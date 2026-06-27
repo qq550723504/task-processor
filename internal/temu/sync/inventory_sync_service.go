@@ -9,7 +9,6 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/pricing"
 	"task-processor/internal/product"
@@ -24,7 +23,7 @@ type inventorySyncServiceImpl struct {
 	temuAPIClient         client.ClientAPI
 	productFetcher        fetcher.ProductFetcher
 	rawJsonDataClient     product.RawJsonDataClient
-	inventoryRecordClient managementapi.InventoryRecordAPI
+	inventoryRecordClient listingadmin.InventoryRecordAPI
 	storeRepo             temuInventoryStoreFinder
 	productDataRepo       listingadmin.ProductDataRepository
 	monitorConfig         *config.MonitorConfig
@@ -39,7 +38,7 @@ type temuInventoryStoreFinder interface {
 type inventorySyncRuntime interface {
 	pricing.OperationStrategyProvider
 	productDataClientFactory
-	GetStoreAPI() managementapi.StoreAPI
+	GetStoreAPI() listingadmin.StoreAPI
 	GetLocalStoreRepository() *listingadmin.GormStoreRepository
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
 }
@@ -51,7 +50,7 @@ func NewInventorySyncService(
 	productFetcher fetcher.ProductFetcher,
 	monitorConfig *config.MonitorConfig,
 	rawJsonDataClient product.RawJsonDataClient,
-	inventoryRecordClient managementapi.InventoryRecordAPI,
+	inventoryRecordClient listingadmin.InventoryRecordAPI,
 ) InventorySyncService {
 	log := logger.GetGlobalLogger("TemuInventorySyncService")
 
@@ -90,7 +89,7 @@ func (s *inventorySyncServiceImpl) FetchProductsForInventorySync(ctx context.Con
 	}).Info("开始获取需要监控库存的TEMU产品")
 
 	if s.productDataRepo != nil {
-		shelfStatus := managementapi.ShelfStatusOnShelf
+		shelfStatus := listingadmin.ShelfStatusOnShelf
 		page, err := s.productDataRepo.ListProductData(ctx, listingadmin.ProductDataQuery{
 			TenantID:    tenantID,
 			StoreID:     temuSyncPtrInt64(storeID),
@@ -121,7 +120,7 @@ func (s *inventorySyncServiceImpl) FetchProductsForInventorySync(ctx context.Con
 	if productDataAPI == nil {
 		return nil, fmt.Errorf("product data client is not initialized for store %d", storeID)
 	}
-	shelfStatus := managementapi.ShelfStatusOnShelf
+	shelfStatus := listingadmin.ShelfStatusOnShelf
 	productDTOs, err := productDataAPI.ListByStore("TEMU", tenantID, storeID, &shelfStatus)
 	if err != nil {
 		s.logger.WithError(err).Warn("从管理系统获取TEMU产品列表失败")

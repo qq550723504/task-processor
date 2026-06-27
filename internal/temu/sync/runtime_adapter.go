@@ -2,7 +2,6 @@ package sync
 
 import (
 	"task-processor/internal/listingadmin"
-	managementapi "task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/product"
 )
@@ -13,14 +12,14 @@ type ServiceRuntime interface {
 }
 
 type runtimeSource interface {
-	GetProductDataClient(storeID int64) managementapi.ProductDataAPI
+	GetProductDataClient(storeID int64) listingadmin.ProductDataAPI
 	GetLocalStoreRepository() *listingadmin.GormStoreRepository
 	GetLocalProductImportMappingRepository() *listingadmin.GormProductImportMappingRepository
 	GetLocalProductDataRepository() listingadmin.ProductDataRepository
-	GetStoreAPI() managementapi.StoreAPI
+	GetStoreAPI() listingadmin.StoreAPI
 	GetRuntimeOperationStrategy(storeID int64) (*listingruntime.OperationStrategy, error)
 	GetRawJsonDataAdapter() product.RawJsonDataClient
-	GetInventoryRecordAPI() managementapi.InventoryRecordAPI
+	GetInventoryRecordAPI() listingadmin.InventoryRecordAPI
 }
 
 type serviceRuntime struct {
@@ -34,7 +33,7 @@ func NewServiceRuntime(source runtimeSource) ServiceRuntime {
 	return serviceRuntime{source: source}
 }
 
-func (r serviceRuntime) GetProductDataClient(storeID int64) managementapi.ProductDataAPI {
+func (r serviceRuntime) GetProductDataClient(storeID int64) listingadmin.ProductDataAPI {
 	if r.source == nil {
 		return nil
 	}
@@ -62,7 +61,7 @@ func (r serviceRuntime) GetLocalProductDataRepository() listingadmin.ProductData
 	return r.source.GetLocalProductDataRepository()
 }
 
-func (r serviceRuntime) GetStoreAPI() managementapi.StoreAPI {
+func (r serviceRuntime) GetStoreAPI() listingadmin.StoreAPI {
 	if r.source == nil {
 		return nil
 	}
@@ -83,7 +82,7 @@ func (r serviceRuntime) GetRawJsonDataAdapter() product.RawJsonDataClient {
 	return r.source.GetRawJsonDataAdapter()
 }
 
-func (r serviceRuntime) GetInventoryRecordAPI() managementapi.InventoryRecordAPI {
+func (r serviceRuntime) GetInventoryRecordAPI() listingadmin.InventoryRecordAPI {
 	if r.source == nil {
 		return nil
 	}

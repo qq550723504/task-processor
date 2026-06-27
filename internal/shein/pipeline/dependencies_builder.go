@@ -5,7 +5,7 @@ import (
 
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/rabbitmq"
-	managementapi "task-processor/internal/listingadmin"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/state"
 	"task-processor/internal/taskstatus"
 )
@@ -14,7 +14,7 @@ type dependencyRuntime interface {
 	managementRuntime
 	taskstatus.RuntimeWithTaskRPC
 	state.DailyCountClientProvider
-	GetStoreAPI() managementapi.StoreAPI
+	GetStoreAPI() listingadmin.StoreAPI
 	GetImageDownloader() interface {
 		DownloadImage(url string) ([]byte, error)
 	}
