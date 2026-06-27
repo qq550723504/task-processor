@@ -1,6 +1,28 @@
 package listingkit
 
-import previewdomain "task-processor/internal/listing/preview"
+import (
+	"task-processor/internal/asset"
+	"task-processor/internal/catalog"
+	previewdomain "task-processor/internal/listing/preview"
+)
+
+type listingKitPreviewProjection struct {
+	overview        *ListingKitPreviewHeader
+	needsReview     bool
+	attachment      listingKitPreviewProjectionAttachment
+	revisionMeta    *ListingKitRevisionHistoryMeta
+	revisionHistory []ListingKitRevisionRecord
+}
+
+type listingKitPreviewProjectionAttachment struct {
+	catalog             *catalog.Product
+	assets              *asset.Bundle
+	assetInventory      *asset.InventorySummary
+	assetRenderPreviews []AssetRenderPreview
+	platformPreviews    []PlatformAssetRenderPreviews
+	generationQueue     *GenerationWorkQueue
+	generationOverview  *AssetGenerationOverview
+}
 
 func adaptPreviewDomainResultProjection(
 	domainProjection previewdomain.ResultProjection,

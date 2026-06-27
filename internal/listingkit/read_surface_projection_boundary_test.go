@@ -55,10 +55,17 @@ func TestReadSurfaceProjectionBoundary(t *testing.T) {
 		source := readNamedFunctionSource(t, "preview_result_projection.go", "buildListingKitPreviewProjection")
 		applySource := readNamedFunctionSource(t, "preview_result_projection.go", "applyListingKitPreviewProjection")
 		fileSource := readTaskGenerationSourceFile(t, "preview_result_projection.go")
+		adapterSource := readTaskGenerationSourceFile(t, "preview_result_adapter.go")
 
-		assertSourceContainsAll(t, fileSource, []string{
+		assertSourceContainsAll(t, adapterSource, []string{
 			"type listingKitPreviewProjectionAttachment struct {",
 			"attachment      listingKitPreviewProjectionAttachment",
+		})
+		assertSourceExcludesAll(t, fileSource, []string{
+			`"task-processor/internal/asset"`,
+			`"task-processor/internal/catalog"`,
+			"type listingKitPreviewProjection struct {",
+			"type listingKitPreviewProjectionAttachment struct {",
 		})
 		assertSourceContainsAll(t, source, []string{
 			"domainProjection := previewdomain.BuildResultProjection(previewdomain.ResultProjectionInput{",
