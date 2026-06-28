@@ -47,10 +47,6 @@ func BuildListingRuntimeDependencies() ListingRuntimeDependencies {
 	}
 }
 
-func BuildConsumerDependencies(cfg *config.Config, platformsStr string) consumer.PlatformProcessorRegistryDependencies {
-	return consumer.NewPlatformProcessorRegistryDependencies(cfg, platformsStr, platforms.All())
-}
-
 func buildConsumerSharedResourcesFunc(onSharedResources func(*SharedResources)) func(*config.Config, *logrus.Logger, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 	return func(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 		resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{

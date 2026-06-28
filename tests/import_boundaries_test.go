@@ -1420,6 +1420,7 @@ func TestListingRuntimeDependenciesDoesNotExposePartialConsumerDependencies(t *t
 		"Consumer        consumer.PlatformProcessorRegistryDependencies",
 		"d.Consumer.PlatformModules",
 		"Consumer: buildConsumerDependencies()",
+		"func BuildConsumerDependencies(",
 		"func buildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies",
 	} {
 		if strings.Contains(string(content), phrase) {
