@@ -4300,6 +4300,42 @@ func TestAppHTTPAPISDSCatalogRouteDescriptorHelperStaysRetired(t *testing.T) {
 	}
 }
 
+func TestAppHTTPAPISupportHTTPModuleWrappersStayRetired(t *testing.T) {
+	httpModulesPath := filepath.Join("..", "internal", "app", "httpapi", "http_modules.go")
+	httpModulesContent, err := os.ReadFile(httpModulesPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", httpModulesPath, err)
+	}
+	for _, phrase := range []string{
+		"newPromptTemplateHTTPModule",
+		"newSDSCatalogHTTPModule",
+		"newTaskRPCHTTPModule",
+		"newSheinLoginHTTPModule",
+		"newSDSLoginHTTPModule",
+	} {
+		if strings.Contains(string(httpModulesContent), phrase) {
+			t.Fatalf("%s mentions %q; use owning support/login HTTP modules directly instead of keeping app/httpapi compatibility wrappers", httpModulesPath, phrase)
+		}
+	}
+
+	handlersPath := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
+	handlersContent, err := os.ReadFile(handlersPath)
+	if err != nil {
+		t.Fatalf("read %s: %v", handlersPath, err)
+	}
+	for _, phrase := range []string{
+		"promptModule ",
+		"sdsModule ",
+		"taskRPCModule ",
+		"sheinLoginModule ",
+		"sdsLoginModule ",
+	} {
+		if strings.Contains(string(handlersContent), phrase) {
+			t.Fatalf("%s mentions %q; keep httpModuleHandlers limited to route handlers and carry built modules through httpFeatureComposition", handlersPath, phrase)
+		}
+	}
+}
+
 func TestHTTPAPIRouteDescriptorAliasStaysRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
 	content, err := os.ReadFile(path)

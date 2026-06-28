@@ -18,6 +18,11 @@ import (
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
+	promptmgmtapi "task-processor/internal/promptmgmt/api"
+	sdshttpapi "task-processor/internal/sds/httpapi"
+	"task-processor/internal/sdslogin"
+	"task-processor/internal/sheinlogin"
+	"task-processor/internal/taskrpcapi"
 )
 
 func TestCoreHTTPModuleRegistersHealthRoute(t *testing.T) {
@@ -40,9 +45,7 @@ func TestSDSCatalogHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
 
 	reg := kernelmodule.NewRegistry()
 
-	err := newSDSCatalogHTTPModule(httpModuleHandlers{
-		sdsCatalog: &stubSDSCatalogRouteHandler{},
-	}).Register(reg)
+	err := sdshttpapi.NewHTTPModule(&stubSDSCatalogRouteHandler{}).Register(reg)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -58,9 +61,7 @@ func TestTaskRPCHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
 
 	reg := kernelmodule.NewRegistry()
 
-	err := newTaskRPCHTTPModule(httpModuleHandlers{
-		taskRPC: &stubTaskRPCHandler{},
-	}).Register(reg)
+	err := taskrpcapi.NewHTTPModule(&stubTaskRPCHandler{}).Register(reg)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -75,9 +76,7 @@ func TestSheinLoginHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
 
 	reg := kernelmodule.NewRegistry()
 
-	err := newSheinLoginHTTPModule(httpModuleHandlers{
-		sheinLogin: &stubSheinLoginHandler{},
-	}).Register(reg)
+	err := sheinlogin.NewHTTPModule(&stubSheinLoginHandler{}).Register(reg)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -99,9 +98,7 @@ func TestSDSLoginHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
 
 	reg := kernelmodule.NewRegistry()
 
-	err := newSDSLoginHTTPModule(httpModuleHandlers{
-		sdsLogin: &stubSDSLoginHandler{},
-	}).Register(reg)
+	err := sdslogin.NewHTTPModule(&stubSDSLoginHandler{}).Register(reg)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -189,9 +186,7 @@ func TestPromptTemplateHTTPModuleRegistersRoutes(t *testing.T) {
 
 	reg := kernelmodule.NewRegistry()
 
-	err := newPromptTemplateHTTPModule(httpModuleHandlers{
-		promptTemplate: &stubPromptTemplateHandler{},
-	}).Register(reg)
+	err := promptmgmtapi.NewHTTPModule(&stubPromptTemplateHandler{}).Register(reg)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -201,146 +196,6 @@ func TestPromptTemplateHTTPModuleRegistersRoutes(t *testing.T) {
 		"PUT /api/v1/listing-kits/prompts",
 		"PATCH /api/v1/listing-kits/prompts/:key/status",
 	}, routeKeys(reg.Routes()))
-}
-
-func TestPromptTemplateHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
-	t.Parallel()
-
-	reg := kernelmodule.NewRegistry()
-
-	prebuilt := httpModule{
-		name: "prompt-prebuilt",
-		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(httproute.Descriptor{
-				Method: http.MethodGet,
-				Path:   "/prompt-prebuilt",
-				Module: "prompt-prebuilt",
-				Handler: func(c *gin.Context) {
-					c.Status(http.StatusNoContent)
-				},
-			})
-			return nil
-		},
-	}
-
-	err := newPromptTemplateHTTPModule(httpModuleHandlers{
-		promptTemplate: &stubPromptTemplateHandler{},
-		promptModule:   prebuilt,
-	}).Register(reg)
-	require.NoError(t, err)
-	require.Equal(t, []string{"GET /prompt-prebuilt"}, routeKeys(reg.Routes()))
-}
-
-func TestSDSCatalogHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
-	t.Parallel()
-
-	reg := kernelmodule.NewRegistry()
-
-	prebuilt := httpModule{
-		name: "sds-prebuilt",
-		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(httproute.Descriptor{
-				Method: http.MethodGet,
-				Path:   "/sds-prebuilt",
-				Module: "sds-prebuilt",
-				Handler: func(c *gin.Context) {
-					c.Status(http.StatusNoContent)
-				},
-			})
-			return nil
-		},
-	}
-
-	err := newSDSCatalogHTTPModule(httpModuleHandlers{
-		sdsCatalog: &stubSDSCatalogRouteHandler{},
-		sdsModule:  prebuilt,
-	}).Register(reg)
-	require.NoError(t, err)
-	require.Equal(t, []string{"GET /sds-prebuilt"}, routeKeys(reg.Routes()))
-}
-
-func TestTaskRPCHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
-	t.Parallel()
-
-	reg := kernelmodule.NewRegistry()
-
-	prebuilt := httpModule{
-		name: "taskrpc-prebuilt",
-		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(httproute.Descriptor{
-				Method: http.MethodGet,
-				Path:   "/taskrpc-prebuilt",
-				Module: "taskrpc-prebuilt",
-				Handler: func(c *gin.Context) {
-					c.Status(http.StatusNoContent)
-				},
-			})
-			return nil
-		},
-	}
-
-	err := newTaskRPCHTTPModule(httpModuleHandlers{
-		taskRPC:       &stubTaskRPCHandler{},
-		taskRPCModule: prebuilt,
-	}).Register(reg)
-	require.NoError(t, err)
-	require.Equal(t, []string{"GET /taskrpc-prebuilt"}, routeKeys(reg.Routes()))
-}
-
-func TestSheinLoginHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
-	t.Parallel()
-
-	reg := kernelmodule.NewRegistry()
-
-	prebuilt := httpModule{
-		name: "shein-prebuilt",
-		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(httproute.Descriptor{
-				Method: http.MethodGet,
-				Path:   "/shein-prebuilt",
-				Module: "shein-prebuilt",
-				Handler: func(c *gin.Context) {
-					c.Status(http.StatusNoContent)
-				},
-			})
-			return nil
-		},
-	}
-
-	err := newSheinLoginHTTPModule(httpModuleHandlers{
-		sheinLogin:       &stubSheinLoginHandler{},
-		sheinLoginModule: prebuilt,
-	}).Register(reg)
-	require.NoError(t, err)
-	require.Equal(t, []string{"GET /shein-prebuilt"}, routeKeys(reg.Routes()))
-}
-
-func TestSDSLoginHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
-	t.Parallel()
-
-	reg := kernelmodule.NewRegistry()
-
-	prebuilt := httpModule{
-		name: "sdslogin-prebuilt",
-		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(httproute.Descriptor{
-				Method: http.MethodGet,
-				Path:   "/sdslogin-prebuilt",
-				Module: "sdslogin-prebuilt",
-				Handler: func(c *gin.Context) {
-					c.Status(http.StatusNoContent)
-				},
-			})
-			return nil
-		},
-	}
-
-	err := newSDSLoginHTTPModule(httpModuleHandlers{
-		sdsLogin:       &stubSDSLoginHandler{},
-		sdsLoginModule: prebuilt,
-	}).Register(reg)
-	require.NoError(t, err)
-	require.Equal(t, []string{"GET /sdslogin-prebuilt"}, routeKeys(reg.Routes()))
 }
 
 func TestHTTPModuleRegisterRejectsNilRegistrar(t *testing.T) {

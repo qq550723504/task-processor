@@ -2310,12 +2310,12 @@ func buildHTTPModules(handlers httpModuleHandlers) []kernelmodule.Module {
 		newProductHTTPModule(handlers, nil, nil),
 		newAmazonListingHTTPModule(handlers, nil),
 		newListingKitHTTPModule(handlers, nil),
-		newPromptTemplateHTTPModule(handlers),
+		promptmgmtapi.NewHTTPModule(handlers.promptTemplate),
 		newListingKitStudioHTTPModule(handlers, nil),
-		newSDSCatalogHTTPModule(handlers),
-		newTaskRPCHTTPModule(handlers),
-		newSheinLoginHTTPModule(handlers),
-		newSDSLoginHTTPModule(handlers),
+		sdshttpapi.NewHTTPModule(handlers.sdsCatalog),
+		taskrpcapi.NewHTTPModule(handlers.taskRPC),
+		sheinlogin.NewHTTPModule(handlers.sheinLogin),
+		sdslogin.NewHTTPModule(handlers.sdsLogin),
 	}
 }
 

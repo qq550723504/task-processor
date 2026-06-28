@@ -4,7 +4,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/amazonlisting"
-	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
@@ -16,21 +15,16 @@ import (
 )
 
 type httpModuleHandlers struct {
-	product          productenrich.ProductHandler
-	image            productimagehttpapi.RouteHandler
-	amazonListing    amazonlisting.Handler
-	listingKit       listingkithttpapi.RouteHandler
-	promptTemplate   promptmgmtapi.HTTPRouteHandler
-	promptModule     kernelmodule.Module
-	studioSession    listingkit.StudioSessionHandler
-	sheinLoginModule kernelmodule.Module
-	sheinLogin       sheinLoginRouteHandler
-	sdsLoginModule   kernelmodule.Module
-	sdsLogin         sdslogin.HTTPRouteHandler
-	taskRPCModule    kernelmodule.Module
-	taskRPC          taskrpcapi.Handler
-	sdsCatalog       sdshttpapi.HTTPRouteHandler
-	sdsModule        kernelmodule.Module
+	product        productenrich.ProductHandler
+	image          productimagehttpapi.RouteHandler
+	amazonListing  amazonlisting.Handler
+	listingKit     listingkithttpapi.RouteHandler
+	promptTemplate promptmgmtapi.HTTPRouteHandler
+	studioSession  listingkit.StudioSessionHandler
+	sheinLogin     sheinLoginRouteHandler
+	sdsLogin       sdslogin.HTTPRouteHandler
+	taskRPC        taskrpcapi.Handler
+	sdsCatalog     sdshttpapi.HTTPRouteHandler
 }
 
 type sheinLoginRouteHandler interface {
