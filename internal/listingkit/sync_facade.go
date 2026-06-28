@@ -94,6 +94,7 @@ type SheinSourceSDSCostGroupQuery = sheinsync.SheinSourceSDSCostGroupQuery
 type SheinSyncJobQuery = sheinsync.SheinSyncJobQuery
 type SheinActivityCandidateQuery = sheinsync.SheinActivityCandidateQuery
 type SheinEnrollmentRunQuery = sheinsync.SheinEnrollmentRunQuery
+type SheinEnrollmentItemQuery = sheinsync.SheinEnrollmentItemQuery
 type SheinEnrollmentStoreSummary = sheinsync.SheinEnrollmentStoreSummary
 type SheinSyncedProductRepository = sheinsync.SheinSyncedProductRepository
 type SheinSyncJobRepository = sheinsync.SheinSyncJobRepository

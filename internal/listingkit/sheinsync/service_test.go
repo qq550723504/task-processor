@@ -1087,6 +1087,10 @@ func (r *sheinSyncServiceRepoStub) SaveEnrollmentItems(_ context.Context, _ []*S
 	return nil
 }
 
+func (r *sheinSyncServiceRepoStub) ListEnrollmentItems(_ context.Context, _ *SheinEnrollmentItemQuery) ([]SheinActivityEnrollmentItemRecord, int64, error) {
+	return nil, 0, nil
+}
+
 func (r *sheinSyncServiceRepoStub) productKey(tenantID, storeID int64, skcName string) string {
 	return fmt.Sprintf("%d|%d|%s", tenantID, storeID, skcName)
 }

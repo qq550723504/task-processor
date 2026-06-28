@@ -7,6 +7,8 @@ import type {
   SheinActivityCandidateQuery,
   SheinActivityStrategyResponse,
   SheinEnrollmentDashboardResponse,
+  SheinEnrollmentRunItemListResponse,
+  SheinEnrollmentRunItemQuery,
   SheinEnrollmentRunListResponse,
   SheinEnrollmentRunQuery,
   SheinEnrollmentStoreSummaryResponse,
@@ -230,6 +232,19 @@ export async function getSheinActivityEnrollmentRuns(
 ): Promise<SheinEnrollmentRunListResponse> {
   return apiRequest<SheinEnrollmentRunListResponse>(
     `/shein-sync/stores/${storeId}/enrollment-runs`,
+    {
+      query,
+    },
+  );
+}
+
+export async function getSheinActivityEnrollmentRunItems(
+  storeId: number,
+  runId: number,
+  query: SheinEnrollmentRunItemQuery,
+): Promise<SheinEnrollmentRunItemListResponse> {
+  return apiRequest<SheinEnrollmentRunItemListResponse>(
+    `/shein-sync/stores/${storeId}/enrollment-runs/${runId}/items`,
     {
       query,
     },

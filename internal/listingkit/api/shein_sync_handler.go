@@ -36,6 +36,7 @@ type listSheinActivityCandidatesQuery struct {
 	ActivityKey      string `form:"activity_key"`
 	SKCName          string `form:"skc_name"`
 	CandidateVersion string `form:"candidate_version"`
+	ExecutableOnly   bool   `form:"executable_only"`
 	Page             int    `form:"page"`
 	PageSize         int    `form:"page_size"`
 }

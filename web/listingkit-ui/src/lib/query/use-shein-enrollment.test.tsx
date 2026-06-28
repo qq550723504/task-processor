@@ -8,6 +8,7 @@ import {
   useReviewSheinActivityCandidate,
   useSheinActivityStrategy,
   useSheinActivityCandidates,
+  useSheinActivityEnrollmentRunItems,
   useSheinActivityEnrollmentRuns,
   useSheinEnrollmentDashboard,
   useSheinEnrollmentStoreSummary,
@@ -28,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   getSheinSyncedProducts: vi.fn(),
   getSheinActivityCandidates: vi.fn(),
   getSheinActivityEnrollmentRuns: vi.fn(),
+  getSheinActivityEnrollmentRunItems: vi.fn(),
   triggerSheinStoreSync: vi.fn(),
   updateSheinActivityStrategy: vi.fn(),
   updateSheinSDSCostGroup: vi.fn(),
@@ -52,6 +54,8 @@ vi.mock("@/lib/api/shein-enrollment", () => ({
     mocks.getSheinActivityCandidates(...args),
   getSheinActivityEnrollmentRuns: (...args: unknown[]) =>
     mocks.getSheinActivityEnrollmentRuns(...args),
+  getSheinActivityEnrollmentRunItems: (...args: unknown[]) =>
+    mocks.getSheinActivityEnrollmentRunItems(...args),
   triggerSheinStoreSync: (...args: unknown[]) =>
     mocks.triggerSheinStoreSync(...args),
   updateSheinActivityStrategy: (...args: unknown[]) =>
@@ -95,6 +99,7 @@ describe("use-shein-enrollment", () => {
     mocks.getSheinSyncedProducts.mockResolvedValue({ items: [], total: 0 });
     mocks.getSheinActivityCandidates.mockResolvedValue({ items: [], total: 0 });
     mocks.getSheinActivityEnrollmentRuns.mockResolvedValue({ items: [], total: 0 });
+    mocks.getSheinActivityEnrollmentRunItems.mockResolvedValue({ items: [], total: 0 });
 
     const { result: dashboard } = renderHook(
       () => useSheinEnrollmentDashboard({ activity_type: "PROMOTION" }),
@@ -143,6 +148,14 @@ describe("use-shein-enrollment", () => {
         }),
       { wrapper: createWrapper(client) },
     );
+    const { result: runItems } = renderHook(
+      () =>
+        useSheinActivityEnrollmentRunItems(5, 99, {
+          page: 1,
+          page_size: 50,
+        }),
+      { wrapper: createWrapper(client) },
+    );
 
     await waitFor(() => expect(dashboard.current.isSuccess).toBe(true));
     await waitFor(() => expect(summary.current.isSuccess).toBe(true));
@@ -151,6 +164,7 @@ describe("use-shein-enrollment", () => {
     await waitFor(() => expect(sdsCostGroups.current.isSuccess).toBe(true));
     await waitFor(() => expect(candidates.current.isSuccess).toBe(true));
     await waitFor(() => expect(runs.current.isSuccess).toBe(true));
+    await waitFor(() => expect(runItems.current.isSuccess).toBe(true));
 
     expect(mocks.getSheinEnrollmentDashboard).toHaveBeenCalledWith({
       activity_type: "PROMOTION",
@@ -177,6 +191,10 @@ describe("use-shein-enrollment", () => {
       activity_type: "flash_sale",
       page: 1,
       page_size: 20,
+    });
+    expect(mocks.getSheinActivityEnrollmentRunItems).toHaveBeenCalledWith(5, 99, {
+      page: 1,
+      page_size: 50,
     });
   });
 
@@ -232,6 +250,19 @@ describe("use-shein-enrollment", () => {
             page_size: 20,
           },
           { enabled: false },
+      ),
+      { wrapper: createWrapper(client) },
+    );
+    renderHook(
+      () =>
+        useSheinActivityEnrollmentRunItems(
+          5,
+          99,
+          {
+            page: 1,
+            page_size: 50,
+          },
+          { enabled: false },
         ),
       { wrapper: createWrapper(client) },
     );
@@ -242,6 +273,7 @@ describe("use-shein-enrollment", () => {
     expect(mocks.getSheinSDSCostGroups).not.toHaveBeenCalled();
     expect(mocks.getSheinActivityCandidates).not.toHaveBeenCalled();
     expect(mocks.getSheinActivityEnrollmentRuns).not.toHaveBeenCalled();
+    expect(mocks.getSheinActivityEnrollmentRunItems).not.toHaveBeenCalled();
   });
 
   it("invalidates store-scoped shein enrollment queries after sync, strategy update, and refresh", async () => {

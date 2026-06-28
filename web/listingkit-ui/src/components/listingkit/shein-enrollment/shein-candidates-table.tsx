@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- SHEIN image hosts are tenant data outside fixed Next image remote patterns. */
 "use client";
 
 import { useMemo, useState } from "react";
@@ -86,7 +87,7 @@ export function SheinCandidatesTable({
           return (
             <div key={item.id} className="rounded-2xl border border-zinc-200 bg-white p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
-                <label className="flex items-start gap-3">
+                <label className="flex min-w-0 items-start gap-3">
                   <input
                     aria-label={`选择 ${item.skc_name || item.id}`}
                     checked={executable && selected.has(item.id ?? 0)}
@@ -104,7 +105,8 @@ export function SheinCandidatesTable({
                     }}
                     type="checkbox"
                   />
-                  <div>
+                  <SheinCandidateImage item={item} />
+                  <div className="min-w-0">
                     <p className="font-medium text-zinc-950">{item.skc_name || "-"}</p>
                     <p className="mt-1 text-sm text-zinc-500">
                       {item.eligibility_reason || "未提供候选原因"}
@@ -144,7 +146,43 @@ export function SheinCandidatesTable({
   );
 }
 
+function SheinCandidateImage({ item }: { item: SheinActivityCandidateRecord }) {
+  const imageURL = item.main_image_url?.trim();
+  const label = `${item.skc_name || "SHEIN 商品"} 图片`;
+  if (!imageURL) {
+    return (
+      <div
+        aria-label={label}
+        className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-[11px] text-zinc-400"
+      >
+        无图
+      </div>
+    );
+  }
+  return (
+    <div className="group relative h-16 w-16 shrink-0 cursor-zoom-in">
+      <img
+        alt={label}
+        className="h-16 w-16 rounded-lg border border-zinc-200 bg-zinc-50 object-cover transition group-hover:border-zinc-400"
+        loading="lazy"
+        src={imageURL}
+      />
+      <div className="pointer-events-none absolute left-0 top-20 z-30 hidden h-60 w-60 overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-xl group-hover:block sm:left-20 sm:top-1/2 sm:-translate-y-1/2">
+        <img
+          alt={`${item.skc_name || "SHEIN 商品"} 悬浮预览`}
+          className="h-full w-full object-contain"
+          loading="lazy"
+          src={imageURL}
+        />
+      </div>
+    </div>
+  );
+}
+
 function isExecutableEnrollmentCandidate(item: SheinActivityCandidateRecord) {
+  if (item.eligibility_status && item.eligibility_status !== "eligible") {
+    return false;
+  }
   return (
     item.review_status === "approved" ||
     item.review_status === "auto_queued" ||

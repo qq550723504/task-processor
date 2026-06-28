@@ -921,6 +921,99 @@ func TestListSheinActivityEnrollmentRunsReturnsStoreRuns(t *testing.T) {
 	}
 }
 
+func TestListSheinActivityEnrollmentRunItemsReturnsScopedItemDetails(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	syncRepo := store.NewMemSheinSyncRepository()
+	targetRun := &listingkit.SheinActivityEnrollmentRunRecord{
+		TenantID:     18,
+		StoreID:      2001,
+		ActivityType: "PROMOTION",
+		ActivityKey:  "PROMOTION:18:2001",
+		TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+		Status:       listingkit.SheinEnrollmentRunStatusFailed,
+	}
+	otherStoreRun := &listingkit.SheinActivityEnrollmentRunRecord{
+		TenantID:     18,
+		StoreID:      2002,
+		ActivityType: "PROMOTION",
+		ActivityKey:  "PROMOTION:18:2002",
+		TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+		Status:       listingkit.SheinEnrollmentRunStatusFailed,
+	}
+	if err := syncRepo.CreateEnrollmentRun(context.Background(), targetRun); err != nil {
+		t.Fatalf("seed target run: %v", err)
+	}
+	if err := syncRepo.CreateEnrollmentRun(context.Background(), otherStoreRun); err != nil {
+		t.Fatalf("seed other store run: %v", err)
+	}
+	if err := syncRepo.SaveEnrollmentItems(context.Background(), []*listingkit.SheinActivityEnrollmentItemRecord{
+		{
+			RunID:           targetRun.ID,
+			CandidateID:     10,
+			StoreID:         2001,
+			ActivityKey:     "PROMOTION:18:2001",
+			SyncedProductID: 100,
+			SKCName:         "sg260618174087119533319",
+			Status:          listingkit.SheinEnrollmentItemStatusFailed,
+			ErrorMessage:    "current status can not enroll",
+			RequestPayload:  `{"raw":true}`,
+			ResponsePayload: `{"message":"failed"}`,
+		},
+		{
+			RunID:           otherStoreRun.ID,
+			CandidateID:     20,
+			StoreID:         2002,
+			ActivityKey:     "PROMOTION:18:2002",
+			SyncedProductID: 200,
+			SKCName:         "sg-other-store",
+			Status:          listingkit.SheinEnrollmentItemStatusFailed,
+			ErrorMessage:    "must not leak",
+		},
+	}); err != nil {
+		t.Fatalf("seed items: %v", err)
+	}
+
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithSheinSyncRepository(syncRepo),
+		WithSheinSyncServices(&stubSheinSyncHandlerService{}, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/shein-sync/stores/:store_id/enrollment-runs/:run_id/items", h.ListSheinActivityEnrollmentRunItems)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/shein-sync/stores/2001/enrollment-runs/1/items?page=1&page_size=10", nil)
+	req.Header.Set("X-Tenant-ID", "18")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+
+	var body struct {
+		Items []listingkit.SheinActivityEnrollmentItemRecord `json:"items"`
+		Total int64                                          `json:"total"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if body.Total != 1 || len(body.Items) != 1 {
+		t.Fatalf("total=%d len=%d, want 1", body.Total, len(body.Items))
+	}
+	if body.Items[0].SKCName != "sg260618174087119533319" || body.Items[0].ErrorMessage != "current status can not enroll" {
+		t.Fatalf("item = %+v, want scoped failed item", body.Items[0])
+	}
+	if body.Items[0].RequestPayload != "" || body.Items[0].ResponsePayload != "" {
+		t.Fatalf("payloads should be hidden by default: %+v", body.Items[0])
+	}
+}
+
 func TestListSheinSourceSDSMetadataReturnsHistoricalTaskMetadata(t *testing.T) {
 	t.Parallel()
 

@@ -28,6 +28,7 @@ import {
   useRefreshSheinActivityCandidates,
   useReviewSheinActivityCandidate,
   useSheinActivityCandidates,
+  useSheinActivityEnrollmentRunItems,
   useSheinActivityEnrollmentRuns,
   useSheinEnrollmentStoreSummary,
   useSheinSDSCostGroups,
@@ -41,6 +42,7 @@ import {
 } from "@/lib/query/use-shein-enrollment";
 
 const SHEIN_ENROLLMENT_PAGE_SIZE = 100;
+const SHEIN_ENROLLMENT_RUN_ITEM_PAGE_SIZE = 50;
 
 export function SheinEnrollmentStoreWorkbench({
   initialActivityType,
@@ -56,10 +58,12 @@ export function SheinEnrollmentStoreWorkbench({
     parseSheinActivityType(initialActivityType),
   );
   const [productKeyword, setProductKeyword] = useState("");
+  const [showExecutableOnly, setShowExecutableOnly] = useState(false);
   const [productsPage, setProductsPage] = useState(1);
   const [costsPage, setCostsPage] = useState(1);
   const [candidatesPage, setCandidatesPage] = useState(1);
   const [runsPage, setRunsPage] = useState(1);
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const productsTabActive = tab === "products";
   const costsTabActive = tab === "costs";
   const candidatesTabActive = tab === "candidates";
@@ -90,6 +94,7 @@ export function SheinEnrollmentStoreWorkbench({
     storeId,
     {
       activity_type: activityType,
+      executable_only: showExecutableOnly || undefined,
       page: candidatesPage,
       page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
     },
@@ -128,6 +133,15 @@ export function SheinEnrollmentStoreWorkbench({
     },
     { enabled: runsTabActive },
   );
+  const runItems = useSheinActivityEnrollmentRunItems(
+    storeId,
+    selectedRunId ?? 0,
+    {
+      page: 1,
+      page_size: SHEIN_ENROLLMENT_RUN_ITEM_PAGE_SIZE,
+    },
+    { enabled: runsTabActive && selectedRunId != null },
+  );
   const activityStrategyReady = isSheinActivityStrategyReady(activityStrategy.data);
 
   return (
@@ -146,6 +160,7 @@ export function SheinEnrollmentStoreWorkbench({
           setActivityType(nextActivityType);
           setCandidatesPage(1);
           setRunsPage(1);
+          setSelectedRunId(null);
         }}
         onRefreshCandidates={() =>
           void refreshMutation.mutateAsync({ activity_type: activityType })
@@ -242,6 +257,17 @@ export function SheinEnrollmentStoreWorkbench({
             saving={updateActivityStrategyMutation.isPending}
             strategy={activityStrategy.data?.strategy}
           />
+          <label className="flex w-fit items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+            <input
+              checked={showExecutableOnly}
+              onChange={(event) => {
+                setShowExecutableOnly(event.target.checked);
+                setCandidatesPage(1);
+              }}
+              type="checkbox"
+            />
+            只看可报名
+          </label>
           <SheinCandidatesTable
             enrollmentDisabled={!activityStrategyReady}
             enrollmentDisabledReason={
@@ -249,7 +275,7 @@ export function SheinEnrollmentStoreWorkbench({
             }
             enrolling={enrollMutation.isPending}
             items={candidates.data?.items ?? []}
-            key={`${activityType}:${candidatesPage}`}
+            key={`${activityType}:${showExecutableOnly}:${candidatesPage}`}
             onEnroll={(candidateIds, activityKey) =>
               enrollMutation.mutateAsync({
                 activity_type: activityType,
@@ -280,8 +306,12 @@ export function SheinEnrollmentStoreWorkbench({
       {tab === "runs" ? (
         <section className="space-y-4">
           <SheinEnrollmentRunsTable
+            detailItems={runItems.data?.items ?? []}
+            detailLoading={runItems.isLoading}
             isLoading={runs.isLoading}
             items={runs.data?.items ?? []}
+            onViewDetails={(runId) => setSelectedRunId(runId)}
+            selectedRunId={selectedRunId}
           />
           <SheinEnrollmentPagination
             onPageChange={setRunsPage}

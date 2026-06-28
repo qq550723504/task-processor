@@ -664,7 +664,7 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 	)
 	require.NoError(t, err)
 	require.Len(t, bridge.calls, 1)
-	require.Empty(t, bridge.calls[0].ActivityKey)
+	require.Equal(t, "PROMOTION:11:22", bridge.calls[0].ActivityKey)
 	require.Equal(t, int64(22), bridge.calls[0].Strategy.StoreID)
 	require.Len(t, bridge.calls[0].Products, 2)
 	require.Equal(t, []string{"skc-approved", "skc-filtered"}, sheinPromotionBridgeSKCs(bridge.calls[0].Products))
@@ -676,6 +676,58 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 	require.False(t, results[1].Success)
 	require.Equal(t, int64(2), results[1].CandidateID)
 	require.Equal(t, "商品 skc-filtered 库存不足(8 < 15)", results[1].ErrorMessage)
+}
+
+func TestSheinActivityAdapterSupportsTimeLimitedEnrollment(t *testing.T) {
+	t.Parallel()
+
+	strategyProvider := &sheinPromotionStrategyProviderStub{
+		strategy: NewSheinPromotionStrategy(SheinPromotionStrategyInput{
+			StoreID:              22,
+			ActivityPriceMode:    "DISCOUNT",
+			ActivityDiscountRate: 0.2,
+			ActivityStockRatio:   0.5,
+		}),
+	}
+	bridge := &sheinPromotionBridgeStub{
+		result: &SheinPromotionRegistrationResult{
+			ActivityRequest: &marketing.CreateActivityRequest{
+				AddCostAndStockInfoList: []marketing.CostAndStockInfo{
+					{Skc: "skc-time-limited", AttendNum: 5, StockNum: 5},
+				},
+			},
+			ActivityResponse: &marketing.CreateActivityResponse{
+				Code: "0",
+				Msg:  "ok",
+				Info: &marketing.ActivityCreateInfo{ActivityID: 123},
+			},
+		},
+	}
+	adapter := newSheinActivityAdapter(strategyProvider, bridge)
+
+	results, err := adapter.EnrollCandidates(
+		context.Background(),
+		22,
+		"TIME_LIMITED",
+		"TIME_LIMITED:11:22",
+		[]SheinActivityEnrollmentCandidate{
+			{
+				CandidateID:        1,
+				ActivityKey:        "TIME_LIMITED:11:22",
+				CandidateVersion:   "v1",
+				SKCName:            "skc-time-limited",
+				EffectiveCostPrice: sheinEnrollmentFloat64Ptr(12.5),
+				PriceSnapshot:      `{"sale_price":29.9,"currency":"USD"}`,
+				InventorySnapshot:  `{"available":10}`,
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Len(t, bridge.calls, 1)
+	require.Equal(t, "TIME_LIMITED:11:22", bridge.calls[0].ActivityKey)
+	require.Len(t, results, 1)
+	require.True(t, results[0].Success)
 }
 
 func TestSheinActivityAdapterRejectsInvalidPromotionDiscountStrategy(t *testing.T) {

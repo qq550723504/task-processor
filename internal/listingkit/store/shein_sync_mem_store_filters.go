@@ -80,7 +80,24 @@ func matchesSheinActivityCandidateQuery(row listingkit.SheinActivityCandidateRec
 			return false
 		}
 	}
+	if query.ExecutableOnly && !isExecutableSheinActivityCandidate(row) {
+		return false
+	}
 	return true
+}
+
+func isExecutableSheinActivityCandidate(row listingkit.SheinActivityCandidateRecord) bool {
+	if row.EligibilityStatus != listingkit.SheinCandidateEligibilityStatusEligible {
+		return false
+	}
+	switch row.ReviewStatus {
+	case listingkit.SheinCandidateReviewStatusPendingReview,
+		listingkit.SheinCandidateReviewStatusApproved,
+		listingkit.SheinCandidateReviewStatusAutoQueued:
+		return true
+	default:
+		return false
+	}
 }
 
 func matchesSheinEnrollmentRunQuery(row listingkit.SheinActivityEnrollmentRunRecord, query *listingkit.SheinEnrollmentRunQuery) bool {
@@ -100,6 +117,25 @@ func matchesSheinEnrollmentRunQuery(row listingkit.SheinActivityEnrollmentRunRec
 		return false
 	}
 	if query.Status != nil && row.Status != *query.Status {
+		return false
+	}
+	return true
+}
+
+func matchesSheinEnrollmentItemQuery(row listingkit.SheinActivityEnrollmentItemRecord, run listingkit.SheinActivityEnrollmentRunRecord, query *listingkit.SheinEnrollmentItemQuery) bool {
+	if query == nil {
+		return true
+	}
+	if query.RunID > 0 && row.RunID != query.RunID {
+		return false
+	}
+	if query.Status != nil && row.Status != *query.Status {
+		return false
+	}
+	if query.TenantID > 0 && run.TenantID != query.TenantID {
+		return false
+	}
+	if query.StoreID > 0 && run.StoreID != query.StoreID {
 		return false
 	}
 	return true
@@ -130,5 +166,9 @@ func cloneSheinCandidateRecord(row listingkit.SheinActivityCandidateRecord) list
 func cloneSheinEnrollmentRunRecord(row listingkit.SheinActivityEnrollmentRunRecord) listingkit.SheinActivityEnrollmentRunRecord {
 	row.StartedAt = cloneTimePtr(row.StartedAt)
 	row.FinishedAt = cloneTimePtr(row.FinishedAt)
+	return row
+}
+
+func cloneSheinEnrollmentItemRecord(row listingkit.SheinActivityEnrollmentItemRecord) listingkit.SheinActivityEnrollmentItemRecord {
 	return row
 }

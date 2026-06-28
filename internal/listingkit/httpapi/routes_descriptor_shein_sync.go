@@ -25,5 +25,6 @@ func appendSheinSyncRouteDescriptors(routes []httproute.Descriptor, handler shei
 		httproute.Descriptor{Method: http.MethodPatch, Path: "/api/v1/listing-kits/shein-sync/candidates/:id/review", Module: "listing-kit", Handler: handler.ReviewSheinActivityCandidate},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/enrollments", Module: "listing-kit", Handler: handler.ExecuteSheinActivityEnrollment},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/enrollment-runs", Module: "listing-kit", Handler: handler.ListSheinActivityEnrollmentRuns},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/shein-sync/stores/:store_id/enrollment-runs/:run_id/items", Module: "listing-kit", Handler: handler.ListSheinActivityEnrollmentRunItems},
 	)
 }

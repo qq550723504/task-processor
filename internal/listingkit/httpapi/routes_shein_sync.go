@@ -20,4 +20,5 @@ type sheinSyncRouteHandler interface {
 	ReviewSheinActivityCandidate(c *gin.Context)
 	ExecuteSheinActivityEnrollment(c *gin.Context)
 	ListSheinActivityEnrollmentRuns(c *gin.Context)
+	ListSheinActivityEnrollmentRunItems(c *gin.Context)
 }

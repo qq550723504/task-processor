@@ -930,6 +930,111 @@ func TestSheinSyncRepositoryListEnrollmentRunsSupportsFilteringAndPagination(t *
 	}
 }
 
+func TestSheinSyncRepositoryListEnrollmentItemsScopesByRunStoreAndTenant(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		harness := harness
+		t.Run(harness.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			targetRun := &listingkit.SheinActivityEnrollmentRunRecord{
+				TenantID:     1,
+				StoreID:      101,
+				ActivityType: "PROMOTION",
+				ActivityKey:  "PROMOTION:1:101",
+				TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+				Status:       listingkit.SheinEnrollmentRunStatusFailed,
+			}
+			otherStoreRun := &listingkit.SheinActivityEnrollmentRunRecord{
+				TenantID:     1,
+				StoreID:      202,
+				ActivityType: "PROMOTION",
+				ActivityKey:  "PROMOTION:1:202",
+				TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+				Status:       listingkit.SheinEnrollmentRunStatusFailed,
+			}
+			if err := harness.repo.CreateEnrollmentRun(ctx, targetRun); err != nil {
+				t.Fatalf("create target run: %v", err)
+			}
+			if err := harness.repo.CreateEnrollmentRun(ctx, otherStoreRun); err != nil {
+				t.Fatalf("create other store run: %v", err)
+			}
+
+			if err := harness.repo.SaveEnrollmentItems(ctx, []*listingkit.SheinActivityEnrollmentItemRecord{
+				{
+					RunID:           targetRun.ID,
+					CandidateID:     11,
+					StoreID:         101,
+					ActivityKey:     "PROMOTION:1:101",
+					SyncedProductID: 111,
+					SKCName:         "sg-target-failed",
+					Status:          listingkit.SheinEnrollmentItemStatusFailed,
+					ErrorMessage:    "current status can not enroll",
+					RequestPayload:  `{"debug":true}`,
+					ResponsePayload: `{"error":"failed"}`,
+				},
+				{
+					RunID:           targetRun.ID,
+					CandidateID:     12,
+					StoreID:         101,
+					ActivityKey:     "PROMOTION:1:101",
+					SyncedProductID: 112,
+					SKCName:         "sg-target-success",
+					Status:          listingkit.SheinEnrollmentItemStatusSucceeded,
+				},
+				{
+					RunID:           otherStoreRun.ID,
+					CandidateID:     21,
+					StoreID:         202,
+					ActivityKey:     "PROMOTION:1:202",
+					SyncedProductID: 221,
+					SKCName:         "sg-other-store",
+					Status:          listingkit.SheinEnrollmentItemStatusFailed,
+					ErrorMessage:    "must not leak",
+				},
+			}); err != nil {
+				t.Fatalf("save enrollment items: %v", err)
+			}
+
+			rows, total, err := harness.repo.ListEnrollmentItems(ctx, &listingkit.SheinEnrollmentItemQuery{
+				TenantID:       1,
+				StoreID:        101,
+				RunID:          targetRun.ID,
+				IncludePayload: false,
+				Page:           1,
+				PageSize:       10,
+			})
+			if err != nil {
+				t.Fatalf("ListEnrollmentItems(target): %v", err)
+			}
+			if total != 2 || len(rows) != 2 {
+				t.Fatalf("ListEnrollmentItems(target) total=%d len=%d, want 2", total, len(rows))
+			}
+			if rows[0].SKCName != "sg-target-failed" || rows[0].ErrorMessage != "current status can not enroll" {
+				t.Fatalf("first item = %+v, want failed target item", rows[0])
+			}
+			if rows[0].RequestPayload != "" || rows[0].ResponsePayload != "" {
+				t.Fatalf("payloads should be hidden by default: %+v", rows[0])
+			}
+
+			rows, total, err = harness.repo.ListEnrollmentItems(ctx, &listingkit.SheinEnrollmentItemQuery{
+				TenantID: 1,
+				StoreID:  101,
+				RunID:    otherStoreRun.ID,
+				Page:     1,
+			})
+			if err != nil {
+				t.Fatalf("ListEnrollmentItems(cross store): %v", err)
+			}
+			if total != 0 || len(rows) != 0 {
+				t.Fatalf("cross-store lookup total=%d len=%d, want 0", total, len(rows))
+			}
+		})
+	}
+}
+
 func TestSheinSyncRepositoryListCandidatesByIDsAndPersistEnrollmentOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -1146,6 +1251,103 @@ func TestSheinSyncRepositoryListCandidatesSupportsFilteringAndSameVersionUpsert(
 				if !item.AutoModeEligible || !item.SelectedForRun {
 					t.Fatalf("same-version workflow flags = auto:%v selected:%v, want true/true", item.AutoModeEligible, item.SelectedForRun)
 				}
+			}
+		})
+	}
+}
+
+func TestSheinSyncRepositoryListCandidatesSupportsExecutableFilterAndImage(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		harness := harness
+		t.Run(harness.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			imageURL := "https://example.com/skc-pending.jpg"
+			if err := harness.repo.UpsertSyncedProducts(ctx, []*listingkit.SheinSyncedProductRecord{
+				{
+					TenantID:     1,
+					StoreID:      101,
+					SKCName:      "skc-pending",
+					MainImageURL: imageURL,
+					IsActive:     true,
+				},
+			}); err != nil {
+				t.Fatalf("seed synced product: %v", err)
+			}
+			products, _, err := harness.repo.ListSyncedProducts(ctx, &listingkit.SheinSyncedProductQuery{
+				TenantID: 1,
+				StoreID:  101,
+				SKCName:  "skc-pending",
+				Page:     1,
+				PageSize: 1,
+			})
+			if err != nil {
+				t.Fatalf("load synced product: %v", err)
+			}
+			if len(products) != 1 || products[0].ID == 0 {
+				t.Fatalf("synced products = %+v, want one persisted product", products)
+			}
+
+			if err := harness.repo.SaveCandidates(ctx, []*listingkit.SheinActivityCandidateRecord{
+				{
+					TenantID:          1,
+					StoreID:           101,
+					SyncedProductID:   products[0].ID,
+					ActivityType:      "PROMOTION",
+					ActivityKey:       "PROMOTION:1:101",
+					SKCName:           "skc-pending",
+					CandidateVersion:  "v1",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusPendingReview,
+				},
+				{
+					TenantID:          1,
+					StoreID:           101,
+					SyncedProductID:   2,
+					ActivityType:      "PROMOTION",
+					ActivityKey:       "PROMOTION:1:101",
+					SKCName:           "skc-failed",
+					CandidateVersion:  "v1",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusFailed,
+				},
+				{
+					TenantID:          1,
+					StoreID:           101,
+					SyncedProductID:   3,
+					ActivityType:      "PROMOTION",
+					ActivityKey:       "PROMOTION:1:101",
+					SKCName:           "skc-ineligible",
+					CandidateVersion:  "v1",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusIneligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusPendingReview,
+				},
+			}); err != nil {
+				t.Fatalf("seed candidates: %v", err)
+			}
+
+			items, total, err := harness.listCandidates(ctx, &listingkit.SheinActivityCandidateQuery{
+				TenantID:       1,
+				StoreID:        101,
+				ActivityType:   "PROMOTION",
+				ExecutableOnly: true,
+				Page:           1,
+				PageSize:       10,
+			})
+			if err != nil {
+				t.Fatalf("list executable candidates: %v", err)
+			}
+			if total != 1 || len(items) != 1 {
+				t.Fatalf("executable candidate count = total %d len %d, want 1", total, len(items))
+			}
+			if items[0].SKCName != "skc-pending" {
+				t.Fatalf("executable candidate skc = %q, want skc-pending", items[0].SKCName)
+			}
+			if items[0].MainImageURL != imageURL {
+				t.Fatalf("candidate image = %q, want %q", items[0].MainImageURL, imageURL)
 			}
 		})
 	}

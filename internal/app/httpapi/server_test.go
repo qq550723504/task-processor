@@ -954,6 +954,10 @@ func (s *stubListingKitHandler) ListSheinActivityEnrollmentRuns(c *gin.Context) 
 	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
 }
 
+func (s *stubListingKitHandler) ListSheinActivityEnrollmentRunItems(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
 type stubPromptTemplateHandler struct{}
 
 func (s *stubPromptTemplateHandler) ListPromptTemplateCatalog(c *gin.Context) {

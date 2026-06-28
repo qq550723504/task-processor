@@ -69,6 +69,7 @@ func (h *handler) ListSheinActivityCandidates(c *gin.Context) {
 		ActivityKey:      strings.TrimSpace(query.ActivityKey),
 		SKCName:          strings.TrimSpace(query.SKCName),
 		CandidateVersion: strings.TrimSpace(query.CandidateVersion),
+		ExecutableOnly:   query.ExecutableOnly,
 		Page:             query.Page,
 		PageSize:         query.PageSize,
 	})

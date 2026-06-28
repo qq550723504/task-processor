@@ -118,6 +118,25 @@ export const listingKitKeys = {
       "runs",
       compactQueryKeyObject(query),
     ] as const,
+  sheinEnrollmentRunItems: (
+    storeId: number,
+    runId: number,
+    query: {
+      status?: string;
+      include_payload?: boolean;
+      page?: number;
+      page_size?: number;
+    },
+  ) =>
+    [
+      "listingkit",
+      "shein-enrollment",
+      storeId,
+      "runs",
+      runId,
+      "items",
+      compactQueryKeyObject(query),
+    ] as const,
   sheinEnrollmentStoreScope: (storeId: number) =>
     ["listingkit", "shein-enrollment", storeId] as const,
   preview: (taskId: string) => ["listingkit", taskId, "preview"] as const,

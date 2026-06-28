@@ -12,6 +12,7 @@ export type SheinActivityCandidateQuery = {
   activity_key?: string;
   skc_name?: string;
   candidate_version?: string;
+  executable_only?: boolean;
   page?: number;
   page_size?: number;
 };
@@ -25,6 +26,13 @@ export type SheinEnrollmentSummaryQuery = {
 export type SheinEnrollmentRunQuery = {
   activity_type?: string;
   activity_key?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export type SheinEnrollmentRunItemQuery = {
+  status?: string;
+  include_payload?: boolean;
   page?: number;
   page_size?: number;
 };
@@ -244,6 +252,7 @@ export type SheinActivityCandidateRecord = {
   price_snapshot?: string;
   inventory_snapshot?: string;
   calculated_profit_rate?: number | null;
+  main_image_url?: string;
   eligibility_status?: "eligible" | "ineligible" | string;
   eligibility_reason?: string;
   review_status?:
@@ -309,6 +318,23 @@ export type SheinActivityEnrollmentRunRecord = {
   updated_at?: string;
 };
 
+export type SheinActivityEnrollmentItemRecord = {
+  id?: number;
+  run_id?: number;
+  candidate_id?: number;
+  store_id?: number;
+  activity_key?: string;
+  candidate_version?: string;
+  synced_product_id?: number;
+  skc_name?: string;
+  status?: "succeeded" | "failed" | string;
+  request_payload?: string;
+  response_payload?: string;
+  error_message?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type SheinEnrollmentStoreSummary = {
   store_id?: number;
   store_name?: string;
@@ -340,6 +366,11 @@ export type SheinEnrollmentStoreSummaryResponse = {
 
 export type SheinEnrollmentRunListResponse = {
   items?: SheinActivityEnrollmentRunRecord[];
+  total?: number;
+};
+
+export type SheinEnrollmentRunItemListResponse = {
+  items?: SheinActivityEnrollmentItemRecord[];
   total?: number;
 };
 

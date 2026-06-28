@@ -16,3 +16,10 @@ type listSheinEnrollmentRunsQuery struct {
 	Page         int    `form:"page"`
 	PageSize     int    `form:"page_size"`
 }
+
+type listSheinEnrollmentItemsQuery struct {
+	Status         string `form:"status"`
+	IncludePayload bool   `form:"include_payload"`
+	Page           int    `form:"page"`
+	PageSize       int    `form:"page_size"`
+}

@@ -39,6 +39,7 @@ type SheinActivityCandidateRecord struct {
 	AutoModeEligible     bool                            `json:"auto_mode_eligible" gorm:"index;not null;default:false"`
 	SelectedForRun       bool                            `json:"selected_for_run" gorm:"index;not null;default:false"`
 	LastEnrollmentError  string                          `json:"last_enrollment_error,omitempty" gorm:"-"`
+	MainImageURL         string                          `json:"main_image_url,omitempty" gorm:"-"`
 	CreatedAt            time.Time                       `json:"created_at"`
 	UpdatedAt            time.Time                       `json:"updated_at"`
 }

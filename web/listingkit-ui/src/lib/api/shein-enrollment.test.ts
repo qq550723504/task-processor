@@ -5,6 +5,7 @@ import {
   executeSheinActivityEnrollment,
   getSheinActivityStrategy,
   getSheinActivityCandidates,
+  getSheinActivityEnrollmentRunItems,
   getSheinActivityEnrollmentRuns,
   getSheinEnrollmentDashboard,
   getSheinEnrollmentStoreSummary,
@@ -149,6 +150,7 @@ describe("shein enrollment api", () => {
       activity_key: "flash_sale#12",
       skc_name: "dress",
       candidate_version: "20260605",
+      executable_only: true,
       page: 1,
       page_size: 20,
     });
@@ -170,6 +172,10 @@ describe("shein enrollment api", () => {
       page: 1,
       page_size: 20,
     });
+    await getSheinActivityEnrollmentRunItems(12, 99, {
+      page: 1,
+      page_size: 50,
+    });
 
     expect(mockedApiRequest).toHaveBeenNthCalledWith(
       1,
@@ -188,6 +194,7 @@ describe("shein enrollment api", () => {
           activity_key: "flash_sale#12",
           skc_name: "dress",
           candidate_version: "20260605",
+          executable_only: true,
           page: 1,
           page_size: 20,
         },
@@ -228,6 +235,16 @@ describe("shein enrollment api", () => {
           activity_key: "flash_sale#12",
           page: 1,
           page_size: 20,
+        },
+      },
+    );
+    expect(mockedApiRequest).toHaveBeenNthCalledWith(
+      6,
+      "/shein-sync/stores/12/enrollment-runs/99/items",
+      {
+        query: {
+          page: 1,
+          page_size: 50,
         },
       },
     );

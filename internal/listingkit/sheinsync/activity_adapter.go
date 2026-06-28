@@ -74,7 +74,7 @@ func (a *sheinActivityAdapter) EnrollCandidates(
 	candidates []SheinActivityEnrollmentCandidate,
 ) ([]SheinActivityEnrollmentResult, error) {
 	switch strings.ToUpper(activityType) {
-	case "PROMOTION":
+	case "PROMOTION", "TIME_LIMITED":
 		return a.enrollPromotionCandidates(ctx, storeID, activityKey, candidates)
 	default:
 		return nil, fmt.Errorf("unsupported SHEIN activity type %q", activityType)
@@ -123,7 +123,7 @@ func (a *sheinActivityAdapter) enrollPromotionCandidates(
 		return products[i].Skc < products[j].Skc
 	})
 
-	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy, "", products)
+	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy, activityKey, products)
 	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC), bridgeErr
 }
 

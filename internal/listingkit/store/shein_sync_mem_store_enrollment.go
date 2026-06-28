@@ -72,7 +72,19 @@ func (r *MemSheinSyncRepository) ListCandidates(_ context.Context, query *listin
 	}
 	pageItems := items[start:end]
 	r.attachLatestFailedEnrollmentErrorsLocked(pageItems)
+	r.attachCandidateMainImagesLocked(pageItems)
 	return pageItems, total, nil
+}
+
+func (r *MemSheinSyncRepository) attachCandidateMainImagesLocked(rows []listingkit.SheinActivityCandidateRecord) {
+	for i := range rows {
+		for _, product := range r.products {
+			if product.ID == rows[i].SyncedProductID {
+				rows[i].MainImageURL = product.MainImageURL
+				break
+			}
+		}
+	}
 }
 
 func (r *MemSheinSyncRepository) attachLatestFailedEnrollmentErrorsLocked(rows []listingkit.SheinActivityCandidateRecord) {
@@ -179,6 +191,43 @@ func (r *MemSheinSyncRepository) ListEnrollmentRuns(_ context.Context, query *li
 	start := (page - 1) * pageSize
 	if start >= len(items) {
 		return []listingkit.SheinActivityEnrollmentRunRecord{}, total, nil
+	}
+	end := start + pageSize
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[start:end], total, nil
+}
+
+func (r *MemSheinSyncRepository) ListEnrollmentItems(_ context.Context, query *listingkit.SheinEnrollmentItemQuery) ([]listingkit.SheinActivityEnrollmentItemRecord, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	items := make([]listingkit.SheinActivityEnrollmentItemRecord, 0, len(r.enrollmentItems))
+	for _, row := range r.enrollmentItems {
+		run, ok := r.enrollmentRuns[row.RunID]
+		if !ok {
+			continue
+		}
+		if !matchesSheinEnrollmentItemQuery(row, run, query) {
+			continue
+		}
+		item := cloneSheinEnrollmentItemRecord(row)
+		if query == nil || !query.IncludePayload {
+			item.RequestPayload = ""
+			item.ResponsePayload = ""
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID < items[j].ID
+	})
+
+	total := int64(len(items))
+	page, pageSize := sheinEnrollmentItemQueryPage(query)
+	start := (page - 1) * pageSize
+	if start >= len(items) {
+		return []listingkit.SheinActivityEnrollmentItemRecord{}, total, nil
 	}
 	end := start + pageSize
 	if end > len(items) {

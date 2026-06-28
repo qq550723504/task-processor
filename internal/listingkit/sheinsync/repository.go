@@ -48,6 +48,7 @@ type SheinActivityCandidateQuery struct {
 	SKCName          string
 	CandidateVersion string
 	CandidateIDs     []int64
+	ExecutableOnly   bool
 	Page             int
 	PageSize         int
 }
@@ -60,6 +61,16 @@ type SheinEnrollmentRunQuery struct {
 	Status       *SheinEnrollmentRunStatus
 	Page         int
 	PageSize     int
+}
+
+type SheinEnrollmentItemQuery struct {
+	TenantID       int64
+	StoreID        int64
+	RunID          int64
+	Status         *SheinEnrollmentItemStatus
+	IncludePayload bool
+	Page           int
+	PageSize       int
 }
 
 type SheinSyncedProductRepository interface {
@@ -87,6 +98,7 @@ type SheinActivityEnrollmentRunRepository interface {
 
 type SheinActivityEnrollmentItemRepository interface {
 	SaveEnrollmentItems(ctx context.Context, items []*SheinActivityEnrollmentItemRecord) error
+	ListEnrollmentItems(ctx context.Context, query *SheinEnrollmentItemQuery) ([]SheinActivityEnrollmentItemRecord, int64, error)
 }
 
 type SheinSyncRepository interface {

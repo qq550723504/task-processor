@@ -6,6 +6,7 @@ import {
   executeSheinActivityEnrollment,
   getSheinActivityStrategy,
   getSheinActivityCandidates,
+  getSheinActivityEnrollmentRunItems,
   getSheinActivityEnrollmentRuns,
   getSheinEnrollmentDashboard,
   getSheinEnrollmentStoreSummary,
@@ -23,6 +24,7 @@ import {
 import { listingKitKeys } from "@/lib/query/keys";
 import type {
   SheinActivityCandidateQuery,
+  SheinEnrollmentRunItemQuery,
   SheinEnrollmentRunQuery,
   SheinEnrollmentStoreSummaryResponse,
   SheinEnrollmentSummaryQuery,
@@ -143,6 +145,24 @@ export function useSheinActivityEnrollmentRuns(
     queryKey: listingKitKeys.sheinEnrollmentRuns(storeId, query),
     queryFn: () => getSheinActivityEnrollmentRuns(storeId, query),
     enabled: options.enabled !== false && Number.isFinite(storeId) && storeId > 0,
+  });
+}
+
+export function useSheinActivityEnrollmentRunItems(
+  storeId: number,
+  runId: number,
+  query: SheinEnrollmentRunItemQuery,
+  options: QueryOptions = {},
+) {
+  return useQuery({
+    queryKey: listingKitKeys.sheinEnrollmentRunItems(storeId, runId, query),
+    queryFn: () => getSheinActivityEnrollmentRunItems(storeId, runId, query),
+    enabled:
+      options.enabled !== false &&
+      Number.isFinite(storeId) &&
+      storeId > 0 &&
+      Number.isFinite(runId) &&
+      runId > 0,
   });
 }
 

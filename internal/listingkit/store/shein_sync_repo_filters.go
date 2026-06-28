@@ -64,6 +64,13 @@ func sheinEnrollmentRunQueryPage(query *listingkit.SheinEnrollmentRunQuery) (int
 	return normalizeSheinSyncPage(query.Page, query.PageSize)
 }
 
+func sheinEnrollmentItemQueryPage(query *listingkit.SheinEnrollmentItemQuery) (int, int) {
+	if query == nil {
+		return normalizeSheinSyncPage(0, 0)
+	}
+	return normalizeSheinSyncPage(query.Page, query.PageSize)
+}
+
 func applySheinSyncedProductFilters(db *gorm.DB, query *listingkit.SheinSyncedProductQuery) *gorm.DB {
 	if query == nil {
 		return db
@@ -133,6 +140,14 @@ func applySheinActivityCandidateFilters(db *gorm.DB, query *listingkit.SheinActi
 	if len(query.CandidateIDs) > 0 {
 		db = db.Where("id IN ?", query.CandidateIDs)
 	}
+	if query.ExecutableOnly {
+		db = db.Where("eligibility_status = ?", listingkit.SheinCandidateEligibilityStatusEligible)
+		db = db.Where("review_status IN ?", []listingkit.SheinCandidateReviewStatus{
+			listingkit.SheinCandidateReviewStatusPendingReview,
+			listingkit.SheinCandidateReviewStatusApproved,
+			listingkit.SheinCandidateReviewStatusAutoQueued,
+		})
+	}
 	return db
 }
 
@@ -154,6 +169,25 @@ func applySheinEnrollmentRunFilters(db *gorm.DB, query *listingkit.SheinEnrollme
 	}
 	if query.Status != nil {
 		db = db.Where("status = ?", *query.Status)
+	}
+	return db
+}
+
+func applySheinEnrollmentItemFilters(db *gorm.DB, query *listingkit.SheinEnrollmentItemQuery) *gorm.DB {
+	if query == nil {
+		return db
+	}
+	if query.RunID > 0 {
+		db = db.Where("listingkit_shein_activity_enrollment_items.run_id = ?", query.RunID)
+	}
+	if query.Status != nil {
+		db = db.Where("listingkit_shein_activity_enrollment_items.status = ?", *query.Status)
+	}
+	if query.TenantID > 0 {
+		db = db.Where("runs.tenant_id = ?", query.TenantID)
+	}
+	if query.StoreID > 0 {
+		db = db.Where("runs.store_id = ?", query.StoreID)
 	}
 	return db
 }

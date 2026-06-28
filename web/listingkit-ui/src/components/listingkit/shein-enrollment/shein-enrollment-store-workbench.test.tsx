@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SheinEnrollmentStoreWorkbench } from "@/components/listingkit/shein-enrollment/shein-enrollment-store-workbench";
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   useSheinSyncedProducts: vi.fn(),
   useSheinActivityCandidates: vi.fn(),
   useSheinActivityEnrollmentRuns: vi.fn(),
+  useSheinActivityEnrollmentRunItems: vi.fn(),
   useTriggerSheinStoreSync: vi.fn(),
   useSyncSheinSourceSDSProduct: vi.fn(),
   useRefreshSheinActivityCandidates: vi.fn(),
@@ -35,6 +36,8 @@ vi.mock("@/lib/query/use-shein-enrollment", () => ({
   useSheinActivityCandidates: (...args: unknown[]) => mocks.useSheinActivityCandidates(...args),
   useSheinActivityEnrollmentRuns: (...args: unknown[]) =>
     mocks.useSheinActivityEnrollmentRuns(...args),
+  useSheinActivityEnrollmentRunItems: (...args: unknown[]) =>
+    mocks.useSheinActivityEnrollmentRunItems(...args),
   useTriggerSheinStoreSync: (...args: unknown[]) => mocks.useTriggerSheinStoreSync(...args),
   useSyncSheinSourceSDSProduct: (...args: unknown[]) =>
     mocks.useSyncSheinSourceSDSProduct(...args),
@@ -69,6 +72,8 @@ function renderWorkbench({
   productTotal,
   candidates = [],
   candidateTotal,
+  runs = [],
+  runItems = [],
   summary,
   activityStrategyResponse,
   updateStrategyMutation,
@@ -83,6 +88,8 @@ function renderWorkbench({
   productTotal?: number;
   candidates?: Array<Record<string, unknown>>;
   candidateTotal?: number;
+  runs?: Array<Record<string, unknown>>;
+  runItems?: Array<Record<string, unknown>>;
   summary?: Record<string, unknown>;
   activityStrategyResponse?: Record<string, unknown>;
   updateStrategyMutation?: ReturnType<typeof resolvedMutation>;
@@ -134,7 +141,11 @@ function renderWorkbench({
     isLoading: false,
   });
   mocks.useSheinActivityEnrollmentRuns.mockReturnValue({
-    data: { items: [], total: runTotal ?? 0 },
+    data: { items: runs, total: runTotal ?? runs.length },
+    isLoading: false,
+  });
+  mocks.useSheinActivityEnrollmentRunItems.mockReturnValue({
+    data: { items: runItems, total: runItems.length },
     isLoading: false,
   });
   mocks.useTriggerSheinStoreSync.mockReturnValue(resolvedMutation());
@@ -207,6 +218,7 @@ describe("SheinEnrollmentStoreWorkbench", () => {
         {
           id: 18,
           skc_name: "SKC-18",
+          main_image_url: "https://example.com/skc-18.png",
           review_status: "pending_review",
           effective_cost_price: 12.5,
           price_snapshot: "USD 29.99",
@@ -216,6 +228,55 @@ describe("SheinEnrollmentStoreWorkbench", () => {
 
     expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
     expect(screen.getByText(/售价 \$29.99/)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "SKC-18 图片" })).toHaveAttribute(
+      "src",
+      "https://example.com/skc-18.png",
+    );
+    const thumbnail = screen.getByRole("img", { name: "SKC-18 图片" });
+    expect(thumbnail.parentElement).toHaveClass("cursor-zoom-in");
+    expect(screen.getByAltText("SKC-18 悬浮预览").parentElement).toHaveClass(
+      "group-hover:block",
+    );
+  });
+
+  it("filters candidates to executable enrollment items", async () => {
+    renderWorkbench({
+      initialTab: "candidates",
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-PENDING",
+          review_status: "pending_review",
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(mocks.useSheinActivityCandidates).toHaveBeenLastCalledWith(
+      12,
+      {
+        activity_type: "PROMOTION",
+        executable_only: undefined,
+        page: 1,
+        page_size: 100,
+      },
+      { enabled: true },
+    );
+
+    fireEvent.click(screen.getByLabelText("只看可报名"));
+
+    await waitFor(() => {
+      expect(mocks.useSheinActivityCandidates).toHaveBeenLastCalledWith(
+        12,
+        {
+          activity_type: "PROMOTION",
+          executable_only: true,
+          page: 1,
+          page_size: 100,
+        },
+        { enabled: true },
+      );
+    });
   });
 
   it("does not expose manual approval from the candidates table", async () => {
@@ -437,6 +498,64 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     }, {
       enabled: true,
     });
+  });
+
+  it("shows enrollment run item details from the runs tab", async () => {
+    renderWorkbench({
+      initialTab: "runs",
+      runs: [
+        {
+          id: 99,
+          activity_type: "PROMOTION",
+          activity_key: "PROMOTION:12",
+          trigger_mode: "manual_confirmed",
+          status: "failed",
+          candidate_count: 1,
+          succeeded_count: 0,
+          failed_count: 1,
+          started_at: "2026-06-28T01:00:00Z",
+        },
+      ],
+      runItems: [
+        {
+          id: 1001,
+          run_id: 99,
+          skc_name: "sg260618174087119533319",
+          status: "failed",
+          error_message: "current status can not enroll",
+          updated_at: "2026-06-28T01:01:00Z",
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(mocks.useSheinActivityEnrollmentRunItems).toHaveBeenLastCalledWith(
+      12,
+      0,
+      {
+        page: 1,
+        page_size: 50,
+      },
+      { enabled: false },
+    );
+
+    const detailsButton = screen.getByRole("button", { name: "查看详情" });
+    expect(detailsButton).toHaveClass("whitespace-nowrap");
+    expect(detailsButton).toHaveClass("min-w-[4.5rem]");
+
+    fireEvent.click(detailsButton);
+
+    expect(mocks.useSheinActivityEnrollmentRunItems).toHaveBeenLastCalledWith(
+      12,
+      99,
+      {
+        page: 1,
+        page_size: 50,
+      },
+      { enabled: true },
+    );
+    expect(await screen.findByText("sg260618174087119533319")).toBeInTheDocument();
+    expect(screen.getByText("current status can not enroll")).toBeInTheDocument();
   });
 
   it("renders cost rows from source POD SDS groups in the cost tab", async () => {

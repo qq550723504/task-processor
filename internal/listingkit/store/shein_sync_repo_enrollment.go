@@ -73,7 +73,44 @@ func (r *GormSheinSyncRepository) ListCandidates(ctx context.Context, query *lis
 	if err := r.attachLatestFailedEnrollmentErrors(ctx, rows); err != nil {
 		return nil, 0, err
 	}
+	if err := r.attachCandidateMainImages(ctx, rows); err != nil {
+		return nil, 0, err
+	}
 	return rows, total, nil
+}
+
+func (r *GormSheinSyncRepository) attachCandidateMainImages(ctx context.Context, rows []listingkit.SheinActivityCandidateRecord) error {
+	productIDs := make([]int64, 0, len(rows))
+	seen := make(map[int64]struct{}, len(rows))
+	for _, row := range rows {
+		if row.SyncedProductID <= 0 {
+			continue
+		}
+		if _, ok := seen[row.SyncedProductID]; ok {
+			continue
+		}
+		seen[row.SyncedProductID] = struct{}{}
+		productIDs = append(productIDs, row.SyncedProductID)
+	}
+	if len(productIDs) == 0 {
+		return nil
+	}
+
+	var products []listingkit.SheinSyncedProductRecord
+	if err := r.db.WithContext(ctx).
+		Select("id", "main_image_url").
+		Where("id IN ?", productIDs).
+		Find(&products).Error; err != nil {
+		return err
+	}
+	imageByProductID := make(map[int64]string, len(products))
+	for _, product := range products {
+		imageByProductID[product.ID] = product.MainImageURL
+	}
+	for i := range rows {
+		rows[i].MainImageURL = imageByProductID[rows[i].SyncedProductID]
+	}
+	return nil
 }
 
 func (r *GormSheinSyncRepository) attachLatestFailedEnrollmentErrors(ctx context.Context, rows []listingkit.SheinActivityCandidateRecord) error {
@@ -175,6 +212,34 @@ func (r *GormSheinSyncRepository) ListEnrollmentRuns(ctx context.Context, query 
 	var rows []listingkit.SheinActivityEnrollmentRunRecord
 	if err := db.
 		Order("started_at DESC, id DESC").
+		Offset((page - 1) * pageSize).
+		Limit(pageSize).
+		Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
+func (r *GormSheinSyncRepository) ListEnrollmentItems(ctx context.Context, query *listingkit.SheinEnrollmentItemQuery) ([]listingkit.SheinActivityEnrollmentItemRecord, int64, error) {
+	page, pageSize := sheinEnrollmentItemQueryPage(query)
+	db := r.db.WithContext(ctx).
+		Model(&listingkit.SheinActivityEnrollmentItemRecord{}).
+		Joins("JOIN listingkit_shein_activity_enrollment_runs AS runs ON runs.id = listingkit_shein_activity_enrollment_items.run_id")
+	db = applySheinEnrollmentItemFilters(db, query)
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var rows []listingkit.SheinActivityEnrollmentItemRecord
+	selectColumns := "listingkit_shein_activity_enrollment_items.*"
+	if query == nil || !query.IncludePayload {
+		selectColumns = "listingkit_shein_activity_enrollment_items.id, listingkit_shein_activity_enrollment_items.run_id, listingkit_shein_activity_enrollment_items.candidate_id, listingkit_shein_activity_enrollment_items.store_id, listingkit_shein_activity_enrollment_items.activity_key, listingkit_shein_activity_enrollment_items.candidate_version, listingkit_shein_activity_enrollment_items.synced_product_id, listingkit_shein_activity_enrollment_items.skc_name, listingkit_shein_activity_enrollment_items.status, listingkit_shein_activity_enrollment_items.error_message, listingkit_shein_activity_enrollment_items.created_at, listingkit_shein_activity_enrollment_items.updated_at"
+	}
+	if err := db.
+		Select(selectColumns).
+		Order("listingkit_shein_activity_enrollment_items.id ASC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&rows).Error; err != nil {
