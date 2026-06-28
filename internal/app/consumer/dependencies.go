@@ -9,18 +9,16 @@ import (
 type PlatformModuleRegistrarFactory func(logger *logrus.Logger, serviceManager *ServiceManager, resources *SharedResources) PlatformModuleRegistrar
 
 type PlatformProcessorRegistryDependencies struct {
-	PlatformModules []PlatformModule
-	Catalog         PlatformModuleCatalog
-	ResourceNeeds   PlatformResourceNeedsResolver
-	NewRegistrar    PlatformModuleRegistrarFactory
+	Catalog       PlatformModuleCatalog
+	ResourceNeeds PlatformResourceNeedsResolver
+	NewRegistrar  PlatformModuleRegistrarFactory
 }
 
 func NewPlatformProcessorRegistryDependencies(cfg *config.Config, platformsStr string, modules []PlatformModule) PlatformProcessorRegistryDependencies {
 	catalog := NewPlatformModuleCatalog(cfg, platformsStr, modules)
 	return PlatformProcessorRegistryDependencies{
-		PlatformModules: modules,
-		Catalog:         catalog,
-		ResourceNeeds:   NewPlatformResourceNeedsResolver(cfg, catalog),
+		Catalog:       catalog,
+		ResourceNeeds: NewPlatformResourceNeedsResolver(cfg, catalog),
 		NewRegistrar: func(logger *logrus.Logger, serviceManager *ServiceManager, resources *SharedResources) PlatformModuleRegistrar {
 			return NewPlatformModuleRegistrar(cfg, logger, serviceManager, resources)
 		},

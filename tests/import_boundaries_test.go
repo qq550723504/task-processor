@@ -1362,6 +1362,22 @@ func TestListingRuntimeDependenciesDoesNotExposePartialConsumerDependencies(t *t
 	}
 }
 
+func TestPlatformProcessorRegistryDependenciesDoNotExposePlatformModules(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "dependencies.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"PlatformModules []PlatformModule",
+		"PlatformModules: modules",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; keep platform module lists as constructor input instead of exposing partial registry dependencies", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),
