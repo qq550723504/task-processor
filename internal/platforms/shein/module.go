@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/platformbase"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/taskstatus"
@@ -31,7 +32,7 @@ func (Module) Enabled(cfg *config.Config) bool {
 }
 
 func (m Module) NeedsAmazon(cfg *config.Config) bool {
-	return consumer.PlatformUsesLocalFetcher(cfg, m.Name())
+	return platformbase.PlatformUsesLocalFetcher(cfg, m.Name())
 }
 
 func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntimeContext, registry consumer.ProcessorRegistrar) error {

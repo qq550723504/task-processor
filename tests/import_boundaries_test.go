@@ -1542,11 +1542,38 @@ func TestPlatformModulesUseRuntimeProductFetcher(t *testing.T) {
 func TestConsumerProductFetcherBuilderStaysRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "product_fetcher_builder.go")
 	content, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return
+	}
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
-	if strings.Contains(string(content), "func BuildPlatformProductFetcher(") {
-		t.Fatalf("%s exposes BuildPlatformProductFetcher; centralize product fetcher construction in bootstrap fetchers", path)
+	for _, phrase := range []string{
+		"func BuildPlatformProductFetcher(",
+		"func ResolvePlatformFetcherType(",
+		"func PlatformUsesLocalFetcher(",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s exposes %s; keep platform fetcher mode rules in platformbase and construction in bootstrap fetchers", path, phrase)
+		}
+	}
+}
+
+func TestBootstrapFetchersDoNotOwnPlatformFetcherModeRules(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "bootstrap", "fetchers", "product_fetcher_builder.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"func ResolvePlatformFetcherType(",
+		"func PlatformUsesLocalFetcher(",
+		"cfg.Platforms.Temu.FetchMode",
+		"cfg.Platforms.Shein.FetchMode",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; keep platform fetcher mode rules in platformbase", path, phrase)
+		}
 	}
 }
 

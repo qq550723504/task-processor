@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/app/bootstrap/fetchers"
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/runner"
@@ -12,6 +11,7 @@ import (
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/platformbase"
 	"task-processor/internal/product"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
@@ -136,7 +136,7 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 	resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{
 		// cmd/task should not initialize the in-process Amazon crawler by default.
 		// Scheduler/processor fetch paths can use remote API or distributed crawl instead.
-		NeedAmazonCrawler: fetchers.PlatformUsesLocalFetcher(cfg, "temu") || fetchers.PlatformUsesLocalFetcher(cfg, "shein"),
+		NeedAmazonCrawler: platformbase.PlatformUsesLocalFetcher(cfg, "temu") || platformbase.PlatformUsesLocalFetcher(cfg, "shein"),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("build shared resources: %w", err)

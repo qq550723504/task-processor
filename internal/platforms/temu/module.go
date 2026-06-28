@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
+	"task-processor/internal/platformbase"
 	"task-processor/internal/prompt"
 	temuprocessor "task-processor/internal/temu"
 )
@@ -25,7 +26,7 @@ func (Module) Enabled(cfg *config.Config) bool {
 }
 
 func (m Module) NeedsAmazon(cfg *config.Config) bool {
-	return consumer.PlatformUsesLocalFetcher(cfg, m.Name())
+	return platformbase.PlatformUsesLocalFetcher(cfg, m.Name())
 }
 
 func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntimeContext, registry consumer.ProcessorRegistrar) error {

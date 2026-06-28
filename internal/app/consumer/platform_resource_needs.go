@@ -1,6 +1,9 @@
 package consumer
 
-import "task-processor/internal/core/config"
+import (
+	"task-processor/internal/core/config"
+	"task-processor/internal/platformbase"
+)
 
 type platformResourceNeedsResolver struct {
 	cfg     *config.Config
@@ -27,7 +30,7 @@ func (r platformResourceNeedsResolver) resolve(platforms ...string) (SharedResou
 func (r platformResourceNeedsResolver) anyModuleNeedsAmazon(modules []PlatformModule) bool {
 	for _, module := range modules {
 		name := module.Name()
-		if module.NeedsAmazon(r.cfg) || PlatformUsesLocalFetcher(r.cfg, name) {
+		if module.NeedsAmazon(r.cfg) || platformbase.PlatformUsesLocalFetcher(r.cfg, name) {
 			return true
 		}
 	}
