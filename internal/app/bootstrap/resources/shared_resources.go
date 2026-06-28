@@ -70,7 +70,7 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		return nil, fmt.Errorf("config is nil")
 	}
 
-	localProvider, err := localruntime.NewDataProvider(cfg.Database, cfg.Redis)
+	localProvider, err := localruntime.NewLocalDataProvider(cfg.Database, cfg.Redis)
 	if err != nil {
 		return nil, fmt.Errorf("configure local listing runtime data provider: %w", err)
 	}
@@ -85,14 +85,14 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		}
 	}
 
-	localRuntime := localruntime.NewRuntime(localProvider, localruntime.RuntimeOptions{
+	localRuntime := localruntime.NewLocalRuntime(localProvider, localruntime.LocalRuntimeOptions{
 		SheinCookieProvider: cookieProvider,
 	})
 
 	resources := &SharedResources{}
 	if localRuntime != nil {
 		resources.ListingRuntimeHealthValidator = localRuntime
-		resources.RawJSONDataClient = localruntime.NewRawJSONDataAdapter(localProvider)
+		resources.RawJSONDataClient = localruntime.NewRawJsonDataAdapter(localProvider)
 		resources.StoreAPI = localRuntime.GetStoreAPI()
 		resources.SchedulerRuntime = localRuntime
 		resources.SchedulerFactoryRuntime = localSchedulerFactoryRuntime{source: localRuntime}

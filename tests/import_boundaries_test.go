@@ -1490,6 +1490,15 @@ func TestRootBootstrapListingRuntimeDependenciesFacadeStaysRetired(t *testing.T)
 	}
 }
 
+func TestListingRuntimeLocalCompatibilityFacadeStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "listingruntime", "local", "runtime.go")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; use explicit LocalRuntime and LocalDataProvider constructors instead of the local runtime compatibility facade", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+}
+
 func TestPlatformProcessorRegistryDependenciesDoNotExposePlatformModules(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "dependencies.go")
 	content, err := os.ReadFile(path)
