@@ -39,6 +39,24 @@ func TestIsSupported(t *testing.T) {
 	}
 }
 
+func TestNormalizeSupportedPlatforms(t *testing.T) {
+	t.Parallel()
+
+	got := NormalizeSupportedPlatforms([]string{" Amazon ", "shein", "amazon", "invalid", "TEMU", ""})
+	want := []string{"amazon", "shein", "temu"}
+	if !equalStrings(got, want) {
+		t.Fatalf("NormalizeSupportedPlatforms() = %#v, want %#v", got, want)
+	}
+}
+
+func TestNormalizeSupportedPlatformsReturnsNilForNoSupportedValues(t *testing.T) {
+	t.Parallel()
+
+	if got := NormalizeSupportedPlatforms([]string{"", " ebay "}); got != nil {
+		t.Fatalf("NormalizeSupportedPlatforms() = %#v, want nil", got)
+	}
+}
+
 func TestValidateSelectedPlatform(t *testing.T) {
 	t.Parallel()
 

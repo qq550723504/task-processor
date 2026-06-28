@@ -35,6 +35,29 @@ func IsSupported(platform string) bool {
 	return false
 }
 
+func NormalizeSupportedPlatforms(platforms []string) []string {
+	if len(platforms) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(platforms))
+	for _, platform := range platforms {
+		normalized := Normalize(platform)
+		if !IsSupported(normalized) {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result = append(result, normalized)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 func ValidateSelectedPlatform(platform string) (string, bool) {
 	platform = Normalize(platform)
 	if platform == "" {

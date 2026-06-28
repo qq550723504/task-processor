@@ -5,6 +5,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	"task-processor/internal/catalog/canonical"
+	listingplatform "task-processor/internal/listing/platform"
 )
 
 func buildInventorySummaryFromBundle(bundle *asset.Bundle) *asset.InventorySummary {
@@ -42,7 +43,7 @@ func resolveRecipesForPlatforms(resolver assetrecipe.Resolver, platforms []strin
 		return nil
 	}
 	out := make(map[string][]assetrecipe.AssetRecipe, len(platforms))
-	for _, platform := range normalizePlatforms(platforms) {
+	for _, platform := range listingplatform.NormalizeSupportedPlatforms(platforms) {
 		out[platform] = resolver.Resolve(assetrecipe.ResolveRequest{
 			Platform:     platform,
 			CategoryPath: categoryPathOrNil(canonical),

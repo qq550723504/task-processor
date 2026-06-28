@@ -3,6 +3,7 @@ package listingkit
 import (
 	"strings"
 
+	listingplatform "task-processor/internal/listing/platform"
 	listingworkflow "task-processor/internal/listingkit/workflow"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
@@ -92,7 +93,7 @@ func detectImageMarketplace(req *GenerateRequest) string {
 	if req == nil {
 		return "amazon"
 	}
-	platforms := normalizePlatforms(req.Platforms)
+	platforms := listingplatform.NormalizeSupportedPlatforms(req.Platforms)
 	if len(platforms) == 0 {
 		return "amazon"
 	}

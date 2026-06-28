@@ -82,7 +82,7 @@ func normalizeGenerateRequest(req *GenerateRequest) {
 	} else if req.Options.Scene != nil {
 		req.Options.ProcessImages = true
 	}
-	req.Platforms = normalizePlatforms(req.Platforms)
+	req.Platforms = listingplatform.NormalizeSupportedPlatforms(req.Platforms)
 	req.ImageURLs = normalizeGenerateRequestImageURLs(req.ImageURLs)
 	if len(req.Platforms) == 0 {
 		req.Platforms = listingplatform.SupportedPlatforms()
@@ -117,26 +117,6 @@ func absolutizeListingKitUploadedImageURL(rawURL string) string {
 		return trimmed
 	}
 	return "http://localhost:3000" + trimmed
-}
-
-func normalizePlatforms(platforms []string) []string {
-	if len(platforms) == 0 {
-		return nil
-	}
-	seen := map[string]struct{}{}
-	result := make([]string, 0, len(platforms))
-	for _, platform := range platforms {
-		normalized := listingplatform.Normalize(platform)
-		if !listingplatform.IsSupported(normalized) {
-			continue
-		}
-		if _, ok := seen[normalized]; ok {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		result = append(result, normalized)
-	}
-	return result
 }
 
 func (s *service) setSheinPublishWorkflowClient(client SheinPublishWorkflowClient, enabled bool) {

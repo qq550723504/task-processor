@@ -223,8 +223,7 @@ func TestServiceRootPlatformNormalizationUsesListingPlatformRegistry(t *testing.
 	for _, needle := range []string{
 		`listingplatform "task-processor/internal/listing/platform"`,
 		"req.Platforms = listingplatform.SupportedPlatforms()",
-		"normalized := listingplatform.Normalize(platform)",
-		"if !listingplatform.IsSupported(normalized) {",
+		"req.Platforms = listingplatform.NormalizeSupportedPlatforms(req.Platforms)",
 	} {
 		if !strings.Contains(content, needle) {
 			t.Fatalf("service.go should contain %q", needle)
@@ -234,6 +233,9 @@ func TestServiceRootPlatformNormalizationUsesListingPlatformRegistry(t *testing.
 	for _, needle := range []string{
 		`[]string{"amazon", "shein", "temu", "walmart"}`,
 		`case "amazon", "shein", "temu", "walmart":`,
+		"func normalizePlatforms(",
+		"listingplatform.Normalize(platform)",
+		"listingplatform.IsSupported(normalized)",
 	} {
 		if strings.Contains(content, needle) {
 			t.Fatalf("service.go should not contain %q after platform registry extraction", needle)
