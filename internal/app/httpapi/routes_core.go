@@ -7,7 +7,6 @@ import (
 
 	"task-processor/internal/httproute"
 	sdshttpapi "task-processor/internal/sds/httpapi"
-	"task-processor/internal/sdslogin"
 )
 
 func buildCoreRouteDescriptors() []httproute.Descriptor {
@@ -21,38 +20,6 @@ func buildCoreRouteDescriptors() []httproute.Descriptor {
 			},
 		},
 	}
-}
-
-func appendSheinLoginRouteDescriptors(routes []httproute.Descriptor, handler sheinLoginRouteHandler) []httproute.Descriptor {
-	if handler == nil {
-		return routes
-	}
-	return append(routes,
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/health", Module: "shein-login", Handler: handler.Health},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts", Module: "shein-login", Handler: handler.ListAccounts},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/shein-login/accounts/:store_id/login", Module: "shein-login", Handler: handler.Login},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts/:store_id/status", Module: "shein-login", Handler: handler.Status},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts/:store_id/warehouses", Module: "shein-login", Handler: handler.ListWarehouses},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/shein-login/accounts/:store_id/verify-code", Module: "shein-login", Handler: handler.SubmitVerifyCode},
-		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/shein-login/accounts/:store_id/verify-code-wait", Module: "shein-login", Handler: handler.CancelVerifyCodeWait},
-		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/shein-login/accounts/:store_id/cookie", Module: "shein-login", Handler: handler.ClearCookie},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/shein-login/accounts/:store_id/last-failure", Module: "shein-login", Handler: handler.GetLastFailure},
-		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/shein-login/accounts/:store_id/last-failure", Module: "shein-login", Handler: handler.ClearLastFailure},
-	)
-}
-
-func appendSDSLoginRouteDescriptors(routes []httproute.Descriptor, handler sdslogin.HTTPRouteHandler) []httproute.Descriptor {
-	if handler == nil {
-		return routes
-	}
-	return append(routes,
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/sds-login/health", Module: "sds-login", Handler: handler.Health},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/sds-login/status", Module: "sds-login", Handler: handler.Status},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/sds-login/login", Module: "sds-login", Handler: handler.Login},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/sds-login/manual-login", Module: "sds-login", Handler: handler.ManualLogin},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/sds-login/auth-state", Module: "sds-login", Handler: handler.GetAuthState},
-		httproute.Descriptor{Method: http.MethodDelete, Path: "/api/v1/sds-login/state", Module: "sds-login", Handler: handler.ClearState},
-	)
 }
 
 func appendSDSCatalogRouteDescriptors(routes []httproute.Descriptor, handlers ...sdshttpapi.HTTPRouteHandler) []httproute.Descriptor {

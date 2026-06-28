@@ -27,6 +27,7 @@ import (
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
+	"task-processor/internal/sheinlogin"
 	"task-processor/internal/taskrpcapi"
 )
 
@@ -2269,8 +2270,8 @@ func buildLegacyRouteDescriptorsWithShein(productHandler productenrich.ProductHa
 	routes = listingkithttpapi.AppendStudioSessionRouteDescriptors(routes, studioSessionHandler)
 	routes = appendSDSCatalogRouteDescriptors(routes, sdsCatalogHandlers...)
 	routes = taskrpcapi.AppendRouteDescriptors(routes, taskRPCHandler)
-	routes = appendSheinLoginRouteDescriptors(routes, sheinLoginHandler)
-	routes = appendSDSLoginRouteDescriptors(routes, sdsLoginHandler)
+	routes = sheinlogin.AppendRouteDescriptors(routes, sheinLoginHandler)
+	routes = sdslogin.AppendRouteDescriptors(routes, sdsLoginHandler)
 	return routes
 }
 

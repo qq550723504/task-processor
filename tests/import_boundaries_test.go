@@ -4220,8 +4220,6 @@ func TestAppHTTPAPIModuleBuildersStayAllowlisted(t *testing.T) {
 func TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
-		"appendSheinLoginRouteDescriptors": {},
-		"appendSDSLoginRouteDescriptors":   {},
 		"appendSDSCatalogRouteDescriptors": {},
 	}
 
@@ -4266,6 +4264,24 @@ func TestAppHTTPAPITaskRPCRouteDescriptorHelperStaysRetired(t *testing.T) {
 	} {
 		if strings.Contains(string(content), phrase) {
 			t.Fatalf("%s mentions %q; delegate task RPC route descriptors to internal/taskrpcapi instead of duplicating module-owned routes in app/httpapi", path, phrase)
+		}
+	}
+}
+
+func TestAppHTTPAPILoginRouteDescriptorHelpersStayRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "routes_core.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"appendSheinLoginRouteDescriptors",
+		"appendSDSLoginRouteDescriptors",
+		"/api/v1/shein-login/",
+		"/api/v1/sds-login/",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; delegate login route descriptors to their owning login modules instead of duplicating them in app/httpapi", path, phrase)
 		}
 	}
 }
