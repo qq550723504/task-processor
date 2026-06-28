@@ -3,7 +3,6 @@ package consumer
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"task-processor/internal/core/config"
 
@@ -53,28 +52,14 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 	}
 	r.logger.Info("shared resources initialized")
 
+	registrar := NewPlatformModuleRegistrar(r.config, r.logger, serviceManager, resources)
 	for _, module := range modules {
-		if err := r.registerPlatformModule(ctx, serviceManager, resources, module); err != nil {
+		if err := registrar.Register(ctx, module); err != nil {
 			return err
 		}
 	}
 
 	r.logger.Info("platform processors registered")
-	return nil
-}
-
-func (r *PlatformProcessorRegistry) registerPlatformModule(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources, module PlatformModule) error {
-	r.logger.Infof("registering %s processor", strings.ToUpper(module.Name()))
-	runtimeContext := BuildPlatformRuntimeContext(PlatformRuntimeContextInput{
-		Config:         r.config,
-		Logger:         r.logger,
-		Resources:      resources,
-		ServiceManager: serviceManager,
-	})
-	if err := module.RegisterConsumer(ctx, runtimeContext, serviceManager); err != nil {
-		return err
-	}
-	r.logger.Infof("%s processor registered", strings.ToUpper(module.Name()))
 	return nil
 }
 
