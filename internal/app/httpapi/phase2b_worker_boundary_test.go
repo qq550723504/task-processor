@@ -534,7 +534,7 @@ func TestHTTPAPIRuntimeDepsMethodsUseOwningFeatureHTTPAPIModuleTypes(t *testing.
 	}
 }
 
-func TestHTTPModulesUseOwningFeatureHTTPAPIModuleTypesInSignatures(t *testing.T) {
+func TestHTTPModulesDoNotOwnFeatureHTTPAPIModuleSelectionSignatures(t *testing.T) {
 	t.Parallel()
 
 	modulesSrc, err := os.ReadFile("http_modules.go")
@@ -546,11 +546,6 @@ func TestHTTPModulesUseOwningFeatureHTTPAPIModuleTypesInSignatures(t *testing.T)
 		"imageBuilt *productimagehttpapi.Module",
 		"built *amazonlistinghttpapi.Module",
 		"built *listingkithttpapi.Module",
-	} {
-		require.Contains(t, modulesContent, marker)
-	}
-
-	for _, marker := range []string{
 		"built *productModuleResult",
 		"imageBuilt *imageModuleResult",
 		"built *amazonListingModuleResult",

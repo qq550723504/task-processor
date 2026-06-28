@@ -11,20 +11,11 @@ import (
 func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 	return []kernelmodule.Module{
 		newCoreHTTPModule(),
-		newProductHTTPModule(httpModuleHandlers{
-			product: c.productHandler(),
-			image:   c.imageHandler(),
-		}, c.productModule, c.imageModule),
-		newAmazonListingHTTPModule(httpModuleHandlers{
-			amazonListing: c.amazonListingHandler(),
-		}, c.amazonListingModule),
-		newListingKitHTTPModule(httpModuleHandlers{
-			listingKit: c.listingKitHandler(),
-		}, c.listingKitModule),
+		c.productHTTPModule(),
+		c.amazonListingHTTPModule(),
+		c.listingKitHTTPModule(),
 		c.promptHTTPModule(),
-		newListingKitStudioHTTPModule(httpModuleHandlers{
-			studioSession: c.studioSessionHandler(),
-		}, c.listingKitModule),
+		c.listingKitStudioHTTPModule(),
 		c.sdsHTTPModule(),
 		c.sheinLoginHTTPModule(),
 		c.sdsLoginHTTPModule(),

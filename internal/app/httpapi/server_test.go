@@ -2307,11 +2307,11 @@ func buildRegisteredRoutes(cfg *config.Config, handlers httpModuleHandlers) ([]h
 func buildHTTPModules(handlers httpModuleHandlers) []kernelmodule.Module {
 	return []kernelmodule.Module{
 		newCoreHTTPModule(),
-		newProductHTTPModule(handlers, nil, nil),
-		newAmazonListingHTTPModule(handlers, nil),
-		newListingKitHTTPModule(handlers, nil),
+		productenrichhttpapi.NewHTTPModule(handlers.product, handlers.image),
+		amazonlistinghttpapi.NewHTTPModule(handlers.amazonListing),
+		listingkithttpapi.NewHTTPModule(handlers.listingKit),
 		promptmgmtapi.NewHTTPModule(handlers.promptTemplate),
-		newListingKitStudioHTTPModule(handlers, nil),
+		listingkithttpapi.NewStudioHTTPModule(handlers.studioSession),
 		sdshttpapi.NewHTTPModule(handlers.sdsCatalog),
 		taskrpcapi.NewHTTPModule(handlers.taskRPC),
 		sheinlogin.NewHTTPModule(handlers.sheinLogin),

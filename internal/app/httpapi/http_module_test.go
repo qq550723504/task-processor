@@ -116,10 +116,7 @@ func TestProductHTTPModuleRegistersRoutes(t *testing.T) {
 
 	reg := kernelmodule.NewRegistry()
 
-	err := newProductHTTPModule(httpModuleHandlers{
-		product: &stubProductHandler{},
-		image:   &stubImageHandler{},
-	}, nil, nil).Register(reg)
+	err := productenrichhttpapi.NewHTTPModule(&stubProductHandler{}, &stubImageHandler{}).Register(reg)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -136,9 +133,7 @@ func TestAmazonListingHTTPModuleRegistersRoutes(t *testing.T) {
 
 	reg := kernelmodule.NewRegistry()
 
-	err := newAmazonListingHTTPModule(httpModuleHandlers{
-		amazonListing: &stubAmazonListingHandler{},
-	}, nil).Register(reg)
+	err := amazonlistinghttpapi.NewHTTPModule(&stubAmazonListingHandler{}).Register(reg)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -156,9 +151,7 @@ func TestListingKitHTTPModuleRegistersRoutes(t *testing.T) {
 
 	reg := kernelmodule.NewRegistry()
 
-	err := newListingKitHTTPModule(httpModuleHandlers{
-		listingKit: &stubListingKitHandler{},
-	}, nil).Register(reg)
+	err := listingkithttpapi.NewHTTPModule(&stubListingKitHandler{}).Register(reg)
 	require.NoError(t, err)
 
 	keys := routeKeys(reg.Routes())
@@ -171,9 +164,7 @@ func TestListingKitStudioHTTPModuleRegistersRoutes(t *testing.T) {
 
 	reg := kernelmodule.NewRegistry()
 
-	err := newListingKitStudioHTTPModule(httpModuleHandlers{
-		studioSession: &stubStudioSessionHandler{},
-	}, nil).Register(reg)
+	err := listingkithttpapi.NewStudioHTTPModule(&stubStudioSessionHandler{}).Register(reg)
 	require.NoError(t, err)
 
 	keys := routeKeys(reg.Routes())

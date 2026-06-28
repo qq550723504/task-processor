@@ -4336,6 +4336,24 @@ func TestAppHTTPAPISupportHTTPModuleWrappersStayRetired(t *testing.T) {
 	}
 }
 
+func TestAppHTTPAPIFeatureHTTPModuleWrappersStayRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "http_modules.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"newProductHTTPModule",
+		"newAmazonListingHTTPModule",
+		"newListingKitHTTPModule",
+		"newListingKitStudioHTTPModule",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; keep runtime module selection on httpFeatureComposition and use owning feature HTTP modules directly in tests", path, phrase)
+		}
+	}
+}
+
 func TestHTTPAPIRouteDescriptorAliasStaysRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
 	content, err := os.ReadFile(path)

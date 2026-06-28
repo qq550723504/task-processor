@@ -5,7 +5,6 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
 func newCoreHTTPModule() httpModule {
@@ -18,30 +17,30 @@ func newCoreHTTPModule() httpModule {
 	}
 }
 
-func newProductHTTPModule(handlers httpModuleHandlers, built *productenrichhttpapi.Module, imageBuilt *productimagehttpapi.Module) kernelmodule.Module {
-	if built != nil {
-		return productenrichhttpapi.NewRuntimeModule(built, imageBuilt)
+func (c httpFeatureComposition) productHTTPModule() kernelmodule.Module {
+	if c.productModule != nil {
+		return productenrichhttpapi.NewRuntimeModule(c.productModule, c.imageModule)
 	}
-	return productenrichhttpapi.NewHTTPModule(handlers.product, handlers.image)
+	return productenrichhttpapi.NewHTTPModule(c.productHandler(), c.imageHandler())
 }
 
-func newAmazonListingHTTPModule(handlers httpModuleHandlers, built *amazonlistinghttpapi.Module) kernelmodule.Module {
-	if built != nil {
-		return amazonlistinghttpapi.NewRuntimeModule(built)
+func (c httpFeatureComposition) amazonListingHTTPModule() kernelmodule.Module {
+	if c.amazonListingModule != nil {
+		return amazonlistinghttpapi.NewRuntimeModule(c.amazonListingModule)
 	}
-	return amazonlistinghttpapi.NewHTTPModule(handlers.amazonListing)
+	return amazonlistinghttpapi.NewHTTPModule(c.amazonListingHandler())
 }
 
-func newListingKitHTTPModule(handlers httpModuleHandlers, built *listingkithttpapi.Module) kernelmodule.Module {
-	if built != nil {
-		return listingkithttpapi.NewRuntimeModule(built)
+func (c httpFeatureComposition) listingKitHTTPModule() kernelmodule.Module {
+	if c.listingKitModule != nil {
+		return listingkithttpapi.NewRuntimeModule(c.listingKitModule)
 	}
-	return listingkithttpapi.NewHTTPModule(handlers.listingKit)
+	return listingkithttpapi.NewHTTPModule(c.listingKitHandler())
 }
 
-func newListingKitStudioHTTPModule(handlers httpModuleHandlers, built *listingkithttpapi.Module) kernelmodule.Module {
-	if built != nil {
+func (c httpFeatureComposition) listingKitStudioHTTPModule() kernelmodule.Module {
+	if c.listingKitModule != nil {
 		return nil
 	}
-	return listingkithttpapi.NewStudioHTTPModule(handlers.studioSession)
+	return listingkithttpapi.NewStudioHTTPModule(c.studioSessionHandler())
 }
