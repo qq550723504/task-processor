@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
-	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
@@ -16,13 +14,12 @@ import (
 type processorRegistration struct {
 	module      PlatformModule
 	needsAmazon bool
-	register    func(context.Context, *PlatformProcessorRegistry, *ServiceManager) error
+	register    func(context.Context, *PlatformProcessorRegistry, *ServiceManager, *SharedResources) error
 }
 
 type PlatformProcessorRegistry struct {
 	config           *config.Config
 	logger           *logrus.Logger
-	sharedResources  *SharedResources
 	rabbitmqClient   *rabbitmq.Client
 	enabledPlatforms []string
 	platformModules  []PlatformModule
@@ -57,9 +54,9 @@ func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorReg
 		registrations = append(registrations, processorRegistration{
 			module:      module,
 			needsAmazon: module.NeedsAmazon(r.config),
-			register: func(ctx context.Context, registry *PlatformProcessorRegistry, serviceManager *ServiceManager) error {
+			register: func(ctx context.Context, registry *PlatformProcessorRegistry, serviceManager *ServiceManager, resources *SharedResources) error {
 				registry.logger.Infof("registering %s processor", strings.ToUpper(module.Name()))
-				if err := module.RegisterConsumer(ctx, registry.runtimeContext(serviceManager, nil), serviceManager); err != nil {
+				if err := module.RegisterConsumer(ctx, registry.runtimeContext(serviceManager, resources, nil), serviceManager); err != nil {
 					return err
 				}
 				registry.logger.Infof("%s processor registered", strings.ToUpper(module.Name()))
@@ -68,16 +65,6 @@ func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorReg
 		})
 	}
 	return registrations
-}
-
-func (r *PlatformProcessorRegistry) useSharedResources(resources *SharedResources) error {
-	if resources == nil {
-		return fmt.Errorf("shared resources not configured")
-	}
-
-	r.sharedResources = resources
-	r.logger.Info("shared resources initialized")
-	return nil
 }
 
 func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources, platforms ...string) error {
@@ -95,12 +82,13 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 	}
 
 	registrations := r.buildProcessorRegistrationsForModules(modules)
-	if err := r.useSharedResources(resources); err != nil {
-		return err
+	if resources == nil {
+		return fmt.Errorf("shared resources not configured")
 	}
+	r.logger.Info("shared resources initialized")
 
 	for _, registration := range registrations {
-		if err := registration.register(ctx, r, serviceManager); err != nil {
+		if err := registration.register(ctx, r, serviceManager, resources); err != nil {
 			return err
 		}
 	}
@@ -136,38 +124,40 @@ func (r *PlatformProcessorRegistry) isPlatformEnabled(platform string) bool {
 
 func (r *PlatformProcessorRegistry) runtimeContext(
 	serviceManager *ServiceManager,
+	resources *SharedResources,
 	schedulerBuilder SchedulerDependenciesBuilder,
 ) PlatformRuntimeContext {
-	resources := r.runtimeResources()
+	resourceBundle := sharedResourcesValue(resources)
 	return PlatformRuntimeContext{
 		Config:                             r.config,
 		Logger:                             r.logger,
-		ListingRuntimeImportTaskRepository: resources.ListingRuntimeImportTaskRepository,
-		RawJSONDataClient:                  resources.RawJSONDataClient,
-		StoreAPI:                           resources.StoreAPI,
-		SchedulerRuntime:                   resources.SchedulerRuntime,
-		SchedulerFactoryRuntime:            resources.SchedulerFactoryRuntime,
-		ProcessorRuntime:                   resources.ProcessorRuntime,
-		CrawlSource:                        resources.CrawlSource,
-		ProductFetcher:                     resources.ProductFetcher,
+		ListingRuntimeImportTaskRepository: resourceBundle.ListingRuntimeImportTaskRepository,
+		RawJSONDataClient:                  resourceBundle.RawJSONDataClient,
+		StoreAPI:                           resourceBundle.StoreAPI,
+		SchedulerRuntime:                   resourceBundle.SchedulerRuntime,
+		SchedulerFactoryRuntime:            resourceBundle.SchedulerFactoryRuntime,
+		ProcessorRuntime:                   resourceBundle.ProcessorRuntime,
+		CrawlSource:                        resourceBundle.CrawlSource,
+		ProductFetcher:                     resourceBundle.ProductFetcher,
 		RabbitMQClient:                     r.rabbitmqClient,
 		ServiceManager:                     serviceManager,
 		SchedulerBuilder:                   schedulerBuilder,
 	}
 }
 
-func (r *PlatformProcessorRegistry) runtimeResources() SharedResources {
-	if r == nil || r.sharedResources == nil {
+func sharedResourcesValue(resources *SharedResources) SharedResources {
+	if resources == nil {
 		return SharedResources{}
 	}
-	return *r.sharedResources
+	return *resources
 }
 
 func (r *PlatformProcessorRegistry) RuntimeContext(
 	serviceManager *ServiceManager,
+	resources *SharedResources,
 	schedulerBuilder SchedulerDependenciesBuilder,
 ) PlatformRuntimeContext {
-	return r.runtimeContext(serviceManager, schedulerBuilder)
+	return r.runtimeContext(serviceManager, resources, schedulerBuilder)
 }
 
 func (r *PlatformProcessorRegistry) ResolvePlatformModule(platform string) (PlatformModule, error) {
@@ -279,12 +269,4 @@ func containsPlatform(platforms []string, platform string) bool {
 		}
 	}
 	return false
-}
-
-func (r *PlatformProcessorRegistry) GetSharedCrawlSource() runner.CrawlSource {
-	return r.runtimeResources().CrawlSource
-}
-
-func (r *PlatformProcessorRegistry) GetSharedProductFetcher() appfetcher.ProductFetcher {
-	return r.runtimeResources().ProductFetcher
 }

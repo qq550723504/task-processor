@@ -1165,6 +1165,26 @@ func TestPlatformProcessorRegistryDoesNotFanOutSharedResources(t *testing.T) {
 	}
 }
 
+func TestPlatformProcessorRegistryDoesNotStoreSharedResources(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"sharedResources  *SharedResources",
+		"r.sharedResources",
+		"runtimeResources",
+		"useSharedResources",
+		"GetSharedCrawlSource",
+		"GetSharedProductFetcher",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; pass SharedResources explicitly instead of storing runtime resources on the registry", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),

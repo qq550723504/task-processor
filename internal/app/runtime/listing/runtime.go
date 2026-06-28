@@ -76,7 +76,7 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	runtimeContext := processorRegistry.RuntimeContext(serviceManager, bootstrap.BuildSchedulerDependencies)
+	runtimeContext := processorRegistry.RuntimeContext(serviceManager, resources, bootstrap.BuildSchedulerDependencies)
 	if err := module.ConfigureListingRuntime(ctx, runtimeContext); err != nil {
 		return fmt.Errorf("configure %s runtime failed: %w", displayName, err)
 	}
