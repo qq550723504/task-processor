@@ -63,17 +63,12 @@ type ProcessorRuntime interface {
 	GetRuntimeStorePauseStatusDetail(storeID int64) (*listingruntime.StorePauseStatusDetail, error)
 }
 
-type ListingRuntimeHealthValidator interface {
-	ValidateLocalListingRuntimeFields() (map[string]bool, error)
-}
-
 type ListingRuntimeImportTaskRepository interface {
 	ProcessingTimeoutRepository
 	StaleQueuedRepository
 }
 
 type SharedResources struct {
-	ListingRuntimeHealthValidator      ListingRuntimeHealthValidator
 	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
 	RawJSONDataClient                  product.RawJsonDataClient
 	StoreAPI                           listingadmin.StoreAPI

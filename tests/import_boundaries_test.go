@@ -1046,6 +1046,45 @@ func TestAppConsumerRuntimeBoundariesDoNotCarryRetiredManagementService(t *testi
 	}
 }
 
+func TestAppConsumerSharedResourcesDoNotCarryListingRuntimeHealthValidator(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "shared_resources.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || typeSpec.Name == nil {
+				continue
+			}
+			if typeSpec.Name.Name == "ListingRuntimeHealthValidator" {
+				t.Fatalf("%s defines ListingRuntimeHealthValidator; keep listing runtime health checks owned by app/runtime/listing", path)
+			}
+			if typeSpec.Name.Name != "SharedResources" {
+				continue
+			}
+			st, ok := typeSpec.Type.(*ast.StructType)
+			if !ok || st.Fields == nil {
+				continue
+			}
+			for _, field := range st.Fields.List {
+				for _, name := range field.Names {
+					if name.Name == "ListingRuntimeHealthValidator" {
+						t.Fatalf("%s exposes SharedResources.ListingRuntimeHealthValidator; keep listing runtime health checks out of consumer assembly resources", path)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotStoreRetiredManagementService(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	fset := token.NewFileSet()

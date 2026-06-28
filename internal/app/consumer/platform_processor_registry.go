@@ -58,8 +58,7 @@ func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, pla
 }
 
 func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager) error {
-	_, err := r.RegisterPlatforms(ctx, serviceManager, r.enabledPlatforms...)
-	return err
+	return r.RegisterPlatforms(ctx, serviceManager, r.enabledPlatforms...)
 }
 
 func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorRegistration {
@@ -103,10 +102,10 @@ func (r *PlatformProcessorRegistry) initializeSharedResources(needsAmazon bool) 
 	return resources, nil
 }
 
-func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, platforms ...string) (*SharedResources, error) {
+func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, platforms ...string) error {
 	modules, err := r.resolveModules(platforms)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	r.logger.Infof("registering platform processors: %v", moduleNames(modules))
@@ -118,19 +117,18 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 	}
 
 	registrations := r.buildProcessorRegistrationsForModules(modules)
-	resources, err := r.initializeSharedResources(r.anyRegistrationNeedsAmazon(registrations))
-	if err != nil {
-		return nil, fmt.Errorf("initialize shared resources: %w", err)
+	if _, err := r.initializeSharedResources(r.anyRegistrationNeedsAmazon(registrations)); err != nil {
+		return fmt.Errorf("initialize shared resources: %w", err)
 	}
 
 	for _, registration := range registrations {
 		if err := registration.register(ctx, r, serviceManager); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	r.logger.Info("platform processors registered")
-	return resources, nil
+	return nil
 }
 
 func (r *PlatformProcessorRegistry) anyRegistrationNeedsAmazon(registrations []processorRegistration) bool {

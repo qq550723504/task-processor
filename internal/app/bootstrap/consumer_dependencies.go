@@ -12,7 +12,35 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type ListingRuntimeDependencies struct {
+	Consumer        consumer.PlatformProcessorRegistryDependencies
+	sharedResources func() *SharedResources
+}
+
+func (d ListingRuntimeDependencies) SharedResources() *SharedResources {
+	if d.sharedResources == nil {
+		return nil
+	}
+	return d.sharedResources()
+}
+
+func BuildListingRuntimeDependencies() ListingRuntimeDependencies {
+	var sharedResources *SharedResources
+	return ListingRuntimeDependencies{
+		Consumer: buildConsumerDependencies(func(resources *SharedResources) {
+			sharedResources = resources
+		}),
+		sharedResources: func() *SharedResources {
+			return sharedResources
+		},
+	}
+}
+
 func BuildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies {
+	return buildConsumerDependencies(nil)
+}
+
+func buildConsumerDependencies(onSharedResources func(*SharedResources)) consumer.PlatformProcessorRegistryDependencies {
 	return consumer.PlatformProcessorRegistryDependencies{
 		PlatformModules: platforms.All(),
 		SharedResourceProvider: func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*consumer.SharedResources, error) {
@@ -32,9 +60,11 @@ func BuildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies 
 			if err != nil {
 				return nil, err
 			}
+			if onSharedResources != nil {
+				onSharedResources(resources)
+			}
 
 			return &consumer.SharedResources{
-				ListingRuntimeHealthValidator:      resources.ListingRuntimeHealthValidator,
 				ListingRuntimeImportTaskRepository: resources.ImportTaskRepository,
 				RawJSONDataClient:                  resources.RawJSONDataClient,
 				StoreAPI:                           resources.StoreAPI,

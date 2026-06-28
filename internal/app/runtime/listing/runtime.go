@@ -52,19 +52,18 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("create service manager failed: %w", err)
 	}
 
-	consumerDeps := bootstrap.BuildConsumerDependencies()
-	processorRegistry := consumer.NewPlatformProcessorRegistry(cfg, logger, platform, consumerDeps)
+	runtimeDeps := bootstrap.BuildListingRuntimeDependencies()
+	processorRegistry := consumer.NewPlatformProcessorRegistry(cfg, logger, platform, runtimeDeps.Consumer)
 
 	module, err := processorRegistry.ResolvePlatformModule(platform)
 	if err != nil {
 		return err
 	}
 
-	resources, err := processorRegistry.RegisterPlatforms(ctx, serviceManager, platform)
-	if err != nil {
+	if err := processorRegistry.RegisterPlatforms(ctx, serviceManager, platform); err != nil {
 		return fmt.Errorf("register %s processor failed: %w", displayName, err)
 	}
-	if err := ValidateListingRuntimeHealth(platform, resources.ListingRuntimeHealthValidator, logger); err != nil {
+	if err := ValidateListingRuntimeHealth(platform, listingRuntimeHealthValidator(runtimeDeps.SharedResources()), logger); err != nil {
 		return err
 	}
 
@@ -95,7 +94,8 @@ func runDebugTask(
 ) error {
 	logger.Infof("starting %s debug single-task mode: taskID=%d", displayName, taskID)
 
-	consumerDeps := bootstrap.BuildConsumerDependencies()
+	runtimeDeps := bootstrap.BuildListingRuntimeDependencies()
+	consumerDeps := runtimeDeps.Consumer
 	processorRegistry := consumer.NewPlatformProcessorRegistry(cfg, logger, platform, consumerDeps)
 	module, err := processorRegistry.ResolvePlatformModule(platform)
 	if err != nil {
@@ -123,7 +123,7 @@ func runDebugTask(
 	if err := module.ConfigureListingRuntime(ctx, rt); err != nil {
 		return fmt.Errorf("configure %s debug runtime failed: %w", displayName, err)
 	}
-	if err := ValidateListingRuntimeHealth(platform, resources.ListingRuntimeHealthValidator, logger); err != nil {
+	if err := ValidateListingRuntimeHealth(platform, listingRuntimeHealthValidator(runtimeDeps.SharedResources()), logger); err != nil {
 		return err
 	}
 
@@ -171,4 +171,11 @@ func applyLoggingConfigFromConfig(log *logrus.Logger, cfg *config.Config) error 
 		File:         cfg.Logging.File,
 		SplitByLevel: cfg.Logging.SplitByLevel,
 	})
+}
+
+func listingRuntimeHealthValidator(resources *bootstrap.SharedResources) ListingRuntimeHealthValidator {
+	if resources == nil {
+		return nil
+	}
+	return resources.ListingRuntimeHealthValidator
 }

@@ -32,15 +32,17 @@ type SharedResourceOptions struct {
 // SharedResources groups dependencies that were previously assembled in multiple places.
 type SharedResources struct {
 	AuthClient                    *auth.ClientCredentialsAuthClient
-	ListingRuntimeHealthValidator consumer.ListingRuntimeHealthValidator
-	RawJSONDataClient             product.RawJsonDataClient
-	StoreAPI                      listingadmin.StoreAPI
-	SchedulerRuntime              runner.SchedulerRuntimeProvider
-	SchedulerFactoryRuntime       consumer.SchedulerFactoryRuntime
-	ProcessorRuntime              consumer.ProcessorRuntime
-	ImportTaskRepository          consumer.ListingRuntimeImportTaskRepository
-	AmazonCrawler                 runner.CrawlSource
-	RabbitMQClient                *rabbitmq.Client
+	ListingRuntimeHealthValidator interface {
+		ValidateLocalListingRuntimeFields() (map[string]bool, error)
+	}
+	RawJSONDataClient       product.RawJsonDataClient
+	StoreAPI                listingadmin.StoreAPI
+	SchedulerRuntime        runner.SchedulerRuntimeProvider
+	SchedulerFactoryRuntime consumer.SchedulerFactoryRuntime
+	ProcessorRuntime        consumer.ProcessorRuntime
+	ImportTaskRepository    consumer.ListingRuntimeImportTaskRepository
+	AmazonCrawler           runner.CrawlSource
+	RabbitMQClient          *rabbitmq.Client
 }
 
 // InitializePrompts centralizes prompt registry initialization.
