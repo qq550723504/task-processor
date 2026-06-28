@@ -310,6 +310,20 @@ func (sm *ServiceManager) GetClient() *rabbitmq.Client {
 	return sm.rabbitmqService.GetClient()
 }
 
+func (sm *ServiceManager) LogDistributedFetchingAvailability(logger *logrus.Logger) {
+	if logger == nil {
+		logger = sm.logger
+	}
+	if logger == nil {
+		return
+	}
+	if sm.GetClient() != nil {
+		logger.Info("RabbitMQ client available for distributed fetching")
+	} else {
+		logger.Warn("RabbitMQ client unavailable; distributed fetching is unavailable")
+	}
+}
+
 // SetStoreComponents 注入店铺亲和性所需的组件，必须在 Start 之前调用。
 func (sm *ServiceManager) SetStoreComponents(
 	storeAPI api.StoreAPI,

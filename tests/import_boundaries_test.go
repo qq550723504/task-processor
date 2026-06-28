@@ -1401,6 +1401,23 @@ func TestPlatformProcessorRegistryDependenciesDoNotExposeRuntimeHelpers(t *testi
 	}
 }
 
+func TestPlatformProcessorRegistryDoesNotInspectRabbitMQClient(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"serviceManager.GetClient()",
+		"RabbitMQ client available for distributed fetching",
+		"RabbitMQ client unavailable; distributed fetching is unavailable",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; keep RabbitMQ client availability checks behind ServiceManager", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),

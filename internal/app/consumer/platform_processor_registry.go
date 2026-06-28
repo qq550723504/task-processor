@@ -36,11 +36,7 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 	}
 
 	r.logger.Infof("registering platform processors: %v", platformModuleNames(modules))
-	if serviceManager.GetClient() != nil {
-		r.logger.Info("RabbitMQ client available for distributed fetching")
-	} else {
-		r.logger.Warn("RabbitMQ client unavailable; distributed fetching is unavailable")
-	}
+	serviceManager.LogDistributedFetchingAvailability(r.logger)
 
 	if resources == nil {
 		return fmt.Errorf("shared resources not configured")
