@@ -19,8 +19,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type rawJSONDataClientProvider = product.RawJsonDataClient
-
 type processorRuntimeProvider interface {
 	GetDailyListingCountClient() listingadmin.DailyListingCountAPI
 	GetStoreAPI() listingadmin.StoreAPI

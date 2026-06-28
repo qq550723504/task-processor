@@ -1608,6 +1608,17 @@ func TestRunnerCrawlSourceCompatibilityAliasStaysRetired(t *testing.T) {
 	}
 }
 
+func TestRunnerRawJSONDataClientCompatibilityAliasStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "runner", "processor_service.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "type rawJSONDataClientProvider = product.RawJsonDataClient") {
+		t.Fatalf("%s exposes rawJSONDataClientProvider; use product.RawJsonDataClient directly instead of retaining runner-local type aliases", path)
+	}
+}
+
 func TestPlatformRuntimeContextDoesNotExposeRawJSONDataClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "shared_resources.go")
 	content, err := os.ReadFile(path)
