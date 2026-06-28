@@ -293,14 +293,20 @@ func TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes(t *testing.T) {
 	require.NoError(t, err)
 	loginSupportContent := string(loginSupportSrc)
 	for _, marker := range []string{
-		"type sheinLoginModuleResult = sheinloginbootstrap.BuildResult",
-		"type sdsLoginModuleResult = sdsloginbootstrap.BuildResult",
 		"type sheinLoginModuleBuilder func(",
 		"type sdsLoginModuleBuilder func(",
+		"*sheinloginbootstrap.BuildResult",
+		"*sdsloginbootstrap.BuildResult",
+	} {
+		require.Contains(t, loginSupportContent, marker)
+	}
+	for _, marker := range []string{
+		"type sheinLoginModuleResult = sheinloginbootstrap.BuildResult",
+		"type sdsLoginModuleResult = sdsloginbootstrap.BuildResult",
 		"*sheinLoginModuleResult",
 		"*sdsLoginModuleResult",
 	} {
-		require.Contains(t, loginSupportContent, marker)
+		require.NotContains(t, loginSupportContent, marker)
 	}
 }
 
@@ -333,19 +339,32 @@ func TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly(t *testing.T) {
 	}
 }
 
-func TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes(t *testing.T) {
+func TestHTTPAPIRuntimeStateUsesOwningLoginBootstrapResultTypes(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"types.go", "runtime_deps_methods.go"} {
-		src, err := os.ReadFile(name)
-		require.NoError(t, err)
-		content := string(src)
-
-		for _, marker := range []string{
+	expectedByFile := map[string][]string{
+		"types.go": {
 			`"task-processor/internal/sheinlogin/bootstrap"`,
 			`"task-processor/internal/sdslogin/bootstrap"`,
 			"*sheinloginbootstrap.BuildResult",
 			"*sdsloginbootstrap.BuildResult",
+		},
+		"runtime_deps_methods.go": {
+			`"task-processor/internal/sdslogin/bootstrap"`,
+			"*sdsloginbootstrap.BuildResult",
+		},
+	}
+	for name, expectedMarkers := range expectedByFile {
+		src, err := os.ReadFile(name)
+		require.NoError(t, err)
+		content := string(src)
+
+		for _, marker := range expectedMarkers {
+			require.Contains(t, content, marker)
+		}
+		for _, marker := range []string{
+			"*sheinLoginModuleResult",
+			"*sdsLoginModuleResult",
 		} {
 			require.NotContains(t, content, marker)
 		}
@@ -355,12 +374,20 @@ func TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes(t *testing.T) {
 	require.NoError(t, err)
 	loginSupportContent := string(loginSupportSrc)
 	for _, marker := range []string{
-		"type sheinLoginModuleResult = sheinloginbootstrap.BuildResult",
-		"type sdsLoginModuleResult = sdsloginbootstrap.BuildResult",
 		"type sheinLoginModuleBuilder func(",
 		"type sdsLoginModuleBuilder func(",
+		"*sheinloginbootstrap.BuildResult",
+		"*sdsloginbootstrap.BuildResult",
 	} {
 		require.Contains(t, loginSupportContent, marker)
+	}
+	for _, marker := range []string{
+		"type sheinLoginModuleResult = sheinloginbootstrap.BuildResult",
+		"type sdsLoginModuleResult = sdsloginbootstrap.BuildResult",
+		"*sheinLoginModuleResult",
+		"*sdsLoginModuleResult",
+	} {
+		require.NotContains(t, loginSupportContent, marker)
 	}
 }
 

@@ -4119,6 +4119,22 @@ func TestHTTPAPISupportModuleResultAliasesStayRetired(t *testing.T) {
 	}
 }
 
+func TestHTTPAPILoginModuleResultAliasesStayRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "runtime_login_modules.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type sheinLoginModuleResult =",
+		"type sdsLoginModuleResult =",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s exposes %q; use owning login BuildResult types directly in app HTTP assembly", path, phrase)
+		}
+	}
+}
+
 func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 	filePath := filepath.Join("..", "internal", "app", "httpapi", "listingkit_support.go")
 	fset := token.NewFileSet()

@@ -5,6 +5,7 @@ import (
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
+	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
 )
 
 func (d *runtimeDeps) ensureListingKitSupport() *listingKitSupport {
@@ -74,7 +75,7 @@ func (d *runtimeDeps) attachListingKitModule(module *listingkithttpapi.Module) {
 	d.addClosers(module.Closers...)
 }
 
-func (d *runtimeDeps) attachSDSLoginResult(result *sdsLoginModuleResult) {
+func (d *runtimeDeps) attachSDSLoginResult(result *sdsloginbootstrap.BuildResult) {
 	if d == nil || result == nil {
 		return
 	}

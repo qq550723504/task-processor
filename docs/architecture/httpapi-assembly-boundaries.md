@@ -298,7 +298,8 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIModulesFileDoesNotOwnLoginRuntimeSupport`
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly`
-- `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
+- `TestHTTPAPILoginModuleResultAliasesStayRetired`
+- `TestHTTPAPIRuntimeStateUsesOwningLoginBootstrapResultTypes`
 - `TestHTTPAPIRuntimeStateUsesOwningFeatureHTTPAPIModuleTypes`
 - `TestHTTPAPIRuntimeDepsMethodsUseOwningFeatureHTTPAPIModuleTypes`
 - `TestHTTPModulesUseOwningFeatureHTTPAPIModuleTypesInSignatures`
