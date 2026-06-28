@@ -1,4 +1,4 @@
-package bootstrap
+package listingruntime
 
 import (
 	"task-processor/internal/app/bootstrap/fetchers"
@@ -10,33 +10,33 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type listingRuntimeDependencies struct {
+type dependencies struct {
 	platformModules []consumer.PlatformModule
 	buildResources  func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error)
 	sharedResources func() *bootstrapresources.SharedResources
 }
 
-func (d listingRuntimeDependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+func (d dependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 	if d.buildResources == nil {
 		return nil, nil
 	}
 	return d.buildResources(cfg, logger, platform, needs)
 }
 
-func (d listingRuntimeDependencies) SharedResources() *bootstrapresources.SharedResources {
+func (d dependencies) SharedResources() *bootstrapresources.SharedResources {
 	if d.sharedResources == nil {
 		return nil
 	}
 	return d.sharedResources()
 }
 
-func (d listingRuntimeDependencies) ConsumerDependencies(cfg *config.Config, platformsStr string) consumer.PlatformProcessorRegistryDependencies {
+func (d dependencies) ConsumerDependencies(cfg *config.Config, platformsStr string) consumer.PlatformProcessorRegistryDependencies {
 	return consumer.NewPlatformProcessorRegistryDependencies(cfg, platformsStr, d.platformModules)
 }
 
-func BuildListingRuntimeDependencies() listingRuntimeDependencies {
+func BuildDependencies() dependencies {
 	var sharedResources *bootstrapresources.SharedResources
-	return listingRuntimeDependencies{
+	return dependencies{
 		platformModules: platforms.All(),
 		buildResources: buildConsumerSharedResourcesFunc(func(resources *bootstrapresources.SharedResources) {
 			sharedResources = resources

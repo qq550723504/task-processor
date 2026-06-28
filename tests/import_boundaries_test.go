@@ -1411,7 +1411,7 @@ func TestPlatformProcessorRegistryDoesNotStoreConfigOrBuildRegistrars(t *testing
 }
 
 func TestListingRuntimeDependenciesDoesNotExposePartialConsumerDependencies(t *testing.T) {
-	path := filepath.Join("..", "internal", "app", "bootstrap", "consumer_dependencies.go")
+	path := filepath.Join("..", "internal", "app", "bootstrap", "listingruntime", "dependencies.go")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -1430,7 +1430,7 @@ func TestListingRuntimeDependenciesDoesNotExposePartialConsumerDependencies(t *t
 }
 
 func TestListingRuntimeDependenciesTypeStaysPackageInternal(t *testing.T) {
-	path := filepath.Join("..", "internal", "app", "bootstrap", "consumer_dependencies.go")
+	path := filepath.Join("..", "internal", "app", "bootstrap", "listingruntime", "dependencies.go")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -1443,6 +1443,15 @@ func TestListingRuntimeDependenciesTypeStaysPackageInternal(t *testing.T) {
 		if strings.Contains(string(content), phrase) {
 			t.Fatalf("%s mentions %q; keep the listing runtime dependency container type package-internal", path, phrase)
 		}
+	}
+}
+
+func TestRootBootstrapListingRuntimeDependenciesFacadeStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "bootstrap", "consumer_dependencies.go")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; import bootstrap/listingruntime directly instead of reviving the root listing-runtime dependency facade", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
 	}
 }
 
@@ -1502,7 +1511,7 @@ func TestCrawlerRegistryStaysRetired(t *testing.T) {
 			"CrawlerRegistryDependencies",
 			"NewCrawlerRegistryDependencies",
 		},
-		filepath.Join("..", "internal", "app", "bootstrap", "consumer_dependencies.go"): {
+		filepath.Join("..", "internal", "app", "bootstrap", "listingruntime", "dependencies.go"): {
 			"BuildCrawlerDependencies",
 		},
 	}

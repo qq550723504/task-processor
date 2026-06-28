@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"task-processor/internal/app/bootstrap"
+	listingruntimebootstrap "task-processor/internal/app/bootstrap/listingruntime"
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	bootstrapschedulers "task-processor/internal/app/bootstrap/schedulers"
 	"task-processor/internal/app/consumer"
@@ -54,7 +54,7 @@ func Run(ctx context.Context, opts Options) error {
 		return fmt.Errorf("create service manager failed: %w", err)
 	}
 
-	runtimeDeps := bootstrap.BuildListingRuntimeDependencies()
+	runtimeDeps := listingruntimebootstrap.BuildDependencies()
 	consumerDeps := runtimeDeps.ConsumerDependencies(cfg, platform)
 	processorRegistry := consumer.NewPlatformProcessorRegistry(logger, consumerDeps)
 
@@ -112,7 +112,7 @@ func runDebugTask(
 ) error {
 	logger.Infof("starting %s debug single-task mode: taskID=%d", displayName, taskID)
 
-	runtimeDeps := bootstrap.BuildListingRuntimeDependencies()
+	runtimeDeps := listingruntimebootstrap.BuildDependencies()
 	consumerDeps := runtimeDeps.ConsumerDependencies(cfg, platform)
 	processorRegistry := consumer.NewPlatformProcessorRegistry(logger, consumerDeps)
 	module, err := consumerDeps.ResolvePlatformModule(platform)
