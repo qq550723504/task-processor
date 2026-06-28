@@ -219,6 +219,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestAppConsumerTaskStatusRuntimeProviderIsNotNamedRetiredManagementService`
 - `TestAppConsumerDoesNotUseManagementNamedTaskStatusAdapter`
 - `TestTaskStatusAdapterCallersUseRuntimeNamedConstructor`
+- `TestTaskStatusCompatibilityPackageStaysRetired`
 - `TestTaskStatusPackageDoesNotExposeManagementNamedAdapter`
 - `TestTaskStatusRuntimeErrorsUseCapabilityNames`
 - `TestTaskStatusPackageDoesNotImportRetiredManagementPackage`

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/model"
-	"task-processor/internal/taskstatus"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"

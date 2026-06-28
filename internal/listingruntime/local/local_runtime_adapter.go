@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/platformtask"
 	"task-processor/internal/product"
-	"task-processor/internal/taskstatus"
 )
 
 type LocalRuntime struct {

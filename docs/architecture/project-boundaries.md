@@ -389,6 +389,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestAppConsumerTaskStatusRuntimeProviderIsNotNamedRetiredManagementService`
 - `TestAppConsumerDoesNotUseManagementNamedTaskStatusAdapter`
 - `TestTaskStatusAdapterCallersUseRuntimeNamedConstructor`
+- `TestTaskStatusCompatibilityPackageStaysRetired`
 - `TestTaskStatusPackageDoesNotExposeManagementNamedAdapter`
 - `TestTaskStatusRuntimeErrorsUseCapabilityNames`
 - `TestTaskStatusPackageDoesNotImportRetiredManagementPackage`

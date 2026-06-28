@@ -142,11 +142,10 @@ Current direct dependency hotspots are:
     behind a package-local validator interface; debug task lookup and SHEIN
     recovery watchdog setup use local repository ports instead of carrying a
     concrete retired management service through runtime context
-  - `internal/app/taskstatus` no longer imports `management` directly; concrete
-    runtime adapters live outside the app task-status service while the service
-    keeps only the task-status update contract
-  - `internal/taskstatus` no longer imports `management` directly; concrete
-    `ClientManager` task-status adapters live in `internal/infra/clients/management`
+  - `internal/app/taskstatus` owns task-status runtime contracts and adapters
+    without importing `management`; the old `internal/taskstatus`
+    compatibility package is retired and guarded by
+    `TestTaskStatusCompatibilityPackageStaysRetired`
   - ProductImage model/default provider assembly seams in `internal/app/httpapi`
     are guarded by
     `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`

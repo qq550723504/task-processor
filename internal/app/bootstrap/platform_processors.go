@@ -7,9 +7,9 @@ import (
 	"task-processor/internal/app/bootstrap/fetchers"
 	bootstrapprocessors "task-processor/internal/app/bootstrap/processors"
 	"task-processor/internal/app/consumer"
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/shein/pipeline"
-	"task-processor/internal/taskstatus"
 	"task-processor/internal/temu"
 
 	"github.com/sirupsen/logrus"

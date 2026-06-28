@@ -1,8 +1,8 @@
 package local
 
 import (
+	"task-processor/internal/app/taskstatus"
 	api "task-processor/internal/taskrpcapi"
-	"task-processor/internal/taskstatus"
 )
 
 func taskStatusSnapshotFromDTO(status *api.TaskStatusRespDTO) *taskstatus.TaskStatusSnapshot {

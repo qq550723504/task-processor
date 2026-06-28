@@ -3,11 +3,11 @@ package pipeline
 import (
 	"context"
 
+	"task-processor/internal/app/taskstatus"
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/state"
-	"task-processor/internal/taskstatus"
 )
 
 type dependencyRuntime interface {

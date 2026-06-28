@@ -7,12 +7,12 @@ import (
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/runner"
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/platformbase"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shein/pipeline"
-	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )

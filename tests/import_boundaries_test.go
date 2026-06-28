@@ -1992,7 +1992,6 @@ func TestAppTaskStatusUpdatesUseCapabilityNames(t *testing.T) {
 func TestTaskStatusAdapterCallersUseRuntimeNamedConstructor(t *testing.T) {
 	root := filepath.Join("..", "internal")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "taskstatus", "service.go")):        {},
 		filepath.Clean(filepath.Join(root, "app", "taskstatus", "service.go")): {},
 	}
 
@@ -2023,8 +2022,30 @@ func TestTaskStatusAdapterCallersUseRuntimeNamedConstructor(t *testing.T) {
 	}
 }
 
+func TestTaskStatusCompatibilityPackageStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "taskstatus")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; use internal/app/taskstatus as the owning task status runtime package", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+
+	root := filepath.Join("..", "internal")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		for quotedImport := range facts.imports {
+			if strings.Trim(quotedImport, `"`) == "task-processor/internal/taskstatus" {
+				t.Fatalf("%s imports retired internal/taskstatus compatibility package; use internal/app/taskstatus directly", path)
+			}
+		}
+	}
+}
+
 func TestTaskStatusPackageDoesNotExposeManagementNamedAdapter(t *testing.T) {
-	path := filepath.Join("..", "internal", "taskstatus", "service.go")
+	path := filepath.Join("..", "internal", "app", "taskstatus", "service.go")
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
@@ -2040,7 +2061,7 @@ func TestTaskStatusPackageDoesNotExposeManagementNamedAdapter(t *testing.T) {
 }
 
 func TestTaskStatusPackageDoesNotExposeBroadManagementRuntimeConstructor(t *testing.T) {
-	path := filepath.Join("..", "internal", "taskstatus", "service.go")
+	path := filepath.Join("..", "internal", "app", "taskstatus", "service.go")
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
@@ -2056,7 +2077,7 @@ func TestTaskStatusPackageDoesNotExposeBroadManagementRuntimeConstructor(t *test
 }
 
 func TestTaskStatusRuntimeErrorsUseCapabilityNames(t *testing.T) {
-	path := filepath.Join("..", "internal", "taskstatus", "service.go")
+	path := filepath.Join("..", "internal", "app", "taskstatus", "service.go")
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -2067,7 +2088,7 @@ func TestTaskStatusRuntimeErrorsUseCapabilityNames(t *testing.T) {
 }
 
 func TestTaskStatusPackageDoesNotImportRetiredManagementPackage(t *testing.T) {
-	root := filepath.Join("..", "internal", "taskstatus")
+	root := filepath.Join("..", "internal", "app", "taskstatus")
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
 		t.Fatal(err)

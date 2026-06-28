@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/ports"
 	"task-processor/internal/app/runner"
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/rabbitmq"
@@ -18,7 +19,6 @@ import (
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/product"
 	"task-processor/internal/prompt"
-	"task-processor/internal/taskstatus"
 	temupricingruntime "task-processor/internal/temu/pricing"
 	temusyncruntime "task-processor/internal/temu/sync"
 

@@ -19,6 +19,38 @@ type ImportTaskStatusClient interface {
 	UpdateTaskStatus(req *listingruntime.TaskStatusUpdate) error
 }
 
+type TaskStatusSnapshot struct {
+	TaskID           int64
+	Status           string
+	StatusKey        string
+	StatusName       string
+	CanonicalStatus  string
+	Platform         string
+	Region           string
+	TaskType         string
+	Priority         int
+	RetryCount       int
+	MaxRetries       int
+	ProcessingTimeMs int64
+	QueueName        string
+	ProcessingNode   string
+	ProgressPercent  int
+	Result           string
+	ErrorMessage     string
+	ErrorStack       string
+	ExecutionLogs    []string
+	TaskDetails      string
+}
+
+type RuntimeTaskStatusUpdater interface {
+	UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error
+}
+
+type RuntimeWithTaskRPC interface {
+	RuntimeTaskStatusUpdater
+	GetTaskStatus(taskID int64) (*TaskStatusSnapshot, error)
+}
+
 type UpdateInput struct {
 	TaskID                int64
 	Status                model.TaskStatus
@@ -47,6 +79,24 @@ func NewService(component string, clientProvider func() ImportTaskStatusClient) 
 		clientProvider: clientProvider,
 		maxRetries:     3,
 	}
+}
+
+type runtimeTaskStatusAdapter struct {
+	client RuntimeTaskStatusUpdater
+}
+
+func NewRuntimeTaskStatusAdapter(client RuntimeTaskStatusUpdater) ImportTaskStatusClient {
+	if client == nil {
+		return nil
+	}
+	return runtimeTaskStatusAdapter{client: client}
+}
+
+func (a runtimeTaskStatusAdapter) UpdateTaskStatus(req *listingruntime.TaskStatusUpdate) error {
+	if a.client == nil {
+		return fmt.Errorf("task status runtime is not initialized")
+	}
+	return a.client.UpdateRuntimeTaskStatus(req)
 }
 
 func (s *Service) UpdateSync(taskID int64, status model.TaskStatus, errorMsg string) error {

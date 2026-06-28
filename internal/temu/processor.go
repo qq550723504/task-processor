@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	appfetcher "task-processor/internal/crawler/fetcher"
@@ -14,7 +15,6 @@ import (
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/processor"
 	"task-processor/internal/state"
-	"task-processor/internal/taskstatus"
 	temuclient "task-processor/internal/temu/api/client"
 
 	"github.com/sirupsen/logrus"

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"task-processor/internal/app/ports"
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
 	"task-processor/internal/infra/auth"
@@ -12,7 +13,6 @@ import (
 	"task-processor/internal/listingruntime"
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/product"
-	"task-processor/internal/taskstatus"
 	temupricingruntime "task-processor/internal/temu/pricing"
 	temusyncruntime "task-processor/internal/temu/sync"
 

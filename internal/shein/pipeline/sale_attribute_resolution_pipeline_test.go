@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/listingadmin"
@@ -12,7 +13,6 @@ import (
 	"task-processor/internal/processor"
 	domainproduct "task-processor/internal/product"
 	"task-processor/internal/state"
-	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )

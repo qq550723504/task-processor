@@ -8,12 +8,12 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
-	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )

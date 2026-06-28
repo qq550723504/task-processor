@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/database"
@@ -19,7 +20,6 @@ import (
 	sheincontext "task-processor/internal/shein/context"
 	sheinmanagedclient "task-processor/internal/shein/managedclient"
 	"task-processor/internal/state"
-	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )

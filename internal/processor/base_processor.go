@@ -2,12 +2,12 @@ package processor
 
 import (
 	"context"
+	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/state"
-	"task-processor/internal/taskstatus"
 
 	"github.com/sirupsen/logrus"
 )
