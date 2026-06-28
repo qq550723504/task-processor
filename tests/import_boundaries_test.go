@@ -4359,7 +4359,7 @@ func TestAppHTTPAPISupportHTTPModuleWrappersStayRetired(t *testing.T) {
 		"sdsLoginModule ",
 	} {
 		if strings.Contains(string(handlersContent), phrase) {
-			t.Fatalf("%s mentions %q; keep httpModuleHandlers limited to route handlers and carry built modules through httpFeatureComposition", handlersPath, phrase)
+			t.Fatalf("%s mentions %q; keep app/httpapi production route handler scaffolding retired and carry built modules through httpFeatureComposition", handlersPath, phrase)
 		}
 	}
 }

@@ -14,16 +14,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
-	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
-	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	"task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
@@ -42,19 +38,6 @@ type stubAmazonListingHandler struct {
 	workbenchCalled bool
 	reviewCalled    bool
 	submitCalled    bool
-}
-
-type httpModuleHandlers struct {
-	product        productenrich.ProductHandler
-	image          productimagehttpapi.RouteHandler
-	amazonListing  amazonlisting.Handler
-	listingKit     listingkithttpapi.RouteHandler
-	promptTemplate promptmgmtapi.HTTPRouteHandler
-	studioSession  listingkit.StudioSessionHandler
-	sheinLogin     sheinlogin.HTTPRouteHandler
-	sdsLogin       sdslogin.HTTPRouteHandler
-	taskRPC        taskrpcapi.Handler
-	sdsCatalog     sdshttpapi.HTTPRouteHandler
 }
 
 type stubTaskRPCHandler struct {
@@ -1011,9 +994,7 @@ func TestRegisterRoutes_AmazonListingEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubAmazonListingHandler{}
-	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
-		amazonListing: handler,
-	})
+	router := mustBuildTestRouterFromModules(t, amazonlistinghttpapi.NewHTTPModule(handler))
 
 	tests := []struct {
 		name     string
@@ -1125,9 +1106,7 @@ func TestRegisterRoutes_ProductEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubProductHandler{}
-	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
-		product: handler,
-	})
+	router := mustBuildTestRouterFromModules(t, productenrichhttpapi.NewHTTPModule(handler, nil))
 
 	// generate endpoint
 	generatePayload := map[string]any{"text": "test"}
@@ -1160,9 +1139,7 @@ func TestRegisterRoutes_ImageEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubImageHandler{}
-	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
-		image: handler,
-	})
+	router := mustBuildTestRouterFromModules(t, productenrichhttpapi.NewHTTPModule(nil, handler))
 
 	// process endpoint
 	processPayload := map[string]any{"image_urls": []string{"https://example.com/1.jpg"}, "marketplace": "amazon"}
@@ -1211,10 +1188,11 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 
 	handler := &stubListingKitHandler{}
 	promptHandler := &stubPromptTemplateHandler{}
-	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
-		listingKit:     handler,
-		promptTemplate: promptHandler,
-	})
+	router := mustBuildTestRouterFromModules(
+		t,
+		listingkithttpapi.NewHTTPModule(handler),
+		promptmgmtapi.NewHTTPModule(promptHandler),
+	)
 
 	body, _ := json.Marshal(map[string]any{
 		"text":      "test",
@@ -1942,7 +1920,7 @@ func TestRegisterRoutes_ListingKitEndpoints(t *testing.T) {
 func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 	t.Parallel()
 
-	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{})
+	router := mustBuildTestRouterFromModules(t)
 
 	tests := []struct {
 		method string
@@ -1969,9 +1947,7 @@ func TestRegisterRoutes_NilHandlersDoNotExposeModuleRoutes(t *testing.T) {
 func TestBuildRouteDescriptorsWithSheinLoginExposesOnlyAPI(t *testing.T) {
 	t.Parallel()
 
-	routes, err := buildRegisteredRoutes(nil, httpModuleHandlers{
-		sheinLogin: &stubSheinLoginHandler{},
-	})
+	routes, err := buildRegisteredTestRoutes(nil, sheinlogin.NewHTTPModule(&stubSheinLoginHandler{}))
 	require.NoError(t, err)
 
 	index := make(map[string]struct{}, len(routes))
@@ -1990,9 +1966,7 @@ func TestBuildRouteDescriptorsWithSheinLoginExposesOnlyAPI(t *testing.T) {
 func TestBuildRouteDescriptorsWithSDSLoginExposesOnlyAPI(t *testing.T) {
 	t.Parallel()
 
-	routes, err := buildRegisteredRoutes(nil, httpModuleHandlers{
-		sdsLogin: &stubSDSLoginHandler{},
-	})
+	routes, err := buildRegisteredTestRoutes(nil, sdslogin.NewHTTPModule(&stubSDSLoginHandler{}))
 	require.NoError(t, err)
 
 	index := make(map[string]struct{}, len(routes))
@@ -2012,9 +1986,7 @@ func TestRegisterRoutes_TaskRPCEndpoints(t *testing.T) {
 	t.Parallel()
 
 	handler := &stubTaskRPCHandler{}
-	router := mustBuildTestRouterFromHandlers(t, httpModuleHandlers{
-		taskRPC: handler,
-	})
+	router := mustBuildTestRouterFromModules(t, taskrpcapi.NewHTTPModule(handler))
 
 	tests := []struct {
 		name     string
@@ -2072,15 +2044,14 @@ func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
 	t.Parallel()
 
 	router := gin.New()
-	handlers := httpModuleHandlers{
-		product:       &stubProductHandler{},
-		image:         &stubImageHandler{},
-		amazonListing: &stubAmazonListingHandler{},
-		listingKit:    &stubListingKitHandler{},
-		taskRPC:       &stubTaskRPCHandler{},
-	}
+	modules := testHTTPModules(
+		productenrichhttpapi.NewHTTPModule(&stubProductHandler{}, &stubImageHandler{}),
+		amazonlistinghttpapi.NewHTTPModule(&stubAmazonListingHandler{}),
+		listingkithttpapi.NewHTTPModule(&stubListingKitHandler{}),
+		taskrpcapi.NewHTTPModule(&stubTaskRPCHandler{}),
+	)
 
-	routes, err := buildRegisteredRoutes(nil, handlers)
+	routes, err := buildRegisteredRoutesForModules(nil, modules)
 	require.NoError(t, err)
 	mountRoutes(router, routes)
 
@@ -2102,30 +2073,29 @@ func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
 	}
 }
 
-func TestBuildHTTPServerBundleFromHandlersMountsRegisteredRoutes(t *testing.T) {
+func TestBuildHTTPServerBundleFromModulesMountsRegisteredRoutes(t *testing.T) {
 	t.Parallel()
 
-	handlers := httpModuleHandlers{
-		product:        &stubProductHandler{},
-		image:          &stubImageHandler{},
-		amazonListing:  &stubAmazonListingHandler{},
-		listingKit:     &stubListingKitHandler{},
-		promptTemplate: &stubPromptTemplateHandler{},
-		studioSession:  &stubStudioSessionHandler{},
-		sheinLogin:     &stubSheinLoginHandler{},
-		sdsLogin:       &stubSDSLoginHandler{},
-		taskRPC:        &stubTaskRPCHandler{},
-		sdsCatalog:     &stubSDSCatalogRouteHandler{},
+	modules := testHTTPModules(
+		productenrichhttpapi.NewHTTPModule(&stubProductHandler{}, &stubImageHandler{}),
+		amazonlistinghttpapi.NewHTTPModule(&stubAmazonListingHandler{}),
+		listingkithttpapi.NewHTTPModule(&stubListingKitHandler{}),
+		promptmgmtapi.NewHTTPModule(&stubPromptTemplateHandler{}),
+		listingkithttpapi.NewStudioHTTPModule(&stubStudioSessionHandler{}),
+		sheinlogin.NewHTTPModule(&stubSheinLoginHandler{}),
+		sdslogin.NewHTTPModule(&stubSDSLoginHandler{}),
+		taskrpcapi.NewHTTPModule(&stubTaskRPCHandler{}),
+		sdshttpapi.NewHTTPModule(&stubSDSCatalogRouteHandler{}),
+	)
+
+	server, routes, err := buildHTTPServerBundleFromModules(18080, nil, modules)
+	if err != nil {
+		t.Fatalf("buildHTTPServerBundleFromModules returned error: %v", err)
 	}
 
-	server, routes, err := buildHTTPServerBundleFromHandlers(18080, nil, handlers)
+	expectedRoutes, err := buildRegisteredRoutesForModules(nil, modules)
 	if err != nil {
-		t.Fatalf("buildHTTPServerBundleFromHandlers returned error: %v", err)
-	}
-
-	expectedRoutes, err := buildRegisteredRoutes(nil, handlers)
-	if err != nil {
-		t.Fatalf("buildRegisteredRoutes returned error: %v", err)
+		t.Fatalf("buildRegisteredRoutesForModules returned error: %v", err)
 	}
 	if got, want := routePaths(routes), routePaths(expectedRoutes); !equalStringSlices(got, want) {
 		t.Fatalf("mounted routes mismatch\n got: %v\nwant: %v", got, want)
@@ -2235,10 +2205,10 @@ func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {
 	singleSDSCatalogHandler(&stubSDSCatalogRouteHandler{}, &stubSDSCatalogRouteHandler{})
 }
 
-func mustBuildTestRouterFromHandlers(t *testing.T, handlers httpModuleHandlers) *gin.Engine {
+func mustBuildTestRouterFromModules(t *testing.T, modules ...kernelmodule.Module) *gin.Engine {
 	t.Helper()
 
-	server, _, err := buildHTTPServerBundleFromHandlers(0, nil, handlers)
+	server, _, err := buildHTTPServerBundleFromModules(0, nil, testHTTPModules(modules...))
 	require.NoError(t, err)
 
 	router, ok := server.Handler.(*gin.Engine)
@@ -2256,27 +2226,12 @@ func singleSDSCatalogHandler(sdsCatalogHandlers ...sdshttpapi.HTTPRouteHandler) 
 	panic(fmt.Sprintf("expected at most 1 SDS catalog handler, got %d", len(sdsCatalogHandlers)))
 }
 
-func buildHTTPServerBundleFromHandlers(port int, cfg *config.Config, handlers httpModuleHandlers) (*http.Server, []httproute.Descriptor, error) {
-	return buildHTTPServerBundleFromModules(port, cfg, buildHTTPModules(handlers))
+func buildRegisteredTestRoutes(cfg *config.Config, modules ...kernelmodule.Module) ([]httproute.Descriptor, error) {
+	return buildRegisteredRoutesForModules(cfg, testHTTPModules(modules...))
 }
 
-func buildRegisteredRoutes(cfg *config.Config, handlers httpModuleHandlers) ([]httproute.Descriptor, error) {
-	return buildRegisteredRoutesForModules(cfg, buildHTTPModules(handlers))
-}
-
-func buildHTTPModules(handlers httpModuleHandlers) []kernelmodule.Module {
-	return []kernelmodule.Module{
-		newCoreHTTPModule(),
-		productenrichhttpapi.NewHTTPModule(handlers.product, handlers.image),
-		amazonlistinghttpapi.NewHTTPModule(handlers.amazonListing),
-		listingkithttpapi.NewHTTPModule(handlers.listingKit),
-		promptmgmtapi.NewHTTPModule(handlers.promptTemplate),
-		listingkithttpapi.NewStudioHTTPModule(handlers.studioSession),
-		sdshttpapi.NewHTTPModule(handlers.sdsCatalog),
-		taskrpcapi.NewHTTPModule(handlers.taskRPC),
-		sheinlogin.NewHTTPModule(handlers.sheinLogin),
-		sdslogin.NewHTTPModule(handlers.sdsLogin),
-	}
+func testHTTPModules(modules ...kernelmodule.Module) []kernelmodule.Module {
+	return append([]kernelmodule.Module{newCoreHTTPModule()}, modules...)
 }
 
 func routePaths(routes []httproute.Descriptor) []string {

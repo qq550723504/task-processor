@@ -99,6 +99,21 @@ func TestHTTPAPIServerTestsDoNotUseLegacyRouteDescriptorOracle(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIServerTestsDoNotUseHandlerFacade(t *testing.T) {
+	serverTestSrc, err := os.ReadFile("server_test.go")
+	require.NoError(t, err)
+	serverTestContent := string(serverTestSrc)
+
+	for _, marker := range []string{
+		"type httpModuleHandlers struct",
+		"mustBuildTestRouterFromHandlers",
+		"buildHTTPServerBundleFromHandlers",
+		"func buildHTTPModules(",
+	} {
+		require.NotContains(t, serverTestContent, marker)
+	}
+}
+
 func readRetiredModulesFileIfPresent(t *testing.T) string {
 	t.Helper()
 
