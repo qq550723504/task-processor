@@ -20,7 +20,7 @@ The project-wide plan calls preview aggregation the best next bounded extraction
 
 That extraction has already started, but the codebase is now in a mixed state:
 
-- `internal/listing/preview` owns preview shell/status concepts and preview-specific errors.
+- `internal/listing/preview` owns preview shell/status concepts and task-result availability.
 - `internal/listing/platform` owns reusable platform selection and section dispatch.
 - `internal/listingkit` still owns task/result projection and platform payload composition.
 
@@ -38,6 +38,7 @@ Current responsibilities:
 - preview header construction
 - preview status label / status message mapping
 - preview platform list fallback resolution
+- task-result availability sentinel
 
 Representative files:
 

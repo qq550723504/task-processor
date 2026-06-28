@@ -2,6 +2,7 @@ package preview
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -17,5 +18,29 @@ func TestPreviewPackageDoesNotOwnPlatformCompatibilityWrappers(t *testing.T) {
 		} else if !os.IsNotExist(err) {
 			t.Fatalf("Stat(%s) unexpected error = %v", file, err)
 		}
+	}
+}
+
+func TestPreviewPackageDoesNotAliasPlatformErrors(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("errors.go")
+	if err != nil {
+		t.Fatalf("ReadFile(errors.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		`"task-processor/internal/listing/platform"`,
+		"ErrUnsupportedPlatform",
+		"ErrPlatformUnavailable",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("errors.go should not contain %q after platform error extraction", needle)
+		}
+	}
+
+	if !strings.Contains(content, `errors.New("task result unavailable")`) {
+		t.Fatal("errors.go should keep the preview task-result availability sentinel")
 	}
 }
