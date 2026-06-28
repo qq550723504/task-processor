@@ -34,12 +34,3 @@ func BuildPlatformProductFetcher(
 
 	return factory.CreateFetcher(fetcherType, rawJsonDataClient, &cfg.Amazon, crawlSource, rabbitmqClient)
 }
-
-func BuildSharedProductFetcher(
-	cfg *config.Config,
-	rawJsonDataClient product.RawJsonDataClient,
-	crawlSource runner.CrawlSource,
-	rabbitmqClient *rabbitmq.Client,
-) (appfetcher.ProductFetcher, error) {
-	return BuildPlatformProductFetcher(cfg, "", rawJsonDataClient, crawlSource, rabbitmqClient)
-}

@@ -1577,6 +1577,17 @@ func TestBootstrapFetchersDoNotOwnPlatformFetcherModeRules(t *testing.T) {
 	}
 }
 
+func TestBootstrapFetchersDoNotExposeSharedProductFetcherBuilder(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "bootstrap", "fetchers", "product_fetcher_builder.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "func BuildSharedProductFetcher(") {
+		t.Fatalf("%s exposes BuildSharedProductFetcher; build product fetchers with an explicit platform", path)
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotInspectRabbitMQClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	content, err := os.ReadFile(path)
