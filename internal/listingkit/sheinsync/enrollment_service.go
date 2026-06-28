@@ -19,6 +19,7 @@ type SheinEnrollmentService interface {
 type SheinEnrollmentRepository interface {
 	ListCandidates(ctx context.Context, query *SheinActivityCandidateQuery) ([]SheinActivityCandidateRecord, int64, error)
 	SaveCandidates(ctx context.Context, records []*SheinActivityCandidateRecord) error
+	ListSyncedProducts(ctx context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error)
 	CreateEnrollmentRun(ctx context.Context, run *SheinActivityEnrollmentRunRecord) error
 	UpdateEnrollmentRun(ctx context.Context, run *SheinActivityEnrollmentRunRecord) error
 	SaveEnrollmentItems(ctx context.Context, items []*SheinActivityEnrollmentItemRecord) error

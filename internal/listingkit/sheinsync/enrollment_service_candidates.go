@@ -2,8 +2,10 @@ package sheinsync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 func (s *sheinEnrollmentService) listCandidates(
@@ -94,20 +96,12 @@ func (s *sheinEnrollmentService) listCandidatesByPage(
 	return items, nil
 }
 
-type sheinEnrollmentSyncedProductReader interface {
-	ListSyncedProducts(ctx context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error)
-}
-
 func (s *sheinEnrollmentService) refreshCandidateCostOverrides(
 	ctx context.Context,
 	tenantID, storeID int64,
 	candidates []SheinActivityCandidateRecord,
 ) ([]SheinActivityCandidateRecord, error) {
 	if len(candidates) == 0 {
-		return candidates, nil
-	}
-	productReader, ok := s.repo.(sheinEnrollmentSyncedProductReader)
-	if !ok {
 		return candidates, nil
 	}
 
@@ -117,7 +111,7 @@ func (s *sheinEnrollmentService) refreshCandidateCostOverrides(
 		if candidate.SKCName == "" {
 			continue
 		}
-		rows, _, err := productReader.ListSyncedProducts(ctx, &SheinSyncedProductQuery{
+		rows, _, err := s.repo.ListSyncedProducts(ctx, &SheinSyncedProductQuery{
 			TenantID: tenantID,
 			StoreID:  storeID,
 			SKCName:  candidate.SKCName,
@@ -163,9 +157,32 @@ func (s *sheinEnrollmentService) refreshCandidateCostOverrides(
 			continue
 		}
 		out[i].EffectiveCostPrice = cloneSheinSyncFloat64(product.EffectiveCostPrice)
+		out[i].PriceSnapshot = refreshSheinEnrollmentPriceSnapshot(out[i].PriceSnapshot, product)
 		out[i].CalculatedProfitRate = calculateSheinCandidateProfitRate(out[i].EffectiveCostPrice, out[i].PriceSnapshot)
 	}
 	return out, nil
+}
+
+func refreshSheinEnrollmentPriceSnapshot(existing string, product SheinSyncedProductRecord) string {
+	if product.AutoCostPrice == nil || *product.AutoCostPrice <= 0 {
+		return existing
+	}
+
+	payload := map[string]any{}
+	if strings.TrimSpace(existing) != "" {
+		_ = json.Unmarshal([]byte(existing), &payload)
+	}
+	payload["sale_price"] = *product.AutoCostPrice
+	if strings.TrimSpace(product.Currency) != "" {
+		payload["currency"] = strings.TrimSpace(product.Currency)
+	} else if _, ok := payload["currency"]; !ok {
+		payload["currency"] = product.Currency
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return existing
+	}
+	return string(encoded)
 }
 
 func filterExecutableSheinCandidates(

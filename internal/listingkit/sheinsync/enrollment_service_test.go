@@ -339,6 +339,85 @@ func TestExecuteSheinActivityEnrollmentManualConfirmedSubmitsPendingReviewCandid
 	require.Equal(t, SheinCandidateReviewStatusEnrolled, repo.savedCandidates()[0].ReviewStatus)
 }
 
+func TestSheinEnrollmentRepositoryRequiresSyncedProductLookup(t *testing.T) {
+	t.Parallel()
+
+	var repo SheinEnrollmentRepository = newSheinEnrollmentRepoStub(nil)
+	_, _, err := repo.ListSyncedProducts(context.Background(), &SheinSyncedProductQuery{
+		TenantID: 11,
+		StoreID:  22,
+		SKCName:  "sg260618173076361709498",
+		Page:     1,
+		PageSize: 1,
+	})
+
+	require.NoError(t, err)
+}
+
+func TestExecuteSheinActivityEnrollmentUsesLatestSyncedProductCostBeforeEnrollment(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                 1,
+			TenantID:           11,
+			StoreID:            22,
+			SyncedProductID:    101,
+			ActivityType:       "PROMOTION",
+			ActivityKey:        "PROMOTION:11:22",
+			SKCName:            "sg260618173076361709498",
+			CandidateVersion:   "v1",
+			EffectiveCostPrice: sheinEnrollmentFloat64Ptr(19.99),
+			PriceSnapshot:      `{"sale_price":40,"currency":"USD"}`,
+			InventorySnapshot:  `{"available":999,"total":999}`,
+			EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:       SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	repo.syncedProducts = []SheinSyncedProductRecord{
+		{
+			ID:                 101,
+			TenantID:           11,
+			StoreID:            22,
+			SKCName:            "sg260618173076361709498",
+			SupplierCode:       "JJ0529207001-5CC441F3",
+			EffectiveCostPrice: sheinEnrollmentFloat64Ptr(34.77),
+			PriceSnapshot:      `{"sale_price":40,"currency":"USD"}`,
+			InventorySnapshot:  `{"available":999,"total":999}`,
+			IsActive:           true,
+		},
+	}
+	adapter := &sheinEnrollmentAdapterStub{
+		results: []SheinActivityEnrollmentResult{{CandidateID: 1, Success: true}},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		11,
+		22,
+		"PROMOTION",
+		"PROMOTION:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+		1,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusSucceeded, run.Status)
+	require.Len(t, repo.listSyncedProductQueries, 1)
+	require.Equal(t, "sg260618173076361709498", repo.listSyncedProductQueries[0].SKCName)
+	require.Len(t, adapter.calls, 1)
+	require.Len(t, adapter.calls[0].Candidates, 1)
+	require.NotNil(t, adapter.calls[0].Candidates[0].EffectiveCostPrice)
+	require.Equal(t, 34.77, *adapter.calls[0].Candidates[0].EffectiveCostPrice)
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 1)
+	require.Equal(t, SheinCandidateReviewStatusEnrolled, candidates[0].ReviewStatus)
+	require.NotNil(t, candidates[0].EffectiveCostPrice)
+	require.Equal(t, 34.77, *candidates[0].EffectiveCostPrice)
+}
+
 func TestExecuteSheinActivityEnrollmentUsesLatestSDSCostGroupOverride(t *testing.T) {
 	t.Parallel()
 
@@ -408,6 +487,84 @@ func TestExecuteSheinActivityEnrollmentUsesLatestSDSCostGroupOverride(t *testing
 	require.Equal(t, SheinCandidateReviewStatusEnrolled, candidates[0].ReviewStatus)
 	require.NotNil(t, candidates[0].EffectiveCostPrice)
 	require.Equal(t, 29.99, *candidates[0].EffectiveCostPrice)
+}
+
+func TestExecuteSheinActivityEnrollmentUsesAutoCostAsOriginalPriceWithManualSDSCost(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                 1,
+			TenantID:           227,
+			StoreID:            870,
+			SyncedProductID:    456,
+			ActivityType:       "PROMOTION",
+			ActivityKey:        "PROMOTION:227:870",
+			SKCName:            "sg260618173076361709498",
+			CandidateVersion:   "v1",
+			EffectiveCostPrice: sheinEnrollmentFloat64Ptr(19.99),
+			PriceSnapshot:      `{"sale_price":40,"currency":"USD","sub_site":"shein-us"}`,
+			InventorySnapshot:  `{"available":999,"total":999}`,
+			EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:       SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	repo.syncedProducts = []SheinSyncedProductRecord{
+		{
+			ID:                 456,
+			TenantID:           227,
+			StoreID:            870,
+			SKCName:            "sg260618173076361709498",
+			SupplierCode:       "JJ0529207001-5CC441F3",
+			AutoCostPrice:      sheinEnrollmentFloat64Ptr(34.77),
+			EffectiveCostPrice: sheinEnrollmentFloat64Ptr(34.77),
+			Currency:           "USD",
+			PriceSnapshot:      `{"sale_price":40,"currency":"USD","sub_site":"shein-us"}`,
+			InventorySnapshot:  `{"available":999,"total":999}`,
+			IsActive:           true,
+		},
+	}
+	repo.sdsGroups = map[string]SheinSDSCostGroupRecord{
+		"source:JJ0529207001": {
+			TenantID:        227,
+			StoreID:         870,
+			GroupKey:        "source:JJ0529207001",
+			GroupLabel:      "JJ0529207001",
+			ManualCostPrice: sheinEnrollmentFloat64Ptr(19.99),
+		},
+	}
+	adapter := &sheinEnrollmentAdapterStub{
+		results: []SheinActivityEnrollmentResult{{CandidateID: 1, Success: true}},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		227,
+		870,
+		"PROMOTION",
+		"PROMOTION:227:870",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+		1,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusSucceeded, run.Status)
+	require.Len(t, adapter.calls, 1)
+	require.Len(t, adapter.calls[0].Candidates, 1)
+	require.NotNil(t, adapter.calls[0].Candidates[0].EffectiveCostPrice)
+	require.Equal(t, 19.99, *adapter.calls[0].Candidates[0].EffectiveCostPrice)
+	price, currency := parsePromotionPriceSnapshot(adapter.calls[0].Candidates[0].PriceSnapshot)
+	require.Equal(t, 34.77, price)
+	require.Equal(t, "USD", currency)
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 1)
+	require.NotNil(t, candidates[0].EffectiveCostPrice)
+	require.Equal(t, 19.99, *candidates[0].EffectiveCostPrice)
+	price, currency = parsePromotionPriceSnapshot(candidates[0].PriceSnapshot)
+	require.Equal(t, 34.77, price)
+	require.Equal(t, "USD", currency)
 }
 
 func TestExecuteSheinActivityEnrollmentMarksRunFailedWhenCandidatesExistButNoneExecutable(t *testing.T) {
@@ -594,15 +751,16 @@ func TestSheinActivityAdapterAllowsZeroPromotionMinProfitRate(t *testing.T) {
 }
 
 type sheinEnrollmentRepoStub struct {
-	mu                   sync.Mutex
-	nextRunID            int64
-	candidates           map[int64]SheinActivityCandidateRecord
-	syncedProducts       []SheinSyncedProductRecord
-	sdsGroups            map[string]SheinSDSCostGroupRecord
-	createdRuns          []SheinActivityEnrollmentRunRecord
-	updatedRuns          []SheinActivityEnrollmentRunRecord
-	savedItems           []SheinActivityEnrollmentItemRecord
-	listCandidateQueries []SheinActivityCandidateQuery
+	mu                       sync.Mutex
+	nextRunID                int64
+	candidates               map[int64]SheinActivityCandidateRecord
+	syncedProducts           []SheinSyncedProductRecord
+	sdsGroups                map[string]SheinSDSCostGroupRecord
+	createdRuns              []SheinActivityEnrollmentRunRecord
+	updatedRuns              []SheinActivityEnrollmentRunRecord
+	savedItems               []SheinActivityEnrollmentItemRecord
+	listCandidateQueries     []SheinActivityCandidateQuery
+	listSyncedProductQueries []SheinSyncedProductQuery
 
 	saveItemsErr      error
 	saveCandidatesErr error
@@ -672,6 +830,11 @@ func (r *sheinEnrollmentRepoStub) SaveCandidates(_ context.Context, records []*S
 func (r *sheinEnrollmentRepoStub) ListSyncedProducts(_ context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if query != nil {
+		copied := *query
+		r.listSyncedProductQueries = append(r.listSyncedProductQueries, copied)
+	}
 
 	items := make([]SheinSyncedProductRecord, 0, len(r.syncedProducts))
 	for _, row := range r.syncedProducts {
@@ -766,6 +929,10 @@ func (r *sheinEnrollmentRepoStub) SaveEnrollmentItems(_ context.Context, items [
 		return r.savedItems[i].CandidateID < r.savedItems[j].CandidateID
 	})
 	return r.saveItemsErr
+}
+
+func (r *sheinEnrollmentRepoStub) ListEnrollmentItems(_ context.Context, _ *SheinEnrollmentItemQuery) ([]SheinActivityEnrollmentItemRecord, int64, error) {
+	return nil, 0, nil
 }
 
 func (r *sheinEnrollmentRepoStub) savedCandidates() []SheinActivityCandidateRecord {
