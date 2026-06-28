@@ -1,9 +1,13 @@
 package httpapi
 
 import (
+	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/listingkit"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	"task-processor/internal/sheinlogin"
 )
 
@@ -28,10 +32,10 @@ type listingKitSupport struct {
 }
 
 type httpFeatureComposition struct {
-	productModule       *productModuleResult
-	imageModule         *imageModuleResult
-	amazonListingModule *amazonListingModuleResult
-	listingKitModule    *listingKitModuleResult
+	productModule       *productenrichhttpapi.Module
+	imageModule         *productimagehttpapi.Module
+	amazonListingModule *amazonlistinghttpapi.Module
+	listingKitModule    *listingkithttpapi.Module
 	promptModule        *promptModuleResult
 	sdsModule           *sdsModuleResult
 	taskRPCResult       *taskRPCModuleResult

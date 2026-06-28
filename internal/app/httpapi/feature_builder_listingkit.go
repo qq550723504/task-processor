@@ -16,9 +16,9 @@ type listingKitFeatureBuildOptions struct {
 }
 
 type listingKitFeatureSet struct {
-	productModule    *productModuleResult
-	imageModule      *imageModuleResult
-	listingKitModule *listingKitModuleResult
+	productModule    *productenrichhttpapi.Module
+	imageModule      *productimagehttpapi.Module
+	listingKitModule *listingkithttpapi.Module
 }
 
 type listingKitFeatureBuilder struct {

@@ -4084,6 +4084,24 @@ func TestHTTPAPIRouteDescriptorAliasStaysRetired(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIFeatureModuleResultAliasesStayRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "feature_module_builders.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type productModuleResult =",
+		"type imageModuleResult =",
+		"type amazonListingModuleResult =",
+		"type listingKitModuleResult =",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s exposes %q; use owning httpapi Module types directly in app HTTP assembly", path, phrase)
+		}
+	}
+}
+
 func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 	filePath := filepath.Join("..", "internal", "app", "httpapi", "listingkit_support.go")
 	fset := token.NewFileSet()

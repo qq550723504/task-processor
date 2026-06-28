@@ -394,7 +394,7 @@ func TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes(t *testing.T) {
 	}
 }
 
-func TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes(t *testing.T) {
+func TestHTTPAPIRuntimeStateUsesOwningFeatureHTTPAPIModuleTypes(t *testing.T) {
 	t.Parallel()
 
 	typesSrc, err := os.ReadFile("types.go")
@@ -410,6 +410,14 @@ func TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes(t *testing.T) {
 		"*listingkithttpapi.Module",
 		"*productenrichhttpapi.Module",
 		"*productimagehttpapi.Module",
+	} {
+		require.Contains(t, typesContent, marker)
+	}
+	for _, marker := range []string{
+		"*productModuleResult",
+		"*imageModuleResult",
+		"*amazonListingModuleResult",
+		"*listingKitModuleResult",
 		"productimagehttpapi.RouteHandler",
 	} {
 		require.NotContains(t, typesContent, marker)
@@ -424,11 +432,11 @@ func TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes(t *testing.T) {
 		"type amazonListingModuleResult = amazonlistinghttpapi.Module",
 		"type listingKitModuleResult = listingkithttpapi.Module",
 	} {
-		require.Contains(t, contractContent, marker)
+		require.NotContains(t, contractContent, marker)
 	}
 }
 
-func TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes(t *testing.T) {
+func TestHTTPAPIRuntimeDepsMethodsUseOwningFeatureHTTPAPIModuleTypes(t *testing.T) {
 	t.Parallel()
 
 	methodsSrc, err := os.ReadFile("runtime_deps_methods.go")
@@ -445,6 +453,14 @@ func TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes(t *testing.T
 		"*productenrichhttpapi.Module",
 		"*productimagehttpapi.Module",
 	} {
+		require.Contains(t, methodsContent, marker)
+	}
+	for _, marker := range []string{
+		"*productModuleResult",
+		"*imageModuleResult",
+		"*amazonListingModuleResult",
+		"*listingKitModuleResult",
+	} {
 		require.NotContains(t, methodsContent, marker)
 	}
 
@@ -457,11 +473,11 @@ func TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes(t *testing.T
 		"type amazonListingModuleResult = amazonlistinghttpapi.Module",
 		"type listingKitModuleResult = listingkithttpapi.Module",
 	} {
-		require.Contains(t, contractContent, marker)
+		require.NotContains(t, contractContent, marker)
 	}
 }
 
-func TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures(t *testing.T) {
+func TestHTTPModulesUseOwningFeatureHTTPAPIModuleTypesInSignatures(t *testing.T) {
 	t.Parallel()
 
 	modulesSrc, err := os.ReadFile("http_modules.go")
@@ -474,7 +490,7 @@ func TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures(t *testing.
 		"built *amazonlistinghttpapi.Module",
 		"built *listingkithttpapi.Module",
 	} {
-		require.NotContains(t, modulesContent, marker)
+		require.Contains(t, modulesContent, marker)
 	}
 
 	for _, marker := range []string{
@@ -483,23 +499,36 @@ func TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures(t *testing.
 		"built *amazonListingModuleResult",
 		"built *listingKitModuleResult",
 	} {
-		require.Contains(t, modulesContent, marker)
+		require.NotContains(t, modulesContent, marker)
 	}
 }
 
-func TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures(t *testing.T) {
+func TestHTTPAPIFeatureBuildersUseOwningFeatureHTTPAPIModuleTypesInSignatures(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"feature_builder_listingkit.go", "feature_builder_amazonlisting.go"} {
+	expectedModules := map[string][]string{
+		"feature_builder_listingkit.go": {
+			"*productenrichhttpapi.Module",
+			"*productimagehttpapi.Module",
+			"*listingkithttpapi.Module",
+		},
+		"feature_builder_amazonlisting.go": {
+			"*amazonlistinghttpapi.Module",
+		},
+	}
+	for name, moduleMarkers := range expectedModules {
 		src, err := os.ReadFile(name)
 		require.NoError(t, err)
 		content := string(src)
 
+		for _, marker := range moduleMarkers {
+			require.Contains(t, content, marker)
+		}
 		for _, marker := range []string{
-			"*productenrichhttpapi.Module",
-			"*productimagehttpapi.Module",
-			"*amazonlistinghttpapi.Module",
-			"*listingkithttpapi.Module",
+			"*productModuleResult",
+			"*imageModuleResult",
+			"*amazonListingModuleResult",
+			"*listingKitModuleResult",
 		} {
 			require.NotContains(t, content, marker)
 		}
@@ -509,9 +538,9 @@ func TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures(
 	require.NoError(t, err)
 	listingKitFeatureContent := string(listingKitFeatureSrc)
 	for _, marker := range []string{
-		"productModule    *productModuleResult",
-		"imageModule      *imageModuleResult",
-		"listingKitModule *listingKitModuleResult",
+		"productModule    *productenrichhttpapi.Module",
+		"imageModule      *productimagehttpapi.Module",
+		"listingKitModule *listingkithttpapi.Module",
 		"buildProduct    productModuleBuilder",
 		"buildImage      imageModuleBuilder",
 		"buildListingKit listingKitModuleBuilder",
@@ -524,13 +553,13 @@ func TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures(
 	amazonListingFeatureContent := string(amazonListingFeatureSrc)
 	for _, marker := range []string{
 		"buildAmazonListing amazonListingModuleBuilder",
-		"func (b amazonListingFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (*amazonListingModuleResult, error)",
+		"func (b amazonListingFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps) (*amazonlistinghttpapi.Module, error)",
 	} {
 		require.Contains(t, amazonListingFeatureContent, marker)
 	}
 }
 
-func TestFeatureModuleBuilderContractsReturnLocalModuleAliases(t *testing.T) {
+func TestFeatureModuleBuilderContractsUseOwningModuleTypes(t *testing.T) {
 	t.Parallel()
 
 	src, err := os.ReadFile("feature_module_builders.go")
@@ -543,18 +572,18 @@ func TestFeatureModuleBuilderContractsReturnLocalModuleAliases(t *testing.T) {
 		"(*amazonlistinghttpapi.Module, error)",
 		"(*listingkithttpapi.Module, error)",
 	} {
-		require.NotContains(t, content, marker)
+		require.Contains(t, content, marker)
 	}
 
 	for _, marker := range []string{
-		"type productModuleBuilder func(input productenrichhttpapi.RuntimeBuildInput) (*productModuleResult, error)",
-		"type imageModuleBuilder func(input productimagehttpapi.RuntimeBuildInput) (*imageModuleResult, error)",
-		"type amazonListingModuleBuilder func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonListingModuleResult, error)",
-		"type listingKitModuleBuilder func(input listingkithttpapi.RuntimeBuildInput) (*listingKitModuleResult, error)",
-		"func buildProductModuleResult(input productenrichhttpapi.RuntimeBuildInput) (*productModuleResult, error)",
-		"func buildImageModuleResult(input productimagehttpapi.RuntimeBuildInput) (*imageModuleResult, error)",
-		"func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonListingModuleResult, error)",
-		"func buildListingKitModuleResult(input listingkithttpapi.RuntimeBuildInput) (*listingKitModuleResult, error)",
+		"type productModuleBuilder func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)",
+		"type imageModuleBuilder func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)",
+		"type amazonListingModuleBuilder func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)",
+		"type listingKitModuleBuilder func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)",
+		"func buildProductModuleResult(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)",
+		"func buildImageModuleResult(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)",
+		"func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)",
+		"func buildListingKitModuleResult(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)",
 	} {
 		require.Contains(t, content, marker)
 	}

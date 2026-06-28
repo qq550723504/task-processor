@@ -1,5 +1,12 @@
 package httpapi
 
+import (
+	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
+)
+
 func (d *runtimeDeps) ensureListingKitSupport() *listingKitSupport {
 	if d == nil {
 		return nil
@@ -28,7 +35,7 @@ func (d *runtimeDeps) addClosers(closers ...func() error) {
 	}
 }
 
-func (d *runtimeDeps) attachProductModule(module *productModuleResult) {
+func (d *runtimeDeps) attachProductModule(module *productenrichhttpapi.Module) {
 	if d == nil || module == nil {
 		return
 	}
@@ -39,7 +46,7 @@ func (d *runtimeDeps) attachProductModule(module *productModuleResult) {
 	d.features.productService = module.Service
 }
 
-func (d *runtimeDeps) attachImageModule(module *imageModuleResult) {
+func (d *runtimeDeps) attachImageModule(module *productimagehttpapi.Module) {
 	if d == nil || module == nil {
 		return
 	}
@@ -53,14 +60,14 @@ func (d *runtimeDeps) attachImageModule(module *imageModuleResult) {
 	d.features.imageSceneRenderer = module.SceneRenderer
 }
 
-func (d *runtimeDeps) attachAmazonListingModule(module *amazonListingModuleResult) {
+func (d *runtimeDeps) attachAmazonListingModule(module *amazonlistinghttpapi.Module) {
 	if d == nil || module == nil {
 		return
 	}
 	d.addClosers(module.Closers...)
 }
 
-func (d *runtimeDeps) attachListingKitModule(module *listingKitModuleResult) {
+func (d *runtimeDeps) attachListingKitModule(module *listingkithttpapi.Module) {
 	if d == nil || module == nil {
 		return
 	}

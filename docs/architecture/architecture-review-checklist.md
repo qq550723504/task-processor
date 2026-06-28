@@ -98,11 +98,12 @@ At minimum, structural review should consider representative guards such as:
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly`
 - `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
-- `TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes`
-- `TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes`
-- `TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
-- `TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
-- `TestFeatureModuleBuilderContractsReturnLocalModuleAliases`
+- `TestHTTPAPIFeatureModuleResultAliasesStayRetired`
+- `TestHTTPAPIRuntimeStateUsesOwningFeatureHTTPAPIModuleTypes`
+- `TestHTTPAPIRuntimeDepsMethodsUseOwningFeatureHTTPAPIModuleTypes`
+- `TestHTTPModulesUseOwningFeatureHTTPAPIModuleTypesInSignatures`
+- `TestHTTPAPIFeatureBuildersUseOwningFeatureHTTPAPIModuleTypesInSignatures`
+- `TestFeatureModuleBuilderContractsUseOwningModuleTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly`

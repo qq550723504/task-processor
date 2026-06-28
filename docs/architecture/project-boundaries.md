@@ -320,11 +320,11 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginBootstrapTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnLoginFeatureAssembly`
 - `TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes`
-- `TestHTTPAPIRuntimeStateDoesNotOwnFeatureHTTPAPIModuleTypes`
-- `TestHTTPAPIRuntimeDepsMethodsDoNotOwnFeatureHTTPAPIModuleTypes`
-- `TestHTTPModulesDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
-- `TestHTTPAPIFeatureBuildersDoNotExposeFeatureHTTPAPIModuleTypesInSignatures`
-- `TestFeatureModuleBuilderContractsReturnLocalModuleAliases`
+- `TestHTTPAPIRuntimeStateUsesOwningFeatureHTTPAPIModuleTypes`
+- `TestHTTPAPIRuntimeDepsMethodsUseOwningFeatureHTTPAPIModuleTypes`
+- `TestHTTPModulesUseOwningFeatureHTTPAPIModuleTypesInSignatures`
+- `TestHTTPAPIFeatureBuildersUseOwningFeatureHTTPAPIModuleTypesInSignatures`
+- `TestFeatureModuleBuilderContractsUseOwningModuleTypes`
 - `TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts`
 - `TestHTTPAPICompositionBuilderDoesNotOwnSupportFeatureAssembly`

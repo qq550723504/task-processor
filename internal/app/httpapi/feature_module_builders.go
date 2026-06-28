@@ -7,34 +7,26 @@ import (
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 )
 
-type productModuleResult = productenrichhttpapi.Module
+type productModuleBuilder func(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error)
 
-type imageModuleResult = productimagehttpapi.Module
+type imageModuleBuilder func(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error)
 
-type amazonListingModuleResult = amazonlistinghttpapi.Module
+type amazonListingModuleBuilder func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error)
 
-type listingKitModuleResult = listingkithttpapi.Module
+type listingKitModuleBuilder func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error)
 
-type productModuleBuilder func(input productenrichhttpapi.RuntimeBuildInput) (*productModuleResult, error)
-
-type imageModuleBuilder func(input productimagehttpapi.RuntimeBuildInput) (*imageModuleResult, error)
-
-type amazonListingModuleBuilder func(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonListingModuleResult, error)
-
-type listingKitModuleBuilder func(input listingkithttpapi.RuntimeBuildInput) (*listingKitModuleResult, error)
-
-func buildProductModuleResult(input productenrichhttpapi.RuntimeBuildInput) (*productModuleResult, error) {
+func buildProductModuleResult(input productenrichhttpapi.RuntimeBuildInput) (*productenrichhttpapi.Module, error) {
 	return productenrichhttpapi.BuildRuntimeModule(input)
 }
 
-func buildImageModuleResult(input productimagehttpapi.RuntimeBuildInput) (*imageModuleResult, error) {
+func buildImageModuleResult(input productimagehttpapi.RuntimeBuildInput) (*productimagehttpapi.Module, error) {
 	return productimagehttpapi.BuildRuntimeModule(input)
 }
 
-func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonListingModuleResult, error) {
+func buildAmazonListingModuleResult(input amazonlistinghttpapi.RuntimeBuildInput) (*amazonlistinghttpapi.Module, error) {
 	return amazonlistinghttpapi.BuildRuntimeModule(input)
 }
 
-func buildListingKitModuleResult(input listingkithttpapi.RuntimeBuildInput) (*listingKitModuleResult, error) {
+func buildListingKitModuleResult(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
 	return listingkithttpapi.BuildRuntimeModule(input)
 }
