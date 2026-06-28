@@ -2340,10 +2340,18 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 		"type previewPlatformBuilder interface {",
 		"func previewPlatformBuilders() []previewPlatformBuilder {",
 		"func buildPreviewPlatformSections(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {",
-		"for _, builder := range previewPlatformBuilders() {",
+		"return previewdomain.BuildPlatformSections(",
+		"previewdomain.PlatformSectionBuilder{",
 	} {
 		if !strings.Contains(platformsContent, needle) {
 			t.Fatalf("preview_builder_platforms.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"if err := builder.build(result, preview, selectedPlatform); err != nil {",
+	} {
+		if strings.Contains(platformsContent, needle) {
+			t.Fatalf("preview_builder_platforms.go should not contain %q after previewdomain platform dispatcher extraction", needle)
 		}
 	}
 

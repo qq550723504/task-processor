@@ -38,6 +38,7 @@ Current responsibilities:
 - preview status label / status message mapping
 - selected-platform normalization and validation
 - platform availability / selection rules
+- generic platform-section dispatch
 - supported preview platform registry
 
 Representative files:
@@ -110,6 +111,7 @@ attachment application.
 The following pattern is already emerging:
 
 - platform-neutral selection rules in `internal/listing/preview`
+- platform-section dispatch in `internal/listing/preview`
 - marketplace-specific preview payload assembly in `internal/listingkit`
 
 This is acceptable for now, but future moves should prefer marketplace-owned builders instead of adding more platform-specific payload logic to root `listingkit`.
