@@ -4220,7 +4220,6 @@ func TestAppHTTPAPIModuleBuildersStayAllowlisted(t *testing.T) {
 func TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
-		"appendTaskRPCRouteDescriptors":    {},
 		"appendSheinLoginRouteDescriptors": {},
 		"appendSDSLoginRouteDescriptors":   {},
 		"appendSDSCatalogRouteDescriptors": {},
@@ -4251,6 +4250,22 @@ func TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted(t *testing.T) {
 			if _, ok := allowed[name]; !ok {
 				t.Errorf("%s declares app/httpapi route descriptor helper %s; add new feature routes in the owning domain httpapi package instead", path, name)
 			}
+		}
+	}
+}
+
+func TestAppHTTPAPITaskRPCRouteDescriptorHelperStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "routes_core.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"appendTaskRPCRouteDescriptors",
+		"/api/v1/management/tasks/",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; delegate task RPC route descriptors to internal/taskrpcapi instead of duplicating module-owned routes in app/httpapi", path, phrase)
 		}
 	}
 }

@@ -8,7 +8,6 @@ import (
 	"task-processor/internal/httproute"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
-	"task-processor/internal/taskrpcapi"
 )
 
 func buildCoreRouteDescriptors() []httproute.Descriptor {
@@ -22,17 +21,6 @@ func buildCoreRouteDescriptors() []httproute.Descriptor {
 			},
 		},
 	}
-}
-
-func appendTaskRPCRouteDescriptors(routes []httproute.Descriptor, handler taskrpcapi.Handler) []httproute.Descriptor {
-	if handler == nil {
-		return routes
-	}
-	return append(routes,
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/management/tasks/health", Module: "management", Handler: handler.GetHealth},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/management/tasks/:task_id/status", Module: "management", Handler: handler.GetTaskStatus},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/management/tasks/queue-stats", Module: "management", Handler: handler.GetQueueStats},
-	)
 }
 
 func appendSheinLoginRouteDescriptors(routes []httproute.Descriptor, handler sheinLoginRouteHandler) []httproute.Descriptor {

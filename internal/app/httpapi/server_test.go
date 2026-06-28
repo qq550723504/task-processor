@@ -2268,7 +2268,7 @@ func buildLegacyRouteDescriptorsWithShein(productHandler productenrich.ProductHa
 	routes = promptmgmtapi.AppendRouteDescriptors(routes, promptTemplateHandler)
 	routes = listingkithttpapi.AppendStudioSessionRouteDescriptors(routes, studioSessionHandler)
 	routes = appendSDSCatalogRouteDescriptors(routes, sdsCatalogHandlers...)
-	routes = appendTaskRPCRouteDescriptors(routes, taskRPCHandler)
+	routes = taskrpcapi.AppendRouteDescriptors(routes, taskRPCHandler)
 	routes = appendSheinLoginRouteDescriptors(routes, sheinLoginHandler)
 	routes = appendSDSLoginRouteDescriptors(routes, sdsLoginHandler)
 	return routes
