@@ -12,8 +12,6 @@ type StoreHandler struct {
 	repo StoreRepository
 }
 
-type storePageResponse = StorePage
-
 func NewStoreHandler(repo StoreRepository) *StoreHandler {
 	return &StoreHandler{repo: repo}
 }

@@ -105,6 +105,17 @@ func TestListingAdminDispatchEventCompatibilityAliasesStayRetired(t *testing.T) 
 	}
 }
 
+func TestListingAdminStorePageResponseAliasStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "listingadmin", "store_handler.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "type storePageResponse =") {
+		t.Fatalf("%s exposes storePageResponse alias; decode StorePage directly in store handler tests", path)
+	}
+}
+
 func TestListingRuntimeDebugTaskLoaderUsesLocalTaskModel(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "runtime", "listing", "debug_task_runner.go")
 	content, err := os.ReadFile(path)

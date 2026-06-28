@@ -230,6 +230,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestListingAdminCompatibilityDoesNotExposeImportTaskUpdateDTO`
 - `TestListingAdminCompatibilityDoesNotExposeImportTaskResponseDTO`
 - `TestListingAdminDispatchEventCompatibilityAliasesStayRetired`
+- `TestListingAdminStorePageResponseAliasStaysRetired`
 - `TestListingRuntimeDebugTaskLoaderUsesLocalTaskModel`
 - `TestAppTaskStatusDTOAdapterIsRetired`
 - `TestAmazonTaskStatusUpdatesUseTaskStatusRuntime`

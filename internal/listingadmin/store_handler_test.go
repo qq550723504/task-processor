@@ -50,7 +50,7 @@ func TestStoreHandlerListsStoresWithinRequestTenant(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /stores = %d, body=%s", resp.Code, resp.Body.String())
 	}
-	var page storePageResponse
+	var page StorePage
 	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestStoreHandlerResolvesLegacyTenantIDFromMappedZitadelTenant(t *testing.T)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /stores = %d, body=%s", resp.Code, resp.Body.String())
 	}
-	var page storePageResponse
+	var page StorePage
 	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestStoreHandlerOwnerScopeFiltersStoresByUser(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /stores = %d, body=%s", resp.Code, resp.Body.String())
 	}
-	var page storePageResponse
+	var page StorePage
 	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestStoreHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /stores = %d, body=%s", resp.Code, resp.Body.String())
 	}
-	var page storePageResponse
+	var page StorePage
 	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestStoreHandlerSoftDeletesWithinTenant(t *testing.T) {
 	listResp := httptest.NewRecorder()
 	router.engine.ServeHTTP(listResp, listReq)
 
-	var page storePageResponse
+	var page StorePage
 	if err := json.Unmarshal(listResp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode list response: %v", err)
 	}
