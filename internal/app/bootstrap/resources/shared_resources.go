@@ -37,7 +37,7 @@ type ListingRuntimeHealthValidator interface {
 // SharedResources groups dependencies that were previously assembled in multiple places.
 type SharedResources struct {
 	AuthClient                    *auth.ClientCredentialsAuthClient
-	ListingRuntimeHealthValidator ListingRuntimeHealthValidator
+	listingRuntimeHealthValidator ListingRuntimeHealthValidator
 	RawJSONDataClient             product.RawJsonDataClient
 	StoreAPI                      listingadmin.StoreAPI
 	SchedulerRuntime              runner.SchedulerRuntimeProvider
@@ -46,6 +46,13 @@ type SharedResources struct {
 	ImportTaskRepository          consumer.ListingRuntimeImportTaskRepository
 	AmazonCrawler                 ports.CrawlSource
 	RabbitMQClient                *rabbitmq.Client
+}
+
+func (r *SharedResources) ListingRuntimeHealthValidator() ListingRuntimeHealthValidator {
+	if r == nil {
+		return nil
+	}
+	return r.listingRuntimeHealthValidator
 }
 
 // InitializePrompts centralizes prompt registry initialization.
@@ -93,7 +100,7 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 
 	resources := &SharedResources{}
 	if localRuntime != nil {
-		resources.ListingRuntimeHealthValidator = localRuntime
+		resources.listingRuntimeHealthValidator = localRuntime
 		resources.RawJSONDataClient = localruntime.NewRawJsonDataAdapter(localProvider)
 		resources.StoreAPI = localRuntime.GetStoreAPI()
 		resources.SchedulerRuntime = localRuntime

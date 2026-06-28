@@ -43,7 +43,7 @@ func BuildDependencies() dependencies {
 				listingRuntimeHealthValidator = nil
 				return
 			}
-			listingRuntimeHealthValidator = resources.ListingRuntimeHealthValidator
+			listingRuntimeHealthValidator = resources.ListingRuntimeHealthValidator()
 		}),
 		listingRuntimeHealthValidator: func() bootstrapresources.ListingRuntimeHealthValidator {
 			return listingRuntimeHealthValidator

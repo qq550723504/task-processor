@@ -34,7 +34,9 @@ func TestSharedResourcesUsesNamedListingRuntimeHealthValidatorPort(t *testing.T)
 
 	require.NotContains(t, string(content), "ListingRuntimeHealthValidator interface {\n\t\tValidateLocalListingRuntimeFields()")
 	require.Contains(t, string(content), "type ListingRuntimeHealthValidator interface {")
-	require.Contains(t, string(content), "ListingRuntimeHealthValidator ListingRuntimeHealthValidator")
+	require.NotContains(t, string(content), "ListingRuntimeHealthValidator ListingRuntimeHealthValidator")
+	require.Contains(t, string(content), "listingRuntimeHealthValidator ListingRuntimeHealthValidator")
+	require.Contains(t, string(content), "func (r *SharedResources) ListingRuntimeHealthValidator() ListingRuntimeHealthValidator")
 }
 
 func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T) {
@@ -52,5 +54,5 @@ func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T)
 	require.NotNil(t, resources)
 	require.Nil(t, resources.AuthClient)
 	require.Nil(t, resources.ProcessorRuntime)
-	require.Nil(t, resources.ListingRuntimeHealthValidator)
+	require.Nil(t, resources.ListingRuntimeHealthValidator())
 }
