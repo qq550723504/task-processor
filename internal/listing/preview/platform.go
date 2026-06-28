@@ -1,27 +1,27 @@
 package preview
 
-import "task-processor/internal/listing/platformsection"
+import listingplatform "task-processor/internal/listing/platform"
 
 func SupportedPlatforms() []string {
-	return platformsection.SupportedPlatforms()
+	return listingplatform.SupportedPlatforms()
 }
 
 func NormalizePlatform(platform string) string {
-	return platformsection.Normalize(platform)
+	return listingplatform.Normalize(platform)
 }
 
 func IsSupportedPlatform(platform string) bool {
-	return platformsection.IsSupported(platform)
+	return listingplatform.IsSupported(platform)
 }
 
 func ValidateSelectedPlatform(platform string) (string, bool) {
-	return platformsection.ValidateSelectedPlatform(platform)
+	return listingplatform.ValidateSelectedPlatform(platform)
 }
 
 func ShouldBuildPlatform(selectedPlatform, platform string) bool {
-	return platformsection.ShouldBuild(selectedPlatform, platform)
+	return listingplatform.ShouldBuild(selectedPlatform, platform)
 }
 
 func IsSelectedPlatform(selectedPlatform, platform string) bool {
-	return platformsection.IsSelected(selectedPlatform, platform)
+	return listingplatform.IsSelected(selectedPlatform, platform)
 }

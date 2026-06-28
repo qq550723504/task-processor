@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"task-processor/internal/listing/platformsection"
+	listingplatform "task-processor/internal/listing/platform"
 )
 
 func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExport, error) {
@@ -13,7 +13,7 @@ func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExpo
 	}
 
 	var ok bool
-	selectedPlatform, ok = platformsection.ValidateSelectedPlatform(selectedPlatform)
+	selectedPlatform, ok = listingplatform.ValidateSelectedPlatform(selectedPlatform)
 	if !ok {
 		return nil, ErrUnsupportedPreviewPlatform
 	}

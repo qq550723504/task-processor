@@ -1,9 +1,9 @@
 package preview
 
-import "task-processor/internal/listing/platformsection"
+import listingplatform "task-processor/internal/listing/platform"
 
 func BuildPlatformSection(selectedPlatform, platform string, available bool, build func()) error {
-	return platformsection.BuildOne(platformsection.Section{
+	return listingplatform.BuildOne(listingplatform.Section{
 		SelectedPlatform: selectedPlatform,
 		Platform:         platform,
 		Available:        available,
@@ -13,7 +13,7 @@ func BuildPlatformSection(selectedPlatform, platform string, available bool, bui
 }
 
 func PlatformUnavailableError(selectedPlatform, platform string) error {
-	if platformsection.IsSelected(selectedPlatform, platform) {
+	if listingplatform.IsSelected(selectedPlatform, platform) {
 		return ErrPlatformUnavailable
 	}
 	return nil

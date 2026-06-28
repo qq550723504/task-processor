@@ -1,9 +1,9 @@
 package listingkit
 
-import "task-processor/internal/listing/platformsection"
+import listingplatform "task-processor/internal/listing/platform"
 
 func applyPreviewPlatformSection(selectedPlatform, platform string, available bool, build func()) error {
-	return platformsection.BuildOne(platformsection.Section{
+	return listingplatform.BuildOne(listingplatform.Section{
 		SelectedPlatform: selectedPlatform,
 		Platform:         platform,
 		Available:        available,
@@ -13,7 +13,7 @@ func applyPreviewPlatformSection(selectedPlatform, platform string, available bo
 }
 
 func applyReviewablePreviewPlatformSection(selectedPlatform, platform string, available bool, preview *ListingKitPreview, build func() bool) error {
-	return platformsection.BuildOne(platformsection.Section{
+	return listingplatform.BuildOne(listingplatform.Section{
 		SelectedPlatform: selectedPlatform,
 		Platform:         platform,
 		Available:        available,

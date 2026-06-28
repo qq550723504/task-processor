@@ -21,7 +21,7 @@ The project-wide plan calls preview aggregation the best next bounded extraction
 That extraction has already started, but the codebase is now in a mixed state:
 
 - `internal/listing/preview` owns preview shell/status concepts and compatibility wrappers.
-- `internal/listing/platformsection` owns reusable platform-section selection and dispatch.
+- `internal/listing/platform` owns reusable platform selection and section dispatch.
 - `internal/listingkit` still owns task/result projection and platform payload composition.
 
 Without a written boundary, it is easy to keep adding more preview behavior to root `listingkit` and lose the benefit of the new `internal/listing/preview` package.
@@ -56,7 +56,7 @@ Current guardrail:
 - `TestListingPreviewPackageStaysPlatformNeutral` prevents `internal/listing/preview` from importing the ListingKit facade or marketplace-specific Amazon, SHEIN, TEMU, publishing, or workspace implementation packages.
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade` keeps new domain-side preview logic from reintroducing root `internal/listingkit` facade dependencies as the default home for extraction work.
 
-## `internal/listing/platformsection`
+## `internal/listing/platform`
 
 This package owns platform-neutral section selection and builder dispatch that
 can be reused by preview/export adapters without naming that shared framework
@@ -75,7 +75,7 @@ Current responsibilities:
 
 Representative files:
 
-- `internal/listing/platformsection/sections.go`
+- `internal/listing/platform/sections.go`
 
 ## `internal/listingkit`
 
@@ -129,7 +129,7 @@ attachment application.
 
 The following pattern is already emerging:
 
-- platform-neutral selection, validation, and section dispatch in `internal/listing/platformsection`
+- platform-neutral selection, validation, and section dispatch in `internal/listing/platform`
 - preview shell/status and compatibility wrappers in `internal/listing/preview`
 - marketplace-specific preview payload assembly in `internal/listingkit`
 
@@ -151,7 +151,7 @@ Use these rules for the next preview-related refactors.
 - independent of `listingkit.Task` and `listingkit.TaskResult`
 - about preview shell, status, or compatibility wrappers
 
-### Move to `internal/listing/platformsection` when the code is:
+### Move to `internal/listing/platform` when the code is:
 
 - platform-neutral
 - independent of `listingkit.Task` and `listingkit.TaskResult`

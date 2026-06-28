@@ -2340,8 +2340,8 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 		"type previewPlatformBuilder interface {",
 		"func previewPlatformBuilders() []previewPlatformBuilder {",
 		"func buildPreviewPlatformSections(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {",
-		"return platformsection.BuildAll(",
-		"platformsection.Builder{",
+		"return listingplatform.BuildAll(",
+		"listingplatform.Builder{",
 	} {
 		if !strings.Contains(platformsContent, needle) {
 			t.Fatalf("preview_builder_platforms.go should contain %q", needle)
@@ -2369,8 +2369,8 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 	}
 	applyContent := string(applySrc)
 	for _, needle := range []string{
-		"platformsection.BuildOne(",
-		"platformsection.Section{",
+		"listingplatform.BuildOne(",
+		"listingplatform.Section{",
 	} {
 		if !strings.Contains(applyContent, needle) {
 			t.Fatalf("preview_platform_apply.go should contain %q", needle)
@@ -2398,8 +2398,8 @@ func TestExportPlatformBuilderRegistryUsesNeutralPlatformSectionDispatcher(t *te
 		"type exportPlatformBuilder interface {",
 		"func exportPlatformBuilders() []exportPlatformBuilder {",
 		"func buildExportPlatformSections(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {",
-		"return platformsection.BuildAll(",
-		"platformsection.Builder{",
+		"return listingplatform.BuildAll(",
+		"listingplatform.Builder{",
 	} {
 		if !strings.Contains(platformsContent, needle) {
 			t.Fatalf("export_builder_platforms.go should contain %q", needle)
@@ -2421,8 +2421,8 @@ func TestExportPlatformBuilderRegistryUsesNeutralPlatformSectionDispatcher(t *te
 	}
 	applyContent := string(applySrc)
 	for _, needle := range []string{
-		"platformsection.BuildOne(",
-		"platformsection.Section{",
+		"listingplatform.BuildOne(",
+		"listingplatform.Section{",
 	} {
 		if !strings.Contains(applyContent, needle) {
 			t.Fatalf("export_platform_apply.go should contain %q", needle)
@@ -2458,7 +2458,7 @@ func TestPreviewPlatformSelectionLivesOutsidePreviewBuilderRoot(t *testing.T) {
 	}
 
 	if _, err := os.ReadFile("preview_platform_selection.go"); err == nil {
-		t.Fatal("preview_platform_selection.go should be removed after direct platformsection selection usage")
+		t.Fatal("preview_platform_selection.go should be removed after direct listing platform selection usage")
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("ReadFile(preview_platform_selection.go) unexpected error = %v", err)
 	}
@@ -2467,9 +2467,9 @@ func TestPreviewPlatformSelectionLivesOutsidePreviewBuilderRoot(t *testing.T) {
 		file string
 		call string
 	}{
-		{file: "preview_builder_stages.go", call: "platformsection.ValidateSelectedPlatform(selectedPlatform)"},
-		{file: "export_builder.go", call: "platformsection.ValidateSelectedPlatform(selectedPlatform)"},
-		{file: "revision_apply.go", call: "platformsection.ValidateSelectedPlatform(req.Platform)"},
+		{file: "preview_builder_stages.go", call: "listingplatform.ValidateSelectedPlatform(selectedPlatform)"},
+		{file: "export_builder.go", call: "listingplatform.ValidateSelectedPlatform(selectedPlatform)"},
+		{file: "revision_apply.go", call: "listingplatform.ValidateSelectedPlatform(req.Platform)"},
 	}
 	for _, tc := range cases {
 		src, err := os.ReadFile(tc.file)

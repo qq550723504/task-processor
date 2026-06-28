@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"task-processor/internal/listing/platformsection"
+	listingplatform "task-processor/internal/listing/platform"
 )
 
 func applyListingKitRevision(result *ListingKitResult, req *ApplyRevisionRequest) error {
@@ -18,7 +18,7 @@ func applyListingKitRevision(result *ListingKitResult, req *ApplyRevisionRequest
 		return err
 	}
 
-	platform, ok := platformsection.ValidateSelectedPlatform(req.Platform)
+	platform, ok := listingplatform.ValidateSelectedPlatform(req.Platform)
 	if !ok {
 		return ErrUnsupportedPreviewPlatform
 	}

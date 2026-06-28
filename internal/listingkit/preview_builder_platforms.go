@@ -1,6 +1,6 @@
 package listingkit
 
-import "task-processor/internal/listing/platformsection"
+import listingplatform "task-processor/internal/listing/platform"
 
 type previewPlatformBuilder interface {
 	platform() string
@@ -31,15 +31,15 @@ func previewPlatformBuilders() []previewPlatformBuilder {
 
 func buildPreviewPlatformSections(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {
 	builders := previewPlatformBuilders()
-	sectionBuilders := make([]platformsection.Builder, 0, len(builders))
+	sectionBuilders := make([]listingplatform.Builder, 0, len(builders))
 	for _, builder := range builders {
 		builder := builder
-		sectionBuilders = append(sectionBuilders, platformsection.Builder{
+		sectionBuilders = append(sectionBuilders, listingplatform.Builder{
 			Platform: builder.platform(),
 			Build: func() error {
 				return builder.build(result, preview, selectedPlatform)
 			},
 		})
 	}
-	return platformsection.BuildAll(sectionBuilders)
+	return listingplatform.BuildAll(sectionBuilders)
 }
