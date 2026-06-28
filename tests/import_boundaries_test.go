@@ -1326,6 +1326,24 @@ func TestPlatformProcessorRegistryDoesNotAssemblePlatformRuntimeHelpers(t *testi
 	}
 }
 
+func TestPlatformProcessorRegistryDoesNotStoreConfigOrBuildRegistrars(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		`"task-processor/internal/core/config"`,
+		"config *config.Config",
+		"cfg *config.Config",
+		"NewPlatformModuleRegistrar(",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; inject registrar construction through dependencies instead of storing config on the processor registry", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),

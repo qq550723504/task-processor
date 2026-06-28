@@ -16,7 +16,7 @@ func TestRegisterPlatformsSkipsDisabledPlatform(t *testing.T) {
 	logger := logrus.New()
 	cfg := &config.Config{}
 	deps := NewPlatformProcessorRegistryDependencies(cfg, "temu", []PlatformModule{stubPlatformModule{name: "amazon"}})
-	registry := NewPlatformProcessorRegistry(cfg, logger, deps)
+	registry := NewPlatformProcessorRegistry(logger, deps)
 
 	serviceManager := newRegistryTestServiceManager(logger)
 
@@ -34,7 +34,7 @@ func TestRegisterPlatformsRegistersEnabledPlatform(t *testing.T) {
 	cfg.Amazon.Enabled = true
 
 	deps := NewPlatformProcessorRegistryDependencies(cfg, "amazon", []PlatformModule{stubPlatformModule{name: "amazon"}})
-	registry := NewPlatformProcessorRegistry(cfg, logger, deps)
+	registry := NewPlatformProcessorRegistry(logger, deps)
 
 	serviceManager := newRegistryTestServiceManager(logger)
 
@@ -60,7 +60,7 @@ func TestSharedResourceNeedsIncludesAmazonCrawlerForLocalFetcher(t *testing.T) {
 	cfg.Platforms.Shein.FetchMode = "local"
 
 	deps := NewPlatformProcessorRegistryDependencies(cfg, "shein", []PlatformModule{stubPlatformModule{name: "shein"}})
-	registry := NewPlatformProcessorRegistry(cfg, logger, deps)
+	registry := NewPlatformProcessorRegistry(logger, deps)
 
 	needs, err := registry.SharedResourceNeeds("shein")
 	if err != nil {

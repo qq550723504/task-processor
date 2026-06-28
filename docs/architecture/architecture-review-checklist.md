@@ -185,6 +185,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestPlatformProcessorRegistryDoesNotComputePlatformResourceNeeds`
 - `TestPlatformProcessorRegistryDoesNotImplementPlatformModuleRegistration`
 - `TestPlatformProcessorRegistryDoesNotAssemblePlatformRuntimeHelpers`
+- `TestPlatformProcessorRegistryDoesNotStoreConfigOrBuildRegistrars`
 - `TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider`
 - `TestPlatformProcessorRegistryDoesNotExposeListingRuntimeHealthValidator`
 - `TestAppConsumerTaskStatusRuntimeProviderIsNotNamedRetiredManagementService`

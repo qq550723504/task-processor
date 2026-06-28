@@ -1,11 +1,18 @@
 package consumer
 
-import "task-processor/internal/core/config"
+import (
+	"task-processor/internal/core/config"
+
+	"github.com/sirupsen/logrus"
+)
+
+type PlatformModuleRegistrarFactory func(logger *logrus.Logger, serviceManager *ServiceManager, resources *SharedResources) PlatformModuleRegistrar
 
 type PlatformProcessorRegistryDependencies struct {
 	PlatformModules []PlatformModule
 	Catalog         PlatformModuleCatalog
 	ResourceNeeds   PlatformResourceNeedsResolver
+	NewRegistrar    PlatformModuleRegistrarFactory
 }
 
 func NewPlatformProcessorRegistryDependencies(cfg *config.Config, platformsStr string, modules []PlatformModule) PlatformProcessorRegistryDependencies {
@@ -14,6 +21,9 @@ func NewPlatformProcessorRegistryDependencies(cfg *config.Config, platformsStr s
 		PlatformModules: modules,
 		Catalog:         catalog,
 		ResourceNeeds:   NewPlatformResourceNeedsResolver(cfg, catalog),
+		NewRegistrar: func(logger *logrus.Logger, serviceManager *ServiceManager, resources *SharedResources) PlatformModuleRegistrar {
+			return NewPlatformModuleRegistrar(cfg, logger, serviceManager, resources)
+		},
 	}
 }
 

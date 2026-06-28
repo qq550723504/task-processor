@@ -4,26 +4,24 @@ import (
 	"context"
 	"fmt"
 
-	"task-processor/internal/core/config"
-
 	"github.com/sirupsen/logrus"
 )
 
 type PlatformProcessorRegistry struct {
-	config        *config.Config
-	logger        *logrus.Logger
-	catalog       PlatformModuleCatalog
-	resourceNeeds PlatformResourceNeedsResolver
+	logger       *logrus.Logger
+	catalog      PlatformModuleCatalog
+	resourceNeed PlatformResourceNeedsResolver
+	newRegistrar PlatformModuleRegistrarFactory
 }
 
-func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
+func NewPlatformProcessorRegistry(logger *logrus.Logger, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
 	logger.Infof("enabled platforms: %v", deps.Catalog.EnabledPlatformNames())
 
 	return &PlatformProcessorRegistry{
-		config:        cfg,
-		logger:        logger,
-		catalog:       deps.Catalog,
-		resourceNeeds: deps.ResourceNeeds,
+		logger:       logger,
+		catalog:      deps.Catalog,
+		resourceNeed: deps.ResourceNeeds,
+		newRegistrar: deps.NewRegistrar,
 	}
 }
 
@@ -49,7 +47,7 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 	}
 	r.logger.Info("shared resources initialized")
 
-	registrar := NewPlatformModuleRegistrar(r.config, r.logger, serviceManager, resources)
+	registrar := r.newRegistrar(r.logger, serviceManager, resources)
 	for _, module := range modules {
 		if err := registrar.Register(ctx, module); err != nil {
 			return err
@@ -61,5 +59,5 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 }
 
 func (r *PlatformProcessorRegistry) SharedResourceNeeds(platforms ...string) (SharedResourceNeeds, error) {
-	return r.resourceNeeds.Resolve(platforms...)
+	return r.resourceNeed.Resolve(platforms...)
 }
