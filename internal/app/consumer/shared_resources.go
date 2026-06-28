@@ -3,6 +3,7 @@ package consumer
 import (
 	"context"
 
+	"task-processor/internal/app/ports"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
@@ -74,7 +75,7 @@ type SharedResources struct {
 	SchedulerRuntime                   runner.SchedulerRuntimeProvider
 	SchedulerFactoryRuntime            SchedulerFactoryRuntime
 	ProcessorRuntime                   ProcessorRuntime
-	CrawlSource                        runner.CrawlSource
+	CrawlSource                        ports.CrawlSource
 	ProductFetcher                     appfetcher.ProductFetcher
 }
 
@@ -85,7 +86,7 @@ type SharedResourceNeeds struct {
 type SchedulerDependenciesBuilder func(
 	schedulerRuntime SchedulerFactoryRuntime,
 	cfg *config.Config,
-	crawlSource runner.CrawlSource,
+	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) runner.SchedulerDependencies
 
@@ -97,7 +98,7 @@ type PlatformRuntimeContext struct {
 	SchedulerRuntime                   runner.SchedulerRuntimeProvider
 	SchedulerFactoryRuntime            SchedulerFactoryRuntime
 	ProcessorRuntime                   ProcessorRuntime
-	CrawlSource                        runner.CrawlSource
+	CrawlSource                        ports.CrawlSource
 	ProductFetcher                     appfetcher.ProductFetcher
 	RabbitMQClient                     *rabbitmq.Client
 	ServiceManager                     *ServiceManager

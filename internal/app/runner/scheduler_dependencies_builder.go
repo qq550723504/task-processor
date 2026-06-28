@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"task-processor/internal/app/ports"
 	"task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
@@ -12,7 +13,7 @@ import (
 func buildSchedulerDependencies(
 	schedulerRuntime schedulerFactoryRuntimeProvider,
 	cfg *config.Config,
-	crawlSource crawlSource,
+	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) SchedulerDependencies {
 	_ = cfg

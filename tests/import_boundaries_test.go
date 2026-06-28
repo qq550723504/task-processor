@@ -1568,6 +1568,22 @@ func TestProductSourceCompatibilityAliasStaysRetired(t *testing.T) {
 	}
 }
 
+func TestRunnerCrawlSourceCompatibilityAliasStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "runner", "processor_service.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type crawlSource = ports.CrawlSource",
+		"type CrawlSource = ports.CrawlSource",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; use app/ports.CrawlSource directly instead of re-exporting crawl-source types from runner", path, phrase)
+		}
+	}
+}
+
 func TestPlatformRuntimeContextDoesNotExposeRawJSONDataClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "shared_resources.go")
 	content, err := os.ReadFile(path)

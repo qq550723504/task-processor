@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
 	"task-processor/internal/core/lifecycle"
@@ -37,7 +38,7 @@ type processorServiceImpl struct {
 	processorRuntime        processorRuntimeProvider
 	schedulerRuntime        SchedulerRuntimeProvider
 	schedulerFactoryRuntime schedulerFactoryRuntimeProvider
-	crawlSource             crawlSource
+	crawlSource             ports.CrawlSource
 	rabbitmqClient          *rabbitmq.Client
 	temuProcessorCreator    TemuProcessorCreator
 	sheinProcessorCreator   SheinProcessorCreator

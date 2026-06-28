@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"task-processor/internal/app/consumer"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/auth"
@@ -41,7 +42,7 @@ type SharedResources struct {
 	SchedulerFactoryRuntime consumer.SchedulerFactoryRuntime
 	ProcessorRuntime        consumer.ProcessorRuntime
 	ImportTaskRepository    consumer.ListingRuntimeImportTaskRepository
-	AmazonCrawler           runner.CrawlSource
+	AmazonCrawler           ports.CrawlSource
 	RabbitMQClient          *rabbitmq.Client
 }
 
@@ -119,7 +120,7 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 }
 
 // BuildAmazonCrawler constructs the concrete Amazon crawler at the bootstrap edge.
-func BuildAmazonCrawler(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource {
+func BuildAmazonCrawler(cfg *config.Config, logger *logrus.Logger) ports.CrawlSource {
 	return crawleramazon.NewLegacyCrawlSource(cfg, logger)
 }
 

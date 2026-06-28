@@ -8,6 +8,7 @@ import (
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	bootstrapschedulers "task-processor/internal/app/bootstrap/schedulers"
 	"task-processor/internal/app/consumer"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
@@ -26,7 +27,7 @@ type appServices struct {
 	authClient        *auth.ClientCredentialsAuthClient
 	rawJSONDataClient product.RawJsonDataClient
 	processorRuntime  consumer.ProcessorRuntime
-	amazonCrawler     runner.CrawlSource
+	amazonCrawler     ports.CrawlSource
 	rabbitmqClient    *rabbitmq.Client
 	temuProcessor     *temu.TemuProcessor
 	sheinProcessor    *pipeline.SheinProcessor

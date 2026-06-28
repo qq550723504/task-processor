@@ -2,6 +2,7 @@ package schedulers
 
 import (
 	"task-processor/internal/app/consumer"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/app/runner"
 	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
@@ -20,7 +21,7 @@ type schedulerModule struct {
 func BuildDependencies(
 	schedulerRuntime consumer.SchedulerFactoryRuntime,
 	cfg *config.Config,
-	crawlSource runner.CrawlSource,
+	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) runner.SchedulerDependencies {
 	boundFetcherBuilder := platformbase.BindProductFetcherBuilder(platformbase.NewDefaultProductFetcherBuilder(), crawlSource)

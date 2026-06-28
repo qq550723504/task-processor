@@ -231,19 +231,19 @@ Implemented thirteenth step:
 
 Implemented fourteenth step:
 
-- `internal/app/consumer` shared runtime state now exposes crawl capability through `runner.CrawlSource` instead of concrete `*crawler/amazon.AmazonProcessor`;
+- `internal/app/consumer` shared runtime state now exposes crawl capability through `app/ports.CrawlSource` instead of concrete `*crawler/amazon.AmazonProcessor`;
 - consumer and bootstrap product-fetcher builders now accept the neutral crawl-source interface already used by the fetcher factory;
 - concrete Amazon processor creation remains at the bootstrap/creator edge while platform modules and runtime context depend on crawl capability.
 
 Implemented fifteenth step:
 
-- `internal/app/bootstrap/resources.SharedResources` now exposes the shared crawler dependency as `runner.CrawlSource`;
+- `internal/app/bootstrap/resources.SharedResources` now exposes the shared crawler dependency as `app/ports.CrawlSource`;
 - `internal/app/bootstrap` app service wiring no longer imports the legacy Amazon crawler package directly;
 - concrete Amazon processor construction remains inside the shared-resource factory, keeping old crawler runtime creation at a single bootstrap edge.
 
 Implemented sixteenth step:
 
-- `internal/app/consumer.AmazonCrawlerCreator` now returns `runner.CrawlSource` instead of concrete `*crawler/amazon.AmazonProcessor`;
+- consumer crawler wiring now returns `app/ports.CrawlSource` instead of concrete `*crawler/amazon.AmazonProcessor`;
 - bootstrap still constructs the concrete Amazon processor, but consumer registry contracts now depend only on crawl capability;
 - the unused `GetSharedAmazonProcessor` compatibility escape hatch was removed, leaving `GetSharedCrawlSource` as the shared crawler accessor.
 

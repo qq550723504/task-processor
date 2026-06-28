@@ -3,7 +3,7 @@ package fetchers
 import (
 	"fmt"
 
-	"task-processor/internal/app/runner"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/rabbitmq"
@@ -15,7 +15,7 @@ func BuildPlatformProductFetcher(
 	cfg *config.Config,
 	platform string,
 	rawJsonDataClient product.RawJsonDataClient,
-	crawlSource runner.CrawlSource,
+	crawlSource ports.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (appfetcher.ProductFetcher, error) {
 	if rawJsonDataClient == nil {

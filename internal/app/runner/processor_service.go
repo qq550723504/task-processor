@@ -19,8 +19,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type crawlSource = ports.CrawlSource
-type CrawlSource = ports.CrawlSource
 type rawJSONDataClientProvider = product.RawJsonDataClient
 
 type processorRuntimeProvider interface {
