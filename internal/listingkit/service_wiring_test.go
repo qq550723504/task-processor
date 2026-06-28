@@ -2486,6 +2486,37 @@ func TestPreviewPlatformSelectionLivesOutsidePreviewBuilderRoot(t *testing.T) {
 	}
 }
 
+func TestPreviewPlatformErrorsUseNeutralPlatformPackage(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("preview_errors.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_errors.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		`listingplatform "task-processor/internal/listing/platform"`,
+		"ErrUnsupportedPreviewPlatform = listingplatform.ErrUnsupportedPlatform",
+		"ErrPreviewPlatformUnavailable = listingplatform.ErrPlatformUnavailable",
+		"ErrTaskResultUnavailable = previewdomain.ErrResultUnavailable",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("preview_errors.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		"ErrUnsupportedPreviewPlatform = previewdomain.ErrUnsupportedPlatform",
+		"ErrPreviewPlatformUnavailable = previewdomain.ErrPlatformUnavailable",
+		"ErrTaskResultUnavailable = listingplatform.",
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("preview_errors.go should not contain %q after platform error extraction", needle)
+		}
+	}
+}
+
 func TestSheinResolutionCachePreviewHelpersLiveOutsideMainSheinPreviewBuilder(t *testing.T) {
 	t.Parallel()
 

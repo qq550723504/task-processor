@@ -68,6 +68,7 @@ Current responsibilities:
 - supported listing platform registry
 - selected-platform validation
 - selected-platform matching
+- platform error sentinels
 - single section availability checks
 - ordered platform-section builder execution
 - nil builder skipping
@@ -75,6 +76,7 @@ Current responsibilities:
 
 Representative files:
 
+- `internal/listing/platform/errors.go`
 - `internal/listing/platform/sections.go`
 
 ## `internal/listingkit`

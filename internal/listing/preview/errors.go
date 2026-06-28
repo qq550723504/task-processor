@@ -1,7 +1,11 @@
 package preview
 
-import "errors"
+import (
+	"errors"
 
-var ErrUnsupportedPlatform = errors.New("unsupported preview platform")
-var ErrPlatformUnavailable = errors.New("preview platform unavailable")
+	listingplatform "task-processor/internal/listing/platform"
+)
+
+var ErrUnsupportedPlatform = listingplatform.ErrUnsupportedPlatform
+var ErrPlatformUnavailable = listingplatform.ErrPlatformUnavailable
 var ErrResultUnavailable = errors.New("task result unavailable")
