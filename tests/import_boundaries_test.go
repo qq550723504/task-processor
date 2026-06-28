@@ -1308,6 +1308,24 @@ func TestPlatformProcessorRegistryDoesNotImplementPlatformModuleRegistration(t *
 	}
 }
 
+func TestPlatformProcessorRegistryDoesNotAssemblePlatformRuntimeHelpers(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"NewPlatformModuleCatalog(",
+		"NewPlatformResourceNeedsResolver(",
+		"deps.PlatformModules",
+		"platformsStr string",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; assemble platform runtime helpers in dependencies/bootstrap instead of the processor registry constructor", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),

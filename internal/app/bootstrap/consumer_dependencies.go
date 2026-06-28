@@ -32,6 +32,10 @@ func (d ListingRuntimeDependencies) SharedResources() *SharedResources {
 	return d.sharedResources()
 }
 
+func (d ListingRuntimeDependencies) ConsumerDependencies(cfg *config.Config, platformsStr string) consumer.PlatformProcessorRegistryDependencies {
+	return consumer.NewPlatformProcessorRegistryDependencies(cfg, platformsStr, d.Consumer.PlatformModules)
+}
+
 func BuildListingRuntimeDependencies() ListingRuntimeDependencies {
 	var sharedResources *SharedResources
 	return ListingRuntimeDependencies{
@@ -45,8 +49,8 @@ func BuildListingRuntimeDependencies() ListingRuntimeDependencies {
 	}
 }
 
-func BuildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies {
-	return buildConsumerDependencies()
+func BuildConsumerDependencies(cfg *config.Config, platformsStr string) consumer.PlatformProcessorRegistryDependencies {
+	return consumer.NewPlatformProcessorRegistryDependencies(cfg, platformsStr, platforms.All())
 }
 
 func buildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies {

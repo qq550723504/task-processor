@@ -16,17 +16,14 @@ type PlatformProcessorRegistry struct {
 	resourceNeeds PlatformResourceNeedsResolver
 }
 
-func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr string, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
-	catalog := NewPlatformModuleCatalog(cfg, platformsStr, deps.PlatformModules)
-	resourceNeeds := NewPlatformResourceNeedsResolver(cfg, catalog)
-
-	logger.Infof("enabled platforms: %v", catalog.EnabledPlatformNames())
+func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
+	logger.Infof("enabled platforms: %v", deps.Catalog.EnabledPlatformNames())
 
 	return &PlatformProcessorRegistry{
 		config:        cfg,
 		logger:        logger,
-		catalog:       catalog,
-		resourceNeeds: resourceNeeds,
+		catalog:       deps.Catalog,
+		resourceNeeds: deps.ResourceNeeds,
 	}
 }
 
