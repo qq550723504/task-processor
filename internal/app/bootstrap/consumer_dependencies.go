@@ -13,7 +13,7 @@ import (
 )
 
 type ListingRuntimeDependencies struct {
-	Consumer        consumer.PlatformProcessorRegistryDependencies
+	platformModules []consumer.PlatformModule
 	buildResources  func(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error)
 	sharedResources func() *SharedResources
 }
@@ -33,13 +33,13 @@ func (d ListingRuntimeDependencies) SharedResources() *SharedResources {
 }
 
 func (d ListingRuntimeDependencies) ConsumerDependencies(cfg *config.Config, platformsStr string) consumer.PlatformProcessorRegistryDependencies {
-	return consumer.NewPlatformProcessorRegistryDependencies(cfg, platformsStr, d.Consumer.PlatformModules)
+	return consumer.NewPlatformProcessorRegistryDependencies(cfg, platformsStr, d.platformModules)
 }
 
 func BuildListingRuntimeDependencies() ListingRuntimeDependencies {
 	var sharedResources *SharedResources
 	return ListingRuntimeDependencies{
-		Consumer: buildConsumerDependencies(),
+		platformModules: platforms.All(),
 		buildResources: buildConsumerSharedResourcesFunc(func(resources *SharedResources) {
 			sharedResources = resources
 		}),
@@ -51,12 +51,6 @@ func BuildListingRuntimeDependencies() ListingRuntimeDependencies {
 
 func BuildConsumerDependencies(cfg *config.Config, platformsStr string) consumer.PlatformProcessorRegistryDependencies {
 	return consumer.NewPlatformProcessorRegistryDependencies(cfg, platformsStr, platforms.All())
-}
-
-func buildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies {
-	return consumer.PlatformProcessorRegistryDependencies{
-		PlatformModules: platforms.All(),
-	}
 }
 
 func buildConsumerSharedResourcesFunc(onSharedResources func(*SharedResources)) func(*config.Config, *logrus.Logger, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {

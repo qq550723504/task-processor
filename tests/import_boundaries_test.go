@@ -1344,6 +1344,24 @@ func TestPlatformProcessorRegistryDoesNotStoreConfigOrBuildRegistrars(t *testing
 	}
 }
 
+func TestListingRuntimeDependenciesDoesNotExposePartialConsumerDependencies(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "bootstrap", "consumer_dependencies.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"Consumer        consumer.PlatformProcessorRegistryDependencies",
+		"d.Consumer.PlatformModules",
+		"Consumer: buildConsumerDependencies()",
+		"func buildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; expose only complete consumer dependencies built with config and platform selection", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),
