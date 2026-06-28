@@ -1121,6 +1121,50 @@ func TestPlatformProcessorRegistryDoesNotStoreRetiredManagementService(t *testin
 	}
 }
 
+func TestPlatformProcessorRegistryDoesNotFanOutSharedResources(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	bannedFields := map[string]struct{}{
+		"listingRuntimeImportTaskRepository": {},
+		"rawJSONDataClient":                  {},
+		"storeAPI":                           {},
+		"schedulerRuntime":                   {},
+		"schedulerFactoryRuntime":            {},
+		"processorRuntime":                   {},
+		"sharedCrawlSource":                  {},
+		"sharedProductFetcher":               {},
+	}
+
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || typeSpec.Name == nil || typeSpec.Name.Name != "PlatformProcessorRegistry" {
+				continue
+			}
+			st, ok := typeSpec.Type.(*ast.StructType)
+			if !ok || st.Fields == nil {
+				continue
+			}
+			for _, field := range st.Fields.List {
+				for _, name := range field.Names {
+					if _, banned := bannedFields[name.Name]; banned {
+						t.Fatalf("%s stores PlatformProcessorRegistry.%s; keep initialized runtime resources bundled as SharedResources", path, name.Name)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotExposeListingRuntimeHealthValidator(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	fset := token.NewFileSet()
