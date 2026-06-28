@@ -210,6 +210,31 @@ func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 	}
 }
 
+func TestCurrentDocsDoNotReferenceRetiredFrameworkEntrypoints(t *testing.T) {
+	checks := map[string][]string{
+		filepath.Join("..", "docs", "CODE_WIKI.md"): {
+			"task/                    # 已废弃的 legacy polling 入口",
+		},
+		filepath.Join("..", "docs", "architecture", "task-status-lifecycle.md"): {
+			"internal/app/task/task_source.go",
+		},
+		filepath.Join("..", "docs", "refactoring", "listingkit-refactoring-progress-2026-06-24.md"): {
+			"retry/cancel/status lookups now return explicit retired/unavailable semantics",
+		},
+	}
+	for path, banned := range checks {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range banned {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s still references retired framework entrypoint %q; keep current docs aligned with deleted runtime/task-RPC compatibility surfaces", path, phrase)
+			}
+		}
+	}
+}
+
 func TestHTTPAPIAssemblyBoundaryDocumentTracksGuardTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "httpapi-assembly-boundaries.md")
 	content, err := os.ReadFile(path)

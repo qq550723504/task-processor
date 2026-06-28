@@ -65,8 +65,8 @@
 
 `app/task` 中获取和分发任务的职责已经拆开：
 
-- [internal/app/task/task_source.go](D:/code/task-processor/internal/app/task/task_source.go)
-  负责从管理端获取 `pending` / `pending_retry` 任务
+- [internal/app/task/fetcher_utils.go](D:/code/task-processor/internal/app/task/fetcher_utils.go)
+  负责通过 `pendingRuntimeTaskSource` 获取 `pending` / `pending_retry` 任务并转换为本地分发记录
 - [internal/app/task/task_claim_service.go](D:/code/task-processor/internal/app/task/task_claim_service.go)
   负责 claim 抢占任务，并将状态推进到 `processing`
 - [internal/app/task/task_dispatch_guard.go](D:/code/task-processor/internal/app/task/task_dispatch_guard.go)

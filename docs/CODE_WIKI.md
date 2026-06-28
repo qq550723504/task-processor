@@ -95,8 +95,7 @@ task-processor/
 │   ├── productenrich-api/       # 兼容入口，复用统一 HTTP API
 │   ├── shein-address-copy/      # SHEIN 地址复制工具
 │   ├── shein-listing/           # SHEIN 上架独立入口
-│   ├── temu-listing/            # TEMU 上架独立入口
-│   └── task/                    # 已废弃的 legacy polling 入口
+│   └── temu-listing/            # TEMU 上架独立入口
 ├── internal/                    # 私有业务逻辑
 │   ├── amazon/                  # Amazon 平台（SP-API 集成）
 │   │   ├── api/                 # SP-API 客户端

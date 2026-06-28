@@ -824,7 +824,7 @@ Status: bootstrap shared resources no longer construct or carry `ClientManager`.
 ### 2026-06-27 Management Client retirement follow-up: legacy HTTP/login/taskRPC/processor shutdown
 
 - Removed the HTTP runtime `runtimeDeps.managementClient()` hook; HTTP task-RPC assembly now uses local runtime status only.
-- Removed `taskrpcapi`'s `ClientProvider` / `GetTaskRPCClient` dependency on Management Client. Task RPC health reports the local runtime source, and retry/cancel/status lookups now return explicit retired/unavailable semantics instead of reaching for the old service.
+- Removed `taskrpcapi`'s `ClientProvider` / `GetTaskRPCClient` dependency on Management Client. Task RPC health reports the local runtime source, status lookup no longer reaches for the old service, and the retired retry/cancel action routes have been removed.
 - Removed `ManagementClient` from SHEIN login bootstrap input. Login bootstrap and `sheinloginmanaged` now consume the `listingadmin.StoreAPI` port directly for store sync and duplicate-store lookup.
 - Removed legacy `sheinloginmanaged` constructors that accepted `*management.ClientManager`; only store-port and factory-port constructors remain.
 - Removed `BaseProcessor`'s direct `management.ClientManager` import, field, config field, self-construction path, and task-status adapter construction. The base processor now only holds explicitly injected `StoreAPI`, `TaskStatusRuntime`, and `DailyCountClientProvider` ports.
