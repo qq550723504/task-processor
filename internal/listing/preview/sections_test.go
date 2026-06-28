@@ -1,9 +1,6 @@
 package preview
 
-import (
-	"errors"
-	"testing"
-)
+import "testing"
 
 func TestBuildPlatformSection(t *testing.T) {
 	t.Parallel()
@@ -46,67 +43,6 @@ func TestBuildPlatformSection(t *testing.T) {
 			t.Fatal("expected build func to be called")
 		}
 	})
-}
-
-func TestBuildPlatformSectionsRunsBuildersInOrderAndStopsOnError(t *testing.T) {
-	t.Parallel()
-
-	var calls []string
-	errBoom := errors.New("boom")
-
-	err := BuildPlatformSections([]PlatformSectionBuilder{
-		{
-			Platform: "amazon",
-			Build: func() error {
-				calls = append(calls, "amazon")
-				return nil
-			},
-		},
-		{
-			Platform: "shein",
-			Build: func() error {
-				calls = append(calls, "shein")
-				return errBoom
-			},
-		},
-		{
-			Platform: "temu",
-			Build: func() error {
-				calls = append(calls, "temu")
-				return nil
-			},
-		},
-	})
-
-	if err != errBoom {
-		t.Fatalf("error = %v, want %v", err, errBoom)
-	}
-	if want := []string{"amazon", "shein"}; !equalStrings(calls, want) {
-		t.Fatalf("calls = %+v, want %+v", calls, want)
-	}
-}
-
-func TestBuildPlatformSectionsSkipsNilBuilders(t *testing.T) {
-	t.Parallel()
-
-	var calls []string
-	err := BuildPlatformSections([]PlatformSectionBuilder{
-		{Platform: "amazon"},
-		{
-			Platform: "shein",
-			Build: func() error {
-				calls = append(calls, "shein")
-				return nil
-			},
-		},
-	})
-
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if want := []string{"shein"}; !equalStrings(calls, want) {
-		t.Fatalf("calls = %+v, want %+v", calls, want)
-	}
 }
 
 func TestPlatformUnavailableError(t *testing.T) {

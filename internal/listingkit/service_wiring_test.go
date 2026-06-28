@@ -2340,8 +2340,8 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 		"type previewPlatformBuilder interface {",
 		"func previewPlatformBuilders() []previewPlatformBuilder {",
 		"func buildPreviewPlatformSections(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {",
-		"return previewdomain.BuildPlatformSections(",
-		"previewdomain.PlatformSectionBuilder{",
+		"return platformsection.BuildAll(",
+		"platformsection.Builder{",
 	} {
 		if !strings.Contains(platformsContent, needle) {
 			t.Fatalf("preview_builder_platforms.go should contain %q", needle)
@@ -2349,9 +2349,11 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 	}
 	for _, needle := range []string{
 		"if err := builder.build(result, preview, selectedPlatform); err != nil {",
+		"previewdomain.PlatformSectionBuilder{",
+		"previewdomain.BuildPlatformSections(",
 	} {
 		if strings.Contains(platformsContent, needle) {
-			t.Fatalf("preview_builder_platforms.go should not contain %q after previewdomain platform dispatcher extraction", needle)
+			t.Fatalf("preview_builder_platforms.go should not contain %q after neutral platform-section dispatcher extraction", needle)
 		}
 	}
 
@@ -2376,7 +2378,7 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 	}
 }
 
-func TestExportPlatformBuilderRegistryUsesPreviewDomainDispatcher(t *testing.T) {
+func TestExportPlatformBuilderRegistryUsesNeutralPlatformSectionDispatcher(t *testing.T) {
 	t.Parallel()
 
 	platformsSrc, err := os.ReadFile("export_builder_platforms.go")
@@ -2388,8 +2390,8 @@ func TestExportPlatformBuilderRegistryUsesPreviewDomainDispatcher(t *testing.T) 
 		"type exportPlatformBuilder interface {",
 		"func exportPlatformBuilders() []exportPlatformBuilder {",
 		"func buildExportPlatformSections(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {",
-		"return previewdomain.BuildPlatformSections(",
-		"previewdomain.PlatformSectionBuilder{",
+		"return platformsection.BuildAll(",
+		"platformsection.Builder{",
 	} {
 		if !strings.Contains(platformsContent, needle) {
 			t.Fatalf("export_builder_platforms.go should contain %q", needle)
@@ -2397,9 +2399,11 @@ func TestExportPlatformBuilderRegistryUsesPreviewDomainDispatcher(t *testing.T) 
 	}
 	for _, needle := range []string{
 		"if err := builder.build(result, export, selectedPlatform); err != nil {",
+		"previewdomain.PlatformSectionBuilder{",
+		"previewdomain.BuildPlatformSections(",
 	} {
 		if strings.Contains(platformsContent, needle) {
-			t.Fatalf("export_builder_platforms.go should not contain %q after previewdomain platform dispatcher extraction", needle)
+			t.Fatalf("export_builder_platforms.go should not contain %q after neutral platform-section dispatcher extraction", needle)
 		}
 	}
 }
