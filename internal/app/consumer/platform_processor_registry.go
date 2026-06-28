@@ -11,20 +11,23 @@ import (
 )
 
 type PlatformProcessorRegistry struct {
-	config  *config.Config
-	logger  *logrus.Logger
-	catalog PlatformModuleCatalog
+	config        *config.Config
+	logger        *logrus.Logger
+	catalog       PlatformModuleCatalog
+	resourceNeeds PlatformResourceNeedsResolver
 }
 
 func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr string, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
 	catalog := NewPlatformModuleCatalog(cfg, platformsStr, deps.PlatformModules)
+	resourceNeeds := NewPlatformResourceNeedsResolver(cfg, catalog)
 
 	logger.Infof("enabled platforms: %v", catalog.EnabledPlatformNames())
 
 	return &PlatformProcessorRegistry{
-		config:  cfg,
-		logger:  logger,
-		catalog: catalog,
+		config:        cfg,
+		logger:        logger,
+		catalog:       catalog,
+		resourceNeeds: resourceNeeds,
 	}
 }
 
@@ -76,21 +79,5 @@ func (r *PlatformProcessorRegistry) registerPlatformModule(ctx context.Context, 
 }
 
 func (r *PlatformProcessorRegistry) SharedResourceNeeds(platforms ...string) (SharedResourceNeeds, error) {
-	modules, err := r.catalog.ResolveMany(platforms...)
-	if err != nil {
-		return SharedResourceNeeds{}, err
-	}
-	return SharedResourceNeeds{
-		NeedAmazonCrawler: r.anyModuleNeedsAmazon(modules),
-	}, nil
-}
-
-func (r *PlatformProcessorRegistry) anyModuleNeedsAmazon(modules []PlatformModule) bool {
-	for _, module := range modules {
-		name := module.Name()
-		if module.NeedsAmazon(r.config) || PlatformUsesLocalFetcher(r.config, name) {
-			return true
-		}
-	}
-	return false
+	return r.resourceNeeds.Resolve(platforms...)
 }
