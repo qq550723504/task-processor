@@ -4084,6 +4084,29 @@ func TestHTTPAPIRouteDescriptorAliasStaysRetired(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIRouteHandlerAliasesStayRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type productRouteHandler =",
+		"type imageRouteHandler =",
+		"type amazonListingRouteHandler =",
+		"type listingKitRouteHandler =",
+		"type studioSessionRouteHandler =",
+		"type taskRPCRouteHandler =",
+		"type promptTemplateRouteHandler =",
+		"type sdsCatalogRouteHandler =",
+		"type sdsLoginRouteHandler =",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s exposes %q; use owning route handler types directly in app HTTP assembly", path, phrase)
+		}
+	}
+}
+
 func TestHTTPAPIFeatureModuleResultAliasesStayRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "httpapi", "feature_module_builders.go")
 	content, err := os.ReadFile(path)

@@ -14,13 +14,20 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 
+	"task-processor/internal/amazonlisting"
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
+	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	"task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
+	sdshttpapi "task-processor/internal/sds/httpapi"
+	"task-processor/internal/sdslogin"
+	"task-processor/internal/taskrpcapi"
 )
 
 func init() {
@@ -2285,7 +2292,7 @@ func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {
 	singleSDSCatalogHandler(&stubSDSCatalogRouteHandler{}, &stubSDSCatalogRouteHandler{})
 }
 
-func buildLegacyRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []httproute.Descriptor {
+func buildLegacyRouteDescriptorsWithShein(productHandler productenrich.ProductHandler, imageHandler productimagehttpapi.RouteHandler, amazonListingHandler amazonlisting.Handler, listingKitHandler listingkithttpapi.RouteHandler, promptTemplateHandler promptmgmtapi.HTTPRouteHandler, studioSessionHandler listingkit.StudioSessionHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdslogin.HTTPRouteHandler, taskRPCHandler taskrpcapi.Handler, sdsCatalogHandlers ...sdshttpapi.HTTPRouteHandler) []httproute.Descriptor {
 	routes := buildCoreRouteDescriptors()
 	routes = productenrichhttpapi.AppendProductRouteDescriptors(routes, productHandler, imageHandler)
 	routes = amazonlistinghttpapi.AppendRouteDescriptors(routes, amazonListingHandler)
@@ -2310,7 +2317,7 @@ func mustBuildTestRouterFromHandlers(t *testing.T, handlers httpModuleHandlers) 
 	return router
 }
 
-func singleSDSCatalogHandler(sdsCatalogHandlers ...sdsCatalogRouteHandler) sdsCatalogRouteHandler {
+func singleSDSCatalogHandler(sdsCatalogHandlers ...sdshttpapi.HTTPRouteHandler) sdshttpapi.HTTPRouteHandler {
 	if len(sdsCatalogHandlers) == 0 {
 		return nil
 	}

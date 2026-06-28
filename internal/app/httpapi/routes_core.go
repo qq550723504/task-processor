@@ -7,6 +7,8 @@ import (
 
 	"task-processor/internal/httproute"
 	sdshttpapi "task-processor/internal/sds/httpapi"
+	"task-processor/internal/sdslogin"
+	"task-processor/internal/taskrpcapi"
 )
 
 func buildCoreRouteDescriptors() []httproute.Descriptor {
@@ -22,7 +24,7 @@ func buildCoreRouteDescriptors() []httproute.Descriptor {
 	}
 }
 
-func appendTaskRPCRouteDescriptors(routes []httproute.Descriptor, handler taskRPCRouteHandler) []httproute.Descriptor {
+func appendTaskRPCRouteDescriptors(routes []httproute.Descriptor, handler taskrpcapi.Handler) []httproute.Descriptor {
 	if handler == nil {
 		return routes
 	}
@@ -53,7 +55,7 @@ func appendSheinLoginRouteDescriptors(routes []httproute.Descriptor, handler she
 	)
 }
 
-func appendSDSLoginRouteDescriptors(routes []httproute.Descriptor, handler sdsLoginRouteHandler) []httproute.Descriptor {
+func appendSDSLoginRouteDescriptors(routes []httproute.Descriptor, handler sdslogin.HTTPRouteHandler) []httproute.Descriptor {
 	if handler == nil {
 		return routes
 	}
@@ -67,8 +69,8 @@ func appendSDSLoginRouteDescriptors(routes []httproute.Descriptor, handler sdsLo
 	)
 }
 
-func appendSDSCatalogRouteDescriptors(routes []httproute.Descriptor, handlers ...sdsCatalogRouteHandler) []httproute.Descriptor {
-	var handler sdsCatalogRouteHandler
+func appendSDSCatalogRouteDescriptors(routes []httproute.Descriptor, handlers ...sdshttpapi.HTTPRouteHandler) []httproute.Descriptor {
+	var handler sdshttpapi.HTTPRouteHandler
 	if len(handlers) > 0 {
 		handler = handlers[0]
 	}

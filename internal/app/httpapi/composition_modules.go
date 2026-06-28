@@ -50,41 +50,6 @@ func (c httpFeatureComposition) buildServerBundle(port int, cfg *config.Config) 
 	return server, routes, nil
 }
 
-func (c httpFeatureComposition) productHandler() productRouteHandler {
-	if c.productModule == nil {
-		return nil
-	}
-	return c.productModule.Handler
-}
-
-func (c httpFeatureComposition) imageHandler() imageRouteHandler {
-	if c.imageModule == nil {
-		return nil
-	}
-	return c.imageModule.Handler
-}
-
-func (c httpFeatureComposition) amazonListingHandler() amazonListingRouteHandler {
-	if c.amazonListingModule == nil {
-		return nil
-	}
-	return c.amazonListingModule.Handler
-}
-
-func (c httpFeatureComposition) listingKitHandler() listingKitRouteHandler {
-	if c.listingKitModule == nil {
-		return nil
-	}
-	return c.listingKitModule.Handler
-}
-
-func (c httpFeatureComposition) studioSessionHandler() studioSessionRouteHandler {
-	if c.listingKitModule == nil {
-		return nil
-	}
-	return c.listingKitModule.StudioSessionHandler
-}
-
 func (c httpFeatureComposition) promptHTTPModule() kernelmodule.Module {
 	if c.promptModule == nil {
 		return nil

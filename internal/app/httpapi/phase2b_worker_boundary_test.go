@@ -31,6 +31,9 @@ func TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods(t *testing.T) {
 		"func (c httpFeatureComposition) buildServerBundle(",
 		"func (c httpFeatureComposition) productHandler(",
 		"func (c httpFeatureComposition) imageHandler(",
+		"func (c httpFeatureComposition) amazonListingHandler(",
+		"func (c httpFeatureComposition) listingKitHandler(",
+		"func (c httpFeatureComposition) studioSessionHandler(",
 		"func (c httpFeatureComposition) taskRPCHTTPModule(",
 	} {
 		require.NotContains(t, string(typesSrc), marker)
@@ -43,11 +46,21 @@ func TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods(t *testing.T) {
 		"func (c httpFeatureComposition) routeModules(",
 		"func (c httpFeatureComposition) buildRuntimeBundle(",
 		"func (c httpFeatureComposition) buildServerBundle(",
-		"func (c httpFeatureComposition) productHandler(",
-		"func (c httpFeatureComposition) imageHandler(",
 		"func (c httpFeatureComposition) taskRPCHTTPModule(",
 	} {
 		require.Contains(t, string(compositionSrc), marker)
+	}
+
+	routeTypesSrc, err := os.ReadFile("route_handler_types.go")
+	require.NoError(t, err)
+	for _, marker := range []string{
+		"func (c httpFeatureComposition) productHandler(",
+		"func (c httpFeatureComposition) imageHandler(",
+		"func (c httpFeatureComposition) amazonListingHandler(",
+		"func (c httpFeatureComposition) listingKitHandler(",
+		"func (c httpFeatureComposition) studioSessionHandler(",
+	} {
+		require.Contains(t, string(routeTypesSrc), marker)
 	}
 }
 
@@ -62,6 +75,11 @@ func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
 		"type imageRouteHandler =",
 		"type amazonListingRouteHandler =",
 		"type listingKitRouteHandler =",
+		"type studioSessionRouteHandler =",
+		"type taskRPCRouteHandler =",
+		"type promptTemplateRouteHandler =",
+		"type sdsCatalogRouteHandler =",
+		"type sdsLoginRouteHandler =",
 		"type sheinLoginRouteHandler interface",
 	} {
 		require.NotContains(t, string(typesSrc), marker)
@@ -74,10 +92,15 @@ func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
 		"type imageRouteHandler =",
 		"type amazonListingRouteHandler =",
 		"type listingKitRouteHandler =",
-		"type sheinLoginRouteHandler interface",
+		"type studioSessionRouteHandler =",
+		"type taskRPCRouteHandler =",
+		"type promptTemplateRouteHandler =",
+		"type sdsCatalogRouteHandler =",
+		"type sdsLoginRouteHandler =",
 	} {
-		require.Contains(t, string(routeTypesSrc), marker)
+		require.NotContains(t, string(routeTypesSrc), marker)
 	}
+	require.Contains(t, string(routeTypesSrc), "type sheinLoginRouteHandler interface")
 	require.NotContains(t, string(routeTypesSrc), "type routeDescriptor =")
 }
 

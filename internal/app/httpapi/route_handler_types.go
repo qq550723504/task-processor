@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/amazonlisting"
+	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
@@ -14,16 +15,23 @@ import (
 	"task-processor/internal/taskrpcapi"
 )
 
-type productRouteHandler = productenrich.ProductHandler
-type imageRouteHandler = productimagehttpapi.RouteHandler
-type amazonListingRouteHandler = amazonlisting.Handler
-type listingKitRouteHandler = listingkithttpapi.RouteHandler
-type studioSessionRouteHandler = listingkit.StudioSessionHandler
-type taskRPCRouteHandler = taskrpcapi.Handler
-
-type promptTemplateRouteHandler = promptmgmtapi.HTTPRouteHandler
-
-type sdsCatalogRouteHandler = sdshttpapi.HTTPRouteHandler
+type httpModuleHandlers struct {
+	product          productenrich.ProductHandler
+	image            productimagehttpapi.RouteHandler
+	amazonListing    amazonlisting.Handler
+	listingKit       listingkithttpapi.RouteHandler
+	promptTemplate   promptmgmtapi.HTTPRouteHandler
+	promptModule     kernelmodule.Module
+	studioSession    listingkit.StudioSessionHandler
+	sheinLoginModule kernelmodule.Module
+	sheinLogin       sheinLoginRouteHandler
+	sdsLoginModule   kernelmodule.Module
+	sdsLogin         sdslogin.HTTPRouteHandler
+	taskRPCModule    kernelmodule.Module
+	taskRPC          taskrpcapi.Handler
+	sdsCatalog       sdshttpapi.HTTPRouteHandler
+	sdsModule        kernelmodule.Module
+}
 
 type sheinLoginRouteHandler interface {
 	Health(c *gin.Context)
@@ -38,4 +46,37 @@ type sheinLoginRouteHandler interface {
 	ClearLastFailure(c *gin.Context)
 }
 
-type sdsLoginRouteHandler = sdslogin.HTTPRouteHandler
+func (c httpFeatureComposition) productHandler() productenrich.ProductHandler {
+	if c.productModule == nil {
+		return nil
+	}
+	return c.productModule.Handler
+}
+
+func (c httpFeatureComposition) imageHandler() productimagehttpapi.RouteHandler {
+	if c.imageModule == nil {
+		return nil
+	}
+	return c.imageModule.Handler
+}
+
+func (c httpFeatureComposition) amazonListingHandler() amazonlisting.Handler {
+	if c.amazonListingModule == nil {
+		return nil
+	}
+	return c.amazonListingModule.Handler
+}
+
+func (c httpFeatureComposition) listingKitHandler() listingkithttpapi.RouteHandler {
+	if c.listingKitModule == nil {
+		return nil
+	}
+	return c.listingKitModule.Handler
+}
+
+func (c httpFeatureComposition) studioSessionHandler() listingkit.StudioSessionHandler {
+	if c.listingKitModule == nil {
+		return nil
+	}
+	return c.listingKitModule.StudioSessionHandler
+}

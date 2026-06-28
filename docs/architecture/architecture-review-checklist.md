@@ -89,6 +89,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted`
 - `TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted`
 - `TestHTTPAPIRouteDescriptorAliasStaysRetired`
+- `TestHTTPAPIRouteHandlerAliasesStayRetired`
 - `TestHTTPAPITypesDoesNotOwnRunOptions`
 - `TestHTTPAPIModulesFileDoesNotOwnFeatureBuildWrappers`
 - `TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration`

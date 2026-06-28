@@ -7,24 +7,6 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
-type httpModuleHandlers struct {
-	product          productRouteHandler
-	image            imageRouteHandler
-	amazonListing    amazonListingRouteHandler
-	listingKit       listingKitRouteHandler
-	promptTemplate   promptTemplateRouteHandler
-	promptModule     kernelmodule.Module
-	studioSession    studioSessionRouteHandler
-	sheinLoginModule kernelmodule.Module
-	sheinLogin       sheinLoginRouteHandler
-	sdsLoginModule   kernelmodule.Module
-	sdsLogin         sdsLoginRouteHandler
-	taskRPCModule    kernelmodule.Module
-	taskRPC          taskRPCRouteHandler
-	sdsCatalog       sdsCatalogRouteHandler
-	sdsModule        kernelmodule.Module
-}
-
 type httpModule struct {
 	name     string
 	enabled  func(cfg *config.Config) bool
