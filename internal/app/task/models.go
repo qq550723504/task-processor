@@ -2,9 +2,9 @@
 package task
 
 import (
-	"task-processor/internal/listingruntime"
-	"task-processor/internal/infra/worker"
 	"time"
+
+	"task-processor/internal/infra/worker"
 )
 
 type ImportTaskRecord struct {
@@ -24,9 +24,6 @@ type ImportTaskRecord struct {
 	StatusKey        string
 	CanonicalStatus  string
 }
-
-type StoreInfo = listingruntime.StoreInfo
-type StorePauseStatusDetail = listingruntime.StorePauseStatusDetail
 
 // QueueTaskInfo 队列任务信息
 type QueueTaskInfo struct {

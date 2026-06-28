@@ -354,6 +354,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestAppBootstrapRetiredManagementImportsStayBlocked`
 - `TestAppTaskRetiredManagementImportsStayBlocked`
+- `TestAppTaskRuntimeStoreAliasesStayRetired`
 - `TestAppTaskFetcherDoesNotStoreRetiredManagementService`
 - `TestAppTaskDispatchGuardUsesCapabilityNames`
 - `TestAppTaskDispatcherUsesCapabilityNames`

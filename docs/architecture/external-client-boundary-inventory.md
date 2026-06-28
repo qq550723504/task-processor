@@ -152,7 +152,8 @@ Current direct dependency hotspots are:
     `TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted`
   - `internal/app/task` is guarded by an empty
     `TestAppTaskRetiredManagementImportsStayBlocked` allowlist plus
-    task-local capability-name guards
+    `TestAppTaskRuntimeStoreAliasesStayRetired` and task-local
+    capability-name guards
   - `internal/app/runner` management retirement seams are guarded by
     `TestAppRunnerRetiredManagementImportsStayBlocked`
   - `internal/app/consumer` management retirement seams are guarded by

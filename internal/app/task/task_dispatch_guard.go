@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"task-processor/internal/core/logger"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/pkg/timex"
 )
 
@@ -19,7 +20,7 @@ func NewTaskDispatchGuard(fetcher *TaskFetcher, storeClient storeDispatchRuntime
 	}
 }
 
-func (g *TaskDispatchGuard) Check(task *ImportTaskRecord) (*StoreInfo, bool, error) {
+func (g *TaskDispatchGuard) Check(task *ImportTaskRecord) (*listingruntime.StoreInfo, bool, error) {
 	if g == nil || g.fetcher == nil || task == nil {
 		return nil, false, fmt.Errorf("task dispatch guard is not initialized")
 	}
@@ -52,7 +53,7 @@ func (g *TaskDispatchGuard) Check(task *ImportTaskRecord) (*StoreInfo, bool, err
 	return storeInfo, false, nil
 }
 
-func (g *TaskDispatchGuard) tryResumeStaleQuotaPause(task *ImportTaskRecord, storeInfo *StoreInfo) bool {
+func (g *TaskDispatchGuard) tryResumeStaleQuotaPause(task *ImportTaskRecord, storeInfo *listingruntime.StoreInfo) bool {
 	if g == nil || g.fetcher == nil || task == nil || storeInfo == nil {
 		return false
 	}
@@ -108,7 +109,7 @@ func (g *TaskDispatchGuard) tryResumeStaleQuotaPause(task *ImportTaskRecord, sto
 	return true
 }
 
-func isQuotaPause(pauseDetail *StorePauseStatusDetail) bool {
+func isQuotaPause(pauseDetail *listingruntime.StorePauseStatusDetail) bool {
 	if pauseDetail == nil || !pauseDetail.Paused {
 		return false
 	}

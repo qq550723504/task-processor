@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/model"
 )
 
@@ -43,7 +44,7 @@ func TestTaskDispatcherDispatchQueueFull(t *testing.T) {
 		StoreID:   20,
 		ProductID: "P-1",
 		Platform:  "temu",
-	}, &StoreInfo{
+	}, &listingruntime.StoreInfo{
 		ID:       20,
 		Platform: "temu",
 	})
@@ -67,7 +68,7 @@ func TestTaskDispatcherDispatchMissingSubmitter(t *testing.T) {
 		StoreID:   30,
 		ProductID: "P-2",
 		Platform:  "shein",
-	}, &StoreInfo{
+	}, &listingruntime.StoreInfo{
 		ID:       30,
 		Platform: "shein",
 	})

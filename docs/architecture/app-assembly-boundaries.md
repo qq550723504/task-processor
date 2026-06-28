@@ -206,6 +206,7 @@ App-layer assembly boundaries are guarded by:
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestAppBootstrapRetiredManagementImportsStayBlocked`
 - `TestAppTaskRetiredManagementImportsStayBlocked`
+- `TestAppTaskRuntimeStoreAliasesStayRetired`
 - `TestAppRunnerRetiredManagementImportsStayBlocked`
 - `TestAppConsumerRetiredManagementImportsStayBlocked`
 - `TestAppHTTPAPIRetiredManagementImportsStayBlocked`

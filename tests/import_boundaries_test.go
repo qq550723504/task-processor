@@ -935,6 +935,22 @@ func TestAppTaskRetiredManagementImportsStayBlocked(t *testing.T) {
 	}
 }
 
+func TestAppTaskRuntimeStoreAliasesStayRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "task", "models.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type StoreInfo =",
+		"type StorePauseStatusDetail =",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s exposes %q; use listingruntime store models directly in app task assembly", path, phrase)
+		}
+	}
+}
+
 func TestAppRunnerRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "runner")
 	allowedFiles := map[string]struct{}{

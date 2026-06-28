@@ -78,11 +78,11 @@ func toImportTaskRecord(apiTask listingruntime.ImportTask) ImportTaskRecord {
 }
 
 // getStoreInfo loads store information from the store runtime.
-func toStoreInfo(storeDTO *listingruntime.StoreInfo) *StoreInfo {
+func toStoreInfo(storeDTO *listingruntime.StoreInfo) *listingruntime.StoreInfo {
 	if storeDTO == nil {
 		return nil
 	}
-	return &StoreInfo{
+	return &listingruntime.StoreInfo{
 		ID:             storeDTO.ID,
 		TenantID:       storeDTO.TenantID,
 		StoreID:        storeDTO.StoreID,
@@ -97,7 +97,7 @@ func toStoreInfo(storeDTO *listingruntime.StoreInfo) *StoreInfo {
 	}
 }
 
-func (f *TaskFetcher) getStoreInfo(storeID int64, storeClient any) (*StoreInfo, error) {
+func (f *TaskFetcher) getStoreInfo(storeID int64, storeClient any) (*listingruntime.StoreInfo, error) {
 	logger.GetGlobalLogger("app/task").Infof("正在获取店铺信息: StoreID=%d", storeID)
 
 	if client, ok := storeClient.(StoreClient); ok {

@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingruntime"
 	types "task-processor/internal/model"
 )
 
@@ -19,7 +20,7 @@ func NewTaskDispatcher(fetcher *TaskFetcher) *TaskDispatcher {
 	return &TaskDispatcher{fetcher: fetcher}
 }
 
-func (d *TaskDispatcher) Dispatch(ctx context.Context, task *ImportTaskRecord, storeInfo *StoreInfo) (success bool, isQueueFull bool) {
+func (d *TaskDispatcher) Dispatch(ctx context.Context, task *ImportTaskRecord, storeInfo *listingruntime.StoreInfo) (success bool, isQueueFull bool) {
 	if d == nil || d.fetcher == nil || task == nil || storeInfo == nil {
 		return false, false
 	}
