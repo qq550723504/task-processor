@@ -81,6 +81,7 @@ func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
 		"type sdsCatalogRouteHandler =",
 		"type sdsLoginRouteHandler =",
 		"type sheinLoginRouteHandler interface",
+		"type httpModuleHandlers struct",
 	} {
 		require.NotContains(t, string(typesSrc), marker)
 	}
@@ -97,10 +98,11 @@ func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
 		"type promptTemplateRouteHandler =",
 		"type sdsCatalogRouteHandler =",
 		"type sdsLoginRouteHandler =",
+		"type sheinLoginRouteHandler interface",
+		"type httpModuleHandlers struct",
 	} {
 		require.NotContains(t, string(routeTypesSrc), marker)
 	}
-	require.Contains(t, string(routeTypesSrc), "type sheinLoginRouteHandler interface")
 	require.NotContains(t, string(routeTypesSrc), "type routeDescriptor =")
 }
 

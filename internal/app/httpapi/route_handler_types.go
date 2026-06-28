@@ -1,44 +1,12 @@
 package httpapi
 
 import (
-	"github.com/gin-gonic/gin"
-
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
-	promptmgmtapi "task-processor/internal/promptmgmt/api"
-	sdshttpapi "task-processor/internal/sds/httpapi"
-	"task-processor/internal/sdslogin"
-	"task-processor/internal/taskrpcapi"
 )
-
-type httpModuleHandlers struct {
-	product        productenrich.ProductHandler
-	image          productimagehttpapi.RouteHandler
-	amazonListing  amazonlisting.Handler
-	listingKit     listingkithttpapi.RouteHandler
-	promptTemplate promptmgmtapi.HTTPRouteHandler
-	studioSession  listingkit.StudioSessionHandler
-	sheinLogin     sheinLoginRouteHandler
-	sdsLogin       sdslogin.HTTPRouteHandler
-	taskRPC        taskrpcapi.Handler
-	sdsCatalog     sdshttpapi.HTTPRouteHandler
-}
-
-type sheinLoginRouteHandler interface {
-	Health(c *gin.Context)
-	ListAccounts(c *gin.Context)
-	Login(c *gin.Context)
-	Status(c *gin.Context)
-	ListWarehouses(c *gin.Context)
-	SubmitVerifyCode(c *gin.Context)
-	CancelVerifyCodeWait(c *gin.Context)
-	ClearCookie(c *gin.Context)
-	GetLastFailure(c *gin.Context)
-	ClearLastFailure(c *gin.Context)
-}
 
 func (c httpFeatureComposition) productHandler() productenrich.ProductHandler {
 	if c.productModule == nil {

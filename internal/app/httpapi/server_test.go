@@ -44,6 +44,19 @@ type stubAmazonListingHandler struct {
 	submitCalled    bool
 }
 
+type httpModuleHandlers struct {
+	product        productenrich.ProductHandler
+	image          productimagehttpapi.RouteHandler
+	amazonListing  amazonlisting.Handler
+	listingKit     listingkithttpapi.RouteHandler
+	promptTemplate promptmgmtapi.HTTPRouteHandler
+	studioSession  listingkit.StudioSessionHandler
+	sheinLogin     sheinlogin.HTTPRouteHandler
+	sdsLogin       sdslogin.HTTPRouteHandler
+	taskRPC        taskrpcapi.Handler
+	sdsCatalog     sdshttpapi.HTTPRouteHandler
+}
+
 type stubTaskRPCHandler struct {
 	healthCalled     bool
 	statusCalled     bool
@@ -2261,7 +2274,7 @@ func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {
 	singleSDSCatalogHandler(&stubSDSCatalogRouteHandler{}, &stubSDSCatalogRouteHandler{})
 }
 
-func buildLegacyRouteDescriptorsWithShein(productHandler productenrich.ProductHandler, imageHandler productimagehttpapi.RouteHandler, amazonListingHandler amazonlisting.Handler, listingKitHandler listingkithttpapi.RouteHandler, promptTemplateHandler promptmgmtapi.HTTPRouteHandler, studioSessionHandler listingkit.StudioSessionHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdslogin.HTTPRouteHandler, taskRPCHandler taskrpcapi.Handler, sdsCatalogHandlers ...sdshttpapi.HTTPRouteHandler) []httproute.Descriptor {
+func buildLegacyRouteDescriptorsWithShein(productHandler productenrich.ProductHandler, imageHandler productimagehttpapi.RouteHandler, amazonListingHandler amazonlisting.Handler, listingKitHandler listingkithttpapi.RouteHandler, promptTemplateHandler promptmgmtapi.HTTPRouteHandler, studioSessionHandler listingkit.StudioSessionHandler, sheinLoginHandler sheinlogin.HTTPRouteHandler, sdsLoginHandler sdslogin.HTTPRouteHandler, taskRPCHandler taskrpcapi.Handler, sdsCatalogHandlers ...sdshttpapi.HTTPRouteHandler) []httproute.Descriptor {
 	routes := buildCoreRouteDescriptors()
 	routes = productenrichhttpapi.AppendProductRouteDescriptors(routes, productHandler, imageHandler)
 	routes = amazonlistinghttpapi.AppendRouteDescriptors(routes, amazonListingHandler)

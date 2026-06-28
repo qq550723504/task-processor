@@ -4388,6 +4388,22 @@ func TestHTTPAPIRouteHandlerAliasesStayRetired(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIProductionRouteHandlerScaffoldingStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type httpModuleHandlers struct",
+		"type sheinLoginRouteHandler interface",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s exposes %q; keep production route handler files limited to composition accessors and put test assembly scaffolding in tests", path, phrase)
+		}
+	}
+}
+
 func TestHTTPAPIFeatureModuleResultAliasesStayRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "httpapi", "feature_module_builders.go")
 	content, err := os.ReadFile(path)
