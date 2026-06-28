@@ -1,47 +1,11 @@
 package listingkit
 
-import listingplatform "task-processor/internal/listing/platform"
-
-type exportPlatformBuilder interface {
-	platform() string
-	build(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error
-}
-
-type exportPlatformBuilderFunc struct {
-	name string
-	fn   func(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error
-}
-
-func (b exportPlatformBuilderFunc) platform() string {
-	return b.name
-}
-
-func (b exportPlatformBuilderFunc) build(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {
-	return b.fn(result, export, selectedPlatform)
-}
-
-func exportPlatformBuilders() []exportPlatformBuilder {
-	registrations := exportPlatformRegistrations()
-	builders := make([]exportPlatformBuilder, 0, len(registrations))
-	for _, registration := range registrations {
-		builders = append(builders, exportPlatformBuilderFunc{name: registration.name, fn: registration.build})
-	}
-	return builders
+func exportPlatformBuilders() []platformSectionBuilder[*ListingKitExport] {
+	return platformSectionBuilders(exportPlatformRegistrations())
 }
 
 func buildExportPlatformSections(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {
-	builders := exportPlatformBuilders()
-	sectionBuilders := make([]listingplatform.Builder, 0, len(builders))
-	for _, builder := range builders {
-		builder := builder
-		sectionBuilders = append(sectionBuilders, listingplatform.Builder{
-			Platform: builder.platform(),
-			Build: func() error {
-				return builder.build(result, export, selectedPlatform)
-			},
-		})
-	}
-	return listingplatform.BuildAll(sectionBuilders)
+	return buildPlatformSections(exportPlatformBuilders(), result, export, selectedPlatform)
 }
 
 func buildAmazonExportSection(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {
