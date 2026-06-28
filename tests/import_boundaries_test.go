@@ -1201,6 +1201,23 @@ func TestPlatformProcessorRegistryDoesNotStoreRabbitMQClient(t *testing.T) {
 	}
 }
 
+func TestPlatformProcessorRegistryDoesNotBuildPlatformRuntimeContext(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"PlatformRuntimeContext{",
+		"func (r *PlatformProcessorRegistry) runtimeContext",
+		"func (r *PlatformProcessorRegistry) RuntimeContext",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; build platform runtime context through the consumer runtime-context builder instead of the registry", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),

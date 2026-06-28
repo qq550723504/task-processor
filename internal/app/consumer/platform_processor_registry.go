@@ -54,7 +54,13 @@ func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorReg
 			needsAmazon: module.NeedsAmazon(r.config),
 			register: func(ctx context.Context, registry *PlatformProcessorRegistry, serviceManager *ServiceManager, resources *SharedResources) error {
 				registry.logger.Infof("registering %s processor", strings.ToUpper(module.Name()))
-				if err := module.RegisterConsumer(ctx, registry.runtimeContext(serviceManager, resources, nil), serviceManager); err != nil {
+				runtimeContext := BuildPlatformRuntimeContext(PlatformRuntimeContextInput{
+					Config:         registry.config,
+					Logger:         registry.logger,
+					Resources:      resources,
+					ServiceManager: serviceManager,
+				})
+				if err := module.RegisterConsumer(ctx, runtimeContext, serviceManager); err != nil {
 					return err
 				}
 				registry.logger.Infof("%s processor registered", strings.ToUpper(module.Name()))
@@ -117,44 +123,6 @@ func (r *PlatformProcessorRegistry) anyRegistrationNeedsAmazon(registrations []p
 
 func (r *PlatformProcessorRegistry) isPlatformEnabled(platform string) bool {
 	return containsPlatform(r.enabledPlatforms, platform)
-}
-
-func (r *PlatformProcessorRegistry) runtimeContext(
-	serviceManager *ServiceManager,
-	resources *SharedResources,
-	schedulerBuilder SchedulerDependenciesBuilder,
-) PlatformRuntimeContext {
-	resourceBundle := sharedResourcesValue(resources)
-	return PlatformRuntimeContext{
-		Config:                             r.config,
-		Logger:                             r.logger,
-		ListingRuntimeImportTaskRepository: resourceBundle.ListingRuntimeImportTaskRepository,
-		RawJSONDataClient:                  resourceBundle.RawJSONDataClient,
-		StoreAPI:                           resourceBundle.StoreAPI,
-		SchedulerRuntime:                   resourceBundle.SchedulerRuntime,
-		SchedulerFactoryRuntime:            resourceBundle.SchedulerFactoryRuntime,
-		ProcessorRuntime:                   resourceBundle.ProcessorRuntime,
-		CrawlSource:                        resourceBundle.CrawlSource,
-		ProductFetcher:                     resourceBundle.ProductFetcher,
-		RabbitMQClient:                     serviceManager.GetClient(),
-		ServiceManager:                     serviceManager,
-		SchedulerBuilder:                   schedulerBuilder,
-	}
-}
-
-func sharedResourcesValue(resources *SharedResources) SharedResources {
-	if resources == nil {
-		return SharedResources{}
-	}
-	return *resources
-}
-
-func (r *PlatformProcessorRegistry) RuntimeContext(
-	serviceManager *ServiceManager,
-	resources *SharedResources,
-	schedulerBuilder SchedulerDependenciesBuilder,
-) PlatformRuntimeContext {
-	return r.runtimeContext(serviceManager, resources, schedulerBuilder)
 }
 
 func (r *PlatformProcessorRegistry) ResolvePlatformModule(platform string) (PlatformModule, error) {

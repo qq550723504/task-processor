@@ -76,7 +76,13 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	runtimeContext := processorRegistry.RuntimeContext(serviceManager, resources, bootstrap.BuildSchedulerDependencies)
+	runtimeContext := consumer.BuildPlatformRuntimeContext(consumer.PlatformRuntimeContextInput{
+		Config:           cfg,
+		Logger:           logger,
+		Resources:        resources,
+		ServiceManager:   serviceManager,
+		SchedulerBuilder: bootstrap.BuildSchedulerDependencies,
+	})
 	if err := module.ConfigureListingRuntime(ctx, runtimeContext); err != nil {
 		return fmt.Errorf("configure %s runtime failed: %w", displayName, err)
 	}
@@ -120,18 +126,11 @@ func runDebugTask(
 		return fmt.Errorf("initialize shared resources: %w", err)
 	}
 
-	rt := consumer.PlatformRuntimeContext{
-		Config:                             cfg,
-		Logger:                             logger,
-		ListingRuntimeImportTaskRepository: resources.ListingRuntimeImportTaskRepository,
-		RawJSONDataClient:                  resources.RawJSONDataClient,
-		StoreAPI:                           resources.StoreAPI,
-		SchedulerRuntime:                   resources.SchedulerRuntime,
-		SchedulerFactoryRuntime:            resources.SchedulerFactoryRuntime,
-		ProcessorRuntime:                   resources.ProcessorRuntime,
-		CrawlSource:                        resources.CrawlSource,
-		ProductFetcher:                     resources.ProductFetcher,
-	}
+	rt := consumer.BuildPlatformRuntimeContext(consumer.PlatformRuntimeContextInput{
+		Config:    cfg,
+		Logger:    logger,
+		Resources: resources,
+	})
 	if err := module.ConfigureListingRuntime(ctx, rt); err != nil {
 		return fmt.Errorf("configure %s debug runtime failed: %w", displayName, err)
 	}
