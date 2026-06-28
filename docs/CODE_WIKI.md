@@ -487,8 +487,8 @@ func All() []consumer.PlatformModule {
 
 ```go
 func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntimeContext, registry consumer.ProcessorRegistrar) error {
-    // 构建商品获取器
-    productFetcher, err := consumer.BuildPlatformProductFetcher(...)
+    // 使用运行时装配好的商品获取器
+    productFetcher := rt.ProductFetcher
     
     // 创建处理器
     processor, err := pipeline.NewSheinProcessor(ctx, rt.Config, rt.Logger, ...)
