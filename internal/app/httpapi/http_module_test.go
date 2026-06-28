@@ -12,6 +12,7 @@ import (
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
+	"task-processor/internal/httproute"
 	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
@@ -212,7 +213,7 @@ func TestPromptTemplateHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
 	prebuilt := httpModule{
 		name: "prompt-prebuilt",
 		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(routeDescriptor{
+			reg.AddRoutes(httproute.Descriptor{
 				Method: http.MethodGet,
 				Path:   "/prompt-prebuilt",
 				Module: "prompt-prebuilt",
@@ -240,7 +241,7 @@ func TestSDSCatalogHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
 	prebuilt := httpModule{
 		name: "sds-prebuilt",
 		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(routeDescriptor{
+			reg.AddRoutes(httproute.Descriptor{
 				Method: http.MethodGet,
 				Path:   "/sds-prebuilt",
 				Module: "sds-prebuilt",
@@ -268,7 +269,7 @@ func TestTaskRPCHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
 	prebuilt := httpModule{
 		name: "taskrpc-prebuilt",
 		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(routeDescriptor{
+			reg.AddRoutes(httproute.Descriptor{
 				Method: http.MethodGet,
 				Path:   "/taskrpc-prebuilt",
 				Module: "taskrpc-prebuilt",
@@ -296,7 +297,7 @@ func TestSheinLoginHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
 	prebuilt := httpModule{
 		name: "shein-prebuilt",
 		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(routeDescriptor{
+			reg.AddRoutes(httproute.Descriptor{
 				Method: http.MethodGet,
 				Path:   "/shein-prebuilt",
 				Module: "shein-prebuilt",
@@ -324,7 +325,7 @@ func TestSDSLoginHTTPModuleUsesPrebuiltModuleWhenProvided(t *testing.T) {
 	prebuilt := httpModule{
 		name: "sdslogin-prebuilt",
 		register: func(reg *kernelmodule.Registry) error {
-			reg.AddRoutes(routeDescriptor{
+			reg.AddRoutes(httproute.Descriptor{
 				Method: http.MethodGet,
 				Path:   "/sdslogin-prebuilt",
 				Module: "sdslogin-prebuilt",
@@ -352,7 +353,7 @@ func TestHTTPModuleRegisterRejectsNilRegistrar(t *testing.T) {
 }
 
 func TestBuildHTTPServerBundleFromModulesSkipsDisabledModules(t *testing.T) {
-	enabledRoute := routeDescriptor{
+	enabledRoute := httproute.Descriptor{
 		Method: http.MethodGet,
 		Path:   "/enabled",
 		Module: "enabled",
@@ -360,7 +361,7 @@ func TestBuildHTTPServerBundleFromModulesSkipsDisabledModules(t *testing.T) {
 			c.Status(http.StatusOK)
 		},
 	}
-	disabledRoute := routeDescriptor{
+	disabledRoute := httproute.Descriptor{
 		Method: http.MethodGet,
 		Path:   "/disabled",
 		Module: "disabled",
@@ -413,7 +414,7 @@ func TestBuildHTTPServerBundleFromModulesSkipsNilModules(t *testing.T) {
 		httpModule{
 			name: "enabled",
 			register: func(reg *kernelmodule.Registry) error {
-				reg.AddRoutes(routeDescriptor{
+				reg.AddRoutes(httproute.Descriptor{
 					Method: http.MethodGet,
 					Path:   "/enabled",
 					Module: "enabled",
@@ -444,7 +445,7 @@ func TestBuildRuntimeBundleFromModulesCollectsRoutesAndWorkerPools(t *testing.T)
 		httpModule{
 			name: "product",
 			register: func(reg *kernelmodule.Registry) error {
-				reg.AddRoutes(routeDescriptor{
+				reg.AddRoutes(httproute.Descriptor{
 					Method: http.MethodGet,
 					Path:   "/health",
 					Module: "product",
@@ -630,7 +631,7 @@ func (stubStudioSessionHandler) CreateStudioBatchTasks(*gin.Context)     {}
 func (stubStudioSessionHandler) UpsertStudioBatch(*gin.Context)          {}
 func (stubStudioSessionHandler) DeleteStudioBatch(*gin.Context)          {}
 
-func routeKeys(routes []routeDescriptor) []string {
+func routeKeys(routes []httproute.Descriptor) []string {
 	keys := make([]string, 0, len(routes))
 	for _, route := range routes {
 		keys = append(keys, fmt.Sprintf("%s %s", route.Method, route.Path))

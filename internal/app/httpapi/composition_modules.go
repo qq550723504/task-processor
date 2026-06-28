@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
@@ -40,7 +41,7 @@ func (c httpFeatureComposition) buildRuntimeBundle(cfg *config.Config) (runtimeB
 	return buildRuntimeBundleFromModules(cfg, c.routeModules())
 }
 
-func (c httpFeatureComposition) buildServerBundle(port int, cfg *config.Config) (*http.Server, []routeDescriptor, error) {
+func (c httpFeatureComposition) buildServerBundle(port int, cfg *config.Config) (*http.Server, []httproute.Descriptor, error) {
 	bundle, err := c.buildRuntimeBundle(cfg)
 	if err != nil {
 		return nil, nil, err

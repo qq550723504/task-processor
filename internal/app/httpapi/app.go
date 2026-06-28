@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"time"
 
+	"task-processor/internal/httproute"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -62,7 +64,7 @@ func Run(logger *logrus.Logger, options Options) error {
 	return nil
 }
 
-func serveHTTP(logger *logrus.Logger, server *http.Server, routes []routeDescriptor, port int) error {
+func serveHTTP(logger *logrus.Logger, server *http.Server, routes []httproute.Descriptor, port int) error {
 	logger.Infof("API service listening on port %d", port)
 	logger.Info("available endpoints:")
 	for _, route := range routes {

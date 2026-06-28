@@ -16,6 +16,7 @@ import (
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
+	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -2284,7 +2285,7 @@ func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {
 	singleSDSCatalogHandler(&stubSDSCatalogRouteHandler{}, &stubSDSCatalogRouteHandler{})
 }
 
-func buildLegacyRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []routeDescriptor {
+func buildLegacyRouteDescriptorsWithShein(productHandler productRouteHandler, imageHandler imageRouteHandler, amazonListingHandler amazonListingRouteHandler, listingKitHandler listingKitRouteHandler, promptTemplateHandler promptTemplateRouteHandler, studioSessionHandler studioSessionRouteHandler, sheinLoginHandler sheinLoginRouteHandler, sdsLoginHandler sdsLoginRouteHandler, taskRPCHandler taskRPCRouteHandler, sdsCatalogHandlers ...sdsCatalogRouteHandler) []httproute.Descriptor {
 	routes := buildCoreRouteDescriptors()
 	routes = productenrichhttpapi.AppendProductRouteDescriptors(routes, productHandler, imageHandler)
 	routes = amazonlistinghttpapi.AppendRouteDescriptors(routes, amazonListingHandler)
@@ -2319,11 +2320,11 @@ func singleSDSCatalogHandler(sdsCatalogHandlers ...sdsCatalogRouteHandler) sdsCa
 	panic(fmt.Sprintf("expected at most 1 SDS catalog handler, got %d", len(sdsCatalogHandlers)))
 }
 
-func buildHTTPServerBundleFromHandlers(port int, cfg *config.Config, handlers httpModuleHandlers) (*http.Server, []routeDescriptor, error) {
+func buildHTTPServerBundleFromHandlers(port int, cfg *config.Config, handlers httpModuleHandlers) (*http.Server, []httproute.Descriptor, error) {
 	return buildHTTPServerBundleFromModules(port, cfg, buildHTTPModules(handlers))
 }
 
-func buildRegisteredRoutes(cfg *config.Config, handlers httpModuleHandlers) ([]routeDescriptor, error) {
+func buildRegisteredRoutes(cfg *config.Config, handlers httpModuleHandlers) ([]httproute.Descriptor, error) {
 	return buildRegisteredRoutesForModules(cfg, buildHTTPModules(handlers))
 }
 
@@ -2342,7 +2343,7 @@ func buildHTTPModules(handlers httpModuleHandlers) []kernelmodule.Module {
 	}
 }
 
-func routePaths(routes []routeDescriptor) []string {
+func routePaths(routes []httproute.Descriptor) []string {
 	out := make([]string, 0, len(routes))
 	for _, route := range routes {
 		out = append(out, route.Method+" "+route.Path)
@@ -2362,7 +2363,7 @@ func equalStringSlices(got []string, want []string) bool {
 	return true
 }
 
-func containsRoute(routes []routeDescriptor, method string, path string) bool {
+func containsRoute(routes []httproute.Descriptor, method string, path string) bool {
 	for _, route := range routes {
 		if route.Method == method && route.Path == path {
 			return true

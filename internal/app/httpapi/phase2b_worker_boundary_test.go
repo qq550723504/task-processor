@@ -63,7 +63,6 @@ func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
 		"type amazonListingRouteHandler =",
 		"type listingKitRouteHandler =",
 		"type sheinLoginRouteHandler interface",
-		"type routeDescriptor =",
 	} {
 		require.NotContains(t, string(typesSrc), marker)
 	}
@@ -76,10 +75,10 @@ func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
 		"type amazonListingRouteHandler =",
 		"type listingKitRouteHandler =",
 		"type sheinLoginRouteHandler interface",
-		"type routeDescriptor =",
 	} {
 		require.Contains(t, string(routeTypesSrc), marker)
 	}
+	require.NotContains(t, string(routeTypesSrc), "type routeDescriptor =")
 }
 
 func TestHTTPAPITypesDoesNotOwnAppBootstrapState(t *testing.T) {
@@ -93,6 +92,7 @@ func TestHTTPAPITypesDoesNotOwnAppBootstrapState(t *testing.T) {
 		"type appBootstrap struct",
 		"server         *http.Server",
 		"routes         []routeDescriptor",
+		"routes         []httproute.Descriptor",
 		"pools          []worker.WorkerPool",
 		"closers        []func() error",
 	} {
@@ -105,7 +105,7 @@ func TestHTTPAPITypesDoesNotOwnAppBootstrapState(t *testing.T) {
 	for _, marker := range []string{
 		"type appBootstrap struct",
 		"server         *http.Server",
-		"routes         []routeDescriptor",
+		"routes         []httproute.Descriptor",
 		"pools          []worker.WorkerPool",
 		"closers        []func() error",
 	} {

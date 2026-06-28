@@ -4,10 +4,11 @@ import (
 	"net/http"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/httproute"
 	kernelmodule "task-processor/internal/kernel/module"
 )
 
-func buildHTTPServerBundleFromModules(port int, cfg *config.Config, modules []kernelmodule.Module) (*http.Server, []routeDescriptor, error) {
+func buildHTTPServerBundleFromModules(port int, cfg *config.Config, modules []kernelmodule.Module) (*http.Server, []httproute.Descriptor, error) {
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, nil, err
@@ -16,7 +17,7 @@ func buildHTTPServerBundleFromModules(port int, cfg *config.Config, modules []ke
 	return server, routes, nil
 }
 
-func buildRegisteredRoutesForModules(cfg *config.Config, modules []kernelmodule.Module) ([]routeDescriptor, error) {
+func buildRegisteredRoutesForModules(cfg *config.Config, modules []kernelmodule.Module) ([]httproute.Descriptor, error) {
 	bundle, err := buildRuntimeBundleFromModules(cfg, modules)
 	if err != nil {
 		return nil, err

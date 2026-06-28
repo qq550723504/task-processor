@@ -5,13 +5,14 @@ import (
 	"net/http"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/httproute"
 	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/taskrpcapi"
 )
 
 type runtimeBundle struct {
-	routes      []routeDescriptor
+	routes      []httproute.Descriptor
 	workerPools []kernelmodule.NamedWorkerPool
 }
 
@@ -38,7 +39,7 @@ func buildRuntimeBundleFromModules(cfg *config.Config, modules []kernelmodule.Mo
 	}, nil
 }
 
-func (b runtimeBundle) buildServerBundle(port int) (*http.Server, []routeDescriptor) {
+func (b runtimeBundle) buildServerBundle(port int) (*http.Server, []httproute.Descriptor) {
 	return buildHTTPServerFromRoutes(port, b.routes), b.routes
 }
 

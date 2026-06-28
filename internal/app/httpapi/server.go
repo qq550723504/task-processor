@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/httproute"
 )
 
-func buildHTTPServerFromRoutes(port int, routes []routeDescriptor) *http.Server {
+func buildHTTPServerFromRoutes(port int, routes []httproute.Descriptor) *http.Server {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	mountRoutes(router, routes)
@@ -19,7 +21,7 @@ func buildHTTPServerFromRoutes(port int, routes []routeDescriptor) *http.Server 
 	}
 }
 
-func mountRoutes(r *gin.Engine, routes []routeDescriptor) {
+func mountRoutes(r *gin.Engine, routes []httproute.Descriptor) {
 	zitadelAuth := newZitadelAuthMiddleware()
 	for _, route := range routes {
 		handlers := append(routeAuthHandlers(route, zitadelAuth), route.Handler)

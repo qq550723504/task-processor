@@ -4,7 +4,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/amazonlisting"
-	"task-processor/internal/httproute"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
@@ -40,5 +39,3 @@ type sheinLoginRouteHandler interface {
 }
 
 type sdsLoginRouteHandler = sdslogin.HTTPRouteHandler
-
-type routeDescriptor = httproute.Descriptor

@@ -4073,6 +4073,17 @@ func TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestHTTPAPIRouteDescriptorAliasStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "type routeDescriptor =") {
+		t.Fatalf("%s exposes routeDescriptor; use httproute.Descriptor directly in HTTP API assembly", path)
+	}
+}
+
 func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 	filePath := filepath.Join("..", "internal", "app", "httpapi", "listingkit_support.go")
 	fset := token.NewFileSet()
