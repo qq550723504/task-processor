@@ -2275,7 +2275,7 @@ func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {
 }
 
 func buildLegacyRouteDescriptorsWithShein(productHandler productenrich.ProductHandler, imageHandler productimagehttpapi.RouteHandler, amazonListingHandler amazonlisting.Handler, listingKitHandler listingkithttpapi.RouteHandler, promptTemplateHandler promptmgmtapi.HTTPRouteHandler, studioSessionHandler listingkit.StudioSessionHandler, sheinLoginHandler sheinlogin.HTTPRouteHandler, sdsLoginHandler sdslogin.HTTPRouteHandler, taskRPCHandler taskrpcapi.Handler, sdsCatalogHandlers ...sdshttpapi.HTTPRouteHandler) []httproute.Descriptor {
-	routes := buildCoreRouteDescriptors()
+	routes := buildLegacyCoreRouteDescriptors()
 	routes = productenrichhttpapi.AppendProductRouteDescriptors(routes, productHandler, imageHandler)
 	routes = amazonlistinghttpapi.AppendRouteDescriptors(routes, amazonListingHandler)
 	routes = listingkithttpapi.AppendRouteDescriptors(routes, listingKitHandler)
@@ -2286,6 +2286,14 @@ func buildLegacyRouteDescriptorsWithShein(productHandler productenrich.ProductHa
 	routes = sheinlogin.AppendRouteDescriptors(routes, sheinLoginHandler)
 	routes = sdslogin.AppendRouteDescriptors(routes, sdsLoginHandler)
 	return routes
+}
+
+func buildLegacyCoreRouteDescriptors() []httproute.Descriptor {
+	reg := kernelmodule.NewRegistry()
+	if err := newCoreHTTPModule().Register(reg); err != nil {
+		panic(fmt.Sprintf("register core HTTP module: %v", err))
+	}
+	return reg.Routes()
 }
 
 func mustBuildTestRouterFromHandlers(t *testing.T, handlers httpModuleHandlers) *gin.Engine {

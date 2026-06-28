@@ -3679,6 +3679,9 @@ func TestTaskRPCAPIRetiredActionRoutesStayRetired(t *testing.T) {
 	for _, path := range paths {
 		info, err := os.Stat(path)
 		if err != nil {
+			if os.IsNotExist(err) && filepath.Base(path) == "routes_core.go" {
+				continue
+			}
 			t.Fatalf("stat %s: %v", path, err)
 		}
 		if info.IsDir() {
@@ -4252,9 +4255,9 @@ func TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted(t *testing.T) {
 
 func TestAppHTTPAPITaskRPCRouteDescriptorHelperStaysRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "httpapi", "routes_core.go")
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
+	content, ok := readOptionalRetiredHTTPAPIRoutesCore(t, path)
+	if !ok {
+		return
 	}
 	for _, phrase := range []string{
 		"appendTaskRPCRouteDescriptors",
@@ -4268,9 +4271,9 @@ func TestAppHTTPAPITaskRPCRouteDescriptorHelperStaysRetired(t *testing.T) {
 
 func TestAppHTTPAPILoginRouteDescriptorHelpersStayRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "httpapi", "routes_core.go")
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
+	content, ok := readOptionalRetiredHTTPAPIRoutesCore(t, path)
+	if !ok {
+		return
 	}
 	for _, phrase := range []string{
 		"appendSheinLoginRouteDescriptors",
@@ -4286,9 +4289,9 @@ func TestAppHTTPAPILoginRouteDescriptorHelpersStayRetired(t *testing.T) {
 
 func TestAppHTTPAPISDSCatalogRouteDescriptorHelperStaysRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "httpapi", "routes_core.go")
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
+	content, ok := readOptionalRetiredHTTPAPIRoutesCore(t, path)
+	if !ok {
+		return
 	}
 	for _, phrase := range []string{
 		"appendSDSCatalogRouteDescriptors",
@@ -4298,6 +4301,28 @@ func TestAppHTTPAPISDSCatalogRouteDescriptorHelperStaysRetired(t *testing.T) {
 			t.Fatalf("%s mentions %q; delegate SDS catalog route descriptors to internal/sds/httpapi instead of duplicating module-owned routes in app/httpapi", path, phrase)
 		}
 	}
+}
+
+func TestAppHTTPAPICoreRouteDescriptorHelperStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "routes_core.go")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s exists; keep core health route registration inside newCoreHTTPModule instead of reviving a one-route app/httpapi descriptor helper", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+}
+
+func readOptionalRetiredHTTPAPIRoutesCore(t *testing.T, path string) (string, bool) {
+	t.Helper()
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false
+		}
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(content), true
 }
 
 func TestAppHTTPAPISupportHTTPModuleWrappersStayRetired(t *testing.T) {
