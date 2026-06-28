@@ -196,6 +196,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestPlatformProcessorRegistryDependenciesDoNotExposeRuntimeHelpers`
 - `TestCrawlerRegistryStaysRetired`
 - `TestPlatformModulesUseRuntimeProductFetcher`
+- `TestPlatformRuntimeContextDoesNotExposeRawJSONDataClient`
 - `TestConsumerProductFetcherBuilderStaysRetired`
 - `TestBootstrapFetchersDoNotOwnPlatformFetcherModeRules`
 - `TestBootstrapFetchersDoNotExposeSharedProductFetcherBuilder`

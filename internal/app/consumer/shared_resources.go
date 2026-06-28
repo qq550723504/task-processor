@@ -70,7 +70,6 @@ type ListingRuntimeImportTaskRepository interface {
 
 type SharedResources struct {
 	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
-	RawJSONDataClient                  product.RawJsonDataClient
 	StoreAPI                           listingadmin.StoreAPI
 	SchedulerRuntime                   runner.SchedulerRuntimeProvider
 	SchedulerFactoryRuntime            SchedulerFactoryRuntime
@@ -94,7 +93,6 @@ type PlatformRuntimeContext struct {
 	Config                             *config.Config
 	Logger                             *logrus.Logger
 	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
-	RawJSONDataClient                  product.RawJsonDataClient
 	StoreAPI                           listingadmin.StoreAPI
 	SchedulerRuntime                   runner.SchedulerRuntimeProvider
 	SchedulerFactoryRuntime            SchedulerFactoryRuntime
@@ -120,7 +118,6 @@ func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRunt
 		Config:                             input.Config,
 		Logger:                             input.Logger,
 		ListingRuntimeImportTaskRepository: resources.ListingRuntimeImportTaskRepository,
-		RawJSONDataClient:                  resources.RawJSONDataClient,
 		StoreAPI:                           resources.StoreAPI,
 		SchedulerRuntime:                   resources.SchedulerRuntime,
 		SchedulerFactoryRuntime:            resources.SchedulerFactoryRuntime,

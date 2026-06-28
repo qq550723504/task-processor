@@ -72,7 +72,6 @@ func buildConsumerSharedResourcesFunc(onSharedResources func(*SharedResources)) 
 
 		return &consumer.SharedResources{
 			ListingRuntimeImportTaskRepository: resources.ImportTaskRepository,
-			RawJSONDataClient:                  resources.RawJSONDataClient,
 			StoreAPI:                           resources.StoreAPI,
 			SchedulerRuntime:                   resources.SchedulerRuntime,
 			SchedulerFactoryRuntime:            resources.SchedulerFactoryRuntime,

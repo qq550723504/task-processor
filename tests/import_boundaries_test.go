@@ -1539,6 +1539,22 @@ func TestPlatformModulesUseRuntimeProductFetcher(t *testing.T) {
 	}
 }
 
+func TestPlatformRuntimeContextDoesNotExposeRawJSONDataClient(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "shared_resources.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"RawJSONDataClient                  product.RawJsonDataClient",
+		"RawJSONDataClient:                  resources.RawJSONDataClient",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; expose ProductFetcher instead of raw JSON data clients through platform runtime context", path, phrase)
+		}
+	}
+}
+
 func TestConsumerProductFetcherBuilderStaysRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "product_fetcher_builder.go")
 	content, err := os.ReadFile(path)
