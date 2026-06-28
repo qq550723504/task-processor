@@ -2379,12 +2379,25 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 		"type SectionRegistration[C, T any] struct {",
 		"type RegisteredSectionBuilder[C, T any] struct {",
 		"func SectionBuilders[C, T any](registrations []SectionRegistration[C, T]) []RegisteredSectionBuilder[C, T] {",
+		"func SupportedSectionRegistrations[C, T any](builds map[string]SectionBuildFunc[C, T]) []SectionRegistration[C, T] {",
 		"func BuildRegisteredSections[C, T any](builders []RegisteredSectionBuilder[C, T], context C, target T, selectedPlatform string) error {",
 		"return BuildAll(sectionBuilders)",
 	} {
 		if !strings.Contains(runnerContent, needle) {
 			t.Fatalf("../listing/platform/registered_builders.go should contain %q", needle)
 		}
+	}
+
+	registrySrc, err := os.ReadFile("preview_platform_registry.go")
+	if err != nil {
+		t.Fatalf("ReadFile(preview_platform_registry.go) error = %v", err)
+	}
+	registryContent := string(registrySrc)
+	if !strings.Contains(registryContent, "return listingplatform.SupportedSectionRegistrations(map[string]listingplatform.SectionBuildFunc[*ListingKitResult, *ListingKitPreview]{") {
+		t.Fatal("preview_platform_registry.go should build registrations through listingplatform.SupportedSectionRegistrations")
+	}
+	if strings.Contains(registryContent, "return []listingplatform.SectionRegistration") {
+		t.Fatal("preview_platform_registry.go should not hand-code registration order")
 	}
 
 	if _, err := os.ReadFile("preview_platform_sections.go"); err == nil {
@@ -2490,6 +2503,18 @@ func TestExportPlatformBuilderRegistryUsesNeutralPlatformSectionDispatcher(t *te
 		if !strings.Contains(sectionContent, needle) {
 			t.Fatalf("export_platform_sections.go should contain %q", needle)
 		}
+	}
+
+	registrySrc, err := os.ReadFile("export_platform_registry.go")
+	if err != nil {
+		t.Fatalf("ReadFile(export_platform_registry.go) error = %v", err)
+	}
+	registryContent := string(registrySrc)
+	if !strings.Contains(registryContent, "return listingplatform.SupportedSectionRegistrations(map[string]listingplatform.SectionBuildFunc[*ListingKitResult, *ListingKitExport]{") {
+		t.Fatal("export_platform_registry.go should build registrations through listingplatform.SupportedSectionRegistrations")
+	}
+	if strings.Contains(registryContent, "return []listingplatform.SectionRegistration") {
+		t.Fatal("export_platform_registry.go should not hand-code registration order")
 	}
 
 	applySrc, err := os.ReadFile("export_platform_apply.go")

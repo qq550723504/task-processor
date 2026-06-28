@@ -31,6 +31,21 @@ func SectionBuilders[C, T any](registrations []SectionRegistration[C, T]) []Regi
 	return builders
 }
 
+func SupportedSectionRegistrations[C, T any](builds map[string]SectionBuildFunc[C, T]) []SectionRegistration[C, T] {
+	registrations := make([]SectionRegistration[C, T], 0, len(builds))
+	for _, platform := range supportedPlatforms {
+		build, ok := builds[platform]
+		if !ok {
+			continue
+		}
+		registrations = append(registrations, SectionRegistration[C, T]{
+			Platform: platform,
+			Build:    build,
+		})
+	}
+	return registrations
+}
+
 func BuildRegisteredSections[C, T any](builders []RegisteredSectionBuilder[C, T], context C, target T, selectedPlatform string) error {
 	sectionBuilders := make([]Builder, 0, len(builders))
 	for _, builder := range builders {

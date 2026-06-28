@@ -63,3 +63,43 @@ func TestBuildRegisteredSectionsRunsInOrderAndStopsOnError(t *testing.T) {
 		t.Fatalf("calls = %+v, want %+v", calls, want)
 	}
 }
+
+func TestSupportedSectionRegistrationsFollowSupportedPlatformOrder(t *testing.T) {
+	t.Parallel()
+
+	builds := map[string]SectionBuildFunc[string, *string]{
+		"walmart": func(context string, target *string, selectedPlatform string) error { return nil },
+		"amazon":  func(context string, target *string, selectedPlatform string) error { return nil },
+		"temu":    func(context string, target *string, selectedPlatform string) error { return nil },
+		"shein":   func(context string, target *string, selectedPlatform string) error { return nil },
+	}
+
+	registrations := SupportedSectionRegistrations(builds)
+	got := make([]string, 0, len(registrations))
+	for _, registration := range registrations {
+		got = append(got, registration.Platform)
+	}
+
+	if want := SupportedPlatforms(); !equalStrings(got, want) {
+		t.Fatalf("registration platforms = %+v, want %+v", got, want)
+	}
+}
+
+func TestSupportedSectionRegistrationsSkipsMissingBuilders(t *testing.T) {
+	t.Parallel()
+
+	builds := map[string]SectionBuildFunc[string, *string]{
+		"shein": func(context string, target *string, selectedPlatform string) error { return nil },
+		"temu":  func(context string, target *string, selectedPlatform string) error { return nil },
+	}
+
+	registrations := SupportedSectionRegistrations(builds)
+	got := make([]string, 0, len(registrations))
+	for _, registration := range registrations {
+		got = append(got, registration.Platform)
+	}
+
+	if want := []string{"shein", "temu"}; !equalStrings(got, want) {
+		t.Fatalf("registration platforms = %+v, want %+v", got, want)
+	}
+}

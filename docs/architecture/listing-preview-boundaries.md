@@ -67,6 +67,7 @@ Current responsibilities:
 - supported listing platform registry
 - selected-platform validation
 - selected-platform matching
+- supported-platform registration ordering
 - platform error sentinels
 - single section availability checks
 - ordered platform-section builder execution
