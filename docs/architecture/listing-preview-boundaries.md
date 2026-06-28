@@ -98,6 +98,7 @@ Representative files:
 - `internal/listingkit/preview_task_read_model_adapter.go`
 - `internal/listingkit/platform_section_apply.go`
 - `internal/listingkit/preview_platform_registry.go`
+- `internal/listingkit/export_platform_sections.go`
 - `internal/listingkit/preview_platform_amazon*.go`
 - `internal/listingkit/preview_platform_shein.go`
 - `internal/listingkit/preview_platform_temu.go`

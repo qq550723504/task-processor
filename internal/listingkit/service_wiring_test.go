@@ -2466,9 +2466,29 @@ func TestExportPlatformBuilderRegistryUsesNeutralPlatformSectionDispatcher(t *te
 		"listingplatform.Builder{",
 		"previewdomain.PlatformSectionBuilder{",
 		"previewdomain.BuildPlatformSections(",
+		"func buildAmazonExportSection(",
+		"func buildSheinExportSection(",
+		"func buildTemuExportSection(",
+		"func buildWalmartExportSection(",
 	} {
 		if strings.Contains(platformsContent, needle) {
 			t.Fatalf("export_builder_platforms.go should not contain %q after shared platform-section builder extraction", needle)
+		}
+	}
+
+	sectionSrc, err := os.ReadFile("export_platform_sections.go")
+	if err != nil {
+		t.Fatalf("ReadFile(export_platform_sections.go) error = %v", err)
+	}
+	sectionContent := string(sectionSrc)
+	for _, needle := range []string{
+		"func buildAmazonExportSection(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {",
+		"func buildSheinExportSection(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {",
+		"func buildTemuExportSection(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {",
+		"func buildWalmartExportSection(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {",
+	} {
+		if !strings.Contains(sectionContent, needle) {
+			t.Fatalf("export_platform_sections.go should contain %q", needle)
 		}
 	}
 
