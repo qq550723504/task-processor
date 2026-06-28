@@ -10,7 +10,7 @@ import (
 type PlatformProcessorRegistry struct {
 	logger       *logrus.Logger
 	catalog      platformModuleCatalog
-	resourceNeed PlatformResourceNeedsResolver
+	resourceNeed platformResourceNeedsResolver
 	newRegistrar PlatformModuleRegistrarFactory
 }
 
@@ -55,5 +55,5 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 }
 
 func (r *PlatformProcessorRegistry) SharedResourceNeeds(platforms ...string) (SharedResourceNeeds, error) {
-	return r.resourceNeed.Resolve(platforms...)
+	return r.resourceNeed.resolve(platforms...)
 }

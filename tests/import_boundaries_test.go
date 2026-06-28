@@ -1311,6 +1311,24 @@ func TestPlatformProcessorRegistryDoesNotComputePlatformResourceNeeds(t *testing
 	}
 }
 
+func TestPlatformResourceNeedsResolverStaysPackageInternal(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_resource_needs.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type PlatformResourceNeedsResolver",
+		"func NewPlatformResourceNeedsResolver",
+		"func (r PlatformResourceNeedsResolver) Resolve",
+		"func (r PlatformResourceNeedsResolver) anyModuleNeedsAmazon",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; keep platform resource need resolution package-internal behind registry methods", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotImplementPlatformModuleRegistration(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	content, err := os.ReadFile(path)

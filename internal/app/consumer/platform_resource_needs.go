@@ -2,19 +2,19 @@ package consumer
 
 import "task-processor/internal/core/config"
 
-type PlatformResourceNeedsResolver struct {
+type platformResourceNeedsResolver struct {
 	cfg     *config.Config
 	catalog platformModuleCatalog
 }
 
-func NewPlatformResourceNeedsResolver(cfg *config.Config, catalog platformModuleCatalog) PlatformResourceNeedsResolver {
-	return PlatformResourceNeedsResolver{
+func newPlatformResourceNeedsResolver(cfg *config.Config, catalog platformModuleCatalog) platformResourceNeedsResolver {
+	return platformResourceNeedsResolver{
 		cfg:     cfg,
 		catalog: catalog,
 	}
 }
 
-func (r PlatformResourceNeedsResolver) Resolve(platforms ...string) (SharedResourceNeeds, error) {
+func (r platformResourceNeedsResolver) resolve(platforms ...string) (SharedResourceNeeds, error) {
 	modules, err := r.catalog.resolveMany(platforms...)
 	if err != nil {
 		return SharedResourceNeeds{}, err
@@ -24,7 +24,7 @@ func (r PlatformResourceNeedsResolver) Resolve(platforms ...string) (SharedResou
 	}, nil
 }
 
-func (r PlatformResourceNeedsResolver) anyModuleNeedsAmazon(modules []PlatformModule) bool {
+func (r platformResourceNeedsResolver) anyModuleNeedsAmazon(modules []PlatformModule) bool {
 	for _, module := range modules {
 		name := module.Name()
 		if module.NeedsAmazon(r.cfg) || PlatformUsesLocalFetcher(r.cfg, name) {
