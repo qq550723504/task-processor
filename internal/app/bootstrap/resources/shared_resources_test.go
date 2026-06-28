@@ -28,6 +28,15 @@ func TestBuildSharedResourcesDoesNotConstructRetiredManagementService(t *testing
 	require.False(t, strings.Contains(string(content), "managementClient:"))
 }
 
+func TestSharedResourcesUsesNamedListingRuntimeHealthValidatorPort(t *testing.T) {
+	content, err := os.ReadFile("shared_resources.go")
+	require.NoError(t, err)
+
+	require.NotContains(t, string(content), "ListingRuntimeHealthValidator interface {\n\t\tValidateLocalListingRuntimeFields()")
+	require.Contains(t, string(content), "type ListingRuntimeHealthValidator interface {")
+	require.Contains(t, string(content), "ListingRuntimeHealthValidator ListingRuntimeHealthValidator")
+}
+
 func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)

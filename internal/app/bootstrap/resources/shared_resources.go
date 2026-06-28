@@ -30,20 +30,22 @@ type SharedResourceOptions struct {
 	NeedAmazonCrawler bool
 }
 
+type ListingRuntimeHealthValidator interface {
+	ValidateLocalListingRuntimeFields() (map[string]bool, error)
+}
+
 // SharedResources groups dependencies that were previously assembled in multiple places.
 type SharedResources struct {
 	AuthClient                    *auth.ClientCredentialsAuthClient
-	ListingRuntimeHealthValidator interface {
-		ValidateLocalListingRuntimeFields() (map[string]bool, error)
-	}
-	RawJSONDataClient       product.RawJsonDataClient
-	StoreAPI                listingadmin.StoreAPI
-	SchedulerRuntime        runner.SchedulerRuntimeProvider
-	SchedulerFactoryRuntime consumer.SchedulerFactoryRuntime
-	ProcessorRuntime        consumer.ProcessorRuntime
-	ImportTaskRepository    consumer.ListingRuntimeImportTaskRepository
-	AmazonCrawler           ports.CrawlSource
-	RabbitMQClient          *rabbitmq.Client
+	ListingRuntimeHealthValidator ListingRuntimeHealthValidator
+	RawJSONDataClient             product.RawJsonDataClient
+	StoreAPI                      listingadmin.StoreAPI
+	SchedulerRuntime              runner.SchedulerRuntimeProvider
+	SchedulerFactoryRuntime       consumer.SchedulerFactoryRuntime
+	ProcessorRuntime              consumer.ProcessorRuntime
+	ImportTaskRepository          consumer.ListingRuntimeImportTaskRepository
+	AmazonCrawler                 ports.CrawlSource
+	RabbitMQClient                *rabbitmq.Client
 }
 
 // InitializePrompts centralizes prompt registry initialization.
