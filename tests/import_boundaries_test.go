@@ -4219,9 +4219,7 @@ func TestAppHTTPAPIModuleBuildersStayAllowlisted(t *testing.T) {
 
 func TestAppHTTPAPIRouteDescriptorHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
-	allowed := map[string]struct{}{
-		"appendSDSCatalogRouteDescriptors": {},
-	}
+	allowed := map[string]struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -4282,6 +4280,22 @@ func TestAppHTTPAPILoginRouteDescriptorHelpersStayRetired(t *testing.T) {
 	} {
 		if strings.Contains(string(content), phrase) {
 			t.Fatalf("%s mentions %q; delegate login route descriptors to their owning login modules instead of duplicating them in app/httpapi", path, phrase)
+		}
+	}
+}
+
+func TestAppHTTPAPISDSCatalogRouteDescriptorHelperStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "routes_core.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"appendSDSCatalogRouteDescriptors",
+		"/api/v1/sds/",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; delegate SDS catalog route descriptors to internal/sds/httpapi instead of duplicating module-owned routes in app/httpapi", path, phrase)
 		}
 	}
 }

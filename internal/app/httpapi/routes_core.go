@@ -6,7 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/httproute"
-	sdshttpapi "task-processor/internal/sds/httpapi"
 )
 
 func buildCoreRouteDescriptors() []httproute.Descriptor {
@@ -20,12 +19,4 @@ func buildCoreRouteDescriptors() []httproute.Descriptor {
 			},
 		},
 	}
-}
-
-func appendSDSCatalogRouteDescriptors(routes []httproute.Descriptor, handlers ...sdshttpapi.HTTPRouteHandler) []httproute.Descriptor {
-	var handler sdshttpapi.HTTPRouteHandler
-	if len(handlers) > 0 {
-		handler = handlers[0]
-	}
-	return sdshttpapi.AppendRouteDescriptors(routes, handler)
 }
