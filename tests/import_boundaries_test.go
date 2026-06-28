@@ -1429,6 +1429,23 @@ func TestListingRuntimeDependenciesDoesNotExposePartialConsumerDependencies(t *t
 	}
 }
 
+func TestListingRuntimeDependenciesTypeStaysPackageInternal(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "bootstrap", "consumer_dependencies.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type ListingRuntimeDependencies",
+		"func BuildListingRuntimeDependencies() ListingRuntimeDependencies",
+		"func (d ListingRuntimeDependencies)",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; keep the listing runtime dependency container type package-internal", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDependenciesDoNotExposePlatformModules(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "dependencies.go")
 	content, err := os.ReadFile(path)

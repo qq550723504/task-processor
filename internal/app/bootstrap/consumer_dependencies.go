@@ -10,33 +10,33 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type ListingRuntimeDependencies struct {
+type listingRuntimeDependencies struct {
 	platformModules []consumer.PlatformModule
 	buildResources  func(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error)
 	sharedResources func() *SharedResources
 }
 
-func (d ListingRuntimeDependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+func (d listingRuntimeDependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 	if d.buildResources == nil {
 		return nil, nil
 	}
 	return d.buildResources(cfg, logger, needs)
 }
 
-func (d ListingRuntimeDependencies) SharedResources() *SharedResources {
+func (d listingRuntimeDependencies) SharedResources() *SharedResources {
 	if d.sharedResources == nil {
 		return nil
 	}
 	return d.sharedResources()
 }
 
-func (d ListingRuntimeDependencies) ConsumerDependencies(cfg *config.Config, platformsStr string) consumer.PlatformProcessorRegistryDependencies {
+func (d listingRuntimeDependencies) ConsumerDependencies(cfg *config.Config, platformsStr string) consumer.PlatformProcessorRegistryDependencies {
 	return consumer.NewPlatformProcessorRegistryDependencies(cfg, platformsStr, d.platformModules)
 }
 
-func BuildListingRuntimeDependencies() ListingRuntimeDependencies {
+func BuildListingRuntimeDependencies() listingRuntimeDependencies {
 	var sharedResources *SharedResources
-	return ListingRuntimeDependencies{
+	return listingRuntimeDependencies{
 		platformModules: platforms.All(),
 		buildResources: buildConsumerSharedResourcesFunc(func(resources *SharedResources) {
 			sharedResources = resources
