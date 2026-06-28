@@ -12,15 +12,15 @@ import (
 
 type listingRuntimeDependencies struct {
 	platformModules []consumer.PlatformModule
-	buildResources  func(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error)
+	buildResources  func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error)
 	sharedResources func() *SharedResources
 }
 
-func (d listingRuntimeDependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+func (d listingRuntimeDependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 	if d.buildResources == nil {
 		return nil, nil
 	}
-	return d.buildResources(cfg, logger, needs)
+	return d.buildResources(cfg, logger, platform, needs)
 }
 
 func (d listingRuntimeDependencies) SharedResources() *SharedResources {
@@ -47,8 +47,8 @@ func BuildListingRuntimeDependencies() listingRuntimeDependencies {
 	}
 }
 
-func buildConsumerSharedResourcesFunc(onSharedResources func(*SharedResources)) func(*config.Config, *logrus.Logger, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
-	return func(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+func buildConsumerSharedResourcesFunc(onSharedResources func(*SharedResources)) func(*config.Config, *logrus.Logger, string, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+	return func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 		resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{
 			NeedAmazonCrawler: needs.NeedAmazonCrawler,
 		})
@@ -56,8 +56,9 @@ func buildConsumerSharedResourcesFunc(onSharedResources func(*SharedResources)) 
 			return nil, err
 		}
 
-		productFetcher, err := fetchers.BuildSharedProductFetcher(
+		productFetcher, err := fetchers.BuildPlatformProductFetcher(
 			cfg,
+			platform,
 			resources.RawJSONDataClient,
 			resources.AmazonCrawler,
 			resources.RabbitMQClient,

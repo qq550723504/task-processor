@@ -18,6 +18,10 @@ func BuildPlatformProductFetcher(
 	crawlSource runner.CrawlSource,
 	rabbitmqClient *rabbitmq.Client,
 ) (appfetcher.ProductFetcher, error) {
+	if rawJsonDataClient == nil {
+		return nil, fmt.Errorf("raw json data client is required")
+	}
+
 	factory := appfetcher.NewFetcherFactory()
 	fetcherType, err := ResolvePlatformFetcherType(cfg, platform)
 	if err != nil {

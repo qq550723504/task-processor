@@ -1519,6 +1519,37 @@ func TestCrawlerRegistryStaysRetired(t *testing.T) {
 	}
 }
 
+func TestPlatformModulesUseRuntimeProductFetcher(t *testing.T) {
+	for _, path := range []string{
+		filepath.Join("..", "internal", "platforms", "shein", "module.go"),
+		filepath.Join("..", "internal", "platforms", "temu", "module.go"),
+	} {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range []string{
+			"consumer.BuildPlatformProductFetcher(",
+			"rt.RawJSONDataClient",
+		} {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; platform modules should consume rt.ProductFetcher built by runtime shared resources", path, phrase)
+			}
+		}
+	}
+}
+
+func TestConsumerProductFetcherBuilderStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "product_fetcher_builder.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "func BuildPlatformProductFetcher(") {
+		t.Fatalf("%s exposes BuildPlatformProductFetcher; centralize product fetcher construction in bootstrap fetchers", path)
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotInspectRabbitMQClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	content, err := os.ReadFile(path)

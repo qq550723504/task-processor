@@ -35,15 +35,9 @@ func (m Module) NeedsAmazon(cfg *config.Config) bool {
 }
 
 func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntimeContext, registry consumer.ProcessorRegistrar) error {
-	productFetcher, err := consumer.BuildPlatformProductFetcher(
-		rt.Config,
-		m.Name(),
-		rt.RawJSONDataClient,
-		rt.CrawlSource,
-		rt.RabbitMQClient,
-	)
-	if err != nil {
-		return fmt.Errorf("build SHEIN product fetcher: %w", err)
+	productFetcher := rt.ProductFetcher
+	if productFetcher == nil {
+		return fmt.Errorf("SHEIN product fetcher is not configured")
 	}
 
 	processor, err := pipeline.NewSheinProcessor(ctx, rt.Config, rt.Logger, pipeline.BuildDependencies(ctx, sheinDependencyRuntimeAdapter{ProcessorRuntime: rt.ProcessorRuntime}, productFetcher, rt.RabbitMQClient))

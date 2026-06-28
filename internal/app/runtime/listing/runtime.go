@@ -65,7 +65,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
-	resources, err := runtimeDeps.BuildConsumerSharedResources(cfg, logger, needs)
+	resources, err := runtimeDeps.BuildConsumerSharedResources(cfg, logger, platform, needs)
 	if err != nil {
 		return fmt.Errorf("initialize shared resources: %w", err)
 	}
@@ -122,7 +122,7 @@ func runDebugTask(
 	if err != nil {
 		return err
 	}
-	resources, err := runtimeDeps.BuildConsumerSharedResources(cfg, logger, needs)
+	resources, err := runtimeDeps.BuildConsumerSharedResources(cfg, logger, platform, needs)
 	if err != nil {
 		return fmt.Errorf("initialize shared resources: %w", err)
 	}
