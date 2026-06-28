@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
 )
@@ -20,7 +19,6 @@ type processorRegistration struct {
 type PlatformProcessorRegistry struct {
 	config           *config.Config
 	logger           *logrus.Logger
-	rabbitmqClient   *rabbitmq.Client
 	enabledPlatforms []string
 	platformModules  []PlatformModule
 }
@@ -74,8 +72,7 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 	}
 
 	r.logger.Infof("registering platform processors: %v", moduleNames(modules))
-	r.rabbitmqClient = serviceManager.GetClient()
-	if r.rabbitmqClient != nil {
+	if serviceManager.GetClient() != nil {
 		r.logger.Info("RabbitMQ client available for distributed fetching")
 	} else {
 		r.logger.Warn("RabbitMQ client unavailable; distributed fetching is unavailable")
@@ -139,7 +136,7 @@ func (r *PlatformProcessorRegistry) runtimeContext(
 		ProcessorRuntime:                   resourceBundle.ProcessorRuntime,
 		CrawlSource:                        resourceBundle.CrawlSource,
 		ProductFetcher:                     resourceBundle.ProductFetcher,
-		RabbitMQClient:                     r.rabbitmqClient,
+		RabbitMQClient:                     serviceManager.GetClient(),
 		ServiceManager:                     serviceManager,
 		SchedulerBuilder:                   schedulerBuilder,
 	}
