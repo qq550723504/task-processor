@@ -60,7 +60,16 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	if err := processorRegistry.RegisterPlatforms(ctx, serviceManager, platform); err != nil {
+	needs, err := processorRegistry.SharedResourceNeeds(platform)
+	if err != nil {
+		return err
+	}
+	resources, err := runtimeDeps.BuildConsumerSharedResources(cfg, logger, needs)
+	if err != nil {
+		return fmt.Errorf("initialize shared resources: %w", err)
+	}
+
+	if err := processorRegistry.RegisterPlatforms(ctx, serviceManager, resources, platform); err != nil {
 		return fmt.Errorf("register %s processor failed: %w", displayName, err)
 	}
 	if err := ValidateListingRuntimeHealth(platform, listingRuntimeHealthValidator(runtimeDeps.SharedResources()), logger); err != nil {
@@ -102,8 +111,11 @@ func runDebugTask(
 		return err
 	}
 
-	needsAmazon := module.NeedsAmazon(cfg) || consumer.PlatformUsesLocalFetcher(cfg, platform)
-	resources, err := consumerDeps.SharedResourceProvider(cfg, logger, needsAmazon)
+	needs, err := processorRegistry.SharedResourceNeeds(platform)
+	if err != nil {
+		return err
+	}
+	resources, err := runtimeDeps.BuildConsumerSharedResources(cfg, logger, needs)
 	if err != nil {
 		return fmt.Errorf("initialize shared resources: %w", err)
 	}

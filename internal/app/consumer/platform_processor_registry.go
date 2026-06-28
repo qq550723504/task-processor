@@ -20,13 +20,12 @@ type processorRegistration struct {
 }
 
 type PlatformProcessorRegistry struct {
-	config                 *config.Config
-	logger                 *logrus.Logger
-	sharedResources        *SharedResources
-	rabbitmqClient         *rabbitmq.Client
-	enabledPlatforms       []string
-	sharedResourceProvider SharedResourceProvider
-	platformModules        []PlatformModule
+	config           *config.Config
+	logger           *logrus.Logger
+	sharedResources  *SharedResources
+	rabbitmqClient   *rabbitmq.Client
+	enabledPlatforms []string
+	platformModules  []PlatformModule
 }
 
 func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr string, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
@@ -40,16 +39,15 @@ func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, pla
 	logger.Infof("enabled platforms: %v", enabledPlatforms)
 
 	return &PlatformProcessorRegistry{
-		config:                 cfg,
-		logger:                 logger,
-		enabledPlatforms:       enabledPlatforms,
-		sharedResourceProvider: deps.SharedResourceProvider,
-		platformModules:        deps.PlatformModules,
+		config:           cfg,
+		logger:           logger,
+		enabledPlatforms: enabledPlatforms,
+		platformModules:  deps.PlatformModules,
 	}
 }
 
-func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager) error {
-	return r.RegisterPlatforms(ctx, serviceManager, r.enabledPlatforms...)
+func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources) error {
+	return r.RegisterPlatforms(ctx, serviceManager, resources, r.enabledPlatforms...)
 }
 
 func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorRegistration {
@@ -72,21 +70,17 @@ func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorReg
 	return registrations
 }
 
-func (r *PlatformProcessorRegistry) initializeSharedResources(needsAmazon bool) (*SharedResources, error) {
-	if r.sharedResourceProvider == nil {
-		return nil, fmt.Errorf("shared resource provider not configured")
-	}
-	resources, err := r.sharedResourceProvider(r.config, r.logger, needsAmazon)
-	if err != nil {
-		return nil, err
+func (r *PlatformProcessorRegistry) useSharedResources(resources *SharedResources) error {
+	if resources == nil {
+		return fmt.Errorf("shared resources not configured")
 	}
 
 	r.sharedResources = resources
 	r.logger.Info("shared resources initialized")
-	return resources, nil
+	return nil
 }
 
-func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, platforms ...string) error {
+func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources, platforms ...string) error {
 	modules, err := r.resolveModules(platforms)
 	if err != nil {
 		return err
@@ -101,8 +95,8 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 	}
 
 	registrations := r.buildProcessorRegistrationsForModules(modules)
-	if _, err := r.initializeSharedResources(r.anyRegistrationNeedsAmazon(registrations)); err != nil {
-		return fmt.Errorf("initialize shared resources: %w", err)
+	if err := r.useSharedResources(resources); err != nil {
+		return err
 	}
 
 	for _, registration := range registrations {
@@ -113,6 +107,17 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 
 	r.logger.Info("platform processors registered")
 	return nil
+}
+
+func (r *PlatformProcessorRegistry) SharedResourceNeeds(platforms ...string) (SharedResourceNeeds, error) {
+	modules, err := r.resolveModules(platforms)
+	if err != nil {
+		return SharedResourceNeeds{}, err
+	}
+	registrations := r.buildProcessorRegistrationsForModules(modules)
+	return SharedResourceNeeds{
+		NeedAmazonCrawler: r.anyRegistrationNeedsAmazon(registrations),
+	}, nil
 }
 
 func (r *PlatformProcessorRegistry) anyRegistrationNeedsAmazon(registrations []processorRegistration) bool {

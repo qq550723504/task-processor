@@ -1,8 +1,7 @@
 package consumer
 
 type PlatformProcessorRegistryDependencies struct {
-	SharedResourceProvider SharedResourceProvider
-	PlatformModules        []PlatformModule
+	PlatformModules []PlatformModule
 }
 
 type CrawlerRegistryDependencies struct {

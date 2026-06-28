@@ -1165,6 +1165,29 @@ func TestPlatformProcessorRegistryDoesNotFanOutSharedResources(t *testing.T) {
 	}
 }
 
+func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),
+		filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go"),
+		filepath.Join("..", "internal", "app", "consumer", "shared_resources.go"),
+	}
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range []string{
+			"SharedResourceProvider",
+			"sharedResourceProvider",
+			"initializeSharedResources",
+		} {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; build shared resources in bootstrap/runtime assembly and inject the resource bundle into the registry", path, phrase)
+			}
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotExposeListingRuntimeHealthValidator(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	fset := token.NewFileSet()

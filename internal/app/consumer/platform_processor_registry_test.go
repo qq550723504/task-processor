@@ -16,14 +16,11 @@ func TestRegisterPlatformsSkipsDisabledPlatform(t *testing.T) {
 	logger := logrus.New()
 	registry := NewPlatformProcessorRegistry(&config.Config{}, logger, "temu", PlatformProcessorRegistryDependencies{
 		PlatformModules: []PlatformModule{stubPlatformModule{name: "amazon"}},
-		SharedResourceProvider: func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*SharedResources, error) {
-			return &SharedResources{}, nil
-		},
 	})
 
 	serviceManager := newRegistryTestServiceManager(logger)
 
-	err := registry.RegisterPlatforms(context.Background(), serviceManager, "amazon")
+	err := registry.RegisterPlatforms(context.Background(), serviceManager, &SharedResources{}, "amazon")
 	if err == nil {
 		t.Fatal("expected disabled platform registration to fail")
 	}
@@ -35,24 +32,15 @@ func TestRegisterPlatformsRegistersEnabledPlatform(t *testing.T) {
 	logger := logrus.New()
 	cfg := &config.Config{}
 	cfg.Amazon.Enabled = true
-	sharedResourceCalls := 0
 
 	registry := NewPlatformProcessorRegistry(cfg, logger, "amazon", PlatformProcessorRegistryDependencies{
 		PlatformModules: []PlatformModule{stubPlatformModule{name: "amazon"}},
-		SharedResourceProvider: func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*SharedResources, error) {
-			sharedResourceCalls++
-			return &SharedResources{}, nil
-		},
 	})
 
 	serviceManager := newRegistryTestServiceManager(logger)
 
-	if err := registry.RegisterPlatforms(context.Background(), serviceManager, "amazon"); err != nil {
+	if err := registry.RegisterPlatforms(context.Background(), serviceManager, &SharedResources{}, "amazon"); err != nil {
 		t.Fatalf("RegisterPlatforms returned error: %v", err)
-	}
-
-	if sharedResourceCalls != 1 {
-		t.Fatalf("expected shared resources to initialize once, got %d calls", sharedResourceCalls)
 	}
 
 	if got := len(serviceManager.rabbitmqService.processorRegistry.processors); got != 1 {
@@ -61,6 +49,27 @@ func TestRegisterPlatformsRegistersEnabledPlatform(t *testing.T) {
 
 	if _, exists := serviceManager.rabbitmqService.processorRegistry.processors["amazon"]; !exists {
 		t.Fatal("expected amazon processor to be registered")
+	}
+}
+
+func TestSharedResourceNeedsIncludesAmazonCrawlerForLocalFetcher(t *testing.T) {
+	t.Parallel()
+
+	logger := logrus.New()
+	cfg := &config.Config{}
+	cfg.Platforms.Shein.Enabled = true
+	cfg.Platforms.Shein.FetchMode = "local"
+
+	registry := NewPlatformProcessorRegistry(cfg, logger, "shein", PlatformProcessorRegistryDependencies{
+		PlatformModules: []PlatformModule{stubPlatformModule{name: "shein"}},
+	})
+
+	needs, err := registry.SharedResourceNeeds("shein")
+	if err != nil {
+		t.Fatalf("SharedResourceNeeds returned error: %v", err)
+	}
+	if !needs.NeedAmazonCrawler {
+		t.Fatal("expected local fetcher platform to request Amazon crawler resources")
 	}
 }
 

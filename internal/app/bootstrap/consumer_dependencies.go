@@ -14,7 +14,15 @@ import (
 
 type ListingRuntimeDependencies struct {
 	Consumer        consumer.PlatformProcessorRegistryDependencies
+	buildResources  func(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error)
 	sharedResources func() *SharedResources
+}
+
+func (d ListingRuntimeDependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+	if d.buildResources == nil {
+		return nil, nil
+	}
+	return d.buildResources(cfg, logger, needs)
 }
 
 func (d ListingRuntimeDependencies) SharedResources() *SharedResources {
@@ -27,7 +35,8 @@ func (d ListingRuntimeDependencies) SharedResources() *SharedResources {
 func BuildListingRuntimeDependencies() ListingRuntimeDependencies {
 	var sharedResources *SharedResources
 	return ListingRuntimeDependencies{
-		Consumer: buildConsumerDependencies(func(resources *SharedResources) {
+		Consumer: buildConsumerDependencies(),
+		buildResources: buildConsumerSharedResourcesFunc(func(resources *SharedResources) {
 			sharedResources = resources
 		}),
 		sharedResources: func() *SharedResources {
@@ -37,44 +46,47 @@ func BuildListingRuntimeDependencies() ListingRuntimeDependencies {
 }
 
 func BuildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies {
-	return buildConsumerDependencies(nil)
+	return buildConsumerDependencies()
 }
 
-func buildConsumerDependencies(onSharedResources func(*SharedResources)) consumer.PlatformProcessorRegistryDependencies {
+func buildConsumerDependencies() consumer.PlatformProcessorRegistryDependencies {
 	return consumer.PlatformProcessorRegistryDependencies{
 		PlatformModules: platforms.All(),
-		SharedResourceProvider: func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*consumer.SharedResources, error) {
-			resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{
-				NeedAmazonCrawler: needsAmazon,
-			})
-			if err != nil {
-				return nil, err
-			}
+	}
+}
 
-			productFetcher, err := fetchers.BuildSharedProductFetcher(
-				cfg,
-				resources.RawJSONDataClient,
-				resources.AmazonCrawler,
-				resources.RabbitMQClient,
-			)
-			if err != nil {
-				return nil, err
-			}
-			if onSharedResources != nil {
-				onSharedResources(resources)
-			}
+func buildConsumerSharedResourcesFunc(onSharedResources func(*SharedResources)) func(*config.Config, *logrus.Logger, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+	return func(cfg *config.Config, logger *logrus.Logger, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+		resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{
+			NeedAmazonCrawler: needs.NeedAmazonCrawler,
+		})
+		if err != nil {
+			return nil, err
+		}
 
-			return &consumer.SharedResources{
-				ListingRuntimeImportTaskRepository: resources.ImportTaskRepository,
-				RawJSONDataClient:                  resources.RawJSONDataClient,
-				StoreAPI:                           resources.StoreAPI,
-				SchedulerRuntime:                   resources.SchedulerRuntime,
-				SchedulerFactoryRuntime:            resources.SchedulerFactoryRuntime,
-				ProcessorRuntime:                   resources.ProcessorRuntime,
-				CrawlSource:                        resources.AmazonCrawler,
-				ProductFetcher:                     productFetcher,
-			}, nil
-		},
+		productFetcher, err := fetchers.BuildSharedProductFetcher(
+			cfg,
+			resources.RawJSONDataClient,
+			resources.AmazonCrawler,
+			resources.RabbitMQClient,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if onSharedResources != nil {
+			onSharedResources(resources)
+		}
+
+		return &consumer.SharedResources{
+			ListingRuntimeImportTaskRepository: resources.ImportTaskRepository,
+			RawJSONDataClient:                  resources.RawJSONDataClient,
+			StoreAPI:                           resources.StoreAPI,
+			SchedulerRuntime:                   resources.SchedulerRuntime,
+			SchedulerFactoryRuntime:            resources.SchedulerFactoryRuntime,
+			ProcessorRuntime:                   resources.ProcessorRuntime,
+			CrawlSource:                        resources.AmazonCrawler,
+			ProductFetcher:                     productFetcher,
+		}, nil
 	}
 }
 

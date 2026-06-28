@@ -79,7 +79,9 @@ type SharedResources struct {
 	ProductFetcher                     appfetcher.ProductFetcher
 }
 
-type SharedResourceProvider func(cfg *config.Config, logger *logrus.Logger, needsAmazon bool) (*SharedResources, error)
+type SharedResourceNeeds struct {
+	NeedAmazonCrawler bool
+}
 
 type SchedulerDependenciesBuilder func(
 	schedulerRuntime SchedulerFactoryRuntime,
