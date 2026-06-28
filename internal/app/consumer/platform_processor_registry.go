@@ -11,7 +11,7 @@ type PlatformProcessorRegistry struct {
 	logger       *logrus.Logger
 	catalog      platformModuleCatalog
 	resourceNeed platformResourceNeedsResolver
-	newRegistrar PlatformModuleRegistrarFactory
+	newRegistrar platformModuleRegistrarFactory
 }
 
 func NewPlatformProcessorRegistry(logger *logrus.Logger, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {

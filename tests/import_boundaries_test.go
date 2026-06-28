@@ -1346,6 +1346,17 @@ func TestPlatformProcessorRegistryDoesNotImplementPlatformModuleRegistration(t *
 	}
 }
 
+func TestPlatformModuleRegistrarFactoryStaysPackageInternal(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "dependencies.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "type PlatformModuleRegistrarFactory") {
+		t.Fatalf("%s exposes PlatformModuleRegistrarFactory; keep registrar factory wiring package-internal", path)
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotAssemblePlatformRuntimeHelpers(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	content, err := os.ReadFile(path)
