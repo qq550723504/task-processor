@@ -1604,6 +1604,17 @@ func TestBootstrapFetchersDoNotExposeSharedProductFetcherBuilder(t *testing.T) {
 	}
 }
 
+func TestBootstrapResourceFacadeDoesNotExposePromptInitialization(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "bootstrap", "resource_factories.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "func InitializePrompts(") {
+		t.Fatalf("%s exposes InitializePrompts; call bootstrap/resources prompt initialization at the assembly edge instead", path)
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotInspectRabbitMQClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	content, err := os.ReadFile(path)
