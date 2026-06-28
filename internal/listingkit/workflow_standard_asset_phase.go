@@ -30,7 +30,7 @@ func (p *standardWorkflowAssetPhase) run(
 	assetGenerator := resolveWorkflowAssetGenerationService(p.service)
 	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(p.service)
 	recipesByPlatform := resolveRecipesForPlatforms(assetRecipeResolver, task.Request.Platforms, canonicalProduct)
-	baseRecipes := baselineGenerationRecipes()
+	baseRecipes := assetrecipe.BaseAssetRecipes()
 	var generationPlan *assetgeneration.Result
 	var persistedGenerationTasks []assetgeneration.Task
 
@@ -75,7 +75,7 @@ func (p *standardWorkflowAssetPhase) run(
 				TaskID:    task.ID,
 				Product:   result.CatalogProduct,
 				Inventory: inventory,
-				Recipes:   flattenRecipes(recipesByPlatform),
+				Recipes:   assetrecipe.FlattenResolved(recipesByPlatform),
 			})
 			if planErr != nil {
 				stage.Degrade("asset_generation_platform_plan_failed", "Platform asset generation planning failed", planErr.Error())
@@ -109,7 +109,7 @@ func (p *standardWorkflowAssetPhase) run(
 		}
 		result.AssetInventorySummary = inventory.Summary
 		if result.AssetInventorySummary != nil {
-			result.AssetInventorySummary.RecipeCount = len(baseRecipes) + len(flattenRecipes(recipesByPlatform))
+			result.AssetInventorySummary.RecipeCount = len(baseRecipes) + len(assetrecipe.FlattenResolved(recipesByPlatform))
 		}
 	}
 
