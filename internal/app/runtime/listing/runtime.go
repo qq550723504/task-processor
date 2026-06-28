@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	listingruntimebootstrap "task-processor/internal/app/bootstrap/listingruntime"
-	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	bootstrapschedulers "task-processor/internal/app/bootstrap/schedulers"
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
@@ -75,7 +74,7 @@ func Run(ctx context.Context, opts Options) error {
 	if err := processorRegistry.RegisterPlatforms(ctx, serviceManager, resources, platform); err != nil {
 		return fmt.Errorf("register %s processor failed: %w", displayName, err)
 	}
-	if err := ValidateListingRuntimeHealth(platform, listingRuntimeHealthValidator(runtimeDeps.SharedResources()), logger); err != nil {
+	if err := ValidateListingRuntimeHealth(platform, runtimeDeps.ListingRuntimeHealthValidator(), logger); err != nil {
 		return err
 	}
 
@@ -137,7 +136,7 @@ func runDebugTask(
 	if err := module.ConfigureListingRuntime(ctx, rt); err != nil {
 		return fmt.Errorf("configure %s debug runtime failed: %w", displayName, err)
 	}
-	if err := ValidateListingRuntimeHealth(platform, listingRuntimeHealthValidator(runtimeDeps.SharedResources()), logger); err != nil {
+	if err := ValidateListingRuntimeHealth(platform, runtimeDeps.ListingRuntimeHealthValidator(), logger); err != nil {
 		return err
 	}
 
@@ -185,11 +184,4 @@ func applyLoggingConfigFromConfig(log *logrus.Logger, cfg *config.Config) error 
 		File:         cfg.Logging.File,
 		SplitByLevel: cfg.Logging.SplitByLevel,
 	})
-}
-
-func listingRuntimeHealthValidator(resources *bootstrapresources.SharedResources) ListingRuntimeHealthValidator {
-	if resources == nil {
-		return nil
-	}
-	return resources.ListingRuntimeHealthValidator
 }

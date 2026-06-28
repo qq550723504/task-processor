@@ -11,9 +11,9 @@ import (
 )
 
 type dependencies struct {
-	platformModules []consumer.PlatformModule
-	buildResources  func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error)
-	sharedResources func() *bootstrapresources.SharedResources
+	platformModules               []consumer.PlatformModule
+	buildResources                func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error)
+	listingRuntimeHealthValidator func() bootstrapresources.ListingRuntimeHealthValidator
 }
 
 func (d dependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
@@ -23,11 +23,11 @@ func (d dependencies) BuildConsumerSharedResources(cfg *config.Config, logger *l
 	return d.buildResources(cfg, logger, platform, needs)
 }
 
-func (d dependencies) SharedResources() *bootstrapresources.SharedResources {
-	if d.sharedResources == nil {
+func (d dependencies) ListingRuntimeHealthValidator() bootstrapresources.ListingRuntimeHealthValidator {
+	if d.listingRuntimeHealthValidator == nil {
 		return nil
 	}
-	return d.sharedResources()
+	return d.listingRuntimeHealthValidator()
 }
 
 func (d dependencies) ConsumerDependencies(cfg *config.Config, platformsStr string) consumer.PlatformProcessorRegistryDependencies {
@@ -35,14 +35,18 @@ func (d dependencies) ConsumerDependencies(cfg *config.Config, platformsStr stri
 }
 
 func BuildDependencies() dependencies {
-	var sharedResources *bootstrapresources.SharedResources
+	var listingRuntimeHealthValidator bootstrapresources.ListingRuntimeHealthValidator
 	return dependencies{
 		platformModules: platforms.All(),
 		buildResources: buildConsumerSharedResourcesFunc(func(resources *bootstrapresources.SharedResources) {
-			sharedResources = resources
+			if resources == nil {
+				listingRuntimeHealthValidator = nil
+				return
+			}
+			listingRuntimeHealthValidator = resources.ListingRuntimeHealthValidator
 		}),
-		sharedResources: func() *bootstrapresources.SharedResources {
-			return sharedResources
+		listingRuntimeHealthValidator: func() bootstrapresources.ListingRuntimeHealthValidator {
+			return listingRuntimeHealthValidator
 		},
 	}
 }
