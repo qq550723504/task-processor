@@ -25,8 +25,8 @@ func NewCrawlerRegistry(cfg *config.Config, logger *logrus.Logger, rabbitmqClien
 		config:                 cfg,
 		logger:                 logger,
 		rabbitmqClient:         rabbitmqClient,
-		amazonCrawlerCreator:   deps.AmazonCrawlerCreator,
-		productFetcherProvider: deps.ProductFetcherProvider,
+		amazonCrawlerCreator:   deps.amazonCrawlerCreator,
+		productFetcherProvider: deps.productFetcherProvider,
 	}
 }
 

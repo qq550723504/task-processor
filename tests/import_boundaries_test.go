@@ -1467,6 +1467,29 @@ func TestPlatformProcessorRegistryDependenciesDoNotExposeRuntimeHelpers(t *testi
 	}
 }
 
+func TestCrawlerRegistryDependenciesDoNotExposeRuntimeHelpers(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),
+		filepath.Join("..", "internal", "app", "bootstrap", "consumer_dependencies.go"),
+	}
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range []string{
+			"AmazonCrawlerCreator   AmazonCrawlerCreator",
+			"ProductFetcherProvider ProductFetcherProvider",
+			"AmazonCrawlerCreator:",
+			"ProductFetcherProvider:",
+		} {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; expose a complete crawler dependency constructor instead of runtime helper fields", path, phrase)
+			}
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotInspectRabbitMQClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	content, err := os.ReadFile(path)

@@ -89,11 +89,11 @@ func buildConsumerSharedResourcesFunc(onSharedResources func(*SharedResources)) 
 }
 
 func BuildCrawlerDependencies() consumer.CrawlerRegistryDependencies {
-	return consumer.CrawlerRegistryDependencies{
-		AmazonCrawlerCreator: func(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource {
+	return consumer.NewCrawlerRegistryDependencies(
+		func(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource {
 			return bootstrapresources.BuildAmazonCrawler(cfg, logger)
 		},
-		ProductFetcherProvider: func(cfg *config.Config, logger *logrus.Logger, crawlSource runner.CrawlSource) (*product.ProductFetcher, error) {
+		func(cfg *config.Config, logger *logrus.Logger, crawlSource runner.CrawlSource) (*product.ProductFetcher, error) {
 			resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{})
 			if err != nil {
 				return nil, err
@@ -107,5 +107,5 @@ func BuildCrawlerDependencies() consumer.CrawlerRegistryDependencies {
 
 			return productFetcher, nil
 		},
-	}
+	)
 }

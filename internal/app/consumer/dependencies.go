@@ -30,6 +30,13 @@ func (d PlatformProcessorRegistryDependencies) ResolvePlatformModule(platform st
 }
 
 type CrawlerRegistryDependencies struct {
-	AmazonCrawlerCreator   AmazonCrawlerCreator
-	ProductFetcherProvider ProductFetcherProvider
+	amazonCrawlerCreator   AmazonCrawlerCreator
+	productFetcherProvider ProductFetcherProvider
+}
+
+func NewCrawlerRegistryDependencies(amazonCrawlerCreator AmazonCrawlerCreator, productFetcherProvider ProductFetcherProvider) CrawlerRegistryDependencies {
+	return CrawlerRegistryDependencies{
+		amazonCrawlerCreator:   amazonCrawlerCreator,
+		productFetcherProvider: productFetcherProvider,
+	}
 }
