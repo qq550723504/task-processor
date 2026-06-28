@@ -13,6 +13,59 @@ func TestNormalize(t *testing.T) {
 	}
 }
 
+func TestSupportedPlatforms(t *testing.T) {
+	t.Parallel()
+
+	want := []string{"amazon", "shein", "temu", "walmart"}
+	got := SupportedPlatforms()
+	if !equalStrings(got, want) {
+		t.Fatalf("SupportedPlatforms() = %#v, want %#v", got, want)
+	}
+
+	got[0] = "mutated"
+	if got := SupportedPlatforms(); !equalStrings(got, want) {
+		t.Fatalf("SupportedPlatforms() after caller mutation = %#v, want %#v", got, want)
+	}
+}
+
+func TestIsSupported(t *testing.T) {
+	t.Parallel()
+
+	if !IsSupported(" SHEIN ") {
+		t.Fatal("expected normalized supported platform")
+	}
+	if IsSupported("ebay") {
+		t.Fatal("expected unsupported platform to be rejected")
+	}
+}
+
+func TestValidateSelectedPlatform(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		input  string
+		want   string
+		wantOK bool
+	}{
+		{name: "normalizes supported platform", input: "  SHEIN ", want: "shein", wantOK: true},
+		{name: "empty selection is allowed", input: " ", want: "", wantOK: true},
+		{name: "unsupported platform is rejected", input: "ebay", want: "ebay", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, ok := ValidateSelectedPlatform(tt.input)
+			if got != tt.want || ok != tt.wantOK {
+				t.Fatalf("ValidateSelectedPlatform(%q) = (%q, %v), want (%q, %v)", tt.input, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestShouldBuild(t *testing.T) {
 	t.Parallel()
 

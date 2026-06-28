@@ -1,12 +1,12 @@
 package listingkit
 
-import previewdomain "task-processor/internal/listing/preview"
+import "task-processor/internal/listing/platformsection"
 
 func initializeListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPreview, string, error) {
 	if task == nil {
 		return nil, "", ErrTaskNotFound
 	}
-	normalizedPlatform, ok := previewdomain.ValidateSelectedPlatform(selectedPlatform)
+	normalizedPlatform, ok := platformsection.ValidateSelectedPlatform(selectedPlatform)
 	if !ok {
 		return nil, "", ErrUnsupportedPreviewPlatform
 	}

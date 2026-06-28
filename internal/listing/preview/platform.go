@@ -2,10 +2,8 @@ package preview
 
 import "task-processor/internal/listing/platformsection"
 
-var supportedPlatforms = []string{"amazon", "shein", "temu", "walmart"}
-
 func SupportedPlatforms() []string {
-	return append([]string(nil), supportedPlatforms...)
+	return platformsection.SupportedPlatforms()
 }
 
 func NormalizePlatform(platform string) string {
@@ -13,21 +11,11 @@ func NormalizePlatform(platform string) string {
 }
 
 func IsSupportedPlatform(platform string) bool {
-	platform = NormalizePlatform(platform)
-	for _, supported := range supportedPlatforms {
-		if supported == platform {
-			return true
-		}
-	}
-	return false
+	return platformsection.IsSupported(platform)
 }
 
 func ValidateSelectedPlatform(platform string) (string, bool) {
-	platform = NormalizePlatform(platform)
-	if platform == "" {
-		return "", true
-	}
-	return platform, IsSupportedPlatform(platform)
+	return platformsection.ValidateSelectedPlatform(platform)
 }
 
 func ShouldBuildPlatform(selectedPlatform, platform string) bool {

@@ -2458,22 +2458,30 @@ func TestPreviewPlatformSelectionLivesOutsidePreviewBuilderRoot(t *testing.T) {
 	}
 
 	if _, err := os.ReadFile("preview_platform_selection.go"); err == nil {
-		t.Fatal("preview_platform_selection.go should be removed after direct previewdomain selection usage")
+		t.Fatal("preview_platform_selection.go should be removed after direct platformsection selection usage")
 	} else if !os.IsNotExist(err) {
 		t.Fatalf("ReadFile(preview_platform_selection.go) unexpected error = %v", err)
 	}
 
-	stagesSrc, err := os.ReadFile("preview_builder_stages.go")
-	if err != nil {
-		t.Fatalf("ReadFile(preview_builder_stages.go) error = %v", err)
+	cases := []struct {
+		file string
+		call string
+	}{
+		{file: "preview_builder_stages.go", call: "platformsection.ValidateSelectedPlatform(selectedPlatform)"},
+		{file: "export_builder.go", call: "platformsection.ValidateSelectedPlatform(selectedPlatform)"},
+		{file: "revision_apply.go", call: "platformsection.ValidateSelectedPlatform(req.Platform)"},
 	}
-	stagesContent := string(stagesSrc)
-	for _, needle := range []string{
-		"previewdomain.ValidateSelectedPlatform(selectedPlatform)",
-		"return nil, \"\", ErrUnsupportedPreviewPlatform",
-	} {
-		if !strings.Contains(stagesContent, needle) {
-			t.Fatalf("preview_builder_stages.go should contain %q", needle)
+	for _, tc := range cases {
+		src, err := os.ReadFile(tc.file)
+		if err != nil {
+			t.Fatalf("ReadFile(%s) error = %v", tc.file, err)
+		}
+		content := string(src)
+		if !strings.Contains(content, tc.call) {
+			t.Fatalf("%s should contain %q", tc.file, tc.call)
+		}
+		if strings.Contains(content, "previewdomain.ValidateSelectedPlatform(") {
+			t.Fatalf("%s should not contain previewdomain.ValidateSelectedPlatform after neutral platform registry extraction", tc.file)
 		}
 	}
 }

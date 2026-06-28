@@ -20,7 +20,7 @@ The project-wide plan calls preview aggregation the best next bounded extraction
 
 That extraction has already started, but the codebase is now in a mixed state:
 
-- `internal/listing/preview` already owns several platform-neutral preview concepts.
+- `internal/listing/preview` owns preview shell/status concepts and compatibility wrappers.
 - `internal/listing/platformsection` owns reusable platform-section selection and dispatch.
 - `internal/listingkit` still owns task/result projection and platform payload composition.
 
@@ -37,8 +37,7 @@ Current responsibilities:
 - preview shell construction
 - preview header construction
 - preview status label / status message mapping
-- selected-platform validation against preview-supported platforms
-- supported preview platform registry
+- compatibility wrappers around listing platform selection helpers
 
 Representative files:
 
@@ -66,6 +65,8 @@ as preview-only.
 Current responsibilities:
 
 - platform name normalization
+- supported listing platform registry
+- selected-platform validation
 - selected-platform matching
 - single section availability checks
 - ordered platform-section builder execution
@@ -128,8 +129,8 @@ attachment application.
 
 The following pattern is already emerging:
 
-- platform-neutral selection and section dispatch in `internal/listing/platformsection`
-- preview-supported platform validation in `internal/listing/preview`
+- platform-neutral selection, validation, and section dispatch in `internal/listing/platformsection`
+- preview shell/status and compatibility wrappers in `internal/listing/preview`
 - marketplace-specific preview payload assembly in `internal/listingkit`
 
 This is acceptable for now, but future moves should prefer marketplace-owned builders instead of adding more platform-specific payload logic to root `listingkit`.
@@ -148,13 +149,13 @@ Use these rules for the next preview-related refactors.
 
 - preview-specific
 - independent of `listingkit.Task` and `listingkit.TaskResult`
-- about preview shell, supported-platform validation, or status
+- about preview shell, status, or compatibility wrappers
 
 ### Move to `internal/listing/platformsection` when the code is:
 
 - platform-neutral
 - independent of `listingkit.Task` and `listingkit.TaskResult`
-- about platform normalization, selection, availability, or ordered builder dispatch rather than preview payload shape
+- about platform normalization, supported-platform validation, selection, availability, or ordered builder dispatch rather than preview payload shape
 
 ### Keep in `internal/listingkit` when the code is:
 

@@ -2,6 +2,8 @@ package platformsection
 
 import "strings"
 
+var supportedPlatforms = []string{"amazon", "shein", "temu", "walmart"}
+
 type Builder struct {
 	Platform string
 	Build    func() error
@@ -17,6 +19,28 @@ type Section struct {
 
 func Normalize(platform string) string {
 	return strings.ToLower(strings.TrimSpace(platform))
+}
+
+func SupportedPlatforms() []string {
+	return append([]string(nil), supportedPlatforms...)
+}
+
+func IsSupported(platform string) bool {
+	platform = Normalize(platform)
+	for _, supported := range supportedPlatforms {
+		if supported == platform {
+			return true
+		}
+	}
+	return false
+}
+
+func ValidateSelectedPlatform(platform string) (string, bool) {
+	platform = Normalize(platform)
+	if platform == "" {
+		return "", true
+	}
+	return platform, IsSupported(platform)
 }
 
 func ShouldBuild(selectedPlatform, platform string) bool {
