@@ -10,12 +10,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type processorRegistration struct {
-	module      PlatformModule
-	needsAmazon bool
-	register    func(context.Context, *PlatformProcessorRegistry, *ServiceManager, *SharedResources) error
-}
-
 type PlatformProcessorRegistry struct {
 	config           *config.Config
 	logger           *logrus.Logger
@@ -45,32 +39,6 @@ func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, s
 	return r.RegisterPlatforms(ctx, serviceManager, resources, r.enabledPlatforms...)
 }
 
-func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorRegistration {
-	registrations := make([]processorRegistration, 0, len(r.platformModules))
-	for _, module := range r.platformModules {
-		module := module
-		registrations = append(registrations, processorRegistration{
-			module:      module,
-			needsAmazon: module.NeedsAmazon(r.config),
-			register: func(ctx context.Context, registry *PlatformProcessorRegistry, serviceManager *ServiceManager, resources *SharedResources) error {
-				registry.logger.Infof("registering %s processor", strings.ToUpper(module.Name()))
-				runtimeContext := BuildPlatformRuntimeContext(PlatformRuntimeContextInput{
-					Config:         registry.config,
-					Logger:         registry.logger,
-					Resources:      resources,
-					ServiceManager: serviceManager,
-				})
-				if err := module.RegisterConsumer(ctx, runtimeContext, serviceManager); err != nil {
-					return err
-				}
-				registry.logger.Infof("%s processor registered", strings.ToUpper(module.Name()))
-				return nil
-			},
-		})
-	}
-	return registrations
-}
-
 func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources, platforms ...string) error {
 	modules, err := r.resolveModules(platforms)
 	if err != nil {
@@ -84,14 +52,13 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 		r.logger.Warn("RabbitMQ client unavailable; distributed fetching is unavailable")
 	}
 
-	registrations := r.buildProcessorRegistrationsForModules(modules)
 	if resources == nil {
 		return fmt.Errorf("shared resources not configured")
 	}
 	r.logger.Info("shared resources initialized")
 
-	for _, registration := range registrations {
-		if err := registration.register(ctx, r, serviceManager, resources); err != nil {
+	for _, module := range modules {
+		if err := r.registerPlatformModule(ctx, serviceManager, resources, module); err != nil {
 			return err
 		}
 	}
@@ -100,21 +67,35 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 	return nil
 }
 
+func (r *PlatformProcessorRegistry) registerPlatformModule(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources, module PlatformModule) error {
+	r.logger.Infof("registering %s processor", strings.ToUpper(module.Name()))
+	runtimeContext := BuildPlatformRuntimeContext(PlatformRuntimeContextInput{
+		Config:         r.config,
+		Logger:         r.logger,
+		Resources:      resources,
+		ServiceManager: serviceManager,
+	})
+	if err := module.RegisterConsumer(ctx, runtimeContext, serviceManager); err != nil {
+		return err
+	}
+	r.logger.Infof("%s processor registered", strings.ToUpper(module.Name()))
+	return nil
+}
+
 func (r *PlatformProcessorRegistry) SharedResourceNeeds(platforms ...string) (SharedResourceNeeds, error) {
 	modules, err := r.resolveModules(platforms)
 	if err != nil {
 		return SharedResourceNeeds{}, err
 	}
-	registrations := r.buildProcessorRegistrationsForModules(modules)
 	return SharedResourceNeeds{
-		NeedAmazonCrawler: r.anyRegistrationNeedsAmazon(registrations),
+		NeedAmazonCrawler: r.anyModuleNeedsAmazon(modules),
 	}, nil
 }
 
-func (r *PlatformProcessorRegistry) anyRegistrationNeedsAmazon(registrations []processorRegistration) bool {
-	for _, registration := range registrations {
-		name := registration.module.Name()
-		if r.isPlatformEnabled(name) && (registration.needsAmazon || PlatformUsesLocalFetcher(r.config, name)) {
+func (r *PlatformProcessorRegistry) anyModuleNeedsAmazon(modules []PlatformModule) bool {
+	for _, module := range modules {
+		name := module.Name()
+		if r.isPlatformEnabled(name) && (module.NeedsAmazon(r.config) || PlatformUsesLocalFetcher(r.config, name)) {
 			return true
 		}
 	}
@@ -134,19 +115,6 @@ func (r *PlatformProcessorRegistry) ResolvePlatformModule(platform string) (Plat
 		return nil, fmt.Errorf("%s platform is not enabled", strings.ToUpper(platform))
 	}
 	return module, nil
-}
-
-func (r *PlatformProcessorRegistry) buildProcessorRegistrationsForModules(modules []PlatformModule) []processorRegistration {
-	registrations := make([]processorRegistration, 0, len(modules))
-	for _, registration := range r.buildProcessorRegistrations() {
-		for _, module := range modules {
-			if registration.module.Name() == module.Name() {
-				registrations = append(registrations, registration)
-				break
-			}
-		}
-	}
-	return registrations
 }
 
 func (r *PlatformProcessorRegistry) resolveModules(platforms []string) ([]PlatformModule, error) {

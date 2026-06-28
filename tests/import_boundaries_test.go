@@ -1218,6 +1218,23 @@ func TestPlatformProcessorRegistryDoesNotBuildPlatformRuntimeContext(t *testing.
 	}
 }
 
+func TestPlatformProcessorRegistryDoesNotUseRegistrationClosures(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type processorRegistration",
+		"buildProcessorRegistrations",
+		"registration.register",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; register resolved platform modules directly instead of routing through registration closures", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),
