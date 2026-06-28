@@ -53,7 +53,7 @@ func TestReadSurfaceProjectionBoundary(t *testing.T) {
 		t.Parallel()
 
 		source := readNamedFunctionSource(t, "preview_result_projection.go", "buildListingKitPreviewProjection")
-		applySource := readNamedFunctionSource(t, "preview_result_projection.go", "applyListingKitPreviewProjection")
+		applySource := readNamedFunctionSource(t, "preview_result_adapter.go", "applyListingKitPreviewProjection")
 		fileSource := readTaskGenerationSourceFile(t, "preview_result_projection.go")
 		adapterSource := readTaskGenerationSourceFile(t, "preview_result_adapter.go")
 
@@ -66,6 +66,7 @@ func TestReadSurfaceProjectionBoundary(t *testing.T) {
 			`"task-processor/internal/asset"`,
 			`"task-processor/internal/catalog"`,
 			"previewdomain.BuildResultProjection(previewdomain.ResultProjectionInput{",
+			"func applyListingKitPreviewProjection(",
 			"type listingKitPreviewProjection struct {",
 			"type listingKitPreviewProjectionAttachment struct {",
 		})

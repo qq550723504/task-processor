@@ -56,3 +56,20 @@ func adaptPreviewDomainResultProjection(
 	projection.attachment.generationOverview = readProjection.AssetGenerationOverview
 	return projection
 }
+
+func applyListingKitPreviewProjection(preview *ListingKitPreview, projection listingKitPreviewProjection) {
+	if preview == nil {
+		return
+	}
+	preview.Overview = projection.overview
+	preview.NeedsReview = projection.needsReview
+	preview.Catalog = projection.attachment.catalog
+	preview.Assets = projection.attachment.assets
+	preview.AssetInventory = projection.attachment.assetInventory
+	preview.AssetRenderPreviews = projection.attachment.assetRenderPreviews
+	preview.PlatformAssetRenderPreviews = projection.attachment.platformPreviews
+	preview.AssetGenerationQueue = projection.attachment.generationQueue
+	preview.AssetGenerationOverview = projection.attachment.generationOverview
+	preview.RevisionHistoryMeta = projection.revisionMeta
+	preview.RevisionHistory = projection.revisionHistory
+}
