@@ -1,18 +1,19 @@
 package preview
 
+import "task-processor/internal/listing/platformsection"
+
 func BuildPlatformSection(selectedPlatform, platform string, available bool, build func()) error {
-	if !ShouldBuildPlatform(selectedPlatform, platform) {
-		return nil
-	}
-	if !available {
-		return PlatformUnavailableError(selectedPlatform, platform)
-	}
-	build()
-	return nil
+	return platformsection.BuildOne(platformsection.Section{
+		SelectedPlatform: selectedPlatform,
+		Platform:         platform,
+		Available:        available,
+		Build:            build,
+		UnavailableError: ErrPlatformUnavailable,
+	})
 }
 
 func PlatformUnavailableError(selectedPlatform, platform string) error {
-	if IsSelectedPlatform(selectedPlatform, platform) {
+	if platformsection.IsSelected(selectedPlatform, platform) {
 		return ErrPlatformUnavailable
 	}
 	return nil

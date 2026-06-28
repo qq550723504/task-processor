@@ -21,7 +21,7 @@ The project-wide plan calls preview aggregation the best next bounded extraction
 That extraction has already started, but the codebase is now in a mixed state:
 
 - `internal/listing/preview` already owns several platform-neutral preview concepts.
-- `internal/listing/platformsection` owns reusable platform-section dispatch.
+- `internal/listing/platformsection` owns reusable platform-section selection and dispatch.
 - `internal/listingkit` still owns task/result projection and platform payload composition.
 
 Without a written boundary, it is easy to keep adding more preview behavior to root `listingkit` and lose the benefit of the new `internal/listing/preview` package.
@@ -37,8 +37,7 @@ Current responsibilities:
 - preview shell construction
 - preview header construction
 - preview status label / status message mapping
-- selected-platform normalization and validation
-- platform availability / selection rules
+- selected-platform validation against preview-supported platforms
 - supported preview platform registry
 
 Representative files:
@@ -60,11 +59,15 @@ Current guardrail:
 
 ## `internal/listing/platformsection`
 
-This package owns platform-neutral section-builder dispatch that can be reused
-by preview/export adapters without naming that shared framework as preview-only.
+This package owns platform-neutral section selection and builder dispatch that
+can be reused by preview/export adapters without naming that shared framework
+as preview-only.
 
 Current responsibilities:
 
+- platform name normalization
+- selected-platform matching
+- single section availability checks
 - ordered platform-section builder execution
 - nil builder skipping
 - stop-on-first-error dispatch
@@ -125,8 +128,8 @@ attachment application.
 
 The following pattern is already emerging:
 
-- platform-neutral selection rules in `internal/listing/preview`
-- platform-section dispatch in `internal/listing/platformsection` reused by preview/export adapters
+- platform-neutral selection and section dispatch in `internal/listing/platformsection`
+- preview-supported platform validation in `internal/listing/preview`
 - marketplace-specific preview payload assembly in `internal/listingkit`
 
 This is acceptable for now, but future moves should prefer marketplace-owned builders instead of adding more platform-specific payload logic to root `listingkit`.
@@ -143,15 +146,15 @@ Use these rules for the next preview-related refactors.
 
 ### Move to `internal/listing/preview` when the code is:
 
-- platform-neutral
+- preview-specific
 - independent of `listingkit.Task` and `listingkit.TaskResult`
-- about preview shell, selection, availability, or status
+- about preview shell, supported-platform validation, or status
 
 ### Move to `internal/listing/platformsection` when the code is:
 
 - platform-neutral
 - independent of `listingkit.Task` and `listingkit.TaskResult`
-- about ordered platform-section builder dispatch rather than preview payload shape
+- about platform normalization, selection, availability, or ordered builder dispatch rather than preview payload shape
 
 ### Keep in `internal/listingkit` when the code is:
 

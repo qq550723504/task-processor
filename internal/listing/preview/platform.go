@@ -1,6 +1,6 @@
 package preview
 
-import "strings"
+import "task-processor/internal/listing/platformsection"
 
 var supportedPlatforms = []string{"amazon", "shein", "temu", "walmart"}
 
@@ -9,7 +9,7 @@ func SupportedPlatforms() []string {
 }
 
 func NormalizePlatform(platform string) string {
-	return strings.ToLower(strings.TrimSpace(platform))
+	return platformsection.Normalize(platform)
 }
 
 func IsSupportedPlatform(platform string) bool {
@@ -31,11 +31,9 @@ func ValidateSelectedPlatform(platform string) (string, bool) {
 }
 
 func ShouldBuildPlatform(selectedPlatform, platform string) bool {
-	selectedPlatform = NormalizePlatform(selectedPlatform)
-	platform = NormalizePlatform(platform)
-	return selectedPlatform == "" || selectedPlatform == platform
+	return platformsection.ShouldBuild(selectedPlatform, platform)
 }
 
 func IsSelectedPlatform(selectedPlatform, platform string) bool {
-	return NormalizePlatform(selectedPlatform) == NormalizePlatform(platform)
+	return platformsection.IsSelected(selectedPlatform, platform)
 }

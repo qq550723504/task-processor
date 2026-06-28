@@ -1,8 +1,48 @@
 package platformsection
 
+import "strings"
+
 type Builder struct {
 	Platform string
 	Build    func() error
+}
+
+type Section struct {
+	SelectedPlatform string
+	Platform         string
+	Available        bool
+	Build            func()
+	UnavailableError error
+}
+
+func Normalize(platform string) string {
+	return strings.ToLower(strings.TrimSpace(platform))
+}
+
+func ShouldBuild(selectedPlatform, platform string) bool {
+	selectedPlatform = Normalize(selectedPlatform)
+	platform = Normalize(platform)
+	return selectedPlatform == "" || selectedPlatform == platform
+}
+
+func IsSelected(selectedPlatform, platform string) bool {
+	return Normalize(selectedPlatform) == Normalize(platform)
+}
+
+func BuildOne(section Section) error {
+	if !ShouldBuild(section.SelectedPlatform, section.Platform) {
+		return nil
+	}
+	if !section.Available {
+		if IsSelected(section.SelectedPlatform, section.Platform) {
+			return section.UnavailableError
+		}
+		return nil
+	}
+	if section.Build != nil {
+		section.Build()
+	}
+	return nil
 }
 
 func BuildAll(builders []Builder) error {

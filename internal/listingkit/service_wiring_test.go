@@ -2369,11 +2369,19 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 	}
 	applyContent := string(applySrc)
 	for _, needle := range []string{
-		"previewdomain.BuildPlatformSection(",
-		"adaptPreviewPlatformSectionError(",
+		"platformsection.BuildOne(",
+		"platformsection.Section{",
 	} {
 		if !strings.Contains(applyContent, needle) {
 			t.Fatalf("preview_platform_apply.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"previewdomain.BuildPlatformSection(",
+		"func adaptPreviewPlatformSectionError(",
+	} {
+		if strings.Contains(applyContent, needle) {
+			t.Fatalf("preview_platform_apply.go should not contain %q after neutral platform-section apply extraction", needle)
 		}
 	}
 }
@@ -2404,6 +2412,28 @@ func TestExportPlatformBuilderRegistryUsesNeutralPlatformSectionDispatcher(t *te
 	} {
 		if strings.Contains(platformsContent, needle) {
 			t.Fatalf("export_builder_platforms.go should not contain %q after neutral platform-section dispatcher extraction", needle)
+		}
+	}
+
+	applySrc, err := os.ReadFile("export_platform_apply.go")
+	if err != nil {
+		t.Fatalf("ReadFile(export_platform_apply.go) error = %v", err)
+	}
+	applyContent := string(applySrc)
+	for _, needle := range []string{
+		"platformsection.BuildOne(",
+		"platformsection.Section{",
+	} {
+		if !strings.Contains(applyContent, needle) {
+			t.Fatalf("export_platform_apply.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"previewdomain.BuildPlatformSection(",
+		"adaptPreviewPlatformSectionError(",
+	} {
+		if strings.Contains(applyContent, needle) {
+			t.Fatalf("export_platform_apply.go should not contain %q after neutral platform-section apply extraction", needle)
 		}
 	}
 }
