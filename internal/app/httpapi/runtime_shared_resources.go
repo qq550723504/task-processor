@@ -5,12 +5,12 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	appbootstrap "task-processor/internal/app/bootstrap"
+	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/core/config"
 )
 
-func buildHTTPAPISharedResources(cfg *config.Config, logger *logrus.Logger) (*appbootstrap.SharedResources, error) {
-	shared, err := appbootstrap.BuildSharedResources(cfg, logger, appbootstrap.SharedResourceOptions{})
+func buildHTTPAPISharedResources(cfg *config.Config, logger *logrus.Logger) (*bootstrapresources.SharedResources, error) {
+	shared, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("build shared resources: %w", err)
 	}

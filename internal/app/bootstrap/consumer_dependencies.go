@@ -13,7 +13,7 @@ import (
 type listingRuntimeDependencies struct {
 	platformModules []consumer.PlatformModule
 	buildResources  func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error)
-	sharedResources func() *SharedResources
+	sharedResources func() *bootstrapresources.SharedResources
 }
 
 func (d listingRuntimeDependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
@@ -23,7 +23,7 @@ func (d listingRuntimeDependencies) BuildConsumerSharedResources(cfg *config.Con
 	return d.buildResources(cfg, logger, platform, needs)
 }
 
-func (d listingRuntimeDependencies) SharedResources() *SharedResources {
+func (d listingRuntimeDependencies) SharedResources() *bootstrapresources.SharedResources {
 	if d.sharedResources == nil {
 		return nil
 	}
@@ -35,19 +35,19 @@ func (d listingRuntimeDependencies) ConsumerDependencies(cfg *config.Config, pla
 }
 
 func BuildListingRuntimeDependencies() listingRuntimeDependencies {
-	var sharedResources *SharedResources
+	var sharedResources *bootstrapresources.SharedResources
 	return listingRuntimeDependencies{
 		platformModules: platforms.All(),
-		buildResources: buildConsumerSharedResourcesFunc(func(resources *SharedResources) {
+		buildResources: buildConsumerSharedResourcesFunc(func(resources *bootstrapresources.SharedResources) {
 			sharedResources = resources
 		}),
-		sharedResources: func() *SharedResources {
+		sharedResources: func() *bootstrapresources.SharedResources {
 			return sharedResources
 		},
 	}
 }
 
-func buildConsumerSharedResourcesFunc(onSharedResources func(*SharedResources)) func(*config.Config, *logrus.Logger, string, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+func buildConsumerSharedResourcesFunc(onSharedResources func(*bootstrapresources.SharedResources)) func(*config.Config, *logrus.Logger, string, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 	return func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 		resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{
 			NeedAmazonCrawler: needs.NeedAmazonCrawler,

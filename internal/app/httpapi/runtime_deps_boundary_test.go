@@ -227,8 +227,8 @@ func TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated(t *testing.T) {
 	runtimeSource := readHTTPAPIBoundaryFile(t, "runtime.go")
 	for _, marker := range []string{
 		`"task-processor/internal/app/bootstrap"`,
-		"appbootstrap.BuildSharedResources(",
-		"appbootstrap.SharedResourceOptions{",
+		"bootstrapresources.BuildSharedResources(",
+		"bootstrapresources.SharedResourceOptions{",
 		"AllowMissingManagementAuth: true",
 		"SkipManagementAuth:         true",
 	} {
@@ -239,10 +239,10 @@ func TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated(t *testing.T) {
 
 	sharedResourcesSource := readHTTPAPIBoundaryFile(t, "runtime_shared_resources.go")
 	for _, marker := range []string{
-		`"task-processor/internal/app/bootstrap"`,
+		`"task-processor/internal/app/bootstrap/resources"`,
 		"func buildHTTPAPISharedResources(",
-		"appbootstrap.BuildSharedResources(",
-		"appbootstrap.SharedResourceOptions{",
+		"bootstrapresources.BuildSharedResources(",
+		"bootstrapresources.SharedResourceOptions{",
 	} {
 		if !strings.Contains(sharedResourcesSource, marker) {
 			t.Fatalf("runtime_shared_resources.go missing %s", marker)

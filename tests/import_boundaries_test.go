@@ -1604,14 +1604,12 @@ func TestBootstrapFetchersDoNotExposeSharedProductFetcherBuilder(t *testing.T) {
 	}
 }
 
-func TestBootstrapResourceFacadeDoesNotExposePromptInitialization(t *testing.T) {
+func TestBootstrapResourceFacadeStaysRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "bootstrap", "resource_factories.go")
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	if strings.Contains(string(content), "func InitializePrompts(") {
-		t.Fatalf("%s exposes InitializePrompts; call bootstrap/resources prompt initialization at the assembly edge instead", path)
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; import bootstrap/resources directly instead of reviving the top-level resource facade", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
 	}
 }
 
