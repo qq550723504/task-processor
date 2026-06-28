@@ -1548,6 +1548,26 @@ func TestPlatformModulesUseRuntimeProductFetcher(t *testing.T) {
 	}
 }
 
+func TestProductSourceCompatibilityAliasStaysRetired(t *testing.T) {
+	for _, path := range []string{
+		filepath.Join("..", "internal", "app", "ports", "platform.go"),
+		filepath.Join("..", "internal", "ports", "contracts.go"),
+	} {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range []string{
+			"type ProductSource",
+			"appports.ProductSource",
+		} {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; keep the crawl capability named CrawlSource instead of reviving ProductSource compatibility", path, phrase)
+			}
+		}
+	}
+}
+
 func TestPlatformRuntimeContextDoesNotExposeRawJSONDataClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "shared_resources.go")
 	content, err := os.ReadFile(path)

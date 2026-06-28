@@ -6,16 +6,12 @@ import (
 	"task-processor/internal/model"
 )
 
-// ProductSource defines the low-level crawl-source capability used by product fetchers.
-type ProductSource interface {
+// CrawlSource defines the low-level crawl-source capability used by product fetchers.
+type CrawlSource interface {
 	Process(url, zipcode string) (*model.Product, error)
 	ProcessWithContext(ctx context.Context, url, zipcode string) (*model.Product, error)
 	Shutdown()
 }
-
-// CrawlSource is the preferred neutral name for product crawl capabilities.
-// Keep ProductSource as the compatibility name while the rest of the codebase is migrated.
-type CrawlSource = ProductSource
 
 // TaskPublisher defines the ability to publish task payloads asynchronously.
 type TaskPublisher interface {
