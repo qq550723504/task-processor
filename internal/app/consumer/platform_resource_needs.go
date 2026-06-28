@@ -4,10 +4,10 @@ import "task-processor/internal/core/config"
 
 type PlatformResourceNeedsResolver struct {
 	cfg     *config.Config
-	catalog PlatformModuleCatalog
+	catalog platformModuleCatalog
 }
 
-func NewPlatformResourceNeedsResolver(cfg *config.Config, catalog PlatformModuleCatalog) PlatformResourceNeedsResolver {
+func NewPlatformResourceNeedsResolver(cfg *config.Config, catalog platformModuleCatalog) PlatformResourceNeedsResolver {
 	return PlatformResourceNeedsResolver{
 		cfg:     cfg,
 		catalog: catalog,
@@ -15,7 +15,7 @@ func NewPlatformResourceNeedsResolver(cfg *config.Config, catalog PlatformModule
 }
 
 func (r PlatformResourceNeedsResolver) Resolve(platforms ...string) (SharedResourceNeeds, error) {
-	modules, err := r.catalog.ResolveMany(platforms...)
+	modules, err := r.catalog.resolveMany(platforms...)
 	if err != nil {
 		return SharedResourceNeeds{}, err
 	}

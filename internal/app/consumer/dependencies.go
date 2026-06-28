@@ -9,13 +9,13 @@ import (
 type PlatformModuleRegistrarFactory func(logger *logrus.Logger, serviceManager *ServiceManager, resources *SharedResources) PlatformModuleRegistrar
 
 type PlatformProcessorRegistryDependencies struct {
-	catalog       PlatformModuleCatalog
+	catalog       platformModuleCatalog
 	resourceNeeds PlatformResourceNeedsResolver
 	newRegistrar  PlatformModuleRegistrarFactory
 }
 
 func NewPlatformProcessorRegistryDependencies(cfg *config.Config, platformsStr string, modules []PlatformModule) PlatformProcessorRegistryDependencies {
-	catalog := NewPlatformModuleCatalog(cfg, platformsStr, modules)
+	catalog := newPlatformModuleCatalog(cfg, platformsStr, modules)
 	return PlatformProcessorRegistryDependencies{
 		catalog:       catalog,
 		resourceNeeds: NewPlatformResourceNeedsResolver(cfg, catalog),
@@ -26,7 +26,7 @@ func NewPlatformProcessorRegistryDependencies(cfg *config.Config, platformsStr s
 }
 
 func (d PlatformProcessorRegistryDependencies) ResolvePlatformModule(platform string) (PlatformModule, error) {
-	return d.catalog.Resolve(platform)
+	return d.catalog.resolve(platform)
 }
 
 type CrawlerRegistryDependencies struct {

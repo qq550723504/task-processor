@@ -9,13 +9,13 @@ import (
 
 type PlatformProcessorRegistry struct {
 	logger       *logrus.Logger
-	catalog      PlatformModuleCatalog
+	catalog      platformModuleCatalog
 	resourceNeed PlatformResourceNeedsResolver
 	newRegistrar PlatformModuleRegistrarFactory
 }
 
 func NewPlatformProcessorRegistry(logger *logrus.Logger, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
-	logger.Infof("enabled platforms: %v", deps.catalog.EnabledPlatformNames())
+	logger.Infof("enabled platforms: %v", deps.catalog.enabledPlatformNames())
 
 	return &PlatformProcessorRegistry{
 		logger:       logger,
@@ -26,11 +26,11 @@ func NewPlatformProcessorRegistry(logger *logrus.Logger, deps PlatformProcessorR
 }
 
 func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources) error {
-	return r.RegisterPlatforms(ctx, serviceManager, resources, r.catalog.EnabledPlatformNames()...)
+	return r.RegisterPlatforms(ctx, serviceManager, resources, r.catalog.enabledPlatformNames()...)
 }
 
 func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources, platforms ...string) error {
-	modules, err := r.catalog.ResolveMany(platforms...)
+	modules, err := r.catalog.resolveMany(platforms...)
 	if err != nil {
 		return err
 	}

@@ -1274,6 +1274,26 @@ func TestPlatformProcessorRegistryDoesNotImplementPlatformModuleCatalog(t *testi
 	}
 }
 
+func TestPlatformModuleCatalogStaysPackageInternal(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_module_catalog.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type PlatformModuleCatalog",
+		"func NewPlatformModuleCatalog",
+		"func (c PlatformModuleCatalog) EnabledPlatformNames",
+		"func (c PlatformModuleCatalog) Resolve(",
+		"func (c PlatformModuleCatalog) ResolveMany",
+		"func (c PlatformModuleCatalog) IsEnabled",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; keep platform module catalog package-internal behind registry dependency methods", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotComputePlatformResourceNeeds(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	content, err := os.ReadFile(path)

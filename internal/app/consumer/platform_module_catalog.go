@@ -7,27 +7,27 @@ import (
 	"task-processor/internal/core/config"
 )
 
-type PlatformModuleCatalog struct {
+type platformModuleCatalog struct {
 	selection platformSelection
 	modules   []PlatformModule
 }
 
-func NewPlatformModuleCatalog(cfg *config.Config, platformsStr string, modules []PlatformModule) PlatformModuleCatalog {
-	return PlatformModuleCatalog{
+func newPlatformModuleCatalog(cfg *config.Config, platformsStr string, modules []PlatformModule) platformModuleCatalog {
+	return platformModuleCatalog{
 		selection: newPlatformSelection(cfg, platformsStr, modules),
 		modules:   modules,
 	}
 }
 
-func (c PlatformModuleCatalog) EnabledPlatformNames() []string {
+func (c platformModuleCatalog) enabledPlatformNames() []string {
 	return c.selection.names()
 }
 
-func (c PlatformModuleCatalog) Resolve(platform string) (PlatformModule, error) {
+func (c platformModuleCatalog) resolve(platform string) (PlatformModule, error) {
 	return c.resolveModule(platform)
 }
 
-func (c PlatformModuleCatalog) ResolveMany(platforms ...string) ([]PlatformModule, error) {
+func (c platformModuleCatalog) resolveMany(platforms ...string) ([]PlatformModule, error) {
 	if len(platforms) == 0 {
 		return c.selection.enabledModules(c.modules), nil
 	}
@@ -52,11 +52,7 @@ func (c PlatformModuleCatalog) ResolveMany(platforms ...string) ([]PlatformModul
 	return modules, nil
 }
 
-func (c PlatformModuleCatalog) IsEnabled(platform string) bool {
-	return c.selection.isEnabled(platform)
-}
-
-func (c PlatformModuleCatalog) resolveModule(platform string) (PlatformModule, error) {
+func (c platformModuleCatalog) resolveModule(platform string) (PlatformModule, error) {
 	module, ok := c.find(platform)
 	if !ok {
 		return nil, fmt.Errorf("unsupported platform: %s", platform)
@@ -67,7 +63,7 @@ func (c PlatformModuleCatalog) resolveModule(platform string) (PlatformModule, e
 	return module, nil
 }
 
-func (c PlatformModuleCatalog) find(platform string) (PlatformModule, bool) {
+func (c platformModuleCatalog) find(platform string) (PlatformModule, bool) {
 	for _, module := range c.modules {
 		if strings.EqualFold(module.Name(), platform) {
 			return module, true
