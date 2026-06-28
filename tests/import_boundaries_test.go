@@ -1378,6 +1378,29 @@ func TestPlatformProcessorRegistryDependenciesDoNotExposePlatformModules(t *test
 	}
 }
 
+func TestPlatformProcessorRegistryDependenciesDoNotExposeRuntimeHelpers(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),
+		filepath.Join("..", "internal", "app", "runtime", "listing", "runtime.go"),
+	}
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range []string{
+			"Catalog       PlatformModuleCatalog",
+			"ResourceNeeds PlatformResourceNeedsResolver",
+			"NewRegistrar  PlatformModuleRegistrarFactory",
+			"consumerDeps.Catalog",
+		} {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; expose narrow dependency methods instead of runtime helper fields", path, phrase)
+			}
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),

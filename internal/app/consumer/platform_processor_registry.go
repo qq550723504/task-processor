@@ -15,13 +15,13 @@ type PlatformProcessorRegistry struct {
 }
 
 func NewPlatformProcessorRegistry(logger *logrus.Logger, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
-	logger.Infof("enabled platforms: %v", deps.Catalog.EnabledPlatformNames())
+	logger.Infof("enabled platforms: %v", deps.catalog.EnabledPlatformNames())
 
 	return &PlatformProcessorRegistry{
 		logger:       logger,
-		catalog:      deps.Catalog,
-		resourceNeed: deps.ResourceNeeds,
-		newRegistrar: deps.NewRegistrar,
+		catalog:      deps.catalog,
+		resourceNeed: deps.resourceNeeds,
+		newRegistrar: deps.newRegistrar,
 	}
 }
 

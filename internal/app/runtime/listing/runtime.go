@@ -56,7 +56,7 @@ func Run(ctx context.Context, opts Options) error {
 	consumerDeps := runtimeDeps.ConsumerDependencies(cfg, platform)
 	processorRegistry := consumer.NewPlatformProcessorRegistry(logger, consumerDeps)
 
-	module, err := consumerDeps.Catalog.Resolve(platform)
+	module, err := consumerDeps.ResolvePlatformModule(platform)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func runDebugTask(
 	runtimeDeps := bootstrap.BuildListingRuntimeDependencies()
 	consumerDeps := runtimeDeps.ConsumerDependencies(cfg, platform)
 	processorRegistry := consumer.NewPlatformProcessorRegistry(logger, consumerDeps)
-	module, err := consumerDeps.Catalog.Resolve(platform)
+	module, err := consumerDeps.ResolvePlatformModule(platform)
 	if err != nil {
 		return err
 	}
