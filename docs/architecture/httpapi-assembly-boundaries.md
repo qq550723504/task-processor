@@ -170,10 +170,8 @@
 职责明确的 focused 文件，而不是恢复这个容易重新长成 God file 的历史入口。
 `buildBootstrap(...)` 这类 app 启动编排应放在 `bootstrap.go`，避免 `modules.go`
 继续以历史文件名承载 bootstrap orchestration。
-Legacy `BuildHandlers(...)` facade 应放在 `handlers_legacy.go`，避免 `modules.go`
-为了兼容出口重新携带 handler / worker 具体类型依赖。
-Legacy facade 的 handler 返回类型也应使用 `route_handler_types.go` 中的本包 alias，
-避免兼容出口重新直接暴露业务 handler concrete type。
+Legacy `BuildHandlers(...)` facade 已退休；HTTP API 进程入口应使用 `Run(...)`
+和 module runtime bootstrap，避免重新暴露 handler / worker 具体类型依赖。
 `app.go` 应聚焦 `Run(...)`、HTTP serve 和资源关闭生命周期；从 kernel modules 构造
 server bundle / route list 的 helper 应放在 `module_runtime.go`，避免 app 入口重新承担
 module runtime 组装细节。
@@ -287,8 +285,8 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIAppDoesNotOwnProductEnrichScorerBuilderShadow`
 - `TestHTTPAPIModulesFileDoesNotOwnFeatureBuildWrappers`
 - `TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration`
-- `TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade`
-- `TestLegacyBuildHandlersUsesRouteHandlerAliases`
+- `TestHTTPAPILegacyBuildHandlersFacadeStaysRetired`
+- `TestLegacyBuildHandlersFacadeStaysRetired`
 - `TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers`
 - `TestHTTPAPIServerDoesNotOwnListingKitAuthMiddlewareSelection`
 - `TestHTTPAPICompositionBuilderDoesNotOwnFeatureModuleBuilderContracts`

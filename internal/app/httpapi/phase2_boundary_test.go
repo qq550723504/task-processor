@@ -66,7 +66,7 @@ func TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration(t *testing.T) {
 	}
 }
 
-func TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade(t *testing.T) {
+func TestHTTPAPILegacyBuildHandlersFacadeStaysRetired(t *testing.T) {
 	modulesContent := readRetiredModulesFileIfPresent(t)
 
 	for _, marker := range []string{
@@ -81,26 +81,8 @@ func TestHTTPAPIModulesFileDoesNotOwnLegacyBuildHandlersFacade(t *testing.T) {
 		require.NotContains(t, modulesContent, marker)
 	}
 
-	facadeSrc, err := os.ReadFile("handlers_legacy.go")
-	require.NoError(t, err)
-	facadeContent := string(facadeSrc)
-	for _, marker := range []string{
-		"func BuildHandlers(",
-		`"task-processor/internal/infra/worker"`,
-		"productRouteHandler",
-		"imageRouteHandler",
-		"[]worker.WorkerPool",
-	} {
-		require.Contains(t, facadeContent, marker)
-	}
-	for _, marker := range []string{
-		`"task-processor/internal/productenrich"`,
-		`"task-processor/internal/productimage/httpapi"`,
-		"productenrich.ProductHandler",
-		"productimagehttpapi.RouteHandler",
-	} {
-		require.NotContains(t, facadeContent, marker)
-	}
+	_, err := os.Stat("handlers_legacy.go")
+	require.Truef(t, os.IsNotExist(err), "handlers_legacy.go still exists; use Run/buildBootstrap module runtime instead of reviving BuildHandlers")
 }
 
 func readRetiredModulesFileIfPresent(t *testing.T) string {

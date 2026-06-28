@@ -463,7 +463,7 @@ Expected: FAIL until the old helper methods are removed.
 Make sure:
 
 - the existing E2E tests still build pools from the registered-module path
-- `cmd/product-listing-api/wrappers.go` and `cmd/productenrich-api/wrappers.go` keep consuming `httpapi.BuildHandlers(...)` without any behavior change
+- Historical note: `cmd/product-listing-api/wrappers.go` and `cmd/productenrich-api/wrappers.go` previously consumed `httpapi.BuildHandlers(...)`; that compatibility facade is now retired in favor of the HTTP API module runtime bootstrap.
 - no new pool-name wiring leaks back into the commands
 
 - [ ] **Step 4: Run full verification**

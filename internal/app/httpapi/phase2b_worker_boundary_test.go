@@ -142,23 +142,11 @@ func TestHTTPAPITypesDoesNotOwnRunOptions(t *testing.T) {
 	}
 }
 
-func TestLegacyBuildHandlersUsesRouteHandlerAliases(t *testing.T) {
+func TestLegacyBuildHandlersFacadeStaysRetired(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("handlers_legacy.go")
-	require.NoError(t, err)
-	content := string(src)
-
-	for _, marker := range []string{
-		"productenrich.ProductHandler",
-		"productimagehttpapi.RouteHandler",
-		`"task-processor/internal/productenrich"`,
-		`"task-processor/internal/productimage/httpapi"`,
-	} {
-		require.NotContains(t, content, marker)
-	}
-
-	require.Contains(t, content, "func BuildHandlers(logger *logrus.Logger, options Options) (productRouteHandler, imageRouteHandler, []worker.WorkerPool, []func() error, error)")
+	_, err := os.Stat("handlers_legacy.go")
+	require.Truef(t, os.IsNotExist(err), "handlers_legacy.go still exists; use module runtime bootstrap instead of the legacy handler facade")
 }
 
 func TestHTTPAPIAppDoesNotOwnModuleRuntimeHelpers(t *testing.T) {

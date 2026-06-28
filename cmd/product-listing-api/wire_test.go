@@ -7,12 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
-	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	productapi "task-processor/internal/productenrich/api"
 	productpipeline "task-processor/internal/productenrich/pipeline"
@@ -188,62 +186,6 @@ func TestRegisterRoutes_UnknownPath_Returns404(t *testing.T) {
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("unknown path = %d, want 404", w.Code)
 	}
-}
-
-func buildHandlerWithMemory(t *testing.T) (productenrich.ProductHandler, worker.WorkerPool, []func() error) {
-	t.Helper()
-
-	*configPath = "nonexistent-config.yaml"
-	logger := logrus.New()
-	logger.SetLevel(logrus.FatalLevel)
-
-	productHandler, _, pools, closers, err := buildHandlers(logger)
-	if err != nil {
-		t.Skipf("buildHandlers requires external dependencies (LLM), skipping: %v", err)
-	}
-	if len(pools) == 0 {
-		t.Fatal("expected at least one worker pool")
-	}
-	return productHandler, pools[0], closers
-}
-
-func TestBuildHandlers_ReturnsNonNilProductComponents(t *testing.T) {
-	productHandler, pool, closers := buildHandlerWithMemory(t)
-	defer func() {
-		for _, closeFn := range closers {
-			_ = closeFn()
-		}
-	}()
-
-	if productHandler == nil {
-		t.Fatal("product handler should not be nil")
-	}
-	if pool == nil {
-		t.Fatal("worker pool should not be nil")
-	}
-}
-
-func TestBuildHandlers_PoolCanStartAndStop(t *testing.T) {
-	_, pool, closers := buildHandlerWithMemory(t)
-	defer func() {
-		for _, closeFn := range closers {
-			_ = closeFn()
-		}
-	}()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	pool.Start(ctx)
-	stats := pool.GetQueueStats()
-	if stats.BufferSize <= 0 {
-		t.Fatalf("BufferSize = %d, want > 0", stats.BufferSize)
-	}
-
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer shutdownCancel()
-	cancel()
-	pool.Stop(shutdownCtx)
 }
 
 type mockTaskSubmitter struct {
