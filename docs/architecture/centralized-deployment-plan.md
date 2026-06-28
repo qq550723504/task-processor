@@ -192,7 +192,6 @@ node:
 
 - [rabbitmq_service.go](D:/code/task-processor/internal/app/consumer/rabbitmq_service.go)
 - [platform_registry.go](D:/code/task-processor/internal/app/consumer/platform_registry.go)
-- [crawler_registry.go](D:/code/task-processor/internal/app/consumer/crawler_registry.go)
 - [config.go](D:/code/task-processor/internal/core/config/config.go)
 - [type_rabbitmq.go](D:/code/task-processor/internal/core/config/type_rabbitmq.go)
 
@@ -370,7 +369,6 @@ lease:
 - [rabbitmq_service.go](D:/code/task-processor/internal/app/consumer/rabbitmq_service.go)
 - [service_manager.go](D:/code/task-processor/internal/app/consumer/service_manager.go)
 - [processor_registry.go](D:/code/task-processor/internal/app/consumer/processor_registry.go)
-- [crawler_registry.go](D:/code/task-processor/internal/app/consumer/crawler_registry.go)
 
 目标：
 

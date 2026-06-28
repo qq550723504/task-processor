@@ -1467,37 +1467,25 @@ func TestPlatformProcessorRegistryDependenciesDoNotExposeRuntimeHelpers(t *testi
 	}
 }
 
-func TestCrawlerRegistryDependenciesDoNotExposeRuntimeHelpers(t *testing.T) {
-	paths := []string{
-		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),
-		filepath.Join("..", "internal", "app", "bootstrap", "consumer_dependencies.go"),
-	}
-	for _, path := range paths {
-		content, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-		for _, phrase := range []string{
-			"AmazonCrawlerCreator   AmazonCrawlerCreator",
-			"ProductFetcherProvider ProductFetcherProvider",
-			"AmazonCrawlerCreator:",
-			"ProductFetcherProvider:",
-		} {
-			if strings.Contains(string(content), phrase) {
-				t.Fatalf("%s mentions %q; expose a complete crawler dependency constructor instead of runtime helper fields", path, phrase)
-			}
+func TestCrawlerRegistryStaysRetired(t *testing.T) {
+	for _, path := range []string{
+		filepath.Join("..", "internal", "app", "consumer", "crawler_registry.go"),
+		filepath.Join("..", "internal", "app", "consumer", "crawler_creators.go"),
+	} {
+		if _, err := os.Stat(path); err == nil {
+			t.Fatalf("%s still exists; keep crawler processor wiring in shared resources and platform runtime registration instead of reviving the unused crawler registry", path)
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("stat %s: %v", path, err)
 		}
 	}
-}
 
-func TestCrawlerCreatorContractsStayPackageInternal(t *testing.T) {
 	files := map[string][]string{
-		filepath.Join("..", "internal", "app", "consumer", "crawler_creators.go"): {
-			"type AmazonCrawlerCreator",
-			"type ProductFetcherProvider",
-		},
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"): {
-			"func NewCrawlerRegistryDependencies(\n\tamazonCrawlerCreator amazonCrawlerCreator,\n\tproductFetcherProvider productFetcherProvider,",
+			"CrawlerRegistryDependencies",
+			"NewCrawlerRegistryDependencies",
+		},
+		filepath.Join("..", "internal", "app", "bootstrap", "consumer_dependencies.go"): {
+			"BuildCrawlerDependencies",
 		},
 	}
 	for path, phrases := range files {
@@ -1507,7 +1495,7 @@ func TestCrawlerCreatorContractsStayPackageInternal(t *testing.T) {
 		}
 		for _, phrase := range phrases {
 			if strings.Contains(string(content), phrase) {
-				t.Fatalf("%s mentions %q; keep crawler creator contracts package-internal behind dependency construction", path, phrase)
+				t.Fatalf("%s mentions %q; keep the unused crawler registry dependency path retired", path, phrase)
 			}
 		}
 	}

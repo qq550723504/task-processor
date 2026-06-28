@@ -33,7 +33,6 @@
 ### Task 3: Update remaining callers and verify
 
 **Files:**
-- Modify: `internal/app/consumer/crawler_registry.go`
 - Test: `internal/state`
 - Test: `internal/processor`
 - Test: `internal/app/consumer`
