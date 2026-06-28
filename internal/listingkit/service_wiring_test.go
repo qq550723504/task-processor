@@ -2389,19 +2389,39 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 	}
 	applyContent := string(applySrc)
 	for _, needle := range []string{
-		"listingplatform.BuildOne(",
-		"listingplatform.Section{",
+		"func applyPreviewPlatformSection(selectedPlatform, platform string, available bool, build func()) error {",
+		"return applyPlatformSection(selectedPlatform, platform, available, build)",
+		"return applyPlatformSection(selectedPlatform, platform, available, func() {",
 	} {
 		if !strings.Contains(applyContent, needle) {
 			t.Fatalf("preview_platform_apply.go should contain %q", needle)
 		}
 	}
 	for _, needle := range []string{
+		`"task-processor/internal/listing/platform"`,
+		"listingplatform.BuildOne(",
+		"listingplatform.Section{",
 		"previewdomain.BuildPlatformSection(",
 		"func adaptPreviewPlatformSectionError(",
 	} {
 		if strings.Contains(applyContent, needle) {
-			t.Fatalf("preview_platform_apply.go should not contain %q after neutral platform-section apply extraction", needle)
+			t.Fatalf("preview_platform_apply.go should not contain %q after shared platform-section apply extraction", needle)
+		}
+	}
+
+	applyHelperSrc, err := os.ReadFile("platform_section_apply.go")
+	if err != nil {
+		t.Fatalf("ReadFile(platform_section_apply.go) error = %v", err)
+	}
+	applyHelperContent := string(applyHelperSrc)
+	for _, needle := range []string{
+		"func applyPlatformSection(selectedPlatform, platform string, available bool, build func()) error {",
+		"listingplatform.BuildOne(",
+		"listingplatform.Section{",
+		"UnavailableError: ErrPreviewPlatformUnavailable",
+	} {
+		if !strings.Contains(applyHelperContent, needle) {
+			t.Fatalf("platform_section_apply.go should contain %q", needle)
 		}
 	}
 }
@@ -2444,19 +2464,22 @@ func TestExportPlatformBuilderRegistryUsesNeutralPlatformSectionDispatcher(t *te
 	}
 	applyContent := string(applySrc)
 	for _, needle := range []string{
-		"listingplatform.BuildOne(",
-		"listingplatform.Section{",
+		"func applyExportPlatformSection(selectedPlatform, platform string, available bool, build func()) error {",
+		"return applyPlatformSection(selectedPlatform, platform, available, build)",
 	} {
 		if !strings.Contains(applyContent, needle) {
 			t.Fatalf("export_platform_apply.go should contain %q", needle)
 		}
 	}
 	for _, needle := range []string{
+		`"task-processor/internal/listing/platform"`,
+		"listingplatform.BuildOne(",
+		"listingplatform.Section{",
 		"previewdomain.BuildPlatformSection(",
 		"adaptPreviewPlatformSectionError(",
 	} {
 		if strings.Contains(applyContent, needle) {
-			t.Fatalf("export_platform_apply.go should not contain %q after neutral platform-section apply extraction", needle)
+			t.Fatalf("export_platform_apply.go should not contain %q after shared platform-section apply extraction", needle)
 		}
 	}
 }
