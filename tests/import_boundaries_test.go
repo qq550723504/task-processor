@@ -310,8 +310,8 @@ func TestPublishingSheinNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "publishing", "shein")
 	allowedImports := map[string]map[string]struct{}{
 		`"task-processor/internal/shein/client"`: {
-			filepath.Clean(filepath.Join(root, "managed_api_factory.go")):        {},
-			filepath.Clean(filepath.Join(root, "runtime_base_client_legacy.go")): {},
+			filepath.Clean(filepath.Join(root, "managed_api_factory.go")): {},
+			filepath.Clean(filepath.Join(root, "runtime_base_client.go")): {},
 		},
 		`"task-processor/internal/shein/content"`: {},
 		`"task-processor/internal/shein/category"`: {
@@ -409,6 +409,23 @@ func TestPublishingSheinManagedRetiredManagementImportsStayBlocked(t *testing.T)
 			if importMatchesPrefix(importPath, "task-processor/internal/infra/clients/management") {
 				t.Errorf("%s imports %s; keep publishing/sheinmanaged management dependencies limited to current retirement seams and prefer in-repository database/repository access for new business data", path, importPath)
 			}
+		}
+	}
+}
+
+func TestPublishingSheinRuntimeBaseAPIClientAliasStaysRetired(t *testing.T) {
+	root := filepath.Join("..", "internal", "publishing", "shein")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path := range index.files {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if strings.Contains(string(content), "RuntimeBaseAPIClient") {
+			t.Fatalf("%s references RuntimeBaseAPIClient; use shein/client.BaseAPIClient directly in the runtime API factory", path)
 		}
 	}
 }
