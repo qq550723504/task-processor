@@ -1,9 +1,11 @@
 package listingkit
 
-func previewPlatformBuilders() []platformSectionBuilder[*ListingKitPreview] {
-	return platformSectionBuilders(previewPlatformRegistrations())
+import listingplatform "task-processor/internal/listing/platform"
+
+func previewPlatformBuilders() []listingplatform.RegisteredSectionBuilder[*ListingKitResult, *ListingKitPreview] {
+	return listingplatform.SectionBuilders(previewPlatformRegistrations())
 }
 
 func buildPreviewPlatformSections(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {
-	return buildPlatformSections(previewPlatformBuilders(), result, preview, selectedPlatform)
+	return listingplatform.BuildRegisteredSections(previewPlatformBuilders(), result, preview, selectedPlatform)
 }

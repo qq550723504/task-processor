@@ -76,6 +76,7 @@ Current responsibilities:
 Representative files:
 
 - `internal/listing/platform/errors.go`
+- `internal/listing/platform/registered_builders.go`
 - `internal/listing/platform/sections.go`
 
 ## `internal/listingkit`
@@ -96,7 +97,6 @@ Representative files:
 - `internal/listingkit/preview_result_adapter.go`
 - `internal/listingkit/preview_task_read_model_adapter.go`
 - `internal/listingkit/platform_section_apply.go`
-- `internal/listingkit/platform_section_builders.go`
 - `internal/listingkit/preview_platform_registry.go`
 - `internal/listingkit/preview_platform_amazon*.go`
 - `internal/listingkit/preview_platform_shein.go`

@@ -1,10 +1,12 @@
 package listingkit
 
-func exportPlatformRegistrations() []platformSectionRegistration[*ListingKitExport] {
-	return []platformSectionRegistration[*ListingKitExport]{
-		{name: "amazon", build: buildAmazonExportSection},
-		{name: "shein", build: buildSheinExportSection},
-		{name: "temu", build: buildTemuExportSection},
-		{name: "walmart", build: buildWalmartExportSection},
+import listingplatform "task-processor/internal/listing/platform"
+
+func exportPlatformRegistrations() []listingplatform.SectionRegistration[*ListingKitResult, *ListingKitExport] {
+	return []listingplatform.SectionRegistration[*ListingKitResult, *ListingKitExport]{
+		{Platform: "amazon", Build: buildAmazonExportSection},
+		{Platform: "shein", Build: buildSheinExportSection},
+		{Platform: "temu", Build: buildTemuExportSection},
+		{Platform: "walmart", Build: buildWalmartExportSection},
 	}
 }

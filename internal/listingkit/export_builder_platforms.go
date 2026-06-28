@@ -1,11 +1,13 @@
 package listingkit
 
-func exportPlatformBuilders() []platformSectionBuilder[*ListingKitExport] {
-	return platformSectionBuilders(exportPlatformRegistrations())
+import listingplatform "task-processor/internal/listing/platform"
+
+func exportPlatformBuilders() []listingplatform.RegisteredSectionBuilder[*ListingKitResult, *ListingKitExport] {
+	return listingplatform.SectionBuilders(exportPlatformRegistrations())
 }
 
 func buildExportPlatformSections(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {
-	return buildPlatformSections(exportPlatformBuilders(), result, export, selectedPlatform)
+	return listingplatform.BuildRegisteredSections(exportPlatformBuilders(), result, export, selectedPlatform)
 }
 
 func buildAmazonExportSection(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {

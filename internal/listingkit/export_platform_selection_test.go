@@ -11,8 +11,8 @@ func TestExportPlatformBuilders(t *testing.T) {
 		t.Fatalf("exportPlatformBuilders() length = %d, want %d", len(builders), len(want))
 	}
 	for i, builder := range builders {
-		if got := builder.platform(); got != want[i] {
-			t.Fatalf("exportPlatformBuilders()[%d].platform() = %q, want %q", i, got, want[i])
+		if got := builder.Platform(); got != want[i] {
+			t.Fatalf("exportPlatformBuilders()[%d].Platform() = %q, want %q", i, got, want[i])
 		}
 	}
 }

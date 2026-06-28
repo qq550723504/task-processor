@@ -2337,10 +2337,11 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 	}
 	platformsContent := string(platformsSrc)
 	for _, needle := range []string{
-		"func previewPlatformBuilders() []platformSectionBuilder[*ListingKitPreview] {",
+		`listingplatform "task-processor/internal/listing/platform"`,
+		"func previewPlatformBuilders() []listingplatform.RegisteredSectionBuilder[*ListingKitResult, *ListingKitPreview] {",
 		"func buildPreviewPlatformSections(result *ListingKitResult, preview *ListingKitPreview, selectedPlatform string) error {",
-		"return platformSectionBuilders(previewPlatformRegistrations())",
-		"return buildPlatformSections(previewPlatformBuilders(), result, preview, selectedPlatform)",
+		"return listingplatform.SectionBuilders(previewPlatformRegistrations())",
+		"return listingplatform.BuildRegisteredSections(previewPlatformBuilders(), result, preview, selectedPlatform)",
 	} {
 		if !strings.Contains(platformsContent, needle) {
 			t.Fatalf("preview_builder_platforms.go should contain %q", needle)
@@ -2349,6 +2350,9 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 	for _, needle := range []string{
 		"type previewPlatformBuilder interface {",
 		"type previewPlatformBuilderFunc struct {",
+		"platformSectionBuilder",
+		"platformSectionBuilders(",
+		"buildPlatformSections(",
 		"if err := builder.build(result, preview, selectedPlatform); err != nil {",
 		"listingplatform.BuildAll(",
 		"listingplatform.Builder{",
@@ -2360,20 +2364,26 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 		}
 	}
 
-	runnerSrc, err := os.ReadFile("platform_section_builders.go")
+	if _, err := os.ReadFile("platform_section_builders.go"); err == nil {
+		t.Fatal("platform_section_builders.go should be removed after neutral platform builder runner extraction")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(platform_section_builders.go) unexpected error = %v", err)
+	}
+
+	runnerSrc, err := os.ReadFile("../listing/platform/registered_builders.go")
 	if err != nil {
-		t.Fatalf("ReadFile(platform_section_builders.go) error = %v", err)
+		t.Fatalf("ReadFile(../listing/platform/registered_builders.go) error = %v", err)
 	}
 	runnerContent := string(runnerSrc)
 	for _, needle := range []string{
-		"type platformSectionRegistration[T any] struct {",
-		"type platformSectionBuilder[T any] struct {",
-		"func platformSectionBuilders[T any](registrations []platformSectionRegistration[T]) []platformSectionBuilder[T] {",
-		"func buildPlatformSections[T any](builders []platformSectionBuilder[T], result *ListingKitResult, target T, selectedPlatform string) error {",
-		"return listingplatform.BuildAll(sectionBuilders)",
+		"type SectionRegistration[C, T any] struct {",
+		"type RegisteredSectionBuilder[C, T any] struct {",
+		"func SectionBuilders[C, T any](registrations []SectionRegistration[C, T]) []RegisteredSectionBuilder[C, T] {",
+		"func BuildRegisteredSections[C, T any](builders []RegisteredSectionBuilder[C, T], context C, target T, selectedPlatform string) error {",
+		"return BuildAll(sectionBuilders)",
 	} {
 		if !strings.Contains(runnerContent, needle) {
-			t.Fatalf("platform_section_builders.go should contain %q", needle)
+			t.Fatalf("../listing/platform/registered_builders.go should contain %q", needle)
 		}
 	}
 
@@ -2435,10 +2445,11 @@ func TestExportPlatformBuilderRegistryUsesNeutralPlatformSectionDispatcher(t *te
 	}
 	platformsContent := string(platformsSrc)
 	for _, needle := range []string{
-		"func exportPlatformBuilders() []platformSectionBuilder[*ListingKitExport] {",
+		`listingplatform "task-processor/internal/listing/platform"`,
+		"func exportPlatformBuilders() []listingplatform.RegisteredSectionBuilder[*ListingKitResult, *ListingKitExport] {",
 		"func buildExportPlatformSections(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {",
-		"return platformSectionBuilders(exportPlatformRegistrations())",
-		"return buildPlatformSections(exportPlatformBuilders(), result, export, selectedPlatform)",
+		"return listingplatform.SectionBuilders(exportPlatformRegistrations())",
+		"return listingplatform.BuildRegisteredSections(exportPlatformBuilders(), result, export, selectedPlatform)",
 	} {
 		if !strings.Contains(platformsContent, needle) {
 			t.Fatalf("export_builder_platforms.go should contain %q", needle)
@@ -2447,6 +2458,9 @@ func TestExportPlatformBuilderRegistryUsesNeutralPlatformSectionDispatcher(t *te
 	for _, needle := range []string{
 		"type exportPlatformBuilder interface {",
 		"type exportPlatformBuilderFunc struct {",
+		"platformSectionBuilder",
+		"platformSectionBuilders(",
+		"buildPlatformSections(",
 		"if err := builder.build(result, export, selectedPlatform); err != nil {",
 		"listingplatform.BuildAll(",
 		"listingplatform.Builder{",
