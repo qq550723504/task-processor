@@ -4102,6 +4102,23 @@ func TestHTTPAPIFeatureModuleResultAliasesStayRetired(t *testing.T) {
 	}
 }
 
+func TestHTTPAPISupportModuleResultAliasesStayRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "runtime_module_results.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type promptModuleResult =",
+		"type sdsModuleResult =",
+		"type taskRPCModuleResult =",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s exposes %q; use owning support BuildResult types directly in app HTTP assembly", path, phrase)
+		}
+	}
+}
+
 func TestAppHTTPAPIListingKitSupportImportsStayAllowlisted(t *testing.T) {
 	filePath := filepath.Join("..", "internal", "app", "httpapi", "listingkit_support.go")
 	fset := token.NewFileSet()

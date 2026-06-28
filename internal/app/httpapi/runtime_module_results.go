@@ -10,22 +10,16 @@ import (
 	"task-processor/internal/taskrpcapi"
 )
 
-type promptModuleResult = promptmgmtapi.BuildResult
+type promptModuleBuilder func(store prompt.TenantPromptStore) *promptmgmtapi.BuildResult
 
-type sdsModuleResult = sdshttpapi.BuildResult
+type sdsModuleBuilder func(logger *logrus.Logger, cfg *config.Config) *sdshttpapi.BuildResult
 
-type taskRPCModuleResult = taskrpcapi.BuildResult
-
-type promptModuleBuilder func(store prompt.TenantPromptStore) *promptModuleResult
-
-type sdsModuleBuilder func(logger *logrus.Logger, cfg *config.Config) *sdsModuleResult
-
-type taskRPCModuleBuilder func(localStatusProvider taskrpcapi.LocalStatusProvider) (*taskRPCModuleResult, error)
+type taskRPCModuleBuilder func(localStatusProvider taskrpcapi.LocalStatusProvider) (*taskrpcapi.BuildResult, error)
 
 type supportFeatureSet struct {
-	promptModule  *promptModuleResult
-	taskRPCResult *taskRPCModuleResult
-	sdsModule     *sdsModuleResult
+	promptModule  *promptmgmtapi.BuildResult
+	taskRPCResult *taskrpcapi.BuildResult
+	sdsModule     *sdshttpapi.BuildResult
 }
 
 type supportFeatureBuilder struct {
@@ -56,14 +50,14 @@ func (b supportFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps, c
 	return features, nil
 }
 
-func buildPromptModuleResult(store prompt.TenantPromptStore) *promptModuleResult {
+func buildPromptModuleResult(store prompt.TenantPromptStore) *promptmgmtapi.BuildResult {
 	return promptmgmtapi.BuildModule(store)
 }
 
-func buildSDSModuleResult(logger *logrus.Logger, cfg *config.Config) *sdsModuleResult {
+func buildSDSModuleResult(logger *logrus.Logger, cfg *config.Config) *sdshttpapi.BuildResult {
 	return sdshttpapi.BuildModule(logger, cfg)
 }
 
-func buildTaskRPCModuleResult(localStatusProvider taskrpcapi.LocalStatusProvider) (*taskRPCModuleResult, error) {
+func buildTaskRPCModuleResult(localStatusProvider taskrpcapi.LocalStatusProvider) (*taskrpcapi.BuildResult, error) {
 	return taskrpcapi.BuildModule(localStatusProvider)
 }

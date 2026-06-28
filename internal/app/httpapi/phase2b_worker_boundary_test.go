@@ -364,7 +364,7 @@ func TestHTTPAPIRuntimeStateDoesNotOwnLoginBootstrapResultTypes(t *testing.T) {
 	}
 }
 
-func TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes(t *testing.T) {
+func TestHTTPAPIRuntimeStateUsesOwningSupportModuleResultTypes(t *testing.T) {
 	t.Parallel()
 
 	typesSrc, err := os.ReadFile("types.go")
@@ -379,6 +379,13 @@ func TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes(t *testing.T) {
 		"*sdshttpapi.BuildResult",
 		"*taskrpcapi.BuildResult",
 	} {
+		require.Contains(t, typesContent, marker)
+	}
+	for _, marker := range []string{
+		"*promptModuleResult",
+		"*sdsModuleResult",
+		"*taskRPCModuleResult",
+	} {
 		require.NotContains(t, typesContent, marker)
 	}
 
@@ -390,7 +397,7 @@ func TestHTTPAPIRuntimeStateDoesNotOwnSupportModuleResultTypes(t *testing.T) {
 		"type sdsModuleResult = sdshttpapi.BuildResult",
 		"type taskRPCModuleResult = taskrpcapi.BuildResult",
 	} {
-		require.Contains(t, resultContent, marker)
+		require.NotContains(t, resultContent, marker)
 	}
 }
 
@@ -622,11 +629,18 @@ func TestHTTPAPICompositionBuilderDoesNotOwnSupportModuleBuilderContracts(t *tes
 		"func buildPromptModuleResult(",
 		"func buildSDSModuleResult(",
 		"func buildTaskRPCModuleResult(",
+		"*promptmgmtapi.BuildResult",
+		"*sdshttpapi.BuildResult",
+		"*taskrpcapi.BuildResult",
+	} {
+		require.Contains(t, resultContent, marker)
+	}
+	for _, marker := range []string{
 		"*promptModuleResult",
 		"*sdsModuleResult",
 		"*taskRPCModuleResult",
 	} {
-		require.Contains(t, resultContent, marker)
+		require.NotContains(t, resultContent, marker)
 	}
 }
 
