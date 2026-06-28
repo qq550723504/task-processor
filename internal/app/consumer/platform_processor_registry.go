@@ -45,7 +45,7 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 
 	registrar := r.newRegistrar(r.logger, serviceManager, resources)
 	for _, module := range modules {
-		if err := registrar.Register(ctx, module); err != nil {
+		if err := registrar.register(ctx, module); err != nil {
 			return err
 		}
 	}

@@ -9,15 +9,15 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type PlatformModuleRegistrar struct {
+type platformModuleRegistrar struct {
 	config         *config.Config
 	logger         *logrus.Logger
 	serviceManager *ServiceManager
 	resources      *SharedResources
 }
 
-func NewPlatformModuleRegistrar(cfg *config.Config, logger *logrus.Logger, serviceManager *ServiceManager, resources *SharedResources) PlatformModuleRegistrar {
-	return PlatformModuleRegistrar{
+func newPlatformModuleRegistrar(cfg *config.Config, logger *logrus.Logger, serviceManager *ServiceManager, resources *SharedResources) platformModuleRegistrar {
+	return platformModuleRegistrar{
 		config:         cfg,
 		logger:         logger,
 		serviceManager: serviceManager,
@@ -25,7 +25,7 @@ func NewPlatformModuleRegistrar(cfg *config.Config, logger *logrus.Logger, servi
 	}
 }
 
-func (r PlatformModuleRegistrar) Register(ctx context.Context, module PlatformModule) error {
+func (r platformModuleRegistrar) register(ctx context.Context, module PlatformModule) error {
 	r.logger.Infof("registering %s processor", strings.ToUpper(module.Name()))
 	runtimeContext := BuildPlatformRuntimeContext(PlatformRuntimeContextInput{
 		Config:         r.config,
