@@ -88,6 +88,23 @@ func TestListingAdminCompatibilityDoesNotExposeImportTaskResponseDTO(t *testing.
 	}
 }
 
+func TestListingAdminDispatchEventCompatibilityAliasesStayRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "listingadmin", "dispatch_event_repository.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type DispatchEventFilter =",
+		"type DispatchEventSummaryRow =",
+		"type DispatchEventListRow =",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s exposes %q; use DispatchEventQuery, DispatchEventReasonCount, and DispatchEventItem directly", path, phrase)
+		}
+	}
+}
+
 func TestListingRuntimeDebugTaskLoaderUsesLocalTaskModel(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "runtime", "listing", "debug_task_runner.go")
 	content, err := os.ReadFile(path)

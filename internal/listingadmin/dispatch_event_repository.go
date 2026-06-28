@@ -25,8 +25,6 @@ type DispatchEventQuery struct {
 	Offset     int
 }
 
-type DispatchEventFilter = DispatchEventQuery
-
 type DispatchEventWindow struct {
 	From time.Time `json:"from"`
 	To   time.Time `json:"to"`
@@ -37,8 +35,6 @@ type DispatchEventReasonCount struct {
 	Action     string `json:"action"`
 	Count      int64  `json:"count"`
 }
-
-type DispatchEventSummaryRow = DispatchEventReasonCount
 
 type DispatchEventStoreBlocker struct {
 	TenantID          int64  `json:"tenantId"`
@@ -79,8 +75,6 @@ type DispatchEventItem struct {
 	DailyLimit     int       `json:"dailyLimit"`
 	OwnerNode      string    `json:"ownerNode,omitempty"`
 }
-
-type DispatchEventListRow = DispatchEventItem
 
 type DispatchEventPage struct {
 	Items    []DispatchEventItem `json:"items"`
