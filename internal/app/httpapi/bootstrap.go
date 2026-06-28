@@ -1,6 +1,11 @@
 package httpapi
 
-import "github.com/sirupsen/logrus"
+import (
+	"github.com/sirupsen/logrus"
+
+	"task-processor/internal/productenrich"
+	productimagehttpapi "task-processor/internal/productimage/httpapi"
+)
 
 func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, error) {
 	timer := newStartupTimer(logger)
@@ -42,4 +47,18 @@ func buildBootstrap(logger *logrus.Logger, options Options) (*appBootstrap, erro
 		pools:          runtimeBundle.pools(),
 		closers:        deps.shared.closers,
 	}, nil
+}
+
+func (c httpFeatureComposition) productHandler() productenrich.ProductHandler {
+	if c.productModule == nil {
+		return nil
+	}
+	return c.productModule.Handler
+}
+
+func (c httpFeatureComposition) imageHandler() productimagehttpapi.RouteHandler {
+	if c.imageModule == nil {
+		return nil
+	}
+	return c.imageModule.Handler
 }

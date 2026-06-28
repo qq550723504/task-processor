@@ -51,16 +51,23 @@ func TestHTTPAPITypesDoesNotOwnFeatureCompositionMethods(t *testing.T) {
 		require.Contains(t, string(compositionSrc), marker)
 	}
 
-	routeTypesSrc, err := os.ReadFile("route_handler_types.go")
+	bootstrapSrc, err := os.ReadFile("bootstrap.go")
 	require.NoError(t, err)
 	for _, marker := range []string{
 		"func (c httpFeatureComposition) productHandler(",
 		"func (c httpFeatureComposition) imageHandler(",
+	} {
+		require.Contains(t, string(bootstrapSrc), marker)
+	}
+
+	modulesSrc, err := os.ReadFile("http_modules.go")
+	require.NoError(t, err)
+	for _, marker := range []string{
 		"func (c httpFeatureComposition) amazonListingHandler(",
 		"func (c httpFeatureComposition) listingKitHandler(",
 		"func (c httpFeatureComposition) studioSessionHandler(",
 	} {
-		require.Contains(t, string(routeTypesSrc), marker)
+		require.NotContains(t, string(modulesSrc), marker)
 	}
 }
 
@@ -87,7 +94,11 @@ func TestHTTPAPITypesDoesNotOwnRouteHandlerContracts(t *testing.T) {
 	}
 
 	routeTypesSrc, err := os.ReadFile("route_handler_types.go")
-	require.NoError(t, err)
+	if os.IsNotExist(err) {
+		routeTypesSrc = nil
+	} else {
+		require.NoError(t, err)
+	}
 	for _, marker := range []string{
 		"type productRouteHandler =",
 		"type imageRouteHandler =",

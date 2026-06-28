@@ -181,9 +181,10 @@ module runtime 组装细节。
 Run 入口配置契约。
 `appBootstrap` 这类启动结果 / server bundle 状态应放在 `bootstrap_types.go`，
 避免 `types.go` 重新混入进程生命周期输出类型。
-`httpFeatureComposition` 的 runtime module、route module、handler accessor 和 server
-bundle 组装方法应放在 `composition_modules.go`，route handler contract / alias 应放在
-`route_handler_types.go`，避免类型文件继续承载装配行为或路由契约细节。
+`httpFeatureComposition` 的 runtime module、route module 和 server bundle 组装方法应放在
+`composition_modules.go`，product/image bootstrap handler accessor 应靠近 `bootstrap.go`，
+HTTP module 选择应靠近 `http_modules.go`，避免重新引入 route handler contract / alias
+或 `route_handler_types.go` 这类过渡桶文件。
 Product/Image/AmazonListing/ListingKit 的 module builder 函数签名与默认 wrapper
 应放在 `feature_module_builders.go`，避免 `composition_builder.go` 为了 builder 注入直接依赖业务
 `internal/*/httpapi` 包。
@@ -302,7 +303,7 @@ HTTP API 装配边界由以下测试守住：
 - `TestHTTPAPIRuntimeStateUsesOwningLoginBootstrapResultTypes`
 - `TestHTTPAPIRuntimeStateUsesOwningFeatureHTTPAPIModuleTypes`
 - `TestHTTPAPIRuntimeDepsMethodsUseOwningFeatureHTTPAPIModuleTypes`
-- `TestHTTPModulesUseOwningFeatureHTTPAPIModuleTypesInSignatures`
+- `TestHTTPModulesDoNotOwnFeatureHTTPAPIModuleSelectionSignatures`
 - `TestHTTPAPIFeatureBuildersUseOwningFeatureHTTPAPIModuleTypesInSignatures`
 - `TestFeatureModuleBuilderContractsUseOwningModuleTypes`
 - `TestHTTPAPIRuntimeStateUsesOwningSupportModuleResultTypes`

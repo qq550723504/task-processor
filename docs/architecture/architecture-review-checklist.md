@@ -96,6 +96,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestHTTPAPIRouteDescriptorAliasStaysRetired`
 - `TestHTTPAPIRouteHandlerAliasesStayRetired`
 - `TestHTTPAPIProductionRouteHandlerScaffoldingStaysRetired`
+- `TestHTTPAPIRouteHandlerTypesFileStaysRetired`
 - `TestHTTPAPITypesDoesNotOwnRunOptions`
 - `TestHTTPAPIModulesFileDoesNotOwnFeatureBuildWrappers`
 - `TestHTTPAPIModulesFileDoesNotOwnBootstrapOrchestration`
@@ -109,7 +110,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestHTTPAPIFeatureModuleResultAliasesStayRetired`
 - `TestHTTPAPIRuntimeStateUsesOwningFeatureHTTPAPIModuleTypes`
 - `TestHTTPAPIRuntimeDepsMethodsUseOwningFeatureHTTPAPIModuleTypes`
-- `TestHTTPModulesUseOwningFeatureHTTPAPIModuleTypesInSignatures`
+- `TestHTTPModulesDoNotOwnFeatureHTTPAPIModuleSelectionSignatures`
 - `TestHTTPAPIFeatureBuildersUseOwningFeatureHTTPAPIModuleTypesInSignatures`
 - `TestFeatureModuleBuilderContractsUseOwningModuleTypes`
 - `TestHTTPAPISupportModuleResultAliasesStayRetired`

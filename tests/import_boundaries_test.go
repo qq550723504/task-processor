@@ -4321,6 +4321,9 @@ func TestAppHTTPAPISupportHTTPModuleWrappersStayRetired(t *testing.T) {
 	handlersPath := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
 	handlersContent, err := os.ReadFile(handlersPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
 		t.Fatalf("read %s: %v", handlersPath, err)
 	}
 	for _, phrase := range []string{
@@ -4358,6 +4361,9 @@ func TestHTTPAPIRouteDescriptorAliasStaysRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
 	content, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
 		t.Fatalf("read %s: %v", path, err)
 	}
 	if strings.Contains(string(content), "type routeDescriptor =") {
@@ -4369,6 +4375,9 @@ func TestHTTPAPIRouteHandlerAliasesStayRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
 	content, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
 		t.Fatalf("read %s: %v", path, err)
 	}
 	for _, phrase := range []string{
@@ -4392,6 +4401,9 @@ func TestHTTPAPIProductionRouteHandlerScaffoldingStaysRetired(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
 	content, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
 		t.Fatalf("read %s: %v", path, err)
 	}
 	for _, phrase := range []string{
@@ -4401,6 +4413,15 @@ func TestHTTPAPIProductionRouteHandlerScaffoldingStaysRetired(t *testing.T) {
 		if strings.Contains(string(content), phrase) {
 			t.Fatalf("%s exposes %q; keep production route handler files limited to composition accessors and put test assembly scaffolding in tests", path, phrase)
 		}
+	}
+}
+
+func TestHTTPAPIRouteHandlerTypesFileStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "httpapi", "route_handler_types.go")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; keep production handler accessors beside their bootstrap/module consumers instead of reviving a route handler types bucket", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
 	}
 }
 
@@ -4501,7 +4522,6 @@ func TestAppHTTPAPIListingKitRootImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "runtime_support_listingkit.go")): {},
-		filepath.Clean(filepath.Join(root, "route_handler_types.go")):        {},
 		filepath.Clean(filepath.Join(root, "types.go")):                      {},
 	}
 
@@ -4533,7 +4553,6 @@ func TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "runtime_login_modules.go")):      {},
 		filepath.Clean(filepath.Join(root, "runtime.go")):                    {},
 		filepath.Clean(filepath.Join(root, "runtime_deps_methods.go")):       {},
-		filepath.Clean(filepath.Join(root, "route_handler_types.go")):        {},
 		filepath.Clean(filepath.Join(root, "server.go")):                     {},
 		filepath.Clean(filepath.Join(root, "server_auth.go")):                {},
 		filepath.Clean(filepath.Join(root, "types.go")):                      {},
