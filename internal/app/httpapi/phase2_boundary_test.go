@@ -85,6 +85,20 @@ func TestHTTPAPILegacyBuildHandlersFacadeStaysRetired(t *testing.T) {
 	require.Truef(t, os.IsNotExist(err), "handlers_legacy.go still exists; use Run/buildBootstrap module runtime instead of reviving BuildHandlers")
 }
 
+func TestHTTPAPIServerTestsDoNotUseLegacyRouteDescriptorOracle(t *testing.T) {
+	serverTestSrc, err := os.ReadFile("server_test.go")
+	require.NoError(t, err)
+	serverTestContent := string(serverTestSrc)
+
+	for _, marker := range []string{
+		"TestBuildRegisteredRoutesMatchesLegacyRouteDescriptors",
+		"buildLegacyRouteDescriptorsWithShein",
+		"buildLegacyCoreRouteDescriptors",
+	} {
+		require.NotContains(t, serverTestContent, marker)
+	}
+}
+
 func readRetiredModulesFileIfPresent(t *testing.T) string {
 	t.Helper()
 

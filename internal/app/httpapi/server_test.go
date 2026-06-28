@@ -2102,45 +2102,6 @@ func TestBuildRouteDescriptorsMatchMountedRoutes(t *testing.T) {
 	}
 }
 
-func TestBuildRegisteredRoutesMatchesLegacyRouteDescriptors(t *testing.T) {
-	t.Parallel()
-
-	handlers := httpModuleHandlers{
-		product:        &stubProductHandler{},
-		image:          &stubImageHandler{},
-		amazonListing:  &stubAmazonListingHandler{},
-		listingKit:     &stubListingKitHandler{},
-		promptTemplate: &stubPromptTemplateHandler{},
-		studioSession:  &stubStudioSessionHandler{},
-		sheinLogin:     &stubSheinLoginHandler{},
-		sdsLogin:       &stubSDSLoginHandler{},
-		taskRPC:        &stubTaskRPCHandler{},
-		sdsCatalog:     &stubSDSCatalogRouteHandler{},
-	}
-
-	legacy := buildLegacyRouteDescriptorsWithShein(
-		handlers.product,
-		handlers.image,
-		handlers.amazonListing,
-		handlers.listingKit,
-		handlers.promptTemplate,
-		handlers.studioSession,
-		handlers.sheinLogin,
-		handlers.sdsLogin,
-		handlers.taskRPC,
-		handlers.sdsCatalog,
-	)
-
-	registered, err := buildRegisteredRoutes(nil, handlers)
-	if err != nil {
-		t.Fatalf("buildRegisteredRoutes returned error: %v", err)
-	}
-
-	if got, want := routePaths(registered), routePaths(legacy); !equalStringSlices(got, want) {
-		t.Fatalf("registered routes mismatch\n got: %v\nwant: %v", got, want)
-	}
-}
-
 func TestBuildHTTPServerBundleFromHandlersMountsRegisteredRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -2272,28 +2233,6 @@ func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {
 	}()
 
 	singleSDSCatalogHandler(&stubSDSCatalogRouteHandler{}, &stubSDSCatalogRouteHandler{})
-}
-
-func buildLegacyRouteDescriptorsWithShein(productHandler productenrich.ProductHandler, imageHandler productimagehttpapi.RouteHandler, amazonListingHandler amazonlisting.Handler, listingKitHandler listingkithttpapi.RouteHandler, promptTemplateHandler promptmgmtapi.HTTPRouteHandler, studioSessionHandler listingkit.StudioSessionHandler, sheinLoginHandler sheinlogin.HTTPRouteHandler, sdsLoginHandler sdslogin.HTTPRouteHandler, taskRPCHandler taskrpcapi.Handler, sdsCatalogHandlers ...sdshttpapi.HTTPRouteHandler) []httproute.Descriptor {
-	routes := buildLegacyCoreRouteDescriptors()
-	routes = productenrichhttpapi.AppendProductRouteDescriptors(routes, productHandler, imageHandler)
-	routes = amazonlistinghttpapi.AppendRouteDescriptors(routes, amazonListingHandler)
-	routes = listingkithttpapi.AppendRouteDescriptors(routes, listingKitHandler)
-	routes = promptmgmtapi.AppendRouteDescriptors(routes, promptTemplateHandler)
-	routes = listingkithttpapi.AppendStudioSessionRouteDescriptors(routes, studioSessionHandler)
-	routes = sdshttpapi.AppendRouteDescriptors(routes, singleSDSCatalogHandler(sdsCatalogHandlers...))
-	routes = taskrpcapi.AppendRouteDescriptors(routes, taskRPCHandler)
-	routes = sheinlogin.AppendRouteDescriptors(routes, sheinLoginHandler)
-	routes = sdslogin.AppendRouteDescriptors(routes, sdsLoginHandler)
-	return routes
-}
-
-func buildLegacyCoreRouteDescriptors() []httproute.Descriptor {
-	reg := kernelmodule.NewRegistry()
-	if err := newCoreHTTPModule().Register(reg); err != nil {
-		panic(fmt.Sprintf("register core HTTP module: %v", err))
-	}
-	return reg.Routes()
 }
 
 func mustBuildTestRouterFromHandlers(t *testing.T, handlers httpModuleHandlers) *gin.Engine {
