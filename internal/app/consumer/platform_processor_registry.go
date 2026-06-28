@@ -24,7 +24,6 @@ type processorRegistration struct {
 type PlatformProcessorRegistry struct {
 	config                             *config.Config
 	logger                             *logrus.Logger
-	listingRuntimeHealthValidator      ListingRuntimeHealthValidator
 	listingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
 	rawJSONDataClient                  product.RawJsonDataClient
 	storeAPI                           listingadmin.StoreAPI
@@ -59,7 +58,8 @@ func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, pla
 }
 
 func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager) error {
-	return r.RegisterPlatforms(ctx, serviceManager, r.enabledPlatforms...)
+	_, err := r.RegisterPlatforms(ctx, serviceManager, r.enabledPlatforms...)
+	return err
 }
 
 func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorRegistration {
@@ -82,16 +82,15 @@ func (r *PlatformProcessorRegistry) buildProcessorRegistrations() []processorReg
 	return registrations
 }
 
-func (r *PlatformProcessorRegistry) initializeSharedResources(needsAmazon bool) error {
+func (r *PlatformProcessorRegistry) initializeSharedResources(needsAmazon bool) (*SharedResources, error) {
 	if r.sharedResourceProvider == nil {
-		return fmt.Errorf("shared resource provider not configured")
+		return nil, fmt.Errorf("shared resource provider not configured")
 	}
 	resources, err := r.sharedResourceProvider(r.config, r.logger, needsAmazon)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	r.listingRuntimeHealthValidator = resources.ListingRuntimeHealthValidator
 	r.listingRuntimeImportTaskRepository = resources.ListingRuntimeImportTaskRepository
 	r.rawJSONDataClient = resources.RawJSONDataClient
 	r.storeAPI = resources.StoreAPI
@@ -101,13 +100,13 @@ func (r *PlatformProcessorRegistry) initializeSharedResources(needsAmazon bool) 
 	r.sharedCrawlSource = resources.CrawlSource
 	r.sharedProductFetcher = resources.ProductFetcher
 	r.logger.Info("shared resources initialized")
-	return nil
+	return resources, nil
 }
 
-func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, platforms ...string) error {
+func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, platforms ...string) (*SharedResources, error) {
 	modules, err := r.resolveModules(platforms)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	r.logger.Infof("registering platform processors: %v", moduleNames(modules))
@@ -119,18 +118,19 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 	}
 
 	registrations := r.buildProcessorRegistrationsForModules(modules)
-	if err := r.initializeSharedResources(r.anyRegistrationNeedsAmazon(registrations)); err != nil {
-		return fmt.Errorf("initialize shared resources: %w", err)
+	resources, err := r.initializeSharedResources(r.anyRegistrationNeedsAmazon(registrations))
+	if err != nil {
+		return nil, fmt.Errorf("initialize shared resources: %w", err)
 	}
 
 	for _, registration := range registrations {
 		if err := registration.register(ctx, r, serviceManager); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	r.logger.Info("platform processors registered")
-	return nil
+	return resources, nil
 }
 
 func (r *PlatformProcessorRegistry) anyRegistrationNeedsAmazon(registrations []processorRegistration) bool {
@@ -292,8 +292,4 @@ func (r *PlatformProcessorRegistry) GetSharedCrawlSource() runner.CrawlSource {
 
 func (r *PlatformProcessorRegistry) GetSharedProductFetcher() appfetcher.ProductFetcher {
 	return r.sharedProductFetcher
-}
-
-func (r *PlatformProcessorRegistry) GetListingRuntimeHealthValidator() ListingRuntimeHealthValidator {
-	return r.listingRuntimeHealthValidator
 }

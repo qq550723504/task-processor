@@ -60,10 +60,11 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 
-	if err := processorRegistry.RegisterPlatforms(ctx, serviceManager, platform); err != nil {
+	resources, err := processorRegistry.RegisterPlatforms(ctx, serviceManager, platform)
+	if err != nil {
 		return fmt.Errorf("register %s processor failed: %w", displayName, err)
 	}
-	if err := ValidateListingRuntimeHealth(platform, processorRegistry.GetListingRuntimeHealthValidator(), logger); err != nil {
+	if err := ValidateListingRuntimeHealth(platform, resources.ListingRuntimeHealthValidator, logger); err != nil {
 		return err
 	}
 

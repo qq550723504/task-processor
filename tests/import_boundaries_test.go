@@ -1073,8 +1073,38 @@ func TestPlatformProcessorRegistryDoesNotStoreRetiredManagementService(t *testin
 					if name.Name == "managementClient" {
 						t.Fatalf("%s stores PlatformProcessorRegistry.managementClient; store narrower runtime-owned ports instead", path)
 					}
+					if name.Name == "listingRuntimeHealthValidator" {
+						t.Fatalf("%s stores PlatformProcessorRegistry.listingRuntimeHealthValidator; let listing runtime consume the initialized health validator directly", path)
+					}
 				}
 			}
+		}
+	}
+}
+
+func TestPlatformProcessorRegistryDoesNotExposeListingRuntimeHealthValidator(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv == nil || fn.Name == nil || fn.Name.Name != "GetListingRuntimeHealthValidator" {
+			continue
+		}
+		if len(fn.Recv.List) == 0 {
+			continue
+		}
+		star, ok := fn.Recv.List[0].Type.(*ast.StarExpr)
+		if !ok {
+			continue
+		}
+		ident, ok := star.X.(*ast.Ident)
+		if ok && ident.Name == "PlatformProcessorRegistry" {
+			t.Fatalf("%s exposes PlatformProcessorRegistry.GetListingRuntimeHealthValidator; listing runtime should consume the initialized health validator without a registry accessor", path)
 		}
 	}
 }
