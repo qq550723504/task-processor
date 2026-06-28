@@ -32,7 +32,7 @@ func (p *retryGenerationProjectionPhase) run(
 	}
 
 	rebuiltResult := *task.Result
-	rebuiltResult.AssetBundle = rebuildBundleFromInventory(task.Result.AssetBundle, inventory)
+	rebuiltResult.AssetBundle = asset.RebuildBundleFromInventory(task.Result.AssetBundle, inventory)
 	if inventory != nil {
 		rebuiltResult.AssetInventorySummary = inventory.Summary
 	}

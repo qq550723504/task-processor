@@ -49,7 +49,7 @@ func (p *standardWorkflowMediaPhase) run(
 				stage.Complete()
 				result.ImageAssets = imageResult
 				result.AssetBundle = asset.BuildBundle(canonicalProduct, imageResult)
-				result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
+				result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
 				p.service.syncSDSDesign(ctx, task, result, imageResult, recorder)
 			}
 		}
@@ -79,7 +79,7 @@ func (p *standardWorkflowMediaPhase) run(
 	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSDesignResult, sdsOptions) {
 		result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
 		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
-		result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
+		result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
 		log.Info("applied SDS sync metadata to canonical product")
 	}
 	return imageResult, sdsOptions

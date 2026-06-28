@@ -169,6 +169,64 @@ func BuildInventory(taskID string, bundle *Bundle) *Inventory {
 	return inventory
 }
 
+func InventorySummaryFromBundle(bundle *Bundle) *InventorySummary {
+	if bundle == nil {
+		return nil
+	}
+	inventory := BuildInventory("", bundle)
+	if inventory == nil {
+		return nil
+	}
+	return inventory.Summary
+}
+
+func RebuildInventorySummary(inventory *Inventory) *InventorySummary {
+	if inventory == nil {
+		return nil
+	}
+	return buildInventorySummary(nil, inventory.Records)
+}
+
+func RebuildBundleWithRecords(bundle *Bundle, records []AssetRecord) *Bundle {
+	if bundle == nil {
+		bundle = &Bundle{}
+	}
+	out := &Bundle{
+		Assets:     append([]Asset(nil), bundle.Assets...),
+		Selection:  bundle.Selection,
+		Stats:      bundle.Stats,
+		Review:     bundle.Review,
+		Compliance: bundle.Compliance,
+		Quality:    bundle.Quality,
+		IPRisk:     bundle.IPRisk,
+	}
+	for _, record := range records {
+		out.Assets = append(out.Assets, assetFromRecord(record, false))
+	}
+	out.Stats = rebuildBundleStats(out.Assets)
+	return out
+}
+
+func RebuildBundleFromInventory(bundle *Bundle, inventory *Inventory) *Bundle {
+	if inventory == nil {
+		return bundle
+	}
+	out := &Bundle{}
+	if bundle != nil {
+		out.Selection = bundle.Selection
+		out.Review = bundle.Review
+		out.Compliance = bundle.Compliance
+		out.Quality = bundle.Quality
+		out.IPRisk = bundle.IPRisk
+	}
+	out.Assets = make([]Asset, 0, len(inventory.Records))
+	for _, record := range inventory.Records {
+		out.Assets = append(out.Assets, assetFromRecord(record, true))
+	}
+	out.Stats = rebuildBundleStats(out.Assets)
+	return out
+}
+
 func buildInventorySummary(selection *Selection, records []AssetRecord) *InventorySummary {
 	summary := &InventorySummary{
 		TotalRecords: len(records),
@@ -196,6 +254,50 @@ func buildInventorySummary(selection *Selection, records []AssetRecord) *Invento
 		summary.SelectedCount = len(summary.SelectedAssetIDs)
 	}
 	return summary
+}
+
+func assetFromRecord(record AssetRecord, promoteSourceURL bool) Asset {
+	item := Asset{
+		ID:             record.ID,
+		Kind:           record.Kind,
+		URL:            record.URL,
+		Role:           record.Role,
+		Generator:      record.Generator,
+		RecipeID:       record.RecipeID,
+		SourceAssetIDs: sourceAssetIDsFromLineage(record.Lineage),
+		Operations:     append([]string(nil), record.Operations...),
+		Labels:         append([]string(nil), record.Labels...),
+		PlatformTags:   append([]string(nil), record.PlatformTags...),
+		Width:          record.Width,
+		Height:         record.Height,
+		Metadata:       cloneMetadataMap(record.Metadata),
+	}
+	if promoteSourceURL && item.Metadata != nil {
+		item.SourceURL = item.Metadata["source_url"]
+	}
+	return item
+}
+
+func sourceAssetIDsFromLineage(lineage *AssetLineage) []string {
+	if lineage == nil {
+		return nil
+	}
+	return append([]string(nil), lineage.SourceAssetIDs...)
+}
+
+func rebuildBundleStats(items []Asset) *Stats {
+	stats := &Stats{TotalAssets: len(items)}
+	for _, item := range items {
+		switch {
+		case item.Kind == KindSourceImage:
+			stats.SourceAssets++
+		case item.Kind == KindCleanImage || item.Kind == KindDetailCrop || item.Kind == KindSceneImage || item.Kind == KindSellingPointImage || item.Kind == KindSizeSceneImage || item.Kind == KindModelImage:
+			stats.GeneratedAssets++
+		default:
+			stats.DerivedAssets++
+		}
+	}
+	return stats
 }
 
 func originForAsset(item Asset) Origin {

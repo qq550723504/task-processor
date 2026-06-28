@@ -61,8 +61,8 @@ func (p *standardWorkflowAssetPhase) run(
 			}
 			if execution != nil && len(execution.Assets) > 0 {
 				inventory.Records = append(inventory.Records, execution.Assets...)
-				inventory.Summary = rebuildInventorySummary(inventory)
-				result.AssetBundle = rebuildBundleWithGeneratedAssets(result.AssetBundle, execution.Assets)
+				inventory.Summary = asset.RebuildInventorySummary(inventory)
+				result.AssetBundle = asset.RebuildBundleWithRecords(result.AssetBundle, execution.Assets)
 				if assetRepo != nil {
 					_ = assetRepo.SaveInventory(ctx, inventory)
 				}
@@ -95,8 +95,8 @@ func (p *standardWorkflowAssetPhase) run(
 					persistedGenerationTasks = mergeGenerationTasks(persistedGenerationTasks, dispatchResult.Tasks)
 					if len(dispatchResult.Assets) > 0 {
 						inventory.Records = append(inventory.Records, dispatchResult.Assets...)
-						inventory.Summary = rebuildInventorySummary(inventory)
-						result.AssetBundle = rebuildBundleWithGeneratedAssets(result.AssetBundle, dispatchResult.Assets)
+						inventory.Summary = asset.RebuildInventorySummary(inventory)
+						result.AssetBundle = asset.RebuildBundleWithRecords(result.AssetBundle, dispatchResult.Assets)
 						if assetRepo != nil {
 							_ = assetRepo.SaveInventory(ctx, inventory)
 						}

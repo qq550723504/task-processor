@@ -22,7 +22,7 @@ func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result
 	if result.AssetBundle == nil {
 		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
 	}
-	result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
+	result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
 	markChildTask(result, "sds_catalog_product", "", string(TaskStatusCompleted), "")
 	stage.Complete()
 
@@ -35,7 +35,7 @@ func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result
 		if result.AssetBundle == nil {
 			result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
 		}
-		result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
+		result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
 	}
 	result.Summary = ensureGenerationSummary(result.Summary)
 	result.Summary.NeedsReview = false
@@ -71,7 +71,7 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 			if result.AssetBundle == nil {
 				result.AssetBundle = asset.BuildBundle(result.CanonicalProduct, result.ImageAssets)
 			}
-			result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
+			result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
 		}
 	}
 	result.Summary = ensureGenerationSummary(result.Summary)

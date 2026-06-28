@@ -30,7 +30,7 @@ func TestWorkflowPlatformAssetDispatchInventoryPersistFileOwnsInventoryDurabilit
 		"decorateListingKitResultGeneration(",
 		"SaveGenerationTasks(",
 		"mergeGenerationTasks(",
-		"rebuildInventorySummary(",
+		"asset.RebuildInventorySummary(",
 	} {
 		if strings.Contains(content, needle) {
 			t.Fatalf("workflow_platform_asset_dispatch_inventory_persist.go should not contain %q", needle)

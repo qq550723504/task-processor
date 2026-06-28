@@ -27,8 +27,8 @@ func TestWorkflowPlatformAssetDispatchApplyFileDelegatesToMutationSubSeams(t *te
 
 	forbidden := []string{
 		"inventory.Records = append(inventory.Records, dispatchResult.Assets...)",
-		"rebuildInventorySummary(inventory)",
-		"rebuildBundleWithGeneratedAssets(final.AssetBundle, dispatchResult.Assets)",
+		"asset.RebuildInventorySummary(inventory)",
+		"asset.RebuildBundleWithRecords(final.AssetBundle, dispatchResult.Assets)",
 		"attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchResult.Tasks}, bundleBuilder)",
 		"mergeGenerationTasks(generationTasks, dispatchResult.Tasks)",
 		"_ = inventory.Records",
@@ -53,8 +53,8 @@ func TestWorkflowPlatformAssetDispatchMutationSubSeamFilesOwnShapingResponsibili
 			file: "workflow_platform_asset_dispatch_inventory_apply.go",
 			shouldOwn: []string{
 				"inventory.Records = append(",
-				"rebuildInventorySummary(",
-				"rebuildBundleWithGeneratedAssets(",
+				"asset.RebuildInventorySummary(",
+				"asset.RebuildBundleWithRecords(",
 			},
 			shouldAvoid: []string{
 				"attachPlatformImageBundles(",
@@ -73,8 +73,8 @@ func TestWorkflowPlatformAssetDispatchMutationSubSeamFilesOwnShapingResponsibili
 				"attachPlatformImageBundles(",
 				"mergeGenerationTasks(",
 				"inventory.Records = append(",
-				"rebuildInventorySummary(",
-				"rebuildBundleWithGeneratedAssets(",
+				"asset.RebuildInventorySummary(",
+				"asset.RebuildBundleWithRecords(",
 				"SaveInventory(",
 				"SaveGenerationTasks(",
 			},

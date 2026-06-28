@@ -29,6 +29,6 @@ func (p *retryGenerationMutationPhase) run(
 
 	retriedTargets := listinggeneration.TaskTargets(selectedTasks)
 	inventory.Records = listinggeneration.ReplaceGeneratedAssetsForTargets(inventory.Records, retriedTargets, dispatchResult.Assets)
-	inventory.Summary = rebuildInventorySummary(inventory)
+	inventory.Summary = asset.RebuildInventorySummary(inventory)
 	return updatedTasks
 }

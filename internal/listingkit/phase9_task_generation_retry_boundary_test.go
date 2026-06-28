@@ -37,10 +37,10 @@ func TestTaskGenerationServiceFileKeepsRetryOwnershipBoundaries(t *testing.T) {
 	forbidden := []string{
 		"mergeGenerationTasks(existingTasks, dispatchResult.Tasks)",
 		"replaceGeneratedAssetsForTargets(",
-		"rebuildInventorySummary(inventory)",
+		"asset.RebuildInventorySummary(inventory)",
 		"if err := s.assetRepo.SaveInventory(ctx, inventory); err != nil {",
 		"if err := s.assetRepo.SaveGenerationTasks(ctx, task.ID, updatedTasks); err != nil {",
-		"rebuildBundleFromInventory(",
+		"asset.RebuildBundleFromInventory(",
 		"decorateListingKitResultGeneration(&rebuiltResult, updatedTasks)",
 		"syncAssetRenderPreviews(&rebuiltResult)",
 		"decorateListingKitResultReview(&rebuiltResult, reviews)",
@@ -68,7 +68,7 @@ func TestRetryGenerationSeamFilesOwnTheirResponsibilities(t *testing.T) {
 			shouldOwn: []string{
 				"mergeGenerationTasks(",
 				"listinggeneration.ReplaceGeneratedAssetsForTargets(",
-				"rebuildInventorySummary(",
+				"asset.RebuildInventorySummary(",
 			},
 			shouldAvoid: []string{
 				"SaveInventory(",
@@ -87,7 +87,7 @@ func TestRetryGenerationSeamFilesOwnTheirResponsibilities(t *testing.T) {
 			shouldAvoid: []string{
 				"mergeGenerationTasks(",
 				"replaceGeneratedAssetsForTargets(",
-				"rebuildInventorySummary(",
+				"asset.RebuildInventorySummary(",
 				"decorateListingKitResultGeneration(",
 				"attachPlatformImageBundles(",
 				"buildGenerationTaskPage(",
@@ -96,7 +96,7 @@ func TestRetryGenerationSeamFilesOwnTheirResponsibilities(t *testing.T) {
 		{
 			file: "task_generation_retry_projection.go",
 			shouldOwn: []string{
-				"rebuildBundleFromInventory(",
+				"asset.RebuildBundleFromInventory(",
 				"attachPlatformImageBundles(",
 				"decorateListingKitResultGeneration(",
 				"syncAssetRenderPreviews(",
@@ -109,7 +109,7 @@ func TestRetryGenerationSeamFilesOwnTheirResponsibilities(t *testing.T) {
 				"SaveGenerationTasks(",
 				"mergeGenerationTasks(",
 				"replaceGeneratedAssetsForTargets(",
-				"rebuildInventorySummary(",
+				"asset.RebuildInventorySummary(",
 			},
 		},
 	} {

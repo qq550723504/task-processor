@@ -39,7 +39,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 	result.CanonicalProduct = canonicalProduct
 	result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
 	result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
-	result.AssetInventorySummary = buildInventorySummaryFromBundle(result.AssetBundle)
+	result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
 	log.WithFields(logrus.Fields{
 		"has_canonical": canonicalProduct != nil,
 		"image_count": func() int {

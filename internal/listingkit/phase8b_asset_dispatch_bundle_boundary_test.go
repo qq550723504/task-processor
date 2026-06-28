@@ -26,7 +26,7 @@ func TestWorkflowPlatformAssetDispatchBundleReshapeFileOwnsBundleReshaping(t *te
 	for _, needle := range []string{
 		"mergeGenerationTasks(",
 		"inventory.Records = append(",
-		"rebuildInventorySummary(",
+		"asset.RebuildInventorySummary(",
 		"SaveInventory(",
 		"SaveGenerationTasks(",
 	} {
@@ -56,7 +56,7 @@ func TestWorkflowPlatformAssetDispatchTaskMergeFileOwnsReturnedTaskMerge(t *test
 	for _, needle := range []string{
 		"attachPlatformImageBundles(",
 		"inventory.Records = append(",
-		"rebuildInventorySummary(",
+		"asset.RebuildInventorySummary(",
 		"SaveInventory(",
 		"SaveGenerationTasks(",
 	} {

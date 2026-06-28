@@ -38,7 +38,7 @@ func TestWorkflowPlatformAssetDispatchPhaseFileDelegatesToOrchestrationHelpers(t
 
 	for _, needle := range []string{
 		"inventory.Records = append(",
-		"rebuildInventorySummary(",
+		"asset.RebuildInventorySummary(",
 		"mergeGenerationTasks(",
 		"decorateListingKitResultGeneration(",
 		"SaveGenerationTasks(",
@@ -69,8 +69,8 @@ func TestWorkflowPlatformAssetDispatchMutationAndPersistFilesOwnTheirSideEffects
 			},
 			shouldAvoid: []string{
 				"inventory.Records = append(",
-				"rebuildInventorySummary(",
-				"rebuildBundleWithGeneratedAssets(",
+				"asset.RebuildInventorySummary(",
+				"asset.RebuildBundleWithRecords(",
 				"attachPlatformImageBundles(",
 				"mergeGenerationTasks(",
 				"decorateListingKitResultGeneration(",
@@ -85,7 +85,7 @@ func TestWorkflowPlatformAssetDispatchMutationAndPersistFilesOwnTheirSideEffects
 			},
 			shouldAvoid: []string{
 				"inventory.Records = append(",
-				"rebuildInventorySummary(",
+				"asset.RebuildInventorySummary(",
 				"mergeGenerationTasks(",
 			},
 		},
