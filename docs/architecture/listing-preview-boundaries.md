@@ -71,8 +71,9 @@ Current preview responsibilities that still belong here for now:
 
 Representative files:
 
-- `internal/listingkit/preview_result_projection.go`
 - `internal/listingkit/preview_result_attachment.go`
+- `internal/listingkit/preview_result_adapter.go`
+- `internal/listingkit/preview_task_read_model_adapter.go`
 - `internal/listingkit/preview_platform_registry.go`
 - `internal/listingkit/preview_platform_amazon*.go`
 - `internal/listingkit/preview_platform_shein.go`
@@ -84,16 +85,25 @@ These files are still acceptable in `listingkit` because they bridge legacy task
 
 ## Current Hotspots
 
-### 1. Preview result projection is still facade-bound
+### 1. Preview result projection adapter is still facade-bound
 
-`internal/listingkit/preview_result_projection.go` still combines:
+The former `internal/listingkit/preview_result_projection.go` has been retired.
+The remaining facade-owned projection responsibilities now live in:
+
+- `internal/listingkit/preview_result_adapter.go`
+- `internal/listingkit/preview_task_read_model_adapter.go`
+
+Those files still bridge:
 
 - task/result adaptation
 - catalog / asset attachments
 - revision history metadata
 - generation queue projection
 
-This is the most likely next extraction seam, but only after neutral projection inputs are defined.
+This is still a useful extraction area, but it now has neutral projection inputs
+and a narrower adapter boundary. Future work should avoid reintroducing a
+root projection file that mixes domain projection, legacy DTO adaptation, and
+attachment application.
 
 ### 2. Platform preview assembly is split across generic and marketplace-specific helpers
 
@@ -143,9 +153,9 @@ Target direction:
 
 The next behavior-preserving preview refactor should be:
 
-1. Define neutral projection inputs for preview result composition.
-2. Extract the generic parts of `preview_result_projection.go` behind those inputs.
-3. Keep marketplace payload builders in place until each platform has a clear non-ListingKit owner.
+1. Continue shrinking the ListingKit preview adapter surface behind neutral projection inputs.
+2. Keep marketplace payload builders in place until each platform has a clear non-ListingKit owner.
+3. Add guard coverage before moving any platform-specific preview payload logic.
 
 Do not start by renaming or moving every preview file.
 

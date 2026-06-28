@@ -52,24 +52,16 @@ func TestReadSurfaceProjectionBoundary(t *testing.T) {
 	t.Run("preview_projection_carries_attachment_fields_as_bundle", func(t *testing.T) {
 		t.Parallel()
 
-		source := readNamedFunctionSource(t, "preview_result_projection.go", "buildListingKitPreviewProjection")
+		source := readNamedFunctionSource(t, "preview_result_adapter.go", "buildListingKitPreviewProjection")
 		applySource := readNamedFunctionSource(t, "preview_result_adapter.go", "applyListingKitPreviewProjection")
-		fileSource := readTaskGenerationSourceFile(t, "preview_result_projection.go")
 		adapterSource := readTaskGenerationSourceFile(t, "preview_result_adapter.go")
 
 		assertSourceContainsAll(t, adapterSource, []string{
+			"func buildListingKitPreviewProjection(",
 			"type listingKitPreviewProjectionAttachment struct {",
 			"attachment      listingKitPreviewProjectionAttachment",
 		})
-		assertSourceExcludesAll(t, fileSource, []string{
-			`previewdomain "task-processor/internal/listing/preview"`,
-			`"task-processor/internal/asset"`,
-			`"task-processor/internal/catalog"`,
-			"previewdomain.BuildResultProjection(previewdomain.ResultProjectionInput{",
-			"func applyListingKitPreviewProjection(",
-			"type listingKitPreviewProjection struct {",
-			"type listingKitPreviewProjectionAttachment struct {",
-		})
+		assertFileAbsent(t, "preview_result_projection.go")
 		assertSourceContainsAll(t, source, []string{
 			"domainProjection := buildPreviewDomainResultProjection(base)",
 			"return adaptPreviewDomainResultProjection(domainProjection, readProjection, task.Result.RevisionHistory)",
@@ -88,15 +80,6 @@ func TestReadSurfaceProjectionBoundary(t *testing.T) {
 			"preview.PlatformAssetRenderPreviews = projection.attachment.platformPreviews",
 			"preview.AssetGenerationQueue = projection.attachment.generationQueue",
 			"preview.AssetGenerationOverview = projection.attachment.generationOverview",
-		})
-		assertSourceExcludesAll(t, fileSource, []string{
-			"preview.Catalog = projection.catalog",
-			"preview.Assets = projection.assets",
-			"preview.AssetInventory = projection.assetInventory",
-			"preview.AssetRenderPreviews = projection.assetRenderPreviews",
-			"preview.PlatformAssetRenderPreviews = projection.platformPreviews",
-			"preview.AssetGenerationQueue = projection.generationQueue",
-			"preview.AssetGenerationOverview = projection.generationOverview",
 		})
 	})
 

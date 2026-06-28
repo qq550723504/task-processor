@@ -2255,11 +2255,11 @@ func TestTaskPreviewLogicFileOwnsPreviewBuilderHelper(t *testing.T) {
 		}
 	}
 
-	projectionSrc, err := os.ReadFile("preview_result_projection.go")
-	if err != nil {
-		t.Fatalf("ReadFile(preview_result_projection.go) error = %v", err)
+	if _, err := os.ReadFile("preview_result_projection.go"); err == nil {
+		t.Fatal("preview_result_projection.go should be removed after result projection adapter convergence")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("ReadFile(preview_result_projection.go) unexpected error = %v", err)
 	}
-	projectionContent := string(projectionSrc)
 	taskReadModelSrc, err := os.ReadFile("preview_task_read_model_adapter.go")
 	if err != nil {
 		t.Fatalf("ReadFile(preview_task_read_model_adapter.go) error = %v", err)
@@ -2271,9 +2271,6 @@ func TestTaskPreviewLogicFileOwnsPreviewBuilderHelper(t *testing.T) {
 	} {
 		if !strings.Contains(taskReadModelContent, needle) {
 			t.Fatalf("preview_task_read_model_adapter.go should contain %q", needle)
-		}
-		if strings.Contains(projectionContent, needle) {
-			t.Fatalf("preview_result_projection.go should not contain %q after task read-model adapter extraction", needle)
 		}
 	}
 
