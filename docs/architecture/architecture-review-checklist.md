@@ -277,6 +277,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestProcessorRetiredManagementImportsStayBlocked`
 - `TestBaseProcessorDoesNotExposeRetiredManagementService`
 - `TestTaskRPCAPIRetiredManagementImportsStayBlocked`
+- `TestTaskRPCAPIRetiredActionRoutesStayRetired`
 - `TestSDSClientRetiredManagementImportsStayBlocked`
 - `TestSheinLoginBootstrapRetiredManagementImportsStayBlocked`
 - `TestSheinLoginServiceRetiredManagementImportsStayBlocked`

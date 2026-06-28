@@ -97,18 +97,6 @@ type TaskStatusRespDTO struct {
 	TaskDetails      string              `json:"taskDetails"`
 }
 
-// TaskActionRespDTO is the local task RPC action response contract exposed by this HTTP module.
-type TaskActionRespDTO struct {
-	TaskID          int64  `json:"taskId"`
-	Action          string `json:"action"`
-	Success         bool   `json:"success"`
-	StatusKey       string `json:"statusKey"`
-	StatusName      string `json:"statusName"`
-	CanonicalStatus string `json:"canonicalStatus"`
-	ErrorMessage    string `json:"errorMessage"`
-	ActionTime      string `json:"actionTime"`
-}
-
 // TaskRPCAPI is the local task RPC client interface.
 type TaskRPCAPI interface {
 	SubmitTask(req *TaskSubmitReqDTO) (*TaskSubmitRespDTO, error)
@@ -116,7 +104,5 @@ type TaskRPCAPI interface {
 	SubmitUrgentTask(req *TaskSubmitReqDTO) (*TaskSubmitRespDTO, error)
 	GetTaskStatus(taskID int64) (*TaskStatusRespDTO, error)
 	GetBatchTaskStatus(taskIDs []int64) ([]TaskStatusRespDTO, error)
-	CancelTask(taskID int64) (*TaskActionRespDTO, error)
-	RetryTask(taskID int64) (*TaskActionRespDTO, error)
 	GetQueueStats() (string, error)
 }

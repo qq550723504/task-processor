@@ -156,14 +156,6 @@ func (p *LocalTaskRPCProvider) GetBatchTaskStatus(taskIDs []int64) ([]api.TaskSt
 	return result, true, nil
 }
 
-func (p *LocalTaskRPCProvider) CancelTask(taskID int64) (*api.TaskActionRespDTO, bool, error) {
-	return p.transitionAction(taskID, model.TaskStatusCancelled, "cancel")
-}
-
-func (p *LocalTaskRPCProvider) RetryTask(taskID int64) (*api.TaskActionRespDTO, bool, error) {
-	return p.transitionAction(taskID, model.TaskStatusPendingRetry, "retry")
-}
-
 func (p *LocalTaskRPCProvider) GetQueueStats() (string, bool, error) {
 	if p == nil || p.db == nil {
 		return "", false, nil
@@ -202,53 +194,6 @@ func (p *LocalTaskRPCProvider) GetQueueStats() (string, bool, error) {
 		return "", true, err
 	}
 	return string(payload), true, nil
-}
-
-func (p *LocalTaskRPCProvider) transitionAction(taskID int64, target model.TaskStatus, action string) (*api.TaskActionRespDTO, bool, error) {
-	if p == nil || p.db == nil {
-		return nil, false, nil
-	}
-	row, found, err := p.getImportTaskRow(taskID)
-	if err != nil || !found {
-		return nil, found, err
-	}
-	current, parseErr := model.ParseTaskStatus(row.Status)
-	if parseErr != nil {
-		return nil, true, parseErr
-	}
-	if err := model.ValidateTaskStatusTransition(current, target); err != nil && current != target {
-		return &api.TaskActionRespDTO{
-			TaskID:          taskID,
-			Action:          action,
-			Success:         false,
-			StatusKey:       localTaskStatusMetadata(row.Status).Key,
-			StatusName:      localTaskStatusMetadata(row.Status).Name,
-			CanonicalStatus: localTaskStatusMetadata(row.Status).Canonical,
-			ErrorMessage:    err.Error(),
-			ActionTime:      time.Now().Format(time.RFC3339),
-		}, true, nil
-	}
-	updates := map[string]any{
-		"status":      target.Int16(),
-		"update_time": time.Now(),
-		"updater":     "local-task-rpc",
-	}
-	if target == model.TaskStatusPendingRetry {
-		updates["retry_count"] = row.RetryCount + 1
-	}
-	if err := p.db.Table("listing_product_import_task").Where("id = ?", taskID).Updates(updates).Error; err != nil {
-		return nil, true, err
-	}
-	meta := localTaskStatusMetadata(target.Int16())
-	return &api.TaskActionRespDTO{
-		TaskID:          taskID,
-		Action:          action,
-		Success:         true,
-		StatusKey:       meta.Key,
-		StatusName:      meta.Name,
-		CanonicalStatus: meta.Canonical,
-		ActionTime:      time.Now().Format(time.RFC3339),
-	}, true, nil
 }
 
 func (p *LocalTaskRPCProvider) getImportTaskRow(taskID int64) (*localImportTaskRow, bool, error) {

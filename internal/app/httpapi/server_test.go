@@ -46,8 +46,6 @@ type stubAmazonListingHandler struct {
 type stubTaskRPCHandler struct {
 	healthCalled     bool
 	statusCalled     bool
-	retryCalled      bool
-	cancelCalled     bool
 	queueStatsCalled bool
 }
 
@@ -157,16 +155,6 @@ func (s *stubAmazonListingHandler) SubmitTask(c *gin.Context) {
 func (s *stubTaskRPCHandler) GetTaskStatus(c *gin.Context) {
 	s.statusCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "canonicalStatus": "processing"})
-}
-
-func (s *stubTaskRPCHandler) RetryTask(c *gin.Context) {
-	s.retryCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "canonicalStatus": "retried"})
-}
-
-func (s *stubTaskRPCHandler) CancelTask(c *gin.Context) {
-	s.cancelCalled = true
-	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "canonicalStatus": "cancelled"})
 }
 
 func (s *stubTaskRPCHandler) GetQueueStats(c *gin.Context) {
@@ -2037,26 +2025,6 @@ func TestRegisterRoutes_TaskRPCEndpoints(t *testing.T) {
 			assertFn: func(t *testing.T) {
 				if !handler.statusCalled {
 					t.Fatal("GetTaskStatus handler was not called")
-				}
-			},
-		},
-		{
-			name:   "retry",
-			method: http.MethodPost,
-			path:   "/api/v1/management/tasks/123/retry",
-			assertFn: func(t *testing.T) {
-				if !handler.retryCalled {
-					t.Fatal("RetryTask handler was not called")
-				}
-			},
-		},
-		{
-			name:   "cancel",
-			method: http.MethodPost,
-			path:   "/api/v1/management/tasks/123/cancel",
-			assertFn: func(t *testing.T) {
-				if !handler.cancelCalled {
-					t.Fatal("CancelTask handler was not called")
 				}
 			},
 		},

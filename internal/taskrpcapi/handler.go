@@ -11,8 +11,6 @@ import (
 // Client defines the task RPC methods used by the HTTP handler.
 type Client interface {
 	GetTaskStatus(taskID int64) (*TaskStatusRespDTO, error)
-	RetryTask(taskID int64) (*TaskActionRespDTO, error)
-	CancelTask(taskID int64) (*TaskActionRespDTO, error)
 	GetQueueStats() (string, error)
 }
 
@@ -22,8 +20,6 @@ type LocalStatusProvider func() map[string]any
 // Handler exposes task RPC operations over the local HTTP API.
 type Handler interface {
 	GetTaskStatus(c *gin.Context)
-	RetryTask(c *gin.Context)
-	CancelTask(c *gin.Context)
 	GetQueueStats(c *gin.Context)
 	GetHealth(c *gin.Context)
 }
@@ -54,44 +50,6 @@ func (h *handler) GetTaskStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
-}
-
-func (h *handler) RetryTask(c *gin.Context) {
-	taskID, ok := parseTaskID(c)
-	if !ok {
-		return
-	}
-
-	result, err := h.client.RetryTask(taskID)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "taskId": taskID})
-		return
-	}
-
-	statusCode := http.StatusOK
-	if !result.Success {
-		statusCode = http.StatusBadRequest
-	}
-	c.JSON(statusCode, result)
-}
-
-func (h *handler) CancelTask(c *gin.Context) {
-	taskID, ok := parseTaskID(c)
-	if !ok {
-		return
-	}
-
-	result, err := h.client.CancelTask(taskID)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error(), "taskId": taskID})
-		return
-	}
-
-	statusCode := http.StatusOK
-	if !result.Success {
-		statusCode = http.StatusBadRequest
-	}
-	c.JSON(statusCode, result)
 }
 
 func (h *handler) GetQueueStats(c *gin.Context) {

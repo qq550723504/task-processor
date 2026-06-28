@@ -3,7 +3,6 @@ package taskrpcapi
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	kernelmodule "task-processor/internal/kernel/module"
 )
@@ -49,14 +48,6 @@ func (c localTaskRPCClient) GetTaskStatus(taskID int64) (*TaskStatusRespDTO, err
 	return nil, fmt.Errorf("task status lookup is unavailable after management task RPC retirement: task_id=%d", taskID)
 }
 
-func (c localTaskRPCClient) RetryTask(taskID int64) (*TaskActionRespDTO, error) {
-	return retiredTaskAction(taskID, "retry"), nil
-}
-
-func (c localTaskRPCClient) CancelTask(taskID int64) (*TaskActionRespDTO, error) {
-	return retiredTaskAction(taskID, "cancel"), nil
-}
-
 func (c localTaskRPCClient) GetQueueStats() (string, error) {
 	if c.localStatusProvider == nil {
 		return "{}", nil
@@ -66,17 +57,4 @@ func (c localTaskRPCClient) GetQueueStats() (string, error) {
 		return "", err
 	}
 	return string(payload), nil
-}
-
-func retiredTaskAction(taskID int64, action string) *TaskActionRespDTO {
-	return &TaskActionRespDTO{
-		TaskID:          taskID,
-		Action:          action,
-		Success:         false,
-		StatusKey:       "UNAVAILABLE",
-		StatusName:      "不可用",
-		CanonicalStatus: "failed",
-		ErrorMessage:    "management task RPC has been retired",
-		ActionTime:      time.Now().Format(time.RFC3339),
-	}
 }

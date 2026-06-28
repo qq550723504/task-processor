@@ -45,8 +45,6 @@ func AppendRouteDescriptors(routes []httproute.Descriptor, handler Handler) []ht
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/management/tasks/health", Module: "management", Handler: handler.GetHealth},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/management/tasks/:task_id/status", Module: "management", Handler: handler.GetTaskStatus},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/management/tasks/:task_id/retry", Module: "management", Handler: handler.RetryTask},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/management/tasks/:task_id/cancel", Module: "management", Handler: handler.CancelTask},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/management/tasks/queue-stats", Module: "management", Handler: handler.GetQueueStats},
 	)
 }

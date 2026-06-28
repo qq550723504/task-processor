@@ -66,8 +66,6 @@ func TestTaskRPCHTTPModuleRegistersOnlyConfiguredHandlers(t *testing.T) {
 	require.Equal(t, []string{
 		"GET /api/v1/management/tasks/health",
 		"GET /api/v1/management/tasks/:task_id/status",
-		"POST /api/v1/management/tasks/:task_id/retry",
-		"POST /api/v1/management/tasks/:task_id/cancel",
 		"GET /api/v1/management/tasks/queue-stats",
 	}, routeKeys(reg.Routes()))
 }

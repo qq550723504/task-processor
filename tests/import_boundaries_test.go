@@ -3649,6 +3649,51 @@ func TestTaskRPCAPIRetiredManagementImportsStayBlocked(t *testing.T) {
 	}
 }
 
+func TestTaskRPCAPIRetiredActionRoutesStayRetired(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "internal", "taskrpcapi"),
+		filepath.Join("..", "internal", "app", "httpapi", "routes_core.go"),
+		filepath.Join("..", "internal", "listingruntime", "local", "local_task_rpc_provider.go"),
+	}
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		if info.IsDir() {
+			index, err := loadGoFileIndex(path, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for filePath := range index.files {
+				assertNoRetiredTaskRPCActionSurface(t, filePath)
+			}
+			continue
+		}
+		assertNoRetiredTaskRPCActionSurface(t, path)
+	}
+}
+
+func assertNoRetiredTaskRPCActionSurface(t *testing.T, path string) {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"TaskActionRespDTO",
+		"RetryTask",
+		"CancelTask",
+		"/api/v1/management/tasks/:task_id/retry",
+		"/api/v1/management/tasks/:task_id/cancel",
+		"retiredTaskAction",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; remove retired management task action RPC surfaces instead of returning retired action responses", path, phrase)
+		}
+	}
+}
+
 func TestSDSClientRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "sds", "client")
 	allowedFiles := map[string]struct{}{}

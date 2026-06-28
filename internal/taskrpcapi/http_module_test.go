@@ -23,8 +23,6 @@ func TestNewHTTPModuleRegistersRoutes(t *testing.T) {
 	require.Equal(t, []string{
 		"GET /api/v1/management/tasks/health",
 		"GET /api/v1/management/tasks/:task_id/status",
-		"POST /api/v1/management/tasks/:task_id/retry",
-		"POST /api/v1/management/tasks/:task_id/cancel",
 		"GET /api/v1/management/tasks/queue-stats",
 	}, routeKeys(reg.Routes()))
 }
@@ -32,8 +30,6 @@ func TestNewHTTPModuleRegistersRoutes(t *testing.T) {
 type stubHandler struct{}
 
 func (stubHandler) GetTaskStatus(*gin.Context) {}
-func (stubHandler) RetryTask(*gin.Context)     {}
-func (stubHandler) CancelTask(*gin.Context)    {}
 func (stubHandler) GetQueueStats(*gin.Context) {}
 func (stubHandler) GetHealth(*gin.Context)     {}
 
