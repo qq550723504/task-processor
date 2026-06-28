@@ -19,10 +19,10 @@ func (p *retryGenerationMutationPhase) run(
 	dispatchResult *assetgeneration.Result,
 ) []assetgeneration.Task {
 	if dispatchResult == nil {
-		return mergeGenerationTasks(existingTasks, nil)
+		return assetgeneration.MergeTasks(existingTasks, nil)
 	}
 
-	updatedTasks := mergeGenerationTasks(existingTasks, dispatchResult.Tasks)
+	updatedTasks := assetgeneration.MergeTasks(existingTasks, dispatchResult.Tasks)
 	if inventory == nil {
 		return updatedTasks
 	}

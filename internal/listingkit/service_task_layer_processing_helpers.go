@@ -73,7 +73,7 @@ func (s *service) loadPlatformAdaptationAssets(ctx context.Context, task *Task, 
 	var persistedGenerationTasks []assetgeneration.Task
 	if assetRepo != nil {
 		if savedTasks, err := assetRepo.ListGenerationTasks(ctx, task.ID); err == nil {
-			persistedGenerationTasks = cloneGenerationTasks(savedTasks)
+			persistedGenerationTasks = assetgeneration.CloneTasks(savedTasks)
 		}
 	}
 	return inventory, persistedGenerationTasks

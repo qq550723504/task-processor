@@ -35,7 +35,7 @@ func TestTaskGenerationServiceFileKeepsRetryOwnershipBoundaries(t *testing.T) {
 	}
 
 	forbidden := []string{
-		"mergeGenerationTasks(existingTasks, dispatchResult.Tasks)",
+		"assetgeneration.MergeTasks(existingTasks, dispatchResult.Tasks)",
 		"replaceGeneratedAssetsForTargets(",
 		"asset.RebuildInventorySummary(inventory)",
 		"if err := s.assetRepo.SaveInventory(ctx, inventory); err != nil {",
@@ -66,7 +66,7 @@ func TestRetryGenerationSeamFilesOwnTheirResponsibilities(t *testing.T) {
 		{
 			file: "task_generation_retry_mutation.go",
 			shouldOwn: []string{
-				"mergeGenerationTasks(",
+				"assetgeneration.MergeTasks(",
 				"listinggeneration.ReplaceGeneratedAssetsForTargets(",
 				"asset.RebuildInventorySummary(",
 			},
@@ -85,7 +85,7 @@ func TestRetryGenerationSeamFilesOwnTheirResponsibilities(t *testing.T) {
 				"SaveGenerationTasks(",
 			},
 			shouldAvoid: []string{
-				"mergeGenerationTasks(",
+				"assetgeneration.MergeTasks(",
 				"replaceGeneratedAssetsForTargets(",
 				"asset.RebuildInventorySummary(",
 				"decorateListingKitResultGeneration(",
@@ -107,7 +107,7 @@ func TestRetryGenerationSeamFilesOwnTheirResponsibilities(t *testing.T) {
 			shouldAvoid: []string{
 				"SaveInventory(",
 				"SaveGenerationTasks(",
-				"mergeGenerationTasks(",
+				"assetgeneration.MergeTasks(",
 				"replaceGeneratedAssetsForTargets(",
 				"asset.RebuildInventorySummary(",
 			},

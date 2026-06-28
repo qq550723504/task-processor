@@ -24,7 +24,7 @@ func TestWorkflowPlatformAssetDispatchBundleReshapeFileOwnsBundleReshaping(t *te
 	}
 
 	for _, needle := range []string{
-		"mergeGenerationTasks(",
+		"assetgeneration.MergeTasks(",
 		"inventory.Records = append(",
 		"asset.RebuildInventorySummary(",
 		"SaveInventory(",
@@ -46,7 +46,7 @@ func TestWorkflowPlatformAssetDispatchTaskMergeFileOwnsReturnedTaskMerge(t *test
 	source := string(content)
 
 	for _, needle := range []string{
-		"mergeGenerationTasks(",
+		"assetgeneration.MergeTasks(",
 	} {
 		if !strings.Contains(source, needle) {
 			t.Fatalf("workflow_platform_asset_dispatch_task_merge.go should contain %q", needle)

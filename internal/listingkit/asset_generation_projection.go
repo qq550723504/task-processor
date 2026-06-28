@@ -11,13 +11,13 @@ type assetGenerationProjection struct {
 
 func buildAssetGenerationProjection(result *ListingKitResult, tasks []assetgeneration.Task) *assetGenerationProjection {
 	summary := buildAssetGenerationSummary(tasks)
-	clonedTasks := cloneGenerationTasks(tasks)
+	clonedTasks := assetgeneration.CloneTasks(tasks)
 
 	queueResult := &ListingKitResult{}
 	if result != nil {
 		*queueResult = *result
 	}
-	queueResult.AssetGenerationTasks = cloneGenerationTasks(tasks)
+	queueResult.AssetGenerationTasks = assetgeneration.CloneTasks(tasks)
 	queueResult.AssetGenerationSummary = summary
 
 	queue := buildGenerationWorkQueue(queueResult)
@@ -70,7 +70,7 @@ func applyAssetGenerationProjectionToExport(export *ListingKitExport, projection
 func withListingKitResultGeneration(result *ListingKitResult, tasks []assetgeneration.Task) *ListingKitResult {
 	if result == nil {
 		return &ListingKitResult{
-			AssetGenerationTasks: cloneGenerationTasks(tasks),
+			AssetGenerationTasks: assetgeneration.CloneTasks(tasks),
 		}
 	}
 	cloned := *result

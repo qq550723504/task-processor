@@ -16,7 +16,7 @@ func TestAssetGenerationProjectionBoundary(t *testing.T) {
 			"applyAssetGenerationProjectionToResult(result, projection)",
 		})
 		assertSourceExcludesAll(t, source, []string{
-			"result.AssetGenerationTasks = cloneGenerationTasks(tasks)",
+			"result.AssetGenerationTasks = assetgeneration.CloneTasks(tasks)",
 			"result.AssetGenerationSummary = buildAssetGenerationSummary(tasks)",
 			"result.AssetGenerationQueue = buildGenerationWorkQueue(result)",
 			"result.AssetGenerationOverview = buildAssetGenerationOverview(result.AssetGenerationQueue)",
@@ -98,15 +98,15 @@ func TestAssetGenerationProjectionBoundary(t *testing.T) {
 
 		assertSourceContainsAll(t, source, []string{
 			"summary := buildAssetGenerationSummary(tasks)",
-			"clonedTasks := cloneGenerationTasks(tasks)",
-			"queueResult.AssetGenerationTasks = cloneGenerationTasks(tasks)",
+			"clonedTasks := assetgeneration.CloneTasks(tasks)",
+			"queueResult.AssetGenerationTasks = assetgeneration.CloneTasks(tasks)",
 			"queueResult.AssetGenerationSummary = summary",
 			"queue := buildGenerationWorkQueue(queueResult)",
 			"Overview: buildAssetGenerationOverview(queue)",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
 			"buildAssetGenerationSummary",
-			"cloneGenerationTasks",
+			"CloneTasks",
 			"buildGenerationWorkQueue",
 			"buildAssetGenerationOverview",
 		})

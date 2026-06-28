@@ -68,7 +68,7 @@ func (s *service) ProcessPlatformAdaptationLayer(ctx context.Context, taskID str
 	inventory, persistedGenerationTasks := s.loadPlatformAdaptationAssets(ctx, task, snapshot)
 	var generationPlan *assetgeneration.Result
 	if len(persistedGenerationTasks) > 0 {
-		generationPlan = &assetgeneration.Result{Tasks: cloneGenerationTasks(persistedGenerationTasks)}
+		generationPlan = &assetgeneration.Result{Tasks: assetgeneration.CloneTasks(persistedGenerationTasks)}
 	}
 	var sdsOptions *SDSSyncOptions
 	if task.Request != nil && task.Request.Options != nil {

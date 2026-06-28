@@ -389,13 +389,13 @@ func newRetryPersistenceFailureFixture(t *testing.T, taskID string) *retryPersis
 			},
 		},
 		listAssetGenerationTasks: func(ctx context.Context, requestedTaskID string) ([]assetgeneration.Task, error) {
-			return cloneGenerationTasks(persistedTasks), nil
+			return assetgeneration.CloneTasks(persistedTasks), nil
 		},
 		listGenerationReviews: func(ctx context.Context, requestedTaskID string) ([]GenerationReviewRecord, error) {
 			return nil, nil
 		},
 		buildRetryGenerationTaskSelection: func(ctx context.Context, task *Task, inventory *asset.Inventory, existing []assetgeneration.Task, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
-			return cloneGenerationTasks(selectedTasks), nil
+			return assetgeneration.CloneTasks(selectedTasks), nil
 		},
 	})
 	return &retryPersistenceFailureFixture{
@@ -1594,8 +1594,8 @@ func TestRetryGenerationResultProjectionRebuildsListingKitResult(t *testing.T) {
 			SourceAssetIDs:  []string{"gallery-1"},
 		},
 	}
-	selectedTasks := cloneGenerationTasks(updatedTasks)
-	dispatchResult := &assetgeneration.Result{Tasks: cloneGenerationTasks(updatedTasks)}
+	selectedTasks := assetgeneration.CloneTasks(updatedTasks)
+	dispatchResult := &assetgeneration.Result{Tasks: assetgeneration.CloneTasks(updatedTasks)}
 	reviews := []GenerationReviewRecord{{
 		TaskID:       task.ID,
 		Platform:     "amazon",
@@ -1741,7 +1741,7 @@ func TestRetryGenerationResultProjectionBuildsQueues(t *testing.T) {
 			SourceAssetIDs:  []string{"gallery-1"},
 		},
 	}
-	selectedTasks := cloneGenerationTasks(updatedTasks)
+	selectedTasks := assetgeneration.CloneTasks(updatedTasks)
 	dispatchResult := &assetgeneration.Result{
 		Tasks: []assetgeneration.Task{updatedTasks[0]},
 	}
@@ -1840,8 +1840,8 @@ func TestRetryGenerationResultProjectionHandlesNilTaskRequest(t *testing.T) {
 		task,
 		inventory,
 		updatedTasks,
-		cloneGenerationTasks(updatedTasks),
-		&assetgeneration.Result{Tasks: cloneGenerationTasks(updatedTasks)},
+		assetgeneration.CloneTasks(updatedTasks),
+		&assetgeneration.Result{Tasks: assetgeneration.CloneTasks(updatedTasks)},
 		nil,
 	)
 
@@ -3641,13 +3641,13 @@ func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 		assetBundleBuilder:  assetbundle.NewBuilder(),
 		assetGenerator:      &stubRetryNilDispatchGenerator{},
 		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
-			return cloneGenerationTasks(persistedTasks), nil
+			return assetgeneration.CloneTasks(persistedTasks), nil
 		},
 		listGenerationReviews: func(ctx context.Context, taskID string) ([]GenerationReviewRecord, error) {
 			return nil, nil
 		},
 		buildRetryGenerationTaskSelection: func(ctx context.Context, task *Task, inventory *asset.Inventory, existing []assetgeneration.Task, req *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
-			return cloneGenerationTasks(selectedTasks), nil
+			return assetgeneration.CloneTasks(selectedTasks), nil
 		},
 	})
 	assetRepository.resetCalls()

@@ -78,7 +78,7 @@ func (s *stubWorkflowAssetGenerator) Execute(ctx context.Context, req assetgener
 func (s *stubWorkflowAssetGenerator) Dispatch(ctx context.Context, req assetgeneration.DispatchRequest) (*assetgeneration.Result, error) {
 	s.dispatchCalls++
 	clonedReq := req
-	clonedReq.Tasks = cloneGenerationTasks(req.Tasks)
+	clonedReq.Tasks = assetgeneration.CloneTasks(req.Tasks)
 	s.lastDispatchReq = &clonedReq
 	if s.dispatchErrAt != nil {
 		if err := s.dispatchErrAt[s.dispatchCalls]; err != nil {
@@ -121,7 +121,7 @@ func (s *stubWorkflowAssetRepository) GetInventory(ctx context.Context, ref asse
 
 func (s *stubWorkflowAssetRepository) SaveGenerationTasks(ctx context.Context, taskID string, tasks []assetgeneration.Task) error {
 	s.savedTaskID = taskID
-	s.savedTasks = cloneGenerationTasks(tasks)
+	s.savedTasks = assetgeneration.CloneTasks(tasks)
 	if s.saveGenerationTasksErr != nil {
 		return s.saveGenerationTasksErr
 	}
@@ -768,7 +768,7 @@ func TestPlatformAssetDispatchBundleApplyPhaseRunReattachesBundlesWhenNoReturned
 	final := &ListingKitResult{
 		Amazon: &AmazonPackage{
 			ImageBundle: &common.PublishImageBundle{
-				PendingGeneration: cloneGenerationTasks(existingPending),
+				PendingGeneration: assetgeneration.CloneTasks(existingPending),
 			},
 		},
 	}
@@ -944,7 +944,7 @@ func TestPlatformAssetDispatchBundleReshapePhaseRunReshapesBundlesWithoutReturne
 	final := &ListingKitResult{
 		Amazon: &AmazonPackage{
 			ImageBundle: &common.PublishImageBundle{
-				PendingGeneration: cloneGenerationTasks(existingPending),
+				PendingGeneration: assetgeneration.CloneTasks(existingPending),
 			},
 		},
 	}

@@ -15,5 +15,5 @@ func (p *platformAssetDispatchTaskMergePhase) run(
 	if p == nil || len(dispatchTasks) == 0 {
 		return generationTasks
 	}
-	return mergeGenerationTasks(generationTasks, dispatchTasks)
+	return assetgeneration.MergeTasks(generationTasks, dispatchTasks)
 }

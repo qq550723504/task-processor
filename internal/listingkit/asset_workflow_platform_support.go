@@ -49,7 +49,7 @@ func platformGenerationTasks(platform string, plan *assetgeneration.Result) []as
 	out := make([]assetgeneration.Task, 0, len(plan.Tasks))
 	for _, task := range plan.Tasks {
 		if task.Platform == platform && task.ExecutionStatus != "completed" {
-			out = append(out, cloneGenerationTask(task))
+			out = append(out, assetgeneration.CloneTask(task))
 		}
 	}
 	if len(out) == 0 {
@@ -64,16 +64,16 @@ func collectPlatformGenerationTasks(result *ListingKitResult) []assetgeneration.
 	}
 	out := make([]assetgeneration.Task, 0, 8)
 	if result.Amazon != nil && result.Amazon.ImageBundle != nil {
-		out = append(out, cloneGenerationTasks(result.Amazon.ImageBundle.PendingGeneration)...)
+		out = append(out, assetgeneration.CloneTasks(result.Amazon.ImageBundle.PendingGeneration)...)
 	}
 	if result.Shein != nil && result.Shein.ImageBundle != nil {
-		out = append(out, cloneGenerationTasks(result.Shein.ImageBundle.PendingGeneration)...)
+		out = append(out, assetgeneration.CloneTasks(result.Shein.ImageBundle.PendingGeneration)...)
 	}
 	if result.Temu != nil && result.Temu.ImageBundle != nil {
-		out = append(out, cloneGenerationTasks(result.Temu.ImageBundle.PendingGeneration)...)
+		out = append(out, assetgeneration.CloneTasks(result.Temu.ImageBundle.PendingGeneration)...)
 	}
 	if result.Walmart != nil && result.Walmart.ImageBundle != nil {
-		out = append(out, cloneGenerationTasks(result.Walmart.ImageBundle.PendingGeneration)...)
+		out = append(out, assetgeneration.CloneTasks(result.Walmart.ImageBundle.PendingGeneration)...)
 	}
 	if len(out) == 0 {
 		return nil

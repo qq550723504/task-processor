@@ -29,7 +29,7 @@ func TestWorkflowPlatformAssetDispatchInventoryPersistFileOwnsInventoryDurabilit
 	for _, needle := range []string{
 		"decorateListingKitResultGeneration(",
 		"SaveGenerationTasks(",
-		"mergeGenerationTasks(",
+		"assetgeneration.MergeTasks(",
 		"asset.RebuildInventorySummary(",
 	} {
 		if strings.Contains(content, needle) {

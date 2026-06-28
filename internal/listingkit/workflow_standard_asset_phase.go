@@ -91,8 +91,8 @@ func (p *standardWorkflowAssetPhase) run(
 					stage.Degrade("asset_generation_platform_dispatch_failed", "Platform asset generation dispatch failed", dispatchErr.Error())
 				}
 				if dispatchResult != nil {
-					generationPlan.Tasks = cloneGenerationTasks(dispatchResult.Tasks)
-					persistedGenerationTasks = mergeGenerationTasks(persistedGenerationTasks, dispatchResult.Tasks)
+					generationPlan.Tasks = assetgeneration.CloneTasks(dispatchResult.Tasks)
+					persistedGenerationTasks = assetgeneration.MergeTasks(persistedGenerationTasks, dispatchResult.Tasks)
 					if len(dispatchResult.Assets) > 0 {
 						inventory.Records = append(inventory.Records, dispatchResult.Assets...)
 						inventory.Summary = asset.RebuildInventorySummary(inventory)

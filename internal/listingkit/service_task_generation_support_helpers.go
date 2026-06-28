@@ -191,7 +191,7 @@ func (s *service) listAssetGenerationTasks(ctx context.Context, taskID string) (
 	if err != nil {
 		return nil, err
 	}
-	return cloneGenerationTasks(tasks), nil
+	return assetgeneration.CloneTasks(tasks), nil
 }
 
 func (s *service) listGenerationReviews(ctx context.Context, taskID string) ([]GenerationReviewRecord, error) {
