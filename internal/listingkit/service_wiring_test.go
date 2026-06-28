@@ -211,6 +211,36 @@ func TestServiceRootFileDoesNotOwnCollaboratorGroupInitializationBodies(t *testi
 	}
 }
 
+func TestServiceRootPlatformNormalizationUsesListingPlatformRegistry(t *testing.T) {
+	t.Parallel()
+
+	src, err := os.ReadFile("service.go")
+	if err != nil {
+		t.Fatalf("ReadFile(service.go) error = %v", err)
+	}
+	content := string(src)
+
+	for _, needle := range []string{
+		`listingplatform "task-processor/internal/listing/platform"`,
+		"req.Platforms = listingplatform.SupportedPlatforms()",
+		"normalized := listingplatform.Normalize(platform)",
+		"if !listingplatform.IsSupported(normalized) {",
+	} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("service.go should contain %q", needle)
+		}
+	}
+
+	for _, needle := range []string{
+		`[]string{"amazon", "shein", "temu", "walmart"}`,
+		`case "amazon", "shein", "temu", "walmart":`,
+	} {
+		if strings.Contains(content, needle) {
+			t.Fatalf("service.go should not contain %q after platform registry extraction", needle)
+		}
+	}
+}
+
 func TestAdminCollaboratorFilesUseExplicitWiringBuilders(t *testing.T) {
 	t.Parallel()
 

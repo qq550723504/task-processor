@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	listingplatform "task-processor/internal/listing/platform"
 )
 
 func (s *service) SetTaskSubmitter(submitter TaskSubmitter) {
@@ -83,7 +85,7 @@ func normalizeGenerateRequest(req *GenerateRequest) {
 	req.Platforms = normalizePlatforms(req.Platforms)
 	req.ImageURLs = normalizeGenerateRequestImageURLs(req.ImageURLs)
 	if len(req.Platforms) == 0 {
-		req.Platforms = []string{"amazon", "shein", "temu", "walmart"}
+		req.Platforms = listingplatform.SupportedPlatforms()
 	}
 }
 
@@ -124,15 +126,15 @@ func normalizePlatforms(platforms []string) []string {
 	seen := map[string]struct{}{}
 	result := make([]string, 0, len(platforms))
 	for _, platform := range platforms {
-		normalized := strings.ToLower(strings.TrimSpace(platform))
-		switch normalized {
-		case "amazon", "shein", "temu", "walmart":
-			if _, ok := seen[normalized]; ok {
-				continue
-			}
-			seen[normalized] = struct{}{}
-			result = append(result, normalized)
+		normalized := listingplatform.Normalize(platform)
+		if !listingplatform.IsSupported(normalized) {
+			continue
 		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result = append(result, normalized)
 	}
 	return result
 }
