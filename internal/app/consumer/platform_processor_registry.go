@@ -11,32 +11,27 @@ import (
 )
 
 type PlatformProcessorRegistry struct {
-	config           *config.Config
-	logger           *logrus.Logger
-	enabledPlatforms []string
-	platformModules  []PlatformModule
+	config          *config.Config
+	logger          *logrus.Logger
+	selection       platformSelection
+	platformModules []PlatformModule
 }
 
 func NewPlatformProcessorRegistry(cfg *config.Config, logger *logrus.Logger, platformsStr string, deps PlatformProcessorRegistryDependencies) *PlatformProcessorRegistry {
-	var enabledPlatforms []string
-	if platformsStr != "" {
-		enabledPlatforms = parsePlatformList(platformsStr)
-	} else {
-		enabledPlatforms = getEnabledPlatformsFromModules(cfg, deps.PlatformModules)
-	}
+	selection := newPlatformSelection(cfg, platformsStr, deps.PlatformModules)
 
-	logger.Infof("enabled platforms: %v", enabledPlatforms)
+	logger.Infof("enabled platforms: %v", selection.names())
 
 	return &PlatformProcessorRegistry{
-		config:           cfg,
-		logger:           logger,
-		enabledPlatforms: enabledPlatforms,
-		platformModules:  deps.PlatformModules,
+		config:          cfg,
+		logger:          logger,
+		selection:       selection,
+		platformModules: deps.PlatformModules,
 	}
 }
 
 func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources) error {
-	return r.RegisterPlatforms(ctx, serviceManager, resources, r.enabledPlatforms...)
+	return r.RegisterPlatforms(ctx, serviceManager, resources, r.selection.names()...)
 }
 
 func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources, platforms ...string) error {
@@ -95,15 +90,11 @@ func (r *PlatformProcessorRegistry) SharedResourceNeeds(platforms ...string) (Sh
 func (r *PlatformProcessorRegistry) anyModuleNeedsAmazon(modules []PlatformModule) bool {
 	for _, module := range modules {
 		name := module.Name()
-		if r.isPlatformEnabled(name) && (module.NeedsAmazon(r.config) || PlatformUsesLocalFetcher(r.config, name)) {
+		if r.selection.isEnabled(name) && (module.NeedsAmazon(r.config) || PlatformUsesLocalFetcher(r.config, name)) {
 			return true
 		}
 	}
 	return false
-}
-
-func (r *PlatformProcessorRegistry) isPlatformEnabled(platform string) bool {
-	return containsPlatform(r.enabledPlatforms, platform)
 }
 
 func (r *PlatformProcessorRegistry) ResolvePlatformModule(platform string) (PlatformModule, error) {
@@ -111,7 +102,7 @@ func (r *PlatformProcessorRegistry) ResolvePlatformModule(platform string) (Plat
 	if !ok {
 		return nil, fmt.Errorf("unsupported platform: %s", platform)
 	}
-	if !r.isPlatformEnabled(platform) {
+	if !r.selection.isEnabled(platform) {
 		return nil, fmt.Errorf("%s platform is not enabled", strings.ToUpper(platform))
 	}
 	return module, nil
@@ -143,13 +134,7 @@ func (r *PlatformProcessorRegistry) resolveModules(platforms []string) ([]Platfo
 }
 
 func (r *PlatformProcessorRegistry) enabledModules() []PlatformModule {
-	modules := make([]PlatformModule, 0, len(r.platformModules))
-	for _, module := range r.platformModules {
-		if r.isPlatformEnabled(module.Name()) {
-			modules = append(modules, module)
-		}
-	}
-	return modules
+	return r.selection.enabledModules(r.platformModules)
 }
 
 func (r *PlatformProcessorRegistry) findModule(platform string) (PlatformModule, bool) {
@@ -167,39 +152,4 @@ func moduleNames(modules []PlatformModule) []string {
 		names = append(names, module.Name())
 	}
 	return names
-}
-
-func parsePlatformList(platformsStr string) []string {
-	platforms := strings.Split(platformsStr, ",")
-	result := make([]string, 0, len(platforms))
-
-	for _, p := range platforms {
-		trimmed := strings.TrimSpace(strings.ToLower(p))
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-
-	return result
-}
-
-func getEnabledPlatformsFromModules(cfg *config.Config, modules []PlatformModule) []string {
-	platforms := make([]string, 0)
-	for _, module := range modules {
-		if module.Enabled(cfg) {
-			platforms = append(platforms, module.Name())
-		}
-	}
-
-	return platforms
-}
-
-func containsPlatform(platforms []string, platform string) bool {
-	platform = strings.ToLower(platform)
-	for _, p := range platforms {
-		if strings.ToLower(p) == platform {
-			return true
-		}
-	}
-	return false
 }

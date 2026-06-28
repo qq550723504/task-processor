@@ -1235,6 +1235,25 @@ func TestPlatformProcessorRegistryDoesNotUseRegistrationClosures(t *testing.T) {
 	}
 }
 
+func TestPlatformProcessorRegistryDoesNotOwnPlatformSelectionParsing(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"enabledPlatforms []string",
+		"parsePlatformList",
+		"getEnabledPlatformsFromModules",
+		"containsPlatform",
+		"func (r *PlatformProcessorRegistry) isPlatformEnabled",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; keep platform selection parsing outside the processor registry", path, phrase)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider(t *testing.T) {
 	paths := []string{
 		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"),
