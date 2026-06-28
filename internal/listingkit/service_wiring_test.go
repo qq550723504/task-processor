@@ -2376,6 +2376,34 @@ func TestPreviewPlatformBuilderRegistryLivesOutsidePreviewBuilderRoot(t *testing
 	}
 }
 
+func TestExportPlatformBuilderRegistryUsesPreviewDomainDispatcher(t *testing.T) {
+	t.Parallel()
+
+	platformsSrc, err := os.ReadFile("export_builder_platforms.go")
+	if err != nil {
+		t.Fatalf("ReadFile(export_builder_platforms.go) error = %v", err)
+	}
+	platformsContent := string(platformsSrc)
+	for _, needle := range []string{
+		"type exportPlatformBuilder interface {",
+		"func exportPlatformBuilders() []exportPlatformBuilder {",
+		"func buildExportPlatformSections(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {",
+		"return previewdomain.BuildPlatformSections(",
+		"previewdomain.PlatformSectionBuilder{",
+	} {
+		if !strings.Contains(platformsContent, needle) {
+			t.Fatalf("export_builder_platforms.go should contain %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"if err := builder.build(result, export, selectedPlatform); err != nil {",
+	} {
+		if strings.Contains(platformsContent, needle) {
+			t.Fatalf("export_builder_platforms.go should not contain %q after previewdomain platform dispatcher extraction", needle)
+		}
+	}
+}
+
 func TestPreviewPlatformSelectionLivesOutsidePreviewBuilderRoot(t *testing.T) {
 	t.Parallel()
 

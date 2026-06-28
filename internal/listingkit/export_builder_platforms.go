@@ -1,5 +1,7 @@
 package listingkit
 
+import previewdomain "task-processor/internal/listing/preview"
+
 type exportPlatformBuilder interface {
 	platform() string
 	build(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error
@@ -28,12 +30,18 @@ func exportPlatformBuilders() []exportPlatformBuilder {
 }
 
 func buildExportPlatformSections(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {
-	for _, builder := range exportPlatformBuilders() {
-		if err := builder.build(result, export, selectedPlatform); err != nil {
-			return err
-		}
+	builders := exportPlatformBuilders()
+	sectionBuilders := make([]previewdomain.PlatformSectionBuilder, 0, len(builders))
+	for _, builder := range builders {
+		builder := builder
+		sectionBuilders = append(sectionBuilders, previewdomain.PlatformSectionBuilder{
+			Platform: builder.platform(),
+			Build: func() error {
+				return builder.build(result, export, selectedPlatform)
+			},
+		})
 	}
-	return nil
+	return previewdomain.BuildPlatformSections(sectionBuilders)
 }
 
 func buildAmazonExportSection(result *ListingKitResult, export *ListingKitExport, selectedPlatform string) error {
