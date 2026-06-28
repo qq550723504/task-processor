@@ -19,11 +19,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type databaseConfig = *config.DatabaseConfig
-type redisConfig = *config.RedisConfig
-type rabbitConfig = *config.RabbitMQConfig
-type dbHandle = *gorm.DB
-
 type redisRuntime interface {
 	controllib.StringRuntime
 	leaderLockRuntime
@@ -38,27 +33,27 @@ type rabbitRuntime interface {
 
 type runtimeDependencies struct {
 	LoadConfig        func(configPath string, logger *logrus.Logger) (*config.Config, error)
-	OpenDB            func(ctx context.Context, cfg databaseConfig) (dbHandle, error)
-	CloseDB           func(cfg databaseConfig, db dbHandle) error
-	MigrateImportTask func(db dbHandle) error
-	OpenRedis         func(ctx context.Context, cfg redisConfig) (redisRuntime, error)
-	OpenRabbitMQ      func(ctx context.Context, cfg rabbitConfig, logger *logrus.Logger) (rabbitRuntime, error)
+	OpenDB            func(ctx context.Context, cfg *config.DatabaseConfig) (*gorm.DB, error)
+	CloseDB           func(cfg *config.DatabaseConfig, db *gorm.DB) error
+	MigrateImportTask func(db *gorm.DB) error
+	OpenRedis         func(ctx context.Context, cfg *config.RedisConfig) (redisRuntime, error)
+	OpenRabbitMQ      func(ctx context.Context, cfg *config.RabbitMQConfig, logger *logrus.Logger) (rabbitRuntime, error)
 }
 
 func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
 		LoadConfig: config.LoadConfigWithFallback,
-		OpenDB: func(ctx context.Context, cfg databaseConfig) (dbHandle, error) {
+		OpenDB: func(ctx context.Context, cfg *config.DatabaseConfig) (*gorm.DB, error) {
 			return database.NewSharedDatabaseFromConfig(cfg)
 		},
 		CloseDB: database.CloseSharedDatabase,
-		MigrateImportTask: func(db dbHandle) error {
+		MigrateImportTask: func(db *gorm.DB) error {
 			return listingadmin.AutoMigrateImportTaskRepository(db)
 		},
-		OpenRedis: func(ctx context.Context, cfg redisConfig) (redisRuntime, error) {
+		OpenRedis: func(ctx context.Context, cfg *config.RedisConfig) (redisRuntime, error) {
 			return newRedisStringRuntime(cfg)
 		},
-		OpenRabbitMQ: func(ctx context.Context, cfg rabbitConfig, logger *logrus.Logger) (rabbitRuntime, error) {
+		OpenRabbitMQ: func(ctx context.Context, cfg *config.RabbitMQConfig, logger *logrus.Logger) (rabbitRuntime, error) {
 			return openRabbitRuntime(ctx, cfg, logger)
 		},
 	}

@@ -1619,6 +1619,24 @@ func TestRunnerRawJSONDataClientCompatibilityAliasStaysRetired(t *testing.T) {
 	}
 }
 
+func TestListingControlRuntimeConfigAliasesStayRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "runtime", "listingcontrol", "runtime.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	for _, phrase := range []string{
+		"type databaseConfig =",
+		"type redisConfig =",
+		"type rabbitConfig =",
+		"type dbHandle =",
+	} {
+		if strings.Contains(string(content), phrase) {
+			t.Fatalf("%s mentions %q; use concrete config and database handle types directly in runtime dependencies", path, phrase)
+		}
+	}
+}
+
 func TestPlatformRuntimeContextDoesNotExposeRawJSONDataClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "shared_resources.go")
 	content, err := os.ReadFile(path)

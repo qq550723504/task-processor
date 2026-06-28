@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/core/config"
 	controllib "task-processor/internal/listingcontrol"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -104,7 +105,7 @@ listingControlPlane:
 	deps := newFakeRuntimeDeps()
 	migrationErr := errors.New("migration failed")
 	var migrated bool
-	deps.MigrateImportTask = func(db dbHandle) error {
+	deps.MigrateImportTask = func(db *gorm.DB) error {
 		migrated = true
 		return migrationErr
 	}
@@ -692,15 +693,15 @@ type fakeRuntimeDeps struct {
 func newFakeRuntimeDeps() *fakeRuntimeDeps {
 	deps := &fakeRuntimeDeps{}
 	deps.runtimeDependencies = defaultRuntimeDependencies()
-	deps.OpenDB = func(ctx context.Context, cfg databaseConfig) (dbHandle, error) {
+	deps.OpenDB = func(ctx context.Context, cfg *config.DatabaseConfig) (*gorm.DB, error) {
 		deps.dbOpened = true
 		return nil, nil
 	}
-	deps.OpenRedis = func(ctx context.Context, cfg redisConfig) (redisRuntime, error) {
+	deps.OpenRedis = func(ctx context.Context, cfg *config.RedisConfig) (redisRuntime, error) {
 		deps.redisOpened = true
 		return nil, nil
 	}
-	deps.OpenRabbitMQ = func(ctx context.Context, cfg rabbitConfig, logger *logrus.Logger) (rabbitRuntime, error) {
+	deps.OpenRabbitMQ = func(ctx context.Context, cfg *config.RabbitMQConfig, logger *logrus.Logger) (rabbitRuntime, error) {
 		deps.rabbitConnected = true
 		return nil, nil
 	}
