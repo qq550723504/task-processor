@@ -4,12 +4,16 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"task-processor/internal/authz"
 )
 
-var ownerScopeRequired atomic.Bool
+var (
+	ownerScopeRequired     atomic.Bool
+	ownerScopeRequiredTest sync.Mutex
+)
 
 type requestRolesContextKey struct{}
 
@@ -18,10 +22,12 @@ func ConfigureOwnerScopeRequired(required bool) {
 }
 
 func SetOwnerScopeRequiredForTesting(required bool) func() {
+	ownerScopeRequiredTest.Lock()
 	previous := ownerScopeRequired.Load()
 	ownerScopeRequired.Store(required)
 	return func() {
 		ownerScopeRequired.Store(previous)
+		ownerScopeRequiredTest.Unlock()
 	}
 }
 

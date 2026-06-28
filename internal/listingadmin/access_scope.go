@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"gorm.io/gorm"
@@ -14,17 +15,22 @@ import (
 type requestUserIDContextKey struct{}
 type requestRolesContextKey struct{}
 
-var ownerScopeRequired atomic.Bool
+var (
+	ownerScopeRequired     atomic.Bool
+	ownerScopeRequiredTest sync.Mutex
+)
 
 func ConfigureOwnerScopeRequired(required bool) {
 	ownerScopeRequired.Store(required)
 }
 
 func SetOwnerScopeRequiredForTesting(required bool) func() {
+	ownerScopeRequiredTest.Lock()
 	previous := ownerScopeRequired.Load()
 	ownerScopeRequired.Store(required)
 	return func() {
 		ownerScopeRequired.Store(previous)
+		ownerScopeRequiredTest.Unlock()
 	}
 }
 
