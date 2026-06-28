@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"task-processor/internal/app/bootstrap"
+	bootstrapresources "task-processor/internal/app/bootstrap/resources"
+	bootstrapschedulers "task-processor/internal/app/bootstrap/schedulers"
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/database"
@@ -82,7 +84,7 @@ func Run(ctx context.Context, opts Options) error {
 		Logger:           logger,
 		Resources:        resources,
 		ServiceManager:   serviceManager,
-		SchedulerBuilder: bootstrap.BuildSchedulerDependencies,
+		SchedulerBuilder: bootstrapschedulers.BuildDependencies,
 	})
 	if err := module.ConfigureListingRuntime(ctx, runtimeContext); err != nil {
 		return fmt.Errorf("configure %s runtime failed: %w", displayName, err)
@@ -185,7 +187,7 @@ func applyLoggingConfigFromConfig(log *logrus.Logger, cfg *config.Config) error 
 	})
 }
 
-func listingRuntimeHealthValidator(resources *bootstrap.SharedResources) ListingRuntimeHealthValidator {
+func listingRuntimeHealthValidator(resources *bootstrapresources.SharedResources) ListingRuntimeHealthValidator {
 	if resources == nil {
 		return nil
 	}

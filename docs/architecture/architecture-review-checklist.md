@@ -201,6 +201,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestBootstrapFetchersDoNotOwnPlatformFetcherModeRules`
 - `TestBootstrapFetchersDoNotExposeSharedProductFetcherBuilder`
 - `TestBootstrapResourceFacadeStaysRetired`
+- `TestBootstrapProcessorAndSchedulerFacadesStayRetired`
 - `TestPlatformProcessorRegistryDoesNotInspectRabbitMQClient`
 - `TestPlatformProcessorRegistryDoesNotOwnSharedResourceProvider`
 - `TestPlatformProcessorRegistryDoesNotExposeListingRuntimeHealthValidator`

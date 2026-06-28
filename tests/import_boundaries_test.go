@@ -1613,6 +1613,17 @@ func TestBootstrapResourceFacadeStaysRetired(t *testing.T) {
 	}
 }
 
+func TestBootstrapProcessorAndSchedulerFacadesStayRetired(t *testing.T) {
+	for _, name := range []string{"processor_factories.go", "scheduler_factories.go"} {
+		path := filepath.Join("..", "internal", "app", "bootstrap", name)
+		if _, err := os.Stat(path); err == nil {
+			t.Fatalf("%s still exists; import the dedicated bootstrap subpackage directly instead of reviving top-level forwarding facades", path)
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotInspectRabbitMQClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	content, err := os.ReadFile(path)
@@ -2658,7 +2669,6 @@ func TestAppBootstrapRetiredManagementImportsStayBlocked(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "bootstrap")
 	allowedFiles := map[string]struct{}{
 		filepath.Clean(filepath.Join(root, "app.go")):                        {},
-		filepath.Clean(filepath.Join(root, "scheduler_factories.go")):        {},
 		filepath.Clean(filepath.Join(root, "schedulers", "dependencies.go")): {},
 	}
 

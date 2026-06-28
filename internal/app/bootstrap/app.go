@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	bootstrapprocessors "task-processor/internal/app/bootstrap/processors"
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
+	bootstrapschedulers "task-processor/internal/app/bootstrap/schedulers"
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
@@ -167,7 +169,7 @@ func buildProcessorService(logger *logrus.Logger, resources *bootstrapresources.
 		resources.SchedulerFactoryRuntime,
 		resources.AmazonCrawler,
 		resources.RabbitMQClient,
-		BuildProcessorDependencies(),
+		bootstrapprocessors.BuildRunnerProcessorDependencies(),
 	)
 }
 
@@ -177,6 +179,6 @@ func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources 
 		resources.SchedulerRuntime,
 		cfg,
 		resources.RabbitMQClient,
-		BuildSchedulerDependencies(resources.SchedulerFactoryRuntime, cfg, resources.AmazonCrawler, resources.RabbitMQClient),
+		bootstrapschedulers.BuildDependencies(resources.SchedulerFactoryRuntime, cfg, resources.AmazonCrawler, resources.RabbitMQClient),
 	)
 }
