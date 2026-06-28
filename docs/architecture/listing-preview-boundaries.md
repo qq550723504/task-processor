@@ -20,7 +20,7 @@ The project-wide plan calls preview aggregation the best next bounded extraction
 
 That extraction has already started, but the codebase is now in a mixed state:
 
-- `internal/listing/preview` owns preview shell/status concepts and compatibility wrappers.
+- `internal/listing/preview` owns preview shell/status concepts and preview-specific errors.
 - `internal/listing/platform` owns reusable platform selection and section dispatch.
 - `internal/listingkit` still owns task/result projection and platform payload composition.
 
@@ -37,16 +37,14 @@ Current responsibilities:
 - preview shell construction
 - preview header construction
 - preview status label / status message mapping
-- compatibility wrappers around listing platform selection helpers
+- preview platform list fallback resolution
 
 Representative files:
 
 - `internal/listing/preview/shell.go`
 - `internal/listing/preview/header.go`
 - `internal/listing/preview/status.go`
-- `internal/listing/preview/platform.go`
 - `internal/listing/preview/platforms.go`
-- `internal/listing/preview/sections.go`
 - `internal/listing/preview/errors.go`
 
 This package should remain platform-neutral. It should not start depending on marketplace-specific draft models, repository state, or HTTP wiring.
@@ -132,7 +130,7 @@ attachment application.
 The following pattern is already emerging:
 
 - platform-neutral selection, validation, and section dispatch in `internal/listing/platform`
-- preview shell/status and compatibility wrappers in `internal/listing/preview`
+- preview shell/status and task-result compatibility in `internal/listing/preview`
 - marketplace-specific preview payload assembly in `internal/listingkit`
 
 This is acceptable for now, but future moves should prefer marketplace-owned builders instead of adding more platform-specific payload logic to root `listingkit`.
@@ -151,7 +149,7 @@ Use these rules for the next preview-related refactors.
 
 - preview-specific
 - independent of `listingkit.Task` and `listingkit.TaskResult`
-- about preview shell, status, or compatibility wrappers
+- about preview shell, status, task-result availability, or preview platform-list fallback resolution
 
 ### Move to `internal/listing/platform` when the code is:
 

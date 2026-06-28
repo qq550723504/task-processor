@@ -6,7 +6,7 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog"
-	previewdomain "task-processor/internal/listing/preview"
+	listingplatform "task-processor/internal/listing/platform"
 	common "task-processor/internal/publishing/common"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -41,7 +41,7 @@ func TestBuildPreviewHeaderCopiesSummaryFields(t *testing.T) {
 func TestNormalizePreviewPlatform(t *testing.T) {
 	t.Parallel()
 
-	got, ok := previewdomain.ValidateSelectedPlatform("  SHEIN ")
+	got, ok := listingplatform.ValidateSelectedPlatform("  SHEIN ")
 	if !ok {
 		t.Fatal("ValidateSelectedPlatform() = not ok, want ok")
 	}
