@@ -11,24 +11,20 @@ import (
 )
 
 func TestResolveConfigPathAndParseFlags(t *testing.T) {
-	if got := ResolveConfigPath("", ""); got != "config/config-dev.yaml" {
+	if got := ResolveConfigPath(""); got != "config/config-dev.yaml" {
 		t.Fatalf("default config path = %q", got)
 	}
-	if got := ResolveConfigPath("config/custom.yaml", "legacy.yaml"); got != "config/custom.yaml" {
+	if got := ResolveConfigPath("config/custom.yaml"); got != "config/custom.yaml" {
 		t.Fatalf("config path precedence = %q", got)
-	}
-	if got := ResolveConfigPath("", "legacy.yaml"); got != "legacy.yaml" {
-		t.Fatalf("legacy config path = %q", got)
 	}
 
 	fs := flag.NewFlagSet("listingkit-schema-migrate", flag.ContinueOnError)
 	opts := ParseFlagsFrom(fs,
 		"--config", "config/runtime.yaml",
-		"--app-config", "legacy.yaml",
 		"--log-level", "debug",
 		"--scope", "shein-sync",
 	)
-	if opts.Config != "config/runtime.yaml" || opts.AppConfig != "legacy.yaml" || opts.LogLevel != "debug" || opts.Scope != "shein-sync" {
+	if opts.Config != "config/runtime.yaml" || opts.LogLevel != "debug" || opts.Scope != "shein-sync" {
 		t.Fatalf("unexpected parsed options: %+v", opts)
 	}
 }

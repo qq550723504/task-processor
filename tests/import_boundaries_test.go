@@ -1707,6 +1707,31 @@ func TestListingControlRuntimeConfigAliasesStayRetired(t *testing.T) {
 	}
 }
 
+func TestAppRuntimeLegacyAppConfigFlagsStayRetired(t *testing.T) {
+	roots := []string{
+		filepath.Join("..", "internal", "app", "runtime", "listing"),
+		filepath.Join("..", "internal", "app", "runtime", "listingcontrol"),
+		filepath.Join("..", "internal", "app", "runtime", "listingkitschemamigrate"),
+	}
+	for _, root := range roots {
+		index, err := loadGoFileIndex(root, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for path := range index.files {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			for _, phrase := range []string{"AppConfig", "app-config"} {
+				if strings.Contains(string(content), phrase) {
+					t.Fatalf("%s mentions %q; use the canonical --config runtime option instead of retaining legacy app-config compatibility", path, phrase)
+				}
+			}
+		}
+	}
+}
+
 func TestPlatformRuntimeContextDoesNotExposeRawJSONDataClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "shared_resources.go")
 	content, err := os.ReadFile(path)

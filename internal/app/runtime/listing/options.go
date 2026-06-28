@@ -11,22 +11,18 @@ const defaultConfigPath = "config/config-prod.yaml"
 type Options struct {
 	Platform  string
 	Config    string
-	AppConfig string
 	LogLevel  string
 	Version   string
 	BuildTime string
 }
 
 func (o Options) ConfigPath() string {
-	return ResolveConfigPath(o.Config, o.AppConfig)
+	return ResolveConfigPath(o.Config)
 }
 
-func ResolveConfigPath(configPath, appConfigPath string) string {
+func ResolveConfigPath(configPath string) string {
 	if configPath != "" {
 		return configPath
-	}
-	if appConfigPath != "" {
-		return appConfigPath
 	}
 	return defaultConfigPath
 }
