@@ -54,7 +54,22 @@ func (f *TaskFetcher) runtimeTaskStatusUpdater() runtimeTaskStatusUpdater {
 
 // fetchTasksFromAPI fetches candidate tasks from the pending task source.
 func (f *TaskFetcher) fetchTasksFromAPI(maxTasks int) ([]ImportTaskRecord, error) {
-	return NewTaskSource(f).FetchPendingTasks(maxTasks)
+	source := f.pendingRuntimeTaskSource()
+	if source == nil {
+		return nil, fmt.Errorf("pending task source is not initialized")
+	}
+
+	logger.GetGlobalLogger("app/task").Infof("🔍 任务获取参数: maxTasks=%d", maxTasks)
+
+	apiTasks, err := source.GetPendingRuntimeTasks(maxTasks, 0, nil)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]ImportTaskRecord, 0, len(apiTasks))
+	for _, task := range apiTasks {
+		items = append(items, toImportTaskRecord(task))
+	}
+	return items, nil
 }
 
 func toImportTaskRecord(apiTask listingruntime.ImportTask) ImportTaskRecord {

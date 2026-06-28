@@ -171,6 +171,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestAppTaskRetiredManagementImportsStayBlocked`
 - `TestAppTaskRuntimeStoreAliasesStayRetired`
 - `TestAppTaskPollingSourceUsesCapabilityNames`
+- `TestAppTaskLegacyTaskSourceStaysRetired`
 - `TestAppTaskFetcherDoesNotStoreRetiredManagementService`
 - `TestAppTaskInterfacesDoNotExposeLegacyClientProviders`
 - `TestAppTaskDispatchGuardUsesCapabilityNames`

@@ -1939,10 +1939,6 @@ func TestAppConsumerDoesNotUseManagementNamedTaskStatusAdapter(t *testing.T) {
 
 func TestAppTaskPollingSourceUsesCapabilityNames(t *testing.T) {
 	checks := map[string][]string{
-		filepath.Join("..", "internal", "app", "task", "task_source.go"): {
-			"management client is not initialized",
-			"s.fetcher.managementClient",
-		},
 		filepath.Join("..", "internal", "app", "task", "dispatcher.go"): {
 			"管理客户端为空，跳过任务获取",
 		},
@@ -1960,6 +1956,31 @@ func TestAppTaskPollingSourceUsesCapabilityNames(t *testing.T) {
 		for _, phrase := range phrases {
 			if strings.Contains(string(content), phrase) {
 				t.Fatalf("%s mentions %q; use pending task source names for legacy polling dependencies", path, phrase)
+			}
+		}
+	}
+}
+
+func TestAppTaskLegacyTaskSourceStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "app", "task", "task_source.go")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; fetch pending runtime tasks directly in TaskFetcher instead of reviving the legacy polling TaskSource wrapper", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+
+	index, err := loadGoFileIndex(filepath.Join("..", "internal", "app", "task"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path := range index.files {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range []string{"type TaskSource", "NewTaskSource", "FetchPendingTasks", "legacy polling task source"} {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; keep pending task fetching inside TaskFetcher without a legacy TaskSource wrapper", path, phrase)
 			}
 		}
 	}
