@@ -1490,6 +1490,29 @@ func TestCrawlerRegistryDependenciesDoNotExposeRuntimeHelpers(t *testing.T) {
 	}
 }
 
+func TestCrawlerCreatorContractsStayPackageInternal(t *testing.T) {
+	files := map[string][]string{
+		filepath.Join("..", "internal", "app", "consumer", "crawler_creators.go"): {
+			"type AmazonCrawlerCreator",
+			"type ProductFetcherProvider",
+		},
+		filepath.Join("..", "internal", "app", "consumer", "dependencies.go"): {
+			"func NewCrawlerRegistryDependencies(\n\tamazonCrawlerCreator amazonCrawlerCreator,\n\tproductFetcherProvider productFetcherProvider,",
+		},
+	}
+	for path, phrases := range files {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, phrase := range phrases {
+			if strings.Contains(string(content), phrase) {
+				t.Fatalf("%s mentions %q; keep crawler creator contracts package-internal behind dependency construction", path, phrase)
+			}
+		}
+	}
+}
+
 func TestPlatformProcessorRegistryDoesNotInspectRabbitMQClient(t *testing.T) {
 	path := filepath.Join("..", "internal", "app", "consumer", "platform_processor_registry.go")
 	content, err := os.ReadFile(path)

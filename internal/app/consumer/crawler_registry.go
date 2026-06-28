@@ -16,8 +16,8 @@ type CrawlerRegistry struct {
 	config                 *config.Config
 	logger                 *logrus.Logger
 	rabbitmqClient         *rabbitmq.Client
-	amazonCrawlerCreator   AmazonCrawlerCreator
-	productFetcherProvider ProductFetcherProvider
+	amazonCrawlerCreator   amazonCrawlerCreator
+	productFetcherProvider productFetcherProvider
 }
 
 func NewCrawlerRegistry(cfg *config.Config, logger *logrus.Logger, rabbitmqClient *rabbitmq.Client, deps CrawlerRegistryDependencies) *CrawlerRegistry {

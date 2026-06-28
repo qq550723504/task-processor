@@ -8,6 +8,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type AmazonCrawlerCreator func(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource
+type amazonCrawlerCreator func(cfg *config.Config, logger *logrus.Logger) runner.CrawlSource
 
-type ProductFetcherProvider func(cfg *config.Config, logger *logrus.Logger, crawlSource runner.CrawlSource) (*product.ProductFetcher, error)
+type productFetcherProvider func(cfg *config.Config, logger *logrus.Logger, crawlSource runner.CrawlSource) (*product.ProductFetcher, error)
