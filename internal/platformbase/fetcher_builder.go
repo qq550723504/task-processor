@@ -1,10 +1,10 @@
 package platformbase
 
 import (
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/fetcher"
 	"task-processor/internal/infra/rabbitmq"
-	"task-processor/internal/ports"
 	domainProduct "task-processor/internal/product"
 )
 

@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/app/ports"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/platformbase"
 	platformtask "task-processor/internal/platformtask"
-	"task-processor/internal/ports"
 	appscheduler "task-processor/internal/scheduler"
 	temuapi "task-processor/internal/temu/api"
 	"task-processor/internal/temu/api/client"

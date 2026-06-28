@@ -31,6 +31,25 @@ func TestPortsManagementAPIPackageIsRetired(t *testing.T) {
 	}
 }
 
+func TestGlobalPortsFacadePackageStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "ports", "contracts.go")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; import app/ports directly instead of reviving the global ports facade package", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if _, ok := facts.imports[`"task-processor/internal/ports"`]; ok {
+			t.Fatalf("%s imports retired global ports facade; use task-processor/internal/app/ports directly", path)
+		}
+	}
+}
+
 func TestListingAdminCompatibilityDoesNotExposeTaskStatusAdapters(t *testing.T) {
 	path := filepath.Join("..", "internal", "listingadmin", "management_api_types.go")
 	content, err := os.ReadFile(path)
@@ -1549,21 +1568,26 @@ func TestPlatformModulesUseRuntimeProductFetcher(t *testing.T) {
 }
 
 func TestProductSourceCompatibilityAliasStaysRetired(t *testing.T) {
-	for _, path := range []string{
-		filepath.Join("..", "internal", "app", "ports", "platform.go"),
-		filepath.Join("..", "internal", "ports", "contracts.go"),
-	} {
+	path := filepath.Join("..", "internal", "app", "ports", "platform.go")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if strings.Contains(string(content), "type ProductSource") {
+		t.Fatalf("%s exposes ProductSource; keep the crawl capability named CrawlSource instead of reviving ProductSource compatibility", path)
+	}
+
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path := range index.files {
 		content, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
-		for _, phrase := range []string{
-			"type ProductSource",
-			"appports.ProductSource",
-		} {
-			if strings.Contains(string(content), phrase) {
-				t.Fatalf("%s mentions %q; keep the crawl capability named CrawlSource instead of reviving ProductSource compatibility", path, phrase)
-			}
+		if strings.Contains(string(content), "ProductSource") {
+			t.Fatalf("%s mentions ProductSource; keep the crawl capability named CrawlSource", path)
 		}
 	}
 }

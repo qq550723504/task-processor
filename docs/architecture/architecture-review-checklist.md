@@ -215,6 +215,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestTaskStatusRuntimeErrorsUseCapabilityNames`
 - `TestTaskStatusPackageDoesNotImportRetiredManagementPackage`
 - `TestPortsManagementAPIPackageIsRetired`
+- `TestGlobalPortsFacadePackageStaysRetired`
 - `TestListingAdminCompatibilityDoesNotExposeTaskStatusAdapters`
 - `TestListingAdminCompatibilityDoesNotExposeImportTaskUpdateDTO`
 - `TestListingAdminCompatibilityDoesNotExposeImportTaskResponseDTO`
