@@ -94,10 +94,23 @@ type SchedulerDependenciesBuilder func(
 type PlatformRuntimeServices interface {
 	StoreAssignmentRuntime
 	StaticStoreGuardRuntime
+	SchedulerServiceRuntime
+	TaskRecoveryRuntime
+	AutoShardRuntime
+	GetClient() *rabbitmq.Client
+}
+
+type SchedulerServiceRuntime interface {
 	GetClient() *rabbitmq.Client
 	SetSchedulerService(SchedulerService)
+}
+
+type TaskRecoveryRuntime interface {
 	SetProcessingTimeoutWatchdog(SchedulerService)
 	SetStaleQueuedWatchdog(SchedulerService)
+}
+
+type AutoShardRuntime interface {
 	SetAutoShardService(AutoShardService)
 }
 
@@ -119,7 +132,7 @@ type PlatformRuntimeContext struct {
 	ProcessorRuntime                   ProcessorRuntime
 	CrawlSource                        ports.CrawlSource
 	ProductFetcher                     appfetcher.ProductFetcher
-	RuntimeServices                    PlatformRuntimeServices
+	runtimeServices                    PlatformRuntimeServices
 	SchedulerBuilder                   SchedulerDependenciesBuilder
 }
 
@@ -127,7 +140,7 @@ type PlatformRuntimeContextInput struct {
 	Config           *config.Config
 	Logger           *logrus.Logger
 	Resources        SharedResources
-	RuntimeServices  PlatformRuntimeServices
+	Services         PlatformRuntimeServices
 	SchedulerBuilder SchedulerDependenciesBuilder
 }
 
@@ -142,13 +155,13 @@ func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRunt
 		ProcessorRuntime:                   input.Resources.ProcessorRuntime,
 		CrawlSource:                        input.Resources.CrawlSource,
 		ProductFetcher:                     input.Resources.ProductFetcher,
-		RuntimeServices:                    input.RuntimeServices,
+		runtimeServices:                    input.Services,
 		SchedulerBuilder:                   input.SchedulerBuilder,
 	}
 }
 
 func (rt PlatformRuntimeContext) RabbitMQClient() *rabbitmq.Client {
-	return runtimeRabbitMQClient(rt.RuntimeServices)
+	return runtimeRabbitMQClient(rt.runtimeServices)
 }
 
 func runtimeRabbitMQClient(services PlatformRuntimeServices) *rabbitmq.Client {
@@ -156,6 +169,41 @@ func runtimeRabbitMQClient(services PlatformRuntimeServices) *rabbitmq.Client {
 		return nil
 	}
 	return services.GetClient()
+}
+
+func (rt PlatformRuntimeContext) StoreAssignmentRuntime() StoreAssignmentRuntime {
+	if rt.runtimeServices == nil {
+		return nil
+	}
+	return rt.runtimeServices
+}
+
+func (rt PlatformRuntimeContext) StaticStoreGuardRuntime() StaticStoreGuardRuntime {
+	if rt.runtimeServices == nil {
+		return nil
+	}
+	return rt.runtimeServices
+}
+
+func (rt PlatformRuntimeContext) SchedulerServiceRuntime() SchedulerServiceRuntime {
+	if rt.runtimeServices == nil {
+		return nil
+	}
+	return rt.runtimeServices
+}
+
+func (rt PlatformRuntimeContext) TaskRecoveryRuntime() TaskRecoveryRuntime {
+	if rt.runtimeServices == nil {
+		return nil
+	}
+	return rt.runtimeServices
+}
+
+func (rt PlatformRuntimeContext) AutoShardRuntime() AutoShardRuntime {
+	if rt.runtimeServices == nil {
+		return nil
+	}
+	return rt.runtimeServices
 }
 
 type PlatformModule interface {

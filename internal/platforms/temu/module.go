@@ -49,7 +49,7 @@ func (Module) ConfigureListingRuntime(ctx context.Context, rt consumer.PlatformR
 	if err := initPrompts(ctx, rt); err != nil {
 		rt.Logger.Warnf("prompt init failed, fallback will be used: %v", err)
 	}
-	return consumer.EnableDynamicStoreAssignment(rt.Config, rt.Logger, rt.RuntimeServices)
+	return consumer.EnableDynamicStoreAssignment(rt.Config, rt.Logger, rt.StoreAssignmentRuntime())
 }
 
 func initPrompts(ctx context.Context, rt consumer.PlatformRuntimeContext) error {

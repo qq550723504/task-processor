@@ -69,7 +69,7 @@ func (Module) ConfigureListingRuntime(ctx context.Context, rt consumer.PlatformR
 	}
 
 	if shouldEnableDynamicStoreAssignment(cfg) {
-		if err := consumer.EnableDynamicStoreAssignment(cfg, rt.Logger, rt.RuntimeServices); err != nil {
+		if err := consumer.EnableDynamicStoreAssignment(cfg, rt.Logger, rt.StoreAssignmentRuntime()); err != nil {
 			return err
 		}
 	} else if cfg.RabbitMQ != nil && cfg.RabbitMQ.Node.UseStoreQueues && len(cfg.RabbitMQ.Node.OwnedStores) > 0 {
@@ -134,7 +134,8 @@ func configureTenantPromptStore(rt consumer.PlatformRuntimeContext, opener tenan
 
 func configureScheduler(rt consumer.PlatformRuntimeContext) {
 	cfg := rt.Config
-	if cfg == nil || rt.RuntimeServices == nil || !cfg.Platforms.Shein.SchedulerEnabled {
+	schedulerRuntime := rt.SchedulerServiceRuntime()
+	if cfg == nil || schedulerRuntime == nil || !cfg.Platforms.Shein.SchedulerEnabled {
 		return
 	}
 	if rt.SchedulerRuntime == nil {
@@ -150,10 +151,10 @@ func configureScheduler(rt consumer.PlatformRuntimeContext) {
 		rt.Logger,
 		rt.SchedulerRuntime,
 		cfg,
-		rt.RuntimeServices.GetClient(),
-		rt.SchedulerBuilder(rt.SchedulerFactoryRuntime, cfg, rt.CrawlSource, rt.RuntimeServices.GetClient()),
+		schedulerRuntime.GetClient(),
+		rt.SchedulerBuilder(rt.SchedulerFactoryRuntime, cfg, rt.CrawlSource, schedulerRuntime.GetClient()),
 	)
-	rt.RuntimeServices.SetSchedulerService(schedulerService)
+	schedulerRuntime.SetSchedulerService(schedulerService)
 	rt.Logger.Infof(
 		"SHEIN scheduler enabled: autoPricing=%v interval=%ds batchSize=%d",
 		cfg.Platforms.Shein.AutoPricing.Enabled,
@@ -164,7 +165,7 @@ func configureScheduler(rt consumer.PlatformRuntimeContext) {
 
 func configureTaskRecoveryWatchdogs(rt consumer.PlatformRuntimeContext) {
 	cfg := rt.Config
-	if cfg == nil || cfg.RabbitMQ == nil || rt.RuntimeServices == nil {
+	if cfg == nil || cfg.RabbitMQ == nil || rt.TaskRecoveryRuntime() == nil {
 		return
 	}
 	if !cfg.RabbitMQ.AutoShard.IsCoordinator() {
@@ -184,7 +185,8 @@ func configureTaskRecoveryWatchdogs(rt consumer.PlatformRuntimeContext) {
 
 func configureProcessingTimeoutWatchdog(rt consumer.PlatformRuntimeContext, repo consumer.ProcessingTimeoutRepository) {
 	cfg := rt.Config
-	if cfg == nil || cfg.RabbitMQ == nil || rt.RuntimeServices == nil || !cfg.RabbitMQ.ProcessingTimeout.Enabled {
+	taskRecoveryRuntime := rt.TaskRecoveryRuntime()
+	if cfg == nil || cfg.RabbitMQ == nil || taskRecoveryRuntime == nil || !cfg.RabbitMQ.ProcessingTimeout.Enabled {
 		return
 	}
 	watchdog := consumer.NewProcessingTimeoutWatchdog(consumer.ProcessingTimeoutWatchdogConfig{
@@ -195,7 +197,7 @@ func configureProcessingTimeoutWatchdog(rt consumer.PlatformRuntimeContext, repo
 		Repository:     repo,
 		Logger:         rt.Logger,
 	})
-	rt.RuntimeServices.SetProcessingTimeoutWatchdog(watchdog)
+	taskRecoveryRuntime.SetProcessingTimeoutWatchdog(watchdog)
 	rt.Logger.Infof(
 		"processing timeout watchdog enabled: interval=%s timeoutMinutes=%d recoveryLimit=%d",
 		cfg.RabbitMQ.ProcessingTimeout.Interval,
@@ -206,7 +208,8 @@ func configureProcessingTimeoutWatchdog(rt consumer.PlatformRuntimeContext, repo
 
 func configureStaleQueuedWatchdog(rt consumer.PlatformRuntimeContext, repo consumer.StaleQueuedRepository) {
 	cfg := rt.Config
-	if cfg == nil || cfg.RabbitMQ == nil || rt.RuntimeServices == nil || !cfg.RabbitMQ.StaleQueued.Enabled {
+	taskRecoveryRuntime := rt.TaskRecoveryRuntime()
+	if cfg == nil || cfg.RabbitMQ == nil || taskRecoveryRuntime == nil || !cfg.RabbitMQ.StaleQueued.Enabled {
 		return
 	}
 	watchdog := consumer.NewStaleQueuedWatchdog(consumer.StaleQueuedWatchdogConfig{
@@ -217,7 +220,7 @@ func configureStaleQueuedWatchdog(rt consumer.PlatformRuntimeContext, repo consu
 		Repository:     repo,
 		Logger:         rt.Logger,
 	})
-	rt.RuntimeServices.SetStaleQueuedWatchdog(watchdog)
+	taskRecoveryRuntime.SetStaleQueuedWatchdog(watchdog)
 	rt.Logger.Infof(
 		"stale queued watchdog enabled: interval=%s timeoutMinutes=%d recoveryLimit=%d",
 		cfg.RabbitMQ.StaleQueued.Interval,
@@ -227,19 +230,21 @@ func configureStaleQueuedWatchdog(rt consumer.PlatformRuntimeContext, repo consu
 }
 
 func configureStoreGuard(rt consumer.PlatformRuntimeContext) {
-	if rt.Config == nil || rt.RuntimeServices == nil {
+	staticStoreGuardRuntime := rt.StaticStoreGuardRuntime()
+	if rt.Config == nil || staticStoreGuardRuntime == nil {
 		return
 	}
 	if rt.StoreAPI == nil {
-		consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, rt.RuntimeServices, nil)
+		consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, staticStoreGuardRuntime, nil)
 		return
 	}
-	consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, rt.RuntimeServices, rt.StoreAPI)
+	consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, staticStoreGuardRuntime, rt.StoreAPI)
 }
 
 func configureAutoShard(rt consumer.PlatformRuntimeContext) error {
 	cfg := rt.Config
-	if cfg == nil || rt.RuntimeServices == nil {
+	autoShardRuntime := rt.AutoShardRuntime()
+	if cfg == nil || autoShardRuntime == nil {
 		return nil
 	}
 	if rt.StoreAPI == nil || cfg.Redis == nil {
@@ -258,7 +263,7 @@ func configureAutoShard(rt consumer.PlatformRuntimeContext) error {
 	if err != nil {
 		return fmt.Errorf("create auto shard coordinator failed: %w", err)
 	}
-	rt.RuntimeServices.SetAutoShardService(autoShardService)
+	autoShardRuntime.SetAutoShardService(autoShardService)
 	rt.Logger.Infof("auto shard coordinator enabled: platform=%s, candidateNodes=%v", cfg.RabbitMQ.AutoShard.Platform, cfg.RabbitMQ.AutoShard.CandidateNodes)
 	return nil
 }
