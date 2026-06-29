@@ -30,6 +30,37 @@ func TestPlatformModuleRegistrarDoesNotStoreSharedResources(t *testing.T) {
 	}
 }
 
+func TestPlatformRegistrationDoesNotDependOnConcreteServiceManager(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{"dependencies.go", "platform_processor_registry.go", "platform_module_registrar.go"} {
+		content, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		source := string(content)
+		for _, marker := range []string{
+			"serviceManager *ServiceManager",
+			"serviceManager: serviceManager",
+			"serviceManager *ServiceManager) platformModuleRegistrar",
+			"RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager",
+			"RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager",
+		} {
+			if strings.Contains(source, marker) {
+				t.Fatalf("%s mentions %q; platform registration should depend on narrow registration services instead of concrete ServiceManager", name, marker)
+			}
+		}
+	}
+
+	content, err := os.ReadFile("shared_resources.go")
+	if err != nil {
+		t.Fatalf("read shared_resources.go: %v", err)
+	}
+	if !strings.Contains(string(content), "type PlatformRegistrationServices interface") {
+		t.Fatalf("shared_resources.go should define PlatformRegistrationServices for platform registration assembly")
+	}
+}
+
 func TestPlatformRuntimeContextBuilderDoesNotAcceptSharedResourcesPointer(t *testing.T) {
 	t.Parallel()
 

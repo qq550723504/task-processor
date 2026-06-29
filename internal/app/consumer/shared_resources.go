@@ -180,6 +180,12 @@ type PlatformRuntimeServices interface {
 	GetClient() *rabbitmq.Client
 }
 
+type PlatformRegistrationServices interface {
+	PlatformRuntimeServices
+	ProcessorRegistrar
+	LogDistributedFetchingAvailability(*logrus.Logger)
+}
+
 type SchedulerServiceRuntime interface {
 	GetClient() *rabbitmq.Client
 	SetSchedulerService(SchedulerService)

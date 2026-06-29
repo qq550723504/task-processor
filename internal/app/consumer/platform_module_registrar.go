@@ -10,16 +10,16 @@ import (
 )
 
 type platformModuleRegistrar struct {
-	config         *config.Config
-	logger         *logrus.Logger
-	serviceManager *ServiceManager
+	config   *config.Config
+	logger   *logrus.Logger
+	services PlatformRegistrationServices
 }
 
-func newPlatformModuleRegistrar(cfg *config.Config, logger *logrus.Logger, serviceManager *ServiceManager) platformModuleRegistrar {
+func newPlatformModuleRegistrar(cfg *config.Config, logger *logrus.Logger, services PlatformRegistrationServices) platformModuleRegistrar {
 	return platformModuleRegistrar{
-		config:         cfg,
-		logger:         logger,
-		serviceManager: serviceManager,
+		config:   cfg,
+		logger:   logger,
+		services: services,
 	}
 }
 
@@ -29,9 +29,9 @@ func (r platformModuleRegistrar) register(ctx context.Context, module PlatformMo
 		Config:    r.config,
 		Logger:    r.logger,
 		Resources: NewPlatformRuntimeResources(resources),
-		Services:  r.serviceManager,
+		Services:  r.services,
 	})
-	if err := module.RegisterConsumer(ctx, runtimeContext, r.serviceManager); err != nil {
+	if err := module.RegisterConsumer(ctx, runtimeContext, r.services); err != nil {
 		return err
 	}
 	r.logger.Infof("%s processor registered", strings.ToUpper(module.Name()))

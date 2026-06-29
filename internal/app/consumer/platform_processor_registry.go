@@ -24,22 +24,22 @@ func NewPlatformProcessorRegistry(logger *logrus.Logger, deps PlatformProcessorR
 	}
 }
 
-func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager, resources SharedResources) error {
-	return r.RegisterPlatforms(ctx, serviceManager, resources, r.catalog.enabledPlatformNames()...)
+func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, services PlatformRegistrationServices, resources SharedResources) error {
+	return r.RegisterPlatforms(ctx, services, resources, r.catalog.enabledPlatformNames()...)
 }
 
-func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, resources SharedResources, platforms ...string) error {
+func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, services PlatformRegistrationServices, resources SharedResources, platforms ...string) error {
 	modules, err := r.catalog.resolveMany(platforms...)
 	if err != nil {
 		return err
 	}
 
 	r.logger.Infof("registering platform processors: %v", platformModuleNames(modules))
-	serviceManager.LogDistributedFetchingAvailability(r.logger)
+	services.LogDistributedFetchingAvailability(r.logger)
 
 	r.logger.Info("shared resources initialized")
 
-	registrar := r.newRegistrar(r.logger, serviceManager)
+	registrar := r.newRegistrar(r.logger, services)
 	for _, module := range modules {
 		if err := registrar.register(ctx, module, resources); err != nil {
 			return err
