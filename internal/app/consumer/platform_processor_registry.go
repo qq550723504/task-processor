@@ -39,9 +39,10 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 
 	r.logger.Info("shared resources initialized")
 
+	contextResources := NewPlatformRuntimeResources(resources)
 	registrar := r.newRegistrar(r.logger, services)
 	for _, module := range modules {
-		if err := registrar.register(ctx, module, resources); err != nil {
+		if err := registrar.register(ctx, module, contextResources); err != nil {
 			return err
 		}
 	}

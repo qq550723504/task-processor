@@ -21,12 +21,21 @@ func TestPlatformModuleRegistrarDoesNotStoreSharedResources(t *testing.T) {
 			"resources *SharedResources) platformModuleRegistrar",
 			"resources      *SharedResources",
 			"resources:      resources",
+			"func (r platformModuleRegistrar) register(ctx context.Context, module PlatformModule, resources SharedResources) error",
 			"func (r platformModuleRegistrar) register(ctx context.Context, module PlatformModule) error",
 		} {
 			if strings.Contains(source, marker) {
-				t.Fatalf("%s mentions %q; pass SharedResources into register instead of storing it on platformModuleRegistrar", name, marker)
+				t.Fatalf("%s mentions %q; pass narrow platform runtime resources into register instead of storing or forwarding SharedResources", name, marker)
 			}
 		}
+	}
+
+	content, err := os.ReadFile("platform_module_registrar.go")
+	if err != nil {
+		t.Fatalf("read platform_module_registrar.go: %v", err)
+	}
+	if !strings.Contains(string(content), "func (r platformModuleRegistrar) register(ctx context.Context, module PlatformModule, resources PlatformRuntimeResources) error") {
+		t.Fatalf("platform_module_registrar.go should register modules with PlatformRuntimeResources")
 	}
 }
 
