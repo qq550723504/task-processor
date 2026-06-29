@@ -22,7 +22,7 @@ type sheinPromotionBridgeRuntimeFactory struct {
 
 func buildSheinPromotionBridgeRuntimeFactory(input BuildServiceInput, repositories *builtRepositories) sheinPromotionBridgeRuntimeFactory {
 	return sheinPromotionBridgeRuntimeFactory{
-		storeCatalog:    sheinManagementStoreCatalog{repo: repositories.storeRepository},
+		storeCatalog:    sheinListingStoreCatalog{repo: repositories.storeRepository},
 		apiFactory:      input.Hooks.SheinAPIClientFactoryBuilder(repositories.storeRepository),
 		storeRepository: repositories.storeRepository,
 		mappingRepo:     repositories.productImportMappingRepository,

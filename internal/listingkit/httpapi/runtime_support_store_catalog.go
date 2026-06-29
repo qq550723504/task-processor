@@ -9,11 +9,11 @@ import (
 	"task-processor/internal/listingkit"
 )
 
-type sheinManagementStoreCatalog struct {
+type sheinListingStoreCatalog struct {
 	repo listingadmin.StoreRepository
 }
 
-func (c sheinManagementStoreCatalog) GetStoreInfo(ctx context.Context, tenantID, storeID int64) (*listingkit.SheinStoreInfo, error) {
+func (c sheinListingStoreCatalog) GetStoreInfo(ctx context.Context, tenantID, storeID int64) (*listingkit.SheinStoreInfo, error) {
 	if c.repo == nil {
 		return nil, fmt.Errorf("listing admin store repository is not configured")
 	}
@@ -36,7 +36,7 @@ func (c sheinManagementStoreCatalog) GetStoreInfo(ctx context.Context, tenantID,
 	}, nil
 }
 
-func (c sheinManagementStoreCatalog) ListStoreOptions(ctx context.Context, tenantID int64) ([]listingkit.SheinStoreOption, error) {
+func (c sheinListingStoreCatalog) ListStoreOptions(ctx context.Context, tenantID int64) ([]listingkit.SheinStoreOption, error) {
 	if c.repo == nil {
 		return nil, fmt.Errorf("listing admin store repository is not configured")
 	}

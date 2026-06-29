@@ -42,6 +42,24 @@ func TestSheinSyncRuntimeBridgeHelpersFileOwnsPromotionBridgeShaping(t *testing.
 	require.Contains(t, content, "func sheinRuntimeTenantID(ctx context.Context) (int64, error) {")
 }
 
+func TestSheinStoreCatalogUsesListingRepositoryName(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		"runtime_support_store_catalog.go",
+		"bootstrap_service_config.go",
+		"shein_sync_runtime_bridge_helpers.go",
+	} {
+		src, err := os.ReadFile(name)
+		require.NoError(t, err)
+		require.NotContains(t, string(src), "sheinManagementStoreCatalog")
+	}
+
+	src, err := os.ReadFile("runtime_support_store_catalog.go")
+	require.NoError(t, err)
+	require.Contains(t, string(src), "type sheinListingStoreCatalog struct {")
+}
+
 func TestSheinSyncRuntimeStrategyHelpersFileOwnsManagementStrategyAssembly(t *testing.T) {
 	t.Parallel()
 
