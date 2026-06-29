@@ -22,84 +22,114 @@ func registerComponents(
 	logger *logrus.Logger,
 	appVersion string,
 ) error {
-	deps, err := registerCoreComponents(lm, svc, logger, appVersion)
+	resources := newLifecycleRegistrationResources(svc)
+	deps, processors, err := registerCoreComponents(lm, resources, logger, appVersion)
 	if err != nil {
 		return err
 	}
+	svc.temuProcessor = processors.temuProcessor
+	svc.sheinProcessor = processors.sheinProcessor
 
-	if err := registerTaskFetcherComponent(lm, svc, logger, deps); err != nil {
+	if err := registerTaskFetcherComponent(lm, resources, logger, deps); err != nil {
 		return err
 	}
 
-	return registerSchedulerComponent(lm, svc, logger, deps)
+	return registerSchedulerComponent(lm, resources, logger, deps)
+}
+
+type lifecycleRegistrationResources struct {
+	cfg                *config.Config
+	processorResources platformProcessorResources
+	rabbitmqClient     *rabbitmq.Client
+	processorService   runner.ProcessorService
+	schedulerService   runner.SchedulerService
+}
+
+type registeredProcessorComponents struct {
+	temuProcessor  *temu.TemuProcessor
+	sheinProcessor *pipeline.SheinProcessor
+}
+
+func newLifecycleRegistrationResources(svc *appServices) lifecycleRegistrationResources {
+	if svc == nil {
+		return lifecycleRegistrationResources{}
+	}
+	return lifecycleRegistrationResources{
+		cfg:                svc.cfg,
+		processorResources: svc.processorResources,
+		rabbitmqClient:     svc.rabbitmqClient,
+		processorService:   svc.processorService,
+		schedulerService:   svc.schedulerService,
+	}
 }
 
 func registerCoreComponents(
 	lm lifecycle.LifecycleManager,
-	svc *appServices,
+	resources lifecycleRegistrationResources,
 	logger *logrus.Logger,
 	appVersion string,
-) ([]string, error) {
-	if err := lm.Register(newUpdaterComponent(logger, svc.cfg, appVersion)); err != nil {
-		return nil, err
+) ([]string, registeredProcessorComponents, error) {
+	var processors registeredProcessorComponents
+	if err := lm.Register(newUpdaterComponent(logger, resources.cfg, appVersion)); err != nil {
+		return nil, processors, err
 	}
 
 	deps := []string{"updater"}
 
-	if svc.rabbitmqClient != nil {
-		if err := lm.Register(newRabbitMQClientComponent(svc.rabbitmqClient, logger)); err != nil {
-			return nil, err
+	if resources.rabbitmqClient != nil {
+		if err := lm.Register(newRabbitMQClientComponent(resources.rabbitmqClient, logger)); err != nil {
+			return nil, processors, err
 		}
 		deps = append(deps, "rabbitmq-client")
 	}
 
-	if svc.cfg.Platforms.Temu.Enabled {
-		temuProc, err := buildTemuProcessor(svc.cfg, svc.processorResources, logger)
+	if resources.cfg.Platforms.Temu.Enabled {
+		temuProc, err := buildTemuProcessor(resources.cfg, resources.processorResources, logger)
 		if err != nil {
-			return nil, fmt.Errorf("build TEMU processor: %w", err)
+			return nil, processors, fmt.Errorf("build TEMU processor: %w", err)
 		}
-		svc.temuProcessor = temuProc
+		processors.temuProcessor = temuProc
 		if err := lm.Register(newTemuComponent(temuProc, logger)); err != nil {
-			return nil, err
+			return nil, processors, err
 		}
 		deps = append(deps, "temu-processor")
 	}
 
-	if svc.cfg.Platforms.Shein.Enabled {
-		sheinProc, err := buildSheinProcessor(svc.cfg, svc.processorResources, logger)
+	if resources.cfg.Platforms.Shein.Enabled {
+		sheinProc, err := buildSheinProcessor(resources.cfg, resources.processorResources, logger)
 		if err != nil {
-			return nil, fmt.Errorf("build SHEIN processor: %w", err)
+			return nil, processors, fmt.Errorf("build SHEIN processor: %w", err)
 		}
-		svc.sheinProcessor = sheinProc
+		processors.sheinProcessor = sheinProc
 		if err := lm.Register(newSheinComponent(sheinProc, logger)); err != nil {
-			return nil, err
+			return nil, processors, err
 		}
 		deps = append(deps, "shein-processor")
 	}
 
-	return deps, nil
+	return deps, processors, nil
 }
 
 func registerTaskFetcherComponent(
 	lm lifecycle.LifecycleManager,
-	svc *appServices,
+	resources lifecycleRegistrationResources,
 	logger *logrus.Logger,
 	deps []string,
 ) error {
-	if !svc.cfg.Platforms.Temu.Enabled && !svc.cfg.Platforms.Shein.Enabled {
+	if !resources.cfg.Platforms.Temu.Enabled && !resources.cfg.Platforms.Shein.Enabled {
 		return nil
 	}
 
-	return lm.Register(newTaskFetcherComponent(svc.processorService, svc.cfg, logger, deps))
+	return lm.Register(newTaskFetcherComponent(resources.processorService, resources.cfg, logger, deps))
 }
 
 func registerSchedulerComponent(
 	lm lifecycle.LifecycleManager,
-	svc *appServices,
+	resources lifecycleRegistrationResources,
 	logger *logrus.Logger,
 	deps []string,
 ) error {
-	return lm.Register(newSchedulerComponent(svc.schedulerService, logger, deps))
+	return lm.Register(newSchedulerComponent(resources.schedulerService, logger, deps))
 }
 
 func newUpdaterComponent(logger *logrus.Logger, cfg *config.Config, appVersion string) *updaterComponent {
