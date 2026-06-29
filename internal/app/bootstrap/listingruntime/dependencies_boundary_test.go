@@ -4,6 +4,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -63,7 +64,8 @@ func TestListingRuntimeDoesNotImportBootstrapResources(t *testing.T) {
 	t.Parallel()
 
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "..\\..\\runtime\\listing\\runtime.go", nil, parser.ImportsOnly)
+	runtimePath := filepath.Join("..", "..", "runtime", "listing", "runtime.go")
+	file, err := parser.ParseFile(fset, runtimePath, nil, parser.ImportsOnly)
 	if err != nil {
 		t.Fatalf("parse listing runtime imports: %v", err)
 	}

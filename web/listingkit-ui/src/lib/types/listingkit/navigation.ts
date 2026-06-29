@@ -26,6 +26,7 @@ export type QueueQuery = {
   state?: string;
   execution_mode?: string;
   execution_quality?: string;
+  activity_type?: string;
   quality_grade?: string;
   quality_grade_label?: string;
   preview_capability?: string;
