@@ -412,6 +412,79 @@ func TestUpdateSheinActivityStrategyCreatesStorePromotionStrategy(t *testing.T) 
 	}
 }
 
+func TestSheinActivityStrategyCanBeScopedToTimeLimitedActivity(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	repo := newSheinActivityStrategyTestRepository(t)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithOperationStrategyRepository(repo))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/shein-sync/stores/:store_id/activity-strategy", h.GetSheinActivityStrategy)
+	router.PATCH("/api/v1/listing-kits/shein-sync/stores/:store_id/activity-strategy", h.UpdateSheinActivityStrategy)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/listing-kits/shein-sync/stores/2001/activity-strategy", strings.NewReader(`{
+		"activity_type":"TIME_LIMITED",
+		"activity_price_mode":"PROFIT",
+		"activity_stock_ratio":0.3,
+		"activity_min_profit_rate":0,
+		"fixed_price_adjustment":1.1
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	req.Header.Set("X-User-ID", "shein-ops")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("patch status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+	timeLimited, err := repo.GetActiveActivityStrategy(context.Background(), 18, 2001, "SHEIN", "TIME_LIMITED")
+	if err != nil {
+		t.Fatalf("load time limited strategy: %v", err)
+	}
+	if timeLimited == nil || timeLimited.ActivityType != "TIME_LIMITED" {
+		t.Fatalf("time limited strategy = %+v, want active TIME_LIMITED strategy", timeLimited)
+	}
+	if timeLimited.ActivityMinProfitRate == nil || *timeLimited.ActivityMinProfitRate != 0 {
+		t.Fatalf("time limited min profit = %v, want 0", timeLimited.ActivityMinProfitRate)
+	}
+	if promotion, err := repo.GetActiveActivityStrategy(context.Background(), 18, 2001, "SHEIN", "PROMOTION"); err != nil || promotion != nil {
+		t.Fatalf("promotion strategy = %+v err=%v, want untouched nil", promotion, err)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/shein-sync/stores/2001/activity-strategy?activity_type=TIME_LIMITED", nil)
+	getReq.Header.Set("X-Tenant-ID", "18")
+	getReq.Header.Set("X-User-ID", "shein-ops")
+	getResp := httptest.NewRecorder()
+	router.ServeHTTP(getResp, getReq)
+
+	if getResp.Code != http.StatusOK {
+		t.Fatalf("get status = %d, want 200 body=%s", getResp.Code, getResp.Body.String())
+	}
+	var body struct {
+		Configured bool `json:"configured"`
+		Strategy   struct {
+			ActivityType          string  `json:"activity_type"`
+			ActivityPriceMode     string  `json:"activity_price_mode"`
+			ActivityStockRatio    float64 `json:"activity_stock_ratio"`
+			ActivityMinProfitRate float64 `json:"activity_min_profit_rate"`
+		} `json:"strategy"`
+	}
+	if err := json.Unmarshal(getResp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if !body.Configured || body.Strategy.ActivityType != "TIME_LIMITED" || body.Strategy.ActivityPriceMode != "PROFIT" {
+		t.Fatalf("body = %+v, want configured TIME_LIMITED PROFIT strategy", body)
+	}
+	if body.Strategy.ActivityStockRatio != 0.3 || body.Strategy.ActivityMinProfitRate != 0 {
+		t.Fatalf("body strategy = %+v, want stock 0.3 profit 0", body.Strategy)
+	}
+}
+
 func TestUpdateSheinActivityStrategyAllowsZeroProfitFloor(t *testing.T) {
 	t.Parallel()
 

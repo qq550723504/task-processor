@@ -69,11 +69,18 @@ func (s *SheinPromotionStrategy) runtimeOperationStrategy() *listingruntime.Oper
 		return nil
 	}
 	return &listingruntime.OperationStrategy{
-		StoreID:               s.StoreID,
-		ActivityPriceMode:     s.ActivityPriceMode,
-		ActivityDiscountRate:  s.ActivityDiscountRate,
-		ActivityMinProfitRate: s.ActivityMinProfitRate,
-		ActivityStockRatio:    s.ActivityStockRatio,
-		FixedPriceAdjustment:  s.FixedPriceAdjustment,
+		StoreID:                      s.StoreID,
+		ActivityPriceMode:            s.ActivityPriceMode,
+		ActivityDiscountRate:         s.ActivityDiscountRate,
+		ActivityMinProfitRate:        s.ActivityMinProfitRate,
+		ActivityStockRatio:           s.ActivityStockRatio,
+		FixedPriceAdjustment:         s.FixedPriceAdjustment,
+		TimeLimitedDiscountRate:      s.TimeLimitedDiscountRate,
+		TimeLimitedMinProfitRate:     s.TimeLimitedMinProfitRate,
+		TimeLimitedPriceMode:         s.TimeLimitedPriceMode,
+		TimeLimitedUserLimit:         s.TimeLimitedUserLimit,
+		TimeLimitedUserLimitNum:      s.TimeLimitedUserLimitNum,
+		TimeLimitedStockLimit:        s.TimeLimitedStockLimit,
+		TimeLimitedStockLimitPercent: s.TimeLimitedStockLimitPercent,
 	}
 }

@@ -664,7 +664,7 @@ func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *te
 	)
 	require.NoError(t, err)
 	require.Len(t, bridge.calls, 1)
-	require.Equal(t, "PROMOTION:11:22", bridge.calls[0].ActivityKey)
+	require.Empty(t, bridge.calls[0].ActivityKey)
 	require.Equal(t, int64(22), bridge.calls[0].Strategy.StoreID)
 	require.Len(t, bridge.calls[0].Products, 2)
 	require.Equal(t, []string{"skc-approved", "skc-filtered"}, sheinPromotionBridgeSKCs(bridge.calls[0].Products))

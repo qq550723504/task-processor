@@ -418,6 +418,7 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存活动设置" }));
 
     expect(updateStrategyMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "PROMOTION",
       activity_price_mode: "DISCOUNT",
       activity_discount_rate: 0.18,
       activity_stock_ratio: 0.4,
@@ -451,6 +452,7 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存活动设置" }));
 
     expect(updateStrategyMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "PROMOTION",
       activity_price_mode: "PROFIT",
       activity_stock_ratio: 0.5,
       activity_min_profit_rate: 0,

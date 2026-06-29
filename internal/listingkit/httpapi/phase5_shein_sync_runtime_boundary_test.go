@@ -69,6 +69,7 @@ func TestSheinSyncRuntimeStrategyHelpersFileOwnsManagementStrategyAssembly(t *te
 
 	require.NotContains(t, content, `"task-processor/internal/infra/clients/management"`)
 	require.Contains(t, content, "type localRuntimePromotionStrategyProvider struct {")
-	require.Contains(t, content, "func (p localRuntimePromotionStrategyProvider) GetPromotionStrategy(ctx context.Context, storeID int64, _ string) (*sheinsync.SheinPromotionStrategy, error) {")
+	require.Contains(t, content, "func (p localRuntimePromotionStrategyProvider) GetPromotionStrategy(ctx context.Context, storeID int64, activityKey string) (*sheinsync.SheinPromotionStrategy, error) {")
+	require.Contains(t, content, "func sheinPromotionActivityTypeFromKey(activityKey string) string {")
 	require.Contains(t, content, "func buildSheinPromotionStrategyProvider(repositories *builtRepositories) (localRuntimePromotionStrategyProvider, error) {")
 }

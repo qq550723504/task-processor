@@ -11,6 +11,7 @@ import (
 )
 
 const sheinActivityStrategyTypePromotion = "PROMOTION"
+const sheinActivityStrategyTypeTimeLimited = "TIME_LIMITED"
 const sheinActivityStrategyPlatform = "SHEIN"
 
 func (h *handler) GetSheinActivityStrategy(c *gin.Context) {
@@ -23,14 +24,19 @@ func (h *handler) GetSheinActivityStrategy(c *gin.Context) {
 	if !ok {
 		return
 	}
-	strategy, err := h.operationStrategyRepository.GetActiveActivityStrategy(ctx, tenantID, storeID, sheinActivityStrategyPlatform, sheinActivityStrategyTypePromotion)
+	activityType, err := normalizeSheinActivityStrategyType(c.Query("activity_type"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_activity_type", "message": err.Error()})
+		return
+	}
+	strategy, err := h.operationStrategyRepository.GetActiveActivityStrategy(ctx, tenantID, storeID, sheinActivityStrategyPlatform, activityType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_activity_strategy_get_failed", "message": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"configured": strategy != nil,
-		"strategy":   sheinActivityStrategyDTO(strategy, tenantID, storeID),
+		"strategy":   sheinActivityStrategyDTO(strategy, tenantID, storeID, activityType),
 	})
 }
 
@@ -53,13 +59,18 @@ func (h *handler) UpdateSheinActivityStrategy(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_activity_strategy", "message": err.Error()})
 		return
 	}
+	activityType, err := normalizeSheinActivityStrategyType(firstNonBlank(req.ActivityType, c.Query("activity_type")))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_activity_type", "message": err.Error()})
+		return
+	}
 
-	existing, err := h.operationStrategyRepository.GetActiveActivityStrategy(ctx, tenantID, storeID, sheinActivityStrategyPlatform, sheinActivityStrategyTypePromotion)
+	existing, err := h.operationStrategyRepository.GetActiveActivityStrategy(ctx, tenantID, storeID, sheinActivityStrategyPlatform, activityType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_activity_strategy_load_failed", "message": err.Error()})
 		return
 	}
-	strategy := buildSheinActivityOperationStrategy(tenantID, storeID, existing, req)
+	strategy := buildSheinActivityOperationStrategy(tenantID, storeID, activityType, existing, req)
 	if existing == nil {
 		strategy, err = h.operationStrategyRepository.SaveActivityStrategy(ctx, strategy)
 	} else {
@@ -71,8 +82,21 @@ func (h *handler) UpdateSheinActivityStrategy(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"configured": true,
-		"strategy":   sheinActivityStrategyDTO(strategy, tenantID, storeID),
+		"strategy":   sheinActivityStrategyDTO(strategy, tenantID, storeID, activityType),
 	})
+}
+
+func normalizeSheinActivityStrategyType(raw string) (string, error) {
+	activityType := strings.ToUpper(strings.TrimSpace(raw))
+	if activityType == "" {
+		return sheinActivityStrategyTypePromotion, nil
+	}
+	switch activityType {
+	case sheinActivityStrategyTypePromotion, sheinActivityStrategyTypeTimeLimited:
+		return activityType, nil
+	default:
+		return "", errors.New("activity_type must be PROMOTION or TIME_LIMITED")
+	}
 }
 
 func validateSheinActivityStrategyRequest(req updateSheinActivityStrategyRequest) error {
@@ -98,7 +122,7 @@ func validateSheinActivityStrategyRequest(req updateSheinActivityStrategyRequest
 	return nil
 }
 
-func buildSheinActivityOperationStrategy(tenantID, storeID int64, existing *listingadmin.OperationStrategy, req updateSheinActivityStrategyRequest) *listingadmin.OperationStrategy {
+func buildSheinActivityOperationStrategy(tenantID, storeID int64, activityType string, existing *listingadmin.OperationStrategy, req updateSheinActivityStrategyRequest) *listingadmin.OperationStrategy {
 	strategy := &listingadmin.OperationStrategy{
 		TenantID:          tenantID,
 		StoreID:           storeID,
@@ -106,7 +130,7 @@ func buildSheinActivityOperationStrategy(tenantID, storeID int64, existing *list
 		Platform:          sheinActivityStrategyPlatform,
 		Status:            0,
 		ActivityEnabled:   true,
-		ActivityType:      sheinActivityStrategyTypePromotion,
+		ActivityType:      activityType,
 		ActivityPriceMode: strings.ToUpper(strings.TrimSpace(req.ActivityPriceMode)),
 	}
 	if strategy.ActivityPriceMode == "" {
@@ -125,7 +149,7 @@ func buildSheinActivityOperationStrategy(tenantID, storeID int64, existing *list
 	return strategy
 }
 
-func sheinActivityStrategyDTO(strategy *listingadmin.OperationStrategy, tenantID, storeID int64) *sheinActivityStrategyResponse {
+func sheinActivityStrategyDTO(strategy *listingadmin.OperationStrategy, tenantID, storeID int64, activityType string) *sheinActivityStrategyResponse {
 	if strategy == nil {
 		return nil
 	}
@@ -133,13 +157,22 @@ func sheinActivityStrategyDTO(strategy *listingadmin.OperationStrategy, tenantID
 		ID:                    strategy.ID,
 		TenantID:              tenantID,
 		StoreID:               storeID,
-		ActivityType:          sheinActivityStrategyTypePromotion,
+		ActivityType:          activityType,
 		ActivityPriceMode:     strings.ToUpper(strings.TrimSpace(strategy.ActivityPriceMode)),
 		ActivityDiscountRate:  sheinActivityFloat64(strategy.ActivityDiscountRate),
 		ActivityStockRatio:    sheinActivityFloat64(strategy.ActivityStockRatio),
 		ActivityMinProfitRate: sheinActivityFloat64(strategy.ActivityMinProfitRate),
 		FixedPriceAdjustment:  sheinActivityFloat64(strategy.FixedPriceAdjustment),
 	}
+}
+
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func sheinActivityFloat64(value *float64) float64 {

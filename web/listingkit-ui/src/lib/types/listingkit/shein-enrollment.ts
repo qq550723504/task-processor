@@ -84,6 +84,7 @@ export type SheinActivityStrategyResponse = {
 };
 
 export type SheinUpdateActivityStrategyInput = {
+  activity_type?: string;
   activity_price_mode: SheinActivityPriceMode;
   activity_discount_rate?: number;
   activity_stock_ratio: number;

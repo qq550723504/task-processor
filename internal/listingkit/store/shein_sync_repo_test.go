@@ -1353,6 +1353,128 @@ func TestSheinSyncRepositoryListCandidatesSupportsExecutableFilterAndImage(t *te
 	}
 }
 
+func TestSheinSyncRepositoryKeepsCandidateStatusScopedByActivity(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		harness := harness
+		t.Run(harness.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			if err := harness.repo.SaveCandidates(ctx, []*listingkit.SheinActivityCandidateRecord{
+				{
+					TenantID:          1,
+					StoreID:           101,
+					SyncedProductID:   11,
+					ActivityType:      "PROMOTION",
+					ActivityKey:       "PROMOTION:1:101",
+					SKCName:           "shared-skc",
+					CandidateVersion:  "v1",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusFailed,
+				},
+				{
+					TenantID:          1,
+					StoreID:           101,
+					SyncedProductID:   11,
+					ActivityType:      "TIME_LIMITED",
+					ActivityKey:       "TIME_LIMITED:1:101",
+					SKCName:           "shared-skc",
+					CandidateVersion:  "v1",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusPendingReview,
+				},
+			}); err != nil {
+				t.Fatalf("seed candidates: %v", err)
+			}
+
+			promotionCandidates, _, err := harness.listCandidates(ctx, &listingkit.SheinActivityCandidateQuery{
+				TenantID:     1,
+				StoreID:      101,
+				ActivityType: "PROMOTION",
+				ActivityKey:  "PROMOTION:1:101",
+				SKCName:      "shared-skc",
+				Page:         1,
+				PageSize:     10,
+			})
+			if err != nil {
+				t.Fatalf("list promotion candidate: %v", err)
+			}
+			if len(promotionCandidates) != 1 {
+				t.Fatalf("promotion candidates len = %d, want 1", len(promotionCandidates))
+			}
+			run := &listingkit.SheinActivityEnrollmentRunRecord{
+				TenantID:     1,
+				StoreID:      101,
+				ActivityType: "PROMOTION",
+				ActivityKey:  "PROMOTION:1:101",
+				TriggerMode:  listingkit.SheinEnrollmentRunTriggerModeManualConfirmed,
+				Status:       listingkit.SheinEnrollmentRunStatusFailed,
+				StartedAt:    sheinTimePtr(time.Date(2026, 6, 29, 10, 0, 0, 0, time.UTC)),
+			}
+			if err := harness.repo.CreateEnrollmentRun(ctx, run); err != nil {
+				t.Fatalf("create promotion run: %v", err)
+			}
+			if err := harness.repo.SaveEnrollmentItems(ctx, []*listingkit.SheinActivityEnrollmentItemRecord{
+				{
+					RunID:            run.ID,
+					CandidateID:      promotionCandidates[0].ID,
+					StoreID:          101,
+					ActivityKey:      "PROMOTION:1:101",
+					CandidateVersion: "v1",
+					SyncedProductID:  11,
+					SKCName:          "shared-skc",
+					Status:           listingkit.SheinEnrollmentItemStatusFailed,
+					ErrorMessage:     "promotion failed only",
+				},
+			}); err != nil {
+				t.Fatalf("save promotion failed item: %v", err)
+			}
+
+			executableTimeLimited, total, err := harness.listCandidates(ctx, &listingkit.SheinActivityCandidateQuery{
+				TenantID:       1,
+				StoreID:        101,
+				ActivityType:   "TIME_LIMITED",
+				ActivityKey:    "TIME_LIMITED:1:101",
+				ExecutableOnly: true,
+				Page:           1,
+				PageSize:       10,
+			})
+			if err != nil {
+				t.Fatalf("list executable time limited candidates: %v", err)
+			}
+			if total != 1 || len(executableTimeLimited) != 1 {
+				t.Fatalf("time limited executable count = total %d len %d, want 1", total, len(executableTimeLimited))
+			}
+			if executableTimeLimited[0].ReviewStatus != listingkit.SheinCandidateReviewStatusPendingReview {
+				t.Fatalf("time limited review status = %q, want pending_review", executableTimeLimited[0].ReviewStatus)
+			}
+			if executableTimeLimited[0].LastEnrollmentError != "" {
+				t.Fatalf("time limited last error = %q, want empty", executableTimeLimited[0].LastEnrollmentError)
+			}
+
+			failedPromotion, total, err := harness.listCandidates(ctx, &listingkit.SheinActivityCandidateQuery{
+				TenantID:     1,
+				StoreID:      101,
+				ActivityType: "PROMOTION",
+				ActivityKey:  "PROMOTION:1:101",
+				Page:         1,
+				PageSize:     10,
+			})
+			if err != nil {
+				t.Fatalf("list failed promotion candidates: %v", err)
+			}
+			if total != 1 || len(failedPromotion) != 1 {
+				t.Fatalf("promotion candidate count = total %d len %d, want 1", total, len(failedPromotion))
+			}
+			if failedPromotion[0].LastEnrollmentError != "promotion failed only" {
+				t.Fatalf("promotion last error = %q, want promotion failed only", failedPromotion[0].LastEnrollmentError)
+			}
+		})
+	}
+}
+
 func TestSheinSyncRepositorySaveCandidatesAllowsSupersedingOlderVersions(t *testing.T) {
 	t.Parallel()
 

@@ -56,6 +56,7 @@ type executeSheinActivityEnrollmentRequest struct {
 }
 
 type updateSheinActivityStrategyRequest struct {
+	ActivityType          string   `json:"activity_type"`
 	ActivityPriceMode     string   `json:"activity_price_mode"`
 	ActivityDiscountRate  *float64 `json:"activity_discount_rate"`
 	ActivityStockRatio    *float64 `json:"activity_stock_ratio"`

@@ -71,7 +71,7 @@ export function SheinEnrollmentStoreWorkbench({
   const summary = useSheinEnrollmentStoreSummary(storeId, {
     activity_type: activityType,
   });
-  const activityStrategy = useSheinActivityStrategy(storeId);
+  const activityStrategy = useSheinActivityStrategy(storeId, activityType);
 
   const products = useSheinSyncedProducts(
     storeId,
@@ -252,7 +252,9 @@ export function SheinEnrollmentStoreWorkbench({
           <SheinActivityStrategyCard
             configured={activityStrategy.data?.configured}
             onSave={(input) =>
-              updateActivityStrategyMutation.mutateAsync(input).then(() => undefined)
+              updateActivityStrategyMutation
+                .mutateAsync({ ...input, activity_type: activityType })
+                .then(() => undefined)
             }
             saving={updateActivityStrategyMutation.isPending}
             strategy={activityStrategy.data?.strategy}

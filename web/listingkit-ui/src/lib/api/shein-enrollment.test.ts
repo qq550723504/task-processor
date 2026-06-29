@@ -251,8 +251,9 @@ describe("shein enrollment api", () => {
   });
 
   it("routes activity strategy APIs through store scoped shein sync endpoints", async () => {
-    await getSheinActivityStrategy(12);
+    await getSheinActivityStrategy(12, "TIME_LIMITED");
     await updateSheinActivityStrategy(12, {
+      activity_type: "TIME_LIMITED",
       activity_price_mode: "DISCOUNT",
       activity_discount_rate: 0.18,
       activity_stock_ratio: 0.4,
@@ -263,7 +264,11 @@ describe("shein enrollment api", () => {
     expect(mockedApiRequest).toHaveBeenNthCalledWith(
       1,
       "/shein-sync/stores/12/activity-strategy",
-      {},
+      {
+        query: {
+          activity_type: "TIME_LIMITED",
+        },
+      },
     );
     expect(mockedApiRequest).toHaveBeenNthCalledWith(
       2,
@@ -271,6 +276,7 @@ describe("shein enrollment api", () => {
       {
         method: "PATCH",
         body: {
+          activity_type: "TIME_LIMITED",
           activity_price_mode: "DISCOUNT",
           activity_discount_rate: 0.18,
           activity_stock_ratio: 0.4,

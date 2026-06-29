@@ -119,7 +119,7 @@ describe("use-shein-enrollment", () => {
       { wrapper: createWrapper(client) },
     );
     const { result: activityStrategy } = renderHook(
-      () => useSheinActivityStrategy(5),
+      () => useSheinActivityStrategy(5, "TIME_LIMITED"),
       { wrapper: createWrapper(client) },
     );
     const { result: sdsCostGroups } = renderHook(
@@ -177,7 +177,7 @@ describe("use-shein-enrollment", () => {
       page: 1,
       page_size: 20,
     });
-    expect(mocks.getSheinActivityStrategy).toHaveBeenCalledWith(5);
+    expect(mocks.getSheinActivityStrategy).toHaveBeenCalledWith(5, "TIME_LIMITED");
     expect(mocks.getSheinSDSCostGroups).toHaveBeenCalledWith(5, {
       page: 1,
       page_size: 100,

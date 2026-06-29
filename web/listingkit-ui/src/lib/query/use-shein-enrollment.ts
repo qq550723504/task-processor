@@ -76,11 +76,12 @@ export function useSheinEnrollmentStoreSummary(
   });
 }
 
-export function useSheinActivityStrategy(storeId: number) {
+export function useSheinActivityStrategy(storeId: number, activityType = "PROMOTION") {
   return useQuery({
-    queryKey: listingKitKeys.sheinActivityStrategy(storeId),
-    queryFn: () => getSheinActivityStrategy(storeId),
-    enabled: Number.isFinite(storeId) && storeId > 0,
+    queryKey: listingKitKeys.sheinActivityStrategy(storeId, activityType),
+    queryFn: () => getSheinActivityStrategy(storeId, activityType),
+    enabled:
+      Number.isFinite(storeId) && storeId > 0 && activityType.trim().length > 0,
   });
 }
 

@@ -15,7 +15,7 @@ type localRuntimePromotionStrategyProvider struct {
 	repo listingadmin.OperationStrategyRepository
 }
 
-func (p localRuntimePromotionStrategyProvider) GetPromotionStrategy(ctx context.Context, storeID int64, _ string) (*sheinsync.SheinPromotionStrategy, error) {
+func (p localRuntimePromotionStrategyProvider) GetPromotionStrategy(ctx context.Context, storeID int64, activityKey string) (*sheinsync.SheinPromotionStrategy, error) {
 	if p.repo == nil {
 		return nil, fmt.Errorf("SHEIN promotion strategy repository is not configured")
 	}
@@ -23,21 +23,15 @@ func (p localRuntimePromotionStrategyProvider) GetPromotionStrategy(ctx context.
 	if err != nil {
 		return nil, err
 	}
-	strategy, err := p.repo.GetActiveActivityStrategy(ctx, tenantID, storeID, "SHEIN", "PROMOTION")
+	activityType := sheinPromotionActivityTypeFromKey(activityKey)
+	strategy, err := p.repo.GetActiveActivityStrategy(ctx, tenantID, storeID, "SHEIN", activityType)
 	if err != nil {
 		return nil, err
 	}
 	if strategy == nil {
 		return nil, nil
 	}
-	return sheinsync.NewSheinPromotionStrategy(sheinsync.SheinPromotionStrategyInput{
-		StoreID:               strategy.StoreID,
-		ActivityPriceMode:     strategy.ActivityPriceMode,
-		ActivityDiscountRate:  sheinPromotionFloat64(strategy.ActivityDiscountRate),
-		ActivityMinProfitRate: sheinPromotionFloat64(strategy.ActivityMinProfitRate),
-		ActivityStockRatio:    sheinPromotionFloat64(strategy.ActivityStockRatio),
-		FixedPriceAdjustment:  sheinPromotionFloat64(strategy.FixedPriceAdjustment),
-	}), nil
+	return sheinsync.NewSheinPromotionStrategy(sheinPromotionStrategyInput(activityType, strategy)), nil
 }
 
 func buildSheinPromotionStrategyProvider(repositories *builtRepositories) (localRuntimePromotionStrategyProvider, error) {
@@ -55,6 +49,62 @@ func sheinPromotionFloat64(value *float64) float64 {
 		return 0
 	}
 	return *value
+}
+
+func sheinPromotionInt(value *int) int {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func sheinPromotionActivityTypeFromKey(activityKey string) string {
+	parts := strings.SplitN(strings.ToUpper(strings.TrimSpace(activityKey)), ":", 2)
+	if len(parts) == 0 || parts[0] == "" {
+		return "PROMOTION"
+	}
+	switch parts[0] {
+	case "PROMOTION", "TIME_LIMITED":
+		return parts[0]
+	default:
+		return "PROMOTION"
+	}
+}
+
+func sheinPromotionStrategyInput(activityType string, strategy *listingadmin.OperationStrategy) sheinsync.SheinPromotionStrategyInput {
+	input := sheinsync.SheinPromotionStrategyInput{
+		StoreID:               strategy.StoreID,
+		ActivityPriceMode:     strategy.ActivityPriceMode,
+		ActivityDiscountRate:  sheinPromotionFloat64(strategy.ActivityDiscountRate),
+		ActivityMinProfitRate: sheinPromotionFloat64(strategy.ActivityMinProfitRate),
+		ActivityStockRatio:    sheinPromotionFloat64(strategy.ActivityStockRatio),
+		FixedPriceAdjustment:  sheinPromotionFloat64(strategy.FixedPriceAdjustment),
+	}
+	if activityType != "TIME_LIMITED" {
+		return input
+	}
+
+	input.TimeLimitedPriceMode = strings.ToUpper(strings.TrimSpace(strategy.TimeLimitedPriceMode))
+	input.TimeLimitedDiscountRate = sheinPromotionFloat64(strategy.TimeLimitedDiscountRate)
+	input.TimeLimitedMinProfitRate = sheinPromotionFloat64(strategy.TimeLimitedMinProfitRate)
+	input.TimeLimitedUserLimit = strategy.TimeLimitedUserLimit
+	input.TimeLimitedUserLimitNum = sheinPromotionInt(strategy.TimeLimitedUserLimitNum)
+	input.TimeLimitedStockLimit = strategy.TimeLimitedStockLimit
+	input.TimeLimitedStockLimitPercent = sheinPromotionInt(strategy.TimeLimitedStockLimitPercent)
+
+	if input.TimeLimitedPriceMode != "" {
+		input.ActivityPriceMode = input.TimeLimitedPriceMode
+	}
+	if input.TimeLimitedDiscountRate > 0 {
+		input.ActivityDiscountRate = input.TimeLimitedDiscountRate
+	}
+	if strategy.TimeLimitedMinProfitRate != nil {
+		input.ActivityMinProfitRate = input.TimeLimitedMinProfitRate
+	}
+	if input.TimeLimitedStockLimit && input.TimeLimitedStockLimitPercent > 0 {
+		input.ActivityStockRatio = float64(input.TimeLimitedStockLimitPercent) / 100
+	}
+	return input
 }
 
 func sheinPromotionTenantID(ctx context.Context) (int64, error) {

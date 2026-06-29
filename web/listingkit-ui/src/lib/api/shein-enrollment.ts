@@ -90,10 +90,15 @@ export async function getSheinEnrollmentStoreSummary(
 
 export async function getSheinActivityStrategy(
   storeId: number,
+  activityType = "PROMOTION",
 ): Promise<SheinActivityStrategyResponse> {
   return apiRequest<SheinActivityStrategyResponse>(
     `/shein-sync/stores/${storeId}/activity-strategy`,
-    {},
+    {
+      query: {
+        activity_type: activityType,
+      },
+    },
   );
 }
 

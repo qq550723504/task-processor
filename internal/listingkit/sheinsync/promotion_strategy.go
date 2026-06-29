@@ -6,31 +6,52 @@ import (
 )
 
 type SheinPromotionStrategyInput struct {
-	StoreID               int64
-	ActivityPriceMode     string
-	ActivityDiscountRate  float64
-	ActivityMinProfitRate float64
-	ActivityStockRatio    float64
-	FixedPriceAdjustment  float64
+	StoreID                      int64
+	ActivityPriceMode            string
+	ActivityDiscountRate         float64
+	ActivityMinProfitRate        float64
+	ActivityStockRatio           float64
+	FixedPriceAdjustment         float64
+	TimeLimitedDiscountRate      float64
+	TimeLimitedMinProfitRate     float64
+	TimeLimitedPriceMode         string
+	TimeLimitedUserLimit         bool
+	TimeLimitedUserLimitNum      int
+	TimeLimitedStockLimit        bool
+	TimeLimitedStockLimitPercent int
 }
 
 type SheinPromotionStrategy struct {
-	StoreID               int64
-	ActivityPriceMode     string
-	ActivityDiscountRate  float64
-	ActivityMinProfitRate float64
-	ActivityStockRatio    float64
-	FixedPriceAdjustment  float64
+	StoreID                      int64
+	ActivityPriceMode            string
+	ActivityDiscountRate         float64
+	ActivityMinProfitRate        float64
+	ActivityStockRatio           float64
+	FixedPriceAdjustment         float64
+	TimeLimitedDiscountRate      float64
+	TimeLimitedMinProfitRate     float64
+	TimeLimitedPriceMode         string
+	TimeLimitedUserLimit         bool
+	TimeLimitedUserLimitNum      int
+	TimeLimitedStockLimit        bool
+	TimeLimitedStockLimitPercent int
 }
 
 func NewSheinPromotionStrategy(input SheinPromotionStrategyInput) *SheinPromotionStrategy {
 	return &SheinPromotionStrategy{
-		StoreID:               input.StoreID,
-		ActivityPriceMode:     input.ActivityPriceMode,
-		ActivityDiscountRate:  input.ActivityDiscountRate,
-		ActivityMinProfitRate: input.ActivityMinProfitRate,
-		ActivityStockRatio:    input.ActivityStockRatio,
-		FixedPriceAdjustment:  input.FixedPriceAdjustment,
+		StoreID:                      input.StoreID,
+		ActivityPriceMode:            input.ActivityPriceMode,
+		ActivityDiscountRate:         input.ActivityDiscountRate,
+		ActivityMinProfitRate:        input.ActivityMinProfitRate,
+		ActivityStockRatio:           input.ActivityStockRatio,
+		FixedPriceAdjustment:         input.FixedPriceAdjustment,
+		TimeLimitedDiscountRate:      input.TimeLimitedDiscountRate,
+		TimeLimitedMinProfitRate:     input.TimeLimitedMinProfitRate,
+		TimeLimitedPriceMode:         input.TimeLimitedPriceMode,
+		TimeLimitedUserLimit:         input.TimeLimitedUserLimit,
+		TimeLimitedUserLimitNum:      input.TimeLimitedUserLimitNum,
+		TimeLimitedStockLimit:        input.TimeLimitedStockLimit,
+		TimeLimitedStockLimitPercent: input.TimeLimitedStockLimitPercent,
 	}
 }
 
