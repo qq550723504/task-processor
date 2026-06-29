@@ -127,8 +127,8 @@ type StaticStoreGuardRuntime interface {
 }
 
 type PlatformRuntimeContext struct {
-	Config                             *config.Config
-	Logger                             *logrus.Logger
+	config                             *config.Config
+	logger                             *logrus.Logger
 	listingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
 	storeAPI                           listingadmin.StoreAPI
 	processorRuntime                   ProcessorRuntime
@@ -150,8 +150,8 @@ type PlatformRuntimeContextInput struct {
 
 func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRuntimeContext {
 	return PlatformRuntimeContext{
-		Config:                             input.Config,
-		Logger:                             input.Logger,
+		config:                             input.Config,
+		logger:                             input.Logger,
 		listingRuntimeImportTaskRepository: input.Resources.ListingRuntimeImportTaskRepository,
 		storeAPI:                           input.Resources.StoreAPI,
 		processorRuntime:                   input.Resources.ProcessorRuntime,
@@ -166,6 +166,14 @@ func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRunt
 
 func (rt PlatformRuntimeContext) RabbitMQClient() *rabbitmq.Client {
 	return runtimeRabbitMQClient(rt.runtimeServices)
+}
+
+func (rt PlatformRuntimeContext) Config() *config.Config {
+	return rt.config
+}
+
+func (rt PlatformRuntimeContext) Logger() *logrus.Logger {
+	return rt.logger
 }
 
 func runtimeRabbitMQClient(services PlatformRuntimeServices) *rabbitmq.Client {
@@ -238,7 +246,7 @@ func (rt PlatformRuntimeContext) BuildSchedulerDependencies(rabbitmqClient *rabb
 	if rt.schedulerBuilder == nil {
 		return runner.SchedulerDependencies{}
 	}
-	return rt.schedulerBuilder(rt.schedulerFactoryRuntime, rt.Config, rt.crawlSource, rabbitmqClient)
+	return rt.schedulerBuilder(rt.schedulerFactoryRuntime, rt.config, rt.crawlSource, rabbitmqClient)
 }
 
 type PlatformModule interface {

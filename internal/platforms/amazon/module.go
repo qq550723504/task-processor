@@ -28,7 +28,7 @@ func (Module) NeedsAmazon(cfg *config.Config) bool {
 }
 
 func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntimeContext, registry consumer.ProcessorRegistrar) error {
-	processor := amazonprocessor.NewProcessor(ctx, rt.Config, rt.Logger)
+	processor := amazonprocessor.NewProcessor(ctx, rt.Config(), rt.Logger())
 	if err := registry.RegisterProcessor(m.Name(), processor); err != nil {
 		return fmt.Errorf("register Amazon processor: %w", err)
 	}
@@ -36,5 +36,5 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 }
 
 func (Module) ConfigureListingRuntime(_ context.Context, rt consumer.PlatformRuntimeContext) error {
-	return consumer.EnableDynamicStoreAssignment(rt.Config, rt.Logger, rt.StoreAssignmentRuntime())
+	return consumer.EnableDynamicStoreAssignment(rt.Config(), rt.Logger(), rt.StoreAssignmentRuntime())
 }

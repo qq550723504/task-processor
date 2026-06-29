@@ -41,7 +41,7 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 		return fmt.Errorf("SHEIN product fetcher is not configured")
 	}
 
-	processor, err := pipeline.NewSheinProcessor(ctx, rt.Config, rt.Logger, pipeline.BuildDependencies(ctx, sheinDependencyRuntimeAdapter{ProcessorRuntime: rt.ProcessorRuntime()}, productFetcher, rt.RabbitMQClient()))
+	processor, err := pipeline.NewSheinProcessor(ctx, rt.Config(), rt.Logger(), pipeline.BuildDependencies(ctx, sheinDependencyRuntimeAdapter{ProcessorRuntime: rt.ProcessorRuntime()}, productFetcher, rt.RabbitMQClient()))
 	if err != nil {
 		return fmt.Errorf("create SHEIN processor: %w", err)
 	}
@@ -52,28 +52,29 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 }
 
 func (Module) ConfigureListingRuntime(ctx context.Context, rt consumer.PlatformRuntimeContext) error {
+	logger := rt.Logger()
 	if err := initPrompts(ctx, rt); err != nil {
-		rt.Logger.Warnf("prompt init failed, fallback will be used: %v", err)
+		logger.Warnf("prompt init failed, fallback will be used: %v", err)
 	}
 	if err := configureTenantPromptStore(rt, bootstrapresources.NewDBTenantPromptStore); err != nil {
-		rt.Logger.Warnf("tenant prompt store init failed, tenant overrides disabled: %v", err)
+		logger.Warnf("tenant prompt store init failed, tenant overrides disabled: %v", err)
 	}
 
 	configureScheduler(rt)
 	configureStoreGuard(rt)
 	configureTaskRecoveryWatchdogs(rt)
 
-	cfg := rt.Config
+	cfg := rt.Config()
 	if cfg == nil {
 		return nil
 	}
 
 	if shouldEnableDynamicStoreAssignment(cfg) {
-		if err := consumer.EnableDynamicStoreAssignment(cfg, rt.Logger, rt.StoreAssignmentRuntime()); err != nil {
+		if err := consumer.EnableDynamicStoreAssignment(cfg, logger, rt.StoreAssignmentRuntime()); err != nil {
 			return err
 		}
 	} else if cfg.RabbitMQ != nil && cfg.RabbitMQ.Node.UseStoreQueues && len(cfg.RabbitMQ.Node.OwnedStores) > 0 {
-		rt.Logger.Infof("static store assignment enabled: nodeID=%s, ownedStores=%v", cfg.RabbitMQ.Node.NodeID, cfg.RabbitMQ.Node.OwnedStores)
+		logger.Infof("static store assignment enabled: nodeID=%s, ownedStores=%v", cfg.RabbitMQ.Node.NodeID, cfg.RabbitMQ.Node.OwnedStores)
 	}
 
 	if shouldConfigureAutoShard(cfg) {
@@ -102,27 +103,29 @@ func shouldConfigureAutoShard(cfg *config.Config) bool {
 }
 
 func initPrompts(ctx context.Context, rt consumer.PlatformRuntimeContext) error {
-	if rt.Config == nil {
+	cfg := rt.Config()
+	if cfg == nil {
 		return nil
 	}
-	promptsDir := rt.Config.Prompts.Dir
+	promptsDir := cfg.Prompts.Dir
 	if promptsDir == "" {
 		promptsDir = "./prompts"
 	}
-	return prompt.InitGlobal(ctx, promptsDir, rt.Config.Prompts.HotReload, rt.Logger.WithField("component", "prompt"))
+	return prompt.InitGlobal(ctx, promptsDir, cfg.Prompts.HotReload, rt.Logger().WithField("component", "prompt"))
 }
 
 type tenantPromptStoreOpener func(*config.DatabaseConfig, *logrus.Logger) (prompt.TenantPromptStore, func() error, error)
 
 func configureTenantPromptStore(rt consumer.PlatformRuntimeContext, opener tenantPromptStoreOpener) error {
-	if rt.Config == nil || rt.Config.Database == nil {
+	cfg := rt.Config()
+	if cfg == nil || cfg.Database == nil {
 		return nil
 	}
 	if opener == nil {
 		return fmt.Errorf("tenant prompt store opener is nil")
 	}
 
-	store, _, err := opener(rt.Config.Database, rt.Logger)
+	store, _, err := opener(cfg.Database, rt.Logger())
 	if err != nil {
 		return fmt.Errorf("create tenant prompt store: %w", err)
 	}
@@ -133,29 +136,30 @@ func configureTenantPromptStore(rt consumer.PlatformRuntimeContext, opener tenan
 }
 
 func configureScheduler(rt consumer.PlatformRuntimeContext) {
-	cfg := rt.Config
+	cfg := rt.Config()
+	logger := rt.Logger()
 	schedulerRuntime := rt.SchedulerServiceRuntime()
 	if cfg == nil || schedulerRuntime == nil || !cfg.Platforms.Shein.SchedulerEnabled {
 		return
 	}
 	if rt.SchedulerRuntime() == nil {
-		rt.Logger.Warn("SHEIN scheduler is enabled but scheduler runtime is unavailable")
+		logger.Warn("SHEIN scheduler is enabled but scheduler runtime is unavailable")
 		return
 	}
 	if !rt.HasSchedulerDependenciesBuilder() {
-		rt.Logger.Warn("SHEIN scheduler dependencies builder is unavailable")
+		logger.Warn("SHEIN scheduler dependencies builder is unavailable")
 		return
 	}
 
 	schedulerService := runner.NewSchedulerServiceWithDependencies(
-		rt.Logger,
+		logger,
 		rt.SchedulerRuntime(),
 		cfg,
 		schedulerRuntime.GetClient(),
 		rt.BuildSchedulerDependencies(schedulerRuntime.GetClient()),
 	)
 	schedulerRuntime.SetSchedulerService(schedulerService)
-	rt.Logger.Infof(
+	logger.Infof(
 		"SHEIN scheduler enabled: autoPricing=%v interval=%ds batchSize=%d",
 		cfg.Platforms.Shein.AutoPricing.Enabled,
 		cfg.Platforms.Shein.AutoPricing.Interval,
@@ -164,7 +168,8 @@ func configureScheduler(rt consumer.PlatformRuntimeContext) {
 }
 
 func configureTaskRecoveryWatchdogs(rt consumer.PlatformRuntimeContext) {
-	cfg := rt.Config
+	cfg := rt.Config()
+	logger := rt.Logger()
 	if cfg == nil || cfg.RabbitMQ == nil || rt.TaskRecoveryRuntime() == nil {
 		return
 	}
@@ -176,7 +181,7 @@ func configureTaskRecoveryWatchdogs(rt consumer.PlatformRuntimeContext) {
 	}
 	repo := rt.ListingRuntimeImportTaskRepository()
 	if repo == nil {
-		rt.Logger.Warn("task recovery watchdog is enabled but local import task repository is unavailable")
+		logger.Warn("task recovery watchdog is enabled but local import task repository is unavailable")
 		return
 	}
 	configureProcessingTimeoutWatchdog(rt, repo)
@@ -184,7 +189,8 @@ func configureTaskRecoveryWatchdogs(rt consumer.PlatformRuntimeContext) {
 }
 
 func configureProcessingTimeoutWatchdog(rt consumer.PlatformRuntimeContext, repo consumer.ProcessingTimeoutRepository) {
-	cfg := rt.Config
+	cfg := rt.Config()
+	logger := rt.Logger()
 	taskRecoveryRuntime := rt.TaskRecoveryRuntime()
 	if cfg == nil || cfg.RabbitMQ == nil || taskRecoveryRuntime == nil || !cfg.RabbitMQ.ProcessingTimeout.Enabled {
 		return
@@ -195,10 +201,10 @@ func configureProcessingTimeoutWatchdog(rt consumer.PlatformRuntimeContext, repo
 		TimeoutMinutes: cfg.RabbitMQ.ProcessingTimeout.TimeoutMinutes,
 		RecoveryLimit:  cfg.RabbitMQ.ProcessingTimeout.RecoveryLimit,
 		Repository:     repo,
-		Logger:         rt.Logger,
+		Logger:         logger,
 	})
 	taskRecoveryRuntime.SetProcessingTimeoutWatchdog(watchdog)
-	rt.Logger.Infof(
+	logger.Infof(
 		"processing timeout watchdog enabled: interval=%s timeoutMinutes=%d recoveryLimit=%d",
 		cfg.RabbitMQ.ProcessingTimeout.Interval,
 		cfg.RabbitMQ.ProcessingTimeout.TimeoutMinutes,
@@ -207,7 +213,8 @@ func configureProcessingTimeoutWatchdog(rt consumer.PlatformRuntimeContext, repo
 }
 
 func configureStaleQueuedWatchdog(rt consumer.PlatformRuntimeContext, repo consumer.StaleQueuedRepository) {
-	cfg := rt.Config
+	cfg := rt.Config()
+	logger := rt.Logger()
 	taskRecoveryRuntime := rt.TaskRecoveryRuntime()
 	if cfg == nil || cfg.RabbitMQ == nil || taskRecoveryRuntime == nil || !cfg.RabbitMQ.StaleQueued.Enabled {
 		return
@@ -218,10 +225,10 @@ func configureStaleQueuedWatchdog(rt consumer.PlatformRuntimeContext, repo consu
 		TimeoutMinutes: cfg.RabbitMQ.StaleQueued.TimeoutMinutes,
 		RecoveryLimit:  cfg.RabbitMQ.StaleQueued.RecoveryLimit,
 		Repository:     repo,
-		Logger:         rt.Logger,
+		Logger:         logger,
 	})
 	taskRecoveryRuntime.SetStaleQueuedWatchdog(watchdog)
-	rt.Logger.Infof(
+	logger.Infof(
 		"stale queued watchdog enabled: interval=%s timeoutMinutes=%d recoveryLimit=%d",
 		cfg.RabbitMQ.StaleQueued.Interval,
 		cfg.RabbitMQ.StaleQueued.TimeoutMinutes,
@@ -231,26 +238,29 @@ func configureStaleQueuedWatchdog(rt consumer.PlatformRuntimeContext, repo consu
 
 func configureStoreGuard(rt consumer.PlatformRuntimeContext) {
 	staticStoreGuardRuntime := rt.StaticStoreGuardRuntime()
-	if rt.Config == nil || staticStoreGuardRuntime == nil {
+	cfg := rt.Config()
+	logger := rt.Logger()
+	if cfg == nil || staticStoreGuardRuntime == nil {
 		return
 	}
 	storeAPI := rt.StoreAPI()
 	if storeAPI == nil {
-		consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, staticStoreGuardRuntime, nil)
+		consumer.ConfigureStaticStoreGuard(cfg, logger, staticStoreGuardRuntime, nil)
 		return
 	}
-	consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, staticStoreGuardRuntime, storeAPI)
+	consumer.ConfigureStaticStoreGuard(cfg, logger, staticStoreGuardRuntime, storeAPI)
 }
 
 func configureAutoShard(rt consumer.PlatformRuntimeContext) error {
-	cfg := rt.Config
+	cfg := rt.Config()
+	logger := rt.Logger()
 	autoShardRuntime := rt.AutoShardRuntime()
 	if cfg == nil || autoShardRuntime == nil {
 		return nil
 	}
 	storeAPI := rt.StoreAPI()
 	if storeAPI == nil || cfg.Redis == nil {
-		rt.Logger.Warn("auto shard is enabled but store API or redis config is unavailable")
+		logger.Warn("auto shard is enabled but store API or redis config is unavailable")
 		return nil
 	}
 
@@ -260,13 +270,13 @@ func configureAutoShard(rt consumer.PlatformRuntimeContext) error {
 		cfg.Redis,
 		cfg.RabbitMQ.URL,
 		cfg.RabbitMQ.Node.NodeID,
-		rt.Logger,
+		logger,
 	)
 	if err != nil {
 		return fmt.Errorf("create auto shard coordinator failed: %w", err)
 	}
 	autoShardRuntime.SetAutoShardService(autoShardService)
-	rt.Logger.Infof("auto shard coordinator enabled: platform=%s, candidateNodes=%v", cfg.RabbitMQ.AutoShard.Platform, cfg.RabbitMQ.AutoShard.CandidateNodes)
+	logger.Infof("auto shard coordinator enabled: platform=%s, candidateNodes=%v", cfg.RabbitMQ.AutoShard.Platform, cfg.RabbitMQ.AutoShard.CandidateNodes)
 	return nil
 }
 

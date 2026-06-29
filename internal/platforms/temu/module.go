@@ -35,7 +35,7 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 		return fmt.Errorf("TEMU product fetcher is not configured")
 	}
 
-	processor, err := temuprocessor.NewTemuProcessor(ctx, rt.Config, rt.Logger, temuprocessor.BuildDependencies(ctx, rt.ProcessorRuntime(), productFetcher, rt.RabbitMQClient()))
+	processor, err := temuprocessor.NewTemuProcessor(ctx, rt.Config(), rt.Logger(), temuprocessor.BuildDependencies(ctx, rt.ProcessorRuntime(), productFetcher, rt.RabbitMQClient()))
 	if err != nil {
 		return fmt.Errorf("create TEMU processor: %w", err)
 	}
@@ -47,18 +47,19 @@ func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntim
 
 func (Module) ConfigureListingRuntime(ctx context.Context, rt consumer.PlatformRuntimeContext) error {
 	if err := initPrompts(ctx, rt); err != nil {
-		rt.Logger.Warnf("prompt init failed, fallback will be used: %v", err)
+		rt.Logger().Warnf("prompt init failed, fallback will be used: %v", err)
 	}
-	return consumer.EnableDynamicStoreAssignment(rt.Config, rt.Logger, rt.StoreAssignmentRuntime())
+	return consumer.EnableDynamicStoreAssignment(rt.Config(), rt.Logger(), rt.StoreAssignmentRuntime())
 }
 
 func initPrompts(ctx context.Context, rt consumer.PlatformRuntimeContext) error {
-	if rt.Config == nil {
+	cfg := rt.Config()
+	if cfg == nil {
 		return nil
 	}
-	promptsDir := rt.Config.Prompts.Dir
+	promptsDir := cfg.Prompts.Dir
 	if promptsDir == "" {
 		promptsDir = "./prompts"
 	}
-	return prompt.InitGlobal(ctx, promptsDir, rt.Config.Prompts.HotReload, rt.Logger.WithField("component", "prompt"))
+	return prompt.InitGlobal(ctx, promptsDir, cfg.Prompts.HotReload, rt.Logger().WithField("component", "prompt"))
 }

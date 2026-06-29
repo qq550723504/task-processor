@@ -184,8 +184,8 @@ func TestDedicatedStaticStoreDoesNotUseDynamicAssignment(t *testing.T) {
 }
 
 func consumerTestRuntimeContext(cfg *config.Config) consumer.PlatformRuntimeContext {
-	return consumer.PlatformRuntimeContext{
+	return consumer.BuildPlatformRuntimeContext(consumer.PlatformRuntimeContextInput{
 		Config: cfg,
 		Logger: logrus.New(),
-	}
+	})
 }
