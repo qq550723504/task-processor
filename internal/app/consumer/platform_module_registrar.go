@@ -23,7 +23,7 @@ func newPlatformModuleRegistrar(cfg *config.Config, logger *logrus.Logger, servi
 	}
 }
 
-func (r platformModuleRegistrar) register(ctx context.Context, module PlatformModule, resources *SharedResources) error {
+func (r platformModuleRegistrar) register(ctx context.Context, module PlatformModule, resources SharedResources) error {
 	r.logger.Infof("registering %s processor", strings.ToUpper(module.Name()))
 	runtimeContext := BuildPlatformRuntimeContext(PlatformRuntimeContextInput{
 		Config:         r.config,

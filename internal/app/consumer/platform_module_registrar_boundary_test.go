@@ -29,3 +29,22 @@ func TestPlatformModuleRegistrarDoesNotStoreSharedResources(t *testing.T) {
 		}
 	}
 }
+
+func TestPlatformRuntimeContextBuilderDoesNotAcceptSharedResourcesPointer(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("shared_resources.go")
+	if err != nil {
+		t.Fatalf("read shared_resources.go: %v", err)
+	}
+	source := string(content)
+
+	for _, marker := range []string{
+		"Resources        *SharedResources",
+		"sharedResourcesValue",
+	} {
+		if strings.Contains(source, marker) {
+			t.Fatalf("shared_resources.go mentions %q; expand SharedResources before building PlatformRuntimeContext", marker)
+		}
+	}
+}

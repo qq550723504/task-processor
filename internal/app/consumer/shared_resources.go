@@ -108,34 +108,26 @@ type PlatformRuntimeContext struct {
 type PlatformRuntimeContextInput struct {
 	Config           *config.Config
 	Logger           *logrus.Logger
-	Resources        *SharedResources
+	Resources        SharedResources
 	ServiceManager   *ServiceManager
 	SchedulerBuilder SchedulerDependenciesBuilder
 }
 
 func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRuntimeContext {
-	resources := sharedResourcesValue(input.Resources)
 	return PlatformRuntimeContext{
 		Config:                             input.Config,
 		Logger:                             input.Logger,
-		ListingRuntimeImportTaskRepository: resources.ListingRuntimeImportTaskRepository,
-		StoreAPI:                           resources.StoreAPI,
-		SchedulerRuntime:                   resources.SchedulerRuntime,
-		SchedulerFactoryRuntime:            resources.SchedulerFactoryRuntime,
-		ProcessorRuntime:                   resources.ProcessorRuntime,
-		CrawlSource:                        resources.CrawlSource,
-		ProductFetcher:                     resources.ProductFetcher,
+		ListingRuntimeImportTaskRepository: input.Resources.ListingRuntimeImportTaskRepository,
+		StoreAPI:                           input.Resources.StoreAPI,
+		SchedulerRuntime:                   input.Resources.SchedulerRuntime,
+		SchedulerFactoryRuntime:            input.Resources.SchedulerFactoryRuntime,
+		ProcessorRuntime:                   input.Resources.ProcessorRuntime,
+		CrawlSource:                        input.Resources.CrawlSource,
+		ProductFetcher:                     input.Resources.ProductFetcher,
 		RabbitMQClient:                     runtimeRabbitMQClient(input.ServiceManager),
 		ServiceManager:                     input.ServiceManager,
 		SchedulerBuilder:                   input.SchedulerBuilder,
 	}
-}
-
-func sharedResourcesValue(resources *SharedResources) SharedResources {
-	if resources == nil {
-		return SharedResources{}
-	}
-	return *resources
 }
 
 func runtimeRabbitMQClient(serviceManager *ServiceManager) *rabbitmq.Client {
