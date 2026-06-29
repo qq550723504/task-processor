@@ -22,24 +22,37 @@ func registerComponents(
 	logger *logrus.Logger,
 	appVersion string,
 ) (registeredProcessorComponents, error) {
-	deps, processors, err := registerCoreComponents(lm, resources, logger, appVersion)
+	deps, processors, err := registerCoreComponents(lm, resources.core, logger, appVersion)
 	if err != nil {
 		return processors, err
 	}
 
-	if err := registerTaskFetcherComponent(lm, resources, logger, deps); err != nil {
+	if err := registerTaskFetcherComponent(lm, resources.taskFetcher, logger, deps); err != nil {
 		return processors, err
 	}
 
-	return processors, registerSchedulerComponent(lm, resources, logger, deps)
+	return processors, registerSchedulerComponent(lm, resources.scheduler, logger, deps)
 }
 
 type lifecycleRegistrationResources struct {
+	core        coreRegistrationResources
+	taskFetcher taskFetcherRegistrationResources
+	scheduler   schedulerRegistrationResources
+}
+
+type coreRegistrationResources struct {
 	cfg                *config.Config
 	processorResources platformProcessorResources
 	rabbitmqClient     *rabbitmq.Client
-	processorService   runner.ProcessorService
-	schedulerService   runner.SchedulerService
+}
+
+type taskFetcherRegistrationResources struct {
+	cfg              *config.Config
+	processorService runner.ProcessorService
+}
+
+type schedulerRegistrationResources struct {
+	schedulerService runner.SchedulerService
 }
 
 type registeredProcessorComponents struct {
@@ -49,17 +62,24 @@ type registeredProcessorComponents struct {
 
 func newLifecycleRegistrationResources(svc appServices) lifecycleRegistrationResources {
 	return lifecycleRegistrationResources{
-		cfg:                svc.cfg,
-		processorResources: svc.processorResources,
-		rabbitmqClient:     svc.rabbitmqClient,
-		processorService:   svc.processorService,
-		schedulerService:   svc.schedulerService,
+		core: coreRegistrationResources{
+			cfg:                svc.cfg,
+			processorResources: svc.processorResources,
+			rabbitmqClient:     svc.rabbitmqClient,
+		},
+		taskFetcher: taskFetcherRegistrationResources{
+			cfg:              svc.cfg,
+			processorService: svc.processorService,
+		},
+		scheduler: schedulerRegistrationResources{
+			schedulerService: svc.schedulerService,
+		},
 	}
 }
 
 func registerCoreComponents(
 	lm lifecycle.LifecycleManager,
-	resources lifecycleRegistrationResources,
+	resources coreRegistrationResources,
 	logger *logrus.Logger,
 	appVersion string,
 ) ([]string, registeredProcessorComponents, error) {
@@ -106,7 +126,7 @@ func registerCoreComponents(
 
 func registerTaskFetcherComponent(
 	lm lifecycle.LifecycleManager,
-	resources lifecycleRegistrationResources,
+	resources taskFetcherRegistrationResources,
 	logger *logrus.Logger,
 	deps []string,
 ) error {
@@ -119,7 +139,7 @@ func registerTaskFetcherComponent(
 
 func registerSchedulerComponent(
 	lm lifecycle.LifecycleManager,
-	resources lifecycleRegistrationResources,
+	resources schedulerRegistrationResources,
 	logger *logrus.Logger,
 	deps []string,
 ) error {

@@ -21,12 +21,16 @@ func TestLifecycleRegistrationDoesNotDependOnAppServices(t *testing.T) {
 		"func registerCoreComponents(\n\tlm lifecycle.LifecycleManager,\n\tsvc *appServices,",
 		"func registerTaskFetcherComponent(\n\tlm lifecycle.LifecycleManager,\n\tsvc *appServices,",
 		"func registerSchedulerComponent(\n\tlm lifecycle.LifecycleManager,\n\tsvc *appServices,",
+		"func registerCoreComponents(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",
+		"func registerTaskFetcherComponent(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",
+		"func registerSchedulerComponent(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",
 	} {
 		if strings.Contains(source, marker) {
-			t.Fatalf("component_adapters.go mentions %q; lifecycle registration should use a narrow registration resource view instead of appServices", marker)
+			t.Fatalf("component_adapters.go mentions %q; lifecycle registration should pass the narrowest local resource view available", marker)
 		}
 	}
 	if strings.Count(source, "svc.processorResources") != 1 ||
+		strings.Count(source, "svc.rabbitmqClient") != 1 ||
 		strings.Count(source, "svc.processorService") != 1 ||
 		strings.Count(source, "svc.schedulerService") != 1 {
 		t.Fatalf("component_adapters.go should only read appServices fields inside newLifecycleRegistrationResources")
@@ -34,12 +38,15 @@ func TestLifecycleRegistrationDoesNotDependOnAppServices(t *testing.T) {
 
 	for _, marker := range []string{
 		"type lifecycleRegistrationResources struct",
+		"type coreRegistrationResources struct",
+		"type taskFetcherRegistrationResources struct",
+		"type schedulerRegistrationResources struct",
 		"type registeredProcessorComponents struct",
 		"func newLifecycleRegistrationResources(svc appServices) lifecycleRegistrationResources",
 		"func registerComponents(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",
-		"func registerCoreComponents(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",
-		"func registerTaskFetcherComponent(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",
-		"func registerSchedulerComponent(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",
+		"func registerCoreComponents(\n\tlm lifecycle.LifecycleManager,\n\tresources coreRegistrationResources,",
+		"func registerTaskFetcherComponent(\n\tlm lifecycle.LifecycleManager,\n\tresources taskFetcherRegistrationResources,",
+		"func registerSchedulerComponent(\n\tlm lifecycle.LifecycleManager,\n\tresources schedulerRegistrationResources,",
 	} {
 		if !strings.Contains(source, marker) {
 			t.Fatalf("component_adapters.go should contain %q", marker)
