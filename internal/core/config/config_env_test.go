@@ -361,9 +361,6 @@ func TestLoadFromBytes_AppliesViperManagedEnvironmentOverrides(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_REDIS_PORT", "6381")
 
 	cfg, err := LoadFromBytes([]byte(strings.Join([]string{
-		"management:",
-		"  clientSecret: \"test-secret\"",
-		"  scopes: [\"user.read\"]",
 		"openai:",
 		"  apiKey: \"test-openai-key\"",
 		"  model: \"gemini-2.5-flash\"",
@@ -400,9 +397,6 @@ func TestConfigManagerLoad_UsesSameEnvironmentOverrideBehavior(t *testing.T) {
 	source := stubConfigSource{
 		name: "memory",
 		data: []byte(strings.Join([]string{
-			"management:",
-			"  clientSecret: \"test-secret\"",
-			"  scopes: [\"user.read\"]",
 			"openai:",
 			"  apiKey: \"test-openai-key\"",
 			"  model: \"gemini-2.5-flash\"",
@@ -426,6 +420,14 @@ func TestConfigManagerLoad_UsesSameEnvironmentOverrideBehavior(t *testing.T) {
 	assert.False(t, cfg.Browser.Headless)
 	assert.Equal(t, 19, cfg.Worker.Concurrency)
 	assert.True(t, cfg.Platforms.Temu.Enabled)
+}
+
+func TestConfigFixturesDoNotCarryRetiredManagementConfig(t *testing.T) {
+	content, err := os.ReadFile("config_env_test.go")
+	require.NoError(t, err)
+
+	retiredManagementBlock := "manage" + "ment:"
+	require.NotContains(t, string(content), `"`+retiredManagementBlock+`"`)
 }
 
 func TestDotEnvCandidatesForConfig_PrioritizesScopedEnvFile(t *testing.T) {
@@ -472,12 +474,6 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config-test.yaml")
 	configBody := strings.Join([]string{
-		"management:",
-		"  baseURL: \"http://example.com\"",
-		"  clientID: \"test-client\"",
-		"  clientSecret: \"test-secret\"",
-		"  tokenURL: \"http://example.com/token\"",
-		"  scopes: [\"user.read\"]",
 		"openai:",
 		"  apiKey: \"test-openai-key\"",
 		"  model: \"gemini-2.5-flash\"",
