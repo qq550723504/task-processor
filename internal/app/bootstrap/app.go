@@ -31,10 +31,22 @@ type appServices struct {
 }
 
 type appServiceResources struct {
+	processorService  processorServiceResources
+	schedulerService  schedulerServiceResources
+	platformProcessor platformProcessorResources
+	rabbitmqClient    *rabbitmq.Client
+}
+
+type processorServiceResources struct {
 	rawJSONDataClient product.RawJsonDataClient
 	processorRuntime  consumer.ProcessorRuntime
 	scheduler         consumer.SchedulerResources
 	rabbitmqClient    *rabbitmq.Client
+}
+
+type schedulerServiceResources struct {
+	scheduler      consumer.SchedulerResources
+	rabbitmqClient *rabbitmq.Client
 }
 
 type ApplicationBootstrap struct {
@@ -159,25 +171,38 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 }
 
 func newAppServiceResources(resources bootstrapresources.SharedResources) appServiceResources {
+	scheduler := resources.Scheduler()
+	rabbitmqClient := resources.RabbitMQClient()
+	rawJSONDataClient := resources.RawJSONDataClient()
+	processorRuntime := resources.ProcessorRuntime()
+
 	return appServiceResources{
-		rawJSONDataClient: resources.RawJSONDataClient(),
-		processorRuntime:  resources.ProcessorRuntime(),
-		scheduler:         resources.Scheduler(),
-		rabbitmqClient:    resources.RabbitMQClient(),
+		processorService: processorServiceResources{
+			rawJSONDataClient: rawJSONDataClient,
+			processorRuntime:  processorRuntime,
+			scheduler:         scheduler,
+			rabbitmqClient:    rabbitmqClient,
+		},
+		schedulerService: schedulerServiceResources{
+			scheduler:      scheduler,
+			rabbitmqClient: rabbitmqClient,
+		},
+		platformProcessor: newPlatformProcessorResources(rawJSONDataClient, processorRuntime, scheduler.CrawlSource(), rabbitmqClient),
+		rabbitmqClient:    rabbitmqClient,
 	}
 }
 
 func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources appServiceResources) *appServices {
 	return &appServices{
 		cfg:                cfg,
-		processorResources: newPlatformProcessorResources(resources),
+		processorResources: resources.platformProcessor,
 		rabbitmqClient:     resources.rabbitmqClient,
-		processorService:   buildProcessorService(logger, resources),
-		schedulerService:   buildSchedulerService(logger, cfg, resources),
+		processorService:   buildProcessorService(logger, resources.processorService),
+		schedulerService:   buildSchedulerService(logger, cfg, resources.schedulerService),
 	}
 }
 
-func buildProcessorService(logger *logrus.Logger, resources appServiceResources) runner.ProcessorService {
+func buildProcessorService(logger *logrus.Logger, resources processorServiceResources) runner.ProcessorService {
 	return runner.NewProcessorServiceWithCreators(
 		logger,
 		resources.rawJSONDataClient,
@@ -190,7 +215,7 @@ func buildProcessorService(logger *logrus.Logger, resources appServiceResources)
 	)
 }
 
-func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources appServiceResources) runner.SchedulerService {
+func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources schedulerServiceResources) runner.SchedulerService {
 	return runner.NewSchedulerServiceWithDependencies(
 		logger,
 		resources.scheduler.Runtime(),

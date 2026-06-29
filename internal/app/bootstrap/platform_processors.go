@@ -26,12 +26,12 @@ type platformProcessorResources struct {
 	rabbitmqClient    *rabbitmq.Client
 }
 
-func newPlatformProcessorResources(resources appServiceResources) platformProcessorResources {
+func newPlatformProcessorResources(rawJSONDataClient product.RawJsonDataClient, processorRuntime consumer.ProcessorRuntime, crawlSource ports.CrawlSource, rabbitmqClient *rabbitmq.Client) platformProcessorResources {
 	return platformProcessorResources{
-		rawJSONDataClient: resources.rawJSONDataClient,
-		processorRuntime:  resources.processorRuntime,
-		crawlSource:       resources.scheduler.CrawlSource(),
-		rabbitmqClient:    resources.rabbitmqClient,
+		rawJSONDataClient: rawJSONDataClient,
+		processorRuntime:  processorRuntime,
+		crawlSource:       crawlSource,
+		rabbitmqClient:    rabbitmqClient,
 	}
 }
 
