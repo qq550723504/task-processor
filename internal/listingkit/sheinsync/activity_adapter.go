@@ -42,6 +42,14 @@ type SheinPromotionBridge interface {
 	RegisterPromotionProducts(ctx context.Context, strategy *SheinPromotionStrategy, activityKey string, products []marketing.SkcInfo) (*SheinPromotionRegistrationResult, error)
 }
 
+type SheinPromotionRegistrationSession interface {
+	RegisterPromotionProducts(ctx context.Context, activityKey string, products []marketing.SkcInfo) (*SheinPromotionRegistrationResult, error)
+}
+
+type SheinPromotionBridgeSessionStarter interface {
+	StartPromotionRegistrationSession(ctx context.Context, strategy *SheinPromotionStrategy, activityKey string) (SheinPromotionRegistrationSession, error)
+}
+
 type sheinActivityAdapter struct {
 	strategyProvider       SheinPromotionStrategyProvider
 	promotionBridge        SheinPromotionBridge
@@ -78,10 +86,19 @@ func (a *sheinActivityAdapter) EnrollCandidates(
 	case "PROMOTION":
 		return a.enrollPromotionCandidates(ctx, storeID, activityKey, "", candidates)
 	case "TIME_LIMITED":
-		return a.enrollPromotionCandidates(ctx, storeID, activityKey, activityKey, candidates)
+		return a.enrollTimeLimitedPromotionCandidates(ctx, storeID, activityKey, candidates)
 	default:
 		return nil, fmt.Errorf("unsupported SHEIN activity type %q", activityType)
 	}
+}
+
+func buildTimeLimitedBridgeActivityKey(activityKey string, candidates []SheinActivityEnrollmentCandidate) string {
+	parts := make([]string, 0, len(candidates)+1)
+	parts = append(parts, strings.TrimSpace(activityKey))
+	for _, candidate := range candidates {
+		parts = append(parts, fmt.Sprintf("%d", candidate.CandidateID))
+	}
+	return strings.Join(parts, ":")
 }
 
 func (a *sheinActivityAdapter) enrollPromotionCandidates(
@@ -113,6 +130,106 @@ func (a *sheinActivityAdapter) enrollPromotionCandidates(
 		return nil, err
 	}
 
+	return registerPromotionCandidatesWithBridge(ctx, bridge, strategy, bridgeActivityKey, candidates)
+}
+
+func (a *sheinActivityAdapter) enrollTimeLimitedPromotionCandidates(
+	ctx context.Context,
+	storeID int64,
+	activityKey string,
+	candidates []SheinActivityEnrollmentCandidate,
+) ([]SheinActivityEnrollmentResult, error) {
+	if a == nil || a.strategyProvider == nil {
+		return nil, fmt.Errorf("SHEIN promotion strategy provider is required")
+	}
+	if activityKey == "" {
+		return nil, fmt.Errorf("SHEIN promotion activity key is required")
+	}
+	bridge, err := a.resolvePromotionBridge(ctx, storeID)
+	if err != nil {
+		return nil, err
+	}
+
+	strategy, err := a.strategyProvider.GetPromotionStrategy(ctx, storeID, activityKey)
+	if err != nil {
+		return nil, err
+	}
+	if strategy == nil {
+		return nil, fmt.Errorf("SHEIN promotion strategy is required")
+	}
+	if err := strategy.ValidateForPromotionEnrollment(); err != nil {
+		return nil, err
+	}
+
+	var session SheinPromotionRegistrationSession
+	if starter, ok := bridge.(SheinPromotionBridgeSessionStarter); ok {
+		session, err = starter.StartPromotionRegistrationSession(ctx, strategy, activityKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	register := func(chunkActivityKey string, chunk []SheinActivityEnrollmentCandidate) ([]SheinActivityEnrollmentResult, error) {
+		if session != nil {
+			return registerPromotionCandidatesWithSession(ctx, session, chunkActivityKey, chunk)
+		}
+		return registerPromotionCandidatesWithBridge(ctx, bridge, strategy, chunkActivityKey, chunk)
+	}
+	return executeTimeLimitedCandidateBatch(activityKey, candidates, register)
+}
+
+type sheinTimeLimitedCandidateRegister func(string, []SheinActivityEnrollmentCandidate) ([]SheinActivityEnrollmentResult, error)
+
+func executeTimeLimitedCandidateBatch(
+	activityKey string,
+	candidates []SheinActivityEnrollmentCandidate,
+	register sheinTimeLimitedCandidateRegister,
+) ([]SheinActivityEnrollmentResult, error) {
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	results, err := register(buildTimeLimitedBridgeActivityKey(activityKey, candidates), candidates)
+	if err == nil {
+		return results, nil
+	}
+	if len(candidates) <= 1 {
+		return ensureSheinEnrollmentSingleCandidateResult(candidates, results, err), nil
+	}
+
+	mid := len(candidates) / 2
+	leftResults, leftErr := executeTimeLimitedCandidateBatch(activityKey, candidates[:mid], register)
+	rightResults, rightErr := executeTimeLimitedCandidateBatch(activityKey, candidates[mid:], register)
+	combined := append(leftResults, rightResults...)
+	if len(combined) > 0 {
+		return combined, nil
+	}
+	return combined, joinSheinEnrollmentErrors(leftErr, rightErr)
+}
+
+func registerPromotionCandidatesWithBridge(
+	ctx context.Context,
+	bridge SheinPromotionBridge,
+	strategy *SheinPromotionStrategy,
+	bridgeActivityKey string,
+	candidates []SheinActivityEnrollmentCandidate,
+) ([]SheinActivityEnrollmentResult, error) {
+	products, productBySKC := buildPromotionCandidateProducts(candidates)
+	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy, bridgeActivityKey, products)
+	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC), bridgeErr
+}
+
+func registerPromotionCandidatesWithSession(
+	ctx context.Context,
+	session SheinPromotionRegistrationSession,
+	bridgeActivityKey string,
+	candidates []SheinActivityEnrollmentCandidate,
+) ([]SheinActivityEnrollmentResult, error) {
+	products, productBySKC := buildPromotionCandidateProducts(candidates)
+	bridgeResult, bridgeErr := session.RegisterPromotionProducts(ctx, bridgeActivityKey, products)
+	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC), bridgeErr
+}
+
+func buildPromotionCandidateProducts(candidates []SheinActivityEnrollmentCandidate) ([]marketing.SkcInfo, map[string]marketing.SkcInfo) {
 	products := make([]marketing.SkcInfo, 0, len(candidates))
 	productBySKC := make(map[string]marketing.SkcInfo, len(candidates))
 	for _, candidate := range candidates {
@@ -126,9 +243,7 @@ func (a *sheinActivityAdapter) enrollPromotionCandidates(
 	sort.Slice(products, func(i, j int) bool {
 		return products[i].Skc < products[j].Skc
 	})
-
-	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy, bridgeActivityKey, products)
-	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC), bridgeErr
+	return products, productBySKC
 }
 
 func (a *sheinActivityAdapter) resolvePromotionBridge(ctx context.Context, storeID int64) (SheinPromotionBridge, error) {

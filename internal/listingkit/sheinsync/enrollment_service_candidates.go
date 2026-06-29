@@ -74,12 +74,13 @@ func (s *sheinEnrollmentService) listCandidatesByPage(
 	items := make([]SheinActivityCandidateRecord, 0)
 	for {
 		rows, total, err := s.repo.ListCandidates(ctx, &SheinActivityCandidateQuery{
-			TenantID:     tenantID,
-			StoreID:      storeID,
-			ActivityType: activityType,
-			ActivityKey:  activityKey,
-			Page:         page,
-			PageSize:     maxSheinEnrollmentCandidatePageSize,
+			TenantID:       tenantID,
+			StoreID:        storeID,
+			ActivityType:   activityType,
+			ActivityKey:    activityKey,
+			ExecutableOnly: true,
+			Page:           page,
+			PageSize:       maxSheinEnrollmentCandidatePageSize,
 		})
 		if err != nil {
 			return nil, err

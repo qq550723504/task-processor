@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
 	"task-processor/internal/shein/api/marketing"
 
@@ -289,15 +290,74 @@ func TestExecuteSheinActivityEnrollmentManualConfirmedDoesNotRetryFailedCandidat
 	)
 
 	require.NoError(t, err)
-	require.Equal(t, SheinEnrollmentRunStatusFailed, run.Status)
-	require.Equal(t, 1, run.CandidateCount)
+	require.Equal(t, SheinEnrollmentRunStatusSucceeded, run.Status)
+	require.Zero(t, run.CandidateCount)
 	require.Zero(t, run.SubmittedCount)
-	require.Equal(t, 1, run.FailedCount)
+	require.Zero(t, run.FailedCount)
+	require.Len(t, repo.listCandidateQueries, 1)
+	require.True(t, repo.listCandidateQueries[0].ExecutableOnly)
 	require.Empty(t, adapter.calls)
-	require.Len(t, repo.savedItems, 1)
-	require.Equal(t, SheinEnrollmentItemStatusFailed, repo.savedItems[0].Status)
-	require.Contains(t, repo.savedItems[0].ErrorMessage, "review status failed is not executable")
+	require.Empty(t, repo.savedItems)
 	require.Equal(t, SheinCandidateReviewStatusFailed, repo.savedCandidates()[0].ReviewStatus)
+}
+
+func TestExecuteSheinActivityEnrollmentByPageOnlyLoadsExecutableCandidates(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                1,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "TIME_LIMITED",
+			ActivityKey:       "TIME_LIMITED:11:22",
+			SKCName:           "skc-failed",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusFailed,
+		},
+		{
+			ID:                2,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "TIME_LIMITED",
+			ActivityKey:       "TIME_LIMITED:11:22",
+			SKCName:           "skc-pending",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	adapter := &sheinEnrollmentAdapterStub{
+		results: []SheinActivityEnrollmentResult{{CandidateID: 2, Success: true}},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		11,
+		22,
+		"TIME_LIMITED",
+		"TIME_LIMITED:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusSucceeded, run.Status)
+	require.Equal(t, 1, run.CandidateCount)
+	require.Equal(t, 1, run.SubmittedCount)
+	require.Equal(t, 1, run.SucceededCount)
+	require.Zero(t, run.FailedCount)
+	require.Len(t, repo.listCandidateQueries, 1)
+	require.True(t, repo.listCandidateQueries[0].ExecutableOnly)
+	require.Len(t, adapter.calls, 1)
+	require.Equal(t, []int64{2}, sheinEnrollmentCandidateIDs(adapter.calls[0].Candidates))
+	require.Len(t, repo.savedItems, 1)
+	require.Equal(t, int64(2), repo.savedItems[0].CandidateID)
+
+	candidates := repo.savedCandidates()
+	require.Equal(t, SheinCandidateReviewStatusFailed, candidates[0].ReviewStatus)
+	require.Equal(t, SheinCandidateReviewStatusEnrolled, candidates[1].ReviewStatus)
 }
 
 func TestExecuteSheinActivityEnrollmentManualConfirmedSubmitsPendingReviewCandidates(t *testing.T) {
@@ -328,6 +388,7 @@ func TestExecuteSheinActivityEnrollmentManualConfirmedSubmitsPendingReviewCandid
 		"PROMOTION",
 		"PROMOTION:11:22",
 		SheinEnrollmentRunTriggerModeManualConfirmed,
+		1,
 	)
 
 	require.NoError(t, err)
@@ -593,6 +654,7 @@ func TestExecuteSheinActivityEnrollmentMarksRunFailedWhenCandidatesExistButNoneE
 		"PROMOTION",
 		"PROMOTION:11:22",
 		SheinEnrollmentRunTriggerModeManualConfirmed,
+		1,
 	)
 
 	require.NoError(t, err)
@@ -608,6 +670,201 @@ func TestExecuteSheinActivityEnrollmentMarksRunFailedWhenCandidatesExistButNoneE
 	require.Equal(t, SheinEnrollmentItemStatusFailed, repo.savedItems[0].Status)
 	require.Contains(t, repo.savedItems[0].ErrorMessage, "review status rejected is not executable")
 	require.Equal(t, SheinCandidateReviewStatusRejected, repo.savedCandidates()[0].ReviewStatus)
+}
+
+func TestExecuteSheinActivityEnrollmentPersistsTimeLimitedBatchFallbackResultsFromAdapter(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                1,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "TIME_LIMITED",
+			ActivityKey:       "TIME_LIMITED:11:22",
+			SKCName:           "skc-ok-1",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusPendingReview,
+		},
+		{
+			ID:                2,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "TIME_LIMITED",
+			ActivityKey:       "TIME_LIMITED:11:22",
+			SKCName:           "skc-bad",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusPendingReview,
+		},
+		{
+			ID:                3,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "TIME_LIMITED",
+			ActivityKey:       "TIME_LIMITED:11:22",
+			SKCName:           "skc-ok-2",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	adapter := &sheinEnrollmentAdapterStub{
+		enroll: func(_ context.Context, _ int64, _ string, _ string, candidates []SheinActivityEnrollmentCandidate) ([]SheinActivityEnrollmentResult, error) {
+			return []SheinActivityEnrollmentResult{
+				{
+					CandidateID: candidates[0].CandidateID,
+					Success:     true,
+				},
+				{
+					CandidateID:  candidates[1].CandidateID,
+					Success:      false,
+					ErrorMessage: "创建限时折扣活动失败: 参数无效",
+				},
+				{
+					CandidateID: candidates[2].CandidateID,
+					Success:     true,
+				},
+			}, nil
+		},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		11,
+		22,
+		"TIME_LIMITED",
+		"TIME_LIMITED:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusPartiallySucceeded, run.Status)
+	require.Equal(t, 3, run.CandidateCount)
+	require.Equal(t, 3, run.SubmittedCount)
+	require.Equal(t, 2, run.SucceededCount)
+	require.Equal(t, 1, run.FailedCount)
+	require.Len(t, adapter.calls, 1)
+	require.Equal(t, []int64{1, 2, 3}, sheinEnrollmentCandidateIDs(adapter.calls[0].Candidates))
+
+	require.Len(t, repo.savedItems, 3)
+	require.Equal(t, SheinEnrollmentItemStatusSucceeded, repo.savedItems[0].Status)
+	require.Equal(t, SheinEnrollmentItemStatusFailed, repo.savedItems[1].Status)
+	require.Contains(t, repo.savedItems[1].ErrorMessage, "参数无效")
+	require.Equal(t, SheinEnrollmentItemStatusSucceeded, repo.savedItems[2].Status)
+
+	candidates := repo.savedCandidates()
+	require.Equal(t, SheinCandidateReviewStatusEnrolled, candidates[0].ReviewStatus)
+	require.Equal(t, SheinCandidateReviewStatusFailed, candidates[1].ReviewStatus)
+	require.Equal(t, SheinCandidateReviewStatusEnrolled, candidates[2].ReviewStatus)
+}
+
+func TestExecuteSheinActivityEnrollmentPersistsOutcomeAfterRequestContextCanceled(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                1,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "TIME_LIMITED",
+			ActivityKey:       "TIME_LIMITED:11:22",
+			SKCName:           "skc-ok",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	repo.respectContextCancellation = true
+	adapter := &sheinEnrollmentAdapterStub{
+		enroll: func(_ context.Context, _ int64, _ string, _ string, candidates []SheinActivityEnrollmentCandidate) ([]SheinActivityEnrollmentResult, error) {
+			cancel()
+			return []SheinActivityEnrollmentResult{{
+				CandidateID: candidates[0].CandidateID,
+				Success:     true,
+			}}, nil
+		},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		ctx,
+		11,
+		22,
+		"TIME_LIMITED",
+		"TIME_LIMITED:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusSucceeded, run.Status)
+	require.Len(t, repo.updatedRuns, 1)
+	require.Equal(t, SheinEnrollmentRunStatusSucceeded, repo.updatedRuns[0].Status)
+	require.Len(t, repo.savedItems, 1)
+	require.Equal(t, SheinEnrollmentItemStatusSucceeded, repo.savedItems[0].Status)
+	require.Equal(t, SheinCandidateReviewStatusEnrolled, repo.savedCandidates()[0].ReviewStatus)
+}
+
+func TestStartSheinActivityEnrollmentRunsInBackgroundAfterRequestContextCanceled(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                1,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "TIME_LIMITED",
+			ActivityKey:       "TIME_LIMITED:11:22",
+			SKCName:           "skc-ok",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	repo.respectContextCancellation = true
+	adapterCalled := make(chan struct{})
+	adapter := &sheinEnrollmentAdapterStub{
+		enroll: func(ctx context.Context, _ int64, _ string, _ string, candidates []SheinActivityEnrollmentCandidate) ([]SheinActivityEnrollmentResult, error) {
+			cancel()
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			close(adapterCalled)
+			return []SheinActivityEnrollmentResult{{
+				CandidateID: candidates[0].CandidateID,
+				Success:     true,
+			}}, nil
+		},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.StartSheinActivityEnrollment(
+		ctx,
+		11,
+		22,
+		"TIME_LIMITED",
+		"TIME_LIMITED:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusRunning, run.Status)
+	select {
+	case <-adapterCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("adapter was not called")
+	}
+	require.Eventually(t, func() bool {
+		candidates := repo.savedCandidates()
+		return len(repo.savedItems) == 1 &&
+			repo.savedItems[0].Status == SheinEnrollmentItemStatusSucceeded &&
+			len(candidates) == 1 &&
+			candidates[0].ReviewStatus == SheinCandidateReviewStatusEnrolled
+	}, 2*time.Second, 10*time.Millisecond)
 }
 
 func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *testing.T) {
@@ -725,9 +982,57 @@ func TestSheinActivityAdapterSupportsTimeLimitedEnrollment(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, bridge.calls, 1)
-	require.Equal(t, "TIME_LIMITED:11:22", bridge.calls[0].ActivityKey)
+	require.Equal(t, "TIME_LIMITED:11:22:1", bridge.calls[0].ActivityKey)
 	require.Len(t, results, 1)
 	require.True(t, results[0].Success)
+}
+
+func TestSheinActivityAdapterTimeLimitedBatchFallbackReusesPromotionSession(t *testing.T) {
+	t.Parallel()
+
+	strategyProvider := &sheinPromotionStrategyProviderStub{
+		strategy: NewSheinPromotionStrategy(SheinPromotionStrategyInput{
+			StoreID:              22,
+			ActivityPriceMode:    "DISCOUNT",
+			ActivityDiscountRate: 0.2,
+			ActivityStockRatio:   0.5,
+		}),
+	}
+	bridge := &sheinPromotionSessionBridgeStub{}
+	adapter := newSheinActivityAdapter(strategyProvider, bridge)
+
+	results, err := adapter.EnrollCandidates(
+		context.Background(),
+		22,
+		"TIME_LIMITED",
+		"TIME_LIMITED:11:22",
+		[]SheinActivityEnrollmentCandidate{
+			{
+				CandidateID:       1,
+				SKCName:           "skc-one",
+				PriceSnapshot:     `{"sale_price":29.9,"currency":"USD"}`,
+				InventorySnapshot: `{"available":10}`,
+			},
+			{
+				CandidateID:       2,
+				SKCName:           "skc-two",
+				PriceSnapshot:     `{"sale_price":39.9,"currency":"USD"}`,
+				InventorySnapshot: `{"available":10}`,
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.True(t, results[0].Success)
+	require.True(t, results[1].Success)
+	require.Equal(t, 1, bridge.sessionStarts)
+	require.Zero(t, bridge.directCalls)
+	require.Equal(t, [][]string{
+		{"skc-one", "skc-two"},
+		{"skc-one"},
+		{"skc-two"},
+	}, bridge.session.productSKCs)
 }
 
 func TestSheinActivityAdapterRejectsInvalidPromotionDiscountStrategy(t *testing.T) {
@@ -814,8 +1119,9 @@ type sheinEnrollmentRepoStub struct {
 	listCandidateQueries     []SheinActivityCandidateQuery
 	listSyncedProductQueries []SheinSyncedProductQuery
 
-	saveItemsErr      error
-	saveCandidatesErr error
+	saveItemsErr               error
+	saveCandidatesErr          error
+	respectContextCancellation bool
 }
 
 func newSheinEnrollmentRepoStub(seed []SheinActivityCandidateRecord) *sheinEnrollmentRepoStub {
@@ -857,6 +1163,9 @@ func (r *sheinEnrollmentRepoStub) ListCandidates(_ context.Context, query *Shein
 			if len(query.CandidateIDs) > 0 && !containsSheinEnrollmentID(query.CandidateIDs, row.ID) {
 				continue
 			}
+			if query.ExecutableOnly && !isExecutableSheinEnrollmentQueryCandidate(row) {
+				continue
+			}
 		}
 		items = append(items, cloneSheinEnrollmentCandidate(row))
 	}
@@ -866,7 +1175,10 @@ func (r *sheinEnrollmentRepoStub) ListCandidates(_ context.Context, query *Shein
 	return items, int64(len(items)), nil
 }
 
-func (r *sheinEnrollmentRepoStub) SaveCandidates(_ context.Context, records []*SheinActivityCandidateRecord) error {
+func (r *sheinEnrollmentRepoStub) SaveCandidates(ctx context.Context, records []*SheinActivityCandidateRecord) error {
+	if r.respectContextCancellation && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -949,7 +1261,10 @@ func (r *sheinEnrollmentRepoStub) CreateEnrollmentRun(_ context.Context, run *Sh
 	return nil
 }
 
-func (r *sheinEnrollmentRepoStub) UpdateEnrollmentRun(_ context.Context, run *SheinActivityEnrollmentRunRecord) error {
+func (r *sheinEnrollmentRepoStub) UpdateEnrollmentRun(ctx context.Context, run *SheinActivityEnrollmentRunRecord) error {
+	if r.respectContextCancellation && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -966,7 +1281,10 @@ func (r *sheinEnrollmentRepoStub) ListEnrollmentRuns(_ context.Context, _ *Shein
 	return items, int64(len(items)), nil
 }
 
-func (r *sheinEnrollmentRepoStub) SaveEnrollmentItems(_ context.Context, items []*SheinActivityEnrollmentItemRecord) error {
+func (r *sheinEnrollmentRepoStub) SaveEnrollmentItems(ctx context.Context, items []*SheinActivityEnrollmentItemRecord) error {
+	if r.respectContextCancellation && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -1005,6 +1323,7 @@ type sheinEnrollmentAdapterStub struct {
 	calls   []sheinEnrollmentAdapterCall
 	results []SheinActivityEnrollmentResult
 	err     error
+	enroll  func(context.Context, int64, string, string, []SheinActivityEnrollmentCandidate) ([]SheinActivityEnrollmentResult, error)
 }
 
 type sheinEnrollmentAdapterCall struct {
@@ -1015,7 +1334,7 @@ type sheinEnrollmentAdapterCall struct {
 }
 
 func (s *sheinEnrollmentAdapterStub) EnrollCandidates(
-	_ context.Context,
+	ctx context.Context,
 	storeID int64,
 	activityType string,
 	activityKey string,
@@ -1027,6 +1346,9 @@ func (s *sheinEnrollmentAdapterStub) EnrollCandidates(
 		ActivityKey:  activityKey,
 		Candidates:   append([]SheinActivityEnrollmentCandidate(nil), candidates...),
 	})
+	if s.enroll != nil {
+		return s.enroll(ctx, storeID, activityType, activityKey, candidates)
+	}
 	return append([]SheinActivityEnrollmentResult(nil), s.results...), s.err
 }
 
@@ -1043,6 +1365,55 @@ type sheinPromotionBridgeStub struct {
 	calls  []sheinPromotionBridgeCall
 	result *SheinPromotionRegistrationResult
 	err    error
+}
+
+type sheinPromotionSessionBridgeStub struct {
+	sessionStarts int
+	directCalls   int
+	session       *sheinPromotionRegistrationSessionStub
+}
+
+func (s *sheinPromotionSessionBridgeStub) RegisterPromotionProducts(
+	_ context.Context,
+	_ *SheinPromotionStrategy,
+	_ string,
+	_ []marketing.SkcInfo,
+) (*SheinPromotionRegistrationResult, error) {
+	s.directCalls++
+	return nil, errors.New("direct bridge should not be used when session is available")
+}
+
+func (s *sheinPromotionSessionBridgeStub) StartPromotionRegistrationSession(
+	_ context.Context,
+	_ *SheinPromotionStrategy,
+	_ string,
+) (SheinPromotionRegistrationSession, error) {
+	s.sessionStarts++
+	s.session = &sheinPromotionRegistrationSessionStub{}
+	return s.session, nil
+}
+
+type sheinPromotionRegistrationSessionStub struct {
+	productSKCs [][]string
+}
+
+func (s *sheinPromotionRegistrationSessionStub) RegisterPromotionProducts(
+	_ context.Context,
+	_ string,
+	products []marketing.SkcInfo,
+) (*SheinPromotionRegistrationResult, error) {
+	s.productSKCs = append(s.productSKCs, sheinPromotionBridgeSKCs(products))
+	request := &marketing.CreateActivityRequest{
+		AddCostAndStockInfoList: make([]marketing.CostAndStockInfo, 0, len(products)),
+	}
+	for _, product := range products {
+		request.AddCostAndStockInfoList = append(request.AddCostAndStockInfoList, marketing.CostAndStockInfo{Skc: product.Skc})
+	}
+	result := &SheinPromotionRegistrationResult{ActivityRequest: request}
+	if len(products) > 1 {
+		return result, errors.New("batch rejected")
+	}
+	return result, nil
 }
 
 type sheinPromotionBridgeCall struct {
@@ -1072,6 +1443,28 @@ func sheinEnrollmentCandidateIDs(candidates []SheinActivityEnrollmentCandidate) 
 		ids = append(ids, candidate.CandidateID)
 	}
 	return ids
+}
+
+func sheinEnrollmentAdapterCallCandidateIDSets(calls []sheinEnrollmentAdapterCall) [][]int64 {
+	sets := make([][]int64, 0, len(calls))
+	for _, call := range calls {
+		sets = append(sets, sheinEnrollmentCandidateIDs(call.Candidates))
+	}
+	return sets
+}
+
+func isExecutableSheinEnrollmentQueryCandidate(row SheinActivityCandidateRecord) bool {
+	if row.EligibilityStatus != SheinCandidateEligibilityStatusEligible {
+		return false
+	}
+	switch row.ReviewStatus {
+	case SheinCandidateReviewStatusPendingReview,
+		SheinCandidateReviewStatusApproved,
+		SheinCandidateReviewStatusAutoQueued:
+		return true
+	default:
+		return false
+	}
 }
 
 func cloneSheinEnrollmentCandidate(row SheinActivityCandidateRecord) SheinActivityCandidateRecord {

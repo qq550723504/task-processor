@@ -25,16 +25,82 @@ func (s *activityRegistrationServiceImpl) createPromotionActivityFromProducts(
 		return nil, fmt.Errorf("获取店铺信息失败: %w", err)
 	}
 
-	config := s.buildTimeLimitedDiscountConfig(storeInfo, strategy)
-	applyPromotionCreateConfig(&config, strategy)
-	config.FilterSkcList = selectedPromotionSKCs(products)
-	if validateErr := config.Validate(); validateErr != nil {
-		return nil, fmt.Errorf("配置验证失败: %w", validateErr)
-	}
-
+	config := s.buildPromotionCreateConfig(storeInfo, strategy, activityKey, products)
 	allGoods, err := s.queryAllPromotionGoods(config)
 	if err != nil {
 		return nil, fmt.Errorf("查询商品失败: %w", err)
+	}
+	return s.createPromotionActivityFromPreparedGoods(ctx, strategy, config, products, allGoods)
+}
+
+func (s *activityRegistrationServiceImpl) NewPromotionRegistrationSession(
+	ctx context.Context,
+	strategy *listingruntime.OperationStrategy,
+	activityKey string,
+) (PromotionRegistrationSession, error) {
+	if strategy == nil {
+		return nil, fmt.Errorf("operation strategy is required")
+	}
+	storeInfo, err := s.getStoreInfo(ctx, strategy.StoreID)
+	if err != nil {
+		return nil, fmt.Errorf("获取店铺信息失败: %w", err)
+	}
+	config := s.buildPromotionCreateConfig(storeInfo, strategy, activityKey, nil)
+	allGoods, err := s.queryAllPromotionGoods(config)
+	if err != nil {
+		return nil, fmt.Errorf("查询商品失败: %w", err)
+	}
+	return &promotionRegistrationSession{
+		service:   s,
+		strategy:  clonePromotionOperationStrategy(strategy),
+		storeInfo: storeInfo,
+		allGoods:  append([]marketing.PromotionGoodsData(nil), allGoods...),
+	}, nil
+}
+
+type promotionRegistrationSession struct {
+	service   *activityRegistrationServiceImpl
+	strategy  *listingruntime.OperationStrategy
+	storeInfo *listingruntime.StoreInfo
+	allGoods  []marketing.PromotionGoodsData
+}
+
+func (s *promotionRegistrationSession) RegisterPromotionProducts(
+	ctx context.Context,
+	activityKey string,
+	products []marketing.SkcInfo,
+) (*PromotionRegistrationResult, error) {
+	if s == nil || s.service == nil {
+		return nil, fmt.Errorf("promotion registration session is required")
+	}
+	if len(products) == 0 {
+		return &PromotionRegistrationResult{}, nil
+	}
+	config := s.service.buildPromotionCreateConfig(s.storeInfo, s.strategy, activityKey, products)
+	return s.service.createPromotionActivityFromPreparedGoods(ctx, s.strategy, config, products, s.allGoods)
+}
+
+func (s *activityRegistrationServiceImpl) buildPromotionCreateConfig(
+	storeInfo *listingruntime.StoreInfo,
+	strategy *listingruntime.OperationStrategy,
+	activityKey string,
+	products []marketing.SkcInfo,
+) TimeLimitedDiscountConfig {
+	config := s.buildTimeLimitedDiscountConfig(storeInfo, strategy, activityKey)
+	applyPromotionCreateConfig(&config, strategy)
+	config.FilterSkcList = selectedPromotionSKCs(products)
+	return config
+}
+
+func (s *activityRegistrationServiceImpl) createPromotionActivityFromPreparedGoods(
+	ctx context.Context,
+	strategy *listingruntime.OperationStrategy,
+	config TimeLimitedDiscountConfig,
+	products []marketing.SkcInfo,
+	allGoods []marketing.PromotionGoodsData,
+) (*PromotionRegistrationResult, error) {
+	if validateErr := config.Validate(); validateErr != nil {
+		return nil, fmt.Errorf("配置验证失败: %w", validateErr)
 	}
 	goods := filterPromotionGoodsBySKC(allGoods, config.FilterSkcList)
 	if len(goods) == 0 {
@@ -72,12 +138,20 @@ func (s *activityRegistrationServiceImpl) createPromotionActivityFromProducts(
 	}
 	if createResp != nil && createResp.Info != nil {
 		s.logger.WithFields(logrus.Fields{
-			"activity_key": activityKey,
-			"activity_id":  createResp.Info.ActivityID,
-			"skc_count":    len(createReq.AddCostAndStockInfoList),
+			"activity_name": config.ActivityName,
+			"activity_id":   createResp.Info.ActivityID,
+			"skc_count":     len(createReq.AddCostAndStockInfoList),
 		}).Info("成功创建 SHEIN 促销活动")
 	}
 	return result, nil
+}
+
+func clonePromotionOperationStrategy(source *listingruntime.OperationStrategy) *listingruntime.OperationStrategy {
+	if source == nil {
+		return nil
+	}
+	copied := *source
+	return &copied
 }
 
 func applyPromotionCreateConfig(config *TimeLimitedDiscountConfig, strategy *listingruntime.OperationStrategy) {
@@ -216,10 +290,18 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 
 		skuInfoList := make([]marketing.SkuPriceInfo, 0, len(item.SkuInfoList))
 		for _, sku := range item.SkuInfoList {
+			productPrice := promotionSKUUSSupplyPrice(sku, item.USSupplyPrice)
+			skuActivityPrice := activityPrice
+			if strings.EqualFold(config.PriceMode, "DISCOUNT") {
+				skuActivityPrice = calculatePriceByDiscount(productPrice, config.DiscountRate)
+			}
+			if skuActivityPrice <= 0 {
+				continue
+			}
 			skuInfoList = append(skuInfoList, marketing.SkuPriceInfo{
 				SkuCode:       sku.Sku,
-				ProductPrice:  item.USSupplyPrice,
-				DiscountValue: activityPrice,
+				ProductPrice:  productPrice,
+				DiscountValue: skuActivityPrice,
 			})
 		}
 		if len(skuInfoList) == 0 {

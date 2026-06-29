@@ -33,6 +33,14 @@ type PromotionRegistrationBridge interface {
 	RegisterPromotionProducts(ctx context.Context, strategy *listingruntime.OperationStrategy, activityKey string, products []marketing.SkcInfo) (*PromotionRegistrationResult, error)
 }
 
+type PromotionRegistrationSessionFactory interface {
+	NewPromotionRegistrationSession(ctx context.Context, strategy *listingruntime.OperationStrategy, activityKey string) (PromotionRegistrationSession, error)
+}
+
+type PromotionRegistrationSession interface {
+	RegisterPromotionProducts(ctx context.Context, activityKey string, products []marketing.SkcInfo) (*PromotionRegistrationResult, error)
+}
+
 // activityRegistrationServiceImpl 活动报名服务实现
 type activityRegistrationServiceImpl struct {
 	storeService    listingruntime.StoreService

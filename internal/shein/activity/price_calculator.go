@@ -59,6 +59,26 @@ func calculateProfitRate(salePrice float64, costPrice float64) float64 {
 	return (salePrice - costPrice) / salePrice
 }
 
+func promotionSKUUSSupplyPrice(sku marketing.PromotionSkuInfo, fallback float64) float64 {
+	if sku.USSupplyPrice != nil && *sku.USSupplyPrice > 0 {
+		return *sku.USSupplyPrice
+	}
+	if sku.SupplyPrice != nil && *sku.SupplyPrice > 0 {
+		return *sku.SupplyPrice
+	}
+	return fallback
+}
+
+func promotionSKUMaxUSSupplyPrice(sku marketing.PromotionSkuInfo, fallback float64) float64 {
+	if sku.MaxUSSupplyPrice != nil && *sku.MaxUSSupplyPrice > 0 {
+		return *sku.MaxUSSupplyPrice
+	}
+	if sku.MaxSupplyPrice != nil && *sku.MaxSupplyPrice > 0 {
+		return *sku.MaxSupplyPrice
+	}
+	return fallback
+}
+
 // buildCalculateRequestWithPriceMode 根据定价模式构建价格计算请求
 func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 	config TimeLimitedDiscountConfig,
@@ -130,11 +150,23 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 		// 构建SKU价格列表
 		skuInfoList := make([]marketing.SkuPriceInfo, 0, len(g.SkuInfoList))
 		for _, sku := range g.SkuInfoList {
+			productPrice := promotionSKUUSSupplyPrice(sku, g.USSupplyPrice)
+			skuDiscountValue := discountValue
+			if config.PriceMode == "DISCOUNT" {
+				skuDiscountValue = calculatePriceByDiscount(productPrice, config.DiscountRate)
+			}
+			if skuDiscountValue <= 0 {
+				continue
+			}
 			skuInfoList = append(skuInfoList, marketing.SkuPriceInfo{
 				SkuCode:       sku.Sku,
-				ProductPrice:  g.USSupplyPrice,
-				DiscountValue: discountValue,
+				ProductPrice:  productPrice,
+				DiscountValue: skuDiscountValue,
 			})
+		}
+		if len(skuInfoList) == 0 {
+			skippedByZeroPrice++
+			continue
 		}
 
 		skcInfoList = append(skcInfoList, marketing.SkcPriceInfo{

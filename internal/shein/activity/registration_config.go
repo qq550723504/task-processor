@@ -2,7 +2,10 @@
 package activity
 
 import (
+	"fmt"
+	"hash/fnv"
 	"strconv"
+	"strings"
 	"time"
 
 	"task-processor/internal/listingruntime"
@@ -453,12 +456,13 @@ func (s *activityRegistrationServiceImpl) calculateActivityStock(totalStock int,
 func (s *activityRegistrationServiceImpl) buildTimeLimitedDiscountConfig(
 	storeInfo *listingruntime.StoreInfo,
 	strategy *listingruntime.OperationStrategy,
+	activityKey string,
 ) TimeLimitedDiscountConfig {
 	// 获取默认配置
 	config := DefaultTimeLimitedDiscountConfig()
 
-	// 生成活动名称（格式：#用户名#限时折扣#日期#序号）
-	config.ActivityName = GenerateActivityName(storeInfo.Username, 1)
+	// 生成活动名称（格式：#用户名#限时折扣#日期#序号/短后缀）
+	config.ActivityName = GenerateActivityNameForActivityKey(storeInfo.Username, activityKey)
 
 	// 设置活动时间（默认从现在开始，持续7天）
 	now := time.Now()
@@ -515,4 +519,15 @@ func (s *activityRegistrationServiceImpl) buildTimeLimitedDiscountConfig(
 	}).Debug("构建限时折扣配置完成")
 
 	return config
+}
+
+func GenerateActivityNameForActivityKey(username string, activityKey string) string {
+	trimmedKey := strings.TrimSpace(activityKey)
+	if trimmedKey == "" {
+		return GenerateActivityName(username, 1)
+	}
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(trimmedKey))
+	dateStr := time.Now().Format("2006-01-02")
+	return fmt.Sprintf("#%s#限时折扣#%s#%08x", username, dateStr, hash.Sum32())
 }

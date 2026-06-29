@@ -33,11 +33,46 @@ func (s *sheinEnrollmentService) ExecuteSheinActivityEnrollment(
 	triggerMode SheinEnrollmentRunTriggerMode,
 	candidateIDs ...int64,
 ) (*SheinActivityEnrollmentRunRecord, error) {
-	if err := s.validate(); err != nil {
+	run, candidates, err := s.prepareSheinActivityEnrollmentRun(ctx, tenantID, storeID, activityType, activityKey, triggerMode, candidateIDs...)
+	if err != nil {
 		return nil, err
 	}
+	return s.completeSheinActivityEnrollmentRun(ctx, run, candidates)
+}
+
+func (s *sheinEnrollmentService) StartSheinActivityEnrollment(
+	ctx context.Context,
+	tenantID, storeID int64,
+	activityType string,
+	activityKey string,
+	triggerMode SheinEnrollmentRunTriggerMode,
+	candidateIDs ...int64,
+) (*SheinActivityEnrollmentRunRecord, error) {
+	run, candidates, err := s.prepareSheinActivityEnrollmentRun(ctx, tenantID, storeID, activityType, activityKey, triggerMode, candidateIDs...)
+	if err != nil {
+		return nil, err
+	}
+	runSnapshot := *run
+	candidateSnapshot := cloneSheinEnrollmentCandidateRecords(candidates)
+	go func() {
+		_, _ = s.completeSheinActivityEnrollmentRun(context.WithoutCancel(ctx), &runSnapshot, candidateSnapshot)
+	}()
+	return run, nil
+}
+
+func (s *sheinEnrollmentService) prepareSheinActivityEnrollmentRun(
+	ctx context.Context,
+	tenantID, storeID int64,
+	activityType string,
+	activityKey string,
+	triggerMode SheinEnrollmentRunTriggerMode,
+	candidateIDs ...int64,
+) (*SheinActivityEnrollmentRunRecord, []SheinActivityCandidateRecord, error) {
+	if err := s.validate(); err != nil {
+		return nil, nil, err
+	}
 	if activityType == "" {
-		return nil, fmt.Errorf("SHEIN enrollment activity type is required")
+		return nil, nil, fmt.Errorf("SHEIN enrollment activity type is required")
 	}
 	if activityKey == "" {
 		activityKey = buildSheinActivityKey(activityType, tenantID, storeID)
@@ -45,11 +80,11 @@ func (s *sheinEnrollmentService) ExecuteSheinActivityEnrollment(
 
 	candidates, err := s.listCandidates(ctx, tenantID, storeID, activityType, activityKey, candidateIDs)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	candidates, err = s.refreshCandidateCostOverrides(ctx, tenantID, storeID, candidates)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	startedAt := time.Now().UTC()
@@ -64,11 +99,19 @@ func (s *sheinEnrollmentService) ExecuteSheinActivityEnrollment(
 		StartedAt:      &startedAt,
 	}
 	if err := s.repo.CreateEnrollmentRun(ctx, run); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	executable, duplicateResults, nonExecutableResults := filterExecutableSheinCandidates(candidates, triggerMode)
-	results, adapterErr := s.executeCandidates(ctx, storeID, activityType, activityKey, executable)
+	return run, candidates, nil
+}
+
+func (s *sheinEnrollmentService) completeSheinActivityEnrollmentRun(
+	ctx context.Context,
+	run *SheinActivityEnrollmentRunRecord,
+	candidates []SheinActivityCandidateRecord,
+) (*SheinActivityEnrollmentRunRecord, error) {
+	executable, duplicateResults, nonExecutableResults := filterExecutableSheinCandidates(candidates, run.TriggerMode)
+	results, adapterErr := s.executeCandidates(ctx, run.StoreID, run.ActivityType, run.ActivityKey, executable)
 	candidateResultByID := mapSheinEnrollmentResults(executable, results, adapterErr)
 	for candidateID, result := range duplicateResults {
 		candidateResultByID[candidateID] = result
@@ -77,7 +120,7 @@ func (s *sheinEnrollmentService) ExecuteSheinActivityEnrollment(
 	for candidateID, result := range nonExecutableResults {
 		itemResultByID[candidateID] = result
 	}
-	items := buildSheinEnrollmentItems(run.ID, storeID, candidates, itemResultByID)
+	items := buildSheinEnrollmentItems(run.ID, run.StoreID, candidates, itemResultByID)
 	mutatedCandidates := buildSheinEnrollmentCandidateUpdates(candidates, candidateResultByID)
 
 	run.SubmittedCount = len(executable)
@@ -112,6 +155,15 @@ func (s *sheinEnrollmentService) validate() error {
 	}
 }
 
+func cloneSheinEnrollmentCandidateRecords(source []SheinActivityCandidateRecord) []SheinActivityCandidateRecord {
+	if len(source) == 0 {
+		return nil
+	}
+	copied := make([]SheinActivityCandidateRecord, len(source))
+	copy(copied, source)
+	return copied
+}
+
 func (s *sheinEnrollmentService) executeCandidates(
 	ctx context.Context,
 	storeID int64,
@@ -138,4 +190,25 @@ func (s *sheinEnrollmentService) executeCandidates(
 		})
 	}
 	return s.adapter.EnrollCandidates(ctx, storeID, activityType, activityKey, payload)
+}
+
+func ensureSheinEnrollmentSingleCandidateResult(
+	candidates []SheinActivityEnrollmentCandidate,
+	results []SheinActivityEnrollmentResult,
+	err error,
+) []SheinActivityEnrollmentResult {
+	if len(candidates) != 1 || err == nil {
+		return results
+	}
+	candidateID := candidates[0].CandidateID
+	for _, result := range results {
+		if result.CandidateID == candidateID {
+			return results
+		}
+	}
+	return append(results, SheinActivityEnrollmentResult{
+		CandidateID:  candidateID,
+		Success:      false,
+		ErrorMessage: err.Error(),
+	})
 }

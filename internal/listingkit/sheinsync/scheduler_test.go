@@ -84,6 +84,10 @@ func (s *stubSheinSchedulerEnrollmentService) ExecuteSheinActivityEnrollment(con
 	return nil, nil
 }
 
+func (s *stubSheinSchedulerEnrollmentService) StartSheinActivityEnrollment(context.Context, int64, int64, string, string, SheinEnrollmentRunTriggerMode, ...int64) (*SheinActivityEnrollmentRunRecord, error) {
+	return nil, nil
+}
+
 func (s *stubSheinSchedulerEnrollmentService) ExecuteAutoSheinActivityEnrollment(_ context.Context, tenantID, storeID int64, activityType string, activityKey string) (*SheinActivityEnrollmentRunRecord, error) {
 	if s.calls != nil {
 		*s.calls = append(*s.calls, "enroll")

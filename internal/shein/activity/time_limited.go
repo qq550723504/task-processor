@@ -235,18 +235,25 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 
 		// 构建SKU级别的活动价映射（来自第5步计算结果）
 		skuActPriceMap := make(map[string]float64, len(skcCalcResult.SkuInfoList))
+		skuProductPriceMap := make(map[string]float64, len(skcCalcResult.SkuInfoList))
 		for _, skuCalc := range skcCalcResult.SkuInfoList {
 			skuActPriceMap[skuCalc.SkuCode] = skuCalc.PriceInfo.ProductAmount - skuCalc.PriceInfo.PromotionAmount
+			skuProductPriceMap[skuCalc.SkuCode] = skuCalc.PriceInfo.ProductAmount
 		}
 
 		// 构建SKU列表
 		addSkuList := make([]marketing.SkuCostInfo, 0, len(g.SkuInfoList))
 		for _, sku := range g.SkuInfoList {
 			skuActPrice := skuActPriceMap[sku.Sku]
+			skuCostPrice := skuProductPriceMap[sku.Sku]
+			if skuCostPrice <= 0 {
+				skuCostPrice = promotionSKUUSSupplyPrice(sku, g.USSupplyPrice)
+			}
+			skuMaxProductActPrice := promotionSKUMaxUSSupplyPrice(sku, skuCostPrice)
 			addSkuList = append(addSkuList, marketing.SkuCostInfo{
 				Sku:                sku.Sku,
-				CostPrice:          0,
-				MaxProductActPrice: 0,
+				CostPrice:          skuCostPrice,
+				MaxProductActPrice: skuMaxProductActPrice,
 				ProductActPrice:    skuActPrice,
 			})
 		}
@@ -438,7 +445,7 @@ func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
 	}
 
 	// 2. 构建限时折扣配置
-	config := s.buildTimeLimitedDiscountConfig(storeInfo, strategy)
+	config := s.buildTimeLimitedDiscountConfig(storeInfo, strategy, "")
 	//config.FilterSkcList = []string{"sq25082665236416663"} // TODO: 测试完删除
 
 	// 3. 验证配置

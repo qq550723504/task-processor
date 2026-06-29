@@ -99,6 +99,10 @@ func (stubSheinCandidateHandlerService) ReviewCandidate(context.Context, int64, 
 
 type stubSheinEnrollmentHandlerService struct{}
 
+func (stubSheinEnrollmentHandlerService) StartSheinActivityEnrollment(context.Context, int64, int64, string, string, listingkit.SheinEnrollmentRunTriggerMode, ...int64) (*listingkit.SheinActivityEnrollmentRunRecord, error) {
+	return nil, nil
+}
+
 func (stubSheinEnrollmentHandlerService) ExecuteSheinActivityEnrollment(context.Context, int64, int64, string, string, listingkit.SheinEnrollmentRunTriggerMode, ...int64) (*listingkit.SheinActivityEnrollmentRunRecord, error) {
 	return nil, nil
 }

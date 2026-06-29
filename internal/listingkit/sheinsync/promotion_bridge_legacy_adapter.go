@@ -24,7 +24,7 @@ func wrapLegacyPromotionBridge(bridge activity.PromotionRegistrationBridge) Shei
 	if bridge == nil {
 		return nil
 	}
-	return legacyPromotionBridgeAdapter{bridge: bridge}
+	return &legacyPromotionBridgeAdapter{bridge: bridge}
 }
 
 func wrapLegacyPromotionBridgeFactory(factory LegacySheinPromotionBridgeFactory) SheinPromotionBridgeFactory {
@@ -38,8 +38,46 @@ type legacyPromotionBridgeAdapter struct {
 	bridge activity.PromotionRegistrationBridge
 }
 
-func (a legacyPromotionBridgeAdapter) RegisterPromotionProducts(ctx context.Context, strategy *SheinPromotionStrategy, activityKey string, products []marketing.SkcInfo) (*SheinPromotionRegistrationResult, error) {
+func (a *legacyPromotionBridgeAdapter) RegisterPromotionProducts(ctx context.Context, strategy *SheinPromotionStrategy, activityKey string, products []marketing.SkcInfo) (*SheinPromotionRegistrationResult, error) {
 	result, err := a.bridge.RegisterPromotionProducts(ctx, strategy.runtimeOperationStrategy(), activityKey, products)
+	if result == nil {
+		return nil, err
+	}
+	return &SheinPromotionRegistrationResult{
+		Request:          result.Request,
+		Response:         result.Response,
+		ActivityRequest:  result.ActivityRequest,
+		ActivityResponse: result.ActivityResponse,
+		FilterReasons:    result.FilterReasons,
+	}, err
+}
+
+func (a *legacyPromotionBridgeAdapter) StartPromotionRegistrationSession(
+	ctx context.Context,
+	strategy *SheinPromotionStrategy,
+	activityKey string,
+) (SheinPromotionRegistrationSession, error) {
+	factory, ok := a.bridge.(activity.PromotionRegistrationSessionFactory)
+	if !ok {
+		return nil, nil
+	}
+	session, err := factory.NewPromotionRegistrationSession(ctx, strategy.runtimeOperationStrategy(), activityKey)
+	if err != nil || session == nil {
+		return nil, err
+	}
+	return legacyPromotionRegistrationSessionAdapter{session: session}, nil
+}
+
+type legacyPromotionRegistrationSessionAdapter struct {
+	session activity.PromotionRegistrationSession
+}
+
+func (a legacyPromotionRegistrationSessionAdapter) RegisterPromotionProducts(
+	ctx context.Context,
+	activityKey string,
+	products []marketing.SkcInfo,
+) (*SheinPromotionRegistrationResult, error) {
+	result, err := a.session.RegisterPromotionProducts(ctx, activityKey, products)
 	if result == nil {
 		return nil, err
 	}
@@ -61,7 +99,7 @@ func (a legacyPromotionBridgeFactoryAdapter) BuildPromotionBridge(ctx context.Co
 	if err != nil || bridge == nil {
 		return nil, err
 	}
-	return legacyPromotionBridgeAdapter{bridge: bridge}, nil
+	return &legacyPromotionBridgeAdapter{bridge: bridge}, nil
 }
 
 func (s *SheinPromotionStrategy) runtimeOperationStrategy() *listingruntime.OperationStrategy {

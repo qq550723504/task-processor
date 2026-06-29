@@ -12,6 +12,7 @@ func (s *sheinEnrollmentService) persistEnrollmentOutcome(
 	items []*SheinActivityEnrollmentItemRecord,
 	candidates []*SheinActivityCandidateRecord,
 ) error {
+	ctx = context.WithoutCancel(ctx)
 	initialRunUpdateErr := s.bestEffortUpdateEnrollmentRun(ctx, run)
 
 	persistErrs := make([]error, 0, 2)

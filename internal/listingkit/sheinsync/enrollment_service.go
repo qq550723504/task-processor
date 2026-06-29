@@ -5,6 +5,14 @@ import (
 )
 
 type SheinEnrollmentService interface {
+	StartSheinActivityEnrollment(
+		ctx context.Context,
+		tenantID, storeID int64,
+		activityType string,
+		activityKey string,
+		triggerMode SheinEnrollmentRunTriggerMode,
+		candidateIDs ...int64,
+	) (*SheinActivityEnrollmentRunRecord, error)
 	ExecuteSheinActivityEnrollment(
 		ctx context.Context,
 		tenantID, storeID int64,

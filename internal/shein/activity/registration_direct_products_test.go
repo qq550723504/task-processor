@@ -191,6 +191,296 @@ func TestRegisterPromotionProductsCreatesActivityWhenActivityKeyIsProvided(t *te
 	}
 }
 
+func TestRegisterPromotionProductsUsesActivityKeyInTimeLimitedActivityName(t *testing.T) {
+	newService := func() (*activityRegistrationServiceImpl, *promotionProductsMarketingAPIStub) {
+		api := &promotionProductsMarketingAPIStub{
+			promotionGoods: []marketing.PromotionGoodsData{
+				{
+					Skc:              "sg-create",
+					IsSaleAttribute:  1,
+					InventoryNum:     100,
+					USSupplyPrice:    30,
+					MaxUSSupplyPrice: 30,
+					SkuInfoList:      []marketing.PromotionSkuInfo{{Sku: "sku-create-1"}},
+				},
+			},
+			calcResponse: &marketing.CalculateSupplyPriceResponse{
+				Code: "0",
+				Msg:  "ok",
+				Info: []marketing.SkcCalculationResult{
+					{
+						SkcName: "sg-create",
+						SkuInfoList: []marketing.SkuCalculationInfo{
+							{
+								SkuCode: "sku-create-1",
+								PriceInfo: marketing.PriceInfo{
+									ProductAmount:   30,
+									PromotionAmount: 6,
+								},
+							},
+						},
+					},
+				},
+			},
+			createResponse: &marketing.CreateActivityResponse{
+				Code: "0",
+				Msg:  "ok",
+				Info: &marketing.ActivityCreateInfo{ActivityID: 12345},
+			},
+		}
+		return &activityRegistrationServiceImpl{
+			storeService: promotionProductsStoreServiceStub{
+				store: &listingruntime.StoreInfo{ID: 870, Username: "seller"},
+			},
+			marketingAPI: api,
+			logger:       logrus.NewEntry(logrus.New()),
+		}, api
+	}
+
+	serviceA, apiA := newService()
+	_, err := serviceA.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:              870,
+			ActivityPriceMode:    "DISCOUNT",
+			ActivityDiscountRate: 0.2,
+			ActivityStockRatio:   0.5,
+		},
+		"TIME_LIMITED:227:870:run-133:1",
+		[]marketing.SkcInfo{{Skc: "sg-create"}},
+	)
+	if err != nil {
+		t.Fatalf("first RegisterPromotionProducts error = %v", err)
+	}
+	serviceB, apiB := newService()
+	_, err = serviceB.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:              870,
+			ActivityPriceMode:    "DISCOUNT",
+			ActivityDiscountRate: 0.2,
+			ActivityStockRatio:   0.5,
+		},
+		"TIME_LIMITED:227:870:run-133:2",
+		[]marketing.SkcInfo{{Skc: "sg-create"}},
+	)
+	if err != nil {
+		t.Fatalf("second RegisterPromotionProducts error = %v", err)
+	}
+
+	nameA := apiA.created.ActivityBaseInfoRequest.ActName
+	nameB := apiB.created.ActivityBaseInfoRequest.ActName
+	if nameA == "" || nameB == "" {
+		t.Fatalf("activity names are empty: %q %q", nameA, nameB)
+	}
+	if nameA == nameB {
+		t.Fatalf("activity names are both %q, want unique names from activity key", nameA)
+	}
+}
+
+func TestPromotionRegistrationSessionReusesPromotionGoodsAcrossChunks(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		promotionGoods: []marketing.PromotionGoodsData{
+			{
+				Skc:              "sg-one",
+				IsSaleAttribute:  1,
+				InventoryNum:     100,
+				USSupplyPrice:    30,
+				MaxUSSupplyPrice: 30,
+				SkuInfoList:      []marketing.PromotionSkuInfo{{Sku: "sku-one-1"}},
+			},
+			{
+				Skc:              "sg-two",
+				IsSaleAttribute:  1,
+				InventoryNum:     100,
+				USSupplyPrice:    40,
+				MaxUSSupplyPrice: 40,
+				SkuInfoList:      []marketing.PromotionSkuInfo{{Sku: "sku-two-1"}},
+			},
+		},
+		calcResponse: &marketing.CalculateSupplyPriceResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: []marketing.SkcCalculationResult{
+				{
+					SkcName: "sg-one",
+					SkuInfoList: []marketing.SkuCalculationInfo{{
+						SkuCode: "sku-one-1",
+						PriceInfo: marketing.PriceInfo{
+							ProductAmount:   30,
+							PromotionAmount: 6,
+						},
+					}},
+				},
+				{
+					SkcName: "sg-two",
+					SkuInfoList: []marketing.SkuCalculationInfo{{
+						SkuCode: "sku-two-1",
+						PriceInfo: marketing.PriceInfo{
+							ProductAmount:   40,
+							PromotionAmount: 8,
+						},
+					}},
+				},
+			},
+		},
+		createResponse: &marketing.CreateActivityResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ActivityCreateInfo{ActivityID: 12345},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		storeService: promotionProductsStoreServiceStub{
+			store: &listingruntime.StoreInfo{ID: 870, Username: "seller"},
+		},
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	session, err := service.NewPromotionRegistrationSession(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:              870,
+			ActivityPriceMode:    "DISCOUNT",
+			ActivityDiscountRate: 0.2,
+			ActivityStockRatio:   0.5,
+		},
+		"TIME_LIMITED:227:870",
+	)
+	if err != nil {
+		t.Fatalf("NewPromotionRegistrationSession error = %v", err)
+	}
+
+	if _, err := session.RegisterPromotionProducts(t.Context(), "TIME_LIMITED:227:870:1", []marketing.SkcInfo{{Skc: "sg-one"}}); err != nil {
+		t.Fatalf("first RegisterPromotionProducts error = %v", err)
+	}
+	if _, err := session.RegisterPromotionProducts(t.Context(), "TIME_LIMITED:227:870:2", []marketing.SkcInfo{{Skc: "sg-two"}}); err != nil {
+		t.Fatalf("second RegisterPromotionProducts error = %v", err)
+	}
+
+	if api.queryPromotionGoodsCalls != 1 {
+		t.Fatalf("query promotion goods calls = %d, want one shared query", api.queryPromotionGoodsCalls)
+	}
+	if api.createActivityCalls != 2 {
+		t.Fatalf("create activity calls = %d, want two chunk creates", api.createActivityCalls)
+	}
+}
+
+func TestRegisterPromotionProductsUsesSkuPricesForSaleAttributeGoods(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		promotionGoods: []marketing.PromotionGoodsData{
+			{
+				Skc:              "sg-sale-attribute",
+				IsSaleAttribute:  1,
+				InventoryNum:     100,
+				USSupplyPrice:    35.04,
+				MaxUSSupplyPrice: 35.04,
+				SkuInfoList: []marketing.PromotionSkuInfo{
+					{
+						Sku:              "sku-small",
+						USSupplyPrice:    promotionTestFloat64Ptr(31.68),
+						MaxUSSupplyPrice: promotionTestFloat64Ptr(31.68),
+					},
+					{
+						Sku:              "sku-large",
+						USSupplyPrice:    promotionTestFloat64Ptr(35.04),
+						MaxUSSupplyPrice: promotionTestFloat64Ptr(35.04),
+					},
+				},
+			},
+		},
+		calcResponse: &marketing.CalculateSupplyPriceResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: []marketing.SkcCalculationResult{
+				{
+					SkcName: "sg-sale-attribute",
+					SkuInfoList: []marketing.SkuCalculationInfo{
+						{
+							SkuCode: "sku-small",
+							PriceInfo: marketing.PriceInfo{
+								ProductAmount:   31.68,
+								PromotionAmount: 15.69,
+							},
+						},
+						{
+							SkuCode: "sku-large",
+							PriceInfo: marketing.PriceInfo{
+								ProductAmount:   35.04,
+								PromotionAmount: 16.05,
+							},
+						},
+					},
+				},
+			},
+		},
+		createResponse: &marketing.CreateActivityResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ActivityCreateInfo{ActivityID: 12345},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		storeService: promotionProductsStoreServiceStub{
+			store: &listingruntime.StoreInfo{ID: 870, Username: "seller"},
+		},
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:              870,
+			ActivityPriceMode:    "DISCOUNT",
+			ActivityDiscountRate: 0.2,
+			ActivityStockRatio:   0.5,
+		},
+		"TIME_LIMITED:227:870:sale-attribute",
+		[]marketing.SkcInfo{{Skc: "sg-sale-attribute"}},
+	)
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+
+	if api.calculated == nil || len(api.calculated.SkcInfoList) != 1 || len(api.calculated.SkcInfoList[0].SkuInfoList) != 2 {
+		t.Fatalf("calculated request = %+v, want two sale-attribute SKU prices", api.calculated)
+	}
+	if got := api.calculated.SkcInfoList[0].SkuInfoList[0].ProductPrice; got != 31.68 {
+		t.Fatalf("first SKU calculate product price = %.2f, want SKU price 31.68", got)
+	}
+	if got := api.calculated.SkcInfoList[0].SkuInfoList[1].ProductPrice; got != 35.04 {
+		t.Fatalf("second SKU calculate product price = %.2f, want SKU price 35.04", got)
+	}
+
+	if api.created == nil || len(api.created.AddCostAndStockInfoList) != 1 {
+		t.Fatalf("created request = %+v, want one sale-attribute SKC", api.created)
+	}
+	created := api.created.AddCostAndStockInfoList[0]
+	if created.IsSaleAttribute != 1 || len(created.AddSkuList) != 2 {
+		t.Fatalf("created sale attribute item = %+v, want two SKU rows", created)
+	}
+	if got := created.AddSkuList[0].CostPrice; got != 31.68 {
+		t.Fatalf("first SKU create cost price = %.2f, want 31.68", got)
+	}
+	if got := created.AddSkuList[0].MaxProductActPrice; got != 31.68 {
+		t.Fatalf("first SKU create max activity price = %.2f, want 31.68", got)
+	}
+	if got := created.AddSkuList[0].ProductActPrice; got != 15.99 {
+		t.Fatalf("first SKU create activity price = %.2f, want 15.99", got)
+	}
+	if got := created.AddSkuList[1].CostPrice; got != 35.04 {
+		t.Fatalf("second SKU create cost price = %.2f, want 35.04", got)
+	}
+	if got := created.AddSkuList[1].MaxProductActPrice; got != 35.04 {
+		t.Fatalf("second SKU create max activity price = %.2f, want 35.04", got)
+	}
+	if got := created.AddSkuList[1].ProductActPrice; got != 18.99 {
+		t.Fatalf("second SKU create activity price = %.2f, want 18.99", got)
+	}
+}
+
 func TestRegisterPromotionProductsUsesCandidateSalePriceWhenPromotionGoodsPriceIsMissing(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{
 		promotionGoods: []marketing.PromotionGoodsData{
@@ -348,12 +638,14 @@ func TestRegisterPromotionProductsReturnsFilteredProductReasonWhenNoGoodsCanBeCr
 }
 
 type promotionProductsMarketingAPIStub struct {
-	saved          *marketing.SaveConfigRequest
-	created        *marketing.CreateActivityRequest
-	calculated     *marketing.CalculateSupplyPriceRequest
-	promotionGoods []marketing.PromotionGoodsData
-	calcResponse   *marketing.CalculateSupplyPriceResponse
-	createResponse *marketing.CreateActivityResponse
+	saved                    *marketing.SaveConfigRequest
+	created                  *marketing.CreateActivityRequest
+	calculated               *marketing.CalculateSupplyPriceRequest
+	promotionGoods           []marketing.PromotionGoodsData
+	calcResponse             *marketing.CalculateSupplyPriceResponse
+	createResponse           *marketing.CreateActivityResponse
+	queryPromotionGoodsCalls int
+	createActivityCalls      int
 }
 
 func (s *promotionProductsMarketingAPIStub) GetAvailableSkcList(req *marketing.GetAvailableSkcListRequest) (*marketing.GetAvailableSkcListResponse, error) {
@@ -370,6 +662,7 @@ func (s *promotionProductsMarketingAPIStub) GetConfigList(req *marketing.GetConf
 }
 
 func (s *promotionProductsMarketingAPIStub) QueryPromotionGoods(req *marketing.QueryPromotionGoodsRequest) (*marketing.QueryPromotionGoodsResponse, error) {
+	s.queryPromotionGoodsCalls++
 	return &marketing.QueryPromotionGoodsResponse{
 		Code: "0",
 		Msg:  "ok",
@@ -389,6 +682,7 @@ func (s *promotionProductsMarketingAPIStub) CalculateSupplyPrice(req *marketing.
 }
 
 func (s *promotionProductsMarketingAPIStub) CreateActivity(req *marketing.CreateActivityRequest) (*marketing.CreateActivityResponse, error) {
+	s.createActivityCalls++
 	s.created = req
 	if s.createResponse != nil {
 		return s.createResponse, nil
@@ -414,4 +708,8 @@ func (s promotionProductsStoreServiceStub) GetStorePauseStatusDetail(storeID int
 
 func (s promotionProductsStoreServiceStub) SetStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error) {
 	return false, nil
+}
+
+func promotionTestFloat64Ptr(value float64) *float64 {
+	return &value
 }

@@ -35,7 +35,7 @@ func (h *handler) ExecuteSheinActivityEnrollment(c *gin.Context) {
 		req.TriggerMode = listingkit.SheinEnrollmentRunTriggerModeManualConfirmed
 	}
 
-	run, err := h.sheinEnrollmentService.ExecuteSheinActivityEnrollment(
+	run, err := h.sheinEnrollmentService.StartSheinActivityEnrollment(
 		ctx,
 		tenantID,
 		storeID,
