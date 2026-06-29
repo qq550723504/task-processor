@@ -70,14 +70,18 @@ type ListingRuntimeImportTaskRepository interface {
 	StaleQueuedRepository
 }
 
+type SchedulerResources struct {
+	Runtime        runner.SchedulerRuntimeProvider
+	FactoryRuntime SchedulerFactoryRuntime
+	CrawlSource    ports.CrawlSource
+}
+
 type SharedResources struct {
 	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
 	StoreAPI                           listingadmin.StoreAPI
-	SchedulerRuntime                   runner.SchedulerRuntimeProvider
-	SchedulerFactoryRuntime            SchedulerFactoryRuntime
 	ProcessorRuntime                   ProcessorRuntime
-	CrawlSource                        ports.CrawlSource
 	ProductFetcher                     appfetcher.ProductFetcher
+	Scheduler                          SchedulerResources
 }
 
 type SharedResourceNeeds struct {
@@ -152,9 +156,9 @@ func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRunt
 		StoreAPI:                           input.Resources.StoreAPI,
 		ProcessorRuntime:                   input.Resources.ProcessorRuntime,
 		ProductFetcher:                     input.Resources.ProductFetcher,
-		schedulerRuntime:                   input.Resources.SchedulerRuntime,
-		schedulerFactoryRuntime:            input.Resources.SchedulerFactoryRuntime,
-		crawlSource:                        input.Resources.CrawlSource,
+		schedulerRuntime:                   input.Resources.Scheduler.Runtime,
+		schedulerFactoryRuntime:            input.Resources.Scheduler.FactoryRuntime,
+		crawlSource:                        input.Resources.Scheduler.CrawlSource,
 		schedulerBuilder:                   input.SchedulerBuilder,
 		runtimeServices:                    input.Services,
 	}

@@ -80,11 +80,13 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 		return consumer.SharedResources{
 			ListingRuntimeImportTaskRepository: resources.ImportTaskRepository,
 			StoreAPI:                           resources.StoreAPI,
-			SchedulerRuntime:                   resources.SchedulerRuntime,
-			SchedulerFactoryRuntime:            resources.SchedulerFactoryRuntime,
 			ProcessorRuntime:                   resources.ProcessorRuntime,
-			CrawlSource:                        resources.AmazonCrawler,
 			ProductFetcher:                     productFetcher,
+			Scheduler: consumer.SchedulerResources{
+				Runtime:        resources.SchedulerRuntime,
+				FactoryRuntime: resources.SchedulerFactoryRuntime,
+				CrawlSource:    resources.AmazonCrawler,
+			},
 		}, nil
 	}
 }
