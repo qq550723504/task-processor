@@ -28,14 +28,16 @@ func TestBuildSharedResourcesDoesNotConstructRetiredManagementService(t *testing
 	require.False(t, strings.Contains(string(content), "managementClient:"))
 }
 
-func TestSharedResourcesUsesNamedListingRuntimeHealthValidatorPort(t *testing.T) {
+func TestBuildSharedResourcesReportsListingRuntimeHealthValidatorWithoutCarryingIt(t *testing.T) {
 	content, err := os.ReadFile("shared_resources.go")
 	require.NoError(t, err)
 
 	require.NotContains(t, string(content), "type ListingRuntimeHealthValidator interface {")
 	require.NotContains(t, string(content), "ListingRuntimeHealthValidator ListingRuntimeHealthValidator")
-	require.Contains(t, string(content), "listingRuntimeHealthValidator ports.ListingRuntimeHealthValidator")
-	require.Contains(t, string(content), "func (r *SharedResources) ListingRuntimeHealthValidator() ports.ListingRuntimeHealthValidator")
+	require.NotContains(t, string(content), "listingRuntimeHealthValidator ports.ListingRuntimeHealthValidator")
+	require.NotContains(t, string(content), "func (r *SharedResources) ListingRuntimeHealthValidator()")
+	require.Contains(t, string(content), "OnListingRuntimeHealthValidator func(ports.ListingRuntimeHealthValidator)")
+	require.Contains(t, string(content), "options.OnListingRuntimeHealthValidator(localRuntime)")
 }
 
 func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T) {
@@ -53,5 +55,4 @@ func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T)
 	require.NotNil(t, resources)
 	require.Nil(t, resources.AuthClient)
 	require.Nil(t, resources.ProcessorRuntime)
-	require.Nil(t, resources.ListingRuntimeHealthValidator())
 }

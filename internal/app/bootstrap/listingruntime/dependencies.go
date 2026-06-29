@@ -50,8 +50,14 @@ func BuildDependencies() dependencies {
 
 func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports.ListingRuntimeHealthValidator)) func(*config.Config, *logrus.Logger, string, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 	return func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+		var capturedListingRuntimeHealthValidator ports.ListingRuntimeHealthValidator
+		captureListingRuntimeHealthValidator := func(validator ports.ListingRuntimeHealthValidator) {
+			capturedListingRuntimeHealthValidator = validator
+		}
+
 		resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{
-			NeedAmazonCrawler: needs.NeedAmazonCrawler,
+			NeedAmazonCrawler:               needs.NeedAmazonCrawler,
+			OnListingRuntimeHealthValidator: captureListingRuntimeHealthValidator,
 		})
 		if err != nil {
 			return nil, err
@@ -68,7 +74,7 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 			return nil, err
 		}
 		if onListingRuntimeHealthValidator != nil {
-			onListingRuntimeHealthValidator(resources.ListingRuntimeHealthValidator())
+			onListingRuntimeHealthValidator(capturedListingRuntimeHealthValidator)
 		}
 
 		return &consumer.SharedResources{

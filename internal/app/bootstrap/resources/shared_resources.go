@@ -27,28 +27,21 @@ import (
 
 // SharedResourceOptions controls which shared runtime dependencies are built.
 type SharedResourceOptions struct {
-	NeedAmazonCrawler bool
+	NeedAmazonCrawler               bool
+	OnListingRuntimeHealthValidator func(ports.ListingRuntimeHealthValidator)
 }
 
 // SharedResources groups dependencies that were previously assembled in multiple places.
 type SharedResources struct {
-	AuthClient                    *auth.ClientCredentialsAuthClient
-	listingRuntimeHealthValidator ports.ListingRuntimeHealthValidator
-	RawJSONDataClient             product.RawJsonDataClient
-	StoreAPI                      listingadmin.StoreAPI
-	SchedulerRuntime              runner.SchedulerRuntimeProvider
-	SchedulerFactoryRuntime       consumer.SchedulerFactoryRuntime
-	ProcessorRuntime              consumer.ProcessorRuntime
-	ImportTaskRepository          consumer.ListingRuntimeImportTaskRepository
-	AmazonCrawler                 ports.CrawlSource
-	RabbitMQClient                *rabbitmq.Client
-}
-
-func (r *SharedResources) ListingRuntimeHealthValidator() ports.ListingRuntimeHealthValidator {
-	if r == nil {
-		return nil
-	}
-	return r.listingRuntimeHealthValidator
+	AuthClient              *auth.ClientCredentialsAuthClient
+	RawJSONDataClient       product.RawJsonDataClient
+	StoreAPI                listingadmin.StoreAPI
+	SchedulerRuntime        runner.SchedulerRuntimeProvider
+	SchedulerFactoryRuntime consumer.SchedulerFactoryRuntime
+	ProcessorRuntime        consumer.ProcessorRuntime
+	ImportTaskRepository    consumer.ListingRuntimeImportTaskRepository
+	AmazonCrawler           ports.CrawlSource
+	RabbitMQClient          *rabbitmq.Client
 }
 
 // InitializePrompts centralizes prompt registry initialization.
@@ -96,7 +89,9 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 
 	resources := &SharedResources{}
 	if localRuntime != nil {
-		resources.listingRuntimeHealthValidator = localRuntime
+		if options.OnListingRuntimeHealthValidator != nil {
+			options.OnListingRuntimeHealthValidator(localRuntime)
+		}
 		resources.RawJSONDataClient = localruntime.NewRawJsonDataAdapter(localProvider)
 		resources.StoreAPI = localRuntime.GetStoreAPI()
 		resources.SchedulerRuntime = localRuntime

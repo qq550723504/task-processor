@@ -41,6 +41,7 @@ func TestDependenciesExposeListingRuntimeHealthValidatorInsteadOfSharedResources
 		"sharedResources func() *bootstrapresources.SharedResources",
 		"onSharedResources func(*bootstrapresources.SharedResources)",
 		"onSharedResources(resources)",
+		"resources.ListingRuntimeHealthValidator()",
 	} {
 		if strings.Contains(string(content), marker) {
 			t.Fatalf("dependencies.go mentions %q; expose the listing runtime health validator as a narrow bootstrap dependency instead of leaking SharedResources", marker)
@@ -51,6 +52,9 @@ func TestDependenciesExposeListingRuntimeHealthValidatorInsteadOfSharedResources
 	}
 	if !strings.Contains(string(content), "onListingRuntimeHealthValidator func(ports.ListingRuntimeHealthValidator)") {
 		t.Fatalf("dependencies.go should pass ListingRuntimeHealthValidator through the resource-build callback instead of passing SharedResources")
+	}
+	if !strings.Contains(string(content), "OnListingRuntimeHealthValidator: captureListingRuntimeHealthValidator") {
+		t.Fatalf("dependencies.go should receive ListingRuntimeHealthValidator from BuildSharedResources options instead of reading it back from SharedResources")
 	}
 }
 
