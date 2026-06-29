@@ -157,6 +157,36 @@ func TestPlatformRuntimeContextDoesNotExposeSchedulerAssemblyFields(t *testing.T
 	}
 }
 
+func TestPlatformRuntimeContextDoesNotExposeRuntimeResourceFields(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("shared_resources.go")
+	if err != nil {
+		t.Fatalf("read shared_resources.go: %v", err)
+	}
+	source := string(content)
+	start := strings.Index(source, "type PlatformRuntimeContext struct {")
+	if start < 0 {
+		t.Fatal("shared_resources.go should define PlatformRuntimeContext")
+	}
+	end := strings.Index(source[start:], "\n}")
+	if end < 0 {
+		t.Fatal("PlatformRuntimeContext struct should have a closing brace")
+	}
+	contextSource := source[start : start+end]
+
+	for _, marker := range []string{
+		"ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository",
+		"StoreAPI                           listingadmin.StoreAPI",
+		"ProcessorRuntime                   ProcessorRuntime",
+		"ProductFetcher                     appfetcher.ProductFetcher",
+	} {
+		if strings.Contains(contextSource, marker) {
+			t.Fatalf("shared_resources.go mentions %q; expose runtime resources through PlatformRuntimeContext methods instead of fields", marker)
+		}
+	}
+}
+
 func TestConsumerSharedResourcesDoesNotExposeSchedulerAssemblyFields(t *testing.T) {
 	t.Parallel()
 

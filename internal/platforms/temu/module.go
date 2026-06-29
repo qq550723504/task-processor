@@ -30,12 +30,12 @@ func (m Module) NeedsAmazon(cfg *config.Config) bool {
 }
 
 func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntimeContext, registry consumer.ProcessorRegistrar) error {
-	productFetcher := rt.ProductFetcher
+	productFetcher := rt.ProductFetcher()
 	if productFetcher == nil {
 		return fmt.Errorf("TEMU product fetcher is not configured")
 	}
 
-	processor, err := temuprocessor.NewTemuProcessor(ctx, rt.Config, rt.Logger, temuprocessor.BuildDependencies(ctx, rt.ProcessorRuntime, productFetcher, rt.RabbitMQClient()))
+	processor, err := temuprocessor.NewTemuProcessor(ctx, rt.Config, rt.Logger, temuprocessor.BuildDependencies(ctx, rt.ProcessorRuntime(), productFetcher, rt.RabbitMQClient()))
 	if err != nil {
 		return fmt.Errorf("create TEMU processor: %w", err)
 	}

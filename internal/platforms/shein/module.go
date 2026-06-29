@@ -36,12 +36,12 @@ func (m Module) NeedsAmazon(cfg *config.Config) bool {
 }
 
 func (m Module) RegisterConsumer(ctx context.Context, rt consumer.PlatformRuntimeContext, registry consumer.ProcessorRegistrar) error {
-	productFetcher := rt.ProductFetcher
+	productFetcher := rt.ProductFetcher()
 	if productFetcher == nil {
 		return fmt.Errorf("SHEIN product fetcher is not configured")
 	}
 
-	processor, err := pipeline.NewSheinProcessor(ctx, rt.Config, rt.Logger, pipeline.BuildDependencies(ctx, sheinDependencyRuntimeAdapter{ProcessorRuntime: rt.ProcessorRuntime}, productFetcher, rt.RabbitMQClient()))
+	processor, err := pipeline.NewSheinProcessor(ctx, rt.Config, rt.Logger, pipeline.BuildDependencies(ctx, sheinDependencyRuntimeAdapter{ProcessorRuntime: rt.ProcessorRuntime()}, productFetcher, rt.RabbitMQClient()))
 	if err != nil {
 		return fmt.Errorf("create SHEIN processor: %w", err)
 	}
@@ -174,7 +174,7 @@ func configureTaskRecoveryWatchdogs(rt consumer.PlatformRuntimeContext) {
 	if !cfg.RabbitMQ.ProcessingTimeout.Enabled && !cfg.RabbitMQ.StaleQueued.Enabled {
 		return
 	}
-	repo := rt.ListingRuntimeImportTaskRepository
+	repo := rt.ListingRuntimeImportTaskRepository()
 	if repo == nil {
 		rt.Logger.Warn("task recovery watchdog is enabled but local import task repository is unavailable")
 		return
@@ -234,11 +234,12 @@ func configureStoreGuard(rt consumer.PlatformRuntimeContext) {
 	if rt.Config == nil || staticStoreGuardRuntime == nil {
 		return
 	}
-	if rt.StoreAPI == nil {
+	storeAPI := rt.StoreAPI()
+	if storeAPI == nil {
 		consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, staticStoreGuardRuntime, nil)
 		return
 	}
-	consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, staticStoreGuardRuntime, rt.StoreAPI)
+	consumer.ConfigureStaticStoreGuard(rt.Config, rt.Logger, staticStoreGuardRuntime, storeAPI)
 }
 
 func configureAutoShard(rt consumer.PlatformRuntimeContext) error {
@@ -247,14 +248,15 @@ func configureAutoShard(rt consumer.PlatformRuntimeContext) error {
 	if cfg == nil || autoShardRuntime == nil {
 		return nil
 	}
-	if rt.StoreAPI == nil || cfg.Redis == nil {
+	storeAPI := rt.StoreAPI()
+	if storeAPI == nil || cfg.Redis == nil {
 		rt.Logger.Warn("auto shard is enabled but store API or redis config is unavailable")
 		return nil
 	}
 
 	autoShardService, err := consumer.NewAutoShardCoordinator(
 		cfg.RabbitMQ.AutoShard,
-		rt.StoreAPI,
+		storeAPI,
 		cfg.Redis,
 		cfg.RabbitMQ.URL,
 		cfg.RabbitMQ.Node.NodeID,

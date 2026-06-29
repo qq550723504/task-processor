@@ -129,10 +129,10 @@ type StaticStoreGuardRuntime interface {
 type PlatformRuntimeContext struct {
 	Config                             *config.Config
 	Logger                             *logrus.Logger
-	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
-	StoreAPI                           listingadmin.StoreAPI
-	ProcessorRuntime                   ProcessorRuntime
-	ProductFetcher                     appfetcher.ProductFetcher
+	listingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
+	storeAPI                           listingadmin.StoreAPI
+	processorRuntime                   ProcessorRuntime
+	productFetcher                     appfetcher.ProductFetcher
 	schedulerRuntime                   runner.SchedulerRuntimeProvider
 	schedulerFactoryRuntime            SchedulerFactoryRuntime
 	crawlSource                        ports.CrawlSource
@@ -152,10 +152,10 @@ func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRunt
 	return PlatformRuntimeContext{
 		Config:                             input.Config,
 		Logger:                             input.Logger,
-		ListingRuntimeImportTaskRepository: input.Resources.ListingRuntimeImportTaskRepository,
-		StoreAPI:                           input.Resources.StoreAPI,
-		ProcessorRuntime:                   input.Resources.ProcessorRuntime,
-		ProductFetcher:                     input.Resources.ProductFetcher,
+		listingRuntimeImportTaskRepository: input.Resources.ListingRuntimeImportTaskRepository,
+		storeAPI:                           input.Resources.StoreAPI,
+		processorRuntime:                   input.Resources.ProcessorRuntime,
+		productFetcher:                     input.Resources.ProductFetcher,
 		schedulerRuntime:                   input.Resources.Scheduler.Runtime,
 		schedulerFactoryRuntime:            input.Resources.Scheduler.FactoryRuntime,
 		crawlSource:                        input.Resources.Scheduler.CrawlSource,
@@ -208,6 +208,22 @@ func (rt PlatformRuntimeContext) AutoShardRuntime() AutoShardRuntime {
 		return nil
 	}
 	return rt.runtimeServices
+}
+
+func (rt PlatformRuntimeContext) StoreAPI() listingadmin.StoreAPI {
+	return rt.storeAPI
+}
+
+func (rt PlatformRuntimeContext) ProcessorRuntime() ProcessorRuntime {
+	return rt.processorRuntime
+}
+
+func (rt PlatformRuntimeContext) ProductFetcher() appfetcher.ProductFetcher {
+	return rt.productFetcher
+}
+
+func (rt PlatformRuntimeContext) ListingRuntimeImportTaskRepository() ListingRuntimeImportTaskRepository {
+	return rt.listingRuntimeImportTaskRepository
 }
 
 func (rt PlatformRuntimeContext) SchedulerRuntime() runner.SchedulerRuntimeProvider {
