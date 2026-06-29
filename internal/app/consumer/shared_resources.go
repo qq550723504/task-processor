@@ -77,11 +77,49 @@ type SchedulerResources struct {
 }
 
 type SharedResources struct {
+	listingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
+	storeAPI                           listingadmin.StoreAPI
+	processorRuntime                   ProcessorRuntime
+	productFetcher                     appfetcher.ProductFetcher
+	scheduler                          SchedulerResources
+}
+
+type SharedResourcesInput struct {
 	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
 	StoreAPI                           listingadmin.StoreAPI
 	ProcessorRuntime                   ProcessorRuntime
 	ProductFetcher                     appfetcher.ProductFetcher
 	Scheduler                          SchedulerResources
+}
+
+func NewSharedResources(input SharedResourcesInput) SharedResources {
+	return SharedResources{
+		listingRuntimeImportTaskRepository: input.ListingRuntimeImportTaskRepository,
+		storeAPI:                           input.StoreAPI,
+		processorRuntime:                   input.ProcessorRuntime,
+		productFetcher:                     input.ProductFetcher,
+		scheduler:                          input.Scheduler,
+	}
+}
+
+func (r SharedResources) ListingRuntimeImportTaskRepository() ListingRuntimeImportTaskRepository {
+	return r.listingRuntimeImportTaskRepository
+}
+
+func (r SharedResources) StoreAPI() listingadmin.StoreAPI {
+	return r.storeAPI
+}
+
+func (r SharedResources) ProcessorRuntime() ProcessorRuntime {
+	return r.processorRuntime
+}
+
+func (r SharedResources) ProductFetcher() appfetcher.ProductFetcher {
+	return r.productFetcher
+}
+
+func (r SharedResources) Scheduler() SchedulerResources {
+	return r.scheduler
 }
 
 type SharedResourceNeeds struct {
@@ -149,16 +187,17 @@ type PlatformRuntimeContextInput struct {
 }
 
 func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRuntimeContext {
+	schedulerResources := input.Resources.Scheduler()
 	return PlatformRuntimeContext{
 		config:                             input.Config,
 		logger:                             input.Logger,
-		listingRuntimeImportTaskRepository: input.Resources.ListingRuntimeImportTaskRepository,
-		storeAPI:                           input.Resources.StoreAPI,
-		processorRuntime:                   input.Resources.ProcessorRuntime,
-		productFetcher:                     input.Resources.ProductFetcher,
-		schedulerRuntime:                   input.Resources.Scheduler.Runtime,
-		schedulerFactoryRuntime:            input.Resources.Scheduler.FactoryRuntime,
-		crawlSource:                        input.Resources.Scheduler.CrawlSource,
+		listingRuntimeImportTaskRepository: input.Resources.ListingRuntimeImportTaskRepository(),
+		storeAPI:                           input.Resources.StoreAPI(),
+		processorRuntime:                   input.Resources.ProcessorRuntime(),
+		productFetcher:                     input.Resources.ProductFetcher(),
+		schedulerRuntime:                   schedulerResources.Runtime,
+		schedulerFactoryRuntime:            schedulerResources.FactoryRuntime,
+		crawlSource:                        schedulerResources.CrawlSource,
 		schedulerBuilder:                   input.SchedulerBuilder,
 		runtimeServices:                    input.Services,
 	}

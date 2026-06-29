@@ -243,3 +243,34 @@ func TestConsumerSharedResourcesDoesNotExposeSchedulerAssemblyFields(t *testing.
 		}
 	}
 }
+
+func TestConsumerSharedResourcesDoesNotExposeRuntimeResourceFields(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("shared_resources.go")
+	if err != nil {
+		t.Fatalf("read shared_resources.go: %v", err)
+	}
+	source := string(content)
+	start := strings.Index(source, "type SharedResources struct {")
+	if start < 0 {
+		t.Fatal("shared_resources.go should define SharedResources")
+	}
+	end := strings.Index(source[start:], "\n}")
+	if end < 0 {
+		t.Fatal("SharedResources struct should have a closing brace")
+	}
+	resourcesSource := source[start : start+end]
+
+	for _, marker := range []string{
+		"ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository",
+		"StoreAPI                           listingadmin.StoreAPI",
+		"ProcessorRuntime                   ProcessorRuntime",
+		"ProductFetcher                     appfetcher.ProductFetcher",
+		"Scheduler                          SchedulerResources",
+	} {
+		if strings.Contains(resourcesSource, marker) {
+			t.Fatalf("shared_resources.go mentions %q; build consumer shared resources through constructor methods instead of exported fields", marker)
+		}
+	}
+}

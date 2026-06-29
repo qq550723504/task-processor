@@ -77,12 +77,12 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 			onListingRuntimeHealthValidator(capturedListingRuntimeHealthValidator)
 		}
 
-		return consumer.SharedResources{
+		return consumer.NewSharedResources(consumer.SharedResourcesInput{
 			ListingRuntimeImportTaskRepository: resources.ImportTaskRepository,
 			StoreAPI:                           resources.StoreAPI,
 			ProcessorRuntime:                   resources.ProcessorRuntime,
 			ProductFetcher:                     productFetcher,
 			Scheduler:                          resources.Scheduler,
-		}, nil
+		}), nil
 	}
 }
