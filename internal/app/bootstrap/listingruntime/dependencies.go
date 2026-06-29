@@ -38,12 +38,8 @@ func BuildDependencies() dependencies {
 	var listingRuntimeHealthValidator bootstrapresources.ListingRuntimeHealthValidator
 	return dependencies{
 		platformModules: platforms.All(),
-		buildResources: buildConsumerSharedResourcesFunc(func(resources *bootstrapresources.SharedResources) {
-			if resources == nil {
-				listingRuntimeHealthValidator = nil
-				return
-			}
-			listingRuntimeHealthValidator = resources.ListingRuntimeHealthValidator()
+		buildResources: buildConsumerSharedResourcesFunc(func(validator bootstrapresources.ListingRuntimeHealthValidator) {
+			listingRuntimeHealthValidator = validator
 		}),
 		listingRuntimeHealthValidator: func() bootstrapresources.ListingRuntimeHealthValidator {
 			return listingRuntimeHealthValidator
@@ -51,7 +47,7 @@ func BuildDependencies() dependencies {
 	}
 }
 
-func buildConsumerSharedResourcesFunc(onSharedResources func(*bootstrapresources.SharedResources)) func(*config.Config, *logrus.Logger, string, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(bootstrapresources.ListingRuntimeHealthValidator)) func(*config.Config, *logrus.Logger, string, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 	return func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
 		resources, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{
 			NeedAmazonCrawler: needs.NeedAmazonCrawler,
@@ -70,8 +66,8 @@ func buildConsumerSharedResourcesFunc(onSharedResources func(*bootstrapresources
 		if err != nil {
 			return nil, err
 		}
-		if onSharedResources != nil {
-			onSharedResources(resources)
+		if onListingRuntimeHealthValidator != nil {
+			onListingRuntimeHealthValidator(resources.ListingRuntimeHealthValidator())
 		}
 
 		return &consumer.SharedResources{
