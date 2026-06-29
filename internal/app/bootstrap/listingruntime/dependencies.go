@@ -67,7 +67,7 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 			cfg,
 			platform,
 			resources.RawJSONDataClient,
-			resources.AmazonCrawler,
+			resources.Scheduler.CrawlSource,
 			resources.RabbitMQClient,
 		)
 		if err != nil {
@@ -82,11 +82,7 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 			StoreAPI:                           resources.StoreAPI,
 			ProcessorRuntime:                   resources.ProcessorRuntime,
 			ProductFetcher:                     productFetcher,
-			Scheduler: consumer.SchedulerResources{
-				Runtime:        resources.SchedulerRuntime,
-				FactoryRuntime: resources.SchedulerFactoryRuntime,
-				CrawlSource:    resources.AmazonCrawler,
-			},
+			Scheduler:                          resources.Scheduler,
 		}, nil
 	}
 }

@@ -7,7 +7,6 @@ import (
 
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/ports"
-	"task-processor/internal/app/runner"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
@@ -32,14 +31,12 @@ type SharedResourceOptions struct {
 
 // SharedResources groups dependencies that were previously assembled in multiple places.
 type SharedResources struct {
-	RawJSONDataClient       product.RawJsonDataClient
-	StoreAPI                listingadmin.StoreAPI
-	SchedulerRuntime        runner.SchedulerRuntimeProvider
-	SchedulerFactoryRuntime consumer.SchedulerFactoryRuntime
-	ProcessorRuntime        consumer.ProcessorRuntime
-	ImportTaskRepository    consumer.ListingRuntimeImportTaskRepository
-	AmazonCrawler           ports.CrawlSource
-	RabbitMQClient          *rabbitmq.Client
+	RawJSONDataClient    product.RawJsonDataClient
+	StoreAPI             listingadmin.StoreAPI
+	ProcessorRuntime     consumer.ProcessorRuntime
+	ImportTaskRepository consumer.ListingRuntimeImportTaskRepository
+	Scheduler            consumer.SchedulerResources
+	RabbitMQClient       *rabbitmq.Client
 }
 
 // InitializePrompts centralizes prompt registry initialization.
@@ -92,8 +89,8 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		}
 		resources.RawJSONDataClient = localruntime.NewRawJsonDataAdapter(localProvider)
 		resources.StoreAPI = localRuntime.GetStoreAPI()
-		resources.SchedulerRuntime = localRuntime
-		resources.SchedulerFactoryRuntime = localSchedulerFactoryRuntime{source: localRuntime}
+		resources.Scheduler.Runtime = localRuntime
+		resources.Scheduler.FactoryRuntime = localSchedulerFactoryRuntime{source: localRuntime}
 		resources.ProcessorRuntime = localProcessorRuntime{
 			localSchedulerFactoryRuntime: localSchedulerFactoryRuntime{source: localRuntime},
 			source:                       localRuntime,
@@ -111,7 +108,7 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 	}
 
 	if options.NeedAmazonCrawler {
-		resources.AmazonCrawler = BuildAmazonCrawler(cfg, logger)
+		resources.Scheduler.CrawlSource = BuildAmazonCrawler(cfg, logger)
 	}
 
 	return resources, nil

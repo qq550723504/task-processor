@@ -59,6 +59,27 @@ func TestBuildSharedResourcesReturnsValue(t *testing.T) {
 	require.Contains(t, string(content), "return resources, nil")
 }
 
+func TestBuildSharedResourcesGroupsSchedulerAssemblyFields(t *testing.T) {
+	content, err := os.ReadFile("shared_resources.go")
+	require.NoError(t, err)
+	source := string(content)
+	start := strings.Index(source, "type SharedResources struct {")
+	require.NotEqual(t, -1, start)
+	end := strings.Index(source[start:], "\n}")
+	require.NotEqual(t, -1, end)
+	resourcesSource := source[start : start+end]
+
+	for _, token := range []string{
+		"SchedulerRuntime        runner.SchedulerRuntimeProvider",
+		"SchedulerFactoryRuntime consumer.SchedulerFactoryRuntime",
+		"AmazonCrawler           ports.CrawlSource",
+	} {
+		require.NotContains(t, resourcesSource, token)
+	}
+	require.Contains(t, resourcesSource, "Scheduler")
+	require.Contains(t, resourcesSource, "consumer.SchedulerResources")
+}
+
 func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)

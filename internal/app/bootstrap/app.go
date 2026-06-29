@@ -8,7 +8,6 @@ import (
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	bootstrapschedulers "task-processor/internal/app/bootstrap/schedulers"
 	"task-processor/internal/app/consumer"
-	"task-processor/internal/app/ports"
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
@@ -32,12 +31,10 @@ type appServices struct {
 }
 
 type appServiceResources struct {
-	rawJSONDataClient       product.RawJsonDataClient
-	processorRuntime        consumer.ProcessorRuntime
-	schedulerRuntime        runner.SchedulerRuntimeProvider
-	schedulerFactoryRuntime consumer.SchedulerFactoryRuntime
-	amazonCrawler           ports.CrawlSource
-	rabbitmqClient          *rabbitmq.Client
+	rawJSONDataClient product.RawJsonDataClient
+	processorRuntime  consumer.ProcessorRuntime
+	scheduler         consumer.SchedulerResources
+	rabbitmqClient    *rabbitmq.Client
 }
 
 type ApplicationBootstrap struct {
@@ -163,12 +160,10 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 
 func newAppServiceResources(resources bootstrapresources.SharedResources) appServiceResources {
 	return appServiceResources{
-		rawJSONDataClient:       resources.RawJSONDataClient,
-		processorRuntime:        resources.ProcessorRuntime,
-		schedulerRuntime:        resources.SchedulerRuntime,
-		schedulerFactoryRuntime: resources.SchedulerFactoryRuntime,
-		amazonCrawler:           resources.AmazonCrawler,
-		rabbitmqClient:          resources.RabbitMQClient,
+		rawJSONDataClient: resources.RawJSONDataClient,
+		processorRuntime:  resources.ProcessorRuntime,
+		scheduler:         resources.Scheduler,
+		rabbitmqClient:    resources.RabbitMQClient,
 	}
 }
 
@@ -187,9 +182,9 @@ func buildProcessorService(logger *logrus.Logger, resources appServiceResources)
 		logger,
 		resources.rawJSONDataClient,
 		resources.processorRuntime,
-		resources.schedulerRuntime,
-		resources.schedulerFactoryRuntime,
-		resources.amazonCrawler,
+		resources.scheduler.Runtime,
+		resources.scheduler.FactoryRuntime,
+		resources.scheduler.CrawlSource,
 		resources.rabbitmqClient,
 		bootstrapprocessors.BuildRunnerProcessorDependencies(),
 	)
@@ -198,9 +193,9 @@ func buildProcessorService(logger *logrus.Logger, resources appServiceResources)
 func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources appServiceResources) runner.SchedulerService {
 	return runner.NewSchedulerServiceWithDependencies(
 		logger,
-		resources.schedulerRuntime,
+		resources.scheduler.Runtime,
 		cfg,
 		resources.rabbitmqClient,
-		bootstrapschedulers.BuildDependencies(resources.schedulerFactoryRuntime, cfg, resources.amazonCrawler, resources.rabbitmqClient),
+		bootstrapschedulers.BuildDependencies(resources.scheduler.FactoryRuntime, cfg, resources.scheduler.CrawlSource, resources.rabbitmqClient),
 	)
 }

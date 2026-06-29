@@ -22,7 +22,7 @@ import (
 type platformProcessorResources struct {
 	rawJSONDataClient product.RawJsonDataClient
 	processorRuntime  consumer.ProcessorRuntime
-	amazonCrawler     ports.CrawlSource
+	crawlSource       ports.CrawlSource
 	rabbitmqClient    *rabbitmq.Client
 }
 
@@ -30,7 +30,7 @@ func newPlatformProcessorResources(resources appServiceResources) platformProces
 	return platformProcessorResources{
 		rawJSONDataClient: resources.rawJSONDataClient,
 		processorRuntime:  resources.processorRuntime,
-		amazonCrawler:     resources.amazonCrawler,
+		crawlSource:       resources.scheduler.CrawlSource,
 		rabbitmqClient:    resources.rabbitmqClient,
 	}
 }
@@ -68,7 +68,7 @@ func buildTemuProcessorDependencies(cfg *config.Config, resources platformProces
 		cfg,
 		"temu",
 		resources.rawJSONDataClient,
-		resources.amazonCrawler,
+		resources.crawlSource,
 		resources.rabbitmqClient,
 	)
 	if err != nil {
@@ -87,7 +87,7 @@ func buildSheinProcessorDependencies(cfg *config.Config, resources platformProce
 		cfg,
 		"shein",
 		resources.rawJSONDataClient,
-		resources.amazonCrawler,
+		resources.crawlSource,
 		resources.rabbitmqClient,
 	)
 	if err != nil {
