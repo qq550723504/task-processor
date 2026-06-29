@@ -119,7 +119,6 @@ type PlatformRuntimeContext struct {
 	ProcessorRuntime                   ProcessorRuntime
 	CrawlSource                        ports.CrawlSource
 	ProductFetcher                     appfetcher.ProductFetcher
-	RabbitMQClient                     *rabbitmq.Client
 	RuntimeServices                    PlatformRuntimeServices
 	SchedulerBuilder                   SchedulerDependenciesBuilder
 }
@@ -143,10 +142,13 @@ func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRunt
 		ProcessorRuntime:                   input.Resources.ProcessorRuntime,
 		CrawlSource:                        input.Resources.CrawlSource,
 		ProductFetcher:                     input.Resources.ProductFetcher,
-		RabbitMQClient:                     runtimeRabbitMQClient(input.RuntimeServices),
 		RuntimeServices:                    input.RuntimeServices,
 		SchedulerBuilder:                   input.SchedulerBuilder,
 	}
+}
+
+func (rt PlatformRuntimeContext) RabbitMQClient() *rabbitmq.Client {
+	return runtimeRabbitMQClient(rt.RuntimeServices)
 }
 
 func runtimeRabbitMQClient(services PlatformRuntimeServices) *rabbitmq.Client {
