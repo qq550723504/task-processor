@@ -37,6 +37,7 @@ func BuildPreviewProduct(pkg *Package) *sheinproduct.Product {
 		MultiLanguageNameList:   toLanguageContents(pkg.DraftPayload.MultiLanguageNameList),
 		MultiLanguageDescList:   toLanguageContents(pkg.DraftPayload.MultiLanguageDescList),
 		ProductAttributeList:    BuildProductAttributes(pkg),
+		SizeAttributeList:       append([]sheinproduct.SizeAttribute(nil), pkg.DraftPayload.SizeAttributeList...),
 		ImageInfo:               toImageInfo(pkg.DraftPayload.ImageInfo),
 		SiteList:                toSiteInfo(pkg.DraftPayload.SiteList),
 		SKCList:                 toSKCs(pkg.DraftPayload.SKCList),

@@ -589,6 +589,25 @@ func TestBuildSheinPublishRequestForTaskIncludesTaskIdentity(t *testing.T) {
 	}
 }
 
+func TestBuildSheinPublishRequestIncludesSDSProductSize(t *testing.T) {
+	t.Parallel()
+
+	productSize := `[[{"content":"尺码"},{"content":"肩宽(cm/in)"}],[{"content":"M"},{"content":"55cm/21.7in"}]]`
+	req := &GenerateRequest{
+		Options: &GenerateOptions{
+			SDS: &SDSSyncOptions{
+				ProductSize: productSize,
+			},
+		},
+	}
+
+	built := buildSheinPublishRequest(req)
+
+	if built.ProductSize != productSize {
+		t.Fatalf("product_size = %q, want %q", built.ProductSize, productSize)
+	}
+}
+
 func TestBuildSummaryIncludesCanonicalAndImageReviewState(t *testing.T) {
 	t.Parallel()
 

@@ -92,6 +92,10 @@ func buildSheinPublishRequestForTask(task *Task, req *GenerateRequest) *sheinpub
 	if ctxIdentity.TenantID != "" {
 		ctx = WithTenantID(ctx, ctxIdentity.TenantID)
 	}
+	productSize := ""
+	if req.Options != nil && req.Options.SDS != nil {
+		productSize = req.Options.SDS.ProductSize
+	}
 	return &sheinpub.BuildRequest{
 		Country:            req.Country,
 		Language:           req.Language,
@@ -99,6 +103,7 @@ func buildSheinPublishRequestForTask(task *Task, req *GenerateRequest) *sheinpub
 		BrandHint:          req.BrandHint,
 		TargetCategoryHint: req.TargetCategoryHint,
 		SheinStoreID:       req.SheinStoreID,
+		ProductSize:        productSize,
 		Context:            WithRequestIdentity(ctx, ctxIdentity),
 	}
 }

@@ -16,6 +16,7 @@ type BuildRequest struct {
 	BrandHint          string
 	TargetCategoryHint string
 	SheinStoreID       int64
+	ProductSize        string
 	Context            context.Context `json:"-"`
 }
 
@@ -124,6 +125,7 @@ type RequestDraft struct {
 	MultiLanguageDescList   []LocalizedText                          `json:"multi_language_desc_list,omitempty"`
 	ProductAttributeList    []common.Attribute                       `json:"product_attribute_list,omitempty"`
 	ResolvedAttributes      []ResolvedAttribute                      `json:"resolved_attributes,omitempty"`
+	SizeAttributeList       []sheinproduct.SizeAttribute             `json:"size_attribute_list,omitempty"`
 	ImageInfo               *ImageDraft                              `json:"image_info,omitempty"`
 	SiteList                []common.Site                            `json:"site_list,omitempty"`
 	SKCList                 []SKCRequestDraft                        `json:"skc_list,omitempty"`

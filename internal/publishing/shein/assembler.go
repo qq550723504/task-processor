@@ -161,6 +161,7 @@ func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *
 	pkg.DraftPayload.SKCList = buildRequestSKCs(groups, images, siteList, product, a.pricingPolicy)
 	SanitizeDraftPayloadSensitiveContent(pkg, req.Context, nil)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
+	applyProductSizeAttributes(pkg, req.ProductSize)
 	SetPreviewPayload(pkg, BuildPreviewProduct(pkg))
 	NormalizePackageSemanticFields(pkg)
 	log.WithFields(logrus.Fields{

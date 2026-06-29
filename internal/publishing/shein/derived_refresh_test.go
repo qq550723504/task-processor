@@ -5,6 +5,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
+	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 type refreshDerivedStubAttributeResolver struct{}
@@ -40,16 +41,32 @@ type refreshDerivedStubSplitSaleResolver struct{}
 func (refreshDerivedStubSplitSaleResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *SaleAttributeResolution {
 	valueID := 2493
 	return &SaleAttributeResolution{
-		Status:                  "resolved",
-		PrimaryAttributeID:      27,
-		PrimarySourceDimension:  "Color",
-		SecondarySourceDimension:"Size",
-		RecommendCategoryReview: false,
-		CategoryReviewReason:    "",
+		Status:                   "resolved",
+		PrimaryAttributeID:       27,
+		PrimarySourceDimension:   "Color",
+		SecondarySourceDimension: "Size",
+		RecommendCategoryReview:  false,
+		CategoryReviewReason:     "",
 		skcValueAssignments: map[string]ResolvedSaleAttribute{
 			"white": {Scope: "skc", Name: "Color", Value: "white", AttributeID: 27, AttributeValueID: &valueID},
 		},
 		SelectionSummary: []string{"主销售属性使用源维度 Color 映射到 Color"},
+	}
+}
+
+type refreshDerivedStubSizeSaleResolver struct{}
+
+func (refreshDerivedStubSizeSaleResolver) Resolve(req *BuildRequest, canonical *canonical.Product, pkg *Package) *SaleAttributeResolution {
+	sizeMValueID := 417
+	sizeLValueID := 568
+	return &SaleAttributeResolution{
+		Status:                   "resolved",
+		SecondarySourceDimension: "Size",
+		SecondaryAttributeID:     87,
+		SKUValueAssignments: map[string]ResolvedSaleAttribute{
+			normalizeText("M"): {Value: "M", AttributeID: 87, AttributeValueID: &sizeMValueID},
+			normalizeText("L"): {Value: "L", AttributeID: 87, AttributeValueID: &sizeLValueID},
+		},
 	}
 }
 
@@ -142,7 +159,7 @@ func TestRefreshDerivedStatePreservesVariantSpecificSKCImagesWhenFallbackSplitsG
 
 	pkg := &Package{
 		ProductNameEn: "Backpack",
-		Images: &common.ImageSet{MainImage: "https://cdn.example.com/spu-main.jpg"},
+		Images:        &common.ImageSet{MainImage: "https://cdn.example.com/spu-main.jpg"},
 		RequestDraft: &RequestDraft{
 			SKCList: []SKCRequestDraft{{
 				SkcName:      "Backpack - white",
@@ -218,4 +235,196 @@ func TestRefreshDerivedStatePreservesVariantSpecificSKCImagesWhenFallbackSplitsG
 	if got := pkg.PreviewProduct.SKCList[1].ImageInfo.ImageInfoList[0].ImageURL; got != "https://cdn.example.com/35x50-main.jpg" {
 		t.Fatalf("second preview skc image = %q, want 35x50 image", got)
 	}
+}
+
+func TestRefreshDerivedStateRebuildsSizeAttributesIntoPreviewPayload(t *testing.T) {
+	t.Parallel()
+
+	canonicalProduct := &canonical.Product{
+		Title: "Oversized Tee",
+		Images: []canonical.Image{
+			{URL: "https://example.com/main.jpg"},
+		},
+		Variants: []canonical.Variant{
+			{
+				SKU:        "SKU-M",
+				Attributes: map[string]canonical.Attribute{"Size": {Value: "M"}},
+				Stock:      5,
+				IsDefault:  true,
+			},
+			{
+				SKU:        "SKU-L",
+				Attributes: map[string]canonical.Attribute{"Size": {Value: "L"}},
+				Stock:      5,
+			},
+		},
+	}
+	productSize := `[[{"content":"尺码","remark":""},{"content":"肩宽(cm/in)","remark":""},{"content":"胸围(cm/in)","remark":""}],[{"content":"M","remark":""},{"content":"55cm/21.7in","remark":""},{"content":"112cm /44.1in","remark":""}],[{"content":"L","remark":""},{"content":"58cm/22.8in","remark":""},{"content":"118cm /46.5in","remark":""}]]`
+	pkg := &Package{
+		ProductNameEn: "Oversized Tee",
+		RequestDraft:  &RequestDraft{},
+	}
+
+	RefreshDerivedState(
+		&BuildRequest{Country: "US", Language: "en", ProductSize: productSize},
+		canonicalProduct,
+		nil,
+		pkg,
+		nil,
+		nil,
+		refreshDerivedStubSizeSaleResolver{},
+		PricingPolicy{},
+	)
+
+	if pkg.RequestDraft == nil {
+		t.Fatal("request draft = nil")
+	}
+	if got := pkg.RequestDraft.SizeAttributeList; len(got) != 4 {
+		t.Fatalf("request draft size_attribute_list = %#v, want 4 items", got)
+	}
+	if pkg.PreviewProduct == nil {
+		t.Fatal("preview product = nil")
+	}
+	got := pkg.PreviewProduct.SizeAttributeList
+	if len(got) != 4 {
+		t.Fatalf("preview size_attribute_list = %#v, want 4 items", got)
+	}
+	if got[0].AttributeID != 10 || got[0].AttributeExtraValue != "55" || got[0].RelateSaleAttributeID != 87 || got[0].RelateSaleAttributeValueID != 417 {
+		t.Fatalf("first preview size attribute = %#v", got[0])
+	}
+	if got[3].AttributeID != 15 || got[3].AttributeExtraValue != "118" || got[3].RelateSaleAttributeValueID != 568 {
+		t.Fatalf("last preview size attribute = %#v", got[3])
+	}
+}
+
+func TestRefreshDerivedStateNilRequestDoesNotPanicOnProductSizeAccess(t *testing.T) {
+	t.Parallel()
+
+	canonicalProduct := &canonical.Product{
+		Title: "Oversized Tee",
+		Variants: []canonical.Variant{
+			{
+				SKU:        "SKU-M",
+				Attributes: map[string]canonical.Attribute{"Size": {Value: "M"}},
+				Stock:      5,
+				IsDefault:  true,
+			},
+		},
+	}
+	pkg := &Package{
+		RequestDraft: &RequestDraft{},
+	}
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("RefreshDerivedState(nil, ...) panicked: %v", recovered)
+		}
+	}()
+
+	RefreshDerivedState(
+		nil,
+		canonicalProduct,
+		nil,
+		pkg,
+		nil,
+		nil,
+		refreshDerivedStubSizeSaleResolver{},
+		PricingPolicy{},
+	)
+
+	if pkg.RequestDraft == nil {
+		t.Fatal("request draft = nil")
+	}
+	if pkg.PreviewProduct == nil {
+		t.Fatal("preview product = nil")
+	}
+}
+
+func TestRefreshDerivedStateClearsStaleSizeAttributesWhenProductSizeInvalid(t *testing.T) {
+	t.Parallel()
+
+	canonicalProduct := &canonical.Product{
+		Title: "Oversized Tee",
+		Variants: []canonical.Variant{
+			{
+				SKU:        "SKU-M",
+				Attributes: map[string]canonical.Attribute{"Size": {Value: "M"}},
+				Stock:      5,
+				IsDefault:  true,
+			},
+			{
+				SKU:        "SKU-L",
+				Attributes: map[string]canonical.Attribute{"Size": {Value: "L"}},
+				Stock:      5,
+			},
+		},
+	}
+	stale := []ResolvedSaleAttribute{
+		{AttributeID: 87, AttributeValueID: intPtr(417), Value: "M"},
+	}
+	cases := []struct {
+		name        string
+		productSize string
+	}{
+		{name: "empty", productSize: ""},
+		{name: "malformed", productSize: `{"broken":true}`},
+		{name: "unsupported", productSize: `[[{"content":"尺码","remark":""},{"content":"腰围(cm/in)","remark":""}],[{"content":"M","remark":""},{"content":"70cm/27.6in","remark":""}]]`},
+		{name: "unmatched", productSize: `[[{"content":"尺码","remark":""},{"content":"肩宽(cm/in)","remark":""}],[{"content":"XL","remark":""},{"content":"55cm/21.7in","remark":""}]]`},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			pkg := &Package{
+				RequestDraft: &RequestDraft{
+					SizeAttributeList: []sheinproduct.SizeAttribute{{
+						AttributeID:                10,
+						AttributeExtraValue:        "stale",
+						RelateSaleAttributeID:      87,
+						RelateSaleAttributeValueID: 999,
+					}},
+				},
+				PreviewProduct: &sheinproduct.Product{
+					SizeAttributeList: []sheinproduct.SizeAttribute{{
+						AttributeID:                10,
+						AttributeExtraValue:        "stale",
+						RelateSaleAttributeID:      87,
+						RelateSaleAttributeValueID: 999,
+					}},
+				},
+				SaleAttributeResolution: &SaleAttributeResolution{
+					SecondarySourceDimension: "Size",
+					SecondaryAttributeID:     87,
+					SKUValueAssignments: map[string]ResolvedSaleAttribute{
+						normalizeText("M"): stale[0],
+					},
+				},
+			}
+
+			RefreshDerivedState(
+				&BuildRequest{Country: "US", Language: "en", ProductSize: tc.productSize},
+				canonicalProduct,
+				nil,
+				pkg,
+				nil,
+				nil,
+				refreshDerivedStubSizeSaleResolver{},
+				PricingPolicy{},
+			)
+
+			if got := pkg.RequestDraft.SizeAttributeList; len(got) != 0 {
+				t.Fatalf("request draft size_attribute_list = %#v, want cleared", got)
+			}
+			if pkg.PreviewProduct == nil {
+				t.Fatal("preview product = nil")
+			}
+			if got := pkg.PreviewProduct.SizeAttributeList; len(got) != 0 {
+				t.Fatalf("preview size_attribute_list = %#v, want cleared", got)
+			}
+		})
+	}
+}
+
+func intPtr(value int) *int {
+	return &value
 }

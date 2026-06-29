@@ -67,8 +67,16 @@ func RefreshDerivedState(
 	pkg.DraftPayload.SKCList = buildRequestSKCs(groups, images, pkg.SiteList, canonical, pricingPolicy)
 	reapplyPreviousSKCImages(pkg, previousDraftSKCs, previousPackageSKCs)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
+	applyProductSizeAttributes(pkg, productSizeOrEmpty(req))
 	SetPreviewPayload(pkg, BuildPreviewProduct(pkg))
 	NormalizePackageSemanticFields(pkg)
+}
+
+func productSizeOrEmpty(req *BuildRequest) string {
+	if req == nil {
+		return ""
+	}
+	return req.ProductSize
 }
 
 func countryOrDefault(req *BuildRequest) string {
