@@ -41,6 +41,7 @@ func TestDependenciesExposeListingRuntimeHealthValidatorInsteadOfSharedResources
 		"sharedResources func() *bootstrapresources.SharedResources",
 		"onSharedResources func(*bootstrapresources.SharedResources)",
 		"onSharedResources(resources)",
+		"*consumer.SharedResources",
 		"resources.ListingRuntimeHealthValidator()",
 	} {
 		if strings.Contains(string(content), marker) {

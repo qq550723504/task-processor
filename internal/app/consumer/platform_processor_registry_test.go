@@ -20,7 +20,7 @@ func TestRegisterPlatformsSkipsDisabledPlatform(t *testing.T) {
 
 	serviceManager := newRegistryTestServiceManager(logger)
 
-	err := registry.RegisterPlatforms(context.Background(), serviceManager, &SharedResources{}, "amazon")
+	err := registry.RegisterPlatforms(context.Background(), serviceManager, SharedResources{}, "amazon")
 	if err == nil {
 		t.Fatal("expected disabled platform registration to fail")
 	}
@@ -38,7 +38,7 @@ func TestRegisterPlatformsRegistersEnabledPlatform(t *testing.T) {
 
 	serviceManager := newRegistryTestServiceManager(logger)
 
-	if err := registry.RegisterPlatforms(context.Background(), serviceManager, &SharedResources{}, "amazon"); err != nil {
+	if err := registry.RegisterPlatforms(context.Background(), serviceManager, SharedResources{}, "amazon"); err != nil {
 		t.Fatalf("RegisterPlatforms returned error: %v", err)
 	}
 

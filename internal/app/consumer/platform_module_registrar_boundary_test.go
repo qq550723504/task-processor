@@ -48,3 +48,23 @@ func TestPlatformRuntimeContextBuilderDoesNotAcceptSharedResourcesPointer(t *tes
 		}
 	}
 }
+
+func TestPlatformProcessorRegistryDoesNotAcceptSharedResourcesPointer(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("platform_processor_registry.go")
+	if err != nil {
+		t.Fatalf("read platform_processor_registry.go: %v", err)
+	}
+	source := string(content)
+
+	for _, marker := range []string{
+		"resources *SharedResources",
+		"resourcesValue := *resources",
+		"resources == nil",
+	} {
+		if strings.Contains(source, marker) {
+			t.Fatalf("platform_processor_registry.go mentions %q; expand SharedResources before calling registry registration methods", marker)
+		}
+	}
+}

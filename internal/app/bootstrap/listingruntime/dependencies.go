@@ -1,6 +1,8 @@
 package listingruntime
 
 import (
+	"fmt"
+
 	"task-processor/internal/app/bootstrap/fetchers"
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/app/consumer"
@@ -13,13 +15,13 @@ import (
 
 type dependencies struct {
 	platformModules               []consumer.PlatformModule
-	buildResources                func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error)
+	buildResources                func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (consumer.SharedResources, error)
 	listingRuntimeHealthValidator func() ports.ListingRuntimeHealthValidator
 }
 
-func (d dependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+func (d dependencies) BuildConsumerSharedResources(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (consumer.SharedResources, error) {
 	if d.buildResources == nil {
-		return nil, nil
+		return consumer.SharedResources{}, nil
 	}
 	return d.buildResources(cfg, logger, platform, needs)
 }
@@ -48,8 +50,8 @@ func BuildDependencies() dependencies {
 	}
 }
 
-func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports.ListingRuntimeHealthValidator)) func(*config.Config, *logrus.Logger, string, consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
-	return func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (*consumer.SharedResources, error) {
+func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports.ListingRuntimeHealthValidator)) func(*config.Config, *logrus.Logger, string, consumer.SharedResourceNeeds) (consumer.SharedResources, error) {
+	return func(cfg *config.Config, logger *logrus.Logger, platform string, needs consumer.SharedResourceNeeds) (consumer.SharedResources, error) {
 		var capturedListingRuntimeHealthValidator ports.ListingRuntimeHealthValidator
 		captureListingRuntimeHealthValidator := func(validator ports.ListingRuntimeHealthValidator) {
 			capturedListingRuntimeHealthValidator = validator
@@ -60,7 +62,10 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 			OnListingRuntimeHealthValidator: captureListingRuntimeHealthValidator,
 		})
 		if err != nil {
-			return nil, err
+			return consumer.SharedResources{}, err
+		}
+		if resources == nil {
+			return consumer.SharedResources{}, fmt.Errorf("build shared resources: resources are nil")
 		}
 
 		productFetcher, err := fetchers.BuildPlatformProductFetcher(
@@ -71,13 +76,13 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 			resources.RabbitMQClient,
 		)
 		if err != nil {
-			return nil, err
+			return consumer.SharedResources{}, err
 		}
 		if onListingRuntimeHealthValidator != nil {
 			onListingRuntimeHealthValidator(capturedListingRuntimeHealthValidator)
 		}
 
-		return &consumer.SharedResources{
+		return consumer.SharedResources{
 			ListingRuntimeImportTaskRepository: resources.ImportTaskRepository,
 			StoreAPI:                           resources.StoreAPI,
 			SchedulerRuntime:                   resources.SchedulerRuntime,

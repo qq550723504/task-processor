@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/sirupsen/logrus"
 )
@@ -25,11 +24,11 @@ func NewPlatformProcessorRegistry(logger *logrus.Logger, deps PlatformProcessorR
 	}
 }
 
-func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources) error {
+func (r *PlatformProcessorRegistry) RegisterAllProcessors(ctx context.Context, serviceManager *ServiceManager, resources SharedResources) error {
 	return r.RegisterPlatforms(ctx, serviceManager, resources, r.catalog.enabledPlatformNames()...)
 }
 
-func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, resources *SharedResources, platforms ...string) error {
+func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, serviceManager *ServiceManager, resources SharedResources, platforms ...string) error {
 	modules, err := r.catalog.resolveMany(platforms...)
 	if err != nil {
 		return err
@@ -38,15 +37,11 @@ func (r *PlatformProcessorRegistry) RegisterPlatforms(ctx context.Context, servi
 	r.logger.Infof("registering platform processors: %v", platformModuleNames(modules))
 	serviceManager.LogDistributedFetchingAvailability(r.logger)
 
-	if resources == nil {
-		return fmt.Errorf("shared resources not configured")
-	}
 	r.logger.Info("shared resources initialized")
 
-	resourcesValue := *resources
 	registrar := r.newRegistrar(r.logger, serviceManager)
 	for _, module := range modules {
-		if err := registrar.register(ctx, module, resourcesValue); err != nil {
+		if err := registrar.register(ctx, module, resources); err != nil {
 			return err
 		}
 	}
