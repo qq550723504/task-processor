@@ -33,6 +33,15 @@ type appServices struct {
 	schedulerService  runner.SchedulerService
 }
 
+type appServiceResources struct {
+	rawJSONDataClient       product.RawJsonDataClient
+	processorRuntime        consumer.ProcessorRuntime
+	schedulerRuntime        runner.SchedulerRuntimeProvider
+	schedulerFactoryRuntime consumer.SchedulerFactoryRuntime
+	amazonCrawler           ports.CrawlSource
+	rabbitmqClient          *rabbitmq.Client
+}
+
 type ApplicationBootstrap struct {
 	logger           *logrus.Logger
 	configManager    config.ConfigManager
@@ -143,40 +152,54 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 		return nil, fmt.Errorf("build shared resources: %w", err)
 	}
 
-	return buildAppServices(cfg, logger, resources), nil
+	return buildAppServices(cfg, logger, newAppServiceResources(resources)), nil
 }
 
-func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources *bootstrapresources.SharedResources) *appServices {
+func newAppServiceResources(resources *bootstrapresources.SharedResources) appServiceResources {
+	if resources == nil {
+		return appServiceResources{}
+	}
+	return appServiceResources{
+		rawJSONDataClient:       resources.RawJSONDataClient,
+		processorRuntime:        resources.ProcessorRuntime,
+		schedulerRuntime:        resources.SchedulerRuntime,
+		schedulerFactoryRuntime: resources.SchedulerFactoryRuntime,
+		amazonCrawler:           resources.AmazonCrawler,
+		rabbitmqClient:          resources.RabbitMQClient,
+	}
+}
+
+func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources appServiceResources) *appServices {
 	return &appServices{
 		cfg:               cfg,
-		rawJSONDataClient: resources.RawJSONDataClient,
-		processorRuntime:  resources.ProcessorRuntime,
-		amazonCrawler:     resources.AmazonCrawler,
-		rabbitmqClient:    resources.RabbitMQClient,
+		rawJSONDataClient: resources.rawJSONDataClient,
+		processorRuntime:  resources.processorRuntime,
+		amazonCrawler:     resources.amazonCrawler,
+		rabbitmqClient:    resources.rabbitmqClient,
 		processorService:  buildProcessorService(logger, resources),
 		schedulerService:  buildSchedulerService(logger, cfg, resources),
 	}
 }
 
-func buildProcessorService(logger *logrus.Logger, resources *bootstrapresources.SharedResources) runner.ProcessorService {
+func buildProcessorService(logger *logrus.Logger, resources appServiceResources) runner.ProcessorService {
 	return runner.NewProcessorServiceWithCreators(
 		logger,
-		resources.RawJSONDataClient,
-		resources.ProcessorRuntime,
-		resources.SchedulerRuntime,
-		resources.SchedulerFactoryRuntime,
-		resources.AmazonCrawler,
-		resources.RabbitMQClient,
+		resources.rawJSONDataClient,
+		resources.processorRuntime,
+		resources.schedulerRuntime,
+		resources.schedulerFactoryRuntime,
+		resources.amazonCrawler,
+		resources.rabbitmqClient,
 		bootstrapprocessors.BuildRunnerProcessorDependencies(),
 	)
 }
 
-func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources *bootstrapresources.SharedResources) runner.SchedulerService {
+func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources appServiceResources) runner.SchedulerService {
 	return runner.NewSchedulerServiceWithDependencies(
 		logger,
-		resources.SchedulerRuntime,
+		resources.schedulerRuntime,
 		cfg,
-		resources.RabbitMQClient,
-		bootstrapschedulers.BuildDependencies(resources.SchedulerFactoryRuntime, cfg, resources.AmazonCrawler, resources.RabbitMQClient),
+		resources.rabbitmqClient,
+		bootstrapschedulers.BuildDependencies(resources.schedulerFactoryRuntime, cfg, resources.amazonCrawler, resources.rabbitmqClient),
 	)
 }
