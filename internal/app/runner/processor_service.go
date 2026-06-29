@@ -7,7 +7,6 @@ import (
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
@@ -67,7 +66,7 @@ type schedulerFactoryRuntimeProvider interface {
 }
 
 type ProcessorService interface {
-	StartProcessors(ctx context.Context, cfg *config.Config, authClient *auth.ClientCredentialsAuthClient) error
+	StartProcessors(ctx context.Context, cfg *config.Config) error
 	StopProcessors() error
 	GetStatus() map[string]any
 }

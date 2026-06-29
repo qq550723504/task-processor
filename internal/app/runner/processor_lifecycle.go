@@ -6,12 +6,11 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/errors"
-	"task-processor/internal/infra/auth"
 	"task-processor/internal/pkg/timeout"
 )
 
 // StartProcessors 启动所有处理器
-func (s *processorServiceImpl) StartProcessors(ctx context.Context, cfg *config.Config, authClient *auth.ClientCredentialsAuthClient) error {
+func (s *processorServiceImpl) StartProcessors(ctx context.Context, cfg *config.Config) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

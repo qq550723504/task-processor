@@ -12,7 +12,6 @@ import (
 	"task-processor/internal/app/runner"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/platformbase"
 	"task-processor/internal/product"
@@ -24,7 +23,6 @@ import (
 
 type appServices struct {
 	cfg               *config.Config
-	authClient        *auth.ClientCredentialsAuthClient
 	rawJSONDataClient product.RawJsonDataClient
 	processorRuntime  consumer.ProcessorRuntime
 	amazonCrawler     ports.CrawlSource
@@ -151,7 +149,6 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources *bootstrapresources.SharedResources) *appServices {
 	return &appServices{
 		cfg:               cfg,
-		authClient:        resources.AuthClient,
 		rawJSONDataClient: resources.RawJSONDataClient,
 		processorRuntime:  resources.ProcessorRuntime,
 		amazonCrawler:     resources.AmazonCrawler,

@@ -9,7 +9,6 @@ import (
 	"task-processor/internal/app/updater"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/lifecycle"
-	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
@@ -91,7 +90,7 @@ func registerTaskFetcherComponent(
 		return nil
 	}
 
-	return lm.Register(newTaskFetcherComponent(svc.processorService, svc.authClient, svc.cfg, logger, deps))
+	return lm.Register(newTaskFetcherComponent(svc.processorService, svc.cfg, logger, deps))
 }
 
 func registerSchedulerComponent(
@@ -233,11 +232,10 @@ func (s *sheinComponent) Stop(ctx context.Context) error {
 	return nil
 }
 
-func newTaskFetcherComponent(processorService runner.ProcessorService, authClient *auth.ClientCredentialsAuthClient, cfg *config.Config, logger *logrus.Logger, deps []string) *taskFetcherComponent {
+func newTaskFetcherComponent(processorService runner.ProcessorService, cfg *config.Config, logger *logrus.Logger, deps []string) *taskFetcherComponent {
 	return &taskFetcherComponent{
 		BaseComponent:    lifecycle.NewBaseComponent("task-fetcher", deps, 25),
 		processorService: processorService,
-		authClient:       authClient,
 		cfg:              cfg,
 		logger:           logger,
 	}
@@ -246,13 +244,12 @@ func newTaskFetcherComponent(processorService runner.ProcessorService, authClien
 type taskFetcherComponent struct {
 	*lifecycle.BaseComponent
 	processorService runner.ProcessorService
-	authClient       *auth.ClientCredentialsAuthClient
 	cfg              *config.Config
 	logger           *logrus.Logger
 }
 
 func (t *taskFetcherComponent) Start(ctx context.Context) error {
-	if err := t.processorService.StartProcessors(ctx, t.cfg, t.authClient); err != nil {
+	if err := t.processorService.StartProcessors(ctx, t.cfg); err != nil {
 		return fmt.Errorf("start task fetcher: %w", err)
 	}
 	t.SetRunning(true)

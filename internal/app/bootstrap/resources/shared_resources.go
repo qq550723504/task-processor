@@ -10,7 +10,6 @@ import (
 	"task-processor/internal/app/runner"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
-	"task-processor/internal/infra/auth"
 	"task-processor/internal/infra/rabbitmq"
 	crawleramazon "task-processor/internal/integration/crawler/amazon"
 	"task-processor/internal/listingadmin"
@@ -33,7 +32,6 @@ type SharedResourceOptions struct {
 
 // SharedResources groups dependencies that were previously assembled in multiple places.
 type SharedResources struct {
-	AuthClient              *auth.ClientCredentialsAuthClient
 	RawJSONDataClient       product.RawJsonDataClient
 	StoreAPI                listingadmin.StoreAPI
 	SchedulerRuntime        runner.SchedulerRuntimeProvider

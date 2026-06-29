@@ -17,6 +17,9 @@ func TestBuildSharedResourcesDoesNotConstructRetiredManagementService(t *testing
 
 	for _, token := range []string{
 		`"task-processor/internal/infra/clients/management"`,
+		`"task-processor/internal/infra/auth"`,
+		"AuthClient",
+		"ClientCredentialsAuthClient",
 		"ManagementClient        *management.ClientManager",
 		"management.NewClientManager",
 		"newConfiguredManagementClient",
@@ -53,6 +56,5 @@ func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T)
 	resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{})
 	require.NoError(t, err)
 	require.NotNil(t, resources)
-	require.Nil(t, resources.AuthClient)
 	require.Nil(t, resources.ProcessorRuntime)
 }
