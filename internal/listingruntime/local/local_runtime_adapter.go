@@ -398,7 +398,7 @@ func (s localRuntimeStoreService) GetStorePauseStatusDetail(storeID int64) (*lis
 	if err != nil {
 		return nil, err
 	}
-	return runtimePauseDetailFromManagement(detail), nil
+	return runtimePauseDetailFromListingAdminDTO(detail), nil
 }
 
 func (s localRuntimeStoreService) SetStorePauseStatus(storeID int64, pause bool, pauseType string) (bool, error) {

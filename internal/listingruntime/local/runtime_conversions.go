@@ -39,7 +39,7 @@ func runtimeStoreFromListing(store *listingadmin.Store) *listingruntime.StoreInf
 	}
 }
 
-func runtimeStoreFromManagement(store *listingadmin.StoreRespDTO) *listingruntime.StoreInfo {
+func runtimeStoreFromListingAdminDTO(store *listingadmin.StoreRespDTO) *listingruntime.StoreInfo {
 	if store == nil {
 		return nil
 	}
@@ -69,7 +69,7 @@ func runtimeStoreFromManagement(store *listingadmin.StoreRespDTO) *listingruntim
 	}
 }
 
-func runtimePauseDetailFromManagement(detail *listingadmin.StorePauseStatusRespDTO) *listingruntime.StorePauseStatusDetail {
+func runtimePauseDetailFromListingAdminDTO(detail *listingadmin.StorePauseStatusRespDTO) *listingruntime.StorePauseStatusDetail {
 	if detail == nil {
 		return nil
 	}
@@ -123,7 +123,7 @@ func runtimeOperationStrategyFromListing(strategy *listingadmin.OperationStrateg
 	}
 }
 
-func runtimeOperationStrategyFromManagement(strategy *listingadmin.OperationStrategyDTO) *listingruntime.OperationStrategy {
+func runtimeOperationStrategyFromListingAdminDTO(strategy *listingadmin.OperationStrategyDTO) *listingruntime.OperationStrategy {
 	if strategy == nil {
 		return nil
 	}
@@ -192,7 +192,7 @@ func runtimeProductImportMappingFromListing(mapping *listingadmin.ProductImportM
 	}
 }
 
-func runtimeProductImportMappingFromManagement(mapping *listingadmin.ProductImportMappingRespDTO) *listingruntime.ProductImportMapping {
+func runtimeProductImportMappingFromListingAdminDTO(mapping *listingadmin.ProductImportMappingRespDTO) *listingruntime.ProductImportMapping {
 	if mapping == nil {
 		return nil
 	}
@@ -246,7 +246,7 @@ func listingProductImportMappingFromRuntime(req *listingruntime.ProductImportMap
 	}
 }
 
-func managementProductImportMappingFromRuntime(req *listingruntime.ProductImportMappingUpsert) *listingadmin.ProductImportMappingCreateReqDTO {
+func listingAdminProductImportMappingCreateDTOFromRuntime(req *listingruntime.ProductImportMappingUpsert) *listingadmin.ProductImportMappingCreateReqDTO {
 	if req == nil {
 		return nil
 	}
