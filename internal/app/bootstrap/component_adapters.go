@@ -18,23 +18,20 @@ import (
 
 func registerComponents(
 	lm lifecycle.LifecycleManager,
-	svc *appServices,
+	resources lifecycleRegistrationResources,
 	logger *logrus.Logger,
 	appVersion string,
-) error {
-	resources := newLifecycleRegistrationResources(svc)
+) (registeredProcessorComponents, error) {
 	deps, processors, err := registerCoreComponents(lm, resources, logger, appVersion)
 	if err != nil {
-		return err
+		return processors, err
 	}
-	svc.temuProcessor = processors.temuProcessor
-	svc.sheinProcessor = processors.sheinProcessor
 
 	if err := registerTaskFetcherComponent(lm, resources, logger, deps); err != nil {
-		return err
+		return processors, err
 	}
 
-	return registerSchedulerComponent(lm, resources, logger, deps)
+	return processors, registerSchedulerComponent(lm, resources, logger, deps)
 }
 
 type lifecycleRegistrationResources struct {
@@ -50,10 +47,7 @@ type registeredProcessorComponents struct {
 	sheinProcessor *pipeline.SheinProcessor
 }
 
-func newLifecycleRegistrationResources(svc *appServices) lifecycleRegistrationResources {
-	if svc == nil {
-		return lifecycleRegistrationResources{}
-	}
+func newLifecycleRegistrationResources(svc appServices) lifecycleRegistrationResources {
 	return lifecycleRegistrationResources{
 		cfg:                svc.cfg,
 		processorResources: svc.processorResources,

@@ -16,6 +16,8 @@ func TestLifecycleRegistrationDoesNotDependOnAppServices(t *testing.T) {
 	source := string(content)
 
 	for _, marker := range []string{
+		"svc *appServices",
+		"func newLifecycleRegistrationResources(svc *appServices) lifecycleRegistrationResources",
 		"func registerCoreComponents(\n\tlm lifecycle.LifecycleManager,\n\tsvc *appServices,",
 		"func registerTaskFetcherComponent(\n\tlm lifecycle.LifecycleManager,\n\tsvc *appServices,",
 		"func registerSchedulerComponent(\n\tlm lifecycle.LifecycleManager,\n\tsvc *appServices,",
@@ -33,7 +35,8 @@ func TestLifecycleRegistrationDoesNotDependOnAppServices(t *testing.T) {
 	for _, marker := range []string{
 		"type lifecycleRegistrationResources struct",
 		"type registeredProcessorComponents struct",
-		"func newLifecycleRegistrationResources(svc *appServices) lifecycleRegistrationResources",
+		"func newLifecycleRegistrationResources(svc appServices) lifecycleRegistrationResources",
+		"func registerComponents(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",
 		"func registerCoreComponents(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",
 		"func registerTaskFetcherComponent(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",
 		"func registerSchedulerComponent(\n\tlm lifecycle.LifecycleManager,\n\tresources lifecycleRegistrationResources,",

@@ -125,9 +125,17 @@ func (a *ApplicationBootstrap) initializeServices() error {
 }
 
 func (a *ApplicationBootstrap) registerLifecycleComponents() error {
-	if err := registerComponents(a.lifecycleManager, a.services, a.logger, a.appVersion); err != nil {
+	if a.services == nil {
+		return fmt.Errorf("services are not initialized")
+	}
+
+	resources := newLifecycleRegistrationResources(*a.services)
+	processors, err := registerComponents(a.lifecycleManager, resources, a.logger, a.appVersion)
+	if err != nil {
 		return fmt.Errorf("register lifecycle components: %w", err)
 	}
+	a.services.temuProcessor = processors.temuProcessor
+	a.services.sheinProcessor = processors.sheinProcessor
 
 	return nil
 }
