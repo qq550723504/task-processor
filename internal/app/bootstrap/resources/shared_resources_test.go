@@ -32,11 +32,10 @@ func TestSharedResourcesUsesNamedListingRuntimeHealthValidatorPort(t *testing.T)
 	content, err := os.ReadFile("shared_resources.go")
 	require.NoError(t, err)
 
-	require.NotContains(t, string(content), "ListingRuntimeHealthValidator interface {\n\t\tValidateLocalListingRuntimeFields()")
-	require.Contains(t, string(content), "type ListingRuntimeHealthValidator interface {")
+	require.NotContains(t, string(content), "type ListingRuntimeHealthValidator interface {")
 	require.NotContains(t, string(content), "ListingRuntimeHealthValidator ListingRuntimeHealthValidator")
-	require.Contains(t, string(content), "listingRuntimeHealthValidator ListingRuntimeHealthValidator")
-	require.Contains(t, string(content), "func (r *SharedResources) ListingRuntimeHealthValidator() ListingRuntimeHealthValidator")
+	require.Contains(t, string(content), "listingRuntimeHealthValidator ports.ListingRuntimeHealthValidator")
+	require.Contains(t, string(content), "func (r *SharedResources) ListingRuntimeHealthValidator() ports.ListingRuntimeHealthValidator")
 }
 
 func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T) {

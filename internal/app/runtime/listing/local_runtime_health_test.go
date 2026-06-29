@@ -2,6 +2,7 @@ package listing
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -15,6 +16,20 @@ type stubListingLocalRuntimeValidator struct {
 
 func (s stubListingLocalRuntimeValidator) ValidateLocalListingRuntimeFields() (map[string]bool, error) {
 	return s.fields, s.err
+}
+
+func TestListingRuntimeHealthValidatorPortIsOwnedByAppPorts(t *testing.T) {
+	content, err := os.ReadFile("local_runtime_health.go")
+	if err != nil {
+		t.Fatalf("read local_runtime_health.go: %v", err)
+	}
+
+	if strings.Contains(string(content), "type ListingRuntimeHealthValidator interface {") {
+		t.Fatalf("local_runtime_health.go defines ListingRuntimeHealthValidator; keep the shared port in app/ports")
+	}
+	if !strings.Contains(string(content), "ports.ListingRuntimeHealthValidator") {
+		t.Fatalf("local_runtime_health.go should accept ports.ListingRuntimeHealthValidator")
+	}
 }
 
 func TestValidateListingRuntimeHealthRequiresSheinLocalRuntime(t *testing.T) {

@@ -49,7 +49,7 @@ func TestDependenciesExposeListingRuntimeHealthValidatorInsteadOfSharedResources
 	if !strings.Contains(string(content), "func (d dependencies) ListingRuntimeHealthValidator()") {
 		t.Fatalf("dependencies.go should expose ListingRuntimeHealthValidator as the narrow listing runtime health dependency")
 	}
-	if !strings.Contains(string(content), "onListingRuntimeHealthValidator func(bootstrapresources.ListingRuntimeHealthValidator)") {
+	if !strings.Contains(string(content), "onListingRuntimeHealthValidator func(ports.ListingRuntimeHealthValidator)") {
 		t.Fatalf("dependencies.go should pass ListingRuntimeHealthValidator through the resource-build callback instead of passing SharedResources")
 	}
 }

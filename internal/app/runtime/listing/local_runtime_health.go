@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/app/ports"
+
 	"github.com/sirupsen/logrus"
 )
 
-type ListingRuntimeHealthValidator interface {
-	ValidateLocalListingRuntimeFields() (map[string]bool, error)
-}
-
-func ValidateListingRuntimeHealth(platform string, validator ListingRuntimeHealthValidator, logger *logrus.Logger) error {
+func ValidateListingRuntimeHealth(platform string, validator ports.ListingRuntimeHealthValidator, logger *logrus.Logger) error {
 	if !strings.EqualFold(strings.TrimSpace(platform), "shein") {
 		return nil
 	}

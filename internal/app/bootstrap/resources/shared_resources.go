@@ -30,14 +30,10 @@ type SharedResourceOptions struct {
 	NeedAmazonCrawler bool
 }
 
-type ListingRuntimeHealthValidator interface {
-	ValidateLocalListingRuntimeFields() (map[string]bool, error)
-}
-
 // SharedResources groups dependencies that were previously assembled in multiple places.
 type SharedResources struct {
 	AuthClient                    *auth.ClientCredentialsAuthClient
-	listingRuntimeHealthValidator ListingRuntimeHealthValidator
+	listingRuntimeHealthValidator ports.ListingRuntimeHealthValidator
 	RawJSONDataClient             product.RawJsonDataClient
 	StoreAPI                      listingadmin.StoreAPI
 	SchedulerRuntime              runner.SchedulerRuntimeProvider
@@ -48,7 +44,7 @@ type SharedResources struct {
 	RabbitMQClient                *rabbitmq.Client
 }
 
-func (r *SharedResources) ListingRuntimeHealthValidator() ListingRuntimeHealthValidator {
+func (r *SharedResources) ListingRuntimeHealthValidator() ports.ListingRuntimeHealthValidator {
 	if r == nil {
 		return nil
 	}

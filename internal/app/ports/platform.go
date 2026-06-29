@@ -13,6 +13,11 @@ type CrawlSource interface {
 	Shutdown()
 }
 
+// ListingRuntimeHealthValidator defines the local runtime readiness check used before listing consumers start.
+type ListingRuntimeHealthValidator interface {
+	ValidateLocalListingRuntimeFields() (map[string]bool, error)
+}
+
 // TaskPublisher defines the ability to publish task payloads asynchronously.
 type TaskPublisher interface {
 	Publish(ctx context.Context, topic string, payload []byte) error
