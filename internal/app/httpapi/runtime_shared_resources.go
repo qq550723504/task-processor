@@ -10,10 +10,10 @@ import (
 	"task-processor/internal/listingadmin"
 )
 
-func buildHTTPAPISharedResources(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreAPI, error) {
+func buildHTTPAPIStoreAPI(cfg *config.Config, logger *logrus.Logger) (listingadmin.StoreAPI, error) {
 	shared, err := bootstrapresources.BuildSharedResources(cfg, logger, bootstrapresources.SharedResourceOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("build shared resources: %w", err)
+		return nil, fmt.Errorf("build HTTP API StoreAPI: %w", err)
 	}
 	return shared.StoreAPI(), nil
 }

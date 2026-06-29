@@ -229,12 +229,20 @@ func TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated(t *testing.T) {
 		`"task-processor/internal/app/bootstrap"`,
 		"bootstrapresources.BuildSharedResources(",
 		"bootstrapresources.SharedResourceOptions{",
+		`timer.phase("buildSharedResources")`,
+		"buildHTTPAPISharedResources(",
 		"AllowMissingManagementAuth: true",
 		"SkipManagementAuth:         true",
 	} {
 		if strings.Contains(runtimeSource, marker) {
-			t.Fatalf("runtime.go should keep shared resource assembly in runtime_shared_resources.go; found %s", marker)
+			t.Fatalf("runtime.go should keep StoreAPI assembly in runtime_shared_resources.go; found %s", marker)
 		}
+	}
+	if !strings.Contains(runtimeSource, `timer.phase("buildStoreAPI")`) {
+		t.Fatalf("runtime.go should time HTTP API StoreAPI assembly as buildStoreAPI")
+	}
+	if !strings.Contains(runtimeSource, "buildHTTPAPIStoreAPI(") {
+		t.Fatalf("runtime.go should build the narrow StoreAPI dependency explicitly")
 	}
 
 	sharedDepsSource := readHTTPAPIBoundaryFile(t, "runtime_shared_deps.go")
@@ -267,13 +275,16 @@ func TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated(t *testing.T) {
 	sharedResourcesSource := readHTTPAPIBoundaryFile(t, "runtime_shared_resources.go")
 	for _, marker := range []string{
 		`"task-processor/internal/app/bootstrap/resources"`,
-		"func buildHTTPAPISharedResources(",
+		"func buildHTTPAPIStoreAPI(",
 		"bootstrapresources.BuildSharedResources(",
 		"bootstrapresources.SharedResourceOptions{",
 	} {
 		if !strings.Contains(sharedResourcesSource, marker) {
 			t.Fatalf("runtime_shared_resources.go missing %s", marker)
 		}
+	}
+	if strings.Contains(sharedResourcesSource, "func buildHTTPAPISharedResources(") {
+		t.Fatalf("runtime_shared_resources.go should name the HTTP API dependency as StoreAPI instead of shared resources")
 	}
 	for _, marker := range []string{
 		"AllowMissingManagementAuth",
