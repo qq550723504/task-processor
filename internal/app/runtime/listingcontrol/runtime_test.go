@@ -255,6 +255,43 @@ func TestControlPlaneServiceRunsRecoveryBeforeDispatchAndStopsOnContext(t *testi
 	}
 }
 
+func TestControlPlaneServiceRunsPausedTaskRecoveryAtHourlyInterval(t *testing.T) {
+	var order []string
+	now := time.Date(2026, 6, 29, 10, 0, 0, 0, time.UTC)
+	service := controlPlaneService{
+		PausedTaskRecovery: newIntervalRunner(time.Hour, func(ctx context.Context) error {
+			order = append(order, "paused")
+			return nil
+		}, func() time.Time { return now }),
+		Recovery: func(ctx context.Context) (controllib.RecoverySummary, error) {
+			order = append(order, "recovery")
+			return controllib.RecoverySummary{}, nil
+		},
+		Dispatch: func(ctx context.Context) (controllib.DispatchSummary, error) {
+			order = append(order, "dispatch")
+			return controllib.DispatchSummary{}, nil
+		},
+		Status: NewStatusTracker(now),
+	}
+
+	if err := service.runOnce(context.Background()); err != nil {
+		t.Fatalf("first runOnce returned error: %v", err)
+	}
+	now = now.Add(59 * time.Minute)
+	if err := service.runOnce(context.Background()); err != nil {
+		t.Fatalf("second runOnce returned error: %v", err)
+	}
+	now = now.Add(time.Minute)
+	if err := service.runOnce(context.Background()); err != nil {
+		t.Fatalf("third runOnce returned error: %v", err)
+	}
+
+	want := []string{"paused", "recovery", "dispatch", "recovery", "dispatch", "paused", "recovery", "dispatch"}
+	if !reflect.DeepEqual(order, want) {
+		t.Fatalf("execution order = %v, want %v", order, want)
+	}
+}
+
 func TestControlPlaneServiceSkipsCycleWhenLeaderLockIsHeldElsewhere(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

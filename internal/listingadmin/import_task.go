@@ -117,6 +117,8 @@ type ImportTaskRepository interface {
 	GetImportTaskByID(ctx context.Context, id int64) (*ImportTask, error)
 	ListPendingAndRetryTasks(ctx context.Context, limit int, tenantID int64, storeIDs []int64) ([]ImportTask, error)
 	ListDispatchCandidatesFair(ctx context.Context, req DispatchCandidateRequest) ([]ImportTask, error)
+	ListPausedTaskGroups(ctx context.Context, platform string) ([]PausedTaskGroup, error)
+	RecoverPausedTaskGroup(ctx context.Context, platform string, group PausedTaskGroup) (int64, error)
 	ClaimForDispatch(ctx context.Context, claim DispatchClaim) (bool, error)
 	RecordDispatchDelay(ctx context.Context, delay DispatchDelay) (bool, error)
 	CountDailyDispatchUsage(ctx context.Context, platform string, tenantID, storeID int64, day time.Time) (DailyDispatchUsage, error)

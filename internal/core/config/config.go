@@ -417,6 +417,9 @@ func knownEnvBindings() map[string]envBinding {
 		"listingControlPlane.enableLegacyQuotaKeys": {
 			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_ENABLE_LEGACY_QUOTA_KEYS",
 		},
+		"listingControlPlane.pausedTaskRecoveryInterval": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_PAUSED_TASK_RECOVERY_INTERVAL",
+		},
 		"rabbitmq.staleQueuedWatchdog.enabled": {
 			Primary:    "TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED",
 			Deprecated: []string{"RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED"},

@@ -59,6 +59,8 @@ spec:
               value: "500"
             - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_SCAN_INTERVAL
               value: "5s"
+            - name: TASK_PROCESSOR_LISTING_CONTROL_PLANE_PAUSED_TASK_RECOVERY_INTERVAL
+              value: "1h"
             - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED
               value: "true"
             - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_TIMEOUT_MINUTES

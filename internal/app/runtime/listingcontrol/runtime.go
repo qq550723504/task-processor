@@ -158,6 +158,13 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 		PerStoreLimit: controlCfg.PerStoreBurst,
 		DryRun:        controlCfg.DryRun,
 	})
+	pausedTaskRecoveryService := listingadmin.PausedTaskRecoveryService{
+		Platform:           platform,
+		ImportTasks:        repo,
+		Stores:             listingadmin.NewGormStoreRepository(db),
+		RuntimePauses:      redisRT,
+		AllowedReasonCodes: []string{"STORE_DISPATCH_DISABLED"},
+	}
 
 	status := NewStatusTracker(time.Now())
 	status.RecordConfig(controlPlaneConfigStatus(controlCfg, platform))
@@ -166,8 +173,25 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	}
 
 	service := controlPlaneService{
-		Recovery:            recovery.RunOnce,
-		Dispatch:            scheduler.DispatchOnce,
+		Recovery: recovery.RunOnce,
+		Dispatch: scheduler.DispatchOnce,
+		PausedTaskRecovery: newIntervalRunner(pausedTaskRecoveryInterval(controlCfg), func(ctx context.Context) error {
+			plan, err := pausedTaskRecoveryService.Plan(ctx)
+			if err != nil {
+				return err
+			}
+			result, err := pausedTaskRecoveryService.Execute(ctx, plan)
+			if err != nil {
+				return err
+			}
+			logger.WithFields(logrus.Fields{
+				"pausedTasks":      plan.TotalPaused,
+				"recoverableTasks": plan.TotalRecoverable,
+				"recoveredTasks":   result.Recovered,
+				"groups":           len(plan.Groups),
+			}).Info("listing control-plane paused task recovery completed")
+			return nil
+		}, time.Now),
 		LeaderLock:          newRedisLeaderLock(redisRT, resolveLeaderLockKey(controlCfg, platform), resolveLeaderOwner(cfg), leaderLockTTL(controlCfg)),
 		LeaderRenewInterval: leaderRenewInterval(controlCfg),
 		ScanInterval:        controlCfg.ScanInterval,
@@ -197,6 +221,7 @@ func validateRuntimeConfig(cfg *config.Config) error {
 type controlPlaneService struct {
 	Recovery            func(context.Context) (controllib.RecoverySummary, error)
 	Dispatch            func(context.Context) (controllib.DispatchSummary, error)
+	PausedTaskRecovery  *intervalRunner
 	LeaderLock          leaderLock
 	LeaderRenewInterval time.Duration
 	ScanInterval        time.Duration
@@ -281,6 +306,13 @@ func (s controlPlaneService) runOnce(ctx context.Context) error {
 		go s.renewLeaderUntilDone(cycleCtx, done, cancel)
 	}
 	defer stopRenewal()
+
+	if err := s.PausedTaskRecovery.RunIfDue(cycleCtx); err != nil {
+		if s.Status != nil {
+			s.Status.RecordError(err, time.Now())
+		}
+		return err
+	}
 
 	recoverySummary, err := s.Recovery(cycleCtx)
 	if err != nil {
@@ -405,6 +437,16 @@ func recoveryConfig(cfg *config.Config, repo controllib.RecoveryRepository) cont
 		StaleQueuedRecoveryLimit:  stale.RecoveryLimit,
 		Repository:                repo,
 	}
+}
+
+func pausedTaskRecoveryInterval(controlCfg config.ListingControlPlaneConfig) time.Duration {
+	if controlCfg.PausedTaskRecoveryInterval < 0 {
+		return 0
+	}
+	if controlCfg.PausedTaskRecoveryInterval == 0 {
+		return time.Hour
+	}
+	return controlCfg.PausedTaskRecoveryInterval
 }
 
 type realRabbitRuntime struct {

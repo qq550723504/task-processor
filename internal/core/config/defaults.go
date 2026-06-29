@@ -63,6 +63,7 @@ func setListingControlPlaneDefaults(v *viper.Viper, defaults *Config) {
 	v.SetDefault("listingControlPlane.dryRun", lcp.DryRun)
 	v.SetDefault("listingControlPlane.enableLegacyQuotaKeys", lcp.EnableLegacyQuotaKeys)
 	v.SetDefault("listingControlPlane.quotaKeyTTLGrace", lcp.QuotaKeyTTLGrace)
+	v.SetDefault("listingControlPlane.pausedTaskRecoveryInterval", lcp.PausedTaskRecoveryInterval)
 }
 
 func setProductImageDefaults(v *viper.Viper, defaults *Config) {

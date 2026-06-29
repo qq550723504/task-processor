@@ -100,6 +100,7 @@ func TestListingControlPlaneConfigDefaults(t *testing.T) {
 	assert.False(t, v.GetBool("listingControlPlane.dryRun"))
 	assert.False(t, v.GetBool("listingControlPlane.enableLegacyQuotaKeys"))
 	assert.Equal(t, time.Duration(0), v.GetDuration("listingControlPlane.quotaKeyTTLGrace"))
+	assert.Equal(t, time.Hour, v.GetDuration("listingControlPlane.pausedTaskRecoveryInterval"))
 }
 
 func TestConfigBuild(t *testing.T) {
@@ -262,6 +263,7 @@ listingControlPlane:
   dryRun: true
   enableLegacyQuotaKeys: true
   quotaKeyTTLGrace: 1m
+  pausedTaskRecoveryInterval: 2h
 `))
 	require.NoError(t, err)
 
@@ -276,6 +278,7 @@ listingControlPlane:
 	assert.True(t, cfg.ListingControlPlane.DryRun)
 	assert.True(t, cfg.ListingControlPlane.EnableLegacyQuotaKeys)
 	assert.Equal(t, time.Minute, cfg.ListingControlPlane.QuotaKeyTTLGrace)
+	assert.Equal(t, 2*time.Hour, cfg.ListingControlPlane.PausedTaskRecoveryInterval)
 }
 
 func TestLoadFromBytesAppliesListingControlPlaneEnvOverrides(t *testing.T) {
@@ -290,6 +293,7 @@ func TestLoadFromBytesAppliesListingControlPlaneEnvOverrides(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_MAX_QUEUED_PER_STORE", "9")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_DRY_RUN", "true")
 	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_ENABLE_LEGACY_QUOTA_KEYS", "true")
+	t.Setenv("TASK_PROCESSOR_LISTING_CONTROL_PLANE_PAUSED_TASK_RECOVERY_INTERVAL", "3h")
 
 	cfg, err := LoadFromBytes(nil)
 	require.NoError(t, err)
@@ -304,6 +308,7 @@ func TestLoadFromBytesAppliesListingControlPlaneEnvOverrides(t *testing.T) {
 	assert.Equal(t, 9, cfg.ListingControlPlane.MaxQueuedPerStore)
 	assert.True(t, cfg.ListingControlPlane.DryRun)
 	assert.True(t, cfg.ListingControlPlane.EnableLegacyQuotaKeys)
+	assert.Equal(t, 3*time.Hour, cfg.ListingControlPlane.PausedTaskRecoveryInterval)
 }
 
 func TestConfigValidation(t *testing.T) {

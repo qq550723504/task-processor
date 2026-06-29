@@ -189,6 +189,65 @@ func (r *GormImportTaskRepository) ListDispatchCandidatesFair(ctx context.Contex
 	return items, nil
 }
 
+func (r *GormImportTaskRepository) ListPausedTaskGroups(ctx context.Context, platform string) ([]PausedTaskGroup, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("import task repository database is not configured")
+	}
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		return []PausedTaskGroup{}, nil
+	}
+
+	var groups []PausedTaskGroup
+	err := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Select("tenant_id, store_id, reason_code, stage, count(*) AS count").
+		Where("deleted = 0").
+		Where("COALESCE(NULLIF(target_platform, ''), platform) = ?", platform).
+		Where("status = ?", model.TaskStatusPaused.Int16()).
+		Group("tenant_id, store_id, reason_code, stage").
+		Order("count DESC, tenant_id ASC, store_id ASC, reason_code ASC, stage ASC").
+		Find(&groups).Error
+	if err != nil {
+		return nil, err
+	}
+	return groups, nil
+}
+
+func (r *GormImportTaskRepository) RecoverPausedTaskGroup(ctx context.Context, platform string, group PausedTaskGroup) (int64, error) {
+	if r == nil || r.db == nil {
+		return 0, errors.New("import task repository database is not configured")
+	}
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		return 0, nil
+	}
+	if group.TenantID <= 0 || group.StoreID <= 0 {
+		return 0, errors.New("paused task recovery group tenant_id and store_id are required")
+	}
+
+	res := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("deleted = 0").
+		Where("COALESCE(NULLIF(target_platform, ''), platform) = ?", platform).
+		Where("tenant_id = ? AND store_id = ?", group.TenantID, group.StoreID).
+		Where("status = ?", model.TaskStatusPaused.Int16()).
+		Where("COALESCE(reason_code, '') = ?", strings.TrimSpace(group.ReasonCode)).
+		Where("COALESCE(stage, '') = ?", strings.TrimSpace(group.Stage)).
+		Updates(map[string]any{
+			"status":          model.TaskStatusPending.Int16(),
+			"processing_node": "",
+			"error_message":   "",
+			"reason_code":     "",
+			"stage":           "",
+			"update_time":     time.Now(),
+		})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
 func (r *GormImportTaskRepository) ClaimForDispatch(ctx context.Context, claim DispatchClaim) (bool, error) {
 	if r == nil || r.db == nil {
 		return false, errors.New("import task repository database is not configured")
