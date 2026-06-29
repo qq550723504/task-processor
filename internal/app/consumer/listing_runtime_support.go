@@ -9,8 +9,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func EnableDynamicStoreAssignment(cfg *config.Config, logger *logrus.Logger, serviceManager *ServiceManager) error {
-	if cfg == nil || serviceManager == nil {
+func EnableDynamicStoreAssignment(cfg *config.Config, logger *logrus.Logger, runtime StoreAssignmentRuntime) error {
+	if cfg == nil || runtime == nil {
 		return nil
 	}
 	if !cfg.RabbitMQ.Node.UseStoreQueues || cfg.Redis == nil {
@@ -21,7 +21,7 @@ func EnableDynamicStoreAssignment(cfg *config.Config, logger *logrus.Logger, ser
 	if err != nil {
 		return fmt.Errorf("create dynamic store assignment provider failed: %w", err)
 	}
-	serviceManager.SetStoreAssignmentProvider(provider)
+	runtime.SetStoreAssignmentProvider(provider)
 	logger.Infof("dynamic store assignment provider enabled: nodeID=%s", cfg.RabbitMQ.Node.NodeID)
 	return nil
 }
@@ -29,10 +29,10 @@ func EnableDynamicStoreAssignment(cfg *config.Config, logger *logrus.Logger, ser
 func ConfigureStaticStoreGuard(
 	cfg *config.Config,
 	logger *logrus.Logger,
-	serviceManager *ServiceManager,
+	runtime StaticStoreGuardRuntime,
 	storeAPI api.StoreAPI,
 ) {
-	if cfg == nil || logger == nil || serviceManager == nil {
+	if cfg == nil || logger == nil || runtime == nil {
 		return
 	}
 	if storeAPI == nil {
@@ -40,6 +40,6 @@ func ConfigureStaticStoreGuard(
 		return
 	}
 
-	serviceManager.SetStoreComponents(storeAPI, cfg.RabbitMQ.Node.OwnedStores, nil)
+	runtime.SetStoreComponents(storeAPI, cfg.RabbitMQ.Node.OwnedStores, nil)
 	logger.Info("store dispatch guard initialized")
 }

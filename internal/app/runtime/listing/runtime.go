@@ -82,7 +82,7 @@ func Run(ctx context.Context, opts Options) error {
 		Config:           cfg,
 		Logger:           logger,
 		Resources:        resources,
-		ServiceManager:   serviceManager,
+		RuntimeServices:  serviceManager,
 		SchedulerBuilder: bootstrapschedulers.BuildDependencies,
 	})
 	if err := module.ConfigureListingRuntime(ctx, runtimeContext); err != nil {

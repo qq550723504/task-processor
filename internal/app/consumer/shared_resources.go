@@ -5,6 +5,7 @@ import (
 
 	"task-processor/internal/app/ports"
 	"task-processor/internal/app/runner"
+	apptask "task-processor/internal/app/task"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	appfetcher "task-processor/internal/crawler/fetcher"
@@ -90,6 +91,24 @@ type SchedulerDependenciesBuilder func(
 	rabbitmqClient *rabbitmq.Client,
 ) runner.SchedulerDependencies
 
+type PlatformRuntimeServices interface {
+	StoreAssignmentRuntime
+	StaticStoreGuardRuntime
+	GetClient() *rabbitmq.Client
+	SetSchedulerService(SchedulerService)
+	SetProcessingTimeoutWatchdog(SchedulerService)
+	SetStaleQueuedWatchdog(SchedulerService)
+	SetAutoShardService(AutoShardService)
+}
+
+type StoreAssignmentRuntime interface {
+	SetStoreAssignmentProvider(StoreAssignmentProvider)
+}
+
+type StaticStoreGuardRuntime interface {
+	SetStoreComponents(listingadmin.StoreAPI, []int64, *apptask.DeduplicationManager)
+}
+
 type PlatformRuntimeContext struct {
 	Config                             *config.Config
 	Logger                             *logrus.Logger
@@ -101,7 +120,7 @@ type PlatformRuntimeContext struct {
 	CrawlSource                        ports.CrawlSource
 	ProductFetcher                     appfetcher.ProductFetcher
 	RabbitMQClient                     *rabbitmq.Client
-	ServiceManager                     *ServiceManager
+	RuntimeServices                    PlatformRuntimeServices
 	SchedulerBuilder                   SchedulerDependenciesBuilder
 }
 
@@ -109,7 +128,7 @@ type PlatformRuntimeContextInput struct {
 	Config           *config.Config
 	Logger           *logrus.Logger
 	Resources        SharedResources
-	ServiceManager   *ServiceManager
+	RuntimeServices  PlatformRuntimeServices
 	SchedulerBuilder SchedulerDependenciesBuilder
 }
 
@@ -124,17 +143,17 @@ func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRunt
 		ProcessorRuntime:                   input.Resources.ProcessorRuntime,
 		CrawlSource:                        input.Resources.CrawlSource,
 		ProductFetcher:                     input.Resources.ProductFetcher,
-		RabbitMQClient:                     runtimeRabbitMQClient(input.ServiceManager),
-		ServiceManager:                     input.ServiceManager,
+		RabbitMQClient:                     runtimeRabbitMQClient(input.RuntimeServices),
+		RuntimeServices:                    input.RuntimeServices,
 		SchedulerBuilder:                   input.SchedulerBuilder,
 	}
 }
 
-func runtimeRabbitMQClient(serviceManager *ServiceManager) *rabbitmq.Client {
-	if serviceManager == nil {
+func runtimeRabbitMQClient(services PlatformRuntimeServices) *rabbitmq.Client {
+	if services == nil {
 		return nil
 	}
-	return serviceManager.GetClient()
+	return services.GetClient()
 }
 
 type PlatformModule interface {
