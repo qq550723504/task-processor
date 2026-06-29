@@ -149,14 +149,14 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 	if err != nil {
 		return nil, fmt.Errorf("build shared resources: %w", err)
 	}
+	if resources == nil {
+		return nil, fmt.Errorf("build shared resources: resources are nil")
+	}
 
-	return buildAppServices(cfg, logger, newAppServiceResources(resources)), nil
+	return buildAppServices(cfg, logger, newAppServiceResources(*resources)), nil
 }
 
-func newAppServiceResources(resources *bootstrapresources.SharedResources) appServiceResources {
-	if resources == nil {
-		return appServiceResources{}
-	}
+func newAppServiceResources(resources bootstrapresources.SharedResources) appServiceResources {
 	return appServiceResources{
 		rawJSONDataClient:       resources.RawJSONDataClient,
 		processorRuntime:        resources.ProcessorRuntime,

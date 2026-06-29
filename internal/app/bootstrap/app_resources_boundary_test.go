@@ -16,6 +16,7 @@ func TestAppServiceAssemblyDoesNotPassBootstrapSharedResources(t *testing.T) {
 	source := string(content)
 
 	for _, marker := range []string{
+		"func newAppServiceResources(resources *bootstrapresources.SharedResources) appServiceResources",
 		"func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources *bootstrapresources.SharedResources)",
 		"func buildProcessorService(logger *logrus.Logger, resources *bootstrapresources.SharedResources)",
 		"func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources *bootstrapresources.SharedResources)",
@@ -27,7 +28,7 @@ func TestAppServiceAssemblyDoesNotPassBootstrapSharedResources(t *testing.T) {
 
 	for _, marker := range []string{
 		"type appServiceResources struct",
-		"func newAppServiceResources(resources *bootstrapresources.SharedResources) appServiceResources",
+		"func newAppServiceResources(resources bootstrapresources.SharedResources) appServiceResources",
 		"func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources appServiceResources)",
 		"func buildProcessorService(logger *logrus.Logger, resources appServiceResources)",
 		"func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources appServiceResources)",
