@@ -3,7 +3,6 @@ package httpapi
 import (
 	"testing"
 
-	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/core/config"
 )
 
@@ -19,7 +18,6 @@ func TestBuildSheinLoginModuleSkipsModuleWithoutLocalStoreRepository(t *testing.
 					},
 				},
 			},
-			sharedResources: &bootstrapresources.SharedResources{},
 		},
 	})
 	if err != nil {

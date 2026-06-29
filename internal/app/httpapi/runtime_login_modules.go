@@ -70,10 +70,10 @@ func buildSheinLoginModuleResult(deps *runtimeDeps) (*sheinloginbootstrap.BuildR
 }
 
 func sheinLoginStoreAPI(deps *runtimeDeps) listingadmin.StoreAPI {
-	if deps == nil || deps.shared == nil || deps.shared.sharedResources == nil {
+	if deps == nil || deps.shared == nil {
 		return nil
 	}
-	return deps.shared.sharedResources.StoreAPI
+	return deps.shared.storeAPI
 }
 
 func buildSDSLoginModuleResult(deps *runtimeDeps) (*sdsloginbootstrap.BuildResult, func() error, error) {

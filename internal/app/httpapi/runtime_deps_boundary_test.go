@@ -237,6 +237,33 @@ func TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated(t *testing.T) {
 		}
 	}
 
+	sharedDepsSource := readHTTPAPIBoundaryFile(t, "runtime_shared_deps.go")
+	for _, marker := range []string{
+		`"task-processor/internal/app/bootstrap/resources"`,
+		"*bootstrapresources.SharedResources",
+		"sharedResources",
+	} {
+		if strings.Contains(sharedDepsSource, marker) {
+			t.Fatalf("runtime_shared_deps.go mentions %s; keep HTTP API shared deps on narrow StoreAPI instead of bootstrap SharedResources", marker)
+		}
+	}
+	if !strings.Contains(compactHTTPAPISource(sharedDepsSource), "storeAPIlistingadmin.StoreAPI") {
+		t.Fatalf("runtime_shared_deps.go should store the narrow listingadmin.StoreAPI dependency for login modules")
+	}
+
+	loginModulesSource := readHTTPAPIBoundaryFile(t, "runtime_login_modules.go")
+	for _, marker := range []string{
+		"deps.shared.sharedResources",
+		"sharedResources.StoreAPI",
+	} {
+		if strings.Contains(loginModulesSource, marker) {
+			t.Fatalf("runtime_login_modules.go mentions %s; use deps.shared.storeAPI directly", marker)
+		}
+	}
+	if !strings.Contains(loginModulesSource, "return deps.shared.storeAPI") {
+		t.Fatalf("runtime_login_modules.go should return deps.shared.storeAPI")
+	}
+
 	sharedResourcesSource := readHTTPAPIBoundaryFile(t, "runtime_shared_resources.go")
 	for _, marker := range []string{
 		`"task-processor/internal/app/bootstrap/resources"`,
@@ -256,6 +283,11 @@ func TestHTTPAPIRuntimeKeepsSharedResourceAssemblyDedicated(t *testing.T) {
 			t.Fatalf("runtime_shared_resources.go mentions retired shared-resource option %s", marker)
 		}
 	}
+}
+
+func compactHTTPAPISource(source string) string {
+	replacer := strings.NewReplacer(" ", "", "\t", "", "\r", "", "\n", "")
+	return replacer.Replace(source)
 }
 
 func TestHTTPAPIRuntimeKeepsOpenAIRuntimeAssemblyDedicated(t *testing.T) {

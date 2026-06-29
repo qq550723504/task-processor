@@ -1,9 +1,9 @@
 package httpapi
 
 import (
-	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/prompt"
 )
@@ -18,5 +18,5 @@ type sharedRuntimeDeps struct {
 	inputParser       productenrich.InputParser
 	understanding     productenrich.ProductUnderstanding
 	imageWorkDir      string
-	sharedResources   *bootstrapresources.SharedResources
+	storeAPI          listingadmin.StoreAPI
 }

@@ -38,7 +38,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	}
 
 	done = timer.phase("buildSharedResources")
-	shared, err := buildHTTPAPISharedResources(cfg, logger)
+	storeAPI, err := buildHTTPAPISharedResources(cfg, logger)
 	done()
 	if err != nil {
 		return nil, err
@@ -56,7 +56,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 			inputParser:       productEnrichDeps.inputParser,
 			understanding:     productEnrichDeps.understanding,
 			imageWorkDir:      imageWorkDir,
-			sharedResources:   shared,
+			storeAPI:          storeAPI,
 		},
 		features: &featureRuntimeState{},
 	}, nil
