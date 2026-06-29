@@ -81,7 +81,7 @@ func Run(ctx context.Context, opts Options) error {
 	runtimeContext := consumer.BuildPlatformRuntimeContext(consumer.PlatformRuntimeContextInput{
 		Config:           cfg,
 		Logger:           logger,
-		Resources:        resources,
+		Resources:        consumer.NewPlatformRuntimeResources(resources),
 		Services:         serviceManager,
 		SchedulerBuilder: bootstrapschedulers.BuildDependencies,
 	})
@@ -131,7 +131,7 @@ func runDebugTask(
 	rt := consumer.BuildPlatformRuntimeContext(consumer.PlatformRuntimeContextInput{
 		Config:    cfg,
 		Logger:    logger,
-		Resources: resources,
+		Resources: consumer.NewPlatformRuntimeResources(resources),
 	})
 	if err := module.ConfigureListingRuntime(ctx, rt); err != nil {
 		return fmt.Errorf("configure %s debug runtime failed: %w", displayName, err)

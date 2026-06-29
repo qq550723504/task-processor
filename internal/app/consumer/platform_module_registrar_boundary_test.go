@@ -41,11 +41,19 @@ func TestPlatformRuntimeContextBuilderDoesNotAcceptSharedResourcesPointer(t *tes
 
 	for _, marker := range []string{
 		"Resources        *SharedResources",
+		"Resources        SharedResources",
 		"sharedResourcesValue",
 	} {
 		if strings.Contains(source, marker) {
 			t.Fatalf("shared_resources.go mentions %q; expand SharedResources before building PlatformRuntimeContext", marker)
 		}
+	}
+
+	if !strings.Contains(source, "type PlatformRuntimeResources struct") {
+		t.Fatalf("shared_resources.go should define PlatformRuntimeResources for PlatformRuntimeContextInput")
+	}
+	if !strings.Contains(source, "func NewPlatformRuntimeResources(resources SharedResources) PlatformRuntimeResources") {
+		t.Fatalf("shared_resources.go should expand SharedResources through NewPlatformRuntimeResources before building PlatformRuntimeContext")
 	}
 }
 

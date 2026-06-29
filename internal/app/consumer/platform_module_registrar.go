@@ -28,7 +28,7 @@ func (r platformModuleRegistrar) register(ctx context.Context, module PlatformMo
 	runtimeContext := BuildPlatformRuntimeContext(PlatformRuntimeContextInput{
 		Config:    r.config,
 		Logger:    r.logger,
-		Resources: resources,
+		Resources: NewPlatformRuntimeResources(resources),
 		Services:  r.serviceManager,
 	})
 	if err := module.RegisterConsumer(ctx, runtimeContext, r.serviceManager); err != nil {

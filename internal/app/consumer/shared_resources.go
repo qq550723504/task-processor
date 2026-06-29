@@ -142,6 +142,24 @@ func (r SharedResources) Scheduler() SchedulerResources {
 	return r.scheduler
 }
 
+type PlatformRuntimeResources struct {
+	listingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
+	storeAPI                           listingadmin.StoreAPI
+	processorRuntime                   ProcessorRuntime
+	productFetcher                     appfetcher.ProductFetcher
+	scheduler                          SchedulerResources
+}
+
+func NewPlatformRuntimeResources(resources SharedResources) PlatformRuntimeResources {
+	return PlatformRuntimeResources{
+		listingRuntimeImportTaskRepository: resources.ListingRuntimeImportTaskRepository(),
+		storeAPI:                           resources.StoreAPI(),
+		processorRuntime:                   resources.ProcessorRuntime(),
+		productFetcher:                     resources.ProductFetcher(),
+		scheduler:                          resources.Scheduler(),
+	}
+}
+
 type SharedResourceNeeds struct {
 	NeedAmazonCrawler bool
 }
@@ -201,20 +219,20 @@ type PlatformRuntimeContext struct {
 type PlatformRuntimeContextInput struct {
 	Config           *config.Config
 	Logger           *logrus.Logger
-	Resources        SharedResources
+	Resources        PlatformRuntimeResources
 	Services         PlatformRuntimeServices
 	SchedulerBuilder SchedulerDependenciesBuilder
 }
 
 func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRuntimeContext {
-	schedulerResources := input.Resources.Scheduler()
+	schedulerResources := input.Resources.scheduler
 	return PlatformRuntimeContext{
 		config:                             input.Config,
 		logger:                             input.Logger,
-		listingRuntimeImportTaskRepository: input.Resources.ListingRuntimeImportTaskRepository(),
-		storeAPI:                           input.Resources.StoreAPI(),
-		processorRuntime:                   input.Resources.ProcessorRuntime(),
-		productFetcher:                     input.Resources.ProductFetcher(),
+		listingRuntimeImportTaskRepository: input.Resources.listingRuntimeImportTaskRepository,
+		storeAPI:                           input.Resources.storeAPI,
+		processorRuntime:                   input.Resources.processorRuntime,
+		productFetcher:                     input.Resources.productFetcher,
 		schedulerRuntime:                   schedulerResources.Runtime(),
 		schedulerFactoryRuntime:            schedulerResources.FactoryRuntime(),
 		crawlSource:                        schedulerResources.CrawlSource(),
