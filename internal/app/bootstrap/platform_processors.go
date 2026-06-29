@@ -7,74 +7,94 @@ import (
 	"task-processor/internal/app/bootstrap/fetchers"
 	bootstrapprocessors "task-processor/internal/app/bootstrap/processors"
 	"task-processor/internal/app/consumer"
+	"task-processor/internal/app/ports"
 	"task-processor/internal/app/taskstatus"
+	"task-processor/internal/core/config"
+	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/product"
 	"task-processor/internal/shein/pipeline"
 	"task-processor/internal/temu"
 
 	"github.com/sirupsen/logrus"
 )
 
-func buildTemuProcessor(svc *appServices, logger *logrus.Logger) (*temu.TemuProcessor, error) {
-	deps, err := buildTemuProcessorDependencies(svc)
+type platformProcessorResources struct {
+	rawJSONDataClient product.RawJsonDataClient
+	processorRuntime  consumer.ProcessorRuntime
+	amazonCrawler     ports.CrawlSource
+	rabbitmqClient    *rabbitmq.Client
+}
+
+func newPlatformProcessorResources(resources appServiceResources) platformProcessorResources {
+	return platformProcessorResources{
+		rawJSONDataClient: resources.rawJSONDataClient,
+		processorRuntime:  resources.processorRuntime,
+		amazonCrawler:     resources.amazonCrawler,
+		rabbitmqClient:    resources.rabbitmqClient,
+	}
+}
+
+func buildTemuProcessor(cfg *config.Config, resources platformProcessorResources, logger *logrus.Logger) (*temu.TemuProcessor, error) {
+	deps, err := buildTemuProcessorDependencies(cfg, resources)
 	if err != nil {
 		return nil, fmt.Errorf("build TEMU processor dependencies: %w", err)
 	}
-	proc, err := bootstrapprocessors.CreateTemuProcessor(context.Background(), svc.cfg, logger, deps)
+	proc, err := bootstrapprocessors.CreateTemuProcessor(context.Background(), cfg, logger, deps)
 	if err != nil {
 		return nil, fmt.Errorf("build TEMU processor: %w", err)
 	}
 	return proc, nil
 }
 
-func buildSheinProcessor(svc *appServices, logger *logrus.Logger) (*pipeline.SheinProcessor, error) {
-	deps, err := buildSheinProcessorDependencies(svc)
+func buildSheinProcessor(cfg *config.Config, resources platformProcessorResources, logger *logrus.Logger) (*pipeline.SheinProcessor, error) {
+	deps, err := buildSheinProcessorDependencies(cfg, resources)
 	if err != nil {
 		return nil, fmt.Errorf("build SHEIN processor dependencies: %w", err)
 	}
-	proc, err := bootstrapprocessors.CreateSheinProcessor(context.Background(), svc.cfg, logger, deps)
+	proc, err := bootstrapprocessors.CreateSheinProcessor(context.Background(), cfg, logger, deps)
 	if err != nil {
 		return nil, fmt.Errorf("build SHEIN processor: %w", err)
 	}
 	return proc, nil
 }
 
-func buildTemuProcessorDependencies(svc *appServices) (temu.Dependencies, error) {
-	if svc.processorRuntime == nil {
+func buildTemuProcessorDependencies(cfg *config.Config, resources platformProcessorResources) (temu.Dependencies, error) {
+	if resources.processorRuntime == nil {
 		return temu.Dependencies{}, fmt.Errorf("TEMU processor runtime is not configured")
 	}
 
 	productFetcher, err := fetchers.BuildPlatformProductFetcher(
-		svc.cfg,
+		cfg,
 		"temu",
-		svc.rawJSONDataClient,
-		svc.amazonCrawler,
-		svc.rabbitmqClient,
+		resources.rawJSONDataClient,
+		resources.amazonCrawler,
+		resources.rabbitmqClient,
 	)
 	if err != nil {
 		return temu.Dependencies{}, err
 	}
 
-	return temu.BuildDependencies(context.Background(), svc.processorRuntime, productFetcher, svc.rabbitmqClient), nil
+	return temu.BuildDependencies(context.Background(), resources.processorRuntime, productFetcher, resources.rabbitmqClient), nil
 }
 
-func buildSheinProcessorDependencies(svc *appServices) (pipeline.Dependencies, error) {
-	if svc.processorRuntime == nil {
+func buildSheinProcessorDependencies(cfg *config.Config, resources platformProcessorResources) (pipeline.Dependencies, error) {
+	if resources.processorRuntime == nil {
 		return pipeline.Dependencies{}, fmt.Errorf("SHEIN processor runtime is not configured")
 	}
 
 	productFetcher, err := fetchers.BuildPlatformProductFetcher(
-		svc.cfg,
+		cfg,
 		"shein",
-		svc.rawJSONDataClient,
-		svc.amazonCrawler,
-		svc.rabbitmqClient,
+		resources.rawJSONDataClient,
+		resources.amazonCrawler,
+		resources.rabbitmqClient,
 	)
 	if err != nil {
 		return pipeline.Dependencies{}, err
 	}
 
-	return pipeline.BuildDependencies(context.Background(), sheinDependencyRuntimeAdapter{ProcessorRuntime: svc.processorRuntime}, productFetcher, svc.rabbitmqClient), nil
+	return pipeline.BuildDependencies(context.Background(), sheinDependencyRuntimeAdapter{ProcessorRuntime: resources.processorRuntime}, productFetcher, resources.rabbitmqClient), nil
 }
 
 type sheinDependencyRuntimeAdapter struct {

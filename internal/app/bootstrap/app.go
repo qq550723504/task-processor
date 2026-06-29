@@ -22,15 +22,13 @@ import (
 )
 
 type appServices struct {
-	cfg               *config.Config
-	rawJSONDataClient product.RawJsonDataClient
-	processorRuntime  consumer.ProcessorRuntime
-	amazonCrawler     ports.CrawlSource
-	rabbitmqClient    *rabbitmq.Client
-	temuProcessor     *temu.TemuProcessor
-	sheinProcessor    *pipeline.SheinProcessor
-	processorService  runner.ProcessorService
-	schedulerService  runner.SchedulerService
+	cfg                *config.Config
+	processorResources platformProcessorResources
+	rabbitmqClient     *rabbitmq.Client
+	temuProcessor      *temu.TemuProcessor
+	sheinProcessor     *pipeline.SheinProcessor
+	processorService   runner.ProcessorService
+	schedulerService   runner.SchedulerService
 }
 
 type appServiceResources struct {
@@ -171,13 +169,11 @@ func newAppServiceResources(resources *bootstrapresources.SharedResources) appSe
 
 func buildAppServices(cfg *config.Config, logger *logrus.Logger, resources appServiceResources) *appServices {
 	return &appServices{
-		cfg:               cfg,
-		rawJSONDataClient: resources.rawJSONDataClient,
-		processorRuntime:  resources.processorRuntime,
-		amazonCrawler:     resources.amazonCrawler,
-		rabbitmqClient:    resources.rabbitmqClient,
-		processorService:  buildProcessorService(logger, resources),
-		schedulerService:  buildSchedulerService(logger, cfg, resources),
+		cfg:                cfg,
+		processorResources: newPlatformProcessorResources(resources),
+		rabbitmqClient:     resources.rabbitmqClient,
+		processorService:   buildProcessorService(logger, resources),
+		schedulerService:   buildSchedulerService(logger, cfg, resources),
 	}
 }
 

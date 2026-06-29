@@ -54,7 +54,7 @@ func registerCoreComponents(
 	}
 
 	if svc.cfg.Platforms.Temu.Enabled {
-		temuProc, err := buildTemuProcessor(svc, logger)
+		temuProc, err := buildTemuProcessor(svc.cfg, svc.processorResources, logger)
 		if err != nil {
 			return nil, fmt.Errorf("build TEMU processor: %w", err)
 		}
@@ -66,7 +66,7 @@ func registerCoreComponents(
 	}
 
 	if svc.cfg.Platforms.Shein.Enabled {
-		sheinProc, err := buildSheinProcessor(svc, logger)
+		sheinProc, err := buildSheinProcessor(svc.cfg, svc.processorResources, logger)
 		if err != nil {
 			return nil, fmt.Errorf("build SHEIN processor: %w", err)
 		}
