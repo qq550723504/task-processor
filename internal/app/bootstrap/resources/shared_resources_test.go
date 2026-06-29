@@ -80,6 +80,28 @@ func TestBuildSharedResourcesGroupsSchedulerAssemblyFields(t *testing.T) {
 	require.Contains(t, resourcesSource, "consumer.SchedulerResources")
 }
 
+func TestBuildSharedResourcesDoesNotExposeRuntimeResourceFields(t *testing.T) {
+	content, err := os.ReadFile("shared_resources.go")
+	require.NoError(t, err)
+	source := string(content)
+	start := strings.Index(source, "type SharedResources struct {")
+	require.NotEqual(t, -1, start)
+	end := strings.Index(source[start:], "\n}")
+	require.NotEqual(t, -1, end)
+	resourcesSource := source[start : start+end]
+
+	for _, token := range []string{
+		"RawJSONDataClient    product.RawJsonDataClient",
+		"StoreAPI             listingadmin.StoreAPI",
+		"ProcessorRuntime     consumer.ProcessorRuntime",
+		"ImportTaskRepository consumer.ListingRuntimeImportTaskRepository",
+		"Scheduler            consumer.SchedulerResources",
+		"RabbitMQClient       *rabbitmq.Client",
+	} {
+		require.NotContains(t, resourcesSource, token)
+	}
+}
+
 func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T) {
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
@@ -92,5 +114,5 @@ func TestBuildSharedResourcesDoesNotConfigureRetiredManagementAuth(t *testing.T)
 
 	resources, err := BuildSharedResources(cfg, logger, SharedResourceOptions{})
 	require.NoError(t, err)
-	require.Nil(t, resources.ProcessorRuntime)
+	require.Nil(t, resources.ProcessorRuntime())
 }

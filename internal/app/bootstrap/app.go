@@ -160,10 +160,10 @@ func buildServices(cfg *config.Config, logger *logrus.Logger) (*appServices, err
 
 func newAppServiceResources(resources bootstrapresources.SharedResources) appServiceResources {
 	return appServiceResources{
-		rawJSONDataClient: resources.RawJSONDataClient,
-		processorRuntime:  resources.ProcessorRuntime,
-		scheduler:         resources.Scheduler,
-		rabbitmqClient:    resources.RabbitMQClient,
+		rawJSONDataClient: resources.RawJSONDataClient(),
+		processorRuntime:  resources.ProcessorRuntime(),
+		scheduler:         resources.Scheduler(),
+		rabbitmqClient:    resources.RabbitMQClient(),
 	}
 }
 

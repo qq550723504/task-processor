@@ -66,9 +66,9 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 		productFetcher, err := fetchers.BuildPlatformProductFetcher(
 			cfg,
 			platform,
-			resources.RawJSONDataClient,
-			resources.Scheduler.CrawlSource,
-			resources.RabbitMQClient,
+			resources.RawJSONDataClient(),
+			resources.Scheduler().CrawlSource,
+			resources.RabbitMQClient(),
 		)
 		if err != nil {
 			return consumer.SharedResources{}, err
@@ -78,11 +78,11 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 		}
 
 		return consumer.NewSharedResources(consumer.SharedResourcesInput{
-			ListingRuntimeImportTaskRepository: resources.ImportTaskRepository,
-			StoreAPI:                           resources.StoreAPI,
-			ProcessorRuntime:                   resources.ProcessorRuntime,
+			ListingRuntimeImportTaskRepository: resources.ImportTaskRepository(),
+			StoreAPI:                           resources.StoreAPI(),
+			ProcessorRuntime:                   resources.ProcessorRuntime(),
 			ProductFetcher:                     productFetcher,
-			Scheduler:                          resources.Scheduler,
+			Scheduler:                          resources.Scheduler(),
 		}), nil
 	}
 }

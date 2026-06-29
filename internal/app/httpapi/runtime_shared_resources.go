@@ -15,5 +15,5 @@ func buildHTTPAPISharedResources(cfg *config.Config, logger *logrus.Logger) (lis
 	if err != nil {
 		return nil, fmt.Errorf("build shared resources: %w", err)
 	}
-	return shared.StoreAPI, nil
+	return shared.StoreAPI(), nil
 }

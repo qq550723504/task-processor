@@ -31,12 +31,36 @@ type SharedResourceOptions struct {
 
 // SharedResources groups dependencies that were previously assembled in multiple places.
 type SharedResources struct {
-	RawJSONDataClient    product.RawJsonDataClient
-	StoreAPI             listingadmin.StoreAPI
-	ProcessorRuntime     consumer.ProcessorRuntime
-	ImportTaskRepository consumer.ListingRuntimeImportTaskRepository
-	Scheduler            consumer.SchedulerResources
-	RabbitMQClient       *rabbitmq.Client
+	rawJSONDataClient    product.RawJsonDataClient
+	storeAPI             listingadmin.StoreAPI
+	processorRuntime     consumer.ProcessorRuntime
+	importTaskRepository consumer.ListingRuntimeImportTaskRepository
+	scheduler            consumer.SchedulerResources
+	rabbitMQClient       *rabbitmq.Client
+}
+
+func (r SharedResources) RawJSONDataClient() product.RawJsonDataClient {
+	return r.rawJSONDataClient
+}
+
+func (r SharedResources) StoreAPI() listingadmin.StoreAPI {
+	return r.storeAPI
+}
+
+func (r SharedResources) ProcessorRuntime() consumer.ProcessorRuntime {
+	return r.processorRuntime
+}
+
+func (r SharedResources) ImportTaskRepository() consumer.ListingRuntimeImportTaskRepository {
+	return r.importTaskRepository
+}
+
+func (r SharedResources) Scheduler() consumer.SchedulerResources {
+	return r.scheduler
+}
+
+func (r SharedResources) RabbitMQClient() *rabbitmq.Client {
+	return r.rabbitMQClient
 }
 
 // InitializePrompts centralizes prompt registry initialization.
@@ -87,15 +111,15 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		if options.OnListingRuntimeHealthValidator != nil {
 			options.OnListingRuntimeHealthValidator(localRuntime)
 		}
-		resources.RawJSONDataClient = localruntime.NewRawJsonDataAdapter(localProvider)
-		resources.StoreAPI = localRuntime.GetStoreAPI()
-		resources.Scheduler.Runtime = localRuntime
-		resources.Scheduler.FactoryRuntime = localSchedulerFactoryRuntime{source: localRuntime}
-		resources.ProcessorRuntime = localProcessorRuntime{
+		resources.rawJSONDataClient = localruntime.NewRawJsonDataAdapter(localProvider)
+		resources.storeAPI = localRuntime.GetStoreAPI()
+		resources.scheduler.Runtime = localRuntime
+		resources.scheduler.FactoryRuntime = localSchedulerFactoryRuntime{source: localRuntime}
+		resources.processorRuntime = localProcessorRuntime{
 			localSchedulerFactoryRuntime: localSchedulerFactoryRuntime{source: localRuntime},
 			source:                       localRuntime,
 		}
-		resources.ImportTaskRepository = localProvider.ImportTaskRepository()
+		resources.importTaskRepository = localProvider.ImportTaskRepository()
 	}
 
 	if cfg.RabbitMQ != nil && cfg.RabbitMQ.Enabled {
@@ -104,11 +128,11 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 			ReconnectInterval: cfg.RabbitMQ.ReconnectInterval,
 			MaxReconnectTries: cfg.RabbitMQ.MaxReconnectTries,
 		}, logger)
-		resources.RabbitMQClient = rabbitmq.NewClient(connManager, logger)
+		resources.rabbitMQClient = rabbitmq.NewClient(connManager, logger)
 	}
 
 	if options.NeedAmazonCrawler {
-		resources.Scheduler.CrawlSource = BuildAmazonCrawler(cfg, logger)
+		resources.scheduler.CrawlSource = BuildAmazonCrawler(cfg, logger)
 	}
 
 	return resources, nil
