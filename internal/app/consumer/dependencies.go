@@ -6,7 +6,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type platformModuleRegistrarFactory func(logger *logrus.Logger, serviceManager *ServiceManager, resources *SharedResources) platformModuleRegistrar
+type platformModuleRegistrarFactory func(logger *logrus.Logger, serviceManager *ServiceManager) platformModuleRegistrar
 
 type PlatformProcessorRegistryDependencies struct {
 	catalog       platformModuleCatalog
@@ -19,8 +19,8 @@ func NewPlatformProcessorRegistryDependencies(cfg *config.Config, platformsStr s
 	return PlatformProcessorRegistryDependencies{
 		catalog:       catalog,
 		resourceNeeds: newPlatformResourceNeedsResolver(cfg, catalog),
-		newRegistrar: func(logger *logrus.Logger, serviceManager *ServiceManager, resources *SharedResources) platformModuleRegistrar {
-			return newPlatformModuleRegistrar(cfg, logger, serviceManager, resources)
+		newRegistrar: func(logger *logrus.Logger, serviceManager *ServiceManager) platformModuleRegistrar {
+			return newPlatformModuleRegistrar(cfg, logger, serviceManager)
 		},
 	}
 }
