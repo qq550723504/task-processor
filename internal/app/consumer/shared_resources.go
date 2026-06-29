@@ -127,13 +127,13 @@ type PlatformRuntimeContext struct {
 	Logger                             *logrus.Logger
 	ListingRuntimeImportTaskRepository ListingRuntimeImportTaskRepository
 	StoreAPI                           listingadmin.StoreAPI
-	SchedulerRuntime                   runner.SchedulerRuntimeProvider
-	SchedulerFactoryRuntime            SchedulerFactoryRuntime
 	ProcessorRuntime                   ProcessorRuntime
-	CrawlSource                        ports.CrawlSource
 	ProductFetcher                     appfetcher.ProductFetcher
+	schedulerRuntime                   runner.SchedulerRuntimeProvider
+	schedulerFactoryRuntime            SchedulerFactoryRuntime
+	crawlSource                        ports.CrawlSource
+	schedulerBuilder                   SchedulerDependenciesBuilder
 	runtimeServices                    PlatformRuntimeServices
-	SchedulerBuilder                   SchedulerDependenciesBuilder
 }
 
 type PlatformRuntimeContextInput struct {
@@ -150,13 +150,13 @@ func BuildPlatformRuntimeContext(input PlatformRuntimeContextInput) PlatformRunt
 		Logger:                             input.Logger,
 		ListingRuntimeImportTaskRepository: input.Resources.ListingRuntimeImportTaskRepository,
 		StoreAPI:                           input.Resources.StoreAPI,
-		SchedulerRuntime:                   input.Resources.SchedulerRuntime,
-		SchedulerFactoryRuntime:            input.Resources.SchedulerFactoryRuntime,
 		ProcessorRuntime:                   input.Resources.ProcessorRuntime,
-		CrawlSource:                        input.Resources.CrawlSource,
 		ProductFetcher:                     input.Resources.ProductFetcher,
+		schedulerRuntime:                   input.Resources.SchedulerRuntime,
+		schedulerFactoryRuntime:            input.Resources.SchedulerFactoryRuntime,
+		crawlSource:                        input.Resources.CrawlSource,
+		schedulerBuilder:                   input.SchedulerBuilder,
 		runtimeServices:                    input.Services,
-		SchedulerBuilder:                   input.SchedulerBuilder,
 	}
 }
 
@@ -204,6 +204,21 @@ func (rt PlatformRuntimeContext) AutoShardRuntime() AutoShardRuntime {
 		return nil
 	}
 	return rt.runtimeServices
+}
+
+func (rt PlatformRuntimeContext) SchedulerRuntime() runner.SchedulerRuntimeProvider {
+	return rt.schedulerRuntime
+}
+
+func (rt PlatformRuntimeContext) HasSchedulerDependenciesBuilder() bool {
+	return rt.schedulerBuilder != nil
+}
+
+func (rt PlatformRuntimeContext) BuildSchedulerDependencies(rabbitmqClient *rabbitmq.Client) runner.SchedulerDependencies {
+	if rt.schedulerBuilder == nil {
+		return runner.SchedulerDependencies{}
+	}
+	return rt.schedulerBuilder(rt.schedulerFactoryRuntime, rt.Config, rt.crawlSource, rabbitmqClient)
 }
 
 type PlatformModule interface {

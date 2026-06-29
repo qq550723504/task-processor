@@ -138,21 +138,21 @@ func configureScheduler(rt consumer.PlatformRuntimeContext) {
 	if cfg == nil || schedulerRuntime == nil || !cfg.Platforms.Shein.SchedulerEnabled {
 		return
 	}
-	if rt.SchedulerRuntime == nil {
+	if rt.SchedulerRuntime() == nil {
 		rt.Logger.Warn("SHEIN scheduler is enabled but scheduler runtime is unavailable")
 		return
 	}
-	if rt.SchedulerBuilder == nil {
+	if !rt.HasSchedulerDependenciesBuilder() {
 		rt.Logger.Warn("SHEIN scheduler dependencies builder is unavailable")
 		return
 	}
 
 	schedulerService := runner.NewSchedulerServiceWithDependencies(
 		rt.Logger,
-		rt.SchedulerRuntime,
+		rt.SchedulerRuntime(),
 		cfg,
 		schedulerRuntime.GetClient(),
-		rt.SchedulerBuilder(rt.SchedulerFactoryRuntime, cfg, rt.CrawlSource, schedulerRuntime.GetClient()),
+		rt.BuildSchedulerDependencies(schedulerRuntime.GetClient()),
 	)
 	schedulerRuntime.SetSchedulerService(schedulerService)
 	rt.Logger.Infof(
