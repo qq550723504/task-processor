@@ -1035,6 +1035,50 @@ func TestSheinActivityAdapterTimeLimitedBatchFallbackReusesPromotionSession(t *t
 	}, bridge.session.productSKCs)
 }
 
+func TestSheinActivityAdapterPromotionUsesSingleDirectBridgeCallWhenSessionIsAvailable(t *testing.T) {
+	t.Parallel()
+
+	strategyProvider := &sheinPromotionStrategyProviderStub{
+		strategy: NewSheinPromotionStrategy(SheinPromotionStrategyInput{
+			StoreID:              22,
+			ActivityPriceMode:    "DISCOUNT",
+			ActivityDiscountRate: 0.2,
+			ActivityStockRatio:   0.5,
+		}),
+	}
+	bridge := &sheinPromotionSessionCapableBridgeStub{}
+	adapter := newSheinActivityAdapter(strategyProvider, bridge)
+
+	results, err := adapter.EnrollCandidates(
+		context.Background(),
+		22,
+		"PROMOTION",
+		"PROMOTION:11:22",
+		[]SheinActivityEnrollmentCandidate{
+			{
+				CandidateID:       1,
+				SKCName:           "skc-one",
+				PriceSnapshot:     `{"sale_price":29.9,"currency":"USD"}`,
+				InventorySnapshot: `{"available":10}`,
+			},
+			{
+				CandidateID:       2,
+				SKCName:           "skc-two",
+				PriceSnapshot:     `{"sale_price":39.9,"currency":"USD"}`,
+				InventorySnapshot: `{"available":10}`,
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	require.True(t, results[0].Success)
+	require.True(t, results[1].Success)
+	require.Zero(t, bridge.sessionStarts)
+	require.Equal(t, 1, bridge.directCalls)
+	require.Equal(t, []string{"skc-one", "skc-two"}, bridge.directProductSKCs)
+}
+
 func TestSheinActivityAdapterRejectsInvalidPromotionDiscountStrategy(t *testing.T) {
 	t.Parallel()
 
@@ -1391,6 +1435,38 @@ func (s *sheinPromotionSessionBridgeStub) StartPromotionRegistrationSession(
 	s.sessionStarts++
 	s.session = &sheinPromotionRegistrationSessionStub{}
 	return s.session, nil
+}
+
+type sheinPromotionSessionCapableBridgeStub struct {
+	sessionStarts     int
+	directCalls       int
+	directProductSKCs []string
+}
+
+func (s *sheinPromotionSessionCapableBridgeStub) RegisterPromotionProducts(
+	_ context.Context,
+	_ *SheinPromotionStrategy,
+	_ string,
+	products []marketing.SkcInfo,
+) (*SheinPromotionRegistrationResult, error) {
+	s.directCalls++
+	s.directProductSKCs = sheinPromotionBridgeSKCs(products)
+	request := &marketing.CreateActivityRequest{
+		AddCostAndStockInfoList: make([]marketing.CostAndStockInfo, 0, len(products)),
+	}
+	for _, product := range products {
+		request.AddCostAndStockInfoList = append(request.AddCostAndStockInfoList, marketing.CostAndStockInfo{Skc: product.Skc})
+	}
+	return &SheinPromotionRegistrationResult{ActivityRequest: request}, nil
+}
+
+func (s *sheinPromotionSessionCapableBridgeStub) StartPromotionRegistrationSession(
+	_ context.Context,
+	_ *SheinPromotionStrategy,
+	_ string,
+) (SheinPromotionRegistrationSession, error) {
+	s.sessionStarts++
+	return &sheinPromotionRegistrationSessionStub{}, nil
 }
 
 type sheinPromotionRegistrationSessionStub struct {
