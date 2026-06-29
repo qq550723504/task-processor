@@ -61,14 +61,14 @@ func InitializePrompts(ctx context.Context, cfg *config.Config, logger *logrus.L
 }
 
 // BuildSharedResources centralizes local listing runtime and optional crawler assembly.
-func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options SharedResourceOptions) (*SharedResources, error) {
+func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options SharedResourceOptions) (SharedResources, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("config is nil")
+		return SharedResources{}, fmt.Errorf("config is nil")
 	}
 
 	localProvider, err := localruntime.NewLocalDataProvider(cfg.Database, cfg.Redis)
 	if err != nil {
-		return nil, fmt.Errorf("configure local listing runtime data provider: %w", err)
+		return SharedResources{}, fmt.Errorf("configure local listing runtime data provider: %w", err)
 	}
 
 	var cookieProvider localruntime.SheinCookieProvider
@@ -85,7 +85,7 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		SheinCookieProvider: cookieProvider,
 	})
 
-	resources := &SharedResources{}
+	resources := SharedResources{}
 	if localRuntime != nil {
 		if options.OnListingRuntimeHealthValidator != nil {
 			options.OnListingRuntimeHealthValidator(localRuntime)

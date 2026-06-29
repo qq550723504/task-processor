@@ -1,8 +1,6 @@
 package listingruntime
 
 import (
-	"fmt"
-
 	"task-processor/internal/app/bootstrap/fetchers"
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/app/consumer"
@@ -63,9 +61,6 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 		})
 		if err != nil {
 			return consumer.SharedResources{}, err
-		}
-		if resources == nil {
-			return consumer.SharedResources{}, fmt.Errorf("build shared resources: resources are nil")
 		}
 
 		productFetcher, err := fetchers.BuildPlatformProductFetcher(
