@@ -182,9 +182,9 @@ func buildProcessorService(logger *logrus.Logger, resources appServiceResources)
 		logger,
 		resources.rawJSONDataClient,
 		resources.processorRuntime,
-		resources.scheduler.Runtime,
-		resources.scheduler.FactoryRuntime,
-		resources.scheduler.CrawlSource,
+		resources.scheduler.Runtime(),
+		resources.scheduler.FactoryRuntime(),
+		resources.scheduler.CrawlSource(),
 		resources.rabbitmqClient,
 		bootstrapprocessors.BuildRunnerProcessorDependencies(),
 	)
@@ -193,9 +193,9 @@ func buildProcessorService(logger *logrus.Logger, resources appServiceResources)
 func buildSchedulerService(logger *logrus.Logger, cfg *config.Config, resources appServiceResources) runner.SchedulerService {
 	return runner.NewSchedulerServiceWithDependencies(
 		logger,
-		resources.scheduler.Runtime,
+		resources.scheduler.Runtime(),
 		cfg,
 		resources.rabbitmqClient,
-		bootstrapschedulers.BuildDependencies(resources.scheduler.FactoryRuntime, cfg, resources.scheduler.CrawlSource, resources.rabbitmqClient),
+		bootstrapschedulers.BuildDependencies(resources.scheduler.FactoryRuntime(), cfg, resources.scheduler.CrawlSource(), resources.rabbitmqClient),
 	)
 }

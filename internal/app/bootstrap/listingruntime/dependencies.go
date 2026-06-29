@@ -67,7 +67,7 @@ func buildConsumerSharedResourcesFunc(onListingRuntimeHealthValidator func(ports
 			cfg,
 			platform,
 			resources.RawJSONDataClient(),
-			resources.Scheduler().CrawlSource,
+			resources.Scheduler().CrawlSource(),
 			resources.RabbitMQClient(),
 		)
 		if err != nil {

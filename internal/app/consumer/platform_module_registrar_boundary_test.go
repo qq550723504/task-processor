@@ -244,6 +244,35 @@ func TestConsumerSharedResourcesDoesNotExposeSchedulerAssemblyFields(t *testing.
 	}
 }
 
+func TestSchedulerResourcesDoesNotExposeAssemblyFields(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("shared_resources.go")
+	if err != nil {
+		t.Fatalf("read shared_resources.go: %v", err)
+	}
+	source := string(content)
+	start := strings.Index(source, "type SchedulerResources struct {")
+	if start < 0 {
+		t.Fatal("shared_resources.go should define SchedulerResources")
+	}
+	end := strings.Index(source[start:], "\n}")
+	if end < 0 {
+		t.Fatal("SchedulerResources struct should have a closing brace")
+	}
+	resourcesSource := source[start : start+end]
+
+	for _, marker := range []string{
+		"Runtime        runner.SchedulerRuntimeProvider",
+		"FactoryRuntime SchedulerFactoryRuntime",
+		"CrawlSource    ports.CrawlSource",
+	} {
+		if strings.Contains(resourcesSource, marker) {
+			t.Fatalf("shared_resources.go mentions %q; expose scheduler resources through methods instead of fields", marker)
+		}
+	}
+}
+
 func TestConsumerSharedResourcesDoesNotExposeRuntimeResourceFields(t *testing.T) {
 	t.Parallel()
 

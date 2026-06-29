@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/ports"
+	"task-processor/internal/app/runner"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
@@ -107,14 +108,16 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 	})
 
 	resources := SharedResources{}
+	var schedulerRuntime runner.SchedulerRuntimeProvider
+	var schedulerFactoryRuntime consumer.SchedulerFactoryRuntime
 	if localRuntime != nil {
 		if options.OnListingRuntimeHealthValidator != nil {
 			options.OnListingRuntimeHealthValidator(localRuntime)
 		}
 		resources.rawJSONDataClient = localruntime.NewRawJsonDataAdapter(localProvider)
 		resources.storeAPI = localRuntime.GetStoreAPI()
-		resources.scheduler.Runtime = localRuntime
-		resources.scheduler.FactoryRuntime = localSchedulerFactoryRuntime{source: localRuntime}
+		schedulerRuntime = localRuntime
+		schedulerFactoryRuntime = localSchedulerFactoryRuntime{source: localRuntime}
 		resources.processorRuntime = localProcessorRuntime{
 			localSchedulerFactoryRuntime: localSchedulerFactoryRuntime{source: localRuntime},
 			source:                       localRuntime,
@@ -131,9 +134,11 @@ func BuildSharedResources(cfg *config.Config, logger *logrus.Logger, options Sha
 		resources.rabbitMQClient = rabbitmq.NewClient(connManager, logger)
 	}
 
+	var crawlSource ports.CrawlSource
 	if options.NeedAmazonCrawler {
-		resources.scheduler.CrawlSource = BuildAmazonCrawler(cfg, logger)
+		crawlSource = BuildAmazonCrawler(cfg, logger)
 	}
+	resources.scheduler = consumer.NewSchedulerResources(schedulerRuntime, schedulerFactoryRuntime, crawlSource)
 
 	return resources, nil
 }

@@ -30,7 +30,7 @@ func newPlatformProcessorResources(resources appServiceResources) platformProces
 	return platformProcessorResources{
 		rawJSONDataClient: resources.rawJSONDataClient,
 		processorRuntime:  resources.processorRuntime,
-		crawlSource:       resources.scheduler.CrawlSource,
+		crawlSource:       resources.scheduler.CrawlSource(),
 		rabbitmqClient:    resources.rabbitmqClient,
 	}
 }
