@@ -1,6 +1,7 @@
 package shein
 
 import (
+	"context"
 	"strings"
 
 	sheinpublishing "task-processor/internal/marketplace/shein/publishing"
@@ -8,14 +9,57 @@ import (
 
 const defaultSizeSaleAttributeID = 87
 
+type SizeAttributeHeaderResolver interface {
+	ResolveSizeAttributeHeaders(input SizeAttributeHeaderResolutionInput) SizeAttributeHeaderResolution
+}
+
+type SizeAttributeHeaderResolutionInput struct {
+	Context            context.Context
+	Headers            []string
+	TemplateAttributes []sheinpublishing.SizeChartTemplateAttribute
+}
+
+type SizeAttributeHeaderResolution struct {
+	AttributeIDsByHeader map[string]int
+	ReviewNotes          []string
+}
+
 func applyProductSizeAttributes(pkg *Package, productSize string) bool {
+	return applyProductSizeAttributesWithResolver(pkg, productSize, nil, context.Background())
+}
+
+func applyProductSizeAttributesWithResolver(pkg *Package, productSize string, resolver SizeAttributeHeaderResolver, ctx context.Context) bool {
 	pkg = NormalizePackageSemanticFields(pkg)
 	if pkg == nil || pkg.DraftPayload == nil {
 		return false
 	}
-	attrs := sheinpublishing.BuildSizeAttributesFromProductSize(productSize, collectSizeSaleAttributeRefs(pkg))
+	templateAttrs := collectSizeChartTemplateAttributes(pkg)
+	headerResolution := resolveSDSSizeHeaderAttributeIDs(ctx, productSize, templateAttrs, resolver)
+	if len(headerResolution.ReviewNotes) > 0 {
+		pkg.ReviewNotes = dedupeStrings(append(pkg.ReviewNotes, headerResolution.ReviewNotes...))
+	}
+	attrs := sheinpublishing.BuildSizeAttributesFromProductSizeWithHeaderAttributeIDs(productSize, collectSizeSaleAttributeRefs(pkg), templateAttrs, headerResolution.AttributeIDsByHeader)
 	pkg.DraftPayload.SizeAttributeList = attrs
 	return len(attrs) > 0
+}
+
+func resolveSDSSizeHeaderAttributeIDs(ctx context.Context, productSize string, templateAttrs []sheinpublishing.SizeChartTemplateAttribute, resolver SizeAttributeHeaderResolver) SizeAttributeHeaderResolution {
+	if resolver == nil || len(templateAttrs) == 0 {
+		return SizeAttributeHeaderResolution{}
+	}
+	headers := sheinpublishing.UnmappedSDSSizeHeaders(productSize, templateAttrs)
+	if len(headers) == 0 {
+		return SizeAttributeHeaderResolution{}
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	resolution := resolver.ResolveSizeAttributeHeaders(SizeAttributeHeaderResolutionInput{
+		Context:            ctx,
+		Headers:            headers,
+		TemplateAttributes: templateAttrs,
+	})
+	return resolution
 }
 
 func collectSizeSaleAttributeRefs(pkg *Package) []sheinpublishing.SizeSaleAttributeRef {
@@ -51,6 +95,30 @@ func collectSizeSaleAttributeRefs(pkg *Package) []sheinpublishing.SizeSaleAttrib
 				})
 			}
 		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func collectSizeChartTemplateAttributes(pkg *Package) []sheinpublishing.SizeChartTemplateAttribute {
+	pkg = NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.AttributeResolution == nil || len(pkg.AttributeResolution.SizeChartAttributes) == 0 {
+		return nil
+	}
+	result := make([]sheinpublishing.SizeChartTemplateAttribute, 0, len(pkg.AttributeResolution.SizeChartAttributes))
+	for _, attr := range pkg.AttributeResolution.SizeChartAttributes {
+		if attr.AttributeID <= 0 {
+			continue
+		}
+		result = append(result, sheinpublishing.SizeChartTemplateAttribute{
+			AttributeID:     attr.AttributeID,
+			AttributeName:   attr.AttributeName,
+			AttributeNameEn: attr.AttributeNameEn,
+			SourceSystemIDs: append([]int(nil), attr.SourceSystemIDList...),
+			SortOrder:       attr.SortOrder,
+		})
 	}
 	if len(result) == 0 {
 		return nil

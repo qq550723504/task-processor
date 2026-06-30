@@ -38,6 +38,9 @@ export function mergeSDSSelectionMetadata(
     variants: metadata.variants?.length
       ? metadata.variants.map(toSelectedVariant)
       : selection.variants,
+    productSize: metadata.product_size || selection.productSize,
+    packagingSpecification:
+      metadata.packaging_specification || selection.packagingSpecification,
     productName: metadata.product_name || selection.productName,
     variantLabel: buildVariantLabel(primaryVariant) || selection.variantLabel,
     printableWidth: selection.printableWidth,

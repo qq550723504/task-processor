@@ -7,6 +7,28 @@ import {
 } from "@/lib/shein-studio/storage-shared";
 
 describe("buildSelectionSummary", () => {
+  it("preserves SDS product table fields for SHEIN generation", () => {
+    const productSize =
+      '[[{"content":"尺码","remark":""},{"content":"衣长(cm/in)","remark":""}],[{"content":"S","remark":""},{"content":"87.5/34.45 ","remark":""}]]';
+    const packagingSpecification =
+      '[[{"content":"尺码"},{"content":"包装尺寸（cm）"}],[{"content":"S"},{"content":"40.0*30.0*1.0"}]]';
+
+    const summary = buildSelectionSummary({
+      productId: 1,
+      parentProductId: 1,
+      variantId: 2,
+      prototypeGroupId: 3,
+      layerId: "layer-1",
+      productName: "dress",
+      productSize,
+      packagingSpecification,
+      variantLabel: "S / black",
+    });
+
+    expect(summary?.productSize).toBe(productSize);
+    expect(summary?.packagingSpecification).toBe(packagingSpecification);
+  });
+
   it("drops heavy per-variant image arrays from saved draft payload", () => {
     const summary = buildSelectionSummary({
       productId: 1,

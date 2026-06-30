@@ -43,6 +43,7 @@ type submitSheinDependencies struct {
 	categoryResolver      sheinpub.CategoryResolver
 	attributeResolver     sheinpub.AttributeResolver
 	saleAttributeResolver sheinpub.SaleAttributeResolver
+	sizeHeaderResolver    sheinpub.SizeAttributeHeaderResolver
 	pricingPolicy         sheinpub.PricingPolicy
 	productAPIBuilder     sheinpub.ProductAPIBuilder
 	imageAPIBuilder       sheinpub.ImageAPIBuilder
@@ -115,6 +116,7 @@ func buildSubmitModule(in submitModuleInput) submitModule {
 	if in.Hooks.SheinSaleAttributeResolverBuilder != nil {
 		sheinSaleAttributeResolver = in.Hooks.SheinSaleAttributeResolverBuilder(in.StoreRepository, sheinSaleAttributeLLMClient, in.ResolutionCacheStore)
 	}
+	sheinSizeHeaderResolver := sheinpub.NewSizeAttributeHeaderResolver(sheinSaleAttributeLLMClient)
 
 	var sheinProductAPIBuilder sheinpub.ProductAPIBuilder
 	if in.Hooks.SheinProductAPIBuilderFactory != nil {
@@ -157,6 +159,7 @@ func buildSubmitModule(in submitModuleInput) submitModule {
 				SheinCategoryResolver:      sheinCategoryResolver,
 				SheinAttributeResolver:     sheinAttributeResolver,
 				SheinSaleAttributeResolver: sheinSaleAttributeResolver,
+				SheinSizeHeaderResolver:    sheinSizeHeaderResolver,
 				SheinPricingPolicy:         sheinPricingPolicy,
 				SheinTitleOptimizer:        sheinCategoryLLMClient,
 			}),
@@ -166,6 +169,7 @@ func buildSubmitModule(in submitModuleInput) submitModule {
 			categoryResolver:      sheinCategoryResolver,
 			attributeResolver:     sheinAttributeResolver,
 			saleAttributeResolver: sheinSaleAttributeResolver,
+			sizeHeaderResolver:    sheinSizeHeaderResolver,
 			pricingPolicy:         sheinPricingPolicy,
 			productAPIBuilder:     sheinProductAPIBuilder,
 			imageAPIBuilder:       sheinImageAPIBuilder,

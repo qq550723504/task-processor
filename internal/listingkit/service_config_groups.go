@@ -105,6 +105,7 @@ func buildSheinRuntimeDependencies(config *ServiceConfig) sheinRuntimeDependenci
 		categoryResolver:      config.Shein.SheinCategoryResolver,
 		attributeResolver:     config.Shein.SheinAttributeResolver,
 		saleAttributeResolver: config.Shein.SheinSaleAttributeResolver,
+		sizeHeaderResolver:    config.Shein.SheinSizeHeaderResolver,
 		pricingPolicy:         config.Shein.SheinPricingPolicy,
 	}
 }

@@ -614,6 +614,86 @@ describe("projectItemizedTaskCreationProgress", () => {
       },
     });
   });
+
+  it("projects blocked task creation feedback when the batch returns to review ready", () => {
+    expect(
+      projectItemizedTaskCreationProgress({
+        creatingMessage: "creating",
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            status: "review_ready",
+          },
+          createdTasks: [],
+          reusedTasks: [],
+          rejectedTasks: [],
+          failedTasks: [
+            {
+              designId: "design-1",
+              message: "SDS credential bootstrap is missing merchant credentials.",
+              reasonCode: "baseline_not_ready",
+              title: "Style 1",
+            },
+          ],
+        },
+        isCreatingTasks: true,
+      }),
+    ).toEqual({
+      completionSignature: "batch-1:review_ready:0:0:0:1",
+      creatingMessage: "后台任务创建已结束，但本次没有成功创建任务。",
+      creatingWarning:
+        "部分任务被拒绝或创建失败：Style 1: baseline_not_ready · SDS credential bootstrap is missing merchant credentials.",
+      isCreatingTasks: false,
+      kind: "completed",
+      toast: {
+        duration: 8000,
+        message: "本次没有成功创建任务。",
+        title: "SHEIN 资料创建失败",
+        type: "error",
+      },
+    });
+  });
+
+  it("projects persisted blocked task creation feedback after a page refresh", () => {
+    expect(
+      projectItemizedTaskCreationProgress({
+        creatingMessage: "",
+        detail: {
+          ...buildCurrentDetail(),
+          batch: {
+            ...buildCurrentDetail().batch,
+            status: "review_ready",
+          },
+          createdTasks: [],
+          reusedTasks: [],
+          rejectedTasks: [],
+          failedTasks: [
+            {
+              designId: "design-1",
+              message: "SDS credential bootstrap is missing merchant credentials.",
+              reasonCode: "baseline_not_ready",
+              title: "Style 1",
+            },
+          ],
+        },
+        isCreatingTasks: false,
+      }),
+    ).toEqual({
+      completionSignature: "batch-1:review_ready:0:0:0:1",
+      creatingMessage: "后台任务创建已结束，但本次没有成功创建任务。",
+      creatingWarning:
+        "部分任务被拒绝或创建失败：Style 1: baseline_not_ready · SDS credential bootstrap is missing merchant credentials.",
+      isCreatingTasks: false,
+      kind: "completed",
+      toast: {
+        duration: 8000,
+        message: "本次没有成功创建任务。",
+        title: "SHEIN 资料创建失败",
+        type: "error",
+      },
+    });
+  });
 });
 
 describe("projectItemizedTaskCreationProgressEffects", () => {

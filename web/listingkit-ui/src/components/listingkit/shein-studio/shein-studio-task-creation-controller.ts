@@ -200,10 +200,14 @@ export function projectItemizedTaskCreationProgress({
       kind: "creating",
     };
   }
-  if (!isCreatingTasks || detail.batch.status !== "tasks_created") {
+  const hasBlockedTasks = failedTasks.length > 0 || rejectedTasks.length > 0;
+  if (
+    !hasBlockedTasks &&
+    (!isCreatingTasks || detail.batch.status !== "tasks_created")
+  ) {
     return { kind: "unchanged" };
   }
-  if (failedTasks.length > 0 || rejectedTasks.length > 0) {
+  if (hasBlockedTasks) {
     const rejectedPreview = rejectedTasks
       .slice(0, 3)
       .map(

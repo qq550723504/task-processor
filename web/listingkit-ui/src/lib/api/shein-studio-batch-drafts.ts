@@ -410,6 +410,10 @@ export function normalizeSelectionResponse(
     prototypeGroupId:
       Number(selection.prototype_group_id ?? selection.prototypeGroupId ?? 0) || 0,
     layerId: asString(selection.layer_id ?? selection.layerId) ?? "",
+    productSize: asString(selection.product_size ?? selection.productSize),
+    packagingSpecification: asString(
+      selection.packaging_specification ?? selection.packagingSpecification,
+    ),
     productName: asString(selection.product_name ?? selection.productName) ?? "",
     variantLabel: asString(selection.variant_label ?? selection.variantLabel) ?? "",
     printableWidth: asNumber(selection.printable_width ?? selection.printableWidth),
@@ -584,6 +588,8 @@ function selectionToPayload(selection: SDSProductVariantSelection) {
     variant_id: selection.variantId,
     prototype_group_id: selection.prototypeGroupId,
     layer_id: selection.layerId,
+    product_size: selection.productSize,
+    packaging_specification: selection.packagingSpecification,
     product_name: selection.productName,
     variant_label: selection.variantLabel,
     printable_width: selection.printableWidth,

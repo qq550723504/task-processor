@@ -345,10 +345,18 @@ func buildStudioBatchTaskCandidateKey(ctx context.Context, batch *StudioBatchRec
 		strings.TrimSpace(candidate.Item.ID),
 		strings.TrimSpace(candidate.Design.ID),
 		strings.TrimSpace(candidate.SelectionID),
+		studioBatchTaskCandidateCompatibilityFingerprint(candidate),
 		strconv.FormatInt(storeID, 10),
 	}, "|")
 	sum := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(sum[:])
+}
+
+func studioBatchTaskCandidateCompatibilityFingerprint(candidate studioBatchTaskCandidate) string {
+	if value := strings.TrimSpace(candidate.CompatibilityFingerprint); value != "" {
+		return value
+	}
+	return buildStudioBatchCompatibilityFingerprint(candidate.SelectionSnapshot)
 }
 
 func orderStudioBatchTaskDesignsByRequest(

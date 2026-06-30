@@ -25,6 +25,7 @@ type DraftInput = ReturnType<typeof buildSheinStudioDraftInput>;
 type ResultBackedDraftOverrides = Partial<{
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
+  selection: SDSProductVariantSelection;
   createdTasks: SheinStudioCreatedTask[];
   generationJobs: SheinStudioGenerationJob[];
   generationError: string;

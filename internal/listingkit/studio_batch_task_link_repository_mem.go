@@ -159,6 +159,7 @@ func (r *MemStudioBatchTaskLinkRepository) validateUniqueLocked(candidate Studio
 			link.ItemID == candidate.ItemID &&
 			link.DesignID == candidate.DesignID &&
 			link.SelectionID == candidate.SelectionID &&
+			link.CompatibilityFingerprint == candidate.CompatibilityFingerprint &&
 			link.SheinStoreID == candidate.SheinStoreID {
 			return fmt.Errorf("studio batch task link tuple already exists")
 		}

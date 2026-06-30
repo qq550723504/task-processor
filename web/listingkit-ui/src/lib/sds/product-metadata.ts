@@ -15,6 +15,8 @@ export type SDSListingKitMetadata = {
   special_description?: string;
   design_area?: string;
   picture_request?: string;
+  product_size?: string;
+  packaging_specification?: string;
   is_electricity?: number;
   variant_sku?: string;
   variant_size?: string;
@@ -120,6 +122,8 @@ function buildSDSListingKitMetadata(
     special_description: productDetails?.special_description,
     design_area: productDetails?.design_area,
     picture_request: productDetails?.picture_request,
+    product_size: productDetails?.product_size,
+    packaging_specification: productDetails?.packaging_specification,
     is_electricity: detail.isElectricity,
     variant_sku: variant?.sku,
     variant_size: variant?.size,

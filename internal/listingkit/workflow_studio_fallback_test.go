@@ -309,6 +309,32 @@ func TestMergeSDSVariantSyncSummariesKeepsVariantFailureReason(t *testing.T) {
 	}
 }
 
+func TestMergeSDSVariantSyncSummariesAggregatesSuccessfulVariantImages(t *testing.T) {
+	merged := mergeSDSVariantSyncSummaries(&SDSSyncOptions{VariantID: 101}, []SDSSyncSummary{
+		{
+			VariantID:       101,
+			VariantColor:    "black",
+			Status:          "completed",
+			MockupImageURLs: []string{"https://cdn.sdspod.com/out/black-main.jpg"},
+		},
+		{
+			VariantID:       106,
+			VariantColor:    "apricot",
+			Status:          "completed",
+			MockupImageURLs: []string{"https://cdn.sdspod.com/out/apricot-main.jpg", "https://cdn.sdspod.com/out/apricot-side.jpg"},
+		},
+	})
+
+	want := []string{
+		"https://cdn.sdspod.com/out/black-main.jpg",
+		"https://cdn.sdspod.com/out/apricot-main.jpg",
+		"https://cdn.sdspod.com/out/apricot-side.jpg",
+	}
+	if strings.Join(merged.MockupImageURLs, "|") != strings.Join(want, "|") {
+		t.Fatalf("merged mockups = %+v, want %+v", merged.MockupImageURLs, want)
+	}
+}
+
 func TestApplySDSTemplateImagesToSheinReplacesFlatDesignImages(t *testing.T) {
 	pkg := &sheinpub.Package{
 		Images: sheinImageSet("https://cdn.example.com/flat-design.png"),

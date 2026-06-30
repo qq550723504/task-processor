@@ -342,6 +342,86 @@ func TestSelectFinishedProductImageURLsUsesNewestMatchingMaterial(t *testing.T) 
 	}
 }
 
+func TestSelectFinishedProductImageURLsFallsBackToFinishedProductThumbnails(t *testing.T) {
+	t.Parallel()
+
+	urls := selectFinishedProductImageURLs([]DesignProductListItem{
+		{
+			ProductID:         101,
+			BuildFinish:       true,
+			FinishTime:        30,
+			MaterialImageName: "listingkit-studio-design",
+			ImageURLs: []string{
+				"https://cdn.sdspod.com/output/placeholder.jpg",
+			},
+			ThumbnailImageURLs: []string{
+				"https://cdn.sdspod.com/outThumbs/0/202604/main.jpg",
+				"https://cdn.sdspod.com/outThumbs/60678/202604/gallery-1.jpg",
+				"https://cdn.sdspod.com/outThumbs/60678/202604/gallery-2.jpg",
+			},
+		},
+	}, 101, "listingkit-studio-design")
+
+	want := []string{
+		"https://cdn.sdspod.com/outThumbs/0/202604/main.jpg",
+		"https://cdn.sdspod.com/outThumbs/60678/202604/gallery-1.jpg",
+		"https://cdn.sdspod.com/outThumbs/60678/202604/gallery-2.jpg",
+	}
+	if strings.Join(urls, "|") != strings.Join(want, "|") {
+		t.Fatalf("unexpected finished product urls: %+v", urls)
+	}
+}
+
+func TestSelectFinishedProductImageURLsUsesNewestFinishedProductItemImages(t *testing.T) {
+	t.Parallel()
+
+	urls := selectFinishedProductImageURLs([]DesignProductListItem{
+		{
+			ProductID:         101,
+			BuildFinish:       true,
+			FinishTime:        1_782_811_502_466,
+			MaterialImageName: "listingkit-studio-design",
+			ImageURLs: []string{
+				"https://cdn.sdspod.com/out/0/202604/front.jpg",
+				"https://cdn.sdspod.com/images/source-front.jpg",
+				"https://cdn.sdspod.com/images/source-back.jpg",
+				"https://cdn.sdspod.com/images/source-detail.jpg",
+				"https://cdn.sdspod.com/images/source-model.jpg",
+			},
+		},
+		{
+			ProductID:         101,
+			BuildFinish:       true,
+			FinishTime:        1_782_811_502_416,
+			MaterialImageName: "listingkit-studio-design",
+			ImageURLs: []string{
+				"https://cdn.sdspod.com/out/60678/202604/side.jpg",
+				"https://cdn.sdspod.com/images/source-side.jpg",
+			},
+		},
+		{
+			ProductID:         101,
+			BuildFinish:       true,
+			FinishTime:        1_782_810_483_930,
+			MaterialImageName: "listingkit-studio-design",
+			ImageURLs: []string{
+				"https://cdn.sdspod.com/out/60678/202604/old-run.jpg",
+			},
+		},
+	}, 101, "listingkit-studio-design")
+
+	want := []string{
+		"https://cdn.sdspod.com/out/0/202604/front.jpg",
+		"https://cdn.sdspod.com/images/source-front.jpg",
+		"https://cdn.sdspod.com/images/source-back.jpg",
+		"https://cdn.sdspod.com/images/source-detail.jpg",
+		"https://cdn.sdspod.com/images/source-model.jpg",
+	}
+	if strings.Join(urls, "|") != strings.Join(want, "|") {
+		t.Fatalf("unexpected finished product urls: %+v", urls)
+	}
+}
+
 func TestBuildSaveDesignRequestPreservesPrintableLayerInputs(t *testing.T) {
 	t.Parallel()
 

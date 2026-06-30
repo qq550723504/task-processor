@@ -12,11 +12,12 @@ import (
 )
 
 type AssemblerConfig struct {
-	CategoryResolver      CategoryResolver
-	AttributeResolver     AttributeResolver
-	SaleAttributeResolver SaleAttributeResolver
-	PricingPolicy         PricingPolicy
-	TitleOptimizer        TextGenerator
+	CategoryResolver            CategoryResolver
+	AttributeResolver           AttributeResolver
+	SaleAttributeResolver       SaleAttributeResolver
+	SizeAttributeHeaderResolver SizeAttributeHeaderResolver
+	PricingPolicy               PricingPolicy
+	TitleOptimizer              TextGenerator
 }
 
 type Assembler interface {
@@ -24,20 +25,22 @@ type Assembler interface {
 }
 
 type assembler struct {
-	categoryResolver      CategoryResolver
-	attributeResolver     AttributeResolver
-	saleAttributeResolver SaleAttributeResolver
-	pricingPolicy         PricingPolicy
-	titleOptimizer        TextGenerator
+	categoryResolver            CategoryResolver
+	attributeResolver           AttributeResolver
+	saleAttributeResolver       SaleAttributeResolver
+	sizeAttributeHeaderResolver SizeAttributeHeaderResolver
+	pricingPolicy               PricingPolicy
+	titleOptimizer              TextGenerator
 }
 
 func NewAssembler(config AssemblerConfig) Assembler {
 	return &assembler{
-		categoryResolver:      config.CategoryResolver,
-		attributeResolver:     config.AttributeResolver,
-		saleAttributeResolver: config.SaleAttributeResolver,
-		pricingPolicy:         config.PricingPolicy,
-		titleOptimizer:        config.TitleOptimizer,
+		categoryResolver:            config.CategoryResolver,
+		attributeResolver:           config.AttributeResolver,
+		saleAttributeResolver:       config.SaleAttributeResolver,
+		sizeAttributeHeaderResolver: config.SizeAttributeHeaderResolver,
+		pricingPolicy:               config.PricingPolicy,
+		titleOptimizer:              config.TitleOptimizer,
 	}
 }
 
@@ -161,7 +164,7 @@ func (a *assembler) Build(req *BuildRequest, product *canonical.Product, image *
 	pkg.DraftPayload.SKCList = buildRequestSKCs(groups, images, siteList, product, a.pricingPolicy)
 	SanitizeDraftPayloadSensitiveContent(pkg, req.Context, nil)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
-	applyProductSizeAttributes(pkg, req.ProductSize)
+	applyProductSizeAttributesWithResolver(pkg, req.ProductSize, a.sizeAttributeHeaderResolver, req.Context)
 	SetPreviewPayload(pkg, BuildPreviewProduct(pkg))
 	NormalizePackageSemanticFields(pkg)
 	log.WithFields(logrus.Fields{

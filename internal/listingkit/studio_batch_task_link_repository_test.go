@@ -90,6 +90,21 @@ func TestGormStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentStores(t *t
 	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentStores(t, newGormStudioBatchTaskLinkRepositoryForTest)
 }
 
+func TestMemStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibilityFingerprints(t *testing.T) {
+	t.Parallel()
+
+	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibilityFingerprints(t, func(t *testing.T) StudioBatchTaskLinkRepository {
+		t.Helper()
+		return NewMemStudioBatchTaskLinkRepository()
+	})
+}
+
+func TestGormStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibilityFingerprints(t *testing.T) {
+	t.Parallel()
+
+	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibilityFingerprints(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
 func TestMemStudioBatchTaskLinkRepositoryUpdateProjectionStatus(t *testing.T) {
 	t.Parallel()
 	testStudioBatchTaskLinkRepositoryUpdateProjectionStatus(t, func(t *testing.T) StudioBatchTaskLinkRepository {
@@ -281,6 +296,20 @@ func testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentStores(t *testi
 	storeB.SheinStoreID = 2002
 	if err := repo.CreateStudioBatchTaskLink(ctx, storeB); err != nil {
 		t.Fatalf("CreateStudioBatchTaskLink(different store) error = %v, want allowed distinct store candidate", err)
+	}
+}
+
+func testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibilityFingerprints(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
+	t.Helper()
+
+	repo := newRepo(t)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	mustCreateStudioBatchTaskLinkForTest(t, repo, ctx, studioBatchTaskLinkRecordForTest("link-1", "batch-1", "item-1", "design-1", "selection-1", "candidate-1"))
+
+	changed := studioBatchTaskLinkRecordForTest("link-2", "batch-1", "item-1", "design-1", "selection-1", "candidate-2")
+	changed.CompatibilityFingerprint = "fingerprint-selection-1-with-product-size"
+	if err := repo.CreateStudioBatchTaskLink(ctx, changed); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink(different compatibility fingerprint) error = %v, want allowed regenerated candidate", err)
 	}
 }
 

@@ -34,3 +34,50 @@ func TestBuildSizeAttributesFromStructuredProductSize(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildSizeAttributesFromProductSizeUsesTemplateAttributeIDs(t *testing.T) {
+	t.Parallel()
+
+	productSize := `[[{"content":"尺码","remark":""},{"content":"胸围(cm/in)","remark":""},{"content":"衣长(cm/in)","remark":""}],[{"content":"M","remark":""},{"content":"112cm /44.1in","remark":""},{"content":"71cm/28in","remark":""}]]`
+	got := BuildSizeAttributesFromProductSizeWithTemplates(productSize, []SizeSaleAttributeRef{
+		{SizeValue: "M", AttributeID: 87, AttributeValueID: 417},
+	}, []SizeChartTemplateAttribute{
+		{AttributeID: 20, AttributeName: "胸围 (cm)", AttributeNameEn: "Bust (cm)"},
+		{AttributeID: 55, AttributeName: "长度 (cm)", AttributeNameEn: "Length (cm)"},
+	})
+
+	want := []sheinproduct.SizeAttribute{
+		{AttributeID: 20, AttributeExtraValue: "112", RelateSaleAttributeID: 87, RelateSaleAttributeValueID: 417},
+		{AttributeID: 55, AttributeExtraValue: "71", RelateSaleAttributeID: 87, RelateSaleAttributeValueID: 417},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("size attributes = %#v, want %d items", got, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("size attribute[%d] = %#v, want %#v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestBuildSizeAttributesFromProductSizeAcceptsHeaderUnitWithoutCellUnit(t *testing.T) {
+	t.Parallel()
+
+	productSize := `[[{"content":"尺码","remark":""},{"content":"衣长(cm/in)","remark":""},{"content":"胸围(cm/in)","remark":""}],[{"content":"S","remark":""},{"content":"87.5/34.45 ","remark":""},{"content":"87/34.25 ","remark":""}]]`
+	got := BuildSizeAttributesFromProductSize(productSize, []SizeSaleAttributeRef{
+		{SizeValue: "S", AttributeID: 87, AttributeValueID: 568},
+	})
+
+	want := []sheinproduct.SizeAttribute{
+		{AttributeID: 20, AttributeExtraValue: "87.5", RelateSaleAttributeID: 87, RelateSaleAttributeValueID: 568},
+		{AttributeID: 15, AttributeExtraValue: "87", RelateSaleAttributeID: 87, RelateSaleAttributeValueID: 568},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("size attributes = %#v, want %d items", got, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("size attribute[%d] = %#v, want %#v", i, got[i], want[i])
+		}
+	}
+}

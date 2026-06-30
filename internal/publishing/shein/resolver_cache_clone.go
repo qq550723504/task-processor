@@ -75,6 +75,7 @@ func cloneAttributeResolution(resolution *AttributeResolution) *AttributeResolut
 	}
 	clone := *resolution
 	clone.ResolvedAttributes = append([]ResolvedAttribute(nil), resolution.ResolvedAttributes...)
+	clone.SizeChartAttributes = clonePendingAttributeCandidates(resolution.SizeChartAttributes)
 	clone.PendingAttributes = append([]common.Attribute(nil), resolution.PendingAttributes...)
 	clone.PendingAttributeCandidates = clonePendingAttributeCandidates(resolution.PendingAttributeCandidates)
 	clone.RecommendedAttributeCandidates = clonePendingAttributeCandidates(resolution.RecommendedAttributeCandidates)
@@ -90,6 +91,7 @@ func clonePendingAttributeCandidates(items []PendingAttributeCandidate) []Pendin
 	result := make([]PendingAttributeCandidate, 0, len(items))
 	for _, item := range items {
 		clone := item
+		clone.SourceSystemIDList = append([]int(nil), item.SourceSystemIDList...)
 		clone.AttributeValueList = append([]AttributeValueCandidate(nil), item.AttributeValueList...)
 		result = append(result, clone)
 	}

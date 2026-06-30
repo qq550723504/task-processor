@@ -42,8 +42,12 @@ export function useWorkspaceData({
     [searchParams],
   );
 
-  const preview = useListingKitPreview(taskId);
   const taskResult = useListingKitTaskResult(taskId);
+  const previewFreshnessKey =
+    taskResult.data?.result?.updated_at ??
+    taskResult.data?.completed_at ??
+    taskResult.data?.status;
+  const preview = useListingKitPreview(taskId, previewFreshnessKey);
   const session = useReviewSession(taskId, baseQuery);
   const focusedPreviewQuery =
     session.data?.session?.focused_target?.navigation_target?.preview_query;

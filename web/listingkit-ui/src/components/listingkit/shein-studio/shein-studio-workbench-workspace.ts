@@ -224,6 +224,7 @@ export function useSheinStudioBatchActions({
       designs: SheinStudioGeneratedDesign[];
       groups: SheinStudioGroupedWorkspace[];
       selectedIds: string[];
+      selection: SDSProductVariantSelection;
       createdTasks: SheinStudioCreatedTask[];
       generationJobs: SheinStudioGenerationJob[];
       generationError: string;

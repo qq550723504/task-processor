@@ -14,6 +14,7 @@ type assembler struct {
 	sheinCategoryResolver      sheinpub.CategoryResolver
 	sheinAttributeResolver     sheinpub.AttributeResolver
 	sheinSaleAttributeResolver sheinpub.SaleAttributeResolver
+	sheinSizeHeaderResolver    sheinpub.SizeAttributeHeaderResolver
 	sheinPricingPolicy         sheinpub.PricingPolicy
 	sheinTitleOptimizer        AIChatCompleter
 }
@@ -27,6 +28,7 @@ type AssemblerConfig struct {
 	SheinCategoryResolver      sheinpub.CategoryResolver
 	SheinAttributeResolver     sheinpub.AttributeResolver
 	SheinSaleAttributeResolver sheinpub.SaleAttributeResolver
+	SheinSizeHeaderResolver    sheinpub.SizeAttributeHeaderResolver
 	SheinPricingPolicy         sheinpub.PricingPolicy
 	SheinTitleOptimizer        AIChatCompleter
 }
@@ -41,6 +43,7 @@ func NewAssemblerWithConfig(config AssemblerConfig) Assembler {
 		sheinCategoryResolver:      config.SheinCategoryResolver,
 		sheinAttributeResolver:     config.SheinAttributeResolver,
 		sheinSaleAttributeResolver: config.SheinSaleAttributeResolver,
+		sheinSizeHeaderResolver:    config.SheinSizeHeaderResolver,
 		sheinPricingPolicy:         config.SheinPricingPolicy,
 		sheinTitleOptimizer:        config.SheinTitleOptimizer,
 	}
@@ -127,10 +130,11 @@ func buildSummary(task *Task, canonical *canonical.Product, image *productimage.
 
 func (a *assembler) buildSheinAssemblerConfig() sheinpub.AssemblerConfig {
 	return sheinpub.AssemblerConfig{
-		CategoryResolver:      a.sheinCategoryResolver,
-		AttributeResolver:     a.sheinAttributeResolver,
-		SaleAttributeResolver: a.sheinSaleAttributeResolver,
-		PricingPolicy:         a.sheinPricingPolicy,
-		TitleOptimizer:        a.sheinTitleOptimizer,
+		CategoryResolver:            a.sheinCategoryResolver,
+		AttributeResolver:           a.sheinAttributeResolver,
+		SaleAttributeResolver:       a.sheinSaleAttributeResolver,
+		SizeAttributeHeaderResolver: a.sheinSizeHeaderResolver,
+		PricingPolicy:               a.sheinPricingPolicy,
+		TitleOptimizer:              a.sheinTitleOptimizer,
 	}
 }

@@ -46,6 +46,7 @@ func mergeSDSVariantSyncSummaries(options *SDSSyncOptions, summaries []SDSSyncSu
 	var failedColors []string
 	var authFailureDetail string
 	var primary *SDSSyncSummary
+	var renderedURLs []string
 	for _, summary := range summaries {
 		if summary.Status == "failed" || len(summary.MockupImageURLs) == 0 {
 			if authFailureDetail == "" && isSDSAuthRequiredError(fmt.Errorf("%s", strings.TrimSpace(summary.Error))) {
@@ -65,9 +66,11 @@ func mergeSDSVariantSyncSummaries(options *SDSSyncOptions, summaries []SDSSyncSu
 			copy := summary
 			primary = &copy
 		}
+		renderedURLs = append(renderedURLs, summary.MockupImageURLs...)
 	}
 	if primary != nil {
 		*merged = *primary
+		merged.MockupImageURLs = uniqueNonEmptyStrings(renderedURLs)
 		merged.VariantResults = append([]SDSSyncSummary(nil), summaries...)
 	}
 	if authFailureDetail != "" {

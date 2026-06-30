@@ -92,6 +92,78 @@ func TestNewDisplayTemplateIndexSkipsSaleAttributes(t *testing.T) {
 	}
 }
 
+func TestNewDisplayTemplateIndexSkipsGarmentSizeChartAttributes(t *testing.T) {
+	idx := newDisplayTemplateIndex([]sheinattribute.AttributeInfo{
+		{
+			AttributeID:        20,
+			AttributeName:      "胸围 (cm)",
+			AttributeNameEn:    "Bust (cm)",
+			AttributeType:      2,
+			AttributeMode:      0,
+			DataDimension:      2,
+			SourceSystemIDList: []int{1, 2, 6, 7},
+		},
+		{
+			AttributeID:     160,
+			AttributeNameEn: "Material",
+			AttributeType:   4,
+		},
+	})
+
+	if attr := idx.FindAttribute("Bust (cm)"); attr != nil {
+		t.Fatalf("expected size chart attribute to be skipped, got %+v", attr)
+	}
+	if attr := idx.FindAttribute("Material"); attr == nil || attr.AttributeID != 160 {
+		t.Fatalf("expected material display attribute, got %+v", attr)
+	}
+}
+
+func TestNewDisplayTemplateIndexSkipsGarmentSizeChartAttributesWithoutLegacySourceSignature(t *testing.T) {
+	idx := newDisplayTemplateIndex([]sheinattribute.AttributeInfo{
+		{
+			AttributeID:     55,
+			AttributeName:   "长度 (cm)",
+			AttributeNameEn: "Length (cm)",
+			AttributeType:   2,
+			AttributeMode:   0,
+			DataDimension:   2,
+		},
+		{
+			AttributeID:     20,
+			AttributeName:   "胸围 (cm)",
+			AttributeNameEn: "Bust (cm)",
+			AttributeType:   2,
+			AttributeMode:   0,
+			DataDimension:   2,
+		},
+	})
+
+	if attr := idx.FindAttribute("Length (cm)"); attr != nil {
+		t.Fatalf("expected length size chart attribute to be skipped, got %+v", attr)
+	}
+	if attr := idx.FindAttribute("Bust (cm)"); attr != nil {
+		t.Fatalf("expected bust size chart attribute to be skipped, got %+v", attr)
+	}
+}
+
+func TestNewDisplayTemplateIndexKeepsNumericAttributesWithoutSizeChartSignature(t *testing.T) {
+	idx := newDisplayTemplateIndex([]sheinattribute.AttributeInfo{
+		{
+			AttributeID:        118,
+			AttributeName:      "宽度 (cm)",
+			AttributeNameEn:    "Width (cm)",
+			AttributeType:      2,
+			AttributeMode:      0,
+			DataDimension:      2,
+			SourceSystemIDList: []int{1, 2, 3, 4, 6, 7},
+		},
+	})
+
+	if attr := idx.FindAttribute("Width (cm)"); attr == nil || attr.AttributeID != 118 {
+		t.Fatalf("expected non-size-chart numeric attribute, got %+v", attr)
+	}
+}
+
 func TestBuildAttributeInputsIncludesDerivedDimensionValues(t *testing.T) {
 	pkg := &Package{
 		RequestDraft: &RequestDraft{

@@ -70,6 +70,7 @@ type DraftOverrides = Partial<{
   designs: SheinStudioGeneratedDesign[];
   groups: SheinStudioGroupedWorkspace[];
   selectedIds: string[];
+  selection: SDSProductVariantSelection;
   createdTasks: SheinStudioCreatedTask[];
   generationJobs: SheinStudioGenerationJob[];
   generationError: string;
@@ -495,7 +496,7 @@ export function useSheinStudioDraftPersistence(
         groupedImageMode: state.groupedImageMode,
         selectedSdsImages: state.selectedSdsImages,
         renderSizeImagesWithSds: state.renderSizeImagesWithSds,
-        selection: state.activeSelection,
+        selection: overrides?.selection ?? state.activeSelection,
         groups: overrides?.groups ?? state.groups,
         groupedSelections: state.groupedSelections,
         designs: overrides?.designs ?? state.designs,

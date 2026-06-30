@@ -16,6 +16,7 @@ import {
   createGroupedSheinReviewTasks,
   createSheinReviewTasks,
 } from "@/lib/shein-studio/create-review-tasks";
+import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
 import {
   buildBatchTaskCreationFailureSummary,
   executeItemizedBatchTaskCreation,
@@ -44,6 +45,7 @@ type PersistDraft = (
   overrides?: Partial<{
     designs: SheinStudioGeneratedDesign[];
     selectedIds: string[];
+    selection: SDSProductVariantSelection;
     createdTasks: SheinStudioCreatedTask[];
   }>,
   options?: {
@@ -130,6 +132,8 @@ export function useSheinStudioTaskCreationAction({
     );
     const startValidation = resolveTaskCreationStartValidation({
       activeSelection,
+      activeSelectionBaselineReason,
+      activeSelectionBaselineStatus,
       approvedCount: approved.length,
       sheinStoreId,
     });
@@ -174,6 +178,20 @@ export function useSheinStudioTaskCreationAction({
     let keepCreatingState = false;
 
     try {
+      setCreatingMessage("正在刷新 SDS 商品资料...");
+      const hydratedTaskCreationSelection =
+        (await hydrateSDSVariantSelection(taskCreationSelection)) ??
+        taskCreationSelection;
+      if (itemizedBatchContext) {
+        await persistDraft(
+          { selection: hydratedTaskCreationSelection },
+          {
+            source: "task_creation_preflight",
+          },
+        );
+      }
+      setCreatingMessage("正在开始生成 SHEIN 资料...");
+
       let created: SheinStudioCreatedTask[] = [];
       let reused: SheinStudioCreatedTask[] = [];
       let batchTaskFailures: SheinStudioFailedTask[] = [];
@@ -205,7 +223,7 @@ export function useSheinStudioTaskCreationAction({
         }
       } else {
         const result = await executeStandaloneTaskCreation({
-          activeSelection: taskCreationSelection,
+          activeSelection: hydratedTaskCreationSelection,
           activeSelectionBaselineReason,
           activeSelectionBaselineStatus,
           approvedDesigns: approved,

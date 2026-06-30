@@ -7,6 +7,7 @@ type sheinRuntimeDependencies struct {
 	categoryResolver      sheinpub.CategoryResolver
 	attributeResolver     sheinpub.AttributeResolver
 	saleAttributeResolver sheinpub.SaleAttributeResolver
+	sizeHeaderResolver    sheinpub.SizeAttributeHeaderResolver
 	pricingPolicy         sheinpub.PricingPolicy
 }
 
@@ -36,6 +37,13 @@ func resolveSheinSaleAttributeResolver(s *service) sheinpub.SaleAttributeResolve
 		return nil
 	}
 	return s.sheinRuntimeDeps.saleAttributeResolver
+}
+
+func resolveSheinSizeHeaderResolver(s *service) sheinpub.SizeAttributeHeaderResolver {
+	if s == nil {
+		return nil
+	}
+	return s.sheinRuntimeDeps.sizeHeaderResolver
 }
 
 func resolveSheinPricingPolicy(s *service) sheinpub.PricingPolicy {

@@ -40,6 +40,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	categoryResolver := resolveSheinCategoryResolver(s)
 	attributeResolver := resolveSheinAttributeResolver(s)
 	saleAttributeResolver := resolveSheinSaleAttributeResolver(s)
+	sizeHeaderResolver := resolveSheinSizeHeaderResolver(s)
 	pricingPolicy := resolveSheinPricingPolicy(s)
 	if needReResolveCategory && categoryResolver != nil {
 		task.Result.Shein.CategoryResolution = categoryResolver.Resolve(buildReq, task.Result.CanonicalProduct, task.Result.Shein)
@@ -62,6 +63,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		categoryResolver,
 		attributeResolver,
 		saleAttributeResolver,
+		sizeHeaderResolver,
 		pricingPolicy,
 	)
 	cookieNote := strings.TrimSpace(s.resolveSheinCookieAvailabilityNote(buildReq.Context, task))

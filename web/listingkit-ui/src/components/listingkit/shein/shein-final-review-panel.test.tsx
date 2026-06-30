@@ -215,6 +215,104 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByText(/固化时间：/)).toBeInTheDocument();
   });
 
+  it("shows generated SHEIN size chart from preview payload", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          editor_context: {
+            attributes: {
+              current: {
+                size_chart_attributes: [
+                  {
+                    attribute_id: 55,
+                    attribute_name: "长度 (cm)",
+                    attribute_name_en: "Length (cm)",
+                  },
+                  {
+                    attribute_id: 20,
+                    attribute_name: "胸围 (cm)",
+                    attribute_name_en: "Bust (cm)",
+                  },
+                ],
+              },
+            },
+          },
+          draft_payload: {
+            skc_list: [
+              {
+                sku_list: [
+                  {
+                    sale_attributes: [
+                      {
+                        name: "Size",
+                        value: "S",
+                        attribute_id: 87,
+                        attribute_value_id: 568,
+                      },
+                    ],
+                  },
+                  {
+                    sale_attributes: [
+                      {
+                        name: "Size",
+                        value: "M",
+                        attribute_id: 87,
+                        attribute_value_id: 417,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          preview_payload: {
+            size_attribute_list: [
+              {
+                attribute_id: 55,
+                attribute_extra_value: "87.5",
+                relate_sale_attribute_id: 87,
+                relate_sale_attribute_value_id: 568,
+              },
+              {
+                attribute_id: 20,
+                attribute_extra_value: "87",
+                relate_sale_attribute_id: 87,
+                relate_sale_attribute_value_id: 568,
+              },
+              {
+                attribute_id: 55,
+                attribute_extra_value: "88.5",
+                relate_sale_attribute_id: 87,
+                relate_sale_attribute_value_id: 417,
+              },
+              {
+                attribute_id: 20,
+                attribute_extra_value: "91",
+                relate_sale_attribute_id: 87,
+                relate_sale_attribute_value_id: 417,
+              },
+            ],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("SHEIN 尺码表")).toBeInTheDocument();
+    expect(screen.getByText("2 个尺码 · 2 个尺码字段")).toBeInTheDocument();
+    expect(screen.getByText("Length (cm)")).toBeInTheDocument();
+    expect(screen.getByText("Bust (cm)")).toBeInTheDocument();
+    expect(screen.getByText("S")).toBeInTheDocument();
+    expect(screen.getByText("M")).toBeInTheDocument();
+    expect(screen.getByText("87.5")).toBeInTheDocument();
+    expect(screen.getByText("91")).toBeInTheDocument();
+  });
+
   it("does not locally block single-variant final images when swatch and size map are not selected", () => {
     render(
       <SheinFinalReviewPanel

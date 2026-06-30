@@ -137,6 +137,30 @@ func TestBuildAttributePayloadPrefersPendingAttributesFromResolution(t *testing.
 	}
 }
 
+func TestBuildAttributePayloadIncludesSizeChartAttributes(t *testing.T) {
+	pkg := &sheinpub.Package{
+		AttributeResolution: &sheinpub.AttributeResolution{
+			Status: "resolved",
+			SizeChartAttributes: []sheinpub.PendingAttributeCandidate{{
+				AttributeID:     20,
+				AttributeName:   "胸围 (cm)",
+				AttributeNameEn: "Bust (cm)",
+			}},
+		},
+	}
+
+	payload := BuildAttributePayload(pkg)
+	if payload == nil {
+		t.Fatal("expected payload")
+	}
+	if len(payload.SizeChartAttributes) != 1 {
+		t.Fatalf("size chart attributes = %#v, want 1", payload.SizeChartAttributes)
+	}
+	if payload.SizeChartAttributes[0].AttributeID != 20 {
+		t.Fatalf("size chart attribute id = %d, want 20", payload.SizeChartAttributes[0].AttributeID)
+	}
+}
+
 func TestBuildAttributePayloadDoesNotRecreatePendingAttributesAfterManualFallbackConfirmation(t *testing.T) {
 	pkg := &sheinpub.Package{
 		ProductAttributes: []common.Attribute{

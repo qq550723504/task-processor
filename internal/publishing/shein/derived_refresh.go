@@ -19,6 +19,7 @@ func RefreshDerivedState(
 	categoryResolver CategoryResolver,
 	attributeResolver AttributeResolver,
 	saleAttributeResolver SaleAttributeResolver,
+	sizeAttributeHeaderResolver SizeAttributeHeaderResolver,
 	pricingPolicy PricingPolicy,
 ) {
 	pkg = NormalizePackageSemanticFields(pkg)
@@ -67,7 +68,7 @@ func RefreshDerivedState(
 	pkg.DraftPayload.SKCList = buildRequestSKCs(groups, images, pkg.SiteList, canonical, pricingPolicy)
 	reapplyPreviousSKCImages(pkg, previousDraftSKCs, previousPackageSKCs)
 	ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
-	applyProductSizeAttributes(pkg, productSizeOrEmpty(req))
+	applyProductSizeAttributesWithResolver(pkg, productSizeOrEmpty(req), sizeAttributeHeaderResolver, resolveBuildRequestContext(req))
 	SetPreviewPayload(pkg, BuildPreviewProduct(pkg))
 	NormalizePackageSemanticFields(pkg)
 }

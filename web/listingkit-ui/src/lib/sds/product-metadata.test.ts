@@ -15,6 +15,12 @@ describe("loadSDSListingKitMetadata", () => {
         name: "Multi variant tee",
         sku: "PARENT-SKU",
         blankDesignUrl: "https://cdn.example.com/blank.jpg",
+        product_details: {
+          product_size:
+            '[[{"content":"尺码","remark":""},{"content":"肩宽(cm/in)","remark":""}],[{"content":"S","remark":""},{"content":"52cm/20.5in","remark":""}]]',
+          packaging_specification:
+            '[[{"content":"尺码"},{"content":"包装尺寸（cm）"}],[{"content":"S"},{"content":"40.0*30.0*1.0"}]]',
+        },
         subproducts: {
           items: [
             {
@@ -112,5 +118,11 @@ describe("loadSDSListingKitMetadata", () => {
       "https://cdn.example.com/black-main.jpg",
       "https://cdn.example.com/black-size-chart.jpg",
     ]);
+    expect(metadata.product_size).toBe(
+      '[[{"content":"尺码","remark":""},{"content":"肩宽(cm/in)","remark":""}],[{"content":"S","remark":""},{"content":"52cm/20.5in","remark":""}]]',
+    );
+    expect(metadata.packaging_specification).toBe(
+      '[[{"content":"尺码"},{"content":"包装尺寸（cm）"}],[{"content":"S"},{"content":"40.0*30.0*1.0"}]]',
+    );
   });
 });

@@ -179,6 +179,8 @@ func buildPendingAttributeCandidate(attr sheinattribute.AttributeInfo) PendingAt
 		AttributeInputNum:  attr.AttributeInputNum,
 		DataDimension:      attr.DataDimension,
 		CascadeAttributeID: attr.CascadeAttributeID,
+		SortOrder:          attr.SortOrder,
+		SourceSystemIDList: append([]int(nil), attr.SourceSystemIDList...),
 		Required:           isTemplateRequired(attr),
 		Important:          isTemplateImportant(attr),
 		SKCScope:           attr.SKCScope != nil && *attr.SKCScope,

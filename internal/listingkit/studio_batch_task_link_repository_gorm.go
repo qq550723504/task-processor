@@ -18,7 +18,10 @@ func NewGormStudioBatchTaskLinkRepository(db *gorm.DB) *GormStudioBatchTaskLinkR
 }
 
 func AutoMigrateStudioBatchTaskLinkRepository(db *gorm.DB) error {
-	return db.AutoMigrate(&StudioBatchTaskLinkRecord{})
+	if err := db.AutoMigrate(&StudioBatchTaskLinkRecord{}); err != nil {
+		return err
+	}
+	return ensureStudioBatchTaskLinkTupleIndex(db)
 }
 
 func (r *GormStudioBatchTaskLinkRepository) GetStudioBatchTaskLinkByCandidateKey(ctx context.Context, candidateKey string) (*StudioBatchTaskLinkRecord, error) {
@@ -114,4 +117,48 @@ func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdated
 		return nil, false, err
 	}
 	return link, result.RowsAffected > 0, nil
+}
+
+func ensureStudioBatchTaskLinkTupleIndex(db *gorm.DB) error {
+	const indexName = "idx_listingkit_studio_batch_task_links_tuple"
+	if db == nil || studioBatchTaskLinkTupleIndexIncludesCompatibilityFingerprint(db, indexName) {
+		return nil
+	}
+	if db.Migrator().HasIndex(&StudioBatchTaskLinkRecord{}, indexName) {
+		if err := db.Migrator().DropIndex(&StudioBatchTaskLinkRecord{}, indexName); err != nil {
+			return err
+		}
+	}
+	return db.Migrator().CreateIndex(&StudioBatchTaskLinkRecord{}, indexName)
+}
+
+func studioBatchTaskLinkTupleIndexIncludesCompatibilityFingerprint(db *gorm.DB, indexName string) bool {
+	switch db.Dialector.Name() {
+	case "postgres":
+		var indexDef string
+		if err := db.Raw(`SELECT indexdef FROM pg_indexes WHERE tablename = ? AND indexname = ?`, StudioBatchTaskLinkRecord{}.TableName(), indexName).Scan(&indexDef).Error; err != nil {
+			return false
+		}
+		return strings.Contains(indexDef, "compatibility_fingerprint")
+	case "sqlite":
+		rows, err := db.Raw(`PRAGMA index_info(idx_listingkit_studio_batch_task_links_tuple)`).Rows()
+		if err != nil {
+			return false
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var seqno int
+			var cid int
+			var name string
+			if err := rows.Scan(&seqno, &cid, &name); err != nil {
+				return false
+			}
+			if name == "compatibility_fingerprint" {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
 }

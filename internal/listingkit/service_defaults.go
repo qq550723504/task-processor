@@ -50,6 +50,9 @@ func (config *ServiceConfig) ensureSheinResolvers() {
 		}
 		config.Shein.SheinSaleAttributeResolver = resolver
 	}
+	if config.Shein.SheinSizeHeaderResolver == nil {
+		config.Shein.SheinSizeHeaderResolver = sheinpub.NewSizeAttributeHeaderResolver(config.Shein.SheinContentOptimizer)
+	}
 }
 
 func (config *ServiceConfig) ensureAssembler() {
@@ -61,6 +64,7 @@ func (config *ServiceConfig) ensureAssembler() {
 		SheinCategoryResolver:      config.Shein.SheinCategoryResolver,
 		SheinAttributeResolver:     config.Shein.SheinAttributeResolver,
 		SheinSaleAttributeResolver: config.Shein.SheinSaleAttributeResolver,
+		SheinSizeHeaderResolver:    config.Shein.SheinSizeHeaderResolver,
 		SheinPricingPolicy:         config.Shein.SheinPricingPolicy,
 		SheinTitleOptimizer:        config.Shein.SheinContentOptimizer,
 	})

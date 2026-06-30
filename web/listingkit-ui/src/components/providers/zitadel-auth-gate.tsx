@@ -62,7 +62,9 @@ export function ZitadelAuthGate({ children }: { children: ReactNode }) {
       }
       if (!cancelled) {
         const returnTo = `${window.location.pathname}${window.location.search}`;
-        window.location.assign(returnTo || "/");
+        window.location.assign(
+          `/login?returnTo=${encodeURIComponent(returnTo || "/")}`,
+        );
       }
     }
 

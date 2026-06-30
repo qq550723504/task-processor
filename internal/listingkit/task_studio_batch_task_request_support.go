@@ -74,21 +74,23 @@ func buildStudioBatchTaskSDSOptions(
 	styleName string,
 ) *SDSSyncOptions {
 	return &SDSSyncOptions{
-		VariantID:        selection.VariantID,
-		ParentProductID:  selection.ParentProductID,
-		PrototypeGroupID: selection.PrototypeGroupID,
-		LayerID:          selection.LayerID,
-		DesignType:       "material", // Default design type
-		ProductName:      selection.ProductName,
-		BlankDesignURL:   selection.BlankDesignURL,
-		TemplateImageURL: selection.TemplateImageURL,
-		MaskImageURL:     selection.MaskImageURL,
-		PrintableWidth:   selection.PrintableWidth,
-		PrintableHeight:  selection.PrintableHeight,
-		MockupImageURLs:  append([]string(nil), selection.MockupImageURLs...),
-		StyleID:          styleID,
-		StyleName:        styleName,
-		Variants:         buildStudioBatchTaskVariantOptions(selection.Variants),
+		VariantID:              selection.VariantID,
+		ParentProductID:        selection.ParentProductID,
+		PrototypeGroupID:       selection.PrototypeGroupID,
+		LayerID:                selection.LayerID,
+		DesignType:             "material", // Default design type
+		ProductSize:            selection.ProductSize,
+		PackagingSpecification: selection.PackagingSpecification,
+		ProductName:            selection.ProductName,
+		BlankDesignURL:         selection.BlankDesignURL,
+		TemplateImageURL:       selection.TemplateImageURL,
+		MaskImageURL:           selection.MaskImageURL,
+		PrintableWidth:         selection.PrintableWidth,
+		PrintableHeight:        selection.PrintableHeight,
+		MockupImageURLs:        append([]string(nil), selection.MockupImageURLs...),
+		StyleID:                styleID,
+		StyleName:              styleName,
+		Variants:               buildStudioBatchTaskVariantOptions(selection.Variants),
 	}
 }
 

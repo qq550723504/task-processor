@@ -257,6 +257,7 @@ func buildAttributePayload(pkg *sheinpub.Package) *sheinpub.InspectionAttributeP
 		payload.TemplateCount = pkg.AttributeResolution.TemplateCount
 		payload.ResolvedCount = pkg.AttributeResolution.ResolvedCount
 		payload.UnresolvedCount = pkg.AttributeResolution.UnresolvedCount
+		payload.SizeChartAttributes = append([]sheinpub.PendingAttributeCandidate(nil), pkg.AttributeResolution.SizeChartAttributes...)
 		payload.RecommendedAttributeCandidates = append([]sheinpub.PendingAttributeCandidate(nil), pkg.AttributeResolution.RecommendedAttributeCandidates...)
 		payload.ReviewNotes = append([]string(nil), pkg.AttributeResolution.ReviewNotes...)
 	}
@@ -286,6 +287,9 @@ func buildAttributePayloadMap(payload *sheinpub.InspectionAttributePayload) map[
 	}
 	if len(payload.ResolvedAttributes) > 0 {
 		out["resolved_attributes"] = append([]sheinpub.ResolvedAttribute(nil), payload.ResolvedAttributes...)
+	}
+	if len(payload.SizeChartAttributes) > 0 {
+		out["size_chart_attributes"] = append([]sheinpub.PendingAttributeCandidate(nil), payload.SizeChartAttributes...)
 	}
 	if len(payload.PendingAttributes) > 0 {
 		out["pending_attributes"] = append([]common.Attribute(nil), payload.PendingAttributes...)

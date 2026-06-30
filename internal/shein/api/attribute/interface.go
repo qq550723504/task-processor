@@ -60,6 +60,8 @@ type AttributeInfo struct {
 	CascadeAttributeID          int              `json:"cascade_attribute_id"`
 	CascadeAttributeValueIDList *string          `json:"cascade_attribute_value_id_list"`
 	SKCScope                    *bool            `json:"skc_scope"`
+	SortOrder                   int              `json:"sort_order"`
+	SourceSystemIDList          []int            `json:"source_system_id_list"`
 }
 
 // AttributeTemplate 属性模板

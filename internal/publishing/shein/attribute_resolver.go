@@ -53,6 +53,7 @@ func (r *attributeResolver) Resolve(req *BuildRequest, canonical *canonical.Prod
 	}).Info("loaded SHEIN display attribute templates")
 	resolution.Source = "attribute_templates"
 	resolution.TemplateCount = len(templates.Data)
+	resolution.SizeChartAttributes = collectSizeChartAttributeCandidates(templates.Data[0].AttributeInfos)
 	resolution.ResolvedAttributes, resolution.PendingAttributes, resolution.PendingAttributeCandidates, resolution.RecommendedAttributeCandidates, resolution.ReviewNotes = matchAttributes(resolveBuildRequestContext(req), templates, pkg, r.llm)
 	for _, item := range resolution.ResolvedAttributes {
 		if item.AttributeID > 0 {
@@ -97,6 +98,23 @@ func matchAttributes(ctx context.Context, templates *sheinattribute.AttributeTem
 		return nil, nil, nil, nil, nil
 	}
 	return resolveDisplayAttributes(ctx, templates.Data[0].AttributeInfos, evidence, llm)
+}
+
+func collectSizeChartAttributeCandidates(attributes []sheinattribute.AttributeInfo) []PendingAttributeCandidate {
+	if len(attributes) == 0 {
+		return nil
+	}
+	result := make([]PendingAttributeCandidate, 0)
+	for _, attr := range attributes {
+		if !isSizeChartTemplateAttribute(attr) {
+			continue
+		}
+		result = append(result, buildPendingAttributeCandidate(attr))
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func buildAttributeInputs(pkg *Package) []common.Attribute {

@@ -198,26 +198,7 @@ func selectFinishedProductImageURLsWithAccept(items []DesignProductListItem, var
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return candidates[i].FinishTime > candidates[j].FinishTime
 	})
-	if expectedMaterialName != "" {
-		for _, item := range candidates {
-			if urls := finishedProductItemImageURLs(item, variantID, expectedMaterialName); len(urls) > 0 {
-				if accept != nil && !accept(urls) {
-					continue
-				}
-				return urls
-			}
-		}
-		return nil
-	}
-	for _, item := range candidates {
-		if urls := finishedProductItemImageURLs(item, variantID, ""); len(urls) > 0 {
-			if accept != nil && !accept(urls) {
-				continue
-			}
-			return urls
-		}
-	}
-	return nil
+	return selectFinishedProductImageURLsFromSortedCandidates(candidates, variantID, expectedMaterialName, accept)
 }
 
 func selectFinishedProductImageURLsByProductWithAccept(items []DesignProductListItem, targetIDs []int64, expectedMaterialName string, accept func([]string) bool) map[int64][]string {
@@ -242,10 +223,7 @@ func selectFinishedProductImageURLsByProductWithAccept(items []DesignProductList
 		if _, exists := result[item.ProductID]; exists {
 			continue
 		}
-		if urls := finishedProductItemImageURLs(item, item.ProductID, expectedMaterialName); len(urls) > 0 {
-			if accept != nil && !accept(urls) {
-				continue
-			}
+		if urls := selectFinishedProductImageURLsFromSortedCandidates(candidates, item.ProductID, expectedMaterialName, accept); len(urls) > 0 {
 			result[item.ProductID] = urls
 		}
 	}
@@ -253,6 +231,23 @@ func selectFinishedProductImageURLsByProductWithAccept(items []DesignProductList
 		return nil
 	}
 	return result
+}
+
+func selectFinishedProductImageURLsFromSortedCandidates(candidates []DesignProductListItem, variantID int64, expectedMaterialName string, accept func([]string) bool) []string {
+	for _, item := range candidates {
+		if !finishedProductItemMatches(item, variantID, expectedMaterialName) {
+			continue
+		}
+		urls := finishedProductItemImageURLs(item, variantID, expectedMaterialName)
+		if len(urls) == 0 {
+			continue
+		}
+		if accept != nil && !accept(urls) {
+			continue
+		}
+		return urls
+	}
+	return nil
 }
 
 func collectRenderedImageObservations(items []DesignProductListItem, targetIDs []int64) map[int64]RenderedImageObservation {
@@ -380,18 +375,29 @@ func (s *Service) repairSensitiveDesignProductExportNames(ctx context.Context, i
 }
 
 func finishedProductItemImageURLs(item DesignProductListItem, variantID int64, expectedMaterialName string) []string {
-	if item.ProductID != 0 && item.ProductID != variantID {
+	if !finishedProductItemMatches(item, variantID, expectedMaterialName) {
 		return nil
 	}
-	if !item.BuildFinish || len(item.ImageURLs) == 0 {
-		return nil
+	urls := finishedProductImageURLCandidates(item.ImageURLs)
+	if len(urls) > 0 {
+		return urls
+	}
+	return finishedProductImageURLCandidates(item.ThumbnailImageURLs)
+}
+
+func finishedProductItemMatches(item DesignProductListItem, variantID int64, expectedMaterialName string) bool {
+	if item.ProductID != 0 && item.ProductID != variantID {
+		return false
+	}
+	if !item.BuildFinish || (len(item.ImageURLs) == 0 && len(item.ThumbnailImageURLs) == 0) {
+		return false
 	}
 	if expectedMaterialName != "" {
 		if strings.TrimSpace(item.MaterialImageName) != expectedMaterialName {
-			return nil
+			return false
 		}
 	}
-	return renderedImageURLCandidates(item.ImageURLs)
+	return true
 }
 
 func finishedProductMaterialName(result *PrepareSyncDesignResult) string {
@@ -492,6 +498,20 @@ func renderedImageURLCandidates(values []string) []string {
 	return uniqueStrings(filtered)
 }
 
+func finishedProductImageURLCandidates(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	filtered := make([]string, 0, len(values))
+	for _, value := range values {
+		if finishedProductImageURLUnavailable(value) {
+			continue
+		}
+		filtered = append(filtered, value)
+	}
+	return uniqueStrings(filtered)
+}
+
 func expectedRenderedImageCount(result *PrepareSyncDesignResult) int {
 	if result == nil || result.Page == nil {
 		return 0
@@ -554,6 +574,17 @@ func renderedImageURLUnavailable(value string) bool {
 		strings.Contains(value, "/output/loading") ||
 		strings.Contains(value, "/output/placeholder") ||
 		strings.Contains(value, "cdn.sdspod.com/images/")
+}
+
+func finishedProductImageURLUnavailable(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return true
+	}
+	return strings.Contains(value, "shengchengzhong") ||
+		strings.Contains(value, "/output/generating") ||
+		strings.Contains(value, "/output/loading") ||
+		strings.Contains(value, "/output/placeholder")
 }
 
 func uniqueStrings(values []string) []string {

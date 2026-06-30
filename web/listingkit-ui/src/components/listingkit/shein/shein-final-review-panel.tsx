@@ -16,6 +16,7 @@ import {
   ImageSubmitSummary,
   ReviewSummaryGrid,
   SkuPricingTable,
+  SizeAttributeTable,
   StoreResolutionCard,
 } from "@/components/listingkit/shein/shein-final-review-sections";
 import {
@@ -215,6 +216,8 @@ export function SheinFinalReviewPanel({
       <StoreResolutionCard resolution={shein?.store_resolution} />
 
       <FinalReviewOverviewCards finalReview={finalReview} />
+
+      <SizeAttributeTable shein={shein} />
 
       <SkuPricingTable
         priceOverrides={priceOverrides}

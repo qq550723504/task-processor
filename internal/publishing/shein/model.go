@@ -260,6 +260,8 @@ type PendingAttributeCandidate struct {
 	AttributeInputNum  int                       `json:"attribute_input_num,omitempty"`
 	DataDimension      int                       `json:"data_dimension,omitempty"`
 	CascadeAttributeID int                       `json:"cascade_attribute_id,omitempty"`
+	SortOrder          int                       `json:"sort_order,omitempty"`
+	SourceSystemIDList []int                     `json:"source_system_id_list,omitempty"`
 	Required           bool                      `json:"required,omitempty"`
 	Important          bool                      `json:"important,omitempty"`
 	SKCScope           bool                      `json:"skc_scope,omitempty"`
@@ -274,6 +276,7 @@ type AttributeResolution struct {
 	ResolvedCount                  int                         `json:"resolved_count,omitempty"`
 	UnresolvedCount                int                         `json:"unresolved_count,omitempty"`
 	ResolvedAttributes             []ResolvedAttribute         `json:"resolved_attributes,omitempty"`
+	SizeChartAttributes            []PendingAttributeCandidate `json:"size_chart_attributes,omitempty"`
 	PendingAttributes              []common.Attribute          `json:"pending_attributes,omitempty"`
 	PendingAttributeCandidates     []PendingAttributeCandidate `json:"pending_attribute_candidates,omitempty"`
 	RecommendedAttributeCandidates []PendingAttributeCandidate `json:"recommended_attribute_candidates,omitempty"`
@@ -402,6 +405,7 @@ type InspectionAttributePayload struct {
 	UnresolvedCount                int                         `json:"unresolved_count,omitempty"`
 	ProductAttributes              []common.Attribute          `json:"product_attributes,omitempty"`
 	ResolvedAttributes             []ResolvedAttribute         `json:"resolved_attributes,omitempty"`
+	SizeChartAttributes            []PendingAttributeCandidate `json:"size_chart_attributes,omitempty"`
 	PendingAttributes              []common.Attribute          `json:"pending_attributes,omitempty"`
 	PendingAttributeCandidates     []PendingAttributeCandidate `json:"pending_attribute_candidates,omitempty"`
 	RecommendedAttributeCandidates []PendingAttributeCandidate `json:"recommended_attribute_candidates,omitempty"`

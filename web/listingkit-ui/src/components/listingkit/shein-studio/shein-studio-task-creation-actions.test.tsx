@@ -14,6 +14,7 @@ type TaskCreationActionParams = Parameters<
 const createSheinStudioBatchTasks = vi.fn();
 const createGroupedSheinReviewTasks = vi.fn();
 const createSheinReviewTasks = vi.fn();
+const hydrateSDSVariantSelection = vi.fn();
 
 vi.mock("@/lib/api/shein-studio-batches", () => ({
   createSheinStudioBatchTasks: (...args: unknown[]) =>
@@ -24,6 +25,11 @@ vi.mock("@/lib/shein-studio/create-review-tasks", () => ({
   createGroupedSheinReviewTasks: (...args: unknown[]) =>
     createGroupedSheinReviewTasks(...args),
   createSheinReviewTasks: (...args: unknown[]) => createSheinReviewTasks(...args),
+}));
+
+vi.mock("@/lib/shein-studio/hydrate-sds-selection", () => ({
+  hydrateSDSVariantSelection: (...args: unknown[]) =>
+    hydrateSDSVariantSelection(...args),
 }));
 
 const selection = {
@@ -180,6 +186,10 @@ describe("useSheinStudioTaskCreationAction", () => {
     createSheinStudioBatchTasks.mockReset();
     createGroupedSheinReviewTasks.mockReset();
     createSheinReviewTasks.mockReset();
+    hydrateSDSVariantSelection.mockReset();
+    hydrateSDSVariantSelection.mockImplementation(
+      async (nextSelection) => nextSelection,
+    );
     vi.restoreAllMocks();
   });
 
@@ -309,6 +319,52 @@ describe("useSheinStudioTaskCreationAction", () => {
       }),
     );
     expect(navigateToStep).toHaveBeenCalledWith("tasks");
+  });
+
+  it("hydrates and persists the SDS size table before creating itemized batch tasks", async () => {
+    const productSize =
+      '[[{"content":"尺码","remark":""},{"content":"胸围(cm/in)","remark":""}],[{"content":"S","remark":""},{"content":"106cm /41.7in","remark":""}]]';
+    const hydratedSelection = {
+      ...selection,
+      productSize,
+    };
+    hydrateSDSVariantSelection.mockResolvedValue(hydratedSelection);
+    createSheinStudioBatchTasks.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        status: "tasks_created",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: 869,
+        createdAt: "2026-05-26T09:59:00.000Z",
+        updatedAt: "2026-05-26T10:06:00.000Z",
+      },
+      items: [],
+      createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+    });
+
+    const persistDraft = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderTaskCreationAction({
+      itemizedBatchContext: {
+        batchId: "batch-1",
+        detail: buildReviewReadyBatchDetail(),
+        onCreated: vi.fn(),
+      },
+      persistDraft,
+    });
+
+    await act(async () => {
+      await result.current.handleCreateTasks();
+    });
+
+    expect(hydrateSDSVariantSelection).toHaveBeenCalledWith(selection);
+    expect(persistDraft).toHaveBeenCalledWith(
+      { selection: hydratedSelection },
+      expect.objectContaining({ source: "task_creation_preflight" }),
+    );
+    expect(persistDraft.mock.invocationCallOrder[0]).toBeLessThan(
+      createSheinStudioBatchTasks.mock.invocationCallOrder[0],
+    );
   });
 
   it("confirms before creating tasks while the itemized batch is still generating", async () => {
@@ -447,6 +503,30 @@ describe("useSheinStudioTaskCreationAction", () => {
     );
     expect(createSheinReviewTasks).not.toHaveBeenCalled();
     expect(createGroupedSheinReviewTasks).not.toHaveBeenCalled();
+    expect(navigateToStep).not.toHaveBeenCalled();
+  });
+
+  it("blocks standalone task creation when the active SDS baseline is not ready", async () => {
+    const navigateToStep = vi.fn();
+    const setCreatingError = vi.fn();
+    const { result } = renderTaskCreationAction({
+      activeSelectionBaselineReason: "SDS credential bootstrap is missing merchant credentials.",
+      activeSelectionBaselineStatus: "missing",
+      itemizedBatchContext: undefined,
+      navigateToStep,
+      setCreatingError,
+    });
+
+    await act(async () => {
+      await result.current.handleCreateTasks();
+    });
+
+    expect(setCreatingError).toHaveBeenCalledWith(
+      "SDS Baseline 未就绪：SDS credential bootstrap is missing merchant credentials.",
+    );
+    expect(createSheinReviewTasks).not.toHaveBeenCalled();
+    expect(createGroupedSheinReviewTasks).not.toHaveBeenCalled();
+    expect(createSheinStudioBatchTasks).not.toHaveBeenCalled();
     expect(navigateToStep).not.toHaveBeenCalled();
   });
 

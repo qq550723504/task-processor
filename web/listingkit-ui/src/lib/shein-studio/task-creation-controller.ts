@@ -131,10 +131,14 @@ type ExecuteItemizedBatchTaskCreationResult = {
 
 export function resolveTaskCreationStartValidation({
   activeSelection,
+  activeSelectionBaselineReason,
+  activeSelectionBaselineStatus,
   approvedCount,
   sheinStoreId,
 }: {
   activeSelection?: SDSProductVariantSelection;
+  activeSelectionBaselineReason?: string;
+  activeSelectionBaselineStatus?: GroupedSDSSelectionEligibility["baselineStatus"];
   approvedCount: number;
   sheinStoreId: string;
 }) {
@@ -146,6 +150,12 @@ export function resolveTaskCreationStartValidation({
   }
   if (approvedCount === 0) {
     return { error: "请至少批准 1 个款式后再创建 SHEIN 任务。" };
+  }
+  if (activeSelectionBaselineStatus && activeSelectionBaselineStatus !== "ready") {
+    const reason = activeSelectionBaselineReason?.trim();
+    return {
+      error: reason ? `SDS Baseline 未就绪：${reason}` : "SDS Baseline 未就绪。",
+    };
   }
   return null;
 }

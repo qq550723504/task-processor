@@ -14,6 +14,8 @@ import {
 import type {
   SheinFinalReviewImage,
   SheinPreviewPayload,
+  SheinResolvedSaleAttribute,
+  SheinSizeAttribute,
 } from "@/lib/types/listingkit";
 
 export function FailureGuidance({
@@ -340,6 +342,191 @@ function formatStoreResolutionTime(value?: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+type SizeAttributeTableModel = {
+  columns: Array<{ attributeID: number; label: string }>;
+  rows: Array<{
+    label: string;
+    saleAttributeValueID: number;
+    values: Record<number, string>;
+  }>;
+};
+
+export function SizeAttributeTable({
+  shein,
+}: {
+  shein?: SheinPreviewPayload | null;
+}) {
+  const model = buildSizeAttributeTableModel(shein);
+  if (!model) {
+    return null;
+  }
+
+  const gridTemplateColumns = `minmax(7rem, 0.8fr) repeat(${model.columns.length}, minmax(8rem, 1fr))`;
+
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
+            SHEIN 尺码表
+          </p>
+          <p className="mt-1 text-sm leading-6 text-zinc-600">
+            {model.rows.length} 个尺码 · {model.columns.length} 个尺码字段
+          </p>
+        </div>
+        <Badge className="w-fit rounded-full px-3 py-1 text-xs" variant="success">
+          已生成
+        </Badge>
+      </div>
+      <div className="mt-3 overflow-hidden rounded-2xl border border-zinc-200">
+        <div className="overflow-x-auto">
+          <div className="min-w-[32rem]">
+            <div
+              className="grid bg-zinc-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500"
+              style={{ gridTemplateColumns }}
+            >
+              <span>尺码</span>
+              {model.columns.map((column) => (
+                <span key={column.attributeID}>{column.label}</span>
+              ))}
+            </div>
+            <div className="divide-y divide-zinc-100">
+              {model.rows.map((row) => (
+                <div
+                  className="grid items-center gap-2 px-3 py-2 text-sm"
+                  key={row.saleAttributeValueID}
+                  style={{ gridTemplateColumns }}
+                >
+                  <span className="font-medium text-zinc-950">{row.label}</span>
+                  {model.columns.map((column) => (
+                    <span className="text-zinc-700" key={column.attributeID}>
+                      {row.values[column.attributeID] || "-"}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function buildSizeAttributeTableModel(
+  shein?: SheinPreviewPayload | null,
+): SizeAttributeTableModel | null {
+  const sizeAttributes = firstNonEmptySizeAttributes(
+    shein?.preview_payload?.size_attribute_list,
+    shein?.preview_product?.size_attribute_list,
+    shein?.draft_payload?.size_attribute_list,
+    shein?.request_draft?.size_attribute_list,
+  );
+  if (sizeAttributes.length === 0) {
+    return null;
+  }
+
+  const columnLabels = buildSizeAttributeColumnLabels(shein);
+  const saleValueLabels = buildSaleAttributeValueLabels(shein);
+  const columns: SizeAttributeTableModel["columns"] = [];
+  const rows: SizeAttributeTableModel["rows"] = [];
+  const columnIDs = new Set<number>();
+  const rowByValueID = new Map<number, SizeAttributeTableModel["rows"][number]>();
+
+  for (const item of sizeAttributes) {
+    const attributeID = item.attribute_id ?? 0;
+    const saleAttributeValueID = item.relate_sale_attribute_value_id ?? 0;
+    const value = String(item.attribute_extra_value ?? "").trim();
+    if (attributeID <= 0 || saleAttributeValueID <= 0 || !value) {
+      continue;
+    }
+    if (!columnIDs.has(attributeID)) {
+      columnIDs.add(attributeID);
+      columns.push({
+        attributeID,
+        label: columnLabels.get(attributeID) ?? `attribute_id ${attributeID}`,
+      });
+    }
+    let row = rowByValueID.get(saleAttributeValueID);
+    if (!row) {
+      row = {
+        label: saleValueLabels.get(saleAttributeValueID) ?? String(saleAttributeValueID),
+        saleAttributeValueID,
+        values: {},
+      };
+      rowByValueID.set(saleAttributeValueID, row);
+      rows.push(row);
+    }
+    row.values[attributeID] = value;
+  }
+
+  if (columns.length === 0 || rows.length === 0) {
+    return null;
+  }
+  return { columns, rows };
+}
+
+function firstNonEmptySizeAttributes(
+  ...candidates: Array<SheinSizeAttribute[] | undefined>
+) {
+  return candidates.find((candidate) => candidate && candidate.length > 0) ?? [];
+}
+
+function buildSizeAttributeColumnLabels(shein?: SheinPreviewPayload | null) {
+  const labels = new Map<number, string>();
+  for (const attribute of
+    shein?.editor_context?.attributes?.current?.size_chart_attributes ?? []) {
+    const attributeID = attribute.attribute_id ?? 0;
+    if (attributeID <= 0) {
+      continue;
+    }
+    const label =
+      attribute.attribute_name_en ||
+      attribute.attribute_name ||
+      attribute.name ||
+      `attribute_id ${attributeID}`;
+    labels.set(attributeID, label);
+  }
+  return labels;
+}
+
+function buildSaleAttributeValueLabels(shein?: SheinPreviewPayload | null) {
+  const labels = new Map<number, string>();
+  const addResolved = (attribute?: SheinResolvedSaleAttribute) => {
+    const valueID = attribute?.attribute_value_id ?? 0;
+    const value = String(attribute?.value ?? "").trim();
+    if (valueID > 0 && value && !labels.has(valueID)) {
+      labels.set(valueID, value);
+    }
+  };
+
+  for (const attribute of
+    shein?.editor_context?.sale_attributes?.current?.sku_attributes ?? []) {
+    addResolved(attribute);
+  }
+  for (const skc of shein?.draft_payload?.skc_list ?? []) {
+    addResolved(skc.sale_attribute);
+    for (const sku of skc.sku_list ?? []) {
+      for (const attribute of sku.sale_attributes ?? []) {
+        addResolved(attribute);
+      }
+    }
+  }
+  for (const skc of shein?.request_draft?.skc_list ?? []) {
+    addResolved(skc.sale_attribute);
+    for (const sku of skc.sku_list ?? []) {
+      for (const attribute of sku.sale_attributes ?? []) {
+        addResolved(attribute);
+      }
+    }
+  }
+  for (const attribute of shein?.final_review?.sale_attributes ?? []) {
+    addResolved(attribute);
+  }
+
+  return labels;
 }
 
 export function SkuPricingTable({

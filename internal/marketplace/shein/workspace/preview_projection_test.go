@@ -82,3 +82,56 @@ func TestBuildFinalReviewImagesDeduplicatesAndMarksSizeMap(t *testing.T) {
 		t.Fatalf("images[1] = %+v, want size_map image", images[1])
 	}
 }
+
+func TestBuildFinalReviewImagesIncludesPreviewSKCDetailImages(t *testing.T) {
+	t.Parallel()
+
+	mainImage := "https://cdn.example.com/main.jpg"
+	firstDetail := "https://cdn.example.com/detail-1.jpg"
+	secondSKCMain := "https://cdn.example.com/second-skc-main.jpg"
+	secondDetail := "https://cdn.example.com/second-detail.jpg"
+	draft := &sheinpub.RequestDraft{
+		ImageInfo: &sheinpub.ImageDraft{
+			MainImage: mainImage,
+			Gallery:   []string{firstDetail},
+		},
+		SKCList: []sheinpub.SKCRequestDraft{
+			{ImageInfo: &sheinpub.ImageDraft{MainImage: mainImage}},
+			{ImageInfo: &sheinpub.ImageDraft{MainImage: secondSKCMain}},
+		},
+	}
+	product := &sheinproduct.Product{
+		ImageInfo: &sheinproduct.ImageInfo{
+			ImageInfoList: []sheinproduct.ImageDetail{
+				{ImageURL: mainImage, ImageType: 1, ImageSort: 1, MarketingMainImage: true},
+				{ImageURL: firstDetail, ImageType: 2, ImageSort: 2},
+			},
+		},
+		SKCList: []sheinproduct.SKC{
+			{
+				ImageInfo: sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{
+					{ImageURL: mainImage, ImageType: 1, ImageSort: 1, MarketingMainImage: true},
+					{ImageURL: firstDetail, ImageType: 2, ImageSort: 2},
+				}},
+			},
+			{
+				ImageInfo: sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{
+					{ImageURL: secondSKCMain, ImageType: 1, ImageSort: 1, MarketingMainImage: true},
+					{ImageURL: secondDetail, ImageType: 2, ImageSort: 2},
+				}},
+			},
+		},
+	}
+
+	images := BuildFinalReviewImages(draft, nil, product)
+
+	if len(images) != 4 {
+		t.Fatalf("len(images) = %d, want 4 (%+v)", len(images), images)
+	}
+	if images[2].URL != secondSKCMain || images[2].Role != "skc" {
+		t.Fatalf("second skc main = %+v, want skc role", images[2])
+	}
+	if images[3].URL != secondDetail || images[3].Role != "gallery" {
+		t.Fatalf("second skc detail = %+v, want gallery role", images[3])
+	}
+}

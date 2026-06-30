@@ -3461,24 +3461,29 @@ func TestServiceCreateStudioBatchTasks_ConcurrentStaleCreatingRecoveryCreatesOne
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
+	selection := batch.GroupedSelections[0]
 	candidateKey := buildStudioBatchTaskCandidateKey(ctx, batch, studioBatchTaskCandidate{
-		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
-		Item:         StudioBatchItemRecord{ID: "item-1"},
-		SelectionID:  "selection-1",
-		SheinStoreID: 9001,
+		Design:                   StudioMaterializedDesignRecord{ID: "design-1"},
+		Item:                     StudioBatchItemRecord{ID: "item-1"},
+		Selection:                selection,
+		SelectionSnapshot:        selection.Selection,
+		SelectionID:              "selection-1",
+		CompatibilityFingerprint: buildStudioBatchCompatibilityFingerprint(selection.Selection),
+		SheinStoreID:             9001,
 	})
 	linkRepo.candidateKey = candidateKey
 	if err := baseLinkRepo.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
-		ID:           "creating-link-1",
-		BatchID:      "batch-1",
-		ItemID:       "item-1",
-		DesignID:     "design-1",
-		SelectionID:  "selection-1",
-		SheinStoreID: 9001,
-		CandidateKey: candidateKey,
-		Status:       studioBatchTaskLinkStatusCreating,
-		CreatedAt:    now.Add(-10 * time.Minute),
-		UpdatedAt:    now.Add(-10 * time.Minute),
+		ID:                       "creating-link-1",
+		BatchID:                  "batch-1",
+		ItemID:                   "item-1",
+		DesignID:                 "design-1",
+		SelectionID:              "selection-1",
+		SheinStoreID:             9001,
+		CompatibilityFingerprint: buildStudioBatchCompatibilityFingerprint(selection.Selection),
+		CandidateKey:             candidateKey,
+		Status:                   studioBatchTaskLinkStatusCreating,
+		CreatedAt:                now.Add(-10 * time.Minute),
+		UpdatedAt:                now.Add(-10 * time.Minute),
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchTaskLink(creating) error = %v", err)
 	}
@@ -3765,23 +3770,28 @@ func TestServiceCreateStudioBatchTasks_RecoversReservedCandidate(t *testing.T) {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
 
+	selection := batch.GroupedSelections[0]
 	candidateKey := buildStudioBatchTaskCandidateKey(ctx, batch, studioBatchTaskCandidate{
-		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
-		Item:         StudioBatchItemRecord{ID: "item-1"},
-		SelectionID:  "selection-1",
-		SheinStoreID: 9001,
+		Design:                   StudioMaterializedDesignRecord{ID: "design-1"},
+		Item:                     StudioBatchItemRecord{ID: "item-1"},
+		Selection:                selection,
+		SelectionSnapshot:        selection.Selection,
+		SelectionID:              "selection-1",
+		CompatibilityFingerprint: buildStudioBatchCompatibilityFingerprint(selection.Selection),
+		SheinStoreID:             9001,
 	})
 	if err := linkRepo.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
-		ID:           "reserved-link-1",
-		BatchID:      "batch-1",
-		ItemID:       "item-1",
-		DesignID:     "design-1",
-		SelectionID:  "selection-1",
-		SheinStoreID: 9001,
-		CandidateKey: candidateKey,
-		Status:       "reserved",
-		CreatedAt:    now.Add(-time.Minute),
-		UpdatedAt:    now.Add(-time.Minute),
+		ID:                       "reserved-link-1",
+		BatchID:                  "batch-1",
+		ItemID:                   "item-1",
+		DesignID:                 "design-1",
+		SelectionID:              "selection-1",
+		CompatibilityFingerprint: buildStudioBatchCompatibilityFingerprint(selection.Selection),
+		SheinStoreID:             9001,
+		CandidateKey:             candidateKey,
+		Status:                   "reserved",
+		CreatedAt:                now.Add(-time.Minute),
+		UpdatedAt:                now.Add(-time.Minute),
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchTaskLink(reserved) error = %v", err)
 	}
@@ -3902,23 +3912,28 @@ func TestServiceCreateStudioBatchTasks_RecoversStaleCreatingCandidate(t *testing
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
+	selection := batch.GroupedSelections[0]
 	candidateKey := buildStudioBatchTaskCandidateKey(ctx, batch, studioBatchTaskCandidate{
-		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
-		Item:         StudioBatchItemRecord{ID: "item-1"},
-		SelectionID:  "selection-1",
-		SheinStoreID: 9001,
+		Design:                   StudioMaterializedDesignRecord{ID: "design-1"},
+		Item:                     StudioBatchItemRecord{ID: "item-1"},
+		Selection:                selection,
+		SelectionSnapshot:        selection.Selection,
+		SelectionID:              "selection-1",
+		CompatibilityFingerprint: buildStudioBatchCompatibilityFingerprint(selection.Selection),
+		SheinStoreID:             9001,
 	})
 	if err := linkRepo.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
-		ID:           "creating-link-1",
-		BatchID:      "batch-1",
-		ItemID:       "item-1",
-		DesignID:     "design-1",
-		SelectionID:  "selection-1",
-		SheinStoreID: 9001,
-		CandidateKey: candidateKey,
-		Status:       studioBatchTaskLinkStatusCreating,
-		CreatedAt:    now.Add(-10 * time.Minute),
-		UpdatedAt:    now.Add(-10 * time.Minute),
+		ID:                       "creating-link-1",
+		BatchID:                  "batch-1",
+		ItemID:                   "item-1",
+		DesignID:                 "design-1",
+		SelectionID:              "selection-1",
+		CompatibilityFingerprint: buildStudioBatchCompatibilityFingerprint(selection.Selection),
+		SheinStoreID:             9001,
+		CandidateKey:             candidateKey,
+		Status:                   studioBatchTaskLinkStatusCreating,
+		CreatedAt:                now.Add(-10 * time.Minute),
+		UpdatedAt:                now.Add(-10 * time.Minute),
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchTaskLink(creating) error = %v", err)
 	}

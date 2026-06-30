@@ -699,6 +699,8 @@ export function buildSelectionSummary(selection?: SDSProductVariantSelection) {
     mockupImageUrl: selection.mockupImageUrl,
     mockupImageUrls: selection.mockupImageUrls,
     sizeReferenceImageUrls: selection.sizeReferenceImageUrls,
+    productSize: selection.productSize,
+    packagingSpecification: selection.packagingSpecification,
     selectedVariantIds: selection.selectedVariantIds,
     variants: selection.variants?.map((variant) => ({
       variantId: variant.variantId,

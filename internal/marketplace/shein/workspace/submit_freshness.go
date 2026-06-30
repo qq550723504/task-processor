@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	sheinpublishing "task-processor/internal/marketplace/shein/publishing"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
@@ -112,7 +113,7 @@ func buildAttributeFreshnessTemplateContext(
 	templates *sheinattribute.AttributeTemplateInfo,
 ) (attributeFreshnessTemplateContext, bool) {
 	attributes := filterFreshnessDisplayAttributes(templates.Data[0].AttributeInfos)
-	if len(attributes) == 0 {
+	if len(attributes) == 0 && len(templates.Data[0].AttributeInfos) == 0 {
 		return attributeFreshnessTemplateContext{}, false
 	}
 
@@ -384,7 +385,7 @@ func filterFreshnessDisplayAttributes(attributes []sheinattribute.AttributeInfo)
 	}
 	filtered := make([]sheinattribute.AttributeInfo, 0, len(attributes))
 	for _, attr := range attributes {
-		if attr.AttributeType == 1 || (attr.SKCScope != nil && *attr.SKCScope) {
+		if attr.AttributeType == 1 || (attr.SKCScope != nil && *attr.SKCScope) || sheinpublishing.IsSizeChartTemplateAttribute(attr) {
 			continue
 		}
 		filtered = append(filtered, attr)

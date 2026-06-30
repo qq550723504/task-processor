@@ -17,6 +17,8 @@ func buildStudioBatchCompatibilityFingerprint(selection SheinStudioSelection) st
 		intString(selection.PrintableHeight),
 		strings.TrimSpace(selection.TemplateImageURL),
 		strings.TrimSpace(selection.MaskImageURL),
+		strings.TrimSpace(selection.ProductSize),
+		strings.TrimSpace(selection.PackagingSpecification),
 	}, "|")
 	sum := sha1.Sum([]byte(normalized))
 	return hex.EncodeToString(sum[:])

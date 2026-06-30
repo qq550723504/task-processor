@@ -306,6 +306,45 @@ describe("shein studio design metadata", () => {
     );
   });
 
+  it("sends SDS product table fields when saving a studio batch", async () => {
+    const productSize =
+      '[[{"content":"尺码","remark":""},{"content":"衣长(cm/in)","remark":""}],[{"content":"S","remark":""},{"content":"87.5/34.45 ","remark":""}]]';
+    const packagingSpecification =
+      '[[{"content":"尺码"},{"content":"包装尺寸（cm）"}],[{"content":"S"},{"content":"40.0*30.0*1.0"}]]';
+    mockedApiRequest.mockResolvedValueOnce({
+      batch: { id: "batch-1" },
+      designs: [],
+    });
+
+    await upsertSheinStudioBatchDraft({
+      prompt: "retro botanical clock",
+      styleCount: "2",
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+        productSize,
+        packagingSpecification,
+      },
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/batches",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          selection: expect.objectContaining({
+            product_size: productSize,
+            packaging_specification: packagingSpecification,
+          }),
+        }),
+      }),
+    );
+  });
+
   it("sends grouped workspaces when saving a studio batch", async () => {
     mockedApiRequest.mockResolvedValueOnce({
       batch: { id: "batch-1" },

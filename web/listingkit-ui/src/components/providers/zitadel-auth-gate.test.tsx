@@ -15,6 +15,7 @@ function IdentityProbe() {
 describe("ZitadelAuthGate", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("bypasses session verification on the login page", () => {
@@ -58,5 +59,49 @@ describe("ZitadelAuthGate", () => {
     await waitFor(() => {
       expect(screen.getByText("listingkit_admin")).toBeInTheDocument();
     });
+  });
+
+  it("redirects unauthenticated sessions to login instead of refreshing the current page", async () => {
+    const fetchSession = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: "zitadel_token_invalid" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const assign = vi.fn();
+    const location = {
+      pathname: "/listing-kits/sds",
+      search: "?step=generate",
+      assign,
+    };
+    vi.stubGlobal(
+      "window",
+      new Proxy(window, {
+        get(target, property, receiver) {
+          if (property === "fetch") {
+            return fetchSession;
+          }
+          if (property === "location") {
+            return location;
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      }),
+    );
+
+    render(
+      <ZitadelAuthGate>
+        <div>protected page</div>
+      </ZitadelAuthGate>,
+    );
+
+    await waitFor(() => {
+      expect(assign).toHaveBeenCalledWith(
+        "/login?returnTo=%2Flisting-kits%2Fsds%3Fstep%3Dgenerate",
+      );
+    });
+    expect(assign).not.toHaveBeenCalledWith("/listing-kits/sds?step=generate");
+
+    window.history.replaceState({}, "", "/");
   });
 });

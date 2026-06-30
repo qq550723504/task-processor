@@ -197,32 +197,53 @@ export type SheinImageInfo = {
   }>;
 };
 
+export type SheinProductSaleAttribute = {
+  attribute_id?: number;
+  attribute_value_id?: number;
+};
+
+export type SheinSizeAttribute = {
+  attribute_id?: number;
+  attribute_extra_value?: string;
+  relate_sale_attribute_id?: number;
+  relate_sale_attribute_value_id?: number;
+};
+
 export type SheinSKUDraftPreview = {
+  supplier_sku?: string;
+  attributes?: Record<string, string>;
   main_image?: string;
   image_info?: SheinImageInfo;
+  sale_attributes?: SheinResolvedSaleAttribute[];
 };
 
 export type SheinSKCDraftPreview = {
   image_info?: SheinImageInfo;
+  sale_attribute?: SheinResolvedSaleAttribute;
   sku_list?: SheinSKUDraftPreview[];
 };
 
 export type SheinRequestDraftPreview = {
   image_info?: SheinImageInfo;
+  size_attribute_list?: SheinSizeAttribute[];
   skc_list?: SheinSKCDraftPreview[];
 };
 
 export type SheinPreviewProductSKU = {
   image_info?: SheinImageInfo;
+  sale_attribute_list?: SheinProductSaleAttribute[];
+  supplier_sku?: string;
 };
 
 export type SheinPreviewProductSKC = {
   image_info?: SheinImageInfo;
+  sale_attribute?: SheinProductSaleAttribute;
   sku_list?: SheinPreviewProductSKU[];
 };
 
 export type SheinPreviewProductPayload = {
   image_info?: SheinImageInfo;
+  size_attribute_list?: SheinSizeAttribute[];
   skc_list?: SheinPreviewProductSKC[];
 };
 
@@ -315,6 +336,7 @@ export type SheinInspectionAttributePayload = {
   resolved_count?: number;
   unresolved_count?: number;
   resolved_attributes?: SheinResolvedAttribute[];
+  size_chart_attributes?: SheinPendingAttributeCandidate[];
   pending_attributes?: SheinSourceAttribute[];
   pending_attribute_candidates?: SheinPendingAttributeCandidate[];
   recommended_attribute_candidates?: SheinPendingAttributeCandidate[];

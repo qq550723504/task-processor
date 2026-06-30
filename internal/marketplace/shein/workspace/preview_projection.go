@@ -116,7 +116,46 @@ func BuildFinalReviewImages(draft *sheinpub.RequestDraft, finalDraft *sheinpub.F
 			add(skc.ImageInfo.MainImage, "skc", len(out)+1, false)
 		}
 	}
+	addPreviewProductImages(product, func(url, role string, main bool) {
+		add(url, role, len(out)+1, main)
+	})
 	return out
+}
+
+func addPreviewProductImages(product *sheinproduct.Product, add func(url, role string, main bool)) {
+	if product == nil {
+		return
+	}
+	addPreviewImageInfo(product.ImageInfo, "gallery", add)
+	for i := range product.SKCList {
+		addPreviewImageInfo(&product.SKCList[i].ImageInfo, "skc", add)
+	}
+}
+
+func addPreviewImageInfo(info *sheinproduct.ImageInfo, defaultRole string, add func(url, role string, main bool)) {
+	if info == nil {
+		return
+	}
+	for _, image := range info.ImageInfoList {
+		role, main := previewImageDetailRole(image, defaultRole)
+		add(image.ImageURL, role, main)
+	}
+}
+
+func previewImageDetailRole(image sheinproduct.ImageDetail, defaultRole string) (string, bool) {
+	if image.SizeImgFlag || image.TransformCVSizeImage {
+		return "size_map", false
+	}
+	if defaultRole == "skc" {
+		if image.ImageSort <= 1 || image.ImageType == 1 {
+			return "skc", false
+		}
+		return "gallery", false
+	}
+	if image.MarketingMainImage || image.ImageType == 1 {
+		return "main", true
+	}
+	return defaultRole, false
 }
 
 func resolveFinalReviewImageRole(url, role string, main bool, finalDraft *sheinpub.FinalDraft, sizeMapURLs map[string]struct{}) (string, bool) {

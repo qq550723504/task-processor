@@ -34,6 +34,7 @@ type BatchRunStarter = (
 type BuildDraftInputOverrides = Partial<{
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
+  selection: SDSProductVariantSelection;
   createdTasks: SheinStudioCreatedTask[];
   generationJobs: SheinStudioGenerationJob[];
   generationError: string;

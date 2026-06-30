@@ -106,6 +106,7 @@ func TestRefreshDerivedStateRecomputesSaleAttributesAndClearsSuggestion(t *testi
 		nil,
 		refreshDerivedStubAttributeResolver{},
 		refreshDerivedStubSaleResolver{},
+		nil,
 		PricingPolicy{},
 	)
 
@@ -208,6 +209,7 @@ func TestRefreshDerivedStatePreservesVariantSpecificSKCImagesWhenFallbackSplitsG
 		nil,
 		nil,
 		refreshDerivedStubSplitSaleResolver{},
+		nil,
 		PricingPolicy{},
 	)
 
@@ -273,6 +275,7 @@ func TestRefreshDerivedStateRebuildsSizeAttributesIntoPreviewPayload(t *testing.
 		nil,
 		nil,
 		refreshDerivedStubSizeSaleResolver{},
+		nil,
 		PricingPolicy{},
 	)
 
@@ -329,6 +332,7 @@ func TestRefreshDerivedStateNilRequestDoesNotPanicOnProductSizeAccess(t *testing
 		nil,
 		nil,
 		refreshDerivedStubSizeSaleResolver{},
+		nil,
 		PricingPolicy{},
 	)
 
@@ -409,6 +413,7 @@ func TestRefreshDerivedStateClearsStaleSizeAttributesWhenProductSizeInvalid(t *t
 				nil,
 				nil,
 				refreshDerivedStubSizeSaleResolver{},
+				nil,
 				PricingPolicy{},
 			)
 
