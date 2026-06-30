@@ -130,7 +130,7 @@ func (a *sheinActivityAdapter) enrollPromotionCandidates(
 		return nil, err
 	}
 
-	return registerPromotionCandidatesWithBridge(ctx, bridge, strategy, bridgeActivityKey, candidates)
+	return registerPromotionCandidatesWithBridge(ctx, bridge, strategy, bridgeActivityKey, candidates, true)
 }
 
 func (a *sheinActivityAdapter) enrollTimeLimitedPromotionCandidates(
@@ -171,9 +171,9 @@ func (a *sheinActivityAdapter) enrollTimeLimitedPromotionCandidates(
 
 	register := func(chunkActivityKey string, chunk []SheinActivityEnrollmentCandidate) ([]SheinActivityEnrollmentResult, error) {
 		if session != nil {
-			return registerPromotionCandidatesWithSession(ctx, session, chunkActivityKey, chunk)
+			return registerPromotionCandidatesWithSession(ctx, session, chunkActivityKey, chunk, false)
 		}
-		return registerPromotionCandidatesWithBridge(ctx, bridge, strategy, chunkActivityKey, chunk)
+		return registerPromotionCandidatesWithBridge(ctx, bridge, strategy, chunkActivityKey, chunk, false)
 	}
 	return executeTimeLimitedCandidateBatch(activityKey, candidates, register)
 }
@@ -212,10 +212,14 @@ func registerPromotionCandidatesWithBridge(
 	strategy *SheinPromotionStrategy,
 	bridgeActivityKey string,
 	candidates []SheinActivityEnrollmentCandidate,
+	rejectMultiSKUDifferentPrices bool,
 ) ([]SheinActivityEnrollmentResult, error) {
-	products, productBySKC := buildPromotionCandidateProducts(candidates)
+	products, productBySKC, inputFilterReasons := buildPromotionCandidateProducts(candidates, rejectMultiSKUDifferentPrices)
+	if len(products) == 0 {
+		return buildPromotionEnrollmentResults(candidates, nil, nil, productBySKC, inputFilterReasons), nil
+	}
 	bridgeResult, bridgeErr := bridge.RegisterPromotionProducts(ctx, strategy, bridgeActivityKey, products)
-	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC), bridgeErr
+	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC, inputFilterReasons), bridgeErr
 }
 
 func registerPromotionCandidatesWithSession(
@@ -223,18 +227,29 @@ func registerPromotionCandidatesWithSession(
 	session SheinPromotionRegistrationSession,
 	bridgeActivityKey string,
 	candidates []SheinActivityEnrollmentCandidate,
+	rejectMultiSKUDifferentPrices bool,
 ) ([]SheinActivityEnrollmentResult, error) {
-	products, productBySKC := buildPromotionCandidateProducts(candidates)
+	products, productBySKC, inputFilterReasons := buildPromotionCandidateProducts(candidates, rejectMultiSKUDifferentPrices)
+	if len(products) == 0 {
+		return buildPromotionEnrollmentResults(candidates, nil, nil, productBySKC, inputFilterReasons), nil
+	}
 	bridgeResult, bridgeErr := session.RegisterPromotionProducts(ctx, bridgeActivityKey, products)
-	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC), bridgeErr
+	return buildPromotionEnrollmentResults(candidates, bridgeResult, bridgeErr, productBySKC, inputFilterReasons), bridgeErr
 }
 
-func buildPromotionCandidateProducts(candidates []SheinActivityEnrollmentCandidate) ([]marketing.SkcInfo, map[string]marketing.SkcInfo) {
+func buildPromotionCandidateProducts(
+	candidates []SheinActivityEnrollmentCandidate,
+	rejectMultiSKUDifferentPrices bool,
+) ([]marketing.SkcInfo, map[string]marketing.SkcInfo, map[string]string) {
 	products := make([]marketing.SkcInfo, 0, len(candidates))
 	productBySKC := make(map[string]marketing.SkcInfo, len(candidates))
+	inputFilterReasons := make(map[string]string)
 	for _, candidate := range candidates {
-		product, ok := buildPromotionCandidateProduct(candidate)
+		product, reason, ok := buildPromotionCandidateProduct(candidate, rejectMultiSKUDifferentPrices)
 		if !ok {
+			if reason != "" && candidate.SKCName != "" {
+				inputFilterReasons[candidate.SKCName] = reason
+			}
 			continue
 		}
 		products = append(products, product)
@@ -243,7 +258,7 @@ func buildPromotionCandidateProducts(candidates []SheinActivityEnrollmentCandida
 	sort.Slice(products, func(i, j int) bool {
 		return products[i].Skc < products[j].Skc
 	})
-	return products, productBySKC
+	return products, productBySKC, inputFilterReasons
 }
 
 func (a *sheinActivityAdapter) resolvePromotionBridge(ctx context.Context, storeID int64) (SheinPromotionBridge, error) {
@@ -266,27 +281,31 @@ func (a *sheinActivityAdapter) resolvePromotionBridge(ctx context.Context, store
 	return bridge, nil
 }
 
-func buildPromotionCandidateProduct(candidate SheinActivityEnrollmentCandidate) (marketing.SkcInfo, bool) {
+func buildPromotionCandidateProduct(candidate SheinActivityEnrollmentCandidate, rejectMultiSKUDifferentPrices bool) (marketing.SkcInfo, string, bool) {
 	if candidate.SKCName == "" {
-		return marketing.SkcInfo{}, false
+		return marketing.SkcInfo{}, "", false
 	}
-	price, currency := parsePromotionPriceSnapshot(candidate.PriceSnapshot)
-	if price <= 0 {
-		return marketing.SkcInfo{}, false
+	priceSnapshot := parsePromotionCandidatePriceSnapshot(candidate.PriceSnapshot)
+	if priceSnapshot.SalePrice <= 0 {
+		return marketing.SkcInfo{}, "", false
+	}
+	if rejectMultiSKUDifferentPrices && promotionSnapshotHasDifferentSKUPrices(priceSnapshot.SKUPrices) {
+		return marketing.SkcInfo{}, "PROMOTION 不支持多 SKU 不同价格，请改用 TIME_LIMITED 活动报名", false
 	}
 	stock := parsePromotionInventorySnapshot(candidate.InventorySnapshot)
 	if stock <= 0 {
-		return marketing.SkcInfo{}, false
+		return marketing.SkcInfo{}, "", false
 	}
 
 	product := marketing.SkcInfo{
 		Skc:                 candidate.SKCName,
 		Stock:               stock,
 		SupplyPrice:         sheinActivityCandidateCostValue(candidate.EffectiveCostPrice),
-		SupplyPriceCurrency: currency,
-		SitePriceInfoList:   []marketing.SitePriceInfo{{SalePrice: price, Currency: currency, IsAvailable: true}},
+		SupplyPriceCurrency: priceSnapshot.Currency,
+		SitePriceInfoList:   []marketing.SitePriceInfo{{SalePrice: priceSnapshot.SalePrice, Currency: priceSnapshot.Currency, SiteCode: priceSnapshot.SubSite, IsAvailable: true}},
+		SkuPriceInfoList:    promotionSnapshotSKUPricesToMarketing(priceSnapshot.SKUPrices),
 	}
-	return product, true
+	return product, "", true
 }
 
 func sheinActivityCandidateCostValue(value *float64) float64 {
@@ -296,14 +315,78 @@ func sheinActivityCandidateCostValue(value *float64) float64 {
 	return *value
 }
 
+type promotionCandidatePriceSnapshot struct {
+	SalePrice float64                              `json:"sale_price"`
+	Currency  string                               `json:"currency"`
+	SubSite   string                               `json:"sub_site"`
+	SKUPrices []promotionCandidateSKUPriceSnapshot `json:"sku_prices"`
+}
+
+type promotionCandidateSKUPriceSnapshot struct {
+	SKUCode   string  `json:"sku_code"`
+	SalePrice float64 `json:"sale_price"`
+	Currency  string  `json:"currency"`
+	SubSite   string  `json:"sub_site"`
+}
+
+func parsePromotionCandidatePriceSnapshot(raw string) promotionCandidatePriceSnapshot {
+	if raw == "" {
+		return promotionCandidatePriceSnapshot{}
+	}
+	var payload promotionCandidatePriceSnapshot
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return promotionCandidatePriceSnapshot{}
+	}
+	return payload
+}
+
+func promotionSnapshotHasDifferentSKUPrices(items []promotionCandidateSKUPriceSnapshot) bool {
+	seen := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		if item.SalePrice <= 0 {
+			continue
+		}
+		key := fmt.Sprintf("%.2f", item.SalePrice)
+		seen[key] = struct{}{}
+		if len(seen) > 1 {
+			return true
+		}
+	}
+	return false
+}
+
+func promotionSnapshotSKUPricesToMarketing(items []promotionCandidateSKUPriceSnapshot) []marketing.SkuSitePriceInfo {
+	out := make([]marketing.SkuSitePriceInfo, 0, len(items))
+	for _, item := range items {
+		skuCode := strings.TrimSpace(item.SKUCode)
+		if skuCode == "" || item.SalePrice <= 0 {
+			continue
+		}
+		out = append(out, marketing.SkuSitePriceInfo{
+			SkuCode: skuCode,
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SiteCode:    item.SubSite,
+				SalePrice:   item.SalePrice,
+				Currency:    item.Currency,
+				IsAvailable: true,
+			}},
+		})
+	}
+	return out
+}
+
 func buildPromotionEnrollmentResults(
 	candidates []SheinActivityEnrollmentCandidate,
 	bridgeResult *SheinPromotionRegistrationResult,
 	bridgeErr error,
 	productBySKC map[string]marketing.SkcInfo,
+	inputFilterReasons map[string]string,
 ) []SheinActivityEnrollmentResult {
 	configured := make(map[string]struct{})
 	filterReasons := make(map[string]string)
+	for skc, reason := range inputFilterReasons {
+		filterReasons[skc] = reason
+	}
 	requestPayload := ""
 	responsePayload := ""
 	if bridgeResult != nil {
@@ -332,7 +415,11 @@ func buildPromotionEnrollmentResults(
 			ResponsePayload: responsePayload,
 		}
 		if _, ok := productBySKC[candidate.SKCName]; !ok {
-			result.ErrorMessage = "candidate filtered from promotion bridge input"
+			if reason := strings.TrimSpace(filterReasons[candidate.SKCName]); reason != "" {
+				result.ErrorMessage = reason
+			} else {
+				result.ErrorMessage = "candidate filtered from promotion bridge input"
+			}
 			results = append(results, result)
 			continue
 		}
@@ -359,16 +446,7 @@ func buildPromotionEnrollmentResults(
 }
 
 func parsePromotionPriceSnapshot(raw string) (float64, string) {
-	if raw == "" {
-		return 0, ""
-	}
-	var payload struct {
-		SalePrice float64 `json:"sale_price"`
-		Currency  string  `json:"currency"`
-	}
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		return 0, ""
-	}
+	payload := parsePromotionCandidatePriceSnapshot(raw)
 	return payload.SalePrice, payload.Currency
 }
 

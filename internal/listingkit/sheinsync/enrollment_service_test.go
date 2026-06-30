@@ -1032,6 +1032,44 @@ func TestSheinActivityAdapterSupportsTimeLimitedEnrollment(t *testing.T) {
 	require.True(t, results[0].Success)
 }
 
+func TestSheinActivityAdapterPromotionRejectsMultiSKUDifferentPrices(t *testing.T) {
+	t.Parallel()
+
+	strategyProvider := &sheinPromotionStrategyProviderStub{
+		strategy: NewSheinPromotionStrategy(SheinPromotionStrategyInput{
+			StoreID:              22,
+			ActivityPriceMode:    "DISCOUNT",
+			ActivityDiscountRate: 0.2,
+			ActivityStockRatio:   0.5,
+		}),
+	}
+	bridge := &sheinPromotionBridgeStub{}
+	adapter := newSheinActivityAdapter(strategyProvider, bridge)
+
+	results, err := adapter.EnrollCandidates(
+		context.Background(),
+		22,
+		"PROMOTION",
+		"PROMOTION:11:22",
+		[]SheinActivityEnrollmentCandidate{
+			{
+				CandidateID:       1,
+				SKCName:           "skc-multi-price",
+				PriceSnapshot:     `{"sale_price":29.9,"currency":"USD","sku_prices":[{"sku_code":"sku-small","sale_price":29.9,"currency":"USD"},{"sku_code":"sku-large","sale_price":34.9,"currency":"USD"}]}`,
+				InventorySnapshot: `{"available":10}`,
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Empty(t, bridge.calls)
+	require.Len(t, results, 1)
+	require.False(t, results[0].Success)
+	require.Equal(t, int64(1), results[0].CandidateID)
+	require.Contains(t, results[0].ErrorMessage, "PROMOTION")
+	require.Contains(t, results[0].ErrorMessage, "多 SKU")
+}
+
 func TestSheinActivityAdapterTimeLimitedBatchFallbackReusesPromotionSession(t *testing.T) {
 	t.Parallel()
 

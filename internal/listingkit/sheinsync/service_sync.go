@@ -407,7 +407,7 @@ func (s *sheinSyncService) fetchOnShelfProducts(
 					}
 				}
 				if snapshots.priceLoaded {
-					record.PriceSnapshot = snapshots.priceSnapshot
+					record.PriceSnapshot = snapshots.priceSnapshotForSKC(skc.SkcName)
 				}
 				if snapshots.inventoryLoaded {
 					record.InventorySnapshot = snapshots.inventorySnapshot
@@ -479,7 +479,7 @@ func (s *sheinSyncService) fetchSourceSDSProducts(
 					}
 				}
 				if snapshots.priceLoaded {
-					record.PriceSnapshot = snapshots.priceSnapshot
+					record.PriceSnapshot = snapshots.priceSnapshotForSKC(skc.SkcName)
 				}
 				if snapshots.inventoryLoaded {
 					record.InventorySnapshot = snapshots.inventorySnapshot

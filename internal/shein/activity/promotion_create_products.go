@@ -231,6 +231,9 @@ func enrichPromotionGoodsFromProductSnapshots(
 			continue
 		}
 		fallbackPrice := promotionProductSalePrice(product, currency)
+		if fallbackPrice <= 0 {
+			fallbackPrice = promotionProductSKUFallbackSalePrice(product, currency)
+		}
 		if item.USSupplyPrice <= 0 && fallbackPrice > 0 {
 			item.USSupplyPrice = fallbackPrice
 		}
@@ -240,9 +243,84 @@ func enrichPromotionGoodsFromProductSnapshots(
 		if item.InventoryNum <= 0 && product.Stock > 0 {
 			item.InventoryNum = product.Stock
 		}
+		item.SkuInfoList = enrichPromotionSKUPricesFromProductSnapshot(item.SkuInfoList, product, configCurrencyOrDefault(currency))
 		enriched = append(enriched, item)
 	}
 	return enriched
+}
+
+func configCurrencyOrDefault(currency string) string {
+	currency = strings.TrimSpace(strings.ToUpper(currency))
+	if currency == "" {
+		return "USD"
+	}
+	return currency
+}
+
+func enrichPromotionSKUPricesFromProductSnapshot(
+	skus []marketing.PromotionSkuInfo,
+	product marketing.SkcInfo,
+	preferredCurrency string,
+) []marketing.PromotionSkuInfo {
+	if len(skus) == 0 || len(product.SkuPriceInfoList) == 0 {
+		return skus
+	}
+	priceBySKU := make(map[string]marketing.SitePriceInfo, len(product.SkuPriceInfoList))
+	for _, skuPrice := range product.SkuPriceInfoList {
+		skuCode := strings.TrimSpace(skuPrice.SkuCode)
+		if skuCode == "" {
+			continue
+		}
+		if sitePrice, ok := promotionPreferredSitePrice(skuPrice.SitePriceInfoList, preferredCurrency); ok {
+			priceBySKU[skuCode] = sitePrice
+		}
+	}
+	if len(priceBySKU) == 0 {
+		return skus
+	}
+	out := append([]marketing.PromotionSkuInfo(nil), skus...)
+	for idx := range out {
+		sitePrice, ok := priceBySKU[out[idx].Sku]
+		if !ok || sitePrice.SalePrice <= 0 {
+			continue
+		}
+		if out[idx].USSupplyPrice == nil || *out[idx].USSupplyPrice <= 0 {
+			out[idx].USSupplyPrice = promotionFloat64Ptr(sitePrice.SalePrice)
+		}
+		if out[idx].SupplyPrice == nil || *out[idx].SupplyPrice <= 0 {
+			out[idx].SupplyPrice = promotionFloat64Ptr(sitePrice.SalePrice)
+		}
+		if out[idx].MaxUSSupplyPrice == nil || *out[idx].MaxUSSupplyPrice <= 0 {
+			out[idx].MaxUSSupplyPrice = promotionFloat64Ptr(sitePrice.SalePrice)
+		}
+		if out[idx].MaxSupplyPrice == nil || *out[idx].MaxSupplyPrice <= 0 {
+			out[idx].MaxSupplyPrice = promotionFloat64Ptr(sitePrice.SalePrice)
+		}
+	}
+	return out
+}
+
+func promotionPreferredSitePrice(items []marketing.SitePriceInfo, preferredCurrency string) (marketing.SitePriceInfo, bool) {
+	for _, item := range items {
+		if item.SalePrice > 0 && item.IsAvailable && strings.EqualFold(item.Currency, preferredCurrency) {
+			return item, true
+		}
+	}
+	for _, item := range items {
+		if item.SalePrice > 0 && item.IsAvailable {
+			return item, true
+		}
+	}
+	for _, item := range items {
+		if item.SalePrice > 0 {
+			return item, true
+		}
+	}
+	return marketing.SitePriceInfo{}, false
+}
+
+func promotionFloat64Ptr(value float64) *float64 {
+	return &value
 }
 
 func promotionProductSalePrice(product marketing.SkcInfo, preferredCurrency string) float64 {
@@ -260,6 +338,16 @@ func promotionProductSalePrice(product marketing.SkcInfo, preferredCurrency stri
 	for _, site := range product.SitePriceInfoList {
 		if site.SalePrice > 0 {
 			return site.SalePrice
+		}
+	}
+	return 0
+}
+
+func promotionProductSKUFallbackSalePrice(product marketing.SkcInfo, preferredCurrency string) float64 {
+	preferredCurrency = strings.TrimSpace(strings.ToUpper(preferredCurrency))
+	for _, skuPrice := range product.SkuPriceInfoList {
+		if sitePrice, ok := promotionPreferredSitePrice(skuPrice.SitePriceInfoList, preferredCurrency); ok {
+			return sitePrice.SalePrice
 		}
 	}
 	return 0

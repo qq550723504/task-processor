@@ -67,6 +67,12 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 							{Currency: "USD", ShopPrice: 34.17},
 						},
 					},
+					{
+						SkuCode: "SKU002",
+						PriceInfoList: []sheinproduct.SkuPriceDetail{
+							{Currency: "USD", ShopPrice: 39.99},
+						},
+					},
 				},
 			},
 		}),
@@ -132,7 +138,15 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 	require.Equal(t, "USD", rows[0].Currency)
 	require.NotNil(t, rows[0].PublishTime)
 	require.NotNil(t, rows[0].FirstShelfTime)
-	require.JSONEq(t, `{"sale_price":34.17,"currency":"USD","sub_site":""}`, rows[0].PriceSnapshot)
+	require.JSONEq(t, `{
+		"sale_price":34.17,
+		"currency":"USD",
+		"sub_site":"",
+		"sku_prices":[
+			{"sku_code":"SKU001","sale_price":34.17,"currency":"USD","sub_site":""},
+			{"sku_code":"SKU002","sale_price":39.99,"currency":"USD","sub_site":""}
+		]
+	}`, rows[0].PriceSnapshot)
 	require.JSONEq(t, `{"total":1110,"available":343}`, rows[0].InventorySnapshot)
 	require.JSONEq(t, `{
 		"spu_name":"spu-1",

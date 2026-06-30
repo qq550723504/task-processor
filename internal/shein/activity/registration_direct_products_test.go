@@ -481,6 +481,115 @@ func TestRegisterPromotionProductsUsesSkuPricesForSaleAttributeGoods(t *testing.
 	}
 }
 
+func TestRegisterPromotionProductsUsesProvidedSkuPricesWhenPromotionGoodsSkuPricesAreMissing(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		promotionGoods: []marketing.PromotionGoodsData{
+			{
+				Skc:              "sg-snapshot-prices",
+				IsSaleAttribute:  1,
+				InventoryNum:     100,
+				USSupplyPrice:    0,
+				MaxUSSupplyPrice: 0,
+				SkuInfoList: []marketing.PromotionSkuInfo{
+					{Sku: "sku-small"},
+					{Sku: "sku-large"},
+				},
+			},
+		},
+		calcResponse: &marketing.CalculateSupplyPriceResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: []marketing.SkcCalculationResult{
+				{
+					SkcName: "sg-snapshot-prices",
+					SkuInfoList: []marketing.SkuCalculationInfo{
+						{
+							SkuCode: "sku-small",
+							PriceInfo: marketing.PriceInfo{
+								ProductAmount:   31.68,
+								PromotionAmount: 6.34,
+							},
+						},
+						{
+							SkuCode: "sku-large",
+							PriceInfo: marketing.PriceInfo{
+								ProductAmount:   35.04,
+								PromotionAmount: 7.01,
+							},
+						},
+					},
+				},
+			},
+		},
+		createResponse: &marketing.CreateActivityResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ActivityCreateInfo{ActivityID: 12347},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		storeService: promotionProductsStoreServiceStub{
+			store: &listingruntime.StoreInfo{ID: 870, Username: "seller"},
+		},
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:              870,
+			ActivityPriceMode:    "DISCOUNT",
+			ActivityDiscountRate: 0.2,
+			ActivityStockRatio:   0.5,
+		},
+		"TIME_LIMITED:227:870:snapshot-prices",
+		[]marketing.SkcInfo{{
+			Skc: "sg-snapshot-prices",
+			SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+				{
+					SkuCode: "sku-small",
+					SitePriceInfoList: []marketing.SitePriceInfo{{
+						SalePrice:   31.68,
+						Currency:    "USD",
+						IsAvailable: true,
+					}},
+				},
+				{
+					SkuCode: "sku-large",
+					SitePriceInfoList: []marketing.SitePriceInfo{{
+						SalePrice:   35.04,
+						Currency:    "USD",
+						IsAvailable: true,
+					}},
+				},
+			},
+		}},
+	)
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+
+	if api.calculated == nil || len(api.calculated.SkcInfoList) != 1 || len(api.calculated.SkcInfoList[0].SkuInfoList) != 2 {
+		t.Fatalf("calculated request = %+v, want two SKU prices from provided snapshot", api.calculated)
+	}
+	if got := api.calculated.SkcInfoList[0].SkuInfoList[0].ProductPrice; got != 31.68 {
+		t.Fatalf("first SKU calculate product price = %.2f, want snapshot price 31.68", got)
+	}
+	if got := api.calculated.SkcInfoList[0].SkuInfoList[1].ProductPrice; got != 35.04 {
+		t.Fatalf("second SKU calculate product price = %.2f, want snapshot price 35.04", got)
+	}
+	if api.created == nil || len(api.created.AddCostAndStockInfoList) != 1 || len(api.created.AddCostAndStockInfoList[0].AddSkuList) != 2 {
+		t.Fatalf("created request = %+v, want two SKU rows from snapshot prices", api.created)
+	}
+	if got := api.created.AddCostAndStockInfoList[0].AddSkuList[0].CostPrice; got != 31.68 {
+		t.Fatalf("first SKU create cost price = %.2f, want snapshot price 31.68", got)
+	}
+	if got := api.created.AddCostAndStockInfoList[0].AddSkuList[1].CostPrice; got != 35.04 {
+		t.Fatalf("second SKU create cost price = %.2f, want snapshot price 35.04", got)
+	}
+}
+
 func TestRegisterPromotionProductsUsesCandidateSalePriceWhenPromotionGoodsPriceIsMissing(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{
 		promotionGoods: []marketing.PromotionGoodsData{

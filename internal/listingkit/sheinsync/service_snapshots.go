@@ -9,6 +9,7 @@ import (
 
 type sheinProductSnapshots struct {
 	priceSnapshot         string
+	priceSnapshotBySKC    map[string]string
 	inventorySnapshot     string
 	inventorySKUInfoBySKC map[string][]sheinSiteSnapshotSKUInfo
 	priceLoaded           bool
@@ -28,6 +29,7 @@ func (s *sheinSyncService) fetchSupplementalSnapshots(
 	if priceResp, err := productAPI.QueryPrice(product.SpuName); err == nil {
 		snapshots.priceLoaded = true
 		snapshots.priceSnapshot = buildSheinPriceSnapshot(priceResp, product)
+		snapshots.priceSnapshotBySKC = buildSheinPriceSnapshotsBySKC(priceResp, product)
 	}
 
 	if inventoryResp, err := productAPI.QueryInventory(product.SpuName); err == nil {
@@ -37,6 +39,13 @@ func (s *sheinSyncService) fetchSupplementalSnapshots(
 	}
 
 	return snapshots
+}
+
+func (s sheinProductSnapshots) priceSnapshotForSKC(skcName string) string {
+	if s.priceSnapshotBySKC != nil {
+		return s.priceSnapshotBySKC[skcName]
+	}
+	return s.priceSnapshot
 }
 
 func buildSheinInventorySKUInfoBySKC(
@@ -72,6 +81,37 @@ func buildSheinPriceSnapshot(
 	response *sheinproduct.PriceQueryResponse,
 	product sheinproduct.ProductListItem,
 ) string {
+	for _, skc := range product.SkcInfoList {
+		if snapshot := buildSheinPriceSnapshotForSKC(response, skc.SkcName); snapshot != "" {
+			return snapshot
+		}
+	}
+	return ""
+}
+
+func buildSheinPriceSnapshotsBySKC(
+	response *sheinproduct.PriceQueryResponse,
+	product sheinproduct.ProductListItem,
+) map[string]string {
+	if response == nil {
+		return nil
+	}
+	out := make(map[string]string, len(product.SkcInfoList))
+	for _, skc := range product.SkcInfoList {
+		if skc.SkcName == "" {
+			continue
+		}
+		if snapshot := buildSheinPriceSnapshotForSKC(response, skc.SkcName); snapshot != "" {
+			out[skc.SkcName] = snapshot
+		}
+	}
+	return out
+}
+
+func buildSheinPriceSnapshotForSKC(
+	response *sheinproduct.PriceQueryResponse,
+	skcName string,
+) string {
 	if response == nil {
 		return ""
 	}
@@ -81,36 +121,53 @@ func buildSheinPriceSnapshot(
 		skcByName[skcPrice.SkcName] = skcPrice
 	}
 
-	for _, skc := range product.SkcInfoList {
-		skcPrice, ok := skcByName[skc.SkcName]
-		if !ok {
-			continue
-		}
-		for _, skuPrice := range skcPrice.SkuInfoList {
-			for _, detail := range skuPrice.PriceInfoList {
-				salePrice := detail.SpecialPrice
-				if salePrice <= 0 {
-					salePrice = detail.ShopPrice
-				}
-				if salePrice <= 0 {
-					continue
-				}
-
-				payload := map[string]any{
-					"sale_price": salePrice,
-					"currency":   detail.Currency,
-					"sub_site":   detail.SubSite,
-				}
-				encoded, err := json.Marshal(payload)
-				if err != nil {
-					return ""
-				}
-				return string(encoded)
-			}
-		}
+	skcPrice, ok := skcByName[skcName]
+	if !ok {
+		return ""
 	}
 
-	return ""
+	skuPrices := make([]map[string]any, 0, len(skcPrice.SkuInfoList))
+	var firstSalePrice float64
+	firstCurrency := ""
+	firstSubSite := ""
+	for _, skuPrice := range skcPrice.SkuInfoList {
+		for _, detail := range skuPrice.PriceInfoList {
+			salePrice := detail.SpecialPrice
+			if salePrice <= 0 {
+				salePrice = detail.ShopPrice
+			}
+			if salePrice <= 0 {
+				continue
+			}
+			if firstSalePrice <= 0 {
+				firstSalePrice = salePrice
+				firstCurrency = detail.Currency
+				firstSubSite = detail.SubSite
+			}
+			skuPrices = append(skuPrices, map[string]any{
+				"sku_code":   skuPrice.SkuCode,
+				"sale_price": salePrice,
+				"currency":   detail.Currency,
+				"sub_site":   detail.SubSite,
+			})
+			break
+		}
+	}
+	if firstSalePrice <= 0 {
+		return ""
+	}
+
+	payload := map[string]any{
+		"sale_price": firstSalePrice,
+		"currency":   firstCurrency,
+		"sub_site":   firstSubSite,
+		"sku_prices": skuPrices,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
 }
 
 func buildSheinInventorySnapshot(
