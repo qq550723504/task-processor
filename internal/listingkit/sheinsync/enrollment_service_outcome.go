@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 func (s *sheinEnrollmentService) persistEnrollmentOutcome(
@@ -125,12 +126,37 @@ func buildSheinEnrollmentCandidateUpdates(
 		row := candidate
 		if result.Success {
 			row.ReviewStatus = SheinCandidateReviewStatusEnrolled
+		} else if isRetryableSheinEnrollmentFailure(result.ErrorMessage) {
+			row.ReviewStatus = candidate.ReviewStatus
 		} else {
 			row.ReviewStatus = SheinCandidateReviewStatusFailed
 		}
 		updates = append(updates, &row)
 	}
 	return updates
+}
+
+func isRetryableSheinEnrollmentFailure(message string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	if normalized == "" {
+		return false
+	}
+	retryableMarkers := []string{
+		"认证过期",
+		"子系统登录重定向",
+		"refresh shein auth failed",
+		"强制刷新cookie失败",
+		"shein login failed",
+		"登录等待验证码",
+		"unauthorized",
+		"cookie",
+	}
+	for _, marker := range retryableMarkers {
+		if strings.Contains(normalized, strings.ToLower(marker)) {
+			return true
+		}
+	}
+	return false
 }
 
 func countSheinEnrollmentOutcomes(resultByCandidateID map[int64]SheinActivityEnrollmentResult) (int, int) {

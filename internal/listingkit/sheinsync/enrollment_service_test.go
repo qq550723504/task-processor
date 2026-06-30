@@ -400,6 +400,51 @@ func TestExecuteSheinActivityEnrollmentManualConfirmedSubmitsPendingReviewCandid
 	require.Equal(t, SheinCandidateReviewStatusEnrolled, repo.savedCandidates()[0].ReviewStatus)
 }
 
+func TestExecuteSheinActivityEnrollmentKeepsAuthExpiredFailureRetryable(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                1,
+			TenantID:          227,
+			StoreID:           870,
+			ActivityType:      "PROMOTION",
+			ActivityKey:       "PROMOTION:227:870",
+			SKCName:           "sr260601185691758427666",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	adapter := &sheinEnrollmentAdapterStub{
+		results: []SheinActivityEnrollmentResult{
+			{
+				CandidateID:  1,
+				Success:      false,
+				ErrorMessage: "保存活动配置失败: 保存活动配置请求失败: 认证过期 [20302]: 子系统登录重定向; refresh shein auth failed: 强制刷新Cookie失败: shein login failed: 登录等待验证码 (TenantID: 227, ShopID: 870)",
+			},
+		},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		227,
+		870,
+		"PROMOTION",
+		"PROMOTION:227:870",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+		1,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusFailed, run.Status)
+	require.Len(t, repo.savedItems, 1)
+	require.Equal(t, SheinEnrollmentItemStatusFailed, repo.savedItems[0].Status)
+	require.Contains(t, repo.savedItems[0].ErrorMessage, "认证过期 [20302]")
+	require.Equal(t, SheinCandidateReviewStatusPendingReview, repo.savedCandidates()[0].ReviewStatus)
+}
+
 func TestSheinEnrollmentRepositoryRequiresSyncedProductLookup(t *testing.T) {
 	t.Parallel()
 
