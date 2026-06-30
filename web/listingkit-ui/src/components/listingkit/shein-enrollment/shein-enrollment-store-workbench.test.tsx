@@ -330,6 +330,39 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
   });
 
+  it("ignores duplicate manual enrollment clicks while a request is in flight", async () => {
+    const enrollMutation = {
+      isPending: false,
+      mutateAsync: vi.fn().mockReturnValue(new Promise<undefined>(() => undefined)),
+    };
+    renderWorkbench({
+      initialTab: "candidates",
+      enrollMutation,
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-PENDING",
+          review_status: "pending_review",
+        },
+      ],
+    });
+
+    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("选择 SKC-PENDING"));
+    const enrollButton = screen.getByRole("button", { name: "报名活动" });
+    fireEvent.click(enrollButton);
+    fireEvent.click(enrollButton);
+
+    expect(enrollMutation.mutateAsync).toHaveBeenCalledTimes(1);
+    expect(enrollMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "PROMOTION",
+      activity_key: undefined,
+      trigger_mode: "manual_confirmed",
+      candidate_ids: [18],
+    });
+  });
+
   it("selects all executable candidates on the current candidates page", async () => {
     const enrollMutation = resolvedMutation();
     renderWorkbench({

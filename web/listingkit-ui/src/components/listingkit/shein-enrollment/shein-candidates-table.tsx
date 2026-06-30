@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- SHEIN image hosts are tenant data outside fixed Next image remote patterns. */
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { formatSheinPriceSnapshot } from "@/components/listingkit/shein-enrollment/shein-price-snapshot";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,8 @@ export function SheinCandidatesTable({
 }) {
   const [activityKey, setActivityKey] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [localEnrolling, setLocalEnrolling] = useState(false);
+  const enrollmentInFlightRef = useRef(false);
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   const executableIds = useMemo(
     () =>
@@ -39,6 +41,26 @@ export function SheinCandidatesTable({
   );
   const allExecutableSelected =
     executableIds.length > 0 && executableIds.every((id) => selected.has(id));
+  const enrollmentInFlight = enrolling || localEnrolling;
+
+  async function handleEnroll() {
+    if (
+      enrollmentInFlightRef.current ||
+      enrolling ||
+      selectedExecutableIds.length === 0 ||
+      enrollmentDisabled
+    ) {
+      return;
+    }
+    enrollmentInFlightRef.current = true;
+    setLocalEnrolling(true);
+    try {
+      await onEnroll(selectedExecutableIds, activityKey.trim());
+    } finally {
+      enrollmentInFlightRef.current = false;
+      setLocalEnrolling(false);
+    }
+  }
 
   return (
     <section className="space-y-4">
@@ -51,7 +73,7 @@ export function SheinCandidatesTable({
           value={activityKey}
         />
         <Button
-          disabled={enrolling || executableIds.length === 0}
+          disabled={enrollmentInFlight || executableIds.length === 0}
           onClick={() => {
             setSelectedIds(allExecutableSelected ? [] : executableIds);
           }}
@@ -61,11 +83,13 @@ export function SheinCandidatesTable({
           {allExecutableSelected ? "取消全选" : "全选"}
         </Button>
         <Button
-          disabled={enrolling || selectedExecutableIds.length === 0 || enrollmentDisabled}
-          onClick={() => void onEnroll(selectedExecutableIds, activityKey.trim())}
+          disabled={
+            enrollmentInFlight || selectedExecutableIds.length === 0 || enrollmentDisabled
+          }
+          onClick={() => void handleEnroll()}
           type="button"
         >
-          {enrolling ? "报名中..." : "报名活动"}
+          {enrollmentInFlight ? "报名中..." : "报名活动"}
         </Button>
         <span className="text-xs text-zinc-500">
           已选 {selectedExecutableIds.length} / {executableIds.length} 个可报名
