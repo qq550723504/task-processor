@@ -1,4 +1,4 @@
-package shein
+package publishing
 
 import (
 	"fmt"
@@ -13,6 +13,20 @@ type submitProductValidationInput struct {
 }
 
 type submitProductValidator struct{}
+
+// PreValidateSubmitProduct validates a SHEIN submit product before remote submission.
+func PreValidateSubmitProduct(product *sheinproduct.Product) error {
+	return PreValidateSubmitProductWithOptions(product, false)
+}
+
+// PreValidateSubmitProductWithOptions validates a SHEIN submit product before remote submission.
+func PreValidateSubmitProductWithOptions(product *sheinproduct.Product, allowPrimaryOnlyMultiSKU bool) error {
+	validator := submitProductValidator{}
+	return validator.preValidate(submitProductValidationInput{
+		ProductData:              product,
+		AllowPrimaryOnlyMultiSKU: allowPrimaryOnlyMultiSKU,
+	})
+}
 
 func (v submitProductValidator) preValidate(input submitProductValidationInput) error {
 	if input.ProductData == nil {

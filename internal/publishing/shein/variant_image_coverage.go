@@ -1,17 +1,12 @@
 package shein
 
-import "strings"
+import sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 
 const (
 	// VariantImageCoverageStatusKey stores the variant image coverage status in package metadata.
-	VariantImageCoverageStatusKey = "variant_image_coverage_status"
+	VariantImageCoverageStatusKey = sheinmarketpub.VariantImageCoverageStatusKey
 	// VariantImageCoverageMessageKey stores the variant image coverage warning in package metadata.
-	VariantImageCoverageMessageKey = "variant_image_coverage_message"
-)
-
-const (
-	variantImageCoverageBlockedMessage = "变体图片覆盖不完整：当前颜色规格多于可用变体图，已阻止将同一张图复用到所有 SKC，请补齐每个颜色的商品图后再提交"
-	variantImageCoverageStatusBlocked  = "blocked"
+	VariantImageCoverageMessageKey = sheinmarketpub.VariantImageCoverageMessageKey
 )
 
 // VariantImageCoverageInput provides external coverage evidence collected outside the publishing package.
@@ -26,22 +21,12 @@ func EnforceVariantImageCoverage(pkg *Package, input VariantImageCoverageInput) 
 	if pkg == nil {
 		return "", false
 	}
-	requiredGroupCount := VariantImageGroupCount(pkg)
-	if requiredGroupCount <= 1 {
-		return "", false
-	}
-	distinctImageCount := DistinctSKCMainImageCount(pkg)
-	if distinctImageCount >= requiredGroupCount {
-		return "", false
-	}
-	if input.AvailableVariantImageGroups >= requiredGroupCount {
-		return "", false
-	}
-	warning := variantImageCoverageBlockedMessage
-	if sdsErr := strings.TrimSpace(input.SDSError); sdsErr != "" {
-		warning = warning + "；" + sdsErr
-	}
-	return warning, true
+	return sheinmarketpub.EnforceVariantImageCoverage(sheinmarketpub.VariantImageCoverageState{
+		RequiredGroupCount:          VariantImageGroupCount(pkg),
+		DistinctImageCount:          DistinctSKCMainImageCount(pkg),
+		AvailableVariantImageGroups: input.AvailableVariantImageGroups,
+		SDSError:                    input.SDSError,
+	})
 }
 
 // VariantImageGroupCount returns the number of distinct SKC image groups required by a package.
@@ -50,41 +35,30 @@ func VariantImageGroupCount(pkg *Package) int {
 	if pkg == nil || pkg.DraftPayload == nil {
 		return 0
 	}
-	groups := map[string]struct{}{}
-	unnamed := 0
+	keys := make([]string, 0, len(pkg.DraftPayload.SKCList))
 	for _, skc := range pkg.DraftPayload.SKCList {
-		if key := VariantImageGroupKey(skc); key != "" {
-			groups[key] = struct{}{}
-			continue
-		}
-		unnamed++
+		keys = append(keys, VariantImageGroupKey(skc))
 	}
-	return len(groups) + unnamed
+	return sheinmarketpub.VariantImageGroupCount(keys)
 }
 
 // VariantImageGroupKey returns the stable group key for an SKC's variant image coverage.
 func VariantImageGroupKey(skc SKCRequestDraft) string {
+	input := sheinmarketpub.VariantImageGroupInput{
+		SKCCandidates: []string{
+			skc.SaleName,
+			skc.SkcName,
+			ResolvedSaleAttributeValue(skc.SaleAttribute),
+		},
+	}
 	for _, sku := range skc.SKUList {
-		for _, candidate := range []string{
+		input.SKUColorCandidates = append(input.SKUColorCandidates,
 			sku.Attributes["Color"],
 			sku.Attributes["color"],
 			sku.Attributes["variant_color"],
-		} {
-			if key := NormalizeVariantImageKey(candidate); key != "" {
-				return key
-			}
-		}
+		)
 	}
-	for _, candidate := range []string{
-		skc.SaleName,
-		skc.SkcName,
-		ResolvedSaleAttributeValue(skc.SaleAttribute),
-	} {
-		if key := NormalizeVariantImageKey(candidate); key != "" {
-			return key
-		}
-	}
-	return ""
+	return sheinmarketpub.VariantImageGroupKey(input)
 }
 
 // SetVariantImageCoverageMetadata writes or clears variant image coverage metadata.
@@ -92,37 +66,15 @@ func SetVariantImageCoverageMetadata(pkg *Package, warning string, blocked bool)
 	if pkg == nil {
 		return
 	}
-	if pkg.Metadata == nil {
-		if !blocked {
-			return
-		}
-		pkg.Metadata = map[string]string{}
-	}
-	if blocked {
-		pkg.Metadata[VariantImageCoverageStatusKey] = variantImageCoverageStatusBlocked
-		pkg.Metadata[VariantImageCoverageMessageKey] = strings.TrimSpace(warning)
-		return
-	}
-	delete(pkg.Metadata, VariantImageCoverageStatusKey)
-	delete(pkg.Metadata, VariantImageCoverageMessageKey)
-	if len(pkg.Metadata) == 0 {
-		pkg.Metadata = nil
-	}
+	pkg.Metadata = sheinmarketpub.SetVariantImageCoverageMetadata(pkg.Metadata, warning, blocked)
 }
 
 // VariantImageCoverageStatus returns the current blocked variant image coverage message.
 func VariantImageCoverageStatus(pkg *Package) (string, bool) {
-	if pkg == nil || pkg.Metadata == nil {
+	if pkg == nil {
 		return "", false
 	}
-	if strings.TrimSpace(pkg.Metadata[VariantImageCoverageStatusKey]) != variantImageCoverageStatusBlocked {
-		return "", false
-	}
-	message := strings.TrimSpace(pkg.Metadata[VariantImageCoverageMessageKey])
-	if message == "" {
-		message = "变体图片覆盖不完整，请为每个颜色规格补齐独立商品图后再提交"
-	}
-	return message, true
+	return sheinmarketpub.VariantImageCoverageStatus(pkg.Metadata)
 }
 
 // DistinctSKCMainImageCount returns the number of distinct main images currently assigned to SKCs.
@@ -131,26 +83,21 @@ func DistinctSKCMainImageCount(pkg *Package) int {
 	if pkg == nil || pkg.DraftPayload == nil {
 		return 0
 	}
-	seen := map[string]struct{}{}
+	urls := make([]string, 0, len(pkg.DraftPayload.SKCList))
 	for _, skc := range pkg.DraftPayload.SKCList {
-		url := strings.TrimSpace(SKCMainImageURL(skc))
-		if url == "" {
-			continue
-		}
-		seen[url] = struct{}{}
+		urls = append(urls, SKCMainImageURL(skc))
 	}
-	return len(seen)
+	return sheinmarketpub.DistinctVariantImageMainImageCount(urls)
 }
 
 // SKCMainImageURL returns an SKC's main image, falling back to SKU main images.
 func SKCMainImageURL(skc SKCRequestDraft) string {
-	if skc.ImageInfo != nil && strings.TrimSpace(skc.ImageInfo.MainImage) != "" {
-		return strings.TrimSpace(skc.ImageInfo.MainImage)
+	input := sheinmarketpub.VariantImageMainImageInput{}
+	if skc.ImageInfo != nil {
+		input.SKCMainImage = skc.ImageInfo.MainImage
 	}
 	for _, sku := range skc.SKUList {
-		if strings.TrimSpace(sku.MainImage) != "" {
-			return strings.TrimSpace(sku.MainImage)
-		}
+		input.SKUMainImage = append(input.SKUMainImage, sku.MainImage)
 	}
-	return ""
+	return sheinmarketpub.VariantImageMainImageURL(input)
 }

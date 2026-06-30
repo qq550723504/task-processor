@@ -134,18 +134,5 @@ func pricingCacheSKUAlias(value string) string {
 	if index := strings.Index(value, "-V"); index > 0 {
 		return strings.TrimSpace(value[:index])
 	}
-	parts := strings.Split(value, "-")
-	filtered := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if LooksLikeSubmitRequestToken(part) || LooksLikeSubmitTaskToken(part) {
-			continue
-		}
-		filtered = append(filtered, part)
-	}
-	alias := strings.Join(filtered, "-")
-	if prefix, ok := trimPricingStyleLikeSuffix(alias); ok {
-		return prefix
-	}
-	return alias
+	return StudioPricingSKUAlias(value)
 }

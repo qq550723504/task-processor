@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	"task-processor/internal/pkg/jsonx"
 	"task-processor/internal/prompt"
 )
@@ -76,48 +76,18 @@ Source dimensions:
 }
 
 func selectSourceDimensionsFallback(dimensions []SourceVariantDimension) *sourceDimensionSelection {
-	ranked := append([]SourceVariantDimension(nil), dimensions...)
-	sort.SliceStable(ranked, func(i, j int) bool {
-		a, b := ranked[i], ranked[j]
-		if sourceDimensionPrimaryPriority(a) != sourceDimensionPrimaryPriority(b) {
-			return sourceDimensionPrimaryPriority(a) > sourceDimensionPrimaryPriority(b)
-		}
-		if a.DistinctCount != b.DistinctCount {
-			return a.DistinctCount > b.DistinctCount
-		}
-		return normalizeText(a.Name) < normalizeText(b.Name)
-	})
-	selection := &sourceDimensionSelection{
-		PrimarySourceDimension: ranked[0].Name,
-		Reasons:                []string{"SHEIN 模板未就绪，先按源销售属性维度生成最小分组计划"},
+	selected := sheinmarketpub.SelectSourceDimensionsFallback(adaptSourceDimensionsForPolicy(dimensions))
+	if selected == nil {
+		return nil
 	}
-	secondaryPool := append([]SourceVariantDimension(nil), ranked[1:]...)
-	sort.SliceStable(secondaryPool, func(i, j int) bool {
-		a, b := secondaryPool[i], secondaryPool[j]
-		if sourceDimensionSecondaryPriority(a) != sourceDimensionSecondaryPriority(b) {
-			return sourceDimensionSecondaryPriority(a) > sourceDimensionSecondaryPriority(b)
-		}
-		if a.DistinctCount != b.DistinctCount {
-			return a.DistinctCount > b.DistinctCount
-		}
-		return normalizeText(a.Name) < normalizeText(b.Name)
-	})
-	for _, dimension := range secondaryPool {
-		if dimension.Name == selection.PrimarySourceDimension {
-			continue
-		}
-		selection.SecondarySourceDimension = dimension.Name
-		break
+	selection := &sourceDimensionSelection{
+		PrimarySourceDimension:   selected.PrimarySourceDimension,
+		SecondarySourceDimension: selected.SecondarySourceDimension,
+		Reasons:                  append([]string(nil), selected.Reasons...),
 	}
 	return selection
 }
 
 func sourceDimensionExists(dimensions []SourceVariantDimension, name string) bool {
-	name = normalizeText(name)
-	for _, dimension := range dimensions {
-		if normalizeText(dimension.Name) == name {
-			return true
-		}
-	}
-	return false
+	return sheinmarketpub.SourceDimensionExists(adaptSourceDimensionsForPolicy(dimensions), name)
 }

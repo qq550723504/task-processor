@@ -1,15 +1,14 @@
 package shein
 
-import sheinproduct "task-processor/internal/shein/api/product"
+import (
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
+	sheinproduct "task-processor/internal/shein/api/product"
+)
 
 func PreValidateSubmitProduct(product *sheinproduct.Product) error {
-	return PreValidateSubmitProductWithOptions(product, false)
+	return sheinmarketpub.PreValidateSubmitProduct(product)
 }
 
 func PreValidateSubmitProductWithOptions(product *sheinproduct.Product, allowPrimaryOnlyMultiSKU bool) error {
-	validator := submitProductValidator{}
-	return validator.preValidate(submitProductValidationInput{
-		ProductData:              product,
-		AllowPrimaryOnlyMultiSKU: allowPrimaryOnlyMultiSKU,
-	})
+	return sheinmarketpub.PreValidateSubmitProductWithOptions(product, allowPrimaryOnlyMultiSKU)
 }

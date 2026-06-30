@@ -1,6 +1,10 @@
 package shein
 
-import "strings"
+import (
+	"strings"
+
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
+)
 
 // StudioSubmitSKUContext carries task-scoped defaults for studio submit SKU normalization.
 type StudioSubmitSKUContext struct {
@@ -62,53 +66,7 @@ func NormalizeStudioSubmitSupplierSKUs(pkg *Package, input StudioSubmitSKUContex
 
 // BuildStudioVariantSKU builds the final studio submit SKU from base, variant discriminator, and style suffix.
 func BuildStudioVariantSKU(baseSKU, styleID, variantDiscriminator string, requireVariantDiscriminator bool, seen map[string]int) string {
-	baseSKU = strings.TrimSpace(baseSKU)
-	styleSuffix := NormalizeSubmitStyleSuffix(styleID)
-	variantDiscriminator = normalizeSubmitVariantDiscriminator(variantDiscriminator)
-
-	parts := make([]string, 0, 2)
-	if baseSKU != "" {
-		parts = append(parts, baseSKU)
-	}
-	if styleSuffix != "" {
-		parts = append(parts, styleSuffix)
-	}
-	baseCandidate := strings.Join(parts, "-")
-	if baseCandidate == "" {
-		baseCandidate = "SDS-STUDIO-001"
-	}
-	if !requireVariantDiscriminator && seen == nil {
-		return baseCandidate
-	}
-	if !requireVariantDiscriminator {
-		if _, exists := seen[baseCandidate]; !exists {
-			seen[baseCandidate] = 1
-			return baseCandidate
-		}
-	}
-	parts = parts[:0]
-	if baseSKU != "" {
-		parts = append(parts, baseSKU)
-	}
-	if variantDiscriminator != "" {
-		parts = append(parts, variantDiscriminator)
-	}
-	if styleSuffix != "" {
-		parts = append(parts, styleSuffix)
-	}
-	candidate := strings.Join(parts, "-")
-	if candidate == "" {
-		candidate = baseCandidate
-	}
-	if seen == nil {
-		return candidate
-	}
-	if _, exists := seen[candidate]; !exists {
-		seen[candidate] = 1
-		return candidate
-	}
-	seen[candidate]++
-	return candidate + "-" + strconvItoa(seen[candidate])
+	return sheinmarketpub.BuildStudioVariantSKU(baseSKU, styleID, variantDiscriminator, requireVariantDiscriminator, seen)
 }
 
 func submitDraftSKCSaleAttributeValue(draft *SKCRequestDraft) string {
@@ -133,19 +91,4 @@ func setPackageSKU(pkg *Package, skcIndex, skuIndex int, newSKU string) {
 		pkg.PreviewPayload.SKCList[skcIndex].SKUS[skuIndex].SupplierSKU = newSKU
 		SetPreviewPayload(pkg, pkg.PreviewPayload)
 	}
-}
-
-func strconvItoa(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	digits := [20]byte{}
-	index := len(digits)
-	v := value
-	for v > 0 {
-		index--
-		digits[index] = byte('0' + v%10)
-		v /= 10
-	}
-	return string(digits[index:])
 }

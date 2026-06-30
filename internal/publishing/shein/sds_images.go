@@ -3,36 +3,20 @@ package shein
 import (
 	"strings"
 
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	common "task-processor/internal/publishing/common"
 )
 
-const defaultSDSImageKey = "__default__"
+const defaultSDSImageKey = sheinmarketpub.DefaultSDSImageKey
 
 // RegisterSDSVariantImageSet indexes a variant image set by SKU and color.
 func RegisterSDSVariantImageSet(bySKU map[string]*common.ImageSet, byColor map[string]*common.ImageSet, sku string, color string, images *common.ImageSet, overwrite bool) {
-	if images == nil {
-		return
-	}
-	if key := NormalizeSDSImageKey(color); key != defaultSDSImageKey {
-		if overwrite || byColor[key] == nil {
-			byColor[key] = images
-		}
-	}
-	if key := NormalizeSDSImageKey(sku); key != defaultSDSImageKey {
-		if overwrite || bySKU[key] == nil {
-			bySKU[key] = images
-		}
-	}
+	sheinmarketpub.RegisterSDSVariantImageSet(bySKU, byColor, sku, color, images, overwrite)
 }
 
 // FirstSDSImageSet returns the first non-nil image set from a map.
 func FirstSDSImageSet(values map[string]*common.ImageSet) *common.ImageSet {
-	for _, images := range values {
-		if images != nil {
-			return images
-		}
-	}
-	return nil
+	return sheinmarketpub.FirstSDSImageSet(values)
 }
 
 // ResolveSDSImagesForSKC resolves SDS images for an SKC by source SKU, supplier SKU, and color.
@@ -43,37 +27,29 @@ func ResolveSDSImagesForSKC(pkg *Package, index int, bySKU map[string]*common.Im
 	}
 	if index < len(pkg.DraftPayload.SKCList) {
 		skc := &pkg.DraftPayload.SKCList[index]
-		for _, value := range sdsSKUCandidatesFromRequestSKC(skc) {
-			if images := lookupSDSImagesBySKU(bySKU, value); images != nil {
-				return images
-			}
-		}
-		for _, value := range []string{
-			skcSaleAttributeValue(skc.SaleAttribute),
-			skcColorFromDraft(skc),
-		} {
-			if images := byColor[NormalizeSDSImageKey(value)]; images != nil {
-				return images
-			}
+		if images := sheinmarketpub.ResolveSDSImages(sheinmarketpub.SDSImageLookupInput{
+			SKUCandidates: sdsSKUCandidatesFromRequestSKC(skc),
+			ColorCandidates: []string{
+				skcSaleAttributeValue(skc.SaleAttribute),
+				skcColorFromDraft(skc),
+			},
+		}, bySKU, byColor); images != nil {
+			return images
 		}
 	}
 	if index < len(pkg.SkcList) {
 		skc := &pkg.SkcList[index]
-		for _, value := range sdsSKUCandidatesFromPackageSKC(skc) {
-			if images := lookupSDSImagesBySKU(bySKU, value); images != nil {
-				return images
-			}
-		}
 		attrs := skc.Attributes
-		for _, value := range []string{
-			attrs["Color"],
-			attrs["color"],
-			skc.SaleName,
-			skc.SkcName,
-		} {
-			if images := byColor[NormalizeSDSImageKey(value)]; images != nil {
-				return images
-			}
+		if images := sheinmarketpub.ResolveSDSImages(sheinmarketpub.SDSImageLookupInput{
+			SKUCandidates: sdsSKUCandidatesFromPackageSKC(skc),
+			ColorCandidates: []string{
+				attrs["Color"],
+				attrs["color"],
+				skc.SaleName,
+				skc.SkcName,
+			},
+		}, bySKU, byColor); images != nil {
+			return images
 		}
 	}
 	return nil
@@ -84,80 +60,40 @@ func ResolveSDSImagesForSKU(sku *SKUDraft, bySKU map[string]*common.ImageSet, by
 	if sku == nil {
 		return nil
 	}
-	if images := bySKU[NormalizeSDSImageKey(SourceSDSSKUFromSupplierSKU(sku.SupplierSKU))]; images != nil {
-		return images
-	}
-	if images := bySKU[NormalizeSDSImageKey(sku.Attributes["source_sds_sku"])]; images != nil {
-		return images
-	}
-	if images := byColor[NormalizeSDSImageKey(sku.Attributes["Color"])]; images != nil {
-		return images
-	}
-	if images := byColor[NormalizeSDSImageKey(sku.Attributes["color"])]; images != nil {
-		return images
-	}
-	return nil
+	return sheinmarketpub.ResolveSDSImages(sheinmarketpub.SDSImageLookupInput{
+		SKUCandidates: []string{
+			SourceSDSSKUFromSupplierSKU(sku.SupplierSKU),
+			sku.Attributes["source_sds_sku"],
+		},
+		ColorCandidates: []string{
+			sku.Attributes["Color"],
+			sku.Attributes["color"],
+		},
+	}, bySKU, byColor)
 }
 
 // SourceSDSSKUFromSupplierSKU strips generated supplier SKU suffixes to recover the source SDS SKU.
 func SourceSDSSKUFromSupplierSKU(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	if index := strings.LastIndex(value, "-"); index > 0 {
-		return strings.TrimSpace(value[:index])
-	}
-	return value
+	return sheinmarketpub.SourceSDSSKUFromSupplierSKU(value)
 }
 
 // ImageSetFromSDSMockups builds a publishing image set from SDS rendered mockups.
 func ImageSetFromSDSMockups(mockups []string, sourceImages []string) *common.ImageSet {
-	mockups = uniqueNonEmptySDSImageStrings(mockups)
-	if len(mockups) == 0 {
-		return nil
-	}
-	images := &common.ImageSet{
-		MainImage:    mockups[0],
-		SourceImages: uniqueNonEmptySDSImageStrings(sourceImages),
-	}
-	if len(mockups) > 1 {
-		images.Gallery = append([]string(nil), mockups[1:]...)
-	}
-	return images
+	return sheinmarketpub.ImageSetFromSDSMockups(mockups, sourceImages)
 }
 
 // MergeSDSImageSet merges an additional SDS image set into an existing one.
 func MergeSDSImageSet(existing *common.ImageSet, next *common.ImageSet) *common.ImageSet {
-	if next == nil || strings.TrimSpace(next.MainImage) == "" {
-		return existing
-	}
-	if existing == nil || strings.TrimSpace(existing.MainImage) == "" {
-		return &common.ImageSet{
-			MainImage:    next.MainImage,
-			Gallery:      append([]string(nil), next.Gallery...),
-			SourceImages: append([]string(nil), next.SourceImages...),
-		}
-	}
-	existing.Gallery = appendUniqueSDSImageURLs(existing.Gallery, next.MainImage)
-	existing.Gallery = appendUniqueSDSImageURLs(existing.Gallery, next.Gallery...)
-	return existing
+	return sheinmarketpub.MergeSDSImageSet(existing, next)
 }
 
 // NormalizeSDSImageKey returns a stable key for SDS SKU/color image lookups.
 func NormalizeSDSImageKey(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	if value == "" {
-		return defaultSDSImageKey
-	}
-	return value
+	return sheinmarketpub.NormalizeSDSImageKey(value)
 }
 
 func lookupSDSImagesBySKU(bySKU map[string]*common.ImageSet, value string) *common.ImageSet {
-	if images := bySKU[NormalizeSDSImageKey(value)]; images != nil {
-		return images
-	}
-	return nil
+	return sheinmarketpub.LookupSDSImagesBySKU(bySKU, value)
 }
 
 func sdsSKUCandidatesFromRequestSKC(skc *SKCRequestDraft) []string {
@@ -219,49 +155,9 @@ func skcColorFromDraft(skc *SKCRequestDraft) string {
 }
 
 func uniqueNonEmptySDSImageStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	return out
+	return sheinmarketpub.UniqueNonEmptySDSImageStrings(values)
 }
 
 func appendUniqueSDSImageURLs(existing []string, additions ...string) []string {
-	seen := make(map[string]struct{}, len(existing)+len(additions))
-	result := make([]string, 0, len(existing)+len(additions))
-	for _, item := range existing {
-		key := strings.TrimSpace(item)
-		if key == "" {
-			continue
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, item)
-	}
-	for _, item := range additions {
-		key := strings.TrimSpace(item)
-		if key == "" {
-			continue
-		}
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, item)
-	}
-	return result
+	return sheinmarketpub.AppendUniqueSDSImageURLs(existing, additions...)
 }

@@ -1,90 +1,42 @@
 package shein
 
-import (
-	"strconv"
-	"strings"
-	"unicode"
-)
+import sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 
 func sourceDimensionPrimaryPriority(dimension SourceVariantDimension) int {
-	score := 0
-	if dimension.DistinctCount > 1 {
-		score += 4
-	}
-	if isDescriptiveSourceDimension(dimension) {
-		score += 6
-	}
-	if isNumericScaleSourceDimension(dimension) {
-		score -= 2
-	}
-	return score
+	return sheinmarketpub.SourceDimensionPrimaryPriority(adaptSourceDimensionForPolicy(dimension))
 }
 
 func sourceDimensionSecondaryPriority(dimension SourceVariantDimension) int {
-	score := 0
-	if dimension.DistinctCount > 1 {
-		score += 4
-	}
-	if isNumericScaleSourceDimension(dimension) {
-		score += 6
-	}
-	return score
+	return sheinmarketpub.SourceDimensionSecondaryPriority(adaptSourceDimensionForPolicy(dimension))
 }
 
 func isDescriptiveSourceDimension(dimension SourceVariantDimension) bool {
-	name := normalizeText(dimension.Name)
-	switch name {
-	case "颜色", "颜色分类", "color", "colour", "style", "款式", "pattern", "图案", "material", "材质":
-		return true
-	}
-	return !isNumericScaleSourceDimension(dimension)
+	return sheinmarketpub.IsDescriptiveSourceDimension(adaptSourceDimensionForPolicy(dimension))
 }
 
 func isNumericScaleSourceDimension(dimension SourceVariantDimension) bool {
-	name := normalizeText(dimension.Name)
-	switch name {
-	case "size", "尺码", "尺寸", "dimension", "capacity", "容量", "规格":
-		return true
-	}
-
-	if len(dimension.Values) == 0 {
-		return false
-	}
-
-	numericLikeCount := 0
-	for _, value := range dimension.Values {
-		if isNumericLikeDimensionValue(value) {
-			numericLikeCount++
-		}
-	}
-	return numericLikeCount > 0 && numericLikeCount == len(dimension.Values)
+	return sheinmarketpub.IsNumericScaleSourceDimension(adaptSourceDimensionForPolicy(dimension))
 }
 
 func isNumericLikeDimensionValue(value string) bool {
-	value = normalizeSaleAttributeValue(value)
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return false
-	}
+	return sheinmarketpub.IsNumericLikeSourceDimensionValue(value)
+}
 
-	compact := strings.NewReplacer("eu", "", "us", "", "uk", "", "eur", "", "cm", "", "mm", "", "ml", "", "l", "", "g", "", "kg", "", "码", "", "号", "").Replace(strings.ToLower(value))
-	compact = strings.Join(strings.Fields(compact), "")
-	if compact == "" {
-		return false
+func adaptSourceDimensionForPolicy(dimension SourceVariantDimension) sheinmarketpub.SourceDimension {
+	return sheinmarketpub.SourceDimension{
+		Name:          dimension.Name,
+		Values:        append([]string(nil), dimension.Values...),
+		DistinctCount: dimension.DistinctCount,
 	}
-	if _, err := strconv.ParseFloat(compact, 64); err == nil {
-		return true
-	}
+}
 
-	hasDigit := false
-	for _, r := range compact {
-		if unicode.IsDigit(r) {
-			hasDigit = true
-			continue
-		}
-		if r != '.' && r != '-' && r != '/' && r != '_' {
-			return false
-		}
+func adaptSourceDimensionsForPolicy(dimensions []SourceVariantDimension) []sheinmarketpub.SourceDimension {
+	if len(dimensions) == 0 {
+		return nil
 	}
-	return hasDigit
+	out := make([]sheinmarketpub.SourceDimension, 0, len(dimensions))
+	for _, dimension := range dimensions {
+		out = append(out, adaptSourceDimensionForPolicy(dimension))
+	}
+	return out
 }

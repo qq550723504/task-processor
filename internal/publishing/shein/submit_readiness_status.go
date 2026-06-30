@@ -1,7 +1,6 @@
 package shein
 
 import (
-	"strconv"
 	"strings"
 
 	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
@@ -32,29 +31,21 @@ func HasAnySubmitSKU(pkg *Package) bool {
 // FinalSubmitImagesReady reports whether final submit images are ready for an action.
 func FinalSubmitImagesReady(pkg *Package, action string) (bool, string) {
 	pkg = NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.FinalSubmissionDraft == nil {
-		return true, "旧任务未启用最终图片确认，按兼容路径处理"
+	input := sheinmarketpub.FinalSubmitImageReadinessInput{
+		HasFinalDraft: pkg != nil && pkg.FinalSubmissionDraft != nil,
+		RequiresSKC:   sheinmarketpub.FinalSubmitImagesRequireSKC(action),
 	}
-	main := strings.TrimSpace(pkg.FinalSubmissionDraft.MainImageURL)
-	if main == "" && pkg.DraftPayload != nil && pkg.DraftPayload.ImageInfo != nil {
-		main = strings.TrimSpace(pkg.DraftPayload.ImageInfo.MainImage)
+	if input.HasFinalDraft {
+		main := strings.TrimSpace(pkg.FinalSubmissionDraft.MainImageURL)
+		if main == "" && pkg.DraftPayload != nil && pkg.DraftPayload.ImageInfo != nil {
+			main = strings.TrimSpace(pkg.DraftPayload.ImageInfo.MainImage)
+		}
+		input.HasMainImage = main != ""
+		input.HasGallery = HasFinalGalleryImage(pkg)
+		input.HasSKCImage = HasSKCImage(pkg)
+		input.HasSwatchRole = HasSwatchRole(pkg)
 	}
-	if main == "" {
-		return false, "最终确认页还没有设置主图"
-	}
-	if !HasFinalGalleryImage(pkg) {
-		return false, "最终图库为空，提交前至少需要一张图库图片"
-	}
-	if !sheinmarketpub.FinalSubmitImagesRequireSKC(action) {
-		return true, "草稿保存图片已具备主图和图库；色块图、SKC 图和尺寸图会在正式发布前严格校验"
-	}
-	if !HasSKCImage(pkg) {
-		return false, "缺少 SKC/色块图，提交前需要为每个颜色规格准备可提交图片"
-	}
-	if !HasSwatchRole(pkg) {
-		return false, "缺少色块图标记，请在 SHEIN data images 中标记一张色块图"
-	}
-	return true, "最终图片已具备主图、图库和可用的色块/SKC 图；尺寸图未选择时不阻断提交"
+	return sheinmarketpub.FinalSubmitImagesReady(action, input)
 }
 
 // HasFinalGalleryImage reports whether the final draft has at least one gallery-capable image.
@@ -148,24 +139,20 @@ func SubmitPricingReady(pkg *Package) bool {
 	if pkg == nil || pkg.DraftPayload == nil {
 		return false
 	}
-	hasSKU := false
+	skus := make([]sheinmarketpub.SubmitPricingSKUInput, 0)
 	for _, skc := range pkg.DraftPayload.SKCList {
 		for _, sku := range skc.SKUList {
-			hasSKU = true
-			if parseSubmitMoney(sku.BasePrice) <= 0 {
-				return false
-			}
-			if len(sku.SitePriceList) == 0 {
-				return false
+			item := sheinmarketpub.SubmitPricingSKUInput{
+				BasePrice:      sku.BasePrice,
+				SiteBasePrices: make([]string, 0, len(sku.SitePriceList)),
 			}
 			for _, sitePrice := range sku.SitePriceList {
-				if parseSubmitMoney(sitePrice.BasePrice) <= 0 {
-					return false
-				}
+				item.SiteBasePrices = append(item.SiteBasePrices, sitePrice.BasePrice)
 			}
+			skus = append(skus, item)
 		}
 	}
-	return hasSKU
+	return sheinmarketpub.SubmitPricingReady(skus)
 }
 
 // FinalReviewReady reports whether final review confirmation allows the submit action to continue.
@@ -275,16 +262,4 @@ func uniqueNonEmptySubmitStrings(values []string) []string {
 		result = append(result, trimmed)
 	}
 	return result
-}
-
-func parseSubmitMoney(value string) float64 {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return 0
-	}
-	parsed, err := strconv.ParseFloat(value, 64)
-	if err != nil {
-		return 0
-	}
-	return parsed
 }

@@ -3,6 +3,8 @@ package shein
 import (
 	"fmt"
 	"strings"
+
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 )
 
 // SecondarySaleAttributeRequired reports whether SKU-level sale attributes are required for submit.
@@ -117,33 +119,12 @@ func HasSecondaryTemplateCandidate(resolution *SaleAttributeResolution) bool {
 
 // SaleDimensionMatches reports whether two source/template sale dimensions are equivalent.
 func SaleDimensionMatches(left, right string) bool {
-	left = NormalizeSaleDimension(left)
-	right = NormalizeSaleDimension(right)
-	if left == "" || right == "" {
-		return false
-	}
-	if left == right {
-		return true
-	}
-	return (left == "color" && right == "colour") ||
-		(left == "colour" && right == "color")
+	return sheinmarketpub.SaleDimensionMatches(left, right)
 }
 
 // NormalizeSaleDimension normalizes common source dimension labels.
 func NormalizeSaleDimension(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	switch value {
-	case "color", "colour", "颜色", "颜色分类":
-		return "color"
-	case "size", "尺码", "尺寸", "规格":
-		return "size"
-	case "quantity", "count", "件数", "数量":
-		return "quantity"
-	case "style", "style type", "款式", "类型":
-		return "style"
-	default:
-		return value
-	}
+	return sheinmarketpub.NormalizeSaleDimension(value)
 }
 
 // HasBlockingPendingAttributes reports whether required or manually pending attributes still block submit.
@@ -239,5 +220,5 @@ func ResolvedSaleAttributeReady(attr *ResolvedSaleAttribute) bool {
 
 // ResolvedSaleAttributeValueReady reports whether a resolved sale attribute value has usable IDs.
 func ResolvedSaleAttributeValueReady(attr ResolvedSaleAttribute) bool {
-	return attr.AttributeID > 0 && attr.AttributeValueID != nil && *attr.AttributeValueID > 0
+	return sheinmarketpub.ResolvedSaleAttributeValueReady(attr.AttributeID, attr.AttributeValueID)
 }

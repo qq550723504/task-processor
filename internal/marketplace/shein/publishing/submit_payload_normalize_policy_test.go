@@ -1,4 +1,4 @@
-package shein
+package publishing
 
 import (
 	"encoding/json"

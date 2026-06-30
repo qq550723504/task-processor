@@ -15,6 +15,52 @@ func TestFinalSubmitImagesRequireSKCSkipsSaveDraftOnly(t *testing.T) {
 	}
 }
 
+func TestFinalSubmitImagesReadyHandlesLegacyAndRequiredImages(t *testing.T) {
+	t.Parallel()
+
+	if ready, _ := FinalSubmitImagesReady("publish", FinalSubmitImageReadinessInput{}); !ready {
+		t.Fatal("legacy final draft readiness = false, want true")
+	}
+	if ready, message := FinalSubmitImagesReady("publish", FinalSubmitImageReadinessInput{HasFinalDraft: true}); ready || message == "" {
+		t.Fatalf("missing main image = (%v, %q), want blocker", ready, message)
+	}
+	if ready, message := FinalSubmitImagesReady("publish", FinalSubmitImageReadinessInput{
+		HasFinalDraft: true,
+		HasMainImage:  true,
+	}); ready || message == "" {
+		t.Fatalf("missing gallery = (%v, %q), want blocker", ready, message)
+	}
+}
+
+func TestFinalSubmitImagesReadyUsesActionSpecificSKCStrictness(t *testing.T) {
+	t.Parallel()
+
+	base := FinalSubmitImageReadinessInput{
+		HasFinalDraft: true,
+		HasMainImage:  true,
+		HasGallery:    true,
+	}
+	if ready, message := FinalSubmitImagesReady("save_draft", base); !ready || message == "" {
+		t.Fatalf("save draft readiness = (%v, %q), want ready", ready, message)
+	}
+	base.RequiresSKC = true
+	if ready, message := FinalSubmitImagesReady("save_draft", base); ready || message == "" {
+		t.Fatalf("save draft with explicit SKC requirement = (%v, %q), want blocker", ready, message)
+	}
+	base.RequiresSKC = false
+	if ready, message := FinalSubmitImagesReady("publish", base); ready || message == "" {
+		t.Fatalf("publish without SKC = (%v, %q), want blocker", ready, message)
+	}
+	base.HasSKCImage = true
+	if ready, message := FinalSubmitImagesReady("publish", base); ready || message == "" {
+		t.Fatalf("publish without swatch = (%v, %q), want blocker", ready, message)
+	}
+	base.HasSwatchRole = true
+	if ready, message := FinalSubmitImagesReady("publish", base); !ready || message == "" {
+		t.Fatalf("publish ready = (%v, %q), want ready", ready, message)
+	}
+}
+
 func TestImageURLClassifiersRecognizeUploadedAndSDSHosts(t *testing.T) {
 	t.Parallel()
 
