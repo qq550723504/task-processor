@@ -72,6 +72,36 @@ func SubmitImageURLsHaveImage(values ...string) bool {
 	return SubmitImageURLSliceHasImage(values)
 }
 
+// NormalizeImageRoleOverrides normalizes accepted final image role overrides.
+func NormalizeImageRoleOverrides(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(input))
+	for url, role := range input {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			continue
+		}
+		normalizedRole := NormalizeImageRoleOverride(role)
+		if normalizedRole == "" {
+			continue
+		}
+		out[url] = normalizedRole
+	}
+	return out
+}
+
+// NormalizeImageRoleOverride returns the normalized role when it is accepted.
+func NormalizeImageRoleOverride(role string) string {
+	switch strings.ToLower(strings.TrimSpace(role)) {
+	case "main", "gallery", "swatch", "size_map", "skc":
+		return strings.ToLower(strings.TrimSpace(role))
+	default:
+		return ""
+	}
+}
+
 // IsUploadedImageURL reports whether url already points at a SHEIN-hosted image.
 func IsUploadedImageURL(url string) bool {
 	value := strings.ToLower(strings.TrimSpace(url))

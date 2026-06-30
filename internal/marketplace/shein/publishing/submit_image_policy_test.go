@@ -78,6 +78,27 @@ func TestSubmitImageDraftHasImageChecksAllImageSources(t *testing.T) {
 	}
 }
 
+func TestNormalizeImageRoleOverridesKeepsAcceptedRoles(t *testing.T) {
+	t.Parallel()
+
+	roles := NormalizeImageRoleOverrides(map[string]string{
+		" https://cdn.example/main.jpg ": " MAIN ",
+		"https://cdn.example/skc.jpg":    "skc",
+		"https://cdn.example/nope.jpg":   "invalid",
+		" ":                              "swatch",
+	})
+
+	if roles["https://cdn.example/main.jpg"] != "main" {
+		t.Fatalf("main role = %q, want normalized main", roles["https://cdn.example/main.jpg"])
+	}
+	if roles["https://cdn.example/skc.jpg"] != "skc" {
+		t.Fatalf("skc role = %q, want skc", roles["https://cdn.example/skc.jpg"])
+	}
+	if _, ok := roles["https://cdn.example/nope.jpg"]; ok {
+		t.Fatalf("invalid role kept: %#v", roles)
+	}
+}
+
 func TestImageURLClassifiersRecognizeUploadedAndSDSHosts(t *testing.T) {
 	t.Parallel()
 

@@ -411,21 +411,7 @@ func ReorderFinalDraftProductImages(info *sheinproduct.ImageInfo, order []string
 
 // NormalizeImageRoleOverrides normalizes accepted final image role overrides.
 func NormalizeImageRoleOverrides(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(input))
-	for url, role := range input {
-		url = strings.TrimSpace(url)
-		if url == "" {
-			continue
-		}
-		switch strings.ToLower(strings.TrimSpace(role)) {
-		case "main", "gallery", "swatch", "size_map", "skc":
-			out[url] = strings.ToLower(strings.TrimSpace(role))
-		}
-	}
-	return out
+	return sheinmarketpub.NormalizeImageRoleOverrides(input)
 }
 
 func firstNonEmptyFinalDraftString(values ...string) string {
