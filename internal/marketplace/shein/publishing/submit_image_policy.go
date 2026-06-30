@@ -18,6 +18,14 @@ type FinalSubmitImageReadinessInput struct {
 	RequiresSKC   bool
 }
 
+// SubmitImageDraftInput is the neutral image draft shape used by submit image policies.
+type SubmitImageDraftInput struct {
+	MainImage string
+	WhiteBg   string
+	Gallery   []string
+	Source    []string
+}
+
 // FinalSubmitImagesReady reports whether final submit images satisfy action-specific readiness.
 func FinalSubmitImagesReady(action string, input FinalSubmitImageReadinessInput) (bool, string) {
 	if !input.HasFinalDraft {
@@ -39,6 +47,29 @@ func FinalSubmitImagesReady(action string, input FinalSubmitImageReadinessInput)
 		return false, "缺少色块图标记，请在 SHEIN data images 中标记一张色块图"
 	}
 	return true, "最终图片已具备主图、图库和可用的色块/SKC 图；尺寸图未选择时不阻断提交"
+}
+
+// SubmitImageDraftHasImage reports whether an image draft contains any image URL.
+func SubmitImageDraftHasImage(input SubmitImageDraftInput) bool {
+	if SubmitImageURLsHaveImage(input.MainImage, input.WhiteBg) {
+		return true
+	}
+	return SubmitImageURLSliceHasImage(input.Gallery) || SubmitImageURLSliceHasImage(input.Source)
+}
+
+// SubmitImageURLSliceHasImage reports whether any URL in a slice is non-empty.
+func SubmitImageURLSliceHasImage(values []string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// SubmitImageURLsHaveImage reports whether any URL is non-empty.
+func SubmitImageURLsHaveImage(values ...string) bool {
+	return SubmitImageURLSliceHasImage(values)
 }
 
 // IsUploadedImageURL reports whether url already points at a SHEIN-hosted image.

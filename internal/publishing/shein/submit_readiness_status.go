@@ -54,7 +54,7 @@ func HasFinalGalleryImage(pkg *Package) bool {
 	if pkg == nil || pkg.DraftPayload == nil || pkg.DraftPayload.ImageInfo == nil {
 		return false
 	}
-	return len(uniqueNonEmptySubmitStrings(append([]string{pkg.DraftPayload.ImageInfo.MainImage}, pkg.DraftPayload.ImageInfo.Gallery...))) > 0
+	return sheinmarketpub.SubmitImageURLSliceHasImage(append([]string{pkg.DraftPayload.ImageInfo.MainImage}, pkg.DraftPayload.ImageInfo.Gallery...))
 }
 
 // HasSKCImage reports whether the package has an SKC or fallback single-SKC image.
@@ -170,7 +170,7 @@ func HasSubmitImage(pkg *Package) bool {
 	if pkg == nil {
 		return false
 	}
-	if pkg.Images != nil && firstNonEmptySubmitString(pkg.Images.MainImage, pkg.Images.WhiteBgImage) != "" {
+	if pkg.Images != nil && sheinmarketpub.SubmitImageURLsHaveImage(pkg.Images.MainImage, pkg.Images.WhiteBgImage) {
 		return true
 	}
 	if pkg.DraftPayload != nil {
@@ -211,15 +211,12 @@ func ImageDraftHasImage(info *ImageDraft) bool {
 	if info == nil {
 		return false
 	}
-	if firstNonEmptySubmitString(info.MainImage, info.WhiteBg) != "" {
-		return true
-	}
-	for _, image := range append(append([]string(nil), info.Gallery...), info.Source...) {
-		if strings.TrimSpace(image) != "" {
-			return true
-		}
-	}
-	return false
+	return sheinmarketpub.SubmitImageDraftHasImage(sheinmarketpub.SubmitImageDraftInput{
+		MainImage: info.MainImage,
+		WhiteBg:   info.WhiteBg,
+		Gallery:   append([]string(nil), info.Gallery...),
+		Source:    append([]string(nil), info.Source...),
+	})
 }
 
 // ProductImageInfoHasImage reports whether a SHEIN product image info contains any image URL.
@@ -227,21 +224,11 @@ func ProductImageInfoHasImage(info *sheinproduct.ImageInfo) bool {
 	if info == nil {
 		return false
 	}
+	urls := make([]string, 0, len(info.ImageInfoList))
 	for _, image := range info.ImageInfoList {
-		if strings.TrimSpace(image.ImageURL) != "" {
-			return true
-		}
+		urls = append(urls, image.ImageURL)
 	}
-	return false
-}
-
-func firstNonEmptySubmitString(values ...string) string {
-	for _, value := range values {
-		if trimmed := strings.TrimSpace(value); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
+	return sheinmarketpub.SubmitImageURLSliceHasImage(urls)
 }
 
 func uniqueNonEmptySubmitStrings(values []string) []string {

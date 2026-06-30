@@ -61,6 +61,23 @@ func TestFinalSubmitImagesReadyUsesActionSpecificSKCStrictness(t *testing.T) {
 	}
 }
 
+func TestSubmitImageDraftHasImageChecksAllImageSources(t *testing.T) {
+	t.Parallel()
+
+	if SubmitImageDraftHasImage(SubmitImageDraftInput{}) {
+		t.Fatal("empty draft = true, want false")
+	}
+	if !SubmitImageDraftHasImage(SubmitImageDraftInput{MainImage: " https://cdn.example/main.jpg "}) {
+		t.Fatal("main image draft = false, want true")
+	}
+	if !SubmitImageDraftHasImage(SubmitImageDraftInput{Gallery: []string{"", "https://cdn.example/gallery.jpg"}}) {
+		t.Fatal("gallery image draft = false, want true")
+	}
+	if !SubmitImageDraftHasImage(SubmitImageDraftInput{Source: []string{"https://cdn.example/source.jpg"}}) {
+		t.Fatal("source image draft = false, want true")
+	}
+}
+
 func TestImageURLClassifiersRecognizeUploadedAndSDSHosts(t *testing.T) {
 	t.Parallel()
 

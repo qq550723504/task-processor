@@ -3,6 +3,7 @@ package shein
 import (
 	"strings"
 
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -263,15 +264,11 @@ func ImageDraftHasImages(info *ImageDraft) bool {
 	if info == nil {
 		return false
 	}
-	if strings.TrimSpace(info.MainImage) != "" || strings.TrimSpace(info.WhiteBg) != "" {
-		return true
-	}
-	for _, image := range info.Gallery {
-		if strings.TrimSpace(image) != "" {
-			return true
-		}
-	}
-	return false
+	return sheinmarketpub.SubmitImageDraftHasImage(sheinmarketpub.SubmitImageDraftInput{
+		MainImage: info.MainImage,
+		WhiteBg:   info.WhiteBg,
+		Gallery:   append([]string(nil), info.Gallery...),
+	})
 }
 
 // GalleryWithoutMain removes the main image from gallery URLs.
