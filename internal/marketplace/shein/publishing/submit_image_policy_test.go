@@ -118,6 +118,20 @@ func TestUniqueNonEmptyImageURLsTrimsAndDedupes(t *testing.T) {
 	}
 }
 
+func TestProductImageInfoHasImageChecksImageInfoList(t *testing.T) {
+	t.Parallel()
+
+	if ProductImageInfoHasImage(nil) {
+		t.Fatal("ProductImageInfoHasImage(nil) = true, want false")
+	}
+	if ProductImageInfoHasImage(&sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{{ImageURL: " "}}}) {
+		t.Fatal("ProductImageInfoHasImage(blank URL) = true, want false")
+	}
+	if !ProductImageInfoHasImage(&sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{{ImageURL: " https://cdn.example/image.jpg "}}}) {
+		t.Fatal("ProductImageInfoHasImage(image URL) = false, want true")
+	}
+}
+
 func TestOrderFinalDraftImagesAppliesOrderDeletedAndDedupes(t *testing.T) {
 	t.Parallel()
 

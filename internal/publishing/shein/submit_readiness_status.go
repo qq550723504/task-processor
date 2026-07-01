@@ -221,32 +221,9 @@ func ImageDraftHasImage(info *ImageDraft) bool {
 
 // ProductImageInfoHasImage reports whether a SHEIN product image info contains any image URL.
 func ProductImageInfoHasImage(info *sheinproduct.ImageInfo) bool {
-	if info == nil {
-		return false
-	}
-	urls := make([]string, 0, len(info.ImageInfoList))
-	for _, image := range info.ImageInfoList {
-		urls = append(urls, image.ImageURL)
-	}
-	return sheinmarketpub.SubmitImageURLSliceHasImage(urls)
+	return sheinmarketpub.ProductImageInfoHasImage(info)
 }
 
 func uniqueNonEmptySubmitStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			continue
-		}
-		if _, ok := seen[trimmed]; ok {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		result = append(result, trimmed)
-	}
-	return result
+	return sheinmarketpub.UniqueNonEmptyImageURLs(values)
 }

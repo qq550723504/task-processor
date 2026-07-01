@@ -83,6 +83,18 @@ func SubmitImageURLsHaveImage(values ...string) bool {
 	return SubmitImageURLSliceHasImage(values)
 }
 
+// ProductImageInfoHasImage reports whether SHEIN product image info contains any image URL.
+func ProductImageInfoHasImage(info *sheinproduct.ImageInfo) bool {
+	if info == nil {
+		return false
+	}
+	urls := make([]string, 0, len(info.ImageInfoList))
+	for _, image := range info.ImageInfoList {
+		urls = append(urls, image.ImageURL)
+	}
+	return SubmitImageURLSliceHasImage(urls)
+}
+
 // UniqueNonEmptyImageURLs returns trimmed unique image URLs preserving order.
 func UniqueNonEmptyImageURLs(values []string) []string {
 	if len(values) == 0 {

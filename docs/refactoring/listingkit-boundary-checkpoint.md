@@ -324,6 +324,7 @@ Completed submission slices:
 - SHEIN final image ordering/deletion filtering and first-non-empty URL selection now live in `internal/marketplace/shein/publishing`; `internal/publishing/shein` keeps only final-draft adapter wrappers.
 - SHEIN final product-image reorder/role-override mutation now lives in `internal/marketplace/shein/publishing`; `internal/publishing/shein` keeps the legacy `ReorderFinalDraftProductImages` wrapper required by the current final-draft boundary guard.
 - SHEIN final image draft to product-image projection and preview coverage checks now live in `internal/marketplace/shein/publishing`; `internal/publishing/shein` keeps only `ImageDraft` adapter wrappers.
+- SHEIN submit product-image presence checks and submit readiness string de-duplication now live in `internal/marketplace/shein/publishing`; `internal/publishing/shein` keeps only compatibility helpers used by readiness wrappers.
 - SHEIN submit pricing readiness now lives in `internal/marketplace/shein/publishing`; `internal/publishing/shein` keeps only draft SKU/site-price extraction before delegating positive-price completeness checks.
 - SHEIN final-draft submit-mode normalization now lives in `internal/marketplace/shein/publishing`; `internal/publishing/shein` keeps final-draft state mutation while delegating accepted submit-mode policy to the marketplace package.
 - SHEIN sensitive-word retry eligibility now lives in `internal/marketplace/shein/publishing`; `internal/publishing/shein` keeps payload cleanup, retry audit events, and remote retry execution orchestration.
