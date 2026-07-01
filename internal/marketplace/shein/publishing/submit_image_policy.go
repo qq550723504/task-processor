@@ -1,6 +1,10 @@
 package publishing
 
-import "strings"
+import (
+	"strings"
+
+	sheinproduct "task-processor/internal/shein/api/product"
+)
 
 // FinalSubmitImagesRequireSKC reports whether final submit image readiness must
 // include SKC/swatch evidence for the action.
@@ -128,6 +132,51 @@ func FirstNonEmptyImageURL(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// ReorderFinalDraftProductImages applies ordering, deletion, main image, and role overrides to product images.
+func ReorderFinalDraftProductImages(info *sheinproduct.ImageInfo, order []string, main string, deleted map[string]struct{}, roles map[string]string) {
+	if info == nil || len(info.ImageInfoList) == 0 {
+		return
+	}
+	priority := make(map[string]int, len(order))
+	for i, image := range order {
+		priority[strings.TrimSpace(image)] = i + 1
+	}
+	filtered := make([]sheinproduct.ImageDetail, 0, len(info.ImageInfoList))
+	for _, image := range info.ImageInfoList {
+		url := strings.TrimSpace(image.ImageURL)
+		if url == "" {
+			continue
+		}
+		if _, ok := deleted[url]; ok {
+			continue
+		}
+		if url == main {
+			image.ImageSort = 1
+			image.MarketingMainImage = true
+			image.ImageType = 1
+		} else if sort, ok := priority[url]; ok {
+			image.ImageSort = sort + 1
+		}
+		switch roles[url] {
+		case "main":
+			image.ImageSort = 1
+			image.MarketingMainImage = true
+			image.ImageType = 1
+		case "swatch":
+			image.ImageType = 6
+			image.MarketingMainImage = false
+			image.SizeImgFlag = false
+		case "skc":
+			image.ImageType = 2
+		case "size_map":
+			image.ImageType = 6
+			image.SizeImgFlag = true
+		}
+		filtered = append(filtered, image)
+	}
+	info.ImageInfoList = filtered
 }
 
 // GalleryWithoutMain removes the main image from gallery URLs.

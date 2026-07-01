@@ -1,6 +1,10 @@
 package publishing
 
-import "testing"
+import (
+	"testing"
+
+	sheinproduct "task-processor/internal/shein/api/product"
+)
 
 func TestFinalSubmitImagesRequireSKCSkipsSaveDraftOnly(t *testing.T) {
 	t.Parallel()
@@ -139,6 +143,44 @@ func TestFirstNonEmptyImageURLPreservesReturnedValue(t *testing.T) {
 	got := FirstNonEmptyImageURL("", "   ", " https://cdn.example/image.jpg ", "later.jpg")
 	if got != " https://cdn.example/image.jpg " {
 		t.Fatalf("FirstNonEmptyImageURL() = %q, want original first non-empty value", got)
+	}
+}
+
+func TestReorderFinalDraftProductImagesAppliesSelectionPolicy(t *testing.T) {
+	t.Parallel()
+
+	info := &sheinproduct.ImageInfo{ImageInfoList: []sheinproduct.ImageDetail{
+		{ImageURL: " later.jpg ", ImageSort: 9, ImageType: 2},
+		{ImageURL: "main.jpg", ImageSort: 4, ImageType: 2},
+		{ImageURL: "deleted.jpg", ImageSort: 3, ImageType: 2},
+		{ImageURL: "swatch.jpg", ImageSort: 2, ImageType: 2, MarketingMainImage: true, SizeImgFlag: true},
+		{ImageURL: "", ImageSort: 1, ImageType: 2},
+		{ImageURL: "size.jpg", ImageSort: 5, ImageType: 2},
+	}}
+
+	ReorderFinalDraftProductImages(
+		info,
+		[]string{"swatch.jpg", "later.jpg"},
+		"main.jpg",
+		map[string]struct{}{"deleted.jpg": {}},
+		map[string]string{"swatch.jpg": "swatch", "size.jpg": "size_map"},
+	)
+
+	got := info.ImageInfoList
+	if len(got) != 4 {
+		t.Fatalf("ImageInfoList length = %d, want 4: %#v", len(got), got)
+	}
+	if got[0].ImageURL != " later.jpg " || got[0].ImageSort != 3 {
+		t.Fatalf("ordered image = %#v, want later image with priority sort 3", got[0])
+	}
+	if got[1].ImageURL != "main.jpg" || got[1].ImageSort != 1 || got[1].ImageType != 1 || !got[1].MarketingMainImage {
+		t.Fatalf("main image = %#v, want selected marketing main image", got[1])
+	}
+	if got[2].ImageURL != "swatch.jpg" || got[2].ImageType != 6 || got[2].MarketingMainImage || got[2].SizeImgFlag {
+		t.Fatalf("swatch image = %#v, want role override without size flag", got[2])
+	}
+	if got[3].ImageURL != "size.jpg" || got[3].ImageType != 6 || !got[3].SizeImgFlag {
+		t.Fatalf("size map image = %#v, want size map override", got[3])
 	}
 }
 
