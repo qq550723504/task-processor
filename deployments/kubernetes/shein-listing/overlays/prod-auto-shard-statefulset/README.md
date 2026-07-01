@@ -11,9 +11,9 @@
   - `shein-listing-shard-1`
   - `shein-listing-shard-2`
   - ...
-  - `shein-listing-shard-31`
+  - `shein-listing-shard-19`
 
-当前副本数是 `32`，对应“当前开启自动上架的 SHEIN 店铺数 = 32”的场景。
+当前副本数是 `20`，候选节点范围为 `shein-listing-shard-0` 到 `shein-listing-shard-19`。
 
 如果后面要扩到更多 shard worker，必须同时修改两处：
 

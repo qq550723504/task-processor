@@ -71,7 +71,7 @@ spec:
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_LOCK_TTL
               value: "25"
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_CANDIDATE_NODES
-              value: shein-listing-shard-0,shein-listing-shard-1,shein-listing-shard-2,shein-listing-shard-3,shein-listing-shard-4,shein-listing-shard-5,shein-listing-shard-6,shein-listing-shard-7
+              value: shein-listing-shard-0,shein-listing-shard-1,shein-listing-shard-2,shein-listing-shard-3,shein-listing-shard-4,shein-listing-shard-5,shein-listing-shard-6,shein-listing-shard-7,shein-listing-shard-8,shein-listing-shard-9,shein-listing-shard-10,shein-listing-shard-11,shein-listing-shard-12,shein-listing-shard-13,shein-listing-shard-14,shein-listing-shard-15,shein-listing-shard-16,shein-listing-shard-17,shein-listing-shard-18,shein-listing-shard-19
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_TARGET_STORES_PER_NODE
               value: "3"
             - name: TASK_PROCESSOR_RABBITMQ_DEAD_LETTER_ENABLED
