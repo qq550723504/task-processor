@@ -134,33 +134,7 @@ func EnsureFinalPreviewSKCImages(pkg *Package) {
 
 // PreviewSKCImagesCoverDraft reports whether preview SKC images already cover all draft image URLs.
 func PreviewSKCImagesCoverDraft(existing []sheinproduct.ImageDetail, draft *ImageDraft) bool {
-	if len(existing) == 0 || !ImageDraftHasImages(draft) {
-		return false
-	}
-	expected := make(map[string]struct{}, 1+len(draft.Gallery)+1)
-	addExpected := func(url string) {
-		url = strings.TrimSpace(url)
-		if url == "" {
-			return
-		}
-		expected[url] = struct{}{}
-	}
-	addExpected(draft.MainImage)
-	for _, image := range draft.Gallery {
-		addExpected(image)
-	}
-	addExpected(draft.WhiteBg)
-	if len(expected) == 0 {
-		return false
-	}
-	for _, image := range existing {
-		url := strings.TrimSpace(image.ImageURL)
-		if url == "" {
-			continue
-		}
-		delete(expected, url)
-	}
-	return len(expected) == 0
+	return sheinmarketpub.ProductImageDetailsCoverFinalDraft(existing, finalDraftImageInput(draft))
 }
 
 // OrderFinalDraftImages applies explicit image order and deletion filters to image URLs.
@@ -282,52 +256,7 @@ func PreviewSKCSupplierCode(skc *sheinproduct.SKC) string {
 
 // ProductImageInfoFromDraft builds SHEIN product image info from a final image draft.
 func ProductImageInfoFromDraft(info *ImageDraft, roles map[string]string) *sheinproduct.ImageInfo {
-	if !ImageDraftHasImages(info) {
-		return nil
-	}
-	seen := map[string]struct{}{}
-	images := make([]sheinproduct.ImageDetail, 0, 1+len(info.Gallery)+1)
-	add := func(url string, defaultType int, main bool) {
-		url = strings.TrimSpace(url)
-		if url == "" {
-			return
-		}
-		if _, ok := seen[url]; ok {
-			return
-		}
-		seen[url] = struct{}{}
-		image := sheinproduct.ImageDetail{
-			ImageURL:           url,
-			ImageType:          defaultType,
-			ImageSort:          len(images) + 1,
-			MarketingMainImage: main,
-		}
-		switch strings.ToLower(strings.TrimSpace(roles[url])) {
-		case "main":
-			image.ImageType = 1
-			image.MarketingMainImage = true
-		case "swatch":
-			image.ImageType = 6
-			image.MarketingMainImage = false
-		case "skc":
-			image.ImageType = 2
-			image.MarketingMainImage = false
-		case "size_map":
-			image.ImageType = 6
-			image.SizeImgFlag = true
-			image.MarketingMainImage = false
-		}
-		images = append(images, image)
-	}
-	add(info.MainImage, 1, true)
-	for _, image := range info.Gallery {
-		add(image, 2, false)
-	}
-	add(info.WhiteBg, 2, false)
-	if len(images) == 0 {
-		return nil
-	}
-	return &sheinproduct.ImageInfo{ImageInfoList: images}
+	return sheinmarketpub.ProductImageInfoFromFinalDraft(finalDraftImageInput(info), roles)
 }
 
 // ReorderFinalDraftProductImages applies ordering, deletion, main image, and role overrides to product images.
@@ -346,4 +275,15 @@ func firstNonEmptyFinalDraftString(values ...string) string {
 
 func uniqueNonEmptyFinalDraftStrings(values []string) []string {
 	return sheinmarketpub.UniqueNonEmptyImageURLs(values)
+}
+
+func finalDraftImageInput(info *ImageDraft) sheinmarketpub.FinalDraftImageInput {
+	if info == nil {
+		return sheinmarketpub.FinalDraftImageInput{}
+	}
+	return sheinmarketpub.FinalDraftImageInput{
+		MainImage: info.MainImage,
+		WhiteBg:   info.WhiteBg,
+		Gallery:   append([]string(nil), info.Gallery...),
+	}
 }

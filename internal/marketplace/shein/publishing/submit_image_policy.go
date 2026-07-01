@@ -30,6 +30,13 @@ type SubmitImageDraftInput struct {
 	Source    []string
 }
 
+// FinalDraftImageInput is the neutral final image draft shape used to build SHEIN image payloads.
+type FinalDraftImageInput struct {
+	MainImage string
+	WhiteBg   string
+	Gallery   []string
+}
+
 // FinalSubmitImagesReady reports whether final submit images satisfy action-specific readiness.
 func FinalSubmitImagesReady(action string, input FinalSubmitImageReadinessInput) (bool, string) {
 	if !input.HasFinalDraft {
@@ -132,6 +139,94 @@ func FirstNonEmptyImageURL(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// ProductImageInfoFromFinalDraft builds SHEIN product image info from a final image draft.
+func ProductImageInfoFromFinalDraft(input FinalDraftImageInput, roles map[string]string) *sheinproduct.ImageInfo {
+	if !finalDraftImageInputHasImage(input) {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	images := make([]sheinproduct.ImageDetail, 0, 1+len(input.Gallery)+1)
+	add := func(url string, defaultType int, main bool) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+		if _, ok := seen[url]; ok {
+			return
+		}
+		seen[url] = struct{}{}
+		image := sheinproduct.ImageDetail{
+			ImageURL:           url,
+			ImageType:          defaultType,
+			ImageSort:          len(images) + 1,
+			MarketingMainImage: main,
+		}
+		switch strings.ToLower(strings.TrimSpace(roles[url])) {
+		case "main":
+			image.ImageType = 1
+			image.MarketingMainImage = true
+		case "swatch":
+			image.ImageType = 6
+			image.MarketingMainImage = false
+		case "skc":
+			image.ImageType = 2
+			image.MarketingMainImage = false
+		case "size_map":
+			image.ImageType = 6
+			image.SizeImgFlag = true
+			image.MarketingMainImage = false
+		}
+		images = append(images, image)
+	}
+	add(input.MainImage, 1, true)
+	for _, image := range input.Gallery {
+		add(image, 2, false)
+	}
+	add(input.WhiteBg, 2, false)
+	if len(images) == 0 {
+		return nil
+	}
+	return &sheinproduct.ImageInfo{ImageInfoList: images}
+}
+
+// ProductImageDetailsCoverFinalDraft reports whether existing product images cover all final draft URLs.
+func ProductImageDetailsCoverFinalDraft(existing []sheinproduct.ImageDetail, draft FinalDraftImageInput) bool {
+	if len(existing) == 0 || !finalDraftImageInputHasImage(draft) {
+		return false
+	}
+	expected := make(map[string]struct{}, 1+len(draft.Gallery)+1)
+	addExpected := func(url string) {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			return
+		}
+		expected[url] = struct{}{}
+	}
+	addExpected(draft.MainImage)
+	for _, image := range draft.Gallery {
+		addExpected(image)
+	}
+	addExpected(draft.WhiteBg)
+	if len(expected) == 0 {
+		return false
+	}
+	for _, image := range existing {
+		url := strings.TrimSpace(image.ImageURL)
+		if url == "" {
+			continue
+		}
+		delete(expected, url)
+	}
+	return len(expected) == 0
+}
+
+func finalDraftImageInputHasImage(input FinalDraftImageInput) bool {
+	if SubmitImageURLsHaveImage(input.MainImage, input.WhiteBg) {
+		return true
+	}
+	return SubmitImageURLSliceHasImage(input.Gallery)
 }
 
 // ReorderFinalDraftProductImages applies ordering, deletion, main image, and role overrides to product images.

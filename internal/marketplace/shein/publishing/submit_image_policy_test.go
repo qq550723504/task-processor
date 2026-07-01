@@ -184,6 +184,65 @@ func TestReorderFinalDraftProductImagesAppliesSelectionPolicy(t *testing.T) {
 	}
 }
 
+func TestProductImageInfoFromFinalDraftBuildsProductImageInfo(t *testing.T) {
+	t.Parallel()
+
+	info := ProductImageInfoFromFinalDraft(FinalDraftImageInput{
+		MainImage: " main.jpg ",
+		Gallery:   []string{"gallery.jpg", "main.jpg", "swatch.jpg", "size.jpg", ""},
+		WhiteBg:   " white.jpg ",
+	}, map[string]string{
+		"swatch.jpg": " SWATCH ",
+		"size.jpg":   "size_map",
+	})
+	if info == nil {
+		t.Fatal("ProductImageInfoFromFinalDraft() = nil, want image info")
+	}
+	got := info.ImageInfoList
+	if len(got) != 5 {
+		t.Fatalf("ImageInfoList length = %d, want 5: %#v", len(got), got)
+	}
+	if got[0].ImageURL != "main.jpg" || got[0].ImageType != 1 || got[0].ImageSort != 1 || !got[0].MarketingMainImage {
+		t.Fatalf("main image = %#v, want trimmed marketing main image", got[0])
+	}
+	if got[1].ImageURL != "gallery.jpg" || got[1].ImageType != 2 || got[1].ImageSort != 2 {
+		t.Fatalf("gallery image = %#v, want gallery detail", got[1])
+	}
+	if got[2].ImageURL != "swatch.jpg" || got[2].ImageType != 6 || got[2].MarketingMainImage {
+		t.Fatalf("swatch image = %#v, want role override", got[2])
+	}
+	if got[3].ImageURL != "size.jpg" || got[3].ImageType != 6 || !got[3].SizeImgFlag || got[3].MarketingMainImage {
+		t.Fatalf("size map image = %#v, want size map override", got[3])
+	}
+	if got[4].ImageURL != "white.jpg" || got[4].ImageSort != 5 {
+		t.Fatalf("white image = %#v, want white image appended last", got[4])
+	}
+}
+
+func TestProductImageDetailsCoverFinalDraftRequiresAllDraftURLs(t *testing.T) {
+	t.Parallel()
+
+	draft := FinalDraftImageInput{
+		MainImage: " main.jpg ",
+		Gallery:   []string{"gallery.jpg", ""},
+		WhiteBg:   "white.jpg",
+	}
+	existing := []sheinproduct.ImageDetail{
+		{ImageURL: "gallery.jpg"},
+		{ImageURL: " main.jpg "},
+		{ImageURL: "white.jpg"},
+	}
+	if !ProductImageDetailsCoverFinalDraft(existing, draft) {
+		t.Fatal("ProductImageDetailsCoverFinalDraft(all URLs) = false, want true")
+	}
+	if ProductImageDetailsCoverFinalDraft(existing[:2], draft) {
+		t.Fatal("ProductImageDetailsCoverFinalDraft(missing white) = true, want false")
+	}
+	if ProductImageDetailsCoverFinalDraft(nil, draft) {
+		t.Fatal("ProductImageDetailsCoverFinalDraft(no existing images) = true, want false")
+	}
+}
+
 func TestGalleryWithoutMainTrimsAndFiltersMain(t *testing.T) {
 	t.Parallel()
 
