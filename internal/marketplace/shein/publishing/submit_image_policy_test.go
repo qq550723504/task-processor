@@ -99,6 +99,31 @@ func TestNormalizeImageRoleOverridesKeepsAcceptedRoles(t *testing.T) {
 	}
 }
 
+func TestUniqueNonEmptyImageURLsTrimsAndDedupes(t *testing.T) {
+	t.Parallel()
+
+	got := UniqueNonEmptyImageURLs([]string{" a.jpg ", "", "b.jpg", "a.jpg", " b.jpg "})
+	want := []string{"a.jpg", "b.jpg"}
+	if len(got) != len(want) {
+		t.Fatalf("UniqueNonEmptyImageURLs() = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("UniqueNonEmptyImageURLs()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestGalleryWithoutMainTrimsAndFiltersMain(t *testing.T) {
+	t.Parallel()
+
+	got := GalleryWithoutMain([]string{" main.jpg ", "gallery.jpg", "", "main.jpg"}, "main.jpg")
+	want := []string{"gallery.jpg"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("GalleryWithoutMain() = %#v, want %#v", got, want)
+	}
+}
+
 func TestImageURLClassifiersRecognizeUploadedAndSDSHosts(t *testing.T) {
 	t.Parallel()
 

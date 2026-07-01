@@ -273,19 +273,7 @@ func ImageDraftHasImages(info *ImageDraft) bool {
 
 // GalleryWithoutMain removes the main image from gallery URLs.
 func GalleryWithoutMain(images []string, main string) []string {
-	main = strings.TrimSpace(main)
-	if len(images) == 0 {
-		return nil
-	}
-	out := make([]string, 0, len(images))
-	for _, image := range images {
-		image = strings.TrimSpace(image)
-		if image == "" || image == main {
-			continue
-		}
-		out = append(out, image)
-	}
-	return out
+	return sheinmarketpub.GalleryWithoutMain(images, main)
 }
 
 // RequestDraftSKCByIndexOrCode resolves a request SKC draft by supplier code or index fallback.
@@ -424,21 +412,5 @@ func firstNonEmptyFinalDraftString(values ...string) string {
 }
 
 func uniqueNonEmptyFinalDraftStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-	return result
+	return sheinmarketpub.UniqueNonEmptyImageURLs(values)
 }
