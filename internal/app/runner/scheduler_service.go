@@ -62,6 +62,7 @@ func (s *schedulerServiceImpl) Start(ctx context.Context) error {
 	}
 
 	s.running = true
+	go s.runScheduledTaskConfigSyncLoop(s.ctx)
 	s.logger.Info("scheduler service started")
 	return nil
 }

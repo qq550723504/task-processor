@@ -73,6 +73,62 @@ describe("ScheduledTaskConfigAdminPage", () => {
       );
     });
   });
+
+  it("shows the saved config when it belongs to a different task filter", async () => {
+    vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([
+      { id: 870, name: "SHEIN 870", platform: "shein", region: "US" },
+    ]);
+    const getConfigs = vi
+      .spyOn(scheduledTaskConfigsApi, "getListingScheduledTaskConfigs")
+      .mockImplementation(async (query = {}) => ({
+        items:
+          query.taskType === "productSync"
+            ? [
+                {
+                  id: 2,
+                  tenantId: 227,
+                  storeId: 870,
+                  platform: "shein",
+                  taskType: "productSync",
+                  enabled: true,
+                  intervalSeconds: 3600,
+                },
+              ]
+            : [],
+        total: query.taskType === "productSync" ? 1 : 0,
+        page: 1,
+        page_size: 50,
+      }));
+    vi.spyOn(
+      scheduledTaskConfigsApi,
+      "upsertListingScheduledTaskConfig",
+    ).mockResolvedValue({
+      id: 2,
+      tenantId: 227,
+      storeId: 870,
+      platform: "shein",
+      taskType: "productSync",
+      enabled: true,
+      intervalSeconds: 3600,
+    });
+
+    renderWithQueryClient(<ScheduledTaskConfigAdminPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("SHEIN 870 (#870)").length).toBeGreaterThan(0);
+    });
+    await userEvent.selectOptions(screen.getByLabelText("店铺"), "870");
+    await userEvent.selectOptions(screen.getAllByLabelText("任务")[1], "productSync");
+    await userEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() => {
+      expect(getConfigs).toHaveBeenLastCalledWith(
+        expect.objectContaining({ taskType: "productSync" }),
+      );
+    });
+    expect(screen.getAllByText("产品同步").length).toBeGreaterThan(0);
+    expect(screen.getByText("1 小时")).toBeInTheDocument();
+  });
 });
 
 function renderWithQueryClient(ui: React.ReactElement) {

@@ -7,6 +7,7 @@ import (
 	bootstrapresources "task-processor/internal/app/bootstrap/resources"
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/runner"
+	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
@@ -60,7 +61,7 @@ func (Module) ConfigureListingRuntime(ctx context.Context, rt consumer.PlatformR
 		logger.Warnf("tenant prompt store init failed, tenant overrides disabled: %v", err)
 	}
 
-	configureScheduler(rt)
+	configureScheduler(ctx, rt)
 	configureStoreGuard(rt)
 	configureTaskRecoveryWatchdogs(rt)
 
@@ -135,15 +136,21 @@ func configureTenantPromptStore(rt consumer.PlatformRuntimeContext, opener tenan
 	return nil
 }
 
-func configureScheduler(rt consumer.PlatformRuntimeContext) {
+func configureScheduler(ctx context.Context, rt consumer.PlatformRuntimeContext) {
 	cfg := rt.Config()
 	logger := rt.Logger()
 	schedulerRuntime := rt.SchedulerServiceRuntime()
-	if cfg == nil || schedulerRuntime == nil || !cfg.Platforms.Shein.SchedulerEnabled {
+	if cfg == nil || schedulerRuntime == nil {
 		return
 	}
-	if rt.SchedulerRuntime() == nil {
-		logger.Warn("SHEIN scheduler is enabled but scheduler runtime is unavailable")
+	runtime := rt.SchedulerRuntime()
+	if runtime == nil {
+		if cfg.Platforms.Shein.SchedulerEnabled {
+			logger.Warn("SHEIN scheduler is enabled but scheduler runtime is unavailable")
+		}
+		return
+	}
+	if !cfg.Platforms.Shein.SchedulerEnabled && !hasEnabledSheinScheduledTaskConfigs(ctx, runtime, logger) {
 		return
 	}
 	if !rt.HasSchedulerDependenciesBuilder() {
@@ -165,6 +172,33 @@ func configureScheduler(rt consumer.PlatformRuntimeContext) {
 		cfg.Platforms.Shein.AutoPricing.Interval,
 		cfg.Platforms.Shein.AutoPricing.BatchSize,
 	)
+}
+
+func hasEnabledSheinScheduledTaskConfigs(ctx context.Context, runtime runner.SchedulerRuntimeProvider, logger *logrus.Logger) bool {
+	if runtime == nil {
+		return false
+	}
+	for _, taskType := range []appscheduler.TaskType{
+		appscheduler.TaskTypePricing,
+		appscheduler.TaskTypeProductSync,
+		appscheduler.TaskTypeInventory,
+		appscheduler.TaskTypeActivity,
+	} {
+		configs, err := runtime.ListRuntimeScheduledTaskConfigs(ctx, "SHEIN", taskType)
+		if err != nil {
+			if logger != nil {
+				logger.Warnf("SHEIN平台%s任务读取后台配置失败: %v", taskType, err)
+			}
+			continue
+		}
+		if len(configs) > 0 {
+			if logger != nil {
+				logger.Infof("SHEIN schedulerEnabled 未启用，但发现 %d 个%s后台启用配置", len(configs), taskType)
+			}
+			return true
+		}
+	}
+	return false
 }
 
 func configureTaskRecoveryWatchdogs(rt consumer.PlatformRuntimeContext) {

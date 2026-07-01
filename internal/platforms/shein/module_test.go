@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"task-processor/internal/app/consumer"
+	appscheduler "task-processor/internal/app/scheduler"
 	"task-processor/internal/core/config"
+	"task-processor/internal/listingruntime"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shared/tenantctx"
 
@@ -146,6 +148,34 @@ func TestShouldConfigureAutoShardOnlyForCoordinatorRole(t *testing.T) {
 	}
 }
 
+func TestHasEnabledSheinScheduledTaskConfigsUsesRuntimeConfigs(t *testing.T) {
+	runtime := &stubSheinSchedulerRuntime{
+		configs: map[appscheduler.TaskType][]listingruntime.ScheduledTaskConfig{
+			appscheduler.TaskTypeProductSync: {
+				{StoreID: 870, Platform: "shein", TaskType: string(appscheduler.TaskTypeProductSync), Enabled: true},
+			},
+		},
+	}
+
+	require.True(t, hasEnabledSheinScheduledTaskConfigs(context.Background(), runtime, logrus.New()))
+	require.Equal(t, []appscheduler.TaskType{
+		appscheduler.TaskTypePricing,
+		appscheduler.TaskTypeProductSync,
+	}, runtime.calls)
+}
+
+func TestHasEnabledSheinScheduledTaskConfigsReturnsFalseWithoutRuntimeConfigs(t *testing.T) {
+	runtime := &stubSheinSchedulerRuntime{}
+
+	require.False(t, hasEnabledSheinScheduledTaskConfigs(context.Background(), runtime, logrus.New()))
+	require.Equal(t, []appscheduler.TaskType{
+		appscheduler.TaskTypePricing,
+		appscheduler.TaskTypeProductSync,
+		appscheduler.TaskTypeInventory,
+		appscheduler.TaskTypeActivity,
+	}, runtime.calls)
+}
+
 func TestCoordinatorRoleDoesNotUseDynamicStoreAssignment(t *testing.T) {
 	cfg := &config.Config{
 		RabbitMQ: &config.RabbitMQConfig{
@@ -188,4 +218,26 @@ func consumerTestRuntimeContext(cfg *config.Config) consumer.PlatformRuntimeCont
 		Config: cfg,
 		Logger: logrus.New(),
 	})
+}
+
+type stubSheinSchedulerRuntime struct {
+	configs map[appscheduler.TaskType][]listingruntime.ScheduledTaskConfig
+	calls   []appscheduler.TaskType
+}
+
+func (s *stubSheinSchedulerRuntime) GetRuntimeStoreService() listingruntime.StoreService {
+	return nil
+}
+
+func (s *stubSheinSchedulerRuntime) ListRuntimeAutoPricingStoreIDs(context.Context, string) ([]int64, error) {
+	return nil, nil
+}
+
+func (s *stubSheinSchedulerRuntime) ListRuntimeScheduledTaskConfigs(
+	_ context.Context,
+	_ string,
+	taskType appscheduler.TaskType,
+) ([]listingruntime.ScheduledTaskConfig, error) {
+	s.calls = append(s.calls, taskType)
+	return s.configs[taskType], nil
 }

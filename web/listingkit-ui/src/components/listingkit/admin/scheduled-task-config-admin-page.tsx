@@ -89,12 +89,20 @@ export function ScheduledTaskConfigAdminPage() {
     setSaving(true);
     setError("");
     try {
-      await upsertListingScheduledTaskConfig({
+      const saved = await upsertListingScheduledTaskConfig({
         ...form,
         intervalSeconds: Math.max(60, Number(form.intervalSeconds) || 3600),
       });
-      setForm(DEFAULT_FORM);
-      await configQuery.refetch();
+      const nextPlatform = saved.platform || form.platform || DEFAULT_FORM.platform;
+      const nextTaskType = saved.taskType || form.taskType || DEFAULT_FORM.taskType;
+      setPlatform(nextPlatform);
+      setTaskType(nextTaskType);
+      setEnabled("");
+      setForm({
+        ...DEFAULT_FORM,
+        platform: nextPlatform,
+        taskType: nextTaskType,
+      });
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     } finally {
